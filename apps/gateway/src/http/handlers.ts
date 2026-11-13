@@ -1,4 +1,4 @@
-import {Effect, Option, Schema, String, pipe} from 'effect'
+import {Duration, Effect, Option, Schema, String, pipe} from 'effect'
 
 import {HttpRouter, HttpServerRequest, HttpServerResponse} from 'effect/http'
 
@@ -8,6 +8,7 @@ import {AuthError, COOKIE, signInUrl} from '@deslop/runtime/shared/auth'
 import {AiProvider} from '#services/ai-proxy/schema.ts'
 import {AiProxy} from '#services/ai-proxy/service.ts'
 import {clientMetadata} from '#services/connections/lib/utils.ts'
+import type {ServerId} from '#services/connections/schema.ts'
 import {Callback, ServerParams} from '#services/connections/schema.ts'
 import {Connections, gatewayUrl} from '#services/connections/service.ts'
 import {Gateway} from '#services/gateway/service.ts'
@@ -46,7 +47,7 @@ export const HttpHandlers = HttpRouter.use(router =>
 											HttpServerResponse.redirect(started.url),
 											`__Host-mcp-${state}`,
 											state,
-											{...COOKIE, maxAge: '10 minutes'}
+											{...COOKIE, maxAge: Duration.minutes(10)}
 										)
 								})
 							)
@@ -55,7 +56,7 @@ export const HttpHandlers = HttpRouter.use(router =>
 			)
 		)
 		// A provider the gateway registered with answers at its server's own callback; one using the metadata document at the shared one.
-		const callback = Effect.fnUntraced(function* (route: Option.Option<string>) {
+		const callback = Effect.fnUntraced(function* (route: Option.Option<ServerId>) {
 			const request = yield* HttpServerRequest.HttpServerRequest
 			const user = yield* auth.user(request.headers)
 			const params = yield* HttpServerRequest.schemaSearchParams(Callback)
@@ -75,7 +76,7 @@ export const HttpHandlers = HttpRouter.use(router =>
 		yield* router.add(
 			'GET',
 			'/oauth/callback/:id',
-			Effect.flatMap(HttpRouter.params, params => callback(Option.fromUndefinedOr(params['id'])))
+			Effect.flatMap(HttpRouter.schemaParams(ServerParams), params => callback(Option.some(params.id)))
 		)
 	})
 )

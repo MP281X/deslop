@@ -6,6 +6,7 @@ import {
 	Array,
 	Boolean,
 	Context,
+	Duration,
 	Effect,
 	Fiber,
 	FileSystem,
@@ -32,16 +33,18 @@ import {Reactivity} from 'effect/reactivity'
 import {SqlClient, SqlSchema} from 'effect/sql'
 import {TestClock} from 'effect/testing'
 
+import {UserId} from '@deslop/runtime/shared/auth'
+
 import {Sources} from './lib/extraction.ts'
 import {Organizer} from './lib/organization.ts'
 
 import {MediaError} from '#services/media/schema.ts'
 import {Media} from '#services/media/service.ts'
 import type {TagEntry} from '#services/notes/schema.ts'
-import {Extraction, Note, NoteId, NoteItem, NotesError, NotesEvent} from '#services/notes/schema.ts'
+import {Extraction, Note, NoteId, NoteItem, NotesError, NotesEvent, TagName} from '#services/notes/schema.ts'
 import {Notes} from '#services/notes/service.ts'
 
-const USER = 'github:1'
+const USER = UserId.make('github:1')
 
 const IDS = [
 	NoteId.make('6f1c9a52-8d0e-4c3b-9a51-2f6d7e8b9c01'),
@@ -55,9 +58,11 @@ const recipe = Sources.of({
 			Extraction.make({
 				author: Option.some('Cookbook'),
 				image: Option.some('https://example.com/soup.jpg'),
+				slides: Option.none(),
 				text: 'Lentils with cumin and tomato.',
 				title: 'Lentil soup',
-				url: link
+				url: link,
+				video: Option.none()
 			})
 		),
 	image: () => Effect.succeed({bytes: new Uint8Array([255, 216, 255]), type: 'image/jpeg' as const}),
@@ -156,10 +161,10 @@ function counting(calls: Ref.Ref<number>) {
 				Ref.update(count => count + 1),
 				Effect.as({
 					body: '',
-					definitions: [{definition: 'Recipes and cooking techniques.', tag: 'cooking'}],
+					definitions: [{definition: 'Recipes and cooking techniques.', tag: TagName.make('cooking')}],
 					screenText: '',
 					summary: `About ${input.note.content}`,
-					tags: ['cooking', 'soup'],
+					tags: [TagName.make('cooking'), TagName.make('soup')],
 					title: 'Soup',
 					topics: 'lentils; cumin'
 				})
@@ -238,7 +243,7 @@ it.layer(NodeServices.layer)('Notes', test => {
 							definitions: [],
 							screenText: '',
 							summary: 'A quick dinner',
-							tags: pageOf(Option.getOrThrow(input.note.url)).tags,
+							tags: Array.map(pageOf(Option.getOrThrow(input.note.url)).tags, tag => TagName.make(tag)),
 							title: input.note.title,
 							topics: ''
 						})
@@ -415,17 +420,17 @@ it.layer(NodeServices.layer)('Notes', test => {
 			const answers = [
 				{
 					definitions: [
-						{definition: 'Recipes and kitchen techniques.', tag: 'Cooking'},
-						{definition: 'A later duplicate must not replace the first definition.', tag: 'cooking'}
+						{definition: 'Recipes and kitchen techniques.', tag: TagName.make('Cooking')},
+						{definition: 'A later duplicate must not replace the first definition.', tag: TagName.make('cooking')}
 					],
-					tags: ['cooking']
+					tags: [TagName.make('cooking')]
 				},
 				{
 					definitions: [
-						{definition: 'Anything with a stove.', tag: 'cooking'},
-						{definition: 'Soups and stews.', tag: 'soup'}
+						{definition: 'Anything with a stove.', tag: TagName.make('cooking')},
+						{definition: 'Soups and stews.', tag: TagName.make('soup')}
 					],
-					tags: ['cookings', 'soup']
+					tags: [TagName.make('cookings'), TagName.make('soup')]
 				}
 			]
 			const organizer = Organizer.of({
@@ -477,7 +482,7 @@ it.layer(NodeServices.layer)('Notes', test => {
 				directory: yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped(),
 				media: Media.of({
 					...noVideo,
-					frames: () => Effect.succeed([{bytes: new Uint8Array([1]), seconds: 0}]),
+					frames: () => Effect.succeed([{bytes: new Uint8Array([1]), seconds: Duration.zero}]),
 					read: () =>
 						Effect.succeed({info: '# Lentils', transcript: Effect.succeedSome('[00:01] Soak the lentils overnight.\n')})
 				}),
@@ -549,7 +554,10 @@ it.layer(NodeServices.layer)('Notes', test => {
 				sources: Sources.of({
 					...recipe,
 					extract: link =>
-						Effect.map(recipe.extract(link), page => ({...page, video: 'https://video.twimg.com/clip.mp4'}))
+						Effect.map(recipe.extract(link), page => ({
+							...page,
+							video: Option.some('https://video.twimg.com/clip.mp4')
+						}))
 				})
 			})
 			yield* notes.capture(USER, {id: IDS[0], text: 'https://x.com/cook/status/1'})
@@ -733,7 +741,7 @@ it.layer(NodeServices.layer)('Notes', test => {
 						Effect.map(recipe.extract(link), extraction => ({
 							...extraction,
 							image: Option.some('https://example.com/1.jpg'),
-							slides: ['https://example.com/2.jpg']
+							slides: Option.some(['https://example.com/2.jpg'])
 						})),
 					image: link =>
 						Effect.succeed({
@@ -975,8 +983,8 @@ it.layer(NodeServices.layer)('Notes', test => {
 					...noVideo,
 					fileFrames: () =>
 						Effect.succeed([
-							{bytes: still, seconds: 0},
-							{bytes: new Uint8Array([255, 216, 255, 2]), seconds: 1}
+							{bytes: still, seconds: Duration.zero},
+							{bytes: new Uint8Array([255, 216, 255, 2]), seconds: Duration.seconds(1)}
 						]),
 					fileTranscript: () => Effect.succeedSome('[00:00] Hello')
 				}),

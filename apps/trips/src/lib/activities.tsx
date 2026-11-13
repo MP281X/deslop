@@ -17,7 +17,7 @@ import {ACTIVITY_NAME} from '#services/bookings/lib/utils.ts'
 import type {ActivityProps} from '#services/bookings/schema.ts'
 
 // The widget runtime runs only this body, so the palette and helpers live inside it; the server words every line, and the layout only places them.
-function JourneyLayout(props: ActivityProps) {
+function JourneyLayout(props: typeof ActivityProps.Encoded) {
 	'widget'
 	const tones = {bad: '#ff5d62', good: '#ffa066', info: '#ffa066', plain: '#fafafa', warn: '#ff9e3b'}
 	const gray = '#9f9fa9'
@@ -184,4 +184,4 @@ function JourneyLayout(props: ActivityProps) {
 }
 
 // Registered at every launch: the activities the server starts by push name this layout, and the app starts none itself.
-createLiveActivity<ActivityProps>(ACTIVITY_NAME, JourneyLayout)
+createLiveActivity<typeof ActivityProps.Encoded>(ACTIVITY_NAME, JourneyLayout)

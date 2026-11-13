@@ -2,7 +2,7 @@ import {assert, it} from '@effect/vitest'
 
 import {Array, Effect, Formatter, Layer, Option, Ref, Schema, Stream} from 'effect'
 
-import type {HideRequest} from '#services/exposures/schema.ts'
+import {HideRequest} from '#services/exposures/schema.ts'
 import {Fleet} from '#services/fleet/service.ts'
 import {type InventoryItem, Inventory, Snapshot} from '#services/inventory/schema.ts'
 import {MachineHistory} from '#services/metrics/schema.ts'
@@ -12,8 +12,8 @@ import {ToolHandlers} from '#tools/handlers.ts'
 const NOW = Date.UTC(2026, 10, 10, 12)
 
 function makeFleet(overrides: Partial<Parameters<typeof Fleet.of>[0]>) {
-	const snapshot = Snapshot.make({items: [], sources: [], time: 0})
-	const machine = MachineHistory.make({
+	const snapshot = Schema.decodeSync(Snapshot)({items: [], sources: [], time: 0})
+	const machine = Schema.decodeSync(MachineHistory)({
 		disks: [],
 		error: '',
 		load: [],
@@ -44,7 +44,7 @@ function makeToolkit(fleet: Parameters<typeof Fleet.of>[0]) {
 it.effect('attributes a bare remote source to its own worker, never the local one', () =>
 	Effect.scoped(
 		Effect.gen(function* () {
-			const snapshot = Snapshot.make({
+			const snapshot = yield* Schema.decodeEffect(Snapshot)({
 				items: [],
 				sources: [
 					{error: '', name: 'Docker'},
@@ -58,8 +58,9 @@ it.effect('attributes a bare remote source to its own worker, never the local on
 			const answer = Option.getOrThrow(
 				Array.last(Array.fromIterable(yield* Stream.runCollect(yield* toolkit.handle('list_apps', {}))))
 			)
-			const workers = (yield* Schema.decodeUnknownEffect(Schema.Struct({workers: Inventory}))(answer.encodedResult))
-				.workers
+			const workers = (yield* Schema.decodeUnknownEffect(Schema.Struct({workers: Schema.toEncoded(Inventory)}))(
+				answer.encodedResult
+			)).workers
 			const dev = Option.getOrThrow(Array.findFirst(workers, worker => worker.worker === 'dev'))
 			const desktop = Option.getOrThrow(Array.findFirst(workers, worker => worker.worker === 'desktop'))
 			assert.isUndefined(dev.errors)
@@ -83,16 +84,22 @@ it.effect('names an exposure list_apps returns and hides it by that name', () =>
 				state: 'configured; check backend',
 				url: 'https://svc-3.example.ts.net',
 				worker: 'dev'
-			} satisfies InventoryItem
-			const snapshot = Snapshot.make({items: [exposure], sources: [], time: NOW, workers: ['dev']})
+			} satisfies typeof InventoryItem.Encoded
+			const snapshot = yield* Schema.decodeEffect(Snapshot)({
+				items: [exposure],
+				sources: [],
+				time: NOW,
+				workers: ['dev']
+			})
 			const toolkit = yield* makeToolkit(
 				makeFleet({hide: input => Ref.set(hidden, Option.some(input)), snapshot: Effect.succeed(snapshot)})
 			)
 			const listed = Option.getOrThrow(
 				Array.last(Array.fromIterable(yield* Stream.runCollect(yield* toolkit.handle('list_apps', {}))))
 			)
-			const workers = (yield* Schema.decodeUnknownEffect(Schema.Struct({workers: Inventory}))(listed.encodedResult))
-				.workers
+			const workers = (yield* Schema.decodeUnknownEffect(Schema.Struct({workers: Schema.toEncoded(Inventory)}))(
+				listed.encodedResult
+			)).workers
 			assert.lengthOf(workers, 1)
 			const dev = Option.getOrThrow(Array.head(workers))
 			assert.strictEqual(dev.worker, 'dev')
@@ -107,7 +114,9 @@ it.effect('names an exposure list_apps returns and hides it by that name', () =>
 				)
 			)
 			assert.isFalse(answer.isFailure)
-			assert.deepStrictEqual(Option.getOrThrow(yield* Ref.get(hidden)), {name: 'svc-3'})
+			assert.deepStrictEqual(yield* Schema.encodeEffect(HideRequest)(Option.getOrThrow(yield* Ref.get(hidden))), {
+				name: 'svc-3'
+			})
 		})
 	)
 )

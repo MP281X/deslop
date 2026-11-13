@@ -5,9 +5,10 @@ import {
 	Array,
 	Boolean,
 	Cause,
-	Clock,
 	Config,
 	Context,
+	DateTime,
+	Duration,
 	Effect,
 	Exit,
 	HashMap,
@@ -31,7 +32,7 @@ import {Jwk, Jws} from 'effect/jose'
 import {Reactivity} from 'effect/reactivity'
 import {Migrator, SqlClient, SqlModel, SqlSchema} from 'effect/sql'
 
-import {ACTIVITY_NAME, activeWindow, activityProps, DAY, HOUR, MINUTE, urgencyOf} from '#services/bookings/lib/utils.ts'
+import {ACTIVITY_NAME, activeWindow, activityProps, urgencyOf} from '#services/bookings/lib/utils.ts'
 import type {ActivityProps, Booking, BookingList, Flight, Leg, Train} from '#services/bookings/schema.ts'
 import {BookingId} from '#services/bookings/schema.ts'
 import {Bookings} from '#services/bookings/service.ts'
@@ -50,6 +51,7 @@ import {
 	Activity,
 	ActivityPropsJson,
 	ApnsReason,
+	ChannelId,
 	Device,
 	JwtClaims,
 	PushError,
@@ -71,9 +73,9 @@ const BUNDLES = {
 }
 
 type Apns = {bundle: Bundle}
-type Answer = {channel: Option.Option<string>; reason: Option.Option<string>; status: number}
-type Span = {end: number; start: number}
-type Showing = {journey: Flight | Train; leg: Leg; now: number; props: ActivityProps; window: Span}
+type Answer = {channel: Option.Option<ChannelId>; reason: Option.Option<string>; status: number}
+type Span = {end: DateTime.Utc; start: DateTime.Utc}
+type Showing = {journey: Flight | Train; leg: Leg; now: DateTime.Utc; props: ActivityProps; window: Span}
 
 declare module 'effect/reactivity/Reactivity' {
 	interface Keys {
@@ -110,8 +112,8 @@ function retryable(answer: Answer) {
 	return answer.status === 429 || answer.status >= 500
 }
 
-function seconds(time: number) {
-	return Math.floor(time / 1000)
+function seconds(time: DateTime.Utc) {
+	return DateTime.toEpochSeconds(time)
 }
 
 function asPushError(message: string) {
@@ -155,7 +157,7 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 			execute: row => sql`INSERT OR REPLACE INTO ${sql(Activity.table)} ${sql.insert(row)}`
 		})
 		const forgetEndedBefore = SqlSchema.void({
-			Request: Schema.Int,
+			Request: Schema.DateTimeUtcFromMillis,
 			execute: time => sql`DELETE FROM ${sql(Activity.table)} WHERE endedAt < ${time}`
 		})
 		const listDevices = SqlSchema.findAll({
@@ -214,15 +216,15 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 				return yield* Jwk.importPkcs8(Redacted.make(der), 'ES256', {kid: found.keyId})
 			})
 		)
-		const retrying = yield* Ref.make(HashMap.empty<string, {answer: Answer; until: number}>())
+		const retrying = yield* Ref.make(HashMap.empty<string, {answer: Answer; until: DateTime.Utc}>())
 
 		// APNs accepts a provider token for an hour and refuses one renewed more than every twenty minutes.
 		const providerToken = yield* pipe(
 			Effect.gen(function* () {
-				const now = yield* Clock.currentTimeMillis
+				const now = yield* DateTime.now
 				const found = yield* Effect.fromOption(signer)
 				return yield* Jws.sign(
-					new TextEncoder().encode(yield* Schema.encodeEffect(JwtClaims)({iat: seconds(now), iss: found.teamId})),
+					new TextEncoder().encode(yield* Schema.encodeEffect(JwtClaims)({iat: now, iss: found.teamId})),
 					yield* signingKey,
 					{kid: found.keyId}
 				)
@@ -232,13 +234,13 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 		)
 
 		const send = Effect.fnUntraced(function* (request: HttpClientRequest.HttpClientRequest, notification?: string) {
-			const now = yield* Clock.currentTimeMillis
+			const now = yield* DateTime.now
 			const key = notification ?? `${request.method} ${request.url} ${request.headers['apns-channel-id'] ?? ''}`
 			const deferred = Option.getOrUndefined(
 				pipe(
 					yield* Ref.get(retrying),
 					HashMap.get(key),
-					Option.filter(pending => pending.until > now)
+					Option.filter(pending => DateTime.isGreaterThan(pending.until, now))
 				)
 			)
 			if (deferred !== undefined) return deferred.answer
@@ -258,18 +260,24 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 				yield* Effect.logWarning(`APNs refused a push: ${response.status} ${Option.getOrElse(reason, () => '')}`)
 			}
 			const answer = {
-				channel: Option.fromNullishOr(response.headers['apns-channel-id']),
+				channel: Option.map(Option.fromNullishOr(response.headers['apns-channel-id']), id => ChannelId.make(id)),
 				reason,
 				status: response.status
 			} satisfies Answer
-			const receivedAt = yield* Clock.currentTimeMillis
+			const receivedAt = yield* DateTime.now
 			yield* Ref.update(retrying, pending => {
-				const current = HashMap.filter(pending, entry => entry.until > receivedAt)
+				const current = HashMap.filter(pending, entry => DateTime.isGreaterThan(entry.until, receivedAt))
 				if (!retryable(answer)) return HashMap.remove(current, key)
 				// Apple asks for fifteen minutes after 5xx; token throttling waits at least one round.
 				return HashMap.set(current, key, {
 					answer,
-					until: receivedAt + Boolean.match(answer.status >= 500, {onFalse: () => 30_000, onTrue: () => 15 * MINUTE})
+					until: DateTime.addDuration(
+						receivedAt,
+						Boolean.match(answer.status >= 500, {
+							onFalse: () => Duration.seconds(30),
+							onTrue: () => Duration.minutes(15)
+						})
+					)
 				})
 			})
 			return answer
@@ -315,7 +323,7 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 			)
 		})
 
-		function deleteChannel(target: Apns & {channel: string}) {
+		function deleteChannel(target: Apns & {channel: ChannelId}) {
 			return Effect.ignore(
 				send(
 					HttpClientRequest.delete(`${BUNDLES[target.bundle].channels}/1/apps/${target.bundle}/channels`, {
@@ -327,12 +335,12 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 		}
 
 		// The channel stores the latest message for a phone offline in flight, as long as an activity lives.
-		function broadcast(activity: Activity, aps: Record<string, unknown>, priority: 5 | 10, now: number) {
+		function broadcast(activity: Activity, aps: Record<string, unknown>, priority: 5 | 10, now: DateTime.Utc) {
 			return pipe(
 				HttpClientRequest.post(`${BUNDLES[activity.bundle].host}/4/broadcasts/apps/${activity.bundle}`, {
 					headers: {
 						'apns-channel-id': activity.channel,
-						'apns-expiration': `${seconds(now + 8 * HOUR)}`,
+						'apns-expiration': `${seconds(DateTime.addDuration(now, Duration.hours(8)))}`,
 						'apns-priority': `${priority}`,
 						'apns-push-type': 'liveactivity'
 					}
@@ -379,7 +387,7 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 				pipe(
 					yield* Ref.get(retrying),
 					HashMap.get(notification),
-					Option.exists(pending => pending.until > showing.now)
+					Option.exists(pending => DateTime.isGreaterThan(pending.until, showing.now))
 				)
 			) {
 				return
@@ -401,13 +409,13 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 			)
 		})
 
-		const finish = Effect.fnUntraced(function* (activity: Activity, now: number) {
+		const finish = Effect.fnUntraced(function* (activity: Activity, now: DateTime.Utc) {
 			const answer = yield* Effect.result(
 				broadcast(
 					activity,
 					{
 						'content-state': yield* contentState(activity.props),
-						'dismissal-date': seconds(now + 10 * MINUTE),
+						'dismissal-date': seconds(DateTime.addDuration(now, Duration.minutes(10))),
 						event: 'end',
 						timestamp: seconds(now)
 					},
@@ -429,7 +437,7 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 		})
 
 		// A change APNs took or will always refuse is remembered; a throttled one is sent again next round.
-		const refresh = Effect.fnUntraced(function* (activity: Activity, props: ActivityProps, now: number) {
+		const refresh = Effect.fnUntraced(function* (activity: Activity, props: ActivityProps, now: DateTime.Utc) {
 			const shown = yield* contentState(activity.props)
 			const next = yield* contentState(props)
 			if (next.props === shown.props) return
@@ -460,7 +468,7 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 			journey: Flight | Train,
 			window: Span & {leg: Leg},
 			all: BookingList,
-			now: number
+			now: DateTime.Utc
 		) {
 			const showing = {journey, leg: window.leg, now, props: activityProps(journey, all, now), window} satisfies Showing
 			// An activity that cannot cover the window ends, and the leg starts afresh.
@@ -503,7 +511,7 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 			return 'dead' as const
 		})
 
-		const announce = Effect.fnUntraced(function* (booking: Booking, now: number) {
+		const announce = Effect.fnUntraced(function* (booking: Booking, now: DateTime.Utc) {
 			const sent = Array.map(yield* asPushReadError(listSent(booking.id)), row => row.key)
 			const fresh = Array.filter(alertsOf(booking, now), alert => !announced(sent, alert))
 			if (Array.isReadonlyArrayEmpty(fresh)) return
@@ -537,7 +545,7 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 		const tick = pipe(
 			Effect.gen(function* () {
 				if (Option.isNone(signer)) return
-				const now = yield* Clock.currentTimeMillis
+				const now = yield* DateTime.now
 				const all = yield* bookings.list
 				yield* Effect.forEach(
 					all,
@@ -562,7 +570,10 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 				)
 				// Nothing reads an activity two days after it ended, or the alerts of a booking that left.
 				yield* pipe(
-					Effect.andThen(forgetEndedBefore(now - 2 * DAY), forgetSentExcept(Array.map(all, booking => booking.id))),
+					Effect.andThen(
+						forgetEndedBefore(DateTime.subtractDuration(now, Duration.days(2))),
+						forgetSentExcept(Array.map(all, booking => booking.id))
+					),
 					Reactivity.mutation(['push']),
 					sql.withTransaction,
 					asPushSaveError

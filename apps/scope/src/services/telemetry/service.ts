@@ -1,7 +1,6 @@
 import {
 	Array,
 	Boolean,
-	Clock,
 	Context,
 	DateTime,
 	Duration,
@@ -29,13 +28,13 @@ import {
 	appName,
 	attributesFlat,
 	diagnosis,
-	isoTime,
 	latencyOf,
 	levelOf,
 	logOf,
 	newestReleases,
 	overviewOf,
 	sideOf,
+	senderOf,
 	spansOf,
 	supersededBy,
 	touchedTraces,
@@ -65,15 +64,24 @@ import type {
 	TraceRow,
 	TraceTree,
 	TracesAnswer,
-	TracesRequest
+	TracesRequest,
+	AppName,
+	ServiceName,
+	SpanId,
+	ReleaseVersion
 } from '#services/telemetry/schema.ts'
 import {
 	FoundTrace,
+	ExportedLog,
 	LatencyQuery,
 	Log,
+	LogId,
 	LogQuery,
+	McpServerName,
+	McpToolName,
 	rangeStart,
 	Release,
+	Resource,
 	ServiceRun,
 	SettledTrace,
 	Span,
@@ -91,7 +99,7 @@ const MISSING =
 
 const UNAVAILABLE = 'The telemetry storage could not be read or written.'
 
-const LEVELS: Record<NonNullable<SearchLogsParams['level']>, number> = {debug: 5, error: 17, info: 9, warn: 13}
+const LEVELS = {debug: 5, error: 17, info: 9, warn: 13}
 
 // The span columns an arriving copy of a stored span replaces; its trace and id stay.
 const SPAN_UPDATES = Array.filter(
@@ -124,7 +132,7 @@ function tracedOf(row: SettledTrace) {
 		failed: row.failed,
 		name: row.name,
 		runtime: row.runtime,
-		trace: {duration: row.duration, id: row.id, start: row.start}
+		trace: {duration: row.duration, failure: Option.none(), id: row.id, label: Option.none(), start: row.start}
 	} satisfies Traced
 }
 
@@ -144,19 +152,7 @@ function detailed(overview: Overview, rows: readonly TraceDetail[]) {
 							onNone: () => trace,
 							onSome: row => {
 								const error = diagnosis(row)
-								return {
-									...trace,
-									...Option.match(row.label, {onNone: () => ({}), onSome: label => ({label})}),
-									...Option.match(row.broken, {
-										onNone: () => ({}),
-										onSome: span => ({
-											failure: {
-												span,
-												...Boolean.match(String.isNonEmpty(error), {onFalse: () => ({}), onTrue: () => ({error})})
-											}
-										})
-									})
-								}
+								return {...trace, failure: Option.map(row.broken, span => ({error, span})), label: row.label}
 							}
 						})
 					)
@@ -169,37 +165,34 @@ function detailed(overview: Overview, rows: readonly TraceDetail[]) {
 // Failing traces above the rest, then the newest: the largest is an operation's newest failure when it has one.
 const newestFailureLast = pipe(
 	Order.Boolean,
-	Order.mapInput((trace: OperationTrace) => trace.failure !== undefined),
-	Order.combine(Order.mapInput(Order.Number, (trace: OperationTrace) => trace.start))
+	Order.mapInput((trace: OperationTrace) => Option.isSome(trace.failure)),
+	Order.combine(Order.mapInput(DateTime.Order, (trace: OperationTrace) => trace.start))
 )
 
 // The newest failing trace an operation keeps, whose span and message the tools show; its kept traces hold its newest failures.
 function latestFailure(operation: Operation) {
 	const newest = Array.max(operation.traces, newestFailureLast)
-	return Option.map(Option.fromUndefinedOr(newest.failure), failure => ({...failure, trace: newest.id}))
+	return Option.map(newest.failure, failure => ({...failure, trace: newest.id}))
 }
 
 // The page's own operations for one frame, in the overview's order, with the numbers the tools need.
-function operationsAnswer(overview: Overview, name?: string) {
+function operationsAnswer(overview: Overview, name: Option.Option<AppName>) {
 	const apps = pipe(
 		overview.apps,
-		Array.filter(app => name === undefined || app.name === name),
+		Array.filter(app => Option.match(name, {onNone: () => true, onSome: value => app.name === value})),
 		Array.map(app => ({
 			app: app.name,
 			operations: Array.map(app.operations, operation => {
 				const side = sideOf(app.name, operation.runtime)
 				return {
+					failure: latestFailure(operation),
+					failures: Option.liftPredicate(operation.failures, count => count > 0),
 					name: operation.name,
-					p50Ms: Number.round(operation.p50Ms, 1),
-					p95Ms: Number.round(operation.p95Ms, 1),
+					p50Ms: Duration.millis(Number.round(Duration.toMillis(operation.p50Ms), 1)),
+					p95Ms: Duration.millis(Number.round(Duration.toMillis(operation.p95Ms), 1)),
 					runs: operation.count,
-					slowest: Array.headNonEmpty(operation.traces).id,
-					...Boolean.match(operation.failures > 0, {
-						onFalse: () => ({}),
-						onTrue: () => ({failures: operation.failures})
-					}),
-					...Option.match(Option.fromUndefinedOr(side), {onNone: () => ({}), onSome: value => ({side: value})}),
-					...Option.match(latestFailure(operation), {onNone: () => ({}), onSome: failure => ({failure})})
+					side,
+					slowest: Array.headNonEmpty(operation.traces).id
 				} satisfies OperationRow
 			})
 		}))
@@ -209,64 +202,58 @@ function operationsAnswer(overview: Overview, name?: string) {
 
 function traceRow(row: FoundTrace) {
 	const side = sideOf(row.service, row.runtime)
-	const relay = Option.flatMap(row.relay, attributes =>
-		Option.fromUndefinedOr(attributesFlat(attributes, 'Gateway.call', false))
-	)
+	const relay = Option.flatMap(row.relay, attributes => attributesFlat(attributes, 'Gateway.call', false))
 	const error = diagnosis(row)
 	return {
 		app: appName(row.service),
-		at: isoTime(row.start),
+		at: row.start,
+		failure: Option.map(row.broken, span =>
+			Option.match(error, {onNone: () => span, onSome: message => `${span}: ${message}`})
+		),
 		id: row.id,
-		ms: Number.round(Duration.toMillis(row.duration), 1),
+		ms: Duration.millis(Number.round(Duration.toMillis(row.duration), 1)),
 		operation: row.name,
-		...Option.match(relay, {
-			onNone: () => ({}),
-			onSome: attrs => ({
-				...Boolean.match(Predicate.isString(attrs['mcp.server']), {
-					onFalse: () => ({}),
-					onTrue: () => ({server: `${attrs['mcp.server']}`})
-				}),
-				...Boolean.match(Predicate.isString(attrs['mcp.tool']), {
-					onFalse: () => ({}),
-					onTrue: () => ({tool: `${attrs['mcp.tool']}`})
-				})
-			})
-		}),
+		server: pipe(
+			relay,
+			Option.flatMap(Record.get('mcp.server')),
+			Option.filter(Predicate.isString),
+			Option.map(name => McpServerName.make(name))
+		),
+		side,
 		spans: row.spans,
-		...Option.match(Option.fromUndefinedOr(side), {onNone: () => ({}), onSome: value => ({side: value})}),
-		...Option.match(row.broken, {
-			onNone: () => ({}),
-			onSome: span => ({
-				failure: Boolean.match(String.isNonEmpty(error), {onFalse: () => span, onTrue: () => `${span}: ${error}`})
-			})
-		})
+		tool: pipe(
+			relay,
+			Option.flatMap(Record.get('mcp.tool')),
+			Option.filter(Predicate.isString),
+			Option.map(name => McpToolName.make(name))
+		)
 	} satisfies TraceRow
 }
 
 function compactLog(log: Pick<Log, 'message' | 'severity' | 'time'>) {
-	return {at: isoTime(log.time), level: levelOf(log.severity), message: log.message} satisfies CompactLog
+	return {at: log.time, level: levelOf(log.severity), message: log.message} satisfies CompactLog
 }
 
 type TreeSpan = TraceTree['spans'][number]
 
 function compactSpan(span: TreeSpan) {
 	const failedSpan = span.status === 'failed'
-	const error = Boolean.match(failedSpan, {onFalse: () => '', onTrue: () => diagnosis(span)})
+	const error = Option.filter(diagnosis(span), () => failedSpan)
 	const attrs = attributesFlat(span.attributes, span.name, failedSpan)
 	const side = sideOf(span.service, span.runtime)
 	const logs = Array.map(span.logs, compactLog)
 	return {
 		app: appName(span.service),
-		at: Number.round(span.offsetMs, 1),
+		at: Duration.millis(Number.round(Duration.toMillis(span.offsetMs), 1)),
+		attrs,
+		denied: Option.liftPredicate(true, () => span.status === 'denied'),
+		error,
 		id: span.spanId,
-		ms: Number.round(span.durationMs, 1),
+		logs: Option.liftPredicate(logs, Array.isReadonlyArrayNonEmpty),
+		ms: Duration.millis(Number.round(Duration.toMillis(span.durationMs), 1)),
 		name: span.name,
-		...Option.match(span.parentSpanId, {onNone: () => ({}), onSome: parent => ({parent})}),
-		...Option.match(Option.fromUndefinedOr(side), {onNone: () => ({}), onSome: value => ({side: value})}),
-		...Boolean.match(String.isNonEmpty(error), {onFalse: () => ({}), onTrue: () => ({error})}),
-		...Boolean.match(span.status === 'denied', {onFalse: () => ({}), onTrue: () => ({denied: true})}),
-		...Option.match(Option.fromUndefinedOr(attrs), {onNone: () => ({}), onSome: value => ({attrs: value})}),
-		...Boolean.match(Array.isReadonlyArrayNonEmpty(logs), {onFalse: () => ({}), onTrue: () => ({logs})})
+		parent: span.parentSpanId,
+		side
 	}
 }
 
@@ -277,17 +264,22 @@ function startOf(tree: TraceTree) {
 		Array.map(span => span.start),
 		Array.match({
 			onEmpty: () => Option.map(Array.head(tree.logs), log => log.time),
-			onNonEmpty: starts => Option.some(Array.min(starts, Order.Number))
-		}),
-		Option.getOrElse(() => 0)
+			onNonEmpty: starts => Option.some(Array.min<DateTime.Utc>(starts, DateTime.Order))
+		})
 	)
 }
 
-function readTraceAnswer(tree: TraceTree, limit: number, offset: number, details: boolean, selectedSpanId?: string) {
+function readTraceAnswer(
+	tree: TraceTree,
+	limit: number,
+	offset: number,
+	details: boolean,
+	selectedSpanId: Option.Option<SpanId>
+) {
 	const byId = Record.fromEntries(Array.map(tree.spans, span => [span.spanId, span] as const))
 	// The failing span and its parents up to the root, stopping at a parent already walked.
 	const ancestors = HashSet.fromIterable(
-		Array.unfold({id: Option.fromUndefinedOr(tree.failureSpanId), seen: HashSet.empty<string>()}, current =>
+		Array.unfold({id: tree.failureSpanId, seen: HashSet.empty<SpanId>()}, current =>
 			pipe(
 				current.id,
 				Option.filter(id => !HashSet.has(current.seen, id)),
@@ -303,7 +295,7 @@ function readTraceAnswer(tree: TraceTree, limit: number, offset: number, details
 	)
 	const candidates = pipe(
 		tree.spans,
-		Array.sort(Order.mapInput(Order.flip(Order.Number), (span: TreeSpan) => span.durationMs)),
+		Array.sort(Order.mapInput(Order.flip(Duration.Order), (span: TreeSpan) => span.durationMs)),
 		Array.filter(span => !HashSet.has(ancestors, span.spanId))
 	)
 	const kept = HashSet.union(
@@ -318,8 +310,12 @@ function readTraceAnswer(tree: TraceTree, limit: number, offset: number, details
 		)
 	)
 	const spans = Array.flatMap(tree.spans, span => {
-		if (selectedSpanId !== undefined) {
-			return Boolean.match(span.spanId === selectedSpanId, {onFalse: () => [], onTrue: () => [compactSpan(span)]})
+		if (Option.isSome(selectedSpanId)) {
+			return pipe(
+				selectedSpanId,
+				Option.contains(span.spanId),
+				Boolean.match({onFalse: () => [], onTrue: () => [compactSpan(span)]})
+			)
 		}
 		if (details || HashSet.has(kept, span.spanId)) return [compactSpan(span)]
 		return []
@@ -327,21 +323,15 @@ function readTraceAnswer(tree: TraceTree, limit: number, offset: number, details
 	const logs = Array.map(tree.logs, compactLog)
 	const omitted = tree.spans.length - spans.length
 	return {
-		at: isoTime(startOf(tree)),
-		...Option.match(Option.fromUndefinedOr(tree.failureSpanId), {
-			onNone: () => ({}),
-			onSome: spanId => ({failure: spanId})
-		}),
+		at: Option.getOrThrow(startOf(tree)),
+		failure: tree.failureSpanId,
 		id: tree.id,
-		...Boolean.match(offset + limit < candidates.length, {
-			onFalse: () => ({}),
-			onTrue: () => ({nextOffset: offset + limit})
-		}),
-		ms: Number.round(tree.durationMs, 1),
-		spans,
-		...Boolean.match(Array.isReadonlyArrayNonEmpty(logs), {onFalse: () => ({}), onTrue: () => ({logs})}),
-		...Boolean.match(omitted > 0, {onFalse: () => ({}), onTrue: () => ({omitted})})
-	} satisfies ReadTraceAnswer
+		logs: Option.liftPredicate(logs, Array.isReadonlyArrayNonEmpty),
+		ms: Duration.millis(Number.round(Duration.toMillis(tree.durationMs), 1)),
+		nextOffset: Option.liftPredicate(offset + limit, next => next < candidates.length),
+		omitted: Option.liftPredicate(omitted, count => count > 0),
+		spans
+	} satisfies ReadTraceAnswer & {nextOffset: Option.Option<number>}
 }
 
 function pageOf<A>(rows: readonly A[], limit: number) {
@@ -363,14 +353,14 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 				sql`NOT traces.waits`,
 				sql`traces.start >= ${query.cutoff}`,
 				...Array.getSomes([
-					Option.map(Option.fromNullishOr(query.services), services => sql`root.service IN ${sql.in(services)}`),
-					Option.map(Option.fromNullishOr(query.operation), name => sql`root.name = ${name}`),
+					Option.map(Option.fromNullOr(query.services), services => sql`root.service IN ${sql.in(services)}`),
+					Option.map(Option.fromNullOr(query.operation), name => sql`root.name = ${name}`),
 					Option.map(
-						Option.fromNullishOr(query.span),
+						Option.fromNullOr(query.span),
 						name => sql`EXISTS (SELECT 1 FROM spans AS named WHERE named.traceId = traces.id AND named.name = ${name})`
 					),
 					Option.map(
-						Option.fromNullishOr(query.text),
+						Option.fromNullOr(query.text),
 						text => sql`(
 							EXISTS (
 								SELECT 1 FROM spans AS said WHERE said.traceId = traces.id
@@ -390,13 +380,13 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 			return sql.and([
 				sql`time >= ${query.cutoff}`,
 				...Array.getSomes([
-					Option.map(Option.fromNullishOr(query.services), services => sql`service IN ${sql.in(services)}`),
-					Option.map(Option.fromNullishOr(query.traceId), traceId => sql`traceId = ${traceId}`),
+					Option.map(Option.fromNullOr(query.services), services => sql`service IN ${sql.in(services)}`),
+					Option.map(Option.fromNullOr(query.traceId), traceId => sql`traceId = ${traceId}`),
 					Option.map(
-						Option.fromNullishOr(query.text),
+						Option.fromNullOr(query.text),
 						text => sql`instr(lower(concat_ws(' ', message, attributes)), ${text}) > 0`
 					),
-					Option.map(Option.fromNullishOr(query.minimum), minimum => sql`severity >= ${minimum}`)
+					Option.map(Option.fromNullOr(query.minimum), minimum => sql`severity >= ${minimum}`)
 				])
 			])
 		}
@@ -518,14 +508,14 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 		})
 		// Every trace the operations list can show: not a wait, and rooted or a minute old, since its root may never come.
 		const listSettled = SqlSchema.findAll({
-			Request: Schema.Finite,
+			Request: Span.fields.start,
 			Result: SettledTrace,
 			execute: now => sql`
 				SELECT
 					traces.id, traces.start, traces.duration, root.service, root.runtime, root.name,
 					traces.broken IS NOT NULL AS failed
 				${traceJoins}
-				WHERE NOT traces.waits AND (traces.rooted OR traces.start < ${now - 60_000})
+				WHERE NOT traces.waits AND (traces.rooted OR traces.start < ${now})
 			`
 		})
 		// The label and failure of the traces the overview keeps, read for them alone.
@@ -553,7 +543,7 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 			Request: TraceQuery,
 			Result: FoundTrace,
 			execute: query => {
-				const after = Option.match(Option.fromNullishOr(query.cursor), {
+				const after = Option.match(Option.fromNullOr(query.cursor), {
 					onNone: () => sql`1=1`,
 					onSome: cursor =>
 						Boolean.match(query.slowest, {
@@ -588,7 +578,7 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 			Request: LogQuery,
 			Result: Log,
 			execute: query => {
-				const after = Option.match(Option.fromNullishOr(query.cursor), {
+				const after = Option.match(Option.fromNullOr(query.cursor), {
 					onNone: () => sql`1=1`,
 					onSome: cursor => sql`(time < ${cursor.time} OR (time = ${cursor.time} AND id > ${cursor.id}))`
 				})
@@ -612,7 +602,7 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 			execute: query => sql`
 				SELECT duration, status FROM spans
 				WHERE name = ${query.name} AND start >= ${query.cutoff}
-				AND ${Option.match(Option.fromNullishOr(query.services), {
+				AND ${Option.match(Option.fromNullOr(query.services), {
 					onNone: () => sql`1=1`,
 					onSome: services => sql`service IN ${sql.in(services)}`
 				})}
@@ -641,19 +631,19 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 		})
 
 		// The services an app's name covers, or every service when none is asked for.
-		const servicesOf = Effect.fnUntraced(function* (app?: string) {
-			if (app === undefined) return Option.none<readonly string[]>()
+		const servicesOf = Effect.fnUntraced(function* (app: Option.Option<AppName>) {
+			if (Option.isNone(app)) return Option.none<readonly ServiceName[]>()
 			return Option.some(
 				pipe(
 					yield* listServices(),
 					Array.map(row => row.service),
-					Array.filter(service => appName(service) === app)
+					Array.filter(service => Option.contains(app, appName(service)))
 				)
 			)
 		})
 		// What an older release sends is dropped; a newer release's first records delete everything its service's older ones sent.
 		const supersede = Effect.fnUntraced(function* (
-			senders: readonly {service: string; version: Option.Option<string>}[]
+			senders: readonly {service: ServiceName; version: Option.Option<ReleaseVersion>}[]
 		) {
 			const known = Record.fromEntries(Array.map(yield* listReleases(), row => [row.service, row.version] as const))
 			const newest = newestReleases(senders, known)
@@ -685,17 +675,22 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 		})
 		// Three days of telemetry: a development debugger needs recent runs, and older ones would slow every query.
 		const prune = pipe(
-			Clock.currentTimeMillis,
-			Effect.flatMap(now => deleteExpired(DateTime.makeUnsafe(now - Duration.toMillis('3 days')))),
+			DateTime.now,
+			Effect.flatMap(now => deleteExpired(DateTime.subtractDuration(now, Duration.days(3)))),
 			Reactivity.mutation(['telemetry']),
 			sql.withTransaction,
 			asTelemetryError,
-			withReactivity
+			withReactivity,
+			Effect.withSpan('Telemetry.prune')
 		)
 		// The overview as of now, counted over every settled trace; a trace whose root never came joins it a minute after it started.
 		const readOverview = Effect.fnUntraced(function* (range: Range) {
-			const now = yield* Clock.currentTimeMillis
-			const counted = overviewOf(Array.map(yield* listSettled(now), tracedOf), now, range)
+			const now = yield* DateTime.now
+			const counted = overviewOf(
+				Array.map(yield* listSettled(DateTime.subtractDuration(now, Duration.minutes(1))), tracedOf),
+				now,
+				range
+			)
 			return detailed(
 				counted,
 				yield* listDetails(
@@ -705,8 +700,8 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 				)
 			)
 		})
-		const tree = Effect.fnUntraced(function* (id: string) {
-			const traceId = String.toLowerCase(id)
+		const tree = Effect.fnUntraced(function* (id: TraceId) {
+			const traceId = TraceId.make(String.toLowerCase(id))
 			const ids = Array.map(yield* listLinkedTraces(traceId), row => row.id)
 			const spans = yield* listSpans(ids)
 			const logs = yield* listLogs(ids)
@@ -718,7 +713,7 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 
 		yield* prune
 		yield* pipe(
-			Effect.sleep('1 hour'),
+			Effect.sleep(Duration.hours(1)),
 			Effect.andThen(prune),
 			Effect.ignore({log: 'Error', message: 'Expired telemetry could not be deleted'}),
 			Effect.forever,
@@ -729,80 +724,83 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 			checkIngestion: Effect.fn('Telemetry.checkIngestion')(function* () {
 				const rejected = Array.map(Record.values(yield* Ref.get(rejections)), rejection => ({
 					...Struct.pick(rejection, ['count', 'credential', 'route', 'status']),
-					lastAt: isoTime(rejection.lastAt)
+					lastAt: rejection.lastAt
 				}))
 				return {
+					rejections: Option.liftPredicate(rejected, Array.isReadonlyArrayNonEmpty),
 					services: Array.map(yield* listRuns(), run => {
 						const side = sideOf(run.service, run.runtime)
 						return {
 							app: appName(run.service),
 							entries: run.entries,
-							lastEvent: isoTime(run.lastEvent),
-							runStarted: isoTime(
-								pipe(
-									run.run,
-									Option.map(DateTime.toEpochMillis),
-									Option.getOrElse(() => 0)
-								)
-							),
-							...Option.match(Option.fromUndefinedOr(side), {onNone: () => ({}), onSome: value => ({side: value})}),
-							...Option.match(run.version, {onNone: () => ({}), onSome: release => ({release})})
+							lastEvent: run.lastEvent,
+							release: run.version,
+							runStarted: run.run,
+							side
 						}
-					}),
-					...Boolean.match(Array.isReadonlyArrayNonEmpty(rejected), {
-						onFalse: () => ({}),
-						onTrue: () => ({rejections: rejected})
 					})
 				} satisfies IngestionAnswer
 			}, asTelemetryError),
 			findTraces: Effect.fn('Telemetry.findTraces')(function* (input: FindTracesParams) {
 				const query = {
-					cursor: Option.fromUndefinedOr(input.cursor),
-					cutoff: rangeStart(input.since, yield* Clock.currentTimeMillis),
+					cursor: input.cursor,
+					cutoff: rangeStart(input.since, yield* DateTime.now),
 					errors: input.errors,
 					limit: input.limit,
-					operation: Option.fromUndefinedOr(input.operation),
+					operation: input.operation,
 					services: yield* servicesOf(input.app),
 					slowest: input.sort === 'slowest',
-					span: Option.fromUndefinedOr(input.span),
-					text: Option.map(Option.fromUndefinedOr(input.text), String.toLowerCase)
+					span: input.span,
+					text: Option.map(input.text, String.toLowerCase)
 				} satisfies TraceQuery
 				const page = pageOf(yield* pageTraces(query), input.limit)
 				return {
-					...Option.match(page.last, {
-						onNone: () => ({}),
-						onSome: row => ({nextCursor: Struct.pick(row, ['duration', 'id', 'start'])})
-					}),
+					nextCursor: Option.map(page.last, Struct.pick(['duration', 'id', 'start'])),
 					total: (yield* countTraces(query)).count,
 					traces: Array.map(page.items, traceRow)
 				} satisfies TracesAnswer
 			}, asTelemetryError),
 			ingestLogs: Effect.fn('Telemetry.ingestLogs')(
 				function* (payload: LogsRequest) {
-					const receivedAt = yield* Clock.currentTimeMillis
+					const receivedAt = yield* DateTime.now
 					const logs = yield* pipe(
-						payload.resourceLogs ?? [],
-						Array.flatMap(group =>
-							Array.flatMap(group.scopeLogs ?? [], scope => Array.map(scope.logRecords ?? [], log => ({group, log})))
-						),
+						Option.getOrElse(payload.resourceLogs, () => []),
+						Array.flatMap(group => {
+							const sender = senderOf(group.resource)
+							return pipe(
+								group.scopeLogs,
+								Option.getOrElse(() => []),
+								Array.flatMap(scope =>
+									pipe(
+										scope.logRecords,
+										Option.getOrElse(() => []),
+										Array.map(log => ({group, log, sender}))
+									)
+								)
+							)
+						}),
 						Effect.forEach(
 							Effect.fnUntraced(function* (item) {
 								// A log record has no id of its own, so the identity is what it carries.
+								const log = yield* Schema.encodeEffect(ExportedLog)(item.log)
+								const resource = yield* Effect.transposeOption(
+									Option.map(item.group.resource, Schema.encodeEffect(Resource))
+								)
 								const encoded = yield* Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown))({
-									attributes: item.log.attributes ?? [],
-									body: item.log.body ?? {},
-									observedTimeUnixNano: item.log.observedTimeUnixNano ?? '',
-									resource: item.group.resource ?? {},
-									severityNumber: item.log.severityNumber,
-									severityText: item.log.severityText ?? '',
-									spanId: item.log.spanId ?? '',
-									timeUnixNano: item.log.timeUnixNano,
-									traceId: item.log.traceId ?? ''
+									attributes: log.attributes ?? [],
+									body: log.body ?? {},
+									observedTimeUnixNano: log.observedTimeUnixNano ?? '',
+									resource: Option.getOrElse(resource, () => ({})),
+									severityNumber: log.severityNumber,
+									severityText: log.severityText ?? '',
+									spanId: log.spanId ?? '',
+									timeUnixNano: log.timeUnixNano,
+									traceId: log.traceId ?? ''
 								})
 								return logOf(
-									item.group,
+									item.sender,
 									item.log,
-									yield* digest.digestHex(Digest.sha256, utf8.encode(encoded)),
+									LogId.make(yield* digest.digestHex(Digest.sha256, utf8.encode(encoded))),
 									receivedAt
 								)
 							}),
@@ -820,7 +818,7 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 			// One commit per export, and the pages read again only after it.
 			ingestTraces: Effect.fn('Telemetry.ingestTraces')(
 				function* (payload: TracesRequest) {
-					const receivedAt = yield* Clock.currentTimeMillis
+					const receivedAt = yield* DateTime.now
 					const incoming = spansOf(payload)
 					yield* chunked(
 						touchedTraces(incoming.spans, yield* listSpans(traceIdsOf(incoming.spans)), receivedAt),
@@ -840,31 +838,29 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 			}, asTelemetryError),
 			measureLatency: Effect.fn('Telemetry.measureLatency')(function* (input: MeasureLatencyParams) {
 				const rows = yield* listLatencies({
-					cutoff: rangeStart(input.since, yield* Clock.currentTimeMillis),
+					cutoff: rangeStart(input.since, yield* DateTime.now),
 					name: input.name,
 					services: yield* servicesOf(input.app)
 				})
-				const latency = latencyOf(
-					Array.map(rows, row => Option.match(row.duration, {onNone: () => 0, onSome: Duration.toMillis}))
-				)
+				const latency = latencyOf(Array.map(rows, row => Option.getOrElse(row.duration, () => Duration.zero)))
 				return {
 					count: rows.length,
 					failures: Array.countBy(rows, row => row.status === 'failed'),
-					maxMs: Number.round(latency.maxMs, 1),
-					p50Ms: Number.round(latency.p50Ms, 1),
-					p95Ms: Number.round(latency.p95Ms, 1)
+					maxMs: Duration.millis(Number.round(Duration.toMillis(latency.maxMs), 1)),
+					p50Ms: Duration.millis(Number.round(Duration.toMillis(latency.p50Ms), 1)),
+					p95Ms: Duration.millis(Number.round(Duration.toMillis(latency.p95Ms), 1))
 				} satisfies LatencyAnswer
 			}, asTelemetryError),
 			readTrace: Effect.fn('Telemetry.readTrace')(function* (
 				input: ReadTraceParams,
 				offset: number = 0,
-				spanId?: string,
+				spanId: Option.Option<SpanId> = Option.none(),
 				details: boolean = false
 			) {
 				return readTraceAnswer(yield* tree(input.id), input.limit, offset, details, spanId)
 			}, asTelemetryError),
-			reject: Effect.fnUntraced(function* (input: Pick<Rejection, 'credential' | 'route' | 'status'>) {
-				const now = yield* Clock.currentTimeMillis
+			reject: Effect.fn('Telemetry.reject')(function* (input: Pick<Rejection, 'credential' | 'route' | 'status'>) {
+				const now = yield* DateTime.now
 				const key = `${input.route}:${input.status}:${input.credential}`
 				yield* Ref.update(rejections, current =>
 					Record.set(current, key, {...input, count: (current[key]?.count ?? 0) + 1, lastAt: now})
@@ -872,34 +868,31 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 			}),
 			searchLogs: Effect.fn('Telemetry.searchLogs')(function* (input: SearchLogsParams) {
 				const query = {
-					cursor: Option.fromUndefinedOr(input.cursor),
-					cutoff: rangeStart(input.since, yield* Clock.currentTimeMillis),
+					cursor: input.cursor,
+					cutoff: rangeStart(input.since, yield* DateTime.now),
 					limit: input.limit,
-					minimum: Option.map(Option.fromUndefinedOr(input.level), level => LEVELS[level]),
+					minimum: Option.map(input.level, level => LEVELS[level]),
 					services: yield* servicesOf(input.app),
-					text: Option.map(Option.fromUndefinedOr(input.text), String.toLowerCase),
-					traceId: Option.map(Option.fromUndefinedOr(input.trace), String.toLowerCase)
+					text: Option.map(input.text, String.toLowerCase),
+					traceId: Option.map(input.trace, id => TraceId.make(String.toLowerCase(id)))
 				} satisfies LogQuery
 				const page = pageOf(yield* pageLogs(query), input.limit)
 				return {
-					...Option.match(page.last, {
-						onNone: () => ({}),
-						onSome: log => ({nextCursor: Struct.pick(log, ['id', 'time'])})
-					}),
 					logs: Array.map(page.items, log => {
 						const attrs = attributesFlat(log.attributes, '', false)
 						const side = sideOf(log.service, log.runtime)
 						return {
 							app: appName(log.service),
-							at: isoTime(log.time),
+							at: log.time,
+							attrs,
 							level: levelOf(log.severity),
 							message: log.message,
-							...Option.match(Option.fromUndefinedOr(side), {onNone: () => ({}), onSome: value => ({side: value})}),
-							...Option.match(log.traceId, {onNone: () => ({}), onSome: trace => ({trace})}),
-							...Option.match(log.spanId, {onNone: () => ({}), onSome: span => ({span})}),
-							...Option.match(Option.fromUndefinedOr(attrs), {onNone: () => ({}), onSome: value => ({attrs: value})})
+							side,
+							span: log.spanId,
+							trace: log.traceId
 						}
 					}),
+					nextCursor: Option.map(page.last, Struct.pick(['id', 'time'])),
 					total: (yield* countLogs(query)).count
 				} satisfies LogsAnswer
 			}, asTelemetryError),
@@ -912,8 +905,9 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 					Stream.mapError(cause => TelemetryError.make({cause, message: UNAVAILABLE})),
 					Stream.buffer({capacity: 1, strategy: 'sliding'}),
 					Stream.flatMap(overview =>
-						Stream.concat(Stream.succeed(overview), Stream.drain(Stream.fromEffect(Effect.sleep('1 second'))))
-					)
+						Stream.concat(Stream.succeed(overview), Stream.drain(Stream.fromEffect(Effect.sleep(Duration.seconds(1)))))
+					),
+					Stream.withSpan('Telemetry.watch', {attributes: {range, 'rpc.stream': true}})
 				)
 		}
 	})

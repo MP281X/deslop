@@ -1,16 +1,23 @@
 import {assert, it} from '@effect/vitest'
 
-import {Array, Option} from 'effect'
+import {Array, Option, Schema} from 'effect'
 
 import {Base64Url} from 'effect/encoding'
 
 import {nameOf, notificationOf, pagesOf, postFrom, seriesOf} from '#services/chapters/lib/utils.ts'
+import {ChapterNumber, CubariSeries} from '#services/chapters/schema.ts'
 
 const LINK = '<a href="https://cubari.moe/read/imgchest/abc123xyz/1/1/">[link]</a>'
 
 it('routes series-qualified notifications', () => {
-	assert.deepStrictEqual(notificationOf({path: 'webcomic:161'}), Option.some({number: 161, series: 'webcomic'}))
-	assert.deepStrictEqual(notificationOf({path: 'manga:44.5'}), Option.some({number: 44.5, series: 'manga'}))
+	assert.deepStrictEqual(
+		notificationOf({path: 'webcomic:161'}),
+		Option.some({number: ChapterNumber.make(161), series: 'webcomic'})
+	)
+	assert.deepStrictEqual(
+		notificationOf({path: 'manga:44.5'}),
+		Option.some({number: ChapterNumber.make(44.5), series: 'manga'})
+	)
 	assert.deepStrictEqual(notificationOf({path: 'unknown:161'}), Option.none())
 	assert.deepStrictEqual(notificationOf(undefined), Option.none())
 })
@@ -76,7 +83,7 @@ it('unwraps pages of the dead image proxy and drops its error texts', () => {
 				`https://services.f-ck.me/v1/image/${Base64Url.encode('Invalid uploader')}`,
 				{src: 'https://i.example.org/b.png'}
 			],
-			page => pagesOf({chapters: {'1': {groups: {english: [page]}}}}, '1')
+			page => pagesOf(Schema.decodeSync(CubariSeries)({chapters: {'1': {groups: {english: [page]}}}}), '1')
 		),
 		[Option.some(['https://files.example.org/a.png']), Option.none(), Option.some(['https://i.example.org/b.png'])]
 	)

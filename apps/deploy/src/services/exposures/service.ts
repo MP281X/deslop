@@ -4,6 +4,7 @@ import {platform} from 'node:process'
 import {
 	Array,
 	Context,
+	Duration,
 	Effect,
 	FileSystem,
 	Layer,
@@ -26,7 +27,8 @@ import {installService} from '@deslop/runtime/server/services'
 
 import {Exposure} from '#services/exposures/schema.ts'
 import type {ExposeInput} from '#services/exposures/schema.ts'
-import {DeployError, InventoryItem, Serve, Tailnet} from '#services/inventory/schema.ts'
+import type {ExposureName} from '#services/inventory/schema.ts'
+import {DeployError, InventoryItem, ItemId, Serve, Tailnet, WorkerId} from '#services/inventory/schema.ts'
 
 // A stop waits at most ten seconds for open connections such as WebSockets, never forever.
 function caddyConfig(rows: readonly Exposure[], storage: string) {
@@ -40,12 +42,19 @@ function caddyConfig(rows: readonly Exposure[], storage: string) {
 
 function ownsMapping(status: Serve, row: Exposure) {
 	return (
-		status.AllowFunnel?.[`${row.hostname}:${row.port}`] !== true &&
+		!Option.exists(status.AllowFunnel, permissions => permissions[`${row.hostname}:${row.port}`] === true) &&
 		pipe(
-			status.Web ?? {},
-			Record.get(`${row.hostname}:${row.port}`),
+			status.Web,
+			Option.flatMap(Record.get(`${row.hostname}:${row.port}`)),
 			Option.exists(
-				value => Record.size(value.Handlers) === 1 && value.Handlers['/']?.Proxy === `http://127.0.0.1:${row.port}`
+				value =>
+					Record.size(value.Handlers) === 1 &&
+					pipe(
+						value.Handlers,
+						Record.get('/'),
+						Option.flatMap(handler => handler.Proxy),
+						Option.exists(proxy => proxy === `http://127.0.0.1:${row.port}`)
+					)
 			)
 		)
 	)
@@ -74,7 +83,7 @@ export class Exposures extends Context.Service<Exposures>()('@deslop/deploy/serv
 		const sql = yield* SqlClient.SqlClient
 		const spawner = yield* ChildProcessSpawner.ChildProcessSpawner
 		const path = yield* Path.Path
-		const worker = hostname()
+		const worker = yield* Schema.decodeEffect(WorkerId)(hostname())
 		yield* fs.makeDirectory(directory, {mode: 0o700, recursive: true})
 
 		const listExposures = SqlSchema.findAll({
@@ -103,7 +112,7 @@ export class Exposures extends Context.Service<Exposures>()('@deslop/deploy/serv
 			return pipe(
 				executeProcess(program, args),
 				Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
-				Effect.timeout('30 seconds')
+				Effect.timeout(Duration.seconds(30))
 			)
 		}
 		const status = Effect.flatMap(
@@ -113,8 +122,8 @@ export class Exposures extends Context.Service<Exposures>()('@deslop/deploy/serv
 		const checkTailnet = Effect.fnUntraced(function* (input: Exposure) {
 			const current = yield* status
 			if (
-				Record.has(current.TCP ?? {}, `${input.port}`) ||
-				current.AllowFunnel?.[`${input.hostname}:${input.port}`] === true
+				Option.exists(current.TCP, ports => Record.has(ports, `${input.port}`)) ||
+				Option.exists(current.AllowFunnel, permissions => permissions[`${input.hostname}:${input.port}`] === true)
 			) {
 				return yield* DeployError.make({
 					message: 'This Tailscale port or Funnel permission already exists and is not owned by Deploy'
@@ -124,7 +133,7 @@ export class Exposures extends Context.Service<Exposures>()('@deslop/deploy/serv
 				run('tailscale', ['status', '--json']),
 				Schema.decodeEffect(Schema.fromJsonString(Tailnet))
 			)
-			if (String.replace(/\.$/u, '')(tailnet.Self?.DNSName ?? '') !== input.hostname) {
+			if (!Option.exists(tailnet.Self, self => String.replace(/\.$/u, '')(self.DNSName) === input.hostname)) {
 				return yield* DeployError.make({
 					message: 'Use this worker’s Tailscale DNS name; Deploy never publishes another worker’s hostname'
 				})
@@ -146,7 +155,7 @@ export class Exposures extends Context.Service<Exposures>()('@deslop/deploy/serv
 			)
 			yield* Effect.retry(
 				run(binary, ['reload', '--address', '127.0.0.1:20219', '--config', configFile, '--adapter', 'caddyfile']),
-				{schedule: Schedule.spaced('200 millis'), times: 10}
+				{schedule: Schedule.spaced(Duration.millis(200)), times: 10}
 			)
 		})
 
@@ -163,8 +172,9 @@ export class Exposures extends Context.Service<Exposures>()('@deslop/deploy/serv
 		}
 
 		return {
-			expose: Effect.fnUntraced(
+			expose: Effect.fn('Exposures.expose')(
 				function* (input: ExposeInput) {
+					yield* Effect.annotateCurrentSpan({exposure: input.name, kind: input.kind, port: input.port, worker})
 					const current = yield* owned
 					if (Array.some(current, row => row.name === input.name)) {
 						return yield* DeployError.make({message: 'Remove the existing owned exposure before changing it'})
@@ -208,8 +218,9 @@ export class Exposures extends Context.Service<Exposures>()('@deslop/deploy/serv
 				Semaphore.withPermit(lock),
 				asDeployError
 			),
-			hide: Effect.fnUntraced(
-				function* (name: string) {
+			hide: Effect.fn('Exposures.hide')(
+				function* (name: ExposureName) {
+					yield* Effect.annotateCurrentSpan({exposure: name, worker})
 					const current = yield* owned
 					const exposure = yield* pipe(
 						current,
@@ -219,7 +230,7 @@ export class Exposures extends Context.Service<Exposures>()('@deslop/deploy/serv
 					)
 					if (exposure.kind === 'tailnet') {
 						const mappings = yield* status
-						if (Record.has(mappings.TCP ?? {}, `${exposure.port}`)) {
+						if (Option.exists(mappings.TCP, ports => Record.has(ports, `${exposure.port}`))) {
 							if (!ownsMapping(mappings, exposure)) {
 								return yield* DeployError.make({
 									message: 'This mapping was changed outside Deploy; refusing to remove it'
@@ -236,21 +247,25 @@ export class Exposures extends Context.Service<Exposures>()('@deslop/deploy/serv
 				Semaphore.withPermit(lock),
 				asDeployError
 			),
-			items: Effect.map(owned, current =>
-				Array.map(current, row =>
-					InventoryItem.make({
-						detail: `${row.kind} → 127.0.0.1:${row.port}`,
-						id: `${worker}:exposure:${row.name}`,
-						kind: 'exposure',
-						name: row.name,
-						owned: true,
-						port: row.port,
-						publicAccess: row.kind === 'public',
-						state: 'configured; check backend',
-						url: exposureUrl(row),
-						worker
-					})
-				)
+			items: pipe(
+				owned,
+				Effect.map(current =>
+					Array.map(current, row =>
+						InventoryItem.make({
+							detail: `${row.kind} → 127.0.0.1:${row.port}`,
+							id: ItemId.make(`${worker}:exposure:${row.name}`),
+							kind: 'exposure',
+							name: row.name,
+							owned: Option.some(true),
+							port: Option.some(row.port),
+							publicAccess: Option.some(row.kind === 'public'),
+							state: 'configured; check backend',
+							url: Option.some(exposureUrl(row)),
+							worker
+						})
+					)
+				),
+				Effect.withSpan('Exposures.items', {attributes: {worker}})
 			)
 		}
 	})

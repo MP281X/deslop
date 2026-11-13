@@ -1,4 +1,6 @@
-import {Array, Match, Number, Option, Record, String, pipe} from 'effect'
+import {Array, DateTime, Match, Number, Option, Record, String, pipe} from 'effect'
+
+import {UnitId} from '#services/inventory/schema.ts'
 
 const SIGNALS: Record<number, string> = {
 	1: 'SIGHUP',
@@ -56,12 +58,11 @@ export function unitFailures(text: string) {
 					)
 				)
 				return [
-					fields['Id'] ?? '',
+					UnitId.make(fields['Id'] ?? ''),
 					{
-						...Option.match(Number.parse(String.replace(/^@/u, '')(fields['StateChangeTimestamp'] ?? '')), {
-							onNone: () => ({}),
-							onSome: seconds => ({at: seconds * 1000})
-						}),
+						at: Option.map(Number.parse(String.replace(/^@/u, '')(fields['StateChangeTimestamp'] ?? '')), seconds =>
+							DateTime.mapEpochMillis(DateTime.makeUnsafe(0), () => seconds * 1000)
+						),
 						// A unit whose start step failed never ran its main process, which leaves its code 0.
 						reason: failureReason(
 							fields['Result'] ?? '',

@@ -1,25 +1,31 @@
 import {assert, it} from '@effect/vitest'
 
-import {Array, Effect, FileSystem, Option, PlatformError, String} from 'effect'
+import {Array, DateTime, Duration, Effect, FileSystem, Option, PlatformError, Schema, String} from 'effect'
 
 import {commandLabel} from './command.ts'
 import {attachProcesses, processReadings, processes} from './processes.ts'
 
 import {processOwner} from '#services/inventory/lib/utils.ts'
-import {InventoryItem} from '#services/inventory/schema.ts'
+import {AppId, InventoryItem, ItemId, Process, UnitId} from '#services/inventory/schema.ts'
 
 function reading(time: number) {
 	return {
 		records: [
 			{
-				owner: '',
-				process: {label: {detail: '', name: 'node'}, memory: time, name: 'node', parent: 1, pid: 42},
-				start: 100,
-				ticks: time / 4
+				owner: Option.none<AppId>(),
+				process: Schema.decodeSync(Process)({
+					label: {detail: '', name: 'node'},
+					memory: time,
+					name: 'node',
+					parent: 1,
+					pid: 42
+				}),
+				start: DateTime.makeUnsafe(100),
+				ticks: Duration.millis(time / 4)
 			}
 		],
-		time,
-		total: time + 800
+		time: DateTime.makeUnsafe(time),
+		total: Duration.millis(time + 800)
 	}
 }
 
@@ -29,49 +35,58 @@ it.effect(
 		Effect.provideService(
 			Effect.gen(function* () {
 				const collected = yield* processes
-				assert.strictEqual(collected.total, 800)
-				assert.deepStrictEqual(collected.records, [
-					{
-						owner: 'service:system:scope.service',
-						process: {
-							command: ['firefox', '--type=renderer'],
-							label: {detail: '', name: 'firefox'},
-							memory: 1_048_576,
-							name: 'Web Content',
-							parent: 7,
-							pid: 42
+				assert.strictEqual(Duration.toMillis(collected.total), 8000)
+				assert.deepStrictEqual(
+					Array.map(collected.records, record => ({
+						...record,
+						owner: Schema.encodeSync(AppId)(Option.getOrThrow(record.owner)),
+						process: Schema.encodeSync(Process)(record.process),
+						start: Duration.toMillis(record.start) / 10,
+						ticks: Duration.toMillis(record.ticks) / 10
+					})),
+					[
+						{
+							owner: 'service:system:scope.service',
+							process: {
+								command: ['firefox', '--type=renderer'],
+								label: {detail: '', name: 'firefox'},
+								memory: 1_048_576,
+								name: 'Web Content',
+								parent: 7,
+								pid: 42
+							},
+							start: 100,
+							ticks: 10
 						},
-						start: 100,
-						ticks: 10
-					},
-					{
-						owner: 'service:system:scope.service',
-						process: {
-							command: [
-								'node',
-								'server.js',
-								'--api-token',
-								'…',
-								'GITHUB_TOKEN=…',
-								'https://…@example.com/x',
-								'…',
-								'--session-id=…',
-								'--allow-dangerously-skip-permissions',
-								'--mode',
-								'off',
-								'--oauth2-bearer',
-								'…'
-							],
-							label: {detail: 'x', name: 'auth'},
-							memory: 0,
-							name: 'worker',
-							parent: 1,
-							pid: 7
-						},
-						start: 100,
-						ticks: 10
-					}
-				])
+						{
+							owner: 'service:system:scope.service',
+							process: {
+								command: [
+									'node',
+									'server.js',
+									'--api-token',
+									'…',
+									'GITHUB_TOKEN=…',
+									'https://…@example.com/x',
+									'…',
+									'--session-id=…',
+									'--allow-dangerously-skip-permissions',
+									'--mode',
+									'off',
+									'--oauth2-bearer',
+									'…'
+								],
+								label: {detail: 'x', name: 'auth'},
+								memory: 0,
+								name: 'worker',
+								parent: 1,
+								pid: 7
+							},
+							start: 100,
+							ticks: 10
+						}
+					]
+				)
 			}),
 			FileSystem.FileSystem,
 			FileSystem.makeNoop({
@@ -229,65 +244,93 @@ it('measures CPU as a share of machine capacity without reusing a PID or bridgin
 	const previous = {
 		records: [
 			{
-				owner: '',
-				process: {label: {detail: '', name: 'node'}, memory: 1024, name: 'node', parent: 1, pid: 42},
-				start: 100,
-				ticks: 10
+				owner: Option.none<AppId>(),
+				process: Schema.decodeSync(Process)({
+					label: {detail: '', name: 'node'},
+					memory: 1024,
+					name: 'node',
+					parent: 1,
+					pid: 42
+				}),
+				start: DateTime.makeUnsafe(100),
+				ticks: Duration.millis(10)
 			}
 		],
-		time: 0,
-		total: 800
+		time: DateTime.makeUnsafe(0),
+		total: Duration.millis(800)
 	}
 	const current = {
 		...previous,
-		records: Array.map(previous.records, record => ({...record, ticks: 60})),
-		time: 10_000,
-		total: 1000
+		records: Array.map(previous.records, record => ({...record, ticks: Duration.millis(60)})),
+		time: DateTime.makeUnsafe(10_000),
+		total: Duration.millis(1000)
 	}
-	const baseline = processReadings(previous)
-	assert.strictEqual(processReadings(current, baseline).readings[0]?.process.cpu, 25)
-	assert.isUndefined(processReadings(current).readings[0]?.process.cpu)
-	assert.isUndefined(processReadings({...current, time: 100}, baseline).readings[0]?.process.cpu)
+	const baseline = Option.some(processReadings(previous, Option.none()))
+	assert.deepStrictEqual(processReadings(current, baseline).readings[0]?.process.cpu, Option.some(25))
+	assert.deepStrictEqual(processReadings(current, Option.none()).readings[0]?.process.cpu, Option.none())
+	assert.deepStrictEqual(
+		processReadings({...current, time: DateTime.makeUnsafe(100)}, baseline).readings[0]?.process.cpu,
+		Option.none()
+	)
 	// A reading 30 seconds on still measures; one past 90 seconds does not.
-	assert.strictEqual(processReadings({...current, time: 30_000}, baseline).readings[0]?.process.cpu, 25)
-	assert.isUndefined(processReadings({...current, time: 91_000}, baseline).readings[0]?.process.cpu)
-	assert.isUndefined(processReadings({...current, total: 100}, baseline).readings[0]?.process.cpu)
-	assert.isUndefined(
-		processReadings({...current, records: Array.map(current.records, record => ({...record, start: 101}))}, baseline)
-			.readings[0]?.process.cpu
+	assert.deepStrictEqual(
+		processReadings({...current, time: DateTime.makeUnsafe(30_000)}, baseline).readings[0]?.process.cpu,
+		Option.some(25)
+	)
+	assert.deepStrictEqual(
+		processReadings({...current, time: DateTime.makeUnsafe(91_000)}, baseline).readings[0]?.process.cpu,
+		Option.none()
+	)
+	assert.deepStrictEqual(
+		processReadings({...current, total: Duration.millis(100)}, baseline).readings[0]?.process.cpu,
+		Option.none()
+	)
+	assert.deepStrictEqual(
+		processReadings(
+			{...current, records: Array.map(current.records, record => ({...record, start: DateTime.makeUnsafe(101)}))},
+			baseline
+		).readings[0]?.process.cpu,
+		Option.none()
 	)
 })
 
 it('shares meaningful CPU deltas between staggered viewers without returning stale memory or reused-PID CPU', () => {
-	const first = processReadings(reading(0))
-	const early = processReadings(reading(1000), first)
-	assert.isUndefined(early.readings[0]?.process.cpu)
+	const first = processReadings(reading(0), Option.none())
+	const early = processReadings(reading(1000), Option.some(first))
+	assert.deepStrictEqual(early.readings[0]?.process.cpu, Option.none())
 	// A process the cached read can't measure carries no cpu key, so the snapshot it lands in still validates.
-	assert.deepStrictEqual(early.readings[0]?.process, {
+	assert.deepStrictEqual(Schema.encodeSync(Process)(Option.getOrThrow(Array.head(early.readings)).process), {
 		label: {detail: '', name: 'node'},
 		memory: 1000,
 		name: 'node',
 		parent: 1,
 		pid: 42
 	})
-	assert.strictEqual(early.baseline.time, 0)
-	const viewerA = processReadings(reading(5000), early)
-	const viewerB = processReadings(reading(6000), viewerA)
-	assert.strictEqual(viewerA.readings[0]?.process.cpu, 25)
-	assert.strictEqual(viewerB.readings[0]?.process.cpu, 25)
+	assert.strictEqual(DateTime.toEpochMillis(early.baseline.time), 0)
+	const viewerA = processReadings(reading(5000), Option.some(early))
+	const viewerB = processReadings(reading(6000), Option.some(viewerA))
+	assert.deepStrictEqual(viewerA.readings[0]?.process.cpu, Option.some(25))
+	assert.deepStrictEqual(viewerB.readings[0]?.process.cpu, Option.some(25))
 	assert.strictEqual(viewerB.readings[0]?.process.memory, 6000)
-	assert.strictEqual(viewerB.baseline.time, 5000)
-	assert.isUndefined(
+	assert.strictEqual(DateTime.toEpochMillis(viewerB.baseline.time), 5000)
+	assert.deepStrictEqual(
 		processReadings(
-			{...reading(6500), records: Array.map(reading(6500).records, record => ({...record, start: 101}))},
-			viewerB
-		).readings[0]?.process.cpu
+			{
+				...reading(6500),
+				records: Array.map(reading(6500).records, record => ({...record, start: DateTime.makeUnsafe(101)}))
+			},
+			Option.some(viewerB)
+		).readings[0]?.process.cpu,
+		Option.none()
 	)
-	assert.strictEqual(processReadings(reading(10_000), viewerB).readings[0]?.process.cpu, 25)
+	assert.deepStrictEqual(
+		processReadings(reading(10_000), Option.some(viewerB)).readings[0]?.process.cpu,
+		Option.some(25)
+	)
 })
 
 it('attaches only the exact service cgroup in the right scope, or the actual Docker container', () => {
-	const item = InventoryItem.make({
+	const item = Schema.decodeSync(InventoryItem)({
 		detail: '',
 		id: 'dev:user:scope.service',
 		kind: 'service',
@@ -297,29 +340,47 @@ it('attaches only the exact service cgroup in the right scope, or the actual Doc
 		url: '',
 		worker: 'dev'
 	})
-	const process = {label: {detail: '', name: 'node'}, memory: 1024, name: 'node', parent: 7, pid: 42}
+	const process = Schema.decodeSync(Process)({
+		label: {detail: '', name: 'node'},
+		memory: 1024,
+		name: 'node',
+		parent: 7,
+		pid: 42
+	})
 	const rows = [
 		{owner: processOwner('0::/user.slice/user-1000.slice/user@1000.service/app.slice/scope.service\n'), process}
 	]
-	assert.deepStrictEqual(attachProcesses([item], rows)[0]?.processes, [process])
-	assert.isEmpty(attachProcesses([{...item, scope: 'system'}], rows)[0]?.processes ?? [])
+	assert.deepStrictEqual(attachProcesses([item], rows)[0]?.processes, Option.some([process]))
+	assert.deepStrictEqual(
+		attachProcesses([{...item, scope: Option.some('system')}], rows)[0]?.processes,
+		Option.some([])
+	)
 	assert.isEmpty(
-		attachProcesses([item], [{owner: processOwner('0::/user.slice/scope.service-other\n'), process}])[0]?.processes ??
-			[]
+		Option.getOrElse(
+			attachProcesses([item], [{owner: processOwner('0::/user.slice/scope.service-other\n'), process}])[0]?.processes ??
+				Option.none(),
+			() => []
+		)
 	)
 	assert.deepStrictEqual(
 		attachProcesses(
-			[{...item, id: 'dev:docker:abcdef123456', kind: 'container'}],
+			[{...item, id: ItemId.make('dev:docker:abcdef123456'), kind: 'container'}],
 			[{owner: processOwner('0::/system.slice/docker-abcdef123456789.scope\n'), process}]
 		)[0]?.processes,
-		[process]
+		Option.some([process])
 	)
 	assert.deepStrictEqual(
 		attachProcesses(
-			[{...item, name: 'user@1000.service', scope: 'system'}],
+			[{...item, kind: 'service', name: UnitId.make('user@1000.service'), scope: Option.some('system')}],
 			[{owner: processOwner('0::/user.slice/user-1000.slice/user@1000.service/init.scope\n'), process}]
 		)[0]?.processes,
-		[process]
+		Option.some([process])
 	)
-	assert.isEmpty(attachProcesses([{...item, name: 'user@1000.service', scope: 'system'}], rows)[0]?.processes ?? [])
+	assert.deepStrictEqual(
+		attachProcesses(
+			[{...item, kind: 'service', name: UnitId.make('user@1000.service'), scope: Option.some('system')}],
+			rows
+		)[0]?.processes,
+		Option.some([])
+	)
 })

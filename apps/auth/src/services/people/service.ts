@@ -1,5 +1,4 @@
-import type {Stream} from 'effect'
-import {Boolean, Clock, Context, Effect, Layer, Option, Schema, String, Struct, pipe} from 'effect'
+import {Boolean, Context, DateTime, Effect, Layer, Option, Schema, Stream, String, Struct, pipe} from 'effect'
 
 import {SecureRandom} from 'effect/crypto'
 import type {Headers} from 'effect/http'
@@ -8,7 +7,7 @@ import {Migrator, SqlClient, SqlModel, SqlSchema} from 'effect/sql'
 
 import {Auth, adminIds, localAuth, requireAdmin} from '@deslop/runtime/server/auth'
 import type {User} from '@deslop/runtime/shared/auth'
-import {AuthError, DEVELOPER, bearerOf, isAdmin, asAuthError} from '@deslop/runtime/shared/auth'
+import {AuthError, DEVELOPER, UserId, bearerOf, isAdmin, asAuthError} from '@deslop/runtime/shared/auth'
 
 import {RpcOwner} from '#rpcs/contracts.ts'
 import {GitHub} from '#services/github/service.ts'
@@ -17,7 +16,7 @@ import {listPeople, ownerOf, personOf, roleOf} from '#services/people/lib/utils.
 import type {AdmitParams, GitHubUser, Person} from '#services/people/schema.ts'
 import {Member, SignedAccount} from '#services/people/schema.ts'
 import {randomTokenOf} from '#services/tokens/lib/utils.ts'
-import {CurrentOwner} from '#services/tokens/schema.ts'
+import {CurrentOwner, IncarnationId} from '#services/tokens/schema.ts'
 import type {CredentialOwner} from '#services/tokens/schema.ts'
 import {Tokens} from '#services/tokens/service.ts'
 
@@ -37,7 +36,7 @@ export class People extends Context.Service<
 		readonly list: (user: User) => Effect.Effect<Person[], AuthError>
 		readonly watch: (user: User) => Stream.Stream<Person[], AuthError>
 		readonly register: (github: GitHubUser) => Effect.Effect<CredentialOwner, AuthError>
-		readonly remove: (id: string, user: User) => Effect.Effect<Person, AuthError>
+		readonly remove: (id: UserId, user: User) => Effect.Effect<Person, AuthError>
 	}
 >()('@deslop/auth/services/people/service/People') {
 	// The table this service owns, made at start; one statement per `sql` call, since SQLite runs only the first statement of a string.
@@ -73,7 +72,7 @@ export class People extends Context.Service<
 				const local = yield* localAuth
 				const randomToken = randomTokenOf(yield* SecureRandom.SecureRandom)
 				const withReactivity = Effect.provideService(Reactivity.Reactivity, yield* Reactivity.Reactivity)
-				const developer = {incarnation: 'local', user: DEVELOPER}
+				const developer = {incarnation: IncarnationId.make('local'), user: DEVELOPER}
 				const members = yield* SqlModel.makeRepository(Member, {
 					idColumn: 'id',
 					spanPrefix: 'People',
@@ -108,15 +107,15 @@ export class People extends Context.Service<
 					Request: Member.insert,
 					execute: row => sql`INSERT INTO ${sql(Member.table)} ${sql.insert(row)} ON CONFLICT (id) DO NOTHING`
 				})
-				function member(id: string) {
+				function member(id: UserId) {
 					return Effect.catchNoSuchElement(members.findById(id))
 				}
 				// A local install's developer account keeps the one registration its sessions name; any other gets a fresh one.
 				function incarnationOf(profile: GitHubUser) {
 					if (local && profile.id === 0) return Effect.succeed(developer.incarnation)
-					return randomToken(32)
+					return Effect.map(randomToken(32), id => IncarnationId.make(id))
 				}
-				function existing(id: string) {
+				function existing(id: UserId) {
 					return Effect.flatMap(member(id), Effect.fromOption)
 				}
 				const currentOwner = Effect.fnUntraced(function* (owner: CredentialOwner) {
@@ -143,9 +142,10 @@ export class People extends Context.Service<
 					if (local) return developer
 					return yield* allowed(yield* tokens.session(headers))
 				})
-				function admin(user: User) {
-					return requireAdmin(admins, user, 'Only an admin can manage people')
-				}
+				const admin = Effect.fn('People.admin')(function* (user: User) {
+					yield* Effect.annotateCurrentSpan('userId', user.id)
+					return yield* requireAdmin(admins, user, 'Only an admin can manage people')
+				})
 				const list = Effect.fn('People.list')(function* (user: User) {
 					yield* admin(user)
 					return listPeople(yield* listMembers(), admins)
@@ -156,15 +156,15 @@ export class People extends Context.Service<
 					Effect.forEach(
 						admins,
 						Effect.fnUntraced(function* (id) {
-							if (Option.isSome(yield* member(`github:${id}`))) return
+							if (Option.isSome(yield* member(UserId.make(`github:${id}`)))) return
 							const profile = yield* github.profile(id)
 							yield* Reactivity.mutation(
 								addAdmin({
-									fullName: Option.filter(Option.fromNullishOr(profile.name), String.isNonEmpty),
-									id: `github:${profile.id}`,
+									fullName: Option.filter(profile.name, String.isNonEmpty),
+									id: UserId.make(`github:${profile.id}`),
 									incarnation: yield* incarnationOf(profile),
 									name: profile.login,
-									since: yield* Clock.currentTimeMillis,
+									since: yield* DateTime.now,
 									status: 'Allowed'
 								}),
 								['people']
@@ -179,30 +179,35 @@ export class People extends Context.Service<
 				const people = People.of({
 					// Read again when an account or a sign-in changes, so a sign-out elsewhere or an admission shows here.
 					account: headers =>
-						sql.reactive(
-							['people', 'tokens'],
-							asAuthError('Cannot read the account')(
-								Effect.gen(function* () {
-									const session = yield* tokens.browserSession(headers)
-									return Option.match(yield* currentOwner(session.owner), {
-										onNone: () =>
-											SignedAccount.make({
-												...session.owner.user,
-												role: roleOf(admins, session.owner.user.id, Option.none()),
-												via: session.via
-											}),
-										onSome: row =>
-											SignedAccount.make({...Struct.omit(personOf(admins, row), ['since']), via: session.via})
+						Stream.withSpan(
+							sql.reactive(
+								['people', 'tokens'],
+								asAuthError('Cannot read the account')(
+									Effect.gen(function* () {
+										const session = yield* tokens.browserSession(headers)
+										return Option.match(yield* currentOwner(session.owner), {
+											onNone: () =>
+												SignedAccount.make({
+													...session.owner.user,
+													fullName: Option.none(),
+													role: roleOf(admins, session.owner.user.id, Option.none()),
+													via: session.via
+												}),
+											onSome: row =>
+												SignedAccount.make({...Struct.omit(personOf(admins, row), ['since']), via: session.via})
+										})
 									})
-								})
-							)
+								)
+							),
+							'People.account',
+							{attributes: {'rpc.stream': true}}
 						),
 					admin,
 					// Each answer reads and changes the account in one transaction, so two answers to the same account cannot both apply.
 					admit: Effect.fn('People.admit')(
 						function* (params: AdmitParams, user: User) {
 							yield* admin(user)
-							const now = yield* Clock.currentTimeMillis
+							const now = yield* DateTime.now
 							const answered = yield* pipe(
 								Effect.gen(function* () {
 									const row = yield* existing(params.id)
@@ -230,9 +235,9 @@ export class People extends Context.Service<
 					list,
 					register: Effect.fn('People.register')(
 						function* (profile: GitHubUser) {
-							const id = `github:${profile.id}`
-							const fullName = Option.filter(Option.fromNullishOr(profile.name), String.isNonEmpty)
-							const since = yield* Clock.currentTimeMillis
+							const id = UserId.make(`github:${profile.id}`)
+							const fullName = Option.filter(profile.name, String.isNonEmpty)
+							const since = yield* DateTime.now
 							const row = yield* pipe(
 								member(id),
 								Effect.flatMap(
@@ -263,7 +268,7 @@ export class People extends Context.Service<
 						asAuthError('Cannot record the GitHub account')
 					),
 					remove: Effect.fn('People.remove')(
-						function* (id: string, user: User) {
+						function* (id: UserId, user: User) {
 							yield* admin(user)
 							if (roleOf(admins, id, Option.none()) === 'Admin') {
 								return yield* AuthError.make({
@@ -284,7 +289,10 @@ export class People extends Context.Service<
 						withReactivity,
 						asAuthError('Cannot remove this account')
 					),
-					watch: user => sql.reactive(['people'], list(user))
+					watch: user =>
+						Stream.withSpan(sql.reactive(['people'], list(user)), 'People.watch', {
+							attributes: {'rpc.stream': true, userId: user.id}
+						})
 				})
 				return Context.add(
 					Context.make(People, people),
@@ -306,7 +314,9 @@ export const layerIssuerAuth = Layer.effectContext(
 		const local = yield* localAuth
 		return Auth.makeContext(
 			Auth.of({
-				token: (headers: Headers.Headers) => asAuthError('Sign in first')(Effect.fromOption(bearerOf(headers))),
+				token: Effect.fn('Auth.token')(function* (headers: Headers.Headers) {
+					return yield* asAuthError('Sign in first')(Effect.fromOption(bearerOf(headers)))
+				}),
 				user: Effect.fn('Auth.user')(function* (headers: Headers.Headers) {
 					if (local) return DEVELOPER
 					return (yield* people.allowed(

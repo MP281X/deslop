@@ -1,4 +1,7 @@
-import {Schema} from 'effect'
+import {Schema, pipe} from 'effect'
+
+export type VisitorId = typeof VisitorId.Type
+export const VisitorId = pipe(Schema.NonEmptyString.check(Schema.isMaxLength(32)), Schema.brand('PortfolioVisitorId'))
 
 // A visitor's cursor and trail stay in theme.css's palette.
 export type PortfolioColor = typeof PortfolioColor.Type
@@ -8,7 +11,7 @@ export const PortfolioColor = Schema.Literals(['#da702c', '#d0a215', '#3aa99f', 
 export type PortfolioVisitor = typeof PortfolioVisitor.Type
 export const PortfolioVisitor = Schema.Struct({
 	color: PortfolioColor,
-	id: Schema.NonEmptyString.check(Schema.isMaxLength(32)),
+	id: VisitorId,
 	name: Schema.NonEmptyString.check(Schema.isMaxLength(32)),
 	x: Schema.Finite.check(Schema.isBetween({maximum: 1, minimum: 0})),
 	y: Schema.Finite.check(Schema.isBetween({maximum: 1, minimum: 0}))

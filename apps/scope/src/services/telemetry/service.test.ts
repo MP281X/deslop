@@ -28,13 +28,31 @@ import {Reactivity} from 'effect/reactivity'
 import {SqlClient} from 'effect/sql'
 import {TestClock} from 'effect/testing'
 
-import {LogsRequest, TelemetryError, TracesRequest} from '#services/telemetry/schema.ts'
-import type {Overview, ReadTraceAnswer, TracesAnswer} from '#services/telemetry/schema.ts'
+import {
+	FindTracesParams,
+	LatencyAnswer,
+	ListOperationsParams,
+	LogsAnswer,
+	LogsRequest,
+	MeasureLatencyParams,
+	OperationsAnswer,
+	Overview,
+	ReadTraceAnswer,
+	ReadTraceParams,
+	SearchLogsParams,
+	SpanId,
+	TraceId,
+	TelemetryError,
+	TraceTree,
+	TracesAnswer,
+	TracesRequest
+} from '#services/telemetry/schema.ts'
 import {Telemetry} from '#services/telemetry/service.ts'
+import {ToolContracts} from '#tools/contracts.ts'
 
-const TRACE_ID = '1234567890abcdef1234567890abcdef'
 const NOW = 1_781_870_000_000
 const START = `${BigInt(NOW) * 1_000_000n}`
+const TRACE_ID = TraceId.make('1234567890abcdef1234567890abcdef')
 
 const platform = Layer.merge(NodeCrypto.layer, NodeServices.layer)
 
@@ -43,7 +61,7 @@ const memory = Layer.merge(SqliteClient.layer({filename: ':memory:'}), Reactivit
 
 type Database = Context.Context<Layer.Success<typeof memory>>
 
-function kept(telemetry: Telemetry['Service']) {
+function kept(telemetry: Effect.Success<ReturnType<typeof loaded>>) {
 	return Effect.map(telemetry.findTraces({errors: false, limit: 50, since: '3d', sort: 'recent'}), page =>
 		pipe(
 			page.traces,
@@ -70,7 +88,7 @@ function denial(type: string) {
 type AttributeInput = {key: string; value: Schema.JsonObject}
 
 function release(version: string, key: string, start = START) {
-	return TracesRequest.make({
+	return Schema.decodeSync(Schema.toEncoded(TracesRequest))({
 		resourceSpans: [
 			{
 				resource: {
@@ -158,7 +176,7 @@ function request(
 	spans: readonly ReturnType<typeof span>[],
 	options: {runtime?: string; version?: string} = {}
 ) {
-	return TracesRequest.make({
+	return Schema.decodeSync(Schema.toEncoded(TracesRequest))({
 		resourceSpans: [
 			{
 				resource: {
@@ -202,7 +220,7 @@ function log(
 }
 
 function logs(service: string, records: readonly ReturnType<typeof log>[], runtime?: string, version?: string) {
-	return LogsRequest.make({
+	return Schema.decodeSync(Schema.toEncoded(LogsRequest))({
 		resourceLogs: [
 			{
 				resource: {
@@ -226,7 +244,53 @@ function logs(service: string, records: readonly ReturnType<typeof log>[], runti
 
 // Scope started over the database, as a restart opens the one it left.
 function loaded(database: Database) {
-	return Effect.map(Layer.build(Layer.provide(Telemetry.layer, Layer.succeedContext(database))), Context.get(Telemetry))
+	// Exercise the unchanged wire contracts, including the service's new decoding and encoding boundaries.
+	return pipe(
+		Layer.build(Layer.provide(Telemetry.layer, Layer.succeedContext(database))),
+		Effect.map(Context.get(Telemetry)),
+		Effect.map(service => ({
+			checkIngestion: () =>
+				Effect.flatMap(
+					service.checkIngestion(),
+					Schema.encodeEffect(ToolContracts.tools.check_ingestion.successSchema)
+				),
+			findTraces: Effect.fnUntraced(function* (input: typeof FindTracesParams.Encoded) {
+				return yield* Schema.encodeEffect(TracesAnswer)(
+					yield* service.findTraces(yield* Schema.decodeEffect(FindTracesParams)(input))
+				)
+			}),
+			ingestLogs: (input: typeof LogsRequest.Encoded) =>
+				Effect.flatMap(Schema.decodeEffect(LogsRequest)(input), service.ingestLogs),
+			ingestTraces: (input: typeof TracesRequest.Encoded) =>
+				Effect.flatMap(Schema.decodeEffect(TracesRequest)(input), service.ingestTraces),
+			listOperations: Effect.fnUntraced(function* (input: typeof ListOperationsParams.Encoded) {
+				return yield* Schema.encodeEffect(OperationsAnswer)(
+					yield* service.listOperations(yield* Schema.decodeEffect(ListOperationsParams)(input))
+				)
+			}),
+			measureLatency: Effect.fnUntraced(function* (input: typeof MeasureLatencyParams.Encoded) {
+				return yield* Schema.encodeEffect(LatencyAnswer)(
+					yield* service.measureLatency(yield* Schema.decodeEffect(MeasureLatencyParams)(input))
+				)
+			}),
+			readTrace: Effect.fnUntraced(function* (input: typeof ReadTraceParams.Encoded) {
+				return yield* Schema.encodeEffect(ReadTraceAnswer)(
+					yield* service.readTrace(yield* Schema.decodeEffect(ReadTraceParams)(input))
+				)
+			}),
+			reject: service.reject,
+			searchLogs: Effect.fnUntraced(function* (input: typeof SearchLogsParams.Encoded) {
+				return yield* Schema.encodeEffect(LogsAnswer)(
+					yield* service.searchLogs(yield* Schema.decodeEffect(SearchLogsParams)(input))
+				)
+			}),
+			trace: Effect.fnUntraced(function* (id: typeof TraceId.Encoded) {
+				return yield* Schema.encodeEffect(TraceTree)(yield* service.trace(yield* Schema.decodeEffect(TraceId)(id)))
+			}),
+			watch: (range: Parameters<typeof service.watch>[0]) =>
+				Stream.mapEffect(service.watch(range), value => Schema.encodeEffect(Overview)(value))
+		}))
+	)
 }
 
 function fresh() {
@@ -248,7 +312,7 @@ function storedKeys(database: Database) {
 	)
 }
 
-function pickTrace(answer: TracesAnswer) {
+function pickTrace(answer: typeof TracesAnswer.Encoded) {
 	return {
 		total: answer.total,
 		traces: Array.map(answer.traces, row => ({
@@ -280,7 +344,7 @@ it.layer(platform)(test => {
 				sleep: (duration: Duration.Duration) => clock.sleep(duration)
 			}
 			const telemetry = yield* fresh()
-			const pushed = yield* Queue.unbounded<Overview>()
+			const pushed = yield* Queue.unbounded<typeof Overview.Encoded>()
 			const viewer = pipe(
 				Stream.runForEach(telemetry.watch('3d'), value => Queue.offer(pushed, value)),
 				Effect.provideService(Clock.Clock, counting),
@@ -447,7 +511,7 @@ it.layer(platform)(test => {
 										spans: [
 											{
 												name: 'future',
-												spanId: '1111111111111111',
+												spanId: SpanId.make('1111111111111111'),
 												startTimeUnixNano: '99999999999999999999',
 												traceId: TRACE_ID
 											}
@@ -473,7 +537,7 @@ it.layer(platform)(test => {
 					const trace = yield* telemetry.trace(TRACE_ID)
 					assert.strictEqual(trace.spans[0]?.start, 100_000_000_000_000)
 					assert.strictEqual(trace.logs[0]?.time, 100_000_000_000_000)
-					assert.deepStrictEqual(trace.logs[0]?.receivedAt, DateTime.makeUnsafe(NOW))
+					assert.deepStrictEqual(trace.logs[0]?.receivedAt, NOW)
 				})
 			)
 			yield* Effect.scoped(
@@ -503,7 +567,12 @@ it.layer(platform)(test => {
 								scopeSpans: [
 									{
 										spans: [
-											{name: 'persisted', spanId: '1111111111111111', startTimeUnixNano: START, traceId: TRACE_ID}
+											{
+												name: 'persisted',
+												spanId: SpanId.make('1111111111111111'),
+												startTimeUnixNano: START,
+												traceId: TRACE_ID
+											}
 										]
 									}
 								]
@@ -537,7 +606,7 @@ it.layer(platform)(test => {
 			const free = String.repeat(32)('e')
 			const late = String.repeat(32)('f')
 			yield* telemetry.ingestTraces(
-				TracesRequest.make({
+				yield* Schema.decodeEffect(Schema.toEncoded(TracesRequest))({
 					resourceSpans: [
 						versioned('@deslop/trips-client', '0.1.1', [
 							span({name: 'trips.watch', spanId: '1111111111111111', start: START, traceId: stale})
@@ -586,7 +655,7 @@ it.layer(platform)(test => {
 			)
 			// An incoming stale client span joins its kept trace; a trace whose versioned entries are all old is dropped.
 			yield* telemetry.ingestTraces(
-				TracesRequest.make({
+				yield* Schema.decodeEffect(Schema.toEncoded(TracesRequest))({
 					resourceSpans: [
 						versioned('@deslop/trips-client', '0.1.1', [
 							span({name: 'trips.watch', spanId: 'bbbbbbbbbbbbbbbb', start: START, traceId: stale})
@@ -611,7 +680,7 @@ it.layer(platform)(test => {
 			yield* TestClock.setTime(NOW)
 			const telemetry = yield* fresh()
 			yield* telemetry.ingestTraces(
-				TracesRequest.make({
+				yield* Schema.decodeEffect(Schema.toEncoded(TracesRequest))({
 					resourceSpans: [
 						{
 							scopeSpans: [
@@ -767,7 +836,7 @@ it.layer(platform)(test => {
 			yield* TestClock.setTime(NOW)
 			const telemetry = yield* fresh()
 			function run(service: string, started: number, records: readonly ReturnType<typeof log>[], version?: string) {
-				return LogsRequest.make({
+				return Schema.decodeSync(Schema.toEncoded(LogsRequest))({
 					resourceLogs: [
 						{
 							resource: {
@@ -875,7 +944,7 @@ it.layer(platform)(test => {
 		Effect.fnUntraced(function* () {
 			yield* TestClock.setTime(NOW)
 			const telemetry = yield* fresh()
-			const child = TracesRequest.make({
+			const child = yield* Schema.decodeUnknownEffect(Schema.toEncoded(TracesRequest))({
 				resourceSpans: [
 					{
 						resource: {attributes: [{key: 'service.name', value: {stringValue: 'ordering'}}]},
@@ -903,7 +972,7 @@ it.layer(platform)(test => {
 			yield* telemetry.ingestTraces(child)
 			yield* telemetry.ingestTraces(child)
 			yield* telemetry.ingestTraces(
-				TracesRequest.make({
+				yield* Schema.decodeEffect(Schema.toEncoded(TracesRequest))({
 					resourceSpans: [
 						{
 							resource: {attributes: [{key: 'service.name', value: {stringValue: 'ordering'}}]},
@@ -1021,7 +1090,7 @@ it.layer(platform)(test => {
 		Effect.fnUntraced(function* () {
 			yield* TestClock.setTime(NOW)
 			const telemetry = yield* fresh()
-			const trace = String.repeat(32)('1')
+			const trace = TraceId.make(String.repeat(32)('1'))
 			const retried = logs('@deslop/stash-server', [
 				log('saved', `${BigInt(START) + 1_000_000n}`, {
 					attributes: [{key: 'note', value: {stringValue: 'keep'}}],
@@ -1117,7 +1186,7 @@ it.layer(platform)(test => {
 				),
 				['fault', 'outage']
 			)
-			const denied = yield* telemetry.readTrace({id: String.repeat(32)('3'), limit: 100})
+			const denied = yield* telemetry.readTrace({id: TraceId.make(String.repeat(32)('3')), limit: 100})
 			assert.strictEqual(denied.failure, undefined)
 			assert.strictEqual(denied.spans[0]?.denied, true)
 			assert.strictEqual(denied.spans[0]?.error, undefined)
@@ -1299,8 +1368,8 @@ it.layer(platform)(test => {
 					trace => [trace.id, trace.failure]
 				),
 				[
-					[String.repeat(32)('d'), {error: 'upstream returned 502', span: 'http.get'}],
-					[String.repeat(32)('e'), undefined]
+					[TraceId.make(String.repeat(32)('d')), {error: 'upstream returned 502', span: 'http.get'}],
+					[TraceId.make(String.repeat(32)('e')), undefined]
 				]
 			)
 		})
@@ -1313,11 +1382,11 @@ it.layer(platform)(test => {
 		Effect.fnUntraced(function* () {
 			yield* TestClock.setTime(NOW)
 			const telemetry = yield* fresh()
-			const first = String.repeat(32)('1')
-			const second = String.repeat(32)('2')
-			const third = String.repeat(32)('3')
-			const watch = String.repeat(32)('4')
-			const deploy = String.repeat(32)('5')
+			const first = TraceId.make(String.repeat(32)('1'))
+			const second = TraceId.make(String.repeat(32)('2'))
+			const third = TraceId.make(String.repeat(32)('3'))
+			const watch = TraceId.make(String.repeat(32)('4'))
+			const deploy = TraceId.make(String.repeat(32)('5'))
 			yield* telemetry.ingestTraces(
 				request(
 					'@deslop/trips-server',
@@ -1410,9 +1479,9 @@ it.layer(platform)(test => {
 		Effect.fnUntraced(function* () {
 			yield* TestClock.setTime(NOW)
 			const telemetry = yield* fresh()
-			const searched = String.repeat(32)('1')
-			const created = String.repeat(32)('2')
-			const cached = String.repeat(32)('3')
+			const searched = TraceId.make(String.repeat(32)('1'))
+			const created = TraceId.make(String.repeat(32)('2'))
+			const cached = TraceId.make(String.repeat(32)('3'))
 			yield* telemetry.ingestTraces(
 				request(
 					'@deslop/stash-server',
@@ -1578,8 +1647,8 @@ it.layer(platform)(test => {
 		Effect.fnUntraced(function* () {
 			yield* TestClock.setTime(NOW)
 			const telemetry = yield* fresh()
-			const trace = String.repeat(32)('1')
-			const deep = String.repeat(32)('2')
+			const trace = TraceId.make(String.repeat(32)('1'))
+			const deep = TraceId.make(String.repeat(32)('2'))
 			yield* telemetry.ingestTraces(
 				request(
 					'@deslop/stash-server',
@@ -1635,7 +1704,7 @@ it.layer(platform)(test => {
 			)
 			assert.deepStrictEqual(yield* telemetry.readTrace({id: trace, limit: 100}), {
 				at: DateTime.formatIso(DateTime.makeUnsafe(NOW)),
-				failure: '2222222222222222',
+				failure: SpanId.make('2222222222222222'),
 				id: trace,
 				logs: [{at: DateTime.formatIso(DateTime.makeUnsafe(NOW + 5)), level: 'warn', message: 'standalone line'}],
 				ms: 100,
@@ -1644,7 +1713,7 @@ it.layer(platform)(test => {
 						app: 'stash',
 						at: 0,
 						attrs: {custom: 'keep', 'http.route': '/x'},
-						id: '1111111111111111',
+						id: SpanId.make('1111111111111111'),
 						ms: 100,
 						name: 'trace.root',
 						side: 'server'
@@ -1654,24 +1723,24 @@ it.layer(platform)(test => {
 						at: 10,
 						attrs: {'user_agent.original': 'agent'},
 						error: 'Boom',
-						id: '2222222222222222',
+						id: SpanId.make('2222222222222222'),
 						logs: [{at: DateTime.formatIso(DateTime.makeUnsafe(NOW + 15)), level: 'error', message: 'log line'}],
 						ms: 30,
 						name: 'db.query',
-						parent: '1111111111111111',
+						parent: SpanId.make('1111111111111111'),
 						side: 'server'
 					},
 					{
 						app: 'stash',
 						at: 20,
-						id: '3333333333333333',
+						id: SpanId.make('3333333333333333'),
 						ms: 5,
 						name: 'parse',
-						parent: '2222222222222222',
+						parent: SpanId.make('2222222222222222'),
 						side: 'server'
 					}
 				]
-			} satisfies ReadTraceAnswer)
+			} satisfies typeof ReadTraceAnswer.Encoded)
 			yield* telemetry.ingestTraces(
 				request('@deslop/stash-server', [
 					span({
@@ -1727,8 +1796,8 @@ it.layer(platform)(test => {
 		Effect.fnUntraced(function* () {
 			yield* TestClock.setTime(NOW)
 			const telemetry = yield* fresh()
-			const capture = String.repeat(32)('1')
-			const organize = String.repeat(32)('2')
+			const capture = TraceId.make(String.repeat(32)('1'))
+			const organize = TraceId.make(String.repeat(32)('2'))
 			yield* telemetry.ingestTraces(
 				request('@deslop/stash-server', [
 					span({
@@ -1787,7 +1856,7 @@ it.layer(platform)(test => {
 		Effect.fnUntraced(function* () {
 			yield* TestClock.setTime(NOW)
 			const telemetry = yield* fresh()
-			const trace = String.repeat(32)('1')
+			const trace = TraceId.make(String.repeat(32)('1'))
 			yield* telemetry.ingestLogs(
 				logs(
 					'stash-server',
@@ -1818,7 +1887,7 @@ it.layer(platform)(test => {
 				level: 'error',
 				message: 'disk full',
 				side: 'server',
-				span: '1111111111111111',
+				span: SpanId.make('1111111111111111'),
 				trace
 			})
 			assert.strictEqual((yield* telemetry.searchLogs({level: 'warn', limit: 100, since: '3d'})).total, 2)
@@ -1964,17 +2033,16 @@ it.layer(platform)(test => {
 					entries: 1,
 					lastEvent: DateTime.formatIso(DateTime.makeUnsafe(NOW)),
 					release: '0.1.2',
-					runStarted: DateTime.formatIso(DateTime.makeUnsafe(0)),
 					side: 'server'
 				},
-				{
-					app: 'deploy',
-					entries: 1,
-					lastEvent: DateTime.formatIso(DateTime.makeUnsafe(NOW + 20)),
-					runStarted: DateTime.formatIso(DateTime.makeUnsafe(0)),
-					side: 'web'
-				}
+				{app: 'deploy', entries: 1, lastEvent: DateTime.formatIso(DateTime.makeUnsafe(NOW + 20)), side: 'web'}
 			])
+			for (const app of ['stash', 'deploy']) {
+				assert.notProperty(
+					Option.getOrThrow(Array.findFirst(answer.services, service => service.app === app)),
+					'runStarted'
+				)
+			}
 			assert.containsSubset(answer.rejections, [
 				{
 					count: 2,
@@ -2008,7 +2076,7 @@ it.layer(platform)(test => {
 		Effect.fnUntraced(function* () {
 			yield* TestClock.setTime(NOW)
 			const telemetry = yield* fresh()
-			const big = String.repeat(32)('a')
+			const big = TraceId.make(String.repeat(32)('a'))
 			const stack = String.repeat(4096)('s')
 			function failing(name: string, traceId: string, spanId: string, start: string) {
 				return span({

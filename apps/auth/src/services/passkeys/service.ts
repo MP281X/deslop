@@ -1,5 +1,19 @@
-import type {Stream} from 'effect'
-import {Array, Boolean, Clock, Config, Context, Effect, HashMap, Layer, Option, Ref, Schema, pipe} from 'effect'
+import {
+	Array,
+	Boolean,
+	Config,
+	Context,
+	DateTime,
+	Duration,
+	Effect,
+	HashMap,
+	Layer,
+	Option,
+	Ref,
+	Schema,
+	Stream,
+	pipe
+} from 'effect'
 
 import {
 	generateAuthenticationOptions,
@@ -14,14 +28,22 @@ import {Migrator, SqlClient, SqlModel, SqlSchema} from 'effect/sql'
 import {localAuth} from '@deslop/runtime/server/auth'
 import {AuthError, asAuthError} from '@deslop/runtime/shared/auth'
 
-import type {Assertion, Registration} from '#services/passkeys/schema.ts'
-import {ClientData, CreationOptions, Passkey, RequestOptions, Transport} from '#services/passkeys/schema.ts'
+import type {Assertion} from '#services/passkeys/schema.ts'
+import {
+	ClientData,
+	CreationOptions,
+	Passkey,
+	PasskeyId,
+	Registration,
+	RequestOptions,
+	Transport
+} from '#services/passkeys/schema.ts'
 import {browserLabel, credentialOwnerOf, deviceLabel} from '#services/tokens/lib/utils.ts'
 import {CredentialOwner} from '#services/tokens/schema.ts'
 import type {Origin, SessionVia} from '#services/tokens/schema.ts'
 
 // How long a challenge stays answerable.
-const LIFETIME = 5 * 60_000
+const LIFETIME = Duration.minutes(5)
 
 declare module 'effect/reactivity/Reactivity' {
 	interface Keys {
@@ -56,8 +78,8 @@ const challengeFromClientData = Effect.fnUntraced(function* (clientDataJSON: str
 })
 
 // Challenges still answerable at `now`, so expired ones never pile up.
-function live<K, V extends {expiresAt: number}>(issued: HashMap.HashMap<K, V>, now: number) {
-	return HashMap.filter(issued, entry => entry.expiresAt > now)
+function live<K, V extends {expiresAt: DateTime.Utc}>(issued: HashMap.HashMap<K, V>, now: DateTime.Utc) {
+	return HashMap.filter(issued, entry => DateTime.isGreaterThan(entry.expiresAt, now))
 }
 
 function registrationKey(owner: CredentialOwner) {
@@ -75,7 +97,7 @@ export class Passkeys extends Context.Service<
 		readonly forget: (owner: CredentialOwner) => Effect.Effect<void, AuthError>
 		readonly watch: (owner: CredentialOwner) => Stream.Stream<readonly Passkey[], AuthError>
 		readonly registration: (owner: CredentialOwner, via: SessionVia) => Effect.Effect<CreationOptions, AuthError>
-		readonly remove: (id: string, owner: CredentialOwner) => Effect.Effect<void, AuthError>
+		readonly remove: (id: PasskeyId, owner: CredentialOwner) => Effect.Effect<void, AuthError>
 		readonly request: Effect.Effect<RequestOptions, AuthError>
 		// The account the passkey belongs to; the caller checks it may still sign in.
 		readonly signIn: (response: Assertion) => Effect.Effect<CredentialOwner, AuthError>
@@ -119,8 +141,8 @@ export class Passkeys extends Context.Service<
 					onTrue: () => new URL(origin).hostname
 				})
 				// A challenge answers once, within five minutes, taken in one step: registrations by account, sign-ins by the challenge itself.
-				const registering = yield* Ref.make(HashMap.empty<string, {challenge: string; expiresAt: number}>())
-				const signingIn = yield* Ref.make(HashMap.empty<string, {expiresAt: number}>())
+				const registering = yield* Ref.make(HashMap.empty<string, {challenge: string; expiresAt: DateTime.Utc}>())
+				const signingIn = yield* Ref.make(HashMap.empty<string, {expiresAt: DateTime.Utc}>())
 				const withReactivity = Effect.provideService(Reactivity.Reactivity, yield* Reactivity.Reactivity)
 				const passkeys = yield* SqlModel.makeRepository(Passkey, {
 					idColumn: 'id',
@@ -164,7 +186,7 @@ export class Passkeys extends Context.Service<
 							yield* owned(session.via)
 							const key = registrationKey(session.owner)
 							const from = session.from
-							const now = yield* Clock.currentTimeMillis
+							const now = yield* DateTime.now
 							const challenge = yield* pipe(
 								Ref.modify(registering, issued => [
 									HashMap.get(live(issued, now), key),
@@ -174,7 +196,12 @@ export class Passkeys extends Context.Service<
 								Effect.mapError(() => AuthError.make({message: 'Adding the passkey took too long; start again'}))
 							)
 							// A transport a newer browser names, and this list does not know yet, is left out rather than failing the passkey.
-							const transports = Array.filter(response.response.transports ?? [], Schema.is(Transport))
+							const transports = pipe(
+								response.response.transports,
+								Option.getOrElse(Array.empty<string>),
+								Array.filter(Schema.is(Transport))
+							)
+							const encoded = yield* Schema.encodeEffect(Registration)(response)
 							const verified = yield* Effect.tryPromise({
 								catch: asPasskeyError,
 								try: () =>
@@ -183,21 +210,22 @@ export class Passkeys extends Context.Service<
 										expectedOrigin: origin,
 										expectedRPID: rpID,
 										requireUserVerification: true,
-										response: {...response, response: {...response.response, transports}}
+										response: {...encoded, response: {...encoded.response, transports}}
 									})
 							})
 							if (!verified.verified) return yield* AuthError.make({message: 'The passkey could not be verified'})
 							const credential = verified.registrationInfo.credential
+							const id = PasskeyId.make(credential.id)
 							yield* pipe(
 								Effect.gen(function* () {
 									// WebAuthn §7.1 step 22: uniqueness is checked in the same transaction as the saved registration.
-									if (Option.isSome(yield* Effect.catchNoSuchElement(passkeys.findById(credential.id)))) {
+									if (Option.isSome(yield* Effect.catchNoSuchElement(passkeys.findById(id)))) {
 										return yield* AuthError.make({message: 'This passkey is already added'})
 									}
 									yield* passkeys.insertVoid({
 										addedFrom: `${browserLabel(from)} · ${deviceLabel(from)}`,
 										counter: credential.counter,
-										id: credential.id,
+										id,
 										incarnation: session.owner.incarnation,
 										publicKey: Base64Url.encode(credential.publicKey),
 										synced: verified.registrationInfo.credentialDeviceType === 'multiDevice',
@@ -239,11 +267,11 @@ export class Passkeys extends Context.Service<
 									userName: user.name
 								})
 						})
-						const now = yield* Clock.currentTimeMillis
+						const now = yield* DateTime.now
 						yield* Ref.update(registering, issued =>
 							HashMap.set(live(issued, now), registrationKey(owner), {
 								challenge: options.challenge,
-								expiresAt: now + LIFETIME
+								expiresAt: DateTime.addDuration(now, LIFETIME)
 							})
 						)
 						// As the JSON the browser receives, where a key the library left undefined is simply absent.
@@ -252,7 +280,7 @@ export class Passkeys extends Context.Service<
 						)
 					}, asAuthError('Cannot start adding a passkey')),
 					remove: Effect.fn('Passkeys.remove')(
-						function* (id: string, owner: CredentialOwner) {
+						function* (id: PasskeyId, owner: CredentialOwner) {
 							yield* Reactivity.mutation(deleteOne({id, owner}), ['passkeys'])
 						},
 						withReactivity,
@@ -264,9 +292,9 @@ export class Passkeys extends Context.Service<
 							try: () => generateAuthenticationOptions({rpID, userVerification: 'required'})
 						}),
 						Effect.tap(options =>
-							Effect.flatMap(Clock.currentTimeMillis, now =>
+							Effect.flatMap(DateTime.now, now =>
 								Ref.update(signingIn, issued =>
-									HashMap.set(live(issued, now), options.challenge, {expiresAt: now + LIFETIME})
+									HashMap.set(live(issued, now), options.challenge, {expiresAt: DateTime.addDuration(now, LIFETIME)})
 								)
 							)
 						),
@@ -277,7 +305,7 @@ export class Passkeys extends Context.Service<
 					),
 					signIn: Effect.fn('Passkeys.signIn')(function* (response: Assertion) {
 						const challenge = yield* challengeFromClientData(response.response.clientDataJSON)
-						const now = yield* Clock.currentTimeMillis
+						const now = yield* DateTime.now
 						const taken = yield* Ref.modify(signingIn, issued => [
 							HashMap.has(live(issued, now), challenge),
 							HashMap.remove(live(issued, now), challenge)
@@ -305,7 +333,12 @@ export class Passkeys extends Context.Service<
 						yield* raiseCounter({counter: verified.authenticationInfo.newCounter, id: found.id})
 						return credentialOwnerOf(found)
 					}, asAuthError('Cannot sign in with the passkey')),
-					watch: owner => sql.reactive(['passkeys'], asAuthError('Cannot read the passkeys')(listOwned(owner)))
+					watch: owner =>
+						Stream.withSpan(
+							sql.reactive(['passkeys'], asAuthError('Cannot read the passkeys')(listOwned(owner))),
+							'Passkeys.watch',
+							{attributes: {'rpc.stream': true, userId: owner.user.id}}
+						)
 				})
 			})
 		),

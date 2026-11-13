@@ -8,6 +8,7 @@ import {HttpClient, HttpClientRequest} from 'effect/http'
 import {localAuth} from '#server/auth.ts'
 import {Sessions} from '#server/sessions.ts'
 import type {AiProvider} from '#shared/ai.ts'
+import type {UserId} from '#shared/auth.ts'
 
 export class AiUnavailableError extends Schema.TaggedError<AiUnavailableError>()('AiUnavailableError', {
 	cause: Schema.optional(Schema.Defect()),
@@ -33,14 +34,15 @@ export class AiGateway extends Context.Service<
 	{
 		apiUrl: (provider: AiProvider) => Effect.Effect<string, AiUnavailableError>
 		authorize: (
-			userId: string
+			userId: UserId
 		) => Effect.Effect<(client: HttpClient.HttpClient) => HttpClient.HttpClient, AiUnavailableError>
 	}
 >()('@deslop/runtime/server/ai/AiGateway') {
 	static readonly languageModel = Effect.fn('AiGateway.languageModel')(function* (
-		userId: string,
+		userId: UserId,
 		options: {maxTokens: number}
 	) {
+		yield* Effect.annotateCurrentSpan({maxTokens: options.maxTokens, userId})
 		const gateway = yield* AiGateway
 		const client = yield* AnthropicClient.make({
 			apiUrl: yield* gateway.apiUrl('anthropic'),
@@ -61,16 +63,18 @@ export class AiGateway extends Context.Service<
 			const gateway = yield* Config.option(Config.String('GATEWAY_URL'))
 			const local = yield* localAuth
 			const sessions = yield* Sessions
-			function apiUrl(provider: AiProvider) {
-				return Option.match(gateway, {
+			const apiUrl = Effect.fn('AiGateway.apiUrl')(function* (provider: AiProvider) {
+				yield* Effect.annotateCurrentSpan('provider', provider)
+				return yield* Option.match(gateway, {
 					onNone: () => Effect.fail(AiUnavailableError.make({message: 'Start the app with --gateway'})),
 					onSome: url =>
 						Effect.succeed(
 							`${url}/ai/${provider}${Boolean.match(provider === 'openrouter', {onFalse: () => '', onTrue: () => '/v1'})}`
 						)
 				})
-			}
-			const authorize = Effect.fnUntraced(function* (userId: string) {
+			})
+			const authorize = Effect.fn('AiGateway.authorize')(function* (userId: UserId) {
+				yield* Effect.annotateCurrentSpan('userId', userId)
 				if (local) return Function.identity<HttpClient.HttpClient>
 				const token = yield* Effect.mapError(sessions.tokenOf(userId), cause =>
 					AiUnavailableError.make({cause, message: cause.message})

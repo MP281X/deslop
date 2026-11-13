@@ -8,6 +8,7 @@ import {HttpRouter} from 'effect/http'
 import {Reactivity} from 'effect/reactivity'
 
 import {Auth, HttpAuth} from '@deslop/runtime/server/auth'
+import {UserId} from '@deslop/runtime/shared/auth'
 
 import {HttpHandlers} from '#http/handlers.ts'
 import {Media} from '#services/media/service.ts'
@@ -15,10 +16,10 @@ import {Media} from '#services/media/service.ts'
 import {Sources} from '#services/notes/lib/extraction.ts'
 // oxlint-disable-next-line no-restricted-imports -- As above: the AI organizer is Notes' own internal.
 import {Organizer} from '#services/notes/lib/organization.ts'
-import {NoteId} from '#services/notes/schema.ts'
+import {NoteId, TagName} from '#services/notes/schema.ts'
 import {Notes} from '#services/notes/service.ts'
 
-const USER = {id: 'github:1', name: 'tester'}
+const USER = {id: UserId.make('github:1'), name: 'tester'}
 const ID = NoteId.make('6f1c9a52-8d0e-4c3b-9a51-2f6d7e8b9c01')
 
 const organizer = Organizer.of({
@@ -28,7 +29,7 @@ const organizer = Organizer.of({
 			definitions: [],
 			screenText: '',
 			summary: '',
-			tags: ['reading'],
+			tags: [TagName.make('reading')],
 			title: 'Saved',
 			topics: ''
 		})

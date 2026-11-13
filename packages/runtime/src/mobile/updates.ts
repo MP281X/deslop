@@ -42,7 +42,7 @@ const updates = AtomMachine.make(
 				{log: 'Warn', message: 'The app update did not start'}
 			)
 		},
-		events: Machine.events({Returned: {away: Schema.Finite}}),
+		events: Machine.events({Returned: {away: Schema.Duration}}),
 		root: Machine.state({states: {Checking: {}, Downloaded: {}, Idle: {}, Reloading: {}}})
 	}).handle({
 		initial: {target: 'Idle'},
@@ -65,7 +65,10 @@ const updates = AtomMachine.make(
 			},
 			Downloaded: {
 				on: {
-					Returned: {guard: transition => transition.event.away >= Duration.toMillis('10 minutes'), target: 'Reloading'}
+					Returned: {
+						guard: transition => Duration.isGreaterThanOrEqualTo(transition.event.away, Duration.minutes(10)),
+						target: 'Reloading'
+					}
 				}
 			},
 			Idle: {on: {Returned: {target: 'Checking'}}},

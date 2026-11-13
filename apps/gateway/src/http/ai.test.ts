@@ -30,7 +30,7 @@ import {SqlClient} from 'effect/sql'
 
 import {Auth} from '@deslop/runtime/server/auth'
 import {Sessions} from '@deslop/runtime/server/sessions'
-import {AccessClaims} from '@deslop/runtime/shared/auth'
+import {AccessClaims, UserId} from '@deslop/runtime/shared/auth'
 
 import {AiHttpHandlers} from '#http/handlers.ts'
 import {AiProxy} from '#services/ai-proxy/service.ts'
@@ -57,7 +57,7 @@ const fixture = Effect.fnUntraced(function* (compressed?: HttpClient.HttpClient)
 		return Redacted.value(
 			yield* Effect.provideService(
 				Jwt.sign(
-					AccessClaims,
+					Schema.toEncoded(AccessClaims),
 					{
 						aud: 'deslop',
 						azp: 'Stash',
@@ -66,7 +66,7 @@ const fixture = Effect.fnUntraced(function* (compressed?: HttpClient.HttpClient)
 						iss: 'https://auth.mp281x.xyz/api/auth',
 						name: 'Alice',
 						sid: 'family',
-						sub: 'alice'
+						sub: UserId.make('alice')
 					},
 					signingKey,
 					{kid: 'test', typ: 'at+jwt'}
@@ -140,7 +140,7 @@ const fixture = Effect.fnUntraced(function* (compressed?: HttpClient.HttpClient)
 	const saved = yield* Queue.unbounded<{costUsd: number; unknownCostCalls: number}>()
 	yield* pipe(
 		sql.reactive(
-			{aiUsage: ['alice']},
+			{aiUsage: [UserId.make('alice')]},
 			Effect.flatMap(
 				sql`SELECT total(costUsd) AS costUsd, total(unknownCostCalls) AS unknownCostCalls FROM ai_usage WHERE owner = 'alice'`,
 				Schema.decodeUnknownEffect(
@@ -190,8 +190,8 @@ it.layer(
 		'forwards JSON and SSE unchanged using the JWT owner key and meters its cost',
 		Effect.fnUntraced(function* () {
 			const f = yield* fixture()
-			yield* f.ai.setKey('alice', 'anthropic', Redacted.make('alice-secret'))
-			yield* f.ai.setKey('bob', 'anthropic', Redacted.make('bob-secret'))
+			yield* f.ai.setKey(UserId.make('alice'), 'anthropic', Redacted.make('alice-secret'))
+			yield* f.ai.setKey(UserId.make('bob'), 'anthropic', Redacted.make('bob-secret'))
 			const token = yield* f.sign()
 			for (const call of [
 				{costUsd: 0.00004, path: 'json'},
@@ -218,7 +218,10 @@ it.layer(
 				assert.strictEqual(usage.unknownCostCalls, 0)
 			}
 			assert.deepStrictEqual(
-				Array.map(yield* f.ai.list('alice'), key => ({...key, lastStatus: Option.getOrUndefined(key.lastStatus)})),
+				Array.map(yield* f.ai.list(UserId.make('alice')), key => ({
+					...key,
+					lastStatus: Option.getOrUndefined(key.lastStatus)
+				})),
 				[{last4: 'cret', lastStatus: 201, provider: 'anthropic'}]
 			)
 			const response = yield* f.request('/ai/anthropic/cost', {
@@ -229,7 +232,7 @@ it.layer(
 			yield* Effect.promise(() => response.text())
 			// A price the provider reports is taken as it is.
 			assert.closeTo((yield* Queue.take(f.saved)).costUsd, 0.12308, 1e-12)
-			yield* f.ai.removeKey('alice', 'anthropic')
+			yield* f.ai.removeKey(UserId.make('alice'), 'anthropic')
 			const missing = yield* f.request('/ai/anthropic/json', {headers: {authorization: `Bearer ${token}`}})
 			assert.equal(missing.status, 402)
 			assert.include(yield* Effect.promise(() => missing.text()), 'Add your Anthropic key in Gateway')
@@ -240,7 +243,7 @@ it.layer(
 		'retries a failed pricing refresh on the next call instead of pricing a day as unknown',
 		Effect.fnUntraced(function* () {
 			const f = yield* fixture()
-			yield* f.ai.setKey('alice', 'anthropic', Redacted.make('alice-secret'))
+			yield* f.ai.setKey(UserId.make('alice'), 'anthropic', Redacted.make('alice-secret'))
 			const token = yield* f.sign()
 			yield* Ref.set(f.pricingDown, true)
 			const first = yield* f.request('/ai/anthropic/json', {
@@ -319,7 +322,7 @@ it.layer(
 					)
 				)
 				const f = yield* fixture(yield* HttpClient.HttpClient)
-				yield* f.ai.setKey('alice', 'anthropic', Redacted.make('alice-secret'))
+				yield* f.ai.setKey(UserId.make('alice'), 'anthropic', Redacted.make('alice-secret'))
 				const response = yield* f.request('/ai/anthropic/gzip', {
 					headers: {'accept-encoding': 'gzip', authorization: `Bearer ${yield* f.sign()}`}
 				})

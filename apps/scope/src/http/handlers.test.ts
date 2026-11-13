@@ -13,12 +13,14 @@ import {TestClock} from 'effect/testing'
 
 import {HttpHandlers} from '#http/handlers.ts'
 import {runIds} from '#services/github/lib/utils.ts'
-import type {WorkflowJob, WorkflowRun} from '#services/github/schema.ts'
+import type {WorkflowJob} from '#services/github/schema.ts'
+import {WorkflowRun} from '#services/github/schema.ts'
+import {FindTracesParams, TraceId} from '#services/telemetry/schema.ts'
 import {Telemetry} from '#services/telemetry/service.ts'
 
 const SECRET = 'webhook-secret'
 const NOW = 1_781_870_000_000
-const TRACE_ID = String.repeat(32)('a')
+const TRACE_ID = TraceId.make(String.repeat(32)('a'))
 
 function iso(millis: number) {
 	return DateTime.formatIso(DateTime.makeUnsafe(millis))
@@ -42,7 +44,7 @@ function runEvent(start: number, action: string) {
 			run_started_at: iso(start),
 			updated_at: iso(start + 4 * 60_000)
 		}
-	} satisfies WorkflowRun
+	} satisfies typeof WorkflowRun.Encoded
 }
 
 function jobEvent(start: number, conclusion: string) {
@@ -70,7 +72,7 @@ function jobEvent(start: number, conclusion: string) {
 				}
 			]
 		}
-	} satisfies WorkflowJob
+	} satisfies typeof WorkflowJob.Encoded
 }
 
 function otlp(start: number) {
@@ -170,7 +172,7 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))('Scope HTTP routes',
 				})
 				const run = runEvent(start, 'completed')
 				assert.strictEqual((yield* signed('workflow_run', run)).status, 204)
-				const ids = runIds(run)
+				const ids = runIds(yield* Schema.decodeEffect(WorkflowRun)(run))
 				assert.deepStrictEqual(
 					Array.map((yield* telemetry.trace(ids.traceId)).spans, span => span.name),
 					['CI']
@@ -195,7 +197,9 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))('Scope HTTP routes',
 				] satisfies {event: string; payload: unknown}[]) {
 					assert.strictEqual((yield* signed(filtered.event, filtered.payload)).status, 204)
 				}
-				const found = yield* telemetry.findTraces({errors: false, limit: 10, since: '3d', sort: 'recent'})
+				const found = yield* telemetry.findTraces(
+					yield* Schema.decodeEffect(FindTracesParams)({errors: false, limit: 10, since: '3d', sort: 'recent'})
+				)
 				assert.strictEqual(found.total, 1)
 				assert.strictEqual(found.traces[0]?.app, 'MP281X/deslop')
 				assert.strictEqual(found.traces[0]?.operation, 'CI')
@@ -236,7 +240,9 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))('Scope HTTP routes',
 				})
 				assert.strictEqual(malformed.status, 400)
 				assert.strictEqual(
-					(yield* telemetry.findTraces({errors: false, limit: 10, since: '3d', sort: 'recent'})).total,
+					(yield* telemetry.findTraces(
+						yield* Schema.decodeEffect(FindTracesParams)({errors: false, limit: 10, since: '3d', sort: 'recent'})
+					)).total,
 					0
 				)
 			})
@@ -255,7 +261,7 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))('Scope HTTP routes',
 					method: 'POST'
 				})
 				assert.strictEqual(refused.status, 415)
-				assert.containsSubset((yield* telemetry.checkIngestion()).rejections, [
+				assert.containsSubset(Option.getOrThrow((yield* telemetry.checkIngestion()).rejections), [
 					{count: 1, credential: 'none', route: '/v1/traces', status: 415}
 				])
 				const accepted = yield* send(server.web, '/v1/traces', {
@@ -270,7 +276,9 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))('Scope HTTP routes',
 					['demo.op']
 				)
 				assert.strictEqual(
-					(yield* telemetry.findTraces({errors: false, limit: 10, since: '3d', sort: 'recent'})).traces[0]?.app,
+					(yield* telemetry.findTraces(
+						yield* Schema.decodeEffect(FindTracesParams)({errors: false, limit: 10, since: '3d', sort: 'recent'})
+					)).traces[0]?.app,
 					'demo'
 				)
 			})
@@ -291,7 +299,7 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))('Scope HTTP routes',
 					code: 14,
 					message: 'Telemetry storage unavailable'
 				})
-				assert.containsSubset((yield* telemetry.checkIngestion()).rejections, [
+				assert.containsSubset(Option.getOrThrow((yield* telemetry.checkIngestion()).rejections), [
 					{count: 1, credential: 'none', route: '/v1/traces', status: 503}
 				])
 			})

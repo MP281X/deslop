@@ -1,13 +1,12 @@
 import {assert, it} from '@effect/vitest'
 
-import {DateTime, Option} from 'effect'
+import {DateTime, Duration, Option, Schema, Struct} from 'effect'
 
-import {HOUR, MINUTE} from '#services/bookings/lib/utils.ts'
-import {Flight, Train} from '#services/bookings/schema.ts'
+import {Flight, Train, TrainTracking} from '#services/bookings/schema.ts'
 import {checkEvery, flightTracking, isStale, trainTracking} from '#services/tracking/lib/utils.ts'
-import type {FaFlight} from '#services/tracking/schema.ts'
+import {FaFlight, VtStatus} from '#services/tracking/schema.ts'
 
-const ANSWER: FaFlight = {
+const ANSWER = Schema.decodeSync(FaFlight)({
 	cancelled: false,
 	diverted: false,
 	estimated_out: '2026-10-28T16:00:00Z',
@@ -15,50 +14,49 @@ const ANSWER: FaFlight = {
 	gate_origin: 'B12',
 	scheduled_out: '2026-10-28T15:40:00Z',
 	terminal_origin: '3'
-}
-
-// A ticket without coach, seat or confirmation, not yet tracked.
-const ROME_TO_MILAN = {
+})
+const train = Schema.decodeSync(Train.json)({
+	_tag: 'train',
 	arrives: 0,
-	coach: Option.none(),
-	confirmation: Option.none(),
 	departs: 0,
 	from: {name: 'Roma Termini', timeZone: 'Europe/Rome'},
 	id: '1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d',
-	live: Option.none(),
 	number: '9541',
 	operator: 'trenitalia',
 	operatorName: 'Frecciarossa',
-	seat: Option.none(),
 	status: 'confirmed',
 	to: {name: 'Milano Centrale', timeZone: 'Europe/Rome'}
-} as const
+})
 
 it('keeps the gate a flight left for the change it shows', () => {
-	const first = flightTracking({...ANSWER, gate_origin: 'A3'}, 1, Option.none())
-	const changed = flightTracking(ANSWER, 2, Option.some(first))
+	const first = flightTracking({...ANSWER, gate_origin: Option.some('A3')}, DateTime.makeUnsafe(1), Option.none())
+	const changed = flightTracking(ANSWER, DateTime.makeUnsafe(2), Option.some(first))
 	assert.deepStrictEqual(
 		[
 			first.previousGate,
 			changed.departureGate,
 			changed.previousGate,
-			flightTracking(ANSWER, 3, Option.some(changed)).previousGate
+			flightTracking(ANSWER, DateTime.makeUnsafe(3), Option.some(changed)).previousGate
 		],
-		[undefined, 'B12', 'A3', 'A3']
+		[Option.none(), Option.some('B12'), Option.some('A3'), Option.some('A3')]
 	)
 	assert.deepStrictEqual(
 		[changed.state, changed.departureEstimated],
-		['scheduled', DateTime.toEpochMillis(DateTime.makeUnsafe('2026-10-28T16:00:00Z'))]
+		['scheduled', Option.some(DateTime.makeUnsafe('2026-10-28T16:00:00Z'))]
 	)
 	assert.strictEqual(
-		flightTracking({...ANSWER, actual_off: '2026-10-28T16:10:00Z'}, 4, Option.none()).state,
+		flightTracking(
+			{...ANSWER, actual_off: Option.some(DateTime.makeUnsafe('2026-10-28T16:10:00Z'))},
+			DateTime.makeUnsafe(4),
+			Option.none()
+		).state,
 		'airborne'
 	)
 })
 
 it('finds the booked stops by Trenitalia code, else by their printed names', () => {
 	const arrived = trainTracking(
-		{
+		Schema.decodeSync(VtStatus)({
 			fermate: [
 				{
 					binarioProgrammatoPartenzaDescrizione: '3',
@@ -69,24 +67,27 @@ it('finds the booked stops by Trenitalia code, else by their printed names', () 
 				},
 				{actualFermataType: 1, binarioEffettivoArrivoDescrizione: '14', id: 'S05046', stazione: 'BOLOGNA C.LE/AV'}
 			]
-		},
-		Train.make({
-			...ROME_TO_MILAN,
-			from: {code: 'it-trenitalia_08409:station', name: 'Roma', timeZone: 'Europe/Rome'},
-			to: {name: 'Bologna Centrale', timeZone: 'Europe/Rome'}
 		}),
-		1
+		Train.make({
+			...train,
+			from: Schema.decodeSync(Train.json.fields.from)({
+				code: 'it-trenitalia_08409:station',
+				name: 'Roma',
+				timeZone: 'Europe/Rome'
+			}),
+			to: Schema.decodeSync(Train.json.fields.to)({name: 'Bologna Centrale', timeZone: 'Europe/Rome'})
+		}),
+		DateTime.makeUnsafe(1)
 	)
 	assert.deepStrictEqual(
 		Option.map(arrived, found => [found.departurePlatform, found.arrivalPlatform, found.state]),
-		Option.some(['3', '14', 'arrived'])
+		Option.some([Option.some('3'), Option.some('14'), 'arrived'])
 	)
 })
 
 it('reads the platform, the delay it left with and the delay it runs with at the booked stop', () => {
-	const train = Train.make(ROME_TO_MILAN)
 	const waiting = trainTracking(
-		{
+		Schema.decodeSync(VtStatus)({
 			fermate: [
 				{
 					binarioEffettivoPartenzaDescrizione: ' 12 ',
@@ -100,91 +101,138 @@ it('reads the platform, the delay it left with and the delay it runs with at the
 			],
 			ritardo: 6,
 			stazioneUltimoRilevamento: '--'
-		},
+		}),
 		train,
-		1
+		DateTime.makeUnsafe(1)
 	)
-	// Running from an earlier station, the train is still to board here.
 	assert.deepStrictEqual(
-		Option.map(waiting, found => [
-			found.state,
-			found.departurePlatform,
-			found.departurePlatformPlanned,
-			found.delayMinutes,
-			found.departureDelay,
-			found.lastSeen
-		]),
-		Option.some(['scheduled', '12', '9', 6, undefined, undefined])
+		Option.map(
+			waiting,
+			found =>
+				[
+					found.state,
+					found.departurePlatform,
+					found.departurePlatformPlanned,
+					found.delayMinutes,
+					found.departureDelay,
+					found.lastSeen
+				] as const
+		),
+		Option.some([
+			'scheduled',
+			Option.some('12'),
+			Option.some('9'),
+			Duration.minutes(6),
+			Option.none<Duration.Duration>(),
+			Option.none<{at: DateTime.Utc; station: string}>()
+		] as const)
 	)
 	const left = trainTracking(
-		{fermate: [{id: 'S08409', partenzaReale: 1, programmata: 0, ritardo: 3, stazione: 'ROMA TERMINI'}], ritardo: 8},
+		Schema.decodeSync(VtStatus)({
+			fermate: [{id: 'S08409', partenzaReale: 1, programmata: 0, ritardo: 3, stazione: 'ROMA TERMINI'}],
+			ritardo: 8
+		}),
 		train,
-		2
+		DateTime.makeUnsafe(2)
 	)
 	assert.deepStrictEqual(
-		Option.map(left, found => [found.state, found.departureDelay ?? 0, found.delayMinutes]),
-		Option.some(['departed', 3, 8])
+		Option.map(left, found => [found.state, found.departureDelay, found.delayMinutes]),
+		Option.some(['departed', Option.some(Duration.minutes(3)), Duration.minutes(8)])
 	)
 })
 
 it('checks a train each minute near departure and calls live data stale after two missed checks', () => {
-	const departs = DateTime.toEpochMillis(DateTime.makeUnsafe('2026-10-28T15:40:00Z'))
-	const timetable = {...ROME_TO_MILAN, arrives: departs + 3 * HOUR, departs}
-	const train = Train.make(timetable)
-	const flight = Flight.make({
+	const departs = DateTime.makeUnsafe('2026-10-28T15:40:00Z')
+	const timetable = Train.make({...train, arrives: DateTime.addDuration(departs, Duration.hours(3)), departs})
+	const flight = Schema.decodeSync(Flight.json)({
+		_tag: 'flight',
 		airline: 'British Airways',
 		airlineCode: 'BA',
-		arrives: departs + 2.5 * HOUR,
-		boardingAt: Option.none(),
-		boardingGroup: Option.none(),
-		confirmation: Option.none(),
-		departs,
+		arrives: DateTime.toEpochMillis(DateTime.addDuration(departs, Duration.hours(2.5))),
+		departs: DateTime.toEpochMillis(departs),
 		from: {city: 'Rome', code: 'FCO', name: 'Fiumicino', timeZone: 'Europe/Rome'},
 		id: '7f0c8f8e-0d0a-4a5e-9d8f-5b2a1c3d4e5f',
-		live: Option.none(),
 		number: '553',
-		seat: Option.none(),
 		status: 'confirmed',
 		to: {city: 'London', code: 'LHR', name: 'Heathrow', timeZone: 'Europe/London'}
 	})
-	const now = departs - 30 * MINUTE
-	function live(checkedAt: number, operator: Train['operator'] = 'trenitalia') {
+	const now = DateTime.subtractDuration(departs, Duration.minutes(30))
+	function live(checkedAt: DateTime.Utc, operator: Train['operator'] = 'trenitalia') {
 		return Train.make({
-			...timetable,
-			live: Option.some({checkedAt, delayMinutes: 0, state: 'scheduled' as const}),
+			...Struct.pick(timetable, Struct.keys(Train.fields)),
+			live: Option.some(
+				Schema.decodeSync(TrainTracking)({
+					checkedAt: DateTime.toEpochMillis(checkedAt),
+					delayMinutes: 0,
+					state: 'scheduled'
+				})
+			),
 			operator
 		})
 	}
 	assert.deepStrictEqual(
-		[checkEvery(train, now), checkEvery(train, departs - 3 * HOUR), checkEvery(flight, departs - 3 * HOUR)],
-		[Option.some(MINUTE), Option.some(30 * MINUTE), Option.some(20 * MINUTE)]
+		[
+			checkEvery(timetable, now),
+			checkEvery(timetable, DateTime.subtractDuration(departs, Duration.hours(3))),
+			checkEvery(flight, DateTime.subtractDuration(departs, Duration.hours(3)))
+		],
+		[Option.some(Duration.minutes(1)), Option.some(Duration.minutes(30)), Option.some(Duration.minutes(20))]
 	)
-	assert.deepStrictEqual([isStale(live(now - 2 * MINUTE), now), isStale(live(now - 5 * MINUTE), now)], [false, true])
-	// Tracking stops after arrival, and data it never replaced stays stale; an arrival is final.
 	assert.deepStrictEqual(
 		[
-			isStale(live(now), train.arrives + HOUR),
+			isStale(live(DateTime.subtractDuration(now, Duration.minutes(2))), now),
+			isStale(live(DateTime.subtractDuration(now, Duration.minutes(5))), now)
+		],
+		[false, true]
+	)
+	assert.deepStrictEqual(
+		[
+			isStale(live(now), DateTime.addDuration(timetable.arrives, Duration.hours(1))),
 			isStale(
-				Train.make({...timetable, live: Option.some({checkedAt: now, delayMinutes: 0, state: 'arrived' as const})}),
-				train.arrives + HOUR
+				Train.make({
+					...Struct.pick(timetable, Struct.keys(Train.fields)),
+					live: Option.some(
+						Schema.decodeSync(TrainTracking)({
+							checkedAt: DateTime.toEpochMillis(now),
+							delayMinutes: 0,
+							state: 'arrived'
+						})
+					)
+				}),
+				DateTime.addDuration(timetable.arrives, Duration.hours(1))
 			)
 		],
 		[true, false]
 	)
-	// A timetable-only train is never checked, so its last answer is not stale.
 	assert.deepStrictEqual(
-		[checkEvery(Train.make({...timetable, operator: 'other'}), now), isStale(live(0, 'other'), now)],
+		[
+			checkEvery(Train.make({...Struct.pick(timetable, Struct.keys(Train.fields)), operator: 'other'}), now),
+			isStale(live(DateTime.makeUnsafe(0), 'other'), now)
+		],
 		[Option.none(), false]
 	)
 })
 
 it("answers nothing for another day's run of the number or a run that does not call at the booked station", () => {
-	const train = Train.make(ROME_TO_MILAN)
 	assert.deepStrictEqual(
 		[
-			trainTracking({fermate: [{id: 'S08409', programmata: 5 * HOUR, stazione: 'ROMA TERMINI'}], ritardo: 0}, train, 1),
-			trainTracking({fermate: [{id: 'S08409', partenzaReale: 1, stazione: 'ROMA TERMINI'}], ritardo: 0}, train, 1),
-			trainTracking({fermate: [], ritardo: 9}, train, 1)
+			trainTracking(
+				Schema.decodeSync(VtStatus)({
+					fermate: [{id: 'S08409', programmata: 18_000_000, stazione: 'ROMA TERMINI'}],
+					ritardo: 0
+				}),
+				train,
+				DateTime.makeUnsafe(1)
+			),
+			trainTracking(
+				Schema.decodeSync(VtStatus)({
+					fermate: [{id: 'S08409', partenzaReale: 1, stazione: 'ROMA TERMINI'}],
+					ritardo: 0
+				}),
+				train,
+				DateTime.makeUnsafe(1)
+			),
+			trainTracking(Schema.decodeSync(VtStatus)({fermate: [], ritardo: 9}), train, DateTime.makeUnsafe(1))
 		],
 		[Option.none(), Option.none(), Option.none()]
 	)

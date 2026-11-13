@@ -4,6 +4,7 @@ import {Tool, Toolkit} from 'effect/ai'
 
 import {
 	FindTracesParams,
+	AppName,
 	IngestionAnswer,
 	IngestionService,
 	LatencyAnswer,
@@ -16,6 +17,8 @@ import {
 	ReadTraceParams,
 	ReadSpan,
 	SearchLogsParams,
+	SpanId,
+	ToolAttributes,
 	TelemetryError,
 	TracesAnswer
 } from '#services/telemetry/schema.ts'
@@ -31,8 +34,8 @@ const TextWindow = Schema.Struct({
 
 type AttributeWindow = typeof AttributeWindow.Type
 const AttributeWindow = Schema.Struct({
-	attribute: Schema.optionalKey(Schema.String),
-	attributeCursor: Schema.optionalKey(Schema.String)
+	attribute: Schema.OptionFromOptionalKey(Schema.String),
+	attributeCursor: Schema.OptionFromOptionalKey(Schema.String)
 })
 
 export const ToolContracts = Toolkit.make(
@@ -42,14 +45,14 @@ export const ToolContracts = Toolkit.make(
 		failure: TelemetryError,
 		parameters: Schema.Struct({
 			...ListOperationsParams.fields,
-			cursor: Schema.optionalKey(Schema.String),
+			cursor: Schema.OptionFromOptionalKey(Schema.String),
 			limit: pipe(
 				Schema.Int.check(Schema.isBetween({maximum: 100, minimum: 1})),
 				Schema.withDecodingDefaultTypeKey(Effect.succeed(30))
 			),
-			operation: Schema.optionalKey(Schema.String)
+			operation: Schema.OptionFromOptionalKey(Schema.String)
 		}),
-		success: Schema.Struct({...OperationsAnswer.fields, nextCursor: Schema.optionalKey(Schema.String)})
+		success: Schema.Struct({...OperationsAnswer.fields, nextCursor: Schema.OptionFromOptionalKey(Schema.String)})
 	})
 		.annotate(Tool.Readonly, true)
 		.annotate(Tool.Strict, true),
@@ -79,14 +82,14 @@ export const ToolContracts = Toolkit.make(
 				Schema.Literals(['spans', 'logs', 'attributes']),
 				Schema.withDecodingDefaultTypeKey(Effect.succeed('spans' as const))
 			),
-			span: Schema.optionalKey(Schema.String)
+			span: Schema.OptionFromOptionalKey(SpanId)
 		}),
 		success: Schema.Struct({
 			...Struct.omit(ReadTraceAnswer.fields, ['spans']),
-			attributes: Schema.optionalKey(ReadSpan.fields.attrs.schema),
-			nextAttribute: Schema.optionalKey(Schema.String),
-			nextOffset: Schema.optionalKey(Schema.Natural),
-			nextTextOffset: Schema.optionalKey(Schema.Natural),
+			attributes: Schema.OptionFromOptionalKey(ToolAttributes),
+			nextAttribute: Schema.OptionFromOptionalKey(Schema.String),
+			nextOffset: Schema.OptionFromOptionalKey(Schema.Natural),
+			nextTextOffset: Schema.OptionFromOptionalKey(Schema.Natural),
 			spans: Schema.Array(ReadSpan.mapFields(fields => Struct.omit(fields, ['attrs', 'logs'])))
 		})
 	})
@@ -102,8 +105,8 @@ export const ToolContracts = Toolkit.make(
 			logs: Schema.Array(
 				LogRow.mapFields(fields => ({
 					...fields,
-					nextAttribute: Schema.optionalKey(Schema.String),
-					nextTextOffset: Schema.optionalKey(Schema.Natural)
+					nextAttribute: Schema.OptionFromOptionalKey(Schema.String),
+					nextTextOffset: Schema.OptionFromOptionalKey(Schema.Natural)
 				}))
 			)
 		})
@@ -123,11 +126,14 @@ export const ToolContracts = Toolkit.make(
 		description:
 			'Check missing or stale exporters by app, release, run start and last event; an absent service sent nothing in three days. Rejections are global because unauthenticated exports cannot be assigned to an app; use list_operations after ingestion resumes.',
 		failure: TelemetryError,
-		parameters: Schema.Struct({app: Schema.optionalKey(Schema.String)}),
+		parameters: Schema.Struct({app: Schema.OptionFromOptionalKey(AppName)}),
 		success: Schema.Struct({
 			...IngestionAnswer.fields,
 			services: Schema.Array(
-				IngestionService.mapFields(fields => ({...fields, runStarted: Schema.optionalKey(Schema.String)}))
+				IngestionService.mapFields(fields => ({
+					...fields,
+					runStarted: Schema.OptionFromOptionalKey(Schema.DateTimeUtcFromString)
+				}))
 			)
 		})
 	})

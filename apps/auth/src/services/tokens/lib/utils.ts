@@ -1,4 +1,4 @@
-import {Array, Effect, Option, Order, Record, Result, Schema, String, pipe} from 'effect'
+import {Array, DateTime, Effect, Option, Order, Record, Result, Schema, String, pipe} from 'effect'
 
 import {Digest} from 'effect/crypto'
 import type {SecureRandom} from 'effect/crypto'
@@ -7,9 +7,17 @@ import {Cookies, Headers, Url} from 'effect/http'
 import {NetAddress} from 'effect/net'
 
 import {AuthError, ClientRegistration, SESSION_COOKIE} from '@deslop/runtime/shared/auth'
+import type {ClientId, UserId} from '@deslop/runtime/shared/auth'
 import {isPrivateAddress} from '@deslop/runtime/shared/net'
 
-import type {AuthorizeClient, AuthorizeParams, CredentialOwner, Origin, SignedInApp} from '#services/tokens/schema.ts'
+import type {
+	AuthorizeClient,
+	AuthorizeParams,
+	CredentialOwner,
+	IncarnationId,
+	Origin,
+	SignedInApp
+} from '#services/tokens/schema.ts'
 import {ClientRequest} from '#services/tokens/schema.ts'
 
 // The workers by their public and tailnet addresses; Traefik runs on dev, so dev's own requests may also arrive from a private one.
@@ -21,7 +29,7 @@ const WORKERS: Record<string, string> = {
 }
 
 export function browserToken(headers: Headers.Headers) {
-	return Cookies.parseHeader(headers['cookie'] ?? '')[SESSION_COOKIE] ?? ''
+	return Option.fromUndefinedOr(Cookies.parseHeader(headers['cookie'] ?? '')[SESSION_COOKIE])
 }
 
 export function sameOwner(left: CredentialOwner, right: CredentialOwner) {
@@ -29,7 +37,7 @@ export function sameOwner(left: CredentialOwner, right: CredentialOwner) {
 }
 
 // The account a stored credential belongs to, from the owner columns it keeps.
-export function credentialOwnerOf(row: {incarnation: string; userId: string; userName: string}) {
+export function credentialOwnerOf(row: {incarnation: IncarnationId; userId: UserId; userName: string}) {
 	return {incarnation: row.incarnation, user: {id: row.userId, name: row.userName}}
 }
 
@@ -46,8 +54,9 @@ export function hashOf(digest: Digest.Digest['Service']) {
 export function withChildActivity(signIns: readonly SignedInApp[]) {
 	const children = pipe(
 		signIns,
-		Array.filter(signIn => Option.isSome(signIn.parent)),
-		Array.groupBy(signIn => Option.getOrElse(signIn.parent, () => ''))
+		Array.map(signIn => Option.map(signIn.parent, parent => ({parent, signIn}))),
+		Array.getSomes,
+		Array.groupBy(entry => entry.parent)
 	)
 	return pipe(
 		signIns,
@@ -57,10 +66,11 @@ export function withChildActivity(signIns: readonly SignedInApp[]) {
 				pipe(
 					children,
 					Record.get(signIn.family),
-					Option.getOrElse(() => [])
+					Option.getOrElse(() => []),
+					Array.map(entry => entry.signIn)
 				),
 				signIn,
-				Order.max(Order.mapInput(Order.Number, (app: SignedInApp) => app.lastActive))
+				Order.max(Order.mapInput(DateTime.Order, (app: SignedInApp) => app.lastActive))
 			)
 			return {
 				address: latest.address,
@@ -112,12 +122,8 @@ export function clientAddress(headers: Headers.Headers, remote: Option.Option<st
 
 export function originFrom(headers: Headers.Headers, remote: Option.Option<string>) {
 	return {
-		...Option.match(clientAddress(headers, remote), {onNone: () => ({}), onSome: address => ({address})}),
-		...pipe(
-			headers,
-			Headers.get('user-agent'),
-			Option.match({onNone: () => ({}), onSome: agent => ({userAgent: String.slice(0, 200)(agent)})})
-		)
+		address: clientAddress(headers, remote),
+		userAgent: pipe(headers, Headers.get('user-agent'), Option.map(String.slice(0, 200)))
 	}
 }
 
@@ -146,17 +152,21 @@ function platform(userAgent: string) {
 }
 
 export function browserLabel(origin: Origin) {
-	const agent = origin.userAgent ?? ''
-	if (String.includes('Edg/')(agent)) return 'Edge'
-	if (String.includes('Firefox/')(agent)) return 'Firefox'
-	if (String.includes('Chrome/')(agent)) return 'Chrome'
-	if (String.includes('Safari/')(agent)) return 'Safari'
-	return 'Browser'
+	return Option.match(origin.userAgent, {
+		onNone: () => 'Browser',
+		onSome: agent => {
+			if (String.includes('Edg/')(agent)) return 'Edge'
+			if (String.includes('Firefox/')(agent)) return 'Firefox'
+			if (String.includes('Chrome/')(agent)) return 'Chrome'
+			if (String.includes('Safari/')(agent)) return 'Safari'
+			return 'Browser'
+		}
+	})
 }
 
 export function deviceLabel(origin: Origin) {
 	return pipe(
-		Option.flatMap(Option.fromUndefinedOr(origin.address), address => {
+		Option.flatMap(origin.address, address => {
 			if (
 				Option.exists(
 					parsedAddress(address),
@@ -167,8 +177,8 @@ export function deviceLabel(origin: Origin) {
 			}
 			return Record.get(WORKERS, address)
 		}),
-		Option.orElse(() => Option.flatMap(Option.fromUndefinedOr(origin.userAgent), platform)),
-		Option.getOrElse(() => origin.address ?? 'unknown')
+		Option.orElse(() => Option.flatMap(origin.userAgent, platform)),
+		Option.getOrElse(() => Option.getOrElse(origin.address, () => 'unknown'))
 	)
 }
 
@@ -213,7 +223,7 @@ export function allowedRedirect(redirect: string) {
 	)
 }
 
-export function clientOf(clientId: string) {
+export function clientOf(clientId: ClientId) {
 	return pipe(
 		Base64Url.decodeString(clientId),
 		Result.getSuccess,
@@ -250,8 +260,8 @@ export function matchingRedirect(client: ClientRegistration, requested: Option.O
 }
 
 // A parameter sent empty counts as left out, as OAuth 2.1 §3.1 requires.
-export function given(value?: string) {
-	return Option.filter(Option.fromUndefinedOr(value), String.isNonEmpty)
+export function given(value: Option.Option<string>) {
+	return Option.filter(value, String.isNonEmpty)
 }
 
 // The rest of an authorization request, checked once its client and callback are known, so each failure can go to that callback.
@@ -263,16 +273,16 @@ export const clientRequest = Effect.fnUntraced(function* (
 	if (Option.isNone(given(params.response_type))) {
 		return yield* AuthError.make({message: 'Send response_type=code'})
 	}
-	if (params.response_type !== 'code') {
+	if (!Option.contains(params.response_type, 'code')) {
 		return yield* AuthError.make({error: 'unsupported_response_type', message: 'Only response_type=code is supported'})
 	}
-	if (params.code_challenge === undefined || params.code_challenge_method !== 'S256') {
+	if (Option.isNone(params.code_challenge) || !Option.contains(params.code_challenge_method, 'S256')) {
 		return yield* AuthError.make({message: 'Send a PKCE code_challenge with code_challenge_method=S256'})
 	}
 	if (
 		!pipe(
-			params.scope ?? '',
-			String.split(' '),
+			params.scope,
+			Option.match({onNone: Array.empty<string>, onSome: String.split(' ')}),
 			Array.filter(String.isNonEmpty),
 			Array.every(scope => scope === 'deslop' || scope === 'offline_access')
 		)
@@ -280,16 +290,17 @@ export const clientRequest = Effect.fnUntraced(function* (
 		return yield* AuthError.make({error: 'invalid_scope', message: 'Only the deslop scope is supported'})
 	}
 	return ClientRequest.make({
-		challenge: params.code_challenge,
+		challenge: yield* Effect.fromOption(params.code_challenge),
 		clientId: asked.client_id,
 		clientName: client.clientName,
+		parent: Option.none(),
 		redirectUri: client.redirectUri,
-		...Option.match(given(asked.state), {onNone: () => ({}), onSome: state => ({state})})
+		state: given(asked.state)
 	})
 })
 
 export function callbackUrl(
-	request: {redirectUri: string; state?: string},
+	request: {redirectUri: string; state: Option.Option<string>},
 	answer: Record<string, string>,
 	issuer: string
 ) {

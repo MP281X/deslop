@@ -1,5 +1,4 @@
-import type {Stream} from 'effect'
-import {Array, Config, Context, Effect, Layer, Option, Schema, String, pipe} from 'effect'
+import {Array, Config, Context, Effect, Layer, Option, Schema, Stream, String, pipe} from 'effect'
 
 import {HttpClient, HttpClientResponse} from 'effect/http'
 import {Reactivity} from 'effect/reactivity'
@@ -8,7 +7,7 @@ import {Migrator, SqlClient, SqlSchema} from 'effect/sql'
 import {AuthError, asAuthError} from '@deslop/runtime/shared/auth'
 import {RUNTIME_PATH, RuntimeConfig} from '@deslop/runtime/shared/schema'
 
-import {App} from '#services/apps/schema.ts'
+import {App, AppOrigin} from '#services/apps/schema.ts'
 
 declare module 'effect/reactivity/Reactivity' {
 	interface Keys {
@@ -20,7 +19,7 @@ export class Apps extends Context.Service<
 	Apps,
 	{
 		readonly watch: Stream.Stream<readonly App[], AuthError>
-		readonly register: (origin: string) => Effect.Effect<App, AuthError>
+		readonly register: (origin: AppOrigin) => Effect.Effect<App, AuthError>
 	}
 >()('@deslop/auth/services/apps/service/Apps') {
 	// The table this service owns, made at start; one statement per `sql` call, since SQLite runs only the first statement of a string.
@@ -60,7 +59,7 @@ export class Apps extends Context.Service<
 					`
 				})
 				return Apps.of({
-					register: Effect.fn('Apps.register')(function* (origin: string) {
+					register: Effect.fn('Apps.register')(function* (origin: AppOrigin) {
 						if (String.isEmpty(domain) || !String.endsWith(`.${domain}`)(new URL(origin).hostname)) {
 							return yield* AuthError.make({error: 'access_denied', message: `Only apps on ${domain} are listed`})
 						}
@@ -71,10 +70,10 @@ export class Apps extends Context.Service<
 							Effect.timeout('10 seconds'),
 							asAuthError(`${origin} did not answer ${RUNTIME_PATH}`)
 						)
-						if (!Option.exists(Option.fromUndefinedOr(runtime.auth), auth => new URL(auth).origin === self.origin)) {
+						if (!Option.exists(runtime.auth, auth => new URL(auth).origin === self.origin)) {
 							return yield* AuthError.make({error: 'access_denied', message: `${origin} signs in elsewhere`})
 						}
-						const app = App.make({name: runtime.name, origin: new URL(origin).origin})
+						const app = App.make({name: runtime.name, origin: AppOrigin.make(new URL(origin).origin)})
 						yield* pipe(
 							saveApp(app),
 							Reactivity.mutation(['apps']),
@@ -83,7 +82,11 @@ export class Apps extends Context.Service<
 						)
 						return app
 					}),
-					watch: sql.reactive(['apps'], asAuthError('Cannot read the apps')(listApps()))
+					watch: Stream.withSpan(
+						sql.reactive(['apps'], asAuthError('Cannot read the apps')(listApps())),
+						'Apps.watch',
+						{attributes: {'rpc.stream': true}}
+					)
 				})
 			})
 		),

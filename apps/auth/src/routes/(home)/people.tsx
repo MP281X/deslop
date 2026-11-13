@@ -27,8 +27,8 @@ function PersonRow(props: {children?: ReactNode; footer?: ReactNode; person: Per
 					<AccountAvatar id={props.person.id} name={props.person.name} small />
 				</ItemMedia>
 				<ItemContent>
-					<ItemTitle>{props.person.fullName ?? props.person.name}</ItemTitle>
-					{props.person.fullName !== undefined && <ItemDescription>@{props.person.name}</ItemDescription>}
+					<ItemTitle>{Option.getOrElse(props.person.fullName, () => props.person.name)}</ItemTitle>
+					{Option.isSome(props.person.fullName) && <ItemDescription>@{props.person.name}</ItemDescription>}
 					{props.person.role === 'Admin' && (
 						<ShieldIcon role="img" aria-label="Admin" className="text-primary size-4 shrink-0 self-center" />
 					)}
@@ -58,11 +58,14 @@ function AskingRow(props: {person: Person}) {
 }
 
 // Every row ends with the same since-date column, wide enough for "Nov 2026" on one line.
-function Since(props: {since: number}) {
+function Since(props: {since: Person['since']}) {
 	return (
 		<ItemActions>
 			<span className="text-muted-foreground w-16 shrink-0 text-right font-mono text-xs whitespace-nowrap tabular-nums">
-				{DateTime.formatLocal(DateTime.makeUnsafe(props.since), {month: 'short', year: 'numeric'})}
+				{Option.match(props.since, {
+					onNone: () => null,
+					onSome: time => DateTime.formatLocal(time, {month: 'short', year: 'numeric'})
+				})}
 			</span>
 		</ItemActions>
 	)

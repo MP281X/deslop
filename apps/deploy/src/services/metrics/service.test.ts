@@ -1,7 +1,7 @@
 import {NodeServices} from '@effect/platform-node'
 import {assert, it} from '@effect/vitest'
 
-import {Array, Context, Effect, FileSystem, Layer, Option, pipe} from 'effect'
+import {Array, Context, Duration, Effect, FileSystem, Layer, Schema, pipe} from 'effect'
 
 import {SqlClient} from 'effect/sql'
 import {TestClock} from 'effect/testing'
@@ -9,6 +9,7 @@ import {TestClock} from 'effect/testing'
 import {layerDataStore} from '@deslop/runtime/server/store'
 
 import {DeployError} from '#services/inventory/schema.ts'
+import {MachineHistory} from '#services/metrics/schema.ts'
 import {Metrics} from '#services/metrics/service.ts'
 
 // Metrics started over the worker's data directory, as a restart opens the database it left; its scope ends when the read is done.
@@ -42,7 +43,9 @@ it.layer(NodeServices.layer)('Resource history', test => {
 		'collects without a browser and restores real samples after a service restart',
 		Effect.fnUntraced(function* () {
 			const database = yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped()
-			const first = yield* restarted(database, metrics => metrics.read({minutes: 60}))
+			const first = yield* Schema.encodeEffect(MachineHistory)(
+				yield* restarted(database, metrics => metrics.read({minutes: Duration.minutes(60)}))
+			)
 			assert.strictEqual(first.error, '')
 			assert.isFalse(first.stale)
 			assert.lengthOf(first.samples, 1)
@@ -50,12 +53,14 @@ it.layer(NodeServices.layer)('Resource history', test => {
 			assert.isNotEmpty(first.cpuModel)
 			assert.lengthOf(first.load, 3)
 			yield* TestClock.adjust('90 seconds')
-			const second = yield* restarted(database, metrics => metrics.read({minutes: 60}))
+			const second = yield* Schema.encodeEffect(MachineHistory)(
+				yield* restarted(database, metrics => metrics.read({minutes: Duration.minutes(60)}))
+			)
 			assert.strictEqual(second.worker, first.worker)
 			assert.lengthOf(second.samples, 2)
 			assert.strictEqual(second.samples[0]?.time, first.samples[0]?.time)
 			assert.strictEqual(second.samples[0]?.memoryUsed, first.samples[0]?.memoryUsed)
-			assert.isTrue(Option.isNone(second.samples[1]?.cpu ?? Option.none()))
+			assert.isUndefined(second.samples[1]?.cpu)
 		})
 	)
 	test.effect(
@@ -64,7 +69,9 @@ it.layer(NodeServices.layer)('Resource history', test => {
 			const database = yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped()
 			// The tests share a clock; the buckets below start from the epoch.
 			yield* TestClock.setTime(0)
-			const first = yield* restarted(database, metrics => metrics.read({minutes: 60}))
+			const first = yield* Schema.encodeEffect(MachineHistory)(
+				yield* restarted(database, metrics => metrics.read({minutes: Duration.minutes(60)}))
+			)
 			// One point in each of the five series.
 			assert.deepStrictEqual(
 				Array.map(yield* stored(database), row => row.step),
@@ -72,9 +79,11 @@ it.layer(NodeServices.layer)('Resource history', test => {
 			)
 			// Five seconds on, a second measurement is its own second but joins the same bucket of every coarser series.
 			yield* TestClock.adjust('5 seconds')
-			const seconds = yield* restarted(database, metrics => metrics.read({minutes: 1}))
+			const seconds = yield* Schema.encodeEffect(MachineHistory)(
+				yield* restarted(database, metrics => metrics.read({minutes: Duration.minutes(1)}))
+			)
 			assert.lengthOf(seconds.samples, 2)
-			assert.isTrue(Option.isNone(seconds.samples[1]?.cpu ?? Option.none()))
+			assert.isUndefined(seconds.samples[1]?.cpu)
 			assert.deepStrictEqual(
 				pipe(
 					yield* stored(database),
@@ -84,10 +93,12 @@ it.layer(NodeServices.layer)('Resource history', test => {
 				[[0, 5000]]
 			)
 			yield* TestClock.adjust('35 seconds')
-			yield* restarted(database, metrics => metrics.read({minutes: 1}))
+			yield* restarted(database, metrics => metrics.read({minutes: Duration.minutes(1)}))
 			// Ninety seconds on, the hour's first minute keeps all three, and the seconds that aged past their minute are gone.
 			yield* TestClock.adjust('50 seconds')
-			const second = yield* restarted(database, metrics => metrics.read({minutes: 60}))
+			const second = yield* Schema.encodeEffect(MachineHistory)(
+				yield* restarted(database, metrics => metrics.read({minutes: Duration.minutes(60)}))
+			)
 			assert.lengthOf(second.samples, 2)
 			assert.strictEqual(second.samples[0]?.since, 0)
 			assert.strictEqual(second.samples[0]?.time, 40_000)
@@ -109,7 +120,7 @@ it.layer(NodeServices.layer)('Resource history', test => {
 			const failure = yield* restarted(database, metrics =>
 				Effect.gen(function* () {
 					yield* statement(database, sql => sql`UPDATE samples SET apps = 'not json'`)
-					return yield* Effect.flip(metrics.read({minutes: 60}))
+					return yield* Effect.flip(metrics.read({minutes: Duration.minutes(60)}))
 				})
 			)
 			assert.instanceOf(failure, DeployError)

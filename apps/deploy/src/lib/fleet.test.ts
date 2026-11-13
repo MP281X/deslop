@@ -4,7 +4,24 @@ import {createServer} from 'node:http'
 import {NodeHttpServer, NodeServices} from '@effect/platform-node'
 import {assert, it} from '@effect/vitest'
 
-import {Array, Cause, Context, Effect, Fiber, Function, Layer, Match, Option, Queue, Ref, Stream, pipe} from 'effect'
+import {
+	Array,
+	Cause,
+	Context,
+	DateTime,
+	Duration,
+	Effect,
+	Fiber,
+	Function,
+	Layer,
+	Match,
+	Option,
+	Queue,
+	Ref,
+	Schema,
+	Stream,
+	pipe
+} from 'effect'
 
 import {HttpRouter, HttpServer, HttpServerResponse} from 'effect/http'
 import {AsyncResult, AtomRegistry} from 'effect/reactivity'
@@ -37,12 +54,12 @@ const fixture = Effect.gen(function* () {
 		'exposures.expose': () => Effect.succeed(''),
 		'exposures.hide': () => Effect.void,
 		'inventory.run': () => Effect.void,
-		'inventory.snapshot': () => Effect.succeed(Snapshot.make({items: [], sources: [], time: 1})),
+		'inventory.snapshot': () => Effect.succeed(Schema.decodeSync(Snapshot)({items: [], sources: [], time: 1})),
 		'inventory.watch': () => Stream.mapEffect(Stream.fromQueue(inventory), Function.identity),
 		'metrics.history': () => Effect.never,
 		'metrics.watch': query => {
 			const source = pipe(
-				Match.value(query.minutes),
+				Match.value(Duration.toMinutes(query.minutes)),
 				Match.when(60, () => Stream.fromQueue(hour)),
 				Match.when(1, () => Stream.fromQueue(minute)),
 				Match.orElse(() => Stream.never)
@@ -50,7 +67,9 @@ const fixture = Effect.gen(function* () {
 			return Stream.mapEffect(
 				Stream.unwrap(
 					Effect.as(
-						Effect.acquireRelease(Queue.offer(opened, query.minutes), () => Queue.offer(closed, query.minutes)),
+						Effect.acquireRelease(Queue.offer(opened, Duration.toMinutes(query.minutes)), () =>
+							Queue.offer(closed, Duration.toMinutes(query.minutes))
+						),
 						source
 					)
 				),
@@ -103,7 +122,7 @@ const fixture = Effect.gen(function* () {
 		yield* Effect.acquireRelease(
 			Effect.sync(() =>
 				registry.subscribe(
-					metricsAtom(minutes),
+					metricsAtom(Duration.minutes(minutes)),
 					value => {
 						Queue.offerUnsafe(updates, value)
 					},
@@ -113,10 +132,10 @@ const fixture = Effect.gen(function* () {
 			unsubscribe => Effect.sync(unsubscribe)
 		)
 		return {
-			current: () => registry.get(metricsAtom(minutes)),
+			current: () => registry.get(metricsAtom(Duration.minutes(minutes))),
 			next: (predicate: (value: Atom.Type<ReturnType<typeof metricsAtom>>) => boolean) =>
 				pipe(Stream.fromQueue(updates), Stream.filter(predicate), Stream.runHead),
-			refresh: () => registry.refresh(metricsAtom(minutes))
+			refresh: () => registry.refresh(metricsAtom(Duration.minutes(minutes)))
 		}
 	})
 	return {authorization, closed, hour, inventory, minute, opened, registry, watch}
@@ -127,7 +146,7 @@ it.layer(NodeServices.layer)(test => {
 		Effect.scoped(
 			Effect.gen(function* () {
 				const env = yield* fixture
-				const sample = MachineHistory.make({
+				const sample = yield* Schema.decodeEffect(MachineHistory)({
 					disks: [],
 					error: '',
 					load: [],
@@ -157,7 +176,7 @@ it.layer(NodeServices.layer)(test => {
 		Effect.scoped(
 			Effect.gen(function* () {
 				const env = yield* fixture
-				const sample = MachineHistory.make({
+				const sample = yield* Schema.decodeEffect(MachineHistory)({
 					disks: [],
 					error: '',
 					load: [],
@@ -197,7 +216,7 @@ it.layer(NodeServices.layer)(test => {
 		Effect.scoped(
 			Effect.gen(function* () {
 				const env = yield* fixture
-				const sample = MachineHistory.make({
+				const sample = yield* Schema.decodeEffect(MachineHistory)({
 					disks: [],
 					error: '',
 					load: [],
@@ -242,7 +261,7 @@ it.layer(NodeServices.layer)(test => {
 					},
 					{immediate: true}
 				)
-				const port = InventoryItem.make({
+				const port = yield* Schema.decodeEffect(InventoryItem)({
 					detail: '',
 					id: 'port:3773',
 					kind: 'port',
@@ -252,7 +271,12 @@ it.layer(NodeServices.layer)(test => {
 					url: '',
 					worker: 'desktop'
 				})
-				yield* Queue.offer(env.inventory, Effect.succeed(Snapshot.make({items: [port], sources: [], time: 1})))
+				yield* Queue.offer(
+					env.inventory,
+					Effect.succeed(
+						Snapshot.make({items: [port], sources: [], time: DateTime.makeUnsafe(1), workers: Option.none()})
+					)
+				)
 				yield* pipe(Stream.fromQueue(updates), Stream.filter(AsyncResult.isSuccess), Stream.runHead)
 				env.registry.set(exposeTargetAtom, Option.some(port))
 				yield* Queue.offer(env.inventory, Effect.fail(DeployError.make({message: 'Unavailable'})))
@@ -278,7 +302,10 @@ it.layer(NodeServices.layer)(test => {
 				assert.isTrue(Option.isNone(AsyncResult.value(env.registry.get(inventoryAtom))))
 				yield* Ref.set(env.authorization, Option.none())
 				env.registry.refresh(inventoryAtom)
-				yield* Queue.offer(env.inventory, Effect.succeed(Snapshot.make({items: [], sources: [], time: 2})))
+				yield* Queue.offer(
+					env.inventory,
+					Effect.succeed(yield* Schema.decodeEffect(Snapshot)({items: [], sources: [], time: 2}))
+				)
 				yield* pipe(Stream.fromQueue(updates), Stream.filter(AsyncResult.isSuccess), Stream.runHead)
 				assert.deepStrictEqual(env.registry.get(exposeTargetAtom), Option.none())
 			})

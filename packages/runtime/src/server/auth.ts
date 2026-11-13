@@ -1,4 +1,4 @@
-import {Config, Context, Effect, Layer, Option, Result, Schema, pipe} from 'effect'
+import {Config, Context, Effect, Layer, Option, Result, pipe} from 'effect'
 
 import {Signature} from 'effect/crypto'
 import type {Headers} from 'effect/http'
@@ -11,6 +11,8 @@ import {
 	AuthError,
 	CurrentUser,
 	DEVELOPER,
+	GitHubId,
+	GitHubIdFromString,
 	ISSUER_PATH,
 	JWKS_PATH,
 	RpcAuth,
@@ -26,12 +28,12 @@ export const localAuth = Config.map(Config.option(Config.String('AUTH_URL')), Op
 
 // Admins come from GITHUB_ADMINS; a local install with no issuer falls back to the developer account when none are named.
 export const adminIds = Effect.gen(function* () {
-	const listed = Config.Array(Schema.String, 'GITHUB_ADMINS')
-	if (yield* localAuth) return yield* Config.withDefault(listed, ['0'])
+	const listed = Config.Array(GitHubIdFromString, 'GITHUB_ADMINS')
+	if (yield* localAuth) return yield* Config.withDefault(listed, [GitHubId.make(0)])
 	return yield* listed
 })
 
-export function requireAdmin(admins: readonly string[], user: User, message: string) {
+export function requireAdmin(admins: readonly GitHubId[], user: User, message: string) {
 	if (isAdmin(admins, user.id)) return Effect.void
 	return Effect.fail(AuthError.make({error: 'access_denied', message}))
 }
@@ -78,8 +80,12 @@ export class Auth extends Context.Service<
 				return Layer.succeedContext(
 					Auth.makeContext(
 						Auth.of({
-							token: () => Effect.fail(AuthError.make({message: 'There is no sign-in without --auth'})),
-							user: () => Effect.succeed(DEVELOPER)
+							token: () =>
+								Effect.withSpan(
+									Effect.fail(AuthError.make({message: 'There is no sign-in without --auth'})),
+									'Auth.token'
+								),
+							user: () => Effect.withSpan(Effect.succeed(DEVELOPER), 'Auth.user')
 						})
 					)
 				)
@@ -128,23 +134,24 @@ export class Auth extends Context.Service<
 							onSome: sessions.current
 						})
 					}
+					function current(headers: Headers.Headers) {
+						return pipe(
+							bearerOf(headers),
+							Option.filter(isJwt),
+							Option.match({
+								onNone: () => session(headers),
+								onSome: token => Effect.map(verified(token), user => ({token, user}))
+							})
+						)
+					}
 					return Auth.makeContext(
 						Auth.of({
-							token: headers =>
-								pipe(
-									bearerOf(headers),
-									Option.filter(isJwt),
-									Option.match({
-										onNone: () => Effect.map(session(headers), current => current.token),
-										onSome: token => Effect.as(verified(token), token)
-									})
-								),
-							user: headers =>
-								pipe(
-									bearerOf(headers),
-									Option.filter(isJwt),
-									Option.match({onNone: () => Effect.map(session(headers), current => current.user), onSome: verified})
-								)
+							token: Effect.fn('Auth.token')(function* (headers) {
+								return (yield* current(headers)).token
+							}),
+							user: Effect.fn('Auth.user')(function* (headers) {
+								return (yield* current(headers)).user
+							})
 						})
 					)
 				})

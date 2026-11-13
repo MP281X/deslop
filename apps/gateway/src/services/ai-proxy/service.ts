@@ -1,7 +1,8 @@
 import {
 	Array,
 	Boolean,
-	Clock,
+	DateTime,
+	Duration,
 	Context,
 	Effect,
 	Exit,
@@ -11,6 +12,7 @@ import {
 	Option,
 	Redacted,
 	Ref,
+	Record,
 	Result,
 	Schema,
 	Scope,
@@ -33,7 +35,10 @@ import {Reactivity} from 'effect/reactivity'
 import {Migrator, SqlClient, SqlSchema} from 'effect/sql'
 
 import {Auth, localAuth} from '@deslop/runtime/server/auth'
+import {AiModelId} from '@deslop/runtime/shared/ai'
 import {AuthError, bearerOf, failureOptions, isJwt} from '@deslop/runtime/shared/auth'
+import type {UserId} from '@deslop/runtime/shared/auth'
+import {DateTimeUtcFromFiniteMillis} from '@deslop/runtime/shared/time'
 
 import {readUsage} from '#services/ai-proxy/lib/utils.ts'
 import type {AiProvider, AiUsageEntry} from '#services/ai-proxy/schema.ts'
@@ -69,7 +74,7 @@ const FORBIDDEN = ['authorization', 'x-api-key', 'cookie', 'host', ...HOP_BY_HOP
 declare module 'effect/reactivity/Reactivity' {
 	interface Keys {
 		// A person's usage, by their id.
-		readonly aiUsage: string
+		readonly aiUsage: UserId
 	}
 }
 
@@ -91,15 +96,15 @@ const make = Effect.gen(function* () {
 	const refreshPricing = yield* pipe(
 		client.get('https://models.dev/api.json'),
 		Effect.flatMap(HttpClientResponse.schemaBodyJson(ModelsCatalog)),
-		Effect.timeout('10 seconds'),
+		Effect.timeout(Duration.seconds(10)),
 		Effect.tap(catalog => Ref.set(pricing, catalog)),
 		Effect.tapError(error =>
 			Effect.logWarning('The pricing catalog could not be refreshed; keeping cached pricing', error)
 		),
 		Effect.option,
 		Effect.cachedWithTTL(exit => {
-			if (Exit.isSuccess(exit) && Option.isSome(exit.value)) return '1 day'
-			return 0
+			if (Exit.isSuccess(exit) && Option.isSome(exit.value)) return Duration.days(1)
+			return Duration.zero
 		})
 	)
 
@@ -143,10 +148,10 @@ const make = Effect.gen(function* () {
 		`
 	})
 	const deleteUsageBefore = SqlSchema.void({
-		Request: Schema.Struct({hour: Schema.Finite, owner: AiUsage.fields.owner}),
+		Request: Schema.Struct({hour: DateTimeUtcFromFiniteMillis, owner: AiUsage.fields.owner}),
 		execute: request => sql`DELETE FROM ${sql(AiUsage.table)} WHERE owner = ${request.owner} AND hour < ${request.hour}`
 	})
-	function within(query: AiUsageQuery) {
+	function within(query: typeof AiUsageQuery.Encoded) {
 		return sql`owner = ${query.owner} AND hour >= ${query.from} AND hour < ${query.to}`
 	}
 	const listTotals = SqlSchema.findAll({
@@ -161,7 +166,10 @@ const make = Effect.gen(function* () {
 	// Each bucket of the range, oldest first, with what each provider cost in it.
 	const listBuckets = SqlSchema.findAll({
 		Request: AiUsageQuery,
-		Result: Schema.Struct({at: Schema.Finite, byProvider: Schema.fromJsonString(Schema.Array(AiUsageBreakdown))}),
+		Result: Schema.Struct({
+			at: DateTimeUtcFromFiniteMillis,
+			byProvider: Schema.fromJsonString(Schema.Array(AiUsageBreakdown))
+		}),
 		execute: query => sql`
 			SELECT at, json_group_array(json_object('costUsd', costUsd, 'name', name, 'unknownCostCalls', unknownCostCalls)) AS byProvider
 			FROM (
@@ -174,11 +182,11 @@ const make = Effect.gen(function* () {
 		`
 	})
 
-	const saveUsage = Effect.fnUntraced(function* (id: string, entry: AiUsageEntry) {
+	const saveUsage = Effect.fnUntraced(function* (id: UserId, entry: AiUsageEntry) {
 		const metered = {entry}
 		if (
 			entry.costSource !== 'provider' &&
-			entry.model !== undefined &&
+			Option.isSome(entry.model) &&
 			entry.inputTokens + entry.outputTokens + entry.cacheReadTokens + entry.cacheWriteTokens > 0
 		) {
 			// Calls finishing together share one refresh, even when it fails.
@@ -188,21 +196,28 @@ const make = Effect.gen(function* () {
 				onFalse: () => entry.provider,
 				onTrue: () => 'opencode'
 			})
-			const cost = catalog[catalogProvider]?.models[entry.model]?.cost
-			if (cost !== undefined) {
+			const cost = pipe(
+				catalog,
+				Record.get(catalogProvider),
+				Option.flatMap(provider => Record.get(provider.models, Option.getOrThrow(entry.model))),
+				Option.flatMap(model => model.cost)
+			)
+			if (Option.isSome(cost)) {
+				const price = Option.getOrThrow(cost)
 				if (
-					(entry.cacheReadTokens === 0 || cost.cache_read !== undefined) &&
-					(entry.cacheWriteTokens === 0 || cost.cache_write !== undefined)
+					(entry.cacheReadTokens === 0 || Option.isSome(price.cache_read)) &&
+					(entry.cacheWriteTokens === 0 || Option.isSome(price.cache_write))
 				) {
 					metered.entry = {
 						...entry,
 						costSource: 'models.dev',
-						costUsd:
-							(entry.inputTokens * cost.input +
-								entry.outputTokens * cost.output +
-								entry.cacheReadTokens * (cost.cache_read ?? 0) +
-								entry.cacheWriteTokens * (cost.cache_write ?? 0)) /
-							1_000_000
+						costUsd: Option.some(
+							(entry.inputTokens * price.input +
+								entry.outputTokens * price.output +
+								entry.cacheReadTokens * Option.getOrElse(price.cache_read, () => 0) +
+								entry.cacheWriteTokens * Option.getOrElse(price.cache_write, () => 0)) /
+								1_000_000
+						)
 					}
 				}
 			}
@@ -211,13 +226,13 @@ const make = Effect.gen(function* () {
 		yield* pipe(
 			Effect.andThen(
 				addUsage({
-					costUsd: metered.entry.costUsd ?? 0,
-					hour: Math.floor(entry.at / 3_600_000) * 3_600_000,
+					costUsd: Option.getOrElse(metered.entry.costUsd, () => 0),
+					hour: DateTime.startOf(entry.at, 'hour'),
 					owner: id,
 					provider: entry.provider,
 					unknownCostCalls: Boolean.match(metered.entry.costSource === 'unknown', {onFalse: () => 0, onTrue: () => 1})
 				}),
-				deleteUsageBefore({hour: entry.at - 30 * 86_400_000, owner: id})
+				deleteUsageBefore({hour: DateTime.subtractDuration(entry.at, Duration.days(30)), owner: id})
 			),
 			Reactivity.mutation({aiUsage: [id]}),
 			sql.withTransaction,
@@ -225,10 +240,14 @@ const make = Effect.gen(function* () {
 		)
 	})
 	return {
-		list: (id: string) => asAuthError(listKeys(id)),
-		proxy: Effect.fnUntraced(function* (provider: AiProvider, rest: string) {
+		list: Effect.fn('AiProxy.list')(function* (id: UserId) {
+			yield* Effect.annotateCurrentSpan('userId', id)
+			return yield* asAuthError(listKeys(id))
+		}),
+		proxy: Effect.fn('AiProxy.proxy')(function* (provider: AiProvider, rest: string) {
+			yield* Effect.annotateCurrentSpan('provider', provider)
 			const request = yield* HttpServerRequest.HttpServerRequest
-			const now = yield* Clock.currentTimeMillis
+			const now = yield* DateTime.now
 			// Only an access token Auth signed spends a key, never a session on Gateway's own pages.
 			if (!local && !Option.exists(bearerOf(request.headers), isJwt)) {
 				return HttpServerResponse.jsonUnsafe({error: {message: 'Sign in first'}}, {status: 401})
@@ -241,41 +260,45 @@ const make = Effect.gen(function* () {
 				)
 			}
 			const id = person.success.id
-			const key = Option.getOrUndefined(yield* asAuthError(findKey({owner: id, provider})))
-			if (key === undefined) {
+			const key = yield* asAuthError(findKey({owner: id, provider}))
+			if (Option.isNone(key)) {
 				return HttpServerResponse.jsonUnsafe(
 					{error: {message: `Add your ${PROVIDER_NAMES[provider]} key in Gateway`}},
 					{status: 402}
 				)
 			}
+			const foundKey = Option.getOrThrow(key)
 			const headers = Headers.removeMany(request.headers, [
 				...FORBIDDEN,
 				...pipe(
-					request.headers['connection'] ?? '',
-					String.split(','),
+					Option.fromUndefinedOr(request.headers['connection']),
+					Option.map(String.split(',')),
+					Option.getOrElse(() => []),
 					Array.map(value => String.toLowerCase(String.trim(value)))
 				)
 			])
 			const outgoing = {
-				model: Option.none<string>(),
+				model: Option.none<AiModelId>(),
 				request: HttpClientRequest.make(
 					yield* Schema.decodeUnknownEffect(
 						Schema.Literals(['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'])
 					)(request.method)
 				)(`${UPSTREAMS[provider]}/${rest}`, {
 					headers: Boolean.match(provider === 'anthropic', {
-						onFalse: () => Headers.set(headers, 'authorization', `Bearer ${Redacted.value(key.secret)}`),
-						onTrue: () => Headers.set(headers, 'x-api-key', Redacted.value(key.secret))
+						onFalse: () => Headers.set(headers, 'authorization', `Bearer ${Redacted.value(foundKey.secret)}`),
+						onTrue: () => Headers.set(headers, 'x-api-key', Redacted.value(foundKey.secret))
 					})
 				})
 			}
 			if (request.method !== 'GET' && request.method !== 'HEAD') {
-				if (String.includes('application/json')(request.headers['content-type'] ?? '')) {
+				if (
+					Option.exists(Option.fromUndefinedOr(request.headers['content-type']), String.includes('application/json'))
+				) {
 					const body = new Uint8Array(yield* request.arrayBuffer)
 					const decoded = Schema.decodeOption(
-						Schema.fromJsonString(Schema.Struct({model: Schema.optionalKey(Schema.String)}))
+						Schema.fromJsonString(Schema.Struct({model: Schema.OptionFromOptionalKey(AiModelId)}))
 					)(new TextDecoder().decode(body))
-					outgoing.model = Option.flatMap(decoded, value => Option.fromUndefinedOr(value.model))
+					outgoing.model = Option.flatMap(decoded, value => value.model)
 					outgoing.request = HttpClientRequest.bodyUint8Array(outgoing.request, body, request.headers['content-type'])
 				} else {
 					outgoing.request = HttpClientRequest.bodyStream(outgoing.request, request.stream, {
@@ -284,17 +307,23 @@ const make = Effect.gen(function* () {
 				}
 			}
 			const response = yield* client.execute(outgoing.request)
-			yield* asAuthError(markKey({lastStatus: Option.some(response.status), owner: id, provider, secret: key.secret}))
-			const web = Option.getOrUndefined(HttpClientResponse.toWeb(response))
-			const body = web?.body ?? (yield* Stream.toReadableStreamEffect(response.stream))
+			yield* asAuthError(
+				markKey({lastStatus: Option.some(response.status), owner: id, provider, secret: foundKey.secret})
+			)
+			const body = yield* pipe(
+				HttpClientResponse.toWeb(response),
+				Option.flatMap(web => Option.fromNullOr(web.body)),
+				Option.match({onNone: () => Stream.toReadableStreamEffect(response.stream), onSome: Effect.succeed})
+			)
 			const [forward, meter] = body.tee()
 			const entry: AiUsageEntry = {
 				at: now,
 				cacheReadTokens: 0,
 				cacheWriteTokens: 0,
 				costSource: 'unknown',
+				costUsd: Option.none(),
 				inputTokens: 0,
-				model: Option.getOrUndefined(outgoing.model),
+				model: outgoing.model,
 				outputTokens: 0,
 				provider
 			}
@@ -309,7 +338,10 @@ const make = Effect.gen(function* () {
 							)
 						)
 					})
-					const sse = String.includes('text/event-stream')(response.headers['content-type'] ?? '')
+					const sse = Option.exists(
+						Option.fromUndefinedOr(response.headers['content-type']),
+						String.includes('text/event-stream')
+					)
 					const stream = Stream.fromReadableStream({
 						evaluate: () => meter,
 						onError: cause =>
@@ -358,8 +390,9 @@ const make = Effect.gen(function* () {
 				'content-encoding',
 				'content-length',
 				...pipe(
-					response.headers['connection'] ?? '',
-					String.split(','),
+					Option.fromUndefinedOr(response.headers['connection']),
+					Option.map(String.split(',')),
+					Option.getOrElse(() => []),
 					Array.map(name => String.toLowerCase(String.trim(name)))
 				)
 			]
@@ -368,9 +401,13 @@ const make = Effect.gen(function* () {
 				{headers: Headers.removeMany(response.headers, responseBlocked), status: response.status}
 			)
 		}),
-		removeKey: (id: string, provider: AiProvider) => asAuthError(deleteKey({owner: id, provider})),
-		setKey: (id: string, provider: AiProvider, secret: Redacted.Redacted) =>
-			asAuthError(
+		removeKey: Effect.fn('AiProxy.removeKey')(function* (id: UserId, provider: AiProvider) {
+			yield* Effect.annotateCurrentSpan({provider, userId: id})
+			return yield* asAuthError(deleteKey({owner: id, provider}))
+		}),
+		setKey: Effect.fn('AiProxy.setKey')(function* (id: UserId, provider: AiProvider, secret: Redacted.Redacted) {
+			yield* Effect.annotateCurrentSpan({provider, userId: id})
+			return yield* asAuthError(
 				saveKey({
 					last4: String.slice(-4)(Redacted.value(secret)),
 					lastStatus: Option.none(),
@@ -378,20 +415,25 @@ const make = Effect.gen(function* () {
 					provider,
 					secret
 				})
-			),
+			)
+		}),
 		// A person's report now and after each of their recorded calls.
-		usage: (id: string, period: Period) =>
-			usageWindow(period, range =>
-				Stream.mapError(
-					sql.reactive(
-						{aiUsage: [id]},
-						Effect.all(
-							{byProvider: listTotals({...range, owner: id}), series: listBuckets({...range, owner: id})},
-							{concurrency: 1}
-						)
-					),
-					asStorageAuthError
-				)
+		usage: (id: UserId, period: Period) =>
+			Stream.withSpan(
+				usageWindow(period, range =>
+					Stream.mapError(
+						sql.reactive(
+							{aiUsage: [id]},
+							Effect.all(
+								{byProvider: listTotals({...range, owner: id}), series: listBuckets({...range, owner: id})},
+								{concurrency: 1}
+							)
+						),
+						asStorageAuthError
+					)
+				),
+				'AiProxy.usage',
+				{attributes: {period, 'rpc.stream': true, userId: id}}
 			)
 	}
 })

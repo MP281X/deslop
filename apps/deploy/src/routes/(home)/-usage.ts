@@ -1,14 +1,15 @@
-import {Array, Boolean, HashSet, Number, Option, Order, Record, String, pipe} from 'effect'
+import {Array, Boolean, DateTime, Duration, HashSet, Number, Option, Order, Record, String, pipe} from 'effect'
 
 import {APP_HUES} from '@deslop/components-web/apps'
 
+import type {AppId} from '#services/inventory/schema.ts'
 import {chartWindow, resolution} from '#services/metrics/lib/utils.ts'
 import type {MachineHistory, Sample} from '#services/metrics/schema.ts'
 
 // One stacked band, in % of the whole machine at each sample: an app, the low-impact apps together, or what the machine holds beyond the apps.
 export type Band = {
 	cpu: number[]
-	id: string
+	id: AppId | 'other' | 'system'
 	kind: 'app' | 'other' | 'system'
 	memory: number[]
 	memoryBytes: number[]
@@ -52,7 +53,7 @@ function appSeries(history: MachineHistory) {
 			)
 		)
 	)
-	const ids = Array.dedupe(Array.flatMap(indexed, Record.keys))
+	const ids = pipe(indexed, Array.flatMap(Record.keys), Array.dedupe)
 	// Apps' memory and the machine's used memory are measured apart, so together they can disagree by a little; the apps shrink to fit inside it.
 	const fit = Array.map(history.samples, (sample, index) =>
 		Number.min(
@@ -61,7 +62,13 @@ function appSeries(history: MachineHistory) {
 		)
 	)
 	return Array.map(ids, id => ({
-		cpu: Array.map(indexed, entries => entries[id]?.cpu ?? 0),
+		cpu: Array.map(indexed, entries =>
+			pipe(
+				Record.get(entries, id),
+				Option.flatMap(app => app.cpu),
+				Option.getOrElse(() => 0)
+			)
+		),
 		id,
 		memory: Array.map(
 			indexed,
@@ -107,7 +114,7 @@ export function bands(history: MachineHistory) {
 		onNonEmpty: group => [
 			{
 				cpu: Array.map(history.samples, (_, index) => total(group, index, 'cpu')),
-				id: 'other',
+				id: 'other' as const,
 				kind: 'other' as const,
 				memory: Array.map(history.samples, (_, index) => total(group, index, 'memory')),
 				memoryBytes: Array.map(history.samples, (_, index) => total(group, index, 'memoryBytes')),
@@ -122,7 +129,7 @@ export function bands(history: MachineHistory) {
 			cpu: Array.map(history.samples, (sample, index) =>
 				Number.max(0, Option.getOrElse(sample.cpu, () => 0) - total(apps, index, 'cpu'))
 			),
-			id: 'system',
+			id: 'system' as const,
 			kind: 'system',
 			memory: Array.map(history.samples, (sample, index) =>
 				Number.max(0, (sample.memoryUsed / Number.max(1, sample.memoryTotal)) * 100 - total(apps, index, 'memory'))
@@ -136,30 +143,46 @@ export function bands(history: MachineHistory) {
 }
 
 // The band a selected app focuses: its own when the chart draws it, the low-impact block when it shares that, or none when the range never recorded it.
-export function focusedBand(history: MachineHistory, selected: string) {
+export function focusedBand(history: MachineHistory, selected: AppId) {
 	const drawn = Array.some(bands(history), band => band.id === selected)
 	const recorded = Array.some(history.samples, sample =>
 		Option.exists(sample.apps, apps => Array.some(apps, app => app.id === selected))
 	)
-	if (drawn) return Option.some(selected)
-	if (recorded) return Option.some('other')
-	return Option.none()
+	if (drawn) return Option.some<Band['id']>(selected)
+	if (recorded) return Option.some<Band['id']>('other')
+	return Option.none<Band['id']>()
 }
 
 // Each sample's place on the range's 0–100 time axis, split where the recording misses a slot, give or take a second of sampling, or a sample lacks the reading, so a gap stays blank.
-export function runs(history: MachineHistory, minutes: number, recorded: (sample: Sample) => boolean) {
+export function runs(history: MachineHistory, minutes: Duration.Duration, recorded: (sample: Sample) => boolean) {
 	const window = chartWindow(minutes, history.time)
 	return pipe(
-		Array.mapAccum(history.samples, {run: 0, time: -Infinity}, (last, sample, index) => {
+		Array.mapAccum(history.samples, {run: 0, time: Option.none<DateTime.Utc>()}, (last, sample, index) => {
 			const run =
 				last.run +
-				Boolean.match(sample.time - last.time > resolution(minutes) * 1.5 + 1000 || !recorded(sample), {
-					onFalse: () => 0,
-					onTrue: () => 1
-				})
+				Boolean.match(
+					!Option.exists(last.time, time =>
+						pipe(
+							time,
+							DateTime.distance(sample.time),
+							Duration.isLessThanOrEqualTo(
+								pipe(resolution(minutes), Duration.times(1.5), Duration.sum(Duration.seconds(1)))
+							)
+						)
+					) || !recorded(sample),
+					{onFalse: () => 0, onTrue: () => 1}
+				)
 			return [
-				{run: run + Boolean.match(recorded(sample), {onFalse: () => 1, onTrue: () => 0}), time: sample.time},
-				{index, recorded: recorded(sample), run, x: ((sample.time - window.start) / (window.end - window.start)) * 100}
+				{
+					run: run + Boolean.match(recorded(sample), {onFalse: () => 1, onTrue: () => 0}),
+					time: Option.some(sample.time)
+				},
+				{
+					index,
+					recorded: recorded(sample),
+					run,
+					x: (Duration.toMillis(DateTime.distance(window.start, sample.time)) / Duration.toMillis(minutes)) * 100
+				}
 			]
 		})[1],
 		Array.filter(point => point.recorded),

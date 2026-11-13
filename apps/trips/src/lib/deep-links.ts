@@ -7,19 +7,27 @@ import {Linking} from 'react-native'
 
 import {appConfig} from '@deslop/runtime/mobile/app'
 
-export function linkOf(bookingId: string) {
-	return `${appConfig.extra.scheme}://booking/${bookingId}`
+import {BookingId} from '#services/bookings/schema.ts'
+
+export const BOOKING_LINK = `${appConfig.extra.scheme}://booking/`
+
+export function linkOf(bookingId: BookingId) {
+	return `${BOOKING_LINK}${bookingId}`
 }
 
 function bookingIn(url?: string | null) {
 	return Option.flatMap(Option.fromNullishOr(url), link =>
-		Option.flatMap(String.match(/booking\/([0-9a-f-]{36})/iu)(link), match => Option.fromUndefinedOr(match[1]))
+		pipe(
+			String.match(/booking\/([0-9a-f-]{36})/iu)(link),
+			Option.flatMap(match => Option.fromUndefinedOr(match[1])),
+			Option.flatMap(Schema.decodeOption(BookingId))
+		)
 	)
 }
 
 function tapped(response: NotificationResponse | null) {
 	return Option.map(
-		Schema.decodeUnknownOption(Schema.Struct({bookingId: Schema.String}))(response?.notification.request.content.data),
+		Schema.decodeUnknownOption(Schema.Struct({bookingId: BookingId}))(response?.notification.request.content.data),
 		data => data.bookingId
 	)
 }
@@ -36,7 +44,7 @@ export const openedAtom = Atom.keepAlive(
 				)
 			),
 			Stream.merge(
-				Stream.callback<Option.Option<string>>(queue =>
+				Stream.callback<Option.Option<BookingId>>(queue =>
 					Effect.gen(function* () {
 						yield* Effect.acquireRelease(
 							Effect.sync(() =>

@@ -1,6 +1,6 @@
 import {Array, Function, Option, Order, Record, String, pipe} from 'effect'
 
-import type {NoteItem} from '#services/notes/schema.ts'
+import type {NoteItem, TagName} from '#services/notes/schema.ts'
 
 const URL_PATTERN = /https?:\/\/[^\s<>"]+/iu
 
@@ -104,12 +104,12 @@ export function tagCounts(notes: readonly Pick<NoteItem, 'tags'>[]) {
 		Array.flatMap(notes, note => note.tags),
 		Array.groupBy(Function.identity),
 		Record.toEntries,
-		Array.map(entry => ({count: entry[1].length, tag: entry[0]})),
+		Array.map(entry => ({count: entry[1].length, tag: Array.headNonEmpty(entry[1])})),
 		Array.sort(
 			pipe(
 				Order.flip(Order.Number),
-				Order.mapInput((entry: {count: number; tag: string}) => entry.count),
-				Order.combine(Order.mapInput(Order.String, (entry: {count: number; tag: string}) => entry.tag))
+				Order.mapInput((entry: {count: number; tag: TagName}) => entry.count),
+				Order.combine(Order.mapInput(Order.String, (entry: {count: number; tag: TagName}) => entry.tag))
 			)
 		)
 	)

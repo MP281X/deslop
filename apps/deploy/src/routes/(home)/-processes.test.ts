@@ -7,13 +7,16 @@ import {renderToStaticMarkup} from 'react-dom/server'
 
 import {Processes} from '#routes/(home)/-processes.tsx'
 import type {ProcessNode} from '#services/inventory/lib/utils.ts'
+import {ProcessId} from '#services/inventory/schema.ts'
 
 function node(props: {children?: readonly ProcessNode[]; name: string; pid: number}) {
 	return {
 		children: props.children ?? [],
+		command: Option.none(),
+		cpu: Option.none(),
 		label: {detail: '', name: props.name},
 		memory: 1024 ** 2,
-		pid: props.pid,
+		pid: ProcessId.make(props.pid),
 		small: false
 	}
 }

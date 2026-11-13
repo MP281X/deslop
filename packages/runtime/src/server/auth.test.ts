@@ -30,12 +30,22 @@ import {Auth, HttpAuth, layerMcpAuth} from './auth.ts'
 import {AiGateway, AiUnavailableError} from '#server/ai.ts'
 import {Sessions} from '#server/sessions.ts'
 import {layerDataStore} from '#server/store.ts'
-import {AccessClaims, AuthError, CurrentUser, DEVELOPER, RpcAuth, SESSION_COOKIE, needsSignIn} from '#shared/auth.ts'
+import {
+	AccessClaims,
+	AuthError,
+	ClientId,
+	CurrentUser,
+	DEVELOPER,
+	RpcAuth,
+	SESSION_COOKIE,
+	UserId,
+	needsSignIn
+} from '#shared/auth.ts'
 
 const AUTH = 'https://auth.mp281x.xyz'
 
 type AnyClaims = typeof AnyClaims.Type
-const AnyClaims = Schema.Struct({...AccessClaims.fields, aud: Schema.String})
+const AnyClaims = Schema.toEncoded(Schema.Struct({...AccessClaims.fields, aud: Schema.String}))
 
 type Sign = (claims?: Partial<AnyClaims>) => Effect.Effect<string, Jwt.JwtError>
 
@@ -57,7 +67,7 @@ const issuer = Effect.fnUntraced(function* (token: (form: URLSearchParams, sign:
 					iss: `${AUTH}/api/auth`,
 					name: 'octocat',
 					sid: 'family',
-					sub: 'github:42',
+					sub: UserId.make('github:42'),
 					...claims
 				},
 				key,
@@ -116,7 +126,7 @@ it.effect('ends a running RPC once its credentials are rejected, not while the i
 		Effect.gen(function* () {
 			const verdict = yield* Ref.make<NonNullable<AuthError['error']> | 'valid'>('valid')
 			const user = Effect.flatMap(Ref.get(verdict), current => {
-				if (current === 'valid') return Effect.succeed({id: 'github:42', name: 'octocat'})
+				if (current === 'valid') return Effect.succeed({id: UserId.make('github:42'), name: 'octocat'})
 				return Effect.fail(AuthError.make({error: current, message: 'rejected'}))
 			})
 			const watch = yield* Effect.forkScoped(
@@ -242,7 +252,7 @@ it.layer(NodeCrypto.layer)(test => {
 			const auth = Context.get(context, Auth)
 			const sessions = Context.get(context, Sessions)
 			const gateway = Context.get(context, AiGateway)
-			const missing = yield* Effect.flip(gateway.authorize('github:42'))
+			const missing = yield* Effect.flip(gateway.authorize(UserId.make('github:42')))
 			assert.instanceOf(missing, AiUnavailableError)
 			// oxlint-disable-next-line @deslop/coding-standards/no-error-message-assertion -- The instruction is the public recovery contract.
 			assert.equal(missing.message, 'Open Stash once so it can use AI for you')
@@ -254,21 +264,21 @@ it.layer(NodeCrypto.layer)(test => {
 				)
 			)
 			const authorization = Effect.fnUntraced(function* () {
-				return yield* (yield* (yield* gateway.authorize('github:42'))(echo).get(
+				return yield* (yield* (yield* gateway.authorize(UserId.make('github:42')))(echo).get(
 					'https://gateway.mp281x.xyz/ai/anthropic/v1/messages'
 				)).json
 			})
 			assert.deepEqual(yield* authorization(), {authorization: `Bearer ${bearer}`})
-			assert.instanceOf(yield* Effect.flip(gateway.authorize('github:43')), AiUnavailableError)
+			assert.instanceOf(yield* Effect.flip(gateway.authorize(UserId.make('github:43'))), AiUnavailableError)
 			const first = yield* sessions.start({
-				client_id: 'stash',
+				client_id: ClientId.make('stash'),
 				code: 'first',
 				code_verifier: 'verifier',
 				redirect_uri: 'https://stash.mp281x.xyz/auth/callback'
 			})
 			yield* TestClock.adjust('1 second')
 			const second = yield* sessions.start({
-				client_id: 'stash',
+				client_id: ClientId.make('stash'),
 				code: 'second',
 				code_verifier: 'verifier',
 				redirect_uri: 'https://stash.mp281x.xyz/auth/callback'
@@ -280,13 +290,13 @@ it.layer(NodeCrypto.layer)(test => {
 			assert.equal(yield* Ref.get(refreshes), 1)
 			yield* sessions.end(first)
 			yield* sessions.end(second)
-			assert.instanceOf(yield* Effect.flip(gateway.authorize('github:42')), AiUnavailableError)
+			assert.instanceOf(yield* Effect.flip(gateway.authorize(UserId.make('github:42'))), AiUnavailableError)
 			yield* auth.user(
 				Headers.fromInput({
 					authorization: `Bearer ${yield* issuerService.sign({exp: Math.floor((yield* Clock.currentTimeMillis) / 1000) + 59})}`
 				})
 			)
-			assert.instanceOf(yield* Effect.flip(gateway.authorize('github:42')), AiUnavailableError)
+			assert.instanceOf(yield* Effect.flip(gateway.authorize(UserId.make('github:42'))), AiUnavailableError)
 		})
 	)
 
@@ -316,7 +326,7 @@ it.layer(NodeCrypto.layer)(test => {
 			const context = yield* Layer.build(layerAuth(auth.client, {APP_URL: 'https://scope.mp281x.xyz', AUTH_URL: AUTH}))
 			const service = Context.get(context, Auth)
 			const id = yield* Context.get(context, Sessions).start({
-				client_id: 'scope',
+				client_id: ClientId.make('scope'),
 				code: 'approved',
 				code_verifier: 'verifier',
 				redirect_uri: 'https://scope.mp281x.xyz/auth/callback'

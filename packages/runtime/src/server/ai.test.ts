@@ -8,6 +8,7 @@ import {HttpClient, HttpClientResponse} from 'effect/http'
 import {AiGateway, AiUnavailableError} from '#server/ai.ts'
 import {Sessions} from '#server/sessions.ts'
 import {layerDataStore} from '#server/store.ts'
+import {UserId} from '#shared/auth.ts'
 
 it.layer(NodeServices.layer)(test => {
 	test.effect(
@@ -35,7 +36,8 @@ it.layer(NodeServices.layer)(test => {
 			const gateway = Context.get(context, AiGateway)
 			assert.instanceOf(yield* Effect.flip(gateway.apiUrl('anthropic')), AiUnavailableError)
 			assert.deepEqual(
-				yield* (yield* (yield* gateway.authorize('anyone'))(client).get('http://localhost/ai/anthropic')).json,
+				yield* (yield* (yield* gateway.authorize(UserId.make('anyone')))(client).get('http://localhost/ai/anthropic'))
+					.json,
 				{authorization: ''}
 			)
 		})

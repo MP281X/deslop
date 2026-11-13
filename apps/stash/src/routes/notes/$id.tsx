@@ -52,7 +52,8 @@ import {BrandLogo} from '#lib/icons.tsx'
 import {appOf, brandOf, kinds, subjectOf} from '#lib/kinds.ts'
 import {imageAtom, noteAtom, notesAtom, regenerateAtom, removal} from '#lib/notes.ts'
 import {primary} from '#lib/session.ts'
-import type {NoteItem} from '#services/notes/schema.ts'
+import type {NoteId, NoteItem} from '#services/notes/schema.ts'
+import {TagName} from '#services/notes/schema.ts'
 
 const prose = [text.body, lineSpacing(space[1]), foregroundStyle(colors.foreground), textSelection(true)]
 
@@ -243,7 +244,7 @@ function NoteContent(props: {note: NoteItem}) {
 	)
 }
 
-function Detail(props: {note: NoteItem; onRetry: () => void; onTag: (tag: string) => void}) {
+function Detail(props: {note: NoteItem; onRetry: () => void; onTag: (tag: TagName) => void}) {
 	const full = useAtomValue(noteAtom(props.note))
 	const reload = useAtomRefresh(noteAtom(props.note))
 	if (AsyncResult.isFailure(full) && Option.exists(AsyncResult.error(full), Schema.is(AuthError))) {
@@ -309,7 +310,7 @@ function Detail(props: {note: NoteItem; onRetry: () => void; onTag: (tag: string
 				<Divider />
 				<Byline note={props.note} />
 				{!Array.isReadonlyArrayEmpty(props.note.tags) && (
-					<ToggleGroup value="" onValueChange={props.onTag} tint={primary}>
+					<ToggleGroup value="" onValueChange={value => props.onTag(TagName.make(value))} tint={primary}>
 						{Array.map(props.note.tags, tag => (
 							<ToggleGroupItem key={tag} value={tag}>
 								{tag}
@@ -324,10 +325,10 @@ function Detail(props: {note: NoteItem; onRetry: () => void; onTag: (tag: string
 
 // The navigation path names the note by its id.
 function NoteScreen(props: {
-	id: string
+	id: NoteId
 	notes: readonly NoteItem[]
 	onClose: () => void
-	onTag: (tag: string) => void
+	onTag: (tag: TagName) => void
 }) {
 	const remove = useAtomSet(removal.removeAtom)
 	const regenerate = useAtomSet(regenerateAtom)
@@ -396,7 +397,7 @@ function NoteScreen(props: {
 	)
 }
 
-export function NoteRoute(props: {id: string; onClose: () => void; onTag: (tag: string) => void}) {
+export function NoteRoute(props: {id: NoteId; onClose: () => void; onTag: (tag: TagName) => void}) {
 	return (
 		<Loaded atom={notesAtom} name="Notes">
 			{notes => <NoteScreen id={props.id} notes={notes} onClose={props.onClose} onTag={props.onTag} />}

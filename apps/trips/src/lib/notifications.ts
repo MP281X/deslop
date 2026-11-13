@@ -8,7 +8,7 @@ import {foregroundNotifications} from '@deslop/components-mobile/notifications'
 
 import {RpcClient, session} from '#lib/session.ts'
 import {BookingsError} from '#services/bookings/schema.ts'
-import {Bundle} from '#services/push/schema.ts'
+import {ApnsToken, Bundle} from '#services/push/schema.ts'
 
 const apns = Effect.map(Schema.decodeUnknownEffect(Bundle)(applicationId), bundle => ({bundle}))
 
@@ -31,12 +31,14 @@ export const pushAtom = RpcClient.runtime.atom(get =>
 					...target,
 					kind: 'alert',
 					token: Redacted.make(
-						`${
-							(yield* Effect.tryPromise({
-								catch: cause => BookingsError.make({cause, message: 'The push token could not be read.'}),
-								try: () => getDevicePushTokenAsync()
-							})).data
-						}`
+						ApnsToken.make(
+							`${
+								(yield* Effect.tryPromise({
+									catch: cause => BookingsError.make({cause, message: 'The push token could not be read.'}),
+									try: () => getDevicePushTokenAsync()
+								})).data
+							}`
+						)
 					)
 				})
 			}
@@ -53,10 +55,10 @@ export const pushAtom = RpcClient.runtime.atom(get =>
 					)
 				),
 				token =>
-					Effect.ignore(client('push.register', {...target, kind: 'start', token: Redacted.make(token)}), {
-						log: 'Warn',
-						message: 'The Live Activity token was not registered'
-					})
+					Effect.ignore(
+						client('push.register', {...target, kind: 'start', token: Redacted.make(ApnsToken.make(token))}),
+						{log: 'Warn', message: 'The Live Activity token was not registered'}
+					)
 			)
 		}),
 		{log: 'Warn', message: 'Notifications are not set up on this iPhone'}

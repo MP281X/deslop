@@ -78,7 +78,7 @@ import {imageAtom, notesAtom, queryAtom, regenerateAtom, removal, searchAtom} fr
 import {primary, session} from '#lib/session.ts'
 import {tagCounts} from '#services/notes/lib/utils.ts'
 import type {Note, NoteItem} from '#services/notes/schema.ts'
-import {Brand, Kind} from '#services/notes/schema.ts'
+import {Brand, Kind, TagName} from '#services/notes/schema.ts'
 
 // The summary waits in the note, so the list scans fast.
 function Lines(props: {muted?: boolean; note: NoteItem}) {
@@ -307,7 +307,7 @@ function FilterMenu(props: {kind?: Kind; onKind: (kind?: Kind) => void}) {
 	)
 }
 
-function Notes(props: {kind?: Kind; onOpen: (id: Note['id']) => void; onTag: (name?: string) => void; tag?: string}) {
+function Notes(props: {kind?: Kind; onOpen: (id: Note['id']) => void; onTag: (name?: TagName) => void; tag?: TagName}) {
 	const regenerate = useAtomSet(regenerateAtom)
 	const paste = useAtomSet(clipboard.atom.send)
 	const query = String.trim(useAtomValue(queryAtom))
@@ -352,7 +352,7 @@ function Notes(props: {kind?: Kind; onOpen: (id: Note['id']) => void; onTag: (na
 											value={props.tag ?? 'all'}
 											onValueChange={value =>
 												Boolean.match(value === 'all' || value === props.tag, {
-													onFalse: () => props.onTag(value),
+													onFalse: () => props.onTag(TagName.make(value)),
 													onTrue: () => props.onTag()
 												})
 											}
@@ -415,9 +415,9 @@ export function HomeRoute(props: {
 	onKind: (kind?: Kind) => void
 	onOpen: (id: Note['id']) => void
 	onSearch: (text: string) => void
-	onTag: (name?: string) => void
+	onTag: (name?: TagName) => void
 	query: ReturnType<typeof useNativeState<string>>
-	tag?: string
+	tag?: TagName
 }) {
 	const notes = useAtomValue(notesAtom)
 	const refreshNotes = useAtomRefresh(notesAtom)

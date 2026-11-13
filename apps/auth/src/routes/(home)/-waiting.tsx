@@ -1,6 +1,6 @@
 import {useAtom, useAtomSuspense} from '@effect/atom-react'
 
-import {Array, Boolean, Match, Number, Option, String, pipe} from 'effect'
+import {Array, Boolean, DateTime, Duration, Match, Number, Option, String, pipe} from 'effect'
 
 import {ArrowRightIcon, CheckIcon, CopyIcon, HourglassIcon, KeyIcon} from '@phosphor-icons/react'
 import {getRouteApi} from '@tanstack/react-router'
@@ -28,7 +28,7 @@ import {
 import {SignInList, SignInRowsSkeleton} from '#lib/components.tsx'
 import {Failures} from '#routes/(home)/-sign-in.tsx'
 import type {SignedAccount} from '#services/people/schema.ts'
-import type {PendingAuthorization} from '#services/sign-ins/schema.ts'
+import type {PendingAuthorization, SignInCode} from '#services/sign-ins/schema.ts'
 
 const route = getRouteApi('/(home)')
 
@@ -57,7 +57,7 @@ function QrCode(props: {className?: string; text: string}) {
 	)
 }
 
-function Code(props: {id: string}) {
+function Code(props: {id: SignInCode}) {
 	const [copy, copyCode] = useAtom(copyCodeAtom)
 	const copied = AsyncResult.isWaiting(copy)
 	return (
@@ -82,17 +82,19 @@ function Code(props: {id: string}) {
 }
 
 // What is left until `until`, as m:ss.
-function leftLabel(until: number, now: number) {
-	const seconds = Number.max(0, Math.ceil((until - now) / 1000))
+function leftLabel(until: DateTime.Utc, now: DateTime.Utc) {
+	const seconds = Number.max(0, Math.ceil(Duration.toSeconds(DateTime.distance(now, until))))
 	return `${Math.floor(seconds / 60)}:${String.padStart(2, '0')(`${seconds % 60}`)}`
 }
 
 // Its own component, so only the time re-renders each second; only the last minute carries the warning dot.
-function Countdown(props: {expiresAt: number}) {
+function Countdown(props: {expiresAt: DateTime.Utc}) {
 	const now = useAtomSuspense(secondAtom).value
 	return (
 		<span role="timer" className="text-muted-foreground flex items-center gap-1.5 text-xs">
-			{props.expiresAt - now < 60_000 && <StatusDot status="warning" />}
+			{DateTime.isLessThan(props.expiresAt, DateTime.addDuration(now, Duration.minutes(1))) && (
+				<StatusDot status="warning" />
+			)}
 			<span>
 				<span className="font-mono tabular-nums">{leftLabel(props.expiresAt, now)}</span> left
 			</span>
@@ -152,7 +154,7 @@ function CodeCard(props: {request: PendingAuthorization}) {
 }
 
 // This browser started the sign-in, so a signed-in account answers it here without a code.
-export function Waiting(props: {account: Option.Option<SignedAccount>; id: string}) {
+export function Waiting(props: {account: Option.Option<SignedAccount>; id: SignInCode}) {
 	return pipe(
 		useAtomSuspense(requestAtom(props.id)).value,
 		Match.value,

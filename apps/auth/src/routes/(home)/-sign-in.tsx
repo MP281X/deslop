@@ -13,11 +13,12 @@ import {Skeleton} from '@deslop/components-web/ui/skeleton'
 
 import {catalogAtom, codeSignInAtom, passkeySignInAtom, signInAtom} from '#lib/auth.ts'
 import {AppIcon} from '#lib/components.tsx'
+import type {Catalog} from '#services/apps/schema.ts'
 
 const route = getRouteApi('/(home)')
 
 export function Failures() {
-	const failed = route.useSearch({select: search => search.error !== undefined})
+	const failed = route.useSearch({select: search => Option.isSome(search.error)})
 	const [signIn] = useAtom(signInAtom)
 	const [codeSignIn] = useAtom(codeSignInAtom)
 	const [passkey] = useAtom(passkeySignInAtom)
@@ -37,7 +38,7 @@ export function Failures() {
 }
 
 // The suite's apps, as they announced themselves to Auth; each opens its app.
-function Suite(props: {apps: readonly {name: string; origin: string}[]}) {
+function Suite(props: {apps: Catalog}) {
 	return (
 		<nav aria-label="Apps" className="grid grid-cols-2 gap-x-8 gap-y-3 border-t pt-5">
 			{Array.map(props.apps, app => (

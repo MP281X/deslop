@@ -17,8 +17,8 @@ import {
 
 import {HttpClient, HttpClientRequest, HttpClientResponse} from 'effect/http'
 
-import type {BookedPlace, Place} from '#services/bookings/schema.ts'
-import {Airport, BookingsError, StopMatches} from '#services/bookings/schema.ts'
+import type {BookedPlace} from '#services/bookings/schema.ts'
+import {Airport, BookingsError, Place, PlaceCode, StopMatches} from '#services/bookings/schema.ts'
 
 const RAIL = ['HIGHSPEED_RAIL', 'LONG_DISTANCE', 'NIGHT_RAIL', 'REGIONAL_FAST_RAIL', 'REGIONAL_RAIL', 'SUBURBAN']
 const GENERIC = ['bahnhof', 'central', 'centraal', 'centrale', 'gare', 'hauptbahnhof', 'hbf', 'station', 'stazione']
@@ -50,7 +50,7 @@ function stationMatch(name: string, matches: StopMatches) {
 	const named = Array.filter(matches, match => {
 		const own = words(
 			`${match.name} ${pipe(
-				match.areas ?? [],
+				Array.flatten(Option.toArray(match.areas)),
 				Array.map(area => area.name),
 				Array.join(' ')
 			)}`
@@ -63,21 +63,25 @@ function stationMatch(name: string, matches: StopMatches) {
 	})
 	return pipe(
 		named,
-		Array.findFirst(match => Array.some(match.modes ?? [], mode => Array.contains(RAIL, mode))),
+		Array.findFirst(match =>
+			Option.exists(match.modes, modes => Array.some(modes, mode => Array.contains(RAIL, mode)))
+		),
 		Option.orElse(() => Array.head(named)),
 		Option.map(
 			match =>
 				({
-					code: match.id,
-					latitude: match.lat,
-					longitude: match.lon,
+					address: Option.none(),
+					city: Option.none(),
+					code: Option.some(match.id),
+					latitude: Option.some(match.lat),
+					longitude: Option.some(match.lon),
 					name: pipe(
 						String.toLowerCase(match.name),
 						String.split(' '),
 						Array.map(word => String.capitalize(word)),
 						Array.join(' ')
 					),
-					...Option.match(Option.fromUndefinedOr(match.tz), {onNone: () => ({}), onSome: timeZone => ({timeZone})})
+					timeZone: match.tz
 				}) satisfies Place
 		)
 	)
@@ -141,15 +145,16 @@ export class Places extends Context.Service<
 					)
 					const airport = yield* pipe(
 						airports,
-						Record.get(String.toUpperCase(String.trim(code))),
+						Record.get(PlaceCode.make(String.toUpperCase(String.trim(code)))),
 						Effect.fromOption,
 						Effect.mapError(() => BookingsError.make({message: `Unknown airport code ${code}.`}))
 					)
 					return {
-						city: airport.city,
-						code: airport.iata,
-						latitude: airport.lat,
-						longitude: airport.lon,
+						address: Option.none(),
+						city: Option.some(airport.city),
+						code: Option.some(airport.iata),
+						latitude: Option.some(airport.lat),
+						longitude: Option.some(airport.lon),
 						name: airport.name,
 						timeZone: airport.tz
 					} satisfies BookedPlace
@@ -164,7 +169,7 @@ export class Places extends Context.Service<
 								BookingsError.make({cause, message: `The station ${name} could not be looked up.`})
 							)
 						),
-						() => ({name})
+						() => Schema.decodeSync(Place)({name})
 					)
 				})
 			})

@@ -1,13 +1,15 @@
 import {Array, Option, Record, String, Struct, pipe} from 'effect'
 
 import {plainText} from '#services/notes/lib/utils.ts'
-import type {Organization, TagName} from '#services/notes/schema.ts'
+import type {Organization} from '#services/notes/schema.ts'
+import {TagName} from '#services/notes/schema.ts'
 
 export function normalizeTags(tags: readonly TagName[]) {
 	return pipe(
 		tags,
 		Array.map(tag => pipe(tag, String.toLowerCase, plainText, String.replace(/^#+/u, ''), String.replaceAll(' ', '-'))),
 		Array.filter(String.isNonEmpty),
+		Array.map(tag => TagName.make(tag)),
 		Array.dedupe
 	)
 }

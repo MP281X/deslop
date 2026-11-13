@@ -1,28 +1,29 @@
 import {RegistryContext} from '@effect/atom-react'
 import {assert, beforeAll, it} from '@effect/vitest'
 
-import {Array, Cause, Effect, Option, String} from 'effect'
+import {Array, Cause, Duration, Effect, Option, Schema, String} from 'effect'
 
-import {RouterProvider, createMemoryHistory, createRouter} from '@tanstack/react-router'
+import {RouterProvider, createMemoryHistory, createRouter, defaultStringifySearch} from '@tanstack/react-router'
 import {AsyncResult, AtomRegistry} from 'effect/reactivity'
 import type {Atom} from 'effect/reactivity'
 import {createElement} from 'react'
 import {renderToString} from 'react-dom/server'
 
 import {AuthError} from '@deslop/runtime/shared/auth'
+import {searchSerializerOf} from '@deslop/runtime/web/search'
 
 import {routeTree} from '#routeTree.gen.ts'
 
 import {inventoryAtom, metricsAtom} from '#lib/fleet.ts'
-import {Route} from '#routes/(home)/index.tsx'
-import {DeployError, InventoryItem, Snapshot} from '#services/inventory/schema.ts'
-import {MachineHistory, Sample} from '#services/metrics/schema.ts'
+import {Route, Search} from '#routes/(home)/index.tsx'
+import {DeployError, Snapshot} from '#services/inventory/schema.ts'
+import {MachineHistory} from '#services/metrics/schema.ts'
 
 beforeAll(() => Route.options.component?.preload?.())
 
-const snapshot = Snapshot.make({
+const snapshot = Schema.decodeSync(Snapshot)({
 	items: [
-		InventoryItem.make({
+		{
 			detail: '',
 			id: 'private',
 			kind: 'service',
@@ -30,28 +31,26 @@ const snapshot = Snapshot.make({
 			state: 'active',
 			url: '',
 			worker: 'desktop'
-		})
+		}
 	],
 	sources: [{error: '', name: 'desktop'}],
 	time: 1,
 	workers: ['desktop']
 })
 const readings = [
-	MachineHistory.make({
+	Schema.decodeSync(MachineHistory)({
 		disks: [],
 		error: '',
 		load: [],
 		samples: [
-			Sample.make({
-				apps: Option.some([{id: 'service:system:deslop-private.service', memory: 1}]),
-				cpu: Option.none(),
+			{
+				apps: [{id: 'service:system:deslop-private.service', memory: 1}],
 				memoryTotal: 100,
 				memoryUsed: 1,
 				since: 1,
 				step: 1000,
-				storageUsed: Option.none(),
 				time: 1
-			})
+			}
 		],
 		stale: false,
 		time: 1,
@@ -96,7 +95,7 @@ function render(inventory: Atom.Type<typeof inventoryAtom>, metrics: Atom.Type<R
 					AtomRegistry.make({
 						initialValues: [
 							[inventoryAtom, inventory, {skipInitialRun: true}],
-							[metricsAtom(60), metrics, {skipInitialRun: true}]
+							[metricsAtom(Duration.minutes(60)), metrics, {skipInitialRun: true}]
 						]
 					})
 				),
@@ -104,10 +103,14 @@ function render(inventory: Atom.Type<typeof inventoryAtom>, metrics: Atom.Type<R
 			)
 			yield* offlineDesktop
 			registry.get(inventoryAtom)
-			registry.get(metricsAtom(60))
+			registry.get(metricsAtom(Duration.minutes(60)))
 			registry.ensureNode(inventoryAtom).setInitialValue(inventory)
-			registry.ensureNode(metricsAtom(60)).setInitialValue(metrics)
-			const router = createRouter({history: createMemoryHistory(), routeTree})
+			registry.ensureNode(metricsAtom(Duration.minutes(60))).setInitialValue(metrics)
+			const router = createRouter({
+				history: createMemoryHistory(),
+				routeTree,
+				stringifySearch: searchSerializerOf(Search, defaultStringifySearch)
+			})
 			yield* Effect.promise(() => router.load())
 			return renderToString(
 				createElement(RegistryContext.Provider, {value: registry}, createElement(RouterProvider, {router}))

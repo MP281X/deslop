@@ -1,8 +1,16 @@
-import {Array, Boolean, DateTime, Option, String, pipe} from 'effect'
+import {Array, Boolean, DateTime, Duration, Option, String, pipe} from 'effect'
 
-import type {WorkflowJob, WorkflowRun} from '#services/github/schema.ts'
+import type {
+	RepositoryName,
+	WorkflowJob,
+	WorkflowJobId,
+	WorkflowRun,
+	WorkflowRunAttempt,
+	WorkflowRunId,
+	WorkflowStepNumber
+} from '#services/github/schema.ts'
 import type {ExportedSpan} from '#services/telemetry/schema.ts'
-import {LogsRequest, TracesRequest} from '#services/telemetry/schema.ts'
+import {LogsRequest, SpanId, TraceId, TracesRequest} from '#services/telemetry/schema.ts'
 
 // A log line as GitHub writes it: an ISO time, then the runner's message.
 const LOG_LINE = /^(\d{4}-\d{2}-\d{2}T\S+Z) (.*)$/u
@@ -11,10 +19,11 @@ const LOG_COMMAND =
 	/^(?:##)?\[(command|debug|error|group|endgroup|notice|section|start-action|end-action|warning)(?: [^\]]*)?\](.*)$/u
 // oxlint-disable-next-line eslint/no-control-regex -- ANSI escapes start with the ESC control character.
 const ANSI = /\u001B\[[0-9;]*m/gu
+const INSTRUMENTATION = {attributes: Option.none(), name: 'github-actions'}
 
-// An ISO time as OTLP's nanoseconds.
-function nanos(time: string) {
-	return `${BigInt(DateTime.toEpochMillis(DateTime.makeUnsafe(time))) * 1_000_000n}`
+// A GitHub instant as exact epoch nanoseconds.
+function nanos(time: DateTime.Utc) {
+	return Duration.nanos(BigInt(DateTime.toEpochMillis(time)) * 1_000_000n)
 }
 
 function hex(value: number, width: number) {
@@ -22,39 +31,41 @@ function hex(value: number, width: number) {
 }
 
 // A run attempt is one trace and its ids come from GitHub's, so each event joins it and a repeated delivery replaces what it sent.
-function traceIdOf(run: number, attempt: number) {
-	return `${hex(run, 24)}${hex(attempt, 8)}`
+function traceIdOf(run: WorkflowRunId, attempt: WorkflowRunAttempt) {
+	return TraceId.make(`${hex(run, 24)}${hex(attempt, 8)}`)
 }
 
-function runSpanId(run: number) {
-	return `1${hex(run, 15)}`
+function runSpanId(run: WorkflowRunId) {
+	return SpanId.make(`1${hex(run, 15)}`)
 }
 
-function jobSpanId(job: number) {
-	return `2${hex(job, 15)}`
+function jobSpanId(job: WorkflowJobId) {
+	return SpanId.make(`2${hex(job, 15)}`)
 }
 
 // A conclusion as an OTLP status: a failure or timeout failed, success is ok, and a cancelled or skipped one is neither.
-function statusOf(conclusion: string | null, message: string) {
-	if (conclusion === 'failure' || conclusion === 'timed_out' || conclusion === 'startup_failure') {
-		return {code: 2, message}
+function statusOf(conclusion: Option.Option<string>, message: string) {
+	if (Option.exists(conclusion, value => Array.contains(['failure', 'timed_out', 'startup_failure'], value))) {
+		return Option.some({code: Option.some(2), message: Option.some(message)})
 	}
-	if (conclusion === 'success') return {code: 1, message: ''}
-	return {code: 0, message: ''}
+	if (Option.contains(conclusion, 'success')) return Option.some({code: Option.some(1), message: Option.some('')})
+	return Option.some({code: Option.some(0), message: Option.some('')})
 }
 
 function text(key: string, value: string) {
 	return {key, value: {stringValue: value}}
 }
 
-function repositoryTraces(repository: string, spans: readonly ExportedSpan[]) {
+function repositoryTraces(repository: RepositoryName, spans: readonly ExportedSpan[]) {
 	return TracesRequest.make({
-		resourceSpans: [
+		resourceSpans: Option.some([
 			{
-				resource: {attributes: [text('service.name', repository), text('scope.runtime', 'ci')]},
-				scopeSpans: [{scope: {name: 'github-actions'}, spans}]
+				resource: Option.some({
+					attributes: Option.some([text('service.name', repository), text('scope.runtime', 'ci')])
+				}),
+				scopeSpans: Option.some([{scope: INSTRUMENTATION, spans: Option.some(spans)}])
 			}
-		]
+		])
 	})
 }
 
@@ -75,31 +86,34 @@ function runLabel(run: WorkflowRun['workflow_run']) {
 
 // A workflow run as its trace's root: running, it has no end yet, so the trace lasts as long as its finished jobs.
 export function runTrace(event: WorkflowRun) {
-	const run = event.workflow_run
 	return repositoryTraces(event.repository.full_name, [
 		{
-			attributes: [
-				text('github.title', run.display_title),
-				text('github.event', run.event),
-				text('github.run_number', `${run.run_number}`),
-				text('github.run_attempt', `${run.run_attempt}`),
-				text('trace.label', runLabel(run)),
-				text('git.branch', run.head_branch ?? ''),
-				text('git.commit', run.head_sha),
-				text('github.conclusion', run.conclusion ?? ''),
-				text('url.full', run.html_url)
-			],
-			kind: 1,
-			name: run.name ?? run.display_title,
-			parentSpanId: '',
-			startTimeUnixNano: nanos(run.run_started_at),
-			status: statusOf(run.conclusion, `${run.display_title} failed`),
-			...runIds(event),
-			...pipe(
-				event.action,
-				Option.liftPredicate(action => action === 'completed'),
-				Option.match({onNone: () => ({}), onSome: () => ({endTimeUnixNano: nanos(run.updated_at)})})
-			)
+			attributes: Option.some([
+				text('github.title', event.workflow_run.display_title),
+				text('github.event', event.workflow_run.event),
+				text('github.run_number', `${event.workflow_run.run_number}`),
+				text('github.run_attempt', `${event.workflow_run.run_attempt}`),
+				text('trace.label', runLabel(event.workflow_run)),
+				text(
+					'git.branch',
+					Option.getOrElse(event.workflow_run.head_branch, () => '')
+				),
+				text('git.commit', event.workflow_run.head_sha),
+				text(
+					'github.conclusion',
+					Option.getOrElse(event.workflow_run.conclusion, () => '')
+				),
+				text('url.full', event.workflow_run.html_url)
+			]),
+			endTimeUnixNano: Option.liftPredicate(nanos(event.workflow_run.updated_at), () => event.action === 'completed'),
+			events: Option.none(),
+			kind: Option.some(1),
+			links: Option.none(),
+			name: Option.some(Option.getOrElse(event.workflow_run.name, () => event.workflow_run.display_title)),
+			parentSpanId: Option.none(),
+			startTimeUnixNano: nanos(event.workflow_run.run_started_at),
+			status: statusOf(event.workflow_run.conclusion, `${event.workflow_run.display_title} failed`),
+			...runIds(event)
 		}
 	])
 }
@@ -108,19 +122,13 @@ export function runTrace(event: WorkflowRun) {
 function stepsOf(job: WorkflowJob['workflow_job']) {
 	return Array.getSomes(
 		Array.map(job.steps, step =>
-			Option.map(
-				Option.all({
-					completed: Option.fromNullishOr(step.completed_at),
-					started: Option.fromNullishOr(step.started_at)
-				}),
-				times => ({...step, ...times})
-			)
+			Option.map(Option.all({completed: step.completed_at, started: step.started_at}), times => ({...step, ...times}))
 		)
 	)
 }
 
-function stepSpanId(job: number, step: number) {
-	return `3${hex(job, 12)}${hex(step, 3)}`
+function stepSpanId(job: WorkflowJobId, step: WorkflowStepNumber) {
+	return SpanId.make(`3${hex(job, 12)}${hex(step, 3)}`)
 }
 
 // A job as a span with its steps beneath it, each step linking to its GitHub log.
@@ -128,24 +136,32 @@ export function jobTrace(event: WorkflowJob) {
 	const job = event.workflow_job
 	const traceId = traceIdOf(job.run_id, job.run_attempt)
 	const steps = stepsOf(job)
-	const failed = Array.findFirst(steps, step => statusOf(step.conclusion, '').code === 2)
+	const failed = Array.findFirst(steps, step =>
+		Option.exists(statusOf(step.conclusion, ''), status => Option.contains(status.code, 2))
+	)
 	return repositoryTraces(event.repository.full_name, [
 		{
-			attributes: [
-				text('github.runner', job.runner_name ?? ''),
-				text('github.conclusion', job.conclusion ?? ''),
+			attributes: Option.some([
+				text(
+					'github.runner',
+					Option.getOrElse(job.runner_name, () => '')
+				),
+				text(
+					'github.conclusion',
+					Option.getOrElse(job.conclusion, () => '')
+				),
 				{
 					key: 'github.queued_ms',
-					value: {
-						intValue: `${DateTime.toEpochMillis(DateTime.makeUnsafe(job.started_at)) - DateTime.toEpochMillis(DateTime.makeUnsafe(job.created_at))}`
-					}
+					value: {intValue: `${Duration.toMillis(DateTime.distance(job.created_at, job.started_at))}`}
 				},
 				text('url.full', job.html_url)
-			],
-			endTimeUnixNano: nanos(job.completed_at ?? job.started_at),
-			kind: 1,
-			name: job.name,
-			parentSpanId: runSpanId(job.run_id),
+			]),
+			endTimeUnixNano: Option.some(nanos(Option.getOrElse(job.completed_at, () => job.started_at))),
+			events: Option.none(),
+			kind: Option.some(1),
+			links: Option.none(),
+			name: Option.some(job.name),
+			parentSpanId: Option.some(runSpanId(job.run_id)),
 			spanId: jobSpanId(job.id),
 			startTimeUnixNano: nanos(job.started_at),
 			status: statusOf(
@@ -155,14 +171,19 @@ export function jobTrace(event: WorkflowJob) {
 			traceId
 		},
 		...Array.map(steps, step => ({
-			attributes: [
-				text('github.conclusion', step.conclusion ?? ''),
+			attributes: Option.some([
+				text(
+					'github.conclusion',
+					Option.getOrElse(step.conclusion, () => '')
+				),
 				text('url.full', `${job.html_url}#step:${step.number}:1`)
-			],
-			endTimeUnixNano: nanos(step.completed),
-			kind: 1,
-			name: step.name,
-			parentSpanId: jobSpanId(job.id),
+			]),
+			endTimeUnixNano: Option.some(nanos(step.completed)),
+			events: Option.none(),
+			kind: Option.some(1),
+			links: Option.none(),
+			name: Option.some(step.name),
+			parentSpanId: Option.some(jobSpanId(job.id)),
 			spanId: stepSpanId(job.id, step.number),
 			startTimeUnixNano: nanos(step.started),
 			status: statusOf(step.conclusion, `${step.name} failed`),
@@ -179,9 +200,9 @@ function severityOf(command: string) {
 }
 
 // Steps run in time order, so a line advances the pointer past every step that had already ended.
-function stepIndexAfter(steps: readonly {end: number}[], index: number, time: number): number {
+function stepIndexAfter(steps: readonly {end: DateTime.Utc}[], index: number, time: DateTime.Utc): number {
 	const step = steps[index]
-	if (step === undefined || time <= step.end) return index
+	if (step === undefined || DateTime.isLessThanOrEqualTo(time, step.end)) return index
 	return stepIndexAfter(steps, index + 1, time)
 }
 
@@ -189,9 +210,9 @@ function stepIndexAfter(steps: readonly {end: number}[], index: number, time: nu
 export function jobLogs(event: WorkflowJob, log: string) {
 	const traceId = traceIdOf(event.workflow_job.run_id, event.workflow_job.run_attempt)
 	const steps = Array.map(stepsOf(event.workflow_job), step => ({
-		end: DateTime.toEpochMillis(DateTime.makeUnsafe(step.completed)),
+		end: step.completed,
 		spanId: stepSpanId(event.workflow_job.id, step.number),
-		start: DateTime.toEpochMillis(DateTime.makeUnsafe(step.started))
+		start: step.started
 	}))
 	// Log lines and steps both arrive in time order, so one pointer moves through the steps once.
 	const [, lines] = pipe(
@@ -210,7 +231,7 @@ export function jobLogs(event: WorkflowJob, log: string) {
 							onNone: () => ({command: '', message}),
 							onSome: command => ({command: command[1] ?? '', message: command[2] ?? ''})
 						}),
-						time: DateTime.toEpochMillis(date)
+						time: date
 					}))
 				}),
 				Option.filter(
@@ -224,26 +245,33 @@ export function jobLogs(event: WorkflowJob, log: string) {
 			return [
 				next,
 				Option.map(entry, line => ({
-					body: {stringValue: line.message},
-					severityNumber: severityOf(line.command),
-					spanId: pipe(
-						Option.fromUndefinedOr(steps[next]),
-						Option.filter(step => line.time >= step.start),
-						Option.match({onNone: () => jobSpanId(event.workflow_job.id), onSome: step => step.spanId})
+					attributes: Option.none(),
+					body: Option.some({stringValue: line.message}),
+					observedTimeUnixNano: Option.none(),
+					severityNumber: Option.some(severityOf(line.command)),
+					severityText: Option.none(),
+					spanId: Option.some(
+						pipe(
+							Option.fromUndefinedOr(steps[next]),
+							Option.filter(step => DateTime.isGreaterThanOrEqualTo(line.time, step.start)),
+							Option.match({onNone: () => jobSpanId(event.workflow_job.id), onSome: step => step.spanId})
+						)
 					),
-					timeUnixNano: `${BigInt(line.time) * 1_000_000n}`,
-					traceId
+					timeUnixNano: nanos(line.time),
+					traceId: Option.some(traceId)
 				}))
 			] as const
 		})
 	)
 	const records = Array.getSomes(lines)
 	return LogsRequest.make({
-		resourceLogs: [
+		resourceLogs: Option.some([
 			{
-				resource: {attributes: [text('service.name', event.repository.full_name), text('scope.runtime', 'ci')]},
-				scopeLogs: [{logRecords: records, scope: {name: 'github-actions'}}]
+				resource: Option.some({
+					attributes: Option.some([text('service.name', event.repository.full_name), text('scope.runtime', 'ci')])
+				}),
+				scopeLogs: Option.some([{logRecords: Option.some(records), scope: INSTRUMENTATION}])
 			}
-		]
+		])
 	})
 }

@@ -8,22 +8,22 @@ import {alertFailure} from '#lib/alerts.ts'
 
 type RemovalError = {_tag: string; message: string}
 
-class Removal extends Context.Service<
-	Removal,
-	{readonly notRemoved: string; readonly remove: (id: string) => Effect.Effect<void, RemovalError>}
->()('@deslop/components-mobile/lib/removal') {}
-
 // A removal reaches the server only after eight seconds; until then its row can restore it.
-export function makeRemoval<E extends {_tag: string; message: string}>(options: {
+export function makeRemoval<Id extends string, E extends {_tag: string; message: string}>(options: {
 	notRemoved: string
-	remove: (id: string, context: Atom.AtomContext) => Effect.Effect<void, E>
+	remove: (id: Id, context: Atom.AtomContext) => Effect.Effect<void, E>
 }) {
+	class Removal extends Context.Service<
+		Removal,
+		{readonly notRemoved: string; readonly remove: (id: Id) => Effect.Effect<void, RemovalError>}
+	>()('@deslop/components-mobile/lib/removal') {}
+
 	const bound = AtomMachine.bind(
 		Atom.runtime(get =>
 			Layer.succeed(Removal, Removal.of({notRemoved: options.notRemoved, remove: id => options.remove(id, get)}))
 		)
 	)
-	const machineAtom = Atom.family((id: string) =>
+	const machineAtom = Atom.family((id: Id) =>
 		bound.make(
 			Machine.make({
 				effects: {
@@ -47,7 +47,7 @@ export function makeRemoval<E extends {_tag: string; message: string}>(options: 
 		)
 	)
 	// A removal outlives its row, which a search, a folded section or a closing detail unmounts; the family forgets a machine nothing references, so the hold keeps the machine itself.
-	const heldAtom = Atom.family((id: string) => {
+	const heldAtom = Atom.family((id: Id) => {
 		const removing = machineAtom(id)
 		return Atom.keepAlive(Atom.readable(get => get(removing.ref)))
 	})
@@ -55,7 +55,7 @@ export function makeRemoval<E extends {_tag: string; message: string}>(options: 
 		machine: machineAtom,
 		removeAtom: Atom.writable(
 			() => undefined,
-			(context, id: string) => {
+			(context, id: Id) => {
 				context.get(heldAtom(id))
 				context.set(machineAtom(id).send, {_tag: 'Removed'})
 			}

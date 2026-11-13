@@ -41,7 +41,7 @@ function Enter(props: {
 	state: 'Checking' | 'Found' | 'Missing' | 'Typing' | {failed: string}
 	typed: string
 }) {
-	const linked = route.useSearch({select: search => search.code !== undefined})
+	const linked = route.useSearch({select: search => Option.isSome(search.code)})
 	const invalid = props.state === 'Missing' || Predicate.isObject(props.state)
 	return (
 		<section className="flex w-full flex-col gap-2">
@@ -115,7 +115,7 @@ function Content(props: {
 }
 
 function SignInsRoute() {
-	useAtomMount(linkedCodeAtom(route.useSearch({select: search => search.code ?? ''})))
+	useAtomMount(linkedCodeAtom(route.useSearch({select: search => Option.getOrElse(search.code, () => '')})))
 	// The answer outlives the card: the lookup can drop its request before the consent response arrives.
 	useAtomMount(consentAtom)
 	const send = useAtomSet(codeAtom.send)
@@ -127,7 +127,7 @@ function SignInsRoute() {
 			<MachineState machine={codeAtom} path="Typing">
 				{typing => (
 					<Content
-						answered={Option.fromUndefinedOr(typing.value.answered)}
+						answered={typing.value.answered}
 						onType={type}
 						pending={Option.none()}
 						state="Typing"

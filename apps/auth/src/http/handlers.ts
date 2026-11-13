@@ -1,4 +1,4 @@
-import {Array, Duration, Effect, Match, Option, Schema, String, pipe} from 'effect'
+import {Array, Duration, Effect, Match, Option, Schema, String, Struct, pipe} from 'effect'
 
 import {HttpRouter, HttpServerRequest, HttpServerResponse, UrlParams} from 'effect/http'
 import {RateLimiter} from 'effect/persistence'
@@ -20,7 +20,7 @@ import {App, AppParams} from '#services/apps/schema.ts'
 import {Apps} from '#services/apps/service.ts'
 import {CallbackParams, LoginState, SignInParams} from '#services/github/schema.ts'
 import {GitHub} from '#services/github/service.ts'
-import {PasskeySignIn} from '#services/passkeys/schema.ts'
+import {PasskeySignIn, RequestOptions} from '#services/passkeys/schema.ts'
 import {Passkeys} from '#services/passkeys/service.ts'
 import {People} from '#services/people/service.ts'
 import {SIGN_IN_LIFETIME, typedCode} from '#services/sign-ins/lib/utils.ts'
@@ -46,14 +46,15 @@ import {
 	Registration,
 	RevokeParams,
 	TokenGrant,
-	TokenParams
+	TokenParams,
+	TokenResponse
 } from '#services/tokens/schema.ts'
 import {Tokens} from '#services/tokens/service.ts'
 
 const LOGIN_COOKIE = '__Host-login'
 
-function session(seconds: number) {
-	return {...COOKIE, maxAge: `${seconds} seconds` as const}
+function session(seconds: Duration.Duration) {
+	return {...COOKIE, maxAge: seconds}
 }
 
 // OAuth endpoints answer failures as RFC 6749 JSON and are never cached.
@@ -95,7 +96,7 @@ function githubFailed(cause: unknown, flow: Option.Option<SignInParams>) {
 				`/?${UrlParams.toString(
 					UrlParams.fromInput({
 						error: 'github',
-						...Option.match(flow, {onNone: () => ({}), onSome: found => ({code: found.code, request: found.request})})
+						...Option.match(flow, {onNone: () => ({}), onSome: found => Schema.encodeSync(SignInParams)(found)})
 					})
 				)}`
 			),
@@ -107,12 +108,12 @@ function githubFailed(cause: unknown, flow: Option.Option<SignInParams>) {
 
 function returnTo(flow: SignInParams, origin: string) {
 	return pipe(
-		UrlParams.toString(UrlParams.fromInput({code: flow.code, request: flow.request})),
+		UrlParams.toString(UrlParams.fromInput(Struct.omit(Schema.encodeSync(SignInParams)(flow), ['next']))),
 		Option.liftPredicate(String.isNonEmpty),
 		Option.match({
 			onNone: () =>
 				pipe(
-					Option.fromUndefinedOr(flow.next),
+					flow.next,
 					Option.filter(next => returnable(next, origin)),
 					Option.getOrElse(() => '/')
 				),
@@ -225,7 +226,7 @@ export const HttpHandlers = HttpRouter.use(router =>
 								message: 'Use a Deslop web or iOS callback, a loopback callback or a Gateway server callback'
 							})
 						}
-						const name = params.client_name ?? 'Unknown client'
+						const name = Option.getOrElse(params.client_name, () => 'Unknown client')
 						return HttpServerResponse.jsonUnsafe(
 							{
 								client_id: clientIdOf({name, redirects: params.redirect_uris}),
@@ -285,7 +286,12 @@ export const HttpHandlers = HttpRouter.use(router =>
 									return HttpServerResponse.redirect(
 										callbackUrl(
 											checked,
-											{code: yield* tokens.issue({...checked, parent: browser.success.family}, browser.success.owner)},
+											{
+												code: yield* tokens.issue(
+													{...checked, parent: Option.some(browser.success.family)},
+													browser.success.owner
+												)
+											},
 											tokens.issuer
 										)
 									)
@@ -323,7 +329,11 @@ export const HttpHandlers = HttpRouter.use(router =>
 								_tag: 'Device',
 								request: {
 									clientId: params.client_id,
-									clientName: (yield* tokens.client({client_id: params.client_id})).clientName
+									clientName: (yield* tokens.client({
+										client_id: params.client_id,
+										redirect_uri: Option.none(),
+										state: Option.none()
+									})).clientName
 								}
 							},
 							originOf(request)
@@ -352,9 +362,11 @@ export const HttpHandlers = HttpRouter.use(router =>
 						const grant = yield* asAuthError('Send a grant_type')(HttpServerRequest.schemaBodyUrlParams(TokenGrant))
 						if (grant.grant_type === DEVICE_GRANT) {
 							return HttpServerResponse.jsonUnsafe(
-								yield* signIns.poll(
-									yield* asAuthError('Send the device_code and client_id')(
-										HttpServerRequest.schemaBodyUrlParams(DeviceTokenParams)
+								yield* Schema.encodeEffect(TokenResponse)(
+									yield* signIns.poll(
+										yield* asAuthError('Send the device_code and client_id')(
+											HttpServerRequest.schemaBodyUrlParams(DeviceTokenParams)
+										)
 									)
 								)
 							)
@@ -365,19 +377,21 @@ export const HttpHandlers = HttpRouter.use(router =>
 								message: `Use grant_type authorization_code, refresh_token or ${DEVICE_GRANT}`
 							})
 						}
-						return Match.valueTags(
+						return yield* Match.valueTags(
 							yield* tokens.exchange(
 								yield* asAuthError('Invalid token request')(HttpServerRequest.schemaBodyUrlParams(TokenParams)),
 								originOf(yield* HttpServerRequest.HttpServerRequest),
 								people.allowed
 							),
 							{
-								Granted: granted => HttpServerResponse.jsonUnsafe(granted.tokens),
+								Granted: granted => HttpServerResponse.schemaJson(TokenResponse)(granted.tokens),
 								// A replayed grant still revoked its family, so it answers instead of failing.
 								Replayed: replayed =>
-									HttpServerResponse.jsonUnsafe(
-										{error: 'invalid_grant', error_description: replayed.message},
-										{status: 400}
+									Effect.succeed(
+										HttpServerResponse.jsonUnsafe(
+											{error: 'invalid_grant', error_description: replayed.message},
+											{status: 400}
+										)
 									)
 							}
 						)
@@ -473,14 +487,7 @@ export const HttpHandlers = HttpRouter.use(router =>
 						)).next
 						return waitingAt(
 							yield* signIns.start(
-								{
-									_tag: 'Browser',
-									...pipe(
-										Option.fromUndefinedOr(next),
-										Option.filter(page => returnable(page, origin)),
-										Option.match({onNone: () => ({}), onSome: page => ({next: page})})
-									)
-								},
+								{_tag: 'Browser', next: Option.filter(next, page => returnable(page, origin))},
 								originOf(yield* HttpServerRequest.HttpServerRequest)
 							)
 						)
@@ -492,7 +499,7 @@ export const HttpHandlers = HttpRouter.use(router =>
 		yield* router.add(
 			'GET',
 			'/auth/passkey',
-			limited('passkey', 20)(oauth(Effect.map(passkeys.request, options => HttpServerResponse.jsonUnsafe(options))))
+			limited('passkey', 20)(oauth(Effect.flatMap(passkeys.request, HttpServerResponse.schemaJson(RequestOptions))))
 		)
 		yield* router.add(
 			'POST',
@@ -516,7 +523,7 @@ export const HttpHandlers = HttpRouter.use(router =>
 						return HttpServerResponse.setCookieUnsafe(
 							HttpServerResponse.jsonUnsafe(
 								pipe(
-									Option.fromUndefinedOr(input.next),
+									input.next,
 									Option.filter(page => returnable(page, origin)),
 									Option.match({onNone: () => ({}), onSome: next => ({next})})
 								)
@@ -546,7 +553,7 @@ export const HttpHandlers = HttpRouter.use(router =>
 							HttpServerResponse.expireCookieUnsafe(HttpServerResponse.redirect(found.url), cookie, COOKIE),
 						Session: found =>
 							pipe(
-								HttpServerResponse.redirect(found.next ?? '/'),
+								HttpServerResponse.redirect(Option.getOrElse(found.next, () => '/')),
 								HttpServerResponse.expireCookieUnsafe(cookie, COOKIE),
 								HttpServerResponse.setCookieUnsafe(SESSION_COOKIE, found.token, session(found.seconds))
 							)

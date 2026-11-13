@@ -1,7 +1,7 @@
 import {
-	Clock,
 	Config,
 	Context,
+	DateTime,
 	Effect,
 	Fiber,
 	Layer,
@@ -25,9 +25,11 @@ import {Migrator, SqlClient, SqlSchema} from 'effect/sql'
 import {
 	AccessClaims,
 	AuthError,
-	REFRESH_SECONDS,
+	ClientId,
+	REFRESH_LIFETIME,
 	REVOKE_PATH,
 	SESSION_COOKIE,
+	SessionId,
 	TOKEN_PATH,
 	TokenResponse,
 	User,
@@ -39,14 +41,14 @@ import type {CodeGrant} from '#shared/auth.ts'
 
 class Session extends Model.Class<Session>('Session')({
 	access: Model.Sensitive(Schema.RedactedFromValue(Schema.NonEmptyString)),
-	clientId: Schema.NonEmptyString,
+	clientId: ClientId.check(Schema.isNonEmpty()),
 	// When the access token expires.
-	expiresAt: Schema.Int,
+	expiresAt: Schema.DateTimeUtcFromMillis,
 	// Only a hash of the session's id, so the table alone cannot act as anyone.
 	idHash: Schema.NonEmptyString,
 	refresh: Model.Sensitive(Schema.RedactedFromValue(Schema.NonEmptyString)),
-	// When Auth issued the refresh token, which lasts REFRESH_SECONDS from then.
-	refreshedAt: Schema.Int,
+	// When Auth issued the refresh token, which lasts REFRESH_LIFETIME from then.
+	refreshedAt: Schema.DateTimeUtcFromMillis,
 	userId: User.fields.id,
 	userName: User.fields.name
 }) {
@@ -54,7 +56,7 @@ class Session extends Model.Class<Session>('Session')({
 }
 
 type Refusal = typeof Refusal.Type
-const Refusal = Schema.Struct({error: Schema.String, error_description: Schema.optionalKey(Schema.String)})
+const Refusal = Schema.Struct({error: Schema.String, error_description: Schema.OptionFromOptionalKey(Schema.String)})
 
 class RefusedError extends Schema.TaggedError<RefusedError>()('RefusedError', {message: Schema.String}) {}
 
@@ -62,19 +64,20 @@ export function sessionIdOf(headers: Headers.Headers) {
 	return pipe(
 		bearerOf(headers),
 		Option.filter(token => !isJwt(token)),
-		Option.orElse(() => Option.fromUndefinedOr(Cookies.parseHeader(headers['cookie'] ?? '')[SESSION_COOKIE]))
+		Option.orElse(() => Option.fromUndefinedOr(Cookies.parseHeader(headers['cookie'] ?? '')[SESSION_COOKIE])),
+		Option.flatMap(Schema.decodeOption(SessionId))
 	)
 }
 
 export class Sessions extends Context.Service<
 	Sessions,
 	{
-		readonly start: (grant: CodeGrant) => Effect.Effect<string, AuthError>
-		readonly current: (id: string) => Effect.Effect<{token: string; user: User}, AuthError>
+		readonly start: (grant: CodeGrant) => Effect.Effect<SessionId, AuthError>
+		readonly current: (id: SessionId) => Effect.Effect<{token: string; user: User}, AuthError>
 		// Ends the sign-in at Auth too; a failed revocation still forgets the session.
-		readonly end: (id: string) => Effect.Effect<void, AuthError>
+		readonly end: (id: SessionId) => Effect.Effect<void, AuthError>
 		readonly remember: (token: string, claims: AccessClaims) => Effect.Effect<void>
-		readonly tokenOf: (userId: string) => Effect.Effect<string, AuthError>
+		readonly tokenOf: (userId: User['id']) => Effect.Effect<string, AuthError>
 	}
 >()('@deslop/runtime/server/sessions') {
 	static readonly model = Session
@@ -114,7 +117,7 @@ export class Sessions extends Context.Service<
 				const random = yield* SecureRandom.SecureRandom
 				const client = yield* HttpClient.HttpClient
 				const locks = MutableHashMap.empty<string, Semaphore.Semaphore>()
-				const bearers = MutableHashMap.empty<string, {token: Redacted.Redacted; expiresAt: number}>()
+				const bearers = MutableHashMap.empty<User['id'], {token: Redacted.Redacted; expiresAt: DateTime.Utc}>()
 				const app = yield* Config.String('APP_URL')
 
 				const findSession = SqlSchema.findOneOption({
@@ -141,7 +144,7 @@ export class Sessions extends Context.Service<
 					execute: refreshedAt => sql`DELETE FROM ${sql(Session.table)} WHERE refreshedAt < ${refreshedAt}`
 				})
 
-				function idHashOf(id: string) {
+				function idHashOf(id: SessionId) {
 					return digest.digestHex(Digest.sha256, new TextEncoder().encode(id))
 				}
 
@@ -158,7 +161,9 @@ export class Sessions extends Context.Service<
 				}
 
 				function fresh(session: Session) {
-					return Effect.map(Clock.currentTimeMillis, now => session.expiresAt > now + 60_000)
+					return Effect.map(DateTime.now, now =>
+						DateTime.isGreaterThan(session.expiresAt, DateTime.addDuration(now, '1 minute'))
+					)
 				}
 
 				const post = Effect.fnUntraced(function* (path: string, params: Record<string, string>) {
@@ -180,7 +185,7 @@ export class Sessions extends Context.Service<
 						return yield* RefusedError.make({
 							message: pipe(
 								yield* Effect.option(HttpClientResponse.schemaBodyJson(Refusal)(response)),
-								Option.flatMap(body => Option.fromUndefinedOr(body.error_description)),
+								Option.flatMap(body => body.error_description),
 								Option.getOrElse(() => 'Auth refused the sign-in')
 							)
 						})
@@ -191,17 +196,17 @@ export class Sessions extends Context.Service<
 				})
 
 				// The claims come straight from Auth over TLS, so they need no signature check here.
-				const sessionOf = Effect.fnUntraced(function* (tokens: TokenResponse, clientId: string, idHash: string) {
+				const sessionOf = Effect.fnUntraced(function* (tokens: TokenResponse, clientId: ClientId, idHash: string) {
 					const claims = yield* Schema.decodeUnknownEffect(AccessClaims)(
 						(yield* Jwt.decodeUnverified(tokens.access_token)).claims
 					)
 					return Session.make({
 						access: Redacted.make(tokens.access_token),
 						clientId,
-						expiresAt: claims.exp * 1000,
+						expiresAt: claims.exp,
 						idHash,
 						refresh: Redacted.make(tokens.refresh_token),
-						refreshedAt: yield* Clock.currentTimeMillis,
+						refreshedAt: yield* DateTime.now,
 						userId: claims.sub,
 						userName: claims.name
 					})
@@ -233,7 +238,7 @@ export class Sessions extends Context.Service<
 				}
 
 				return Sessions.of({
-					current: Effect.fn('Sessions.current')(function* (id: string) {
+					current: Effect.fn('Sessions.current')(function* (id: SessionId) {
 						const idHash = yield* idHashOf(id)
 						const saved = yield* Effect.fromOption(yield* findSession(idHash))
 						if (yield* fresh(saved)) {
@@ -242,7 +247,7 @@ export class Sessions extends Context.Service<
 						const renewed = yield* refreshed(idHash)
 						return {token: Redacted.value(renewed.access), user: {id: renewed.userId, name: renewed.userName}}
 					}, asAuthError('Sign in first')),
-					end: Effect.fn('Sessions.end')(function* (id: string) {
+					end: Effect.fn('Sessions.end')(function* (id: SessionId) {
 						const idHash = yield* idHashOf(id)
 						yield* Semaphore.withPermit(
 							lockOf(idHash),
@@ -258,10 +263,10 @@ export class Sessions extends Context.Service<
 							})
 						)
 					}, asAuthError('The session could not be ended')),
-					remember: (token, claims) =>
-						Effect.sync(() => {
-							MutableHashMap.set(bearers, claims.sub, {expiresAt: claims.exp * 1000, token: Redacted.make(token)})
-						}),
+					remember: Effect.fn('Sessions.remember')(function* (token, claims) {
+						yield* Effect.annotateCurrentSpan('userId', claims.sub)
+						MutableHashMap.set(bearers, claims.sub, {expiresAt: claims.exp, token: Redacted.make(token)})
+					}),
 					// A new sign-in also drops the sessions whose refresh token Auth no longer accepts.
 					start: Effect.fn('Sessions.start')(function* (grant: CodeGrant) {
 						const tokens = yield* Effect.catchTag(
@@ -269,15 +274,18 @@ export class Sessions extends Context.Service<
 							'RefusedError',
 							refusal => AuthError.make({message: refusal.message})
 						)
-						const id = Base64Url.encode(yield* random.randomBytes(32))
+						const id = SessionId.make(Base64Url.encode(yield* random.randomBytes(32)))
 						const session = yield* sessionOf(tokens, grant.client_id, yield* idHashOf(id))
 						yield* sql.withTransaction(
-							Effect.andThen(deleteSessionsBefore(session.refreshedAt - REFRESH_SECONDS * 1000), saveSession(session))
+							Effect.andThen(
+								deleteSessionsBefore(DateTime.subtractDuration(session.refreshedAt, REFRESH_LIFETIME)),
+								saveSession(session)
+							)
 						)
 						return id
 					}, asAuthError('The sign-in could not be completed')),
 					// The person's session whose access token lasts longest, refreshed if it must be; else the bearer they last called with.
-					tokenOf: Effect.fn('Sessions.tokenOf')(function* (userId: string) {
+					tokenOf: Effect.fn('Sessions.tokenOf')(function* (userId: User['id']) {
 						for (const session of yield* findSessionsOf(userId)) {
 							if (yield* fresh(session)) return Redacted.value(session.access)
 							const renewed = yield* Effect.result(
@@ -288,19 +296,23 @@ export class Sessions extends Context.Service<
 								return yield* renewed.failure
 							}
 						}
-						const now = yield* Clock.currentTimeMillis
-						const bearer = Option.getOrUndefined(
-							pipe(
-								bearers,
-								MutableHashMap.get(userId),
-								Option.filter(access => access.expiresAt >= now + 60_000)
-							)
+						const now = yield* DateTime.now
+						return yield* pipe(
+							bearers,
+							MutableHashMap.get(userId),
+							Option.filter(access =>
+								DateTime.isGreaterThanOrEqualTo(access.expiresAt, DateTime.addDuration(now, '1 minute'))
+							),
+							Option.match({
+								onNone: () => {
+									MutableHashMap.remove(bearers, userId)
+									return AuthError.make({
+										message: `Open ${String.capitalize(String.split(new URL(app).hostname, '.')[0])} once so it can use AI for you`
+									})
+								},
+								onSome: bearer => Effect.succeed(Redacted.value(bearer.token))
+							})
 						)
-						if (bearer !== undefined) return Redacted.value(bearer.token)
-						MutableHashMap.remove(bearers, userId)
-						return yield* AuthError.make({
-							message: `Open ${String.capitalize(String.split(new URL(app).hostname, '.')[0])} once so it can use AI for you`
-						})
 					}, asAuthError('AI access is temporarily unavailable'))
 				})
 			})

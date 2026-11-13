@@ -12,6 +12,7 @@ import {
 	Option,
 	Predicate,
 	Random,
+	Schema,
 	Stream,
 	String,
 	Tuple,
@@ -41,7 +42,7 @@ import {liveStream, reconnectOnDrop} from '@deslop/runtime/client/live-stream'
 import {hasMeaningfulMove} from '#lib/portfolio.ts'
 import {RpcClient} from '#lib/presence.ts'
 import {contacts, education, experience, languages, profile, projects, skills, summary} from '#lib/profile.ts'
-import {PortfolioColor} from '#services/presence/schema.ts'
+import {PortfolioColor, VisitorId} from '#services/presence/schema.ts'
 import type {PortfolioScene, PortfolioVisitor, PortfolioVisitors} from '#services/presence/schema.ts'
 
 const SECTION_KEYS = ['1', '2', '3', '4', '5', '6'] as const
@@ -68,23 +69,22 @@ function pickNextCursorColor(currentColor: PortfolioColor) {
 }
 
 function restoreIdentity() {
-	const existingId = sessionStorage.getItem('portfolio.id')
-	const existingName = sessionStorage.getItem('portfolio.name')
+	const existingId = Schema.decodeUnknownOption(VisitorId)(sessionStorage.getItem('portfolio.id'))
+	const existingName = Option.fromNullOr(sessionStorage.getItem('portfolio.name'))
 	const color =
 		PortfolioColor.literals[randomIndex(Array.length(PortfolioColor.literals))] ?? PortfolioColor.literals[0]
 
-	if (Predicate.isNotNullish(existingId) && Predicate.isNotNullish(existingName)) {
-		return {color, id: existingId, name: existingName}
-	}
-
-	const seed = randomSeed()
-
-	const next = {color, id: `v-${seed}`, name: `Guest-${String.slice(0, 3)(seed)}`}
-
-	sessionStorage.setItem('portfolio.id', next.id)
-	sessionStorage.setItem('portfolio.name', next.name)
-
-	return next
+	return pipe(
+		Option.all({id: existingId, name: existingName}),
+		Option.map(saved => ({...saved, color})),
+		Option.getOrElse(() => {
+			const seed = randomSeed()
+			const next = {color, id: VisitorId.make(`v-${seed}`), name: `Guest-${String.slice(0, 3)(seed)}`}
+			sessionStorage.setItem('portfolio.id', next.id)
+			sessionStorage.setItem('portfolio.name', next.name)
+			return next
+		})
+	)
 }
 
 const identity = restoreIdentity()
@@ -190,19 +190,18 @@ function TrailGrid(input: {trails: PortfolioVisitors; viewport: {width: number; 
 	const cells = MutableList.make<{color: string; x: number; y: number}>()
 	Array.reduce(
 		input.trails,
-		HashMap.empty<string, {trail: PortfolioVisitor; col: number; row: number}>(),
+		HashMap.empty<VisitorId, {trail: PortfolioVisitor; col: number; row: number}>(),
 		(previousByVisitor, trail) => {
 			const current = {
 				col: Math.floor((trail.x * input.viewport.width) / 26),
 				row: Math.floor((trail.y * input.viewport.height) / 26),
 				trail
 			}
-			const previous = pipe(previousByVisitor, HashMap.get(trail.id), Option.getOrUndefined)
-
-			if (Predicate.isUndefined(previous)) {
-				MutableList.append(cells, {color: current.trail.color, x: current.col * 26 + 1, y: current.row * 26 + 1})
-				return HashMap.set(previousByVisitor, trail.id, current)
-			}
+			const previous = pipe(
+				previousByVisitor,
+				HashMap.get(trail.id),
+				Option.getOrElse(() => current)
+			)
 
 			const stepCount = Number.max(Math.abs(current.col - previous.col), Math.abs(current.row - previous.row))
 

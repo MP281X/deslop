@@ -1,7 +1,7 @@
-import {Array, HashMap, Option, pipe} from 'effect'
+import {Array, DateTime, Duration, HashMap, Option, pipe} from 'effect'
 
 import type {AiProvider, AiUsageBreakdown, AiUsageReport} from '#services/ai-proxy/schema.ts'
-import type {McpUsageServer} from '#services/connections/schema.ts'
+import type {McpUsageServer, ServerId} from '#services/connections/schema.ts'
 import type {UsageRange} from '#services/usage/schema.ts'
 
 const usd = new Intl.NumberFormat('en', {
@@ -22,8 +22,10 @@ function costOf(sum: AiUsageBreakdown) {
 }
 
 // Each bucket of the period, filled with zero where nothing was recorded.
-function seriesOf(range: UsageRange, value: (at: number) => number) {
-	return Array.map(Array.range(0, range.count - 1), index => value(range.from + index * range.size))
+function seriesOf(range: UsageRange, value: (at: DateTime.Utc) => number) {
+	return Array.map(Array.range(0, range.count - 1), index =>
+		value(DateTime.addDuration(range.from, Duration.times(range.size, index)))
+	)
 }
 export function providerSeries(report: AiUsageReport, provider: AiProvider, range: UsageRange) {
 	const costs = HashMap.fromIterable(
@@ -51,12 +53,12 @@ export function providerCost(report: AiUsageReport, provider: AiProvider) {
 		Option.getOrElse(() => '—')
 	)
 }
-export function serverSeries(report: readonly McpUsageServer[], id: string, range: UsageRange) {
+export function serverSeries(report: readonly McpUsageServer[], id: ServerId, range: UsageRange) {
 	return seriesOf(range, at =>
 		pipe(
 			report,
 			Array.findFirst(row => row.id === id),
-			Option.flatMap(row => Array.findFirst(row.series, bucket => bucket.at === at)),
+			Option.flatMap(row => Array.findFirst(row.series, bucket => DateTime.Equivalence(bucket.at, at))),
 			Option.map(bucket => bucket.calls),
 			Option.getOrElse(() => 0)
 		)

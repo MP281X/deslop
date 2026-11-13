@@ -1,9 +1,11 @@
 // fallow-ignore-file unused-type -- Schema types pair with their values so consumers can import either.
-import {Array, Context, Effect, Option, Predicate, Schema, String} from 'effect'
+import {Array, Context, Duration, Effect, Option, Predicate, Schema, String, pipe} from 'effect'
 
 import {Base64Url} from 'effect/encoding'
 import {Headers, HttpClient} from 'effect/http'
 import {RpcMiddleware} from 'effect/rpc'
+
+import {DateTimeUtcFromSeconds, DurationFromSeconds} from '#shared/time.ts'
 
 export class AuthError extends Schema.TaggedError<AuthError>()('AuthError', {
 	cause: Schema.optional(Schema.Defect()),
@@ -32,20 +34,38 @@ export class AuthError extends Schema.TaggedError<AuthError>()('AuthError', {
 	}
 }
 
+export type UserId = typeof UserId.Type
+export const UserId = pipe(Schema.NonEmptyString, Schema.brand('UserId'))
+
+export type SignInFamily = typeof SignInFamily.Type
+export const SignInFamily = pipe(Schema.NonEmptyString, Schema.brand('SignInFamily'))
+
+export type SessionId = typeof SessionId.Type
+export const SessionId = pipe(Schema.NonEmptyString, Schema.brand('SessionId'))
+
+export type ClientId = typeof ClientId.Type
+export const ClientId = pipe(Schema.String, Schema.brand('ClientId'))
+
+export type GitHubId = typeof GitHubId.Type
+export const GitHubId = pipe(Schema.Int, Schema.brand('GitHubId'))
+
+export type GitHubIdFromString = typeof GitHubIdFromString.Type
+export const GitHubIdFromString = pipe(Schema.FiniteFromString, Schema.decodeTo(GitHubId))
+
 export type User = typeof User.Type
-export const User = Schema.Struct({id: Schema.NonEmptyString, name: Schema.NonEmptyString})
+export const User = Schema.Struct({id: UserId, name: Schema.NonEmptyString})
 
 // Valid at every Deslop app for ten minutes.
 export type AccessClaims = typeof AccessClaims.Type
 export const AccessClaims = Schema.Struct({
 	aud: Schema.Literal('deslop'),
 	azp: Schema.NonEmptyString,
-	exp: Schema.Int,
-	iat: Schema.Int,
+	exp: DateTimeUtcFromSeconds,
+	iat: DateTimeUtcFromSeconds,
 	iss: Schema.NonEmptyString,
 	name: Schema.NonEmptyString,
-	sid: Schema.NonEmptyString,
-	sub: Schema.NonEmptyString
+	sid: SignInFamily,
+	sub: UserId
 })
 
 export type ClientRegistration = typeof ClientRegistration.Type
@@ -56,19 +76,19 @@ export const ClientRegistration = Schema.Struct({
 
 export type CodeGrant = typeof CodeGrant.Type
 export const CodeGrant = Schema.Struct({
-	client_id: Schema.NonEmptyString,
+	client_id: ClientId.check(Schema.isNonEmpty()),
 	code: Schema.NonEmptyString,
 	code_verifier: Schema.NonEmptyString,
 	redirect_uri: Schema.NonEmptyString
 })
 
 export type SessionHandle = typeof SessionHandle.Type
-export const SessionHandle = Schema.Struct({session: Schema.NonEmptyString})
+export const SessionHandle = Schema.Struct({session: SessionId})
 
 export type TokenResponse = typeof TokenResponse.Type
 export const TokenResponse = Schema.Struct({
 	access_token: Schema.NonEmptyString,
-	expires_in: Schema.Finite,
+	expires_in: DurationFromSeconds,
 	refresh_token: Schema.NonEmptyString
 })
 
@@ -105,21 +125,21 @@ export const JWKS_PATH = '/.well-known/jwks.json'
 export const CALLBACK_PATH = '/auth/callback'
 
 // An access token lives ten minutes, so a removed account or signed-out session stops working everywhere within that time.
-export const ACCESS_SECONDS = 600
+export const ACCESS_LIFETIME = Duration.minutes(10)
 
 // A refresh token lasts thirty days from its last use, so a session unused for longer cannot be renewed.
-export const REFRESH_SECONDS = 30 * 86_400
+export const REFRESH_LIFETIME = Duration.days(30)
 
 // A client id is its registration, encoded: anyone may register, and Auth checks the callbacks again at authorize.
 export function clientIdOf(client: ClientRegistration) {
-	return Base64Url.encode(Schema.encodeSync(Schema.fromJsonString(ClientRegistration))(client))
+	return ClientId.make(Base64Url.encode(Schema.encodeSync(Schema.fromJsonString(ClientRegistration))(client)))
 }
 
-export const DEVELOPER = {id: 'github:0', name: 'dev'} satisfies User
+export const DEVELOPER = {id: UserId.make('github:0'), name: 'dev'} satisfies User
 
 // GITHUB_ADMINS lists bare GitHub ids; a user's id carries its provider as a prefix.
-export function isAdmin(admins: readonly string[], id: string) {
-	return Array.contains(admins, String.replace('github:', '')(id))
+export function isAdmin(admins: readonly GitHubId[], id: UserId) {
+	return Array.some(admins, admin => `github:${admin}` === id)
 }
 
 export function signInUrl(next: string) {

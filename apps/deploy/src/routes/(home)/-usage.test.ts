@@ -1,39 +1,42 @@
 import {assert, it} from '@effect/vitest'
 
-import {Array, Function, HashSet, Option, pipe} from 'effect'
+import {Array, DateTime, Duration, Function, HashSet, Option, Schema, pipe} from 'effect'
 
 import {bandFill, bands, focusedBand, lowImpactIds, runs} from '#routes/(home)/-usage.ts'
-import type {AppSample, MachineHistory, Sample} from '#services/metrics/schema.ts'
+import {AppId, WorkerId} from '#services/inventory/schema.ts'
+import {AppSample} from '#services/metrics/schema.ts'
+import type {Sample} from '#services/metrics/schema.ts'
 
 const GIB = 1024 ** 3
 
-function sample(time: number, apps: readonly AppSample[]) {
+function sample(time: number, apps: readonly (typeof AppSample.Encoded)[]) {
 	return {
-		apps: Option.some(apps),
+		apps: Option.some(Schema.decodeSync(Schema.Array(AppSample))(apps)),
 		cpu: Option.some(50),
 		memoryTotal: 10 * GIB,
 		memoryUsed: 6 * GIB,
-		since: time,
-		step: 1000,
+		since: DateTime.makeUnsafe(time),
+		step: Duration.millis(1000),
 		storageUsed: Option.none(),
-		time
+		time: DateTime.makeUnsafe(time)
 	} satisfies Sample
 }
 
 function machine(samples: Sample[]) {
 	return {
+		cpuModel: Option.none(),
 		disks: [],
-		error: '',
+		error: Option.none(),
 		load: [],
 		samples,
 		stale: false,
 		time: pipe(
 			Array.last(samples),
 			Option.map(last => last.time),
-			Option.getOrElse(() => 0)
+			Option.getOrElse(() => DateTime.makeUnsafe(0))
 		),
-		worker: 'desktop'
-	} satisfies MachineHistory
+		worker: WorkerId.make('desktop')
+	}
 }
 
 it('stacks every recorded app heaviest first, stopped ones too, then the small ones together and the rest of the machine', () => {
@@ -83,10 +86,10 @@ it('puts an app in the low-impact set only when both peak memory and peak CPU st
 			])
 		])
 	)
-	assert.isTrue(HashSet.has(lowImpact, 'service:user:tiny.service'))
-	assert.isTrue(HashSet.has(lowImpact, 'service:user:near.service'))
-	assert.isFalse(HashSet.has(lowImpact, 'service:user:cpu.service'))
-	assert.isFalse(HashSet.has(lowImpact, 'service:user:memory.service'))
+	assert.isTrue(HashSet.has(lowImpact, AppId.make('service:user:tiny.service')))
+	assert.isTrue(HashSet.has(lowImpact, AppId.make('service:user:near.service')))
+	assert.isFalse(HashSet.has(lowImpact, AppId.make('service:user:cpu.service')))
+	assert.isFalse(HashSet.has(lowImpact, AppId.make('service:user:memory.service')))
 })
 
 it('focuses the selected app, the low-impact block when it shares that, and nothing when the range never recorded it', () => {
@@ -97,11 +100,11 @@ it('focuses the selected app, the low-impact block when it shares that, and noth
 		])
 	])
 	assert.deepStrictEqual(
-		focusedBand(history, 'service:user:t3code.service'),
-		Option.some('service:user:t3code.service')
+		focusedBand(history, AppId.make('service:user:t3code.service')),
+		Option.some(AppId.make('service:user:t3code.service'))
 	)
-	assert.deepStrictEqual(focusedBand(history, 'service:system:tiny.service'), Option.some('other'))
-	assert.deepStrictEqual(focusedBand(history, 'service:user:gone.service'), Option.none())
+	assert.deepStrictEqual(focusedBand(history, AppId.make('service:system:tiny.service')), Option.some('other'))
+	assert.deepStrictEqual(focusedBand(history, AppId.make('service:user:gone.service')), Option.none())
 })
 
 it('breaks the time axis where the recording misses a slot or a sample lacks the reading', () => {
@@ -115,7 +118,7 @@ it('breaks the time axis where the recording misses a slot or a sample lacks the
 			{...sample(hour - 60_000, []), cpu: Option.none()},
 			sample(hour, [])
 		]),
-		60,
+		Duration.minutes(60),
 		entry => Option.isSome(entry.cpu)
 	)
 	assert.deepStrictEqual(
@@ -124,5 +127,12 @@ it('breaks the time axis where the recording misses a slot or a sample lacks the
 	)
 	assert.isTrue(Array.every(Array.flatten(result), point => point.x >= 0 && point.x <= 100))
 	// A second sample that lands late by its sampling skips no slot on the minute's chart.
-	assert.lengthOf(runs(machine([sample(57_000, []), sample(58_000, []), sample(59_900, [])]), 1, Function.constTrue), 1)
+	assert.lengthOf(
+		runs(
+			machine([sample(57_000, []), sample(58_000, []), sample(59_900, [])]),
+			Duration.minutes(1),
+			Function.constTrue
+		),
+		1
+	)
 })

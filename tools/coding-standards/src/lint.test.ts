@@ -115,6 +115,138 @@ function customCodes(output: OxlintOutput) {
 describe('deslop Oxlint plugin', {concurrent: true}, () => {
 	it.layer(NodeServices.layer)(testApi => {
 		testApi.effect(
+			'traces statically owned service methods without tracing callback properties',
+			Effect.fnUntraced(function* () {
+				const source = [
+					"import {Context, Effect, pipe} from 'effect'",
+					'',
+					'class Notes extends Context.Service<Notes>()("Notes", {make: Effect.gen(function* () {',
+					'const helper = {read: Effect.fnUntraced(function* () { return 1 })}',
+					'function nested() { return {read: Effect.fnUntraced(function* () { return 1 })} }',
+					'const unrelated = Other.of({read: Effect.fnUntraced(function* () { return 1 })})',
+					'const find = Effect.fnUntraced(function* () { return 3 })',
+					'return {alias: find, read: Effect.fnUntraced(function* () { return 1 }), write: Effect.fn("Notes.write")(function* () { return 2 })} // reported',
+					'})}) {}',
+					'function unrelated() { return {read: Effect.fnUntraced(function* () { return 1 })} }',
+					'class Sessions extends Context.Service<Sessions>()("Sessions") {',
+					'static layer = Effect.gen(function* () { return Sessions.of({',
+					'read: Effect.fnUntraced(function* () { return 1 }), // reported',
+					'write: Effect.fn(function* () { return 2 }), // reported',
+					'arrow: () => Effect.succeed(3), // reported',
+					'block: () => { return Effect.sync(() => 4) }, // reported',
+					'pipeline: () => pipe(Effect.succeed(1), Effect.map(value => value + 1)), // reported',
+					'fromOption: value => Effect.fromOption(value), // reported',
+					'timeout: effect => pipe(effect, Effect.timeout("1 second")), // reported',
+					'orDie: effect => pipe(effect, Effect.orDie), // reported',
+					'wrongFn: Effect.fn("Other.x")(function* () { return 1 }), // reported',
+					'wrongSpan: () => Effect.withSpan(Effect.succeed(1), "Other.x"), // reported',
+					'wrongPipe: () => pipe(Effect.succeed(1), Effect.withSpan("Other.x")), // reported',
+					'named: Effect.fn("Sessions.named")(function* () { return 5 }),',
+					'spanned: () => Effect.withSpan(Effect.succeed(6), "Sessions.spanned"),',
+					'tracedPipe: () => pipe(Effect.succeed(1), Effect.withSpan("Sessions.tracedPipe")),',
+					'plain: () => 7,',
+					'predicate: value => Effect.isEffect(value),',
+					'runner: value => Effect.runSync(value),',
+					'predicatePipe: value => pipe(value, Effect.isEffect),',
+					'runnerPipe: value => pipe(value, Effect.runSync),',
+					'opaque: value => helper(value),',
+					'// oxlint-disable-next-line @deslop/coding-standards/service-method-span -- Cursor animation ticks must not create per-frame spans.',
+					'tick: () => Effect.succeed(1)',
+					'}) })',
+					'}',
+					'class Apps extends Context.Service<Apps>()("Apps", {make: pipe(Effect.gen(function* () {',
+					'const scoped = Apps.of({read: () => Effect.succeed(1)}) // reported',
+					'const traced = Apps.of({read: Effect.fn("Apps.read")(() => Effect.succeed(1))})',
+					'function nested() { return {read: () => Effect.succeed(1)} }',
+					'return {read: Effect.fn(function* () { return 1 })} // reported',
+					'}), Effect.map(value => value))}) {}',
+					'class People extends Context.Service<People>()("People") {',
+					'static layer = Effect.gen(function* () { return People.of({',
+					'read: Effect.fn("People.read")(() => Effect.succeed(1)),',
+					'write: () => Effect.sync(() => 2) // reported',
+					'}) })',
+					'}',
+					'const outside = Effect.gen(function* () { return {read: () => Effect.succeed(1)} })',
+					'class External extends Context.Service<External>()("External", {make: outside}) {}',
+					'class Opaque extends Context.Service<Opaque>()("Opaque", {make: wrap(() => ({read: () => Effect.succeed(1)}))}) {}'
+				]
+				const result = yield* lintSource({'services/notes/service.ts': Array.join(source, '\n')})
+				assert.deepStrictEqual(
+					reportedLines(result, 'service-method-span').reported,
+					reportedLines(result, 'service-method-span').marked
+				)
+				const fixed = yield* lintSource({'services/notes/service.ts': Array.join(source, '\n')}, ['--fix'])
+				assert.include(fixed.sources[0] ?? '', "Effect.fn('Notes.read')")
+				assert.include(fixed.sources[0] ?? '', "Effect.fn('Notes.alias')")
+				assert.include(fixed.sources[0] ?? '', "Effect.fn('Sessions.write')")
+				assert.include(fixed.sources[0] ?? '', "Effect.fn('Sessions.arrow')")
+				assert.include(fixed.sources[0] ?? '', "Effect.fn('Apps.read')")
+				assert.include(fixed.sources[0] ?? '', "Effect.fn('Sessions.wrongFn')")
+				assert.include(fixed.sources[0] ?? '', "'Sessions.wrongSpan'")
+				assert.include(fixed.sources[0] ?? '', "'Sessions.wrongPipe'")
+				assert.deepStrictEqual(reportedLines(fixed, 'service-method-span').reported, [])
+			})
+		)
+		testApi.effect(
+			'fixes shorthand service arrows into properties and converges on the second fix',
+			Effect.fnUntraced(function* () {
+				const name = 'services/svc/service.ts'
+				const source = Array.join(
+					[
+						"import {Context, Effect} from 'effect'",
+						'class Svc extends Context.Service<Svc>()("Svc") {',
+						'static layer = Effect.gen(function* () {',
+						'const read = () => Effect.succeed(1)',
+						'return Svc.of({read}) // reported',
+						'})',
+						'}'
+					],
+					'\n'
+				)
+				const before = yield* lintSource({[name]: source})
+				assert.deepStrictEqual(
+					reportedLines(before, 'service-method-span').reported,
+					reportedLines(before, 'service-method-span').marked
+				)
+				const first = yield* lintSource({[name]: source}, ['--fix'])
+				assert.include(first.sources[0] ?? '', "read: Effect.fn('Svc.read')(read)")
+				assert.deepStrictEqual(reportedLines(first, 'service-method-span').reported, [])
+				const second = yield* lintSource({[name]: first.sources[0] ?? ''}, ['--fix'])
+				assert.deepStrictEqual(second.sources, first.sources)
+				assert.deepStrictEqual(customCodes(second.stdout), customCodes(first.stdout))
+			})
+		)
+		testApi.effect(
+			'reports a mismatched aliased span without renaming its shared function',
+			Effect.fnUntraced(function* () {
+				const name = 'services/svc/service.ts'
+				const fixed = yield* lintSource(
+					{
+						[name]: Array.join(
+							[
+								"import {Context, Effect} from 'effect'",
+								'const shared = Effect.fn("Other.read")(() => Effect.succeed(1))',
+								'class Svc extends Context.Service<Svc>()("Svc") {',
+								'static layer = Effect.gen(function* () { return Svc.of({read: shared}) })',
+								'}'
+							],
+							'\n'
+						)
+					},
+					['--fix']
+				)
+				assert.include(fixed.sources[0] ?? '', "Effect.fn('Other.read')")
+				assert.lengthOf(
+					Array.filter(
+						fixed.stdout.diagnostics,
+						diagnostic => diagnostic.code === '@deslop/coding-standards(service-method-span)'
+					),
+					1
+				)
+				assert.deepStrictEqual((yield* lintSource({[name]: fixed.sources[0] ?? ''}, ['--fix'])).sources, fixed.sources)
+			})
+		)
+		testApi.effect(
 			'checks service ownership names against their folders',
 			Effect.fnUntraced(function* () {
 				const result = yield* lintSource({

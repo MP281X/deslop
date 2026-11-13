@@ -7,6 +7,8 @@ import {
 	Clock,
 	ConfigProvider,
 	Context,
+	DateTime,
+	Duration,
 	Effect,
 	FileSystem,
 	Fiber,
@@ -32,12 +34,13 @@ import {TestClock} from 'effect/testing'
 import {HttpAuth} from '@deslop/runtime/server/auth'
 import {layerDataStore} from '@deslop/runtime/server/store'
 import {
-	ACCESS_SECONDS,
+	ACCESS_LIFETIME,
 	AUTH_URL,
 	AccessClaims,
 	AuthError,
 	CurrentUser,
 	JWKS_PATH,
+	SignInFamily,
 	TokenResponse,
 	User,
 	clientIdOf
@@ -70,9 +73,9 @@ const IPHONE_SAFARI =
 	'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1'
 const VERIFIER = String.repeat(43)('x')
 type FamilyParams = typeof FamilyParams.Type
-const FamilyParams = Schema.Struct({family: Schema.NonEmptyString})
+const FamilyParams = Schema.Struct({family: SignInFamily})
 type PersonParams = typeof PersonParams.Type
-const PersonParams = Schema.Struct({id: Schema.NonEmptyString})
+const PersonParams = Schema.Struct({id: User.fields.id})
 
 const me = Layer.provide(
 	HttpRouter.add('GET', '/me', Effect.flatMap(CurrentUser, HttpServerResponse.schemaJson(User))),
@@ -247,7 +250,7 @@ const servers = Effect.fnUntraced(function* (saved?: string) {
 										Effect.gen(function* () {
 											const input = yield* HttpServerRequest.schemaBodyJson(AddPasskeyParams)
 											yield* (yield* Passkeys).add(input.response, {
-												from: {userAgent: IPHONE_SAFARI},
+												from: {address: Option.none(), userAgent: Option.some(IPHONE_SAFARI)},
 												owner: yield* requestOwner,
 												via: yield* (yield* Tokens).sessionVia((yield* HttpServerRequest.HttpServerRequest).headers)
 											})
@@ -395,7 +398,7 @@ const authorize = Effect.fnUntraced(function* (
 	resource: string[]
 ) {
 	const registered = yield* send(web, '/api/auth/oauth2/register', {
-		body: yield* Schema.encodeEffect(Schema.fromJsonString(Registration))({
+		body: yield* Schema.encodeEffect(Schema.fromJsonString(Schema.toEncoded(Registration)))({
 			client_name: 'opencode',
 			redirect_uris: [redirect],
 			token_endpoint_auth_method: 'none'
@@ -440,7 +443,7 @@ const answer = Effect.fnUntraced(function* (
 	accept: boolean
 ) {
 	return yield* send(web, '/answer', {
-		body: yield* Schema.encodeEffect(Schema.fromJsonString(AnswerParams))({accept, request}),
+		body: yield* Schema.encodeEffect(Schema.fromJsonString(Schema.toEncoded(AnswerParams)))({accept, request}),
 		headers: {'content-type': 'application/json', cookie: session},
 		method: 'POST'
 	})
@@ -658,7 +661,7 @@ const authenticator = Effect.fnUntraced(function* () {
 					signature: Base64Url.encode(der(signed))
 				},
 				type: 'public-key'
-			} satisfies PasskeySignIn['response']
+			} satisfies typeof PasskeySignIn.fields.response.Encoded
 		}),
 		register: Effect.fnUntraced(function* (options: CreationOptions) {
 			// COSE EC2 key, ES256 on P-256: {1: 2, 3: -7, -1: 1, -2: x, -3: y}.
@@ -697,7 +700,7 @@ const authenticator = Effect.fnUntraced(function* () {
 					transports: ['usb']
 				},
 				type: 'public-key'
-			} satisfies AddPasskeyParams['response']
+			} satisfies typeof AddPasskeyParams.fields.response.Encoded
 		})
 	}
 })
@@ -827,11 +830,11 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 				Jwks.Jwks,
 				yield* Jwks.makeLocal(jwks)
 			)
-			assert.deepStrictEqual(verified.claims, {
+			assert.deepStrictEqual(yield* Schema.encodeEffect(AccessClaims)(verified.claims), {
 				aud: 'deslop',
 				azp: 'Scope',
-				exp: verified.claims.iat + ACCESS_SECONDS,
-				iat: verified.claims.iat,
+				exp: DateTime.toEpochSeconds(verified.claims.iat) + Duration.toSeconds(ACCESS_LIFETIME),
+				iat: DateTime.toEpochSeconds(verified.claims.iat),
 				iss: `${AUTH_URL}/api/auth`,
 				name: 'octocat',
 				sid: Array.headNonEmpty(String.split(token.refresh_token, '.')),
@@ -1090,7 +1093,7 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 			})
 			assert.strictEqual(options.rp.id, 'mp281x.xyz')
 			const added = yield* send(web.issuer, '/add-passkey', {
-				body: yield* Schema.encodeEffect(Schema.fromJsonString(AddPasskeyParams))({
+				body: yield* Schema.encodeEffect(Schema.fromJsonString(Schema.toEncoded(AddPasskeyParams)))({
 					response: yield* key.register(options)
 				}),
 				headers: {...json, cookie: session},
@@ -1111,7 +1114,7 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 			)
 			assert.isUndefined(challenge.allowCredentials)
 			const assertion = yield* key.answer(challenge)
-			const body = yield* Schema.encodeEffect(Schema.fromJsonString(PasskeySignIn))({
+			const body = yield* Schema.encodeEffect(Schema.fromJsonString(Schema.toEncoded(PasskeySignIn)))({
 				next: `${API}/notes`,
 				response: assertion
 			})
@@ -1134,7 +1137,7 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 				)
 			)
 			const duplicate = yield* send(web.issuer, '/add-passkey', {
-				body: yield* Schema.encodeEffect(Schema.fromJsonString(AddPasskeyParams))({
+				body: yield* Schema.encodeEffect(Schema.fromJsonString(Schema.toEncoded(AddPasskeyParams)))({
 					response: yield* key.register(repeat)
 				}),
 				headers: {...json, cookie: passkeySession},
@@ -1164,7 +1167,9 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 			)
 			assert.strictEqual(
 				(yield* send(web.issuer, '/auth/passkey', {
-					body: yield* Schema.encodeEffect(Schema.fromJsonString(PasskeySignIn))({response: yield* key.answer(again)}),
+					body: yield* Schema.encodeEffect(Schema.fromJsonString(Schema.toEncoded(PasskeySignIn)))({
+						response: yield* key.answer(again)
+					}),
 					headers: json,
 					method: 'POST'
 				})).status,
@@ -1506,7 +1511,7 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 			const token = yield* Schema.decodeEffect(Schema.fromJsonString(TokenResponse))(
 				yield* Effect.promise(() => response.text())
 			)
-			assert.strictEqual(token.expires_in, 600)
+			assert.strictEqual(Duration.toSeconds(token.expires_in), 600)
 			// The scheme is case-insensitive and may be followed by several spaces.
 			assert.strictEqual(
 				(yield* send(web.issuer, '/me', {headers: {authorization: `bearer  ${token.access_token}`}})).status,
@@ -1630,7 +1635,7 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 			const web = yield* servers()
 			const session = cookie(yield* signIn(web.issuer, 'octocat'))
 			const registered = yield* send(web.issuer, '/api/auth/oauth2/register', {
-				body: yield* Schema.encodeEffect(Schema.fromJsonString(Registration))({
+				body: yield* Schema.encodeEffect(Schema.fromJsonString(Schema.toEncoded(Registration)))({
 					client_name: 'codex',
 					redirect_uris: ['http://127.0.0.1:1455/callback', 'http://[::1]:1455/callback']
 				}),
@@ -1811,7 +1816,7 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 			const token = yield* Schema.decodeEffect(Schema.fromJsonString(TokenResponse))(
 				yield* Effect.promise(() => first.text())
 			)
-			assert.strictEqual(token.expires_in, 600)
+			assert.strictEqual(Duration.toSeconds(token.expires_in), 600)
 			assert.strictEqual(first.headers.get('cache-control'), 'no-store')
 			assert.strictEqual(first.headers.get('pragma'), 'no-cache')
 			const second = yield* refresh(web.issuer, request.clientId, token.refresh_token)
@@ -2028,7 +2033,10 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 				yield* Effect.promise(() => rotated.text())
 			)
 			const refreshed = yield* apps(admin)
-			assert.strictEqual(refreshed[0]?.lastActive, (signedIn[0]?.lastActive ?? 0) + 3_600_000)
+			assert.strictEqual(
+				DateTime.toEpochMillis((yield* Effect.fromOption(Array.head(refreshed))).lastActive),
+				DateTime.toEpochMillis((yield* Effect.fromOption(Array.head(signedIn))).lastActive) + 3_600_000
+			)
 			const family = refreshed[0]?.family ?? ''
 			// Another account sees none of these and cannot disconnect them.
 			const agent = yield* agentToken(web.issuer, admin)
@@ -2312,14 +2320,18 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 			const listed = yield* Schema.decodeUnknownEffect(Schema.Struct({passkeys: Schema.Array(Passkey.json)}))(
 				yield* toolResult(yield* callTool(web.issuer, agent, 'list_passkeys', {}))
 			)
-			assert.deepStrictEqual(listed.passkeys, [{addedFrom: 'Safari · iPhone', id: added.id, synced: false}])
+			assert.deepStrictEqual(yield* Schema.encodeEffect(Schema.Array(Passkey.json))(listed.passkeys), [
+				{addedFrom: 'Safari · iPhone', id: added.id, synced: false}
+			])
 			const denied = yield* callTool(web.issuer, agent, 'remove_passkey', {id: memberAdded.id})
 			assert.include(yield* Effect.promise(() => denied.text()), 'No passkey of yours has that id')
 			const memberAgent = yield* agentToken(web.issuer, member)
 			const remaining = yield* Schema.decodeUnknownEffect(Schema.Struct({passkeys: Schema.Array(Passkey.json)}))(
 				yield* toolResult(yield* callTool(web.issuer, memberAgent, 'list_passkeys', {}))
 			)
-			assert.deepStrictEqual(remaining.passkeys, [{addedFrom: 'Safari · iPhone', id: memberAdded.id, synced: false}])
+			assert.deepStrictEqual(yield* Schema.encodeEffect(Schema.Array(Passkey.json))(remaining.passkeys), [
+				{addedFrom: 'Safari · iPhone', id: memberAdded.id, synced: false}
+			])
 			assert.deepStrictEqual(yield* toolResult(yield* callTool(web.issuer, agent, 'remove_passkey', {id: added.id})), {
 				id: added.id
 			})

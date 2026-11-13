@@ -1,4 +1,4 @@
-import {Array, Clock, Effect, Option, Schema, Stream, String, pipe} from 'effect'
+import {Array, DateTime, Effect, Option, Schema, Stream, String, pipe} from 'effect'
 
 import {Atom} from 'effect/reactivity'
 import {getImageAsync, getStringAsync, hasImageAsync, hasStringAsync} from 'expo-clipboard'
@@ -16,7 +16,7 @@ import {listReducer} from '@deslop/runtime/shared/list'
 
 import {RpcClient, session} from '#lib/session.ts'
 import {byStart} from '#services/bookings/lib/utils.ts'
-import type {BookingSource} from '#services/bookings/schema.ts'
+import type {BookingSource, BookingId} from '#services/bookings/schema.ts'
 import {Booking, BookingsError, IMAGE_BYTES} from '#services/bookings/schema.ts'
 
 const bookingsFile = new File(Paths.document, 'bookings.json')
@@ -94,7 +94,7 @@ export const clipboard = makeClipboard({
 
 export const removal = makeRemoval({
 	notRemoved: 'Not Deleted',
-	remove: (id, get) =>
+	remove: (id: BookingId, get) =>
 		provideRuntimeOnce(
 			get,
 			RpcClient.runtime,
@@ -120,5 +120,5 @@ export const refreshAtom = Atom.fn((id: Booking['id'], get) =>
 
 export const nowAtom = Atom.make(get => {
 	get(activationsAtom)
-	return Stream.mapEffect(Stream.tick('1 minute'), () => Clock.currentTimeMillis)
+	return Stream.mapEffect(Stream.tick('1 minute'), () => DateTime.now)
 })

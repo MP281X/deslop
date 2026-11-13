@@ -1,4 +1,4 @@
-import {Effect, Option, Stream, pipe} from 'effect'
+import {Duration, Effect, Option, Stream, pipe} from 'effect'
 
 import {Atom, AtomRpc} from 'effect/reactivity'
 
@@ -14,7 +14,7 @@ import {addPageTelemetry, layerPageProtocol} from '@deslop/runtime/web/client'
 
 import {RpcContracts} from '#rpcs/contracts.ts'
 import type {ExposeRequest} from '#services/exposures/schema.ts'
-import type {InventoryItem, RunRequest} from '#services/inventory/schema.ts'
+import type {InventoryItem, ItemId, RunRequest} from '#services/inventory/schema.ts'
 import type {HistoryQuery} from '#services/metrics/schema.ts'
 
 addPageTelemetry('@deslop/deploy')
@@ -58,12 +58,12 @@ export const openExposeAtom = Atom.writable(
 )
 
 // Starts a timer's job now; keyed by the job's row, so its failure shows there. It stays waiting at least ten seconds, the time the inventory takes to show the job running.
-export const runAtom = Atom.family((_id: string) =>
+export const runAtom = Atom.family((_id: ItemId) =>
 	RpcClient.runtime.fn((input: RunRequest) =>
 		pipe(
 			RpcClient,
 			Effect.flatMap(client => client('inventory.run', input)),
-			Effect.zip(Effect.sleep('10 seconds'), {concurrent: true})
+			Effect.zip(Effect.sleep(Duration.seconds(10)), {concurrent: true})
 		)
 	)
 )

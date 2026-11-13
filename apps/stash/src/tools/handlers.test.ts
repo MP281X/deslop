@@ -13,7 +13,7 @@ import {Media} from '#services/media/service.ts'
 import {Sources} from '#services/notes/lib/extraction.ts'
 // oxlint-disable-next-line no-restricted-imports -- As above: the AI organizer is Notes' own internal.
 import {Organizer} from '#services/notes/lib/organization.ts'
-import {NoteId} from '#services/notes/schema.ts'
+import {NoteId, TagName} from '#services/notes/schema.ts'
 import {Notes} from '#services/notes/service.ts'
 import {ToolContracts} from '#tools/contracts.ts'
 import {ToolHandlers} from '#tools/handlers.ts'
@@ -27,7 +27,7 @@ const organizer = Organizer.of({
 			definitions: [],
 			screenText: '',
 			summary: 'A reminder.',
-			tags: ['errand'],
+			tags: [TagName.make('errand')],
 			title: 'Milk',
 			topics: 'errands'
 		})

@@ -1,6 +1,6 @@
 import {useAtomRefresh, useAtomSet, useAtomSuspense, useAtomValue} from '@effect/atom-react'
 
-import {Array, Boolean, DateTime, Number, Option, String, pipe} from 'effect'
+import {Array, Boolean, DateTime, Duration, Number, Option, String, pipe} from 'effect'
 
 import {
 	Button,
@@ -53,7 +53,7 @@ import {blockingFailure} from '@deslop/runtime/client/live-stream'
 import {bookingsAtom, clipboard, nowAtom, removal} from '#lib/bookings.ts'
 import {session} from '#lib/session.ts'
 import {daysUntil, primary, problemOf, statusOf, tones} from '#lib/status.ts'
-import {clockAt, DAY, endOf, HOUR, startOf, titleOf} from '#services/bookings/lib/utils.ts'
+import {clockAt, endOf, HOUR, startOf, titleOf} from '#services/bookings/lib/utils.ts'
 import type {Booking} from '#services/bookings/schema.ts'
 
 function zoneOf(booking: Booking) {
@@ -63,18 +63,18 @@ function zoneOf(booking: Booking) {
 
 function headingOf(booking: Booking) {
 	if (booking._tag === 'stay') return booking.name
-	return `${booking.from.city ?? booking.from.name} to ${booking.to.city ?? booking.to.name}`
+	return `${Option.getOrElse(booking.from.city, () => booking.from.name)} to ${Option.getOrElse(booking.to.city, () => booking.to.name)}`
 }
 
 function scheduleOf(booking: Booking) {
 	if (booking._tag === 'stay') {
-		const nights = Number.round((booking.checkOut - booking.checkIn) / DAY, 0)
+		const nights = Number.round(Duration.toDays(DateTime.distance(booking.checkIn, booking.checkOut)), 0)
 		return `${nights} ${Boolean.match(nights === 1, {onFalse: () => 'nights', onTrue: () => 'night'})} · check-in ${clockAt(booking.checkIn, booking.place.timeZone)}`
 	}
 	const departs = clockAt(startOf(booking), booking.from.timeZone)
 	const arrives = clockAt(endOf(booking), booking.to.timeZone)
 	if (booking._tag === 'train') return `${titleOf(booking)} ${departs} → ${arrives}`
-	return `${titleOf(booking)} · ${booking.from.code ?? booking.from.name} ${departs} → ${booking.to.code ?? booking.to.name} ${arrives}`
+	return `${titleOf(booking)} · ${Option.getOrElse(booking.from.code, () => booking.from.name)} ${departs} → ${Option.getOrElse(booking.to.code, () => booking.to.name)} ${arrives}`
 }
 
 // The schedule and the gate or platform it leaves from, each shown once.
@@ -111,7 +111,12 @@ function Gutter(props: {countdown: Countdown}) {
 	)
 }
 
-function BookingRow(props: {booking: Booking; countdown: Countdown; now: number; onOpen: (id: string) => void}) {
+function BookingRow(props: {
+	booking: Booking
+	countdown: Countdown
+	now: DateTime.Utc
+	onOpen: (id: Booking['id']) => void
+}) {
 	const machine = removal.machine(props.booking.id)
 	const remove = useAtomSet(removal.removeAtom)
 	const send = useAtomSet(machine.send)
@@ -189,9 +194,9 @@ function matchesOf(bookings: readonly Booking[], searched: string) {
 function PastBookings(props: {
 	bookings: readonly Booking[]
 	expanded: boolean
-	now: number
+	now: DateTime.Utc
 	onExpandedChange: (expanded: boolean) => void
-	onOpen: (id: string) => void
+	onOpen: (id: Booking['id']) => void
 }) {
 	if (Array.isReadonlyArrayEmpty(props.bookings)) return undefined
 	return (
@@ -209,13 +214,13 @@ function PastBookings(props: {
 	)
 }
 
-function Bookings(props: {onOpen: (id: string) => void; searched: string}) {
+function Bookings(props: {onOpen: (id: Booking['id']) => void; searched: string}) {
 	const loaded = useAtomSuspense(bookingsAtom, {includeFailure: true})
 	const refresh = useAtomRefresh(bookingsAtom)
 	const paste = useAtomSet(clipboard.atom.send)
 	const [pastOpen, setPastOpen] = useState(false)
 
-	const now = AsyncResult.getOrElse(useAtomValue(nowAtom), () => DateTime.toEpochMillis(DateTime.nowUnsafe()))
+	const now = AsyncResult.getOrElse(useAtomValue(nowAtom), DateTime.nowUnsafe)
 	const adding = pipe(
 		useMachineResult(AtomMachine.select(clipboard.atom, 'Answering')),
 		AsyncResult.value,
@@ -226,10 +231,22 @@ function Bookings(props: {onOpen: (id: string) => void; searched: string}) {
 	if (blocking !== undefined) return <FailureContent cause={blocking} name="Trips" onRetry={refresh} />
 	const bookings = AsyncResult.getOrElse(loaded, () => [])
 	const matches = matchesOf(bookings, props.searched)
-	const current = Array.filter(matches, booking => startOf(booking) - 6 * HOUR <= now && endOf(booking) + HOUR >= now)
-	const ahead = Array.filter(matches, booking => startOf(booking) - 6 * HOUR > now)
+	const current = Array.filter(
+		matches,
+		booking =>
+			pipe(startOf(booking), DateTime.subtractDuration(Duration.hours(6)), DateTime.isLessThanOrEqualTo(now)) &&
+			pipe(endOf(booking), DateTime.addDuration(HOUR), DateTime.isGreaterThanOrEqualTo(now))
+	)
+	const ahead = Array.filter(matches, booking =>
+		pipe(startOf(booking), DateTime.subtractDuration(Duration.hours(6)), DateTime.isGreaterThan(now))
+	)
 	const past = Array.reverse(
-		Array.filter(matches, booking => endOf(booking) + HOUR < now && endOf(booking) > now - 30 * DAY)
+		Array.filter(
+			matches,
+			booking =>
+				pipe(endOf(booking), DateTime.addDuration(HOUR), DateTime.isLessThan(now)) &&
+				DateTime.isGreaterThan(endOf(booking), DateTime.subtractDuration(now, Duration.days(30)))
+		)
 	)
 	function daysOf(booking: Booking) {
 		return daysUntil(startOf(booking), now, zoneOf(booking))
@@ -316,7 +333,7 @@ function Bookings(props: {onOpen: (id: string) => void; searched: string}) {
 }
 
 // Native navigation and clipboard/account controls do not wait for the bookings stream.
-export function HomeRoute(props: {onOpen: (id: string) => void}) {
+export function HomeRoute(props: {onOpen: (id: Booking['id']) => void}) {
 	const query = useNativeState('')
 	const [searched, setSearched] = useState('')
 	return (

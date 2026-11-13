@@ -7,11 +7,12 @@ import {accessibilityLabel, buttonStyle, frame, menuIndicator, menuStyle, resiza
 import {AsyncResult} from 'effect/reactivity'
 
 import type {Session} from '@deslop/runtime/mobile/session'
+import type {UserId} from '@deslop/runtime/shared/auth'
 
 import {avatarAtom} from '#lib/images.ts'
 
 // Square, like the web's avatar: the picture and its fallback both fill the same 28pt tile.
-function Avatar(props: {id: string}) {
+function Avatar(props: {id: UserId}) {
 	const picture = useAtomValue(avatarAtom(props.id))
 	if (!AsyncResult.isSuccess(picture)) {
 		return <Image systemName="person.crop.square" modifiers={[frame({height: 28, width: 28})]} />

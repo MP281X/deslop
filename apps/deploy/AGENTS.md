@@ -6,3 +6,9 @@
 - **Mac.** The third worker, under launchd: its apps are its `deslop-*` launch agents, without the `-update` ones, and it has no jobs. With no cgroups, its history carries no per-app bands, so the range never hides its rows.
 - **Processes.** PID and PPID stay internal; never read environment; omit nameless listeners and ordinary system-service noise.
 - **Recovery.** A sleeping worker never delays another worker's refresh, local monitoring or the shell. An authorised empty history is empty, not loading.
+
+## Boundary facts
+
+- **Error causes.** A cause is optional diagnostic metadata, not domain absence; it stays Schema.optional(Defect).
+- **Collector absence.** An empty process, unit or target and a missing key mean the same absence. Socket snapshots emit empty process and unit text when unavailable; synthesized view listeners may omit unit, and absent targets omit their key. A systemctl failure block without an Id keeps the empty record key and never defects.
+- **Collector parsing.** PID, CPU-tick and load-average schemas are module constants. Malformed socket/process rows are skipped or omit unreadable process metadata. Whole-machine counter and sample parsing stays inside the service's Effect.try boundary, which reports a DeployError rather than a defect. Snapshot refers to its named port schema, never a union-member position.

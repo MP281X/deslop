@@ -1,6 +1,7 @@
 import {
 	Array,
-	Clock,
+	DateTime,
+	Duration,
 	Context,
 	Deferred,
 	Effect,
@@ -30,20 +31,22 @@ import type {Headers} from 'effect/http'
 
 import {Auth} from '@deslop/runtime/server/auth'
 import {AuthError, bearerOf, isJwt} from '@deslop/runtime/shared/auth'
-import type {User} from '@deslop/runtime/shared/auth'
 import {MCP_PATH} from '@deslop/runtime/shared/schema'
 
 import {connectionFailure, endSession, mcpClient, serverIcons} from '#services/connections/lib/utils.ts'
-import type {ConnectionState} from '#services/connections/schema.ts'
+import type {ConnectionGeneration, ConnectionState} from '#services/connections/schema.ts'
 import {Connections, gatewayUrl} from '#services/connections/service.ts'
 import {compact, indexTools, prunedTools} from '#services/gateway/lib/utils.ts'
-import {RemoteTools, ToolArguments, ToolRequest} from '#services/gateway/schema.ts'
+import {RemoteTool, RemoteTools, ToolArguments, ToolRequest} from '#services/gateway/schema.ts'
 
 type Server = Pick<ConnectionState, 'id' | 'generation' | 'name' | 'mode'>
 
 // The tools/list middleware verifies the caller once and hands the answer to the MCP auth middleware for the same request.
 export const VerifiedCaller = Context.Reference<
-	Option.Option<{key: string; result: Result.Result<User & {client?: string}, AuthError>}>
+	Option.Option<{
+		key: Option.Option<string>
+		result: Result.Result<Effect.Success<ReturnType<typeof Auth.Service.user>>, AuthError>
+	}>
 >('@deslop/gateway/services/gateway/service/VerifiedCaller', {defaultValue: () => Option.none()})
 
 export class Gateway extends Context.Service<
@@ -79,8 +82,10 @@ export class Gateway extends Context.Service<
 				return `${String.slice(0, 41)(String.replaceAll(/[^a-zA-Z0-9_-]/gu, '_')(fullName))}__encoded_${String.slice(0, 12)(Base64Url.encode(yield* digest.digest(Digest.sha256, new TextEncoder().encode(fullName))))}`
 			})
 			const visible = yield* Ref.make(HashSet.empty<string>())
-			const installed = yield* Ref.make<Record<string, {fingerprint: string; generation: string; id: string}>>({})
-			const usable = Effect.fnUntraced(function* (id: string, generation: string) {
+			const installed = yield* Ref.make<
+				Record<string, {fingerprint: string; generation: ConnectionGeneration; id: ConnectionState['id']}>
+			>({})
+			const usable = Effect.fnUntraced(function* (id: ConnectionState['id'], generation: ConnectionGeneration) {
 				return Option.exists(
 					yield* Effect.option(connections.get(id)),
 					found => found.generation === generation && found.status === 'Connected'
@@ -118,9 +123,11 @@ export class Gateway extends Context.Service<
 				McpServer.visibility(options =>
 					Effect.gen(function* () {
 						if (!HashSet.has(yield* Ref.get(visible), options.target)) return false
-						const entry = (yield* Ref.get(installed))[options.target]
-						if (entry === undefined) return false
-						return yield* usable(entry.id, entry.generation)
+						return yield* pipe(
+							yield* Ref.get(installed),
+							Record.get(options.target),
+							Option.match({onNone: () => Effect.succeed(false), onSome: entry => usable(entry.id, entry.generation)})
+						)
 					})
 				).layer
 			)
@@ -129,15 +136,24 @@ export class Gateway extends Context.Service<
 				if (current.generation !== server.generation || current.status !== 'Connected') {
 					return yield* AuthError.make({message: `${server.name} is not connected; connect it on ${url}`})
 				}
-				if (current.mode === 'public') return {token: undefined, url: current.url}
+				if (current.mode === 'public') return {token: Option.none<string>(), url: current.url}
 				if (current.mode === 'deslop') {
 					// Every request that reaches here already verified its bearer, so an access token is forwarded without a second check; a session id still becomes its token.
 					return {
-						token: Option.getOrUndefined(Option.filter(bearerOf(headers), isJwt)) ?? (yield* auth.token(headers)),
+						token: Option.some(
+							yield* pipe(
+								bearerOf(headers),
+								Option.filter(isJwt),
+								Option.match({onNone: () => auth.token(headers), onSome: Effect.succeed})
+							)
+						),
 						url: current.url
 					}
 				}
-				return {token: yield* connections.token(server.id, server.generation), url: current.url}
+				return {
+					token: Option.some(yield* connections.token(server.id, server.generation, Option.none())),
+					url: current.url
+				}
 			})
 			function withClient<A>(
 				server: Server,
@@ -156,7 +172,9 @@ export class Gateway extends Context.Service<
 										Effect.provideContext(
 											Effect.gen(function* () {
 												if (server.mode === 'oauth') {
-													upstream.token = yield* connections.token(server.id, server.generation, upstream.token)
+													upstream.token = Option.some(
+														yield* connections.token(server.id, server.generation, upstream.token)
+													)
 												}
 											}),
 											context
@@ -164,7 +182,7 @@ export class Gateway extends Context.Service<
 									),
 								token: () =>
 									// oxlint-disable-next-line no-restricted-properties -- The MCP SDK's AuthProvider.token contract requires a Promise<string>.
-									Effect.runPromise(Effect.succeed(upstream.token))
+									Effect.runPromise(Effect.succeed(Option.getOrUndefined(upstream.token)))
 							},
 							fetch,
 							requestInit: {redirect: 'error'}
@@ -246,13 +264,13 @@ export class Gateway extends Context.Service<
 								onFailure: connectionFailure(server.name),
 								onSuccess: result => ({
 									icons: serverIcons(client.getServerVersion()),
-									instructions: client.getInstructions(),
+									instructions: Option.fromUndefinedOr(client.getInstructions()),
 									...result
 								})
 							})
 						)
 					),
-					'20 seconds'
+					Duration.seconds(20)
 				)
 				const latest = yield* connections.get(server.id)
 				if (latest.generation !== server.generation || latest.status === 'Not connected') {
@@ -266,8 +284,14 @@ export class Gateway extends Context.Service<
 				const names = MutableList.make<string>()
 				for (const tool of found.tools) {
 					const name = yield* namespaced(`${server.id}__${tool.name}`)
-					const fingerprint = yield* Schema.encodeEffect(Schema.fromJsonString(McpSchema.Tool))(tool)
-					if ((yield* Ref.get(installed))[name]?.fingerprint !== `${server.generation}:${fingerprint}`) {
+					const fingerprint = yield* Schema.encodeEffect(Schema.fromJsonString(RemoteTool))(tool)
+					if (
+						!pipe(
+							yield* Ref.get(installed),
+							Record.get(name),
+							Option.exists(entry => entry.fingerprint === `${server.generation}:${fingerprint}`)
+						)
+					) {
 						yield* registry.addTool({
 							annotations: Context.empty(),
 							handle: (input: unknown) =>
@@ -286,14 +310,11 @@ export class Gateway extends Context.Service<
 				yield* connections.report(server.id, server.generation, {
 					_tag: 'Discovered',
 					icons: found.icons,
-					...Option.match(Option.fromUndefinedOr(found.instructions), {
-						onNone: () => ({}),
-						onSome: instructions => ({instructions})
-					}),
+					instructions: found.instructions,
 					tools: Array.map(found.tools, tool => tool.name)
 				})
 			})
-			const lastRead = yield* Ref.make(Option.none<number>())
+			const lastRead = yield* Ref.make(Option.none<DateTime.Utc>())
 			const inFlight = yield* Ref.make(Option.none<Deferred.Deferred<void>>())
 			const read = Effect.fnUntraced(function* (headers: Headers.Headers) {
 				const done = yield* Deferred.make<void>()
@@ -324,7 +345,7 @@ export class Gateway extends Context.Service<
 						Effect.catch(cause => Effect.logWarning('The MCP servers could not be read', cause))
 					),
 					Effect.gen(function* () {
-						yield* Ref.set(lastRead, Option.some(yield* Clock.currentTimeMillis))
+						yield* Ref.set(lastRead, Option.some(yield* DateTime.now))
 						yield* Ref.set(inFlight, Option.none())
 						yield* Deferred.succeed(done, undefined)
 					})
@@ -334,28 +355,32 @@ export class Gateway extends Context.Service<
 			const settle = Effect.fnUntraced(function* (work: Effect.Effect<unknown>) {
 				yield* pipe(
 					Fiber.join(yield* Effect.forkIn(work, scope)),
-					Effect.timeoutOption('2 seconds'),
+					Effect.timeoutOption(Duration.seconds(2)),
 					Effect.catchCause(cause => Effect.logWarning('Reading the servers’ tools failed', cause))
 				)
 			})
-			const first = Effect.fnUntraced(function* (headers: Headers.Headers) {
+			const first = Effect.fn('Gateway.first')(function* (headers: Headers.Headers) {
 				if (Option.isSome(yield* Ref.get(lastRead))) return
-				const pending = Option.getOrUndefined(yield* Ref.get(inFlight))
-				if (pending !== undefined) {
-					yield* pipe(Deferred.await(pending), Effect.timeoutOption('2 seconds'), Effect.asVoid)
+				const pending = yield* Ref.get(inFlight)
+				if (Option.isSome(pending)) {
+					yield* pipe(
+						Deferred.await(Option.getOrThrow(pending)),
+						Effect.timeoutOption(Duration.seconds(2)),
+						Effect.asVoid
+					)
 					return
 				}
 				yield* settle(refreshes.withPermits(1)(read(headers)))
 			})
-			const refresh = Effect.fnUntraced(function* (headers: Headers.Headers) {
-				const now = yield* Clock.currentTimeMillis
+			const refresh = Effect.fn('Gateway.refresh')(function* (headers: Headers.Headers) {
+				const now = yield* DateTime.now
 				const last = yield* Ref.get(lastRead)
 				if (Option.isNone(last)) return
 				// An agent lists tools far more often than upstreams change, so a registry younger than 30 seconds answers alone.
-				if (now - Option.getOrThrow(last) < 30_000) return
+				if (pipe(last, Option.getOrThrow, DateTime.distance(now), Duration.isLessThan(Duration.seconds(30)))) return
 				yield* pipe(
 					refreshes.withPermitsIfAvailable(1)(read(headers)),
-					Effect.withSpan('Gateway.refresh'),
+					Effect.withSpan('Gateway.discover'),
 					Effect.forkIn(scope)
 				)
 			})
@@ -388,7 +413,7 @@ export const GatewayDiscovery = HttpRouter.middleware()(
 				const response = yield* Effect.provideService(
 					app,
 					VerifiedCaller,
-					Option.some({key: request.headers['authorization'] ?? '', result: verified})
+					Option.some({key: Option.fromUndefinedOr(request.headers['authorization']), result: verified})
 				)
 				// A refusal or an Auth outage starts no work with the bearer it could not verify.
 				if (Result.isSuccess(verified)) yield* gateway.refresh(request.headers)

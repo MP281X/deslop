@@ -1,5 +1,5 @@
 import type {Record} from 'effect'
-import {Array, Boolean, DateTime, Match, Number, Option, Order, String, pipe} from 'effect'
+import {Array, Boolean, DateTime, Duration, Match, Number, Option, Order, String, pipe} from 'effect'
 
 import {ChartLineIcon} from '@phosphor-icons/react'
 import {useState} from 'react'
@@ -14,6 +14,7 @@ import {chartTicks} from '#routes/(home)/-chart.ts'
 import {bytes, rate} from '#routes/(home)/-rows.ts'
 import {bandFill, bands, focusedBand, runs} from '#routes/(home)/-usage.ts'
 import type {Band} from '#routes/(home)/-usage.ts'
+import type {AppId} from '#services/inventory/schema.ts'
 import {bandName, chartWindow} from '#services/metrics/lib/utils.ts'
 import type {HistoryQuery, MachineHistory, Sample} from '#services/metrics/schema.ts'
 
@@ -25,7 +26,7 @@ const date = new Intl.DateTimeFormat(undefined, {day: 'numeric', month: 'short'}
 // One stacked band: its share at each sample, and the number its tooltip names, in bytes or per cent.
 type ChartLayer = {
 	kind: Band['kind'] | 'disk'
-	id: string
+	id: Band['id'] | 'disk'
 	opacity: number
 	readings: readonly number[]
 	values: readonly number[]
@@ -41,13 +42,15 @@ function y(percent: number, height: number) {
 	return height - (Number.clamp(percent, {maximum: 100, minimum: 0}) / 100) * height
 }
 
-function x(history: MachineHistory, minutes: number, at: number) {
-	const window = chartWindow(minutes, history.time)
-	return ((at - window.start) / (window.end - window.start)) * 100
+function x(history: MachineHistory, minutes: Duration.Duration, at: DateTime.Utc) {
+	return (
+		(Duration.toMillis(DateTime.distance(chartWindow(minutes, history.time).start, at)) / Duration.toMillis(minutes)) *
+		100
+	)
 }
 
 // The sample nearest the pointer's horizontal place on the chart.
-function nearest(history: MachineHistory, minutes: number, at: number) {
+function nearest(history: MachineHistory, minutes: Duration.Duration, at: number) {
 	return pipe(
 		history.samples,
 		Array.map((sample, index) => ({distance: Math.abs(x(history, minutes, sample.time) - at), index})),
@@ -66,13 +69,13 @@ function nearest(history: MachineHistory, minutes: number, at: number) {
 function UsageChart(props: {
 	className?: string
 	cover?: boolean
-	focus?: string
+	focus?: Band['id']
 	format: (value: number) => string
 	history: MachineHistory
 	label: string
 	layers: readonly ChartLayer[]
-	minutes: number
-	names: (id: string) => string
+	minutes: Duration.Duration
+	names: (id: ChartLayer['id']) => string
 	recorded: (sample: Sample) => boolean
 }) {
 	const [cursor, setCursor] = useState<{index: number; x: number; y: number}>()
@@ -84,7 +87,11 @@ function UsageChart(props: {
 		const index = nearest(props.history, props.minutes, ((event.clientX - bounds.left) / bounds.width) * 100)
 		setCursor({
 			index,
-			x: x(props.history, props.minutes, props.history.samples[index]?.time ?? 0),
+			x: pipe(
+				props.history.samples,
+				Array.get(index),
+				Option.match({onNone: () => 0, onSome: sample => x(props.history, props.minutes, sample.time)})
+			),
 			y: ((event.clientY - bounds.top) / bounds.height) * 100
 		})
 		Option.match(Array.head(props.layers), {
@@ -232,7 +239,17 @@ function UsageChart(props: {
 					onSome: value => (
 						<TooltipContent side="top" sideOffset={6} align="start" className="pointer-events-none">
 							<span className="font-medium">{props.names(value[1].id)}</span>
-							<span className="opacity-70">{time.format(props.history.samples[value[0].index]?.time ?? 0)}</span>
+							<span className="opacity-70">
+								{pipe(
+									props.history.samples,
+									Array.get(value[0].index),
+									Option.match({
+										onNone: () => time.format(0),
+										onSome: sample =>
+											DateTime.formatLocal(sample.time, {hour: '2-digit', hourCycle: 'h23', minute: '2-digit'})
+									})
+								)}
+							</span>
 							<span className="font-mono tabular-nums">{props.format(value[1].readings[value[0].index] ?? 0)}</span>
 						</TooltipContent>
 					)
@@ -243,7 +260,7 @@ function UsageChart(props: {
 }
 
 // HTML time labels under a chart, so they keep their shape whatever the chart's scale; clock-aligned ticks match the grid.
-function TimeAxis(props: {className?: string; minutes: number; now: number}) {
+function TimeAxis(props: {className?: string; minutes: Duration.Duration; now: DateTime.Utc}) {
 	return (
 		<div
 			aria-hidden="true"
@@ -266,7 +283,7 @@ function TimeAxis(props: {className?: string; minutes: number; now: number}) {
 						style={{'--tick-x': `${tick.x}%`}}
 					>
 						{pipe(
-							Match.value(props.minutes),
+							Match.value(Duration.toMinutes(props.minutes)),
 							// A minute reads as the minute, then its quarters as seconds, so four labels fit a narrow chart.
 							Match.when(1, () =>
 								Boolean.match(tick.at % 60_000 === 0, {
@@ -295,7 +312,7 @@ function ChartTitleSkeleton(props: {label: string}) {
 }
 
 export function ChartSkeleton(props: {isPhone: boolean; minutes: HistoryQuery['minutes']}) {
-	const now = DateTime.toEpochMillis(DateTime.nowUnsafe())
+	const now = DateTime.nowUnsafe()
 	return (
 		<div aria-busy="true" aria-label="Usage history" role="status" className="flex shrink-0 flex-col border-b">
 			{Boolean.match(props.isPhone, {
@@ -348,9 +365,9 @@ function ChartTitle(props: {figure: string; label: string}) {
 export function ChartBlock(props: {
 	history: MachineHistory
 	isPhone: boolean
-	labels: Record<string, string>
+	labels: Record<AppId, string>
 	minutes: HistoryQuery['minutes']
-	selectedOwner?: string
+	selectedOwner?: AppId
 }) {
 	const all = bands(props.history)
 	const focus = Option.getOrUndefined(
@@ -370,7 +387,7 @@ export function ChartBlock(props: {
 	const charts: readonly {
 		cover: boolean
 		figure: string
-		focus?: string
+		focus?: Band['id']
 		format: (value: number) => string
 		label: string
 		layers: readonly ChartLayer[]
@@ -439,9 +456,10 @@ export function ChartBlock(props: {
 							label={chart.label}
 							layers={chart.layers}
 							minutes={props.minutes}
-							names={id =>
-								Boolean.match(chart.label === 'Disk', {onFalse: () => bandName(id, props.labels), onTrue: () => 'Disk'})
-							}
+							names={id => {
+								if (id === 'disk') return 'Disk'
+								return bandName(id, props.labels)
+							}}
 							recorded={chart.recorded}
 						/>
 						{Boolean.match(props.isPhone, {

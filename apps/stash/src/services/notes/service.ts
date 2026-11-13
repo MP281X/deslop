@@ -25,6 +25,7 @@ import {Reactivity} from 'effect/reactivity'
 import {Migrator, SqlClient, SqlModel, SqlSchema} from 'effect/sql'
 
 import {dataDirectory} from '@deslop/runtime/server/store'
+import type {UserId} from '@deslop/runtime/shared/auth'
 import {listEvents} from '@deslop/runtime/shared/list'
 
 import {Sources} from './lib/extraction.ts'
@@ -293,7 +294,7 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 			)
 		}
 
-		const tagNote = Effect.fnUntraced(function* (userId: string, note: Note, stills: Picture[]) {
+		const tagNote = Effect.fnUntraced(function* (userId: UserId, note: Note, stills: Picture[]) {
 			const label = Boolean.match(Option.isNone(note.file), {
 				onFalse: () => 'The saved photo',
 				onTrue: () => 'Preview image'
@@ -335,7 +336,7 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 		})
 
 		// One note at a time, so two notes read together cannot create rival tags for the same topic.
-		function tag(userId: string, id: NoteId, stills: Picture[]) {
+		function tag(userId: UserId, id: NoteId, stills: Picture[]) {
 			return pipe(
 				findNote(id),
 				Effect.flatMap(
@@ -355,22 +356,26 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 				}),
 				Effect.ignore({log: 'Warn', message: 'The preview image was not kept'})
 			)
-			const slides = yield* Effect.forEach(
-				page.slides ?? [],
-				(image, index) =>
-					pipe(
-						sources.image(image),
-						Effect.map(found => Option.some({...found, label: `Image ${index + 2}`})),
-						optional('A slide was not read', Option.none<Picture>)
-					),
-				{concurrency: 4}
+			const slides = yield* pipe(
+				page.slides,
+				Option.toArray,
+				Array.flatten,
+				Effect.forEach(
+					(image, index) =>
+						pipe(
+							sources.image(image),
+							Effect.map(found => Option.some({...found, label: `Image ${index + 2}`})),
+							optional('A slide was not read', Option.none<Picture>)
+						),
+					{concurrency: 4}
+				)
 			)
 			return Array.getSomes(slides)
 		})
 
 		// The video's details replace an X post's text only when the post itself could not be read.
 		const watch = Effect.fnUntraced(function* (
-			userId: string,
+			userId: UserId,
 			note: Note,
 			input: {slides: Picture[]; url: string; useInfo: boolean; video: string}
 		) {
@@ -410,7 +415,7 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 			yield* tag(userId, note.id, [...input.slides, ...Array.map(frames, still)])
 		})
 
-		const organizeLink = Effect.fnUntraced(function* (userId: string, note: Note, link: string) {
+		const organizeLink = Effect.fnUntraced(function* (userId: UserId, note: Note, link: string) {
 			const extraction = yield* Effect.result(sources.extract(link))
 			yield* change(note.id, item =>
 				Result.match(extraction, {
@@ -444,7 +449,7 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 				Result.match({
 					onFailure: () => Option.liftPredicate(link, hasVideo),
 					onSuccess: page =>
-						Option.orElse(Option.fromUndefinedOr(page.video), () =>
+						Option.orElse(page.video, () =>
 							Option.liftPredicate(page.url, address => hasVideo(address) && sourceOf(address) !== 'X')
 						)
 				}),
@@ -461,7 +466,7 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 			)
 		})
 
-		const organizeFile = Effect.fnUntraced(function* (userId: string, note: Note, type: FileType) {
+		const organizeFile = Effect.fnUntraced(function* (userId: UserId, note: Note, type: FileType) {
 			if (!isVideo(type)) return yield* tag(userId, note.id, [])
 			const stored = path.join(files, note.id)
 			const stills = yield* optional('No video frames', Array.empty<Still>)(media.fileFrames(stored))
@@ -480,7 +485,7 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 			yield* tag(userId, note.id, pipe(stills, Array.drop(1), Array.map(still)))
 		})
 
-		function start(userId: string, note: Note) {
+		function start(userId: UserId, note: Note) {
 			return Effect.flatMap(Effect.option(Effect.currentSpan), request =>
 				pipe(
 					change(note.id, () => ({requester: userId})),
@@ -543,7 +548,7 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 		}
 
 		const receive = Effect.fnUntraced(function* (
-			userId: string,
+			userId: UserId,
 			input: {body: Stream.Stream<Uint8Array, unknown>; id: NoteId; type: FileType}
 		) {
 			const stored = path.join(
@@ -585,7 +590,7 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 		})
 
 		return {
-			capture: Effect.fn('Notes.capture')(function* (userId: string, input: Capture) {
+			capture: Effect.fn('Notes.capture')(function* (userId: UserId, input: Capture) {
 				const text = String.trim(input.text)
 				if (String.isEmpty(text)) return yield* NotesError.make({message: 'Paste a link or write a note.'})
 				const url = yield* pipe(
@@ -640,7 +645,7 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 				return item
 			}, withReactivity),
 			captureFile: Effect.fn('Notes.captureFile')(function* (
-				userId: string,
+				userId: UserId,
 				input: {body: Stream.Stream<Uint8Array, unknown>; id: NoteId; type: FileType}
 			) {
 				if (Option.isSome(yield* findNote(input.id))) return yield* savedItem(input.id)
@@ -650,7 +655,11 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 				return item
 			}, withReactivity),
 			// What the phone watches: the whole list first, then only what changed, after each commit.
-			events: Stream.mapError(listEvents(sql.reactive(['notes'], listItems())), asStorageNotesError),
+			events: pipe(
+				listEvents(sql.reactive(['notes'], listItems())),
+				Stream.mapError(asStorageNotesError),
+				Stream.withSpan('Notes.events', {attributes: {'rpc.stream': true}})
+			),
 			get: Effect.fn('Notes.get')(function* (id: NoteId) {
 				return yield* savedNote(id)
 			}),
@@ -684,7 +693,7 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 					total: total.count
 				}
 			}),
-			regenerate: Effect.fn('Notes.regenerate')(function* (userId: string, id: NoteId) {
+			regenerate: Effect.fn('Notes.regenerate')(function* (userId: UserId, id: NoteId) {
 				yield* FiberMap.remove(runs, id)
 				yield* change(id, () => ({issue: Option.none(), status: 'organizing', transcript: Option.none()}))
 				yield* start(userId, yield* savedNote(id))
@@ -706,7 +715,8 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 						)
 					),
 					Stream.changes,
-					Stream.mapError(asStorageNotesError)
+					Stream.mapError(asStorageNotesError),
+					Stream.withSpan('Notes.search', {attributes: {'rpc.stream': true}})
 				)
 		}
 	})

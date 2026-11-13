@@ -1,6 +1,6 @@
 import {useAtomRefresh, useAtomSuspense, useAtomValue} from '@effect/atom-react'
 
-import {Array, Boolean, Cause, DateTime, Duration, Match, Option, Record, Schema, pipe} from 'effect'
+import {Array, Boolean, Cause, DateTime, Match, Option, Record, Schema, pipe} from 'effect'
 
 import {ChartBarHorizontalIcon, DeviceMobileIcon, FlowArrowIcon, GlobeIcon, HardDrivesIcon} from '@phosphor-icons/react'
 import {Link, createFileRoute, getRouteApi} from '@tanstack/react-router'
@@ -41,7 +41,16 @@ import {Flame, SpansSkeleton, TimeAxis} from '#routes/(home)/-flame.tsx'
 import {CiMark, DetailSkeleton, SpanDetail} from '#routes/(home)/-span.tsx'
 import icon from '#routes/icon.svg'
 import {Range, rangeStart} from '#services/telemetry/schema.ts'
-import type {Operation, OperationTrace, Overview, Runtime, TraceTree} from '#services/telemetry/schema.ts'
+import type {
+	AppName,
+	Operation,
+	OperationTrace,
+	Overview,
+	Runtime,
+	SpanId,
+	TraceId,
+	TraceTree
+} from '#services/telemetry/schema.ts'
 
 // The side an operation starts on: a 12px muted glyph after the name when two visible rows share it, and its name for their labels.
 const SIDES: Record<Runtime, string> = {ci: 'CI', mobile: 'iOS', server: 'server', unknown: '', web: 'web'}
@@ -74,13 +83,13 @@ type WorkspaceProps = {
 	active?: ActiveOperation
 	activeKey?: OperationKey
 	activeTrace?: OperationTrace
-	now: number
-	onPickSpan: (id: string) => void
-	onSelectOperation: (app: string, operation: Operation) => void
+	now: DateTime.Utc
+	onPickSpan: (id: SpanId) => void
+	onSelectOperation: (app: AppName, operation: Operation) => void
 	onSelectTrace: (trace: OperationTrace) => void
-	pickedSpan?: string
+	pickedSpan?: SpanId
 	range: Range
-	source?: string
+	source?: AppName
 }
 
 // The operations rows' geometry while the overview loads: the name at the gutter, then the same figure columns.
@@ -124,16 +133,21 @@ function TracesSkeleton(props: {label: string}) {
 function AppMark(props: {app: Overview['apps'][number]}) {
 	return Option.match(Option.fromUndefinedOr(appMarks[props.app.name]), {
 		onNone: () =>
-			Boolean.match(props.app.ci === true, {
-				onFalse: () => <HardDrivesIcon aria-hidden className="text-muted-foreground size-4 shrink-0" />,
-				onTrue: () => <CiMark />
-			}),
+			pipe(
+				props.app.ci,
+				Option.contains(true),
+				Boolean.match({
+					onFalse: () => <HardDrivesIcon aria-hidden className="text-muted-foreground size-4 shrink-0" />,
+					onTrue: () => <CiMark />
+				})
+			),
 		onSome: mark => <img src={mark} alt="" className="pixelated size-4 shrink-0" />
 	})
 }
 
 // The bar's app choice: one mark per app; one is always chosen, and choosing the chosen tab again does nothing.
-function SourceTabs(props: {apps: Overview['apps']; source?: string}) {
+function SourceTabs(props: {apps: Overview['apps']; source?: AppName}) {
+	const search = route.useSearch()
 	return (
 		<AppBarTabs value={props.source ?? ''}>
 			{Array.map(props.apps, app => (
@@ -144,7 +158,7 @@ function SourceTabs(props: {apps: Overview['apps']; source?: string}) {
 						<Link
 							to="/"
 							aria-label={app.name}
-							search={previous => nextSearch(previous, {_tag: 'Source', app: app.name})}
+							search={Schema.encodeSync(Search)(nextSearch(search, {_tag: 'Source', app: app.name}))}
 							onClick={event => {
 								if (app.name === props.source) event.preventDefault()
 							}}
@@ -263,16 +277,16 @@ function OperationRow(props: {
 function OperationsPane(props: {
 	activeKey?: OperationKey
 	className?: string
-	onSelect: (app: string, operation: Operation) => void
+	onSelect: (app: AppName, operation: Operation) => void
 	range: Range
-	source?: string
+	source?: AppName
 }) {
 	return (
 		<section aria-label="Operations" className={cn('flex h-full min-h-0 flex-col overflow-hidden', props.className)}>
 			<Suspense fallback={<OperationsSkeleton label="Operations" />}>
 				<OverviewContent range={props.range}>
 					{overview =>
-						Array.match(operationsOf(overview, props.source), {
+						Array.match(operationsOf(overview, Option.fromUndefinedOr(props.source)), {
 							onEmpty: () => (
 								<EmptyState label="No traces in this frame" icon={<ChartBarHorizontalIcon weight="light" />} />
 							),
@@ -314,7 +328,7 @@ function OperationsPane(props: {
 }
 
 // One trace of the operation: its age, short id with its failure dot right after, and its duration; the row selects it.
-function TraceListRow(props: {active: boolean; now: number; onSelect: () => void; trace: OperationTrace}) {
+function TraceListRow(props: {active: boolean; now: DateTime.Utc; onSelect: () => void; trace: OperationTrace}) {
 	return (
 		<div role="listitem">
 			<Item
@@ -327,11 +341,11 @@ function TraceListRow(props: {active: boolean; now: number; onSelect: () => void
 							[
 								ageOf(props.trace.start, props.now),
 								`trace ${traceLabel(props.trace)}`,
-								...Option.match(Option.fromUndefinedOr(props.trace.failure), {
+								...Option.match(props.trace.failure, {
 									onNone: () => [],
 									onSome: failure => [`failed in ${failure.span}`]
 								}),
-								durationOf(Duration.toMillis(props.trace.duration))
+								durationOf(props.trace.duration)
 							],
 							', '
 						)}
@@ -341,7 +355,10 @@ function TraceListRow(props: {active: boolean; now: number; onSelect: () => void
 				}
 			>
 				<ItemMedia className="w-8">
-					<span className="text-muted-foreground tabular-nums" title={clock.format(props.trace.start)}>
+					<span
+						className="text-muted-foreground tabular-nums"
+						title={clock.format(DateTime.toEpochMillis(props.trace.start))}
+					>
 						{ageOf(props.trace.start, props.now)}
 					</span>
 				</ItemMedia>
@@ -350,20 +367,23 @@ function TraceListRow(props: {active: boolean; now: number; onSelect: () => void
 						<span className="truncate" title={props.trace.id}>
 							{traceLabel(props.trace)}
 						</span>
-						{props.trace.failure !== undefined && (
-							<span
-								role="img"
-								className="flex shrink-0 items-center"
-								aria-label={`Failed in ${props.trace.failure.span}`}
-								title={`Failed in ${props.trace.failure.span}`}
-							>
-								<StatusDot status="error" />
-							</span>
-						)}
+						{Option.match(props.trace.failure, {
+							onNone: () => null,
+							onSome: failure => (
+								<span
+									role="img"
+									className="flex shrink-0 items-center"
+									aria-label={`Failed in ${failure.span}`}
+									title={`Failed in ${failure.span}`}
+								>
+									<StatusDot status="error" />
+								</span>
+							)
+						})}
 					</span>
 				</ItemContent>
 				<ItemActions>
-					<span className="w-12 text-right tabular-nums">{durationOf(Duration.toMillis(props.trace.duration))}</span>
+					<span className="w-12 text-right tabular-nums">{durationOf(props.trace.duration)}</span>
 				</ItemActions>
 			</Item>
 		</div>
@@ -374,7 +394,7 @@ function TraceListRow(props: {active: boolean; now: number; onSelect: () => void
 function TracesPane(props: {
 	active?: ActiveOperation
 	className?: string
-	now: number
+	now: DateTime.Utc
 	onSelect: (trace: OperationTrace) => void
 	range: Range
 	selectedTrace?: OperationTrace
@@ -440,7 +460,7 @@ function SpanDetails(props: {focus: Option.Option<TraceTree['spans'][number]>}) 
 function SpansList(props: {
 	focus: Option.Option<TraceTree['spans'][number]>
 	inlineDetails: boolean
-	onPick: (id: string) => void
+	onPick: (id: SpanId) => void
 	trace: TraceTree
 }) {
 	if (!Array.isReadonlyArrayNonEmpty(props.trace.spans)) {
@@ -478,16 +498,16 @@ function StaleMark(props: {range: Range; trace?: OperationTrace}) {
 
 function Spans(props: {
 	detailOnly?: boolean
-	id: string
+	id: TraceId
 	inlineDetails?: boolean
-	onPick: (id: string) => void
-	pickedSpan?: string
+	onPick: (id: SpanId) => void
+	pickedSpan?: SpanId
 	range: Range
 }) {
 	return (
 		<Loaded atom={traceAtom(props.range, props.id)}>
 			{trace => {
-				const focus = focusOf(trace, props.pickedSpan)
+				const focus = focusOf(trace, Option.fromUndefinedOr(props.pickedSpan))
 				if (props.detailOnly === true) {
 					return <SpanDetails focus={focus} />
 				}
@@ -504,9 +524,9 @@ function TracePane(props: {
 	className?: string
 	detailOnly?: boolean
 	inlineDetails?: boolean
-	now: number
-	onPickSpan: (id: string) => void
-	pickedSpan?: string
+	now: DateTime.Utc
+	onPickSpan: (id: SpanId) => void
+	pickedSpan?: SpanId
 	range: Range
 	trace?: OperationTrace
 }) {
@@ -698,7 +718,7 @@ function HomeRoute() {
 	const isWide = useAtomValue(mediaQueryAtom('(width >= 100rem)'))
 	const search = route.useSearch()
 	const navigate = route.useNavigate()
-	const range = search.range ?? '1h'
+	const range = Option.getOrElse(search.range, () => '1h' as const)
 	const overview = useAtomValue(overviewAtom(range))
 	const refresh = useAtomRefresh(overviewAtom(range))
 	const value = AsyncResult.value(overview)
@@ -706,7 +726,7 @@ function HomeRoute() {
 	const [known, setKnown] = useState<Overview['apps']>(() => [])
 	const apps = Option.match(value, {onNone: () => known, onSome: current => current.apps})
 	const failure = blockingFailure(overview)
-	const now = AsyncResult.getOrElse(useAtomValue(nowAtom), () => DateTime.toEpochMillis(DateTime.nowUnsafe()))
+	const now = AsyncResult.getOrElse(useAtomValue(nowAtom), DateTime.nowUnsafe)
 
 	// One app is always chosen: a URL naming none, or one this data no longer has, falls back to the newest failure, else the first tab.
 	const selection = selectionOf(value, search, isMobile)
@@ -714,10 +734,10 @@ function HomeRoute() {
 	const shown = shownSearch(search, selection, Option.isSome(value))
 	const pane = navigationOf(shown).path
 	function send(event: NavigationEvent) {
-		navigate({search: nextSearch(shown, event)})
+		navigate({search: Schema.encodeSync(Search)(nextSearch(shown, event))})
 	}
 
-	function selectOperation(app: string, operation: Operation) {
+	function selectOperation(app: AppName, operation: Operation) {
 		send({_tag: 'Operation', operation: {app, name: operation.name, runtime: operation.runtime}})
 	}
 
@@ -725,7 +745,7 @@ function HomeRoute() {
 		Option.map(selection.activeKey, operation => send({_tag: 'Trace', selection: {operation, traceId: trace.id}}))
 	}
 
-	function selectSpan(id: string) {
+	function selectSpan(id: SpanId) {
 		Option.map(Option.all({operation: selection.activeKey, trace: selection.activeTrace}), selected =>
 			send({_tag: 'Span', selection: {operation: selected.operation, spanId: id, traceId: selected.trace.id}})
 		)
@@ -735,7 +755,11 @@ function HomeRoute() {
 	function selectRange(next: Range) {
 		Option.match(value, {onNone: () => undefined, onSome: current => setKnown(current.apps)})
 		const cutoff = rangeStart(next, now)
-		send({_tag: 'Range', keepTrace: Option.exists(selection.activeTrace, trace => trace.start >= cutoff), range: next})
+		send({
+			_tag: 'Range',
+			keepTrace: Option.exists(selection.activeTrace, trace => DateTime.isGreaterThanOrEqualTo(trace.start, cutoff)),
+			range: next
+		})
 	}
 
 	const workspaceProps = {
@@ -746,9 +770,9 @@ function HomeRoute() {
 		onPickSpan: selectSpan,
 		onSelectOperation: selectOperation,
 		onSelectTrace: selectTrace,
-		pickedSpan: selection.pickedSpan,
+		pickedSpan: Option.getOrUndefined(selection.pickedSpan),
 		range,
-		source: selection.source
+		source: Option.getOrUndefined(selection.source)
 	}
 	const workspace = Boolean.match(isMobile, {
 		onFalse: () =>
@@ -799,7 +823,12 @@ function HomeRoute() {
 					</>
 				}
 				tabs={Boolean.match(isMobile && pane !== 'Operations', {
-					onFalse: () => <SourceTabs apps={apps} source={selection.source ?? search.source} />,
+					onFalse: () => (
+						<SourceTabs
+							apps={apps}
+							source={Option.getOrUndefined(Option.orElse(selection.source, () => search.source))}
+						/>
+					),
 					onTrue: () => undefined
 				})}
 			/>

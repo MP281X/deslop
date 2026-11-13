@@ -7,34 +7,47 @@ import {Array, Context, Effect, Layer, Option, Queue, Ref, Result, Schema, Strea
 import {Reactivity} from 'effect/reactivity'
 import {SqlClient} from 'effect/sql'
 
+import {UserId} from '@deslop/runtime/shared/auth'
+
 import {Extractor} from './lib/extraction.ts'
 import {Places} from './lib/places.ts'
 
 import type {BookingSource, ExtractedItems} from '#services/bookings/schema.ts'
-import {BookingsError, BookingsEvent, Flight} from '#services/bookings/schema.ts'
+import {
+	BookedPlace,
+	BookingId,
+	BookingsError,
+	BookingsEvent,
+	Flight,
+	FlightTracking,
+	Place
+} from '#services/bookings/schema.ts'
 import {Bookings} from '#services/bookings/service.ts'
-
-const USER = 'github:1'
 
 const FLIGHT = {
 	airlineCode: 'BA',
 	airlineName: 'British Airways',
 	arrival: '2026-11-10T18:00',
+	boarding: Option.none(),
+	boardingGroup: Option.none(),
+	confirmation: Option.none(),
 	departure: '2026-11-10T16:00',
 	flightNumber: '553',
 	from: 'FCO',
 	kind: 'flight',
-	seat: '12A',
+	seat: Option.some('12A'),
 	status: 'confirmed',
 	to: 'LHR'
 } as const
 
+const USER = UserId.make('github:1')
+
 const places = Places.of({
 	airport: code => {
 		if (code === 'BAD') return BookingsError.make({message: 'Unknown airport code.'})
-		return Effect.succeed({code, name: code, timeZone: 'UTC'})
+		return Effect.succeed(Schema.decodeSync(BookedPlace)({code, name: code, timeZone: 'UTC'}))
 	},
-	station: name => Effect.succeed({name, timeZone: 'UTC'})
+	station: name => Effect.succeed(Schema.decodeSync(Place)({name, timeZone: 'UTC'}))
 })
 
 const memory = Layer.merge(SqliteClient.layer({filename: ':memory:'}), Reactivity.layer)
@@ -75,7 +88,7 @@ function next(events: Queue.Dequeue<BookingsEvent>) {
 function tracked(flight: Flight) {
 	return Flight.make({
 		...Struct.pick(flight, Struct.keys(Flight.fields)),
-		live: Option.some({checkedAt: 1, departureGate: 'B12', state: 'scheduled' as const})
+		live: Option.some(Schema.decodeSync(FlightTracking)({checkedAt: 1, departureGate: 'B12', state: 'scheduled'}))
 	})
 }
 
@@ -169,7 +182,7 @@ it.layer(NodeCrypto.layer)('Bookings', test => {
 			const bookings = yield* open(database, extractor)
 			const events = yield* watch(bookings)
 			assert.containsSubset(yield* next(events), {reset: true, upserted: [{id, number: '553'}]})
-			yield* bookings.remove(id)
+			yield* bookings.remove(BookingId.make(id))
 			assert.deepStrictEqual(yield* next(events), {removed: [id], reset: false, upserted: []})
 		})
 	)
@@ -180,7 +193,7 @@ it.layer(NodeCrypto.layer)('Bookings', test => {
 			const seat = yield* Ref.make('12A')
 			const bookings = yield* open(
 				yield* Layer.build(memory),
-				Extractor.of({read: () => Effect.map(Ref.get(seat), found => [{...FLIGHT, seat: found}])})
+				Extractor.of({read: () => Effect.map(Ref.get(seat), found => [{...FLIGHT, seat: Option.some(found)}])})
 			)
 			const stored = Effect.map(bookings.list, list =>
 				Option.getOrThrow(Array.findFirst(list, (booking): booking is Flight => booking._tag === 'flight'))

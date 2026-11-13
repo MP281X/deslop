@@ -8,7 +8,8 @@ import {Reactivity} from 'effect/reactivity'
 import {TestClock} from 'effect/testing'
 
 import {jobLogs, jobTrace, runTrace} from '#services/github/lib/utils.ts'
-import {WorkflowJob, WorkflowRun} from '#services/github/schema.ts'
+import {WorkflowJob, WorkflowRun, WorkflowRunAttempt} from '#services/github/schema.ts'
+import {LogsRequest, TracesRequest} from '#services/telemetry/schema.ts'
 import {Telemetry} from '#services/telemetry/service.ts'
 
 const REPOSITORY = {full_name: 'MP281X/deslop'}
@@ -23,7 +24,7 @@ const layer = Layer.provide(
 	Layer.mergeAll(SqliteClient.layer({filename: ':memory:'}), Reactivity.layer, NodeCrypto.layer, NodeServices.layer)
 )
 
-const run = WorkflowRun.make({
+const run = Schema.decodeSync(WorkflowRun)({
 	action: 'completed',
 	repository: REPOSITORY,
 	workflow_run: {
@@ -42,7 +43,7 @@ const run = WorkflowRun.make({
 	}
 })
 
-const job = WorkflowJob.make({
+const job = Schema.decodeSync(WorkflowJob)({
 	action: 'completed',
 	repository: REPOSITORY,
 	workflow_job: {
@@ -71,7 +72,7 @@ const job = WorkflowJob.make({
 				number: 2,
 				started_at: '2026-11-03T08:01:00Z'
 			},
-			...SKIPPED
+			...Schema.encodeSync(WorkflowJob.fields.workflow_job.fields.steps)(SKIPPED)
 		]
 	}
 })
@@ -89,7 +90,7 @@ it('attaches a job log to the step each line falls in, the job otherwise', () =>
 		],
 		'\n'
 	)
-	const records = jobLogs(job, log).resourceLogs?.[0]?.scopeLogs?.[0]?.logRecords ?? []
+	const records = Schema.encodeSync(LogsRequest)(jobLogs(job, log)).resourceLogs?.[0]?.scopeLogs?.[0]?.logRecords ?? []
 	assert.deepStrictEqual(
 		Array.map(records, record => [record.spanId, record.body?.['stringValue'], record.severityNumber]),
 		[
@@ -108,7 +109,9 @@ it('attaches a job log to the step each line falls in, the job otherwise', () =>
 })
 
 it('names a retry attempt after its build number', () => {
-	const retry = runTrace({...run, workflow_run: {...run.workflow_run, run_attempt: 2}})
+	const retry = Schema.encodeSync(TracesRequest)(
+		runTrace({...run, workflow_run: {...run.workflow_run, run_attempt: WorkflowRunAttempt.make(2)}})
+	)
 	assert.deepStrictEqual(
 		pipe(
 			Option.getOrThrow(Array.head(retry.resourceSpans?.[0]?.scopeSpans?.[0]?.spans ?? [])).attributes ?? [],
@@ -142,9 +145,9 @@ it.layer(layer)(test => {
 				[['ci', 'Release', 1, 1]]
 			)
 			const trace = Option.getOrThrow(Array.head(app.operations[0]?.traces ?? []))
-			assert.containsSubset(trace.failure, {span: 'Format, lint, types and dead code'})
+			assert.containsSubset(Option.getOrThrow(trace.failure), {span: 'Format, lint, types and dead code'})
 			assert.strictEqual(Duration.toMillis(trace.duration), 360_000)
-			assert.strictEqual(trace.label, '#101')
+			assert.strictEqual(Option.getOrThrow(trace.label), '#101')
 			assert.deepStrictEqual(
 				Array.map((yield* telemetry.trace(trace.id)).spans, span => [span.depth, span.name]),
 				[

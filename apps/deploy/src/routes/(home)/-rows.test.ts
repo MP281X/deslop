@@ -1,16 +1,17 @@
 import {assert, it} from '@effect/vitest'
 
-import {Array, Option} from 'effect'
+import {Array, DateTime, Duration, Option, Schema} from 'effect'
 
 import {impactGroups} from '#routes/(home)/-rows.ts'
 import {workloads} from '#services/inventory/lib/utils.ts'
-import type {InventoryItem} from '#services/inventory/schema.ts'
-import type {AppSample, MachineHistory, Sample} from '#services/metrics/schema.ts'
+import {InventoryItem, WorkerId} from '#services/inventory/schema.ts'
+import type {Sample} from '#services/metrics/schema.ts'
+import {AppSample} from '#services/metrics/schema.ts'
 
 const GIB = 1024 ** 3
 
 function item(name: string, state = 'active · running', detail = '') {
-	return {
+	return Schema.decodeSync(InventoryItem)({
 		detail,
 		id: `service:user:${name}`,
 		kind: 'service',
@@ -19,36 +20,37 @@ function item(name: string, state = 'active · running', detail = '') {
 		state,
 		url: '',
 		worker: 'dev'
-	} satisfies InventoryItem
+	})
 }
 
 function row(name: string, state?: string, detail?: string) {
 	return Option.getOrThrow(Array.head(workloads([item(name, state, detail)])))
 }
 
-function sample(time: number, apps: readonly AppSample[]) {
+function sample(time: number, apps: readonly (typeof AppSample.Encoded)[]) {
 	return {
-		apps: Option.some(apps),
+		apps: Option.some(Schema.decodeSync(Schema.Array(AppSample))(apps)),
 		cpu: Option.some(50),
 		memoryTotal: 10 * GIB,
 		memoryUsed: 6 * GIB,
-		since: time,
-		step: 1000,
+		since: DateTime.makeUnsafe(time),
+		step: Duration.millis(1000),
 		storageUsed: Option.none(),
-		time
+		time: DateTime.makeUnsafe(time)
 	} satisfies Sample
 }
 
 function machine(samples: Sample[]) {
 	return {
+		cpuModel: Option.none(),
 		disks: [],
-		error: '',
+		error: Option.none(),
 		load: [],
 		samples,
 		stale: false,
 		time: Option.getOrThrow(Option.map(Array.last(samples), last => last.time)),
-		worker: 'desktop'
-	} satisfies MachineHistory
+		worker: WorkerId.make('desktop')
+	}
 }
 
 it('puts healthy low-impact apps under their own group and keeps failures and large apps up', () => {

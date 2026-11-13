@@ -35,7 +35,7 @@ import {TestClock} from 'effect/testing'
 
 import {Auth} from '@deslop/runtime/server/auth'
 import {layerDataStore} from '@deslop/runtime/server/store'
-import {AUTH_URL, AuthError} from '@deslop/runtime/shared/auth'
+import {AUTH_URL, AuthError, UserId} from '@deslop/runtime/shared/auth'
 import type {User} from '@deslop/runtime/shared/auth'
 
 import {AiHttpHandlers, HttpHandlers} from '#http/handlers.ts'
@@ -44,19 +44,13 @@ import {RpcHandlers} from '#rpcs/handlers.ts'
 import type {AiProvider, AiUsageReport} from '#services/ai-proxy/schema.ts'
 import {AiProxy} from '#services/ai-proxy/service.ts'
 import {mcpClient} from '#services/connections/lib/utils.ts'
-import {ConnectionItem} from '#services/connections/schema.ts'
-import type {McpUsageReport} from '#services/connections/schema.ts'
+import {ConnectionItem, ServerId, McpUsageReport, ServerIcon} from '#services/connections/schema.ts'
 import {Connections} from '#services/connections/service.ts'
 import {Gateway} from '#services/gateway/service.ts'
-import type {UsageRange} from '#services/usage/schema.ts'
+import {UsageRange} from '#services/usage/schema.ts'
 import {GatewayMcp} from '#tools/handlers.ts'
 
 const GATEWAY_URL = 'https://gateway.mp281x.xyz'
-const ACCOUNTS: Record<string, User> = {
-	dev: {id: 'github:0', name: 'dev'},
-	octocat: {id: 'github:42', name: 'octocat'},
-	stranger: {id: 'github:7', name: 'stranger'}
-}
 const PROVIDERS = {
 	dual: {
 		issuer: 'https://app.dualos.ai',
@@ -71,6 +65,12 @@ const PROVIDERS = {
 }
 const SESSION = 'session=octocat'
 const TOKEN = 'agent.octocat.signature'
+
+const ACCOUNTS: Record<string, User> = {
+	dev: {id: UserId.make('github:0'), name: 'dev'},
+	octocat: {id: UserId.make('github:42'), name: 'octocat'},
+	stranger: {id: UserId.make('github:7'), name: 'stranger'}
+}
 
 function discoveryResponse(url: string, challengeMethods?: string[]) {
 	if (url === 'https://challenge.example.com/resource-info') {
@@ -480,7 +480,7 @@ const servers = Effect.fnUntraced(function* (home?: string, origin: string = GAT
 		rejectAccess,
 		rejectContinue,
 		rejectReady,
-		remove: (id: string, session: string = SESSION) =>
+		remove: (id: ServerId, session: string = SESSION) =>
 			Context.get(rpc, Connections).remove(
 				id,
 				Option.getOrThrow(Option.fromUndefinedOr(ACCOUNTS[String.replace(/^session=/u, '')(session)]))
@@ -951,7 +951,7 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 				modern(gateway.web, TOKEN, 'tools/call', {arguments: {query: 'racing'}, name: 'mobbin__search'})
 			)
 			yield* Queue.take(gateway.rejectReady)
-			yield* gateway.remove('mobbin')
+			yield* gateway.remove(yield* Schema.decodeEffect(ServerId)('mobbin'))
 			assert.strictEqual((yield* gateway.add('https://app.mobbin.net/mcp')).id, 'mobbin')
 			yield* approve
 			yield* Queue.offer(gateway.rejectContinue, true)
@@ -1029,10 +1029,13 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 				Effect.forkScoped
 			)
 			const first = yield* Queue.take(updates)
-			assert.deepStrictEqual(first, {
-				range: {count: 24, from: -82_800_000, size: 3_600_000, to: 3_600_000},
-				report: [{id: added.id, series: []}]
-			})
+			assert.deepStrictEqual(
+				{
+					range: yield* Schema.encodeEffect(UsageRange)(first.range),
+					report: yield* Schema.encodeEffect(McpUsageReport)(first.report)
+				},
+				{range: {count: 24, from: -82_800_000, size: 3_600_000, to: 3_600_000}, report: [{id: added.id, series: []}]}
+			)
 			for (const index of Array.range(1, 2)) {
 				const called = yield* modern(gateway.web, TOKEN, 'tools/call', {
 					arguments: {query: `call ${index}`},
@@ -1043,14 +1046,21 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 			// An open page hears the burst once, with both calls counted in the same window.
 			yield* TestClock.adjust('1 second')
 			yield* TestClock.adjust('1 second')
-			assert.deepStrictEqual(yield* Queue.take(updates), {
-				range: first.range,
-				report: [{id: added.id, series: [{at: 0, calls: 2}]}]
-			})
+			const updated = yield* Queue.take(updates)
+			assert.deepStrictEqual(
+				{
+					range: yield* Schema.encodeEffect(UsageRange)(updated.range),
+					report: yield* Schema.encodeEffect(McpUsageReport)(updated.report)
+				},
+				{
+					range: yield* Schema.encodeEffect(UsageRange)(first.range),
+					report: [{id: added.id, series: [{at: 0, calls: 2}]}]
+				}
+			)
 			assert.strictEqual(yield* Queue.size(updates), 0)
 			// Past the hour boundary, the window moves and a later call still counts.
 			yield* TestClock.adjust('1 hour')
-			assert.deepStrictEqual((yield* Queue.take(updates)).range, {
+			assert.deepStrictEqual(yield* Schema.encodeEffect(UsageRange)((yield* Queue.take(updates)).range), {
 				count: 24,
 				from: -79_200_000,
 				size: 3_600_000,
@@ -1063,7 +1073,7 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 			assert.strictEqual(called.status, 200)
 			yield* TestClock.adjust('1 second')
 			yield* TestClock.adjust('1 second')
-			assert.deepStrictEqual((yield* Queue.take(updates)).report, [
+			assert.deepStrictEqual(yield* Schema.encodeEffect(McpUsageReport)((yield* Queue.take(updates)).report), [
 				{
 					id: added.id,
 					series: [
@@ -1079,7 +1089,9 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 				Stream.runForEach(value => Queue.offer(daily, value)),
 				Effect.forkScoped
 			)
-			assert.deepStrictEqual((yield* Queue.take(daily)).report, [{id: added.id, series: [{at: 0, calls: 3}]}])
+			assert.deepStrictEqual(yield* Schema.encodeEffect(McpUsageReport)((yield* Queue.take(daily)).report), [
+				{id: added.id, series: [{at: 0, calls: 3}]}
+			])
 		})
 	)
 	test.effect(
@@ -1226,7 +1238,7 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 			assert.isTrue(String.includes('list_mcp_connections')(partialText))
 			assert.isTrue(String.includes('public__search')(partialText))
 			assert.strictEqual((yield* modern(gateway.web, TOKEN, 'tools/list')).status, 200)
-			yield* gateway.remove('mobbin')
+			yield* gateway.remove(yield* Schema.decodeEffect(ServerId)('mobbin'))
 			const disconnected = yield* modern(gateway.web, TOKEN, 'tools/call', {
 				arguments: {query: 'blocked'},
 				name: 'mobbin__search'
@@ -1278,7 +1290,7 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 				pipe(
 					yield* gateway.list(),
 					Array.filter(server => server.id === added.id),
-					Array.map(server => server.icons)
+					Array.map(server => Schema.encodeSync(Schema.Array(ServerIcon))(server.icons))
 				),
 				[[{src: 'https://example.com/icon.png', theme: 'dark'}]]
 			)
@@ -1456,7 +1468,9 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 			assert.strictEqual(gateway.grants.length, 0)
 			// A provider cannot redirect metadata discovery to a different issuer.
 			assert.isTrue(Schema.is(AuthError)(yield* gateway.addFailure(PROVIDERS.dual.url)))
-			const denied = yield* Effect.flip(gateway.remove('mobbin', 'session=stranger'))
+			const denied = yield* Effect.flip(
+				gateway.remove(yield* Schema.decodeEffect(ServerId)('mobbin'), 'session=stranger')
+			)
 			assert.deepStrictEqual([Schema.is(AuthError)(denied), denied.error], [true, 'access_denied'])
 		})
 	)

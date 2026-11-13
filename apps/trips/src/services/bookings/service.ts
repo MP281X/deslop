@@ -4,14 +4,15 @@ import {SecureRandom} from 'effect/crypto'
 import {Reactivity} from 'effect/reactivity'
 import {Migrator, SqlClient, SqlModel, SqlSchema} from 'effect/sql'
 
+import type {UserId} from '@deslop/runtime/shared/auth'
 import {listEvents} from '@deslop/runtime/shared/list'
 
 import {Extractor} from './lib/extraction.ts'
 import {Places} from './lib/places.ts'
 
 import {byStart, instantOf, upsert} from '#services/bookings/lib/utils.ts'
-import type {Booking, BookingId, BookingSource, ExtractedItem, LocalTime} from '#services/bookings/schema.ts'
-import {BookingsError, Flight, Place, Stay, Train} from '#services/bookings/schema.ts'
+import type {Booking, BookingSource, ExtractedItem, LocalTime} from '#services/bookings/schema.ts'
+import {BookingId, BookingsError, Flight, Place, Stay, Train} from '#services/bookings/schema.ts'
 
 declare module 'effect/reactivity/Reactivity' {
 	interface Keys {
@@ -86,30 +87,30 @@ export class Bookings extends Context.Service<Bookings>()('@deslop/trips/service
 			Match.exhaustive
 		)
 
-		const watch = Stream.mapError(sql.reactive(['bookings'], listAll), asStorageBookingsError)
+		const watch = pipe(
+			sql.reactive(['bookings'], listAll),
+			Stream.mapError(asStorageBookingsError),
+			Stream.withSpan('Bookings.watch', {attributes: {'rpc.stream': true}})
+		)
 
 		// Saved with its zone; an unplaced station of an Italian operator falls back to Italy's, another railway's fails the save.
 		const resolveStation = Effect.fnUntraced(function* (name: string, operator: Train['operator']) {
 			const found = yield* Effect.option(places.station(name))
 			const timeZone = yield* pipe(
 				found,
-				Option.flatMap(place => Option.fromUndefinedOr(place.timeZone)),
+				Option.flatMap(place => place.timeZone),
 				Option.orElse(() => Option.liftPredicate('Europe/Rome', () => operator !== 'other')),
 				Option.match({
 					onNone: () => BookingsError.make({message: `The station ${name} could not be placed.`}),
 					onSome: Effect.succeed
 				})
 			)
-			return {...Option.getOrElse(found, () => Place.make({name})), timeZone}
+			return {...Option.getOrElse(found, () => Schema.decodeSync(Place)({name})), timeZone}
 		})
 
 		// Airports and stations resolve from their datasets, so a time reads in the right zone and a ride has coordinates.
 		const resolve = Effect.fnUntraced(function* (item: ExtractedItem) {
-			const base = {
-				confirmation: Option.fromUndefinedOr(item.confirmation),
-				id: yield* random.uuidV4(),
-				status: item.status
-			}
+			const base = {confirmation: item.confirmation, id: BookingId.make(yield* random.uuidV4()), status: item.status}
 			if (item.kind === 'flight') {
 				const from = yield* places.airport(item.from)
 				const to = yield* places.airport(item.to)
@@ -118,15 +119,13 @@ export class Bookings extends Context.Service<Bookings>()('@deslop/trips/service
 					airline: item.airlineName,
 					airlineCode: item.airlineCode,
 					arrives: yield* at(item.arrival, to.timeZone),
-					boardingAt: yield* Effect.transposeOption(
-						Option.map(Option.fromUndefinedOr(item.boarding), boarding => at(boarding, from.timeZone))
-					),
-					boardingGroup: Option.fromUndefinedOr(item.boardingGroup),
+					boardingAt: yield* Effect.transposeOption(Option.map(item.boarding, boarding => at(boarding, from.timeZone))),
+					boardingGroup: item.boardingGroup,
 					departs: yield* at(item.departure, from.timeZone),
 					from,
 					live: Option.none(),
 					number: item.flightNumber,
-					seat: Option.fromUndefinedOr(item.seat),
+					seat: item.seat,
 					to
 				})
 			}
@@ -136,14 +135,14 @@ export class Bookings extends Context.Service<Bookings>()('@deslop/trips/service
 				return Train.make({
 					...base,
 					arrives: yield* at(item.arrival, to.timeZone),
-					coach: Option.fromUndefinedOr(item.coach),
+					coach: item.coach,
 					departs: yield* at(item.departure, from.timeZone),
 					from,
 					live: Option.none(),
 					number: item.trainNumber,
 					operator: item.operator,
 					operatorName: item.operatorName,
-					seat: Option.fromUndefinedOr(item.seat),
+					seat: item.seat,
 					to
 				})
 			}
@@ -152,7 +151,15 @@ export class Bookings extends Context.Service<Bookings>()('@deslop/trips/service
 				checkIn: yield* at(item.checkIn, item.timeZone),
 				checkOut: yield* at(item.checkOut, item.timeZone),
 				name: item.name,
-				place: {address: item.address, city: item.city, name: item.name, timeZone: item.timeZone}
+				place: {
+					address: Option.some(item.address),
+					city: Option.some(item.city),
+					code: Option.none(),
+					latitude: Option.none(),
+					longitude: Option.none(),
+					name: item.name,
+					timeZone: item.timeZone
+				}
 			})
 		})
 
@@ -182,9 +189,10 @@ export class Bookings extends Context.Service<Bookings>()('@deslop/trips/service
 
 		return {
 			// What the phone watches: the whole list first, then only what changed, after each commit.
-			events: listEvents(watch),
-			list: asBookingsError(listAll),
+			events: Stream.withSpan(listEvents(watch), 'Bookings.events', {attributes: {'rpc.stream': true}}),
+			list: pipe(listAll, asBookingsError, Effect.withSpan('Bookings.list')),
 			remove: Effect.fn('Bookings.remove')(function* (id: BookingId) {
+				yield* Effect.annotateCurrentSpan('bookingId', id)
 				yield* pipe(
 					Effect.all([flights.delete(id), trains.delete(id), stays.delete(id)], {concurrency: 1, discard: true}),
 					Reactivity.mutation(['bookings']),
@@ -194,6 +202,7 @@ export class Bookings extends Context.Service<Bookings>()('@deslop/trips/service
 			}, withReactivity),
 			// The newer state replaces the one it was made from, unless the booking changed or left meanwhile.
 			replace: Effect.fn('Bookings.replace')(function* (before: Booking, after: Booking) {
+				yield* Effect.annotateCurrentSpan('bookingId', before.id)
 				yield* pipe(
 					listAll,
 					Effect.flatMap(current =>
@@ -208,7 +217,8 @@ export class Bookings extends Context.Service<Bookings>()('@deslop/trips/service
 					asBookingsError
 				)
 			}, withReactivity),
-			save: Effect.fn('Bookings.save')(function* (userId: string, source: BookingSource) {
+			save: Effect.fn('Bookings.save')(function* (userId: UserId, source: BookingSource) {
+				yield* Effect.annotateCurrentSpan('userId', userId)
 				const items = yield* extractor.read(userId, source)
 				if (Array.isReadonlyArrayEmpty(items)) {
 					return yield* BookingsError.make({

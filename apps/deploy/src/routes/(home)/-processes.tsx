@@ -1,4 +1,4 @@
-import {Array, Option} from 'effect'
+import {Array, Option, pipe} from 'effect'
 
 import {cn} from '@deslop/components-web/classes'
 
@@ -12,12 +12,11 @@ const percent = new Intl.NumberFormat(undefined, {maximumFractionDigits: 1})
 
 // A process ends with its memory and CPU in fixed, right-aligned columns; their units name them without a header.
 function Figures(props: {node: ProcessNode}) {
-	const cpu = Option.fromUndefinedOr(props.node.cpu)
 	return (
 		<span className="flex shrink-0 items-center gap-2 font-mono text-xs tabular-nums">
 			<span className="w-14 text-right whitespace-nowrap">{`${mib.format(props.node.memory / 1024 ** 2)} MiB`}</span>
 			<span className="text-muted-foreground w-11 text-right whitespace-nowrap">
-				{Option.match(cpu, {onNone: () => '—', onSome: value => `${percent.format(value)}%`})}
+				{Option.match(props.node.cpu, {onNone: () => '—', onSome: value => `${percent.format(value)}%`})}
 			</span>
 		</span>
 	)
@@ -42,9 +41,9 @@ function rowOf(props: {node: ProcessNode}): TreeRow {
 				</span>
 			</div>
 		),
-		id: `${props.node.pid}`,
+		id: props.node.pid,
 		media: <ApplicationIcon name={props.node.label.name} small />,
-		title: Array.join(props.node.command ?? [], ' ')
+		title: pipe(props.node.command, Option.getOrElse(Array.empty), Array.join(' '))
 	}
 	return Array.match(props.node.children, {
 		onEmpty: () => row,

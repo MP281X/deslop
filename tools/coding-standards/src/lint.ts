@@ -61,6 +61,7 @@ import {noWallClock} from '#lint/no-wall-clock.ts'
 import {preferPredicate} from '#lint/prefer-predicate.ts'
 import {preserveErrorCause} from '#lint/preserve-error-cause.ts'
 import {schemaTypePair} from '#lint/schema-type-pair.ts'
+import {serviceMethodSpan} from '#lint/service-method-span.ts'
 import {serviceSchemaFile} from '#lint/service-schema-file.ts'
 import {swiftuiThemeValues} from '#lint/swiftui-theme-values.ts'
 
@@ -161,6 +162,7 @@ const RULES = {
 	'prefer-predicate': preferPredicate,
 	'preserve-error-cause': preserveErrorCause,
 	'schema-type-pair': schemaTypePair,
+	'service-method-span': serviceMethodSpan,
 	'service-schema-file': serviceSchemaFile,
 	'swiftui-theme-values': swiftuiThemeValues
 }

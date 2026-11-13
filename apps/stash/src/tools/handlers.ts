@@ -49,14 +49,20 @@ export const ToolHandlers = ToolContracts.toLayer(
 							Option.getOrElse(() => chunk)
 						)
 				})
+				const sections = {
+					body: Option.none<string>(),
+					content: Option.none<string>(),
+					screenText: Option.none<string>(),
+					text: Option.none<string>(),
+					topics: Option.none<string>(),
+					transcript: Option.none<string>()
+				}
 				return {
 					...row(item),
 					...Struct.pick(item, ['author', 'issue']),
-					[section]: text,
-					...Boolean.match(input.offset + text.length < source.length, {
-						onFalse: () => ({}),
-						onTrue: () => ({nextOffset: input.offset + text.length})
-					})
+					...sections,
+					nextOffset: Option.liftPredicate(input.offset + text.length, offset => offset < source.length),
+					[section]: Option.some(text)
 				}
 			}),
 			remove_note: input => Effect.as(notes.remove(input.id), {id: input.id}),
@@ -69,12 +75,8 @@ export const ToolHandlers = ToolContracts.toLayer(
 			}),
 			search_notes: input =>
 				Effect.map(
-					notes.list({cursor: Option.fromUndefinedOr(input.cursor), limit: input.limit, query: input.query ?? ''}),
-					page => ({
-						notes: Array.map(page.items, row),
-						total: page.total,
-						...Option.match(page.next, {onNone: () => ({}), onSome: nextCursor => ({nextCursor})})
-					})
+					notes.list({cursor: input.cursor, limit: input.limit, query: Option.getOrElse(input.query, () => '')}),
+					page => ({nextCursor: page.next, notes: Array.map(page.items, row), total: page.total})
 				)
 		})
 	})

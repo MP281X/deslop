@@ -30,6 +30,7 @@
 - **Ownership.** Abstractions add capability or ease reading, not just shorter files; domain names and plain control flow over wrappers and configuration languages.
 - **Imports.** A service folder shows only `schema.ts`, `service.ts` and `lib/utils.ts`; its own files reach the rest with `./`. The runtime is imported by side: `shared`, `server`, `client`, `web`, `mobile`, `config`.
 - **Arguments.** Short, independent arguments stay positional, not wrapped just to name them.
+- **Search serialization.** TanStack serializes both raw parsed search and validated/transformed search. Encode Option transforms through the app's Struct codec before the library's default serialization; both forms are current library inputs, and unrelated keys stay intact.
 - **Personal tools.** No stdio bridge, container, download command or telemetry Collector.
 - **MCP tools.** Serve agent work, not every page action; none for apps agents do not need, including Trips, OPM and Portfolio.
 - **Auth.** Never a pasted key.
@@ -46,6 +47,7 @@
 - **Behavior.** No web removal controls or context menus; iOS keeps native long-press menus and swipes. No command palette or hotkeys. Never confirm destruction.
 - **Recovery.** Leave stale rows and panes unmarked; no toasts or page-moving banners. Destructive failures say whether they committed.
 - **Components.** Nothing animates; pending actions have no spinners.
+- **Tracing.** Background work rounds are traced; animation ticks, including Portfolio's occupied-room wandering, are not.
 - **Artwork.** Canonical and transparent; never redraw or recolour in a UI pass. Copy Kanagawa pixel art unchanged: `crispEdges`, integer scaling; indexed touch icons crop 192 to 180px on `#0d0c0c`.
 
 ## Documents

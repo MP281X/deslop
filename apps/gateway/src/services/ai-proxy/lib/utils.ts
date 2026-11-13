@@ -1,4 +1,4 @@
-import {Boolean, Number, Option, Result, Schema, String} from 'effect'
+import {Number, Option, Result, Schema, String, pipe} from 'effect'
 
 import {Usage} from '#services/ai-proxy/schema.ts'
 import type {AiUsageEntry} from '#services/ai-proxy/schema.ts'
@@ -6,30 +6,56 @@ import type {AiUsageEntry} from '#services/ai-proxy/schema.ts'
 export function readUsage(text: string, entry: AiUsageEntry) {
 	if (String.isEmpty(String.trim(text)) || text === '[DONE]') return Result.succeed(entry)
 	return Result.map(Schema.decodeResult(Schema.fromJsonString(Usage))(text), decoded => {
-		const usage = {...decoded.message?.usage, ...decoded.usage}
-		const cacheReadTokens =
-			usage.cache_read_input_tokens ?? decoded.usage?.prompt_tokens_details?.cached_tokens ?? entry.cacheReadTokens
-		const cacheWriteTokens =
-			usage.cache_creation_input_tokens ??
-			decoded.usage?.prompt_tokens_details?.cache_write_tokens ??
-			entry.cacheWriteTokens
+		const usage = Option.flatten(decoded.usage)
+		const messageUsage = Option.flatMap(decoded.message, message => message.usage)
+		const details = Option.flatMap(usage, value => value.prompt_tokens_details)
+		const cacheReadTokens = pipe(
+			Option.flatMap(usage, value => value.cache_read_input_tokens),
+			Option.orElse(() => Option.flatMap(messageUsage, value => value.cache_read_input_tokens)),
+			Option.orElse(() => Option.flatMap(details, value => value.cached_tokens)),
+			Option.getOrElse(() => entry.cacheReadTokens)
+		)
+		const cacheWriteTokens = pipe(
+			Option.flatMap(usage, value => value.cache_creation_input_tokens),
+			Option.orElse(() => Option.flatMap(messageUsage, value => value.cache_creation_input_tokens)),
+			Option.orElse(() => Option.flatMap(details, value => value.cache_write_tokens)),
+			Option.getOrElse(() => entry.cacheWriteTokens)
+		)
+		const cost = pipe(
+			usage,
+			Option.flatMap(value => value.cost),
+			Option.orElse(() => decoded.cost)
+		)
 		return {
 			...entry,
 			cacheReadTokens,
 			cacheWriteTokens,
+			costSource: Option.match(cost, {onNone: () => entry.costSource, onSome: () => 'provider' as const}),
+			costUsd: Option.orElse(cost, () => entry.costUsd),
 			// Input is counted without cached tokens, as Anthropic's messages report it; chat completions' prompt_tokens include them, whichever provider serves the shape.
-			inputTokens:
-				usage.input_tokens ??
-				Option.match(Option.fromUndefinedOr(usage.prompt_tokens), {
-					onNone: () => entry.inputTokens,
-					onSome: prompt => Number.max(0, prompt - cacheReadTokens - cacheWriteTokens)
-				}),
-			model: decoded.model ?? decoded.message?.model ?? entry.model,
-			outputTokens: usage.output_tokens ?? usage.completion_tokens ?? entry.outputTokens,
-			...Boolean.match(decoded.usage?.cost !== undefined || decoded.cost !== undefined, {
-				onFalse: () => ({}),
-				onTrue: () => ({costSource: 'provider' as const, costUsd: decoded.usage?.cost ?? decoded.cost})
-			})
+			inputTokens: pipe(
+				Option.flatMap(usage, value => value.input_tokens),
+				Option.orElse(() => Option.flatMap(messageUsage, value => value.input_tokens)),
+				Option.orElse(() =>
+					pipe(
+						usage,
+						Option.flatMap(value => value.prompt_tokens),
+						Option.map(prompt => Number.max(0, prompt - cacheReadTokens - cacheWriteTokens))
+					)
+				),
+				Option.getOrElse(() => entry.inputTokens)
+			),
+			model: pipe(
+				decoded.model,
+				Option.orElse(() => Option.flatMap(decoded.message, value => value.model)),
+				Option.orElse(() => entry.model)
+			),
+			outputTokens: pipe(
+				Option.flatMap(usage, value => value.output_tokens),
+				Option.orElse(() => Option.flatMap(messageUsage, value => value.output_tokens)),
+				Option.orElse(() => Option.flatMap(usage, value => value.completion_tokens)),
+				Option.getOrElse(() => entry.outputTokens)
+			)
 		} satisfies AiUsageEntry
 	})
 }

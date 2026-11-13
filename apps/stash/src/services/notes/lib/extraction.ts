@@ -30,7 +30,7 @@ import {conversationPlan, conversationExtraction, tikTokExtraction} from './x.ts
 
 import {sourceProxy, sticky} from '#services/media/service.ts'
 import {canonical, isYouTube, plainText, sourceOf} from '#services/notes/lib/utils.ts'
-import type {Image} from '#services/notes/schema.ts'
+import type {FxPost, Image} from '#services/notes/schema.ts'
 import {
 	Extraction,
 	FxConversation,
@@ -209,14 +209,19 @@ function fx<S extends Schema.Constraint>(schema: S, path: string) {
 }
 
 // The conversation answer sometimes drops an article's body; the post's own answer keeps it.
-function whole(post: FxStatus['status']) {
-	if (post.article === undefined || Array.isReadonlyArrayNonEmpty(post.article.content.blocks)) {
+function whole<A extends FxPost>(post: A) {
+	if (
+		Option.match(post.article, {
+			onNone: () => true,
+			onSome: article => Array.isReadonlyArrayNonEmpty(article.content.blocks)
+		})
+	) {
 		return Effect.succeed(post)
 	}
 	// Without its body the article still reads as its title among the posts already loaded around it.
 	return pipe(
 		fx(FxStatus, `status/${post.id}`),
-		Effect.map(found => found.status),
+		Effect.map(found => ({...post, ...found.status})),
 		Effect.catch(error => Effect.as(Effect.logWarning('The article body did not load', error), post))
 	)
 }
@@ -233,11 +238,13 @@ const resolve = Effect.fnUntraced(function* (url: URL, hops: number): Effect.fn.
 const fetchOEmbed = Effect.fnUntraced(function* (endpoint: string, url: URL, title: (embed: OEmbed) => string) {
 	const embed = yield* decode(OEmbed, new URL(`${endpoint}${encodeURIComponent(url.href)}`))
 	return Extraction.make({
-		author: Option.fromUndefinedOr(embed.author_name),
-		image: Option.fromNullishOr(embed.thumbnail_url),
-		text: plainText(embed.title ?? ''),
+		author: embed.author_name,
+		image: embed.thumbnail_url,
+		slides: Option.none(),
+		text: plainText(Option.getOrElse(embed.title, () => '')),
 		title: title(embed),
-		url: canonical(url)
+		url: canonical(url),
+		video: Option.none()
 	})
 })
 
@@ -247,13 +254,14 @@ const xOEmbed = Effect.fnUntraced(function* (url: URL) {
 		new URL(`https://publish.x.com/oembed?omit_script=true&dnt=true&url=${encodeURIComponent(url.href)}`)
 	)
 	return Extraction.make({
-		author: Option.fromUndefinedOr(embed.author_name),
+		author: embed.author_name,
 		image: Option.none(),
-		text: plainText(load(embed.html ?? '')('blockquote p').text()),
-		title: `${embed.author_name ?? 'A post'} on X`,
+		slides: Option.none(),
+		text: plainText(load(Option.getOrElse(embed.html, () => ''))('blockquote p').text()),
+		title: `${Option.getOrElse(embed.author_name, () => 'A post')} on X`,
 		url: canonical(url),
 		// Without the thread nothing says whether the post has a video, so yt-dlp tries.
-		video: canonical(url)
+		video: Option.some(canonical(url))
 	})
 })
 
@@ -278,15 +286,17 @@ const issue = Effect.fnUntraced(function* (url: URL, repository: string, number:
 	return Extraction.make({
 		author: Option.some(found.user.login),
 		image: Option.some(`https://opengraph.githubassets.com/1/${repository}/issues/${number}`),
+		slides: Option.none(),
 		text: pipe(
 			[found, ...comments],
-			Array.map(post => Option.map(Option.fromNullishOr(post.body), body => `**${post.user.login}**: ${body}`)),
+			Array.map(post => Option.map(post.body, body => `**${post.user.login}**: ${body}`)),
 			Array.getSomes,
 			Array.prepend(`# ${found.title} (${found.state})`),
 			Array.join('\n\n')
 		),
 		title: found.title,
-		url: canonical(url)
+		url: canonical(url),
+		video: Option.none()
 	})
 })
 
@@ -302,15 +312,16 @@ const repository = Effect.fnUntraced(function* (url: URL, name: string) {
 	return Extraction.make({
 		author: Option.some(found.owner.login),
 		image: Option.some(`https://opengraph.githubassets.com/1/${name}`),
+		slides: Option.none(),
 		text: pipe(
 			[
-				Option.fromNullishOr(found.description),
+				found.description,
 				pipe(
-					Option.fromNullishOr(found.topics),
+					found.topics,
 					Option.filter(Array.isReadonlyArrayNonEmpty),
 					Option.map(topics => `Topics: ${Array.join(topics, ', ')}`)
 				),
-				Option.fromNullishOr(found.homepage),
+				Option.flatten(found.homepage),
 				readme
 			],
 			Array.getSomes,
@@ -318,7 +329,8 @@ const repository = Effect.fnUntraced(function* (url: URL, name: string) {
 			Array.join('\n\n')
 		),
 		title: found.full_name,
-		url: canonical(url)
+		url: canonical(url),
+		video: Option.none()
 	})
 })
 
@@ -347,9 +359,11 @@ const reader = Effect.fnUntraced(function* (url: URL) {
 	return Extraction.make({
 		author: Option.some(url.hostname),
 		image: Option.none(),
+		slides: Option.none(),
 		text: answer.data.content,
 		title: plainText(answer.data.title),
-		url: canonical(url)
+		url: canonical(url),
+		video: Option.none()
 	})
 })
 
@@ -409,11 +423,7 @@ const xThread = Effect.fnUntraced(function* (url: URL) {
 	const conversation = yield* fx(FxConversation, `conversation/${id}`)
 	const status = yield* whole(conversation.status)
 
-	const plan = conversationPlan(
-		conversation,
-		status,
-		yield* Effect.transposeOption(Option.map(Option.fromNullishOr(status.quote), whole))
-	)
+	const plan = conversationPlan(conversation, status, yield* Effect.transposeOption(Option.map(status.quote, whole)))
 	const linked = yield* Effect.all(
 		{
 			pages: Effect.forEach(plan.pages, readLinked, {concurrency: 'unbounded'}),
@@ -460,14 +470,14 @@ export class Sources extends Context.Service<
 							return yield* fetchOEmbed(
 								'https://www.tiktok.com/oembed?url=',
 								url,
-								embed => `${embed.author_name ?? 'A video'} on TikTok`
+								embed => `${Option.getOrElse(embed.author_name, () => 'A video')} on TikTok`
 							)
 						}
 						if (source === 'X') return yield* Effect.catch(xThread(url), () => xOEmbed(url))
 						// YouTube answers a datacenter address with a bot check, but its oEmbed still answers.
 						if (isYouTube(url.href)) {
 							return yield* fetchOEmbed('https://www.youtube.com/oembed?format=json&url=', url, embed =>
-								plainText(embed.title ?? 'A YouTube video')
+								plainText(Option.getOrElse(embed.title, () => 'A YouTube video'))
 							)
 						}
 						if (url.hostname === 'github.com') return yield* Effect.catch(gitHub(url), () => readPage(url))
