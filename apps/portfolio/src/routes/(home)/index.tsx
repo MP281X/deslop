@@ -569,7 +569,7 @@ function PresenceHud(input: {
 						Match.orElse(visitors => <VisitorCount visitors={visitors} />)
 					)}
 				</span>
-				<span className="text-muted-foreground absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 whitespace-nowrap pointer-coarse:static pointer-coarse:translate-x-0 pointer-coarse:translate-y-0">
+				<span className="text-muted-foreground absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 whitespace-nowrap max-sm:static max-sm:translate-x-0 max-sm:translate-y-0 pointer-coarse:static pointer-coarse:translate-x-0 pointer-coarse:translate-y-0">
 					<span className="hidden sm:inline">{LEGAL_LINE}</span>
 					<span className="sm:hidden">{LEGAL_LINE_NARROW}</span>
 				</span>
