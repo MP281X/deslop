@@ -510,9 +510,7 @@ const servers = Effect.fnUntraced(function* (home?: string, origin: string = GAT
 	}
 })
 
-type Web = Effect.Success<ReturnType<typeof servers>>['web']
-
-function send(web: Web, path: string, init?: RequestInit) {
+function send(web: Effect.Success<ReturnType<typeof servers>>['web'], path: string, init?: RequestInit) {
 	return Effect.promise(() => web.handler(new Request(new URL(path, GATEWAY_URL), init)))
 }
 
@@ -524,7 +522,11 @@ function cookie(response: Response) {
 	)
 }
 
-const connect = Effect.fnUntraced(function* (web: Web, id: string, answer: Record<string, string>) {
+const connect = Effect.fnUntraced(function* (
+	web: Effect.Success<ReturnType<typeof servers>>['web'],
+	id: string,
+	answer: Record<string, string>
+) {
 	const start = yield* send(web, `/oauth/connect?id=${id}`, {headers: {cookie: SESSION}})
 	return yield* send(
 		web,
@@ -533,7 +535,12 @@ const connect = Effect.fnUntraced(function* (web: Web, id: string, answer: Recor
 	)
 })
 
-const callTool = Effect.fnUntraced(function* (web: Web, token: string, name: string, input: Record<string, unknown>) {
+const callTool = Effect.fnUntraced(function* (
+	web: Effect.Success<ReturnType<typeof servers>>['web'],
+	token: string,
+	name: string,
+	input: Record<string, unknown>
+) {
 	const headers = {
 		accept: 'application/json, text/event-stream',
 		authorization: `Bearer ${token}`,
@@ -564,7 +571,7 @@ const callTool = Effect.fnUntraced(function* (web: Web, token: string, name: str
 })
 
 const modern = Effect.fnUntraced(function* (
-	web: Web,
+	web: Effect.Success<ReturnType<typeof servers>>['web'],
 	token: string,
 	method: string,
 	params: Record<string, unknown> = {}
@@ -598,7 +605,7 @@ const modern = Effect.fnUntraced(function* (
 	})
 })
 
-const toolsOf = Effect.fnUntraced(function* (web: Web, token: string) {
+const toolsOf = Effect.fnUntraced(function* (web: Effect.Success<ReturnType<typeof servers>>['web'], token: string) {
 	const response = yield* modern(web, token, 'tools/list')
 	return (yield* Schema.decodeEffect(
 		Schema.fromJsonString(Schema.Struct({result: Schema.Struct({tools: Schema.Array(McpSchema.Tool)})}))

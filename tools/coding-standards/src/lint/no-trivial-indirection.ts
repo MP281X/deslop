@@ -4,6 +4,8 @@ import {defineRule} from 'vite-plus/lint/plugins'
 import type {Context, ESTree} from 'vite-plus/lint/plugins'
 
 import {
+	boundReads,
+	composedSteps,
 	importedMember,
 	matches,
 	memberName,
@@ -15,6 +17,46 @@ import {
 	variableFor,
 	variableFromScope
 } from '#lib/ast.ts'
+
+const OPTION_WRAPS = ['fromNullOr', 'fromNullishOr', 'fromUndefinedOr', 'some']
+const OPTION_UNWRAPS = ['getOrElse', 'getOrNull', 'getOrUndefined']
+
+function isExport(node: ESTree.Node | null) {
+	return node?.type === 'ExportNamedDeclaration' || node?.type === 'ExportDefaultDeclaration'
+}
+
+function constantFunction(input: {context: Context; node: ESTree.Function | ESTree.ArrowFunctionExpression}) {
+	if (
+		input.node.async ||
+		input.node.generator ||
+		Array.isArrayNonEmpty(input.node.params) ||
+		Predicate.isNotNullish(input.node.typeParameters) ||
+		isExport(input.node.parent) ||
+		(input.node.parent.type === 'VariableDeclarator' && isExport(input.node.parent.parent.parent)) ||
+		(input.node.type !== 'FunctionDeclaration' &&
+			!(
+				input.node.parent.type === 'VariableDeclarator' &&
+				input.node.parent.parent.type === 'VariableDeclaration' &&
+				input.node.parent.parent.kind === 'const'
+			))
+	) {
+		return false
+	}
+	const returned = returnedExpression(input.node)
+	return (
+		Predicate.isNotNullish(returned) &&
+		((returned.type === 'Literal' && !Predicate.hasProperty(returned, 'regex')) ||
+			(returned.type === 'TemplateLiteral' && Array.isArrayEmpty(returned.expressions))) &&
+		Option.exists(boundReads(input), reads =>
+			Array.every(
+				reads,
+				reference =>
+					reference.identifier.parent.type === 'CallExpression' &&
+					reference.identifier.parent.callee === reference.identifier
+			)
+		)
+	)
+}
 
 function parameterName(parameter: ESTree.ParamPattern) {
 	if (parameter.type === 'Identifier') return Option.some(parameter.name)
@@ -114,16 +156,15 @@ function isIdentity(node: ESTree.Function | ESTree.ArrowFunctionExpression) {
 }
 
 function indirectionMessage(input: {context: Context; node: ESTree.Function | ESTree.ArrowFunctionExpression}) {
+	if (constantFunction(input) && !singleUseThunk(input)) {
+		return 'Inline this argument-free literal return at its call sites.'
+	}
 	if (isIdentity(input.node)) return 'Pass Function.identity from effect instead of this function.'
 	const returned = returnedExpression(input.node)
 	if (exactForwardingFunction(input) && returned?.type === 'CallExpression') {
 		return `Use ${input.context.sourceCode.getText(returned.callee)} directly; this function only passes its parameters on.`
 	}
 	return 'Inline this function at its only use: write its body where it is called, or pass `parameter => body` where it is passed; rename a parameter that would shadow.'
-}
-
-function isExport(node: ESTree.Node | null) {
-	return node?.type === 'ExportNamedDeclaration' || node?.type === 'ExportDefaultDeclaration'
 }
 
 function unexportedBindingName(node: ESTree.Function | ESTree.ArrowFunctionExpression) {
@@ -341,15 +382,16 @@ function isCatchHandler(node: ESTree.Function | ESTree.ArrowFunctionExpression) 
 
 function reportsIndirection(input: {context: Context; node: ESTree.Function | ESTree.ArrowFunctionExpression}) {
 	return (
-		(input.node.type === 'FunctionDeclaration' ||
+		constantFunction(input) ||
+		((input.node.type === 'FunctionDeclaration' ||
 			input.node.parent.type === 'VariableDeclarator' ||
 			input.node.parent.type === 'Property' ||
 			(input.node.type === 'FunctionExpression' &&
 				input.node.parent.type === 'MethodDefinition' &&
 				input.node.parent.override !== true)) &&
-		!isComponent(input.node) &&
-		!isCatchHandler(input.node) &&
-		(exactForwardingFunction(input) || singleUseThunk(input) || singleUseFunction(input))
+			!isComponent(input.node) &&
+			!isCatchHandler(input.node) &&
+			(exactForwardingFunction(input) || singleUseThunk(input) || singleUseFunction(input)))
 	)
 }
 
@@ -412,6 +454,21 @@ export const noTrivialIndirection = defineRule({
 			}
 			if (reportsIndirection({context, node})) {
 				context.report({message: indirectionMessage({context, node}), node})
+			}
+		},
+		CallExpression: node => {
+			for (const composition of composedSteps(context, node)) {
+				if (
+					composition.inner.module === 'Option' &&
+					composition.outer.module === 'Option' &&
+					Array.contains(OPTION_WRAPS, composition.inner.name) &&
+					Array.contains(OPTION_UNWRAPS, composition.outer.name)
+				) {
+					context.report({
+						message: `Use the value itself, with ?? for a fallback; Option.${composition.outer.name} undoes Option.${composition.inner.name}.`,
+						node: composition.report
+					})
+				}
 			}
 		},
 		FunctionDeclaration: node => {

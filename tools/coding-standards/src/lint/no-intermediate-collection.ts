@@ -3,7 +3,15 @@ import {Array, Boolean, Option} from 'effect'
 import {defineRule} from 'vite-plus/lint/plugins'
 import type {Context, Fixer} from 'vite-plus/lint/plugins'
 
-import {argumentsText, composedSteps, importedMember, matches, memberName} from '#lib/ast.ts'
+import {
+	argumentsText,
+	composedSteps,
+	importedMember,
+	isFilteredCount,
+	lengthTest,
+	matches,
+	memberName
+} from '#lib/ast.ts'
 
 const FIND_FIRST = 'Find the first match with Array.findFirst instead of filtering every item.'
 const MIN = 'Take the smallest item with Array.min instead of sorting every item to read the first.'
@@ -59,7 +67,7 @@ function report(context: Context, composition: ReturnType<typeof composedSteps>[
 	}
 }
 
-// `prefer-effect-count-by` owns a filter read only for its length; the last item of a sort stays with review, since Array.max keeps the first of tied items.
+// The last item of a sort stays with review, since Array.max keeps the first of tied items.
 export const noIntermediateCollection = defineRule({
 	create: context => ({
 		CallExpression: node => {
@@ -71,6 +79,18 @@ export const noIntermediateCollection = defineRule({
 		},
 		// `Array.filter(items, test)[0]` and `Array.sort(items, order)[0]` read one item of a whole new array.
 		MemberExpression: node => {
+			if (isFilteredCount({context, node})) {
+				if (
+					node.parent.type === 'BinaryExpression' &&
+					node.parent.left === node &&
+					Option.isSome(lengthTest(node.parent))
+				) {
+					context.report({message: 'Test for a match with Array.some; no filtered array is consumed.', node})
+				} else {
+					context.report({message: 'Count matches with Array.countBy; no filtered array is consumed.', node})
+				}
+				return
+			}
 			if (
 				!node.computed ||
 				node.property.type !== 'Literal' ||

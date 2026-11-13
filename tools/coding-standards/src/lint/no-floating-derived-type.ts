@@ -5,10 +5,14 @@ import type {ESTree} from 'vite-plus/lint/plugins'
 
 function derived(node: ESTree.TSType): boolean {
 	if (node.type === 'TSIndexedAccessType') return derived(node.objectType)
+	if (node.type !== 'TSTypeReference') return false
 	return (
-		node.type === 'TSTypeReference' &&
-		node.typeName.type === 'Identifier' &&
-		Array.contains(['Awaited', 'ConstructorParameters', 'InstanceType', 'Parameters', 'ReturnType'], node.typeName.name)
+		(node.typeName.type === 'Identifier' &&
+			Array.contains(
+				['Awaited', 'ConstructorParameters', 'InstanceType', 'Parameters', 'ReturnType'],
+				node.typeName.name
+			)) ||
+		Array.some(node.typeArguments?.params ?? [], derived)
 	)
 }
 

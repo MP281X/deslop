@@ -79,9 +79,7 @@ const serve = Effect.fnUntraced(function* () {
 	return {notes, web}
 })
 
-type Web = Effect.Success<ReturnType<typeof serve>>['web']
-
-function send(web: Web, path: string, init?: RequestInit) {
+function send(web: Effect.Success<ReturnType<typeof serve>>['web'], path: string, init?: RequestInit) {
 	return Effect.promise(() => web.handler(new Request(new URL(path, 'https://stash.mp281x.xyz'), init)))
 }
 
