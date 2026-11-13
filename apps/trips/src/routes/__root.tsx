@@ -23,11 +23,14 @@ import {primary} from '#lib/status.ts'
 import {HomeRoute} from '#routes/(home)/index.tsx'
 import {BookingRoute} from '#routes/bookings/$id.tsx'
 import icon from '#routes/icon.png'
+import {BookingId} from '#services/bookings/schema.ts'
 
 function Destination(props: {onClose: () => void; value: string}) {
 	return (
 		<Loaded atom={bookingsAtom} name="Trips">
-			{bookings => <BookingRoute key={props.value} bookings={bookings} id={props.value} onClose={props.onClose} />}
+			{bookings => (
+				<BookingRoute key={props.value} bookings={bookings} id={BookingId.make(props.value)} onClose={props.onClose} />
+			)}
 		</Loaded>
 	)
 }

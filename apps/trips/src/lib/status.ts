@@ -3,19 +3,19 @@ import type {Record} from 'effect'
 
 import {colors, hues} from '@deslop/components-mobile/theme'
 
-import {clockAt, DAY, departureOf, labelled, MINUTE} from '#services/bookings/lib/utils.ts'
+import {clockAt, departureOf, labelled} from '#services/bookings/lib/utils.ts'
 import type {Booking, Flight, FlightTracking, Stay, Tone, Train, TrainTracking} from '#services/bookings/schema.ts'
 import {isStale} from '#services/tracking/lib/utils.ts'
 
-export function dayAt(time: number, timeZone: string) {
-	return DateTime.format(DateTime.makeUnsafe(time), {day: 'numeric', month: 'short', timeZone, weekday: 'short'})
+export function dayAt(time: DateTime.Utc, timeZone: string) {
+	return DateTime.format(time, {day: 'numeric', month: 'short', timeZone, weekday: 'short'})
 }
 
-export function daysUntil(time: number, now: number, timeZone: string) {
-	function day(at: number) {
+export function daysUntil(time: DateTime.Utc, now: DateTime.Utc, timeZone: string) {
+	function day(at: DateTime.Utc) {
 		return DateTime.startOf(DateTime.makeZonedUnsafe(at, {timeZone}), 'day')
 	}
-	return Number.round(Duration.toMillis(DateTime.distance(day(now), day(time))) / DAY, 0)
+	return Number.round(Duration.toDays(DateTime.distance(day(now), day(time))), 0)
 }
 
 export const primary = hues.orange
@@ -51,23 +51,23 @@ function whereOf(text: Option.Option<string>, changed: boolean) {
 	)
 }
 
-function stayStatus(stay: Stay, now: number) {
-	if (now < stay.checkIn) return statusLine('plain', Option.none())
-	if (now < stay.checkOut) return statusLine('good', Option.none())
+function stayStatus(stay: Stay, now: DateTime.Utc) {
+	if (DateTime.isLessThan(now, stay.checkIn)) return statusLine('plain', Option.none())
+	if (DateTime.isLessThan(now, stay.checkOut)) return statusLine('good', Option.none())
 	return statusLine('plain', Option.none())
 }
 
 function platformOf(live: TrainTracking) {
 	if (live.state === 'departed' || live.state === 'arrived') {
-		return whereOf(labelled('Platform', Option.fromUndefinedOr(live.arrivalPlatform)), false)
+		return whereOf(labelled('Platform', live.arrivalPlatform), false)
 	}
 	return whereOf(
-		labelled('Platform', Option.fromUndefinedOr(live.departurePlatform)),
-		live.departurePlatformPlanned !== undefined && live.departurePlatform !== live.departurePlatformPlanned
+		labelled('Platform', live.departurePlatform),
+		Option.exists(live.departurePlatformPlanned, planned => !Option.contains(live.departurePlatform, planned))
 	)
 }
 
-function trainStatus(train: Train, now: number) {
+function trainStatus(train: Train, now: DateTime.Utc) {
 	if (train.operator !== 'trenitalia') return statusLine('plain', Option.none())
 	return Option.match(train.live, {
 		onNone: () => statusLine('plain', Option.none()),
@@ -76,7 +76,9 @@ function trainStatus(train: Train, now: number) {
 				return problemLine(`Updated ${clockAt(live.checkedAt, train.from.timeZone)}`, 'warn', platformOf(live))
 			}
 			if (live.state === 'arrived') return statusLine('plain', platformOf(live))
-			if (live.delayMinutes >= 5) return problemLine(`+${live.delayMinutes} min`, 'warn', platformOf(live))
+			if (Duration.isGreaterThanOrEqualTo(live.delayMinutes, Duration.minutes(5))) {
+				return problemLine(`+${Duration.toMinutes(live.delayMinutes)} min`, 'warn', platformOf(live))
+			}
 			return statusLine('good', platformOf(live))
 		}
 	})
@@ -84,15 +86,13 @@ function trainStatus(train: Train, now: number) {
 
 function gateOf(live: FlightTracking) {
 	return whereOf(
-		Option.orElse(labelled('Gate', Option.fromUndefinedOr(live.departureGate)), () =>
-			labelled('Terminal', Option.fromUndefinedOr(live.departureTerminal))
-		),
-		live.previousGate !== undefined
+		Option.orElse(labelled('Gate', live.departureGate), () => labelled('Terminal', live.departureTerminal)),
+		Option.isSome(live.previousGate)
 	)
 }
 
-function flightStatus(flight: Flight, now: number) {
-	const delay = Number.round((departureOf(flight) - flight.departs) / MINUTE, 0)
+function flightStatus(flight: Flight, now: DateTime.Utc) {
+	const delay = Number.round(Duration.toMinutes(DateTime.distance(flight.departs, departureOf(flight))), 0)
 	return Option.match(flight.live, {
 		onNone: () => statusLine('plain', Option.none()),
 		onSome: live => {
@@ -102,7 +102,7 @@ function flightStatus(flight: Flight, now: number) {
 				return problemLine(`Updated ${clockAt(live.checkedAt, flight.from.timeZone)}`, 'warn', gateOf(live))
 			}
 			if (live.state === 'arrived' || live.state === 'landed') {
-				return statusLine('good', whereOf(labelled('Belt', Option.fromUndefinedOr(live.belt)), false))
+				return statusLine('good', whereOf(labelled('Belt', live.belt), false))
 			}
 			if (live.state === 'airborne' || live.state === 'departed') return statusLine('info', Option.none())
 			if (delay >= 15) return problemLine(`+${delay} min`, 'warn', gateOf(live))
@@ -112,7 +112,7 @@ function flightStatus(flight: Flight, now: number) {
 }
 
 // Where the journey stands, with the gate or platform; old live data says when it was read rather than look current.
-export function statusOf(booking: Booking, now: number) {
+export function statusOf(booking: Booking, now: DateTime.Utc) {
 	if (booking.status === 'cancelled') return problemLine('Cancelled', 'bad', Option.none())
 	if (booking._tag === 'stay') return stayStatus(booking, now)
 	if (booking._tag === 'train') return trainStatus(booking, now)
@@ -120,13 +120,16 @@ export function statusOf(booking: Booking, now: number) {
 }
 
 // Only a problem gets a dot: a delay, a cancellation, or a live answer that went stale with its age.
-export function problemOf(booking: Booking, status: Status, now: number) {
+export function problemOf(booking: Booking, status: Status, now: DateTime.Utc) {
 	if (booking._tag !== 'stay' && isStale(booking, now)) {
-		return Option.map(booking.live, live => ({
-			label: `${Number.max(0, Math.floor((now - live.checkedAt) / MINUTE))}m`,
-			status: 'warning' as const,
-			tone: 'warn' as const
-		}))
+		return Option.map<FlightTracking | TrainTracking, {label: string; status: 'warning'; tone: 'warn'}>(
+			booking.live,
+			live => ({
+				label: `${Number.max(0, Math.floor(Duration.toMinutes(DateTime.distance(live.checkedAt, now))))}m`,
+				status: 'warning' as const,
+				tone: 'warn' as const
+			})
+		)
 	}
 	if (status.tone === 'bad') {
 		return Option.some({label: status.label, status: 'error' as const, tone: 'bad' as const})

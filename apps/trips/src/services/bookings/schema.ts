@@ -1,6 +1,22 @@
-import {Schema, pipe} from 'effect'
+import {Duration, Schema, SchemaGetter, pipe} from 'effect'
 
 import {Model} from 'effect/schema'
+
+import {DateTimeUtcFromFiniteMillis} from '@deslop/runtime/shared/time'
+
+export type DurationFromMinutes = typeof DurationFromMinutes.Type
+export const DurationFromMinutes = pipe(
+	Schema.Finite,
+	Schema.decodeTo(Schema.Duration, {
+		decode: SchemaGetter.transform(Duration.minutes),
+		encode: SchemaGetter.transform(Duration.toMinutes)
+	})
+)
+
+export type PlaceCode = typeof PlaceCode.Type
+export const PlaceCode = pipe(Schema.String, Schema.brand('PlaceCode'))
+export type ProviderFlightId = typeof ProviderFlightId.Type
+export const ProviderFlightId = pipe(Schema.String, Schema.brand('ProviderFlightId'))
 
 export class BookingsError extends Schema.TaggedError<BookingsError>()('BookingsError', {
 	cause: Schema.optional(Schema.Defect()),
@@ -21,13 +37,13 @@ export const BookingId = pipe(Schema.String, Schema.check(Schema.isUUID()), Sche
 // Coordinates and the time zone never come from the ticket.
 export type Place = typeof Place.Type
 export const Place = Schema.Struct({
-	address: Schema.optionalKey(Schema.String),
-	city: Schema.optionalKey(Schema.String),
-	code: Schema.optionalKey(Schema.String),
-	latitude: Schema.optionalKey(Schema.Finite),
-	longitude: Schema.optionalKey(Schema.Finite),
+	address: Schema.OptionFromOptionalKey(Schema.String),
+	city: Schema.OptionFromOptionalKey(Schema.String),
+	code: Schema.OptionFromOptionalKey(PlaceCode),
+	latitude: Schema.OptionFromOptionalKey(Schema.Finite),
+	longitude: Schema.OptionFromOptionalKey(Schema.Finite),
 	name: Schema.String,
-	timeZone: Schema.optionalKey(Schema.String)
+	timeZone: Schema.OptionFromOptionalKey(Schema.String)
 })
 
 // A booked journey always knows its place's zone; only a station lookup may answer one without it.
@@ -41,21 +57,21 @@ export const ReservationStatus = Schema.Literals(['confirmed', 'cancelled'])
 // What the flight provider reports; every field is absent until the provider knows it, and each check replaces the whole record.
 export type FlightTracking = typeof FlightTracking.Type
 export const FlightTracking = Schema.Struct({
-	aircraft: Schema.optionalKey(Schema.String),
-	arrivalActual: Schema.optionalKey(Schema.Finite),
-	arrivalEstimated: Schema.optionalKey(Schema.Finite),
-	arrivalGate: Schema.optionalKey(Schema.String),
-	arrivalTerminal: Schema.optionalKey(Schema.String),
-	belt: Schema.optionalKey(Schema.String),
-	checkedAt: Schema.Finite,
-	departureActual: Schema.optionalKey(Schema.Finite),
-	departureEstimated: Schema.optionalKey(Schema.Finite),
-	departureGate: Schema.optionalKey(Schema.String),
-	departureTerminal: Schema.optionalKey(Schema.String),
-	previousGate: Schema.optionalKey(Schema.String),
-	providerId: Schema.optionalKey(Schema.String),
+	aircraft: Schema.OptionFromOptionalKey(Schema.String),
+	arrivalActual: Schema.OptionFromOptionalKey(DateTimeUtcFromFiniteMillis),
+	arrivalEstimated: Schema.OptionFromOptionalKey(DateTimeUtcFromFiniteMillis),
+	arrivalGate: Schema.OptionFromOptionalKey(Schema.String),
+	arrivalTerminal: Schema.OptionFromOptionalKey(Schema.String),
+	belt: Schema.OptionFromOptionalKey(Schema.String),
+	checkedAt: DateTimeUtcFromFiniteMillis,
+	departureActual: Schema.OptionFromOptionalKey(DateTimeUtcFromFiniteMillis),
+	departureEstimated: Schema.OptionFromOptionalKey(DateTimeUtcFromFiniteMillis),
+	departureGate: Schema.OptionFromOptionalKey(Schema.String),
+	departureTerminal: Schema.OptionFromOptionalKey(Schema.String),
+	previousGate: Schema.OptionFromOptionalKey(Schema.String),
+	providerId: Schema.OptionFromOptionalKey(ProviderFlightId),
 	state: Schema.Literals(['scheduled', 'departed', 'airborne', 'landed', 'arrived', 'cancelled', 'diverted']),
-	takeoffActual: Schema.optionalKey(Schema.Finite)
+	takeoffActual: Schema.OptionFromOptionalKey(DateTimeUtcFromFiniteMillis)
 })
 
 // Each kind of booking is its own table, so a row leaves its kind out and decoding fills it in; the wire keeps it, so the phone tells kinds apart.
@@ -75,11 +91,11 @@ export class Flight extends Model.Class<Flight>('Flight')({
 	_tag: kind('flight'),
 	airline: Schema.String,
 	airlineCode: Schema.String,
-	arrives: Schema.Int,
-	boardingAt: Model.FieldOption(Schema.Int),
+	arrives: Schema.DateTimeUtcFromMillis,
+	boardingAt: Model.FieldOption(Schema.DateTimeUtcFromMillis),
 	boardingGroup: Model.FieldOption(Schema.String),
 	confirmation: Model.FieldOption(Schema.String),
-	departs: Schema.Int,
+	departs: Schema.DateTimeUtcFromMillis,
 	from: Model.JsonFromString(BookedPlace),
 	id: BookingId,
 	live: Model.FieldOption(Model.JsonFromString(FlightTracking)),
@@ -96,23 +112,23 @@ export const TrainOperator = Schema.Literals(['trenitalia', 'italo', 'other'])
 
 export type TrainTracking = typeof TrainTracking.Type
 export const TrainTracking = Schema.Struct({
-	arrivalPlatform: Schema.optionalKey(Schema.String),
-	checkedAt: Schema.Finite,
-	delayMinutes: Schema.Finite,
-	departureDelay: Schema.optionalKey(Schema.Finite),
-	departurePlatform: Schema.optionalKey(Schema.String),
-	departurePlatformPlanned: Schema.optionalKey(Schema.String),
-	lastSeen: Schema.optionalKey(Schema.Struct({at: Schema.Finite, station: Schema.String})),
+	arrivalPlatform: Schema.OptionFromOptionalKey(Schema.String),
+	checkedAt: DateTimeUtcFromFiniteMillis,
+	delayMinutes: DurationFromMinutes,
+	departureDelay: Schema.OptionFromOptionalKey(DurationFromMinutes),
+	departurePlatform: Schema.OptionFromOptionalKey(Schema.String),
+	departurePlatformPlanned: Schema.OptionFromOptionalKey(Schema.String),
+	lastSeen: Schema.OptionFromOptionalKey(Schema.Struct({at: DateTimeUtcFromFiniteMillis, station: Schema.String})),
 	state: Schema.Literals(['scheduled', 'departed', 'arrived'])
 })
 
 // One row of `trains`.
 export class Train extends Model.Class<Train>('Train')({
 	_tag: kind('train'),
-	arrives: Schema.Int,
+	arrives: Schema.DateTimeUtcFromMillis,
 	coach: Model.FieldOption(Schema.String),
 	confirmation: Model.FieldOption(Schema.String),
-	departs: Schema.Int,
+	departs: Schema.DateTimeUtcFromMillis,
 	from: Model.JsonFromString(BookedPlace),
 	id: BookingId,
 	live: Model.FieldOption(Model.JsonFromString(TrainTracking)),
@@ -129,8 +145,8 @@ export class Train extends Model.Class<Train>('Train')({
 // One row of `stays`.
 export class Stay extends Model.Class<Stay>('Stay')({
 	_tag: kind('stay'),
-	checkIn: Schema.Int,
-	checkOut: Schema.Int,
+	checkIn: Schema.DateTimeUtcFromMillis,
+	checkOut: Schema.DateTimeUtcFromMillis,
 	confirmation: Model.FieldOption(Schema.String),
 	id: BookingId,
 	name: Schema.String,
@@ -180,10 +196,10 @@ export const ActivityProps = Schema.Struct({
 	arrivalNote: Schema.String,
 	arrivalTime: Schema.String,
 	arrivalTone: Tone,
-	arrives: Schema.Finite,
-	chip: Schema.optionalKey(Chip),
-	countdown: Schema.optionalKey(Schema.Finite),
-	delay: Schema.Finite,
+	arrives: DateTimeUtcFromFiniteMillis,
+	chip: Schema.OptionFromOptionalKey(Chip),
+	countdown: Schema.OptionFromOptionalKey(DateTimeUtcFromFiniteMillis),
+	delay: DurationFromMinutes,
 	departureNote: Schema.String,
 	departureTime: Schema.String,
 	departureTone: Tone,
@@ -194,7 +210,7 @@ export const ActivityProps = Schema.Struct({
 	label: Schema.String,
 	note: Schema.String,
 	phase: Schema.Union([FlightPhase, TrainPhase]),
-	progressFrom: Schema.optionalKey(Schema.Finite),
+	progressFrom: Schema.OptionFromOptionalKey(DateTimeUtcFromFiniteMillis),
 	symbol: Schema.Literals([
 		'airplane',
 		'airplane.arrival',
@@ -229,27 +245,27 @@ export const ExtractedItem = Schema.Union([
 		airlineCode: Schema.String.annotate({description: 'IATA airline designator, such as BA or FR'}),
 		airlineName: Schema.String,
 		arrival: LocalTime,
-		boarding: Schema.optionalKey(LocalTime),
-		boardingGroup: Schema.optionalKey(Schema.String),
-		confirmation: Schema.optionalKey(Schema.String),
+		boarding: Schema.OptionFromOptionalKey(LocalTime),
+		boardingGroup: Schema.OptionFromOptionalKey(Schema.String),
+		confirmation: Schema.OptionFromOptionalKey(Schema.String),
 		departure: LocalTime,
 		flightNumber: TripNumber.annotate({description: 'Digits only, such as 553'}),
 		from: Schema.String.annotate({description: 'IATA airport code'}),
 		kind: Schema.Literal('flight'),
-		seat: Schema.optionalKey(Schema.String),
+		seat: Schema.OptionFromOptionalKey(Schema.String),
 		status: ReservationStatus,
 		to: Schema.String.annotate({description: 'IATA airport code'})
 	}),
 	Schema.Struct({
 		arrival: LocalTime,
-		coach: Schema.optionalKey(Schema.String),
-		confirmation: Schema.optionalKey(Schema.String),
+		coach: Schema.OptionFromOptionalKey(Schema.String),
+		confirmation: Schema.OptionFromOptionalKey(Schema.String),
 		departure: LocalTime,
 		from: Schema.String.annotate({description: 'Station name as printed, such as Roma Termini'}),
 		kind: Schema.Literal('train'),
 		operator: TrainOperator,
 		operatorName: Schema.String,
-		seat: Schema.optionalKey(Schema.String),
+		seat: Schema.OptionFromOptionalKey(Schema.String),
 		status: ReservationStatus,
 		to: Schema.String,
 		trainNumber: TripNumber.annotate({description: 'Digits only, such as 9541'})
@@ -259,7 +275,7 @@ export const ExtractedItem = Schema.Union([
 		checkIn: LocalTime,
 		checkOut: LocalTime,
 		city: Schema.String,
-		confirmation: Schema.optionalKey(Schema.String),
+		confirmation: Schema.OptionFromOptionalKey(Schema.String),
 		kind: Schema.Literal('stay'),
 		name: Schema.String,
 		status: ReservationStatus,
@@ -276,7 +292,7 @@ export const Extraction = Schema.Struct({items: ExtractedItems})
 export type Airport = typeof Airport.Type
 export const Airport = Schema.Struct({
 	city: Schema.String,
-	iata: Schema.String,
+	iata: PlaceCode,
 	icao: Schema.String,
 	lat: Schema.Finite,
 	lon: Schema.Finite,
@@ -287,12 +303,12 @@ export const Airport = Schema.Struct({
 export type StopMatches = typeof StopMatches.Type
 export const StopMatches = Schema.Array(
 	Schema.Struct({
-		areas: Schema.optionalKey(Schema.Array(Schema.Struct({name: Schema.String}))),
-		id: Schema.String,
+		areas: Schema.OptionFromOptionalKey(Schema.Array(Schema.Struct({name: Schema.String}))),
+		id: PlaceCode,
 		lat: Schema.Finite,
 		lon: Schema.Finite,
-		modes: Schema.optionalKey(Schema.Array(Schema.String)),
+		modes: Schema.OptionFromOptionalKey(Schema.Array(Schema.String)),
 		name: Schema.String,
-		tz: Schema.optionalKey(Schema.String)
+		tz: Schema.OptionFromOptionalKey(Schema.String)
 	})
 )

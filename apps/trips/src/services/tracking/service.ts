@@ -1,12 +1,11 @@
 import {
 	Array,
-	Clock,
 	Config,
 	Context,
 	DateTime,
+	Duration,
 	Effect,
 	Layer,
-	Number,
 	Option,
 	Record,
 	Redacted,
@@ -22,7 +21,6 @@ import {
 import {HttpClient, HttpClientRequest, HttpClientResponse} from 'effect/http'
 import {Migrator, SqlClient, SqlSchema} from 'effect/sql'
 
-import {HOUR, MINUTE} from '#services/bookings/lib/utils.ts'
 import type {Booking, BookingId} from '#services/bookings/schema.ts'
 import {BookingsError, Flight, Train, TripNumber} from '#services/bookings/schema.ts'
 import {Bookings} from '#services/bookings/service.ts'
@@ -36,8 +34,8 @@ function asBookingsError(message: string) {
 	return Effect.mapError((cause: unknown) => BookingsError.make({cause, message}))
 }
 
-function iso(time: number) {
-	return DateTime.formatIso(DateTime.makeUnsafe(time))
+function iso(time: DateTime.Utc) {
+	return DateTime.formatIso(time)
 }
 
 export class Tracking extends Context.Service<Tracking>()('@deslop/trips/services/tracking/service/Tracking', {
@@ -67,7 +65,7 @@ export class Tracking extends Context.Service<Tracking>()('@deslop/trips/service
 
 		const spend = pipe(
 			Effect.gen(function* () {
-				const month = String.slice(0, 7)(iso(yield* Clock.currentTimeMillis))
+				const month = String.slice(0, 7)(iso(yield* DateTime.now))
 				const calls = Option.match(yield* findLookups(month), {onNone: () => 0, onSome: row => row.calls})
 				if (calls >= MONTHLY_LOOKUPS) {
 					return yield* BookingsError.make({
@@ -83,7 +81,7 @@ export class Tracking extends Context.Service<Tracking>()('@deslop/trips/service
 			)
 		)
 
-		const flight = Effect.fnUntraced(function* (booking: Flight, now: number) {
+		const flight = Effect.fnUntraced(function* (booking: Flight, now: DateTime.Utc) {
 			const number = yield* asBookingsError('This flight number is invalid. Add its ticket again.')(
 				Schema.decodeEffect(TripNumber)(booking.number)
 			)
@@ -99,10 +97,16 @@ export class Tracking extends Context.Service<Tracking>()('@deslop/trips/service
 						headers: {'x-apikey': Redacted.value(apiKey)},
 						urlParams: {
 							// FlightAware searches at most two days ahead.
-							end: iso(Number.min(booking.departs + 12 * HOUR, now + 47 * HOUR)),
+							end: iso(
+								pipe(
+									booking.departs,
+									DateTime.addDuration(Duration.hours(12)),
+									DateTime.min(DateTime.addDuration(now, Duration.hours(47)))
+								)
+							),
 							ident_type: 'designator',
 							max_pages: '1',
-							start: iso(booking.departs - 12 * HOUR)
+							start: iso(DateTime.subtractDuration(booking.departs, Duration.hours(12)))
 						}
 					}
 				),
@@ -136,31 +140,35 @@ export class Tracking extends Context.Service<Tracking>()('@deslop/trips/service
 			)
 		}
 
-		const train = Effect.fnUntraced(function* (booking: Train, now: number) {
+		const train = Effect.fnUntraced(function* (booking: Train, now: DateTime.Utc) {
 			const number = yield* asBookingsError('This train number is invalid. Add its ticket again.')(
 				Schema.decodeEffect(TripNumber)(booking.number)
 			)
 			// Today's run must be the booked one: it starts at most a day before the booked departure.
-			const run = Option.filter(yield* viaggiaTreno(`cercaNumeroTreno/${number}`, VtRun, booking), found =>
-				Option.exists(
-					Number.parse(found.millisDataPartenza),
-					started => started <= booking.departs && booking.departs - started < 30 * HOUR
-				)
+			const run = Option.filter(
+				yield* viaggiaTreno(`cercaNumeroTreno/${number}`, VtRun, booking),
+				found =>
+					DateTime.isLessThanOrEqualTo(found.millisDataPartenza, booking.departs) &&
+					Duration.isLessThan(DateTime.distance(found.millisDataPartenza, booking.departs), Duration.hours(30))
 			)
 			return yield* Option.match(run, {
 				onNone: () => Effect.succeedNone,
 				onSome: today =>
 					Effect.map(
-						viaggiaTreno(`andamentoTreno/${today.codLocOrig}/${number}/${today.millisDataPartenza}`, VtStatus, booking),
+						viaggiaTreno(
+							`andamentoTreno/${today.codLocOrig}/${number}/${DateTime.toEpochMillis(today.millisDataPartenza)}`,
+							VtStatus,
+							booking
+						),
 						Option.flatMap(answer => trainTracking(answer, booking, now))
 					)
 			})
 		})
 
 		// A failed or unmatched lookup still counts as an attempt, so the schedule waits before asking again; only a real answer is saved.
-		const attempts = yield* Ref.make(Record.empty<string, number>())
+		const attempts = yield* Ref.make(Record.empty<BookingId, DateTime.Utc>())
 
-		const observe = Effect.fnUntraced(function* (booking: Booking, now: number) {
+		const observe = Effect.fnUntraced(function* (booking: Booking, now: DateTime.Utc) {
 			if (booking._tag === 'stay') return
 			yield* Ref.update(attempts, Record.set(booking.id, now))
 			// A booking saved again meanwhile may name another service, so the answer replaces only the booking it was read for.
@@ -188,14 +196,10 @@ export class Tracking extends Context.Service<Tracking>()('@deslop/trips/service
 		const turns = yield* Semaphore.make(1)
 		const check = Effect.fnUntraced(function* (
 			id: BookingId,
-			admits: (booking: Booking, now: number, attempted: number) => boolean
+			admits: (booking: Booking, now: DateTime.Utc, attempted: Option.Option<DateTime.Utc>) => boolean
 		) {
-			const now = yield* Clock.currentTimeMillis
-			const attempted = pipe(
-				yield* Ref.get(attempts),
-				Record.get(id),
-				Option.getOrElse(() => 0)
-			)
+			const now = yield* DateTime.now
+			const attempted = Record.get(yield* Ref.get(attempts), id)
 			yield* pipe(
 				yield* bookings.list,
 				Array.findFirst(item => item.id === id && admits(item, now, attempted)),
@@ -205,21 +209,11 @@ export class Tracking extends Context.Service<Tracking>()('@deslop/trips/service
 
 		yield* pipe(
 			Effect.gen(function* () {
-				const now = yield* Clock.currentTimeMillis
+				const now = yield* DateTime.now
 				const attempted = yield* Ref.get(attempts)
 				yield* pipe(
 					yield* bookings.list,
-					Array.filter(booking =>
-						isDue(
-							booking,
-							now,
-							pipe(
-								attempted,
-								Record.get(booking.id),
-								Option.getOrElse(() => 0)
-							)
-						)
-					),
+					Array.filter(booking => isDue(booking, now, Record.get(attempted, booking.id))),
 					Effect.forEach(
 						booking =>
 							pipe(
@@ -243,7 +237,12 @@ export class Tracking extends Context.Service<Tracking>()('@deslop/trips/service
 				yield* Effect.annotateCurrentSpan('bookingId', id)
 				yield* check(
 					id,
-					(booking, now, attempted) => Option.isSome(checkEvery(booking, now)) && now - attempted >= MINUTE
+					(booking, now, attempted) =>
+						Option.isSome(checkEvery(booking, now)) &&
+						Option.match(attempted, {
+							onNone: () => true,
+							onSome: at => Duration.isGreaterThanOrEqualTo(DateTime.distance(at, now), Duration.minutes(1))
+						})
 				)
 			})
 		}

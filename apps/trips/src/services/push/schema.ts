@@ -1,6 +1,8 @@
-import {Schema} from 'effect'
+import {Schema, pipe} from 'effect'
 
 import {Model} from 'effect/schema'
+
+import {DateTimeUtcFromSeconds} from '@deslop/runtime/shared/time'
 
 import {ActivityProps, BookingId, Leg} from '#services/bookings/schema.ts'
 
@@ -10,7 +12,7 @@ export const ActivityPropsJson = Schema.fromJsonString(ActivityProps)
 
 // The provider token's claims as JSON; APNs takes at most an hour.
 export type JwtClaims = typeof JwtClaims.Type
-export const JwtClaims = Schema.fromJsonString(Schema.Struct({iat: Schema.Finite, iss: Schema.String}))
+export const JwtClaims = Schema.fromJsonString(Schema.Struct({iat: DateTimeUtcFromSeconds, iss: Schema.String}))
 
 export class PushError extends Schema.TaggedError<PushError>()('PushError', {
 	cause: Schema.optional(Schema.Defect()),
@@ -22,7 +24,10 @@ export type Bundle = typeof Bundle.Type
 export const Bundle = Schema.Literals(['xyz.mp281x.trips', 'xyz.mp281x.trips.dev'])
 
 export type ApnsToken = typeof ApnsToken.Type
-export const ApnsToken = Schema.String.check(Schema.isPattern(/^[0-9a-f]{32,512}$/iu))
+export const ApnsToken = pipe(Schema.String.check(Schema.isPattern(/^[0-9a-f]{32,512}$/iu)), Schema.brand('ApnsToken'))
+
+export type ChannelId = typeof ChannelId.Type
+export const ChannelId = pipe(Schema.String, Schema.brand('ChannelId'))
 
 // One row of `devices`, and what the phone registers: one token per kind and app, a new one replacing the one it rotated from.
 export class Device extends Model.Class<Device>('Device')({
@@ -38,13 +43,13 @@ export class Device extends Model.Class<Device>('Device')({
 export class Activity extends Model.Class<Activity>('Activity')({
 	bookingId: BookingId,
 	bundle: Bundle,
-	channel: Schema.String,
-	endedAt: Model.FieldOption(Schema.Int),
+	channel: ChannelId,
+	endedAt: Model.FieldOption(Schema.DateTimeUtcFromMillis),
 	leg: Leg,
 	// What it last showed, so only a change is pushed, and urgently only when its urgency changed.
 	props: Model.JsonFromString(ActivityProps),
 	// ActivityKit's eight hours count from here.
-	startedAt: Schema.Int
+	startedAt: Schema.DateTimeUtcFromMillis
 }) {
 	static readonly table = 'activities'
 }
@@ -53,7 +58,7 @@ export class Activity extends Model.Class<Activity>('Activity')({
 export class SentAlert extends Model.Class<SentAlert>('SentAlert')({
 	bookingId: BookingId,
 	key: Schema.String,
-	sentAt: Schema.Int
+	sentAt: Schema.DateTimeUtcFromMillis
 }) {
 	static readonly table = 'sent_alerts'
 }

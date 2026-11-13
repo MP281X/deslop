@@ -8,6 +8,8 @@ import {
 	Clock,
 	ConfigProvider,
 	Context,
+	DateTime,
+	Duration,
 	Effect,
 	Layer,
 	Option,
@@ -29,11 +31,11 @@ import {Reactivity} from 'effect/reactivity'
 import {SqlClient, SqlSchema} from 'effect/sql'
 import {TestClock} from 'effect/testing'
 
-import {activityProps, HOUR} from '#services/bookings/lib/utils.ts'
+import {activityProps} from '#services/bookings/lib/utils.ts'
 import type {Booking} from '#services/bookings/schema.ts'
-import {BookingId, Flight} from '#services/bookings/schema.ts'
+import {BookedPlace, BookingId, Flight} from '#services/bookings/schema.ts'
 import {Bookings} from '#services/bookings/service.ts'
-import {Activity, Device, JwtClaims} from '#services/push/schema.ts'
+import {Activity, ApnsToken, ChannelId, Device, JwtClaims} from '#services/push/schema.ts'
 import {Push} from '#services/push/service.ts'
 
 const BOOKING = BookingId.make('1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d')
@@ -42,18 +44,18 @@ const OTHER = BookingId.make('1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5e')
 const FLIGHT = {
 	airline: 'British Airways',
 	airlineCode: 'BA',
-	arrives: 4 * HOUR,
+	arrives: DateTime.makeUnsafe(14_400_000),
 	boardingAt: Option.none(),
 	boardingGroup: Option.none(),
 	confirmation: Option.none(),
-	departs: 2 * HOUR,
-	from: {code: 'FCO', name: 'Rome', timeZone: 'Europe/Rome'},
+	departs: DateTime.makeUnsafe(7_200_000),
+	from: Schema.decodeSync(BookedPlace)({code: 'FCO', name: 'Rome', timeZone: 'Europe/Rome'}),
 	id: BOOKING,
 	live: Option.none(),
 	number: '553',
 	seat: Option.none(),
 	status: 'confirmed',
-	to: {code: 'LHR', name: 'London', timeZone: 'Europe/London'}
+	to: Schema.decodeSync(BookedPlace)({code: 'LHR', name: 'London', timeZone: 'Europe/London'})
 } as const
 
 // A running activity the server started on a channel, for a booking no longer listed, so the first round ends it.
@@ -61,11 +63,11 @@ function running(bookingId: BookingId, channel: string) {
 	return Activity.insert.make({
 		bookingId,
 		bundle: 'xyz.mp281x.trips.dev',
-		channel,
+		channel: ChannelId.make(channel),
 		endedAt: Option.none(),
 		leg: 'departure',
-		props: activityProps(Flight.make(FLIGHT), [], 0),
-		startedAt: 0
+		props: activityProps(Flight.make(FLIGHT), [], DateTime.makeUnsafe(0)),
+		startedAt: DateTime.makeUnsafe(0)
 	})
 }
 
@@ -186,7 +188,7 @@ it.layer(NodeCrypto.layer)(test => {
 				Schema.decodeOption(JwtClaims)(new TextDecoder().decode(verified.payload))
 			)
 			assert.deepStrictEqual(
-				[verified.protectedHeader.alg, verified.protectedHeader.kid, claims.iss, claims.iat],
+				[verified.protectedHeader.alg, verified.protectedHeader.kid, claims.iss, DateTime.toEpochSeconds(claims.iat)],
 				['ES256', 'fixture', 'fixture', Math.floor(fixture.now / 1000)]
 			)
 		})
@@ -196,11 +198,15 @@ it.layer(NodeCrypto.layer)(test => {
 		'retries a refused start without blocking another trip or churning its broadcast channels',
 		Effect.fnUntraced(function* () {
 			const now = yield* Clock.currentTimeMillis
-			const first = Flight.make({...FLIGHT, arrives: now + 4 * HOUR, departs: now + 2 * HOUR})
+			const first = Flight.make({
+				...FLIGHT,
+				arrives: DateTime.addDuration(DateTime.makeUnsafe(now), Duration.hours(4)),
+				departs: DateTime.addDuration(DateTime.makeUnsafe(now), Duration.hours(2))
+			})
 			const second = Flight.make({
 				...FLIGHT,
-				arrives: now + 4 * HOUR,
-				departs: now + 2 * HOUR,
+				arrives: DateTime.addDuration(DateTime.makeUnsafe(now), Duration.hours(4)),
+				departs: DateTime.addDuration(DateTime.makeUnsafe(now), Duration.hours(2)),
 				id: OTHER,
 				number: '554'
 			})
@@ -216,7 +222,7 @@ it.layer(NodeCrypto.layer)(test => {
 			yield* fixture.push.register({
 				bundle: 'xyz.mp281x.trips.dev',
 				kind: 'start',
-				token: Redacted.make('aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa')
+				token: Redacted.make(ApnsToken.make('aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'))
 			})
 			// The token is stored for the server's own use: it never leaves in a JSON form and prints redacted.
 			const device = Option.getOrThrow(Array.head(yield* fixture.devices))
@@ -270,7 +276,11 @@ it.layer(NodeCrypto.layer)(test => {
 				const current = yield* fixture.settled(found => ended(found, 0))
 				assert.deepStrictEqual(
 					current[0]?.endedAt,
-					Option.some(fixture.now + Boolean.match(status >= 500, {onFalse: () => 30_000, onTrue: () => 900_000}))
+					Option.some(
+						DateTime.makeUnsafe(
+							fixture.now + Boolean.match(status >= 500, {onFalse: () => 30_000, onTrue: () => 900_000})
+						)
+					)
 				)
 			})
 		)
@@ -288,7 +298,7 @@ it.layer(NodeCrypto.layer)(test => {
 			yield* Queue.take(fixture.calls)
 			assert.deepStrictEqual(
 				(yield* fixture.settled(found => ended(found, 0)))[0]?.endedAt,
-				Option.some(fixture.now + 50_000)
+				Option.some(DateTime.makeUnsafe(fixture.now + 50_000))
 			)
 		})
 	)
@@ -314,7 +324,10 @@ it.layer(NodeCrypto.layer)(test => {
 		'retires a refused channel without sending its end again',
 		Effect.fnUntraced(function* () {
 			const fixture = yield* open(Effect.succeed(410), [running(BOOKING, 'fixture-channel')])
-			assert.deepStrictEqual((yield* fixture.settled(found => ended(found, 0)))[0]?.endedAt, Option.some(fixture.now))
+			assert.deepStrictEqual(
+				(yield* fixture.settled(found => ended(found, 0)))[0]?.endedAt,
+				Option.some(DateTime.makeUnsafe(fixture.now))
+			)
 			yield* Queue.takeAll(fixture.calls)
 			yield* TestClock.adjust('30 seconds')
 			assert.strictEqual(yield* Queue.size(fixture.calls), 0)

@@ -1,4 +1,4 @@
-import {Array, Boolean, DateTime, Number, Option, Order, Record, String, Struct, pipe} from 'effect'
+import {Array, Boolean, DateTime, Duration, Equal, Number, Option, Order, Record, String, Struct, pipe} from 'effect'
 
 import {ActivityProps, Flight, Stay, Train} from '#services/bookings/schema.ts'
 import type {
@@ -23,35 +23,29 @@ const TRAIN_BRANDS: Record.ReadonlyRecord<string, string> = {
 	'regionale veloce': 'RV'
 }
 
-export const MINUTE = 60_000
-export const HOUR = 60 * MINUTE
-export const DAY = 24 * HOUR
+export const MINUTE = Duration.minutes(1)
+export const HOUR = Duration.hours(1)
+export const DAY = Duration.days(1)
 
-export const AIRPORT_LEAD = 2 * HOUR
-const STATION_LEAD = 15 * MINUTE
+export const AIRPORT_LEAD = Duration.hours(2)
+const STATION_LEAD = Duration.minutes(15)
 
 // ActivityKit ends a Live Activity after eight hours; half an hour stays in reserve for delays.
-export const ACTIVITY_LIFETIME = 7.5 * HOUR
+export const ACTIVITY_LIFETIME = Duration.hours(7.5)
 
 export const ACTIVITY_NAME = 'JourneyActivity'
 
 // A time with an offset or Z stands for itself.
 export function instantOf(time: LocalTime, timeZone: string) {
 	if (Option.isSome(String.match(/(?:Z|[+-]\d{2}:?\d{2})$/u)(time))) {
-		return Option.map(DateTime.make(time), DateTime.toEpochMillis)
+		return DateTime.make(time)
 	}
 	// The wall-clock parts, read in the place's zone without dropping seconds or fractions.
-	return Option.map(DateTime.makeZoned(time, {adjustForTimeZone: true, timeZone}), DateTime.toEpochMillis)
+	return Option.map(DateTime.makeZoned(time, {adjustForTimeZone: true, timeZone}), DateTime.toUtc)
 }
 
-export function clockAt(time: number, timeZone: string) {
-	return DateTime.format(DateTime.makeUnsafe(time), {
-		hour: '2-digit',
-		hourCycle: 'h23',
-		locale: 'en-GB',
-		minute: '2-digit',
-		timeZone
-	})
+export function clockAt(time: DateTime.Utc, timeZone: string) {
+	return DateTime.format(time, {hour: '2-digit', hourCycle: 'h23', locale: 'en-GB', minute: '2-digit', timeZone})
 }
 
 export function labelled(label: string, value: Option.Option<string>) {
@@ -64,20 +58,34 @@ export function line(parts: Option.Option<string>[]) {
 
 export function departureOf(booking: Flight | Train) {
 	if (booking._tag === 'train') {
-		const live = Option.getOrUndefined(booking.live)
 		// A train still to leave waits for its timetable, however early it runs before.
-		return booking.departs + (live?.departureDelay ?? Number.max(live?.delayMinutes ?? 0, 0)) * MINUTE
+		return DateTime.addDuration(
+			booking.departs,
+			Option.match(booking.live, {
+				onNone: () => Duration.zero,
+				onSome: live => Option.getOrElse(live.departureDelay, () => Duration.max(live.delayMinutes, Duration.zero))
+			})
+		)
 	}
-	const live = Option.getOrUndefined(booking.live)
-	return live?.departureActual ?? live?.departureEstimated ?? booking.departs
+	return pipe(
+		booking.live,
+		Option.flatMap(live => Option.orElse(live.departureActual, () => live.departureEstimated)),
+		Option.getOrElse(() => booking.departs)
+	)
 }
 
 export function arrivalOf(booking: Flight | Train) {
 	if (booking._tag === 'train') {
-		return booking.arrives + Option.match(booking.live, {onNone: () => 0, onSome: live => live.delayMinutes}) * MINUTE
+		return DateTime.addDuration(
+			booking.arrives,
+			Option.match(booking.live, {onNone: () => Duration.zero, onSome: live => live.delayMinutes})
+		)
 	}
-	const live = Option.getOrUndefined(booking.live)
-	return live?.arrivalActual ?? live?.arrivalEstimated ?? booking.arrives
+	return pipe(
+		booking.live,
+		Option.flatMap(live => Option.orElse(live.arrivalActual, () => live.arrivalEstimated)),
+		Option.getOrElse(() => booking.arrives)
+	)
 }
 
 export function startOf(booking: Booking) {
@@ -90,7 +98,7 @@ export function endOf(booking: Booking) {
 	return arrivalOf(booking)
 }
 
-export const byStart = Order.mapInput(Order.Number, startOf)
+export const byStart = Order.mapInput(DateTime.Order, startOf)
 
 export function titleOf(booking: Booking) {
 	if (booking._tag === 'stay') return booking.name
@@ -104,8 +112,14 @@ export function titleOf(booking: Booking) {
 }
 
 export function routeOf(booking: Booking) {
-	if (booking._tag === 'stay') return booking.place.city ?? booking.place.address ?? booking.name
-	return `${booking.from.city ?? booking.from.name} → ${booking.to.city ?? booking.to.name}`
+	if (booking._tag === 'stay') {
+		return pipe(
+			booking.place.city,
+			Option.orElse(() => booking.place.address),
+			Option.getOrElse(() => booking.name)
+		)
+	}
+	return `${Option.getOrElse(booking.from.city, () => booking.from.name)} → ${Option.getOrElse(booking.to.city, () => booking.to.name)}`
 }
 
 export function stayAfter(bookings: BookingList, journey: Flight | Train) {
@@ -115,16 +129,16 @@ export function stayAfter(bookings: BookingList, journey: Flight | Train) {
 		(booking): booking is Stay =>
 			booking._tag === 'stay' &&
 			booking.status === 'confirmed' &&
-			booking.checkIn > arrival - 12 * HOUR &&
-			booking.checkIn < arrival + 36 * HOUR &&
-			booking.checkOut > arrival
+			DateTime.isGreaterThan(booking.checkIn, DateTime.subtractDuration(arrival, Duration.hours(12))) &&
+			DateTime.isLessThan(booking.checkIn, DateTime.addDuration(arrival, Duration.hours(36))) &&
+			DateTime.isGreaterThan(booking.checkOut, arrival)
 	)
 	if (Array.isReadonlyArrayNonEmpty(stays)) return Option.some(Array.min(stays, byStart))
 	return Option.none<Stay>()
 }
 
-function near(left: number, right: number) {
-	return Math.abs(left - right) < 20 * HOUR
+function near(left: DateTime.Utc, right: DateTime.Utc) {
+	return pipe(DateTime.distance(left, right), Duration.abs, Duration.isLessThan(Duration.hours(20)))
 }
 
 function sameConfirmation(left: Booking, right: Booking) {
@@ -142,11 +156,11 @@ function sameReservation(existing: Booking, incoming: Booking) {
 		return (
 			(existing.airlineCode === incoming.airlineCode &&
 				existing.number === incoming.number &&
-				existing.from.code === incoming.from.code &&
+				Equal.equals(existing.from.code, incoming.from.code) &&
 				near(existing.departs, incoming.departs)) ||
 			(sameConfirmation(existing, incoming) &&
-				existing.from.code === incoming.from.code &&
-				existing.to.code === incoming.to.code)
+				Equal.equals(existing.from.code, incoming.from.code) &&
+				Equal.equals(existing.to.code, incoming.to.code))
 		)
 	}
 	if (existing._tag === 'train' && incoming._tag === 'train') {
@@ -182,7 +196,7 @@ function combine(existing: Booking, incoming: Booking) {
 		const same =
 			existing.airlineCode === incoming.airlineCode &&
 			existing.number === incoming.number &&
-			Math.abs(incoming.departs - existing.departs) <= HOUR
+			pipe(DateTime.distance(incoming.departs, existing.departs), Duration.abs, Duration.isLessThanOrEqualTo(HOUR))
 		return Flight.make({
 			...Struct.pick(incoming, Struct.keys(Flight.fields)),
 			...rideFields(existing, incoming),
@@ -192,7 +206,9 @@ function combine(existing: Booking, incoming: Booking) {
 		})
 	}
 	if (existing._tag === 'train' && incoming._tag === 'train') {
-		const same = existing.number === incoming.number && Math.abs(incoming.departs - existing.departs) <= HOUR
+		const same =
+			existing.number === incoming.number &&
+			pipe(DateTime.distance(incoming.departs, existing.departs), Duration.abs, Duration.isLessThanOrEqualTo(HOUR))
 		return Train.make({
 			...Struct.pick(incoming, Struct.keys(Train.fields)),
 			...rideFields(existing, incoming),
@@ -229,51 +245,67 @@ export function upsert(current: BookingList, incoming: BookingList) {
 	)[0]
 }
 
-type ActivityWindow = {end: number; leg: Leg; start: number}
+type ActivityWindow = {end: DateTime.Utc; leg: Leg; start: DateTime.Utc}
 
 // A journey longer than ActivityKit's eight hours, delays included, gets a second activity for its arrival.
 function activityWindows(booking: Booking) {
 	if (booking._tag === 'stay') return Array.empty<ActivityWindow>()
-	const start = booking.departs - {flight: 3 * HOUR, train: HOUR}[booking._tag]
-	const end = arrivalOf(booking) + {flight: 45 * MINUTE, train: 10 * MINUTE}[booking._tag]
-	if (end - start <= ACTIVITY_LIFETIME) return [{end, leg: 'departure', start}] satisfies ActivityWindow[]
-	const departed = Number.min(departureOf(booking) + 45 * MINUTE, start + ACTIVITY_LIFETIME)
+	const start = DateTime.subtractDuration(booking.departs, {flight: Duration.hours(3), train: HOUR}[booking._tag])
+	const end = DateTime.addDuration(
+		arrivalOf(booking),
+		{flight: Duration.minutes(45), train: Duration.minutes(10)}[booking._tag]
+	)
+	if (pipe(start, DateTime.distance(end), Duration.isLessThanOrEqualTo(ACTIVITY_LIFETIME))) {
+		return [{end, leg: 'departure', start}] satisfies ActivityWindow[]
+	}
+	const departed = pipe(
+		departureOf(booking),
+		DateTime.addDuration(Duration.minutes(45)),
+		DateTime.min(DateTime.addDuration(start, ACTIVITY_LIFETIME))
+	)
 	return [
 		{end: departed, leg: 'departure', start},
-		{end, leg: 'arrival', start: Number.max(departed, end - ACTIVITY_LIFETIME)}
+		{end, leg: 'arrival', start: DateTime.max(departed, DateTime.subtractDuration(end, ACTIVITY_LIFETIME))}
 	] satisfies ActivityWindow[]
 }
 
-export function activeWindow(booking: Booking, now: number) {
-	return Array.findFirst(activityWindows(booking), window => window.start <= now && now < window.end)
+export function activeWindow(booking: Booking, now: DateTime.Utc) {
+	return Array.findFirst(
+		activityWindows(booking),
+		window => DateTime.isLessThanOrEqualTo(window.start, now) && DateTime.isLessThan(now, window.end)
+	)
 }
 
-function flightPhase(flight: Flight, now: number) {
-	const state = Option.getOrUndefined(flight.live)?.state
-	if (flight.status === 'cancelled' || state === 'cancelled') return 'cancelled'
-	if (state === 'diverted') return 'diverted'
-	if (state === 'landed' || state === 'arrived') return 'landed'
-	if (state === 'departed' || state === 'airborne') return 'airborne'
-	if (Option.exists(flight.boardingAt, at => now >= at)) return 'boarding'
-	if (now >= departureOf(flight) - 45 * MINUTE) return 'gate'
-	if (now >= departureOf(flight) - AIRPORT_LEAD) return 'airport'
+function flightPhase(flight: Flight, now: DateTime.Utc) {
+	const state = Option.map(flight.live, live => live.state)
+	if (flight.status === 'cancelled' || Option.contains(state, 'cancelled')) return 'cancelled'
+	if (Option.contains(state, 'diverted')) return 'diverted'
+	if (Option.contains(state, 'landed') || Option.contains(state, 'arrived')) return 'landed'
+	if (Option.contains(state, 'departed') || Option.contains(state, 'airborne')) return 'airborne'
+	if (Option.exists(flight.boardingAt, at => DateTime.isGreaterThanOrEqualTo(now, at))) return 'boarding'
+	if (DateTime.isGreaterThanOrEqualTo(now, DateTime.subtractDuration(departureOf(flight), Duration.minutes(45)))) {
+		return 'gate'
+	}
+	if (DateTime.isGreaterThanOrEqualTo(now, DateTime.subtractDuration(departureOf(flight), AIRPORT_LEAD))) {
+		return 'airport'
+	}
 	return 'leave'
 }
 
 function flightTarget(flight: Flight, phase: FlightPhase) {
-	if (phase === 'leave') return departureOf(flight) - AIRPORT_LEAD
+	if (phase === 'leave') return DateTime.subtractDuration(departureOf(flight), AIRPORT_LEAD)
 	if (phase === 'airport' || phase === 'gate') return Option.getOrElse(flight.boardingAt, () => departureOf(flight))
 	if (phase === 'boarding') return departureOf(flight)
 	return arrivalOf(flight)
 }
 
 function flightHeadline(flight: Flight, phase: FlightPhase) {
-	if (phase === 'leave') return `Leave for ${flight.from.code ?? flight.from.name}`
+	if (phase === 'leave') return `Leave for ${Option.getOrElse(flight.from.code, () => flight.from.name)}`
 	if (phase === 'airport') {
 		return Option.getOrElse(
 			labelled(
 				'Terminal',
-				Option.flatMapNullishOr(flight.live, live => live.departureTerminal)
+				Option.flatMap(flight.live, live => live.departureTerminal)
 			),
 			() => 'At the airport'
 		)
@@ -288,9 +320,9 @@ function flightHeadline(flight: Flight, phase: FlightPhase) {
 		return Option.getOrElse(
 			labelled(
 				'Bags on belt',
-				Option.flatMapNullishOr(flight.live, live => live.belt)
+				Option.flatMap(flight.live, live => live.belt)
 			),
-			() => `Landed in ${flight.to.city ?? flight.to.name}`
+			() => `Landed in ${Option.getOrElse(flight.to.city, () => flight.to.name)}`
 		)
 	}
 	if (phase === 'diverted') return 'Diverted'
@@ -305,7 +337,7 @@ function flightDetail(flight: Flight, bookings: BookingList, phase: FlightPhase)
 			Option.orElse(() =>
 				labelled(
 					'Gate',
-					Option.flatMapNullishOr(flight.live, live => live.arrivalGate)
+					Option.flatMap(flight.live, live => live.arrivalGate)
 				)
 			),
 			Option.getOrElse(() => '')
@@ -315,7 +347,7 @@ function flightDetail(flight: Flight, bookings: BookingList, phase: FlightPhase)
 		labelled('Group', flight.boardingGroup),
 		labelled(
 			'was',
-			Option.flatMapNullishOr(flight.live, live => live.previousGate)
+			Option.flatMap(flight.live, live => live.previousGate)
 		)
 	])
 }
@@ -329,18 +361,18 @@ function flightChip(flight: Flight, phase: FlightPhase) {
 		return Option.map(
 			labelled(
 				'Belt',
-				Option.flatMapNullishOr(flight.live, live => live.belt)
+				Option.flatMap(flight.live, live => live.belt)
 			),
 			text => chipOf(text, 'plain')
 		)
 	}
 	return pipe(
 		flight.live,
-		Option.flatMapNullishOr(live => live.departureGate),
+		Option.flatMap(live => live.departureGate),
 		Option.orElse(() =>
 			pipe(
 				flight.live,
-				Option.flatMapNullishOr(live => live.departureTerminal),
+				Option.flatMap(live => live.departureTerminal),
 				Option.map(terminal => `T${terminal}`)
 			)
 		),
@@ -381,55 +413,57 @@ function departureNote(phase: FlightPhase, delay: number) {
 	return 'On time'
 }
 
-function countdownOf(target: number, now: number, counting: boolean) {
-	if (!counting || target <= now) return {}
-	return {countdown: target}
+function countdownOf(target: DateTime.Utc, now: DateTime.Utc, counting: boolean) {
+	return Option.liftPredicate(target, at => counting && DateTime.isGreaterThan(at, now))
 }
 
-function flightActivity(flight: Flight, bookings: BookingList, now: number) {
+function flightActivity(flight: Flight, bookings: BookingList, now: DateTime.Utc) {
 	const phase = flightPhase(flight, now)
-	const delay = Number.round((departureOf(flight) - flight.departs) / MINUTE, 0)
+	const delay = Number.round(Duration.toMinutes(DateTime.distance(flight.departs, departureOf(flight))), 0)
 	return {
-		...Option.match(flightChip(flight, phase), {onNone: () => ({}), onSome: chip => ({chip})}),
-		...countdownOf(
+		arrivalNote: Option.getOrElse(flight.to.city, () => flight.to.name),
+		arrivalTime: clockAt(arrivalOf(flight), flight.to.timeZone),
+		arrivalTone: 'plain',
+		arrives: arrivalOf(flight),
+		chip: flightChip(flight, phase),
+		countdown: countdownOf(
 			flightTarget(flight, phase),
 			now,
 			phase !== 'landed' && phase !== 'cancelled' && phase !== 'diverted'
 		),
-		...pipe(
-			flight.live,
-			Option.flatMapNullishOr(live => live.takeoffActual),
-			Option.filter(() => phase === 'airborne'),
-			Option.match({onNone: () => ({}), onSome: progressFrom => ({progressFrom})})
-		),
-		arrivalNote: flight.to.city ?? flight.to.name,
-		arrivalTime: clockAt(arrivalOf(flight), flight.to.timeZone),
-		arrivalTone: 'plain',
-		arrives: arrivalOf(flight),
-		delay,
+		delay: Duration.minutes(delay),
 		departureNote: departureNote(phase, delay),
 		departureTime: clockAt(departureOf(flight), flight.from.timeZone),
 		departureTone: Boolean.match(delay >= 5, {onFalse: () => 'plain', onTrue: () => 'warn'}),
 		detail: flightDetail(flight, bookings, phase),
-		from: flight.from.code ?? flight.from.name,
+		from: Option.getOrElse(flight.from.code, () => flight.from.name),
 		headline: flightHeadline(flight, phase),
 		kind: 'flight',
 		label: flightLabel(phase),
 		note: line([labelled('Seat', flight.seat)]),
 		phase,
+		progressFrom: pipe(
+			flight.live,
+			Option.flatMap(live => live.takeoffActual),
+			Option.filter(() => phase === 'airborne')
+		),
 		symbol: flightSymbol(phase),
 		title: titleOf(flight),
-		to: flight.to.code ?? flight.to.name,
+		to: Option.getOrElse(flight.to.code, () => flight.to.name),
 		tone: flightTone(phase, delay >= 5)
 	} satisfies ActivityProps
 }
 
-function trainPhase(train: Train, now: number) {
+function trainPhase(train: Train, now: DateTime.Utc) {
 	if (train.status === 'cancelled') return 'cancelled'
-	const live = Option.getOrUndefined(train.live)
-	if (live?.state === 'arrived') return 'arrived'
-	if (live?.state === 'departed') return 'running'
-	if (live?.departurePlatform !== undefined || now >= departureOf(train) - STATION_LEAD) return 'platform'
+	if (Option.exists(train.live, live => live.state === 'arrived')) return 'arrived'
+	if (Option.exists(train.live, live => live.state === 'departed')) return 'running'
+	if (
+		Option.exists(train.live, live => Option.isSome(live.departurePlatform)) ||
+		DateTime.isGreaterThanOrEqualTo(now, DateTime.subtractDuration(departureOf(train), STATION_LEAD))
+	) {
+		return 'platform'
+	}
 	return 'upcoming'
 }
 
@@ -438,7 +472,11 @@ function trainHeadline(train: Train, phase: TrainPhase) {
 		return Option.getOrElse(
 			labelled(
 				'Past',
-				Option.flatMapNullishOr(train.live, live => live.lastSeen?.station)
+				pipe(
+					train.live,
+					Option.flatMap(live => live.lastSeen),
+					Option.map(seen => seen.station)
+				)
 			),
 			() => 'Arrives in'
 		)
@@ -457,9 +495,8 @@ function trainLabel(phase: TrainPhase, delay: number) {
 
 function platformTone(train: Train) {
 	if (
-		Option.exists(
-			train.live,
-			live => live.departurePlatformPlanned !== undefined && live.departurePlatform !== live.departurePlatformPlanned
+		Option.exists(train.live, live =>
+			Option.exists(live.departurePlatformPlanned, planned => !Option.contains(live.departurePlatform, planned))
 		)
 	) {
 		return 'warn'
@@ -472,7 +509,7 @@ function trainChip(train: Train, phase: TrainPhase) {
 		return Option.map(
 			labelled(
 				'Bin',
-				Option.flatMapNullishOr(train.live, live => live.arrivalPlatform)
+				Option.flatMap(train.live, live => live.arrivalPlatform)
 			),
 			text => chipOf(text, 'plain')
 		)
@@ -480,7 +517,7 @@ function trainChip(train: Train, phase: TrainPhase) {
 	return Option.map(
 		labelled(
 			'Bin',
-			Option.flatMapNullishOr(train.live, live => live.departurePlatform)
+			Option.flatMap(train.live, live => live.departurePlatform)
 		),
 		text => chipOf(text, platformTone(train))
 	)
@@ -497,22 +534,24 @@ function trainDelayNote(phase: TrainPhase, delay: number) {
 	return Option.some('On time')
 }
 
-function trainActivity(train: Train, now: number) {
+function trainActivity(train: Train, now: DateTime.Utc) {
 	const phase = trainPhase(train, now)
-	const delay = Option.match(train.live, {onNone: () => 0, onSome: live => live.delayMinutes})
+	const delay = Duration.toMinutes(
+		Option.match(train.live, {onNone: () => Duration.zero, onSome: live => live.delayMinutes})
+	)
 	const tone = trainTone(phase, delay)
 	return {
-		...Option.match(trainChip(train, phase), {onNone: () => ({}), onSome: chip => ({chip})}),
-		...countdownOf(
-			Boolean.match(phase === 'running', {onFalse: () => departureOf(train), onTrue: () => arrivalOf(train)}),
-			now,
-			phase !== 'arrived' && phase !== 'cancelled'
-		),
 		arrivalNote: '',
 		arrivalTime: clockAt(arrivalOf(train), train.to.timeZone),
 		arrivalTone: tone,
 		arrives: arrivalOf(train),
-		delay,
+		chip: trainChip(train, phase),
+		countdown: countdownOf(
+			Boolean.match(phase === 'running', {onFalse: () => departureOf(train), onTrue: () => arrivalOf(train)}),
+			now,
+			phase !== 'arrived' && phase !== 'cancelled'
+		),
+		delay: Duration.minutes(delay),
 		departureNote: '',
 		departureTime: clockAt(departureOf(train), train.from.timeZone),
 		departureTone: tone,
@@ -523,6 +562,7 @@ function trainActivity(train: Train, now: number) {
 		label: trainLabel(phase, delay),
 		note: '',
 		phase,
+		progressFrom: Option.none(),
 		symbol: Boolean.match(phase === 'cancelled', {
 			onFalse: () => 'tram.fill',
 			onTrue: () => 'exclamationmark.triangle.fill'
@@ -533,11 +573,11 @@ function trainActivity(train: Train, now: number) {
 	} satisfies ActivityProps
 }
 
-export function activityProps(journey: Flight | Train, bookings: BookingList, now: number) {
+export function activityProps(journey: Flight | Train, bookings: BookingList, now: DateTime.Utc) {
 	if (journey._tag === 'flight') return ActivityProps.make(flightActivity(journey, bookings, now))
 	return ActivityProps.make(trainActivity(journey, now))
 }
 
 export function urgencyOf(props: ActivityProps) {
-	return `${props.phase}|${props.chip?.text ?? ''}|${Number.round(props.delay / 5, 0)}`
+	return `${props.phase}|${Option.match(props.chip, {onNone: () => '', onSome: chip => chip.text})}|${Number.round(Duration.toMinutes(props.delay) / 5, 0)}`
 }

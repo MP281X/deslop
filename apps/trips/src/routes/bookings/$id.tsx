@@ -1,6 +1,6 @@
 import {useAtomSet, useAtomValue} from '@effect/atom-react'
 
-import {Array, DateTime, Option, pipe} from 'effect'
+import {Array, DateTime, Duration, Option, pipe} from 'effect'
 
 import {
 	Button,
@@ -37,7 +37,7 @@ import {nowAtom, refreshAtom, removal} from '#lib/bookings.ts'
 import {mapsAtom, placeLine, ridesOf, uberAtom} from '#lib/rides.ts'
 import {dayAt, primary, problemOf, statusOf, tones} from '#lib/status.ts'
 import {arrivalOf, clockAt, departureOf, MINUTE, routeOf, titleOf} from '#services/bookings/lib/utils.ts'
-import type {Booking, BookingList, Flight, FlightTracking, Stay, Tone, Train} from '#services/bookings/schema.ts'
+import type {Booking, BookingList, Flight, Stay, Tone, Train} from '#services/bookings/schema.ts'
 
 function colorOf(tone?: Tone) {
 	if (tone === undefined || tone === 'plain') return colors.foreground
@@ -58,24 +58,22 @@ function Field(props: {label: string; tone?: Tone; value?: string}) {
 	)
 }
 
-function moved(scheduled: number, current: number, timeZone: string) {
-	if (Math.abs(current - scheduled) < MINUTE) return clockAt(scheduled, timeZone)
+function moved(scheduled: DateTime.Utc, current: DateTime.Utc, timeZone: string) {
+	if (Duration.isLessThan(Duration.abs(DateTime.distance(scheduled, current)), MINUTE)) {
+		return clockAt(scheduled, timeZone)
+	}
 	return `${clockAt(current, timeZone)} (${clockAt(scheduled, timeZone)})`
 }
 
-function gateOf(live?: FlightTracking) {
-	if (live?.departureGate === undefined) return undefined
-	if (live.previousGate === undefined) return live.departureGate
-	return `${live.departureGate} (was ${live.previousGate})`
-}
-
 function FlightFields(props: {flight: Flight}) {
-	const live = Option.getOrUndefined(props.flight.live)
 	return (
 		<>
 			<Section title={`Departure · ${props.flight.from.name}`}>
 				<Field label="Date" value={dayAt(props.flight.departs, props.flight.from.timeZone)} />
-				<Field label="Terminal" value={live?.departureTerminal} />
+				<Field
+					label="Terminal"
+					value={Option.getOrUndefined(Option.flatMap(props.flight.live, report => report.departureTerminal))}
+				/>
 				<Field
 					label="Boarding"
 					value={Option.getOrUndefined(
@@ -85,14 +83,27 @@ function FlightFields(props: {flight: Flight}) {
 			</Section>
 			<Section title={`Arrival · ${props.flight.to.name}`}>
 				<Field label="Arrives" value={moved(props.flight.arrives, arrivalOf(props.flight), props.flight.to.timeZone)} />
-				<Field label="Terminal" value={live?.arrivalTerminal} />
-				<Field label="Gate" value={live?.arrivalGate} />
-				<Field label="Baggage belt" tone="good" value={live?.belt} />
+				<Field
+					label="Terminal"
+					value={Option.getOrUndefined(Option.flatMap(props.flight.live, report => report.arrivalTerminal))}
+				/>
+				<Field
+					label="Gate"
+					value={Option.getOrUndefined(Option.flatMap(props.flight.live, report => report.arrivalGate))}
+				/>
+				<Field
+					label="Baggage belt"
+					tone="good"
+					value={Option.getOrUndefined(Option.flatMap(props.flight.live, report => report.belt))}
+				/>
 			</Section>
 			<Section title="Booking">
 				<Field label="Airline" value={props.flight.airline} />
 				<Field label="Group" value={Option.getOrUndefined(props.flight.boardingGroup)} />
-				<Field label="Aircraft" value={live?.aircraft} />
+				<Field
+					label="Aircraft"
+					value={Option.getOrUndefined(Option.flatMap(props.flight.live, report => report.aircraft))}
+				/>
 				<Field label="Confirmation" value={Option.getOrUndefined(props.flight.confirmation)} />
 			</Section>
 		</>
@@ -100,7 +111,6 @@ function FlightFields(props: {flight: Flight}) {
 }
 
 function TrainFields(props: {train: Train}) {
-	const live = Option.getOrUndefined(props.train.live)
 	return (
 		<>
 			<Section title={`Departure · ${props.train.from.name}`}>
@@ -108,16 +118,20 @@ function TrainFields(props: {train: Train}) {
 				<Field
 					label="Last seen"
 					value={Option.getOrUndefined(
-						Option.map(
-							Option.fromUndefinedOr(live?.lastSeen),
-							seen => `${seen.station} at ${clockAt(seen.at, props.train.from.timeZone)}`
+						pipe(
+							props.train.live,
+							Option.flatMap(report => report.lastSeen),
+							Option.map(seen => `${seen.station} at ${clockAt(seen.at, props.train.from.timeZone)}`)
 						)
 					)}
 				/>
 			</Section>
 			<Section title={`Arrival · ${props.train.to.name}`}>
 				<Field label="Arrives" value={moved(props.train.arrives, arrivalOf(props.train), props.train.to.timeZone)} />
-				<Field label="Platform" value={live?.arrivalPlatform} />
+				<Field
+					label="Platform"
+					value={Option.getOrUndefined(Option.flatMap(props.train.live, report => report.arrivalPlatform))}
+				/>
 			</Section>
 			<Section title="Booking">
 				<Field label="Train" value={props.train.operatorName} />
@@ -130,7 +144,7 @@ function TrainFields(props: {train: Train}) {
 function StayFields(props: {stay: Stay}) {
 	return (
 		<Section title="Stay">
-			<Field label="Address" value={props.stay.place.address} />
+			<Field label="Address" value={Option.getOrUndefined(props.stay.place.address)} />
 			<Field label="Confirmation" value={Option.getOrUndefined(props.stay.confirmation)} />
 		</Section>
 	)
@@ -159,35 +173,59 @@ function Departs(props: {journey: Flight | Train}) {
 	return (
 		<Essential
 			label="Departs"
-			tone={toneIf(departureOf(props.journey) - props.journey.departs >= 5 * MINUTE, 'warn')}
+			tone={toneIf(
+				Duration.isGreaterThanOrEqualTo(
+					DateTime.distance(props.journey.departs, departureOf(props.journey)),
+					Duration.minutes(5)
+				),
+				'warn'
+			)}
 			value={clockAt(departureOf(props.journey), props.journey.from.timeZone)}
 		/>
 	)
 }
 
 function FlightEssentials(props: {flight: Flight}) {
-	const live = Option.getOrUndefined(props.flight.live)
 	return (
 		<HStack alignment="top" spacing={space[3]}>
 			<Departs journey={props.flight} />
-			<Essential label="Gate" tone={toneIf(live?.previousGate !== undefined, 'warn')} value={gateOf(live)} />
+			<Essential
+				label="Gate"
+				tone={toneIf(
+					Option.exists(props.flight.live, report => Option.isSome(report.previousGate)),
+					'warn'
+				)}
+				value={pipe(
+					props.flight.live,
+					Option.flatMap(report =>
+						Option.map(report.departureGate, gate =>
+							Option.match(report.previousGate, {onNone: () => gate, onSome: previous => `${gate} (was ${previous})`})
+						)
+					),
+					Option.getOrUndefined
+				)}
+			/>
 			<Essential label="Seat" value={Option.getOrUndefined(props.flight.seat)} />
 		</HStack>
 	)
 }
 
 function TrainEssentials(props: {train: Train}) {
-	const live = Option.getOrUndefined(props.train.live)
 	return (
 		<HStack alignment="top" spacing={space[3]}>
 			<Departs journey={props.train} />
 			<Essential
 				label="Platform"
 				tone={toneIf(
-					live?.departurePlatformPlanned !== undefined && live.departurePlatform !== live.departurePlatformPlanned,
+					Option.exists(props.train.live, report =>
+						Option.exists(
+							report.departurePlatformPlanned,
+							planned => !Option.contains(report.departurePlatform, planned)
+						)
+					),
 					'warn'
 				)}
-				value={live?.departurePlatform}
+				value={Option.getOrUndefined(Option.flatMap(props.train.live, report => report.departurePlatform))}
 			/>
 			<Essential
 				label="Seat"
@@ -216,7 +254,7 @@ function StayEssentials(props: {stay: Stay}) {
 	)
 }
 
-function Rides(props: {booking: Booking; bookings: BookingList; now: number}) {
+function Rides(props: {booking: Booking; bookings: BookingList; now: DateTime.Utc}) {
 	const maps = useAtomSet(mapsAtom)
 	const uber = useAtomSet(uberAtom)
 	return (
@@ -232,10 +270,10 @@ function Rides(props: {booking: Booking; bookings: BookingList; now: number}) {
 	)
 }
 
-export function BookingRoute(props: {bookings: BookingList; id: string; onClose: () => void}) {
+export function BookingRoute(props: {bookings: BookingList; id: Booking['id']; onClose: () => void}) {
 	const remove = useAtomSet(removal.removeAtom)
 	const refresh = useAtomSet(refreshAtom, {mode: 'promiseExit'})
-	const now = AsyncResult.getOrElse(useAtomValue(nowAtom), () => DateTime.toEpochMillis(DateTime.nowUnsafe()))
+	const now = AsyncResult.getOrElse(useAtomValue(nowAtom), DateTime.nowUnsafe)
 	return pipe(
 		props.bookings,
 		Array.findFirst(booking => booking.id === props.id),

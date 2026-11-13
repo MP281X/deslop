@@ -9,6 +9,8 @@ import {
 	ConfigProvider,
 	Context,
 	Deferred,
+	DateTime,
+	Duration,
 	Effect,
 	Equal,
 	Exit,
@@ -17,6 +19,7 @@ import {
 	Option,
 	Queue,
 	Ref,
+	Schema,
 	Stream,
 	String,
 	pipe
@@ -26,9 +29,8 @@ import {HttpClient, HttpClientResponse} from 'effect/http'
 import {SqlClient} from 'effect/sql'
 import {TestClock} from 'effect/testing'
 
-import {HOUR} from '#services/bookings/lib/utils.ts'
 import type {Booking} from '#services/bookings/schema.ts'
-import {BookingId, Flight, Train} from '#services/bookings/schema.ts'
+import {BookedPlace, BookingId, Flight, Train} from '#services/bookings/schema.ts'
 import {Bookings} from '#services/bookings/service.ts'
 import {Tracking} from '#services/tracking/service.ts'
 
@@ -37,26 +39,26 @@ const ID = BookingId.make('1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d')
 const FLIGHT = {
 	airline: 'British Airways',
 	airlineCode: 'BA',
-	arrives: 3 * HOUR,
+	arrives: DateTime.makeUnsafe(10_800_000),
 	boardingAt: Option.none(),
 	boardingGroup: Option.none(),
 	confirmation: Option.none(),
-	departs: 2 * HOUR,
-	from: {code: 'FCO', name: 'Rome', timeZone: 'Europe/Rome'},
+	departs: DateTime.makeUnsafe(7_200_000),
+	from: Schema.decodeSync(BookedPlace)({code: 'FCO', name: 'Rome', timeZone: 'Europe/Rome'}),
 	id: ID,
 	live: Option.none(),
 	number: '553',
 	seat: Option.none(),
 	status: 'confirmed',
-	to: {code: 'LHR', name: 'London', timeZone: 'Europe/London'}
+	to: Schema.decodeSync(BookedPlace)({code: 'LHR', name: 'London', timeZone: 'Europe/London'})
 } as const
 
 const TRAIN = {
-	arrives: 3 * HOUR,
+	arrives: DateTime.makeUnsafe(10_800_000),
 	coach: Option.none(),
 	confirmation: Option.none(),
-	departs: 2 * HOUR,
-	from: {name: 'Roma Termini', timeZone: 'Europe/Rome'},
+	departs: DateTime.makeUnsafe(7_200_000),
+	from: Schema.decodeSync(BookedPlace)({name: 'Roma Termini', timeZone: 'Europe/Rome'}),
 	id: ID,
 	live: Option.none(),
 	number: '9541',
@@ -64,7 +66,7 @@ const TRAIN = {
 	operatorName: 'Frecciarossa',
 	seat: Option.none(),
 	status: 'confirmed',
-	to: {name: 'Milano Centrale', timeZone: 'Europe/Rome'}
+	to: Schema.decodeSync(BookedPlace)({name: 'Milano Centrale', timeZone: 'Europe/Rome'})
 } as const
 
 // The bookings as a list in memory; a newer state replaces the one it was made from only while that one is still stored.
@@ -177,7 +179,7 @@ it.layer(ConfigProvider.layer(ConfigProvider.fromUnknown({AEROAPI_KEY: 'test'}))
 											{
 												binarioEffettivoPartenzaDescrizione: '12',
 												id: 'S08409',
-												programmata: 2 * HOUR,
+												programmata: 7_200_000,
 												stazione: 'ROMA TERMINI'
 											}
 										]
@@ -217,7 +219,9 @@ it.layer(ConfigProvider.layer(ConfigProvider.fromUnknown({AEROAPI_KEY: 'test'}))
 				assert.isTrue(
 					Option.exists(
 						Array.head(yield* Ref.get(state)),
-						current => current._tag !== 'stay' && Option.isSome(current.live)
+						current =>
+							(current._tag === 'flight' && Option.isSome(current.live)) ||
+							(current._tag === 'train' && Option.isSome(current.live))
 					)
 				)
 			}
@@ -251,8 +255,8 @@ it.layer(ConfigProvider.layer(ConfigProvider.fromUnknown({AEROAPI_KEY: 'test'}))
 			yield* Ref.set(state, [
 				Flight.make({
 					...FLIGHT,
-					arrives: (yield* Clock.currentTimeMillis) + 3 * HOUR,
-					departs: (yield* Clock.currentTimeMillis) + 2 * HOUR
+					arrives: DateTime.addDuration(yield* DateTime.now, Duration.hours(3)),
+					departs: DateTime.addDuration(yield* DateTime.now, Duration.hours(2))
 				})
 			])
 			yield* opened.tracker.refresh(ID)
@@ -264,7 +268,11 @@ it.layer(ConfigProvider.layer(ConfigProvider.fromUnknown({AEROAPI_KEY: 'test'}))
 		'retries a malformed train run lookup three times, then fails without storing an answer',
 		Effect.fnUntraced(function* () {
 			const now = yield* Clock.currentTimeMillis
-			const train = Train.make({...TRAIN, arrives: now + 2 * HOUR, departs: now + HOUR})
+			const train = Train.make({
+				...TRAIN,
+				arrives: DateTime.addDuration(DateTime.makeUnsafe(now), Duration.hours(2)),
+				departs: DateTime.addDuration(DateTime.makeUnsafe(now), Duration.hours(1))
+			})
 			const state = yield* Ref.make<Booking[]>([])
 			const listed = yield* Queue.unbounded<void>()
 			const calls = yield* Ref.make(0)

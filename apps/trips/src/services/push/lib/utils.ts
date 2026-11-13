@@ -1,4 +1,4 @@
-import {Array, Number, Option, Result, String, pipe} from 'effect'
+import {Array, DateTime, Duration, Number, Option, Result, String, pipe} from 'effect'
 
 import {
 	ACTIVITY_LIFETIME,
@@ -6,23 +6,24 @@ import {
 	arrivalOf,
 	clockAt,
 	departureOf,
-	HOUR,
 	labelled,
 	line,
-	MINUTE,
 	routeOf,
 	titleOf
 } from '#services/bookings/lib/utils.ts'
 import type {Booking, BookingList, Flight, Leg, Train} from '#services/bookings/schema.ts'
 import type {Activity, Device} from '#services/push/schema.ts'
 
-export type Span = {end: number; start: number}
+export type Span = {end: DateTime.Utc; start: DateTime.Utc}
 type ShowAction = {_tag: 'launch'; target: Device} | {_tag: 'refresh'; target: Activity}
 
 // An activity covers the window while ActivityKit keeps it alive, unless it ended before the window began.
 export function holds(activity: Activity, window: Span) {
-	if (activity.startedAt + ACTIVITY_LIFETIME < window.end) return false
-	return Option.match(activity.endedAt, {onNone: () => true, onSome: ended => ended >= window.start})
+	if (pipe(activity.startedAt, DateTime.addDuration(ACTIVITY_LIFETIME), DateTime.isLessThan(window.end))) return false
+	return Option.match(activity.endedAt, {
+		onNone: () => true,
+		onSome: ended => DateTime.isGreaterThanOrEqualTo(ended, window.start)
+	})
 }
 
 export function alertKey(alert: Alert) {
@@ -72,7 +73,7 @@ export function showPlan(
 }
 
 // Running activities whose leg is no longer in its window, or whose booking is gone.
-export function expiredActivities(activities: readonly Activity[], all: BookingList, now: number) {
+export function expiredActivities(activities: readonly Activity[], all: BookingList, now: DateTime.Utc) {
 	const byId = Array.groupBy(all, booking => booking.id)
 	return Array.filter(
 		activities,
@@ -92,7 +93,7 @@ export function startAlert(journey: Flight | Train) {
 				Option.some(routeOf(journey)),
 				labelled(
 					'Gate',
-					Option.flatMapNullishOr(journey.live, live => live.departureGate)
+					Option.flatMap(journey.live, live => live.departureGate)
 				)
 			]),
 			title: titleOf(journey)
@@ -103,7 +104,7 @@ export function startAlert(journey: Flight | Train) {
 			Option.some(routeOf(journey)),
 			labelled(
 				'Platform',
-				Option.flatMapNullishOr(journey.live, live => live.departurePlatform)
+				Option.flatMap(journey.live, live => live.departurePlatform)
 			)
 		]),
 		title: titleOf(journey)
@@ -132,7 +133,7 @@ function trainAlerts(train: Train) {
 		pipe(
 			train.live,
 			Option.filter(live => live.state === 'scheduled'),
-			Option.flatMapNullishOr(live => live.departurePlatform),
+			Option.flatMap(live => live.departurePlatform),
 			Option.map(
 				platform =>
 					({
@@ -145,7 +146,7 @@ function trainAlerts(train: Train) {
 		),
 		pipe(
 			train.live,
-			Option.map(live => live.delayMinutes),
+			Option.map(live => Duration.toMinutes(live.delayMinutes)),
 			Option.filter(delay => delay >= 10),
 			Option.map(
 				delay =>
@@ -160,12 +161,11 @@ function trainAlerts(train: Train) {
 	])
 }
 
-function flightAlerts(flight: Flight, now: number) {
+function flightAlerts(flight: Flight, now: DateTime.Utc) {
 	const title = titleOf(flight)
 	const departure = clockAt(departureOf(flight), flight.from.timeZone)
-	const delay = Number.round((departureOf(flight) - flight.departs) / MINUTE, 0)
-	const live = Option.getOrUndefined(flight.live)
-	const cancelled = flight.status === 'cancelled' || live?.state === 'cancelled'
+	const delay = Number.round(Duration.toMinutes(DateTime.distance(flight.departs, departureOf(flight))), 0)
+	const cancelled = flight.status === 'cancelled' || Option.exists(flight.live, report => report.state === 'cancelled')
 	return Array.getSomes([
 		Option.filter(
 			Option.some<Alert>({
@@ -177,22 +177,33 @@ function flightAlerts(flight: Flight, now: number) {
 		),
 		Option.filter(
 			Option.some<Alert>({body: routeOf(flight), category: 'diverted', title: `${title} is diverted`}),
-			() => live?.state === 'diverted'
+			() => Option.exists(flight.live, report => report.state === 'diverted')
 		),
-		Option.map(
-			Option.fromUndefinedOr(live?.departureGate),
-			gate =>
-				({
-					body: Option.getOrElse(labelled('Changed from', Option.fromUndefinedOr(live?.previousGate)), () =>
-						line([
-							Option.some(`Departs ${departure}`),
-							labelled('Terminal', Option.fromUndefinedOr(live?.departureTerminal))
-						])
-					),
-					category: 'gate',
-					title: `${title} · Gate ${gate}`,
-					value: gate
-				}) satisfies Alert
+		pipe(
+			flight.live,
+			Option.flatMap(report => report.departureGate),
+			Option.map(
+				gate =>
+					({
+						body: Option.getOrElse(
+							labelled(
+								'Changed from',
+								Option.flatMap(flight.live, report => report.previousGate)
+							),
+							() =>
+								line([
+									Option.some(`Departs ${departure}`),
+									labelled(
+										'Terminal',
+										Option.flatMap(flight.live, report => report.departureTerminal)
+									)
+								])
+						),
+						category: 'gate',
+						title: `${title} · Gate ${gate}`,
+						value: gate
+					}) satisfies Alert
+			)
 		),
 		Option.filter(
 			Option.some<Alert>({
@@ -205,12 +216,22 @@ function flightAlerts(flight: Flight, now: number) {
 		),
 		pipe(
 			flight.boardingAt,
-			Option.filter(at => now >= at - 10 * MINUTE && now < departureOf(flight)),
-			Option.map<number, Alert>(
+			Option.filter(
+				at =>
+					DateTime.isGreaterThanOrEqualTo(now, DateTime.subtractDuration(at, Duration.minutes(10))) &&
+					DateTime.isLessThan(now, departureOf(flight))
+			),
+			Option.map<DateTime.Utc, Alert>(
 				at =>
 					({
 						body: line([
-							Option.orElseSome(labelled('Gate', Option.fromUndefinedOr(live?.departureGate)), () => 'Check the gate'),
+							Option.orElseSome(
+								labelled(
+									'Gate',
+									Option.flatMap(flight.live, report => report.departureGate)
+								),
+								() => 'Check the gate'
+							),
 							labelled('group', flight.boardingGroup)
 						]),
 						category: 'boarding',
@@ -218,17 +239,29 @@ function flightAlerts(flight: Flight, now: number) {
 					}) satisfies Alert
 			)
 		),
-		Option.map(
-			Option.fromUndefinedOr(live?.belt),
-			belt =>
-				({body: flight.to.name, category: 'belt', title: `${title} bags on belt ${belt}`, value: belt}) satisfies Alert
+		pipe(
+			flight.live,
+			Option.flatMap(report => report.belt),
+			Option.map(
+				belt =>
+					({
+						body: flight.to.name,
+						category: 'belt',
+						title: `${title} bags on belt ${belt}`,
+						value: belt
+					}) satisfies Alert
+			)
 		)
 	])
 }
 
 // The changes worth a notification, each under a key sent once; a delay counts in steps so a drifting estimate stays quiet.
-export function alertsOf(booking: Booking, now: number) {
-	if (booking._tag === 'stay' || now > arrivalOf(booking) + HOUR || now < booking.departs - 30 * HOUR) {
+export function alertsOf(booking: Booking, now: DateTime.Utc) {
+	if (
+		booking._tag === 'stay' ||
+		DateTime.isGreaterThan(now, DateTime.addDuration(arrivalOf(booking), Duration.hours(1))) ||
+		DateTime.isLessThan(now, DateTime.subtractDuration(booking.departs, Duration.hours(30)))
+	) {
 		return Array.empty<Alert>()
 	}
 	if (booking._tag === 'train') return trainAlerts(booking)

@@ -1,11 +1,13 @@
 import {assert, it} from '@effect/vitest'
 
-import {Array, Boolean, Context, Effect, Exit, Fiber, Layer, Ref} from 'effect'
+import {Array, Boolean, Context, Effect, Exit, Fiber, Layer, Ref, Schema} from 'effect'
 
 import {HttpClient, HttpClientResponse} from 'effect/http'
 import {TestClock} from 'effect/testing'
 
 import {Places} from './places.ts'
+
+import {BookedPlace, Place} from '#services/bookings/schema.ts'
 
 it.layer(Layer.empty)(test => {
 	test.effect(
@@ -46,7 +48,7 @@ it.layer(Layer.empty)(test => {
 			yield* Ref.set(available, true)
 			assert.strictEqual((yield* places.airport('FCO')).name, 'Rome')
 			const fetched = yield* Ref.get(calls)
-			assert.strictEqual((yield* places.airport(' fco ')).code, 'FCO')
+			assert.strictEqual((yield* Schema.encodeEffect(BookedPlace)(yield* places.airport(' fco '))).code, 'FCO')
 			assert.strictEqual(yield* Ref.get(calls), fetched)
 			yield* Ref.set(name, 'Fiumicino')
 			yield* TestClock.adjust('30 days')
@@ -90,14 +92,16 @@ it.layer(Layer.empty)(test => {
 			)
 			assert.isTrue(Exit.hasFails(yield* Effect.exit(places.station('Roma Termini'))))
 			yield* Ref.set(mode, 'empty')
-			assert.deepStrictEqual(yield* places.station('Roma Termini'), {name: 'Roma Termini'})
+			assert.deepStrictEqual(yield* Schema.encodeEffect(Place)(yield* places.station('Roma Termini')), {
+				name: 'Roma Termini'
+			})
 			yield* Ref.set(mode, 'match')
 			assert.deepStrictEqual(
 				Array.map(
 					yield* Effect.all([places.station('Roma Termini'), places.station('Roma Termini')], {
 						concurrency: 'unbounded'
 					}),
-					place => place.code
+					place => Schema.encodeSync(Place)(place).code
 				),
 				['rail:8308003', 'rail:8308003']
 			)

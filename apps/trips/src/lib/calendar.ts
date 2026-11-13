@@ -1,4 +1,4 @@
-import {Array, Clock, DateTime, Effect, HashSet, MutableList, Option, String, pipe} from 'effect'
+import {Array, DateTime, Duration, Effect, HashSet, MutableList, Option, String, pipe} from 'effect'
 
 import {AsyncResult, Atom} from 'effect/reactivity'
 import {
@@ -11,9 +11,9 @@ import {
 import type {ExpoCalendar, ExpoCalendarEvent} from 'expo-calendar'
 
 import {bookingsAtom} from '#lib/bookings.ts'
-import {linkOf} from '#lib/deep-links.ts'
+import {BOOKING_LINK, linkOf} from '#lib/deep-links.ts'
 import {placeLine} from '#lib/rides.ts'
-import {arrivalOf, departureOf, endOf, HOUR, labelled, titleOf} from '#services/bookings/lib/utils.ts'
+import {arrivalOf, departureOf, endOf, labelled, titleOf} from '#services/bookings/lib/utils.ts'
 import type {Booking, BookingList, Flight, Train} from '#services/bookings/schema.ts'
 import {BookingsError} from '#services/bookings/schema.ts'
 
@@ -31,10 +31,10 @@ function eventOf(booking: Booking) {
 	if (booking._tag === 'stay') {
 		return {
 			alarms: [{relativeOffset: -3 * 60}],
-			endDate: DateTime.toDateUtc(DateTime.makeUnsafe(booking.checkOut)),
-			location: booking.place.address ?? booking.name,
+			endDate: DateTime.toDateUtc(booking.checkOut),
+			location: Option.getOrElse(booking.place.address, () => booking.name),
 			notes: Option.getOrElse(labelled('Confirmation', booking.confirmation), () => ''),
-			startDate: DateTime.toDateUtc(DateTime.makeUnsafe(booking.checkIn)),
+			startDate: DateTime.toDateUtc(booking.checkIn),
 			timeZone: booking.place.timeZone,
 			title: booking.name
 		}
@@ -42,12 +42,12 @@ function eventOf(booking: Booking) {
 	return {
 		// Calendar's own Time to Leave reads the location; this alert is the fallback when it is off.
 		alarms: [{relativeOffset: {flight: -180, train: -45}[booking._tag]}],
-		endDate: DateTime.toDateUtc(DateTime.makeUnsafe(arrivalOf(booking))),
+		endDate: DateTime.toDateUtc(arrivalOf(booking)),
 		location: placeLine(booking.from),
 		notes: notesOf(booking),
-		startDate: DateTime.toDateUtc(DateTime.makeUnsafe(departureOf(booking))),
+		startDate: DateTime.toDateUtc(departureOf(booking)),
 		timeZone: booking.from.timeZone,
-		title: `${titleOf(booking)} ${booking.from.code ?? booking.from.name} → ${booking.to.code ?? booking.to.name}`
+		title: `${titleOf(booking)} ${Option.getOrElse(booking.from.code, () => booking.from.name)} → ${Option.getOrElse(booking.to.code, () => booking.to.name)}`
 	}
 }
 
@@ -57,9 +57,14 @@ function sameTime(left: DateTime.DateTime.Input, right: DateTime.DateTime.Input)
 	)
 }
 
-function calendarPlan(all: BookingList, events: Awaited<ReturnType<ExpoCalendar['listEvents']>>, now: number) {
+function calendarPlan(all: BookingList, events: Awaited<ReturnType<ExpoCalendar['listEvents']>>, now: DateTime.Utc) {
 	const eventsByUrl = Array.groupBy(events, event => event.url ?? '')
-	const bookings = Array.filter(all, booking => booking.status === 'confirmed' && endOf(booking) > now - 24 * HOUR)
+	const bookings = Array.filter(
+		all,
+		booking =>
+			booking.status === 'confirmed' &&
+			DateTime.isGreaterThan(endOf(booking), DateTime.subtractDuration(now, Duration.days(1)))
+	)
 	const create = MutableList.make<ReturnType<typeof eventOf> & {url: string}>()
 	const update = MutableList.make<{event: ExpoCalendarEvent; details: ReturnType<typeof eventOf>}>()
 	for (const booking of bookings) {
@@ -88,7 +93,7 @@ function calendarPlan(all: BookingList, events: Awaited<ReturnType<ExpoCalendar[
 		create: MutableList.toArray(create),
 		remove: Array.filter(
 			events,
-			event => event.url !== undefined && String.startsWith(linkOf(''))(event.url) && !HashSet.has(kept, event.url)
+			event => event.url !== undefined && String.startsWith(BOOKING_LINK)(event.url) && !HashSet.has(kept, event.url)
 		),
 		update: MutableList.toArray(update)
 	}
@@ -141,13 +146,13 @@ export const calendarAtom = Atom.make(get =>
 					})
 				})
 			)
-			const now = yield* Clock.currentTimeMillis
+			const now = yield* DateTime.now
 			const events = yield* Effect.tryPromise({
 				catch: cause => BookingsError.make({cause, message: 'The calendar events could not be listed.'}),
 				try: () =>
 					calendar.listEvents(
-						DateTime.toDateUtc(DateTime.makeUnsafe(now - 60 * 24 * HOUR)),
-						DateTime.toDateUtc(DateTime.makeUnsafe(now + 400 * 24 * HOUR))
+						DateTime.toDateUtc(DateTime.subtractDuration(now, Duration.days(60))),
+						DateTime.toDateUtc(DateTime.addDuration(now, Duration.days(400)))
 					)
 			})
 			const plan = calendarPlan(loaded.value, events, now)

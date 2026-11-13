@@ -1,4 +1,4 @@
-import {Array, Effect, Option, String, pipe} from 'effect'
+import {Array, DateTime, Duration, Effect, Option, String, pipe} from 'effect'
 
 import {Atom} from 'effect/reactivity'
 import {geocodeAsync} from 'expo-location'
@@ -6,19 +6,31 @@ import {Linking} from 'react-native'
 
 import {alertFailure} from '@deslop/components-mobile/alerts'
 
-import {departureOf, MINUTE, stayAfter} from '#services/bookings/lib/utils.ts'
-import type {Booking, BookingList, Place} from '#services/bookings/schema.ts'
+import {departureOf, stayAfter} from '#services/bookings/lib/utils.ts'
+import type {BookedPlace, Booking, BookingList, Place} from '#services/bookings/schema.ts'
 import {BookingsError} from '#services/bookings/schema.ts'
 
-export function placeLine(place: Place) {
-	return pipe([place.name, place.address ?? place.city ?? ''], Array.filter(String.isNonEmpty), Array.join(', '))
+export function placeLine(place: Place | BookedPlace) {
+	return pipe(
+		[
+			place.name,
+			pipe(
+				place.address,
+				Option.orElse(() => place.city),
+				Option.getOrElse(() => '')
+			)
+		],
+		Array.filter(String.isNonEmpty),
+		Array.join(', ')
+	)
 }
 
 type Coordinates = {latitude: number; longitude: number}
 
-const coordinatesOf = Effect.fnUntraced(function* (place: Place) {
-	if (place.latitude !== undefined && place.longitude !== undefined) {
-		return Option.some<Coordinates>({latitude: place.latitude, longitude: place.longitude})
+const coordinatesOf = Effect.fnUntraced(function* (place: Place | BookedPlace) {
+	const coordinates = Option.all({latitude: place.latitude, longitude: place.longitude})
+	if (Option.isSome(coordinates)) {
+		return coordinates
 	}
 	return Option.map(
 		Array.head(
@@ -31,9 +43,9 @@ const coordinatesOf = Effect.fnUntraced(function* (place: Place) {
 	)
 })
 
-export type Ride = {label: string; place: Place}
+export type Ride = {label: string; place: Place | BookedPlace}
 
-export function ridesOf(booking: Booking, bookings: BookingList, now: number) {
+export function ridesOf(booking: Booking, bookings: BookingList, now: DateTime.Utc) {
 	if (booking._tag === 'stay') return [{label: booking.name, place: booking.place}] satisfies Ride[]
 	const stay = Option.map(
 		stayAfter(bookings, booking),
@@ -41,7 +53,9 @@ export function ridesOf(booking: Booking, bookings: BookingList, now: number) {
 	)
 	return pipe(
 		stay,
-		Option.filter(() => now > departureOf(booking) - 30 * MINUTE),
+		Option.filter(() =>
+			DateTime.isGreaterThan(now, DateTime.subtractDuration(departureOf(booking), Duration.minutes(30)))
+		),
 		Option.match({
 			onNone: () => [{label: booking.from.name, place: booking.from}, ...Option.toArray(stay)] satisfies Ride[],
 			onSome: next => [next] satisfies Ride[]

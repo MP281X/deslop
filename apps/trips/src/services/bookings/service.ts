@@ -98,23 +98,19 @@ export class Bookings extends Context.Service<Bookings>()('@deslop/trips/service
 			const found = yield* Effect.option(places.station(name))
 			const timeZone = yield* pipe(
 				found,
-				Option.flatMap(place => Option.fromUndefinedOr(place.timeZone)),
+				Option.flatMap(place => place.timeZone),
 				Option.orElse(() => Option.liftPredicate('Europe/Rome', () => operator !== 'other')),
 				Option.match({
 					onNone: () => BookingsError.make({message: `The station ${name} could not be placed.`}),
 					onSome: Effect.succeed
 				})
 			)
-			return {...Option.getOrElse(found, () => Place.make({name})), timeZone}
+			return {...Option.getOrElse(found, () => Schema.decodeSync(Place)({name})), timeZone}
 		})
 
 		// Airports and stations resolve from their datasets, so a time reads in the right zone and a ride has coordinates.
 		const resolve = Effect.fnUntraced(function* (item: ExtractedItem) {
-			const base = {
-				confirmation: Option.fromUndefinedOr(item.confirmation),
-				id: BookingId.make(yield* random.uuidV4()),
-				status: item.status
-			}
+			const base = {confirmation: item.confirmation, id: BookingId.make(yield* random.uuidV4()), status: item.status}
 			if (item.kind === 'flight') {
 				const from = yield* places.airport(item.from)
 				const to = yield* places.airport(item.to)
@@ -123,15 +119,13 @@ export class Bookings extends Context.Service<Bookings>()('@deslop/trips/service
 					airline: item.airlineName,
 					airlineCode: item.airlineCode,
 					arrives: yield* at(item.arrival, to.timeZone),
-					boardingAt: yield* Effect.transposeOption(
-						Option.map(Option.fromUndefinedOr(item.boarding), boarding => at(boarding, from.timeZone))
-					),
-					boardingGroup: Option.fromUndefinedOr(item.boardingGroup),
+					boardingAt: yield* Effect.transposeOption(Option.map(item.boarding, boarding => at(boarding, from.timeZone))),
+					boardingGroup: item.boardingGroup,
 					departs: yield* at(item.departure, from.timeZone),
 					from,
 					live: Option.none(),
 					number: item.flightNumber,
-					seat: Option.fromUndefinedOr(item.seat),
+					seat: item.seat,
 					to
 				})
 			}
@@ -141,14 +135,14 @@ export class Bookings extends Context.Service<Bookings>()('@deslop/trips/service
 				return Train.make({
 					...base,
 					arrives: yield* at(item.arrival, to.timeZone),
-					coach: Option.fromUndefinedOr(item.coach),
+					coach: item.coach,
 					departs: yield* at(item.departure, from.timeZone),
 					from,
 					live: Option.none(),
 					number: item.trainNumber,
 					operator: item.operator,
 					operatorName: item.operatorName,
-					seat: Option.fromUndefinedOr(item.seat),
+					seat: item.seat,
 					to
 				})
 			}
@@ -157,7 +151,15 @@ export class Bookings extends Context.Service<Bookings>()('@deslop/trips/service
 				checkIn: yield* at(item.checkIn, item.timeZone),
 				checkOut: yield* at(item.checkOut, item.timeZone),
 				name: item.name,
-				place: {address: item.address, city: item.city, name: item.name, timeZone: item.timeZone}
+				place: {
+					address: Option.some(item.address),
+					city: Option.some(item.city),
+					code: Option.none(),
+					latitude: Option.none(),
+					longitude: Option.none(),
+					name: item.name,
+					timeZone: item.timeZone
+				}
 			})
 		})
 
