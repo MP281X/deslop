@@ -4,6 +4,7 @@ import {Array, Context, Effect, Fiber, Layer, Order, Schema, Stream, Subscriptio
 
 import {RpcContracts} from '#rpcs/contracts.ts'
 import type {PortfolioScene, PortfolioVisitors} from '#services/presence/schema.ts'
+import {VisitorId} from '#services/presence/schema.ts'
 import {Presence} from '#services/presence/service.ts'
 
 function guestAt(x: number, y: number) {
@@ -43,7 +44,7 @@ it.effect(
 		const seen = yield* SubscriptionRef.make<PortfolioScene>({bots: [], visitors: []})
 		function watch(id: string) {
 			return pipe(
-				presence.join({color: '#da702c', id, name: id}),
+				presence.join({color: '#da702c', id: VisitorId.make(id), name: id}),
 				Stream.runForEach(scene => SubscriptionRef.set(seen, scene)),
 				Effect.forkScoped
 			)
@@ -63,13 +64,13 @@ it.effect(
 		assert.deepStrictEqual(idsOf(scene.visitors), ['guest', 'observer'])
 		assert.deepStrictEqual(idsOf(scene.bots), ['server-alpha', 'server-beta'])
 
-		yield* presence.move({color: '#da702c', id: 'guest', x: 0.2, y: 0.3})
+		yield* presence.move({color: '#da702c', id: VisitorId.make('guest'), x: 0.2, y: 0.3})
 		yield* until(guestAt(0.2, 0.3))
 
 		const secondTab = yield* watch('guest')
 		yield* until(guestAt(0.5, 0.5))
 		yield* Fiber.interrupt(firstTab)
-		yield* presence.move({color: '#da702c', id: 'guest', x: 0.7, y: 0.7})
+		yield* presence.move({color: '#da702c', id: VisitorId.make('guest'), x: 0.7, y: 0.7})
 		yield* until(guestAt(0.7, 0.7))
 
 		yield* Fiber.interrupt(secondTab)

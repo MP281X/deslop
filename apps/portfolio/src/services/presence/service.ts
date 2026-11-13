@@ -1,15 +1,29 @@
-import {Array, Clock, Context, Effect, Layer, Number, Option, Record, Schedule, Schema, Stream, pipe} from 'effect'
+import {
+	Array,
+	Context,
+	DateTime,
+	Duration,
+	Effect,
+	Layer,
+	Number,
+	Option,
+	Record,
+	Schedule,
+	Schema,
+	Stream,
+	pipe
+} from 'effect'
 
 import {Machine} from '@typeonce/effect-machine'
 
 import {hasMeaningfulMove, removePortfolioVisitor, upsertPortfolioVisitor} from '#lib/portfolio.ts'
 import type {PortfolioScene} from '#services/presence/schema.ts'
-import {PortfolioColor, PortfolioVisitor} from '#services/presence/schema.ts'
+import {PortfolioColor, PortfolioVisitor, VisitorId} from '#services/presence/schema.ts'
 
 const SERVER_BOTS = [
 	{
 		color: PortfolioColor.literals[3],
-		id: 'server-alpha',
+		id: VisitorId.make('server-alpha'),
 		name: 'server-alpha',
 		xFreq: 0.47,
 		xPhase: 0,
@@ -18,7 +32,7 @@ const SERVER_BOTS = [
 	},
 	{
 		color: PortfolioColor.literals[5],
-		id: 'server-beta',
+		id: VisitorId.make('server-beta'),
 		name: 'server-beta',
 		xFreq: 0.83,
 		xPhase: Math.PI,
@@ -37,14 +51,14 @@ export class Presence extends Context.Service<
 	static readonly layer = Layer.effect(
 		this,
 		Effect.gen(function* () {
-			const start = yield* Clock.currentTimeMillis
+			const start = yield* DateTime.now
 
 			// Open tabs per visitor id: a reload or a second tab shares one cursor, and the room empties with the last tab.
 			const room = Machine.make({
 				branches: {left: {empty: {target: 'Empty'}, open: {update: 'Occupied'}}},
 				events: Machine.events({
 					Joined: {visitor: PortfolioVisitor},
-					Left: {id: Schema.String},
+					Left: {id: VisitorId},
 					Moved: {
 						color: PortfolioVisitor.fields.color,
 						id: PortfolioVisitor.fields.id,
@@ -58,7 +72,7 @@ export class Presence extends Context.Service<
 						Occupied: {
 							fields: {
 								bots: Schema.Array(PortfolioVisitor),
-								tabs: Schema.Record(Schema.String, Schema.Int),
+								tabs: Schema.Record(VisitorId, Schema.Int),
 								visitors: Schema.Array(PortfolioVisitor)
 							}
 						}
@@ -66,20 +80,20 @@ export class Presence extends Context.Service<
 				}),
 				streams: {
 					wander: Stream.fromEffectSchedule(
-						Effect.map(Clock.currentTimeMillis, now =>
+						Effect.map(DateTime.now, now =>
 							Array.map(SERVER_BOTS, bot =>
 								PortfolioVisitor.make({
 									color: bot.color,
 									id: bot.id,
 									name: bot.name,
-									x: Number.clamp(0.5 + 0.4 * Math.sin(((now - start) / 1000) * bot.xFreq + bot.xPhase), {
-										maximum: 0.995,
-										minimum: 0.005
-									}),
-									y: Number.clamp(0.5 + 0.4 * Math.cos(((now - start) / 1000) * bot.yFreq + bot.yPhase), {
-										maximum: 0.995,
-										minimum: 0.005
-									})
+									x: Number.clamp(
+										0.5 + 0.4 * Math.sin(Duration.toSeconds(DateTime.distance(start, now)) * bot.xFreq + bot.xPhase),
+										{maximum: 0.995, minimum: 0.005}
+									),
+									y: Number.clamp(
+										0.5 + 0.4 * Math.cos(Duration.toSeconds(DateTime.distance(start, now)) * bot.yFreq + bot.yPhase),
+										{maximum: 0.995, minimum: 0.005}
+									)
 								})
 							)
 						),
