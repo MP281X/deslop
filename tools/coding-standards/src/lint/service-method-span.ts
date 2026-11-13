@@ -3,31 +3,111 @@ import {Array, Option, pipe} from 'effect'
 import {defineRule} from 'vite-plus/lint/plugins'
 import type {Context, ESTree} from 'vite-plus/lint/plugins'
 
-import {importedMember, memberName, variableFromScope} from '#lib/ast.ts'
+import {
+	containsNode,
+	effectImport,
+	effectMethod,
+	importedMember,
+	isFunction,
+	isImportBinding,
+	memberName,
+	resolveBinding
+} from '#lib/ast.ts'
 
-function untraced(context: Context, value: ESTree.Node) {
-	return pipe(
-		value,
-		Option.liftPredicate(node => node.type === 'Identifier'),
-		Option.match({
-			onNone: () => Option.some(value),
-			onSome: identifier =>
-				pipe(
-					variableFromScope({name: identifier.name, scope: context.sourceCode.getScope(identifier)}),
-					Option.flatMap(variable => Array.findFirst(variable.defs, definition => definition.type === 'Variable')),
-					Option.flatMap(definition => {
-						if (definition.node.type !== 'VariableDeclarator') return Option.none()
-						if (definition.node.init === null) return Option.none()
-						return Option.some<ESTree.Node>(definition.node.init)
-					})
-				)
-		}),
-		Option.filter(node => node.type === 'CallExpression'),
-		Option.map(node => node.callee),
-		Option.filter(callee => importedMember({context, importedName: 'Effect', node: callee, propertyName: 'fnUntraced'}))
-	)
+// These constructors and fully applied combinators return an Effect, unlike predicates, runners and curried combinators.
+function effectCall(context: Context, node: ESTree.Node, inPipe: boolean) {
+	if (node.type === 'MemberExpression') {
+		return importedMember({context, importedName: 'Effect', node, propertyName: 'void'})
+	}
+	if (node.type !== 'CallExpression') return false
+	return Option.exists(effectMethod({context, node}), method => {
+		if (
+			Array.contains(
+				['gen', 'succeed', 'fail', 'die', 'sync', 'suspend', 'try', 'promise', 'tryPromise', 'sleep', 'all'],
+				method
+			)
+		) {
+			return Array.isReadonlyArrayNonEmpty(node.arguments)
+		}
+		if (Array.contains(['map', 'flatMap', 'tap', 'as', 'andThen', 'catch', 'mapError', 'forEach'], method)) {
+			return inPipe || node.arguments.length >= 2
+		}
+		return method === 'asVoid' && (inPipe || Array.isReadonlyArrayNonEmpty(node.arguments))
+	})
 }
 
+function returnsEffect(context: Context, value: ESTree.Node) {
+	const node = resolveBinding(context, value)
+	if (effectCall(context, node, false)) return true
+	if (
+		node.type !== 'CallExpression' ||
+		node.callee.type !== 'Identifier' ||
+		!isImportBinding({context, importedName: 'pipe', node: node.callee, source: 'effect'})
+	)
+		return false
+	const last = Array.last(node.arguments)
+	if (
+		Option.exists(
+			last,
+			step => step.type === 'CallExpression' && Option.contains(effectMethod({context, node: step}), 'withSpan')
+		)
+	) {
+		return false
+	}
+	return Option.exists(last, step => effectCall(context, step, true))
+}
+
+function untraced(context: Context, value: ESTree.Node) {
+	const node = resolveBinding(context, value)
+	if (node.type === 'CallExpression' && node.callee.type === 'MemberExpression') {
+		if (importedMember({context, importedName: 'Effect', node: node.callee, propertyName: 'fnUntraced'}))
+			return Option.some(node.callee)
+		if (
+			importedMember({context, importedName: 'Effect', node: node.callee, propertyName: 'fn'}) &&
+			Option.exists(Array.head(node.arguments), isFunction)
+		)
+			return Option.some(node.callee)
+	}
+	return Option.none<ESTree.MemberExpression>()
+}
+
+function effectArrow(context: Context, value: ESTree.Node) {
+	const node = resolveBinding(context, value)
+	if (node.type !== 'ArrowFunctionExpression') return false
+	if (node.body.type !== 'BlockStatement') return returnsEffect(context, node.body)
+	return containsNode({
+		context,
+		matches: child =>
+			child.type === 'ReturnStatement' && child.argument !== null && returnsEffect(context, child.argument),
+		node: node.body,
+		throughFunctions: false
+	})
+}
+
+// Follow syntax, not a fixed parent depth: wrappers around a visible Effect.gen do not hide its factory.
+function makeProperty(node: ESTree.Node): boolean {
+	if (node.type === 'Property' || node.type === 'PropertyDefinition') {
+		return node.key.type === 'Identifier' && node.key.name === 'make'
+	}
+	if (node.type !== 'CallExpression' && node.type !== 'MemberExpression') return false
+	return makeProperty(node.parent)
+}
+
+// Review owns opaque make wrappers without a visible Effect.gen factory.
+function factoryReturn(context: Context, node: ESTree.Node): boolean {
+	if (node.parent === null) return false
+	if (isFunction(node)) {
+		return (
+			node.parent.type === 'CallExpression' &&
+			node.parent.callee.type !== 'Super' &&
+			importedMember({context, importedName: 'Effect', node: node.parent.callee, propertyName: 'gen'}) &&
+			makeProperty(node.parent.parent)
+		)
+	}
+	return factoryReturn(context, node.parent)
+}
+
+// Review owns service objects built outside the class, such as AiProxy's module-level make.
 function serviceClass(context: Context, node: ESTree.Node): Option.Option<ESTree.Class> {
 	if (node.type === 'ClassDeclaration') {
 		function serviceBase(base: ESTree.Expression): boolean {
@@ -43,7 +123,7 @@ function serviceClass(context: Context, node: ESTree.Node): Option.Option<ESTree
 	return serviceClass(context, node.parent)
 }
 
-// Native effectFnOpportunity does not require public methods to trace; effect and stream values need review.
+// Native effectFnOpportunity does not require public methods to trace; effect and stream values stay with review.
 export const serviceMethodSpan = defineRule({
 	create: context => ({
 		Property: node => {
@@ -60,10 +140,8 @@ export const serviceMethodSpan = defineRule({
 				return
 			}
 			const method = node.key.name
-			Option.map(Option.all([serviceClass(context, node), untraced(context, node.value)]), pair => {
-				const service = pair[0]
-				const callee = pair[1]
-				if (service.id === null || callee.type !== 'MemberExpression') return
+			Option.map(serviceClass(context, node), service => {
+				if (service.id === null) return
 				if (node.parent.parent?.type === 'CallExpression' && node.parent.parent.callee.type === 'MemberExpression') {
 					if (
 						node.parent.parent.callee.object.type !== 'ThisExpression' &&
@@ -76,14 +154,32 @@ export const serviceMethodSpan = defineRule({
 					}
 				}
 				if (node.parent.parent?.type === 'ReturnStatement') {
-					const factory = node.parent.parent.parent.parent?.parent?.parent
-					if (factory?.type !== 'Property' || factory.key.type !== 'Identifier' || factory.key.name !== 'make') return
+					if (!factoryReturn(context, node.parent.parent)) return
 				}
 				const name = `${service.id.name}.${method}`
-				context.report({
-					fix: fixer => fixer.replaceText(callee, `${context.sourceCode.getText(callee.object)}.fn('${name}')`),
-					message: `Trace this public service method with Effect.fn('${name}').`,
-					node: node.key
+				Option.match(untraced(context, node.value), {
+					onNone: () => {
+						if (!effectArrow(context, node.value)) return
+						context.report({
+							fix: fixer =>
+								pipe(
+									effectImport({context, fixer, name: 'Effect', node}),
+									Option.map(imports => [
+										...imports,
+										fixer.replaceText(node.value, `Effect.fn('${name}')(${context.sourceCode.getText(node.value)})`)
+									]),
+									Option.getOrUndefined
+								),
+							message: `Trace this public service method with Effect.fn('${name}').`,
+							node: node.key
+						})
+					},
+					onSome: callee =>
+						context.report({
+							fix: fixer => fixer.replaceText(callee, `${context.sourceCode.getText(callee.object)}.fn('${name}')`),
+							message: `Trace this public service method with Effect.fn('${name}').`,
+							node: node.key
+						})
 				})
 			})
 		}

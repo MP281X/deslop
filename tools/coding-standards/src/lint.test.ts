@@ -115,10 +115,10 @@ function customCodes(output: OxlintOutput) {
 describe('deslop Oxlint plugin', {concurrent: true}, () => {
 	it.layer(NodeServices.layer)(testApi => {
 		testApi.effect(
-			'traces public service generators without tracing callback properties',
+			'traces statically owned service methods without tracing callback properties',
 			Effect.fnUntraced(function* () {
 				const source = [
-					"import {Context, Effect} from 'effect'",
+					"import {Context, Effect, pipe} from 'effect'",
 					'',
 					'class Notes extends Context.Service<Notes>()("Notes", {make: Effect.gen(function* () {',
 					'const helper = {read: Effect.fnUntraced(function* () { return 1 })}',
@@ -127,7 +127,37 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 					'const find = Effect.fnUntraced(function* () { return 3 })',
 					'return {alias: find, read: Effect.fnUntraced(function* () { return 1 }), write: Effect.fn("Notes.write")(function* () { return 2 })} // reported',
 					'})}) {}',
-					'function unrelated() { return {read: Effect.fnUntraced(function* () { return 1 })} }'
+					'function unrelated() { return {read: Effect.fnUntraced(function* () { return 1 })} }',
+					'class Sessions extends Context.Service<Sessions>()("Sessions") {',
+					'static layer = Effect.gen(function* () { return Sessions.of({',
+					'read: Effect.fnUntraced(function* () { return 1 }), // reported',
+					'write: Effect.fn(function* () { return 2 }), // reported',
+					'arrow: () => Effect.succeed(3), // reported',
+					'block: () => { return Effect.sync(() => 4) }, // reported',
+					'pipeline: () => pipe(Effect.succeed(1), Effect.map(value => value + 1)), // reported',
+					'named: Effect.fn("Sessions.named")(function* () { return 5 }),',
+					'spanned: () => Effect.withSpan(Effect.succeed(6), "Sessions.spanned"),',
+					'tracedPipe: () => pipe(Effect.succeed(1), Effect.withSpan("Sessions.tracedPipe")),',
+					'plain: () => 7,',
+					'predicate: value => Effect.isEffect(value),',
+					'callback: () => Effect.map(value => value + 1)',
+					'}) })',
+					'}',
+					'class Apps extends Context.Service<Apps>()("Apps", {make: pipe(Effect.gen(function* () {',
+					'const scoped = Apps.of({read: () => Effect.succeed(1)}) // reported',
+					'const traced = Apps.of({read: Effect.fn("Apps.read")(() => Effect.succeed(1))})',
+					'function nested() { return {read: () => Effect.succeed(1)} }',
+					'return {read: Effect.fn(function* () { return 1 })} // reported',
+					'}), Effect.map(value => value))}) {}',
+					'class People extends Context.Service<People>()("People") {',
+					'static layer = Effect.gen(function* () { return People.of({',
+					'read: Effect.fn("People.read")(() => Effect.succeed(1)),',
+					'write: () => Effect.sync(() => 2) // reported',
+					'}) })',
+					'}',
+					'const outside = Effect.gen(function* () { return {read: () => Effect.succeed(1)} })',
+					'class External extends Context.Service<External>()("External", {make: outside}) {}',
+					'class Opaque extends Context.Service<Opaque>()("Opaque", {make: wrap(() => ({read: () => Effect.succeed(1)}))}) {}'
 				]
 				const result = yield* lintSource({'services/notes/service.ts': Array.join(source, '\n')})
 				assert.deepStrictEqual(
@@ -137,6 +167,9 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 				const fixed = yield* lintSource({'services/notes/service.ts': Array.join(source, '\n')}, ['--fix'])
 				assert.include(fixed.sources[0] ?? '', "Effect.fn('Notes.read')")
 				assert.include(fixed.sources[0] ?? '', "Effect.fn('Notes.alias')")
+				assert.include(fixed.sources[0] ?? '', "Effect.fn('Sessions.write')")
+				assert.include(fixed.sources[0] ?? '', "Effect.fn('Sessions.arrow')")
+				assert.include(fixed.sources[0] ?? '', "Effect.fn('Apps.read')")
 				assert.deepStrictEqual(reportedLines(fixed, 'service-method-span').reported, [])
 			})
 		)
