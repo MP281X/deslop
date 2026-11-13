@@ -3,7 +3,6 @@ import {Effect, Option, Stream} from 'effect'
 import {CurrentUser} from '@deslop/runtime/shared/auth'
 
 import {RpcContracts} from '#rpcs/contracts.ts'
-import {Apps} from '#services/apps/service.ts'
 import {Passkeys} from '#services/passkeys/service.ts'
 import {People} from '#services/people/service.ts'
 import {SignIns} from '#services/sign-ins/service.ts'
@@ -13,13 +12,11 @@ import {Tokens} from '#services/tokens/service.ts'
 
 export const RpcHandlers = RpcContracts.toLayer(
 	Effect.gen(function* () {
-		const apps = yield* Apps
 		const passkeys = yield* Passkeys
 		const people = yield* People
 		const signIns = yield* SignIns
 		const tokens = yield* Tokens
 		return RpcContracts.of({
-			'apps.watch': () => apps.watch,
 			'passkeys.add': Effect.fnUntraced(function* (input, options) {
 				yield* passkeys.add(input.response, {
 					from: originFrom(options.headers, Option.none()),

@@ -38,7 +38,7 @@ export const notesAtom = Atom.keepAlive(
 
 // The list replaces an item when its note changes, so the new item loads the note again.
 export const noteAtom = Atom.family((item: NoteItem) =>
-	RpcClient.runtime.atom(Effect.flatMap(RpcClient, client => client('notes.get', {id: item.id})))
+	RpcClient.runtime.atom(Effect.flatMap(RpcClient, client => client('notes.body', {id: item.id})))
 )
 
 export const queryAtom = Atom.make('')

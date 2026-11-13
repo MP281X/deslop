@@ -13,7 +13,7 @@
 					"apps/*/src/services/*/{schema.ts,lib/utils.ts,lib/page.ts}",
 					"apps/*/src/{rpcs,tools}/contracts.ts",
 					"apps/portfolio/src/lib/portfolio.ts",
-					"packages/runtime/src/shared/**"
+					"packages/*/src/shared/**"
 				]
 			},
 			{
@@ -27,7 +27,7 @@
 					"apps/portfolio/src/lib/profile.ts",
 					"apps/*/modules/native/index.ts",
 					"packages/components-*/src/**",
-					"packages/runtime/src/{client,web,mobile}/**"
+					"packages/*/src/{client,web,mobile}/**"
 				]
 			},
 			// Server layers point one way: the entry composes transports, transports call services, services build on shared code.
@@ -36,7 +36,7 @@
 			{
 				"name": "server",
 				// First match wins: schemas and pure helpers above stay shared; implementations default to server-only.
-				"patterns": ["apps/*/src/services/**", "packages/runtime/src/server/**"]
+				"patterns": ["apps/*/src/services/**", "packages/*/src/server/**"]
 			}
 		],
 		"rules": [

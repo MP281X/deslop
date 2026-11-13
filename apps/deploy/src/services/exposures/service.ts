@@ -202,16 +202,28 @@ export class Exposures extends Context.Service<Exposures>()('@deslop/deploy/serv
 					}
 					// Ownership is kept before an external process changes, so an interrupted apply stays inspectable and removable.
 					yield* asStorageDeployError(insertExposure(exposure))
-					if (exposure.kind === 'public') {
-						yield* caddyApply([...current, exposure])
-					} else {
-						yield* run('tailscale', ['serve', '--bg', `--https=${exposure.port}`, `http://127.0.0.1:${exposure.port}`])
-						if (!ownsMapping(yield* status, exposure)) {
-							return yield* DeployError.make({
-								message: 'Tailscale configured a different hostname or target; inspect before retrying'
+					yield* Effect.mapError(
+						Effect.gen(function* () {
+							if (exposure.kind === 'public') {
+								yield* caddyApply([...current, exposure])
+							} else {
+								yield* run('tailscale', [
+									'serve',
+									'--bg',
+									`--https=${exposure.port}`,
+									`http://127.0.0.1:${exposure.port}`
+								])
+								if (!ownsMapping(yield* status, exposure)) {
+									return yield* DeployError.make({message: 'Tailscale configured a different hostname or target'})
+								}
+							}
+						}),
+						cause =>
+							DeployError.make({
+								cause,
+								message: `The owned exposure was saved, but HTTPS setup did not finish. Inspect it before retrying. ${cause.message}`
 							})
-						}
-					}
+					)
 					return exposureUrl(exposure)
 				},
 				Effect.scoped,
@@ -245,7 +257,13 @@ export class Exposures extends Context.Service<Exposures>()('@deslop/deploy/serv
 				},
 				Effect.scoped,
 				Semaphore.withPermit(lock),
-				asDeployError
+				asDeployError,
+				Effect.mapError(cause =>
+					DeployError.make({
+						cause,
+						message: `The ownership record was not removed; the external mapping may have changed. ${cause.message}`
+					})
+				)
 			),
 			items: pipe(
 				owned,

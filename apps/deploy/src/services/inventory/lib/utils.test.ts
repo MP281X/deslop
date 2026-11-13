@@ -12,8 +12,10 @@ import {
 import {InventoryItem, WorkerId, WorkerList} from '#services/inventory/schema.ts'
 
 const LISTENER = {
+	active: false,
 	address: '127.0.0.1:5173',
 	detail: '127.0.0.1:5173 · node',
+	health: 'quiet',
 	http: true,
 	id: 'dev:port:5173',
 	kind: 'port',
@@ -21,6 +23,7 @@ const LISTENER = {
 	port: 5173,
 	process: 'fixture',
 	protocol: 'tcp',
+	running: false,
 	state: 'LISTEN',
 	url: '',
 	worker: 'dev'
@@ -123,13 +126,12 @@ it('uses concise display names without changing service/container identifiers', 
 	)
 })
 
-it('keeps application listeners but excludes non-loopback, UDP, stale and privileged targets from publishing', () => {
+it('keeps application listeners but excludes non-loopback, UDP and privileged targets from publishing', () => {
 	assert.lengthOf(availablePorts(workloads(Schema.decodeSync(Schema.Array(InventoryItem))([LISTENER]))), 1)
 	for (const change of [
 		{protocol: 'udp' as const},
 		{address: '100.68.201.107:5173'},
 		{address: '[::1]:5173'},
-		{state: 'stale · LISTEN'},
 		{port: 443}
 	]) {
 		assert.isEmpty(
@@ -146,7 +148,6 @@ it('keeps app activity and failures without nameless listeners or ordinary syste
 	assert.isTrue(important(LISTENER))
 	assert.isFalse(important({...LISTENER, process: ''}))
 	assert.isFalse(important(Struct.omit(LISTENER, ['process'])))
-	assert.isTrue(important({...LISTENER, state: 'stale · LISTEN'}))
 	assert.isFalse(important({...LISTENER, process: 'ssh'}))
 	assert.isFalse(important({...LISTENER, process: 'cloudflared'}))
 	for (const name of ['deslop-scope.service', 'preview-example.service', 't3code.service']) {
@@ -165,9 +166,16 @@ it('keeps app activity and failures without nameless listeners or ordinary syste
 		})
 	)
 	assert.isTrue(
-		important({...LISTENER, kind: 'service', name: 'backup.service', scope: 'system', state: 'failed · failed'})
+		important({
+			...LISTENER,
+			health: 'error',
+			kind: 'service',
+			name: 'backup.service',
+			scope: 'system',
+			state: 'failed · failed'
+		})
 	)
-	assert.isTrue(important({...LISTENER, kind: 'container', state: 'stale · running'}))
+	assert.isTrue(important({...LISTENER, active: true, kind: 'container', state: 'running'}))
 	assert.isFalse(important({...LISTENER, detail: 'Exited (0)', kind: 'container', state: 'exited'}))
 	assert.isTrue(important({...LISTENER, kind: 'exposure', owned: true}))
 	assert.isFalse(important({...LISTENER, kind: 'exposure', owned: false}))
@@ -279,6 +287,7 @@ it('keeps internal container namespaces, different host addresses and UDP separa
 	]) {
 		const container = {
 			...LISTENER,
+			active: true,
 			bindings: [binding],
 			id: 'container',
 			kind: 'container' as const,
@@ -294,6 +303,7 @@ it('keeps internal container namespaces, different host addresses and UDP separa
 		Schema.decodeSync(Schema.Array(InventoryItem))([
 			{
 				...LISTENER,
+				active: true,
 				bindings: [{address: '0.0.0.0:5000', port: 5000, protocol: 'tcp'}],
 				id: 'container',
 				kind: 'container',

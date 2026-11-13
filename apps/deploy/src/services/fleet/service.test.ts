@@ -21,6 +21,7 @@ import {
 } from 'effect'
 
 import {HttpRouter, HttpServer} from 'effect/http'
+import {Reactivity} from 'effect/reactivity'
 import {TestClock} from 'effect/testing'
 
 import {Auth} from '@deslop/runtime/server/auth'
@@ -36,29 +37,26 @@ import {MachineHistory} from '#services/metrics/schema.ts'
 import {Metrics} from '#services/metrics/service.ts'
 
 it.layer(Layer.mergeAll(NodeServices.layer, NodeHttpClient.layerFetch, NodeCrypto.layer))('Worker RPC', test => {
-	test.effect('merges one service view, keeps remote identity stable and marks failed snapshots stale', () =>
+	test.effect('shares a peer connection and leaves the last snapshot unchanged during outages', () =>
 		Effect.scoped(
 			Effect.gen(function* () {
 				const unavailable = yield* Ref.make(false)
 				const hanging = yield* Ref.make(false)
 				const entered = yield* Deferred.make<void>()
 				const item = yield* Schema.decodeEffect(InventoryItem)({
+					active: true,
 					detail: 'fixture',
+					health: 'quiet',
 					id: 'worker:user:scope.service',
 					kind: 'service',
 					name: 'scope.service',
+					running: true,
 					state: 'active',
 					url: '',
 					worker: 'worker'
 				})
-				const snapshot = Snapshot.make({
-					items: [item],
-					sources: [],
-					time: DateTime.makeUnsafe(123),
-					workers: Option.none()
-				})
+				const snapshot = Snapshot.make({items: [item], sources: [], time: DateTime.makeUnsafe(123), workers: []})
 				const history = yield* Schema.decodeEffect(MachineHistory)({
-					cpuModel: 'Fixture CPU',
 					disks: [],
 					error: '',
 					load: [],
@@ -68,12 +66,16 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeHttpClient.layerFetch, NodeCrypt
 					worker: 'worker'
 				})
 				const group = RpcContracts.omit(
+					'exposures.apply',
+					'exposures.remove',
+					'inventory.start',
 					'inventory.watch',
 					'metrics.watch',
 					'exposures.expose',
 					'exposures.hide',
 					'inventory.run'
 				)
+				const upgrades = {count: 0}
 				const server = yield* Layer.build(
 					pipe(
 						HttpRouter.serve(
@@ -112,7 +114,18 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeHttpClient.layerFetch, NodeCrypt
 							)
 						),
 						Layer.provide(layerServerProtocol),
-						Layer.provideMerge(NodeHttpServer.layer(createServer, {host: '127.0.0.1', port: 0}))
+						Layer.provideMerge(
+							NodeHttpServer.layer(
+								() => {
+									const http = createServer()
+									http.on('upgrade', () => {
+										upgrades.count += 1
+									})
+									return http
+								},
+								{host: '127.0.0.1', port: 0}
+							)
+						)
 					)
 				)
 				const url = HttpServer.formatAddress(Context.get(server, HttpServer.HttpServer).address)
@@ -134,8 +147,11 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeHttpClient.layerFetch, NodeCrypt
 								),
 								Layer.provide(
 									Layer.succeed(Inventory, {
+										refresh: Effect.void,
 										run: () => Effect.fail(DeployError.make({message: 'read only'})),
-										snapshot: Effect.succeed(yield* Schema.decodeEffect(Snapshot)({items: [], sources: [], time: 0}))
+										snapshot: Effect.succeed(
+											yield* Schema.decodeEffect(Snapshot)({items: [], sources: [], time: 0, workers: []})
+										)
 									})
 								),
 								Layer.provide(
@@ -147,7 +163,8 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeHttpClient.layerFetch, NodeCrypt
 								),
 								Layer.provide(
 									ConfigProvider.layer(ConfigProvider.fromUnknown({DEPLOY_KEY: key, DEPLOY_WORKERS: `desktop=${url}`}))
-								)
+								),
+								Layer.provide(Reactivity.layer)
 							)
 						),
 						Fleet
@@ -156,38 +173,36 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeHttpClient.layerFetch, NodeCrypt
 				const fleet = yield* fleetWith('shared-key')
 				const current = yield* fleet.snapshot
 				assert.deepStrictEqual((yield* Schema.encodeEffect(Snapshot)(current)).workers, ['desktop'])
-				assert.strictEqual(current.items[0]?.id, 'remote:desktop:worker:user:scope.service')
+				assert.strictEqual(current.items[0]?.id, 'desktop:worker:user:scope.service')
 				assert.strictEqual(current.items[0]?.worker, 'desktop')
 				const cold = yield* fleet.current({minutes: Duration.minutes(60)})
 				assert.isTrue(Option.getOrThrow(Array.get(cold, 1)).stale)
 				assert.isEmpty(Option.getOrThrow(Array.get(cold, 1)).samples)
-				// A worker with no cached history has no cpuModel to name, and the metrics response still encodes.
+				// An offline worker's empty history still encodes.
 				assert.doesNotThrow(() => {
 					Schema.encodeSync(Schema.Array(MachineHistory))(cold)
 				})
 				const currentMetrics = yield* fleet.metrics({minutes: Duration.minutes(60)})
-				const immediate = yield* fleet.current({minutes: Duration.minutes(60)})
-				assert.strictEqual(Option.getOrThrow(Array.get(immediate, 1)).worker, 'desktop')
-				assert.deepStrictEqual(Option.getOrThrow(Array.get(immediate, 1)).cpuModel, Option.some('Fixture CPU'))
+				assert.strictEqual(
+					Option.getOrThrow(Array.get(yield* fleet.current({minutes: Duration.minutes(60)}), 1)).worker,
+					'desktop'
+				)
 				assert.strictEqual(currentMetrics[1]?.worker, 'desktop')
-				assert.deepStrictEqual(currentMetrics[1]?.cpuModel, Option.some('Fixture CPU'))
+				assert.strictEqual(upgrades.count, 1)
 				yield* Ref.set(hanging, true)
 				const pending = yield* Effect.forkScoped(fleet.metrics({minutes: Duration.minutes(60)}))
 				yield* Deferred.await(entered)
 				yield* TestClock.adjust('2 seconds')
-				const timedOut = yield* Fiber.join(pending)
-				assert.isTrue(Option.getOrThrow(Array.get(timedOut, 1)).stale)
-				assert.deepStrictEqual(Option.getOrThrow(Array.get(timedOut, 1)).cpuModel, Option.some('Fixture CPU'))
+				assert.isTrue(Option.getOrThrow(Array.get(yield* Fiber.join(pending), 1)).stale)
 				yield* Ref.set(hanging, false)
 				yield* Ref.set(unavailable, true)
-				// A worker that failed before its first sample has no cpuModel to name, and the response still encodes.
+				// A worker that failed before its first sample still encodes.
 				const uncached = yield* (yield* fleetWith('shared-key')).metrics({minutes: Duration.minutes(60)})
 				assert.doesNotThrow(() => {
 					Schema.encodeSync(Schema.Array(MachineHistory))(uncached)
 				})
 				const staleMetrics = yield* fleet.metrics({minutes: Duration.minutes(60)})
 				assert.isTrue(staleMetrics[1]?.stale)
-				assert.deepStrictEqual(staleMetrics[1].cpuModel, Option.some('Fixture CPU'))
 				assert.lengthOf(staleMetrics[1].samples, 1)
 				assert.include(Option.getOrThrow(staleMetrics[1].error), 'worker unavailable')
 				yield* TestClock.adjust('2 hours')
@@ -198,7 +213,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeHttpClient.layerFetch, NodeCrypt
 				)
 				const stale = yield* fleet.snapshot
 				assert.strictEqual(stale.items[0]?.id, current.items[0]?.id)
-				assert.strictEqual(stale.items[0]?.state, 'stale · active')
+				assert.strictEqual(stale.items[0]?.state, 'active')
 				assert.strictEqual(stale.sources[0]?.name, 'desktop · Snapshot')
 				assert.include(Option.getOrThrow(stale.sources[0]?.error ?? Option.none()), 'worker unavailable')
 			})

@@ -71,7 +71,6 @@ export class Metrics extends Context.Service<Metrics>()('@deslop/deploy/services
 		const fs = yield* FileSystem.FileSystem
 		const sql = yield* SqlClient.SqlClient
 		const worker = yield* Schema.decodeEffect(WorkerId)(hostname())
-		const cpuModel = Option.map(Array.head(cpus()), cpu => String.trim(cpu.model))
 
 		// The stored point of each series that a measurement at this time joins.
 		const listBuckets = SqlSchema.findAll({
@@ -81,7 +80,7 @@ export class Metrics extends Context.Service<Metrics>()('@deslop/deploy/services
 				sql`SELECT * FROM ${sql(Sample.table)} WHERE ${sql.or(
 					Array.map(Record.values(SERIES), spacing => {
 						const step = Duration.toMillis(spacing)
-						return sql`(step = ${step} AND since >= ${Math.floor(time / step) * step})`
+						return sql`(step = ${step} AND since >= ${Math.floor(time / step) * step} AND since < ${(Math.floor(time / step) + 1) * step})`
 					})
 				)}`
 		})
@@ -303,10 +302,9 @@ export class Metrics extends Context.Service<Metrics>()('@deslop/deploy/services
 		yield* pipe(refreshStorage, Effect.schedule(Schedule.spaced(Duration.seconds(30))), Effect.forkScoped)
 		// The shortest series keeps a minute, so expired points go every minute.
 		yield* pipe(
-			Effect.sleep(Duration.minutes(1)),
-			Effect.andThen(prune),
+			prune,
 			Effect.ignore({log: 'Error', message: 'Expired resource history could not be deleted'}),
-			Effect.forever,
+			Effect.schedule(Schedule.spaced(Duration.minutes(1))),
 			Effect.forkScoped
 		)
 
@@ -321,7 +319,6 @@ export class Metrics extends Context.Service<Metrics>()('@deslop/deploy/services
 				const now = yield* Ref.get(latest)
 				// Built from values the model just decoded, so no sample is checked twice; the RPC encodes it against the schema.
 				return {
-					cpuModel,
 					disks: now.disks,
 					error: yield* Ref.get(failure),
 					load: now.load,

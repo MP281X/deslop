@@ -79,7 +79,7 @@ function scheduleOf(booking: Booking) {
 
 // The schedule and the gate or platform it leaves from, each shown once.
 function lineOf(booking: Booking, status: ReturnType<typeof statusOf>) {
-	const where = Option.match(status.where, {onNone: () => '', onSome: found => found.text})
+	const where = Option.getOrElse(status.where, () => '')
 	return pipe([scheduleOf(booking), where], Array.filter(String.isNonEmpty), Array.join(' · '))
 }
 

@@ -62,15 +62,9 @@ function timeLimit(duration: Duration.Input, message: string, reason?: NotesErro
 function readText(characters: number) {
 	return (response: HttpClientResponse.HttpClientResponse) =>
 		pipe(
-			response.stream,
+			Stream.limitBytes(response.stream, ByteSize.bytes(characters), () => Stream.empty),
 			Stream.decodeText,
-			Stream.scan(
-				() => '',
-				(total: string, chunk: string) => total + chunk
-			),
-			Stream.takeUntil(total => String.length(total) >= characters),
-			Stream.runLast,
-			Effect.map(Option.getOrElse(() => ''))
+			Stream.mkString
 		)
 }
 

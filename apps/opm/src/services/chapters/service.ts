@@ -46,7 +46,6 @@ import {
 	seriesOf,
 	SERIES_NAMES
 } from '#services/chapters/lib/utils.ts'
-import type {ChaptersEvent, ReadingUpdate} from '#services/chapters/schema.ts'
 import {
 	Chapter,
 	ChapterNumber,
@@ -58,6 +57,9 @@ import {
 	PushTickets,
 	Series
 } from '#services/chapters/schema.ts'
+import {ReadingChapter} from '#services/reading/schema.ts'
+import type {ChaptersEvent} from '#services/reading/schema.ts'
+import {Reading} from '#services/reading/service.ts'
 
 // Anonymous search and JSON are refused. Recent-post Atom still answers; a release can appear on either subreddit only.
 const FEEDS = [
@@ -94,7 +96,7 @@ declare module 'effect/reactivity/Reactivity' {
 }
 
 // The chapters a list read again holds with other values than before; a row read again is a new object, so values decide.
-function changed(chapters: readonly Chapter[], before: readonly Chapter[]) {
+function changed(chapters: readonly ReadingChapter[], before: readonly ReadingChapter[]) {
 	const previous = HashMap.fromIterable(Array.map(before, chapter => [keyOf(chapter), chapter] as const))
 	return Array.filter(
 		chapters,
@@ -145,16 +147,19 @@ export class Chapters extends Context.Service<Chapters>()('@deslop/opm/services/
 		const sql = yield* SqlClient.SqlClient
 		const client = yield* HttpClient.HttpClient
 		const exit = yield* Config.option(Config.String('OPM_PROXY'))
-		// Writes tell this Reactivity of their commits, so callers need none of their own.
-		const withReactivity = Effect.provideService(Reactivity.Reactivity, yield* Reactivity.Reactivity)
 		// Dead reader links are known only to this run: after a restart each answers its 404 once more.
 		const deadLinks = yield* Ref.make(Array.empty<DeadLink>())
 
 		const listChapters = SqlSchema.findAll({
 			Request: Schema.Void,
-			Result: Chapter,
+			Result: ReadingChapter,
 			// Newest first, as the iPhone lists them.
-			execute: () => sql`SELECT * FROM ${sql(Chapter.table)} ORDER BY number DESC, series`
+			execute: () => sql`
+				SELECT chapters.*, CASE WHEN reading.number IS NOT NULL
+					THEN json_object('done', json(CASE WHEN reading.done THEN 'true' ELSE 'false' END), 'page', reading.page)
+					END AS reading
+				FROM chapters LEFT JOIN reading USING (series, number) ORDER BY number DESC, series
+			`
 		})
 		const insertChapter = SqlSchema.void({
 			Request: Chapter.insert,
@@ -169,13 +174,6 @@ export class Chapters extends Context.Service<Chapters>()('@deslop/opm/services/
 		})
 		const announce = SqlSchema.void({
 			Request: Chapter.update.mapFields(Struct.pick(['notified', 'number', 'series'])),
-			execute: row => sql`
-				UPDATE ${sql(Chapter.table)} SET ${sql.update(row, ['number', 'series'])}
-				WHERE series = ${row.series} AND number = ${row.number}
-			`
-		})
-		const place = SqlSchema.void({
-			Request: Chapter.update.mapFields(Struct.pick(['number', 'reading', 'series'])),
 			execute: row => sql`
 				UPDATE ${sql(Chapter.table)} SET ${sql.update(row, ['number', 'series'])}
 				WHERE series = ${row.series} AND number = ${row.number}
@@ -216,7 +214,6 @@ export class Chapters extends Context.Service<Chapters>()('@deslop/opm/services/
 				number: post.number,
 				pages: yield* Effect.fromOption(pagesOf(answer, target.chapter)),
 				postedAt: Option.some(post.postedAt),
-				reading: Option.none(),
 				revisedAt: Option.none(),
 				series: post.series,
 				source: link,
@@ -494,10 +491,10 @@ export class Chapters extends Context.Service<Chapters>()('@deslop/opm/services/
 		return {
 			// What the iPhone watches: the whole list first, then only the chapters that changed, after each commit.
 			events: pipe(
-				sql.reactive(['chapters'], listChapters()),
+				sql.reactive(['chapters', 'reading'], listChapters()),
 				Stream.mapError(asStorageChaptersError),
 				Stream.mapAccum(
-					() => Option.none<readonly Chapter[]>(),
+					() => Option.none<readonly ReadingChapter[]>(),
 					(previous, current) =>
 						[
 							Option.some(current),
@@ -513,23 +510,6 @@ export class Chapters extends Context.Service<Chapters>()('@deslop/opm/services/
 				),
 				Stream.withSpan('Chapters.events', {attributes: {'rpc.stream': true}})
 			),
-			read: Effect.fn('Chapters.read')(function* (update: ReadingUpdate) {
-				yield* Effect.annotateCurrentSpan({
-					chapter: update.number,
-					done: update.done,
-					page: update.page,
-					series: update.series
-				})
-				yield* pipe(
-					place({
-						number: update.number,
-						reading: Option.some({done: update.done, page: update.page}),
-						series: update.series
-					}),
-					Reactivity.mutation(['chapters']),
-					asChaptersError
-				)
-			}, withReactivity),
 			register: Effect.fn('Chapters.register')(function* (device: typeof Device.insert.Type) {
 				yield* asChaptersError(insertDevice(device))
 			})
@@ -563,5 +543,9 @@ export class Chapters extends Context.Service<Chapters>()('@deslop/opm/services/
 		})
 	)
 
-	static readonly layer = Layer.provide(Layer.effect(this, this.make), this.migrations)
+	// The joined list can start only after Reading has moved its rows out of the catalogue's original table.
+	static readonly layer = Layer.provide(
+		Layer.effect(this, this.make),
+		Layer.provide(Reading.migrations, this.migrations)
+	)
 }

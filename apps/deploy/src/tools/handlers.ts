@@ -1,9 +1,11 @@
+import {hostname} from 'node:os'
+
 import {Array, Boolean, Effect, HashSet, Option, Order, String, Struct, pipe} from 'effect'
 
 import {Fleet} from '#services/fleet/service.ts'
 import {jobRequest, listApps, ownerNames} from '#services/inventory/lib/utils.ts'
-import {DeployError} from '#services/inventory/schema.ts'
-import type {ProcessSummary, Snapshot, WorkerInventory, WorkerId} from '#services/inventory/schema.ts'
+import {DeployError, WorkerId} from '#services/inventory/schema.ts'
+import type {ProcessSummary, Snapshot, WorkerInventory} from '#services/inventory/schema.ts'
 import {resourceHistory} from '#services/metrics/lib/utils.ts'
 import {ToolContracts} from '#tools/contracts.ts'
 
@@ -161,7 +163,9 @@ export const ToolHandlers = ToolContracts.toLayer(
 		ToolContracts.of({
 			create_exposure: Effect.fnUntraced(function* (input) {
 				yield* checkWorker(yield* fleet.snapshot, input.worker)
-				return {url: yield* fleet.expose({...Struct.omit(input, ['worker']), target: input.worker})}
+				return {
+					url: yield* fleet.expose({...input, worker: Option.getOrElse(input.worker, () => WorkerId.make(hostname()))})
+				}
 			}),
 			list_apps: Effect.fnUntraced(function* (input) {
 				const snapshot = yield* fleet.snapshot
@@ -190,7 +194,7 @@ export const ToolHandlers = ToolContracts.toLayer(
 			}),
 			remove_exposure: Effect.fnUntraced(function* (input) {
 				yield* checkWorker(yield* fleet.snapshot, input.worker)
-				yield* fleet.hide({name: input.name, target: input.worker})
+				yield* fleet.hide({name: input.name, worker: Option.getOrElse(input.worker, () => WorkerId.make(hostname()))})
 				return input
 			}),
 			run_job: Effect.fnUntraced(function* (input) {

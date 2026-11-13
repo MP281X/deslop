@@ -97,8 +97,6 @@ export const AUTH_URL = 'https://auth.mp281x.xyz'
 export const ISSUER_PATH = '/api/auth'
 export const ISSUER = `${AUTH_URL}${ISSUER_PATH}`
 
-export const APPS_PATH = '/api/apps'
-
 export const COOKIE = {httpOnly: true, path: '/', sameSite: 'lax', secure: true} as const
 
 export const SESSION_COOKIE = '__Host-session'

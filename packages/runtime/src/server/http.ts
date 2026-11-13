@@ -4,12 +4,10 @@ import {fileURLToPath} from 'node:url'
 
 import {NodeHttpServer} from '@effect/platform-node'
 
-import {Array, ByteSize, Config, Effect, FileSystem, Layer, Option, Path, Result, Schedule, String, pipe} from 'effect'
+import {Array, ByteSize, Config, Effect, FileSystem, Layer, Option, Path, Result, String, pipe} from 'effect'
 
 import {McpProtocol, McpServer} from 'effect/ai'
 import {
-	HttpClient,
-	HttpClientRequest,
 	HttpIncomingMessage,
 	HttpMiddleware,
 	HttpRouter,
@@ -23,7 +21,7 @@ import type {Rpc, RpcGroup} from 'effect/rpc'
 import {Auth, layerMcpAuth, localAuth} from '#server/auth.ts'
 import {layerStructuredTools} from '#server/mcp.ts'
 import {appName, packageMetadata} from '#server/package.ts'
-import {APPS_PATH, ISSUER_PATH, failureOptions} from '#shared/auth.ts'
+import {ISSUER_PATH, failureOptions} from '#shared/auth.ts'
 import {RpcStream, layerRpcStream} from '#shared/rpc.ts'
 import {
 	Account,
@@ -131,33 +129,6 @@ export const layerRoutes = HttpRouter.use(router =>
 				)
 			})
 		)
-	})
-)
-
-// An app signed in through Auth tells Auth where it runs once it listens, so Auth's app list needs no list of its own; Auth checks the claim against this app's `/api/runtime`.
-export const layerAnnounce = Layer.effectDiscard(
-	Effect.gen(function* () {
-		const origin = new URL(yield* Config.String('APP_URL')).origin
-		const client = pipe(
-			yield* HttpClient.HttpClient,
-			HttpClient.filterStatusOk,
-			HttpClient.timeout('10 seconds'),
-			// Auth may restart beside the app, but a permanent refusal will never list it.
-			HttpClient.retryTransient({schedule: Schedule.spaced('1 minute'), times: 60})
-		)
-		yield* Option.match(yield* Config.option(Config.String('AUTH_URL')), {
-			onNone: () => Effect.void,
-			onSome: Effect.fnUntraced(function* (issuer) {
-				yield* pipe(
-					HttpClientRequest.post(new URL(APPS_PATH, issuer).href),
-					HttpClientRequest.bodyJsonUnsafe({origin}),
-					client.execute,
-					Effect.delay('2 seconds'),
-					Effect.ignore({log: 'Warn', message: 'Auth did not list this app'}),
-					Effect.forkScoped
-				)
-			})
-		})
 	})
 )
 

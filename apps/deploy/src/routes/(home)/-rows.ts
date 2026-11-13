@@ -1,7 +1,7 @@
 import {Array, Boolean, DateTime, Duration, HashSet, Number, Option, Order, String, pipe} from 'effect'
 
 import {lowImpactIds} from '#routes/(home)/-usage.ts'
-import {dot, itemOwner, type Row, rowUsageOrder, sourceBelongsToWorker, status} from '#services/inventory/lib/utils.ts'
+import {itemOwner, type Row, rowUsageOrder, sourceBelongsToWorker} from '#services/inventory/lib/utils.ts'
 import type {AppId, WorkerId} from '#services/inventory/schema.ts'
 import {chartWindow} from '#services/metrics/lib/utils.ts'
 import type {MachineHistory} from '#services/metrics/schema.ts'
@@ -35,9 +35,8 @@ export function owner(row: Row) {
 
 // Failing rows first, then the apps by memory, then the jobs a timer starts.
 function rank(row: Row) {
-	const light = dot(row.item, status(row.item))
-	if (light === 'error') return 0
-	if (light === 'warning') return 1
+	if (row.item.health === 'error') return 0
+	if (row.item.health === 'warning') return 1
 	if (Option.contains(row.item.scheduled, true)) return 3
 	return 2
 }
@@ -56,10 +55,10 @@ export function impactGroups(rows: readonly Row[], history?: MachineHistory) {
 		onSome: lowImpactIds
 	})
 	const groups = Array.groupBy(rows, row =>
-		Boolean.match(
-			dot(row.item, status(row.item)) === 'quiet' && Option.exists(owner(row), id => HashSet.has(lowImpact, id)),
-			{onFalse: () => 'high' as const, onTrue: () => 'low' as const}
-		)
+		Boolean.match(row.item.health === 'quiet' && Option.exists(owner(row), id => HashSet.has(lowImpact, id)), {
+			onFalse: () => 'high' as const,
+			onTrue: () => 'low' as const
+		})
 	)
 	return {high: groups.high ?? [], low: groups.low ?? []}
 }

@@ -1,9 +1,9 @@
 import {useAtom, useAtomSet, useAtomValue} from '@effect/atom-react'
 
 import type {DateTime} from 'effect'
-import {Array, Boolean, Duration, Equal, HashSet, Number, Option, Order, Stream, String, pipe} from 'effect'
+import {Array, Boolean, Duration, Equal, HashSet, Number, Option, Order, Stream, pipe} from 'effect'
 
-import {AppWindowIcon, ClockIcon, GaugeIcon, PlayIcon, StackIcon} from '@phosphor-icons/react'
+import {AppWindowIcon, PlayIcon} from '@phosphor-icons/react'
 import {CatchBoundary} from '@tanstack/react-router'
 import {AsyncResult, Atom} from 'effect/reactivity'
 import {Suspense} from 'react'
@@ -11,7 +11,7 @@ import type {ReactNode} from 'react'
 
 import {cn} from '@deslop/components-web/classes'
 import {EmptyState, Loaded, ReadFailure} from '@deslop/components-web/fallbacks'
-import {ItemListHeading, RowsSkeleton} from '@deslop/components-web/item-list'
+import {RowsSkeleton} from '@deslop/components-web/item-list'
 import {ResultError} from '@deslop/components-web/result-error'
 import {StatusDot} from '@deslop/components-web/status-dot'
 import {Badge} from '@deslop/components-web/ui/badge'
@@ -24,7 +24,6 @@ import {inventoryAtom, openExposeAtom, runAtom} from '#lib/fleet.ts'
 import {ApplicationIcon} from '#routes/(home)/-marks.tsx'
 import {counted, host, impactGroups, middleEllipsis} from '#routes/(home)/-rows.ts'
 import {
-	dot,
 	failureAge,
 	nextRun,
 	reasonLine,
@@ -174,16 +173,13 @@ function AppRow(props: {
 }) {
 	const [runResult, run] = useAtom(runAtom(props.row.item.id))
 	const state = status(props.row.item)
-	const light = dot(props.row.item, state)
 	const scheduled = Option.contains(props.row.item.scheduled, true)
 	const reason = reasonOf(props.row.item)
 	const age = failureAge(props.row.item, props.now)
-	const running =
-		Option.isSome(String.match(/^(?:activating|deactivating|active · running)/u)(props.row.item.state)) ||
-		AsyncResult.isWaiting(runResult)
+	const running = props.row.item.running || AsyncResult.isWaiting(runResult)
 	const fullName = workloadName(props.row.item)
 	const name = Boolean.match(props.compact, {onFalse: () => fullName, onTrue: () => middleEllipsis(fullName)})
-	const failing = light === 'error' || light === 'warning'
+	const failing = props.row.item.health !== 'quiet'
 	const next = Boolean.match(running, {
 		onFalse: () =>
 			nextRun(
@@ -246,7 +242,7 @@ function AppRow(props: {
 								role="img"
 								className="flex size-3 shrink-0 items-center justify-center"
 							>
-								<StatusDot status={light} />
+								<StatusDot status={props.row.item.health} />
 							</span>
 						)}
 						{Boolean.match(scheduled, {
@@ -329,7 +325,6 @@ export function ListPane(props: {
 	)
 	return (
 		<div className={cn('flex min-h-0 flex-col', props.className)}>
-			<ItemListHeading icon={<StackIcon />}>Processes</ItemListHeading>
 			<Suspense
 				fallback={
 					<div className="min-h-0 flex-1 overflow-hidden">
@@ -352,9 +347,6 @@ export function ListPane(props: {
 										selectedId={props.selectedId}
 									/>
 								)}
-								{Array.isReadonlyArrayNonEmpty(groups.high) && Array.isReadonlyArrayNonEmpty(groups.low) && (
-									<ItemListHeading icon={<GaugeIcon />}>Low impact</ItemListHeading>
-								)}
 								{Array.isReadonlyArrayNonEmpty(groups.low) && (
 									<ListRows
 										compact={props.compact}
@@ -368,17 +360,14 @@ export function ListPane(props: {
 								{Boolean.match(Array.isReadonlyArrayNonEmpty(jobs), {
 									onFalse: () => null,
 									onTrue: () => (
-										<>
-											<ItemListHeading icon={<ClockIcon />}>Scheduled</ItemListHeading>
-											<ListRows
-												compact={props.compact}
-												free={props.free}
-												now={props.now}
-												onSelect={props.onSelect}
-												rows={jobs}
-												selectedId={props.selectedId}
-											/>
-										</>
+										<ListRows
+											compact={props.compact}
+											free={props.free}
+											now={props.now}
+											onSelect={props.onSelect}
+											rows={jobs}
+											selectedId={props.selectedId}
+										/>
 									)
 								})}
 							</ScrollArea>

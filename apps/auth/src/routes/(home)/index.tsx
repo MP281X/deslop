@@ -1,16 +1,17 @@
-import {useAtomMount, useAtomSet} from '@effect/atom-react'
+import {useAtomMount, useAtomSet, useAtomValue} from '@effect/atom-react'
 
 import {Boolean, Option, Predicate} from 'effect'
 
 import {CheckIcon, KeyIcon, XIcon} from '@phosphor-icons/react'
 import {createFileRoute, getRouteApi} from '@tanstack/react-router'
-import {MachineState} from '@typeonce/effect-machine-react'
+import {AsyncResult} from 'effect/reactivity'
 import {Suspense} from 'react'
 
 import {Field, FieldError} from '@deslop/components-web/ui/field'
 import {InputGroup, InputGroupAddon, InputGroupInput} from '@deslop/components-web/ui/input-group'
 
-import {codeAtom, consentAtom, linkedCodeAtom, signInLabel} from '#lib/auth.ts'
+import {codeAtom, codeViewAtom, consentAtom, linkedCodeAtom, signInLabel} from '#lib/auth.ts'
+import type {CodeView} from '#lib/auth.ts'
 import {SignInList, SignInRowsSkeleton} from '#lib/components.tsx'
 import {CODE_LENGTH, typedCode} from '#services/sign-ins/lib/utils.ts'
 import type {PendingAuthorization} from '#services/sign-ins/schema.ts'
@@ -96,13 +97,7 @@ function Enter(props: {
 	)
 }
 
-function Content(props: {
-	answered: Option.Option<Answer>
-	onType: (code: string) => void
-	pending: Option.Option<PendingAuthorization>
-	state: 'Checking' | 'Found' | 'Missing' | 'Typing' | {failed: string}
-	typed: string
-}) {
+function Content(props: CodeView & {onType: (code: string) => void}) {
 	return (
 		<>
 			<h1 className="sr-only">Auth</h1>
@@ -122,71 +117,10 @@ function SignInsRoute() {
 	function type(typed: string) {
 		send({_tag: 'Typed', typed})
 	}
-	return (
-		<>
-			<MachineState machine={codeAtom} path="Typing">
-				{typing => (
-					<Content
-						answered={typing.value.answered}
-						onType={type}
-						pending={Option.none()}
-						state="Typing"
-						typed={typing.value.typed}
-					/>
-				)}
-			</MachineState>
-			<MachineState machine={codeAtom} path="Code">
-				{code => (
-					<>
-						<MachineState machine={codeAtom} path="Code.Looking">
-							{() => (
-								<Content
-									answered={Option.none()}
-									onType={type}
-									pending={Option.none()}
-									state="Checking"
-									typed={code.value.code}
-								/>
-							)}
-						</MachineState>
-						<MachineState machine={codeAtom} path="Code.Found">
-							{found => (
-								<Content
-									answered={Option.none()}
-									onType={type}
-									pending={Option.some(found.value.request)}
-									state="Found"
-									typed={code.value.code}
-								/>
-							)}
-						</MachineState>
-						<MachineState machine={codeAtom} path="Code.Failed">
-							{failed => (
-								<Content
-									answered={Option.none()}
-									onType={type}
-									pending={Option.none()}
-									state={{failed: failed.value.message}}
-									typed={code.value.code}
-								/>
-							)}
-						</MachineState>
-						<MachineState machine={codeAtom} path="Code.Missing">
-							{() => (
-								<Content
-									answered={Option.none()}
-									onType={type}
-									pending={Option.none()}
-									state="Missing"
-									typed={code.value.code}
-								/>
-							)}
-						</MachineState>
-					</>
-				)}
-			</MachineState>
-		</>
-	)
+	return Option.match(AsyncResult.value(useAtomValue(codeViewAtom)), {
+		onNone: () => null,
+		onSome: view => <Content {...view} onType={type} />
+	})
 }
 
 export const Route = createFileRoute('/(home)/')({component: SignInsRoute})

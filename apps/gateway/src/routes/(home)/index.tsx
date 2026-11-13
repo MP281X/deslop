@@ -2,7 +2,7 @@ import {useAtom, useAtomSet, useAtomValue} from '@effect/atom-react'
 
 import {Array, Boolean, Number, Option, Order, Schema, String, pipe} from 'effect'
 
-import {CheckIcon, CopyIcon, HardDrivesIcon, KeyIcon, LinkIcon, WrenchIcon} from '@phosphor-icons/react'
+import {CheckIcon, CopyIcon, HardDrivesIcon, LinkIcon, WrenchIcon} from '@phosphor-icons/react'
 import {CatchBoundary, createFileRoute, getRouteApi} from '@tanstack/react-router'
 import {useMachineResult} from '@typeonce/effect-machine-react'
 import {AtomMachine} from '@typeonce/effect-machine/reactivity'
@@ -12,7 +12,7 @@ import {Suspense, useState} from 'react'
 import {AppBar, AppBarChoice} from '@deslop/components-web/app-bar'
 import {APP_HUES, appMarks} from '@deslop/components-web/apps'
 import {Loaded, ReadFailure} from '@deslop/components-web/fallbacks'
-import {ItemListHeading, RowsSkeleton} from '@deslop/components-web/item-list'
+import {RowsSkeleton} from '@deslop/components-web/item-list'
 import {Page} from '@deslop/components-web/page'
 import {StaleProblem} from '@deslop/components-web/problem'
 import {StatusDot} from '@deslop/components-web/status-dot'
@@ -30,7 +30,6 @@ import {
 	connectAtom,
 	copiedAtom,
 	copyAtom,
-	ENDPOINT,
 	mcpUsageAtom,
 	serversAtom,
 	setKeyAtom
@@ -39,8 +38,9 @@ import {Search} from '#lib/search.ts'
 import {AddKeyDialog, PROVIDERS, ProviderMark, providerOfKey} from '#routes/(home)/-keys.tsx'
 import {providerCost, providerSeries, serverSeries} from '#routes/(home)/-usage.ts'
 import icon from '#routes/icon.svg'
+import type {AiUsageReport} from '#services/ai-metering/schema.ts'
 import {PROVIDER_NAMES} from '#services/ai-proxy/schema.ts'
-import type {AiKeyItem, AiProvider, AiUsageReport} from '#services/ai-proxy/schema.ts'
+import type {AiKeyItem, AiProvider} from '#services/ai-proxy/schema.ts'
 import type {ConnectionItem, McpUsageServer} from '#services/connections/schema.ts'
 import {Period} from '#services/usage/schema.ts'
 import type {UsageRange} from '#services/usage/schema.ts'
@@ -291,24 +291,20 @@ function KeyRows(props: {period: Period}) {
 	return (
 		<Loaded atom={aiKeysAtom}>
 			{all =>
-				pipe(
-					all,
-					Array.filter(key => Array.contains(PROVIDERS, key.provider)),
-					Array.match({
-						onEmpty: () => null,
-						onNonEmpty: keys => (
-							<Suspense
-								fallback={
-									<RowsSkeleton label="AI keys" rows={keys.length}>
-										<RowBones />
-									</RowsSkeleton>
-								}
-							>
-								<KeyUsage keys={keys} period={props.period} />
-							</Suspense>
-						)
-					})
-				)
+				Array.match(all, {
+					onEmpty: () => null,
+					onNonEmpty: keys => (
+						<Suspense
+							fallback={
+								<RowsSkeleton label="AI keys" rows={keys.length}>
+									<RowBones />
+								</RowsSkeleton>
+							}
+						>
+							<KeyUsage keys={keys} period={props.period} />
+						</Suspense>
+					)
+				})
 			}
 		</Loaded>
 	)
@@ -319,7 +315,6 @@ function List(props: {period: Period}) {
 	return (
 		<Card size="list">
 			<div role="list" aria-label="MCP servers and AI keys">
-				<ItemListHeading icon={<HardDrivesIcon />}>Servers</ItemListHeading>
 				<CatchBoundary getResetKey={() => 'servers'} errorComponent={ReadFailure}>
 					<Suspense
 						fallback={
@@ -331,7 +326,6 @@ function List(props: {period: Period}) {
 						<ServerRows period={props.period} />
 					</Suspense>
 				</CatchBoundary>
-				<ItemListHeading icon={<KeyIcon />}>Keys</ItemListHeading>
 				<CatchBoundary getResetKey={() => 'keys'} errorComponent={ReadFailure}>
 					<Suspense
 						fallback={
@@ -429,7 +423,7 @@ function PeriodTabs(props: {onPeriod: (period: Period) => void; period: Period})
 
 // Copies the gateway's MCP URL; the button shows a check for a moment after a copy and turns destructive when it fails.
 function CopyEndpoint() {
-	const [result, copy] = useAtom(copyAtom(ENDPOINT))
+	const [result, copy] = useAtom(copyAtom(`${window.location.origin}/mcp`))
 	const copied = useAtomValue(copiedAtom)
 	// A retry in flight is no longer the failure it follows.
 	const failed = AsyncResult.isFailure(result) && !result.waiting

@@ -8,7 +8,7 @@ import type {
 	WorkflowRunAttempt,
 	WorkflowRunId,
 	WorkflowStepNumber
-} from '#services/github/schema.ts'
+} from '#services/github-actions/schema.ts'
 import type {ExportedSpan} from '#services/telemetry/schema.ts'
 import {LogsRequest, SpanId, TraceId, TracesRequest} from '#services/telemetry/schema.ts'
 

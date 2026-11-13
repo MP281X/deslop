@@ -1,6 +1,6 @@
 import {Array, Option, pipe} from 'effect'
 
-import type {PortfolioVisitor, PortfolioVisitors, VisitorId} from '#services/presence/schema.ts'
+import type {Visitor, Visitors} from '#services/presence/schema.ts'
 
 // Moves under a quarter of a percent of the viewport are neither sent nor drawn.
 export function hasMeaningfulMove(current: {x: number; y: number}, next: {x: number; y: number}) {
@@ -10,13 +10,7 @@ export function hasMeaningfulMove(current: {x: number; y: number}, next: {x: num
 	return deltaX * deltaX + deltaY * deltaY >= 0.0025 * 0.0025
 }
 
-export function removePortfolioVisitor(visitors: PortfolioVisitors, id: VisitorId) {
-	const next = Array.filter(visitors, visitor => visitor.id !== id)
-	if (Array.length(next) === Array.length(visitors)) return visitors
-	return next
-}
-
-export function upsertPortfolioVisitor(visitors: PortfolioVisitors, visitor: PortfolioVisitor) {
+export function upsertVisitor(visitors: Visitors, visitor: Visitor) {
 	return pipe(
 		Array.findFirstIndex(visitors, current => current.id === visitor.id),
 		Option.flatMap(index => Array.replace(visitors, index, visitor)),

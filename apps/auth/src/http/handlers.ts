@@ -4,20 +4,20 @@ import {HttpRouter, HttpServerRequest, HttpServerResponse, UrlParams} from 'effe
 import {RateLimiter} from 'effect/persistence'
 
 import {
-	APPS_PATH,
+	AUTHORIZE_PATH,
 	AuthError,
 	COOKIE,
 	DEVICE_PATH,
 	ISSUER_PATH,
 	JWKS_PATH,
+	REVOKE_PATH,
 	SESSION_COOKIE,
+	TOKEN_PATH,
 	clientIdOf,
 	failureOptions,
 	asAuthError
 } from '@deslop/runtime/shared/auth'
 
-import {App, AppParams} from '#services/apps/schema.ts'
-import {Apps} from '#services/apps/service.ts'
 import {CallbackParams, LoginState, SignInParams} from '#services/github/schema.ts'
 import {GitHub} from '#services/github/service.ts'
 import {PasskeySignIn, RequestOptions} from '#services/passkeys/schema.ts'
@@ -124,7 +124,6 @@ function returnTo(flow: SignInParams, origin: string) {
 
 export const HttpHandlers = HttpRouter.use(router =>
 	Effect.gen(function* () {
-		const apps = yield* Apps
 		const github = yield* GitHub
 		const passkeys = yield* Passkeys
 		const people = yield* People
@@ -167,29 +166,11 @@ export const HttpHandlers = HttpRouter.use(router =>
 			JWKS_PATH,
 			HttpServerResponse.jsonUnsafe(tokens.jwks, {headers: {'cache-control': 'public, max-age=300'}})
 		)
-		// Each app's server announces itself here at start; see `layerAnnounce` in `@deslop/runtime/server/http`.
-		yield* router.add(
-			'POST',
-			APPS_PATH,
-			limited(
-				'apps',
-				10
-			)(
-				Effect.catchIf(
-					Effect.gen(function* () {
-						const params = yield* asAuthError('Send the app’s origin')(HttpServerRequest.schemaBodyJson(AppParams))
-						return yield* HttpServerResponse.schemaJson(App.json)(yield* apps.register(params.origin))
-					}),
-					Schema.is(AuthError),
-					failure => Effect.succeed(HttpServerResponse.text(failure.message, failureOptions(failure, 403)))
-				)
-			)
-		)
 		yield* router.add(
 			'GET',
 			`/.well-known/oauth-authorization-server${ISSUER_PATH}`,
 			HttpServerResponse.jsonUnsafe({
-				authorization_endpoint: `${tokens.issuer}/oauth2/authorize`,
+				authorization_endpoint: `${origin}${AUTHORIZE_PATH}`,
 				authorization_response_iss_parameter_supported: true,
 				code_challenge_methods_supported: ['S256'],
 				device_authorization_endpoint: `${origin}${DEVICE_PATH}`,
@@ -198,9 +179,9 @@ export const HttpHandlers = HttpRouter.use(router =>
 				jwks_uri: `${origin}${JWKS_PATH}`,
 				registration_endpoint: `${tokens.issuer}/oauth2/register`,
 				response_types_supported: ['code'],
-				revocation_endpoint: `${tokens.issuer}/oauth2/revoke`,
+				revocation_endpoint: `${origin}${REVOKE_PATH}`,
 				scopes_supported: ['deslop', 'offline_access'],
-				token_endpoint: `${tokens.issuer}/oauth2/token`,
+				token_endpoint: `${origin}${TOKEN_PATH}`,
 				token_endpoint_auth_methods_supported: ['none']
 			})
 		)
@@ -245,7 +226,7 @@ export const HttpHandlers = HttpRouter.use(router =>
 		// First-party web apps reuse this browser's session; other clients wait for an approval by code.
 		yield* router.add(
 			'GET',
-			`${ISSUER_PATH}/oauth2/authorize`,
+			AUTHORIZE_PATH,
 			limited(
 				'authorize',
 				20
@@ -352,7 +333,7 @@ export const HttpHandlers = HttpRouter.use(router =>
 		)
 		yield* router.add(
 			'POST',
-			`${ISSUER_PATH}/oauth2/token`,
+			TOKEN_PATH,
 			limited(
 				'token',
 				60
@@ -401,7 +382,7 @@ export const HttpHandlers = HttpRouter.use(router =>
 		)
 		yield* router.add(
 			'POST',
-			`${ISSUER_PATH}/oauth2/revoke`,
+			REVOKE_PATH,
 			limited(
 				'revoke',
 				60

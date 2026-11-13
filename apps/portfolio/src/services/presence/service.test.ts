@@ -2,17 +2,18 @@ import {assert, it} from '@effect/vitest'
 
 import {Array, Context, Effect, Fiber, Layer, Order, Schema, Stream, SubscriptionRef, pipe} from 'effect'
 
+import type {Scene, Visitors} from './schema.ts'
+import {VisitorId} from './schema.ts'
+import {Presence} from './service.ts'
+
 import {RpcContracts} from '#rpcs/contracts.ts'
-import type {PortfolioScene, PortfolioVisitors} from '#services/presence/schema.ts'
-import {VisitorId} from '#services/presence/schema.ts'
-import {Presence} from '#services/presence/service.ts'
 
 function guestAt(x: number, y: number) {
-	return (scene: PortfolioScene) =>
+	return (scene: Scene) =>
 		Array.some(scene.visitors, visitor => visitor.id === 'guest' && visitor.x === x && visitor.y === y)
 }
 
-function idsOf(visitors: PortfolioVisitors) {
+function idsOf(visitors: Visitors) {
 	return pipe(
 		visitors,
 		Array.map(visitor => visitor.id),
@@ -41,7 +42,7 @@ it.effect(
 	'streams every cursor, counts only visitor tabs, keeps a visitor through a second tab and drops it with the last one',
 	Effect.fnUntraced(function* () {
 		const presence = Context.get(yield* Layer.build(Presence.layer), Presence)
-		const seen = yield* SubscriptionRef.make<PortfolioScene>({bots: [], visitors: []})
+		const seen = yield* SubscriptionRef.make<Scene>({bots: [], visitors: []})
 		function watch(id: string) {
 			return pipe(
 				presence.join({color: '#da702c', id: VisitorId.make(id), name: id}),
@@ -49,7 +50,7 @@ it.effect(
 				Effect.forkScoped
 			)
 		}
-		function until(predicate: (scene: PortfolioScene) => boolean) {
+		function until(predicate: (scene: Scene) => boolean) {
 			return pipe(
 				SubscriptionRef.changes(seen),
 				Stream.filter(predicate),

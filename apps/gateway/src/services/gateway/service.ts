@@ -3,10 +3,10 @@ import {
 	DateTime,
 	Duration,
 	Context,
-	Deferred,
 	Effect,
 	Equal,
 	Fiber,
+	FiberHandle,
 	HashSet,
 	Layer,
 	MutableList,
@@ -21,33 +21,24 @@ import {
 	pipe
 } from 'effect'
 
-import type {Client, Tool} from '@modelcontextprotocol/client'
-import {StreamableHTTPClientTransport} from '@modelcontextprotocol/client'
 import {McpSchema, McpServer} from 'effect/ai'
 import {Digest} from 'effect/crypto'
 import {Base64Url} from 'effect/encoding'
-import {FetchHttpClient, HttpRouter, HttpServerRequest} from 'effect/http'
+import {HttpRouter, HttpServerRequest} from 'effect/http'
 import type {Headers} from 'effect/http'
 
 import {Auth} from '@deslop/runtime/server/auth'
 import {AuthError, bearerOf, isJwt} from '@deslop/runtime/shared/auth'
 import {MCP_PATH} from '@deslop/runtime/shared/schema'
 
-import {connectionFailure, endSession, mcpClient, serverIcons} from '#services/connections/lib/utils.ts'
+import {connectionFailure, serverIcons} from '#services/connections/lib/utils.ts'
 import type {ConnectionGeneration, ConnectionState} from '#services/connections/schema.ts'
 import {Connections, gatewayUrl} from '#services/connections/service.ts'
-import {compact, indexTools, prunedTools} from '#services/gateway/lib/utils.ts'
+import {compact, prunedTools} from '#services/gateway/lib/utils.ts'
 import {RemoteTool, RemoteTools, ToolArguments, ToolRequest} from '#services/gateway/schema.ts'
+import {Upstreams, upstreamStatus} from '#services/upstreams/service.ts'
 
 type Server = Pick<ConnectionState, 'id' | 'generation' | 'name' | 'mode'>
-
-// The tools/list middleware verifies the caller once and hands the answer to the MCP auth middleware for the same request.
-export const VerifiedCaller = Context.Reference<
-	Option.Option<{
-		key: Option.Option<string>
-		result: Result.Result<Effect.Success<ReturnType<typeof Auth.Service.user>>, AuthError>
-	}>
->('@deslop/gateway/services/gateway/service/VerifiedCaller', {defaultValue: () => Option.none()})
 
 export class Gateway extends Context.Service<
 	Gateway,
@@ -69,7 +60,7 @@ export class Gateway extends Context.Service<
 			const auth = yield* Auth
 			const url = yield* gatewayUrl
 			const connections = yield* Connections
-			const fetch = yield* FetchHttpClient.Fetch
+			const upstreams = yield* Upstreams
 			const digest = yield* Digest.Digest
 			const namespaced = Effect.fnUntraced(function* (fullName: string) {
 				if (
@@ -155,53 +146,31 @@ export class Gateway extends Context.Service<
 					url: current.url
 				}
 			})
-			function withClient<A>(
+			const withClient = Effect.fnUntraced(function* <A, E>(
 				server: Server,
 				headers: Headers.Headers,
-				run: (client: Client) => Effect.Effect<A, AuthError>
+				run: Parameters<typeof upstreams.use<A, E>>[2]
 			) {
-				return pipe(
-					Effect.gen(function* () {
-						const upstream = yield* resolveUpstream(server, headers)
-						const context = yield* Effect.context()
-						const transport = new StreamableHTTPClientTransport(new URL(upstream.url), {
-							authProvider: {
-								onUnauthorized: () =>
-									// oxlint-disable-next-line no-restricted-properties -- The MCP SDK's AuthProvider contract requires a Promise<void>.
-									Effect.runPromise(
-										Effect.provideContext(
-											Effect.gen(function* () {
-												if (server.mode === 'oauth') {
-													upstream.token = Option.some(
-														yield* connections.token(server.id, server.generation, upstream.token)
-													)
-												}
-											}),
-											context
-										)
-									),
-								token: () =>
-									// oxlint-disable-next-line no-restricted-properties -- The MCP SDK's AuthProvider.token contract requires a Promise<string>.
-									Effect.runPromise(Effect.succeed(Option.getOrUndefined(upstream.token)))
-							},
-							fetch,
-							requestInit: {redirect: 'error'}
-						})
-						const client = yield* Effect.acquireRelease(Effect.sync(mcpClient), acquired =>
-							endSession(transport, acquired, connectionFailure(server.name), 'upstream')
-						)
-						yield* Effect.tryPromise({
-							catch: connectionFailure(server.name),
-							try: signal => client.connect(transport, {signal})
-						})
-						return yield* run(client)
-					}),
-					Effect.mapError(connectionFailure(server.name)),
-					Effect.scoped
+				const upstream = yield* resolveUpstream(server, headers)
+				const authorize = Effect.map(resolveUpstream(server, headers), current => {
+					upstream.token = current.token
+					return current.token
+				})
+				return yield* pipe(
+					upstreams.use(upstream.url, authorize, run),
+					Effect.catchIf(
+						error => server.mode === 'oauth' && upstreamStatus(error) === 401,
+						() =>
+							Effect.andThen(
+								connections.token(server.id, server.generation, upstream.token),
+								upstreams.use(upstream.url, authorize, run)
+							)
+					),
+					Effect.mapError(connectionFailure(server.name))
 				)
-			}
+			})
 			const call = Effect.fn('Gateway.call')(
-				function* (server: Server, tool: Tool, input: unknown) {
+				function* (server: Server, tool: McpSchema.Tool, input: unknown) {
 					yield* Effect.annotateCurrentSpan({'mcp.server': server.id, 'mcp.tool': tool.name})
 					const request = yield* Effect.flatMap(
 						Effect.serviceOption(HttpServerRequest.HttpServerRequest),
@@ -210,14 +179,8 @@ export class Gateway extends Context.Service<
 					yield* connections.called(server.id)
 					const args = yield* Schema.decodeUnknownEffect(ToolArguments)(input ?? {})
 					return yield* withClient(server, request.headers, client =>
-						pipe(
-							Effect.tryPromise({
-								catch: connectionFailure(server.name),
-								try: signal => client.callTool({arguments: args, name: tool.name}, {signal, toolDefinition: tool})
-							}),
-							Effect.flatMap(Schema.decodeUnknownEffect(McpSchema.CallToolResult)),
-							Effect.tap(result => Effect.annotateCurrentSpan({'mcp.is_error': result.isError === true})),
-							Effect.mapError(connectionFailure(server.name))
+						Effect.tap(client.callTool(tool, args), result =>
+							Effect.annotateCurrentSpan({'mcp.is_error': result.isError === true})
 						)
 					)
 				},
@@ -248,26 +211,13 @@ export class Gateway extends Context.Service<
 				const found = yield* Effect.timeout(
 					withClient(server, headers, client =>
 						pipe(
-							Effect.tryPromise({
-								catch: connectionFailure(server.name),
-								try: signal => client.listTools(undefined, {signal})
-							}),
-							Effect.flatMap(result =>
-								Effect.map(
-									Schema.decodeUnknownEffect(RemoteTools)(
-										Array.filter(result.tools, tool => tool.execution?.taskSupport !== 'required')
-									),
-									tools => ({tools, upstreamTools: result.tools})
-								)
-							),
-							Effect.mapBoth({
-								onFailure: connectionFailure(server.name),
-								onSuccess: result => ({
-									icons: serverIcons(client.getServerVersion()),
-									instructions: Option.fromUndefinedOr(client.getInstructions()),
-									...result
-								})
-							})
+							client.listTools(),
+							Effect.flatMap(result => Effect.map(Schema.decodeEffect(RemoteTools)(result), tools => ({tools}))),
+							Effect.map(result => ({
+								icons: serverIcons(client.serverInfo),
+								instructions: Option.fromUndefinedOr(client.instructions),
+								...result
+							}))
 						)
 					),
 					Duration.seconds(20)
@@ -280,7 +230,6 @@ export class Gateway extends Context.Service<
 					})
 				}
 				const reference = Struct.pick(server, ['id', 'generation', 'name', 'mode'])
-				const upstreamTools = indexTools(found.upstreamTools)
 				const names = MutableList.make<string>()
 				for (const tool of found.tools) {
 					const name = yield* namespaced(`${server.id}__${tool.name}`)
@@ -294,8 +243,7 @@ export class Gateway extends Context.Service<
 					) {
 						yield* registry.addTool({
 							annotations: Context.empty(),
-							handle: (input: unknown) =>
-								call(reference, pipe(upstreamTools, Record.get(tool.name), Option.getOrThrow), input),
+							handle: (input: unknown) => call(reference, compact(tool), input),
 							services,
 							tool: McpSchema.Tool.make({...compact(tool), name})
 						})
@@ -315,10 +263,8 @@ export class Gateway extends Context.Service<
 				})
 			})
 			const lastRead = yield* Ref.make(Option.none<DateTime.Utc>())
-			const inFlight = yield* Ref.make(Option.none<Deferred.Deferred<void>>())
+			const discovery = yield* FiberHandle.make<void, never>()
 			const read = Effect.fnUntraced(function* (headers: Headers.Headers) {
-				const done = yield* Deferred.make<void>()
-				yield* Ref.set(inFlight, Option.some(done))
 				yield* Effect.ensuring(
 					pipe(
 						prune,
@@ -344,33 +290,25 @@ export class Gateway extends Context.Service<
 						// The servers' storage failing leaves the registry as it was until the next read.
 						Effect.catch(cause => Effect.logWarning('The MCP servers could not be read', cause))
 					),
-					Effect.gen(function* () {
-						yield* Ref.set(lastRead, Option.some(yield* DateTime.now))
-						yield* Ref.set(inFlight, Option.none())
-						yield* Deferred.succeed(done, undefined)
-					})
+					Effect.flatMap(DateTime.now, now => Ref.set(lastRead, Option.some(now)))
 				)
 			})
 			// The caller waits up to 2 seconds; a slow read finishes in the gateway's scope, and its defect never fails the caller.
-			const settle = Effect.fnUntraced(function* (work: Effect.Effect<unknown>) {
+			const settle = Effect.fnUntraced(function* (fiber: Fiber.Fiber<void>) {
 				yield* pipe(
-					Fiber.join(yield* Effect.forkIn(work, scope)),
+					Fiber.join(fiber),
 					Effect.timeoutOption(Duration.seconds(2)),
 					Effect.catchCause(cause => Effect.logWarning('Reading the servers’ tools failed', cause))
 				)
 			})
 			const first = Effect.fn('Gateway.first')(function* (headers: Headers.Headers) {
 				if (Option.isSome(yield* Ref.get(lastRead))) return
-				const pending = yield* Ref.get(inFlight)
-				if (Option.isSome(pending)) {
-					yield* pipe(
-						Deferred.await(Option.getOrThrow(pending)),
-						Effect.timeoutOption(Duration.seconds(2)),
-						Effect.asVoid
-					)
-					return
-				}
-				yield* settle(refreshes.withPermits(1)(read(headers)))
+				yield* settle(
+					yield* Option.match(yield* FiberHandle.get(discovery), {
+						onNone: () => FiberHandle.run(discovery, refreshes.withPermits(1)(read(headers))),
+						onSome: Effect.succeed
+					})
+				)
 			})
 			const refresh = Effect.fn('Gateway.refresh')(function* (headers: Headers.Headers) {
 				const now = yield* DateTime.now
@@ -378,14 +316,17 @@ export class Gateway extends Context.Service<
 				if (Option.isNone(last)) return
 				// An agent lists tools far more often than upstreams change, so a registry younger than 30 seconds answers alone.
 				if (pipe(last, Option.getOrThrow, DateTime.distance(now), Duration.isLessThan(Duration.seconds(30)))) return
-				yield* pipe(
-					refreshes.withPermitsIfAvailable(1)(read(headers)),
-					Effect.withSpan('Gateway.discover'),
-					Effect.forkIn(scope)
+				yield* FiberHandle.run(
+					discovery,
+					Effect.withSpan(refreshes.withPermits(1)(read(headers)), 'Gateway.discover'),
+					{onlyIfMissing: true}
 				)
 			})
 			return Gateway.of({
-				connected: headers => Effect.withSpan(settle(refreshes.withPermits(1)(read(headers))), 'Gateway.connected'),
+				connected: Effect.fn('Gateway.connected')(function* (headers) {
+					// A connection changed: queue a forced snapshot behind any older read.
+					yield* settle(yield* Effect.forkIn(refreshes.withPermits(1)(read(headers)), scope))
+				}),
 				first,
 				refresh,
 				removed: Effect.withSpan(prune, 'Gateway.removed')
@@ -407,14 +348,9 @@ export const GatewayDiscovery = HttpRouter.middleware()(
 				}
 				const body = yield* Effect.result(request.json)
 				if (Result.isFailure(body) || !Schema.is(ToolRequest)(body.success)) return yield* app
-				// The MCP auth middleware reads this answer instead of verifying the same bearer again.
 				const verified = yield* Effect.result(auth.user(request.headers))
 				if (Result.isSuccess(verified)) yield* gateway.first(request.headers)
-				const response = yield* Effect.provideService(
-					app,
-					VerifiedCaller,
-					Option.some({key: Option.fromUndefinedOr(request.headers['authorization']), result: verified})
-				)
+				const response = yield* app
 				// A refusal or an Auth outage starts no work with the bearer it could not verify.
 				if (Result.isSuccess(verified)) yield* gateway.refresh(request.headers)
 				return response

@@ -1,17 +1,27 @@
 import {assert, it} from '@effect/vitest'
 
-import {Duration, Effect, Fiber, Layer, Queue, Ref, Schema, Stream, pipe} from 'effect'
+import {Duration, Effect, Fiber, Function, Layer, Queue, Ref, Schema, Stream, pipe} from 'effect'
 
+import {Reactivity} from 'effect/reactivity'
 import {RpcTest} from 'effect/rpc'
 
 import {Auth} from '@deslop/runtime/server/auth'
 import {DEVELOPER} from '@deslop/runtime/shared/auth'
 
-import {RpcContracts} from '#rpcs/contracts.ts'
+import {PeerRpcAuth, RpcContracts} from '#rpcs/contracts.ts'
 import {RpcHandlers} from '#rpcs/handlers.ts'
+import {Exposures} from '#services/exposures/service.ts'
 import {Fleet} from '#services/fleet/service.ts'
 import {Snapshot} from '#services/inventory/schema.ts'
+import {Inventory} from '#services/inventory/service.ts'
 import {MachineHistory} from '#services/metrics/schema.ts'
+
+const localServices = Layer.mergeAll(
+	Reactivity.layer,
+	Layer.succeed(Inventory, {refresh: Effect.void, run: () => Effect.void, snapshot: Effect.never}),
+	Layer.succeed(Exposures, {expose: () => Effect.succeed(''), hide: () => Effect.undefined, items: Effect.succeed([])}),
+	Layer.succeed(PeerRpcAuth, PeerRpcAuth.of(Function.identity))
+)
 
 it.effect('shares range reads between viewers, isolates ranges and restarts after the last viewer leaves', () =>
 	Effect.scoped(
@@ -40,7 +50,7 @@ it.effect('shares range reads between viewers, isolates ranges and restarts afte
 				expose: () => Effect.succeed(''),
 				hide: () => Effect.void,
 				history: () => Effect.succeed(history),
-				local: Effect.succeed(yield* Schema.decodeEffect(Snapshot)({items: [], sources: [], time: 1})),
+				local: Effect.succeed(yield* Schema.decodeEffect(Snapshot)({items: [], sources: [], time: 1, workers: []})),
 				metrics: Effect.fnUntraced(function* (query) {
 					return yield* pipe(
 						entered,
@@ -55,6 +65,7 @@ it.effect('shares range reads between viewers, isolates ranges and restarts afte
 			const context = yield* Layer.build(
 				pipe(
 					RpcHandlers,
+					Layer.provideMerge(localServices),
 					Layer.provide(Layer.succeed(Fleet, fleet)),
 					Layer.provideMerge(
 						Layer.succeedContext(
@@ -106,10 +117,11 @@ it.effect('collects inventory once for multiple viewers and stops after the last
 			const entered = yield* Queue.unbounded<void>()
 			const closed = yield* Queue.unbounded<void>()
 			const received = yield* Queue.unbounded<Snapshot>()
-			const snapshot = yield* Schema.decodeEffect(Snapshot)({items: [], sources: [], time: 1})
+			const snapshot = yield* Schema.decodeEffect(Snapshot)({items: [], sources: [], time: 1, workers: []})
 			const context = yield* Layer.build(
 				pipe(
 					RpcHandlers,
+					Layer.provideMerge(localServices),
 					Layer.provide(
 						Layer.succeed(
 							Fleet,

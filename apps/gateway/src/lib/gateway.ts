@@ -20,8 +20,6 @@ declare module 'effect/reactivity/Reactivity' {
 	}
 }
 
-export const ENDPOINT = `${window.location.origin}/mcp`
-
 addPageTelemetry('@deslop/gateway')
 
 class RpcClient extends AtomRpc.Service<RpcClient>()('@deslop/gateway/lib/gateway/RpcClient', {
@@ -100,7 +98,7 @@ export const aiKeysAtom = RpcClient.runtime.factory.withReactivity(['aiKeys'])(
 
 // A period's report now and after each recorded call; the server reopens the window at each bucket boundary.
 export const aiUsageAtom = Atom.family((period: Period) =>
-	Atom.keepAlive(liveAtom(RpcClient, 'ai-proxy.usage', period))
+	Atom.keepAlive(liveAtom(RpcClient, 'ai-metering.usage', period))
 )
 
 export const mcpUsageAtom = Atom.family((period: Period) =>

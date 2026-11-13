@@ -1,4 +1,4 @@
-import {Schema} from 'effect'
+import {Schema, Struct} from 'effect'
 
 import {Rpc, RpcGroup} from 'effect/rpc'
 
@@ -8,7 +8,11 @@ import {Capture, Note, NoteId, NoteItem, NotesError, NotesEvent} from '#services
 
 export class RpcContracts extends RpcGroup.make(
 	Rpc.make('notes.events', {error: NotesError, stream: true, success: NotesEvent}),
-	Rpc.make('notes.get', {error: NotesError, payload: Schema.Struct({id: NoteId}), success: Note.json}),
+	Rpc.make('notes.body', {
+		error: NotesError,
+		payload: Schema.Struct({id: NoteId}),
+		success: Schema.Struct(Struct.pick(Note.json.fields, ['body']))
+	}),
 	Rpc.make('notes.search', {
 		error: NotesError,
 		payload: Schema.Struct({query: Schema.String}),

@@ -54,7 +54,7 @@ function Expose(props: {items: readonly InventoryItem[]; port: InventoryItem}) {
 					),
 					port: Option.getOrThrow(props.port.port),
 					publicAccess: kind === 'public',
-					target: Option.liftPredicate(props.port.worker, () => String.startsWith('remote:')(props.port.id))
+					worker: props.port.worker
 				})
 			}}
 		>

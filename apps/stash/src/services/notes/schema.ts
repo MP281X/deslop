@@ -91,7 +91,7 @@ export class NoteTag extends Model.Class<NoteTag>('NoteTag')({noteId: NoteId, po
 
 // What the list shows per note: the note without its long texts and requester, and its tags in the order the AI gave them.
 export class NoteItem extends Model.Class<NoteItem>('NoteItem')({
-	...Struct.omit(Model.fields(Note), ['body', 'content', 'requester', 'screenText', 'text', 'transcript']),
+	...Struct.omit(Model.fields(Note), ['body', 'content', 'requester', 'screenText', 'text', 'topics', 'transcript']),
 	tags: Model.Field({json: Schema.Array(TagName), select: Schema.fromJsonString(Schema.Array(TagName))})
 }) {}
 

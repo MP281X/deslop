@@ -18,7 +18,7 @@ opm and trips build the same way, with bundle `xyz.mp281x.<app>.dev`. To sign a 
 
 Every push to `main` runs `deploy.yaml`: Verify, then the npm packages and each mobile app's EAS Update, or its App Store build for a native fingerprint without one shipped in the last 80 days, so TestFlight never drops the installed build. An app publishes as `@deslop/<app>` only when what it ships changed; one never published is skipped with a warning until **Publish a package**.
 
-Each worker runs its apps as user services (`npm install --global @deslop/<app>`, then `<app> service install` with the flags `<app> --help` lists), which pick up a newer release within 15 minutes or at once with `<app> service update`. A release is live when each app's `/api/runtime` reports the new version and Scope's `/health` returns 200.
+Each worker runs its apps as user services (`npm install --global @deslop/<app>`, then `<app> service install` with the flags `<app> --help` lists), which pick up a newer release within 15 minutes or at once with `<app> service update`. A release is live when each app's `/api/runtime` returns 200 and reports the new version.
 
 ## Native tools
 

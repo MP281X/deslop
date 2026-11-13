@@ -12,7 +12,7 @@ import {EmptyState, FailureRetry} from '@deslop/components-web/fallbacks'
 import {Page} from '@deslop/components-web/page'
 import {StaleProblem} from '@deslop/components-web/problem'
 
-import {accountAtom, appsAtom, catalogAtom, peopleAtom, Search, signingOutAtom} from '#lib/auth.ts'
+import {accountAtom, appsAtom, peopleAtom, Search, signingOutAtom} from '#lib/auth.ts'
 import {AccountMenu} from '#routes/(home)/-account-menu.tsx'
 import {SignIn} from '#routes/(home)/-sign-in.tsx'
 import {Waiting} from '#routes/(home)/-waiting.tsx'
@@ -66,8 +66,8 @@ function PageProblem() {
 		<StaleProblem
 			label="Out of date"
 			readers={Boolean.match(useMatchRoute()({to: '/people'}) !== false, {
-				onFalse: () => [appsAtom, catalogAtom],
-				onTrue: () => [appsAtom, catalogAtom, peopleAtom]
+				onFalse: () => [appsAtom],
+				onTrue: () => [appsAtom, peopleAtom]
 			})}
 		/>
 	)

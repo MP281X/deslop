@@ -38,9 +38,9 @@ const fixture = Effect.gen(function* () {
 	const complete = yield* Ref.make(false)
 	const answers = yield* Queue.unbounded<Effect.Effect<ConnectionItem[], AuthError>>()
 	const handlers = RpcContracts.toLayer({
+		'ai-metering.usage': () => Stream.never,
 		'ai-proxy.list': () => Effect.never,
 		'ai-proxy.setKey': () => Effect.never,
-		'ai-proxy.usage': () => Stream.never,
 		'connections.add': () => Effect.never,
 		'connections.usage': () => Stream.never,
 		'connections.watch': () =>
@@ -200,7 +200,7 @@ it.layer(NodeServices.layer)(test => {
 		'treats an empty server list as loaded content',
 		Effect.fnUntraced(function* () {
 			const html = yield* render(AsyncResult.success([]))
-			assert.include(html, 'Servers')
+			assert.include(html, 'MCP servers and AI keys')
 			assert.notInclude(html, 'aria-label="MCP servers"')
 		})
 	)

@@ -184,40 +184,13 @@ export function processReadings(
 		readings: readonly {start: ProcessReading['start']; process: Process}[]
 	}>
 ) {
-	return pipe(
-		previous,
-		Option.filter(
-			cached =>
-				DateTime.isGreaterThanOrEqualTo(current.time, cached.baseline.time) &&
-				pipe(cached.baseline.time, DateTime.distance(current.time), Duration.isLessThan(PROCESS_INTERVAL))
-		),
-		Option.match({
-			onNone: () => ({
-				baseline: current,
-				readings: processUsage(
-					current,
-					Option.map(previous, cached => cached.baseline)
-				)
-			}),
-			onSome: cached => {
-				const known = HashMap.fromIterable(Array.map(cached.readings, record => [record.process.pid, record] as const))
-				return {
-					baseline: cached.baseline,
-					readings: Array.map(current.records, record => {
-						const process: Process = {
-							...record.process,
-							cpu: pipe(
-								HashMap.get(known, record.process.pid),
-								Option.filter(value => Equal.equals(value.start, record.start)),
-								Option.flatMap(value => value.process.cpu)
-							)
-						}
-						return {...record, process}
-					})
-				}
-			}
-		})
-	)
+	return {
+		baseline: current,
+		readings: processUsage(
+			current,
+			Option.map(previous, cached => cached.baseline)
+		)
+	}
 }
 
 // A Mac's processes that descend from a Deslop launch agent, from `ps -axww -o pid=,ppid=,rss=,time=,lstart=,args=` in the C locale, keyed like `processOwner` by the agent they run under; `agents` names each agent's PID. Times are milliseconds: `ticks` of CPU, and `start` as an identity that tells a reused PID apart.

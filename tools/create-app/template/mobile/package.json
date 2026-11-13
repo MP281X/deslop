@@ -20,8 +20,7 @@
 		"#lib/*": "./src/lib/*",
 		"#routes/*": "./src/routes/*",
 		"#rpcs/*": "./src/rpcs/*",
-		"#services/*": "./src/services/*",
-		"#tools/*": "./src/tools/*"
+		"#services/*": "./src/services/*"
 	},
 	"publishConfig": {
 		"access": "public"
@@ -32,7 +31,7 @@
 		"test": "vp test --config ../../vite.config.ts"
 	},
 	"dependencies": {
-		"expo": "^58.0",
+		"expo": "^58.0.24",
 		"react": "latest",
 		"react-native": "0.88.1"
 	},
@@ -40,12 +39,12 @@
 		"@deslop/components-mobile": "workspace:*",
 		"@deslop/runtime": "workspace:*",
 		"@effect/atom-react": "latest",
-		"@expo/ui": "^58.0",
+		"@expo/ui": "^58.0.28",
 		"effect": "latest",
-		"expo-auth-session": "^58.0",
-		"expo-secure-store": "^58.0",
-		"expo-updates": "^58.0",
-		"expo-web-browser": "^58.0"
+		"expo-auth-session": "^58.0.18",
+		"expo-secure-store": "^58.0.3",
+		"expo-updates": "^58.0.22",
+		"expo-web-browser": "^58.0.8"
 	},
 	"config": {
 		"port": 5100

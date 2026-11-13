@@ -39,7 +39,6 @@
 		"@phosphor-icons/react": "latest",
 		"@tanstack/react-hotkeys": "latest",
 		"@tanstack/react-router": "latest",
-		"@typeonce/effect-machine": "latest",
 		"effect": "latest",
 		"react": "latest",
 		"react-dom": "latest"

@@ -304,23 +304,11 @@ function merge(bucket: Array.NonEmptyReadonlyArray<Sample>) {
 
 // What a measurement changes in each series: the stored point of the bucket it falls in, merged with it, or a new point.
 export function rollup(point: Point, stored: readonly Sample[]) {
-	const buckets = Record.fromEntries(
-		Array.map(
-			stored,
-			row =>
-				[
-					`${Duration.toMillis(row.step)}:${Math.floor(DateTime.toEpochMillis(row.since) / Duration.toMillis(row.step))}`,
-					row
-				] as const
-		)
-	)
 	return Array.map([SERIES[1], SERIES[10], SERIES[60], SERIES[1440], SERIES[10_080]] as const, step => {
 		const fresh: Sample = {...point, since: point.time, step}
 		return pipe(
-			buckets,
-			Record.get(
-				`${Duration.toMillis(step)}:${Math.floor(DateTime.toEpochMillis(point.time) / Duration.toMillis(step))}`
-			),
+			stored,
+			Array.findFirst(row => Duration.equals(row.step, step)),
 			Option.match({onNone: () => fresh, onSome: row => merge([row, fresh])})
 		)
 	})

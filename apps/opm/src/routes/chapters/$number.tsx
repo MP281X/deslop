@@ -20,7 +20,8 @@ import {Skeleton} from '@deslop/components-mobile/ui/skeleton'
 import {readerAtom, unreachableAtom} from '#lib/chapters.ts'
 import {PageStrip} from '#modules/native/index.ts'
 import {byNumber, keyOf} from '#services/chapters/lib/utils.ts'
-import type {ChapterList, ChapterNumber, Series} from '#services/chapters/schema.ts'
+import type {ChapterNumber, Series} from '#services/chapters/schema.ts'
+import type {ChapterList} from '#services/reading/schema.ts'
 
 // The reader's content skeleton; the full-page fallback adds the chapter title.
 function ReaderLoading(props: {modifiers?: ViewModifier[]}) {
@@ -43,7 +44,7 @@ export function ReaderSkeleton(props: {number: ChapterNumber}) {
 	)
 }
 
-export function ReaderRoute(props: {chapters: ChapterList; number: ChapterNumber; series: Series; start?: number}) {
+export function ReaderRoute(props: {chapters: ChapterList; number: ChapterNumber; series: Series}) {
 	const reader = keyOf(props)
 	const following = pipe(
 		props.chapters,
@@ -72,12 +73,11 @@ export function ReaderRoute(props: {chapters: ChapterList; number: ChapterNumber
 					<PageStrip
 						pages={Array.flatMap(shown, chapter => chapter.pages)}
 						start={Number.clamp(
-							props.start ??
-								pipe(
-									Array.headNonEmpty(shown).reading,
-									Option.filter(reading => !reading.done),
-									Option.match({onNone: () => 0, onSome: reading => reading.page})
-								),
+							pipe(
+								Array.headNonEmpty(shown).reading,
+								Option.filter(reading => !reading.done),
+								Option.match({onNone: () => 0, onSome: reading => reading.page})
+							),
 							{maximum: Number.max(Array.headNonEmpty(shown).pages.length - 1, 0), minimum: 0}
 						)}
 						onPage={event => turn({following, index: event.nativeEvent.index, opened: props.number})}

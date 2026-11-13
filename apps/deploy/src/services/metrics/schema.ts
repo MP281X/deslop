@@ -112,7 +112,6 @@ export const Disk = Schema.Struct({mount: Schema.String, total: Schema.Finite, u
 
 export type MachineHistory = typeof MachineHistory.Type
 export const MachineHistory = Schema.Struct({
-	cpuModel: Schema.OptionFromOptionalKey(Schema.String),
 	// The newest reading's disks and load averages, which no chart draws over time.
 	disks: Schema.Array(Disk),
 	error: TextFromEmpty,

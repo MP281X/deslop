@@ -16,7 +16,6 @@ import {ClientId, GitHubId, SESSION_COOKIE, UserId, isDenied} from '@deslop/runt
 
 import {RpcContracts} from '#rpcs/contracts.ts'
 import {RpcHandlers} from '#rpcs/handlers.ts'
-import {Apps} from '#services/apps/service.ts'
 import {GitHub} from '#services/github/service.ts'
 import {Passkeys} from '#services/passkeys/service.ts'
 import {Member} from '#services/people/schema.ts'
@@ -55,9 +54,6 @@ const open = Effect.gen(function* () {
 			)
 		),
 		Layer.provide(Layer.succeedContext(database)),
-		Layer.provide(
-			Layer.succeed(Apps, Apps.of({register: () => Effect.die('Unused app registration'), watch: Stream.succeed([])}))
-		),
 		Layer.provide(
 			ConfigProvider.layer(
 				ConfigProvider.fromUnknown({

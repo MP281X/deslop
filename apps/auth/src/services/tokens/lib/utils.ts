@@ -51,7 +51,7 @@ export function hashOf(digest: Digest.Digest['Service']) {
 }
 
 // Child app sign-ins are never rows of their own; their browser takes the newest activity and address.
-export function withChildActivity(signIns: readonly SignedInApp[]) {
+function withChildActivity(signIns: readonly SignedInApp[]) {
 	const children = pipe(
 		signIns,
 		Array.map(signIn => Option.map(signIn.parent, parent => ({parent, signIn}))),
@@ -77,6 +77,7 @@ export function withChildActivity(signIns: readonly SignedInApp[]) {
 				client: signIn.client,
 				device: signIn.device,
 				family: signIn.family,
+				icon: signIn.icon,
 				kind: signIn.kind,
 				lastActive: latest.lastActive,
 				parent: signIn.parent
@@ -229,6 +230,32 @@ export function clientOf(clientId: ClientId) {
 		Result.getSuccess,
 		Option.flatMap(Schema.decodeUnknownOption(Schema.fromJsonString(ClientRegistration))),
 		Option.filter(client => Array.every(client.redirects, allowedRedirect))
+	)
+}
+
+// An icon belongs to a registered callback, never to an app name supplied by a client.
+export function clientIconOf(clientId: ClientId) {
+	return pipe(
+		clientOf(clientId),
+		Option.flatMap(client =>
+			Array.findFirst(client.redirects, redirect => {
+				const protocol = new URL(redirect).protocol
+				return webRedirect(redirect) || (protocol !== 'http:' && protocol !== 'https:')
+			})
+		),
+		Option.map(redirect => {
+			const url = new URL(redirect)
+			if (url.protocol === 'https:') return url.origin
+			return `https://${pipe(url.protocol, String.slice(0, -1), String.replace(/-dev$/u, ''))}.mp281x.xyz`
+		})
+	)
+}
+
+// Every live root family remains addressable; only the page may group rows for presentation.
+export function signedInClientsOf(signIns: readonly SignedInApp[]) {
+	return Array.sort(
+		withChildActivity(signIns),
+		Order.flip(Order.mapInput(DateTime.Order, (row: SignedInApp) => row.lastActive))
 	)
 }
 

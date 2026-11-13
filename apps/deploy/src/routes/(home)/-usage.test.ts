@@ -24,7 +24,6 @@ function sample(time: number, apps: readonly (typeof AppSample.Encoded)[]) {
 
 function machine(samples: Sample[]) {
 	return {
-		cpuModel: Option.none(),
 		disks: [],
 		error: Option.none(),
 		load: [],

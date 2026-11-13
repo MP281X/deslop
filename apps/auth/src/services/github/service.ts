@@ -1,4 +1,4 @@
-import {Cache, Config, Context, Effect, Layer, Option, Redacted, Struct, pipe} from 'effect'
+import {Config, Context, Duration, Effect, Layer, Option, Redacted, Struct, pipe} from 'effect'
 
 import {Digest, SecureRandom} from 'effect/crypto'
 import {HttpClient, HttpClientRequest, HttpClientResponse, UrlParams} from 'effect/http'
@@ -9,6 +9,7 @@ import {AUTH_URL, AuthError, DEVELOPER, GitHubId, asAuthError} from '@deslop/run
 import {GitHubClientId, GitHubToken, OAuthState} from '#services/github/schema.ts'
 import type {SignInParams} from '#services/github/schema.ts'
 import {GitHubUser} from '#services/people/schema.ts'
+import {makeRecords} from '#services/records/service.ts'
 import {hashOf, randomTokenOf} from '#services/tokens/lib/utils.ts'
 
 const HEADERS = {accept: 'application/vnd.github+json', 'user-agent': '@deslop/auth'}
@@ -31,16 +32,16 @@ export class GitHub extends Context.Service<
 	static readonly layer = Layer.effect(
 		GitHub,
 		Effect.gen(function* () {
-			const flows = yield* Cache.make<OAuthState, SignInParams & {verifier: Option.Option<string>}, AuthError>({
-				capacity: 256,
-				lookup: () => Effect.fail(AuthError.make({message: 'The sign-in expired'})),
-				timeToLive: '10 minutes'
-			})
+			const flows = yield* makeRecords<OAuthState, SignInParams & {verifier: Option.Option<string>}>(
+				Duration.minutes(10)
+			)
 			const nonce = randomTokenOf(yield* SecureRandom.SecureRandom)(32)
 			const take = Effect.fnUntraced(function* (state: OAuthState) {
-				const flow = yield* Cache.get(flows, state)
-				yield* Cache.invalidate(flows, state)
-				return flow
+				return (yield* pipe(
+					flows.consume(state, Option.none()),
+					Effect.flatMap(Effect.fromOption),
+					Effect.mapError(() => AuthError.make({message: 'The sign-in expired'}))
+				)).value
 			})
 			const cancel = Effect.fn('GitHub.cancel')(function* (state: OAuthState) {
 				return Struct.omit(yield* take(state), ['verifier'])
@@ -55,7 +56,7 @@ export class GitHub extends Context.Service<
 					profile: () => Effect.withSpan(Effect.succeed(DEVELOPER_PROFILE), 'GitHub.profile'),
 					start: Effect.fn('GitHub.start')(function* (flow: SignInParams) {
 						const state = OAuthState.make(yield* nonce)
-						yield* Cache.set(flows, state, {...flow, verifier: Option.none()})
+						yield* flows.create(state, {...flow, verifier: Option.none()})
 						return {state, url: `/auth/github/callback?${new URLSearchParams({code: 'development', state})}`}
 					})
 				})
@@ -102,7 +103,7 @@ export class GitHub extends Context.Service<
 				start: Effect.fn('GitHub.start')(function* (flow: SignInParams) {
 					const state = OAuthState.make(yield* nonce)
 					const verifier = yield* nonce
-					yield* Cache.set(flows, state, {...flow, verifier: Option.some(verifier)})
+					yield* flows.create(state, {...flow, verifier: Option.some(verifier)})
 					const url = new URL('https://github.com/login/oauth/authorize')
 					url.search = UrlParams.toString(
 						UrlParams.fromInput({

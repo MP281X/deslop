@@ -56,8 +56,9 @@ import {blockingFailure} from '@deslop/runtime/client/live-stream'
 import {chaptersAtom, primary, readAtom, session} from '#lib/chapters.ts'
 import {ChapterProgress, Cover} from '#modules/native/index.ts'
 import {byNumber, SERIES_NAMES} from '#services/chapters/lib/utils.ts'
-import type {ChapterItem, ChapterNumber} from '#services/chapters/schema.ts'
+import type {ChapterNumber} from '#services/chapters/schema.ts'
 import {Series} from '#services/chapters/schema.ts'
+import type {ChapterItem} from '#services/reading/schema.ts'
 
 // Every prop keeps its identity while the chapter is unchanged, so a page turn in the reader re-renders one row.
 function ChapterRow(props: {chapter: ChapterItem; onOpen: (number: ChapterNumber) => void}) {

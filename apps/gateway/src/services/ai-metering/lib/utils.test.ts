@@ -2,8 +2,9 @@ import {assert, it} from '@effect/vitest'
 
 import {Result, Schema} from 'effect'
 
-import {readUsage} from '#services/ai-proxy/lib/utils.ts'
-import {AiUsageEntry} from '#services/ai-proxy/schema.ts'
+import {readUsage} from './utils.ts'
+
+import {AiUsageEntry} from '#services/ai-metering/schema.ts'
 
 const EMPTY = Schema.decodeSync(AiUsageEntry)({
 	at: 0,

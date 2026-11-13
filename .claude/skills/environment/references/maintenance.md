@@ -319,7 +319,7 @@ Update, Clean, Check, in that order. End by reporting what waits on the user's r
 
   A port published on every interface: remove the container, or recreate it publishing on `127.0.0.1`. An unused network: `docker network prune -f`. A stopped container with another policy: `docker update --restart no <name>`.
 
-- **Exposures.** Clean's loop over `tailscale serve status --json` and Deploy's `list_apps` leave no mapping or exposure without a backend. A health route beats a status code when the app has one: scope's `/health` returns `ready`; opm, stash and trips return 404 at `/` by design, so their health is the unit active plus a current run start in Scope `check_ingestion`.
+- **Exposures.** Clean's loop over `tailscale serve status --json` and Deploy's `list_apps` leave no mapping or exposure without a backend. Each app's `/api/runtime` returns 200 with its version; opm, stash and trips return 404 at `/` by design, so also check the unit is active plus a current run start in Scope `check_ingestion`.
 
 ### Deep pass
 

@@ -7,6 +7,7 @@ import {
 	Function,
 	HashMap,
 	HashSet,
+	Match,
 	MutableList,
 	Number,
 	Option,
@@ -30,6 +31,8 @@ import {
 } from '@phosphor-icons/react'
 import {useHotkeys} from '@tanstack/react-hotkeys'
 import {CatchBoundary, createFileRoute} from '@tanstack/react-router'
+import {SecureRandom} from 'effect/crypto'
+import {KeyValueStore} from 'effect/persistence'
 import {Atom} from 'effect/reactivity'
 import {Suspense, useRef, useState} from 'react'
 
@@ -39,113 +42,107 @@ import {Dialog, DialogContent, DialogHeader, DialogTitle} from '@deslop/componen
 import {Kbd, KbdGroup} from '@deslop/components-web/ui/kbd'
 import {liveStream, reconnectOnDrop} from '@deslop/runtime/client/live-stream'
 
-import {hasMeaningfulMove} from '#lib/portfolio.ts'
 import {RpcClient} from '#lib/presence.ts'
 import {contacts, education, experience, languages, profile, projects, skills, summary} from '#lib/profile.ts'
-import {PortfolioColor, VisitorId} from '#services/presence/schema.ts'
-import type {PortfolioScene, PortfolioVisitor, PortfolioVisitors} from '#services/presence/schema.ts'
+import {hasMeaningfulMove} from '#services/presence/lib/utils.ts'
+import {Color, VisitorId} from '#services/presence/schema.ts'
+import type {Scene, Visitor, Visitors} from '#services/presence/schema.ts'
 
 const SECTION_KEYS = ['1', '2', '3', '4', '5', '6'] as const
 const SECTION_NAMES = ['profile', 'skills', 'experience', 'projects', 'education', 'contact'] as const
 
-type Scene = {bots: PortfolioVisitors; trails: PortfolioVisitors; visitors: PortfolioVisitors}
+type TrailedScene = Scene & {trails: Visitors}
 
 function randomIndex(length: number) {
 	return Math.floor(Random.Random.defaultValue().nextDoubleUnsafe() * length)
 }
 
-function randomSeed() {
-	const alphabet = '0123456789abcdef'
-	return pipe(
-		6,
-		Array.makeBy(() => alphabet[randomIndex(String.length(alphabet))] ?? '0'),
-		Array.join('')
-	)
+function pickNextCursorColor(currentColor: Color) {
+	const nextPalette = Array.filter(Color.literals, color => color !== currentColor)
+	return nextPalette[randomIndex(Array.length(nextPalette))] ?? Color.literals[0]
 }
 
-function pickNextCursorColor(currentColor: PortfolioColor) {
-	const nextPalette = Array.filter(PortfolioColor.literals, color => color !== currentColor)
-	return nextPalette[randomIndex(Array.length(nextPalette))] ?? PortfolioColor.literals[0]
-}
+const identityAtom = Atom.keepAlive(
+	Atom.kvs({
+		defaultValue: () => {
+			const seed = String.slice(0, 6)(SecureRandom.uuidV4Unsafe())
+			return {id: VisitorId.make(`v-${seed}`), name: `Guest-${String.slice(0, 3)(seed)}`}
+		},
+		key: 'portfolio.identity',
+		mode: 'async',
+		runtime: Atom.runtime(KeyValueStore.layerStorage(() => sessionStorage)),
+		schema: Schema.Struct({id: VisitorId, name: Schema.NonEmptyString})
+	})
+)
 
-function restoreIdentity() {
-	const existingId = Schema.decodeUnknownOption(VisitorId)(sessionStorage.getItem('portfolio.id'))
-	const existingName = Option.fromNullOr(sessionStorage.getItem('portfolio.name'))
-	const color =
-		PortfolioColor.literals[randomIndex(Array.length(PortfolioColor.literals))] ?? PortfolioColor.literals[0]
-
-	return pipe(
-		Option.all({id: existingId, name: existingName}),
-		Option.map(saved => ({...saved, color})),
-		Option.getOrElse(() => {
-			const seed = randomSeed()
-			const next = {color, id: VisitorId.make(`v-${seed}`), name: `Guest-${String.slice(0, 3)(seed)}`}
-			sessionStorage.setItem('portfolio.id', next.id)
-			sessionStorage.setItem('portfolio.name', next.name)
-			return next
-		})
-	)
-}
-
-const identity = restoreIdentity()
+// Pointer movement is local; the joined scene supplies the colour shared by tabs of the same identity.
+const ownCursorAtom = Atom.make({
+	color: Color.literals[randomIndex(Array.length(Color.literals))] ?? Color.literals[0],
+	x: 0.5,
+	y: 0.5
+})
 
 const portfolioAtom = Atom.keepAlive(
-	RpcClient.runtime.atom(
-		pipe(
-			liveStream(RpcClient, 'presence.join', identity),
-			// A dropped socket rejoins with the trails kept, instead of turning the page into an error.
-			reconnectOnDrop,
-			Stream.mapAccum<Scene, PortfolioScene, Scene>(
-				() => ({bots: [], trails: [], visitors: []}),
-				(scene, update) => {
-					const cursors = Array.appendAll(update.visitors, update.bots)
-					const positions = HashSet.fromIterable(
-						pipe(
-							scene.visitors,
-							Array.appendAll(scene.bots),
-							Array.map(visitor => Tuple.make(visitor.id, visitor.color, visitor.x, visitor.y))
-						)
-					)
-					// The latest 180 positions in the order cursors reached them; a recolour starts a new stretch where the cursor is.
-					const next = {
-						bots: update.bots,
-						trails: pipe(
-							scene.trails,
-							Array.appendAll(
-								Array.filter(
-									cursors,
-									visitor => !HashSet.has(positions, Tuple.make(visitor.id, visitor.color, visitor.x, visitor.y))
+	RpcClient.runtime.atom(get =>
+		Stream.unwrap(
+			Effect.map(get.result(identityAtom), identity =>
+				pipe(
+					liveStream(RpcClient, 'presence.join', {...identity, color: get.once(ownCursorAtom).color}),
+					// A dropped socket rejoins with the trails kept, instead of turning the page into an error.
+					reconnectOnDrop,
+					Stream.mapAccum<TrailedScene, Scene, TrailedScene>(
+						() => ({bots: [], trails: [], visitors: []}),
+						(scene, update) => {
+							const cursors = Array.appendAll(update.visitors, update.bots)
+							const positions = HashSet.fromIterable(
+								pipe(
+									scene.visitors,
+									Array.appendAll(scene.bots),
+									Array.map(visitor => Tuple.make(visitor.id, visitor.color, visitor.x, visitor.y))
 								)
-							),
-							Array.takeRight(180)
-						),
-						visitors: update.visitors
-					}
-					return Tuple.make(next, [next])
-				}
+							)
+							// The latest 180 positions in the order cursors reached them; a recolour starts a new stretch where the cursor is.
+							const next = {
+								bots: update.bots,
+								trails: pipe(
+									scene.trails,
+									Array.appendAll(
+										Array.filter(
+											cursors,
+											visitor => !HashSet.has(positions, Tuple.make(visitor.id, visitor.color, visitor.x, visitor.y))
+										)
+									),
+									Array.takeRight(180)
+								),
+								visitors: update.visitors
+							}
+							return Tuple.make(next, [next])
+						}
+					)
+				)
 			)
 		)
 	)
 )
 
-// This page's cursor: its colour and the pointer as a share of the viewport. The server's echo can lag behind a recolour, so the page keeps its own.
-const ownCursorAtom = Atom.make({color: identity.color, x: 0.5, y: 0.5})
-
 // Sends this page's cursor while the page is open: at most one move per 50 ms, always the latest, and none too small to see unless the colour changed.
 const sendCursorAtom = RpcClient.runtime.atom(get =>
-	pipe(
-		get.stream(ownCursorAtom, {withoutInitialValue: true}),
-		Stream.changesWith((sent, next) => sent.color === next.color && !hasMeaningfulMove(sent, next)),
-		Stream.buffer({capacity: 1, strategy: 'sliding'}),
-		Stream.throttle({cost: Array.length, duration: '50 millis', units: 1}),
-		Stream.runForEach(cursor =>
-			pipe(
-				RpcClient,
-				Effect.flatMap(client => client('presence.move', {...cursor, id: identity.id})),
-				Effect.ignore({log: 'Debug', message: 'The cursor move did not reach the room'})
+	Effect.gen(function* () {
+		const identity = yield* get.result(identityAtom)
+		return yield* pipe(
+			get.stream(ownCursorAtom, {withoutInitialValue: true}),
+			Stream.changesWith((sent, next) => sent.color === next.color && !hasMeaningfulMove(sent, next)),
+			Stream.buffer({capacity: 1, strategy: 'sliding'}),
+			Stream.throttle({cost: Array.length, duration: '50 millis', units: 1}),
+			Stream.runForEach(cursor =>
+				pipe(
+					RpcClient,
+					Effect.flatMap(client => client('presence.move', {...cursor, id: identity.id})),
+					Effect.ignore({log: 'Debug', message: 'The cursor move did not reach the room'})
+				)
 			)
 		)
-	)
+	})
 )
 
 // The window's size in pixels, following each resize.
@@ -186,11 +183,11 @@ function SectionBody(input: {children: React.ReactNode; title: string}) {
 	)
 }
 
-function TrailGrid(input: {trails: PortfolioVisitors; viewport: {width: number; height: number}}) {
+function TrailGrid(input: {trails: Visitors; viewport: {width: number; height: number}}) {
 	const cells = MutableList.make<{color: string; x: number; y: number}>()
 	Array.reduce(
 		input.trails,
-		HashMap.empty<VisitorId, {trail: PortfolioVisitor; col: number; row: number}>(),
+		HashMap.empty<VisitorId, {trail: Visitor; col: number; row: number}>(),
 		(previousByVisitor, trail) => {
 			const current = {
 				col: Math.floor((trail.x * input.viewport.width) / 26),
@@ -265,7 +262,7 @@ function labelOverReadingColumn(x: number, viewport: {width: number}, label: str
 }
 
 // Visitors use server positions; the hidden system pointer's replacement follows local CSS variables above them.
-function Cursor(input: {cursor: PortfolioVisitor; own: boolean; viewport: {width: number; height: number}}) {
+function Cursor(input: {cursor: Visitor; own: boolean; viewport: {width: number; height: number}}) {
 	const label = Boolean.match(input.own, {onFalse: () => input.cursor.name, onTrue: () => 'You'})
 	const x = `${input.cursor.x * input.viewport.width}px`
 	const y = `${input.cursor.y * input.viewport.height}px`
@@ -288,6 +285,24 @@ function Cursor(input: {cursor: PortfolioVisitor; own: boolean; viewport: {width
 				flip={input.cursor.x * input.viewport.width + labelWidth(label) > input.viewport.width - 8}
 				label={label}
 				show={!labelOverReadingColumn(input.cursor.x, input.viewport, label)}
+			/>
+		</div>
+	)
+}
+
+function OwnCursor(input: {viewport: {width: number; height: number}; color: Option.Option<Color>}) {
+	const cursor = useAtomValue(ownCursorAtom)
+	return (
+		<div className="hidden print:hidden [@media(hover:hover)_and_(pointer:fine)]:contents">
+			<Cursor
+				own
+				cursor={{
+					...cursor,
+					color: Option.getOrElse(input.color, () => cursor.color),
+					id: VisitorId.make('own'),
+					name: 'You'
+				}}
+				viewport={input.viewport}
 			/>
 		</div>
 	)
@@ -502,7 +517,9 @@ function ShortcutsOverlay(input: {open: boolean; onOpenChange: (open: boolean) =
 	)
 }
 
-function VisitorCount(props: {visitors: PortfolioVisitors}) {
+function VisitorCount(props: {visitors: Visitors}) {
+	const identity = useAtomSuspense(identityAtom).value
+	const cursor = useAtomValue(ownCursorAtom)
 	return (
 		<>
 			<span
@@ -511,7 +528,7 @@ function VisitorCount(props: {visitors: PortfolioVisitors}) {
 					'--identity-color': pipe(
 						props.visitors,
 						Array.findFirst(visitor => visitor.id === identity.id),
-						Option.match({onNone: () => identity.color, onSome: visitor => visitor.color})
+						Option.match({onNone: () => cursor.color, onSome: visitor => visitor.color})
 					)
 				}}
 			/>
@@ -528,47 +545,45 @@ const LEGAL_LINE = `© 2026 ${profile.firstName} ${profile.lastName} · VAT ${pr
 const LEGAL_LINE_NARROW = `© 2026 · VAT ${profile.vat}`
 
 function PresenceHud(input: {
-	state: 'connecting' | 'live' | 'offline'
-	visitors?: PortfolioVisitors
-	onToggleShortcuts?: () => void
-	shortcutsOpen?: boolean
+	presence: Visitors | 'connecting' | 'offline'
+	onToggleShortcuts: () => void
+	shortcutsOpen: boolean
 }) {
 	return (
 		<div className="border-border bg-background/95 pr-safe-right pb-safe-bottom pl-safe-left pointer-events-none fixed inset-x-0 bottom-0 z-50 border-t font-mono text-xs backdrop-blur print:hidden">
 			<div className="relative flex min-h-10 items-center justify-between px-3 sm:px-4">
 				<span className="flex min-w-0 items-center gap-2">
-					{Boolean.match(input.state === 'live' && Predicate.isNotUndefined(input.visitors), {
-						onFalse: () => (
+					{pipe(
+						Match.value(input.presence),
+						Match.when(Predicate.isString, state => (
 							<>
 								<span className="bg-muted-foreground/50 size-1.5 rounded-full" />
 								<span className="text-muted-foreground truncate">
-									{Boolean.match(input.state === 'offline', {
+									{Boolean.match(state === 'offline', {
 										onFalse: () => 'presence connecting',
 										onTrue: () => 'presence unavailable'
 									})}
 								</span>
 							</>
-						),
-						onTrue: () => <VisitorCount visitors={input.visitors ?? []} />
-					})}
+						)),
+						Match.orElse(visitors => <VisitorCount visitors={visitors} />)
+					)}
 				</span>
-				<span className="text-muted-foreground absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 whitespace-nowrap pointer-coarse:static pointer-coarse:translate-x-0 pointer-coarse:translate-y-0">
+				<span className="text-muted-foreground absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 whitespace-nowrap max-sm:static max-sm:translate-x-0 max-sm:translate-y-0 pointer-coarse:static pointer-coarse:translate-x-0 pointer-coarse:translate-y-0">
 					<span className="hidden sm:inline">{LEGAL_LINE}</span>
 					<span className="sm:hidden">{LEGAL_LINE_NARROW}</span>
 				</span>
-				{Predicate.isNotUndefined(input.onToggleShortcuts) && (
-					<Button
-						variant="ghost"
-						size="xs"
-						aria-expanded={input.shortcutsOpen === true}
-						aria-haspopup="dialog"
-						aria-label="Toggle keyboard shortcuts"
-						onClick={input.onToggleShortcuts}
-						className="pointer-events-auto -mr-1 pointer-coarse:hidden"
-					>
-						?
-					</Button>
-				)}
+				<Button
+					variant="ghost"
+					size="xs"
+					aria-expanded={input.shortcutsOpen}
+					aria-haspopup="dialog"
+					aria-label="Toggle keyboard shortcuts"
+					onClick={input.onToggleShortcuts}
+					className="pointer-events-auto -mr-1 pointer-coarse:hidden"
+				>
+					?
+				</Button>
 			</div>
 		</div>
 	)
@@ -580,23 +595,21 @@ function RealtimeLayer(input: {
 	shortcutsOpen: boolean
 }) {
 	const portfolio = useAtomSuspense(portfolioAtom)
+	const identity = useAtomSuspense(identityAtom).value
 
 	return (
 		<>
 			<div className="trail-grid pointer-events-none fixed inset-0 z-1 print:hidden" />
 			<TrailGrid trails={portfolio.value.trails} viewport={input.viewport} />
 
-			<div className="hidden print:hidden [@media(hover:hover)_and_(pointer:fine)]:contents">
-				<Cursor
-					own
-					cursor={pipe(
-						portfolio.value.visitors,
-						Array.findFirst(visitor => visitor.id === identity.id),
-						Option.getOrElse(() => ({color: identity.color, id: identity.id, name: identity.name, x: 0.5, y: 0.5}))
-					)}
-					viewport={input.viewport}
-				/>
-			</div>
+			<OwnCursor
+				viewport={input.viewport}
+				color={pipe(
+					portfolio.value.visitors,
+					Array.findFirst(visitor => visitor.id === identity.id),
+					Option.map(visitor => visitor.color)
+				)}
+			/>
 			<div className="max-sm:hidden print:hidden">
 				<div className="hidden [@media(hover:hover)_and_(pointer:fine)]:contents">
 					{pipe(
@@ -613,8 +626,7 @@ function RealtimeLayer(input: {
 			</div>
 
 			<PresenceHud
-				state="live"
-				visitors={portfolio.value.visitors}
+				presence={portfolio.value.visitors}
 				onToggleShortcuts={input.onToggleShortcuts}
 				shortcutsOpen={input.shortcutsOpen}
 			/>
@@ -704,18 +716,17 @@ function PortfolioRoute() {
 			<EducationSection />
 			<ContactSection />
 
-			<CatchBoundary getResetKey={() => 'presence'} errorComponent={() => <PresenceHud state="offline" />}>
+			<CatchBoundary
+				getResetKey={() => 'presence'}
+				errorComponent={() => (
+					<PresenceHud presence="offline" onToggleShortcuts={toggleShortcuts} shortcutsOpen={showShortcuts} />
+				)}
+			>
 				<Suspense
 					fallback={
 						<>
-							<div className="hidden print:hidden [@media(hover:hover)_and_(pointer:fine)]:contents">
-								<Cursor
-									own
-									cursor={{color: identity.color, id: identity.id, name: identity.name, x: 0.5, y: 0.5}}
-									viewport={viewport}
-								/>
-							</div>
-							<PresenceHud state="connecting" onToggleShortcuts={toggleShortcuts} shortcutsOpen={showShortcuts} />
+							<OwnCursor viewport={viewport} color={Option.none()} />
+							<PresenceHud presence="connecting" onToggleShortcuts={toggleShortcuts} shortcutsOpen={showShortcuts} />
 						</>
 					}
 				>

@@ -177,6 +177,7 @@ export const OwnedSignIns = Schema.Struct({now: Schema.DateTimeUtcFromMillis, ow
 // What the signed-in list shows of a browser session or an app grant.
 export class SignedInApp extends Model.Class<SignedInApp>('SignedInApp')({
 	...Struct.pick(Model.fields(AppGrant), ['address', 'client', 'device', 'family', 'lastActive', 'parent']),
+	icon: Model.FieldOption(Schema.String),
 	kind: Schema.Literals(['App', 'Browser'])
 }) {}
 

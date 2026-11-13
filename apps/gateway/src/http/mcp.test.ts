@@ -29,6 +29,7 @@ import {DEVELOPER} from '@deslop/runtime/shared/auth'
 import {AiProxy} from '#services/ai-proxy/service.ts'
 import {Connections} from '#services/connections/service.ts'
 import {Gateway} from '#services/gateway/service.ts'
+import {Upstreams} from '#services/upstreams/service.ts'
 import {GatewayMcp} from '#tools/handlers.ts'
 
 const OUTPUT = {properties: {values: {items: {type: 'number'}, type: 'array'}}, required: ['values'], type: 'object'}
@@ -90,7 +91,7 @@ it.layer(Layer.mergeAll(NodeCrypto.layer, NodeServices.layer))('Gateway real MCP
 						McpServer.layerHttp({
 							name: 'Relay fixture',
 							path: '/mcp',
-							protocols: [McpProtocol.v2026_07_28, McpProtocol.v2025_06_18],
+							protocols: [McpProtocol.v2026_07_28, McpProtocol.v2025_11_25],
 							registrations: Layer.effectDiscard(
 								Effect.gen(function* () {
 									const registry = yield* McpServer.McpServer
@@ -133,6 +134,7 @@ it.layer(Layer.mergeAll(NodeCrypto.layer, NodeServices.layer))('Gateway real MCP
 				pipe(
 					Gateway.layer,
 					Layer.provideMerge(Layer.mergeAll(Connections.layer, AiProxy.layer)),
+					Layer.provide(Upstreams.layer),
 					Layer.provide(McpServer.McpServer.layer),
 					Layer.provide(FetchHttpClient.layer),
 					Layer.provideMerge(platform)

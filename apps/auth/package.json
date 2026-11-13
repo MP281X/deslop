@@ -42,7 +42,6 @@
 		"@simplewebauthn/server": "latest",
 		"@tanstack/react-router": "latest",
 		"@typeonce/effect-machine": "latest",
-		"@typeonce/effect-machine-react": "latest",
 		"effect": "latest",
 		"react": "latest",
 		"react-dom": "latest",

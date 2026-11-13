@@ -50,11 +50,13 @@ const fixture = Effect.gen(function* () {
 		)
 	}
 	const inventory = yield* Queue.unbounded<Effect.Effect<Snapshot, DeployError>>()
-	const handlers = RpcContracts.toLayer({
+	const group = RpcContracts.omit('exposures.apply', 'exposures.remove', 'inventory.start')
+	const handlers = group.toLayer({
 		'exposures.expose': () => Effect.succeed(''),
 		'exposures.hide': () => Effect.void,
 		'inventory.run': () => Effect.void,
-		'inventory.snapshot': () => Effect.succeed(Schema.decodeSync(Snapshot)({items: [], sources: [], time: 1})),
+		'inventory.snapshot': () =>
+			Effect.succeed(Schema.decodeSync(Snapshot)({items: [], sources: [], time: 1, workers: []})),
 		'inventory.watch': () => Stream.mapEffect(Stream.fromQueue(inventory), Function.identity),
 		'metrics.history': () => Effect.never,
 		'metrics.watch': query => {
@@ -85,7 +87,7 @@ const fixture = Effect.gen(function* () {
 			HttpRouter.serve(
 				Layer.provide(
 					Layer.mergeAll(
-						layerRpc({group: RpcContracts, handlers}),
+						layerRpc({group, handlers}),
 						HttpRouter.add(
 							'GET',
 							'/api/runtime',
@@ -262,11 +264,14 @@ it.layer(NodeServices.layer)(test => {
 					{immediate: true}
 				)
 				const port = yield* Schema.decodeEffect(InventoryItem)({
+					active: false,
 					detail: '',
+					health: 'quiet',
 					id: 'port:3773',
 					kind: 'port',
 					name: 't3code',
 					port: 3773,
+					running: false,
 					state: 'running',
 					url: '',
 					worker: 'desktop'
@@ -274,7 +279,7 @@ it.layer(NodeServices.layer)(test => {
 				yield* Queue.offer(
 					env.inventory,
 					Effect.succeed(
-						Snapshot.make({items: [port], sources: [], time: DateTime.makeUnsafe(1), workers: Option.none()})
+						Snapshot.make({items: [port], sources: [], time: DateTime.makeUnsafe(1), workers: [port.worker]})
 					)
 				)
 				yield* pipe(Stream.fromQueue(updates), Stream.filter(AsyncResult.isSuccess), Stream.runHead)
@@ -304,7 +309,7 @@ it.layer(NodeServices.layer)(test => {
 				env.registry.refresh(inventoryAtom)
 				yield* Queue.offer(
 					env.inventory,
-					Effect.succeed(yield* Schema.decodeEffect(Snapshot)({items: [], sources: [], time: 2}))
+					Effect.succeed(yield* Schema.decodeEffect(Snapshot)({items: [], sources: [], time: 2, workers: []}))
 				)
 				yield* pipe(Stream.fromQueue(updates), Stream.filter(AsyncResult.isSuccess), Stream.runHead)
 				assert.deepStrictEqual(env.registry.get(exposeTargetAtom), Option.none())

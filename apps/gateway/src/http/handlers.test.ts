@@ -41,12 +41,14 @@ import type {User} from '@deslop/runtime/shared/auth'
 import {AiHttpHandlers, HttpHandlers} from '#http/handlers.ts'
 import {RpcContracts} from '#rpcs/contracts.ts'
 import {RpcHandlers} from '#rpcs/handlers.ts'
-import type {AiProvider, AiUsageReport} from '#services/ai-proxy/schema.ts'
+import type {AiUsageReport} from '#services/ai-metering/schema.ts'
+import type {AiProvider} from '#services/ai-proxy/schema.ts'
 import {AiProxy} from '#services/ai-proxy/service.ts'
 import {mcpClient} from '#services/connections/lib/utils.ts'
 import {ConnectionItem, ServerId, McpUsageReport, ServerIcon} from '#services/connections/schema.ts'
 import {Connections} from '#services/connections/service.ts'
 import {Gateway} from '#services/gateway/service.ts'
+import {Upstreams} from '#services/upstreams/service.ts'
 import {UsageRange} from '#services/usage/schema.ts'
 import {GatewayMcp} from '#tools/handlers.ts'
 
@@ -418,6 +420,7 @@ const servers = Effect.fnUntraced(function* (home?: string, origin: string = GAT
 		pipe(
 			Gateway.layer,
 			Layer.provideMerge(Layer.mergeAll(Connections.layer, AiProxy.layer)),
+			Layer.provide(Layer.provide(Upstreams.layer, FetchHttpClient.layer)),
 			Layer.provide(McpServer.McpServer.layer),
 			Layer.provide(store),
 			Layer.provide(platform),
@@ -923,7 +926,7 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 		})
 	)
 	test.effect(
-		'verifies the bearer once for a request that reads several upstreams',
+		'verifies discovery and MCP independently without rechecking each upstream',
 		Effect.fnUntraced(function* () {
 			const gateway = yield* servers()
 			yield* gateway.add('https://stash.mp281x.xyz/mcp')
@@ -934,7 +937,7 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 			yield* modern(gateway.web, TOKEN, 'tools/list')
 			yield* Queue.take(gateway.upstreamTools)
 			yield* Queue.take(gateway.upstreamTools)
-			assert.strictEqual((yield* Ref.get(gateway.verified)) - verified, 1)
+			assert.strictEqual((yield* Ref.get(gateway.verified)) - verified, 2)
 		})
 	)
 	test.effect(
@@ -977,7 +980,7 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 			assert.strictEqual(publicServer.name, 'Public')
 			assert.strictEqual(publicServer.status, 'Connected')
 			assert.strictEqual(publicServer.tools, 1)
-			assert.strictEqual(MutableHashMap.size(gateway.sessions), 0)
+			assert.strictEqual(MutableHashMap.size(gateway.sessions), 1)
 			const external = yield* gateway.add('https://mcp.example.com/mcp')
 			const collision = yield* gateway.add('https://mcp.example.net/mcp')
 			assert.strictEqual(external.id, 'example')
@@ -1013,7 +1016,7 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 			)
 			assert.isFalse(String.includes('access_token')(snapshotText))
 			assert.isFalse(String.includes('refresh_token')(snapshotText))
-			assert.strictEqual(MutableHashMap.size(gateway.sessions), 0)
+			assert.strictEqual(MutableHashMap.size(gateway.sessions), 1)
 		})
 	)
 	test.effect(
@@ -1102,12 +1105,12 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 			const mine = yield* Queue.unbounded<{range: UsageRange; report: AiUsageReport}>()
 			const theirs = yield* Queue.unbounded<{range: UsageRange; report: AiUsageReport}>()
 			yield* pipe(
-				gateway.client('ai-proxy.usage', '24h', {headers: {cookie: SESSION}}),
+				gateway.client('ai-metering.usage', '24h', {headers: {cookie: SESSION}}),
 				Stream.runForEach(value => Queue.offer(mine, value)),
 				Effect.forkScoped
 			)
 			yield* pipe(
-				gateway.client('ai-proxy.usage', '24h', {headers: {cookie: 'session=stranger'}}),
+				gateway.client('ai-metering.usage', '24h', {headers: {cookie: 'session=stranger'}}),
 				Stream.runForEach(value => Queue.offer(theirs, value)),
 				Effect.forkScoped
 			)
@@ -1181,7 +1184,7 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 					assert.isFalse(String.includes('upstream-')(text))
 					assert.isFalse(String.includes('refresh-')(text))
 					assert.strictEqual((yield* callTool(gateway.web, TOKEN, 'mobbin__search', {query: 'claude'})).status, 200)
-					assert.strictEqual(MutableHashMap.size(gateway.sessions), 0)
+					assert.strictEqual(MutableHashMap.size(gateway.sessions), 2)
 					assert.deepStrictEqual(MutableList.toArray(gateway.grants), [
 						{client: 'client-1', grant: 'authorization_code', refresh: '', resource: PROVIDERS.mobbin.url}
 					])
@@ -1250,7 +1253,7 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 			assert.isFalse(String.includes('mobbin__search')(yield* Effect.promise(() => listed.text())))
 			yield* Ref.set(gateway.stall, false)
 			yield* TestClock.adjust('21 seconds')
-			assert.strictEqual(MutableHashMap.size(gateway.sessions), 0)
+			assert.strictEqual(MutableHashMap.size(gateway.sessions), 1)
 		})
 	)
 	test.effect(

@@ -1,9 +1,6 @@
-import {Array, Console, Effect, FileSystem, Path, String, pipe} from 'effect'
+import {Console, Effect, FileSystem, Path} from 'effect'
 
 import {CliError} from 'effect/cli'
-
-// Build output, installs and generated route trees stay out of a new package.
-const SKIPPED = ['dist', 'node_modules', 'routeTree.gen.ts']
 
 export const copyTemplate = Effect.fnUntraced(function* (input: {
 	from: string
@@ -15,17 +12,8 @@ export const copyTemplate = Effect.fnUntraced(function* (input: {
 	if (yield* fs.exists(input.to)) {
 		return yield* CliError.UserError.make({cause: input.to, userMessage: `${input.to} already exists.`})
 	}
-	const entries = Array.filter(
-		yield* fs.readDirectory(input.from, {recursive: true}),
-		entry =>
-			!pipe(
-				entry,
-				String.split(path.sep),
-				Array.some(segment => Array.contains(SKIPPED, segment))
-			)
-	)
 	yield* Effect.forEach(
-		entries,
+		yield* fs.readDirectory(input.from, {recursive: true}),
 		entry =>
 			Effect.gen(function* () {
 				const from = path.join(input.from, entry)

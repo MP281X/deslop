@@ -1,7 +1,12 @@
-import {Effect, Queue, Redacted, Schema, Stream} from 'effect'
+import {Effect, Queue, Redacted, Schema, Stream, pipe} from 'effect'
 
 import {applicationId} from 'expo-application'
-import {getDevicePushTokenAsync, requestPermissionsAsync, setNotificationHandler} from 'expo-notifications'
+import {
+	addPushTokenListener,
+	getDevicePushTokenAsync,
+	requestPermissionsAsync,
+	setNotificationHandler
+} from 'expo-notifications'
 import {addPushToStartTokenListener} from 'expo-widgets'
 
 import {foregroundNotifications} from '@deslop/components-mobile/notifications'
@@ -27,20 +32,34 @@ export const pushAtom = RpcClient.runtime.atom(get =>
 					try: () => requestPermissionsAsync()
 				})).granted
 			) {
-				yield* client('push.register', {
-					...target,
-					kind: 'alert',
-					token: Redacted.make(
-						ApnsToken.make(
-							`${
-								(yield* Effect.tryPromise({
-									catch: cause => BookingsError.make({cause, message: 'The push token could not be read.'}),
-									try: () => getDevicePushTokenAsync()
-								})).data
-							}`
+				// Subscribe before reading the first token, so a rotation while the app stays open reaches the same registry.
+				yield* pipe(
+					Stream.callback<string, BookingsError>(queue =>
+						Effect.gen(function* () {
+							yield* Effect.acquireRelease(
+								Effect.sync(() =>
+									addPushTokenListener(token => {
+										Queue.offerUnsafe(queue, `${token.data}`)
+									})
+								),
+								subscription => Effect.sync(() => subscription.remove())
+							)
+							const token = yield* Effect.tryPromise({
+								catch: cause => BookingsError.make({cause, message: 'The push token could not be read.'}),
+								try: () => getDevicePushTokenAsync()
+							})
+							yield* Queue.offer(queue, `${token.data}`)
+						})
+					),
+					Stream.changes,
+					Stream.runForEach(token =>
+						Effect.ignore(
+							client('push.register', {...target, kind: 'alert', token: Redacted.make(ApnsToken.make(token))}),
+							{log: 'Warn', message: 'The notification token was not registered'}
 						)
-					)
-				})
+					),
+					Effect.forkScoped
+				)
 			}
 			// iOS hands out the push-to-start token and its rotations whenever it likes, for as long as the app runs.
 			yield* Stream.runForEach(

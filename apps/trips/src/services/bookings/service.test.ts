@@ -47,7 +47,7 @@ const places = Places.of({
 		if (code === 'BAD') return BookingsError.make({message: 'Unknown airport code.'})
 		return Effect.succeed(Schema.decodeSync(BookedPlace)({code, name: code, timeZone: 'UTC'}))
 	},
-	station: name => Effect.succeed(Schema.decodeSync(Place)({name, timeZone: 'UTC'}))
+	station: name => Effect.succeedSome(Schema.decodeSync(Place)({name, timeZone: 'UTC'}))
 })
 
 const memory = Layer.merge(SqliteClient.layer({filename: ':memory:'}), Reactivity.layer)

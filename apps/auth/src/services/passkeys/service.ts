@@ -1,19 +1,4 @@
-import {
-	Array,
-	Boolean,
-	Config,
-	Context,
-	DateTime,
-	Duration,
-	Effect,
-	HashMap,
-	Layer,
-	Option,
-	Ref,
-	Schema,
-	Stream,
-	pipe
-} from 'effect'
+import {Array, Boolean, Config, Context, Duration, Effect, Layer, Option, Schema, Stream, pipe} from 'effect'
 
 import {
 	generateAuthenticationOptions,
@@ -38,6 +23,7 @@ import {
 	RequestOptions,
 	Transport
 } from '#services/passkeys/schema.ts'
+import {makeRecords} from '#services/records/service.ts'
 import {browserLabel, credentialOwnerOf, deviceLabel} from '#services/tokens/lib/utils.ts'
 import {CredentialOwner} from '#services/tokens/schema.ts'
 import type {Origin, SessionVia} from '#services/tokens/schema.ts'
@@ -76,11 +62,6 @@ const challengeFromClientData = Effect.fnUntraced(function* (clientDataJSON: str
 		yield* Effect.fromResult(Base64Url.decodeString(clientDataJSON))
 	)).challenge
 })
-
-// Challenges still answerable at `now`, so expired ones never pile up.
-function live<K, V extends {expiresAt: DateTime.Utc}>(issued: HashMap.HashMap<K, V>, now: DateTime.Utc) {
-	return HashMap.filter(issued, entry => DateTime.isGreaterThan(entry.expiresAt, now))
-}
 
 function registrationKey(owner: CredentialOwner) {
 	return `${owner.user.id}/${owner.incarnation}`
@@ -141,8 +122,8 @@ export class Passkeys extends Context.Service<
 					onTrue: () => new URL(origin).hostname
 				})
 				// A challenge answers once, within five minutes, taken in one step: registrations by account, sign-ins by the challenge itself.
-				const registering = yield* Ref.make(HashMap.empty<string, {challenge: string; expiresAt: DateTime.Utc}>())
-				const signingIn = yield* Ref.make(HashMap.empty<string, {expiresAt: DateTime.Utc}>())
+				const registering = yield* makeRecords<string, string>(LIFETIME)
+				const signingIn = yield* makeRecords<string, string>(LIFETIME)
 				const withReactivity = Effect.provideService(Reactivity.Reactivity, yield* Reactivity.Reactivity)
 				const passkeys = yield* SqlModel.makeRepository(Passkey, {
 					idColumn: 'id',
@@ -165,11 +146,13 @@ export class Passkeys extends Context.Service<
 						DELETE FROM ${sql(Passkey.table)} WHERE userId = ${owner.user.id} AND incarnation = ${owner.incarnation}
 					`
 				})
-				const deleteOne = SqlSchema.void({
+				const deleteOne = SqlSchema.findOneOption({
 					Request: Schema.Struct({id: Passkey.fields.id, owner: CredentialOwner}),
+					Result: Schema.Struct({id: Passkey.fields.id}),
 					execute: request => sql`
 						DELETE FROM ${sql(Passkey.table)}
 						WHERE id = ${request.id} AND userId = ${request.owner.user.id} AND incarnation = ${request.owner.incarnation}
+						RETURNING id
 					`
 				})
 				// Two sign-ins at once never move the counter back.
@@ -186,12 +169,8 @@ export class Passkeys extends Context.Service<
 							yield* owned(session.via)
 							const key = registrationKey(session.owner)
 							const from = session.from
-							const now = yield* DateTime.now
 							const challenge = yield* pipe(
-								Ref.modify(registering, issued => [
-									HashMap.get(live(issued, now), key),
-									HashMap.remove(live(issued, now), key)
-								]),
+								registering.consume(key, Option.none()),
 								Effect.flatMap(Effect.fromOption),
 								Effect.mapError(() => AuthError.make({message: 'Adding the passkey took too long; start again'}))
 							)
@@ -206,7 +185,7 @@ export class Passkeys extends Context.Service<
 								catch: asPasskeyError,
 								try: () =>
 									verifyRegistrationResponse({
-										expectedChallenge: challenge.challenge,
+										expectedChallenge: challenge.value,
 										expectedOrigin: origin,
 										expectedRPID: rpID,
 										requireUserVerification: true,
@@ -244,7 +223,7 @@ export class Passkeys extends Context.Service<
 					forget: Effect.fn('Passkeys.forget')(
 						function* (owner: CredentialOwner) {
 							yield* Reactivity.mutation(deleteOwned(owner), ['passkeys'])
-							yield* Ref.update(registering, HashMap.remove(registrationKey(owner)))
+							yield* registering.remove(registrationKey(owner))
 						},
 						withReactivity,
 						asAuthError('Cannot remove the account’s passkeys')
@@ -267,13 +246,7 @@ export class Passkeys extends Context.Service<
 									userName: user.name
 								})
 						})
-						const now = yield* DateTime.now
-						yield* Ref.update(registering, issued =>
-							HashMap.set(live(issued, now), registrationKey(owner), {
-								challenge: options.challenge,
-								expiresAt: DateTime.addDuration(now, LIFETIME)
-							})
-						)
+						yield* registering.create(registrationKey(owner), options.challenge)
 						// As the JSON the browser receives, where a key the library left undefined is simply absent.
 						return yield* Schema.decodeEffect(Schema.fromJsonString(CreationOptions))(
 							yield* Schema.encodeUnknownEffect(Schema.fromJsonString(Schema.Unknown))(options)
@@ -281,7 +254,11 @@ export class Passkeys extends Context.Service<
 					}, asAuthError('Cannot start adding a passkey')),
 					remove: Effect.fn('Passkeys.remove')(
 						function* (id: PasskeyId, owner: CredentialOwner) {
-							yield* Reactivity.mutation(deleteOne({id, owner}), ['passkeys'])
+							if (Option.isNone(yield* Reactivity.mutation(deleteOne({id, owner}), ['passkeys']))) {
+								return yield* AuthError.make({
+									message: 'No passkey of yours has that id; list_passkeys shows valid ids. Nothing changed.'
+								})
+							}
 						},
 						withReactivity,
 						asAuthError('Cannot remove the passkey')
@@ -291,13 +268,7 @@ export class Passkeys extends Context.Service<
 							catch: asPasskeyError,
 							try: () => generateAuthenticationOptions({rpID, userVerification: 'required'})
 						}),
-						Effect.tap(options =>
-							Effect.flatMap(DateTime.now, now =>
-								Ref.update(signingIn, issued =>
-									HashMap.set(live(issued, now), options.challenge, {expiresAt: DateTime.addDuration(now, LIFETIME)})
-								)
-							)
-						),
+						Effect.tap(options => signingIn.create(options.challenge, options.challenge)),
 						Effect.flatMap(Schema.encodeUnknownEffect(Schema.fromJsonString(Schema.Unknown))),
 						Effect.flatMap(Schema.decodeEffect(Schema.fromJsonString(RequestOptions))),
 						asAuthError('Cannot start a passkey sign-in'),
@@ -305,12 +276,9 @@ export class Passkeys extends Context.Service<
 					),
 					signIn: Effect.fn('Passkeys.signIn')(function* (response: Assertion) {
 						const challenge = yield* challengeFromClientData(response.response.clientDataJSON)
-						const now = yield* DateTime.now
-						const taken = yield* Ref.modify(signingIn, issued => [
-							HashMap.has(live(issued, now), challenge),
-							HashMap.remove(live(issued, now), challenge)
-						])
-						if (!taken) return yield* AuthError.make({message: 'The sign-in took too long; start again'})
+						if (Option.isNone(yield* signingIn.consume(challenge, Option.none()))) {
+							return yield* AuthError.make({message: 'The sign-in took too long; start again'})
+						}
 						const found = yield* Effect.flatMap(
 							Effect.catchNoSuchElement(passkeys.findById(response.id)),
 							Option.match({onNone: () => Effect.fail(unknown), onSome: Effect.succeed})

@@ -24,10 +24,13 @@ beforeAll(() => Route.options.component?.preload?.())
 const snapshot = Schema.decodeSync(Snapshot)({
 	items: [
 		{
+			active: true,
 			detail: '',
+			health: 'quiet',
 			id: 'private',
 			kind: 'service',
 			name: 'deslop-private.service',
+			running: true,
 			state: 'active',
 			url: '',
 			worker: 'desktop'
@@ -127,7 +130,7 @@ it.effect(
 		assert.include(html, 'aria-label="Usage history"')
 		assert.include(html, 'aria-label="Apps loading"')
 		assert.include(html, 'aria-label="Select an app"')
-		assert.include(html, 'Processes')
+		assert.notInclude(html, '>Processes<')
 		assert.notInclude(html, 'aria-label="Search deploy"')
 		assert.include(html, 'aria-busy="true"')
 		assert.notInclude(html, 'No apps in this range')

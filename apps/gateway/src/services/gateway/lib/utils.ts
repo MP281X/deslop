@@ -1,17 +1,7 @@
 import {Array, HashSet, Option, Predicate, Record, Struct, Tuple, pipe} from 'effect'
 
-import type {Tool} from '@modelcontextprotocol/client'
-
 import type {ConnectionState} from '#services/connections/schema.ts'
 import type {RemoteTool} from '#services/gateway/schema.ts'
-
-export function indexTools(tools: readonly Tool[]) {
-	return pipe(
-		tools,
-		Array.groupBy(tool => tool.name),
-		Record.map(Array.headNonEmpty)
-	)
-}
 
 export function prunedTools(
 	definitions: readonly ConnectionState[],

@@ -12,7 +12,7 @@ import {ToolHandlers} from '#tools/handlers.ts'
 const NOW = Date.UTC(2026, 10, 10, 12)
 
 function makeFleet(overrides: Partial<Parameters<typeof Fleet.of>[0]>) {
-	const snapshot = Schema.decodeSync(Snapshot)({items: [], sources: [], time: 0})
+	const snapshot = Schema.decodeSync(Snapshot)({items: [], sources: [], time: 0, workers: []})
 	const machine = Schema.decodeSync(MachineHistory)({
 		disks: [],
 		error: '',
@@ -74,13 +74,16 @@ it.effect('names an exposure list_apps returns and hides it by that name', () =>
 		Effect.gen(function* () {
 			const hidden = yield* Ref.make(Option.none<HideRequest>())
 			const exposure = {
+				active: false,
 				detail: 'tailnet → 127.0.0.1:5000',
+				health: 'quiet',
 				id: 'dev:exposure:svc-3',
 				kind: 'exposure',
 				name: 'svc-3',
 				owned: true,
 				port: 5000,
 				publicAccess: false,
+				running: false,
 				state: 'configured; check backend',
 				url: 'https://svc-3.example.ts.net',
 				worker: 'dev'
@@ -109,13 +112,16 @@ it.effect('names an exposure list_apps returns and hides it by that name', () =>
 			const answer = Option.getOrThrow(
 				Array.last(
 					Array.fromIterable(
-						yield* Stream.runCollect(yield* toolkit.handle('remove_exposure', {name: listedExposure.name}))
+						yield* Stream.runCollect(
+							yield* toolkit.handle('remove_exposure', {name: listedExposure.name, worker: 'dev'})
+						)
 					)
 				)
 			)
 			assert.isFalse(answer.isFailure)
 			assert.deepStrictEqual(yield* Schema.encodeEffect(HideRequest)(Option.getOrThrow(yield* Ref.get(hidden))), {
-				name: 'svc-3'
+				name: 'svc-3',
+				worker: 'dev'
 			})
 		})
 	)
