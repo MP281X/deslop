@@ -1,18 +1,4 @@
-import {
-	Array,
-	Context,
-	Duration,
-	Effect,
-	Exit,
-	Layer,
-	Option,
-	RcMap,
-	Ref,
-	Schema,
-	Scope,
-	Semaphore,
-	pipe
-} from 'effect'
+import {Array, Context, Duration, Effect, Exit, Layer, Option, RcMap, Ref, Schema, Scope, Semaphore, pipe} from 'effect'
 
 import {SdkHttpError, StreamableHTTPClientTransport, UnauthorizedError} from '@modelcontextprotocol/client'
 import {McpClient, McpClientError, McpProtocol, McpSchema} from 'effect/ai'
@@ -102,7 +88,7 @@ export class Upstreams extends Context.Service<Upstreams>()('@deslop/gateway/ser
 							const transport = new StreamableHTTPClientTransport(new URL(url), {
 								authProvider: {
 									// oxlint-disable-next-line no-restricted-properties -- SDK authentication is a Promise-returning transport boundary.
-										token: () => Effect.runPromise(Effect.map(Ref.get(token), Option.getOrUndefined))
+									token: () => Effect.runPromise(Effect.map(Ref.get(token), Option.getOrUndefined))
 								},
 								fetch,
 								requestInit: {redirect: 'error'}
