@@ -391,16 +391,12 @@ export class Inventory extends Context.Service<
 							Effect.flatMap(command('lsof', ['-nP', '+c0', '-iTCP', '-sTCP:LISTEN', '-iUDP', '-F', 'pctPnT']), text =>
 								portItems(lsofSockets(text), worker, http, {
 									cwd: Effect.fnUntraced(function* (processId) {
-										return Option.map(
-											Array.findFirst(
-												pipe(
-													yield* Effect.option(command('lsof', ['-nP', '-a', '-p', processId, '-d', 'cwd', '-Fn'])),
-													Option.getOrElse(() => ''),
-													String.split('\n')
-												),
-												String.startsWith('n')
-											),
-											String.slice(1)
+										return pipe(
+											yield* Effect.option(command('lsof', ['-nP', '-a', '-p', processId, '-d', 'cwd', '-Fn'])),
+											Option.getOrElse(() => ''),
+											String.split('\n'),
+											Array.findFirst(String.startsWith('n')),
+											Option.map(String.slice(1))
 										)
 									}),
 									unit: processId =>

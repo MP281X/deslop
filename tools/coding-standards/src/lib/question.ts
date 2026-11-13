@@ -27,7 +27,7 @@ function dedent(example: string) {
 		),
 		{onEmpty: () => 0, onNonEmpty: Array.min(Order.Number)}
 	)
-	return Array.join(Array.map(lines, String.slice(indent)), '\n')
+	return pipe(lines, Array.map(String.slice(indent)), Array.join('\n'))
 }
 
 export function question(

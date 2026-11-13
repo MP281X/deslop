@@ -113,10 +113,11 @@ export function clientAddress(headers: Headers.Headers, remote: Option.Option<st
 export function originFrom(headers: Headers.Headers, remote: Option.Option<string>) {
 	return {
 		...Option.match(clientAddress(headers, remote), {onNone: () => ({}), onSome: address => ({address})}),
-		...Option.match(Headers.get(headers, 'user-agent'), {
-			onNone: () => ({}),
-			onSome: agent => ({userAgent: String.slice(0, 200)(agent)})
-		})
+		...pipe(
+			headers,
+			Headers.get('user-agent'),
+			Option.match({onNone: () => ({}), onSome: agent => ({userAgent: String.slice(0, 200)(agent)})})
+		)
 	}
 }
 

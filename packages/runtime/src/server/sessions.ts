@@ -146,11 +146,15 @@ export class Sessions extends Context.Service<
 				}
 
 				function lockOf(idHash: string) {
-					return Option.getOrElse(MutableHashMap.get(locks, idHash), () => {
-						const lock = Semaphore.makeUnsafe(1)
-						MutableHashMap.set(locks, idHash, lock)
-						return lock
-					})
+					return pipe(
+						locks,
+						MutableHashMap.get(idHash),
+						Option.getOrElse(() => {
+							const lock = Semaphore.makeUnsafe(1)
+							MutableHashMap.set(locks, idHash, lock)
+							return lock
+						})
+					)
 				}
 
 				function fresh(session: Session) {
@@ -286,7 +290,11 @@ export class Sessions extends Context.Service<
 						}
 						const now = yield* Clock.currentTimeMillis
 						const bearer = Option.getOrUndefined(
-							Option.filter(MutableHashMap.get(bearers, userId), access => access.expiresAt >= now + 60_000)
+							pipe(
+								bearers,
+								MutableHashMap.get(userId),
+								Option.filter(access => access.expiresAt >= now + 60_000)
+							)
 						)
 						if (bearer !== undefined) return Redacted.value(bearer.token)
 						MutableHashMap.remove(bearers, userId)

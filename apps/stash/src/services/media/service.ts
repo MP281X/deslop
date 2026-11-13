@@ -226,9 +226,10 @@ export class Media extends Context.Service<
 				}
 				return yield* whisper.withPermit(
 					Effect.gen(function* () {
-						const files = Array.sort(
-							Array.filter(yield* fs.readDirectory(work), String.endsWith('.flac')),
-							Order.String
+						const files = pipe(
+							yield* fs.readDirectory(work),
+							Array.filter(String.endsWith('.flac')),
+							Array.sort(Order.String)
 						)
 						return speechOnly(
 							pipe(
@@ -405,11 +406,15 @@ export class Media extends Context.Service<
 				if (sampled.exitCode !== 0) {
 					return yield* MediaError.make({message: `ffmpeg cannot sample the video: ${sampled.stderr}`})
 				}
-				return yield* Effect.forEach(
-					Array.sort(Array.filter(yield* fs.readDirectory(work), String.startsWith('frame-')), Order.String),
-					(file, index) =>
-						Effect.map(fs.readFile(path.join(work, file)), bytes => ({bytes, seconds: (index * seconds) / count})),
-					{concurrency: 'unbounded'}
+				return yield* pipe(
+					yield* fs.readDirectory(work),
+					Array.filter(String.startsWith('frame-')),
+					Array.sort(Order.String),
+					Effect.forEach(
+						(file, index) =>
+							Effect.map(fs.readFile(path.join(work, file)), bytes => ({bytes, seconds: (index * seconds) / count})),
+						{concurrency: 'unbounded'}
+					)
 				)
 			})
 

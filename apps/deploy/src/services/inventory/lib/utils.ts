@@ -43,7 +43,11 @@ export function processOwner(cgroup: string) {
 	)?.[1]
 	if (container !== undefined) return `container:${String.slice(0, 12)(container)}`
 	const segments = String.split(cgroup, /[/\n]/u)
-	const service = Option.getOrElse(Array.findLastIndex(segments, String.endsWith('.service')), () => -1)
+	const service = pipe(
+		segments,
+		Array.findLastIndex(String.endsWith('.service')),
+		Option.getOrElse(() => -1)
+	)
 	const manager = pipe(
 		segments,
 		Array.findFirstIndex(segment => Option.isSome(String.match(/^user@[0-9]+\.service$/u)(segment))),

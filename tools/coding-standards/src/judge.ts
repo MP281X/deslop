@@ -182,14 +182,15 @@ const decide = Effect.fnUntraced(function* (
 		client.execute(HttpClientRequest.bearerToken(request, Redacted.value(used))),
 		sent => sent.status !== 401,
 		() =>
-			Effect.flatMap(
-				SynchronizedRef.updateAndGetEffect(token, current =>
+			pipe(
+				token,
+				SynchronizedRef.updateAndGetEffect(current =>
 					Effect.gen(function* () {
 						if (current !== used) return current
 						return yield* accessToken(urls, true)
 					})
 				),
-				fresh => client.execute(HttpClientRequest.bearerToken(request, Redacted.value(fresh)))
+				Effect.flatMap(fresh => client.execute(HttpClientRequest.bearerToken(request, Redacted.value(fresh))))
 			)
 	)
 	if (response.status === 401) {
