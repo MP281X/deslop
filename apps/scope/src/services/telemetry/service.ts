@@ -13,7 +13,6 @@ import {
 	Number,
 	Option,
 	Order,
-	Path,
 	Predicate,
 	Record,
 	Ref,
@@ -422,8 +421,7 @@ function ingestionAnswer(entries: readonly Entry[], rejections: readonly Rejecti
 	} satisfies IngestionAnswer
 }
 
-// Stored spans are named and judged as new ones are, so the previous release's files read the same.
-function deriveEntry(entry: Entry) {
+function deriveEntry(entry: Omit<Entry, 'denied'>) {
 	const links = readLinks(entry.payload)
 	const derived = {
 		...entry,
@@ -595,7 +593,6 @@ function snapshotOf(state: State, now: number) {
 export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/services/telemetry/service/Telemetry', {
 	make: Effect.fnUntraced(function* (directory: string) {
 		const fs = yield* FileSystem.FileSystem
-		const path = yield* Path.Path
 		const store = KeyValueStore.toSchemaStore(yield* KeyValueStore.KeyValueStore, Entry)
 		const digest = yield* Digest.Digest
 		const utf8 = new TextEncoder()
@@ -625,12 +622,7 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 						receivedAt,
 						Duration.toMillis(RETENTION)
 					)
-					yield* Effect.forEach(retention.repaired, entry => store.set(entry.id, entry), {
-						concurrency: 1,
-						discard: true
-					})
 					yield* Effect.forEach(retention.expired, entry => store.remove(entry.id), {concurrency: 1, discard: true})
-					// Retention only repairs receipt times and removes whole expired traces, so the indexes stay as they are.
 					return {
 						entries: retention.next,
 						links: Array.reduce(retention.expired, current.links, (links, entry) => shiftedLinks(links, entry, -1)),
@@ -656,17 +648,14 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 			Effect.gen(function* () {
 				const entries = Array.getSomes(
 					yield* Effect.forEach(
-						yield* fs.readDirectory(directory),
+						Array.filter(yield* fs.readDirectory(directory), file => !String.endsWith('.tmp')(file)),
 						file =>
 							pipe(
 								Effect.try({
 									catch: cause => TelemetryError.make({cause, message: `${file} has no readable name.`}),
 									try: () => decodeURIComponent(file)
 								}),
-								Effect.filterOrFail(key => !String.endsWith('.tmp')(key)),
-								Effect.flatMap(key => store.get(key)),
-								// A write cut short or an entry of an older shape is dropped rather than keeping Scope from starting.
-								Effect.catch(() => Effect.as(fs.remove(path.join(directory, file), {force: true}), Option.none()))
+								Effect.flatMap(key => store.get(key))
 							),
 						{concurrency: 8}
 					)
@@ -675,9 +664,8 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 				const now = yield* Clock.currentTimeMillis
 				yield* SynchronizedRef.update(state, current => {
 					const merged = Array.reduce(entries, current, (all, entry) => {
-						const derived = deriveEntry(entry)
-						if (HashMap.has(all.entries, derived.id)) return all
-						return addEntry(all, derived)
+						if (HashMap.has(all.entries, entry.id)) return all
+						return addEntry(all, entry)
 					})
 					return settleTraces(merged, Array.fromIterable(HashMap.keys(merged.traces)), now)
 				})

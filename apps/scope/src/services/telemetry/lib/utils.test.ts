@@ -25,10 +25,12 @@ function tracedOf(entries: readonly Entry[], now: number) {
 
 function span(id: string, service: string, start: number, durationMs: number) {
 	return Entry.make({
+		denied: false,
 		durationMs,
 		id,
 		name: 'share',
 		payload: {},
+		receivedAt: start,
 		resource: {
 			attributes: [
 				{key: 'service.name', value: {stringValue: service}},
@@ -77,10 +79,12 @@ it('counts each app’s operations only inside the page’s time frame and keeps
 
 function event(id: string, service: string, run: number, time: number, version = '') {
 	return Entry.make({
+		denied: false,
 		durationMs: 0,
 		id,
 		name: 'event',
 		payload: {},
+		receivedAt: time,
 		resource: {
 			attributes: [
 				{key: 'service.name', value: {stringValue: service}},

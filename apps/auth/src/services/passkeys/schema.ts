@@ -1,6 +1,6 @@
 import {Schema} from 'effect'
 
-import {StoredOwner} from '#services/tokens/schema.ts'
+import {CredentialOwner} from '#services/tokens/schema.ts'
 
 // The WebAuthn JSON forms `@simplewebauthn` and the browser exchange, so each side decodes what the other sent; arrays stay mutable because the library's own types are, not to satisfy a readonly rule.
 export type Transport = typeof Transport.Type
@@ -82,7 +82,7 @@ export const ClientData = Schema.Struct({challenge: Schema.String})
 
 export type StoredPasskey = typeof StoredPasskey.Type
 export const StoredPasskey = Schema.Struct({
-	...StoredOwner.fields,
+	...CredentialOwner.fields,
 	addedFrom: Schema.String,
 	counter: Schema.Int,
 	id: Schema.NonEmptyString,

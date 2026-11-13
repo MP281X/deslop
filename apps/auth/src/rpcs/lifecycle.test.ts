@@ -28,11 +28,10 @@ const VERIFIER = 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'
 
 const open = Effect.gen(function* () {
 	const base = Context.get(yield* Layer.build(Layer.fresh(KeyValueStore.layerMemory)), KeyValueStore.KeyValueStore)
-	// This row deliberately uses the immediately previous release's representation.
 	yield* base.set(
 		'members',
 		yield* Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown))([
-			{...ADMIN, fullName: '', since: 0, status: 'Allowed'}
+			{...ADMIN, fullName: '', incarnation: 'admin', since: 0, status: 'Allowed'}
 		])
 	)
 	const failing = yield* Ref.make(Option.none<string>())

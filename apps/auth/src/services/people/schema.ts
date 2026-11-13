@@ -2,7 +2,7 @@ import {Schema} from 'effect'
 
 import {User} from '@deslop/runtime/shared/auth'
 
-import {SessionVia, StoredOwner} from '#services/tokens/schema.ts'
+import {CredentialOwner, SessionVia} from '#services/tokens/schema.ts'
 
 // Admins come from GITHUB_ADMINS; a member is a GitHub account an admin allowed; anyone else who signed in waits for one.
 export type Role = typeof Role.Type
@@ -24,7 +24,7 @@ export type MemberRow = typeof MemberRow.Type
 export const MemberRow = Schema.Struct({
 	fullName: Schema.String,
 	id: Schema.NonEmptyString,
-	incarnation: StoredOwner.fields.incarnation,
+	incarnation: CredentialOwner.fields.incarnation,
 	name: Schema.NonEmptyString,
 	since: Schema.Finite,
 	status: MemberStatus

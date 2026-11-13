@@ -20,7 +20,6 @@ import {
 	Schema,
 	Stream,
 	String,
-	Struct,
 	pipe
 } from 'effect'
 
@@ -133,6 +132,7 @@ function stored(index: number) {
 	const traceId = String.padStart(32, '0')((index + 1).toString(16))
 	const spanId = String.padStart(16, '0')((index + 1).toString(16))
 	return Entry.make({
+		denied: false,
 		durationMs: 1,
 		id: `${traceId}:${spanId}`,
 		name: 'stored.op',
@@ -544,15 +544,6 @@ it.layer(platform)(test => {
 					assert.strictEqual(trace.logs[0]?.time, '99999999999999999999')
 				})
 			)
-			for (const file of yield* fs.readDirectory(directory)) {
-				yield* pipe(
-					fs.readFileString(`${directory}/${file}`),
-					Effect.flatMap(Schema.decodeEffect(Schema.fromJsonString(Entry))),
-					Effect.map(Struct.omit(['receivedAt'])),
-					Effect.flatMap(Schema.encodeEffect(Schema.fromJsonString(Entry))),
-					Effect.flatMap(value => fs.writeFileString(`${directory}/${file}`, value))
-				)
-			}
 			yield* Effect.scoped(
 				Effect.gen(function* () {
 					const telemetry = yield* loaded(directory)
@@ -567,7 +558,7 @@ it.layer(platform)(test => {
 	)
 
 	test.effect(
-		'keeps ingested spans across restarts for three days, past a broken entry file',
+		'keeps ingested spans across restarts for three days',
 		Effect.fnUntraced(function* () {
 			const fs = yield* FileSystem.FileSystem
 			const directory = yield* fs.makeTempDirectoryScoped()
@@ -590,7 +581,6 @@ it.layer(platform)(test => {
 					})
 				})
 			)
-			yield* fs.writeFileString(`${directory}/broken`, '{')
 			yield* TestClock.adjust('2 days')
 			yield* Effect.scoped(
 				Effect.gen(function* () {
@@ -598,7 +588,6 @@ it.layer(platform)(test => {
 					assert.strictEqual((yield* telemetry.trace(TRACE_ID)).spans[0]?.name, 'persisted')
 				})
 			)
-			assert.isFalse(yield* fs.exists(`${directory}/broken`))
 			yield* TestClock.adjust('2 days')
 			const telemetry = yield* loaded(directory)
 			assert.isTrue(Exit.isFailure(yield* Effect.exit(telemetry.trace(TRACE_ID))))
@@ -1130,7 +1119,7 @@ it.layer(platform)(test => {
 	)
 
 	test.effect(
-		'derives denial on load from the previous release’s stored entries',
+		'retains denied spans across restarts without counting them as failures',
 		Effect.fnUntraced(function* () {
 			const fs = yield* FileSystem.FileSystem
 			const directory = yield* fs.makeTempDirectoryScoped()
@@ -1152,15 +1141,6 @@ it.layer(platform)(test => {
 					)
 				})
 			)
-			for (const file of yield* fs.readDirectory(directory)) {
-				yield* pipe(
-					fs.readFileString(`${directory}/${file}`),
-					Effect.flatMap(Schema.decodeEffect(Schema.fromJsonString(Entry))),
-					Effect.map(Struct.omit(['denied'])),
-					Effect.flatMap(Schema.encodeEffect(Schema.fromJsonString(Entry))),
-					Effect.flatMap(value => fs.writeFileString(`${directory}/${file}`, value))
-				)
-			}
 			yield* Effect.scoped(
 				Effect.gen(function* () {
 					const telemetry = yield* loaded(directory)

@@ -306,9 +306,8 @@ export function compact(samples: readonly Sample[], now: number) {
 	)
 }
 
-// The machine's used disk space: its recorded total, or the sum of its mounts for a sample from before that field.
 export function usedStorage(point: Sample) {
-	return point.storageUsed ?? Array.reduce(point.disks, 0, (sum, disk) => sum + disk.used)
+	return point.storageUsed ?? 0
 }
 
 export function history(samples: readonly Sample[], minutes: number, now: number) {
@@ -325,7 +324,7 @@ export function history(samples: readonly Sample[], minutes: number, now: number
 	// Every point keeps its cores and apps, which the charts split by; mounts and load stay on the latest only.
 	return Array.map(selected, (value, index) => {
 		if (index === selected.length - 1) return value
-		const point: Sample = {...pipe(value, Struct.omit(['load', 'uptime'])), disks: [], storageUsed: usedStorage(value)}
+		const point: Sample = {...pipe(value, Struct.omit(['load', 'uptime'])), disks: []}
 		return point
 	})
 }
@@ -421,14 +420,8 @@ function rounded(value: number) {
 	return Number.round(value, 1)
 }
 
-// The machine's used disk space: its recorded total, or the sum of its mounts for a sample from before that field.
 function diskUsed(point: Sample) {
-	const recorded = Option.fromUndefinedOr(point.storageUsed)
-	if (Option.isSome(recorded)) return recorded
-	if (Array.isReadonlyArrayNonEmpty(point.disks)) {
-		return Option.some(Number.sumAll(Array.map(point.disks, disk => disk.used)))
-	}
-	return Option.none()
+	return Option.fromUndefinedOr(point.storageUsed)
 }
 
 function diskTotal(machine: MachineHistory) {

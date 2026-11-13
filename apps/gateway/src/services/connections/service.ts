@@ -527,7 +527,7 @@ export class Connections extends Context.Service<
 				}
 				return yield* pipe(
 					Effect.gen(function* () {
-						// Check the provider's current capabilities before authorization, including connections saved by the previous release.
+						// Check the provider's current capabilities before authorization.
 						const metadata = yield* Schema.decodeUnknownEffect(Metadata)(
 							yield* Effect.tryPromise({
 								catch: cause => UpstreamError.make({cause}),

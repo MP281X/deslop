@@ -6,7 +6,7 @@ import {KeyValueStore} from 'effect/persistence'
 
 import {Auth, adminIds, localAuth, requireAdmin} from '@deslop/runtime/server/auth'
 import type {User} from '@deslop/runtime/shared/auth'
-import {AuthError, DEVELOPER, bearerOf, isAdmin, rejected} from '@deslop/runtime/shared/auth'
+import {AuthError, DEVELOPER, bearerOf, rejected} from '@deslop/runtime/shared/auth'
 
 import {RpcOwner} from '#rpcs/contracts.ts'
 import {GitHub} from '#services/github/service.ts'
@@ -58,12 +58,7 @@ export class People extends Context.Service<
 			const currentOwner = Effect.fnUntraced(function* (owner: CredentialOwner) {
 				const row = member(owner.user.id, yield* SubscriptionRef.get(state))
 				if (local && owner.user.id === DEVELOPER.id && owner.incarnation === developer.incarnation) return row
-				if (
-					!Option.match(row, {
-						onNone: () => isAdmin(admins, owner.user.id) && owner.incarnation === 'legacy',
-						onSome: found => found.incarnation === owner.incarnation
-					})
-				) {
+				if (!Option.exists(row, found => found.incarnation === owner.incarnation)) {
 					return yield* AuthError.make({
 						error: 'invalid_grant',
 						message: 'This account registration ended. Sign in again.'
@@ -101,6 +96,7 @@ export class People extends Context.Service<
 						if (Option.isSome(member(`github:${id}`, yield* SubscriptionRef.get(state)))) return
 						const profile = yield* github.profile(id)
 						const since = yield* Clock.currentTimeMillis
+						const incarnation = yield* randomToken(32)
 						yield* transact(current => {
 							if (Option.isSome(member(`github:${profile.id}`, current))) {
 								return Effect.succeed([undefined, current] as const)
@@ -112,7 +108,7 @@ export class People extends Context.Service<
 									{
 										fullName: profile.name ?? '',
 										id: `github:${profile.id}`,
-										incarnation: Boolean.match(local, {onFalse: () => 'legacy', onTrue: () => 'local'}),
+										incarnation,
 										name: profile.login,
 										since,
 										status: 'Allowed'

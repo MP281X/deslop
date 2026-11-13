@@ -170,19 +170,10 @@ export function retentionOf(
 	receivedAt: number,
 	retentionMs: number
 ) {
-	const now = BigInt(receivedAt) * 1_000_000n
-	const cutoff = now - BigInt(retentionMs) * 1_000_000n
+	const cutoff = receivedAt - retentionMs
 	const entries = Array.fromIterable(HashMap.values(current))
-	const repaired = Array.map(
-		Array.filter(entries, entry => entry.receivedAt === undefined && BigInt(entry.time) > now),
-		entry => ({...entry, receivedAt})
-	)
 	function expiredOne(entry: Entry) {
-		const received = Option.match(Option.fromUndefinedOr(entry.receivedAt), {
-			onNone: () => BigInt(entry.time),
-			onSome: time => BigInt(time) * 1_000_000n
-		})
-		return received < cutoff
+		return entry.receivedAt < cutoff
 	}
 	// Expiry is whole-trace: when one entry outlives retention, its siblings go too. A release is too: keep the trace while any versioned entry is current or an unversioned sibling is present.
 	const traces = HashSet.union(
@@ -213,15 +204,7 @@ export function retentionOf(
 	const expired = Array.filter(entries, entry =>
 		pruned(entry, traces, candidate => expiredOne(candidate) || isSuperseded(candidate, newest))
 	)
-	return {
-		expired,
-		next: Array.reduce(
-			expired,
-			Array.reduce(repaired, current, (all, entry) => HashMap.set(all, entry.id, entry)),
-			(all, entry) => HashMap.remove(all, entry.id)
-		),
-		repaired
-	}
+	return {expired, next: Array.reduce(expired, current, (all, entry) => HashMap.remove(all, entry.id))}
 }
 
 // Save touches the traces it receives and, when a service's newest release moved, only that service's stored entries.
