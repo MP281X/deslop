@@ -61,7 +61,7 @@
 				"**/*.test.ts",
 				"apps/*/fingerprint.config.js",
 				"apps/*/targets/**",
-				"packages/*/src/config/**"
+				"packages/runtime/src/config/**"
 			]
 		}
 	},

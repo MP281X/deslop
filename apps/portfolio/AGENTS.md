@@ -4,6 +4,8 @@ Public profile and printable CV, with live visitor cursors, trails and two wande
 
 The room holds plain state. Its single bot stream runs only while visitors occupy the room. Cursor moves and wander ticks are not traced; a join span covers the visitor's connection.
 
+A tab open across a release can receive a scene it cannot decode. Presence defects are terminal, unlike retried transport drops: the realtime boundary shows an unavailable HUD without replacing the public profile or CV. The server's scene owns each identity's colour, including tabs sharing that identity.
+
 ## Journeys
 
 - Open the profile and `/cv`; profile links and the printable CV remain available without presence.

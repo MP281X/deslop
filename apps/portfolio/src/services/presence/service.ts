@@ -83,7 +83,12 @@ export class Presence extends Context.Service<
 				Stream.map(scene => !Array.isReadonlyArrayEmpty(scene.visitors)),
 				Stream.changes,
 				Stream.switchMap(occupied => Boolean.match(occupied, {onFalse: () => Stream.empty, onTrue: () => wander})),
-				Stream.runForEach(bots => SubscriptionRef.update(room, scene => ({...scene, bots}))),
+				Stream.runForEach(bots =>
+					SubscriptionRef.updateSome(room, scene => {
+						if (Array.isReadonlyArrayEmpty(scene.visitors)) return Option.none()
+						return Option.some({...scene, bots})
+					})
+				),
 				Effect.forkScoped
 			)
 
@@ -124,18 +129,22 @@ export class Presence extends Context.Service<
 						{attributes: {'rpc.stream': true, visitorId: payload.id}}
 					),
 				move: payload =>
-					SubscriptionRef.update(room, scene => ({
-						...scene,
-						visitors: Array.map(scene.visitors, visitor => {
-							if (
-								visitor.id === payload.id &&
-								(visitor.color !== payload.color || hasMeaningfulMove(visitor, payload))
-							) {
-								return {...visitor, color: payload.color, x: payload.x, y: payload.y}
-							}
-							return visitor
-						})
-					}))
+					SubscriptionRef.updateSome(room, scene =>
+						pipe(
+							scene.visitors,
+							Array.findFirstIndex(
+								visitor =>
+									visitor.id === payload.id && (visitor.color !== payload.color || hasMeaningfulMove(visitor, payload))
+							),
+							Option.map(index => ({
+								...scene,
+								visitors: Array.map(scene.visitors, (visitor, position) => {
+									if (position === index) return {...visitor, ...payload}
+									return visitor
+								})
+							}))
+						)
+					)
 			})
 		})
 	)

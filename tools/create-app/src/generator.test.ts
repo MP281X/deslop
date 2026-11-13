@@ -9,6 +9,8 @@ import {Array, Boolean, Effect, FileSystem, Option, Path, Record, Schema, String
 import {Jsonc} from 'effect/encoding'
 import {ChildProcess} from 'effect/process'
 
+import {testWorkspace} from '@deslop/create-package/testing'
+
 type Manifest = typeof Manifest.Type
 const Manifest = Schema.fromJsonString(
 	Schema.Struct({
@@ -124,20 +126,19 @@ it.layer(NodeServices.layer)(test => {
 			const fs = yield* FileSystem.FileSystem
 			const path = yield* Path.Path
 			const root = path.resolve(import.meta.dirname, '../../..')
+			const workspace = yield* testWorkspace(root)
 			for (const app of [
 				{donor: 'scope', kind: 'web'},
 				{donor: 'opm', kind: 'mobile'}
 			]) {
-				const name = `template-app-${String.toLowerCase(path.basename(yield* fs.makeTempDirectoryScoped()))}`
-				const target = path.join(root, 'apps', name)
-				// Use the public command's destination, not a test-only directory option.
-				yield* Effect.addFinalizer(() => Effect.orDie(fs.remove(target, {force: true, recursive: true})))
+				const name = `template-app-${app.kind}-${String.toLowerCase(path.basename(workspace))}`
+				const target = path.join(workspace, 'apps', name)
 				assert.strictEqual(
 					yield* Effect.flatMap(
 						ChildProcess.make(
 							'node',
-							[path.join(root, 'tools/create-app/bin/index.ts'), '--name', name, '--kind', app.kind],
-							{cwd: path.join(root, 'tools'), stderr: 'inherit', stdout: 'inherit'}
+							[path.join(workspace, 'tools/create-app/bin/index.ts'), '--name', name, '--kind', app.kind],
+							{cwd: path.join(workspace, 'tools'), stderr: 'inherit', stdout: 'inherit'}
 						),
 						child => child.exitCode
 					),
@@ -166,7 +167,7 @@ it.layer(NodeServices.layer)(test => {
 								'--fail-on-issues',
 								'--quiet'
 							],
-							{cwd: root, stderr: 'inherit', stdout: 'inherit'}
+							{cwd: workspace, stderr: 'inherit', stdout: 'inherit'}
 						),
 						child => child.exitCode
 					),
@@ -185,14 +186,14 @@ it.layer(NodeServices.layer)(test => {
 							'lint',
 							'--type-aware',
 							'--type-check',
-							path.relative(root, target)
+							path.relative(workspace, target)
 						]
 					]
 				] as const) {
 					assert.strictEqual(
 						yield* Effect.flatMap(
 							ChildProcess.make(check[0], check[1], {
-								cwd: root,
+								cwd: workspace,
 								env: {TSRS_FAST: '1'},
 								extendEnv: true,
 								stderr: 'inherit',

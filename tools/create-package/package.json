@@ -9,7 +9,8 @@
 	},
 	"exports": {
 		".": "./src/copy-template.ts",
-		"./cli": "./src/cli.ts"
+		"./cli": "./src/cli.ts",
+		"./testing": "./src/test-workspace.ts"
 	},
 	"scripts": {
 		"test": "vp test --config ../../vite.config.ts"

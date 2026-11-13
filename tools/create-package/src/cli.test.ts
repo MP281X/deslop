@@ -5,6 +5,8 @@ import {Array, Effect, FileSystem, Option, Path, Record, Schema, Stream, String,
 
 import {ChildProcess} from 'effect/process'
 
+import {testWorkspace} from './test-workspace.ts'
+
 type Package = typeof Package.Type
 const Package = Schema.fromJsonString(
 	Schema.Struct({
@@ -24,18 +26,18 @@ it.layer(NodeServices.layer)(test => {
 			const fs = yield* FileSystem.FileSystem
 			const path = yield* Path.Path
 			const root = path.resolve(import.meta.dirname, '../../..')
+			const workspace = yield* testWorkspace(root)
 			const target = path.join(
-				root,
+				workspace,
 				'packages',
-				`template-package-${String.toLowerCase(path.basename(yield* fs.makeTempDirectoryScoped()))}`
+				`template-package-${String.toLowerCase(path.basename(workspace))}`
 			)
-			yield* Effect.addFinalizer(() => Effect.orDie(fs.remove(target, {force: true, recursive: true})))
 			assert.strictEqual(
 				yield* Effect.flatMap(
 					ChildProcess.make(
 						'node',
-						[path.join(root, 'tools/create-package/bin/index.ts'), '--name', path.basename(target)],
-						{cwd: path.join(root, 'tools'), stderr: 'inherit', stdout: 'inherit'}
+						[path.join(workspace, 'tools/create-package/bin/index.ts'), '--name', path.basename(target)],
+						{cwd: path.join(workspace, 'tools'), stderr: 'inherit', stdout: 'inherit'}
 					),
 					child => child.exitCode
 				),
@@ -68,13 +70,13 @@ it.layer(NodeServices.layer)(test => {
 					'lint',
 					'--type-aware',
 					'--type-check',
-					path.relative(root, target)
+					path.relative(workspace, target)
 				]
 			]) {
 				assert.strictEqual(
 					yield* Effect.flatMap(
 						ChildProcess.make('vp', args, {
-							cwd: root,
+							cwd: workspace,
 							env: {TSRS_FAST: '1'},
 							extendEnv: true,
 							stderr: 'inherit',
@@ -91,12 +93,12 @@ it.layer(NodeServices.layer)(test => {
 					'exec',
 					'fallow',
 					'guard',
-					path.relative(root, path.join(target, 'src/shared/schema.ts')),
+					path.relative(workspace, path.join(target, 'src/shared/schema.ts')),
 					'packages/runtime/src/shared/schema.ts',
 					'--format',
 					'json'
 				],
-				{cwd: root}
+				{cwd: workspace}
 			)
 			const zones = yield* Schema.decodeEffect(
 				Schema.fromJsonString(

@@ -7,6 +7,7 @@ import {
 	Function,
 	HashMap,
 	HashSet,
+	Match,
 	MutableList,
 	Number,
 	Option,
@@ -29,7 +30,7 @@ import {
 	SealCheckIcon
 } from '@phosphor-icons/react'
 import {useHotkeys} from '@tanstack/react-hotkeys'
-import {createFileRoute} from '@tanstack/react-router'
+import {CatchBoundary, createFileRoute} from '@tanstack/react-router'
 import {SecureRandom} from 'effect/crypto'
 import {KeyValueStore} from 'effect/persistence'
 import {Atom} from 'effect/reactivity'
@@ -74,7 +75,7 @@ const identityAtom = Atom.keepAlive(
 	})
 )
 
-// The page keeps its own colour and pointer, so the server's echo cannot undo a recolour.
+// Pointer movement is local; the joined scene supplies the colour shared by tabs of the same identity.
 const ownCursorAtom = Atom.make({
 	color: Color.literals[randomIndex(Array.length(Color.literals))] ?? Color.literals[0],
 	x: 0.5,
@@ -289,12 +290,18 @@ function Cursor(input: {cursor: Visitor; own: boolean; viewport: {width: number;
 	)
 }
 
-function OwnCursor(input: {viewport: {width: number; height: number}}) {
+function OwnCursor(input: {viewport: {width: number; height: number}; color: Option.Option<Color>}) {
+	const cursor = useAtomValue(ownCursorAtom)
 	return (
 		<div className="hidden print:hidden [@media(hover:hover)_and_(pointer:fine)]:contents">
 			<Cursor
 				own
-				cursor={{...useAtomValue(ownCursorAtom), id: VisitorId.make('own'), name: 'You'}}
+				cursor={{
+					...cursor,
+					color: Option.getOrElse(input.color, () => cursor.color),
+					id: VisitorId.make('own'),
+					name: 'You'
+				}}
 				viewport={input.viewport}
 			/>
 		</div>
@@ -538,7 +545,7 @@ const LEGAL_LINE = `© 2026 ${profile.firstName} ${profile.lastName} · VAT ${pr
 const LEGAL_LINE_NARROW = `© 2026 · VAT ${profile.vat}`
 
 function PresenceHud(input: {
-	visitors: Option.Option<Visitors>
+	presence: Visitors | 'connecting' | 'offline'
 	onToggleShortcuts: () => void
 	shortcutsOpen: boolean
 }) {
@@ -546,15 +553,21 @@ function PresenceHud(input: {
 		<div className="border-border bg-background/95 pr-safe-right pb-safe-bottom pl-safe-left pointer-events-none fixed inset-x-0 bottom-0 z-50 border-t font-mono text-xs backdrop-blur print:hidden">
 			<div className="relative flex min-h-10 items-center justify-between px-3 sm:px-4">
 				<span className="flex min-w-0 items-center gap-2">
-					{Option.match(input.visitors, {
-						onNone: () => (
+					{pipe(
+						Match.value(input.presence),
+						Match.when(Predicate.isString, state => (
 							<>
 								<span className="bg-muted-foreground/50 size-1.5 rounded-full" />
-								<span className="text-muted-foreground truncate">presence connecting</span>
+								<span className="text-muted-foreground truncate">
+									{Boolean.match(state === 'offline', {
+										onFalse: () => 'presence connecting',
+										onTrue: () => 'presence unavailable'
+									})}
+								</span>
 							</>
-						),
-						onSome: visitors => <VisitorCount visitors={visitors} />
-					})}
+						)),
+						Match.orElse(visitors => <VisitorCount visitors={visitors} />)
+					)}
 				</span>
 				<span className="text-muted-foreground absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 whitespace-nowrap pointer-coarse:static pointer-coarse:translate-x-0 pointer-coarse:translate-y-0">
 					<span className="hidden sm:inline">{LEGAL_LINE}</span>
@@ -589,7 +602,14 @@ function RealtimeLayer(input: {
 			<div className="trail-grid pointer-events-none fixed inset-0 z-1 print:hidden" />
 			<TrailGrid trails={portfolio.value.trails} viewport={input.viewport} />
 
-			<OwnCursor viewport={input.viewport} />
+			<OwnCursor
+				viewport={input.viewport}
+				color={pipe(
+					portfolio.value.visitors,
+					Array.findFirst(visitor => visitor.id === identity.id),
+					Option.map(visitor => visitor.color)
+				)}
+			/>
 			<div className="max-sm:hidden print:hidden">
 				<div className="hidden [@media(hover:hover)_and_(pointer:fine)]:contents">
 					{pipe(
@@ -606,7 +626,7 @@ function RealtimeLayer(input: {
 			</div>
 
 			<PresenceHud
-				visitors={Option.some(portfolio.value.visitors)}
+				presence={portfolio.value.visitors}
 				onToggleShortcuts={input.onToggleShortcuts}
 				shortcutsOpen={input.shortcutsOpen}
 			/>
@@ -696,16 +716,23 @@ function PortfolioRoute() {
 			<EducationSection />
 			<ContactSection />
 
-			<Suspense
-				fallback={
-					<>
-						<OwnCursor viewport={viewport} />
-						<PresenceHud visitors={Option.none()} onToggleShortcuts={toggleShortcuts} shortcutsOpen={showShortcuts} />
-					</>
-				}
+			<CatchBoundary
+				getResetKey={() => 'presence'}
+				errorComponent={() => (
+					<PresenceHud presence="offline" onToggleShortcuts={toggleShortcuts} shortcutsOpen={showShortcuts} />
+				)}
 			>
-				<RealtimeLayer viewport={viewport} onToggleShortcuts={toggleShortcuts} shortcutsOpen={showShortcuts} />
-			</Suspense>
+				<Suspense
+					fallback={
+						<>
+							<OwnCursor viewport={viewport} color={Option.none()} />
+							<PresenceHud presence="connecting" onToggleShortcuts={toggleShortcuts} shortcutsOpen={showShortcuts} />
+						</>
+					}
+				>
+					<RealtimeLayer viewport={viewport} onToggleShortcuts={toggleShortcuts} shortcutsOpen={showShortcuts} />
+				</Suspense>
+			</CatchBoundary>
 
 			<ShortcutsOverlay open={showShortcuts} onOpenChange={setShowShortcuts} />
 		</div>
