@@ -12,6 +12,7 @@ import {
 	Match,
 	MutableList,
 	Option,
+	Schema,
 	Sink,
 	Stream,
 	String,
@@ -22,7 +23,7 @@ import {HttpClient, HttpClientResponse} from 'effect/http'
 import type {Headers} from 'effect/http'
 import {ChildProcess, ChildProcessSpawner} from 'effect/process'
 
-import {DeployError} from '#services/inventory/schema.ts'
+import {DeployError, Snapshot, UnitId} from '#services/inventory/schema.ts'
 import {Inventory} from '#services/inventory/service.ts'
 
 it.layer(NodeServices.layer)('Inventory', test => {
@@ -110,7 +111,7 @@ it.layer(NodeServices.layer)('Inventory', test => {
 				),
 				Inventory
 			)
-			const snapshot = yield* inventory.snapshot
+			const snapshot = yield* Schema.encodeEffect(Snapshot)(yield* inventory.snapshot)
 			const probed = MutableList.toArray(probes)
 			assert.isNotEmpty(probed)
 			assert.isTrue(
@@ -164,7 +165,10 @@ it.layer(NodeServices.layer)('Inventory', test => {
 				)
 			)
 			// Run now starts only what a timer starts, never an arbitrary unit.
-			assert.instanceOf(yield* Effect.flip(inventory.run({name: 'sshd.service', scope: 'system'})), DeployError)
+			assert.instanceOf(
+				yield* Effect.flip(inventory.run({name: UnitId.make('sshd.service'), scope: 'system'})),
+				DeployError
+			)
 		})
 	)
 })

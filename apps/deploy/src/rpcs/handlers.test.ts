@@ -1,6 +1,6 @@
 import {assert, it} from '@effect/vitest'
 
-import {Effect, Fiber, Layer, Queue, Ref, Stream, pipe} from 'effect'
+import {Duration, Effect, Fiber, Layer, Queue, Ref, Schema, Stream, pipe} from 'effect'
 
 import {RpcTest} from 'effect/rpc'
 
@@ -21,7 +21,7 @@ it.effect('shares range reads between viewers, isolates ranges and restarts afte
 			const closed = yield* Queue.unbounded<number>()
 			const first = yield* Queue.unbounded<readonly MachineHistory[]>()
 			const second = yield* Queue.unbounded<readonly MachineHistory[]>()
-			const history = MachineHistory.make({
+			const history = yield* Schema.decodeEffect(MachineHistory)({
 				disks: [],
 				error: '',
 				load: [],
@@ -40,13 +40,13 @@ it.effect('shares range reads between viewers, isolates ranges and restarts afte
 				expose: () => Effect.succeed(''),
 				hide: () => Effect.void,
 				history: () => Effect.succeed(history),
-				local: Effect.succeed(Snapshot.make({items: [], sources: [], time: 1})),
+				local: Effect.succeed(yield* Schema.decodeEffect(Snapshot)({items: [], sources: [], time: 1})),
 				metrics: Effect.fnUntraced(function* (query) {
 					return yield* pipe(
 						entered,
-						Queue.offer(query.minutes),
+						Queue.offer(Duration.toMinutes(query.minutes)),
 						Effect.andThen(Effect.never),
-						Effect.onInterrupt(() => Queue.offer(closed, query.minutes))
+						Effect.onInterrupt(() => Queue.offer(closed, Duration.toMinutes(query.minutes)))
 					)
 				}),
 				run: () => Effect.void,
@@ -66,14 +66,14 @@ it.effect('shares range reads between viewers, isolates ranges and restarts afte
 			const client = yield* Effect.provideContext(RpcTest.makeClient(RpcContracts, {flatten: true}), context)
 			assert.strictEqual(yield* Ref.get(currents), 0)
 			const one = yield* pipe(
-				client('metrics.watch', {minutes: 60}),
+				client('metrics.watch', {minutes: Duration.minutes(60)}),
 				Stream.runForEach(values => Queue.offer(first, values)),
 				Effect.forkChild
 			)
 			assert.deepStrictEqual(yield* Queue.take(first), [history])
 			assert.strictEqual(yield* Queue.take(entered), 60)
 			const two = yield* pipe(
-				client('metrics.watch', {minutes: 60}),
+				client('metrics.watch', {minutes: Duration.minutes(60)}),
 				Stream.runForEach(values => Queue.offer(second, values)),
 				Effect.forkChild
 			)
@@ -81,12 +81,14 @@ it.effect('shares range reads between viewers, isolates ranges and restarts afte
 			assert.strictEqual(yield* Ref.get(currents), 1)
 			yield* Fiber.interrupt(one)
 			assert.strictEqual(yield* Queue.size(closed), 0)
-			const other = yield* Effect.forkChild(Stream.runDrain(client('metrics.watch', {minutes: 10})))
+			const other = yield* Effect.forkChild(Stream.runDrain(client('metrics.watch', {minutes: Duration.minutes(10)})))
 			assert.strictEqual(yield* Queue.take(entered), 10)
 			assert.strictEqual(yield* Ref.get(currents), 2)
 			yield* Fiber.interrupt(two)
 			assert.strictEqual(yield* Queue.take(closed), 60)
-			const rejoined = yield* Effect.forkChild(Stream.runDrain(client('metrics.watch', {minutes: 60})))
+			const rejoined = yield* Effect.forkChild(
+				Stream.runDrain(client('metrics.watch', {minutes: Duration.minutes(60)}))
+			)
 			assert.strictEqual(yield* Queue.take(entered), 60)
 			assert.strictEqual(yield* Ref.get(currents), 3)
 			yield* Fiber.interrupt(rejoined)
@@ -104,7 +106,7 @@ it.effect('collects inventory once for multiple viewers and stops after the last
 			const entered = yield* Queue.unbounded<void>()
 			const closed = yield* Queue.unbounded<void>()
 			const received = yield* Queue.unbounded<Snapshot>()
-			const snapshot = Snapshot.make({items: [], sources: [], time: 1})
+			const snapshot = yield* Schema.decodeEffect(Snapshot)({items: [], sources: [], time: 1})
 			const context = yield* Layer.build(
 				pipe(
 					RpcHandlers,

@@ -1,9 +1,39 @@
-import {Array, Option, Schema, String, pipe} from 'effect'
+import {Array, DateTime, Effect, Option, Schema, SchemaGetter, String, pipe} from 'effect'
 
 import {SecureOrigin} from '@deslop/runtime/shared/schema'
+import {DateTimeUtcFromFiniteMillis} from '@deslop/runtime/shared/time'
+
+export type WorkerId = typeof WorkerId.Type
+export const WorkerId = Schema.brand('DeployWorkerId')(Schema.String)
+export type ItemId = typeof ItemId.Type
+export const ItemId = Schema.brand('DeployItemId')(Schema.String)
+export type AppId = typeof AppId.Type
+export const AppId = Schema.brand('DeployAppId')(Schema.String)
+export type UnitId = typeof UnitId.Type
+export const UnitId = Schema.brand('DeployUnitId')(Schema.String)
+export type ProcessId = typeof ProcessId.Type
+export const ProcessId = Schema.brand('DeployProcessId')(Schema.Int)
+export type ContainerId = typeof ContainerId.Type
+export const ContainerId = Schema.brand('DeployContainerId')(Schema.String)
+export type JobName = typeof JobName.Type
+export const JobName = Schema.brand('DeployJobName')(Schema.String)
+export type ExposureName = typeof ExposureName.Type
+export const ExposureName = Schema.brand('DeployExposureName')(Schema.String)
+
+export type TextFromEmpty = typeof TextFromEmpty.Type
+// Some collector records require a string key even when there is no value.
+export const TextFromEmpty = pipe(
+	Schema.String,
+	Schema.decodeTo(Schema.Option(Schema.String), {
+		decode: SchemaGetter.transform(value => Option.liftPredicate(value, String.isNonEmpty)),
+		encode: SchemaGetter.transform(value => Option.getOrElse(value, () => ''))
+	})
+)
+
+export const WorkerTarget = pipe(TextFromEmpty, Schema.decodeTo(Schema.Option(WorkerId)))
 
 export class DeployError extends Schema.TaggedError<DeployError>()('DeployError', {
-	cause: Schema.optional(Schema.Defect()),
+	cause: pipe(Schema.OptionFromOptional(Schema.Defect()), Schema.withConstructorDefault(Effect.succeedNone)),
 	message: Schema.String
 }) {}
 
@@ -17,58 +47,91 @@ export const ProcessLabel = Schema.Struct({
 export type Process = typeof Process.Type
 export const Process = Schema.Struct({
 	// Its arguments, the executable first, with anything that looks like a secret masked.
-	command: Schema.optionalKey(Schema.Array(Schema.String)),
-	cpu: Schema.optionalKey(Schema.Finite),
+	command: Schema.OptionFromOptionalKey(Schema.Array(Schema.String)),
+	cpu: Schema.OptionFromOptionalKey(Schema.Finite),
 	label: ProcessLabel,
 	memory: Schema.Finite,
 	name: Schema.String,
-	parent: Schema.Int,
-	pid: Schema.Int
+	parent: ProcessId,
+	pid: ProcessId
 })
 
-export type InventoryItem = typeof InventoryItem.Type
-export const InventoryItem = Schema.Struct({
-	address: Schema.optionalKey(Schema.String),
-	bindings: Schema.optionalKey(
-		Schema.Array(Schema.Struct({address: Schema.String, port: Schema.Int, protocol: Schema.Literals(['tcp', 'udp'])}))
+type InventoryFields = typeof InventoryFields.Type
+const InventoryFields = Schema.Struct({
+	address: pipe(Schema.OptionFromOptionalKey(Schema.String), Schema.withConstructorDefault(Effect.succeedNone)),
+	bindings: pipe(
+		Schema.OptionFromOptionalKey(
+			Schema.Array(Schema.Struct({address: Schema.String, port: Schema.Int, protocol: Schema.Literals(['tcp', 'udp'])}))
+		),
+		Schema.withConstructorDefault(Effect.succeedNone)
 	),
 	detail: Schema.String,
 	// Why a failed service stopped, and when, in epoch milliseconds.
-	failure: Schema.optionalKey(Schema.Struct({at: Schema.optionalKey(Schema.Finite), reason: Schema.String})),
-	hostname: Schema.optionalKey(Schema.String),
-	http: Schema.optionalKey(Schema.Boolean),
-	id: Schema.String,
+	failure: pipe(
+		Schema.OptionFromOptionalKey(
+			Schema.Struct({at: Schema.OptionFromOptionalKey(DateTimeUtcFromFiniteMillis), reason: Schema.String})
+		),
+		Schema.withConstructorDefault(Effect.succeedNone)
+	),
+	hostname: pipe(Schema.OptionFromOptionalKey(Schema.String), Schema.withConstructorDefault(Effect.succeedNone)),
+	http: pipe(Schema.OptionFromOptionalKey(Schema.Boolean), Schema.withConstructorDefault(Effect.succeedNone)),
+	id: ItemId,
 	kind: Schema.Literals(['service', 'container', 'port', 'exposure', 'peer']),
-	links: Schema.optionalKey(Schema.Array(Schema.String)),
+	links: pipe(
+		Schema.OptionFromOptionalKey(Schema.Array(Schema.String)),
+		Schema.withConstructorDefault(Effect.succeedNone)
+	),
 	name: Schema.String,
 	// When its timer next starts a scheduled service, in epoch milliseconds.
-	next: Schema.optionalKey(Schema.Finite),
-	owned: Schema.optionalKey(Schema.Boolean),
-	port: Schema.optionalKey(Schema.Int),
-	process: Schema.optionalKey(Schema.String),
-	processes: Schema.optionalKey(Schema.Array(Process)),
-	protocol: Schema.optionalKey(Schema.Literals(['tcp', 'udp'])),
-	publicAccess: Schema.optionalKey(Schema.Boolean),
-	scheduled: Schema.optionalKey(Schema.Boolean),
-	scope: Schema.optionalKey(Schema.Literals(['user', 'system'])),
-	self: Schema.optionalKey(Schema.Boolean),
+	next: pipe(
+		Schema.OptionFromOptionalKey(DateTimeUtcFromFiniteMillis),
+		Schema.withConstructorDefault(Effect.succeedNone)
+	),
+	owned: pipe(Schema.OptionFromOptionalKey(Schema.Boolean), Schema.withConstructorDefault(Effect.succeedNone)),
+	port: pipe(Schema.OptionFromOptionalKey(Schema.Int), Schema.withConstructorDefault(Effect.succeedNone)),
+	process: pipe(Schema.OptionFromOptionalKey(TextFromEmpty), Schema.withConstructorDefault(Effect.succeedNone)),
+	processes: pipe(
+		Schema.OptionFromOptionalKey(Schema.Array(Process)),
+		Schema.withConstructorDefault(Effect.succeedNone)
+	),
+	protocol: pipe(
+		Schema.OptionFromOptionalKey(Schema.Literals(['tcp', 'udp'])),
+		Schema.withConstructorDefault(Effect.succeedNone)
+	),
+	publicAccess: pipe(Schema.OptionFromOptionalKey(Schema.Boolean), Schema.withConstructorDefault(Effect.succeedNone)),
+	scheduled: pipe(Schema.OptionFromOptionalKey(Schema.Boolean), Schema.withConstructorDefault(Effect.succeedNone)),
+	scope: pipe(
+		Schema.OptionFromOptionalKey(Schema.Literals(['user', 'system'])),
+		Schema.withConstructorDefault(Effect.succeedNone)
+	),
+	self: pipe(Schema.OptionFromOptionalKey(Schema.Boolean), Schema.withConstructorDefault(Effect.succeedNone)),
 	state: Schema.String,
-	ui: Schema.optionalKey(Schema.Boolean),
-	unit: Schema.optionalKey(Schema.String),
-	url: Schema.String,
-	worker: Schema.String
+	ui: pipe(Schema.OptionFromOptionalKey(Schema.Boolean), Schema.withConstructorDefault(Effect.succeedNone)),
+	unit: pipe(
+		Schema.OptionFromOptionalKey(pipe(TextFromEmpty, Schema.decodeTo(Schema.Option(UnitId)))),
+		Schema.withConstructorDefault(Effect.succeedNone)
+	),
+	url: TextFromEmpty,
+	worker: WorkerId
 })
+
+export type InventoryItem = typeof InventoryItem.Type
+export const InventoryItem = Schema.Union([
+	InventoryFields.mapFields(fields => ({...fields, kind: Schema.Literal('service'), name: UnitId})),
+	InventoryFields.mapFields(fields => ({...fields, kind: Schema.Literal('exposure'), name: ExposureName})),
+	InventoryFields.mapFields(fields => ({...fields, kind: Schema.Literals(['container', 'port', 'peer'])}))
+])
 
 export type Snapshot = typeof Snapshot.Type
 export const Snapshot = Schema.Struct({
 	items: Schema.Array(InventoryItem),
-	sources: Schema.Array(Schema.Struct({error: Schema.String, name: Schema.String})),
-	time: Schema.Finite,
-	workers: Schema.optionalKey(Schema.Array(Schema.String))
+	sources: Schema.Array(Schema.Struct({error: TextFromEmpty, name: Schema.String})),
+	time: DateTimeUtcFromFiniteMillis,
+	workers: Schema.OptionFromOptionalKey(Schema.Array(WorkerId))
 })
 
 export type Worker = typeof Worker.Type
-export const Worker = Schema.Struct({name: Schema.NonEmptyString, url: SecureOrigin})
+export const Worker = Schema.Struct({name: WorkerId.check(Schema.isNonEmpty()), url: SecureOrigin})
 
 export type WorkerList = typeof WorkerList.Type
 // `--workers desktop=https://desktop.example.ts.net:5102,…`: the other workers' Deploy origins, by name.
@@ -96,96 +159,107 @@ export const Peer = Schema.Struct({
 
 export type Tailnet = typeof Tailnet.Type
 export const Tailnet = Schema.Struct({
-	Peer: Schema.optionalKey(Schema.Record(Schema.String, Peer)),
-	Self: Schema.optionalKey(Peer)
+	Peer: Schema.OptionFromOptionalKey(Schema.Record(Schema.String, Peer)),
+	Self: Schema.OptionFromOptionalKey(Peer)
 })
 
 export type Serve = typeof Serve.Type
 export const Serve = Schema.Struct({
-	AllowFunnel: Schema.optionalKey(Schema.Record(Schema.String, Schema.Boolean)),
-	TCP: Schema.optionalKey(Schema.Record(Schema.String, Schema.Json)),
-	Web: Schema.optionalKey(
+	AllowFunnel: Schema.OptionFromOptionalKey(Schema.Record(Schema.String, Schema.Boolean)),
+	TCP: Schema.OptionFromOptionalKey(Schema.Record(Schema.String, Schema.Json)),
+	Web: Schema.OptionFromOptionalKey(
 		Schema.Record(
 			Schema.String,
-			Schema.Struct({Handlers: Schema.Record(Schema.String, Schema.Struct({Proxy: Schema.optionalKey(Schema.String)}))})
+			Schema.Struct({
+				Handlers: Schema.Record(Schema.String, Schema.Struct({Proxy: Schema.OptionFromOptionalKey(Schema.String)}))
+			})
 		)
 	)
 })
 
 export type RunRequest = typeof RunRequest.Type
 export const RunRequest = Schema.Struct({
-	name: Schema.String,
+	name: UnitId,
 	scope: Schema.Literals(['system', 'user']),
-	target: Schema.optionalKey(Schema.String)
+	target: Schema.OptionFromOptionalKey(WorkerTarget)
 })
 
 export type RunJobInput = typeof RunJobInput.Type
 export const RunJobInput = Schema.Struct({
-	job: Schema.String.annotate({description: 'A scheduled job name as list_apps shows it.'}),
-	worker: Schema.optionalKey(Schema.String.annotate({description: 'The worker running the job, when several do.'}))
+	job: JobName.annotate({description: 'A scheduled job name as list_apps shows it.'}),
+	worker: Schema.OptionFromOptionalKey(WorkerId.annotate({description: 'The worker running the job, when several do.'}))
 })
 
 export type InventoryQuery = typeof InventoryQuery.Type
 export const InventoryQuery = Schema.Struct({
-	app: Schema.optionalKey(
+	app: Schema.OptionFromOptionalKey(
 		Schema.String.annotate({description: "A substring of an app or unit name; returns that app's process tree."})
 	),
-	failing: Schema.optionalKey(Schema.Boolean.annotate({description: 'Only failed or warning items.'})),
-	worker: Schema.optionalKey(Schema.String.annotate({description: 'A configured worker name.'}))
+	failing: Schema.OptionFromOptionalKey(Schema.Boolean.annotate({description: 'Only failed or warning items.'})),
+	worker: Schema.OptionFromOptionalKey(WorkerId.annotate({description: 'A configured worker name.'}))
 })
 
-export type ProcessSummary = {
-	children?: readonly ProcessSummary[]
+type ProcessSummaryEncoded = {
+	children?: readonly ProcessSummaryEncoded[]
 	cpu?: number
 	detail?: string
 	mib: number
 	name: string
 }
+export type ProcessSummary = {
+	children: Option.Option<readonly ProcessSummary[]>
+	cpu: Option.Option<number>
+	detail: Option.Option<string>
+	mib: number
+	name: string
+}
 export const ProcessSummary = Schema.Struct({
-	children: Schema.optionalKey(Schema.Array(Schema.suspend((): Schema.Codec<ProcessSummary> => ProcessSummary))),
-	cpu: Schema.optionalKey(Schema.Finite),
-	detail: Schema.optionalKey(Schema.String),
+	children: Schema.OptionFromOptionalKey(
+		Schema.Array(Schema.suspend((): Schema.Codec<ProcessSummary, ProcessSummaryEncoded> => ProcessSummary))
+	),
+	cpu: Schema.OptionFromOptionalKey(Schema.Finite),
+	detail: Schema.OptionFromOptionalKey(Schema.String),
 	mib: Schema.Int,
 	name: Schema.String
 })
 
 export type App = typeof App.Type
 export const App = Schema.Struct({
-	failure: Schema.optionalKey(Schema.String),
-	id: Schema.String,
+	failure: Schema.OptionFromOptionalKey(Schema.String),
+	id: ItemId,
 	name: Schema.String,
-	ports: Schema.optionalKey(Schema.Array(Schema.Int)),
-	processes: Schema.optionalKey(Schema.Array(ProcessSummary)),
-	since: Schema.optionalKey(Schema.String),
+	ports: Schema.OptionFromOptionalKey(Schema.Array(Schema.Int)),
+	processes: Schema.OptionFromOptionalKey(Schema.Array(ProcessSummary)),
+	since: Schema.OptionFromOptionalKey(Schema.DateTimeUtcFromString),
 	state: Schema.String,
-	url: Schema.optionalKey(Schema.String)
+	url: Schema.OptionFromOptionalKey(Schema.String)
 })
 
 export type Job = typeof Job.Type
 export const Job = Schema.Struct({
-	failure: Schema.optionalKey(Schema.String),
-	id: Schema.String,
-	name: Schema.String,
-	next: Schema.optionalKey(Schema.String),
-	since: Schema.optionalKey(Schema.String)
+	failure: Schema.OptionFromOptionalKey(Schema.String),
+	id: ItemId,
+	name: JobName,
+	next: Schema.OptionFromOptionalKey(Schema.DateTimeUtcFromString),
+	since: Schema.OptionFromOptionalKey(Schema.DateTimeUtcFromString)
 })
 
 export type HttpsExposure = typeof HttpsExposure.Type
 export const HttpsExposure = Schema.Struct({
 	access: Schema.Literals(['tailnet', 'public']),
-	id: Schema.String,
-	name: Schema.String,
-	port: Schema.optionalKey(Schema.Int),
+	id: ItemId,
+	name: ExposureName,
+	port: Schema.OptionFromOptionalKey(Schema.Int),
 	url: Schema.String
 })
 
 export type WorkerInventory = typeof WorkerInventory.Type
 export const WorkerInventory = Schema.Struct({
 	apps: Schema.Array(App),
-	errors: Schema.optionalKey(Schema.Array(Schema.String)),
-	exposures: Schema.optionalKey(Schema.Array(HttpsExposure)),
-	jobs: Schema.optionalKey(Schema.Array(Job)),
-	worker: Schema.String
+	errors: Schema.OptionFromOptionalKey(Schema.Array(Schema.String)),
+	exposures: Schema.OptionFromOptionalKey(Schema.Array(HttpsExposure)),
+	jobs: Schema.OptionFromOptionalKey(Schema.Array(Job)),
+	worker: WorkerId
 })
 
 export type Inventory = typeof Inventory.Type
@@ -193,20 +267,26 @@ export const Inventory = Schema.Array(WorkerInventory)
 
 export type Timer = typeof Timer.Type
 // `next` is in epoch microseconds.
-export const Timer = Schema.Struct({activates: Schema.NullOr(Schema.String), next: Schema.NullOr(Schema.Finite)})
+export const Timer = Schema.Struct({
+	activates: Schema.OptionFromNullOr(UnitId),
+	next: Schema.OptionFromNullOr(
+		pipe(
+			Schema.Finite,
+			Schema.decodeTo(Schema.DateTimeUtc, {
+				decode: SchemaGetter.transform(value => DateTime.mapEpochMillis(DateTime.makeUnsafe(0), () => value / 1000)),
+				encode: SchemaGetter.transform(value => DateTime.toEpochMillis(value) * 1000)
+			})
+		)
+	)
+})
 
 export type Unit = typeof Unit.Type
-export const Unit = Schema.Struct({
-	active: Schema.String,
-	description: Schema.String,
-	sub: Schema.String,
-	unit: Schema.String
-})
+export const Unit = Schema.Struct({active: Schema.String, description: Schema.String, sub: Schema.String, unit: UnitId})
 
 export type Container = typeof Container.Type
 export const Container = Schema.Struct({
-	ID: Schema.String,
-	Labels: Schema.optionalKey(Schema.String),
+	ID: ContainerId,
+	Labels: Schema.OptionFromOptionalKey(Schema.String),
 	Names: Schema.String,
 	Ports: Schema.String,
 	State: Schema.String,

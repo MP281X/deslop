@@ -3,14 +3,22 @@ import {Effect, Schema, pipe} from 'effect'
 import {Tool, Toolkit} from 'effect/ai'
 
 import {ExposeInput} from '#services/exposures/schema.ts'
-import {DeployError, WorkerInventory, App, InventoryQuery, RunJobInput} from '#services/inventory/schema.ts'
+import {
+	ExposureName,
+	DeployError,
+	WorkerInventory,
+	WorkerId,
+	App,
+	InventoryQuery,
+	RunJobInput
+} from '#services/inventory/schema.ts'
 import {HistoryToolInput, WorkerHistory} from '#services/metrics/schema.ts'
 
 type MetricSummary = typeof MetricSummary.Type
 const MetricSummary = Schema.Struct({
-	last: Schema.optionalKey(Schema.Finite),
-	max: Schema.optionalKey(Schema.Finite),
-	min: Schema.optionalKey(Schema.Finite),
+	last: Schema.OptionFromOptionalKey(Schema.Finite),
+	max: Schema.OptionFromOptionalKey(Schema.Finite),
+	min: Schema.OptionFromOptionalKey(Schema.Finite),
 	samples: Schema.Int
 })
 const WorkerSummary = WorkerHistory.mapFields(fields => ({
@@ -33,21 +41,21 @@ export const ToolContracts = Toolkit.make(
 		failure: DeployError,
 		parameters: Schema.Struct({
 			...InventoryQuery.fields,
-			cursor: Schema.optionalKey(Schema.String),
+			cursor: Schema.OptionFromOptionalKey(Schema.String),
 			limit: PageLimit,
 			processLimit: PageLimit,
 			processOffset: pipe(Schema.Natural, Schema.withDecodingDefaultTypeKey(Effect.succeed(0)))
 		}),
 		success: Schema.Struct({
-			nextCursor: Schema.optionalKey(Schema.String),
+			nextCursor: Schema.OptionFromOptionalKey(Schema.String),
 			workers: Schema.Array(
 				WorkerInventory.mapFields(fields => ({
 					...fields,
 					apps: Schema.Array(
 						Schema.Struct({
 							...App.fields,
-							nextProcessOffset: Schema.optionalKey(Schema.Natural),
-							processesOmitted: Schema.optionalKey(Schema.Natural)
+							nextProcessOffset: Schema.OptionFromOptionalKey(Schema.Natural),
+							processesOmitted: Schema.OptionFromOptionalKey(Schema.Natural)
 						})
 					)
 				}))
@@ -72,7 +80,7 @@ export const ToolContracts = Toolkit.make(
 		description:
 			'Give a local port the requested HTTPS hostname and ownership name on a configured worker; public exposure requires explicit publicAccess=true consent. Returns the URL, adds no authentication and starts no application; list_apps shows owned exposures.',
 		failure: DeployError,
-		parameters: Schema.Struct({...ExposeInput.fields, worker: Schema.optionalKey(Schema.String)}),
+		parameters: Schema.Struct({...ExposeInput.fields, worker: Schema.OptionFromOptionalKey(WorkerId)}),
 		success: Schema.Struct({url: Schema.String})
 	})
 		.annotate(Tool.Destructive, true)
@@ -81,8 +89,11 @@ export const ToolContracts = Toolkit.make(
 		description:
 			'Remove an HTTPS exposure Deploy owns by name and optional worker from list_apps, not its backend. Externally changed Tailscale mappings are refused; inspect list_apps after an uncertain failure.',
 		failure: DeployError,
-		parameters: Schema.Struct({name: Schema.NonEmptyString, worker: Schema.optionalKey(Schema.String)}),
-		success: Schema.Struct({name: Schema.String, worker: Schema.optionalKey(Schema.String)})
+		parameters: Schema.Struct({
+			name: ExposureName.check(Schema.isNonEmpty()),
+			worker: Schema.OptionFromOptionalKey(WorkerId)
+		}),
+		success: Schema.Struct({name: ExposureName, worker: Schema.OptionFromOptionalKey(WorkerId)})
 	})
 		.annotate(Tool.Destructive, true)
 		.annotate(Tool.Strict, true),

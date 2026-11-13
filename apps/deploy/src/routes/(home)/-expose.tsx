@@ -22,6 +22,7 @@ import {Tabs, TabsContent, TabsList, TabsTrigger} from '@deslop/components-web/u
 
 import {exposeAtom, exposeTargetAtom, inventoryAtom} from '#lib/fleet.ts'
 import {ApplicationIcon} from '#routes/(home)/-marks.tsx'
+import {ExposureName} from '#services/inventory/schema.ts'
 import type {InventoryItem} from '#services/inventory/schema.ts'
 
 function Expose(props: {items: readonly InventoryItem[]; port: InventoryItem}) {
@@ -31,8 +32,8 @@ function Expose(props: {items: readonly InventoryItem[]; port: InventoryItem}) {
 	const tailnetHost = Option.getOrElse(
 		pipe(
 			props.items,
-			Array.findFirst(item => item.self === true && item.worker === props.port.worker),
-			Option.map(item => item.hostname ?? '')
+			Array.findFirst(item => Option.contains(item.self, true) && item.worker === props.port.worker),
+			Option.flatMap(item => item.hostname)
 		),
 		() => ''
 	)
@@ -45,24 +46,25 @@ function Expose(props: {items: readonly InventoryItem[]; port: InventoryItem}) {
 				expose({
 					hostname: Boolean.match(kind === 'public', {onFalse: () => tailnetHost, onTrue: () => hostname}),
 					kind,
-					name: Boolean.match(kind === 'public', {
-						onFalse: () => `tailnet:${props.port.port}`,
-						onTrue: () => `public:${hostname}`
-					}),
-					port: props.port.port ?? 0,
+					name: ExposureName.make(
+						Boolean.match(kind === 'public', {
+							onFalse: () => `tailnet:${Option.getOrThrow(props.port.port)}`,
+							onTrue: () => `public:${hostname}`
+						})
+					),
+					port: Option.getOrThrow(props.port.port),
 					publicAccess: kind === 'public',
-					target: Boolean.match(String.startsWith('remote:')(props.port.id), {
-						onFalse: () => '',
-						onTrue: () => props.port.worker
-					})
+					target: Option.some(
+						Option.liftPredicate(props.port.worker, () => String.startsWith('remote:')(props.port.id))
+					)
 				})
 			}}
 		>
 			<DialogHeader>
 				<div className="flex min-w-0 items-center gap-2">
-					<ApplicationIcon name={props.port.process ?? props.port.name} small />
-					<DialogTitle>{props.port.process ?? props.port.name}</DialogTitle>
-					<Badge variant="outline">:{props.port.port}</Badge>
+					<ApplicationIcon name={Option.getOrElse(Option.flatten(props.port.process), () => props.port.name)} small />
+					<DialogTitle>{Option.getOrElse(Option.flatten(props.port.process), () => props.port.name)}</DialogTitle>
+					<Badge variant="outline">:{Option.getOrUndefined(props.port.port)}</Badge>
 				</div>
 			</DialogHeader>
 			{/* Who reaches it, as tabs over the address: the tailnet's is fixed, a public one is typed. */}
@@ -88,7 +90,7 @@ function Expose(props: {items: readonly InventoryItem[]; port: InventoryItem}) {
 							className="max-sm:h-11"
 							readOnly
 							value={Boolean.match(tailnetHost === '', {
-								onFalse: () => `https://${tailnetHost}:${props.port.port}`,
+								onFalse: () => `https://${tailnetHost}:${Option.getOrUndefined(props.port.port)}`,
 								onTrue: () => ''
 							})}
 						/>

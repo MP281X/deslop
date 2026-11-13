@@ -1,8 +1,10 @@
 import {assert, it} from '@effect/vitest'
 
-import {Array} from 'effect'
+import {Array, DateTime, Option} from 'effect'
 
 import {unitFailures} from './failures.ts'
+
+import {UnitId} from '#services/inventory/schema.ts'
 
 it('says why a failed service stopped and when, instead of repeating its command', () => {
 	const failures = unitFailures(
@@ -17,10 +19,13 @@ it('says why a failed service stopped and when, instead of repeating its command
 			'\n\n'
 		)
 	)
-	assert.deepStrictEqual(failures['e2e-auth.service'], {at: 1_793_639_294_000, reason: 'Exited with code 130 (SIGINT)'})
-	assert.deepStrictEqual(failures['killed.service'], {reason: 'Killed by SIGKILL'})
-	assert.strictEqual(failures['heavy.service']?.reason, 'Killed for running out of memory')
-	assert.strictEqual(failures['crash.service']?.reason, 'Exited with code 1')
-	assert.strictEqual(failures['prestart.service']?.reason, 'Failed before starting')
+	assert.deepStrictEqual(failures[UnitId.make('e2e-auth.service')], {
+		at: Option.some(DateTime.makeUnsafe(1_793_639_294_000)),
+		reason: 'Exited with code 130 (SIGINT)'
+	})
+	assert.deepStrictEqual(failures[UnitId.make('killed.service')], {at: Option.none(), reason: 'Killed by SIGKILL'})
+	assert.strictEqual(failures[UnitId.make('heavy.service')]?.reason, 'Killed for running out of memory')
+	assert.strictEqual(failures[UnitId.make('crash.service')]?.reason, 'Exited with code 1')
+	assert.strictEqual(failures[UnitId.make('prestart.service')]?.reason, 'Failed before starting')
 	assert.deepStrictEqual(unitFailures(''), {})
 })

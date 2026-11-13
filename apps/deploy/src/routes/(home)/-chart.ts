@@ -1,25 +1,29 @@
-import {Array, DateTime, pipe} from 'effect'
+import {Array, DateTime, Duration, Schema, pipe} from 'effect'
 
 import {chartWindow} from '#services/metrics/lib/utils.ts'
-import type {HistoryQuery} from '#services/metrics/schema.ts'
+import {HistoryQuery} from '#services/metrics/schema.ts'
 
 // Within an hour, ticks every 15 seconds, 2 minutes or 15 minutes from the epoch, which land on round local times wherever the step divides the zone's offset: everywhere but 2 minutes in zones 45 minutes off the hour.
 const STEPS: Record<number, number> = {1: 15_000, 10: 120_000, 60: 900_000}
 
-export const RANGES = [
-	{label: '1m', minutes: 1},
-	{label: '10m', minutes: 10},
-	{label: '1h', minutes: 60},
-	{label: '24h', minutes: 1440},
-	{label: '7d', minutes: 10_080}
-] as const satisfies readonly {label: string; minutes: HistoryQuery['minutes']}[]
+export const RANGES = Array.map(
+	[
+		{label: '1m', minutes: 1},
+		{label: '10m', minutes: 10},
+		{label: '1h', minutes: 60},
+		{label: '24h', minutes: 1440},
+		{label: '7d', minutes: 10_080}
+	] as const,
+	range => ({label: range.label, minutes: Schema.decodeSync(HistoryQuery)({minutes: range.minutes}).minutes})
+)
 
-export function chartTicks(minutes: number, now: number) {
-	const window = chartWindow(minutes, now)
+export function chartTicks(range: Duration.Duration, now: DateTime.Utc) {
+	const minutes = Duration.toMinutes(range)
+	const window = chartWindow(range, now)
 	const start = DateTime.makeZonedUnsafe(window.start, {timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone})
 	const step = STEPS[minutes]
 	function tick(index: number) {
-		if (step !== undefined) return (Math.floor(window.start / step) + 1 + index) * step
+		if (step !== undefined) return (Math.floor(DateTime.toEpochMillis(window.start) / step) + 1 + index) * step
 		if (minutes === 1440) {
 			const first = DateTime.setParts(start, {
 				hour: Math.floor(DateTime.toParts(start).hour / 6) * 6 + 6,
@@ -38,9 +42,9 @@ export function chartTicks(minutes: number, now: number) {
 			return {
 				at,
 				label: minutes !== 10_080 || index % 2 === 0,
-				x: ((at - window.start) / (window.end - window.start)) * 100
+				x: ((at - DateTime.toEpochMillis(window.start)) / Duration.toMillis(range)) * 100
 			}
 		}),
-		Array.filter(value => value.at <= now)
+		Array.filter(value => value.at <= DateTime.toEpochMillis(now))
 	)
 }

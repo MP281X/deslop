@@ -1,9 +1,10 @@
-import {Array, Boolean, DateTime, Number, Option, Order, Record, Schema, String, Struct, pipe} from 'effect'
+import {Array, DateTime, Duration, Number, Option, Order, Record, Schema, String, Struct, pipe} from 'effect'
 
-import {HistoryQuery} from '#services/metrics/schema.ts'
+import type {AppId} from '#services/inventory/schema.ts'
 import type {
 	AppSample,
 	AppUsage,
+	CgroupPath,
 	Counters,
 	Disk,
 	HistoryToolInput,
@@ -12,15 +13,18 @@ import type {
 } from '#services/metrics/schema.ts'
 
 // Each range's series spacing, so its 60 slots hold a few points each: seconds for a minute, ten seconds for ten minutes, minutes for an hour, quarter-hours for a day, hours for a week. A series keeps its range.
-export const SERIES = {1: 1000, 10: 10_000, 60: 60_000, 1440: 900_000, 10_080: 3_600_000} as const satisfies Record<
-	HistoryQuery['minutes'],
-	number
->
+export const SERIES = {
+	1: Duration.seconds(1),
+	10: Duration.seconds(10),
+	60: Duration.minutes(1),
+	1440: Duration.minutes(15),
+	10_080: Duration.hours(1)
+}
 
 // One measurement, before it joins a series.
 export type Point = Omit<Sample, 'since' | 'step'>
 
-export function counters(stat: string, uptime: string, time: number) {
+export function counters(stat: string, uptime: string, time: DateTime.Utc) {
 	const values = Schema.decodeSync(Schema.Array(Schema.FiniteFromString).check(Schema.isMinLength(5)))(
 		pipe(
 			stat,
@@ -34,40 +38,50 @@ export function counters(stat: string, uptime: string, time: number) {
 		)
 	)
 	return {
-		cpuIdle: (values[3] ?? 0) + (values[4] ?? 0),
-		cpuTotal: Number.sumAll(values),
+		cpuIdle: Duration.millis(((values[3] ?? 0) + (values[4] ?? 0)) * 10),
+		cpuTotal: Duration.millis(Number.sumAll(values) * 10),
 		time,
-		uptime: Schema.decodeSync(Schema.FiniteFromString)(String.split(uptime, ' ')[0])
-	}
+		uptime: Duration.seconds(Schema.decodeSync(Schema.FiniteFromString)(String.split(uptime, ' ')[0]))
+	} satisfies Counters
 }
 
-function cpuUsage(current: {idle: number; total: number}, seconds: number, previous?: {idle: number; total: number}) {
-	if (
-		previous === undefined ||
-		current.total <= previous.total ||
-		current.idle < previous.idle ||
-		seconds <= 0 ||
-		seconds > 90
-	) {
-		return Option.none<number>()
-	}
-	return Option.some(
-		Number.clamp((1 - (current.idle - previous.idle) / (current.total - previous.total)) * 100, {
-			maximum: 100,
-			minimum: 0
-		})
-	)
+function cpuUsage(
+	current: {idle: Duration.Duration; total: Duration.Duration},
+	elapsed: Duration.Duration,
+	previous: Option.Option<{idle: Duration.Duration; total: Duration.Duration}>
+) {
+	const seconds = Duration.toSeconds(elapsed)
+	if (Option.isNone(previous)) return Option.none<number>()
+	return Option.flatMap(previous, old => {
+		if (
+			Duration.isLessThanOrEqualTo(current.total, old.total) ||
+			Duration.isLessThan(current.idle, old.idle) ||
+			seconds <= 0 ||
+			seconds > 90
+		) {
+			return Option.none<number>()
+		}
+		return Option.some(
+			Number.clamp(
+				(1 -
+					Duration.toMillis(Duration.subtract(current.idle, old.idle)) /
+						Duration.toMillis(Duration.subtract(current.total, old.total))) *
+					100,
+				{maximum: 100, minimum: 0}
+			)
+		)
+	})
 }
 
 // A Mac's counters from `os.cpus()`, in milliseconds summed over its cores; `uptime` is a monotonic clock in seconds, since the Mac's own uptime counts whole seconds.
 export function cpuCounters(
 	cpus: readonly {times: Record<'idle' | 'irq' | 'nice' | 'sys' | 'user', number>}[],
-	uptime: number,
-	time: number
+	uptime: Duration.Duration,
+	time: DateTime.Utc
 ) {
 	return {
-		cpuIdle: Number.sumAll(Array.map(cpus, cpu => cpu.times.idle)),
-		cpuTotal: Number.sumAll(Array.map(cpus, cpu => Number.sumAll(Record.values(cpu.times)))),
+		cpuIdle: Duration.millis(Number.sumAll(Array.map(cpus, cpu => cpu.times.idle))),
+		cpuTotal: Duration.millis(Number.sumAll(Array.map(cpus, cpu => Number.sumAll(Record.values(cpu.times))))),
 		time,
 		uptime
 	}
@@ -137,15 +151,15 @@ export function reading(
 	memory: {total: number; used: number},
 	disks: readonly Disk[],
 	load: readonly number[],
-	previous?: Counters
+	previous: Option.Option<Counters>
 ) {
-	const baseline = Option.filter(Option.fromUndefinedOr(previous), old => old.uptime < current.uptime)
+	const baseline = Option.filter(previous, old => Duration.isLessThan(old.uptime, current.uptime))
 	const point: Point = {
 		apps: Option.none(),
 		cpu: cpuUsage(
 			{idle: current.cpuIdle, total: current.cpuTotal},
-			(current.time - (previous?.time ?? current.time)) / 1000,
-			Option.getOrUndefined(Option.map(baseline, old => ({idle: old.cpuIdle, total: old.cpuTotal})))
+			Option.match(previous, {onNone: () => Duration.zero, onSome: old => DateTime.distance(old.time, current.time)}),
+			Option.map(baseline, old => ({idle: old.cpuIdle, total: old.cpuTotal}))
 		),
 		memoryTotal: memory.total,
 		memoryUsed: memory.used,
@@ -159,7 +173,13 @@ export function reading(
 }
 
 // A Linux sample from `/proc/meminfo`, `df -B1 --output=target,size,used` and `/proc/loadavg`.
-export function sample(current: Counters, memory: string, disk: string, previous?: Counters, load?: string) {
+export function sample(
+	current: Counters,
+	memory: string,
+	disk: Option.Option<string>,
+	previous: Option.Option<Counters>,
+	load: Option.Option<string>
+) {
 	const values = Record.fromEntries(
 		pipe(
 			String.trim(memory),
@@ -173,33 +193,47 @@ export function sample(current: Counters, memory: string, disk: string, previous
 	return reading(
 		current,
 		{total: values['MemTotal:'] ?? 0, used: (values['MemTotal:'] ?? 0) - (values['MemAvailable:'] ?? 0)},
-		Array.map(diskRows(disk), fields => ({
-			mount: fields[0],
-			total: Schema.decodeSync(Schema.FiniteFromString)(fields[1] ?? ''),
-			used: Schema.decodeSync(Schema.FiniteFromString)(fields[2] ?? '')
-		})),
+		pipe(
+			disk,
+			Option.match({onNone: () => [], onSome: diskRows}),
+			Array.map(fields => ({
+				mount: fields[0],
+				total: Schema.decodeSync(Schema.FiniteFromString)(fields[1] ?? ''),
+				used: Schema.decodeSync(Schema.FiniteFromString)(fields[2] ?? '')
+			}))
+		),
 		Schema.decodeSync(Schema.Array(Schema.FiniteFromString))(
-			pipe(String.trim(load ?? ''), String.split(/\s+/u), Array.filter(String.isNonEmpty), Array.take(3))
+			pipe(
+				Option.getOrElse(load, () => ''),
+				String.trim,
+				String.split(/\s+/u),
+				Array.filter(String.isNonEmpty),
+				Array.take(3)
+			)
 		),
 		previous
 	)
 }
 
 // A range's slot width: every range draws 60 slots.
-export function resolution(minutes: number) {
-	return minutes * 1000
+export function resolution(range: Duration.Duration) {
+	return Duration.divideUnsafe(range, 60)
 }
 
-export function chartWindow(minutes: number, now: number) {
-	const end = Math.ceil(now / resolution(minutes)) * resolution(minutes)
-	return {end, start: end - minutes * 60_000}
+export function chartWindow(range: Duration.Duration, now: DateTime.Utc) {
+	const slot = Duration.toMillis(resolution(range))
+	const end = DateTime.mapEpochMillis(now, value => Math.ceil(value / slot) * slot)
+	return {end, start: DateTime.subtractDuration(end, range)}
 }
 
 // The readings of a bucket's samples averaged over the time each covers, skipping missing ones: a merged point counts for its span, a second point for its second.
 function mean(bucket: readonly Sample[], read: (point: Sample, index: number) => Option.Option<number>) {
 	const known = Array.getSomes(
 		Array.map(bucket, (point, index) =>
-			Option.map(read(point, index), value => ({value, weight: point.time - point.since + 1000}))
+			Option.map(read(point, index), value => ({
+				value,
+				weight: Duration.toMillis(DateTime.distance(point.since, point.time)) + 1000
+			}))
 		)
 	)
 	if (Array.isReadonlyArrayEmpty(known)) return Option.none<number>()
@@ -223,7 +257,7 @@ function merge(bucket: Array.NonEmptyReadonlyArray<Sample>) {
 		)
 	)
 	// An app missing from a point that reported apps used nothing then; one just started has no CPU reading yet.
-	function appMean(id: string, read: (app: AppSample) => Option.Option<number>) {
+	function appMean(id: AppId, read: (app: AppSample) => Option.Option<number>) {
 		return mean(reported, (_point, index) =>
 			Option.match(Option.fromUndefinedOr(appsById[index]?.[id]), {onNone: () => Option.some(0), onSome: read})
 		)
@@ -235,15 +269,26 @@ function merge(bucket: Array.NonEmptyReadonlyArray<Sample>) {
 			onEmpty: () => Option.none(),
 			onNonEmpty: () =>
 				Option.some(
-					Array.map(Array.dedupe(Array.flatMap(appsById, Record.keys)), id => ({
-						...Record.getSomes({cpu: appMean(id, app => Option.fromUndefinedOr(app.cpu))}),
-						id,
-						memory: pipe(
-							appMean(id, app => Option.some(app.memory)),
-							Option.getOrElse(() => 0),
-							Number.round(0)
-						)
-					}))
+					Array.map(
+						Array.dedupe(
+							Array.flatMap(reported, point =>
+								pipe(
+									point.apps,
+									Option.getOrElse(Array.empty),
+									Array.map(app => app.id)
+								)
+							)
+						),
+						id => ({
+							cpu: appMean(id, app => app.cpu),
+							id,
+							memory: pipe(
+								appMean(id, app => Option.some(app.memory)),
+								Option.getOrElse(() => 0),
+								Number.round(0)
+							)
+						})
+					)
 				)
 		}),
 		cpu: mean(bucket, point => point.cpu),
@@ -259,27 +304,39 @@ function merge(bucket: Array.NonEmptyReadonlyArray<Sample>) {
 // What a measurement changes in each series: the stored point of the bucket it falls in, merged with it, or a new point.
 export function rollup(point: Point, stored: readonly Sample[]) {
 	const buckets = Record.fromEntries(
-		Array.map(stored, row => [`${row.step}:${Math.floor(row.since / row.step)}`, row] as const)
+		Array.map(
+			stored,
+			row =>
+				[
+					`${Duration.toMillis(row.step)}:${Math.floor(DateTime.toEpochMillis(row.since) / Duration.toMillis(row.step))}`,
+					row
+				] as const
+		)
 	)
-	return Array.map(HistoryQuery.fields.minutes.literals, minutes => {
-		const step = SERIES[minutes]
+	return Array.map([SERIES[1], SERIES[10], SERIES[60], SERIES[1440], SERIES[10_080]] as const, step => {
 		const fresh: Sample = {...point, since: point.time, step}
 		return pipe(
 			buckets,
-			Record.get(`${step}:${Math.floor(point.time / step)}`),
+			Record.get(
+				`${Duration.toMillis(step)}:${Math.floor(DateTime.toEpochMillis(point.time) / Duration.toMillis(step))}`
+			),
 			Option.match({onNone: () => fresh, onSome: row => merge([row, fresh])})
 		)
 	})
 }
 
 // A series' points as the range's slots, one merged point each.
-export function history(samples: readonly Sample[], minutes: number, now: number) {
+export function history(samples: readonly Sample[], minutes: Duration.Duration, now: DateTime.Utc) {
 	const window = chartWindow(minutes, now)
 	const slot = resolution(minutes)
 	return pipe(
-		Array.filter(samples, value => value.time > window.start && value.time <= now),
+		Array.filter(
+			samples,
+			value => DateTime.isGreaterThan(value.time, window.start) && DateTime.isLessThanOrEqualTo(value.time, now)
+		),
 		Array.groupBy(
-			value => `${Number.clamp(Math.ceil((value.time - window.start) / slot) - 1, {maximum: 59, minimum: 0})}`
+			value =>
+				`${Number.clamp(Math.ceil(Duration.toMillis(DateTime.distance(window.start, value.time)) / Duration.toMillis(slot)) - 1, {maximum: 59, minimum: 0})}`
 		),
 		Record.values,
 		Array.map(merge)
@@ -287,7 +344,7 @@ export function history(samples: readonly Sample[], minutes: number, now: number
 }
 
 // A band's label: the page's name for the app when it has a row, else the unit or container the id names.
-export function bandName(id: string, labels: Record<string, string>) {
+export function bandName(id: AppId | 'other' | 'system', labels: Record<AppId, string>) {
 	if (id === 'other') return 'Low impact'
 	if (id === 'system') return 'System'
 	return pipe(
@@ -330,21 +387,28 @@ export function cgroupUsage(cpuStat: string, memoryStat: string) {
 		}),
 		fields => ({
 			memory: fields.anon + fields.shmem + Number.max(0, fields.kernel - fields.reclaimable),
-			usage: fields.usage
+			usage: Duration.millis(fields.usage / 1000)
 		})
 	)
 }
 
 export type AppReading = {
-	cgroups: Record<string, {id: string; memory: number; usage: number}>
-	time: number
-	total: number
+	cgroups: Record<CgroupPath, {id: AppId; memory: number; usage: Duration.Duration}>
+	time: DateTime.Utc
+	total: Duration.Duration
 }
 
 // Each app holding at least 1 MiB, with its CPU since the previous reading as a share of the whole machine, measured per cgroup so one that restarted or appeared doesn't hide the others; `total` counts the machine's CPU time in /proc/stat's 10 ms ticks.
-export function appShares(current: AppReading, previous?: AppReading) {
-	const elapsed = current.total - (previous?.total ?? current.total)
-	const measured = elapsed > 0 && current.time - (previous?.time ?? 0) <= 90_000
+export function appShares(current: AppReading, previous: Option.Option<AppReading>) {
+	const elapsed = Option.match(previous, {
+		onNone: () => Duration.zero,
+		onSome: old => Duration.subtract(current.total, old.total)
+	})
+	const measured =
+		Duration.isGreaterThan(elapsed, Duration.zero) &&
+		Option.exists(previous, old =>
+			pipe(old.time, DateTime.distance(current.time), Duration.isLessThanOrEqualTo(Duration.seconds(90)))
+		)
 	return pipe(
 		Record.toEntries(Array.groupBy(Record.toEntries(current.cgroups), entry => entry[1].id)),
 		Array.filter(entry => Array.reduce(entry[1], 0, (sum, cgroup) => sum + cgroup[1].memory) >= 1024 ** 2),
@@ -353,22 +417,23 @@ export function appShares(current: AppReading, previous?: AppReading) {
 			const deltas = Array.getSomes(
 				Array.map(cgroups, cgroup =>
 					pipe(
-						Option.fromUndefinedOr(previous?.cgroups[cgroup[0]]),
-						Option.filter(old => measured && cgroup[1].usage >= old.usage),
-						Option.map(old => cgroup[1].usage - old.usage)
+						Option.flatMap(previous, old => Record.get(old.cgroups, cgroup[0])),
+						Option.filter(old => measured && Duration.isGreaterThanOrEqualTo(cgroup[1].usage, old.usage)),
+						Option.map(old => Duration.toMicros(Duration.subtract(cgroup[1].usage, old.usage)))
 					)
 				)
 			)
 			return {
-				...Array.match(deltas, {
-					onEmpty: () => ({}),
-					onNonEmpty: () => ({
-						cpu: pipe(
-							(Number.sumAll(deltas) / 10_000 / elapsed) * 100,
-							Number.clamp({maximum: 100, minimum: 0}),
-							Number.round(2)
+				cpu: Array.match(deltas, {
+					onEmpty: () => Option.none(),
+					onNonEmpty: () =>
+						Option.some(
+							pipe(
+								(Number.sumAll(deltas) / 1000 / Duration.toMillis(elapsed)) * 100,
+								Number.clamp({maximum: 100, minimum: 0}),
+								Number.round(2)
+							)
 						)
-					})
 				}),
 				id,
 				memory: Number.round(Array.reduce(cgroups, 0, (sum, cgroup) => sum + cgroup[1].memory) / 1024, 0) * 1024
@@ -385,14 +450,17 @@ function diskTotal(machine: MachineHistory) {
 }
 
 // Each of the range's 60 slots in order: a slot without a sample stays null, as the page's charts leave it blank.
-function series(machine: MachineHistory, minutes: number, read: (sample: Sample) => Option.Option<number>) {
+function series(machine: MachineHistory, minutes: Duration.Duration, read: (sample: Sample) => Option.Option<number>) {
 	const start = chartWindow(minutes, machine.time).start
 	const slot = resolution(minutes)
 	const bySlot = Record.fromEntries(
 		Array.map(
 			machine.samples,
 			point =>
-				[`${Number.clamp(Math.ceil((point.time - start) / slot) - 1, {maximum: 59, minimum: 0})}`, point] as const
+				[
+					`${Number.clamp(Math.ceil(Duration.toMillis(DateTime.distance(start, point.time)) / Duration.toMillis(slot)) - 1, {maximum: 59, minimum: 0})}`,
+					point
+				] as const
 		)
 	)
 	return Array.makeBy(60, index =>
@@ -404,7 +472,7 @@ function series(machine: MachineHistory, minutes: number, read: (sample: Sample)
 	)
 }
 
-function appsOf(labels: Record<string, string>, latest: Sample) {
+function appsOf(labels: Record<AppId, string>, latest: Sample) {
 	const sorted = Array.sort(
 		pipe(
 			latest.apps,
@@ -412,7 +480,7 @@ function appsOf(labels: Record<string, string>, latest: Sample) {
 			Array.map(
 				app =>
 					({
-						...Record.getSomes({cpu: Option.map(Option.fromUndefinedOr(app.cpu), value => Number.round(value, 1))}),
+						cpu: Option.map(app.cpu, value => Number.round(value, 1)),
 						mib: Number.round(app.memory / 1024 ** 2, 0),
 						name: bandName(app.id, labels)
 					}) satisfies AppUsage
@@ -426,13 +494,13 @@ function appsOf(labels: Record<string, string>, latest: Sample) {
 	)
 	if (sorted.length <= 15) return sorted
 	const rest = Array.drop(sorted, 15)
-	const cpus = Array.getSomes(Array.map(rest, (app: AppUsage) => Option.fromUndefinedOr(app.cpu)))
+	const cpus = Array.getSomes(Array.map(rest, (app: AppUsage) => app.cpu))
 	return [
 		...Array.take(sorted, 15),
 		{
-			...Boolean.match(Array.isReadonlyArrayNonEmpty(cpus), {
-				onFalse: () => ({}),
-				onTrue: () => ({cpu: Number.round(Number.sumAll(cpus), 1)})
+			cpu: Array.match(cpus, {
+				onEmpty: () => Option.none(),
+				onNonEmpty: values => Option.some(Number.round(Number.sumAll(values), 1))
 			}),
 			mib: Number.sumAll(Array.map(rest, (app: AppUsage) => app.mib)),
 			name: 'other'
@@ -440,7 +508,7 @@ function appsOf(labels: Record<string, string>, latest: Sample) {
 	]
 }
 
-function workerHistory(machine: MachineHistory, minutes: number, labels: Record<string, string>) {
+function workerHistory(machine: MachineHistory, minutes: Duration.Duration, labels: Record<AppId, string>) {
 	const latest = Array.last(machine.samples)
 	const storageTotal = diskTotal(machine)
 	return {
@@ -449,26 +517,19 @@ function workerHistory(machine: MachineHistory, minutes: number, labels: Record<
 		diskPct: series(machine, minutes, point =>
 			Option.flatMap(point.storageUsed, used => Option.map(storageTotal, total => (used / total) * 100))
 		),
-		...Boolean.match(String.isNonEmpty(machine.error), {onFalse: () => ({}), onTrue: () => ({error: machine.error})}),
-		from: DateTime.formatIso(DateTime.makeUnsafe(chartWindow(minutes, machine.time).start)),
+		error: machine.error,
+		from: chartWindow(minutes, machine.time).start,
 		memoryPct: series(machine, minutes, point => Option.some((point.memoryUsed / point.memoryTotal) * 100)),
-		...Option.match(latest, {
-			onNone: () => ({}),
-			onSome: point => ({
-				now: {
-					...Record.getSomes({
-						cpuPct: Option.map(point.cpu, value => Number.round(value, 1)),
-						diskGiB: Option.map(point.storageUsed, used => Number.round(used / 1024 ** 3, 1)),
-						diskTotalGiB: Option.map(storageTotal, total => Number.round(total / 1024 ** 3, 1))
-					}),
-					...Record.getSomes({load: Option.liftPredicate(machine.load, Array.isReadonlyArrayNonEmpty)}),
-					memoryGiB: Number.round(point.memoryUsed / 1024 ** 3, 1),
-					memoryTotalGiB: Number.round(point.memoryTotal / 1024 ** 3, 1)
-				}
-			})
-		}),
-		...Boolean.match(machine.stale, {onFalse: () => ({}), onTrue: () => ({stale: true as const})}),
-		stepSeconds: resolution(minutes) / 1000,
+		now: Option.map(latest, point => ({
+			cpuPct: Option.map(point.cpu, value => Number.round(value, 1)),
+			diskGiB: Option.map(point.storageUsed, used => Number.round(used / 1024 ** 3, 1)),
+			diskTotalGiB: Option.map(storageTotal, total => Number.round(total / 1024 ** 3, 1)),
+			load: Option.liftPredicate(machine.load, Array.isReadonlyArrayNonEmpty),
+			memoryGiB: Number.round(point.memoryUsed / 1024 ** 3, 1),
+			memoryTotalGiB: Number.round(point.memoryTotal / 1024 ** 3, 1)
+		})),
+		stale: Option.liftPredicate(true as const, () => machine.stale),
+		stepSeconds: resolution(minutes),
 		worker: machine.worker
 	}
 }
@@ -477,11 +538,11 @@ function workerHistory(machine: MachineHistory, minutes: number, labels: Record<
 export function resourceHistory(
 	machines: readonly MachineHistory[],
 	input: HistoryToolInput,
-	names: Record<string, Record<string, string>>
+	names: Record<string, Record<AppId, string>>
 ) {
 	return pipe(
 		machines,
-		Array.filter(machine => input.worker === undefined || machine.worker === input.worker),
+		Array.filter(machine => !Option.exists(input.worker, worker => machine.worker !== worker)),
 		Array.map(machine => workerHistory(machine, input.minutes, names[machine.worker] ?? {}))
 	)
 }

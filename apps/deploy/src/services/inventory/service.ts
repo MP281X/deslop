@@ -4,7 +4,8 @@ import {pid, platform} from 'node:process'
 import {
 	Array,
 	Boolean,
-	Clock,
+	DateTime,
+	Duration,
 	Context,
 	Effect,
 	FileSystem,
@@ -29,96 +30,108 @@ import {executeProcess} from '@deslop/runtime/server/process'
 import {exitFailure, unitFailures} from './lib/failures.ts'
 import {launchAgents} from './lib/launchd.ts'
 import {attachProcesses, launchdProcesses, processReadings, processes} from './lib/processes.ts'
+import type {ProcessMeasurement} from './lib/processes.ts'
 import {type Socket, lsofSockets, probeSocket, socketLine, socketProcess, socketUnit} from './lib/sockets.ts'
 
 import {
 	Container,
 	DeployError,
+	ExposureName,
 	InventoryItem,
+	ItemId,
+	ProcessId,
 	Serve,
 	Snapshot,
 	Tailnet,
 	Timer,
-	Unit
+	Unit,
+	WorkerId
 } from '#services/inventory/schema.ts'
-import type {RunRequest} from '#services/inventory/schema.ts'
+import type {RunRequest, UnitId} from '#services/inventory/schema.ts'
 
 // Each listener with its unit, the app a Node listener's working directory names, and whether it answers HTTP; `unit` and `cwd` read a PID the platform's way.
 function portItems(
 	sockets: readonly Socket[],
-	worker: string,
+	worker: WorkerId,
 	http: HttpClient.HttpClient,
 	origin: {
-		readonly cwd: (pid: string) => Effect.Effect<Option.Option<string>>
-		readonly unit: (pid: string) => Effect.Effect<string>
+		readonly cwd: (pid: ProcessId) => Effect.Effect<Option.Option<string>>
+		readonly unit: (pid: ProcessId) => Effect.Effect<Option.Option<UnitId>>
 	}
 ) {
 	return Effect.forEach(
 		sockets,
 		Effect.fnUntraced(function* (socket) {
 			const unit = yield* Option.match(socket.process, {
-				onNone: () => Effect.succeed(''),
-				onSome: match => origin.unit(match.pid ?? '')
+				onNone: () => Effect.succeedNone,
+				onSome: match => origin.unit(match.pid)
 			})
 			const process = yield* Option.match(socket.process, {
-				onNone: () => Effect.succeed(''),
+				onNone: () => Effect.succeedNone,
 				onSome: Effect.fnUntraced(function* (match) {
-					if (!String.startsWith('node')(match.name)) return match.name
-					return Option.match(yield* origin.cwd(match.pid ?? ''), {
-						onNone: () => match.name,
-						onSome: cwd => socketProcess(match.name, cwd)
-					})
-				})
-			})
-			const response = yield* Boolean.match(probeSocket(socket, process), {
-				onFalse: () => Effect.succeed(Option.none<{http: boolean; ui: boolean}>()),
-				onTrue: Effect.fnUntraced(function* () {
-					// The probe sends an unsampled trace context, so the app's HEAD span is never exported.
-					return yield* pipe(
-						http.head(`http://127.0.0.1:${socket.port}/`, {
-							headers: HttpTraceContext.toHeaders(
-								new Tracer.NativeSpan({
-									annotations: Context.empty(),
-									kind: 'internal',
-									links: [],
-									name: 'Deploy.probe',
-									parent: Option.none(),
-									sampled: false,
-									startTime: 0n
-								})
-							)
-						}),
-						Effect.map(value => ({
-							http: true,
-							ui:
-								value.status >= 200 &&
-								value.status < 400 &&
-								String.includes('text/html')(value.headers['content-type'] ?? '')
-						})),
-						Effect.provideService(FetchHttpClient.RequestInit, {redirect: 'manual'}),
-						// A probe expects refusals and 4xx from ports that aren't web pages, so it records no span.
-						Effect.provideService(HttpClient.TracerDisabledWhen, () => true),
-						Effect.timeout('700 millis'),
-						Effect.option
+					if (!String.startsWith('node')(match.name)) return Option.liftPredicate(match.name, String.isNonEmpty)
+					return pipe(
+						yield* origin.cwd(match.pid),
+						Option.match({onNone: () => match.name, onSome: cwd => socketProcess(match.name, cwd)}),
+						Option.liftPredicate(String.isNonEmpty)
 					)
 				})
 			})
+			const response = yield* Boolean.match(
+				probeSocket(
+					socket,
+					Option.getOrElse(process, () => '')
+				),
+				{
+					onFalse: () => Effect.succeed(Option.none<{http: boolean; ui: boolean}>()),
+					onTrue: Effect.fnUntraced(function* () {
+						// The probe sends an unsampled trace context, so the app's HEAD span is never exported.
+						return yield* pipe(
+							http.head(`http://127.0.0.1:${socket.port}/`, {
+								headers: HttpTraceContext.toHeaders(
+									new Tracer.NativeSpan({
+										annotations: Context.empty(),
+										kind: 'internal',
+										links: [],
+										name: 'Deploy.probe',
+										parent: Option.none(),
+										sampled: false,
+										startTime: 0n
+									})
+								)
+							}),
+							Effect.map(value => ({
+								http: true,
+								ui:
+									value.status >= 200 &&
+									value.status < 400 &&
+									String.includes('text/html')(value.headers['content-type'] ?? '')
+							})),
+							Effect.provideService(FetchHttpClient.RequestInit, {redirect: 'manual'}),
+							// A probe expects refusals and 4xx from ports that aren't web pages, so it records no span.
+							Effect.provideService(HttpClient.TracerDisabledWhen, () => true),
+							Effect.timeout(Duration.millis(700)),
+							Effect.option
+						)
+					})
+				}
+			)
 			return InventoryItem.make({
-				...Option.getOrElse(response, () => ({http: false, ui: false})),
-				address: socket.address,
-				detail: `${socket.address} · ${process || 'process unavailable'}`,
-				id: `${worker}:port:${socket.protocol}:${socket.address}`,
+				address: Option.some(socket.address),
+				detail: `${socket.address} · ${Option.getOrElse(process, () => 'process unavailable')}`,
+				http: Option.some(Option.exists(response, value => value.http)),
+				id: ItemId.make(`${worker}:port:${socket.protocol}:${socket.address}`),
 				kind: 'port',
 				name: socket.address,
-				port: socket.port,
-				process,
-				protocol: Boolean.match(socket.protocol === 'udp', {
-					onFalse: () => 'tcp' as const,
-					onTrue: () => 'udp' as const
-				}),
+				port: Option.some(socket.port),
+				process: Option.some(process),
+				protocol: Option.some(
+					Boolean.match(socket.protocol === 'udp', {onFalse: () => 'tcp' as const, onTrue: () => 'udp' as const})
+				),
 				state: socket.state,
-				unit,
-				url: '',
+				ui: Option.some(Option.exists(response, value => value.ui)),
+				unit: Option.some(unit),
+				url: Option.none(),
 				worker
 			})
 		}),
@@ -128,18 +141,18 @@ function portItems(
 
 // What a worker's own collectors read: its sources, and its processes for the snapshot to attach by owner.
 type Machine = {
-	readonly processes: Effect.Effect<Effect.Success<typeof processes>, DeployError>
+	readonly processes: Effect.Effect<ProcessMeasurement, DeployError>
 	readonly sources: readonly ReturnType<typeof collect<DeployError, never>>[]
 }
 
 function collect<E extends {readonly message: string}, R>(name: string, effect: Effect.Effect<InventoryItem[], E, R>) {
 	return pipe(
 		effect,
-		Effect.timeout('10 seconds'),
+		Effect.timeout(Duration.seconds(10)),
 		Effect.withSpan('Inventory.collect', {attributes: {source: name}}),
 		Effect.match({
-			onFailure: cause => ({items: Array.empty<InventoryItem>(), source: {error: cause.message, name}}),
-			onSuccess: items => ({items, source: {error: '', name}})
+			onFailure: cause => ({items: Array.empty<InventoryItem>(), source: {error: Option.some(cause.message), name}}),
+			onSuccess: items => ({items, source: {error: Option.none<string>(), name}})
 		})
 	)
 }
@@ -160,11 +173,12 @@ export class Inventory extends Context.Service<
 			function command(name: string, args: string[]) {
 				return pipe(
 					executeProcess(name, args),
-					Effect.mapError(cause => DeployError.make({cause, message: cause.message})),
+					Effect.mapError(cause => DeployError.make({cause: Option.some(cause), message: cause.message})),
 					Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner)
 				)
 			}
-			const worker = hostname()
+			const worker = yield* Schema.decodeEffect(WorkerId)(hostname())
+			const selfProcess = yield* Schema.decodeEffect(ProcessId)(pid)
 			const processState = yield* Ref.make(Option.none<ReturnType<typeof processReadings>>())
 			const units = Effect.fnUntraced(function* (system: boolean) {
 				const scope = Boolean.match(system, {onFalse: () => 'user' as const, onTrue: () => 'system' as const})
@@ -178,8 +192,8 @@ export class Inventory extends Context.Service<
 							),
 							timer =>
 								Option.map(
-									Option.fromNullishOr(timer.activates),
-									unit => [unit, Option.map(Option.fromNullishOr(timer.next), next => Math.floor(next / 1000))] as const
+									timer.activates,
+									unit => [unit, Option.map(timer.next, next => DateTime.mapEpochMillis(next, Math.floor))] as const
 								)
 						)
 					)
@@ -215,28 +229,19 @@ export class Inventory extends Context.Service<
 				return Array.map(rows, row =>
 					InventoryItem.make({
 						detail: `${scope} · ${row.description}`,
-						...Option.match(Option.fromUndefinedOr(failures[row.unit]), {
-							onNone: () => ({}),
-							onSome: failure => ({failure})
-						}),
-						id: `${worker}:${scope}:${row.unit}`,
+						failure: Record.get(failures, row.unit),
+						id: ItemId.make(`${worker}:${scope}:${row.unit}`),
 						kind: 'service',
 						name: row.unit,
-						...pipe(
+						next: Option.flatten(HashMap.get(scheduled, row.unit)),
+						scheduled: pipe(
 							scheduled,
 							HashMap.get(row.unit),
-							Option.match({
-								onNone: () => ({}),
-								onSome: next =>
-									Option.match(next, {
-										onNone: () => ({scheduled: true}),
-										onSome: time => ({next: time, scheduled: true})
-									})
-							})
+							Option.map(() => true)
 						),
-						scope,
+						scope: Option.some(scope),
 						state: `${row.active} · ${row.sub}`,
-						url: '',
+						url: Option.none(),
 						worker
 					})
 				)
@@ -254,11 +259,11 @@ export class Inventory extends Context.Service<
 				Effect.map(rows =>
 					Array.map(rows, row =>
 						InventoryItem.make({
-							bindings: [
+							bindings: Option.some([
 								...Array.map(
 									Array.fromIterable(
 										String.matchAll(/traefik\.http\.services\.[^=,]+\.loadbalancer\.server\.port=([0-9]+)/gu)(
-											row.Labels ?? ''
+											Option.getOrElse(row.Labels, () => '')
 										)
 									),
 									match => ({
@@ -278,19 +283,21 @@ export class Inventory extends Context.Service<
 										})
 									})
 								)
-							],
+							]),
 							detail: row.Status,
-							id: `${worker}:docker:${row.ID}`,
+							id: ItemId.make(`${worker}:docker:${row.ID}`),
 							kind: 'container',
-							links: Array.dedupe(
-								Array.map(
-									Array.fromIterable(String.matchAll(/Host\(`([^`]+)`\)/gu)(row.Labels ?? '')),
-									match => `https://${match[1]}`
+							links: Option.some(
+								Array.dedupe(
+									Array.map(
+										Array.fromIterable(String.matchAll(/Host\(`([^`]+)`\)/gu)(Option.getOrElse(row.Labels, () => ''))),
+										match => `https://${match[1]}`
+									)
 								)
 							),
 							name: row.Names,
 							state: row.State,
-							url: '',
+							url: Option.none(),
 							worker
 						})
 					)
@@ -301,7 +308,7 @@ export class Inventory extends Context.Service<
 				processes: pipe(
 					processes,
 					Effect.provideService(FileSystem.FileSystem, fs),
-					Effect.mapError(cause => DeployError.make({cause, message: cause.message}))
+					Effect.mapError(cause => DeployError.make({cause: Option.some(cause), message: cause.message}))
 				),
 				sources: [
 					collect('User services', units(false)),
@@ -337,22 +344,24 @@ export class Inventory extends Context.Service<
 					},
 					{concurrency: 'unbounded'}
 				)
-				const time = yield* Clock.currentTimeMillis
-				const total = Number.sumAll(Array.flatMap(cpus(), cpu => Record.values(cpu.times)))
+				const time = yield* DateTime.now
+				const total = Duration.millis(Number.sumAll(Array.flatMap(cpus(), cpu => Record.values(cpu.times))))
 				const records = Result.map(launchd.table, text => {
-					const agents = Record.fromEntries(
+					const agents = HashMap.fromIterable(
 						Array.getSomes(
 							pipe(
 								launchd.agents,
 								Result.getOrElse(() => []),
-								Array.map(agent => Option.map(agent.pid, processId => [`${processId}`, agent.label] as const))
+								Array.map(agent => Option.map(agent.pid, processId => [processId, agent.label] as const))
 							)
 						)
 					)
 					// Every descendant of this Mac's Deploy agent is a collector, including lsof and Tailscale subprocesses.
 					return Array.filter(
 						launchdProcesses(text, agents),
-						record => record.process.pid === pid || record.unit !== agents[`${pid}`]
+						record =>
+							record.process.pid === selfProcess ||
+							!pipe(agents, HashMap.get(selfProcess), Option.contains(record.unit))
 					)
 				})
 				const owned = Result.getOrElse(records, Array.empty<Result.Result.Success<typeof records>[number]>)
@@ -365,14 +374,15 @@ export class Inventory extends Context.Service<
 								Array.map(agents, agent =>
 									InventoryItem.make({
 										detail: 'user · launch agent',
-										...Boolean.match(Option.isNone(agent.pid) && agent.status !== 0, {
-											onFalse: () => ({}),
-											onTrue: () => ({failure: {reason: exitFailure(agent.status)}})
-										}),
-										id: `${worker}:user:${agent.label}`,
+										failure: pipe(
+											agent.status,
+											Option.liftPredicate(status => Option.isNone(agent.pid) && status !== 0),
+											Option.map(status => ({at: Option.none(), reason: exitFailure(status)}))
+										),
+										id: ItemId.make(`${worker}:user:${agent.label}`),
 										kind: 'service',
 										name: agent.label,
-										scope: 'user',
+										scope: Option.some('user'),
 										state: Option.match(agent.pid, {
 											onNone: () =>
 												Boolean.match(agent.status === 0, {
@@ -381,7 +391,7 @@ export class Inventory extends Context.Service<
 												}),
 											onSome: () => 'active · running'
 										}),
-										url: '',
+										url: Option.none(),
 										worker
 									})
 								)
@@ -393,7 +403,7 @@ export class Inventory extends Context.Service<
 								portItems(lsofSockets(text), worker, http, {
 									cwd: Effect.fnUntraced(function* (processId) {
 										return pipe(
-											yield* Effect.option(command('lsof', ['-nP', '-a', '-p', processId, '-d', 'cwd', '-Fn'])),
+											yield* Effect.option(command('lsof', ['-nP', '-a', '-p', `${processId}`, '-d', 'cwd', '-Fn'])),
 											Option.getOrElse(() => ''),
 											String.split('\n'),
 											Array.findFirst(String.startsWith('n')),
@@ -404,9 +414,8 @@ export class Inventory extends Context.Service<
 										Effect.succeed(
 											pipe(
 												owned,
-												Array.findFirst(record => `${record.process.pid}` === processId),
-												Option.map(record => record.unit),
-												Option.getOrElse(() => '')
+												Array.findFirst(record => record.process.pid === processId),
+												Option.map(record => record.unit)
 											)
 										)
 								})
@@ -433,7 +442,7 @@ export class Inventory extends Context.Service<
 							]),
 							Schema.decodeUnknownEffect(Schema.fromJsonString(Schema.Array(Timer)))
 						)
-						if (!Array.some(timers, timer => timer.activates === input.name)) {
+						if (!Array.some(timers, timer => Option.contains(timer.activates, input.name))) {
 							return yield* DeployError.make({message: `${input.name} is not started by a timer`})
 						}
 						yield* Boolean.match(input.scope === 'system', {
@@ -444,7 +453,7 @@ export class Inventory extends Context.Service<
 					Effect.scoped,
 					Effect.mapError(cause => {
 						if (Schema.is(DeployError)(cause)) return cause
-						return DeployError.make({cause, message: 'Cannot start the job'})
+						return DeployError.make({cause: Option.some(cause), message: 'Cannot start the job'})
 					})
 				),
 				snapshot: Effect.withSpan(
@@ -461,17 +470,17 @@ export class Inventory extends Context.Service<
 											Effect.flatMap(Schema.decodeEffect(Schema.fromJsonString(Tailnet))),
 											Effect.map(status =>
 												Array.map(
-													[...Option.toArray(Option.fromUndefinedOr(status.Self)), ...Record.values(status.Peer ?? {})],
+													[...Option.toArray(status.Self), ...Record.values(Option.getOrElse(status.Peer, () => ({})))],
 													peer =>
 														InventoryItem.make({
 															detail: `${peer.OS} · ${Array.join(peer.TailscaleIPs, ', ')}`,
-															hostname: String.replace(/\.$/u, '')(peer.DNSName),
-															id: `${worker}:peer:${peer.DNSName}`,
+															hostname: Option.some(String.replace(/\.$/u, '')(peer.DNSName)),
+															id: ItemId.make(`${worker}:peer:${peer.DNSName}`),
 															kind: 'peer',
 															name: peer.HostName,
-															self: peer.DNSName === status.Self?.DNSName,
+															self: Option.some(Option.exists(status.Self, self => peer.DNSName === self.DNSName)),
 															state: Boolean.match(peer.Online, {onFalse: () => 'offline', onTrue: () => 'online'}),
-															url: '',
+															url: Option.none(),
 															worker
 														})
 												)
@@ -484,22 +493,28 @@ export class Inventory extends Context.Service<
 											command('tailscale', ['serve', 'status', '--json']),
 											Effect.flatMap(Schema.decodeEffect(Schema.fromJsonString(Serve))),
 											Effect.map(status =>
-												Array.flatMap(Record.toEntries(status.Web ?? {}), site =>
+												Array.flatMap(Record.toEntries(Option.getOrElse(status.Web, () => ({}))), site =>
 													Array.map(Record.toEntries(site[1].Handlers), handler =>
 														InventoryItem.make({
-															detail: `${Boolean.match(status.AllowFunnel?.[site[0]] === true, {onFalse: () => 'tailnet', onTrue: () => 'Funnel permitted (public)'})} → ${handler[1].Proxy ?? 'non-proxy handler'}`,
-															id: `${worker}:tailscale:${site[0]}:${handler[0]}`,
+															detail: `${pipe(
+																status.AllowFunnel,
+																Option.exists(permissions => permissions[site[0]] === true),
+																Boolean.match({onFalse: () => 'tailnet', onTrue: () => 'Funnel permitted (public)'})
+															)} → ${Option.getOrElse(handler[1].Proxy, () => 'non-proxy handler')}`,
+															id: ItemId.make(`${worker}:tailscale:${site[0]}:${handler[0]}`),
 															kind: 'exposure',
-															name: `${site[0]}${handler[0]}`,
-															owned: false,
-															publicAccess: status.AllowFunnel?.[site[0]] === true,
-															...pipe(
-																String.match(/^http:\/\/(?:127\.0\.0\.1|localhost):([0-9]+)/u)(handler[1].Proxy ?? ''),
-																Option.flatMap(match => Number.parse(match[1] ?? '')),
-																Option.match({onNone: () => ({}), onSome: port => ({port})})
+															name: ExposureName.make(`${site[0]}${handler[0]}`),
+															owned: Option.some(false),
+															port: pipe(
+																handler[1].Proxy,
+																Option.flatMap(String.match(/^http:\/\/(?:127\.0\.0\.1|localhost):([0-9]+)/u)),
+																Option.flatMap(match => Number.parse(match[1] ?? ''))
+															),
+															publicAccess: Option.some(
+																Option.exists(status.AllowFunnel, permissions => permissions[site[0]] === true)
 															),
 															state: 'observed',
-															url: `https://${site[0]}${handler[0]}`,
+															url: Option.some(`https://${site[0]}${handler[0]}`),
 															worker
 														})
 													)
@@ -514,14 +529,14 @@ export class Inventory extends Context.Service<
 								machine.processes,
 								Effect.flatMap(current =>
 									Ref.modify(processState, previous => {
-										const next = processReadings(current, Option.getOrUndefined(previous))
+										const next = processReadings(current, previous)
 										return [next.readings, Option.some(next)]
 									})
 								),
-								Effect.timeout('3 seconds'),
+								Effect.timeout(Duration.seconds(3)),
 								Effect.match({
-									onFailure: cause => ({error: cause.message, records: []}),
-									onSuccess: records => ({error: '', records})
+									onFailure: cause => ({error: Option.some(cause.message), records: []}),
+									onSuccess: records => ({error: Option.none<string>(), records})
 								})
 							)
 							return Snapshot.make({
@@ -530,8 +545,8 @@ export class Inventory extends Context.Service<
 									collected.records
 								),
 								sources: [...Array.map(sources, source => source.source), {error: collected.error, name: 'Processes'}],
-								time: yield* Clock.currentTimeMillis,
-								workers: [worker]
+								time: yield* DateTime.now,
+								workers: Option.some([worker])
 							})
 						})
 					),

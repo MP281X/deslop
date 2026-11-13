@@ -1,15 +1,16 @@
-import {Array, Boolean, HashSet, Number, Option, Order, String, pipe} from 'effect'
+import {Array, Boolean, DateTime, Duration, HashSet, Number, Option, Order, String, pipe} from 'effect'
 
 import {lowImpactIds} from '#routes/(home)/-usage.ts'
 import {dot, itemOwner, type Row, rowUsageOrder, sourceBelongsToWorker, status} from '#services/inventory/lib/utils.ts'
+import type {AppId, WorkerId} from '#services/inventory/schema.ts'
 import {chartWindow} from '#services/metrics/lib/utils.ts'
 import type {MachineHistory} from '#services/metrics/schema.ts'
 
 const size = new Intl.NumberFormat(undefined, {maximumFractionDigits: 1})
 
 // A running job's time in its row's column, counting up from its start as m:ss.
-export function counted(milliseconds: number) {
-	const seconds = Number.max(0, Math.floor(milliseconds / 1000))
+export function counted(elapsed: Duration.Duration) {
+	const seconds = Number.max(0, Math.floor(Duration.toSeconds(elapsed)))
 	return `${Math.floor(seconds / 60)}:${String.padStart(2, '0')(`${seconds % 60}`)}`
 }
 
@@ -37,7 +38,7 @@ function rank(row: Row) {
 	const light = dot(row.item, status(row.item))
 	if (light === 'error') return 0
 	if (light === 'warning') return 1
-	if (row.item.scheduled === true) return 3
+	if (Option.contains(row.item.scheduled, true)) return 3
 	return 2
 }
 
@@ -45,13 +46,13 @@ export const rowOrder = pipe(
 	Order.Number,
 	Order.mapInput(rank),
 	Order.combine(rowUsageOrder),
-	Order.combine(Order.mapInput(Order.Number, (row: Row) => row.item.next ?? 0))
+	Order.combine(Order.mapInput(Option.makeOrder(DateTime.Order), (row: Row) => row.item.next))
 )
 
 // The list's two groups: a failure, warning or app outside the chart's low-impact set stays up; a healthy low-impact app sits under its own heading. No history means no divider.
 export function impactGroups(rows: readonly Row[], history?: MachineHistory) {
 	const lowImpact = Option.match(Option.fromUndefinedOr(history), {
-		onNone: () => HashSet.empty<string>(),
+		onNone: () => HashSet.empty<AppId>(),
 		onSome: lowImpactIds
 	})
 	const groups = Array.groupBy(rows, row =>
@@ -64,7 +65,7 @@ export function impactGroups(rows: readonly Row[], history?: MachineHistory) {
 }
 
 // The rows whose apps the range recorded; a history without app readings, such as a Mac's, keeps them all.
-export function ranged(rows: readonly Row[], minutes: number, history?: MachineHistory) {
+export function ranged(rows: readonly Row[], minutes: Duration.Duration, history?: MachineHistory) {
 	if (history === undefined || !Array.some(history.samples, sample => Option.isSome(sample.apps))) return rows
 	const recorded = HashSet.fromIterable(
 		Array.flatMap(history.samples, sample =>
@@ -79,24 +80,30 @@ export function ranged(rows: readonly Row[], minutes: number, history?: MachineH
 	return Array.filter(
 		rows,
 		row =>
-			row.item.scheduled === true ||
+			Option.contains(row.item.scheduled, true) ||
 			Option.match(owner(row), {
 				onNone: () => true,
-				onSome: id => HashSet.has(recorded, id) || (row.item.failure?.at ?? 0) >= start
+				onSome: id =>
+					HashSet.has(recorded, id) ||
+					pipe(
+						row.item.failure,
+						Option.flatMap(failure => failure.at),
+						Option.exists(at => DateTime.isGreaterThanOrEqualTo(at, start))
+					)
 			})
 	)
 }
 
 export function failureOf(
-	worker: string,
+	worker: WorkerId,
 	inventoryFailure: boolean,
-	sources: readonly {error: string; name: string}[],
+	sources: readonly {error: Option.Option<string>; name: string}[],
 	history?: MachineHistory
 ) {
 	return (
 		inventoryFailure ||
 		history?.stale === true ||
-		Array.some(sources, source => source.error !== '' && sourceBelongsToWorker(source, worker))
+		Array.some(sources, source => Option.isSome(source.error) && sourceBelongsToWorker(source, worker))
 	)
 }
 

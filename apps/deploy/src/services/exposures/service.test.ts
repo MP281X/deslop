@@ -9,6 +9,7 @@ import {
 	Effect,
 	FileSystem,
 	Layer,
+	Option,
 	PlatformError,
 	Ref,
 	Schema,
@@ -24,9 +25,10 @@ import {layerDataStore} from '@deslop/runtime/server/store'
 
 import {ExposeInput} from '#services/exposures/schema.ts'
 import {Exposures} from '#services/exposures/service.ts'
+import {ExposureName} from '#services/inventory/schema.ts'
 import type {Serve} from '#services/inventory/schema.ts'
 
-const row = ExposeInput.make({
+const row = Schema.decodeSync(ExposeInput)({
 	hostname: 'dev.tailnet-8c4c.ts.net',
 	kind: 'tailnet',
 	name: 'preview',
@@ -36,7 +38,7 @@ const row = ExposeInput.make({
 
 // A stand-in for `tailscale`: the serve mappings it holds, and how many it turned off.
 const tailscale = Effect.gen(function* () {
-	const current = yield* Ref.make<Serve>({})
+	const current = yield* Ref.make<typeof Serve.Encoded>({})
 	const stopped = yield* Ref.make(0)
 	const spawner = ChildProcessSpawner.make(command =>
 		Effect.gen(function* () {
@@ -118,7 +120,9 @@ it.layer(NodeServices.layer)('Owned exposures', test => {
 			assert.isTrue((yield* Effect.result(exposures.expose({...row, kind: 'public'})))._tag === 'Failure')
 			assert.strictEqual(yield* exposures.expose(row), 'https://dev.tailnet-8c4c.ts.net:5173')
 			const owned = yield* Ref.get(mappings.current)
-			assert.isTrue((yield* Effect.result(exposures.expose({...row, name: 'duplicate'})))._tag === 'Failure')
+			assert.isTrue(
+				(yield* Effect.result(exposures.expose({...row, name: ExposureName.make('duplicate')})))._tag === 'Failure'
+			)
 			yield* Ref.set(mappings.current, {
 				TCP: {'5173': {}},
 				Web: {'dev.tailnet-8c4c.ts.net:5173': {Handlers: {'/': {Proxy: 'http://127.0.0.1:9999'}}}}
@@ -141,7 +145,7 @@ it.layer(NodeServices.layer)('Owned exposures', test => {
 				...row,
 				hostname: 'second.example.com',
 				kind: 'public',
-				name: 'public:second.example.com',
+				name: ExposureName.make('public:second.example.com'),
 				publicAccess: true
 			})
 			assert.include(
@@ -152,7 +156,7 @@ it.layer(NodeServices.layer)('Owned exposures', test => {
 				yield* fs.readFileString(`${home}/deploy/Caddyfile`),
 				'preview.example.com {\n\tencode\n\treverse_proxy 127.0.0.1:5173'
 			)
-			yield* exposures.hide('public:second.example.com')
+			yield* exposures.hide(ExposureName.make('public:second.example.com'))
 			yield* exposures.hide(row.name)
 		})
 	)
@@ -164,7 +168,7 @@ it.layer(NodeServices.layer)('Owned exposures', test => {
 			yield* (yield* started(home, mappings.spawner)).expose(row)
 			const restarted = yield* started(home, mappings.spawner)
 			assert.deepStrictEqual(
-				Array.map(yield* restarted.items, item => [item.name, item.url]),
+				Array.map(yield* restarted.items, item => [item.name, Option.getOrThrow(item.url)]),
 				[['preview', 'https://dev.tailnet-8c4c.ts.net:5173']]
 			)
 			yield* restarted.hide(row.name)

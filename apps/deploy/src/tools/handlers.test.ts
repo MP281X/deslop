@@ -1,12 +1,28 @@
 import {assert, it} from '@effect/vitest'
 
-import {Array, Boolean, DateTime, Effect, Formatter, Layer, Option, Ref, Schema, Stream, String, pipe} from 'effect'
+import {
+	Array,
+	Boolean,
+	DateTime,
+	Duration,
+	Effect,
+	Formatter,
+	Layer,
+	Option,
+	Record,
+	Ref,
+	Schema,
+	Stream,
+	String,
+	pipe
+} from 'effect'
 
-import type {ExposeRequest, HideRequest} from '#services/exposures/schema.ts'
+import {ExposeRequest, HideRequest} from '#services/exposures/schema.ts'
 import {Fleet} from '#services/fleet/service.ts'
-import {Inventory, Snapshot, type InventoryItem, type Process, type RunRequest} from '#services/inventory/schema.ts'
+import type {InventoryItem, Process} from '#services/inventory/schema.ts'
+import {Inventory, Snapshot, RunRequest} from '#services/inventory/schema.ts'
 import {chartWindow} from '#services/metrics/lib/utils.ts'
-import {ResourceHistory, type MachineHistory, type Sample} from '#services/metrics/schema.ts'
+import {ResourceHistory, MachineHistory} from '#services/metrics/schema.ts'
 import {ToolContracts} from '#tools/contracts.ts'
 import {ToolHandlers} from '#tools/handlers.ts'
 
@@ -23,7 +39,7 @@ function label(name: string, detail = '') {
 }
 
 function process(name: string, pid: number, parent: number, memory: number, cpu: number, detail = '') {
-	return {cpu, label: label(name, detail), memory, name, parent, pid} satisfies Process
+	return {cpu, label: label(name, detail), memory, name, parent, pid} satisfies typeof Process.Encoded
 }
 
 // One user service as production reports it: a full masked command tree against each unit and container.
@@ -45,7 +61,7 @@ function appItem(worker: string, index: number) {
 		state: 'active · running',
 		url: '',
 		worker
-	} satisfies InventoryItem
+	} satisfies typeof InventoryItem.Encoded
 }
 
 function jobItem(worker: string, index: number) {
@@ -66,7 +82,7 @@ function jobItem(worker: string, index: number) {
 		state: Boolean.match(failed, {onFalse: () => 'active · running', onTrue: () => 'failed'}),
 		url: '',
 		worker
-	} satisfies InventoryItem
+	} satisfies typeof InventoryItem.Encoded
 }
 
 function containerItem(worker: string, index: number) {
@@ -79,7 +95,7 @@ function containerItem(worker: string, index: number) {
 		state: 'running',
 		url: '',
 		worker
-	} satisfies InventoryItem
+	} satisfies typeof InventoryItem.Encoded
 }
 
 function listener(worker: string, port: number, options?: {nameless?: boolean; unit?: string; udp?: boolean}) {
@@ -103,7 +119,7 @@ function listener(worker: string, port: number, options?: {nameless?: boolean; u
 		...Option.match(Option.fromUndefinedOr(options?.unit), {onNone: () => ({}), onSome: unit => ({unit})}),
 		url: '',
 		worker
-	} satisfies InventoryItem
+	} satisfies typeof InventoryItem.Encoded
 }
 
 function exposureItem(worker: string, index: number, linked: boolean) {
@@ -119,7 +135,7 @@ function exposureItem(worker: string, index: number, linked: boolean) {
 		state: 'configured; check backend',
 		url: `https://svc-${index}.example.ts.net`,
 		worker
-	} satisfies InventoryItem
+	} satisfies typeof InventoryItem.Encoded
 }
 
 // The inventory one production-sized answer sees: 1,000 peers, 210 services with process trees, 62 containers, 12 jobs, listening ports and 17 exposures.
@@ -173,7 +189,7 @@ function fixture() {
 		...Array.makeBy(2, index => exposureItem('desktop', index, true)),
 		...Array.makeBy(7, index => exposureItem(workers[index % 2] ?? 'dev', index + 10, false))
 	]
-	return Snapshot.make({
+	return Schema.decodeSync(Snapshot)({
 		items: [...peers, ...services, ...crashed, ...jobs, ...containers, ...noise, ...listeners, ...exposures],
 		sources: [
 			{error: '', name: 'User services'},
@@ -187,7 +203,7 @@ function fixture() {
 
 function historyFixture() {
 	const workers = ['dev', 'desktop']
-	return Snapshot.make({
+	return Schema.decodeSync(Snapshot)({
 		items: Array.flatMap(workers, worker => [
 			containerItem(worker, 0),
 			...Array.makeBy(19, index => appItem(worker, index))
@@ -199,7 +215,7 @@ function historyFixture() {
 }
 
 function makeMachine(worker: string, options?: {error?: string; stale?: boolean}) {
-	const start = chartWindow(60, NOW).start
+	const start = DateTime.toEpochMillis(chartWindow(Duration.minutes(60), DateTime.makeUnsafe(NOW)).start)
 	const apps = [
 		{cpu: 12.34, id: `container:${String.slice(0, 12)(hex(0))}`, memory: 3 * GIB},
 		...Array.makeBy(19, index => ({
@@ -208,21 +224,17 @@ function makeMachine(worker: string, options?: {error?: string; stale?: boolean}
 			memory: (19 - index) * 256 * MIB
 		}))
 	]
-	const samples = Array.makeBy(
-		60,
-		index =>
-			({
-				apps: Option.some(apps),
-				cpu: Option.liftPredicate(20 + index / 10, () => index !== 0),
-				memoryTotal: 16 * GIB,
-				memoryUsed: (6 + index / 10) * GIB,
-				since: start + index * 60_000 + 30_000,
-				step: 60_000,
-				storageUsed: Option.some((200 + index) * GIB),
-				time: start + index * 60_000 + 30_000
-			}) satisfies Sample
-	)
-	return {
+	const samples = Array.makeBy(60, index => ({
+		apps,
+		...Record.getSomes({cpu: Option.liftPredicate(20 + index / 10, () => index !== 0)}),
+		memoryTotal: 16 * GIB,
+		memoryUsed: (6 + index / 10) * GIB,
+		since: start + index * 60_000 + 30_000,
+		step: 60_000,
+		storageUsed: (200 + index) * GIB,
+		time: start + index * 60_000 + 30_000
+	}))
+	return Schema.decodeSync(MachineHistory)({
 		disks: [{mount: '/', total: 500 * GIB, used: 250 * GIB}],
 		error: options?.error ?? '',
 		load: [1.5, 1.2, 0.9],
@@ -230,11 +242,11 @@ function makeMachine(worker: string, options?: {error?: string; stale?: boolean}
 		stale: options?.stale === true,
 		time: NOW,
 		worker
-	} satisfies MachineHistory
+	})
 }
 
 function makeFleet(overrides: Partial<Parameters<typeof Fleet.of>[0]>) {
-	const snapshot = Snapshot.make({items: [], sources: [], time: 0})
+	const snapshot = Schema.decodeSync(Snapshot)({items: [], sources: [], time: 0})
 	const machine = makeMachine('dev')
 	return Fleet.of({
 		current: () => Effect.succeed([]),
@@ -266,8 +278,9 @@ it.effect('answers list_apps with the page’s apps in under 20 KB and no tailne
 			const text = Formatter.formatJson(answer.encodedResult)
 			assert.isBelow(text.length, 20_000)
 			assert.notInclude(text, 'mullvad')
-			const workers = (yield* Schema.decodeUnknownEffect(Schema.Struct({workers: Inventory}))(answer.encodedResult))
-				.workers
+			const workers = (yield* Schema.decodeUnknownEffect(Schema.Struct({workers: Schema.toEncoded(Inventory)}))(
+				answer.encodedResult
+			)).workers
 			assert.lengthOf(workers, 2)
 			const dev = Option.getOrThrow(Array.findFirst(workers, worker => worker.worker === 'dev'))
 			assert.notInclude(
@@ -302,8 +315,9 @@ it.effect('returns only the matching app with its process tree when list_apps na
 			const text = Formatter.formatJson(answer.encodedResult)
 			assert.notInclude(text, 'command')
 			assert.notInclude(text, 'hidden')
-			const workers = (yield* Schema.decodeUnknownEffect(Schema.Struct({workers: Inventory}))(answer.encodedResult))
-				.workers
+			const workers = (yield* Schema.decodeUnknownEffect(Schema.Struct({workers: Schema.toEncoded(Inventory)}))(
+				answer.encodedResult
+			)).workers
 			assert.lengthOf(workers, 2)
 			for (const worker of workers) {
 				assert.deepStrictEqual(
@@ -339,7 +353,7 @@ it.effect('answers read_resource_history for 60 points and two workers in under 
 				)
 			)
 			assert.isBelow(Formatter.formatJson(answer.encodedResult).length, 6000)
-			const machines = (yield* Schema.decodeUnknownEffect(Schema.Struct({workers: ResourceHistory}))(
+			const machines = (yield* Schema.decodeUnknownEffect(Schema.Struct({workers: Schema.toEncoded(ResourceHistory)}))(
 				answer.encodedResult
 			)).workers
 			assert.lengthOf(machines, 2)
@@ -348,9 +362,12 @@ it.effect('answers read_resource_history for 60 points and two workers in under 
 				assert.lengthOf(machine.cpuPct, 60)
 				assert.lengthOf(machine.diskPct, 60)
 				assert.strictEqual(machine.stepSeconds, 60)
-				assert.strictEqual(machine.from, DateTime.formatIso(DateTime.makeUnsafe(chartWindow(60, NOW).start)))
-				assert.isTrue(Option.isNone(machine.cpuPct[0] ?? Option.none()))
-				assert.isTrue(Option.isSome(machine.cpuPct[1] ?? Option.none()))
+				assert.strictEqual(
+					machine.from,
+					DateTime.formatIso(chartWindow(Duration.minutes(60), DateTime.makeUnsafe(NOW)).start)
+				)
+				assert.isNull(machine.cpuPct[0])
+				assert.isNotNull(machine.cpuPct[1])
 				assert.strictEqual(Option.getOrThrow(Array.findFirst(machine.apps, app => app.name === 'stash')).mib, 3072)
 				assert.lengthOf(machine.apps, 16)
 				assert.strictEqual(machine.apps[15]?.name, 'other')
@@ -386,7 +403,7 @@ it.effect('runs a scheduled job through the deploy.run path', () =>
 	Effect.scoped(
 		Effect.gen(function* () {
 			const started = yield* Ref.make(Option.none<RunRequest>())
-			const snapshot = Snapshot.make({
+			const snapshot = yield* Schema.decodeEffect(Snapshot)({
 				items: [jobItem('dev', 0), jobItem('dev', 1)],
 				sources: [],
 				time: NOW,
@@ -401,7 +418,10 @@ it.effect('runs a scheduled job through the deploy.run path', () =>
 				).encodedResult,
 				{started: true}
 			)
-			assert.deepStrictEqual(Option.getOrThrow(yield* Ref.get(started)), {name: 'backup-1.service', scope: 'user'})
+			assert.deepStrictEqual(yield* Schema.encodeEffect(RunRequest)(Option.getOrThrow(yield* Ref.get(started))), {
+				name: 'backup-1.service',
+				scope: 'user'
+			})
 		})
 	)
 )
@@ -421,7 +441,9 @@ it.effect('exposes and hides a port through the composed MCP tools', () =>
 						)
 					}),
 					hide: input => Ref.set(hidden, Option.some(input)),
-					snapshot: Effect.succeed(Snapshot.make({items: [], sources: [], time: NOW, workers: ['dev', 'desktop']}))
+					snapshot: Effect.succeed(
+						yield* Schema.decodeEffect(Snapshot)({items: [], sources: [], time: NOW, workers: ['dev', 'desktop']})
+					)
 				})
 			)
 			const request = {
@@ -436,7 +458,7 @@ it.effect('exposes and hides a port through the composed MCP tools', () =>
 				Array.last(Array.fromIterable(yield* Stream.runCollect(yield* toolkit.handle('create_exposure', request))))
 			)
 			assert.deepStrictEqual(answer.encodedResult, {url: 'https://desktop.tailnet-8c4c.ts.net:4000'})
-			assert.deepStrictEqual(Option.getOrThrow(yield* Ref.get(exposed)), {
+			assert.deepStrictEqual(yield* Schema.encodeEffect(ExposeRequest)(Option.getOrThrow(yield* Ref.get(exposed))), {
 				hostname: request.hostname,
 				kind: request.kind,
 				name: request.name,
@@ -445,7 +467,10 @@ it.effect('exposes and hides a port through the composed MCP tools', () =>
 				target: request.worker
 			})
 			yield* Stream.runDrain(yield* toolkit.handle('remove_exposure', {name: 'preview', worker: 'desktop'}))
-			assert.deepStrictEqual(Option.getOrThrow(yield* Ref.get(hidden)), {name: 'preview', target: 'desktop'})
+			assert.deepStrictEqual(yield* Schema.encodeEffect(HideRequest)(Option.getOrThrow(yield* Ref.get(hidden))), {
+				name: 'preview',
+				target: 'desktop'
+			})
 		})
 	)
 )

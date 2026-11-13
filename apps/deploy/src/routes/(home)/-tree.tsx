@@ -4,12 +4,14 @@ import type {CSSProperties, ReactNode} from 'react'
 
 import {Item, ItemActions, ItemContent, ItemMedia} from '@deslop/components-web/ui/item'
 
+import type {ProcessId} from '#services/inventory/schema.ts'
+
 // One row of a tree: what it shows and the rows nested below it; the row itself is a stock Item.
 export type TreeRow = {
 	actions?: ReactNode
 	children?: readonly TreeRow[]
 	content: ReactNode
-	id: string
+	id: ProcessId
 	media: ReactNode
 	title?: string
 }

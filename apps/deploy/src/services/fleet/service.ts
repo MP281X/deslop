@@ -4,10 +4,12 @@ import {NodeSocket} from '@effect/platform-node'
 
 import {
 	Array,
-	Clock,
+	DateTime,
+	Duration,
 	Config,
 	Context,
 	Effect,
+	HashMap,
 	Layer,
 	Option,
 	Record,
@@ -32,8 +34,8 @@ import {RPC_PATH} from '@deslop/runtime/shared/schema'
 import {RpcContracts} from '#rpcs/contracts.ts'
 import type {ExposeRequest, HideRequest} from '#services/exposures/schema.ts'
 import {Exposures} from '#services/exposures/service.ts'
-import {DeployError, Snapshot, Worker} from '#services/inventory/schema.ts'
-import type {RunRequest} from '#services/inventory/schema.ts'
+import {DeployError, ItemId, Snapshot, Worker} from '#services/inventory/schema.ts'
+import type {RunRequest, WorkerId} from '#services/inventory/schema.ts'
 import {Inventory} from '#services/inventory/service.ts'
 import {history} from '#services/metrics/lib/utils.ts'
 import type {HistoryQuery, MachineHistory} from '#services/metrics/schema.ts'
@@ -71,17 +73,17 @@ type RemoteClient = Effect.Success<typeof makeRemoteClient>
 function asDeployError<A, E>(effect: Effect.Effect<A, E>) {
 	return Effect.mapError(effect, cause => {
 		if (Schema.is(DeployError)(cause)) return cause
-		return DeployError.make({cause, message: 'Worker exposure change failed'})
+		return DeployError.make({cause: Option.some(cause), message: 'Worker exposure change failed'})
 	})
 }
 
 // A worker's last saved history, windowed to the range the page asked for.
-function cachedHistory(query: HistoryQuery, time: number, saved?: MachineHistory) {
+function cachedHistory(query: HistoryQuery, time: DateTime.Utc, saved: Option.Option<MachineHistory>) {
 	return {
-		...Record.getSomes({cpuModel: Option.fromUndefinedOr(saved?.cpuModel)}),
-		disks: saved?.disks ?? [],
-		load: saved?.load ?? [],
-		samples: history(saved?.samples ?? [], query.minutes, time),
+		cpuModel: Option.flatMap(saved, machine => machine.cpuModel),
+		disks: Option.match(saved, {onNone: () => [], onSome: machine => machine.disks}),
+		load: Option.match(saved, {onNone: () => [], onSome: machine => machine.load}),
+		samples: history(Option.match(saved, {onNone: () => [], onSome: machine => machine.samples}), query.minutes, time),
 		time
 	}
 }
@@ -104,7 +106,7 @@ export class Fleet extends Context.Service<
 		Effect.gen(function* () {
 			const inventory = yield* Inventory
 			const metrics = yield* Metrics
-			const lastMetrics = yield* Ref.make<Record<string, MachineHistory>>({})
+			const lastMetrics = yield* Ref.make(HashMap.empty<readonly [WorkerId, Duration.Duration], MachineHistory>())
 			const exposures = yield* Exposures
 			const workers = yield* Effect.forEach(
 				yield* Config.withDefault(Config.Array(Schema.String, 'DEPLOY_WORKERS'), []),
@@ -119,23 +121,25 @@ export class Fleet extends Context.Service<
 				onNone: () => ({}),
 				onSome: key => ({authorization: `Bearer ${Redacted.value(key)}`})
 			})
-			const previous = yield* Ref.make<Record<string, Snapshot>>({})
+			const previous = yield* Ref.make<Record<WorkerId, Snapshot>>({})
 			const local = Effect.withSpan(
 				Effect.gen(function* () {
 					const snapshot = yield* inventory.snapshot
 					// Owned exposures are one more source: a failed read shows as its error, as an inventory source's does.
 					const owned = yield* Effect.match(exposures.items, {
-						onFailure: cause => ({items: [], sources: [{error: cause.message, name: 'Exposures'}]}),
+						onFailure: cause => ({items: [], sources: [{error: Option.some(cause.message), name: 'Exposures'}]}),
 						onSuccess: items => ({items, sources: []})
 					})
 					return Snapshot.make({
 						...snapshot,
 						items: [...snapshot.items, ...owned.items],
 						sources: [...snapshot.sources, ...owned.sources],
-						workers: Array.dedupe([
-							...(snapshot.workers ?? Array.map(snapshot.items, item => item.worker)),
-							...Array.map(workers, worker => worker.name)
-						])
+						workers: Option.some(
+							Array.dedupe([
+								...Option.getOrElse(snapshot.workers, () => Array.map(snapshot.items, item => item.worker)),
+								...Array.map(workers, worker => worker.name)
+							])
+						)
 					})
 				}),
 				'Fleet.local'
@@ -152,7 +156,7 @@ export class Fleet extends Context.Service<
 						// oxlint-disable-next-line effecttsgo/strict-effect-provide -- Each remote invocation owns its socket and client lifetime.
 						Effect.provide(
 							pipe(
-								RpcClient.layerProtocolSocket({pingTimeout: '15 seconds'}),
+								RpcClient.layerProtocolSocket({pingTimeout: Duration.seconds(15)}),
 								Layer.provide(NodeSocket.layerWebSocket(url.href)),
 								Layer.provide(RpcSerialization.layerSchemaBinary()),
 								Layer.provideMerge(layerRpcStreamClient)
@@ -161,84 +165,94 @@ export class Fleet extends Context.Service<
 					)
 				},
 				Effect.scoped,
-				Effect.timeout('15 seconds')
+				Effect.timeout(Duration.seconds(15))
 			)
-			function selectedWorker(target: string) {
+			function selectedWorker(target: WorkerId) {
 				return pipe(
 					workers,
 					Array.findFirst(worker => worker.name === target),
 					Effect.fromOption,
 					Effect.mapError(cause =>
-						DeployError.make({cause, message: 'This worker is not configured on the control plane'})
+						DeployError.make({cause: Option.some(cause), message: 'This worker is not configured on the control plane'})
 					)
 				)
 			}
 			return Fleet.of({
 				current: Effect.fn('Fleet.current')(function* (query) {
-					yield* Effect.annotateCurrentSpan({minutes: query.minutes, workers: workers.length + 1})
+					yield* Effect.annotateCurrentSpan({minutes: Duration.toMinutes(query.minutes), workers: workers.length + 1})
 					const own = yield* metrics.read(query)
-					const time = yield* Clock.currentTimeMillis
+					const time = yield* DateTime.now
 					const cached = yield* Ref.get(lastMetrics)
 					return [
 						own,
 						...Array.map(workers, worker => {
-							const saved = cached[`${worker.name}:${query.minutes}`]
+							const saved = HashMap.get(cached, [worker.name, query.minutes])
 							return {
 								...cachedHistory(query, time, saved),
-								error: saved?.error ?? 'Waiting for worker',
-								stale: saved === undefined || saved.stale || time - saved.time > 90_000,
+								error: Option.match(saved, {
+									onNone: () => Option.some('Waiting for worker'),
+									onSome: machine => machine.error
+								}),
+								stale: Option.match(saved, {
+									onNone: () => true,
+									onSome: machine =>
+										machine.stale ||
+										pipe(machine.time, DateTime.distance(time), Duration.isGreaterThan(Duration.seconds(90)))
+								}),
 								worker: worker.name
 							}
 						})
 					]
 				}),
 				expose: Effect.fn('Fleet.expose')(function* (input) {
-					yield* Effect.annotateCurrentSpan({exposure: input.name, worker: input.target ?? hostname()})
-					if (input.target === undefined || input.target === '') {
+					const target = Option.flatten(input.target)
+					yield* Effect.annotateCurrentSpan({exposure: input.name, worker: Option.getOrElse(target, hostname)})
+					if (Option.isNone(target)) {
 						return yield* exposures.expose(Struct.omit(input, ['target']))
 					}
-					return yield* remote(yield* selectedWorker(input.target), (client, headers) =>
-						client('exposures.expose', Struct.omit(input, ['target']), {headers})
+					return yield* remote(yield* selectedWorker(Option.getOrThrow(target)), (client, headers) =>
+						client('exposures.expose', {...input, target: Option.none()}, {headers})
 					)
 				}, asDeployError),
 				hide: Effect.fn('Fleet.hide')(function* (input) {
-					yield* Effect.annotateCurrentSpan({exposure: input.name, worker: input.target ?? hostname()})
-					if (input.target === undefined || input.target === '') return yield* exposures.hide(input.name)
-					return yield* remote(yield* selectedWorker(input.target), (client, headers) =>
-						client('exposures.hide', {name: input.name}, {headers})
+					const target = Option.flatten(input.target)
+					yield* Effect.annotateCurrentSpan({exposure: input.name, worker: Option.getOrElse(target, hostname)})
+					if (Option.isNone(target)) return yield* exposures.hide(input.name)
+					return yield* remote(yield* selectedWorker(Option.getOrThrow(target)), (client, headers) =>
+						client('exposures.hide', {name: input.name, target: Option.none()}, {headers})
 					)
 				}, asDeployError),
 				history: Effect.fn('Fleet.history')(function* (query) {
-					yield* Effect.annotateCurrentSpan('minutes', query.minutes)
+					yield* Effect.annotateCurrentSpan('minutes', Duration.toMinutes(query.minutes))
 					return yield* metrics.read(query)
 				}),
 				local,
 				metrics: Effect.fn('Fleet.metrics')(function* (query) {
-					yield* Effect.annotateCurrentSpan({minutes: query.minutes, workers: workers.length + 1})
+					yield* Effect.annotateCurrentSpan({minutes: Duration.toMinutes(query.minutes), workers: workers.length + 1})
 					const own = yield* metrics.read(query)
 					const others = yield* Effect.forEach(
 						workers,
 						worker =>
 							pipe(
 								remote(worker, (client, headers) => client('metrics.history', query, {headers})),
-								Effect.timeout('2 seconds'),
+								Effect.timeout(Duration.seconds(2)),
 								Effect.map(value => ({...value, worker: worker.name})),
 								Effect.catch(
 									Effect.fnUntraced(function* (cause) {
 										return {
 											...cachedHistory(
 												query,
-												yield* Clock.currentTimeMillis,
-												(yield* Ref.get(lastMetrics))[`${worker.name}:${query.minutes}`]
+												yield* DateTime.now,
+												HashMap.get(yield* Ref.get(lastMetrics), [worker.name, query.minutes])
 											),
-											error: cause.message,
+											error: Option.some(cause.message),
 											stale: true,
 											worker: worker.name
 										}
 									})
 								),
 								Effect.tap(value =>
-									Ref.update(lastMetrics, all => Record.set(all, `${worker.name}:${query.minutes}`, value))
+									Ref.update(lastMetrics, all => HashMap.set(all, [worker.name, query.minutes], value))
 								)
 							),
 						{concurrency: 'unbounded'}
@@ -247,17 +261,18 @@ export class Fleet extends Context.Service<
 				}),
 				run: Effect.fn('Fleet.run')(
 					function* (input) {
-						yield* Effect.annotateCurrentSpan({job: input.name, worker: input.target ?? hostname()})
-						if (input.target === undefined || input.target === '') {
+						const target = Option.flatten(input.target)
+						yield* Effect.annotateCurrentSpan({job: input.name, worker: Option.getOrElse(target, hostname)})
+						if (Option.isNone(target)) {
 							return yield* inventory.run(Struct.omit(input, ['target']))
 						}
-						return yield* remote(yield* selectedWorker(input.target), (client, headers) =>
-							client('inventory.run', Struct.omit(input, ['target']), {headers})
+						return yield* remote(yield* selectedWorker(Option.getOrThrow(target)), (client, headers) =>
+							client('inventory.run', {...input, target: Option.none()}, {headers})
 						)
 					},
 					Effect.mapError(cause => {
 						if (Schema.is(DeployError)(cause)) return cause
-						return DeployError.make({cause, message: 'Worker could not start the job'})
+						return DeployError.make({cause: Option.some(cause), message: 'Worker could not start the job'})
 					})
 				),
 				snapshot: Effect.withSpan(
@@ -268,13 +283,13 @@ export class Fleet extends Context.Service<
 							worker =>
 								pipe(
 									remote(worker, (client, headers) => client('inventory.snapshot', undefined, {headers})),
-									Effect.timeout('2 seconds'),
+									Effect.timeout(Duration.seconds(2)),
 									Effect.map(snapshot =>
 										Snapshot.make({
 											...snapshot,
 											items: Array.map(snapshot.items, item => ({
 												...item,
-												id: `remote:${worker.name}:${item.id}`,
+												id: ItemId.make(`remote:${worker.name}:${item.id}`),
 												worker: worker.name
 											})),
 											sources: Array.map(snapshot.sources, source => ({
@@ -286,17 +301,14 @@ export class Fleet extends Context.Service<
 									Effect.tap(snapshot => Ref.update(previous, rows => Record.set(rows, worker.name, snapshot))),
 									Effect.matchEffect({
 										onFailure: cause =>
-											Effect.map(Ref.get(previous), rows =>
-												Snapshot.make({
-													items: Array.map(rows[worker.name]?.items ?? [], item => ({
-														...item,
-														detail: `${item.detail}\nLast successful sample: ${rows[worker.name]?.time}`,
-														state: `stale · ${item.state}`
-													})),
-													sources: [{error: cause.message, name: `${worker.name} · Snapshot`}],
-													time: 0
-												})
-											),
+											Effect.map(Ref.get(previous), rows => ({
+												items: Array.map(rows[worker.name]?.items ?? [], item => ({
+													...item,
+													detail: `${item.detail}\nLast successful sample: ${pipe(rows, Record.get(worker.name), Option.match({onNone: () => 'undefined', onSome: saved => `${DateTime.toEpochMillis(saved.time)}`}))}`,
+													state: `stale · ${item.state}`
+												})),
+												sources: [{error: Option.some(cause.message), name: `${worker.name} · Snapshot`}]
+											})),
 										onSuccess: Effect.succeed
 									})
 								),
@@ -305,8 +317,13 @@ export class Fleet extends Context.Service<
 						return Snapshot.make({
 							items: [...own.items, ...Array.flatMap(others, value => value.items)],
 							sources: [...own.sources, ...Array.flatMap(others, value => value.sources)],
-							time: yield* Clock.currentTimeMillis,
-							workers: Array.dedupe([...(own.workers ?? []), ...Array.map(workers, worker => worker.name)])
+							time: yield* DateTime.now,
+							workers: Option.some(
+								Array.dedupe([
+									...Option.getOrElse(own.workers, Array.empty),
+									...Array.map(workers, worker => worker.name)
+								])
+							)
 						})
 					}),
 					'Fleet.snapshot',

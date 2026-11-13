@@ -1,6 +1,7 @@
 import {useAtom, useAtomSet, useAtomValue} from '@effect/atom-react'
 
-import {Array, Boolean, HashSet, Number, Option, Order, Stream, String, pipe} from 'effect'
+import type {DateTime} from 'effect'
+import {Array, Boolean, Duration, Equal, HashSet, Number, Option, Order, Stream, String, pipe} from 'effect'
 
 import {AppWindowIcon, ClockIcon, GaugeIcon, PlayIcon, StackIcon} from '@phosphor-icons/react'
 import {CatchBoundary} from '@tanstack/react-router'
@@ -33,7 +34,7 @@ import {
 	status,
 	workloadName
 } from '#services/inventory/lib/utils.ts'
-import type {InventoryItem, Process} from '#services/inventory/schema.ts'
+import type {InventoryItem, ItemId, Process} from '#services/inventory/schema.ts'
 import type {MachineHistory} from '#services/metrics/schema.ts'
 
 export function InventoryContent(props: {children: ReactNode}) {
@@ -68,21 +69,25 @@ function AppRowsSkeleton(props: {label: string; rows: number}) {
 // Every port is one bordered chip whose digits end on the same edge: exposed in foreground text opening its endpoint, exposable in muted text opening the Expose dialog, the rest muted and inert.
 function Endpoints(props: {free: readonly InventoryItem[]; row: Row}) {
 	const expose = useAtomSet(openExposeAtom)
-	const exposedPorts = HashSet.fromIterable(Array.map(props.row.exposures, exposure => exposure.port))
+	const exposedPorts = HashSet.fromIterable(Array.getSomes(Array.map(props.row.exposures, exposure => exposure.port)))
 	const freePorts = Array.groupBy(props.free, port => port.id)
 	return (
 		<>
 			{Array.map(
 				pipe(
 					props.row.listeners,
-					Array.filter(listener => listener.address !== 'container' && !HashSet.has(exposedPorts, listener.port)),
-					Array.dedupeWith((first: InventoryItem, second: InventoryItem) => first.port === second.port)
+					Array.filter(
+						listener =>
+							!Option.contains(listener.address, 'container') &&
+							!Option.exists(listener.port, port => HashSet.has(exposedPorts, port))
+					),
+					Array.dedupeWith((first: InventoryItem, second: InventoryItem) => Equal.equals(first.port, second.port))
 				),
 				listener =>
 					Option.match(Array.head(freePorts[listener.id] ?? []), {
 						onNone: () => (
 							<Badge key={listener.id} variant="outline">
-								<span className="text-muted-foreground">{listener.port}</span>
+								<span className="text-muted-foreground">{Option.getOrUndefined(listener.port)}</span>
 							</Badge>
 						),
 						onSome: port => (
@@ -93,12 +98,12 @@ function Endpoints(props: {free: readonly InventoryItem[]; row: Row}) {
 									<button
 										type="button"
 										className="pointer-events-auto relative z-10"
-										aria-label={`Expose ${workloadName(props.row.item)} :${listener.port}`}
+										aria-label={`Expose ${workloadName(props.row.item)} :${Option.getOrUndefined(listener.port)}`}
 										onClick={() => expose(port)}
 									/>
 								}
 							>
-								<span className="text-muted-foreground">{listener.port}</span>
+								<span className="text-muted-foreground">{Option.getOrUndefined(listener.port)}</span>
 							</Badge>
 						)
 					})
@@ -106,16 +111,16 @@ function Endpoints(props: {free: readonly InventoryItem[]; row: Row}) {
 			{Array.map(props.row.exposures, exposure => (
 				<a
 					key={exposure.id}
-					href={exposure.url}
+					href={Option.getOrUndefined(exposure.url)}
 					target="_blank"
 					rel="noreferrer"
-					title={exposure.url}
+					title={Option.getOrUndefined(exposure.url)}
 					className="pointer-events-auto relative z-10"
-					aria-label={`Open ${exposure.url}`}
+					aria-label={`Open ${Option.getOrUndefined(exposure.url)}`}
 				>
 					<Badge variant="outline">
-						{Option.match(Option.fromUndefinedOr(exposure.port), {
-							onNone: () => host(exposure.url),
+						{Option.match(exposure.port, {
+							onNone: () => Option.match(exposure.url, {onNone: () => '', onSome: host}),
 							onSome: port => `${port}`
 						})}
 					</Badge>
@@ -126,14 +131,14 @@ function Endpoints(props: {free: readonly InventoryItem[]; row: Row}) {
 }
 
 // A running job's time: it starts counting when its row shows it, once a second, in the column that shows the next start.
-const elapsedAtom = Atom.family((_job: string) =>
-	Atom.make(Stream.map(Stream.zipWithIndex(Stream.tick('1 second')), tick => tick[1] * 1000))
+const elapsedAtom = Atom.family((_job: ItemId) =>
+	Atom.make(Stream.map(Stream.zipWithIndex(Stream.tick(Duration.seconds(1))), tick => Duration.seconds(tick[1])))
 )
 
-function Elapsed(props: {job: string}) {
+function Elapsed(props: {job: ItemId}) {
 	return (
 		<span className="text-muted-foreground shrink-0 pr-2 font-mono text-xs whitespace-nowrap tabular-nums">
-			{counted(AsyncResult.getOrElse(useAtomValue(elapsedAtom(props.job)), () => 0))}
+			{counted(AsyncResult.getOrElse(useAtomValue(elapsedAtom(props.job)), () => Duration.zero))}
 		</span>
 	)
 }
@@ -162,7 +167,7 @@ function RunFailure(props: {item: InventoryItem}) {
 function AppRow(props: {
 	compact: boolean
 	free: readonly InventoryItem[]
-	now: number
+	now: DateTime.Utc
 	onSelect: () => void
 	row: Row
 	selected: boolean
@@ -170,7 +175,7 @@ function AppRow(props: {
 	const [runResult, run] = useAtom(runAtom(props.row.item.id))
 	const state = status(props.row.item)
 	const light = dot(props.row.item, state)
-	const scheduled = props.row.item.scheduled === true
+	const scheduled = Option.contains(props.row.item.scheduled, true)
 	const reason = reasonOf(props.row.item)
 	const age = failureAge(props.row.item, props.now)
 	const running =
@@ -180,7 +185,11 @@ function AppRow(props: {
 	const name = Boolean.match(props.compact, {onFalse: () => fullName, onTrue: () => middleEllipsis(fullName)})
 	const failing = light === 'error' || light === 'warning'
 	const next = Boolean.match(running, {
-		onFalse: () => nextRun(props.row.item.next ?? props.now, props.now),
+		onFalse: () =>
+			nextRun(
+				Option.getOrElse(props.row.item.next, () => props.now),
+				props.now
+			),
 		onTrue: () => ''
 	})
 	const reasonText = Boolean.match(scheduled, {
@@ -200,14 +209,18 @@ function AppRow(props: {
 				<ItemMedia className="pointer-events-none relative z-10">
 					<ApplicationIcon
 						name={fullName}
-						process={Array.match(props.row.item.processes ?? [], {
-							onEmpty: () => undefined,
-							onNonEmpty: entries =>
-								Array.max(
-									entries,
-									Order.mapInput(Number.Order, (entry: Process) => entry.memory)
-								).name
-						})}
+						process={pipe(
+							props.row.item.processes,
+							Option.getOrElse(Array.empty<Process>),
+							Array.match({
+								onEmpty: () => undefined,
+								onNonEmpty: entries =>
+									Array.max(
+										entries,
+										Order.mapInput(Number.Order, (entry: Process) => entry.memory)
+									).name
+							})
+						)}
 						container={props.row.item.kind === 'container'}
 					/>
 				</ItemMedia>
@@ -276,7 +289,7 @@ function AppRow(props: {
 function ListRows(props: {
 	compact: boolean
 	free: readonly InventoryItem[]
-	now: number
+	now: DateTime.Utc
 	onSelect: (row: Row) => void
 	rows: readonly Row[]
 	selectedId?: string
@@ -304,14 +317,14 @@ export function ListPane(props: {
 	compact: boolean
 	free: readonly InventoryItem[]
 	history?: MachineHistory
-	now: number
+	now: DateTime.Utc
 	onSelect: (row: Row) => void
 	rows: readonly Row[]
 	selectedId?: string
 }) {
-	const jobs = Array.filter(props.rows, row => row.item.scheduled === true)
+	const jobs = Array.filter(props.rows, row => Option.contains(row.item.scheduled, true))
 	const groups = impactGroups(
-		Array.filter(props.rows, row => row.item.scheduled !== true),
+		Array.filter(props.rows, row => !Option.contains(row.item.scheduled, true)),
 		props.history
 	)
 	return (

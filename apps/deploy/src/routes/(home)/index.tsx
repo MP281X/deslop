@@ -1,6 +1,6 @@
 import {useAtomRefresh, useAtomValue} from '@effect/atom-react'
 
-import {Array, Boolean, Option, Record, Schema, String, Struct, pipe} from 'effect'
+import {Array, Boolean, DateTime, Duration, Equal, Option, Record, Schema, String, pipe} from 'effect'
 
 import {HardDrivesIcon, MonitorIcon, TerminalWindowIcon} from '@phosphor-icons/react'
 import {CatchBoundary, Link, createFileRoute, getRouteApi} from '@tanstack/react-router'
@@ -28,7 +28,8 @@ import {Processes} from '#routes/(home)/-processes.tsx'
 import {failureOf, rowOrder, owner, ranged} from '#routes/(home)/-rows.ts'
 import icon from '#routes/icon.svg'
 import {type Row, availablePorts, processTree, workloadName, workloads} from '#services/inventory/lib/utils.ts'
-import type {InventoryItem} from '#services/inventory/schema.ts'
+import {ItemId, WorkerId} from '#services/inventory/schema.ts'
+import type {AppId, InventoryItem} from '#services/inventory/schema.ts'
 import {HistoryQuery} from '#services/metrics/schema.ts'
 import type {MachineHistory} from '#services/metrics/schema.ts'
 
@@ -37,11 +38,11 @@ type Pane = typeof Pane.Type
 const Pane = Schema.Literals(['apps', 'process'])
 
 type Search = typeof Search.Type
-const Search = Schema.Struct({
-	app: Schema.optionalKey(Schema.String),
-	machine: Schema.optionalKey(Schema.String),
-	pane: Schema.optionalKey(Pane),
-	range: Schema.optionalKey(HistoryQuery.fields.minutes)
+export const Search = Schema.Struct({
+	app: Schema.OptionFromOptionalKey(ItemId),
+	machine: Schema.OptionFromOptionalKey(WorkerId),
+	pane: Schema.OptionFromOptionalKey(Pane),
+	range: Schema.OptionFromOptionalKey(HistoryQuery.fields.minutes)
 })
 const route = getRouteApi('/(home)/')
 
@@ -54,12 +55,12 @@ function RangeTabs(props: {
 	return (
 		<AppBarChoice
 			label="History range"
-			value={`${props.minutes}`}
-			options={Array.map(props.ranges, range => ({label: range.label, value: `${range.minutes}`}))}
+			value={`${Duration.toMinutes(props.minutes)}`}
+			options={Array.map(props.ranges, range => ({label: range.label, value: `${Duration.toMinutes(range.minutes)}`}))}
 			onChange={value => {
 				pipe(
 					props.ranges,
-					Array.findFirst(range => `${range.minutes}` === value),
+					Array.findFirst(range => `${Duration.toMinutes(range.minutes)}` === value),
 					Option.map(range => props.onChange(range.minutes))
 				)
 			}}
@@ -68,11 +69,11 @@ function RangeTabs(props: {
 }
 
 // The machines as the bar's section control: its icon in the machine's colour and its name; an unreachable one keeps a dot. One machine needs no control.
-function machineName(worker: string) {
+function machineName(worker: WorkerId) {
 	return String.split(worker, '.')[0]
 }
 
-function MachineIcon(props: {worker: string}) {
+function MachineIcon(props: {worker: WorkerId}) {
 	return (
 		<span
 			aria-hidden="true"
@@ -90,11 +91,11 @@ function MachineIcon(props: {worker: string}) {
 }
 
 function MachineTabs(props: {
-	active?: string
+	active?: WorkerId
 	histories: readonly MachineHistory[]
 	inventoryFailure: boolean
-	sources: readonly {error: string; name: string}[]
-	workers: readonly string[]
+	sources: readonly {error: Option.Option<string>; name: string}[]
+	workers: readonly WorkerId[]
 }) {
 	if (props.workers.length < 2) return null
 	const histories = Record.fromEntries(Array.map(props.histories, machine => [machine.worker, machine] as const))
@@ -107,7 +108,17 @@ function MachineTabs(props: {
 						key={worker}
 						value={worker}
 						render={
-							<Link to="/" search={previous => ({...Struct.omit(previous, ['app']), machine: worker, pane: 'apps'})} />
+							<Link
+								to="/"
+								search={previous =>
+									Schema.encodeSync(Search)({
+										app: Option.none(),
+										machine: Option.some(worker),
+										pane: Option.some('apps'),
+										range: previous.range ?? Option.none()
+									})
+								}
+							/>
 						}
 					>
 						<MachineIcon worker={worker} />
@@ -163,7 +174,7 @@ function DataProblem(props: {minutes: HistoryQuery['minutes']}) {
 }
 
 function ProcessList(props: {row: Row}) {
-	const processes = props.row.item.processes ?? []
+	const processes = Option.getOrElse(props.row.item.processes, Array.empty)
 	const tree = processTree(processes)
 	return Array.match(processes, {
 		onEmpty: () => <EmptyState icon={<TerminalWindowIcon weight="light" />} label="No processes right now" />,
@@ -176,7 +187,7 @@ function ProcessList(props: {row: Row}) {
 }
 
 // The processes below the chart, or a phone's pushed pane; nothing selected is one symbol.
-function SelectedProcesses(props: {app?: string; pending: boolean; row?: Row}) {
+function SelectedProcesses(props: {app?: ItemId; pending: boolean; row?: Row}) {
 	return (
 		<div className="flex min-h-0 flex-1 flex-col">
 			{Option.match(Option.fromUndefinedOr(props.row), {
@@ -213,14 +224,14 @@ function chartHistoryOf(history?: MachineHistory) {
 
 // The desktop detail: the three charts, then the chosen processes.
 function DetailPane(props: {
-	app?: string
+	app?: ItemId
 	history?: MachineHistory
-	labels: Record<string, string>
+	labels: Record<AppId, string>
 	minutes: HistoryQuery['minutes']
 	pending: boolean
 	row?: Row
-	selectedOwner?: string
-	worker?: string
+	selectedOwner?: AppId
+	worker?: WorkerId
 }) {
 	return (
 		<div className="flex h-full min-h-0 flex-col">
@@ -252,13 +263,13 @@ function DetailPane(props: {
 function PhoneList(props: {
 	free: readonly InventoryItem[]
 	history?: MachineHistory
-	labels: Record<string, string>
+	labels: Record<AppId, string>
 	minutes: HistoryQuery['minutes']
-	now: number
+	now: DateTime.Utc
 	onSelect: (row: Row) => void
 	rows: readonly Row[]
-	selectedId?: string
-	selectedOwner?: string
+	selectedId?: ItemId
+	selectedOwner?: AppId
 }) {
 	return (
 		<div className="flex min-h-0 flex-1 flex-col">
@@ -294,21 +305,21 @@ function PhoneList(props: {
 
 // What the bar opens onto: the two panes on a wide screen, the chart and list on a phone, or the pushed processes.
 function Workspace(props: {
-	active?: string
+	active?: WorkerId
 	authFailure: Option.Option<unknown>
 	free: readonly InventoryItem[]
 	history?: MachineHistory
 	isPhone: boolean
-	labels: Record<string, string>
+	labels: Record<AppId, string>
 	minutes: HistoryQuery['minutes']
-	now: number
+	now: DateTime.Utc
 	onSelect: (row: Row) => void
 	pending: boolean
 	pushed: boolean
 	refreshing: boolean
 	retryFailed: () => void
 	rows: readonly Row[]
-	selectedApp?: string
+	selectedApp?: ItemId
 	selectedRow?: Row
 }) {
 	const selectedOwner = Option.getOrUndefined(
@@ -388,12 +399,12 @@ function HomeRoute() {
 	const search = route.useSearch()
 	const navigate = route.useNavigate()
 	function view(next: Partial<Search>) {
-		navigate({search: previous => ({...previous, ...next})})
+		navigate({search: previous => Schema.encodeSync(Search)({...previous, ...next})})
 	}
-	const minutes = search.range ?? 60
+	const minutes = Option.getOrElse(search.range, () => Duration.minutes(60))
 	// The charts keep the last loaded range, dimmed, until the one the URL asks for arrives.
 	const shownMinutes = useDeferredValue(minutes)
-	const pane = search.pane ?? 'apps'
+	const pane = Option.getOrElse(search.pane, () => 'apps')
 	const inventory = useAtomValue(inventoryAtom)
 	const metrics = useAtomValue(metricsAtom(shownMinutes))
 	const refreshInventory = useAtomRefresh(inventoryAtom)
@@ -411,17 +422,17 @@ function HomeRoute() {
 		Option.filter(isDenied),
 		Option.orElse(() => Option.filter(AsyncResult.error(metrics), isDenied))
 	)
-	const refreshing = shownMinutes !== minutes
+	const refreshing = !Equal.equals(shownMinutes, minutes)
 	const inventoryPending = AsyncResult.isInitial(inventory)
 	const workers = Array.dedupe([
 		...pipe(
 			snapshot,
-			Option.map(value => value.workers ?? Array.map(value.items, item => item.worker)),
+			Option.map(value => Option.getOrElse(value.workers, () => Array.map(value.items, item => item.worker))),
 			Option.getOrElse(() => [])
 		),
 		...Array.map(shownHistories, machine => machine.worker)
 	])
-	const active = search.machine ?? Option.getOrUndefined(Array.head(workers))
+	const active = Option.getOrUndefined(Option.orElse(search.machine, () => Array.head(workers)))
 	const history = Option.flatMap(Option.fromUndefinedOr(active), current =>
 		Array.findFirst(shownHistories, machine => machine.worker === current)
 	)
@@ -439,7 +450,7 @@ function HomeRoute() {
 	const now = pipe(
 		snapshot,
 		Option.map(value => value.time),
-		Option.getOrElse(() => 0)
+		Option.getOrElse(DateTime.nowUnsafe)
 	)
 	const activeRows = Option.match(Option.fromUndefinedOr(active), {
 		onNone: () => [],
@@ -449,15 +460,13 @@ function HomeRoute() {
 		Array.flatMap(activeRows, row =>
 			Option.match(owner(row), {onNone: () => [], onSome: id => [[id, workloadName(row.item)] as const]})
 		)
-	) satisfies Record<string, string>
+	) satisfies Record<AppId, string>
 	const sorted = Array.sort(ranged(activeRows, shownMinutes, Option.getOrUndefined(history)), rowOrder)
 	const selectedRow = Option.getOrUndefined(
-		Option.flatMap(Option.fromUndefinedOr(search.app), current =>
-			Array.findFirst(activeRows, row => row.item.id === current)
-		)
+		Option.flatMap(search.app, current => Array.findFirst(activeRows, row => row.item.id === current))
 	)
 	function selectRow(row: Row) {
-		view({app: row.item.id, pane: 'process'})
+		view({app: Option.some(row.item.id), pane: Option.some('process')})
 	}
 
 	const pushed = Boolean.match(isPhone, {onFalse: () => false, onTrue: () => pane === 'process'})
@@ -469,7 +478,7 @@ function HomeRoute() {
 				heading={Boolean.match(pushed, {
 					onFalse: () => undefined,
 					onTrue: () => ({
-						back: {label: 'Back', onClick: () => view({pane: 'apps'})},
+						back: {label: 'Back', onClick: () => view({pane: Option.some('apps')})},
 						title: Option.match(Option.fromUndefinedOr(selectedRow), {
 							onNone: () => 'Processes',
 							onSome: entry => workloadName(entry.item)
@@ -482,7 +491,7 @@ function HomeRoute() {
 					onFalse: () => (
 						<div className="flex items-center gap-1 max-sm:-ml-3">
 							<DataProblem minutes={minutes} />
-							<RangeTabs minutes={minutes} onChange={range => view({range})} ranges={RANGES} />
+							<RangeTabs minutes={minutes} onChange={range => view({range: Option.some(range)})} ranges={RANGES} />
 						</div>
 					),
 					onTrue: () => <DataProblem minutes={minutes} />
@@ -515,7 +524,7 @@ function HomeRoute() {
 				refreshing={refreshing}
 				retryFailed={retryFailed}
 				rows={sorted}
-				selectedApp={search.app}
+				selectedApp={Option.getOrUndefined(search.app)}
 				selectedRow={selectedRow}
 			/>
 		</div>

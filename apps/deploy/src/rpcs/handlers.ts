@@ -1,9 +1,9 @@
-import {Cache, Duration, Effect, Number, Schedule, Scope, Stream, pipe} from 'effect'
+import {Cache, Duration, Effect, Record, Schedule, Scope, Stream, pipe} from 'effect'
 
 import {RpcContracts} from '#rpcs/contracts.ts'
 import {Fleet} from '#services/fleet/service.ts'
-import {resolution} from '#services/metrics/lib/utils.ts'
-import {HistoryQuery} from '#services/metrics/schema.ts'
+import {SERIES, resolution} from '#services/metrics/lib/utils.ts'
+import type {HistoryQuery} from '#services/metrics/schema.ts'
 
 export const RpcHandlers = RpcContracts.toLayer(
 	Effect.gen(function* () {
@@ -12,12 +12,12 @@ export const RpcHandlers = RpcContracts.toLayer(
 		const scope = yield* Effect.scope
 		const inventory = yield* pipe(
 			Stream.fromEffect(fleet.local),
-			Stream.concat(Stream.fromEffectSchedule(fleet.snapshot, Schedule.spaced('5 seconds'))),
+			Stream.concat(Stream.fromEffectSchedule(fleet.snapshot, Schedule.spaced(Duration.seconds(5)))),
 			Stream.share({capacity: 1, replay: 1, strategy: 'sliding'})
 		)
 		// Viewers share one range sampler; the source stops when its last viewer leaves.
 		const metrics = yield* Cache.make({
-			capacity: HistoryQuery.fields.minutes.literals.length,
+			capacity: Record.size(SERIES),
 			lookup: (minutes: HistoryQuery['minutes']) => {
 				const query = {minutes}
 				return pipe(
@@ -27,12 +27,14 @@ export const RpcHandlers = RpcContracts.toLayer(
 						Stream.merge(
 							Stream.fromEffectSchedule(
 								fleet.current(query),
-								Schedule.spaced(Duration.millis(Number.min(resolution(minutes), 30_000)))
+								Schedule.spaced(Duration.min(resolution(minutes), Duration.seconds(30)))
 							),
 							Stream.drain(
 								Stream.fromEffectSchedule(
 									fleet.metrics(query),
-									Schedule.spaced(Duration.millis(Number.clamp(resolution(minutes), {maximum: 30_000, minimum: 5000})))
+									Schedule.spaced(
+										Duration.clamp(resolution(minutes), {maximum: Duration.seconds(30), minimum: Duration.seconds(5)})
+									)
 								)
 							)
 						)
