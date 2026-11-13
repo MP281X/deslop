@@ -17,7 +17,7 @@ description: 'Load before the first commit of a task, before the first edit when
 ## Publish
 
 1. **Push** as a draft. A round of fixes is one push per affected PR, since each push cancels the previous pipeline.
-2. **Describe** with the repository's PR or MR template. The reader decides merge or iterate from the body alone and never opens the diff; code quality belongs to the linter and the judge. The body holds these, in this order, and nothing else:
+2. **Describe** with the repository's PR or MR template. The reader decides merge or iterate from the body alone and never opens the diff; code quality belongs to the linter. The body holds these, in this order, and nothing else:
    - **Picture.** When the change moves what talks to what, what sits on what or where something lives, open with one Mermaid block: Before above After, each lane one path read left to right, in the words a product owner uses, never file, table, type or flag names. Otherwise draw nothing and open with the result.
 
      ````markdown

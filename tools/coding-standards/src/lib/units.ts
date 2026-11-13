@@ -6,8 +6,6 @@ import {parseSync, visitorKeys} from 'oxc-parser'
 import {matches} from '#lib/ast.ts'
 import type {Kind} from '#lib/question.ts'
 
-// A function longer than this is judged through its inner functions: past it, one question no longer has one answer.
-const MAX_LINES = 150
 const FUNCTIONS = ['ArrowFunctionExpression', 'FunctionDeclaration', 'FunctionExpression']
 
 const IGNORE = /judge-ignore (\S+) -- (\S.*)$/u
@@ -43,12 +41,32 @@ function textOf(source: string, node: Node) {
 	return String.slice(node.start, node.end)(source)
 }
 
-function isTestCall(source: string, node: Node) {
+function callPath(node: Node): string[] {
+	if (node.type === 'Identifier') return Option.toArray(Option.filter(field(node, 'name'), Predicate.isString))
+	if (node.type === 'CallExpression') return Option.match(nodeAt(node, 'callee'), {onNone: () => [], onSome: callPath})
+	if (node.type === 'TaggedTemplateExpression') {
+		return Option.match(nodeAt(node, 'tag'), {onNone: () => [], onSome: callPath})
+	}
+	if (node.type !== 'MemberExpression') return []
+	return [
+		...Option.match(nodeAt(node, 'object'), {onNone: () => [], onSome: callPath}),
+		...Option.toArray(
+			pipe(
+				nodeAt(node, 'property'),
+				Option.flatMap(property => field(property, 'name')),
+				Option.filter(Predicate.isString)
+			)
+		)
+	]
+}
+
+function isTestCall(node: Node, bindings: HashSet.HashSet<string>) {
 	if (node.type !== 'CallExpression') return false
-	const title = pipe(field(node, 'arguments'), Option.map(Array.ensure), Option.flatMap(Array.head))
+	const chain = callPath(node)
 	return (
-		Option.exists(nodeAt(node, 'callee'), callee => matches(/^(?:it|test)(?:\.\w+)*$/u)(textOf(source, callee))) &&
-		Option.exists(title, value => isNode(value) && Array.contains(['Literal', 'TemplateLiteral'], value.type))
+		HashSet.has(bindings, chain[0] ?? '') &&
+		!Array.contains(chain, 'layer') &&
+		Array.countBy(Array.ensure(Option.getOrUndefined(field(node, 'arguments'))), isNode) >= 2
 	)
 }
 
@@ -170,11 +188,63 @@ export function units(filename: string, source: string) {
 	}
 	const tests = matches(/\.test\.[cm]?[jt]sx?$/u)(filename)
 	const tsx = String.endsWith('.tsx')(filename)
-	function visit(node: Node, parent: Option.Option<Node>): Unit[] {
+	const importedTests = Array.flatMap(parsed.program.body, statement => {
+		if (
+			statement.type !== 'ImportDeclaration' ||
+			!Array.contains(['@effect/vitest', 'vitest'], statement.source.value)
+		) {
+			return []
+		}
+		return Array.flatMap(statement.specifiers, specifier => {
+			if (specifier.type !== 'ImportSpecifier' || specifier.imported.type !== 'Identifier') return []
+			return [{imported: specifier.imported.name, local: specifier.local.name}]
+		})
+	})
+	const registrations = HashSet.fromIterable([
+		'it',
+		'test',
+		...pipe(
+			importedTests,
+			Array.filter(binding => Array.contains(['it', 'test', 'effect', 'live', 'prop'], binding.imported)),
+			Array.map(binding => binding.local)
+		)
+	])
+	const containers = HashSet.fromIterable([
+		'layer',
+		'describeWrapped',
+		...pipe(
+			importedTests,
+			Array.filter(binding => Array.contains(['layer', 'describeWrapped'], binding.imported)),
+			Array.map(binding => binding.local)
+		)
+	])
+	function visit(node: Node, parent: Option.Option<Node>, bindings: HashSet.HashSet<string>): Unit[] {
 		const line = lineOf(node.start)
 		const length = lineOf(node.end) - line + 1
-		if (tests && isTestCall(source, node) && length <= MAX_LINES) return [unit('test', node, line)]
-		if (Array.contains(FUNCTIONS, node.type) && length <= MAX_LINES) {
+		if (tests && isTestCall(node, bindings)) return [unit('test', node, line)]
+		const chain = callPath(node)
+		const layered =
+			tests &&
+			node.type === 'CallExpression' &&
+			((Array.contains(chain, 'layer') && HashSet.has(bindings, chain[0] ?? '')) ||
+				HashSet.has(containers, chain[0] ?? ''))
+		function next(child: Node) {
+			const parameters = Boolean.match(layered && Array.contains(FUNCTIONS, child.type), {
+				onFalse: () => [],
+				onTrue: () =>
+					pipe(
+						field(child, 'params'),
+						Option.getOrUndefined,
+						Array.ensure,
+						Array.filter(isNode),
+						Array.flatMap(parameter => Option.toArray(Option.filter(field(parameter, 'name'), Predicate.isString)))
+					)
+			})
+			return visit(child, Option.some(node), HashSet.union(bindings, HashSet.fromIterable(parameters)))
+		}
+		const nested = Boolean.match(tests, {onFalse: () => [], onTrue: () => Array.flatMap(childrenOf(node), next)})
+		if (Array.some(nested, found => found.kind === 'test')) return nested
+		if (Array.contains(FUNCTIONS, node.type) && length <= 150) {
 			// A function of a few lines holds too little to judge.
 			if (length < 6) return []
 			return [
@@ -188,7 +258,8 @@ export function units(filename: string, source: string) {
 				)
 			]
 		}
-		return Array.flatMap(childrenOf(node), next => visit(next, Option.some(node)))
+		if (tests) return nested
+		return Array.flatMap(childrenOf(node), next)
 	}
-	return visit(parsed.program, Option.none())
+	return visit(parsed.program, Option.none(), registrations)
 }

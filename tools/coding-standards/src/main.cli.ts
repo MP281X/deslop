@@ -64,6 +64,11 @@ const cli = pipe(
 						Flag.Int('max-call-tokens'),
 						Flag.withDescription('The most one call may send; a larger call is not sent and fails the run'),
 						Flag.withDefault(64_000)
+					),
+					userAsked: pipe(
+						Flag.Boolean('user-asked'),
+						Flag.withDescription('The user explicitly requested this run; allow more than 20 planned calls'),
+						Flag.withDefault(false)
 					)
 				},
 				input => judge(input, input)

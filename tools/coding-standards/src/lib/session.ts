@@ -174,7 +174,7 @@ export const signIn = Effect.fnUntraced(function* (urls: Urls) {
 		failed('The sign-in was denied or not approved in time; run `coding-standards sign-in` again')
 	)
 	yield* saveSession(yield* sessionOf(tokens, registered.client_id))
-	yield* Effect.logInfo('Signed in; `coding-standards judge` now asks its questions.')
+	yield* Effect.logInfo('Signed in to Gateway. The judge is parked; run it only when the user explicitly asks.')
 })
 
 // A fresh access token for Gateway, refreshed shortly before it expires; `force` replaces one Gateway refused.
