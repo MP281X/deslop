@@ -43,9 +43,17 @@ const requestHeaders = Effect.map(accessToken, token => ({
 }))
 
 function unsupportedProtocol(error: McpClientError.McpClientError) {
+	if (error.reason._tag === 'HttpError') {
+		return (
+			error.reason.status >= 400 &&
+			error.reason.status < 500 &&
+			error.reason.status !== 401 &&
+			error.reason.status !== 403
+		)
+	}
 	return (
 		error.reason._tag === 'UnsupportedError' ||
-		((error.reason._tag === 'ProtocolError' || error.reason._tag === 'HttpError') &&
+		(error.reason._tag === 'ProtocolError' &&
 			(error.reason.code === -32_601 || error.reason.code === McpSchema.UNSUPPORTED_PROTOCOL_VERSION_ERROR_CODE))
 	)
 }
