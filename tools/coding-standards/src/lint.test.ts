@@ -247,6 +247,7 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 								'export const promised = Effect.andThen(Effect.as(Effect.void, 1), Effect.promise(async () => 2))',
 								'export const strings = Array.map(Array.filter(["a"], String.includes("a")), String.slice(0, 1))',
 								'export const caught = pipe(Effect.fail({_tag: "Missing"}), Effect.catchTag("Missing", error => Effect.succeed(error._tag)), Effect.as(1))',
+								'export const appliedCatch = Effect.catchTag("Missing", error => Effect.succeed(error._tag))(Effect.fail({_tag: "Missing"}))',
 								'export const traversed = pipe(values, Effect.forEach(value => Effect.succeed(value), {concurrency: "unbounded"}), Effect.as(1))',
 								'export const zipped = pipe(Effect.succeed(1), Effect.zip(Effect.succeed(2), {concurrent: true}), Effect.as(1))',
 								'export const appliedTraversal = Effect.forEach(value => Effect.succeed(value), {concurrency: "unbounded"})(values)',
@@ -269,6 +270,10 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 				assert.include(source, 'Array.drop(input.offset),')
 				assert.include(source, 'Array.take(input.limit + 1)')
 				assert.include(source, "Effect.catchTag('Missing', error => Effect.succeed(error._tag))")
+				assert.include(
+					source,
+					"export const appliedCatch = Effect.catchTag(Effect.fail({_tag: 'Missing'}), 'Missing', error =>"
+				)
 				assert.include(source, "Effect.forEach(value => Effect.succeed(value), {concurrency: 'unbounded'})")
 				assert.include(source, 'Effect.zip(Effect.succeed(2), {concurrent: true})')
 				assert.include(source, 'export const appliedTraversal = Effect.forEach(values,')
@@ -295,7 +300,20 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 			'reports non-forwarding immediately applied arrows without manufacturing an unsafe fix',
 			Effect.fnUntraced(function* () {
 				const result = yield* lintSource(
-					{'arrows.ts': 'export const doubled = ((value: number) => value + value)(2) // reported'},
+					{
+						'arrows.ts': Array.join(
+							[
+								"import {Array, pipe} from 'effect'",
+								'declare const values: number[]',
+								'declare const consume: (values: number[]) => number[]',
+								'export const doubled = ((value: number) => value + value)(2) // reported',
+								'export const parenthesized = (((value: number) => value + value))(2) // reported',
+								'export const forwarded = pipe(values, value => consume(value), Array.length) // reported',
+								'export const captured = pipe(values, value => consume(value, () => value = []), Array.length)'
+							],
+							'\n'
+						)
+					},
 					['--fix']
 				)
 				const lines = reportedLines(result, 'effect-call-form')

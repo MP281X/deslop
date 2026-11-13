@@ -103,7 +103,10 @@ function moduleSource(name: string) {
 	if (name === 'Command') return 'effect/cli'
 	if (Array.contains(['Atom', 'AtomRegistry', 'AsyncResult', 'Reactivity'], name)) return 'effect/reactivity'
 	if (
-		Array.contains(['Headers', 'HttpClient', 'HttpClientRequest', 'HttpClientResponse', 'HttpRouter', 'HttpServerResponse'], name)
+		Array.contains(
+			['Headers', 'HttpClient', 'HttpClientRequest', 'HttpClientResponse', 'HttpRouter', 'HttpServerResponse'],
+			name
+		)
 	) {
 		return 'effect/http'
 	}
@@ -447,7 +450,7 @@ function forwardedBody(context: LintContext, node: ESTree.Node) {
 	if (first?.type !== 'Identifier' || first.name !== parameter.name) return Option.none()
 	return pipe(
 		variableFromScope({name: parameter.name, scope: context.sourceCode.getScope(body)}),
-		Option.filter(variable => Array.countBy(variable.references, reference => reference.isRead()) === 1),
+		Option.filter(variable => Array.every(variable.references, reference => reference.identifier === first)),
 		Option.map(() => body)
 	)
 }
