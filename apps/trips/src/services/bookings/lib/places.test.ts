@@ -1,6 +1,6 @@
 import {assert, it} from '@effect/vitest'
 
-import {Array, Boolean, Context, Effect, Exit, Fiber, Layer, Ref, Schema} from 'effect'
+import {Array, Boolean, Context, Effect, Exit, Fiber, Layer, Option, Ref, Schema} from 'effect'
 
 import {HttpClient, HttpClientResponse} from 'effect/http'
 import {TestClock} from 'effect/testing'
@@ -92,18 +92,16 @@ it.layer(Layer.empty)(test => {
 			)
 			assert.isTrue(Exit.hasFails(yield* Effect.exit(places.station('Roma Termini'))))
 			yield* Ref.set(mode, 'empty')
-			assert.deepStrictEqual(yield* Schema.encodeEffect(Place)(yield* places.station('Roma Termini')), {
-				name: 'Roma Termini'
-			})
+			assert.deepStrictEqual(yield* places.station('Roma Termini'), Option.none())
 			yield* Ref.set(mode, 'match')
 			assert.deepStrictEqual(
 				Array.map(
 					yield* Effect.all([places.station('Roma Termini'), places.station('Roma Termini')], {
 						concurrency: 'unbounded'
 					}),
-					place => Schema.encodeSync(Place)(place).code
+					place => Option.map(place, found => Schema.encodeSync(Place)(found).code)
 				),
-				['rail:8308003', 'rail:8308003']
+				[Option.some('rail:8308003'), Option.some('rail:8308003')]
 			)
 			assert.strictEqual(yield* Ref.get(calls), 3)
 			yield* places.station(' roma termini ')

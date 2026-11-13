@@ -21,10 +21,10 @@ export type NoteChange =
 	| {type: 'request'; requester: UserId}
 	| {type: 'remove'}
 
-export function changeNote(note: Note, change: NoteChange) {
+export function changeNote(note: Note, update: NoteChange) {
 	const fields = Struct.pick(note, Struct.keys(Note.fields))
 	return pipe(
-		Match.value(change),
+		Match.value(update),
 		Match.when({type: 'remove'}, () => Option.none<Note>()),
 		Match.when({type: 'share'}, change => {
 			if (note.id === change.capture.id) return Option.some(note)

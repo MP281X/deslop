@@ -507,6 +507,9 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 		})
 
 		return {
+			body: Effect.fn('Notes.body')(function* (id: NoteId) {
+				return Struct.pick(yield* savedNote(id), ['body'])
+			}),
 			capture: Effect.fn('Notes.capture')(function* (userId: UserId, input: Capture) {
 				const text = String.trim(input.text)
 				if (String.isEmpty(text)) return yield* NotesError.make({message: 'Paste a link or write a note.'})
@@ -598,8 +601,13 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 			remove: Effect.fn('Notes.remove')(function* (id: NoteId) {
 				yield* FiberMap.remove(runs, id)
 				yield* change(id, {type: 'remove'})
-				yield* asNotesError(fs.remove(path.join(images, id), {force: true}))
-				yield* asNotesError(fs.remove(path.join(files, id), {force: true}))
+				yield* pipe(
+					fs.remove(path.join(images, id), {force: true}),
+					Effect.andThen(fs.remove(path.join(files, id), {force: true})),
+					Effect.mapError(cause =>
+						NotesError.make({cause, message: 'The note was deleted, but its saved files could not be removed.'})
+					)
+				)
 			}, withReactivity),
 			// The ids matching a query, read again after each commit; `#word` names a tag.
 			search: (query: string) =>

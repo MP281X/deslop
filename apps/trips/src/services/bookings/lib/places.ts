@@ -17,8 +17,8 @@ import {
 
 import {HttpClient, HttpClientRequest, HttpClientResponse} from 'effect/http'
 
-import type {BookedPlace} from '#services/bookings/schema.ts'
-import {Airport, BookingsError, Place, PlaceCode, StopMatches} from '#services/bookings/schema.ts'
+import type {BookedPlace, Place} from '#services/bookings/schema.ts'
+import {Airport, BookingsError, PlaceCode, StopMatches} from '#services/bookings/schema.ts'
 
 const RAIL = ['HIGHSPEED_RAIL', 'LONG_DISTANCE', 'NIGHT_RAIL', 'REGIONAL_FAST_RAIL', 'REGIONAL_RAIL', 'SUBURBAN']
 const GENERIC = ['bahnhof', 'central', 'centraal', 'centrale', 'gare', 'hauptbahnhof', 'hbf', 'station', 'stazione']
@@ -92,7 +92,7 @@ export class Places extends Context.Service<
 	Places,
 	{
 		readonly airport: (code: string) => Effect.Effect<BookedPlace, BookingsError>
-		readonly station: (name: string) => Effect.Effect<Place, BookingsError>
+		readonly station: (name: string) => Effect.Effect<Option.Option<Place>, BookingsError>
 	}
 >()('@deslop/trips/services/bookings/lib/places') {
 	static readonly layer = Layer.effect(
@@ -161,15 +161,12 @@ export class Places extends Context.Service<
 				}),
 				station: Effect.fn('Places.station')(function* (name) {
 					const key: string = String.toLowerCase(String.trim(name))
-					return Option.getOrElse(
-						yield* pipe(
-							stations,
-							Cache.get(key),
-							Effect.mapError(cause =>
-								BookingsError.make({cause, message: `The station ${name} could not be looked up.`})
-							)
-						),
-						() => Schema.decodeSync(Place)({name})
+					return yield* pipe(
+						stations,
+						Cache.get(key),
+						Effect.mapError(cause =>
+							BookingsError.make({cause, message: `The station ${name} could not be looked up.`})
+						)
 					)
 				})
 			})

@@ -37,7 +37,6 @@ import {
 	menuOrder,
 	navigationBarTitleDisplayMode,
 	navigationTitle,
-	onAppear,
 	pickerStyle,
 	resizable,
 	searchable,
@@ -46,7 +45,7 @@ import {
 } from '@expo/ui/swift-ui/modifiers'
 import {MachineState} from '@typeonce/effect-machine-react'
 import {AsyncResult} from 'effect/reactivity'
-import {Suspense, useState} from 'react'
+import {Suspense} from 'react'
 import {Linking} from 'react-native'
 
 import {AccountMenu} from '@deslop/components-mobile/account'
@@ -177,12 +176,7 @@ function DeleteButton(props: {onPress: () => void}) {
 	)
 }
 
-function NoteRow(props: {
-	note: NoteItem
-	onAppear: () => void
-	onOpen: (id: Note['id']) => void
-	onRegenerate: (id: Note['id']) => void
-}) {
+function NoteRow(props: {note: NoteItem; onOpen: (id: Note['id']) => void; onRegenerate: (id: Note['id']) => void}) {
 	const machine = removal.machine(props.note.id)
 	const remove = useAtomSet(removal.removeAtom)
 	const send = useAtomSet(machine.send)
@@ -193,10 +187,7 @@ function NoteRow(props: {
 					<SwipeActions modifiers={[...itemRow, tag(props.note.id)]}>
 						<ContextMenu>
 							<ContextMenu.Trigger>
-								<Item
-									onPress={() => props.onOpen(props.note.id)}
-									modifiers={[accessibilityAddTraits(['isButton']), onAppear(props.onAppear)]}
-								>
+								<Item onPress={() => props.onOpen(props.note.id)} modifiers={[accessibilityAddTraits(['isButton'])]}>
 									<ItemMedia>
 										<NoteMedia note={props.note} />
 									</ItemMedia>
@@ -314,7 +305,6 @@ function Notes(props: {kind?: Kind; onOpen: (id: Note['id']) => void; onTag: (na
 	const search = useAtomValue(searchAtom)
 	const refreshSearch = useAtomRefresh(searchAtom)
 	const found = pipe(search, AsyncResult.value, Option.flatten)
-	const [limit, setLimit] = useState(80)
 	return (
 		<Loaded atom={notesAtom} name="Notes">
 			{all => {
@@ -372,21 +362,9 @@ function Notes(props: {kind?: Kind; onOpen: (id: Note['id']) => void; onTag: (na
 											))}
 										</ToggleGroup>
 										{/* Plain rows, not List.ForEach: its row wrapper hides the row background and swipe actions. */}
-										{pipe(
-											notes,
-											Array.take(limit),
-											Array.map((note, position) => (
-												<NoteRow
-													key={note.id}
-													note={note}
-													onAppear={() => {
-														if (position === limit - 1) setLimit(limit + 80)
-													}}
-													onOpen={props.onOpen}
-													onRegenerate={id => regenerate(id)}
-												/>
-											))
-										)}
+										{Array.map(notes, note => (
+											<NoteRow key={note.id} note={note} onOpen={props.onOpen} onRegenerate={id => regenerate(id)} />
+										))}
 									</ItemGroup>
 									{filtered && Array.isReadonlyArrayEmpty(notes) && (
 										<Overlay.Content>

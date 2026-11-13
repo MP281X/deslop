@@ -1,20 +1,10 @@
 import ExpoModulesCore
 import ExpoUI
-import Security
 import UIKit
 
 public class StashNativeModule: Module {
   public func definition() -> ModuleDefinition {
     Name("StashNative")
-
-    // The previous release kept the session under this Keychain item; deleting it stops its bearer outliving that release.
-    OnCreate {
-      guard let group = Bundle.main.object(forInfoDictionaryKey: "DeslopKeychainGroup") as? String else { return }
-      SecItemDelete(
-        [kSecClass as String: kSecClassGenericPassword,
-          kSecAttrService as String: "deslop.auth", kSecAttrAccount as String: "stash",
-          kSecAttrAccessGroup as String: group] as CFDictionary)
-    }
 
     AsyncFunction("hasLink") { (promise: Promise) in
       let board = UIPasteboard.general
