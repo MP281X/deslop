@@ -122,13 +122,20 @@ function inventoryPage(
 function focusedInventory(workers: readonly WorkerInventory[], app: Option.Option<string>) {
 	if (Option.isNone(app)) return workers
 	const query = String.toLowerCase(Option.getOrThrow(app))
+	const matchingName = (row: {readonly name: string}) => pipe(row.name, String.toLowerCase, String.includes(query))
 	return Array.map(workers, worker => ({
 		...worker,
-		exposures: Option.map(worker.exposures, rows =>
-			Array.filter(rows, row => pipe(row.name, String.toLowerCase, String.includes(query)))
+		exposures: pipe(
+			worker.exposures,
+			Option.getOrElse(() => []),
+			Array.filter(matchingName),
+			Option.some
 		),
-		jobs: Option.map(worker.jobs, rows =>
-			Array.filter(rows, row => pipe(row.name, String.toLowerCase, String.includes(query)))
+		jobs: pipe(
+			worker.jobs,
+			Option.getOrElse(() => []),
+			Array.filter(matchingName),
+			Option.some
 		)
 	}))
 }
@@ -154,9 +161,7 @@ export const ToolHandlers = ToolContracts.toLayer(
 		ToolContracts.of({
 			create_exposure: Effect.fnUntraced(function* (input) {
 				yield* checkWorker(yield* fleet.snapshot, input.worker)
-				return {
-					url: yield* fleet.expose({...Struct.omit(input, ['worker']), target: Option.map(input.worker, Option.some)})
-				}
+				return {url: yield* fleet.expose({...Struct.omit(input, ['worker']), target: input.worker})}
 			}),
 			list_apps: Effect.fnUntraced(function* (input) {
 				const snapshot = yield* fleet.snapshot
@@ -185,7 +190,7 @@ export const ToolHandlers = ToolContracts.toLayer(
 			}),
 			remove_exposure: Effect.fnUntraced(function* (input) {
 				yield* checkWorker(yield* fleet.snapshot, input.worker)
-				yield* fleet.hide({name: input.name, target: Option.map(input.worker, Option.some)})
+				yield* fleet.hide({name: input.name, target: input.worker})
 				return input
 			}),
 			run_job: Effect.fnUntraced(function* (input) {

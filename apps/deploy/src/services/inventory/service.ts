@@ -124,13 +124,13 @@ function portItems(
 				kind: 'port',
 				name: socket.address,
 				port: Option.some(socket.port),
-				process: Option.some(process),
+				process,
 				protocol: Option.some(
 					Boolean.match(socket.protocol === 'udp', {onFalse: () => 'tcp' as const, onTrue: () => 'udp' as const})
 				),
 				state: socket.state,
 				ui: Option.some(Option.exists(response, value => value.ui)),
-				unit: Option.some(unit),
+				unit,
 				url: Option.none(),
 				worker
 			})
@@ -173,7 +173,7 @@ export class Inventory extends Context.Service<
 			function command(name: string, args: string[]) {
 				return pipe(
 					executeProcess(name, args),
-					Effect.mapError(cause => DeployError.make({cause: Option.some(cause), message: cause.message})),
+					Effect.mapError(cause => DeployError.make({cause, message: cause.message})),
 					Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner)
 				)
 			}
@@ -308,7 +308,7 @@ export class Inventory extends Context.Service<
 				processes: pipe(
 					processes,
 					Effect.provideService(FileSystem.FileSystem, fs),
-					Effect.mapError(cause => DeployError.make({cause: Option.some(cause), message: cause.message}))
+					Effect.mapError(cause => DeployError.make({cause, message: cause.message}))
 				),
 				sources: [
 					collect('User services', units(false)),
@@ -453,7 +453,7 @@ export class Inventory extends Context.Service<
 					Effect.scoped,
 					Effect.mapError(cause => {
 						if (Schema.is(DeployError)(cause)) return cause
-						return DeployError.make({cause: Option.some(cause), message: 'Cannot start the job'})
+						return DeployError.make({cause, message: 'Cannot start the job'})
 					})
 				),
 				snapshot: Effect.withSpan(

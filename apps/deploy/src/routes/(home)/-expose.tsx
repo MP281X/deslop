@@ -54,16 +54,14 @@ function Expose(props: {items: readonly InventoryItem[]; port: InventoryItem}) {
 					),
 					port: Option.getOrThrow(props.port.port),
 					publicAccess: kind === 'public',
-					target: Option.some(
-						Option.liftPredicate(props.port.worker, () => String.startsWith('remote:')(props.port.id))
-					)
+					target: Option.liftPredicate(props.port.worker, () => String.startsWith('remote:')(props.port.id))
 				})
 			}}
 		>
 			<DialogHeader>
 				<div className="flex min-w-0 items-center gap-2">
-					<ApplicationIcon name={Option.getOrElse(Option.flatten(props.port.process), () => props.port.name)} small />
-					<DialogTitle>{Option.getOrElse(Option.flatten(props.port.process), () => props.port.name)}</DialogTitle>
+					<ApplicationIcon name={Option.getOrElse(props.port.process, () => props.port.name)} small />
+					<DialogTitle>{Option.getOrElse(props.port.process, () => props.port.name)}</DialogTitle>
 					<Badge variant="outline">:{Option.getOrUndefined(props.port.port)}</Badge>
 				</div>
 			</DialogHeader>

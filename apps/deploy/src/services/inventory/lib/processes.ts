@@ -18,7 +18,7 @@ import {
 import {commandLabel} from './command.ts'
 
 import {itemOwner, processOwner} from '#services/inventory/lib/utils.ts'
-import {AppId, DeployError, Process, ProcessId} from '#services/inventory/schema.ts'
+import {AppId, CpuTime, DeployError, Process, ProcessId} from '#services/inventory/schema.ts'
 import type {InventoryItem, UnitId} from '#services/inventory/schema.ts'
 
 const SECRET = /(?:token|secret|passw(?:or)?d|key|auth|credential|cookie|session)/iu
@@ -93,8 +93,7 @@ export const processes = Effect.gen(function* () {
 							/\s+/u
 						)
 						const parsed = yield* Effect.try({
-							catch: cause =>
-								DeployError.make({cause: Option.some(cause), message: `Process ${pid} has an unreadable status.`}),
+							catch: cause => DeployError.make({cause, message: `Process ${pid} has an unreadable status.`}),
 							try: () => processStatus(status)
 						})
 						return {
@@ -258,13 +257,11 @@ export function launchdProcesses(text: string, agents: HashMap.HashMap<ProcessId
 					Option.all({
 						start: DateTime.make(row.start),
 						ticks: Option.map(String.match(/^(?:([0-9]+):)?([0-9]+):([0-9]+(?:\.[0-9]+)?)$/u)(row.cpu), match => {
-							const fields = Schema.decodeSync(
-								Schema.Struct({
-									1: Schema.OptionFromOptional(Schema.FiniteFromString),
-									2: Schema.FiniteFromString,
-									3: Schema.FiniteFromString
-								})
-							)({1: match[1], 2: Option.getOrThrow(Array.get(match, 2)), 3: Option.getOrThrow(Array.get(match, 3))})
+							const fields = Schema.decodeSync(CpuTime)({
+								1: match[1],
+								2: Option.getOrThrow(Array.get(match, 2)),
+								3: Option.getOrThrow(Array.get(match, 3))
+							})
 							return pipe(
 								Duration.hours(Option.getOrElse(fields[1], () => 0)),
 								Duration.sum(Duration.minutes(fields[2])),

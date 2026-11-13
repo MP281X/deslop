@@ -22,7 +22,7 @@ export type ExposeInput = typeof ExposeInput.Type
 export const ExposeInput = Schema.Struct({...Exposure.fields, publicAccess: Schema.Boolean})
 
 export type ExposeRequest = typeof ExposeRequest.Type
-export const ExposeRequest = Schema.Struct({...ExposeInput.fields, target: Schema.OptionFromOptionalKey(WorkerTarget)})
+export const ExposeRequest = Schema.Struct({...ExposeInput.fields, target: WorkerTarget})
 
 export type HideRequest = typeof HideRequest.Type
-export const HideRequest = Schema.Struct({name: ExposureName, target: Schema.OptionFromOptionalKey(WorkerTarget)})
+export const HideRequest = Schema.Struct({name: ExposureName, target: WorkerTarget})

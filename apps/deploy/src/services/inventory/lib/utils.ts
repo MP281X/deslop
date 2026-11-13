@@ -92,9 +92,9 @@ function loopbackPort(item: InventoryItem) {
 function appPort(item: InventoryItem) {
 	return (
 		loopbackPort(item) &&
-		Option.isSome(Option.flatten(item.process)) &&
+		Option.isSome(item.process) &&
 		!Option.exists(item.port, port => Array.contains([5353, 5355], port)) &&
-		!Option.exists(Option.flatten(item.process), process =>
+		!Option.exists(item.process, process =>
 			Option.isSome(String.match(/^(?:ssh|cloudflared|tailscaled|caddy|ControlCenter)$/u)(process))
 		)
 	)
@@ -148,7 +148,7 @@ export function itemOwner(item: InventoryItem) {
 }
 
 function fullName(item: InventoryItem) {
-	if (item.kind === 'port') return Option.getOrElse(Option.flatten(item.process), () => item.name)
+	if (item.kind === 'port') return Option.getOrElse(item.process, () => item.name)
 	if (item.kind === 'container' && String.startsWith('deslop-')(item.name)) {
 		return String.replace(/-[0-9]+$/u, '')(String.slice(7)(item.name))
 	}
@@ -202,7 +202,7 @@ export function workloads(items: readonly InventoryItem[]) {
 		Array.groupBy(listener => listener.worker),
 		Record.map(worker =>
 			Array.groupBy(worker, listener =>
-				Option.match(Option.flatten(listener.unit), {onNone: () => 'none', onSome: unit => `unit:${unit}`})
+				Option.match(listener.unit, {onNone: () => 'none', onSome: unit => `unit:${unit}`})
 			)
 		)
 	)
@@ -217,7 +217,7 @@ export function workloads(items: readonly InventoryItem[]) {
 		Array.filter(item => item.kind === 'service' || item.kind === 'container'),
 		Array.map(item => {
 			const attached = Array.filter(byUnit[item.worker]?.[`unit:${item.name}`] ?? [], listener =>
-				Option.exists(Option.flatten(listener.unit), unit => unit === item.name)
+				Option.exists(listener.unit, unit => unit === item.name)
 			)
 			const bindings = pipe(
 				item.bindings,
@@ -241,13 +241,12 @@ export function workloads(items: readonly InventoryItem[]) {
 					id: ItemId.make(`${item.id}:port:${binding.address}`),
 					kind: 'port' as const,
 					port: Option.some(binding.port),
-					process: Option.some(Option.some(item.name)),
+					process: Option.some(item.name),
 					protocol: Option.some(binding.protocol),
 					unit: pipe(
 						item,
 						Option.liftPredicate(owner => owner.kind === 'service'),
-						Option.map(owner => owner.name),
-						Option.some
+						Option.map(owner => owner.name)
 					),
 					url: Option.none<string>()
 				}))
@@ -276,7 +275,7 @@ export function workloads(items: readonly InventoryItem[]) {
 	const loose = Array.filter(
 		listeners,
 		listener =>
-			!Option.exists(Option.flatten(listener.unit), unit => HashSet.has(services, Tuple.make(listener.worker, unit))) &&
+			!Option.exists(listener.unit, unit => HashSet.has(services, Tuple.make(listener.worker, unit))) &&
 			(Option.contains(listener.address, 'container') || !HashSet.has(represented, socket(listener.worker, listener)))
 	)
 	const rows = [...grouped, ...Array.map(loose, item => ({item, listeners: [item]}))]
@@ -350,8 +349,8 @@ export function workloads(items: readonly InventoryItem[]) {
 				important(row.item) &&
 				(row.item.kind !== 'port' ||
 					(Option.contains(row.item.http, true) &&
-						Option.isSome(Option.flatten(row.item.process)) &&
-						!Option.contains(Option.flatten(row.item.process), 'node')))
+						Option.isSome(row.item.process) &&
+						!Option.contains(row.item.process, 'node')))
 		),
 		Array.map(row => {
 			if (row.item.kind === 'container') return row
@@ -388,7 +387,7 @@ export function availablePorts(rows: ReturnType<typeof workloads>) {
 							Option.makeEquivalence<number>((x, y) => x === y)(exposure.port, listener.port)
 						)
 				),
-				Array.map(listener => ({...listener, process: Option.some(Option.some(workloadName(row.item)))}))
+				Array.map(listener => ({...listener, process: Option.some(workloadName(row.item))}))
 			)
 		)
 	)
@@ -643,7 +642,7 @@ function exposureOf(item: Extract<InventoryItem, {kind: 'exposure'}>) {
 
 function matches(row: Row, app: string) {
 	const needle = String.toLowerCase(app)
-	return Array.some([workloadName(row.item), row.item.name, ...Option.toArray(Option.flatten(row.item.unit))], name =>
+	return Array.some([workloadName(row.item), row.item.name, ...Option.toArray(row.item.unit)], name =>
 		String.includes(needle)(String.toLowerCase(name))
 	)
 }
@@ -756,11 +755,7 @@ export function requestOf(item: InventoryItem) {
 	return {
 		name: Schema.decodeSync(UnitId)(item.name),
 		scope: Option.getOrElse(item.scope, () => 'system' as const),
-		target: pipe(
-			item.worker,
-			Option.liftPredicate(() => String.startsWith('remote:')(item.id)),
-			Option.map(Option.some)
-		)
+		target: Option.liftPredicate(item.worker, () => String.startsWith('remote:')(item.id))
 	} satisfies RunRequest
 }
 

@@ -6,3 +6,8 @@
 - **Mac.** The third worker, under launchd: its apps are its `deslop-*` launch agents, without the `-update` ones, and it has no jobs. With no cgroups, its history carries no per-app bands, so the range never hides its rows.
 - **Processes.** PID and PPID stay internal; never read environment; omit nameless listeners and ordinary system-service noise.
 - **Recovery.** A sleeping worker never delays another worker's refresh, local monitoring or the shell. An authorised empty history is empty, not loading.
+
+## Boundary facts
+
+- **Error causes.** A cause is optional diagnostic metadata, not domain absence; it stays Schema.optional(Defect).
+- **Collector absence.** An empty process, unit or target and a missing key mean the same absence. Socket collectors emit empty process text when unavailable; optional unit and target keys are omitted. A systemctl failure block without an Id keeps the empty record key and never defects.

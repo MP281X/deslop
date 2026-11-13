@@ -1,4 +1,4 @@
-import {Array, DateTime, Match, Number, Option, Record, Schema, String, pipe} from 'effect'
+import {Array, DateTime, Match, Number, Option, Record, String, pipe} from 'effect'
 
 import {UnitId} from '#services/inventory/schema.ts'
 
@@ -58,7 +58,7 @@ export function unitFailures(text: string) {
 					)
 				)
 				return [
-					Schema.decodeUnknownSync(UnitId)(fields['Id']),
+					UnitId.make(fields['Id'] ?? ''),
 					{
 						at: Option.map(Number.parse(String.replace(/^@/u, '')(fields['StateChangeTimestamp'] ?? '')), seconds =>
 							DateTime.mapEpochMillis(DateTime.makeUnsafe(0), () => seconds * 1000)

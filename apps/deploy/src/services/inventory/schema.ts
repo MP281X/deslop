@@ -1,4 +1,4 @@
-import {Array, DateTime, Effect, Option, Schema, SchemaGetter, String, pipe} from 'effect'
+import {Array, DateTime, Effect, Function, Option, Schema, SchemaGetter, String, pipe} from 'effect'
 
 import {SecureOrigin} from '@deslop/runtime/shared/schema'
 import {DateTimeUtcFromFiniteMillis} from '@deslop/runtime/shared/time'
@@ -20,6 +20,13 @@ export const JobName = Schema.brand('DeployJobName')(Schema.String)
 export type ExposureName = typeof ExposureName.Type
 export const ExposureName = Schema.brand('DeployExposureName')(Schema.String)
 
+type CpuTime = typeof CpuTime.Type
+export const CpuTime = Schema.Struct({
+	1: Schema.OptionFromOptional(Schema.FiniteFromString),
+	2: Schema.FiniteFromString,
+	3: Schema.FiniteFromString
+})
+
 export type TextFromEmpty = typeof TextFromEmpty.Type
 // Some collector records require a string key even when there is no value.
 export const TextFromEmpty = pipe(
@@ -30,10 +37,20 @@ export const TextFromEmpty = pipe(
 	})
 )
 
-export const WorkerTarget = pipe(TextFromEmpty, Schema.decodeTo(Schema.Option(WorkerId)))
+type OptionalTextFromEmpty = typeof OptionalTextFromEmpty.Type
+const OptionalTextFromEmpty = pipe(
+	Schema.OptionFromOptionalKey(Schema.String),
+	Schema.decodeTo(Schema.Option(Schema.String), {
+		decode: SchemaGetter.transform(value => Option.filter(value, String.isNonEmpty)),
+		encode: SchemaGetter.transform(Function.identity)
+	})
+)
+
+export type WorkerTarget = typeof WorkerTarget.Type
+export const WorkerTarget = pipe(OptionalTextFromEmpty, Schema.decodeTo(Schema.Option(WorkerId)))
 
 export class DeployError extends Schema.TaggedError<DeployError>()('DeployError', {
-	cause: pipe(Schema.OptionFromOptional(Schema.Defect()), Schema.withConstructorDefault(Effect.succeedNone)),
+	cause: Schema.optional(Schema.Defect()),
 	message: Schema.String
 }) {}
 
@@ -89,7 +106,7 @@ const InventoryFields = Schema.Struct({
 	),
 	owned: pipe(Schema.OptionFromOptionalKey(Schema.Boolean), Schema.withConstructorDefault(Effect.succeedNone)),
 	port: pipe(Schema.OptionFromOptionalKey(Schema.Int), Schema.withConstructorDefault(Effect.succeedNone)),
-	process: pipe(Schema.OptionFromOptionalKey(TextFromEmpty), Schema.withConstructorDefault(Effect.succeedNone)),
+	process: pipe(OptionalTextFromEmpty, Schema.withConstructorDefault(Effect.succeedNone)),
 	processes: pipe(
 		Schema.OptionFromOptionalKey(Schema.Array(Process)),
 		Schema.withConstructorDefault(Effect.succeedNone)
@@ -108,7 +125,8 @@ const InventoryFields = Schema.Struct({
 	state: Schema.String,
 	ui: pipe(Schema.OptionFromOptionalKey(Schema.Boolean), Schema.withConstructorDefault(Effect.succeedNone)),
 	unit: pipe(
-		Schema.OptionFromOptionalKey(pipe(TextFromEmpty, Schema.decodeTo(Schema.Option(UnitId)))),
+		OptionalTextFromEmpty,
+		Schema.decodeTo(Schema.Option(UnitId)),
 		Schema.withConstructorDefault(Effect.succeedNone)
 	),
 	url: TextFromEmpty,
@@ -119,7 +137,20 @@ export type InventoryItem = typeof InventoryItem.Type
 export const InventoryItem = Schema.Union([
 	InventoryFields.mapFields(fields => ({...fields, kind: Schema.Literal('service'), name: UnitId})),
 	InventoryFields.mapFields(fields => ({...fields, kind: Schema.Literal('exposure'), name: ExposureName})),
-	InventoryFields.mapFields(fields => ({...fields, kind: Schema.Literals(['container', 'port', 'peer'])}))
+	InventoryFields.mapFields(fields => ({...fields, kind: Schema.Literals(['container', 'peer'])})),
+	// Socket collectors always emit the process text, including an empty string when unavailable.
+	InventoryFields.mapFields(fields => ({
+		...fields,
+		kind: Schema.Literal('port'),
+		process: pipe(
+			Schema.OptionFromOptionalKey(TextFromEmpty),
+			Schema.decodeTo(Schema.Option(Schema.String), {
+				decode: SchemaGetter.transform(Option.flatten),
+				encode: SchemaGetter.transform(Option.some)
+			}),
+			Schema.withConstructorDefault(Effect.succeedNone)
+		)
+	}))
 ])
 
 export type Snapshot = typeof Snapshot.Type
@@ -181,7 +212,7 @@ export type RunRequest = typeof RunRequest.Type
 export const RunRequest = Schema.Struct({
 	name: UnitId,
 	scope: Schema.Literals(['system', 'user']),
-	target: Schema.OptionFromOptionalKey(WorkerTarget)
+	target: WorkerTarget
 })
 
 export type RunJobInput = typeof RunJobInput.Type

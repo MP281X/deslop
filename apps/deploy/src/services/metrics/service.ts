@@ -49,22 +49,19 @@ import type {Disk, MachineHistory, HistoryQuery} from '#services/metrics/schema.
 const CGROUP = '/sys/fs/cgroup'
 
 const asDeployError = Effect.mapError((cause: unknown) =>
-	DeployError.make({cause: Option.some(cause), message: 'The resource history could not be read or written.'})
+	DeployError.make({cause, message: 'The resource history could not be read or written.'})
 )
 
 function counted(read: () => Counters) {
 	return Effect.flatMap(
-		Effect.try({
-			catch: cause => DeployError.make({cause: Option.some(cause), message: 'The machine counters are unreadable.'}),
-			try: read
-		}),
+		Effect.try({catch: cause => DeployError.make({cause, message: 'The machine counters are unreadable.'}), try: read}),
 		Schema.decodeEffect(Schema.toType(Counters))
 	)
 }
 
 function sampled<A>(read: () => A) {
 	return Effect.try({
-		catch: cause => DeployError.make({cause: Option.some(cause), message: 'The machine sample is unreadable.'}),
+		catch: cause => DeployError.make({cause, message: 'The machine sample is unreadable.'}),
 		try: read
 	})
 }

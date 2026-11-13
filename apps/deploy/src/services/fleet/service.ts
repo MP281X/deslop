@@ -73,7 +73,7 @@ type RemoteClient = Effect.Success<typeof makeRemoteClient>
 function asDeployError<A, E>(effect: Effect.Effect<A, E>) {
 	return Effect.mapError(effect, cause => {
 		if (Schema.is(DeployError)(cause)) return cause
-		return DeployError.make({cause: Option.some(cause), message: 'Worker exposure change failed'})
+		return DeployError.make({cause, message: 'Worker exposure change failed'})
 	})
 }
 
@@ -173,7 +173,7 @@ export class Fleet extends Context.Service<
 					Array.findFirst(worker => worker.name === target),
 					Effect.fromOption,
 					Effect.mapError(cause =>
-						DeployError.make({cause: Option.some(cause), message: 'This worker is not configured on the control plane'})
+						DeployError.make({cause, message: 'This worker is not configured on the control plane'})
 					)
 				)
 			}
@@ -205,20 +205,18 @@ export class Fleet extends Context.Service<
 					]
 				}),
 				expose: Effect.fn('Fleet.expose')(function* (input) {
-					const target = Option.flatten(input.target)
-					yield* Effect.annotateCurrentSpan({exposure: input.name, worker: Option.getOrElse(target, hostname)})
-					if (Option.isNone(target)) {
+					yield* Effect.annotateCurrentSpan({exposure: input.name, worker: Option.getOrElse(input.target, hostname)})
+					if (Option.isNone(input.target)) {
 						return yield* exposures.expose(Struct.omit(input, ['target']))
 					}
-					return yield* remote(yield* selectedWorker(Option.getOrThrow(target)), (client, headers) =>
+					return yield* remote(yield* selectedWorker(Option.getOrThrow(input.target)), (client, headers) =>
 						client('exposures.expose', {...input, target: Option.none()}, {headers})
 					)
 				}, asDeployError),
 				hide: Effect.fn('Fleet.hide')(function* (input) {
-					const target = Option.flatten(input.target)
-					yield* Effect.annotateCurrentSpan({exposure: input.name, worker: Option.getOrElse(target, hostname)})
-					if (Option.isNone(target)) return yield* exposures.hide(input.name)
-					return yield* remote(yield* selectedWorker(Option.getOrThrow(target)), (client, headers) =>
+					yield* Effect.annotateCurrentSpan({exposure: input.name, worker: Option.getOrElse(input.target, hostname)})
+					if (Option.isNone(input.target)) return yield* exposures.hide(input.name)
+					return yield* remote(yield* selectedWorker(Option.getOrThrow(input.target)), (client, headers) =>
 						client('exposures.hide', {name: input.name, target: Option.none()}, {headers})
 					)
 				}, asDeployError),
@@ -261,18 +259,17 @@ export class Fleet extends Context.Service<
 				}),
 				run: Effect.fn('Fleet.run')(
 					function* (input) {
-						const target = Option.flatten(input.target)
-						yield* Effect.annotateCurrentSpan({job: input.name, worker: Option.getOrElse(target, hostname)})
-						if (Option.isNone(target)) {
+						yield* Effect.annotateCurrentSpan({job: input.name, worker: Option.getOrElse(input.target, hostname)})
+						if (Option.isNone(input.target)) {
 							return yield* inventory.run(Struct.omit(input, ['target']))
 						}
-						return yield* remote(yield* selectedWorker(Option.getOrThrow(target)), (client, headers) =>
+						return yield* remote(yield* selectedWorker(Option.getOrThrow(input.target)), (client, headers) =>
 							client('inventory.run', {...input, target: Option.none()}, {headers})
 						)
 					},
 					Effect.mapError(cause => {
 						if (Schema.is(DeployError)(cause)) return cause
-						return DeployError.make({cause: Option.some(cause), message: 'Worker could not start the job'})
+						return DeployError.make({cause, message: 'Worker could not start the job'})
 					})
 				),
 				snapshot: Effect.withSpan(

@@ -66,16 +66,13 @@ function exposureUrl(row: Exposure) {
 }
 
 const asStorageDeployError = Effect.mapError((cause: unknown) =>
-	DeployError.make({cause: Option.some(cause), message: 'The owned exposures could not be read or written.'})
+	DeployError.make({cause, message: 'The owned exposures could not be read or written.'})
 )
 
 function asDeployError<A, E, R>(effect: Effect.Effect<A, E, R>) {
 	return Effect.mapError(effect, cause => {
 		if (Schema.is(DeployError)(cause)) return cause
-		return DeployError.make({
-			cause: Option.some(cause),
-			message: 'Exposure change failed; check permissions, target port and ownership'
-		})
+		return DeployError.make({cause, message: 'Exposure change failed; check permissions, target port and ownership'})
 	})
 }
 
@@ -229,9 +226,7 @@ export class Exposures extends Context.Service<Exposures>()('@deslop/deploy/serv
 						current,
 						Array.findFirst(row => row.name === name),
 						Effect.fromOption,
-						Effect.mapError(cause =>
-							DeployError.make({cause: Option.some(cause), message: 'Deploy does not own this exposure'})
-						)
+						Effect.mapError(cause => DeployError.make({cause, message: 'Deploy does not own this exposure'}))
 					)
 					if (exposure.kind === 'tailnet') {
 						const mappings = yield* status
