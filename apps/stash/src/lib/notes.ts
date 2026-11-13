@@ -98,11 +98,11 @@ export const regenerateAtom = Atom.keepAlive(
 
 export const removal = makeRemoval({
 	notRemoved: 'Not Deleted',
-	remove: (id, get) =>
+	remove: (id: NoteId, get) =>
 		provideRuntimeOnce(
 			get,
 			RpcClient.runtime,
-			Effect.flatMap(RpcClient, client => client('notes.remove', {id: NoteId.make(id)}))
+			Effect.flatMap(RpcClient, client => client('notes.remove', {id}))
 		)
 })
 

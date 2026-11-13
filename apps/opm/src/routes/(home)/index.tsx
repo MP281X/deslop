@@ -1,6 +1,6 @@
 import {useAtomRefresh, useAtomSet, useAtomValue} from '@effect/atom-react'
 
-import {Array, Boolean, DateTime, Number, Option, Order, String, pipe} from 'effect'
+import {Array, Boolean, Number, Option, Order, String, pipe} from 'effect'
 
 import {
 	Button,
@@ -91,7 +91,7 @@ function ChapterRow(props: {chapter: ChapterItem; onOpen: (number: ChapterNumber
 								props.chapter.title,
 								Option.match(props.chapter.postedAt, {
 									onNone: () => '',
-									onSome: at => shortDate(DateTime.toEpochMillis(at))
+									onSome: shortDate
 								})
 							],
 							Array.filter(String.isNonEmpty),

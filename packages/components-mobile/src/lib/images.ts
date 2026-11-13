@@ -4,6 +4,8 @@ import {Atom} from 'effect/reactivity'
 import {Asset} from 'expo-asset'
 import {File, Paths} from 'expo-file-system'
 
+import type {UserId} from '@deslop/runtime/shared/auth'
+
 class DeviceError extends Schema.TaggedError<DeviceError>()('DeviceError', {
 	cause: Schema.Defect(),
 	message: Schema.String
@@ -23,7 +25,7 @@ export const assetAtom = Atom.family((module: number | string) =>
 )
 
 // The account's GitHub picture, downloaded once, since SwiftUI images read local files.
-export const avatarAtom = Atom.family((id: string) =>
+export const avatarAtom = Atom.family((id: UserId) =>
 	Atom.make(
 		Effect.gen(function* () {
 			const github = String.replace('github:', '')(id)

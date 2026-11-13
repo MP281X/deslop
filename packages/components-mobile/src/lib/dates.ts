@@ -1,8 +1,7 @@
 import {Boolean, DateTime} from 'effect'
 
 // "21 Oct" this year, "21 Oct 2025" before it.
-export function shortDate(time: number) {
-	const date = DateTime.makeUnsafe(time)
+export function shortDate(date: DateTime.Utc) {
 	return DateTime.formatLocal(
 		date,
 		Boolean.match(DateTime.getPartUtc(date, 'year') === DateTime.getPartUtc(DateTime.nowUnsafe(), 'year'), {

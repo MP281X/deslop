@@ -1,4 +1,4 @@
-import {Array, DateTime, Match, Option, Schema, pipe} from 'effect'
+import {Array, Match, Option, Schema, pipe} from 'effect'
 
 import {HStack, Image, Text} from '@expo/ui/swift-ui'
 import {accessibilityElement, accessibilityHidden, foregroundStyle, lineLimit} from '@expo/ui/swift-ui/modifiers'
@@ -34,7 +34,7 @@ export function Byline(props: {note: NoteItem}) {
 				{pipe(
 					[
 						Option.orElse(props.note.author, () => siteOf(props.note)),
-						Option.some(shortDate(DateTime.toEpochMillis(props.note.createdAt)))
+						Option.some(shortDate(props.note.createdAt))
 					],
 					Array.getSomes,
 					Array.join(' · ')

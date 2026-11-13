@@ -1,6 +1,6 @@
 import {useAtomValue} from '@effect/atom-react'
 
-import {Boolean, Clock, Effect, Number, Option, Stream} from 'effect'
+import {Boolean, DateTime, Duration, Effect, Number, Option, Stream} from 'effect'
 
 import {Button, HStack, Image, Menu, Section, Text} from '@expo/ui/swift-ui'
 import {accessibilityLabel, buttonStyle, foregroundStyle, frame, menuIndicator} from '@expo/ui/swift-ui/modifiers'
@@ -15,9 +15,9 @@ const ageAtom = Atom.family((_id: string) =>
 		Atom.make(
 			Stream.unwrap(
 				Effect.gen(function* () {
-					const since = yield* Clock.currentTimeMillis
+					const since = yield* DateTime.now
 					return Stream.mapEffect(Stream.tick('1 minute'), () =>
-						Effect.map(Clock.currentTimeMillis, now => `${Number.max(0, Math.floor((now - since) / 60_000))}m`)
+						Effect.map(DateTime.now, now => `${Number.max(0, Math.floor(Duration.toMinutes(DateTime.distance(since, now))))}m`)
 					)
 				})
 			)
