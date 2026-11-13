@@ -6,7 +6,7 @@
 - **Language.** Apps are English-only.
 - **Users.** One user on three workers: two Debian ones and a Mac whose only Deslop app is Deploy; no portability or general multi-user platform. Everyone with access shares app data except Gateway's person-owned AI keys and usage. Portfolio is public.
 - **Compatibility.** Never considered: the apps are personal software that their one user also develops. A change may break any URL, route, RPC or tool name, environment key, wire format, stored shape or installed build; keep no alias, redirect, fallback, version check, conversion or transition window for the old one, and delete any that exists.
-- **Data.** A table changes shape through a numbered SQL migration, the only migration allowed and the only code that knows an earlier shape. Everything stored outside SQL is disposable, production included, except Stash's notes until they are loaded into their tables by hand.
+- **Data.** A table changes shape through a numbered SQL migration, the only migration allowed and the only code that knows an earlier shape. Everything stored outside SQL is disposable, production included.
 - **Releases.** Linear and squash-merged; a newer merge cancels an older release run.
 - **Release job conditions.** GitHub propagates skipped jobs through dependency chains; jobs after optional verification need an explicit status function and the successful gate's result.
 
