@@ -1,5 +1,6 @@
 import {
 	Array,
+	Boolean,
 	Context,
 	DateTime,
 	Duration,
@@ -9,20 +10,18 @@ import {
 	Option,
 	Record,
 	Schedule,
-	Schema,
 	Stream,
+	SubscriptionRef,
 	pipe
 } from 'effect'
 
-import {Machine} from '@typeonce/effect-machine'
-
-import {hasMeaningfulMove, removePortfolioVisitor, upsertPortfolioVisitor} from '#lib/portfolio.ts'
-import type {PortfolioScene} from '#services/presence/schema.ts'
-import {PortfolioColor, PortfolioVisitor, VisitorId} from '#services/presence/schema.ts'
+import {hasMeaningfulMove, upsertVisitor} from './lib/utils.ts'
+import type {Scene} from './schema.ts'
+import {Color, Visitor, VisitorId} from './schema.ts'
 
 const SERVER_BOTS = [
 	{
-		color: PortfolioColor.literals[3],
+		color: Color.literals[3],
 		id: VisitorId.make('server-alpha'),
 		name: 'server-alpha',
 		xFreq: 0.47,
@@ -31,7 +30,7 @@ const SERVER_BOTS = [
 		yPhase: 0
 	},
 	{
-		color: PortfolioColor.literals[5],
+		color: Color.literals[5],
 		id: VisitorId.make('server-beta'),
 		name: 'server-beta',
 		xFreq: 0.83,
@@ -44,174 +43,79 @@ const SERVER_BOTS = [
 export class Presence extends Context.Service<
 	Presence,
 	{
-		readonly join: (payload: Pick<PortfolioVisitor, 'color' | 'id' | 'name'>) => Stream.Stream<PortfolioScene>
-		readonly move: (payload: Pick<PortfolioVisitor, 'color' | 'id' | 'x' | 'y'>) => Effect.Effect<void>
+		readonly join: (payload: Pick<Visitor, 'color' | 'id' | 'name'>) => Stream.Stream<Scene>
+		readonly move: (payload: Pick<Visitor, 'color' | 'id' | 'x' | 'y'>) => Effect.Effect<void>
 	}
 >()('@deslop/portfolio/services/presence/service/Presence') {
 	static readonly layer = Layer.effect(
 		this,
 		Effect.gen(function* () {
 			const start = yield* DateTime.now
-
-			// Open tabs per visitor id: a reload or a second tab shares one cursor, and the room empties with the last tab.
-			const room = Machine.make({
-				branches: {left: {empty: {target: 'Empty'}, open: {update: 'Occupied'}}},
-				events: Machine.events({
-					Joined: {visitor: PortfolioVisitor},
-					Left: {id: VisitorId},
-					Moved: {
-						color: PortfolioVisitor.fields.color,
-						id: PortfolioVisitor.fields.id,
-						x: PortfolioVisitor.fields.x,
-						y: PortfolioVisitor.fields.y
-					}
-				}),
-				root: Machine.state({
-					states: {
-						Empty: {},
-						Occupied: {
-							fields: {
-								bots: Schema.Array(PortfolioVisitor),
-								tabs: Schema.Record(VisitorId, Schema.Int),
-								visitors: Schema.Array(PortfolioVisitor)
-							}
-						}
-					}
-				}),
-				streams: {
-					wander: Stream.fromEffectSchedule(
-						Effect.map(DateTime.now, now =>
-							Array.map(SERVER_BOTS, bot =>
-								PortfolioVisitor.make({
-									color: bot.color,
-									id: bot.id,
-									name: bot.name,
-									x: Number.clamp(
-										0.5 + 0.4 * Math.sin(Duration.toSeconds(DateTime.distance(start, now)) * bot.xFreq + bot.xPhase),
-										{maximum: 0.995, minimum: 0.005}
-									),
-									y: Number.clamp(
-										0.5 + 0.4 * Math.cos(Duration.toSeconds(DateTime.distance(start, now)) * bot.yFreq + bot.yPhase),
-										{maximum: 0.995, minimum: 0.005}
-									)
-								})
-							)
-						),
-						Schedule.spaced('55 millis')
-					)
-				}
-			}).handle({
-				initial: {target: 'Empty'},
-				states: {
-					Empty: {
-						on: {
-							Joined: {
-								data: transition => ({
-									bots: [],
-									tabs: {[transition.event.visitor.id]: 1},
-									visitors: [transition.event.visitor]
-								}),
-								target: 'Occupied'
-							}
-						}
-					},
-					// The bots wander only while someone is watching, and leave with the last visitor so the next one sees no jump.
-					Occupied: {
-						invoke: {
-							onDone: {none: true},
-							onElement: {data: transition => ({...transition.state, bots: transition.element}), update: 'Occupied'},
-							src: 'wander'
-						},
-						on: {
-							Joined: {
-								data: transition => ({
-									...transition.state,
-									tabs: {
-										...transition.state.tabs,
-										[transition.event.visitor.id]:
-											pipe(
-												transition.state.tabs,
-												Record.get(transition.event.visitor.id),
-												Option.getOrElse(() => 0)
-											) + 1
-									},
-									visitors: upsertPortfolioVisitor(transition.state.visitors, transition.event.visitor)
-								}),
-								update: 'Occupied'
-							},
-							Left: {
-								branches: 'left',
-								resolve: transition => {
-									const open =
-										pipe(
-											transition.state.tabs,
-											Record.get(transition.event.id),
-											Option.getOrElse(() => 1)
-										) - 1
-									if (open > 0) {
-										return transition.select.open({
-											data: {...transition.state, tabs: {...transition.state.tabs, [transition.event.id]: open}}
-										})
-									}
-									const tabs = Record.remove(transition.state.tabs, transition.event.id)
-									if (Record.isEmptyRecord(tabs)) return transition.select.empty()
-									return transition.select.open({
-										data: {
-											...transition.state,
-											tabs,
-											visitors: removePortfolioVisitor(transition.state.visitors, transition.event.id)
-										}
-									})
-								}
-							},
-							Moved: {
-								data: transition => ({
-									...transition.state,
-									visitors: Array.map(transition.state.visitors, visitor => {
-										if (visitor.id !== transition.event.id) return visitor
-										return {...visitor, color: transition.event.color, x: transition.event.x, y: transition.event.y}
-									})
-								}),
-								// A twitch below the threshold reaches nobody.
-								guard: transition =>
-									Array.some(
-										transition.state.visitors,
-										visitor =>
-											visitor.id === transition.event.id &&
-											(visitor.color !== transition.event.color || hasMeaningfulMove(visitor, transition.event))
-									),
-								update: 'Occupied'
-							}
-						}
-					}
-				}
+			// One cursor per identity; a visitor remains until its last tab closes.
+			const room = yield* SubscriptionRef.make<Scene & {tabs: Record<VisitorId, number>}>({
+				bots: [],
+				tabs: {},
+				visitors: []
 			})
-			const ref = yield* Machine.start(room)
-			// The room stops only with the server, when a late cursor no longer matters.
-			function send(event: Parameters<typeof ref.send>[0]) {
-				return Effect.ignore(ref.send(event), {log: 'Warn', message: 'The presence room has stopped'})
-			}
+			const wander = Stream.fromEffectSchedule(
+				Effect.map(DateTime.now, now =>
+					Array.map(SERVER_BOTS, bot =>
+						Visitor.make({
+							color: bot.color,
+							id: bot.id,
+							name: bot.name,
+							x: Number.clamp(
+								0.5 + 0.4 * Math.sin(Duration.toSeconds(DateTime.distance(start, now)) * bot.xFreq + bot.xPhase),
+								{maximum: 0.995, minimum: 0.005}
+							),
+							y: Number.clamp(
+								0.5 + 0.4 * Math.cos(Duration.toSeconds(DateTime.distance(start, now)) * bot.yFreq + bot.yPhase),
+								{maximum: 0.995, minimum: 0.005}
+							)
+						})
+					)
+				),
+				Schedule.spaced('55 millis')
+			)
+			// One untraced timer for the room, interrupted as soon as the last tab leaves.
+			yield* pipe(
+				SubscriptionRef.changes(room),
+				Stream.map(scene => !Array.isReadonlyArrayEmpty(scene.visitors)),
+				Stream.changes,
+				Stream.switchMap(occupied => Boolean.match(occupied, {onFalse: () => Stream.empty, onTrue: () => wander})),
+				Stream.runForEach(bots => SubscriptionRef.update(room, scene => ({...scene, bots}))),
+				Effect.forkScoped
+			)
 
 			return Presence.of({
 				join: payload =>
 					Stream.withSpan(
 						Stream.unwrap(
 							Effect.gen(function* () {
-								yield* Effect.logInfo('Portfolio client connected')
 								yield* Effect.acquireRelease(
-									send({_tag: 'Joined', visitor: PortfolioVisitor.make({...payload, x: 0.5, y: 0.5})}),
-									() => send({_tag: 'Left', id: payload.id})
-								)
-
-								// A slow page skips to the latest positions instead of queueing every step.
-								return pipe(
-									ref.changes,
-									Stream.map(snapshot =>
-										Option.match(room.root.get(snapshot.state, 'Occupied'), {
-											onNone: () => ({bots: [], visitors: []}),
-											onSome: occupied => ({bots: occupied.bots, visitors: occupied.visitors})
+									SubscriptionRef.update(room, scene => ({
+										...scene,
+										tabs: {...scene.tabs, [payload.id]: (scene.tabs[payload.id] ?? 0) + 1},
+										visitors: upsertVisitor(scene.visitors, Visitor.make({...payload, x: 0.5, y: 0.5}))
+									})),
+									() =>
+										SubscriptionRef.update(room, scene => {
+											const remaining = Option.getOrThrow(Record.get(scene.tabs, payload.id)) - 1
+											if (remaining > 0) return {...scene, tabs: {...scene.tabs, [payload.id]: remaining}}
+											const visitors = Array.filter(scene.visitors, visitor => visitor.id !== payload.id)
+											return {
+												bots: Boolean.match(Array.isReadonlyArrayEmpty(visitors), {
+													onFalse: () => scene.bots,
+													onTrue: () => []
+												}),
+												tabs: Record.remove(scene.tabs, payload.id),
+												visitors
+											}
 										})
-									),
+								)
+								return pipe(
+									SubscriptionRef.changes(room),
+									Stream.map(scene => ({bots: scene.bots, visitors: scene.visitors})),
 									Stream.buffer({capacity: 1, strategy: 'sliding'})
 								)
 							})
@@ -219,7 +123,19 @@ export class Presence extends Context.Service<
 						'Presence.join',
 						{attributes: {'rpc.stream': true, visitorId: payload.id}}
 					),
-				move: payload => send({_tag: 'Moved', ...payload})
+				move: payload =>
+					SubscriptionRef.update(room, scene => ({
+						...scene,
+						visitors: Array.map(scene.visitors, visitor => {
+							if (
+								visitor.id === payload.id &&
+								(visitor.color !== payload.color || hasMeaningfulMove(visitor, payload))
+							) {
+								return {...visitor, color: payload.color, x: payload.x, y: payload.y}
+							}
+							return visitor
+						})
+					}))
 			})
 		})
 	)
