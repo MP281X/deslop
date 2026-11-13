@@ -1,6 +1,6 @@
 import {useAtomRefresh, useAtomValue} from '@effect/atom-react'
 
-import {Array, Clock, DateTime, Effect, Number, Option, Order, Predicate, Stream, pipe} from 'effect'
+import {Array, DateTime, Duration, Effect, Number, Option, Stream, pipe} from 'effect'
 
 import {ArrowClockwiseIcon} from '@phosphor-icons/react'
 import {AsyncResult, Atom} from 'effect/reactivity'
@@ -15,9 +15,9 @@ import {Popover, PopoverContent, PopoverTitle, PopoverTrigger} from '#components
 // fallow-ignore-next-line unused-export -- the tests drive the age this atom keeps directly.
 export const problemSinceAtom = Atom.family((source: Atom.Atom<AsyncResult.AsyncResult<unknown, unknown>>) =>
 	Atom.make(get => {
-		if (!AsyncResult.isFailure(get(source))) return Option.none<number>()
-		return Option.orElse(Option.flatten(get.self<Option.Option<number>>()), () =>
-			Option.some(DateTime.toEpochMillis(DateTime.nowUnsafe()))
+		if (!AsyncResult.isFailure(get(source))) return Option.none<DateTime.Utc>()
+		return Option.orElse(Option.flatten(get.self<Option.Option<DateTime.Utc>>()), () =>
+			Option.some(DateTime.nowUnsafe())
 		)
 	})
 )
@@ -34,36 +34,31 @@ export const staleSinceAtom = Atom.family((readers: readonly Atom.Atom<AsyncResu
 					return Option.toArray(get(problemSinceAtom(reader)))
 				}),
 				Array.match({
-					onEmpty: () => Option.none<number>(),
-					onNonEmpty: ages => Option.some(Array.min(ages, Order.Number))
+					onEmpty: () => Option.none<DateTime.Utc>(),
+					onNonEmpty: ages => Option.some(Array.min(ages, DateTime.Order))
 				})
 			),
 		refresh => Array.forEach(readers, reader => refresh(reader))
 	)
 )
 
-const ageAtom = Atom.family((identity: number | string) =>
+const ageAtom = Atom.family((identity: DateTime.Utc | string) =>
 	Atom.make(
 		Stream.unwrap(
-			Effect.map(Clock.currentTimeMillis, started =>
+			Effect.map(DateTime.now, started =>
 				Stream.mapEffect(Stream.tick('1 second'), () =>
-					Effect.map(Clock.currentTimeMillis, now => {
-						const seconds = Number.max(
-							0,
-							Math.floor(
-								(now -
-									pipe(
-										Option.some(identity),
-										Option.filter(Predicate.isNumber),
-										Option.getOrElse(() => started)
-									)) /
-									1000
-							)
+					Effect.map(DateTime.now, now => {
+						const age = pipe(
+							identity,
+							Option.liftPredicate(DateTime.isDateTime),
+							Option.getOrElse(() => started),
+							DateTime.distance(now)
 						)
+						const seconds = Number.max(0, Math.floor(Duration.toSeconds(age)))
 						if (seconds < 60) return `${seconds}s`
-						if (seconds < 3600) return `${Math.floor(seconds / 60)}m`
-						if (seconds < 86_400) return `${Math.floor(seconds / 3600)}h`
-						return `${Math.floor(seconds / 86_400)}d`
+						if (seconds < 3600) return `${Math.floor(Duration.toMinutes(age))}m`
+						if (seconds < 86_400) return `${Math.floor(Duration.toHours(age))}h`
+						return `${Math.floor(Duration.toDays(age))}d`
 					})
 				)
 			)
@@ -72,7 +67,7 @@ const ageAtom = Atom.family((identity: number | string) =>
 )
 
 // The popup works with hover, keyboard and touch.
-function Problem(props: {label: string; reset?: () => void; since?: number}) {
+function Problem(props: {label: string; reset?: () => void; since?: DateTime.Utc}) {
 	const id = useId()
 	const age = useAtomValue(ageAtom(props.since ?? id))
 	const [open, setOpen] = useState(false)

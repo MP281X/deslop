@@ -1,6 +1,6 @@
 import {assert, it} from '@effect/vitest'
 
-import {Cause, Effect, Option} from 'effect'
+import {Cause, DateTime, Effect, Option} from 'effect'
 
 import {AsyncResult, Atom, AtomRegistry} from 'effect/reactivity'
 
@@ -84,8 +84,8 @@ it.layer(AtomRegistry.layer)(test => {
 			const registry = yield* AtomRegistry.AtomRegistry
 			const firstAtom = Atom.make<AsyncResult.AsyncResult<number, string>>(AsyncResult.success(1))
 			const secondAtom = Atom.make<AsyncResult.AsyncResult<number, string>>(AsyncResult.success(2))
-			registry.ensureNode(problemSinceAtom(firstAtom)).setInitialValue(Option.some(1000))
-			registry.ensureNode(problemSinceAtom(secondAtom)).setInitialValue(Option.some(2000))
+			registry.ensureNode(problemSinceAtom(firstAtom)).setInitialValue(Option.some(DateTime.makeUnsafe(1000)))
+			registry.ensureNode(problemSinceAtom(secondAtom)).setInitialValue(Option.some(DateTime.makeUnsafe(2000)))
 			const aggregate = staleSinceAtom([firstAtom, secondAtom])
 			const unmount = registry.mount(aggregate)
 			registry.set(
@@ -96,7 +96,7 @@ it.layer(AtomRegistry.layer)(test => {
 				secondAtom,
 				AsyncResult.failureWithPrevious(Cause.fail('secondAtom'), {previous: Option.some(AsyncResult.success(2))})
 			)
-			assert.strictEqual(Option.getOrThrow(registry.get(aggregate)), 1000)
+			assert.strictEqual(DateTime.toEpochMillis(Option.getOrThrow(registry.get(aggregate))), 1000)
 			unmount()
 		})
 	)
