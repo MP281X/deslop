@@ -50,7 +50,6 @@ it.layer(NodeServices.layer)('Resource history', test => {
 			assert.isFalse(first.stale)
 			assert.lengthOf(first.samples, 1)
 			assert.isAbove(first.samples[0]?.memoryTotal ?? 0, 0)
-			assert.isNotEmpty(first.cpuModel)
 			assert.lengthOf(first.load, 3)
 			yield* TestClock.adjust('90 seconds')
 			const second = yield* Schema.encodeEffect(MachineHistory)(

@@ -43,10 +43,13 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeHttpClient.layerFetch, NodeCrypt
 				const hanging = yield* Ref.make(false)
 				const entered = yield* Deferred.make<void>()
 				const item = yield* Schema.decodeEffect(InventoryItem)({
+					active: true,
 					detail: 'fixture',
+					health: 'quiet',
 					id: 'worker:user:scope.service',
 					kind: 'service',
 					name: 'scope.service',
+					running: true,
 					state: 'active',
 					url: '',
 					worker: 'worker'
@@ -58,7 +61,6 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeHttpClient.layerFetch, NodeCrypt
 					workers: Option.none()
 				})
 				const history = yield* Schema.decodeEffect(MachineHistory)({
-					cpuModel: 'Fixture CPU',
 					disks: [],
 					error: '',
 					load: [],
@@ -168,21 +170,19 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeHttpClient.layerFetch, NodeCrypt
 				const fleet = yield* fleetWith('shared-key')
 				const current = yield* fleet.snapshot
 				assert.deepStrictEqual((yield* Schema.encodeEffect(Snapshot)(current)).workers, ['desktop'])
-				assert.strictEqual(current.items[0]?.id, 'remote:desktop:worker:user:scope.service')
+				assert.strictEqual(current.items[0]?.id, 'desktop:worker:user:scope.service')
 				assert.strictEqual(current.items[0]?.worker, 'desktop')
 				const cold = yield* fleet.current({minutes: Duration.minutes(60)})
 				assert.isTrue(Option.getOrThrow(Array.get(cold, 1)).stale)
 				assert.isEmpty(Option.getOrThrow(Array.get(cold, 1)).samples)
-				// A worker with no cached history has no cpuModel to name, and the metrics response still encodes.
+				// An offline worker's empty history still encodes.
 				assert.doesNotThrow(() => {
 					Schema.encodeSync(Schema.Array(MachineHistory))(cold)
 				})
 				const currentMetrics = yield* fleet.metrics({minutes: Duration.minutes(60)})
 				const immediate = yield* fleet.current({minutes: Duration.minutes(60)})
 				assert.strictEqual(Option.getOrThrow(Array.get(immediate, 1)).worker, 'desktop')
-				assert.deepStrictEqual(Option.getOrThrow(Array.get(immediate, 1)).cpuModel, Option.some('Fixture CPU'))
 				assert.strictEqual(currentMetrics[1]?.worker, 'desktop')
-				assert.deepStrictEqual(currentMetrics[1]?.cpuModel, Option.some('Fixture CPU'))
 				assert.strictEqual(upgrades.count, 1)
 				yield* Ref.set(hanging, true)
 				const pending = yield* Effect.forkScoped(fleet.metrics({minutes: Duration.minutes(60)}))
@@ -190,17 +190,15 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeHttpClient.layerFetch, NodeCrypt
 				yield* TestClock.adjust('2 seconds')
 				const timedOut = yield* Fiber.join(pending)
 				assert.isTrue(Option.getOrThrow(Array.get(timedOut, 1)).stale)
-				assert.deepStrictEqual(Option.getOrThrow(Array.get(timedOut, 1)).cpuModel, Option.some('Fixture CPU'))
 				yield* Ref.set(hanging, false)
 				yield* Ref.set(unavailable, true)
-				// A worker that failed before its first sample has no cpuModel to name, and the response still encodes.
+				// A worker that failed before its first sample still encodes.
 				const uncached = yield* (yield* fleetWith('shared-key')).metrics({minutes: Duration.minutes(60)})
 				assert.doesNotThrow(() => {
 					Schema.encodeSync(Schema.Array(MachineHistory))(uncached)
 				})
 				const staleMetrics = yield* fleet.metrics({minutes: Duration.minutes(60)})
 				assert.isTrue(staleMetrics[1]?.stale)
-				assert.deepStrictEqual(staleMetrics[1].cpuModel, Option.some('Fixture CPU'))
 				assert.lengthOf(staleMetrics[1].samples, 1)
 				assert.include(Option.getOrThrow(staleMetrics[1].error), 'worker unavailable')
 				yield* TestClock.adjust('2 hours')

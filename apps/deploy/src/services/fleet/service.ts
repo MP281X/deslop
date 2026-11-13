@@ -81,7 +81,6 @@ function asDeployError<A, E>(effect: Effect.Effect<A, E>) {
 // A worker's last saved history, windowed to the range the page asked for.
 function cachedHistory(query: HistoryQuery, time: DateTime.Utc, saved: Option.Option<MachineHistory>) {
 	return {
-		cpuModel: Option.flatMap(saved, machine => machine.cpuModel),
 		disks: Option.match(saved, {onNone: () => [], onSome: machine => machine.disks}),
 		load: Option.match(saved, {onNone: () => [], onSome: machine => machine.load}),
 		samples: history(Option.match(saved, {onNone: () => [], onSome: machine => machine.samples}), query.minutes, time),
@@ -106,6 +105,7 @@ export class Fleet extends Context.Service<
 		this,
 		Effect.gen(function* () {
 			const inventory = yield* Inventory
+			const localWorker = hostname()
 			const metrics = yield* Metrics
 			const lastMetrics = yield* Ref.make(HashMap.empty<readonly [WorkerId, Duration.Duration], MachineHistory>())
 			const exposures = yield* Exposures
@@ -213,19 +213,19 @@ export class Fleet extends Context.Service<
 					]
 				}),
 				expose: Effect.fn('Fleet.expose')(function* (input) {
-					yield* Effect.annotateCurrentSpan({exposure: input.name, worker: Option.getOrElse(input.target, hostname)})
-					if (Option.isNone(input.target)) {
-						return yield* exposures.expose(Struct.omit(input, ['target']))
+					yield* Effect.annotateCurrentSpan({exposure: input.name, worker: input.worker})
+					if (input.worker === localWorker) {
+						return yield* exposures.expose(Struct.omit(input, ['worker']))
 					}
-					return yield* remote(yield* selectedWorker(Option.getOrThrow(input.target)), (client, headers) =>
-						client('exposures.expose', {...input, target: Option.none()}, {headers})
+					return yield* remote(yield* selectedWorker(input.worker), (client, headers) =>
+						client('exposures.expose', input, {headers})
 					)
 				}, asDeployError),
 				hide: Effect.fn('Fleet.hide')(function* (input) {
-					yield* Effect.annotateCurrentSpan({exposure: input.name, worker: Option.getOrElse(input.target, hostname)})
-					if (Option.isNone(input.target)) return yield* exposures.hide(input.name)
-					return yield* remote(yield* selectedWorker(Option.getOrThrow(input.target)), (client, headers) =>
-						client('exposures.hide', {name: input.name, target: Option.none()}, {headers})
+					yield* Effect.annotateCurrentSpan({exposure: input.name, worker: input.worker})
+					if (input.worker === localWorker) return yield* exposures.hide(input.name)
+					return yield* remote(yield* selectedWorker(input.worker), (client, headers) =>
+						client('exposures.hide', input, {headers})
 					)
 				}, asDeployError),
 				history: Effect.fn('Fleet.history')(function* (query) {
@@ -267,12 +267,12 @@ export class Fleet extends Context.Service<
 				}),
 				run: Effect.fn('Fleet.run')(
 					function* (input) {
-						yield* Effect.annotateCurrentSpan({job: input.name, worker: Option.getOrElse(input.target, hostname)})
-						if (Option.isNone(input.target)) {
-							return yield* inventory.run(Struct.omit(input, ['target']))
+						yield* Effect.annotateCurrentSpan({job: input.name, worker: input.worker})
+						if (input.worker === localWorker) {
+							return yield* inventory.run(Struct.omit(input, ['worker']))
 						}
-						return yield* remote(yield* selectedWorker(Option.getOrThrow(input.target)), (client, headers) =>
-							client('inventory.run', {...input, target: Option.none()}, {headers})
+						return yield* remote(yield* selectedWorker(input.worker), (client, headers) =>
+							client('inventory.run', input, {headers})
 						)
 					},
 					Effect.mapError(cause => {
@@ -294,7 +294,7 @@ export class Fleet extends Context.Service<
 											...snapshot,
 											items: Array.map(snapshot.items, item => ({
 												...item,
-												id: ItemId.make(`remote:${worker.name}:${item.id}`),
+												id: ItemId.make(`${worker.name}:${item.id}`),
 												worker: worker.name
 											})),
 											sources: Array.map(snapshot.sources, source => ({

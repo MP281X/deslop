@@ -61,9 +61,6 @@ const OptionalTextFromEmpty = pipe(
 	})
 )
 
-export type WorkerTarget = typeof WorkerTarget.Type
-export const WorkerTarget = pipe(OptionalTextFromEmpty, Schema.decodeTo(Schema.Option(WorkerId)))
-
 export class DeployError extends Schema.TaggedError<DeployError>()('DeployError', {
 	cause: Schema.optional(Schema.Defect()),
 	message: Schema.String
@@ -90,6 +87,7 @@ export const Process = Schema.Struct({
 
 type InventoryFields = typeof InventoryFields.Type
 const InventoryFields = Schema.Struct({
+	active: pipe(Schema.Boolean, Schema.withConstructorDefault(Effect.succeed(false))),
 	address: pipe(Schema.OptionFromOptionalKey(Schema.String), Schema.withConstructorDefault(Effect.succeedNone)),
 	bindings: pipe(
 		Schema.OptionFromOptionalKey(
@@ -104,6 +102,10 @@ const InventoryFields = Schema.Struct({
 			Schema.Struct({at: Schema.OptionFromOptionalKey(DateTimeUtcFromFiniteMillis), reason: Schema.String})
 		),
 		Schema.withConstructorDefault(Effect.succeedNone)
+	),
+	health: pipe(
+		Schema.Literals(['quiet', 'warning', 'error']),
+		Schema.withConstructorDefault(Effect.succeed('quiet' as const))
 	),
 	hostname: pipe(Schema.OptionFromOptionalKey(Schema.String), Schema.withConstructorDefault(Effect.succeedNone)),
 	http: pipe(Schema.OptionFromOptionalKey(Schema.Boolean), Schema.withConstructorDefault(Effect.succeedNone)),
@@ -131,6 +133,7 @@ const InventoryFields = Schema.Struct({
 		Schema.withConstructorDefault(Effect.succeedNone)
 	),
 	publicAccess: pipe(Schema.OptionFromOptionalKey(Schema.Boolean), Schema.withConstructorDefault(Effect.succeedNone)),
+	running: pipe(Schema.Boolean, Schema.withConstructorDefault(Effect.succeed(false))),
 	scheduled: pipe(Schema.OptionFromOptionalKey(Schema.Boolean), Schema.withConstructorDefault(Effect.succeedNone)),
 	scope: pipe(
 		Schema.OptionFromOptionalKey(Schema.Literals(['user', 'system'])),
@@ -245,11 +248,7 @@ export const Serve = Schema.Struct({
 })
 
 export type RunRequest = typeof RunRequest.Type
-export const RunRequest = Schema.Struct({
-	name: UnitId,
-	scope: Schema.Literals(['system', 'user']),
-	target: WorkerTarget
-})
+export const RunRequest = Schema.Struct({name: UnitId, scope: Schema.Literals(['system', 'user']), worker: WorkerId})
 
 export type RunJobInput = typeof RunJobInput.Type
 export const RunJobInput = Schema.Struct({

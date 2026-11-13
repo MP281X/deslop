@@ -56,7 +56,7 @@ export function Processes(props: {tree: readonly ProcessNode[]}) {
 	return (
 		// Its own stacking context keeps the pinned parents under the pane's scrollbar.
 		<div className="isolate min-w-0">
-			<Tree rows={Array.map(props.tree, node => rowOf({node}))} stickyParents />
+			<Tree rows={Array.map(props.tree, node => rowOf({node}))} />
 		</div>
 	)
 }

@@ -46,7 +46,9 @@ function process(name: string, pid: number, parent: number, memory: number, cpu:
 function appItem(worker: string, index: number) {
 	const name = Boolean.match(index === 7, {onFalse: () => `svc-${index}`, onTrue: () => 'minecraft'})
 	return {
+		active: true,
 		detail: `user · fixture service ${index}`,
+		health: 'quiet',
 		id: `${worker}:user:${name}.service`,
 		kind: 'service',
 		name: `${name}.service`,
@@ -57,6 +59,7 @@ function appItem(worker: string, index: number) {
 			},
 			process('node', 1001 + index * 10, 1000 + index * 10, 20 * MIB, 0.234, 'server.js')
 		],
+		running: true,
 		scope: 'user',
 		state: 'active · running',
 		url: '',
@@ -68,15 +71,18 @@ function jobItem(worker: string, index: number) {
 	const name = `backup-${index}`
 	const failed = index === 0
 	return {
+		active: !failed,
 		detail: `user · scheduled ${index}`,
 		...Boolean.match(failed, {
 			onFalse: () => ({}),
 			onTrue: () => ({failure: {at: NOW - 3_600_000, reason: 'Exited with code 1'}})
 		}),
+		health: Boolean.match(failed, {onFalse: () => 'quiet' as const, onTrue: () => 'error' as const}),
 		id: `${worker}:user:${name}.service`,
 		kind: 'service',
 		name: `${name}.service`,
 		...Boolean.match(failed, {onFalse: () => ({next: NOW + (index + 1) * 60_000}), onTrue: () => ({})}),
+		running: !failed,
 		scheduled: true,
 		scope: 'user',
 		state: Boolean.match(failed, {onFalse: () => 'active · running', onTrue: () => 'failed'}),
@@ -87,11 +93,14 @@ function jobItem(worker: string, index: number) {
 
 function containerItem(worker: string, index: number) {
 	return {
+		active: true,
 		bindings: [{address: 'container', port: 8000 + index, protocol: 'tcp'}],
 		detail: 'Up 5 hours',
+		health: 'quiet',
 		id: `${worker}:docker:${hex(index)}`,
 		kind: 'container',
 		name: Boolean.match(index === 0, {onFalse: () => `web-${index}`, onTrue: () => 'deslop-stash-1'}),
+		running: false,
 		state: 'running',
 		url: '',
 		worker
@@ -103,11 +112,13 @@ function listener(worker: string, port: number, options?: {nameless?: boolean; u
 	const udp = options?.udp === true
 	const protocol = Boolean.match(udp, {onFalse: () => 'tcp' as const, onTrue: () => 'udp' as const})
 	return {
+		active: false,
 		address: `127.0.0.1:${port}`,
 		detail: `127.0.0.1:${port} · ${Boolean.match(nameless, {
 			onFalse: () => 'node',
 			onTrue: () => 'process unavailable'
 		})}`,
+		health: 'quiet',
 		http: !nameless && !udp,
 		id: `${worker}:port:${protocol}:127.0.0.1:${port}`,
 		kind: 'port',
@@ -115,6 +126,7 @@ function listener(worker: string, port: number, options?: {nameless?: boolean; u
 		port,
 		process: Boolean.match(nameless, {onFalse: () => 'node', onTrue: () => ''}),
 		protocol,
+		running: false,
 		state: 'listening',
 		...Option.match(Option.fromUndefinedOr(options?.unit), {onNone: () => ({}), onSome: unit => ({unit})}),
 		url: '',
@@ -125,13 +137,16 @@ function listener(worker: string, port: number, options?: {nameless?: boolean; u
 function exposureItem(worker: string, index: number, linked: boolean) {
 	const port = Boolean.match(linked, {onFalse: () => 5000 + index, onTrue: () => 4000 + index})
 	return {
+		active: false,
 		detail: `tailnet → 127.0.0.1:${port}`,
+		health: 'quiet',
 		id: `${worker}:exposure:svc-${index}`,
 		kind: 'exposure',
 		name: `svc-${index}`,
 		owned: true,
 		port,
 		publicAccess: index % 3 === 0,
+		running: false,
 		state: 'configured; check backend',
 		url: `https://svc-${index}.example.ts.net`,
 		worker
@@ -142,11 +157,14 @@ function exposureItem(worker: string, index: number, linked: boolean) {
 function fixture() {
 	const workers = ['dev', 'desktop']
 	const peers = Array.makeBy(1000, index => ({
+		active: false,
 		detail: `linux · 100.64.${Math.floor(index / 250)}.${index % 250}`,
+		health: 'quiet' as const,
 		hostname: `us-lax-wg-${index}.mullvad.ts.net`,
 		id: `${workers[index % 2] ?? 'dev'}:peer:us-lax-wg-${index}.mullvad.ts.net.`,
 		kind: 'peer' as const,
 		name: `us-lax-wg-${index}`,
+		running: false,
 		self: index === 0,
 		state: 'online',
 		url: '',
@@ -154,11 +172,14 @@ function fixture() {
 	}))
 	const services = Array.flatMap(workers, worker => Array.makeBy(105, index => appItem(worker, index)))
 	const crashed = Array.map(workers, worker => ({
+		active: false,
 		detail: 'user · crashed fixture',
 		failure: {at: NOW - 2 * 3_600_000, reason: 'Exited with code 1'},
+		health: 'error' as const,
 		id: `${worker}:user:crash.service`,
 		kind: 'service' as const,
 		name: 'crash.service',
+		running: false,
 		scope: 'user' as const,
 		state: 'failed',
 		url: '',
@@ -168,10 +189,13 @@ function fixture() {
 	const containers = Array.flatMap(workers, worker => Array.makeBy(31, index => containerItem(worker, index)))
 	const noise = Array.flatMap(workers, worker =>
 		Array.makeBy(20, index => ({
+			active: true,
 			detail: 'system · noise',
+			health: 'quiet' as const,
 			id: `${worker}:system:cron-${index}.service`,
 			kind: 'service' as const,
 			name: `cron-${index}.service`,
+			running: true,
 			scope: 'system' as const,
 			state: 'active · running',
 			url: '',
@@ -420,7 +444,8 @@ it.effect('runs a scheduled job through the deploy.run path', () =>
 			)
 			assert.deepStrictEqual(yield* Schema.encodeEffect(RunRequest)(Option.getOrThrow(yield* Ref.get(started))), {
 				name: 'backup-1.service',
-				scope: 'user'
+				scope: 'user',
+				worker: 'dev'
 			})
 		})
 	)
@@ -464,12 +489,12 @@ it.effect('exposes and hides a port through the composed MCP tools', () =>
 				name: request.name,
 				port: request.port,
 				publicAccess: request.publicAccess,
-				target: request.worker
+				worker: request.worker
 			})
 			yield* Stream.runDrain(yield* toolkit.handle('remove_exposure', {name: 'preview', worker: 'desktop'}))
 			assert.deepStrictEqual(yield* Schema.encodeEffect(HideRequest)(Option.getOrThrow(yield* Ref.get(hidden))), {
 				name: 'preview',
-				target: 'desktop'
+				worker: 'desktop'
 			})
 		})
 	)

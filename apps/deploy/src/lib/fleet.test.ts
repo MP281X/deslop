@@ -262,11 +262,14 @@ it.layer(NodeServices.layer)(test => {
 					{immediate: true}
 				)
 				const port = yield* Schema.decodeEffect(InventoryItem)({
+					active: false,
 					detail: '',
+					health: 'quiet',
 					id: 'port:3773',
 					kind: 'port',
 					name: 't3code',
 					port: 3773,
+					running: false,
 					state: 'running',
 					url: '',
 					worker: 'desktop'

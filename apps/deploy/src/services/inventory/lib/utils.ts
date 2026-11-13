@@ -13,7 +13,6 @@ import {
 	Option,
 	Order,
 	Record,
-	Schema,
 	String,
 	Tuple,
 	pipe
@@ -101,20 +100,17 @@ function appPort(item: InventoryItem) {
 }
 
 function important(item: InventoryItem) {
-	if (String.includes('failed')(item.state) || String.includes('unhealthy')(item.detail)) return true
+	if (item.health === 'error') return true
 	if (item.kind === 'exposure') return Option.contains(item.owned, true) || Option.contains(item.publicAccess, true)
 	if (item.kind === 'container') {
-		return (
-			Option.isSome(String.match(/^(?:stale · )?(?:running|restarting|paused)$/u)(item.state)) ||
-			Option.isSome(String.match(/Exited \([1-9]/u)(item.detail))
-		)
+		return item.active
 	}
 	if (item.kind === 'port') return appPort(item)
 	if (item.kind !== 'service') return false
 	if (Option.isSome(String.match(/^(?:deslop-|preview-|t3code)/u)(item.name))) return true
 	return (
 		Option.contains(item.scope, 'user') &&
-		Option.isSome(String.match(/(?:^| · )active · /u)(item.state)) &&
+		item.active &&
 		Option.isNone(
 			String.match(/^(?:dbus|dirmngr|gpg-|keyboxd|gcr-|gnome-|secret-service|ssh-agent|openvpn3-)/u)(item.name)
 		)
@@ -124,7 +120,7 @@ function important(item: InventoryItem) {
 function ports(items: readonly InventoryItem[]) {
 	return pipe(
 		items,
-		Array.filter(item => appPort(item) && Option.contains(item.http, true) && !String.startsWith('stale')(item.state)),
+		Array.filter(item => appPort(item) && Option.contains(item.http, true)),
 		Array.sort(
 			Order.mapInput(
 				Order.String,
@@ -396,19 +392,10 @@ export function availablePorts(rows: ReturnType<typeof workloads>) {
 const untilNext = new Intl.RelativeTimeFormat('en', {numeric: 'auto', style: 'narrow'})
 
 export function status(item: InventoryItem) {
-	if (String.startsWith('stale')(item.state)) return 'stale'
-	if (String.includes('unhealthy')(item.detail)) return 'unhealthy'
 	if (item.kind === 'port') return 'listening'
 	if (item.kind === 'exposure' && Option.contains(item.owned, true)) return 'configured'
 	if (item.kind === 'exposure' && Option.contains(item.publicAccess, true)) return 'public permission'
-	return String.replace(/^active · /u, '')(String.toLowerCase(item.state))
-}
-
-// Only a problem is marked: a service that runs needs no dot to say so.
-export function dot(item: InventoryItem, state: string) {
-	if (Option.isSome(String.match(/failed|unhealthy|Exited \([1-9]/u)(item.state + item.detail))) return 'error'
-	if (state === 'stale' || state === 'public permission' || state === 'restarting') return 'warning'
-	return 'quiet'
+	return item.state
 }
 
 // How long ago a service stopped: minutes within the hour, hours within two days, then days.
@@ -587,7 +574,7 @@ function portsOf(row: Row) {
 }
 
 function failureOf(item: InventoryItem) {
-	if (dot(item, status(item)) === 'quiet') return {failure: Option.none<string>(), since: Option.none<DateTime.Utc>()}
+	if (item.health === 'quiet') return {failure: Option.none<string>(), since: Option.none<DateTime.Utc>()}
 	return {
 		failure: Option.some(Option.match(item.failure, {onNone: () => status(item), onSome: stop => stop.reason})),
 		since: Option.flatMap(item.failure, failure => failure.at)
@@ -634,7 +621,7 @@ function exposureOf(item: Extract<InventoryItem, {kind: 'exposure'}>) {
 			Boolean.match({onFalse: () => 'tailnet' as const, onTrue: () => 'public' as const})
 		),
 		id: item.id,
-		name: item.name,
+		name: ExposureName.make(item.name),
 		port: item.port,
 		url: Option.getOrThrow(item.url)
 	} satisfies HttpsExposure
@@ -648,9 +635,8 @@ function matches(row: Row, app: string) {
 }
 
 function rank(row: Row) {
-	const light = dot(row.item, status(row.item))
-	if (light === 'error') return 0
-	if (light === 'warning') return 1
+	if (row.item.health === 'error') return 0
+	if (row.item.health === 'warning') return 1
 	return 2
 }
 
@@ -686,7 +672,7 @@ export function listApps(snapshot: Snapshot, input: InventoryQuery) {
 						(row.item.kind === 'service' || row.item.kind === 'container') &&
 						!Option.contains(row.item.scheduled, true) &&
 						!Option.exists(app, query => !matches(row, query)) &&
-						(!onlyFailing || dot(row.item, status(row.item)) !== 'quiet')
+						(!onlyFailing || row.item.health !== 'quiet')
 				),
 				Array.sort(appOrder),
 				Array.map(row => appOf(row, Option.isSome(app)))
@@ -694,8 +680,7 @@ export function listApps(snapshot: Snapshot, input: InventoryQuery) {
 			const jobs = pipe(
 				Array.filter(
 					own,
-					row =>
-						Option.contains(row.item.scheduled, true) && (!onlyFailing || dot(row.item, status(row.item)) !== 'quiet')
+					row => Option.contains(row.item.scheduled, true) && (!onlyFailing || row.item.health !== 'quiet')
 				),
 				Array.sort(jobOrder),
 				Array.map(
@@ -753,9 +738,9 @@ export function ownerNames(snapshot: Snapshot) {
 
 export function requestOf(item: InventoryItem) {
 	return {
-		name: Schema.decodeSync(UnitId)(item.name),
+		name: UnitId.make(item.name),
 		scope: Option.getOrElse(item.scope, () => 'system' as const),
-		target: Option.liftPredicate(item.worker, () => String.startsWith('remote:')(item.id))
+		worker: item.worker
 	} satisfies RunRequest
 }
 

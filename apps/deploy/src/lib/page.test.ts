@@ -24,10 +24,13 @@ beforeAll(() => Route.options.component?.preload?.())
 const snapshot = Schema.decodeSync(Snapshot)({
 	items: [
 		{
+			active: true,
 			detail: '',
+			health: 'quiet',
 			id: 'private',
 			kind: 'service',
 			name: 'deslop-private.service',
+			running: true,
 			state: 'active',
 			url: '',
 			worker: 'desktop'

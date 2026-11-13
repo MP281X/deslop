@@ -331,10 +331,13 @@ it('shares meaningful CPU deltas between staggered viewers without returning sta
 
 it('attaches only the exact service cgroup in the right scope, or the actual Docker container', () => {
 	const item = Schema.decodeSync(InventoryItem)({
+		active: true,
 		detail: '',
+		health: 'quiet',
 		id: 'dev:user:scope.service',
 		kind: 'service',
 		name: 'scope.service',
+		running: true,
 		scope: 'user',
 		state: 'running',
 		url: '',

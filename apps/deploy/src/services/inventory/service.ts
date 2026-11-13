@@ -160,7 +160,7 @@ function collect<E extends {readonly message: string}, R>(name: string, effect: 
 export class Inventory extends Context.Service<
 	Inventory,
 	{
-		readonly run: (input: Omit<RunRequest, 'target'>) => Effect.Effect<void, DeployError>
+		readonly run: (input: Omit<RunRequest, 'worker'>) => Effect.Effect<void, DeployError>
 		readonly snapshot: Effect.Effect<Snapshot>
 	}
 >()('@deslop/deploy/services/inventory/service/Inventory') {
@@ -228,19 +228,31 @@ export class Inventory extends Context.Service<
 				)
 				return Array.map(rows, row =>
 					InventoryItem.make({
+						active: row.active === 'active',
 						detail: `${scope} · ${row.description}`,
 						failure: Record.get(failures, row.unit),
+						health: Boolean.match(row.active === 'failed', {
+							onFalse: () => 'quiet' as const,
+							onTrue: () => 'error' as const
+						}),
 						id: ItemId.make(`${worker}:${scope}:${row.unit}`),
 						kind: 'service',
 						name: row.unit,
 						next: Option.flatten(HashMap.get(scheduled, row.unit)),
+						running:
+							row.active === 'activating' ||
+							row.active === 'deactivating' ||
+							(row.active === 'active' && row.sub === 'running'),
 						scheduled: pipe(
 							scheduled,
 							HashMap.get(row.unit),
 							Option.map(() => true)
 						),
 						scope: Option.some(scope),
-						state: `${row.active} · ${row.sub}`,
+						state: Boolean.match(row.active === 'active', {
+							onFalse: () => `${row.active} · ${row.sub}`,
+							onTrue: () => row.sub
+						}),
 						url: Option.none(),
 						worker
 					})
@@ -259,6 +271,7 @@ export class Inventory extends Context.Service<
 				Effect.map(rows =>
 					Array.map(rows, row =>
 						InventoryItem.make({
+							active: Array.contains(['running', 'restarting', 'paused'], row.State),
 							bindings: Option.some([
 								...Array.map(
 									Array.fromIterable(
@@ -285,6 +298,17 @@ export class Inventory extends Context.Service<
 								)
 							]),
 							detail: row.Status,
+							health: Boolean.match(
+								String.includes('unhealthy')(row.Status) || Option.isSome(String.match(/Exited \([1-9]/u)(row.Status)),
+								{
+									onFalse: () =>
+										Boolean.match(row.State === 'restarting', {
+											onFalse: () => 'quiet' as const,
+											onTrue: () => 'warning' as const
+										}),
+									onTrue: () => 'error' as const
+								}
+							),
 							id: ItemId.make(`${worker}:docker:${row.ID}`),
 							kind: 'container',
 							links: Option.some(
@@ -296,7 +320,10 @@ export class Inventory extends Context.Service<
 								)
 							),
 							name: row.Names,
-							state: row.State,
+							state: Boolean.match(String.includes('unhealthy')(row.Status), {
+								onFalse: () => row.State,
+								onTrue: () => 'unhealthy'
+							}),
 							url: Option.none(),
 							worker
 						})
@@ -373,15 +400,21 @@ export class Inventory extends Context.Service<
 							Effect.map(Effect.fromResult(launchd.agents), agents =>
 								Array.map(agents, agent =>
 									InventoryItem.make({
+										active: Option.isSome(agent.pid),
 										detail: 'user · launch agent',
 										failure: pipe(
 											agent.status,
 											Option.liftPredicate(status => Option.isNone(agent.pid) && status !== 0),
 											Option.map(status => ({at: Option.none(), reason: exitFailure(status)}))
 										),
+										health: Boolean.match(Option.isNone(agent.pid) && agent.status !== 0, {
+											onFalse: () => 'quiet' as const,
+											onTrue: () => 'error' as const
+										}),
 										id: ItemId.make(`${worker}:user:${agent.label}`),
 										kind: 'service',
 										name: agent.label,
+										running: Option.isSome(agent.pid),
 										scope: Option.some('user'),
 										state: Option.match(agent.pid, {
 											onNone: () =>
@@ -389,7 +422,7 @@ export class Inventory extends Context.Service<
 													onFalse: () => 'failed · failed',
 													onTrue: () => 'inactive · dead'
 												}),
-											onSome: () => 'active · running'
+											onSome: () => 'running'
 										}),
 										url: Option.none(),
 										worker
@@ -469,20 +502,18 @@ export class Inventory extends Context.Service<
 											command('tailscale', ['status', '--json']),
 											Effect.flatMap(Schema.decodeEffect(Schema.fromJsonString(Tailnet))),
 											Effect.map(status =>
-												Array.map(
-													[...Option.toArray(status.Self), ...Record.values(Option.getOrElse(status.Peer, () => ({})))],
-													peer =>
-														InventoryItem.make({
-															detail: `${peer.OS} · ${Array.join(peer.TailscaleIPs, ', ')}`,
-															hostname: Option.some(String.replace(/\.$/u, '')(peer.DNSName)),
-															id: ItemId.make(`${worker}:peer:${peer.DNSName}`),
-															kind: 'peer',
-															name: peer.HostName,
-															self: Option.some(Option.exists(status.Self, self => peer.DNSName === self.DNSName)),
-															state: Boolean.match(peer.Online, {onFalse: () => 'offline', onTrue: () => 'online'}),
-															url: Option.none(),
-															worker
-														})
+												Array.map(Option.toArray(status.Self), peer =>
+													InventoryItem.make({
+														detail: `${peer.OS} · ${Array.join(peer.TailscaleIPs, ', ')}`,
+														hostname: Option.some(String.replace(/\.$/u, '')(peer.DNSName)),
+														id: ItemId.make(`${worker}:peer:${peer.DNSName}`),
+														kind: 'peer',
+														name: peer.HostName,
+														self: Option.some(true),
+														state: Boolean.match(peer.Online, {onFalse: () => 'offline', onTrue: () => 'online'}),
+														url: Option.none(),
+														worker
+													})
 												)
 											)
 										)
@@ -501,6 +532,11 @@ export class Inventory extends Context.Service<
 																Option.exists(permissions => permissions[site[0]] === true),
 																Boolean.match({onFalse: () => 'tailnet', onTrue: () => 'Funnel permitted (public)'})
 															)} → ${Option.getOrElse(handler[1].Proxy, () => 'non-proxy handler')}`,
+															health: pipe(
+																status.AllowFunnel,
+																Option.exists(permissions => permissions[site[0]] === true),
+																Boolean.match({onFalse: () => 'quiet' as const, onTrue: () => 'warning' as const})
+															),
 															id: ItemId.make(`${worker}:tailscale:${site[0]}:${handler[0]}`),
 															kind: 'exposure',
 															name: ExposureName.make(`${site[0]}${handler[0]}`),

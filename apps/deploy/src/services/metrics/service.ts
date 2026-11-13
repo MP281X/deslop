@@ -71,7 +71,6 @@ export class Metrics extends Context.Service<Metrics>()('@deslop/deploy/services
 		const fs = yield* FileSystem.FileSystem
 		const sql = yield* SqlClient.SqlClient
 		const worker = yield* Schema.decodeEffect(WorkerId)(hostname())
-		const cpuModel = Option.map(Array.head(cpus()), cpu => String.trim(cpu.model))
 
 		// The stored point of each series that a measurement at this time joins.
 		const listBuckets = SqlSchema.findAll({
@@ -320,7 +319,6 @@ export class Metrics extends Context.Service<Metrics>()('@deslop/deploy/services
 				const now = yield* Ref.get(latest)
 				// Built from values the model just decoded, so no sample is checked twice; the RPC encodes it against the schema.
 				return {
-					cpuModel,
 					disks: now.disks,
 					error: yield* Ref.get(failure),
 					load: now.load,

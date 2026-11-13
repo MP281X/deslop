@@ -1,6 +1,6 @@
 import {assert, it} from '@effect/vitest'
 
-import {Array, DateTime, Duration, Option, Schema} from 'effect'
+import {Array, Boolean, DateTime, Duration, Option, Schema} from 'effect'
 
 import {impactGroups} from '#routes/(home)/-rows.ts'
 import {workloads} from '#services/inventory/lib/utils.ts'
@@ -12,10 +12,13 @@ const GIB = 1024 ** 3
 
 function item(name: string, state = 'active · running', detail = '') {
 	return Schema.decodeSync(InventoryItem)({
+		active: true,
 		detail,
+		health: Boolean.match(state === 'failed', {onFalse: () => 'quiet' as const, onTrue: () => 'error' as const}),
 		id: `service:user:${name}`,
 		kind: 'service',
 		name,
+		running: state !== 'failed',
 		scope: 'user',
 		state,
 		url: '',
@@ -42,7 +45,6 @@ function sample(time: number, apps: readonly (typeof AppSample.Encoded)[]) {
 
 function machine(samples: Sample[]) {
 	return {
-		cpuModel: Option.none(),
 		disks: [],
 		error: Option.none(),
 		load: [],

@@ -2,7 +2,7 @@ import {Schema} from 'effect'
 
 import {Model} from 'effect/schema'
 
-import {ExposureName, WorkerTarget} from '#services/inventory/schema.ts'
+import {ExposureName, WorkerId} from '#services/inventory/schema.ts'
 
 // An HTTPS mapping Deploy owns on this worker: a tailnet port, or a public hostname in front of a local port.
 export class Exposure extends Model.Class<Exposure>('Exposure')({
@@ -22,7 +22,7 @@ export type ExposeInput = typeof ExposeInput.Type
 export const ExposeInput = Schema.Struct({...Exposure.fields, publicAccess: Schema.Boolean})
 
 export type ExposeRequest = typeof ExposeRequest.Type
-export const ExposeRequest = Schema.Struct({...ExposeInput.fields, target: WorkerTarget})
+export const ExposeRequest = Schema.Struct({...ExposeInput.fields, worker: WorkerId})
 
 export type HideRequest = typeof HideRequest.Type
-export const HideRequest = Schema.Struct({name: ExposureName, target: WorkerTarget})
+export const HideRequest = Schema.Struct({name: ExposureName, worker: WorkerId})

@@ -1,7 +1,7 @@
 import {useAtom, useAtomSet, useAtomValue} from '@effect/atom-react'
 
 import type {DateTime} from 'effect'
-import {Array, Boolean, Duration, Equal, HashSet, Number, Option, Order, Stream, String, pipe} from 'effect'
+import {Array, Boolean, Duration, Equal, HashSet, Number, Option, Order, Stream, pipe} from 'effect'
 
 import {AppWindowIcon, ClockIcon, GaugeIcon, PlayIcon, StackIcon} from '@phosphor-icons/react'
 import {CatchBoundary} from '@tanstack/react-router'
@@ -24,7 +24,6 @@ import {inventoryAtom, openExposeAtom, runAtom} from '#lib/fleet.ts'
 import {ApplicationIcon} from '#routes/(home)/-marks.tsx'
 import {counted, host, impactGroups, middleEllipsis} from '#routes/(home)/-rows.ts'
 import {
-	dot,
 	failureAge,
 	nextRun,
 	reasonLine,
@@ -174,16 +173,13 @@ function AppRow(props: {
 }) {
 	const [runResult, run] = useAtom(runAtom(props.row.item.id))
 	const state = status(props.row.item)
-	const light = dot(props.row.item, state)
 	const scheduled = Option.contains(props.row.item.scheduled, true)
 	const reason = reasonOf(props.row.item)
 	const age = failureAge(props.row.item, props.now)
-	const running =
-		Option.isSome(String.match(/^(?:activating|deactivating|active · running)/u)(props.row.item.state)) ||
-		AsyncResult.isWaiting(runResult)
+	const running = props.row.item.running || AsyncResult.isWaiting(runResult)
 	const fullName = workloadName(props.row.item)
 	const name = Boolean.match(props.compact, {onFalse: () => fullName, onTrue: () => middleEllipsis(fullName)})
-	const failing = light === 'error' || light === 'warning'
+	const failing = props.row.item.health !== 'quiet'
 	const next = Boolean.match(running, {
 		onFalse: () =>
 			nextRun(
@@ -246,7 +242,7 @@ function AppRow(props: {
 								role="img"
 								className="flex size-3 shrink-0 items-center justify-center"
 							>
-								<StatusDot status={light} />
+								<StatusDot status={props.row.item.health} />
 							</span>
 						)}
 						{Boolean.match(scheduled, {
