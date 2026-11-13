@@ -21,8 +21,8 @@
 
 ## Patterns
 
-- **Primitives.** In `packages/components-web`, run `vpx shadcn@latest add --all --overwrite`, point `cn` imports at `#lib/classes.ts`, drop the `cn` dependency and fix only compiler rejections.
-- **Software marks.** Run `vpx shadcn@latest add @svgl/<name>` there; move `src/components/ui/svgs/` to canonical `src/ui/svgs/`, keeping registry artwork.
+- **Primitives.** `packages/components-web/src/ui/` keeps only the base-lyra primitives an app or shared component imports, with the dependencies they need. There, add one with `vpx shadcn@latest add <name>` and refresh the kept ones with `vpx shadcn@latest add <every src/ui/*.tsx name> --overwrite`; then point `cn` imports at `#lib/classes.ts`, drop the `cn` dependency, fix only compiler rejections, and delete what the run brought that nothing imports.
+- **Software marks.** Run `vpx shadcn@latest add @svgl/<name>` there; move `src/components/ui/svgs/` to canonical `src/ui/svgs/`, keeping registry artwork. A mark nothing imports goes.
 
 ## Choices
 
