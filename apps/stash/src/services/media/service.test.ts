@@ -1,4 +1,3 @@
-import {STTRequest} from '@effect/ai-openrouter/Generated'
 import {NodeServices} from '@effect/platform-node'
 import {assert, it} from '@effect/vitest'
 
@@ -19,7 +18,6 @@ import {
 	pipe
 } from 'effect'
 
-import {Base64} from 'effect/encoding'
 import {HttpClient, HttpClientResponse} from 'effect/http'
 import {ChildProcess, ChildProcessSpawner} from 'effect/process'
 
@@ -32,12 +30,10 @@ import {Media} from '#services/media/service.ts'
 
 const CAPTIONS = 'WEBVTT\n\n00:00:01.000 --> 00:00:03.000\nHo preparato le lenticchie.\n'
 
-const GATEWAY = 'https://gateway.mp281x.xyz/ai/openrouter/v1'
-
 const USER = UserId.make('github:1')
 
 const gateway = AiGateway.of({
-	apiUrl: () => Effect.succeed(GATEWAY),
+	apiUrl: Effect.succeed('https://gateway.mp281x.xyz/ai'),
 	authorize: userId => {
 		assert.strictEqual(userId, USER)
 		return Effect.succeed(Function.identity)
@@ -101,6 +97,10 @@ const audioSpawner = Effect.fnUntraced(function* () {
 			if (String.endsWith('/ffmpeg')(command.command) && Array.contains(command.args, 'segment')) {
 				yield* fs.writeFile(String.replace('%03d', '000')(file), new Uint8Array([1]))
 				yield* fs.writeFile(String.replace('%03d', '001')(file), new Uint8Array([2]))
+				yield* fs.writeFileString(
+					argument(command, '-segment_list'),
+					'part-000.flac,0,120.024\npart-001.flac,120.024,140.024\n'
+				)
 				return handle('')
 			}
 			return yield* Effect.die(`Unexpected process: ${command.command}`)
@@ -252,50 +252,6 @@ it.layer(NodeServices.layer)('Media fallback', test => {
 				yield* (yield* open(spawner)).fileTranscript(USER, 'upload.mp4'),
 				Option.some('[00:01] Ho preparato le lenticchie.\n')
 			)
-		})
-	)
-
-	test.effect(
-		'uses Whisper Turbo only as a fallback and offsets chunk timestamps by actual durations',
-		Effect.fnUntraced(function* () {
-			const calls = yield* Ref.make(0)
-			const speech = pipe(
-				220,
-				Array.makeBy(index => `word${index}`),
-				Array.join(' ')
-			)
-			const client = HttpClient.make(request =>
-				Effect.gen(function* () {
-					assert.strictEqual(request.url, `${GATEWAY}/audio/transcriptions`)
-					if (request.body._tag !== 'Uint8Array') return yield* Effect.die('Expected a JSON audio request')
-					const payload = yield* Effect.orDie(
-						Schema.decodeEffect(Schema.fromJsonString(STTRequest))(new TextDecoder().decode(request.body.body))
-					)
-					assert.strictEqual(payload.model, 'openai/whisper-large-v3-turbo')
-					assert.strictEqual(payload.response_format, 'verbose_json')
-					assert.deepStrictEqual(payload.timestamp_granularities, ['segment'])
-					const call = yield* Ref.getAndUpdate(calls, value => value + 1)
-					assert.deepStrictEqual(payload.input_audio, {data: Base64.encode(new Uint8Array([call + 1])), format: 'flac'})
-					if (call === 0) {
-						return HttpClientResponse.fromWeb(
-							request,
-							Response.json({segments: [{end: 300.25, id: 0, start: 0, text: speech}], text: speech})
-						)
-					}
-					return HttpClientResponse.fromWeb(
-						request,
-						Response.json({
-							segments: [{end: 20, id: 0, start: 0, text: 'The final sentence.'}],
-							text: 'The final sentence.'
-						})
-					)
-				})
-			)
-			assert.deepStrictEqual(
-				yield* (yield* open(yield* audioSpawner(), client)).fileTranscript(USER, 'upload.mp4'),
-				Option.some(`[00:00] ${speech}\n[05:00] The final sentence.\n`)
-			)
-			assert.strictEqual(yield* Ref.get(calls), 2)
 		})
 	)
 

@@ -9,10 +9,16 @@ export function readUsage(text: string, entry: AiUsageEntry) {
 		const usage = Option.flatten(decoded.usage)
 		const messageUsage = Option.flatMap(decoded.message, message => message.usage)
 		const details = Option.flatMap(usage, value => value.prompt_tokens_details)
+		const billing = pipe(
+			Option.flatMap(usage, value => value.opencode),
+			Option.orElse(() => Option.flatMap(messageUsage, value => value.opencode)),
+			Option.orElse(() => Option.flatMap(decoded.usageMetadata, value => value.opencode))
+		)
 		const cacheReadTokens = pipe(
 			Option.flatMap(usage, value => value.cache_read_input_tokens),
 			Option.orElse(() => Option.flatMap(messageUsage, value => value.cache_read_input_tokens)),
 			Option.orElse(() => Option.flatMap(details, value => value.cached_tokens)),
+			Option.orElse(() => Option.flatMap(decoded.usageMetadata, value => value.cachedContentTokenCount)),
 			Option.getOrElse(() => entry.cacheReadTokens)
 		)
 		const cacheWriteTokens = pipe(
@@ -24,6 +30,8 @@ export function readUsage(text: string, entry: AiUsageEntry) {
 		const cost = pipe(
 			usage,
 			Option.flatMap(value => value.cost),
+			Option.orElse(() => Option.flatMap(messageUsage, value => value.cost)),
+			Option.orElse(() => Option.flatMap(decoded.usageMetadata, value => value.cost)),
 			Option.orElse(() => decoded.cost)
 		)
 		return {
@@ -32,6 +40,7 @@ export function readUsage(text: string, entry: AiUsageEntry) {
 			cacheWriteTokens,
 			costSource: Option.match(cost, {onNone: () => entry.costSource, onSome: () => 'provider' as const}),
 			costUsd: Option.orElse(cost, () => entry.costUsd),
+			estimated: Option.match(billing, {onNone: () => entry.estimated, onSome: value => value.estimated === true}),
 			// Input is counted without cached tokens, as Anthropic's messages report it; chat completions' prompt_tokens include them, whichever provider serves the shape.
 			inputTokens: pipe(
 				Option.flatMap(usage, value => value.input_tokens),
@@ -43,10 +52,18 @@ export function readUsage(text: string, entry: AiUsageEntry) {
 						Option.map(prompt => Number.max(0, prompt - cacheReadTokens - cacheWriteTokens))
 					)
 				),
+				Option.orElse(() =>
+					pipe(
+						decoded.usageMetadata,
+						Option.flatMap(value => value.promptTokenCount),
+						Option.map(prompt => Number.max(0, prompt - cacheReadTokens))
+					)
+				),
 				Option.getOrElse(() => entry.inputTokens)
 			),
 			model: pipe(
 				decoded.model,
+				Option.orElse(() => decoded.modelVersion),
 				Option.orElse(() => Option.flatMap(decoded.message, value => value.model)),
 				Option.orElse(() => entry.model)
 			),
@@ -54,8 +71,17 @@ export function readUsage(text: string, entry: AiUsageEntry) {
 				Option.flatMap(usage, value => value.output_tokens),
 				Option.orElse(() => Option.flatMap(messageUsage, value => value.output_tokens)),
 				Option.orElse(() => Option.flatMap(usage, value => value.completion_tokens)),
+				Option.orElse(() =>
+					Option.map(
+						decoded.usageMetadata,
+						value =>
+							Option.getOrElse(value.candidatesTokenCount, () => 0) +
+							Option.getOrElse(value.thoughtsTokenCount, () => 0)
+					)
+				),
 				Option.getOrElse(() => entry.outputTokens)
-			)
+			),
+			spendSource: Option.match(billing, {onNone: () => entry.spendSource, onSome: value => value.billing_source})
 		} satisfies AiUsageEntry
 	})
 }

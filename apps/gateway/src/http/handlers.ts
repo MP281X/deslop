@@ -1,11 +1,10 @@
-import {Duration, Effect, Option, Schema, String, pipe} from 'effect'
+import {Duration, Effect, Option, String, pipe} from 'effect'
 
 import {HttpRouter, HttpServerRequest, HttpServerResponse} from 'effect/http'
 
 import {Auth} from '@deslop/runtime/server/auth'
 import {AuthError, COOKIE, signInUrl} from '@deslop/runtime/shared/auth'
 
-import {AiProvider} from '#services/ai-proxy/schema.ts'
 import {AiProxy} from '#services/ai-proxy/service.ts'
 import {clientMetadata} from '#services/connections/lib/utils.ts'
 import type {ServerId} from '#services/connections/schema.ts'
@@ -86,17 +85,9 @@ export const AiHttpHandlers = HttpRouter.use(router =>
 		const ai = yield* AiProxy
 		yield* router.add(
 			'*',
-			'/ai/:provider/*',
+			'/ai/*',
 			Effect.gen(function* () {
-				const params = yield* HttpRouter.params
-				const provider = Schema.decodeUnknownOption(AiProvider)(params['provider'])
-				if (provider._tag === 'None') {
-					return HttpServerResponse.jsonUnsafe({error: {message: 'Unknown AI provider'}}, {status: 404})
-				}
-				return yield* ai.proxy(
-					provider.value,
-					String.slice(`/ai/${provider.value}/`.length)((yield* HttpServerRequest.HttpServerRequest).url)
-				)
+				return yield* ai.proxy(String.slice('/ai/'.length)((yield* HttpServerRequest.HttpServerRequest).url))
 			})
 		)
 	})

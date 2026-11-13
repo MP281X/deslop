@@ -2,18 +2,22 @@ import {Schema} from 'effect'
 
 import {Model} from 'effect/schema'
 
-import {AiModelId, AiProvider} from '@deslop/runtime/shared/ai'
+import {AiModelId} from '@deslop/runtime/shared/ai'
 import {User} from '@deslop/runtime/shared/auth'
 import {DateTimeUtcFromFiniteMillis} from '@deslop/runtime/shared/time'
 
 import {UsageRange} from '#services/usage/schema.ts'
 
-// One person's calls to one provider in one hour: what the known prices sum to, and how many calls had none.
+export type SpendSource = typeof SpendSource.Type
+export const SpendSource = Schema.Literals(['balance', 'byok', 'free', 'go', 'go-plus', 'unattributed'])
+
+// One person's hour, separated by the balance or account OpenCode billed.
 export class AiUsage extends Model.Class<AiUsage>('AiUsage')({
 	costUsd: Schema.Finite,
+	estimatedCalls: Schema.Int,
 	hour: Schema.DateTimeUtcFromMillis,
 	owner: Model.Sensitive(User.fields.id),
-	provider: AiProvider,
+	spendSource: SpendSource,
 	unknownCostCalls: Schema.Int
 }) {
 	static readonly table = 'ai_usage'
@@ -29,44 +33,28 @@ export const AiUsageEntry = Schema.Struct({
 	at: DateTimeUtcFromFiniteMillis,
 	cacheReadTokens: Schema.Finite,
 	cacheWriteTokens: Schema.Finite,
-	costSource: Schema.Literals(['provider', 'models.dev', 'unknown']),
+	costSource: Schema.Literals(['provider', 'unknown']),
 	costUsd: Schema.OptionFromOptionalKey(Schema.Finite),
+	estimated: Schema.Boolean,
 	inputTokens: Schema.Finite,
 	model: Schema.OptionFromOptional(AiModelId),
 	outputTokens: Schema.Finite,
-	provider: AiProvider
+	spendSource: SpendSource
 })
 export type AiUsageBreakdown = typeof AiUsageBreakdown.Type
 export const AiUsageBreakdown = Schema.Struct({
 	costUsd: Schema.Finite,
-	name: Schema.String,
+	estimatedCalls: Schema.Finite,
+	spendSource: SpendSource,
 	unknownCostCalls: Schema.Finite
 })
 export type AiUsageReport = typeof AiUsageReport.Type
 export const AiUsageReport = Schema.Struct({
-	byProvider: Schema.Array(AiUsageBreakdown),
-	series: Schema.Array(Schema.Struct({at: DateTimeUtcFromFiniteMillis, byProvider: Schema.Array(AiUsageBreakdown)}))
+	series: Schema.Array(Schema.Struct({at: DateTimeUtcFromFiniteMillis, ...AiUsageBreakdown.fields})),
+	totals: Schema.Array(AiUsageBreakdown)
 })
-
-export type ModelsCatalog = typeof ModelsCatalog.Type
-export const ModelsCatalog = Schema.Record(
-	Schema.String,
-	Schema.Struct({
-		models: Schema.Record(
-			AiModelId,
-			Schema.Struct({
-				cost: Schema.OptionFromOptionalKey(
-					Schema.Struct({
-						cache_read: Schema.OptionFromOptionalKey(Schema.Finite),
-						cache_write: Schema.OptionFromOptionalKey(Schema.Finite),
-						input: Schema.Finite,
-						output: Schema.Finite
-					})
-				)
-			})
-		)
-	})
-)
+type Billing = typeof Billing.Type
+const Billing = Schema.Struct({billing_source: SpendSource, estimated: Schema.optional(Schema.Boolean)})
 export type Usage = typeof Usage.Type
 export const Usage = Schema.Struct({
 	cost: Schema.OptionFromOptionalKey(Schema.Finite),
@@ -77,13 +65,16 @@ export const Usage = Schema.Struct({
 				Schema.Struct({
 					cache_creation_input_tokens: Schema.OptionFromOptionalKey(Schema.Finite),
 					cache_read_input_tokens: Schema.OptionFromOptionalKey(Schema.Finite),
+					cost: Schema.OptionFromOptionalKey(Schema.Finite),
 					input_tokens: Schema.OptionFromOptionalKey(Schema.Finite),
+					opencode: Schema.OptionFromOptionalKey(Billing),
 					output_tokens: Schema.OptionFromOptionalKey(Schema.Finite)
 				})
 			)
 		})
 	),
 	model: Schema.OptionFromOptionalKey(AiModelId),
+	modelVersion: Schema.OptionFromOptionalKey(AiModelId),
 	usage: Schema.OptionFromOptionalKey(
 		Schema.OptionFromNullOr(
 			Schema.Struct({
@@ -92,6 +83,7 @@ export const Usage = Schema.Struct({
 				completion_tokens: Schema.OptionFromOptionalKey(Schema.Finite),
 				cost: Schema.OptionFromOptionalKey(Schema.Finite),
 				input_tokens: Schema.OptionFromOptionalKey(Schema.Finite),
+				opencode: Schema.OptionFromOptionalKey(Billing),
 				output_tokens: Schema.OptionFromOptionalKey(Schema.Finite),
 				prompt_tokens: Schema.OptionFromOptionalKey(Schema.Finite),
 				prompt_tokens_details: Schema.OptionFromOptionalKey(
@@ -102,5 +94,15 @@ export const Usage = Schema.Struct({
 				)
 			})
 		)
+	),
+	usageMetadata: Schema.OptionFromOptionalKey(
+		Schema.Struct({
+			cachedContentTokenCount: Schema.OptionFromOptionalKey(Schema.Finite),
+			candidatesTokenCount: Schema.OptionFromOptionalKey(Schema.Finite),
+			cost: Schema.OptionFromOptionalKey(Schema.Finite),
+			opencode: Schema.OptionFromOptionalKey(Billing),
+			promptTokenCount: Schema.OptionFromOptionalKey(Schema.Finite),
+			thoughtsTokenCount: Schema.OptionFromOptionalKey(Schema.Finite)
+		})
 	)
 })

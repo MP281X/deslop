@@ -1,16 +1,15 @@
-import {Array, DateTime, Duration, HashMap, Option, pipe} from 'effect'
+import {Array, Boolean, DateTime, Duration, HashMap, Option, pipe} from 'effect'
 
 import {usdOf} from '@deslop/runtime/shared/format'
 
-import type {AiUsageBreakdown, AiUsageReport} from '#services/ai-metering/schema.ts'
-import type {AiProvider} from '#services/ai-proxy/schema.ts'
+import type {AiUsageBreakdown, AiUsageReport, SpendSource} from '#services/ai-metering/schema.ts'
 import type {McpUsageServer, ServerId} from '#services/connections/schema.ts'
 import type {UsageRange} from '#services/usage/schema.ts'
 
 // A sum whose every call had no known price shows a dash, not a zero.
 function costOf(sum: AiUsageBreakdown) {
 	if (sum.costUsd === 0 && sum.unknownCostCalls > 0) return '—'
-	return usdOf(sum.costUsd)
+	return `${Boolean.match(sum.estimatedCalls > 0, {onFalse: () => '', onTrue: () => '~'})}${usdOf(sum.costUsd)}${Boolean.match(sum.unknownCostCalls > 0, {onFalse: () => '', onTrue: () => ' + ?'})}`
 }
 
 // Each bucket of the period, filled with zero where nothing was recorded.
@@ -19,14 +18,12 @@ function seriesOf(range: UsageRange, value: (at: DateTime.Utc) => number) {
 		value(DateTime.addDuration(range.from, Duration.times(range.size, index)))
 	)
 }
-export function providerSeries(report: AiUsageReport, provider: AiProvider, range: UsageRange) {
+export function aiSeries(report: AiUsageReport, source: SpendSource, range: UsageRange) {
 	const costs = HashMap.fromIterable(
-		Array.flatMap(report.series, bucket =>
-			pipe(
-				bucket.byProvider,
-				Array.filter(sum => sum.name === provider),
-				Array.map(sum => [bucket.at, sum.costUsd] as const)
-			)
+		pipe(
+			report.series,
+			Array.filter(bucket => bucket.spendSource === source),
+			Array.map(bucket => [bucket.at, bucket.costUsd] as const)
 		)
 	)
 	return seriesOf(range, at =>
@@ -37,12 +34,11 @@ export function providerSeries(report: AiUsageReport, provider: AiProvider, rang
 		)
 	)
 }
-export function providerCost(report: AiUsageReport, provider: AiProvider) {
+export function aiCost(report: AiUsageReport, source: SpendSource) {
 	return pipe(
-		report.byProvider,
-		Array.findFirst(sum => sum.name === provider),
-		Option.map(costOf),
-		Option.getOrElse(() => '—')
+		report.totals,
+		Array.findFirst(total => total.spendSource === source),
+		Option.match({onNone: () => usdOf(0), onSome: costOf})
 	)
 }
 export function serverSeries(report: readonly McpUsageServer[], id: ServerId, range: UsageRange) {

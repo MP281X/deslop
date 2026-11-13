@@ -1,7 +1,5 @@
 import {execPath} from 'node:process'
 
-import {OpenRouterClient} from '@effect/ai-openrouter'
-
 import {
 	Array,
 	Boolean,
@@ -17,6 +15,7 @@ import {
 	Path,
 	Random,
 	Redacted,
+	Result,
 	Schema,
 	Semaphore,
 	Stream,
@@ -25,7 +24,7 @@ import {
 } from 'effect'
 
 import {Base64} from 'effect/encoding'
-import {HttpClient} from 'effect/http'
+import {HttpClient, HttpClientRequest, HttpClientResponse} from 'effect/http'
 import {ChildProcess, ChildProcessSpawner} from 'effect/process'
 
 import {AiGateway} from '@deslop/runtime/server/ai'
@@ -41,10 +40,78 @@ import {
 	mediaMarkdown
 } from '#services/media/lib/utils.ts'
 import type {Still} from '#services/media/schema.ts'
-import {CreatorCaptions, MediaError, Metadata, Probe, Transcript} from '#services/media/schema.ts'
+import {
+	CreatorCaptions,
+	MediaError,
+	Metadata,
+	Probe,
+	Transcript,
+	TranscriptionResponse
+} from '#services/media/schema.ts'
 import {isYouTube} from '#services/notes/lib/utils.ts'
 
-const MAX_WHISPER_DURATION = Duration.hours(2)
+const MAX_TRANSCRIPTION_DURATION = Duration.hours(2)
+
+const transcriptOf = Effect.fnUntraced(function* (
+	response: TranscriptionResponse,
+	duration: Duration.Duration,
+	index: number
+) {
+	const candidate = Option.flatMap(response.candidates, Array.head)
+	const transcript = pipe(
+		candidate,
+		Option.filter(value => Option.contains(value.finishReason, 'STOP')),
+		Option.flatMap(value => value.content),
+		Option.map(value =>
+			pipe(
+				value.parts,
+				Array.filter(part => part.thought !== true),
+				Array.map(part => part.text),
+				Array.join('')
+			)
+		),
+		Option.flatMap(Schema.decodeOption(Schema.fromJsonString(Transcript)))
+	)
+	if (Option.isNone(transcript)) {
+		return yield* MediaError.make({
+			message: `Audio chunk has no usable answer (${pipe(
+				candidate,
+				Option.flatMap(value => value.finishReason),
+				Option.getOrElse(() => 'missing or blocked')
+			)})`
+		})
+	}
+	const answer = Option.getOrThrow(transcript)
+	if (answer.kind === 'silence') return answer
+	const segments = Array.filter(
+		answer.segments,
+		segment =>
+			Duration.isGreaterThanOrEqualTo(segment.start, Duration.zero) && Duration.isLessThan(segment.start, duration)
+	)
+	if (segments.length !== answer.segments.length) {
+		yield* Effect.logWarning('Audio chunk returned timestamps outside its duration', {
+			chunk: index + 1,
+			dropped: answer.segments.length - segments.length
+		})
+	}
+	if (Array.isArrayEmpty(segments)) {
+		return yield* MediaError.make({message: 'Audio chunk returned no speech segments without reporting silence'})
+	}
+	if (
+		Option.isNone(
+			speechOnly(
+				pipe(
+					segments,
+					Array.map(segment => `[${clock(segment.start)}] ${segment.text}\n`),
+					Array.join('')
+				)
+			)
+		)
+	) {
+		return yield* MediaError.make({message: 'Audio chunk did not contain usable speech'})
+	}
+	return {kind: 'speech' as const, segments}
+})
 
 // When set, every read of a source exits through this proxy, so sites never see the server's address; `{session}` keeps one exit address per request.
 export const sourceProxy = Config.option(Config.String('STASH_PROXY'))
@@ -85,7 +152,7 @@ export class Media extends Context.Service<
 					{concurrency: 'unbounded'}
 				)
 			})
-			const whisper = yield* Semaphore.make(1)
+			const transcription = yield* Semaphore.make(1)
 			const gateway = yield* AiGateway
 			const http = yield* HttpClient.HttpClient
 
@@ -184,26 +251,17 @@ export class Media extends Context.Service<
 						seconds,
 						value =>
 							Duration.isGreaterThanOrEqualTo(value, Duration.seconds(1)) &&
-							Duration.isLessThanOrEqualTo(value, MAX_WHISPER_DURATION)
+							Duration.isLessThanOrEqualTo(value, MAX_TRANSCRIPTION_DURATION)
 					)
 				) {
 					return Option.none()
 				}
 				const speech = yield* Effect.mapError(
-					Effect.gen(function* () {
-						return yield* Effect.provideService(
-							OpenRouterClient.make({
-								apiUrl: yield* gateway.apiUrl('openrouter'),
-								transformClient: yield* gateway.authorize(userId)
-							}),
-							HttpClient.HttpClient,
-							http
-						)
-					}),
+					Effect.all({authorize: gateway.authorize(userId), url: gateway.apiUrl}, {concurrency: 'unbounded'}),
 					cause => MediaError.make({cause: Redacted.make(cause), message: cause.message})
 				)
 				const work = yield* fs.makeTempDirectoryScoped({prefix: 'deslop-speech-'})
-				// Five-minute lossless chunks stay below upload limits and the provider's one-minute processing timeout.
+				// Two-minute s16 mono chunks stay below 4 MiB of FLAC and 5.34 MiB after base64, inside Gateway's 10 MiB body limit.
 				const extracted = yield* run('ffmpeg', [
 					'-v',
 					'error',
@@ -213,6 +271,8 @@ export class Media extends Context.Service<
 					'-t',
 					`${Duration.toSeconds(Duration.sum(Option.getOrThrow(seconds), Duration.seconds(1)))}`,
 					'-vn',
+					'-map_metadata',
+					'-1',
 					'-map',
 					'0:a:0',
 					'-ac',
@@ -226,7 +286,11 @@ export class Media extends Context.Service<
 					'-f',
 					'segment',
 					'-segment_time',
-					'300',
+					'120',
+					'-segment_list',
+					path.join(work, 'chunks.csv'),
+					'-segment_list_type',
+					'csv',
 					'-reset_timestamps',
 					'1',
 					path.join(work, 'part-%03d.flac')
@@ -234,58 +298,107 @@ export class Media extends Context.Service<
 				if (extracted.exitCode !== 0) {
 					return yield* MediaError.make({message: `ffmpeg cannot decode the audio: ${extracted.stderr}`})
 				}
-				return yield* whisper.withPermit(
+				return yield* transcription.withPermit(
 					Effect.gen(function* () {
-						const files = pipe(
-							yield* fs.readDirectory(work),
-							Array.filter(String.endsWith('.flac')),
-							Array.sort(Order.String)
-						)
-						return speechOnly(
-							pipe(
-								yield* Effect.forEach(
-									files,
-									Effect.fnUntraced(function* (file) {
-										const duration = Option.getOrThrow(yield* lengthOf(path.join(work, file)))
-										const response = yield* pipe(
-											speech.client.createAudioTranscriptions({
-												payload: {
-													input_audio: {data: Base64.encode(yield* fs.readFile(path.join(work, file))), format: 'flac'},
-													model: 'openai/whisper-large-v3-turbo',
-													response_format: 'verbose_json',
-													timestamp_granularities: ['segment']
-												}
-											}),
-											Effect.flatMap(Schema.decodeEffect(Transcript)),
-											Effect.timeout('1 minute'),
-											Effect.mapError(cause =>
-												MediaError.make({cause: Redacted.make(cause), message: 'Whisper Turbo transcription failed.'})
-											),
-											Effect.withSpan('Media.transcribeAudio')
-										)
-										return {
-											duration,
-											segments: pipe(
-												response.segments,
-												Option.filter(Array.isReadonlyArrayNonEmpty),
-												Option.getOrElse(() => [{start: Duration.zero, text: response.text}])
-											)
-										}
-									}),
-									{concurrency: 1}
-								),
-								// Codec frame boundaries need not be exactly 300 seconds apart.
-								Array.mapAccum(Duration.zero, (offset, chunk) => [
-									Duration.sum(offset, chunk.duration),
-									Array.map(
-										chunk.segments,
-										segment => `[${clock(Duration.sum(offset, segment.start))}] ${String.trim(segment.text)}\n`
-									)
-								]),
-								result => Array.flatten(result[1]),
-								Array.join('')
+						// Raw FLAC segment headers may omit duration or retain the whole file's duration; the muxer's CSV has the actual boundaries.
+						const chunks = yield* pipe(
+							String.trim(yield* fs.readFileString(path.join(work, 'chunks.csv'))),
+							String.split('\n'),
+							Effect.forEach(
+								line =>
+									Schema.decodeUnknownEffect(
+										Schema.Tuple([Schema.String, Schema.FiniteFromString, Schema.FiniteFromString])
+									)(String.split(line, ',')),
+								{concurrency: 1}
 							)
 						)
+						const answers = yield* Effect.forEach(
+							chunks,
+							Effect.fnUntraced(function* (chunk, index) {
+								const duration = Duration.seconds(chunk[2] - chunk[1])
+								const transcript = yield* pipe(
+									HttpClientRequest.post(`${speech.url}/google/v1beta/models/gemini-3.5-flash-lite:generateContent`),
+									HttpClientRequest.bodyJson({
+										contents: [
+											{
+												parts: [
+													{
+														text: 'Transcribe all spoken words verbatim in their original language as sentence segments with start times in seconds from the beginning of this audio chunk. Return kind "speech" and its segments. Do not summarize, translate or invent speech. Only for silence or music without speech, return kind "silence".'
+													},
+													{
+														inlineData: {
+															data: Base64.encode(yield* fs.readFile(path.join(work, chunk[0]))),
+															mimeType: 'audio/flac'
+														}
+													}
+												],
+												role: 'user'
+											}
+										],
+										generationConfig: {
+											maxOutputTokens: 4096,
+											responseJsonSchema: Schema.toJsonSchemaDocument(Transcript).schema,
+											responseMimeType: 'application/json'
+										}
+									}),
+									Effect.flatMap(speech.authorize(HttpClient.filterStatusOk(http)).execute),
+									Effect.flatMap(HttpClientResponse.schemaBodyJson(TranscriptionResponse)),
+									Effect.timeout('1 minute'),
+									Effect.mapError(cause =>
+										MediaError.make({cause: Redacted.make(cause), message: 'OpenCode Zen transcription failed.'})
+									),
+									Effect.flatMap(response => transcriptOf(response, duration, index)),
+									Effect.withSpan('Media.transcribeAudio'),
+									Effect.result
+								)
+								if (Result.isFailure(transcript)) {
+									yield* Effect.logWarning('Audio chunk failed; keeping the other chunks', {
+										chunk: index + 1,
+										message: transcript.failure.message
+									})
+								}
+								return {duration, transcript}
+							}),
+							{concurrency: 1}
+						)
+						const failures = pipe(
+							answers,
+							Array.map(answer => answer.transcript),
+							Array.filter(Result.isFailure),
+							Array.map(answer => answer.failure)
+						)
+						if (failures.length === answers.length) {
+							return yield* MediaError.make({
+								cause: Redacted.make(failures),
+								message: 'Every audio chunk failed or was refused; no transcript was recovered.'
+							})
+						}
+						const text = pipe(
+							answers,
+							// Codec frame boundaries need not be exactly 120 seconds apart; empty chunks keep their duration too.
+							Array.mapAccum(Duration.zero, (offset, chunk) => [
+								Duration.sum(offset, chunk.duration),
+								Array.map(
+									pipe(
+										chunk.transcript,
+										Result.getSuccess,
+										Option.filter(answer => answer.kind === 'speech'),
+										Option.map(answer => answer.segments),
+										Option.getOrElse(() => [])
+									),
+									segment => `[${clock(Duration.sum(offset, segment.start))}] ${String.trim(segment.text)}\n`
+								)
+							]),
+							result => Array.flatten(result[1]),
+							Array.join('')
+						)
+						if (String.isEmpty(text) && Array.isReadonlyArrayNonEmpty(failures)) {
+							return yield* MediaError.make({
+								cause: Redacted.make(failures),
+								message: 'Audio chunks failed and no speech was recovered; silence could not be confirmed.'
+							})
+						}
+						return Option.liftPredicate(text, String.isNonEmpty)
 					})
 				)
 			})
@@ -355,8 +468,8 @@ export class Media extends Context.Service<
 					if (Option.isSome(captioned.transcript)) return captioned.transcript
 					if (captioned.blocked) break
 				}
-				if (Option.exists(media.duration, seconds => Duration.isGreaterThan(seconds, MAX_WHISPER_DURATION))) {
-					yield* Effect.logInfo('No captions, and the audio is too long for Whisper')
+				if (Option.exists(media.duration, seconds => Duration.isGreaterThan(seconds, MAX_TRANSCRIPTION_DURATION))) {
+					yield* Effect.logInfo('No captions, and the audio is too long to transcribe')
 					return Option.none()
 				}
 
@@ -391,8 +504,8 @@ export class Media extends Context.Service<
 					)
 				)
 				const seconds = yield* Option.match(media.duration, {onNone: () => lengthOf(audio), onSome: Effect.succeedSome})
-				if (!Option.exists(seconds, length => Duration.isLessThanOrEqualTo(length, MAX_WHISPER_DURATION))) {
-					yield* Effect.logInfo('No captions, and the audio is too long or of unknown length for Whisper')
+				if (!Option.exists(seconds, length => Duration.isLessThanOrEqualTo(length, MAX_TRANSCRIPTION_DURATION))) {
+					yield* Effect.logInfo('No captions, and the audio is too long or of unknown length to transcribe')
 					return Option.none()
 				}
 				return yield* listen(userId, {file: audio, seconds})

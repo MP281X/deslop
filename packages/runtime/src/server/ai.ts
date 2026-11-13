@@ -1,13 +1,12 @@
 import {AnthropicClient, AnthropicLanguageModel} from '@effect/ai-anthropic'
 
-import {Boolean, Config, Context, Effect, Function, Layer, Option, Schema} from 'effect'
+import {Config, Context, Effect, Function, Layer, Option, Schema, pipe} from 'effect'
 
 import {AiError} from 'effect/ai'
 import {HttpClient, HttpClientRequest} from 'effect/http'
 
 import {localAuth} from '#server/auth.ts'
 import {Sessions} from '#server/sessions.ts'
-import type {AiProvider} from '#shared/ai.ts'
 import type {UserId} from '#shared/auth.ts'
 
 export class AiUnavailableError extends Schema.TaggedError<AiUnavailableError>()('AiUnavailableError', {
@@ -32,7 +31,7 @@ export function aiFailure(cause: unknown) {
 export class AiGateway extends Context.Service<
 	AiGateway,
 	{
-		apiUrl: (provider: AiProvider) => Effect.Effect<string, AiUnavailableError>
+		apiUrl: Effect.Effect<string, AiUnavailableError>
 		authorize: (
 			userId: UserId
 		) => Effect.Effect<(client: HttpClient.HttpClient) => HttpClient.HttpClient, AiUnavailableError>
@@ -45,7 +44,7 @@ export class AiGateway extends Context.Service<
 		yield* Effect.annotateCurrentSpan({maxTokens: options.maxTokens, userId})
 		const gateway = yield* AiGateway
 		const client = yield* AnthropicClient.make({
-			apiUrl: yield* gateway.apiUrl('anthropic'),
+			apiUrl: `${yield* gateway.apiUrl}/connection`,
 			transformClient: yield* gateway.authorize(userId)
 		})
 		return yield* Effect.provideService(
@@ -63,16 +62,14 @@ export class AiGateway extends Context.Service<
 			const gateway = yield* Config.option(Config.String('GATEWAY_URL'))
 			const local = yield* localAuth
 			const sessions = yield* Sessions
-			const apiUrl = Effect.fn('AiGateway.apiUrl')(function* (provider: AiProvider) {
-				yield* Effect.annotateCurrentSpan('provider', provider)
-				return yield* Option.match(gateway, {
+			const apiUrl = pipe(
+				gateway,
+				Option.match({
 					onNone: () => Effect.fail(AiUnavailableError.make({message: 'Start the app with --gateway'})),
-					onSome: url =>
-						Effect.succeed(
-							`${url}/ai/${provider}${Boolean.match(provider === 'openrouter', {onFalse: () => '', onTrue: () => '/v1'})}`
-						)
-				})
-			})
+					onSome: url => Effect.succeed(`${url}/ai`)
+				}),
+				Effect.withSpan('AiGateway.apiUrl')
+			)
 			const authorize = Effect.fn('AiGateway.authorize')(function* (userId: UserId) {
 				yield* Effect.annotateCurrentSpan('userId', userId)
 				if (local) return Function.identity<HttpClient.HttpClient>

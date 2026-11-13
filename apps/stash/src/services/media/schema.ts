@@ -55,9 +55,26 @@ export const CreatorCaptions = Schema.Struct({
 })
 
 export type Transcript = typeof Transcript.Type
-export const Transcript = Schema.Struct({
-	segments: Schema.OptionFromOptionalKey(
-		Schema.Array(Schema.Struct({start: DurationFromSeconds, text: Schema.String}))
-	),
-	text: Schema.String
+export const Transcript = Schema.Union([
+	Schema.Struct({kind: Schema.Literal('silence')}),
+	Schema.Struct({
+		kind: Schema.Literal('speech'),
+		segments: Schema.Array(Schema.Struct({start: DurationFromSeconds, text: Schema.String}))
+	})
+])
+
+export type TranscriptionResponse = typeof TranscriptionResponse.Type
+export const TranscriptionResponse = Schema.Struct({
+	candidates: Schema.OptionFromOptionalKey(
+		Schema.Array(
+			Schema.Struct({
+				content: Schema.OptionFromOptionalKey(
+					Schema.Struct({
+						parts: Schema.Array(Schema.Struct({text: Schema.String, thought: Schema.optional(Schema.Boolean)}))
+					})
+				),
+				finishReason: Schema.OptionFromOptionalKey(Schema.String)
+			})
+		)
+	)
 })

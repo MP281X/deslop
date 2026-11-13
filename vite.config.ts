@@ -78,7 +78,6 @@ const repositoryRestrictedImports = {
 						'@deslop/create-package',
 						'@deslop/runtime',
 						'@effect/ai-anthropic',
-						'@effect/ai-openrouter',
 						'@effect/atom-react',
 						'@effect/platform-node',
 						'@effect/sql-sqlite-node',

@@ -11,9 +11,10 @@ const EMPTY = Schema.decodeSync(AiUsageEntry)({
 	cacheReadTokens: 0,
 	cacheWriteTokens: 0,
 	costSource: 'unknown',
+	estimated: false,
 	inputTokens: 0,
 	outputTokens: 0,
-	provider: 'opencode-zen'
+	spendSource: 'unattributed'
 })
 
 it('counts cached tokens once whichever response shape a provider returns', () => {

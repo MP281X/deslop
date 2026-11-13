@@ -38,7 +38,7 @@ export class Extractor extends Context.Service<
 			return Extractor.of({
 				read: Effect.fn('Extractor.read')(
 					function* (userId, source) {
-						const anthropic = yield* Effect.provideContext(
+						const model = yield* Effect.provideContext(
 							AiGateway.languageModel(userId, {maxTokens: 16_000}),
 							modelContext
 						)
@@ -52,7 +52,7 @@ export class Extractor extends Context.Service<
 							}
 							return `${today}\n\n${source.text}`
 						}
-						const response = yield* anthropic.generateObject({
+						const response = yield* model.generateObject({
 							prompt: [
 								{content: INSTRUCTIONS, role: 'system'},
 								{content: content(), role: 'user'}

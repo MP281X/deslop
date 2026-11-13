@@ -265,7 +265,7 @@ it.layer(NodeCrypto.layer)(test => {
 			)
 			const authorization = Effect.fnUntraced(function* () {
 				return yield* (yield* (yield* gateway.authorize(UserId.make('github:42')))(echo).get(
-					'https://gateway.mp281x.xyz/ai/anthropic/v1/messages'
+					'https://gateway.mp281x.xyz/ai/connection/v1/messages'
 				)).json
 			})
 			assert.deepEqual(yield* authorization(), {authorization: `Bearer ${bearer}`})
