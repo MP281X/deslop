@@ -110,7 +110,7 @@ const fixture = Effect.fnUntraced(function* (misjudged: string, answersExamples:
 			HttpRouter.serve(
 				HttpRouter.add(
 					'POST',
-					'/ai/openrouter/alpha/decisions',
+					'/ai/opencode-zen/systemone/v1/systemone',
 					Effect.orDie(
 						Effect.gen(function* () {
 							const asked = yield* HttpServerRequest.schemaBodyJson(Asked)
@@ -131,7 +131,7 @@ const fixture = Effect.fnUntraced(function* (misjudged: string, answersExamples:
 										onTrue: () => Array.drop(answers, 1)
 									})
 								),
-								usage: {cost: 0.0001}
+								usage: {input_tokens: 100, output_tokens: 10}
 							})
 						})
 					)

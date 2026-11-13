@@ -45,7 +45,7 @@ Add your own ignores and opt into `deslopRules` for Deslop's own choices.
 
 ## Judge
 
-`judge` runs by hand, once per pull request after `fix` and the tests pass, then once more after its findings are fixed; never in CI or inside `fix`, `check` or `test`. Jev answers through a Deslop Gateway that spends the signed-in person's own OpenRouter key.
+`judge` runs by hand, once per pull request after `fix` and the tests pass, then once more after its findings are fixed; never in CI or inside `fix`, `check` or `test`. Jev (`jev-1.13-free`, OpenCode Zen's System One call) answers through a Deslop Gateway that spends the signed-in person's own OpenCode Zen key; each answer is the probability that the unit breaks the question.
 
 ```bash
 coding-standards sign-in                                  # once per machine; approve its code in Auth or with answer_sign_in

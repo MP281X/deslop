@@ -61,7 +61,8 @@ import type {Urls} from '#lib/session.ts'
 import type {Unit} from '#lib/units.ts'
 import {importLines, parseError, units} from '#lib/units.ts'
 
-const MODEL = 'typesafe/jev-1.14'
+// Jev's free model on OpenCode Zen, through Gateway with the signed-in person's own Zen key.
+const MODEL = 'jev-1.13-free'
 const CONCURRENCY = 16
 // At or above this probability a question reports: above TypeSafe's suggested 0.7, since a false yes blocks the gate and every rerun of Jev moves a score near 0.7 across it.
 const THRESHOLD = 0.8
@@ -111,7 +112,7 @@ export const QUESTIONS = {
 type Decision = typeof Decision.Type
 const Decision = Schema.Struct({
 	answers: Schema.Record(Schema.String, Schema.Struct({noul: Schema.Finite})),
-	usage: Schema.optionalKey(Schema.Struct({cost: Schema.optionalKey(Schema.Finite)}))
+	usage: Schema.Struct({input_tokens: Schema.Finite})
 })
 type Refusal = typeof Refusal.Type
 const Refusal = Schema.Struct({error: Schema.Struct({message: Schema.String})})
@@ -213,7 +214,7 @@ const decide = Effect.fnUntraced(function* (
 ) {
 	const client = yield* HttpClient.HttpClient
 	const request = yield* HttpClientRequest.bodyJson(
-		HttpClientRequest.post(`${urls.gateway}/ai/openrouter/alpha/decisions`),
+		HttpClientRequest.post(`${urls.gateway}/ai/opencode-zen/systemone/v1/systemone`),
 		bodyOf(asked)
 	)
 	const used = yield* SynchronizedRef.get(token)
@@ -245,7 +246,7 @@ const decide = Effect.fnUntraced(function* (
 		yield* HttpClientResponse.filterStatusOk(response)
 	)
 	return {
-		cost: decision.usage?.cost ?? 0,
+		tokens: decision.usage.input_tokens,
 		verdicts: pipe(
 			decision.answers,
 			Record.map(answer => answer.noul),
@@ -589,14 +590,14 @@ export const judge = Effect.fnUntraced(function* (
 		return
 	}
 
-	const spent = yield* Ref.make({calls: 0, cost: 0})
+	const spent = yield* Ref.make({calls: 0, tokens: 0})
 	// Signs in only once some state has no remembered answer.
 	const token = yield* Effect.cached(Effect.flatMap(accessToken(urls, false), SynchronizedRef.make))
 	function decided(call: Asked) {
 		return pipe(
 			Effect.flatMap(token, current => decide(urls, current, call)),
 			Effect.tap(result =>
-				Ref.update(spent, current => ({calls: current.calls + 1, cost: current.cost + result.cost}))
+				Ref.update(spent, current => ({calls: current.calls + 1, tokens: current.tokens + result.tokens}))
 			),
 			Effect.map(result => result.verdicts),
 			// A state Gateway or Jev could not answer stays unjudged and is asked again on the next run.
@@ -643,7 +644,7 @@ export const judge = Effect.fnUntraced(function* (
 	if (Array.isArrayNonEmpty(verdict.findings) || Array.isArrayNonEmpty(verdict.stale)) yield* Console.log(TACTICS)
 	// The last line counts the three outcomes; findings and what could not be read fail the run.
 	yield* Effect.logInfo(
-		`judge: ${scale}; ${totals.calls} calls made, $${Number.round(totals.cost, 4)}, ${Number.round(((yield* Clock.currentTimeMillis) - started) / 1000, 1)}s — ${findings.length} findings, ${couldNotRead.length} could not read, ${verdict.suppressed.length} suppressed`
+		`judge: ${scale}; ${totals.calls} calls made, ${totals.tokens} input tokens read, ${Number.round(((yield* Clock.currentTimeMillis) - started) / 1000, 1)}s — ${findings.length} findings, ${couldNotRead.length} could not read, ${verdict.suppressed.length} suppressed`
 	)
 	if (Array.isArrayNonEmpty(findings) || Array.isArrayNonEmpty(couldNotRead)) {
 		return yield* ReportedJudgeError.make({})

@@ -14,7 +14,7 @@
 
 - **Verify.** `vp run fix`, then `vp run test`; `fix` covers CI's `vp run check` in `vite.config.ts`.
 - **Server contracts.** A contract change is not done until its built server starts with scratch data and serves the affected MCP tools or RPCs; build and static checks do not register tools.
-- **Judge.** Kept but not run until the user asks; no agent or CI calls it.
+- **Judge.** `vp run judge` after Verify passes; it spends the signed-in person's OpenCode Zen key, so never in CI. The agent configuration says who runs it and when.
 - **Generators.** `vp create app -- --name <name>` (`--kind mobile` for iOS) and `vp create package -- --name <name>`, then `vp install`; never copy one. A new app's first release, mobile before its first push: `.github/releasing.md`, **A new app**.
 - **Updates.** `vp update -r`; `vp outdated -r` then lists only pins. New checks since the last review: `@effect/tsgo`'s README table and changelog, each lint plugin's `rules` against its previous version, Fallow's release notes. Count a candidate rule's hits with `vp exec effect-tsgo --tsrs-lint vp lint -D <rule>`; ask before one that reverses a house form or rewrites hundreds of sites, with a bad example, a good example and its count.
 - **Releases.** `.github/releasing.md`: a new app or tool, following a release, Simulator builds, native tools.

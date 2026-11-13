@@ -25,7 +25,7 @@ const urls = {
 	),
 	gateway: pipe(
 		Flag.String('gateway'),
-		Flag.withDescription('Deslop Gateway origin, which spends your own OpenRouter key'),
+		Flag.withDescription('Deslop Gateway origin, which spends your own OpenCode Zen key'),
 		Flag.withDefault('https://gateway.mp281x.xyz')
 	)
 }
