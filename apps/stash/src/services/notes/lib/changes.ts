@@ -27,20 +27,16 @@ export function changeNote(note: Note, update: NoteChange) {
 		Match.value(update),
 		Match.when({type: 'remove'}, () => Option.none<Note>()),
 		Match.when({type: 'share'}, change => {
-			if (note.id === change.capture.id) return Option.some(note)
+			if (note.id === change.capture.id) return Option.none<Note>()
 			const known = HashSet.fromIterable(pipe(note.text, String.toLowerCase, String.split(/\s+/u)))
-			const added = pipe(
+
+			return pipe(
 				commentOf(change.capture.text),
 				String.split(' '),
-				Array.filter(word => String.isNonEmpty(word) && !HashSet.has(known, String.toLowerCase(word)))
+				Array.filter(word => String.isNonEmpty(word) && !HashSet.has(known, String.toLowerCase(word))),
+				Option.liftPredicate(Array.isReadonlyArrayNonEmpty),
+				Option.map(words => ({...fields, text: `${note.text}\n${Array.join(words, ' ')}`}))
 			)
-			return Option.some({
-				...fields,
-				text: Boolean.match(Array.isReadonlyArrayEmpty(added), {
-					onFalse: () => `${note.text}\n${Array.join(added, ' ')}`,
-					onTrue: () => note.text
-				})
-			})
 		}),
 		Match.when({type: 'image'}, change => Option.some({...fields, image: Option.some(change.image)})),
 		Match.when({type: 'extract'}, change =>

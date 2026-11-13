@@ -526,17 +526,19 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 								pipe(
 									Note.insert.makeEffect(newNote(userId, {...input, text}, url, Option.none())),
 									Effect.flatMap(notes.insert),
+									Reactivity.mutation(['notes']),
 									Effect.map(note => ({fresh: true, note}))
 								),
 							// A share of a saved note adds its new words, unless it is the same capture sent again.
 							onSome: found =>
 								Option.match(changeNote(found, {capture: {...input, text}, type: 'share'}), {
 									onNone: () => Effect.succeed({fresh: false, note: found}),
-									onSome: merged => Effect.map(notes.update(editable(merged)), note => ({fresh: false, note}))
+									onSome: Effect.fnUntraced(function* (merged) {
+										return {fresh: false, note: yield* Reactivity.mutation(notes.update(editable(merged)), ['notes'])}
+									})
 								})
 						})
 					),
-					Reactivity.mutation(['notes']),
 					sql.withTransaction,
 					asNotesError
 				)
