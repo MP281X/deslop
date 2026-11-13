@@ -11,6 +11,7 @@ import {
 	Layer,
 	MutableList,
 	Option,
+	RcMap,
 	Ref,
 	Record,
 	Result,
@@ -24,21 +25,23 @@ import {
 import {McpSchema, McpServer} from 'effect/ai'
 import {Digest} from 'effect/crypto'
 import {Base64Url} from 'effect/encoding'
-import {HttpRouter, HttpServerRequest} from 'effect/http'
-import type {Headers} from 'effect/http'
+import {Headers, HttpRouter, HttpServerRequest, HttpServerResponse} from 'effect/http'
 
 import {Auth} from '@deslop/runtime/server/auth'
 import {AuthError, bearerOf, isJwt} from '@deslop/runtime/shared/auth'
 import {MCP_PATH} from '@deslop/runtime/shared/schema'
 
 import {connectionFailure, serverIcons} from '#services/connections/lib/utils.ts'
-import type {ConnectionGeneration, ConnectionState} from '#services/connections/schema.ts'
+import type {ConnectionGeneration, ConnectionState, ServerId} from '#services/connections/schema.ts'
 import {Connections, gatewayUrl} from '#services/connections/service.ts'
 import {compact, prunedTools} from '#services/gateway/lib/utils.ts'
 import {RemoteTool, RemoteTools, ToolArguments, ToolRequest} from '#services/gateway/schema.ts'
 import {Upstreams, upstreamStatus} from '#services/upstreams/service.ts'
 
 type Server = Pick<ConnectionState, 'id' | 'generation' | 'name' | 'mode'>
+const discoveryHeaders = Context.Reference<Headers.Headers>('gateway/DiscoveryHeaders', {
+	defaultValue: () => Headers.empty
+})
 
 export class Gateway extends Context.Service<
 	Gateway,
@@ -47,6 +50,12 @@ export class Gateway extends Context.Service<
 		readonly connected: (headers: Headers.Headers) => Effect.Effect<void>
 		// A tools/list: runs or joins the first discovery, so a fresh process lists its stored connections' tools.
 		readonly first: (headers: Headers.Headers) => Effect.Effect<void>
+		// Resolve a known name without requiring the caller to list tools first.
+		readonly resolve: (
+			name: string,
+			headers: Headers.Headers,
+			authorize: Effect.Effect<boolean>
+		) => Effect.Effect<void, AuthError>
 		// A tools/list answered from the registry: a stale registry is refreshed in the background, and a changed tool set notifies clients.
 		readonly refresh: (headers: Headers.Headers) => Effect.Effect<void>
 		// A removed connection's tools leave the registry, and clients hear that their list changed.
@@ -263,6 +272,23 @@ export class Gateway extends Context.Service<
 				})
 			})
 			const lastRead = yield* Ref.make(Option.none<DateTime.Utc>())
+			// Share only in-flight discovery; descriptors remain owned by the MCP registry.
+			const reading = yield* RcMap.make({
+				lookup: Effect.fnUntraced(function* (id: ServerId) {
+					const server = yield* connections.get(id)
+					return yield* pipe(
+						discover(server, yield* discoveryHeaders),
+						Effect.tapCause(cause => Effect.logWarning(`${server.name} discovery failed`, cause)),
+						Effect.mapError(connectionFailure(server.name)),
+						Effect.tapError(error =>
+							connections.report(server.id, server.generation, {_tag: 'Failed', error: error.message})
+						)
+					)
+				})
+			})
+			function readServer(id: ServerId, headers: Headers.Headers) {
+				return pipe(RcMap.get(reading, id), Effect.provideService(discoveryHeaders, headers), Effect.scoped)
+			}
 			const discovery = yield* FiberHandle.make<void, never>()
 			const read = Effect.fnUntraced(function* (headers: Headers.Headers) {
 				yield* Effect.ensuring(
@@ -273,16 +299,7 @@ export class Gateway extends Context.Service<
 							Effect.forEach(
 								definitions,
 								server =>
-									pipe(
-										discover(server, headers),
-										Effect.tapCause(cause => Effect.logWarning(`${server.name} discovery failed`, cause)),
-										Effect.catch(cause =>
-											connections.report(server.id, server.generation, {
-												_tag: 'Failed',
-												error: connectionFailure(server.name)(cause).message
-											})
-										)
-									),
+									Effect.ignore(readServer(server.id, headers), {log: 'Warn', message: 'Cannot discover MCP tools'}),
 								{concurrency: 6, discard: true}
 							)
 						),
@@ -329,13 +346,38 @@ export class Gateway extends Context.Service<
 				}),
 				first,
 				refresh,
-				removed: Effect.withSpan(prune, 'Gateway.removed')
+				removed: Effect.withSpan(prune, 'Gateway.removed'),
+				resolve: Effect.fn('Gateway.resolve')(function* (name, headers, authorize) {
+					const found = Array.findFirst(yield* connections.definitions, entry =>
+						String.startsWith(`${entry.id}__`)(name)
+					)
+					if (Option.isNone(found)) return
+					const current = Option.getOrThrow(found)
+					if (
+						current.status === 'Connected' &&
+						HashSet.has(yield* Ref.get(visible), name) &&
+						pipe(
+							yield* Ref.get(installed),
+							Record.get(name),
+							Option.exists(entry => entry.generation === current.generation)
+						)
+					) {
+						return
+					}
+					// Registered calls use MCP's own auth check; discovery needs a verified bearer before starting work.
+					if (!(yield* authorize)) return
+					// A saved descriptor is not evidence that the server is still authorized.
+					if (current.status !== 'Connected') {
+						return yield* AuthError.make({message: `${current.name} is not connected; connect it on ${url}`})
+					}
+					yield* readServer(current.id, headers)
+				})
 			})
 		})
 	)
 }
 
-// A tools/list verifies the bearer once, runs or joins the first discovery, then answers from the registry; a stale registry refreshes behind the answer.
+// Discovery runs before MCP's registry lookup, after bearer verification; calls await only their server.
 export const GatewayDiscovery = HttpRouter.middleware()(
 	Effect.gen(function* () {
 		const gateway = yield* Gateway
@@ -348,6 +390,19 @@ export const GatewayDiscovery = HttpRouter.middleware()(
 				}
 				const body = yield* Effect.result(request.json)
 				if (Result.isFailure(body) || !Schema.is(ToolRequest)(body.success)) return yield* app
+				if (body.success.method === 'tools/call') {
+					const resolved = yield* Effect.result(
+						gateway.resolve(body.success.params.name, request.headers, Effect.isSuccess(auth.user(request.headers)))
+					)
+					if (Result.isFailure(resolved)) {
+						return HttpServerResponse.jsonUnsafe({
+							id: body.success.id,
+							jsonrpc: '2.0',
+							result: {content: [{text: resolved.failure.message, type: 'text'}], isError: true}
+						})
+					}
+					return yield* app
+				}
 				const verified = yield* Effect.result(auth.user(request.headers))
 				if (Result.isSuccess(verified)) yield* gateway.first(request.headers)
 				const response = yield* app

@@ -167,6 +167,10 @@ it.layer(Layer.mergeAll(NodeCrypto.layer, NodeServices.layer))('Gateway real MCP
 					)
 			)
 			yield* Effect.promise(() => client.connect(transport))
+			assert.deepStrictEqual(
+				(yield* Effect.promise(() => client.callTool({arguments: {}, name: `${added.id}__packet`}))).structuredContent,
+				PACKET.structuredContent
+			)
 
 			const sdkTools = pipe(
 				(yield* Effect.promise(() => client.listTools())).tools,
