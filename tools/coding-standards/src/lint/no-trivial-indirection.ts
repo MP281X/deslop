@@ -435,29 +435,43 @@ function componentIndirection(context: Context, node: ESTree.Function | ESTree.A
 		!matches(/components-mobile[/\\]src[/\\]ui[/\\]/u)(context.filename)
 	) {
 		const parameter = node.params[0]
-		function forwardedProp(value: ESTree.Node) {
+		const name = Option.getOrUndefined(unexportedBindingName(node))
+		if (name === undefined || !Option.exists(readsOf({context, name, node}), reads => reads.length === 1)) return
+		function forwardedProp(value: ESTree.Node, property: string) {
 			return (
-				value.type === 'Literal' ||
-				(value.type === 'MemberExpression' &&
-					value.object.type === 'Identifier' &&
-					parameter?.type === 'Identifier' &&
-					value.object.name === parameter.name)
+				value.type === 'MemberExpression' &&
+				!value.computed &&
+				value.property.type === 'Identifier' &&
+				value.property.name === property &&
+				value.object.type === 'Identifier' &&
+				parameter?.type === 'Identifier' &&
+				value.object.name === parameter.name
 			)
 		}
+		if (parameter?.type !== 'Identifier' || parameter.typeAnnotation?.typeAnnotation.type !== 'TSTypeLiteral') return
+		const props = parameter.typeAnnotation.typeAnnotation.members
 		if (
+			props.length === returned.openingElement.attributes.length &&
 			Array.every(
 				returned.openingElement.attributes,
 				attribute =>
 					attribute.type === 'JSXAttribute' &&
-					(attribute.value === null ||
-						attribute.value.type === 'Literal' ||
-						(attribute.value.type === 'JSXExpressionContainer' && forwardedProp(attribute.value.expression)))
+					attribute.name.type === 'JSXIdentifier' &&
+					Array.some(
+						props,
+						prop =>
+							prop.type === 'TSPropertySignature' &&
+							prop.key.type === 'Identifier' &&
+							prop.key.name === attribute.name.name
+					) &&
+					attribute.value?.type === 'JSXExpressionContainer' &&
+					forwardedProp(attribute.value.expression, attribute.name.name)
 			) &&
 			Array.every(
 				returned.children,
 				child =>
 					(child.type === 'JSXText' && String.trim(child.value) === '') ||
-					(child.type === 'JSXExpressionContainer' && forwardedProp(child.expression))
+					(child.type === 'JSXExpressionContainer' && forwardedProp(child.expression, 'children'))
 			)
 		) {
 			context.report({message: 'Render the underlying component directly; this component only forwards props.', node})

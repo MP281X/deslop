@@ -125,9 +125,12 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 					'src/services/github/service.ts':
 						"import {Context} from 'effect'\nexport class GitHub extends Context.Service<GitHub, {}>()('GitHub') {}",
 					'src/services/tracking/service.ts':
-						"import {Context} from 'effect'\nexport class Tracker extends Context.Service<Tracker, {}>()('Tracker') {}"
+						"import {Context} from 'effect'\nexport class Tracker extends Context.Service<Tracker, {}>()('Tracker') {}",
+					'src/lib/utils.ts': 'export const value = 1',
+					'src/services/notes/lib/utils.ts': 'export const value = 1'
 				})
 				assert.deepStrictEqual(customCodes(result.stdout), [
+					'@deslop/coding-standards(service-schema-file)',
 					'@deslop/coding-standards(service-schema-file)',
 					'@deslop/coding-standards(service-schema-file)'
 				])
@@ -149,8 +152,11 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 							'export const task = read("a")',
 							'const traced = Effect.fn("Task.read")(function* (id: string) { return yield* Effect.succeed(id) })',
 							'export const namedTask = traced("b")',
-							'export function Forward(props: {title: string}) { return <Widget title={props.title} size="sm" /> }',
-							'export const ForwardArrow = (props: {title: string}) => <Widget title={props.title} size="sm" />',
+							'export function AppBarTab(props: {title: string}) { return <Widget title={props.title} size="sm" /> }',
+							'function MenuFailure(props: {title: string}) { return <Widget title={props.title} size="sm" /> }',
+							'export const menus = <><MenuFailure title="a" /><MenuFailure title="b" /></>',
+							'function Forward(props: {title: string; size: string}) { return <Widget title={props.title} size={props.size} /> }',
+							'export const forwarded = <Forward title="a" size="sm" />',
 							'export function Label(props: {title: string}) { return <span>{props.title}</span> }',
 							'export function Computed(props: {title: string}) { return <Widget title={`${props.title}!`} size="sm" /> }'
 						],
@@ -159,7 +165,7 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 				})
 				assert.lengthOf(
 					Array.filter(customCodes(result.stdout), code => code === '@deslop/coding-standards(no-trivial-indirection)'),
-					6
+					5
 				)
 			})
 		)
@@ -170,7 +176,7 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 					{
 						'calls.ts': Array.join(
 							[
-								"import {Array, Effect, pipe, String} from 'effect'",
+								"import {Array, Context, Effect, Option, pipe, String} from 'effect'",
 								'declare const values: number[]',
 								'declare const read: () => number',
 								'declare const readValues: () => number[]',
@@ -182,6 +188,10 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 								'export const curriedOnly = String.includes("x")("text")',
 								'export const unchanged = pipe(values, Array.drop(1), Array.take(2))',
 								'export const unsafe = Array.take(read())(readValues())',
+								'export class Service extends Context.Service<Service, {}>()("Service") {}',
+								'export const forwarding = pipe(Option.some(1), value => Option.filter(value, value => value > 0), value => Option.map(value, value => value + 1))',
+								'export const singleForward = pipe(values, value => Array.take(value, 2))',
+								'export const appliedArrow = (value => Array.take(value, 2))(values)',
 								'export function shadow(Array: {take: (value: number) => number}) { return Array.take(count) }'
 							],
 							'\n'
@@ -190,7 +200,11 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 					['--fix']
 				)
 				assert.include(fixed.sources[0] ?? '', 'Array.take(values, 2)')
-				assert.match(fixed.sources[0] ?? '', /Array\.map\(subject\d+, value => `\$\{value\}`\)/u)
+				assert.include(fixed.sources[0] ?? '', 'Array.map(value => `${value}`)')
+				assert.include(fixed.sources[0] ?? '', 'Array.take(Array.drop(values, read()), read())')
+				assert.include(fixed.sources[0] ?? '', "Context.Service<Service, {}>()('Service')")
+				assert.include(fixed.sources[0] ?? '', 'Option.filter(value => value > 0)')
+				assert.notMatch(fixed.sources[0] ?? '', /\b(?:pipelineSubject|subject)\d+\b/u)
 				assert.include(fixed.sources[0] ?? '', "String.includes('x')('text')")
 				assert.include(fixed.sources[0] ?? '', 'Array.take(read())(readValues())')
 				assert.lengthOf(

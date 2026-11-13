@@ -258,7 +258,6 @@ export const lint: OxlintConfig = {
 				selector:
 					'ClassDeclaration[superClass.callee.callee.object.name="Schema"][superClass.callee.callee.property.name="TaggedError"]:not([id.name=/Error$/])'
 			},
-			{message: 'Name a derived value <noun>Of.', selector: 'FunctionDeclaration[id.name=/For$|^(get|to|from)[A-Z]/]'},
 			{
 				message: 'Name a span Service.method.',
 				selector:
@@ -267,12 +266,7 @@ export const lint: OxlintConfig = {
 			{
 				message: 'Name an atom with the Atom suffix.',
 				selector:
-					'VariableDeclarator:not([id.name=/(Atom|Runtime|Atoms)$/]) > CallExpression.init[callee.object.name="Atom"][callee.property.name=/^(make|fn|fnSync|runtime|writable)$/]'
-			},
-			{
-				message: 'Write a literal duration as a duration string.',
-				selector:
-					'CallExpression[callee.object.name="Duration"][callee.property.name=/^(nanos|micros|millis|seconds|minutes|hours|days|weeks)$/] > Literal.arguments'
+					'VariableDeclarator:not([id.name=/(Atom|Runtime|Atoms)$/]) > CallExpression.init:matches([callee.object.name="Atom"][callee.property.name=/^(make|fn|fnSync|runtime|writable|family|keepAlive|map|mapResult|transform|withReactivity|withLabel|withFallback|withRefresh|withServerValue|serializable|pull|subscriptionRef|searchParam|kvStore|optimistic|optimisticFn)$/], [callee.property.name=/^(atom|fn|pull)$/][callee.object.property.name="runtime"], [callee.property.name=/^(atom|fn|pull)$/][callee.object.name=/Runtime$/])'
 			},
 			{
 				message: 'Name a schema in PascalCase.',
@@ -420,6 +414,7 @@ export const lint: OxlintConfig = {
 		'effecttsgo/unnecessary-effect-gen': 'error',
 		'effecttsgo/unnecessary-fail-yieldable-error': 'error',
 		'effecttsgo/unnecessary-pipe': 'error',
+		'effecttsgo/unnecessary-pipe-chain': 'error',
 		'effecttsgo/unnecessary-typeof-type': 'error',
 
 		'eslint/accessor-pairs': ['error', {enforceForClassMembers: true, enforceForTSTypes: true}],
@@ -861,7 +856,7 @@ export const lint: OxlintConfig = {
 		'typescript/no-explicit-any': 'error',
 		'typescript/no-extraneous-class': 'error',
 		'typescript/no-import-type-side-effects': 'error',
-		'typescript/no-inferrable-types': 'error',
+		'typescript/no-inferrable-types': ['error', {ignoreParameters: true}],
 		'typescript/no-misused-new': 'error',
 		'typescript/no-namespace': ['error', {allowDeclarations: false, allowDefinitionFiles: false}],
 		'typescript/no-non-null-assertion': 'error',

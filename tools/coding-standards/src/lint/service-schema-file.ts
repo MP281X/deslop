@@ -81,6 +81,15 @@ export const serviceSchemaFile = defineRule({
 			}
 		},
 		Program: program => {
+			if (
+				matches(/[/\\]utils\.[cm]?[jt]sx?$/u)(context.filename) &&
+				!matches(/[/\\]services[/\\][^/\\]+[/\\]lib[/\\]utils\.ts$/u)(context.filename)
+			) {
+				context.report({
+					message: "Name this file for its topic; utils.ts is only a service's public lib/utils.ts.",
+					node: program
+				})
+			}
 			if (!SERVICE_PATH.test(context.filename) || SCHEMA_FILE.test(context.filename) || isTestFile(context)) return
 			for (const node of Array.flatMap(program.body, statement => definitions(context, exported(statement)))) {
 				report(context, node)

@@ -173,7 +173,7 @@ function dual(context: LintContext, node: ESTree.Node) {
 	)
 }
 
-// Moving immutable reads and function creation across a step preserves evaluation; everything else stays in a callback.
+// Only immutable reads and inert construction may move across a step; other arguments keep their evaluation order.
 function stableConstructor(context: LintContext, node: ESTree.CallExpression) {
 	return (
 		node.callee.type === 'MemberExpression' &&
@@ -212,7 +212,7 @@ function stable(context: LintContext, node: ESTree.Node): boolean {
 	if (node.type === 'CallExpression') {
 		return (
 			(stableConstructor(context, node) ||
-				Option.exists(dual(context, node.callee), fn => fn.length > node.arguments.length)) &&
+				Option.exists(dual(context, node.callee), fn => Number.max(fn.length, 2) > node.arguments.length)) &&
 			Array.every(node.arguments, arg => stable(context, arg))
 		)
 	}
@@ -323,24 +323,57 @@ function schemaType(context: LintContext, node: ESTree.Node): Option.Option<stri
 	return Option.none()
 }
 
-function subjectName(context: LintContext, suffix: number): string {
-	if (String.includes(`subject${suffix}`)(context.sourceCode.text)) return subjectName(context, suffix + 1)
-	return `subject${suffix}`
+function chain(context: LintContext, node: ESTree.Node): Option.Option<{subject: ESTree.Node; steps: string[]}> {
+	if (node.type !== 'CallExpression' || !dataFirst(context, node)) return Option.some({steps: [], subject: node})
+	const [subject, ...args] = node.arguments
+	if (subject === undefined || !Array.every(args, arg => stable(context, arg))) return Option.none()
+	return Option.map(chain(context, subject), inner => ({
+		steps: [
+			...inner.steps,
+			`${text(context, node.callee)}${typeArguments(context, node)}(${argumentsText(context, args)})`
+		],
+		subject: inner.subject
+	}))
 }
 
-function chain(context: LintContext, node: ESTree.Node): {subject: ESTree.Node; steps: string[]} {
-	if (node.type !== 'CallExpression' || !dataFirst(context, node)) return {steps: [], subject: node}
-	const [subject, ...args] = node.arguments
-	if (subject === undefined) return {steps: [], subject: node}
-	const inner = chain(context, subject)
-	const callee = text(context, node.callee)
-	const types = typeArguments(context, node)
-	const argumentsSource = argumentsText(context, args)
-	function nextStep() {
-		const name = subjectName(context, node.range[0])
-		return `${name} => ${callee}${types}(${name}, ${argumentsSource})`
-	}
-	return {steps: [...inner.steps, nextStep()], subject: inner.subject}
+// Only a sole read in the first argument is forwarding; a closure that also uses its subject is real work.
+function forwarding(context: LintContext, node: ESTree.Node) {
+	if (node.type !== 'ArrowFunctionExpression' || node.async || node.params.length !== 1) return Option.none()
+	const parameter = node.params[0]
+	const body = node.body
+	if (parameter?.type !== 'Identifier' || body.type !== 'CallExpression' || !dataFirst(context, body))
+		return Option.none()
+	const first = body.arguments[0]
+	if (first?.type !== 'Identifier' || first.name !== parameter.name) return Option.none()
+	return pipe(
+		variableFromScope({name: parameter.name, scope: context.sourceCode.getScope(body)}),
+		Option.filter(variable => Array.countBy(variable.references, reference => reference.isRead()) === 1),
+		Option.map(() => body)
+	)
+}
+
+function forwardCall(context: LintContext, call: ESTree.CallExpression, subject: string) {
+	return `${text(context, call.callee)}${typeArguments(context, call)}(${subject}, ${argumentsText(context, Array.drop(call.arguments, 1))})`
+}
+
+function pipelineText(subject: string, steps: string[]) {
+	if (Array.isArrayEmpty(steps)) return subject
+	return `pipe(${subject}, ${Array.join(steps, ', ')})`
+}
+
+function normalizeForwarding(context: LintContext, node: ESTree.CallExpression) {
+	if (node.arguments.length !== 1 || node.arguments[0]?.type === 'SpreadElement') return
+	const subject = node.arguments[0]
+	if (subject === undefined) return
+	Option.match(forwarding(context, node.callee), {
+		onNone: () => {},
+		onSome: call =>
+			context.report({
+				fix: fixer => fixer.replaceText(node, forwardCall(context, call, text(context, subject))),
+				message: 'Call the operation directly instead of immediately applying a forwarding arrow.',
+				node
+			})
+	})
 }
 
 function normalizeCallee(context: LintContext, node: ESTree.CallExpression) {
@@ -414,19 +447,57 @@ function normalizePipe(context: LintContext, node: ESTree.CallExpression) {
 		first.callee.type === 'Identifier' &&
 		isImportBinding({context, importedName: 'pipe', node: first.callee, source: 'effect'})
 	) {
+		const steps = Array.drop(node.arguments, 1)
+		// Flattening otherwise evaluates a step's arguments before the inner pipe has run.
+		if (!Array.every(steps, step => stable(context, step))) return
+		context.report({
+			fix: fixer => fixer.replaceText(node, `pipe(${argumentsText(context, [...first.arguments, ...steps])})`),
+			message: 'Keep consecutive steps in one standalone pipe.',
+			node
+		})
+		return
+	}
+	const steps = Array.drop(node.arguments, 1)
+	const forwarded = Array.map(steps, step => forwarding(context, step))
+	if (Array.some(forwarded, Option.isSome)) {
 		context.report({
 			fix: fixer => {
-				const steps = Array.drop(node.arguments, 1)
-				if (Array.every(steps, step => stable(context, step))) {
-					return fixer.replaceText(node, `pipe(${argumentsText(context, [...first.arguments, ...steps])})`)
-				}
-				const name = subjectName(context, node.range[0])
-				return fixer.replaceText(
-					node,
-					`pipe(${argumentsText(context, first.arguments)}, ${name} => pipe(${name}, ${argumentsText(context, steps)}))`
+				if (first === undefined || first.type === 'SpreadElement') return []
+				const safe = Array.every(forwarded, call =>
+					Option.match(call, {
+						onNone: () => true,
+						onSome: operation => Array.every(Array.drop(operation.arguments, 1), arg => stable(context, arg))
+					})
 				)
+				if (safe && node.arguments.length > 2) {
+					return Array.flatMap(steps, (step, index) =>
+						Option.toArray(
+							Option.map(forwarded[index] ?? Option.none(), call =>
+								fixer.replaceText(
+									step,
+									`${text(context, call.callee)}${typeArguments(context, call)}(${argumentsText(context, Array.drop(call.arguments, 1))})`
+								)
+							)
+						)
+					)
+				}
+				// Restore direct calls at unstable steps. Earlier closures remain ordinary pipeline steps, never applied arrows.
+				if (!Array.every(steps, step => Option.isSome(forwarding(context, step)) || stable(context, step))) return []
+				const direct = Array.reduce(
+					steps,
+					{subject: text(context, first), steps: Array.empty<string>()},
+					(current, step) =>
+						Option.match(forwarding(context, step), {
+							onNone: () => ({...current, steps: [...current.steps, text(context, step)]}),
+							onSome: call => ({
+								subject: forwardCall(context, call, pipelineText(current.subject, current.steps)),
+								steps: []
+							})
+						})
+				)
+				return fixer.replaceText(node, pipelineText(direct.subject, direct.steps))
 			},
-			message: 'Keep consecutive steps in one standalone pipe.',
+			message: 'Use the curried operation as a pipeline step, not a forwarding arrow.',
 			node
 		})
 		return
@@ -441,6 +512,8 @@ function normalizePipe(context: LintContext, node: ESTree.CallExpression) {
 		) {
 			return
 		}
+		// A real closure has no equivalent plain call; never manufacture an immediately-applied arrow.
+		if (step.type === 'ArrowFunctionExpression') return
 		context.report({
 			fix: fixer => {
 				if (step.type === 'CallExpression' && schemaOperation(context, step.callee, ['check', 'annotate'])) {
@@ -463,12 +536,7 @@ function normalizePipe(context: LintContext, node: ESTree.CallExpression) {
 						`${text(context, step.callee)}${typeArguments(context, step)}(${argumentsText(context, directArguments(step.callee, [subject], step.arguments))})`
 					)
 				}
-				if (
-					step.type !== 'Identifier' &&
-					step.type !== 'CallExpression' &&
-					step.type !== 'ArrowFunctionExpression' &&
-					!stable(context, step)
-				) {
+				if (step.type !== 'Identifier' && step.type !== 'CallExpression' && !stable(context, step)) {
 					return []
 				}
 				if (
@@ -477,9 +545,6 @@ function normalizePipe(context: LintContext, node: ESTree.CallExpression) {
 					!Array.every(step.arguments, arg => stable(context, arg))
 				) {
 					return []
-				}
-				if (step.type === 'ArrowFunctionExpression') {
-					return fixer.replaceText(node, `(${text(context, step)})(${text(context, subject)})`)
 				}
 				return fixer.replaceText(node, `${text(context, step)}(${text(context, subject)})`)
 			},
@@ -515,18 +580,18 @@ function normalizeDual(context: LintContext, node: ESTree.CallExpression) {
 		})
 	}
 	if (!dataFirst(context, node) || !dataFirst(context, node.arguments[0] ?? node)) return
+	const pipeline = Option.getOrUndefined(chain(context, node))
+	// An unstable argument cannot become a curried step without changing when it runs. Keep its direct calls.
+	if (pipeline === undefined) return
 	context.report({
 		fix: fixer =>
 			pipe(
 				effectImport({context, fixer, name: 'pipe', node}),
 				subject9503 =>
-					Option.map(subject9503, imports => {
-						const pipeline = chain(context, node)
-						return [
-							...imports,
-							fixer.replaceText(node, `pipe(${text(context, pipeline.subject)}, ${Array.join(pipeline.steps, ', ')})`)
-						]
-					}),
+					Option.map(subject9503, imports => [
+						...imports,
+						fixer.replaceText(node, `pipe(${text(context, pipeline.subject)}, ${Array.join(pipeline.steps, ', ')})`)
+					]),
 				subject9746 => Option.getOrElse(subject9746, () => [])
 			),
 		message: 'Two or more steps on a subject are a standalone pipe.',
@@ -537,6 +602,7 @@ function normalizeDual(context: LintContext, node: ESTree.CallExpression) {
 export const effectCallForm = defineRule({
 	create: context => ({
 		CallExpression: node => {
+			normalizeForwarding(context, node)
 			normalizeCallee(context, node)
 			normalizeSchema(context, node)
 			normalizePipe(context, node)
