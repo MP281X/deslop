@@ -8,6 +8,7 @@
 - **Compatibility.** Never considered: the apps are personal software that their one user also develops. A change may break any URL, route, RPC or tool name, environment key, wire format, stored shape or installed build; keep no alias, redirect, fallback, version check, conversion or transition window for the old one, and delete any that exists.
 - **Data.** A table changes shape through a numbered SQL migration, the only migration allowed and the only code that knows an earlier shape. Everything stored outside SQL is disposable, production included, except Stash's notes until they are loaded into their tables by hand.
 - **Releases.** Linear and squash-merged; a newer merge cancels an older release run.
+- **Release job conditions.** GitHub propagates skipped jobs through dependency chains; jobs after optional verification need an explicit status function and the successful gate's result.
 
 ## Commands
 
@@ -37,6 +38,7 @@
 - **Tests.** A fix alone earns no test.
 - **Dependencies.** Keep dependencies in their owning packages on `latest`; pin only for peers, the Expo SDK or Vite+; update coupled packages together. Tools use their own flags and defaults, no wrapper scripts. Libraries only through published releases: no patches, forks, overrides or shims, except shadcn registry components. Correct wrong metadata with `packageExtensions` and a comment naming the upstream defect.
 - **Native ownership.** Expo autolinks transitive native dependencies and applies their automatic config plugins even when an app never imports them. App-only native modules and their helpers belong in the apps that use them, not shared packages.
+- **Native fingerprints.** The shared Expo config helper's source is excluded; resolved configuration does not include inline plugin or mod bodies. Their implementations need their own fingerprinted module.
 
 ## Design
 

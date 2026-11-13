@@ -53,7 +53,7 @@ jobs:
   app-store:
     name: App Store
     needs: update
-    if: needs.update.outputs.native == 'true'
+    if: ${{ !cancelled() && needs.update.result == 'success' && needs.update.outputs.native == 'true' }}
     concurrency: ios-${{ inputs.app }}
     runs-on: xcode-27
     timeout-minutes: 60

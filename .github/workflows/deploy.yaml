@@ -58,7 +58,7 @@ jobs:
   verify:
     name: Verify
     needs: tree
-    if: needs.tree.outputs.verified != 'true'
+    if: ${{ !cancelled() && needs.tree.outputs.verified != 'true' }}
     uses: ./.github/workflows/verify.yaml
 
   verified:
@@ -82,6 +82,7 @@ jobs:
   publish:
     name: Packages
     needs: verified
+    if: ${{ !cancelled() && needs.verified.result == 'success' }}
     runs-on: ubuntu-26.04
     permissions:
       contents: read
@@ -138,7 +139,7 @@ jobs:
   app:
     name: App
     needs: verified
-    if: needs.verified.outputs.mobile != '[]'
+    if: ${{ !cancelled() && needs.verified.result == 'success' && needs.verified.outputs.mobile != '[]' }}
     permissions:
       contents: read
       actions: read
