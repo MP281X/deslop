@@ -1,14 +1,15 @@
-import {Array, Boolean, DateTime, Option, Record, String, pipe} from 'effect'
+import {Array, Boolean, Option, Record, String, pipe} from 'effect'
 
 import {HardDrivesIcon, LockIcon} from '@phosphor-icons/react'
 
-import {appMarks} from '@deslop/components-web/apps'
 import {cn} from '@deslop/components-web/classes'
+import {AppMark, ThemedMark} from '@deslop/components-web/marks'
 import {Skeleton} from '@deslop/components-web/ui/skeleton'
 import {GithubDark} from '@deslop/components-web/ui/svgs/githubDark'
 import {GithubLight} from '@deslop/components-web/ui/svgs/githubLight'
+import {clockOf, durationOf} from '@deslop/runtime/shared/format'
 
-import {attributesOf, durationOf, errorOf} from '#lib/telemetry.ts'
+import {attributesOf, errorOf} from '#lib/telemetry.ts'
 import {appName} from '#services/telemetry/lib/utils.ts'
 import type {TraceTree} from '#services/telemetry/schema.ts'
 
@@ -25,14 +26,6 @@ const STATUS: Record<string, string> = {
 	503: 'Unavailable',
 	504: 'Gateway Timeout'
 }
-
-const preciseClock = new Intl.DateTimeFormat(undefined, {
-	fractionalSecondDigits: 3,
-	hour: '2-digit',
-	hourCycle: 'h23',
-	minute: '2-digit',
-	second: '2-digit'
-})
 
 // Effect's HTTP client error as a status line, method and host; anything else stays as the server wrote it.
 function ErrorText(props: {message: string}) {
@@ -60,33 +53,21 @@ function ErrorText(props: {message: string}) {
 	})
 }
 
-// GitHub's mark for a CI app or span, filling its 16px slot where the pixel icons keep a margin.
-export function CiMark() {
+// What ran outside the apps: GitHub's mark for CI, a little inside its 16px slot as the pixel icons are, else a server glyph.
+export function OutsideMark(props: {ci: boolean}) {
+	if (!props.ci) return <HardDrivesIcon aria-hidden className="text-muted-foreground size-4 shrink-0" />
 	return (
 		<span aria-hidden className="flex size-4 shrink-0 items-center justify-center">
-			<GithubLight className="size-3.5 dark:hidden" />
-			<GithubDark className="hidden size-3.5 dark:block" />
+			<ThemedMark light={GithubLight} dark={GithubDark} className="size-3.5" />
 		</span>
 	)
-}
-
-// The mark of the app that ran a span: its own icon, GitHub's for CI, else a server glyph.
-function SpanMark(props: {span: TraceTree['spans'][number]}) {
-	return Option.match(Option.fromUndefinedOr(appMarks[appName(props.span.service)]), {
-		onNone: () =>
-			Boolean.match(props.span.runtime === 'ci', {
-				onFalse: () => <HardDrivesIcon aria-hidden className="text-muted-foreground size-4 shrink-0" />,
-				onTrue: () => <CiMark />
-			}),
-		onSome: mark => <img src={mark} alt="" className="pixelated size-4 shrink-0" />
-	})
 }
 
 // The picked span's identity above its details: its app's mark, its name, where it started, and its duration.
 function SpanHeader(props: {span: TraceTree['spans'][number]}) {
 	return (
 		<div role="listitem" className="col-span-2 flex h-8 items-center gap-3 max-sm:h-11">
-			<SpanMark span={props.span} />
+			<AppMark name={appName(props.span.service)} fallback={<OutsideMark ci={props.span.runtime === 'ci'} />} />
 			<span
 				className={cn(
 					'min-w-0 truncate',
@@ -157,7 +138,7 @@ export function SpanDetail(props: {span: TraceTree['spans'][number]}) {
 						{Boolean.match(attribute.key === 'url.full' && String.startsWith('https://')(attribute.value), {
 							onFalse: () => attribute.value,
 							onTrue: () => (
-								<a href={attribute.value} target="_blank" rel="noreferrer" className="text-primary">
+								<a href={attribute.value} target="_blank" rel="noreferrer" className="underline underline-offset-3">
 									{attribute.value}
 								</a>
 							)
@@ -171,9 +152,7 @@ export function SpanDetail(props: {span: TraceTree['spans'][number]}) {
 					role="listitem"
 					className="grid-cols-log col-span-2 grid h-8 items-center gap-2.5 max-sm:h-11"
 				>
-					<span className="text-muted-foreground truncate tabular-nums">
-						{preciseClock.format(DateTime.toEpochMillis(log.time))}
-					</span>
+					<span className="text-muted-foreground truncate tabular-nums">{clockOf(log.time, 'millisecond')}</span>
 					<span
 						className={cn(
 							'text-muted-foreground block min-w-0 truncate',

@@ -27,7 +27,7 @@ import {BookingId} from '#services/bookings/schema.ts'
 
 function Destination(props: {onClose: () => void; value: string}) {
 	return (
-		<Loaded atom={bookingsAtom} name="Trips">
+		<Loaded atom={bookingsAtom}>
 			{bookings => (
 				<BookingRoute key={props.value} bookings={bookings} id={BookingId.make(props.value)} onClose={props.onClose} />
 			)}

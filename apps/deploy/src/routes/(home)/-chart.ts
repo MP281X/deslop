@@ -14,7 +14,7 @@ export const RANGES = Array.map(
 		{label: '24h', minutes: 1440},
 		{label: '7d', minutes: 10_080}
 	] as const,
-	range => ({label: range.label, minutes: Schema.decodeSync(HistoryQuery)({minutes: range.minutes}).minutes})
+	range => ({label: range.label, value: Schema.decodeSync(HistoryQuery)({minutes: range.minutes}).minutes})
 )
 
 export function chartTicks(range: Duration.Duration, now: DateTime.Utc) {

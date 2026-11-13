@@ -248,7 +248,7 @@ function Detail(props: {note: NoteItem; onRetry: () => void; onTag: (tag: TagNam
 	const full = useAtomValue(noteAtom(props.note))
 	const reload = useAtomRefresh(noteAtom(props.note))
 	if (AsyncResult.isFailure(full) && Option.exists(AsyncResult.error(full), Schema.is(AuthError))) {
-		return <FailureContent cause={full.cause} name="Note" onRetry={reload} />
+		return <FailureContent cause={full.cause} onRetry={reload} />
 	}
 	const issue = Option.getOrElse(props.note.issue, () => 'Can’t Read This Link')
 	const kept =
@@ -399,7 +399,7 @@ function NoteScreen(props: {
 
 export function NoteRoute(props: {id: NoteId; onClose: () => void; onTag: (tag: TagName) => void}) {
 	return (
-		<Loaded atom={notesAtom} name="Notes">
+		<Loaded atom={notesAtom}>
 			{notes => <NoteScreen id={props.id} notes={notes} onClose={props.onClose} onTag={props.onTag} />}
 		</Loaded>
 	)

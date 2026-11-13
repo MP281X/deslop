@@ -5,9 +5,17 @@ import {Array, Boolean, Match, Option, Redacted, String, pipe} from 'effect'
 import {AsyncResult} from 'effect/reactivity'
 import {useState} from 'react'
 
+import {ThemedMark} from '@deslop/components-web/marks'
 import {ResultError} from '@deslop/components-web/result-error'
 import {Button} from '@deslop/components-web/ui/button'
-import {Dialog, DialogClose, DialogContent, DialogFooter, DialogTitle} from '@deslop/components-web/ui/dialog'
+import {
+	Dialog,
+	DialogClose,
+	DialogContent,
+	DialogFooter,
+	DialogHeader,
+	DialogTitle
+} from '@deslop/components-web/ui/dialog'
 import {Field, FieldLabel} from '@deslop/components-web/ui/field'
 import {Input} from '@deslop/components-web/ui/input'
 import {Select, SelectContent, SelectItem, SelectTrigger, SelectValue} from '@deslop/components-web/ui/select'
@@ -23,37 +31,14 @@ import {AiProvider, PROVIDER_NAMES} from '#services/ai-proxy/schema.ts'
 
 export const PROVIDERS = AiProvider.literals
 
-// Each SVGL mark ships light and dark artwork; only the one the appearance calls for is drawn.
-function AnthropicMark() {
-	return (
-		<>
-			<AnthropicBlack aria-hidden className="size-4 dark:hidden" />
-			<AnthropicWhite aria-hidden className="hidden size-4 dark:block" />
-		</>
-	)
-}
-function OpencodeMark() {
-	return (
-		<>
-			<Opencode aria-hidden className="size-4 dark:hidden" />
-			<OpencodeDark aria-hidden className="hidden size-4 dark:block" />
-		</>
-	)
-}
-function OpenrouterMark() {
-	return (
-		<>
-			<OpenrouterLight aria-hidden className="size-4 dark:hidden" />
-			<OpenrouterDark aria-hidden className="hidden size-4 dark:block" />
-		</>
-	)
-}
 export function ProviderMark(props: {provider: AiProvider}) {
 	return pipe(
 		Match.value(props.provider),
-		Match.when('anthropic', () => <AnthropicMark />),
-		Match.whenOr('opencode-go', 'opencode-zen', () => <OpencodeMark />),
-		Match.when('openrouter', () => <OpenrouterMark />),
+		Match.when('anthropic', () => <ThemedMark light={AnthropicBlack} dark={AnthropicWhite} className="size-4" />),
+		Match.whenOr('opencode-go', 'opencode-zen', () => (
+			<ThemedMark light={Opencode} dark={OpencodeDark} className="size-4" />
+		)),
+		Match.when('openrouter', () => <ThemedMark light={OpenrouterLight} dark={OpenrouterDark} className="size-4" />),
 		Match.exhaustive
 	)
 }
@@ -79,7 +64,8 @@ export function AddKeyDialog(props: {
 	const waiting = AsyncResult.isWaiting(result)
 	return (
 		<Dialog open={props.open && !AsyncResult.isSuccess(result)} onOpenChange={props.onOpenChange}>
-			<DialogContent showCloseButton={!waiting}>
+			{/* Cancel already closes it, so the corner X would be the same action twice. */}
+			<DialogContent showCloseButton={false}>
 				<form
 					className="flex flex-col gap-4"
 					onSubmit={event => {
@@ -87,7 +73,9 @@ export function AddKeyDialog(props: {
 						save({payload: {provider: props.provider, secret: Redacted.make(secret)}, reactivityKeys: ['aiKeys']})
 					}}
 				>
-					<DialogTitle>Add a key</DialogTitle>
+					<DialogHeader>
+						<DialogTitle>Add a key</DialogTitle>
+					</DialogHeader>
 					<Field>
 						<FieldLabel htmlFor="ai-provider">Provider</FieldLabel>
 						<Select

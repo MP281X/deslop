@@ -75,7 +75,7 @@ export const clipboard = makeClipboard({
 	}),
 	labels: {
 		confirm: 'Add',
-		notSaved: 'Not saved',
+		notSaved: 'Not Saved',
 		questions: {
 			image: 'Add a booking from the copied screenshot?',
 			link: 'Add a booking from the copied text?',

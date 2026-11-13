@@ -1,10 +1,12 @@
 import {useAtomRefresh, useAtomValue} from '@effect/atom-react'
 
-import {Array, DateTime, Duration, Effect, Number, Option, Stream, pipe} from 'effect'
+import {Array, DateTime, Effect, Option, Stream, pipe} from 'effect'
 
 import {ArrowClockwiseIcon} from '@phosphor-icons/react'
 import {AsyncResult, Atom} from 'effect/reactivity'
 import {useId, useRef, useState} from 'react'
+
+import {ageOf} from '@deslop/runtime/shared/format'
 
 import {StatusDot} from '#components/status-dot.tsx'
 import {Button} from '#components/ui/button.tsx'
@@ -47,19 +49,16 @@ const ageAtom = Atom.family((identity: DateTime.Utc | string) =>
 		Stream.unwrap(
 			Effect.map(DateTime.now, started =>
 				Stream.mapEffect(Stream.tick('1 second'), () =>
-					Effect.map(DateTime.now, now => {
-						const age = pipe(
-							identity,
-							Option.liftPredicate(DateTime.isDateTime),
-							Option.getOrElse(() => started),
-							DateTime.distance(now)
+					Effect.map(DateTime.now, now =>
+						ageOf(
+							pipe(
+								identity,
+								Option.liftPredicate(DateTime.isDateTime),
+								Option.getOrElse(() => started)
+							),
+							now
 						)
-						const seconds = Number.max(0, Math.floor(Duration.toSeconds(age)))
-						if (seconds < 60) return `${seconds}s`
-						if (seconds < 3600) return `${Math.floor(Duration.toMinutes(age))}m`
-						if (seconds < 86_400) return `${Math.floor(Duration.toHours(age))}h`
-						return `${Math.floor(Duration.toDays(age))}d`
-					})
+					)
 				)
 			)
 		)
@@ -112,7 +111,7 @@ function Problem(props: {label: string; reset?: () => void; since?: DateTime.Utc
 			>
 				<StatusDot status="warning" />
 				<span aria-hidden className="text-muted-foreground font-mono tabular-nums">
-					{Option.getOrElse(AsyncResult.value(age), () => '0s')}
+					{Option.getOrElse(AsyncResult.value(age), () => 'now')}
 				</span>
 			</PopoverTrigger>
 			<PopoverContent ref={content} initialFocus={false} className="w-auto max-w-xs" align="end">

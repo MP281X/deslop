@@ -7,6 +7,11 @@ import {defineConfig} from 'vite-plus'
 
 import {deslopRules, lint, restrictedImports} from './tools/coding-standards/src/lint.ts'
 
+// The registry keeps every primitive as a file; these break AGENTS.md's Design rules (motion, spinners, toasts, context menus, a command palette, a destruction confirmation), so nothing outside it imports them by any spelling, nor the libraries they wrap.
+const BANNED_PRIMITIVES = ['alert-dialog', 'carousel', 'command', 'context-menu', 'drawer', 'spinner', 'toast']
+const BANNED_BASE_UI = ['alert-dialog', 'context-menu', 'drawer', 'toast']
+const SPINNER_ICONS = ['CircleNotch', 'Spinner', 'SpinnerBall', 'SpinnerGap']
+
 export default defineConfig({
 	create: {
 		templates: [
@@ -112,7 +117,22 @@ export default defineConfig({
 			'eslint/no-restricted-imports': [
 				'error',
 				{
-					...restrictedImports,
+					paths: [
+						...restrictedImports.paths,
+						...Array.map(
+							['@phosphor-icons/react', '@phosphor-icons/react/ssr', '@phosphor-icons/react/dist/ssr'],
+							name => ({
+								importNames: Array.flatMap(SPINNER_ICONS, icon => [icon, `${icon}Icon`]),
+								message: 'AGENTS.md Design: pending actions have no spinners.',
+								name
+							})
+						),
+						{
+							importNames: ['AlertDialog', 'ContextMenu', 'Drawer', 'Toast'],
+							message: 'AGENTS.md Design bans this primitive.',
+							name: '@base-ui/react'
+						}
+					],
 					patterns: [
 						{
 							// All restrictions share one ordered group: Oxlint applies a group's negations to other patterns too.
@@ -242,9 +262,21 @@ export default defineConfig({
 									],
 									name => [`!${name}`, `!${name}/**`]
 								),
-								...Array.flatMap(restrictedImports.patterns, pattern => pattern.group)
+								...Array.flatMap(restrictedImports.patterns, pattern => pattern.group),
+								// Last, so they win over the allowlist above: every spelling of a banned primitive and the libraries behind it.
+								...Array.flatMap(BANNED_PRIMITIVES, name => [`**/ui/${name}`, `**/ui/${name}.tsx`]),
+								...Array.flatMap(BANNED_BASE_UI, name => [`@base-ui/react/**/${name}`, `@base-ui/react/**/${name}/**`]),
+								...Array.flatMap(SPINNER_ICONS, icon => [
+									`@phosphor-icons/react/**/${icon}`,
+									`@phosphor-icons/react/**/${icon}.*`
+								]),
+								'cmdk',
+								'cmdk/**',
+								'embla-carousel*',
+								'embla-carousel*/**'
 							],
-							message: 'Not a dependency of this repository. Ask before adding one.'
+							message:
+								'Not a dependency of this repository (ask before adding one), not its public export, or what AGENTS.md Design bans.'
 						}
 					]
 				}

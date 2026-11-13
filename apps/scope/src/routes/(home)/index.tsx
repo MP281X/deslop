@@ -9,10 +9,10 @@ import {Suspense, useState} from 'react'
 import type {ReactElement, ReactNode} from 'react'
 
 import {AppBarTab, AppBar, AppBarChoice, AppBarTabs} from '@deslop/components-web/app-bar'
-import {appMarks} from '@deslop/components-web/apps'
 import {cn, mediaQueryAtom} from '@deslop/components-web/classes'
 import {EmptyState, Loaded, ReadFailure} from '@deslop/components-web/fallbacks'
 import {RowsSkeleton} from '@deslop/components-web/item-list'
+import {AppMark} from '@deslop/components-web/marks'
 import {StaleProblem} from '@deslop/components-web/problem'
 import {StatusDot} from '@deslop/components-web/status-dot'
 import {Item, ItemActions, ItemContent, ItemMedia, ItemTitle} from '@deslop/components-web/ui/item'
@@ -20,11 +20,10 @@ import {ResizableHandle, ResizablePanel, ResizablePanelGroup} from '@deslop/comp
 import {ScrollArea} from '@deslop/components-web/ui/scroll-area'
 import {Skeleton} from '@deslop/components-web/ui/skeleton'
 import {blockingFailure} from '@deslop/runtime/client/live-stream'
+import {ageOf, clockOf, compactCountOf, countOf, durationOf} from '@deslop/runtime/shared/format'
 
 import {
 	Search,
-	ageOf,
-	durationOf,
 	focusOf,
 	navigationOf,
 	nextSearch,
@@ -38,7 +37,7 @@ import {
 } from '#lib/telemetry.ts'
 import type {ActiveOperation, NavigationEvent, OperationKey} from '#lib/telemetry.ts'
 import {Flame, SpansSkeleton, TimeAxis} from '#routes/(home)/-flame.tsx'
-import {CiMark, DetailSkeleton, SpanDetail} from '#routes/(home)/-span.tsx'
+import {DetailSkeleton, OutsideMark, SpanDetail} from '#routes/(home)/-span.tsx'
 import icon from '#routes/icon.svg'
 import {Range, rangeStart} from '#services/telemetry/schema.ts'
 import type {
@@ -63,18 +62,9 @@ const KINDS: Record<Runtime, ReactElement> = {
 	web: <GlobeIcon aria-hidden className="text-muted-foreground size-3 shrink-0" />
 }
 
-const clock = new Intl.DateTimeFormat(undefined, {
-	hour: '2-digit',
-	hourCycle: 'h23',
-	minute: '2-digit',
-	second: '2-digit'
-})
-const count = new Intl.NumberFormat(undefined, {maximumFractionDigits: 0})
-const compact = new Intl.NumberFormat(undefined, {maximumFractionDigits: 1, notation: 'compact'})
-
 // One run or many, in the reader's words.
 function runsOf(n: number) {
-	return `${count.format(n)} ${Boolean.match(n === 1, {onFalse: () => 'runs', onTrue: () => 'run'})}`
+	return `${countOf(n)} ${Boolean.match(n === 1, {onFalse: () => 'runs', onTrue: () => 'run'})}`
 }
 const route = getRouteApi('/(home)/')
 const RANGES = Array.map(Range.literals, value => ({label: value, value}))
@@ -129,23 +119,7 @@ function TracesSkeleton(props: {label: string}) {
 	)
 }
 
-// An app's mark: its own icon, GitHub's for CI, else a server glyph; never a letter tile. A heading names the app, so the mark is decorative.
-function AppMark(props: {app: Overview['apps'][number]}) {
-	return Option.match(Option.fromUndefinedOr(appMarks[props.app.name]), {
-		onNone: () =>
-			pipe(
-				props.app.ci,
-				Option.contains(true),
-				Boolean.match({
-					onFalse: () => <HardDrivesIcon aria-hidden className="text-muted-foreground size-4 shrink-0" />,
-					onTrue: () => <CiMark />
-				})
-			),
-		onSome: mark => <img src={mark} alt="" className="pixelated size-4 shrink-0" />
-	})
-}
-
-// The bar's app choice: one mark per app; one is always chosen, and choosing the chosen tab again does nothing.
+// The bar's app choice: one mark per app, its own icon, GitHub's for CI, else a server glyph, never a letter tile; one is always chosen, and choosing the chosen tab again does nothing.
 function SourceTabs(props: {apps: Overview['apps']; source?: AppName}) {
 	const search = route.useSearch()
 	return (
@@ -165,28 +139,10 @@ function SourceTabs(props: {apps: Overview['apps']; source?: AppName}) {
 						/>
 					}
 				>
-					<AppMark app={app} />
+					<AppMark name={app.name} fallback={<OutsideMark ci={Option.contains(app.ci, true)} />} />
 				</AppBarTab>
 			))}
 		</AppBarTabs>
-	)
-}
-
-// The page's time frame as one stock control: the same four tabs at every width.
-function RangeTabs(props: {onChange: (range: Range) => void; range: Range}) {
-	return (
-		<AppBarChoice
-			label="Time frame"
-			value={props.range}
-			options={RANGES}
-			onChange={value => {
-				pipe(
-					RANGES,
-					Array.findFirst(entry => entry.value === value),
-					Option.map(entry => props.onChange(entry.value))
-				)
-			}}
-		/>
 	)
 }
 
@@ -221,7 +177,7 @@ function OperationRow(props: {
 								...Boolean.match(props.duplicate && side !== '', {onFalse: () => [], onTrue: () => [side]}),
 								...Boolean.match(props.operation.failures > 0, {
 									onFalse: () => [],
-									onTrue: () => [`${count.format(props.operation.failures)} failed`]
+									onTrue: () => [`${countOf(props.operation.failures)} failed`]
 								}),
 								runsOf(props.operation.count),
 								`${durationOf(props.operation.p50Ms)} typical`
@@ -251,17 +207,17 @@ function OperationRow(props: {
 								className="text-destructive text-right tabular-nums"
 								title={Boolean.match(props.operation.failures > 0, {
 									onFalse: () => undefined,
-									onTrue: () => `${count.format(props.operation.failures)} failed`
+									onTrue: () => `${countOf(props.operation.failures)} failed`
 								})}
 							>
 								{Boolean.match(props.operation.failures > 0, {
 									onFalse: () => null,
-									onTrue: () => count.format(props.operation.failures)
+									onTrue: () => countOf(props.operation.failures)
 								})}
 							</span>
 						)}
 						<span className="text-muted-foreground text-right tabular-nums" title={runsOf(props.operation.count)}>
-							{compact.format(props.operation.count)}
+							{compactCountOf(props.operation.count)}
 						</span>
 						<span className="text-right tabular-nums" title="Typical duration">
 							{durationOf(props.operation.p50Ms)}
@@ -288,7 +244,7 @@ function OperationsPane(props: {
 					{overview =>
 						Array.match(operationsOf(overview, Option.fromUndefinedOr(props.source)), {
 							onEmpty: () => (
-								<EmptyState label="No traces in this frame" icon={<ChartBarHorizontalIcon weight="light" />} />
+								<EmptyState label="No traces in this range" icon={<ChartBarHorizontalIcon weight="light" />} />
 							),
 							onNonEmpty: rows => {
 								const names = Array.groupBy(rows, row => row.operation.name)
@@ -355,10 +311,7 @@ function TraceListRow(props: {active: boolean; now: DateTime.Utc; onSelect: () =
 				}
 			>
 				<ItemMedia className="w-8">
-					<span
-						className="text-muted-foreground tabular-nums"
-						title={clock.format(DateTime.toEpochMillis(props.trace.start))}
-					>
+					<span className="text-muted-foreground tabular-nums" title={clockOf(props.trace.start, 'second')}>
 						{ageOf(props.trace.start, props.now)}
 					</span>
 				</ItemMedia>
@@ -794,7 +747,7 @@ function HomeRoute() {
 					<>
 						<StaleMark range={range} trace={Option.getOrUndefined(selection.activeTrace)} />
 						{Boolean.match(isMobile && pane !== 'Operations', {
-							onFalse: () => <RangeTabs range={range} onChange={selectRange} />,
+							onFalse: () => <AppBarChoice label="Range" value={range} options={RANGES} onChange={selectRange} />,
 							onTrue: () => null
 						})}
 					</>

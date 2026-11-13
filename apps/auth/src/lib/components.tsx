@@ -1,56 +1,36 @@
 import {useAtom} from '@effect/atom-react'
 
-import {Array, Boolean, DateTime, Duration, Option, Order, Record, String, Struct, pipe} from 'effect'
+import {Array, Boolean, DateTime, Option, Order, Record, String, Struct, pipe} from 'effect'
 
 import {AppWindowIcon, GlobeIcon, GraphIcon, HardDrivesIcon} from '@phosphor-icons/react'
 import {AsyncResult, Atom} from 'effect/reactivity'
 import {useState} from 'react'
+import type {ComponentType, SVGProps} from 'react'
 
 import {cn} from '@deslop/components-web/classes'
 import {EmptyState, Loaded} from '@deslop/components-web/fallbacks'
+import {RowsSkeleton} from '@deslop/components-web/item-list'
+import {ThemedMark} from '@deslop/components-web/marks'
 import {ResultError} from '@deslop/components-web/result-error'
-import {Avatar, AvatarFallback, AvatarImage} from '@deslop/components-web/ui/avatar'
 import {Button} from '@deslop/components-web/ui/button'
 import {Card} from '@deslop/components-web/ui/card'
 import {Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle} from '@deslop/components-web/ui/item'
 import {Skeleton} from '@deslop/components-web/ui/skeleton'
-import type {UserId} from '@deslop/runtime/shared/auth'
+import {AndroidIcon} from '@deslop/components-web/ui/svgs/androidIcon'
+import {Apple} from '@deslop/components-web/ui/svgs/apple'
+import {AppleDark} from '@deslop/components-web/ui/svgs/appleDark'
+import {Chrome} from '@deslop/components-web/ui/svgs/chrome'
+import {ClaudeAiIcon} from '@deslop/components-web/ui/svgs/claudeAiIcon'
+import {CodexDark} from '@deslop/components-web/ui/svgs/codexDark'
+import {CodexLight} from '@deslop/components-web/ui/svgs/codexLight'
+import {Edge} from '@deslop/components-web/ui/svgs/edge'
+import {Firefox} from '@deslop/components-web/ui/svgs/firefox'
+import {Safari} from '@deslop/components-web/ui/svgs/safari'
+import {ageOf} from '@deslop/runtime/shared/format'
 
 import {appsAtom, consentAtom, minuteAtom, requestCode} from '#lib/auth.ts'
-import android from '#lib/brands/android.svg'
-import apple from '#lib/brands/apple.svg'
-import chrome from '#lib/brands/chrome.svg'
-import claude from '#lib/brands/claude.svg'
-import codex from '#lib/brands/codex.svg'
-import edge from '#lib/brands/edge.svg'
-import firefox from '#lib/brands/firefox.svg'
-import safari from '#lib/brands/safari.svg'
 import type {PendingAuthorization} from '#services/sign-ins/schema.ts'
 import type {SignedInApp} from '#services/tokens/schema.ts'
-
-function ageLabel(minutes: number) {
-	if (minutes < 1) return 'now'
-	if (minutes < 60) return `${minutes}m`
-	if (minutes < 1440) return `${Math.floor(minutes / 60)}h`
-	return `${Math.floor(minutes / 1440)}d`
-}
-
-// A GitHub account's picture, or its first letter until the picture loads; a row's picture sits at 16px.
-export function AccountAvatar(props: {id: UserId; name: string; small?: boolean}) {
-	return (
-		<Avatar
-			size={Boolean.match(props.small === true, {onFalse: () => 'sm', onTrue: () => 'default'})}
-			variant="plain"
-			className={cn(props.small === true && 'size-4')}
-		>
-			<AvatarImage
-				src={`https://avatars.githubusercontent.com/u/${String.replace('github:', '')(props.id)}?s=96`}
-				alt={props.name}
-			/>
-			<AvatarFallback>{String.toUpperCase(String.slice(0, 1)(props.name))}</AvatarFallback>
-		</Avatar>
-	)
-}
 
 // A glyph until the app's own icon loads, so a missing icon never draws the browser's broken image; no tile behind either.
 function AppIcon(props: {origin: string}) {
@@ -71,27 +51,10 @@ function AppIcon(props: {origin: string}) {
 	)
 }
 
-function ClientRowSkeleton() {
-	return (
-		<Item aria-hidden size="row">
-			<ItemMedia className="size-4">
-				<Skeleton className="size-4" />
-			</ItemMedia>
-			<ItemContent>
-				<Skeleton className="h-3 w-2/5" />
-			</ItemContent>
-			<ItemActions>
-				<Skeleton className="h-3 w-12 shrink-0" />
-				<Skeleton className="h-3 w-28 shrink-0 max-sm:hidden" />
-			</ItemActions>
-		</Item>
-	)
-}
-
 // The row whose code lookup is running, where the found sign-in will sit.
 function PendingRowSkeleton() {
 	return (
-		<div role="listitem" className="bg-primary/10">
+		<div className="bg-primary/10">
 			<Item aria-hidden size="row">
 				<ItemMedia className="size-4">
 					<Skeleton className="size-4" />
@@ -113,14 +76,19 @@ function PendingRowSkeleton() {
 export function SignInRowsSkeleton(props: {pending?: boolean}) {
 	return (
 		<Card size="list">
-			<div aria-busy="true" aria-label="Signed in" role="status">
-				<div role="list" aria-label="Signed-in clients">
-					{props.pending === true && <PendingRowSkeleton />}
-					{Array.map(Array.range(1, 9), row => (
-						<ClientRowSkeleton key={row} />
-					))}
-				</div>
-			</div>
+			{props.pending === true && <PendingRowSkeleton />}
+			<RowsSkeleton label="Signed in" rows={9}>
+				<ItemMedia className="size-4">
+					<Skeleton className="size-4" />
+				</ItemMedia>
+				<ItemContent>
+					<Skeleton className="h-3 w-2/5" />
+				</ItemContent>
+				<ItemActions>
+					<Skeleton className="h-3 w-12 shrink-0" />
+					<Skeleton className="h-3 w-28 shrink-0 max-sm:hidden" />
+				</ItemActions>
+			</RowsSkeleton>
 		</Card>
 	)
 }
@@ -129,29 +97,23 @@ export function SignInRowsSkeleton(props: {pending?: boolean}) {
 export function PeopleRowsSkeleton() {
 	return (
 		<Card size="list">
-			<div aria-busy="true" aria-label="People" role="status">
-				<div role="list" aria-label="People">
-					{Array.map(Array.range(1, 3), row => (
-						<Item key={row} aria-hidden size="row">
-							<ItemMedia className="size-4">
-								<Skeleton className="size-4" />
-							</ItemMedia>
-							<ItemContent>
-								<Skeleton className="h-3 w-2/5" />
-								<Skeleton className="h-3 w-16" />
-							</ItemContent>
-							<ItemActions>
-								<Skeleton className="h-3 w-16 shrink-0" />
-							</ItemActions>
-						</Item>
-					))}
-				</div>
-			</div>
+			<RowsSkeleton label="People" rows={3}>
+				<ItemMedia className="size-4">
+					<Skeleton className="size-4" />
+				</ItemMedia>
+				<ItemContent>
+					<Skeleton className="h-3 w-2/5" />
+					<Skeleton className="h-3 w-16" />
+				</ItemContent>
+				<ItemActions>
+					<Skeleton className="h-3 w-16 shrink-0" />
+				</ItemActions>
+			</RowsSkeleton>
 		</Card>
 	)
 }
 
-const BROWSERS: Record<string, string> = {Chrome: chrome, Edge: edge, Firefox: firefox, Safari: safari}
+const BROWSERS: Record<string, ComponentType<SVGProps<SVGSVGElement>>> = {Chrome, Edge, Firefox, Safari}
 
 type Client = {app: Option.Option<string>; device: string; kind: 'App' | 'Browser'; name: string}
 
@@ -160,21 +122,21 @@ function Brand(props: {client: Client}) {
 		return pipe(
 			BROWSERS,
 			Record.get(props.client.name),
-			Option.match({onNone: () => <GlobeIcon />, onSome: src => <img src={src} alt="" className="size-3.5" />})
+			Option.match({onNone: () => <GlobeIcon />, onSome: Mark => <Mark aria-hidden className="size-3.5" />})
 		)
 	}
 	if (Option.isSome(String.match(/claude/iu)(props.client.name))) {
-		return <img src={claude} alt="" className="size-3.5" />
+		return <ClaudeAiIcon aria-hidden className="size-3.5" />
 	}
 	if (Option.isSome(String.match(/codex/iu)(props.client.name))) {
-		return <img src={codex} alt="" className="size-3.5 dark:invert" />
+		return <ThemedMark light={CodexLight} dark={CodexDark} className="size-3.5" />
 	}
 	// The gateway runs on a server whatever device approved it, so its glyph wins over the device's logo.
 	if (Option.isSome(String.match(/gateway/iu)(props.client.name))) return <GraphIcon />
 	if (Array.contains(['iPhone', 'iPad'], props.client.device)) {
-		return <img src={apple} alt="" className="size-3.5 dark:invert" />
+		return <ThemedMark light={Apple} dark={AppleDark} className="size-3.5" />
 	}
-	if (props.client.device === 'Android') return <img src={android} alt="" className="size-3.5" />
+	if (props.client.device === 'Android') return <AndroidIcon aria-hidden className="size-3.5" />
 	return <HardDrivesIcon />
 }
 
@@ -186,7 +148,7 @@ function ClientIcon(props: {client: Client}) {
 }
 
 function ClientRow(props: {client: SignedInApp; now: DateTime.Utc}) {
-	const active = ageLabel(Math.floor(Duration.toMinutes(DateTime.distance(props.client.lastActive, props.now))))
+	const active = ageOf(props.client.lastActive, props.now)
 	const address = Option.filter(props.client.address, value => value !== props.client.device)
 	return (
 		<div role="listitem">
@@ -222,6 +184,15 @@ function ClientRow(props: {client: SignedInApp; now: DateTime.Utc}) {
 	)
 }
 
+// A waiting sign-in's mark: the app's own icon from its registered callback, else a browser or a host.
+export function RequestMark(props: {request: PendingAuthorization}) {
+	return Option.match(props.request.icon, {
+		onNone: () =>
+			Boolean.match(props.request.kind === 'Browser', {onFalse: () => <HardDrivesIcon />, onTrue: () => <GlobeIcon />}),
+		onSome: origin => <AppIcon origin={origin} />
+	})
+}
+
 // A waiting sign-in leads the card, tinted, its code under the label; its answer stays on the row.
 function PendingRow(props: {request: PendingAuthorization}) {
 	const [consent, respond] = useAtom(consentAtom)
@@ -230,14 +201,7 @@ function PendingRow(props: {request: PendingAuthorization}) {
 		<div role="listitem" className="bg-primary/10">
 			<Item size="row">
 				<ItemMedia className="size-4" role="img" aria-label={props.request.clientName} title={props.request.clientName}>
-					{Option.match(props.request.icon, {
-						onNone: () =>
-							Boolean.match(props.request.kind === 'Browser', {
-								onFalse: () => <HardDrivesIcon />,
-								onTrue: () => <GlobeIcon />
-							}),
-						onSome: origin => <AppIcon origin={origin} />
-					})}
+					<RequestMark request={props.request} />
 				</ItemMedia>
 				<ItemContent>
 					<ItemTitle>{props.request.device}</ItemTitle>

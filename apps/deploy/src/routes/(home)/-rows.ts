@@ -1,28 +1,11 @@
-import {Array, Boolean, DateTime, Duration, HashSet, Number, Option, Order, String, pipe} from 'effect'
+import type {Duration} from 'effect'
+import {Array, Boolean, DateTime, HashSet, Option, Order, String, pipe} from 'effect'
 
 import {lowImpactIds} from '#routes/(home)/-usage.ts'
 import {itemOwner, type Row, rowUsageOrder, sourceBelongsToWorker} from '#services/inventory/lib/utils.ts'
 import type {AppId, WorkerId} from '#services/inventory/schema.ts'
 import {chartWindow} from '#services/metrics/lib/utils.ts'
 import type {MachineHistory} from '#services/metrics/schema.ts'
-
-const size = new Intl.NumberFormat(undefined, {maximumFractionDigits: 1})
-
-// A running job's time in its row's column, counting up from its start as m:ss.
-export function counted(elapsed: Duration.Duration) {
-	const seconds = Number.max(0, Math.floor(Duration.toSeconds(elapsed)))
-	return `${Math.floor(seconds / 60)}:${String.padStart(2, '0')(`${seconds % 60}`)}`
-}
-
-export function bytes(value: number) {
-	if (value >= 1024 ** 4) return `${size.format(value / 1024 ** 4)} TiB`
-	if (value >= 1024 ** 3) return `${size.format(value / 1024 ** 3)} GiB`
-	return `${size.format(value / 1024 ** 2)} MiB`
-}
-
-export function rate(value: number) {
-	return `${size.format(value)}%`
-}
 
 // The key a service or container's usage history is recorded under; loose ports have none.
 export function owner(row: Row) {

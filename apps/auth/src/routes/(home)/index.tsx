@@ -85,7 +85,7 @@ function Enter(props: {
 							),
 							onTrue: () => (
 								<>
-									<CheckIcon className="text-primary size-3.5" />
+									<CheckIcon className="size-3.5" />
 									{signInLabel(answer.request.clientName, answer.request.device)} approved
 								</>
 							)

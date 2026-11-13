@@ -1,6 +1,6 @@
 import {useAtom, useAtomValue} from '@effect/atom-react'
 
-import {Array, Effect, Option, Predicate, String} from 'effect'
+import {Array, Boolean, Effect, Equal, Option, Predicate, String, pipe} from 'effect'
 
 import {CaretLeftIcon} from '@phosphor-icons/react'
 import {AsyncResult, Atom} from 'effect/reactivity'
@@ -13,13 +13,19 @@ import {accountAtom} from '@deslop/runtime/web/client'
 import {Avatar, AvatarFallback, AvatarImage} from '#components/ui/avatar.tsx'
 import {Button} from '#components/ui/button.tsx'
 import {Tabs, TabsList, TabsTrigger} from '#components/ui/tabs.tsx'
+import {cn} from '#lib/classes.ts'
 
 // The menu's floating-ui bundle is the page's heaviest import, so it arrives on intent rather than with the bar.
 const menuModuleAtom = Atom.keepAlive(Atom.fn(() => Effect.promise(() => import('#components/ui/dropdown-menu.tsx'))))
 
-function AccountAvatar(props: {account: Account}) {
+// A GitHub account's picture, or its first letter until the picture loads: 24px in the bar, 16px in a row.
+export function AccountAvatar(props: {account: Pick<Account, 'id' | 'name'>; small?: boolean}) {
 	return (
-		<Avatar size="sm" variant="plain">
+		<Avatar
+			size={Boolean.match(props.small === true, {onFalse: () => 'sm' as const, onTrue: () => 'default' as const})}
+			variant="plain"
+			className={cn(props.small === true && 'size-4')}
+		>
 			<AvatarImage
 				src={`https://avatars.githubusercontent.com/u/${String.replace('github:', '')(props.account.id)}?s=96`}
 				alt={props.account.name}
@@ -134,18 +140,32 @@ export function AppBarTab(props: {children: ReactNode; render: ReactElement; val
 	)
 }
 
-// A bar's segmented choice: the stock tabs over one list of options, named for assistive technology.
-export function AppBarChoice(props: {
+// A bar's segmented choice: the stock tabs over one list of options, named for assistive technology. Each tab is keyed by its label, so a choice hands back its option's own value.
+export function AppBarChoice<A>(props: {
 	label: string
-	onChange: (value: string) => void
-	options: readonly {label: string; value: string}[]
-	value: string
+	onChange: (value: A) => void
+	options: readonly {label: string; value: A}[]
+	value: A
 }) {
 	return (
-		<Tabs value={props.value} onValueChange={props.onChange}>
+		<Tabs
+			value={pipe(
+				props.options,
+				Array.findFirst(option => Equal.equals(option.value, props.value)),
+				Option.map(option => option.label),
+				Option.getOrElse(() => '')
+			)}
+			onValueChange={label =>
+				pipe(
+					props.options,
+					Array.findFirst(option => option.label === label),
+					Option.map(option => props.onChange(option.value))
+				)
+			}
+		>
 			<TabsList aria-label={props.label}>
 				{Array.map(props.options, option => (
-					<TabsTrigger key={option.value} value={option.value}>
+					<TabsTrigger key={option.label} value={option.label}>
 						{option.label}
 					</TabsTrigger>
 				))}
@@ -184,7 +204,7 @@ export function AppBar(props: {
 						>
 							<CaretLeftIcon className="size-4" />
 						</Button>
-						<span className="font-heading max-w-48 min-w-0 truncate text-sm font-semibold">{heading.title}</span>
+						<span className="font-heading max-w-48 min-w-0 truncate text-sm">{heading.title}</span>
 					</div>
 				)
 			})}

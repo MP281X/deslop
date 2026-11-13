@@ -200,17 +200,6 @@ export const minuteAtom = Atom.make(Stream.mapEffect(Stream.tick('1 minute'), ()
 // The time each second, for a waiting sign-in's countdown.
 export const secondAtom = Atom.make(Stream.mapEffect(Stream.tick('1 second'), () => DateTime.now))
 
-// Copies the code; the result waits a moment after, while the code shows it was copied.
-export const copyCodeAtom = Atom.fn((code: string) =>
-	Effect.andThen(
-		Effect.tryPromise({
-			catch: cause => AuthError.make({cause, message: 'Cannot copy the code; type it in instead'}),
-			try: () => navigator.clipboard.writeText(code)
-		}),
-		Effect.sleep('1200 millis')
-	)
-)
-
 // A sign-in as the lists name it: the app or browser, then where it runs.
 export function signInLabel(client: string, device: string) {
 	return `${client} · ${device}`

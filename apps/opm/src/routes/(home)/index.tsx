@@ -34,7 +34,6 @@ import {AsyncResult} from 'effect/reactivity'
 import {Suspense, useState} from 'react'
 
 import {AccountMenu} from '@deslop/components-mobile/account'
-import {shortDate} from '@deslop/components-mobile/dates'
 import {Problem} from '@deslop/components-mobile/problem'
 import {Loaded} from '@deslop/components-mobile/screens'
 import {colors, radius} from '@deslop/components-mobile/theme'
@@ -52,6 +51,7 @@ import {
 } from '@deslop/components-mobile/ui/item'
 import {ItemGroupSkeleton} from '@deslop/components-mobile/ui/skeleton'
 import {blockingFailure} from '@deslop/runtime/client/live-stream'
+import {dayOf} from '@deslop/runtime/shared/format'
 
 import {chaptersAtom, primary, readAtom, session} from '#lib/chapters.ts'
 import {ChapterProgress, Cover} from '#modules/native/index.ts'
@@ -88,7 +88,7 @@ function ChapterRow(props: {chapter: ChapterItem; onOpen: (number: ChapterNumber
 					>{`Chapter ${props.chapter.number}`}</ItemTitle>
 					<ItemDescription>
 						{pipe(
-							[props.chapter.title, Option.match(props.chapter.postedAt, {onNone: () => '', onSome: shortDate})],
+							[props.chapter.title, Option.match(props.chapter.postedAt, {onNone: () => '', onSome: dayOf})],
 							Array.filter(String.isNonEmpty),
 							Array.join(' · ')
 						)}
@@ -140,7 +140,7 @@ function ChapterRow(props: {chapter: ChapterItem; onOpen: (number: ChapterNumber
 
 function Chapters(props: {onOpen: (number: ChapterNumber, page?: number) => void; searched: string; series: Series}) {
 	return (
-		<Loaded atom={chaptersAtom} name="Chapters">
+		<Loaded atom={chaptersAtom}>
 			{all => {
 				const chapters = Array.filter(all, chapter => chapter.series === props.series)
 				const needle = String.toLowerCase(String.trim(props.searched))
@@ -199,7 +199,7 @@ export function ChaptersRoute(props: {
 				{/* The chapters on screen stay through an outage; a dot in the bar marks that they stopped updating. */}
 				{AsyncResult.isFailure(loaded) && Option.isNone(blockingFailure(loaded)) && (
 					<ToolbarItem placement="topBarLeading">
-						<Problem label="Chapters not updating" onRetry={refresh} />
+						<Problem label="Out of date" onRetry={refresh} />
 					</ToolbarItem>
 				)}
 				<ToolbarItem placement="topBarTrailing">

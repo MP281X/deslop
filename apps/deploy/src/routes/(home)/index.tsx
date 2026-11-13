@@ -1,6 +1,6 @@
 import {useAtomRefresh, useAtomValue} from '@effect/atom-react'
 
-import {Array, Boolean, DateTime, Duration, Equal, Option, Record, Schema, String, pipe} from 'effect'
+import {Array, Boolean, DateTime, Duration, Option, Record, Schema, String, pipe} from 'effect'
 
 import {HardDrivesIcon, MonitorIcon, TerminalWindowIcon} from '@phosphor-icons/react'
 import {CatchBoundary, Link, createFileRoute, getRouteApi} from '@tanstack/react-router'
@@ -9,7 +9,7 @@ import {Suspense, useDeferredValue} from 'react'
 import type {ReactNode} from 'react'
 
 import {AppBarTab, AppBar, AppBarChoice, AppBarTabs} from '@deslop/components-web/app-bar'
-import {cn, mediaQueryAtom} from '@deslop/components-web/classes'
+import {mediaQueryAtom} from '@deslop/components-web/classes'
 import {EmptyState, Loaded, ReadFailure} from '@deslop/components-web/fallbacks'
 import {RowsSkeleton} from '@deslop/components-web/item-list'
 import {StaleProblem} from '@deslop/components-web/problem'
@@ -45,28 +45,6 @@ export const Search = Schema.Struct({
 	range: Schema.OptionFromOptionalKey(HistoryQuery.fields.minutes)
 })
 const route = getRouteApi('/(home)/')
-
-// The range as one stock control: the same five tabs in the bar at every width.
-function RangeTabs(props: {
-	minutes: HistoryQuery['minutes']
-	onChange: (minutes: HistoryQuery['minutes']) => void
-	ranges: readonly {label: string; minutes: HistoryQuery['minutes']}[]
-}) {
-	return (
-		<AppBarChoice
-			label="History range"
-			value={`${Duration.toMinutes(props.minutes)}`}
-			options={Array.map(props.ranges, range => ({label: range.label, value: `${Duration.toMinutes(range.minutes)}`}))}
-			onChange={value => {
-				pipe(
-					props.ranges,
-					Array.findFirst(range => `${Duration.toMinutes(range.minutes)}` === value),
-					Option.map(range => props.onChange(range.minutes))
-				)
-			}}
-		/>
-	)
-}
 
 // The machines as the bar's section control: its icon in the machine's colour and its name; an unreachable one keeps a dot. One machine needs no control.
 function machineName(worker: WorkerId) {
@@ -170,7 +148,7 @@ function MetricsContent(props: {children: ReactNode; minutes: HistoryQuery['minu
 }
 
 function DataProblem(props: {minutes: HistoryQuery['minutes']}) {
-	return <StaleProblem label="Data out of date" readers={[inventoryAtom, metricsAtom(props.minutes)]} />
+	return <StaleProblem label="Out of date" readers={[inventoryAtom, metricsAtom(props.minutes)]} />
 }
 
 function ProcessList(props: {row: Row}) {
@@ -316,7 +294,6 @@ function Workspace(props: {
 	onSelect: (row: Row) => void
 	pending: boolean
 	pushed: boolean
-	refreshing: boolean
 	retryFailed: () => void
 	rows: readonly Row[]
 	selectedApp?: ItemId
@@ -329,65 +306,63 @@ function Workspace(props: {
 		onNone: () => (
 			<div className="flex min-h-0 flex-1 flex-col">
 				<h1 className="sr-only">Deploy</h1>
-				<div className={cn('flex min-h-0 flex-1 flex-col', props.refreshing && 'opacity-60')}>
-					{Boolean.match(props.isPhone, {
-						onFalse: () => (
-							<ResizablePanelGroup className="min-h-0 flex-1" orientation="horizontal">
-								<ResizablePanel
-									className="min-h-0"
-									defaultSize={340}
-									groupResizeBehavior="preserve-pixel-size"
-									minSize={260}
-									maxSize={480}
-								>
-									<ListPane
-										className="h-full min-w-0"
-										compact={false}
-										free={props.free}
-										history={props.history}
+				{Boolean.match(props.isPhone, {
+					onFalse: () => (
+						<ResizablePanelGroup className="min-h-0 flex-1" orientation="horizontal">
+							<ResizablePanel
+								className="min-h-0"
+								defaultSize={340}
+								groupResizeBehavior="preserve-pixel-size"
+								minSize={260}
+								maxSize={480}
+							>
+								<ListPane
+									className="h-full min-w-0"
+									compact={false}
+									free={props.free}
+									history={props.history}
 
-										now={props.now}
-										onSelect={props.onSelect}
-										rows={props.rows}
-										selectedId={props.selectedRow?.item.id}
-									/>
-								</ResizablePanel>
-								<ResizableHandle />
-								<ResizablePanel className="min-h-0">
-									<DetailPane
-										app={props.selectedApp}
-										history={props.history}
-										labels={props.labels}
-										minutes={props.minutes}
-										pending={props.pending}
-										row={props.selectedRow}
-										selectedOwner={selectedOwner}
-										worker={props.active}
-									/>
-								</ResizablePanel>
-							</ResizablePanelGroup>
-						),
-						onTrue: () =>
-							Boolean.match(props.pushed, {
-								onFalse: () => (
-									<PhoneList
-										free={props.free}
-										history={props.history}
-										labels={props.labels}
-										minutes={props.minutes}
-										now={props.now}
-										onSelect={props.onSelect}
-										rows={props.rows}
-										selectedId={props.selectedRow?.item.id}
-										selectedOwner={selectedOwner}
-									/>
-								),
-								onTrue: () => (
-									<SelectedProcesses app={props.selectedApp} pending={props.pending} row={props.selectedRow} />
-								)
-							})
-					})}
-				</div>
+									now={props.now}
+									onSelect={props.onSelect}
+									rows={props.rows}
+									selectedId={props.selectedRow?.item.id}
+								/>
+							</ResizablePanel>
+							<ResizableHandle />
+							<ResizablePanel className="min-h-0">
+								<DetailPane
+									app={props.selectedApp}
+									history={props.history}
+									labels={props.labels}
+									minutes={props.minutes}
+									pending={props.pending}
+									row={props.selectedRow}
+									selectedOwner={selectedOwner}
+									worker={props.active}
+								/>
+							</ResizablePanel>
+						</ResizablePanelGroup>
+					),
+					onTrue: () =>
+						Boolean.match(props.pushed, {
+							onFalse: () => (
+								<PhoneList
+									free={props.free}
+									history={props.history}
+									labels={props.labels}
+									minutes={props.minutes}
+									now={props.now}
+									onSelect={props.onSelect}
+									rows={props.rows}
+									selectedId={props.selectedRow?.item.id}
+									selectedOwner={selectedOwner}
+								/>
+							),
+							onTrue: () => (
+								<SelectedProcesses app={props.selectedApp} pending={props.pending} row={props.selectedRow} />
+							)
+						})
+				})}
 			</div>
 		),
 		onSome: error => <ReadFailure error={error} reset={props.retryFailed} />
@@ -402,7 +377,7 @@ function HomeRoute() {
 		navigate({search: previous => Schema.encodeSync(Search)({...previous, ...next})})
 	}
 	const minutes = Option.getOrElse(search.range, () => Duration.minutes(60))
-	// The charts keep the last loaded range, dimmed, until the one the URL asks for arrives.
+	// The charts keep the last loaded range, unmarked, until the one the URL asks for arrives.
 	const shownMinutes = useDeferredValue(minutes)
 	const pane = Option.getOrElse(search.pane, () => 'apps')
 	const inventory = useAtomValue(inventoryAtom)
@@ -422,7 +397,6 @@ function HomeRoute() {
 		Option.filter(isDenied),
 		Option.orElse(() => Option.filter(AsyncResult.error(metrics), isDenied))
 	)
-	const refreshing = !Equal.equals(shownMinutes, minutes)
 	const inventoryPending = AsyncResult.isInitial(inventory)
 	const workers = Array.dedupe([
 		...pipe(
@@ -491,7 +465,12 @@ function HomeRoute() {
 					onFalse: () => (
 						<div className="flex items-center gap-1 max-sm:-ml-3">
 							<DataProblem minutes={minutes} />
-							<RangeTabs minutes={minutes} onChange={range => view({range: Option.some(range)})} ranges={RANGES} />
+							<AppBarChoice
+								label="Range"
+								value={minutes}
+								options={RANGES}
+								onChange={range => view({range: Option.some(range)})}
+							/>
 						</div>
 					),
 					onTrue: () => <DataProblem minutes={minutes} />
@@ -521,7 +500,6 @@ function HomeRoute() {
 				onSelect={selectRow}
 				pending={inventoryPending}
 				pushed={pushed}
-				refreshing={refreshing}
 				retryFailed={retryFailed}
 				rows={sorted}
 				selectedApp={Option.getOrUndefined(search.app)}

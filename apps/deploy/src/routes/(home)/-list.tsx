@@ -19,10 +19,11 @@ import {Button} from '@deslop/components-web/ui/button'
 import {Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle} from '@deslop/components-web/ui/item'
 import {ScrollArea} from '@deslop/components-web/ui/scroll-area'
 import {Skeleton} from '@deslop/components-web/ui/skeleton'
+import {timerOf} from '@deslop/runtime/shared/format'
 
 import {inventoryAtom, openExposeAtom, runAtom} from '#lib/fleet.ts'
 import {ApplicationIcon} from '#routes/(home)/-marks.tsx'
-import {counted, host, impactGroups, middleEllipsis} from '#routes/(home)/-rows.ts'
+import {host, impactGroups, middleEllipsis} from '#routes/(home)/-rows.ts'
 import {
 	failureAge,
 	nextRun,
@@ -137,7 +138,7 @@ const elapsedAtom = Atom.family((_job: ItemId) =>
 function Elapsed(props: {job: ItemId}) {
 	return (
 		<span className="text-muted-foreground shrink-0 pr-2 font-mono text-xs whitespace-nowrap tabular-nums">
-			{counted(AsyncResult.getOrElse(useAtomValue(elapsedAtom(props.job)), () => Duration.zero))}
+			{timerOf(AsyncResult.getOrElse(useAtomValue(elapsedAtom(props.job)), () => Duration.zero))}
 		</span>
 	)
 }
@@ -235,7 +236,7 @@ function AppRow(props: {
 				</ItemContent>
 				<ItemActions className="pointer-events-none relative z-10 shrink-0">
 					<span className="flex min-w-0 items-center justify-end gap-1.5">
-						{failing && (
+						{props.row.item.health !== 'quiet' && (
 							<span
 								title={state}
 								aria-label={state}

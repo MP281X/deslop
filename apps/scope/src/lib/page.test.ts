@@ -208,7 +208,7 @@ it.effect(
 	'replaces loading rows with honest empty panes',
 	Effect.fnUntraced(function* () {
 		const html = yield* render(AsyncResult.initial(), AsyncResult.success({apps: []}))
-		for (const label of ['No traces in this frame', 'Select an operation', 'Select a trace']) {
+		for (const label of ['No traces in this range', 'Select an operation', 'Select a trace']) {
 			assert.include(html, `aria-label="${label}"`)
 			assert.notInclude(html, `>${label}<`)
 		}

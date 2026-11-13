@@ -3,8 +3,8 @@ import {Array, Match, Option, Schema, pipe} from 'effect'
 import {HStack, Image, Text} from '@expo/ui/swift-ui'
 import {accessibilityElement, accessibilityHidden, foregroundStyle, lineLimit} from '@expo/ui/swift-ui/modifiers'
 
-import {shortDate} from '@deslop/components-mobile/dates'
 import {colors, space, text} from '@deslop/components-mobile/theme'
+import {dayOf} from '@deslop/runtime/shared/format'
 
 import {BrandLogo} from '#lib/icons.tsx'
 import {kindOf, kinds, siteOf} from '#lib/kinds.ts'
@@ -32,7 +32,7 @@ export function Byline(props: {note: NoteItem}) {
 			<SourceIcon kind={kindOf(props.note)} />
 			<Text modifiers={[text.caption, foregroundStyle(colors.mutedForeground), lineLimit(1)]}>
 				{pipe(
-					[Option.orElse(props.note.author, () => siteOf(props.note)), Option.some(shortDate(props.note.createdAt))],
+					[Option.orElse(props.note.author, () => siteOf(props.note)), Option.some(dayOf(props.note.createdAt))],
 					Array.getSomes,
 					Array.join(' · ')
 				)}

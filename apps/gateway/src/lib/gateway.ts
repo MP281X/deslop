@@ -1,4 +1,4 @@
-import {Duration, Effect, Option, Schema, Stream, pipe} from 'effect'
+import {Effect, Option, Schema, Stream} from 'effect'
 
 import {Machine} from '@typeonce/effect-machine'
 import {AtomMachine} from '@typeonce/effect-machine/reactivity'
@@ -10,7 +10,7 @@ import {RpcStream} from '@deslop/runtime/shared/rpc'
 import {addPageTelemetry, layerPageProtocol} from '@deslop/runtime/web/client'
 
 import {RpcContracts} from '#rpcs/contracts.ts'
-import {ServerUrl, UpstreamError} from '#services/connections/schema.ts'
+import {ServerUrl} from '#services/connections/schema.ts'
 import type {ServerId} from '#services/connections/schema.ts'
 import type {Period} from '#services/usage/schema.ts'
 
@@ -106,25 +106,3 @@ export const mcpUsageAtom = Atom.family((period: Period) =>
 )
 
 export const setKeyAtom = RpcClient.mutation('ai-proxy.setKey')
-
-// The copy button's check, set by the copy and cleared a moment later.
-export const copiedAtom = Atom.make(false)
-
-// The button confirms a copy in place; a failure leaves it destructive until the next press.
-export const copyAtom = Atom.family((value: string) =>
-	Atom.fn(() =>
-		pipe(
-			// A press inside the check's moment starts over, so a copy that now fails does not keep the check.
-			Atom.set(copiedAtom, false),
-			Effect.andThen(
-				Effect.tryPromise({
-					catch: cause => UpstreamError.make({cause}),
-					try: () => navigator.clipboard.writeText(value)
-				})
-			),
-			Effect.andThen(Atom.set(copiedAtom, true)),
-			Effect.andThen(Effect.sleep(Duration.millis(1500))),
-			Effect.andThen(Atom.set(copiedAtom, false))
-		)
-	)
-)

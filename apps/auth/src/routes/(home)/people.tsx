@@ -1,6 +1,6 @@
 import {useAtom, useAtomSuspense} from '@effect/atom-react'
 
-import {Array, Boolean, DateTime, Option} from 'effect'
+import {Array, Boolean, Option} from 'effect'
 
 import {ShieldIcon, UsersIcon} from '@phosphor-icons/react'
 import {Navigate, createFileRoute} from '@tanstack/react-router'
@@ -8,14 +8,16 @@ import {AsyncResult} from 'effect/reactivity'
 import {Suspense} from 'react'
 import type {ReactNode} from 'react'
 
+import {AccountAvatar} from '@deslop/components-web/app-bar'
 import {EmptyState, Loaded} from '@deslop/components-web/fallbacks'
 import {ResultError} from '@deslop/components-web/result-error'
 import {Button} from '@deslop/components-web/ui/button'
 import {Card} from '@deslop/components-web/ui/card'
 import {Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle} from '@deslop/components-web/ui/item'
+import {monthOf} from '@deslop/runtime/shared/format'
 
 import {accountAtom, admitAtom, peopleAtom} from '#lib/auth.ts'
-import {AccountAvatar, PeopleRowsSkeleton} from '#lib/components.tsx'
+import {PeopleRowsSkeleton} from '#lib/components.tsx'
 import type {Person} from '#services/people/schema.ts'
 
 // The row's own line, then its failed answer beneath it; its actions sit at its end.
@@ -24,7 +26,7 @@ function PersonRow(props: {children?: ReactNode; footer?: ReactNode; person: Per
 		<div role="listitem">
 			<Item size="row">
 				<ItemMedia>
-					<AccountAvatar id={props.person.id} name={props.person.name} small />
+					<AccountAvatar account={props.person} small />
 				</ItemMedia>
 				<ItemContent>
 					<ItemTitle>{Option.getOrElse(props.person.fullName, () => props.person.name)}</ItemTitle>
@@ -40,17 +42,28 @@ function PersonRow(props: {children?: ReactNode; footer?: ReactNode; person: Per
 	)
 }
 
-// judge-ignore no-repeated-text-action -- apps/auth/AGENTS.md requires Allow and Decline on each access-request row.
+// A request for access is answered like a sign-in's code: Deny or Approve, each named for the person.
 function AskingRow(props: {person: Person}) {
 	const [admit, answer] = useAtom(admitAtom(props.person.id))
 	return (
 		<PersonRow person={props.person} footer={<ResultError result={admit} className="mb-2 ml-9" />}>
 			<ItemActions>
-				<Button variant="outline" size="xs" disabled={AsyncResult.isWaiting(admit)} onClick={() => answer(false)}>
-					Decline
+				<Button
+					variant="outline"
+					size="xs"
+					disabled={AsyncResult.isWaiting(admit)}
+					aria-label={`Deny @${props.person.name}`}
+					onClick={() => answer(false)}
+				>
+					Deny
 				</Button>
-				<Button size="xs" disabled={AsyncResult.isWaiting(admit)} onClick={() => answer(true)}>
-					Allow
+				<Button
+					size="xs"
+					disabled={AsyncResult.isWaiting(admit)}
+					aria-label={`Approve @${props.person.name}`}
+					onClick={() => answer(true)}
+				>
+					Approve
 				</Button>
 			</ItemActions>
 		</PersonRow>
@@ -62,10 +75,7 @@ function Since(props: {since: Person['since']}) {
 	return (
 		<ItemActions>
 			<span className="text-muted-foreground w-16 shrink-0 text-right font-mono text-xs whitespace-nowrap tabular-nums">
-				{Option.match(props.since, {
-					onNone: () => null,
-					onSome: time => DateTime.formatLocal(time, {month: 'short', year: 'numeric'})
-				})}
+				{Option.match(props.since, {onNone: () => null, onSome: monthOf})}
 			</span>
 		</ItemActions>
 	)

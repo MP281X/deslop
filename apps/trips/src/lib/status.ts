@@ -2,13 +2,15 @@ import {DateTime, Duration, Number, Option} from 'effect'
 import type {Record} from 'effect'
 
 import {colors, hues} from '@deslop/components-mobile/theme'
+import {weekdayOf} from '@deslop/runtime/shared/format'
 
 import {clockAt, departureOf, labelled} from '#services/bookings/lib/utils.ts'
 import type {Booking, Flight, FlightTracking, Tone, Train, TrainTracking} from '#services/bookings/schema.ts'
 import {isStale} from '#services/tracking/lib/utils.ts'
 
+// The day where the trip happens, in that place's zone.
 export function dayAt(time: DateTime.Utc, timeZone: string) {
-	return DateTime.format(time, {day: 'numeric', month: 'short', timeZone, weekday: 'short'})
+	return weekdayOf(DateTime.makeZonedUnsafe(time, {timeZone}))
 }
 
 export function daysUntil(time: DateTime.Utc, now: DateTime.Utc, timeZone: string) {
