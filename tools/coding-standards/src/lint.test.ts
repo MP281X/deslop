@@ -122,7 +122,10 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 					'',
 					'class Notes extends Context.Service<Notes>()("Notes", {make: Effect.gen(function* () {',
 					'const helper = {read: Effect.fnUntraced(function* () { return 1 })}',
-					'return {read: Effect.fnUntraced(function* () { return 1 }), write: Effect.fn("Notes.write")(function* () { return 2 })} // reported',
+					'function nested() { return {read: Effect.fnUntraced(function* () { return 1 })} }',
+					'const unrelated = Other.of({read: Effect.fnUntraced(function* () { return 1 })})',
+					'const find = Effect.fnUntraced(function* () { return 3 })',
+					'return {alias: find, read: Effect.fnUntraced(function* () { return 1 }), write: Effect.fn("Notes.write")(function* () { return 2 })} // reported',
 					'})}) {}',
 					'function unrelated() { return {read: Effect.fnUntraced(function* () { return 1 })} }'
 				]
@@ -133,6 +136,7 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 				)
 				const fixed = yield* lintSource({'services/notes/service.ts': Array.join(source, '\n')}, ['--fix'])
 				assert.include(fixed.sources[0] ?? '', "Effect.fn('Notes.read')")
+				assert.include(fixed.sources[0] ?? '', "Effect.fn('Notes.alias')")
 				assert.deepStrictEqual(reportedLines(fixed, 'service-method-span').reported, [])
 			})
 		)
