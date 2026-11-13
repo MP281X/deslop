@@ -57,8 +57,20 @@ const cli = pipe(
 					),
 					ignore: pipe(
 						Flag.String('ignore'),
-						Flag.withDescription('A glob of files to leave unjudged, as lint ignores them'),
+						Flag.withDescription(
+							'A glob of changed files to leave out, as lint ignores them; known lockfiles are left out without one, and each path left out is reported'
+						),
 						Flag.atLeast(0)
+					),
+					maxCallTokens: pipe(
+						Flag.Int('max-call-tokens'),
+						Flag.withDescription('The most one call may send; a larger call is reported unjudged and not sent'),
+						Flag.withDefault(64_000)
+					),
+					maxRunTokens: pipe(
+						Flag.Int('max-run-tokens'),
+						Flag.withDescription('The most one run may send; a larger run fails before its first call'),
+						Flag.withDefault(1_000_000)
 					)
 				},
 				input => judge(input, input)

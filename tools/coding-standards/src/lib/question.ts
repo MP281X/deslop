@@ -16,14 +16,13 @@ export type Question = {
 	yes: Side
 }
 
-// What Jev reads of the change for each kind of change question: one diff hunk alone, one hunk beside what the change says it does, or one claim beside the proof offered for it.
+// What Jev reads of the change for each kind of change question: the whole change beside its request and the code around what the request names, or one line of the request beside the request and the change it is checked against.
 export type ChangeStates = {
-	claim: {claim: string; proof: string}
-	edit: {edit: string; file: string}
-	scope: {edit: string; file: string; request: string}
+	change: {change: string; context: string; request: string}
+	claim: {change: string; claim: string; request: string}
 }
 
-// One yes-or-no question about the change, asked of every hunk or claim of its kind; its examples are whole states, so the judge asks them exactly as it asks the change.
+// One yes-or-no question about the change, asked once of the whole change or of each claim, by its kind; its examples are whole states, so the judge asks them exactly as it asks the change.
 export type ChangeQuestion = {
 	[K in keyof ChangeStates]: {
 		kind: K

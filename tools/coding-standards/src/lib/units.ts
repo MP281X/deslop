@@ -1,4 +1,4 @@
-import {Array, Boolean, HashSet, Option, Predicate, String, pipe} from 'effect'
+import {Array, Boolean, HashSet, Option, Predicate, Record, String, pipe} from 'effect'
 
 import type {ImportDeclaration, ImportDeclarationSpecifier} from 'oxc-parser'
 import {parseSync, visitorKeys} from 'oxc-parser'
@@ -10,13 +10,16 @@ import type {Kind} from '#lib/question.ts'
 const MAX_LINES = 150
 const FUNCTIONS = ['ArrowFunctionExpression', 'FunctionDeclaration', 'FunctionExpression']
 
-// A unit with only the imports it uses, so an import added for another unit asks nothing again; its text opens with the comments right above it, and `ignores` names the questions its `judge-ignore` comments opt out of.
+const IGNORE = /judge-ignore (\S+) -- (\S.*)$/u
+
+// A unit with only the imports it uses, so an import added for another unit asks nothing again; `names` are the imported bindings it uses, its text opens with the comments right above it, and `ignores` maps each question its `judge-ignore` comments opt out of to the reason given.
 export type Unit = {
 	end: number
-	ignores: HashSet.HashSet<string>
+	ignores: Record<string, string>
 	imports: string
 	kind: Kind
 	line: number
+	names: string[]
 	start: number
 	text: string
 }
@@ -92,26 +95,23 @@ function identifiers(node: Node): string[] {
 	]
 }
 
-// One import line per binding the unit names, so a name like `useAtomValue` says where it comes from.
-function importsUsed(source: string, declarations: ImportDeclaration[], node: Node) {
-	const names = HashSet.fromIterable(identifiers(node))
-	return pipe(
-		declarations,
-		Array.flatMap(declaration =>
-			pipe(
-				declaration.specifiers,
-				Array.filter(specifier => HashSet.has(names, specifier.local.name)),
-				Array.map(specifier => importLine(source, declaration, specifier))
+// Each imported binding of a file and its import line, so a unit's imports can be compared with the file's before the change.
+export function importLines(filename: string, source: string) {
+	return Record.fromEntries(
+		Array.flatMap(parseSync(filename, source).program.body, statement => {
+			if (statement.type !== 'ImportDeclaration') return []
+			return Array.map(
+				statement.specifiers,
+				specifier => [specifier.local.name, importLine(source, statement, specifier)] as const
 			)
-		),
-		Array.join('\n')
+		})
 	)
 }
 
 // The pieces of a file worth judging alone, outermost first so none holds another: test cases in test files, then functions of a bounded size.
 export function units(filename: string, source: string) {
-	const program = parseSync(filename, source).program
-	const declarations = Array.filter(program.body, statement => statement.type === 'ImportDeclaration')
+	const parsed = parseSync(filename, source)
+	const imported = importLines(filename, source)
 	const lines = String.split(source, '\n')
 	const starts = Array.scan(lines, 0, (offset, line) => offset + line.length + 1)
 	function lineOf(offset: number) {
@@ -123,31 +123,44 @@ export function units(filename: string, source: string) {
 			) + 1
 		)
 	}
+	// The lines that hold only a `//` comment, by the parser's own reading, so a string or template that quotes one is code.
+	const commentLines = HashSet.fromIterable(
+		Array.flatMap(parsed.comments, comment => {
+			const line = lineOf(comment.start)
+			if (comment.type !== 'Line' || !matches(/^\s*$/u)(String.slice(starts[line - 1] ?? 0, comment.start)(source))) {
+				return []
+			}
+			return [line]
+		})
+	)
 	function unit(kind: Kind, node: Node, line: number) {
 		// The opt-outs sit in the comment lines right above the unit, beside any comment explaining it, which Jev reads with the code.
 		const above = pipe(
-			Array.take(lines, line - 1),
+			Array.range(1, line - 1),
 			Array.reverse,
-			Array.takeWhile(matches(/^\s*\/\//u)),
+			Array.takeWhile(number => HashSet.has(commentLines, number)),
 			Array.reverse,
-			Array.map(String.trimStart)
+			Array.map(number => String.trimStart(lines[number - 1] ?? ''))
 		)
-		const ignores = pipe(
-			above,
-			Array.flatMap(comment => Option.toArray(String.match(/judge-ignore (\S+) -- \S/u)(comment))),
-			Array.flatMap(found => Option.toArray(Array.get(found, 1)))
-		)
+		const names = Array.filter(Array.dedupe(identifiers(node)), name => Record.has(imported, name))
 		return {
 			end: lineOf(node.end),
-			ignores: HashSet.fromIterable(ignores),
-			imports: importsUsed(source, declarations, node),
+			ignores: Record.fromEntries(
+				Array.flatMap(above, comment =>
+					Option.toArray(Option.map(String.match(IGNORE)(comment), found => [found[1] ?? '', found[2] ?? ''] as const))
+				)
+			),
+			imports: pipe(
+				Record.toEntries(imported),
+				Array.filter(entry => Array.contains(names, entry[0])),
+				Array.map(entry => entry[1]),
+				Array.join('\n')
+			),
 			kind,
 			line,
+			names,
 			start: line - above.length,
-			text: Array.join(
-				[...Array.filter(above, comment => !String.includes('judge-ignore ')(comment)), textOf(source, node)],
-				'\n'
-			)
+			text: Array.join([...Array.filter(above, comment => !matches(IGNORE)(comment)), textOf(source, node)], '\n')
 		}
 	}
 	const tests = matches(/\.test\.[cm]?[jt]sx?$/u)(filename)
@@ -172,5 +185,5 @@ export function units(filename: string, source: string) {
 		}
 		return Array.flatMap(childrenOf(node), next => visit(next, Option.some(node)))
 	}
-	return visit(program, Option.none())
+	return visit(parsed.program, Option.none())
 }

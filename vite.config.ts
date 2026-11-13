@@ -328,7 +328,7 @@ export default defineConfig({
 					'vp run fallow'
 				]
 			},
-			// Jev's questions over the repository, run by hand once per pull request after Verify: an unanswered question costs part of a model call and the answers live in the user's own cache, so `fix`, `check`, `test`, Verify and CI never judge.
+			// Jev's questions about this branch's change against its pull request's base, else origin's default branch: the whole change with its request, each claim of the request, and the functions, components and tests it touched. Run by hand once per pull request after Verify: an unanswered question costs part of a model call and the answers live in the user's own cache, so `fix`, `check`, `test`, Verify and CI never judge.
 			judge: {
 				cache: false,
 				command:
