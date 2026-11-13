@@ -3,6 +3,8 @@ import {Boolean, Config, Effect, Option} from 'effect'
 
 import type {ExpoConfig} from 'expo/config'
 
+export const DEVELOPMENT_BUNDLE_SUFFIX = '.dev'
+
 // EAS sets APP_VARIANT from the build profile; the simulator build gets its own bundle identifier and name.
 export function makeExpoConfig(app: {projectId: string; slug: string}) {
 	// oxlint-disable-next-line eslint/no-restricted-properties -- Expo loads the app config outside any Effect runtime.
@@ -15,7 +17,7 @@ export function makeExpoConfig(app: {projectId: string; slug: string}) {
 				'production'
 			const variant = Boolean.match(production, {
 				onFalse: () => ({
-					bundleIdentifier: `xyz.mp281x.${app.slug}.dev`,
+					bundleIdentifier: `xyz.mp281x.${app.slug}${DEVELOPMENT_BUNDLE_SUFFIX}`,
 					name: `${app.slug} dev`,
 					scheme: `${app.slug}-dev`
 				}),

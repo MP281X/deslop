@@ -31,11 +31,14 @@ import {Reactivity} from 'effect/reactivity'
 import {SqlClient, SqlSchema} from 'effect/sql'
 import {TestClock} from 'effect/testing'
 
+import {Apns} from '@deslop/runtime/server/apns'
+import {ApnsToken} from '@deslop/runtime/shared/apns'
+
 import {activityProps} from '#services/bookings/lib/utils.ts'
 import type {Booking} from '#services/bookings/schema.ts'
 import {BookedPlace, BookingId, Flight} from '#services/bookings/schema.ts'
 import {Bookings} from '#services/bookings/service.ts'
-import {Activity, ApnsToken, ChannelId, Device, JwtClaims} from '#services/push/schema.ts'
+import {Activity, ChannelId, Device} from '#services/push/schema.ts'
 import {Push} from '#services/push/service.ts'
 
 const BOOKING = BookingId.make('1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d')
@@ -93,59 +96,58 @@ const open = Effect.fnUntraced(function* (
 	const channels = yield* Ref.make(0)
 	const calls = yield* Queue.unbounded<HttpClientRequest.HttpClientRequest>()
 	const key = yield* (yield* Signature.Signature).generateKeyPair(Signature.ecdsaP256)
-	const push = Context.get(
-		yield* Layer.build(
-			pipe(
-				Push.layer,
-				Layer.provide(Layer.succeedContext(database)),
-				Layer.provide(
-					Layer.succeed(
-						Bookings,
-						Bookings.of({
-							events: Stream.never,
-							list: Effect.succeed(list),
-							remove: () => Effect.void,
-							replace: () => Effect.undefined,
-							save: () => Effect.undefined,
-							watch: Stream.never
-						})
-					)
-				),
-				Layer.provide(
-					Layer.succeed(
-						HttpClient.HttpClient,
-						HttpClient.make(request =>
-							Effect.gen(function* () {
-								yield* Queue.offer(calls, request)
-								if (request.method === 'POST' && String.endsWith('/channels')(request.url)) {
-									return HttpClientResponse.fromWeb(
-										request,
-										new Response(undefined, {
-											headers: {'apns-channel-id': `channel-${yield* Ref.updateAndGet(channels, count => count + 1)}`}
-										})
-									)
-								}
+	const context = yield* Layer.build(
+		pipe(
+			Push.layer,
+			Layer.provideMerge(Apns.layer),
+			Layer.provide(Layer.succeedContext(database)),
+			Layer.provide(
+				Layer.succeed(
+					Bookings,
+					Bookings.of({
+						events: Stream.never,
+						list: Effect.succeed(list),
+						remove: () => Effect.void,
+						replace: () => Effect.undefined,
+						save: () => Effect.undefined,
+						watch: Stream.never
+					})
+				)
+			),
+			Layer.provide(
+				Layer.succeed(
+					HttpClient.HttpClient,
+					HttpClient.make(request =>
+						Effect.gen(function* () {
+							yield* Queue.offer(calls, request)
+							if (request.method === 'POST' && String.endsWith('/channels')(request.url)) {
 								return HttpClientResponse.fromWeb(
 									request,
-									new Response(undefined, {status: yield* Effect.flatten(Ref.get(responses))})
+									new Response(undefined, {
+										headers: {'apns-channel-id': `channel-${yield* Ref.updateAndGet(channels, count => count + 1)}`}
+									})
 								)
-							})
-						)
-					)
-				),
-				Layer.provide(
-					ConfigProvider.layer(
-						ConfigProvider.fromUnknown({
-							APNS_KEY: Base64.encode(yield* KeyFormat.encode(KeyFormat.pkcs8, key.privateKey)),
-							APNS_KEY_ID: 'fixture',
-							APNS_TEAM_ID: 'fixture'
+							}
+							return HttpClientResponse.fromWeb(
+								request,
+								new Response(undefined, {status: yield* Effect.flatten(Ref.get(responses))})
+							)
 						})
 					)
 				)
+			),
+			Layer.provide(
+				ConfigProvider.layer(
+					ConfigProvider.fromUnknown({
+						APNS_KEY: Base64.encode(yield* KeyFormat.encode(KeyFormat.pkcs8, key.privateKey)),
+						APNS_KEY_ID: 'fixture',
+						APNS_TEAM_ID: 'fixture'
+					})
+				)
 			)
-		),
-		Push
+		)
 	)
+	const push = Context.get(context, Push)
 	const activities = SqlSchema.findAll({
 		Request: Schema.Void,
 		Result: Activity,
@@ -154,6 +156,7 @@ const open = Effect.fnUntraced(function* (
 	const devices = SqlSchema.findAll({Request: Schema.Void, Result: Device, execute: () => sql`SELECT * FROM devices`})
 	return {
 		activities: activities(),
+		apns: Context.get(context, Apns),
 		calls,
 		devices: devices(),
 		key,
@@ -185,10 +188,12 @@ it.layer(NodeCrypto.layer)(test => {
 				yield* Jwk.importSpki(yield* KeyFormat.encode(KeyFormat.spki, fixture.key.publicKey), 'ES256')
 			)
 			const claims = yield* Effect.fromOption(
-				Schema.decodeOption(JwtClaims)(new TextDecoder().decode(verified.payload))
+				Schema.decodeOption(Schema.fromJsonString(Schema.Struct({iat: Schema.Finite, iss: Schema.String})))(
+					new TextDecoder().decode(verified.payload)
+				)
 			)
 			assert.deepStrictEqual(
-				[verified.protectedHeader.alg, verified.protectedHeader.kid, claims.iss, DateTime.toEpochSeconds(claims.iat)],
+				[verified.protectedHeader.alg, verified.protectedHeader.kid, claims.iss, claims.iat],
 				['ES256', 'fixture', 'fixture', Math.floor(fixture.now / 1000)]
 			)
 		})
@@ -253,6 +258,30 @@ it.layer(NodeCrypto.layer)(test => {
 			assert.deepStrictEqual(
 				Array.map(yield* Queue.takeAll(fixture.calls), request => request.method),
 				['POST', 'POST']
+			)
+		})
+	)
+
+	test.effect(
+		'a refused departure start does not defer the same booking’s arrival leg',
+		Effect.fnUntraced(function* () {
+			const fixture = yield* open(Effect.succeed(503))
+			const target = {
+				bundle: 'xyz.mp281x.trips.dev',
+				token: Redacted.make(ApnsToken.make('aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'))
+			}
+			const body = {
+				aps: {attributes: {url: `trips-dev://booking/${BOOKING}`}, event: 'start', 'relevance-score': 100, timestamp: 0}
+			}
+			const departure = yield* fixture.apns.startActivity(target, 'departure', body)
+			yield* Ref.set(fixture.responses, Effect.succeed(200))
+			assert.deepStrictEqual(
+				[departure.status, (yield* fixture.apns.startActivity(target, 'arrival', body)).status],
+				[503, 200]
+			)
+			assert.strictEqual(
+				Array.countBy(yield* Queue.takeAll(fixture.calls), request => String.includes('/3/device/')(request.url)),
+				2
 			)
 		})
 	)

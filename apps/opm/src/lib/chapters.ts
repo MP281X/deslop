@@ -1,11 +1,12 @@
-import {Array, Boolean, Effect, HashSet, Option, Order, Redacted, Schema, Stream, pipe} from 'effect'
+import {Array, Boolean, Effect, HashSet, Option, Order, Queue, Redacted, Schema, Stream, pipe} from 'effect'
 
 import {AtomRpc, Atom} from 'effect/reactivity'
-import Constants from 'expo-constants'
+import {applicationId} from 'expo-application'
 import {File, Paths} from 'expo-file-system'
 import {
 	addNotificationResponseReceivedListener,
-	getExpoPushTokenAsync,
+	addPushTokenListener,
+	getDevicePushTokenAsync,
 	getLastNotificationResponse,
 	requestPermissionsAsync,
 	setBadgeCountAsync,
@@ -17,20 +18,18 @@ import {hues} from '@deslop/components-mobile/theme'
 import {liveStream} from '@deslop/runtime/client/live-stream'
 import {keychain} from '@deslop/runtime/mobile/keychain'
 import {makeSession, provideRuntimeOnce} from '@deslop/runtime/mobile/session'
+import {ApnsToken} from '@deslop/runtime/shared/apns'
 import {RpcStream} from '@deslop/runtime/shared/rpc'
 
 import {OpmNative} from '#modules/native/index.ts'
 import {RpcContracts} from '#rpcs/contracts.ts'
 import {byNumber, keyOf, notificationOf} from '#services/chapters/lib/utils.ts'
 import type {ChapterKey, ChapterNumber} from '#services/chapters/schema.ts'
-import {ChaptersError, PushToken} from '#services/chapters/schema.ts'
+import {Bundle, ChaptersError} from '#services/chapters/schema.ts'
 import {ReadingChapter} from '#services/reading/schema.ts'
 import type {ChapterItem, ChapterList, ChaptersEvent, ReadingPosition} from '#services/reading/schema.ts'
 
 export const primary = hues.ivory
-
-type EasProjectId = typeof EasProjectId.Type
-const EasProjectId = pipe(Schema.String, Schema.brand('EasProjectId'))
 
 export const session = makeSession('https://opm.mp281x.xyz', keychain)
 
@@ -181,15 +180,35 @@ export const pushAtom = RpcClient.runtime.atom(get =>
 			) {
 				return
 			}
-			const extra = yield* Schema.decodeUnknownEffect(Schema.Struct({eas: Schema.Struct({projectId: EasProjectId})}))(
-				Constants.expoConfig?.extra
-			)
-			const token = yield* Effect.tryPromise({
-				catch: cause => ChaptersError.make({cause, message: 'The push token could not be read.'}),
-				try: () => getExpoPushTokenAsync({projectId: extra.eas.projectId})
-			})
-			yield* Effect.flatMap(RpcClient, client =>
-				client('chapters.register', {token: Redacted.make(PushToken.make(token.data))})
+			const bundle = yield* Schema.decodeUnknownEffect(Bundle)(applicationId)
+			const client = yield* RpcClient
+			// fallow-ignore-next-line code-duplication -- Notification registration stays app-owned to avoid autolinking expo-notifications into Stash.
+			yield* pipe(
+				Stream.callback<string, ChaptersError>(queue =>
+					Effect.gen(function* () {
+						yield* Effect.acquireRelease(
+							Effect.sync(() =>
+								addPushTokenListener(token => {
+									Queue.offerUnsafe(queue, `${token.data}`)
+								})
+							),
+							subscription => Effect.sync(() => subscription.remove())
+						)
+						const token = yield* Effect.tryPromise({
+							// fallow-ignore-next-line code-duplication -- Each app owns the native notification module, including its initial token read.
+							catch: cause => ChaptersError.make({cause, message: 'The push token could not be read.'}),
+							try: () => getDevicePushTokenAsync()
+						})
+						yield* Queue.offer(queue, `${token.data}`)
+					})
+				),
+				Stream.changes,
+				Stream.runForEach(token =>
+					Effect.ignore(client('chapters.register', {bundle, token: Redacted.make(ApnsToken.make(token))}), {
+						log: 'Warn',
+						message: 'The notification token was not registered'
+					})
+				)
 			)
 		}),
 		{log: 'Warn', message: 'Notifications are not set up on this iPhone'}

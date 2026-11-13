@@ -4,3 +4,4 @@
 - **Chapters.** Each row opens its chapter at the saved page; no separate Continue Reading row.
 - **Reader.** One continuous page strip grows into the next chapter as it is reached; a tap shows the system bars.
 - **Progress.** Reading owns saved pages in its own table and service; discovery never writes a reader's place.
+- **Notifications.** A discovered chapter is announced when no phone is registered, or unless every phone's delivery is retryable. Chapters found between a release that clears registrations and the first phone launch are not notified later; registration must not send a backlog.

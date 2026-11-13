@@ -16,7 +16,6 @@ import {
 	Predicate,
 	Random,
 	Record,
-	Redacted,
 	Ref,
 	Result,
 	Schedule,
@@ -28,9 +27,11 @@ import {
 } from 'effect'
 
 import {Xml} from 'effect/encoding'
-import {HttpClient, HttpClientError, HttpClientRequest, HttpClientResponse} from 'effect/http'
+import {HttpClient, HttpClientError, HttpClientResponse} from 'effect/http'
 import {Reactivity} from 'effect/reactivity'
 import {Migrator, SqlClient, SqlSchema} from 'effect/sql'
+
+import {Apns, apnsDeadToken, apnsRetryable} from '@deslop/runtime/server/apns'
 
 import {
 	byNumber,
@@ -54,7 +55,6 @@ import {
 	DeadLink,
 	Device,
 	Post,
-	PushTickets,
 	Series
 } from '#services/chapters/schema.ts'
 import {ReadingChapter} from '#services/reading/schema.ts'
@@ -146,6 +146,7 @@ export class Chapters extends Context.Service<Chapters>()('@deslop/opm/services/
 	make: Effect.gen(function* () {
 		const sql = yield* SqlClient.SqlClient
 		const client = yield* HttpClient.HttpClient
+		const apns = yield* Apns
 		const exit = yield* Config.option(Config.String('OPM_PROXY'))
 		// Dead reader links are known only to this run: after a restart each answers its 404 once more.
 		const deadLinks = yield* Ref.make(Array.empty<DeadLink>())
@@ -190,7 +191,7 @@ export class Chapters extends Context.Service<Chapters>()('@deslop/opm/services/
 		})
 		const removeDevice = SqlSchema.void({
 			Request: Device.update,
-			execute: row => sql`DELETE FROM ${sql(Device.table)} WHERE token = ${row.token}`
+			execute: row => sql`DELETE FROM ${sql(Device.table)} WHERE bundle = ${row.bundle} AND token = ${row.token}`
 		})
 
 		const chapters = asChaptersError(listChapters())
@@ -379,99 +380,79 @@ export class Chapters extends Context.Service<Chapters>()('@deslop/opm/services/
 			}
 		})
 
-		const send = Effect.fnUntraced(function* (chapter: Chapter, devices: readonly Device[]) {
-			const answer = yield* pipe(
-				HttpClientRequest.post('https://exp.host/--/api/v2/push/send'),
-				HttpClientRequest.bodyJson(
-					Array.map(devices, device => ({
-						body: Boolean.match(String.isNonEmpty(chapter.title), {
-							onFalse: () => `${chapter.pages.length} pages, out now`,
-							onTrue: () => chapter.title
-						}),
-						data: {path: keyOf(chapter)},
+		const send = Effect.fnUntraced(function* (chapter: Chapter, device: Device) {
+			const answer = yield* apns.sendToDevice(
+				device,
+				'alert',
+				{
+					aps: {
+						alert: {
+							body: Boolean.match(String.isNonEmpty(chapter.title), {
+								onFalse: () => `${chapter.pages.length} pages, out now`,
+								onTrue: () => chapter.title
+							}),
+							title: `${SERIES_NAMES[chapter.series]} · Chapter ${chapter.number}`
+						},
 						sound: 'default',
-						threadId: chapter.series,
-						title: `${SERIES_NAMES[chapter.series]} · Chapter ${chapter.number}`,
-						to: Redacted.value(device.token)
-					}))
-				),
-				Effect.flatMap(request => client.execute(request)),
-				Effect.flatMap(HttpClientResponse.filterStatusOk),
-				Effect.flatMap(
-					HttpClientResponse.schemaBodyJson(
-						PushTickets.check(
-							Schema.makeFilter(received => received.data.length === devices.length, {
-								message: 'Expo must return exactly one ticket per message'
-							})
-						)
-					)
-				),
-				Effect.timeout('20 seconds')
+						'thread-id': chapter.series
+					},
+					// expo-notifications exposes the remote userInfo.body as content.data.
+					body: {path: keyOf(chapter)}
+				},
+				10
 			)
-			// Expo answers with one ticket per message; an uninstalled app's token never works again.
-			const tickets = Array.zip(devices, answer.data)
-			yield* pipe(
-				tickets,
-				Array.filter(pair =>
-					pipe(
-						pair[1].details,
-						Option.flatMap(details => details.error),
-						Option.contains('DeviceNotRegistered')
-					)
-				),
-				Effect.forEach(pair => asChaptersError(removeDevice(pair[0])), {concurrency: 1, discard: true})
-			)
-			// Any other refused message keeps the chapter in the outbox for the next round.
-			const refused = Array.filter(
-				tickets,
-				pair =>
-					pair[1].status === 'error' &&
-					!pipe(
-						pair[1].details,
-						Option.flatMap(details => details.error),
-						Option.contains('DeviceNotRegistered')
-					)
-			)
-			if (Array.isReadonlyArrayNonEmpty(refused)) {
-				return yield* ChaptersError.make({
-					message: `Expo refused ${refused.length} messages: ${pipe(
-						refused,
-						Array.map(pair =>
-							pipe(
-								pair[1].details,
-								Option.flatMap(details => details.error),
-								Option.getOrElse(() => 'unknown')
-							)
-						),
-						Array.join(', ')
-					)}`
-				})
+			if (apnsDeadToken(answer)) {
+				yield* asChaptersError(removeDevice(device))
+				return 'dead' as const
 			}
+			if (answer.status === 403 || apnsRetryable(answer)) return 'retry' as const
+			return 'done' as const
 		})
 
-		// The outbox: a chapter stays unannounced until Expo accepts its messages, so a failed send retries next round.
+		// Only a round in which every device is retryable remains in the outbox; accepted devices never get repeats.
 		const notify = Effect.gen(function* () {
+			if (!apns.enabled) return
 			const pending = Array.filter(yield* chapters, chapter => !chapter.notified)
 			if (Array.isReadonlyArrayEmpty(pending)) return
-			const devices = yield* asChaptersError(listDevices())
 			yield* pipe(
 				pending,
 				Array.sort(byNumber),
 				Effect.forEach(
 					chapter =>
-						pipe(
-							devices,
-							Array.chunksOf(100),
-							Effect.forEach(batch => send(chapter, batch), {concurrency: 1, discard: true}),
-							Effect.andThen(
-								pipe(
+						Effect.ignore(
+							Effect.gen(function* () {
+								// Re-read after each chapter, so a dead token is never sent the next one.
+								const devices = yield* asChaptersError(listDevices())
+								// A refused device must not prevent the others from receiving this chapter.
+								const answers = yield* Effect.forEach(
+									devices,
+									device =>
+										pipe(
+											send(chapter, device),
+											Effect.tapError(cause => Effect.logWarning('A chapter push failed', cause)),
+											Effect.result
+										),
+									{concurrency: 1}
+								)
+								const remaining = pipe(
+									answers,
+									Array.map(Result.getOrElse(() => 'retry' as const)),
+									Array.filter(outcome => outcome !== 'dead')
+								)
+								if (
+									Array.isReadonlyArrayNonEmpty(remaining) &&
+									Array.every(remaining, outcome => outcome === 'retry')
+								) {
+									return yield* ChaptersError.make({message: 'Every device is retryable.'})
+								}
+								yield* pipe(
 									announce({notified: true, number: chapter.number, series: chapter.series}),
 									Reactivity.mutation(['chapters']),
 									asChaptersError
 								)
-							),
-							Effect.andThen(Effect.logInfo(`Announced chapter ${keyOf(chapter)} to ${devices.length} iPhones`)),
-							Effect.ignore({log: 'Warn', message: `Chapter ${keyOf(chapter)} was not announced yet`})
+								yield* Effect.logInfo(`Announced chapter ${keyOf(chapter)} to ${devices.length} iPhones`)
+							}),
+							{log: 'Warn', message: `Chapter ${keyOf(chapter)} was not announced yet`}
 						),
 					{concurrency: 1, discard: true}
 				)
@@ -537,6 +518,12 @@ export class Chapters extends Context.Service<Chapters>()('@deslop/opm/services/
 						) STRICT
 					`
 					yield* sql`CREATE TABLE devices (token TEXT PRIMARY KEY) STRICT, WITHOUT ROWID`
+				}),
+				'0002_apns_devices': Effect.gen(function* () {
+					const sql = yield* SqlClient.SqlClient
+					// Expo tokens cannot address APNs; every phone registers a native token on its next launch.
+					yield* sql`DROP TABLE devices`
+					yield* sql`CREATE TABLE devices (bundle TEXT NOT NULL, token TEXT NOT NULL, PRIMARY KEY (bundle, token)) STRICT, WITHOUT ROWID`
 				})
 			}),
 			table: 'chapters_migrations'
