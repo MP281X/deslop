@@ -31,10 +31,6 @@ export class ChaptersError extends Schema.TaggedError<ChaptersError>()('Chapters
 	message: Schema.String
 }) {}
 
-// How far the one reader got in a chapter.
-export type Reading = typeof Reading.Type
-export const Reading = Schema.Struct({done: Schema.Boolean, page: Schema.Finite})
-
 export type Series = typeof Series.Type
 export const Series = Schema.Literals(['manga', 'webcomic'])
 
@@ -48,7 +44,7 @@ export const ChapterPath = Schema.TemplateLiteralParser([
 // The server's own bookkeeping, which never reaches the iPhone.
 const serverOnly = Model.FieldOnly(['select', 'insert', 'update'])
 
-// One row of `chapters`: a fetched chapter, kept because Reddit's feeds show only recent posts and a reader's page must stay on the translation it started; with the one reader's place in it.
+// One row of `chapters`: catalogue and provenance. Reading progress belongs to the reading service.
 export class Chapter extends Model.Class<Chapter>('Chapter')({
 	// Set once every registered iPhone has been told, or when the chapter arrived before anyone could be.
 	notified: serverOnly(Schema.BooleanFromBit),
@@ -56,7 +52,6 @@ export class Chapter extends Model.Class<Chapter>('Chapter')({
 	number: ChapterNumber,
 	pages: Model.JsonFromString(Schema.Array(Schema.String)),
 	postedAt: PostedAt,
-	reading: Model.FieldOption(Model.JsonFromString(Reading)),
 	// When the revision that supplied the current pages was posted; only a later revision replaces them.
 	revisedAt: Model.FieldOption(serverOnly(DateTimeUtcFromFiniteMillis)),
 	series: Series,
@@ -66,23 +61,6 @@ export class Chapter extends Model.Class<Chapter>('Chapter')({
 }) {
 	static readonly table = 'chapters'
 }
-
-// A chapter as the iPhone sees it; the whole list with its page links is a few hundred kilobytes.
-export type ChapterItem = typeof Chapter.json.Type
-
-export type ChapterList = readonly ChapterItem[]
-
-// The whole list once per connection, then only the chapters that changed, such as the one being read.
-export type ChaptersEvent = typeof ChaptersEvent.Type
-export const ChaptersEvent = Schema.Struct({reset: Schema.Boolean, upserted: Schema.Array(Chapter.json)})
-
-export type ReadingUpdate = typeof ReadingUpdate.Type
-export const ReadingUpdate = Schema.Struct({
-	done: Schema.Boolean,
-	number: ChapterNumber,
-	page: Schema.Finite,
-	series: Series
-})
 
 export type ChapterNotification = typeof ChapterNotification.Type
 export const ChapterNotification = Schema.Struct({path: ChapterPath})

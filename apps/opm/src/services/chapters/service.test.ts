@@ -37,8 +37,10 @@ import opmFolk from './fixtures/opm-folk.xml?raw'
 
 import {INDEXES, byNumber, keyOf} from '#services/chapters/lib/utils.ts'
 import type {Series} from '#services/chapters/schema.ts'
-import {Chapter, ChapterNumber, ChaptersEvent, Device, PostedAt, PushToken} from '#services/chapters/schema.ts'
+import {Chapter, ChapterNumber, Device, PostedAt, PushToken} from '#services/chapters/schema.ts'
 import {Chapters} from '#services/chapters/service.ts'
+import {ReadingChapter, ChaptersEvent} from '#services/reading/schema.ts'
+import {Reading} from '#services/reading/service.ts'
 
 const memory = Layer.merge(SqliteClient.layer({filename: ':memory:'}), Reactivity.layer)
 
@@ -50,7 +52,6 @@ function chapterAt(series: Series, number: number, notified = true) {
 		number: ChapterNumber.make(number),
 		pages: [`https://example.test/${series}-${number}.png`],
 		postedAt: Option.none(),
-		reading: Option.none(),
 		revisedAt: Option.none(),
 		series,
 		source: `https://cubari.moe/read/gist/${INDEXES[series]}/${number}/1/`,
@@ -92,8 +93,10 @@ function stored(database: Context.Context<Database>) {
 	return {
 		chapters: SqlSchema.findAll({
 			Request: Schema.Void,
-			Result: Chapter,
-			execute: () => sql`SELECT * FROM chapters ORDER BY number DESC, series`
+			Result: ReadingChapter,
+			execute: () => sql`SELECT chapters.*, CASE WHEN reading.number IS NOT NULL
+				THEN json_object('done', json(CASE WHEN reading.done THEN 'true' ELSE 'false' END), 'page', reading.page) END AS reading
+				FROM chapters LEFT JOIN reading USING (series, number) ORDER BY number DESC, series`
 		}),
 		devices: SqlSchema.findAll({Request: Schema.Void, Result: Device, execute: () => sql`SELECT * FROM devices`})
 	}
@@ -104,17 +107,15 @@ const open = Effect.fnUntraced(function* (
 	client: HttpClient.HttpClient,
 	extra: Layer.Layer<never> = Layer.empty
 ) {
-	return Context.get(
-		yield* Layer.build(
-			pipe(
-				Chapters.layer,
-				Layer.provide(Layer.succeedContext(database)),
-				Layer.provide(Layer.succeed(HttpClient.HttpClient, client)),
-				Layer.provide(extra)
-			)
-		),
-		Chapters
+	const context = yield* Layer.build(
+		pipe(
+			Layer.merge(Chapters.layer, Reading.layer),
+			Layer.provide(Layer.succeedContext(database)),
+			Layer.provide(Layer.succeed(HttpClient.HttpClient, client)),
+			Layer.provide(extra)
+		)
 	)
+	return {...Context.get(context, Chapters), reading: Context.get(context, Reading)}
 })
 
 function index(links: Record<string, string>) {
@@ -268,7 +269,7 @@ it.layer(NodeServices.layer)(test => {
 					yield* Queue.offer(indexed, undefined)
 					// The server's bookkeeping, such as the source link and the announced mark, stays on the server.
 					assert.deepStrictEqual(yield* Queue.take(events), {reset: false, upserted: [chapter]})
-					yield* chapters.read({done: false, number: ChapterNumber.make(1), page: 3, series: 'manga'})
+					yield* chapters.reading.write({done: false, number: ChapterNumber.make(1), page: 3, series: 'manga'})
 					assert.deepStrictEqual(yield* Queue.take(events), {
 						reset: false,
 						upserted: [{...chapter, reading: {done: false, page: 3}}]
@@ -281,12 +282,12 @@ it.layer(NodeServices.layer)(test => {
 				reset: true,
 				upserted: [{...chapter, reading: {done: false, page: 3}}]
 			})
-			yield* chapters.read({done: true, number: ChapterNumber.make(1), page: 0, series: 'manga'})
+			yield* chapters.reading.write({done: true, number: ChapterNumber.make(1), page: 0, series: 'manga'})
 			assert.deepStrictEqual(yield* Queue.take(events), {
 				reset: false,
 				upserted: [{...chapter, reading: {done: true, page: 0}}]
 			})
-			yield* chapters.read({done: false, number: ChapterNumber.make(1), page: 0, series: 'manga'})
+			yield* chapters.reading.write({done: false, number: ChapterNumber.make(1), page: 0, series: 'manga'})
 			assert.deepStrictEqual(yield* Queue.take(events), {
 				reset: false,
 				upserted: [{...chapter, reading: {done: false, page: 0}}]
@@ -314,7 +315,7 @@ it.layer(NodeServices.layer)(test => {
 						],
 						{concurrency: 'unbounded', discard: true}
 					)
-					yield* chapters.read({done: true, number: ChapterNumber.make(2), page: 0, series: 'manga'})
+					yield* chapters.reading.write({done: true, number: ChapterNumber.make(2), page: 0, series: 'manga'})
 					assert.deepStrictEqual(
 						pipe(
 							(yield* Effect.fromOption(yield* Stream.runHead(chapters.events))).upserted,
@@ -323,9 +324,9 @@ it.layer(NodeServices.layer)(test => {
 						),
 						Option.some(Option.some({done: true, page: 0}))
 					)
-					yield* chapters.read({done: true, number: ChapterNumber.make(1), page: 0, series: 'manga'})
-					yield* chapters.read({done: false, number: ChapterNumber.make(2), page: 0, series: 'manga'})
-					yield* chapters.read({done: false, number: ChapterNumber.make(1), page: 0, series: 'webcomic'})
+					yield* chapters.reading.write({done: true, number: ChapterNumber.make(1), page: 0, series: 'manga'})
+					yield* chapters.reading.write({done: false, number: ChapterNumber.make(2), page: 0, series: 'manga'})
+					yield* chapters.reading.write({done: false, number: ChapterNumber.make(1), page: 0, series: 'webcomic'})
 				})
 			)
 			// Read again after a restart: a reading holds only its page and whether it is done.
@@ -466,8 +467,8 @@ it.layer(NodeServices.layer)(test => {
 				Stream.filter(Array.every(chapter => chapter.notified)),
 				Stream.runHead
 			)
-			yield* chapters.read({done: true, number: ChapterNumber.make(1), page: 0, series: 'manga'})
-			yield* chapters.read({done: false, number: ChapterNumber.make(1), page: 0, series: 'webcomic'})
+			yield* chapters.reading.write({done: true, number: ChapterNumber.make(1), page: 0, series: 'manga'})
+			yield* chapters.reading.write({done: false, number: ChapterNumber.make(1), page: 0, series: 'webcomic'})
 			yield* Ref.set(revised, true)
 			yield* TestClock.adjust('1 hour')
 			yield* pipe(

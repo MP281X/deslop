@@ -17,10 +17,10 @@ import {keyOf} from '#services/chapters/lib/utils.ts'
 import {ChapterKey, ChapterPath} from '#services/chapters/schema.ts'
 import type {ChapterNumber, Series} from '#services/chapters/schema.ts'
 
-function Destination(props: {number: ChapterNumber; series: Series; start?: number}) {
+function Destination(props: {number: ChapterNumber; series: Series}) {
 	return (
 		<Loaded atom={chaptersAtom} name="Chapters">
-			{chapters => <ReaderRoute chapters={chapters} number={props.number} series={props.series} start={props.start} />}
+			{chapters => <ReaderRoute chapters={chapters} number={props.number} series={props.series} />}
 		</Loaded>
 	)
 }
@@ -32,7 +32,6 @@ function AppRoutes() {
 	const [series, setSeries] = useState<Series>(() =>
 		Option.match(opened, {onNone: () => 'manga', onSome: chapter => chapter.series})
 	)
-	const [resumePage, setResumePage] = useState<number>()
 	const [path, setPath] = useState(() =>
 		Option.match(opened, {onNone: () => Array.empty<ChapterKey>(), onSome: chapter => [keyOf(chapter)]})
 	)
@@ -40,14 +39,12 @@ function AppRoutes() {
 		Option.match(tapped, {
 			onNone: () => undefined,
 			onSome: chapter => {
-				setResumePage(undefined)
 				setSeries(chapter.series)
 				setPath([keyOf(chapter)])
 			}
 		})
 	)
-	function open(number: ChapterNumber, page?: number) {
-		setResumePage(page)
+	function open(number: ChapterNumber) {
 		setPath([keyOf({number, series})])
 	}
 	return (
@@ -64,7 +61,7 @@ function AppRoutes() {
 						onSome: target => (
 							<NavigationDestination key={value} value={value}>
 								<Suspense fallback={<ReaderSkeleton number={target[2]} />}>
-									<Destination number={target[2]} series={target[0]} start={resumePage} />
+									<Destination number={target[2]} series={target[0]} />
 								</Suspense>
 							</NavigationDestination>
 						)

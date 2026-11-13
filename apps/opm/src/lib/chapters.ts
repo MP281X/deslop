@@ -23,15 +23,10 @@ import {RpcStream} from '@deslop/runtime/shared/rpc'
 import {OpmNative} from '#modules/native/index.ts'
 import {RpcContracts} from '#rpcs/contracts.ts'
 import {byNumber, keyOf, notificationOf} from '#services/chapters/lib/utils.ts'
-import type {
-	ChapterItem,
-	ChapterKey,
-	ChapterNumber,
-	ChaptersEvent,
-	ChapterList,
-	ReadingUpdate
-} from '#services/chapters/schema.ts'
-import {Chapter, ChaptersError, PushToken} from '#services/chapters/schema.ts'
+import type {ChapterKey, ChapterNumber} from '#services/chapters/schema.ts'
+import {ChaptersError, PushToken} from '#services/chapters/schema.ts'
+import {ReadingChapter} from '#services/reading/schema.ts'
+import type {ChapterItem, ChapterList, ChaptersEvent, ReadingPosition} from '#services/reading/schema.ts'
 
 export const primary = hues.ivory
 
@@ -64,7 +59,7 @@ export const chaptersAtom = Atom.keepAlive(
 		return cachedList(
 			get,
 			chaptersFile,
-			Chapter.json,
+			ReadingChapter.json,
 			pipe(liveStream(RpcClient, 'chapters.events'), Stream.scan(Array.empty<ChapterItem>, apply), Stream.drop(1)),
 			session.reconnectOrSignOut
 		)
@@ -77,12 +72,12 @@ export const unreachableAtom = Atom.family((_key: ChapterKey) => Atom.make(Effec
 // Concurrent, so finishing one chapter while opening the next never cancels either write; the client is read once so a reconnect replays none.
 export const readAtom = Atom.keepAlive(
 	Atom.fn(
-		(update: ReadingUpdate, get) =>
+		(update: typeof ReadingPosition.json.Type, get) =>
 			Effect.ignore(
 				provideRuntimeOnce(
 					get,
 					RpcClient.runtime,
-					Effect.flatMap(RpcClient, client => client('chapters.read', update))
+					Effect.flatMap(RpcClient, client => client('reading.write', update))
 				),
 				{log: 'Warn', message: 'The reading position was not saved'}
 			),
@@ -124,7 +119,7 @@ function turnPage(state: ReaderState, turn: PageTurn) {
 				{onFalse: () => passed, onTrue: () => HashSet.add(passed, chapter.number)}
 			)
 			const last = Option.exists(Array.last(shown), item => item.number === chapter.number)
-			const saves: ReadingUpdate[] = [
+			const saves: (typeof ReadingPosition.json.Type)[] = [
 				...Option.toArray(
 					Option.map(before, item => ({
 						done: true,

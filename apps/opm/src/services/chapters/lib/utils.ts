@@ -17,7 +17,7 @@ import {
 
 import {Base64Url} from 'effect/encoding'
 
-import type {ChapterItem, CubariSeries, DeadLink, Post, Series} from '#services/chapters/schema.ts'
+import type {CubariSeries, DeadLink, Post, Series} from '#services/chapters/schema.ts'
 import {Chapter, ChapterKey, ChapterNumber, ChapterNotification} from '#services/chapters/schema.ts'
 
 // "Chapter 242 [English]", "[Revised] Chapter 211 [English]" and r/OPMFolk's "Chapter 242/287 [Translations]"; a post of several chapters names each in its own post too.
@@ -33,11 +33,11 @@ export const SERIES_NAMES = {manga: 'Manga', webcomic: 'Webcomic'}
 
 const CUBARI_LINKS = new RegExp(CUBARI.source, 'gu')
 
-export const byNumber = Order.mapInput(Order.Number, (chapter: Pick<ChapterItem, 'number'>) => chapter.number)
+export const byNumber = Order.mapInput(Order.Number, (chapter: Pick<Chapter, 'number'>) => chapter.number)
 
 export const INDEXES = {manga: 'OPM', webcomic: 'JYHJU'}
 
-export function keyOf(chapter: Pick<ChapterItem, 'number' | 'series'>) {
+export function keyOf(chapter: Pick<Chapter, 'number' | 'series'>) {
 	return ChapterKey.make(`${chapter.series}:${chapter.number}`)
 }
 
@@ -196,7 +196,6 @@ export function chaptersFromIndex(index: CubariSeries, kind: Series) {
 						onFalse: () => pipe(entry[1].release_date, Option.map(Record.values), Option.flatMap(Array.head)),
 						onTrue: () => Option.none()
 					}),
-					reading: Option.none(),
 					revisedAt: Option.none(),
 					series: kind,
 					source: `https://cubari.moe/read/gist/${INDEXES[kind]}/${entry[0]}/1/`,
