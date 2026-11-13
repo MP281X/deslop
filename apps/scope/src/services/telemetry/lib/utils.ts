@@ -18,13 +18,25 @@ import {
 
 import {Model} from 'effect/schema'
 
-import {Nano, rangeStart, Runtime, Side, Span, SpanId, TraceId} from '#services/telemetry/schema.ts'
+import {
+	AppName,
+	Nano,
+	rangeStart,
+	ReleaseVersion,
+	Runtime,
+	ServiceName,
+	Side,
+	Span,
+	SpanId,
+	TraceId
+} from '#services/telemetry/schema.ts'
 import type {
 	Attribute,
 	Attributes,
 	ExportedSpan,
+	ExportedLog,
 	Log,
-	LogsRequest,
+	LogId,
 	Operation,
 	OperationTrace,
 	Overview,
@@ -39,7 +51,7 @@ import type {
 const KEEP = 20
 
 // Releases compare part by part as numbers, so 0.1.1235 is newer than 0.1.999.
-const byRelease = Order.mapInput(Order.Array(Order.Number), (version: string) =>
+const byRelease = Order.mapInput(Order.Array(Order.Number), (version: ReleaseVersion) =>
 	pipe(
 		version,
 		String.split('.'),
@@ -47,9 +59,9 @@ const byRelease = Order.mapInput(Order.Array(Order.Number), (version: string) =>
 	)
 )
 
-const byStart = Order.mapInput(Order.Number, (span: Pick<Span, 'start'>) => span.start)
+const byStart = Order.mapInput(DateTime.Order, (span: Pick<Span, 'start'>) => span.start)
 
-export type Sender = {readonly service: string; readonly version: Option.Option<string>}
+export type Sender = {readonly service: ServiceName; readonly version: Option.Option<ReleaseVersion>}
 
 // The fields a judgement of a trace reads, whether the span is stored or still arriving.
 export type SpanFacts = Pick<
@@ -58,12 +70,12 @@ export type SpanFacts = Pick<
 >
 
 // A version Scope can order, numbers joined by dots such as "0.1.1235"; OTel leaves `service.version` free text, so "1.2.0-rc.1" or a commit hash is never older than anything.
-function releaseOf(version: Option.Option<string>) {
+function releaseOf(version: Option.Option<ReleaseVersion>) {
 	return Option.filter(version, value => Option.isSome(String.match(/^\d+(?:\.\d+)*$/u)(value)))
 }
 
 // Each service's newest release among the senders and the ones already known.
-export function newestReleases(senders: readonly Sender[], known: Record<string, string>) {
+export function newestReleases(senders: readonly Sender[], known: Record<ServiceName, ReleaseVersion>) {
 	const versioned = Array.getSomes(
 		Array.map(senders, sender => Option.map(releaseOf(sender.version), version => ({service: sender.service, version})))
 	)
@@ -85,7 +97,7 @@ export function newestReleases(senders: readonly Sender[], known: Record<string,
 }
 
 // What an older release than its service's newest sent.
-export function supersededBy(newest: Record<string, string>) {
+export function supersededBy(newest: Record<ServiceName, ReleaseVersion>) {
 	return (sender: Sender) =>
 		Option.exists(releaseOf(sender.version), version =>
 			pipe(
@@ -98,114 +110,110 @@ export function supersededBy(newest: Record<string, string>) {
 
 // An OTLP attribute's one primitive value, unwrapped; an integer past what a number holds exactly stays the string OTLP sent.
 function primitiveOf(value: unknown) {
-	if (Predicate.isString(value) || Predicate.isNumber(value) || Predicate.isBoolean(value)) return value
-	if (value === null || !Predicate.isObject(value) || Array.isArray(value)) return undefined
+	if (Predicate.isString(value) || Predicate.isNumber(value) || Predicate.isBoolean(value)) return Option.some(value)
+	if (value === null || !Predicate.isObject(value) || Array.isArray(value)) return Option.none<Schema.Json>()
 	const integer = value['intValue']
-	if (Predicate.isNumber(integer)) return integer
+	if (Predicate.isNumber(integer)) return Option.some(integer)
 	if (Predicate.isString(integer)) {
-		return pipe(
-			Number.parse(integer),
-			Option.filter(parsed => Math.abs(parsed) <= 2 ** 53 - 1),
-			Option.getOrElse(() => integer)
+		return Option.some(
+			pipe(
+				Number.parse(integer),
+				Option.filter(parsed => Math.abs(parsed) <= 2 ** 53 - 1),
+				Option.getOrElse(() => integer)
+			)
 		)
 	}
 	const double = value['doubleValue']
-	if (Predicate.isNumber(double)) return double
+	if (Predicate.isNumber(double)) return Option.some(double)
 	const bool = value['boolValue']
-	if (Predicate.isBoolean(bool)) return bool
+	if (Predicate.isBoolean(bool)) return Option.some(bool)
 	const string = value['stringValue']
-	if (Predicate.isString(string)) return string
-	return undefined
+	if (Predicate.isString(string)) return Option.some(string)
+	return Option.none<Schema.Json>()
 }
 
 // OTLP's attribute list as one object, each primitive unwrapped; an array or map keeps the shape OTLP sent.
-function attributesOf(attributes: readonly Attribute[] = []) {
+function attributesOf(attributes: readonly Attribute[]) {
 	return Record.fromEntries(
-		Array.map(attributes, attribute => [attribute.key, primitiveOf(attribute.value) ?? attribute.value] as const)
+		Array.map(
+			attributes,
+			attribute => [attribute.key, Option.getOrElse(primitiveOf(attribute.value), () => attribute.value)] as const
+		)
 	)
 }
 
 function textOf(attributes: Attributes, key: string) {
-	return pipe(
-		attributes[key],
-		Option.liftPredicate(Predicate.isString),
-		Option.getOrElse(() => '')
-	)
+	return pipe(attributes, Record.get(key), Option.filter(Predicate.isString))
 }
 
-function resourceText(resource: Resource, key: string) {
-	return textOf(attributesOf(resource.attributes), key)
+function resourceText(resource: Option.Option<Resource>, key: string) {
+	return pipe(
+		resource,
+		Option.flatMap(value => value.attributes),
+		Option.map(attributesOf),
+		Option.flatMap(attributes => textOf(attributes, key))
+	)
 }
 
 // Effect names an HTTP span by its method alone: its route, or a client's path, says which request it was; unrouted server hits, mostly scanners, share one name. A machine step is named for its source.
 function spanName(span: ExportedSpan, attributes: Attributes) {
-	const name = span.name ?? ''
+	const name = Option.getOrElse(span.name, () => '')
 	if (name === '') return name
 	if (name === 'Machine.invoke') {
 		const source = textOf(attributes, 'machine.invoke.source')
-		if (String.isNonEmpty(source)) return `Machine.invoke ${source}`
+		if (Option.exists(source, String.isNonEmpty)) return `Machine.invoke ${Option.getOrThrow(source)}`
 	}
-	if (name !== textOf(attributes, 'http.request.method')) return name
+	if (!Option.contains(textOf(attributes, 'http.request.method'), name)) return name
 	const route = textOf(attributes, 'http.route')
-	if (String.isNonEmpty(route)) return `${name} ${route}`
+	if (Option.exists(route, String.isNonEmpty)) return `${name} ${Option.getOrThrow(route)}`
 	// OTLP's SpanKind 2 is a server answering a request.
-	if (span['kind'] === 2) return `${name} (no route)`
+	if (Option.contains(span.kind, 2)) return `${name} (no route)`
 	return pipe(
 		textOf(attributes, 'url.path'),
-		Option.liftPredicate(String.isNonEmpty),
+		Option.filter(String.isNonEmpty),
 		Option.match({onNone: () => name, onSome: path => `${name} ${path}`})
 	)
 }
 
-export function appName(service: string) {
-	return pipe(service, String.replace(/^@deslop\//u, ''), String.replace(/-(?:server|client|ios)$/u, ''))
+export function appName(service: ServiceName) {
+	return AppName.make(pipe(service, String.replace(/^@deslop\//u, ''), String.replace(/-(?:server|client|ios)$/u, '')))
 }
 
 // The tool's side: the resource's runtime, else the suffix its service name already carries; unknown names omit it.
-export function sideOf(service: string, value: Runtime) {
-	if (Schema.is(Side)(value)) return value
-	if (String.endsWith('-server')(service)) return 'server' as const
-	if (String.endsWith('-client')(service)) return 'web' as const
-	if (String.endsWith('-ios')(service)) return 'mobile' as const
-	return undefined
-}
-
-function serviceName(resource: Resource) {
-	const value = resourceText(resource, 'service.name')
-	if (String.isNonEmpty(value)) return value
-	return 'unknown'
-}
-
-// OTLP nanoseconds as epoch milliseconds, keeping microseconds.
-function millisOf(nano: string) {
-	return Option.getOrThrow(Number.parse(`${BigInt(nano) / 1000n}`)) / 1000
-}
-
-function durationMs(start: string, end: string) {
-	if (BigInt(end) < BigInt(start)) return 0
-	return Option.getOrThrow(Number.parse(`${BigInt(end) - BigInt(start)}`)) / 1_000_000
+export function sideOf(service: ServiceName | AppName, value: Runtime) {
+	if (Schema.is(Side)(value)) return Option.some(value)
+	if (String.endsWith('-server')(service)) return Option.some('server' as const)
+	if (String.endsWith('-client')(service)) return Option.some('web' as const)
+	if (String.endsWith('-ios')(service)) return Option.some('mobile' as const)
+	return Option.none<Side>()
 }
 
 // Who sent a record: its service, the side it runs on, the run its process started and the release it built.
-function senderOf(resource: Resource) {
+function senderOf(resource: Option.Option<Resource>) {
 	return {
 		run: pipe(
 			resourceText(resource, 'scope.run.started_unix_nano'),
-			Option.liftPredicate(Schema.is(Nano)),
-			Option.map(nano => DateTime.makeUnsafe(Math.trunc(millisOf(nano))))
+			Option.flatMap(Schema.decodeOption(Nano)),
+			Option.map(DateTime.startOf('millisecond'))
 		),
 		runtime: pipe(
 			resourceText(resource, 'scope.runtime'),
-			Option.liftPredicate(Schema.is(Runtime)),
+			Option.filter(Schema.is(Runtime)),
 			Option.getOrElse(() => 'unknown' as const)
 		),
-		service: serviceName(resource),
-		version: Option.liftPredicate(resourceText(resource, 'service.version'), String.isNonEmpty)
+		service: ServiceName.make(
+			pipe(
+				resourceText(resource, 'service.name'),
+				Option.filter(String.isNonEmpty),
+				Option.getOrElse(() => 'unknown')
+			)
+		),
+		version: pipe(
+			resourceText(resource, 'service.version'),
+			Option.filter(String.isNonEmpty),
+			Option.map(version => ReleaseVersion.make(version))
+		)
 	}
-}
-
-function lowerId(id = '') {
-	return pipe(id, Option.liftPredicate(String.isNonEmpty), Option.map(String.toLowerCase))
 }
 
 // The words and numbers of an OTLP value, keys included: `Effect.log('saved', note)` sends an array of its arguments.
@@ -222,105 +230,132 @@ function deniedSpan(attributes: Attributes, exceptions: readonly Attributes[]) {
 	if (code === 401 || code === 403) return true
 	return Array.match(exceptions, {
 		onEmpty: () => false,
-		onNonEmpty: found => Array.every(found, exception => textOf(exception, 'exception.type') === 'AuthError')
+		onNonEmpty: found =>
+			Array.every(found, exception => Option.contains(textOf(exception, 'exception.type'), 'AuthError'))
 	})
 }
 
 // The rows an OTLP traces export stores: one per span, and one per link into another trace.
 export function spansOf(payload: TracesRequest) {
-	const spans = Array.flatMap(payload.resourceSpans ?? [], group =>
-		Array.flatMap(group.scopeSpans ?? [], scope =>
-			Array.map(scope.spans ?? [], span => {
-				const attributes = attributesOf(span.attributes)
-				const exceptions = pipe(
-					span.events ?? [],
-					Array.filter(event => event.name === 'exception'),
-					Array.map(event => attributesOf(event.attributes))
-				)
-				const failed = span.status?.code === 2
-				const traceId = TraceId.make(String.toLowerCase(span.traceId))
-				const spanId = SpanId.make(String.toLowerCase(span.spanId))
-				return {
-					links: Array.flatMap(span.links ?? [], link =>
-						Boolean.match(String.toLowerCase(link.traceId) === traceId, {
-							onFalse: () => [
-								{
-									linkedSpanId: SpanId.make(String.toLowerCase(link.spanId)),
-									linkedTraceId: TraceId.make(String.toLowerCase(link.traceId)),
+	const spans = pipe(
+		payload.resourceSpans,
+		Option.getOrElse(Array.empty),
+		Array.flatMap(group =>
+			pipe(
+				group.scopeSpans,
+				Option.getOrElse(() => []),
+				Array.flatMap(scope =>
+					pipe(
+						scope.spans,
+						Option.getOrElse(() => []),
+						Array.map(span => {
+							const attributes = attributesOf(Option.getOrElse(span.attributes, Array.empty))
+							const exceptions = Option.match(span.events, {
+								onNone: () => [],
+								onSome: events =>
+									pipe(
+										events,
+										Array.filter(event => event.name === 'exception'),
+										Array.map(event => attributesOf(Option.getOrElse(event.attributes, () => [])))
+									)
+							})
+							const failed = Option.exists(span.status, status => Option.contains(status.code, 2))
+							const traceId = TraceId.make(String.toLowerCase(span.traceId))
+							const spanId = SpanId.make(String.toLowerCase(span.spanId))
+							return {
+								links: pipe(
+									span.links,
+									Option.getOrElse(() => []),
+									Array.flatMap(link =>
+										Boolean.match(String.toLowerCase(link.traceId) === traceId, {
+											onFalse: () => [
+												{
+													linkedSpanId: SpanId.make(String.toLowerCase(link.spanId)),
+													linkedTraceId: TraceId.make(String.toLowerCase(link.traceId)),
+													spanId,
+													traceId
+												}
+											],
+											onTrue: () => []
+										})
+									)
+								),
+								span: Span.insert.make({
+									...senderOf(group.resource),
+									attributes,
+									duration: Option.map(span.endTimeUnixNano, end =>
+										pipe(
+											Duration.subtract(end.offset, span.startTimeUnixNano.offset),
+											Duration.max(Duration.zero),
+											Duration.toMillis,
+											Duration.millis
+										)
+									),
+									error: pipe(
+										span.status,
+										Option.flatMap(status => status.message),
+										Option.filter(Predicate.isString),
+										Option.filter(message => failed && String.isNonEmpty(message))
+									),
+									exception: pipe(
+										Array.head(exceptions),
+										Option.flatMap(exception => textOf(exception, 'exception.message')),
+										Option.filter(String.isNonEmpty)
+									),
+									name: spanName(span, attributes),
+									parentSpanId: Option.map(Option.flatten(span.parentSpanId), id =>
+										SpanId.make(String.toLowerCase(id))
+									),
 									spanId,
+									start: span.startTimeUnixNano,
+									status: Boolean.match(failed, {
+										onFalse: () => 'ok' as const,
+										onTrue: () =>
+											Boolean.match(deniedSpan(attributes, exceptions), {
+												onFalse: () => 'failed' as const,
+												onTrue: () => 'denied' as const
+											})
+									}),
 									traceId
-								}
-							],
-							onTrue: () => []
-						})
-					),
-					span: Span.insert.make({
-						...senderOf(group.resource ?? {}),
-						attributes,
-						duration: Option.map(Option.fromUndefinedOr(span.endTimeUnixNano), end =>
-							Duration.millis(durationMs(span.startTimeUnixNano, end))
-						),
-						error: pipe(
-							span.status?.['message'],
-							Option.liftPredicate(Predicate.isString),
-							Option.filter(message => failed && String.isNonEmpty(message))
-						),
-						exception: pipe(
-							Array.head(exceptions),
-							Option.map(exception => textOf(exception, 'exception.message')),
-							Option.filter(String.isNonEmpty)
-						),
-						name: spanName(span, attributes),
-						parentSpanId: Option.map(lowerId(span.parentSpanId), id => SpanId.make(id)),
-						spanId,
-						start: millisOf(span.startTimeUnixNano),
-						status: Boolean.match(failed, {
-							onFalse: () => 'ok' as const,
-							onTrue: () =>
-								Boolean.match(deniedSpan(attributes, exceptions), {
-									onFalse: () => 'failed' as const,
-									onTrue: () => 'denied' as const
 								})
-						}),
-						traceId
-					})
-				}
-			})
+							}
+						})
+					)
+				)
+			)
 		)
 	)
 	return {links: Array.flatMap(spans, item => item.links), spans: Array.map(spans, item => item.span)}
 }
 
 // A severity as OTLP's number; a record with only a text level maps onto the same scale.
-function severityOf(number?: number, text = '') {
-	if (number !== undefined) return number
-	const level = String.toUpperCase(text)
-	if (level === 'FATAL' || level === 'ERROR') return 17
-	if (level === 'WARN') return 13
-	if (level === 'INFO') return 9
-	if (level === 'DEBUG') return 5
+function severityOf(number: Option.Option<number>, text: Option.Option<string>) {
+	if (Option.isSome(number)) return Option.getOrThrow(number)
+	const level = Option.map(text, String.toUpperCase)
+	if (Option.exists(level, value => value === 'FATAL' || value === 'ERROR')) return 17
+	if (Option.contains(level, 'WARN')) return 13
+	if (Option.contains(level, 'INFO')) return 9
+	if (Option.contains(level, 'DEBUG')) return 5
 	return 0
 }
 
 // One log record of an OTLP logs export, under the identity its digest gave it.
 export function logOf(
-	group: NonNullable<LogsRequest['resourceLogs']>[number],
-	log: NonNullable<
-		NonNullable<NonNullable<LogsRequest['resourceLogs']>[number]['scopeLogs']>[number]['logRecords']
-	>[number],
-	id: string,
-	receivedAt: number
+	group: {readonly resource: Option.Option<Resource>},
+	log: ExportedLog,
+	id: LogId,
+	receivedAt: DateTime.Utc
 ) {
 	return {
-		...senderOf(group.resource ?? {}),
-		attributes: attributesOf(log.attributes),
+		...senderOf(group.resource),
+		attributes: attributesOf(Option.getOrElse(log.attributes, Array.empty)),
 		id,
-		message: Array.join(leaves(log.body ?? {}), ' '),
-		receivedAt: Model.Override(DateTime.makeUnsafe(receivedAt)),
+		message: Option.match(log.body, {onNone: () => '', onSome: body => Array.join(leaves(body), ' ')}),
+		receivedAt: Model.Override(receivedAt),
 		severity: severityOf(log.severityNumber, log.severityText),
-		spanId: Option.map(lowerId(log.spanId), value => SpanId.make(value)),
-		time: millisOf(log.timeUnixNano),
-		traceId: Option.map(lowerId(log.traceId), value => TraceId.make(value))
+		spanId: Option.map(Option.flatten(log.spanId), value => SpanId.make(String.toLowerCase(value))),
+		time: log.timeUnixNano,
+		traceId: Option.map(Option.flatten(log.traceId), value => TraceId.make(String.toLowerCase(value)))
 	} satisfies typeof Log.insert.Type
 }
 
@@ -337,12 +372,8 @@ export function diagnosis(span: Pick<Span, 'error' | 'exception'>) {
 	return pipe(
 		span.exception,
 		Option.orElse(() => span.error),
-		Option.getOrElse(() => ''),
-		String.split('\n'),
-		Array.head,
-		Option.getOrElse(() => ''),
-		String.trim,
-		String.slice(0, 300)
+		Option.map(message => pipe(message, String.split('\n'), Array.headNonEmpty, String.trim, String.slice(0, 300))),
+		Option.filter(String.isNonEmpty)
 	)
 }
 
@@ -377,17 +408,12 @@ export function attributesFlat(attributes: Attributes, name: string, failedSpan:
 			return value !== name
 		})
 	)
-	if (Array.isReadonlyArrayEmpty(entries)) return undefined
-	return Record.fromEntries(entries)
-}
-
-export function isoTime(milliseconds: number) {
-	return DateTime.formatIso(DateTime.makeUnsafe(Math.trunc(milliseconds)))
+	return Option.liftPredicate(Record.fromEntries(entries), () => Array.isReadonlyArrayNonEmpty(entries))
 }
 
 // How long a span ran; an open one has run no time yet.
-function spanMs(span: Pick<Span, 'duration'>) {
-	return Option.match(span.duration, {onNone: () => 0, onSome: Duration.toMillis})
+function spanDuration(span: Pick<Span, 'duration'>) {
+	return Option.getOrElse(span.duration, () => Duration.zero)
 }
 
 function markedStream(span: Pick<Span, 'attributes'>) {
@@ -397,13 +423,14 @@ function markedStream(span: Pick<Span, 'attributes'>) {
 // A subscription's lifetime is not action latency. A nested subscription does not turn its owning action into one.
 function subscription(root: SpanFacts, spans: readonly SpanFacts[]) {
 	if (markedStream(root)) return true
-	const method = textOf(root.attributes, 'rpc.method')
+	const method = Option.filter(textOf(root.attributes, 'rpc.method'), String.isNonEmpty)
 	return Array.some(
 		spans,
 		span =>
 			Option.contains(span.parentSpanId, root.spanId) &&
 			((root.name === 'POST /mcp' && String.includes('/subscriptions/listen')(span.name)) ||
-				(method !== '' && method === textOf(span.attributes, 'rpc.method') && markedStream(span)))
+				(Option.exists(method, name => Option.contains(textOf(span.attributes, 'rpc.method'), name)) &&
+					markedStream(span)))
 	)
 }
 
@@ -437,20 +464,25 @@ function timingOf(spans: Array.NonEmptyReadonlyArray<SpanFacts>) {
 	const start = pipe(
 		spans,
 		Array.map(span => span.start),
-		Array.min(Order.Number)
+		Array.min<DateTime.Utc>(DateTime.Order)
 	)
-	return {durationMs: Array.reduce(spans, 0, (end, span) => Number.max(end, span.start - start + spanMs(span))), start}
+	return {
+		durationMs: Array.reduce(spans, Duration.zero, (end, span) =>
+			pipe(DateTime.distance(start, span.start), Duration.sum(spanDuration(span)), Duration.max(end))
+		),
+		start
+	}
 }
 
 // What every list reads of one trace, judged from all of its spans.
-function traceOf(spans: Array.NonEmptyReadonlyArray<SpanFacts>, receivedAt: number) {
+function traceOf(spans: Array.NonEmptyReadonlyArray<SpanFacts>, receivedAt: DateTime.Utc) {
 	const root = traceRoot(spans)
 	const timing = timingOf(spans)
 	return {
 		broken: Option.map(brokeAt(spans), span => span.spanId),
-		duration: Duration.millis(timing.durationMs),
+		duration: timing.durationMs,
 		id: root.traceId,
-		receivedAt: Model.Override(DateTime.makeUnsafe(receivedAt)),
+		receivedAt: Model.Override(receivedAt),
 		root: root.spanId,
 		rooted: Array.some(spans, span => Option.isNone(span.parentSpanId)),
 		start: timing.start,
@@ -467,7 +499,7 @@ export function traceIdsOf(spans: readonly SpanFacts[]) {
 }
 
 // Each trace an export touches, judged again over its stored spans with the arriving copies in place of theirs.
-export function touchedTraces(incoming: readonly SpanFacts[], stored: readonly SpanFacts[], receivedAt: number) {
+export function touchedTraces(incoming: readonly SpanFacts[], stored: readonly SpanFacts[], receivedAt: DateTime.Utc) {
 	const arriving = HashSet.fromIterable(Array.map(incoming, span => `${span.traceId}:${span.spanId}`))
 	return Array.map(
 		Record.values(
@@ -519,23 +551,21 @@ export function traceTree(id: TraceId, spans: readonly Span[], logs: readonly Lo
 	}
 	const sortedLogs = Array.sort(
 		logs,
-		Order.mapInput(Order.Number, (log: Log) => log.time)
+		Order.mapInput(DateTime.Order, (log: Log) => log.time)
 	)
 	const timing = Array.match(ordered, {
-		onEmpty: () => ({
-			durationMs: 0,
-			start: pipe(
-				Array.head(sortedLogs),
-				Option.map(log => log.time),
-				Option.getOrElse(() => 0)
-			)
-		}),
-		onNonEmpty: timingOf
+		onEmpty: () => ({durationMs: Duration.zero, start: Option.map(Array.head(sortedLogs), log => log.time)}),
+		onNonEmpty: retained => {
+			const bounds = timingOf(retained)
+			return {...bounds, start: Option.some(bounds.start)}
+		}
 	})
 	const bySpan = pipe(
 		sortedLogs,
-		Array.filter(log => Option.isSome(log.spanId)),
-		Array.groupBy(log => Option.getOrElse(log.spanId, () => ''))
+		Array.map(log => Option.map(log.spanId, spanId => ({log, spanId}))),
+		Array.getSomes,
+		Array.groupBy(entry => entry.spanId),
+		Record.map(entries => Array.map(entries, entry => entry.log))
 	)
 	const tree = pipe(
 		Array.map(indexed, item => {
@@ -555,9 +585,9 @@ export function traceTree(id: TraceId, spans: readonly Span[], logs: readonly Lo
 				value: {
 					...Struct.pick(item.span, Struct.keys(Span.json.fields)),
 					depth: ancestors.length,
-					durationMs: spanMs(item.span),
+					durationMs: spanDuration(item.span),
 					logs: pipe(bySpan, Record.get(item.span.spanId), Option.getOrElse(Array.empty)),
-					offsetMs: item.span.start - timing.start,
+					offsetMs: DateTime.distance(Option.getOrThrow(timing.start), item.span.start),
 					parentSpanId: parentOf(item.span)
 				}
 			}
@@ -567,7 +597,7 @@ export function traceTree(id: TraceId, spans: readonly Span[], logs: readonly Lo
 	)
 	return {
 		durationMs: timing.durationMs,
-		...Option.match(brokeAt(ordered), {onNone: () => ({}), onSome: span => ({failureSpanId: span.spanId})}),
+		failureSpanId: Option.map(brokeAt(ordered), span => span.spanId),
 		id,
 		logs: Array.filter(sortedLogs, log => !Option.exists(log.spanId, spanId => Record.has(byId, spanId))),
 		spans: tree
@@ -575,25 +605,25 @@ export function traceTree(id: TraceId, spans: readonly Span[], logs: readonly Lo
 }
 
 // A settled trace as the overview counts it; only the traces it keeps get their label and failure.
-export type Traced = {app: string; failed: boolean; name: string; runtime: Runtime; trace: OperationTrace}
+export type Traced = {app: AppName; failed: boolean; name: string; runtime: Runtime; trace: OperationTrace}
 
 function failureCount(group: readonly Traced[]) {
 	return Array.countBy(group, item => item.failed)
 }
 
-function percentile(times: readonly number[], ratio: number) {
+function percentile(times: readonly Duration.Duration[], ratio: number) {
 	return pipe(
 		times,
 		Array.get(Number.max(0, Math.ceil(times.length * ratio) - 1)),
-		Option.getOrElse(() => 0)
+		Option.getOrElse(() => Duration.zero)
 	)
 }
 
 // The p50, p95 and longest of some durations in milliseconds.
-export function latencyOf(times: readonly number[]) {
-	const sorted = Array.sort(times, Order.Number)
+export function latencyOf(times: readonly Duration.Duration[]) {
+	const sorted = Array.sort(times, Duration.Order)
 	return {
-		maxMs: Option.getOrElse(Array.last(sorted), () => 0),
+		maxMs: Option.getOrElse(Array.last(sorted), () => Duration.zero),
 		p50Ms: percentile(sorted, 0.5),
 		p95Ms: percentile(sorted, 0.95)
 	}
@@ -607,7 +637,7 @@ function keptTraces(slowest: Array.NonEmptyReadonlyArray<Traced>) {
 		pipe(
 			slowest,
 			Array.filter(item => item.failed),
-			Array.sort(Order.mapInput(Order.flip(Order.Number), (item: Traced) => item.trace.start)),
+			Array.sort(Order.mapInput(Order.flip(DateTime.Order), (item: Traced) => item.trace.start)),
 			Array.take(KEEP / 2),
 			Array.map(item => item.trace.id)
 		)
@@ -624,7 +654,7 @@ function keptTraces(slowest: Array.NonEmptyReadonlyArray<Traced>) {
 	)
 }
 
-type Ordered = {latest: number; operation: Operation}
+type Ordered = {latest: DateTime.Utc; operation: Operation}
 
 // Failing first, then most recently seen: the order the page and the tools list an app's operations in.
 function tracedOperations(group: readonly Traced[]) {
@@ -633,12 +663,12 @@ function tracedOperations(group: readonly Traced[]) {
 		Array.map(operation => {
 			const slowest = Array.sort(operation, slowestFirst)
 			// Already in order, so sorting the durations again costs one pass.
-			const latency = latencyOf(Array.reverse(Array.map(slowest, item => Duration.toMillis(item.trace.duration))))
+			const latency = latencyOf(Array.reverse(Array.map(slowest, item => item.trace.duration)))
 			return {
 				latest: pipe(
 					operation,
 					Array.map(item => item.trace.start),
-					Array.max(Order.Number)
+					Array.max<DateTime.Utc>(DateTime.Order)
 				),
 				operation: {
 					count: operation.length,
@@ -655,7 +685,7 @@ function tracedOperations(group: readonly Traced[]) {
 			pipe(
 				Order.flip(Order.Boolean),
 				Order.mapInput((item: Ordered) => item.operation.failures > 0),
-				Order.combine(Order.mapInput(Order.flip(Order.Number), (item: Ordered) => item.latest))
+				Order.combine(Order.mapInput(Order.flip(DateTime.Order), (item: Ordered) => item.latest))
 			)
 		),
 		Array.map(item => item.operation)
@@ -663,7 +693,7 @@ function tracedOperations(group: readonly Traced[]) {
 }
 
 // Apps with failures lead, then the busiest; each app's operations count only the traces started in the page's time frame, so a quiet app keeps its tab with no rows.
-export function overviewOf(traces: readonly Traced[], now: number, range: Range) {
+export function overviewOf(traces: readonly Traced[], now: DateTime.Utc, range: Range) {
 	const cutoff = rangeStart(range, now)
 	return {
 		apps: pipe(
@@ -682,9 +712,11 @@ export function overviewOf(traces: readonly Traced[], now: number, range: Range)
 				)
 			),
 			Array.map(app => ({
-				ci: Array.every(app.group, item => item.runtime === 'ci'),
+				ci: Option.some(Array.every(app.group, item => item.runtime === 'ci')),
 				name: Array.headNonEmpty(app.group).app,
-				operations: tracedOperations(Array.filter(app.group, item => item.trace.start >= cutoff))
+				operations: tracedOperations(
+					Array.filter(app.group, item => DateTime.isGreaterThanOrEqualTo(item.trace.start, cutoff))
+				)
 			}))
 		)
 	} satisfies Overview

@@ -1,4 +1,4 @@
-import {Array, Boolean, Match, Number, Option, Record, String, pipe} from 'effect'
+import {Array, Boolean, Duration, Match, Number, Option, Record, String, pipe} from 'effect'
 
 // oxlint-disable-next-line eslint/no-restricted-imports -- useLayoutEffect: the flame measures its surface and label widths after layout and before paint, so bars never draw at a stale width.
 import {useLayoutEffect, useRef, useState} from 'react'
@@ -10,7 +10,7 @@ import {Skeleton} from '@deslop/components-web/ui/skeleton'
 import {lanesOf} from '#lib/flame.ts'
 import {durationOf} from '#lib/telemetry.ts'
 import {appName} from '#services/telemetry/lib/utils.ts'
-import type {TraceTree} from '#services/telemetry/schema.ts'
+import type {SpanId, TraceTree} from '#services/telemetry/schema.ts'
 
 // The flame's lanes: a 22px bar with 2px between lanes, and a 6px-padded label inside it.
 const FLAME_LANE = 24
@@ -48,8 +48,8 @@ export function SpansSkeleton(props: {label: string}) {
 }
 
 // The trace's time scale: start, quarters and total, in tabular figures, pinned while the lanes scroll under it.
-export function TimeAxis(props: {totalMs: number}) {
-	const total = Number.max(props.totalMs, 1)
+export function TimeAxis(props: {totalMs: Duration.Duration}) {
+	const total = Number.max(Duration.toMillis(props.totalMs), 1)
 	return (
 		<div className="text-muted-foreground bg-background sticky top-0 z-10 h-6 shrink-0 border-b px-4 text-xs tabular-nums">
 			<div className="relative h-full">
@@ -66,7 +66,7 @@ export function TimeAxis(props: {totalMs: number}) {
 						)}
 						style={{'--axis-left': `${ratio * 100}%`}}
 					>
-						{Boolean.match(ratio === 0, {onFalse: () => durationOf(total * ratio), onTrue: () => '0'})}
+						{Boolean.match(ratio === 0, {onFalse: () => durationOf(Duration.millis(total * ratio)), onTrue: () => '0'})}
 					</span>
 				))}
 			</div>
@@ -79,10 +79,10 @@ function labelOf(span: TraceTree['spans'][number]) {
 }
 
 // One lane per job, deeper spans packed into free time; the root and each job carry their full name and time inside the bar while they fit, else after it in the lane's free time, never clipped.
-export function Flame(props: {focus?: string; onPick: (id: string) => void; trace: TraceTree}) {
-	const total = Number.max(props.trace.durationMs, 1)
+export function Flame(props: {focus?: SpanId; onPick: (id: SpanId) => void; trace: TraceTree}) {
+	const total = Number.max(Duration.toMillis(props.trace.durationMs), 1)
 	const [width, setWidth] = useState(0)
-	const [labelWidths, setLabelWidths] = useState<Record<string, number>>({})
+	const [labelWidths, setLabelWidths] = useState<Record<SpanId, number>>({})
 	const surface = useRef<HTMLDivElement>(null)
 	useLayoutEffect(() => {
 		function measure() {
@@ -121,10 +121,10 @@ export function Flame(props: {focus?: string; onPick: (id: string) => void; trac
 						Record.get(span.spanId),
 						Option.getOrElse(() => 0)
 					)
-					const bar = Number.max((span.durationMs / total) * width, 2)
+					const bar = Number.max((Duration.toMillis(span.durationMs) / total) * width, 2)
 					if (bar >= measured + FLAME_LABEL_PADDING) return []
-					if ((span.offsetMs / total) * width + bar + 4 + measured > width) return []
-					return [[span.spanId, ((measured + 8) / width) * total] as const]
+					if ((Duration.toMillis(span.offsetMs) / total) * width + bar + 4 + measured > width) return []
+					return [[span.spanId, Duration.millis(((measured + 8) / width) * total)] as const]
 				})
 			)
 		)
@@ -135,8 +135,8 @@ export function Flame(props: {focus?: string; onPick: (id: string) => void; trac
 	const rows = Array.map(placed, entry => {
 		const span = entry.span
 		const duration = durationOf(span.durationMs)
-		const left = (span.offsetMs / total) * width
-		const bar = Number.max((span.durationMs / total) * width, 2)
+		const left = (Duration.toMillis(span.offsetMs) / total) * width
+		const bar = Number.max((Duration.toMillis(span.durationMs) / total) * width, 2)
 		const measured = pipe(
 			labelWidths,
 			Record.get(span.spanId),
@@ -158,8 +158,8 @@ export function Flame(props: {focus?: string; onPick: (id: string) => void; trac
 					onSome: lane =>
 						Array.every(lane, other => {
 							if (other.span.spanId === span.spanId) return true
-							const otherLeft = (other.span.offsetMs / total) * width
-							const otherRight = otherLeft + Number.max((other.span.durationMs / total) * width, 2)
+							const otherLeft = (Duration.toMillis(other.span.offsetMs) / total) * width
+							const otherRight = otherLeft + Number.max((Duration.toMillis(other.span.durationMs) / total) * width, 2)
 							return labelRight <= otherLeft || otherRight <= labelLeft
 						})
 				})

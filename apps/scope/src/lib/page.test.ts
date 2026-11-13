@@ -1,22 +1,23 @@
 import {RegistryContext} from '@effect/atom-react'
 import {assert, beforeAll, it} from '@effect/vitest'
 
-import {Array, Cause, Duration, Effect, Option, String} from 'effect'
+import {Array, Cause, DateTime, Duration, Effect, Option, Schema, String} from 'effect'
 
-import {RouterProvider, createMemoryHistory, createRouter} from '@tanstack/react-router'
+import {RouterProvider, createMemoryHistory, createRouter, defaultStringifySearch} from '@tanstack/react-router'
 import {AsyncResult, AtomRegistry} from 'effect/reactivity'
 import {createElement} from 'react'
 import {renderToString} from 'react-dom/server'
 
 import {AuthError} from '@deslop/runtime/shared/auth'
+import {searchSerializerOf} from '@deslop/runtime/web/search'
 
 import {routeTree} from '#routeTree.gen.ts'
 
-import {overviewAtom, traceAtom} from '#lib/telemetry.ts'
+import {overviewAtom, Search, traceAtom} from '#lib/telemetry.ts'
 import {Route} from '#routes/(home)/index.tsx'
 import {traceTree} from '#services/telemetry/lib/utils.ts'
-import {Span, SpanId, TraceId, TelemetryError} from '#services/telemetry/schema.ts'
-import type {Overview, Range, TraceTree} from '#services/telemetry/schema.ts'
+import {Overview, ServiceName, Span, SpanId, TraceId, TelemetryError} from '#services/telemetry/schema.ts'
+import type {Range, TraceTree} from '#services/telemetry/schema.ts'
 
 const RANGE: Range = '1h'
 const ID = TraceId.make('aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa')
@@ -33,9 +34,9 @@ const trace = traceTree(
 			parentSpanId: Option.none(),
 			run: Option.none(),
 			runtime: 'server',
-			service: '@deslop/deploy-server',
+			service: ServiceName.make('@deslop/deploy-server'),
 			spanId: SpanId.make('aaaaaaaaaaaaaaaa'),
-			start: 1_781_870_000_000,
+			start: DateTime.makeUnsafe(1_781_870_000_000),
 			status: 'ok',
 			traceId: ID,
 			version: Option.none()
@@ -65,39 +66,39 @@ const desktopScreen = Effect.acquireRelease(
 
 function render(
 	result: AsyncResult.AsyncResult<TraceTree, AuthError | TelemetryError>,
-	overview?: AsyncResult.AsyncResult<Overview, AuthError | TelemetryError>,
+	overview?: AsyncResult.AsyncResult<typeof Overview.Encoded, AuthError | TelemetryError>,
 	path = '/',
 	traceId = ID
 ) {
+	const currentOverview = AsyncResult.map(
+		overview ??
+			AsyncResult.success<typeof Overview.Encoded>({
+				apps: [
+					{
+						name: 'deploy',
+						operations: [
+							{
+								count: 1,
+								failures: 0,
+								name: 'Inventory.snapshot',
+								p50Ms: 10,
+								p95Ms: 10,
+								runtime: 'server',
+								traces: [{duration: 10, id: ID, start: 1_781_870_000_000}]
+							}
+						]
+					}
+				]
+			}),
+		Schema.decodeSync(Overview)
+	)
 	return Effect.scoped(
 		Effect.gen(function* () {
 			const registry = yield* Effect.acquireRelease(
 				Effect.sync(() =>
 					AtomRegistry.make({
 						initialValues: [
-							[
-								overviewAtom(RANGE),
-								overview ??
-									AsyncResult.success({
-										apps: [
-											{
-												name: 'deploy',
-												operations: [
-													{
-														count: 1,
-														failures: 0,
-														name: 'Inventory.snapshot',
-														p50Ms: 10,
-														p95Ms: 10,
-														runtime: 'server',
-														traces: [{duration: Duration.millis(10), id: ID, start: 1_781_870_000_000}]
-													}
-												]
-											}
-										]
-									}),
-								{skipInitialRun: true}
-							],
+							[overviewAtom(RANGE), currentOverview, {skipInitialRun: true}],
 							[traceAtom(RANGE, traceId), result, {skipInitialRun: true}]
 						]
 					})
@@ -107,8 +108,12 @@ function render(
 			yield* desktopScreen
 			registry.get(traceAtom(RANGE, traceId))
 			registry.ensureNode(traceAtom(RANGE, traceId)).setInitialValue(result)
-			if (overview !== undefined) registry.ensureNode(overviewAtom(RANGE)).setInitialValue(overview)
-			const router = createRouter({history: createMemoryHistory({initialEntries: [path]}), routeTree})
+			if (overview !== undefined) registry.ensureNode(overviewAtom(RANGE)).setInitialValue(currentOverview)
+			const router = createRouter({
+				history: createMemoryHistory({initialEntries: [path]}),
+				routeTree,
+				stringifySearch: searchSerializerOf(Search, defaultStringifySearch)
+			})
 			yield* Effect.promise(() => router.load())
 			return renderToString(
 				createElement(RegistryContext.Provider, {value: registry}, createElement(RouterProvider, {router}))
@@ -274,7 +279,7 @@ it.effect(
 								p50Ms: 4,
 								p95Ms: 4,
 								runtime: 'server',
-								traces: [{duration: Duration.millis(10), id: ID, start: 1_781_870_000_000}]
+								traces: [{duration: 10, id: ID, start: 1_781_870_000_000}]
 							}
 						]
 					},
@@ -288,7 +293,7 @@ it.effect(
 								p50Ms: 12,
 								p95Ms: 12,
 								runtime: 'server',
-								traces: [{duration: Duration.millis(10), id: ID, start: 1_781_850_000_000}]
+								traces: [{duration: 10, id: ID, start: 1_781_850_000_000}]
 							},
 							{
 								count: 9,
@@ -297,7 +302,7 @@ it.effect(
 								p50Ms: 40,
 								p95Ms: 40,
 								runtime: 'server',
-								traces: [{duration: Duration.millis(10), id: ID, start: 1_781_860_000_000}]
+								traces: [{duration: 10, id: ID, start: 1_781_860_000_000}]
 							}
 						]
 					},
@@ -311,7 +316,7 @@ it.effect(
 								p50Ms: 48,
 								p95Ms: 48,
 								runtime: 'server',
-								traces: [{duration: Duration.millis(10), id: ID, start: 1_781_840_000_000}]
+								traces: [{duration: 10, id: ID, start: 1_781_840_000_000}]
 							},
 							{
 								count: 3,
@@ -320,7 +325,7 @@ it.effect(
 								p50Ms: 60,
 								p95Ms: 60,
 								runtime: 'web',
-								traces: [{duration: Duration.millis(10), id: ID, start: 1_781_830_000_000}]
+								traces: [{duration: 10, id: ID, start: 1_781_830_000_000}]
 							}
 						]
 					}
@@ -360,7 +365,7 @@ it.effect(
 								p50Ms: 4,
 								p95Ms: 4,
 								runtime: 'server',
-								traces: [{duration: Duration.millis(10), id: ID, start: 1_781_870_000_000}]
+								traces: [{duration: 10, id: ID, start: 1_781_870_000_000}]
 							}
 						]
 					},
@@ -374,7 +379,7 @@ it.effect(
 								p50Ms: 4,
 								p95Ms: 4,
 								runtime: 'server',
-								traces: [{duration: Duration.millis(10), id: ID, start: 1_781_860_000_000}]
+								traces: [{duration: 10, id: ID, start: 1_781_860_000_000}]
 							}
 						]
 					}
@@ -405,7 +410,7 @@ it.effect(
 								p50Ms: 1,
 								p95Ms: 1,
 								runtime: 'server',
-								traces: [{duration: Duration.millis(1), id: ID, start: 1_781_840_000_000}]
+								traces: [{duration: 1, id: ID, start: 1_781_840_000_000}]
 							}
 						]
 					},
@@ -419,7 +424,7 @@ it.effect(
 								p50Ms: 1,
 								p95Ms: 1,
 								runtime: 'server',
-								traces: [{duration: Duration.millis(1), failure: {span: 'run'}, id: ID, start: 1_781_850_000_000}]
+								traces: [{duration: 1, failure: {span: 'run'}, id: ID, start: 1_781_850_000_000}]
 							}
 						]
 					},
@@ -433,7 +438,7 @@ it.effect(
 								p50Ms: 1,
 								p95Ms: 1,
 								runtime: 'server',
-								traces: [{duration: Duration.millis(1), failure: {span: 'run'}, id: ID, start: 1_781_860_000_000}]
+								traces: [{duration: 1, failure: {span: 'run'}, id: ID, start: 1_781_860_000_000}]
 							}
 						]
 					}
@@ -457,7 +462,7 @@ it.effect(
 								p50Ms: 1,
 								p95Ms: 1,
 								runtime: 'server',
-								traces: [{duration: Duration.millis(1), id: ID, start: 1_781_840_000_000}]
+								traces: [{duration: 1, id: ID, start: 1_781_840_000_000}]
 							}
 						]
 					},
@@ -471,7 +476,7 @@ it.effect(
 								p50Ms: 1,
 								p95Ms: 1,
 								runtime: 'server',
-								traces: [{duration: Duration.millis(1), id: ID, start: 1_781_850_000_000}]
+								traces: [{duration: 1, id: ID, start: 1_781_850_000_000}]
 							}
 						]
 					}
@@ -514,9 +519,7 @@ it.effect(
 								p50Ms: 10,
 								p95Ms: 10,
 								runtime: 'server',
-								traces: [
-									{duration: Duration.millis(10), failure: {span: 'Parser.decode'}, id: ID, start: 1_781_870_000_000}
-								]
+								traces: [{duration: 10, failure: {span: 'Parser.decode'}, id: ID, start: 1_781_870_000_000}]
 							}
 						]
 					}

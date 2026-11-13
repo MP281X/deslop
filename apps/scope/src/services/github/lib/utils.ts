@@ -1,6 +1,14 @@
-import {Array, Boolean, DateTime, Option, String, pipe} from 'effect'
+import {Array, Boolean, DateTime, Duration, Option, Schema, String, pipe} from 'effect'
 
-import type {WorkflowJob, WorkflowJobId, WorkflowRun, WorkflowRunId} from '#services/github/schema.ts'
+import type {
+	RepositoryName,
+	WorkflowJob,
+	WorkflowJobId,
+	WorkflowRun,
+	WorkflowRunAttempt,
+	WorkflowRunId,
+	WorkflowStepNumber
+} from '#services/github/schema.ts'
 import type {ExportedSpan} from '#services/telemetry/schema.ts'
 import {LogsRequest, SpanId, TraceId, TracesRequest} from '#services/telemetry/schema.ts'
 
@@ -22,7 +30,7 @@ function hex(value: number, width: number) {
 }
 
 // A run attempt is one trace and its ids come from GitHub's, so each event joins it and a repeated delivery replaces what it sent.
-function traceIdOf(run: WorkflowRunId, attempt: number) {
+function traceIdOf(run: WorkflowRunId, attempt: WorkflowRunAttempt) {
 	return TraceId.make(`${hex(run, 24)}${hex(attempt, 8)}`)
 }
 
@@ -47,8 +55,8 @@ function text(key: string, value: string) {
 	return {key, value: {stringValue: value}}
 }
 
-function repositoryTraces(repository: string, spans: readonly ExportedSpan[]) {
-	return TracesRequest.make({
+function repositoryTraces(repository: RepositoryName, spans: readonly (typeof ExportedSpan.Encoded)[]) {
+	return Schema.decodeUnknownSync(TracesRequest)({
 		resourceSpans: [
 			{
 				resource: {attributes: [text('service.name', repository), text('scope.runtime', 'ci')]},
@@ -119,7 +127,7 @@ function stepsOf(job: WorkflowJob['workflow_job']) {
 	)
 }
 
-function stepSpanId(job: WorkflowJobId, step: number) {
+function stepSpanId(job: WorkflowJobId, step: WorkflowStepNumber) {
 	return SpanId.make(`3${hex(job, 12)}${hex(step, 3)}`)
 }
 
@@ -142,7 +150,7 @@ export function jobTrace(event: WorkflowJob) {
 				),
 				{
 					key: 'github.queued_ms',
-					value: {intValue: `${DateTime.toEpochMillis(job.started_at) - DateTime.toEpochMillis(job.created_at)}`}
+					value: {intValue: `${Duration.toMillis(DateTime.distance(job.created_at, job.started_at))}`}
 				},
 				text('url.full', job.html_url)
 			],
@@ -245,7 +253,7 @@ export function jobLogs(event: WorkflowJob, log: string) {
 		})
 	)
 	const records = Array.getSomes(lines)
-	return LogsRequest.make({
+	return Schema.decodeUnknownSync(LogsRequest)({
 		resourceLogs: [
 			{
 				resource: {attributes: [text('service.name', event.repository.full_name), text('scope.runtime', 'ci')]},

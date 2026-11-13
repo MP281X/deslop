@@ -1,23 +1,25 @@
 import {Array, Boolean, Effect, Option, Order, Predicate, Record, Result, String, Struct, pipe} from 'effect'
 
 import {TelemetryError} from '#services/telemetry/schema.ts'
-import type {IngestionAnswer, LogsAnswer, OperationRow, OperationsAnswer} from '#services/telemetry/schema.ts'
+import type {AppName, IngestionAnswer, LogsAnswer, OperationRow, OperationsAnswer} from '#services/telemetry/schema.ts'
 import {Telemetry} from '#services/telemetry/service.ts'
 import {ToolContracts} from '#tools/contracts.ts'
 
 function textWindow(text: string, offset: number, limit: number) {
 	return {
-		text: String.slice(offset, offset + limit)(text),
-		...Boolean.match(offset + limit < text.length, {
-			onFalse: () => ({}),
-			onTrue: () => ({nextTextOffset: offset + limit})
-		})
+		nextTextOffset: Option.liftPredicate(offset + limit, next => next < text.length),
+		text: String.slice(offset, offset + limit)(text)
 	}
 }
 
 function attributeWindow(
 	attrs: Readonly<Record<string, string | number | boolean>>,
-	input: {attribute?: string; attributeCursor?: string; textOffset: number; textLimit: number}
+	input: {
+		attribute: Option.Option<string>
+		attributeCursor: Option.Option<string>
+		textOffset: number
+		textLimit: number
+	}
 ) {
 	const entries = pipe(
 		attrs,
@@ -25,8 +27,8 @@ function attributeWindow(
 		Array.sort(Order.mapInput(Order.String, (entry: readonly [string, string | number | boolean]) => entry[0])),
 		Array.filter(
 			entry =>
-				(input.attribute === undefined || entry[0] === input.attribute) &&
-				(input.attributeCursor === undefined || entry[0] > input.attributeCursor)
+				Option.match(input.attribute, {onNone: () => true, onSome: key => entry[0] === key}) &&
+				Option.match(input.attributeCursor, {onNone: () => true, onSome: cursor => entry[0] > cursor})
 		)
 	)
 	const page = Array.take(entries, 20)
@@ -41,16 +43,14 @@ function attributeWindow(
 			}),
 			Record.fromEntries
 		),
-		...pipe(
+		nextAttribute: pipe(
 			page,
 			Array.last,
 			Option.filter(() => entries.length > page.length),
-			Option.match({onNone: () => ({}), onSome: entry => ({nextAttribute: entry[0]})})
+			Option.map(entry => entry[0])
 		),
-		...pipe(
-			page,
-			Array.some(entry => Predicate.isString(entry[1]) && entry[1].length > input.textOffset + input.textLimit),
-			Boolean.match({onFalse: () => ({}), onTrue: () => ({nextTextOffset: input.textOffset + input.textLimit})})
+		nextTextOffset: Option.liftPredicate(input.textOffset + input.textLimit, () =>
+			Array.some(page, entry => Predicate.isString(entry[1]) && entry[1].length > input.textOffset + input.textLimit)
 		)
 	}
 }
@@ -61,16 +61,8 @@ function ingestionResult(
 ) {
 	return {
 		...answer,
-		services: pipe(
-			answer.services,
-			Array.filter(service => input.app === undefined || service.app === input.app),
-			Array.map(service => ({
-				...Struct.omit(service, ['runStarted']),
-				...Boolean.match(service.runStarted === '1970-01-01T00:00:00.000Z', {
-					onFalse: () => ({runStarted: service.runStarted}),
-					onTrue: () => ({})
-				})
-			}))
+		services: Array.filter(answer.services, service =>
+			Option.match(input.app, {onNone: () => true, onSome: app => service.app === app})
 		)
 	}
 }
@@ -84,15 +76,19 @@ function operationPage(
 		Array.flatMap(app =>
 			Array.map(app.operations, operation => ({
 				app: app.app,
-				key: `${Boolean.match((operation.failures ?? 0) > 0, {onFalse: () => '1', onTrue: () => '0'})}\t${app.app}\t${operation.name}\t${operation.side ?? ''}`,
+				key: `${pipe(
+					operation.failures,
+					Option.exists(count => count > 0),
+					Boolean.match({onFalse: () => '1', onTrue: () => '0'})
+				)}\t${app.app}\t${operation.name}\t${Option.getOrElse(operation.side, () => '')}`,
 				operation
 			}))
 		),
-		Array.sort(Order.mapInput(Order.String, (row: {app: string; key: string; operation: OperationRow}) => row.key)),
+		Array.sort(Order.mapInput(Order.String, (row: {app: AppName; key: string; operation: OperationRow}) => row.key)),
 		Array.filter(
 			row =>
-				(input.operation === undefined || row.operation.name === input.operation) &&
-				(input.cursor === undefined || row.key > input.cursor)
+				Option.match(input.operation, {onNone: () => true, onSome: name => row.operation.name === name}) &&
+				Option.match(input.cursor, {onNone: () => true, onSome: cursor => row.key > cursor})
 		)
 	)
 	const page = Array.take(remaining, input.limit)
@@ -108,11 +104,11 @@ function operationPage(
 				})
 			)
 		),
-		...pipe(
+		nextCursor: pipe(
 			page,
 			Array.last,
 			Option.filter(() => remaining.length > input.limit),
-			Option.match({onNone: () => ({}), onSome: row => ({nextCursor: row.key})})
+			Option.map(row => row.key)
 		)
 	}
 }
@@ -121,68 +117,68 @@ function traceResult(
 	answer: Effect.Success<ReturnType<typeof Telemetry.Service.readTrace>>,
 	input: typeof ToolContracts.tools.read_trace.parametersSchema.Type
 ) {
-	const metadata = Struct.omit(answer, ['spans', 'logs', 'nextOffset'])
+	const metadata = {
+		...Struct.omit(answer, ['spans', 'logs', 'nextOffset']),
+		attributes: Option.none(),
+		logs: Option.none(),
+		nextAttribute: Option.none(),
+		nextOffset: Option.none(),
+		nextTextOffset: Option.none()
+	}
 	const spans = answer.spans
-	if (input.span !== undefined && Array.isReadonlyArrayEmpty(spans)) {
+	if (Option.isSome(input.span) && Array.isReadonlyArrayEmpty(spans)) {
 		return Result.fail(
 			TelemetryError.make({message: 'This span is not in this trace page; omit span and use nextOffset to locate it.'})
 		)
 	}
 	if (input.section === 'attributes') {
-		if (input.span === undefined) {
+		if (Option.isNone(input.span)) {
 			return Result.fail(
 				TelemetryError.make({message: 'section=attributes requires span; choose a span id from read_trace.'})
 			)
 		}
-		const attrs = Option.getOrThrow(Array.head(spans)).attrs ?? {}
-		if (input.attribute !== undefined && !Record.has(attrs, input.attribute)) {
+		const attrs = Option.getOrElse(Option.getOrThrow(Array.head(spans)).attrs, () => ({}))
+		if (Option.exists(input.attribute, key => !Record.has(attrs, key))) {
 			return Result.fail(
 				TelemetryError.make({
-					message: `Unknown attribute ${input.attribute}; valid attributes: ${Array.join(Record.keys(attrs), ', ')}.`
+					message: `Unknown attribute ${Option.getOrThrow(input.attribute)}; valid attributes: ${Array.join(Record.keys(attrs), ', ')}.`
 				})
 			)
 		}
-		return Result.succeed({...metadata, ...attributeWindow(attrs, input), spans: []})
+		const window = attributeWindow(attrs, input)
+		return Result.succeed({...metadata, ...window, attributes: Option.some(window.attributes), spans: []})
 	}
 	if (input.section === 'logs') {
-		const all = Boolean.match(input.span === undefined, {
-			onFalse: () => Array.flatMap(spans, span => span.logs ?? []),
-			onTrue: () => [...(answer.logs ?? []), ...Array.flatMap(spans, span => span.logs ?? [])]
+		const all = Boolean.match(Option.isNone(input.span), {
+			onFalse: () => Array.flatMap(spans, span => Option.getOrElse(span.logs, () => [])),
+			onTrue: () => [
+				...Option.getOrElse(answer.logs, () => []),
+				...Array.flatMap(spans, span => Option.getOrElse(span.logs, () => []))
+			]
 		})
 		const logs = pipe(all, Array.drop(input.offset), Array.take(input.logLimit))
 		return Result.succeed({
 			...metadata,
-			logs: Array.map(logs, log => ({
-				...log,
-				message: textWindow(log.message, input.textOffset, input.textLimit).text
-			})),
-			spans: [],
-			...Boolean.match(input.offset + input.logLimit < all.length, {
-				onFalse: () => ({}),
-				onTrue: () => ({nextOffset: input.offset + input.logLimit})
-			}),
-			...pipe(
-				logs,
-				Array.some(log => log.message.length > input.textOffset + input.textLimit),
-				Boolean.match({onFalse: () => ({}), onTrue: () => ({nextTextOffset: input.textOffset + input.textLimit})})
-			)
+			logs: Option.some(
+				Array.map(logs, log => ({...log, message: textWindow(log.message, input.textOffset, input.textLimit).text}))
+			),
+			nextOffset: Option.liftPredicate(input.offset + input.logLimit, next => next < all.length),
+			nextTextOffset: Option.liftPredicate(input.textOffset + input.textLimit, next =>
+				Array.some(logs, log => log.message.length > next)
+			),
+			spans: []
 		})
 	}
 	return Result.succeed({
 		...metadata,
 		...Struct.pick(answer, ['nextOffset']),
+		nextTextOffset: Option.liftPredicate(input.textOffset + input.textLimit, next =>
+			Array.some(spans, span => Option.exists(span.error, error => error.length > next))
+		),
 		spans: Array.map(spans, span => ({
 			...Struct.omit(span, ['attrs', 'logs', 'error']),
-			...Option.match(Option.fromUndefinedOr(span.error), {
-				onNone: () => ({}),
-				onSome: error => ({error: String.slice(input.textOffset, input.textOffset + input.textLimit)(error)})
-			})
-		})),
-		...pipe(
-			spans,
-			Array.some(span => (span.error?.length ?? 0) > input.textOffset + input.textLimit),
-			Boolean.match({onFalse: () => ({}), onTrue: () => ({nextTextOffset: input.textOffset + input.textLimit})})
-		)
+			error: Option.map(span.error, String.slice(input.textOffset, input.textOffset + input.textLimit))
+		}))
 	})
 }
 
@@ -191,12 +187,15 @@ function logPage(answer: LogsAnswer, input: typeof ToolContracts.tools.search_lo
 		...answer,
 		logs: Array.map(answer.logs, log => {
 			const message = textWindow(log.message, input.textOffset, input.textLimit)
-			const attrs = attributeWindow(log.attrs ?? {}, input)
+			const attrs = attributeWindow(
+				Option.getOrElse(log.attrs, () => ({})),
+				input
+			)
 			return {
 				...Struct.omit(log, ['attrs', 'message']),
 				...Struct.omit(attrs, ['attributes']),
 				...Struct.omit(message, ['text']),
-				attrs: attrs.attributes,
+				attrs: Option.some(attrs.attributes),
 				message: message.text
 			}
 		})
