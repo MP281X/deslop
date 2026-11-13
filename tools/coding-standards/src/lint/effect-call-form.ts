@@ -167,6 +167,11 @@ function dual(context: LintContext, node: ESTree.Node) {
 			if (cached !== undefined) return cached
 			const result =
 				fn === Effect.provideService ||
+				fn === Effect.withSpan ||
+				fn === Effect.withParentSpan ||
+				fn === Effect.withSpanScoped ||
+				fn === Stream.withSpan ||
+				fn === Layer.withSpan ||
 				fn === Equal.equals ||
 				tagFirst(node) ||
 				matches(/return function \(self\)|return arity\(arguments\) \? body\.apply/u)(fn.toString())
@@ -185,6 +190,16 @@ function stableConstructor(context: LintContext, node: ESTree.CallExpression) {
 			[
 				'Array.empty',
 				'Effect.succeed',
+				'Effect.sync',
+				'Effect.sleep',
+				'Effect.promise',
+				'Effect.tryPromise',
+				'Effect.suspend',
+				'Effect.fail',
+				'Effect.failCause',
+				'Effect.die',
+				// This installed API constructs an Effect; unlike annotateLogs, it has no subject overload.
+				'Effect.annotateLogsScoped',
 				'Effect.gen',
 				'Effect.fn',
 				'Effect.fnUntraced',
@@ -212,44 +227,89 @@ function stableConstructor(context: LintContext, node: ESTree.CallExpression) {
 	)
 }
 
-function stable(context: LintContext, node: ESTree.Node): boolean {
-	if (
-		node.type === 'TSAsExpression' ||
-		node.type === 'TSSatisfiesExpression' ||
-		node.type === 'TSInstantiationExpression'
-	) {
-		return stable(context, node.expression)
-	}
-	if (node.type === 'TemplateLiteral') return Array.every(node.expressions, expression => stable(context, expression))
-	if (node.type === 'CallExpression') {
-		return (
-			(stableConstructor(context, node) ||
-				Option.exists(dual(context, node.callee), fn => Number.max(fn.length, 2) > node.arguments.length)) &&
-			Array.every(node.arguments, arg => stable(context, arg))
-		)
-	}
+function pipelineStep(context: LintContext, node: ESTree.Node) {
+	return (
+		node.parent?.type === 'CallExpression' &&
+		node.parent.arguments[0] !== node &&
+		node.parent.callee.type === 'Identifier' &&
+		isImportBinding({context, importedName: 'pipe', node: node.parent.callee, source: 'effect'})
+	)
+}
 
-	if (node.type === 'ArrayExpression') {
-		return Array.every(node.elements, element => element === null || stable(context, element))
-	}
-	if (node.type === 'ObjectExpression') {
-		return Array.every(
-			node.properties,
-			property => property.type === 'Property' && !property.computed && stable(context, property.value)
-		)
-	}
-	if (node.type === 'MemberExpression' && node.object.type === 'Identifier' && !node.computed) {
-		return (
-			transaction(context, node) ||
-			isImportBinding({context, importedName: node.object.name, node: node.object, source: /^effect(?:\/|$)/u})
-		)
+function argumentKind(context: LintContext, node: ESTree.Node): string {
+	if (node.type === 'ArrowFunctionExpression' || node.type === 'FunctionExpression') return 'function'
+	if (node.type === 'Literal' && Predicate.isString(node.value)) return 'string'
+	if (node.type === 'TemplateLiteral') return 'string'
+	if (node.type === 'ArrayExpression') return 'array'
+	if (node.type === 'ObjectExpression') return 'object'
+	if (node.type !== 'Identifier') return 'unknown'
+	return pipe(
+		variableFromScope({name: node.name, scope: context.sourceCode.getScope(node)}),
+		Option.flatMap(variable => Array.head(variable.defs)),
+		Option.map(definition => {
+			if (definition.type === 'FunctionName') return 'function'
+			const type = definition.name.typeAnnotation?.typeAnnotation
+			if (type?.type === 'TSFunctionType') return 'function'
+			if (type?.type === 'TSStringKeyword') return 'string'
+			if (type?.type === 'TSArrayType') return 'array'
+			if (type?.type === 'TSTypeLiteral') return 'object'
+			if (
+				definition.node.type === 'VariableDeclarator' &&
+				definition.node.init !== null &&
+				definition.node.init !== node
+			) {
+				return argumentKind(context, definition.node.init)
+			}
+			return 'unknown'
+		}),
+		Option.getOrElse(() => 'unknown')
+	)
+}
+
+// Predicate duals inspect an argument's kind, not a minimum arity: options occupy the same slot as a subject.
+function predicateDataFirst(context: LintContext, callee: ESTree.MemberExpression, args: ESTree.Node[]) {
+	const [first, second] = args
+	if (first === undefined) return false
+	const firstKind = argumentKind(context, first)
+	const secondKind = Option.match(Option.fromUndefinedOr(second), {
+		onNone: () => 'missing',
+		onSome: argument => argumentKind(context, argument)
+	})
+	const method = Option.getOrElse(memberName(callee), () => '')
+	if (method === 'forEach') return secondKind === 'function' || (firstKind !== 'function' && secondKind === 'unknown')
+	if (Array.contains(['zip', 'zipWith', 'raceFirst', 'race', 'merge'], method)) {
+		return secondKind !== 'missing' && secondKind !== 'object'
 	}
 	if (
-		node.type === 'ThisExpression' ||
-		node.type === 'Literal' ||
-		node.type === 'ArrowFunctionExpression' ||
-		node.type === 'FunctionExpression'
+		Array.contains(
+			['catchTag', 'catchReason', 'withSpan', 'withSpanScoped', 'setCookieUnsafe', 'expireCookieUnsafe'],
+			method
+		)
 	) {
+		return firstKind !== 'string' && firstKind !== 'array'
+	}
+	return !Array.contains(['function', 'object'], firstKind)
+}
+
+function dataFirst(context: LintContext, node: ESTree.Node): node is ESTree.CallExpression {
+	if (node.type !== 'CallExpression') return false
+	const callee = node.callee
+	return (
+		callee.type === 'MemberExpression' &&
+		!node.optional &&
+		!tagFirst(node.callee) &&
+		!pipelineStep(context, node) &&
+		!(node.parent.type === 'CallExpression' && node.parent.callee === node) &&
+		!Array.some(node.arguments, argument => argument.type === 'SpreadElement') &&
+		Option.exists(dual(context, callee), fn => {
+			if (Number.isGreaterThan(fn.length, 0)) return node.arguments.length >= fn.length
+			return predicateDataFirst(context, callee, node.arguments)
+		})
+	)
+}
+
+function immutable(context: LintContext, node: ESTree.Node) {
+	if (Array.contains(['ThisExpression', 'Literal', 'ArrowFunctionExpression', 'FunctionExpression'], node.type)) {
 		return true
 	}
 	if (node.type !== 'Identifier') return false
@@ -260,10 +320,7 @@ function stable(context: LintContext, node: ESTree.Node): boolean {
 			Array.some(
 				variable.defs,
 				definition =>
-					definition.type === 'ImportBinding' ||
-					definition.type === 'Parameter' ||
-					definition.type === 'ClassName' ||
-					definition.type === 'FunctionName' ||
+					Array.contains(['ImportBinding', 'Parameter', 'ClassName', 'FunctionName'], definition.type) ||
 					(definition.node.type === 'VariableDeclarator' &&
 						definition.node.parent.type === 'VariableDeclaration' &&
 						definition.node.parent.kind === 'const')
@@ -271,13 +328,45 @@ function stable(context: LintContext, node: ESTree.Node): boolean {
 	)
 }
 
-function dataFirst(context: LintContext, node: ESTree.Node) {
-	return (
-		node.type === 'CallExpression' &&
-		!node.optional &&
-		!tagFirst(node.callee) &&
-		!Array.some(node.arguments, argument => argument.type === 'SpreadElement') &&
-		Option.exists(dual(context, node.callee), fn => node.arguments.length >= Number.max(fn.length, 2))
+function stable(context: LintContext, node: ESTree.Node): boolean {
+	return pipe(
+		Match.value(node),
+		Match.when({type: Match.is('TSAsExpression', 'TSSatisfiesExpression', 'TSInstantiationExpression')}, value =>
+			stable(context, value.expression)
+		),
+		Match.when({type: 'TemplateLiteral'}, value =>
+			Array.every(value.expressions, expression => stable(context, expression))
+		),
+		Match.when(
+			{type: Match.is('BinaryExpression', 'LogicalExpression')},
+			value => stable(context, value.left) && stable(context, value.right)
+		),
+		Match.when({type: 'UnaryExpression'}, value => value.operator !== 'delete' && stable(context, value.argument)),
+		Match.when(
+			{type: 'ConditionalExpression'},
+			value => stable(context, value.test) && stable(context, value.consequent) && stable(context, value.alternate)
+		),
+		Match.when(
+			{type: 'CallExpression'},
+			value =>
+				(stableConstructor(context, value) ||
+					(Option.isSome(dual(context, value.callee)) && !dataFirst(context, value))) &&
+				Array.every(value.arguments, arg => stable(context, arg))
+		),
+		Match.when({type: 'ArrayExpression'}, value =>
+			Array.every(value.elements, element => element === null || stable(context, element))
+		),
+		Match.when({type: 'ObjectExpression'}, value =>
+			Array.every(
+				value.properties,
+				property => property.type === 'Property' && !property.computed && stable(context, property.value)
+			)
+		),
+		Match.when(
+			{computed: false, type: 'MemberExpression'},
+			value => transaction(context, value) || stable(context, value.object)
+		),
+		Match.orElse(value => immutable(context, value))
 	)
 }
 
@@ -315,27 +404,6 @@ function schemaOperation(
 	)
 }
 
-function schemaType(context: LintContext, node: ESTree.Node): Option.Option<string> {
-	if (
-		node.type === 'CallExpression' &&
-		schemaOperation(context, node.callee, ['Literals']) &&
-		node.arguments[0]?.type === 'ArrayExpression'
-	) {
-		return Option.some(`Schema.Literals<readonly ${text(context, node.arguments[0])}>`)
-	}
-	if (node.type === 'Identifier' || node.type === 'MemberExpression') {
-		return Option.some(`typeof ${text(context, node)}`)
-	}
-	if (
-		node.type === 'CallExpression' &&
-		node.callee.type === 'MemberExpression' &&
-		Option.exists(memberName(node.callee), name => Array.contains(['check', 'annotate'], name))
-	) {
-		return schemaType(context, node.callee.object)
-	}
-	return Option.none()
-}
-
 function chain(context: LintContext, node: ESTree.Node): Option.Option<{subject: ESTree.Node; steps: string[]}> {
 	if (node.type !== 'CallExpression' || !dataFirst(context, node)) return Option.some({steps: [], subject: node})
 	const [subject, ...args] = node.arguments
@@ -343,7 +411,10 @@ function chain(context: LintContext, node: ESTree.Node): Option.Option<{subject:
 	return Option.map(chain(context, subject), inner => ({
 		steps: [
 			...inner.steps,
-			`${text(context, node.callee)}${typeArguments(context, node)}(${argumentsText(context, args)})`
+			Boolean.match(Array.isArrayEmpty(args), {
+				onFalse: () => `${text(context, node.callee)}${typeArguments(context, node)}(${argumentsText(context, args)})`,
+				onTrue: () => `${text(context, node.callee)}${typeArguments(context, node)}`
+			})
 		],
 		subject: inner.subject
 	}))
@@ -383,18 +454,25 @@ function pipelineText(subject: string, steps: string[]) {
 	return `pipe(${subject}, ${Array.join(steps, ', ')})`
 }
 
+function unparenthesized(node: ESTree.Node) {
+	if (node.type === 'ParenthesizedExpression') return node.expression
+	return node
+}
+
 function normalizeForwarding(context: LintContext, node: ESTree.CallExpression) {
-	if (node.arguments.length !== 1 || node.arguments[0]?.type === 'SpreadElement') return
+	const arrow = unparenthesized(node.callee)
+	if (arrow.type !== 'ArrowFunctionExpression') return
 	const subject = node.arguments[0]
-	if (subject === undefined) return
-	Option.match(plainForwarding(context, node.callee), {
-		onNone: () => {},
-		onSome: call =>
-			context.report({
-				fix: fixer => fixer.replaceText(node, forwardCall(context, call, text(context, subject))),
-				message: 'Call the operation directly instead of immediately applying a forwarding arrow.',
-				node
+	context.report({
+		fix: fixer => {
+			if (subject === undefined || subject.type === 'SpreadElement' || node.arguments.length !== 1) return []
+			return Option.match(plainForwarding(context, arrow), {
+				onNone: () => [],
+				onSome: call => [fixer.replaceText(node, forwardCall(context, call, text(context, subject)))]
 			})
+		},
+		message: 'Write this computation plainly instead of immediately applying an arrow.',
+		node
 	})
 }
 
@@ -420,18 +498,24 @@ function normalizeCallee(context: LintContext, node: ESTree.CallExpression) {
 function normalizeSchema(context: LintContext, node: ESTree.CallExpression) {
 	if (
 		node.callee.type === 'CallExpression' &&
-		Predicate.isNullish(node.callee.typeArguments) &&
 		schemaOperation(context, node.callee.callee, ['withDecodingDefaultKey', 'withDecodingDefaultTypeKey']) &&
 		node.arguments.length === 1 &&
 		node.arguments[0] !== undefined &&
-		Option.isSome(schemaType(context, node.arguments[0]))
+		node.arguments[0].type !== 'SpreadElement'
 	) {
 		const subject = node.arguments[0]
-		const callee = node.callee.callee
+		const curried = node.callee
 		context.report({
 			fix: fixer =>
-				Option.toArray(Option.map(schemaType(context, subject), type => fixer.insertTextAfter(callee, `<${type}>`))),
-			message: 'Keep the schema subject in the type of a curried-only schema operation.',
+				pipe(
+					effectImport({context, fixer, name: 'pipe', node}),
+					Option.map(imports => [
+						...imports,
+						fixer.replaceText(node, `pipe(${text(context, subject)}, ${text(context, curried)})`)
+					]),
+					Option.getOrElse(() => [])
+				),
+			message: 'Keep a curried-only schema operation as a pipeline step.',
 			node
 		})
 	}
@@ -524,6 +608,13 @@ function normalizeSingleStep(context: LintContext, node: ESTree.CallExpression) 
 	}
 	// A real closure has no equivalent plain call; never manufacture an immediately-applied arrow.
 	if (step.type === 'ArrowFunctionExpression') return
+	if (
+		step.type === 'CallExpression' &&
+		!Option.isSome(dual(context, step.callee)) &&
+		!schemaOperation(context, step.callee, ['check', 'annotate'])
+	) {
+		return
+	}
 	context.report({
 		fix: fixer => {
 			if (step.type === 'CallExpression' && schemaOperation(context, step.callee, ['check', 'annotate'])) {
@@ -580,11 +671,23 @@ function normalizePipe(context: LintContext, node: ESTree.CallExpression) {
 		return
 	}
 	const steps = Array.drop(node.arguments, 1)
-	const forwarded = Array.map(steps, step => forwarding(context, step))
+	if (node.arguments.length === 2) {
+		normalizeSingleStep(context, node)
+		return
+	}
+	const forwarded = Array.map(steps, step => plainForwarding(context, step))
 	if (Array.some(forwarded, Option.isSome)) {
 		context.report({
 			fix: fixer => {
 				if (first === undefined || first.type === 'SpreadElement') return []
+				if (
+					node.arguments.length > 2 &&
+					Array.some(forwarded, call =>
+						Option.exists(call, operation => Option.isNone(dual(context, operation.callee)))
+					)
+				) {
+					return []
+				}
 				const safe = Array.every(forwarded, call =>
 					Option.match(call, {
 						onNone: () => true,
@@ -627,9 +730,7 @@ function normalizePipe(context: LintContext, node: ESTree.CallExpression) {
 			message: 'Use the curried operation as a pipeline step, not a forwarding arrow.',
 			node
 		})
-		return
 	}
-	normalizeSingleStep(context, node)
 }
 
 function normalizeDual(context: LintContext, node: ESTree.CallExpression) {
@@ -659,18 +760,18 @@ function normalizeDual(context: LintContext, node: ESTree.CallExpression) {
 	}
 	if (!dataFirst(context, node) || !dataFirst(context, node.arguments[0] ?? node)) return
 	const pipeline = Option.getOrUndefined(chain(context, node))
-	// An unstable argument cannot become a curried step without changing when it runs. Keep its direct calls.
-	if (pipeline === undefined) return
 	context.report({
-		fix: fixer =>
-			pipe(
+		fix: fixer => {
+			if (pipeline === undefined) return []
+			return pipe(
 				effectImport({context, fixer, name: 'pipe', node}),
 				Option.map(imports => [
 					...imports,
 					fixer.replaceText(node, `pipe(${text(context, pipeline.subject)}, ${Array.join(pipeline.steps, ', ')})`)
 				]),
 				Option.getOrElse(() => [])
-			),
+			)
+		},
 		message: 'Two or more steps on a subject are a standalone pipe.',
 		node
 	})

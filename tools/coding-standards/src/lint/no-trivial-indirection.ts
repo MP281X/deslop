@@ -72,10 +72,9 @@ function parametersOf(node: ESTree.Function | ESTree.ArrowFunctionExpression) {
 }
 
 function forwarded(input: {args: ESTree.CallExpression['arguments']; names: string[]}) {
-	const args = Array.filter(input.args, argument => argument.type !== 'Literal')
 	return (
-		args.length === input.names.length &&
-		Array.every(args, (argument, index) => {
+		input.args.length === input.names.length &&
+		Array.every(input.args, (argument, index) => {
 			const name = input.names[index]
 			if (argument.type === 'SpreadElement') {
 				return argument.argument.type === 'Identifier' && argument.argument.name === name
@@ -135,6 +134,7 @@ function exactForwardingFunction(input: {context: Context; node: ESTree.Function
 	if (
 		input.node.async ||
 		input.node.generator ||
+		!Option.exists(boundReads(input), reads => reads.length === 1) ||
 		Array.isArrayEmpty(names) ||
 		names.length !== input.node.params.length ||
 		Predicate.isNullish(returned)

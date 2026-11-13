@@ -74,8 +74,6 @@
 		"ignore": ["packages/components-web/src/ui/**"]
 	},
 	"ignoreDependencies": [
-		// Effect-tsgo reads this plugin's settings itself; no language-service module is loaded.
-		"@effect/language-service",
 		// Peer-only: one scheduler resolution keeps app and shared atom hooks on the same registry context.
 		"scheduler",
 		// The runtime imports these; each app keeps them so autolinking includes their native modules.

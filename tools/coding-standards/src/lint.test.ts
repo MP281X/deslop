@@ -137,7 +137,7 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 			})
 		)
 		testApi.effect(
-			'reports literal partials, effect wrappers, type aliases and forwarded component props',
+			'reports single-use forwarding but keeps reused functions and literal partials',
 			Effect.fnUntraced(function* () {
 				const result = yield* lintSource({
 					'wrappers.tsx': Array.join(
@@ -148,6 +148,8 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 							'export type Alias = Original',
 							'function rounded(value: number) { return Number.round(value, 1) }',
 							'export const points = [rounded(1.25), rounded(2.25)]',
+							'function shared(value: number) { return Number.round(value) }',
+							'export const sharedPoints = [shared(1.25), shared(2.25)]',
 							'const read = Effect.fnUntraced(function* (id: string) { return yield* Effect.succeed(id) })',
 							'export const task = read("a")',
 							'const traced = Effect.fn("Task.read")(function* (id: string) { return yield* Effect.succeed(id) })',
@@ -165,7 +167,7 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 				})
 				assert.lengthOf(
 					Array.filter(customCodes(result.stdout), code => code === '@deslop/coding-standards(no-trivial-indirection)'),
-					5
+					4
 				)
 			})
 		)
@@ -220,11 +222,98 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 						fixed.stdout.diagnostics,
 						diagnostic => diagnostic.code === '@deslop/coding-standards(effect-call-form)'
 					),
-					1
+					2
 				)
 				assert.deepStrictEqual(
 					(yield* lintSource({'calls.ts': fixed.sources[0] ?? ''}, ['--fix'])).sources,
 					fixed.sources
+				)
+			})
+		)
+		testApi.effect(
+			'fixes immutable reads, arithmetic, inert effects and predicate duals without confusing curried options',
+			Effect.fnUntraced(function* () {
+				const result = yield* lintSource(
+					{
+						'calls.ts': Array.join(
+							[
+								"import {Array, Effect, Layer, Schema, Stream, pipe} from 'effect'",
+								'declare const values: number[]',
+								'declare const offset: number',
+								'declare const span: Parameters<typeof Effect.withParentSpan>[1]',
+								'export function page(input: {offset: number; limit: number}) { return Array.take(Array.drop(values, input.offset), input.limit + 1) }',
+								'export const lazy = Effect.andThen(Effect.as(Effect.void, 1), Effect.sync(() => 2))',
+								'export const sleeping = Effect.andThen(Effect.as(Effect.void, 1), Effect.sleep("1 second"))',
+								'export const promised = Effect.andThen(Effect.as(Effect.void, 1), Effect.promise(async () => 2))',
+								'export const caught = pipe(Effect.fail({_tag: "Missing"}), Effect.catchTag("Missing", error => Effect.succeed(error._tag)), Effect.as(1))',
+								'export const traversed = pipe(values, Effect.forEach(value => Effect.succeed(value), {concurrency: "unbounded"}), Effect.as(1))',
+								'export const zipped = pipe(Effect.succeed(1), Effect.zip(Effect.succeed(2), {concurrent: true}), Effect.as(1))',
+								'export const appliedTraversal = Effect.forEach(value => Effect.succeed(value), {concurrency: "unbounded"})(values)',
+								'export const appliedZip = Effect.zip(Effect.succeed(2), {concurrent: true})(Effect.succeed(1))',
+								'export const spanned = Effect.withSpan("Task.read", {attributes: {offset}})(Effect.succeed(1))',
+								'export const parented = Effect.withParentSpan(span)(Effect.succeed(1))',
+								'export const scoped = Effect.withSpanScoped("Task.read")(Effect.succeed(1))',
+								'export const stream = Stream.withSpan("Task.read")(Stream.empty)',
+								'export const layer = Layer.withSpan("Task.read")(Layer.empty)',
+								'export const annotations = Effect.annotateLogsScoped("key", "value")',
+								'export const schema = pipe(Schema.Int, Schema.withDecodingDefaultTypeKey(Effect.succeed(30)))',
+								'export const appliedSchema = Schema.withDecodingDefaultTypeKey<typeof Schema.Int>(Effect.succeed(30))(Schema.Int)'
+							],
+							'\n'
+						)
+					},
+					['--fix']
+				)
+				const source = result.sources[0] ?? ''
+				assert.include(source, 'Array.drop(input.offset),')
+				assert.include(source, 'Array.take(input.limit + 1)')
+				assert.include(source, "Effect.catchTag('Missing', error => Effect.succeed(error._tag))")
+				assert.include(source, "Effect.forEach(value => Effect.succeed(value), {concurrency: 'unbounded'})")
+				assert.include(source, 'Effect.zip(Effect.succeed(2), {concurrent: true})')
+				assert.include(source, 'export const appliedTraversal = Effect.forEach(values,')
+				assert.include(
+					source,
+					'export const appliedZip = Effect.zip(Effect.succeed(1), Effect.succeed(2), {concurrent: true})'
+				)
+				assert.include(source, "Effect.withSpan(Effect.succeed(1), 'Task.read', {attributes: {offset}})")
+				assert.include(source, 'Effect.withParentSpan(Effect.succeed(1), span)')
+				assert.include(source, "Effect.withSpanScoped(Effect.succeed(1), 'Task.read')")
+				assert.include(source, "Stream.withSpan(Stream.empty, 'Task.read')")
+				assert.include(source, "Layer.withSpan(Layer.empty, 'Task.read')")
+				assert.include(source, "Effect.annotateLogsScoped('key', 'value')")
+				assert.include(source, 'pipe(Schema.Int, Schema.withDecodingDefaultTypeKey(Effect.succeed(30)))')
+				assert.include(
+					source,
+					'pipe(Schema.Int, Schema.withDecodingDefaultTypeKey<typeof Schema.Int>(Effect.succeed(30)))'
+				)
+				assert.deepStrictEqual(reportedLines(result, 'effect-call-form').reported, [])
+				assert.deepStrictEqual((yield* lintSource({'calls.ts': source}, ['--fix'])).sources, result.sources)
+			})
+		)
+		testApi.effect(
+			'reports non-forwarding immediately applied arrows without manufacturing an unsafe fix',
+			Effect.fnUntraced(function* () {
+				const result = yield* lintSource(
+					{'arrows.ts': 'export const doubled = ((value: number) => value + value)(2) // reported'},
+					['--fix']
+				)
+				const lines = reportedLines(result, 'effect-call-form')
+				assert.deepStrictEqual(lines.reported, lines.marked)
+				assert.include(result.sources[0] ?? '', 'value + value)(2)')
+			})
+		)
+		testApi.effect(
+			'names atoms produced from an inline runtime',
+			Effect.fnUntraced(function* () {
+				assert.lengthOf(
+					Array.filter(
+						(yield* lintSource({
+							'atoms.ts':
+								"import {Atom} from 'effect/reactivity'\nimport {Effect, Layer} from 'effect'\nexport const bad = Atom.runtime(Layer.empty).atom(Effect.void)\nexport const goodAtom = Atom.runtime(Layer.empty).atom(Effect.void)"
+						})).stdout.diagnostics,
+						diagnostic => diagnostic.message === 'Name an atom with the Atom suffix.'
+					),
+					1
 				)
 			})
 		)
@@ -452,7 +541,6 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 							'@deslop/coding-standards(no-stored-schema-operation)',
 							'@deslop/coding-standards(no-stored-schema-operation)',
 							'@deslop/coding-standards(no-stored-schema-operation)',
-							'@deslop/coding-standards(no-trivial-indirection)',
 							'@deslop/coding-standards(no-trivial-indirection)',
 							'@deslop/coding-standards(no-trivial-indirection)',
 							'@deslop/coding-standards(no-trivial-indirection)',
@@ -1000,7 +1088,7 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 				assert.deepStrictEqual(result.sources, [
 					Array.join(
 						[
-							"import {Array, Effect, Option, Schema} from 'effect'",
+							"import {Array, Effect, Option, Schema, pipe} from 'effect'",
 							'',
 							"class Failed extends Schema.TaggedError<Failed>()('Failed', {cause: Schema.Defect(), message: Schema.String}) {}",
 							'declare const work: Effect.Effect<number, string>',
@@ -1014,7 +1102,11 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 							'export const decoded = Schema.decodeUnknownEffect(Schema.String)(value).pipe(',
 							"	Effect.mapError(cause => Failed.make({cause, message: 'bad'}))",
 							')',
-							"export const absent = Effect.mapError(Effect.fromOption(maybe), () => Failed.make({message: 'none'}))",
+							'export const absent = pipe(',
+							'\tmaybe,',
+							'\tEffect.fromOption,',
+							"\tEffect.mapError(() => Failed.make({message: 'none'}))",
+							')',
 							'export const named = Effect.mapError(work, error => new Failed({cause: error, message: error}))',
 							"export const caught = Effect.tryPromise({catch: cause => Failed.make({cause, message: 'down'}), try: () => fetch('/')})",
 							'export const read = (path: string): Effect.Effect<string> => Effect.succeed(path)',
@@ -1068,7 +1160,6 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 				assert.deepStrictEqual(customCodes(result.stdout), [
 					'@deslop/coding-standards(no-redundant-variable-annotation)',
 					'@deslop/coding-standards(no-return-type)',
-					'@deslop/coding-standards(no-trivial-indirection)',
 					'@deslop/coding-standards(no-trivial-indirection)',
 					'@deslop/coding-standards(preserve-error-cause)'
 				])
@@ -1802,7 +1893,7 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 						'\n'
 					)
 				})
-				assert.deepStrictEqual(customCodes(result.stdout), ['@deslop/coding-standards(no-trivial-indirection)'])
+				assert.deepStrictEqual(customCodes(result.stdout), [])
 			})
 		)
 

@@ -266,7 +266,7 @@ export const lint: OxlintConfig = {
 			{
 				message: 'Name an atom with the Atom suffix.',
 				selector:
-					'VariableDeclarator:not([id.name=/(Atom|Runtime|Atoms)$/]) > CallExpression.init:matches([callee.object.name="Atom"][callee.property.name=/^(make|readable|fn|fnSync|runtime|writable|family|keepAlive|withLabel)$/], [callee.property.name=/^(atom|fn|pull)$/][callee.object.property.name="runtime"], [callee.property.name=/^(atom|fn|pull)$/][callee.object.name=/Runtime$/])'
+					'VariableDeclarator:not([id.name=/(Atom|Runtime|Atoms)$/]) > CallExpression.init:matches([callee.object.name="Atom"][callee.property.name=/^(make|readable|fn|fnSync|runtime|writable|family|keepAlive|withLabel)$/], [callee.property.name=/^(atom|fn|pull)$/][callee.object.property.name="runtime"], [callee.property.name=/^(atom|fn|pull)$/][callee.object.name=/Runtime$/], [callee.property.name=/^(atom|fn|pull)$/][callee.object.callee.object.name="Atom"][callee.object.callee.property.name="runtime"])'
 			},
 			{
 				message: 'Name a schema in PascalCase.',
@@ -902,6 +902,7 @@ export const lint: OxlintConfig = {
 			{
 				allowForKnownSafeCalls: [
 					{from: 'file', name: 'navigate'},
+					// Opening an external link hands control to the OS; its completion is not app state and has no in-app recovery.
 					{from: 'package', name: 'openURL', package: 'react-native'}
 				]
 			}
