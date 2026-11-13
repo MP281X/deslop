@@ -450,15 +450,17 @@ function innerPipeline(context: LintContext, node: ESTree.Node) {
 		node.type !== 'ArrowFunctionExpression' ||
 		node.params[0]?.type !== 'Identifier' ||
 		node.body.type !== 'CallExpression'
-	)
-		{return Option.none()}
+	) {
+		return Option.none()
+	}
 	if (
 		node.body.callee.type !== 'Identifier' ||
 		!isImportBinding({context, importedName: 'pipe', node: node.body.callee, source: 'effect'}) ||
 		node.body.arguments[0]?.type !== 'Identifier' ||
 		node.body.arguments[0].name !== node.params[0].name
-	)
-		{return Option.none()}
+	) {
+		return Option.none()
+	}
 	return pipe(
 		variableFromScope({name: node.params[0].name, scope: context.sourceCode.getScope(node.body)}),
 		Option.filter(variable => Array.countBy(variable.references, reference => reference.isRead()) === 1),
@@ -475,9 +477,8 @@ function normalizePipe(context: LintContext, node: ESTree.CallExpression) {
 	}
 	const first = node.arguments[0]
 	const boundary = Option.getOrUndefined(
-		Array.findFirst(Array.drop(node.arguments, 1), (step, index) =>
-			Option.map(innerPipeline(context, step), body => ({body, index}))
-		)
+		pipe(node.arguments, Array.drop(1), Array.findFirst((step, index) =>
+			Option.map(innerPipeline(context, step), body => ({body, index}))))
 	)
 	if (boundary !== undefined) {
 		const before = Array.take(node.arguments, boundary.index + 1)

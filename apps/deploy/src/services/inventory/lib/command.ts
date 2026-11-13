@@ -66,7 +66,7 @@ function shellRest(tokens: readonly string[]) {
 		String.replaceAll(/\d*[<>]+\|?\s*\S+/gu, '')(String.replaceAll(/['"]/gu, '')(script)),
 		String.split(/\s*(?:\|\|?|;|&&)\s*/u),
 		Array.map(segment =>
-			Array.dropWhile(String.split(String.replace(/^eval\s+/u, '')(String.trim(segment)), /\s+/u), assignment)
+			pipe(String.replace(/^eval\s+/u, '')(String.trim(segment)), String.split(/\s+/u), Array.dropWhile(assignment))
 		),
 		Array.filter(words => String.isNonEmpty(words[0] ?? ''))
 	)
@@ -237,7 +237,7 @@ export function commandLabel(argv: readonly string[], cwd: Option.Option<string>
 	const scanned = scan(name, subject, args, [], {})
 	// An interactive shell, such as a terminal tab, runs no script: where it sits tells it apart.
 	if (Array.contains(SHELLS, name) && Array.isReadonlyArrayEmpty(scanned.words)) {
-		return {detail: Option.getOrElse(Option.map(cwd, basename), () => ''), name}
+		return {detail: pipe(cwd, Option.map(basename), Option.getOrElse(() => '')), name}
 	}
 	return Option.match(scanned.ssh, {
 		onNone: () => ({

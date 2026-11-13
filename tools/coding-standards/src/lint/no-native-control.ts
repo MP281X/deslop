@@ -18,7 +18,7 @@ function classStrings(node: ESTree.Node): string[] {
 	if (node.type === 'ConditionalExpression') return Array.flatMap([node.consequent, node.alternate], classStrings)
 	if (node.type === 'LogicalExpression') return classStrings(node.right)
 	if (node.type === 'ArrayExpression') {
-		return Array.flatMap(Array.filter(node.elements, Predicate.isNotNull), classStrings)
+		return pipe(node.elements, Array.filter(Predicate.isNotNull), Array.flatMap(classStrings))
 	}
 	return Array.empty<string>()
 }

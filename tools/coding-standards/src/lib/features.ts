@@ -303,7 +303,7 @@ function pinsOutcome(node: Node): boolean {
 	if (node.type === 'TemplateLiteral') return Array.some(node.quasis, quasi => String.isNonEmpty(quasi.value.raw))
 	if (node.type === 'UnaryExpression') return pinsOutcome(node.argument)
 	if (node.type === 'ArrayExpression') {
-		return Array.some(Array.filter(node.elements, Predicate.isNotNull), pinsOutcome)
+		return pipe(node.elements, Array.filter(Predicate.isNotNull), Array.some(pinsOutcome))
 	}
 	if (node.type === 'ObjectExpression') {
 		return Array.some(node.properties, property => property.type === 'Property' && pinsOutcome(property.value))

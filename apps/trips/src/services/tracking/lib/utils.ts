@@ -158,10 +158,7 @@ export function trainTracking(answer: VtStatus, train: Train, checkedAt: number)
 			Option.orElse(() => Option.fromNullishOr(answer.ritardo)),
 			Option.getOrElse(() => 0)
 		),
-		...Option.match(
-			Option.flatMap(Option.filter(from, left), stop => Option.fromNullishOr(stop.ritardo)),
-			{onNone: () => ({}), onSome: departureDelay => ({departureDelay})}
-		),
+		...pipe(from, Option.filter(left), Option.flatMap(stop => Option.fromNullishOr(stop.ritardo)), Option.match({onNone: () => ({}), onSome: departureDelay => ({departureDelay})})),
 		...pipe(
 			Option.all({
 				at: Option.fromNullishOr(answer.oraUltimoRilevamento),

@@ -440,10 +440,7 @@ export function processTree(rows: readonly Process[]) {
 	const visited = MutableHashSet.empty<number>()
 	function build(row: Process): ProcessNode {
 		MutableHashSet.add(visited, row.pid)
-		const below = Array.map(
-			Array.filter(children[`${row.pid}`] ?? [], child => !MutableHashSet.has(visited, child.pid)),
-			build
-		)
+		const below = pipe(children[`${row.pid}`] ?? [], Array.filter(child => !MutableHashSet.has(visited, child.pid)), Array.map(build))
 		const self: ProcessNode = {
 			children: [],
 			...Option.match(Option.fromUndefinedOr(row.command), {
@@ -578,10 +575,10 @@ function jobOf(row: Row) {
 		...failureOf(row.item),
 		id: row.item.id,
 		name: workloadName(row.item),
-		...Option.match(Option.map(Option.fromUndefinedOr(row.item.next), iso), {
+		...pipe(Option.fromUndefinedOr(row.item.next), Option.map(iso), Option.match({
 			onNone: () => ({}),
 			onSome: nextValue => ({next: nextValue})
-		})
+		}))
 	} satisfies Job
 }
 
@@ -612,15 +609,9 @@ function rank(row: Row) {
 	return 2
 }
 
-const appOrder = Order.combine(
-	Order.mapInput(Order.Number, rank),
-	Order.mapInput(Order.flip(Order.Number), (row: Row) => appUsage(row.item.processes ?? []).memory)
-)
+const appOrder = pipe(Order.Number, Order.mapInput(rank), Order.combine(Order.mapInput(Order.flip(Order.Number), (row: Row) => appUsage(row.item.processes ?? []).memory)))
 
-const jobOrder = Order.combine(
-	Order.mapInput(Order.Number, rank),
-	Order.mapInput(Order.Number, (row: Row) => row.item.next ?? 0)
-)
+const jobOrder = pipe(Order.Number, Order.mapInput(rank), Order.combine(Order.mapInput(Order.Number, (row: Row) => row.item.next ?? 0)))
 
 // The page's list per worker as compact JSON: its apps and scheduled jobs, the URLs it owns or can reach, and only the failures it would mark.
 export function listApps(snapshot: Snapshot, input: InventoryQuery) {

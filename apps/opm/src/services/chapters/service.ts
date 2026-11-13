@@ -471,7 +471,7 @@ export class Chapters extends Context.Service<Chapters>()('@deslop/opm/services/
 			// What the iPhone watches: the whole list first, then only the chapters that changed, after each commit.
 			events: pipe(
 				sql.reactive(['chapters'], listChapters()),
-				pipelineSubject16520 => Stream.mapError(pipelineSubject16520, asStorageChaptersError),
+				Stream.mapError(asStorageChaptersError),
 				Stream.mapAccum(
 					() => Option.none<readonly Chapter[]>(),
 					(previous, current) =>

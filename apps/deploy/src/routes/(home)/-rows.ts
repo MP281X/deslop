@@ -41,13 +41,7 @@ function rank(row: Row) {
 	return 2
 }
 
-export const order = Order.combine(
-	Order.combine(
-		Order.mapInput(Order.Number, rank),
-		Order.mapInput(Order.flip(Order.Number), (row: Row) => appUsage(row.item.processes ?? []).memory)
-	),
-	Order.mapInput(Order.Number, (row: Row) => row.item.next ?? 0)
-)
+export const order = pipe(Order.Number, Order.mapInput(rank), Order.combine(Order.mapInput(Order.flip(Order.Number), (row: Row) => appUsage(row.item.processes ?? []).memory)), Order.combine(Order.mapInput(Order.Number, (row: Row) => row.item.next ?? 0)))
 
 // The list's two groups: a failure, warning or app outside the chart's low-impact set stays up; a healthy low-impact app sits under its own heading. No history means no divider.
 export function impactGroups(rows: readonly Row[], history?: MachineHistory) {

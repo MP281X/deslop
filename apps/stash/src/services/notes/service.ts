@@ -476,7 +476,7 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 				onNone: () => Effect.void,
 				onSome: text => change(note.id, () => ({transcript: Option.some(text)}))
 			})
-			yield* tag(userId, note.id, Array.map(Array.drop(stills, 1), still))
+			yield* tag(userId, note.id, pipe(stills, Array.drop(1), Array.map(still)))
 		})
 
 		function start(userId: string, note: Note) {
