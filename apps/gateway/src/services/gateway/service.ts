@@ -37,14 +37,7 @@ import {connectionFailure, endSession, mcpClient, serverIcons} from '#services/c
 import type {ConnectionGeneration, ConnectionState} from '#services/connections/schema.ts'
 import {Connections, gatewayUrl} from '#services/connections/service.ts'
 import {compact, indexTools, prunedTools} from '#services/gateway/lib/utils.ts'
-import {
-	RemoteCallResult,
-	RemoteTool,
-	RemoteTools,
-	ToolArguments,
-	ToolAvailability,
-	ToolRequest
-} from '#services/gateway/schema.ts'
+import {RemoteTool, RemoteTools, ToolArguments, ToolRequest} from '#services/gateway/schema.ts'
 
 type Server = Pick<ConnectionState, 'id' | 'generation' | 'name' | 'mode'>
 
@@ -222,10 +215,8 @@ export class Gateway extends Context.Service<
 								catch: connectionFailure(server.name),
 								try: signal => client.callTool({arguments: args, name: tool.name}, {signal, toolDefinition: tool})
 							}),
-							Effect.flatMap(Schema.decodeUnknownEffect(RemoteCallResult)),
-							Effect.tap(result => Effect.annotateCurrentSpan({'mcp.is_error': Option.contains(result.isError, true)})),
-							Effect.flatMap(Schema.encodeEffect(RemoteCallResult)),
-							Effect.flatMap(Schema.decodeEffect(McpSchema.CallToolResult)),
+							Effect.flatMap(Schema.decodeUnknownEffect(McpSchema.CallToolResult)),
+							Effect.tap(result => Effect.annotateCurrentSpan({'mcp.is_error': result.isError === true})),
 							Effect.mapError(connectionFailure(server.name))
 						)
 					)
@@ -262,20 +253,11 @@ export class Gateway extends Context.Service<
 								try: signal => client.listTools(undefined, {signal})
 							}),
 							Effect.flatMap(result =>
-								pipe(
-									Effect.filter(result.tools, tool =>
-										Effect.map(
-											Schema.decodeEffect(ToolAvailability)(tool),
-											value =>
-												!pipe(
-													value.execution,
-													Option.flatMap(execution => execution.taskSupport),
-													Option.contains('required')
-												)
-										)
+								Effect.map(
+									Schema.decodeUnknownEffect(RemoteTools)(
+										Array.filter(result.tools, tool => tool.execution?.taskSupport !== 'required')
 									),
-									Effect.flatMap(Schema.decodeUnknownEffect(RemoteTools)),
-									Effect.map(tools => ({tools, upstreamTools: result.tools}))
+									tools => ({tools, upstreamTools: result.tools})
 								)
 							),
 							Effect.mapBoth({

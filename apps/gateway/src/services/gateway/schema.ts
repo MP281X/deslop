@@ -24,15 +24,3 @@ export const RemoteTool = Schema.Struct({
 
 export type RemoteTools = typeof RemoteTools.Type
 export const RemoteTools = Schema.Array(RemoteTool)
-
-export type ToolAvailability = typeof ToolAvailability.Type
-// The SDK returns execution metadata too; only whether a task is required affects the relay.
-export const ToolAvailability = Schema.Struct({
-	execution: Schema.OptionFromOptional(Schema.Struct({taskSupport: Schema.OptionFromOptional(Schema.String)}))
-})
-
-export type RemoteCallResult = typeof RemoteCallResult.Type
-export const RemoteCallResult = Schema.Struct({
-	...McpSchema.CallToolResult.fields,
-	isError: Schema.OptionFromOptionalKey(Schema.Boolean)
-})
