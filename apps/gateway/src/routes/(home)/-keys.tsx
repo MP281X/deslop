@@ -8,7 +8,14 @@ import {useState} from 'react'
 import {ThemedMark} from '@deslop/components-web/marks'
 import {ResultError} from '@deslop/components-web/result-error'
 import {Button} from '@deslop/components-web/ui/button'
-import {Dialog, DialogClose, DialogContent, DialogFooter, DialogTitle} from '@deslop/components-web/ui/dialog'
+import {
+	Dialog,
+	DialogClose,
+	DialogContent,
+	DialogFooter,
+	DialogHeader,
+	DialogTitle
+} from '@deslop/components-web/ui/dialog'
 import {Field, FieldLabel} from '@deslop/components-web/ui/field'
 import {Input} from '@deslop/components-web/ui/input'
 import {Select, SelectContent, SelectItem, SelectTrigger, SelectValue} from '@deslop/components-web/ui/select'
@@ -57,7 +64,8 @@ export function AddKeyDialog(props: {
 	const waiting = AsyncResult.isWaiting(result)
 	return (
 		<Dialog open={props.open && !AsyncResult.isSuccess(result)} onOpenChange={props.onOpenChange}>
-			<DialogContent showCloseButton={!waiting}>
+			{/* Cancel already closes it, so the corner X would be the same action twice. */}
+			<DialogContent showCloseButton={false}>
 				<form
 					className="flex flex-col gap-4"
 					onSubmit={event => {
@@ -65,7 +73,9 @@ export function AddKeyDialog(props: {
 						save({payload: {provider: props.provider, secret: Redacted.make(secret)}, reactivityKeys: ['aiKeys']})
 					}}
 				>
-					<DialogTitle>Add a key</DialogTitle>
+					<DialogHeader>
+						<DialogTitle>Add a key</DialogTitle>
+					</DialogHeader>
 					<Field>
 						<FieldLabel htmlFor="ai-provider">Provider</FieldLabel>
 						<Select

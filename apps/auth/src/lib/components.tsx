@@ -5,26 +5,30 @@ import {Array, Boolean, DateTime, Option, Order, Record, String, Struct, pipe} f
 import {AppWindowIcon, GlobeIcon, GraphIcon, HardDrivesIcon} from '@phosphor-icons/react'
 import {AsyncResult, Atom} from 'effect/reactivity'
 import {useState} from 'react'
+import type {ComponentType, SVGProps} from 'react'
 
 import {cn} from '@deslop/components-web/classes'
 import {EmptyState, Loaded} from '@deslop/components-web/fallbacks'
 import {ageOf} from '@deslop/components-web/format'
 import {RowsSkeleton} from '@deslop/components-web/item-list'
+import {ThemedMark} from '@deslop/components-web/marks'
 import {ResultError} from '@deslop/components-web/result-error'
 import {Button} from '@deslop/components-web/ui/button'
 import {Card} from '@deslop/components-web/ui/card'
 import {Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle} from '@deslop/components-web/ui/item'
 import {Skeleton} from '@deslop/components-web/ui/skeleton'
+import {AndroidIcon} from '@deslop/components-web/ui/svgs/androidIcon'
+import {Apple} from '@deslop/components-web/ui/svgs/apple'
+import {AppleDark} from '@deslop/components-web/ui/svgs/appleDark'
+import {Chrome} from '@deslop/components-web/ui/svgs/chrome'
+import {ClaudeAiIcon} from '@deslop/components-web/ui/svgs/claudeAiIcon'
+import {CodexDark} from '@deslop/components-web/ui/svgs/codexDark'
+import {CodexLight} from '@deslop/components-web/ui/svgs/codexLight'
+import {Edge} from '@deslop/components-web/ui/svgs/edge'
+import {Firefox} from '@deslop/components-web/ui/svgs/firefox'
+import {Safari} from '@deslop/components-web/ui/svgs/safari'
 
 import {appsAtom, consentAtom, minuteAtom, requestCode} from '#lib/auth.ts'
-import android from '#lib/brands/android.svg'
-import apple from '#lib/brands/apple.svg'
-import chrome from '#lib/brands/chrome.svg'
-import claude from '#lib/brands/claude.svg'
-import codex from '#lib/brands/codex.svg'
-import edge from '#lib/brands/edge.svg'
-import firefox from '#lib/brands/firefox.svg'
-import safari from '#lib/brands/safari.svg'
 import type {PendingAuthorization} from '#services/sign-ins/schema.ts'
 import type {SignedInApp} from '#services/tokens/schema.ts'
 
@@ -109,7 +113,7 @@ export function PeopleRowsSkeleton() {
 	)
 }
 
-const BROWSERS: Record<string, string> = {Chrome: chrome, Edge: edge, Firefox: firefox, Safari: safari}
+const BROWSERS: Record<string, ComponentType<SVGProps<SVGSVGElement>>> = {Chrome, Edge, Firefox, Safari}
 
 type Client = {app: Option.Option<string>; device: string; kind: 'App' | 'Browser'; name: string}
 
@@ -118,21 +122,21 @@ function Brand(props: {client: Client}) {
 		return pipe(
 			BROWSERS,
 			Record.get(props.client.name),
-			Option.match({onNone: () => <GlobeIcon />, onSome: src => <img src={src} alt="" className="size-3.5" />})
+			Option.match({onNone: () => <GlobeIcon />, onSome: Mark => <Mark aria-hidden className="size-3.5" />})
 		)
 	}
 	if (Option.isSome(String.match(/claude/iu)(props.client.name))) {
-		return <img src={claude} alt="" className="size-3.5" />
+		return <ClaudeAiIcon aria-hidden className="size-3.5" />
 	}
 	if (Option.isSome(String.match(/codex/iu)(props.client.name))) {
-		return <img src={codex} alt="" className="size-3.5 dark:invert" />
+		return <ThemedMark light={CodexLight} dark={CodexDark} className="size-3.5" />
 	}
 	// The gateway runs on a server whatever device approved it, so its glyph wins over the device's logo.
 	if (Option.isSome(String.match(/gateway/iu)(props.client.name))) return <GraphIcon />
 	if (Array.contains(['iPhone', 'iPad'], props.client.device)) {
-		return <img src={apple} alt="" className="size-3.5 dark:invert" />
+		return <ThemedMark light={Apple} dark={AppleDark} className="size-3.5" />
 	}
-	if (props.client.device === 'Android') return <img src={android} alt="" className="size-3.5" />
+	if (props.client.device === 'Android') return <AndroidIcon aria-hidden className="size-3.5" />
 	return <HardDrivesIcon />
 }
 

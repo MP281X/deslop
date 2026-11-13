@@ -236,7 +236,7 @@ function AppRow(props: {
 				</ItemContent>
 				<ItemActions className="pointer-events-none relative z-10 shrink-0">
 					<span className="flex min-w-0 items-center justify-end gap-1.5">
-						{failing && (
+						{props.row.item.health !== 'quiet' && (
 							<span
 								title={state}
 								aria-label={state}

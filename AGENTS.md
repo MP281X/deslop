@@ -43,7 +43,7 @@
 - **Exemption.** Portfolio is exempt: its own fonts, hotkeys, presence text and artwork, including a 504×504 touch icon on `#fafafa`.
 - **Targets.** 3440×1440, 1920×1080, ~1512×982; iPhone Air 420×912pt, safe areas and Dynamic Type.
 - **Colour.** Only identity and status carry hue; services without Deslop icons stay grey except Deploy's usage bands. Never label healthy, live, connected or up-to-date states. Dots mark problems, never kinds; kinds take tinted icons.
-- **Layout.** No page titles, search fields or panel headers. Web semibold only for the bar's app name; no decorative shadows, only popups raised. No custom iOS bar. Trees have no connectors, tints or fold carets.
+- **Layout.** No page titles or panel headers, and no search fields on the web. Web semibold only for the bar's app name; no decorative shadows, only popups raised. No custom iOS bar. Trees have no connectors, tints or fold carets.
 - **Behavior.** No web removal controls or context menus; iOS keeps native long-press menus and swipes. No command palette or hotkeys. Never confirm destruction.
 - **Recovery.** Leave stale rows and panes unmarked; no toasts or page-moving banners. Destructive failures say whether they committed.
 - **Components.** Nothing animates; pending actions have no spinners.

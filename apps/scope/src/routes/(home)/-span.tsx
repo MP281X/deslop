@@ -138,7 +138,7 @@ export function SpanDetail(props: {span: TraceTree['spans'][number]}) {
 						{Boolean.match(attribute.key === 'url.full' && String.startsWith('https://')(attribute.value), {
 							onFalse: () => attribute.value,
 							onTrue: () => (
-								<a href={attribute.value} target="_blank" rel="noreferrer" className="text-primary">
+								<a href={attribute.value} target="_blank" rel="noreferrer" className="underline underline-offset-4">
 									{attribute.value}
 								</a>
 							)
