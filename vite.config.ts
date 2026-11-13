@@ -329,11 +329,7 @@ export default defineConfig({
 				]
 			},
 			// Parked: only an explicit user request runs this paid-capable command, never routine verification.
-			judge: {
-				cache: false,
-				command:
-					"coding-standards judge --ignore '**/*.gen.ts' --ignore 'packages/components-web/src/ui/**' --ignore 'tools/*/template/**'"
-			},
+			judge: {cache: false, command: 'coding-standards judge'},
 			test: 'vp run -r --parallel test'
 		}
 	},

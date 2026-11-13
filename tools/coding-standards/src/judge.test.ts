@@ -1,40 +1,15 @@
-// oxlint-disable-next-line effecttsgo/node-builtin-import -- The CLI runs in a separate process; its model is a loopback stand-in.
-import {createServer} from 'node:http'
-
-import {NodeHttpServer, NodeServices} from '@effect/platform-node'
+import {NodeServices} from '@effect/platform-node'
 import {assert, describe, it} from '@effect/vitest'
 
-import {Array, Boolean, Context, Effect, FileSystem, Layer, Path, Record, Schema, Stream, String, pipe} from 'effect'
+import {Array, Effect, FileSystem, Path, Record, Stream, String, pipe} from 'effect'
 
-import {HttpRouter, HttpServer, HttpServerRequest, HttpServerResponse} from 'effect/http'
 import {ChildProcess} from 'effect/process'
-
-import {QUESTIONS} from '#judge.ts'
 
 const IDENTITY = {
 	GIT_AUTHOR_EMAIL: 'judge@example.com',
 	GIT_AUTHOR_NAME: 'Judge',
 	GIT_COMMITTER_EMAIL: 'judge@example.com',
 	GIT_COMMITTER_NAME: 'Judge'
-}
-
-type Asked = typeof Asked.Type
-const Asked = Schema.Struct({
-	questions: Schema.Record(Schema.String, Schema.Unknown),
-	state: Schema.Record(Schema.String, Schema.String)
-})
-
-function score(name: string, code: string, misjudged: string) {
-	const questions = Record.values(QUESTIONS)
-	if (Array.some(questions, found => code === found.yes.example)) {
-		if (name === misjudged) return 0.1
-		return 0.95
-	}
-	if (Array.some(questions, found => code === found.no.example)) return 0.05
-	if (name !== 'no-view-state-in-memory') return 0.05
-	if (String.includes('Flagged')(code) || String.includes('Ignored')(code)) return 0.95
-	if (String.includes('Wavering')(code)) return 0.7
-	return 0.05
 }
 
 function componentSource(name: string) {
@@ -65,41 +40,7 @@ function functionSource(name: string, suffix: string) {
 const fixture = Effect.fnUntraced(function* (misjudged: string = '') {
 	const fs = yield* FileSystem.FileSystem
 	const path = yield* Path.Path
-	const server = yield* Layer.build(
-		Layer.provideMerge(
-			HttpRouter.serve(
-				HttpRouter.add(
-					'POST',
-					'/ai/opencode-zen/systemone/v1/systemone',
-					Effect.orDie(
-						Effect.gen(function* () {
-							const asked = yield* HttpServerRequest.schemaBodyJson(Asked)
-							const code = asked.state['code'] ?? ''
-							const names = Record.keys(asked.questions)
-							return yield* HttpServerResponse.json({
-								answers: Record.fromEntries(
-									pipe(
-										String.includes('Partial')(code),
-										Boolean.match({onFalse: () => names, onTrue: () => Array.drop(names, 1)}),
-										Array.map(name => [name, {noul: score(name, code, misjudged)}])
-									)
-								),
-								usage: {input_tokens: 100}
-							})
-						})
-					)
-				)
-			),
-			NodeHttpServer.layer(createServer, {host: '127.0.0.1', port: 0})
-		)
-	)
-	const gateway = HttpServer.formatAddress(Context.get(server, HttpServer.HttpServer).address)
 	const home = yield* fs.makeTempDirectoryScoped({prefix: 'coding-standards-home-'})
-	yield* fs.makeDirectory(path.join(home, '.deslop', 'coding-standards'), {recursive: true})
-	yield* fs.writeFileString(
-		path.join(home, '.deslop', 'coding-standards', 'session.json'),
-		'{"accessToken":"test","clientId":"test","expiresAt":4102444800000,"refreshToken":"test"}'
-	)
 	const git = Effect.fnUntraced(function* (directory: string, args: string[]) {
 		yield* Effect.scoped(
 			Effect.flatMap(
@@ -134,7 +75,41 @@ const fixture = Effect.fnUntraced(function* (misjudged: string = '') {
 	const run = Effect.fnUntraced(function* (directory: string, flags: string[] = []) {
 		const handle = yield* ChildProcess.make(
 			'node',
-			[path.join(import.meta.dirname, 'main.cli.ts'), 'judge', '--gateway', gateway, '--base', 'main', ...flags],
+			[
+				'--input-type=module',
+				'-e',
+				Array.join(
+					[
+						`import {NodeCrypto, NodeRuntime, NodeServices} from '${import.meta.resolve('@effect/platform-node')}'`,
+						`import {Array, Effect, Layer, Option, Record, Schema, Stream, String} from '${import.meta.resolve('effect')}'`,
+						`import {LanguageModel, Response} from '${import.meta.resolve('effect/ai')}'`,
+						`import {judge, layerCache, QUESTIONS} from '${path.join(import.meta.dirname, 'judge.ts')}'`,
+						'const model = LanguageModel.make({',
+						'generateText: options => Effect.gen(function* () {',
+						"const system = options.prompt.content.find(message => message.role === 'system').content",
+						"const text = options.prompt.content.find(message => message.role === 'user').content[0].text",
+						'const state = yield* Schema.decodeEffect(Schema.fromJsonString(Schema.Record(Schema.String, Schema.String)))(text)',
+						"const questions = yield* Schema.decodeEffect(Schema.fromJsonString(Schema.Record(Schema.String, Schema.Unknown)))(system.slice(system.indexOf('\\n\\n') + 2))",
+						"const code = state['code']",
+						'const yes = Array.some(Record.values(QUESTIONS), question => code === question.yes.example)',
+						'const no = Array.some(Record.values(QUESTIONS), question => code === question.no.example)',
+						'const names = Record.keys(questions)',
+						"const answered = code.includes('Partial') ? names.slice(1) : names",
+						'const answers = Record.fromEntries(answered.map(name => {',
+						`if (yes) return [name, name !== '${misjudged}']`,
+						'if (no) return [name, false]',
+						`if (name === '${misjudged}') throw new Error('An untrusted question was used')`,
+						"return [name, name === 'no-view-state-in-memory' && (code.includes('Flagged') || code.includes('Ignored'))]",
+						'}))',
+						'const textAnswer = yield* Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown))(answers)',
+						"return [Response.makePart('text', {text: textAnswer}), Response.makePart('finish', {reason: 'stop', usage: new Response.Usage({inputTokens: {total: 100, uncached: 100, cacheRead: 0, cacheWrite: 0}, outputTokens: {total: 10, text: 10, reasoning: 0}})})]",
+						'}), streamText: () => Stream.empty',
+						'})',
+						`NodeRuntime.runMain(Effect.provide(judge({base: Option.some('main'), dryRun: ${Array.contains(flags, '--dry-run')}, userAsked: ${Array.contains(flags, '--user-asked')}}, model), Layer.provideMerge(layerCache, Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))))`
+					],
+					'\n'
+				)
+			],
 			{
 				cwd: directory,
 				env: {HOME: home, XDG_CACHE_HOME: path.join(home, 'cache')},
@@ -172,9 +147,7 @@ describe('coding-standards judge', () => {
 							ignore,
 							...componentSource('Ignored'),
 							ignore,
-							...componentSource('Passing'),
-							ignore,
-							...componentSource('Wavering')
+							...componentSource('Passing')
 						]
 					})
 				)
@@ -184,10 +157,7 @@ describe('coding-standards judge', () => {
 					result.output,
 					'page.tsx:21-28 no-view-state-in-memory This now passes; remove its judge-ignore comment.'
 				)
-				assert.include(
-					result.output,
-					'suppressed by judge-ignore: selection is temporary in this embedded widget (0.95)'
-				)
+				assert.include(result.output, 'suppressed by judge-ignore: selection is temporary in this embedded widget')
 				assert.include(result.output, '— 2 findings, 0 could not read, 1 suppressed')
 			}, Effect.scoped)
 		)
@@ -283,7 +253,7 @@ describe('coding-standards judge', () => {
 				assert.include(cold.output, '0 answered from memory')
 				const warm = yield* f.run(directory)
 				assert.strictEqual(warm.exitCode, 0)
-				assert.include(warm.output, '0 calls made, 0 input tokens read')
+				assert.include(warm.output, '0 calls made, 0 input tokens reported')
 				yield* f.write(directory, {
 					'text.ts': [
 						"import {Array, String} from 'effect'",
@@ -293,22 +263,7 @@ describe('coding-standards judge', () => {
 				})
 				const edited = yield* f.run(directory)
 				assert.strictEqual(edited.exitCode, 0)
-				assert.include(edited.output, '1 calls made, 100 input tokens read')
-			}, Effect.scoped)
-		)
-
-		test.effect(
-			'reports a call beyond the token limit as unreadable',
-			Effect.fnUntraced(function* () {
-				const f = yield* fixture()
-				const result = yield* f.run(
-					yield* f.checkout({'text.ts': ["import {Array, String} from 'effect'", ...functionSource('first', 'a')]}),
-					['--max-call-tokens', '1']
-				)
-				assert.strictEqual(result.exitCode, 1)
-				assert.include(result.output, 'Could not read, so the judge cannot vouch for the change:')
-				assert.include(result.output, 'past --max-call-tokens 1; not sent')
-				assert.include(result.output, '0 calls made, 0 input tokens read')
+				assert.include(edited.output, '1 calls made, 100 input tokens reported')
 			}, Effect.scoped)
 		)
 
@@ -334,23 +289,29 @@ describe('coding-standards judge', () => {
 				assert.strictEqual(first.exitCode, 1)
 				assert.include(
 					first.output,
-					'text.ts:2-8 no-contradicted-promise: Gateway or Jev gave no answer the judge could read'
+					'text.ts:2-8 no-contradicted-promise: Gateway or Haiku gave no answer the judge could read'
 				)
 				const retried = yield* f.run(directory)
 				assert.strictEqual(retried.exitCode, 1)
-				assert.include(retried.output, '1 calls made, 100 input tokens read')
+				assert.include(retried.output, '1 calls made, 0 input tokens reported')
+				assert.include(retried.output, '1 calls with unavailable usage')
 				assert.include(retried.output, '— 0 findings, 4 could not read, 0 suppressed')
 			}, Effect.scoped)
 		)
 
 		test.effect(
-			'reports a question that misjudges its own example',
+			'leaves a question unreadable when its self-check fails instead of trusting its unit answers',
 			Effect.fnUntraced(function* () {
 				const f = yield* fixture('no-contradicted-promise')
-				const result = yield* f.run(yield* f.checkout({}))
+				const result = yield* f.run(
+					yield* f.checkout({'text.ts': ["import {Array, String} from 'effect'", ...functionSource('first', 'a')]})
+				)
 				assert.strictEqual(result.exitCode, 1)
-				assert.include(result.output, 'no-contradicted-promise misjudges its yes example. 0.1')
-				assert.include(result.output, '— 1 findings, 0 could not read, 0 suppressed')
+				assert.include(
+					result.output,
+					'no-contradicted-promise: self-check did not correctly answer its yes example; question not used'
+				)
+				assert.include(result.output, '— 0 findings, 1 could not read, 0 suppressed')
 			}, Effect.scoped)
 		)
 	})

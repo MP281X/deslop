@@ -183,7 +183,7 @@ const TAB_ELEMENTS = /Tab(?!le)|Segment|tab(?!le)/u
 const ASSERTION_SOURCES =
 	/from ['"](?:vitest|@effect\/vitest(?:\/utils)?|vite-plus\/test|node:assert(?:\/strict)?|assert)['"]/u
 
-// A unit read alone the way Jev reads it: a function parses in parentheses, an example's statement as it is and a method only inside an object; JSX only as TSX and a generic arrow `<T>() =>` only as TS.
+// A unit read alone the way the model reads it: a function parses in parentheses, an example's statement as it is and a method only inside an object; JSX only as TSX and a generic arrow `<T>() =>` only as TS.
 const WRAPPINGS = Array.flatMap(
 	[(text: string) => `(${text})`, (text: string) => text, (text: string) => `({m${text}})`],
 	wrap => Array.map(['unit.tsx', 'unit.ts'], name => ({name, wrap}))
@@ -297,7 +297,7 @@ function comparesComputed(node: Node) {
 	})
 }
 
-// What the judge's gates read of a unit: only what Jev reads too, its code and the imports it uses.
+// What the judge's gates read of a unit: only what the model reads too, its code and the imports it uses.
 export type Features = ReturnType<typeof features>
 
 export function features(text: string, imports: string) {

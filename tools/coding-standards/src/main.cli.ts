@@ -9,6 +9,7 @@ import {Command, Flag} from 'effect/cli'
 import {judge, layerCache} from '#judge.ts'
 import packageJson from '#package.json' with {type: 'json'}
 
+import {haiku} from '#lib/model.ts'
 import {signIn} from '#lib/session.ts'
 
 // Printed after lint leaves a diagnostic, for the agent fixing it; autofix has already run.
@@ -16,19 +17,6 @@ const TACTICS = `Fix each diagnostic at the cause its message names:
 - No cast, wrapper, spread, suppression or file split just to pass; a documented exception carries its reason.
 - Inline in evaluation order; move a declaration used before its definition up, never into a new module.
 - Delete a whole unused declaration, never only its header.`
-
-const urls = {
-	auth: pipe(
-		Flag.String('auth'),
-		Flag.withDescription('Deslop Auth origin'),
-		Flag.withDefault('https://auth.mp281x.xyz')
-	),
-	gateway: pipe(
-		Flag.String('gateway'),
-		Flag.withDescription('Deslop Gateway origin, which spends your own OpenCode Zen key'),
-		Flag.withDefault('https://gateway.mp281x.xyz')
-	)
-}
 
 const cli = pipe(
 	Command.make('coding-standards'),
@@ -42,7 +30,6 @@ const cli = pipe(
 			Command.make(
 				'judge',
 				{
-					...urls,
 					base: pipe(
 						Flag.String('base'),
 						Flag.withDescription(
@@ -55,27 +42,20 @@ const cli = pipe(
 						Flag.withDescription('Print what would be asked, with its estimated tokens, and send nothing'),
 						Flag.withDefault(false)
 					),
-					ignore: pipe(
-						Flag.String('ignore'),
-						Flag.withDescription('A glob of changed files to leave unjudged, as lint ignores them'),
-						Flag.atLeast(0)
-					),
-					maxCallTokens: pipe(
-						Flag.Int('max-call-tokens'),
-						Flag.withDescription('The most one call may send; a larger call is not sent and fails the run'),
-						Flag.withDefault(64_000)
-					),
 					userAsked: pipe(
 						Flag.Boolean('user-asked'),
 						Flag.withDescription('The user explicitly requested this run; allow more than 20 planned calls'),
 						Flag.withDefault(false)
 					)
 				},
-				input => judge(input, input)
+				input => judge(input, haiku)
 			),
 			'Ask the functions, components and test cases a change touches the questions no remembered answer covers, and report what breaks one'
 		),
-		Command.withDescription(Command.make('sign-in', urls, signIn), 'Sign the judge in to Gateway once per machine')
+		Command.withDescription(
+			Command.make('sign-in', {}, () => signIn),
+			'Sign the judge in to Gateway once per machine'
+		)
 	]),
 	Command.run({version: packageJson.version})
 )

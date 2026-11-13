@@ -109,7 +109,7 @@ const defaultBranch = Effect.fnUntraced(function* (root: string) {
 })
 
 // The TypeScript files the change adds or edits against its merge base, untracked ones included, with the lines of each as it is now that the change touched; the diff only selects what is asked and is never sent.
-export const change = Effect.fnUntraced(function* (base: Option.Option<string>, ignore: readonly string[]) {
+export const change = Effect.fnUntraced(function* (base: Option.Option<string>) {
 	const root = String.trim(yield* git(['rev-parse', '--show-toplevel'], '.'))
 	const pullRequest = yield* pipe(
 		run('gh', ['pr', 'view', '--json', 'baseRefName,number'], root),
@@ -130,7 +130,10 @@ export const change = Effect.fnUntraced(function* (base: Option.Option<string>, 
 	const pathspec = [
 		':(top,glob)**/*.ts',
 		':(top,glob)**/*.tsx',
-		...Array.map(ignore, glob => `:(top,exclude,glob)${glob}`)
+		...Array.map(
+			['**/*.gen.ts', 'packages/components-web/src/ui/**', 'tools/*/template/**'],
+			glob => `:(top,exclude,glob)${glob}`
+		)
 	]
 	const tracked = entriesOf(
 		yield* git([...DIFF, '--name-status', '-z', '--no-relative', mergeBase, '--', ...pathspec], root)

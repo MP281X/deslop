@@ -157,7 +157,7 @@ export function units(filename: string, source: string) {
 		})
 	)
 	function unit(kind: Kind, node: Node, line: number) {
-		// The opt-outs sit in the comment lines right above the unit, beside any comment explaining it, which Jev reads with the code.
+		// The opt-outs sit in the comment lines right above the unit, beside any explanation the model reads with the code.
 		const above = pipe(
 			Array.range(1, line - 1),
 			Array.reverse,

@@ -764,6 +764,9 @@ importers:
 
   tools/coding-standards:
     dependencies:
+      '@effect/ai-anthropic':
+        specifier: latest
+        version: 4.1.4(effect@4.1.4)
       '@effect/platform-node':
         specifier: latest
         version: 4.1.4(effect@4.1.4)(redis@6.3.1)
