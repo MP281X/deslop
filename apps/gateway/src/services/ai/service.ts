@@ -33,16 +33,16 @@ import {
 } from 'effect/http'
 import {KeyValueStore} from 'effect/persistence'
 
-import {AuthError} from '@deslop/runtime/auth/schema'
-import {Auth} from '@deslop/runtime/auth/service'
-import {bearerOf, failureOptions, isJwt, localAuth} from '@deslop/runtime/auth/utils'
-import {dataDirectory} from '@deslop/runtime/server'
+import {Auth, localAuth} from '@deslop/runtime/server/auth'
+import {dataDirectory} from '@deslop/runtime/server/store'
+import {AuthError, bearerOf, failureOptions, isJwt} from '@deslop/runtime/shared/auth'
+
+import {makeUsage, readUsage} from './usage.ts'
 
 import type {AiProvider, AiUsageEntry} from '#services/ai/schema.ts'
 import {AiStoredKey, ModelsCatalog, PROVIDER_NAMES} from '#services/ai/schema.ts'
-import {makeUsage, readUsage} from '#services/ai/usage.ts'
+import {usageWindow} from '#services/usage/lib/utils.ts'
 import type {Period} from '#services/usage/schema.ts'
-import {usageWindow} from '#services/usage/utils.ts'
 
 const UPSTREAMS = {
 	anthropic: 'https://api.anthropic.com',

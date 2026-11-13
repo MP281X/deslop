@@ -2,8 +2,7 @@ import {Schema} from 'effect'
 
 import {Rpc, RpcGroup, RpcMiddleware} from 'effect/rpc'
 
-import {AuthError} from '@deslop/runtime/auth/schema'
-import {RpcAuth} from '@deslop/runtime/auth/utils'
+import {AuthError, RpcAuth} from '@deslop/runtime/shared/auth'
 
 import {Catalog} from '#services/apps/schema.ts'
 import {AddPasskeyParams, CreationOptions, Passkey} from '#services/passkeys/schema.ts'

@@ -9,17 +9,17 @@ import {Suspense, useDeferredValue} from 'react'
 import type {ReactNode} from 'react'
 
 import {AppBar, AppBarChoice, AppBarTab, AppBarTabs} from '@deslop/components-web/app-bar'
-import {EmptyState} from '@deslop/components-web/fallbacks'
+import {EmptyState, Failure} from '@deslop/components-web/fallbacks'
 import {RowsSkeleton} from '@deslop/components-web/item-list'
 import {StaleProblem} from '@deslop/components-web/problem'
+import {searchOf} from '@deslop/components-web/router'
 import {StatusDot} from '@deslop/components-web/status-dot'
 import {ItemActions, ItemContent, ItemMedia} from '@deslop/components-web/ui/item'
 import {ResizableHandle, ResizablePanel, ResizablePanelGroup} from '@deslop/components-web/ui/resizable'
 import {ScrollArea} from '@deslop/components-web/ui/scroll-area'
 import {Skeleton} from '@deslop/components-web/ui/skeleton'
 import {cn, useMediaQuery} from '@deslop/components-web/utils'
-import {isDenied} from '@deslop/runtime/auth/utils'
-import * as WebRuntime from '@deslop/runtime/web'
+import {isDenied} from '@deslop/runtime/shared/auth'
 
 import {inventoryAtom, metricsAtom} from '#lib/utils.ts'
 import {RANGES} from '#routes/(home)/-chart.ts'
@@ -148,10 +148,10 @@ function MetricsContent(props: {children: ReactNode; minutes: HistoryQuery['minu
 	const result = useAtomSuspense(metricsAtom(props.minutes), {includeFailure: true})
 	const refresh = useAtomRefresh(metricsAtom(props.minutes))
 	if (AsyncResult.isFailure(result) && Option.isNone(AsyncResult.value(result))) {
-		return <WebRuntime.Failure error={Cause.squash(result.cause)} reset={refresh} />
+		return <Failure error={Cause.squash(result.cause)} reset={refresh} />
 	}
 	return (
-		<CatchBoundary getResetKey={() => 'metrics'} errorComponent={WebRuntime.Failure}>
+		<CatchBoundary getResetKey={() => 'metrics'} errorComponent={Failure}>
 			{props.children}
 		</CatchBoundary>
 	)
@@ -382,7 +382,7 @@ function Workspace(props: {
 				</div>
 			</div>
 		),
-		onSome: error => <WebRuntime.Failure error={error} reset={props.retryFailed} />
+		onSome: error => <Failure error={error} reset={props.retryFailed} />
 	})
 }
 
@@ -519,4 +519,4 @@ function Home() {
 	)
 }
 
-export const Route = createFileRoute('/(home)/')({component: Home, validateSearch: WebRuntime.searchOf(Search)})
+export const Route = createFileRoute('/(home)/')({component: Home, validateSearch: searchOf(Search)})

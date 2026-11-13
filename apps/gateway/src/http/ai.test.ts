@@ -27,9 +27,9 @@ import {HttpClient, HttpClientResponse, HttpRouter, HttpServerResponse} from 'ef
 import {Jwk, Jwt} from 'effect/jose'
 import {KeyValueStore} from 'effect/persistence'
 
-import {AccessClaims} from '@deslop/runtime/auth/schema'
-import {Auth} from '@deslop/runtime/auth/service'
-import {Sessions} from '@deslop/runtime/auth/sessions'
+import {Auth} from '@deslop/runtime/server/auth'
+import {Sessions} from '@deslop/runtime/server/sessions'
+import {AccessClaims} from '@deslop/runtime/shared/auth'
 
 import {AiHttpHandlers} from '#http/handlers.ts'
 import type {AiUsageEntry} from '#services/ai/schema.ts'

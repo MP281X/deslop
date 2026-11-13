@@ -6,7 +6,7 @@ import {AtomRpc} from 'effect/reactivity'
 import {hues} from '@deslop/components-mobile/theme'
 import {keychain} from '@deslop/runtime/mobile/keychain'
 import * as MobileSession from '@deslop/runtime/mobile/session'
-import {RpcStream} from '@deslop/runtime/rpc'
+import {RpcStream} from '@deslop/runtime/shared/rpc'
 
 import {RpcContracts} from '#rpcs/contracts.ts'
 

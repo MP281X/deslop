@@ -33,11 +33,10 @@ import {KeyValueStore} from 'effect/persistence'
 import {RpcTest} from 'effect/rpc'
 import {TestClock} from 'effect/testing'
 
-import {AuthError} from '@deslop/runtime/auth/schema'
-import type {User} from '@deslop/runtime/auth/schema'
-import {Auth} from '@deslop/runtime/auth/service'
-import {AUTH_URL} from '@deslop/runtime/auth/utils'
-import * as ServerRuntime from '@deslop/runtime/server'
+import {Auth} from '@deslop/runtime/server/auth'
+import {layerKeyValueStore} from '@deslop/runtime/server/store'
+import {AUTH_URL, AuthError} from '@deslop/runtime/shared/auth'
+import type {User} from '@deslop/runtime/shared/auth'
 
 import {AiHttpHandlers, HttpHandlers} from '#http/handlers.ts'
 import {RpcContracts} from '#rpcs/contracts.ts'
@@ -48,9 +47,9 @@ import {mcpClient} from '#services/connections/lib/utils.ts'
 import {ConnectionInfo} from '#services/connections/schema.ts'
 import type {McpUsageReport} from '#services/connections/schema.ts'
 import {Connections} from '#services/connections/service.ts'
-import {GatewayMcp} from '#services/gateway/mcp.ts'
 import {Gateway} from '#services/gateway/service.ts'
 import type {UsageRange} from '#services/usage/schema.ts'
+import {GatewayMcp} from '#tools/handlers.ts'
 
 const GATEWAY_URL = 'https://gateway.mp281x.xyz'
 const ACCOUNTS: Record<string, User> = {
@@ -409,7 +408,7 @@ const servers = Effect.fnUntraced(function* (home?: string, origin: string = GAT
 				})
 			})
 		),
-		Layer.provide(ServerRuntime.layerKeyValueStore(directory))
+		Layer.provide(layerKeyValueStore(directory))
 	)
 	const platform = Layer.mergeAll(
 		NodeCrypto.layer,

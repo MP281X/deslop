@@ -6,7 +6,7 @@ import {HttpClient, HttpClientResponse} from 'effect/http'
 import {KeyValueStore} from 'effect/persistence'
 import {TestClock} from 'effect/testing'
 
-import {Places} from '#services/bookings/lib/places.ts'
+import {Places} from './places.ts'
 
 it.layer(KeyValueStore.layerMemory)(test => {
 	test.effect(

@@ -67,7 +67,7 @@ import {
 import {ItemGroupSkeleton, Skeleton} from '@deslop/components-mobile/ui/skeleton'
 import {ToggleGroup, ToggleGroupItem} from '@deslop/components-mobile/ui/toggle-group'
 import {bottomBarSearch} from '@deslop/components-mobile/utils'
-import {isDenied} from '@deslop/runtime/auth/utils'
+import {isDenied} from '@deslop/runtime/shared/auth'
 
 import {clipboard} from '#lib/clipboard.ts'
 import {Byline} from '#lib/components.tsx'

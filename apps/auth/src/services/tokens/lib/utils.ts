@@ -6,9 +6,8 @@ import {Base64Url} from 'effect/encoding'
 import {Cookies, Headers, Url} from 'effect/http'
 import {NetAddress} from 'effect/net'
 
-import {AuthError, ClientInfo} from '@deslop/runtime/auth/schema'
-import {SESSION_COOKIE} from '@deslop/runtime/auth/utils'
-import {isPrivateAddress} from '@deslop/runtime/net'
+import {AuthError, ClientInfo, SESSION_COOKIE} from '@deslop/runtime/shared/auth'
+import {isPrivateAddress} from '@deslop/runtime/shared/net'
 
 import type {
 	AuthorizeClient,

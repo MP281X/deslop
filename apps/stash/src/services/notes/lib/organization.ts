@@ -4,9 +4,10 @@ import {Array, Context, Effect, Layer, Option, Redacted, Schema, String, pipe} f
 
 import {HttpClient} from 'effect/http'
 
-import {AiGateway, AiUnavailable, aiFailure} from '@deslop/runtime/ai'
+import {AiGateway, AiUnavailable, aiFailure} from '@deslop/runtime/server/ai'
 
-import {normalizeTags} from '#services/notes/lib/tags.ts'
+import {normalizeTags} from './tags.ts'
+
 import type {Note, Picture, TagEntry} from '#services/notes/schema.ts'
 import {NotesError, Organization} from '#services/notes/schema.ts'
 

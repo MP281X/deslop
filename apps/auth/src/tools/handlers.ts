@@ -2,8 +2,8 @@ import {Array, Boolean, DateTime, Effect, Layer, Option, Stream, String, pipe} f
 
 import {McpSchema, McpServer} from 'effect/ai'
 
-import {AuthError} from '@deslop/runtime/auth/schema'
-import {DEVELOPER, localAuth} from '@deslop/runtime/auth/utils'
+import {localAuth} from '@deslop/runtime/server/auth'
+import {AuthError, DEVELOPER} from '@deslop/runtime/shared/auth'
 
 import {Passkeys} from '#services/passkeys/service.ts'
 import {People} from '#services/people/service.ts'

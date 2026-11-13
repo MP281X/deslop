@@ -28,8 +28,7 @@ import {Jwk, Jwt} from 'effect/jose'
 import type {Jwks} from 'effect/jose'
 import {KeyValueStore} from 'effect/persistence'
 
-import {AccessClaims, AuthError} from '@deslop/runtime/auth/schema'
-import {ACCESS_SECONDS, ISSUER_PATH, bearerOf, rejected} from '@deslop/runtime/auth/utils'
+import {ACCESS_SECONDS, AccessClaims, AuthError, ISSUER_PATH, bearerOf, rejected} from '@deslop/runtime/shared/auth'
 
 import {
 	browserLabel,

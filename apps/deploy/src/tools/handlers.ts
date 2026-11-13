@@ -1,8 +1,8 @@
 import {Effect} from 'effect'
 
 import {Fleet} from '#services/fleet/service.ts'
-import {jobRequest, listApps, ownerNames} from '#services/inventory/lib/tools.ts'
-import {resourceHistory} from '#services/metrics/lib/tools.ts'
+import {jobRequest, listApps, ownerNames} from '#services/inventory/lib/utils.ts'
+import {resourceHistory} from '#services/metrics/lib/utils.ts'
 import {Tools} from '#tools/contracts.ts'
 
 export const ToolHandlers = Tools.toLayer(

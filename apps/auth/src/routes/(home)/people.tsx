@@ -8,12 +8,11 @@ import {AsyncResult} from 'effect/reactivity'
 import {Suspense} from 'react'
 import type {ReactNode} from 'react'
 
-import {EmptyState} from '@deslop/components-web/fallbacks'
+import {EmptyState, Failure} from '@deslop/components-web/fallbacks'
 import {ResultError} from '@deslop/components-web/result-error'
 import {Button} from '@deslop/components-web/ui/button'
 import {Card} from '@deslop/components-web/ui/card'
 import {Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle} from '@deslop/components-web/ui/item'
-import * as WebRuntime from '@deslop/runtime/web'
 
 import {AccountAvatar, PeopleRowsSkeleton} from '#lib/components.tsx'
 import {accountAtom, admitAtom, peopleAtom} from '#lib/utils.ts'
@@ -83,7 +82,7 @@ function Directory() {
 	const refresh = useAtomRefresh(peopleAtom)
 	const value = AsyncResult.value(result)
 	if (AsyncResult.isFailure(result) && Option.isNone(value)) {
-		return <WebRuntime.Failure error={Cause.squash(result.cause)} reset={refresh} />
+		return <Failure error={Cause.squash(result.cause)} reset={refresh} />
 	}
 	return (
 		<>

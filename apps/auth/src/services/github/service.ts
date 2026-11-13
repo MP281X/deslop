@@ -3,8 +3,8 @@ import {Cache, Config, Context, Effect, Layer, Redacted, Struct, pipe} from 'eff
 import {Digest, SecureRandom} from 'effect/crypto'
 import {HttpClient, HttpClientRequest, HttpClientResponse, UrlParams} from 'effect/http'
 
-import {AuthError} from '@deslop/runtime/auth/schema'
-import {AUTH_URL, DEVELOPER, localAuth, rejected} from '@deslop/runtime/auth/utils'
+import {localAuth} from '@deslop/runtime/server/auth'
+import {AUTH_URL, AuthError, DEVELOPER, rejected} from '@deslop/runtime/shared/auth'
 
 import {GitHubToken} from '#services/github/schema.ts'
 import type {SignInParams} from '#services/github/schema.ts'

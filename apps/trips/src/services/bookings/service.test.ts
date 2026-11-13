@@ -5,10 +5,11 @@ import {Array, Context, Effect, FileSystem, Layer, Option, Ref, Result, pipe} fr
 
 import {KeyValueStore} from 'effect/persistence'
 
-import {layerKeyValueStore} from '@deslop/runtime/server'
+import {layerKeyValueStore} from '@deslop/runtime/server/store'
 
-import {Extractor} from '#services/bookings/lib/extraction.ts'
-import {Places} from '#services/bookings/lib/places.ts'
+import {Extractor} from './lib/extraction.ts'
+import {Places} from './lib/places.ts'
+
 import type {BookingSource, ExtractedItems} from '#services/bookings/schema.ts'
 import {BookingList, BookingsError} from '#services/bookings/schema.ts'
 import {Bookings} from '#services/bookings/service.ts'

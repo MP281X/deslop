@@ -8,7 +8,7 @@ import {AsyncResult, Atom} from 'effect/reactivity'
 import {Suspense, useState} from 'react'
 import type {ReactNode} from 'react'
 
-import {EmptyState} from '@deslop/components-web/fallbacks'
+import {EmptyState, Failure} from '@deslop/components-web/fallbacks'
 import {ItemListHeading, RowsSkeleton} from '@deslop/components-web/item-list'
 import {ResultError} from '@deslop/components-web/result-error'
 import {StatusDot} from '@deslop/components-web/status-dot'
@@ -18,7 +18,6 @@ import {Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle} f
 import {ScrollArea} from '@deslop/components-web/ui/scroll-area'
 import {Skeleton} from '@deslop/components-web/ui/skeleton'
 import {cn} from '@deslop/components-web/utils'
-import {Failure} from '@deslop/runtime/web'
 
 import {inventoryAtom, runAtom} from '#lib/utils.ts'
 import {useExpose} from '#routes/(home)/-expose.tsx'

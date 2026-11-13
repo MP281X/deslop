@@ -2,9 +2,10 @@ import {Array, Cause, Effect, Option, Stream, pipe} from 'effect'
 
 import {Atom, AtomRpc} from 'effect/reactivity'
 
-import {isDenied} from '@deslop/runtime/auth/utils'
-import {RpcStream} from '@deslop/runtime/rpc'
-import * as WebRuntime from '@deslop/runtime/web'
+import {live} from '@deslop/runtime/client/live'
+import {isDenied} from '@deslop/runtime/shared/auth'
+import {RpcStream} from '@deslop/runtime/shared/rpc'
+import * as WebRuntime from '@deslop/runtime/web/client'
 
 import {RpcContracts} from '#rpcs/contracts.ts'
 import type {ExposeRequest, InventoryItem, RunRequest} from '#services/inventory/schema.ts'
@@ -19,7 +20,7 @@ export const exposeTargetAtom = Atom.make(Option.none<InventoryItem>())
 
 export const inventoryAtom = Atom.keepAlive(
 	RpcClient.runtime.atom(get =>
-		WebRuntime.live(
+		live(
 			get,
 			pipe(
 				RpcClient,
@@ -51,7 +52,7 @@ export const runAtom = Atom.family((_id: string) =>
 
 export const metricsAtom = Atom.family((minutes: HistoryQuery['minutes']) =>
 	RpcClient.runtime.atom(get =>
-		WebRuntime.live(
+		live(
 			get,
 			pipe(
 				RpcClient,

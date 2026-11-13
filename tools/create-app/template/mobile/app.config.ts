@@ -1,4 +1,4 @@
-import * as ExpoRuntime from '@deslop/runtime/mobile/expo'
+import * as ExpoRuntime from '@deslop/runtime/config/expo'
 
 export default ExpoRuntime.make({
 	// `npx eas-cli init` prints the project id.

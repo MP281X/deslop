@@ -6,9 +6,9 @@ import {Directory, File, Paths} from 'expo-file-system'
 
 import {makeRemoval} from '@deslop/components-mobile/removal'
 import {alert, cachedList, writeAtomically} from '@deslop/components-mobile/utils'
-import {withoutDeniedData} from '@deslop/runtime/auth/utils'
+import {withoutDeniedData} from '@deslop/runtime/client/live'
 import {activationsAtom} from '@deslop/runtime/mobile/activations'
-import {listReducer} from '@deslop/runtime/schema'
+import {listReducer} from '@deslop/runtime/shared/list'
 
 import {RpcClient, SERVER, session, withClient} from '#lib/session.ts'
 import type {Note} from '#services/notes/schema.ts'

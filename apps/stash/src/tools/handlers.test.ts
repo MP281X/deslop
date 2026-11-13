@@ -3,11 +3,13 @@ import {assert, it} from '@effect/vitest'
 
 import {Array, Context, Effect, FileSystem, Layer, Option, Schema, Stream, pipe} from 'effect'
 
-import {CurrentUser} from '@deslop/runtime/auth/utils'
-import {layerKeyValueStore} from '@deslop/runtime/server'
+import {layerKeyValueStore} from '@deslop/runtime/server/store'
+import {CurrentUser} from '@deslop/runtime/shared/auth'
 
 import {Media} from '#services/media/service.ts'
+// oxlint-disable-next-line no-restricted-imports -- The tools run over real notes, with stand-ins for the page reader and the AI that Notes keeps private.
 import {Sources} from '#services/notes/lib/extraction.ts'
+// oxlint-disable-next-line no-restricted-imports -- As above: the AI organizer is Notes' own internal.
 import {Organizer} from '#services/notes/lib/organization.ts'
 import {NoteId} from '#services/notes/schema.ts'
 import {Notes} from '#services/notes/service.ts'

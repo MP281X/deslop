@@ -11,9 +11,8 @@ import {TestClock} from 'effect/testing'
 // oxlint-disable-next-line no-restricted-imports -- Node has no native host; only Expo and React Native imports are stubbed, not session, machine, atom or HTTP behavior.
 import {vi} from 'vite-plus/test'
 
-import {ISSUER} from '#auth/lib/utils.ts'
-import {AuthError} from '#auth/schema.ts'
 import {make} from '#mobile/session.ts'
+import {AuthError, ISSUER} from '#shared/auth.ts'
 
 vi.mock('expo-auth-session', () => ({
 	AuthRequest: class {

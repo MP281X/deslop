@@ -8,7 +8,7 @@ import {Suspense} from 'react'
 
 import {Error, SignIn} from '@deslop/components-web/fallbacks'
 import {Skeleton} from '@deslop/components-web/ui/skeleton'
-import {signInUrl} from '@deslop/runtime/auth/utils'
+import {signInUrl} from '@deslop/runtime/shared/auth'
 
 import {RpcClient} from '#lib/utils.ts'
 

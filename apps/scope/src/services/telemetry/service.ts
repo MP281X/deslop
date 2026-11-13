@@ -28,7 +28,7 @@ import {
 import {Digest} from 'effect/crypto'
 import {KeyValueStore} from 'effect/persistence'
 
-import {layerKeyValueStore} from '@deslop/runtime/server'
+import {layerKeyValueStore} from '@deslop/runtime/server/store'
 
 import {
 	appName,

@@ -11,10 +11,9 @@ import {AsyncResult, AtomRegistry} from 'effect/reactivity'
 import type {Atom} from 'effect/reactivity'
 import {TestClock} from 'effect/testing'
 
-import {AuthError} from '@deslop/runtime/auth/schema'
-import {Auth} from '@deslop/runtime/auth/service'
-import {DEVELOPER, isDenied} from '@deslop/runtime/auth/utils'
-import * as ServerRuntime from '@deslop/runtime/server'
+import {Auth} from '@deslop/runtime/server/auth'
+import * as ServerRuntime from '@deslop/runtime/server/http'
+import {AuthError, DEVELOPER, isDenied} from '@deslop/runtime/shared/auth'
 
 import {exposeTargetAtom, inventoryAtom, metricsAtom} from '#lib/utils.ts'
 import {RpcContracts} from '#rpcs/contracts.ts'

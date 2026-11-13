@@ -4,9 +4,8 @@ import {Array, Config, Context, Effect, Layer, Option, String, SubscriptionRef, 
 import {HttpClient, HttpClientResponse} from 'effect/http'
 import {KeyValueStore} from 'effect/persistence'
 
-import {AuthError} from '@deslop/runtime/auth/schema'
-import {rejected} from '@deslop/runtime/auth/utils'
-import {RUNTIME_PATH, RuntimeConfig} from '@deslop/runtime/schema'
+import {AuthError, rejected} from '@deslop/runtime/shared/auth'
+import {RUNTIME_PATH, RuntimeConfig} from '@deslop/runtime/shared/schema'
 
 import {registerApp} from '#services/apps/lib/utils.ts'
 import {App, Catalog} from '#services/apps/schema.ts'

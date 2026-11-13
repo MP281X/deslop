@@ -5,6 +5,7 @@ import {OpenRouterClient} from '@effect/ai-openrouter'
 import {
 	Array,
 	Boolean,
+	Config,
 	Context,
 	Effect,
 	FileSystem,
@@ -26,10 +27,9 @@ import {Base64} from 'effect/encoding'
 import {HttpClient} from 'effect/http'
 import {ChildProcess, ChildProcessSpawner} from 'effect/process'
 
-import {AiGateway} from '@deslop/runtime/ai'
-import {ToolPath} from '@deslop/runtime/server'
+import {AiGateway} from '@deslop/runtime/server/ai'
+import {ToolPath} from '@deslop/runtime/server/process'
 
-import {sourceProxy, sticky} from '#services/media/lib/proxy.ts'
 import {
 	captionTracks,
 	captionTranscript,
@@ -43,6 +43,13 @@ import {CreatorCaptions, MediaError, Metadata, Probe} from '#services/media/sche
 import {isYouTube} from '#services/notes/lib/utils.ts'
 
 const MAX_WHISPER_SECONDS = 2 * 60 * 60
+
+// When set, every read of a source exits through this proxy, so sites never see the server's address; `{session}` keeps one exit address per request.
+export const sourceProxy = Config.option(Config.String('STASH_PROXY'))
+
+export function sticky(proxy: string, session: string) {
+	return String.replaceAll('{session}', session)(proxy)
+}
 
 export class Media extends Context.Service<
 	Media,

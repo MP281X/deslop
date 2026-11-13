@@ -4,7 +4,7 @@ import {Atom} from 'effect/reactivity'
 import * as Notifications from 'expo-notifications'
 import {Linking} from 'react-native'
 
-import * as MobileRuntime from '@deslop/runtime/mobile'
+import * as MobileRuntime from '@deslop/runtime/mobile/client'
 
 export function linkOf(bookingId: string) {
 	return `${MobileRuntime.extra.scheme}://booking/${bookingId}`

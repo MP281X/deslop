@@ -1,6 +1,6 @@
 import {assert, it} from '@effect/vitest'
 
-import {normalizeTags, reconcileOrganization} from '#services/notes/lib/tags.ts'
+import {normalizeTags, reconcileOrganization} from './tags.ts'
 
 it('makes each tag one lowercase token', () => {
 	assert.deepStrictEqual(normalizeTags(['#Web Design', 'web design', '  digital   marketing ', 'AI']), [

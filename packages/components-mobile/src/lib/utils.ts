@@ -21,7 +21,8 @@ import {Asset} from 'expo-asset'
 import {File, Paths} from 'expo-file-system'
 import {Alert} from 'react-native'
 
-import {isDenied, withoutDeniedData} from '@deslop/runtime/auth/utils'
+import {withoutDeniedData} from '@deslop/runtime/client/live'
+import {isDenied} from '@deslop/runtime/shared/auth'
 
 class DeviceError extends Schema.TaggedError<DeviceError>()('DeviceError', {
 	cause: Schema.Defect(),

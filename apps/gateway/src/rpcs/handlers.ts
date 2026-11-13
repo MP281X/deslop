@@ -1,6 +1,6 @@
 import {Effect, Stream} from 'effect'
 
-import {CurrentUser} from '@deslop/runtime/auth/utils'
+import {CurrentUser} from '@deslop/runtime/shared/auth'
 
 import {RpcContracts} from '#rpcs/contracts.ts'
 import {AiProxy} from '#services/ai/service.ts'

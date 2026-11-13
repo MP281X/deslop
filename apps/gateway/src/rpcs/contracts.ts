@@ -2,8 +2,7 @@ import {Schema} from 'effect'
 
 import {Rpc, RpcGroup} from 'effect/rpc'
 
-import {AuthError} from '@deslop/runtime/auth/schema'
-import {RpcAuth} from '@deslop/runtime/auth/utils'
+import {AuthError, RpcAuth} from '@deslop/runtime/shared/auth'
 
 import {AiKeyInfo, AiSetKey, AiUsageReport} from '#services/ai/schema.ts'
 import {AddServer, ConnectionInfo, McpUsageReport} from '#services/connections/schema.ts'

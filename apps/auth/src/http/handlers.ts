@@ -3,9 +3,9 @@ import {Array, Duration, Effect, Match, Option, Schema, String, pipe} from 'effe
 import {HttpRouter, HttpServerRequest, HttpServerResponse, UrlParams} from 'effect/http'
 import {RateLimiter} from 'effect/persistence'
 
-import {AuthError} from '@deslop/runtime/auth/schema'
 import {
 	APPS_PATH,
+	AuthError,
 	COOKIE,
 	DEVICE_PATH,
 	ISSUER_PATH,
@@ -14,7 +14,7 @@ import {
 	clientIdOf,
 	failureOptions,
 	rejected
-} from '@deslop/runtime/auth/utils'
+} from '@deslop/runtime/shared/auth'
 
 import {App, AppParams} from '#services/apps/schema.ts'
 import {Apps} from '#services/apps/service.ts'
@@ -166,7 +166,7 @@ export const HttpHandlers = HttpRouter.use(router =>
 			JWKS_PATH,
 			HttpServerResponse.jsonUnsafe(tokens.jwks, {headers: {'cache-control': 'public, max-age=300'}})
 		)
-		// Each app's server announces itself here at start; see `ServerRuntime.layerAnnounce`.
+		// Each app's server announces itself here at start; see `layerAnnounce` in `@deslop/runtime/server/http`.
 		yield* router.add(
 			'POST',
 			APPS_PATH,

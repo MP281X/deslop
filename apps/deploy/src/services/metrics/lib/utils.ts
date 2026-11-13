@@ -1,6 +1,6 @@
-import {Array, Number, Option, Order, Predicate, Record, Schema, String, Struct, pipe} from 'effect'
+import {Array, Boolean, DateTime, Number, Option, Order, Predicate, Record, Schema, String, Struct, pipe} from 'effect'
 
-import type {Counters, Sample} from '#services/metrics/schema.ts'
+import type {AppUsage, Counters, HistoryToolInput, MachineHistory, Sample} from '#services/metrics/schema.ts'
 
 // How long samples stay at each spacing: seconds for a minute, ten seconds for ten minutes, minutes for an hour, quarter-hours for a day, hours for a week.
 const TIERS = [
@@ -414,5 +414,119 @@ export function appShares(current: AppReading, previous?: AppReading) {
 				memory: Number.round(Array.reduce(cgroups, 0, (sum, cgroup) => sum + cgroup[1].memory) / 1024, 0) * 1024
 			}
 		}
+	)
+}
+
+function rounded(value: number) {
+	return Number.round(value, 1)
+}
+
+// The machine's used disk space: its recorded total, or the sum of its mounts for a sample from before that field.
+function diskUsed(point: Sample) {
+	const recorded = Option.fromUndefinedOr(point.storageUsed)
+	if (Option.isSome(recorded)) return recorded
+	if (Array.isReadonlyArrayNonEmpty(point.disks)) {
+		return Option.some(Number.sumAll(Array.map(point.disks, disk => disk.used)))
+	}
+	return Option.none()
+}
+
+function diskTotal(machine: MachineHistory) {
+	return Option.map(
+		Array.findLast(machine.samples, point => Array.isReadonlyArrayNonEmpty(point.disks)),
+		point => Number.sumAll(Array.map(point.disks, disk => disk.total))
+	)
+}
+
+// Each of the range's 60 slots in order: a slot without a sample stays null, as the page's charts leave it blank.
+function series(machine: MachineHistory, minutes: number, read: (sample: Sample) => Option.Option<number>) {
+	const start = chartWindow(minutes, machine.time).start
+	const slot = resolution(minutes)
+	const bySlot = Record.fromEntries(
+		Array.map(
+			machine.samples,
+			point =>
+				[`${Number.clamp(Math.ceil((point.time - start) / slot) - 1, {maximum: 59, minimum: 0})}`, point] as const
+		)
+	)
+	return Array.makeBy(60, index =>
+		Option.map(Option.flatMap(Option.fromUndefinedOr(bySlot[`${index}`]), read), rounded)
+	)
+}
+
+function appsOf(labels: Record<string, string>, latest: Sample) {
+	const sorted = Array.sort(
+		Array.map(
+			latest.apps ?? [],
+			app =>
+				({
+					cpu: Option.getOrUndefined(Option.map(Option.fromUndefinedOr(app.cpu), rounded)),
+					mib: Number.round(app.memory / 1024 ** 2, 0),
+					name: bandName(app.id, labels)
+				}) satisfies AppUsage
+		),
+		Order.combine(
+			Order.mapInput(Order.flip(Order.Number), (app: AppUsage) => app.mib),
+			Order.mapInput(Order.String, (app: AppUsage) => app.name)
+		)
+	)
+	if (sorted.length <= 15) return sorted
+	const rest = Array.drop(sorted, 15)
+	const cpus = Array.getSomes(Array.map(rest, (app: AppUsage) => Option.fromUndefinedOr(app.cpu)))
+	return [
+		...Array.take(sorted, 15),
+		{
+			...Boolean.match(Array.isReadonlyArrayNonEmpty(cpus), {
+				onFalse: () => ({}),
+				onTrue: () => ({cpu: rounded(Number.sumAll(cpus))})
+			}),
+			mib: Number.sumAll(Array.map(rest, (app: AppUsage) => app.mib)),
+			name: 'other'
+		} satisfies AppUsage
+	]
+}
+
+function workerHistory(machine: MachineHistory, minutes: number, labels: Record<string, string>) {
+	const latest = Array.last(machine.samples)
+	const storageTotal = diskTotal(machine)
+	return {
+		apps: Option.match(latest, {onNone: () => [], onSome: point => appsOf(labels, point)}),
+		cpuPct: series(machine, minutes, point => Option.fromUndefinedOr(point.cpu)),
+		diskPct: series(machine, minutes, point =>
+			Option.flatMap(diskUsed(point), used => Option.map(storageTotal, total => (used / total) * 100))
+		),
+		...Boolean.match(String.isNonEmpty(machine.error), {onFalse: () => ({}), onTrue: () => ({error: machine.error})}),
+		from: DateTime.formatIso(DateTime.makeUnsafe(chartWindow(minutes, machine.time).start)),
+		memoryPct: series(machine, minutes, point => Option.some((point.memoryUsed / point.memoryTotal) * 100)),
+		...Option.match(latest, {
+			onNone: () => ({}),
+			onSome: point => ({
+				now: {
+					...Record.getSomes({cpuPct: Option.map(Option.fromUndefinedOr(point.cpu), rounded)}),
+					...Record.getSomes({
+						diskGiB: Option.map(diskUsed(point), used => rounded(used / 1024 ** 3)),
+						diskTotalGiB: Option.map(storageTotal, total => rounded(total / 1024 ** 3))
+					}),
+					...Record.getSomes({load: Option.filter(Option.fromUndefinedOr(point.load), Array.isReadonlyArrayNonEmpty)}),
+					memoryGiB: rounded(point.memoryUsed / 1024 ** 3),
+					memoryTotalGiB: rounded(point.memoryTotal / 1024 ** 3)
+				}
+			})
+		}),
+		...Boolean.match(machine.stale, {onFalse: () => ({}), onTrue: () => ({stale: true as const})}),
+		stepSeconds: resolution(minutes) / 1000,
+		worker: machine.worker
+	}
+}
+
+// Memory, CPU and disk as 60 aligned points per worker with the current figures and the heaviest apps, in as few tokens as the page's charts need.
+export function resourceHistory(
+	machines: readonly MachineHistory[],
+	input: HistoryToolInput,
+	names: Record<string, Record<string, string>>
+) {
+	return pipe(
+		Array.filter(machines, machine => input.worker === undefined || machine.worker === input.worker),
+		Array.map(machine => workerHistory(machine, input.minutes, names[machine.worker] ?? {}))
 	)
 }

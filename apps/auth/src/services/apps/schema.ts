@@ -1,6 +1,6 @@
 import {Schema} from 'effect'
 
-import {SecureOrigin} from '@deslop/runtime/schema'
+import {SecureOrigin} from '@deslop/runtime/shared/schema'
 
 export type App = typeof App.Type
 export const App = Schema.Struct({name: Schema.NonEmptyString, origin: SecureOrigin})

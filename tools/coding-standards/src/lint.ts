@@ -182,6 +182,18 @@ const RESTRICTED_IMPORTS = {
 	patterns: [
 		{message: 'Prove a screen in the browser; no UI tests.', regex: '^(?:@testing-library/|jsdom$|happy-dom$)'},
 		{message: 'Use public package exports.', regex: '^@[^/]+/[^/]+/(?:src|lib)(?:/|$)'},
+		// A service folder's public face is its schema, service and lib/utils; its own files reach the rest with `./`.
+		{
+			group: [
+				'#services/*/*',
+				'!#services/*/schema.ts',
+				'!#services/*/service.ts',
+				'!#services/*/lib',
+				'#services/*/lib/*',
+				'!#services/*/lib/utils.ts'
+			],
+			message: 'Import a service only through its schema.ts, service.ts or lib/utils.ts; inside it, use ./.'
+		},
 		{
 			message: 'Use glob from the FileSystem service.',
 			regex: '^(?:glob|fast-glob|globby|minimatch|picomatch|micromatch)(?:/|$)'

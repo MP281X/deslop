@@ -2,8 +2,7 @@ import {Schema} from 'effect'
 
 import {Tool, Toolkit} from 'effect/ai'
 
-import {AuthError} from '@deslop/runtime/auth/schema'
-import {CurrentUser} from '@deslop/runtime/auth/utils'
+import {AuthError, CurrentUser} from '@deslop/runtime/shared/auth'
 
 import {AiProvider} from '#services/ai/schema.ts'
 import {ServerId} from '#services/connections/schema.ts'

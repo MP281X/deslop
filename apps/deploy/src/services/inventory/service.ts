@@ -24,19 +24,13 @@ import {
 import {FetchHttpClient, HttpClient, HttpTraceContext} from 'effect/http'
 import {ChildProcessSpawner} from 'effect/process'
 
-import {execute} from '@deslop/runtime/cli/command'
+import {execute} from '@deslop/runtime/server/process'
 
-import {exitFailure, unitFailures} from '#services/inventory/lib/failures.ts'
-import {launchAgents} from '#services/inventory/lib/launchd.ts'
-import {attachProcesses, launchdProcesses, processReadings, processes} from '#services/inventory/lib/processes.ts'
-import {
-	type Socket,
-	lsofSockets,
-	probeSocket,
-	socketLine,
-	socketProcess,
-	socketUnit
-} from '#services/inventory/lib/sockets.ts'
+import {exitFailure, unitFailures} from './lib/failures.ts'
+import {launchAgents} from './lib/launchd.ts'
+import {attachProcesses, launchdProcesses, processReadings, processes} from './lib/processes.ts'
+import {type Socket, lsofSockets, probeSocket, socketLine, socketProcess, socketUnit} from './lib/sockets.ts'
+
 import {
 	Container,
 	DeployError,

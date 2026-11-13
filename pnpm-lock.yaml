@@ -642,6 +642,9 @@ importers:
       '@base-ui/react':
         specifier: latest
         version: 1.9.0(@date-fns/tz@1.5.0)(@types/react@19.3.0)(date-fns@4.4.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      '@deslop/runtime':
+        specifier: workspace:*
+        version: link:../runtime
       '@effect/atom-react':
         specifier: latest
         version: 4.1.4(effect@4.1.4)(react@19.3.1)(scheduler@0.27.0)
@@ -654,6 +657,9 @@ importers:
       '@shadcn/react':
         specifier: latest
         version: 0.3.1(@types/react@19.3.0)(react@19.3.1)
+      '@tanstack/react-router':
+        specifier: latest
+        version: 1.170.46(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
       class-variance-authority:
         specifier: latest
         version: 0.7.1
@@ -709,24 +715,12 @@ importers:
 
   packages/runtime:
     dependencies:
-      '@deslop/components-web':
-        specifier: workspace:*
-        version: link:../components-web
       '@effect/platform-node':
         specifier: latest
         version: 4.1.4(effect@4.1.4)(redis@6.3.1)
-      '@tanstack/react-router':
-        specifier: latest
-        version: 1.170.46(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
       effect:
         specifier: latest
         version: 4.1.4
-      react:
-        specifier: latest
-        version: 19.3.1
-      react-dom:
-        specifier: latest
-        version: 19.3.1(react@19.3.1)
     devDependencies:
       '@tailwindcss/vite':
         specifier: latest

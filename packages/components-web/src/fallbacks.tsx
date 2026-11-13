@@ -2,6 +2,8 @@ import {ArrowClockwiseIcon, HouseIcon, LockIcon} from '@phosphor-icons/react'
 import {useEffect} from 'react'
 import type {ReactNode} from 'react'
 
+import {isDenied, needsSignIn, signInUrl} from '@deslop/runtime/shared/auth'
+
 import {Button} from '#components/ui/button.tsx'
 import {Empty, EmptyMedia} from '#components/ui/empty.tsx'
 
@@ -29,7 +31,7 @@ export function NotFound() {
 	)
 }
 
-// Apps have no sign-in screen of their own: a signed-out visitor goes straight to Auth, which returns here.
+// fallow-ignore-next-line unused-export -- the app template, which Fallow skips, sends a signed-out visitor straight to Auth with it.
 export function SignIn(props: {href: string}) {
 	useEffect(() => {
 		location.replace(props.href)
@@ -37,7 +39,7 @@ export function SignIn(props: {href: string}) {
 	return null
 }
 
-// A denial keeps nothing on screen: the lock says it, and there is nothing to retry.
+// fallow-ignore-next-line unused-export -- a denial is only the lock, with nothing to retry; the tests render it directly.
 export function Denied() {
 	return <EmptyState label="Access denied" icon={<LockIcon weight="light" />} />
 }
@@ -52,4 +54,11 @@ export function Error(props: {error: unknown; label?: string; reset: () => void}
 			</Button>
 		</Empty>
 	)
+}
+
+// Every failed read: sign in without a session, a lock on a refusal, otherwise the one destructive retry.
+export function Failure(props: {error: unknown; reset: () => void}) {
+	if (needsSignIn(props.error)) return <SignIn href={signInUrl(location.href)} />
+	if (isDenied(props.error)) return <Denied />
+	return <Error error={props.error} reset={props.reset} />
 }

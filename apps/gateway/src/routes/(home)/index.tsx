@@ -11,9 +11,11 @@ import {Suspense, useState} from 'react'
 
 import {AppBar, AppBarChoice} from '@deslop/components-web/app-bar'
 import {APP_HUES, appMarks} from '@deslop/components-web/apps'
+import {Failure} from '@deslop/components-web/fallbacks'
 import {ItemListHeading, RowsSkeleton} from '@deslop/components-web/item-list'
 import {Page} from '@deslop/components-web/page'
 import {StaleProblem} from '@deslop/components-web/problem'
+import {searchOf} from '@deslop/components-web/router'
 import {StatusDot} from '@deslop/components-web/status-dot'
 import {Button} from '@deslop/components-web/ui/button'
 import {Card} from '@deslop/components-web/ui/card'
@@ -21,8 +23,7 @@ import {Field, FieldError} from '@deslop/components-web/ui/field'
 import {InputGroup, InputGroupAddon, InputGroupInput} from '@deslop/components-web/ui/input-group'
 import {Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle} from '@deslop/components-web/ui/item'
 import {Skeleton} from '@deslop/components-web/ui/skeleton'
-import {isDenied} from '@deslop/runtime/auth/utils'
-import * as WebRuntime from '@deslop/runtime/web'
+import {isDenied} from '@deslop/runtime/shared/auth'
 
 import {
 	addAtom,
@@ -201,7 +202,7 @@ function ServerUsage(props: {period: Period; servers: readonly ConnectionInfo[]}
 		AsyncResult.isFailure(result) &&
 		(Option.isNone(AsyncResult.value(result)) || Option.exists(AsyncResult.error(result), isDenied))
 	) {
-		return <WebRuntime.Failure error={Cause.squash(result.cause)} reset={refresh} />
+		return <Failure error={Cause.squash(result.cause)} reset={refresh} />
 	}
 	return Option.getOrUndefined(
 		Option.map(AsyncResult.value(result), current =>
@@ -220,7 +221,7 @@ function ServerRows(props: {period: Period}) {
 		AsyncResult.isFailure(result) &&
 		(Option.isNone(AsyncResult.value(result)) || Option.exists(AsyncResult.error(result), isDenied))
 	) {
-		return <WebRuntime.Failure error={Cause.squash(result.cause)} reset={refresh} />
+		return <Failure error={Cause.squash(result.cause)} reset={refresh} />
 	}
 	const servers = Option.getOrElse(AsyncResult.value(result), () => [])
 	if (Array.isReadonlyArrayEmpty(servers)) return null
@@ -275,7 +276,7 @@ function KeyUsage(props: {keys: readonly AiKeyInfo[]; period: Period}) {
 		AsyncResult.isFailure(result) &&
 		(Option.isNone(AsyncResult.value(result)) || Option.exists(AsyncResult.error(result), isDenied))
 	) {
-		return <WebRuntime.Failure error={Cause.squash(result.cause)} reset={refresh} />
+		return <Failure error={Cause.squash(result.cause)} reset={refresh} />
 	}
 	return Option.getOrUndefined(
 		Option.map(AsyncResult.value(result), current =>
@@ -309,7 +310,7 @@ function KeyRows(props: {period: Period}) {
 		AsyncResult.isFailure(result) &&
 		(Option.isNone(AsyncResult.value(result)) || Option.exists(AsyncResult.error(result), isDenied))
 	) {
-		return <WebRuntime.Failure error={Cause.squash(result.cause)} reset={refresh} />
+		return <Failure error={Cause.squash(result.cause)} reset={refresh} />
 	}
 	const keys = Array.filter(
 		Option.getOrElse(AsyncResult.value(result), () => []),
@@ -335,7 +336,7 @@ function List(props: {period: Period}) {
 		<Card size="list">
 			<div role="list" aria-label="MCP servers and AI keys">
 				<ItemListHeading icon={<HardDrivesIcon />}>Servers</ItemListHeading>
-				<CatchBoundary getResetKey={() => 'servers'} errorComponent={WebRuntime.Failure}>
+				<CatchBoundary getResetKey={() => 'servers'} errorComponent={Failure}>
 					<Suspense
 						fallback={
 							<RowsSkeleton label="MCP servers" rows={3}>
@@ -347,7 +348,7 @@ function List(props: {period: Period}) {
 					</Suspense>
 				</CatchBoundary>
 				<ItemListHeading icon={<KeyIcon />}>Keys</ItemListHeading>
-				<CatchBoundary getResetKey={() => 'keys'} errorComponent={WebRuntime.Failure}>
+				<CatchBoundary getResetKey={() => 'keys'} errorComponent={Failure}>
 					<Suspense
 						fallback={
 							<RowsSkeleton label="AI keys" rows={4}>
@@ -520,4 +521,4 @@ function Home() {
 	)
 }
 
-export const Route = createFileRoute('/(home)/')({component: Home, validateSearch: WebRuntime.searchOf(Search)})
+export const Route = createFileRoute('/(home)/')({component: Home, validateSearch: searchOf(Search)})

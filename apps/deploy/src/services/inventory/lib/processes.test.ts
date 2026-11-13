@@ -2,9 +2,10 @@ import {assert, it} from '@effect/vitest'
 
 import {Array, Effect, FileSystem, Option, PlatformError, String, pipe} from 'effect'
 
-import {commandLabel} from '#services/inventory/lib/command.ts'
-import {processOwner} from '#services/inventory/lib/owners.ts'
-import {attachProcesses, processReadings, processes} from '#services/inventory/lib/processes.ts'
+import {commandLabel} from './command.ts'
+import {attachProcesses, processReadings, processes} from './processes.ts'
+
+import {processOwner} from '#services/inventory/lib/utils.ts'
 import {InventoryItem} from '#services/inventory/schema.ts'
 
 function reading(time: number) {

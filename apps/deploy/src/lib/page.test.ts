@@ -9,7 +9,7 @@ import type {Atom} from 'effect/reactivity'
 import {createElement} from 'react'
 import {renderToString} from 'react-dom/server'
 
-import {AuthError} from '@deslop/runtime/auth/schema'
+import {AuthError} from '@deslop/runtime/shared/auth'
 
 import {routeTree} from '#routeTree.gen.ts'
 

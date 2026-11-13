@@ -1,6 +1,6 @@
 import {Schema} from 'effect'
 
-import {AiProvider} from '@deslop/runtime/ai/schema'
+import {AiProvider} from '@deslop/runtime/shared/ai'
 
 export {AiProvider}
 export const PROVIDER_NAMES = {
