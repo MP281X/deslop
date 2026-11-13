@@ -122,20 +122,20 @@ function inventoryPage(
 function focusedInventory(workers: readonly WorkerInventory[], app: Option.Option<string>) {
 	if (Option.isNone(app)) return workers
 	const query = String.toLowerCase(Option.getOrThrow(app))
-	const matchingName = (row: {readonly name: string}) => pipe(row.name, String.toLowerCase, String.includes(query))
+	function matchingName(row: {readonly name: string}) {
+		return pipe(row.name, String.toLowerCase, String.includes(query))
+	}
 	return Array.map(workers, worker => ({
 		...worker,
 		exposures: pipe(
 			worker.exposures,
-			Option.getOrElse(() => []),
-			Array.filter(matchingName),
-			Option.some
+			Option.map(rows => Array.filter(rows, matchingName)),
+			Option.orElseSome(() => [])
 		),
 		jobs: pipe(
 			worker.jobs,
-			Option.getOrElse(() => []),
-			Array.filter(matchingName),
-			Option.some
+			Option.map(rows => Array.filter(rows, matchingName)),
+			Option.orElseSome(() => [])
 		)
 	}))
 }
