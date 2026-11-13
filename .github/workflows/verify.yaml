@@ -1,13 +1,10 @@
 name: Verify
 
-# Every branch push, and Release on the merged commit: a branch behind main can merge without conflicts and still break.
+# Every branch push; Release repeats this unless the merged tree already passed.
 on:
   push:
     branches-ignore: [main]
   workflow_call:
-    outputs:
-      mobile:
-        value: ${{ jobs.check.outputs.mobile }}
 
 concurrency:
   group: verify-${{ github.ref }}
@@ -32,20 +29,10 @@ jobs:
   check:
     name: Check
     runs-on: ubuntu-26.04
-    outputs:
-      mobile: ${{ steps.apps.outputs.mobile }}
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup
         with: {tasks: 'true'}
-      - name: Discover mobile apps
-        id: apps
-        run: |
-          shopt -s nullglob
-          apps=(apps/*/app.config.ts)
-          apps=("${apps[@]%/app.config.ts}")
-          apps=("${apps[@]#apps/}")
-          echo "mobile=$(printf '%s\n' "${apps[@]}" | jq -Rsc 'split("\n") | map(select(length > 0))')" >> "$GITHUB_OUTPUT"
       - name: Format, lint, types and dead code
         run: vp run check
 
