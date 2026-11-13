@@ -11,7 +11,7 @@ import {Period, UsageRange} from '#services/usage/schema.ts'
 export class RpcContracts extends RpcGroup.make(
 	Rpc.make('ai-proxy.list', {error: AuthError, success: Schema.Array(AiKey.json)}),
 	Rpc.make('ai-proxy.setKey', {error: AuthError, payload: AiSetKey}),
-	Rpc.make('ai-proxy.usage', {
+	Rpc.make('ai-metering.usage', {
 		error: AuthError,
 		payload: Period,
 		stream: true,

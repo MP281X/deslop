@@ -30,7 +30,6 @@ import {
 	connectAtom,
 	copiedAtom,
 	copyAtom,
-	ENDPOINT,
 	mcpUsageAtom,
 	serversAtom,
 	setKeyAtom
@@ -291,24 +290,20 @@ function KeyRows(props: {period: Period}) {
 	return (
 		<Loaded atom={aiKeysAtom}>
 			{all =>
-				pipe(
-					all,
-					Array.filter(key => Array.contains(PROVIDERS, key.provider)),
-					Array.match({
-						onEmpty: () => null,
-						onNonEmpty: keys => (
-							<Suspense
-								fallback={
-									<RowsSkeleton label="AI keys" rows={keys.length}>
-										<RowBones />
-									</RowsSkeleton>
-								}
-							>
-								<KeyUsage keys={keys} period={props.period} />
-							</Suspense>
-						)
-					})
-				)
+				Array.match(all, {
+					onEmpty: () => null,
+					onNonEmpty: keys => (
+						<Suspense
+							fallback={
+								<RowsSkeleton label="AI keys" rows={keys.length}>
+									<RowBones />
+								</RowsSkeleton>
+							}
+						>
+							<KeyUsage keys={keys} period={props.period} />
+						</Suspense>
+					)
+				})
 			}
 		</Loaded>
 	)
@@ -429,7 +424,7 @@ function PeriodTabs(props: {onPeriod: (period: Period) => void; period: Period})
 
 // Copies the gateway's MCP URL; the button shows a check for a moment after a copy and turns destructive when it fails.
 function CopyEndpoint() {
-	const [result, copy] = useAtom(copyAtom(ENDPOINT))
+	const [result, copy] = useAtom(copyAtom(`${window.location.origin}/mcp`))
 	const copied = useAtomValue(copiedAtom)
 	// A retry in flight is no longer the failure it follows.
 	const failed = AsyncResult.isFailure(result) && !result.waiting

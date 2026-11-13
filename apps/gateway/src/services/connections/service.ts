@@ -10,6 +10,7 @@ import {
 	Layer,
 	Match,
 	Option,
+	RcMap,
 	Redacted,
 	Schema,
 	Semaphore,
@@ -20,7 +21,6 @@ import {
 } from 'effect'
 
 import {
-	StreamableHTTPClientTransport,
 	discoverAuthorizationServerMetadata,
 	discoverOAuthServerInfo,
 	extractWWWAuthenticateParams,
@@ -39,15 +39,7 @@ import type {User, UserId} from '@deslop/runtime/shared/auth'
 import {AuthError, ISSUER_PATH} from '@deslop/runtime/shared/auth'
 import {DateTimeUtcFromFiniteMillis} from '@deslop/runtime/shared/time'
 
-import {
-	clientMetadata,
-	connectionFailure,
-	describe,
-	endSession,
-	mcpClient,
-	serverIcons,
-	serverName
-} from '#services/connections/lib/utils.ts'
+import {clientMetadata, connectionFailure, describe, serverIcons, serverName} from '#services/connections/lib/utils.ts'
 import type {
 	Callback,
 	ConnectionItem,
@@ -71,6 +63,7 @@ import {
 	Token,
 	UpstreamError
 } from '#services/connections/schema.ts'
+import {Upstreams} from '#services/upstreams/service.ts'
 import {usageWindow} from '#services/usage/lib/utils.ts'
 import type {Period} from '#services/usage/schema.ts'
 import {UsageRange} from '#services/usage/schema.ts'
@@ -161,6 +154,7 @@ export class Connections extends Context.Service<
 		const callback = `${origin}/oauth/callback`
 		const clientInfo = clientMetadata(origin)
 		const auth = yield* Auth
+		const upstreams = yield* Upstreams
 		const authUrl = Option.map(yield* Config.option(Config.String('AUTH_URL')), url => new URL(url))
 		// The caller's token opens every Deslop app, so only an HTTPS app on Auth's own site that names Auth receives it; any other server naming Auth stays third-party.
 		function deslop(url: string, authorizationServers: readonly string[]) {
@@ -269,7 +263,7 @@ export class Connections extends Context.Service<
 			return requireAdmin(admins, user, 'Only an admin can manage MCP servers')
 		}
 		// Each server's token is read and refreshed one call at a time, so concurrent calls never spend its refresh token twice.
-		const locks = yield* Cache.make<ServerId, Semaphore.Semaphore>({capacity: 256, lookup: () => Semaphore.make(1)})
+		const locks = yield* RcMap.make({lookup: (_id: ServerId) => Semaphore.make(1)})
 		const http = HttpClient.filterStatusOk(yield* HttpClient.HttpClient)
 		const fetch = yield* FetchHttpClient.Fetch
 		const random = yield* SecureRandom.SecureRandom
@@ -467,41 +461,24 @@ export class Connections extends Context.Service<
 					onFalse: () => Effect.succeed(Option.none<string>()),
 					onTrue: () => Effect.asSome(auth.token(headers))
 				})
-				const transport = new StreamableHTTPClientTransport(new URL(initial.url), {
-					authProvider: {
-						token: () =>
-							// oxlint-disable-next-line no-restricted-properties -- The MCP SDK's token contract requires a Promise.
-							Effect.runPromise(Effect.succeed(Option.getOrUndefined(access)))
-					},
-					fetch,
-					requestInit: {redirect: 'error'}
-				})
-				const anonymous = yield* Effect.acquireRelease(Effect.sync(mcpClient), acquired =>
-					endSession(transport, acquired, cause => UpstreamError.make({cause}), 'anonymous')
+				const found = yield* upstreams.use(initial.url, access, client =>
+					Effect.map(client.listTools(), tools => ({info: client.serverInfo, instructions: client.instructions, tools}))
 				)
-				yield* Effect.tryPromise({
-					catch: cause => UpstreamError.make({cause}),
-					try: signal => anonymous.connect(transport, {signal})
-				})
-				const tools = yield* Effect.tryPromise({
-					catch: cause => UpstreamError.make({cause}),
-					try: signal => anonymous.listTools(undefined, {signal})
-				})
 				return {
 					...initial,
 					error: Option.none(),
-					icons: serverIcons(anonymous.getServerVersion()),
-					instructions: Option.fromUndefinedOr(anonymous.getInstructions()),
+					icons: serverIcons(found.info),
+					instructions: Option.fromUndefinedOr(found.instructions),
 					issuer: Option.none(),
 					mode: Boolean.match(own, {onFalse: () => 'public' as const, onTrue: () => 'deslop' as const}),
 					name: pipe(
-						Option.fromUndefinedOr(anonymous.getServerVersion()?.name),
+						Option.fromUndefinedOr(found.info?.name),
 						Option.map(String.trim),
 						Option.filter(String.isNonEmpty),
 						Option.getOrElse(() => initial.name)
 					),
 					scope: Option.none(),
-					tools: Array.length(tools.tools)
+					tools: Array.length(found.tools)
 				} satisfies typeof Connection.insert.Type
 			}
 			const metadata = yield* Schema.decodeEffect(Metadata)(Option.getOrThrow(authorizationMetadata))
@@ -730,6 +707,7 @@ export class Connections extends Context.Service<
 			// The server's grant and calls go with it.
 			remove: Effect.fn('Connections.remove')(function* (id: ServerId, user: User) {
 				yield* admin(user)
+				const connection = yield* get(id)
 				const removed = yield* pipe(
 					deleteConnection(id),
 					Reactivity.mutation(['connections', 'connectionCalls']),
@@ -737,6 +715,7 @@ export class Connections extends Context.Service<
 					asAuthError('Cannot change this MCP connection')
 				)
 				if (Array.isReadonlyArrayEmpty(removed)) return yield* removedServer
+				yield* upstreams.forget(connection.url)
 			}),
 			report: Effect.fn('Connections.report')(function* (id, generation, outcome) {
 				yield* Effect.annotateCurrentSpan({outcome: outcome._tag, serverId: id})
@@ -755,49 +734,54 @@ export class Connections extends Context.Service<
 					{log: 'Warn', message: 'Cannot save the MCP discovery outcome'}
 				)
 			}),
-			token: Effect.fn('Connections.token')(function* (
-				id: ServerId,
-				generation: ConnectionGeneration,
-				rejectedToken: Option.Option<string>
-			) {
-				// The grant is read under its server's lock, so a call that waited sees the token the one before it saved.
-				return yield* Semaphore.withPermit(
-					yield* Cache.get(locks, id),
-					Effect.timeout(
-						Effect.gen(function* () {
-							const connection = yield* get(id)
-							if (connection.generation !== generation) {
-								return yield* AuthError.make({message: 'This MCP connection was replaced.'})
-							}
-							const now = yield* DateTime.now
-							return yield* Option.match(yield* asStorageAuthError(findGrant(id)), {
-								onNone: () => Effect.fail(AuthError.make({message: `Connect ${connection.name} on ${origin}`})),
-								onSome: grant => {
-									// A token that can be refreshed is renewed 30 seconds early; one that cannot is used to its end.
-									const margin = Option.match(grant.refreshToken, {
-										onNone: () => Duration.zero,
-										onSome: () => Duration.seconds(30)
-									})
-									const access = Redacted.value(grant.accessToken)
-									if (
-										!Option.contains(rejectedToken, access) &&
-										DateTime.isGreaterThan(grant.expiresAt, DateTime.addDuration(now, margin))
-									) {
-										return Effect.succeed(access)
-									}
-									return Option.match(grant.refreshToken, {
-										onNone: () =>
-											Effect.fail(AuthError.make({message: `Reconnect ${connection.name}; its authorization expired`})),
-										onSome: refresh =>
-											exchange(connection, grant, {grant_type: 'refresh_token', refresh_token: Redacted.value(refresh)})
-									})
+			token: Effect.fn('Connections.token')(
+				function* (id: ServerId, generation: ConnectionGeneration, rejectedToken: Option.Option<string>) {
+					// The grant is read under its server's lock, so a call that waited sees the token the one before it saved.
+					return yield* Semaphore.withPermit(
+						yield* RcMap.get(locks, id),
+						Effect.timeout(
+							Effect.gen(function* () {
+								const connection = yield* get(id)
+								if (connection.generation !== generation) {
+									return yield* AuthError.make({message: 'This MCP connection was replaced.'})
 								}
-							})
-						}),
-						Duration.seconds(20)
+								const now = yield* DateTime.now
+								return yield* Option.match(yield* asStorageAuthError(findGrant(id)), {
+									onNone: () => Effect.fail(AuthError.make({message: `Connect ${connection.name} on ${origin}`})),
+									onSome: grant => {
+										// A token that can be refreshed is renewed 30 seconds early; one that cannot is used to its end.
+										const margin = Option.match(grant.refreshToken, {
+											onNone: () => Duration.zero,
+											onSome: () => Duration.seconds(30)
+										})
+										const access = Redacted.value(grant.accessToken)
+										if (
+											!Option.contains(rejectedToken, access) &&
+											DateTime.isGreaterThan(grant.expiresAt, DateTime.addDuration(now, margin))
+										) {
+											return Effect.succeed(access)
+										}
+										return Option.match(grant.refreshToken, {
+											onNone: () =>
+												Effect.fail(
+													AuthError.make({message: `Reconnect ${connection.name}; its authorization expired`})
+												),
+											onSome: refresh =>
+												exchange(connection, grant, {
+													grant_type: 'refresh_token',
+													refresh_token: Redacted.value(refresh)
+												})
+										})
+									}
+								})
+							}),
+							Duration.seconds(20)
+						)
 					)
-				)
-			}, asAuthError('Cannot refresh this MCP; reconnect it from the MCP page')),
+				},
+				Effect.scoped,
+				asAuthError('Cannot refresh this MCP; reconnect it from the MCP page')
+			),
 			usage: period =>
 				Stream.withSpan(
 					usageWindow(period, range =>
