@@ -25,29 +25,38 @@ export function changeNote(note: Note, update: NoteChange) {
 	const fields = Struct.pick(note, Struct.keys(Note.fields))
 	return pipe(
 		Match.value(update),
-		Match.when({type: 'remove'}, () => Option.none<Note>()),
+		Match.when({type: 'remove'}, () => ({_tag: 'Removed' as const})),
 		Match.when({type: 'share'}, change => {
-			if (note.id === change.capture.id) return Option.none<Note>()
+			if (note.id === change.capture.id) return {_tag: 'Unchanged' as const}
 			const known = HashSet.fromIterable(pipe(note.text, String.toLowerCase, String.split(/\s+/u)))
 
 			return pipe(
 				commentOf(change.capture.text),
 				String.split(' '),
 				Array.filter(word => String.isNonEmpty(word) && !HashSet.has(known, String.toLowerCase(word))),
-				Option.liftPredicate(Array.isReadonlyArrayNonEmpty),
-				Option.map(words => ({...fields, text: `${note.text}\n${Array.join(words, ' ')}`}))
+				Array.match({
+					onEmpty: () => ({_tag: 'Unchanged' as const}),
+					onNonEmpty: words => ({
+						_tag: 'Changed' as const,
+						note: {...fields, text: `${note.text}\n${Array.join(words, ' ')}`}
+					})
+				})
 			)
 		}),
-		Match.when({type: 'image'}, change => Option.some({...fields, image: Option.some(change.image)})),
+		Match.when({type: 'image'}, change => ({
+			_tag: 'Changed' as const,
+			note: {...fields, image: Option.some(change.image)}
+		})),
 		Match.when({type: 'extract'}, change =>
-			Option.some(
-				Result.match(change.extraction, {
-					onFailure: error =>
-						Boolean.match(String.isEmpty(note.content), {
-							onFalse: () => note,
-							onTrue: () => ({...fields, issue: Option.some(error.message)})
-						}),
-					onSuccess: page => ({
+			Result.match(change.extraction, {
+				onFailure: error =>
+					Boolean.match(String.isEmpty(note.content), {
+						onFalse: () => ({_tag: 'Unchanged' as const}),
+						onTrue: () => ({_tag: 'Changed' as const, note: {...fields, issue: Option.some(error.message)}})
+					}),
+				onSuccess: page => ({
+					_tag: 'Changed' as const,
+					note: {
 						...fields,
 						author: pipe(
 							page.author,
@@ -60,20 +69,22 @@ export function changeNote(note: Note, update: NoteChange) {
 							onFalse: () => note.title,
 							onTrue: () => page.title
 						})
-					})
+					}
 				})
-			)
+			})
 		),
-		Match.when({type: 'video'}, change =>
-			Option.some({
+		Match.when({type: 'video'}, change => ({
+			_tag: 'Changed' as const,
+			note: {
 				...fields,
 				content: Option.getOrElse(change.content, () => note.content),
 				issue: Boolean.match(Option.isSome(change.content), {onFalse: () => note.issue, onTrue: Option.none}),
 				transcript: Option.orElse(change.transcript, () => note.transcript)
-			})
-		),
-		Match.when({type: 'organize'}, change =>
-			Option.some({
+			}
+		})),
+		Match.when({type: 'organize'}, change => ({
+			_tag: 'Changed' as const,
+			note: {
 				...fields,
 				body: Option.some(change.organization.body),
 				issue: Option.none(),
@@ -82,29 +93,37 @@ export function changeNote(note: Note, update: NoteChange) {
 				summary: change.organization.summary,
 				title: change.organization.title,
 				topics: Option.some(change.organization.topics)
-			})
-		),
-		Match.when({type: 'fail'}, change =>
-			Option.some({...fields, issue: Option.some(change.message), status: 'failed' as const})
-		),
-		Match.when({type: 'empty'}, () =>
-			Option.some({
+			}
+		})),
+		Match.when({type: 'fail'}, change => ({
+			_tag: 'Changed' as const,
+			note: {...fields, issue: Option.some(change.message), status: 'failed' as const}
+		})),
+		Match.when({type: 'empty'}, () => ({
+			_tag: 'Changed' as const,
+			note: {
 				...fields,
 				issue: Option.orElse(note.issue, () => Option.some('Nothing to read at this link.')),
 				status: 'failed' as const
-			})
-		),
+			}
+		})),
 		Match.when({type: 'stop'}, () =>
 			Boolean.match(note.status === 'organizing', {
-				onFalse: () => Option.some(note),
-				onTrue: () =>
-					Option.some({...fields, issue: Option.some('Tagging stopped before it finished.'), status: 'failed' as const})
+				onFalse: () => ({_tag: 'Unchanged' as const}),
+				onTrue: () => ({
+					_tag: 'Changed' as const,
+					note: {...fields, issue: Option.some('Tagging stopped before it finished.'), status: 'failed' as const}
+				})
 			})
 		),
-		Match.when({type: 'retry'}, () =>
-			Option.some({...fields, issue: Option.none(), status: 'organizing' as const, transcript: Option.none()})
-		),
-		Match.when({type: 'request'}, change => Option.some({...fields, requester: change.requester})),
+		Match.when({type: 'retry'}, () => ({
+			_tag: 'Changed' as const,
+			note: {...fields, issue: Option.none(), status: 'organizing' as const, transcript: Option.none()}
+		})),
+		Match.when({type: 'request'}, change => ({
+			_tag: 'Changed' as const,
+			note: {...fields, requester: change.requester}
+		})),
 		Match.exhaustive
 	)
 }

@@ -8,6 +8,7 @@ import {
 	FiberMap,
 	FileSystem,
 	Layer,
+	Match,
 	Option,
 	Path,
 	Random,
@@ -44,11 +45,6 @@ declare module 'effect/reactivity/Reactivity' {
 	interface Keys {
 		readonly notes: never
 	}
-}
-
-// The note's columns an update writes, to change only some of them.
-function editable(note: Note) {
-	return Struct.pick(note, Struct.keys(Note.update.fields))
 }
 
 function still(frame: Still) {
@@ -203,10 +199,19 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 
 		// The note is read again inside the write, so a change made meanwhile is kept and a note removed meanwhile stays removed.
 		function storeChange(note: Note, update: NoteChange) {
-			return Option.match(changeNote(note, update), {
-				onNone: () => notes.delete(note.id),
-				onSome: next => Effect.asVoid(notes.update(editable(next)))
-			})
+			return pipe(
+				Match.value(changeNote(note, update)),
+				Match.tag('Unchanged', () => Effect.void),
+				Match.tag('Removed', () => Reactivity.mutation(notes.delete(note.id), ['notes'])),
+				Match.tag('Changed', changed =>
+					pipe(
+						notes.update(Struct.pick(changed.note, Struct.keys(Note.update.fields))),
+						Reactivity.mutation(['notes']),
+						Effect.asVoid
+					)
+				),
+				Match.exhaustive
+			)
 		}
 
 		function change(id: NoteId, update: NoteChange) {
@@ -215,7 +220,6 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 					findNote(id),
 					Option.match({onNone: () => Effect.void, onSome: note => storeChange(note, update)})
 				),
-				Reactivity.mutation(['notes']),
 				sql.withTransaction,
 				asNotesError
 			)
@@ -249,7 +253,6 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 					findNote(id),
 					Option.match({onNone: () => Effect.void, onSome: note => writeOrganization(note, found)})
 				),
-				Reactivity.mutation(['notes']),
 				sql.withTransaction,
 				asNotesError
 			)
@@ -531,12 +534,7 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 								),
 							// A share of a saved note adds its new words, unless it is the same capture sent again.
 							onSome: found =>
-								Option.match(changeNote(found, {capture: {...input, text}, type: 'share'}), {
-									onNone: () => Effect.succeed({fresh: false, note: found}),
-									onSome: Effect.fnUntraced(function* (merged) {
-										return {fresh: false, note: yield* Reactivity.mutation(notes.update(editable(merged)), ['notes'])}
-									})
-								})
+								Effect.as(storeChange(found, {capture: {...input, text}, type: 'share'}), {fresh: false, note: found})
 						})
 					),
 					sql.withTransaction,
