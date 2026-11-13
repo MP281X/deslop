@@ -1,6 +1,7 @@
 import {Array, Boolean, Iterable, Number, Option, Schema, String, pipe} from 'effect'
 
-import {ProcessId, UnitId} from '#services/inventory/schema.ts'
+import {ProcessIdFromString, UnitId} from '#services/inventory/schema.ts'
+import type {ProcessId} from '#services/inventory/schema.ts'
 
 function portOf(address: string) {
 	return Number.parse(Array.lastNonEmpty(String.split(address, ':')))
@@ -12,10 +13,9 @@ export function socketLine(line: string) {
 	return Option.map(portOf(address), port => ({
 		address,
 		port,
-		process: Option.map(String.match(/users:\(\("([^"]+)",pid=([0-9]+)/u)(line), match => ({
-			name: match[1] ?? '',
-			pid: Schema.decodeSync(pipe(Schema.FiniteFromString, Schema.decodeTo(ProcessId)))(match[2] ?? '')
-		})),
+		process: Option.flatMap(String.match(/users:\(\("([^"]+)",pid=([0-9]+)/u)(line), match =>
+			Option.map(Schema.decodeOption(ProcessIdFromString)(match[2] ?? ''), pid => ({name: match[1] ?? '', pid}))
+		),
 		protocol: fields[0],
 		state: fields[1] ?? 'listening'
 	}))
@@ -64,15 +64,7 @@ export function lsofSockets(text: string) {
 			const value = String.slice(1)(line)
 			const flushed = [...scan.sockets, ...Option.toArray(lsofSocket(scan.file))]
 			if (String.startsWith('p')(line)) {
-				return {
-					file: {
-						...empty,
-						pid: Schema.decodeSync(
-							Schema.OptionFromOptional(pipe(Schema.FiniteFromString, Schema.decodeTo(ProcessId)))
-						)(value)
-					},
-					sockets: flushed
-				}
+				return {file: {...empty, pid: Schema.decodeOption(ProcessIdFromString)(value)}, sockets: flushed}
 			}
 			if (String.startsWith('c')(line)) return {...scan, file: {...scan.file, process: value}}
 			if (String.startsWith('f')(line)) {

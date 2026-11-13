@@ -18,8 +18,16 @@ import {
 import {commandLabel} from './command.ts'
 
 import {itemOwner, processOwner} from '#services/inventory/lib/utils.ts'
-import {AppId, CpuTime, DeployError, Process, ProcessId} from '#services/inventory/schema.ts'
-import type {InventoryItem, UnitId} from '#services/inventory/schema.ts'
+import {
+	AppId,
+	CpuTicks,
+	CpuTime,
+	DeployError,
+	Process,
+	ProcessIdFromString,
+	ResidentMemoryFromKiB
+} from '#services/inventory/schema.ts'
+import type {InventoryItem, UnitId, ProcessId} from '#services/inventory/schema.ts'
 
 const SECRET = /(?:token|secret|passw(?:or)?d|key|auth|credential|cookie|session)/iu
 const PROCESS_INTERVAL = Duration.seconds(2)
@@ -46,10 +54,10 @@ function processStatus(status: string) {
 		)
 	)
 	return {
-		memory: Schema.decodeSync(Schema.FiniteFromString)(String.split(values['VmRSS'] ?? '', /\s+/u)[0] || '0') * 1024,
+		memory: Schema.decodeSync(ResidentMemoryFromKiB)(String.split(values['VmRSS'] ?? '', /\s+/u)[0] || '0'),
 		name: values['Name'] ?? '',
-		parent: Schema.decodeSync(Schema.decodeTo(ProcessId)(Schema.FiniteFromString))(values['PPid'] ?? ''),
-		pid: Schema.decodeSync(Schema.decodeTo(ProcessId)(Schema.FiniteFromString))(values['Pid'] ?? '')
+		parent: Schema.decodeSync(ProcessIdFromString)(values['PPid'] ?? ''),
+		pid: Schema.decodeSync(ProcessIdFromString)(values['Pid'] ?? '')
 	}
 }
 
@@ -72,7 +80,7 @@ function commandArgs(cmdline: string) {
 export const processes = Effect.gen(function* () {
 	const fs = yield* FileSystem.FileSystem
 	const stat = yield* fs.readFileString('/proc/stat')
-	const counts = yield* Schema.decodeEffect(Schema.Array(Schema.FiniteFromString))(
+	const counts = yield* Schema.decodeEffect(CpuTicks)(
 		pipe(String.trim(String.split(stat, '\n')[0]), String.split(/\s+/u), Array.drop(1), Array.take(8))
 	)
 	const total = Duration.millis(Number.sumAll(counts) * 10)
@@ -89,7 +97,7 @@ export const processes = Effect.gen(function* () {
 						// A process whose arguments can't be read still counts, without its preview.
 						const command = Option.map(yield* Effect.option(fs.readFileString(`/proc/${pid}/cmdline`)), commandArgs)
 						const fields = String.split(
-							String.slice(Option.getOrThrow(String.lastIndexOf(')')(processStat)) + 2)(processStat),
+							String.slice((yield* Effect.fromOption(String.lastIndexOf(')')(processStat))) + 2)(processStat),
 							/\s+/u
 						)
 						const parsed = yield* Effect.try({
@@ -219,16 +227,17 @@ export function launchdProcesses(text: string, agents: HashMap.HashMap<ProcessId
 			text,
 			String.split('\n'),
 			Array.map(line =>
-				Option.map(
+				Option.flatMap(
 					String.match(/^\s*([0-9]+)\s+([0-9]+)\s+([0-9]+)\s+(\S+)\s+(\S+\s+\S+\s+\S+\s+\S+\s+\S+)\s+(.*)$/u)(line),
-					match => ({
-						args: match[6] ?? '',
-						cpu: match[4] ?? '',
-						memory: match[3] ?? '',
-						parent: Schema.decodeSync(Schema.decodeTo(ProcessId)(Schema.FiniteFromString))(match[2] ?? ''),
-						pid: Schema.decodeSync(Schema.decodeTo(ProcessId)(Schema.FiniteFromString))(match[1] ?? ''),
-						start: match[5] ?? ''
-					})
+					match =>
+						Option.map(
+							Option.all({
+								memory: Schema.decodeOption(ResidentMemoryFromKiB)(match[3] ?? ''),
+								parent: Schema.decodeOption(ProcessIdFromString)(match[2] ?? ''),
+								pid: Schema.decodeOption(ProcessIdFromString)(match[1] ?? '')
+							}),
+							fields => ({...fields, args: match[6] ?? '', cpu: match[4] ?? '', start: match[5] ?? ''})
+						)
 				)
 			)
 		)
@@ -256,18 +265,20 @@ export function launchdProcesses(text: string, agents: HashMap.HashMap<ProcessId
 				Option.map(
 					Option.all({
 						start: DateTime.make(row.start),
-						ticks: Option.map(String.match(/^(?:([0-9]+):)?([0-9]+):([0-9]+(?:\.[0-9]+)?)$/u)(row.cpu), match => {
-							const fields = Schema.decodeSync(CpuTime)({
-								1: match[1],
-								2: Option.getOrThrow(Array.get(match, 2)),
-								3: Option.getOrThrow(Array.get(match, 3))
-							})
-							return pipe(
-								Duration.hours(Option.getOrElse(fields[1], () => 0)),
-								Duration.sum(Duration.minutes(fields[2])),
-								Duration.sum(Duration.seconds(fields[3]))
-							)
-						})
+						ticks: pipe(
+							String.match(/^(?:([0-9]+):)?([0-9]+):([0-9]+(?:\.[0-9]+)?)$/u)(row.cpu),
+							Option.flatMap(match =>
+								Schema.decodeOption(CpuTime)({1: match[1], 2: match[2] ?? '', 3: match[3] ?? ''})
+							),
+							Option.map(fields =>
+								pipe(
+									Duration.hours(Option.getOrElse(fields[1], () => 0)),
+									Duration.sum(Duration.minutes(fields[2])),
+									Duration.sum(Duration.seconds(fields[3]))
+								)
+							),
+							Option.filter(Duration.isFinite)
+						)
 					}),
 					times => {
 						const command = commandArgs(pipe(String.trim(row.args), String.split(/\s+/u), Array.join('\0')))
@@ -277,7 +288,7 @@ export function launchdProcesses(text: string, agents: HashMap.HashMap<ProcessId
 								command: Option.some(command),
 								cpu: Option.none(),
 								label: commandLabel(command, Option.none()),
-								memory: Schema.decodeSync(Schema.FiniteFromString)(row.memory) * 1024,
+								memory: row.memory,
 								name: pipe(
 									Array.head(command),
 									Option.flatMap(head => Array.last(String.split(head, '/'))),

@@ -6,6 +6,12 @@ import {DateTimeUtcFromFiniteMillis, DurationFromFiniteMillis, DurationFromSecon
 
 import {AppId, TextFromEmpty, WorkerId} from '#services/inventory/schema.ts'
 
+type CpuCounters = typeof CpuCounters.Type
+export const CpuCounters = Schema.Array(Schema.FiniteFromString).check(Schema.isMinLength(5))
+
+type LoadAverages = typeof LoadAverages.Type
+export const LoadAverages = Schema.Array(Schema.FiniteFromString)
+
 export type CgroupPath = typeof CgroupPath.Type
 export const CgroupPath = Schema.brand('DeployCgroupPath')(Schema.String)
 

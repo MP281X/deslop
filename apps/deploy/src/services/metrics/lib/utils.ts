@@ -1,6 +1,7 @@
 import {Array, DateTime, Duration, Number, Option, Order, Record, Schema, String, Struct, pipe} from 'effect'
 
 import type {AppId} from '#services/inventory/schema.ts'
+import {CpuCounters, LoadAverages} from '#services/metrics/schema.ts'
 import type {
 	AppSample,
 	AppUsage,
@@ -25,7 +26,7 @@ export const SERIES = {
 export type Point = Omit<Sample, 'since' | 'step'>
 
 export function counters(stat: string, uptime: string, time: DateTime.Utc) {
-	const values = Schema.decodeSync(Schema.Array(Schema.FiniteFromString).check(Schema.isMinLength(5)))(
+	const values = Schema.decodeSync(CpuCounters)(
 		pipe(
 			stat,
 			String.split('\n'),
@@ -202,7 +203,7 @@ export function sample(
 				used: Schema.decodeSync(Schema.FiniteFromString)(fields[2] ?? '')
 			}))
 		),
-		Schema.decodeSync(Schema.Array(Schema.FiniteFromString))(
+		Schema.decodeSync(LoadAverages)(
 			pipe(
 				Option.getOrElse(load, () => ''),
 				String.trim,

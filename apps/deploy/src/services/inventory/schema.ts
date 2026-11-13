@@ -20,6 +20,21 @@ export const JobName = Schema.brand('DeployJobName')(Schema.String)
 export type ExposureName = typeof ExposureName.Type
 export const ExposureName = Schema.brand('DeployExposureName')(Schema.String)
 
+type ProcessIdFromString = typeof ProcessIdFromString.Type
+export const ProcessIdFromString = pipe(Schema.FiniteFromString, Schema.decodeTo(ProcessId))
+
+type CpuTicks = typeof CpuTicks.Type
+export const CpuTicks = Schema.Array(Schema.FiniteFromString)
+
+type ResidentMemoryFromKiB = typeof ResidentMemoryFromKiB.Type
+export const ResidentMemoryFromKiB = pipe(
+	Schema.FiniteFromString,
+	Schema.decodeTo(Schema.Finite, {
+		decode: SchemaGetter.transform(value => value * 1024),
+		encode: SchemaGetter.transform(value => value / 1024)
+	})
+)
+
 type CpuTime = typeof CpuTime.Type
 export const CpuTime = Schema.Struct({
 	1: Schema.OptionFromOptional(Schema.FiniteFromString),
@@ -133,35 +148,38 @@ const InventoryFields = Schema.Struct({
 	worker: WorkerId
 })
 
-export type InventoryItem = typeof InventoryItem.Type
-export const InventoryItem = Schema.Union([
+type NonPortItem = typeof NonPortItem.Type
+const NonPortItem = Schema.Union([
 	InventoryFields.mapFields(fields => ({...fields, kind: Schema.Literal('service'), name: UnitId})),
 	InventoryFields.mapFields(fields => ({...fields, kind: Schema.Literal('exposure'), name: ExposureName})),
-	InventoryFields.mapFields(fields => ({...fields, kind: Schema.Literals(['container', 'peer'])})),
-	// Socket collectors always emit the process text, including an empty string when unavailable.
-	InventoryFields.mapFields(fields => ({
-		...fields,
-		kind: Schema.Literal('port'),
-		process: pipe(
-			Schema.OptionFromOptionalKey(TextFromEmpty),
-			Schema.decodeTo(Schema.Option(Schema.String), {
-				decode: SchemaGetter.transform(Option.flatten),
-				encode: SchemaGetter.transform(Option.some)
-			}),
-			Schema.withConstructorDefault(Effect.succeedNone)
-		)
-	}))
+	InventoryFields.mapFields(fields => ({...fields, kind: Schema.Literals(['container', 'peer'])}))
 ])
+
+type PortItem = typeof PortItem.Type
+// Socket collectors always emit the process text, including an empty string when unavailable.
+const PortItem = InventoryFields.mapFields(fields => ({
+	...fields,
+	kind: Schema.Literal('port'),
+	process: pipe(
+		Schema.OptionFromOptionalKey(TextFromEmpty),
+		Schema.decodeTo(Schema.Option(Schema.String), {
+			decode: SchemaGetter.transform(Option.flatten),
+			encode: SchemaGetter.transform(Option.some)
+		}),
+		Schema.withConstructorDefault(Effect.succeedNone)
+	)
+}))
+
+export type InventoryItem = typeof InventoryItem.Type
+export const InventoryItem = Schema.Union([...NonPortItem.members, PortItem])
 
 export type Snapshot = typeof Snapshot.Type
 export const Snapshot = Schema.Struct({
 	// Unlike synthesized view listeners, the collectors always send a port's unit key, even when empty.
 	items: Schema.Array(
-		InventoryItem.mapMembers(members => [
-			members[0],
-			members[1],
-			members[2],
-			members[3].mapFields(fields => ({
+		Schema.Union([
+			...NonPortItem.members,
+			PortItem.mapFields(fields => ({
 				...fields,
 				unit: pipe(
 					Schema.OptionFromOptionalKey(pipe(TextFromEmpty, Schema.decodeTo(Schema.Option(UnitId)))),
