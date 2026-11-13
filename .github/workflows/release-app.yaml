@@ -68,9 +68,21 @@ jobs:
         with: {eas: 'true', ios: 'true'}
       - name: Build the App Store app
         run: eas build --local --profile production --platform ios --non-interactive --output "$RUNNER_TEMP/app.ipa"
-      # EAS hands the build to Apple on its own servers; waiting for that kept the Mac idle for about 14 minutes.
-      - name: Submit to the App Store
-        run: eas submit --profile production --platform ios --non-interactive --no-wait --path "$RUNNER_TEMP/app.ipa"
+      - name: Upload to the App Store
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+        run: |
+          umask 077
+          mkdir -p "$HOME/.appstoreconnect/private_keys"
+          printf '%s\n' "$ASC_KEY_P8" > "$HOME/.appstoreconnect/private_keys/AuthKey_$ASC_KEY_ID.p8"
+          xcrun altool --upload-package "$RUNNER_TEMP/app.ipa" --api-key "$ASC_KEY_ID" --api-issuer "$ASC_ISSUER_ID"
+      - name: Remove the App Store Connect key
+        if: always()
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+        run: rm -f "$HOME/.appstoreconnect/private_keys/AuthKey_$ASC_KEY_ID.p8"
       - name: Publish the EAS Update for the new build
         run: eas update --channel production --environment production --platform ios --non-interactive --message "$(git log -1 --format=%s)"
       - name: Record the shipped build

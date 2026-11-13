@@ -52,7 +52,7 @@ Release publishes every app and tool as `0.1.<run>` with npm trusted publishing,
 
 4. **Bootstrap.** Before the PR merges, the first non-interactive release. Use the team's existing certificate and keys:
    - **Signing.** An App Store profile for the app and each extension target (`credentials -p ios`).
-   - **Submission key.** The team's App Store Connect API key.
+   - **Upload key.** The team's App Store Connect API key in repository secrets `ASC_KEY_ID`, `ASC_ISSUER_ID` and `ASC_KEY_P8` (the `.p8` file's contents).
    - **App record.** Only an interactive `submit` creates it; pass any existing file as the archive, copy the printed `ASC App ID` into `submit.production.ios.ascAppId` in `eas.json`, and stop it.
    - **Channel.** `channel:create production`.
 
@@ -63,11 +63,10 @@ Release publishes every app and tool as `0.1.<run>` with npm trusted publishing,
    printf '\r' > /tmp/<task>/in
    ```
 
-5. **Follow a release through.** The App Store job's log prints the submission URL; follow it until the build reaches the tester group:
+5. **Follow a release through.** The App Store job uploads the `.ipa` directly from GitHub's Mac with Xcode's `altool --upload-package`, waiting for the upload and failing on Apple's error before publishing the new build's EAS Update and recording the shipped build. The key file has owner-only permissions and is removed in an `always()` step. Read Apple's upload result in the job's log:
 
    ```bash
-   gh api --allow-escape-sequences repos/MP281X/deslop/actions/jobs/<job-id>/logs | rg -o 'https://expo\.dev/\S+/submissions/[0-9a-f-]+'
-   APP_VARIANT=production npx --yes eas-cli@latest submit:view <submission-id> --json | jq '{status, error}'
+   gh run view <run-id> --job <job-id> --log
    ```
 
-   Report queued, uploaded, processing or available, with the submission URL and `https://appstoreconnect.apple.com/apps/<ascAppId>/testflight/ios`. Public TestFlight and App Store release are separate outward actions.
+   Upload success does not mean Apple has finished processing. Follow `https://appstoreconnect.apple.com/apps/<ascAppId>/testflight/ios` until the build reaches the tester group; the app ID is in `submit.production.ios.ascAppId` in `eas.json`. Report uploaded, processing or available, with the run URL and TestFlight URL. Public TestFlight and App Store release are separate outward actions.
