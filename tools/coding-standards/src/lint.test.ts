@@ -181,6 +181,7 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 								'declare const read: () => number',
 								'declare const readValues: () => number[]',
 								'declare const count: number',
+								'declare const transform: (values: number[], count: number) => number[]',
 								'export const one = pipe(values, Array.take(2))',
 								'export const nested = Array.join(Array.map(values, value => `${value}`), ",")',
 								'export const applied = Array.take(2)(values)',
@@ -192,6 +193,8 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 								'export const forwarding = pipe(Option.some(1), value => Option.filter(value, value => value > 0), value => Option.map(value, value => value + 1))',
 								'export const singleForward = pipe(values, value => Array.take(value, 2))',
 								'export const appliedArrow = (value => Array.take(value, 2))(values)',
+								'export const ordinaryForward = pipe(values, value => transform(value, 2))',
+								'export const ordinaryApplied = (value => transform(value, 2))(values)',
 								'export function shadow(Array: {take: (value: number) => number}) { return Array.take(count) }'
 							],
 							'\n'
@@ -202,6 +205,8 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 				assert.include(fixed.sources[0] ?? '', 'Array.take(values, 2)')
 				assert.include(fixed.sources[0] ?? '', 'export const singleForward = Array.take(values, 2)')
 				assert.include(fixed.sources[0] ?? '', 'export const appliedArrow = Array.take(values, 2)')
+				assert.include(fixed.sources[0] ?? '', 'export const ordinaryForward = transform(values, 2)')
+				assert.include(fixed.sources[0] ?? '', 'export const ordinaryApplied = transform(values, 2)')
 				assert.notInclude(fixed.sources[0] ?? '', 'value => Option.filter(value,')
 				assert.include(fixed.sources[0] ?? '', 'Array.map(value => `${value}`)')
 				assert.include(fixed.sources[0] ?? '', 'Array.take(Array.drop(values, read()), read())')

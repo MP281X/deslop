@@ -370,6 +370,10 @@ function forwarding(context: LintContext, node: ESTree.Node) {
 	return Option.filter(forwardedBody(context, node), body => dataFirst(context, body))
 }
 
+function plainForwarding(context: LintContext, node: ESTree.Node) {
+	return Option.filter(forwardedBody(context, node), body => stable(context, body.callee))
+}
+
 function forwardCall(context: LintContext, call: ESTree.CallExpression, subject: string) {
 	return `${text(context, call.callee)}${typeArguments(context, call)}(${subject}, ${argumentsText(context, Array.drop(call.arguments, 1))})`
 }
@@ -383,7 +387,7 @@ function normalizeForwarding(context: LintContext, node: ESTree.CallExpression) 
 	if (node.arguments.length !== 1 || node.arguments[0]?.type === 'SpreadElement') return
 	const subject = node.arguments[0]
 	if (subject === undefined) return
-	Option.match(forwarding(context, node.callee), {
+	Option.match(plainForwarding(context, node.callee), {
 		onNone: () => {},
 		onSome: call =>
 			context.report({
@@ -497,6 +501,60 @@ function preservesOrder(context: LintContext, subject: ESTree.Node, args: ESTree
 	return stable(context, subject) || Array.every(args, argument => stable(context, argument))
 }
 
+function normalizeSingleStep(context: LintContext, node: ESTree.CallExpression) {
+	if (node.arguments.length !== 2) return
+
+	const [subject, step] = node.arguments
+	if (
+		subject === undefined ||
+		step === undefined ||
+		subject.type === 'SpreadElement' ||
+		step.type === 'SpreadElement'
+	) {
+		return
+	}
+	const plain = Option.getOrUndefined(plainForwarding(context, step))
+	if (plain !== undefined) {
+		context.report({
+			fix: fixer => fixer.replaceText(node, forwardCall(context, plain, text(context, subject))),
+			message: 'Call the operation directly instead of forwarding a pipeline subject.',
+			node
+		})
+		return
+	}
+	// A real closure has no equivalent plain call; never manufacture an immediately-applied arrow.
+	if (step.type === 'ArrowFunctionExpression') return
+	context.report({
+		fix: fixer => {
+			if (step.type === 'CallExpression' && schemaOperation(context, step.callee, ['check', 'annotate'])) {
+				return fixer.replaceText(
+					node,
+					`(${text(context, subject)}).${text(context, step.callee.property)}(${argumentsText(context, step.arguments)})`
+				)
+			}
+			if (step.type === 'CallExpression' && Option.isSome(dual(context, step.callee))) {
+				if (Array.some(step.arguments, arg => arg.type === 'SpreadElement')) return []
+				if (tagFirst(step.callee) && !preservesOrder(context, subject, step.arguments)) {
+					return []
+				}
+				return fixer.replaceText(
+					node,
+					`${text(context, step.callee)}${typeArguments(context, step)}(${argumentsText(context, directArguments(step.callee, [subject], step.arguments))})`
+				)
+			}
+			if (step.type !== 'Identifier' && step.type !== 'CallExpression' && !stable(context, step)) {
+				return []
+			}
+			if (step.type === 'CallExpression' && !preservesOrder(context, subject, step.arguments)) {
+				return []
+			}
+			return fixer.replaceText(node, `${text(context, step)}(${text(context, subject)})`)
+		},
+		message: 'One step is a plain call; reserve pipe for two or more steps.',
+		node
+	})
+}
+
 function normalizePipe(context: LintContext, node: ESTree.CallExpression) {
 	if (
 		node.callee.type !== 'Identifier' ||
@@ -571,48 +629,7 @@ function normalizePipe(context: LintContext, node: ESTree.CallExpression) {
 		})
 		return
 	}
-	if (node.arguments.length === 2) {
-		const [subject, step] = node.arguments
-		if (
-			subject === undefined ||
-			step === undefined ||
-			subject.type === 'SpreadElement' ||
-			step.type === 'SpreadElement'
-		) {
-			return
-		}
-		// A real closure has no equivalent plain call; never manufacture an immediately-applied arrow.
-		if (step.type === 'ArrowFunctionExpression') return
-		context.report({
-			fix: fixer => {
-				if (step.type === 'CallExpression' && schemaOperation(context, step.callee, ['check', 'annotate'])) {
-					return fixer.replaceText(
-						node,
-						`(${text(context, subject)}).${text(context, step.callee.property)}(${argumentsText(context, step.arguments)})`
-					)
-				}
-				if (step.type === 'CallExpression' && Option.isSome(dual(context, step.callee))) {
-					if (Array.some(step.arguments, arg => arg.type === 'SpreadElement')) return []
-					if (tagFirst(step.callee) && !preservesOrder(context, subject, step.arguments)) {
-						return []
-					}
-					return fixer.replaceText(
-						node,
-						`${text(context, step.callee)}${typeArguments(context, step)}(${argumentsText(context, directArguments(step.callee, [subject], step.arguments))})`
-					)
-				}
-				if (step.type !== 'Identifier' && step.type !== 'CallExpression' && !stable(context, step)) {
-					return []
-				}
-				if (step.type === 'CallExpression' && !preservesOrder(context, subject, step.arguments)) {
-					return []
-				}
-				return fixer.replaceText(node, `${text(context, step)}(${text(context, subject)})`)
-			},
-			message: 'One step is a plain call; reserve pipe for two or more steps.',
-			node
-		})
-	}
+	normalizeSingleStep(context, node)
 }
 
 function normalizeDual(context: LintContext, node: ESTree.CallExpression) {
