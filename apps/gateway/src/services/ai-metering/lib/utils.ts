@@ -1,7 +1,7 @@
 import {Number, Option, Result, Schema, String, pipe} from 'effect'
 
-import {Usage} from '#services/ai-proxy/schema.ts'
-import type {AiUsageEntry} from '#services/ai-proxy/schema.ts'
+import {Usage} from '#services/ai-metering/schema.ts'
+import type {AiUsageEntry} from '#services/ai-metering/schema.ts'
 
 export function readUsage(text: string, entry: AiUsageEntry) {
 	if (String.isEmpty(String.trim(text)) || text === '[DONE]') return Result.succeed(entry)

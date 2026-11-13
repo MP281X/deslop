@@ -4,7 +4,8 @@ import {Rpc, RpcGroup} from 'effect/rpc'
 
 import {AuthError, RpcAuth} from '@deslop/runtime/shared/auth'
 
-import {AiKey, AiSetKey, AiUsageReport} from '#services/ai-proxy/schema.ts'
+import {AiUsageReport} from '#services/ai-metering/schema.ts'
+import {AiKey, AiSetKey} from '#services/ai-proxy/schema.ts'
 import {AddServer, ConnectionItem, McpUsageReport} from '#services/connections/schema.ts'
 import {Period, UsageRange} from '#services/usage/schema.ts'
 

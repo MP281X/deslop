@@ -230,32 +230,33 @@ export class AiProxy extends Context.Service<AiProxy>()('@deslop/gateway/service
 		}
 	})
 }) {
-	// These deployed migrations remain unchanged; each later shape change gets its own number.
+	// The tables this service owns, made and changed at start in one transaction; one statement per `sql` call, since SQLite runs only the first statement of a string.
 	static readonly migrations = Layer.effectDiscard(
 		Migrator.make({})({
 			loader: Migrator.fromRecord({
 				'0001_ai': Effect.gen(function* () {
 					const sql = yield* SqlClient.SqlClient
 					yield* sql`
-					CREATE TABLE ai_keys (
-						owner TEXT NOT NULL,
-						provider TEXT NOT NULL,
-						secret TEXT NOT NULL,
-						last4 TEXT NOT NULL,
-						lastStatus INTEGER,
-						PRIMARY KEY (owner, provider)
-					) STRICT, WITHOUT ROWID
-				`
+						CREATE TABLE ai_keys (
+							owner TEXT NOT NULL,
+							provider TEXT NOT NULL,
+							secret TEXT NOT NULL,
+							last4 TEXT NOT NULL,
+							lastStatus INTEGER,
+							PRIMARY KEY (owner, provider)
+						) STRICT, WITHOUT ROWID
+					`
+					// Keyed by person then hour, so a person's period reads as one range of the table.
 					yield* sql`
-					CREATE TABLE ai_usage (
-						owner TEXT NOT NULL,
-						hour INTEGER NOT NULL,
-						provider TEXT NOT NULL,
-						costUsd REAL NOT NULL,
-						unknownCostCalls INTEGER NOT NULL,
-						PRIMARY KEY (owner, hour, provider)
-					) STRICT, WITHOUT ROWID
-				`
+						CREATE TABLE ai_usage (
+							owner TEXT NOT NULL,
+							hour INTEGER NOT NULL,
+							provider TEXT NOT NULL,
+							costUsd REAL NOT NULL,
+							unknownCostCalls INTEGER NOT NULL,
+							PRIMARY KEY (owner, hour, provider)
+						) STRICT, WITHOUT ROWID
+					`
 				})
 			}),
 			table: 'ai_migrations'

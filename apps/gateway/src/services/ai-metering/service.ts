@@ -20,16 +20,19 @@ import {HttpClient, HttpClientResponse} from 'effect/http'
 import {Reactivity} from 'effect/reactivity'
 import {SqlClient, SqlSchema} from 'effect/sql'
 
-import type {AiModelId} from '@deslop/runtime/shared/ai'
+import type {AiModelId, AiProvider} from '@deslop/runtime/shared/ai'
 import {AuthError} from '@deslop/runtime/shared/auth'
 import type {UserId} from '@deslop/runtime/shared/auth'
 import {DateTimeUtcFromFiniteMillis} from '@deslop/runtime/shared/time'
 
-import {readUsage} from '#services/ai-proxy/lib/utils.ts'
-import {AiUsage, AiUsageBreakdown, AiUsageQuery, ModelsCatalog} from '#services/ai-proxy/schema.ts'
-import type {AiProvider, AiUsageEntry} from '#services/ai-proxy/schema.ts'
+import {readUsage} from './lib/utils.ts'
+import {AiUsage, AiUsageBreakdown, AiUsageQuery, ModelsCatalog} from './schema.ts'
+import type {AiUsageEntry} from './schema.ts'
+
 import {usageWindow} from '#services/usage/lib/utils.ts'
 import type {Period} from '#services/usage/schema.ts'
+
+// AiProxy's 0001_ai migration (ai_migrations) created ai_usage; its registration stays there.
 
 declare module 'effect/reactivity/Reactivity' {
 	interface Keys {

@@ -3,6 +3,7 @@
 - **AI.** Calls pass through unchanged with the caller's signed access token and provider key. The key figures read that person's hourly ledger.
 - **MCP.** Connection and key removal tools are only for explicit user-requested maintenance or credential revocation, not routine page actions.
 - **Upstreams.** One scoped session per server serves discovery and calls. Effect's client handles its supported protocol revisions; the SDK is retained for OAuth discovery/authorization and servers that negotiate a revision Effect cannot speak. A 404 session rejection or a 401 authorization rejection can re-establish a session; an ambiguous call failure never retries the action.
+- **Callers.** Calls and discovery on one upstream session run concurrently. Each request carries its own caller's bearer; only session acquisition and invalidation share a lock.
 - **Excluded.** Tabs, a detail pane, a charts card, an app breakdown, a summary line, an Add server button or dialog.
 - **Paste.** The field under the bar is the page's one action: an http(s) URL adds a server, an `sk-` key opens the key dialog.
 

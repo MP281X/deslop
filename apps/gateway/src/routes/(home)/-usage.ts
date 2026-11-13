@@ -1,6 +1,7 @@
 import {Array, DateTime, Duration, HashMap, Option, pipe} from 'effect'
 
-import type {AiProvider, AiUsageBreakdown, AiUsageReport} from '#services/ai-proxy/schema.ts'
+import type {AiUsageBreakdown, AiUsageReport} from '#services/ai-metering/schema.ts'
+import type {AiProvider} from '#services/ai-proxy/schema.ts'
 import type {McpUsageServer, ServerId} from '#services/connections/schema.ts'
 import type {UsageRange} from '#services/usage/schema.ts'
 
