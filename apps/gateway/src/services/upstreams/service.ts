@@ -6,7 +6,6 @@ import {
 	Exit,
 	Layer,
 	Option,
-	Predicate,
 	RcMap,
 	Ref,
 	Schema,
@@ -46,7 +45,6 @@ export function upstreamStatus(error: unknown): number {
 		if (error.reason._tag === 'ClosedError' && error.reason.sessionExpired === true) return 404
 		if (error.reason._tag === 'HttpError') return error.reason.status
 	}
-	if (Predicate.hasProperty(error, 'code') && Predicate.isNumber(error.code)) return error.code
 	return 0
 }
 
@@ -101,11 +99,10 @@ export class Upstreams extends Context.Service<Upstreams>()('@deslop/gateway/ser
 					// Effect supports only 2025-11-25 and 2026-07-28. A server choosing another revision needs SDK negotiation.
 					Effect.catchIf(unsupportedProtocol, () =>
 						Effect.gen(function* () {
-							const context = yield* Effect.context()
 							const transport = new StreamableHTTPClientTransport(new URL(url), {
 								authProvider: {
 									// oxlint-disable-next-line no-restricted-properties -- SDK authentication is a Promise-returning transport boundary.
-									token: () => Effect.runPromiseWith(context)(Effect.map(Ref.get(token), Option.getOrUndefined))
+										token: () => Effect.runPromise(Effect.map(Ref.get(token), Option.getOrUndefined))
 								},
 								fetch,
 								requestInit: {redirect: 'error'}
