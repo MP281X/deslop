@@ -155,7 +155,25 @@ export const InventoryItem = Schema.Union([
 
 export type Snapshot = typeof Snapshot.Type
 export const Snapshot = Schema.Struct({
-	items: Schema.Array(InventoryItem),
+	// Unlike synthesized view listeners, the collectors always send a port's unit key, even when empty.
+	items: Schema.Array(
+		InventoryItem.mapMembers(members => [
+			members[0],
+			members[1],
+			members[2],
+			members[3].mapFields(fields => ({
+				...fields,
+				unit: pipe(
+					Schema.OptionFromOptionalKey(pipe(TextFromEmpty, Schema.decodeTo(Schema.Option(UnitId)))),
+					Schema.decodeTo(Schema.Option(Schema.toType(UnitId)), {
+						decode: SchemaGetter.transform(Option.flatten),
+						encode: SchemaGetter.transform(Option.some)
+					}),
+					Schema.withConstructorDefault(Effect.succeedNone)
+				)
+			}))
+		])
+	),
 	sources: Schema.Array(Schema.Struct({error: TextFromEmpty, name: Schema.String})),
 	time: DateTimeUtcFromFiniteMillis,
 	workers: Schema.OptionFromOptionalKey(Schema.Array(WorkerId))

@@ -10,4 +10,4 @@
 ## Boundary facts
 
 - **Error causes.** A cause is optional diagnostic metadata, not domain absence; it stays Schema.optional(Defect).
-- **Collector absence.** An empty process, unit or target and a missing key mean the same absence. Socket collectors emit empty process text when unavailable; optional unit and target keys are omitted. A systemctl failure block without an Id keeps the empty record key and never defects.
+- **Collector absence.** An empty process, unit or target and a missing key mean the same absence. Socket snapshots emit empty process and unit text when unavailable; synthesized view listeners may omit unit, and absent targets omit their key. A systemctl failure block without an Id keeps the empty record key and never defects.
