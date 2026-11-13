@@ -44,6 +44,7 @@ import {noRedundantVariableAnnotation} from '#lint/no-redundant-variable-annotat
 import {noReinventedSchema} from '#lint/no-reinvented-schema.ts'
 import {noRenamedImport} from '#lint/no-renamed-import.ts'
 import {noRepeatedGuard} from '#lint/no-repeated-guard.ts'
+import {noRepeatedSearch} from '#lint/no-repeated-search.ts'
 import {noReturnType} from '#lint/no-return-type.ts'
 import {noSelfComparingAssertion} from '#lint/no-self-comparing-assertion.ts'
 import {noSingleUseValue} from '#lint/no-single-use-value.ts'
@@ -145,6 +146,7 @@ const RULES = {
 	'no-reinvented-schema': noReinventedSchema,
 	'no-renamed-import': noRenamedImport,
 	'no-repeated-guard': noRepeatedGuard,
+	'no-repeated-search': noRepeatedSearch,
 	'no-return-type': noReturnType,
 	'no-self-comparing-assertion': noSelfComparingAssertion,
 	'no-single-use-value': noSingleUseValue,

@@ -30,7 +30,6 @@ import {noDetachedActionError} from '#judge/no-detached-action-error.ts'
 import {noDroppedContent} from '#judge/no-dropped-content.ts'
 import {noHeroFailure} from '#judge/no-hero-failure.ts'
 import {noHiddenSideEffect} from '#judge/no-hidden-side-effect.ts'
-import {noImperativeAccumulation} from '#judge/no-imperative-accumulation.ts'
 import {noImpossibleState} from '#judge/no-impossible-state.ts'
 import {noInternalsTest} from '#judge/no-internals-test.ts'
 import {noLibraryTest} from '#judge/no-library-test.ts'
@@ -38,11 +37,9 @@ import {noLogicInIo} from '#judge/no-logic-in-io.ts'
 import {noMisleadingName} from '#judge/no-misleading-name.ts'
 import {noMultiBehaviorTest} from '#judge/no-multi-behavior-test.ts'
 import {noOneShotInterpreter} from '#judge/no-one-shot-interpreter.ts'
-import {noRedundantCheck} from '#judge/no-redundant-check.ts'
 import {noReinventedHelper} from '#judge/no-reinvented-helper.ts'
 import {noRepeatedBlock} from '#judge/no-repeated-block.ts'
 import {noRepeatedFact} from '#judge/no-repeated-fact.ts'
-import {noRepeatedSearch} from '#judge/no-repeated-search.ts'
 import {noRepeatedTextAction} from '#judge/no-repeated-text-action.ts'
 import {noRestatingComment} from '#judge/no-restating-comment.ts'
 import {noRoundaboutComputation} from '#judge/no-roundabout-computation.ts'
@@ -83,7 +80,6 @@ const QUESTIONS = {
 	'no-dropped-content': noDroppedContent,
 	'no-hero-failure': noHeroFailure,
 	'no-hidden-side-effect': noHiddenSideEffect,
-	'no-imperative-accumulation': noImperativeAccumulation,
 	'no-impossible-state': noImpossibleState,
 	'no-internals-test': noInternalsTest,
 	'no-library-test': noLibraryTest,
@@ -91,11 +87,9 @@ const QUESTIONS = {
 	'no-misleading-name': noMisleadingName,
 	'no-multi-behavior-test': noMultiBehaviorTest,
 	'no-one-shot-interpreter': noOneShotInterpreter,
-	'no-redundant-check': noRedundantCheck,
 	'no-reinvented-helper': noReinventedHelper,
 	'no-repeated-block': noRepeatedBlock,
 	'no-repeated-fact': noRepeatedFact,
-	'no-repeated-search': noRepeatedSearch,
 	'no-repeated-text-action': noRepeatedTextAction,
 	'no-restating-comment': noRestatingComment,
 	'no-roundabout-computation': noRoundaboutComputation,

@@ -1,9 +1,9 @@
-import {Array, Option, pipe} from 'effect'
+import {Array, Option, Predicate, pipe} from 'effect'
 
 import {defineRule} from 'vite-plus/lint/plugins'
 import type {Context, ESTree, Fixer} from 'vite-plus/lint/plugins'
 
-import {effectImport, importedMember, memberName} from '#lib/ast.ts'
+import {containsNode, effectImport, importedMember, memberName} from '#lib/ast.ts'
 
 // The two halves a concatenation joins: `a + b`, or a template that is only `${a}${b}`.
 function halves(node: ESTree.Node) {
@@ -124,7 +124,75 @@ function capitalize(input: {context: Context; fixer: Fixer; node: ESTree.Node; t
 	)
 }
 
-// The compiler rejects a subtraction comparator, since an Order returns -1, 0 or 1; sums and extremes written with reduce stay with review.
+// `(total, item) => total + amount` with `amount` never reading `total`: one addition per item, which Number.sumAll makes from 0 in the same order.
+function summand(context: Context, callback: ESTree.Node) {
+	if (callback.type !== 'ArrowFunctionExpression' || callback.params.length !== 2) return Option.none()
+	const total = callback.params[0]
+	const item = callback.params[1]
+	const body = callback.body
+	if (total?.type !== 'Identifier' || item?.type !== 'Identifier') return Option.none()
+	if (body.type !== 'BinaryExpression' || body.operator !== '+') return Option.none()
+	const totalName = total.name
+	function isTotal(node: ESTree.Node) {
+		return node.type === 'Identifier' && node.name === totalName
+	}
+	return pipe(
+		body.right,
+		Option.liftPredicate(() => isTotal(body.left)),
+		Option.orElse(() => Option.liftPredicate(body.left, () => isTotal(body.right))),
+		Option.filter(
+			added =>
+				added.type !== 'Literal' && !containsNode({context, matches: isTotal, node: added, throughFunctions: true})
+		),
+		Option.map(added => ({amount: added, item: item.name}))
+	)
+}
+
+function sum(context: Context, node: ESTree.CallExpression) {
+	if (
+		node.callee.type === 'Super' ||
+		!importedMember({context, importedName: 'Array', node: node.callee, propertyName: 'reduce'})
+	) {
+		return
+	}
+	const message = 'Sum with Number.sumAll of the mapped amounts instead of adding them in a reduce from 0.'
+	if (node.arguments.length < 2 || node.arguments.length > 3) return
+	// The seed and the callback close both forms: `Array.reduce(items, 0, add)` and the curried `Array.reduce(0, add)`.
+	const seed = node.arguments[node.arguments.length - 2]
+	const callback = node.arguments[node.arguments.length - 1]
+	if (!isNumber(0, seed) || Predicate.isUndefined(callback)) return
+	Option.match(summand(context, callback), {
+		onNone: () => undefined,
+		onSome: found => {
+			const items = node.arguments[0]
+			// A curried step in a pipe has no one-step replacement, so only the data-first form is rewritten.
+			if (node.arguments.length === 2 || Predicate.isUndefined(items)) {
+				context.report({message, node})
+				return
+			}
+			context.report({
+				fix: fixer =>
+					pipe(
+						effectImport({context, fixer, name: 'Number', node}),
+						Option.map(imports =>
+							Array.append(
+								imports,
+								fixer.replaceText(
+									node,
+									`Number.sumAll(Array.map(${context.sourceCode.getText(items)}, ${found.item} => ${context.sourceCode.getText(found.amount)}))`
+								)
+							)
+						),
+						Option.getOrElse(() => [])
+					),
+				message,
+				node
+			})
+		}
+	})
+}
+
+// The compiler rejects a subtraction comparator, since an Order returns -1, 0 or 1; extremes written with reduce from a floor stay with review, since Array.max has no floor.
 export const noHandWrittenHelper = defineRule({
 	create: context => {
 		// `toUpperCase` of the first character joined to the rest of the same string; toLocaleUpperCase does more than String.capitalize.
@@ -155,7 +223,7 @@ export const noHandWrittenHelper = defineRule({
 				}
 			)
 		}
-		return {BinaryExpression: check, TemplateLiteral: check}
+		return {BinaryExpression: check, CallExpression: node => sum(context, node), TemplateLiteral: check}
 	},
 	meta: {fixable: 'code', type: 'problem'}
 })

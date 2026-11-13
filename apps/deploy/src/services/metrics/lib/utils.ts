@@ -239,8 +239,8 @@ function mean(bucket: readonly Sample[], read: (point: Sample, index: number) =>
 	)
 	if (Array.isReadonlyArrayEmpty(known)) return Option.none<number>()
 	return Option.some(
-		Array.reduce(known, 0, (sum, entry) => sum + entry.value * entry.weight) /
-			Array.reduce(known, 0, (sum, entry) => sum + entry.weight)
+		Number.sumAll(Array.map(known, entry => entry.value * entry.weight)) /
+			Number.sumAll(Array.map(known, entry => entry.weight))
 	)
 }
 
@@ -400,7 +400,7 @@ export function appShares(current: AppReading, previous: Option.Option<AppReadin
 		)
 	return pipe(
 		Record.toEntries(Array.groupBy(Record.toEntries(current.cgroups), entry => entry[1].id)),
-		Array.filter(entry => Array.reduce(entry[1], 0, (sum, cgroup) => sum + cgroup[1].memory) >= 1024 ** 2),
+		Array.filter(entry => Number.sumAll(Array.map(entry[1], cgroup => cgroup[1].memory)) >= 1024 ** 2),
 		Array.map(entry => {
 			const [id, cgroups] = entry
 			const deltas = Array.getSomes(
@@ -425,7 +425,7 @@ export function appShares(current: AppReading, previous: Option.Option<AppReadin
 						)
 				}),
 				id,
-				memory: Number.round(Array.reduce(cgroups, 0, (sum, cgroup) => sum + cgroup[1].memory) / 1024, 0) * 1024
+				memory: Number.round(Number.sumAll(Array.map(cgroups, cgroup => cgroup[1].memory)) / 1024, 0) * 1024
 			}
 		})
 	)
