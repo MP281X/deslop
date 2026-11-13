@@ -686,7 +686,8 @@ export function listApps(snapshot: Snapshot, input: InventoryQuery) {
 							...failureOf(row.item),
 							id: row.item.id,
 							name: JobName.make(workloadName(row.item)),
-							next: row.item.next
+							next: row.item.next,
+							running: row.item.running
 						}) satisfies Job
 				)
 			)

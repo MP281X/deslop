@@ -307,6 +307,7 @@ export const Job = Schema.Struct({
 	id: ItemId,
 	name: JobName,
 	next: Schema.OptionFromOptionalKey(Schema.DateTimeUtcFromString),
+	running: Schema.Boolean,
 	since: Schema.OptionFromOptionalKey(Schema.DateTimeUtcFromString)
 })
 

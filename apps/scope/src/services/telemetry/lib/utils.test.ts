@@ -4,7 +4,7 @@ import {Array, DateTime, Duration, Option, String} from 'effect'
 
 import {overviewOf} from '#services/telemetry/lib/utils.ts'
 import type {Traced} from '#services/telemetry/lib/utils.ts'
-import {AppName, TraceId} from '#services/telemetry/schema.ts'
+import {AppName, ServiceName, TraceId} from '#services/telemetry/schema.ts'
 
 const NOW = 1_781_870_000_000
 const HOUR = 3_600_000
@@ -32,12 +32,17 @@ const traces = [
 	traced(String.repeat(32)('d'), 'gateway', NOW - 2 * HOUR, 20)
 ]
 
+const retained = [
+	{ci: false, count: 3, failures: 0, service: ServiceName.make('stash')},
+	{ci: false, count: 1, failures: 0, service: ServiceName.make('gateway')}
+]
+
 function appOf(frame: ReturnType<typeof overviewOf>, name: string) {
 	return Option.getOrThrow(Array.findFirst(frame.apps, current => current.name === name))
 }
 
-it('counts each app’s operations only inside the page’s time frame and keeps every app tab', () => {
-	const hour = overviewOf(traces, DateTime.makeUnsafe(NOW), '1h')
+it('counts queried operations and keeps every retained app tab', () => {
+	const hour = overviewOf(Array.take(traces, 1), retained)
 	assert.deepStrictEqual(
 		Array.map(appOf(hour, 'stash').operations, operation => [
 			operation.name,
@@ -49,7 +54,7 @@ it('counts each app’s operations only inside the page’s time frame and keeps
 	assert.lengthOf(hour.apps, 2)
 	assert.lengthOf(appOf(hour, 'gateway').operations, 0)
 
-	const day = overviewOf(traces, DateTime.makeUnsafe(NOW), '24h')
+	const day = overviewOf(traces, retained)
 	assert.deepStrictEqual(
 		Array.map(appOf(day, 'stash').operations, operation => [
 			operation.name,
@@ -72,8 +77,7 @@ it('orders an app’s operations failing first, then most recently seen', () => 
 			{...traced(String.repeat(32)('c'), 'stash', NOW - 4 * HOUR, 10), name: 'new'},
 			{...traced(String.repeat(32)('d'), 'stash', NOW - 5 * 60_000, 10), name: 'new'}
 		],
-		DateTime.makeUnsafe(NOW),
-		'24h'
+		[{ci: false, count: 4, failures: 1, service: ServiceName.make('stash')}]
 	)
 	assert.deepStrictEqual(
 		Array.map(appOf(day, 'stash').operations, operation => operation.name),
@@ -91,7 +95,12 @@ it('keeps the newest failures among the slowest traces of an operation with 145,
 		failed: index % 100 === 0
 	}))
 	const operation = Option.getOrThrow(
-		Array.head(appOf(overviewOf(busy, DateTime.makeUnsafe(NOW), '3d'), 'stash').operations)
+		Array.head(
+			appOf(
+				overviewOf(busy, [{ci: false, count: 145_000, failures: 1450, service: ServiceName.make('stash')}]),
+				'stash'
+			).operations
+		)
 	)
 	assert.deepStrictEqual([operation.count, operation.failures], [145_000, 1450])
 	assert.deepStrictEqual(

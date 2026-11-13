@@ -24,15 +24,16 @@ import {
 
 import {Digest} from 'effect/crypto'
 import type {Headers} from 'effect/http'
+import {Reactivity} from 'effect/reactivity'
 import {RpcClient, RpcSerialization} from 'effect/rpc'
 
 import {Auth} from '@deslop/runtime/server/auth'
 import type {User} from '@deslop/runtime/shared/auth'
-import {UserId} from '@deslop/runtime/shared/auth'
+import {AuthError, UserId} from '@deslop/runtime/shared/auth'
 import {RpcStream, layerRpcStreamClient} from '@deslop/runtime/shared/rpc'
 import {RPC_PATH} from '@deslop/runtime/shared/schema'
 
-import {RpcContracts} from '#rpcs/contracts.ts'
+import {PeerRpcAuth, RpcContracts} from '#rpcs/contracts.ts'
 import type {ExposeRequest, HideRequest} from '#services/exposures/schema.ts'
 import {Exposures} from '#services/exposures/service.ts'
 import {DeployError, ItemId, Worker} from '#services/inventory/schema.ts'
@@ -58,14 +59,26 @@ export const layerPeerAuth = Layer.effectContext(
 		const expected = yield* Effect.transposeOption(
 			Option.map(yield* Config.option(Config.Redacted('DEPLOY_KEY')), key => hash(`Bearer ${Redacted.value(key)}`))
 		)
-		return Auth.makeContext(
-			Auth.of({
-				token: auth.token,
-				user: Effect.fnUntraced(function* (headers: Headers.Headers) {
-					if (Option.contains(expected, yield* hash(headers['authorization'] ?? ''))) return PEER
-					return yield* auth.user(headers)
+		function isPeer(headers: Headers.Headers) {
+			return Effect.map(hash(headers['authorization'] ?? ''), actual => Option.contains(expected, actual))
+		}
+		return Context.add(
+			Auth.makeContext(
+				Auth.of({
+					token: auth.token,
+					user: Effect.fnUntraced(function* (headers: Headers.Headers) {
+						if (yield* isPeer(headers)) return PEER
+						return yield* auth.user(headers)
+					})
 				})
-			})
+			),
+			PeerRpcAuth,
+			PeerRpcAuth.of((effect, request) =>
+				Effect.flatMap(isPeer(request.headers), allowed => {
+					if (allowed) return effect
+					return Effect.fail(AuthError.make({message: 'Only another Deploy worker may issue a local command'}))
+				})
+			)
 		)
 	})
 )
@@ -105,6 +118,7 @@ export class Fleet extends Context.Service<
 		this,
 		Effect.gen(function* () {
 			const inventory = yield* Inventory
+			const reactivity = yield* Reactivity.Reactivity
 			const localWorker = hostname()
 			const metrics = yield* Metrics
 			const lastMetrics = yield* Ref.make(HashMap.empty<readonly [WorkerId, Duration.Duration], MachineHistory>())
@@ -207,22 +221,32 @@ export class Fleet extends Context.Service<
 						})
 					]
 				}),
-				expose: Effect.fn('Fleet.expose')(function* (input) {
-					yield* Effect.annotateCurrentSpan({exposure: input.name, worker: input.worker})
-					if (input.worker === localWorker) {
-						return yield* exposures.expose(Struct.omit(input, ['worker']))
-					}
-					return yield* remote(yield* selectedWorker(input.worker), (client, headers) =>
-						client('exposures.expose', input, {headers})
-					)
-				}, asDeployError),
-				hide: Effect.fn('Fleet.hide')(function* (input) {
-					yield* Effect.annotateCurrentSpan({exposure: input.name, worker: input.worker})
-					if (input.worker === localWorker) return yield* exposures.hide(input.name)
-					return yield* remote(yield* selectedWorker(input.worker), (client, headers) =>
-						client('exposures.hide', input, {headers})
-					)
-				}, asDeployError),
+				expose: Effect.fn('Fleet.expose')(
+					function* (input) {
+						yield* Effect.annotateCurrentSpan({exposure: input.name, worker: input.worker})
+						if (input.worker === localWorker) {
+							return yield* Effect.tap(exposures.expose(Struct.omit(input, ['worker'])), () => inventory.refresh)
+						}
+						return yield* remote(yield* selectedWorker(input.worker), (client, headers) =>
+							client('exposures.apply', Struct.omit(input, ['worker']), {headers})
+						)
+					},
+					Effect.tap(() => reactivity.invalidate(['deployInventory'])),
+					asDeployError
+				),
+				hide: Effect.fn('Fleet.hide')(
+					function* (input) {
+						yield* Effect.annotateCurrentSpan({exposure: input.name, worker: input.worker})
+						if (input.worker === localWorker) {
+							return yield* Effect.tap(exposures.hide(input.name), () => inventory.refresh)
+						}
+						return yield* remote(yield* selectedWorker(input.worker), (client, headers) =>
+							client('exposures.remove', {name: input.name}, {headers})
+						)
+					},
+					Effect.tap(() => reactivity.invalidate(['deployInventory'])),
+					asDeployError
+				),
 				history: Effect.fn('Fleet.history')(function* (query) {
 					yield* Effect.annotateCurrentSpan('minutes', Duration.toMinutes(query.minutes))
 					return yield* metrics.read(query)
@@ -267,9 +291,10 @@ export class Fleet extends Context.Service<
 							return yield* inventory.run(Struct.omit(input, ['worker']))
 						}
 						return yield* remote(yield* selectedWorker(input.worker), (client, headers) =>
-							client('inventory.run', input, {headers})
+							client('inventory.start', Struct.omit(input, ['worker']), {headers})
 						)
 					},
+					Effect.tap(() => reactivity.invalidate(['deployInventory'])),
 					Effect.mapError(cause => {
 						if (Schema.is(DeployError)(cause)) return cause
 						return DeployError.make({cause, message: 'Worker could not start the job'})

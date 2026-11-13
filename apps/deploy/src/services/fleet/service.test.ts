@@ -21,6 +21,7 @@ import {
 } from 'effect'
 
 import {HttpRouter, HttpServer} from 'effect/http'
+import {Reactivity} from 'effect/reactivity'
 import {TestClock} from 'effect/testing'
 
 import {Auth} from '@deslop/runtime/server/auth'
@@ -65,6 +66,9 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeHttpClient.layerFetch, NodeCrypt
 					worker: 'worker'
 				})
 				const group = RpcContracts.omit(
+					'exposures.apply',
+					'exposures.remove',
+					'inventory.start',
 					'inventory.watch',
 					'metrics.watch',
 					'exposures.expose',
@@ -143,6 +147,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeHttpClient.layerFetch, NodeCrypt
 								),
 								Layer.provide(
 									Layer.succeed(Inventory, {
+										refresh: Effect.void,
 										run: () => Effect.fail(DeployError.make({message: 'read only'})),
 										snapshot: Effect.succeed(
 											yield* Schema.decodeEffect(Snapshot)({items: [], sources: [], time: 0, workers: []})
@@ -158,7 +163,8 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeHttpClient.layerFetch, NodeCrypt
 								),
 								Layer.provide(
 									ConfigProvider.layer(ConfigProvider.fromUnknown({DEPLOY_KEY: key, DEPLOY_WORKERS: `desktop=${url}`}))
-								)
+								),
+								Layer.provide(Reactivity.layer)
 							)
 						),
 						Fleet

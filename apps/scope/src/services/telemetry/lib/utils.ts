@@ -21,7 +21,6 @@ import {Model} from 'effect/schema'
 import {
 	AppName,
 	Nano,
-	rangeStart,
 	ReleaseVersion,
 	Runtime,
 	ServiceName,
@@ -40,7 +39,7 @@ import type {
 	Operation,
 	OperationTrace,
 	Overview,
-	Range,
+	RetainedService,
 	Resource,
 	SpanLink,
 	TraceTree,
@@ -610,10 +609,6 @@ export function traceTree(id: TraceId, spans: readonly Span[], logs: readonly Lo
 // A settled trace as the overview counts it; only the traces it keeps get their label and failure.
 export type Traced = {app: AppName; failed: boolean; name: string; runtime: Runtime; trace: OperationTrace}
 
-function failureCount(group: readonly Traced[]) {
-	return Array.countBy(group, item => item.failed)
-}
-
 function percentile(times: readonly Duration.Duration[], ratio: number) {
 	return pipe(
 		times,
@@ -675,7 +670,7 @@ function tracedOperations(group: readonly Traced[]) {
 				),
 				operation: {
 					count: operation.length,
-					failures: failureCount(operation),
+					failures: Array.countBy(operation, item => item.failed),
 					name: Array.headNonEmpty(operation).name,
 					p50Ms: latency.p50Ms,
 					p95Ms: latency.p95Ms,
@@ -696,29 +691,35 @@ function tracedOperations(group: readonly Traced[]) {
 }
 
 // Apps with failures lead, then the busiest; each app's operations count only the traces started in the page's time frame, so a quiet app keeps its tab with no rows.
-export function overviewOf(traces: readonly Traced[], now: DateTime.Utc, range: Range) {
-	const cutoff = rangeStart(range, now)
+export function overviewOf(traces: readonly Traced[], services: readonly RetainedService[]) {
+	const operations = pipe(
+		traces,
+		Array.groupBy(item => item.app),
+		Record.map(tracedOperations)
+	)
 	return {
 		apps: pipe(
-			Record.values(Array.groupBy(traces, item => item.app)),
-			Array.map(group => ({failures: failureCount(group), group})),
+			Record.values(Array.groupBy(services, item => appName(item.service))),
+			Array.map(group => ({
+				ci: Option.some(Array.every(group, item => item.ci)),
+				count: Number.sumAll(Array.map(group, item => item.count)),
+				failures: Number.sumAll(Array.map(group, item => item.failures)),
+				name: appName(Array.headNonEmpty(group).service)
+			})),
 			Array.sort(
 				pipe(
 					Order.flip(Order.Number),
-					Order.mapInput((app: {failures: number; group: readonly Traced[]}) => app.failures),
-					Order.combine(
-						Order.mapInput(
-							Order.flip(Order.Number),
-							(app: {failures: number; group: readonly Traced[]}) => app.group.length
-						)
-					)
+					Order.mapInput((app: {failures: number; count: number}) => app.failures),
+					Order.combine(Order.mapInput(Order.flip(Order.Number), (app: {failures: number; count: number}) => app.count))
 				)
 			),
 			Array.map(app => ({
-				ci: Option.some(Array.every(app.group, item => item.runtime === 'ci')),
-				name: Array.headNonEmpty(app.group).app,
-				operations: tracedOperations(
-					Array.filter(app.group, item => DateTime.isGreaterThanOrEqualTo(item.trace.start, cutoff))
+				ci: app.ci,
+				name: app.name,
+				operations: pipe(
+					operations,
+					Record.get(app.name),
+					Option.getOrElse(() => [])
 				)
 			}))
 		)

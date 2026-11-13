@@ -290,6 +290,15 @@ export const SettledTrace = Schema.Struct({
 	failed: Schema.BooleanFromBit
 })
 
+// App tabs count every retained settled trace, independently of the operations' time frame.
+export type RetainedService = typeof RetainedService.Type
+export const RetainedService = Schema.Struct({
+	ci: Schema.BooleanFromBit,
+	count: Schema.Int,
+	failures: Schema.Int,
+	service: Span.fields.service
+})
+
 // What a trace's row shows beyond its numbers: its label, and the name and messages of the span where it broke.
 export type TraceDetail = typeof TraceDetail.Type
 export const TraceDetail = Schema.Struct({

@@ -8,6 +8,8 @@
 
 ## Boundary facts
 
+- **App tabs.** App names, CI identity and failure-first order cover all retained settled traces. The selected time frame bounds operations only; a quiet app keeps its selectable tab with no operation rows.
+
 - **OTLP time.** Decimal epoch nanoseconds decode to an exact Duration, not an extended DateTime object. Ingestion derives UTC starts with the existing microsecond truncation and derives durations from exact nanoseconds. Sender metadata is normalized once per resource group, not per record. Stored start/time keep their existing fractional-millisecond encoding.
 - **OTLP correlation.** A missing or empty parent span id or log correlation id decodes to one None; the optional-key codec omits None. Log identities normalize either wire form to the same empty string before hashing.
 - **Error causes.** A cause is optional diagnostic metadata, not domain absence; nobody branches on it, so it stays Schema.optional(Defect).

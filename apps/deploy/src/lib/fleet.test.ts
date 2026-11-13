@@ -50,7 +50,8 @@ const fixture = Effect.gen(function* () {
 		)
 	}
 	const inventory = yield* Queue.unbounded<Effect.Effect<Snapshot, DeployError>>()
-	const handlers = RpcContracts.toLayer({
+	const group = RpcContracts.omit('exposures.apply', 'exposures.remove', 'inventory.start')
+	const handlers = group.toLayer({
 		'exposures.expose': () => Effect.succeed(''),
 		'exposures.hide': () => Effect.void,
 		'inventory.run': () => Effect.void,
@@ -86,7 +87,7 @@ const fixture = Effect.gen(function* () {
 			HttpRouter.serve(
 				Layer.provide(
 					Layer.mergeAll(
-						layerRpc({group: RpcContracts, handlers}),
+						layerRpc({group, handlers}),
 						HttpRouter.add(
 							'GET',
 							'/api/runtime',

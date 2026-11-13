@@ -50,6 +50,12 @@ import {
 } from '#services/inventory/schema.ts'
 import type {RunRequest, UnitId, Snapshot} from '#services/inventory/schema.ts'
 
+declare module 'effect/reactivity/Reactivity' {
+	interface Keys {
+		readonly deployInventory: never
+	}
+}
+
 // Each listener with its unit, the app a Node listener's working directory names, and whether it answers HTTP; `unit` and `cwd` read a PID the platform's way.
 function portItems(
 	sockets: readonly Socket[],
@@ -161,6 +167,7 @@ function collect<E extends {readonly message: string}, R>(name: string, effect: 
 export class Inventory extends Context.Service<
 	Inventory,
 	{
+		readonly refresh: Effect.Effect<void>
 		readonly run: (input: Omit<RunRequest, 'worker'>) => Effect.Effect<void, DeployError>
 		readonly snapshot: Effect.Effect<Snapshot>
 	}
@@ -458,147 +465,152 @@ export class Inventory extends Context.Service<
 					]
 				}
 			})
-			const service = Inventory.of({
-				// Only a service a timer starts, so the page can't start arbitrary units; system ones go through the workers' passwordless sudo. A Mac's launch agents are apps, never timer jobs.
-				run: Effect.fn('Inventory.run')(
-					function* (input) {
-						yield* Effect.annotateCurrentSpan({job: input.name, scope: input.scope})
-						if (platform === 'darwin') {
-							return yield* DeployError.make({message: `${input.name} is not started by a timer`})
-						}
-						const timers = yield* Effect.flatMap(
-							command('systemctl', [
-								...Boolean.match(input.scope === 'system', {onFalse: () => ['--user'], onTrue: () => []}),
-								'list-timers',
-								'--all',
-								'--output=json',
-								'--no-pager'
-							]),
-							Schema.decodeUnknownEffect(Schema.fromJsonString(Schema.Array(Timer)))
-						)
-						if (!Array.some(timers, timer => Option.contains(timer.activates, input.name))) {
-							return yield* DeployError.make({message: `${input.name} is not started by a timer`})
-						}
-						yield* Boolean.match(input.scope === 'system', {
-							onFalse: () => command('systemctl', ['--user', 'start', '--no-block', input.name]),
-							onTrue: () => command('sudo', ['-n', 'systemctl', 'start', '--no-block', input.name])
-						})
-					},
-					Effect.scoped,
-					Effect.mapError(cause => {
-						if (Schema.is(DeployError)(cause)) return cause
-						return DeployError.make({cause, message: 'Cannot start the job'})
+			// Only a service a timer starts, so the page can't start arbitrary units; system ones go through the workers' passwordless sudo. A Mac's launch agents are apps, never timer jobs.
+			const start = Effect.fnUntraced(
+				function* (input: Omit<RunRequest, 'worker'>) {
+					yield* Effect.annotateCurrentSpan({job: input.name, scope: input.scope})
+					if (platform === 'darwin') {
+						return yield* DeployError.make({message: `${input.name} is not started by a timer`})
+					}
+					const timers = yield* Effect.flatMap(
+						command('systemctl', [
+							...Boolean.match(input.scope === 'system', {onFalse: () => ['--user'], onTrue: () => []}),
+							'list-timers',
+							'--all',
+							'--output=json',
+							'--no-pager'
+						]),
+						Schema.decodeUnknownEffect(Schema.fromJsonString(Schema.Array(Timer)))
+					)
+					if (!Array.some(timers, timer => Option.contains(timer.activates, input.name))) {
+						return yield* DeployError.make({message: `${input.name} is not started by a timer`})
+					}
+					yield* Boolean.match(input.scope === 'system', {
+						onFalse: () => command('systemctl', ['--user', 'start', '--no-block', input.name]),
+						onTrue: () => command('sudo', ['-n', 'systemctl', 'start', '--no-block', input.name])
 					})
-				),
-				snapshot: Effect.withSpan(
-					Effect.scoped(
-						Effect.gen(function* () {
-							const machine = yield* Boolean.match(platform === 'darwin', {onFalse: () => linux, onTrue: () => darwin})
-							const sources = yield* Effect.all(
-								[
-									...machine.sources,
-									collect(
-										'Tailnet',
-										pipe(
-											command('tailscale', ['status', '--json']),
-											Effect.flatMap(Schema.decodeEffect(Schema.fromJsonString(Tailnet))),
-											Effect.map(status =>
-												Array.map(Option.toArray(status.Self), peer =>
+				},
+				Effect.scoped,
+				Effect.mapError(cause => {
+					if (Schema.is(DeployError)(cause)) return cause
+					return DeployError.make({cause, message: 'Cannot start the job'})
+				})
+			)
+			const collectSnapshot = Effect.withSpan(
+				Effect.scoped(
+					Effect.gen(function* () {
+						const machine = yield* Boolean.match(platform === 'darwin', {onFalse: () => linux, onTrue: () => darwin})
+						const sources = yield* Effect.all(
+							[
+								...machine.sources,
+								collect(
+									'Tailnet',
+									pipe(
+										command('tailscale', ['status', '--json']),
+										Effect.flatMap(Schema.decodeEffect(Schema.fromJsonString(Tailnet))),
+										Effect.map(status =>
+											Array.map(Option.toArray(status.Self), peer =>
+												InventoryItem.make({
+													detail: `${peer.OS} · ${Array.join(peer.TailscaleIPs, ', ')}`,
+													hostname: Option.some(String.replace(/\.$/u, '')(peer.DNSName)),
+													id: ItemId.make(`${worker}:peer:${peer.DNSName}`),
+													kind: 'peer',
+													name: peer.HostName,
+													self: Option.some(true),
+													state: Boolean.match(peer.Online, {onFalse: () => 'offline', onTrue: () => 'online'}),
+													url: Option.none(),
+													worker
+												})
+											)
+										)
+									)
+								),
+								collect(
+									'Tailscale Serve',
+									pipe(
+										command('tailscale', ['serve', 'status', '--json']),
+										Effect.flatMap(Schema.decodeEffect(Schema.fromJsonString(Serve))),
+										Effect.map(status =>
+											Array.flatMap(Record.toEntries(Option.getOrElse(status.Web, () => ({}))), site =>
+												Array.map(Record.toEntries(site[1].Handlers), handler =>
 													InventoryItem.make({
-														detail: `${peer.OS} · ${Array.join(peer.TailscaleIPs, ', ')}`,
-														hostname: Option.some(String.replace(/\.$/u, '')(peer.DNSName)),
-														id: ItemId.make(`${worker}:peer:${peer.DNSName}`),
-														kind: 'peer',
-														name: peer.HostName,
-														self: Option.some(true),
-														state: Boolean.match(peer.Online, {onFalse: () => 'offline', onTrue: () => 'online'}),
-														url: Option.none(),
+														detail: `${pipe(
+															status.AllowFunnel,
+															Option.exists(permissions => permissions[site[0]] === true),
+															Boolean.match({onFalse: () => 'tailnet', onTrue: () => 'Funnel permitted (public)'})
+														)} → ${Option.getOrElse(handler[1].Proxy, () => 'non-proxy handler')}`,
+														health: pipe(
+															status.AllowFunnel,
+															Option.exists(permissions => permissions[site[0]] === true),
+															Boolean.match({onFalse: () => 'quiet' as const, onTrue: () => 'warning' as const})
+														),
+														id: ItemId.make(`${worker}:tailscale:${site[0]}:${handler[0]}`),
+														kind: 'exposure',
+														name: ExposureName.make(`${site[0]}${handler[0]}`),
+														owned: Option.some(false),
+														port: pipe(
+															handler[1].Proxy,
+															Option.flatMap(String.match(/^http:\/\/(?:127\.0\.0\.1|localhost):([0-9]+)/u)),
+															Option.flatMap(match => Number.parse(match[1] ?? ''))
+														),
+														publicAccess: Option.some(
+															Option.exists(status.AllowFunnel, permissions => permissions[site[0]] === true)
+														),
+														state: 'observed',
+														url: Option.some(`https://${site[0]}${handler[0]}`),
 														worker
 													})
 												)
 											)
 										)
-									),
-									collect(
-										'Tailscale Serve',
-										pipe(
-											command('tailscale', ['serve', 'status', '--json']),
-											Effect.flatMap(Schema.decodeEffect(Schema.fromJsonString(Serve))),
-											Effect.map(status =>
-												Array.flatMap(Record.toEntries(Option.getOrElse(status.Web, () => ({}))), site =>
-													Array.map(Record.toEntries(site[1].Handlers), handler =>
-														InventoryItem.make({
-															detail: `${pipe(
-																status.AllowFunnel,
-																Option.exists(permissions => permissions[site[0]] === true),
-																Boolean.match({onFalse: () => 'tailnet', onTrue: () => 'Funnel permitted (public)'})
-															)} → ${Option.getOrElse(handler[1].Proxy, () => 'non-proxy handler')}`,
-															health: pipe(
-																status.AllowFunnel,
-																Option.exists(permissions => permissions[site[0]] === true),
-																Boolean.match({onFalse: () => 'quiet' as const, onTrue: () => 'warning' as const})
-															),
-															id: ItemId.make(`${worker}:tailscale:${site[0]}:${handler[0]}`),
-															kind: 'exposure',
-															name: ExposureName.make(`${site[0]}${handler[0]}`),
-															owned: Option.some(false),
-															port: pipe(
-																handler[1].Proxy,
-																Option.flatMap(String.match(/^http:\/\/(?:127\.0\.0\.1|localhost):([0-9]+)/u)),
-																Option.flatMap(match => Number.parse(match[1] ?? ''))
-															),
-															publicAccess: Option.some(
-																Option.exists(status.AllowFunnel, permissions => permissions[site[0]] === true)
-															),
-															state: 'observed',
-															url: Option.some(`https://${site[0]}${handler[0]}`),
-															worker
-														})
-													)
-												)
-											)
-										)
 									)
-								],
-								{concurrency: 'unbounded'}
-							)
-							const collected = yield* pipe(
-								machine.processes,
-								Effect.flatMap(current =>
-									Ref.modify(processState, previous => {
-										const next = processReadings(current, previous)
-										return [next.readings, Option.some(next)]
-									})
-								),
-								Effect.timeout(Duration.seconds(3)),
-								Effect.match({
-									onFailure: cause => ({error: Option.some(cause.message), records: []}),
-									onSuccess: records => ({error: Option.none<string>(), records})
+								)
+							],
+							{concurrency: 'unbounded'}
+						)
+						const collected = yield* pipe(
+							machine.processes,
+							Effect.flatMap(current =>
+								Ref.modify(processState, previous => {
+									const next = processReadings(current, previous)
+									return [next.readings, Option.some(next)]
 								})
-							)
-							return {
-								items: attachProcesses(
-									Array.flatMap(sources, source => source.items),
-									collected.records
-								),
-								sources: [...Array.map(sources, source => source.source), {error: collected.error, name: 'Processes'}],
-								time: yield* DateTime.now,
-								workers: [worker]
-							} satisfies Snapshot
-						})
-					),
-					'Inventory.snapshot',
-					{attributes: {worker}}
-				)
-			})
-			const snapshot = yield* SubscriptionRef.make(yield* service.snapshot)
-			yield* pipe(
-				service.snapshot,
-				Effect.flatMap(value => SubscriptionRef.set(snapshot, value)),
-				Effect.schedule(Schedule.spaced(Duration.seconds(5))),
-				Effect.forkScoped
+							),
+							Effect.timeout(Duration.seconds(3)),
+							Effect.match({
+								onFailure: cause => ({error: Option.some(cause.message), records: []}),
+								onSuccess: records => ({error: Option.none<string>(), records})
+							})
+						)
+						return {
+							items: attachProcesses(
+								Array.flatMap(sources, source => source.items),
+								collected.records
+							),
+							sources: [...Array.map(sources, source => source.source), {error: collected.error, name: 'Processes'}],
+							time: yield* DateTime.now,
+							workers: [worker]
+						} satisfies Snapshot
+					})
+				),
+				'Inventory.snapshot',
+				{attributes: {worker}}
 			)
-			return {...service, snapshot: SubscriptionRef.get(snapshot)}
+			const snapshot = yield* SubscriptionRef.make(yield* collectSnapshot)
+			const refresh = pipe(
+				snapshot,
+				SubscriptionRef.updateEffect(() => collectSnapshot),
+				Effect.withSpan('Inventory.refresh')
+			)
+			yield* pipe(refresh, Effect.schedule(Schedule.spaced(Duration.seconds(5))), Effect.forkScoped)
+			return {
+				refresh,
+				run: Effect.fn('Inventory.run')(function* (input) {
+					yield* start(input)
+					yield* refresh
+				}),
+				snapshot: SubscriptionRef.get(snapshot)
+			}
 		})
 	)
 }

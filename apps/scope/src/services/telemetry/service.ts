@@ -82,6 +82,7 @@ import {
 	rangeStart,
 	Release,
 	Resource,
+	RetainedService,
 	ServiceRun,
 	SettledTrace,
 	Span,
@@ -520,6 +521,17 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 				AND (traces.rooted OR traces.start < ${query.settledBefore})
 			`
 		})
+		const listRetainedServices = SqlSchema.findAll({
+			Request: Span.fields.start,
+			Result: RetainedService,
+			execute: settledBefore => sql`
+				SELECT root.service, min(root.runtime = 'ci') AS ci, count(*) AS count,
+					sum(traces.broken IS NOT NULL) AS failures
+				${traceJoins}
+				WHERE NOT traces.waits AND (traces.rooted OR traces.start < ${settledBefore})
+				GROUP BY root.service
+			`
+		})
 		// The label and failure of the traces the overview keeps, read for them alone.
 		const listDetails = SqlSchema.findAll({
 			Request: Schema.Array(TraceId),
@@ -688,16 +700,10 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 		// The overview as of now, counted over every settled trace; a trace whose root never came joins it a minute after it started.
 		const readOverview = Effect.fnUntraced(function* (range: Range) {
 			const now = yield* DateTime.now
+			const settledBefore = DateTime.subtractDuration(now, Duration.minutes(1))
 			const counted = overviewOf(
-				Array.map(
-					yield* listSettled({
-						cutoff: rangeStart(range, now),
-						settledBefore: DateTime.subtractDuration(now, Duration.minutes(1))
-					}),
-					tracedOf
-				),
-				now,
-				range
+				Array.map(yield* listSettled({cutoff: rangeStart(range, now), settledBefore}), tracedOf),
+				yield* listRetainedServices(settledBefore)
 			)
 			return detailed(
 				counted,
