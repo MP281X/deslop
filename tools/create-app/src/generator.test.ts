@@ -68,11 +68,11 @@ const compareStructure = Effect.fnUntraced(function* (root: string, target: stri
 			file
 		)
 	}
+	// Byte for byte and without the slug rename, which would rewrite "development": a build profile no real app has fails here.
 	if (kind === 'mobile') {
-		const eas = Schema.fromJsonString(Schema.Struct({build: Schema.Unknown, cli: Schema.Unknown}))
-		assert.deepStrictEqual(
-			yield* Schema.decodeEffect(eas)(yield* fs.readFileString(path.join(target, 'eas.json'))),
-			yield* Schema.decodeEffect(eas)(yield* fs.readFileString(path.join(donor, 'eas.json')))
+		assert.strictEqual(
+			yield* fs.readFileString(path.join(target, 'eas.json')),
+			yield* fs.readFileString(path.join(donor, 'eas.json'))
 		)
 	}
 	assert.isTrue(yield* fs.exists(path.join(target, 'README.md')))

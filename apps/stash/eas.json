@@ -1,7 +1,7 @@
 {
 	"cli": {"version": ">= 18.4.0", "appVersionSource": "local", "promptToConfigurePushNotifications": false},
 	"build": {
-		"base": {"node": "26.13.0", "pnpm": "12.16.1", "ios": {"image": "macos-tahoe-26.6-xcode-27.1"}},
+		"base": {"pnpm": "12.16.1"},
 		"simulator": {
 			"extends": "base",
 			"environment": "development",
@@ -16,6 +16,5 @@
 			"channel": "production",
 			"env": {"APP_VARIANT": "production"}
 		}
-	},
-	"submit": {"production": {"ios": {"ascAppId": "6821336145"}}}
+	}
 }
