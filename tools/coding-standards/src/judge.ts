@@ -358,16 +358,19 @@ function verdictOf(input: {
 					)
 			})
 		),
-		// A call left out before sending is reported by the preflight, with its size.
-		unanswered: Array.flatMap(read, found => {
-			if (Option.isSome(found.score) || !HashSet.has(input.sent, found.entry.key)) return []
-			return [
-				{
-					reason: 'Gateway or Jev gave no answer the judge could read',
-					where: `${found.entry.where} ${found.named.name}`
-				}
-			]
-		})
+		// An example left unanswered leaves its question uncalibrated, like a subject left unanswered; a call left out before sending is reported by the preflight, with its size.
+		unanswered: Array.flatMap(
+			[
+				...Array.map(read, found => ({key: found.entry.key, name: found.named.name, where: found.entry.where})),
+				...Array.flatMap(input.examples, example =>
+					Array.map(example.questions, named => ({key: example.key, name: named.name, where: example.where}))
+				)
+			],
+			(found: {key: string; name: string; where: string}) => {
+				if (Option.isSome(scoreOf(found.key, found.name)) || !HashSet.has(input.sent, found.key)) return []
+				return [{reason: 'Gateway or Jev gave no answer the judge could read', where: `${found.where} ${found.name}`}]
+			}
+		)
 	}
 }
 
@@ -508,7 +511,7 @@ export const judge = Effect.fnUntraced(function* (
 	const lineAsked = Array.flatten(
 		yield* pipe(
 			found.files,
-			Array.filter(file => matches(/\.tsx?$/u)(file.path) && file.status !== 'D' && !file.binary),
+			Array.filter(file => matches(/\.tsx?$/u)(file.path) && file.status !== 'D' && !file.binary && !file.garbled),
 			Effect.forEach(
 				file =>
 					Effect.gen(function* () {
@@ -544,7 +547,7 @@ export const judge = Effect.fnUntraced(function* (
 					Option.filter(old => old !== file.path),
 					Option.match({onNone: () => '', onSome: old => ` (from ${old})`})
 				)
-				return `${file.status} ${file.path}${moved}${Boolean.match(file.binary, {onFalse: () => '', onTrue: () => ' (binary)'})}`
+				return `${file.status} ${file.path}${moved}${Boolean.match(file.binary || file.garbled, {onFalse: () => '', onTrue: () => ' (not text)'})}`
 			}),
 			'',
 			...Array.map(found.files, file => file.text)

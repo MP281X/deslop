@@ -110,7 +110,8 @@ function functionSource(name: string, suffix: string) {
 	]
 }
 
-const fixture = Effect.fnUntraced(function* (misjudged: string) {
+// A Gateway whose Jev answers as `score` says, and answers no example at all unless `answersExamples`.
+const fixture = Effect.fnUntraced(function* (misjudged: string, answersExamples: boolean = true) {
 	const fs = yield* FileSystem.FileSystem
 	const path = yield* Path.Path
 	const calls = yield* Ref.make(Array.empty<Asked>())
@@ -124,8 +125,14 @@ const fixture = Effect.fnUntraced(function* (misjudged: string) {
 						Effect.gen(function* () {
 							const asked = yield* HttpServerRequest.schemaBodyJson(Asked)
 							yield* Ref.update(calls, made => [...made, asked])
-							const answers = Record.toEntries(
-								Record.map(asked.questions, (_, name) => ({noul: score(name, asked.state, misjudged)}))
+							const example = Array.some(Record.values(EXAMPLES), question =>
+								Array.some([question.yes.example, question.no.example], found => isExample(asked.state, found))
+							)
+							const answers = Array.filter(
+								Record.toEntries(
+									Record.map(asked.questions, (_, name) => ({noul: score(name, asked.state, misjudged)}))
+								),
+								() => answersExamples || !example
 							)
 							return yield* HttpServerResponse.json({
 								answers: Record.fromEntries(
@@ -411,6 +418,39 @@ describe('coding-standards judge', () => {
 		)
 
 		test.effect(
+			'shows a caller outside the change as its whole call, arguments included',
+			Effect.fnUntraced(function* () {
+				const f = yield* fixture('')
+				const result = yield* f.judge(
+					yield* f.checkout(
+						{'src/label.ts': ['export function renderLabel(name: string) {', '\treturn name', '}']},
+						'Drop the stale option from `renderLabel`',
+						{
+							'src/label.ts': [
+								'export function renderLabel(name: string, options: {stale: boolean}) {',
+								'\treturn options.stale ? name : name',
+								'}'
+							],
+							'src/page.ts': [
+								"import {renderLabel} from './label.ts'",
+								'export const shown = renderLabel(',
+								"\t'a',",
+								'\t{stale: true}',
+								')'
+							]
+						}
+					)
+				)
+				assert.deepStrictEqual(
+					Array.flatMap(changeLevel(result.asked), call => Option.toArray(Record.get(call.state, 'context'))),
+					[
+						"`renderLabel`, outside the change:\nsrc/page.ts:1: import {renderLabel} from './label.ts'\nsrc/page.ts:2-5:\nexport const shown = renderLabel(\n\t'a',\n\t{stale: true}\n)"
+					]
+				)
+			}, Effect.scoped)
+		)
+
+		test.effect(
 			'fails on a change too large for one call without sending it, and on a run past its limit before any call',
 			Effect.fnUntraced(function* () {
 				const f = yield* fixture('')
@@ -515,6 +555,80 @@ describe('coding-standards judge', () => {
 		)
 
 		test.effect(
+			'looks for a recording or still only in what the body renders, never in a comment or a fence',
+			Effect.fnUntraced(function* () {
+				const f = yield* fixture('')
+				const result = yield* f.judge(
+					yield* f.checkout(
+						{'src/text.ts': ["import {Array, String} from 'effect'", '', ...functionSource('first', 'e')]},
+						Array.join(
+							[
+								'Add the text helper',
+								'',
+								'The helper keeps every Unproven tag.',
+								'',
+								'<!-- ![Logo](https://example.com/logo.png) -->',
+								'',
+								'```',
+								'![Logo](https://example.com/logo.png)',
+								'```'
+							],
+							'\n'
+						)
+					)
+				)
+				assert.deepStrictEqual(
+					{
+						exitCode: result.exitCode,
+						findings: Array.countBy(result.printed, matches(/^commit [0-9a-f]+:3 no-unproven-claim .* 0\.95$/u)),
+						shown: under(result.printed, 'Shown in a recording').length
+					},
+					{exitCode: ChildProcessSpawner.ExitCode(1), findings: 1, shown: 0}
+				)
+			}, Effect.scoped)
+		)
+
+		test.effect(
+			'takes no admission from a fenced example, so a claim after it is still asked',
+			Effect.fnUntraced(function* () {
+				const f = yield* fixture('')
+				const result = yield* f.judge(
+					yield* f.checkout(
+						{'src/text.ts': ["import {Array, String} from 'effect'", '', ...functionSource('first', 'f')]},
+						Array.join(
+							['Add the text helper', '', '```md', '## Not proven', '```', '', 'The helper keeps every Unproven tag.'],
+							'\n'
+						)
+					)
+				)
+				assert.deepStrictEqual(
+					{
+						exitCode: result.exitCode,
+						findings: Array.countBy(result.printed, matches(/^commit [0-9a-f]+:7 no-unproven-claim .* 0\.95$/u))
+					},
+					{exitCode: ChildProcessSpawner.ExitCode(1), findings: 1}
+				)
+			}, Effect.scoped)
+		)
+
+		test.effect(
+			'fails as could not read on an empty Mermaid block',
+			Effect.fnUntraced(function* () {
+				const f = yield* fixture('')
+				const result = yield* f.judge(
+					yield* f.checkout({'notes.md': ['# Notes']}, 'Notes work offline\n\n```mermaid\n```')
+				)
+				assert.deepStrictEqual(
+					{
+						exitCode: result.exitCode,
+						unread: Array.map(under(result.printed, 'Could not read'), String.replace(/^commit [0-9a-f]+/u, 'commit'))
+					},
+					{exitCode: ChildProcessSpawner.ExitCode(1), unread: ['commit:3: a Mermaid block with no After lane']}
+				)
+			}, Effect.scoped)
+		)
+
+		test.effect(
 			'excludes and lists a binary file without failing, and tells two binary replacements apart',
 			Effect.fnUntraced(function* () {
 				const f = yield* fixture('')
@@ -537,6 +651,56 @@ describe('coding-standards judge', () => {
 						second: ['icon.png: binary'],
 						secondAsked: 2,
 						summary: true
+					}
+				)
+			}, Effect.scoped)
+		)
+
+		test.effect(
+			'reads a file the change marks binary as text, and fails on a code file whose content is not text',
+			Effect.fnUntraced(function* () {
+				const f = yield* fixture('')
+				const marked = yield* f.judge(
+					yield* f.checkout(
+						{
+							'.gitattributes': ['victim.tsx -diff'],
+							'victim.tsx': ["import {useState} from 'react'", '', ...componentSource('Flagged')]
+						},
+						'Add the victim'
+					)
+				)
+				const nul = yield* f.judge(
+					yield* f.checkout(
+						{'src/text.ts': ["import {Array, String} from 'effect'", '\u0000', ...functionSource('first', 'a')]},
+						'Add the text helper'
+					)
+				)
+				assert.deepStrictEqual(
+					{
+						marked: {
+							excluded: under(marked.printed, 'Excluded:'),
+							exitCode: marked.exitCode,
+							findings: marked.findings
+						},
+						nul: {
+							excluded: under(nul.printed, 'Excluded:'),
+							exitCode: nul.exitCode,
+							lineLevel: lineLevel(nul.asked).length,
+							unread: under(nul.printed, 'Could not read')
+						}
+					},
+					{
+						marked: {
+							excluded: [],
+							exitCode: ChildProcessSpawner.ExitCode(1),
+							findings: ['victim.tsx:3-10 no-self-fetching-component 0.95']
+						},
+						nul: {
+							excluded: [],
+							exitCode: ChildProcessSpawner.ExitCode(1),
+							lineLevel: 0,
+							unread: ['src/text.ts: a file of a kind the judge reads, whose content is not text']
+						}
 					}
 				)
 			}, Effect.scoped)
@@ -827,6 +991,32 @@ describe('coding-standards judge', () => {
 					}
 				)
 				assert.strictEqual((yield* f.judge(directory)).calls, 3)
+			}, Effect.scoped)
+		)
+
+		test.effect(
+			'fails as could not read when only the examples go unanswered',
+			Effect.fnUntraced(function* () {
+				const f = yield* fixture('', false)
+				const result = yield* f.judge(
+					yield* f.checkout(
+						{'src/text.ts': ["import {Array, String} from 'effect'", '', ...functionSource('first', 'a')]},
+						'Add the text helper'
+					)
+				)
+				const unread = under(result.printed, 'Could not read')
+				assert.deepStrictEqual(
+					{
+						examples: Array.countBy(
+							unread,
+							matches(/^(?:yes|no) example no-[\w-]+: Gateway or Jev gave no answer the judge could read$/u)
+						),
+						exitCode: result.exitCode,
+						findings: result.findings.length,
+						unread: unread.length
+					},
+					{examples: EXAMPLE_CALLS, exitCode: ChildProcessSpawner.ExitCode(1), findings: 0, unread: EXAMPLE_CALLS}
+				)
 			}, Effect.scoped)
 		)
 

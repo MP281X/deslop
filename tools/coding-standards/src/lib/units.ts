@@ -1,4 +1,4 @@
-import {Array, Boolean, HashSet, Option, Predicate, Record, String, pipe} from 'effect'
+import {Array, Boolean, HashSet, Number, Option, Order, Predicate, Record, String, pipe} from 'effect'
 
 import type {ImportDeclaration, ImportDeclarationSpecifier} from 'oxc-parser'
 import {parseSync, visitorKeys} from 'oxc-parser'
@@ -11,6 +11,25 @@ const MAX_LINES = 150
 const FUNCTIONS = ['ArrowFunctionExpression', 'FunctionDeclaration', 'FunctionExpression']
 
 const IGNORE = /judge-ignore (\S+) -- (\S.*)$/u
+// The statements and declarations a use of a name is shown in whole; past 40 lines, the call or `new` around it instead.
+const STATEMENTS = [
+	'ClassDeclaration',
+	'ExportDefaultDeclaration',
+	'ExpressionStatement',
+	'FunctionDeclaration',
+	'ImportDeclaration',
+	'JSXAttribute',
+	'MethodDefinition',
+	'Property',
+	'PropertyDefinition',
+	'ReturnStatement',
+	'TSEnumDeclaration',
+	'TSInterfaceDeclaration',
+	'TSPropertySignature',
+	'TSTypeAliasDeclaration',
+	'VariableDeclaration'
+]
+const CALLS = ['CallExpression', 'NewExpression']
 
 // A unit with only the imports it uses, so an import added for another unit asks nothing again; `names` are the imported bindings it uses, its text opens with the comments right above it, and `ignores` maps each question its `judge-ignore` comments opt out of to the reason given.
 export type Unit = {
@@ -95,6 +114,86 @@ function identifiers(node: Node): string[] {
 	]
 }
 
+// The offset each line of a source starts at.
+function lineStarts(source: string) {
+	return pipe(
+		source,
+		String.split('\n'),
+		Array.scan(0, (offset, line) => offset + line.length + 1)
+	)
+}
+
+// The 1-based line an offset falls on.
+function lineAt(starts: readonly number[], offset: number) {
+	return (
+		pipe(
+			starts,
+			Array.findLastIndex(start => start <= offset),
+			Option.getOrElse(() => 0)
+		) + 1
+	)
+}
+
+// Each use of `name` on one of `lines`, widened to the statement or declaration that holds it, or the call around it when that is long: whole expressions, so a caller's arguments come with its callee. A line that names it only in a comment or string stays one line; spans inside another are dropped.
+export function around(filename: string, source: string, name: string, lines: readonly number[]) {
+	const starts = lineStarts(source)
+	const wanted = HashSet.fromIterable(lines)
+	function visit(node: Node, ancestors: readonly Node[]): {line: number; node: Node}[] {
+		const line = lineAt(starts, node.start)
+		const held = Boolean.match(
+			Option.exists(field(node, 'name'), found => found === name) &&
+				matches(/Identifier$/u)(node.type) &&
+				HashSet.has(wanted, line),
+			{
+				onFalse: () => [],
+				onTrue: () => [
+					{
+						line,
+						node: pipe(
+							Array.findLast(ancestors, ancestor => Array.contains(STATEMENTS, ancestor.type)),
+							Option.filter(found => lineAt(starts, found.end) - lineAt(starts, found.start) < 40),
+							Option.orElse(() => Array.findLast(ancestors, ancestor => Array.contains(CALLS, ancestor.type))),
+							Option.getOrElse(() => node)
+						)
+					}
+				]
+			}
+		)
+		return [...held, ...Array.flatMap(childrenOf(node), child => visit(child, [...ancestors, node]))]
+	}
+	const found = visit(parseSync(filename, source).program, [])
+	const used = HashSet.fromIterable(Array.map(found, entry => entry.line))
+	const spans = Array.dedupeWith(
+		[
+			...Array.map(found, entry => ({end: lineAt(starts, entry.node.end), start: lineAt(starts, entry.node.start)})),
+			...pipe(
+				lines,
+				Array.filter(line => !HashSet.has(used, line)),
+				Array.map(line => ({end: line, start: line}))
+			)
+		],
+		(first: {end: number; start: number}, second: {end: number; start: number}) =>
+			first.start === second.start && first.end === second.end
+	)
+	return pipe(
+		spans,
+		Array.filter(
+			span => !Array.some(spans, other => other !== span && other.start <= span.start && other.end >= span.end)
+		),
+		Array.sort(Order.mapInput(Number.Order, (span: {start: number}) => span.start)),
+		Array.map(span => ({
+			end: span.end,
+			start: span.start,
+			text: pipe(
+				String.split(source, '\n'),
+				Array.drop(span.start - 1),
+				Array.take(span.end - span.start + 1),
+				Array.join('\n')
+			)
+		}))
+	)
+}
+
 // Each imported binding of a file and its import line, so a unit's imports can be compared with the file's before the change.
 export function importLines(filename: string, source: string) {
 	return Record.fromEntries(
@@ -113,15 +212,9 @@ export function units(filename: string, source: string) {
 	const parsed = parseSync(filename, source)
 	const imported = importLines(filename, source)
 	const lines = String.split(source, '\n')
-	const starts = Array.scan(lines, 0, (offset, line) => offset + line.length + 1)
+	const starts = lineStarts(source)
 	function lineOf(offset: number) {
-		return (
-			pipe(
-				starts,
-				Array.findLastIndex(start => start <= offset),
-				Option.getOrElse(() => 0)
-			) + 1
-		)
+		return lineAt(starts, offset)
 	}
 	// The lines that hold only a `//` comment, by the parser's own reading, so a string or template that quotes one is code.
 	const commentLines = HashSet.fromIterable(

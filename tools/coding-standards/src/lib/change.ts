@@ -1,9 +1,10 @@
-import {Array, Boolean, Effect, HashSet, Number, Option, Record, Schema, Stream, String, pipe} from 'effect'
+import {Array, Boolean, Effect, FileSystem, HashSet, Number, Option, Record, Schema, Stream, String, pipe} from 'effect'
 
 import {ChildProcess} from 'effect/process'
 
 import {matches} from '#lib/ast.ts'
 import {JudgeError} from '#lib/session.ts'
+import {around} from '#lib/units.ts'
 
 // The diff's every setting written out, so a machine's git configuration changes neither the change nor the answers keyed by it; full blob ids tell two binary changes apart.
 const DIFF = [
@@ -15,8 +16,13 @@ const DIFF = [
 	'--dst-prefix=b/',
 	'-U3',
 	'--full-index',
-	'--find-renames'
+	'--find-renames',
+	'--text',
+	'--no-textconv'
 ]
+// The paths of a kind the judge reads, by extension or name: code, configuration, documents and data in text.
+const READABLE =
+	/(?:\.(?:[cm]?[jt]sx?|json[c5]?|ya?ml|toml|ini|conf|env|md|mdx|txt|sql|css|scss|html?|svg|xml|graphql|gql|sh|bash|zsh|fish|py|rb|go|rs|swift|kt|kts|java|c|h|cc|cpp|hpp|cs|php|vue|svelte|astro|prisma|lock|plist|entitlements|pbxproj|xcconfig|storyboard|strings|csv|tsv|patch|diff)|(?:^|\/)(?:Dockerfile|Makefile|Procfile|\.gitattributes|\.gitignore|\.editorconfig|\.npmrc|\.nvmrc|\.node-version|AGENTS|README|LICENSE)[^/]*)$/iu
 const HUNK_HEADER = /^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/u
 // Lines of a request that state nothing: headings, table rules, a recording or image alone on its line, and HTML that only wraps.
 const SILENT =
@@ -265,15 +271,18 @@ export function claimsOf(text: string, where: (line: number) => string) {
 				const opens = String.includes('<!--')(entry.line)
 				const closes = String.includes('-->')(entry.line)
 				const opening = Option.isNone(state.fence) && fence
-				const admits = matches(NOT_PROVEN)(entry.line)
+				const hidden = state.comment || Option.isSome(state.fence) || fence || opens || closes
+				// Only what the body renders opens or ends the admissions: a not-proven heading or label opens them, the next heading or alert ends them.
+				const admits = !hidden && matches(NOT_PROVEN)(entry.line)
+				const ends = !hidden && matches(/^(?:#|>\s*\[!)/u)(entry.line)
 				return {
-					admitted: (state.admitted && !(String.startsWith('#')(entry.line) && !admits)) || admits,
+					admitted: (state.admitted && !ends) || admits,
 					comment: (state.comment || opens) && !closes,
 					fence: Option.match(state.fence, {
 						onNone: () => Option.liftPredicate(entry.index, () => opening),
 						onSome: start => Option.liftPredicate(start, () => !fence)
 					}),
-					hidden: state.comment || Option.isSome(state.fence) || fence || opens || closes,
+					hidden,
 					mermaid:
 						(opening && matches(/^```\s*mermaid\b/u)(entry.line)) ||
 						(state.mermaid && !(Option.isSome(state.fence) && fence))
@@ -285,6 +294,17 @@ export function claimsOf(text: string, where: (line: number) => string) {
 		lines,
 		Array.zip(Array.drop(places, 1)),
 		Array.map((pair, index) => ({...pair[1], line: index + 1, text: pair[0]}))
+	)
+	// Each recording or still the body renders, by its line: none inside a comment or a fence, which a reader never sees.
+	const attachments = pipe(
+		placed,
+		Array.filter(entry => !entry.hidden),
+		Array.flatMap(entry =>
+			Array.map(Array.fromIterable(String.matchAll(MEDIA)(entry.text)), found => ({
+				line: entry.line,
+				ref: found[1] ?? found[2] ?? found[3] ?? found[0]
+			}))
+		)
 	)
 	const admitted = pipe(
 		placed,
@@ -298,15 +318,19 @@ export function claimsOf(text: string, where: (line: number) => string) {
 		),
 		Array.map(entry => ({line: entry.line, text: entry.text, where: where(entry.line)}))
 	)
-	// Each picture: the lines between its opening fence and its closing one.
+	// Each picture, found by its opening fence so an empty one is read too: the lines up to its closing fence.
 	const pictures = pipe(
 		placed,
-		Array.filter(entry => entry.mermaid && Option.isSome(entry.fence) && !matches(/^```/u)(entry.text)),
+		Array.filter(entry => entry.mermaid && Option.isSome(entry.fence)),
 		Array.groupBy(entry => `${Option.getOrElse(entry.fence, () => 0)}`),
 		Record.toEntries,
 		Array.map(entry =>
 			pictureClaims(
-				Array.map(entry[1], line => line.text),
+				pipe(
+					entry[1],
+					Array.drop(1),
+					Array.map(line => line.text)
+				),
 				Option.getOrElse(Number.parse(entry[0]), () => 0) + 1,
 				where,
 				admitted
@@ -314,6 +338,7 @@ export function claimsOf(text: string, where: (line: number) => string) {
 		)
 	)
 	return {
+		attachments,
 		claims: [...prose, ...Array.flatMap(pictures, picture => picture.claims)],
 		unreadable: Array.flatMap(pictures, picture => picture.unreadable)
 	}
@@ -393,10 +418,16 @@ function fileOf(entry: Entry, section: string[]) {
 		Array.filter(line => !matches(/^(?:---|\+\+\+) /u)(line))
 	)
 	const hunks = between(section, String.startsWith('@@ '))
+	// The diff is read as text whatever the change's attributes say; content holding a NUL byte is not text, and its blob ids alone stand for it.
+	const text = !Array.some(Array.flatten(hunks), String.includes('\u0000'))
 	return {
 		...entry,
-		binary: Array.some(header, matches(/^(?:Binary files |GIT binary patch)/u)),
-		text: Array.join([`=== ${entry.path}`, ...header, ...Array.flatten(hunks)], '\n'),
+		binary: !text && !matches(READABLE)(entry.path),
+		garbled: !text && matches(READABLE)(entry.path),
+		text: Array.join(
+			[`=== ${entry.path}`, ...header, ...Boolean.match(text, {onFalse: () => [], onTrue: () => Array.flatten(hunks)})],
+			'\n'
+		),
 		touched: Array.flatMap(hunks, hunk => changedLines(hunk[0] ?? '', Array.drop(hunk, 1), entry.status === 'D'))
 	}
 }
@@ -437,26 +468,55 @@ const contextOf = Effect.fnUntraced(function* (
 	pathspec: string[],
 	files: readonly {path: string; touched: number[]}[]
 ) {
+	const fs = yield* FileSystem.FileSystem
 	const touched = Record.fromEntries(Array.map(files, file => [file.path, HashSet.fromIterable(file.touched)] as const))
 	const sections = yield* Effect.forEach(
 		names,
-		name =>
-			Effect.map(git(['grep', '-n', '-I', '-z', '-w', '-F', '-e', name, '--', ...pathspec], root, [1]), output =>
-				pipe(
-					String.split(output, '\n'),
-					Array.flatMap(line => {
-						const parts = String.split(line, '\u0000')
-						const path = parts[0]
-						const number = Option.getOrElse(Number.parse(parts[1] ?? ''), () => 0)
-						if (parts.length < 3 || pipe(touched, Record.get(path), Option.exists(HashSet.has(number)))) return []
-						return [`${path}:${number}: ${pipe(parts, Array.drop(2), Array.join(''), String.trim)}`]
-					}),
-					Array.match({
-						onEmpty: () => '',
-						onNonEmpty: lines => Array.join([`\`${name}\`, outside the change:`, ...lines], '\n')
-					})
-				)
-			),
+		Effect.fnUntraced(function* (name) {
+			const found = pipe(
+				String.split(
+					yield* git(['grep', '-n', '-I', '-z', '-w', '-F', '-e', name, '--', ...pathspec], root, [1]),
+					'\n'
+				),
+				Array.flatMap(line => {
+					const parts = String.split(line, '\u0000')
+					const path = parts[0]
+					const number = Option.getOrElse(Number.parse(parts[1] ?? ''), () => 0)
+					if (parts.length < 3 || pipe(touched, Record.get(path), Option.exists(HashSet.has(number)))) return []
+					return [{line: number, path, text: pipe(parts, Array.drop(2), Array.join(''), String.trim)}]
+				}),
+				Array.groupBy(entry => entry.path),
+				Record.toEntries
+			)
+			// A code file shows each use as the whole statement or call that holds it, so a caller's arguments come with its name; any other file shows the line.
+			const shown = yield* Effect.forEach(
+				found,
+				Effect.fnUntraced(function* (file) {
+					const path = file[0]
+					if (!matches(/\.[cm]?[jt]sx?$/u)(path)) {
+						return Array.map(file[1], entry => `${path}:${entry.line}: ${entry.text}`)
+					}
+					return Array.map(
+						around(
+							path,
+							yield* fs.readFileString(`${root}/${path}`),
+							name,
+							Array.map(file[1], entry => entry.line)
+						),
+						span =>
+							Boolean.match(span.start === span.end, {
+								onFalse: () => `${path}:${span.start}-${span.end}:\n${span.text}`,
+								onTrue: () => `${path}:${span.start}: ${String.trim(span.text)}`
+							})
+					)
+				}),
+				{concurrency: 8}
+			)
+			return Array.match(Array.flatten(shown), {
+				onEmpty: () => '',
+				onNonEmpty: lines => Array.join([`\`${name}\`, outside the change:`, ...lines], '\n')
+			})
+		}),
 		{concurrency: 8}
 	)
 	return pipe(sections, Array.filter(String.isNonEmpty), Array.join('\n\n'))
@@ -586,20 +646,10 @@ export const change = Effect.fnUntraced(function* (base: Option.Option<string>, 
 	)
 	const claimed = claimsOf(request.text, request.where)
 	return {
-		// Each recording or still of the request, by the line it sits on.
-		attachments: pipe(
-			request.text,
-			String.split('\n'),
-			Array.flatMap((text, index) =>
-				Array.map(Array.fromIterable(String.matchAll(MEDIA)(text)), found => ({
-					line: index + 1,
-					ref: found[1] ?? found[2] ?? found[3] ?? found[0]
-				}))
-			)
-		),
+		attachments: claimed.attachments,
 		claims: claimed.claims,
 		context: yield* contextOf(root, namesOf(request.text, declared), pathspec, files),
-		// A binary file is listed in the change with its blob ids, so two of them never share an answer, and left out of what is read like a lockfile.
+		// A binary file at a path of no kind the judge reads is listed in the change with its blob ids, so two of them never share an answer, and left out of what is read like a lockfile.
 		excluded: [
 			...excluded,
 			...pipe(
@@ -613,7 +663,15 @@ export const change = Effect.fnUntraced(function* (base: Option.Option<string>, 
 		request: request.text,
 		root,
 		source: request.source,
-		unreadable: claimed.unreadable
+		// A file of a kind the judge reads whose content is not text cannot be vouched for.
+		unreadable: [
+			...claimed.unreadable,
+			...pipe(
+				files,
+				Array.filter(file => file.garbled),
+				Array.map(file => ({reason: 'a file of a kind the judge reads, whose content is not text', where: file.path}))
+			)
+		]
 	}
 })
 
