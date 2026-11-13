@@ -262,7 +262,11 @@ export type LogLevel = typeof LogLevel.Type
 export const LogLevel = Schema.Literals(['debug', 'error', 'info', 'trace', 'warn'])
 
 export type CompactLog = typeof CompactLog.Type
-export const CompactLog = Schema.Struct({at: Schema.String, level: LogLevel, message: Schema.String})
+export const CompactLog = Schema.Struct({
+	at: Schema.String.annotate({description: 'ISO-8601 log timestamp.'}),
+	level: LogLevel,
+	message: Schema.String
+})
 
 type App = typeof App.Type
 // The tools' inputs: every field optional except where a tool cannot answer without it.
@@ -280,9 +284,12 @@ export const Since = pipe(
 export type ListOperationsParams = typeof ListOperationsParams.Type
 export const ListOperationsParams = Schema.Struct({app: Schema.optionalKey(App), since: Since})
 
+export type TraceCursor = typeof TraceCursor.Type
+export const TraceCursor = Schema.Struct({id: TraceId, ms: Schema.Finite, time: Nano})
 export type FindTracesParams = typeof FindTracesParams.Type
 export const FindTracesParams = Schema.Struct({
 	app: Schema.optionalKey(App),
+	cursor: Schema.optionalKey(TraceCursor),
 	errors: pipe(
 		Schema.Boolean,
 		Schema.withDecodingDefaultTypeKey(Effect.succeed(false)),
@@ -321,7 +328,7 @@ export type ReadTraceParams = typeof ReadTraceParams.Type
 export const ReadTraceParams = Schema.Struct({
 	id: pipe(
 		TraceId,
-		Schema.annotateEncoded({description: 'The full 32-hex trace id from list_operations or find_traces.'})
+		Schema.annotateEncoded({description: 'The full 32-hex trace id from list_operations or search_traces.'})
 	),
 	limit: pipe(
 		Schema.Int,
@@ -331,9 +338,12 @@ export const ReadTraceParams = Schema.Struct({
 	)
 })
 
+export type LogCursor = typeof LogCursor.Type
+export const LogCursor = Schema.Struct({id: Schema.String, time: Nano})
 export type SearchLogsParams = typeof SearchLogsParams.Type
 export const SearchLogsParams = Schema.Struct({
 	app: Schema.optionalKey(App),
+	cursor: Schema.optionalKey(LogCursor),
 	level: pipe(
 		Schema.Literals(['error', 'warn', 'info', 'debug']),
 		Schema.optionalKey,
@@ -390,28 +400,36 @@ export const OperationsAnswer = Schema.Struct({
 export type TraceRow = typeof TraceRow.Type
 export const TraceRow = Schema.Struct({
 	app: Schema.String,
-	at: Schema.String,
-	failure: Schema.optionalKey(Schema.String),
+	at: Schema.String.annotate({description: 'ISO-8601 trace start timestamp.'}),
+	failure: Schema.optionalKey(
+		Schema.String.annotate({description: 'Failing span name and error message, not a span id.'})
+	),
 	id: TraceId,
-	ms: Schema.Finite,
+	ms: Schema.Finite.annotate({description: 'Trace duration in milliseconds.'}),
 	operation: Schema.String,
+	server: Schema.optionalKey(Schema.String),
 	side: Schema.optionalKey(Side),
-	spans: Schema.Int
+	spans: Schema.Int,
+	tool: Schema.optionalKey(Schema.String)
 })
 
 export type TracesAnswer = typeof TracesAnswer.Type
-export const TracesAnswer = Schema.Struct({total: Schema.Int, traces: Schema.Array(TraceRow)})
+export const TracesAnswer = Schema.Struct({
+	nextCursor: Schema.optionalKey(TraceCursor),
+	total: Schema.Int,
+	traces: Schema.Array(TraceRow)
+})
 
 export type ReadSpan = typeof ReadSpan.Type
 export const ReadSpan = Schema.Struct({
 	app: Schema.String,
-	at: Schema.Finite,
+	at: Schema.Finite.annotate({description: 'Start offset from the trace start in milliseconds.'}),
 	attrs: Schema.optionalKey(Attributes),
 	denied: Schema.optionalKey(Schema.Boolean),
 	error: Schema.optionalKey(Schema.String),
 	id: Schema.String,
 	logs: Schema.optionalKey(Schema.Array(CompactLog)),
-	ms: Schema.Finite,
+	ms: Schema.Finite.annotate({description: 'Span duration in milliseconds.'}),
 	name: Schema.String,
 	parent: Schema.optionalKey(Schema.String),
 	side: Schema.optionalKey(Side)
@@ -419,8 +437,8 @@ export const ReadSpan = Schema.Struct({
 
 export type ReadTraceAnswer = typeof ReadTraceAnswer.Type
 export const ReadTraceAnswer = Schema.Struct({
-	at: Schema.String,
-	failure: Schema.optionalKey(Schema.String),
+	at: Schema.String.annotate({description: 'ISO-8601 trace start timestamp.'}),
+	failure: Schema.optionalKey(Schema.String.annotate({description: 'Failing span id; locate it in spans.'})),
 	id: TraceId,
 	logs: Schema.optionalKey(Schema.Array(CompactLog)),
 	ms: Schema.Finite,
@@ -441,7 +459,11 @@ export const LogRow = Schema.Struct({
 })
 
 export type LogsAnswer = typeof LogsAnswer.Type
-export const LogsAnswer = Schema.Struct({logs: Schema.Array(LogRow), total: Schema.Int})
+export const LogsAnswer = Schema.Struct({
+	logs: Schema.Array(LogRow),
+	nextCursor: Schema.optionalKey(LogCursor),
+	total: Schema.Int
+})
 
 export type LatencyAnswer = typeof LatencyAnswer.Type
 export const LatencyAnswer = Schema.Struct({

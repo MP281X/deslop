@@ -1,8 +1,17 @@
-import {Array, HashSet, Option, Predicate, Record, Struct, Tuple} from 'effect'
+import {Array, HashSet, Option, Predicate, Record, Struct, Tuple, pipe} from 'effect'
 
+import type {Tool} from '@modelcontextprotocol/client'
 import type {McpSchema} from 'effect/ai'
 
 import type {Connection} from '#services/connections/schema.ts'
+
+export function indexTools(tools: readonly Tool[]) {
+	return pipe(
+		tools,
+		Array.groupBy(tool => tool.name),
+		Record.map(Array.headNonEmpty)
+	)
+}
 
 export function prunedTools(
 	definitions: readonly Connection[],
@@ -38,18 +47,17 @@ function quiet(property: Readonly<Record<string, unknown>> | boolean) {
 }
 
 export function compact(tool: McpSchema.Tool) {
-	return {
-		...Struct.omit(tool, ['outputSchema']),
-		inputSchema: {
+	return Struct.evolve(tool, {
+		inputSchema: inputSchema => ({
 			...Record.filter(
-				tool.inputSchema,
+				inputSchema,
 				(value, key) => !(key === 'additionalProperties' && value === true) && key !== '$schema'
 			),
 			type: 'object' as const,
-			...Option.match(Option.fromUndefinedOr(tool.inputSchema.properties), {
+			...Option.match(Option.fromUndefinedOr(inputSchema.properties), {
 				onNone: () => ({}),
 				onSome: properties => ({properties: Record.map(properties, quiet)})
 			})
-		}
-	}
+		})
+	})
 }

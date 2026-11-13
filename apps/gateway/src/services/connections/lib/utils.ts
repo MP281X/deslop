@@ -108,15 +108,6 @@ export function serverIcons(implementation?: {icons?: {src: string; theme?: 'dar
 	) satisfies ServerIcon[]
 }
 
-export function summary(connection: Connection) {
-	return pipe(
-		Option.fromUndefinedOr(connection.instructions),
-		Option.flatMap(text => Option.fromUndefinedOr(String.split(text, /(?<=\.)\s/u)[0])),
-		Option.map(String.slice(0, 160)),
-		Option.getOrElse(() => connection.name)
-	)
-}
-
 export function describe(cause: unknown): string {
 	if (Schema.is(AuthError)(cause)) return cause.message
 	if (Predicate.isTagged(cause, 'TimeoutError')) return 'It did not answer in time'

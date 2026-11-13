@@ -19,10 +19,10 @@ import {
 import {DeployError} from '#services/inventory/schema.ts'
 import type {
 	InventoryItem,
-	ListApp,
-	ListAppsInput,
-	ListExposure,
-	ListJob,
+	App,
+	InventoryQuery,
+	HttpsExposure,
+	Job,
 	Process,
 	ProcessLabel,
 	ProcessSummary,
@@ -536,6 +536,7 @@ function appOf(row: Row, withProcesses: boolean) {
 	const url = Option.map(Array.head(row.exposures), exposure => exposure.url)
 	return {
 		...failureOf(row.item),
+		id: row.item.id,
 		name: workloadName(row.item),
 		...Boolean.match(Array.isReadonlyArrayNonEmpty(reachable), {
 			onFalse: () => ({}),
@@ -547,15 +548,16 @@ function appOf(row: Row, withProcesses: boolean) {
 		}),
 		state: row.item.state,
 		...Record.getSomes({url})
-	} satisfies ListApp
+	} satisfies App
 }
 
 function jobOf(row: Row) {
 	return {
 		...failureOf(row.item),
+		id: row.item.id,
 		name: workloadName(row.item),
 		...Record.getSomes({next: Option.map(Option.fromUndefinedOr(row.item.next), iso)})
-	} satisfies ListJob
+	} satisfies Job
 }
 
 function exposureOf(item: InventoryItem) {
@@ -564,10 +566,11 @@ function exposureOf(item: InventoryItem) {
 			onFalse: () => 'tailnet' as const,
 			onTrue: () => 'public' as const
 		}),
+		id: item.id,
 		name: item.name,
 		...Record.getSomes({port: Option.fromUndefinedOr(item.port)}),
 		url: item.url
-	} satisfies ListExposure
+	} satisfies HttpsExposure
 }
 
 function matches(row: Row, app: string) {
@@ -595,7 +598,7 @@ const jobOrder = Order.combine(
 )
 
 // The page's list per worker as compact JSON: its apps and scheduled jobs, the URLs it owns or can reach, and only the failures it would mark.
-export function listApps(snapshot: Snapshot, input: ListAppsInput) {
+export function listApps(snapshot: Snapshot, input: InventoryQuery) {
 	const app = Option.getOrUndefined(Option.filter(Option.fromUndefinedOr(input.app), String.isNonEmpty))
 	const onlyFailing = input.failing === true
 	return pipe(
@@ -625,7 +628,7 @@ export function listApps(snapshot: Snapshot, input: ListAppsInput) {
 			const exposures = pipe(
 				Array.filter(own, row => row.item.kind === 'exposure' && !onlyFailing),
 				Array.map(row => exposureOf(row.item)),
-				Array.sort(Order.mapInput(Order.String, (exposure: ListExposure) => exposure.url))
+				Array.sort(Order.mapInput(Order.String, (exposure: HttpsExposure) => exposure.url))
 			)
 			const errors = errorsOf(snapshot.sources, workerNames(snapshot), worker)
 			return {

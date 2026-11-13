@@ -449,7 +449,7 @@ function appsOf(labels: Record<string, string>, latest: Sample) {
 			latest.apps ?? [],
 			app =>
 				({
-					cpu: Option.getOrUndefined(Option.map(Option.fromUndefinedOr(app.cpu), rounded)),
+					...Record.getSomes({cpu: Option.map(Option.fromUndefinedOr(app.cpu), rounded)}),
 					mib: Number.round(app.memory / 1024 ** 2, 0),
 					name: bandName(app.id, labels)
 				}) satisfies AppUsage

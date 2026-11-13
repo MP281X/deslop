@@ -141,8 +141,8 @@ export const RunJobInput = Schema.Struct({
 	worker: Schema.optionalKey(Schema.String.annotate({description: 'The worker running the job, when several do.'}))
 })
 
-export type ListAppsInput = typeof ListAppsInput.Type
-export const ListAppsInput = Schema.Struct({
+export type InventoryQuery = typeof InventoryQuery.Type
+export const InventoryQuery = Schema.Struct({
 	app: Schema.optionalKey(
 		Schema.String.annotate({description: "A substring of an app or unit name; returns that app's process tree."})
 	),
@@ -165,9 +165,10 @@ export const ProcessSummary = Schema.Struct({
 	name: Schema.String
 })
 
-export type ListApp = typeof ListApp.Type
-export const ListApp = Schema.Struct({
+export type App = typeof App.Type
+export const App = Schema.Struct({
 	failure: Schema.optionalKey(Schema.String),
+	id: Schema.String,
 	name: Schema.String,
 	ports: Schema.optionalKey(Schema.Array(Schema.Int)),
 	processes: Schema.optionalKey(Schema.Array(ProcessSummary)),
@@ -176,33 +177,35 @@ export const ListApp = Schema.Struct({
 	url: Schema.optionalKey(Schema.String)
 })
 
-export type ListJob = typeof ListJob.Type
-export const ListJob = Schema.Struct({
+export type Job = typeof Job.Type
+export const Job = Schema.Struct({
 	failure: Schema.optionalKey(Schema.String),
+	id: Schema.String,
 	name: Schema.String,
 	next: Schema.optionalKey(Schema.String),
 	since: Schema.optionalKey(Schema.String)
 })
 
-export type ListExposure = typeof ListExposure.Type
-export const ListExposure = Schema.Struct({
+export type HttpsExposure = typeof HttpsExposure.Type
+export const HttpsExposure = Schema.Struct({
 	access: Schema.Literals(['tailnet', 'public']),
+	id: Schema.String,
 	name: Schema.String,
 	port: Schema.optionalKey(Schema.Int),
 	url: Schema.String
 })
 
-export type WorkerApps = typeof WorkerApps.Type
-export const WorkerApps = Schema.Struct({
-	apps: Schema.Array(ListApp),
+export type WorkerInventory = typeof WorkerInventory.Type
+export const WorkerInventory = Schema.Struct({
+	apps: Schema.Array(App),
 	errors: Schema.optionalKey(Schema.Array(Schema.String)),
-	exposures: Schema.optionalKey(Schema.Array(ListExposure)),
-	jobs: Schema.optionalKey(Schema.Array(ListJob)),
+	exposures: Schema.optionalKey(Schema.Array(HttpsExposure)),
+	jobs: Schema.optionalKey(Schema.Array(Job)),
 	worker: Schema.String
 })
 
-export type ListApps = typeof ListApps.Type
-export const ListApps = Schema.Array(WorkerApps)
+export type Inventory = typeof Inventory.Type
+export const Inventory = Schema.Array(WorkerInventory)
 
 export type Timer = typeof Timer.Type
 // `next` is in epoch microseconds.

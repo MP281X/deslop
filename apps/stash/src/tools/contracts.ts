@@ -1,4 +1,4 @@
-import {Effect, Schema, Struct, pipe} from 'effect'
+import {Effect, Schema, pipe} from 'effect'
 
 import {Tool, Toolkit} from 'effect/ai'
 
@@ -6,8 +6,8 @@ import {CurrentUser} from '@deslop/runtime/shared/auth'
 
 import {Capture, Note, NoteId, NotesError, Tag} from '#services/notes/schema.ts'
 
-export type NoteRow = typeof NoteRow.Type
-const NoteRow = Schema.Struct({
+export type NoteSummary = typeof NoteSummary.Type
+const NoteSummary = Schema.Struct({
 	id: NoteId,
 	saved: Schema.String,
 	status: Note.fields.status,
@@ -17,13 +17,28 @@ const NoteRow = Schema.Struct({
 	url: Schema.optionalKey(Schema.String)
 })
 
-const NoteView = Note.mapFields(Struct.omit(['createdAt', 'file', 'id', 'image', 'requester', 'source']))
+type Cursor = typeof Cursor.Type
+const Cursor = Schema.Struct({createdAt: Schema.Finite, id: NoteId})
+type SavedNote = typeof SavedNote.Type
+const SavedNote = Schema.Struct({
+	...NoteSummary.fields,
+	author: Note.fields.author,
+	body: Schema.optionalKey(Schema.String),
+	content: Schema.optionalKey(Schema.String),
+	issue: Note.fields.issue,
+	nextOffset: Schema.optionalKey(Schema.Natural),
+	screenText: Schema.optionalKey(Schema.String),
+	text: Schema.optionalKey(Schema.String),
+	topics: Note.fields.topics,
+	transcript: Schema.optionalKey(Schema.String)
+})
 
-export const Tools = Toolkit.make(
+export const ToolContracts = Toolkit.make(
 	Tool.make('search_notes', {
 		description:
-			'Use when the user asks about something they saved or read; returns matching notes newest first, each with its id, saved date, title, summary, tags, status and url (a #word matches a tag; without a query, the newest).',
+			'Find saved reading by words or #tag, newest first; omit query for recent notes. Pass nextCursor unchanged to continue, or read_note(id) for the selected note.',
 		parameters: Schema.Struct({
+			cursor: Schema.optionalKey(Cursor),
 			limit: pipe(
 				Schema.Int,
 				Schema.check(Schema.isBetween({maximum: 50, minimum: 1})),
@@ -34,26 +49,50 @@ export const Tools = Toolkit.make(
 				Schema.String.annotate({description: 'Words every result must contain; a #word matches a tag.'})
 			)
 		}),
-		success: Schema.Struct({notes: Schema.Array(NoteRow), total: Schema.Int})
-	}).annotate(Tool.Readonly, true),
+		success: Schema.Struct({
+			nextCursor: Schema.optionalKey(Cursor),
+			notes: Schema.Array(NoteSummary),
+			total: Schema.Int
+		})
+	})
+		.annotate(Tool.Readonly, true)
+		.annotate(Tool.Strict, true),
 	Tool.make('read_note', {
 		description:
-			'Use when the user asks about one saved note; returns its title, author, url, summary, tags, topics, text, body, screen text and transcript with [mm:ss] times.',
+			'Read a saved note: metadata and organized body by default, or saved text when no body exists. Select a source section explicitly; pass nextOffset as offset with the same section to continue (transcript keeps [mm:ss] times).',
 		failure: NotesError,
-		parameters: Schema.Struct({id: NoteId.annotate({description: 'A note id from search_notes.'})}),
-		success: NoteView
-	}).annotate(Tool.Readonly, true),
+		parameters: Schema.Struct({
+			id: NoteId.annotate({description: 'A known note id, or one from search_notes.'}),
+			limit: pipe(
+				Schema.Int.check(Schema.isBetween({maximum: 20_000, minimum: 1})),
+				Schema.withDecodingDefaultTypeKey(Effect.succeed(8000))
+			),
+			offset: pipe(Schema.Natural, Schema.withDecodingDefaultTypeKey(Effect.succeed(0))),
+			section: pipe(
+				Schema.Literals(['body', 'text', 'content', 'screenText', 'transcript', 'topics']),
+				Schema.withDecodingDefaultTypeKey(Effect.succeed('body' as const))
+			)
+		}),
+		success: SavedNote
+	})
+		.annotate(Tool.Readonly, true)
+		.annotate(Tool.Strict, true),
 	Tool.make('save_note', {
 		dependencies: [CurrentUser],
 		description:
-			"Use when the user shares a link or text to keep, or asks to retry a failed save; returns at once with status 'organizing', and read_note shows 'ready' or 'failed' once reading, transcribing and tagging finish.",
+			'Save a link or text, or retry a failed save; an existing nonfailed note is returned unchanged, otherwise organizing. Use read_note(id) to inspect progress.',
 		failure: NotesError,
 		parameters: Schema.Struct({text: Capture.fields.text.annotate({description: 'The link or text to save.'})}),
-		success: NoteRow
-	}).annotate(Tool.Destructive, false),
+		success: NoteSummary
+	})
+		.annotate(Tool.Destructive, false)
+		.annotate(Tool.Strict, true),
 	Tool.make('remove_note', {
 		description: 'Use when the user asks to delete a saved note; removes it by the id search_notes returns.',
 		failure: NotesError,
-		parameters: Schema.Struct({id: NoteId.annotate({description: 'A note id from search_notes.'})})
-	}).annotate(Tool.Destructive, true)
+		parameters: Schema.Struct({id: NoteId.annotate({description: 'A note id from search_notes.'})}),
+		success: Schema.Struct({id: NoteId})
+	})
+		.annotate(Tool.Destructive, true)
+		.annotate(Tool.Strict, true)
 )

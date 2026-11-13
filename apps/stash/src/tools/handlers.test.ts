@@ -13,7 +13,7 @@ import {Sources} from '#services/notes/lib/extraction.ts'
 import {Organizer} from '#services/notes/lib/organization.ts'
 import {NoteId} from '#services/notes/schema.ts'
 import {Notes} from '#services/notes/service.ts'
-import {Tools} from '#tools/contracts.ts'
+import {ToolContracts} from '#tools/contracts.ts'
 import {ToolHandlers} from '#tools/handlers.ts'
 
 const USER = {id: 'github:1', name: 'tester'}
@@ -62,7 +62,7 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))('Stash tools', test 
 					)
 					const notes = Context.get(context, Notes)
 					// oxlint-disable-next-line effecttsgo/strict-effect-provide -- This test entry point owns the toolkit's lifetime.
-					const toolkit = yield* pipe(Tools, Effect.provide(ToolHandlers), Effect.provideService(Notes, notes))
+					const toolkit = yield* pipe(ToolContracts, Effect.provide(ToolHandlers), Effect.provideService(Notes, notes))
 					const saved = yield* pipe(
 						toolkit.handle('save_note', {text: 'Remember the milk'}, '1'),
 						Effect.flatMap(Stream.runCollect),

@@ -48,7 +48,7 @@ Add your own ignores and opt into `deslopRules` for Deslop's own choices.
 `judge` runs by hand, once per pull request after `fix` and the tests pass, then once more after its findings are fixed; never in CI or inside `fix`, `check` or `test`. Jev answers through a Deslop Gateway that spends the signed-in person's own OpenRouter key.
 
 ```bash
-coding-standards sign-in                         # once per machine; approve its code in Auth or with answer_request
+coding-standards sign-in                         # once per machine; approve its code in Auth or with answer_sign_in
 coding-standards judge --ignore '**/*.gen.ts'     # by hand, once per pull request; never in CI
 ```
 

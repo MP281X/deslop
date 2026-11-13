@@ -1,4 +1,4 @@
-import {Schema} from 'effect'
+import {Effect, Schema, pipe} from 'effect'
 
 import {Tool, Toolkit} from 'effect/ai'
 
@@ -8,9 +8,18 @@ import {Passkey} from '#services/passkeys/schema.ts'
 import {Role} from '#services/people/schema.ts'
 import {CurrentOwner} from '#services/tokens/schema.ts'
 
+type Page = typeof Page.Type
+const Page = Schema.Struct({
+	cursor: Schema.optionalKey(Schema.NonEmptyString),
+	limit: pipe(
+		Schema.Int.check(Schema.isBetween({maximum: 100, minimum: 1})),
+		Schema.withDecodingDefaultTypeKey(Effect.succeed(30))
+	)
+})
+
 // The tool acts as the signed-in caller, which the MCP sign-in middleware provides per request.
-export const Tools = Toolkit.make(
-	Tool.make('answer_request', {
+export const ToolContracts = Toolkit.make(
+	Tool.make('answer_sign_in', {
 		dependencies: [CurrentOwner],
 		description:
 			'Approve or deny an app or agent sign-in you started, by the code its page or authorize redirect shows (WDJB-MJHT). Never answer a code you did not start; browser sign-ins are approved only in a browser.',
@@ -22,14 +31,17 @@ export const Tools = Toolkit.make(
 			})
 		}),
 		success: Schema.Struct({clientName: Schema.String})
-	}).annotate(Tool.Destructive, false),
+	})
+		.annotate(Tool.Destructive, false)
+		.annotate(Tool.Strict, true),
 	Tool.make('list_sessions', {
 		dependencies: [CurrentOwner],
 		description:
-			"Use when the user asks to sign a device out or see where they are signed in; returns each session's id, client, address, device when it differs from the address, and last activity as ISO-8601.",
+			'List signed-in devices and agents with ISO last activity; pass nextCursor unchanged to continue. Use sign_out_session(id) only for a user-requested revocation.',
 		failure: AuthError,
-		parameters: Tool.EmptyParams,
+		parameters: Page,
 		success: Schema.Struct({
+			nextCursor: Schema.optionalKey(Schema.String),
 			sessions: Schema.Array(
 				Schema.Struct({
 					address: Schema.optionalKey(Schema.String),
@@ -40,7 +52,9 @@ export const Tools = Toolkit.make(
 				})
 			)
 		})
-	}).annotate(Tool.Readonly, true),
+	})
+		.annotate(Tool.Readonly, true)
+		.annotate(Tool.Strict, true),
 	Tool.make('sign_out_session', {
 		dependencies: [CurrentOwner],
 		description:
@@ -48,30 +62,41 @@ export const Tools = Toolkit.make(
 		failure: AuthError,
 		parameters: Schema.Struct({id: Schema.NonEmptyString.annotate({description: 'A session id from list_sessions.'})}),
 		success: Schema.Struct({id: Schema.NonEmptyString})
-	}).annotate(Tool.Destructive, true),
+	})
+		.annotate(Tool.Destructive, true)
+		.annotate(Tool.Strict, true),
 	Tool.make('list_passkeys', {
 		dependencies: [CurrentOwner],
 		description:
-			"Use when the user asks which passkeys can sign them in; returns each passkey's id, browser and device, and whether it is synced.",
+			'List sign-in passkeys; addedFrom is their registration origin, not their current location, and synced distinguishes device-bound credentials. Continue with nextCursor or use remove_passkey(id) for an explicit removal request.',
 		failure: AuthError,
-		parameters: Tool.EmptyParams,
-		success: Schema.Struct({passkeys: Schema.Array(Passkey)})
-	}).annotate(Tool.Readonly, true),
+		parameters: Page,
+		success: Schema.Struct({nextCursor: Schema.optionalKey(Schema.String), passkeys: Schema.Array(Passkey)})
+	})
+		.annotate(Tool.Readonly, true)
+		.annotate(Tool.Strict, true),
 	Tool.make('remove_passkey', {
 		dependencies: [CurrentOwner],
 		description: 'Use when the user asks to remove a passkey; removes it by the id list_passkeys returns.',
 		failure: AuthError,
 		parameters: Schema.Struct({id: Schema.NonEmptyString.annotate({description: 'A passkey id from list_passkeys.'})}),
 		success: Schema.Struct({id: Schema.NonEmptyString})
-	}).annotate(Tool.Destructive, true),
+	})
+		.annotate(Tool.Destructive, true)
+		.annotate(Tool.Strict, true),
 	Tool.make('list_people', {
 		dependencies: [CurrentOwner],
 		description:
-			"Use when the user asks who is allowed into their apps or you need the GitHub login to remove someone; returns each person's login and role (Admin, Member or Waiting).",
+			'List allowed and waiting GitHub accounts with their roles; pass nextCursor unchanged to continue. Use remove_person(login) only for the account the user requests; admins cannot be removed.',
 		failure: AuthError,
-		parameters: Tool.EmptyParams,
-		success: Schema.Struct({people: Schema.Array(Schema.Struct({login: Schema.NonEmptyString, role: Role}))})
-	}).annotate(Tool.Readonly, true),
+		parameters: Page,
+		success: Schema.Struct({
+			nextCursor: Schema.optionalKey(Schema.String),
+			people: Schema.Array(Schema.Struct({login: Schema.NonEmptyString, role: Role}))
+		})
+	})
+		.annotate(Tool.Readonly, true)
+		.annotate(Tool.Strict, true),
 	Tool.make('remove_person', {
 		dependencies: [CurrentOwner],
 		description:
@@ -81,5 +106,7 @@ export const Tools = Toolkit.make(
 			login: Schema.NonEmptyString.annotate({description: 'The GitHub login from list_people.'})
 		}),
 		success: Schema.Struct({login: Schema.NonEmptyString})
-	}).annotate(Tool.Destructive, true)
+	})
+		.annotate(Tool.Destructive, true)
+		.annotate(Tool.Strict, true)
 )

@@ -1,50 +1,95 @@
-import {Schema} from 'effect'
+import {Effect, Schema, pipe} from 'effect'
 
 import {Tool, Toolkit} from 'effect/ai'
 
-import {
-	DeployError,
-	ExposeRequest,
-	HideRequest,
-	ListApps,
-	ListAppsInput,
-	RunJobInput
-} from '#services/inventory/schema.ts'
-import {HistoryToolInput, ResourceHistory} from '#services/metrics/schema.ts'
+import {DeployError, Exposure, WorkerInventory, App, InventoryQuery, RunJobInput} from '#services/inventory/schema.ts'
+import {HistoryToolInput, WorkerHistory} from '#services/metrics/schema.ts'
 
-export const Tools = Toolkit.make(
+type MetricSummary = typeof MetricSummary.Type
+const MetricSummary = Schema.Struct({
+	last: Schema.optionalKey(Schema.Finite),
+	max: Schema.optionalKey(Schema.Finite),
+	min: Schema.optionalKey(Schema.Finite),
+	samples: Schema.Int
+})
+const WorkerSummary = WorkerHistory.mapFields(fields => ({
+	...fields,
+	cpuPct: MetricSummary,
+	diskPct: MetricSummary,
+	memoryPct: MetricSummary
+}))
+
+export const ToolContracts = Toolkit.make(
 	Tool.make('list_apps', {
 		description:
-			'Start here to see what runs on the workers: apps, their state, ports and failures. Pass app to get its process tree, worker to choose a machine, failing for only failed or warning items.',
+			'Inspect worker apps, jobs and owned HTTPS exposures; app focuses on matching names and includes process trees. Continue with nextCursor; processOffset pages a focused app’s tree, retaining ancestors of selected nodes.',
 		failure: DeployError,
-		parameters: ListAppsInput,
-		success: ListApps
-	}).annotate(Tool.Readonly, true),
-	Tool.make('resource_history', {
+		parameters: Schema.Struct({
+			...InventoryQuery.fields,
+			cursor: Schema.optionalKey(Schema.String),
+			limit: pipe(
+				Schema.Int.check(Schema.isBetween({maximum: 100, minimum: 1})),
+				Schema.withDecodingDefaultTypeKey(Effect.succeed(30))
+			),
+			processLimit: pipe(
+				Schema.Int.check(Schema.isBetween({maximum: 100, minimum: 1})),
+				Schema.withDecodingDefaultTypeKey(Effect.succeed(30))
+			),
+			processOffset: pipe(Schema.Natural, Schema.withDecodingDefaultTypeKey(Effect.succeed(0)))
+		}),
+		success: Schema.Struct({
+			nextCursor: Schema.optionalKey(Schema.String),
+			workers: Schema.Array(
+				WorkerInventory.mapFields(fields => ({
+					...fields,
+					apps: Schema.Array(
+						Schema.Struct({
+							...App.fields,
+							nextProcessOffset: Schema.optionalKey(Schema.Natural),
+							processesOmitted: Schema.optionalKey(Schema.Natural)
+						})
+					)
+				}))
+			)
+		})
+	})
+		.annotate(Tool.Readonly, true)
+		.annotate(Tool.Strict, true),
+	Tool.make('read_resource_history', {
 		description:
-			'Use to see memory, CPU or disk over time, or which app uses the most: 60 points at a fixed interval, the machine’s current figures and the heaviest apps. worker chooses a machine.',
+			'Inspect current capacity, memory-ranked consumers and min/max/last resource percentages with sample coverage. Set series=true for the aligned 60-point history with null gaps when timing or spikes matter.',
 		failure: DeployError,
-		parameters: HistoryToolInput,
-		success: ResourceHistory
-	}).annotate(Tool.Readonly, true),
-	Tool.make('expose_port', {
+		parameters: Schema.Struct({
+			...HistoryToolInput.fields,
+			series: pipe(Schema.Boolean, Schema.withDecodingDefaultTypeKey(Effect.succeed(false)))
+		}),
+		success: Schema.Struct({workers: Schema.Array(Schema.Union([WorkerSummary, WorkerHistory]))})
+	})
+		.annotate(Tool.Readonly, true)
+		.annotate(Tool.Strict, true),
+	Tool.make('create_exposure', {
 		description:
-			'Use to give a local port an HTTPS URL on the tailnet or, from a Linux worker, the public internet; publicAccess=true is required for public, and target names another configured worker. Returns {url}; it adds no authentication and starts no application.',
+			'Give a local port the requested HTTPS hostname and ownership name on a configured worker; public exposure requires explicit publicAccess=true consent. Returns the URL, adds no authentication and starts no application; list_apps shows owned exposures.',
 		failure: DeployError,
-		parameters: ExposeRequest,
+		parameters: Schema.Struct({...Exposure.fields, worker: Schema.optionalKey(Schema.String)}),
 		success: Schema.Struct({url: Schema.String})
-	}).annotate(Tool.Destructive, true),
-	Tool.make('hide_exposure', {
+	})
+		.annotate(Tool.Destructive, true)
+		.annotate(Tool.Strict, true),
+	Tool.make('remove_exposure', {
 		description:
-			'Use to remove an HTTPS URL Deploy owns, by the name list_apps shows, stopping only the URL, not the backend. target names another configured worker; externally changed Tailscale mappings are refused.',
+			'Remove an HTTPS exposure Deploy owns by name and optional worker from list_apps, not its backend. Externally changed Tailscale mappings are refused; inspect list_apps after an uncertain failure.',
 		failure: DeployError,
-		parameters: HideRequest
-	}).annotate(Tool.Destructive, true),
+		parameters: Schema.Struct({name: Schema.NonEmptyString, worker: Schema.optionalKey(Schema.String)}),
+		success: Schema.Struct({name: Schema.String, worker: Schema.optionalKey(Schema.String)})
+	})
+		.annotate(Tool.Destructive, true)
+		.annotate(Tool.Strict, true),
 	Tool.make('run_job', {
 		description:
-			'Use to run a scheduled job now, by the name list_apps shows. Pass worker when several machines run the same job; returns {started: true}.',
+			'Start a scheduled job now by name from list_apps; pass worker to disambiguate machines. started means accepted, not completed; inspect list_apps or Scope for the outcome.',
 		failure: DeployError,
 		parameters: RunJobInput,
 		success: Schema.Struct({started: Schema.Literal(true)})
-	})
+	}).annotate(Tool.Strict, true)
 )
