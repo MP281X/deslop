@@ -63,9 +63,14 @@ const CASES = [
 ]
 
 it.layer(Layer.mergeAll(NodeCrypto.layer, NodeServices.layer))('Gateway real MCP relay', test => {
-	test.effect(
-		'preserves upstream schemas, structured data, distinct text, images, resources and tool errors',
-		Effect.fnUntraced(function* () {
+	test.effect.each([
+		{label: 'modern', protocols: Array.make(McpProtocol.v2026_07_28, McpProtocol.v2025_11_25), rejection: 0},
+		{label: 'legacy HTTP 400', protocols: Array.make(McpProtocol.v2025_11_25), rejection: 400},
+		{label: 'legacy HTTP 404', protocols: Array.make(McpProtocol.v2025_11_25), rejection: 404},
+		{label: '2025-06-18 only', protocols: Array.make(McpProtocol.v2025_06_18), rejection: 400}
+	])(
+		'$label: preserves upstream schemas, structured data, distinct text, images, resources and tool errors',
+		Effect.fnUntraced(function* (upstreamCase) {
 			const capture = Option.getOrUndefined(yield* Config.option(Config.String('MCP_PROOF_DIRECTORY')))
 			const fs = yield* FileSystem.FileSystem
 			const directory = yield* fs.makeTempDirectoryScoped()
@@ -91,7 +96,7 @@ it.layer(Layer.mergeAll(NodeCrypto.layer, NodeServices.layer))('Gateway real MCP
 						McpServer.layerHttp({
 							name: 'Relay fixture',
 							path: '/mcp',
-							protocols: [McpProtocol.v2026_07_28, McpProtocol.v2025_11_25],
+							protocols: upstreamCase.protocols,
 							registrations: Layer.effectDiscard(
 								Effect.gen(function* () {
 									const registry = yield* McpServer.McpServer
@@ -124,7 +129,25 @@ it.layer(Layer.mergeAll(NodeCrypto.layer, NodeServices.layer))('Gateway real MCP
 			const platform = Layer.provideMerge(
 				Layer.mergeAll(
 					ConfigProvider.layer(ConfigProvider.fromUnknown({APP_URL: 'https://gateway.example'})),
-					Layer.succeed(FetchHttpClient.Fetch, (input, init) => upstream.handler(new Request(input, init))),
+					Layer.succeed(FetchHttpClient.Fetch, (input, init) => {
+						const request = new Request(input, init)
+						if (upstreamCase.rejection !== 0 && request.headers.get('mcp-protocol-version') === '2026-07-28') {
+							// oxlint-disable-next-line no-restricted-properties -- Fetch requires a Promise<Response> for this HTTP rejection.
+							return Effect.runPromise(
+								Effect.succeed(
+									Response.json(
+										{
+											error: {code: -32_600, message: 'Bad Request: Unsupported protocol version'},
+											id: 1,
+											jsonrpc: '2.0'
+										},
+										{status: upstreamCase.rejection}
+									)
+								)
+							)
+						}
+						return upstream.handler(request)
+					}),
 					layerDataStore(directory),
 					auth
 				),
