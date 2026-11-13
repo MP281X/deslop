@@ -4,7 +4,7 @@ import {assert, it} from '@effect/vitest'
 
 import {Cause, Context, Effect, Function, Layer, Option, Queue, Ref, Schema, Stream, pipe} from 'effect'
 
-import {RouterProvider, createMemoryHistory, createRouter} from '@tanstack/react-router'
+import {RouterProvider, createMemoryHistory, createRouter, defaultStringifySearch} from '@tanstack/react-router'
 import {HttpRouter, HttpServer, HttpServerResponse} from 'effect/http'
 import {AsyncResult, AtomRegistry} from 'effect/reactivity'
 import type {Atom} from 'effect/reactivity'
@@ -15,9 +15,10 @@ import {renderToString} from 'react-dom/server'
 import {Auth} from '@deslop/runtime/server/auth'
 import {layerServerProtocol, layerRpc} from '@deslop/runtime/server/http'
 import {AuthError, DEVELOPER} from '@deslop/runtime/shared/auth'
+import {searchSerializerOf} from '@deslop/runtime/web/search'
 
 import type {serversAtom} from '#lib/gateway.ts'
-import {searchStringOf} from '#lib/search.ts'
+import {Search} from '#lib/search.ts'
 import {RpcContracts} from '#rpcs/contracts.ts'
 import {ConnectionItem, ServerId} from '#services/connections/schema.ts'
 import {UsageRange} from '#services/usage/schema.ts'
@@ -129,7 +130,7 @@ function render(result: Atom.Type<typeof serversAtom>) {
 					createRouter({
 						history: createMemoryHistory(),
 						routeTree: generated.routeTree,
-						stringifySearch: searchStringOf
+						stringifySearch: searchSerializerOf(Search, defaultStringifySearch)
 					})
 			)
 			yield* Effect.promise(() => router.load())
