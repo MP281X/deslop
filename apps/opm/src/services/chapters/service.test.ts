@@ -73,8 +73,11 @@ function insertChapters(database: Context.Context<Database>, chapters: readonly 
 const seeded = Effect.fnUntraced(function* (chapters: readonly Chapter[], tokens: readonly string[] = []) {
 	const database = yield* Layer.build(memory)
 	const sql = Context.get(database, SqlClient.SqlClient)
-	yield* Layer.build(
-		Layer.provide(Layer.provide(Reading.migrations, Chapters.migrations), Layer.succeedContext(database))
+	yield* pipe(
+		Reading.migrations,
+		Layer.provide(Chapters.migrations),
+		Layer.provide(Layer.succeedContext(database)),
+		Layer.build
 	)
 	yield* insertChapters(database, chapters)
 	yield* Effect.forEach(
