@@ -40,7 +40,7 @@ it.effect('shares range reads between viewers, isolates ranges and restarts afte
 				expose: () => Effect.succeed(''),
 				hide: () => Effect.void,
 				history: () => Effect.succeed(history),
-				local: Effect.succeed(yield* Schema.decodeEffect(Snapshot)({items: [], sources: [], time: 1})),
+				local: Effect.succeed(yield* Schema.decodeEffect(Snapshot)({items: [], sources: [], time: 1, workers: []})),
 				metrics: Effect.fnUntraced(function* (query) {
 					return yield* pipe(
 						entered,
@@ -106,7 +106,7 @@ it.effect('collects inventory once for multiple viewers and stops after the last
 			const entered = yield* Queue.unbounded<void>()
 			const closed = yield* Queue.unbounded<void>()
 			const received = yield* Queue.unbounded<Snapshot>()
-			const snapshot = yield* Schema.decodeEffect(Snapshot)({items: [], sources: [], time: 1})
+			const snapshot = yield* Schema.decodeEffect(Snapshot)({items: [], sources: [], time: 1, workers: []})
 			const context = yield* Layer.build(
 				pipe(
 					RpcHandlers,

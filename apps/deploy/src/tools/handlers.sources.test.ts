@@ -12,7 +12,7 @@ import {ToolHandlers} from '#tools/handlers.ts'
 const NOW = Date.UTC(2026, 10, 10, 12)
 
 function makeFleet(overrides: Partial<Parameters<typeof Fleet.of>[0]>) {
-	const snapshot = Schema.decodeSync(Snapshot)({items: [], sources: [], time: 0})
+	const snapshot = Schema.decodeSync(Snapshot)({items: [], sources: [], time: 0, workers: []})
 	const machine = Schema.decodeSync(MachineHistory)({
 		disks: [],
 		error: '',

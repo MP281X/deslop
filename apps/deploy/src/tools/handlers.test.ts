@@ -270,7 +270,7 @@ function makeMachine(worker: string, options?: {error?: string; stale?: boolean}
 }
 
 function makeFleet(overrides: Partial<Parameters<typeof Fleet.of>[0]>) {
-	const snapshot = Schema.decodeSync(Snapshot)({items: [], sources: [], time: 0})
+	const snapshot = Schema.decodeSync(Snapshot)({items: [], sources: [], time: 0, workers: []})
 	const machine = makeMachine('dev')
 	return Fleet.of({
 		current: () => Effect.succeed([]),

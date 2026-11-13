@@ -54,12 +54,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeHttpClient.layerFetch, NodeCrypt
 					url: '',
 					worker: 'worker'
 				})
-				const snapshot = Snapshot.make({
-					items: [item],
-					sources: [],
-					time: DateTime.makeUnsafe(123),
-					workers: Option.none()
-				})
+				const snapshot = Snapshot.make({items: [item], sources: [], time: DateTime.makeUnsafe(123), workers: []})
 				const history = yield* Schema.decodeEffect(MachineHistory)({
 					disks: [],
 					error: '',
@@ -149,7 +144,9 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeHttpClient.layerFetch, NodeCrypt
 								Layer.provide(
 									Layer.succeed(Inventory, {
 										run: () => Effect.fail(DeployError.make({message: 'read only'})),
-										snapshot: Effect.succeed(yield* Schema.decodeEffect(Snapshot)({items: [], sources: [], time: 0}))
+										snapshot: Effect.succeed(
+											yield* Schema.decodeEffect(Snapshot)({items: [], sources: [], time: 0, workers: []})
+										)
 									})
 								),
 								Layer.provide(

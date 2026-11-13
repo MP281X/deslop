@@ -427,7 +427,7 @@ function HomeRoute() {
 	const workers = Array.dedupe([
 		...pipe(
 			snapshot,
-			Option.map(value => Option.getOrElse(value.workers, () => Array.map(value.items, item => item.worker))),
+			Option.map(value => value.workers),
 			Option.getOrElse(() => [])
 		),
 		...Array.map(shownHistories, machine => machine.worker)

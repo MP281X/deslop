@@ -43,13 +43,12 @@ import {
 	ItemId,
 	ProcessId,
 	Serve,
-	Snapshot,
 	Tailnet,
 	Timer,
 	Unit,
 	WorkerId
 } from '#services/inventory/schema.ts'
-import type {RunRequest, UnitId} from '#services/inventory/schema.ts'
+import type {RunRequest, UnitId, Snapshot} from '#services/inventory/schema.ts'
 
 // Each listener with its unit, the app a Node listener's working directory names, and whether it answers HTTP; `unit` and `cwd` read a PID the platform's way.
 function portItems(
@@ -577,15 +576,15 @@ export class Inventory extends Context.Service<
 									onSuccess: records => ({error: Option.none<string>(), records})
 								})
 							)
-							return Snapshot.make({
+							return {
 								items: attachProcesses(
 									Array.flatMap(sources, source => source.items),
 									collected.records
 								),
 								sources: [...Array.map(sources, source => source.source), {error: collected.error, name: 'Processes'}],
 								time: yield* DateTime.now,
-								workers: Option.some([worker])
-							})
+								workers: [worker]
+							} satisfies Snapshot
 						})
 					),
 					'Inventory.snapshot',

@@ -54,7 +54,8 @@ const fixture = Effect.gen(function* () {
 		'exposures.expose': () => Effect.succeed(''),
 		'exposures.hide': () => Effect.void,
 		'inventory.run': () => Effect.void,
-		'inventory.snapshot': () => Effect.succeed(Schema.decodeSync(Snapshot)({items: [], sources: [], time: 1})),
+		'inventory.snapshot': () =>
+			Effect.succeed(Schema.decodeSync(Snapshot)({items: [], sources: [], time: 1, workers: []})),
 		'inventory.watch': () => Stream.mapEffect(Stream.fromQueue(inventory), Function.identity),
 		'metrics.history': () => Effect.never,
 		'metrics.watch': query => {
@@ -277,7 +278,7 @@ it.layer(NodeServices.layer)(test => {
 				yield* Queue.offer(
 					env.inventory,
 					Effect.succeed(
-						Snapshot.make({items: [port], sources: [], time: DateTime.makeUnsafe(1), workers: Option.none()})
+						Snapshot.make({items: [port], sources: [], time: DateTime.makeUnsafe(1), workers: [port.worker]})
 					)
 				)
 				yield* pipe(Stream.fromQueue(updates), Stream.filter(AsyncResult.isSuccess), Stream.runHead)
@@ -307,7 +308,7 @@ it.layer(NodeServices.layer)(test => {
 				env.registry.refresh(inventoryAtom)
 				yield* Queue.offer(
 					env.inventory,
-					Effect.succeed(yield* Schema.decodeEffect(Snapshot)({items: [], sources: [], time: 2}))
+					Effect.succeed(yield* Schema.decodeEffect(Snapshot)({items: [], sources: [], time: 2, workers: []}))
 				)
 				yield* pipe(Stream.fromQueue(updates), Stream.filter(AsyncResult.isSuccess), Stream.runHead)
 				assert.deepStrictEqual(env.registry.get(exposeTargetAtom), Option.none())

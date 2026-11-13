@@ -35,8 +35,8 @@ import {RPC_PATH} from '@deslop/runtime/shared/schema'
 import {RpcContracts} from '#rpcs/contracts.ts'
 import type {ExposeRequest, HideRequest} from '#services/exposures/schema.ts'
 import {Exposures} from '#services/exposures/service.ts'
-import {DeployError, ItemId, Snapshot, Worker} from '#services/inventory/schema.ts'
-import type {RunRequest, WorkerId} from '#services/inventory/schema.ts'
+import {DeployError, ItemId, Worker} from '#services/inventory/schema.ts'
+import type {RunRequest, WorkerId, Snapshot} from '#services/inventory/schema.ts'
 import {Inventory} from '#services/inventory/service.ts'
 import {history} from '#services/metrics/lib/utils.ts'
 import type {HistoryQuery, MachineHistory} from '#services/metrics/schema.ts'
@@ -154,17 +154,12 @@ export class Fleet extends Context.Service<
 						onFailure: cause => ({items: [], sources: [{error: Option.some(cause.message), name: 'Exposures'}]}),
 						onSuccess: items => ({items, sources: []})
 					})
-					return Snapshot.make({
+					return {
 						...snapshot,
 						items: [...snapshot.items, ...owned.items],
 						sources: [...snapshot.sources, ...owned.sources],
-						workers: Option.some(
-							Array.dedupe([
-								...Option.getOrElse(snapshot.workers, () => Array.map(snapshot.items, item => item.worker)),
-								...Array.map(workers, worker => worker.name)
-							])
-						)
-					})
+						workers: Array.dedupe([...snapshot.workers, ...Array.map(workers, worker => worker.name)])
+					} satisfies Snapshot
 				}),
 				'Fleet.local'
 			)
@@ -289,19 +284,20 @@ export class Fleet extends Context.Service<
 								pipe(
 									remote(worker, (client, headers) => client('inventory.snapshot', undefined, {headers})),
 									Effect.timeout(Duration.seconds(2)),
-									Effect.map(snapshot =>
-										Snapshot.make({
-											...snapshot,
-											items: Array.map(snapshot.items, item => ({
-												...item,
-												id: ItemId.make(`${worker.name}:${item.id}`),
-												worker: worker.name
-											})),
-											sources: Array.map(snapshot.sources, source => ({
-												...source,
-												name: `${worker.name} · ${source.name}`
-											}))
-										})
+									Effect.map(
+										snapshot =>
+											({
+												...snapshot,
+												items: Array.map(snapshot.items, item => ({
+													...item,
+													id: ItemId.make(`${worker.name}:${item.id}`),
+													worker: worker.name
+												})),
+												sources: Array.map(snapshot.sources, source => ({
+													...source,
+													name: `${worker.name} · ${source.name}`
+												}))
+											}) satisfies Snapshot
 									),
 									Effect.tap(snapshot => Ref.update(previous, rows => Record.set(rows, worker.name, snapshot))),
 									Effect.matchEffect({
@@ -315,17 +311,12 @@ export class Fleet extends Context.Service<
 								),
 							{concurrency: 'unbounded'}
 						)
-						return Snapshot.make({
+						return {
 							items: [...own.items, ...Array.flatMap(others, value => value.items)],
 							sources: [...own.sources, ...Array.flatMap(others, value => value.sources)],
 							time: yield* DateTime.now,
-							workers: Option.some(
-								Array.dedupe([
-									...Option.getOrElse(own.workers, Array.empty),
-									...Array.map(workers, worker => worker.name)
-								])
-							)
-						})
+							workers: Array.dedupe([...own.workers, ...Array.map(workers, worker => worker.name)])
+						} satisfies Snapshot
 					}),
 					'Fleet.snapshot',
 					{attributes: {workers: workers.length + 1}}

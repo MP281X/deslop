@@ -533,10 +533,7 @@ export function processTree(rows: readonly Process[]) {
 }
 
 function workerNames(snapshot: Snapshot) {
-	return Array.dedupe([
-		...Option.getOrElse(snapshot.workers, Array.empty),
-		...Array.map(snapshot.items, item => item.worker)
-	])
+	return Array.dedupe([...snapshot.workers, ...Array.map(snapshot.items, item => item.worker)])
 }
 
 function sourceWorker(source: {readonly name: string}, workers: readonly WorkerId[], local: Option.Option<WorkerId>) {

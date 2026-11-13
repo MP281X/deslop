@@ -197,7 +197,7 @@ export const Snapshot = Schema.Struct({
 	),
 	sources: Schema.Array(Schema.Struct({error: TextFromEmpty, name: Schema.String})),
 	time: DateTimeUtcFromFiniteMillis,
-	workers: Schema.OptionFromOptionalKey(Schema.Array(WorkerId))
+	workers: Schema.Array(WorkerId)
 })
 
 export type Worker = typeof Worker.Type

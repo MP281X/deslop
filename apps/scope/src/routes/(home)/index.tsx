@@ -12,7 +12,7 @@ import {AppBarTab, AppBar, AppBarChoice, AppBarTabs} from '@deslop/components-we
 import {appMarks} from '@deslop/components-web/apps'
 import {cn, mediaQueryAtom} from '@deslop/components-web/classes'
 import {EmptyState, Loaded, ReadFailure} from '@deslop/components-web/fallbacks'
-import {ItemListHeading, RowsSkeleton} from '@deslop/components-web/item-list'
+import {RowsSkeleton} from '@deslop/components-web/item-list'
 import {StaleProblem} from '@deslop/components-web/problem'
 import {StatusDot} from '@deslop/components-web/status-dot'
 import {Item, ItemActions, ItemContent, ItemMedia, ItemTitle} from '@deslop/components-web/ui/item'
@@ -402,14 +402,6 @@ function TracesPane(props: {
 	const active = Option.fromUndefinedOr(props.active)
 	return (
 		<section aria-label="Traces" className={cn('flex h-full min-h-0 flex-col overflow-hidden', props.className)}>
-			<ItemListHeading
-				icon={Option.match(active, {
-					onNone: () => <ChartBarHorizontalIcon aria-hidden className="text-muted-foreground size-4 shrink-0" />,
-					onSome: current => <AppMark app={current.app} />
-				})}
-			>
-				{Option.match(active, {onNone: () => null, onSome: current => current.operation.name})}
-			</ItemListHeading>
 			<Suspense fallback={<TracesSkeleton label="Traces" />}>
 				<OverviewContent range={props.range}>
 					{() =>
@@ -531,19 +523,6 @@ function TracePane(props: {
 	const trace = Option.fromUndefinedOr(props.trace)
 	return (
 		<section aria-label="Trace" className={cn('flex h-full min-h-0 flex-col overflow-hidden', props.className)}>
-			{Boolean.match(props.detailOnly === true, {
-				onFalse: () => (
-					<ItemListHeading
-						icon={<ChartBarHorizontalIcon aria-hidden className="text-muted-foreground size-4 shrink-0" />}
-					>
-						{Option.match(trace, {
-							onNone: () => null,
-							onSome: current => `${traceLabel(current)} · ${ageOf(current.start, props.now)}`
-						})}
-					</ItemListHeading>
-				),
-				onTrue: () => null
-			})}
 			<Suspense
 				fallback={Boolean.match(props.detailOnly === true, {
 					onFalse: () => <SpansSkeleton label="Spans" />,
