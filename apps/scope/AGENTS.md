@@ -8,5 +8,6 @@
 
 ## Boundary facts
 
-- **OTLP time.** Decimal nanoseconds can differ below a UTC instant's floating-point precision. The decoded UTC value retains its original spelling and exact Duration offset until ingestion computes the span duration; stored start/time keep their existing fractional-millisecond encoding.
-- **OTLP extensions.** HTTP bodies are JSON. Vendor object extensions are preserved by the struct parser, not intersected with a JSON index signature that would reject decoded Option and DateTime fields. Instrumentation scope and schema URLs are not read.
+- **OTLP time.** Decimal epoch nanoseconds decode to an exact Duration, not an extended DateTime object. Ingestion derives UTC starts with the existing microsecond truncation and derives durations from exact nanoseconds. Sender metadata is normalized once per resource group, not per record. Stored start/time keep their existing fractional-millisecond encoding.
+- **Error causes.** A cause is optional diagnostic metadata, not domain absence; nobody branches on it, so it stays Schema.optional(Defect).
+- **OTLP extensions.** HTTP bodies are JSON. Vendor object extensions are preserved by the struct parser, not intersected with a JSON index signature that would reject decoded Option and Duration fields. Instrumentation scope and schema URLs are not read.

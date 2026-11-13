@@ -30,7 +30,6 @@ import {TestClock} from 'effect/testing'
 
 import {
 	FindTracesParams,
-	IngestionAnswer,
 	LatencyAnswer,
 	ListOperationsParams,
 	LogsAnswer,
@@ -49,6 +48,7 @@ import {
 	TracesRequest
 } from '#services/telemetry/schema.ts'
 import {Telemetry} from '#services/telemetry/service.ts'
+import {ToolContracts} from '#tools/contracts.ts'
 
 const NOW = 1_781_870_000_000
 const START = `${BigInt(NOW) * 1_000_000n}`
@@ -249,7 +249,11 @@ function loaded(database: Database) {
 		Layer.build(Layer.provide(Telemetry.layer, Layer.succeedContext(database))),
 		Effect.map(Context.get(Telemetry)),
 		Effect.map(service => ({
-			checkIngestion: () => Effect.flatMap(service.checkIngestion(), Schema.encodeEffect(IngestionAnswer)),
+			checkIngestion: () =>
+				Effect.flatMap(
+					service.checkIngestion(),
+					Schema.encodeEffect(ToolContracts.tools.check_ingestion.successSchema)
+				),
 			findTraces: Effect.fnUntraced(function* (input: typeof FindTracesParams.Encoded) {
 				return yield* Schema.encodeEffect(TracesAnswer)(
 					yield* service.findTraces(yield* Schema.decodeEffect(FindTracesParams)(input))
@@ -2029,16 +2033,9 @@ it.layer(platform)(test => {
 					entries: 1,
 					lastEvent: DateTime.formatIso(DateTime.makeUnsafe(NOW)),
 					release: '0.1.2',
-					runStarted: DateTime.formatIso(DateTime.makeUnsafe(0)),
 					side: 'server'
 				},
-				{
-					app: 'deploy',
-					entries: 1,
-					lastEvent: DateTime.formatIso(DateTime.makeUnsafe(NOW + 20)),
-					runStarted: DateTime.formatIso(DateTime.makeUnsafe(0)),
-					side: 'web'
-				}
+				{app: 'deploy', entries: 1, lastEvent: DateTime.formatIso(DateTime.makeUnsafe(NOW + 20)), side: 'web'}
 			])
 			assert.containsSubset(answer.rejections, [
 				{

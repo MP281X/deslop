@@ -188,12 +188,21 @@ export function sideOf(service: ServiceName | AppName, value: Runtime) {
 	return Option.none<Side>()
 }
 
+// The stored encoding truncates epoch nanoseconds to microseconds, then represents them as fractional milliseconds.
+function instantOf(nanos: Duration.Duration) {
+	return DateTime.mapEpochMillis(
+		DateTime.makeUnsafe(0),
+		() => Option.getOrThrow(Number.parse((Duration.toNanosUnsafe(nanos) / 1000n).toString())) / 1000
+	)
+}
+
 // Who sent a record: its service, the side it runs on, the run its process started and the release it built.
-function senderOf(resource: Option.Option<Resource>) {
+export function senderOf(resource: Option.Option<Resource>) {
 	return {
 		run: pipe(
 			resourceText(resource, 'scope.run.started_unix_nano'),
 			Option.flatMap(Schema.decodeOption(Nano)),
+			Option.map(instantOf),
 			Option.map(DateTime.startOf('millisecond'))
 		),
 		runtime: pipe(
@@ -240,8 +249,9 @@ export function spansOf(payload: TracesRequest) {
 	const spans = pipe(
 		payload.resourceSpans,
 		Option.getOrElse(Array.empty),
-		Array.flatMap(group =>
-			pipe(
+		Array.flatMap(group => {
+			const sender = senderOf(group.resource)
+			return pipe(
 				group.scopeSpans,
 				Option.getOrElse(() => []),
 				Array.flatMap(scope =>
@@ -281,11 +291,11 @@ export function spansOf(payload: TracesRequest) {
 									)
 								),
 								span: Span.insert.make({
-									...senderOf(group.resource),
+									...sender,
 									attributes,
 									duration: Option.map(span.endTimeUnixNano, end =>
 										pipe(
-											Duration.subtract(end.offset, span.startTimeUnixNano.offset),
+											Duration.subtract(end, span.startTimeUnixNano),
 											Duration.max(Duration.zero),
 											Duration.toMillis,
 											Duration.millis
@@ -307,7 +317,7 @@ export function spansOf(payload: TracesRequest) {
 										SpanId.make(String.toLowerCase(id))
 									),
 									spanId,
-									start: span.startTimeUnixNano,
+									start: instantOf(span.startTimeUnixNano),
 									status: Boolean.match(failed, {
 										onFalse: () => 'ok' as const,
 										onTrue: () =>
@@ -323,7 +333,7 @@ export function spansOf(payload: TracesRequest) {
 					)
 				)
 			)
-		)
+		})
 	)
 	return {links: Array.flatMap(spans, item => item.links), spans: Array.map(spans, item => item.span)}
 }
@@ -340,21 +350,16 @@ function severityOf(number: Option.Option<number>, text: Option.Option<string>) 
 }
 
 // One log record of an OTLP logs export, under the identity its digest gave it.
-export function logOf(
-	group: {readonly resource: Option.Option<Resource>},
-	log: ExportedLog,
-	id: LogId,
-	receivedAt: DateTime.Utc
-) {
+export function logOf(sender: ReturnType<typeof senderOf>, log: ExportedLog, id: LogId, receivedAt: DateTime.Utc) {
 	return {
-		...senderOf(group.resource),
+		...sender,
 		attributes: attributesOf(Option.getOrElse(log.attributes, Array.empty)),
 		id,
 		message: Option.match(log.body, {onNone: () => '', onSome: body => Array.join(leaves(body), ' ')}),
 		receivedAt: Model.Override(receivedAt),
 		severity: severityOf(log.severityNumber, log.severityText),
 		spanId: Option.map(Option.flatten(log.spanId), value => SpanId.make(String.toLowerCase(value))),
-		time: log.timeUnixNano,
+		time: instantOf(log.timeUnixNano),
 		traceId: Option.map(Option.flatten(log.traceId), value => TraceId.make(String.toLowerCase(value)))
 	} satisfies typeof Log.insert.Type
 }

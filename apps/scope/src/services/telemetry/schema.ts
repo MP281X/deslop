@@ -1,4 +1,4 @@
-import {DateTime, Duration, Effect, Number, Option, Predicate, Record, Schema, SchemaGetter, Struct, pipe} from 'effect'
+import {DateTime, Duration, Effect, Option, Schema, SchemaGetter, Struct, pipe} from 'effect'
 
 import {Model} from 'effect/schema'
 
@@ -12,7 +12,7 @@ const RANGES: Record<Range, Duration.Duration> = {
 }
 
 export class TelemetryError extends Schema.TaggedError<TelemetryError>()('TelemetryError', {
-	cause: pipe(Schema.OptionFromOptional(Schema.Defect()), Schema.withConstructorDefault(Effect.succeedNone)),
+	cause: Schema.optional(Schema.Defect()),
 	message: Schema.String
 }) {}
 
@@ -44,35 +44,13 @@ export const McpServerName = pipe(Schema.String, Schema.brand('ScopeMcpServerNam
 type McpToolName = typeof McpToolName.Type
 export const McpToolName = pipe(Schema.String, Schema.brand('ScopeMcpToolName'))
 
-type PreciseInstant = DateTime.Utc & {readonly encoded: string; readonly offset: Duration.Duration}
-type NanoInstant = typeof NanoInstant.Type
-const NanoInstant = Schema.declare(
-	(value): value is PreciseInstant =>
-		DateTime.isDateTime(value) &&
-		DateTime.isUtc(value) &&
-		Predicate.hasProperty(value, 'encoded') &&
-		Predicate.isString(value.encoded) &&
-		Predicate.hasProperty(value, 'offset') &&
-		Duration.isDuration(value.offset)
-)
-
 export type Nano = typeof Nano.Type
-// Utc is the domain instant; the exact epoch offset and original spelling keep OTLP nanoseconds lossless.
+// OTLP's decimal epoch nanoseconds stay exact until ingestion projects a stored instant or duration.
 export const Nano = pipe(
 	Schema.String.check(Schema.isPattern(/^\d{1,20}$/u)),
-	Schema.decodeTo(NanoInstant, {
-		decode: SchemaGetter.transform(value => {
-			const nanos = BigInt(value)
-			const instant = DateTime.mapEpochMillis(
-				DateTime.makeUnsafe(0),
-				() => Option.getOrThrow(Number.parse((nanos / 1000n).toString())) / 1000
-			)
-			// Mutate only the fresh instant: copying it as a Struct would discard DateTime's prototype.
-			Record.assignProperty(instant, 'encoded', value)
-			Record.assignProperty(instant, 'offset', Duration.nanos(nanos))
-			return Schema.decodeUnknownSync(NanoInstant)(instant)
-		}),
-		encode: SchemaGetter.transform(value => value.encoded)
+	Schema.decodeTo(Schema.Duration.check(Schema.makeFilter(Duration.isFinite, {expected: 'finite epoch nanoseconds'})), {
+		decode: SchemaGetter.transform(value => Duration.nanos(BigInt(value))),
+		encode: SchemaGetter.transform(value => Duration.toNanosUnsafe(value).toString())
 	})
 )
 
@@ -668,15 +646,7 @@ export const IngestionService = Schema.Struct({
 	entries: Schema.Int,
 	lastEvent: Schema.DateTimeUtcFromString,
 	release: Schema.OptionFromOptionalKey(ReleaseVersion),
-	runStarted: pipe(
-		Schema.DateTimeUtcFromString,
-		Schema.decodeTo(Schema.Option(Schema.DateTimeUtc), {
-			decode: SchemaGetter.transform(value =>
-				Option.liftPredicate(value, instant => DateTime.toEpochMillis(instant) !== 0)
-			),
-			encode: SchemaGetter.transform(value => Option.getOrElse(value, () => DateTime.makeUnsafe(0)))
-		})
-	),
+	runStarted: Schema.Option(Schema.DateTimeUtc),
 	side: Schema.OptionFromOptionalKey(Side)
 })
 

@@ -196,7 +196,8 @@ function logPage(answer: LogsAnswer, input: typeof ToolContracts.tools.search_lo
 				...Struct.omit(attrs, ['attributes']),
 				...Struct.omit(message, ['text']),
 				attrs: Option.some(attrs.attributes),
-				message: message.text
+				message: message.text,
+				nextTextOffset: Option.orElse(message.nextTextOffset, () => attrs.nextTextOffset)
 			}
 		})
 	}

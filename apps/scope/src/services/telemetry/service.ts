@@ -34,6 +34,7 @@ import {
 	newestReleases,
 	overviewOf,
 	sideOf,
+	senderOf,
 	spansOf,
 	supersededBy,
 	touchedTraces,
@@ -112,9 +113,7 @@ const TRACE_UPDATES = Array.filter(
 	column => column !== 'id' && column !== 'receivedAt'
 )
 
-const asTelemetryError = Effect.mapError((cause: unknown) =>
-	TelemetryError.make({cause: Option.some(cause), message: UNAVAILABLE})
-)
+const asTelemetryError = Effect.mapError((cause: unknown) => TelemetryError.make({cause, message: UNAVAILABLE}))
 
 declare module 'effect/reactivity/Reactivity' {
 	interface Keys {
@@ -766,19 +765,20 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 					const receivedAt = yield* DateTime.now
 					const logs = yield* pipe(
 						Option.getOrElse(payload.resourceLogs, () => []),
-						Array.flatMap(group =>
-							pipe(
+						Array.flatMap(group => {
+							const sender = senderOf(group.resource)
+							return pipe(
 								group.scopeLogs,
 								Option.getOrElse(() => []),
 								Array.flatMap(scope =>
 									pipe(
 										scope.logRecords,
 										Option.getOrElse(() => []),
-										Array.map(log => ({group, log}))
+										Array.map(log => ({group, log, sender}))
 									)
 								)
 							)
-						),
+						}),
 						Effect.forEach(
 							Effect.fnUntraced(function* (item) {
 								// A log record has no id of its own, so the identity is what it carries.
@@ -798,7 +798,7 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 									traceId: log.traceId ?? ''
 								})
 								return logOf(
-									item.group,
+									item.sender,
 									item.log,
 									LogId.make(yield* digest.digestHex(Digest.sha256, utf8.encode(encoded))),
 									receivedAt
@@ -902,7 +902,7 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 			watch: (range: Range) =>
 				pipe(
 					sql.reactive(['telemetry'], readOverview(range)),
-					Stream.mapError(cause => TelemetryError.make({cause: Option.some(cause), message: UNAVAILABLE})),
+					Stream.mapError(cause => TelemetryError.make({cause, message: UNAVAILABLE})),
 					Stream.buffer({capacity: 1, strategy: 'sliding'}),
 					Stream.flatMap(overview =>
 						Stream.concat(Stream.succeed(overview), Stream.drain(Stream.fromEffect(Effect.sleep(Duration.seconds(1)))))
