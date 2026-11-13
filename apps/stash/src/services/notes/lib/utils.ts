@@ -106,9 +106,10 @@ export function tagCounts(notes: readonly Pick<NoteItem, 'tags'>[]) {
 		Record.toEntries,
 		Array.map(entry => ({count: entry[1].length, tag: entry[0]})),
 		Array.sort(
-			Order.combine(
-				Order.mapInput(Order.flip(Order.Number), (entry: {count: number; tag: string}) => entry.count),
-				Order.mapInput(Order.String, (entry: {count: number; tag: string}) => entry.tag)
+			pipe(
+				Order.flip(Order.Number),
+				Order.mapInput((entry: {count: number; tag: string}) => entry.count),
+				Order.combine(Order.mapInput(Order.String, (entry: {count: number; tag: string}) => entry.tag))
 			)
 		)
 	)

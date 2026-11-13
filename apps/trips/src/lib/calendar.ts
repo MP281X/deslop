@@ -108,15 +108,13 @@ export const calendarAtom = Atom.make(get =>
 			) {
 				return
 			}
-			const calendar = yield* Option.match(
-				Array.findFirst(
-					yield* Effect.tryPromise({
-						catch: cause => BookingsError.make({cause, message: 'The calendars could not be listed.'}),
-						try: () => getCalendars(EntityTypes.EVENT)
-					}),
-					found => found.title === CALENDAR
-				),
-				{
+			const calendar = yield* pipe(
+				yield* Effect.tryPromise({
+					catch: cause => BookingsError.make({cause, message: 'The calendars could not be listed.'}),
+					try: () => getCalendars(EntityTypes.EVENT)
+				}),
+				Array.findFirst(found => found.title === CALENDAR),
+				Option.match({
 					onNone: () =>
 						Effect.tryPromise({
 							catch: cause => BookingsError.make({cause, message: 'The Trips calendar could not be created.'}),
@@ -144,7 +142,7 @@ export const calendarAtom = Atom.make(get =>
 						}
 						return found
 					})
-				}
+				})
 			)
 			const now = yield* Clock.currentTimeMillis
 			const events = yield* Effect.tryPromise({

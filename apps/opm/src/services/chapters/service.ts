@@ -97,8 +97,7 @@ function changed(chapters: readonly Chapter[], before: readonly Chapter[]) {
 	const previous = HashMap.fromIterable(Array.map(before, chapter => [keyOf(chapter), chapter] as const))
 	return Array.filter(
 		chapters,
-		chapter =>
-			!Option.exists(HashMap.get(previous, keyOf(chapter)), item => Equal.equals(item, chapter))
+		chapter => !Option.exists(HashMap.get(previous, keyOf(chapter)), item => Equal.equals(item, chapter))
 	)
 }
 
@@ -328,33 +327,31 @@ export class Chapters extends Context.Service<Chapters>()('@deslop/opm/services/
 			const known = HashSet.fromIterable(Array.map(current, keyOf))
 			const loaded = Array.getSomes(found)
 			yield* pipe(
-				loaded,
-				Array.filter(chapter => !HashSet.has(known, keyOf(chapter))),
-				Effect.forEach(insertChapter, {concurrency: 1, discard: true}),
-				subject11929 =>
+				pipe(
+					loaded,
+					Array.filter(chapter => !HashSet.has(known, keyOf(chapter))),
+					Effect.forEach(insertChapter, {concurrency: 1, discard: true})
+				),
+				Effect.andThen(
 					pipe(
-						subject11929,
-						Effect.andThen(
-							pipe(
-								loaded,
-								Array.filter(chapter => HashSet.has(known, keyOf(chapter))),
-								Effect.forEach(
-									chapter =>
-										revise({
-											number: chapter.number,
-											pages: chapter.pages,
-											revisedAt: Option.some(chapter.postedAt),
-											series: chapter.series,
-											source: chapter.source
-										}),
-									{concurrency: 1, discard: true}
-								)
-							)
-						),
-						Reactivity.mutation(['chapters']),
-						sql.withTransaction,
-						asChaptersError
+						loaded,
+						Array.filter(chapter => HashSet.has(known, keyOf(chapter))),
+						Effect.forEach(
+							chapter =>
+								revise({
+									number: chapter.number,
+									pages: chapter.pages,
+									revisedAt: Option.some(chapter.postedAt),
+									series: chapter.series,
+									source: chapter.source
+								}),
+							{concurrency: 1, discard: true}
+						)
 					)
+				),
+				Reactivity.mutation(['chapters']),
+				sql.withTransaction,
+				asChaptersError
 			)
 			const saved = yield* chapters
 			const unreadable = Array.dedupe([
@@ -437,22 +434,20 @@ export class Chapters extends Context.Service<Chapters>()('@deslop/opm/services/
 				Effect.forEach(
 					chapter =>
 						pipe(
-							devices,
-							Array.chunksOf(100),
-							Effect.forEach(batch => send(chapter, batch), {concurrency: 1, discard: true}),
-							subject15767 =>
+							pipe(
+								devices,
+								Array.chunksOf(100),
+								Effect.forEach(batch => send(chapter, batch), {concurrency: 1, discard: true})
+							),
+							Effect.andThen(
 								pipe(
-									subject15767,
-									Effect.andThen(
-										pipe(
-											announce({notified: true, number: chapter.number, series: chapter.series}),
-											Reactivity.mutation(['chapters']),
-											asChaptersError
-										)
-									),
-									Effect.andThen(Effect.logInfo(`Announced chapter ${keyOf(chapter)} to ${devices.length} iPhones`)),
-									Effect.ignore({log: 'Warn', message: `Chapter ${keyOf(chapter)} was not announced yet`})
+									announce({notified: true, number: chapter.number, series: chapter.series}),
+									Reactivity.mutation(['chapters']),
+									asChaptersError
 								)
+							),
+							Effect.andThen(Effect.logInfo(`Announced chapter ${keyOf(chapter)} to ${devices.length} iPhones`)),
+							Effect.ignore({log: 'Warn', message: `Chapter ${keyOf(chapter)} was not announced yet`})
 						),
 					{concurrency: 1, discard: true}
 				)

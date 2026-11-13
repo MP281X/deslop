@@ -124,8 +124,7 @@ export class Presence extends Context.Service<
 							Left: {
 								branches: 'left',
 								resolve: transition => {
-									const open =
-										Option.getOrElse(Record.get(transition.state.tabs, transition.event.id), () => 1) - 1
+									const open = Option.getOrElse(Record.get(transition.state.tabs, transition.event.id), () => 1) - 1
 									if (open > 0) {
 										return transition.select.open({
 											data: {...transition.state, tabs: {...transition.state.tabs, [transition.event.id]: open}}

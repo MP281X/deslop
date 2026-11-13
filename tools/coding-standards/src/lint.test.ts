@@ -1910,7 +1910,6 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 							'export function Check(props: {value: unknown}) { return <span>{String(Atom.isAtom(props.value))}</span> }',
 							'export function Frozen() { "use no memo"; return <div /> }',
 							'export const faded = "bg-linear-to-b from-muted to-background"',
-							// oxlint-disable-next-line @deslop/coding-standards/no-gradient -- this input holds the class the rule rejects
 							'export const painted = "bg-[radial-gradient(circle,var(--muted),transparent)]"'
 						],
 						'\n'

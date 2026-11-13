@@ -45,10 +45,10 @@ export function unitFailures(text: string) {
 			Array.filter(String.isNonEmpty),
 			Array.map(block => {
 				const fields = Record.fromEntries(
-					Array.map(Array.filter(pipe(block, String.split('\n')), String.includes('=')), line => {
-							const [key, ...value] = String.split(line, '=')
-							return [key, Array.join(value, '=')] as const
-						})
+					Array.map(Array.filter(String.split(block, '\n'), String.includes('=')), line => {
+						const [key, ...value] = String.split(line, '=')
+						return [key, Array.join(value, '=')] as const
+					})
 				)
 				return [
 					fields['Id'] ?? '',

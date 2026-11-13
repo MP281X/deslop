@@ -397,9 +397,10 @@ function usage(nodes: readonly ProcessNode[]) {
 	}
 }
 
-const byUsage = Order.combine(
-	Order.mapInput(Order.flip(Order.Number), (node: ProcessNode) => node.memory),
-	Order.mapInput(Order.flip(Order.Number), (node: ProcessNode) => node.cpu ?? 0)
+const byUsage = pipe(
+	Order.flip(Order.Number),
+	Order.mapInput((node: ProcessNode) => node.memory),
+	Order.combine(Order.mapInput(Order.flip(Order.Number), (node: ProcessNode) => node.cpu ?? 0))
 )
 
 // Children heaviest first; below 2% of the app's memory and half a percent of the machine's CPU a process barely moves the usage, so it reads muted.

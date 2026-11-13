@@ -11,9 +11,10 @@ function span(spanId: string, depth: number, offsetMs: number, durationMs: numbe
 }
 
 function byStart() {
-	return Order.combine(
-		Order.mapInput(Order.Number, (item: Span) => item.offsetMs),
-		Order.mapInput(Order.flip(Order.Number), (item: Span) => item.durationMs)
+	return pipe(
+		Order.Number,
+		Order.mapInput((item: Span) => item.offsetMs),
+		Order.combine(Order.mapInput(Order.flip(Order.Number), (item: Span) => item.durationMs))
 	)
 }
 
@@ -149,9 +150,10 @@ function assertLanesDisjoint(placed: readonly {lane: number; span: Span}[], lane
 		)
 		Array.forEach(laneSpans, (left, index) =>
 			Array.forEach(Array.drop(laneSpans, index + 1), right =>
-					assert.isFalse(
-						left.offsetMs < right.offsetMs + right.durationMs && right.offsetMs < left.offsetMs + left.durationMs
-					))
+				assert.isFalse(
+					left.offsetMs < right.offsetMs + right.durationMs && right.offsetMs < left.offsetMs + left.durationMs
+				)
+			)
 		)
 	}
 }

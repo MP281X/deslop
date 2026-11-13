@@ -120,11 +120,11 @@ const readSource = Effect.fnUntraced(function* <A, E>(
 		}),
 		Effect.flatMap(response =>
 			Effect.map(Effect.when(read(response), Effect.succeed(response.status === 200)), body => ({
-					body,
-					location: response.headers['location'],
-					status: response.status,
-					type: response.headers['content-type'] ?? ''
-				}))
+				body,
+				location: response.headers['location'],
+				status: response.status,
+				type: response.headers['content-type'] ?? ''
+			}))
 		),
 		Effect.scoped,
 		// oxlint-disable-next-line effecttsgo/strict-effect-provide -- Each request owns an agent pinned to its checked address or its proxy.
@@ -146,7 +146,11 @@ const readSource = Effect.fnUntraced(function* <A, E>(
 		),
 		Effect.provideService(HttpClient.TracerDisabledWhen, () => true),
 		Effect.mapError(cause =>
-			Option.getOrElse(Option.liftPredicate(cause, Schema.is(NotesError)), () => NotesError.make({cause, message: UNREACHABLE, reason: 'Unreachable'}))
+			pipe(
+				cause,
+				Option.liftPredicate(Schema.is(NotesError)),
+				Option.getOrElse(() => NotesError.make({cause, message: UNREACHABLE, reason: 'Unreachable'}))
+			)
 		)
 	)
 })

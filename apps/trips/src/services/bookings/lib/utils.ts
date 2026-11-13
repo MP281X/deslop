@@ -95,7 +95,9 @@ export const byStart = Order.mapInput(Order.Number, startOf)
 export function titleOf(booking: Booking) {
 	if (booking._tag === 'stay') return booking.name
 	if (booking._tag === 'flight') return `${booking.airlineCode} ${booking.number}`
-	const brand = Option.getOrElse(Record.get(TRAIN_BRANDS, String.toLowerCase(String.trim(booking.operatorName))), () => String.toUpperCase(String.slice(0, 3)(booking.operatorName)))
+	const brand = Option.getOrElse(Record.get(TRAIN_BRANDS, String.toLowerCase(String.trim(booking.operatorName))), () =>
+		String.toUpperCase(String.slice(0, 3)(booking.operatorName))
+	)
 	return `${brand} ${booking.number}`
 }
 

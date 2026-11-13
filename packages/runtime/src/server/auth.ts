@@ -58,7 +58,7 @@ export class Auth extends Context.Service<
 			RpcAuth.of((effect, request) =>
 				Effect.flatMap(auth.user(request.headers), user =>
 					Effect.raceFirst(
-						pipe(effect, subject2215 => Effect.provideService(subject2215, CurrentUser, user)),
+						Effect.provideService(effect, CurrentUser, user),
 						pipe(
 							Effect.delay(auth.user(request.headers), '5 minutes'),
 							Effect.retry({while: error => error.error === 'temporarily_unavailable'}),

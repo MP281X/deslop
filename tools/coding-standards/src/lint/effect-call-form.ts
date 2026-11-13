@@ -451,14 +451,14 @@ function innerPipeline(context: LintContext, node: ESTree.Node) {
 		node.params[0]?.type !== 'Identifier' ||
 		node.body.type !== 'CallExpression'
 	)
-		return Option.none()
+		{return Option.none()}
 	if (
 		node.body.callee.type !== 'Identifier' ||
 		!isImportBinding({context, importedName: 'pipe', node: node.body.callee, source: 'effect'}) ||
 		node.body.arguments[0]?.type !== 'Identifier' ||
 		node.body.arguments[0].name !== node.params[0].name
 	)
-		return Option.none()
+		{return Option.none()}
 	return pipe(
 		variableFromScope({name: node.params[0].name, scope: context.sourceCode.getScope(node.body)}),
 		Option.filter(variable => Array.countBy(variable.references, reference => reference.isRead()) === 1),

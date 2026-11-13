@@ -299,9 +299,7 @@ const answer = Effect.fnUntraced(function* <R>(
 		() => Record.empty<string, number>()
 	)
 	const remembered = Array.flatMap(asked.questions, named =>
-		Option.toArray(
-			Option.map(Record.get(record, named.key), score => ({named, score}))
-		)
+		Option.toArray(Option.map(Record.get(record, named.key), score => ({named, score})))
 	)
 	const missing = Array.filter(asked.questions, named => !Record.has(record, named.key))
 	const fresh = yield* Array.match(missing, {
@@ -312,9 +310,7 @@ const answer = Effect.fnUntraced(function* <R>(
 					onNone: () => Effect.succeed(Array.empty()),
 					onSome: answers => {
 						const scored = Array.flatMap(questions, named =>
-							Option.toArray(
-								Option.map(Record.get(answers, named.name), score => ({named, score}))
-							)
+							Option.toArray(Option.map(Record.get(answers, named.name), score => ({named, score})))
 						)
 						return Effect.as(
 							store.set(asked.key, {

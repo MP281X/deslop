@@ -964,13 +964,14 @@ export function composedSteps(context: Context, node: ESTree.CallExpression) {
 		})
 		return Array.getSomes(
 			Array.map(Array.zip(steps, Array.drop(steps, 1)), pair =>
-					Option.map(Option.all({inner: pair[0], outer: pair[1]}), adjacent => ({
-						...adjacent,
-						end: adjacent.outer.node.range[1],
-						nested: false,
-						report: adjacent.outer.node,
-						start: adjacent.inner.node.range[0]
-					})))
+				Option.map(Option.all({inner: pair[0], outer: pair[1]}), adjacent => ({
+					...adjacent,
+					end: adjacent.outer.node.range[1],
+					nested: false,
+					report: adjacent.outer.node,
+					start: adjacent.inner.node.range[0]
+				}))
+			)
 		)
 	}
 	return pipe(

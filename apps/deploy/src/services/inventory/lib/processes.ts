@@ -85,9 +85,9 @@ export const processes = Effect.gen(function* () {
 									command,
 									Option.filter(Array.isReadonlyArrayNonEmpty),
 									Option.match({
-											onNone: () => ({detail: '', name: parsed.name}),
-											onSome: args => commandLabel(args, cwd)
-										})
+										onNone: () => ({detail: '', name: parsed.name}),
+										onSome: args => commandLabel(args, cwd)
+									})
 								)
 							},
 							start: yield* Schema.decodeEffect(Schema.FiniteFromString)(fields[19] ?? ''),
@@ -190,7 +190,11 @@ export function launchdProcesses(text: string, agents: Record<string, string>) {
 			Record.get(pid),
 			Option.orElse(() =>
 				Option.flatMap(
-					Option.filter(Record.get(parents, pid), parent => parent !== pid),
+					pipe(
+						parents,
+						Record.get(pid),
+						Option.filter(parent => parent !== pid)
+					),
 					agent
 				)
 			)

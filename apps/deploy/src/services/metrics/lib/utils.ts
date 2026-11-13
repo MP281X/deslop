@@ -414,17 +414,27 @@ function series(machine: MachineHistory, minutes: number, read: (sample: Sample)
 
 function appsOf(labels: Record<string, string>, latest: Sample) {
 	const sorted = Array.sort(
-		Array.map(Option.getOrElse(latest.apps, Array.empty), app =>
+		pipe(
+			latest.apps,
+			Option.getOrElse(Array.empty),
+			Array.map(
+				app =>
 					({
 						...pipe(
 							Option.fromUndefinedOr(app.cpu),
-							subject15011 => Option.map(subject15011, value => Number.round(value, 1)),
-							subject14998 => Option.match(subject14998, {onNone: () => ({}), onSome: cpu => ({cpu})})
+							Option.map(value => Number.round(value, 1)),
+							Option.match({onNone: () => ({}), onSome: cpu => ({cpu})})
 						),
 						mib: Number.round(app.memory / 1024 ** 2, 0),
 						name: bandName(app.id, labels)
-					}) satisfies AppUsage),
-		Order.combine(pipe(Order.flip(Order.Number), Order.mapInput((app: AppUsage) => app.mib)), Order.mapInput(Order.String, (app: AppUsage) => app.name))
+					}) satisfies AppUsage
+			)
+		),
+		pipe(
+			Order.flip(Order.Number),
+			Order.mapInput((app: AppUsage) => app.mib),
+			Order.combine(Order.mapInput(Order.String, (app: AppUsage) => app.name))
+		)
 	)
 	if (sorted.length <= 15) return sorted
 	const rest = Array.drop(sorted, 15)

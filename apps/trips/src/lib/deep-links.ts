@@ -26,7 +26,8 @@ function tapped(response: NotificationResponse | null) {
 
 export const openedAtom = Atom.keepAlive(
 	Atom.make(
-		Stream.flatMap(Stream.merge(
+		Stream.flatMap(
+			Stream.merge(
 				Stream.fromEffect(
 					Effect.map(
 						Effect.promise(() => Linking.getInitialURL()),
@@ -53,6 +54,8 @@ export const openedAtom = Atom.keepAlive(
 						)
 					})
 				)
-			), opened => Stream.fromIterable(Option.toArray(opened)))
+			),
+			opened => Stream.fromIterable(Option.toArray(opened))
+		)
 	)
 )

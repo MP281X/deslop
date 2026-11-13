@@ -5,9 +5,10 @@ import type {Metadata, Comment} from '#services/media/schema.ts'
 const BLOCKED =
 	/not a bot|requir(?:es|ing) login|login required|CONNECT tunnel failed|unable to connect to proxy|tunnel connection failed|ProxyError|HTTP Error (?:403|429|5\d\d)|Requested format is not available|timed out/iu
 
-const byStanding = Order.combine(
-	Order.mapInput(Order.flip(Order.Boolean), (comment: Comment) => comment.is_pinned ?? false),
-	Order.mapInput(Order.flip(Order.Number), (comment: Comment) => comment.like_count ?? 0)
+const byStanding = pipe(
+	Order.flip(Order.Boolean),
+	Order.mapInput((comment: Comment) => comment.is_pinned ?? false),
+	Order.combine(Order.mapInput(Order.flip(Order.Number), (comment: Comment) => comment.like_count ?? 0))
 )
 
 function commentLine(comment: Comment) {
@@ -146,18 +147,18 @@ export function captionTranscript(input: {authored: boolean; vtt: string}) {
 						)
 					)
 					return Array.map(Array.drop(lines, index + 1), line => ({
-							end: Array.lastNonEmpty(times),
-							start: Array.headNonEmpty(times),
-							text: pipe(
-								line,
-								String.replaceAll(/<[^>]+>/gu, ''),
-								String.replaceAll('&nbsp;', ' '),
-								String.replaceAll('&lt;', '<'),
-								String.replaceAll('&gt;', '>'),
-								String.replaceAll('&amp;', '&'),
-								String.trim
-							)
-						}))
+						end: Array.lastNonEmpty(times),
+						start: Array.headNonEmpty(times),
+						text: pipe(
+							line,
+							String.replaceAll(/<[^>]+>/gu, ''),
+							String.replaceAll('&nbsp;', ' '),
+							String.replaceAll('&lt;', '<'),
+							String.replaceAll('&gt;', '>'),
+							String.replaceAll('&amp;', '&'),
+							String.trim
+						)
+					}))
 				}),
 				Option.getOrElse(Array.empty)
 			)
@@ -169,16 +170,16 @@ export function captionTranscript(input: {authored: boolean; vtt: string}) {
 		cues,
 		Array.filter((cue, index) =>
 			Option.match(Array.get(cues, index - 1), {
-					onNone: () => true,
-					onSome: previous =>
-						input.authored ||
-						previous.text !== cue.text ||
-						pipe(
-							Option.all([previous.end, cue.start]),
-							Option.map(times => times[0] < times[1]),
-							Option.getOrElse(() => true)
-						)
-				})
+				onNone: () => true,
+				onSome: previous =>
+					input.authored ||
+					previous.text !== cue.text ||
+					pipe(
+						Option.all([previous.end, cue.start]),
+						Option.map(times => times[0] < times[1]),
+						Option.getOrElse(() => true)
+					)
+			})
 		),
 		Array.map(
 			cue =>

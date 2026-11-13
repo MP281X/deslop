@@ -6,9 +6,10 @@ type Interval = {end: number; start: number}
 type Lane = {intervals: readonly Interval[]; lastEnd: number}
 
 function byStart<T extends FlameSpan>() {
-	return Order.combine(
-		Order.mapInput(Order.Number, (span: T) => span.offsetMs),
-		Order.mapInput(Order.flip(Order.Number), (span: T) => span.durationMs)
+	return pipe(
+		Order.Number,
+		Order.mapInput((span: T) => span.offsetMs),
+		Order.combine(Order.mapInput(Order.flip(Order.Number), (span: T) => span.durationMs))
 	)
 }
 

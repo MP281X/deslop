@@ -126,7 +126,6 @@ function sourceSearch(search: Search, app: string) {
 	return {...Struct.omit(search, ['operation', 'pane', 'side', 'span', 'trace']), source: app}
 }
 
-// oxlint-disable-next-line @deslop/coding-standards/no-return-type -- Router callbacks return the whole Search contract, not a union narrowed to whichever keys a branch retains.
 export function nextSearch(search: Search, event: NavigationEvent): Search {
 	if (event._tag === 'Source') return sourceSearch(search, event.app)
 	if (event._tag === 'Operation') return select({operation: event.operation}, search.range, 'Traces')

@@ -185,8 +185,16 @@ function durationMs(start: string, end: string) {
 // Who sent a record: its service, the side it runs on, the run its process started and the release it built.
 function senderOf(resource: Resource) {
 	return {
-		run: Option.map(Option.liftPredicate(resourceText(resource, 'scope.run.started_unix_nano'), Schema.is(Nano)), nano => DateTime.makeUnsafe(Math.trunc(millisOf(nano)))),
-		runtime: Option.getOrElse(Option.liftPredicate(resourceText(resource, 'scope.runtime'), Schema.is(Runtime)), () => 'unknown' as const),
+		run: pipe(
+			resourceText(resource, 'scope.run.started_unix_nano'),
+			Option.liftPredicate(Schema.is(Nano)),
+			Option.map(nano => DateTime.makeUnsafe(Math.trunc(millisOf(nano))))
+		),
+		runtime: pipe(
+			resourceText(resource, 'scope.runtime'),
+			Option.liftPredicate(Schema.is(Runtime)),
+			Option.getOrElse(() => 'unknown' as const)
+		),
 		service: serviceName(resource),
 		version: Option.liftPredicate(resourceText(resource, 'service.version'), String.isNonEmpty)
 	}
@@ -323,17 +331,15 @@ export function levelOf(severity: number) {
 // The diagnostic a failed span is remembered by: its exception's message or its status line, first line only, no stack trace.
 export function diagnosis(span: Pick<Span, 'error' | 'exception'>) {
 	return pipe(
-		span.exception,
-		Option.orElse(() => span.error),
+		pipe(
+			span.exception,
+			Option.orElse(() => span.error),
+			Option.getOrElse(() => '')
+		),
+		value => Array.head(String.split(value, '\n')),
 		Option.getOrElse(() => ''),
-		subject11891 =>
-			pipe(
-				subject11891,
-				value => Array.head(String.split(value, '\n')),
-				Option.getOrElse(() => ''),
-				String.trim,
-				String.slice(0, 300)
-			)
+		String.trim,
+		String.slice(0, 300)
 	)
 }
 
@@ -481,7 +487,9 @@ function linkedParents(spans: readonly Span[], links: readonly SpanLink[]) {
 			return pipe(
 				[root, ...group],
 				Array.findFirst(span =>
-					Array.findFirst(Option.getOrElse(Record.get(linksOf, `${span.traceId}:${span.spanId}`), Array.empty), link => HashSet.has(ids, link.linkedSpanId))
+					Array.findFirst(Option.getOrElse(Record.get(linksOf, `${span.traceId}:${span.spanId}`), Array.empty), link =>
+						HashSet.has(ids, link.linkedSpanId)
+					)
 				),
 				Option.match({onNone: () => [], onSome: link => [[root.spanId, link.linkedSpanId] as const]})
 			)
@@ -581,16 +589,17 @@ const slowestFirst = Order.mapInput(Order.flip(Duration.Order), (item: Traced) =
 // From an operation's traces slowest first: the slowest, with the newest failures always among them, since those are the traces worth opening.
 function keptTraces(slowest: Array.NonEmptyReadonlyArray<Traced>) {
 	const newestFailures = HashSet.fromIterable(
-		Array.map(Array.take(
-				Array.sort(
-					pipe(
-						slowest,
-						Array.filter(item => item.failed)
-					),
-					Order.mapInput(Order.flip(Order.Number), (item: Traced) => item.trace.start)
+		Array.map(
+			Array.take(
+				pipe(
+					slowest,
+					Array.filter(item => item.failed),
+					Array.sort(Order.mapInput(Order.flip(Order.Number), (item: Traced) => item.trace.start))
 				),
 				KEEP / 2
-			), item => item.trace.id)
+			),
+			item => item.trace.id
+		)
 	)
 	// The newest failures, then the slowest of the rest: the sort is stable, so each part stays slowest first.
 	const chosenFirst = Array.sort(
@@ -608,68 +617,65 @@ type Ordered = {latest: number; operation: Operation}
 
 // Failing first, then most recently seen: the order the page and the tools list an app's operations in.
 function tracedOperations(group: readonly Traced[]) {
-	return Array.map(Array.sort(
-			pipe(
-				Record.values(Array.groupBy(group, item => `${item.runtime} ${item.name}`)),
-				Array.map(operation => {
-					const slowest = Array.sort(operation, slowestFirst)
-					// Already in order, so sorting the durations again costs one pass.
-					const latency = latencyOf(Array.reverse(Array.map(slowest, item => Duration.toMillis(item.trace.duration))))
-					return {
-						latest: pipe(
-							operation,
-							Array.map(item => item.trace.start),
-							pipelineSubject22953 => Array.max(pipelineSubject22953, Order.Number)
-						),
-						operation: {
-							count: operation.length,
-							failures: failureCount(operation),
-							name: Array.headNonEmpty(operation).name,
-							p50Ms: latency.p50Ms,
-							p95Ms: latency.p95Ms,
-							runtime: Array.headNonEmpty(operation).runtime,
-							traces: keptTraces(slowest)
-						} satisfies Operation
-					}
-				})
-			),
+	return Array.map(
+		Array.sort(
+			Array.map(Record.values(Array.groupBy(group, item => `${item.runtime} ${item.name}`)), operation => {
+				const slowest = Array.sort(operation, slowestFirst)
+				// Already in order, so sorting the durations again costs one pass.
+				const latency = latencyOf(Array.reverse(Array.map(slowest, item => Duration.toMillis(item.trace.duration))))
+				return {
+					latest: pipe(
+						operation,
+						Array.map(item => item.trace.start),
+						Array.max(Order.Number)
+					),
+					operation: {
+						count: operation.length,
+						failures: failureCount(operation),
+						name: Array.headNonEmpty(operation).name,
+						p50Ms: latency.p50Ms,
+						p95Ms: latency.p95Ms,
+						runtime: Array.headNonEmpty(operation).runtime,
+						traces: keptTraces(slowest)
+					} satisfies Operation
+				}
+			}),
 			pipe(
 				Order.flip(Order.Boolean),
 				Order.mapInput((item: Ordered) => item.operation.failures > 0),
-				pipelineSubject23424 =>
-					Order.combine(
-						pipelineSubject23424,
-						Order.mapInput(Order.flip(Order.Number), (item: Ordered) => item.latest)
-					)
+				Order.combine(Order.mapInput(Order.flip(Order.Number), (item: Ordered) => item.latest))
 			)
-		), item => item.operation)
+		),
+		item => item.operation
+	)
 }
 
 // Apps with failures lead, then the busiest; each app's operations count only the traces started in the page's time frame, so a quiet app keeps its tab with no rows.
 export function overviewOf(traces: readonly Traced[], now: number, range: Range) {
 	const cutoff = rangeStart(range, now)
 	return {
-		apps: Array.map(Array.sort(
-				pipe(
-					Record.values(Array.groupBy(traces, item => item.app)),
-					Array.map(group => ({failures: failureCount(group), group}))
-				),
+		apps: Array.map(
+			Array.sort(
+				Array.map(Record.values(Array.groupBy(traces, item => item.app)), group => ({
+					failures: failureCount(group),
+					group
+				})),
 				pipe(
 					Order.flip(Order.Number),
 					Order.mapInput((app: {failures: number; group: readonly Traced[]}) => app.failures),
-					pipelineSubject24159 =>
-						Order.combine(
-							pipelineSubject24159,
-							Order.mapInput(
-								Order.flip(Order.Number),
-								(app: {failures: number; group: readonly Traced[]}) => app.group.length
-							)
+					Order.combine(
+						Order.mapInput(
+							Order.flip(Order.Number),
+							(app: {failures: number; group: readonly Traced[]}) => app.group.length
 						)
+					)
 				)
-			), app => ({
+			),
+			app => ({
 				ci: Array.every(app.group, item => item.runtime === 'ci'),
 				name: Array.headNonEmpty(app.group).app,
 				operations: tracedOperations(Array.filter(app.group, item => item.trace.start >= cutoff))
-			}))
+			})
+		)
 	} satisfies Overview
 }

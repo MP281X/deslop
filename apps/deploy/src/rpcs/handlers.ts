@@ -22,7 +22,7 @@ export const RpcHandlers = RpcContracts.toLayer(
 			capacity: HistoryQuery.fields.minutes.literals.length,
 			lookup: (minutes: HistoryQuery['minutes']) => {
 				const query = {minutes}
-				return pipe(
+				return Effect.provideService(
 					Stream.share(
 						Stream.concat(
 							Stream.concat(Stream.fromEffect(fleet.current(query)), Stream.fromEffect(fleet.metrics(query))),
@@ -43,7 +43,8 @@ export const RpcHandlers = RpcContracts.toLayer(
 						),
 						{capacity: 1, replay: 1, strategy: 'sliding'}
 					),
-					pipelineSubject1113 => Effect.provideService(pipelineSubject1113, Scope.Scope, scope)
+					Scope.Scope,
+					scope
 				)
 			}
 		})

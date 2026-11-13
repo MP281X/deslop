@@ -163,9 +163,10 @@ function detailed(overview: Overview, rows: readonly TraceDetail[]) {
 }
 
 // Failing traces above the rest, then the newest: the largest is an operation's newest failure when it has one.
-const newestFailureLast = Order.combine(
-	Order.mapInput(Order.Boolean, (trace: OperationTrace) => trace.failure !== undefined),
-	Order.mapInput(Order.Number, (trace: OperationTrace) => trace.start)
+const newestFailureLast = pipe(
+	Order.Boolean,
+	Order.mapInput((trace: OperationTrace) => trace.failure !== undefined),
+	Order.combine(Order.mapInput(Order.Number, (trace: OperationTrace) => trace.start))
 )
 
 // The newest failing trace an operation keeps, whose span and message the tools show; its kept traces hold its newest failures.
@@ -296,10 +297,11 @@ function readTraceAnswer(tree: TraceTree, limit: number, offset: number, details
 			)
 		)
 	)
-	const candidates = Array.filter(Array.sort(
-			tree.spans,
-			Order.mapInput(Order.flip(Order.Number), (span: TreeSpan) => span.durationMs)
-		), span => !HashSet.has(ancestors, span.spanId))
+	const candidates = pipe(
+		tree.spans,
+		Array.sort(Order.mapInput(Order.flip(Order.Number), (span: TreeSpan) => span.durationMs)),
+		Array.filter(span => !HashSet.has(ancestors, span.spanId))
+	)
 	const kept = HashSet.union(
 		ancestors,
 		HashSet.fromIterable(
@@ -776,30 +778,34 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 			ingestLogs: Effect.fn('Telemetry.ingestLogs')(
 				function* (payload: LogsRequest) {
 					const receivedAt = yield* Clock.currentTimeMillis
-					const logs = yield* Effect.forEach(
-						Array.flatMap(payload.resourceLogs ?? [], group =>
-								Array.flatMap(group.scopeLogs ?? [], scope => Array.map(scope.logRecords ?? [], log => ({group, log})))),
-						Effect.fnUntraced(function* (item) {
-							// A log record has no id of its own, so the identity is what it carries.
-							const encoded = yield* Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown))({
-								attributes: item.log.attributes ?? [],
-								body: item.log.body ?? {},
-								observedTimeUnixNano: item.log.observedTimeUnixNano ?? '',
-								resource: item.group.resource ?? {},
-								severityNumber: item.log.severityNumber,
-								severityText: item.log.severityText ?? '',
-								spanId: item.log.spanId ?? '',
-								timeUnixNano: item.log.timeUnixNano,
-								traceId: item.log.traceId ?? ''
-							})
-							return logOf(
-								item.group,
-								item.log,
-								yield* digest.digestHex(Digest.sha256, utf8.encode(encoded)),
-								receivedAt
-							)
-						}),
-						{concurrency: 1}
+					const logs = yield* pipe(
+						payload.resourceLogs ?? [],
+						Array.flatMap(group =>
+							Array.flatMap(group.scopeLogs ?? [], scope => Array.map(scope.logRecords ?? [], log => ({group, log})))
+						),
+						Effect.forEach(
+							Effect.fnUntraced(function* (item) {
+								// A log record has no id of its own, so the identity is what it carries.
+								const encoded = yield* Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown))({
+									attributes: item.log.attributes ?? [],
+									body: item.log.body ?? {},
+									observedTimeUnixNano: item.log.observedTimeUnixNano ?? '',
+									resource: item.group.resource ?? {},
+									severityNumber: item.log.severityNumber,
+									severityText: item.log.severityText ?? '',
+									spanId: item.log.spanId ?? '',
+									timeUnixNano: item.log.timeUnixNano,
+									traceId: item.log.traceId ?? ''
+								})
+								return logOf(
+									item.group,
+									item.log,
+									yield* digest.digestHex(Digest.sha256, utf8.encode(encoded)),
+									receivedAt
+								)
+							}),
+							{concurrency: 1}
+						)
 					)
 					yield* chunked(logs, saveLogs)
 					yield* supersede(logs)
@@ -849,10 +855,8 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 			}, asTelemetryError),
 			readTrace: Effect.fn('Telemetry.readTrace')(function* (
 				input: ReadTraceParams,
-				// oxlint-disable-next-line typescript/no-inferrable-types -- Effect.fn context types an unannotated default parameter as any.
 				offset: number = 0,
 				spanId?: string,
-				// oxlint-disable-next-line typescript/no-inferrable-types -- Effect.fn context types an unannotated default parameter as any.
 				details: boolean = false
 			) {
 				return readTraceAnswer(yield* tree(input.id), input.limit, offset, details, spanId)

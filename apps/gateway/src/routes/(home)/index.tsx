@@ -127,10 +127,11 @@ function FirstImage(props: {sources: string[]}) {
 function ServerIcon(props: {server: ConnectionItem}) {
 	const host = new URL(props.server.url).hostname
 	const sources = Array.dedupe([
-		...Array.map(Array.sort(
-				props.server.icons,
-				Order.mapInput(Order.Boolean, (entry: ConnectionItem['icons'][number]) => entry.theme !== 'dark')
-			), entry => entry.src),
+		...pipe(
+			props.server.icons,
+			Array.sort(Order.mapInput(Order.Boolean, (entry: ConnectionItem['icons'][number]) => entry.theme !== 'dark')),
+			Array.map(entry => entry.src)
+		),
 		`https://${host}/favicon.ico`,
 		`https://${String.replace(/^(?:api|app|mcp)\./u, '')(host)}/favicon.ico`
 	])

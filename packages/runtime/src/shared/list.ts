@@ -26,8 +26,7 @@ export function listEvents<A extends {id: string}, E, R>(lists: Stream.Stream<re
 					const upserted = Array.filter(
 						current,
 						// A list read again holds new objects, so an unchanged item is told apart by its value.
-						item =>
-							!Option.exists(HashMap.get(kept, item.id), old => Equal.equals(old, item))
+						item => !Option.exists(HashMap.get(kept, item.id), old => Equal.equals(old, item))
 					)
 					if (Array.isArrayEmpty(removed) && Array.isArrayEmpty(upserted)) return []
 					return [{removed, reset: false, upserted}]

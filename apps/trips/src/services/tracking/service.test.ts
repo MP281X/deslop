@@ -83,11 +83,7 @@ function bookingsAt(state: Ref.Ref<Booking[]>, listed?: Queue.Queue<void>) {
 				state,
 				Ref.update(
 					Array.map(booking =>
-						pipe(
-							booking,
-							pipelineSubject2176 => Equal.equals(pipelineSubject2176, before),
-							Boolean.match({onFalse: () => booking, onTrue: () => after})
-						)
+						pipe(booking, Equal.equals(before), Boolean.match({onFalse: () => booking, onTrue: () => after}))
 					)
 				),
 				Effect.andThen(Effect.undefined)

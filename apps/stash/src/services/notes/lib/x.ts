@@ -42,7 +42,10 @@ function articleText(article: FxArticle) {
 	const lines = Array.filterMap(article.content.blocks, block => {
 		const attached = Array.filterMap(block.entityRanges, range =>
 			Result.fromOption(
-				Option.flatMapNullishOr(HashMap.get(entities, `${range.key}`), entity => entity.value.data.markdown ?? entity.value.data.url),
+				Option.flatMapNullishOr(
+					HashMap.get(entities, `${range.key}`),
+					entity => entity.value.data.markdown ?? entity.value.data.url
+				),
 				() => undefined
 			)
 		)
@@ -100,18 +103,16 @@ export function conversationPlan(conversation: FxConversation, status: FxPost, q
 	const byId = HashMap.fromIterable(Array.map(Array.reverse(replies), post => [post.id, post] as const))
 	// The author's follow-ups answer the saved post or an earlier follow-up; the author's answers to readers stay replies.
 	const followUps = pipe(
-		replies,
-		Array.filter(post => post.author.id === status.author.id),
-		Array.sort(byTime),
-		subject3763 =>
-			pipe(
-				subject3763,
-				Array.mapAccum(HashSet.make(status.id), (chain, post) => {
-					if (!HashSet.has(chain, post.replying_to?.status ?? '')) return [chain, Option.none<FxPost>()] as const
-					return [HashSet.add(chain, post.id), Option.some(post)] as const
-				}),
-				result => Array.getSomes(result[1])
-			)
+		pipe(
+			replies,
+			Array.filter(post => post.author.id === status.author.id),
+			Array.sort(byTime)
+		),
+		Array.mapAccum(HashSet.make(status.id), (chain, post) => {
+			if (!HashSet.has(chain, post.replying_to?.status ?? '')) return [chain, Option.none<FxPost>()] as const
+			return [HashSet.add(chain, post.id), Option.some(post)] as const
+		}),
+		result => Array.getSomes(result[1])
 	)
 	const earlier = pipe(
 		conversation.thread ?? [],

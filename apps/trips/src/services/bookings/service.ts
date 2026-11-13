@@ -168,7 +168,7 @@ export class Bookings extends Context.Service<Bookings>()('@deslop/trips/service
 						onSome: before =>
 							pipe(
 								before,
-								pipelineSubject6395 => Equal.equals(pipelineSubject6395, booking),
+								Equal.equals(booking),
 								Boolean.match({onFalse: () => update(booking), onTrue: () => Effect.void})
 							)
 					}),

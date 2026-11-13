@@ -260,59 +260,54 @@ export const HttpHandlers = HttpRouter.use(router =>
 						return yield* pipe(
 							HttpServerRequest.schemaSearchParams(AuthorizeParams),
 							asAuthError('Invalid authorization request'),
-							subject8703 => Effect.flatMap(subject8703, params => clientRequest(asked, client, params)),
-							subject8774 =>
-								Effect.flatMap(
-									subject8774,
-									Effect.fnUntraced(function* (checked) {
-										if (!webRedirect(checked.redirectUri)) {
-											return waitingAt(yield* signIns.start({_tag: 'Client', request: checked}, originOf(request)))
-										}
-										const browser = yield* pipe(
-											tokens.browserSession(request.headers),
-											Effect.tap(found => people.allowed(found.owner)),
-											Effect.result
-										)
-										if (browser._tag === 'Failure') {
-											if (
-												browser.failure.error === 'temporarily_unavailable' ||
-												browser.failure.error === 'access_denied'
-											) {
-												return yield* browser.failure
-											}
-											return HttpServerResponse.redirect(
-												`/?${new URLSearchParams({next: new URL(request.url, origin).href})}`
-											)
+							Effect.flatMap(params => clientRequest(asked, client, params)),
+							Effect.flatMap(
+								Effect.fnUntraced(function* (checked) {
+									if (!webRedirect(checked.redirectUri)) {
+										return waitingAt(yield* signIns.start({_tag: 'Client', request: checked}, originOf(request)))
+									}
+									const browser = yield* pipe(
+										tokens.browserSession(request.headers),
+										Effect.tap(found => people.allowed(found.owner)),
+										Effect.result
+									)
+									if (browser._tag === 'Failure') {
+										if (
+											browser.failure.error === 'temporarily_unavailable' ||
+											browser.failure.error === 'access_denied'
+										) {
+											return yield* browser.failure
 										}
 										return HttpServerResponse.redirect(
-											callbackUrl(
-												checked,
-												{
-													code: yield* tokens.issue({...checked, parent: browser.success.family}, browser.success.owner)
-												},
-												tokens.issuer
-											)
+											`/?${new URLSearchParams({next: new URL(request.url, origin).href})}`
 										)
-									})
-								),
-							subject9853 =>
-								Effect.catchIf(subject9853, Schema.is(AuthError), failure =>
-									Effect.succeed(
-										HttpServerResponse.redirect(
-											callbackUrl(
-												{
-													redirectUri: client.redirectUri,
-													...Option.match(Option.fromUndefinedOr(asked.state), {
-														onNone: () => ({}),
-														onSome: state => ({state})
-													})
-												},
-												{error: failure.error ?? 'invalid_request', error_description: failure.message},
-												tokens.issuer
-											)
+									}
+									return HttpServerResponse.redirect(
+										callbackUrl(
+											checked,
+											{code: yield* tokens.issue({...checked, parent: browser.success.family}, browser.success.owner)},
+											tokens.issuer
+										)
+									)
+								})
+							),
+							Effect.catchIf(Schema.is(AuthError), failure =>
+								Effect.succeed(
+									HttpServerResponse.redirect(
+										callbackUrl(
+											{
+												redirectUri: client.redirectUri,
+												...Option.match(Option.fromUndefinedOr(asked.state), {
+													onNone: () => ({}),
+													onSome: state => ({state})
+												})
+											},
+											{error: failure.error ?? 'invalid_request', error_description: failure.message},
+											tokens.issuer
 										)
 									)
 								)
+							)
 						)
 					})
 				)

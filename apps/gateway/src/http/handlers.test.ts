@@ -218,7 +218,6 @@ function layerAuth(verified: Ref.Ref<number>) {
 	)
 }
 
-// oxlint-disable-next-line typescript/no-inferrable-types -- Effect.fnUntraced context types an unannotated default parameter as any.
 const servers = Effect.fnUntraced(function* (home?: string, origin: string = GATEWAY_URL, local: boolean = false) {
 	const directory = home ?? (yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped())
 	const clock = yield* Clock.Clock
@@ -423,7 +422,11 @@ const servers = Effect.fnUntraced(function* (home?: string, origin: string = GAT
 		memoMap,
 		scope
 	)
-	const rpc = yield* Layer.buildWithMemoMap(Layer.provideMerge(RpcHandlers, Layer.succeedContext(services)), memoMap, scope)
+	const rpc = yield* Layer.buildWithMemoMap(
+		Layer.provideMerge(RpcHandlers, Layer.succeedContext(services)),
+		memoMap,
+		scope
+	)
 	const client = yield* Effect.provideContext(RpcTest.makeClient(RpcContracts, {flatten: true}), rpc)
 	const web = yield* Effect.acquireRelease(
 		Effect.sync(() =>
@@ -764,9 +767,12 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 			const listed = Effect.fnUntraced(function* () {
 				const response = yield* modern(gateway.web, TOKEN, 'tools/list')
 				return Array.filter(
-					Array.map((yield* Schema.decodeEffect(
+					Array.map(
+						(yield* Schema.decodeEffect(
 							Schema.fromJsonString(Schema.Struct({result: Schema.Struct({tools: Schema.Array(McpSchema.Tool)})}))
-						)(yield* Effect.promise(() => response.text()))).result.tools, tool => tool.name),
+						)(yield* Effect.promise(() => response.text()))).result.tools,
+						tool => tool.name
+					),
 					String.startsWith(`${added.id}__`)
 				)
 			})
@@ -892,7 +898,10 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 			yield* TestClock.adjust('30 seconds')
 			assert.deepStrictEqual(
 				Array.filter(
-					Array.map((yield* Effect.promise(() => client.listTools(undefined, {cacheMode: 'bypass'}))).tools, tool => tool.name),
+					Array.map(
+						(yield* Effect.promise(() => client.listTools(undefined, {cacheMode: 'bypass'}))).tools,
+						tool => tool.name
+					),
 					String.startsWith(`${added.id}__`)
 				),
 				[`${added.id}__search`]
@@ -901,7 +910,10 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 			assert.deepStrictEqual(
 				Array.sort(
 					Array.filter(
-						Array.map((yield* Effect.promise(() => client.listTools(undefined, {cacheMode: 'bypass'}))).tools, tool => tool.name),
+						Array.map(
+							(yield* Effect.promise(() => client.listTools(undefined, {cacheMode: 'bypass'}))).tools,
+							tool => tool.name
+						),
 						String.startsWith(`${added.id}__`)
 					),
 					Order.String

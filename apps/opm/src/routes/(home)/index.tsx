@@ -148,11 +148,15 @@ function Chapters(props: {onOpen: (number: number, page?: number) => void; searc
 			{all => {
 				const chapters = Array.filter(all, chapter => chapter.series === props.series)
 				const needle = String.toLowerCase(String.trim(props.searched))
-				return Array.match(
-					Array.filter(Array.sort(chapters, Order.flip(byNumber)), chapter =>
-								String.startsWith(needle)(`${chapter.number}`) ||
-								String.includes(needle)(String.toLowerCase(chapter.title))),
-					{
+				return pipe(
+					chapters,
+					Array.sort(Order.flip(byNumber)),
+					Array.filter(
+						chapter =>
+							String.startsWith(needle)(`${chapter.number}`) ||
+							String.includes(needle)(String.toLowerCase(chapter.title))
+					),
+					Array.match({
 						onEmpty: () =>
 							Boolean.match(String.isEmpty(needle), {
 								onFalse: () => <Empty systemImage="magnifyingglass" label="No chapters match" />,
@@ -167,7 +171,7 @@ function Chapters(props: {onOpen: (number: number, page?: number) => void; searc
 								</Section>
 							</ItemGroup>
 						)
-					}
+					})
 				)
 			}}
 		</Loaded>

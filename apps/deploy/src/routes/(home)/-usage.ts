@@ -80,17 +80,16 @@ function lowImpactApp(app: {cpu: readonly number[]; memory: readonly number[]}) 
 
 // The apps the chart folds into its low-impact band, which the list's divider uses too.
 export function lowImpactIds(history: MachineHistory) {
-	return HashSet.fromIterable(
-		Array.map(Array.filter(appSeries(history), lowImpactApp), app => app.id)
-	)
+	return HashSet.fromIterable(Array.map(Array.filter(appSeries(history), lowImpactApp), app => app.id))
 }
 
 export function bands(history: MachineHistory) {
 	const apps = appSeries(history)
 	const lowImpact = Array.filter(apps, lowImpactApp)
-	const large = Array.sort(
-		Array.difference(apps, lowImpact),
-		Order.mapInput(Order.flip(Order.Number), (app: {memory: number[]}) => peak(app.memory))
+	const large = pipe(
+		apps,
+		Array.difference(lowImpact),
+		Array.sort(Order.mapInput(Order.flip(Order.Number), (app: {memory: number[]}) => peak(app.memory)))
 	)
 	const ranked = Array.map(
 		large,

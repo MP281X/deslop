@@ -17,8 +17,7 @@ export const copyTemplate = Effect.fnUntraced(function* (input: {
 	}
 	const entries = Array.filter(
 		yield* fs.readDirectory(input.from, {recursive: true}),
-		entry =>
-			!Array.some(String.split(entry, path.sep), segment => Array.contains(SKIPPED, segment))
+		entry => !Array.some(String.split(entry, path.sep), segment => Array.contains(SKIPPED, segment))
 	)
 	yield* Effect.forEach(
 		entries,

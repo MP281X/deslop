@@ -123,7 +123,11 @@ export class Media extends Context.Service<
 					Effect.provideService(FileSystem.FileSystem, fs),
 					Effect.provideService(Path.Path, path),
 					Effect.mapError(cause =>
-						Option.getOrElse(Option.liftPredicate(cause, Schema.is(MediaError)), () => MediaError.make({cause, message: 'Cannot extract the media'}))
+						pipe(
+							cause,
+							Option.liftPredicate(Schema.is(MediaError)),
+							Option.getOrElse(() => MediaError.make({cause, message: 'Cannot extract the media'}))
+						)
 					)
 				)
 			}
