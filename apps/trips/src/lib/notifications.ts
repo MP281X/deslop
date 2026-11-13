@@ -9,15 +9,18 @@ import {
 } from 'expo-notifications'
 import {addPushToStartTokenListener} from 'expo-widgets'
 
-import {foregroundNotifications} from '@deslop/components-mobile/notifications'
-
 import {RpcClient, session} from '#lib/session.ts'
 import {BookingsError} from '#services/bookings/schema.ts'
 import {ApnsToken, Bundle} from '#services/push/schema.ts'
 
 const apns = Effect.map(Schema.decodeUnknownEffect(Bundle)(applicationId), bundle => ({bundle}))
 
-setNotificationHandler(foregroundNotifications)
+// fallow-ignore-next-line code-duplication -- Each notification app owns its handler so shared components do not autolink notifications into Stash.
+setNotificationHandler({
+	handleNotification: () =>
+		// oxlint-disable-next-line eslint/no-restricted-globals -- expo-notifications' handler contract takes a Promise.
+		Promise.resolve({shouldPlaySound: true, shouldSetBadge: false, shouldShowBanner: true, shouldShowList: true})
+})
 
 // Asked on the first launch: gate changes and delays reach the iPhone through these, and the server starts the island with the push-to-start token.
 export const pushAtom = RpcClient.runtime.atom(get =>
