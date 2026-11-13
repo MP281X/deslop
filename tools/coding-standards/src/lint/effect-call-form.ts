@@ -166,7 +166,10 @@ function dual(context: LintContext, node: ESTree.Node) {
 			const cached = DUALS.get(fn)
 			if (cached !== undefined) return cached
 			const result =
-				tagFirst(node) || matches(/return function \(self\)|return arity\(arguments\) \? body\.apply/u)(fn.toString())
+				fn === Effect.provideService ||
+				fn === Equal.equals ||
+				tagFirst(node) ||
+				matches(/return function \(self\)|return arity\(arguments\) \? body\.apply/u)(fn.toString())
 			DUALS.set(fn, result)
 			return result
 		})
@@ -183,6 +186,12 @@ function stableConstructor(context: LintContext, node: ESTree.CallExpression) {
 				'Array.empty',
 				'Effect.succeed',
 				'Effect.gen',
+				'Effect.fn',
+				'Effect.fnUntraced',
+				'Order.mapInput',
+				'Order.flip',
+				'Order.combine',
+				'Schema.is',
 				'Command.make',
 				'Command.withSubcommands',
 				'Command.withSharedFlags',
@@ -251,6 +260,7 @@ function stable(context: LintContext, node: ESTree.Node): boolean {
 					definition.type === 'ImportBinding' ||
 					definition.type === 'Parameter' ||
 					definition.type === 'ClassName' ||
+					definition.type === 'FunctionName' ||
 					(definition.node.type === 'VariableDeclarator' &&
 						definition.node.parent.type === 'VariableDeclaration' &&
 						definition.node.parent.kind === 'const')
@@ -435,6 +445,27 @@ function normalizeSchema(context: LintContext, node: ESTree.CallExpression) {
 	}
 }
 
+function innerPipeline(context: LintContext, node: ESTree.Node) {
+	if (
+		node.type !== 'ArrowFunctionExpression' ||
+		node.params[0]?.type !== 'Identifier' ||
+		node.body.type !== 'CallExpression'
+	)
+		return Option.none()
+	if (
+		node.body.callee.type !== 'Identifier' ||
+		!isImportBinding({context, importedName: 'pipe', node: node.body.callee, source: 'effect'}) ||
+		node.body.arguments[0]?.type !== 'Identifier' ||
+		node.body.arguments[0].name !== node.params[0].name
+	)
+		return Option.none()
+	return pipe(
+		variableFromScope({name: node.params[0].name, scope: context.sourceCode.getScope(node.body)}),
+		Option.filter(variable => Array.countBy(variable.references, reference => reference.isRead()) === 1),
+		Option.map(() => node.body)
+	)
+}
+
 function normalizePipe(context: LintContext, node: ESTree.CallExpression) {
 	if (
 		node.callee.type !== 'Identifier' ||
@@ -443,6 +474,31 @@ function normalizePipe(context: LintContext, node: ESTree.CallExpression) {
 		return
 	}
 	const first = node.arguments[0]
+	const boundary = Option.getOrUndefined(
+		Array.findFirstMap(Array.drop(node.arguments, 1), (step, index) =>
+			Option.map(innerPipeline(context, step), body => ({body, index}))
+		)
+	)
+	if (boundary !== undefined) {
+		const before = Array.take(node.arguments, boundary.index + 1)
+		const inner = Array.drop(boundary.body.arguments, 1)
+		const after = Array.drop(node.arguments, boundary.index + 2)
+		if (!Array.every(after, argument => stable(context, argument))) return
+		context.report({
+			fix: fixer => {
+				if (Array.every(inner, argument => stable(context, argument))) {
+					return fixer.replaceText(node, `pipe(${argumentsText(context, [...before, ...inner, ...after])})`)
+				}
+				return fixer.replaceText(
+					node,
+					`pipe(pipe(${argumentsText(context, before)}), ${argumentsText(context, [...inner, ...after])})`
+				)
+			},
+			message: 'Keep pipeline steps as operations, not an arrow that applies another pipeline.',
+			node
+		})
+		return
+	}
 	if (
 		first?.type === 'CallExpression' &&
 		first.callee.type === 'Identifier' &&
