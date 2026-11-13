@@ -1,7 +1,7 @@
 "use client"
 
 import { Checkbox as CheckboxPrimitive } from "@base-ui/react/checkbox"
-import { cn } from "#lib/utils.ts"
+import { cn } from "#lib/classes.ts"
 import { CheckIcon } from "@phosphor-icons/react"
 
 function Checkbox({ className, ...props }: CheckboxPrimitive.Root.Props) {

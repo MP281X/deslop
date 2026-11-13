@@ -1,7 +1,7 @@
 "use client"
 
 import { Tooltip as TooltipPrimitive } from "@base-ui/react/tooltip"
-import { cn } from "#lib/utils.ts"
+import { cn } from "#lib/classes.ts"
 
 function TooltipProvider({
   delay = 0,

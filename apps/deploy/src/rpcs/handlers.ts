@@ -10,13 +10,24 @@ export const RpcHandlers = RpcContracts.toLayer(
 		const fleet = yield* Fleet
 		// A cache lookup inherits its caller's scope; shared sources belong to this layer, not the first RPC.
 		const scope = yield* Effect.scope
-		const inventory = yield* pipe(Stream.fromEffect(fleet.local), pipelineSubject584 => Stream.concat(pipelineSubject584, Stream.fromEffectSchedule(fleet.snapshot, Schedule.spaced('5 seconds'))), pipelineSubject567 => Stream.share(pipelineSubject567, {capacity: 1, replay: 1, strategy: 'sliding'}))
+		const inventory = yield* pipe(
+			Stream.fromEffect(fleet.local),
+			pipelineSubject584 =>
+				Stream.concat(pipelineSubject584, Stream.fromEffectSchedule(fleet.snapshot, Schedule.spaced('5 seconds'))),
+			pipelineSubject567 => Stream.share(pipelineSubject567, {capacity: 1, replay: 1, strategy: 'sliding'})
+		)
 		// Viewers share one range sampler; the source stops when its last viewer leaves.
 		const metrics = yield* Cache.make({
 			capacity: HistoryQuery.fields.minutes.literals.length,
 			lookup: (minutes: HistoryQuery['minutes']) => {
 				const query = {minutes}
-				return pipe(Stream.fromEffect(fleet.current(query)), pipelineSubject1183 => Stream.concat(pipelineSubject1183, Stream.fromEffect(fleet.metrics(query))), pipelineSubject1161 => Stream.concat(pipelineSubject1161, Stream.merge(
+				return pipe(
+					Stream.fromEffect(fleet.current(query)),
+					pipelineSubject1183 => Stream.concat(pipelineSubject1183, Stream.fromEffect(fleet.metrics(query))),
+					pipelineSubject1161 =>
+						Stream.concat(
+							pipelineSubject1161,
+							Stream.merge(
 								Stream.fromEffectSchedule(
 									fleet.current(query),
 									Schedule.spaced(Duration.millis(Number.min(resolution(minutes), 30_000)))
@@ -29,7 +40,11 @@ export const RpcHandlers = RpcContracts.toLayer(
 										)
 									)
 								)
-							)), pipelineSubject1141 => Stream.share(pipelineSubject1141, {capacity: 1, replay: 1, strategy: 'sliding'}), pipelineSubject1113 => Effect.provideService(pipelineSubject1113, Scope.Scope, scope))
+							)
+						),
+					pipelineSubject1141 => Stream.share(pipelineSubject1141, {capacity: 1, replay: 1, strategy: 'sliding'}),
+					pipelineSubject1113 => Effect.provideService(pipelineSubject1113, Scope.Scope, scope)
+				)
 			}
 		})
 		return RpcContracts.of({

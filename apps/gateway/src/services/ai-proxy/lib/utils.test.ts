@@ -2,8 +2,8 @@ import {assert, it} from '@effect/vitest'
 
 import {Result} from 'effect'
 
-import {readUsage} from '#services/ai/lib/utils.ts'
-import type {AiUsageEntry} from '#services/ai/schema.ts'
+import {readUsage} from '#services/ai-proxy/lib/utils.ts'
+import type {AiUsageEntry} from '#services/ai-proxy/schema.ts'
 
 const EMPTY: AiUsageEntry = {
 	at: 0,

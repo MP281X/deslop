@@ -5,13 +5,13 @@ import {CurrentUser} from '@deslop/runtime/shared/auth'
 import {RpcContracts} from '#rpcs/contracts.ts'
 import {Bookings} from '#services/bookings/service.ts'
 import {Push} from '#services/push/service.ts'
-import {Tracker} from '#services/tracking/service.ts'
+import {Tracking} from '#services/tracking/service.ts'
 
 export const RpcHandlers = RpcContracts.toLayer(
 	Effect.gen(function* () {
 		const bookings = yield* Bookings
 		const push = yield* Push
-		const tracker = yield* Tracker
+		const tracker = yield* Tracking
 		return RpcContracts.of({
 			'bookings.events': () => bookings.events,
 			'bookings.remove': input => bookings.remove(input.id),

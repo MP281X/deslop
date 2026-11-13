@@ -2,7 +2,7 @@
 
 import * as React from "react"
 import { Combobox as ComboboxPrimitive } from "@base-ui/react"
-import { cn } from "#lib/utils.ts"
+import { cn } from "#lib/classes.ts"
 
 import { Button } from "#components/ui/button.tsx"
 import {

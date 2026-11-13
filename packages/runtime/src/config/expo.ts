@@ -1,4 +1,4 @@
-import {Boolean, Config, Effect, Option, pipe} from 'effect'
+import {Boolean, Config, Effect, Option} from 'effect'
 
 import type {ExpoConfig} from 'expo/config'
 
@@ -10,7 +10,8 @@ export function makeExpoConfig(app: {projectId: string; slug: string}) {
 			const release = yield* Config.withDefault(Config.Int('RELEASE_NUMBER'), 0)
 			const team = yield* Config.option(Config.String('APPLE_TEAM_ID'))
 			const production =
-				(yield* Config.withDefault(Config.Literals(['development', 'production'], 'APP_VARIANT'), 'development')) === 'production'
+				(yield* Config.withDefault(Config.Literals(['development', 'production'], 'APP_VARIANT'), 'development')) ===
+				'production'
 			const variant = Boolean.match(production, {
 				onFalse: () => ({
 					bundleIdentifier: `xyz.mp281x.${app.slug}.dev`,
@@ -26,7 +27,7 @@ export function makeExpoConfig(app: {projectId: string; slug: string}) {
 					experiments: {reactCompiler: true},
 					extra: {eas: {projectId: app.projectId}, scheme: variant.scheme},
 					ios: {
-						appleTeamId: Option.getOrUndefined(team),
+						...Option.match(team, {onNone: () => ({}), onSome: appleTeamId => ({appleTeamId})}),
 						buildNumber: `${release}`,
 						bundleIdentifier: variant.bundleIdentifier,
 						config: {usesNonExemptEncryption: false},

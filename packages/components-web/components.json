@@ -9,7 +9,7 @@
 	"tsx": true,
 	"aliases": {
 		"lib": "#components/ui/lib",
-		"utils": "#lib/utils",
+		"utils": "#lib/classes",
 		"ui": "#components/ui",
 		"components": "#components",
 		"hooks": "#components/ui/hooks"

@@ -10,7 +10,7 @@ import {AiHttpHandlers, HttpHandlers} from '#http/handlers.ts'
 import icon from '#routes/icon.svg'
 import {RpcContracts} from '#rpcs/contracts.ts'
 import {RpcHandlers} from '#rpcs/handlers.ts'
-import {AiProxy} from '#services/ai/service.ts'
+import {AiProxy} from '#services/ai-proxy/service.ts'
 import {Connections} from '#services/connections/service.ts'
 import {Gateway} from '#services/gateway/service.ts'
 import {layerUpstream} from '#services/network/service.ts'
@@ -26,6 +26,9 @@ const layerServices = pipe(
 
 runApp({
 	icon,
-	routes: Layer.provide(Layer.mergeAll(HttpHandlers, AiHttpHandlers, layerRpc({group: RpcContracts, handlers: RpcHandlers}), GatewayMcp), layerServices),
+	routes: Layer.provide(
+		Layer.mergeAll(HttpHandlers, AiHttpHandlers, layerRpc({group: RpcContracts, handlers: RpcHandlers}), GatewayMcp),
+		layerServices
+	),
 	settings: {GITHUB_ADMINS: ADMINS}
 })

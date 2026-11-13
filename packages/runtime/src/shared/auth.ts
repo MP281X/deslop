@@ -48,8 +48,8 @@ export const AccessClaims = Schema.Struct({
 	sub: Schema.NonEmptyString
 })
 
-export type ClientInfo = typeof ClientInfo.Type
-export const ClientInfo = Schema.Struct({
+export type ClientRegistration = typeof ClientRegistration.Type
+export const ClientRegistration = Schema.Struct({
 	name: Schema.String,
 	redirects: Schema.NonEmptyArray(Schema.NonEmptyString.check(Schema.isMaxLength(200))).check(Schema.isMaxLength(4))
 })
@@ -111,8 +111,8 @@ export const ACCESS_SECONDS = 600
 export const REFRESH_SECONDS = 30 * 86_400
 
 // A client id is its registration, encoded: anyone may register, and Auth checks the callbacks again at authorize.
-export function clientIdOf(client: ClientInfo) {
-	return Base64Url.encode(Schema.encodeSync(Schema.fromJsonString(ClientInfo))(client))
+export function clientIdOf(client: ClientRegistration) {
+	return Base64Url.encode(Schema.encodeSync(Schema.fromJsonString(ClientRegistration))(client))
 }
 
 export const DEVELOPER = {id: 'github:0', name: 'dev'} satisfies User
@@ -134,7 +134,7 @@ export function isDenied(error: unknown) {
 	return Schema.is(AuthError)(error) && error.error !== 'temporarily_unavailable'
 }
 
-export function rejected(message: string) {
+export function asAuthError(message: string) {
 	return Effect.mapError(cause => {
 		if (Schema.is(AuthError)(cause)) return cause
 		if (Predicate.isTagged(cause, 'SqlError') || HttpClient.isTransientError(cause)) {
@@ -152,7 +152,7 @@ export function failureOptions(error: unknown, status: number) {
 	return {status}
 }
 
-export class CurrentUser extends Context.Service<CurrentUser, User>('@deslop/runtime/shared/auth/CurrentUser') {}
+export class CurrentUser extends Context.Service<CurrentUser, User>()('@deslop/runtime/shared/auth/CurrentUser') {}
 
 export class RpcAuth extends RpcMiddleware.Service<RpcAuth, {provides: CurrentUser}>()(
 	'@deslop/runtime/shared/auth/RpcAuth',

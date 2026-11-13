@@ -5,14 +5,14 @@ import {Array, Config, Effect, FileSystem, Option, Path, Schema, pipe} from 'eff
 import {HttpClient, HttpClientResponse} from 'effect/http'
 
 import {AppError, execute} from '#server/process.ts'
-import {restart} from '#server/services.ts'
+import {restartService} from '#server/services.ts'
 import {AppVersion} from '#shared/schema.ts'
 
 const serviceDirectory = Effect.fnUntraced(function* (name: string) {
 	return (yield* Path.Path).join(yield* Config.String('HOME'), '.deslop', name)
 })
 
-export const activate = Effect.fnUntraced(function* (name: string, target: string) {
+export const activateRelease = Effect.fnUntraced(function* (name: string, target: string) {
 	const fs = yield* FileSystem.FileSystem
 	const directory = yield* serviceDirectory(name)
 	const current = (yield* Path.Path).join(directory, 'current')
@@ -24,7 +24,7 @@ export const activate = Effect.fnUntraced(function* (name: string, target: strin
 })
 
 // Never two processes: the service manager stops the old one before starting the new.
-export const update = Effect.fnUntraced(function* (name: string) {
+export const updateRelease = Effect.fnUntraced(function* (name: string) {
 	const fs = yield* FileSystem.FileSystem
 	const path = yield* Path.Path
 	const root = yield* serviceDirectory(name)
@@ -42,7 +42,8 @@ export const update = Effect.fnUntraced(function* (name: string) {
 		return yield* AppError.make({message: 'This Node runtime does not include npm; install Node with Vite+'})
 	}
 	const directory = path.join(root, 'releases', latest)
-	yield* Effect.timeout(execute(execPath, [
+	yield* Effect.timeout(
+		execute(execPath, [
 			npm,
 			'install',
 			'--prefix',
@@ -55,11 +56,17 @@ export const update = Effect.fnUntraced(function* (name: string) {
 			'--prefer-online',
 			'--registry=https://registry.npmjs.org',
 			`@deslop/${name}@${latest}`
-		]), '5 minutes')
+		]),
+		'5 minutes'
+	)
 	const previous = yield* Effect.option(fs.readLink(path.join(root, 'current')))
-	yield* activate(name, path.join(directory, 'node_modules', '@deslop', name))
-	yield* restart(name)
+	yield* activateRelease(name, path.join(directory, 'node_modules', '@deslop', name))
+	yield* restartService(name)
 	const kept = [latest, ...Option.toArray(Option.map(previous, link => path.basename(path.resolve(link, '../../..'))))]
-	yield* pipe(yield* fs.readDirectory(path.join(root, 'releases')), Array.difference(kept), pipelineSubject2771 => Effect.forEach(pipelineSubject2771, entry => fs.remove(path.join(root, 'releases', entry), {recursive: true}), {concurrency: 1}))
+	yield* pipe(yield* fs.readDirectory(path.join(root, 'releases')), Array.difference(kept), pipelineSubject2771 =>
+		Effect.forEach(pipelineSubject2771, entry => fs.remove(path.join(root, 'releases', entry), {recursive: true}), {
+			concurrency: 1
+		})
+	)
 	return `Updated ${name} from ${running} to ${latest}\n`
 })

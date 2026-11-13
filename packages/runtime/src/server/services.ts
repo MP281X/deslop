@@ -19,7 +19,11 @@ const unitDirectory = Effect.gen(function* () {
 })
 
 // `restart: false` leaves a running process alone, for one that reloads its own configuration.
-export const install = Effect.fnUntraced(function* (name: string, command: string[], options?: {restart: false}) {
+export const installService = Effect.fnUntraced(function* (
+	name: string,
+	command: string[],
+	options?: {restart: false}
+) {
 	if (platform === 'darwin') return yield* installAgent(name, command)
 	const fs = yield* FileSystem.FileSystem
 	const path = yield* Path.Path
@@ -39,7 +43,7 @@ export const install = Effect.fnUntraced(function* (name: string, command: strin
 })
 
 // A separate oneshot, so updating survives the restart of the app it updates.
-export const installUpdates = Effect.fnUntraced(function* (name: string, command: string[]) {
+export const installUpdateService = Effect.fnUntraced(function* (name: string, command: string[]) {
 	if (platform === 'darwin') return yield* installUpdateAgent(name, command)
 	const fs = yield* FileSystem.FileSystem
 	const path = yield* Path.Path
@@ -59,7 +63,7 @@ export const installUpdates = Effect.fnUntraced(function* (name: string, command
 	yield* systemctl('enable', '--now', `${unit}.timer`)
 })
 
-export const uninstall = Effect.fnUntraced(function* (name: string) {
+export const uninstallService = Effect.fnUntraced(function* (name: string) {
 	if (platform === 'darwin') return yield* uninstallAgents(name)
 	const fs = yield* FileSystem.FileSystem
 	const path = yield* Path.Path
@@ -74,12 +78,12 @@ export const uninstall = Effect.fnUntraced(function* (name: string) {
 	return `deslop-${name}.service removed; application data preserved\n`
 })
 
-export function status(name: string) {
+export function serviceStatus(name: string) {
 	if (platform === 'darwin') return agentStatus(name)
 	return systemctl('show', `deslop-${name}.service`, '--property=LoadState,ActiveState,SubState,MainPID')
 }
 
-export function restart(name: string) {
+export function restartService(name: string) {
 	if (platform === 'darwin') return restartAgent(name)
 	return Effect.timeout(systemctl('restart', `deslop-${name}.service`), '30 seconds')
 }

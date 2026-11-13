@@ -5,4 +5,4 @@ export class TemplatePackage extends Context.Service<
 	TemplatePackage,
 	// oxlint-disable-next-line typescript/no-empty-object-type -- A generated service starts without operations.
 	{}
->('@deslop/template-package/service/TemplatePackage') {}
+>()('@deslop/template-package/service/TemplatePackage') {}

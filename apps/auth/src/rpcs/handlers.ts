@@ -19,7 +19,7 @@ export const RpcHandlers = RpcContracts.toLayer(
 		const signIns = yield* SignIns
 		const tokens = yield* Tokens
 		return RpcContracts.of({
-			'apps.watch': () => apps.catalog,
+			'apps.watch': () => apps.watch,
 			'passkeys.add': Effect.fnUntraced(function* (input, options) {
 				yield* passkeys.add(input.response, {
 					from: originFrom(options.headers, Option.none()),
@@ -30,19 +30,19 @@ export const RpcHandlers = RpcContracts.toLayer(
 			'passkeys.registration': Effect.fnUntraced(function* (_, options) {
 				return yield* passkeys.registration(yield* CurrentOwner, yield* tokens.sessionVia(options.headers))
 			}),
-			'passkeys.watch': () => Stream.unwrap(Effect.map(CurrentOwner, passkeys.list)),
+			'passkeys.watch': () => Stream.unwrap(Effect.map(CurrentOwner, passkeys.watch)),
 			'people.account': (_, options) => people.account(options.headers),
 			'people.admit': Effect.fnUntraced(function* (input) {
 				return yield* people.admit(input, yield* CurrentUser)
 			}),
-			'people.watch': () => Stream.unwrap(Effect.map(CurrentUser, people.people)),
+			'people.watch': () => Stream.unwrap(Effect.map(CurrentUser, people.watch)),
 			// The page's RPC runs on the signed-in browser's session cookie.
-			'signins.answer': Effect.fnUntraced(function* (input) {
+			'sign-ins.answer': Effect.fnUntraced(function* (input) {
 				yield* signIns.answer(input, yield* CurrentOwner, 'Session')
 			}),
-			'signins.lookup': input => signIns.lookup(input.code),
-			'signins.status': (input, options) => signIns.status(input.request, options.headers),
-			'tokens.watchApps': () => Stream.unwrap(Effect.map(CurrentOwner, tokens.apps))
+			'sign-ins.lookup': input => signIns.lookup(input.code),
+			'sign-ins.status': (input, options) => signIns.status(input.request, options.headers),
+			'tokens.watchApps': () => Stream.unwrap(Effect.map(CurrentOwner, tokens.watchApps))
 		})
 	})
 )
