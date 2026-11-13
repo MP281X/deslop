@@ -643,5 +643,24 @@ export const noTrivialIndirection = defineRule({
 			}
 		}
 	},
-	meta: {fixable: 'code', type: 'problem'}
+	meta: {
+		docs: {
+			examples: {
+				accepted: [
+					{
+						'sample.ts': `import {Function, Option} from 'effect'
+export function defaults(value: Option.Option<boolean>) { return [Option.getOrElse(value, Function.constFalse), Option.getOrElse(value, Function.constTrue), Option.getOrElse(value, Function.constNull), Option.getOrElse(value, Function.constUndefined)] }`
+					}
+				],
+				fixes: [
+					{
+						'sample.ts': `import {Option} from 'effect'
+export function defaults(value: Option.Option<boolean>) { return [Option.getOrElse(value, () => false), Option.getOrElse(value, () => true), Option.getOrElse(value, () => null), Option.getOrElse(value, () => undefined)] }`
+					}
+				]
+			}
+		},
+		fixable: 'code',
+		type: 'problem'
+	}
 })

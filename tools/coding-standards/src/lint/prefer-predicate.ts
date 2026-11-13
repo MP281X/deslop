@@ -191,5 +191,23 @@ export const preferPredicate = defineRule({
 			})
 		}
 	}),
-	meta: {fixable: 'code', type: 'problem'}
+	meta: {
+		docs: {
+			examples: {
+				accepted: [
+					{
+						'sample.ts': `import {Predicate} from 'effect'
+export function describeValue(value: unknown) { return {isText: Predicate.isString(value), value} }`
+					}
+				],
+				fixes: [
+					{
+						'sample.ts': `export function describeValue(value: unknown) { return {isText: typeof value === 'string', value} }`
+					}
+				]
+			}
+		},
+		fixable: 'code',
+		type: 'problem'
+	}
 })

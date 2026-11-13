@@ -99,5 +99,8 @@ export const noMisleadingBooleanName = defineRule({
 			}
 		}
 	}),
-	meta: {type: 'problem'}
+	meta: {
+		docs: {examples: {accepted: [{'sample.ts': 'export function hasBudget(balance: number) { return balance > 0 }'}]}},
+		type: 'problem'
+	}
 })

@@ -1,7 +1,22 @@
 import {NodeServices} from '@effect/platform-node'
 import {assert, describe, it} from '@effect/vitest'
 
-import {Array, Effect, FileSystem, HashSet, Option, Order, Path, Record, Schema, Stream, String, pipe} from 'effect'
+import {
+	Array,
+	Boolean,
+	Effect,
+	FileSystem,
+	HashSet,
+	Option,
+	Order,
+	Path,
+	Predicate,
+	Record,
+	Schema,
+	Stream,
+	String,
+	pipe
+} from 'effect'
 
 import {ChildProcess, ChildProcessSpawner} from 'effect/process'
 
@@ -19,7 +34,17 @@ const OxlintOutput = Schema.Struct({
 	)
 })
 
-const lintSource = Effect.fnUntraced(function* (input: Record<string, string>, flags: string[] = []) {
+type RuleExamples = typeof RuleExamples.Type
+const RuleExamples = Schema.Struct({
+	accepted: Schema.NonEmptyArray(Schema.Record(Schema.String, Schema.String)),
+	fixes: Schema.optionalKey(Schema.Array(Schema.Record(Schema.String, Schema.String)))
+})
+
+const lintSource = Effect.fnUntraced(function* (
+	input: Record<string, string>,
+	flags: string[] = [],
+	presetOnly: boolean = false
+) {
 	const fs = yield* FileSystem.FileSystem
 	const path = yield* Path.Path
 	const directory = yield* fs.makeTempDirectoryScoped({prefix: 'deslop-lint-'})
@@ -36,14 +61,53 @@ const lintSource = Effect.fnUntraced(function* (input: Record<string, string>, f
 	const files = Array.map(Record.keys(input), name => path.join(directory, name))
 	const root = path.resolve(import.meta.dirname, '../../..')
 	yield* fs.symlink(path.join(root, 'node_modules'), path.join(directory, 'node_modules'))
+	const config = path.join(directory, 'vite.config.ts')
+	if (presetOnly) {
+		yield* fs.writeFileString(
+			config,
+			`import {lint} from '${path.join(root, 'tools/coding-standards/src/lint.ts')}'\nexport default {lint}\n`
+		)
+		yield* fs.writeFileString(path.join(directory, 'package.json'), '{"type":"module"}')
+		yield* fs.writeFileString(
+			path.join(directory, 'tsconfig.json'),
+			yield* Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown))({
+				compilerOptions: {
+					allowImportingTsExtensions: true,
+					jsx: 'react-jsx',
+					module: 'ESNext',
+					moduleResolution: 'Bundler',
+					noEmit: true,
+					noUnusedLocals: true,
+					noUnusedParameters: true,
+					paths: {
+						'@effect/atom-react': [
+							path.join(root, 'packages/components-web/node_modules/@effect/atom-react/dist/index.d.ts')
+						],
+						'@expo/ui/*': [path.join(root, 'packages/components-mobile/node_modules/@expo/ui/*')]
+					},
+					skipLibCheck: true,
+					strict: true,
+					target: 'ESNext'
+				}
+			})
+		)
+	}
 	const read = Effect.forEach(files, file => fs.readFileString(file), {concurrency: 'unbounded'})
 	const lint = Effect.scoped(
 		Effect.flatMap(
-			ChildProcess.make('vp', ['lint', ...files, '--format=json', '--type-aware', '--type-check', ...flags], {
-				cwd: root,
-				stderr: 'pipe',
-				stdout: 'pipe'
-			}),
+			ChildProcess.make(
+				'vp',
+				[
+					'lint',
+					...files,
+					'--format=json',
+					'--type-aware',
+					'--type-check',
+					...Boolean.match(presetOnly, {onFalse: () => [], onTrue: () => ['--config', config]}),
+					...flags
+				],
+				{cwd: root, stderr: 'pipe', stdout: 'pipe'}
+			),
 			child =>
 				Effect.all(
 					{
@@ -56,31 +120,34 @@ const lintSource = Effect.fnUntraced(function* (input: Record<string, string>, f
 		)
 	)
 	// A fix that edits an import and its use spans both, so overlapping fixes land on the next `fix` run; the test asserts where those runs settle.
-	const pass = Effect.gen(function* () {
-		const before = yield* read
-		const linted = yield* lint
-		const after = yield* read
-		return {
-			linted,
-			settled: !Array.contains(flags, '--fix') || Array.makeEquivalence(String.Equivalence)(before, after)
-		}
-	})
-	const result = (yield* Effect.repeat(pass, {times: 9, until: outcome => outcome.settled})).linted
+	const result = yield* Effect.repeat(
+		Effect.gen(function* () {
+			const before = yield* read
+			const linted = yield* lint
+			const after = yield* read
+			return {
+				linted,
+				settled: !Array.contains(flags, '--fix') || Array.makeEquivalence(String.Equivalence)(before, after)
+			}
+		}),
+		{times: 9, until: outcome => outcome.settled}
+	)
 	// The repository's fix command formats after the lint fixes, so a fixed source is compared as the formatter leaves it.
 	if (Array.contains(flags, '--fix')) {
 		yield* Effect.flatMap(ChildProcess.make('vp', ['fmt', ...files], {cwd: root}), formatter => formatter.exitCode)
 	}
 	return {
-		exitCode: result.exitCode,
+		exitCode: result.linted.exitCode,
+		settled: result.settled,
 		sources: yield* read,
 		// Rolldown appends a plugin timing warning on a loaded host; it is not a lint diagnostic.
 		stderr: pipe(
-			String.split(result.stderr, '\n'),
+			String.split(result.linted.stderr, '\n'),
 			Array.takeWhile(line => !String.includes('[PLUGIN_TIMINGS]')(line)),
 			Array.join('\n'),
 			String.trim
 		),
-		stdout: yield* Schema.decodeEffect(Schema.fromJsonString(OxlintOutput))(result.stdout)
+		stdout: yield* Schema.decodeEffect(Schema.fromJsonString(OxlintOutput))(result.linted.stdout)
 	}
 })
 
@@ -115,6 +182,67 @@ function customCodes(output: OxlintOutput) {
 
 describe('deslop Oxlint plugin', {concurrent: true}, () => {
 	it.layer(NodeServices.layer)(testApi => {
+		testApi.effect(
+			'keeps every accepted example and automatic fix clean under the whole preset at a fixed point',
+			Effect.fnUntraced(function* () {
+				const examples = yield* Effect.forEach(
+					Record.toEntries(plugin.rules),
+					Effect.fnUntraced(function* (entry) {
+						assert.property(entry[1].meta?.docs ?? {}, 'examples', entry[0])
+						const cases = yield* Schema.decodeUnknownEffect(RuleExamples)(entry[1].meta?.docs?.['examples'])
+						if (Predicate.isString(entry[1].meta?.fixable)) assert.isNotEmpty(cases.fixes ?? [], `${entry[0]} fixes`)
+						return {examples: cases, name: entry[0]}
+					}),
+					{concurrency: 'unbounded'}
+				)
+				function inputs(kind: 'accepted' | 'fixes') {
+					return Record.fromEntries(
+						Array.flatMap(examples, rule =>
+							Array.flatMap(rule.examples[kind] ?? [], (files, index) =>
+								Array.map(
+									Record.toEntries(files),
+									entry => [`${rule.name}/${kind}-${index}/${entry[0]}`, entry[1]] as const
+								)
+							)
+						)
+					)
+				}
+				const accepted = yield* lintSource(inputs('accepted'), [], true)
+				assert.deepStrictEqual(accepted.stdout.diagnostics, [])
+				assert.strictEqual(accepted.exitCode, ChildProcessSpawner.ExitCode(0))
+				const before = yield* lintSource(inputs('fixes'), [], true)
+				assert.isNotEmpty(before.stdout.diagnostics)
+				for (const rule of examples) {
+					for (const index of Array.map(rule.examples.fixes ?? [], (_, position) => position)) {
+						const owned = Array.filter(before.stdout.diagnostics, diagnostic =>
+							String.includes(`/${rule.name}/fixes-${index}/`)(diagnostic.filename ?? '')
+						)
+						assert.include(
+							Array.map(owned, diagnostic => diagnostic.code),
+							`@deslop/coding-standards(${rule.name})`,
+							`${rule.name} fix ${index}`
+						)
+						assert.deepStrictEqual(
+							Array.dedupe(customCodes({diagnostics: owned})),
+							[`@deslop/coding-standards(${rule.name})`],
+							`${rule.name} fix ${index} has one custom owner`
+						)
+					}
+				}
+				const fixed = yield* lintSource(inputs('fixes'), ['--fix'], true)
+				assert.isTrue(fixed.settled)
+				assert.deepStrictEqual(fixed.stdout.diagnostics, [])
+				const settled = yield* lintSource(
+					Record.fromEntries(Array.zip(Record.keys(inputs('fixes')), fixed.sources)),
+					['--fix'],
+					true
+				)
+				assert.deepStrictEqual(settled.stdout.diagnostics, [])
+				assert.deepStrictEqual(settled.sources, fixed.sources)
+				assert.isTrue(settled.settled)
+				assert.strictEqual(settled.exitCode, ChildProcessSpawner.ExitCode(0))
+			})
+		)
 		testApi.effect(
 			'traces statically owned service methods without tracing callback properties',
 			Effect.fnUntraced(function* () {

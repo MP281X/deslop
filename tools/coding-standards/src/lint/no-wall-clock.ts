@@ -90,5 +90,17 @@ export const noWallClock = defineRule({
 			}
 		}
 	},
-	meta: {type: 'problem'}
+	meta: {
+		docs: {
+			examples: {
+				accepted: [
+					{
+						'sample.ts': `import {Clock} from 'effect'
+export const now = Clock.currentTimeMillis`
+					}
+				]
+			}
+		},
+		type: 'problem'
+	}
 })

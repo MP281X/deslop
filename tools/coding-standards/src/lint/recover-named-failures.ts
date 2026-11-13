@@ -432,5 +432,26 @@ export const recoverNamedFailures = defineRule({
 			})
 		}
 	}),
-	meta: {fixable: 'code', type: 'problem'}
+	meta: {
+		docs: {
+			examples: {
+				accepted: [
+					{
+						'sample.ts': `import {Effect, Schema} from 'effect'
+class ReadError extends Schema.TaggedError<ReadError>()('ReadError', {cause: Schema.optional(Schema.Defect()), message: Schema.String}) {}
+export const failure = Effect.mapError(Effect.fail('offline'), cause => ReadError.make({cause, message: 'The read failed.'}))`
+					}
+				],
+				fixes: [
+					{
+						'sample.ts': `import {Effect, Schema} from 'effect'
+class ReadError extends Schema.TaggedError<ReadError>()('ReadError', {cause: Schema.optional(Schema.Defect()), message: Schema.String}) {}
+export const failure = Effect.mapError(Effect.fail('offline'), () => ReadError.make({message: 'The read failed.'}))`
+					}
+				]
+			}
+		},
+		fixable: 'code',
+		type: 'problem'
+	}
 })

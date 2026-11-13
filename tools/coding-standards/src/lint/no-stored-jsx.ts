@@ -20,5 +20,14 @@ export const noStoredJsx = defineRule({
 			})
 		}
 	}),
-	meta: {type: 'problem'}
+	meta: {
+		docs: {
+			examples: {
+				accepted: [
+					{'sample.tsx': 'export function Title(props: {title: string}) { return <span>{props.title}</span> }'}
+				]
+			}
+		},
+		type: 'problem'
+	}
 })

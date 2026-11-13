@@ -10,5 +10,12 @@ export const noBarrelModule = defineRule({
 			context.report({message: 'Import from the module that defines this name; never re-export it.', node})
 		}
 	}),
-	meta: {type: 'problem'}
+	meta: {
+		docs: {
+			examples: {
+				accepted: [{'sample.ts': 'export function remaining(limit: number, used: number) { return limit - used }'}]
+			}
+		},
+		type: 'problem'
+	}
 })

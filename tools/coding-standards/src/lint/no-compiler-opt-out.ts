@@ -11,5 +11,18 @@ export const noCompilerOptOut = defineRule({
 			})
 		}
 	}),
-	meta: {fixable: 'code', type: 'problem'}
+	meta: {
+		docs: {
+			examples: {
+				accepted: [{'sample.tsx': 'export function Title(props: {text: string}) { return <span>{props.text}</span> }'}],
+				fixes: [
+					{
+						'sample.tsx': `export function Title(props: {text: string}) { 'use no memo'; return <span>{props.text}</span> }`
+					}
+				]
+			}
+		},
+		fixable: 'code',
+		type: 'problem'
+	}
 })

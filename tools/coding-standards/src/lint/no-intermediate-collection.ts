@@ -106,5 +106,28 @@ export const noIntermediateCollection = defineRule({
 			if (Option.exists(name, isSort)) context.report({message: MIN, node})
 		}
 	}),
-	meta: {fixable: 'code', type: 'problem'}
+	meta: {
+		docs: {
+			examples: {
+				accepted: [
+					{
+						'sample.ts': `import {Array} from 'effect'
+export function firstPinned(notes: readonly {pinned: boolean}[]) { return Array.findFirst(notes, note => note.pinned) }`
+					}
+				],
+				fixes: [
+					{
+						'sample.ts': `import {Array} from 'effect'
+export function firstPinned(notes: readonly {pinned: boolean}[]) { return Array.head(Array.filter(notes, note => note.pinned)) }`
+					},
+					{
+						'sample.ts': `import {Array} from 'effect'
+export function hasPinned(notes: readonly {pinned: boolean}[]) { return Array.isReadonlyArrayNonEmpty(Array.filter(notes, note => note.pinned)) }`
+					}
+				]
+			}
+		},
+		fixable: 'code',
+		type: 'problem'
+	}
 })

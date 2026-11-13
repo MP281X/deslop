@@ -36,5 +36,19 @@ export const noMultilineComment = defineRule({
 			)
 		}
 	}),
-	meta: {type: 'suggestion'}
+	meta: {
+		docs: {
+			examples: {
+				accepted: [
+					{
+						'sample.ts': `export function remaining(limit: number, used: number) {
+// The provider counts its reserved slots against the same limit.
+return limit - used
+}`
+					}
+				]
+			}
+		},
+		type: 'suggestion'
+	}
 })

@@ -905,5 +905,42 @@ export const effectCallForm = defineRule({
 		},
 		FunctionExpression: node => normalizeGenerator(context, node)
 	}),
-	meta: {fixable: 'code', type: 'problem'}
+	meta: {
+		docs: {
+			examples: {
+				accepted: [
+					{
+						'sample.ts': `import {Array, pipe} from 'effect'
+export function pinnedTitles(notes: readonly {pinned: boolean; title: string}[]) { return pipe(notes, Array.filter(note => note.pinned), Array.map(note => note.title)) }`
+					}
+				],
+				fixes: [
+					{
+						'sample.ts': `import {Array} from 'effect'
+export function pinnedTitles(notes: readonly {pinned: boolean; title: string}[]) { return Array.map(Array.filter(notes, note => note.pinned), note => note.title) }`
+					},
+					{
+						'sample.ts': `import {Array, pipe} from 'effect'
+export function firstTwo(values: readonly number[]) { return pipe(values, Array.take(2)) }
+export function lastTwo(values: readonly number[]) { return Array.takeRight(2)(values) }
+export function shifted(values: readonly number[]) { return pipe(pipe(values, Array.drop(1)), Array.take(2)) }`
+					},
+					{
+						'sample.ts': `import {Effect, Schema} from 'effect'
+export type Count = typeof Count.Type
+export const Count = Schema.withDecodingDefaultTypeKey(Effect.succeed(30))(Schema.Int)
+export type PositiveCount = typeof PositiveCount.Type
+export const PositiveCount = Schema.check(Schema.isGreaterThan(0))(Schema.Finite)`
+					},
+					{
+						'sample.ts': `import {Effect} from 'effect'
+export const logged = Effect.flatMap(Effect.succeed('ready'), (state: string) => Effect.gen(function* () { yield* Effect.logDebug(state); return state }))
+export function actions() { return {read: () => Effect.gen(function* () { yield* Effect.logDebug('read'); return 'ready' })} }`
+					}
+				]
+			}
+		},
+		fixable: 'code',
+		type: 'problem'
+	}
 })

@@ -101,5 +101,17 @@ export const noAccumulatingCopy = defineRule({
 			})
 		}
 	}),
-	meta: {type: 'problem'}
+	meta: {
+		docs: {
+			examples: {
+				accepted: [
+					{
+						'sample.ts': `import {Array} from 'effect'
+export function noteIds(notes: readonly {id: string}[]) { return Array.map(notes, note => note.id) }`
+					}
+				]
+			}
+		},
+		type: 'problem'
+	}
 })

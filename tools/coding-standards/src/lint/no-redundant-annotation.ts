@@ -226,5 +226,21 @@ export const noRedundantAnnotation = defineRule({
 			}
 		}
 	},
-	meta: {fixable: 'code', type: 'problem'}
+	meta: {
+		docs: {
+			examples: {
+				accepted: [{'sample.ts': 'export function doubleOf(value: number) { return value * 2 }'}],
+				fixes: [
+					{'sample.ts': 'export function doubleOf(value: number): number { return value * 2 }'},
+					{
+						'sample.tsx': `import {useRef, useState} from 'react'
+export function Editor() { const [title, setTitle] = useState<string>(''); return <div ref={useRef<HTMLDivElement | null>(null)} onFocus={() => setTitle('Focused')}>{title}</div> }`
+					},
+					{'sample.ts': `export const ids: string[] = []`}
+				]
+			}
+		},
+		fixable: 'code',
+		type: 'problem'
+	}
 })

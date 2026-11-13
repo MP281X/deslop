@@ -54,5 +54,18 @@ export const noNativeControl = defineRule({
 			)
 		}
 	}),
-	meta: {type: 'problem'}
+	meta: {
+		docs: {
+			examples: {
+				accepted: [
+					{
+						'sample.tsx': `import type {ReactElement, ReactNode} from 'react'
+declare const Button: (props: {children: ReactNode; render: ReactElement}) => ReactNode
+export function Save() { return <Button render={<button type="button" aria-label="Save" />}>Save</Button> }`
+					}
+				]
+			}
+		},
+		type: 'problem'
+	}
 })

@@ -232,5 +232,30 @@ export const serviceMethodSpan = defineRule({
 			})
 		}
 	}),
-	meta: {fixable: 'code', type: 'problem'}
+	meta: {
+		docs: {
+			examples: {
+				accepted: [
+					{
+						'sample.ts': `import {Clock, Context, Effect} from 'effect'
+export class Notes extends Context.Service<Notes>()('service-method-span/accepted-0/sample/Notes', {make: Effect.gen(function* () {
+yield* Effect.logDebug('start')
+return {read: Effect.fn('Notes.read')(function* () { yield* Effect.logDebug('read'); return yield* Clock.currentTimeMillis })}
+})}) {}`
+					}
+				],
+				fixes: [
+					{
+						'sample.ts': `import {Clock, Context, Effect} from 'effect'
+export class Notes extends Context.Service<Notes>()('service-method-span/fixes-0/sample/Notes', {make: Effect.gen(function* () {
+yield* Effect.logDebug('start')
+return {read: Effect.fnUntraced(function* () { yield* Effect.logDebug('read'); return yield* Clock.currentTimeMillis })}
+})}) {}`
+					}
+				]
+			}
+		},
+		fixable: 'code',
+		type: 'problem'
+	}
 })

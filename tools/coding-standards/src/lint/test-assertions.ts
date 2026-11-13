@@ -171,5 +171,19 @@ export const testAssertions = defineRule({
 			})
 		}
 	}),
-	meta: {type: 'problem'}
+	meta: {
+		docs: {
+			examples: {
+				accepted: [
+					{
+						'sample.test.ts': `import {assert, it} from '@effect/vitest'
+function hasBudget(balance: number) { return balance > 0 }
+
+it('refuses spending without a balance', () => { assert.isFalse(hasBudget(0)); assert.isTrue(hasBudget(2)) })`
+					}
+				]
+			}
+		},
+		type: 'problem'
+	}
 })

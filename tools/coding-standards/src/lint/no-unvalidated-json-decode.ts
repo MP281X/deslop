@@ -109,5 +109,19 @@ export const noUnvalidatedJsonDecode = defineRule({
 			}
 		}
 	},
-	meta: {type: 'problem'}
+	meta: {
+		docs: {
+			examples: {
+				accepted: [
+					{
+						'sample.ts': `import {Schema} from 'effect'
+export type Settings = typeof Settings.Type
+export const Settings = Schema.fromJsonString(Schema.Struct({port: Schema.Int}))
+export function readSettings(input: unknown) { return Schema.decodeUnknownSync(Settings)(input) }`
+					}
+				]
+			}
+		},
+		type: 'problem'
+	}
 })

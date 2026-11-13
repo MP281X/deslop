@@ -37,5 +37,17 @@ export const noFloatingDerivedType = defineRule({
 			})
 		}
 	}),
-	meta: {type: 'problem'}
+	meta: {
+		docs: {
+			examples: {
+				accepted: [
+					{
+						'sample.ts': `export type Budget = ReturnType<typeof remaining>
+export function remaining(limit: number, used: number) { return limit - used }`
+					}
+				]
+			}
+		},
+		type: 'problem'
+	}
 })

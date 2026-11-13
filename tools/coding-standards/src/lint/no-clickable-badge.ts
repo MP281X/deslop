@@ -39,5 +39,18 @@ export const noClickableBadge = defineRule({
 			}
 		}
 	},
-	meta: {type: 'problem'}
+	meta: {
+		docs: {
+			examples: {
+				accepted: [
+					{
+						'sample.tsx': `import type {ReactNode} from 'react'
+declare const Badge: (props: {children: ReactNode}) => ReactNode
+export function Status() { return <Badge>Ready</Badge> }`
+					}
+				]
+			}
+		},
+		type: 'problem'
+	}
 })

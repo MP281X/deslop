@@ -201,5 +201,17 @@ export const noNativeMethodCall = defineRule({
 			)
 		}
 	}),
-	meta: {type: 'problem'}
+	meta: {
+		docs: {
+			examples: {
+				accepted: [
+					{
+						'sample.ts': `import {Array} from 'effect'
+export function latestIds(ids: readonly string[]) { return Array.reverse(ids) }`
+					}
+				]
+			}
+		},
+		type: 'problem'
+	}
 })

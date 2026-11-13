@@ -295,5 +295,16 @@ export const noPropertyAlias = defineRule({
 			}
 		}
 	},
-	meta: {fixable: 'code', type: 'problem'}
+	meta: {
+		docs: {
+			examples: {
+				accepted: [{'sample.ts': 'export function titleOf(note: {title: string}) { return note.title }'}],
+				fixes: [
+					{'sample.ts': 'export function titleOf(note: {title: string}) { const title = note.title; return title }'}
+				]
+			}
+		},
+		fixable: 'code',
+		type: 'problem'
+	}
 })

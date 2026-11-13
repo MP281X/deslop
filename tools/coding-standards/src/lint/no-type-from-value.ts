@@ -42,5 +42,18 @@ export const noTypeFromValue = defineRule({
 			}
 		}
 	},
-	meta: {type: 'problem'}
+	meta: {
+		docs: {
+			examples: {
+				accepted: [
+					{
+						'sample.ts': `import {Schema} from 'effect'
+export type Status = typeof Status.Type
+export const Status = Schema.Literals(['draft', 'published'])`
+					}
+				]
+			}
+		},
+		type: 'problem'
+	}
 })

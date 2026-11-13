@@ -42,5 +42,17 @@ export const noStoredSchemaOperation = defineRule({
 			}
 		}
 	}),
-	meta: {type: 'problem'}
+	meta: {
+		docs: {
+			examples: {
+				accepted: [
+					{
+						'sample.ts': `import {Schema} from 'effect'
+export function readTitle(input: unknown) { return Schema.decodeUnknownSync(Schema.String)(input) }`
+					}
+				]
+			}
+		},
+		type: 'problem'
+	}
 })

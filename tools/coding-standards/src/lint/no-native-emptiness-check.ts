@@ -26,5 +26,17 @@ export const noNativeEmptinessCheck = defineRule({
 			})
 		}
 	}),
-	meta: {type: 'problem'}
+	meta: {
+		docs: {
+			examples: {
+				accepted: [
+					{
+						'sample.ts': `import {Array} from 'effect'
+export const isEmpty = Array.isReadonlyArrayEmpty`
+					}
+				]
+			}
+		},
+		type: 'problem'
+	}
 })

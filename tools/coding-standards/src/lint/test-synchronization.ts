@@ -294,5 +294,23 @@ export const testSynchronization = defineRule({
 			WhileStatement: loop
 		}
 	},
-	meta: {type: 'problem'}
+	meta: {
+		docs: {
+			examples: {
+				accepted: [
+					{
+						'sample.test.ts': `import {assert, it} from '@effect/vitest'
+import {Effect, Fiber, pipe} from 'effect'
+import {TestClock} from 'effect/testing'
+it.effect('expires after the lease duration', Effect.fnUntraced(function* () {
+const lease = yield* pipe(Effect.succeed('expired'), Effect.delay('1 second'), Effect.forkChild)
+yield* TestClock.adjust('1 second')
+assert.strictEqual(yield* Fiber.join(lease), 'expired')
+}))`
+					}
+				]
+			}
+		},
+		type: 'problem'
+	}
 })

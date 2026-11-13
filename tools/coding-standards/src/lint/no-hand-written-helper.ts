@@ -305,5 +305,28 @@ export const noHandWrittenHelper = defineRule({
 			TemplateLiteral: check
 		}
 	},
-	meta: {fixable: 'code', type: 'problem'}
+	meta: {
+		docs: {
+			examples: {
+				accepted: [
+					{
+						'sample.ts': `import {Array, Number, pipe} from 'effect'
+export function totalAmount(notes: readonly {amount: number}[]) { return pipe(notes, Array.map(note => note.amount), Number.sumAll) }`
+					}
+				],
+				fixes: [
+					{
+						'sample.ts': `import {Array} from 'effect'
+export function totalAmount(notes: readonly {amount: number}[]) { return Array.reduce(notes, 0, (total, note) => total + note.amount) }`
+					},
+					{
+						'sample.ts': `import {String} from 'effect'
+export function titleOf(text: string) { return String.toUpperCase(String.slice(0, 1)(text)) + String.slice(1)(text) }`
+					}
+				]
+			}
+		},
+		fixable: 'code',
+		type: 'problem'
+	}
 })

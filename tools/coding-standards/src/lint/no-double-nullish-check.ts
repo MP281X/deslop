@@ -99,5 +99,23 @@ export const noDoubleNullishCheck = defineRule({
 			}
 		}
 	}),
-	meta: {fixable: 'code', type: 'problem'}
+	meta: {
+		docs: {
+			examples: {
+				accepted: [
+					{
+						'sample.ts': `import {Predicate} from 'effect'
+export function describeValue(value: unknown) { return {isMissing: Predicate.isNullish(value), value} }`
+					}
+				],
+				fixes: [
+					{
+						'sample.ts': `export function describeValue(value: unknown) { return {isMissing: value === null || value === undefined, value} }`
+					}
+				]
+			}
+		},
+		fixable: 'code',
+		type: 'problem'
+	}
 })

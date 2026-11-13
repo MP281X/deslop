@@ -185,5 +185,25 @@ export const schemaTypePair = defineRule({
 			}
 		}
 	},
-	meta: {fixable: 'code', type: 'problem'}
+	meta: {
+		docs: {
+			examples: {
+				accepted: [
+					{
+						'sample.ts': `import {Schema} from 'effect'
+export type Note = typeof Note.Type
+export const Note = Schema.Struct({title: Schema.String})`
+					}
+				],
+				fixes: [
+					{
+						'sample.ts': `import {Schema} from 'effect'
+export const Note = Schema.Struct({title: Schema.String})`
+					}
+				]
+			}
+		},
+		fixable: 'code',
+		type: 'problem'
+	}
 })

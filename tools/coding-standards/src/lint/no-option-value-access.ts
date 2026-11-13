@@ -85,5 +85,17 @@ export const noOptionValueAccess = defineRule({
 			}
 		}
 	}),
-	meta: {type: 'problem'}
+	meta: {
+		docs: {
+			examples: {
+				accepted: [
+					{
+						'sample.ts': `import {Function, Option} from 'effect'
+export function selectedTitle(title: Option.Option<string>) { return Option.getOrElse(title, Function.constNull) }`
+					}
+				]
+			}
+		},
+		type: 'problem'
+	}
 })

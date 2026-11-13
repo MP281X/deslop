@@ -134,5 +134,26 @@ export const moduleConstant = defineRule({
 			}
 		}
 	}),
-	meta: {fixable: 'code', type: 'suggestion'}
+	meta: {
+		docs: {
+			examples: {
+				accepted: [
+					{
+						'sample.ts': `const LIMIT = 4
+export function remaining(used: number) { return LIMIT - used }
+export function isFull(used: number) { return used >= LIMIT }`
+					}
+				],
+				fixes: [
+					{
+						'sample.ts': `const limit = 4
+export function remaining(used: number) { return limit - used }
+export function isFull(used: number) { return used >= limit }`
+					}
+				]
+			}
+		},
+		fixable: 'code',
+		type: 'suggestion'
+	}
 })

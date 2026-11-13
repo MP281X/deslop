@@ -231,5 +231,20 @@ export const noRepeatedSearch = defineRule({
 			}
 		}
 	}),
-	meta: {type: 'suggestion'}
+	meta: {
+		docs: {
+			examples: {
+				accepted: [
+					{
+						'sample.ts': `import {Array, HashSet} from 'effect'
+export function selectedNotes(notes: readonly {id: string}[], ids: readonly string[]) {
+const selected = HashSet.fromIterable(ids)
+return Array.filter(notes, note => HashSet.has(selected, note.id))
+}`
+					}
+				]
+			}
+		},
+		type: 'suggestion'
+	}
 })

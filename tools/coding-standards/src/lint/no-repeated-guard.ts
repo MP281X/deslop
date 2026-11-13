@@ -133,5 +133,19 @@ export const noRepeatedGuard = defineRule({
 			})
 		}
 	}),
-	meta: {type: 'problem'}
+	meta: {
+		docs: {
+			examples: {
+				accepted: [
+					{
+						'sample.ts': `import {Schema} from 'effect'
+export type Port = typeof Port.Type
+export const Port = Schema.Int
+export function readPort(input: unknown) { return Schema.decodeUnknownSync(Port)(input) }`
+					}
+				]
+			}
+		},
+		type: 'problem'
+	}
 })

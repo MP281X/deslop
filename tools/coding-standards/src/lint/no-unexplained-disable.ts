@@ -20,5 +20,17 @@ export const noUnexplainedDisable = defineRule({
 			}
 		}
 	}),
-	meta: {type: 'problem'}
+	meta: {
+		docs: {
+			examples: {
+				accepted: [
+					{
+						'sample.tsx': `// oxlint-disable-next-line eslint/eqeqeq -- This external contract deliberately groups both missing forms.
+export function isMissing(value: unknown) { return value == null }`
+					}
+				]
+			}
+		},
+		type: 'problem'
+	}
 })

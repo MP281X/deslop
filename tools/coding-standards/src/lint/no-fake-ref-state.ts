@@ -50,5 +50,17 @@ export const noFakeRefState = defineRule({
 			}
 		}
 	}),
-	meta: {type: 'problem'}
+	meta: {
+		docs: {
+			examples: {
+				accepted: [
+					{
+						'sample.tsx': `import {useRef} from 'react'
+export function Editor() { return <div ref={useRef<HTMLDivElement>(null)} /> }`
+					}
+				]
+			}
+		},
+		type: 'problem'
+	}
 })

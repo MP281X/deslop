@@ -226,5 +226,14 @@ export const noSingleUseValue = defineRule({
 			YieldExpression: effect
 		}
 	},
-	meta: {fixable: 'code', type: 'problem'}
+	meta: {
+		docs: {
+			examples: {
+				accepted: [{'sample.ts': 'export function doubleOf(value: number) { return value * 2 }'}],
+				fixes: [{'sample.ts': 'export function doubleOf(value: number) { const doubled = value * 2; return doubled }'}]
+			}
+		},
+		fixable: 'code',
+		type: 'problem'
+	}
 })
