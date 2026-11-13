@@ -35,7 +35,7 @@ function Expose(props: {items: readonly InventoryItem[]; port: InventoryItem}) {
 			Array.findFirst(item => Option.contains(item.self, true) && item.worker === props.port.worker),
 			Option.flatMap(item => item.hostname)
 		),
-		Function.constant('')
+		() => ''
 	)
 	const pending = AsyncResult.isWaiting(result)
 	return (
@@ -89,7 +89,7 @@ function Expose(props: {items: readonly InventoryItem[]; port: InventoryItem}) {
 							readOnly
 							value={Boolean.match(tailnetHost === '', {
 								onFalse: () => `https://${tailnetHost}:${Option.getOrUndefined(props.port.port)}`,
-								onTrue: Function.constant('')
+								onTrue: () => ''
 							})}
 						/>
 					</Field>
@@ -121,7 +121,7 @@ function Expose(props: {items: readonly InventoryItem[]; port: InventoryItem}) {
 					className="max-sm:h-11"
 					disabled={pending || (kind === 'tailnet' && tailnetHost === '') || (kind === 'public' && hostname === '')}
 				>
-					{Boolean.match(pending, {onFalse: Function.constant('Expose'), onTrue: Function.constant('Exposing…')})}
+					{Boolean.match(pending, {onFalse: () => 'Expose', onTrue: () => 'Exposing…'})}
 				</Button>
 			</DialogFooter>
 		</form>

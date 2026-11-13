@@ -1,17 +1,4 @@
-import {
-	Array,
-	Boolean,
-	DateTime,
-	Duration,
-	Function,
-	HashSet,
-	Number,
-	Option,
-	Order,
-	Record,
-	String,
-	pipe
-} from 'effect'
+import {Array, Boolean, DateTime, Duration, HashSet, Number, Option, Order, Record, String, pipe} from 'effect'
 
 import {APP_HUES} from '@deslop/components-web/apps'
 
@@ -79,7 +66,7 @@ function appSeries(history: MachineHistory) {
 			pipe(
 				Record.get(entries, id),
 				Option.flatMap(app => app.cpu),
-				Option.getOrElse(Function.constant(0))
+				Option.getOrElse(() => 0)
 			)
 		),
 		id,
@@ -140,7 +127,7 @@ export function bands(history: MachineHistory) {
 		...other,
 		{
 			cpu: Array.map(history.samples, (sample, index) =>
-				Number.max(0, Option.getOrElse(sample.cpu, Function.constant(0)) - total(apps, index, 'cpu'))
+				Number.max(0, Option.getOrElse(sample.cpu, () => 0) - total(apps, index, 'cpu'))
 			),
 			id: 'system' as const,
 			kind: 'system',
@@ -183,11 +170,11 @@ export function runs(history: MachineHistory, minutes: Duration.Duration, record
 							)
 						)
 					) || !recorded(sample),
-					{onFalse: Function.constant(0), onTrue: Function.constant(1)}
+					{onFalse: () => 0, onTrue: () => 1}
 				)
 			return [
 				{
-					run: run + Boolean.match(recorded(sample), {onFalse: Function.constant(1), onTrue: Function.constant(0)}),
+					run: run + Boolean.match(recorded(sample), {onFalse: () => 1, onTrue: () => 0}),
 					time: Option.some(sample.time)
 				},
 				{

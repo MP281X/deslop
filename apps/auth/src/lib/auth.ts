@@ -1,4 +1,4 @@
-import {DateTime, Effect, Function, Match, Option, Predicate, Schema, Stream, String, pipe} from 'effect'
+import {DateTime, Effect, Match, Option, Predicate, Schema, Stream, String, pipe} from 'effect'
 
 import {startAuthentication, startRegistration} from '@simplewebauthn/browser'
 import {Machine} from '@typeonce/effect-machine'
@@ -332,7 +332,7 @@ export const codeSignInAtom = Atom.fn((next: Search['next']) =>
 		try: () =>
 			location.assign(
 				Option.match(next, {
-					onNone: Function.constant('/auth/code'),
+					onNone: () => '/auth/code',
 					onSome: page => `/auth/code?${new URLSearchParams({next: page})}`
 				})
 			)

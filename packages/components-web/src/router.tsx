@@ -1,4 +1,4 @@
-import {Array, Function, Option, Predicate, String, pipe} from 'effect'
+import {Array, Option, Predicate, String, pipe} from 'effect'
 
 import {RouterProvider, createRouter} from '@tanstack/react-router'
 import type {AnyContext, AnyRoute, AnyRouter} from '@tanstack/react-router'
@@ -35,7 +35,7 @@ export function mountRouter<TRouteTree extends AnyRoute & {types: {routerContext
 				Array.findLast(router.state.matches, match => match.error === error),
 				Option.orElse(() => Array.last(router.state.matches)),
 				Option.flatMap(match => Option.liftPredicate(match.routeId, String.isString)),
-				Option.getOrElse(Function.constant('__root__'))
+				Option.getOrElse(() => '__root__')
 			),
 			source,
 			stack

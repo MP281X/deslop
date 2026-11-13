@@ -57,10 +57,7 @@ export function CopyButton(props: {
 				size={props.size}
 				className={props.className}
 				aria-label={props.label}
-				title={Boolean.match(failed && !explained, {
-					onFalse: Function.constUndefined,
-					onTrue: Function.constant('Cannot copy')
-				})}
+				title={Boolean.match(failed && !explained, {onFalse: Function.constUndefined, onTrue: () => 'Cannot copy'})}
 				onClick={() => copy()}
 			>
 				{props.children}

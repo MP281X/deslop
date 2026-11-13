@@ -1,4 +1,4 @@
-import {Array, DateTime, Duration, Effect, Function, Option, String, pipe} from 'effect'
+import {Array, DateTime, Duration, Effect, Option, String, pipe} from 'effect'
 
 import {Atom} from 'effect/reactivity'
 import {geocodeAsync} from 'expo-location'
@@ -17,7 +17,7 @@ export function placeLine(place: Place | BookedPlace) {
 			pipe(
 				place.address,
 				Option.orElse(() => place.city),
-				Option.getOrElse(Function.constant(''))
+				Option.getOrElse(() => '')
 			)
 		],
 		Array.filter(String.isNonEmpty),

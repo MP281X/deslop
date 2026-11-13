@@ -242,7 +242,7 @@ function stableConstructor(context: LintContext, node: ESTree.CallExpression) {
 				'Schema.withDecodingDefaultTypeKey',
 				'Schema.withDecodingDefaultKey'
 			],
-			`${node.callee.object.name}.${Option.getOrElse(memberName(node.callee), Function.constant(''))}`
+			`${node.callee.object.name}.${Option.getOrElse(memberName(node.callee), () => '')}`
 		) &&
 		isImportBinding({
 			context,
@@ -288,7 +288,7 @@ function argumentKind(context: LintContext, node: ESTree.Node): string {
 			}
 			return 'unknown'
 		}),
-		Option.getOrElse(Function.constant('unknown'))
+		Option.getOrElse(() => 'unknown')
 	)
 }
 
@@ -298,10 +298,10 @@ function predicateDataFirst(context: LintContext, callee: ESTree.MemberExpressio
 	if (first === undefined) return false
 	const firstKind = argumentKind(context, first)
 	const secondKind = Option.match(Option.fromUndefinedOr(second), {
-		onNone: Function.constant('missing'),
+		onNone: () => 'missing',
 		onSome: argument => argumentKind(context, argument)
 	})
-	const method = Option.getOrElse(memberName(callee), Function.constant(''))
+	const method = Option.getOrElse(memberName(callee), () => '')
 	if (method === 'forEach') return secondKind === 'function' || (firstKind !== 'function' && secondKind === 'unknown')
 	if (Array.contains(['zip', 'zipWith', 'raceFirst', 'race', 'merge'], method)) {
 		return secondKind !== 'missing' && secondKind !== 'object'
@@ -883,7 +883,7 @@ function normalizeGenerator(context: LintContext, node: ESTree.Function | ESTree
 					)
 					return fixer.replaceText(
 						node,
-						`Effect.fnUntraced(function* ${Option.match(Option.fromNullishOr(node.typeParameters), {onNone: Function.constant(''), onSome: type => context.sourceCode.getText(type)})}(${parameters}) ${context.sourceCode.getText(body)})`
+						`Effect.fnUntraced(function* ${Option.match(Option.fromNullishOr(node.typeParameters), {onNone: () => '', onSome: type => context.sourceCode.getText(type)})}(${parameters}) ${context.sourceCode.getText(body)})`
 					)
 				},
 				message:

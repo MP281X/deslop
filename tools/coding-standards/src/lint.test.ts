@@ -795,7 +795,6 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 					'@deslop/coding-standards(no-trivial-indirection)',
 					'@deslop/coding-standards(no-trivial-indirection)',
 					'@deslop/coding-standards(no-trivial-indirection)',
-					...Array.replicate('@deslop/coding-standards(no-trivial-indirection)', 14),
 					'@deslop/coding-standards(test-assertions)',
 					'@deslop/coding-standards(test-assertions)',
 					'@deslop/coding-standards(test-assertions)'
@@ -2095,7 +2094,7 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 				const valid = yield* lintSource({
 					'state-valid.ts': Array.join(
 						[
-							"import {Function, MutableRef, Ref} from 'effect'",
+							"import {MutableRef, Ref} from 'effect'",
 							"import * as EffectModules from 'effect'",
 							'',
 							"import {useState} from 'react'",
@@ -2108,7 +2107,7 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 							"export const namespace = EffectModules.MutableRef.make<string>('')",
 							'export const unsafe = Ref.makeUnsafe<number>(0)',
 							'export const [literal] = useState<true>(true)',
-							"export const [lazy] = useState<string>(Function.constant(''))",
+							"export const [lazy] = useState<string>(() => '')",
 							'MutableRef.set(inferred, "changed")'
 						],
 						'\n'
@@ -3021,7 +3020,7 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 				const result = yield* lintSource({
 					'conversions.ts': Array.join(
 						[
-							"import {Array, Function, Option, Schema, String, pipe} from 'effect'",
+							"import {Array, Option, Schema, String, pipe} from 'effect'",
 							'',
 							'declare const maybe: string | undefined',
 							'declare const tags: string[]',
@@ -3032,7 +3031,7 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 							"export const piped = pipe(maybe, Option.fromNullishOr, Option.getOrElse(() => 'none')) // reported",
 							'export const wrapped = Option.getOrNull(Option.some(maybe)) // reported',
 							"export const curried = Option.getOrElse(() => 'none')(Option.fromNullishOr(maybe)) // reported",
-							'export const mapped = pipe(Option.fromNullishOr(maybe), Option.map(text => text.length), Option.getOrElse(Function.constant(0)))',
+							'export const mapped = pipe(Option.fromNullishOr(maybe), Option.map(text => text.length), Option.getOrElse(() => 0))',
 							"export const fallback = maybe ?? 'none'",
 							'export const copied = Schema.decodeSync(Item)(Schema.encodeSync(Item)(value))',
 							'export const converted = Schema.decodeSync(Other)(Schema.encodeSync(Item)(value))',

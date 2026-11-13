@@ -1,4 +1,4 @@
-import {Array, Function, Option, pipe} from 'effect'
+import {Array, Option, pipe} from 'effect'
 
 import {defineRule} from 'vite-plus/lint/plugins'
 import type {Context, ESTree} from 'vite-plus/lint/plugins'
@@ -39,7 +39,7 @@ function earlyExit(input: Guard & {node: ESTree.Node}) {
 			pipe(
 				input.node.parent.body,
 				Array.findFirstIndex(statement => statement === input.node),
-				Option.getOrElse(Function.constant(0))
+				Option.getOrElse(() => 0)
 			)
 		),
 		Array.some(

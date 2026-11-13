@@ -1,4 +1,4 @@
-import {Array, Context, Effect, Function, Layer, Option, Redacted, Schema, String, pipe} from 'effect'
+import {Array, Context, Effect, Layer, Option, Redacted, Schema, String, pipe} from 'effect'
 
 import type {HttpClient} from 'effect/http'
 
@@ -107,9 +107,9 @@ export class Organizer extends Context.Service<
 						const entry = Array.join(
 							[
 								`Source: ${input.note.source}`,
-								`Link: ${Option.getOrElse(input.note.url, Function.constant('none'))}`,
-								`Saved file: ${Option.getOrElse(input.note.file, Function.constant('none'))}`,
-								`Author: ${Option.getOrElse(input.note.author, Function.constant('none'))}`,
+								`Link: ${Option.getOrElse(input.note.url, () => 'none')}`,
+								`Saved file: ${Option.getOrElse(input.note.file, () => 'none')}`,
+								`Author: ${Option.getOrElse(input.note.author, () => 'none')}`,
 								`Tags in use:\n${pipe(
 									Array.take(input.tags, 150),
 									Option.liftPredicate(Array.isReadonlyArrayNonEmpty),
@@ -118,12 +118,12 @@ export class Organizer extends Context.Service<
 											entries,
 											Array.map(
 												tag =>
-													`- ${tag.name} (${tag.count}): ${Option.getOrElse(tag.definition, Function.constant('no definition yet'))}`
+													`- ${tag.name} (${tag.count}): ${Option.getOrElse(tag.definition, () => 'no definition yet')}`
 											),
 											Array.join('\n')
 										)
 									),
-									Option.getOrElse(Function.constant('none'))
+									Option.getOrElse(() => 'none')
 								)}`,
 								`Link title: ${input.note.title}`,
 								`Saved text: ${input.note.text}`,
@@ -131,7 +131,7 @@ export class Organizer extends Context.Service<
 								`Video transcript:\n${pipe(
 									input.note.transcript,
 									Option.map(bounded),
-									Option.getOrElse(Function.constant('none'))
+									Option.getOrElse(() => 'none')
 								)}`
 							],
 							'\n\n'
@@ -164,10 +164,7 @@ export class Organizer extends Context.Service<
 						if (Schema.is(NotesError)(cause)) return cause
 						return NotesError.make({
 							cause: Redacted.make(cause),
-							message: Option.getOrElse(
-								aiFailure(cause),
-								Function.constant('AI tagging failed; the note is saved as it is.')
-							)
+							message: Option.getOrElse(aiFailure(cause), () => 'AI tagging failed; the note is saved as it is.')
 						})
 					})
 				)

@@ -110,9 +110,7 @@ function Content(props: CodeView & {onType: (code: string) => void}) {
 }
 
 function SignInsRoute() {
-	useAtomMount(
-		linkedCodeAtom(route.useSearch({select: search => Option.getOrElse(search.code, Function.constant(''))}))
-	)
+	useAtomMount(linkedCodeAtom(route.useSearch({select: search => Option.getOrElse(search.code, () => '')})))
 	// The answer outlives the card: the lookup can drop its request before the consent response arrives.
 	useAtomMount(consentAtom)
 	const send = useAtomSet(codeAtom.send)

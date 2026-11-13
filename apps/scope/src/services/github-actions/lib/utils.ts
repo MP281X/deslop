@@ -1,4 +1,4 @@
-import {Array, Boolean, DateTime, Duration, Function, Option, String, pipe} from 'effect'
+import {Array, Boolean, DateTime, Duration, Option, String, pipe} from 'effect'
 
 import type {
 	RepositoryName,
@@ -80,7 +80,7 @@ export function runIds(event: WorkflowRun) {
 function runLabel(run: WorkflowRun['workflow_run']) {
 	return `#${run.run_number}${Boolean.match(run.run_attempt === 1, {
 		onFalse: () => `.${run.run_attempt}`,
-		onTrue: Function.constant('')
+		onTrue: () => ''
 	})}`
 }
 
@@ -94,9 +94,15 @@ export function runTrace(event: WorkflowRun) {
 				text('github.run_number', `${event.workflow_run.run_number}`),
 				text('github.run_attempt', `${event.workflow_run.run_attempt}`),
 				text('trace.label', runLabel(event.workflow_run)),
-				text('git.branch', Option.getOrElse(event.workflow_run.head_branch, Function.constant(''))),
+				text(
+					'git.branch',
+					Option.getOrElse(event.workflow_run.head_branch, () => '')
+				),
 				text('git.commit', event.workflow_run.head_sha),
-				text('github.conclusion', Option.getOrElse(event.workflow_run.conclusion, Function.constant(''))),
+				text(
+					'github.conclusion',
+					Option.getOrElse(event.workflow_run.conclusion, () => '')
+				),
 				text('url.full', event.workflow_run.html_url)
 			]),
 			endTimeUnixNano: Option.liftPredicate(nanos(event.workflow_run.updated_at), () => event.action === 'completed'),
@@ -136,8 +142,14 @@ export function jobTrace(event: WorkflowJob) {
 	return repositoryTraces(event.repository.full_name, [
 		{
 			attributes: Option.some([
-				text('github.runner', Option.getOrElse(job.runner_name, Function.constant(''))),
-				text('github.conclusion', Option.getOrElse(job.conclusion, Function.constant(''))),
+				text(
+					'github.runner',
+					Option.getOrElse(job.runner_name, () => '')
+				),
+				text(
+					'github.conclusion',
+					Option.getOrElse(job.conclusion, () => '')
+				),
 				{
 					key: 'github.queued_ms',
 					value: {intValue: `${Duration.toMillis(DateTime.distance(job.created_at, job.started_at))}`}
@@ -160,7 +172,10 @@ export function jobTrace(event: WorkflowJob) {
 		},
 		...Array.map(steps, step => ({
 			attributes: Option.some([
-				text('github.conclusion', Option.getOrElse(step.conclusion, Function.constant(''))),
+				text(
+					'github.conclusion',
+					Option.getOrElse(step.conclusion, () => '')
+				),
 				text('url.full', `${job.html_url}#step:${step.number}:1`)
 			]),
 			endTimeUnixNano: Option.some(nanos(step.completed)),

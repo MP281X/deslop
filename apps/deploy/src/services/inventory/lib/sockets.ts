@@ -38,7 +38,7 @@ function lsofSocket(file: OpenFile) {
 	}
 	const address = String.replace(
 		/^\*:/u,
-		Boolean.match(file.type === 'IPv4', {onFalse: Function.constant('*:'), onTrue: Function.constant('0.0.0.0:')})
+		Boolean.match(file.type === 'IPv4', {onFalse: () => '*:', onTrue: () => '0.0.0.0:'})
 	)(file.address)
 	return Option.flatMap(file.pid, pid =>
 		Option.map(portOf(address), port => ({
@@ -47,7 +47,7 @@ function lsofSocket(file: OpenFile) {
 			process: Option.some({name: file.process, pid}),
 			protocol: String.toLowerCase(file.protocol),
 			state: Boolean.match(file.protocol === 'TCP', {
-				onFalse: Function.constant('UNCONN'),
+				onFalse: () => 'UNCONN',
 				onTrue: () => String.replace(/^ST=/u, '')(file.state) || 'LISTEN'
 			})
 		}))

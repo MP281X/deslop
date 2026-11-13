@@ -7,7 +7,6 @@ import {
 	Config,
 	Context,
 	Effect,
-	Function,
 	Layer,
 	Match,
 	Option,
@@ -664,7 +663,7 @@ export class Connections extends Context.Service<
 					Effect.gen(function* () {
 						if (Option.isSome(params.error) || Option.isNone(params.code)) {
 							return yield* AuthError.make({
-								message: `The provider declined the connection (${Option.getOrElse(params.error, Function.constant('no code'))})`
+								message: `The provider declined the connection (${Option.getOrElse(params.error, () => 'no code')})`
 							})
 						}
 						// RFC 9700 §4.4.2: the answer must come from this server's authorization server, by its own callback or its issuer.

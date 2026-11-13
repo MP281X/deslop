@@ -60,19 +60,13 @@ export function TimeAxis(props: {totalMs: Duration.Duration}) {
 							'absolute top-1/2 left-(--axis-left) -translate-y-1/2 whitespace-nowrap',
 							Boolean.match(ratio === 0, {
 								onFalse: () =>
-									Boolean.match(ratio === 1, {
-										onFalse: Function.constant('-translate-x-1/2'),
-										onTrue: Function.constant('-translate-x-full')
-									}),
+									Boolean.match(ratio === 1, {onFalse: () => '-translate-x-1/2', onTrue: () => '-translate-x-full'}),
 								onTrue: Function.constUndefined
 							})
 						)}
 						style={{'--axis-left': `${ratio * 100}%`}}
 					>
-						{Boolean.match(ratio === 0, {
-							onFalse: () => durationOf(Duration.millis(total * ratio)),
-							onTrue: Function.constant('0')
-						})}
+						{Boolean.match(ratio === 0, {onFalse: () => durationOf(Duration.millis(total * ratio)), onTrue: () => '0'})}
 					</span>
 				))}
 			</div>
@@ -122,7 +116,11 @@ export function Flame(props: {focus?: SpanId; onPick: (id: SpanId) => void; trac
 				props.trace.spans,
 				Array.filter(span => span.depth <= 1),
 				Array.flatMap((span: TraceTree['spans'][number]) => {
-					const measured = pipe(labelWidths, Record.get(span.spanId), Option.getOrElse(Function.constant(0)))
+					const measured = pipe(
+						labelWidths,
+						Record.get(span.spanId),
+						Option.getOrElse(() => 0)
+					)
 					const bar = Number.max((Duration.toMillis(span.durationMs) / total) * width, 2)
 					if (bar >= measured + FLAME_LABEL_PADDING) return []
 					if ((Duration.toMillis(span.offsetMs) / total) * width + bar + 4 + measured > width) return []
@@ -139,7 +137,11 @@ export function Flame(props: {focus?: SpanId; onPick: (id: SpanId) => void; trac
 		const duration = durationOf(span.durationMs)
 		const left = (Duration.toMillis(span.offsetMs) / total) * width
 		const bar = Number.max((Duration.toMillis(span.durationMs) / total) * width, 2)
-		const measured = pipe(labelWidths, Record.get(span.spanId), Option.getOrElse(Function.constant(0)))
+		const measured = pipe(
+			labelWidths,
+			Record.get(span.spanId),
+			Option.getOrElse(() => 0)
+		)
 		const inside = span.depth <= 1 && width > 0 && bar >= measured + FLAME_LABEL_PADDING
 		const labelLeft = left + bar + 4
 		const labelRight = labelLeft + measured
@@ -174,7 +176,7 @@ export function Flame(props: {focus?: SpanId; onPick: (id: SpanId) => void; trac
 				})
 			),
 			duration,
-			hit: Number.max(bar + Boolean.match(after, {onFalse: Function.constant(0), onTrue: () => measured + 4}), 12),
+			hit: Number.max(bar + Boolean.match(after, {onFalse: () => 0, onTrue: () => measured + 4}), 12),
 			inside,
 			label: labelOf(span),
 			lane: entry.lane,
@@ -188,7 +190,7 @@ export function Flame(props: {focus?: SpanId; onPick: (id: SpanId) => void; trac
 		const index = pipe(
 			siblings,
 			Array.findFirstIndex(other => other.spanId === span.spanId),
-			Option.getOrElse(Function.constant(0))
+			Option.getOrElse(() => 0)
 		)
 		Option.match(
 			pipe(
@@ -241,12 +243,12 @@ export function Flame(props: {focus?: SpanId; onPick: (id: SpanId) => void; trac
 							className={cn(
 								'absolute inset-y-0 left-0 w-(--flame-bar) overflow-hidden',
 								Boolean.match(row.span.status === 'failed', {
-									onFalse: Function.constant('bg-(--app)'),
-									onTrue: Function.constant('bg-destructive')
+									onFalse: () => 'bg-(--app)',
+									onTrue: () => 'bg-destructive'
 								}),
 								Boolean.match(row.picked, {
 									onFalse: Function.constUndefined,
-									onTrue: Function.constant('outline-1 outline-foreground outline-offset-[-1px]')
+									onTrue: () => 'outline-1 outline-foreground outline-offset-[-1px]'
 								})
 							)}
 							style={{'--flame-bar': `${row.bar}px`}}

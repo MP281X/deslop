@@ -41,7 +41,7 @@ export function InventoryContent(props: {children: ReactNode}) {
 	return (
 		<Loaded atom={inventoryAtom}>
 			{() => (
-				<CatchBoundary getResetKey={Function.constant('inventory')} errorComponent={ReadFailure}>
+				<CatchBoundary getResetKey={() => 'inventory'} errorComponent={ReadFailure}>
 					{props.children}
 				</CatchBoundary>
 			)}
@@ -120,7 +120,7 @@ function Endpoints(props: {free: readonly InventoryItem[]; row: Row}) {
 				>
 					<Badge variant="outline">
 						{Option.match(exposure.port, {
-							onNone: () => Option.match(exposure.url, {onNone: Function.constant(''), onSome: host}),
+							onNone: () => Option.match(exposure.url, {onNone: () => '', onSome: host}),
 							onSome: port => `${port}`
 						})}
 					</Badge>
@@ -187,7 +187,7 @@ function AppRow(props: {
 				Option.getOrElse(props.row.item.next, () => props.now),
 				props.now
 			),
-		onTrue: Function.constant('')
+		onTrue: () => ''
 	})
 	const reasonText = Boolean.match(scheduled, {
 		onFalse: () => reasonLine(props.row.item, props.now),
@@ -223,10 +223,7 @@ function AppRow(props: {
 				</ItemMedia>
 				<ItemContent className="pointer-events-none relative z-10">
 					<ItemTitle
-						className={Boolean.match(failing, {
-							onFalse: Function.constant('w-full'),
-							onTrue: Function.constant('max-w-1/2')
-						})}
+						className={Boolean.match(failing, {onFalse: () => 'w-full', onTrue: () => 'max-w-1/2'})}
 						title={fullName}
 					>
 						<span className="min-w-0 truncate">{name}</span>

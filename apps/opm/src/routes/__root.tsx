@@ -30,7 +30,7 @@ function AppRoutes() {
 	useAtomMount(diagnosticsAtom)
 	const opened = useAtomValue(openedAtom)
 	const [series, setSeries] = useState<Series>(() =>
-		Option.match(opened, {onNone: Function.constant('manga'), onSome: chapter => chapter.series})
+		Option.match(opened, {onNone: () => 'manga', onSome: chapter => chapter.series})
 	)
 	const [path, setPath] = useState(() =>
 		Option.match(opened, {onNone: () => Array.empty<ChapterKey>(), onSome: chapter => [keyOf(chapter)]})

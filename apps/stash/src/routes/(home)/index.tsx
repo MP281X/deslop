@@ -205,7 +205,7 @@ function NoteRow(props: {note: NoteItem; onOpen: (id: Note['id']) => void; onReg
 										>
 											<Label
 												title={Option.match(appOf(props.note), {
-													onNone: Function.constant('Open Link'),
+													onNone: () => 'Open Link',
 													onSome: name => `Open in ${name}`
 												})}
 												{...Option.match(brandOf(props.note), {
@@ -272,8 +272,8 @@ function FilterMenu(props: {kind?: Kind; onKind: (kind?: Kind) => void}) {
 		<Menu
 			label="Filter"
 			systemImage={Boolean.match(props.kind === undefined, {
-				onFalse: Function.constant('line.3.horizontal.decrease.circle.fill'),
-				onTrue: Function.constant('line.3.horizontal.decrease')
+				onFalse: () => 'line.3.horizontal.decrease.circle.fill',
+				onTrue: () => 'line.3.horizontal.decrease'
 			})}
 			modifiers={[labelStyle('iconOnly'), menuOrder('fixed')]}
 		>
@@ -370,8 +370,8 @@ function Notes(props: {kind?: Kind; onOpen: (id: Note['id']) => void; onTag: (na
 										<Overlay.Content>
 											<Empty
 												systemImage={Boolean.match(String.isEmpty(query), {
-													onFalse: Function.constant('magnifyingglass'),
-													onTrue: Function.constant('tray')
+													onFalse: () => 'magnifyingglass',
+													onTrue: () => 'tray'
 												})}
 												label="No notes match"
 											/>
@@ -432,8 +432,8 @@ export function HomeRoute(props: {
 					<ToolbarItem placement="topBarLeading">
 						<Problem
 							label={Boolean.match(AsyncResult.isFailure(notes), {
-								onFalse: Function.constant('Search unavailable'),
-								onTrue: Function.constant('Out of date')
+								onFalse: () => 'Search unavailable',
+								onTrue: () => 'Out of date'
 							})}
 							onRetry={() => {
 								refreshNotes()

@@ -64,7 +64,7 @@ const KINDS: Record<Runtime, ReactElement> = {
 
 // One run or many, in the reader's words.
 function runsOf(n: number) {
-	return `${countOf(n)} ${Boolean.match(n === 1, {onFalse: Function.constant('runs'), onTrue: Function.constant('run')})}`
+	return `${countOf(n)} ${Boolean.match(n === 1, {onFalse: () => 'runs', onTrue: () => 'run'})}`
 }
 const route = getRouteApi('/(home)/')
 const RANGES = Array.map(Range.literals, value => ({label: value, value}))
@@ -202,10 +202,7 @@ function OperationRow(props: {
 					<span
 						className={cn(
 							'grid items-center gap-x-3',
-							Boolean.match(props.failing, {
-								onFalse: Function.constant('grid-cols-runs'),
-								onTrue: Function.constant('grid-cols-operation')
-							})
+							Boolean.match(props.failing, {onFalse: () => 'grid-cols-runs', onTrue: () => 'grid-cols-operation'})
 						)}
 					>
 						{props.failing && (
@@ -497,8 +494,8 @@ function TracePane(props: {
 							onNone: () => (
 								<EmptyState
 									label={Boolean.match(props.detailOnly === true, {
-										onFalse: Function.constant('Select a trace'),
-										onTrue: Function.constant('Select a span')
+										onFalse: () => 'Select a trace',
+										onTrue: () => 'Select a span'
 									})}
 									icon={<ChartBarHorizontalIcon weight="light" />}
 								/>
@@ -731,9 +728,9 @@ function HomeRoute() {
 						back: {
 							label: pipe(
 								Match.value(pane),
-								Match.when('Span', Function.constant('Trace')),
-								Match.when('Trace', Function.constant('Traces')),
-								Match.orElse(Function.constant('Operations'))
+								Match.when('Span', () => 'Trace'),
+								Match.when('Trace', () => 'Traces'),
+								Match.orElse(() => 'Operations')
 							),
 							onClick: () => send({_tag: 'Back'})
 						},
@@ -741,12 +738,12 @@ function HomeRoute() {
 							Match.value(pane),
 							Match.when('Traces', () =>
 								Option.match(selection.activeOperation, {
-									onNone: Function.constant('Traces'),
+									onNone: () => 'Traces',
 									onSome: active => active.operation.name
 								})
 							),
-							Match.when('Span', Function.constant('Span')),
-							Match.orElse(Function.constant('Trace'))
+							Match.when('Span', () => 'Span'),
+							Match.orElse(() => 'Trace')
 						)
 					})
 				})}

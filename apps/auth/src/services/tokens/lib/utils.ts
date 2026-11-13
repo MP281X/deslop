@@ -136,7 +136,7 @@ export function clientLabel(name: string) {
 		String.trim,
 		String.capitalize,
 		Option.liftPredicate(String.isNonEmpty),
-		Option.getOrElse(Function.constant('Unknown client'))
+		Option.getOrElse(() => 'Unknown client')
 	)
 }
 
@@ -154,7 +154,7 @@ function platform(userAgent: string) {
 
 export function browserLabel(origin: Origin) {
 	return Option.match(origin.userAgent, {
-		onNone: Function.constant('Browser'),
+		onNone: () => 'Browser',
 		onSome: agent => {
 			if (String.includes('Edg/')(agent)) return 'Edge'
 			if (String.includes('Firefox/')(agent)) return 'Firefox'
@@ -179,7 +179,7 @@ export function deviceLabel(origin: Origin) {
 			return Record.get(WORKERS, address)
 		}),
 		Option.orElse(() => Option.flatMap(origin.userAgent, platform)),
-		Option.getOrElse(() => Option.getOrElse(origin.address, Function.constant('unknown')))
+		Option.getOrElse(() => Option.getOrElse(origin.address, () => 'unknown'))
 	)
 }
 

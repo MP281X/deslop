@@ -54,7 +54,7 @@ const byRelease = Order.mapInput(Order.Array(Order.Number), (version: ReleaseVer
 	pipe(
 		version,
 		String.split('.'),
-		Array.map(part => Option.getOrElse(Number.parse(part), Function.constant(0)))
+		Array.map(part => Option.getOrElse(Number.parse(part), () => 0))
 	)
 )
 
@@ -156,7 +156,7 @@ function resourceText(resource: Option.Option<Resource>, key: string) {
 
 // Effect names an HTTP span by its method alone: its route, or a client's path, says which request it was; unrouted server hits, mostly scanners, share one name. A machine step is named for its source.
 function spanName(span: ExportedSpan, attributes: Attributes) {
-	const name = Option.getOrElse(span.name, Function.constant(''))
+	const name = Option.getOrElse(span.name, () => '')
 	if (name === '') return name
 	if (name === 'Machine.invoke') {
 		const source = textOf(attributes, 'machine.invoke.source')
@@ -213,7 +213,7 @@ export function senderOf(resource: Option.Option<Resource>) {
 			pipe(
 				resourceText(resource, 'service.name'),
 				Option.filter(String.isNonEmpty),
-				Option.getOrElse(Function.constant('unknown'))
+				Option.getOrElse(() => 'unknown')
 			)
 		),
 		version: pipe(
@@ -352,7 +352,7 @@ export function logOf(sender: ReturnType<typeof senderOf>, log: ExportedLog, id:
 		...sender,
 		attributes: attributesOf(Option.getOrElse(log.attributes, Array.empty)),
 		id,
-		message: Option.match(log.body, {onNone: Function.constant(''), onSome: body => Array.join(leaves(body), ' ')}),
+		message: Option.match(log.body, {onNone: () => '', onSome: body => Array.join(leaves(body), ' ')}),
 		receivedAt: Model.Override(receivedAt),
 		severity: severityOf(log.severityNumber, log.severityText),
 		spanId: Option.map(log.spanId, value => SpanId.make(String.toLowerCase(value))),

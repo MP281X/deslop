@@ -4,7 +4,6 @@ import {
 	DateTime,
 	Effect,
 	Fiber,
-	Function,
 	Layer,
 	MutableHashMap,
 	Option,
@@ -187,7 +186,7 @@ export class Sessions extends Context.Service<
 							message: pipe(
 								yield* Effect.option(HttpClientResponse.schemaBodyJson(Refusal)(response)),
 								Option.flatMap(body => body.error_description),
-								Option.getOrElse(Function.constant('Auth refused the sign-in'))
+								Option.getOrElse(() => 'Auth refused the sign-in')
 							)
 						})
 					}

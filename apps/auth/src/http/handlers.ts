@@ -1,4 +1,4 @@
-import {Array, Duration, Effect, Function, Match, Option, Schema, String, Struct, pipe} from 'effect'
+import {Array, Duration, Effect, Match, Option, Schema, String, Struct, pipe} from 'effect'
 
 import {HttpRouter, HttpServerRequest, HttpServerResponse, UrlParams} from 'effect/http'
 import {RateLimiter} from 'effect/persistence'
@@ -115,7 +115,7 @@ function returnTo(flow: SignInParams, origin: string) {
 				pipe(
 					flow.next,
 					Option.filter(next => returnable(next, origin)),
-					Option.getOrElse(Function.constant('/'))
+					Option.getOrElse(() => '/')
 				),
 			onSome: search => `/?${search}`
 		})
@@ -138,7 +138,7 @@ export const HttpHandlers = HttpRouter.use(router =>
 				const address = pipe(
 					clientAddress(request.headers, request.remoteAddress),
 					Option.map(addressGroup),
-					Option.getOrElse(Function.constant('unknown'))
+					Option.getOrElse(() => 'unknown')
 				)
 				return yield* Effect.matchEffect(
 					limiter.consume({key: `${route}:${address}`, limit: perAddress, onExceeded: 'fail', window: '1 minute'}),
@@ -149,7 +149,7 @@ export const HttpHandlers = HttpRouter.use(router =>
 									headers: {
 										'retry-after': Match.valueTags(failure.reason, {
 											RateLimitExceeded: exceeded => `${Math.ceil(Duration.toSeconds(exceeded.retryAfter))}`,
-											RateLimitStoreError: Function.constant('5')
+											RateLimitStoreError: () => '5'
 										})
 									},
 									status: 429
@@ -207,7 +207,7 @@ export const HttpHandlers = HttpRouter.use(router =>
 								message: 'Use a Deslop web or iOS callback, a loopback callback or a Gateway server callback'
 							})
 						}
-						const name = Option.getOrElse(params.client_name, Function.constant('Unknown client'))
+						const name = Option.getOrElse(params.client_name, () => 'Unknown client')
 						return HttpServerResponse.jsonUnsafe(
 							{
 								client_id: clientIdOf({name, redirects: params.redirect_uris}),
@@ -535,7 +535,7 @@ export const HttpHandlers = HttpRouter.use(router =>
 							HttpServerResponse.expireCookieUnsafe(HttpServerResponse.redirect(found.url), cookie, COOKIE),
 						Session: found =>
 							pipe(
-								HttpServerResponse.redirect(Option.getOrElse(found.next, Function.constant('/'))),
+								HttpServerResponse.redirect(Option.getOrElse(found.next, () => '/')),
 								HttpServerResponse.expireCookieUnsafe(cookie, COOKIE),
 								HttpServerResponse.setCookieUnsafe(SESSION_COOKIE, found.token, session(found.seconds))
 							)

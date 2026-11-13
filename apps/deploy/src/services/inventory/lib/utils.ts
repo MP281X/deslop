@@ -70,7 +70,7 @@ export function processOwner(cgroup: string) {
 					`service:${pipe(
 						userService,
 						Option.exists(first => index > first),
-						Boolean.match({onFalse: Function.constant('system'), onTrue: Function.constant('user')})
+						Boolean.match({onFalse: () => 'system', onTrue: () => 'user'})
 					)}:${segments[index]}`
 				)
 			)
@@ -137,10 +137,10 @@ function ports(items: readonly InventoryItem[]) {
 export function itemOwner(item: InventoryItem) {
 	if (item.kind === 'container') {
 		return AppId.make(
-			`container:${String.slice(0, 12)(Option.getOrElse(Array.last(String.split(item.id, ':docker:')), Function.constant('')))}`
+			`container:${String.slice(0, 12)(Option.getOrElse(Array.last(String.split(item.id, ':docker:')), () => ''))}`
 		)
 	}
-	return AppId.make(`service:${Option.getOrElse(item.scope, Function.constant('system'))}:${item.name}`)
+	return AppId.make(`service:${Option.getOrElse(item.scope, () => 'system')}:${item.name}`)
 }
 
 function fullName(item: InventoryItem) {
@@ -198,7 +198,7 @@ export function workloads(items: readonly InventoryItem[]) {
 		Array.groupBy(listener => listener.worker),
 		Record.map(worker =>
 			Array.groupBy(worker, listener =>
-				Option.match(listener.unit, {onNone: Function.constant('none'), onSome: unit => `unit:${unit}`})
+				Option.match(listener.unit, {onNone: () => 'none', onSome: unit => `unit:${unit}`})
 			)
 		)
 	)
@@ -282,7 +282,7 @@ export function workloads(items: readonly InventoryItem[]) {
 	const exposuresBySocket = pipe(
 		exposures,
 		Array.map((item, index) => ({index, item})),
-		Array.groupBy(entry => `${entry.item.worker}:${Option.getOrElse(entry.item.port, Function.constant(0))}`)
+		Array.groupBy(entry => `${entry.item.worker}:${Option.getOrElse(entry.item.port, () => 0)}`)
 	)
 	const linked = Array.map(rows, row => {
 		const reachable = Array.dedupe(

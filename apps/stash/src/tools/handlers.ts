@@ -1,4 +1,4 @@
-import {Array, Boolean, DateTime, Effect, Function, Option, String, Struct, pipe} from 'effect'
+import {Array, Boolean, DateTime, Effect, Option, String, Struct, pipe} from 'effect'
 
 import {SecureRandom} from 'effect/crypto'
 
@@ -37,7 +37,7 @@ export const ToolHandlers = ToolContracts.toLayer(
 					onFalse: () => input.section,
 					onTrue: () => 'text' as const
 				})
-				const source = Option.getOrElse(texts[section], Function.constant(''))
+				const source = Option.getOrElse(texts[section], () => '')
 				const chunk = String.slice(input.offset, input.offset + input.limit)(source)
 				const text = Boolean.match(section === 'transcript' && input.offset + chunk.length < source.length, {
 					onFalse: () => chunk,
@@ -75,11 +75,7 @@ export const ToolHandlers = ToolContracts.toLayer(
 			}),
 			search_notes: input =>
 				Effect.map(
-					notes.list({
-						cursor: input.cursor,
-						limit: input.limit,
-						query: Option.getOrElse(input.query, Function.constant(''))
-					}),
+					notes.list({cursor: input.cursor, limit: input.limit, query: Option.getOrElse(input.query, () => '')}),
 					page => ({nextCursor: page.next, notes: Array.map(page.items, row), total: page.total})
 				)
 		})

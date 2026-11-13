@@ -57,7 +57,7 @@ function MachineIcon(props: {worker: WorkerId}) {
 			aria-hidden="true"
 			className={`inline-flex shrink-0 items-center justify-center ${Boolean.match(
 				machineName(props.worker) === 'desktop',
-				{onFalse: Function.constant('text-machine-dev'), onTrue: Function.constant('text-machine-desktop')}
+				{onFalse: () => 'text-machine-dev', onTrue: () => 'text-machine-desktop'}
 			)}`}
 		>
 			{Boolean.match(machineName(props.worker) === 'desktop', {
@@ -139,7 +139,7 @@ function MetricsContent(props: {children: ReactNode; minutes: HistoryQuery['minu
 	return (
 		<Loaded atom={metricsAtom(props.minutes)}>
 			{() => (
-				<CatchBoundary getResetKey={Function.constant('metrics')} errorComponent={ReadFailure}>
+				<CatchBoundary getResetKey={() => 'metrics'} errorComponent={ReadFailure}>
 					{props.children}
 				</CatchBoundary>
 			)}
@@ -379,7 +379,7 @@ function HomeRoute() {
 	const minutes = Option.getOrElse(search.range, () => Duration.minutes(60))
 	// The charts keep the last loaded range, unmarked, until the one the URL asks for arrives.
 	const shownMinutes = useDeferredValue(minutes)
-	const pane = Option.getOrElse(search.pane, Function.constant('apps'))
+	const pane = Option.getOrElse(search.pane, () => 'apps')
 	const inventory = useAtomValue(inventoryAtom)
 	const metrics = useAtomValue(metricsAtom(shownMinutes))
 	const refreshInventory = useAtomRefresh(inventoryAtom)
@@ -454,7 +454,7 @@ function HomeRoute() {
 					onTrue: () => ({
 						back: {label: 'Back', onClick: () => view({pane: Option.some('apps')})},
 						title: Option.match(Option.fromUndefinedOr(selectedRow), {
-							onNone: Function.constant('Processes'),
+							onNone: () => 'Processes',
 							onSome: entry => workloadName(entry.item)
 						})
 					})

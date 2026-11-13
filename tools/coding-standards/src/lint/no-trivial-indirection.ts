@@ -495,6 +495,13 @@ function compilerConstant(context: Context, node: ESTree.Node): boolean {
 	)
 }
 
+function constantName(node: ESTree.Node) {
+	if (node.type === 'Identifier') return 'constUndefined'
+	if (node.type === 'Literal' && node.value === null) return 'constNull'
+	if (node.type === 'Literal' && node.value === true) return 'constTrue'
+	return 'constFalse'
+}
+
 export const noTrivialIndirection = defineRule({
 	create: context => {
 		function checkFunction(node: ESTree.Function | ESTree.ArrowFunctionExpression) {
@@ -506,17 +513,13 @@ export const noTrivialIndirection = defineRule({
 				Array.isArrayEmpty(node.params)
 			) {
 				const returned = returnedExpression(node)
-				const constants: Record<string, string> = {
-					false: 'constFalse',
-					null: 'constNull',
-					true: 'constTrue',
-					undefined: 'constUndefined'
-				}
-				const literal = returned?.type === 'Literal' && !Predicate.hasProperty(returned, 'regex')
-				const undefinedValue = returned?.type === 'Identifier' && returned.name === 'undefined'
+				const literal = returned?.type === 'Literal' && (returned.value === null || Predicate.isBoolean(returned.value))
+				const undefinedValue =
+					returned?.type === 'Identifier' &&
+					returned.name === 'undefined' &&
+					!Option.exists(variableOf(context, returned), variable => Array.isArrayNonEmpty(variable.defs))
 				if ((literal || undefinedValue) && !compilerConstant(context, node)) {
-					const key = context.sourceCode.getText(returned)
-					const replacement = constants[key] ?? `constant(${key})`
+					const replacement = constantName(returned)
 					context.report({
 						fix: fixer =>
 							pipe(

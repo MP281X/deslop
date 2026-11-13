@@ -155,7 +155,7 @@ function ClientRow(props: {client: SignedInApp; now: DateTime.Utc}) {
 			<Item
 				size="row"
 				aria-label={`${props.client.device}, active ${active}${Option.match(address, {
-					onNone: Function.constant(''),
+					onNone: () => '',
 					onSome: value => ` · ${value}`
 				})}`}
 			>
@@ -176,7 +176,7 @@ function ClientRow(props: {client: SignedInApp; now: DateTime.Utc}) {
 				<ItemActions>
 					<span className="w-12 shrink-0 text-right font-mono text-xs tabular-nums">{active}</span>
 					<span className="text-muted-foreground w-28 shrink-0 truncate text-right font-mono text-xs max-sm:hidden">
-						{Option.getOrElse(address, Function.constant(''))}
+						{Option.getOrElse(address, () => '')}
 					</span>
 				</ItemActions>
 			</Item>

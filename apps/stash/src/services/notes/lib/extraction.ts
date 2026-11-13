@@ -178,7 +178,7 @@ const follow = Effect.fnUntraced(function* <A, E>(
 		),
 		timeLimit('15 seconds', UNREACHABLE, 'Unreachable'),
 		Effect.retry({
-			times: Boolean.match(proxied, {onFalse: Function.constant(0), onTrue: Function.constant(2)}),
+			times: Boolean.match(proxied, {onFalse: () => 0, onTrue: () => 2}),
 			while: error => error.reason === 'Unreachable'
 		})
 	)
@@ -236,7 +236,7 @@ const fetchOEmbed = Effect.fnUntraced(function* (endpoint: string, url: URL, tit
 		author: embed.author_name,
 		image: embed.thumbnail_url,
 		slides: Option.none(),
-		text: plainText(Option.getOrElse(embed.title, Function.constant(''))),
+		text: plainText(Option.getOrElse(embed.title, () => '')),
 		title: title(embed),
 		url: canonical(url),
 		video: Option.none()
@@ -252,8 +252,8 @@ const xOEmbed = Effect.fnUntraced(function* (url: URL) {
 		author: embed.author_name,
 		image: Option.none(),
 		slides: Option.none(),
-		text: plainText(load(Option.getOrElse(embed.html, Function.constant('')))('blockquote p').text()),
-		title: `${Option.getOrElse(embed.author_name, Function.constant('A post'))} on X`,
+		text: plainText(load(Option.getOrElse(embed.html, () => ''))('blockquote p').text()),
+		title: `${Option.getOrElse(embed.author_name, () => 'A post')} on X`,
 		url: canonical(url),
 		// Without the thread nothing says whether the post has a video, so yt-dlp tries.
 		video: Option.some(canonical(url))
@@ -457,10 +457,7 @@ export class Sources extends Context.Service<
 						// TikTok answers some exits with a login page instead of the post.
 						if (source === 'TikTok' && String.includes('/photo/')(url.pathname)) {
 							return yield* Effect.retry(tikTokPhotos(url), {
-								times: Boolean.match(Option.isSome(yield* Exit), {
-									onFalse: Function.constant(0),
-									onTrue: Function.constant(2)
-								}),
+								times: Boolean.match(Option.isSome(yield* Exit), {onFalse: () => 0, onTrue: () => 2}),
 								while: error => error.reason === 'UnreadablePhoto'
 							})
 						}
@@ -468,14 +465,14 @@ export class Sources extends Context.Service<
 							return yield* fetchOEmbed(
 								'https://www.tiktok.com/oembed?url=',
 								url,
-								embed => `${Option.getOrElse(embed.author_name, Function.constant('A video'))} on TikTok`
+								embed => `${Option.getOrElse(embed.author_name, () => 'A video')} on TikTok`
 							)
 						}
 						if (source === 'X') return yield* Effect.catchTag(xThread(url), 'NotesError', () => xOEmbed(url))
 						// YouTube answers a datacenter address with a bot check, but its oEmbed still answers.
 						if (isYouTube(url.href)) {
 							return yield* fetchOEmbed('https://www.youtube.com/oembed?format=json&url=', url, embed =>
-								plainText(Option.getOrElse(embed.title, Function.constant('A YouTube video')))
+								plainText(Option.getOrElse(embed.title, () => 'A YouTube video'))
 							)
 						}
 						if (url.hostname === 'github.com') {

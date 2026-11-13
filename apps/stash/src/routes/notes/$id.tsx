@@ -99,7 +99,7 @@ function BodyLine(props: {line: string}) {
 					<Text modifiers={[text.body, foregroundStyle(colors.mutedForeground)]}>
 						{Boolean.match(String.startsWith('- ')(props.line), {
 							onFalse: () => String.replace(/\s.*$/u, '')(props.line),
-							onTrue: Function.constant('•')
+							onTrue: () => '•'
 						})}
 					</Text>
 					<Text markdownEnabled modifiers={[...prose, frame({alignment: 'leading', maxWidth: Infinity})]}>
@@ -251,7 +251,7 @@ function Detail(props: {note: NoteItem; onRetry: () => void; onTag: (tag: TagNam
 	if (AsyncResult.isFailure(full) && Option.exists(AsyncResult.error(full), Schema.is(AuthError))) {
 		return <FailureContent cause={full.cause} onRetry={reload} />
 	}
-	const issue = Option.getOrElse(props.note.issue, Function.constant('Can’t Read This Link'))
+	const issue = Option.getOrElse(props.note.issue, () => 'Can’t Read This Link')
 	const kept =
 		String.isNonEmpty(props.note.summary) || Option.exists(AsyncResult.value(full), note => Option.isSome(note.body))
 	return (
@@ -364,10 +364,7 @@ function NoteScreen(props: {
 												}}
 												modifiers={[
 													accessibilityLabel(
-														Option.match(appOf(item), {
-															onNone: Function.constant('Open Link'),
-															onSome: name => `Open in ${name}`
-														})
+														Option.match(appOf(item), {onNone: () => 'Open Link', onSome: name => `Open in ${name}`})
 													)
 												]}
 											>

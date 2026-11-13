@@ -1,4 +1,4 @@
-import {Array, Duration, Function, Option, String, pipe} from 'effect'
+import {Array, Duration, Option, String, pipe} from 'effect'
 
 import {SignInCode} from '#services/sign-ins/schema.ts'
 
@@ -18,7 +18,11 @@ export function codeFrom(bytes: Uint8Array) {
 		pipe(
 			Array.fromIterable(bytes),
 			Array.map(byte =>
-				pipe(CODE_LETTERS, String.charAt(byte % CODE_LETTERS.length), Option.getOrElse(Function.constant('')))
+				pipe(
+					CODE_LETTERS,
+					String.charAt(byte % CODE_LETTERS.length),
+					Option.getOrElse(() => '')
+				)
 			),
 			Array.join('')
 		)

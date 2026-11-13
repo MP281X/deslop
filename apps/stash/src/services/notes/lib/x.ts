@@ -8,9 +8,7 @@ const X_LINK = /^https?:\/\/(?:[\w-]+\.)?(?:x|twitter)\.com\//u
 
 const byTime = Order.mapInput(DateTime.Order, (post: FxPost) => post.created_timestamp)
 
-const byLikes = Order.mapInput(Order.flip(Order.Number), (post: FxPost) =>
-	Option.getOrElse(post.likes, Function.constant(0))
-)
+const byLikes = Order.mapInput(Order.flip(Order.Number), (post: FxPost) => Option.getOrElse(post.likes, () => 0))
 
 export function tikTokExtraction(
 	item: TikTokPage['__DEFAULT_SCOPE__']['webapp.video-detail']['itemInfo']['itemStruct'],
@@ -72,7 +70,7 @@ function said(post: FxPost) {
 	return pipe(
 		[
 			`**${post.author.name} (@${post.author.screen_name})**: ${plainText(post.text)}`,
-			Option.match(post.article, {onNone: Function.constant(''), onSome: articleText})
+			Option.match(post.article, {onNone: () => '', onSome: articleText})
 		],
 		Array.filter(String.isNonEmpty),
 		Array.join('\n\n')
@@ -208,7 +206,7 @@ export function conversationExtraction(
 				section('Earlier in the conversation', Array.map(plan.earlier, said)),
 				said(plan.status),
 				...Array.map(plan.followUps, post => plainText(post.text)),
-				Option.match(plan.quote, {onNone: Function.constant(''), onSome: post => `Quoting ${said(post)}`}),
+				Option.match(plan.quote, {onNone: () => '', onSome: post => `Quoting ${said(post)}`}),
 				section('Linked posts', Array.map(posts, said)),
 				section('Linked pages', Array.getSomes(linked.pages)),
 				section(
@@ -243,7 +241,7 @@ export function conversationExtraction(
 						Array.map(
 							post =>
 								`**${post.author.name} (@${post.author.screen_name})**${Option.match(post.likes, {
-									onNone: Function.constant(''),
+									onNone: () => '',
 									onSome: likes => `, ${likes} likes`
 								})}: ${plainText(post.text)}`
 						)

@@ -1,4 +1,4 @@
-import {Clock, Context, DateTime, Effect, Function, Layer, Option, Redacted, Schema} from 'effect'
+import {Clock, Context, DateTime, Effect, Layer, Option, Redacted, Schema} from 'effect'
 
 import type {HttpClient} from 'effect/http'
 
@@ -67,7 +67,7 @@ export class Extractor extends Context.Service<
 					Effect.mapError(cause =>
 						BookingsError.make({
 							cause: Redacted.make(cause),
-							message: Option.getOrElse(aiFailure(cause), Function.constant('The AI could not read the booking.'))
+							message: Option.getOrElse(aiFailure(cause), () => 'The AI could not read the booking.')
 						})
 					)
 				)

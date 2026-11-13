@@ -1,4 +1,4 @@
-import {Array, Boolean, Function, Option} from 'effect'
+import {Array, Boolean, Option} from 'effect'
 
 import {defineRule} from 'vite-plus/lint/plugins'
 import type {Context, Fixer} from 'vite-plus/lint/plugins'
@@ -32,7 +32,7 @@ function replace(input: {
 		onSome: call => [
 			input.fixer.replaceTextRange(
 				[input.composition.start, input.composition.end],
-				`${Boolean.match(input.negate, {onFalse: Function.constant(''), onTrue: Function.constant('!')})}Array.${input.name}(${argumentsText(input.context, call)})`
+				`${Boolean.match(input.negate, {onFalse: () => '', onTrue: () => '!'})}Array.${input.name}(${argumentsText(input.context, call)})`
 			)
 		]
 	})

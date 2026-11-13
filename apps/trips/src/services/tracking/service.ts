@@ -67,7 +67,7 @@ export class Tracking extends Context.Service<Tracking>()('@deslop/trips/service
 		const spend = pipe(
 			Effect.gen(function* () {
 				const month = String.slice(0, 7)(iso(yield* DateTime.now))
-				const calls = Option.match(yield* findLookups(month), {onNone: Function.constant(0), onSome: row => row.calls})
+				const calls = Option.match(yield* findLookups(month), {onNone: () => 0, onSome: row => row.calls})
 				if (calls >= MONTHLY_LOOKUPS) {
 					return yield* BookingsError.make({
 						message: `FlightAware's ${MONTHLY_LOOKUPS} lookups for ${month} are used up.`

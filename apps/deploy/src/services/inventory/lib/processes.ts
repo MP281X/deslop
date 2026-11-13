@@ -6,7 +6,6 @@ import {
 	Effect,
 	Equal,
 	FileSystem,
-	Function,
 	HashMap,
 	Number,
 	Option,
@@ -246,7 +245,7 @@ export function launchdProcesses(text: string, agents: HashMap.HashMap<ProcessId
 							),
 							Option.map(fields =>
 								pipe(
-									Duration.hours(Option.getOrElse(fields[1], Function.constant(0))),
+									Duration.hours(Option.getOrElse(fields[1], () => 0)),
 									Duration.sum(Duration.minutes(fields[2])),
 									Duration.sum(Duration.seconds(fields[3]))
 								)
@@ -266,7 +265,7 @@ export function launchdProcesses(text: string, agents: HashMap.HashMap<ProcessId
 								name: pipe(
 									Array.head(command),
 									Option.flatMap(head => Array.last(String.split(head, '/'))),
-									Option.getOrElse(Function.constant(''))
+									Option.getOrElse(() => '')
 								),
 								parent: row.parent,
 								pid: row.pid

@@ -38,7 +38,12 @@ function ErrorText(props: {message: string}) {
 			return (
 				<span className="flex min-w-0 flex-wrap items-baseline gap-x-2 break-words">
 					<span className="font-medium">
-						{code} {pipe(STATUS, Record.get(code), Option.getOrElse(Function.constant('')))}
+						{code}{' '}
+						{pipe(
+							STATUS,
+							Record.get(code),
+							Option.getOrElse(() => '')
+						)}
 					</span>
 					<span>{method}</span>
 					<span className="min-w-0 break-all">{String.replace(/^https?:\/\//u, '')(url)}</span>
@@ -68,7 +73,7 @@ function SpanHeader(props: {span: TraceTree['spans'][number]}) {
 					'min-w-0 truncate',
 					Boolean.match(props.span.status === 'failed', {
 						onFalse: Function.constUndefined,
-						onTrue: Function.constant('text-destructive')
+						onTrue: () => 'text-destructive'
 					})
 				)}
 			>
@@ -99,7 +104,7 @@ export function SpanDetail(props: {span: TraceTree['spans'][number]}) {
 					<div role="listitem" className="col-span-2 grid h-8 grid-cols-subgrid items-center gap-2.5 max-sm:h-11">
 						<span className="text-muted-foreground flex items-center gap-1.5 truncate">
 							{Boolean.match(props.span.status === 'denied', {
-								onFalse: Function.constant('error'),
+								onFalse: () => 'error',
 								onTrue: () => (
 									<>
 										<LockIcon aria-hidden className="size-3 shrink-0" />
@@ -113,7 +118,7 @@ export function SpanDetail(props: {span: TraceTree['spans'][number]}) {
 								'block min-w-0 truncate',
 								Boolean.match(props.span.status === 'failed', {
 									onFalse: Function.constUndefined,
-									onTrue: Function.constant('text-destructive')
+									onTrue: () => 'text-destructive'
 								})
 							)}
 							title={message}
@@ -154,10 +159,7 @@ export function SpanDetail(props: {span: TraceTree['spans'][number]}) {
 					<span
 						className={cn(
 							'text-muted-foreground block min-w-0 truncate',
-							Boolean.match(log.severity >= 17, {
-								onFalse: Function.constUndefined,
-								onTrue: Function.constant('text-destructive')
-							})
+							Boolean.match(log.severity >= 17, {onFalse: Function.constUndefined, onTrue: () => 'text-destructive'})
 						)}
 						title={log.message}
 					>

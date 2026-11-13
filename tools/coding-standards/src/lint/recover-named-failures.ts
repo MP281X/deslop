@@ -1,4 +1,4 @@
-import {Array, Function, Option, Predicate, String, pipe} from 'effect'
+import {Array, Option, Predicate, String, pipe} from 'effect'
 
 import {defineRule} from 'vite-plus/lint/plugins'
 import type {Context, ESTree, Fixer} from 'vite-plus/lint/plugins'
@@ -402,7 +402,7 @@ export const recoverNamedFailures = defineRule({
 		},
 		MemberExpression: node => {
 			if (!importedMember({context, importedName: 'Effect', node})) return
-			const method = Option.getOrElse(memberName(node), Function.constant(''))
+			const method = Option.getOrElse(memberName(node), () => '')
 			if (!Array.contains(['ignore', 'ignoreCause', 'orDie', 'orDieWith'], method)) return
 			if (
 				Array.contains(['ignore', 'ignoreCause'], method) &&

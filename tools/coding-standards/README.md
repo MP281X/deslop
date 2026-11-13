@@ -40,7 +40,7 @@ Custom rules retain the cases native rules cannot express: `prefer-predicate` ow
 
 `no-collecting-loop` refuses collection mutation inside loops, including effectful loops and callbacks inside them. Use collection operations, `Array.mapAccum` for dependent items, or `Effect.forEach` for effectful work. Native-method checks defer to it at those sites. Copying folds and repeated searches remain separate checks.
 
-`effect-call-form` also owns anonymous generator callbacks and Effect property definitions. `no-redundant-annotation` owns inferred return, state, ref-null and empty-array types. Fixed primitive callbacks use `Function.constUndefined`, `constNull`, `constTrue`, `constFalse` or `constant(value)`; the Effect compiler keeps its direct `map`, `match` and `sync` replacements.
+`effect-call-form` also owns anonymous generator callbacks and Effect property definitions. `no-redundant-annotation` owns inferred return, state, ref-null and empty-array types. The four fixed callbacks use `Function.constUndefined`, `constNull`, `constTrue` or `constFalse`; string and number callbacks stay arrows. The Effect compiler keeps its direct `map`, `match` and `sync` replacements.
 
 ```jsonc
 // tsconfig.json

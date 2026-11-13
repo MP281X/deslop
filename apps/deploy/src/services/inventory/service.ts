@@ -85,42 +85,48 @@ function portItems(
 					)
 				})
 			})
-			const response = yield* Boolean.match(probeSocket(socket, Option.getOrElse(process, Function.constant(''))), {
-				onFalse: () => Effect.succeed(Option.none<{http: boolean; ui: boolean}>()),
-				onTrue: Effect.fnUntraced(function* () {
-					// The probe sends an unsampled trace context, so the app's HEAD span is never exported.
-					return yield* pipe(
-						http.head(`http://127.0.0.1:${socket.port}/`, {
-							headers: HttpTraceContext.toHeaders(
-								new Tracer.NativeSpan({
-									annotations: Context.empty(),
-									kind: 'internal',
-									links: [],
-									name: 'Deploy.probe',
-									parent: Option.none(),
-									sampled: false,
-									startTime: 0n
-								})
-							)
-						}),
-						Effect.map(value => ({
-							http: true,
-							ui:
-								value.status >= 200 &&
-								value.status < 400 &&
-								String.includes('text/html')(value.headers['content-type'] ?? '')
-						})),
-						Effect.provideService(FetchHttpClient.RequestInit, {redirect: 'manual'}),
-						// A probe expects refusals and 4xx from ports that aren't web pages, so it records no span.
-						Effect.provideService(HttpClient.TracerDisabledWhen, Function.constTrue),
-						Effect.timeout(Duration.millis(700)),
-						Effect.option
-					)
-				})
-			})
+			const response = yield* Boolean.match(
+				probeSocket(
+					socket,
+					Option.getOrElse(process, () => '')
+				),
+				{
+					onFalse: () => Effect.succeed(Option.none<{http: boolean; ui: boolean}>()),
+					onTrue: Effect.fnUntraced(function* () {
+						// The probe sends an unsampled trace context, so the app's HEAD span is never exported.
+						return yield* pipe(
+							http.head(`http://127.0.0.1:${socket.port}/`, {
+								headers: HttpTraceContext.toHeaders(
+									new Tracer.NativeSpan({
+										annotations: Context.empty(),
+										kind: 'internal',
+										links: [],
+										name: 'Deploy.probe',
+										parent: Option.none(),
+										sampled: false,
+										startTime: 0n
+									})
+								)
+							}),
+							Effect.map(value => ({
+								http: true,
+								ui:
+									value.status >= 200 &&
+									value.status < 400 &&
+									String.includes('text/html')(value.headers['content-type'] ?? '')
+							})),
+							Effect.provideService(FetchHttpClient.RequestInit, {redirect: 'manual'}),
+							// A probe expects refusals and 4xx from ports that aren't web pages, so it records no span.
+							Effect.provideService(HttpClient.TracerDisabledWhen, Function.constTrue),
+							Effect.timeout(Duration.millis(700)),
+							Effect.option
+						)
+					})
+				}
+			)
 			return InventoryItem.make({
 				address: Option.some(socket.address),
-				detail: `${socket.address} · ${Option.getOrElse(process, Function.constant('process unavailable'))}`,
+				detail: `${socket.address} · ${Option.getOrElse(process, () => 'process unavailable')}`,
 				http: Option.some(Option.exists(response, value => value.http)),
 				id: ItemId.make(`${worker}:port:${socket.protocol}:${socket.address}`),
 				kind: 'port',
@@ -275,12 +281,12 @@ export class Inventory extends Context.Service<
 								...Array.map(
 									Array.fromIterable(
 										String.matchAll(/traefik\.http\.services\.[^=,]+\.loadbalancer\.server\.port=([0-9]+)/gu)(
-											Option.getOrElse(row.Labels, Function.constant(''))
+											Option.getOrElse(row.Labels, () => '')
 										)
 									),
 									match => ({
 										address: 'container',
-										port: Option.getOrElse(Number.parse(match[1] ?? ''), Function.constant(0)),
+										port: Option.getOrElse(Number.parse(match[1] ?? ''), () => 0),
 										protocol: 'tcp' as const
 									})
 								),
@@ -288,7 +294,7 @@ export class Inventory extends Context.Service<
 									Array.fromIterable(String.matchAll(/((?:[0-9.]+|\[::\])):([0-9]+)->[0-9]+\/(tcp|udp)/gu)(row.Ports)),
 									match => ({
 										address: `${match[1]}:${match[2]}`,
-										port: Option.getOrElse(Number.parse(match[2] ?? ''), Function.constant(0)),
+										port: Option.getOrElse(Number.parse(match[2] ?? ''), () => 0),
 										protocol: Boolean.match(match[3] === 'udp', {
 											onFalse: () => 'tcp' as const,
 											onTrue: () => 'udp' as const
@@ -313,9 +319,7 @@ export class Inventory extends Context.Service<
 							links: Option.some(
 								Array.dedupe(
 									Array.map(
-										Array.fromIterable(
-											String.matchAll(/Host\(`([^`]+)`\)/gu)(Option.getOrElse(row.Labels, Function.constant('')))
-										),
+										Array.fromIterable(String.matchAll(/Host\(`([^`]+)`\)/gu)(Option.getOrElse(row.Labels, () => ''))),
 										match => `https://${match[1]}`
 									)
 								)
@@ -323,7 +327,7 @@ export class Inventory extends Context.Service<
 							name: row.Names,
 							state: Boolean.match(String.includes('unhealthy')(row.Status), {
 								onFalse: () => row.State,
-								onTrue: Function.constant('unhealthy')
+								onTrue: () => 'unhealthy'
 							}),
 							url: Option.none(),
 							worker
@@ -353,7 +357,7 @@ export class Inventory extends Context.Service<
 									cwd: processId => Effect.option(fs.readLink(`/proc/${processId}/cwd`)),
 									unit: processId =>
 										Effect.map(Effect.option(fs.readFileString(`/proc/${processId}/cgroup`)), cgroup =>
-											socketUnit(Option.getOrElse(cgroup, Function.constant('')))
+											socketUnit(Option.getOrElse(cgroup, () => ''))
 										)
 								}
 							)
@@ -420,10 +424,10 @@ export class Inventory extends Context.Service<
 										state: Option.match(agent.pid, {
 											onNone: () =>
 												Boolean.match(agent.status === 0, {
-													onFalse: Function.constant('failed · failed'),
-													onTrue: Function.constant('inactive · dead')
+													onFalse: () => 'failed · failed',
+													onTrue: () => 'inactive · dead'
 												}),
-											onSome: Function.constant('running')
+											onSome: () => 'running'
 										}),
 										url: Option.none(),
 										worker
@@ -438,7 +442,7 @@ export class Inventory extends Context.Service<
 									cwd: Effect.fnUntraced(function* (processId) {
 										return pipe(
 											yield* Effect.option(command('lsof', ['-nP', '-a', '-p', `${processId}`, '-d', 'cwd', '-Fn'])),
-											Option.getOrElse(Function.constant('')),
+											Option.getOrElse(() => ''),
 											String.split('\n'),
 											Array.findFirst(String.startsWith('n')),
 											Option.map(String.slice(1))
@@ -510,10 +514,7 @@ export class Inventory extends Context.Service<
 													kind: 'peer',
 													name: peer.HostName,
 													self: Option.some(true),
-													state: Boolean.match(peer.Online, {
-														onFalse: Function.constant('offline'),
-														onTrue: Function.constant('online')
-													}),
+													state: Boolean.match(peer.Online, {onFalse: () => 'offline', onTrue: () => 'online'}),
 													url: Option.none(),
 													worker
 												})
@@ -533,11 +534,8 @@ export class Inventory extends Context.Service<
 														detail: `${pipe(
 															status.AllowFunnel,
 															Option.exists(permissions => permissions[site[0]] === true),
-															Boolean.match({
-																onFalse: Function.constant('tailnet'),
-																onTrue: Function.constant('Funnel permitted (public)')
-															})
-														)} → ${Option.getOrElse(handler[1].Proxy, Function.constant('non-proxy handler'))}`,
+															Boolean.match({onFalse: () => 'tailnet', onTrue: () => 'Funnel permitted (public)'})
+														)} → ${Option.getOrElse(handler[1].Proxy, () => 'non-proxy handler')}`,
 														health: pipe(
 															status.AllowFunnel,
 															Option.exists(permissions => permissions[site[0]] === true),

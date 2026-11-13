@@ -1,4 +1,4 @@
-import {Array, DateTime, Duration, Function, Number, Option, Order, Record, Schema, String, Struct, pipe} from 'effect'
+import {Array, DateTime, Duration, Number, Option, Order, Record, Schema, String, Struct, pipe} from 'effect'
 
 import type {AppId} from '#services/inventory/schema.ts'
 import {CpuCounters, LoadAverages} from '#services/metrics/schema.ts'
@@ -31,7 +31,7 @@ export function counters(stat: string, uptime: string, time: DateTime.Utc) {
 			stat,
 			String.split('\n'),
 			Array.head,
-			Option.getOrElse(Function.constant('')),
+			Option.getOrElse(() => ''),
 			String.trim,
 			String.split(/\s+/u),
 			Array.drop(1),
@@ -108,7 +108,7 @@ export function vmStatMemory(text: string, total: number) {
 		pipe(
 			String.match(/page size of ([0-9]+) bytes/u)(text),
 			Option.map(match => match[1] ?? ''),
-			Option.getOrElse(Function.constant(''))
+			Option.getOrElse(() => '')
 		)
 	)
 	function count(name: string) {
@@ -205,7 +205,7 @@ export function sample(
 		),
 		Schema.decodeSync(LoadAverages)(
 			pipe(
-				Option.getOrElse(load, Function.constant('')),
+				Option.getOrElse(load, () => ''),
 				String.trim,
 				String.split(/\s+/u),
 				Array.filter(String.isNonEmpty),
@@ -285,7 +285,7 @@ function merge(bucket: Array.NonEmptyReadonlyArray<Sample>) {
 							id,
 							memory: pipe(
 								appMean(id, app => Option.some(app.memory)),
-								Option.getOrElse(Function.constant(0)),
+								Option.getOrElse(() => 0),
 								Number.round(0)
 							)
 						})
@@ -350,7 +350,7 @@ export function bandName(id: AppId | 'other' | 'system', labels: Record<AppId, s
 
 // A cgroup whose whole subtree is one app: a service other than a user manager, a Docker container's scope, or the slice a user manager names `app-<name>.slice` for what its sibling `<name>.service` starts, like T3 Code's agents; a template's instances share such a slice without that sibling, so it's walked into.
 export function appCgroup(path: string, siblings: readonly string[]) {
-	const name = Option.getOrElse(Array.last(String.split(path, '/')), Function.constant(''))
+	const name = Option.getOrElse(Array.last(String.split(path, '/')), () => '')
 	if (Option.isSome(String.match(/^docker-[a-f0-9]{12,64}\.scope$/u)(name))) return true
 	if (String.endsWith('.service')(name)) return Option.isNone(String.match(/^user@[0-9]+\.service$/u)(name))
 	return Option.exists(String.match(/\/user@[0-9]+\.service\/app\.slice\/app-([^/]+)\.slice$/u)(path), match =>

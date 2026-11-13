@@ -30,10 +30,7 @@ function Tabs(props: {admin: boolean}) {
 	]
 	return (
 		<AppBarTabs
-			value={Boolean.match(matchRoute({to: '/people'}) !== false, {
-				onFalse: Function.constant('/'),
-				onTrue: Function.constant('/people')
-			})}
+			value={Boolean.match(matchRoute({to: '/people'}) !== false, {onFalse: () => '/', onTrue: () => '/people'})}
 		>
 			{Array.map(tabs, tab => (
 				<AppBarTab key={tab.to} value={tab.to} render={<Link to={tab.to} />}>

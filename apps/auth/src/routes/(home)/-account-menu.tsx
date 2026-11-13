@@ -57,10 +57,7 @@ function PasskeyItems(props: {via: SessionVia}) {
 					<KeyIcon />
 					<span className="truncate">{passkey.addedFrom}</span>
 					<span className="text-muted-foreground ml-auto pl-3 text-xs">
-						{Boolean.match(passkey.synced, {
-							onFalse: Function.constant('One device'),
-							onTrue: Function.constant('Synced')
-						})}
+						{Boolean.match(passkey.synced, {onFalse: () => 'One device', onTrue: () => 'Synced'})}
 					</span>
 				</DropdownMenuItem>
 			))}

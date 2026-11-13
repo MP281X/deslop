@@ -1,4 +1,4 @@
-import {Array, DateTime, Duration, Effect, Function, HashSet, Option, String, pipe} from 'effect'
+import {Array, DateTime, Duration, Effect, HashSet, Option, String, pipe} from 'effect'
 
 import {AsyncResult, Atom} from 'effect/reactivity'
 import {
@@ -33,7 +33,7 @@ function eventOf(booking: Booking) {
 			alarms: [{relativeOffset: -3 * 60}],
 			endDate: DateTime.toDateUtc(booking.checkOut),
 			location: Option.getOrElse(booking.place.address, () => booking.name),
-			notes: Option.getOrElse(labelled('Confirmation', booking.confirmation), Function.constant('')),
+			notes: Option.getOrElse(labelled('Confirmation', booking.confirmation), () => ''),
 			startDate: DateTime.toDateUtc(booking.checkIn),
 			timeZone: booking.place.timeZone,
 			title: booking.name

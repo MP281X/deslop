@@ -1,4 +1,4 @@
-import {Array, Boolean, Function, HashSet, Option, Predicate, Record, String, pipe} from 'effect'
+import {Array, Boolean, HashSet, Option, Predicate, Record, String, pipe} from 'effect'
 
 import type {ImportDeclaration, ImportDeclarationSpecifier} from 'oxc-parser'
 import {parseSync, visitorKeys} from 'oxc-parser'
@@ -86,10 +86,7 @@ function nameOf(node: Node, parent: Option.Option<Node>) {
 
 function importLine(source: string, declaration: ImportDeclaration, specifier: ImportDeclarationSpecifier) {
 	const binding = textOf(source, specifier)
-	const kind = Boolean.match(declaration.importKind === 'type', {
-		onFalse: Function.constant(''),
-		onTrue: Function.constant('type ')
-	})
+	const kind = Boolean.match(declaration.importKind === 'type', {onFalse: () => '', onTrue: () => 'type '})
 	if (specifier.type === 'ImportSpecifier') {
 		return `import ${kind}{${binding}} from ${textOf(source, declaration.source)}`
 	}
@@ -145,7 +142,7 @@ export function units(filename: string, source: string) {
 			pipe(
 				starts,
 				Array.findLastIndex(start => start <= offset),
-				Option.getOrElse(Function.constant(0))
+				Option.getOrElse(() => 0)
 			) + 1
 		)
 	}
@@ -253,8 +250,8 @@ export function units(filename: string, source: string) {
 			return [
 				unit(
 					Boolean.match(tsx && Option.exists(nameOf(node, parent), matches(/^[A-Z]/u)), {
-						onFalse: Function.constant('code'),
-						onTrue: Function.constant('component')
+						onFalse: () => 'code',
+						onTrue: () => 'component'
 					}),
 					node,
 					line

@@ -1,4 +1,4 @@
-import {Array, Boolean, Config, Context, Duration, Effect, Function, Layer, Option, Schema, Stream, pipe} from 'effect'
+import {Array, Boolean, Config, Context, Duration, Effect, Layer, Option, Schema, Stream, pipe} from 'effect'
 
 import {
 	generateAuthenticationOptions,
@@ -118,7 +118,7 @@ export class Passkeys extends Context.Service<
 				const origin = new URL(yield* Config.String('APP_URL')).origin
 				// Every mp281x.xyz app can use a passkey later; without an issuer it belongs to this host alone.
 				const rpID = Boolean.match(yield* localAuth, {
-					onFalse: Function.constant('mp281x.xyz'),
+					onFalse: () => 'mp281x.xyz',
 					onTrue: () => new URL(origin).hostname
 				})
 				// A challenge answers once, within five minutes, taken in one step: registrations by account, sign-ins by the challenge itself.

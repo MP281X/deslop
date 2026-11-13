@@ -227,7 +227,7 @@ function flightAlerts(flight: Flight, now: DateTime.Utc) {
 									'Gate',
 									Option.flatMap(flight.live, report => report.departureGate)
 								),
-								Function.constant('Check the gate')
+								() => 'Check the gate'
 							),
 							labelled('group', flight.boardingGroup)
 						]),
