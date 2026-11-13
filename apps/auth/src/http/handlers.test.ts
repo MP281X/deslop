@@ -2072,12 +2072,10 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 				}
 			})
 			const apps = Effect.flatMap(send(web.issuer, '/apps', {headers: {cookie: admin}}), response =>
-				Effect.map(
-					Effect.flatMap(
-						Effect.promise(() => response.text()),
-						Schema.decodeEffect(Schema.fromJsonString(Schema.Array(SignedInApp.json)))
-					),
-					Array.filter(app => app.kind === 'App')
+				pipe(
+					Effect.promise(() => response.text()),
+					Effect.flatMap(Schema.decodeEffect(Schema.fromJsonString(Schema.Array(SignedInApp.json)))),
+					Effect.map(Array.filter(app => app.kind === 'App'))
 				)
 			)
 			// Traefik appends the connecting address last; the entry before it is whatever the client sent.

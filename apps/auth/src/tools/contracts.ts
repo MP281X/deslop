@@ -13,7 +13,7 @@ const Page = Schema.Struct({
 	cursor: Schema.optionalKey(Schema.NonEmptyString),
 	limit: pipe(
 		Schema.Int.check(Schema.isBetween({maximum: 100, minimum: 1})),
-		Schema.withDecodingDefaultTypeKey<typeof Schema.Int>(Effect.succeed(30))
+		Schema.withDecodingDefaultTypeKey(Effect.succeed(30))
 	)
 })
 

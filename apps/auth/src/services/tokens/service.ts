@@ -701,7 +701,7 @@ export class Tokens extends Context.Service<
 							pipe(
 								current,
 								HashMap.filter(entry => entry.expiresAt > now),
-								HashMap.set(key, {expiresAt: now + 60_000, state: {_tag: 'Fresh', owner, request}})
+								HashMap.set<string, Code>(key, {expiresAt: now + 60_000, state: {_tag: 'Fresh', owner, request}})
 							)
 						)
 						return code

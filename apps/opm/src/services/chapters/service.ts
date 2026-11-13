@@ -97,7 +97,12 @@ function changed(chapters: readonly Chapter[], before: readonly Chapter[]) {
 	const previous = HashMap.fromIterable(Array.map(before, chapter => [keyOf(chapter), chapter] as const))
 	return Array.filter(
 		chapters,
-		chapter => !Option.exists(HashMap.get(previous, keyOf(chapter)), item => Equal.equals(item, chapter))
+		chapter =>
+			!pipe(
+				previous,
+				HashMap.get(keyOf(chapter)),
+				Option.exists(item => Equal.equals(item, chapter))
+			)
 	)
 }
 
@@ -451,16 +456,13 @@ export class Chapters extends Context.Service<Chapters>()('@deslop/opm/services/
 		})
 
 		// Announce in the discovering round, then wait an hour before reading both communities again.
-		yield* Effect.forkScoped(
-			Effect.repeat(
-				pipe(
-					sync,
-					Effect.ignore({log: 'Warn', message: 'The chapter sync failed'}),
-					Effect.andThen(Effect.ignore(notify, {log: 'Warn', message: 'The new chapters were not announced'})),
-					Effect.withSpan('Chapters.sync')
-				),
-				Schedule.spaced('1 hour')
-			)
+		yield* pipe(
+			sync,
+			Effect.ignore({log: 'Warn', message: 'The chapter sync failed'}),
+			Effect.andThen(Effect.ignore(notify, {log: 'Warn', message: 'The new chapters were not announced'})),
+			Effect.withSpan('Chapters.sync'),
+			Effect.repeat(Schedule.spaced('1 hour')),
+			Effect.forkScoped
 		)
 
 		return {

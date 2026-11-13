@@ -64,7 +64,7 @@ export const mapsAtom = Atom.fn((ride: Ride) =>
 					)
 			})
 		),
-		effect => alertFailure(effect, 'No Directions')
+		alertFailure('No Directions')
 	)
 )
 
@@ -87,6 +87,6 @@ export const uberAtom = Atom.fn((ride: Ride) =>
 					)
 			})
 		),
-		effect => alertFailure(effect, 'No Uber')
+		alertFailure('No Uber')
 	)
 )

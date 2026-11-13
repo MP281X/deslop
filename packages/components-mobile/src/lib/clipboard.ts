@@ -178,7 +178,7 @@ export function makeClipboard<E extends {_tag: string; message: string}>(options
 								Boolean.match(options.answered(error), {onFalse: () => Effect.void, onTrue: () => handled})
 							),
 							Effect.andThen(handled),
-							effect => alertFailure(effect, options.labels.notSaved),
+							alertFailure(options.labels.notSaved),
 							Effect.ignore({log: 'Warn', message: 'The clipboard copy was not saved'})
 						)
 					}),

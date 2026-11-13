@@ -33,19 +33,21 @@ function exits(node: ESTree.Statement) {
 
 function earlyExit(input: Guard & {node: ESTree.Node}) {
 	if (input.node.parent?.type !== 'BlockStatement' && input.node.parent?.type !== 'Program') return false
-	return Array.some(
+	return pipe(
+		input.node.parent.body,
 		Array.take(
-			input.node.parent.body,
 			pipe(
 				input.node.parent.body,
 				Array.findFirstIndex(statement => statement === input.node),
 				Option.getOrElse(() => 0)
 			)
 		),
-		statement =>
-			statement.type === 'IfStatement' &&
-			exits(statement.consequent) &&
-			checks({...input, name: 'isNone', operator: '||', test: statement.test})
+		Array.some(
+			statement =>
+				statement.type === 'IfStatement' &&
+				exits(statement.consequent) &&
+				checks({...input, name: 'isNone', operator: '||', test: statement.test})
+		)
 	)
 }
 

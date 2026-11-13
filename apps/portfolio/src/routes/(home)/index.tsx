@@ -109,15 +109,15 @@ const portfolioAtom = Atom.keepAlive(
 					// The latest 180 positions in the order cursors reached them; a recolour starts a new stretch where the cursor is.
 					const next = {
 						bots: update.bots,
-						trails: Array.takeRight(
+						trails: pipe(
+							scene.trails,
 							Array.appendAll(
-								scene.trails,
 								Array.filter(
 									cursors,
 									visitor => !HashSet.has(positions, Tuple.make(visitor.id, visitor.color, visitor.x, visitor.y))
 								)
 							),
-							180
+							Array.takeRight(180)
 						),
 						visitors: update.visitors
 					}
@@ -265,42 +265,30 @@ function labelOverReadingColumn(x: number, viewport: {width: number}, label: str
 	return at <= right || at - width < right
 }
 
-// Another visitor's cursor sits at each position the server reports.
-function VisitorCursor(input: {cursor: PortfolioVisitor; viewport: {width: number; height: number}}) {
+// Visitors use server positions; the hidden system pointer's replacement follows local CSS variables above them.
+function Cursor(input: {cursor: PortfolioVisitor; own: boolean; viewport: {width: number; height: number}}) {
+	const label = Boolean.match(input.own, {onFalse: () => input.cursor.name, onTrue: () => 'You'})
+	const x = `${input.cursor.x * input.viewport.width}px`
+	const y = `${input.cursor.y * input.viewport.height}px`
 	return (
 		<div
 			aria-hidden
-			className="pointer-events-none fixed top-0 left-0 z-5 transform-(--cursor-transform)"
-			// fallow-ignore-next-line code-duplication -- Remote and local cursors share CSS property names, but position comes from different sources.
+			className={cn(
+				'pointer-events-none fixed top-0 left-0 transform-(--cursor-transform)',
+				Boolean.match(input.own, {onFalse: () => 'z-5', onTrue: () => 'z-20'})
+			)}
 			style={{
 				'--cursor-color': input.cursor.color,
-				'--cursor-transform': `translate3d(${input.cursor.x * input.viewport.width}px, ${input.cursor.y * input.viewport.height}px, 0)`
+				'--cursor-transform': Boolean.match(input.own, {
+					onFalse: () => `translate3d(${x}, ${y}, 0)`,
+					onTrue: () => `translate3d(var(--pointer-x, ${x}), var(--pointer-y, ${y}), 0)`
+				})
 			}}
 		>
 			<CursorLabel
-				flip={input.cursor.x * input.viewport.width + labelWidth(input.cursor.name) > input.viewport.width - 8}
-				label={input.cursor.name}
-				show={!labelOverReadingColumn(input.cursor.x, input.viewport, input.cursor.name)}
-			/>
-		</div>
-	)
-}
-
-// The system pointer is hidden, so this one rides above the page on the pointer's own CSS variables.
-function OwnCursor(input: {cursor: PortfolioVisitor; viewport: {width: number; height: number}}) {
-	return (
-		<div
-			aria-hidden
-			className="pointer-events-none fixed top-0 left-0 z-20 transform-(--cursor-transform)"
-			style={{
-				'--cursor-color': input.cursor.color,
-				'--cursor-transform': `translate3d(var(--pointer-x, ${input.cursor.x * input.viewport.width}px), var(--pointer-y, ${input.cursor.y * input.viewport.height}px), 0)`
-			}}
-		>
-			<CursorLabel
-				flip={input.cursor.x * input.viewport.width + labelWidth('You') > input.viewport.width - 8}
-				label="You"
-				show={!labelOverReadingColumn(input.cursor.x, input.viewport, 'You')}
+				flip={input.cursor.x * input.viewport.width + labelWidth(label) > input.viewport.width - 8}
+				label={label}
+				show={!labelOverReadingColumn(input.cursor.x, input.viewport, label)}
 			/>
 		</div>
 	)
@@ -600,7 +588,8 @@ function RealtimeLayer(input: {
 			<TrailGrid trails={portfolio.value.trails} viewport={input.viewport} />
 
 			<div className="hidden print:hidden [@media(hover:hover)_and_(pointer:fine)]:contents">
-				<OwnCursor
+				<Cursor
+					own
 					cursor={pipe(
 						portfolio.value.visitors,
 						Array.findFirst(visitor => visitor.id === identity.id),
@@ -616,7 +605,7 @@ function RealtimeLayer(input: {
 						Array.appendAll(portfolio.value.bots),
 						Array.map(cursor =>
 							Boolean.match(cursor.id === identity.id, {
-								onFalse: () => <VisitorCursor key={cursor.id} cursor={cursor} viewport={input.viewport} />,
+								onFalse: () => <Cursor key={cursor.id} cursor={cursor} own={false} viewport={input.viewport} />,
 								onTrue: () => null
 							})
 						)
@@ -721,7 +710,8 @@ function PortfolioRoute() {
 					fallback={
 						<>
 							<div className="hidden print:hidden [@media(hover:hover)_and_(pointer:fine)]:contents">
-								<OwnCursor
+								<Cursor
+									own
 									cursor={{color: identity.color, id: identity.id, name: identity.name, x: 0.5, y: 0.5}}
 									viewport={viewport}
 								/>

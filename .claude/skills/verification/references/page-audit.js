@@ -1,5 +1,5 @@
 // Pass this file's text to preview_evaluate on each captured state; it returns what a reader would flag.
-;(() => {
+function auditPage() {
 	const paint = document.createElement('canvas').getContext('2d', {willReadFrequently: true})
 
 	function visible(element) {
@@ -469,4 +469,5 @@
 		unnamed: controls.filter(element => !nameOf(element)).map(describe),
 		viewport: `${innerWidth}×${innerHeight}`
 	}
-})()
+}
+auditPage()

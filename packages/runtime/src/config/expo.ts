@@ -27,7 +27,7 @@ export function makeExpoConfig(app: {projectId: string; slug: string}) {
 					experiments: {reactCompiler: true},
 					extra: {eas: {projectId: app.projectId}, scheme: variant.scheme},
 					ios: {
-						...Option.match(team, {onNone: () => ({}), onSome: appleTeamId => ({appleTeamId})}),
+						appleTeamId: Option.getOrUndefined(team),
 						buildNumber: `${release}`,
 						bundleIdentifier: variant.bundleIdentifier,
 						config: {usesNonExemptEncryption: false},

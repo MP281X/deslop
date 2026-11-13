@@ -1,6 +1,6 @@
 import {assert, it} from '@effect/vitest'
 
-import {Array, Boolean, DateTime, Effect, Formatter, Layer, Option, Ref, Schema, Stream, String} from 'effect'
+import {Array, Boolean, DateTime, Effect, Formatter, Layer, Option, Ref, Schema, Stream, String, pipe} from 'effect'
 
 import type {ExposeRequest, HideRequest} from '#services/exposures/schema.ts'
 import {Fleet} from '#services/fleet/service.ts'
@@ -414,7 +414,11 @@ it.effect('exposes and hides a port through the composed MCP tools', () =>
 			const toolkit = yield* makeToolkit(
 				makeFleet({
 					expose: Effect.fnUntraced(function* (input) {
-						return yield* Effect.as(Ref.set(exposed, Option.some(input)), 'https://desktop.tailnet-8c4c.ts.net:4000')
+						return yield* pipe(
+							exposed,
+							Ref.set(Option.some(input)),
+							Effect.as('https://desktop.tailnet-8c4c.ts.net:4000')
+						)
 					}),
 					hide: input => Ref.set(hidden, Option.some(input)),
 					snapshot: Effect.succeed(Snapshot.make({items: [], sources: [], time: NOW, workers: ['dev', 'desktop']}))

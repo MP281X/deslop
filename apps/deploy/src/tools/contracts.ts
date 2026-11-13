@@ -20,6 +20,12 @@ const WorkerSummary = WorkerHistory.mapFields(fields => ({
 	memoryPct: MetricSummary
 }))
 
+type PageLimit = typeof PageLimit.Type
+const PageLimit = pipe(
+	Schema.Int.check(Schema.isBetween({maximum: 100, minimum: 1})),
+	Schema.withDecodingDefaultTypeKey(Effect.succeed(30))
+)
+
 export const ToolContracts = Toolkit.make(
 	Tool.make('list_apps', {
 		description:
@@ -28,12 +34,9 @@ export const ToolContracts = Toolkit.make(
 		parameters: Schema.Struct({
 			...InventoryQuery.fields,
 			cursor: Schema.optionalKey(Schema.String),
-			limit: pipe(
-				Schema.Int.check(Schema.isBetween({maximum: 100, minimum: 1})),
-				Schema.withDecodingDefaultTypeKey<typeof Schema.Int>(Effect.succeed(30))
-			),
-			processLimit: pipe(Schema.Int.check(Schema.isBetween({maximum: 100, minimum: 1})), Schema.withDecodingDefaultTypeKey<typeof Schema.Int>(Effect.succeed(30))),
-			processOffset: pipe(Schema.Natural, Schema.withDecodingDefaultTypeKey<typeof Schema.Natural>(Effect.succeed(0)))
+			limit: PageLimit,
+			processLimit: PageLimit,
+			processOffset: pipe(Schema.Natural, Schema.withDecodingDefaultTypeKey(Effect.succeed(0)))
 		}),
 		success: Schema.Struct({
 			nextCursor: Schema.optionalKey(Schema.String),
@@ -59,7 +62,7 @@ export const ToolContracts = Toolkit.make(
 		failure: DeployError,
 		parameters: Schema.Struct({
 			...HistoryToolInput.fields,
-			series: pipe(Schema.Boolean, Schema.withDecodingDefaultTypeKey<typeof Schema.Boolean>(Effect.succeed(false)))
+			series: pipe(Schema.Boolean, Schema.withDecodingDefaultTypeKey(Effect.succeed(false)))
 		}),
 		success: Schema.Struct({workers: Schema.Array(Schema.Union([WorkerSummary, WorkerHistory]))})
 	})

@@ -354,7 +354,7 @@ export class Connections extends Context.Service<
 			const token = yield* pipe(
 				HttpClientRequest.post(issued.tokenEndpoint),
 				HttpClientRequest.bodyUrlParams({...params, client_id: issued.clientId, resource: connection.url}),
-				request => http.execute(request),
+				http.execute,
 				Effect.flatMap(HttpClientResponse.schemaBodyJson(Token)),
 				Effect.tapErrorTag('HttpClientError', cause => {
 					// Only 400 and 401 reject the grant itself; a rate limit or a timeout leaves it to the next try.

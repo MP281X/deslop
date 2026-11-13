@@ -1,4 +1,4 @@
-import {Effect, Option, Queue, Schema, String, Stream} from 'effect'
+import {Effect, Option, Queue, Schema, String, Stream, pipe} from 'effect'
 
 import {Atom} from 'effect/reactivity'
 import {addNotificationResponseReceivedListener, getLastNotificationResponse} from 'expo-notifications'
@@ -26,16 +26,16 @@ function tapped(response: NotificationResponse | null) {
 
 export const openedAtom = Atom.keepAlive(
 	Atom.make(
-		Stream.flatMap(
+		pipe(
+			Stream.fromEffect(
+				Effect.map(
+					Effect.promise(() => Linking.getInitialURL()),
+					url =>
+						// A notification tapped while the app was closed launches it without a URL.
+						Option.orElse(bookingIn(url), () => tapped(getLastNotificationResponse()))
+				)
+			),
 			Stream.merge(
-				Stream.fromEffect(
-					Effect.map(
-						Effect.promise(() => Linking.getInitialURL()),
-						url =>
-							// A notification tapped while the app was closed launches it without a URL.
-							Option.orElse(bookingIn(url), () => tapped(getLastNotificationResponse()))
-					)
-				),
 				Stream.callback<Option.Option<string>>(queue =>
 					Effect.gen(function* () {
 						yield* Effect.acquireRelease(
@@ -55,7 +55,7 @@ export const openedAtom = Atom.keepAlive(
 					})
 				)
 			),
-			opened => Stream.fromIterable(Option.toArray(opened))
+			Stream.flatMap(opened => Stream.fromIterable(Option.toArray(opened)))
 		)
 	)
 )

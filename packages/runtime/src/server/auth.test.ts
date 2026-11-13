@@ -146,15 +146,15 @@ const serve = Effect.fnUntraced(function* (client: HttpClient.HttpClient) {
 	const web = yield* Effect.acquireRelease(
 		Effect.sync(() =>
 			HttpRouter.toWebHandler(
-				Layer.provide(
+				pipe(
+					Layer.provide(HttpRouter.add('POST', '/ingest', HttpServerResponse.empty({status: 200})), HttpAuth.layer),
 					Layer.merge(
-						Layer.provide(HttpRouter.add('POST', '/ingest', HttpServerResponse.empty({status: 200})), HttpAuth.layer),
 						Layer.provide(
 							HttpRouter.add('GET', '/mcp', HttpServerResponse.empty({status: 200})),
 							layerMcpAuth('https://scope.mp281x.xyz/mcp')
 						)
 					),
-					layerAuth(client, {APP_URL: 'https://scope.mp281x.xyz', AUTH_URL: AUTH})
+					Layer.provide(layerAuth(client, {APP_URL: 'https://scope.mp281x.xyz', AUTH_URL: AUTH}))
 				),
 				{disableLogger: true}
 			)
@@ -349,24 +349,25 @@ it.layer(NodeCrypto.layer)(test => {
 		Effect.fnUntraced(function* () {
 			const calls = yield* Ref.make(0)
 			const client = HttpClient.make(request =>
-				Effect.as(
-					Ref.update(calls, count => count + 1),
-					HttpClientResponse.fromWeb(request, new Response(undefined, {status: 401}))
+				pipe(
+					calls,
+					Ref.update(count => count + 1),
+					Effect.as(HttpClientResponse.fromWeb(request, new Response(undefined, {status: 401})))
 				)
 			)
 			const web = yield* Effect.acquireRelease(
 				Effect.sync(() =>
 					HttpRouter.toWebHandler(
-						Layer.provide(
-							Layer.merge(
-								Layer.provide(
-									HttpRouter.add(
-										'GET',
-										'/me',
-										Effect.map(CurrentUser, user => HttpServerResponse.text(user.name))
-									),
-									HttpAuth.layer
+						pipe(
+							Layer.provide(
+								HttpRouter.add(
+									'GET',
+									'/me',
+									Effect.map(CurrentUser, user => HttpServerResponse.text(user.name))
 								),
+								HttpAuth.layer
+							),
+							Layer.merge(
 								Layer.provide(
 									HttpRouter.add(
 										'GET',
@@ -376,7 +377,7 @@ it.layer(NodeCrypto.layer)(test => {
 									layerMcpAuth('https://scope.mp281x.xyz/mcp')
 								)
 							),
-							layerAuth(client, {APP_URL: 'https://scope.mp281x.xyz'})
+							Layer.provide(layerAuth(client, {APP_URL: 'https://scope.mp281x.xyz'}))
 						),
 						{disableLogger: true}
 					)

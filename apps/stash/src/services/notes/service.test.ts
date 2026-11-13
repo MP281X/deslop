@@ -355,7 +355,7 @@ it.layer(NodeServices.layer)('Notes', test => {
 				directory,
 				organizer: Organizer.of({
 					organize: Effect.fnUntraced(function* (userId, input) {
-						return yield* Effect.andThen(Queue.offer(reached, userId), counting(calls).organize(userId, input))
+						return yield* pipe(reached, Queue.offer(userId), Effect.andThen(counting(calls).organize(userId, input)))
 					})
 				}),
 				sources: recipe
@@ -483,16 +483,16 @@ it.layer(NodeServices.layer)('Notes', test => {
 				}),
 				organizer: Organizer.of({
 					organize: Effect.fnUntraced(function* (userId, input) {
-						return yield* Effect.andThen(
+						return yield* pipe(
+							seen,
 							Ref.set(
-								seen,
 								Option.some({
 									images: Array.map(input.images, image => image.bytes),
 									labels: Array.map(input.images, image => image.label),
 									transcript: input.note.transcript
 								})
 							),
-							counting(calls).organize(userId, input)
+							Effect.andThen(counting(calls).organize(userId, input))
 						)
 					})
 				}),
@@ -527,16 +527,23 @@ it.layer(NodeServices.layer)('Notes', test => {
 				directory: yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped(),
 				media: Media.of({
 					...noVideo,
-					frames: link =>
-						Effect.andThen(
-							Ref.update(lookups, links => Array.append(links, link)),
-							Effect.as(sampled.await, [])
-						),
-					read: (_userId, link, fallback) =>
-						Effect.as(
-							Ref.update(lookups, links => Array.append(links, `${link} | ${fallback ?? ''}`)),
-							{info: 'Video metadata', transcript: Effect.succeedSome('[00:01] Read the captions from the post.\n')}
+					frames: Effect.fnUntraced(function* (link) {
+						return yield* pipe(
+							lookups,
+							Ref.update(links => Array.append(links, link)),
+							Effect.andThen(Effect.as(sampled.await, []))
 						)
+					}),
+					read: Effect.fnUntraced(function* (_userId, link, fallback) {
+						return yield* pipe(
+							lookups,
+							Ref.update(links => Array.append(links, `${link} | ${fallback ?? ''}`)),
+							Effect.as({
+								info: 'Video metadata',
+								transcript: Effect.succeedSome('[00:01] Read the captions from the post.\n')
+							})
+						)
+					})
 				}),
 				organizer: counting(calls),
 				sources: Sources.of({
@@ -713,12 +720,10 @@ it.layer(NodeServices.layer)('Notes', test => {
 				directory: yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped(),
 				organizer: Organizer.of({
 					organize: Effect.fnUntraced(function* (userId, input) {
-						return yield* Effect.andThen(
-							Ref.set(
-								seen,
-								Array.map(input.images, image => image.bytes)
-							),
-							tagger.organize(userId, input)
+						return yield* pipe(
+							seen,
+							Ref.set(Array.map(input.images, image => image.bytes)),
+							Effect.andThen(tagger.organize(userId, input))
 						)
 					})
 				}),

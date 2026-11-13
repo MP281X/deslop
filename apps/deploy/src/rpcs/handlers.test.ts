@@ -123,8 +123,11 @@ it.effect('collects inventory once for multiple viewers and stops after the last
 								),
 								metrics: () => Effect.never,
 								run: () => Effect.void,
-								snapshot: Effect.onInterrupt(Effect.andThen(Queue.offer(entered, undefined), Effect.never), () =>
-									Queue.offer(closed, undefined)
+								snapshot: pipe(
+									entered,
+									Queue.offer(undefined),
+									Effect.andThen(Effect.never),
+									Effect.onInterrupt(() => Queue.offer(closed, undefined))
 								)
 							})
 						)

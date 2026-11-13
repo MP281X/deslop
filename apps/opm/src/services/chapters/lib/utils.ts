@@ -53,13 +53,17 @@ export function revisionCandidates(posts: Post[], current: readonly Chapter[], d
 				Array.filter(
 					link =>
 						!HashSet.has(dead, `${keyOf(post)}\u0000${link}`) &&
-						Option.match(HashMap.get(known, keyOf(post)), {
-							onNone: () => true,
-							onSome: item =>
-								post.revised &&
-								post.postedAt > Option.getOrElse(item.revisedAt, () => item.postedAt) &&
-								link !== item.source
-						})
+						pipe(
+							known,
+							HashMap.get(keyOf(post)),
+							Option.match({
+								onNone: () => true,
+								onSome: item =>
+									post.revised &&
+									post.postedAt > Option.getOrElse(item.revisedAt, () => item.postedAt) &&
+									link !== item.source
+							})
+						)
 				),
 				Array.match({onEmpty: () => Result.failVoid, onNonEmpty: links => Result.succeed({links, post})})
 			)

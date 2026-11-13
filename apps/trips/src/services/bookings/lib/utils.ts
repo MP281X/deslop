@@ -95,8 +95,10 @@ export const byStart = Order.mapInput(Order.Number, startOf)
 export function titleOf(booking: Booking) {
 	if (booking._tag === 'stay') return booking.name
 	if (booking._tag === 'flight') return `${booking.airlineCode} ${booking.number}`
-	const brand = Option.getOrElse(Record.get(TRAIN_BRANDS, String.toLowerCase(String.trim(booking.operatorName))), () =>
-		String.toUpperCase(String.slice(0, 3)(booking.operatorName))
+	const brand = pipe(
+		TRAIN_BRANDS,
+		Record.get(String.toLowerCase(String.trim(booking.operatorName))),
+		Option.getOrElse(() => String.toUpperCase(String.slice(0, 3)(booking.operatorName)))
 	)
 	return `${brand} ${booking.number}`
 }
@@ -166,6 +168,14 @@ function sameReservation(existing: Booking, incoming: Booking) {
 	return false
 }
 
+function rideFields(existing: Flight | Train, incoming: Flight | Train) {
+	return {
+		confirmation: newer(existing.confirmation, incoming.confirmation),
+		id: existing.id,
+		seat: newer(existing.seat, incoming.seat)
+	}
+}
+
 // The newer ticket wins field by field; the id stays, and live data survives only while it describes the same service.
 function combine(existing: Booking, incoming: Booking) {
 	if (existing._tag === 'flight' && incoming._tag === 'flight') {
@@ -175,24 +185,19 @@ function combine(existing: Booking, incoming: Booking) {
 			Math.abs(incoming.departs - existing.departs) <= HOUR
 		return Flight.make({
 			...Struct.pick(incoming, Struct.keys(Flight.fields)),
+			...rideFields(existing, incoming),
 			boardingAt: newer(existing.boardingAt, incoming.boardingAt),
-			// fallow-ignore-next-line code-duplication -- Flight and train schemas share field names; each constructor retains its own typed live tracking.
 			boardingGroup: newer(existing.boardingGroup, incoming.boardingGroup),
-			confirmation: newer(existing.confirmation, incoming.confirmation),
-			id: existing.id,
-			live: Option.filter(existing.live, () => same),
-			seat: newer(existing.seat, incoming.seat)
+			live: Option.filter(existing.live, () => same)
 		})
 	}
 	if (existing._tag === 'train' && incoming._tag === 'train') {
 		const same = existing.number === incoming.number && Math.abs(incoming.departs - existing.departs) <= HOUR
 		return Train.make({
 			...Struct.pick(incoming, Struct.keys(Train.fields)),
+			...rideFields(existing, incoming),
 			coach: newer(existing.coach, incoming.coach),
-			confirmation: newer(existing.confirmation, incoming.confirmation),
-			id: existing.id,
-			live: Option.filter(existing.live, () => same),
-			seat: newer(existing.seat, incoming.seat)
+			live: Option.filter(existing.live, () => same)
 		})
 	}
 	if (existing._tag === 'stay' && incoming._tag === 'stay') {

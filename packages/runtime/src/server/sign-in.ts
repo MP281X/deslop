@@ -189,9 +189,10 @@ function layerSignIn(issuer: string) {
 			yield* router.add(
 				'POST',
 				'/auth/sign-out',
-				Effect.as(
-					Effect.flatMap(HttpServerRequest.HttpServerRequest, request => ended(request.headers)),
-					HttpServerResponse.empty({status: 204})
+				pipe(
+					HttpServerRequest.HttpServerRequest,
+					Effect.flatMap(request => ended(request.headers)),
+					Effect.as(HttpServerResponse.empty({status: 204}))
 				)
 			)
 		})

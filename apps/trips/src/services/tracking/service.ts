@@ -203,39 +203,37 @@ export class Tracking extends Context.Service<Tracking>()('@deslop/trips/service
 			)
 		}, Semaphore.withPermit(turns))
 
-		const round = Effect.gen(function* () {
-			const now = yield* Clock.currentTimeMillis
-			const attempted = yield* Ref.get(attempts)
-			yield* pipe(
-				yield* bookings.list,
-				Array.filter(booking =>
-					isDue(
-						booking,
-						now,
-						pipe(
-							attempted,
-							Record.get(booking.id),
-							Option.getOrElse(() => 0)
+		yield* pipe(
+			Effect.gen(function* () {
+				const now = yield* Clock.currentTimeMillis
+				const attempted = yield* Ref.get(attempts)
+				yield* pipe(
+					yield* bookings.list,
+					Array.filter(booking =>
+						isDue(
+							booking,
+							now,
+							pipe(
+								attempted,
+								Record.get(booking.id),
+								Option.getOrElse(() => 0)
+							)
 						)
+					),
+					Effect.forEach(
+						booking =>
+							pipe(
+								check(booking.id, isDue),
+								Effect.withSpan('Tracking.check'),
+								Effect.ignore({log: 'Warn', message: `The live status of ${booking.id} was not read`})
+							),
+						{concurrency: 1, discard: true}
 					)
-				),
-				Effect.forEach(
-					booking =>
-						pipe(
-							check(booking.id, isDue),
-							Effect.withSpan('Tracking.check'),
-							Effect.ignore({log: 'Warn', message: `The live status of ${booking.id} was not read`})
-						),
-					{concurrency: 1, discard: true}
 				)
-			)
-		})
-
-		yield* Effect.forkScoped(
-			Effect.repeat(
-				Effect.ignore(round, {log: 'Warn', message: 'The bookings to track were not read'}),
-				Schedule.spaced('30 seconds')
-			)
+			}),
+			Effect.ignore({log: 'Warn', message: 'The bookings to track were not read'}),
+			Effect.repeat(Schedule.spaced('30 seconds')),
+			Effect.forkScoped
 		)
 
 		return {

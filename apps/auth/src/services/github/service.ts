@@ -84,7 +84,7 @@ export class GitHub extends Context.Service<
 							code_verifier: flow.verifier,
 							redirect_uri: CALLBACK
 						}),
-						request => client.execute(request),
+						client.execute,
 						Effect.flatMap(HttpClientResponse.schemaBodyJson(GitHubToken)),
 						Effect.timeout('10 seconds')
 					)

@@ -243,7 +243,11 @@ function visits(node: Node, depth: number): Visit[] {
 		{depth, node: child, parent: Option.some(node)},
 		...visits(
 			child,
-			pipe(FUNCTIONS, Array.contains(child.type), Boolean.match({onFalse: () => depth, onTrue: () => depth + 1}))
+			pipe(
+				FUNCTIONS,
+				Array.contains<string>(child.type),
+				Boolean.match({onFalse: () => depth, onTrue: () => depth + 1})
+			)
 		)
 	])
 }

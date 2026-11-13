@@ -21,13 +21,15 @@ function byStart() {
 // The quadratic lane search the packer replaced, kept as the reference its lane choices must keep matching.
 function referenceLanesOf(spans: readonly Span[], reservations: Record<string, number> = {}) {
 	const root = Option.getOrUndefined(Array.findFirst(spans, item => item.depth === 0))
-	const jobs = Array.sort(
-		Array.filter(spans, item => item.depth === 1),
-		byStart()
+	const jobs = pipe(
+		spans,
+		Array.filter(item => item.depth === 1),
+		Array.sort(byStart())
 	)
-	const rest = Array.sort(
-		Array.filter(spans, item => item.depth > 1 || (item.depth === 0 && item !== root)),
-		byStart()
+	const rest = pipe(
+		spans,
+		Array.filter(item => item.depth > 1 || (item.depth === 0 && item !== root)),
+		Array.sort(byStart())
 	)
 	const placed = MutableList.make<{lane: number; span: Span}>()
 	const intervals = MutableList.make<{end: number; lane: number; start: number}>()

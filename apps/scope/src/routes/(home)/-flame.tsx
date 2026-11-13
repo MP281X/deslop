@@ -153,12 +153,15 @@ export function Flame(props: {focus?: string; onPick: (id: string) => void; trac
 			pipe(
 				placedByLane,
 				Record.get(`${entry.lane}`),
-				Option.getOrElse(() => []),
-				Array.every(other => {
-					if (other.span.spanId === span.spanId) return true
-					const otherLeft = (other.span.offsetMs / total) * width
-					const otherRight = otherLeft + Number.max((other.span.durationMs / total) * width, 2)
-					return labelRight <= otherLeft || otherRight <= labelLeft
+				Option.match({
+					onNone: () => true,
+					onSome: lane =>
+						Array.every(lane, other => {
+							if (other.span.spanId === span.spanId) return true
+							const otherLeft = (other.span.offsetMs / total) * width
+							const otherRight = otherLeft + Number.max((other.span.durationMs / total) * width, 2)
+							return labelRight <= otherLeft || otherRight <= labelLeft
+						})
 				})
 			)
 		return {

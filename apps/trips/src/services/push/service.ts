@@ -573,7 +573,7 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 			Effect.ignore({log: 'Warn', message: 'The push round failed'})
 		)
 
-		yield* Effect.forkScoped(Effect.repeat(tick, Schedule.spaced('30 seconds')))
+		yield* pipe(tick, Effect.repeat(Schedule.spaced('30 seconds')), Effect.forkScoped)
 		yield* Effect.forkScoped(
 			pipe(
 				bookings.watch,

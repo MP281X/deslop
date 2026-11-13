@@ -123,9 +123,10 @@ it.layer(ConfigProvider.layer(ConfigProvider.fromUnknown({AEROAPI_KEY: 'test'}))
 			const opened = yield* open(
 				bookingsAt(state, listed),
 				HttpClient.make(request =>
-					Effect.as(
-						Ref.update(calls, count => count + 1),
-						HttpClientResponse.fromWeb(request, new Response(undefined, {status: 204}))
+					pipe(
+						calls,
+						Ref.update(count => count + 1),
+						Effect.as(HttpClientResponse.fromWeb(request, new Response(undefined, {status: 204})))
 					)
 				)
 			)
@@ -232,9 +233,10 @@ it.layer(ConfigProvider.layer(ConfigProvider.fromUnknown({AEROAPI_KEY: 'test'}))
 			const opened = yield* open(
 				bookingsAt(state),
 				HttpClient.make(request =>
-					Effect.as(
-						Ref.update(calls, count => count + 1),
-						HttpClientResponse.fromWeb(request, Response.json({flights: []}))
+					pipe(
+						calls,
+						Ref.update(count => count + 1),
+						Effect.as(HttpClientResponse.fromWeb(request, Response.json({flights: []})))
 					)
 				)
 			)

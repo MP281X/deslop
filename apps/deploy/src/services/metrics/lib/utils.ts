@@ -264,10 +264,11 @@ export function rollup(point: Point, stored: readonly Sample[]) {
 	return Array.map(HistoryQuery.fields.minutes.literals, minutes => {
 		const step = SERIES[minutes]
 		const fresh: Sample = {...point, since: point.time, step}
-		return Option.match(Record.get(buckets, `${step}:${Math.floor(point.time / step)}`), {
-			onNone: () => fresh,
-			onSome: row => merge([row, fresh])
-		})
+		return pipe(
+			buckets,
+			Record.get(`${step}:${Math.floor(point.time / step)}`),
+			Option.match({onNone: () => fresh, onSome: row => merge([row, fresh])})
+		)
 	})
 }
 

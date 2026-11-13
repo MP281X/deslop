@@ -139,9 +139,11 @@ export class Places extends Context.Service<
 					const airports = yield* Effect.mapError(index, cause =>
 						BookingsError.make({cause, message: 'The airport list could not be read.'})
 					)
-					const airport = yield* Effect.mapError(
-						Effect.fromOption(Record.get(airports, String.toUpperCase(String.trim(code)))),
-						() => BookingsError.make({message: `Unknown airport code ${code}.`})
+					const airport = yield* pipe(
+						airports,
+						Record.get(String.toUpperCase(String.trim(code))),
+						Effect.fromOption,
+						Effect.mapError(() => BookingsError.make({message: `Unknown airport code ${code}.`}))
 					)
 					return {
 						city: airport.city,
@@ -153,9 +155,14 @@ export class Places extends Context.Service<
 					} satisfies BookedPlace
 				}),
 				station: Effect.fn('Places.station')(function* (name) {
+					const key: string = String.toLowerCase(String.trim(name))
 					return Option.getOrElse(
-						yield* Effect.mapError(Cache.get(stations, String.toLowerCase(String.trim(name))), cause =>
-							BookingsError.make({cause, message: `The station ${name} could not be looked up.`})
+						yield* pipe(
+							stations,
+							Cache.get(key),
+							Effect.mapError(cause =>
+								BookingsError.make({cause, message: `The station ${name} could not be looked up.`})
+							)
 						),
 						() => ({name})
 					)

@@ -45,7 +45,7 @@ export const noNativeControl = defineRule({
 							return classStrings(attribute.value)
 						}),
 						Option.exists(values =>
-							Array.some(values, value => Array.some(String.split(value, /\s+/u), matches(CONTROL_STYLE)))
+							Array.some(values, value => pipe(value, String.split(/\s+/u), Array.some(matches(CONTROL_STYLE))))
 						)
 					)
 					if (name !== 'select' && !styled) return

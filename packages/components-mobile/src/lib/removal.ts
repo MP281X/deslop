@@ -1,4 +1,4 @@
-import {Context, Effect, Layer} from 'effect'
+import {Context, Effect, Layer, pipe} from 'effect'
 
 import {Machine} from '@typeonce/effect-machine'
 import {AtomMachine} from '@typeonce/effect-machine/reactivity'
@@ -29,7 +29,7 @@ export function makeRemoval<E extends {_tag: string; message: string}>(options: 
 				effects: {
 					remove: Effect.gen(function* () {
 						const removal = yield* Removal
-						yield* alertFailure(removal.remove(id), removal.notRemoved)
+						yield* pipe(removal.remove(id), alertFailure(removal.notRemoved))
 					})
 				},
 				events: Machine.events({Removed: {}, Restored: {}}),

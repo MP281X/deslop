@@ -85,13 +85,13 @@ export const imageAtom = Atom.family((id: Note['id']) =>
 
 export const regenerateAtom = Atom.keepAlive(
 	Atom.fn((id: Note['id'], get) =>
-		alertFailure(
+		pipe(
 			provideRuntimeOnce(
 				get,
 				RpcClient.runtime,
 				Effect.flatMap(RpcClient, client => client('notes.regenerate', {id}))
 			),
-			'Not Regenerated'
+			alertFailure('Not Regenerated')
 		)
 	)
 )
@@ -130,7 +130,7 @@ export const writeAtom = Atom.keepAlive(
 						if (get(draftAtom) === text) get.set(draftAtom, '')
 					})
 				),
-				effect => alertFailure(effect, 'Note Not Saved')
+				alertFailure('Note Not Saved')
 			),
 		{concurrent: true}
 	)

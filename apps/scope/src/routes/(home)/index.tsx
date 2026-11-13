@@ -739,9 +739,9 @@ function HomeRoute() {
 	}
 
 	const workspaceProps = {
-		...Option.match(selection.activeOperation, {onNone: () => ({}), onSome: active => ({active})}),
-		...Option.match(selection.activeKey, {onNone: () => ({}), onSome: activeKey => ({activeKey})}),
-		...Option.match(selection.activeTrace, {onNone: () => ({}), onSome: activeTrace => ({activeTrace})}),
+		active: Option.getOrUndefined(selection.activeOperation),
+		activeKey: Option.getOrUndefined(selection.activeKey),
+		activeTrace: Option.getOrUndefined(selection.activeTrace),
 		now,
 		onPickSpan: selectSpan,
 		onSelectOperation: selectOperation,

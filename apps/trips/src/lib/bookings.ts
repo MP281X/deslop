@@ -114,7 +114,7 @@ export const refreshAtom = Atom.fn((id: Booking['id'], get) =>
 			duration: '30 seconds',
 			orElse: () => BookingsError.make({message: 'The server did not answer.'})
 		}),
-		effect => alertFailure(effect, 'Not Refreshed')
+		alertFailure('Not Refreshed')
 	)
 )
 

@@ -24,9 +24,9 @@ type TextWindow = typeof TextWindow.Type
 const TextWindow = Schema.Struct({
 	textLimit: pipe(
 		Schema.Int.check(Schema.isBetween({maximum: 8000, minimum: 1})),
-		Schema.withDecodingDefaultTypeKey<typeof Schema.Int>(Effect.succeed(2000))
+		Schema.withDecodingDefaultTypeKey(Effect.succeed(2000))
 	),
-	textOffset: pipe(Schema.Natural, Schema.withDecodingDefaultTypeKey<typeof Schema.Natural>(Effect.succeed(0)))
+	textOffset: pipe(Schema.Natural, Schema.withDecodingDefaultTypeKey(Effect.succeed(0)))
 })
 
 type AttributeWindow = typeof AttributeWindow.Type
@@ -43,7 +43,10 @@ export const ToolContracts = Toolkit.make(
 		parameters: Schema.Struct({
 			...ListOperationsParams.fields,
 			cursor: Schema.optionalKey(Schema.String),
-			limit: pipe(Schema.Int.check(Schema.isBetween({maximum: 100, minimum: 1})), Schema.withDecodingDefaultTypeKey<typeof Schema.Int>(Effect.succeed(30))),
+			limit: pipe(
+				Schema.Int.check(Schema.isBetween({maximum: 100, minimum: 1})),
+				Schema.withDecodingDefaultTypeKey(Effect.succeed(30))
+			),
 			operation: Schema.optionalKey(Schema.String)
 		}),
 		success: Schema.Struct({...OperationsAnswer.fields, nextCursor: Schema.optionalKey(Schema.String)})
@@ -67,11 +70,15 @@ export const ToolContracts = Toolkit.make(
 			...ReadTraceParams.fields,
 			...TextWindow.fields,
 			...AttributeWindow.fields,
-			logLimit: pipe(Schema.Int.check(Schema.isBetween({maximum: 100, minimum: 1})), Schema.withDecodingDefaultTypeKey<typeof Schema.Int>(Effect.succeed(20))),
-			offset: pipe(Schema.Natural, Schema.withDecodingDefaultTypeKey<typeof Schema.Natural>(Effect.succeed(0))),
-			section: pipe(Schema.Literals(['spans', 'logs', 'attributes']), Schema.withDecodingDefaultTypeKey<Schema.Literals<readonly ['spans', 'logs', 'attributes']>>(
-				Effect.succeed('spans' as const)
-			)),
+			logLimit: pipe(
+				Schema.Int.check(Schema.isBetween({maximum: 100, minimum: 1})),
+				Schema.withDecodingDefaultTypeKey(Effect.succeed(20))
+			),
+			offset: pipe(Schema.Natural, Schema.withDecodingDefaultTypeKey(Effect.succeed(0))),
+			section: pipe(
+				Schema.Literals(['spans', 'logs', 'attributes']),
+				Schema.withDecodingDefaultTypeKey(Effect.succeed('spans' as const))
+			),
 			span: Schema.optionalKey(Schema.String)
 		}),
 		success: Schema.Struct({

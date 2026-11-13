@@ -79,6 +79,50 @@ function Cover(props: {note: NoteItem}) {
 	)
 }
 
+function BodyLine(props: {line: string}) {
+	return pipe(
+		Match.value(props.line),
+		// A heading's hashes are followed by a space; a line opening with a #hashtag is text.
+		Match.when(
+			candidate => Option.isSome(String.match(/^#+\s/u)(candidate)),
+			() => (
+				<Text modifiers={[text.title, foregroundStyle(colors.foreground), padding({top: space[3]})]}>
+					{String.replace(/^#+\s*/u, '')(props.line)}
+				</Text>
+			)
+		),
+		Match.when(
+			candidate => Option.isSome(String.match(/^(?:[-*•]|\d+\.)\s/u)(candidate)),
+			() => (
+				<HStack alignment="firstTextBaseline" spacing={space[2]}>
+					<Text modifiers={[text.body, foregroundStyle(colors.mutedForeground)]}>
+						{Boolean.match(String.startsWith('- ')(props.line), {
+							onFalse: () => String.replace(/\s.*$/u, '')(props.line),
+							onTrue: () => '•'
+						})}
+					</Text>
+					<Text markdownEnabled modifiers={[...prose, frame({alignment: 'leading', maxWidth: Infinity})]}>
+						{String.replace(/^\S+\s/u, '')(props.line)}
+					</Text>
+				</HStack>
+			)
+		),
+		Match.when(String.startsWith('> '), () => (
+			<Text
+				markdownEnabled
+				modifiers={[...prose, foregroundStyle(colors.mutedForeground), padding({leading: space[3]})]}
+			>
+				{String.slice(2)(props.line)}
+			</Text>
+		)),
+		Match.orElse(() => (
+			<Text markdownEnabled modifiers={prose}>
+				{props.line}
+			</Text>
+		))
+	)
+}
+
 function Body(props: {text: string}) {
 	return (
 		<VStack
@@ -91,54 +135,10 @@ function Body(props: {text: string}) {
 				String.split('\n'),
 				Array.map(String.trim),
 				Array.filter(String.isNonEmpty),
-				Array.map((line, index) => {
-					const lineKey = `${index}:${line}`
-					return pipe(
-						Match.value(line),
-						// A heading's hashes are followed by a space; a line opening with a #hashtag is text.
-						Match.when(
-							candidate => Option.isSome(String.match(/^#+\s/u)(candidate)),
-							() => (
-								<Text
-									key={lineKey}
-									modifiers={[text.title, foregroundStyle(colors.foreground), padding({top: space[3]})]}
-								>
-									{String.replace(/^#+\s*/u, '')(line)}
-								</Text>
-							)
-						),
-						Match.when(
-							candidate => Option.isSome(String.match(/^(?:[-*•]|\d+\.)\s/u)(candidate)),
-							() => (
-								<HStack key={lineKey} alignment="firstTextBaseline" spacing={space[2]}>
-									<Text modifiers={[text.body, foregroundStyle(colors.mutedForeground)]}>
-										{Boolean.match(String.startsWith('- ')(line), {
-											onFalse: () => String.replace(/\s.*$/u, '')(line),
-											onTrue: () => '•'
-										})}
-									</Text>
-									<Text markdownEnabled modifiers={[...prose, frame({alignment: 'leading', maxWidth: Infinity})]}>
-										{String.replace(/^\S+\s/u, '')(line)}
-									</Text>
-								</HStack>
-							)
-						),
-						Match.when(String.startsWith('> '), () => (
-							<Text
-								key={lineKey}
-								markdownEnabled
-								modifiers={[...prose, foregroundStyle(colors.mutedForeground), padding({leading: space[3]})]}
-							>
-								{String.slice(2)(line)}
-							</Text>
-						)),
-						Match.orElse(() => (
-							<Text key={lineKey} markdownEnabled modifiers={prose}>
-								{line}
-							</Text>
-						))
-					)
-				})
+				Array.map((line, index) => (
+					// oxlint-disable-next-line react/no-array-index-key -- Note lines have no identity beyond their position; editing text replaces that position's contents.
+					<BodyLine key={index} line={line} />
+				))
 			)}
 		</VStack>
 	)

@@ -229,28 +229,27 @@ export class Gateway extends Context.Service<
 				}
 				const found = yield* Effect.timeout(
 					withClient(server, headers, client =>
-						Effect.mapBoth(
-							Effect.flatMap(
-								Effect.tryPromise({
-									catch: connectionFailure(server.name),
-									try: signal => client.listTools(undefined, {signal})
-								}),
-								result =>
-									Effect.map(
-										Schema.decodeUnknownEffect(RemoteTools)(
-											Array.filter(result.tools, tool => tool.execution?.taskSupport !== 'required')
-										),
-										tools => ({tools, upstreamTools: result.tools})
-									)
+						pipe(
+							Effect.tryPromise({
+								catch: connectionFailure(server.name),
+								try: signal => client.listTools(undefined, {signal})
+							}),
+							Effect.flatMap(result =>
+								Effect.map(
+									Schema.decodeUnknownEffect(RemoteTools)(
+										Array.filter(result.tools, tool => tool.execution?.taskSupport !== 'required')
+									),
+									tools => ({tools, upstreamTools: result.tools})
+								)
 							),
-							{
+							Effect.mapBoth({
 								onFailure: connectionFailure(server.name),
 								onSuccess: result => ({
 									icons: serverIcons(client.getServerVersion()),
 									instructions: client.getInstructions(),
 									...result
 								})
-							}
+							})
 						)
 					),
 					'20 seconds'

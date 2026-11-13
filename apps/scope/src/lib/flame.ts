@@ -29,13 +29,15 @@ function laneIsFree(lane: Lane, span: FlameSpan) {
 // The root's lane, then one lane per job, with the label's space kept free, then each deeper span in the first lane whose time is free; no two spans in a lane overlap.
 export function lanesOf<T extends FlameSpan>(spans: readonly T[], reservations: Record<string, number> = {}) {
 	const root = Option.getOrUndefined(Array.findFirst(spans, span => span.depth === 0))
-	const jobs = Array.sort(
-		Array.filter(spans, span => span.depth === 1),
-		byStart<T>()
+	const jobs = pipe(
+		spans,
+		Array.filter(span => span.depth === 1),
+		Array.sort(byStart<T>())
 	)
-	const rest = Array.sort(
-		Array.filter(spans, span => span.depth > 1 || (span.depth === 0 && span !== root)),
-		byStart<T>()
+	const rest = pipe(
+		spans,
+		Array.filter(span => span.depth > 1 || (span.depth === 0 && span !== root)),
+		Array.sort(byStart<T>())
 	)
 	const placed = MutableList.make<{lane: number; span: T}>()
 	const lanes = MutableList.make<Lane>()

@@ -32,21 +32,24 @@ it.effect('releases an interrupted command before its caller scope closes', () =
 			const started = yield* Queue.unbounded<void>()
 			const spawner = ChildProcessSpawner.make(() =>
 				Effect.acquireRelease(
-					Effect.as(
-						Queue.offer(started, undefined),
-						ChildProcessSpawner.makeHandle({
-							all: Stream.empty,
-							exitCode: Effect.never,
-							getInputFd: () => Sink.drain,
-							getOutputFd: () => Stream.empty,
-							isRunning: Effect.succeed(true),
-							kill: () => Effect.void,
-							pid: ChildProcessSpawner.ProcessId(1),
-							stderr: Stream.empty,
-							stdin: Sink.drain,
-							stdout: Stream.empty,
-							unref: Effect.succeed(Effect.void)
-						})
+					pipe(
+						started,
+						Queue.offer(undefined),
+						Effect.as(
+							ChildProcessSpawner.makeHandle({
+								all: Stream.empty,
+								exitCode: Effect.never,
+								getInputFd: () => Sink.drain,
+								getOutputFd: () => Stream.empty,
+								isRunning: Effect.succeed(true),
+								kill: () => Effect.void,
+								pid: ChildProcessSpawner.ProcessId(1),
+								stderr: Stream.empty,
+								stdin: Sink.drain,
+								stdout: Stream.empty,
+								unref: Effect.succeed(Effect.void)
+							})
+						)
 					),
 					() => Ref.set(released, true)
 				)

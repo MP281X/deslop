@@ -208,9 +208,10 @@ function layerAuth(verified: Ref.Ref<number>) {
 					if (!String.startsWith('agent.')(token)) {
 						return account(Cookies.parseHeader(headers['cookie'] ?? '')['session'])
 					}
-					return Effect.andThen(
-						Ref.update(verified, count => count + 1),
-						account(String.split(token, '.')[1])
+					return pipe(
+						verified,
+						Ref.update(count => count + 1),
+						Effect.andThen(account(String.split(token, '.')[1]))
 					)
 				}
 			})
@@ -321,7 +322,11 @@ const servers = Effect.fnUntraced(function* (home?: string, origin: string = GAT
 					)
 				}
 				if (
-					!Option.contains(MutableHashMap.get(sessions, request.headers.get('mcp-session-id') ?? ''), authorization)
+					!pipe(
+						sessions,
+						MutableHashMap.get(request.headers.get('mcp-session-id') ?? ''),
+						Option.contains(authorization)
+					)
 				) {
 					return new Response(undefined, {status: 404})
 				}
@@ -422,10 +427,10 @@ const servers = Effect.fnUntraced(function* (home?: string, origin: string = GAT
 		memoMap,
 		scope
 	)
-	const rpc = yield* Layer.buildWithMemoMap(
-		Layer.provideMerge(RpcHandlers, Layer.succeedContext(services)),
-		memoMap,
-		scope
+	const rpc = yield* pipe(
+		RpcHandlers,
+		Layer.provideMerge(Layer.succeedContext(services)),
+		Layer.buildWithMemoMap(memoMap, scope)
 	)
 	const client = yield* Effect.provideContext(RpcTest.makeClient(RpcContracts, {flatten: true}), rpc)
 	const web = yield* Effect.acquireRelease(
@@ -660,9 +665,10 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 				assert.strictEqual(response.status, 302)
 				assert.strictEqual(response.headers.get('location'), '/')
 				assert.isTrue(
-					Option.exists(
-						Option.flatMap(Array.head(yield* gateway.list()), server => server.error),
-						String.includes('S256 PKCE')
+					pipe(
+						Array.head(yield* gateway.list()),
+						Option.flatMap(server => server.error),
+						Option.exists(String.includes('S256 PKCE'))
 					)
 				)
 				assert.strictEqual(gateway.registrations.length, 0)
@@ -766,22 +772,22 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 			const added = yield* gateway.add('https://public.example.com/mcp')
 			const listed = Effect.fnUntraced(function* () {
 				const response = yield* modern(gateway.web, TOKEN, 'tools/list')
-				return Array.filter(
-					Array.map(
-						(yield* Schema.decodeEffect(
-							Schema.fromJsonString(Schema.Struct({result: Schema.Struct({tools: Schema.Array(McpSchema.Tool)})}))
-						)(yield* Effect.promise(() => response.text()))).result.tools,
-						tool => tool.name
-					),
-					String.startsWith(`${added.id}__`)
+				return pipe(
+					(yield* Schema.decodeEffect(
+						Schema.fromJsonString(Schema.Struct({result: Schema.Struct({tools: Schema.Array(McpSchema.Tool)})}))
+					)(yield* Effect.promise(() => response.text()))).result.tools,
+					Array.map(tool => tool.name),
+					Array.filter(String.startsWith(`${added.id}__`))
 				)
 			})
 			const remote = yield* listed()
 			assert.strictEqual(remote.length, 3)
 			assert.strictEqual(Array.dedupe(remote).length, 3)
 			for (const name of remote) assert.match(name, /^[a-zA-Z0-9_-]{1,64}$/u)
-			const encoded = yield* Effect.fromOption(
-				Array.findFirst(remote, String.startsWith(`${added.id}__search_docs__encoded_`))
+			const encoded = yield* pipe(
+				remote,
+				Array.findFirst(String.startsWith(`${added.id}__search_docs__encoded_`)),
+				Effect.fromOption
 			)
 			yield* modern(gateway.web, TOKEN, 'tools/call', {arguments: {query: 'dotted'}, name: encoded})
 			assert.isTrue(
@@ -897,26 +903,20 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 			yield* Ref.set(gateway.toolNames, ['search_docs', 'create_doc'])
 			yield* TestClock.adjust('30 seconds')
 			assert.deepStrictEqual(
-				Array.filter(
-					Array.map(
-						(yield* Effect.promise(() => client.listTools(undefined, {cacheMode: 'bypass'}))).tools,
-						tool => tool.name
-					),
-					String.startsWith(`${added.id}__`)
+				pipe(
+					(yield* Effect.promise(() => client.listTools(undefined, {cacheMode: 'bypass'}))).tools,
+					Array.map(tool => tool.name),
+					Array.filter(String.startsWith(`${added.id}__`))
 				),
 				[`${added.id}__search`]
 			)
 			yield* Deferred.await(changed)
 			assert.deepStrictEqual(
-				Array.sort(
-					Array.filter(
-						Array.map(
-							(yield* Effect.promise(() => client.listTools(undefined, {cacheMode: 'bypass'}))).tools,
-							tool => tool.name
-						),
-						String.startsWith(`${added.id}__`)
-					),
-					Order.String
+				pipe(
+					(yield* Effect.promise(() => client.listTools(undefined, {cacheMode: 'bypass'}))).tools,
+					Array.map(tool => tool.name),
+					Array.filter(String.startsWith(`${added.id}__`)),
+					Array.sort(Order.String)
 				),
 				[`${added.id}__create_doc`, `${added.id}__search_docs`]
 			)

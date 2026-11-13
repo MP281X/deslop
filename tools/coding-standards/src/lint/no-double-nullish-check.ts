@@ -80,11 +80,8 @@ export const noDoubleNullishCheck = defineRule({
 			const checks = Array.map(operands({node, operator: node.operator}), operand =>
 				comparedNullish({context, node: operand, operator: variant.comparison})
 			)
-			if (
-				(present => Array.some(present, first => Array.some(present, second => doubled({context, first, second}))))(
-					Array.filterMap(checks, check => Result.fromOption(check, () => undefined))
-				)
-			) {
+			const present = Array.filterMap(checks, check => Result.fromOption(check, () => undefined))
+			if (Array.some(present, first => Array.some(present, second => doubled({context, first, second})))) {
 				context.report({
 					fix: fixer =>
 						pipe(

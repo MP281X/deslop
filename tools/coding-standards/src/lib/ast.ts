@@ -805,8 +805,10 @@ export function schemaCycleNames(input: {context: Context; program: ESTree.Progr
 		const indices = Record.fromEntries(Array.map(names, name => [name, Graph.addNode(mutable, name)] as const))
 		for (const edge of edges) {
 			for (const target of edge.targets) {
-				Option.zipWith(Record.get(indices, edge.name), Record.get(indices, target), (source, sink) =>
-					Graph.addEdge(mutable, source, sink, 'reads')
+				pipe(
+					indices,
+					Record.get(edge.name),
+					Option.zipWith(Record.get(indices, target), (source, sink) => Graph.addEdge(mutable, source, sink, 'reads'))
 				)
 			}
 		}
@@ -962,8 +964,10 @@ export function composedSteps(context: Context, node: ESTree.CallExpression) {
 			if (index === 0) return Option.map(appliedStep(context, argument), applied => applied.step)
 			return pipeStep(context, argument)
 		})
-		return Array.getSomes(
-			Array.map(Array.zip(steps, Array.drop(steps, 1)), pair =>
+		return pipe(
+			steps,
+			Array.zip(Array.drop(steps, 1)),
+			Array.map(pair =>
 				Option.map(Option.all({inner: pair[0], outer: pair[1]}), adjacent => ({
 					...adjacent,
 					end: adjacent.outer.node.range[1],
@@ -971,7 +975,8 @@ export function composedSteps(context: Context, node: ESTree.CallExpression) {
 					report: adjacent.outer.node,
 					start: adjacent.inner.node.range[0]
 				}))
-			)
+			),
+			Array.getSomes
 		)
 	}
 	return pipe(
