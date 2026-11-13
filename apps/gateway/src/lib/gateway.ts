@@ -58,7 +58,7 @@ export const addAtom = AtomMachine.bind(RpcClient.runtime).make(
 				if (server.status !== 'Connected') location.assign(connectUrl(server.id))
 			})
 		},
-		events: Machine.events({Submit: {}, Typed: {url: Schema.String}}),
+		events: Machine.events({Invalid: {message: Schema.String}, Submit: {}, Typed: {url: Schema.String}}),
 		root: Machine.state({
 			states: {
 				Adding: {fields: {url: Schema.String}},
@@ -80,7 +80,15 @@ export const addAtom = AtomMachine.bind(RpcClient.runtime).make(
 					src: 'add'
 				}
 			},
-			Editing: {on: {Submit: {data: transition => ({url: transition.state.url}), target: 'Adding'}}}
+			Editing: {
+				on: {
+					Invalid: {
+						data: transition => ({error: Option.some(transition.event.message), url: transition.state.url}),
+						target: 'Editing'
+					},
+					Submit: {data: transition => ({url: transition.state.url}), target: 'Adding'}
+				}
+			}
 		}
 	})
 )

@@ -48,8 +48,36 @@ const HOP_BY_HOP = [
 ]
 const FORBIDDEN = ['authorization', 'x-api-key', 'cookie', 'host', ...HOP_BY_HOP]
 
-function destinationOf(key: AiKey, method: string, rest: string) {
-	if (!String.startsWith('connection/')(rest)) return Result.succeed(`https://opencode.ai/inference/${rest}`)
+function inferencePath(rest: string) {
+	const state = {path: Array.headNonEmpty(String.split(rest, '?'))}
+	while (String.includes('%')(state.path)) {
+		const decoded = Option.liftThrowable(decodeURIComponent)(state.path)
+		if (Option.isNone(decoded)) return Option.none<string>()
+		state.path = Option.getOrThrow(decoded)
+	}
+	return Option.liftPredicate(state.path, value => !String.includes('..')(value))
+}
+
+function isClaude(value: string) {
+	return pipe(value, String.match(/(?:^|\/)claude-/iu), Option.isSome)
+}
+
+function destinationOf(key: AiKey, method: string, rest: string, model: Option.Option<AiModelId>) {
+	const path = inferencePath(rest)
+	if (Option.isNone(path)) {
+		return Result.fail(HttpServerResponse.jsonUnsafe({error: {message: 'Invalid inference path'}}, {status: 400}))
+	}
+	if (!String.startsWith('connection/')(rest)) {
+		if (Option.exists(model, isClaude) || Option.exists(path, isClaude)) {
+			return Result.fail(
+				HttpServerResponse.jsonUnsafe(
+					{error: {message: 'Claude must use the connected Anthropic account: use /ai/connection/v1/messages'}},
+					{status: 403}
+				)
+			)
+		}
+		return Result.succeed(`https://opencode.ai/inference/${rest}`)
+	}
 	if (method !== 'POST' || pipe(rest, String.match(/^connection\/v1\/messages(?:\?.*)?$/u), Option.isNone)) {
 		return Result.fail(
 			HttpServerResponse.jsonUnsafe({error: {message: 'Unknown connected Claude endpoint'}}, {status: 404})
@@ -129,8 +157,6 @@ export class AiProxy extends Context.Service<AiProxy>()('@deslop/gateway/service
 					)
 				}
 				const foundKey = Option.getOrThrow(key)
-				const destination = destinationOf(foundKey, request.method, rest)
-				if (Result.isFailure(destination)) return destination.failure
 				const headers = Headers.removeMany(request.headers, [
 					...FORBIDDEN,
 					...pipe(
@@ -146,27 +172,19 @@ export class AiProxy extends Context.Service<AiProxy>()('@deslop/gateway/service
 						yield* Schema.decodeUnknownEffect(
 							Schema.Literals(['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'])
 						)(request.method)
-					)(destination.success, {
-						headers: Headers.set(headers, 'authorization', `Bearer ${Redacted.value(foundKey.secret)}`)
-					})
+					)('/', {headers: Headers.set(headers, 'authorization', `Bearer ${Redacted.value(foundKey.secret)}`)})
 				}
 				if (request.method !== 'GET' && request.method !== 'HEAD') {
-					if (
-						Option.exists(Option.fromUndefinedOr(request.headers['content-type']), String.includes('application/json'))
-					) {
-						const body = new Uint8Array(yield* request.arrayBuffer)
-						const decoded = Schema.decodeOption(
-							Schema.fromJsonString(Schema.Struct({model: Schema.OptionFromOptionalKey(AiModelId)}))
-						)(new TextDecoder().decode(body))
-						outgoing.model = Option.flatMap(decoded, value => value.model)
-						outgoing.request = HttpClientRequest.bodyUint8Array(outgoing.request, body, request.headers['content-type'])
-					} else {
-						outgoing.request = HttpClientRequest.bodyStream(outgoing.request, request.stream, {
-							contentType: request.headers['content-type']
-						})
-					}
+					const body = new Uint8Array(yield* request.arrayBuffer)
+					const decoded = Schema.decodeOption(
+						Schema.fromJsonString(Schema.Struct({model: Schema.OptionFromOptionalKey(AiModelId)}))
+					)(new TextDecoder().decode(body))
+					outgoing.model = Option.flatMap(decoded, value => value.model)
+					outgoing.request = HttpClientRequest.bodyUint8Array(outgoing.request, body, request.headers['content-type'])
 				}
-				const response = yield* client.execute(outgoing.request)
+				const destination = destinationOf(foundKey, request.method, rest, outgoing.model)
+				if (Result.isFailure(destination)) return destination.failure
+				const response = yield* client.execute(HttpClientRequest.setUrl(outgoing.request, destination.success))
 				// Key bookkeeping cannot turn an upstream action that committed into a failed forwarding request.
 				yield* Effect.ignore(
 					asAuthError(
@@ -287,6 +305,18 @@ export class AiProxy extends Context.Service<AiProxy>()('@deslop/gateway/service
 						PRIMARY KEY (owner, hour)
 					) STRICT, WITHOUT ROWID`
 					yield* sql`INSERT INTO ai_usage_new SELECT owner, hour, sum(costUsd), sum(unknownCostCalls) FROM ai_usage GROUP BY owner, hour`
+					yield* sql`DROP TABLE ai_usage`
+					yield* sql`ALTER TABLE ai_usage_new RENAME TO ai_usage`
+				}),
+				'0004_spend_source': Effect.gen(function* () {
+					const sql = yield* SqlClient.SqlClient
+					yield* sql`CREATE TABLE ai_usage_new (
+						owner TEXT NOT NULL, hour INTEGER NOT NULL, spendSource TEXT NOT NULL,
+						costUsd REAL NOT NULL, unknownCostCalls INTEGER NOT NULL, estimatedCalls INTEGER NOT NULL,
+						PRIMARY KEY (owner, hour, spendSource)
+					) STRICT, WITHOUT ROWID`
+					// Earlier aggregates mixed balances and estimates; they cannot be attributed retrospectively.
+					yield* sql`INSERT INTO ai_usage_new SELECT owner, hour, 'unattributed', costUsd, unknownCostCalls, 0 FROM ai_usage`
 					yield* sql`DROP TABLE ai_usage`
 					yield* sql`ALTER TABLE ai_usage_new RENAME TO ai_usage`
 				})

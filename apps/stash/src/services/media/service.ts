@@ -15,6 +15,7 @@ import {
 	Path,
 	Random,
 	Redacted,
+	Result,
 	Schema,
 	Semaphore,
 	Stream,
@@ -50,6 +51,67 @@ import {
 import {isYouTube} from '#services/notes/lib/utils.ts'
 
 const MAX_TRANSCRIPTION_DURATION = Duration.hours(2)
+
+const transcriptOf = Effect.fnUntraced(function* (
+	response: TranscriptionResponse,
+	duration: Duration.Duration,
+	index: number
+) {
+	const candidate = Option.flatMap(response.candidates, Array.head)
+	const transcript = pipe(
+		candidate,
+		Option.filter(value => Option.contains(value.finishReason, 'STOP')),
+		Option.flatMap(value => value.content),
+		Option.map(value =>
+			pipe(
+				value.parts,
+				Array.filter(part => part.thought !== true),
+				Array.map(part => part.text),
+				Array.join('')
+			)
+		),
+		Option.flatMap(Schema.decodeOption(Schema.fromJsonString(Transcript)))
+	)
+	if (Option.isNone(transcript)) {
+		return yield* MediaError.make({
+			message: `Audio chunk has no usable answer (${pipe(
+				candidate,
+				Option.flatMap(value => value.finishReason),
+				Option.getOrElse(() => 'missing or blocked')
+			)})`
+		})
+	}
+	const answer = Option.getOrThrow(transcript)
+	if (answer.kind === 'silence') return answer
+	const segments = Array.filter(
+		answer.segments,
+		segment =>
+			Duration.isGreaterThanOrEqualTo(segment.start, Duration.zero) && Duration.isLessThan(segment.start, duration)
+	)
+	if (segments.length !== answer.segments.length) {
+		yield* Effect.logWarning('Audio chunk returned timestamps outside its duration', {
+			chunk: index + 1,
+			dropped: answer.segments.length - segments.length
+		})
+	}
+	if (Array.isArrayEmpty(segments)) {
+		return yield* MediaError.make({message: 'Audio chunk returned no speech segments without reporting silence'})
+	}
+	if (
+		Option.isNone(
+			speechOnly(
+				pipe(
+					segments,
+					Array.map(segment => `[${clock(segment.start)}] ${segment.text}\n`),
+					Array.join('')
+				)
+			)
+		)
+	) {
+		return yield* MediaError.make({message: 'Audio chunk did not contain usable speech'})
+	}
+	return {kind: 'speech' as const, segments}
+})
 
 // When set, every read of a source exits through this proxy, so sites never see the server's address; `{session}` keeps one exit address per request.
 export const sourceProxy = Config.option(Config.String('STASH_PROXY'))
@@ -250,126 +312,93 @@ export class Media extends Context.Service<
 								{concurrency: 1}
 							)
 						)
-						return Option.liftPredicate(
-							pipe(
-								yield* Effect.forEach(
-									chunks,
-									Effect.fnUntraced(function* (chunk, index) {
-										const duration = Duration.seconds(chunk[2] - chunk[1])
-										const response = yield* pipe(
-											HttpClientRequest.post(
-												`${speech.url}/google/v1beta/models/gemini-3.5-flash-lite:generateContent`
-											),
-											HttpClientRequest.bodyJson({
-												contents: [
+						const answers = yield* Effect.forEach(
+							chunks,
+							Effect.fnUntraced(function* (chunk, index) {
+								const duration = Duration.seconds(chunk[2] - chunk[1])
+								const transcript = yield* pipe(
+									HttpClientRequest.post(`${speech.url}/google/v1beta/models/gemini-3.5-flash-lite:generateContent`),
+									HttpClientRequest.bodyJson({
+										contents: [
+											{
+												parts: [
 													{
-														parts: [
-															{
-																text: 'Transcribe all spoken words verbatim in their original language as sentence segments with start times in seconds from the beginning of this audio chunk. Do not summarize, translate or invent speech. For silence or music without speech, return no segments.'
-															},
-															{
-																inlineData: {
-																	data: Base64.encode(yield* fs.readFile(path.join(work, chunk[0]))),
-																	mimeType: 'audio/flac'
-																}
-															}
-														],
-														role: 'user'
+														text: 'Transcribe all spoken words verbatim in their original language as sentence segments with start times in seconds from the beginning of this audio chunk. Return kind "speech" and its segments. Do not summarize, translate or invent speech. Only for silence or music without speech, return kind "silence".'
+													},
+													{
+														inlineData: {
+															data: Base64.encode(yield* fs.readFile(path.join(work, chunk[0]))),
+															mimeType: 'audio/flac'
+														}
 													}
 												],
-												generationConfig: {
-													maxOutputTokens: 4096,
-													responseJsonSchema: Schema.toJsonSchemaDocument(Transcript).schema,
-													responseMimeType: 'application/json'
-												}
-											}),
-											Effect.flatMap(speech.authorize(HttpClient.filterStatusOk(http)).execute),
-											Effect.flatMap(upstream =>
-												Effect.option(HttpClientResponse.schemaBodyJson(TranscriptionResponse)(upstream))
-											),
-											Effect.timeout('1 minute'),
-											Effect.mapError(cause =>
-												MediaError.make({cause: Redacted.make(cause), message: 'OpenCode Zen transcription failed.'})
-											),
-											Effect.withSpan('Media.transcribeAudio')
-										)
-										const candidate = pipe(
-											response,
-											Option.flatMap(value => value.candidates),
-											Option.flatMap(Array.head)
-										)
-										const transcript = pipe(
-											candidate,
-											Option.filter(value => Option.contains(value.finishReason, 'STOP')),
-											Option.flatMap(value => value.content),
-											Option.map(value =>
-												pipe(
-													value.parts,
-													Array.filter(part => part.thought !== true),
-													Array.map(part => part.text),
-													Array.join('')
-												)
-											),
-											Option.flatMap(Schema.decodeOption(Schema.fromJsonString(Transcript)))
-										)
-										if (Option.isNone(transcript)) {
-											yield* Effect.logWarning('Audio chunk has no usable answer', {
-												chunk: index + 1,
-												finishReason: pipe(
-													candidate,
-													Option.flatMap(value => value.finishReason),
-													Option.getOrElse(() => 'missing or blocked')
-												)
-											})
-											return {duration, segments: []}
+												role: 'user'
+											}
+										],
+										generationConfig: {
+											maxOutputTokens: 4096,
+											responseJsonSchema: Schema.toJsonSchemaDocument(Transcript).schema,
+											responseMimeType: 'application/json'
 										}
-										const segments = Array.filter(
-											Option.getOrThrow(transcript).segments,
-											segment =>
-												Duration.isGreaterThanOrEqualTo(segment.start, Duration.zero) &&
-												Duration.isLessThan(segment.start, duration)
-										)
-										if (segments.length !== Option.getOrThrow(transcript).segments.length) {
-											yield* Effect.logWarning('Audio chunk returned timestamps outside its duration', {
-												chunk: index + 1,
-												dropped: Option.getOrThrow(transcript).segments.length - segments.length
-											})
-										}
-										if (Array.isArrayEmpty(segments)) {
-											yield* Effect.logWarning('Audio chunk returned no speech segments', {chunk: index + 1})
-										}
-										if (
-											Array.isReadonlyArrayNonEmpty(segments) &&
-											Option.isNone(
-												speechOnly(
-													pipe(
-														segments,
-														Array.map(segment => `[${clock(segment.start)}] ${segment.text}\n`),
-														Array.join('')
-													)
-												)
-											)
-										) {
-											yield* Effect.logWarning('Audio chunk did not contain usable speech', {chunk: index + 1})
-											return {duration, segments: []}
-										}
-										return {duration, segments}
 									}),
-									{concurrency: 1}
-								),
-								// Codec frame boundaries need not be exactly 120 seconds apart; empty chunks keep their duration too.
-								Array.mapAccum(Duration.zero, (offset, chunk) => [
-									Duration.sum(offset, chunk.duration),
-									Array.map(
-										chunk.segments,
-										segment => `[${clock(Duration.sum(offset, segment.start))}] ${String.trim(segment.text)}\n`
-									)
-								]),
-								result => Array.flatten(result[1]),
-								Array.join('')
-							),
-							String.isNonEmpty
+									Effect.flatMap(speech.authorize(HttpClient.filterStatusOk(http)).execute),
+									Effect.flatMap(HttpClientResponse.schemaBodyJson(TranscriptionResponse)),
+									Effect.timeout('1 minute'),
+									Effect.mapError(cause =>
+										MediaError.make({cause: Redacted.make(cause), message: 'OpenCode Zen transcription failed.'})
+									),
+									Effect.flatMap(response => transcriptOf(response, duration, index)),
+									Effect.withSpan('Media.transcribeAudio'),
+									Effect.result
+								)
+								if (Result.isFailure(transcript)) {
+									yield* Effect.logWarning('Audio chunk failed; keeping the other chunks', {
+										chunk: index + 1,
+										message: transcript.failure.message
+									})
+								}
+								return {duration, transcript}
+							}),
+							{concurrency: 1}
 						)
+						const failures = pipe(
+							answers,
+							Array.map(answer => answer.transcript),
+							Array.filter(Result.isFailure),
+							Array.map(answer => answer.failure)
+						)
+						if (failures.length === answers.length) {
+							return yield* MediaError.make({
+								cause: Redacted.make(failures),
+								message: 'Every audio chunk failed or was refused; no transcript was recovered.'
+							})
+						}
+						const text = pipe(
+							answers,
+							// Codec frame boundaries need not be exactly 120 seconds apart; empty chunks keep their duration too.
+							Array.mapAccum(Duration.zero, (offset, chunk) => [
+								Duration.sum(offset, chunk.duration),
+								Array.map(
+									pipe(
+										chunk.transcript,
+										Result.getSuccess,
+										Option.filter(answer => answer.kind === 'speech'),
+										Option.map(answer => answer.segments),
+										Option.getOrElse(() => [])
+									),
+									segment => `[${clock(Duration.sum(offset, segment.start))}] ${String.trim(segment.text)}\n`
+								)
+							]),
+							result => Array.flatten(result[1]),
+							Array.join('')
+						)
+						if (String.isEmpty(text) && Array.isReadonlyArrayNonEmpty(failures)) {
+							return yield* MediaError.make({
+								cause: Redacted.make(failures),
+								message: 'Audio chunks failed and no speech was recovered; silence could not be confirmed.'
+							})
+						}
+						return Option.liftPredicate(text, String.isNonEmpty)
 					})
 				)
 			})

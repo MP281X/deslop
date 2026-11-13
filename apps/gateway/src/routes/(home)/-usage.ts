@@ -1,15 +1,15 @@
-import {Array, DateTime, Duration, HashMap, Option, pipe} from 'effect'
+import {Array, Boolean, DateTime, Duration, HashMap, Option, pipe} from 'effect'
 
 import {usdOf} from '@deslop/runtime/shared/format'
 
-import type {AiUsageBreakdown, AiUsageReport} from '#services/ai-metering/schema.ts'
+import type {AiUsageBreakdown, AiUsageReport, SpendSource} from '#services/ai-metering/schema.ts'
 import type {McpUsageServer, ServerId} from '#services/connections/schema.ts'
 import type {UsageRange} from '#services/usage/schema.ts'
 
 // A sum whose every call had no known price shows a dash, not a zero.
 function costOf(sum: AiUsageBreakdown) {
 	if (sum.costUsd === 0 && sum.unknownCostCalls > 0) return '—'
-	return usdOf(sum.costUsd)
+	return `${Boolean.match(sum.estimatedCalls > 0, {onFalse: () => '', onTrue: () => '~'})}${usdOf(sum.costUsd)}${Boolean.match(sum.unknownCostCalls > 0, {onFalse: () => '', onTrue: () => ' + ?'})}`
 }
 
 // Each bucket of the period, filled with zero where nothing was recorded.
@@ -18,8 +18,14 @@ function seriesOf(range: UsageRange, value: (at: DateTime.Utc) => number) {
 		value(DateTime.addDuration(range.from, Duration.times(range.size, index)))
 	)
 }
-export function aiSeries(report: AiUsageReport, range: UsageRange) {
-	const costs = HashMap.fromIterable(Array.map(report.series, bucket => [bucket.at, bucket.costUsd] as const))
+export function aiSeries(report: AiUsageReport, source: SpendSource, range: UsageRange) {
+	const costs = HashMap.fromIterable(
+		pipe(
+			report.series,
+			Array.filter(bucket => bucket.spendSource === source),
+			Array.map(bucket => [bucket.at, bucket.costUsd] as const)
+		)
+	)
 	return seriesOf(range, at =>
 		pipe(
 			costs,
@@ -28,8 +34,12 @@ export function aiSeries(report: AiUsageReport, range: UsageRange) {
 		)
 	)
 }
-export function aiCost(report: AiUsageReport) {
-	return costOf(report.total)
+export function aiCost(report: AiUsageReport, source: SpendSource) {
+	return pipe(
+		report.totals,
+		Array.findFirst(total => total.spendSource === source),
+		Option.match({onNone: () => usdOf(0), onSome: costOf})
+	)
 }
 export function serverSeries(report: readonly McpUsageServer[], id: ServerId, range: UsageRange) {
 	return seriesOf(range, at =>

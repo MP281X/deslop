@@ -34,8 +34,9 @@ export class AiMetering extends Context.Service<AiMetering>()(
 				Request: AiUsage.insert,
 				execute: row => sql`
 				INSERT INTO ${sql(AiUsage.table)} ${sql.insert(row)}
-				ON CONFLICT (owner, hour) DO UPDATE SET
+				ON CONFLICT (owner, hour, spendSource) DO UPDATE SET
 					costUsd = costUsd + excluded.costUsd,
+					estimatedCalls = estimatedCalls + excluded.estimatedCalls,
 					unknownCostCalls = unknownCostCalls + excluded.unknownCostCalls
 			`
 			})
@@ -47,20 +48,22 @@ export class AiMetering extends Context.Service<AiMetering>()(
 			function within(query: typeof AiUsageQuery.Encoded) {
 				return sql`owner = ${query.owner} AND hour >= ${query.from} AND hour < ${query.to}`
 			}
-			const totalUsage = SqlSchema.findOne({
+			const totalUsage = SqlSchema.findAll({
 				Request: AiUsageQuery,
 				Result: AiUsageBreakdown,
 				execute: query => sql`
-				SELECT total(costUsd) AS costUsd, total(unknownCostCalls) AS unknownCostCalls
-				FROM ${sql(AiUsage.table)} WHERE ${within(query)}
+				SELECT spendSource, total(costUsd) AS costUsd, total(unknownCostCalls) AS unknownCostCalls,
+					total(estimatedCalls) AS estimatedCalls
+				FROM ${sql(AiUsage.table)} WHERE ${within(query)} GROUP BY spendSource ORDER BY spendSource
 			`
 			})
 			const listBuckets = SqlSchema.findAll({
 				Request: AiUsageQuery,
 				Result: Schema.Struct({at: DateTimeUtcFromFiniteMillis, ...AiUsageBreakdown.fields}),
 				execute: query => sql`
-				SELECT hour - hour % ${query.size} AS at, total(costUsd) AS costUsd, sum(unknownCostCalls) AS unknownCostCalls
-				FROM ${sql(AiUsage.table)} WHERE ${within(query)} GROUP BY 1 ORDER BY 1
+				SELECT hour - hour % ${query.size} AS at, spendSource, total(costUsd) AS costUsd,
+					sum(unknownCostCalls) AS unknownCostCalls, sum(estimatedCalls) AS estimatedCalls
+				FROM ${sql(AiUsage.table)} WHERE ${within(query)} GROUP BY 1, spendSource ORDER BY 1, spendSource
 			`
 			})
 			const saveUsage = Effect.fnUntraced(function* (id: UserId, entry: AiUsageEntry) {
@@ -68,8 +71,10 @@ export class AiMetering extends Context.Service<AiMetering>()(
 					Effect.andThen(
 						addUsage({
 							costUsd: Option.getOrElse(entry.costUsd, () => 0),
+							estimatedCalls: Boolean.match(entry.estimated, {onFalse: () => 0, onTrue: () => 1}),
 							hour: DateTime.startOf(entry.at, 'hour'),
 							owner: id,
+							spendSource: entry.spendSource,
 							unknownCostCalls: Boolean.match(entry.costSource === 'unknown', {onFalse: () => 0, onTrue: () => 1})
 						}),
 						deleteUsageBefore({hour: DateTime.subtractDuration(entry.at, Duration.days(30)), owner: id})
@@ -95,9 +100,11 @@ export class AiMetering extends Context.Service<AiMetering>()(
 								cacheWriteTokens: 0,
 								costSource: 'unknown',
 								costUsd: Option.none(),
+								estimated: false,
 								inputTokens: 0,
 								model,
-								outputTokens: 0
+								outputTokens: 0,
+								spendSource: 'unattributed'
 							},
 							pending: ''
 						}
@@ -157,7 +164,7 @@ export class AiMetering extends Context.Service<AiMetering>()(
 								sql.reactive(
 									{aiUsage: [id]},
 									Effect.all(
-										{series: listBuckets({...range, owner: id}), total: totalUsage({...range, owner: id})},
+										{series: listBuckets({...range, owner: id}), totals: totalUsage({...range, owner: id})},
 										{concurrency: 1}
 									)
 								),

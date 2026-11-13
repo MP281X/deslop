@@ -41,7 +41,7 @@ const ToolHandlers = ToolContracts.toLayer(
 			}),
 			remove_ai_key: Effect.fnUntraced(function* () {
 				yield* ai.removeKey((yield* CurrentUser).id)
-				return {provider: 'opencode' as const}
+				return {}
 			}),
 			remove_mcp_server: Effect.fnUntraced(function* (input) {
 				yield* connections.remove(input.server, yield* CurrentUser)

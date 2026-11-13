@@ -55,9 +55,13 @@ export const CreatorCaptions = Schema.Struct({
 })
 
 export type Transcript = typeof Transcript.Type
-export const Transcript = Schema.Struct({
-	segments: Schema.Array(Schema.Struct({start: DurationFromSeconds, text: Schema.String}))
-})
+export const Transcript = Schema.Union([
+	Schema.Struct({kind: Schema.Literal('silence')}),
+	Schema.Struct({
+		kind: Schema.Literal('speech'),
+		segments: Schema.Array(Schema.Struct({start: DurationFromSeconds, text: Schema.String}))
+	})
+])
 
 export type TranscriptionResponse = typeof TranscriptionResponse.Type
 export const TranscriptionResponse = Schema.Struct({

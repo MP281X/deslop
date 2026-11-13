@@ -30,12 +30,22 @@ import {Search} from '#lib/search.ts'
 import {AddKeyDialog, ProviderMark} from '#routes/(home)/-keys.tsx'
 import {aiCost, aiSeries, serverSeries} from '#routes/(home)/-usage.ts'
 import icon from '#routes/icon.svg'
+import {SpendSource} from '#services/ai-metering/schema.ts'
 import type {AiUsageReport} from '#services/ai-metering/schema.ts'
 import type {AiKeyItem} from '#services/ai-proxy/schema.ts'
+import {ConnectionUrl, ServiceAccountKey} from '#services/ai-proxy/schema.ts'
 import type {ConnectionItem, McpUsageServer} from '#services/connections/schema.ts'
 import {Period} from '#services/usage/schema.ts'
 import type {UsageRange} from '#services/usage/schema.ts'
 
+const SPEND_LABELS: Record<SpendSource, string> = {
+	balance: 'Zen balance',
+	byok: 'Anthropic key',
+	free: 'Free',
+	go: 'Go',
+	'go-plus': 'Go Plus',
+	unattributed: 'Unattributed'
+}
 const PERIODS = Array.map(Period.literals, value => ({label: value, value}))
 
 const route = getRouteApi('/(home)/')
@@ -223,11 +233,11 @@ function ServerRows(props: {period: Period}) {
 	)
 }
 
-// One key: its provider's mark and name, the secret's last four, then its cost over the period.
-function KeyRow(props: {cost: string; info: AiKeyItem; period: UsageRange; report: AiUsageReport}) {
+// One credential, with each balance's costs and estimates kept apart.
+function KeyRow(props: {info: AiKeyItem; period: UsageRange; report: AiUsageReport}) {
 	return (
 		<div role="listitem">
-			<Item size="row">
+			<Item size="row" className="h-auto min-h-8 max-sm:h-auto max-sm:min-h-11">
 				<ItemMedia>
 					<span className="flex size-4 items-center justify-center">
 						<ProviderMark />
@@ -243,8 +253,26 @@ function KeyRow(props: {cost: string; info: AiKeyItem; period: UsageRange; repor
 							<StatusDot status="error" />
 						</span>
 					)}
-					<Sparkline color="var(--muted-foreground)" values={aiSeries(props.report, props.period)} />
-					<span className="w-12 shrink-0 text-right font-mono text-xs tabular-nums">{props.cost}</span>
+					<div className="flex flex-col gap-1">
+						{pipe(
+							SpendSource.literals,
+							Array.filter(
+								source =>
+									source === 'balance' ||
+									source === 'byok' ||
+									Array.some(props.report.totals, total => total.spendSource === source)
+							),
+							Array.map(source => (
+								<div key={source} className="flex items-center justify-end gap-2">
+									<span className="text-muted-foreground text-xs">{SPEND_LABELS[source]}</span>
+									<Sparkline color="var(--muted-foreground)" values={aiSeries(props.report, source, props.period)} />
+									<span className="min-w-12 shrink-0 text-right font-mono text-xs tabular-nums">
+										{aiCost(props.report, source)}
+									</span>
+								</div>
+							))
+						)}
+					</div>
 				</ItemActions>
 			</Item>
 		</div>
@@ -254,14 +282,12 @@ function KeyRow(props: {cost: string; info: AiKeyItem; period: UsageRange; repor
 function KeyUsage(props: {info: AiKeyItem; period: Period}) {
 	return (
 		<Loaded atom={aiUsageAtom(props.period)}>
-			{current => (
-				<KeyRow info={props.info} report={current.report} period={current.range} cost={aiCost(current.report)} />
-			)}
+			{current => <KeyRow info={props.info} report={current.report} period={current.range} />}
 		</Loaded>
 	)
 }
 
-// Only providers with a key have a row; the field adds and replaces them.
+// The saved credential has one row; the field adds or replaces it.
 function KeyRows(props: {period: Period}) {
 	return (
 		<Loaded atom={aiKeyAtom}>
@@ -338,14 +364,24 @@ function AddField(props: {onKey: (secret: string, url: string) => void}) {
 	function submit() {
 		const value = String.trim(typed)
 		if (value === '' || busy) return
-		if (String.startsWith('https://opencode.ai/inference/custom/')(value)) {
+		if (Schema.is(ConnectionUrl)(value)) {
 			props.onKey('', value)
 			send({_tag: 'Typed', url: ''})
 			return
 		}
-		if (Option.isNone(Option.liftThrowable(() => new URL(value))())) {
+		if (Schema.is(ServiceAccountKey)(value)) {
 			props.onKey(value, '')
 			send({_tag: 'Typed', url: ''})
+			return
+		}
+		if (
+			Option.isNone(Option.liftThrowable(() => new URL(value))()) ||
+			String.includes('opencode.ai/inference/')(value)
+		) {
+			send({
+				_tag: 'Invalid',
+				message: 'Enter a full HTTPS MCP or Console API URL, or an OpenCode service account key starting with oc_sk_.'
+			})
 			return
 		}
 		send({_tag: 'Submit'})
