@@ -219,8 +219,7 @@ export class Presence extends Context.Service<
 						'Presence.join',
 						{attributes: {'rpc.stream': true, visitorId: payload.id}}
 					),
-				move: payload =>
-					Effect.withSpan(send({_tag: 'Moved', ...payload}), 'Presence.move', {attributes: {visitorId: payload.id}})
+				move: payload => send({_tag: 'Moved', ...payload})
 			})
 		})
 	)

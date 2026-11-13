@@ -22,7 +22,7 @@ export type ClipboardCopy = {readonly count: string; readonly kind: ClipboardKin
 type Answer = ClipboardCopy & {readonly save: boolean}
 
 class ClipboardError extends Schema.TaggedError<ClipboardError>()('ClipboardError', {
-	cause: pipe(Schema.OptionFromOptional(Schema.Defect()), Schema.withConstructorDefault(Effect.succeedNone)),
+	cause: Schema.optional(Schema.Defect()),
 	message: Schema.String
 }) {}
 
@@ -30,7 +30,7 @@ class ClipboardError extends Schema.TaggedError<ClipboardError>()('ClipboardErro
 export function readClipboard<A, E, R>(count: string, read: Effect.Effect<A, E, R>) {
 	const unchanged = Effect.flatMap(
 		Effect.try({
-			catch: cause => ClipboardError.make({cause: Option.some(cause), message: 'The clipboard could not be checked.'}),
+			catch: cause => ClipboardError.make({cause, message: 'The clipboard could not be checked.'}),
 			try: () => `${clipboardChangeCount()}`
 		}),
 		current => {
@@ -165,11 +165,7 @@ export function makeClipboard<E extends {_tag: string; message: string}>(options
 				ClipboardOffer.of({
 					answer: Effect.fnUntraced(function* (answer) {
 						const handled = Effect.try({
-							catch: cause =>
-								ClipboardError.make({
-									cause: Option.some(cause),
-									message: 'The answer could not be kept on this iPhone.'
-								}),
+							catch: cause => ClipboardError.make({cause, message: 'The answer could not be kept on this iPhone.'}),
 							try: () => writeAtomically(file, answer.count)
 						})
 						const save: Effect.Effect<void, E> = Boolean.match(answer.save, {
