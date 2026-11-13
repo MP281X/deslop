@@ -36,6 +36,7 @@
 - **Auth.** Never a pasted key.
 - **Tests.** A fix alone earns no test.
 - **Dependencies.** Keep dependencies in their owning packages on `latest`; pin only for peers, the Expo SDK or Vite+; update coupled packages together. Tools use their own flags and defaults, no wrapper scripts. Libraries only through published releases: no patches, forks, overrides or shims, except shadcn registry components. Correct wrong metadata with `packageExtensions` and a comment naming the upstream defect.
+- **Native ownership.** Expo autolinks transitive native dependencies and applies their automatic config plugins even when an app never imports them. App-only native modules and their helpers belong in the apps that use them, not shared packages.
 
 ## Design
 

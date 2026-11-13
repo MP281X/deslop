@@ -13,7 +13,6 @@ import {
 } from 'expo-notifications'
 
 import {cachedList, writeAtomically} from '@deslop/components-mobile/files'
-import {foregroundNotifications} from '@deslop/components-mobile/notifications'
 import {hues} from '@deslop/components-mobile/theme'
 import {liveStream} from '@deslop/runtime/client/live-stream'
 import {keychain} from '@deslop/runtime/mobile/keychain'
@@ -158,7 +157,12 @@ export const readerAtom = Atom.family((reader: ChapterKey) =>
 	)
 )
 
-setNotificationHandler(foregroundNotifications)
+// fallow-ignore-next-line code-duplication -- Each notification app owns its handler so shared components do not autolink notifications into Stash.
+setNotificationHandler({
+	handleNotification: () =>
+		// oxlint-disable-next-line eslint/no-restricted-globals -- expo-notifications' handler contract takes a Promise.
+		Promise.resolve({shouldPlaySound: true, shouldSetBadge: false, shouldShowBanner: true, shouldShowList: true})
+})
 
 // Asked on the first launch, so a new chapter reaches the iPhone without a setting; a refused prompt stays refused.
 export const pushAtom = RpcClient.runtime.atom(get =>
