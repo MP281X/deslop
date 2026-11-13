@@ -59,6 +59,7 @@ import {
 } from '#services/chapters/schema.ts'
 import {ReadingChapter} from '#services/reading/schema.ts'
 import type {ChaptersEvent} from '#services/reading/schema.ts'
+import {Reading} from '#services/reading/service.ts'
 
 // Anonymous search and JSON are refused. Recent-post Atom still answers; a release can appear on either subreddit only.
 const FEEDS = [
@@ -536,22 +537,15 @@ export class Chapters extends Context.Service<Chapters>()('@deslop/opm/services/
 						) STRICT
 					`
 					yield* sql`CREATE TABLE devices (token TEXT PRIMARY KEY) STRICT, WITHOUT ROWID`
-				}),
-				'0002_reading': Effect.gen(function* () {
-					const sql = yield* SqlClient.SqlClient
-					yield* sql`CREATE TABLE reading (
-						series TEXT NOT NULL, number REAL NOT NULL, done INTEGER NOT NULL, page INTEGER NOT NULL,
-						PRIMARY KEY (series, number), FOREIGN KEY (series, number) REFERENCES chapters (series, number)
-					) STRICT, WITHOUT ROWID`
-					yield* sql`INSERT INTO reading (series, number, done, page)
-						SELECT series, number, json_extract(reading, '$.done'), json_extract(reading, '$.page')
-						FROM chapters WHERE reading IS NOT NULL`
-					yield* sql`ALTER TABLE chapters DROP COLUMN reading`
 				})
 			}),
 			table: 'chapters_migrations'
 		})
 	)
 
-	static readonly layer = Layer.provide(Layer.effect(this, this.make), this.migrations)
+	// The joined list can start only after Reading has moved its rows out of the catalogue's original table.
+	static readonly layer = Layer.provide(
+		Layer.effect(this, this.make),
+		Layer.provide(Reading.migrations, this.migrations)
+	)
 }

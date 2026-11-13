@@ -1,7 +1,7 @@
 import {Context, Effect, Layer, pipe} from 'effect'
 
 import {Reactivity} from 'effect/reactivity'
-import {SqlClient, SqlSchema} from 'effect/sql'
+import {Migrator, SqlClient, SqlSchema} from 'effect/sql'
 
 import {ReadingPosition, ReadingError} from './schema.ts'
 
@@ -39,5 +39,24 @@ export class Reading extends Context.Service<Reading>()('@deslop/opm/services/re
 		}
 	})
 }) {
+	static readonly migrations = Layer.effectDiscard(
+		Migrator.make({})({
+			loader: Migrator.fromRecord({
+				'0002_reading': Effect.gen(function* () {
+					const sql = yield* SqlClient.SqlClient
+					yield* sql`CREATE TABLE reading (
+						series TEXT NOT NULL, number REAL NOT NULL, done INTEGER NOT NULL, page INTEGER NOT NULL,
+						PRIMARY KEY (series, number), FOREIGN KEY (series, number) REFERENCES chapters (series, number)
+					) STRICT, WITHOUT ROWID`
+					yield* sql`INSERT INTO reading (series, number, done, page)
+						SELECT series, number, json_extract(reading, '$.done'), json_extract(reading, '$.page')
+						FROM chapters WHERE reading IS NOT NULL`
+					yield* sql`ALTER TABLE chapters DROP COLUMN reading`
+				})
+			}),
+			table: 'reading_migrations'
+		})
+	)
+
 	static readonly layer = Layer.effect(this, this.make)
 }

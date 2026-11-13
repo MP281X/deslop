@@ -572,7 +572,7 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 				)
 				return {bytes: yield* asNotesError(fs.readFile(path.join(images, id))), type}
 			}),
-			item: savedItem,
+			item: Effect.fn('Notes.item')(savedItem),
 			// A page of the notes matching a query, newest first, and how many match in all.
 			list: Effect.fn('Notes.list')(function* (input: {
 				cursor: Option.Option<NotesCursor>
