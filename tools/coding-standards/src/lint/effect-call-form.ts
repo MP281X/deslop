@@ -475,7 +475,7 @@ function normalizePipe(context: LintContext, node: ESTree.CallExpression) {
 	}
 	const first = node.arguments[0]
 	const boundary = Option.getOrUndefined(
-		Array.findFirstMap(Array.drop(node.arguments, 1), (step, index) =>
+		Array.findFirst(Array.drop(node.arguments, 1), (step, index) =>
 			Option.map(innerPipeline(context, step), body => ({body, index}))
 		)
 	)
