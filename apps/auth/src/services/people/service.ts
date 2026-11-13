@@ -1,5 +1,4 @@
-import type {Stream} from 'effect'
-import {Boolean, Context, DateTime, Effect, Layer, Option, Schema, String, Struct, pipe} from 'effect'
+import {Boolean, Context, DateTime, Effect, Layer, Option, Schema, Stream, String, Struct, pipe} from 'effect'
 
 import {SecureRandom} from 'effect/crypto'
 import type {Headers} from 'effect/http'
@@ -143,9 +142,10 @@ export class People extends Context.Service<
 					if (local) return developer
 					return yield* allowed(yield* tokens.session(headers))
 				})
-				function admin(user: User) {
-					return requireAdmin(admins, user, 'Only an admin can manage people')
-				}
+				const admin = Effect.fn('People.admin')(function* (user: User) {
+					yield* Effect.annotateCurrentSpan('userId', user.id)
+					return yield* requireAdmin(admins, user, 'Only an admin can manage people')
+				})
 				const list = Effect.fn('People.list')(function* (user: User) {
 					yield* admin(user)
 					return listPeople(yield* listMembers(), admins)
@@ -179,24 +179,28 @@ export class People extends Context.Service<
 				const people = People.of({
 					// Read again when an account or a sign-in changes, so a sign-out elsewhere or an admission shows here.
 					account: headers =>
-						sql.reactive(
-							['people', 'tokens'],
-							asAuthError('Cannot read the account')(
-								Effect.gen(function* () {
-									const session = yield* tokens.browserSession(headers)
-									return Option.match(yield* currentOwner(session.owner), {
-										onNone: () =>
-											SignedAccount.make({
-												...session.owner.user,
-												fullName: Option.none(),
-												role: roleOf(admins, session.owner.user.id, Option.none()),
-												via: session.via
-											}),
-										onSome: row =>
-											SignedAccount.make({...Struct.omit(personOf(admins, row), ['since']), via: session.via})
+						Stream.withSpan(
+							sql.reactive(
+								['people', 'tokens'],
+								asAuthError('Cannot read the account')(
+									Effect.gen(function* () {
+										const session = yield* tokens.browserSession(headers)
+										return Option.match(yield* currentOwner(session.owner), {
+											onNone: () =>
+												SignedAccount.make({
+													...session.owner.user,
+													fullName: Option.none(),
+													role: roleOf(admins, session.owner.user.id, Option.none()),
+													via: session.via
+												}),
+											onSome: row =>
+												SignedAccount.make({...Struct.omit(personOf(admins, row), ['since']), via: session.via})
+										})
 									})
-								})
-							)
+								)
+							),
+							'People.account',
+							{attributes: {'rpc.stream': true}}
 						),
 					admin,
 					// Each answer reads and changes the account in one transaction, so two answers to the same account cannot both apply.
@@ -285,7 +289,10 @@ export class People extends Context.Service<
 						withReactivity,
 						asAuthError('Cannot remove this account')
 					),
-					watch: user => sql.reactive(['people'], list(user))
+					watch: user =>
+						Stream.withSpan(sql.reactive(['people'], list(user)), 'People.watch', {
+							attributes: {'rpc.stream': true, userId: user.id}
+						})
 				})
 				return Context.add(
 					Context.make(People, people),
@@ -307,7 +314,9 @@ export const layerIssuerAuth = Layer.effectContext(
 		const local = yield* localAuth
 		return Auth.makeContext(
 			Auth.of({
-				token: (headers: Headers.Headers) => asAuthError('Sign in first')(Effect.fromOption(bearerOf(headers))),
+				token: Effect.fn('Auth.token')(function* (headers: Headers.Headers) {
+					return yield* asAuthError('Sign in first')(Effect.fromOption(bearerOf(headers)))
+				}),
 				user: Effect.fn('Auth.user')(function* (headers: Headers.Headers) {
 					if (local) return DEVELOPER
 					return (yield* people.allowed(

@@ -260,13 +260,13 @@ export class Sessions extends Context.Service<
 							})
 						)
 					}, asAuthError('The session could not be ended')),
-					remember: (token, claims) =>
-						Effect.sync(() => {
-							MutableHashMap.set(bearers, claims.sub, {
-								expiresAt: DateTime.makeUnsafe(claims.exp * 1000),
-								token: Redacted.make(token)
-							})
-						}),
+					remember: Effect.fn('Sessions.remember')(function* (token, claims) {
+						yield* Effect.annotateCurrentSpan('userId', claims.sub)
+						MutableHashMap.set(bearers, claims.sub, {
+							expiresAt: DateTime.makeUnsafe(claims.exp * 1000),
+							token: Redacted.make(token)
+						})
+					}),
 					// A new sign-in also drops the sessions whose refresh token Auth no longer accepts.
 					start: Effect.fn('Sessions.start')(function* (grant: CodeGrant) {
 						const tokens = yield* Effect.catchTag(

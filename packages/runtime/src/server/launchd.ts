@@ -27,7 +27,8 @@ function bootout(file: string) {
 	return executeProcess('launchctl', ['bootout', domain(), file])
 }
 
-const loaded = Effect.fnUntraced(function* (target: string) {
+const loaded = Effect.fn('Launchd.loaded')(function* (target: string) {
+	yield* Effect.annotateCurrentSpan({command: 'launchctl', target})
 	const process = yield* ChildProcess.make('launchctl', ['print', target], {stderr: 'pipe', stdout: 'ignore'})
 	const result = yield* Effect.all(
 		{code: process.exitCode, stderr: Stream.mkString(Stream.decodeText(process.stderr))},

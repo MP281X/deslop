@@ -1,5 +1,4 @@
-import type {Stream} from 'effect'
-import {Array, Boolean, Clock, Config, Context, Effect, HashMap, Layer, Option, Ref, Schema, pipe} from 'effect'
+import {Array, Boolean, Clock, Config, Context, Effect, HashMap, Layer, Option, Ref, Schema, Stream, pipe} from 'effect'
 
 import {
 	generateAuthenticationOptions,
@@ -305,7 +304,12 @@ export class Passkeys extends Context.Service<
 						yield* raiseCounter({counter: verified.authenticationInfo.newCounter, id: found.id})
 						return credentialOwnerOf(found)
 					}, asAuthError('Cannot sign in with the passkey')),
-					watch: owner => sql.reactive(['passkeys'], asAuthError('Cannot read the passkeys')(listOwned(owner)))
+					watch: owner =>
+						Stream.withSpan(
+							sql.reactive(['passkeys'], asAuthError('Cannot read the passkeys')(listOwned(owner))),
+							'Passkeys.watch',
+							{attributes: {'rpc.stream': true, userId: owner.user.id}}
+						)
 				})
 			})
 		),

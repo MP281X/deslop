@@ -14,7 +14,8 @@ export class AppError extends Schema.TaggedError<AppError>()('AppError', {
 	message: Schema.String
 }) {}
 
-export const executeProcess = Effect.fnUntraced(function* (command: string, args: string[]) {
+export const executeProcess = Effect.fn('Process.execute')(function* (command: string, args: string[]) {
+	yield* Effect.annotateCurrentSpan({command, 'command.arguments': args.length})
 	const process = yield* ChildProcess.make(command, args, {stderr: 'pipe', stdout: 'pipe'})
 	const result = yield* Effect.all(
 		{
@@ -29,7 +30,8 @@ export const executeProcess = Effect.fnUntraced(function* (command: string, args
 }, Effect.scoped)
 
 // The app's native tools ship zstd-compressed in its `bin/`; the first use of a release unpacks one into the data directory.
-const tool = Effect.fnUntraced(function* (name: string) {
+const tool = Effect.fn('ToolPath.resolve')(function* (name: string) {
+	yield* Effect.annotateCurrentSpan('tool', name)
 	const fs = yield* FileSystem.FileSystem
 	const path = yield* Path.Path
 	const version = (yield* packageMetadata).version

@@ -340,7 +340,7 @@ export class Gateway extends Context.Service<
 					Effect.catchCause(cause => Effect.logWarning('Reading the servers’ tools failed', cause))
 				)
 			})
-			const first = Effect.fnUntraced(function* (headers: Headers.Headers) {
+			const first = Effect.fn('Gateway.first')(function* (headers: Headers.Headers) {
 				if (Option.isSome(yield* Ref.get(lastRead))) return
 				const pending = Option.getOrUndefined(yield* Ref.get(inFlight))
 				if (pending !== undefined) {
@@ -349,7 +349,7 @@ export class Gateway extends Context.Service<
 				}
 				yield* settle(refreshes.withPermits(1)(read(headers)))
 			})
-			const refresh = Effect.fnUntraced(function* (headers: Headers.Headers) {
+			const refresh = Effect.fn('Gateway.refresh')(function* (headers: Headers.Headers) {
 				const now = yield* Clock.currentTimeMillis
 				const last = yield* Ref.get(lastRead)
 				if (Option.isNone(last)) return
@@ -357,7 +357,7 @@ export class Gateway extends Context.Service<
 				if (now - Option.getOrThrow(last) < 30_000) return
 				yield* pipe(
 					refreshes.withPermitsIfAvailable(1)(read(headers)),
-					Effect.withSpan('Gateway.refresh'),
+					Effect.withSpan('Gateway.discover'),
 					Effect.forkIn(scope)
 				)
 			})

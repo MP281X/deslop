@@ -484,9 +484,16 @@ export class Chapters extends Context.Service<Chapters>()('@deslop/opm/services/
 									})
 							})
 						] as const
-				)
+				),
+				Stream.withSpan('Chapters.events', {attributes: {'rpc.stream': true}})
 			),
 			read: Effect.fn('Chapters.read')(function* (update: ReadingUpdate) {
+				yield* Effect.annotateCurrentSpan({
+					chapter: update.number,
+					done: update.done,
+					page: update.page,
+					series: update.series
+				})
 				yield* pipe(
 					place({
 						number: update.number,

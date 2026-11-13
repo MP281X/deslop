@@ -163,8 +163,9 @@ export class Exposures extends Context.Service<Exposures>()('@deslop/deploy/serv
 		}
 
 		return {
-			expose: Effect.fnUntraced(
+			expose: Effect.fn('Exposures.expose')(
 				function* (input: ExposeInput) {
+					yield* Effect.annotateCurrentSpan({exposure: input.name, kind: input.kind, port: input.port, worker})
 					const current = yield* owned
 					if (Array.some(current, row => row.name === input.name)) {
 						return yield* DeployError.make({message: 'Remove the existing owned exposure before changing it'})
@@ -208,8 +209,9 @@ export class Exposures extends Context.Service<Exposures>()('@deslop/deploy/serv
 				Semaphore.withPermit(lock),
 				asDeployError
 			),
-			hide: Effect.fnUntraced(
+			hide: Effect.fn('Exposures.hide')(
 				function* (name: string) {
+					yield* Effect.annotateCurrentSpan({exposure: name, worker})
 					const current = yield* owned
 					const exposure = yield* pipe(
 						current,
@@ -236,21 +238,25 @@ export class Exposures extends Context.Service<Exposures>()('@deslop/deploy/serv
 				Semaphore.withPermit(lock),
 				asDeployError
 			),
-			items: Effect.map(owned, current =>
-				Array.map(current, row =>
-					InventoryItem.make({
-						detail: `${row.kind} → 127.0.0.1:${row.port}`,
-						id: `${worker}:exposure:${row.name}`,
-						kind: 'exposure',
-						name: row.name,
-						owned: true,
-						port: row.port,
-						publicAccess: row.kind === 'public',
-						state: 'configured; check backend',
-						url: exposureUrl(row),
-						worker
-					})
-				)
+			items: pipe(
+				owned,
+				Effect.map(current =>
+					Array.map(current, row =>
+						InventoryItem.make({
+							detail: `${row.kind} → 127.0.0.1:${row.port}`,
+							id: `${worker}:exposure:${row.name}`,
+							kind: 'exposure',
+							name: row.name,
+							owned: true,
+							port: row.port,
+							publicAccess: row.kind === 'public',
+							state: 'configured; check backend',
+							url: exposureUrl(row),
+							worker
+						})
+					)
+				),
+				Effect.withSpan('Exposures.items', {attributes: {worker}})
 			)
 		}
 	})

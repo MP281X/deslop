@@ -72,7 +72,8 @@ export class Media extends Context.Service<
 			const path = yield* Path.Path
 			const spawner = yield* ChildProcessSpawner.ChildProcessSpawner
 			const locate = yield* ToolPath
-			const run = Effect.fnUntraced(function* (command: string, args: string[]) {
+			const run = Effect.fn('Media.command')(function* (command: string, args: string[]) {
+				yield* Effect.annotateCurrentSpan({command, 'command.arguments': args.length})
 				const handle = yield* ChildProcess.make(yield* locate(command), args, {stderr: 'pipe', stdout: 'pipe'})
 				return yield* Effect.all(
 					{

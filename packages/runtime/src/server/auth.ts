@@ -78,8 +78,12 @@ export class Auth extends Context.Service<
 				return Layer.succeedContext(
 					Auth.makeContext(
 						Auth.of({
-							token: () => Effect.fail(AuthError.make({message: 'There is no sign-in without --auth'})),
-							user: () => Effect.succeed(DEVELOPER)
+							token: () =>
+								Effect.withSpan(
+									Effect.fail(AuthError.make({message: 'There is no sign-in without --auth'})),
+									'Auth.token'
+								),
+							user: () => Effect.withSpan(Effect.succeed(DEVELOPER), 'Auth.user')
 						})
 					)
 				)
@@ -128,23 +132,24 @@ export class Auth extends Context.Service<
 							onSome: sessions.current
 						})
 					}
+					function current(headers: Headers.Headers) {
+						return pipe(
+							bearerOf(headers),
+							Option.filter(isJwt),
+							Option.match({
+								onNone: () => session(headers),
+								onSome: token => Effect.map(verified(token), user => ({token, user}))
+							})
+						)
+					}
 					return Auth.makeContext(
 						Auth.of({
-							token: headers =>
-								pipe(
-									bearerOf(headers),
-									Option.filter(isJwt),
-									Option.match({
-										onNone: () => Effect.map(session(headers), current => current.token),
-										onSome: token => Effect.as(verified(token), token)
-									})
-								),
-							user: headers =>
-								pipe(
-									bearerOf(headers),
-									Option.filter(isJwt),
-									Option.match({onNone: () => Effect.map(session(headers), current => current.user), onSome: verified})
-								)
+							token: Effect.fn('Auth.token')(function* (headers) {
+								return (yield* current(headers)).token
+							}),
+							user: Effect.fn('Auth.user')(function* (headers) {
+								return (yield* current(headers)).user
+							})
 						})
 					)
 				})

@@ -1,5 +1,4 @@
-import type {Stream} from 'effect'
-import {Array, Config, Context, Effect, Layer, Option, Schema, String, pipe} from 'effect'
+import {Array, Config, Context, Effect, Layer, Option, Schema, Stream, String, pipe} from 'effect'
 
 import {HttpClient, HttpClientResponse} from 'effect/http'
 import {Reactivity} from 'effect/reactivity'
@@ -83,7 +82,11 @@ export class Apps extends Context.Service<
 						)
 						return app
 					}),
-					watch: sql.reactive(['apps'], asAuthError('Cannot read the apps')(listApps()))
+					watch: Stream.withSpan(
+						sql.reactive(['apps'], asAuthError('Cannot read the apps')(listApps())),
+						'Apps.watch',
+						{attributes: {'rpc.stream': true}}
+					)
 				})
 			})
 		),

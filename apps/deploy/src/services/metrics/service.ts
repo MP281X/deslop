@@ -206,6 +206,7 @@ export class Metrics extends Context.Service<Metrics>()('@deslop/deploy/services
 				})
 			),
 			Effect.flatMap(text => Ref.set(storage, text)),
+			Effect.withSpan('Metrics.refreshStorage', {attributes: {worker}}),
 			Effect.ignore({log: 'Warn', message: 'The disk sizes were not read'})
 		)
 		// A Linux sample reads /proc, and each app's cgroup, so the history can split memory and CPU by app; a slow cgroup read only drops the apps.
@@ -246,7 +247,7 @@ export class Metrics extends Context.Service<Metrics>()('@deslop/deploy/services
 			return {current, value}
 		})
 		// Each measurement joins every series in one commit, so a restart loses nothing measured.
-		const collect = Effect.catch(
+		const collect = pipe(
 			Effect.gen(function* () {
 				const time = yield* Clock.currentTimeMillis
 				const old = Option.getOrUndefined(yield* Ref.get(previous))
@@ -265,9 +266,15 @@ export class Metrics extends Context.Service<Metrics>()('@deslop/deploy/services
 				yield* Ref.set(latest, {disks: measured.value.disks, load: measured.value.load})
 				yield* Ref.set(failure, '')
 			}),
-			cause => Ref.set(failure, cause.message)
+			Effect.withSpan('Metrics.collect', {attributes: {worker}}),
+			Effect.catch(cause => Ref.set(failure, cause.message))
 		)
-		const prune = pipe(Clock.currentTimeMillis, Effect.flatMap(deleteExpired), asDeployError)
+		const prune = pipe(
+			Clock.currentTimeMillis,
+			Effect.flatMap(deleteExpired),
+			asDeployError,
+			Effect.withSpan('Metrics.prune', {attributes: {worker}})
+		)
 
 		yield* prune
 		yield* refreshStorage
@@ -284,7 +291,8 @@ export class Metrics extends Context.Service<Metrics>()('@deslop/deploy/services
 		)
 
 		return {
-			read: Effect.fnUntraced(function* (query: HistoryQuery) {
+			read: Effect.fn('Metrics.read')(function* (query: HistoryQuery) {
+				yield* Effect.annotateCurrentSpan({minutes: query.minutes, worker})
 				const time = yield* Clock.currentTimeMillis
 				const step = SERIES[query.minutes]
 				const samples = yield* asDeployError(listSeries({after: chartWindow(query.minutes, time).start - step, step}))

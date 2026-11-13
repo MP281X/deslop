@@ -365,7 +365,7 @@ export class Tokens extends Context.Service<
 				const redeeming = yield* Semaphore.make(1)
 				const randomToken = randomTokenOf(yield* SecureRandom.SecureRandom)
 				const hash = hashOf(yield* Digest.Digest)
-				const browser = Effect.fnUntraced(function* (headers: Headers.Headers) {
+				const browser = Effect.fn('Tokens.browserSession')(function* (headers: Headers.Headers) {
 					const found = yield* Effect.fromOption(parts(browserToken(headers)))
 					const session = yield* Effect.flatMap(
 						findSession({family: found.family, now: yield* Clock.currentTimeMillis}),
@@ -785,13 +785,16 @@ export class Tokens extends Context.Service<
 					verify,
 					// The list is read again on each change and once a minute, so expired sign-ins leave it.
 					watchApps: owner =>
-						Stream.merge(
+						pipe(
 							sql.reactive(['tokens'], listApps(owner)),
-							pipe(
-								Stream.tick('1 minute'),
-								Stream.drop(1),
-								Stream.mapEffect(() => listApps(owner))
-							)
+							Stream.merge(
+								pipe(
+									Stream.tick('1 minute'),
+									Stream.drop(1),
+									Stream.mapEffect(() => listApps(owner))
+								)
+							),
+							Stream.withSpan('Tokens.watchApps', {attributes: {'rpc.stream': true, userId: owner.user.id}})
 						)
 				})
 			})

@@ -107,7 +107,6 @@ const SET_MESSAGE =
 const DESLOP_RULES = {'icon-weight': iconWeight}
 
 const RULES = {
-	'service-method-span': serviceMethodSpan,
 	'effect-call-form': effectCallForm,
 	'explicit-effect-concurrency': explicitEffectConcurrency,
 	'module-constant': moduleConstant,
@@ -163,6 +162,7 @@ const RULES = {
 	'prefer-predicate': preferPredicate,
 	'preserve-error-cause': preserveErrorCause,
 	'schema-type-pair': schemaTypePair,
+	'service-method-span': serviceMethodSpan,
 	'service-schema-file': serviceSchemaFile,
 	'swiftui-theme-values': swiftuiThemeValues
 }

@@ -224,13 +224,14 @@ export class Tracking extends Context.Service<Tracking>()('@deslop/trips/service
 						booking =>
 							pipe(
 								check(booking.id, isDue),
-								Effect.withSpan('Tracking.check'),
+								Effect.withSpan('Tracking.check', {attributes: {bookingId: booking.id}}),
 								Effect.ignore({log: 'Warn', message: `The live status of ${booking.id} was not read`})
 							),
 						{concurrency: 1, discard: true}
 					)
 				)
 			}),
+			Effect.withSpan('Tracking.round'),
 			Effect.ignore({log: 'Warn', message: 'The bookings to track were not read'}),
 			Effect.repeat(Schedule.spaced('30 seconds')),
 			Effect.forkScoped
@@ -239,6 +240,7 @@ export class Tracking extends Context.Service<Tracking>()('@deslop/trips/service
 		return {
 			// A pull to refresh asks at once, at most once a minute and only while the journey is tracked, so it cannot drain FlightAware's allowance.
 			refresh: Effect.fn('Tracking.refresh')(function* (id: BookingId) {
+				yield* Effect.annotateCurrentSpan('bookingId', id)
 				yield* check(
 					id,
 					(booking, now, attempted) => Option.isSome(checkEvery(booking, now)) && now - attempted >= MINUTE

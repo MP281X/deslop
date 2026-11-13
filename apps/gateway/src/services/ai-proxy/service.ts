@@ -226,8 +226,12 @@ const make = Effect.gen(function* () {
 		)
 	})
 	return {
-		list: (id: UserId) => asAuthError(listKeys(id)),
-		proxy: Effect.fnUntraced(function* (provider: AiProvider, rest: string) {
+		list: Effect.fn('AiProxy.list')(function* (id: UserId) {
+			yield* Effect.annotateCurrentSpan('userId', id)
+			return yield* asAuthError(listKeys(id))
+		}),
+		proxy: Effect.fn('AiProxy.proxy')(function* (provider: AiProvider, rest: string) {
+			yield* Effect.annotateCurrentSpan('provider', provider)
 			const request = yield* HttpServerRequest.HttpServerRequest
 			const now = yield* Clock.currentTimeMillis
 			// Only an access token Auth signed spends a key, never a session on Gateway's own pages.
@@ -369,9 +373,13 @@ const make = Effect.gen(function* () {
 				{headers: Headers.removeMany(response.headers, responseBlocked), status: response.status}
 			)
 		}),
-		removeKey: (id: UserId, provider: AiProvider) => asAuthError(deleteKey({owner: id, provider})),
-		setKey: (id: UserId, provider: AiProvider, secret: Redacted.Redacted) =>
-			asAuthError(
+		removeKey: Effect.fn('AiProxy.removeKey')(function* (id: UserId, provider: AiProvider) {
+			yield* Effect.annotateCurrentSpan({provider, userId: id})
+			return yield* asAuthError(deleteKey({owner: id, provider}))
+		}),
+		setKey: Effect.fn('AiProxy.setKey')(function* (id: UserId, provider: AiProvider, secret: Redacted.Redacted) {
+			yield* Effect.annotateCurrentSpan({provider, userId: id})
+			return yield* asAuthError(
 				saveKey({
 					last4: String.slice(-4)(Redacted.value(secret)),
 					lastStatus: Option.none(),
@@ -379,20 +387,25 @@ const make = Effect.gen(function* () {
 					provider,
 					secret
 				})
-			),
+			)
+		}),
 		// A person's report now and after each of their recorded calls.
 		usage: (id: UserId, period: Period) =>
-			usageWindow(period, range =>
-				Stream.mapError(
-					sql.reactive(
-						{aiUsage: [id]},
-						Effect.all(
-							{byProvider: listTotals({...range, owner: id}), series: listBuckets({...range, owner: id})},
-							{concurrency: 1}
-						)
-					),
-					asStorageAuthError
-				)
+			Stream.withSpan(
+				usageWindow(period, range =>
+					Stream.mapError(
+						sql.reactive(
+							{aiUsage: [id]},
+							Effect.all(
+								{byProvider: listTotals({...range, owner: id}), series: listBuckets({...range, owner: id})},
+								{concurrency: 1}
+							)
+						),
+						asStorageAuthError
+					)
+				),
+				'AiProxy.usage',
+				{attributes: {period, 'rpc.stream': true, userId: id}}
 			)
 	}
 })

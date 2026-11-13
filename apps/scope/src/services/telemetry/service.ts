@@ -690,7 +690,8 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 			Reactivity.mutation(['telemetry']),
 			sql.withTransaction,
 			asTelemetryError,
-			withReactivity
+			withReactivity,
+			Effect.withSpan('Telemetry.prune')
 		)
 		// The overview as of now, counted over every settled trace; a trace whose root never came joins it a minute after it started.
 		const readOverview = Effect.fnUntraced(function* (range: Range) {
@@ -863,7 +864,7 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 			) {
 				return readTraceAnswer(yield* tree(input.id), input.limit, offset, details, spanId)
 			}, asTelemetryError),
-			reject: Effect.fnUntraced(function* (input: Pick<Rejection, 'credential' | 'route' | 'status'>) {
+			reject: Effect.fn('Telemetry.reject')(function* (input: Pick<Rejection, 'credential' | 'route' | 'status'>) {
 				const now = yield* Clock.currentTimeMillis
 				const key = `${input.route}:${input.status}:${input.credential}`
 				yield* Ref.update(rejections, current =>
@@ -913,7 +914,8 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 					Stream.buffer({capacity: 1, strategy: 'sliding'}),
 					Stream.flatMap(overview =>
 						Stream.concat(Stream.succeed(overview), Stream.drain(Stream.fromEffect(Effect.sleep('1 second'))))
-					)
+					),
+					Stream.withSpan('Telemetry.watch', {attributes: {range, 'rpc.stream': true}})
 				)
 		}
 	})

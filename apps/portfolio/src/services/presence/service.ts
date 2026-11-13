@@ -66,22 +66,26 @@ export class Presence extends Context.Service<
 				}),
 				streams: {
 					wander: Stream.fromEffectSchedule(
-						Effect.map(Clock.currentTimeMillis, now =>
-							Array.map(SERVER_BOTS, bot =>
-								PortfolioVisitor.make({
-									color: bot.color,
-									id: bot.id,
-									name: bot.name,
-									x: Number.clamp(0.5 + 0.4 * Math.sin(((now - start) / 1000) * bot.xFreq + bot.xPhase), {
-										maximum: 0.995,
-										minimum: 0.005
-									}),
-									y: Number.clamp(0.5 + 0.4 * Math.cos(((now - start) / 1000) * bot.yFreq + bot.yPhase), {
-										maximum: 0.995,
-										minimum: 0.005
+						pipe(
+							Clock.currentTimeMillis,
+							Effect.map(now =>
+								Array.map(SERVER_BOTS, bot =>
+									PortfolioVisitor.make({
+										color: bot.color,
+										id: bot.id,
+										name: bot.name,
+										x: Number.clamp(0.5 + 0.4 * Math.sin(((now - start) / 1000) * bot.xFreq + bot.xPhase), {
+											maximum: 0.995,
+											minimum: 0.005
+										}),
+										y: Number.clamp(0.5 + 0.4 * Math.cos(((now - start) / 1000) * bot.yFreq + bot.yPhase), {
+											maximum: 0.995,
+											minimum: 0.005
+										})
 									})
-								})
-							)
+								)
+							),
+							Effect.withSpan('Presence.wander', {attributes: {bots: SERVER_BOTS.length}})
 						),
 						Schedule.spaced('55 millis')
 					)
@@ -180,28 +184,33 @@ export class Presence extends Context.Service<
 
 			return Presence.of({
 				join: payload =>
-					Stream.unwrap(
-						Effect.gen(function* () {
-							yield* Effect.logInfo('Portfolio client connected')
-							yield* Effect.acquireRelease(
-								send({_tag: 'Joined', visitor: PortfolioVisitor.make({...payload, x: 0.5, y: 0.5})}),
-								() => send({_tag: 'Left', id: payload.id})
-							)
+					Stream.withSpan(
+						Stream.unwrap(
+							Effect.gen(function* () {
+								yield* Effect.logInfo('Portfolio client connected')
+								yield* Effect.acquireRelease(
+									send({_tag: 'Joined', visitor: PortfolioVisitor.make({...payload, x: 0.5, y: 0.5})}),
+									() => send({_tag: 'Left', id: payload.id})
+								)
 
-							// A slow page skips to the latest positions instead of queueing every step.
-							return pipe(
-								ref.changes,
-								Stream.map(snapshot =>
-									Option.match(room.root.get(snapshot.state, 'Occupied'), {
-										onNone: () => ({bots: [], visitors: []}),
-										onSome: occupied => ({bots: occupied.bots, visitors: occupied.visitors})
-									})
-								),
-								Stream.buffer({capacity: 1, strategy: 'sliding'})
-							)
-						})
+								// A slow page skips to the latest positions instead of queueing every step.
+								return pipe(
+									ref.changes,
+									Stream.map(snapshot =>
+										Option.match(room.root.get(snapshot.state, 'Occupied'), {
+											onNone: () => ({bots: [], visitors: []}),
+											onSome: occupied => ({bots: occupied.bots, visitors: occupied.visitors})
+										})
+									),
+									Stream.buffer({capacity: 1, strategy: 'sliding'})
+								)
+							})
+						),
+						'Presence.join',
+						{attributes: {'rpc.stream': true, visitorId: payload.id}}
 					),
-				move: payload => send({_tag: 'Moved', ...payload})
+				move: payload =>
+					Effect.withSpan(send({_tag: 'Moved', ...payload}), 'Presence.move', {attributes: {visitorId: payload.id}})
 			})
 		})
 	)

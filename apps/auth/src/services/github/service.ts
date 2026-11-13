@@ -42,14 +42,17 @@ export class GitHub extends Context.Service<
 				yield* Cache.invalidate(flows, state)
 				return flow
 			})
+			const cancel = Effect.fn('GitHub.cancel')(function* (state: string) {
+				return Struct.omit(yield* take(state), ['verifier'])
+			})
 			// Without an issuer there is no GitHub app: the GitHub step returns at once as the developer, an admin there.
 			if (yield* localAuth) {
 				return GitHub.of({
-					cancel: state => Effect.map(take(state), flow => Struct.omit(flow, ['verifier'])),
+					cancel,
 					finish: Effect.fn('GitHub.finish')(function* (_code: string, state: string) {
 						return {flow: Struct.omit(yield* take(state), ['verifier']), profile: DEVELOPER_PROFILE}
 					}),
-					profile: () => Effect.succeed(DEVELOPER_PROFILE),
+					profile: () => Effect.withSpan(Effect.succeed(DEVELOPER_PROFILE), 'GitHub.profile'),
 					start: Effect.fn('GitHub.start')(function* (flow: SignInParams) {
 						const state = yield* nonce
 						yield* Cache.set(flows, state, {...flow, verifier: ''})
@@ -71,7 +74,7 @@ export class GitHub extends Context.Service<
 				)
 			})
 			return GitHub.of({
-				cancel: state => Effect.map(take(state), flow => Struct.omit(flow, ['verifier'])),
+				cancel,
 				finish: Effect.fn('GitHub.finish')(function* (code: string, state: string) {
 					const flow = yield* take(state)
 					const token = yield* pipe(

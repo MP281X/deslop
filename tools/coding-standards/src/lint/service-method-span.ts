@@ -71,8 +71,9 @@ export const serviceMethodSpan = defineRule({
 							node.parent.parent.callee.object.type === 'Identifier' &&
 							node.parent.parent.callee.object.name === service.id.name
 						)
-					)
+					) {
 						return
+					}
 				}
 				if (node.parent.parent?.type === 'ReturnStatement') {
 					const factory = node.parent.parent.parent.parent?.parent?.parent

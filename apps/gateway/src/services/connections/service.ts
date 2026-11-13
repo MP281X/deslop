@@ -314,14 +314,18 @@ export class Connections extends Context.Service<
 				asStorageAuthError
 			)
 		}
-		const get = Effect.fnUntraced(function* (id: ServerId) {
+		const get = Effect.fn('Connections.get')(function* (id: ServerId) {
 			return yield* pipe(
 				findState({id, now: yield* Clock.currentTimeMillis}),
 				asStorageAuthError,
 				Effect.flatMap(Option.match({onNone: () => Effect.fail(removedServer), onSome: Effect.succeed}))
 			)
 		})
-		const definitions = Effect.flatMap(Clock.currentTimeMillis, now => asStorageAuthError(listStates(now)))
+		const definitions = pipe(
+			Clock.currentTimeMillis,
+			Effect.flatMap(now => asStorageAuthError(listStates(now))),
+			Effect.withSpan('Connections.definitions')
+		)
 		const list = Effect.map(
 			definitions,
 			Array.map(row => Struct.pick(row, ['error', 'icons', 'id', 'name', 'status', 'tools', 'url']))
@@ -604,7 +608,8 @@ export class Connections extends Context.Service<
 				)
 			}, asAuthError('Cannot connect this MCP')),
 			// The bar's longest period: an hour older than 30 days goes as a new call arrives.
-			called: Effect.fnUntraced(function* (id) {
+			called: Effect.fn('Connections.called')(function* (id) {
+				yield* Effect.annotateCurrentSpan('serverId', id)
 				const now = yield* Clock.currentTimeMillis
 				yield* pipe(
 					Effect.andThen(
@@ -697,7 +702,8 @@ export class Connections extends Context.Service<
 				)
 				if (Array.isReadonlyArrayEmpty(removed)) return yield* removedServer
 			}),
-			report: Effect.fnUntraced(function* (id, generation, outcome) {
+			report: Effect.fn('Connections.report')(function* (id, generation, outcome) {
+				yield* Effect.annotateCurrentSpan({outcome: outcome._tag, serverId: id})
 				yield* Effect.ignore(
 					change(id, generation, () =>
 						Match.valueTags(outcome, {
@@ -745,23 +751,34 @@ export class Connections extends Context.Service<
 				)
 			}, asAuthError('Cannot refresh this MCP; reconnect it from the MCP page')),
 			usage: period =>
-				usageWindow(period, range =>
-					Stream.mapError(sql.reactive(['connectionCalls'], listCalls(range)), connectionFailure('MCP storage failed'))
+				Stream.withSpan(
+					usageWindow(period, range =>
+						Stream.mapError(
+							sql.reactive(['connectionCalls'], listCalls(range)),
+							connectionFailure('MCP storage failed')
+						)
+					),
+					'Connections.usage',
+					{attributes: {period, 'rpc.stream': true}}
 				),
 			// The list is read again after each change and once a minute, so an expired provider shows as expired.
 			watch: user =>
-				Stream.unwrap(
-					Effect.as(
-						admin(user),
-						Stream.merge(
-							sql.reactive(['connections'], list),
-							pipe(
-								Stream.tick('1 minute'),
-								Stream.drop(1),
-								Stream.mapEffect(() => list)
+				Stream.withSpan(
+					Stream.unwrap(
+						Effect.as(
+							admin(user),
+							Stream.merge(
+								sql.reactive(['connections'], list),
+								pipe(
+									Stream.tick('1 minute'),
+									Stream.drop(1),
+									Stream.mapEffect(() => list)
+								)
 							)
 						)
-					)
+					),
+					'Connections.watch',
+					{attributes: {'rpc.stream': true, userId: user.id}}
 				)
 		})
 	})

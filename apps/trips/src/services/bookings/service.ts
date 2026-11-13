@@ -87,7 +87,11 @@ export class Bookings extends Context.Service<Bookings>()('@deslop/trips/service
 			Match.exhaustive
 		)
 
-		const watch = Stream.mapError(sql.reactive(['bookings'], listAll), asStorageBookingsError)
+		const watch = pipe(
+			sql.reactive(['bookings'], listAll),
+			Stream.mapError(asStorageBookingsError),
+			Stream.withSpan('Bookings.watch', {attributes: {'rpc.stream': true}})
+		)
 
 		// Saved with its zone; an unplaced station of an Italian operator falls back to Italy's, another railway's fails the save.
 		const resolveStation = Effect.fnUntraced(function* (name: string, operator: Train['operator']) {
@@ -183,9 +187,10 @@ export class Bookings extends Context.Service<Bookings>()('@deslop/trips/service
 
 		return {
 			// What the phone watches: the whole list first, then only what changed, after each commit.
-			events: listEvents(watch),
-			list: asBookingsError(listAll),
+			events: Stream.withSpan(listEvents(watch), 'Bookings.events', {attributes: {'rpc.stream': true}}),
+			list: pipe(listAll, asBookingsError, Effect.withSpan('Bookings.list')),
 			remove: Effect.fn('Bookings.remove')(function* (id: BookingId) {
+				yield* Effect.annotateCurrentSpan('bookingId', id)
 				yield* pipe(
 					Effect.all([flights.delete(id), trains.delete(id), stays.delete(id)], {concurrency: 1, discard: true}),
 					Reactivity.mutation(['bookings']),
@@ -195,6 +200,7 @@ export class Bookings extends Context.Service<Bookings>()('@deslop/trips/service
 			}, withReactivity),
 			// The newer state replaces the one it was made from, unless the booking changed or left meanwhile.
 			replace: Effect.fn('Bookings.replace')(function* (before: Booking, after: Booking) {
+				yield* Effect.annotateCurrentSpan('bookingId', before.id)
 				yield* pipe(
 					listAll,
 					Effect.flatMap(current =>
@@ -210,6 +216,7 @@ export class Bookings extends Context.Service<Bookings>()('@deslop/trips/service
 				)
 			}, withReactivity),
 			save: Effect.fn('Bookings.save')(function* (userId: UserId, source: BookingSource) {
+				yield* Effect.annotateCurrentSpan('userId', userId)
 				const items = yield* extractor.read(userId, source)
 				if (Array.isReadonlyArrayEmpty(items)) {
 					return yield* BookingsError.make({

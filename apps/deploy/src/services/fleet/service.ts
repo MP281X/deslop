@@ -1,3 +1,5 @@
+import {hostname} from 'node:os'
+
 import {NodeSocket} from '@effect/platform-node'
 
 import {
@@ -118,25 +120,29 @@ export class Fleet extends Context.Service<
 				onSome: key => ({authorization: `Bearer ${Redacted.value(key)}`})
 			})
 			const previous = yield* Ref.make<Record<string, Snapshot>>({})
-			const local = Effect.gen(function* () {
-				const snapshot = yield* inventory.snapshot
-				// Owned exposures are one more source: a failed read shows as its error, as an inventory source's does.
-				const owned = yield* Effect.match(exposures.items, {
-					onFailure: cause => ({items: [], sources: [{error: cause.message, name: 'Exposures'}]}),
-					onSuccess: items => ({items, sources: []})
-				})
-				return Snapshot.make({
-					...snapshot,
-					items: [...snapshot.items, ...owned.items],
-					sources: [...snapshot.sources, ...owned.sources],
-					workers: Array.dedupe([
-						...(snapshot.workers ?? Array.map(snapshot.items, item => item.worker)),
-						...Array.map(workers, worker => worker.name)
-					])
-				})
-			})
-			const remote = Effect.fnUntraced(
+			const local = Effect.withSpan(
+				Effect.gen(function* () {
+					const snapshot = yield* inventory.snapshot
+					// Owned exposures are one more source: a failed read shows as its error, as an inventory source's does.
+					const owned = yield* Effect.match(exposures.items, {
+						onFailure: cause => ({items: [], sources: [{error: cause.message, name: 'Exposures'}]}),
+						onSuccess: items => ({items, sources: []})
+					})
+					return Snapshot.make({
+						...snapshot,
+						items: [...snapshot.items, ...owned.items],
+						sources: [...snapshot.sources, ...owned.sources],
+						workers: Array.dedupe([
+							...(snapshot.workers ?? Array.map(snapshot.items, item => item.worker)),
+							...Array.map(workers, worker => worker.name)
+						])
+					})
+				}),
+				'Fleet.local'
+			)
+			const remote = Effect.fn('Fleet.remote')(
 				function* <A, E>(worker: Worker, use: (client: RemoteClient, headers: Headers.Input) => Effect.Effect<A, E>) {
+					yield* Effect.annotateCurrentSpan('worker', worker.name)
 					const url = new URL(RPC_PATH, worker.url)
 					url.protocol = 'wss:'
 					if (new URL(worker.url).protocol === 'http:') url.protocol = 'ws:'
@@ -168,7 +174,8 @@ export class Fleet extends Context.Service<
 				)
 			}
 			return Fleet.of({
-				current: Effect.fnUntraced(function* (query) {
+				current: Effect.fn('Fleet.current')(function* (query) {
+					yield* Effect.annotateCurrentSpan({minutes: query.minutes, workers: workers.length + 1})
 					const own = yield* metrics.read(query)
 					const time = yield* Clock.currentTimeMillis
 					const cached = yield* Ref.get(lastMetrics)
@@ -185,7 +192,8 @@ export class Fleet extends Context.Service<
 						})
 					]
 				}),
-				expose: Effect.fnUntraced(function* (input) {
+				expose: Effect.fn('Fleet.expose')(function* (input) {
+					yield* Effect.annotateCurrentSpan({exposure: input.name, worker: input.target ?? hostname()})
 					if (input.target === undefined || input.target === '') {
 						return yield* exposures.expose(Struct.omit(input, ['target']))
 					}
@@ -193,15 +201,20 @@ export class Fleet extends Context.Service<
 						client('exposures.expose', Struct.omit(input, ['target']), {headers})
 					)
 				}, asDeployError),
-				hide: Effect.fnUntraced(function* (input) {
+				hide: Effect.fn('Fleet.hide')(function* (input) {
+					yield* Effect.annotateCurrentSpan({exposure: input.name, worker: input.target ?? hostname()})
 					if (input.target === undefined || input.target === '') return yield* exposures.hide(input.name)
 					return yield* remote(yield* selectedWorker(input.target), (client, headers) =>
 						client('exposures.hide', {name: input.name}, {headers})
 					)
 				}, asDeployError),
-				history: metrics.read,
+				history: Effect.fn('Fleet.history')(function* (query) {
+					yield* Effect.annotateCurrentSpan('minutes', query.minutes)
+					return yield* metrics.read(query)
+				}),
 				local,
-				metrics: Effect.fnUntraced(function* (query) {
+				metrics: Effect.fn('Fleet.metrics')(function* (query) {
+					yield* Effect.annotateCurrentSpan({minutes: query.minutes, workers: workers.length + 1})
 					const own = yield* metrics.read(query)
 					const others = yield* Effect.forEach(
 						workers,
@@ -232,8 +245,9 @@ export class Fleet extends Context.Service<
 					)
 					return [own, ...others]
 				}),
-				run: Effect.fnUntraced(
+				run: Effect.fn('Fleet.run')(
 					function* (input) {
+						yield* Effect.annotateCurrentSpan({job: input.name, worker: input.target ?? hostname()})
 						if (input.target === undefined || input.target === '') {
 							return yield* inventory.run(Struct.omit(input, ['target']))
 						}
@@ -246,54 +260,58 @@ export class Fleet extends Context.Service<
 						return DeployError.make({cause, message: 'Worker could not start the job'})
 					})
 				),
-				snapshot: Effect.gen(function* () {
-					const own = yield* local
-					const others = yield* Effect.forEach(
-						workers,
-						worker =>
-							pipe(
-								remote(worker, (client, headers) => client('inventory.snapshot', undefined, {headers})),
-								Effect.timeout('2 seconds'),
-								Effect.map(snapshot =>
-									Snapshot.make({
-										...snapshot,
-										items: Array.map(snapshot.items, item => ({
-											...item,
-											id: `remote:${worker.name}:${item.id}`,
-											worker: worker.name
-										})),
-										sources: Array.map(snapshot.sources, source => ({
-											...source,
-											name: `${worker.name} · ${source.name}`
-										}))
+				snapshot: Effect.withSpan(
+					Effect.gen(function* () {
+						const own = yield* local
+						const others = yield* Effect.forEach(
+							workers,
+							worker =>
+								pipe(
+									remote(worker, (client, headers) => client('inventory.snapshot', undefined, {headers})),
+									Effect.timeout('2 seconds'),
+									Effect.map(snapshot =>
+										Snapshot.make({
+											...snapshot,
+											items: Array.map(snapshot.items, item => ({
+												...item,
+												id: `remote:${worker.name}:${item.id}`,
+												worker: worker.name
+											})),
+											sources: Array.map(snapshot.sources, source => ({
+												...source,
+												name: `${worker.name} · ${source.name}`
+											}))
+										})
+									),
+									Effect.tap(snapshot => Ref.update(previous, rows => Record.set(rows, worker.name, snapshot))),
+									Effect.matchEffect({
+										onFailure: cause =>
+											Effect.map(Ref.get(previous), rows =>
+												Snapshot.make({
+													items: Array.map(rows[worker.name]?.items ?? [], item => ({
+														...item,
+														detail: `${item.detail}\nLast successful sample: ${rows[worker.name]?.time}`,
+														state: `stale · ${item.state}`
+													})),
+													sources: [{error: cause.message, name: `${worker.name} · Snapshot`}],
+													time: 0
+												})
+											),
+										onSuccess: Effect.succeed
 									})
 								),
-								Effect.tap(snapshot => Ref.update(previous, rows => Record.set(rows, worker.name, snapshot))),
-								Effect.matchEffect({
-									onFailure: cause =>
-										Effect.map(Ref.get(previous), rows =>
-											Snapshot.make({
-												items: Array.map(rows[worker.name]?.items ?? [], item => ({
-													...item,
-													detail: `${item.detail}\nLast successful sample: ${rows[worker.name]?.time}`,
-													state: `stale · ${item.state}`
-												})),
-												sources: [{error: cause.message, name: `${worker.name} · Snapshot`}],
-												time: 0
-											})
-										),
-									onSuccess: Effect.succeed
-								})
-							),
-						{concurrency: 'unbounded'}
-					)
-					return Snapshot.make({
-						items: [...own.items, ...Array.flatMap(others, value => value.items)],
-						sources: [...own.sources, ...Array.flatMap(others, value => value.sources)],
-						time: yield* Clock.currentTimeMillis,
-						workers: Array.dedupe([...(own.workers ?? []), ...Array.map(workers, worker => worker.name)])
-					})
-				})
+							{concurrency: 'unbounded'}
+						)
+						return Snapshot.make({
+							items: [...own.items, ...Array.flatMap(others, value => value.items)],
+							sources: [...own.sources, ...Array.flatMap(others, value => value.sources)],
+							time: yield* Clock.currentTimeMillis,
+							workers: Array.dedupe([...(own.workers ?? []), ...Array.map(workers, worker => worker.name)])
+						})
+					}),
+					'Fleet.snapshot',
+					{attributes: {workers: workers.length + 1}}
+				)
 			})
 		})
 	)

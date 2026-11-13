@@ -304,10 +304,14 @@ export class SignIns extends Context.Service<
 					return yield* delivered(signIn, browserToken(headers))
 				}, asAuthError('Cannot complete the sign-in')),
 				lookup: code =>
-					Stream.map(watch(code), found =>
-						Option.flatMap(found, current =>
-							Option.liftPredicate(current.signIn.pending, () => SignInStates.matches(current.state, 'Open.Waiting'))
-						)
+					pipe(
+						watch(code),
+						Stream.map(found =>
+							Option.flatMap(found, current =>
+								Option.liftPredicate(current.signIn.pending, () => SignInStates.matches(current.state, 'Open.Waiting'))
+							)
+						),
+						Stream.withSpan('SignIns.lookup', {attributes: {'rpc.stream': true}})
 					),
 				// RFC 8628 §3.5: the command asks again every few seconds until the code is answered or expires.
 				poll: Effect.fn('SignIns.poll')(function* (params: DeviceTokenParams) {
@@ -418,7 +422,8 @@ export class SignIns extends Context.Service<
 									})
 							})
 						),
-						Stream.takeUntil(status => status._tag !== 'Waiting')
+						Stream.takeUntil(status => status._tag !== 'Waiting'),
+						Stream.withSpan('SignIns.status', {attributes: {'rpc.stream': true}})
 					)
 			})
 		})

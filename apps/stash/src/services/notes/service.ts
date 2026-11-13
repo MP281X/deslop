@@ -651,7 +651,11 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 				return item
 			}, withReactivity),
 			// What the phone watches: the whole list first, then only what changed, after each commit.
-			events: Stream.mapError(listEvents(sql.reactive(['notes'], listItems())), asStorageNotesError),
+			events: pipe(
+				listEvents(sql.reactive(['notes'], listItems())),
+				Stream.mapError(asStorageNotesError),
+				Stream.withSpan('Notes.events', {attributes: {'rpc.stream': true}})
+			),
 			get: Effect.fn('Notes.get')(function* (id: NoteId) {
 				return yield* savedNote(id)
 			}),
@@ -707,7 +711,8 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 						)
 					),
 					Stream.changes,
-					Stream.mapError(asStorageNotesError)
+					Stream.mapError(asStorageNotesError),
+					Stream.withSpan('Notes.search', {attributes: {'rpc.stream': true}})
 				)
 		}
 	})
