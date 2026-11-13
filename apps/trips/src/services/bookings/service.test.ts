@@ -180,10 +180,10 @@ it.layer(NodeCrypto.layer)('Bookings', test => {
 			const stored = Effect.map(bookings.list, list =>
 				Option.getOrThrow(Array.findFirst(list, (booking): booking is Flight => booking._tag === 'flight'))
 			)
-			yield* bookings.save(USER, {text: 'BA553'})
+			yield* bookings.save(USER, {_tag: 'text', text: 'BA553'})
 			const read = yield* stored
 			yield* Ref.set(seat, '14A')
-			yield* bookings.save(USER, {text: 'BA553, now seat 14A'})
+			yield* bookings.save(USER, {_tag: 'text', text: 'BA553, now seat 14A'})
 			yield* bookings.replace(read, tracked(read))
 			assert.isTrue(Option.isNone((yield* stored).live))
 			const current = yield* stored
