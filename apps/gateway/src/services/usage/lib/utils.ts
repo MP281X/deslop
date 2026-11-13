@@ -1,4 +1,4 @@
-import {Boolean, Clock, Effect, Schedule, Stream, pipe} from 'effect'
+import {Boolean, DateTime, Duration, Effect, Schedule, Stream, pipe} from 'effect'
 
 import {type Period, type UsageRange, periodRange} from '#services/usage/schema.ts'
 
@@ -14,14 +14,17 @@ export function usageWindow<A, E, R>(period: Period, watch: (range: UsageRange) 
 		Stream.switchMap(() =>
 			Stream.unwrap(
 				Effect.gen(function* () {
-					const range = periodRange(period, yield* Clock.currentTimeMillis)
+					const range = periodRange(period, yield* DateTime.now)
 					// A burst of calls coalesces into one report a second, always the newest; a report that did not change is not sent again.
 					return pipe(
 						watch(range),
 						Stream.changes,
 						Stream.buffer({capacity: 1, strategy: 'sliding'}),
 						Stream.flatMap(report =>
-							Stream.concat(Stream.succeed({range, report}), Stream.drain(Stream.fromEffect(Effect.sleep('1 second'))))
+							Stream.concat(
+								Stream.succeed({range, report}),
+								Stream.drain(Stream.fromEffect(Effect.sleep(Duration.seconds(1))))
+							)
 						)
 					)
 				})

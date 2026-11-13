@@ -35,6 +35,7 @@ import {
 	serversAtom,
 	setKeyAtom
 } from '#lib/gateway.ts'
+import {Search} from '#lib/search.ts'
 import {AddKeyDialog, PROVIDERS, ProviderMark, providerOfKey} from '#routes/(home)/-keys.tsx'
 import {providerCost, providerSeries, serverSeries} from '#routes/(home)/-usage.ts'
 import icon from '#routes/icon.svg'
@@ -46,9 +47,6 @@ import type {UsageRange} from '#services/usage/schema.ts'
 
 const PERIODS = Array.map(Period.literals, value => ({label: value, value}))
 
-type Search = typeof Search.Type
-// The period is the page's only view state; the default is the last week.
-const Search = Schema.Struct({period: Schema.optionalKey(Period)})
 const route = getRouteApi('/(home)/')
 
 const count = new Intl.NumberFormat('en')
@@ -129,7 +127,9 @@ function ServerIcon(props: {server: ConnectionItem}) {
 	const sources = Array.dedupe([
 		...pipe(
 			props.server.icons,
-			Array.sort(Order.mapInput(Order.Boolean, (entry: ConnectionItem['icons'][number]) => entry.theme !== 'dark')),
+			Array.sort(
+				Order.mapInput(Order.Boolean, (entry: ConnectionItem['icons'][number]) => !Option.contains(entry.theme, 'dark'))
+			),
 			Array.map(entry => entry.src)
 		),
 		`https://${host}/favicon.ico`,
@@ -364,11 +364,7 @@ function AddField(props: {onKey: (provider: AiProvider, secret: string) => void}
 			)
 		)
 	)
-	const error = pipe(
-		editing,
-		Option.map(state => state.error),
-		Option.getOrElse(() => '')
-	)
+	const error = Option.flatMap(editing, state => state.error)
 	const busy = Option.isSome(adding)
 	function submit() {
 		const value = String.trim(typed)
@@ -387,7 +383,7 @@ function AddField(props: {onKey: (provider: AiProvider, secret: string) => void}
 				submit()
 			}}
 		>
-			<Field data-invalid={error !== ''}>
+			<Field data-invalid={Option.isSome(error)}>
 				<InputGroup className="h-9 max-sm:h-11">
 					<InputGroupAddon className="max-sm:hidden">
 						<LinkIcon />
@@ -395,7 +391,7 @@ function AddField(props: {onKey: (provider: AiProvider, secret: string) => void}
 					<InputGroupInput
 						className="max-sm:h-11"
 						aria-label="MCP server URL or provider key"
-						aria-invalid={error !== ''}
+						aria-invalid={Option.isSome(error)}
 						aria-describedby="gateway-add-error"
 						placeholder="Paste an MCP URL or a key"
 						autoComplete="off"
@@ -405,7 +401,10 @@ function AddField(props: {onKey: (provider: AiProvider, secret: string) => void}
 						onChange={event => send({_tag: 'Typed', url: event.target.value})}
 					/>
 				</InputGroup>
-				{error !== '' && <FieldError id="gateway-add-error">{error}</FieldError>}
+				{Option.match(error, {
+					onNone: () => null,
+					onSome: message => <FieldError id="gateway-add-error">{message}</FieldError>
+				})}
 			</Field>
 		</form>
 	)
@@ -463,7 +462,7 @@ function GatewayProblem(props: {period: Period}) {
 function HomeRoute() {
 	const search = route.useSearch()
 	const navigate = route.useNavigate()
-	const period = search.period ?? '7d'
+	const period = Option.getOrElse(search.period, () => '7d' as const)
 	// Open, which opening it is (so each starts with the pasted secret), and the provider it adds.
 	const [keyDialog, setKeyDialog] = useState<{open: boolean; opened: number; provider: AiProvider; secret: string}>({
 		open: false,

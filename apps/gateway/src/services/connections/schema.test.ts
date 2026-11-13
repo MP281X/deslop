@@ -11,7 +11,7 @@ it('validates every OAuth endpoint as part of metadata decoding', () => {
 		registration_endpoint: 'https://provider.example/register',
 		token_endpoint: 'https://provider.example/token'
 	}
-	assert.isTrue(Schema.is(Metadata)(metadata))
+	assert.isTrue(Schema.is(Schema.toEncoded(Metadata))(metadata))
 	for (const key of ['authorization_endpoint', 'issuer', 'registration_endpoint', 'token_endpoint']) {
 		for (const value of [
 			'http://provider.example',
@@ -20,7 +20,7 @@ it('validates every OAuth endpoint as part of metadata decoding', () => {
 			'https://user:pass@provider.example',
 			'https://provider.example#fragment'
 		]) {
-			assert.isFalse(Schema.is(Metadata)({...metadata, [key]: value}))
+			assert.isFalse(Schema.is(Schema.toEncoded(Metadata))({...metadata, [key]: value}))
 		}
 	}
 })

@@ -2,7 +2,7 @@ import {RegistryContext} from '@effect/atom-react'
 import {NodeHttpServer, NodeServices} from '@effect/platform-node'
 import {assert, it} from '@effect/vitest'
 
-import {Cause, Context, Effect, Function, Layer, Option, Queue, Ref, Stream, pipe} from 'effect'
+import {Cause, Context, Effect, Function, Layer, Option, Queue, Ref, Schema, Stream, pipe} from 'effect'
 
 import {RouterProvider, createMemoryHistory, createRouter} from '@tanstack/react-router'
 import {HttpRouter, HttpServer, HttpServerResponse} from 'effect/http'
@@ -17,8 +17,10 @@ import {layerServerProtocol, layerRpc} from '@deslop/runtime/server/http'
 import {AuthError, DEVELOPER} from '@deslop/runtime/shared/auth'
 
 import type {serversAtom} from '#lib/gateway.ts'
+import {searchStringOf} from '#lib/search.ts'
 import {RpcContracts} from '#rpcs/contracts.ts'
 import {ConnectionItem, ServerId} from '#services/connections/schema.ts'
+import {UsageRange} from '#services/usage/schema.ts'
 
 const sample = ConnectionItem.make({
 	error: Option.none(),
@@ -123,7 +125,12 @@ function render(result: Atom.Type<typeof serversAtom>) {
 			const env = yield* fixture
 			const router = yield* Effect.map(
 				Effect.promise(() => import('#routeTree.gen.ts')),
-				generated => createRouter({history: createMemoryHistory(), routeTree: generated.routeTree})
+				generated =>
+					createRouter({
+						history: createMemoryHistory(),
+						routeTree: generated.routeTree,
+						stringifySearch: searchStringOf
+					})
 			)
 			yield* Effect.promise(() => router.load())
 			env.registry.ensureNode(env.serversAtom).setInitialValue(result)
@@ -131,7 +138,10 @@ function render(result: Atom.Type<typeof serversAtom>) {
 			env.registry
 				.ensureNode(env.mcpUsageAtom('7d'))
 				.setInitialValue(
-					AsyncResult.success({range: {count: 7, from: 0, size: 86_400_000, to: 7 * 86_400_000}, report: []})
+					AsyncResult.success({
+						range: yield* Schema.decodeEffect(UsageRange)({count: 7, from: 0, size: 86_400_000, to: 7 * 86_400_000}),
+						report: []
+					})
 				)
 			return renderToString(
 				createElement(RegistryContext.Provider, {value: env.registry}, createElement(RouterProvider, {router}))

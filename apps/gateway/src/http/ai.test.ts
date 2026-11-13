@@ -57,7 +57,7 @@ const fixture = Effect.fnUntraced(function* (compressed?: HttpClient.HttpClient)
 		return Redacted.value(
 			yield* Effect.provideService(
 				Jwt.sign(
-					AccessClaims,
+					Schema.toEncoded(AccessClaims),
 					{
 						aud: 'deslop',
 						azp: 'Stash',
@@ -140,7 +140,7 @@ const fixture = Effect.fnUntraced(function* (compressed?: HttpClient.HttpClient)
 	const saved = yield* Queue.unbounded<{costUsd: number; unknownCostCalls: number}>()
 	yield* pipe(
 		sql.reactive(
-			{aiUsage: ['alice']},
+			{aiUsage: [UserId.make('alice')]},
 			Effect.flatMap(
 				sql`SELECT total(costUsd) AS costUsd, total(unknownCostCalls) AS unknownCostCalls FROM ai_usage WHERE owner = 'alice'`,
 				Schema.decodeUnknownEffect(

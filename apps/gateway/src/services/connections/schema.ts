@@ -3,6 +3,8 @@ import {Option, Result, Schema, Struct, pipe} from 'effect'
 import {Url} from 'effect/http'
 import {Model} from 'effect/schema'
 
+import {DateTimeUtcFromFiniteMillis, DurationFromSeconds} from '@deslop/runtime/shared/time'
+
 export class UpstreamError extends Schema.TaggedError<UpstreamError>()('UpstreamError', {cause: Schema.Defect()}) {}
 
 export type ServerId = typeof ServerId.Type
@@ -11,6 +13,15 @@ export const ServerId = pipe(
 	Schema.check(Schema.isPattern(/^[a-z0-9][a-z0-9_-]{0,23}$/u)),
 	Schema.brand('ServerId')
 )
+
+export type ConnectionGeneration = typeof ConnectionGeneration.Type
+export const ConnectionGeneration = pipe(Schema.NonEmptyString, Schema.brand('ConnectionGeneration'))
+export type OAuthClientId = typeof OAuthClientId.Type
+export const OAuthClientId = pipe(Schema.NonEmptyString, Schema.brand('OAuthClientId'))
+export type OAuthState = typeof OAuthState.Type
+export const OAuthState = pipe(Schema.NonEmptyString, Schema.brand('GatewayOAuthState'))
+export type OAuthCode = typeof OAuthCode.Type
+export const OAuthCode = pipe(Schema.NonEmptyString, Schema.brand('GatewayOAuthCode'))
 
 export type ServerUrl = typeof ServerUrl.Type
 export const ServerUrl = Schema.NonEmptyString.check(
@@ -33,33 +44,35 @@ export const ServerParams = Schema.Struct({id: ServerId})
 export type Metadata = typeof Metadata.Type
 export const Metadata = Schema.Struct({
 	authorization_endpoint: ServerUrl,
-	authorization_response_iss_parameter_supported: Schema.optionalKey(Schema.Boolean),
-	client_id_metadata_document_supported: Schema.optionalKey(Schema.Boolean),
-	code_challenge_methods_supported: Schema.optionalKey(Schema.Array(Schema.String)),
+	authorization_response_iss_parameter_supported: Schema.OptionFromOptionalKey(Schema.Boolean),
+	client_id_metadata_document_supported: Schema.OptionFromOptionalKey(Schema.Boolean),
+	code_challenge_methods_supported: Schema.OptionFromOptionalKey(Schema.Array(Schema.String)),
 	issuer: ServerUrl,
-	registration_endpoint: Schema.optionalKey(ServerUrl),
-	response_types_supported: Schema.optionalKey(Schema.Array(Schema.String)),
+	registration_endpoint: Schema.OptionFromOptionalKey(ServerUrl),
+	response_types_supported: Schema.OptionFromOptionalKey(Schema.Array(Schema.String)),
 	token_endpoint: ServerUrl
 })
 
 export type Registration = typeof Registration.Type
-export const Registration = Schema.Struct({client_id: Schema.NonEmptyString})
+export const Registration = Schema.Struct({client_id: OAuthClientId})
 export type Token = typeof Token.Type
 export const Token = Schema.Struct({
 	access_token: Schema.RedactedFromValue(Schema.NonEmptyString),
-	expires_in: Schema.optionalKey(Schema.Finite.check(Schema.isGreaterThan(0))),
-	refresh_token: Schema.optionalKey(Schema.RedactedFromValue(Schema.NonEmptyString)),
+	expires_in: Schema.OptionFromOptionalKey(
+		pipe(Schema.Finite.check(Schema.isGreaterThan(0)), Schema.decodeTo(DurationFromSeconds))
+	),
+	refresh_token: Schema.OptionFromOptionalKey(Schema.RedactedFromValue(Schema.NonEmptyString)),
 	token_type: Schema.String.check(Schema.isPattern(/^Bearer$/iu))
 })
 
 // How the gateway signs in to a provider while a connection is in progress: a client it registered there with its own callback, or its client metadata document, which needs the provider to name itself in every answer.
 export type OAuthClient = typeof OAuthClient.Type
-export const OAuthClient = Schema.TaggedUnion({Document: {}, Registered: {clientId: Schema.NonEmptyString}})
+export const OAuthClient = Schema.TaggedUnion({Document: {}, Registered: {clientId: OAuthClientId}})
 
 export type ServerIcon = typeof ServerIcon.Type
 export const ServerIcon = Schema.Struct({
 	src: Schema.String,
-	theme: Schema.optionalKey(Schema.Literals(['light', 'dark']))
+	theme: Schema.OptionFromOptionalKey(Schema.Literals(['light', 'dark']))
 })
 
 // Deslop servers take the caller's token and public ones none, so only a third-party server needs a grant; one without a refresh token cannot be renewed once it expires.
@@ -70,7 +83,7 @@ export const ConnectionStatus = Schema.Literals(['Connected', 'Not connected', '
 export class Connection extends Model.Class<Connection>('Connection')({
 	error: Model.FieldOption(Schema.String),
 	// Made when the server is added: work begun for a server that was removed and added again never lands on the new one.
-	generation: Schema.NonEmptyString,
+	generation: ConnectionGeneration,
 	icons: Model.JsonFromString(Schema.Array(ServerIcon)),
 	id: ServerId,
 	instructions: Model.FieldOption(Schema.String),
@@ -89,9 +102,9 @@ export class Connection extends Model.Class<Connection>('Connection')({
 // A third-party server's authorization: the tokens its provider issued, and the client and endpoint that renew them.
 export class ConnectionGrant extends Model.Class<ConnectionGrant>('ConnectionGrant')({
 	accessToken: Model.Sensitive(Token.fields.access_token),
-	clientId: Schema.NonEmptyString,
+	clientId: OAuthClientId,
 	// Epoch milliseconds; zero once the provider refused to renew it.
-	expiresAt: Schema.Finite,
+	expiresAt: DateTimeUtcFromFiniteMillis,
 	refreshToken: Model.FieldOption(Model.Sensitive(Token.fields.access_token)),
 	serverId: ServerId,
 	tokenEndpoint: ServerUrl
@@ -102,7 +115,7 @@ export class ConnectionGrant extends Model.Class<ConnectionGrant>('ConnectionGra
 // A server's proxied tool calls in one hour; the page sums the hours into the bar's period, and an hour older than its longest period goes.
 export class ConnectionCalls extends Model.Class<ConnectionCalls>('ConnectionCalls')({
 	calls: Schema.Int,
-	hour: Schema.Int,
+	hour: Schema.DateTimeUtcFromMillis,
 	serverId: ServerId
 }) {
 	static readonly table = 'connection_calls'
@@ -120,7 +133,7 @@ export const ConnectionItem = Schema.Struct({
 })
 
 export type McpUsageBucket = typeof McpUsageBucket.Type
-export const McpUsageBucket = Schema.Struct({at: Schema.Finite, calls: Schema.Int})
+export const McpUsageBucket = Schema.Struct({at: DateTimeUtcFromFiniteMillis, calls: Schema.Int})
 export type McpUsageServer = typeof McpUsageServer.Type
 export const McpUsageServer = Schema.Struct({id: ServerId, series: Schema.Array(McpUsageBucket)})
 export type McpUsageReport = typeof McpUsageReport.Type
@@ -131,7 +144,7 @@ export type Discovery = typeof Discovery.Type
 export const Discovery = Schema.TaggedUnion({
 	Discovered: {
 		icons: Schema.Array(ServerIcon),
-		instructions: Schema.optionalKey(Schema.String),
+		instructions: Schema.OptionFromOptionalKey(Schema.String),
 		tools: Schema.Array(Schema.String)
 	},
 	Failed: {error: Schema.String}
@@ -139,8 +152,19 @@ export const Discovery = Schema.TaggedUnion({
 
 export type Callback = typeof Callback.Type
 export const Callback = Schema.Struct({
-	code: Schema.optionalKey(Schema.NonEmptyString),
-	error: Schema.optionalKey(Schema.String),
-	iss: Schema.optionalKey(Schema.NonEmptyString),
-	state: Schema.NonEmptyString
+	code: Schema.OptionFromOptionalKey(OAuthCode),
+	error: Schema.OptionFromOptionalKey(Schema.String),
+	iss: Schema.OptionFromOptionalKey(Schema.NonEmptyString),
+	state: OAuthState
 })
+
+export type TokenExchange = typeof TokenExchange.Type
+export const TokenExchange = Schema.Union([
+	Schema.Struct({
+		code: OAuthCode,
+		code_verifier: Schema.String,
+		grant_type: Schema.Literal('authorization_code'),
+		redirect_uri: Schema.String
+	}),
+	Schema.Struct({grant_type: Schema.Literal('refresh_token'), refresh_token: Schema.String})
+])

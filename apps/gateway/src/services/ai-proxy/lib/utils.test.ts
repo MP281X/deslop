@@ -1,11 +1,11 @@
 import {assert, it} from '@effect/vitest'
 
-import {Result} from 'effect'
+import {Result, Schema} from 'effect'
 
 import {readUsage} from '#services/ai-proxy/lib/utils.ts'
-import type {AiUsageEntry} from '#services/ai-proxy/schema.ts'
+import {AiUsageEntry} from '#services/ai-proxy/schema.ts'
 
-const EMPTY: AiUsageEntry = {
+const EMPTY = Schema.decodeSync(AiUsageEntry)({
 	at: 0,
 	cacheReadTokens: 0,
 	cacheWriteTokens: 0,
@@ -13,7 +13,7 @@ const EMPTY: AiUsageEntry = {
 	inputTokens: 0,
 	outputTokens: 0,
 	provider: 'opencode-zen'
-}
+})
 
 it('counts cached tokens once whichever response shape a provider returns', () => {
 	const messages = Result.getOrThrow(

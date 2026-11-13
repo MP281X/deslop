@@ -1,4 +1,4 @@
-import {Array, Effect, Option, Predicate, Schema, String, pipe} from 'effect'
+import {Array, Duration, Effect, Option, Predicate, Schema, String, pipe} from 'effect'
 
 import {Client} from '@modelcontextprotocol/client'
 import type {StreamableHTTPClientTransport} from '@modelcontextprotocol/client'
@@ -6,7 +6,7 @@ import {HttpClientError} from 'effect/http'
 
 import {AuthError} from '@deslop/runtime/shared/auth'
 
-import {UpstreamError} from '#services/connections/schema.ts'
+import {OAuthClientId, UpstreamError} from '#services/connections/schema.ts'
 import type {ServerIcon} from '#services/connections/schema.ts'
 
 export function mcpClient() {
@@ -22,7 +22,7 @@ export function endSession(
 ) {
 	return pipe(
 		Effect.tryPromise({catch: fail, try: () => transport.terminateSession()}),
-		Effect.timeout('3 seconds'),
+		Effect.timeout(Duration.seconds(3)),
 		Effect.ignore({log: 'Warn', message: `Cannot terminate the ${kind} MCP session`}),
 		Effect.andThen(Effect.tryPromise({catch: fail, try: () => client.close()})),
 		Effect.ignore({log: 'Warn', message: `Cannot close the ${kind} MCP client`})
@@ -31,7 +31,7 @@ export function endSession(
 
 export function clientMetadata(url: string) {
 	return {
-		client_id: `${url}/oauth/client.json`,
+		client_id: OAuthClientId.make(`${url}/oauth/client.json`),
 		client_name: 'Deslop MCP gateway',
 		grant_types: ['authorization_code', 'refresh_token'],
 		redirect_uris: [`${url}/oauth/callback`],
@@ -48,10 +48,7 @@ export function serverIcons(implementation: ReturnType<Client['getServerVersion'
 			icon => Option.isSome(String.match(/^(?:https:|data:image\/)/u)(icon.src)) && icon.src.length <= 32_768
 		),
 		Array.take(2),
-		Array.map(icon => ({
-			src: icon.src,
-			...Option.match(Option.fromUndefinedOr(icon.theme), {onNone: () => ({}), onSome: theme => ({theme})})
-		}))
+		Array.map(icon => ({src: icon.src, theme: Option.fromUndefinedOr(icon.theme)}))
 	) satisfies ServerIcon[]
 }
 

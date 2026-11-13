@@ -1,4 +1,4 @@
-import {Array, Effect, Layer, Option, Struct, pipe} from 'effect'
+import {Array, Effect, Equal, Layer, Option, Struct, pipe} from 'effect'
 
 import {McpServer} from 'effect/ai'
 
@@ -19,9 +19,9 @@ const ToolHandlers = ToolContracts.toLayer(
 		return ToolContracts.of({
 			list_mcp_connections: Effect.fnUntraced(function* (input) {
 				const all = yield* connections.definitions
-				if (input.server !== undefined && !Array.some(all, server => server.id === input.server)) {
+				if (Option.exists(input.server, id => !Array.some(all, server => server.id === id))) {
 					return yield* AuthError.make({
-						message: `Unknown server ${input.server}; valid servers: ${pipe(
+						message: `Unknown server ${Option.getOrThrow(input.server)}; valid servers: ${pipe(
 							all,
 							Array.map(server => server.id),
 							Array.join(', ')
@@ -31,14 +31,10 @@ const ToolHandlers = ToolContracts.toLayer(
 				return {
 					servers: pipe(
 						all,
-						Array.filter(server => input.server === undefined || server.id === input.server),
+						Array.filter(server => Option.match(input.server, {onNone: () => true, onSome: id => server.id === id})),
 						Array.map(server => ({
-							...Option.match(server.error, {onNone: () => ({}), onSome: error => ({error})}),
-							...pipe(
-								server.instructions,
-								Option.filter(() => input.server === server.id),
-								Option.match({onNone: () => ({}), onSome: instructions => ({instructions})})
-							),
+							error: server.error,
+							instructions: Option.filter(server.instructions, () => Option.contains(input.server, server.id)),
 							...Struct.pick(server, ['id', 'status', 'tools'])
 						}))
 					)
@@ -64,8 +60,10 @@ export const GatewayMcp = Layer.unwrap(
 		const cached = Auth.of({
 			token: headers => auth.token(headers),
 			user: Effect.fnUntraced(function* (headers) {
-				const saved = Option.getOrUndefined(yield* VerifiedCaller)
-				if (saved?.key === (headers['authorization'] ?? '')) return yield* Effect.fromResult(saved.result)
+				const saved = yield* VerifiedCaller
+				if (Option.exists(saved, value => Equal.equals(value.key, Option.fromUndefinedOr(headers['authorization'])))) {
+					return yield* Effect.fromResult(Option.getOrThrow(saved).result)
+				}
 				return yield* auth.user(headers)
 			})
 		})

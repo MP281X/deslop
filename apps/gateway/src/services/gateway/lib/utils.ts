@@ -1,9 +1,9 @@
 import {Array, HashSet, Option, Predicate, Record, Struct, Tuple, pipe} from 'effect'
 
 import type {Tool} from '@modelcontextprotocol/client'
-import type {McpSchema} from 'effect/ai'
 
 import type {ConnectionState} from '#services/connections/schema.ts'
+import type {RemoteTool} from '#services/gateway/schema.ts'
 
 export function indexTools(tools: readonly Tool[]) {
 	return pipe(
@@ -15,7 +15,7 @@ export function indexTools(tools: readonly Tool[]) {
 
 export function prunedTools(
 	definitions: readonly ConnectionState[],
-	installed: Record<string, {id: string; generation: string}>
+	installed: Record<string, Pick<ConnectionState, 'id' | 'generation'>>
 ) {
 	const connected = HashSet.fromIterable(
 		pipe(
@@ -45,15 +45,16 @@ function quiet(property: Readonly<Record<string, unknown>> | boolean) {
 	)
 }
 
-export function compact(tool: McpSchema.Tool) {
+export function compact(tool: RemoteTool) {
 	return Struct.evolve(tool, {
 		inputSchema: inputSchema => ({
-			...Record.filter(
+			...pipe(
 				inputSchema,
-				(value, key) => !(key === 'additionalProperties' && value === true) && key !== '$schema'
+				Struct.omit(['properties']),
+				Record.filter((value, key) => !(key === 'additionalProperties' && value === true) && key !== '$schema')
 			),
 			type: 'object' as const,
-			...Option.match(Option.fromUndefinedOr(inputSchema.properties), {
+			...Option.match(inputSchema.properties, {
 				onNone: () => ({}),
 				onSome: properties => ({properties: Record.map(properties, quiet)})
 			})

@@ -13,16 +13,16 @@ export const ToolContracts = Toolkit.make(
 			"Use when an MCP tool is missing or failing, or to see each server's state; returns each server's id, status, tool count and error, and one server's own instructions when named.",
 		failure: AuthError,
 		parameters: Schema.Struct({
-			server: Schema.optionalKey(
+			server: Schema.OptionFromOptionalKey(
 				ServerId.annotate({description: 'A server id, the prefix before __ in its tool names.'})
 			)
 		}),
 		success: Schema.Struct({
 			servers: Schema.Array(
 				Schema.Struct({
-					error: Schema.optionalKey(Schema.String),
+					error: Schema.OptionFromOptionalKey(Schema.String),
 					id: ServerId,
-					instructions: Schema.optionalKey(Schema.String),
+					instructions: Schema.OptionFromOptionalKey(Schema.String),
 					status: ConnectionStatus,
 					tools: Schema.Int
 				})

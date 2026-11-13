@@ -2,8 +2,9 @@ import {Schema} from 'effect'
 
 import {Model} from 'effect/schema'
 
-import {AiProvider} from '@deslop/runtime/shared/ai'
+import {AiModelId, AiProvider} from '@deslop/runtime/shared/ai'
 import {User} from '@deslop/runtime/shared/auth'
+import {DateTimeUtcFromFiniteMillis} from '@deslop/runtime/shared/time'
 
 import {UsageRange} from '#services/usage/schema.ts'
 
@@ -33,7 +34,7 @@ export type AiKeyItem = typeof AiKey.json.Type
 // One person's calls to one provider in one hour: what the known prices sum to, and how many calls had none.
 export class AiUsage extends Model.Class<AiUsage>('AiUsage')({
 	costUsd: Schema.Finite,
-	hour: Schema.Int,
+	hour: Schema.DateTimeUtcFromMillis,
 	owner: Model.Sensitive(User.fields.id),
 	provider: AiProvider,
 	unknownCostCalls: Schema.Int
@@ -48,13 +49,13 @@ export const AiUsageQuery = Schema.Struct({...UsageRange.fields, owner: AiUsage.
 // A call being metered: what its response reported, read as it streams.
 export type AiUsageEntry = typeof AiUsageEntry.Type
 export const AiUsageEntry = Schema.Struct({
-	at: Schema.Finite,
+	at: DateTimeUtcFromFiniteMillis,
 	cacheReadTokens: Schema.Finite,
 	cacheWriteTokens: Schema.Finite,
 	costSource: Schema.Literals(['provider', 'models.dev', 'unknown']),
-	costUsd: Schema.optionalKey(Schema.Finite),
+	costUsd: Schema.OptionFromOptionalKey(Schema.Finite),
 	inputTokens: Schema.Finite,
-	model: Schema.optional(Schema.String),
+	model: Schema.OptionFromOptional(AiModelId),
 	outputTokens: Schema.Finite,
 	provider: AiProvider
 })
@@ -67,7 +68,7 @@ export const AiUsageBreakdown = Schema.Struct({
 export type AiUsageReport = typeof AiUsageReport.Type
 export const AiUsageReport = Schema.Struct({
 	byProvider: Schema.Array(AiUsageBreakdown),
-	series: Schema.Array(Schema.Struct({at: Schema.Finite, byProvider: Schema.Array(AiUsageBreakdown)}))
+	series: Schema.Array(Schema.Struct({at: DateTimeUtcFromFiniteMillis, byProvider: Schema.Array(AiUsageBreakdown)}))
 })
 
 export type ModelsCatalog = typeof ModelsCatalog.Type
@@ -75,12 +76,12 @@ export const ModelsCatalog = Schema.Record(
 	Schema.String,
 	Schema.Struct({
 		models: Schema.Record(
-			Schema.String,
+			AiModelId,
 			Schema.Struct({
-				cost: Schema.optionalKey(
+				cost: Schema.OptionFromOptionalKey(
 					Schema.Struct({
-						cache_read: Schema.optionalKey(Schema.Finite),
-						cache_write: Schema.optionalKey(Schema.Finite),
+						cache_read: Schema.OptionFromOptionalKey(Schema.Finite),
+						cache_write: Schema.OptionFromOptionalKey(Schema.Finite),
 						input: Schema.Finite,
 						output: Schema.Finite
 					})
@@ -91,35 +92,35 @@ export const ModelsCatalog = Schema.Record(
 )
 export type Usage = typeof Usage.Type
 export const Usage = Schema.Struct({
-	cost: Schema.optionalKey(Schema.Finite),
-	message: Schema.optionalKey(
+	cost: Schema.OptionFromOptionalKey(Schema.Finite),
+	message: Schema.OptionFromOptionalKey(
 		Schema.Struct({
-			model: Schema.optionalKey(Schema.String),
-			usage: Schema.optionalKey(
+			model: Schema.OptionFromOptionalKey(AiModelId),
+			usage: Schema.OptionFromOptionalKey(
 				Schema.Struct({
-					cache_creation_input_tokens: Schema.optionalKey(Schema.Finite),
-					cache_read_input_tokens: Schema.optionalKey(Schema.Finite),
-					input_tokens: Schema.optionalKey(Schema.Finite),
-					output_tokens: Schema.optionalKey(Schema.Finite)
+					cache_creation_input_tokens: Schema.OptionFromOptionalKey(Schema.Finite),
+					cache_read_input_tokens: Schema.OptionFromOptionalKey(Schema.Finite),
+					input_tokens: Schema.OptionFromOptionalKey(Schema.Finite),
+					output_tokens: Schema.OptionFromOptionalKey(Schema.Finite)
 				})
 			)
 		})
 	),
-	model: Schema.optionalKey(Schema.String),
-	usage: Schema.optionalKey(
-		Schema.NullOr(
+	model: Schema.OptionFromOptionalKey(AiModelId),
+	usage: Schema.OptionFromOptionalKey(
+		Schema.OptionFromNullOr(
 			Schema.Struct({
-				cache_creation_input_tokens: Schema.optionalKey(Schema.Finite),
-				cache_read_input_tokens: Schema.optionalKey(Schema.Finite),
-				completion_tokens: Schema.optionalKey(Schema.Finite),
-				cost: Schema.optionalKey(Schema.Finite),
-				input_tokens: Schema.optionalKey(Schema.Finite),
-				output_tokens: Schema.optionalKey(Schema.Finite),
-				prompt_tokens: Schema.optionalKey(Schema.Finite),
-				prompt_tokens_details: Schema.optionalKey(
+				cache_creation_input_tokens: Schema.OptionFromOptionalKey(Schema.Finite),
+				cache_read_input_tokens: Schema.OptionFromOptionalKey(Schema.Finite),
+				completion_tokens: Schema.OptionFromOptionalKey(Schema.Finite),
+				cost: Schema.OptionFromOptionalKey(Schema.Finite),
+				input_tokens: Schema.OptionFromOptionalKey(Schema.Finite),
+				output_tokens: Schema.OptionFromOptionalKey(Schema.Finite),
+				prompt_tokens: Schema.OptionFromOptionalKey(Schema.Finite),
+				prompt_tokens_details: Schema.OptionFromOptionalKey(
 					Schema.Struct({
-						cache_write_tokens: Schema.optionalKey(Schema.Finite),
-						cached_tokens: Schema.optionalKey(Schema.Finite)
+						cache_write_tokens: Schema.OptionFromOptionalKey(Schema.Finite),
+						cached_tokens: Schema.OptionFromOptionalKey(Schema.Finite)
 					})
 				)
 			})

@@ -1,4 +1,4 @@
-import {Effect, Schema, Stream, pipe} from 'effect'
+import {Duration, Effect, Option, Schema, Stream, pipe} from 'effect'
 
 import {Machine} from '@typeonce/effect-machine'
 import {AtomMachine} from '@typeonce/effect-machine/reactivity'
@@ -11,6 +11,7 @@ import {addPageTelemetry, layerPageProtocol} from '@deslop/runtime/web/client'
 
 import {RpcContracts} from '#rpcs/contracts.ts'
 import {ServerUrl, UpstreamError} from '#services/connections/schema.ts'
+import type {ServerId} from '#services/connections/schema.ts'
 import type {Period} from '#services/usage/schema.ts'
 
 declare module 'effect/reactivity/Reactivity' {
@@ -28,12 +29,12 @@ class RpcClient extends AtomRpc.Service<RpcClient>()('@deslop/gateway/lib/gatewa
 	protocol: layerPageProtocol
 }) {}
 
-function connectUrl(id: string) {
+function connectUrl(id: ServerId) {
 	return `/oauth/connect?${new URLSearchParams({id})}`
 }
 
 // Leaves for the server's authorization; it stays pending until the page unloads, so the button cannot start a second one.
-export const connectAtom = Atom.family((id: string) =>
+export const connectAtom = Atom.family((id: ServerId) =>
 	Atom.fn(() =>
 		Effect.andThen(
 			Effect.sync(() => location.assign(connectUrl(id))),
@@ -61,18 +62,21 @@ export const addAtom = AtomMachine.bind(RpcClient.runtime).make(
 		},
 		events: Machine.events({Submit: {}, Typed: {url: Schema.String}}),
 		root: Machine.state({
-			states: {Adding: {fields: {url: Schema.String}}, Editing: {fields: {error: Schema.String, url: Schema.String}}}
+			states: {
+				Adding: {fields: {url: Schema.String}},
+				Editing: {fields: {error: Schema.OptionFromOptionalKey(Schema.String), url: Schema.String}}
+			}
 		})
 	}).handle({
-		initial: {data: {error: '', url: ''}, target: 'Editing'},
-		on: {Typed: {data: transition => ({error: '', url: transition.event.url}), target: 'Editing'}},
+		initial: {data: {error: Option.none(), url: ''}, target: 'Editing'},
+		on: {Typed: {data: transition => ({error: Option.none(), url: transition.event.url}), target: 'Editing'}},
 		states: {
 			Adding: {
 				invoke: {
 					input: transition => transition.state.url,
-					onDone: {data: {error: '', url: ''}, target: 'Editing'},
+					onDone: {data: {error: Option.none(), url: ''}, target: 'Editing'},
 					onFailure: {
-						data: transition => ({error: transition.error.message, url: transition.state.url}),
+						data: transition => ({error: Option.some(transition.error.message), url: transition.state.url}),
 						target: 'Editing'
 					},
 					src: 'add'
@@ -121,7 +125,7 @@ export const copyAtom = Atom.family((value: string) =>
 				})
 			),
 			Effect.andThen(Atom.set(copiedAtom, true)),
-			Effect.andThen(Effect.sleep('1500 millis')),
+			Effect.andThen(Effect.sleep(Duration.millis(1500))),
 			Effect.andThen(Atom.set(copiedAtom, false))
 		)
 	)

@@ -1,6 +1,19 @@
 // fallow-ignore-file unused-type -- Codecs expose their decoded types to consuming apps.
 import {DateTime, Duration, Schema, SchemaGetter, pipe} from 'effect'
 
+// Some upstreams and SQL REAL columns carry fractional milliseconds.
+export type DateTimeUtcFromFiniteMillis = typeof DateTimeUtcFromFiniteMillis.Type
+export const DateTimeUtcFromFiniteMillis = pipe(
+	Schema.Finite,
+	Schema.decodeTo(Schema.DateTimeUtc, {
+		decode: SchemaGetter.transform(value => DateTime.mapEpochMillis(DateTime.makeUnsafe(0), () => value)),
+		encode: SchemaGetter.transform(DateTime.toEpochMillis)
+	})
+)
+
+export type DurationFromFiniteMillis = typeof DurationFromFiniteMillis.Type
+export const DurationFromFiniteMillis = pipe(Schema.Finite, Schema.decodeTo(Schema.DurationFromMillis))
+
 export type DateTimeUtcFromSeconds = typeof DateTimeUtcFromSeconds.Type
 export const DateTimeUtcFromSeconds = pipe(
 	Schema.Int,
