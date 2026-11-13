@@ -5,11 +5,9 @@ import {McpSchema, McpServer} from 'effect/ai'
 import {localAuth} from '@deslop/runtime/server/auth'
 import {AuthError, DEVELOPER} from '@deslop/runtime/shared/auth'
 
-import type {Passkey} from '#services/passkeys/schema.ts'
 import {Passkeys} from '#services/passkeys/service.ts'
 import {People} from '#services/people/service.ts'
 import {SignIns} from '#services/sign-ins/service.ts'
-import {withChildActivity} from '#services/tokens/lib/utils.ts'
 import {CurrentOwner, IncarnationId} from '#services/tokens/schema.ts'
 import type {SignedInApp} from '#services/tokens/schema.ts'
 import {Tokens} from '#services/tokens/service.ts'
@@ -88,7 +86,7 @@ export const ToolHandlers = ToolContracts.toLayer(
 			}),
 			list_sessions: Effect.fnUntraced(function* (input) {
 				const found = page(
-					withChildActivity(Option.getOrElse(yield* Stream.runHead(tokens.watchApps(yield* CurrentOwner)), () => [])),
+					Option.getOrElse(yield* Stream.runHead(tokens.watchApps(yield* CurrentOwner)), () => []),
 					app => app.family,
 					input
 				)
@@ -104,20 +102,7 @@ export const ToolHandlers = ToolContracts.toLayer(
 				}
 			}),
 			remove_passkey: Effect.fnUntraced(function* (input) {
-				const owner = yield* CurrentOwner
-				yield* pipe(
-					yield* Stream.runHead(passkeys.watch(owner)),
-					Option.getOrElse(Array.empty<Passkey>),
-					Array.findFirst(found => found.id === input.id),
-					Effect.fromOption,
-					Effect.mapError(cause =>
-						AuthError.make({
-							cause,
-							message: 'No passkey of yours has that id; list_passkeys shows valid ids. Nothing changed.'
-						})
-					)
-				)
-				yield* passkeys.remove(input.id, owner)
+				yield* passkeys.remove(input.id, yield* CurrentOwner)
 				return {id: input.id}
 			}),
 			remove_person: Effect.fnUntraced(function* (input) {

@@ -4,7 +4,7 @@ import {startAuthentication, startRegistration} from '@simplewebauthn/browser'
 import {Machine} from '@typeonce/effect-machine'
 import {AtomMachine} from '@typeonce/effect-machine/reactivity'
 import {FetchHttpClient, HttpClient, HttpClientRequest, HttpClientResponse} from 'effect/http'
-import {Atom, AtomRpc} from 'effect/reactivity'
+import {AsyncResult, Atom, AtomRpc} from 'effect/reactivity'
 
 import {liveAtom, liveStream, reconnectOnDrop} from '@deslop/runtime/client/live-stream'
 import {AUTH_URL, AuthError} from '@deslop/runtime/shared/auth'
@@ -50,6 +50,29 @@ export const accountAtom = Atom.keepAlive(
 			Stream.map(Option.some),
 			Stream.catchTag('AuthError', () => Stream.make(Option.none<SignedAccount>()))
 		)
+	)
+)
+
+type AuthPage =
+	| {_tag: 'SigningOut'}
+	| {_tag: 'Request'; account: Option.Option<SignedAccount>; id: SignInCode}
+	| {_tag: 'SignIn'}
+	| {_tag: 'Signed'; account: SignedAccount}
+
+export const pageAtom = Atom.family((search: Search) =>
+	Atom.map(
+		accountAtom,
+		AsyncResult.map(account => {
+			if (Option.isSome(search['sign-out'])) return {_tag: 'SigningOut'} satisfies AuthPage
+			return Option.match(search.request, {
+				onNone: () =>
+					Option.match(account, {
+						onNone: () => ({_tag: 'SignIn'}) satisfies AuthPage,
+						onSome: signed => ({_tag: 'Signed', account: signed}) satisfies AuthPage
+					}),
+				onSome: id => ({_tag: 'Request', account, id}) satisfies AuthPage
+			})
+		})
 	)
 )
 
@@ -119,6 +142,36 @@ export const codeAtom = AtomMachine.bind(RpcClient.runtime).make(
 	})
 )
 
+export type CodeView = {
+	answered: Option.Option<{accept: boolean; request: PendingAuthorization}>
+	pending: Option.Option<PendingAuthorization>
+	state: 'Checking' | 'Found' | 'Missing' | 'Typing' | {failed: string}
+	typed: string
+}
+
+export const codeViewAtom = Atom.map(
+	codeAtom.result,
+	AsyncResult.map(snapshot => {
+		if (snapshot.state.path === 'Typing') {
+			return {
+				answered: snapshot.state.value.answered,
+				pending: Option.none(),
+				state: 'Typing',
+				typed: snapshot.state.value.typed
+			} satisfies CodeView
+		}
+		const view = {answered: Option.none(), pending: Option.none(), typed: snapshot.state.value.code}
+		if (snapshot.state.state.path === 'Code.Found') {
+			return {...view, pending: Option.some(snapshot.state.state.value.request), state: 'Found'} satisfies CodeView
+		}
+		if (snapshot.state.state.path === 'Code.Failed') {
+			return {...view, state: {failed: snapshot.state.state.value.message}} satisfies CodeView
+		}
+		if (snapshot.state.state.path === 'Code.Looking') return {...view, state: 'Checking'} satisfies CodeView
+		return {...view, state: 'Missing'} satisfies CodeView
+	})
+)
+
 // Read each time the approve page opens, so returning to it from People does not bring back an answered code.
 export const linkedCodeAtom = Atom.family((code: string) =>
 	Atom.make(get => {
@@ -163,9 +216,6 @@ export function requestCode(id: SignInCode) {
 export function approveLink(id: SignInCode) {
 	return `${location.origin}/?code=${id}`
 }
-
-// Live, so an app shows once its server announces itself to Auth.
-export const catalogAtom = Atom.keepAlive(liveAtom(RpcClient, 'apps.watch'))
 
 // The time once a minute, so "4m" labels keep counting on an idle page.
 export const minuteAtom = Atom.make(Stream.mapEffect(Stream.tick('1 minute'), () => DateTime.now))

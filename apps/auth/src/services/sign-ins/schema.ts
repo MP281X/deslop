@@ -2,7 +2,7 @@ import {Schema, pipe} from 'effect'
 
 import {DurationFromSeconds} from '@deslop/runtime/shared/time'
 
-import {ClientRequest, DeviceRequest, Origin, TokenResponse} from '#services/tokens/schema.ts'
+import {ClientRequest, DeviceRequest, TokenResponse} from '#services/tokens/schema.ts'
 
 export type SignInKind = typeof SignInKind.Type
 export const SignInKind = Schema.Literals(['App', 'Browser'])
@@ -16,6 +16,7 @@ export const PendingAuthorization = Schema.Struct({
 	clientName: Schema.String,
 	device: Schema.String,
 	expiresAt: Schema.DateTimeUtcFromMillis,
+	icon: Schema.OptionFromOptionalKey(Schema.String),
 	id: SignInCode.check(Schema.isNonEmpty()),
 	kind: SignInKind
 })
@@ -46,9 +47,6 @@ export const Collected = Schema.TaggedUnion({
 		token: Schema.NonEmptyString
 	}
 })
-
-export type SignInInput = typeof SignInInput.Type
-export const SignInInput = Schema.Struct({delivery: Delivery, origin: Origin})
 
 export type BrowserParams = typeof BrowserParams.Type
 export const BrowserParams = Schema.Struct({

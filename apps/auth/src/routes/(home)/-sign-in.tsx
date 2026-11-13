@@ -1,6 +1,6 @@
-import {useAtom, useAtomValue} from '@effect/atom-react'
+import {useAtom} from '@effect/atom-react'
 
-import {Array, Boolean, Option, pipe} from 'effect'
+import {Option, pipe} from 'effect'
 
 import {KeyIcon} from '@phosphor-icons/react'
 import {getRouteApi} from '@tanstack/react-router'
@@ -9,11 +9,8 @@ import {AsyncResult} from 'effect/reactivity'
 import {GitHubIcon} from '@deslop/components-web/icons'
 import {Button} from '@deslop/components-web/ui/button'
 import {FieldError} from '@deslop/components-web/ui/field'
-import {Skeleton} from '@deslop/components-web/ui/skeleton'
 
-import {catalogAtom, codeSignInAtom, passkeySignInAtom, signInAtom} from '#lib/auth.ts'
-import {AppIcon} from '#lib/components.tsx'
-import type {Catalog} from '#services/apps/schema.ts'
+import {codeSignInAtom, passkeySignInAtom, signInAtom} from '#lib/auth.ts'
 
 const route = getRouteApi('/(home)')
 
@@ -37,42 +34,7 @@ export function Failures() {
 	)
 }
 
-// The suite's apps, as they announced themselves to Auth; each opens its app.
-function Suite(props: {apps: Catalog}) {
-	return (
-		<nav aria-label="Apps" className="grid grid-cols-2 gap-x-8 gap-y-3 border-t pt-5">
-			{Array.map(props.apps, app => (
-				<a
-					key={app.origin}
-					href={app.origin}
-					className="text-muted-foreground hover:text-foreground flex min-w-0 items-center gap-2.5 max-sm:h-11"
-				>
-					<AppIcon origin={app.origin} />
-					<span className="truncate">{app.name}</span>
-				</a>
-			))}
-		</nav>
-	)
-}
-
-// The app list's place while its catalog loads, at the loaded suite's geometry.
-function SuiteSkeleton() {
-	return (
-		<div aria-busy="true" aria-label="Apps" role="status" className="grid grid-cols-2 gap-x-8 gap-y-3 border-t pt-5">
-			{Array.map(Array.range(1, 4), row => (
-				<span key={row} className="flex h-6 min-w-0 items-center gap-2.5 max-sm:h-11">
-					<Skeleton className="size-4 shrink-0" />
-					<Skeleton className="h-3 w-20" />
-				</span>
-			))}
-		</div>
-	)
-}
-
-// A known signed-out account sees the sign-in page at once; only its app list waits for the catalog.
 export function SignIn() {
-	const catalog = useAtomValue(catalogAtom)
-	const apps = AsyncResult.getOrElse(catalog, () => [])
 	const next = route.useSearch({select: search => search.next})
 	const [signIn, startSignIn] = useAtom(signInAtom)
 	const [codeSignIn, startCodeSignIn] = useAtom(codeSignInAtom)
@@ -114,10 +76,6 @@ export function SignIn() {
 				</Button>
 				<Failures />
 			</div>
-			{Boolean.match(AsyncResult.isInitial(catalog), {
-				onFalse: () => Array.isReadonlyArrayNonEmpty(apps) && <Suite apps={apps} />,
-				onTrue: () => <SuiteSkeleton />
-			})}
 		</section>
 	)
 }

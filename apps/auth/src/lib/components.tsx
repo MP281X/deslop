@@ -1,6 +1,6 @@
 import {useAtom} from '@effect/atom-react'
 
-import {Array, Boolean, DateTime, Duration, Option, Order, Record, String, pipe} from 'effect'
+import {Array, Boolean, DateTime, Duration, Option, Record, String, pipe} from 'effect'
 
 import {AppWindowIcon, GlobeIcon, GraphIcon, HardDrivesIcon} from '@phosphor-icons/react'
 import {AsyncResult, Atom} from 'effect/reactivity'
@@ -16,7 +16,7 @@ import {Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle} f
 import {Skeleton} from '@deslop/components-web/ui/skeleton'
 import type {UserId} from '@deslop/runtime/shared/auth'
 
-import {appsAtom, catalogAtom, consentAtom, minuteAtom, requestCode, signInLabel} from '#lib/auth.ts'
+import {appsAtom, consentAtom, minuteAtom, requestCode} from '#lib/auth.ts'
 import android from '#lib/brands/android.svg'
 import apple from '#lib/brands/apple.svg'
 import chrome from '#lib/brands/chrome.svg'
@@ -25,9 +25,7 @@ import codex from '#lib/brands/codex.svg'
 import edge from '#lib/brands/edge.svg'
 import firefox from '#lib/brands/firefox.svg'
 import safari from '#lib/brands/safari.svg'
-import type {AppOrigin, Catalog} from '#services/apps/schema.ts'
 import type {PendingAuthorization} from '#services/sign-ins/schema.ts'
-import {withChildActivity} from '#services/tokens/lib/utils.ts'
 import type {SignedInApp} from '#services/tokens/schema.ts'
 
 function ageLabel(minutes: number) {
@@ -35,10 +33,6 @@ function ageLabel(minutes: number) {
 	if (minutes < 60) return `${minutes}m`
 	if (minutes < 1440) return `${Math.floor(minutes / 60)}h`
 	return `${Math.floor(minutes / 1440)}d`
-}
-
-function newest(apps: readonly [SignedInApp, ...SignedInApp[]]) {
-	return Array.reduce(apps, apps[0].lastActive, (latest, app) => DateTime.max(latest, app.lastActive))
 }
 
 // A GitHub account's picture, or its first letter until the picture loads; a row's picture sits at 16px.
@@ -59,7 +53,7 @@ export function AccountAvatar(props: {id: UserId; name: string; small?: boolean}
 }
 
 // A glyph until the app's own icon loads, so a missing icon never draws the browser's broken image; no tile behind either.
-export function AppIcon(props: {origin: AppOrigin}) {
+function AppIcon(props: {origin: string}) {
 	const [state, setState] = useState<'failed' | 'loaded' | 'loading'>('loading')
 	return (
 		<span className="text-muted-foreground relative flex size-4 shrink-0 items-center justify-center">
@@ -159,7 +153,7 @@ export function PeopleRowsSkeleton() {
 
 const BROWSERS: Record<string, string> = {Chrome: chrome, Edge: edge, Firefox: firefox, Safari: safari}
 
-type Client = {app: Option.Option<AppOrigin>; device: string; kind: 'App' | 'Browser'; name: string}
+type Client = {app: Option.Option<string>; device: string; kind: 'App' | 'Browser'; name: string}
 
 function Brand(props: {client: Client}) {
 	if (props.client.kind === 'Browser') {
@@ -191,26 +185,31 @@ function ClientIcon(props: {client: Client}) {
 	})
 }
 
-type SignedInClient = {address: Option.Option<string>; client: Client; label: string; lastActive: DateTime.Utc}
-
-function ClientRow(props: {client: SignedInClient; now: DateTime.Utc}) {
+function ClientRow(props: {client: SignedInApp; now: DateTime.Utc}) {
 	const active = ageLabel(Math.floor(Duration.toMinutes(DateTime.distance(props.client.lastActive, props.now))))
-	const address = Option.filter(props.client.address, value => value !== props.client.client.device)
+	const address = Option.filter(props.client.address, value => value !== props.client.device)
 	return (
 		<div role="listitem">
 			<Item
 				size="row"
-				aria-label={`${props.client.client.device}, active ${active}${Option.match(address, {
+				aria-label={`${props.client.device}, active ${active}${Option.match(address, {
 					onNone: () => '',
 					onSome: value => ` · ${value}`
 				})}`}
 			>
 				{/* The browser or app is the mark alone, so every row's name starts at the same column. */}
-				<ItemMedia className="size-4" role="img" aria-label={props.client.client.name} title={props.client.client.name}>
-					<ClientIcon client={props.client.client} />
+				<ItemMedia className="size-4" role="img" aria-label={props.client.client} title={props.client.client}>
+					<ClientIcon
+						client={{
+							app: props.client.icon,
+							device: props.client.device,
+							kind: props.client.kind,
+							name: props.client.client
+						}}
+					/>
 				</ItemMedia>
 				<ItemContent>
-					<ItemTitle>{props.client.client.device}</ItemTitle>
+					<ItemTitle>{props.client.device}</ItemTitle>
 				</ItemContent>
 				<ItemActions>
 					<span className="w-12 shrink-0 text-right font-mono text-xs tabular-nums">{active}</span>
@@ -223,32 +222,22 @@ function ClientRow(props: {client: SignedInClient; now: DateTime.Utc}) {
 	)
 }
 
-// The mark of the app or browser that is waiting, from the catalog when it is a Deslop app.
-function PendingMark(props: {catalog: Catalog; request: PendingAuthorization}) {
-	return pipe(
-		props.catalog,
-		Array.findFirst(app => String.toLowerCase(app.name) === String.toLowerCase(props.request.clientName)),
-		Option.map(app => app.origin),
-		Option.match({
-			onNone: () =>
-				Boolean.match(props.request.kind === 'Browser', {
-					onFalse: () => <HardDrivesIcon />,
-					onTrue: () => <GlobeIcon />
-				}),
-			onSome: origin => <AppIcon origin={origin} />
-		})
-	)
-}
-
 // A waiting sign-in leads the card, tinted, its code under the label; its answer stays on the row.
-function PendingRow(props: {catalog: Catalog; request: PendingAuthorization}) {
+function PendingRow(props: {request: PendingAuthorization}) {
 	const [consent, respond] = useAtom(consentAtom)
 	const waiting = AsyncResult.isWaiting(consent)
 	return (
 		<div role="listitem" className="bg-primary/10">
 			<Item size="row">
 				<ItemMedia className="size-4" role="img" aria-label={props.request.clientName} title={props.request.clientName}>
-					<PendingMark catalog={props.catalog} request={props.request} />
+					{Option.match(props.request.icon, {
+						onNone: () =>
+							Boolean.match(props.request.kind === 'Browser', {
+								onFalse: () => <HardDrivesIcon />,
+								onTrue: () => <GlobeIcon />
+							}),
+						onSome: origin => <AppIcon origin={origin} />
+					})}
 				</ItemMedia>
 				<ItemContent>
 					<ItemTitle>{props.request.device}</ItemTitle>
@@ -279,44 +268,11 @@ function PendingRow(props: {catalog: Catalog; request: PendingAuthorization}) {
 	)
 }
 
-function clientsOf(signIns: readonly SignedInApp[], catalog: Catalog) {
-	const byName = Array.groupBy(catalog, app => String.toLowerCase(app.name))
-	return pipe(
-		Array.groupBy(withChildActivity(signIns), signIn => signInLabel(signIn.client, signIn.device)),
-		Record.values,
-		Array.filter(Array.isReadonlyArrayNonEmpty),
-		Array.sort(Order.flip(Order.mapInput(DateTime.Order, newest))),
-		Array.map(group => {
-			const lastActive = newest(group)
-			return {
-				address: pipe(
-					group,
-					Array.findFirst(signIn => DateTime.Equivalence(signIn.lastActive, lastActive)),
-					Option.flatMap(signIn => signIn.address)
-				),
-				client: {
-					app: pipe(
-						Array.head(byName[String.toLowerCase(group[0].client)] ?? []),
-						Option.filter(() => group[0].kind === 'App'),
-						Option.map(app => app.origin)
-					),
-					device: group[0].device,
-					kind: group[0].kind,
-					name: group[0].client
-				},
-				label: signInLabel(group[0].client, group[0].device),
-				lastActive
-			}
-		})
-	)
-}
-
-// A retry restarts the two live readers, which refreshing their combination alone would not.
+// A retry restarts the live sign-ins reader.
 const signInListAtom = Atom.readable(
-	get => AsyncResult.all({catalog: get(catalogAtom), now: get(minuteAtom), signIns: get(appsAtom)}),
+	get => AsyncResult.all({now: get(minuteAtom), signIns: get(appsAtom)}),
 	refresh => {
 		refresh(appsAtom)
-		refresh(catalogAtom)
 	}
 )
 
@@ -324,9 +280,8 @@ export function SignInList(props: {checking?: boolean; pending: Option.Option<Pe
 	return (
 		<Loaded atom={signInListAtom}>
 			{data => {
-				const clients = clientsOf(data.signIns, data.catalog)
 				const checking = props.checking === true && Option.isNone(props.pending)
-				if (Array.isReadonlyArrayEmpty(clients) && Option.isNone(props.pending) && !checking) {
+				if (Array.isReadonlyArrayEmpty(data.signIns) && Option.isNone(props.pending) && !checking) {
 					return <EmptyState label="No sign-ins" icon={<HardDrivesIcon className="size-5" weight="light" />} />
 				}
 				return (
@@ -336,7 +291,7 @@ export function SignInList(props: {checking?: boolean; pending: Option.Option<Pe
 								onFalse: () =>
 									Option.match(props.pending, {
 										onNone: () => null,
-										onSome: request => <PendingRow catalog={data.catalog} request={request} />
+										onSome: request => <PendingRow request={request} />
 									}),
 								onTrue: () => (
 									<div role="status" aria-label="Checking the code">
@@ -344,8 +299,8 @@ export function SignInList(props: {checking?: boolean; pending: Option.Option<Pe
 									</div>
 								)
 							})}
-							{Array.map(clients, client => (
-								<ClientRow key={client.label} client={client} now={data.now} />
+							{Array.map(data.signIns, client => (
+								<ClientRow key={client.family} client={client} now={data.now} />
 							))}
 						</div>
 					</Card>

@@ -4,7 +4,6 @@ import {Rpc, RpcGroup, RpcMiddleware} from 'effect/rpc'
 
 import {AuthError, RpcAuth} from '@deslop/runtime/shared/auth'
 
-import {Catalog} from '#services/apps/schema.ts'
 import {AddPasskeyParams, CreationOptions, Passkey} from '#services/passkeys/schema.ts'
 import {AdmitParams, Person, SignedAccount} from '#services/people/schema.ts'
 import {
@@ -33,7 +32,6 @@ export class RpcContracts extends RpcGroup.make(
 	Rpc.make('people.watch', {error: AuthError, stream: true, success: Schema.Array(Person)}),
 	Rpc.make('people.admit', {error: AuthError, payload: AdmitParams, success: Person}),
 	Rpc.make('tokens.watchApps', {error: AuthError, stream: true, success: Schema.Array(SignedInApp.json)}),
-	Rpc.make('apps.watch', {error: AuthError, stream: true, success: Catalog}),
 	Rpc.make('passkeys.watch', {error: AuthError, stream: true, success: Schema.Array(Passkey.json)}),
 	Rpc.make('passkeys.registration', {error: AuthError, success: CreationOptions}),
 	Rpc.make('passkeys.add', {error: AuthError, payload: AddPasskeyParams})

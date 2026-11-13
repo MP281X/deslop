@@ -51,7 +51,7 @@ export function hashOf(digest: Digest.Digest['Service']) {
 }
 
 // Child app sign-ins are never rows of their own; their browser takes the newest activity and address.
-export function withChildActivity(signIns: readonly SignedInApp[]) {
+function withChildActivity(signIns: readonly SignedInApp[]) {
 	const children = pipe(
 		signIns,
 		Array.map(signIn => Option.map(signIn.parent, parent => ({parent, signIn}))),
@@ -77,6 +77,7 @@ export function withChildActivity(signIns: readonly SignedInApp[]) {
 				client: signIn.client,
 				device: signIn.device,
 				family: signIn.family,
+				icon: signIn.icon,
 				kind: signIn.kind,
 				lastActive: latest.lastActive,
 				parent: signIn.parent
@@ -229,6 +230,37 @@ export function clientOf(clientId: ClientId) {
 		Result.getSuccess,
 		Option.flatMap(Schema.decodeUnknownOption(Schema.fromJsonString(ClientRegistration))),
 		Option.filter(client => Array.every(client.redirects, allowedRedirect))
+	)
+}
+
+// An icon belongs to a registered callback, never to an app name supplied by a client.
+export function clientIconOf(clientId: ClientId) {
+	return pipe(
+		clientOf(clientId),
+		Option.flatMap(client =>
+			Array.findFirst(
+				client.redirects,
+				redirect => webRedirect(redirect) || Option.isSome(String.match(/^(?:stash|opm|trips)(?:-dev)?:/u)(redirect))
+			)
+		),
+		Option.map(redirect => {
+			const url = new URL(redirect)
+			if (url.protocol === 'https:') return url.origin
+			return `https://${pipe(url.protocol, String.slice(0, -1), String.replace(/-dev$/u, ''))}.mp281x.xyz`
+		})
+	)
+}
+
+// Both transports show the same rows, with a browser's child activity merged before grouping.
+export function signedInClientsOf(signIns: readonly SignedInApp[]) {
+	return pipe(
+		Array.groupBy(withChildActivity(signIns), signIn => `${signIn.client} · ${signIn.device}`),
+		Record.values,
+		Array.filter(Array.isReadonlyArrayNonEmpty),
+		Array.map(group =>
+			Array.reduce(group, group[0], Order.max(Order.mapInput(DateTime.Order, (row: SignedInApp) => row.lastActive)))
+		),
+		Array.sort(Order.flip(Order.mapInput(DateTime.Order, (row: SignedInApp) => row.lastActive)))
 	)
 }
 

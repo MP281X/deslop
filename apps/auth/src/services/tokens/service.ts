@@ -5,12 +5,10 @@ import {
 	DateTime,
 	Duration,
 	Effect,
-	HashMap,
 	Layer,
 	Match,
 	Option,
 	Redacted,
-	Ref,
 	Schema,
 	Semaphore,
 	Stream,
@@ -37,10 +35,12 @@ import {
 	asAuthError
 } from '@deslop/runtime/shared/auth'
 
+import {makeRecords} from '#services/records/service.ts'
 import {
 	browserLabel,
 	browserToken,
 	clientLabel,
+	clientIconOf,
 	clientOf,
 	credentialOwnerOf,
 	deviceLabel,
@@ -48,7 +48,8 @@ import {
 	hashOf,
 	matchingRedirect,
 	randomTokenOf,
-	sameOwner
+	sameOwner,
+	signedInClientsOf
 } from '#services/tokens/lib/utils.ts'
 import type {
 	AuthorizeClient,
@@ -80,10 +81,7 @@ declare module 'effect/reactivity/Reactivity' {
 }
 
 // An authorization code lives 60 seconds in memory; once redeemed it names the family it gave, so a replay ends it.
-type Code = {
-	expiresAt: DateTime.Utc
-	state: {_tag: 'Fresh'; request: ClientRequest; owner: CredentialOwner} | {_tag: 'Used'; family: SignInFamily}
-}
+type Code = {_tag: 'Fresh'; request: ClientRequest; owner: CredentialOwner} | {_tag: 'Used'; family: SignInFamily}
 
 const expired = AuthError.make({error: 'invalid_grant', message: 'The authorization expired. Sign in again.'})
 
@@ -222,14 +220,17 @@ export class Tokens extends Context.Service<
 				// The account's live browser sessions and app grants, most recently active first.
 				const listSignedIn = SqlSchema.findAll({
 					Request: OwnedSignIns,
-					Result: SignedInApp,
+					Result: Schema.Struct({
+						...Struct.omit(SignedInApp.fields, ['icon']),
+						clientId: Schema.OptionFromNullOr(AppGrant.fields.clientId)
+					}),
 					execute: request => sql`
-						SELECT family, client, device, address, lastActive, NULL AS parent, 'Browser' AS kind
+						SELECT family, client, device, address, lastActive, NULL AS parent, NULL AS clientId, 'Browser' AS kind
 						FROM ${sql(BrowserSession.table)}
 						WHERE userId = ${request.owner.user.id} AND incarnation = ${request.owner.incarnation}
 							AND expiresAt > ${request.now}
 						UNION ALL
-						SELECT family, client, device, address, lastActive, parent, 'App' AS kind
+						SELECT family, client, device, address, lastActive, parent, clientId, 'App' AS kind
 						FROM ${sql(AppGrant.table)}
 						WHERE userId = ${request.owner.user.id} AND incarnation = ${request.owner.incarnation}
 							AND ${liveGrant(request.now)}
@@ -359,7 +360,7 @@ export class Tokens extends Context.Service<
 				})
 				const publicKey = yield* Jwk.importPublic(publicJwk, 'EdDSA')
 				const signature = yield* Signature.Signature
-				const codes = yield* Ref.make(HashMap.empty<string, Code>())
+				const codes = yield* makeRecords<string, Code>(Duration.minutes(1))
 				const redeeming = yield* Semaphore.make(1)
 				const randomToken = randomTokenOf(yield* SecureRandom.SecureRandom)
 				const hash = hashOf(yield* Digest.Digest)
@@ -487,19 +488,19 @@ export class Tokens extends Context.Service<
 							Effect.gen(function* () {
 								const now = yield* DateTime.now
 								const code = yield* pipe(
-									HashMap.get(yield* Ref.get(codes), key),
-									Option.filter(entry => DateTime.isGreaterThan(entry.expiresAt, now)),
+									yield* codes.get(key),
+									Option.map(entry => entry.value),
 									Effect.fromOption,
 									Effect.mapError(() => expired)
 								)
-								if (code.state._tag === 'Used') {
-									yield* deleteFamily(code.state.family)
+								if (code._tag === 'Used') {
+									yield* deleteFamily(code.family)
 									return Exchange.cases.Replayed.make({
 										message:
 											'This authorization code was already used, so the tokens it gave are revoked; sign in again'
 									})
 								}
-								const fresh = code.state
+								const fresh = code
 								if (
 									fresh.request.clientId !== params.client_id ||
 									Option.exists(given(params.redirect_uri), sent => sent !== fresh.request.redirectUri) ||
@@ -531,12 +532,7 @@ export class Tokens extends Context.Service<
 							sql.withTransaction
 						)
 						if (result._tag === 'Granted') {
-							yield* Ref.update(codes, entries =>
-								HashMap.modify(entries, key, code => ({
-									expiresAt: code.expiresAt,
-									state: {_tag: 'Used' as const, family}
-								}))
-							)
+							yield* codes.consume(key, Option.some({_tag: 'Used', family}))
 						}
 						return result
 					},
@@ -590,7 +586,6 @@ export class Tokens extends Context.Service<
 							)
 							yield* insertSpent({family: grant.family, hash: grant.hash})
 							yield* rotateGrant({
-								// Recomputed, so a sign-in labelled by an older rule takes the current one on its next refresh.
 								address: origin.address,
 								device: deviceLabel(origin),
 								family: grant.family,
@@ -605,7 +600,12 @@ export class Tokens extends Context.Service<
 					)
 				})
 				const listApps = Effect.fnUntraced(function* (owner: CredentialOwner) {
-					return yield* listSignedIn({now: yield* DateTime.now, owner})
+					return signedInClientsOf(
+						Array.map(yield* listSignedIn({now: yield* DateTime.now, owner}), row => ({
+							...Struct.omit(row, ['clientId']),
+							icon: Option.flatMap(row.clientId, clientIconOf)
+						}))
+					)
 				}, asAuthError('Cannot read the sign-ins'))
 
 				return Tokens.of({
@@ -691,28 +691,13 @@ export class Tokens extends Context.Service<
 					forget: Effect.fn('Tokens.forget')(
 						function* (owner: CredentialOwner) {
 							yield* pipe(deleteOwned(owner), Reactivity.mutation(['tokens']), sql.withTransaction)
-							yield* Ref.update(
-								codes,
-								HashMap.filter(entry => entry.state._tag === 'Used' || !sameOwner(entry.state.owner, owner))
-							)
 						},
 						withReactivity,
 						asAuthError('Cannot sign this account out')
 					),
 					issue: Effect.fn('Tokens.issue')(function* (request: ClientRequest, owner: CredentialOwner) {
 						const code = yield* randomToken(32)
-						const key = yield* hash(code)
-						const now = yield* DateTime.now
-						yield* Ref.update(codes, current =>
-							pipe(
-								current,
-								HashMap.filter(entry => DateTime.isGreaterThan(entry.expiresAt, now)),
-								HashMap.set<string, Code>(key, {
-									expiresAt: DateTime.addDuration(now, Duration.minutes(1)),
-									state: {_tag: 'Fresh', owner, request}
-								})
-							)
-						)
+						yield* codes.create(yield* hash(code), {_tag: 'Fresh', owner, request})
 						return code
 					}, asAuthError('Cannot issue the authorization code')),
 					issuer,

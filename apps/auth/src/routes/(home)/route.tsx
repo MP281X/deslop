@@ -8,11 +8,11 @@ import {AsyncResult} from 'effect/reactivity'
 import {Suspense} from 'react'
 
 import {AppBarTab, AppBar, AppBarTabs} from '@deslop/components-web/app-bar'
-import {EmptyState, FailureRetry} from '@deslop/components-web/fallbacks'
+import {EmptyState, FailureRetry, Loaded} from '@deslop/components-web/fallbacks'
 import {Page} from '@deslop/components-web/page'
 import {StaleProblem} from '@deslop/components-web/problem'
 
-import {accountAtom, appsAtom, catalogAtom, peopleAtom, Search, signingOutAtom} from '#lib/auth.ts'
+import {accountAtom, appsAtom, pageAtom, passkeysAtom, peopleAtom, Search, signingOutAtom} from '#lib/auth.ts'
 import {AccountMenu} from '#routes/(home)/-account-menu.tsx'
 import {SignIn} from '#routes/(home)/-sign-in.tsx'
 import {Waiting} from '#routes/(home)/-waiting.tsx'
@@ -66,8 +66,8 @@ function PageProblem() {
 		<StaleProblem
 			label="Out of date"
 			readers={Boolean.match(useMatchRoute()({to: '/people'}) !== false, {
-				onFalse: () => [appsAtom, catalogAtom],
-				onTrue: () => [appsAtom, catalogAtom, peopleAtom]
+				onFalse: () => [appsAtom, passkeysAtom],
+				onTrue: () => [appsAtom, passkeysAtom, peopleAtom]
 			})}
 		/>
 	)
@@ -90,22 +90,18 @@ function TabsControl() {
 
 // A signed-in account switches between its sign-ins and people; the page waits for the account under the mounted bar.
 function ShellPage() {
-	const search = route.useSearch()
-	const requestId = search.request
-	const signingOut = Option.isSome(search['sign-out'])
-	const account = useAtomSuspense(accountAtom).value
 	return (
 		<Page>
-			{signingOut && <SigningOut />}
-			{Option.match(requestId, {onNone: () => null, onSome: id => <Waiting account={account} id={id} />})}
-			{Option.match(account, {
-				onNone: () => Option.isNone(requestId) && !signingOut && <SignIn />,
-				onSome: signed =>
-					Boolean.match(Option.isSome(requestId) && signed.role !== 'Waiting', {
-						onFalse: () => <Signed account={signed} />,
-						onTrue: () => null
+			<Loaded atom={pageAtom(route.useSearch())}>
+				{page =>
+					Match.valueTags(page, {
+						Request: request => <Waiting account={request.account} id={request.id} />,
+						SignIn: () => <SignIn />,
+						Signed: signed => <Signed account={signed.account} />,
+						SigningOut: () => <SigningOut />
 					})
-			})}
+				}
+			</Loaded>
 		</Page>
 	)
 }

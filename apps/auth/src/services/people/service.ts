@@ -10,7 +10,6 @@ import type {User} from '@deslop/runtime/shared/auth'
 import {AuthError, DEVELOPER, UserId, bearerOf, isAdmin, asAuthError} from '@deslop/runtime/shared/auth'
 
 import {RpcOwner} from '#rpcs/contracts.ts'
-import {GitHub} from '#services/github/service.ts'
 import {Passkeys} from '#services/passkeys/service.ts'
 import {listPeople, ownerOf, personOf, roleOf} from '#services/people/lib/utils.ts'
 import type {AdmitParams, GitHubUser, Person} from '#services/people/schema.ts'
@@ -67,7 +66,6 @@ export class People extends Context.Service<
 				const sql = yield* SqlClient.SqlClient
 				const tokens = yield* Tokens
 				const passkeys = yield* Passkeys
-				const github = yield* GitHub
 				const admins = yield* adminIds
 				const local = yield* localAuth
 				const randomToken = randomTokenOf(yield* SecureRandom.SecureRandom)
@@ -101,11 +99,6 @@ export class People extends Context.Service<
 					execute: request => sql`
 						UPDATE ${sql(Member.table)} SET ${sql.update(request, ['id'])} WHERE id = ${request.id} RETURNING *
 					`
-				})
-				// An admin's profile is added once; a sign-in that recorded the admin meanwhile is kept.
-				const addAdmin = SqlSchema.void({
-					Request: Member.insert,
-					execute: row => sql`INSERT INTO ${sql(Member.table)} ${sql.insert(row)} ON CONFLICT (id) DO NOTHING`
 				})
 				function member(id: UserId) {
 					return Effect.catchNoSuchElement(members.findById(id))
@@ -150,31 +143,6 @@ export class People extends Context.Service<
 					yield* admin(user)
 					return listPeople(yield* listMembers(), admins)
 				}, asAuthError('Cannot read people'))
-
-				// An admin who has not signed in since GITHUB_ADMINS named them still shows their GitHub profile.
-				yield* pipe(
-					Effect.forEach(
-						admins,
-						Effect.fnUntraced(function* (id) {
-							if (Option.isSome(yield* member(UserId.make(`github:${id}`)))) return
-							const profile = yield* github.profile(id)
-							yield* Reactivity.mutation(
-								addAdmin({
-									fullName: Option.filter(profile.name, String.isNonEmpty),
-									id: UserId.make(`github:${profile.id}`),
-									incarnation: yield* incarnationOf(profile),
-									name: profile.login,
-									since: yield* DateTime.now,
-									status: 'Allowed'
-								}),
-								['people']
-							)
-						}),
-						{concurrency: 1, discard: true}
-					),
-					Effect.ignore({log: 'Warn', message: 'The admins’ GitHub profiles could not be read'}),
-					Effect.forkScoped
-				)
 
 				const people = People.of({
 					// Read again when an account or a sign-in changes, so a sign-out elsewhere or an admission shows here.

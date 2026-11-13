@@ -47,7 +47,6 @@ import {
 } from '@deslop/runtime/shared/auth'
 
 import {HttpHandlers} from '#http/handlers.ts'
-import {Apps} from '#services/apps/service.ts'
 import {GitHub} from '#services/github/service.ts'
 import {AddPasskeyParams, CreationOptions, Passkey, PasskeySignIn, RequestOptions} from '#services/passkeys/schema.ts'
 import {Passkeys} from '#services/passkeys/service.ts'
@@ -324,7 +323,7 @@ const servers = Effect.fnUntraced(function* (saved?: string) {
 						Layer.mergeAll(SignIns.layer, Layer.provide(RateLimiter.layer, RateLimiter.layerStoreMemory))
 					),
 					Layer.provideMerge(People.layer),
-					Layer.provideMerge(Layer.mergeAll(Tokens.layer, Passkeys.layer, GitHub.layer, Apps.layer)),
+					Layer.provideMerge(Layer.mergeAll(Tokens.layer, Passkeys.layer, GitHub.layer)),
 					Layer.provide(storage),
 					Layer.provide(
 						Layer.mergeAll(
@@ -913,14 +912,7 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 					Array.findFirst(app => app.kind === 'Browser'),
 					Effect.fromOption
 				)
-				assert.deepStrictEqual(
-					(yield* pipe(
-						apps,
-						Array.findFirst(app => app.client === 'Scope'),
-						Effect.fromOption
-					)).parent,
-					Option.some(browser.family)
-				)
+				assert.isFalse(Array.some(apps, app => app.client === 'Scope'))
 				const unspent = yield* authorizeWeb(web.issuer, session)
 				if (ending === 'sign-out') {
 					assert.strictEqual(
@@ -2259,7 +2251,7 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 					Array.map(session => session.client),
 					Array.sort(String.Order)
 				),
-				['Browser', 'Browser', 'Opencode']
+				['Browser', 'Opencode']
 			)
 			assert.isTrue(
 				Array.every(listed.sessions, session => session.device === undefined || session.device !== session.address)
