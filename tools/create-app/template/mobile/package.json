@@ -38,6 +38,7 @@
 	"devDependencies": {
 		"@deslop/components-mobile": "workspace:*",
 		"@deslop/runtime": "workspace:*",
+		"@effect/atom-react": "latest",
 		"@expo/ui": "^58.0.28",
 		"effect": "latest",
 		"expo-auth-session": "^58.0.18",
