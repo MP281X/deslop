@@ -490,9 +490,7 @@ function SpansList(props: {
 function StaleMark(props: {range: Range; trace?: OperationTrace}) {
 	return Option.match(Option.fromUndefinedOr(props.trace), {
 		onNone: () => <StaleProblem label="Out of date" readers={[overviewAtom(props.range)]} />,
-		onSome: trace => (
-			<StaleProblem label="Out of date" readers={[overviewAtom(props.range), traceAtom(props.range, trace.id)]} />
-		)
+		onSome: trace => <StaleProblem label="Out of date" readers={[overviewAtom(props.range), traceAtom(trace.id)]} />
 	})
 }
 
@@ -505,7 +503,7 @@ function Spans(props: {
 	range: Range
 }) {
 	return (
-		<Loaded atom={traceAtom(props.range, props.id)}>
+		<Loaded atom={traceAtom(props.id)}>
 			{trace => {
 				const focus = focusOf(trace, Option.fromUndefinedOr(props.pickedSpan))
 				if (props.detailOnly === true) {

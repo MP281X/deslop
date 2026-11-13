@@ -3,7 +3,6 @@ import {
 	Boolean,
 	DateTime,
 	Duration,
-	Effect,
 	Formatter,
 	Number,
 	Option,
@@ -18,7 +17,7 @@ import {
 
 import {Atom, AtomRpc} from 'effect/reactivity'
 
-import {keepValueThroughOutages, liveAtom, reconnectOnDrop} from '@deslop/runtime/client/live-stream'
+import {liveAtom} from '@deslop/runtime/client/live-stream'
 import {RpcStream} from '@deslop/runtime/shared/rpc'
 import {layerPageProtocol} from '@deslop/runtime/web/client'
 
@@ -175,22 +174,11 @@ function openingApp(overview: Overview) {
 
 export const overviewAtom = Atom.family((range: Range) => Atom.keepAlive(liveAtom(RpcClient, 'telemetry.watch', range)))
 
-const traceAtoms = Atom.family((range: Range) =>
-	Atom.family((_id: TraceId) =>
-		RpcClient.runtime.atom(get => {
-			get(overviewAtom(range))
-			return keepValueThroughOutages(
-				get,
-				Stream.fromEffect(Effect.flatMap(RpcClient, client => client('telemetry.trace', {id: _id}))),
-				reconnectOnDrop
-			)
-		})
-	)
-)
+const traceAtoms = Atom.family((id: TraceId) => liveAtom(RpcClient, 'telemetry.trace', {id}))
 
 // An open trace follows arrivals, including late children and logs that do not change its duration.
-export function traceAtom(range: Range, id: TraceId) {
-	return traceAtoms(range)(id)
+export function traceAtom(id: TraceId) {
+	return traceAtoms(id)
 }
 
 // The page's clock, so ages keep counting on a quiet page.

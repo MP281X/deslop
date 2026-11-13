@@ -14,6 +14,7 @@ import {
 	Record,
 	Ref,
 	Schema,
+	Schedule,
 	Stream,
 	String,
 	Struct,
@@ -62,7 +63,6 @@ import type {
 	Rejection,
 	SearchLogsParams,
 	TraceRow,
-	TraceTree,
 	TracesAnswer,
 	TracesRequest,
 	AppName,
@@ -91,7 +91,8 @@ import {
 	Trace,
 	TraceDetail,
 	TraceId,
-	TraceQuery
+	TraceQuery,
+	TraceTree
 } from '#services/telemetry/schema.ts'
 
 const MISSING =
@@ -508,14 +509,15 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 		})
 		// Every trace the operations list can show: not a wait, and rooted or a minute old, since its root may never come.
 		const listSettled = SqlSchema.findAll({
-			Request: Span.fields.start,
+			Request: Schema.Struct({cutoff: Span.fields.start, settledBefore: Span.fields.start}),
 			Result: SettledTrace,
-			execute: now => sql`
+			execute: query => sql`
 				SELECT
 					traces.id, traces.start, traces.duration, root.service, root.runtime, root.name,
 					traces.broken IS NOT NULL AS failed
 				${traceJoins}
-				WHERE NOT traces.waits AND (traces.rooted OR traces.start < ${now})
+				WHERE NOT traces.waits AND traces.start >= ${query.cutoff}
+				AND (traces.rooted OR traces.start < ${query.settledBefore})
 			`
 		})
 		// The label and failure of the traces the overview keeps, read for them alone.
@@ -687,7 +689,13 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 		const readOverview = Effect.fnUntraced(function* (range: Range) {
 			const now = yield* DateTime.now
 			const counted = overviewOf(
-				Array.map(yield* listSettled(DateTime.subtractDuration(now, Duration.minutes(1))), tracedOf),
+				Array.map(
+					yield* listSettled({
+						cutoff: rangeStart(range, now),
+						settledBefore: DateTime.subtractDuration(now, Duration.minutes(1))
+					}),
+					tracedOf
+				),
 				now,
 				range
 			)
@@ -713,10 +721,9 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 
 		yield* prune
 		yield* pipe(
-			Effect.sleep(Duration.hours(1)),
-			Effect.andThen(prune),
+			prune,
 			Effect.ignore({log: 'Error', message: 'Expired telemetry could not be deleted'}),
-			Effect.forever,
+			Effect.schedule(Schedule.spaced(Duration.hours(1))),
 			Effect.forkScoped
 		)
 
@@ -908,6 +915,13 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 						Stream.concat(Stream.succeed(overview), Stream.drain(Stream.fromEffect(Effect.sleep(Duration.seconds(1)))))
 					),
 					Stream.withSpan('Telemetry.watch', {attributes: {range, 'rpc.stream': true}})
+				),
+			watchTrace: (id: TraceId) =>
+				pipe(
+					sql.reactive(['telemetry'], tree(id)),
+					Stream.changesWith(Schema.toEquivalence(TraceTree)),
+					Stream.mapError(cause => TelemetryError.make({cause, message: UNAVAILABLE})),
+					Stream.withSpan('Telemetry.watchTrace', {attributes: {id, 'rpc.stream': true}})
 				)
 		}
 	})

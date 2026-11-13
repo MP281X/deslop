@@ -4,6 +4,7 @@ import {NodeSocket} from '@effect/platform-node'
 
 import {
 	Array,
+	Boolean,
 	DateTime,
 	Duration,
 	Config,
@@ -121,22 +122,27 @@ export class Fleet extends Context.Service<
 				onNone: () => ({}),
 				onSome: key => ({authorization: `Bearer ${Redacted.value(key)}`})
 			})
-			// The fleet layer owns one reconnecting transport per peer. All RPC kinds
-			// multiplex over it; a request's timeout never closes another request's link.
-			const clients = yield* Effect.forEach(workers, worker =>
-				Effect.gen(function* () {
-					const url = new URL(RPC_PATH, worker.url)
-					url.protocol = new URL(worker.url).protocol === 'http:' ? 'ws:' : 'wss:'
-					const protocol = yield* Layer.build(
-						pipe(
-							RpcClient.layerProtocolSocket({pingTimeout: Duration.seconds(15)}),
-							Layer.provide(NodeSocket.layerWebSocket(url.href)),
-							Layer.provide(RpcSerialization.layerSchemaBinary()),
-							Layer.provideMerge(layerRpcStreamClient)
+			// Peer requests share the fleet's reconnecting transport, never a request's lifetime.
+			const clients = yield* Effect.forEach(
+				workers,
+				worker =>
+					Effect.gen(function* () {
+						const url = new URL(RPC_PATH, worker.url)
+						url.protocol = Boolean.match(new URL(worker.url).protocol === 'http:', {
+							onFalse: () => 'wss:',
+							onTrue: () => 'ws:'
+						})
+						const protocol = yield* Layer.build(
+							pipe(
+								RpcClient.layerProtocolSocket({pingTimeout: Duration.seconds(15)}),
+								Layer.provide(NodeSocket.layerWebSocket(url.href)),
+								Layer.provide(RpcSerialization.layerSchemaBinary()),
+								Layer.provideMerge(layerRpcStreamClient)
+							)
 						)
-					)
-					return [worker.name, yield* Effect.provideContext(makeRemoteClient, protocol)] as const
-				})
+						return [worker.name, yield* Effect.provideContext(makeRemoteClient, protocol)] as const
+					}),
+				{concurrency: 'unbounded'}
 			)
 			const peers = Record.fromEntries(clients)
 			const previous = yield* Ref.make<Record<WorkerId, Snapshot>>({})

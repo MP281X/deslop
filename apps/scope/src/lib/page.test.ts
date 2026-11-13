@@ -99,15 +99,15 @@ function render(
 					AtomRegistry.make({
 						initialValues: [
 							[overviewAtom(RANGE), currentOverview, {skipInitialRun: true}],
-							[traceAtom(RANGE, traceId), result, {skipInitialRun: true}]
+							[traceAtom(traceId), result, {skipInitialRun: true}]
 						]
 					})
 				),
 				value => Effect.sync(() => value.dispose())
 			)
 			yield* desktopScreen
-			registry.get(traceAtom(RANGE, traceId))
-			registry.ensureNode(traceAtom(RANGE, traceId)).setInitialValue(result)
+			registry.get(traceAtom(traceId))
+			registry.ensureNode(traceAtom(traceId)).setInitialValue(result)
 			if (overview !== undefined) registry.ensureNode(overviewAtom(RANGE)).setInitialValue(currentOverview)
 			const router = createRouter({
 				history: createMemoryHistory({initialEntries: [path]}),

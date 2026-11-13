@@ -303,10 +303,9 @@ export class Metrics extends Context.Service<Metrics>()('@deslop/deploy/services
 		yield* pipe(refreshStorage, Effect.schedule(Schedule.spaced(Duration.seconds(30))), Effect.forkScoped)
 		// The shortest series keeps a minute, so expired points go every minute.
 		yield* pipe(
-			Effect.sleep(Duration.minutes(1)),
-			Effect.andThen(prune),
+			prune,
 			Effect.ignore({log: 'Error', message: 'Expired resource history could not be deleted'}),
-			Effect.forever,
+			Effect.schedule(Schedule.spaced(Duration.minutes(1))),
 			Effect.forkScoped
 		)
 

@@ -16,6 +16,7 @@ export class RpcContracts extends RpcGroup.make(
 	Rpc.make('telemetry.trace', {
 		error: Schema.Union([AuthError, TelemetryError]),
 		payload: Schema.Struct({id: TraceId}),
+		stream: true,
 		success: TraceTree
 	})
 ).middleware(RpcAuth) {}

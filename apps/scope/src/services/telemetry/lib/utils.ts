@@ -290,7 +290,7 @@ export function spansOf(payload: TracesRequest) {
 										})
 									)
 								),
-								span: Span.insert.make({
+								span: {
 									...sender,
 									attributes,
 									duration: Option.map(span.endTimeUnixNano, end =>
@@ -325,7 +325,7 @@ export function spansOf(payload: TracesRequest) {
 											})
 									}),
 									traceId
-								})
+								} satisfies typeof Span.insert.Type
 							}
 						})
 					)

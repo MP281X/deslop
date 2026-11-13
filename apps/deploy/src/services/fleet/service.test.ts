@@ -116,11 +116,11 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeHttpClient.layerFetch, NodeCrypt
 						Layer.provideMerge(
 							NodeHttpServer.layer(
 								() => {
-									const server = createServer()
-									server.on('upgrade', () => {
+									const http = createServer()
+									http.on('upgrade', () => {
 										upgrades.count += 1
 									})
-									return server
+									return http
 								},
 								{host: '127.0.0.1', port: 0}
 							)
