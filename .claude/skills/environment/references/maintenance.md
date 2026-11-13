@@ -56,6 +56,7 @@ command -v tailscale >/dev/null || {
 }
 openvpn3 configs-list 2>/dev/null | grep -q datapizza && R=$(getent ahostsv4 git.datapizza.tech | awk 'NR == 1 {print $1}')/32
 sudo tailscale up --accept-routes --advertise-routes=$R
+sudo tailscale set --operator=mp281x # Deploy publishes tailnet exposures as this user.
 ```
 
 Show the user the `tailscale up` URL; the user disables key expiry and approves an advertised route at https://login.tailscale.com/admin/machines.
@@ -284,6 +285,7 @@ Update, Clean, Check, in that order. End by reporting what waits on the user's r
 ### Check
 
 - **Units.** `systemctl --failed` and `systemctl --user --failed` empty.
+- **Tailscale.** Debian workers: `tailscale debug prefs` shows `"OperatorUser": "mp281x"`.
 - **Agents.** Agent configuration per its **Check**; every skill link resolves: this prints nothing. `~/deslop` clean on `main`, current with `origin/main`.
 
   ```bash
