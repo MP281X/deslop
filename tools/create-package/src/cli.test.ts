@@ -5,7 +5,7 @@ import {Array, Effect, FileSystem, Option, Path, Record, Schema, Stream, String,
 
 import {ChildProcess} from 'effect/process'
 
-import {testWorkspace} from './test-workspace.ts'
+import {testWorkspace} from './test/workspace.ts'
 
 type Package = typeof Package.Type
 const Package = Schema.fromJsonString(
