@@ -1,6 +1,6 @@
 import {useAtom} from '@effect/atom-react'
 
-import {Function, Option, pipe} from 'effect'
+import {Function, Option, Schema, pipe} from 'effect'
 
 import {KeyIcon} from '@phosphor-icons/react'
 import {getRouteApi} from '@tanstack/react-router'
@@ -13,6 +13,9 @@ import {FieldError} from '@deslop/components-web/ui/field'
 import {codeSignInAtom, passkeySignInAtom, signInAtom} from '#lib/auth.ts'
 
 const route = getRouteApi('/(home)')
+
+export type SignInVerb = typeof SignInVerb.Type
+const SignInVerb = Schema.Literals(['Approve here', 'Continue'])
 
 export function Failures() {
 	const failed = route.useSearch({select: search => Option.isSome(search.error)})
@@ -35,7 +38,7 @@ export function Failures() {
 }
 
 // The two ways to sign this browser in, worded for the page: continuing to Auth, or approving a waiting sign-in here.
-export function Providers(props: {verb: 'Approve here' | 'Continue'}) {
+export function Providers(props: {verb: SignInVerb}) {
 	const next = route.useSearch({select: search => search.next})
 	const [signIn, startSignIn] = useAtom(signInAtom)
 	const [passkey, startPasskey] = useAtom(passkeySignInAtom)

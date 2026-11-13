@@ -1,12 +1,15 @@
-import {Boolean} from 'effect'
+import {Boolean, Schema} from 'effect'
 
 import {Circle} from '@expo/ui/swift-ui'
 import {accessibilityHidden, foregroundStyle, frame} from '@expo/ui/swift-ui/modifiers'
 
 import {colors} from '#components/theme.ts'
 
+export type ProblemStatus = typeof ProblemStatus.Type
+export const ProblemStatus = Schema.Literals(['error', 'warning'])
+
 // The status dot marks a problem, never healthy state: error in red, warning in amber.
-export function StatusDot(props: {status: 'error' | 'warning'}) {
+export function StatusDot(props: {status: ProblemStatus}) {
 	return (
 		<Circle
 			modifiers={[

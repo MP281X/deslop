@@ -1,10 +1,13 @@
-import {Schema, pipe} from 'effect'
+import {Schema, Struct, pipe} from 'effect'
 
 import {Model} from 'effect/schema'
 
 import {DateTimeUtcFromFiniteMillis} from '@deslop/runtime/shared/time'
 
-import {DurationFromMinutes, ProviderFlightId} from '#services/bookings/schema.ts'
+import {DurationFromMinutes, Place, ProviderFlightId} from '#services/bookings/schema.ts'
+
+export type StopPlace = typeof StopPlace.Type
+export const StopPlace = Schema.Struct(Struct.pick(Place.fields, ['code', 'name']))
 
 export type StationId = typeof StationId.Type
 export const StationId = pipe(Schema.String, Schema.brand('StationId'))

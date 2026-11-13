@@ -12,6 +12,9 @@ import {cn} from '#lib/classes.ts'
 
 class ClipboardError extends Schema.TaggedError<ClipboardError>()('ClipboardError', {cause: Schema.Defect()}) {}
 
+export type CopyButtonSize = typeof CopyButtonSize.Type
+const CopyButtonSize = Schema.Literals(['default', 'icon-sm'])
+
 // Each press first clears an earlier check, is true once the clipboard took the value, and false again after the check's moment.
 const copyAtom = Atom.family((value: string) =>
 	Atom.fn(() =>
@@ -39,7 +42,7 @@ export function CopyButton(props: {
 	className?: string
 	failure?: string
 	label: string
-	size?: 'default' | 'icon-sm'
+	size?: CopyButtonSize
 	value: string
 }) {
 	const [result, copy] = useAtom(copyAtom(props.value))

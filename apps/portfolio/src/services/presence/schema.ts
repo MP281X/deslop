@@ -1,4 +1,4 @@
-import {Schema, pipe} from 'effect'
+import {Schema, Struct, pipe} from 'effect'
 
 export type VisitorId = typeof VisitorId.Type
 export const VisitorId = pipe(Schema.NonEmptyString.check(Schema.isMaxLength(32)), Schema.brand('PortfolioVisitorId'))
@@ -23,3 +23,8 @@ export const Visitors = Schema.Array(Visitor)
 // The room's cursors and the wandering server marks; only the visitors are tabs.
 export type Scene = typeof Scene.Type
 export const Scene = Schema.Struct({bots: Visitors, visitors: Visitors})
+
+export type JoinVisitor = typeof JoinVisitor.Type
+export const JoinVisitor = Schema.Struct(Struct.pick(Visitor.fields, ['color', 'id', 'name']))
+export type MoveVisitor = typeof MoveVisitor.Type
+export const MoveVisitor = Schema.Struct(Struct.pick(Visitor.fields, ['color', 'id', 'x', 'y']))

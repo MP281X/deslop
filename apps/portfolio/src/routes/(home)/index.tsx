@@ -44,13 +44,16 @@ import {liveStream, reconnectOnDrop} from '@deslop/runtime/client/live-stream'
 import {RpcClient} from '#lib/presence.ts'
 import {contacts, education, experience, languages, profile, projects, skills, summary} from '#lib/profile.ts'
 import {hasMeaningfulMove} from '#services/presence/lib/utils.ts'
-import {Color, VisitorId} from '#services/presence/schema.ts'
-import type {Scene, Visitor, Visitors} from '#services/presence/schema.ts'
+import {Color, VisitorId, Visitors} from '#services/presence/schema.ts'
+import type {Scene, Visitor} from '#services/presence/schema.ts'
 
 const SECTION_KEYS = ['1', '2', '3', '4', '5', '6'] as const
 const SECTION_NAMES = ['profile', 'skills', 'experience', 'projects', 'education', 'contact'] as const
 
 type TrailedScene = Scene & {trails: Visitors}
+
+type PresenceState = typeof PresenceState.Type
+const PresenceState = Schema.TaggedUnion({Connecting: {}, Offline: {}, Visitors: {visitors: Visitors}})
 
 function randomIndex(length: number) {
 	return Math.floor(Random.Random.defaultValue().nextDoubleUnsafe() * length)
@@ -545,29 +548,25 @@ function VisitorCount(props: {visitors: Visitors}) {
 const LEGAL_LINE = `© 2026 ${profile.firstName} ${profile.lastName} · VAT ${profile.vat}`
 const LEGAL_LINE_NARROW = `© 2026 · VAT ${profile.vat}`
 
-function PresenceHud(input: {
-	presence: Visitors | 'connecting' | 'offline'
-	onToggleShortcuts: () => void
-	shortcutsOpen: boolean
-}) {
+function PresenceHud(input: {presence: PresenceState; onToggleShortcuts: () => void; shortcutsOpen: boolean}) {
 	return (
 		<div className="border-border bg-background/95 pr-safe-right pb-safe-bottom pl-safe-left pointer-events-none fixed inset-x-0 bottom-0 z-50 border-t font-mono text-xs backdrop-blur print:hidden">
 			<div className="relative flex min-h-10 items-center justify-between px-3 sm:px-4">
 				<span className="flex min-w-0 items-center gap-2">
 					{pipe(
 						Match.value(input.presence),
-						Match.when(Predicate.isString, state => (
+						Match.when({_tag: 'Visitors'}, state => <VisitorCount visitors={state.visitors} />),
+						Match.orElse(state => (
 							<>
 								<span className="bg-muted-foreground/50 size-1.5 rounded-full" />
 								<span className="text-muted-foreground truncate">
-									{Boolean.match(state === 'offline', {
+									{Boolean.match(state._tag === 'Offline', {
 										onFalse: () => 'presence connecting',
 										onTrue: () => 'presence unavailable'
 									})}
 								</span>
 							</>
-						)),
-						Match.orElse(visitors => <VisitorCount visitors={visitors} />)
+						))
 					)}
 				</span>
 				<span className="text-muted-foreground absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 whitespace-nowrap max-sm:static max-sm:translate-x-0 max-sm:translate-y-0 pointer-coarse:static pointer-coarse:translate-x-0 pointer-coarse:translate-y-0">
@@ -627,7 +626,7 @@ function RealtimeLayer(input: {
 			</div>
 
 			<PresenceHud
-				presence={portfolio.value.visitors}
+				presence={{_tag: 'Visitors', visitors: portfolio.value.visitors}}
 				onToggleShortcuts={input.onToggleShortcuts}
 				shortcutsOpen={input.shortcutsOpen}
 			/>
@@ -720,14 +719,18 @@ function PortfolioRoute() {
 			<CatchBoundary
 				getResetKey={() => 'presence'}
 				errorComponent={() => (
-					<PresenceHud presence="offline" onToggleShortcuts={toggleShortcuts} shortcutsOpen={showShortcuts} />
+					<PresenceHud presence={{_tag: 'Offline'}} onToggleShortcuts={toggleShortcuts} shortcutsOpen={showShortcuts} />
 				)}
 			>
 				<Suspense
 					fallback={
 						<>
 							<OwnCursor viewport={viewport} color={Option.none()} />
-							<PresenceHud presence="connecting" onToggleShortcuts={toggleShortcuts} shortcutsOpen={showShortcuts} />
+							<PresenceHud
+								presence={{_tag: 'Connecting'}}
+								onToggleShortcuts={toggleShortcuts}
+								shortcutsOpen={showShortcuts}
+							/>
 						</>
 					}
 				>

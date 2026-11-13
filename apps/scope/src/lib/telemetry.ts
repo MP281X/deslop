@@ -57,13 +57,15 @@ const Selection = Schema.Struct({
 	spanId: Schema.OptionFromOptionalKey(SpanId),
 	traceId: Schema.OptionFromOptionalKey(TraceId)
 })
-export type NavigationEvent =
-	| {readonly _tag: 'Back'}
-	| {readonly _tag: 'Operation'; readonly operation: OperationKey}
-	| {readonly _tag: 'Range'; readonly keepTrace: boolean; readonly range: Range}
-	| {readonly _tag: 'Source'; readonly app: AppName}
-	| {readonly _tag: 'Span'; readonly selection: {operation: OperationKey; spanId: SpanId; traceId: TraceId}}
-	| {readonly _tag: 'Trace'; readonly selection: {operation: OperationKey; traceId: TraceId}}
+export type NavigationEvent = typeof NavigationEvent.Type
+const NavigationEvent = Schema.TaggedUnion({
+	Back: {},
+	Operation: {operation: OperationKey},
+	Range: {keepTrace: Schema.Boolean, range: Range},
+	Source: {app: AppName},
+	Span: {selection: Schema.Struct({operation: OperationKey, spanId: SpanId, traceId: TraceId})},
+	Trace: {selection: Schema.Struct({operation: OperationKey, traceId: TraceId})}
+})
 
 export type Search = typeof Search.Type
 export const Search = Schema.Struct({

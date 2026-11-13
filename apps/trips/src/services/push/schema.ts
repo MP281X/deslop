@@ -59,3 +59,6 @@ export class SentAlert extends Model.Class<SentAlert>('SentAlert')({
 }) {
 	static readonly table = 'sent_alerts'
 }
+
+export type ShowAction = typeof ShowAction.Type
+export const ShowAction = Schema.TaggedUnion({launch: {target: Device}, refresh: {target: Activity}})

@@ -1,13 +1,17 @@
-import {Array, Option, pipe} from 'effect'
+import {Array, Option, Schema, pipe} from 'effect'
 
 import {defineRule} from 'vite-plus/lint/plugins'
 import type {Context, ESTree} from 'vite-plus/lint/plugins'
 
 import {importedMember, memberName} from '#lib/ast.ts'
+import type {LogicalOperator} from '#lib/ast.ts'
 
 type Guard = {context: Context; subject: string}
 
-function checks(input: Guard & {name: 'isNone' | 'isSome'; operator: '&&' | '||'; test: ESTree.Node}): boolean {
+type OptionGuard = typeof OptionGuard.Type
+const OptionGuard = Schema.Literals(['isNone', 'isSome'])
+
+function checks(input: Guard & {name: OptionGuard; operator: LogicalOperator; test: ESTree.Node}): boolean {
 	if (input.test.type === 'LogicalExpression' && input.test.operator === input.operator) {
 		return checks({...input, test: input.test.left}) || checks({...input, test: input.test.right})
 	}

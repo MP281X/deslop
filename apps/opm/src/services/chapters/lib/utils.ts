@@ -18,7 +18,7 @@ import {
 
 import {Base64Url} from 'effect/encoding'
 
-import type {CubariSeries, DeadLink, Post, Series} from '#services/chapters/schema.ts'
+import type {ChapterIdentity, CubariSeries, DeadLink, Post, Series} from '#services/chapters/schema.ts'
 import {Chapter, ChapterKey, ChapterNumber, ChapterNotification} from '#services/chapters/schema.ts'
 
 // "Chapter 242 [English]", "[Revised] Chapter 211 [English]" and r/OPMFolk's "Chapter 242/287 [Translations]"; a post of several chapters names each in its own post too.
@@ -38,7 +38,7 @@ export const byNumber = Order.mapInput(Order.Number, (chapter: Pick<Chapter, 'nu
 
 export const INDEXES = {manga: 'OPM', webcomic: 'JYHJU'}
 
-export function keyOf(chapter: Pick<Chapter, 'number' | 'series'>) {
+export function keyOf(chapter: ChapterIdentity) {
 	return ChapterKey.make(`${chapter.series}:${chapter.number}`)
 }
 

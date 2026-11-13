@@ -21,10 +21,13 @@ import type {SignedAccount} from '#services/people/schema.ts'
 
 const route = getRouteApi('/(home)')
 
+type TabRoute = typeof TabRoute.Type
+const TabRoute = Schema.Literals(['/', '/people'])
+
 // Signed-in accounts see their sign-ins; admins also see people.
 function Tabs(props: {admin: boolean}) {
 	const matchRoute = useMatchRoute()
-	const tabs: {label: string; to: '/' | '/people'}[] = [
+	const tabs: {label: string; to: TabRoute}[] = [
 		{label: 'Sign-ins', to: '/'},
 		...Boolean.match(props.admin, {onFalse: () => [], onTrue: () => [{label: 'People', to: '/people' as const}]})
 	]

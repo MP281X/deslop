@@ -21,6 +21,8 @@ import {
 import {AppId, DeployError, ExposureName, ItemId, JobName, UnitId} from '#services/inventory/schema.ts'
 import type {
 	InventoryItem,
+	SocketAddress,
+	SocketBinding,
 	App,
 	InventoryQuery,
 	HttpsExposure,
@@ -165,7 +167,7 @@ export function workloadName(item: InventoryItem) {
 	)
 }
 
-function sameSocket(listener: InventoryItem, binding: {address: string; port: number; protocol: 'tcp' | 'udp'}) {
+function sameSocket(listener: InventoryItem, binding: SocketBinding) {
 	if (Option.contains(listener.address, 'container') || binding.address === 'container') return false
 	if (!Option.contains(listener.port, binding.port) || !Option.contains(listener.protocol, binding.protocol)) {
 		return false
@@ -178,7 +180,7 @@ function sameSocket(listener: InventoryItem, binding: {address: string; port: nu
 	)
 }
 
-function socket(worker: WorkerId, binding: Pick<InventoryItem, 'address' | 'port' | 'protocol'>) {
+function socket(worker: WorkerId, binding: SocketAddress) {
 	const loopback = Option.exists(binding.address, address =>
 		Option.isSome(String.match(/^(?:127\.0\.0\.1|0\.0\.0\.0):/u)(address))
 	)

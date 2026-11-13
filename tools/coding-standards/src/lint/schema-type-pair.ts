@@ -84,9 +84,16 @@ function reportSchemaVariable(input: {
 	statement: ESTree.Statement
 	variable: ESTree.VariableDeclarator
 }) {
-	if (input.variable.id.type !== 'Identifier' || !matches(/^[A-Z]/u)(input.variable.id.name)) return
+	if (input.variable.id.type !== 'Identifier') return
 	if (input.variable.init === null || !isSchemaDefinition({context: input.context, node: input.variable.init})) return
 	const name = input.variable.id.name
+	if (!matches(/^[A-Z]/u)(name)) {
+		input.context.report({
+			message: 'Give the schema and its immediately preceding type one PascalCase name.',
+			node: input.variable
+		})
+		return
+	}
 
 	const typeStatement = pipe(
 		input.program.body,
@@ -192,13 +199,15 @@ export const schemaTypePair = defineRule({
 					{
 						'sample.ts': `import {Schema} from 'effect'
 export type Note = typeof Note.Type
-export const Note = Schema.Struct({title: Schema.String})`
+export const Note = Schema.Struct({title: Schema.String})
+export function titleOf(note: Note) { return note.title }`
 					}
 				],
 				fixes: [
 					{
 						'sample.ts': `import {Schema} from 'effect'
-export const Note = Schema.Struct({title: Schema.String})`
+export const Note = Schema.Struct({title: Schema.String})
+export function titleOf(note: typeof Note.Type) { return note.title }`
 					}
 				]
 			}

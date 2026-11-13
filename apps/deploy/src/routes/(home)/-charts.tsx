@@ -1,5 +1,5 @@
 import type {Record} from 'effect'
-import {Array, Boolean, DateTime, Duration, Function, Match, Number, Option, Order, String, pipe} from 'effect'
+import {Array, Boolean, DateTime, Duration, Function, Match, Number, Option, Order, Schema, String, pipe} from 'effect'
 
 import {ChartLineIcon} from '@phosphor-icons/react'
 import {useState} from 'react'
@@ -13,18 +13,22 @@ import {bytesOf, clockOf, dayOf, percentOf} from '@deslop/runtime/shared/format'
 
 import {chartTicks} from '#routes/(home)/-chart.ts'
 import {bandFill, bands, focusedBand, runs} from '#routes/(home)/-usage.ts'
-import type {Band} from '#routes/(home)/-usage.ts'
+import type {Band, BandFillKind} from '#routes/(home)/-usage.ts'
 import type {AppId} from '#services/inventory/schema.ts'
 import {bandName, chartWindow} from '#services/metrics/lib/utils.ts'
+import {BandId} from '#services/metrics/schema.ts'
 import type {HistoryQuery, MachineHistory, Sample} from '#services/metrics/schema.ts'
 
 const HEIGHT = 64
 const CHART_LABELS = ['Memory', 'CPU', 'Disk'] as const
 
+type ChartLayerId = typeof ChartLayerId.Type
+const ChartLayerId = Schema.Union([BandId, Schema.Literal('disk')])
+
 // One stacked band: its share at each sample, and the number its tooltip names, in bytes or per cent.
 type ChartLayer = {
-	kind: Band['kind'] | 'disk'
-	id: Band['id'] | 'disk'
+	kind: BandFillKind
+	id: ChartLayerId
 	opacity: number
 	readings: readonly number[]
 	values: readonly number[]

@@ -58,6 +58,12 @@ export const ClientRequest = Schema.Struct({
 	state: Schema.OptionFromOptionalKey(Schema.NonEmptyString)
 })
 
+export type Code = typeof Code.Type
+export const Code = Schema.TaggedUnion({
+	Fresh: {owner: CredentialOwner, request: ClientRequest},
+	Used: {family: SignInFamily}
+})
+
 export type DeviceRequest = typeof DeviceRequest.Type
 export const DeviceRequest = Schema.Struct({clientId: ClientId.check(Schema.isNonEmpty()), clientName: Schema.String})
 

@@ -98,9 +98,14 @@ export type Routes<A, E> = Layer.Layer<
 	A,
 	E,
 	| Provided
-	| HttpRouter.Request<'Error' | 'GlobalError', unknown>
-	| HttpRouter.Request<'Requires' | 'GlobalRequires', Provided | HttpRouter.GlobalProvided>
+	| HttpRouter.Request<RequestErrorKind, unknown>
+	| HttpRouter.Request<RequestRequiresKind, Provided | HttpRouter.GlobalProvided>
 >
+
+export type RequestErrorKind = typeof RequestErrorKind.Type
+const RequestErrorKind = Schema.Literals(['Error', 'GlobalError'])
+export type RequestRequiresKind = typeof RequestRequiresKind.Type
+const RequestRequiresKind = Schema.Literals(['Requires', 'GlobalRequires'])
 
 export type App<A, E> = {
 	readonly auth?: Layer.Layer<

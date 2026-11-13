@@ -1,4 +1,4 @@
-import {Array, DateTime, Effect, Function, Option, Schema, SchemaGetter, String, pipe} from 'effect'
+import {Array, DateTime, Effect, Function, Option, Schema, SchemaGetter, String, Struct, pipe} from 'effect'
 
 import {SecureOrigin} from '@deslop/runtime/shared/schema'
 import {DateTimeUtcFromFiniteMillis} from '@deslop/runtime/shared/time'
@@ -175,6 +175,15 @@ const PortItem = InventoryFields.mapFields(fields => ({
 
 export type InventoryItem = typeof InventoryItem.Type
 export const InventoryItem = Schema.Union([...NonPortItem.members, PortItem])
+
+export type SocketBinding = typeof SocketBinding.Type
+export const SocketBinding = Schema.Struct({
+	address: Schema.String,
+	port: Schema.Finite,
+	protocol: Schema.Literals(['tcp', 'udp'])
+})
+export type SocketAddress = typeof SocketAddress.Type
+export const SocketAddress = Schema.Struct(Struct.pick(InventoryFields.fields, ['address', 'port', 'protocol']))
 
 export type Snapshot = typeof Snapshot.Type
 export const Snapshot = Schema.Struct({

@@ -16,7 +16,7 @@ import {
 // Not boolean: without its annotation, `return part.type === 'text'` is inferred as a type predicate that narrows callers.
 const KEYWORD_TYPES = ['TSBigIntKeyword', 'TSNumberKeyword', 'TSStringKeyword']
 
-type FunctionNode = ESTree.ArrowFunctionExpression | ESTree.Function
+export type FunctionNode = ESTree.ArrowFunctionExpression | ESTree.Function
 
 function elementType(node: ESTree.TSType) {
 	if (node.type === 'TSArrayType') return Option.some(node.elementType)
@@ -105,20 +105,23 @@ function recursive(input: {context: Context; node: FunctionNode}) {
 	)
 }
 
+export function redundantReturnAnnotation(context: Context, node: FunctionNode) {
+	return (
+		Predicate.isNotNullish(node.returnType) &&
+		node.body !== null &&
+		node.returnType.typeAnnotation.type !== 'TSTypePredicate' &&
+		!(
+			node.parent.type === 'CallExpression' &&
+			importedMember({context, importedName: 'Schema', node: node.parent.callee, propertyName: 'suspend'})
+		) &&
+		!recursive({context, node})
+	)
+}
+
 export const noRedundantAnnotation = defineRule({
 	create: context => {
 		function check(node: FunctionNode) {
-			if (
-				Predicate.isNullish(node.returnType) ||
-				node.body === null ||
-				node.returnType.typeAnnotation.type === 'TSTypePredicate' ||
-				// A Schema.suspend thunk annotates the type of a recursive schema.
-				(node.parent.type === 'CallExpression' &&
-					importedMember({context, importedName: 'Schema', node: node.parent.callee, propertyName: 'suspend'})) ||
-				recursive({context, node})
-			) {
-				return
-			}
+			if (!redundantReturnAnnotation(context, node) || Predicate.isNullish(node.returnType)) return
 			const returnType = node.returnType
 			context.report({
 				// Inference widens a returned literal back to these keyword types; any other annotation can be the contextual type that returned objects and callbacks need.

@@ -1,13 +1,13 @@
 import {useAtom, useAtomValue} from '@effect/atom-react'
 
-import {Array, Boolean, Effect, Equal, Option, Predicate, String, pipe} from 'effect'
+import {Array, Boolean, Effect, Equal, Option, Predicate, Schema, String, Struct, pipe} from 'effect'
 
 import {CaretLeftIcon} from '@phosphor-icons/react'
 import {AsyncResult, Atom} from 'effect/reactivity'
 import {useState} from 'react'
 import type {KeyboardEvent, ReactElement, ReactNode} from 'react'
 
-import type {Account} from '@deslop/runtime/shared/schema'
+import {Account} from '@deslop/runtime/shared/schema'
 import {accountAtom} from '@deslop/runtime/web/client'
 
 import {Avatar, AvatarFallback, AvatarImage} from '#components/ui/avatar.tsx'
@@ -18,8 +18,11 @@ import {cn} from '#lib/classes.ts'
 // The menu's floating-ui bundle is the page's heaviest import, so it arrives on intent rather than with the bar.
 const menuModuleAtom = Atom.keepAlive(Atom.fn(() => Effect.promise(() => import('#components/ui/dropdown-menu.tsx'))))
 
+export type AvatarAccount = typeof AvatarAccount.Type
+const AvatarAccount = Schema.Struct(Struct.pick(Account.fields, ['id', 'name']))
+
 // A GitHub account's picture, or its first letter until the picture loads: 24px in the bar, 16px in a row.
-export function AccountAvatar(props: {account: Pick<Account, 'id' | 'name'>; small?: boolean}) {
+export function AccountAvatar(props: {account: AvatarAccount; small?: boolean}) {
 	return (
 		<Avatar
 			size={Boolean.match(props.small === true, {onFalse: () => 'sm' as const, onTrue: () => 'default' as const})}

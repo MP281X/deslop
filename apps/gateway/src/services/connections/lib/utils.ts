@@ -8,7 +8,7 @@ import {HttpClientError} from 'effect/http'
 import {AuthError} from '@deslop/runtime/shared/auth'
 
 import {OAuthClientId, UpstreamError} from '#services/connections/schema.ts'
-import type {ServerIcon} from '#services/connections/schema.ts'
+import type {SessionKind, ServerIcon} from '#services/connections/schema.ts'
 
 export function mcpClient() {
 	return new Client({name: 'Deslop MCP gateway', version: '0.1.0'}, {versionNegotiation: {mode: 'auto'}})
@@ -19,7 +19,7 @@ export function endSession(
 	transport: Pick<StreamableHTTPClientTransport, 'terminateSession'>,
 	client: Pick<Client, 'close'>,
 	fail: (cause: unknown) => AuthError | UpstreamError,
-	kind: 'upstream' | 'anonymous'
+	kind: SessionKind
 ) {
 	return pipe(
 		Effect.tryPromise({catch: fail, try: () => transport.terminateSession()}),

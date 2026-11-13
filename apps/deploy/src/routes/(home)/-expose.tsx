@@ -1,6 +1,6 @@
 import {useAtom, useAtomValue} from '@effect/atom-react'
 
-import {Array, Boolean, Function, Option, String, pipe} from 'effect'
+import {Array, Boolean, Function, Option, Schema, String, pipe} from 'effect'
 
 import {AsyncResult} from 'effect/reactivity'
 import {useState} from 'react'
@@ -25,9 +25,12 @@ import {ApplicationIcon} from '#routes/(home)/-marks.tsx'
 import {ExposureName} from '#services/inventory/schema.ts'
 import type {InventoryItem} from '#services/inventory/schema.ts'
 
+type ExposureKind = typeof ExposureKind.Type
+const ExposureKind = Schema.Literals(['tailnet', 'public'])
+
 function Expose(props: {items: readonly InventoryItem[]; port: InventoryItem}) {
 	const [result, expose] = useAtom(exposeAtom)
-	const [kind, setKind] = useState<'tailnet' | 'public'>('tailnet')
+	const [kind, setKind] = useState<ExposureKind>('tailnet')
 	const [hostname, setHostname] = useState('')
 	const tailnetHost = Option.getOrElse(
 		pipe(

@@ -12,10 +12,9 @@ import {
 	titleOf
 } from '#services/bookings/lib/utils.ts'
 import type {Booking, BookingList, Flight, Leg, Train} from '#services/bookings/schema.ts'
-import type {Activity, AlertCategory, Device, SentAlert} from '#services/push/schema.ts'
+import type {Activity, AlertCategory, Device, SentAlert, ShowAction} from '#services/push/schema.ts'
 
 export type Span = {end: DateTime.Utc; start: DateTime.Utc}
-type ShowAction = {_tag: 'launch'; target: Device} | {_tag: 'refresh'; target: Activity}
 
 // An activity covers the window while ActivityKit keeps it alive, unless it ended before the window began.
 export function holds(activity: Activity, window: Span) {

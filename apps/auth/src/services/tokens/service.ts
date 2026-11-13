@@ -54,13 +54,14 @@ import {
 } from '#services/tokens/lib/utils.ts'
 import type {
 	AuthorizeClient,
-	ClientRequest,
 	DeviceRequest,
 	Origin,
 	RevokeParams,
 	SessionVia,
 	TokenParams,
-	TokenResponse
+	TokenResponse,
+	ClientRequest,
+	Code
 } from '#services/tokens/schema.ts'
 import {
 	AppGrant,
@@ -80,9 +81,6 @@ declare module 'effect/reactivity/Reactivity' {
 		readonly tokens: never
 	}
 }
-
-// An authorization code lives 60 seconds in memory; once redeemed it names the family it gave, so a replay ends it.
-type Code = {_tag: 'Fresh'; request: ClientRequest; owner: CredentialOwner} | {_tag: 'Used'; family: SignInFamily}
 
 const expired = AuthError.make({error: 'invalid_grant', message: 'The authorization expired. Sign in again.'})
 

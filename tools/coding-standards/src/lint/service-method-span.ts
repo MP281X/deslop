@@ -251,6 +251,20 @@ export class Notes extends Context.Service<Notes>()('service-method-span/fixes-0
 yield* Effect.logDebug('start')
 return {read: Effect.fnUntraced(function* () { yield* Effect.logDebug('read'); return yield* Clock.currentTimeMillis })}
 })}) {}`
+					},
+					{
+						'sample.ts': `import {Context, Effect} from 'effect'
+export class Notes extends Context.Service<Notes>()('service-method-span/fixes-1/sample/Notes', {make: Effect.gen(function* () {
+yield* Effect.logDebug('start')
+return {read: (id: string) => Effect.as(Effect.logDebug(id), id)}
+})}) {}`
+					},
+					{
+						'sample.ts': `import {Clock, Context, Effect} from 'effect'
+export class Notes extends Context.Service<Notes>()('service-method-span/fixes-2/sample/Notes', {make: Effect.gen(function* () {
+yield* Effect.logDebug('start')
+return {read: Effect.fn('Other.read')(function* () { yield* Effect.logDebug('read'); return yield* Clock.currentTimeMillis })}
+})}) {}`
 					}
 				]
 			}

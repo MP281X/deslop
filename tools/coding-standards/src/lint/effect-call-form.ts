@@ -44,7 +44,7 @@ import {Headers, HttpClient, HttpClientRequest, HttpClientResponse, HttpRouter, 
 import {Atom, AtomRegistry, AsyncResult, Reactivity} from 'effect/reactivity'
 import {defineRule} from 'vite-plus/lint/plugins'
 // oxlint-disable-next-line @deslop/coding-standards/no-renamed-import -- Effect's Context module and the linter's Context type are distinct contracts.
-import type {Context as LintContext, ESTree} from 'vite-plus/lint/plugins'
+import type {Context as LintContext, ESTree, Fixer} from 'vite-plus/lint/plugins'
 
 import {
 	effectImport,
@@ -607,8 +607,116 @@ function normalizeBoundary(context: LintContext, node: ESTree.CallExpression) {
 	return false
 }
 
-function preservesOrder(context: LintContext, subject: ESTree.Node, args: ESTree.Node[]) {
-	return stable(context, subject) || Array.every(args, argument => stable(context, argument))
+function isPipeCall(context: LintContext, node: ESTree.Node) {
+	return (
+		node.type === 'CallExpression' &&
+		node.callee.type === 'Identifier' &&
+		isImportBinding({context, importedName: 'pipe', node: node.callee, source: 'effect'})
+	)
+}
+
+function singleStepReplacement(context: LintContext, node: ESTree.CallExpression) {
+	const [subject, step] = node.arguments
+	if (
+		node.arguments.length !== 2 ||
+		subject === undefined ||
+		step === undefined ||
+		subject.type === 'SpreadElement' ||
+		step.type === 'SpreadElement'
+	) {
+		return Option.none<string>()
+	}
+	if (isPipeCall(context, subject)) {
+		return Option.none<string>()
+	}
+	const plain = Option.getOrUndefined(plainForwarding(context, step))
+	if (plain !== undefined) {
+		return Boolean.match(isPipeCall(context, plain), {
+			onFalse: () => Option.some(forwardCall(context, plain, text(context, subject))),
+			onTrue: () => Option.none<string>()
+		})
+	}
+	if (step.type === 'ArrowFunctionExpression') return Option.none<string>()
+	if (step.type === 'CallExpression') {
+		if (schemaOperation(context, step.callee, ['check', 'annotate'])) {
+			return Option.some(
+				`(${text(context, subject)}).${text(context, step.callee.property)}(${argumentsText(context, step.arguments)})`
+			)
+		}
+		if (
+			Option.isNone(dual(context, step.callee)) ||
+			Array.some(step.arguments, arg => arg.type === 'SpreadElement') ||
+			(tagFirst(step.callee) &&
+				!stable(context, subject) &&
+				!Array.every(step.arguments, argument => stable(context, argument)))
+		) {
+			return Option.none<string>()
+		}
+		return Option.some(
+			`${text(context, step.callee)}${typeArguments(context, step)}(${argumentsText(context, directArguments(step.callee, [subject], step.arguments))})`
+		)
+	}
+	if (step.type !== 'Identifier' && !stable(context, step)) return Option.none<string>()
+	return Option.some(`${text(context, step)}(${text(context, subject)})`)
+}
+
+function singleStepFixes(context: LintContext, node: ESTree.CallExpression, fixer: Fixer) {
+	return Option.match(singleStepReplacement(context, node), {
+		onNone: () => [],
+		onSome: replacement =>
+			Option.match(
+				variableFromScope({name: context.sourceCode.getText(node.callee), scope: context.sourceCode.getScope(node)}),
+				{
+					onNone: () => [],
+					onSome: variable => {
+						const plans = Array.getSomes(
+							Array.map(variable.references, reference => {
+								if (
+									reference.identifier.parent.type !== 'CallExpression' ||
+									reference.identifier.parent.callee !== reference.identifier
+								) {
+									return Option.none()
+								}
+								return Option.map(singleStepReplacement(context, reference.identifier.parent), value => ({
+									node: reference.identifier.parent,
+									value
+								}))
+							})
+						)
+						// Only remove the binding when all its reads disappear atomically; nested rewrites must settle first.
+						if (
+							plans.length !== variable.references.length ||
+							Array.some(plans, plan =>
+								Array.some(
+									plans,
+									other =>
+										other.node !== plan.node &&
+										other.node.range[0] >= plan.node.range[0] &&
+										other.node.range[1] <= plan.node.range[1]
+								)
+							)
+						) {
+							return [fixer.replaceText(node, replacement)]
+						}
+						if (plans[0]?.node !== node) return []
+						const specifier = variable.defs[0]?.node
+						if (specifier?.type !== 'ImportSpecifier' || specifier.parent.type !== 'ImportDeclaration') return []
+						const after = context.sourceCode.getTokenAfter(specifier)
+						const before = context.sourceCode.getTokenBefore(specifier)
+						return [
+							...Array.map(plans, plan => fixer.replaceText(plan.node, plan.value)),
+							Boolean.match(specifier.parent.specifiers.length === 1, {
+								onFalse: () => {
+									if (before?.value === ',') return fixer.removeRange([before.range[0], specifier.range[1]])
+									return fixer.removeRange([specifier.range[0], after?.range[1] ?? specifier.range[1]])
+								},
+								onTrue: () => fixer.remove(specifier.parent)
+							})
+						]
+					}
+				}
+			)
+	})
 }
 
 function normalizeSingleStep(context: LintContext, node: ESTree.CallExpression) {
@@ -623,10 +731,9 @@ function normalizeSingleStep(context: LintContext, node: ESTree.CallExpression) 
 	) {
 		return
 	}
-	const plain = Option.getOrUndefined(plainForwarding(context, step))
-	if (plain !== undefined) {
+	if (Option.isSome(plainForwarding(context, step))) {
 		context.report({
-			fix: fixer => fixer.replaceText(node, forwardCall(context, plain, text(context, subject))),
+			fix: fixer => singleStepFixes(context, node, fixer),
 			message: 'Call the operation directly instead of forwarding a pipeline subject.',
 			node
 		})
@@ -642,31 +749,7 @@ function normalizeSingleStep(context: LintContext, node: ESTree.CallExpression) 
 		return
 	}
 	context.report({
-		fix: fixer => {
-			if (step.type === 'CallExpression' && schemaOperation(context, step.callee, ['check', 'annotate'])) {
-				return fixer.replaceText(
-					node,
-					`(${text(context, subject)}).${text(context, step.callee.property)}(${argumentsText(context, step.arguments)})`
-				)
-			}
-			if (step.type === 'CallExpression' && Option.isSome(dual(context, step.callee))) {
-				if (Array.some(step.arguments, arg => arg.type === 'SpreadElement')) return []
-				if (tagFirst(step.callee) && !preservesOrder(context, subject, step.arguments)) {
-					return []
-				}
-				return fixer.replaceText(
-					node,
-					`${text(context, step.callee)}${typeArguments(context, step)}(${argumentsText(context, directArguments(step.callee, [subject], step.arguments))})`
-				)
-			}
-			if (step.type !== 'Identifier' && step.type !== 'CallExpression' && !stable(context, step)) {
-				return []
-			}
-			if (step.type === 'CallExpression' && !preservesOrder(context, subject, step.arguments)) {
-				return []
-			}
-			return fixer.replaceText(node, `${text(context, step)}(${text(context, subject)})`)
-		},
+		fix: fixer => singleStepFixes(context, node, fixer),
 		message: 'One step is a plain call; reserve pipe for two or more steps.',
 		node
 	})
@@ -936,6 +1019,30 @@ export const PositiveCount = Schema.check(Schema.isGreaterThan(0))(Schema.Finite
 						'sample.ts': `import {Effect} from 'effect'
 export const logged = Effect.flatMap(Effect.succeed('ready'), (state: string) => Effect.gen(function* () { yield* Effect.logDebug(state); return state }))
 export function actions() { return {read: () => Effect.gen(function* () { yield* Effect.logDebug('read'); return 'ready' })} }`
+					},
+					{
+						'sample.ts': `import {Array, pipe} from 'effect'
+export function immediately(values: readonly number[]) { return ((entries: readonly number[]) => Array.take(entries, 2))(values) }
+export function parenthesized(values: readonly number[]) { return (Array.take(2))(values) }
+export function forwarded(values: readonly number[]) { return pipe(values, entries => Array.take(entries, 2)) }
+export function closures(values: readonly number[]) { return pipe(values, entries => Array.drop(entries, 1), entries => Array.take(entries, 2)) }
+export function nestedSteps(values: readonly number[]) { return pipe(values, entries => pipe(entries, Array.drop(1), Array.take(2)), Array.reverse) }`
+					},
+					{
+						'sample.ts': `import {Schema, pipe} from 'effect'
+export type Count = typeof Count.Type
+export const Count = pipe(Schema.Finite, Schema.check(Schema.isGreaterThan(0)))
+export type Title = typeof Title.Type
+export const Title = Schema.annotate({description: 'Title'})(Schema.String)`
+					},
+					{
+						'sample.ts': `import {pipe} from 'effect'
+declare function count(values: readonly number[]): number
+export function summary(values: readonly number[]) { return {count: pipe(values, count)} }`
+					},
+					{
+						'sample.ts': `import {pipe, Array} from 'effect'
+export function bounds(values: readonly number[]) { return {first: pipe(values, Array.head), last: pipe(values, Array.last)} }`
 					}
 				]
 			}

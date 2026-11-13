@@ -1,6 +1,6 @@
 import {useAtom} from '@effect/atom-react'
 
-import {Array, Boolean, DateTime, Function, Option, Order, Record, String, Struct, pipe} from 'effect'
+import {Array, Boolean, DateTime, Function, Option, Order, Record, Schema, String, Struct, pipe} from 'effect'
 
 import {AppWindowIcon, GlobeIcon, GraphIcon, HardDrivesIcon} from '@phosphor-icons/react'
 import {AsyncResult, Atom} from 'effect/reactivity'
@@ -32,9 +32,15 @@ import {appsAtom, consentAtom, minuteAtom, requestCode} from '#lib/auth.ts'
 import type {PendingAuthorization} from '#services/sign-ins/schema.ts'
 import type {SignedInApp} from '#services/tokens/schema.ts'
 
+type AppIconState = typeof AppIconState.Type
+const AppIconState = Schema.Literals(['failed', 'loaded', 'loading'])
+
+type ClientKind = typeof ClientKind.Type
+const ClientKind = Schema.Literals(['App', 'Browser'])
+
 // A glyph until the app's own icon loads, so a missing icon never draws the browser's broken image; no tile behind either.
 function AppIcon(props: {origin: string}) {
-	const [state, setState] = useState<'failed' | 'loaded' | 'loading'>('loading')
+	const [state, setState] = useState<AppIconState>('loading')
 	return (
 		<span className="text-muted-foreground relative flex size-4 shrink-0 items-center justify-center">
 			{state !== 'loaded' && <AppWindowIcon className="size-4" />}
@@ -115,7 +121,7 @@ export function PeopleRowsSkeleton() {
 
 const BROWSERS: Record<string, ComponentType<SVGProps<SVGSVGElement>>> = {Chrome, Edge, Firefox, Safari}
 
-type Client = {app: Option.Option<string>; device: string; kind: 'App' | 'Browser'; name: string}
+type Client = {app: Option.Option<string>; device: string; kind: ClientKind; name: string}
 
 function Brand(props: {client: Client}) {
 	if (props.client.kind === 'Browser') {

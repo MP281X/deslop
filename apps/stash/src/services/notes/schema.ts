@@ -2,7 +2,7 @@ import {Schema, Struct, pipe} from 'effect'
 
 import {Model} from 'effect/schema'
 
-import {User} from '@deslop/runtime/shared/auth'
+import {User, UserId} from '@deslop/runtime/shared/auth'
 import {DateTimeUtcFromFiniteSeconds} from '@deslop/runtime/shared/time'
 
 export class NotesError extends Schema.TaggedError<NotesError>()('NotesError', {
@@ -133,6 +133,23 @@ export const Organization = Schema.Struct({
 	tags: Schema.Array(TagName).check(Schema.isMinLength(1), Schema.isMaxLength(3)),
 	title: Schema.NonEmptyString.check(Schema.isMaxLength(90)),
 	topics: Schema.String.check(Schema.isMaxLength(1000))
+})
+
+export type NoteChange = typeof NoteChange.Type
+export const NoteChange = Schema.TaggedUnion({
+	empty: {},
+	extract: {extraction: Schema.Result(Extraction, NotesError)},
+	fail: {message: Schema.String},
+	image: {image: ImageType},
+	organize: {
+		organization: Schema.Struct(Struct.pick(Organization.fields, ['body', 'screenText', 'summary', 'title', 'topics']))
+	},
+	remove: {},
+	request: {requester: UserId},
+	retry: {},
+	share: {capture: Capture},
+	stop: {},
+	video: {content: Schema.Option(Schema.String), transcript: Schema.Option(Schema.String)}
 })
 
 export type FxArticle = typeof FxArticle.Type

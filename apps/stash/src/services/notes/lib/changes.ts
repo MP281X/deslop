@@ -5,28 +5,14 @@ import type {UserId} from '@deslop/runtime/shared/auth'
 import {commentOf, sourceOf} from './utils.ts'
 
 import {Note} from '#services/notes/schema.ts'
-import type {Capture, Extraction, FileType, ImageType, NotesError, Organization} from '#services/notes/schema.ts'
-
-// Every note transition is pure; the service reads the current row and stores the result in its transaction.
-export type NoteChange =
-	| {type: 'share'; capture: Capture}
-	| {type: 'image'; image: ImageType}
-	| {type: 'extract'; extraction: Result.Result<Extraction, NotesError>}
-	| {type: 'video'; content: Option.Option<string>; transcript: Option.Option<string>}
-	| {type: 'organize'; organization: Pick<Organization, 'body' | 'screenText' | 'summary' | 'title' | 'topics'>}
-	| {type: 'fail'; message: string}
-	| {type: 'empty'}
-	| {type: 'stop'}
-	| {type: 'retry'}
-	| {type: 'request'; requester: UserId}
-	| {type: 'remove'}
+import type {Capture, FileType, NoteChange} from '#services/notes/schema.ts'
 
 export function changeNote(note: Note, update: NoteChange) {
 	const fields = Struct.pick(note, Struct.keys(Note.fields))
 	return pipe(
 		Match.value(update),
-		Match.when({type: 'remove'}, () => ({_tag: 'Removed' as const})),
-		Match.when({type: 'share'}, change => {
+		Match.when({_tag: 'remove'}, () => ({_tag: 'Removed' as const})),
+		Match.when({_tag: 'share'}, change => {
 			if (note.id === change.capture.id) return {_tag: 'Unchanged' as const}
 			const known = HashSet.fromIterable(pipe(note.text, String.toLowerCase, String.split(/\s+/u)))
 
@@ -43,11 +29,11 @@ export function changeNote(note: Note, update: NoteChange) {
 				})
 			)
 		}),
-		Match.when({type: 'image'}, change => ({
+		Match.when({_tag: 'image'}, change => ({
 			_tag: 'Changed' as const,
 			note: {...fields, image: Option.some(change.image)}
 		})),
-		Match.when({type: 'extract'}, change =>
+		Match.when({_tag: 'extract'}, change =>
 			Result.match(change.extraction, {
 				onFailure: error =>
 					Boolean.match(String.isEmpty(note.content), {
@@ -73,7 +59,7 @@ export function changeNote(note: Note, update: NoteChange) {
 				})
 			})
 		),
-		Match.when({type: 'video'}, change => ({
+		Match.when({_tag: 'video'}, change => ({
 			_tag: 'Changed' as const,
 			note: {
 				...fields,
@@ -82,7 +68,7 @@ export function changeNote(note: Note, update: NoteChange) {
 				transcript: Option.orElse(change.transcript, () => note.transcript)
 			}
 		})),
-		Match.when({type: 'organize'}, change => ({
+		Match.when({_tag: 'organize'}, change => ({
 			_tag: 'Changed' as const,
 			note: {
 				...fields,
@@ -95,11 +81,11 @@ export function changeNote(note: Note, update: NoteChange) {
 				topics: Option.some(change.organization.topics)
 			}
 		})),
-		Match.when({type: 'fail'}, change => ({
+		Match.when({_tag: 'fail'}, change => ({
 			_tag: 'Changed' as const,
 			note: {...fields, issue: Option.some(change.message), status: 'failed' as const}
 		})),
-		Match.when({type: 'empty'}, () => ({
+		Match.when({_tag: 'empty'}, () => ({
 			_tag: 'Changed' as const,
 			note: {
 				...fields,
@@ -107,7 +93,7 @@ export function changeNote(note: Note, update: NoteChange) {
 				status: 'failed' as const
 			}
 		})),
-		Match.when({type: 'stop'}, () =>
+		Match.when({_tag: 'stop'}, () =>
 			Boolean.match(note.status === 'organizing', {
 				onFalse: () => ({_tag: 'Unchanged' as const}),
 				onTrue: () => ({
@@ -116,11 +102,11 @@ export function changeNote(note: Note, update: NoteChange) {
 				})
 			})
 		),
-		Match.when({type: 'retry'}, () => ({
+		Match.when({_tag: 'retry'}, () => ({
 			_tag: 'Changed' as const,
 			note: {...fields, issue: Option.none(), status: 'organizing' as const, transcript: Option.none()}
 		})),
-		Match.when({type: 'request'}, change => ({
+		Match.when({_tag: 'request'}, change => ({
 			_tag: 'Changed' as const,
 			note: {...fields, requester: change.requester}
 		})),

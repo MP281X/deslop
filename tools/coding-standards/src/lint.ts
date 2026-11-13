@@ -5,6 +5,7 @@ import type {OxlintConfig} from 'vite-plus/lint'
 import {definePlugin} from 'vite-plus/lint/plugins'
 import type {Plugin} from 'vite-plus/lint/plugins'
 
+import {choicesAreSchemas} from '#lint/choices-are-schemas.ts'
 import {effectCallForm} from '#lint/effect-call-form.ts'
 import {explicitEffectConcurrency} from '#lint/explicit-effect-concurrency.ts'
 import {moduleConstant} from '#lint/module-constant.ts'
@@ -36,7 +37,6 @@ import {noSingleUseValue} from '#lint/no-single-use-value.ts'
 import {noStoredJsx} from '#lint/no-stored-jsx.ts'
 import {noStoredSchemaOperation} from '#lint/no-stored-schema-operation.ts'
 import {noTrivialIndirection} from '#lint/no-trivial-indirection.ts'
-import {noTypeFromValue} from '#lint/no-type-from-value.ts'
 import {noUnexplainedDisable} from '#lint/no-unexplained-disable.ts'
 import {noUnvalidatedJsonDecode} from '#lint/no-unvalidated-json-decode.ts'
 import {noWallClock} from '#lint/no-wall-clock.ts'
@@ -92,6 +92,7 @@ const SET_MESSAGE =
 // Checks of Deslop's own choices, which only Deslop's conventions can serve.
 
 const RULES = {
+	'choices-are-schemas': choicesAreSchemas,
 	'effect-call-form': effectCallForm,
 	'explicit-effect-concurrency': explicitEffectConcurrency,
 	'module-constant': moduleConstant,
@@ -123,7 +124,6 @@ const RULES = {
 	'no-stored-jsx': noStoredJsx,
 	'no-stored-schema-operation': noStoredSchemaOperation,
 	'no-trivial-indirection': noTrivialIndirection,
-	'no-type-from-value': noTypeFromValue,
 	'no-unexplained-disable': noUnexplainedDisable,
 	'no-unvalidated-json-decode': noUnvalidatedJsonDecode,
 	'no-wall-clock': noWallClock,
@@ -238,11 +238,6 @@ export const lint: OxlintConfig & {
 				message: 'Name an atom with the Atom suffix.',
 				selector:
 					'VariableDeclarator:not([id.name=/(Atom|Runtime|Atoms)$/]) > CallExpression.init:matches([callee.object.name="Atom"][callee.property.name=/^(make|readable|fn|fnSync|runtime|writable|family|keepAlive|withLabel)$/], [callee.property.name=/^(atom|fn|pull)$/][callee.object.property.name="runtime"], [callee.property.name=/^(atom|fn|pull)$/][callee.object.name=/Runtime$/], [callee.property.name=/^(atom|fn|pull)$/][callee.object.callee.object.name="Atom"][callee.object.callee.property.name="runtime"])'
-			},
-			{
-				message: 'Name a schema in PascalCase.',
-				selector:
-					'VariableDeclarator[id.name=/^[a-z]/] > :matches(CallExpression, MemberExpression).init[callee.object.name="Schema"][callee.property.name=/^[A-Z]/], VariableDeclarator[id.name=/^[a-z]/] > MemberExpression.init[object.name="Schema"][property.name=/^[A-Z]/]'
 			},
 			{
 				message: 'Name an error mapping combinator as<Domain>Error.',
@@ -368,7 +363,6 @@ export const lint: OxlintConfig & {
 		'effecttsgo/suspend-fail-to-fail-sync': 'error',
 		'effecttsgo/sync-to-succeed': 'error',
 		'effecttsgo/timeout-catch-tag-to-timeout-or-else': 'error',
-		'effecttsgo/type-union-to-schema-union': 'error',
 		'effecttsgo/unnecessary-effect-gen': 'error',
 		'effecttsgo/unnecessary-fail-yieldable-error': 'error',
 		'effecttsgo/unnecessary-pipe': 'error',

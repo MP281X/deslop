@@ -1,23 +1,23 @@
-import {Array, Boolean, DateTime, Duration, HashSet, Number, Option, Order, Record, String, pipe} from 'effect'
+import {Array, Boolean, DateTime, Duration, HashSet, Number, Option, Order, Record, Schema, String, pipe} from 'effect'
 
 import {APP_HUES} from '@deslop/components-web/apps'
 
 import type {AppId} from '#services/inventory/schema.ts'
 import {chartWindow, resolution} from '#services/metrics/lib/utils.ts'
-import type {MachineHistory, Sample} from '#services/metrics/schema.ts'
+import type {BandId, MachineHistory, Sample} from '#services/metrics/schema.ts'
+
+export type BandKind = typeof BandKind.Type
+const BandKind = Schema.Literals(['app', 'other', 'system'])
+export type BandFillKind = typeof BandFillKind.Type
+const BandFillKind = Schema.Literals([...BandKind.literals, 'disk'])
+type BandMetric = typeof BandMetric.Type
+const BandMetric = Schema.Literals(['cpu', 'memory', 'memoryBytes'])
 
 // One stacked band, in % of the whole machine at each sample: an app, the low-impact apps together, or what the machine holds beyond the apps.
-export type Band = {
-	cpu: number[]
-	id: AppId | 'other' | 'system'
-	kind: 'app' | 'other' | 'system'
-	memory: number[]
-	memoryBytes: number[]
-	opacity: number
-}
+export type Band = {cpu: number[]; id: BandId; kind: BandKind; memory: number[]; memoryBytes: number[]; opacity: number}
 
 // A band's fill: a Deslop app in its icon's hue, another process in the page primary at its rank's opacity, and the low-impact and system blocks two darker greys.
-export function bandFill(kind: Band['kind'] | 'disk', opacity: number, name: string) {
+export function bandFill(kind: BandFillKind, opacity: number, name: string) {
 	if (kind === 'other') return {color: 'var(--input)', opacity: 1}
 	if (kind === 'system') return {color: 'var(--muted)', opacity: 1}
 	if (kind === 'disk') return {color: 'var(--muted-foreground)', opacity: 0.6}
@@ -37,7 +37,7 @@ function peak(values: readonly number[]) {
 function total(
 	group: readonly {cpu: number[]; memory: number[]; memoryBytes: number[]}[],
 	index: number,
-	key: 'cpu' | 'memory' | 'memoryBytes'
+	key: BandMetric
 ) {
 	return Number.sumAll(Array.map(group, app => app[key][index] ?? 0))
 }

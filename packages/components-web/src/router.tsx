@@ -7,6 +7,7 @@ import {StrictMode} from 'react'
 import {createRoot} from 'react-dom/client'
 
 import {pageErrorAtom} from '@deslop/runtime/web/client'
+import type {PageErrorSource} from '@deslop/runtime/web/client'
 
 import {NotFound, ReadFailure} from '#components/fallbacks.tsx'
 
@@ -24,7 +25,7 @@ export function mountRouter<TRouteTree extends AnyRoute & {types: {routerContext
 		scrollRestoration: true
 	})
 	const errors = AtomRegistry.make()
-	function report(error: unknown, source: 'route' | 'caught' | 'uncaught', stack?: string | null) {
+	function report(error: unknown, source: PageErrorSource, stack?: string | null) {
 		if (Predicate.isObjectOrArray(error)) {
 			if (reported.has(error)) return
 			reported.add(error)

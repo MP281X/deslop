@@ -1,9 +1,10 @@
-import {Array, Function, Option, Result, pipe} from 'effect'
+import {Array, Function, Option, Result, Schema, pipe} from 'effect'
 
 import {defineRule} from 'vite-plus/lint/plugins'
 import type {Context, ESTree, Fixer} from 'vite-plus/lint/plugins'
 
 import {effectImport, variableOf} from '#lib/ast.ts'
+import type {LogicalOperator} from '#lib/ast.ts'
 
 const VARIANTS = {
 	'&&': {comparison: '!==', guard: 'isNotNullish', message: 'Use Predicate.isNotNullish.'},
@@ -11,6 +12,9 @@ const VARIANTS = {
 } as const
 
 type Check = {node: ESTree.Expression; nullish: string; subject: ESTree.Expression}
+
+type NullishComparison = typeof NullishComparison.Type
+const NullishComparison = Schema.Literals(['!==', '==='])
 
 // A parameter or local named `undefined` is a value, not the global.
 function nullishOperand(input: {context: Context; node: ESTree.Expression}) {
@@ -25,7 +29,7 @@ function nullishOperand(input: {context: Context; node: ESTree.Expression}) {
 	return Option.none()
 }
 
-function operands(input: {node: ESTree.Expression; operator: '&&' | '||'}): ESTree.Expression[] {
+function operands(input: {node: ESTree.Expression; operator: LogicalOperator}): ESTree.Expression[] {
 	if (input.node.type !== 'LogicalExpression' || input.node.operator !== input.operator) return [input.node]
 	return Array.appendAll(
 		operands({node: input.node.left, operator: input.operator}),
@@ -33,7 +37,7 @@ function operands(input: {node: ESTree.Expression; operator: '&&' | '||'}): ESTr
 	)
 }
 
-function comparedNullish(input: {context: Context; node: ESTree.Expression; operator: '!==' | '==='}) {
+function comparedNullish(input: {context: Context; node: ESTree.Expression; operator: NullishComparison}) {
 	if (input.node.type !== 'BinaryExpression' || input.node.operator !== input.operator) return Option.none<Check>()
 	const subject = input.node.left
 	return Option.map(nullishOperand({context: input.context, node: input.node.right}), nullish => ({

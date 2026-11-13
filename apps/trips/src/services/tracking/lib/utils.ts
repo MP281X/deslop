@@ -1,8 +1,8 @@
 import {Array, DateTime, Duration, Function, Option, Order, Result, String, pipe} from 'effect'
 
 import {AIRPORT_LEAD, arrivalOf, departureOf, MINUTE} from '#services/bookings/lib/utils.ts'
-import type {Booking, Flight, FlightTracking, Place, Train, TrainTracking} from '#services/bookings/schema.ts'
-import type {FaFlight, FaFlights, VtStatus, VtStop} from '#services/tracking/schema.ts'
+import type {Booking, Flight, FlightTracking, Train, TrainTracking} from '#services/bookings/schema.ts'
+import type {FaFlight, FaFlights, StopPlace, VtStatus, VtStop} from '#services/tracking/schema.ts'
 
 function text(value: Option.Option<string>) {
 	return pipe(value, Option.map(String.trim), Option.filter(String.isNonEmpty))
@@ -105,7 +105,7 @@ function normalized(name: string) {
 	)
 }
 
-function stopOf(stops: VtStatus['fermate'], place: Pick<Place, 'code' | 'name'>) {
+function stopOf(stops: VtStatus['fermate'], place: StopPlace) {
 	return pipe(
 		place.code,
 		Option.flatMap(String.match(/it-trenitalia_(\d+)/u)),

@@ -1,4 +1,4 @@
-import {DateTime, Duration, Number, String} from 'effect'
+import {DateTime, Duration, Number, Schema, String} from 'effect'
 
 // One English form for what a person reads on the web and the iPhone: dates day first on a 24-hour clock ("21 Oct", "15:28"), numbers grouped ("1,234", "$1.23").
 const DATES = 'en-GB'
@@ -7,7 +7,10 @@ const CLOCKS = {
 	millisecond: {fractionalSecondDigits: 3, hour: '2-digit', hourCycle: 'h23', minute: '2-digit', second: '2-digit'},
 	minute: {hour: '2-digit', hourCycle: 'h23', minute: '2-digit'},
 	second: {hour: '2-digit', hourCycle: 'h23', minute: '2-digit', second: '2-digit'}
-} satisfies Record<'millisecond' | 'minute' | 'second', Intl.DateTimeFormatOptions>
+} satisfies Record<ClockUnit, Intl.DateTimeFormatOptions>
+
+export type ClockUnit = typeof ClockUnit.Type
+const ClockUnit = Schema.Literals(['millisecond', 'minute', 'second'])
 
 const count = new Intl.NumberFormat(NUMBERS, {maximumFractionDigits: 0})
 const compactCount = new Intl.NumberFormat(NUMBERS, {maximumFractionDigits: 1, notation: 'compact'})
@@ -51,7 +54,7 @@ export function timerOf(duration: Duration.Duration) {
 }
 
 // The time of day: "15:28", or to the second or millisecond where a trace needs it.
-export function clockOf(at: DateTime.DateTime, unit: 'millisecond' | 'minute' | 'second' = 'minute') {
+export function clockOf(at: DateTime.DateTime, unit: ClockUnit = 'minute') {
 	return inZone(at, CLOCKS[unit])
 }
 

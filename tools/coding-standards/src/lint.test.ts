@@ -40,6 +40,9 @@ const RuleExamples = Schema.Struct({
 	fixes: Schema.optionalKey(Schema.Array(Schema.Record(Schema.String, Schema.String)))
 })
 
+type RuleExampleKind = typeof RuleExampleKind.Type
+const RuleExampleKind = Schema.Literals(['accepted', 'fixes'])
+
 const lintSource = Effect.fnUntraced(function* (
 	input: Record<string, string>,
 	flags: string[] = [],
@@ -195,7 +198,7 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 					}),
 					{concurrency: 'unbounded'}
 				)
-				function inputs(kind: 'accepted' | 'fixes') {
+				function inputs(kind: RuleExampleKind) {
 					return Record.fromEntries(
 						Array.flatMap(examples, rule =>
 							Array.flatMap(rule.examples[kind] ?? [], (files, index) =>
@@ -1101,13 +1104,17 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 							'const measure = Effect.fn("measure")(function* (value: string) { return yield* Effect.succeed(value.length) }, Effect.map(length => length + 1))',
 							'const payload: unknown = names',
 							'const counts: Record<string, number> = {}',
-							'const flags: Partial<Record<"a" | "b", boolean>> = {}',
-							'const labels: {[Key in "a" | "b"]?: Key} = {}',
+							'type FlagKey = typeof FlagKey.Type',
+							'const FlagKey = Schema.Literals(["a", "b"])',
+							'const flags: Partial<Record<FlagKey, boolean>> = {}',
+							'const labels: {[Key in FlagKey]?: Key} = {}',
 							'type Profile = {nickname?: string}',
 							'const nickname: Profile["nickname"] = undefined',
 							'const noUser: User | null = null',
 							'const annotatedName: string = names[0] ?? ""',
-							'declare function currentPhase(): "idle" | "ready"',
+							'type Phase = typeof Phase.Type',
+							'const Phase = Schema.Literals(["idle", "ready"])',
+							'declare function currentPhase(): Phase',
 							'export const status: string = currentPhase()',
 							'export function transition(value: typeof status) { return value.length }',
 							'export const transitioned = transition("done")',
@@ -2145,11 +2152,70 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 					)
 				})
 				assert.deepStrictEqual(customCodes(result.stdout), [
-					'@deslop/coding-standards(no-type-from-value)',
-					'@deslop/coding-standards(no-type-from-value)',
-					'@deslop/coding-standards(no-type-from-value)',
-					'@deslop/coding-standards(no-type-from-value)'
+					'@deslop/coding-standards(choices-are-schemas)',
+					'@deslop/coding-standards(choices-are-schemas)',
+					'@deslop/coding-standards(choices-are-schemas)',
+					'@deslop/coding-standards(choices-are-schemas)'
 				])
+			})
+		)
+
+		testApi.effect(
+			'requires named schemas for literal and shape choices without duplicate ownership',
+			Effect.fnUntraced(function* () {
+				const result = yield* lintSource({
+					'choices.ts': Array.join(
+						[
+							"import {Schema} from 'effect'",
+							"export type Phase = 'idle' | 'ready' // reported",
+							"export function select(phase: 'idle' | 'ready') { return phase.length } // reported",
+							"export type Loading = {_tag: 'Ready'; value: string} | {_tag: 'Failed'; message: string} // reported",
+							"export type Nested = {tone: 'good' | 'plain'} | {tone: 'bad' | 'warn'; label: string} // reported",
+							"export type Mixed = 'idle' | {failed: string} // reported",
+							'export type Priority = 5 | 10 // reported',
+							"export type Decision = true | false | 'pending' // reported",
+							'export type Missing = string | null | undefined',
+							'export type Saved = typeof Saved.Type',
+							"export const Saved = Schema.Literals(['draft', 'published'])",
+							"export function inferred(value: number): 'small' | 'large' { if (value < 2) return 'small'; return 'large' }",
+							"export function recursive(value: number): 'small' | 'large' { if (value < 2) return 'small'; return recursive(value - 1) } // reported"
+						],
+						'\n'
+					)
+				})
+				assert.deepStrictEqual(
+					reportedLines(result, 'choices-are-schemas').reported,
+					reportedLines(result, 'choices-are-schemas').marked
+				)
+				assert.lengthOf(
+					Array.filter(
+						customCodes(result.stdout),
+						code => code === '@deslop/coding-standards(no-redundant-annotation)'
+					),
+					1
+				)
+			})
+		)
+
+		testApi.effect(
+			'leaves redundant and duplicate union constituents to the compiler',
+			Effect.fnUntraced(function* () {
+				const result = yield* lintSource({
+					'native-unions.ts': `export type Duplicate = 'ready' | 'ready'
+export type Wide = 'ready' | string
+export type Numeric = 5 | number
+export type Unknown = 'ready' | unknown`
+				})
+				assert.deepStrictEqual(customCodes(result.stdout), [])
+				assert.lengthOf(result.stdout.diagnostics, 4)
+				assert.isTrue(
+					Array.every(result.stdout.diagnostics, diagnostic =>
+						Array.contains(
+							['typescript(no-duplicate-type-constituents)', 'typescript(no-redundant-type-constituents)'],
+							diagnostic.code
+						)
+					)
+				)
 			})
 		)
 
@@ -2222,14 +2288,16 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 				const valid = yield* lintSource({
 					'state-valid.ts': Array.join(
 						[
-							"import {MutableRef, Ref} from 'effect'",
+							"import {MutableRef, Ref, Schema} from 'effect'",
 							"import * as EffectModules from 'effect'",
 							'',
 							"import {useState} from 'react'",
 							'',
 							"export const inferred = MutableRef.make('')",
 							"export const restricted = MutableRef.make<'idle'>('idle')",
-							"export const union = Ref.make<'idle' | 'ready'>('idle')",
+							'type Phase = typeof Phase.Type',
+							'const Phase = Schema.Literals(["idle", "ready"])',
+							"export const union = Ref.make<Phase>('idle')",
 							'export const shape = MutableRef.make<{path?: string}>({})',
 							'export const items = Ref.make<string[]>([])',
 							"export const namespace = EffectModules.MutableRef.make<string>('')",

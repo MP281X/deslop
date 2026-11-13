@@ -1,5 +1,7 @@
 /* oxlint-disable effecttsgo/global-date -- The widget runtime serializes only the layout's body, which cannot import Effect; SwiftUI's timers take a Date. */
 // oxlint-disable @deslop/coding-standards/swiftui-theme-values -- The widget runtime cannot import the theme, and a Live Activity's fixed type and spacing follow Apple's island metrics.
+import {Schema} from 'effect'
+
 import {HStack, Image, ProgressView, Spacer, Text, VStack} from '@expo/ui/swift-ui'
 import {
 	background,
@@ -15,6 +17,9 @@ import {createLiveActivity} from 'expo-widgets'
 
 import {ACTIVITY_NAME} from '#services/bookings/lib/utils.ts'
 import type {ActivityProps} from '#services/bookings/schema.ts'
+
+type EndpointAlignment = typeof EndpointAlignment.Type
+const EndpointAlignment = Schema.Literals(['leading', 'trailing'])
 
 // The widget runtime runs only this body, so the palette and helpers live inside it; the server words every line, and the layout only places them.
 function JourneyLayout(props: typeof ActivityProps.Encoded) {
@@ -67,7 +72,7 @@ function JourneyLayout(props: typeof ActivityProps.Encoded) {
 	}
 
 	function endpoint(input: {
-		alignment: 'leading' | 'trailing'
+		alignment: EndpointAlignment
 		code: string
 		note: string
 		time: string

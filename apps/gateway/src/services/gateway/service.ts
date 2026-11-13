@@ -31,13 +31,12 @@ import {AuthError, bearerOf, isJwt} from '@deslop/runtime/shared/auth'
 import {MCP_PATH} from '@deslop/runtime/shared/schema'
 
 import {connectionFailure, serverIcons} from '#services/connections/lib/utils.ts'
-import type {ConnectionGeneration, ConnectionState, ServerId} from '#services/connections/schema.ts'
+import type {ConnectionGeneration, ConnectionState, ServerReference, ServerId} from '#services/connections/schema.ts'
 import {Connections, gatewayUrl} from '#services/connections/service.ts'
 import {compact, prunedTools} from '#services/gateway/lib/utils.ts'
 import {RemoteTool, RemoteTools, ToolArguments, ToolRequest} from '#services/gateway/schema.ts'
 import {Upstreams, upstreamStatus} from '#services/upstreams/service.ts'
 
-type Server = Pick<ConnectionState, 'id' | 'generation' | 'name' | 'mode'>
 const discoveryHeaders = Context.Reference<Headers.Headers>('gateway/DiscoveryHeaders', {
 	defaultValue: () => Headers.empty
 })
@@ -130,7 +129,7 @@ export class Gateway extends Context.Service<
 					})
 				).layer
 			)
-			const resolveUpstream = Effect.fnUntraced(function* (server: Server, headers: Headers.Headers) {
+			const resolveUpstream = Effect.fnUntraced(function* (server: ServerReference, headers: Headers.Headers) {
 				const current = yield* connections.get(server.id)
 				if (current.generation !== server.generation || current.status !== 'Connected') {
 					return yield* AuthError.make({message: `${server.name} is not connected; connect it on ${url}`})
@@ -155,7 +154,7 @@ export class Gateway extends Context.Service<
 				}
 			})
 			const withClient = Effect.fnUntraced(function* <A, E>(
-				server: Server,
+				server: ServerReference,
 				headers: Headers.Headers,
 				run: Parameters<typeof upstreams.use<A, E>>[2]
 			) {
@@ -178,7 +177,7 @@ export class Gateway extends Context.Service<
 				)
 			})
 			const call = Effect.fn('Gateway.call')(
-				function* (server: Server, tool: McpSchema.Tool, input: unknown) {
+				function* (server: ServerReference, tool: McpSchema.Tool, input: unknown) {
 					yield* Effect.annotateCurrentSpan({'mcp.server': server.id, 'mcp.tool': tool.name})
 					const request = yield* Effect.flatMap(
 						Effect.serviceOption(HttpServerRequest.HttpServerRequest),

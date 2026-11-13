@@ -1,10 +1,15 @@
-import {Duration, Schema, SchemaGetter, SchemaParser, pipe} from 'effect'
+import {Duration, Schema, SchemaGetter, SchemaParser, Struct, pipe} from 'effect'
 
 import {Model} from 'effect/schema'
 
 import {DateTimeUtcFromFiniteMillis, DurationFromFiniteMillis, DurationFromSeconds} from '@deslop/runtime/shared/time'
 
 import {AppId, TextFromEmpty, WorkerId} from '#services/inventory/schema.ts'
+
+export type BandId = typeof BandId.Type
+export const BandId = Schema.Union([AppId, Schema.Literals(['other', 'system'])])
+export type CpuTime = typeof CpuTime.Type
+export const CpuTime = Schema.Literals(['idle', 'irq', 'nice', 'sys', 'user'])
 
 type CpuCounters = typeof CpuCounters.Type
 export const CpuCounters = Schema.Array(Schema.FiniteFromString).check(Schema.isMinLength(5))
@@ -106,6 +111,9 @@ export class Sample extends Model.Class<Sample>('Sample')({
 }) {
 	static readonly table = 'samples'
 }
+
+export type Point = typeof Point.Type
+export const Point = Schema.Struct(Struct.omit(Sample.fields, ['since', 'step']))
 
 export type Disk = typeof Disk.Type
 export const Disk = Schema.Struct({mount: Schema.String, total: Schema.Finite, used: Schema.Finite})

@@ -1,8 +1,8 @@
-import {Array, Graph, HashSet, Option, Predicate, Record, String, pipe} from 'effect'
+import {Array, Graph, HashSet, Option, Predicate, Record, Schema, String, pipe} from 'effect'
 
 import type {Context, ESTree, Fix, Fixer, Scope, Token, Variable} from 'vite-plus/lint/plugins'
 
-const LENGTH_TESTS: Record.ReadonlyRecord<string, 'empty' | 'nonEmpty'> = {
+const LENGTH_TESTS: Record.ReadonlyRecord<string, LengthTest> = {
 	'!== 0': 'nonEmpty',
 	'< 1': 'empty',
 	'<= 0': 'empty',
@@ -12,6 +12,12 @@ const LENGTH_TESTS: Record.ReadonlyRecord<string, 'empty' | 'nonEmpty'> = {
 }
 
 export const TEST_RUNNERS = /^(?:@effect\/vitest|vitest|vite-plus\/test)$/u
+
+type LengthTest = typeof LengthTest.Type
+const LengthTest = Schema.Literals(['empty', 'nonEmpty'])
+
+export type LogicalOperator = typeof LogicalOperator.Type
+export const LogicalOperator = Schema.Literals(['&&', '||'])
 
 // Names, literals and the openings of calls, arrays and objects run no code, so a getter cannot run before a moved read.
 export function inert(token: Token) {

@@ -1,4 +1,4 @@
-import {DateTime, Option, Schema, SchemaGetter, pipe} from 'effect'
+import {DateTime, Option, Schema, SchemaGetter, Struct, pipe} from 'effect'
 
 import {Model} from 'effect/schema'
 
@@ -68,6 +68,9 @@ export const ChapterNotification = Schema.Struct({path: ChapterPath})
 
 export type Bundle = typeof Bundle.Type
 export const Bundle = Schema.Literals(['xyz.mp281x.opm', 'xyz.mp281x.opm.dev'])
+
+export type ChapterIdentity = typeof ChapterIdentity.Type
+export const ChapterIdentity = Schema.Struct(Struct.pick(Chapter.fields, ['number', 'series']))
 
 // The app identifies the APNs environment; release builds use production, Simulator builds sandbox.
 export class Device extends Model.Class<Device>('Device')({

@@ -40,6 +40,8 @@ Custom rules retain the cases native rules cannot express: `prefer-predicate` ow
 
 `recover-named-failures` owns typed recovery, rejecting native I/O adapters, error causes and error-message dispatch. Recover with `Effect.catchTag`, represent absence with `Effect.option`, or log best-effort failures. Catch-all recovery after a logging tap remains allowed. The competing compiler rewrites for catch-all recovery and `orDie` are not enabled.
 
+`choices-are-schemas` owns finite literal choices, hand-written shape unions and choices lifted from value tables. Declare a paired named `Schema.Literals` or a `Schema.TaggedUnion` with `_tag`, including choices in props and generic arguments. Nullish absence is not a fixed choice. Redundant return annotations belong only to `no-redundant-annotation`; schema/type pairing owns PascalCase. The former `no-type-from-value`, schema-name selector and competing compiler union check are removed.
+
 `no-collecting-loop` refuses collection mutation inside loops, including effectful loops and callbacks inside them. Use collection operations, `Array.mapAccum` for dependent items, or `Effect.forEach` for effectful work. Native-method checks defer to it at those sites. Copying folds and repeated searches remain separate checks.
 
 `effect-call-form` also owns anonymous generator callbacks and Effect property definitions. `no-redundant-annotation` owns inferred return, state, ref-null and empty-array types. The four fixed callbacks use `Function.constUndefined`, `constNull`, `constTrue` or `constFalse`; string and number callbacks stay arrows. The Effect compiler keeps its direct `map`, `match` and `sync` replacements.

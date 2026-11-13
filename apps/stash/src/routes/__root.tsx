@@ -1,6 +1,6 @@
 import {useAtomSet} from '@effect/atom-react'
 
-import {Array, Match, pipe} from 'effect'
+import {Array, Match, Schema, pipe} from 'effect'
 
 import {Host, NavigationDestination, NavigationStack, useNativeState} from '@expo/ui/swift-ui'
 import {tint} from '@expo/ui/swift-ui/modifiers'
@@ -18,8 +18,11 @@ import {NoteRoute, NoteSkeleton} from '#routes/notes/$id.tsx'
 import type {Kind, TagName} from '#services/notes/schema.ts'
 import {NoteId} from '#services/notes/schema.ts'
 
+type NavigationPath = typeof NavigationPath.Type
+const NavigationPath = Schema.Union([NoteId, Schema.Literal('compose')])
+
 function AppRoutes() {
-	const [path, setPath] = useState<(NoteId | 'compose')[]>([])
+	const [path, setPath] = useState<NavigationPath[]>([])
 	const setQuery = useAtomSet(queryAtom)
 	const [tag, setTag] = useState<TagName>()
 	const [kind, setKind] = useState<Kind>()
