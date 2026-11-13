@@ -17,7 +17,10 @@ const ageAtom = Atom.family((_id: string) =>
 				Effect.gen(function* () {
 					const since = yield* DateTime.now
 					return Stream.mapEffect(Stream.tick('1 minute'), () =>
-						Effect.map(DateTime.now, now => `${Number.max(0, Math.floor(Duration.toMinutes(DateTime.distance(since, now))))}m`)
+						Effect.map(
+							DateTime.now,
+							now => `${Number.max(0, Math.floor(Duration.toMinutes(DateTime.distance(since, now))))}m`
+						)
 					)
 				})
 			)

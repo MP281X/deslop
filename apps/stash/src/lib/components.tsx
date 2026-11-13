@@ -32,10 +32,7 @@ export function Byline(props: {note: NoteItem}) {
 			<SourceIcon kind={kindOf(props.note)} />
 			<Text modifiers={[text.caption, foregroundStyle(colors.mutedForeground), lineLimit(1)]}>
 				{pipe(
-					[
-						Option.orElse(props.note.author, () => siteOf(props.note)),
-						Option.some(shortDate(props.note.createdAt))
-					],
+					[Option.orElse(props.note.author, () => siteOf(props.note)), Option.some(shortDate(props.note.createdAt))],
 					Array.getSomes,
 					Array.join(' · ')
 				)}

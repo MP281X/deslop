@@ -124,7 +124,9 @@ function layerSignIn(issuer: string) {
 											return yield* AuthError.make({message: 'The sign-in began in another browser'})
 										}
 										if (Option.isSome(params.error) || Option.isNone(params.code)) {
-											return yield* AuthError.make({message: `Auth answered ${Option.getOrElse(params.error, () => 'without a code')}`})
+											return yield* AuthError.make({
+												message: `Auth answered ${Option.getOrElse(params.error, () => 'without a code')}`
+											})
 										}
 										if (!Option.contains(params.iss, new URL(ISSUER_PATH, issuer).href)) {
 											return yield* AuthError.make({message: 'The answer came from another issuer'})

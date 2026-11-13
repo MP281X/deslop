@@ -111,9 +111,7 @@ export const CubariSeries = Schema.Struct({
 				Schema.String,
 				Schema.Array(Schema.Union([Schema.String, Schema.Struct({src: Schema.String})]))
 			),
-			release_date: Schema.OptionFromOptionalKey(
-				Schema.Record(Schema.String, DateTimeUtcFromFiniteSeconds)
-			),
+			release_date: Schema.OptionFromOptionalKey(Schema.Record(Schema.String, DateTimeUtcFromFiniteSeconds)),
 			// imgchest albums without a name answer null.
 			title: Schema.OptionFromOptionalKey(Schema.OptionFromNullOr(Schema.String))
 		})

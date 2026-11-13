@@ -87,13 +87,7 @@ function ChapterRow(props: {chapter: ChapterItem; onOpen: (number: ChapterNumber
 					>{`Chapter ${props.chapter.number}`}</ItemTitle>
 					<ItemDescription>
 						{pipe(
-							[
-								props.chapter.title,
-								Option.match(props.chapter.postedAt, {
-									onNone: () => '',
-									onSome: shortDate
-								})
-							],
+							[props.chapter.title, Option.match(props.chapter.postedAt, {onNone: () => '', onSome: shortDate})],
 							Array.filter(String.isNonEmpty),
 							Array.join(' · ')
 						)}

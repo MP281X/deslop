@@ -165,7 +165,11 @@ export function makeClipboard<E extends {_tag: string; message: string}>(options
 				ClipboardOffer.of({
 					answer: Effect.fnUntraced(function* (answer) {
 						const handled = Effect.try({
-							catch: cause => ClipboardError.make({cause: Option.some(cause), message: 'The answer could not be kept on this iPhone.'}),
+							catch: cause =>
+								ClipboardError.make({
+									cause: Option.some(cause),
+									message: 'The answer could not be kept on this iPhone.'
+								}),
 							try: () => writeAtomically(file, answer.count)
 						})
 						const save: Effect.Effect<void, E> = Boolean.match(answer.save, {
