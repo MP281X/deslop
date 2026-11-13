@@ -36,7 +36,7 @@ import {MachineHistory} from '#services/metrics/schema.ts'
 import {Metrics} from '#services/metrics/service.ts'
 
 it.layer(Layer.mergeAll(NodeServices.layer, NodeHttpClient.layerFetch, NodeCrypto.layer))('Worker RPC', test => {
-	test.effect('merges one service view, keeps remote identity stable and marks failed snapshots stale', () =>
+	test.effect('shares a peer connection and leaves the last snapshot unchanged during outages', () =>
 		Effect.scoped(
 			Effect.gen(function* () {
 				const unavailable = yield* Ref.make(false)
@@ -74,6 +74,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeHttpClient.layerFetch, NodeCrypt
 					'exposures.hide',
 					'inventory.run'
 				)
+				const upgrades = {count: 0}
 				const server = yield* Layer.build(
 					pipe(
 						HttpRouter.serve(
@@ -112,7 +113,18 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeHttpClient.layerFetch, NodeCrypt
 							)
 						),
 						Layer.provide(layerServerProtocol),
-						Layer.provideMerge(NodeHttpServer.layer(createServer, {host: '127.0.0.1', port: 0}))
+						Layer.provideMerge(
+							NodeHttpServer.layer(
+								() => {
+									const server = createServer()
+									server.on('upgrade', () => {
+										upgrades.count += 1
+									})
+									return server
+								},
+								{host: '127.0.0.1', port: 0}
+							)
+						)
 					)
 				)
 				const url = HttpServer.formatAddress(Context.get(server, HttpServer.HttpServer).address)
@@ -171,6 +183,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeHttpClient.layerFetch, NodeCrypt
 				assert.deepStrictEqual(Option.getOrThrow(Array.get(immediate, 1)).cpuModel, Option.some('Fixture CPU'))
 				assert.strictEqual(currentMetrics[1]?.worker, 'desktop')
 				assert.deepStrictEqual(currentMetrics[1]?.cpuModel, Option.some('Fixture CPU'))
+				assert.strictEqual(upgrades.count, 1)
 				yield* Ref.set(hanging, true)
 				const pending = yield* Effect.forkScoped(fleet.metrics({minutes: Duration.minutes(60)}))
 				yield* Deferred.await(entered)
@@ -198,7 +211,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeHttpClient.layerFetch, NodeCrypt
 				)
 				const stale = yield* fleet.snapshot
 				assert.strictEqual(stale.items[0]?.id, current.items[0]?.id)
-				assert.strictEqual(stale.items[0]?.state, 'stale · active')
+				assert.strictEqual(stale.items[0]?.state, 'active')
 				assert.strictEqual(stale.sources[0]?.name, 'desktop · Snapshot')
 				assert.include(Option.getOrThrow(stale.sources[0]?.error ?? Option.none()), 'worker unavailable')
 			})

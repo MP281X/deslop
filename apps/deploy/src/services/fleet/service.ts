@@ -121,6 +121,24 @@ export class Fleet extends Context.Service<
 				onNone: () => ({}),
 				onSome: key => ({authorization: `Bearer ${Redacted.value(key)}`})
 			})
+			// The fleet layer owns one reconnecting transport per peer. All RPC kinds
+			// multiplex over it; a request's timeout never closes another request's link.
+			const clients = yield* Effect.forEach(workers, worker =>
+				Effect.gen(function* () {
+					const url = new URL(RPC_PATH, worker.url)
+					url.protocol = new URL(worker.url).protocol === 'http:' ? 'ws:' : 'wss:'
+					const protocol = yield* Layer.build(
+						pipe(
+							RpcClient.layerProtocolSocket({pingTimeout: Duration.seconds(15)}),
+							Layer.provide(NodeSocket.layerWebSocket(url.href)),
+							Layer.provide(RpcSerialization.layerSchemaBinary()),
+							Layer.provideMerge(layerRpcStreamClient)
+						)
+					)
+					return [worker.name, yield* Effect.provideContext(makeRemoteClient, protocol)] as const
+				})
+			)
+			const peers = Record.fromEntries(clients)
 			const previous = yield* Ref.make<Record<WorkerId, Snapshot>>({})
 			const local = Effect.withSpan(
 				Effect.gen(function* () {
@@ -147,24 +165,8 @@ export class Fleet extends Context.Service<
 			const remote = Effect.fn('Fleet.remote')(
 				function* <A, E>(worker: Worker, use: (client: RemoteClient, headers: Headers.Input) => Effect.Effect<A, E>) {
 					yield* Effect.annotateCurrentSpan('worker', worker.name)
-					const url = new URL(RPC_PATH, worker.url)
-					url.protocol = 'wss:'
-					if (new URL(worker.url).protocol === 'http:') url.protocol = 'ws:'
-					return yield* pipe(
-						makeRemoteClient,
-						Effect.flatMap(client => use(client, peerHeaders)),
-						// oxlint-disable-next-line effecttsgo/strict-effect-provide -- Each remote invocation owns its socket and client lifetime.
-						Effect.provide(
-							pipe(
-								RpcClient.layerProtocolSocket({pingTimeout: Duration.seconds(15)}),
-								Layer.provide(NodeSocket.layerWebSocket(url.href)),
-								Layer.provide(RpcSerialization.layerSchemaBinary()),
-								Layer.provideMerge(layerRpcStreamClient)
-							)
-						)
-					)
+					return yield* use(Option.getOrThrow(Record.get(peers, worker.name)), peerHeaders)
 				},
-				Effect.scoped,
 				Effect.timeout(Duration.seconds(15))
 			)
 			function selectedWorker(target: WorkerId) {
@@ -299,11 +301,7 @@ export class Fleet extends Context.Service<
 									Effect.matchEffect({
 										onFailure: cause =>
 											Effect.map(Ref.get(previous), rows => ({
-												items: Array.map(rows[worker.name]?.items ?? [], item => ({
-													...item,
-													detail: `${item.detail}\nLast successful sample: ${pipe(rows, Record.get(worker.name), Option.match({onNone: () => 'undefined', onSome: saved => `${DateTime.toEpochMillis(saved.time)}`}))}`,
-													state: `stale · ${item.state}`
-												})),
+												items: rows[worker.name]?.items ?? [],
 												sources: [{error: Option.some(cause.message), name: `${worker.name} · Snapshot`}]
 											})),
 										onSuccess: Effect.succeed
