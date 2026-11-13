@@ -4,7 +4,6 @@ import {assert, it} from '@effect/vitest'
 import type {Path} from 'effect'
 import {
 	Array,
-	Boolean,
 	ConfigProvider,
 	Context,
 	Effect,
@@ -23,10 +22,9 @@ import {Digest} from 'effect/crypto'
 import {Base64Url} from 'effect/encoding'
 import {HttpClient, HttpClientResponse, HttpRouter, HttpServerResponse} from 'effect/http'
 import {Jwk, Jwt} from 'effect/jose'
-import {TestClock} from 'effect/testing'
 
 import {Auth} from '#server/auth.ts'
-import {crossSiteGuard, layerAnnounce, layerRoutes} from '#server/http.ts'
+import {crossSiteGuard, layerRoutes} from '#server/http.ts'
 import {Sessions} from '#server/sessions.ts'
 import {layerSessionRoutes} from '#server/sign-in.ts'
 import {layerDataStore} from '#server/store.ts'
@@ -84,87 +82,6 @@ const send = Effect.fnUntraced(function* (
 	const context = yield* Effect.context<FileSystem.FileSystem | Path.Path>()
 	return yield* Effect.promise(() => web.handler(new Request(url, {headers, method}), context))
 })
-
-it.effect('does not keep announcing an app Auth permanently rejects', () =>
-	Effect.scoped(
-		Effect.gen(function* () {
-			const attempts = yield* Ref.make(0)
-			const requests = yield* Queue.unbounded<void>()
-			const client = HttpClient.make(request =>
-				Effect.gen(function* () {
-					yield* Ref.update(attempts, count => count + 1)
-					yield* Queue.offer(requests, undefined)
-					return HttpClientResponse.fromWeb(request, new Response(undefined, {status: 403}))
-				})
-			)
-			yield* Layer.build(
-				pipe(
-					layerAnnounce,
-					Layer.provide(Layer.succeed(HttpClient.HttpClient, client)),
-					Layer.provide(
-						ConfigProvider.layer(
-							ConfigProvider.fromUnknown({
-								APP_URL: 'https://desktop.example.ts.net:5102',
-								AUTH_URL: 'https://auth.example.com'
-							})
-						)
-					)
-				)
-			)
-			yield* TestClock.adjust('2 seconds')
-			yield* Queue.take(requests)
-			yield* TestClock.adjust('5 minutes')
-			assert.strictEqual(yield* Ref.get(attempts), 1)
-		})
-	)
-)
-
-it.effect('bounds a stalled announcement and respects Auth retry-after before recovering', () =>
-	Effect.scoped(
-		Effect.gen(function* () {
-			const attempts = yield* Ref.make(0)
-			const interrupted = yield* Ref.make(false)
-			const requests = yield* Queue.unbounded<void>()
-			const client = HttpClient.make(request =>
-				Effect.gen(function* () {
-					const attempt = yield* Ref.getAndUpdate(attempts, count => count + 1)
-					yield* Queue.offer(requests, undefined)
-					if (attempt === 0) return yield* Effect.ensuring(Effect.never, Ref.set(interrupted, true))
-					return HttpClientResponse.fromWeb(
-						request,
-						new Response(undefined, {
-							headers: {'retry-after': '120'},
-							status: Boolean.match(attempt === 1, {onFalse: () => 200, onTrue: () => 503})
-						})
-					)
-				})
-			)
-			yield* Layer.build(
-				pipe(
-					layerAnnounce,
-					Layer.provide(Layer.succeed(HttpClient.HttpClient, client)),
-					Layer.provide(
-						ConfigProvider.layer(
-							ConfigProvider.fromUnknown({APP_URL: 'https://scope.example.com', AUTH_URL: 'https://auth.example.com'})
-						)
-					)
-				)
-			)
-			yield* TestClock.adjust('2 seconds')
-			yield* Queue.take(requests)
-			yield* TestClock.adjust('10 seconds')
-			assert.isTrue(yield* Ref.get(interrupted))
-			yield* TestClock.adjust('1 minute')
-			yield* Queue.take(requests)
-			yield* TestClock.adjust('119 seconds')
-			assert.strictEqual(yield* Ref.get(attempts), 2)
-			yield* TestClock.adjust('1 second')
-			yield* Queue.take(requests)
-			yield* TestClock.adjust('5 minutes')
-			assert.strictEqual(yield* Ref.get(attempts), 3)
-		})
-	)
-)
 
 it.layer(Layer.merge(NodeServices.layer, NodeCrypto.layer))('Server guard', test => {
 	test.effect('keeps an authorization outage distinct from signing out', () =>

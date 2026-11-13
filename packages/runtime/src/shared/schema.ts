@@ -70,7 +70,7 @@ export const MCP_PATH = '/mcp'
 // The protected-resource metadata that tells an MCP client which issuer its bearer must come from.
 export const MCP_METADATA_PATH = '/.well-known/oauth-protected-resource/mcp'
 
-// The manifest a web app serves, which Auth probes to tell a browser app from an iOS one.
+// The browser's installable web app manifest.
 export const MANIFEST_PATH = '/manifest.webmanifest'
 
 // `signOut` is false without an issuer, where everyone is the developer.

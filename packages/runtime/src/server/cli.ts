@@ -28,7 +28,6 @@ import {AiGateway} from '#server/ai.ts'
 import {Auth} from '#server/auth.ts'
 import {
 	crossSiteGuard,
-	layerAnnounce,
 	layerIcon,
 	layerNodeHttpServer,
 	layerServerProtocol,
@@ -121,7 +120,7 @@ export type App<A, E> = {
 
 function server<A, E>(app: App<A, E>) {
 	const routes = Layer.provide(
-		Layer.mergeAll(app.routes, layerRoutes, layerIcon(app.icon), layerWeb, layerAnnounce),
+		Layer.mergeAll(app.routes, layerRoutes, layerIcon(app.icon), layerWeb),
 		Option.match(Option.fromUndefinedOr(app.middleware), {
 			onNone: () => Layer.empty,
 			onSome: middleware => HttpRouter.middleware()(middleware).layer
