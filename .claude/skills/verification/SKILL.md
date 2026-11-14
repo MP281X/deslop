@@ -5,7 +5,7 @@ description: Load before editing code for a bug or a failed check, before claimi
 
 # Verification
 
-Lint owns what a parser can check; this covers running behaviour.
+Lint owns what a parser can check; this covers running behaviour. Prove and Review run once the user calls the work settled; Diagnose runs whenever a bug or check fails.
 
 ## Diagnose
 
