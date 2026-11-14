@@ -1,6 +1,6 @@
 ---
 name: environment
-description: Load before worker operations, previews, devices, tracing, deployment, publishing, sign-in, runtime errors, saved reading, design references, reading a reference or outside repository, or Dual.
+description: Load before a command on another worker, starting a preview, opening a device, reading a trace or runtime error, deploying, publishing, a sign-in, reading Stash data or an outside repository, a maintenance pass, or any Dual task.
 ---
 
 # Environment
@@ -52,5 +52,4 @@ stateDiagram-v2
 | Question                        | Tool                                                                                                                                        |
 | ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
 | Runtime state                   | Deploy's `list_apps` or `read_resource_history`, with the full worker name (`dev.mp281x.xyz`), never `ps`, `docker ps`, `ss` or `systemctl` |
-| Unit health                     | `systemctl --failed`                                                                                                                        |
 | Runtime error, trace or latency | Scope's `list_operations`, then `search_traces`, then `read_trace` or `measure_latency`                                                     |

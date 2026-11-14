@@ -1,6 +1,6 @@
 ---
 name: pull-requests
-description: 'Load before the first commit of a task, before the first edit when a before/after is claimed, before editing a branch that has a PR or MR, and before creating, describing, pushing or restacking one.'
+description: 'Load before the first commit of a task, before the first edit when a before/after is claimed or the branch has a PR or MR, and before creating, describing, pushing, readying or restacking a PR or MR.'
 ---
 
 # Pull requests
@@ -35,7 +35,8 @@ stateDiagram-v2
       [*] --> Fixing
       Fixing --> Fixing : the repository's fixer [fails] / fix
       Fixing --> Describing : fixer [passes] / commit its changes, push, update the body for the new head
-      Describing --> Describing : read back [a diagram, image or video fails] / fix the body
+      Describing --> [*] : [no diagram, image or video changed in the body]
+      Describing --> Describing : read back [a changed diagram, image or video fails] / fix the body
       Describing --> [*] : read back [all render]
   ```
 

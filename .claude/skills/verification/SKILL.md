@@ -1,6 +1,6 @@
 ---
 name: verification
-description: Load before editing code for a bug or a failed check, before claiming done, fixed or working, before capturing proof, and before a review.
+description: Load when a bug or failed check is reported, when the user calls work settled, before claiming done, fixed or working, before capturing proof, and before a review.
 ---
 
 # Verification
@@ -40,7 +40,7 @@ Each thread reuses its own validation worktree, so dependencies and the `vp` cac
 ## Prove
 
 - **Surface.** UI, and backend changes a screen shows, in the T3 browser; native changes in the Device panel. This standing request covers the preview tools.
-- **Capture** representative data once a condition holds, on the head, with its short commit in the caption; a rebase retakes them all.
+- **Capture** representative data once a condition holds, on the head, with its short commit in the caption.
 - **Fixed means flipped.** The probe that failed on base passes on the head.
 - **States.** Cold open, deep-link reload and a failed first request; `iphone-12-pro` and 1440×900, plus the widest target reached; dark and light when colour changed; web and iOS side by side when both exist.
 - **Read each capture** for duplicates, clipping, overflow and untruthful loading, empty or error states, and audit web states with `preview_evaluate` and [references/page-audit.js](references/page-audit.js).

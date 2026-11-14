@@ -1,9 +1,34 @@
 ---
 name: orchestrator
-description: 'Load before delegating or integrating delegated work. Not for schedules or T3 workflows.'
+description: 'Load before starting any change to a repository (code, config or docs), and when a brief arrives as a delegate.'
 ---
 
 # Orchestrator
+
+## Task
+
+```mermaid
+stateDiagram-v2
+    [*] --> Discussing : request
+    Discussing --> Discussing : question / answer and propose, change nothing
+    Discussing --> Planned : change wanted / show the plan
+    Planned --> Discussing : user steers
+    Planned --> Drafting : user approves the plan
+    Drafting --> Drafting : steer [inside the plan] / edit, commit, push the draft
+    Drafting --> Discussing : steer [outside the plan]
+    Drafting --> Settled : user calls the work settled / Verify on the integrated head
+    Settled --> Drafting : Verify [fails] / fix
+    Settled --> Done : Verify [passes] / captures, PR polish, cleanup
+    Done --> [*]
+```
+
+- **Plan.** A UI plan is a rough HTML prototype, an architecture plan a diagram, made in minutes without the code reading a replica needs: 2–3 genuinely different directions you would build, side by side on the same data, without filters or captions; a better idea than the user's is one of them.
+- **Precedent.** Before an edit, read how the neighbouring feature or shared package does it.
+- **Cleanup** removes what you created and settles delegates and PR threads with their worktrees; the shared preview stays.
+- **One owner.** One main thread per worktree: check `t3_thread_list` first and send evidence to a live owner.
+- **Main.** Do small edits, prototypes and needed reads yourself, since a delegate costs a brief and a report on a thread that re-reads its context every call.
+- **Context.** One thread per task; after compaction, read the task list, the thread and running delegates' latest results before asking.
+- **Side chat.** A read-only fork; it reports back only when the user asks.
 
 ## Route
 
@@ -21,29 +46,49 @@ The user picks the main thread's model and effort; this table routes delegates.
 - **Trial.** Compare Terra's reports with Sol's before it becomes a default.
 - **Effort.** Medium (`effort` on Claude, `reasoningEffort` on Codex); high when the task needs it; never low, xhigh or above.
 
-## Run
+## Delegation
 
 ```mermaid
 stateDiagram-v2
     [*] --> Briefing : independent outcomes chosen
-    Briefing --> Running : [siblings can run together] / delegate_task async, all in one turn, then end the turn
+    Briefing --> Running : [no running delegate touches its files] / delegate_task async in the main thread's worktree, all such siblings in one turn, then end the turn
+    Briefing --> Queued : [a running delegate touches its files]
+    Queued --> Briefing : that delegate integrated
     Briefing --> Waiting : [the next step needs its result] / delegate_task wait
     Running --> Integrating : a completion wakes the main thread
     Waiting --> Integrating : report returns
-    Integrating --> Merged : diff read [matches the decisions, carries its proof] / merge in stack order
+    Integrating --> [*] : diff read [matches the decisions, carries its proof] / commit it
     Integrating --> Running : diff read [deliverable missing, first rerun] / another model
     Integrating --> Running : diff read [deliverable missing, second rerun] / Opus 5.5
     Integrating --> [*] : diff read [the Opus rerun failed too] / ask the user, showing the cause from each failed report
-    Merged --> [*]
+    [*] --> PRThread : a separate PR must progress in parallel / delegate_task isolation 'worktree', a persistent thread
+    PRThread --> PRThread : its next step / t3_thread_send
+    PRThread --> [*] : its PR merged or closed
 ```
 
+- **One checkout.** The main thread already owns its worktree and branch, so delegates get none; sharing one index, they never commit.
 - **One outcome per delegate.** Coupled edits share one thread, since split halves come back for the main thread to reconcile. A procedure is a skill, not a child agent.
-- **One owner per file.** No sibling touches a delegate's files, so siblings merge without conflicts.
-- **Worktrees.** A writing delegate works and commits in its own worktree (`isolation: 'worktree'`); read-only delegates share the checkout.
 - **Surveys** run once; save the result to a file outside the checkout and cite its path in later briefs.
 - **Reruns** carry only what was missing.
-- **Integrate** from the diff, not the summary.
 
 ## Brief
 
-About 1,500 characters: the delegate already has the instructions, the skills and the repository at the parent's commit, but not the thread or uncommitted edits. Give only the objective, the settled decisions, the files it owns, what to leave alone, the command that proves it done and the report you want.
+About 1,500 characters: the delegate already has the instructions, the skills and the checkout with its uncommitted edits, but not the thread; a PR thread's worktree starts at the parent's commit, without them. Give only the objective, the settled decisions, the files it owns, what to leave alone, the command that proves it done and the report you want.
+
+## Delegate run
+
+A delegate runs its brief as the approved plan, edits only the brief's files and starts no delegates.
+
+```mermaid
+stateDiagram-v2
+    [*] --> Working : brief arrives
+    Working --> Working : tool truncates or fails / smaller page or another route
+    Working --> Checking : edits made / the brief's checks
+    Checking --> Working : [fail]
+    Checking --> [*] : [pass, shared checkout] / report PASS
+    Checking --> [*] : [pass, a PR thread] / commit, push by the pull-requests skill, report PASS
+    Working --> [*] : stop [unfinished] / save the work to a file, report ISSUES
+    Working --> [*] : stop [a command's output proves the blocker] / report BLOCKED
+```
+
+- **Report.** Short: its status word, then evidence (command, exit code, `path:line`, and a SHA only for a commit it made), not narration.
