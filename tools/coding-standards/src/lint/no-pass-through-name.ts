@@ -316,8 +316,9 @@ function privateConstReads(input: {context: Context; node: ESTree.VariableDeclar
 		isExport(input.node.parent.parent) ||
 		input.node.id.type !== 'Identifier' ||
 		input.node.id.typeAnnotation !== null
-	)
-		{return Option.none()}
+	) {
+		return Option.none()
+	}
 	return readsOf({context: input.context, name: input.node.id.name, node: input.node})
 }
 
