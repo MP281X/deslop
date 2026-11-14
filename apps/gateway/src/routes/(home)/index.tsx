@@ -2,7 +2,7 @@ import {useAtom, useAtomSet} from '@effect/atom-react'
 
 import {Array, Boolean, Function, Number, Option, Order, Schema, String, pipe} from 'effect'
 
-import {GearSixIcon, HardDrivesIcon, LinkIcon, WrenchIcon} from '@phosphor-icons/react'
+import {HardDrivesIcon, LinkIcon, WrenchIcon} from '@phosphor-icons/react'
 import {CatchBoundary, createFileRoute, getRouteApi} from '@tanstack/react-router'
 import {useMachineResult} from '@typeonce/effect-machine-react'
 import {AtomMachine} from '@typeonce/effect-machine/reactivity'
@@ -14,7 +14,7 @@ import {Line, LineChart, YAxis} from 'recharts'
 import {CopyButton} from '@deslop/components-web/blocks/copy-button'
 import {ImageMark} from '@deslop/components-web/blocks/marks'
 import {StaleProblem} from '@deslop/components-web/blocks/problem'
-import {LoadingRow, RowLead} from '@deslop/components-web/blocks/rows'
+import {ChoiceRow, LoadingRow, RowLead} from '@deslop/components-web/blocks/rows'
 import {Loaded, ReadFailure} from '@deslop/components-web/blocks/states'
 import {StatusDot} from '@deslop/components-web/blocks/status-dot'
 import {AppBar, AppBarChoice} from '@deslop/components-web/shell/app-bar'
@@ -49,8 +49,8 @@ import type {ConnectionItem, McpUsageServer} from '#services/connections/schema.
 import {Period} from '#services/usage/schema.ts'
 import type {UsageRange} from '#services/usage/schema.ts'
 
-// The list's columns: name, tools, sparkline, total, then the row's action.
-const COLUMNS = 5
+// The list's columns: name, tools, sparkline, total.
+const COLUMNS = 4
 const SPARKLINE = {calls: {color: 'var(--muted-foreground)'}} satisfies ChartConfig
 const PAYER_LABELS: Record<Payer, string> = {balance: 'Zen balance', byok: 'Anthropic key'}
 const PERIODS = Array.map(Period.literals, value => ({label: value, value}))
@@ -133,7 +133,7 @@ function FailureRow(props: {children: ReactNode}) {
 	)
 }
 
-// One server: its mark, name and host, what it offers or the button that connects it, then its calls over the period.
+// One server: its mark, name and host, then what it offers and its calls over the period, or in their place the button that connects it.
 function ServerRow(props: {period: UsageRange; report: readonly McpUsageServer[]; server: ConnectionItem}) {
 	const [connecting, connect] = useAtom(connectAtom(props.server.id))
 	const connected = props.server.status === 'Connected'
@@ -158,27 +158,33 @@ function ServerRow(props: {period: UsageRange; report: readonly McpUsageServer[]
 			>
 				{props.server.name}
 			</RowLead>
-			<TableCell className="text-right">
-				{!needsUser && props.server.tools > 0 && (
-					<span className="text-muted-foreground inline-flex items-center gap-1.5 tabular-nums" title="Tools">
-						{props.server.tools}
-						<WrenchIcon />
-					</span>
-				)}
-			</TableCell>
-			<FiguresCells figure={countOf(Number.sumAll(series))} series={series} />
-			<TableCell>
-				{needsUser && (
-					<Button
-						size="xs"
-						disabled={AsyncResult.isWaiting(connecting)}
-						aria-label={`${action} ${props.server.name}`}
-						onClick={() => connect()}
-					>
-						{action}
-					</Button>
-				)}
-			</TableCell>
+			{Boolean.match(needsUser, {
+				onFalse: () => (
+					<>
+						<TableCell className="text-right">
+							{props.server.tools > 0 && (
+								<span className="text-muted-foreground inline-flex items-center gap-1.5 tabular-nums" title="Tools">
+									{props.server.tools}
+									<WrenchIcon />
+								</span>
+							)}
+						</TableCell>
+						<FiguresCells figure={countOf(Number.sumAll(series))} series={series} />
+					</>
+				),
+				onTrue: () => (
+					<TableCell colSpan={3} className="text-right">
+						<Button
+							size="xs"
+							disabled={AsyncResult.isWaiting(connecting)}
+							aria-label={`${action} ${props.server.name}`}
+							onClick={() => connect()}
+						>
+							{action}
+						</Button>
+					</TableCell>
+				)
+			})}
 		</TableRow>
 	)
 }
@@ -224,7 +230,7 @@ function ServerRows(props: {period: Period}) {
 	)
 }
 
-// One payer of the saved key, in a server row's shape: its figure and range, with the dialog behind it.
+// One payer of the saved key, in a server row's shape: its figure and range; the whole row opens the key's dialog.
 function PayerRow(props: {
 	info: AiKeyItem
 	onOpen: () => void
@@ -233,7 +239,7 @@ function PayerRow(props: {
 	source: Payer
 }) {
 	return (
-		<TableRow>
+		<ChoiceRow label={`OpenCode, ${PAYER_LABELS[props.source]}`} selected={false} onSelect={props.onOpen}>
 			<RowLead
 				mark={<ProviderMark />}
 				after={
@@ -250,18 +256,7 @@ function PayerRow(props: {
 				figure={aiCost(props.report, props.source)}
 				series={aiSeries(props.report, props.source, props.period)}
 			/>
-			<TableCell>
-				<Button
-					size="icon-xs"
-					variant="ghost"
-					aria-label={`OpenCode, ${PAYER_LABELS[props.source]}`}
-					title="Key settings"
-					onClick={props.onOpen}
-				>
-					<GearSixIcon />
-				</Button>
-			</TableCell>
-		</TableRow>
+		</ChoiceRow>
 	)
 }
 
@@ -305,7 +300,7 @@ function KeyRows(props: {onOpen: () => void; period: Period}) {
 // Each group is read on its own, so one failing reader leaves the other group's rows.
 function List(props: {onOpen: () => void; period: Period}) {
 	return (
-		<Table aria-label="MCP servers and AI keys">
+		<Table role="grid" aria-label="MCP servers and AI keys">
 			<TableBody>
 				<CatchBoundary getResetKey={Function.constant('servers')} errorComponent={RowReadFailure}>
 					<Suspense fallback={<GroupLoading label="MCP servers" rows={3} />}>
