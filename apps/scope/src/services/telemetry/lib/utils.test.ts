@@ -1,113 +1,231 @@
 import {assert, it} from '@effect/vitest'
 
-import {Array, DateTime, Duration, Option, String} from 'effect'
+import {Array, DateTime, Duration, Option, Schema, String, pipe} from 'effect'
 
-import {overviewOf} from '#services/telemetry/lib/utils.ts'
-import type {Traced} from '#services/telemetry/lib/utils.ts'
-import {AppName, ServiceName, TraceId} from '#services/telemetry/schema.ts'
+import {
+	latencyOf,
+	newestReleases,
+	overviewOf,
+	supersededBy,
+	touchedTraces,
+	traceTree
+} from '#services/telemetry/lib/utils.ts'
+import {
+	AppName,
+	OperationTrace,
+	ReleaseVersion,
+	ServiceName,
+	Span,
+	SpanId,
+	SpanLink,
+	TraceId
+} from '#services/telemetry/schema.ts'
 
-const NOW = 1_781_870_000_000
-const HOUR = 3_600_000
-
-function traced(id: string, app: string, start: number, durationMs: number) {
-	return {
-		app: AppName.make(app),
-		failed: false,
-		name: 'share',
+const A = '00000000000000000000000000000001'
+const B = '00000000000000000000000000000002'
+const SERVICE = ServiceName.make('stash-server')
+const NOW = DateTime.makeUnsafe(1000)
+const SPANS = Schema.decodeSync(Schema.Array(Span.json))([
+	{
+		attributes: {},
+		duration: 100,
+		name: 'capture',
 		runtime: 'server',
-		trace: {
-			duration: Duration.millis(durationMs),
-			failure: Option.none(),
-			id: TraceId.make(id),
-			label: Option.none(),
-			start: DateTime.makeUnsafe(start)
-		}
-	} satisfies Traced
-}
+		service: SERVICE,
+		spanId: '0000000000000001',
+		start: 10,
+		status: 'ok',
+		traceId: A
+	},
+	{
+		attributes: {},
+		duration: 10,
+		name: 'read',
+		parentSpanId: '0000000000000001',
+		runtime: 'server',
+		service: SERVICE,
+		spanId: '0000000000000002',
+		start: 20,
+		status: 'failed',
+		traceId: A
+	},
+	{
+		attributes: {},
+		duration: 200,
+		name: 'share',
+		runtime: 'web',
+		service: SERVICE,
+		spanId: '0000000000000003',
+		start: 0,
+		status: 'ok',
+		traceId: B
+	},
+	{
+		attributes: {},
+		duration: 20,
+		name: 'send',
+		parentSpanId: '0000000000000003',
+		runtime: 'web',
+		service: SERVICE,
+		spanId: '0000000000000004',
+		start: 5,
+		status: 'ok',
+		traceId: B
+	}
+])
 
-const traces = [
-	traced(String.repeat(32)('a'), 'stash', NOW - 5 * 60_000, 10),
-	traced(String.repeat(32)('b'), 'stash', NOW - 2 * HOUR, 100),
-	traced(String.repeat(32)('c'), 'stash', NOW - 3 * HOUR, 1000),
-	traced(String.repeat(32)('d'), 'gateway', NOW - 2 * HOUR, 20)
+const TRACES = Array.map(
+	[
+		{app: 'stash', duration: 10, failed: false, id: A, name: 'capture', start: 30},
+		{app: 'stash', duration: 100, failed: false, id: B, name: 'capture', start: 20},
+		{app: 'gateway', duration: 20, failed: true, id: '00000000000000000000000000000003', name: 'connect', start: 10}
+	],
+	input => ({
+		app: AppName.make(input.app),
+		failed: input.failed,
+		name: input.name,
+		runtime: 'server' as const,
+		trace: Schema.decodeSync(OperationTrace)({duration: input.duration, id: input.id, start: input.start})
+	})
+)
+const RETAINED = [
+	{ci: false, count: 2, failures: 0, service: ServiceName.make('stash')},
+	{ci: false, count: 1, failures: 1, service: ServiceName.make('gateway')}
 ]
 
-const retained = [
-	{ci: false, count: 3, failures: 0, service: ServiceName.make('stash')},
-	{ci: false, count: 1, failures: 0, service: ServiceName.make('gateway')}
-]
-
-function appOf(frame: ReturnType<typeof overviewOf>, name: string) {
-	return Option.getOrThrow(Array.findFirst(frame.apps, current => current.name === name))
+function stashOf(overview: ReturnType<typeof overviewOf>) {
+	return Option.getOrThrow(Array.findFirst(overview.apps, app => app.name === 'stash'))
 }
 
-it('counts queried operations and keeps every retained app tab', () => {
-	const hour = overviewOf(Array.take(traces, 1), retained)
+it('rejudges arriving span replacements together with the retained trace', () => {
+	const replacement = Schema.decodeSync(Span.json)({
+		attributes: {},
+		duration: 150,
+		name: 'read',
+		parentSpanId: '0000000000000001',
+		runtime: 'server',
+		service: SERVICE,
+		spanId: '0000000000000002',
+		start: 20,
+		status: 'ok',
+		traceId: A
+	})
 	assert.deepStrictEqual(
-		Array.map(appOf(hour, 'stash').operations, operation => [
-			operation.name,
-			operation.count,
-			Duration.toMillis(operation.p50Ms)
+		Array.map(touchedTraces([replacement], Array.take(SPANS, 2), NOW), trace => [
+			trace.root,
+			trace.broken,
+			Duration.toMillis(trace.duration)
 		]),
-		[['share', 1, 10]]
-	)
-	assert.lengthOf(hour.apps, 2)
-	assert.lengthOf(appOf(hour, 'gateway').operations, 0)
-
-	const day = overviewOf(traces, retained)
-	assert.deepStrictEqual(
-		Array.map(appOf(day, 'stash').operations, operation => [
-			operation.name,
-			operation.count,
-			Duration.toMillis(operation.p50Ms)
-		]),
-		[['share', 3, 100]]
-	)
-	assert.deepStrictEqual(
-		Array.map(appOf(day, 'gateway').operations, operation => [operation.name, operation.count]),
-		[['share', 1]]
+		[[SpanId.make('0000000000000001'), Option.none(), 160]]
 	)
 })
 
-it('orders an app’s operations failing first, then most recently seen', () => {
-	const day = overviewOf(
+it('roots a trace when its late parent arrives', () => {
+	assert.deepStrictEqual(
+		Array.map(touchedTraces(Array.take(SPANS, 1), pipe(SPANS, Array.drop(1), Array.take(1)), NOW), trace => [
+			trace.root,
+			trace.rooted,
+			trace.broken
+		]),
+		[[SpanId.make('0000000000000001'), true, Option.some(SpanId.make('0000000000000002'))]]
+	)
+})
+
+it('supersedes only numeric releases older than the newest release of their own service', () => {
+	const senders = [
+		{service: SERVICE, version: Option.some(ReleaseVersion.make('1.9'))},
+		{service: SERVICE, version: Option.some(ReleaseVersion.make('1.10'))},
+		{service: SERVICE, version: Option.some(ReleaseVersion.make('local'))},
+		{service: SERVICE, version: Option.none<ReleaseVersion>()}
+	]
+	const newest = newestReleases(senders, {[SERVICE]: ReleaseVersion.make('1.8')})
+	assert.deepStrictEqual(newest, {[SERVICE]: '1.10'})
+	assert.deepStrictEqual(Array.map(senders, supersededBy(newest)), [true, false, false, false])
+	assert.isFalse(
+		supersededBy(newest)({service: ServiceName.make('other'), version: Option.some(ReleaseVersion.make('1.0'))})
+	)
+})
+
+it('computes nearest-rank latency percentiles from unordered durations', () => {
+	const latency = latencyOf(Array.map([100, 2, 4, 1, 3], Duration.millis))
+	assert.deepStrictEqual(
+		[Duration.toMillis(latency.p50Ms), Duration.toMillis(latency.p95Ms), Duration.toMillis(latency.maxMs)],
+		[3, 100, 100]
+	)
+})
+
+it('keeps a recent fast failure among the slowest traces', () => {
+	const traces = Array.map(
 		[
-			{...traced(String.repeat(32)('a'), 'stash', NOW - 3 * HOUR, 10), name: 'old'},
-			{...traced(String.repeat(32)('b'), 'stash', NOW - 2 * HOUR, 10), failed: true, name: 'broken'},
-			{...traced(String.repeat(32)('c'), 'stash', NOW - 4 * HOUR, 10), name: 'new'},
-			{...traced(String.repeat(32)('d'), 'stash', NOW - 5 * 60_000, 10), name: 'new'}
+			{duration: 1, failed: true, start: 100},
+			...Array.map([2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21], duration => ({
+				duration,
+				failed: false,
+				start: 0
+			}))
 		],
-		[{ci: false, count: 4, failures: 1, service: ServiceName.make('stash')}]
+		input => ({
+			app: AppName.make('stash'),
+			failed: input.failed,
+			name: 'capture',
+			runtime: 'server' as const,
+			trace: Schema.decodeSync(OperationTrace)({
+				duration: input.duration,
+				id: String.padStart(32, '0')(input.duration.toString(16)),
+				start: input.start
+			})
+		})
 	)
 	assert.deepStrictEqual(
-		Array.map(appOf(day, 'stash').operations, operation => operation.name),
-		['broken', 'new', 'old']
+		Array.map(stashOf(overviewOf(traces, RETAINED)).operations[0]?.traces ?? [], trace =>
+			Duration.toMillis(trace.duration)
+		),
+		[21, 20, 19, 18, 17, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 1]
 	)
 })
 
-function traceId(index: number) {
-	return String.padStart(32, '0')(index.toString(16))
-}
-
-it('keeps the newest failures among the slowest traces of an operation with 145,000 of them', () => {
-	const busy = Array.makeBy(145_000, index => ({
-		...traced(traceId(index), 'stash', NOW - index * 1000, index % 1000),
-		failed: index % 100 === 0
-	}))
-	const operation = Option.getOrThrow(
-		Array.head(
-			appOf(
-				overviewOf(busy, [{ci: false, count: 145_000, failures: 1450, service: ServiceName.make('stash')}]),
-				'stash'
-			).operations
-		)
-	)
-	assert.deepStrictEqual([operation.count, operation.failures], [145_000, 1450])
+it('attaches a linked trace beneath the span that started it', () => {
+	const links = Schema.decodeSync(Schema.Array(SpanLink.json))([
+		{linkedSpanId: '0000000000000004', linkedTraceId: B, spanId: '0000000000000001', traceId: A}
+	])
 	assert.deepStrictEqual(
-		Array.map(operation.traces, trace => trace.id),
+		Array.map(traceTree(TraceId.make(A), SPANS, [], links).spans, span => [span.name, span.depth]),
+		[
+			['share', 0],
+			['send', 1],
+			['capture', 2],
+			['read', 3]
+		]
+	)
+})
+
+it('counts operations in the selected range while keeping retained app tabs', () => {
+	assert.sameDeepMembers(
+		Array.map(overviewOf(Array.take(TRACES, 1), RETAINED).apps, app => [
+			app.name,
+			Array.map(app.operations, operation => [operation.name, operation.count])
+		]),
+		[
+			['gateway', []],
+			['stash', [['capture', 1]]]
+		]
+	)
+})
+
+it('orders failing operations before newer successful operations', () => {
+	assert.deepStrictEqual(
 		Array.map(
-			[...Array.makeBy(10, index => index * 1000 + 999), ...Array.makeBy(10, index => 900 - index * 100)],
-			traceId
-		)
+			stashOf(
+				overviewOf(
+					[
+						{...Option.getOrThrow(Array.get(TRACES, 0)), name: 'recent'},
+						{...Option.getOrThrow(Array.get(TRACES, 1)), failed: true, name: 'broken'}
+					],
+					RETAINED
+				)
+			).operations,
+			operation => operation.name
+		),
+		['broken', 'recent']
 	)
 })

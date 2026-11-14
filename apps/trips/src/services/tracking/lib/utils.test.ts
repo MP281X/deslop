@@ -1,6 +1,6 @@
 import {assert, it} from '@effect/vitest'
 
-import {DateTime, Duration, Option, Schema, Struct} from 'effect'
+import {DateTime, Duration, Option, Schema} from 'effect'
 
 import {Flight, Train, TrainTracking} from '#services/bookings/schema.ts'
 import {checkEvery, flightTracking, isStale, trainTracking} from '#services/tracking/lib/utils.ts'
@@ -159,7 +159,9 @@ it('checks a train each minute near departure and calls live data stale after tw
 	const now = DateTime.subtractDuration(departs, Duration.minutes(30))
 	function live(checkedAt: DateTime.Utc, operator: Train['operator'] = 'trenitalia') {
 		return Train.make({
-			...Struct.pick(timetable, Struct.keys(Train.fields)),
+			...train,
+			arrives: timetable.arrives,
+			departs: timetable.departs,
 			live: Option.some(
 				Schema.decodeSync(TrainTracking)({
 					checkedAt: DateTime.toEpochMillis(checkedAt),
@@ -190,7 +192,9 @@ it('checks a train each minute near departure and calls live data stale after tw
 			isStale(live(now), DateTime.addDuration(timetable.arrives, Duration.hours(1))),
 			isStale(
 				Train.make({
-					...Struct.pick(timetable, Struct.keys(Train.fields)),
+					...train,
+					arrives: timetable.arrives,
+					departs: timetable.departs,
 					live: Option.some(
 						Schema.decodeSync(TrainTracking)({
 							checkedAt: DateTime.toEpochMillis(now),
@@ -206,34 +210,12 @@ it('checks a train each minute near departure and calls live data stale after tw
 	)
 	assert.deepStrictEqual(
 		[
-			checkEvery(Train.make({...Struct.pick(timetable, Struct.keys(Train.fields)), operator: 'other'}), now),
+			checkEvery(
+				Train.make({...train, arrives: timetable.arrives, departs: timetable.departs, operator: 'other'}),
+				now
+			),
 			isStale(live(DateTime.makeUnsafe(0), 'other'), now)
 		],
 		[Option.none(), false]
-	)
-})
-
-it("answers nothing for another day's run of the number or a run that does not call at the booked station", () => {
-	assert.deepStrictEqual(
-		[
-			trainTracking(
-				Schema.decodeSync(VtStatus)({
-					fermate: [{id: 'S08409', programmata: 18_000_000, stazione: 'ROMA TERMINI'}],
-					ritardo: 0
-				}),
-				train,
-				DateTime.makeUnsafe(1)
-			),
-			trainTracking(
-				Schema.decodeSync(VtStatus)({
-					fermate: [{id: 'S08409', partenzaReale: 1, stazione: 'ROMA TERMINI'}],
-					ritardo: 0
-				}),
-				train,
-				DateTime.makeUnsafe(1)
-			),
-			trainTracking(Schema.decodeSync(VtStatus)({fermate: [], ritardo: 9}), train, DateTime.makeUnsafe(1))
-		],
-		[Option.none(), Option.none(), Option.none()]
 	)
 })

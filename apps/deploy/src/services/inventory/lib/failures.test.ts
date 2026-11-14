@@ -1,31 +1,26 @@
 import {assert, it} from '@effect/vitest'
 
-import {Array, DateTime, Option} from 'effect'
+import {DateTime, Option, Record} from 'effect'
 
-import {unitFailures} from './failures.ts'
+import {exitFailure, unitFailures} from './failures.ts'
 
 import {UnitId} from '#services/inventory/schema.ts'
 
-it('says why a failed service stopped and when, instead of repeating its command', () => {
+it('distinguishes a failed start from a process exit and retains when it failed', () => {
 	const failures = unitFailures(
-		Array.join(
-			[
-				'Result=exit-code\nExecMainCode=1\nExecMainStatus=130\nId=e2e-auth.service\nStateChangeTimestamp=@1793639294',
-				'Result=signal\nExecMainStatus=9\nId=killed.service\nStateChangeTimestamp=',
-				'Result=oom-kill\nExecMainStatus=0\nId=heavy.service\nStateChangeTimestamp=@1',
-				'Result=exit-code\nExecMainCode=1\nExecMainStatus=1\nId=crash.service\nStateChangeTimestamp=@2',
-				'Result=exit-code\nExecMainCode=0\nExecMainStatus=0\nId=prestart.service\nStateChangeTimestamp=@3'
-			],
-			'\n\n'
-		)
+		'Id=app.service\nResult=exit-code\nExecMainCode=0\nExecMainStatus=203\nStateChangeTimestamp=@123\n\nId=worker.service\nResult=exit-code\nExecMainCode=1\nExecMainStatus=137\nStateChangeTimestamp=@124\n'
 	)
-	assert.deepStrictEqual(failures[UnitId.make('e2e-auth.service')], {
-		at: Option.some(DateTime.makeUnsafe(1_793_639_294_000)),
-		reason: 'Exited with code 130 (SIGINT)'
-	})
-	assert.deepStrictEqual(failures[UnitId.make('killed.service')], {at: Option.none(), reason: 'Killed by SIGKILL'})
-	assert.strictEqual(failures[UnitId.make('heavy.service')]?.reason, 'Killed for running out of memory')
-	assert.strictEqual(failures[UnitId.make('crash.service')]?.reason, 'Exited with code 1')
-	assert.strictEqual(failures[UnitId.make('prestart.service')]?.reason, 'Failed before starting')
-	assert.deepStrictEqual(unitFailures(''), {})
+	assert.deepStrictEqual(
+		Record.get(failures, UnitId.make('app.service')),
+		Option.some({at: Option.some(DateTime.makeUnsafe(123_000)), reason: 'Failed before starting'})
+	)
+	assert.strictEqual(
+		Option.getOrThrow(Record.get(failures, UnitId.make('worker.service'))).reason,
+		'Exited with code 137 (SIGKILL)'
+	)
+})
+
+it('explains a signalled launch agent and a numeric exit separately', () => {
+	assert.strictEqual(exitFailure(-11), 'Killed by SIGSEGV')
+	assert.strictEqual(exitFailure(2), 'Exited with code 2')
 })

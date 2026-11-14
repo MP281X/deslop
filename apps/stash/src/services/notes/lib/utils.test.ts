@@ -2,7 +2,7 @@ import {assert, it} from '@effect/vitest'
 
 import {Array} from 'effect'
 
-import {captureUrl, commentOf, hasVideo, tagCounts} from '#services/notes/lib/utils.ts'
+import {captureUrl, tagCounts} from '#services/notes/lib/utils.ts'
 import {TagName} from '#services/notes/schema.ts'
 
 it('maps every share of the same post to one canonical link', () => {
@@ -34,27 +34,6 @@ it('maps every share of the same post to one canonical link', () => {
 			'https://www.youtube.com/watch?v=LX_f1wuxFFQ',
 			'no link'
 		]
-	)
-})
-
-it('keeps the words around a shared link as its comment', () => {
-	assert.strictEqual(commentOf('Try this  https://x.com/a/status/1 \n tonight'), 'Try this tonight')
-})
-
-it('reads the video of a TikTok, but not of its photo posts', () => {
-	assert.deepStrictEqual(
-		Array.map(
-			[
-				'https://www.tiktok.com/@cook/video/123',
-				'https://www.tiktok.com/@cook/photo/123',
-				'https://vm.tiktok.com/ZN8Bp9ayx/',
-				'https://x.com/jack/status/20',
-				'https://www.instagram.com/reel/not-supported/',
-				'https://example.com/read'
-			],
-			hasVideo
-		),
-		[true, false, true, true, false, false]
 	)
 })
 

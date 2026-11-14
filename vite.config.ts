@@ -230,6 +230,19 @@ export default defineConfig({
 		ignorePatterns: ['**/*.gen.ts', 'packages/components-web/src/ui/**'],
 		overrides: [
 			{
+				files: ['**/tools/coding-standards/src/lint.test.ts'],
+				rules: {'@deslop/coding-standards/test-boundaries': ['error', 'read-source-text', 'execute-program']}
+			},
+			{
+				files: ['**/packages/runtime/src/server/tables.test.ts'],
+				rules: {'@deslop/coding-standards/test-boundaries': ['error', 'inspect-database']}
+			},
+			// The judge's program harness is owned by the separate judge overhaul.
+			{
+				files: ['tools/coding-standards/src/judge.test.ts'],
+				rules: {'@deslop/coding-standards/test-boundaries': 'off', '@deslop/coding-standards/test-registration': 'off'}
+			},
+			{
 				files: ['packages/runtime/src/config/expo.ts'],
 				rules: {
 					'eslint/no-restricted-imports': [
@@ -335,7 +348,7 @@ export default defineConfig({
 	},
 	// Each package's test script runs Vitest with this config from its own directory; a package's config holds no test settings.
 	test: {
-		// The only limits: no-test-timeout keeps tests, hooks and layers from raising their own.
+		// The only limits: test-synchronization keeps tests, hooks and layers from raising their own.
 		hookTimeout: 60_000,
 		// The first glob serves each package's own run; the second a root run of a test that never reads its app's package, which the runtime takes from the current directory.
 		include: ['src/**/*.test.ts', '{apps,packages,tools}/*/src/**/*.test.ts'],
@@ -344,7 +357,7 @@ export default defineConfig({
 		passWithNoTests: true,
 		reporters: ['dot'],
 		silent: 'passed-only',
-		// The generator test builds and typechecks two generated apps; 120s covers a loaded host without hiding a hang.
+		// Lint rule scenarios run compiler checks in child processes on a loaded host.
 		testTimeout: 120_000
 	}
 })

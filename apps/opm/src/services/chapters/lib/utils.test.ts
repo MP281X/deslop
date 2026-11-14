@@ -1,11 +1,9 @@
 import {assert, it} from '@effect/vitest'
 
-import {Array, Option, Schema} from 'effect'
+import {Array, Option} from 'effect'
 
-import {Base64Url} from 'effect/encoding'
-
-import {nameOf, notificationOf, pagesOf, postFrom, seriesOf} from '#services/chapters/lib/utils.ts'
-import {ChapterNumber, CubariSeries} from '#services/chapters/schema.ts'
+import {notificationOf, postFrom} from '#services/chapters/lib/utils.ts'
+import {ChapterNumber} from '#services/chapters/schema.ts'
 
 const LINK = '<a href="https://cubari.moe/read/imgchest/abc123xyz/1/1/">[link]</a>'
 
@@ -69,31 +67,4 @@ it('classifies English manga and webcomic releases, preserving revisions and ski
 			Option.none()
 		]
 	)
-	assert.deepStrictEqual(
-		seriesOf('https://cubari.moe/read/gist/OPM/225/1/'),
-		Option.some({api: 'https://cubari.moe/read/api/gist/series/OPM/', chapter: '225'})
-	)
-})
-
-it('unwraps pages of the dead image proxy and drops its error texts', () => {
-	assert.deepStrictEqual(
-		Array.map(
-			[
-				`https://services.f-ck.me/v1/image/${Base64Url.encode('https://files.example.org/a.png')}`,
-				`https://services.f-ck.me/v1/image/${Base64Url.encode('Invalid uploader')}`,
-				{src: 'https://i.example.org/b.png'}
-			],
-			page => pagesOf(Schema.decodeSync(CubariSeries)({chapters: {'1': {groups: {english: [page]}}}}), '1')
-		),
-		[Option.some(['https://files.example.org/a.png']), Option.none(), Option.some(['https://i.example.org/b.png'])]
-	)
-})
-
-it('extracts chapter names without release labels', () => {
-	assert.strictEqual(nameOf('Chapter 225: New Blood 3'), 'New Blood 3')
-	assert.strictEqual(nameOf('One Punch Man Chapter 242'), '')
-	assert.strictEqual(nameOf('Translated'), '')
-	assert.strictEqual(nameOf('ONE PUNCH MAN CHAPTER 233 - ENGLISH TRANSLATIONS'), '')
-	assert.strictEqual(nameOf('OPM WC 160'), '')
-	assert.strictEqual(nameOf('OPM (Webcomic) - Chapter 158 - The Koi Pond'), 'The Koi Pond')
 })

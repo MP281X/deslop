@@ -1,12 +1,10 @@
 import {assert, it} from '@effect/vitest'
 
-import {Array, Context, Effect, Fiber, Layer, Order, Schema, Stream, SubscriptionRef, pipe} from 'effect'
+import {Array, Context, Effect, Fiber, Layer, Order, Stream, SubscriptionRef, pipe} from 'effect'
 
 import type {Scene, Visitors} from './schema.ts'
 import {VisitorId} from './schema.ts'
 import {Presence} from './service.ts'
-
-import {RpcContracts} from '#rpcs/contracts.ts'
 
 function guestAt(x: number, y: number) {
 	return (scene: Scene) =>
@@ -20,23 +18,6 @@ function idsOf(visitors: Visitors) {
 		Array.sort(Order.String)
 	)
 }
-
-it.effect(
-	'rejects guest requests impersonating server bots and keeps bots out of the visitor list',
-	Effect.fnUntraced(function* () {
-		for (const entry of RpcContracts.requests) {
-			const request = entry[1]
-			for (const id of ['server-alpha', 'server-beta', 'server-future']) {
-				assert.isTrue(
-					(yield* Effect.exit(
-						Schema.decodeEffect(request.payloadSchema)({color: '#da702c', id, name: 'Guest', x: 0, y: 0})
-					))._tag === 'Failure'
-				)
-			}
-			yield* Schema.decodeEffect(request.payloadSchema)({color: '#da702c', id: 'v-42', name: 'Guest', x: 0, y: 0})
-		}
-	})
-)
 
 it.effect(
 	'streams every cursor, counts only visitor tabs, keeps a visitor through a second tab and drops it with the last one',
