@@ -30,16 +30,16 @@ stateDiagram-v2
 
 ## Route
 
-The user picks the main thread's model and effort; this table routes delegates.
+The main thread runs on the Claude plan, the one to make last, so delegates go to Codex unless the work needs Claude's judgement.
 
-| Work                                                                                                           | Model         | `target`                            |
-| -------------------------------------------------------------------------------------------------------------- | ------------- | ----------------------------------- |
-| Default: edits, browser walks, research, captures; long or overnight runs, since Codex's cache does not expire | GPT-6.1 Sol   | `codex` / `gpt-6.1-sol`             |
-| UI code, quick reads; removals, since Codex rejects `rm -f` and `rm -rf`                                       | Sonnet 5.5    | `claudeAgent` / `claude-sonnet-5-5` |
-| A build whose UI or architecture is still open                                                                 | Opus 5.5      | `claudeAgent` / `claude-opus-5-5`   |
-| Advisor on a hard architectural decision                                                                       | Fable 5.2     | `claudeAgent` / `claude-fable-5-2`  |
-| Bounded reads, searches, runs and checks                                                                       | GPT-6.1 Terra | `codex` / `gpt-6.1-terra`           |
-| Never                                                                                                          | Luna, Haiku   |                                     |
+| Work                                                                                                                                                         | Model         | `target`                            |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------- | ----------------------------------- |
+| Edits whose architecture is settled; browser and computer use, captures; deep reviews; unbounded exploration; long runs, since Codex's cache does not expire | GPT-6.1 Sol   | `codex` / `gpt-6.1-sol`             |
+| Bounded reads, searches, runs and checks                                                                                                                     | GPT-6.1 Terra | `codex` / `gpt-6.1-terra`           |
+| UI code; removals, since Codex rejects `rm -f` and `rm -rf`                                                                                                  | Sonnet 5.5    | `claudeAgent` / `claude-sonnet-5-5` |
+| Work that cannot be scoped: an open UI or architecture                                                                                                       | Opus 5.5      | `claudeAgent` / `claude-opus-5-5`   |
+| Advisor on a hard architectural decision                                                                                                                     | Fable 5.2     | `claudeAgent` / `claude-fable-5-2`  |
+| Never                                                                                                                                                        | Luna, Haiku   |                                     |
 
 - **Effort.** Medium (`effort` on Claude, `reasoningEffort` on Codex); high when the task needs it; never low, xhigh or above.
 
