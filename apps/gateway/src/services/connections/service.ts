@@ -47,7 +47,10 @@ import type {
 	McpUsageReport,
 	OAuthClient,
 	TokenExchange,
-	ServerUrl
+	ServerUrl,
+	ConnectionAddress,
+	ConnectionIssuer,
+	ConnectionTarget
 } from '#services/connections/schema.ts'
 import {
 	Connection,
@@ -352,8 +355,8 @@ export class Connections extends Context.Service<
 			return {_tag: 'Document' as const}
 		})
 		const exchange = Effect.fnUntraced(function* (
-			connection: Pick<Connection, 'generation' | 'id' | 'url'>,
-			issued: Pick<ConnectionGrant, 'clientId' | 'tokenEndpoint'>,
+			connection: ConnectionAddress,
+			issued: ConnectionIssuer,
 			params: TokenExchange
 		) {
 			// The refresh token this exchange spends, if it renews a grant.
@@ -400,10 +403,7 @@ export class Connections extends Context.Service<
 			return Redacted.value(token.access_token)
 		})
 
-		const discover = Effect.fnUntraced(function* (
-			initial: Pick<Connection, 'generation' | 'id' | 'name' | 'url'>,
-			headers: Headers.Headers
-		) {
+		const discover = Effect.fnUntraced(function* (initial: ConnectionTarget, headers: Headers.Headers) {
 			const probe = yield* Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown))({
 				id: 1,
 				jsonrpc: '2.0',
@@ -617,6 +617,7 @@ export class Connections extends Context.Service<
 						return {state: Option.some(stateId), url: authorization.authorizationUrl.href}
 					}),
 					Effect.timeout(Duration.seconds(20)),
+					Effect.tapError(cause => Effect.logWarning('The MCP connection could not be completed', cause)),
 					Effect.catch(cause => fail(connection, cause))
 				)
 			}, asAuthError('Cannot connect this MCP')),
@@ -699,6 +700,7 @@ export class Connections extends Context.Service<
 						)
 					}),
 					Effect.timeout(Duration.seconds(30)),
+					Effect.tapError(cause => Effect.logWarning('The MCP connection could not be completed', cause)),
 					Effect.catch(cause => fail(connection, cause))
 				)
 			}, asAuthError('Cannot finish the connection')),

@@ -1,4 +1,4 @@
-import {Array, Effect, Layer, Option, Struct, pipe} from 'effect'
+import {Array, Effect, Function, Layer, Option, Struct, pipe} from 'effect'
 
 import {McpServer} from 'effect/ai'
 
@@ -30,7 +30,9 @@ const ToolHandlers = ToolContracts.toLayer(
 				return {
 					servers: pipe(
 						all,
-						Array.filter(server => Option.match(input.server, {onNone: () => true, onSome: id => server.id === id})),
+						Array.filter(server =>
+							Option.match(input.server, {onNone: Function.constTrue, onSome: id => server.id === id})
+						),
 						Array.map(server => ({
 							error: server.error,
 							instructions: Option.filter(server.instructions, () => Option.contains(input.server, server.id)),

@@ -1,4 +1,4 @@
-import {Array, Option, Predicate, pipe} from 'effect'
+import {Array, Option, Predicate, Schema, pipe} from 'effect'
 
 import {defineRule} from 'vite-plus/lint/plugins'
 import type {Context, ESTree} from 'vite-plus/lint/plugins'
@@ -17,6 +17,9 @@ import {
 
 const MESSAGE = 'Run every test: remove this .only, .skip, .skipIf, .runIf or .fails before committing.'
 
+type RegistrationContext = typeof RegistrationContext.Type
+const RegistrationContext = Schema.Literals(['callback', 'loop', false])
+
 // vitest/no-focused-tests and no-disabled-tests read it.only and it.skip, not @effect/vitest's it.effect.only, a layer's test.skip, a condition or an options object.
 function skips(context: Context, node: ESTree.MemberExpression) {
 	return Option.exists(testChain(context, node), chain =>
@@ -31,7 +34,7 @@ function skips(context: Context, node: ESTree.MemberExpression) {
 	)
 }
 
-function repeated(node: ESTree.Node): 'callback' | 'loop' | false {
+function repeated(node: ESTree.Node): RegistrationContext {
 	if (Predicate.isNullish(node.parent)) return false
 	if (
 		Array.contains(
@@ -113,5 +116,19 @@ export const testRegistration = defineRule({
 			if (skips(context, node)) context.report({message: MESSAGE, node: node.property})
 		}
 	}),
-	meta: {type: 'problem'}
+	meta: {
+		docs: {
+			examples: {
+				accepted: [
+					{
+						'sample.test.ts': `import {assert, it} from '@effect/vitest'
+function hasBudget(balance: number) { return balance > 0 }
+
+it('refuses spending without a balance', () => { assert.isFalse(hasBudget(0)); assert.isTrue(hasBudget(2)) })`
+					}
+				]
+			}
+		},
+		type: 'problem'
+	}
 })

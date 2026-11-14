@@ -1,6 +1,6 @@
 import {useAtomMount, useAtomSubscribe, useAtomValue} from '@effect/atom-react'
 
-import {Array, Option, Schema} from 'effect'
+import {Array, Function, Option, Schema} from 'effect'
 
 import {Host, NavigationDestination, NavigationStack} from '@expo/ui/swift-ui'
 import {tint} from '@expo/ui/swift-ui/modifiers'
@@ -37,7 +37,7 @@ function AppRoutes() {
 	)
 	useAtomSubscribe(openedAtom, tapped =>
 		Option.match(tapped, {
-			onNone: () => undefined,
+			onNone: Function.constUndefined,
 			onSome: chapter => {
 				setSeries(chapter.series)
 				setPath([keyOf(chapter)])
@@ -57,7 +57,7 @@ function AppRoutes() {
 				<ChaptersRoute key={series} onOpen={open} series={series} onSeries={setSeries} />
 				{Array.map(path, value =>
 					Option.match(Schema.decodeUnknownOption(ChapterPath)(value), {
-						onNone: () => undefined,
+						onNone: Function.constUndefined,
 						onSome: target => (
 							<NavigationDestination key={value} value={value}>
 								<Suspense fallback={<ReaderSkeleton number={target[2]} />}>

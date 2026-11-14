@@ -1,4 +1,4 @@
-import {Option} from 'effect'
+import {Option, Schema} from 'effect'
 
 import {HStack, List, Text, VStack} from '@expo/ui/swift-ui'
 import {
@@ -19,6 +19,9 @@ import type {ReactNode} from 'react'
 
 import {colors, space, text} from '#components/theme.ts'
 
+export type ItemAlignment = typeof ItemAlignment.Type
+const ItemAlignment = Schema.Literals(['center', 'top'])
+
 // A caller's modifiers come first, so they win over the defaults like a className.
 
 // Row modifiers for an ItemGroup, put on the row's outermost view such as its SwipeActions.
@@ -37,7 +40,7 @@ export function ItemGroup(props: {children: ReactNode; modifiers?: ViewModifier[
 }
 
 export function Item(props: {
-	alignment?: 'center' | 'top'
+	alignment?: ItemAlignment
 	children: ReactNode
 	modifiers?: ViewModifier[]
 	onPress?: () => void

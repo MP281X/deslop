@@ -1,4 +1,4 @@
-import {Cause, Context, Effect, Layer, MutableRef, Option, pipe} from 'effect'
+import {Cause, Context, Effect, Layer, MutableRef, Option, Schema, pipe} from 'effect'
 
 import {FetchHttpClient, HttpClient, HttpClientResponse} from 'effect/http'
 import {OtlpExporter} from 'effect/observability'
@@ -11,9 +11,12 @@ import {Account, RPC_PATH} from '#shared/schema.ts'
 
 const errorTelemetry = MutableRef.make(Option.none<Context.Context<never>>())
 
+export type PageErrorSource = typeof PageErrorSource.Type
+const PageErrorSource = Schema.Literals(['route', 'caught', 'uncaught'])
+
 // One page error, logged and traced as its own root span once the page's telemetry is up.
 export const pageErrorAtom = Atom.fn(
-	(failure: {error: unknown; route: string; source: 'route' | 'caught' | 'uncaught'; stack?: string | null}) => {
+	(failure: {error: unknown; route: string; source: PageErrorSource; stack?: string | null}) => {
 		const log = Effect.logError(
 			'Web error',
 			Cause.fail(failure.error),

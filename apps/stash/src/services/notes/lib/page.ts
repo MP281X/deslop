@@ -1,4 +1,4 @@
-import {Array, Boolean, Match, Number, Option, Order, Predicate, Result, String, pipe} from 'effect'
+import {Array, Boolean, Function, Match, Number, Option, Order, Predicate, Result, String, pipe} from 'effect'
 
 import {load} from 'cheerio'
 import type {CheerioAPI} from 'cheerio'
@@ -143,7 +143,7 @@ export function pageText(html: string, url: URL) {
 									Option.getOrElse(() => 0)
 								)
 							})),
-							Result.fromOption(() => undefined)
+							Result.fromOption(Function.constUndefined)
 						)
 					),
 					Option.liftPredicate(Array.isArrayNonEmpty),

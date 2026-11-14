@@ -1,7 +1,7 @@
 import {useAtom, useAtomSet, useAtomValue} from '@effect/atom-react'
 
 import type {DateTime} from 'effect'
-import {Array, Boolean, Duration, Equal, HashSet, Number, Option, Order, Stream, pipe} from 'effect'
+import {Array, Boolean, Duration, Equal, Filter, Function, HashSet, Number, Option, Order, Stream, pipe} from 'effect'
 
 import {AppWindowIcon, PlayIcon} from '@phosphor-icons/react'
 import {CatchBoundary} from '@tanstack/react-router'
@@ -91,40 +91,43 @@ function Endpoints(props: {free: readonly InventoryItem[]; row: Row}) {
 							</Badge>
 						),
 						onSome: port => (
-							<Badge
-								key={listener.id}
-								variant="outline"
-								render={
-									<button
-										type="button"
-										className="pointer-events-auto relative z-10"
-										aria-label={`Expose ${workloadName(props.row.item)} :${Option.getOrUndefined(listener.port)}`}
-										onClick={() => expose(port)}
-									/>
-								}
-							>
-								<span className="text-muted-foreground">{Option.getOrUndefined(listener.port)}</span>
-							</Badge>
+							<span key={listener.id} className="relative z-10 flex shrink-0">
+								<Badge
+									variant="outline"
+									render={
+										<button
+											type="button"
+											aria-label={`Expose ${workloadName(props.row.item)} :${Option.getOrUndefined(listener.port)}`}
+											onClick={() => expose(port)}
+										/>
+									}
+								>
+									<span className="text-muted-foreground">{Option.getOrUndefined(listener.port)}</span>
+								</Badge>
+							</span>
 						)
 					})
 			)}
 			{Array.map(props.row.exposures, exposure => (
-				<a
-					key={exposure.id}
-					href={Option.getOrUndefined(exposure.url)}
-					target="_blank"
-					rel="noreferrer"
-					title={Option.getOrUndefined(exposure.url)}
-					className="pointer-events-auto relative z-10"
-					aria-label={`Open ${Option.getOrUndefined(exposure.url)}`}
-				>
-					<Badge variant="outline">
+				<span key={exposure.id} className="relative z-10 flex shrink-0">
+					<Badge
+						variant="outline"
+						render={
+							<a
+								href={Option.getOrUndefined(exposure.url)}
+								target="_blank"
+								rel="noreferrer"
+								title={Option.getOrUndefined(exposure.url)}
+								aria-label={`Open ${Option.getOrUndefined(exposure.url)}`}
+							/>
+						}
+					>
 						{Option.match(exposure.port, {
 							onNone: () => Option.match(exposure.url, {onNone: () => '', onSome: host}),
 							onSome: port => `${port}`
 						})}
 					</Badge>
-				</a>
+				</span>
 			))}
 		</>
 	)
@@ -149,7 +152,6 @@ function RunNow(props: {disabled: boolean; item: InventoryItem; onRun: () => voi
 		<Button
 			size="icon-xs"
 			variant="ghost"
-			className="pointer-events-auto size-5"
 			disabled={props.disabled}
 			aria-label={`Run ${workloadName(props.item)} now`}
 			onClick={props.onRun}
@@ -160,7 +162,11 @@ function RunNow(props: {disabled: boolean; item: InventoryItem; onRun: () => voi
 }
 
 function RunFailure(props: {item: InventoryItem}) {
-	return <ResultError result={useAtomValue(runAtom(props.item.id))} className="mx-4 wrap-anywhere" />
+	return (
+		<div className="wrap-anywhere">
+			<ResultError result={useAtomValue(runAtom(props.item.id))} className="mx-4" />
+		</div>
+	)
 }
 
 // One app or job: its mark, name, ports or reason, and the actions it has at the row's end; the whole row opens its processes.
@@ -195,22 +201,19 @@ function AppRow(props: {
 	})
 	return (
 		<>
-			<Item size="row" role="listitem" data-selected={props.selected} className="relative">
-				{/* The whole row is the hit area; the row itself draws hover, selection and the focus ring. */}
-				<Button
-					aria-label={`Open ${fullName}`}
-					variant="bare"
-					className="absolute inset-0 z-0 size-full"
-					onClick={props.onSelect}
-				/>
-				<ItemMedia className="pointer-events-none relative z-10">
+			<Item size="row" role="listitem" data-selected={props.selected}>
+				{/* The whole row is the hit area; the row itself draws hover, selection and the focus ring, and the controls it holds sit above it. */}
+				<div className="absolute inset-0 z-0 flex flex-col">
+					<Button aria-label={`Open ${fullName}`} variant="bare" className="flex-1" onClick={props.onSelect} />
+				</div>
+				<ItemMedia>
 					<ApplicationIcon
 						name={fullName}
 						process={pipe(
 							props.row.item.processes,
 							Option.getOrElse(Array.empty<Process>),
 							Array.match({
-								onEmpty: () => undefined,
+								onEmpty: Function.constUndefined,
 								onNonEmpty: entries =>
 									Array.max(
 										entries,
@@ -221,7 +224,7 @@ function AppRow(props: {
 						container={props.row.item.kind === 'container'}
 					/>
 				</ItemMedia>
-				<ItemContent className="pointer-events-none relative z-10">
+				<ItemContent>
 					<ItemTitle
 						className={Boolean.match(failing, {onFalse: () => 'w-full', onTrue: () => 'max-w-1/2'})}
 						title={fullName}
@@ -234,7 +237,7 @@ function AppRow(props: {
 						</ItemDescription>
 					)}
 				</ItemContent>
-				<ItemActions className="pointer-events-none relative z-10 shrink-0">
+				<ItemActions className="shrink-0">
 					<span className="flex min-w-0 items-center justify-end gap-1.5">
 						{props.row.item.health !== 'quiet' && (
 							<span
@@ -269,9 +272,9 @@ function AppRow(props: {
 					</span>
 					{/* An endpoint this app exposed is hidden through Deploy's hide_exposure tool, not this page. */}
 					{Boolean.match(scheduled, {
-						onFalse: () => null,
+						onFalse: Function.constNull,
 						onTrue: () => (
-							<span className="flex size-5 shrink-0 items-center justify-center">
+							<span className="relative z-10 flex size-5 shrink-0 items-center justify-center">
 								<RunNow disabled={running} item={props.row.item} onRun={() => run(requestOf(props.row.item))} />
 							</span>
 						)
@@ -319,11 +322,11 @@ export function ListPane(props: {
 	rows: readonly Row[]
 	selectedId?: string
 }) {
-	const jobs = Array.filter(props.rows, row => Option.contains(row.item.scheduled, true))
-	const groups = impactGroups(
-		Array.filter(props.rows, row => !Option.contains(row.item.scheduled, true)),
-		props.history
+	const [jobs, apps] = Array.partition(
+		props.rows,
+		Filter.fromPredicate(row => Option.contains(row.item.scheduled, true))
 	)
+	const groups = impactGroups(apps, props.history)
 	return (
 		<div className={cn('flex min-h-0 flex-col', props.className)}>
 			<Suspense
@@ -359,7 +362,7 @@ export function ListPane(props: {
 									/>
 								)}
 								{Boolean.match(Array.isReadonlyArrayNonEmpty(jobs), {
-									onFalse: () => null,
+									onFalse: Function.constNull,
 									onTrue: () => (
 										<ListRows
 											compact={props.compact}

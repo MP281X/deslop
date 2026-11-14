@@ -9,6 +9,7 @@ import {
 	Context,
 	Effect,
 	FileSystem,
+	Function,
 	HashMap,
 	Layer,
 	Number,
@@ -116,7 +117,7 @@ function portItems(
 							})),
 							Effect.provideService(FetchHttpClient.RequestInit, {redirect: 'manual'}),
 							// A probe expects refusals and 4xx from ports that aren't web pages, so it records no span.
-							Effect.provideService(HttpClient.TracerDisabledWhen, () => true),
+							Effect.provideService(HttpClient.TracerDisabledWhen, Function.constTrue),
 							Effect.timeout(Duration.millis(700)),
 							Effect.option
 						)
@@ -190,12 +191,12 @@ export class Inventory extends Context.Service<
 			const processState = yield* Ref.make(Option.none<ReturnType<typeof processReadings>>())
 			const units = Effect.fnUntraced(function* (system: boolean) {
 				const scope = Boolean.match(system, {onFalse: () => 'user' as const, onTrue: () => 'system' as const})
-				const manager = Boolean.match(system, {onFalse: () => ['--user'], onTrue: () => []})
+				const scopeFlags = Boolean.match(system, {onFalse: () => ['--user'], onTrue: () => []})
 				const scheduled = HashMap.fromIterable(
 					Array.getSomes(
 						Array.map(
 							yield* Effect.flatMap(
-								command('systemctl', [...manager, 'list-timers', '--all', '--output=json', '--no-pager']),
+								command('systemctl', [...scopeFlags, 'list-timers', '--all', '--output=json', '--no-pager']),
 								Schema.decodeUnknownEffect(Schema.fromJsonString(Schema.Array(Timer)))
 							),
 							timer =>
@@ -207,7 +208,7 @@ export class Inventory extends Context.Service<
 					)
 				)
 				const rows = yield* Effect.flatMap(
-					command('systemctl', [...manager, 'list-units', '--all', '--type=service', '--output=json', '--no-pager']),
+					command('systemctl', [...scopeFlags, 'list-units', '--all', '--type=service', '--output=json', '--no-pager']),
 					Schema.decodeUnknownEffect(Schema.fromJsonString(Schema.Array(Unit)))
 				)
 				const failed = pipe(
@@ -220,7 +221,7 @@ export class Inventory extends Context.Service<
 					Option.flatten(
 						yield* pipe(
 							command('systemctl', [
-								...manager,
+								...scopeFlags,
 								'show',
 								...failed,
 								'-p',
@@ -251,11 +252,7 @@ export class Inventory extends Context.Service<
 							row.active === 'activating' ||
 							row.active === 'deactivating' ||
 							(row.active === 'active' && row.sub === 'running'),
-						scheduled: pipe(
-							scheduled,
-							HashMap.get(row.unit),
-							Option.map(() => true)
-						),
+						scheduled: pipe(scheduled, HashMap.get(row.unit), Option.map(Function.constTrue)),
 						scope: Option.some(scope),
 						state: Boolean.match(row.active === 'active', {
 							onFalse: () => `${row.active} · ${row.sub}`,

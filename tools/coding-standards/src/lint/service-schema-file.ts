@@ -96,5 +96,18 @@ export const serviceSchemaFile = defineRule({
 			}
 		}
 	}),
-	meta: {type: 'problem'}
+	meta: {
+		docs: {
+			examples: {
+				accepted: [
+					{
+						'src/services/notes/schema.ts': `import {Schema} from 'effect'
+export type Note = typeof Note.Type
+export const Note = Schema.Struct({title: Schema.String})`
+					}
+				]
+			}
+		},
+		type: 'problem'
+	}
 })

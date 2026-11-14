@@ -346,6 +346,17 @@ export const Rejection = Schema.Struct({
 	status: Schema.Int
 })
 
+export type SpanFacts = typeof SpanFacts.Type
+export const SpanFacts = Schema.Struct(
+	Struct.pick(Span.fields, ['attributes', 'duration', 'name', 'parentSpanId', 'spanId', 'start', 'status', 'traceId'])
+)
+export type SpanFailure = typeof SpanFailure.Type
+export const SpanFailure = Schema.Struct(Struct.pick(Span.fields, ['error', 'exception']))
+export type LogFacts = typeof LogFacts.Type
+export const LogFacts = Schema.Struct(Struct.pick(Log.fields, ['message', 'severity', 'time']))
+export type RejectedExport = typeof RejectedExport.Type
+export const RejectedExport = Schema.Struct(Struct.pick(Rejection.fields, ['credential', 'route', 'status']))
+
 export type OperationTrace = typeof OperationTrace.Type
 export const OperationTrace = Schema.Struct({
 	...Struct.pick(Trace.json.fields, ['duration', 'id', 'start']),

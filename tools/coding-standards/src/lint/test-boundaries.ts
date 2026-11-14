@@ -142,6 +142,18 @@ export const testBoundaries = defineRule({
 		}
 	}),
 	meta: {
+		docs: {
+			examples: {
+				accepted: [
+					{
+						'sample.test.ts': `import {assert, it} from '@effect/vitest'
+function hasBudget(balance: number) { return balance > 0 }
+
+it('refuses spending without a balance', () => { assert.isFalse(hasBudget(0)); assert.isTrue(hasBudget(2)) })`
+					}
+				]
+			}
+		},
 		schema: {
 			items: {enum: ['read-source-text', 'inspect-database', 'execute-program']},
 			type: 'array',

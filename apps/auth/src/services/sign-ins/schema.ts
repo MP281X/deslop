@@ -4,6 +4,9 @@ import {DurationFromSeconds} from '@deslop/runtime/shared/time'
 
 import {ClientRequest, DeviceRequest, TokenResponse} from '#services/tokens/schema.ts'
 
+export type AnswerVia = typeof AnswerVia.Type
+export const AnswerVia = Schema.Literals(['Session', 'Token'])
+
 export type SignInKind = typeof SignInKind.Type
 export const SignInKind = Schema.Literals(['App', 'Browser'])
 

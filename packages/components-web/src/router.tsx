@@ -7,6 +7,7 @@ import {StrictMode} from 'react'
 import {createRoot} from 'react-dom/client'
 
 import {pageErrorAtom} from '@deslop/runtime/web/client'
+import type {PageErrorSource} from '@deslop/runtime/web/client'
 
 import {NotFound, ReadFailure} from '#components/fallbacks.tsx'
 
@@ -24,7 +25,7 @@ export function mountRouter<TRouteTree extends AnyRoute & {types: {routerContext
 		scrollRestoration: true
 	})
 	const errors = AtomRegistry.make()
-	function report(error: unknown, source: 'route' | 'caught' | 'uncaught', stack?: string | null) {
+	function report(error: unknown, source: PageErrorSource, stack?: string | null) {
 		if (Predicate.isObjectOrArray(error)) {
 			if (reported.has(error)) return
 			reported.add(error)
@@ -43,10 +44,10 @@ export function mountRouter<TRouteTree extends AnyRoute & {types: {routerContext
 	}
 	// The typed router takes full options in `update`; this view merges the partial one the router has always accepted.
 	const anyRouter: AnyRouter = router
-	anyRouter.update({defaultOnCatch: (error, info) => report(error, 'route', info.componentStack)})
+	anyRouter.update({defaultOnCatch: (error, caught) => report(error, 'route', caught.componentStack)})
 	createRoot(root, {
-		onCaughtError: (error, info) => report(error, 'caught', info.componentStack),
-		onUncaughtError: (error, info) => report(error, 'uncaught', info.componentStack)
+		onCaughtError: (error, caught) => report(error, 'caught', caught.componentStack),
+		onUncaughtError: (error, caught) => report(error, 'uncaught', caught.componentStack)
 	}).render(
 		<StrictMode>
 			<RouterProvider router={router} />

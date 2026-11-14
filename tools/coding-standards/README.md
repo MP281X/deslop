@@ -32,16 +32,30 @@ Every action is a subcommand: `tactics`, `judge` or `sign-in`. `coding-standards
 
 The preset leaves type-aware lint and type checking off, so a syntax-only pass stays possible; the two flags turn them on, and `--tsrs-lint` runs them on tsrs instead of Oxlint's tsgolint backend.
 
-Native rules enforce function declarations, standalone `pipe`, no ternaries and Unicode regular expressions (`u` or `v`). The preset loads only `no-restricted-syntax` from `oxlint-plugin-eslint` to reject `let`, switches, binary `in` checks and RPC names other than `<service folder>.<verb>`. These replacements report violations without the former custom migration fixes.
+Each custom rule publishes `meta.docs.examples.accepted`, an array of filename-to-source records. A fixable rule also supplies `meta.docs.examples.fixes`, with an input for each automatic rewrite. The standards test discovers these through the plugin registry: missing examples fail, accepted sources must compile with zero reports from the whole published preset, and every fix must have one custom owner, converge within ten passes, remain clean and survive another formatted fix unchanged. New rules join this check through the same metadata; the test names none of them. Fixture imports resolve the installed dependencies, not substitute declarations.
 
-Custom rules retain the cases native rules cannot express: `prefer-predicate` owns runtime `typeof` and replaceable type-guard wrappers; `no-intermediate-collection` owns collections materialized only for a count, first item or emptiness check; `no-trivial-indirection` includes constant-return helpers and adjacent Option wrap/unwrap operations. Delimiter and schema encode/decode round trips are not assumed to preserve a value. Private derived-type aliases remain derived through generic wrappers. Boolean-name checks use explicit AST type annotations where available; Oxlint's JS plugin API exposes no TypeScript program, so opaque inferred calls remain outside that check.
+Native rules enforce function declarations, standalone `pipe`, no ternaries, no empty functions and Unicode regular expressions (`u` or `v`). The preset loads only `no-restricted-syntax` from `oxlint-plugin-eslint` to reject `let`, switches, binary `in` checks and declarations with generic names. Required library property keys are not declarations and remain allowed.
+
+`library-operation` is one expression-shape table: Predicate guards (including doubled nullish tests), emptiness, Option reads, capitalization, padding, sums, intermediate collections, opposite filters and maximum folds. Each row names the library operation, with one report path and first-match ownership. `Array.partition(items, Filter.fromPredicate(predicate))` returns passes first; a maximum includes its seed through `pipe(items, Array.prepend(seed), Array.max(Order.Number))`. The examples compile against the installed Effect. Receiver provenance and compiler hand-off remain the separate `no-native-method-call` check: they share no expression-shape logic.
+
+`no-pass-through-name` shares one binding/effect-order traversal for single-use expressions, literals, aliases, functions and stored elements; anonymous fixed callbacks cover only `undefined`, `null`, `true` and `false`. Property snapshots (`no-property-alias`), parameter/tuple contracts (`no-destructured-parameter`) and capture-safe module rebinding (`no-renamed-import`) stay separate: their control-flow, type-contract and module-scope analyses do not share that substitution logic. Delimiter and schema encode/decode round trips are not assumed to preserve a value. Private derived-type aliases remain derived through generic wrappers. Boolean-name checks use explicit AST type annotations where available; Oxlint's JS plugin API exposes no TypeScript program, so opaque inferred calls remain outside that check.
+
+`name-by-kind` is one naming table for errors, schemas, atoms, error mappers, tools, spans, booleans, module constants and the eight generic declaration names. A single-use name that will disappear belongs to `no-pass-through-name`, not this table. The table gives an existing public span its exact service method name and handles other spans' `Service.method` form without a second report. `service-method-span` remains only the independent requirement to add a missing tracing boundary; schema/type adjacency remains `schema-type-pair`.
+
+`recover-named-failures` owns typed recovery, rejecting native I/O adapters, error causes and error-message dispatch. Recover with `Effect.catchTag`, represent absence with `Effect.option`, or log best-effort failures. Catch-all recovery after a logging tap remains allowed. The competing compiler rewrites for catch-all recovery and `orDie` are not enabled.
+
+`choices-are-schemas` owns finite literal choices, hand-written shape unions and choices lifted from value tables. Declare a paired named `Schema.Literals` or a `Schema.TaggedUnion` with `_tag`, including choices in props and generic arguments. Nullish absence is not a fixed choice. Redundant return annotations belong only to `no-redundant-annotation`; schema/type pairing owns PascalCase. The former `no-type-from-value`, schema-name selector and competing compiler union check are removed.
+
+`no-collecting-loop` refuses collection mutation inside loops, including effectful loops and callbacks inside them. Use collection operations, `Array.mapAccum` for dependent items, or `Effect.forEach` for effectful work. Native-method checks defer to it at those sites. Copying folds and repeated searches remain separate checks.
+
+`effect-call-form` also owns anonymous generator callbacks and Effect property definitions. `no-redundant-annotation` owns inferred return, state, ref-null and empty-array types. The four fixed callbacks use `Function.constUndefined`, `constNull`, `constTrue` or `constFalse`; string and number callbacks stay arrows. The Effect compiler keeps its direct `map`, `match` and `sync` replacements.
 
 ```jsonc
 // tsconfig.json
 {"extends": "@deslop/coding-standards/tsconfig.json"}
 ```
 
-Add your own ignores and opt into `deslopRules` for Deslop's own choices.
+Add your own ignores and repository-specific selectors alongside the preset's `lint.rules['eslint-js/no-restricted-syntax']`. Deslop's gradients, icon weights, RPC names, import allowlist and app-only native-module boundary live in its root configuration, not a `deslopRules` export.
 
 ## Judge
 

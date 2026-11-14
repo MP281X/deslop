@@ -422,7 +422,7 @@ export const HttpHandlers = HttpRouter.use(router =>
 		yield* router.add(
 			'GET',
 			'/auth/github/callback',
-			Effect.catch(
+			Effect.catchTag(
 				Effect.gen(function* () {
 					const params = yield* asAuthError('GitHub sent no code')(HttpServerRequest.schemaSearchParams(CallbackParams))
 					if ((yield* HttpServerRequest.HttpServerRequest).cookies[LOGIN_COOKIE] !== params.state) {
@@ -442,9 +442,10 @@ export const HttpHandlers = HttpRouter.use(router =>
 								HttpServerResponse.setCookieUnsafe(SESSION_COOKIE, started.token, session(started.seconds))
 							)
 						),
-						Effect.catch(cause => githubFailed(cause, Option.some(finished.flow)))
+						Effect.catchTag('AuthError', cause => githubFailed(cause, Option.some(finished.flow)))
 					)
 				}),
+				'AuthError',
 				cause =>
 					Effect.flatMap(
 						Effect.option(
@@ -541,7 +542,9 @@ export const HttpHandlers = HttpRouter.use(router =>
 					})
 				}),
 				asAuthError('Cannot complete the sign-in'),
-				Effect.catch(failure => Effect.succeed(HttpServerResponse.text(failure.message, {status: 400}))),
+				Effect.catchTag('AuthError', failure =>
+					Effect.succeed(HttpServerResponse.text(failure.message, {status: 400}))
+				),
 				Effect.map(HttpServerResponse.setHeader('cache-control', 'no-store'))
 			)
 		)

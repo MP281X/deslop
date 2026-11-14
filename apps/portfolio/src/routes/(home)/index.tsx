@@ -8,7 +8,6 @@ import {
 	HashMap,
 	HashSet,
 	Match,
-	MutableList,
 	Number,
 	Option,
 	Predicate,
@@ -45,13 +44,16 @@ import {liveStream, reconnectOnDrop} from '@deslop/runtime/client/live-stream'
 import {RpcClient} from '#lib/presence.ts'
 import {contacts, education, experience, languages, profile, projects, skills, summary} from '#lib/profile.ts'
 import {hasMeaningfulMove} from '#services/presence/lib/utils.ts'
-import {Color, VisitorId} from '#services/presence/schema.ts'
-import type {Scene, Visitor, Visitors} from '#services/presence/schema.ts'
+import {Color, VisitorId, Visitors} from '#services/presence/schema.ts'
+import type {Scene, Visitor} from '#services/presence/schema.ts'
 
 const SECTION_KEYS = ['1', '2', '3', '4', '5', '6'] as const
 const SECTION_NAMES = ['profile', 'skills', 'experience', 'projects', 'education', 'contact'] as const
 
 type TrailedScene = Scene & {trails: Visitors}
+
+type PresenceState = typeof PresenceState.Type
+const PresenceState = Schema.TaggedUnion({Connecting: {}, Offline: {}, Visitors: {visitors: Visitors}})
 
 function randomIndex(length: number) {
 	return Math.floor(Random.Random.defaultValue().nextDoubleUnsafe() * length)
@@ -184,8 +186,7 @@ function SectionBody(input: {children: React.ReactNode; title: string}) {
 }
 
 function TrailGrid(input: {trails: Visitors; viewport: {width: number; height: number}}) {
-	const cells = MutableList.make<{color: string; x: number; y: number}>()
-	Array.reduce(
+	const [, cells] = Array.mapAccum(
 		input.trails,
 		HashMap.empty<VisitorId, {trail: Visitor; col: number; row: number}>(),
 		(previousByVisitor, trail) => {
@@ -202,7 +203,7 @@ function TrailGrid(input: {trails: Visitors; viewport: {width: number; height: n
 
 			const stepCount = Number.max(Math.abs(current.col - previous.col), Math.abs(current.row - previous.row))
 
-			for (const step of Array.makeBy(stepCount + 1, Function.identity)) {
+			const segment = Array.makeBy(stepCount + 1, step => {
 				const progress = Boolean.match(stepCount === 0, {onFalse: () => step / stepCount, onTrue: () => 1})
 				const col = Number.round(previous.col + (current.col - previous.col) * progress, 0)
 				const row = Number.round(previous.row + (current.row - previous.row) * progress, 0)
@@ -211,10 +212,10 @@ function TrailGrid(input: {trails: Visitors; viewport: {width: number; height: n
 					onFalse: () => current.trail.color,
 					onTrue: () => previous.trail.color
 				})
-				MutableList.append(cells, {color, x: col * 26 + 1, y: row * 26 + 1})
-			}
+				return {color, x: col * 26 + 1, y: row * 26 + 1}
+			})
 
-			return HashMap.set(previousByVisitor, trail.id, current)
+			return [HashMap.set(previousByVisitor, trail.id, current), segment]
 		}
 	)
 
@@ -224,7 +225,7 @@ function TrailGrid(input: {trails: Visitors; viewport: {width: number; height: n
 			className="pointer-events-none fixed inset-0 z-1 size-full print:hidden"
 			shapeRendering="crispEdges"
 		>
-			{Array.map(MutableList.toArray(cells), (cell, index) => (
+			{Array.map(Array.flatten(cells), (cell, index) => (
 				<rect key={index} x={cell.x} y={cell.y} width={24} height={24} fill={cell.color} fillOpacity={0.22} />
 			))}
 		</svg>
@@ -241,7 +242,7 @@ function CursorLabel(input: {flip?: boolean; label: string; show?: boolean}) {
 						{input.label}
 					</span>
 				),
-				onTrue: () => null
+				onTrue: Function.constNull
 			})}
 		</div>
 	)
@@ -460,8 +461,11 @@ function ContactSection() {
 								key={item.label}
 								href={item.href}
 								className="hover:text-primary flex h-7 items-center gap-2 text-sm"
-								target={Boolean.match(internal, {onFalse: () => '_blank' as const, onTrue: () => undefined})}
-								rel={Boolean.match(internal, {onFalse: () => 'noopener noreferrer' as const, onTrue: () => undefined})}
+								target={Boolean.match(internal, {onFalse: () => '_blank' as const, onTrue: Function.constUndefined})}
+								rel={Boolean.match(internal, {
+									onFalse: () => 'noopener noreferrer' as const,
+									onTrue: Function.constUndefined
+								})}
 							>
 								<item.icon aria-hidden="true" className="text-primary size-4 shrink-0" />
 								<span className="text-muted-foreground">{item.label}</span>
@@ -544,46 +548,43 @@ function VisitorCount(props: {visitors: Visitors}) {
 const LEGAL_LINE = `© 2026 ${profile.firstName} ${profile.lastName} · VAT ${profile.vat}`
 const LEGAL_LINE_NARROW = `© 2026 · VAT ${profile.vat}`
 
-function PresenceHud(input: {
-	presence: Visitors | 'connecting' | 'offline'
-	onToggleShortcuts: () => void
-	shortcutsOpen: boolean
-}) {
+function PresenceHud(input: {presence: PresenceState; onToggleShortcuts: () => void; shortcutsOpen: boolean}) {
 	return (
 		<div className="border-border bg-background/95 pr-safe-right pb-safe-bottom pl-safe-left pointer-events-none fixed inset-x-0 bottom-0 z-50 border-t font-mono text-xs backdrop-blur print:hidden">
 			<div className="relative flex min-h-10 items-center justify-between px-3 sm:px-4">
 				<span className="flex min-w-0 items-center gap-2">
 					{pipe(
 						Match.value(input.presence),
-						Match.when(Predicate.isString, state => (
+						Match.when({_tag: 'Visitors'}, state => <VisitorCount visitors={state.visitors} />),
+						Match.orElse(state => (
 							<>
 								<span className="bg-muted-foreground/50 size-1.5 rounded-full" />
 								<span className="text-muted-foreground truncate">
-									{Boolean.match(state === 'offline', {
+									{Boolean.match(state._tag === 'Offline', {
 										onFalse: () => 'presence connecting',
 										onTrue: () => 'presence unavailable'
 									})}
 								</span>
 							</>
-						)),
-						Match.orElse(visitors => <VisitorCount visitors={visitors} />)
+						))
 					)}
 				</span>
 				<span className="text-muted-foreground absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 whitespace-nowrap max-sm:static max-sm:translate-x-0 max-sm:translate-y-0 pointer-coarse:static pointer-coarse:translate-x-0 pointer-coarse:translate-y-0">
 					<span className="hidden sm:inline">{LEGAL_LINE}</span>
 					<span className="sm:hidden">{LEGAL_LINE_NARROW}</span>
 				</span>
-				<Button
-					variant="ghost"
-					size="xs"
-					aria-expanded={input.shortcutsOpen}
-					aria-haspopup="dialog"
-					aria-label="Toggle keyboard shortcuts"
-					onClick={input.onToggleShortcuts}
-					className="pointer-events-auto -mr-1 pointer-coarse:hidden"
-				>
-					?
-				</Button>
+				<span className="pointer-events-auto -mr-1 flex pointer-coarse:hidden">
+					<Button
+						variant="ghost"
+						size="xs"
+						aria-expanded={input.shortcutsOpen}
+						aria-haspopup="dialog"
+						aria-label="Toggle keyboard shortcuts"
+						onClick={input.onToggleShortcuts}
+					>
+						?
+					</Button>
+				</span>
 			</div>
 		</div>
 	)
@@ -618,7 +619,7 @@ function RealtimeLayer(input: {
 						Array.map(cursor =>
 							Boolean.match(cursor.id === identity.id, {
 								onFalse: () => <Cursor key={cursor.id} cursor={cursor} own={false} viewport={input.viewport} />,
-								onTrue: () => null
+								onTrue: Function.constNull
 							})
 						)
 					)}
@@ -626,7 +627,7 @@ function RealtimeLayer(input: {
 			</div>
 
 			<PresenceHud
-				presence={portfolio.value.visitors}
+				presence={{_tag: 'Visitors', visitors: portfolio.value.visitors}}
 				onToggleShortcuts={input.onToggleShortcuts}
 				shortcutsOpen={input.shortcutsOpen}
 			/>
@@ -719,14 +720,18 @@ function PortfolioRoute() {
 			<CatchBoundary
 				getResetKey={() => 'presence'}
 				errorComponent={() => (
-					<PresenceHud presence="offline" onToggleShortcuts={toggleShortcuts} shortcutsOpen={showShortcuts} />
+					<PresenceHud presence={{_tag: 'Offline'}} onToggleShortcuts={toggleShortcuts} shortcutsOpen={showShortcuts} />
 				)}
 			>
 				<Suspense
 					fallback={
 						<>
 							<OwnCursor viewport={viewport} color={Option.none()} />
-							<PresenceHud presence="connecting" onToggleShortcuts={toggleShortcuts} shortcutsOpen={showShortcuts} />
+							<PresenceHud
+								presence={{_tag: 'Connecting'}}
+								onToggleShortcuts={toggleShortcuts}
+								shortcutsOpen={showShortcuts}
+							/>
 						</>
 					}
 				>

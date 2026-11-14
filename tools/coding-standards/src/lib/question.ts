@@ -1,8 +1,9 @@
-import {Array, Function, Order, String, pipe} from 'effect'
+import {Array, Function, Order, Schema, String, pipe} from 'effect'
 
 import type {Features} from '#lib/features.ts'
 
-export type Kind = 'code' | 'component' | 'test'
+export type Kind = typeof Kind.Type
+export const Kind = Schema.Literals(['code', 'component', 'test'])
 
 export type Side = {cases: Array.NonEmptyReadonlyArray<string>; example: string}
 

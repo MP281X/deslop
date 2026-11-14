@@ -1,6 +1,6 @@
 import {useAtomRefresh, useAtomSuspense, useAtomValue} from '@effect/atom-react'
 
-import {Array, Boolean, Cause, DateTime, Match, Option, Record, Schema, pipe} from 'effect'
+import {Array, Boolean, Cause, DateTime, Function, Match, Option, Record, Schema, pipe} from 'effect'
 
 import {ChartBarHorizontalIcon, DeviceMobileIcon, FlowArrowIcon, GlobeIcon, HardDrivesIcon} from '@phosphor-icons/react'
 import {Link, createFileRoute, getRouteApi} from '@tanstack/react-router'
@@ -149,7 +149,7 @@ function SourceTabs(props: {apps: Overview['apps']; source?: AppName}) {
 // Suspend the rows, not their shell. Home owns failures; ordinary outages retain the last overview.
 function OverviewContent(props: {children: (overview: Overview) => ReactNode; range: Range}) {
 	return Option.match(AsyncResult.value(useAtomSuspense(overviewAtom(props.range), {includeFailure: true})), {
-		onNone: () => null,
+		onNone: Function.constNull,
 		onSome: props.children
 	})
 }
@@ -167,7 +167,7 @@ function OperationRow(props: {
 		<div role="listitem">
 			<Item
 				size="row"
-				data-selected={Boolean.match(props.active, {onFalse: () => undefined, onTrue: () => 'true' as const})}
+				data-selected={Boolean.match(props.active, {onFalse: Function.constUndefined, onTrue: () => 'true' as const})}
 				render={
 					<button
 						type="button"
@@ -184,7 +184,10 @@ function OperationRow(props: {
 							],
 							', '
 						)}
-						aria-current={Boolean.match(props.active, {onFalse: () => undefined, onTrue: () => 'true' as const})}
+						aria-current={Boolean.match(props.active, {
+							onFalse: Function.constUndefined,
+							onTrue: () => 'true' as const
+						})}
 						onClick={props.onSelect}
 					/>
 				}
@@ -206,12 +209,12 @@ function OperationRow(props: {
 							<span
 								className="text-destructive text-right tabular-nums"
 								title={Boolean.match(props.operation.failures > 0, {
-									onFalse: () => undefined,
+									onFalse: Function.constUndefined,
 									onTrue: () => `${countOf(props.operation.failures)} failed`
 								})}
 							>
 								{Boolean.match(props.operation.failures > 0, {
-									onFalse: () => null,
+									onFalse: Function.constNull,
 									onTrue: () => countOf(props.operation.failures)
 								})}
 							</span>
@@ -289,7 +292,7 @@ function TraceListRow(props: {active: boolean; now: DateTime.Utc; onSelect: () =
 		<div role="listitem">
 			<Item
 				size="row"
-				data-selected={Boolean.match(props.active, {onFalse: () => undefined, onTrue: () => 'true' as const})}
+				data-selected={Boolean.match(props.active, {onFalse: Function.constUndefined, onTrue: () => 'true' as const})}
 				render={
 					<button
 						type="button"
@@ -305,7 +308,10 @@ function TraceListRow(props: {active: boolean; now: DateTime.Utc; onSelect: () =
 							],
 							', '
 						)}
-						aria-current={Boolean.match(props.active, {onFalse: () => undefined, onTrue: () => 'true' as const})}
+						aria-current={Boolean.match(props.active, {
+							onFalse: Function.constUndefined,
+							onTrue: () => 'true' as const
+						})}
 						onClick={props.onSelect}
 					/>
 				}
@@ -321,7 +327,7 @@ function TraceListRow(props: {active: boolean; now: DateTime.Utc; onSelect: () =
 							{traceLabel(props.trace)}
 						</span>
 						{Option.match(props.trace.failure, {
-							onNone: () => null,
+							onNone: Function.constNull,
 							onSome: failure => (
 								<span
 									role="img"
@@ -420,10 +426,10 @@ function SpansList(props: {
 				trace={props.trace}
 			/>
 			{Boolean.match(props.inlineDetails && Option.isSome(props.focus), {
-				onFalse: () => null,
+				onFalse: Function.constNull,
 				onTrue: () => (
 					<div className="border-t">
-						{Option.match(props.focus, {onNone: () => null, onSome: span => <SpanDetail span={span} />})}
+						{Option.match(props.focus, {onNone: Function.constNull, onSome: span => <SpanDetail span={span} />})}
 					</div>
 				)
 			})}
@@ -683,7 +689,7 @@ function HomeRoute() {
 
 	// A new frame keeps the trace it still holds; the URL follows a fallback once the frame's operations arrive.
 	function selectRange(next: Range) {
-		Option.match(value, {onNone: () => undefined, onSome: current => setKnown(current.apps)})
+		Option.match(value, {onNone: Function.constUndefined, onSome: current => setKnown(current.apps)})
 		const cutoff = rangeStart(next, now)
 		send({
 			_tag: 'Range',
@@ -717,7 +723,7 @@ function HomeRoute() {
 		<div className="flex min-h-0 flex-1 flex-col">
 			<AppBar
 				heading={Boolean.match(isMobile && pane !== 'Operations', {
-					onFalse: () => undefined,
+					onFalse: Function.constUndefined,
 					onTrue: () => ({
 						back: {
 							label: pipe(
@@ -748,7 +754,7 @@ function HomeRoute() {
 						<StaleMark range={range} trace={Option.getOrUndefined(selection.activeTrace)} />
 						{Boolean.match(isMobile && pane !== 'Operations', {
 							onFalse: () => <AppBarChoice label="Range" value={range} options={RANGES} onChange={selectRange} />,
-							onTrue: () => null
+							onTrue: Function.constNull
 						})}
 					</>
 				}
@@ -759,7 +765,7 @@ function HomeRoute() {
 							source={Option.getOrUndefined(Option.orElse(selection.source, () => search.source))}
 						/>
 					),
-					onTrue: () => undefined
+					onTrue: Function.constUndefined
 				})}
 			/>
 			{Option.match(failure, {

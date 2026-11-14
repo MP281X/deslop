@@ -1,4 +1,4 @@
-import {Array, Boolean, Iterable, Number, Option, Schema, String, pipe} from 'effect'
+import {Array, Boolean, Function, Iterable, Number, Option, Schema, String, pipe} from 'effect'
 
 import {ProcessIdFromString, UnitId} from '#services/inventory/schema.ts'
 import type {ProcessId} from '#services/inventory/schema.ts'
@@ -85,7 +85,7 @@ export function lsofSockets(text: string) {
 
 export function socketUnit(cgroup: string) {
 	return Option.map(
-		Iterable.findLast(String.matchAll(/\/([^/]+\.service)(?=\/|\n|$)/gu)(cgroup), () => true),
+		Iterable.findLast(String.matchAll(/\/([^/]+\.service)(?=\/|\n|$)/gu)(cgroup), Function.constTrue),
 		match => UnitId.make(match[1] ?? '')
 	)
 }

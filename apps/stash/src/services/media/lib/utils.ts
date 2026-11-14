@@ -1,4 +1,4 @@
-import {Array, Boolean, Duration, Number, Option, Order, Record, Schema, String, pipe} from 'effect'
+import {Array, Boolean, Duration, Function, Number, Option, Order, Record, Schema, String, pipe} from 'effect'
 
 import type {Metadata, Comment} from '#services/media/schema.ts'
 
@@ -7,7 +7,7 @@ const BLOCKED =
 
 const byStanding = pipe(
 	Order.flip(Order.Boolean),
-	Order.mapInput((comment: Comment) => Option.getOrElse(comment.is_pinned, () => false)),
+	Order.mapInput((comment: Comment) => Option.getOrElse(comment.is_pinned, Function.constFalse)),
 	Order.combine(
 		Order.mapInput(Order.flip(Order.Number), (comment: Comment) => Option.getOrElse(comment.like_count, () => 0))
 	)
@@ -19,12 +19,12 @@ function commentLine(comment: Comment) {
 			`**${Option.getOrElse(comment.author, () => 'Someone')}**`,
 			pipe(
 				comment.author_is_uploader,
-				Option.getOrElse(() => false),
+				Option.getOrElse(Function.constFalse),
 				Boolean.match({onFalse: () => '', onTrue: () => ' (the uploader)'})
 			),
 			pipe(
 				comment.is_pinned,
-				Option.getOrElse(() => false),
+				Option.getOrElse(Function.constFalse),
 				Boolean.match({onFalse: () => '', onTrue: () => ', pinned'})
 			),
 			Option.match(comment.like_count, {onNone: () => '', onSome: likes => `, ${likes} likes`}),
@@ -193,14 +193,14 @@ export function captionTranscript(input: {authored: boolean; vtt: string}) {
 				cues,
 				Array.get(index - 1),
 				Option.match({
-					onNone: () => true,
+					onNone: Function.constTrue,
 					onSome: previous =>
 						input.authored ||
 						previous.text !== cue.text ||
 						pipe(
 							Option.all([previous.end, cue.start]),
 							Option.map(times => Duration.isLessThan(times[0], times[1])),
-							Option.getOrElse(() => true)
+							Option.getOrElse(Function.constTrue)
 						)
 				})
 			)

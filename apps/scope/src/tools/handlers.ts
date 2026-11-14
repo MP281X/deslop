@@ -1,4 +1,4 @@
-import {Array, Boolean, Effect, Option, Order, Predicate, Record, Result, String, Struct, pipe} from 'effect'
+import {Array, Boolean, Effect, Function, Option, Order, Predicate, Record, Result, String, Struct, pipe} from 'effect'
 
 import {TelemetryError} from '#services/telemetry/schema.ts'
 import type {AppName, IngestionAnswer, LogsAnswer, OperationRow, OperationsAnswer} from '#services/telemetry/schema.ts'
@@ -27,8 +27,8 @@ function attributeWindow(
 		Array.sort(Order.mapInput(Order.String, (entry: readonly [string, string | number | boolean]) => entry[0])),
 		Array.filter(
 			entry =>
-				Option.match(input.attribute, {onNone: () => true, onSome: key => entry[0] === key}) &&
-				Option.match(input.attributeCursor, {onNone: () => true, onSome: cursor => entry[0] > cursor})
+				Option.match(input.attribute, {onNone: Function.constTrue, onSome: key => entry[0] === key}) &&
+				Option.match(input.attributeCursor, {onNone: Function.constTrue, onSome: cursor => entry[0] > cursor})
 		)
 	)
 	const page = Array.take(entries, 20)
@@ -62,7 +62,7 @@ function ingestionResult(
 	return {
 		...answer,
 		services: Array.filter(answer.services, service =>
-			Option.match(input.app, {onNone: () => true, onSome: app => service.app === app})
+			Option.match(input.app, {onNone: Function.constTrue, onSome: app => service.app === app})
 		)
 	}
 }
@@ -87,8 +87,8 @@ function operationPage(
 		Array.sort(Order.mapInput(Order.String, (row: {app: AppName; key: string; operation: OperationRow}) => row.key)),
 		Array.filter(
 			row =>
-				Option.match(input.operation, {onNone: () => true, onSome: name => row.operation.name === name}) &&
-				Option.match(input.cursor, {onNone: () => true, onSome: cursor => row.key > cursor})
+				Option.match(input.operation, {onNone: Function.constTrue, onSome: name => row.operation.name === name}) &&
+				Option.match(input.cursor, {onNone: Function.constTrue, onSome: cursor => row.key > cursor})
 		)
 	)
 	const page = Array.take(remaining, input.limit)

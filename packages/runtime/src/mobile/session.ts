@@ -1,4 +1,4 @@
-import {Effect, Layer, Option, Schedule, Schema, Stream, String, pipe} from 'effect'
+import {Effect, Function, Layer, Option, Schedule, Schema, Stream, String, pipe} from 'effect'
 
 import {Machine} from '@typeonce/effect-machine'
 import {AtomMachine} from '@typeonce/effect-machine/reactivity'
@@ -218,7 +218,7 @@ export function makeSession(server: string, storage: SessionStorage) {
 		// Reading it also starts the caller over on each return from the background, when iOS has closed its sockets.
 		signedIn: (get: Atom.AtomContext) => {
 			get(activationsAtom)
-			return AsyncResult.getOrElse(get(signedIn), () => false)
+			return AsyncResult.getOrElse(get(signedIn), Function.constFalse)
 		}
 	}
 }

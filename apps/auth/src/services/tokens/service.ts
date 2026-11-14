@@ -5,6 +5,7 @@ import {
 	DateTime,
 	Duration,
 	Effect,
+	Function,
 	Layer,
 	Match,
 	Option,
@@ -53,13 +54,14 @@ import {
 } from '#services/tokens/lib/utils.ts'
 import type {
 	AuthorizeClient,
-	ClientRequest,
 	DeviceRequest,
 	Origin,
 	RevokeParams,
 	SessionVia,
 	TokenParams,
-	TokenResponse
+	TokenResponse,
+	ClientRequest,
+	Code
 } from '#services/tokens/schema.ts'
 import {
 	AppGrant,
@@ -79,9 +81,6 @@ declare module 'effect/reactivity/Reactivity' {
 		readonly tokens: never
 	}
 }
-
-// An authorization code lives 60 seconds in memory; once redeemed it names the family it gave, so a replay ends it.
-type Code = {_tag: 'Fresh'; request: ClientRequest; owner: CredentialOwner} | {_tag: 'Used'; family: SignInFamily}
 
 const expired = AuthError.make({error: 'invalid_grant', message: 'The authorization expired. Sign in again.'})
 
@@ -566,7 +565,7 @@ export class Tokens extends Context.Service<
 							// Only a spent token's secret proves a replay; a guess at the family ends nothing.
 							if (
 								Option.match(presented.generation, {
-									onNone: () => true,
+									onNone: Function.constTrue,
 									onSome: generation => generation < grant.generation
 								}) &&
 								Option.isSome(yield* isSpent({family: grant.family, hash: presentedHash}))

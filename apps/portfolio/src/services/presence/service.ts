@@ -16,7 +16,7 @@ import {
 } from 'effect'
 
 import {hasMeaningfulMove, upsertVisitor} from './lib/utils.ts'
-import type {Scene} from './schema.ts'
+import type {JoinVisitor, MoveVisitor, Scene} from './schema.ts'
 import {Color, Visitor, VisitorId} from './schema.ts'
 
 const SERVER_BOTS = [
@@ -43,8 +43,8 @@ const SERVER_BOTS = [
 export class Presence extends Context.Service<
 	Presence,
 	{
-		readonly join: (payload: Pick<Visitor, 'color' | 'id' | 'name'>) => Stream.Stream<Scene>
-		readonly move: (payload: Pick<Visitor, 'color' | 'id' | 'x' | 'y'>) => Effect.Effect<void>
+		readonly join: (payload: JoinVisitor) => Stream.Stream<Scene>
+		readonly move: (payload: MoveVisitor) => Effect.Effect<void>
 	}
 >()('@deslop/portfolio/services/presence/service/Presence') {
 	static readonly layer = Layer.effect(

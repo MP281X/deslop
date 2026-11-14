@@ -1,5 +1,5 @@
 import type {Record} from 'effect'
-import {Array, Boolean, DateTime, Duration, Match, Number, Option, Order, String, pipe} from 'effect'
+import {Array, Boolean, DateTime, Duration, Function, Match, Number, Option, Order, Schema, String, pipe} from 'effect'
 
 import {ChartLineIcon} from '@phosphor-icons/react'
 import {useState} from 'react'
@@ -13,18 +13,22 @@ import {bytesOf, clockOf, dayOf, percentOf} from '@deslop/runtime/shared/format'
 
 import {chartTicks} from '#routes/(home)/-chart.ts'
 import {bandFill, bands, focusedBand, runs} from '#routes/(home)/-usage.ts'
-import type {Band} from '#routes/(home)/-usage.ts'
+import type {Band, BandFillKind} from '#routes/(home)/-usage.ts'
 import type {AppId} from '#services/inventory/schema.ts'
 import {bandName, chartWindow} from '#services/metrics/lib/utils.ts'
+import {BandId} from '#services/metrics/schema.ts'
 import type {HistoryQuery, MachineHistory, Sample} from '#services/metrics/schema.ts'
 
 const HEIGHT = 64
 const CHART_LABELS = ['Memory', 'CPU', 'Disk'] as const
 
+type ChartLayerId = typeof ChartLayerId.Type
+const ChartLayerId = Schema.Union([BandId, Schema.Literal('disk')])
+
 // One stacked band: its share at each sample, and the number its tooltip names, in bytes or per cent.
 type ChartLayer = {
-	kind: Band['kind'] | 'disk'
-	id: Band['id'] | 'disk'
+	kind: BandFillKind
+	id: ChartLayerId
 	opacity: number
 	readings: readonly number[]
 	values: readonly number[]
@@ -93,9 +97,9 @@ function UsageChart(props: {
 			y: ((event.clientY - bounds.top) / bounds.height) * 100
 		})
 		Option.match(Array.head(props.layers), {
-			onNone: () => undefined,
+			onNone: Function.constUndefined,
 			onSome: first =>
-				Boolean.match(props.cover === true, {onFalse: () => undefined, onTrue: () => setHoverBand(first)})
+				Boolean.match(props.cover === true, {onFalse: Function.constUndefined, onTrue: () => setHoverBand(first)})
 		})
 	}
 	function leave() {
@@ -105,7 +109,7 @@ function UsageChart(props: {
 	const allRuns = Array.map(runs(props.history, props.minutes, props.recorded), widen)
 	return (
 		<TooltipProvider delay={0}>
-			<Tooltip open={Option.isSome(hovered)}>
+			<Tooltip open={Option.isSome(hovered)} disableHoverablePopup>
 				<figure className={cn('relative flex min-h-0 flex-col', props.className)} aria-label={props.label}>
 					<svg
 						viewBox={`0 0 100 ${HEIGHT}`}
@@ -187,7 +191,7 @@ function UsageChart(props: {
 							}
 						)}
 						{Option.match(Option.fromUndefinedOr(cursor), {
-							onNone: () => null,
+							onNone: Function.constNull,
 							onSome: value => (
 								<line
 									x1={value.x}
@@ -233,9 +237,9 @@ function UsageChart(props: {
 					/>
 				</figure>
 				{Option.match(hovered, {
-					onNone: () => null,
+					onNone: Function.constNull,
 					onSome: value => (
-						<TooltipContent side="top" sideOffset={6} align="start" className="pointer-events-none">
+						<TooltipContent side="top" sideOffset={6} align="start">
 							<span className="font-medium">{props.names(value[1].id)}</span>
 							<span className="opacity-70">
 								{pipe(
@@ -317,13 +321,13 @@ export function ChartSkeleton(props: {isPhone: boolean; minutes: HistoryQuery['m
 						))}
 					</div>
 				),
-				onTrue: () => null
+				onTrue: Function.constNull
 			})}
 			<div className="grid grid-cols-1 gap-3 px-4 py-3 sm:grid-cols-3 sm:gap-6">
 				{Array.map(CHART_LABELS, (label, index) => (
 					<div key={label} className="flex min-w-0 flex-col gap-1">
 						{Boolean.match(props.isPhone, {
-							onFalse: () => null,
+							onFalse: Function.constNull,
 							onTrue: () => (
 								<div className="flex h-8 items-center border-b">
 									<ChartTitleSkeleton label={label} />
@@ -335,7 +339,7 @@ export function ChartSkeleton(props: {isPhone: boolean; minutes: HistoryQuery['m
 							onFalse: () => <TimeAxis minutes={props.minutes} now={now} />,
 							onTrue: () =>
 								Boolean.match(index === 2, {
-									onFalse: () => null,
+									onFalse: Function.constNull,
 									onTrue: () => <TimeAxis minutes={props.minutes} now={now} />
 								})
 						})}
@@ -394,7 +398,7 @@ export function ChartBlock(props: {
 			format: bytesOf,
 			label: 'Memory',
 			layers: Array.map(all, band => ({...band, readings: band.memoryBytes, values: band.memory})),
-			recorded: () => true
+			recorded: Function.constTrue
 		},
 		{
 			cover: false,
@@ -428,13 +432,13 @@ export function ChartBlock(props: {
 						))}
 					</div>
 				),
-				onTrue: () => null
+				onTrue: Function.constNull
 			})}
 			<div className="grid grid-cols-1 gap-3 px-4 py-3 sm:grid-cols-3 sm:gap-6">
 				{Array.map(charts, (chart, index) => (
 					<div key={chart.label} className="flex min-w-0 flex-col gap-1">
 						{Boolean.match(props.isPhone, {
-							onFalse: () => null,
+							onFalse: Function.constNull,
 							onTrue: () => (
 								<div className="flex h-8 items-center border-b">
 									<ChartTitle figure={chart.figure} label={chart.label} />
@@ -460,7 +464,7 @@ export function ChartBlock(props: {
 							onFalse: () => <TimeAxis minutes={props.minutes} now={props.history.time} />,
 							onTrue: () =>
 								Boolean.match(index === charts.length - 1, {
-									onFalse: () => null,
+									onFalse: Function.constNull,
 									onTrue: () => <TimeAxis minutes={props.minutes} now={props.history.time} />
 								})
 						})}

@@ -78,8 +78,8 @@ function auditPage() {
 		paint.clearRect(0, 0, 1, 1)
 		paint.fillStyle = color
 		paint.fillRect(0, 0, 1, 1)
-		const data = paint.getImageData(0, 0, 1, 1).data
-		return [data[0], data[1], data[2], data[3] / 255]
+		const pixel = paint.getImageData(0, 0, 1, 1).data
+		return [pixel[0], pixel[1], pixel[2], pixel[3] / 255]
 	}
 	function over(top, bottom) {
 		return [0, 1, 2].map(index => top[index] * top[3] + bottom[index] * (1 - top[3]))

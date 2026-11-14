@@ -10,6 +10,7 @@ import {
 	Config,
 	Context,
 	Effect,
+	Function,
 	HashMap,
 	Layer,
 	Option,
@@ -211,7 +212,7 @@ export class Fleet extends Context.Service<
 									onSome: machine => machine.error
 								}),
 								stale: Option.match(saved, {
-									onNone: () => true,
+									onNone: Function.constTrue,
 									onSome: machine =>
 										machine.stale ||
 										pipe(machine.time, DateTime.distance(time), Duration.isGreaterThan(Duration.seconds(90)))
@@ -262,6 +263,7 @@ export class Fleet extends Context.Service<
 								remote(worker, (client, headers) => client('metrics.history', query, {headers})),
 								Effect.timeout(Duration.seconds(2)),
 								Effect.map(value => ({...value, worker: worker.name})),
+								Effect.tapError(cause => Effect.logWarning('A worker history could not be read', cause)),
 								Effect.catch(
 									Effect.fnUntraced(function* (cause) {
 										return {

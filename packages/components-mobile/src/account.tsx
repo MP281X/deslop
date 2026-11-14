@@ -1,6 +1,6 @@
 import {useAtomSet, useAtomValue} from '@effect/atom-react'
 
-import {Option} from 'effect'
+import {Function, Option} from 'effect'
 
 import {Button, Image, Menu, Section} from '@expo/ui/swift-ui'
 import {accessibilityLabel, buttonStyle, frame, menuIndicator, menuStyle, resizable} from '@expo/ui/swift-ui/modifiers'
@@ -32,7 +32,7 @@ export function AccountMenu(props: {session: Session}) {
 			})}
 			modifiers={[menuStyle('button'), buttonStyle('plain'), menuIndicator('hidden'), accessibilityLabel('Account')]}
 		>
-			<Section title={Option.match(account, {onNone: () => undefined, onSome: current => `@${current.name}`})}>
+			<Section title={Option.match(account, {onNone: Function.constUndefined, onSome: current => `@${current.name}`})}>
 				<Button
 					label="Sign Out"
 					systemImage="rectangle.portrait.and.arrow.right"

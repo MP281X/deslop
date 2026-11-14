@@ -25,7 +25,7 @@ import {People} from '#services/people/service.ts'
 import {makeRecords} from '#services/records/service.ts'
 import type {TransientRecord} from '#services/records/service.ts'
 import {CODE_LENGTH, SIGN_IN_LIFETIME, codeFrom, typedCode} from '#services/sign-ins/lib/utils.ts'
-import type {AnswerParams, Delivery, SignInCode} from '#services/sign-ins/schema.ts'
+import type {AnswerParams, AnswerVia, Delivery, SignInCode} from '#services/sign-ins/schema.ts'
 import {AuthorizationStatus, Collected, PendingAuthorization} from '#services/sign-ins/schema.ts'
 import {
 	addressGroup,
@@ -88,7 +88,7 @@ export class SignIns extends Context.Service<
 		readonly answer: (
 			params: AnswerParams,
 			owner: CredentialOwner,
-			via: 'Session' | 'Token'
+			via: AnswerVia
 		) => Effect.Effect<{clientName: string}, AuthError>
 		readonly collect: (code: SignInCode, headers: Headers.Headers) => Effect.Effect<Collected, AuthError>
 		readonly lookup: (code: SignInCode) => Stream.Stream<Option.Option<PendingAuthorization>>
@@ -176,7 +176,7 @@ export class SignIns extends Context.Service<
 			})
 			return SignIns.of({
 				answer: Effect.fn('SignIns.answer')(
-					function* (params: AnswerParams, owner: CredentialOwner, via: 'Session' | 'Token') {
+					function* (params: AnswerParams, owner: CredentialOwner, via: AnswerVia) {
 						yield* people.allowed(owner)
 						const entry = yield* pipe(
 							find(params.request),

@@ -1,6 +1,6 @@
 import {useAtomRefresh, useAtomValue} from '@effect/atom-react'
 
-import {Array, DateTime, Effect, Option, Stream, pipe} from 'effect'
+import {Array, DateTime, Effect, Function, Option, Stream, pipe} from 'effect'
 
 import {ArrowClockwiseIcon} from '@phosphor-icons/react'
 import {AsyncResult, Atom} from 'effect/reactivity'
@@ -88,11 +88,11 @@ function Problem(props: {label: string; reset?: () => void; since?: DateTime.Utc
 		>
 			<PopoverTrigger
 				id={id}
-				render={<Button variant="ghost" size="sm" />}
+				render={<Button variant="ghost" />}
 				openOnHover
 				delay={150}
 				aria-label={props.label}
-				className="h-8 w-16 max-sm:h-11"
+				className="w-16"
 				onFocus={event => {
 					if (returning.current) {
 						returning.current = false
@@ -122,7 +122,6 @@ function Problem(props: {label: string; reset?: () => void; since?: DateTime.Utc
 							ref={retry}
 							variant="ghost"
 							size="icon"
-							className="max-sm:size-11"
 							aria-label="Try again"
 							title="Try again"
 							onClick={props.reset}
@@ -144,7 +143,7 @@ export function StaleProblem(props: {
 	const since = useAtomValue(staleSinceAtom(props.readers))
 	const retry = useAtomRefresh(staleSinceAtom(props.readers))
 	return Option.match(since, {
-		onNone: () => null,
+		onNone: Function.constNull,
 		onSome: value => <Problem label={props.label} reset={retry} since={value} />
 	})
 }

@@ -1,6 +1,6 @@
 import {useAtomRefresh, useAtomSet, useAtomValue} from '@effect/atom-react'
 
-import {Array, Boolean, Number, Option, Order, String, pipe} from 'effect'
+import {Array, Boolean, Function, Number, Option, Order, String, pipe} from 'effect'
 
 import {
 	Button,
@@ -99,7 +99,7 @@ function ChapterRow(props: {chapter: ChapterItem; onOpen: (number: ChapterNumber
 					props.chapter.reading,
 					Option.filter(reading => !reading.done && reading.page > 0),
 					Option.match({
-						onNone: () => null,
+						onNone: Function.constNull,
 						onSome: reading => (
 							<ItemActions>
 								<ChapterProgress

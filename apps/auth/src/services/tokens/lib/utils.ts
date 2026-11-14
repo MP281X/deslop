@@ -1,4 +1,4 @@
-import {Array, DateTime, Effect, Option, Order, Record, Result, Schema, String, pipe} from 'effect'
+import {Array, DateTime, Effect, Function, Option, Order, Record, Result, Schema, String, pipe} from 'effect'
 
 import {Digest} from 'effect/crypto'
 import type {SecureRandom} from 'effect/crypto'
@@ -341,7 +341,7 @@ export function callbackUrl(
 export function returnable(next: string, url: string) {
 	const domain = 'mp281x.xyz'
 	return Result.match(Url.fromString(next), {
-		onFailure: () => false,
+		onFailure: Function.constFalse,
 		onSuccess: target =>
 			(target.origin === new URL(url).origin ||
 				(target.protocol === 'https:' &&

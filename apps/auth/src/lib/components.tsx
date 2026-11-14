@@ -1,6 +1,6 @@
 import {useAtom} from '@effect/atom-react'
 
-import {Array, Boolean, DateTime, Option, Order, Record, String, Struct, pipe} from 'effect'
+import {Array, Boolean, DateTime, Function, Option, Order, Record, Schema, String, Struct, pipe} from 'effect'
 
 import {AppWindowIcon, GlobeIcon, GraphIcon, HardDrivesIcon} from '@phosphor-icons/react'
 import {AsyncResult, Atom} from 'effect/reactivity'
@@ -32,9 +32,15 @@ import {appsAtom, consentAtom, minuteAtom, requestCode} from '#lib/auth.ts'
 import type {PendingAuthorization} from '#services/sign-ins/schema.ts'
 import type {SignedInApp} from '#services/tokens/schema.ts'
 
+type AppIconState = typeof AppIconState.Type
+const AppIconState = Schema.Literals(['failed', 'loaded', 'loading'])
+
+type ClientKind = typeof ClientKind.Type
+const ClientKind = Schema.Literals(['App', 'Browser'])
+
 // A glyph until the app's own icon loads, so a missing icon never draws the browser's broken image; no tile behind either.
 function AppIcon(props: {origin: string}) {
-	const [state, setState] = useState<'failed' | 'loaded' | 'loading'>('loading')
+	const [state, setState] = useState<AppIconState>('loading')
 	return (
 		<span className="text-muted-foreground relative flex size-4 shrink-0 items-center justify-center">
 			{state !== 'loaded' && <AppWindowIcon className="size-4" />}
@@ -56,7 +62,7 @@ function PendingRowSkeleton() {
 	return (
 		<div className="bg-primary/10">
 			<Item aria-hidden size="row">
-				<ItemMedia className="size-4">
+				<ItemMedia className="w-4">
 					<Skeleton className="size-4" />
 				</ItemMedia>
 				<ItemContent>
@@ -78,7 +84,7 @@ export function SignInRowsSkeleton(props: {pending?: boolean}) {
 		<Card size="list">
 			{props.pending === true && <PendingRowSkeleton />}
 			<RowsSkeleton label="Signed in" rows={9}>
-				<ItemMedia className="size-4">
+				<ItemMedia className="w-4">
 					<Skeleton className="size-4" />
 				</ItemMedia>
 				<ItemContent>
@@ -86,7 +92,9 @@ export function SignInRowsSkeleton(props: {pending?: boolean}) {
 				</ItemContent>
 				<ItemActions>
 					<Skeleton className="h-3 w-12 shrink-0" />
-					<Skeleton className="h-3 w-28 shrink-0 max-sm:hidden" />
+					<div className="shrink-0 max-sm:hidden">
+						<Skeleton className="h-3 w-28" />
+					</div>
 				</ItemActions>
 			</RowsSkeleton>
 		</Card>
@@ -98,7 +106,7 @@ export function PeopleRowsSkeleton() {
 	return (
 		<Card size="list">
 			<RowsSkeleton label="People" rows={3}>
-				<ItemMedia className="size-4">
+				<ItemMedia className="w-4">
 					<Skeleton className="size-4" />
 				</ItemMedia>
 				<ItemContent>
@@ -115,7 +123,7 @@ export function PeopleRowsSkeleton() {
 
 const BROWSERS: Record<string, ComponentType<SVGProps<SVGSVGElement>>> = {Chrome, Edge, Firefox, Safari}
 
-type Client = {app: Option.Option<string>; device: string; kind: 'App' | 'Browser'; name: string}
+type Client = {app: Option.Option<string>; device: string; kind: ClientKind; name: string}
 
 function Brand(props: {client: Client}) {
 	if (props.client.kind === 'Browser') {
@@ -160,7 +168,7 @@ function ClientRow(props: {client: SignedInApp; now: DateTime.Utc}) {
 				})}`}
 			>
 				{/* The browser or app is the mark alone, so every row's name starts at the same column. */}
-				<ItemMedia className="size-4" role="img" aria-label={props.client.client} title={props.client.client}>
+				<ItemMedia className="w-4" role="img" aria-label={props.client.client} title={props.client.client}>
 					<ClientIcon
 						client={{
 							app: props.client.icon,
@@ -200,7 +208,7 @@ function PendingRow(props: {request: PendingAuthorization}) {
 	return (
 		<div role="listitem" className="bg-primary/10">
 			<Item size="row">
-				<ItemMedia className="size-4" role="img" aria-label={props.request.clientName} title={props.request.clientName}>
+				<ItemMedia className="w-4" role="img" aria-label={props.request.clientName} title={props.request.clientName}>
 					<RequestMark request={props.request} />
 				</ItemMedia>
 				<ItemContent>
@@ -210,7 +218,6 @@ function PendingRow(props: {request: PendingAuthorization}) {
 				<ItemActions>
 					<Button
 						variant="outline"
-						size="xs"
 						disabled={waiting}
 						aria-label={`Deny ${props.request.device}`}
 						onClick={() => respond({accept: false, request: props.request})}
@@ -218,7 +225,6 @@ function PendingRow(props: {request: PendingAuthorization}) {
 						Deny
 					</Button>
 					<Button
-						size="xs"
 						disabled={waiting}
 						aria-label={`Approve ${props.request.device}`}
 						onClick={() => respond({accept: true, request: props.request})}
@@ -268,8 +274,8 @@ const signInListAtom = Atom.readable(
 export function SignInList(props: {checking?: boolean; pending: Option.Option<PendingAuthorization>}) {
 	return (
 		<Loaded atom={signInListAtom}>
-			{data => {
-				const clients = clientsOf(data.signIns)
+			{sessions => {
+				const clients = clientsOf(sessions.signIns)
 				const checking = props.checking === true && Option.isNone(props.pending)
 				if (Array.isReadonlyArrayEmpty(clients) && Option.isNone(props.pending) && !checking) {
 					return <EmptyState label="No sign-ins" icon={<HardDrivesIcon className="size-5" weight="light" />} />
@@ -280,7 +286,7 @@ export function SignInList(props: {checking?: boolean; pending: Option.Option<Pe
 							{Boolean.match(checking, {
 								onFalse: () =>
 									Option.match(props.pending, {
-										onNone: () => null,
+										onNone: Function.constNull,
 										onSome: request => <PendingRow request={request} />
 									}),
 								onTrue: () => (
@@ -290,7 +296,7 @@ export function SignInList(props: {checking?: boolean; pending: Option.Option<Pe
 								)
 							})}
 							{Array.map(clients, client => (
-								<ClientRow key={client.family} client={client} now={data.now} />
+								<ClientRow key={client.family} client={client} now={sessions.now} />
 							))}
 						</div>
 					</Card>

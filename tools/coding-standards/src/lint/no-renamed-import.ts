@@ -68,5 +68,24 @@ export const noRenamedImport = defineRule({
 			})
 		}
 	}),
-	meta: {fixable: 'code', type: 'problem'}
+	meta: {
+		docs: {
+			examples: {
+				accepted: [
+					{
+						'sample.ts': `import {Function, Option} from 'effect'
+export function selectedTitle(title: Option.Option<string>) { return Option.getOrElse(title, Function.constNull) }`
+					}
+				],
+				fixes: [
+					{
+						'sample.ts': `import {Function, Option as Maybe} from 'effect'
+export function selectedTitle(title: Maybe.Option<string>) { return Maybe.getOrElse(title, Function.constNull) }`
+					}
+				]
+			}
+		},
+		fixable: 'code',
+		type: 'problem'
+	}
 })

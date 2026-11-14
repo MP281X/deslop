@@ -90,5 +90,18 @@ export const noReinventedSchema = defineRule({
 			})
 		}
 	}),
-	meta: {type: 'problem'}
+	meta: {
+		docs: {
+			examples: {
+				accepted: [
+					{
+						'sample.ts': `import {Schema} from 'effect'
+export type Title = typeof Title.Type
+export const Title = Schema.NonEmptyString`
+					}
+				]
+			}
+		},
+		type: 'problem'
+	}
 })

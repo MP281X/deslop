@@ -1,10 +1,13 @@
-import {Cause, Clock, Effect, Layer, Option} from 'effect'
+import {Cause, Clock, Effect, Layer, Option, Schema} from 'effect'
 
 import {FetchHttpClient, UrlParams} from 'effect/http'
 import {OtlpLogger, OtlpSerialization, OtlpTracer} from 'effect/observability'
 
+export type Runtime = typeof Runtime.Type
+const Runtime = Schema.Literals(['web', 'mobile', 'server'])
+
 // Scope's receiver is public, so exporters send no credentials; a release names its version, so Scope can drop what older ones sent.
-export function layerOtlp(serviceName: string, url: string, runtime: 'web' | 'mobile' | 'server', version: string) {
+export function layerOtlp(serviceName: string, url: string, runtime: Runtime, version: string) {
 	return Layer.catchCause(
 		Layer.unwrap(
 			Effect.gen(function* () {

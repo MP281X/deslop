@@ -8,6 +8,7 @@
 	},
 	"exports": {
 		"./*": "./src/*.tsx",
+		"./palette": "./src/palette.ts",
 		"./theme": "./src/theme.ts",
 		"./alerts": "./src/lib/alerts.ts",
 		"./files": "./src/lib/files.ts",

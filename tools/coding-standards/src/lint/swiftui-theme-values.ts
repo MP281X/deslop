@@ -88,5 +88,20 @@ export const swiftuiThemeValues = defineRule({
 			}
 		}
 	},
-	meta: {type: 'problem'}
+	meta: {
+		docs: {
+			examples: {
+				accepted: [
+					{
+						'sample.tsx': `import {Text} from '@expo/ui/swift-ui'
+import {padding} from '@expo/ui/swift-ui/modifiers'
+import {space} from './theme.ts'
+export function Title(props: {title: string}) { return <Text modifiers={[padding({horizontal: space[4]})]}>{props.title}</Text> }`,
+						'theme.ts': 'export const space = {4: 16}'
+					}
+				]
+			}
+		},
+		type: 'problem'
+	}
 })

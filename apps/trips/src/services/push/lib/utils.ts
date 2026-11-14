@@ -1,4 +1,4 @@
-import {Array, DateTime, Duration, Number, Option, Result, String, pipe} from 'effect'
+import {Array, DateTime, Duration, Function, Number, Option, Result, String, pipe} from 'effect'
 
 import {
 	ACTIVITY_LIFETIME,
@@ -12,32 +12,33 @@ import {
 	titleOf
 } from '#services/bookings/lib/utils.ts'
 import type {Booking, BookingList, Flight, Leg, Train} from '#services/bookings/schema.ts'
-import type {Activity, Device} from '#services/push/schema.ts'
+import type {Activity, AlertCategory, Device, SentAlert, ShowAction} from '#services/push/schema.ts'
 
 export type Span = {end: DateTime.Utc; start: DateTime.Utc}
-type ShowAction = {_tag: 'launch'; target: Device} | {_tag: 'refresh'; target: Activity}
 
 // An activity covers the window while ActivityKit keeps it alive, unless it ended before the window began.
 export function holds(activity: Activity, window: Span) {
 	if (pipe(activity.startedAt, DateTime.addDuration(ACTIVITY_LIFETIME), DateTime.isLessThan(window.end))) return false
 	return Option.match(activity.endedAt, {
-		onNone: () => true,
+		onNone: Function.constTrue,
 		onSome: ended => DateTime.isGreaterThanOrEqualTo(ended, window.start)
 	})
 }
 
-export function alertKey(alert: Alert) {
-	if (alert.value === undefined) return alert.category
-	return `${alert.category}:${alert.value}`
-}
-
 // `sent` holds the keys sent for the booking, oldest first.
-export function announced(sent: readonly string[], alert: Alert) {
-	if (alert.value === undefined || alert.category === 'delay') return Array.contains(sent, alertKey(alert))
+export function announced(sent: readonly SentAlert[], alert: Alert) {
+	if (alert.value === undefined || alert.category === 'delay') {
+		return Array.some(
+			sent,
+			found =>
+				found.category === alert.category &&
+				Option.makeEquivalence(String.Equivalence)(found.value, Option.fromUndefinedOr(alert.value))
+		)
+	}
 	return pipe(
 		sent,
-		Array.findLast(found => String.startsWith(`${alert.category}:`)(found)),
-		Option.exists(found => found === alertKey(alert))
+		Array.findLast(found => found.category === alert.category),
+		Option.exists(found => Option.contains(found.value, alert.value))
 	)
 }
 
@@ -111,12 +112,7 @@ export function startAlert(journey: Flight | Train) {
 	}
 }
 
-export type Alert = {
-	body: string
-	title: string
-	category: 'cancelled' | 'diverted' | 'boarding' | 'gate' | 'platform' | 'delay' | 'belt'
-	value?: string
-}
+export type Alert = {body: string; title: string; category: AlertCategory; value?: string}
 
 function trainAlerts(train: Train) {
 	const title = titleOf(train)

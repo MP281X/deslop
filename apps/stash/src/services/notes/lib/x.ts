@@ -1,4 +1,4 @@
-import {Array, DateTime, HashMap, HashSet, Match, Option, Order, Result, String, pipe} from 'effect'
+import {Array, DateTime, Function, HashMap, HashSet, Match, Option, Order, Result, String, pipe} from 'effect'
 
 import {canonical, plainText} from '#services/notes/lib/utils.ts'
 import type {FxArticle, FxConversation, FxPost, TikTokPage} from '#services/notes/schema.ts'
@@ -15,7 +15,7 @@ export function tikTokExtraction(
 	url: URL
 ) {
 	const images = Array.filterMap(item.imagePost.images, image =>
-		Result.fromOption(Array.head(image.imageURL.urlList), () => undefined)
+		Result.fromOption(Array.head(image.imageURL.urlList), Function.constUndefined)
 	)
 	return Extraction.make({
 		author: Option.some(item.author.nickname),
@@ -45,7 +45,7 @@ function articleText(article: FxArticle) {
 				entities,
 				HashMap.get(`${range.key}`),
 				Option.flatMap(entity => Option.orElse(entity.value.data.markdown, () => entity.value.data.url)),
-				Result.fromOption(() => undefined)
+				Result.fromOption(Function.constUndefined)
 			)
 		)
 		const text = pipe([String.trim(block.text), ...attached], Array.filter(String.isNonEmpty), Array.join(' '))
@@ -157,7 +157,7 @@ export function conversationPlan(conversation: FxConversation, status: FxPost, q
 		pages: pipe(
 			links,
 			Array.filter(link => !X_LINK.test(link)),
-			Array.filterMap(link => Result.fromOption(Option.liftThrowable(() => new URL(link))(), () => undefined)),
+			Array.filterMap(link => Result.fromOption(Option.liftThrowable(() => new URL(link))(), Function.constUndefined)),
 			Array.take(3)
 		),
 		posts: pipe(
@@ -167,7 +167,7 @@ export function conversationPlan(conversation: FxConversation, status: FxPost, q
 					String.match(/(?:x|twitter)\.com\/[^/]+\/status\/(\d+)/u)(link),
 					Option.flatMap(match => Array.get(match, 1)),
 					Option.map(id => PostId.make(id)),
-					Result.fromOption(() => undefined)
+					Result.fromOption(Function.constUndefined)
 				)
 			),
 			Array.filter(linkedId => !HashSet.has(contextIds, linkedId)),

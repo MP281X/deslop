@@ -1,6 +1,6 @@
 import {useAtomRefresh, useAtomSet, useAtomSuspense, useAtomValue} from '@effect/atom-react'
 
-import {Array, Boolean, Match, Option, Schema, String, pipe} from 'effect'
+import {Array, Boolean, Function, Match, Option, Schema, String, pipe} from 'effect'
 
 import {
 	Button,
@@ -226,8 +226,9 @@ function FullBody(props: {note: NoteItem}) {
 			)}
 			{!Option.exists(AsyncResult.error(full), Schema.is(AuthError)) &&
 				Option.match(AsyncResult.value(full), {
-					onNone: () => undefined,
-					onSome: note => Option.match(note.body, {onNone: () => undefined, onSome: body => <Body text={body} />})
+					onNone: Function.constUndefined,
+					onSome: note =>
+						Option.match(note.body, {onNone: Function.constUndefined, onSome: body => <Body text={body} />})
 				})}
 		</VStack>
 	)
@@ -342,7 +343,7 @@ function NoteScreen(props: {
 					<Detail note={item} onRetry={() => regenerate(item.id)} onTag={props.onTag} />
 					<Toolbar.Content>
 						{Option.match(item.url, {
-							onNone: () => undefined,
+							onNone: Function.constUndefined,
 							onSome: url => (
 								<ToolbarItem placement="topBarTrailing">
 									{Option.match(brandOf(item), {
@@ -376,7 +377,7 @@ function NoteScreen(props: {
 						})}
 						<ToolbarItem placement="topBarTrailing">
 							<Menu label="More" systemImage="ellipsis" modifiers={[labelStyle('iconOnly')]}>
-								{Option.match(item.url, {onNone: () => undefined, onSome: url => <ShareLink item={url} />})}
+								{Option.match(item.url, {onNone: Function.constUndefined, onSome: url => <ShareLink item={url} />})}
 								<Button label="Regenerate" systemImage="arrow.clockwise" onPress={() => regenerate(item.id)} />
 								<Button
 									label="Delete"

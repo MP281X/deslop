@@ -1,4 +1,4 @@
-import {Array, Function, Option, Order, Record, String, pipe} from 'effect'
+import {Array, Filter, Function, Option, Order, Record, String, pipe} from 'effect'
 
 import type {NoteItem, TagName} from '#services/notes/schema.ts'
 
@@ -117,14 +117,9 @@ export function tagCounts(notes: readonly Pick<NoteItem, 'tags'>[]) {
 
 // A query's lowercase words: a `#word` names a tag every result carries, any other word is text every result contains.
 export function queryWords(query: string) {
-	const words = pipe(query, String.toLowerCase, String.split(/\s+/u), Array.filter(String.isNonEmpty))
-	return {
-		tags: pipe(
-			words,
-			Array.filter(String.startsWith('#')),
-			Array.map(String.slice(1)),
-			Array.filter(String.isNonEmpty)
-		),
-		terms: Array.filter(words, word => !String.startsWith('#')(word))
-	}
+	const [tags, terms] = Array.partition(
+		pipe(query, String.toLowerCase, String.split(/\s+/u), Array.filter(String.isNonEmpty)),
+		Filter.fromPredicate(String.startsWith('#'))
+	)
+	return {tags: pipe(tags, Array.map(String.slice(1)), Array.filter(String.isNonEmpty)), terms}
 }

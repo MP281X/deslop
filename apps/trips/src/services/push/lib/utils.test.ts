@@ -6,8 +6,9 @@ import {ApnsToken} from '@deslop/runtime/shared/apns'
 
 import {activityProps} from '#services/bookings/lib/utils.ts'
 import {BookingId, Flight, FlightTracking} from '#services/bookings/schema.ts'
-import {alertKey, alertsOf, announced, expiredActivities, holds, showPlan} from '#services/push/lib/utils.ts'
-import {Activity, ChannelId, Device} from '#services/push/schema.ts'
+import {alertsOf, announced, expiredActivities, holds, showPlan} from '#services/push/lib/utils.ts'
+import {Activity, ChannelId, Device, SentAlert} from '#services/push/schema.ts'
+import type {AlertCategory} from '#services/push/schema.ts'
 
 const DEPARTS = DateTime.makeUnsafe('2026-10-28T15:40:00Z')
 const FLIGHT = Schema.decodeSync(Flight.json)({
@@ -37,6 +38,10 @@ const ACTIVITY = {
 	startedAt: DEPARTS
 }
 
+function sentAlert(category: AlertCategory, value: string) {
+	return SentAlert.make({bookingId: FLIGHT.id, category, sentAt: DEPARTS, value: Option.some(value)})
+}
+
 it('announces a gate change and a fifteen-minute delay once each', () => {
 	const alerts = alertsOf(
 		Flight.make({
@@ -53,9 +58,15 @@ it('announces a gate change and a fifteen-minute delay once each', () => {
 		}),
 		DateTime.subtractDuration(DEPARTS, Duration.hours(1))
 	)
-	assert.deepStrictEqual(Array.map(alerts, alertKey), ['gate:B12', 'delay:15'])
 	assert.deepStrictEqual(
-		Array.map(alerts, alert => announced(['gate:B12', 'delay:15'], alert)),
+		Array.map(alerts, alert => ({category: alert.category, value: alert.value})),
+		[
+			{category: 'gate', value: 'B12'},
+			{category: 'delay', value: '15'}
+		]
+	)
+	assert.deepStrictEqual(
+		Array.map(alerts, alert => announced([sentAlert('gate', 'B12'), sentAlert('delay', '15')], alert)),
 		[true, true]
 	)
 })
@@ -63,10 +74,10 @@ it('announces a gate change and a fifteen-minute delay once each', () => {
 it('reannounces a gate returning to an earlier value but remembers every delay step', () => {
 	const gate = {body: '', category: 'gate' as const, title: '', value: 'B12'}
 	const delay = {body: '', category: 'delay' as const, title: '', value: '15'}
-	assert.isFalse(announced(['gate:B12', 'gate:A3'], gate))
-	assert.isTrue(announced(['gate:A3', 'gate:B12'], gate))
-	assert.isTrue(announced(['delay:15', 'delay:30'], delay))
-	assert.isFalse(announced(['delay:30'], delay))
+	assert.isFalse(announced([sentAlert('gate', 'B12'), sentAlert('gate', 'A3')], gate))
+	assert.isTrue(announced([sentAlert('gate', 'A3'), sentAlert('gate', 'B12')], gate))
+	assert.isTrue(announced([sentAlert('delay', '15'), sentAlert('delay', '30')], delay))
+	assert.isFalse(announced([sentAlert('delay', '30')], delay))
 })
 
 it('refreshes a covering activity or launches a new one per app while an ended leg stays ended', () => {

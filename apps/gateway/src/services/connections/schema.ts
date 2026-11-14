@@ -125,6 +125,20 @@ export class ConnectionCalls extends Model.Class<ConnectionCalls>('ConnectionCal
 export type ConnectionState = typeof ConnectionState.Type
 export const ConnectionState = Schema.Struct({...Connection.fields, status: ConnectionStatus})
 
+export type SessionKind = typeof SessionKind.Type
+export const SessionKind = Schema.Literals(['upstream', 'anonymous'])
+
+export type ServerReference = typeof ServerReference.Type
+export const ServerReference = Schema.Struct(Struct.pick(ConnectionState.fields, ['id', 'generation', 'name', 'mode']))
+export type ServerIdentity = typeof ServerIdentity.Type
+export const ServerIdentity = Schema.Struct(Struct.pick(ConnectionState.fields, ['id', 'generation']))
+export type ConnectionAddress = typeof ConnectionAddress.Type
+export const ConnectionAddress = Schema.Struct(Struct.pick(Connection.fields, ['generation', 'id', 'url']))
+export type ConnectionIssuer = typeof ConnectionIssuer.Type
+export const ConnectionIssuer = Schema.Struct(Struct.pick(ConnectionGrant.fields, ['clientId', 'tokenEndpoint']))
+export type ConnectionTarget = typeof ConnectionTarget.Type
+export const ConnectionTarget = Schema.Struct(Struct.pick(Connection.fields, ['generation', 'id', 'name', 'url']))
+
 // A server as the page shows it.
 export type ConnectionItem = typeof ConnectionItem.Type
 export const ConnectionItem = Schema.Struct({

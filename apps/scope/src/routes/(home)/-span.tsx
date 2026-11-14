@@ -1,9 +1,10 @@
-import {Array, Boolean, Option, Record, String, pipe} from 'effect'
+import {Array, Boolean, Function, Option, Record, String, pipe} from 'effect'
 
 import {HardDrivesIcon, LockIcon} from '@phosphor-icons/react'
 
 import {cn} from '@deslop/components-web/classes'
 import {AppMark, ThemedMark} from '@deslop/components-web/marks'
+import {Button} from '@deslop/components-web/ui/button'
 import {Skeleton} from '@deslop/components-web/ui/skeleton'
 import {GithubDark} from '@deslop/components-web/ui/svgs/githubDark'
 import {GithubLight} from '@deslop/components-web/ui/svgs/githubLight'
@@ -71,7 +72,10 @@ function SpanHeader(props: {span: TraceTree['spans'][number]}) {
 			<span
 				className={cn(
 					'min-w-0 truncate',
-					Boolean.match(props.span.status === 'failed', {onFalse: () => undefined, onTrue: () => 'text-destructive'})
+					Boolean.match(props.span.status === 'failed', {
+						onFalse: Function.constUndefined,
+						onTrue: () => 'text-destructive'
+					})
 				)}
 			>
 				{props.span.name}
@@ -96,7 +100,7 @@ export function SpanDetail(props: {span: TraceTree['spans'][number]}) {
 		>
 			<SpanHeader span={props.span} />
 			{Option.match(error, {
-				onNone: () => null,
+				onNone: Function.constNull,
 				onSome: message => (
 					<div role="listitem" className="col-span-2 grid h-8 grid-cols-subgrid items-center gap-2.5 max-sm:h-11">
 						<span className="text-muted-foreground flex items-center gap-1.5 truncate">
@@ -114,7 +118,7 @@ export function SpanDetail(props: {span: TraceTree['spans'][number]}) {
 							className={cn(
 								'block min-w-0 truncate',
 								Boolean.match(props.span.status === 'failed', {
-									onFalse: () => undefined,
+									onFalse: Function.constUndefined,
 									onTrue: () => 'text-destructive'
 								})
 							)}
@@ -138,9 +142,14 @@ export function SpanDetail(props: {span: TraceTree['spans'][number]}) {
 						{Boolean.match(attribute.key === 'url.full' && String.startsWith('https://')(attribute.value), {
 							onFalse: () => attribute.value,
 							onTrue: () => (
-								<a href={attribute.value} target="_blank" rel="noreferrer" className="underline underline-offset-3">
-									{attribute.value}
-								</a>
+								<Button
+									variant="link"
+									nativeButton={false}
+									render={<a href={attribute.value} target="_blank" rel="noreferrer" aria-label={attribute.value} />}
+									className="-ml-2.75 max-w-full min-w-0"
+								>
+									<span className="truncate">{attribute.value}</span>
+								</Button>
 							)
 						})}
 					</span>
@@ -156,7 +165,7 @@ export function SpanDetail(props: {span: TraceTree['spans'][number]}) {
 					<span
 						className={cn(
 							'text-muted-foreground block min-w-0 truncate',
-							Boolean.match(log.severity >= 17, {onFalse: () => undefined, onTrue: () => 'text-destructive'})
+							Boolean.match(log.severity >= 17, {onFalse: Function.constUndefined, onTrue: () => 'text-destructive'})
 						)}
 						title={log.message}
 					>

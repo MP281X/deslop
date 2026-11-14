@@ -1,6 +1,6 @@
 import {useAtomRefresh, useAtomSuspense, useAtomValue} from '@effect/atom-react'
 
-import {Array, Boolean, Match, Option, Schema, pipe} from 'effect'
+import {Array, Boolean, Function, Match, Option, Schema, pipe} from 'effect'
 
 import {HourglassIcon, SignOutIcon} from '@phosphor-icons/react'
 import {Link, Outlet, createFileRoute, getRouteApi, useMatchRoute} from '@tanstack/react-router'
@@ -21,10 +21,13 @@ import type {SignedAccount} from '#services/people/schema.ts'
 
 const route = getRouteApi('/(home)')
 
+type TabRoute = typeof TabRoute.Type
+const TabRoute = Schema.Literals(['/', '/people'])
+
 // Signed-in accounts see their sign-ins; admins also see people.
 function Tabs(props: {admin: boolean}) {
 	const matchRoute = useMatchRoute()
-	const tabs: {label: string; to: '/' | '/people'}[] = [
+	const tabs: {label: string; to: TabRoute}[] = [
 		{label: 'Sign-ins', to: '/'},
 		...Boolean.match(props.admin, {onFalse: () => [], onTrue: () => [{label: 'People', to: '/people' as const}]})
 	]
@@ -76,7 +79,7 @@ function PageProblem() {
 // The account menu joins the mounted bar once the account is known.
 function AccountControl() {
 	return Option.match(useAtomSuspense(accountAtom).value, {
-		onNone: () => false,
+		onNone: Function.constFalse,
 		onSome: signed => <AccountMenu account={signed} />
 	})
 }
@@ -97,13 +100,13 @@ function ShellPage() {
 	return (
 		<Page>
 			{signingOut && <SigningOut />}
-			{Option.match(requestId, {onNone: () => null, onSome: id => <Waiting account={account} id={id} />})}
+			{Option.match(requestId, {onNone: Function.constNull, onSome: id => <Waiting account={account} id={id} />})}
 			{Option.match(account, {
 				onNone: () => Option.isNone(requestId) && !signingOut && <SignIn />,
 				onSome: signed =>
 					Boolean.match(Option.isSome(requestId) && signed.role !== 'Waiting', {
 						onFalse: () => <Signed account={signed} />,
-						onTrue: () => null
+						onTrue: Function.constNull
 					})
 			})}
 		</Page>

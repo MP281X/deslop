@@ -119,10 +119,19 @@ export const codeAtom = AtomMachine.bind(RpcClient.runtime).make(
 	})
 )
 
+export type CodeState = typeof CodeState.Type
+const CodeState = Schema.TaggedUnion({
+	Checking: {},
+	Failed: {message: Schema.String},
+	Found: {},
+	Missing: {},
+	Typing: {}
+})
+
 export type CodeView = {
 	answered: Option.Option<{accept: boolean; request: PendingAuthorization}>
 	pending: Option.Option<PendingAuthorization>
-	state: 'Checking' | 'Found' | 'Missing' | 'Typing' | {failed: string}
+	state: CodeState
 	typed: string
 }
 
@@ -133,19 +142,23 @@ export const codeViewAtom = Atom.map(
 			return {
 				answered: snapshot.state.value.answered,
 				pending: Option.none(),
-				state: 'Typing',
+				state: {_tag: 'Typing'},
 				typed: snapshot.state.value.typed
 			} satisfies CodeView
 		}
 		const view = {answered: Option.none(), pending: Option.none(), typed: snapshot.state.value.code}
 		if (snapshot.state.state.path === 'Code.Found') {
-			return {...view, pending: Option.some(snapshot.state.state.value.request), state: 'Found'} satisfies CodeView
+			return {
+				...view,
+				pending: Option.some(snapshot.state.state.value.request),
+				state: {_tag: 'Found'}
+			} satisfies CodeView
 		}
 		if (snapshot.state.state.path === 'Code.Failed') {
-			return {...view, state: {failed: snapshot.state.state.value.message}} satisfies CodeView
+			return {...view, state: {_tag: 'Failed', message: snapshot.state.state.value.message}} satisfies CodeView
 		}
-		if (snapshot.state.state.path === 'Code.Looking') return {...view, state: 'Checking'} satisfies CodeView
-		return {...view, state: 'Missing'} satisfies CodeView
+		if (snapshot.state.state.path === 'Code.Looking') return {...view, state: {_tag: 'Checking'}} satisfies CodeView
+		return {...view, state: {_tag: 'Missing'}} satisfies CodeView
 	})
 )
 

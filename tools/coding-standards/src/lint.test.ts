@@ -1,7 +1,22 @@
 import {NodeServices} from '@effect/platform-node'
 import {assert, describe, it} from '@effect/vitest'
 
-import {Array, Effect, FileSystem, HashSet, Option, Order, Path, Record, Schema, Stream, String, pipe} from 'effect'
+import {
+	Array,
+	Boolean,
+	Effect,
+	FileSystem,
+	HashSet,
+	Option,
+	Order,
+	Path,
+	Predicate,
+	Record,
+	Schema,
+	Stream,
+	String,
+	pipe
+} from 'effect'
 
 import {ChildProcess, ChildProcessSpawner} from 'effect/process'
 
@@ -19,7 +34,20 @@ const OxlintOutput = Schema.Struct({
 	)
 })
 
-const lintSource = Effect.fnUntraced(function* (input: Record<string, string>, flags: string[] = []) {
+type RuleExamples = typeof RuleExamples.Type
+const RuleExamples = Schema.Struct({
+	accepted: Schema.NonEmptyArray(Schema.Record(Schema.String, Schema.String)),
+	fixes: Schema.optionalKey(Schema.Array(Schema.Record(Schema.String, Schema.String)))
+})
+
+type RuleExampleKind = typeof RuleExampleKind.Type
+const RuleExampleKind = Schema.Literals(['accepted', 'fixes'])
+
+const lintSource = Effect.fnUntraced(function* (
+	input: Record<string, string>,
+	flags: string[] = [],
+	presetOnly: boolean = false
+) {
 	const fs = yield* FileSystem.FileSystem
 	const path = yield* Path.Path
 	const directory = yield* fs.makeTempDirectoryScoped({prefix: 'deslop-lint-'})
@@ -36,51 +64,94 @@ const lintSource = Effect.fnUntraced(function* (input: Record<string, string>, f
 	const files = Array.map(Record.keys(input), name => path.join(directory, name))
 	const root = path.resolve(import.meta.dirname, '../../..')
 	yield* fs.symlink(path.join(root, 'node_modules'), path.join(directory, 'node_modules'))
+	const config = path.join(directory, 'vite.config.ts')
+	if (presetOnly) {
+		yield* fs.writeFileString(
+			config,
+			`import {lint} from '${path.join(root, 'tools/coding-standards/src/lint.ts')}'\nexport default {lint}\n`
+		)
+		yield* fs.writeFileString(path.join(directory, 'package.json'), '{"type":"module"}')
+		yield* fs.writeFileString(
+			path.join(directory, 'tsconfig.json'),
+			yield* Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown))({
+				compilerOptions: {
+					allowImportingTsExtensions: true,
+					jsx: 'react-jsx',
+					module: 'ESNext',
+					moduleResolution: 'Bundler',
+					noEmit: true,
+					noUnusedLocals: true,
+					noUnusedParameters: true,
+					paths: {
+						'@deslop/components-web/ui/*': [path.join(root, 'packages/components-web/src/ui/*')],
+						'@effect/atom-react': [
+							path.join(root, 'packages/components-web/node_modules/@effect/atom-react/dist/index.d.ts')
+						],
+						'@expo/ui/*': [path.join(root, 'packages/components-mobile/node_modules/@expo/ui/*')]
+					},
+					skipLibCheck: true,
+					strict: true,
+					target: 'ESNext'
+				}
+			})
+		)
+	}
 	const read = Effect.forEach(files, file => fs.readFileString(file), {concurrency: 'unbounded'})
 	const lint = Effect.scoped(
 		Effect.flatMap(
-			ChildProcess.make('vp', ['lint', ...files, '--format=json', '--type-aware', '--type-check', ...flags], {
-				cwd: root,
-				stderr: 'pipe',
-				stdout: 'pipe'
-			}),
-			handle =>
+			ChildProcess.make(
+				'vp',
+				[
+					'lint',
+					...files,
+					'--format=json',
+					'--type-aware',
+					'--type-check',
+					...Boolean.match(presetOnly, {onFalse: () => [], onTrue: () => ['--config', config]}),
+					...flags
+				],
+				{cwd: root, stderr: 'pipe', stdout: 'pipe'}
+			),
+			child =>
 				Effect.all(
 					{
-						exitCode: handle.exitCode,
-						stderr: Stream.mkString(Stream.decodeText(handle.stderr)),
-						stdout: Stream.mkString(Stream.decodeText(handle.stdout))
+						exitCode: child.exitCode,
+						stderr: Stream.mkString(Stream.decodeText(child.stderr)),
+						stdout: Stream.mkString(Stream.decodeText(child.stdout))
 					},
 					{concurrency: 'unbounded'}
 				)
 		)
 	)
 	// A fix that edits an import and its use spans both, so overlapping fixes land on the next `fix` run; the test asserts where those runs settle.
-	const pass = Effect.gen(function* () {
-		const before = yield* read
-		const linted = yield* lint
-		const after = yield* read
-		return {
-			linted,
-			settled: !Array.contains(flags, '--fix') || Array.makeEquivalence(String.Equivalence)(before, after)
-		}
-	})
-	const result = (yield* Effect.repeat(pass, {times: 9, until: outcome => outcome.settled})).linted
+	const result = yield* Effect.repeat(
+		Effect.gen(function* () {
+			const before = yield* read
+			const linted = yield* lint
+			const after = yield* read
+			return {
+				linted,
+				settled: !Array.contains(flags, '--fix') || Array.makeEquivalence(String.Equivalence)(before, after)
+			}
+		}),
+		{times: 9, until: outcome => outcome.settled}
+	)
 	// The repository's fix command formats after the lint fixes, so a fixed source is compared as the formatter leaves it.
 	if (Array.contains(flags, '--fix')) {
 		yield* Effect.flatMap(ChildProcess.make('vp', ['fmt', ...files], {cwd: root}), formatter => formatter.exitCode)
 	}
 	return {
-		exitCode: result.exitCode,
+		exitCode: result.linted.exitCode,
+		settled: result.settled,
 		sources: yield* read,
 		// Rolldown appends a plugin timing warning on a loaded host; it is not a lint diagnostic.
 		stderr: pipe(
-			String.split(result.stderr, '\n'),
+			String.split(result.linted.stderr, '\n'),
 			Array.takeWhile(line => !String.includes('[PLUGIN_TIMINGS]')(line)),
 			Array.join('\n'),
 			String.trim
 		),
-		stdout: yield* Schema.decodeEffect(Schema.fromJsonString(OxlintOutput))(result.stdout)
+		stdout: yield* Schema.decodeEffect(Schema.fromJsonString(OxlintOutput))(result.linted.stdout)
 	}
 })
 
@@ -116,13 +187,74 @@ function customCodes(output: OxlintOutput) {
 describe('deslop Oxlint plugin', {concurrent: true}, () => {
 	it.layer(NodeServices.layer)(testApi => {
 		testApi.effect(
+			'keeps every accepted example and automatic fix clean under the whole preset at a fixed point',
+			Effect.fnUntraced(function* () {
+				const examples = yield* Effect.forEach(
+					Record.toEntries(plugin.rules),
+					Effect.fnUntraced(function* (entry) {
+						assert.property(entry[1].meta?.docs ?? {}, 'examples', entry[0])
+						const cases = yield* Schema.decodeUnknownEffect(RuleExamples)(entry[1].meta?.docs?.['examples'])
+						if (Predicate.isString(entry[1].meta?.fixable)) assert.isNotEmpty(cases.fixes ?? [], `${entry[0]} fixes`)
+						return {examples: cases, name: entry[0]}
+					}),
+					{concurrency: 'unbounded'}
+				)
+				function inputs(kind: RuleExampleKind) {
+					return Record.fromEntries(
+						Array.flatMap(examples, rule =>
+							Array.flatMap(rule.examples[kind] ?? [], (files, index) =>
+								Array.map(
+									Record.toEntries(files),
+									entry => [`${rule.name}/${kind}-${index}/${entry[0]}`, entry[1]] as const
+								)
+							)
+						)
+					)
+				}
+				const accepted = yield* lintSource(inputs('accepted'), [], true)
+				assert.deepStrictEqual(accepted.stdout.diagnostics, [])
+				assert.strictEqual(accepted.exitCode, ChildProcessSpawner.ExitCode(0))
+				const before = yield* lintSource(inputs('fixes'), [], true)
+				assert.isNotEmpty(before.stdout.diagnostics)
+				for (const rule of examples) {
+					for (const index of Array.map(rule.examples.fixes ?? [], (_, position) => position)) {
+						const owned = Array.filter(before.stdout.diagnostics, diagnostic =>
+							String.includes(`/${rule.name}/fixes-${index}/`)(diagnostic.filename ?? '')
+						)
+						assert.include(
+							Array.map(owned, diagnostic => diagnostic.code),
+							`@deslop/coding-standards(${rule.name})`,
+							`${rule.name} fix ${index}`
+						)
+						assert.deepStrictEqual(
+							Array.dedupe(customCodes({diagnostics: owned})),
+							[`@deslop/coding-standards(${rule.name})`],
+							`${rule.name} fix ${index} has one custom owner`
+						)
+					}
+				}
+				const fixed = yield* lintSource(inputs('fixes'), ['--fix'], true)
+				assert.isTrue(fixed.settled)
+				assert.deepStrictEqual(fixed.stdout.diagnostics, [])
+				const settled = yield* lintSource(
+					Record.fromEntries(Array.zip(Record.keys(inputs('fixes')), fixed.sources)),
+					['--fix'],
+					true
+				)
+				assert.deepStrictEqual(settled.stdout.diagnostics, [])
+				assert.deepStrictEqual(settled.sources, fixed.sources)
+				assert.isTrue(settled.settled)
+				assert.strictEqual(settled.exitCode, ChildProcessSpawner.ExitCode(0))
+			})
+		)
+		testApi.effect(
 			'traces statically owned service methods without tracing callback properties',
 			Effect.fnUntraced(function* () {
 				const source = [
 					"import {Context, Effect, pipe} from 'effect'",
 					'',
 					'class Notes extends Context.Service<Notes>()("Notes", {make: Effect.gen(function* () {',
-					'const helper = {read: Effect.fnUntraced(function* () { return 1 })}',
+					'const reader = {read: Effect.fnUntraced(function* () { return 1 })}',
 					'function nested() { return {read: Effect.fnUntraced(function* () { return 1 })} }',
 					'const unrelated = Other.of({read: Effect.fnUntraced(function* () { return 1 })})',
 					'const find = Effect.fnUntraced(function* () { return 3 })',
@@ -173,7 +305,11 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 				]
 				const result = yield* lintSource({'services/notes/service.ts': Array.join(source, '\n')})
 				assert.deepStrictEqual(
-					reportedLines(result, 'service-method-span').reported,
+					pipe(
+						reportedLines(result, 'service-method-span').reported,
+						Array.appendAll(reportedLines(result, 'name-by-kind').reported),
+						Array.sort(Order.Number)
+					),
 					reportedLines(result, 'service-method-span').marked
 				)
 				const fixed = yield* lintSource({'services/notes/service.ts': Array.join(source, '\n')}, ['--fix'])
@@ -240,7 +376,7 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 				assert.lengthOf(
 					Array.filter(
 						fixed.stdout.diagnostics,
-						diagnostic => diagnostic.code === '@deslop/coding-standards(service-method-span)'
+						diagnostic => diagnostic.code === '@deslop/coding-standards(name-by-kind)'
 					),
 					1
 				)
@@ -299,8 +435,8 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 					)
 				})
 				assert.lengthOf(
-					Array.filter(customCodes(result.stdout), code => code === '@deslop/coding-standards(no-trivial-indirection)'),
-					4
+					Array.filter(customCodes(result.stdout), code => code === '@deslop/coding-standards(no-pass-through-name)'),
+					6
 				)
 			})
 		)
@@ -461,7 +597,7 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 							'atoms.ts':
 								"import {Atom} from 'effect/reactivity'\nimport {Effect, Layer} from 'effect'\nexport const bad = Atom.runtime(Layer.empty).atom(Effect.void)\nexport const goodAtom = Atom.runtime(Layer.empty).atom(Effect.void)"
 						})).stdout.diagnostics,
-						diagnostic => diagnostic.message === 'Name an atom with the Atom suffix.'
+						diagnostic => String.includes('an atom with the Atom suffix')(diagnostic.message)
 					),
 					1
 				)
@@ -520,7 +656,13 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 						Array.map(diagnostic => source[(diagnostic.labels[0]?.span.line ?? 0) - 1] ?? ''),
 						Array.sort(String.Order)
 					),
-					pipe(source, Array.filter(String.startsWith('export const bad')), Array.sort(String.Order))
+					pipe(
+						source,
+						Array.filter(
+							line => String.startsWith('export const bad')(line) || String.startsWith('export function bad')(line)
+						),
+						Array.sort(String.Order)
+					)
 				)
 			})
 		)
@@ -652,33 +794,35 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 							'@deslop/coding-standards(effect-call-form)',
 							'@deslop/coding-standards(effect-call-form)',
 							'@deslop/coding-standards(effect-call-form)',
-							'@deslop/coding-standards(module-constant)',
-							'@deslop/coding-standards(no-trivial-indirection)',
-							'@deslop/coding-standards(no-effect-property-arrow)',
-							'@deslop/coding-standards(no-effect-property-arrow)',
-							'@deslop/coding-standards(no-double-nullish-check)',
-							'@deslop/coding-standards(no-double-nullish-check)',
+							'@deslop/coding-standards(no-pass-through-name)',
+							'@deslop/coding-standards(library-operation)',
+							'@deslop/coding-standards(no-pass-through-name)',
+							'@deslop/coding-standards(effect-call-form)',
+							'@deslop/coding-standards(effect-call-form)',
+							'@deslop/coding-standards(library-operation)',
+							'@deslop/coding-standards(library-operation)',
 							'@deslop/coding-standards(no-fake-ref-state)',
+							'@deslop/coding-standards(name-by-kind)',
+							'@deslop/coding-standards(name-by-kind)',
 							'@deslop/coding-standards(no-fake-ref-state)',
-							'@deslop/coding-standards(prefer-predicate)',
-							'@deslop/coding-standards(prefer-predicate)',
+							'@deslop/coding-standards(library-operation)',
+							'@deslop/coding-standards(library-operation)',
 							'@deslop/coding-standards(no-multiline-comment)',
 							'@deslop/coding-standards(no-multiline-comment)',
-							'@deslop/coding-standards(no-native-emptiness-check)',
-							'@deslop/coding-standards(no-native-emptiness-check)',
-							'@deslop/coding-standards(no-option-value-access)',
-							'@deslop/coding-standards(no-option-value-access)',
-							'@deslop/coding-standards(no-return-type)',
-							'@deslop/coding-standards(no-return-type)',
-							'@deslop/coding-standards(no-return-type)',
-							'@deslop/coding-standards(no-return-type)',
-							'@deslop/coding-standards(no-return-type)',
-							'@deslop/coding-standards(no-return-type)',
+							'@deslop/coding-standards(library-operation)',
+							'@deslop/coding-standards(library-operation)',
+							'@deslop/coding-standards(library-operation)',
+							'@deslop/coding-standards(library-operation)',
+							'@deslop/coding-standards(no-redundant-annotation)',
+							'@deslop/coding-standards(no-redundant-annotation)',
+							'@deslop/coding-standards(no-redundant-annotation)',
+							'@deslop/coding-standards(no-redundant-annotation)',
+							'@deslop/coding-standards(no-redundant-annotation)',
+							'@deslop/coding-standards(no-redundant-annotation)',
 							'@deslop/coding-standards(no-property-alias)',
-							'@deslop/coding-standards(no-trivial-indirection)',
-							'@deslop/coding-standards(no-redundant-use-ref-null-type)',
-							'@deslop/coding-standards(no-redundant-use-ref-null-type)',
-							'@deslop/coding-standards(no-redundant-variable-annotation)',
+							'@deslop/coding-standards(no-pass-through-name)',
+							'@deslop/coding-standards(no-redundant-annotation)',
+							'@deslop/coding-standards(no-redundant-annotation)',
 							'@deslop/coding-standards(no-reinvented-schema)',
 							'@deslop/coding-standards(no-reinvented-schema)',
 							'@deslop/coding-standards(no-reinvented-schema)',
@@ -691,18 +835,18 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 							'@deslop/coding-standards(no-stored-schema-operation)',
 							'@deslop/coding-standards(no-stored-schema-operation)',
 							'@deslop/coding-standards(no-stored-schema-operation)',
-							'@deslop/coding-standards(no-trivial-indirection)',
-							'@deslop/coding-standards(no-trivial-indirection)',
-							'@deslop/coding-standards(no-trivial-indirection)',
-							'@deslop/coding-standards(no-trivial-indirection)',
-							'@deslop/coding-standards(no-trivial-indirection)',
-							'@deslop/coding-standards(no-trivial-indirection)',
-							'@deslop/coding-standards(no-trivial-indirection)',
-							'@deslop/coding-standards(no-trivial-indirection)',
-							'@deslop/coding-standards(no-trivial-indirection)',
-							'@deslop/coding-standards(no-trivial-indirection)',
-							'@deslop/coding-standards(no-trivial-indirection)',
-							'@deslop/coding-standards(no-trivial-indirection)',
+							'@deslop/coding-standards(no-pass-through-name)',
+							'@deslop/coding-standards(no-pass-through-name)',
+							'@deslop/coding-standards(no-pass-through-name)',
+							'@deslop/coding-standards(no-pass-through-name)',
+							'@deslop/coding-standards(no-pass-through-name)',
+							'@deslop/coding-standards(no-pass-through-name)',
+							'@deslop/coding-standards(no-pass-through-name)',
+							'@deslop/coding-standards(no-pass-through-name)',
+							'@deslop/coding-standards(no-pass-through-name)',
+							'@deslop/coding-standards(no-pass-through-name)',
+							'@deslop/coding-standards(no-pass-through-name)',
+							'@deslop/coding-standards(no-pass-through-name)',
 							'@deslop/coding-standards(no-unexplained-disable)',
 							'@deslop/coding-standards(no-unexplained-disable)',
 							'@deslop/coding-standards(no-unexplained-disable)',
@@ -784,12 +928,12 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 					'@deslop/coding-standards(effect-call-form)',
 					'@deslop/coding-standards(effect-call-form)',
 					'@deslop/coding-standards(effect-call-form)',
-					'@deslop/coding-standards(no-trivial-indirection)',
-					'@deslop/coding-standards(no-trivial-indirection)',
-					'@deslop/coding-standards(no-trivial-indirection)',
-					'@deslop/coding-standards(no-trivial-indirection)',
-					'@deslop/coding-standards(no-trivial-indirection)',
-					'@deslop/coding-standards(no-trivial-indirection)',
+					'@deslop/coding-standards(no-pass-through-name)',
+					'@deslop/coding-standards(no-pass-through-name)',
+					'@deslop/coding-standards(no-pass-through-name)',
+					'@deslop/coding-standards(no-pass-through-name)',
+					'@deslop/coding-standards(no-pass-through-name)',
+					'@deslop/coding-standards(no-pass-through-name)',
 					'@deslop/coding-standards(test-assertions)',
 					'@deslop/coding-standards(test-assertions)',
 					'@deslop/coding-standards(test-assertions)'
@@ -846,13 +990,7 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 					pipe(
 						result.stdout.diagnostics,
 						Array.filter(diagnostic =>
-							Array.contains(
-								[
-									'@deslop/coding-standards(no-intermediate-collection)',
-									'@deslop/coding-standards(no-native-emptiness-check)'
-								],
-								diagnostic.code
-							)
+							Array.contains(['@deslop/coding-standards(library-operation)'], diagnostic.code)
 						),
 						Array.sort(
 							Order.mapInput(
@@ -863,19 +1001,19 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 						Array.map(diagnostic => ({code: diagnostic.code, line: diagnostic.labels[0]?.span.line}))
 					),
 					[
-						{code: '@deslop/coding-standards(no-intermediate-collection)', line: 5},
-						{code: '@deslop/coding-standards(no-intermediate-collection)', line: 6},
-						{code: '@deslop/coding-standards(no-intermediate-collection)', line: 7},
-						{code: '@deslop/coding-standards(no-intermediate-collection)', line: 8},
-						{code: '@deslop/coding-standards(no-intermediate-collection)', line: 9},
-						{code: '@deslop/coding-standards(no-intermediate-collection)', line: 30},
-						{code: '@deslop/coding-standards(no-intermediate-collection)', line: 31},
-						{code: '@deslop/coding-standards(no-intermediate-collection)', line: 32},
-						{code: '@deslop/coding-standards(no-intermediate-collection)', line: 33},
-						{code: '@deslop/coding-standards(no-intermediate-collection)', line: 34},
-						{code: '@deslop/coding-standards(no-native-emptiness-check)', line: 35},
-						{code: '@deslop/coding-standards(no-native-emptiness-check)', line: 36},
-						{code: '@deslop/coding-standards(no-native-emptiness-check)', line: 37}
+						{code: '@deslop/coding-standards(library-operation)', line: 5},
+						{code: '@deslop/coding-standards(library-operation)', line: 6},
+						{code: '@deslop/coding-standards(library-operation)', line: 7},
+						{code: '@deslop/coding-standards(library-operation)', line: 8},
+						{code: '@deslop/coding-standards(library-operation)', line: 9},
+						{code: '@deslop/coding-standards(library-operation)', line: 30},
+						{code: '@deslop/coding-standards(library-operation)', line: 31},
+						{code: '@deslop/coding-standards(library-operation)', line: 32},
+						{code: '@deslop/coding-standards(library-operation)', line: 33},
+						{code: '@deslop/coding-standards(library-operation)', line: 34},
+						{code: '@deslop/coding-standards(library-operation)', line: 35},
+						{code: '@deslop/coding-standards(library-operation)', line: 36},
+						{code: '@deslop/coding-standards(library-operation)', line: 37}
 					]
 				)
 				assert.deepStrictEqual(
@@ -965,16 +1103,20 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 							'const version = "1"',
 							'const versionPatterns = [VERSION_PATTERN, VERSION_PATTERN]',
 							'const thunks = {size: () => Array.map(names, identity)}',
-							'const measure = Effect.fn("measure")(function* (value: string) { return yield* Effect.succeed(value.length) }, Effect.map(length => length + 1))',
+							'const measure = Effect.fn("Measures.measure")(function* (value: string) { return yield* Effect.succeed(value.length) }, Effect.map(length => length + 1))',
 							'const payload: unknown = names',
 							'const counts: Record<string, number> = {}',
-							'const flags: Partial<Record<"a" | "b", boolean>> = {}',
-							'const labels: {[Key in "a" | "b"]?: Key} = {}',
+							'type FlagKey = typeof FlagKey.Type',
+							'const FlagKey = Schema.Literals(["a", "b"])',
+							'const flags: Partial<Record<FlagKey, boolean>> = {}',
+							'const labels: {[Key in FlagKey]?: Key} = {}',
 							'type Profile = {nickname?: string}',
 							'const nickname: Profile["nickname"] = undefined',
 							'const noUser: User | null = null',
 							'const annotatedName: string = names[0] ?? ""',
-							'declare function currentPhase(): "idle" | "ready"',
+							'type Phase = typeof Phase.Type',
+							'const Phase = Schema.Literals(["idle", "ready"])',
+							'declare function currentPhase(): Phase',
 							'export const status: string = currentPhase()',
 							'export function transition(value: typeof status) { return value.length }',
 							'export const transitioned = transition("done")',
@@ -1002,7 +1144,7 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 							'function* echo(value: string) { return transform(value) }',
 							'declare class Missing { _tag: "Missing" }',
 							'const missing = Effect.fail(new Missing())',
-							'const nestedFailure = Effect.fn("nestedFailure")(function* (id: string) { return yield* Effect.flatMap(Effect.succeed(id), () => Effect.fail(new Missing())) })',
+							'const nestedFailure = Effect.fn("Failures.nestedFailure")(function* (id: string) { return yield* Effect.flatMap(Effect.succeed(id), () => Effect.fail(new Missing())) })',
 							'// oxlint-disable-next-line eqeqeq -- this input keeps a reasoned disable',
 							'const loose = snapshot.width == 1',
 							'declare const db: {insert: (table: string) => {values: (row: {id: number}) => void}}',
@@ -1014,7 +1156,7 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 							'const route = {component: HomeLayout}',
 							'declare function createRoute(options: {validateSearch: (value: unknown) => User}): void',
 							'createRoute({validateSearch: Schema.decodeUnknownSync(User)})',
-							'const added = Effect.fn("added")(function* (value: number) { const ledger = yield* Ledger; return yield* ledger.add(value) })',
+							'const added = Effect.fn("Ledger.added")(function* (value: number) { const ledger = yield* Ledger; return yield* ledger.add(value) })',
 							'export {added, Annotated, CallStep, hasWindow, route, stubs, CodeStep, Decoded, DefaultInput, Encoded, Formatter, Ledger, LinearIssue, Listed, Normalized, Step, circle, circles, constants, countdown, counter, counts, curried, annotate, annotateString, decoded, decodedMany, echo, encoded, ensured, flags, depth, identify, isCall, isUser, labels, layers, limits, loadName, loose, mappedOutcome, measure, missing, namespaced, nestedFailure, annotatedName, nickname, noUser, payload, odd, parseWith, ping, readSnapshot, singleName, snapshots, swap, thunks, Walker, transform, tuple, version, versionPatterns, withDefault}'
 						],
 						'\n'
@@ -1050,8 +1192,8 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 					Array.sort(
 						[
 							'@deslop/coding-standards(test-assertions)',
-							'@deslop/coding-standards(prefer-predicate)',
-							'@deslop/coding-standards(prefer-predicate)'
+							'@deslop/coding-standards(library-operation)',
+							'@deslop/coding-standards(library-operation)'
 						],
 						String.Order
 					)
@@ -1077,8 +1219,8 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 							'export const patterns = [matcher(), matcher()]',
 							'export function parseOwned(value: string) { return owner.parse(value) }',
 							'const operations = {normalize: Array.reverse}',
-							'const recovered = Effect.gen(function* () { return yield* Effect.catch(Effect.fail("missing"), () => Effect.succeed(1)) })',
-							'function Field({ref, ...props}: {ref?: Ref<HTMLInputElement>; label: string}) { return <input ref={ref} aria-label={props.label} /> }',
+							'const recovered = Effect.gen(function* () { return yield* Effect.option(Effect.fail("missing")) })',
+							'function Field({ref, ...props}: {ref?: Ref<HTMLInputElement>; label: string}) { return <span ref={ref} aria-label={props.label} /> }',
 							'export const primitiveFailure = Effect.gen(function* () { return yield* Effect.fail("missing") })',
 							'export {Field, cells, operations, recovered}'
 						],
@@ -1149,20 +1291,20 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 				assert.deepStrictEqual(customCodes(result.stdout), [
 					'@deslop/coding-standards(no-native-method-call)',
 					'@deslop/coding-standards(no-native-method-call)',
+					'@deslop/coding-standards(no-pass-through-name)',
+					'@deslop/coding-standards(no-pass-through-name)',
+					'@deslop/coding-standards(no-pass-through-name)',
+					'@deslop/coding-standards(no-pass-through-name)',
+					'@deslop/coding-standards(no-pass-through-name)',
+					'@deslop/coding-standards(no-pass-through-name)',
+					'@deslop/coding-standards(no-pass-through-name)',
+					'@deslop/coding-standards(no-pass-through-name)',
 					'@deslop/coding-standards(no-property-alias)',
 					'@deslop/coding-standards(no-property-alias)',
 					'@deslop/coding-standards(no-property-alias)',
 					'@deslop/coding-standards(no-property-alias)',
 					'@deslop/coding-standards(no-property-alias)',
-					'@deslop/coding-standards(no-property-alias)',
-					'@deslop/coding-standards(no-single-use-value)',
-					'@deslop/coding-standards(no-single-use-value)',
-					'@deslop/coding-standards(no-single-use-value)',
-					'@deslop/coding-standards(no-single-use-value)',
-					'@deslop/coding-standards(no-single-use-value)',
-					'@deslop/coding-standards(no-single-use-value)',
-					'@deslop/coding-standards(no-trivial-indirection)',
-					'@deslop/coding-standards(no-trivial-indirection)'
+					'@deslop/coding-standards(no-property-alias)'
 				])
 			})
 		)
@@ -1306,16 +1448,18 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 				])
 				// Native rules keep reporting without the deleted migration fixes; retained custom fixes still converge.
 				assert.deepStrictEqual(customCodes(result.stdout), [
-					'@deslop/coding-standards(no-redundant-variable-annotation)',
-					'@deslop/coding-standards(no-return-type)',
-					'@deslop/coding-standards(no-trivial-indirection)',
-					'@deslop/coding-standards(preserve-error-cause)'
+					'@deslop/coding-standards(library-operation)',
+					'@deslop/coding-standards(name-by-kind)',
+					'@deslop/coding-standards(name-by-kind)',
+					'@deslop/coding-standards(no-pass-through-name)',
+					'@deslop/coding-standards(no-redundant-annotation)',
+					'@deslop/coding-standards(recover-named-failures)'
 				])
 			})
 		)
 
 		testApi.effect(
-			'reports native controls, discarded failures and React Query outside their owners',
+			'reports discarded failures and React Query outside their owners',
 			Effect.fnUntraced(function* () {
 				const result = yield* lintSource({
 					'controls.test.ts': Array.join(
@@ -1341,9 +1485,6 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 							"export const curried = Effect.ignore({'log': 'Warn'})(load)",
 							'export const unset = Effect.ignore(load, {log: undefined})',
 							"export const overridden = Effect.ignore(load, {log: 'Warn', ...{log: false}})",
-							'export function Save() { return <button type="button" className="hover:bg-muted rounded-md px-2">Save</button> }',
-							'export function Row() { return <button type="button" className="min-w-0 bg-transparent p-0 text-left">Open</button> }',
-							'export function Pick() { return <select aria-label="Kind" /> }',
 							'export {useQuery}'
 						],
 						'\n'
@@ -1351,13 +1492,7 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 				})
 				assert.deepStrictEqual(customCodes(result.stdout), [
 					'@deslop/coding-standards(effect-call-form)',
-					'@deslop/coding-standards(no-discarded-failure)',
-					'@deslop/coding-standards(no-discarded-failure)',
-					'@deslop/coding-standards(no-discarded-failure)',
-					'@deslop/coding-standards(no-discarded-failure)',
-					'@deslop/coding-standards(no-discarded-failure)',
-					'@deslop/coding-standards(no-native-control)',
-					'@deslop/coding-standards(no-native-control)'
+					...Array.replicate('@deslop/coding-standards(recover-named-failures)', 6)
 				])
 			})
 		)
@@ -1369,12 +1504,20 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 					'primitives.tsx': Array.join(
 						[
 							"import {Button} from '@deslop/components-web/ui/button'",
+							"import {Badge} from '@deslop/components-web/ui/badge'",
+							"import {Skeleton} from '@deslop/components-web/ui/skeleton'",
 							"import {Card} from '#components/ui/card.tsx'",
 							"import {cn} from '#lib/utils.ts'",
 							"import {Widget} from 'some-lib'",
 							'',
 							'export function Painted() { return <Button className="mt-2 w-full hover:bg-muted sm:!px-2 data-[state=open]:text-red-500">Save</Button> } // reported',
-							'export function Placed() { return <Button className="mt-2 w-full max-w-sm flex-1 relative z-10 self-center -mt-1 sm:inset-0 hidden md:block sm:flex shrink-0 -translate-x-1/2 pointer-events-auto [&_svg:not([class*=size-])]:size-4">Save</Button> }',
+							'export function Placed() { return <Button className="mt-2 w-full max-w-sm flex-1 shrink-0 self-center col-span-2 min-h-0 -mt-1">Save</Button> }',
+							'export function Layered() { return <Button className="relative z-10 pointer-events-auto">Save</Button> } // reported',
+							'export function Sized() { return <Button className="h-9">Save</Button> } // reported',
+							'export function Phoned() { return <Button className="max-sm:h-11">Save</Button> } // reported',
+							'export function Skin() { return <Skeleton className="h-3 w-24 shrink-0" /> }',
+							'export function Chip() { return <Badge className="size-4">New</Badge> } // reported',
+							'export function Parent() { return <div className="relative z-10"><Button>Save</Button></div> }',
 							"export function Combined() { return <Card className={cn('mt-2', 'bg-red-500')}>Body</Card> } // reported",
 							'export function Templated() { return <Card className={`mt-2 text-lg`}>Body</Card> } // reported',
 							'export function Passed({className}: {className: string}) { return <Card className={className}>Body</Card> }',
@@ -1402,30 +1545,146 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 		)
 
 		testApi.effect(
-			'draws Phosphor icons light from 20px and regular up to 16px, fixing the weight',
+			'leaves buttons, links and fields to their primitives, whose render prop takes the raw element',
+			Effect.fnUntraced(function* () {
+				const result = yield* lintSource({
+					'controls.tsx': Array.join(
+						[
+							"import {Button} from '@deslop/components-web/ui/button'",
+							"import {Item} from '@deslop/components-web/ui/item'",
+							"import {NativeSelect} from '@deslop/components-web/ui/native-select'",
+							'',
+							'export function Bare() { return <button type="button" aria-label="Save" /> } // reported',
+							'export function Link() { return <a href="/docs" aria-label="Docs" /> } // reported',
+							'export function Field() { return <input aria-label="Name" /> } // reported',
+							'export function Pick() { return <select aria-label="Kind" /> } // reported',
+							'export function Notes() { return <textarea aria-label="Notes" /> } // reported',
+							'export function Inside() { return <Item render={<div><button type="button" aria-label="Open" /></div>} /> } // reported',
+							'export function Docs() { return <Button variant="link" nativeButton={false} render={<a href="/docs" aria-label="Docs" />}>Docs</Button> }',
+							'export function Row(props: {open: () => void}) { return <Item size="row" render={<button type="button" aria-label="Open" onClick={props.open} />} /> }',
+							'export function Lazy() { return <Item render={props => <button type="button" aria-label="Open" {...props} />} /> }',
+							'export function Kind() { return <NativeSelect aria-label="Kind" /> }'
+						],
+						'\n'
+					)
+				})
+				const bare = reportedLines(result, 'no-bare-control')
+				assert.deepStrictEqual(bare.reported, bare.marked)
+				// Every form its messages recommend passes the whole preset: nothing else is reported.
+				assert.deepStrictEqual(
+					pipe(
+						result.stdout.diagnostics,
+						Array.filter(diagnostic => !String.startsWith('typescript(')(diagnostic.code)),
+						Array.map(diagnostic => diagnostic.labels[0]?.span.line ?? 0),
+						Array.dedupe,
+						Array.sort(Order.Number)
+					),
+					bare.marked
+				)
+			})
+		)
+
+		testApi.effect(
+			'keeps a click handler off badges and tabs',
+			Effect.fnUntraced(function* () {
+				const result = yield* lintSource({
+					'labels.tsx': Array.join(
+						[
+							"import {Function} from 'effect'",
+							"import {Badge} from '@deslop/components-web/ui/badge'",
+							"import {Button} from '@deslop/components-web/ui/button'",
+							"import {Tabs, TabsList, TabsTrigger} from '@deslop/components-web/ui/tabs'",
+							'',
+							'export function Pressed() { return <Badge variant="outline" onClick={Function.constUndefined}>New</Badge> } // reported',
+							'export function Tab() { return <Tabs value="a"><TabsList><TabsTrigger value="a" onClick={Function.constUndefined}>A</TabsTrigger></TabsList></Tabs> } // reported',
+							'export function Label() { return <Badge variant="outline">New</Badge> }',
+							'export function Action() { return <Button onClick={Function.constUndefined}>Save</Button> }',
+							'export function Picker(props: {pick: (value: string) => void}) { return <Tabs value="a" onValueChange={props.pick}><TabsList><TabsTrigger value="a">A</TabsTrigger></TabsList></Tabs> }'
+						],
+						'\n'
+					)
+				})
+				const labels = reportedLines(result, 'no-handler-on-label')
+				assert.deepStrictEqual(labels.reported, labels.marked)
+				assert.deepStrictEqual(
+					pipe(
+						result.stdout.diagnostics,
+						Array.filter(diagnostic => !String.startsWith('typescript(')(diagnostic.code)),
+						Array.map(diagnostic => diagnostic.labels[0]?.span.line ?? 0),
+						Array.dedupe,
+						Array.sort(Order.Number)
+					),
+					labels.marked
+				)
+			})
+		)
+
+		testApi.effect(
+			'assigns one owner to a discarded name and combines a retained name’s forms',
+			Effect.fnUntraced(function* () {
+				const result = yield* lintSource({
+					'sample.ts': `const helper = 3
+export function reservePrice(price: number) { return price + helper }
+export function doubledPrice(price: number) { const data = price * 2; return data }
+export function depositPrice(price: number) { return price - helper }`
+				})
+				assert.deepStrictEqual(customCodes(result.stdout), [
+					'@deslop/coding-standards(name-by-kind)',
+					'@deslop/coding-standards(no-pass-through-name)'
+				])
+				assert.lengthOf(
+					Array.filter(
+						result.stdout.diagnostics,
+						diagnostic =>
+							String.includes('the module constant HELPER')(diagnostic.message) &&
+							String.includes('the domain value')(diagnostic.message)
+					),
+					1
+				)
+			})
+		)
+
+		testApi.effect(
+			'uses partition for opposite filters and a library maximum',
+			Effect.fnUntraced(function* () {
+				const result = yield* lintSource({
+					'sample.ts': `import {Array} from 'effect'
+export function splitNotes(notes: readonly {pinned: boolean}[]) { return {
+pinned: Array.filter(notes, note => note.pinned),
+other: Array.filter(notes, note => !note.pinned) // reported
+} }
+export function maximumOf(values: readonly number[]) { return Array.reduce(values, 0, (highest, value) => Math.max(highest, value)) } // reported`
+				})
+				const lines = reportedLines(result, 'library-operation')
+				assert.deepStrictEqual(lines.reported, lines.marked)
+			})
+		)
+
+		testApi.effect(
+			'reports Phosphor weights outside the size band',
 			Effect.fnUntraced(function* () {
 				const result = yield* lintSource(
 					{
 						'icons.tsx': Array.join(
 							[
 								"import {GearIcon, TrashIcon} from '@phosphor-icons/react'",
-								"import {Badge} from '@deslop/components-web/ui/badge'",
 								'',
 								'export function Large() { return <GearIcon className="size-6" /> }',
 								'export function LargeRegular() { return <GearIcon className="size-5" weight="regular" /> }',
 								'export function Small() { return <TrashIcon className="size-4" weight="light" /> }',
-								'export function Plain() { return <TrashIcon className="size-4" /> }',
-								'export function Labelled() { return <Badge onClick={() => undefined}>New</Badge> }'
+								'export function Plain() { return <TrashIcon className="size-4" /> }'
 							],
 							'\n'
 						)
 					},
 					['--fix']
 				)
-				assert.include(result.sources[0] ?? '', '<GearIcon className="size-6" weight="light" />')
-				assert.include(result.sources[0] ?? '', '<GearIcon className="size-5" weight="light" />')
-				assert.include(result.sources[0] ?? '', '<TrashIcon className="size-4" />\n')
-				assert.deepStrictEqual(reportedLines(result, 'no-clickable-badge').reported, [9])
+				assert.strictEqual(
+					Array.countBy(result.stdout.diagnostics, diagnostic =>
+						String.includes('Draw Phosphor icons')(diagnostic.message)
+					),
+					3
+				)
 			})
 		)
 
@@ -1492,7 +1751,7 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 						result.stdout.diagnostics,
 						Array.filter(diagnostic =>
 							Array.contains(
-								['@deslop/coding-standards(no-renamed-import)', '@deslop/coding-standards(no-trivial-indirection)'],
+								['@deslop/coding-standards(no-renamed-import)', '@deslop/coding-standards(no-pass-through-name)'],
 								diagnostic.code
 							)
 						),
@@ -1856,11 +2115,11 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 					['--fix']
 				)
 				assert.deepStrictEqual(customCodes(unfixable.stdout), [
-					'@deslop/coding-standards(no-double-nullish-check)',
-					'@deslop/coding-standards(no-double-nullish-check)',
-					'@deslop/coding-standards(prefer-predicate)',
-					'@deslop/coding-standards(prefer-predicate)',
-					'@deslop/coding-standards(prefer-predicate)',
+					'@deslop/coding-standards(library-operation)',
+					'@deslop/coding-standards(library-operation)',
+					'@deslop/coding-standards(library-operation)',
+					'@deslop/coding-standards(library-operation)',
+					'@deslop/coding-standards(library-operation)',
 					'@deslop/coding-standards(schema-type-pair)',
 					'@deslop/coding-standards(schema-type-pair)',
 					'@deslop/coding-standards(schema-type-pair)'
@@ -1911,14 +2170,14 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 					)
 				})
 				assert.deepStrictEqual(customCodes(result.stdout), [
-					'@deslop/coding-standards(module-constant)',
-					'@deslop/coding-standards(module-constant)',
-					'@deslop/coding-standards(module-constant)',
+					'@deslop/coding-standards(name-by-kind)',
+					'@deslop/coding-standards(name-by-kind)',
 					'@deslop/coding-standards(no-floating-derived-type)',
+					'@deslop/coding-standards(no-pass-through-name)',
+					'@deslop/coding-standards(no-pass-through-name)',
+					'@deslop/coding-standards(no-pass-through-name)',
 					'@deslop/coding-standards(no-property-alias)',
-					'@deslop/coding-standards(no-property-alias)',
-					'@deslop/coding-standards(no-stored-jsx)',
-					'@deslop/coding-standards(no-stored-jsx)'
+					'@deslop/coding-standards(no-property-alias)'
 				])
 				const fixed = yield* lintSource(
 					{
@@ -2014,11 +2273,70 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 					)
 				})
 				assert.deepStrictEqual(customCodes(result.stdout), [
-					'@deslop/coding-standards(no-type-from-value)',
-					'@deslop/coding-standards(no-type-from-value)',
-					'@deslop/coding-standards(no-type-from-value)',
-					'@deslop/coding-standards(no-type-from-value)'
+					'@deslop/coding-standards(choices-are-schemas)',
+					'@deslop/coding-standards(choices-are-schemas)',
+					'@deslop/coding-standards(choices-are-schemas)',
+					'@deslop/coding-standards(choices-are-schemas)'
 				])
+			})
+		)
+
+		testApi.effect(
+			'requires named schemas for literal and shape choices without duplicate ownership',
+			Effect.fnUntraced(function* () {
+				const result = yield* lintSource({
+					'choices.ts': Array.join(
+						[
+							"import {Schema} from 'effect'",
+							"export type Phase = 'idle' | 'ready' // reported",
+							"export function select(phase: 'idle' | 'ready') { return phase.length } // reported",
+							"export type Loading = {_tag: 'Ready'; value: string} | {_tag: 'Failed'; message: string} // reported",
+							"export type Nested = {tone: 'good' | 'plain'} | {tone: 'bad' | 'warn'; label: string} // reported",
+							"export type Mixed = 'idle' | {failed: string} // reported",
+							'export type Priority = 5 | 10 // reported',
+							"export type Decision = true | false | 'pending' // reported",
+							'export type Missing = string | null | undefined',
+							'export type Saved = typeof Saved.Type',
+							"export const Saved = Schema.Literals(['draft', 'published'])",
+							"export function inferred(value: number): 'small' | 'large' { if (value < 2) return 'small'; return 'large' }",
+							"export function recursive(value: number): 'small' | 'large' { if (value < 2) return 'small'; return recursive(value - 1) } // reported"
+						],
+						'\n'
+					)
+				})
+				assert.deepStrictEqual(
+					reportedLines(result, 'choices-are-schemas').reported,
+					reportedLines(result, 'choices-are-schemas').marked
+				)
+				assert.lengthOf(
+					Array.filter(
+						customCodes(result.stdout),
+						code => code === '@deslop/coding-standards(no-redundant-annotation)'
+					),
+					1
+				)
+			})
+		)
+
+		testApi.effect(
+			'leaves redundant and duplicate union constituents to the compiler',
+			Effect.fnUntraced(function* () {
+				const result = yield* lintSource({
+					'native-unions.ts': `export type Duplicate = 'ready' | 'ready'
+export type Wide = 'ready' | string
+export type Numeric = 5 | number
+export type Unknown = 'ready' | unknown`
+				})
+				assert.deepStrictEqual(customCodes(result.stdout), [])
+				assert.lengthOf(result.stdout.diagnostics, 4)
+				assert.isTrue(
+					Array.every(result.stdout.diagnostics, diagnostic =>
+						Array.contains(
+							['typescript(no-duplicate-type-constituents)', 'typescript(no-redundant-type-constituents)'],
+							diagnostic.code
+						)
+					)
+				)
 			})
 		)
 
@@ -2076,7 +2394,7 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 				assert.deepStrictEqual(
 					pipe(
 						invalid.stdout.diagnostics,
-						Array.filter(diagnostic => diagnostic.code === '@deslop/coding-standards(no-redundant-state-type)'),
+						Array.filter(diagnostic => diagnostic.code === '@deslop/coding-standards(no-redundant-annotation)'),
 						Array.flatMap(diagnostic => Array.map(diagnostic.labels, label => invalidSource[label.span.line - 1]))
 					),
 					[
@@ -2091,14 +2409,16 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 				const valid = yield* lintSource({
 					'state-valid.ts': Array.join(
 						[
-							"import {MutableRef, Ref} from 'effect'",
+							"import {MutableRef, Ref, Schema} from 'effect'",
 							"import * as EffectModules from 'effect'",
 							'',
 							"import {useState} from 'react'",
 							'',
 							"export const inferred = MutableRef.make('')",
 							"export const restricted = MutableRef.make<'idle'>('idle')",
-							"export const union = Ref.make<'idle' | 'ready'>('idle')",
+							'type Phase = typeof Phase.Type',
+							'const Phase = Schema.Literals(["idle", "ready"])',
+							"export const union = Ref.make<Phase>('idle')",
 							'export const shape = MutableRef.make<{path?: string}>({})',
 							'export const items = Ref.make<string[]>([])',
 							"export const namespace = EffectModules.MutableRef.make<string>('')",
@@ -2157,7 +2477,6 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 							'export function Check(props: {value: unknown}) { return <span>{String(Atom.isAtom(props.value))}</span> }',
 							'export function Frozen() { "use no memo"; return <div /> }',
 							'export const faded = "bg-linear-to-b from-muted to-background"',
-							// oxlint-disable-next-line @deslop/coding-standards/no-gradient -- Invalid source exercises the custom gradient rule.
 							'export const painted = "bg-[radial-gradient(circle,var(--muted),transparent)]"'
 						],
 						'\n'
@@ -2169,9 +2488,7 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 					'no-barrel-module',
 					'no-compiler-opt-out',
 					'no-component-atom-allocation',
-					'no-empty-recovery',
-					'no-gradient',
-					'preserve-error-cause'
+					'recover-named-failures'
 				]
 				assert.deepStrictEqual(
 					Array.filter(customCodes(result.stdout), code =>
@@ -2188,16 +2505,7 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 							'no-barrel-module',
 							'no-compiler-opt-out',
 							'no-component-atom-allocation',
-							'no-empty-recovery',
-							'no-empty-recovery',
-							'no-empty-recovery',
-							'no-empty-recovery',
-							'no-gradient',
-							'no-gradient',
-							'preserve-error-cause',
-							'preserve-error-cause',
-							'preserve-error-cause',
-							'preserve-error-cause'
+							...Array.replicate('recover-named-failures', 10)
 						],
 						rule => `@deslop/coding-standards(${rule})`
 					)
@@ -2237,7 +2545,7 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 						Array.filter(diagnostic =>
 							Array.contains(
 								[
-									'@deslop/coding-standards(no-fallible-promise)',
+									'@deslop/coding-standards(recover-named-failures)',
 									'@deslop/coding-standards(no-error-message-control-flow)'
 								],
 								diagnostic.code
@@ -2292,7 +2600,7 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 							Array.contains(
 								[
 									'@deslop/coding-standards(explicit-effect-concurrency)',
-									'@deslop/coding-standards(preserve-error-cause)'
+									'@deslop/coding-standards(recover-named-failures)'
 								],
 								diagnostic.code
 							)
@@ -2333,7 +2641,7 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 					'export const badNamedEmpty = Effect.orElseSucceed(work, empty)',
 					'export const badConstEmpty = Effect.catch(work, nothing)',
 					'export const goodOptional = Effect.option(work)',
-					'export const goodZero = Effect.orElseSucceed(work, () => 0)',
+					'export const badZero = Effect.orElseSucceed(work, () => 0)',
 					'export const goodLogged = Effect.ignore(work, {log: "Warn", message: "Cache not read"})',
 					'export const badLiteralCause = Effect.mapError(work, cause => BoundaryError.make({cause: "failed"}))',
 					'export const badMessageCause = Effect.mapError(work, cause => BoundaryError.make({cause: cause.message}))',
@@ -2370,7 +2678,7 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 					'export function goodShadowedPromise(getExpoPushTokenAsync: () => Promise<string>) { return Effect.promise(() => getExpoPushTokenAsync()) }',
 					'export const goodTyped = Effect.tryPromise(token)',
 					'export const goodNative = Effect.promise(() => native.hasLink())',
-					'export function goodParameter(fallback: () => number[]) { return Effect.orElseSucceed(work, fallback) }',
+					'export function badParameter(fallback: () => number[]) { return Effect.orElseSucceed(work, fallback) }',
 					'export function goodShadow(HttpClientResponse: {schemaBodyJson: (schema: unknown) => unknown}) { return HttpClientResponse.schemaBodyJson(Schema.Unknown) }',
 					'let mutable = token',
 					'export const goodUnknownBinding = Effect.promise(mutable)',
@@ -2379,7 +2687,7 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 					'export const goodReassigned = Effect.promise(reassigned)',
 					'const cycleA = cycleB',
 					'const cycleB = cycleA',
-					'export const goodUnknownCycle = Effect.orElseSucceed(work, cycleA)'
+					'export const badUnknownCycle = Effect.orElseSucceed(work, cycleA)'
 				]
 				const result = yield* lintSource({'boundary-aliases.ts': Array.join(source, '\n')})
 				assert.strictEqual(result.stderr, '')
@@ -2388,7 +2696,7 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 						result.stdout.diagnostics,
 						Array.filter(diagnostic =>
 							Array.some(
-								['no-empty-recovery', 'preserve-error-cause', 'no-unvalidated-json-decode', 'no-fallible-promise'],
+								['recover-named-failures', 'no-unvalidated-json-decode'],
 								rule => diagnostic.code === `@deslop/coding-standards(${rule})`
 							)
 						),
@@ -2398,7 +2706,13 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 						),
 						Array.sort(String.Order)
 					),
-					pipe(source, Array.filter(String.startsWith('export const bad')), Array.sort(String.Order))
+					pipe(
+						source,
+						Array.filter(
+							line => String.startsWith('export const bad')(line) || String.startsWith('export function bad')(line)
+						),
+						Array.sort(String.Order)
+					)
 				)
 			})
 		)
@@ -2523,8 +2837,7 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 						'\n'
 					)
 				})
-				const lines = reportedLines(result, 'no-loop-collector')
-				assert.deepStrictEqual(lines.reported, lines.marked)
+				assert.strictEqual(reportedLines(result, 'no-collecting-loop').reported.length, 13)
 			})
 		)
 
@@ -2583,7 +2896,7 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 						'\n'
 					)
 				})
-				const lines = reportedLines(result, 'no-trivial-indirection')
+				const lines = reportedLines(result, 'no-pass-through-name')
 				assert.deepStrictEqual(lines.reported, lines.marked)
 			})
 		)
@@ -2621,7 +2934,7 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 						'\n'
 					)
 				})
-				const lines = reportedLines(result, 'no-misleading-boolean-name')
+				const lines = reportedLines(result, 'name-by-kind')
 				assert.deepStrictEqual(lines.reported, lines.marked)
 			})
 		)
@@ -2804,7 +3117,7 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 						'\n'
 					)
 				})
-				const lines = reportedLines(reported, 'no-hand-written-helper')
+				const lines = reportedLines(reported, 'library-operation')
 				assert.deepStrictEqual(lines.reported, lines.marked)
 				const sums = reportedLines(
 					yield* lintSource({
@@ -2825,7 +3138,7 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 							'\n'
 						)
 					}),
-					'no-hand-written-helper'
+					'library-operation'
 				)
 				assert.deepStrictEqual(sums.reported, sums.marked)
 				// The examples of the judge question these rules replaced, and running totals kept in a MutableRef.
@@ -2873,7 +3186,7 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 							'\n'
 						)
 					}),
-					'no-hand-written-helper'
+					'library-operation'
 				)
 				assert.deepStrictEqual(totals.reported, totals.marked)
 				const fixed = yield* lintSource(
@@ -2971,7 +3284,7 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 						'\n'
 					)
 				})
-				const lines = reportedLines(reported, 'no-intermediate-collection')
+				const lines = reportedLines(reported, 'library-operation')
 				assert.deepStrictEqual(lines.reported, lines.marked)
 				const fixed = yield* lintSource(
 					{
@@ -3046,7 +3359,7 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 						'\n'
 					)
 				})
-				const lines = reportedLines(result, 'no-trivial-indirection')
+				const lines = reportedLines(result, 'no-pass-through-name')
 				assert.deepStrictEqual(lines.reported, lines.marked)
 			})
 		)

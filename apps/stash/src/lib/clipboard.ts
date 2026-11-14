@@ -1,4 +1,4 @@
-import {Boolean, Effect, Option, Predicate, String} from 'effect'
+import {Boolean, Effect, Function, Option, Predicate, String} from 'effect'
 
 import {FetchHttpClient} from 'effect/http'
 import {getImageAsync, getStringAsync, hasImageAsync} from 'expo-clipboard'
@@ -68,7 +68,7 @@ const saveLink = Effect.fnUntraced(function* (count: string) {
 
 export const clipboard = makeClipboard({
 	// A copy that failed to save is never offered again.
-	answered: () => true,
+	answered: Function.constTrue,
 	detect: Effect.gen(function* () {
 		if (yield* Effect.promise(() => hasImageAsync())) return Option.some<ClipboardKind>('image')
 		if (yield* Effect.promise(() => native.hasLink())) return Option.some<ClipboardKind>('link')

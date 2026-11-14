@@ -45,7 +45,7 @@ const fixture = Effect.fnUntraced(function* (misjudged: string = '') {
 		yield* Effect.scoped(
 			Effect.flatMap(
 				ChildProcess.make('git', args, {cwd: directory, env: IDENTITY, extendEnv: true}),
-				handle => handle.exitCode
+				child => child.exitCode
 			)
 		)
 	})
@@ -73,7 +73,7 @@ const fixture = Effect.fnUntraced(function* (misjudged: string = '') {
 		return directory
 	})
 	const run = Effect.fnUntraced(function* (directory: string, flags: string[] = []) {
-		const handle = yield* ChildProcess.make(
+		const child = yield* ChildProcess.make(
 			'node',
 			[
 				'--input-type=module',
@@ -120,9 +120,9 @@ const fixture = Effect.fnUntraced(function* (misjudged: string = '') {
 		)
 		const output = yield* Effect.all(
 			[
-				Stream.mkString(Stream.decodeText(handle.stdout)),
-				Stream.mkString(Stream.decodeText(handle.stderr)),
-				handle.exitCode
+				Stream.mkString(Stream.decodeText(child.stdout)),
+				Stream.mkString(Stream.decodeText(child.stderr)),
+				child.exitCode
 			],
 			{concurrency: 'unbounded'}
 		)

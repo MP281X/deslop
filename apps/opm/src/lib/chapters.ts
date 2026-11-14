@@ -1,4 +1,4 @@
-import {Array, Boolean, Effect, HashSet, Option, Order, Queue, Redacted, Schema, Stream, pipe} from 'effect'
+import {Array, Boolean, Effect, Function, HashSet, Option, Order, Queue, Redacted, Schema, Stream, pipe} from 'effect'
 
 import {AtomRpc, Atom} from 'effect/reactivity'
 import {applicationId} from 'expo-application'
@@ -147,7 +147,7 @@ export const readerAtom = Atom.family((reader: ChapterKey) =>
 		get => get(readerStateAtom(reader)),
 		(context, turn: PageTurn) =>
 			Option.match(turnPage(context.get(readerStateAtom(reader)), turn), {
-				onNone: () => undefined,
+				onNone: Function.constUndefined,
 				onSome: turned => {
 					for (const save of turned.saves) context.set(readAtom, save)
 					context.set(readerStateAtom(reader), turned.next)

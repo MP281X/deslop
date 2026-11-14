@@ -71,5 +71,17 @@ export const explicitEffectConcurrency = defineRule({
 			})
 		}
 	}),
-	meta: {type: 'problem'}
+	meta: {
+		docs: {
+			examples: {
+				accepted: [
+					{
+						'sample.ts': `import {Effect} from 'effect'
+export const doubled = Effect.forEach([1, 2], value => Effect.succeed(value * 2), {concurrency: 1})`
+					}
+				]
+			}
+		},
+		type: 'problem'
+	}
 })

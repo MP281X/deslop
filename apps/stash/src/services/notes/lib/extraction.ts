@@ -7,6 +7,7 @@ import {
 	ByteSize,
 	Context,
 	Effect,
+	Function,
 	Layer,
 	Option,
 	Random,
@@ -142,7 +143,7 @@ const readSource = Effect.fnUntraced(function* <A, E>(
 				})
 			)
 		),
-		Effect.provideService(HttpClient.TracerDisabledWhen, () => true),
+		Effect.provideService(HttpClient.TracerDisabledWhen, Function.constTrue),
 		Effect.mapError(cause =>
 			pipe(
 				cause,
@@ -206,7 +207,7 @@ function fx<S extends Schema.Constraint>(schema: S, path: string) {
 function whole<A extends FxPost>(post: A) {
 	if (
 		Option.match(post.article, {
-			onNone: () => true,
+			onNone: Function.constTrue,
 			onSome: article => Array.isReadonlyArrayNonEmpty(article.content.blocks)
 		})
 	) {
@@ -387,7 +388,7 @@ const readPage = Effect.fnUntraced(function* (url: URL) {
 							pipe(
 								reader(url),
 								Effect.map(rendered => ({...rendered, author: extraction.author, image: extraction.image})),
-								Effect.orElseSucceed(() => extraction)
+								Effect.catchTag('NotesError', () => Effect.succeed(extraction))
 							)
 					})
 			})
@@ -399,7 +400,7 @@ function readLinked(url: URL) {
 	return pipe(
 		Boolean.match(url.hostname === 'github.com', {
 			onFalse: () => readPage(url),
-			onTrue: () => Effect.catch(gitHub(url), () => readPage(url))
+			onTrue: () => Effect.catchTag(gitHub(url), 'NotesError', () => readPage(url))
 		}),
 		Effect.map(found => `### ${found.title}\n\n${found.url}\n\n${String.slice(0, 40_000)(found.text)}`),
 		timeLimit('40 seconds', 'The linked page took too long.'),
@@ -467,14 +468,16 @@ export class Sources extends Context.Service<
 								embed => `${Option.getOrElse(embed.author_name, () => 'A video')} on TikTok`
 							)
 						}
-						if (source === 'X') return yield* Effect.catch(xThread(url), () => xOEmbed(url))
+						if (source === 'X') return yield* Effect.catchTag(xThread(url), 'NotesError', () => xOEmbed(url))
 						// YouTube answers a datacenter address with a bot check, but its oEmbed still answers.
 						if (isYouTube(url.href)) {
 							return yield* fetchOEmbed('https://www.youtube.com/oembed?format=json&url=', url, embed =>
 								plainText(Option.getOrElse(embed.title, () => 'A YouTube video'))
 							)
 						}
-						if (url.hostname === 'github.com') return yield* Effect.catch(gitHub(url), () => readPage(url))
+						if (url.hostname === 'github.com') {
+							return yield* Effect.catchTag(gitHub(url), 'NotesError', () => readPage(url))
+						}
 						return yield* readPage(url)
 					},
 					timeLimit('2 minutes', 'Reading the link took too long.'),

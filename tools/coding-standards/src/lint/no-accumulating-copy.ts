@@ -1,4 +1,4 @@
-import {Array, MutableHashSet, Option, pipe} from 'effect'
+import {Array, Option, pipe} from 'effect'
 
 import {defineRule} from 'vite-plus/lint/plugins'
 import type {Context, ESTree, Reference} from 'vite-plus/lint/plugins'
@@ -68,46 +68,50 @@ function copySite(context: Context, node: Reference['identifier']) {
 }
 
 export const noAccumulatingCopy = defineRule({
-	create: context => {
-		const reported = MutableHashSet.empty<number>()
-		return {
-			CallExpression: node => {
-				if (
-					node.optional ||
-					(node.arguments.length !== 2 && node.arguments.length !== 3) ||
-					Array.some(node.arguments, argument => argument.type === 'SpreadElement') ||
-					node.callee.type !== 'MemberExpression' ||
-					node.callee.optional ||
-					!Option.exists(memberName(node.callee), name => name === 'reduce' || name === 'reduceRight') ||
-					!importedMember({context, importedName: 'Array', node: node.callee})
-				) {
-					return
-				}
-				const callback = node.arguments[node.arguments.length - 1]
-				if (callback?.type !== 'ArrowFunctionExpression' && callback?.type !== 'FunctionExpression') return
-				const parameter = callback.params[0]
-				if (parameter?.type !== 'Identifier') return
-				Option.map(
-					variableFromScope({name: parameter.name, scope: context.sourceCode.getScope(callback)}),
-					variable => {
-						for (const reference of variable.references) {
-							pipe(
-								copySite(context, reference.identifier),
-								Option.filter(copy => !MutableHashSet.has(reported, copy.range[0])),
-								Option.map(copy => {
-									MutableHashSet.add(reported, copy.range[0])
-									context.report({
-										message:
-											'Copying the accumulator in a fold can make collection building quadratic. Prefer Array.map/filterMap/flatMap/groupBy, Record.fromEntries, Array.mapAccum, or a local MutableList/MutableHashMap collector.',
-										node: copy
-									})
-								})
-							)
-						}
-					}
-				)
+	create: context => ({
+		CallExpression: node => {
+			if (
+				node.optional ||
+				(node.arguments.length !== 2 && node.arguments.length !== 3) ||
+				Array.some(node.arguments, argument => argument.type === 'SpreadElement') ||
+				node.callee.type !== 'MemberExpression' ||
+				node.callee.optional ||
+				!Option.exists(memberName(node.callee), name => name === 'reduce' || name === 'reduceRight') ||
+				!importedMember({context, importedName: 'Array', node: node.callee})
+			) {
+				return
 			}
+			const callback = node.arguments[node.arguments.length - 1]
+			if (callback?.type !== 'ArrowFunctionExpression' && callback?.type !== 'FunctionExpression') return
+			const parameter = callback.params[0]
+			if (parameter?.type !== 'Identifier') return
+			Option.map(variableFromScope({name: parameter.name, scope: context.sourceCode.getScope(callback)}), variable => {
+				pipe(
+					variable.references,
+					Array.flatMap(reference => Option.toArray(copySite(context, reference.identifier))),
+					Array.dedupeWith((left, right) => left.range[0] === right.range[0]),
+					Array.forEach(site => {
+						context.report({
+							message:
+								'Build with Array.map, filterMap, flatMap, groupBy, Record.fromEntries or Array.mapAccum instead of copying an accumulator on every item.',
+							node: site
+						})
+					})
+				)
+			})
 		}
-	},
-	meta: {type: 'problem'}
+	}),
+	meta: {
+		docs: {
+			examples: {
+				accepted: [
+					{
+						'sample.ts': `import {Array} from 'effect'
+export function noteIds(notes: readonly {id: string}[]) { return Array.map(notes, note => note.id) }`
+					}
+				]
+			}
+		},
+		type: 'problem'
+	}
 })

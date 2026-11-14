@@ -63,7 +63,7 @@ function layerSignIn(issuer: string) {
 			}
 			// A destination on this app only, so the round trip through Auth cannot be turned into an open redirect.
 			function withRedirect<E, R>(
-				handle: (
+				route: (
 					request: HttpServerRequest.HttpServerRequest,
 					next: URL
 				) => Effect.Effect<HttpServerResponse.HttpServerResponse, E, R>
@@ -76,7 +76,7 @@ function layerSignIn(issuer: string) {
 						Option.filter(next => next.origin === canonical),
 						Option.match({
 							onNone: () => Effect.succeed(HttpServerResponse.empty({status: 400})),
-							onSome: next => handle(request, next)
+							onSome: next => route(request, next)
 						})
 					)
 				)

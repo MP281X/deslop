@@ -1,6 +1,6 @@
 import {useAtomRefresh, useAtomSet, useAtomSuspense, useAtomValue} from '@effect/atom-react'
 
-import {Array, Boolean, DateTime, Duration, Number, Option, String, pipe} from 'effect'
+import {Array, Boolean, DateTime, Duration, Function, Number, Option, Schema, String, pipe} from 'effect'
 
 import {
 	Button,
@@ -83,7 +83,8 @@ function lineOf(booking: Booking, status: ReturnType<typeof statusOf>) {
 	return pipe([scheduleOf(booking), where], Array.filter(String.isNonEmpty), Array.join(' · '))
 }
 
-type Countdown = {_tag: 'Now'} | {_tag: 'Days'; days: number} | {_tag: 'SameDay'}
+type Countdown = typeof Countdown.Type
+const Countdown = Schema.TaggedUnion({Days: {days: Schema.Finite}, Now: {}, SameDay: {}})
 
 function Gutter(props: {countdown: Countdown}) {
 	return (
@@ -137,7 +138,7 @@ function BookingRow(props: {
 								</Text>
 							</ItemContent>
 							{Option.match(problemOf(props.booking, status, props.now), {
-								onNone: () => undefined,
+								onNone: Function.constUndefined,
 								onSome: problem => (
 									<ItemActions>
 										<HStack spacing={space[2]}>

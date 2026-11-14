@@ -5,6 +5,7 @@ import {
 	Duration,
 	Effect,
 	Equal,
+	Filter,
 	Function,
 	HashMap,
 	HashSet,
@@ -21,6 +22,8 @@ import {
 import {AppId, DeployError, ExposureName, ItemId, JobName, UnitId} from '#services/inventory/schema.ts'
 import type {
 	InventoryItem,
+	SocketAddress,
+	SocketBinding,
 	App,
 	InventoryQuery,
 	HttpsExposure,
@@ -50,11 +53,11 @@ export function processOwner(cgroup: string) {
 	if (Option.isSome(container)) return Option.map(container, id => AppId.make(`container:${String.slice(0, 12)(id)}`))
 	const segments = String.split(cgroup, /[/\n]/u)
 	const service = Array.findLastIndex(segments, String.endsWith('.service'))
-	const manager = Array.findFirstIndex(segments, segment =>
+	const userService = Array.findFirstIndex(segments, segment =>
 		Option.isSome(String.match(/^user@[0-9]+\.service$/u)(segment))
 	)
 	return pipe(
-		manager,
+		userService,
 		Option.filter(index => !Option.exists(service, last => last > index)),
 		Option.flatMap(index =>
 			pipe(
@@ -68,7 +71,7 @@ export function processOwner(cgroup: string) {
 			Option.map(service, index =>
 				AppId.make(
 					`service:${pipe(
-						manager,
+						userService,
 						Option.exists(first => index > first),
 						Boolean.match({onFalse: () => 'system', onTrue: () => 'user'})
 					)}:${segments[index]}`
@@ -165,7 +168,7 @@ export function workloadName(item: InventoryItem) {
 	)
 }
 
-function sameSocket(listener: InventoryItem, binding: {address: string; port: number; protocol: 'tcp' | 'udp'}) {
+function sameSocket(listener: InventoryItem, binding: SocketBinding) {
 	if (Option.contains(listener.address, 'container') || binding.address === 'container') return false
 	if (!Option.contains(listener.port, binding.port) || !Option.contains(listener.protocol, binding.protocol)) {
 		return false
@@ -178,7 +181,7 @@ function sameSocket(listener: InventoryItem, binding: {address: string; port: nu
 	)
 }
 
-function socket(worker: WorkerId, binding: Pick<InventoryItem, 'address' | 'port' | 'protocol'>) {
+function socket(worker: WorkerId, binding: SocketAddress) {
 	const loopback = Option.exists(binding.address, address =>
 		Option.isSome(String.match(/^(?:127\.0\.0\.1|0\.0\.0\.0):/u)(address))
 	)
@@ -477,10 +480,13 @@ function sameLabel(first: ProcessLabel, second: ProcessLabel) {
 
 // A child that says the same thing as its parent is the same row: hide it, keep its descendants, and leave its usage in the parent's total.
 function absorb(label: ProcessLabel, children: readonly ProcessNode[]): readonly ProcessNode[] {
-	const matching = Array.filter(children, child => sameLabel(child.label, label))
+	const [matching, other] = Array.partition(
+		children,
+		Filter.fromPredicate(child => sameLabel(child.label, label))
+	)
 	if (Array.isArrayEmpty(matching)) return children
 	return [
-		...Array.filter(children, child => !sameLabel(child.label, label)),
+		...other,
 		...absorb(
 			label,
 			Array.flatMap(matching, child => child.children)

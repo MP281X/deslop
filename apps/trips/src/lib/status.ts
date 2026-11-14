@@ -1,11 +1,13 @@
-import {DateTime, Duration, Number, Option} from 'effect'
+import {DateTime, Duration, Number, Option, Schema} from 'effect'
 import type {Record} from 'effect'
 
+import {ProblemStatus} from '@deslop/components-mobile/status-dot'
 import {colors, hues} from '@deslop/components-mobile/theme'
 import {weekdayOf} from '@deslop/runtime/shared/format'
 
 import {clockAt, departureOf, labelled} from '#services/bookings/lib/utils.ts'
-import type {Booking, Flight, FlightTracking, Tone, Train, TrainTracking} from '#services/bookings/schema.ts'
+import {Tone} from '#services/bookings/schema.ts'
+import type {Booking, Flight, FlightTracking, Train, TrainTracking} from '#services/bookings/schema.ts'
 import {isStale} from '#services/tracking/lib/utils.ts'
 
 // The day where the trip happens, in that place's zone.
@@ -31,16 +33,26 @@ export const tones = {
 } satisfies Record.ReadonlyRecord<Tone, unknown>
 
 // Only a problem's dot carries its words; a healthy status shows where it leaves from.
-export type Status =
-	| {label: string; tone: 'bad' | 'warn'; where: Option.Option<string>}
-	| {tone: 'good' | 'info' | 'plain'; where: Option.Option<string>}
+type StatusTone = typeof StatusTone.Type
+const StatusTone = Tone.pick(['good', 'info', 'plain'])
+type ProblemTone = typeof ProblemTone.Type
+const ProblemTone = Tone.pick(['bad', 'warn'])
 
-function statusLine(tone: 'good' | 'info' | 'plain', where: Option.Option<string>) {
-	return {tone, where}
+export type Status = typeof Status.Type
+const Status = Schema.TaggedUnion({
+	Problem: {label: Schema.String, tone: ProblemTone, where: Schema.Option(Schema.String)},
+	Status: {tone: StatusTone, where: Schema.Option(Schema.String)}
+})
+
+type Problem = typeof Problem.Type
+const Problem = Schema.Struct({label: Schema.String, status: ProblemStatus, tone: ProblemTone})
+
+function statusLine(tone: StatusTone, where: Option.Option<string>) {
+	return {_tag: 'Status' as const, tone, where}
 }
 
-function problemLine(label: string, tone: 'bad' | 'warn', where: Option.Option<string>) {
-	return {label, tone, where}
+function problemLine(label: string, tone: ProblemTone, where: Option.Option<string>) {
+	return {_tag: 'Problem' as const, label, tone, where}
 }
 
 function platformOf(live: TrainTracking) {
@@ -117,5 +129,5 @@ export function problemOf(booking: Booking, status: Status, now: DateTime.Utc) {
 	if (status.tone === 'warn') {
 		return Option.some({label: status.label, status: 'warning' as const, tone: 'warn' as const})
 	}
-	return Option.none<{label: string; status: 'error' | 'warning'; tone: 'bad' | 'warn'}>()
+	return Option.none<Problem>()
 }

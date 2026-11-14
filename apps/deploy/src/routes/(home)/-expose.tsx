@@ -1,6 +1,6 @@
 import {useAtom, useAtomValue} from '@effect/atom-react'
 
-import {Array, Boolean, Option, String, pipe} from 'effect'
+import {Array, Boolean, Function, Option, Schema, String, pipe} from 'effect'
 
 import {AsyncResult} from 'effect/reactivity'
 import {useState} from 'react'
@@ -25,9 +25,12 @@ import {ApplicationIcon} from '#routes/(home)/-marks.tsx'
 import {ExposureName} from '#services/inventory/schema.ts'
 import type {InventoryItem} from '#services/inventory/schema.ts'
 
+type ExposureKind = typeof ExposureKind.Type
+const ExposureKind = Schema.Literals(['tailnet', 'public'])
+
 function Expose(props: {items: readonly InventoryItem[]; port: InventoryItem}) {
 	const [result, expose] = useAtom(exposeAtom)
-	const [kind, setKind] = useState<'tailnet' | 'public'>('tailnet')
+	const [kind, setKind] = useState<ExposureKind>('tailnet')
 	const [hostname, setHostname] = useState('')
 	const tailnetHost = Option.getOrElse(
 		pipe(
@@ -72,11 +75,11 @@ function Expose(props: {items: readonly InventoryItem[]; port: InventoryItem}) {
 					if (value === 'public' || value === 'tailnet') setKind(value)
 				}}
 			>
-				<TabsList className="w-full max-sm:group-data-horizontal/tabs:h-auto">
-					<TabsTrigger value="tailnet" disabled={pending} className="max-sm:h-11">
+				<TabsList className="w-full">
+					<TabsTrigger value="tailnet" disabled={pending}>
 						Tailnet
 					</TabsTrigger>
-					<TabsTrigger value="public" disabled={pending} className="max-sm:h-11">
+					<TabsTrigger value="public" disabled={pending}>
 						Public
 					</TabsTrigger>
 				</TabsList>
@@ -85,7 +88,6 @@ function Expose(props: {items: readonly InventoryItem[]; port: InventoryItem}) {
 						<FieldLabel htmlFor="expose-tailnet">Address</FieldLabel>
 						<Input
 							id="expose-tailnet"
-							className="max-sm:h-11"
 							readOnly
 							value={Boolean.match(tailnetHost === '', {
 								onFalse: () => `https://${tailnetHost}:${Option.getOrUndefined(props.port.port)}`,
@@ -99,7 +101,6 @@ function Expose(props: {items: readonly InventoryItem[]; port: InventoryItem}) {
 						<FieldLabel htmlFor="expose-public">Hostname</FieldLabel>
 						<Input
 							id="expose-public"
-							className="max-sm:h-11"
 							required={kind === 'public'}
 							placeholder="app.example.com"
 							autoCapitalize="none"
@@ -113,12 +114,9 @@ function Expose(props: {items: readonly InventoryItem[]; port: InventoryItem}) {
 			</Tabs>
 			<ResultError result={result} />
 			<DialogFooter>
-				<DialogClose render={<Button variant="ghost" type="button" disabled={pending} className="max-sm:h-11" />}>
-					Cancel
-				</DialogClose>
+				<DialogClose render={<Button variant="ghost" type="button" disabled={pending} />}>Cancel</DialogClose>
 				<Button
 					type="submit"
-					className="max-sm:h-11"
 					disabled={pending || (kind === 'tailnet' && tailnetHost === '') || (kind === 'public' && hostname === '')}
 				>
 					{Boolean.match(pending, {onFalse: () => 'Expose', onTrue: () => 'Exposing…'})}
@@ -131,7 +129,7 @@ function Expose(props: {items: readonly InventoryItem[]; port: InventoryItem}) {
 export function ExposeDialog() {
 	const [target, setTarget] = useAtom(exposeTargetAtom)
 	return Option.match(Option.all({port: target, snapshot: AsyncResult.value(useAtomValue(inventoryAtom))}), {
-		onNone: () => null,
+		onNone: Function.constNull,
 		onSome: open => (
 			<Dialog
 				open

@@ -1,6 +1,6 @@
 import {useAtomRefresh, useAtomValue} from '@effect/atom-react'
 
-import {Array, Boolean, DateTime, Duration, Option, Record, Schema, String, pipe} from 'effect'
+import {Array, Boolean, DateTime, Duration, Function, Option, Record, Schema, String, pipe} from 'effect'
 
 import {HardDrivesIcon, MonitorIcon, TerminalWindowIcon} from '@phosphor-icons/react'
 import {CatchBoundary, Link, createFileRoute, getRouteApi} from '@tanstack/react-router'
@@ -443,14 +443,14 @@ function HomeRoute() {
 		view({app: Option.some(row.item.id), pane: Option.some('process')})
 	}
 
-	const pushed = Boolean.match(isPhone, {onFalse: () => false, onTrue: () => pane === 'process'})
+	const pushed = Boolean.match(isPhone, {onFalse: Function.constFalse, onTrue: () => pane === 'process'})
 
 	// A phone's bar names the pushed app and backs out to the list; wider screens keep the wordmark.
 	return (
 		<div className="flex min-h-0 flex-1 flex-col">
 			<AppBar
 				heading={Boolean.match(pushed, {
-					onFalse: () => undefined,
+					onFalse: Function.constUndefined,
 					onTrue: () => ({
 						back: {label: 'Back', onClick: () => view({pane: Option.some('apps')})},
 						title: Option.match(Option.fromUndefinedOr(selectedRow), {
@@ -485,7 +485,7 @@ function HomeRoute() {
 							workers={workers}
 						/>
 					),
-					onTrue: () => undefined
+					onTrue: Function.constUndefined
 				})}
 			/>
 			<Workspace

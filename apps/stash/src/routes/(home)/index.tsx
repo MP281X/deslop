@@ -1,6 +1,6 @@
 import {useAtomRefresh, useAtomSet, useAtomValue} from '@effect/atom-react'
 
-import {Array, Boolean, HashSet, Match, Option, Schema, String, pipe} from 'effect'
+import {Array, Boolean, Function, HashSet, Match, Option, Schema, String, pipe} from 'effect'
 
 import {
 	Button,
@@ -196,7 +196,7 @@ function NoteRow(props: {note: NoteItem; onOpen: (id: Note['id']) => void; onReg
 							</ContextMenu.Trigger>
 							<ContextMenu.Items>
 								{Option.match(props.note.url, {
-									onNone: () => undefined,
+									onNone: Function.constUndefined,
 									onSome: url => (
 										<Button
 											onPress={() => {
@@ -314,7 +314,7 @@ function Notes(props: {kind?: Kind; onOpen: (id: Note['id']) => void; onTag: (na
 				const notes = Array.filter(
 					all,
 					note =>
-						Option.match(found, {onNone: () => true, onSome: ids => HashSet.has(ids, note.id)}) &&
+						Option.match(found, {onNone: Function.constTrue, onSome: ids => HashSet.has(ids, note.id)}) &&
 						(props.tag === undefined || Array.contains(note.tags, props.tag)) &&
 						(props.kind === undefined || kindOf(note) === props.kind)
 				)

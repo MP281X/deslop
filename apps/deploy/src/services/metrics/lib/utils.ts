@@ -7,10 +7,13 @@ import type {
 	AppUsage,
 	CgroupPath,
 	Counters,
+	BandId,
+	CpuTime,
 	Disk,
 	HistoryToolInput,
 	MachineHistory,
-	Sample
+	Sample,
+	Point
 } from '#services/metrics/schema.ts'
 
 // Each range's series spacing, so its 60 slots hold a few points each: seconds for a minute, ten seconds for ten minutes, minutes for an hour, quarter-hours for a day, hours for a week. A series keeps its range.
@@ -23,7 +26,6 @@ export const SERIES = {
 }
 
 // One measurement, before it joins a series.
-export type Point = Omit<Sample, 'since' | 'step'>
 
 export function counters(stat: string, uptime: string, time: DateTime.Utc) {
 	const values = Schema.decodeSync(CpuCounters)(
@@ -76,7 +78,7 @@ function cpuUsage(
 
 // A Mac's counters from `os.cpus()`, in milliseconds summed over its cores; `uptime` is a monotonic clock in seconds, since the Mac's own uptime counts whole seconds.
 export function cpuCounters(
-	cpus: readonly {times: Record<'idle' | 'irq' | 'nice' | 'sys' | 'user', number>}[],
+	cpus: readonly {times: Record<CpuTime, number>}[],
 	uptime: Duration.Duration,
 	time: DateTime.Utc
 ) {
@@ -333,7 +335,7 @@ export function history(samples: readonly Sample[], minutes: Duration.Duration, 
 }
 
 // A band's label: the page's name for the app when it has a row, else the unit or container the id names.
-export function bandName(id: AppId | 'other' | 'system', labels: Record<AppId, string>) {
+export function bandName(id: BandId, labels: Record<AppId, string>) {
 	if (id === 'other') return 'Low impact'
 	if (id === 'system') return 'System'
 	return pipe(

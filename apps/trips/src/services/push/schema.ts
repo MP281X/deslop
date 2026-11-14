@@ -48,10 +48,17 @@ export class Activity extends Model.Class<Activity>('Activity')({
 }
 
 // One row of `sent_alerts`: an alert sent for a booking, so each is sent once; the latest of a category tells a change back from a repeat.
+export type AlertCategory = typeof AlertCategory.Type
+export const AlertCategory = Schema.Literals(['cancelled', 'diverted', 'boarding', 'gate', 'platform', 'delay', 'belt'])
+
 export class SentAlert extends Model.Class<SentAlert>('SentAlert')({
 	bookingId: BookingId,
-	key: Schema.String,
-	sentAt: Schema.DateTimeUtcFromMillis
+	category: AlertCategory,
+	sentAt: Schema.DateTimeUtcFromMillis,
+	value: Model.FieldOption(Schema.String)
 }) {
 	static readonly table = 'sent_alerts'
 }
+
+export type ShowAction = typeof ShowAction.Type
+export const ShowAction = Schema.TaggedUnion({launch: {target: Device}, refresh: {target: Activity}})

@@ -1,6 +1,6 @@
 import {useAtom, useAtomSet} from '@effect/atom-react'
 
-import {Array, Boolean, Number, Option, Order, Schema, String, pipe} from 'effect'
+import {Array, Boolean, Function, Number, Option, Order, Schema, String, pipe} from 'effect'
 
 import {HardDrivesIcon, LinkIcon, WrenchIcon} from '@phosphor-icons/react'
 import {CatchBoundary, createFileRoute, getRouteApi} from '@tanstack/react-router'
@@ -88,7 +88,9 @@ function RowBones(props: {tool?: boolean}) {
 			</ItemContent>
 			<ItemActions>
 				{props.tool === true && <Skeleton className="h-3.5 w-7" />}
-				<Skeleton className="h-3.5 w-16 max-sm:hidden" />
+				<div className="max-sm:hidden">
+					<Skeleton className="h-3.5 w-16" />
+				</div>
 				<Skeleton className="h-3 w-12" />
 			</ItemActions>
 		</>
@@ -173,7 +175,6 @@ function ServerRow(props: {period: UsageRange; report: readonly McpUsageServer[]
 						onTrue: () => (
 							<Button
 								size="xs"
-								className="max-sm:h-11"
 								disabled={AsyncResult.isWaiting(connecting)}
 								aria-label={`${action} ${props.server.name}`}
 								onClick={() => connect()}
@@ -201,7 +202,7 @@ function ServerRows(props: {period: Period}) {
 					servers,
 					Array.sort(byUrgency),
 					Array.match({
-						onEmpty: () => null,
+						onEmpty: Function.constNull,
 						onNonEmpty: ordered => (
 							<Suspense
 								fallback={
@@ -290,8 +291,8 @@ function KeyRows(props: {onOpen: () => void; period: Period}) {
 		<Loaded atom={aiKeyAtom}>
 			{all =>
 				Option.match(all, {
-					onNone: () => null,
-					onSome: info => (
+					onNone: Function.constNull,
+					onSome: credential => (
 						<Suspense
 							fallback={
 								<RowsSkeleton label="OpenCode key" rows={Payer.literals.length}>
@@ -299,7 +300,7 @@ function KeyRows(props: {onOpen: () => void; period: Period}) {
 								</RowsSkeleton>
 							}
 						>
-							<KeyUsage info={info} onOpen={props.onOpen} period={props.period} />
+							<KeyUsage info={credential} onOpen={props.onOpen} period={props.period} />
 						</Suspense>
 					)
 				})
@@ -391,12 +392,11 @@ function AddField(props: {onKey: (secret: string, url: string) => void}) {
 			}}
 		>
 			<Field data-invalid={Option.isSome(error)}>
-				<InputGroup className="h-9 max-sm:h-11">
-					<InputGroupAddon className="max-sm:hidden">
+				<InputGroup>
+					<InputGroupAddon>
 						<LinkIcon />
 					</InputGroupAddon>
 					<InputGroupInput
-						className="max-sm:h-11"
 						aria-label="MCP server URL or provider key"
 						aria-invalid={Option.isSome(error)}
 						aria-describedby="gateway-add-error"
@@ -409,7 +409,7 @@ function AddField(props: {onKey: (secret: string, url: string) => void}) {
 					/>
 				</InputGroup>
 				{Option.match(error, {
-					onNone: () => null,
+					onNone: Function.constNull,
 					onSome: message => <FieldError id="gateway-add-error">{message}</FieldError>
 				})}
 			</Field>
@@ -463,7 +463,7 @@ function HomeRoute() {
 							label="Copy MCP URL"
 							value={`${window.location.origin}/mcp`}
 							size="icon-sm"
-							className="ms-2.5 max-sm:size-11"
+							className="ms-2.5"
 						/>
 					</>
 				}

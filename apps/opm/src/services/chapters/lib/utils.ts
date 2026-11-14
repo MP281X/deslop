@@ -2,6 +2,7 @@ import {
 	Array,
 	Boolean,
 	DateTime,
+	Function,
 	HashMap,
 	HashSet,
 	Number,
@@ -17,7 +18,7 @@ import {
 
 import {Base64Url} from 'effect/encoding'
 
-import type {CubariSeries, DeadLink, Post, Series} from '#services/chapters/schema.ts'
+import type {ChapterIdentity, CubariSeries, DeadLink, Post, Series} from '#services/chapters/schema.ts'
 import {Chapter, ChapterKey, ChapterNumber, ChapterNotification} from '#services/chapters/schema.ts'
 
 // "Chapter 242 [English]", "[Revised] Chapter 211 [English]" and r/OPMFolk's "Chapter 242/287 [Translations]"; a post of several chapters names each in its own post too.
@@ -37,7 +38,7 @@ export const byNumber = Order.mapInput(Order.Number, (chapter: Pick<Chapter, 'nu
 
 export const INDEXES = {manga: 'OPM', webcomic: 'JYHJU'}
 
-export function keyOf(chapter: Pick<Chapter, 'number' | 'series'>) {
+export function keyOf(chapter: ChapterIdentity) {
 	return ChapterKey.make(`${chapter.series}:${chapter.number}`)
 }
 
@@ -57,13 +58,13 @@ export function revisionCandidates(posts: Post[], current: readonly Chapter[], d
 							known,
 							HashMap.get(keyOf(post)),
 							Option.match({
-								onNone: () => true,
+								onNone: Function.constTrue,
 								onSome: item =>
 									post.revised &&
 									pipe(
 										item.revisedAt,
 										Option.orElse(() => item.postedAt),
-										Option.match({onNone: () => true, onSome: at => DateTime.isGreaterThan(post.postedAt, at)})
+										Option.match({onNone: Function.constTrue, onSome: at => DateTime.isGreaterThan(post.postedAt, at)})
 									) &&
 									link !== item.source
 							})
@@ -111,8 +112,8 @@ export function indexChapters(current: readonly Chapter[], chapters: readonly Ch
 	)
 }
 
-export function notificationOf(data: unknown) {
-	return Option.map(Schema.decodeUnknownOption(ChapterNotification)(data), target => ({
+export function notificationOf(payload: unknown) {
+	return Option.map(Schema.decodeUnknownOption(ChapterNotification)(payload), target => ({
 		number: target.path[2],
 		series: target.path[0]
 	}))
@@ -202,7 +203,7 @@ export function chaptersFromIndex(index: CubariSeries, kind: Series) {
 					title: nameOf(Option.getOrElse(Option.flatten(entry[1].title), () => ''))
 				})
 			),
-			Result.fromOption(() => undefined)
+			Result.fromOption(Function.constUndefined)
 		)
 	)
 }

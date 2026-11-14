@@ -19,7 +19,7 @@
 - **Updates.** `vp update -r`; `vp outdated -r` then lists only pins. New checks since the last review: `@effect/tsgo`'s README table and changelog, each lint plugin's `rules` against its previous version, Fallow's release notes. Count a candidate rule's hits with `vp exec effect-tsgo --tsrs-lint vp lint -D <rule>`; ask before one that reverses a house form or rewrites hundreds of sites, with a bad example, a good example and its count.
 - **Releases.** `.github/releasing.md`: a new app or tool, following a release, Simulator builds, native tools.
 - **Agent configuration.** `.claude/agents/pair.md` = `.codex/instructions.md` from `# Work` down. Each file keeps its own `# Harness` lines for its harness's tools. Skills live in `.claude/skills`, shared by both harnesses. Change the installed `~/deslop` only through a merged PR, never while other threads use it.
-- **Standards policy.** Define each policy once, in the best tool; prove replacements with the custom rule's failing cases. Only custom rules have tests; upgrades never opt into new rules, and declined rules stay out. The compiler and Effect rules own their checks. Parser checks are static; codebase-wide checks belong to review. No per-package typecheck scripts. Checks must be reachable in consuming codebases, including prevention of encountered patterns. Custom rules must add coverage or safe fixes beyond native rules; accept intended forms and make fixes converge. The repository's explicit dependency allowlist lives in root lint, not the published preset. Oxlint applies import-group negations across patterns: compose the allowlist and preset restrictions in one ordered group.
+- **Standards policy.** Define each policy once, in the best tool; prove replacements with the custom rule's failing cases. Only custom rules have tests; upgrades never opt into new rules, and declined rules stay out. The compiler and Effect rules own their checks. Parser checks are static; codebase-wide checks belong to review. No per-package typecheck scripts. Checks must be reachable in consuming codebases, including prevention of encountered patterns. Custom rules must add coverage or safe fixes beyond native rules; accept intended forms and make fixes converge. Each rule's accepted examples and automatic fixes must pass the whole preset, not only that rule; repeated fixes must reach a fixed point. The repository's explicit dependency allowlist lives in root lint, not the published preset. Oxlint applies import-group negations across patterns: compose the allowlist and preset restrictions in one ordered group.
 
 ## Patterns
 
@@ -32,6 +32,7 @@
 - **Ownership.** Abstractions add capability or ease reading, not just shorter files; domain names and plain control flow over wrappers and configuration languages.
 - **Imports.** A service folder shows only `schema.ts`, `service.ts` and `lib/utils.ts`; its own files reach the rest with `./`. The runtime is imported by side: `shared`, `server`, `client`, `web`, `mobile`, `config`.
 - **Arguments.** Short, independent arguments stay positional, not wrapped just to name them.
+- **Fixed callbacks.** Only `undefined`, `null`, `true` and `false` use Effect's named function constants. String and number callbacks stay arrows; do not rewrite them to `Function.constant`.
 - **Search serialization.** TanStack serializes both raw parsed search and validated/transformed search. Encode Option transforms through the app's Struct codec before the library's default serialization; both forms are current library inputs, and unrelated keys stay intact.
 - **Personal tools.** No stdio bridge, container, download command or telemetry Collector.
 - **MCP tools.** Serve agent work, not every page action; none for apps agents do not need, including Trips, OPM and Portfolio.
@@ -43,7 +44,7 @@
 
 ## Design
 
-- **References.** Themes: `packages/components-web/src/theme.css`, `packages/components-mobile/src/theme.ts`; `base-lyra` primitives: `packages/components-web/src/ui/`; generators: `tools/create-{app,package}/`.
+- **References.** Themes: `packages/components-web/src/theme.css`, `packages/components-mobile/src/palette.ts` and `theme.ts`; `base-lyra` primitives: `packages/components-web/src/ui/`; generators: `tools/create-{app,package}/`.
 - **Exemption.** Portfolio is exempt: its own fonts, hotkeys, presence text and artwork, including a 504×504 touch icon on `#fafafa`.
 - **Targets.** 3440×1440, 1920×1080, ~1512×982; iPhone Air 420×912pt, safe areas and Dynamic Type.
 - **Colour.** Only identity and status carry hue; services without Deslop icons stay grey except Deploy's usage bands. Never label healthy, live, connected or up-to-date states. Dots mark problems, never kinds; kinds take tinted icons.

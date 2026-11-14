@@ -5,25 +5,19 @@ import {Array, String} from 'effect'
 
 import {defineConfig} from 'vite-plus'
 
-import {deslopRules, lint, restrictedImports} from './tools/coding-standards/src/lint.ts'
+import {lint, restrictedImports} from './tools/coding-standards/src/lint.ts'
 
 // The registry keeps every primitive as a file; these break AGENTS.md's Design rules (motion, spinners, toasts, context menus, a command palette, a destruction confirmation), so nothing outside it imports them by any spelling, nor the libraries they wrap.
 const BANNED_PRIMITIVES = ['alert-dialog', 'carousel', 'command', 'context-menu', 'drawer', 'spinner', 'toast']
-const BANNED_BASE_UI = ['alert-dialog', 'context-menu', 'drawer', 'toast']
 const SPINNER_ICONS = ['CircleNotch', 'Spinner', 'SpinnerBall', 'SpinnerGap']
 
 const repositoryRestrictedImports = {
 	paths: [
 		...restrictedImports.paths,
-		...Array.map(['@phosphor-icons/react', '@phosphor-icons/react/ssr', '@phosphor-icons/react/dist/ssr'], name => ({
+		{
 			importNames: Array.flatMap(SPINNER_ICONS, icon => [icon, `${icon}Icon`]),
 			message: 'AGENTS.md Design: pending actions have no spinners.',
-			name
-		})),
-		{
-			importNames: ['AlertDialog', 'ContextMenu', 'Drawer', 'Toast'],
-			message: 'AGENTS.md Design bans this primitive.',
-			name: '@base-ui/react'
+			name: '@phosphor-icons/react'
 		}
 	],
 	patterns: [
@@ -55,7 +49,6 @@ const repositoryRestrictedImports = {
 				'!**/*.otf',
 				'!**/*\\?*',
 				'!@bacons',
-				'!@base-ui',
 				'!@effect',
 				'!@expo',
 				'!@fontsource-variable',
@@ -71,7 +64,6 @@ const repositoryRestrictedImports = {
 				...Array.flatMap(
 					[
 						'@bacons/apple-targets',
-						'@base-ui/react',
 						'@deslop/coding-standards',
 						'@deslop/components-mobile',
 						'@deslop/components-web',
@@ -89,7 +81,6 @@ const repositoryRestrictedImports = {
 						'@fontsource-variable/ibm-plex-sans',
 						'@fontsource-variable/jetbrains-mono',
 						'@modelcontextprotocol/client',
-						'@phosphor-icons/react',
 						'@shadcn/lint',
 						'@shadcn/react',
 						'@simplewebauthn/browser',
@@ -157,11 +148,7 @@ const repositoryRestrictedImports = {
 				...Array.flatMap(restrictedImports.patterns, pattern => pattern.group),
 				// Last, so they win over the allowlist above: every spelling of a banned primitive and the libraries behind it.
 				...Array.flatMap(BANNED_PRIMITIVES, name => [`**/ui/${name}`, `**/ui/${name}.tsx`]),
-				...Array.flatMap(BANNED_BASE_UI, name => [`@base-ui/react/**/${name}`, `@base-ui/react/**/${name}/**`]),
-				...Array.flatMap(SPINNER_ICONS, icon => [
-					`@phosphor-icons/react/**/${icon}`,
-					`@phosphor-icons/react/**/${icon}.*`
-				]),
+				'!@phosphor-icons/react',
 				'cmdk',
 				'cmdk/**',
 				'embla-carousel*',
@@ -231,7 +218,10 @@ export default defineConfig({
 		overrides: [
 			{
 				files: ['**/tools/coding-standards/src/lint.test.ts'],
-				rules: {'@deslop/coding-standards/test-boundaries': ['error', 'read-source-text', 'execute-program']}
+				rules: {
+					'@deslop/coding-standards/test-boundaries': ['error', 'read-source-text', 'execute-program'],
+					'eslint-js/no-restricted-syntax': lint.rules['eslint-js/no-restricted-syntax']
+				}
 			},
 			{
 				files: ['**/packages/runtime/src/server/tables.test.ts'],
@@ -240,7 +230,39 @@ export default defineConfig({
 			// The judge's program harness is owned by the separate judge overhaul.
 			{
 				files: ['tools/coding-standards/src/judge.test.ts'],
-				rules: {'@deslop/coding-standards/test-boundaries': 'off', '@deslop/coding-standards/test-registration': 'off'}
+				rules: {
+					'@deslop/coding-standards/no-pass-through-name': 'off',
+					'@deslop/coding-standards/recover-named-failures': 'off',
+					'@deslop/coding-standards/test-boundaries': 'off',
+					'@deslop/coding-standards/test-registration': 'off',
+					'eslint-js/no-restricted-syntax': lint.rules['eslint-js/no-restricted-syntax']
+				}
+			},
+			{
+				files: ['packages/**'],
+				rules: {
+					'eslint/no-restricted-imports': [
+						'error',
+						{
+							...repositoryRestrictedImports,
+							patterns: Array.map(repositoryRestrictedImports.patterns, pattern => ({
+								...pattern,
+								group: [
+									...pattern.group,
+									'expo-notifications',
+									'expo-notifications/**',
+									'expo-calendar',
+									'expo-calendar/**',
+									'expo-location',
+									'expo-location/**',
+									'expo-widgets',
+									'expo-widgets/**'
+								],
+								message: `${pattern.message} App-only native modules and their helpers belong in their consuming app, not a shared package.`
+							}))
+						}
+					]
+				}
 			},
 			{
 				files: ['packages/runtime/src/config/expo.ts'],
@@ -267,7 +289,7 @@ export default defineConfig({
 				// Skill scripts run inside an app's page through preview_evaluate, with no Effect runtime and no type information.
 				files: ['.claude/skills/**/*.js'],
 				rules: {
-					'@deslop/coding-standards/no-native-emptiness-check': 'off',
+					'@deslop/coding-standards/library-operation': 'off',
 					'@deslop/coding-standards/no-native-method-call': 'off',
 					'effecttsgo/prefer-effect-array': 'off',
 					'effecttsgo/prefer-effect-string': 'off',
@@ -302,12 +324,42 @@ export default defineConfig({
 				}
 			},
 			{
+				// Portfolio is exempt from the Design rules: its links and buttons are its own artwork.
+				files: ['apps/portfolio/**'],
+				rules: {'@deslop/coding-standards/no-bare-control': 'off'}
+			},
+			{
 				// The web template is no workspace package, so its stylesheet cannot resolve the theme's own utilities.
 				files: ['tools/create-app/template/web/**'],
 				rules: {'shadcn/no-unknown-classes': 'off'}
 			}
 		],
-		rules: {...deslopRules, 'eslint/no-restricted-imports': ['error', repositoryRestrictedImports]}
+		rules: {
+			'eslint/no-restricted-imports': ['error', repositoryRestrictedImports],
+			'eslint-js/no-restricted-syntax': [
+				...lint.rules['eslint-js/no-restricted-syntax'],
+				{
+					message: 'Use a flat theme token such as bg-card or bg-muted.',
+					selector:
+						'Literal[value=/(^|[ :])bg-(linear|radial|conic|gradient)(-|$| )|gradient\\(/], TemplateElement[value.raw=/(^|[ :])bg-(linear|radial|conic|gradient)(-|$| )|gradient\\(/]'
+				},
+				{
+					message: 'Draw Phosphor icons light at 20px and above.',
+					selector:
+						'JSXOpeningElement[name.name=/Icon$/]:has(JSXAttribute[name.name="className"][value.value=/(^| )size-([5-9]|[1-9][0-9]+)( |$)/]):not(:has(JSXAttribute[name.name="weight"][value.value="light"]))'
+				},
+				{
+					message: 'Draw Phosphor icons regular at 16px and below.',
+					selector:
+						'JSXOpeningElement[name.name=/Icon$/]:has(JSXAttribute[name.name="className"][value.value=/(^| )size-[0-4]( |$)/]) > JSXAttribute[name.name="weight"][value.value="light"]'
+				},
+				{
+					message: "Name an RPC '<service folder>.<verb>', as in 'metrics.history'.",
+					selector:
+						'CallExpression[callee.object.name="Rpc"][callee.property.name="make"] > Literal.arguments:first-child:not([value=/^[a-z]+(?:-[a-z]+)*\\.[a-z][A-Za-z]*$/])'
+				}
+			]
+		}
 	},
 	run: {
 		// Each package's test script replays from the cache while its inputs are unchanged; a stopped preview server exits 130, so it is never cached.

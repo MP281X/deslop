@@ -128,7 +128,7 @@ export class AiMetering extends Context.Service<AiMetering>()(
 							})
 							const feed = Effect.fnUntraced(function* (text: string) {
 								const error = parser.feed(text)
-								for (const data of MutableList.toArray(events)) yield* updateUsage(data)
+								for (const eventText of MutableList.toArray(events)) yield* updateUsage(eventText)
 								MutableList.clear(events)
 								if (error !== undefined) return yield* error
 							})

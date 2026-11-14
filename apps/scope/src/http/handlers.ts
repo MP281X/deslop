@@ -12,6 +12,9 @@ import {Telemetry} from '#services/telemetry/service.ts'
 // Any page, server or phone may export without signing in, as OTLP receivers take it.
 const cors = HttpMiddleware.cors({allowedHeaders: ['content-type'], allowedMethods: ['POST']})
 
+type IngestRoute = typeof IngestRoute.Type
+const IngestRoute = Schema.Literals(['/v1/traces', '/v1/logs'])
+
 // OTLP/HTTP JSON: the status codes and `code` values are the protocol's own.
 function answer<A, I>(schema: Schema.Codec<A, I>, save: (payload: A) => Effect.Effect<void, TelemetryError>) {
 	return Effect.flatMap(HttpServerRequest.HttpServerRequest, request => {
@@ -53,7 +56,7 @@ export const HttpHandlers = Layer.provide(
 			const telemetry = yield* Telemetry
 			// Rejected exports are counted; headers and bodies are never recorded.
 			const ingest = Effect.fnUntraced(function* <A, I>(
-				route: '/v1/traces' | '/v1/logs',
+				route: IngestRoute,
 				schema: Schema.Codec<A, I>,
 				save: (payload: A) => Effect.Effect<void, TelemetryError>
 			) {

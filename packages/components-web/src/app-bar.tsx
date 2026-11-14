@@ -1,13 +1,13 @@
 import {useAtom, useAtomValue} from '@effect/atom-react'
 
-import {Array, Boolean, Effect, Equal, Option, Predicate, String, pipe} from 'effect'
+import {Array, Boolean, Effect, Equal, Option, Predicate, Schema, String, Struct, pipe} from 'effect'
 
 import {CaretLeftIcon} from '@phosphor-icons/react'
 import {AsyncResult, Atom} from 'effect/reactivity'
 import {useState} from 'react'
 import type {KeyboardEvent, ReactElement, ReactNode} from 'react'
 
-import type {Account} from '@deslop/runtime/shared/schema'
+import {Account} from '@deslop/runtime/shared/schema'
 import {accountAtom} from '@deslop/runtime/web/client'
 
 import {Avatar, AvatarFallback, AvatarImage} from '#components/ui/avatar.tsx'
@@ -18,8 +18,11 @@ import {cn} from '#lib/classes.ts'
 // The menu's floating-ui bundle is the page's heaviest import, so it arrives on intent rather than with the bar.
 const menuModuleAtom = Atom.keepAlive(Atom.fn(() => Effect.promise(() => import('#components/ui/dropdown-menu.tsx'))))
 
+export type AvatarAccount = typeof AvatarAccount.Type
+const AvatarAccount = Schema.Struct(Struct.pick(Account.fields, ['id', 'name']))
+
 // A GitHub account's picture, or its first letter until the picture loads: 24px in the bar, 16px in a row.
-export function AccountAvatar(props: {account: Pick<Account, 'id' | 'name'>; small?: boolean}) {
+export function AccountAvatar(props: {account: AvatarAccount; small?: boolean}) {
 	return (
 		<Avatar
 			size={Boolean.match(props.small === true, {onFalse: () => 'sm' as const, onTrue: () => 'default' as const})}
@@ -62,7 +65,6 @@ function AccountMenu() {
 			<Button
 				variant="ghost"
 				size="icon-sm"
-				className="max-sm:size-11"
 				aria-label="Account"
 				aria-haspopup="menu"
 				aria-expanded={open ?? false}
@@ -78,10 +80,7 @@ function AccountMenu() {
 	}
 	return (
 		<loaded.value.DropdownMenu open={open} onOpenChange={setOpen}>
-			<loaded.value.DropdownMenuTrigger
-				aria-label="Account"
-				render={<Button variant="ghost" size="icon-sm" className="max-sm:size-11" />}
-			>
+			<loaded.value.DropdownMenuTrigger aria-label="Account" render={<Button variant="ghost" size="icon-sm" />}>
 				<AccountAvatar account={account.value} />
 			</loaded.value.DropdownMenuTrigger>
 			<loaded.value.DropdownMenuContent align="end" className="w-auto min-w-48">
@@ -91,7 +90,6 @@ function AccountMenu() {
 				<loaded.value.DropdownMenuSeparator />
 				<loaded.value.DropdownMenuItem
 					variant="destructive"
-					className="max-sm:h-11"
 					disabled={!account.value.signOut}
 					render={<a aria-label="Sign out" href={`/auth/sign-out?${new URLSearchParams({next: location.href})}`} />}
 				>
@@ -187,18 +185,23 @@ export function AppBar(props: {
 		<header className="bg-background flex h-12 shrink-0 items-center gap-4 border-b px-4">
 			{Option.match(Option.fromUndefinedOr(props.heading), {
 				onNone: () => (
-					<a href="/" aria-label={props.name} className="flex shrink-0 items-center gap-2.5 max-sm:h-11">
+					<Button
+						variant="bare"
+						nativeButton={false}
+						render={<a href="/" aria-label={props.name} />}
+						className="-mx-2.75 shrink-0"
+					>
 						<img src={props.icon} alt="" className="pixelated size-6" />
-						<span className="font-heading text-sm font-semibold capitalize max-sm:hidden">{props.name}</span>
-					</a>
+						<span className="font-heading ml-1 text-sm font-semibold capitalize max-sm:hidden">{props.name}</span>
+					</Button>
 				),
-				// The back caret sits on the rows' 16px mark column and the title on their name column, at 44px.
+				// The back caret sits by the rows' 16px mark column and the title by their name column.
 				onSome: heading => (
 					<div className="flex min-w-0 shrink items-center gap-1">
 						<Button
 							variant="ghost"
 							size="icon-sm"
-							className="-ml-2 max-sm:-mr-1.5 max-sm:-ml-3.5 max-sm:size-11"
+							className="-ml-2"
 							aria-label={heading.back.label}
 							onClick={heading.back.onClick}
 						>

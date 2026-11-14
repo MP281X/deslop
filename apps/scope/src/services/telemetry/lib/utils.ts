@@ -43,7 +43,9 @@ import type {
 	Resource,
 	SpanLink,
 	TraceTree,
-	TracesRequest
+	TracesRequest,
+	SpanFacts,
+	SpanFailure
 } from '#services/telemetry/schema.ts'
 
 // Each operation lists this many traces, its newest failures among them.
@@ -63,10 +65,6 @@ const byStart = Order.mapInput(DateTime.Order, (span: Pick<Span, 'start'>) => sp
 export type Sender = {readonly service: ServiceName; readonly version: Option.Option<ReleaseVersion>}
 
 // The fields a judgement of a trace reads, whether the span is stored or still arriving.
-export type SpanFacts = Pick<
-	Span,
-	'attributes' | 'duration' | 'name' | 'parentSpanId' | 'spanId' | 'start' | 'status' | 'traceId'
->
 
 // A version Scope can order, numbers joined by dots such as "0.1.1235"; OTel leaves `service.version` free text, so "1.2.0-rc.1" or a commit hash is never older than anything.
 function releaseOf(version: Option.Option<ReleaseVersion>) {
@@ -237,7 +235,7 @@ function deniedSpan(attributes: Attributes, exceptions: readonly Attributes[]) {
 	const code = attributes['http.response.status_code']
 	if (code === 401 || code === 403) return true
 	return Array.match(exceptions, {
-		onEmpty: () => false,
+		onEmpty: Function.constFalse,
 		onNonEmpty: found =>
 			Array.every(found, exception => Option.contains(textOf(exception, 'exception.type'), 'AuthError'))
 	})
@@ -370,7 +368,7 @@ export function levelOf(severity: number) {
 }
 
 // The diagnostic a failed span is remembered by: its exception's message or its status line, first line only, no stack trace.
-export function diagnosis(span: Pick<Span, 'error' | 'exception'>) {
+export function diagnosis(span: SpanFailure) {
 	return pipe(
 		span.exception,
 		Option.orElse(() => span.error),

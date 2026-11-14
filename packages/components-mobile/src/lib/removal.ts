@@ -1,4 +1,4 @@
-import {Context, Effect, Layer, pipe} from 'effect'
+import {Context, Effect, Function, Layer, pipe} from 'effect'
 
 import {Machine} from '@typeonce/effect-machine'
 import {AtomMachine} from '@typeonce/effect-machine/reactivity'
@@ -53,12 +53,9 @@ export function makeRemoval<Id extends string, E extends {_tag: string; message:
 	})
 	return {
 		machine: machineAtom,
-		removeAtom: Atom.writable(
-			() => undefined,
-			(context, id: Id) => {
-				context.get(heldAtom(id))
-				context.set(machineAtom(id).send, {_tag: 'Removed'})
-			}
-		)
+		removeAtom: Atom.writable(Function.constUndefined, (context, id: Id) => {
+			context.get(heldAtom(id))
+			context.set(machineAtom(id).send, {_tag: 'Removed'})
+		})
 	}
 }

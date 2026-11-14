@@ -1,4 +1,4 @@
-import {Array, Boolean} from 'effect'
+import {Array, Boolean, Function} from 'effect'
 
 import type {CSSProperties, ReactNode} from 'react'
 
@@ -25,25 +25,11 @@ function Branch(props: {depth: number; row: TreeRow}) {
 	const style: TreeStyle = {'--tree-depth': props.depth}
 	return (
 		<div className="relative" style={style}>
-			<div className={Boolean.match(hasChildren, {onFalse: () => undefined, onTrue: () => 'tree-sticky'})}>
-				<Item
-					role="treeitem"
-					aria-level={props.depth + 1}
-					size="row"
-					title={props.row.title}
-					className="relative after:hidden"
-				>
-					{hasChildren && (
-						<span
-							aria-hidden="true"
-							className="bg-background group-hover/item:tree-sticky-hover pointer-events-none absolute inset-0"
-						/>
-					)}
-					<ItemMedia className="pointer-events-none relative z-10">{props.row.media}</ItemMedia>
-					<ItemContent className="pointer-events-none relative z-10">{props.row.content}</ItemContent>
-					{props.row.actions !== undefined && (
-						<ItemActions className="relative z-10 shrink-0">{props.row.actions}</ItemActions>
-					)}
+			<div className={Boolean.match(hasChildren, {onFalse: Function.constUndefined, onTrue: () => 'tree-sticky'})}>
+				<Item role="treeitem" aria-level={props.depth + 1} size="row" title={props.row.title}>
+					<ItemMedia>{props.row.media}</ItemMedia>
+					<ItemContent>{props.row.content}</ItemContent>
+					{props.row.actions !== undefined && <ItemActions className="shrink-0">{props.row.actions}</ItemActions>}
 				</Item>
 			</div>
 			{hasChildren && (
@@ -57,10 +43,10 @@ function Branch(props: {depth: number; row: TreeRow}) {
 	)
 }
 
-// A tree of stock Item rows: nested levels indent 12px with no connector lines, tints or fold carets.
+// A tree of stock Item rows: nested levels indent 12px with no connector lines, tints or fold carets, and without the lists' hairlines.
 export function Tree(props: {rows: readonly TreeRow[]}) {
 	return (
-		<div role="tree">
+		<div role="tree" className="**:data-[slot=item]:after:hidden">
 			{Array.map(props.rows, row => (
 				<Branch key={row.id} depth={0} row={row} />
 			))}

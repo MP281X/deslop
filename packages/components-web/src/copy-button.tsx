@@ -1,6 +1,6 @@
 import {useAtom} from '@effect/atom-react'
 
-import {Boolean, Effect, Schema, Stream} from 'effect'
+import {Boolean, Effect, Function, Schema, Stream} from 'effect'
 
 import {CheckIcon, CopyIcon} from '@phosphor-icons/react'
 import {AsyncResult, Atom} from 'effect/reactivity'
@@ -11,6 +11,9 @@ import {FieldError} from '#components/ui/field.tsx'
 import {cn} from '#lib/classes.ts'
 
 class ClipboardError extends Schema.TaggedError<ClipboardError>()('ClipboardError', {cause: Schema.Defect()}) {}
+
+export type CopyButtonSize = typeof CopyButtonSize.Type
+const CopyButtonSize = Schema.Literals(['default', 'icon-sm'])
 
 // Each press first clears an earlier check, is true once the clipboard took the value, and false again after the check's moment.
 const copyAtom = Atom.family((value: string) =>
@@ -39,7 +42,7 @@ export function CopyButton(props: {
 	className?: string
 	failure?: string
 	label: string
-	size?: 'default' | 'icon-sm'
+	size?: CopyButtonSize
 	value: string
 }) {
 	const [result, copy] = useAtom(copyAtom(props.value))
@@ -57,7 +60,7 @@ export function CopyButton(props: {
 				size={props.size}
 				className={props.className}
 				aria-label={props.label}
-				title={Boolean.match(failed && !explained, {onFalse: () => undefined, onTrue: () => 'Cannot copy'})}
+				title={Boolean.match(failed && !explained, {onFalse: Function.constUndefined, onTrue: () => 'Cannot copy'})}
 				onClick={() => copy()}
 			>
 				{props.children}

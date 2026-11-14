@@ -5,6 +5,7 @@ import {
 	DateTime,
 	Duration,
 	Effect,
+	Function,
 	HashSet,
 	Layer,
 	Number,
@@ -45,6 +46,8 @@ import {
 import type {Traced} from '#services/telemetry/lib/utils.ts'
 import type {
 	CompactLog,
+	LogFacts,
+	RejectedExport,
 	FindTracesParams,
 	IngestionAnswer,
 	LatencyAnswer,
@@ -181,7 +184,7 @@ function latestFailure(operation: Operation) {
 function operationsAnswer(overview: Overview, name: Option.Option<AppName>) {
 	const apps = pipe(
 		overview.apps,
-		Array.filter(app => Option.match(name, {onNone: () => true, onSome: value => app.name === value})),
+		Array.filter(app => Option.match(name, {onNone: Function.constTrue, onSome: value => app.name === value})),
 		Array.map(app => ({
 			app: app.name,
 			operations: Array.map(app.operations, operation => {
@@ -232,7 +235,7 @@ function traceRow(row: FoundTrace) {
 	} satisfies TraceRow
 }
 
-function compactLog(log: Pick<Log, 'message' | 'severity' | 'time'>) {
+function compactLog(log: LogFacts) {
 	return {at: log.time, level: levelOf(log.severity), message: log.message} satisfies CompactLog
 }
 
@@ -872,7 +875,7 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 			) {
 				return readTraceAnswer(yield* tree(input.id), input.limit, offset, details, spanId)
 			}, asTelemetryError),
-			reject: Effect.fn('Telemetry.reject')(function* (input: Pick<Rejection, 'credential' | 'route' | 'status'>) {
+			reject: Effect.fn('Telemetry.reject')(function* (input: RejectedExport) {
 				const now = yield* DateTime.now
 				const key = `${input.route}:${input.status}:${input.credential}`
 				yield* Ref.update(rejections, current =>

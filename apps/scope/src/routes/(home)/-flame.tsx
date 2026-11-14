@@ -1,4 +1,4 @@
-import {Array, Boolean, Duration, Match, Number, Option, Record, String, pipe} from 'effect'
+import {Array, Boolean, Duration, Function, Match, Number, Option, Record, String, pipe} from 'effect'
 
 // oxlint-disable-next-line eslint/no-restricted-imports -- useLayoutEffect: the flame measures its surface and label widths after layout and before paint, so bars never draw at a stale width.
 import {useLayoutEffect, useRef, useState} from 'react'
@@ -34,12 +34,14 @@ export function SpansSkeleton(props: {label: string}) {
 						{left: 14, top: 72, width: 85}
 					],
 					(box, index) => (
-						<Skeleton
+						<div
 							key={index}
 							aria-hidden
 							className="absolute top-(--flame-top) left-(--flame-left) h-5.5 w-(--flame-width)"
 							style={{'--flame-left': `${box.left}%`, '--flame-top': `${box.top}px`, '--flame-width': `${box.width}%`}}
-						/>
+						>
+							<Skeleton className="size-full" />
+						</div>
 					)
 				)}
 			</div>
@@ -61,7 +63,7 @@ export function TimeAxis(props: {totalMs: Duration.Duration}) {
 							Boolean.match(ratio === 0, {
 								onFalse: () =>
 									Boolean.match(ratio === 1, {onFalse: () => '-translate-x-1/2', onTrue: () => '-translate-x-full'}),
-								onTrue: () => undefined
+								onTrue: Function.constUndefined
 							})
 						)}
 						style={{'--axis-left': `${ratio * 100}%`}}
@@ -154,7 +156,7 @@ export function Flame(props: {focus?: SpanId; onPick: (id: SpanId) => void; trac
 				placedByLane,
 				Record.get(`${entry.lane}`),
 				Option.match({
-					onNone: () => true,
+					onNone: Function.constTrue,
 					onSome: lane =>
 						Array.every(lane, other => {
 							if (other.span.spanId === span.spanId) return true
@@ -206,7 +208,7 @@ export function Flame(props: {focus?: SpanId; onPick: (id: SpanId) => void; trac
 				Match.orElse(() => Option.none<TraceTree['spans'][number]>())
 			),
 			{
-				onNone: () => undefined,
+				onNone: Function.constUndefined,
 				onSome: next =>
 					surface.current?.querySelector<HTMLButtonElement>(`[data-span-id="${next.spanId}"] button`)?.focus()
 			}
@@ -236,7 +238,10 @@ export function Flame(props: {focus?: SpanId; onPick: (id: SpanId) => void; trac
 					>
 						<span
 							aria-hidden
-							data-flame-fill={Boolean.match(row.bar > 2, {onFalse: () => undefined, onTrue: () => '' as const})}
+							data-flame-fill={Boolean.match(row.bar > 2, {
+								onFalse: Function.constUndefined,
+								onTrue: () => '' as const
+							})}
 							className={cn(
 								'absolute inset-y-0 left-0 w-(--flame-bar) overflow-hidden',
 								Boolean.match(row.span.status === 'failed', {
@@ -244,14 +249,14 @@ export function Flame(props: {focus?: SpanId; onPick: (id: SpanId) => void; trac
 									onTrue: () => 'bg-destructive'
 								}),
 								Boolean.match(row.picked, {
-									onFalse: () => undefined,
+									onFalse: Function.constUndefined,
 									onTrue: () => 'outline-1 outline-foreground outline-offset-[-1px]'
 								})
 							)}
 							style={{'--flame-bar': `${row.bar}px`}}
 						>
 							{Boolean.match(row.inside, {
-								onFalse: () => null,
+								onFalse: Function.constNull,
 								onTrue: () => (
 									<span className="text-background flex h-full items-center px-1.5 text-xs whitespace-nowrap">
 										{row.label}
@@ -260,7 +265,7 @@ export function Flame(props: {focus?: SpanId; onPick: (id: SpanId) => void; trac
 							})}
 						</span>
 						{Boolean.match(row.after, {
-							onFalse: () => null,
+							onFalse: Function.constNull,
 							onTrue: () => (
 								<span
 									aria-hidden
@@ -272,9 +277,13 @@ export function Flame(props: {focus?: SpanId; onPick: (id: SpanId) => void; trac
 								</span>
 							)
 						})}
+						{/* oxlint-disable-next-line @deslop/coding-standards/no-bare-control -- A flame-chart bar is a mark the chart draws, with a hit area over its own geometry; no primitive draws one. */}
 						<button
 							type="button"
-							aria-current={Boolean.match(row.picked, {onFalse: () => undefined, onTrue: () => 'true' as const})}
+							aria-current={Boolean.match(row.picked, {
+								onFalse: Function.constUndefined,
+								onTrue: () => 'true' as const
+							})}
 							aria-label={row.description}
 							title={row.description}
 							onClick={() => props.onPick(row.span.spanId)}

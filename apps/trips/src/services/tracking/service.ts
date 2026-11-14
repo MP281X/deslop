@@ -5,6 +5,7 @@ import {
 	DateTime,
 	Duration,
 	Effect,
+	Function,
 	Layer,
 	Option,
 	Record,
@@ -240,7 +241,7 @@ export class Tracking extends Context.Service<Tracking>()('@deslop/trips/service
 					(booking, now, attempted) =>
 						Option.isSome(checkEvery(booking, now)) &&
 						Option.match(attempted, {
-							onNone: () => true,
+							onNone: Function.constTrue,
 							onSome: at => pipe(at, DateTime.distance(now), Duration.isGreaterThanOrEqualTo(Duration.minutes(1)))
 						})
 				)

@@ -45,5 +45,19 @@ export const noComponentAtomAllocation = defineRule({
 			})
 		}
 	}),
-	meta: {type: 'problem'}
+	meta: {
+		docs: {
+			examples: {
+				accepted: [
+					{
+						'sample.tsx': `import {useAtomValue} from '@effect/atom-react'
+import {Atom} from 'effect/reactivity'
+const countAtom = Atom.make(0)
+export function Count() { return <span>{useAtomValue(countAtom)}</span> }`
+					}
+				]
+			}
+		},
+		type: 'problem'
+	}
 })

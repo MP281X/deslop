@@ -1,4 +1,4 @@
-import {Array, MutableList, Option, Predicate} from 'effect'
+import {Array, Boolean, MutableList, Option, Predicate} from 'effect'
 
 import {defineRule} from 'vite-plus/lint/plugins'
 import type {Context, ESTree} from 'vite-plus/lint/plugins'
@@ -265,23 +265,26 @@ export const testSynchronization = defineRule({
 				}
 			},
 			'Program:exit': program => {
-				if (
-					!containsNode({
-						context,
-						matches: node => isTestClockCall(context, node, 'adjust') || isTestClockCall(context, node, 'setTime'),
-						node: program,
-						throughFunctions: true
-					})
-				) {
-					for (const node of MutableList.toArray(waits)) {
-						MutableList.append(findings, {
-							message:
-								'Advance TestClock for time-dependent logic, or await its Deferred, Latch, Queue or Stream milestone.',
-							node
-						})
-					}
-				}
-				const all = MutableList.toArray(findings)
+				const all = Array.appendAll(
+					MutableList.toArray(findings),
+					Boolean.match(
+						containsNode({
+							context,
+							matches: node => isTestClockCall(context, node, 'adjust') || isTestClockCall(context, node, 'setTime'),
+							node: program,
+							throughFunctions: true
+						}),
+						{
+							onFalse: () =>
+								Array.map(MutableList.toArray(waits), node => ({
+									message:
+										'Advance TestClock for time-dependent logic, or await its Deferred, Latch, Queue or Stream milestone.',
+									node
+								})),
+							onTrue: Array.empty
+						}
+					)
+				)
 				for (const finding of all) {
 					if (!Array.some(all, other => other.node !== finding.node && inside(finding.node, other.node))) {
 						context.report(finding)
@@ -291,5 +294,23 @@ export const testSynchronization = defineRule({
 			WhileStatement: loop
 		}
 	},
-	meta: {type: 'problem'}
+	meta: {
+		docs: {
+			examples: {
+				accepted: [
+					{
+						'sample.test.ts': `import {assert, it} from '@effect/vitest'
+import {Effect, Fiber, pipe} from 'effect'
+import {TestClock} from 'effect/testing'
+it.effect('expires after the lease duration', Effect.fnUntraced(function* () {
+const lease = yield* pipe(Effect.succeed('expired'), Effect.delay('1 second'), Effect.forkChild)
+yield* TestClock.adjust('1 second')
+assert.strictEqual(yield* Fiber.join(lease), 'expired')
+}))`
+					}
+				]
+			}
+		},
+		type: 'problem'
+	}
 })

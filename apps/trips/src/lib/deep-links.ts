@@ -28,7 +28,7 @@ function bookingIn(url?: string | null) {
 function tapped(response: NotificationResponse | null) {
 	return Option.map(
 		Schema.decodeUnknownOption(Schema.Struct({bookingId: BookingId}))(response?.notification.request.content.data),
-		data => data.bookingId
+		payload => payload.bookingId
 	)
 }
 

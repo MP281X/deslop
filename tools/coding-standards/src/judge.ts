@@ -4,6 +4,7 @@ import {
 	Console,
 	Effect,
 	FileSystem,
+	Filter,
 	HashSet,
 	Layer,
 	Number,
@@ -170,13 +171,17 @@ export const judge = Effect.fnUntraced(function* <E, R>(
 	const changed = yield* change(options.base)
 	const unitAsked = Effect.fnUntraced(function* (file: string, unit: Unit) {
 		const read = features(unit.text, unit.imports)
-		const kind = Array.filter(questions, named => Array.contains(ASKED[unit.kind], named.kind))
+		const [applicable, skipped] = pipe(
+			questions,
+			Array.filter(named => Array.contains(ASKED[unit.kind], named.kind)),
+			Array.partition(Filter.fromPredicate(named => named.gate(read)))
+		)
 		const state = {code: unit.text, file, imports: unit.imports}
 		return {
 			ignores: unit.ignores,
 			key: yield* stateKey(state),
-			questions: Array.filter(kind, named => named.gate(read)),
-			skipped: Array.filter(kind, named => !named.gate(read)),
+			questions: applicable,
+			skipped,
 			state,
 			where: `${file}:${unit.line}-${unit.end}`
 		}

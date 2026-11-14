@@ -5,54 +5,36 @@ import type {OxlintConfig} from 'vite-plus/lint'
 import {definePlugin} from 'vite-plus/lint/plugins'
 import type {Plugin} from 'vite-plus/lint/plugins'
 
+import {choicesAreSchemas} from '#lint/choices-are-schemas.ts'
 import {effectCallForm} from '#lint/effect-call-form.ts'
 import {explicitEffectConcurrency} from '#lint/explicit-effect-concurrency.ts'
-import {iconWeight} from '#lint/icon-weight.ts'
-import {moduleConstant} from '#lint/module-constant.ts'
+import {libraryOperation} from '#lint/library-operation.ts'
+import {nameByKind} from '#lint/name-by-kind.ts'
 import {noAccumulatingCopy} from '#lint/no-accumulating-copy.ts'
+import {noBareControl} from '#lint/no-bare-control.ts'
 import {noBarrelModule} from '#lint/no-barrel-module.ts'
-import {noClickableBadge} from '#lint/no-clickable-badge.ts'
+import {noCollectingLoop} from '#lint/no-collecting-loop.ts'
 import {noCompilerOptOut} from '#lint/no-compiler-opt-out.ts'
 import {noComponentAtomAllocation} from '#lint/no-component-atom-allocation.ts'
 import {noDestructuredParameter} from '#lint/no-destructured-parameter.ts'
-import {noDiscardedFailure} from '#lint/no-discarded-failure.ts'
-import {noDoubleNullishCheck} from '#lint/no-double-nullish-check.ts'
-import {noEffectGenCallback} from '#lint/no-effect-gen-callback.ts'
-import {noEffectPropertyArrow} from '#lint/no-effect-property-arrow.ts'
-import {noEmptyRecovery} from '#lint/no-empty-recovery.ts'
-import {noErrorMessageControlFlow} from '#lint/no-error-message-control-flow.ts'
 import {noFakeRefState} from '#lint/no-fake-ref-state.ts'
-import {noFalliblePromise} from '#lint/no-fallible-promise.ts'
 import {noFloatingDerivedType} from '#lint/no-floating-derived-type.ts'
-import {noGradient} from '#lint/no-gradient.ts'
-import {noHandWrittenHelper} from '#lint/no-hand-written-helper.ts'
-import {noIntermediateCollection} from '#lint/no-intermediate-collection.ts'
-import {noLoopCollector} from '#lint/no-loop-collector.ts'
-import {noMisleadingBooleanName} from '#lint/no-misleading-boolean-name.ts'
+import {noHandlerOnLabel} from '#lint/no-handler-on-label.ts'
 import {noMultilineComment} from '#lint/no-multiline-comment.ts'
-import {noNativeControl} from '#lint/no-native-control.ts'
-import {noNativeEmptinessCheck} from '#lint/no-native-emptiness-check.ts'
 import {noNativeMethodCall} from '#lint/no-native-method-call.ts'
-import {noOptionValueAccess} from '#lint/no-option-value-access.ts'
+import {noPassThroughName} from '#lint/no-pass-through-name.ts'
 import {noPropertyAlias} from '#lint/no-property-alias.ts'
-import {noRedundantStateType} from '#lint/no-redundant-state-type.ts'
-import {noRedundantUseRefNullType} from '#lint/no-redundant-use-ref-null-type.ts'
-import {noRedundantVariableAnnotation} from '#lint/no-redundant-variable-annotation.ts'
+import {noRedundantAnnotation} from '#lint/no-redundant-annotation.ts'
 import {noReinventedSchema} from '#lint/no-reinvented-schema.ts'
 import {noRenamedImport} from '#lint/no-renamed-import.ts'
 import {noRepeatedGuard} from '#lint/no-repeated-guard.ts'
 import {noRepeatedSearch} from '#lint/no-repeated-search.ts'
-import {noReturnType} from '#lint/no-return-type.ts'
-import {noSingleUseValue} from '#lint/no-single-use-value.ts'
-import {noStoredJsx} from '#lint/no-stored-jsx.ts'
 import {noStoredSchemaOperation} from '#lint/no-stored-schema-operation.ts'
-import {noTrivialIndirection} from '#lint/no-trivial-indirection.ts'
-import {noTypeFromValue} from '#lint/no-type-from-value.ts'
 import {noUnexplainedDisable} from '#lint/no-unexplained-disable.ts'
 import {noUnvalidatedJsonDecode} from '#lint/no-unvalidated-json-decode.ts'
 import {noWallClock} from '#lint/no-wall-clock.ts'
-import {preferPredicate} from '#lint/prefer-predicate.ts'
-import {preserveErrorCause} from '#lint/preserve-error-cause.ts'
+import {primitiveClasses} from '#lint/primitive-classes.ts'
+import {recoverNamedFailures} from '#lint/recover-named-failures.ts'
 import {schemaTypePair} from '#lint/schema-type-pair.ts'
 import {serviceMethodSpan} from '#lint/service-method-span.ts'
 import {serviceSchemaFile} from '#lint/service-schema-file.ts'
@@ -101,56 +83,37 @@ const SET_MESSAGE =
 	'Use HashSet, or MutableHashSet for local mutation; for identity keys, wrap objects the code owns in Equal.byReferenceUnsafe, which marks them reference-compared globally.'
 
 // Checks of Deslop's own choices, which only Deslop's conventions can serve.
-const DESLOP_RULES = {'icon-weight': iconWeight}
 
 const RULES = {
+	'choices-are-schemas': choicesAreSchemas,
 	'effect-call-form': effectCallForm,
 	'explicit-effect-concurrency': explicitEffectConcurrency,
-	'module-constant': moduleConstant,
+	'library-operation': libraryOperation,
+	'name-by-kind': nameByKind,
 	'no-accumulating-copy': noAccumulatingCopy,
+	'no-bare-control': noBareControl,
 	'no-barrel-module': noBarrelModule,
-	'no-clickable-badge': noClickableBadge,
+	'no-collecting-loop': noCollectingLoop,
 	'no-compiler-opt-out': noCompilerOptOut,
 	'no-component-atom-allocation': noComponentAtomAllocation,
 	'no-destructured-parameter': noDestructuredParameter,
-	'no-discarded-failure': noDiscardedFailure,
-	'no-double-nullish-check': noDoubleNullishCheck,
-	'no-effect-gen-callback': noEffectGenCallback,
-	'no-effect-property-arrow': noEffectPropertyArrow,
-	'no-empty-recovery': noEmptyRecovery,
-	'no-error-message-control-flow': noErrorMessageControlFlow,
 	'no-fake-ref-state': noFakeRefState,
-	'no-fallible-promise': noFalliblePromise,
 	'no-floating-derived-type': noFloatingDerivedType,
-	'no-gradient': noGradient,
-	'no-hand-written-helper': noHandWrittenHelper,
-	'no-intermediate-collection': noIntermediateCollection,
-	'no-loop-collector': noLoopCollector,
-	'no-misleading-boolean-name': noMisleadingBooleanName,
+	'no-handler-on-label': noHandlerOnLabel,
 	'no-multiline-comment': noMultilineComment,
-	'no-native-control': noNativeControl,
-	'no-native-emptiness-check': noNativeEmptinessCheck,
 	'no-native-method-call': noNativeMethodCall,
-	'no-option-value-access': noOptionValueAccess,
+	'no-pass-through-name': noPassThroughName,
 	'no-property-alias': noPropertyAlias,
-	'no-redundant-state-type': noRedundantStateType,
-	'no-redundant-use-ref-null-type': noRedundantUseRefNullType,
-	'no-redundant-variable-annotation': noRedundantVariableAnnotation,
+	'no-redundant-annotation': noRedundantAnnotation,
 	'no-reinvented-schema': noReinventedSchema,
 	'no-renamed-import': noRenamedImport,
 	'no-repeated-guard': noRepeatedGuard,
 	'no-repeated-search': noRepeatedSearch,
-	'no-return-type': noReturnType,
-	'no-single-use-value': noSingleUseValue,
-	'no-stored-jsx': noStoredJsx,
 	'no-stored-schema-operation': noStoredSchemaOperation,
-	'no-trivial-indirection': noTrivialIndirection,
-	'no-type-from-value': noTypeFromValue,
 	'no-unexplained-disable': noUnexplainedDisable,
 	'no-unvalidated-json-decode': noUnvalidatedJsonDecode,
 	'no-wall-clock': noWallClock,
-	'prefer-predicate': preferPredicate,
-	'preserve-error-cause': preserveErrorCause,
+	'recover-named-failures': recoverNamedFailures,
 	'schema-type-pair': schemaTypePair,
 	'service-method-span': serviceMethodSpan,
 	'service-schema-file': serviceSchemaFile,
@@ -187,7 +150,9 @@ export const restrictedImports: {
 	]
 }
 
-export const lint: OxlintConfig = {
+export const lint: OxlintConfig & {
+	rules: {'eslint-js/no-restricted-syntax': ['error', ...{message: string; selector: string}[]]}
+} = {
 	categories: {
 		correctness: 'off',
 		nursery: 'off',
@@ -214,15 +179,14 @@ export const lint: OxlintConfig = {
 		{
 			files: ['**/components/ui/**', '**/packages/ui/**'],
 			rules: {
+				'@deslop/coding-standards/no-bare-control': 'off',
 				'@deslop/coding-standards/no-destructured-parameter': 'off',
-				'@deslop/coding-standards/no-native-control': 'off',
 				'@deslop/coding-standards/no-renamed-import': 'off',
 				'jsx-a11y/click-events-have-key-events': 'off',
 				'jsx-a11y/label-has-associated-control': 'off'
 			}
 		},
 		{files: ['**/*.ts'], rules: {'react/rules-of-hooks': 'off'}},
-		{files: ['**/*.test.ts'], rules: {'@deslop/coding-standards/no-discarded-failure': 'off'}},
 		{
 			files: ['**/*.tsx'],
 			rules: {
@@ -236,52 +200,15 @@ export const lint: OxlintConfig = {
 	plugins: ['effecttsgo', 'eslint', 'typescript', 'oxc', 'import', 'jsx-a11y', 'node', 'react', 'unicorn', 'vitest'],
 	rules: {
 		...Record.mapEntries(RULES, (_, name) => [`@deslop/coding-standards/${name}`, 'error' as const]),
-		...Record.mapEntries(DESLOP_RULES, (_, name) => [`@deslop/coding-standards/${name}`, 'off' as const]),
 
 		'eslint-js/no-restricted-syntax': [
 			'error',
-			{
-				message: 'Name an error class <Domain>Error.',
-				selector:
-					'ClassDeclaration[superClass.callee.callee.object.name="Schema"][superClass.callee.callee.property.name="TaggedError"]:not([id.name=/Error$/])'
-			},
-			{
-				message: 'Name a span Service.method.',
-				selector:
-					'CallExpression[callee.object.name="Effect"][callee.property.name=/^(withSpan|fn)$/] > Literal.arguments[value]:not([value=/^[A-Z][A-Za-z]*\\.[a-z][A-Za-z]*$/])'
-			},
-			{
-				message: 'Name an atom with the Atom suffix.',
-				selector:
-					'VariableDeclarator:not([id.name=/(Atom|Runtime|Atoms)$/]) > CallExpression.init:matches([callee.object.name="Atom"][callee.property.name=/^(make|readable|fn|fnSync|runtime|writable|family|keepAlive|withLabel)$/], [callee.property.name=/^(atom|fn|pull)$/][callee.object.property.name="runtime"], [callee.property.name=/^(atom|fn|pull)$/][callee.object.name=/Runtime$/], [callee.property.name=/^(atom|fn|pull)$/][callee.object.callee.object.name="Atom"][callee.object.callee.property.name="runtime"])'
-			},
-			{
-				message: 'Name a schema in PascalCase.',
-				selector:
-					'VariableDeclarator[id.name=/^[a-z]/] > :matches(CallExpression, MemberExpression).init[callee.object.name="Schema"][callee.property.name=/^[A-Z]/], VariableDeclarator[id.name=/^[a-z]/] > MemberExpression.init[object.name="Schema"][property.name=/^[A-Z]/]'
-			},
-			{
-				message: 'Name an error mapping combinator as<Domain>Error.',
-				selector:
-					'VariableDeclarator:not([id.name=/^as[A-Z]\\w*Error$/]) > CallExpression[callee.object.name="Effect"][callee.property.name="mapError"][arguments.length=1]'
-			},
 			{message: 'Use const and Effect collection combinators.', selector: 'VariableDeclaration[kind="let"]'},
 			{message: 'Use Match.', selector: 'SwitchStatement'},
-			{message: 'Decode with Schema or use Predicate.hasProperty.', selector: 'BinaryExpression[operator="in"]'},
 			{
 				// A module augmentation is the one place an interface belongs: TypeScript merges declarations only into interfaces.
 				message: 'Declare a type, not an interface.',
 				selector: 'TSInterfaceDeclaration:not(TSModuleDeclaration TSInterfaceDeclaration)'
-			},
-			{
-				message: 'Name tools in snake_case.',
-				selector:
-					'CallExpression[callee.object.name="Tool"][callee.property.name="make"] > Literal.arguments:first-child:not([value=/^[a-z][a-z0-9]*(_[a-z0-9]+)*$/])'
-			},
-			{
-				message: "Name an RPC '<service folder>.<verb>', as in 'metrics.history'.",
-				selector:
-					'CallExpression[callee.object.name="Rpc"][callee.property.name="make"] > Literal.arguments:first-child:not([value=/^[a-z]+(?:-[a-z]+)*\\.[a-z][A-Za-z]*$/])'
 			}
 		],
 
@@ -305,7 +232,6 @@ export const lint: OxlintConfig = {
 		'effecttsgo/schema-class-object-literal': 'error',
 		'effecttsgo/schema-literal-non-finite': 'error',
 
-		'effecttsgo/catch-unfailable-effect': 'error',
 		'effecttsgo/effect-fn-iife': 'error',
 		'effecttsgo/effect-gen-uses-adapter': 'error',
 		'effecttsgo/effect-in-failure': 'error',
@@ -344,14 +270,8 @@ export const lint: OxlintConfig = {
 
 		'effecttsgo/acquire-release-disposable': 'error',
 		'effecttsgo/all-of-map-to-for-each': 'error',
-		'effecttsgo/catch-all-tag-dispatch-to-catch-tag': 'error',
-		'effecttsgo/catch-all-to-map-error': 'error',
-		'effecttsgo/catch-chain-to-first-success-of': 'error',
-		'effecttsgo/catch-conditional-refail-to-catch-if': 'error',
 		'effecttsgo/catch-if-tag-to-catch-tag': 'error',
-		'effecttsgo/catch-refail-to-tap-error': 'error',
 		'effecttsgo/catch-tag-to-catch-reason': 'error',
-		'effecttsgo/catch-to-or-else-succeed': 'error',
 		'effecttsgo/deterministic-keys': 'error',
 		'effecttsgo/effect-do-notation': 'error',
 		'effecttsgo/effect-fn-opportunity': 'error',
@@ -387,7 +307,6 @@ export const lint: OxlintConfig = {
 		'effecttsgo/provide-merge-all-to-array': 'error',
 		'effecttsgo/race-first-with-sleep-to-timeout': 'error',
 		'effecttsgo/redundant-map-error': 'error',
-		'effecttsgo/redundant-or-die': 'error',
 		'effecttsgo/redundant-schema-tag-identifier': 'error',
 		'effecttsgo/result-match-to-from-result': 'error',
 		'effecttsgo/run-of-exit-to-run-exit': 'error',
@@ -397,7 +316,6 @@ export const lint: OxlintConfig = {
 		'effecttsgo/suspend-fail-to-fail-sync': 'error',
 		'effecttsgo/sync-to-succeed': 'error',
 		'effecttsgo/timeout-catch-tag-to-timeout-or-else': 'error',
-		'effecttsgo/type-union-to-schema-union': 'error',
 		'effecttsgo/unnecessary-effect-gen': 'error',
 		'effecttsgo/unnecessary-fail-yieldable-error': 'error',
 		'effecttsgo/unnecessary-pipe': 'error',
@@ -436,7 +354,7 @@ export const lint: OxlintConfig = {
 		'eslint/no-else-return': ['error', {allowElseIf: false}],
 		'eslint/no-empty': 'error',
 		'eslint/no-empty-character-class': 'error',
-		'eslint/no-empty-function': ['error', {allow: ['arrowFunctions']}],
+		'eslint/no-empty-function': 'error',
 		'eslint/no-empty-pattern': 'error',
 		'eslint/no-empty-static-block': 'error',
 		'eslint/no-eval': 'error',
@@ -466,10 +384,6 @@ export const lint: OxlintConfig = {
 		'eslint/no-plusplus': 'error',
 		'eslint/no-proto': 'error',
 		'eslint/no-regex-spaces': 'error',
-		'eslint/no-restricted-exports': [
-			'error',
-			{restrictedNamedExportsPattern: '^(?:config|get|layer|list|live|make|run|Error|Failure)$|Live$'}
-		],
 		'eslint/no-restricted-globals': [
 			'error',
 			{
@@ -808,19 +722,7 @@ export const lint: OxlintConfig = {
 		'shadcn/no-arbitrary-values': 'error',
 		'shadcn/no-inline-styles': 'error',
 		'shadcn/no-raw-colors': 'error',
-		'shadcn/no-restyle': [
-			'error',
-			{
-				allow: ['layout'],
-				// The rule's `ui` setting does not reach the JS plugin here, so the primitives' modules are named directly.
-				componentImports: ['^@deslop/components-web/ui(/|$)', '^#components/ui(/|$)'],
-				// Hairline rows: Items touch, with a separator between them and no margin around it.
-				contracts: [
-					{allow: ['layout', 'gap-0'], pattern: '^ItemGroup$'},
-					{allow: ['layout', 'my-0'], pattern: '^ItemSeparator$'}
-				]
-			}
-		],
+		'shadcn/no-restyle': ['error', primitiveClasses],
 		'shadcn/no-unknown-classes': 'error',
 		'shadcn/require-static-classes': 'error',
 
@@ -1011,12 +913,7 @@ export const lint: OxlintConfig = {
 	}
 }
 
-// Deslop's own turns these on; every other codebase using `lint` keeps them off.
-export const deslopRules: OxlintConfig['rules'] = {
-	...Record.mapEntries(DESLOP_RULES, (_, name) => [`@deslop/coding-standards/${name}`, 'error' as const])
-}
-
-const plugin: Plugin = definePlugin({meta: {name: '@deslop/coding-standards'}, rules: {...DESLOP_RULES, ...RULES}})
+const plugin: Plugin = definePlugin({meta: {name: '@deslop/coding-standards'}, rules: RULES})
 
 // oxlint-disable-next-line import/no-default-export -- Vite+ loads a lint plugin from its module's default export.
 export default plugin

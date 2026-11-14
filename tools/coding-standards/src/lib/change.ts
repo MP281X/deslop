@@ -25,8 +25,8 @@ type PullRequest = typeof PullRequest.Type
 const PullRequest = Schema.Struct({baseRefName: Schema.String, number: Schema.Finite})
 
 const run = Effect.fnUntraced(function* (command: string, args: string[], cwd: string) {
-	const handle = yield* ChildProcess.make(command, args, {cwd, stderr: 'ignore', stdout: 'pipe'})
-	const output = yield* Effect.all([Stream.mkString(Stream.decodeText(handle.stdout)), handle.exitCode], {
+	const child = yield* ChildProcess.make(command, args, {cwd, stderr: 'ignore', stdout: 'pipe'})
+	const output = yield* Effect.all([Stream.mkString(Stream.decodeText(child.stdout)), child.exitCode], {
 		concurrency: 'unbounded'
 	})
 	return {exitCode: output[1], stdout: output[0]}

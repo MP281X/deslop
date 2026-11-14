@@ -1,6 +1,6 @@
 import {SqliteClient} from '@effect/sql-sqlite-node'
 
-import {Config, Effect, FileSystem, Layer, Option, Path} from 'effect'
+import {Config, Effect, FileSystem, Function, Layer, Option, Path} from 'effect'
 
 import {Reactivity} from 'effect/reactivity'
 
@@ -12,9 +12,9 @@ const checkoutRoot = Effect.fnUntraced(function* (
 ): Effect.fn.Return<Option.Option<string>, never, FileSystem.FileSystem | Path.Path> {
 	const path = yield* Path.Path
 	if (
-		yield* Effect.orElseSucceed(
-			(yield* FileSystem.FileSystem).exists(path.join(directory, 'pnpm-workspace.yaml')),
-			() => false
+		Option.getOrElse(
+			yield* Effect.option((yield* FileSystem.FileSystem).exists(path.join(directory, 'pnpm-workspace.yaml'))),
+			Function.constFalse
 		)
 	) {
 		return Option.some(directory)

@@ -142,12 +142,12 @@ export class Media extends Context.Service<
 			const locate = yield* ToolPath
 			const run = Effect.fn('Media.command')(function* (command: string, args: string[]) {
 				yield* Effect.annotateCurrentSpan({command, 'command.arguments': args.length})
-				const handle = yield* ChildProcess.make(yield* locate(command), args, {stderr: 'pipe', stdout: 'pipe'})
+				const child = yield* ChildProcess.make(yield* locate(command), args, {stderr: 'pipe', stdout: 'pipe'})
 				return yield* Effect.all(
 					{
-						exitCode: handle.exitCode,
-						stderr: Stream.mkString(Stream.decodeText(handle.stderr)),
-						stdout: Stream.mkUint8Array(handle.stdout)
+						exitCode: child.exitCode,
+						stderr: Stream.mkString(Stream.decodeText(child.stderr)),
+						stdout: Stream.mkUint8Array(child.stdout)
 					},
 					{concurrency: 'unbounded'}
 				)
@@ -463,7 +463,8 @@ export class Media extends Context.Service<
 					const captioned = yield* pipe(
 						fetchCaptions(link, track),
 						Effect.scoped,
-						Effect.orElseSucceed(() => ({blocked: false, transcript: Option.none<string>()}))
+						Effect.option,
+						Effect.map(Option.getOrElse(() => ({blocked: false, transcript: Option.none<string>()})))
 					)
 					if (Option.isSome(captioned.transcript)) return captioned.transcript
 					if (captioned.blocked) break
@@ -629,7 +630,12 @@ export class Media extends Context.Service<
 							return {media, url}
 						})
 						const found = yield* Effect.catch(inspect(link), error => {
-							if (fallback !== undefined && fallback !== link) return inspect(fallback)
+							if (fallback !== undefined && fallback !== link) {
+								return Effect.andThen(
+									Effect.logWarning('The primary media link could not be inspected', error),
+									inspect(fallback)
+								)
+							}
 							return Effect.fail(error)
 						})
 						return {
