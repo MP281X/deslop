@@ -1,4 +1,4 @@
-import {Array, Boolean, DateTime, Effect, HashSet, Option, Order, Stream, String, pipe} from 'effect'
+import {Array, Boolean, DateTime, Effect, Function, HashSet, Option, Order, Stream, String, pipe} from 'effect'
 
 import {Atom} from 'effect/reactivity'
 import {randomUUID} from 'expo-crypto'
@@ -113,7 +113,7 @@ export function capture(text: string) {
 const draftFile = new File(Paths.document, 'draft.txt')
 
 export const draftAtom = Atom.writable(
-	() => Boolean.match(draftFile.exists, {onFalse: () => '', onTrue: () => draftFile.textSync()}),
+	() => Boolean.match(draftFile.exists, {onFalse: Function.constant(''), onTrue: () => draftFile.textSync()}),
 	(context, text: string) => {
 		writeAtomically(draftFile, text)
 		context.setSelf(text)

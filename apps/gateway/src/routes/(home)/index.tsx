@@ -25,7 +25,16 @@ import {Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle} f
 import {Skeleton} from '@deslop/components-web/ui/skeleton'
 import {countOf} from '@deslop/runtime/shared/format'
 
-import {addAtom, aiKeyAtom, aiUsageAtom, connectAtom, mcpUsageAtom, serversAtom, setKeyAtom} from '#lib/gateway.ts'
+import {
+	addAtom,
+	addEvents,
+	aiKeyAtom,
+	aiUsageAtom,
+	connectAtom,
+	mcpUsageAtom,
+	serversAtom,
+	setKeyAtom
+} from '#lib/gateway.ts'
 import {Search} from '#lib/search.ts'
 import {AddKeyDialog, ProviderMark} from '#routes/(home)/-keys.tsx'
 import {aiCost, aiSeries, serverSeries} from '#routes/(home)/-usage.ts'
@@ -57,10 +66,13 @@ const byUrgency = Order.mapInput(Order.Number, urgency)
 
 // A 64×14 line of the period's figures in the row's own hue; zeros rest on the baseline.
 function Sparkline(props: {color: string; values: readonly number[]}) {
-	const high = Array.match(props.values, {onEmpty: () => 0, onNonEmpty: values => Array.max(values, Order.Number)})
+	const high = Array.match(props.values, {
+		onEmpty: Function.constant(0),
+		onNonEmpty: values => Array.max(values, Order.Number)
+	})
 	const points = Array.map(props.values, (value, index) => {
 		const x = (index / Number.max(1, props.values.length - 1)) * 64
-		const y = Boolean.match(high === 0, {onFalse: () => 13 - (value / high) * 12, onTrue: () => 13})
+		const y = Boolean.match(high === 0, {onFalse: () => 13 - (value / high) * 12, onTrue: Function.constant(13)})
 		return `${x.toFixed(1)} ${y.toFixed(1)}`
 	})
 	return (
@@ -140,10 +152,13 @@ function ServerRow(props: {period: UsageRange; report: readonly McpUsageServer[]
 	const failed = props.server.status === 'Expired' || Option.isSome(props.server.error)
 	// A fixed name per failure: the upstream's own text can carry a response body or a bearer token.
 	const failure = Boolean.match(props.server.status === 'Expired', {
-		onFalse: () => 'Server unavailable',
-		onTrue: () => 'Authorization expired'
+		onFalse: Function.constant('Server unavailable'),
+		onTrue: Function.constant('Authorization expired')
 	})
-	const action = Boolean.match(connected, {onFalse: () => 'Connect' as const, onTrue: () => 'Reconnect' as const})
+	const action = Boolean.match(connected, {
+		onFalse: Function.constant('Connect' as const),
+		onTrue: Function.constant('Reconnect' as const)
+	})
 	const series = serverSeries(props.report, props.server.id, props.period)
 	return (
 		<div role="listitem">
@@ -314,7 +329,7 @@ function List(props: {onOpen: () => void; period: Period}) {
 	return (
 		<Card size="list">
 			<div role="list" aria-label="MCP servers and AI keys">
-				<CatchBoundary getResetKey={() => 'servers'} errorComponent={ReadFailure}>
+				<CatchBoundary getResetKey={Function.constant('servers')} errorComponent={ReadFailure}>
 					<Suspense
 						fallback={
 							<RowsSkeleton label="MCP servers" rows={3}>
@@ -325,7 +340,7 @@ function List(props: {onOpen: () => void; period: Period}) {
 						<ServerRows period={props.period} />
 					</Suspense>
 				</CatchBoundary>
-				<CatchBoundary getResetKey={() => 'keys'} errorComponent={ReadFailure}>
+				<CatchBoundary getResetKey={Function.constant('keys')} errorComponent={ReadFailure}>
 					<Suspense
 						fallback={
 							<RowsSkeleton label="AI keys" rows={4}>
@@ -353,7 +368,7 @@ function AddField(props: {onKey: (secret: string, url: string) => void}) {
 			pipe(
 				adding,
 				Option.map(state => state.url),
-				Option.getOrElse(() => '')
+				Option.getOrElse(Function.constant(''))
 			)
 		)
 	)
@@ -364,25 +379,26 @@ function AddField(props: {onKey: (secret: string, url: string) => void}) {
 		if (value === '' || busy) return
 		if (Schema.is(ConnectionUrl)(value)) {
 			props.onKey('', value)
-			send({_tag: 'Typed', url: ''})
+			send(addEvents.Typed({url: ''}))
 			return
 		}
 		if (Schema.is(ServiceAccountKey)(value)) {
 			props.onKey(value, '')
-			send({_tag: 'Typed', url: ''})
+			send(addEvents.Typed({url: ''}))
 			return
 		}
 		if (
 			Option.isNone(Option.liftThrowable(() => new URL(value))()) ||
 			String.includes('opencode.ai/inference/')(value)
 		) {
-			send({
-				_tag: 'Invalid',
-				message: 'Enter a full HTTPS MCP or Console API URL, or an OpenCode service account key starting with oc_sk_.'
-			})
+			send(
+				addEvents.Invalid({
+					message: 'Enter a full HTTPS MCP or Console API URL, or an OpenCode service account key starting with oc_sk_.'
+				})
+			)
 			return
 		}
-		send({_tag: 'Submit'})
+		send(addEvents.Submit())
 	}
 	return (
 		<form
@@ -405,7 +421,7 @@ function AddField(props: {onKey: (secret: string, url: string) => void}) {
 						spellCheck={false}
 						value={typed}
 						disabled={busy}
-						onChange={event => send({_tag: 'Typed', url: event.target.value})}
+						onChange={event => send(addEvents.Typed({url: event.target.value}))}
 					/>
 				</InputGroup>
 				{Option.match(error, {
@@ -429,7 +445,7 @@ function GatewayProblem(props: {period: Period}) {
 function HomeRoute() {
 	const search: Search = route.useSearch()
 	const navigate = route.useNavigate()
-	const period = Option.getOrElse(search.period, () => '7d' as const)
+	const period = Option.getOrElse(search.period, Function.constant('7d' as const))
 	// Open, which opening it is (so each starts with the pasted secret), and the provider it adds.
 	const [keyDialog, setKeyDialog] = useState<{open: boolean; opened: number; secret: string; url: string}>({
 		open: false,

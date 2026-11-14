@@ -48,7 +48,7 @@ export const TextFromEmpty = pipe(
 	Schema.String,
 	Schema.decodeTo(Schema.Option(Schema.String), {
 		decode: SchemaGetter.transform(value => Option.liftPredicate(value, String.isNonEmpty)),
-		encode: SchemaGetter.transform(value => Option.getOrElse(value, () => ''))
+		encode: SchemaGetter.transform(value => Option.getOrElse(value, Function.constant('')))
 	})
 )
 

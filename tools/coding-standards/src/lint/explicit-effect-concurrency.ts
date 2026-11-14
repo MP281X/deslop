@@ -1,4 +1,4 @@
-import {Array, Boolean, Option} from 'effect'
+import {Array, Boolean, Function, Option} from 'effect'
 
 import {defineRule} from 'vite-plus/lint/plugins'
 import type {Context, ESTree} from 'vite-plus/lint/plugins'
@@ -61,7 +61,7 @@ export const explicitEffectConcurrency = defineRule({
 				Option.contains(name, 'all') ||
 					isFunction(context, node.arguments[0]) ||
 					node.arguments[1]?.type === 'ObjectExpression',
-				{onFalse: () => 2, onTrue: () => 1}
+				{onFalse: Function.constant(2), onTrue: Function.constant(1)}
 			)
 			if (statesConcurrency(node.arguments[index])) return
 			context.report({

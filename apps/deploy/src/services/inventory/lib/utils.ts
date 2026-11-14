@@ -73,7 +73,7 @@ export function processOwner(cgroup: string) {
 					`service:${pipe(
 						userService,
 						Option.exists(first => index > first),
-						Boolean.match({onFalse: () => 'system', onTrue: () => 'user'})
+						Boolean.match({onFalse: Function.constant('system'), onTrue: Function.constant('user')})
 					)}:${segments[index]}`
 				)
 			)
@@ -140,10 +140,10 @@ function ports(items: readonly InventoryItem[]) {
 export function itemOwner(item: InventoryItem) {
 	if (item.kind === 'container') {
 		return AppId.make(
-			`container:${String.slice(0, 12)(Option.getOrElse(Array.last(String.split(item.id, ':docker:')), () => ''))}`
+			`container:${String.slice(0, 12)(Option.getOrElse(Array.last(String.split(item.id, ':docker:')), Function.constant('')))}`
 		)
 	}
-	return AppId.make(`service:${Option.getOrElse(item.scope, () => 'system')}:${item.name}`)
+	return AppId.make(`service:${Option.getOrElse(item.scope, Function.constant('system'))}:${item.name}`)
 }
 
 function fullName(item: InventoryItem) {
@@ -201,7 +201,7 @@ export function workloads(items: readonly InventoryItem[]) {
 		Array.groupBy(listener => listener.worker),
 		Record.map(worker =>
 			Array.groupBy(worker, listener =>
-				Option.match(listener.unit, {onNone: () => 'none', onSome: unit => `unit:${unit}`})
+				Option.match(listener.unit, {onNone: Function.constant('none'), onSome: unit => `unit:${unit}`})
 			)
 		)
 	)
@@ -285,7 +285,7 @@ export function workloads(items: readonly InventoryItem[]) {
 	const exposuresBySocket = pipe(
 		exposures,
 		Array.map((item, index) => ({index, item})),
-		Array.groupBy(entry => `${entry.item.worker}:${Option.getOrElse(entry.item.port, () => 0)}`)
+		Array.groupBy(entry => `${entry.item.worker}:${Option.getOrElse(entry.item.port, Function.constant(0))}`)
 	)
 	const linked = Array.map(rows, row => {
 		const reachable = Array.dedupe(
@@ -501,15 +501,12 @@ function fold(node: ProcessNode): ProcessNode {
 // The app's processes as a tree: a child with its parent's label folds into it, and each process appears once.
 export function processTree(rows: readonly Process[]) {
 	const pids = MutableHashSet.fromIterable(Array.map(rows, row => row.pid))
-	const children = Array.reduce(rows, HashMap.empty<ProcessId, readonly Process[]>(), (all, row) =>
-		HashMap.set(all, row.parent, [...pipe(all, HashMap.get(row.parent), Option.getOrElse(Array.empty<Process>)), row])
-	)
+	const children = Array.groupBy(rows, row => String.String(row.parent))
 	const visited = MutableHashSet.empty<ProcessId>()
 	function build(row: Process): ProcessNode {
 		MutableHashSet.add(visited, row.pid)
 		const below = pipe(
-			children,
-			HashMap.get(row.pid),
+			Record.get(children, `${row.pid}`),
 			Option.getOrElse(Array.empty<Process>),
 			Array.filter(child => !MutableHashSet.has(visited, child.pid)),
 			Array.map(build)
@@ -621,7 +618,7 @@ function exposureOf(item: Extract<InventoryItem, {kind: 'exposure'}>) {
 		access: pipe(
 			item.publicAccess,
 			Option.contains(true),
-			Boolean.match({onFalse: () => 'tailnet' as const, onTrue: () => 'public' as const})
+			Boolean.match({onFalse: Function.constant('tailnet' as const), onTrue: Function.constant('public' as const)})
 		),
 		id: item.id,
 		name: ExposureName.make(item.name),
@@ -722,28 +719,24 @@ export function listApps(snapshot: Snapshot, input: InventoryQuery) {
 // Each app's history name, keyed the way its samples are: `service:<scope>:<unit>` or `container:<short id>`, named as the page's rows name it.
 export function ownerNames(snapshot: Snapshot) {
 	const byWorker = Array.groupBy(snapshot.items, item => item.worker)
-	return Record.fromEntries(
-		Array.map(
-			workerNames(snapshot),
-			worker =>
-				[
-					worker,
-					Record.fromEntries(
-						pipe(
-							byWorker[worker] ?? Array.empty<InventoryItem>(),
-							Array.filter(item => item.kind === 'service' || item.kind === 'container'),
-							Array.flatMap((item: InventoryItem) => [[itemOwner(item), workloadName(item)] as const])
-						)
-					)
-				] as const
-		)
+	return Record.fromIterableWith(
+		workerNames(snapshot),
+		worker =>
+			[
+				worker,
+				pipe(
+					byWorker[worker] ?? Array.empty<InventoryItem>(),
+					Array.filter(item => item.kind === 'service' || item.kind === 'container'),
+					Record.fromIterableWith((item: InventoryItem) => [itemOwner(item), workloadName(item)] as const)
+				)
+			] as const
 	)
 }
 
 export function requestOf(item: InventoryItem) {
 	return {
 		name: UnitId.make(item.name),
-		scope: Option.getOrElse(item.scope, () => 'system' as const),
+		scope: Option.getOrElse(item.scope, Function.constant('system' as const)),
 		worker: item.worker
 	} satisfies RunRequest
 }

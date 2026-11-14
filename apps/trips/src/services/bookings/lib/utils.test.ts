@@ -1,23 +1,30 @@
 import {assert, it} from '@effect/vitest'
 
-import {Array, DateTime, Duration, Option, Schema} from 'effect'
+import {Array, DateTime, Duration, Option, Schema, Struct} from 'effect'
 
 import {activeWindow, instantOf, upsert} from '#services/bookings/lib/utils.ts'
-import {BookingId, Flight, FlightTracking} from '#services/bookings/schema.ts'
+import {BookedPlace, Booking, BookingId, Flight, FlightTracking} from '#services/bookings/schema.ts'
 
 const DEPARTS = DateTime.makeUnsafe('2026-10-28T15:40:00Z')
-const FLIGHT = Schema.decodeSync(Flight.json)({
-	_tag: 'flight',
-	airline: 'British Airways',
-	airlineCode: 'BA',
-	arrives: DateTime.toEpochMillis(DateTime.addDuration(DEPARTS, Duration.hours(2.5))),
-	departs: DateTime.toEpochMillis(DEPARTS),
-	from: {code: 'FCO', name: 'Fiumicino', timeZone: 'Europe/Rome'},
-	id: '7f0c8f8e-0d0a-4a5e-9d8f-5b2a1c3d4e5f',
-	number: '553',
-	status: 'confirmed',
-	to: {code: 'LHR', name: 'Heathrow', timeZone: 'Europe/London'}
-})
+const FLIGHT = Struct.pick(
+	Flight.make({
+		airline: 'British Airways',
+		airlineCode: 'BA',
+		arrives: DateTime.addDuration(DEPARTS, Duration.hours(2.5)),
+		boardingAt: Option.none(),
+		boardingGroup: Option.none(),
+		confirmation: Option.none(),
+		departs: DEPARTS,
+		from: Schema.decodeSync(BookedPlace)({code: 'FCO', name: 'Fiumicino', timeZone: 'Europe/Rome'}),
+		id: BookingId.make('7f0c8f8e-0d0a-4a5e-9d8f-5b2a1c3d4e5f'),
+		live: Option.none(),
+		number: '553',
+		seat: Option.none(),
+		status: 'confirmed',
+		to: Schema.decodeSync(BookedPlace)({code: 'LHR', name: 'Heathrow', timeZone: 'Europe/London'})
+	}),
+	Struct.keys(Flight.fields)
+)
 
 it('reads local ticket times in the place zone and explicit offsets as given', () => {
 	assert.deepStrictEqual(instantOf('2026-10-28T16:40', 'Europe/Rome'), Option.some(DEPARTS))
@@ -39,8 +46,8 @@ it('merges tickets for the same leg and retains live data only while its schedul
 		Array.map(upsert([tracked], [again]), booking => [
 			booking.id,
 			booking.confirmation,
-			booking._tag === 'flight' && booking.seat,
-			booking._tag === 'flight' && Option.flatMap(booking.live, live => live.departureGate)
+			Booking.isAnyOf(['flight'])(booking) && booking.seat,
+			Booking.isAnyOf(['flight'])(booking) && Option.flatMap(booking.live, live => live.departureGate)
 		]),
 		[[FLIGHT.id, Option.some('ABC123'), Option.some('14A'), Option.some('B12')]]
 	)
@@ -57,7 +64,7 @@ it('merges tickets for the same leg and retains live data only while its schedul
 					})
 				]
 			),
-			booking => booking._tag === 'flight' && booking.live
+			booking => Booking.isAnyOf(['flight'])(booking) && booking.live
 		),
 		[Option.none()]
 	)

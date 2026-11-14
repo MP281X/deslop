@@ -1,4 +1,4 @@
-import {Array, Boolean, Option, String} from 'effect'
+import {Array, Boolean, Function, Option, String} from 'effect'
 
 import {CubeIcon, TerminalWindowIcon} from '@phosphor-icons/react'
 
@@ -46,8 +46,8 @@ export function ApplicationIcon(props: {name: string; process?: string; containe
 			)
 		}
 		const weight = Boolean.match(props.small === true, {
-			onFalse: () => 'light' as const,
-			onTrue: () => 'regular' as const
+			onFalse: Function.constant('light' as const),
+			onTrue: Function.constant('regular' as const)
 		})
 		if (props.container === true) return <CubeIcon className="size-full" weight={weight} />
 		return <TerminalWindowIcon className="size-full" weight={weight} />

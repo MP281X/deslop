@@ -204,7 +204,7 @@ function TrailGrid(input: {trails: Visitors; viewport: {width: number; height: n
 			const stepCount = Number.max(Math.abs(current.col - previous.col), Math.abs(current.row - previous.row))
 
 			const segment = Array.makeBy(stepCount + 1, step => {
-				const progress = Boolean.match(stepCount === 0, {onFalse: () => step / stepCount, onTrue: () => 1})
+				const progress = Boolean.match(stepCount === 0, {onFalse: () => step / stepCount, onTrue: Function.constant(1)})
 				const col = Number.round(previous.col + (current.col - previous.col) * progress, 0)
 				const row = Number.round(previous.row + (current.row - previous.row) * progress, 0)
 
@@ -264,7 +264,7 @@ function labelOverReadingColumn(x: number, viewport: {width: number}, label: str
 
 // Visitors use server positions; the hidden system pointer's replacement follows local CSS variables above them.
 function Cursor(input: {cursor: Visitor; own: boolean; viewport: {width: number; height: number}}) {
-	const label = Boolean.match(input.own, {onFalse: () => input.cursor.name, onTrue: () => 'You'})
+	const label = Boolean.match(input.own, {onFalse: () => input.cursor.name, onTrue: Function.constant('You')})
 	const x = `${input.cursor.x * input.viewport.width}px`
 	const y = `${input.cursor.y * input.viewport.height}px`
 	return (
@@ -272,7 +272,7 @@ function Cursor(input: {cursor: Visitor; own: boolean; viewport: {width: number;
 			aria-hidden
 			className={cn(
 				'pointer-events-none fixed top-0 left-0 transform-(--cursor-transform)',
-				Boolean.match(input.own, {onFalse: () => 'z-5', onTrue: () => 'z-20'})
+				Boolean.match(input.own, {onFalse: Function.constant('z-5'), onTrue: Function.constant('z-20')})
 			)}
 			style={{
 				'--cursor-color': input.cursor.color,
@@ -461,9 +461,12 @@ function ContactSection() {
 								key={item.label}
 								href={item.href}
 								className="hover:text-primary flex h-7 items-center gap-2 text-sm"
-								target={Boolean.match(internal, {onFalse: () => '_blank' as const, onTrue: Function.constUndefined})}
+								target={Boolean.match(internal, {
+									onFalse: Function.constant('_blank' as const),
+									onTrue: Function.constUndefined
+								})}
 								rel={Boolean.match(internal, {
-									onFalse: () => 'noopener noreferrer' as const,
+									onFalse: Function.constant('noopener noreferrer' as const),
 									onTrue: Function.constUndefined
 								})}
 							>
@@ -538,7 +541,10 @@ function VisitorCount(props: {visitors: Visitors}) {
 			/>
 			<span className="text-foreground tabular-nums">{Array.length(props.visitors)}</span>
 			<span className="text-muted-foreground">
-				{Boolean.match(Array.length(props.visitors) === 1, {onFalse: () => 'visitors', onTrue: () => 'visitor'})}
+				{Boolean.match(Array.length(props.visitors) === 1, {
+					onFalse: Function.constant('visitors'),
+					onTrue: Function.constant('visitor')
+				})}
 			</span>
 		</>
 	)
@@ -555,14 +561,14 @@ function PresenceHud(input: {presence: PresenceState; onToggleShortcuts: () => v
 				<span className="flex min-w-0 items-center gap-2">
 					{pipe(
 						Match.value(input.presence),
-						Match.when({_tag: 'Visitors'}, state => <VisitorCount visitors={state.visitors} />),
+						Match.tag('Visitors', state => <VisitorCount visitors={state.visitors} />),
 						Match.orElse(state => (
 							<>
 								<span className="bg-muted-foreground/50 size-1.5 rounded-full" />
 								<span className="text-muted-foreground truncate">
-									{Boolean.match(state._tag === 'Offline', {
-										onFalse: () => 'presence connecting',
-										onTrue: () => 'presence unavailable'
+									{Boolean.match(PresenceState.guards.Offline(state), {
+										onFalse: Function.constant('presence connecting'),
+										onTrue: Function.constant('presence unavailable')
 									})}
 								</span>
 							</>
@@ -627,7 +633,7 @@ function RealtimeLayer(input: {
 			</div>
 
 			<PresenceHud
-				presence={{_tag: 'Visitors', visitors: portfolio.value.visitors}}
+				presence={PresenceState.cases.Visitors.make({visitors: portfolio.value.visitors})}
 				onToggleShortcuts={input.onToggleShortcuts}
 				shortcutsOpen={input.shortcutsOpen}
 			/>
@@ -692,7 +698,10 @@ function PortfolioRoute() {
 				if (event.key === 'Home' || event.key === 'End') {
 					event.preventDefault()
 					event.currentTarget.scrollTo({
-						top: Boolean.match(event.key === 'Home', {onFalse: () => event.currentTarget.scrollHeight, onTrue: () => 0})
+						top: Boolean.match(event.key === 'Home', {
+							onFalse: () => event.currentTarget.scrollHeight,
+							onTrue: Function.constant(0)
+						})
 					})
 					return
 				}
@@ -718,9 +727,13 @@ function PortfolioRoute() {
 			<ContactSection />
 
 			<CatchBoundary
-				getResetKey={() => 'presence'}
+				getResetKey={Function.constant('presence')}
 				errorComponent={() => (
-					<PresenceHud presence={{_tag: 'Offline'}} onToggleShortcuts={toggleShortcuts} shortcutsOpen={showShortcuts} />
+					<PresenceHud
+						presence={PresenceState.cases.Offline.make({})}
+						onToggleShortcuts={toggleShortcuts}
+						shortcutsOpen={showShortcuts}
+					/>
 				)}
 			>
 				<Suspense
@@ -728,7 +741,7 @@ function PortfolioRoute() {
 						<>
 							<OwnCursor viewport={viewport} color={Option.none()} />
 							<PresenceHud
-								presence={{_tag: 'Connecting'}}
+								presence={PresenceState.cases.Connecting.make({})}
 								onToggleShortcuts={toggleShortcuts}
 								shortcutsOpen={showShortcuts}
 							/>

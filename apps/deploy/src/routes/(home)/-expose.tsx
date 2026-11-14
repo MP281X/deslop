@@ -38,7 +38,7 @@ function Expose(props: {items: readonly InventoryItem[]; port: InventoryItem}) {
 			Array.findFirst(item => Option.contains(item.self, true) && item.worker === props.port.worker),
 			Option.flatMap(item => item.hostname)
 		),
-		() => ''
+		Function.constant('')
 	)
 	const pending = AsyncResult.isWaiting(result)
 	return (
@@ -72,16 +72,15 @@ function Expose(props: {items: readonly InventoryItem[]; port: InventoryItem}) {
 			<Tabs
 				value={kind}
 				onValueChange={(value: string) => {
-					if (value === 'public' || value === 'tailnet') setKind(value)
+					if (Schema.is(ExposureKind)(value)) setKind(value)
 				}}
 			>
 				<TabsList className="w-full">
-					<TabsTrigger value="tailnet" disabled={pending}>
-						Tailnet
-					</TabsTrigger>
-					<TabsTrigger value="public" disabled={pending}>
-						Public
-					</TabsTrigger>
+					{Array.map(ExposureKind.literals, value => (
+						<TabsTrigger key={value} value={value} disabled={pending}>
+							{String.capitalize(value)}
+						</TabsTrigger>
+					))}
 				</TabsList>
 				<TabsContent value="tailnet">
 					<Field>
@@ -91,7 +90,7 @@ function Expose(props: {items: readonly InventoryItem[]; port: InventoryItem}) {
 							readOnly
 							value={Boolean.match(tailnetHost === '', {
 								onFalse: () => `https://${tailnetHost}:${Option.getOrUndefined(props.port.port)}`,
-								onTrue: () => ''
+								onTrue: Function.constant('')
 							})}
 						/>
 					</Field>
@@ -119,7 +118,7 @@ function Expose(props: {items: readonly InventoryItem[]; port: InventoryItem}) {
 					type="submit"
 					disabled={pending || (kind === 'tailnet' && tailnetHost === '') || (kind === 'public' && hostname === '')}
 				>
-					{Boolean.match(pending, {onFalse: () => 'Expose', onTrue: () => 'Exposing…'})}
+					{Boolean.match(pending, {onFalse: Function.constant('Expose'), onTrue: Function.constant('Exposing…')})}
 				</Button>
 			</DialogFooter>
 		</form>

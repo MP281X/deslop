@@ -1,6 +1,6 @@
 import {useAtom, useAtomValue} from '@effect/atom-react'
 
-import {Array, Boolean, Effect, Equal, Option, Predicate, Schema, String, Struct, pipe} from 'effect'
+import {Array, Boolean, Effect, Equal, Function, Option, Predicate, Schema, String, Struct, pipe} from 'effect'
 
 import {CaretLeftIcon} from '@phosphor-icons/react'
 import {AsyncResult, Atom} from 'effect/reactivity'
@@ -25,7 +25,10 @@ const AvatarAccount = Schema.Struct(Struct.pick(Account.fields, ['id', 'name']))
 export function AccountAvatar(props: {account: AvatarAccount; small?: boolean}) {
 	return (
 		<Avatar
-			size={Boolean.match(props.small === true, {onFalse: () => 'sm' as const, onTrue: () => 'default' as const})}
+			size={Boolean.match(props.small === true, {
+				onFalse: Function.constant('sm' as const),
+				onTrue: Function.constant('default' as const)
+			})}
 			variant="plain"
 			className={cn(props.small === true && 'size-4')}
 		>
@@ -151,7 +154,7 @@ export function AppBarChoice<A>(props: {
 				props.options,
 				Array.findFirst(option => Equal.equals(option.value, props.value)),
 				Option.map(option => option.label),
-				Option.getOrElse(() => '')
+				Option.getOrElse(Function.constant(''))
 			)}
 			onValueChange={label =>
 				pipe(

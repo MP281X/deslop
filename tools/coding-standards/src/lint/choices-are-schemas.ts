@@ -1,8 +1,9 @@
-import {Array, HashSet, Predicate, String} from 'effect'
+import {Array, HashSet, Option, Predicate, String} from 'effect'
 
 import {defineRule} from 'vite-plus/lint/plugins'
 import type {Context, ESTree} from 'vite-plus/lint/plugins'
 
+import {importedMember, isImportBinding, memberName} from '#lib/ast.ts'
 import {redundantReturnAnnotation} from '#lint/no-redundant-annotation.ts'
 
 const LITERAL_KINDS = [
@@ -98,6 +99,43 @@ function insideChoice(context: Context, node: ESTree.Node): boolean {
 	return false
 }
 
+function tagProperty(property: ESTree.ObjectExpression['properties'][number]) {
+	return (
+		property.type === 'Property' &&
+		((!property.computed && property.key.type === 'Identifier' && property.key.name === '_tag') ||
+			(property.key.type === 'Literal' && property.key.value === '_tag'))
+	)
+}
+
+function schemaCall(context: Context, node: ESTree.Expression): boolean {
+	if (node.type === 'CallExpression') return schemaCall(context, node.callee)
+	if (node.type !== 'MemberExpression' || node.object.type !== 'Identifier') return false
+	if (isImportBinding({context, importedName: 'Schema', node: node.object, source: 'effect'})) {
+		return Option.exists(memberName(node), name =>
+			Array.contains(['Struct', 'Class', 'Error', 'TaggedClass', 'TaggedError', 'TaggedStruct'], name)
+		)
+	}
+	return (
+		isImportBinding({context, importedName: 'Model', node: node.object, source: 'effect/schema'}) &&
+		Option.contains(memberName(node), 'Class')
+	)
+}
+
+// Sse's parser callback is a library-owned Event/Retry protocol, not a schema union.
+function sseCallback(context: Context, node: ESTree.Node): boolean {
+	if (node.parent === null) return false
+	if (node.type === 'ArrowFunctionExpression' || node.type === 'FunctionExpression') {
+		return (
+			node.parent.type === 'CallExpression' &&
+			node.parent.callee.type === 'MemberExpression' &&
+			node.parent.callee.object.type === 'Identifier' &&
+			Option.contains(memberName(node.parent.callee), 'makeParser') &&
+			isImportBinding({context, importedName: 'Sse', node: node.parent.callee.object, source: 'effect/encoding'})
+		)
+	}
+	return sseCallback(context, node.parent)
+}
+
 export const choicesAreSchemas = defineRule({
 	create: context => {
 		function report(node: ESTree.Node) {
@@ -109,6 +147,62 @@ export const choicesAreSchemas = defineRule({
 			})
 		}
 		return {
+			BinaryExpression: node => {
+				if (!Array.contains(['===', '!==', '==', '!='], node.operator)) return
+				if (
+					!Array.some(
+						[node.left, node.right],
+						operand => operand.type === 'MemberExpression' && Option.contains(memberName(operand), '_tag')
+					)
+				) {
+					return
+				}
+				if (sseCallback(context, node)) return
+				context.report({
+					message:
+						'Check tags with the schema guards or isAnyOf; use the owning Effect type predicate for library values.',
+					node
+				})
+			},
+			CallExpression: node => {
+				if (!importedMember({context, importedName: 'Match', node: node.callee, propertyName: 'when'})) return
+				const pattern = node.arguments[0]
+				if (pattern?.type !== 'ObjectExpression') return
+				const tag = Array.findFirst(pattern.properties, tagProperty)
+				if (!Option.isSome(tag)) return
+				context.report({
+					fix: fixer => {
+						if (
+							pattern.properties.length !== 1 ||
+							tag.value.type !== 'Property' ||
+							tag.value.value.type !== 'Literal'
+						) {
+							return undefined
+						}
+						return [
+							fixer.replaceText(node.callee, 'Match.tag'),
+							fixer.replaceText(pattern, context.sourceCode.getText(tag.value.value))
+						]
+					},
+					message: 'Match tags with the schema match method or Match.tag, not a hand-written _tag pattern.',
+					node
+				})
+			},
+			ObjectExpression: node => {
+				if (!Array.some(node.properties, tagProperty)) return
+				if (
+					node.parent.type === 'CallExpression' &&
+					(schemaCall(context, node.parent.callee) ||
+						importedMember({context, importedName: 'Match', node: node.parent.callee, propertyName: 'when'}))
+				) {
+					return
+				}
+				context.report({
+					message:
+						'Build tagged values with the schema case constructor (Union.cases.Tag.make), a tagged class constructor, or the machine event protocol.',
+					node
+				})
+			},
 			TSIndexedAccessType: node => {
 				if (!nestedObject(node) && valueQuery(node.objectType)) report(node)
 			},
@@ -133,7 +227,9 @@ export const Status = Schema.Literals(['draft', 'published'])`
 						'sample.ts': `import {Schema} from 'effect'
 export type Loading = typeof Loading.Type
 export const Loading = Schema.TaggedUnion({Failed: {message: Schema.String}, Ready: {value: Schema.String}})
-export function titleOf(state: Loading) { if (state._tag === 'Ready') return state.value; return state.message }`
+export function titleOf(state: Loading) { if (Loading.guards.Ready(state)) return state.value; return state.message }
+export const created = Loading.cases.Ready.make({value: 'ready'})
+export function known(state: Loading) { return Loading.isAnyOf(['Ready', 'Failed'])(state) }`
 					},
 					{
 						'sample.ts': `import {Schema} from 'effect'
@@ -141,10 +237,25 @@ export type Priority = typeof Priority.Type
 export const Priority = Schema.Literals([5, 10])
 export type Decision = typeof Decision.Type
 export const Decision = Schema.Literals([true, false, 'pending'])`
+					},
+					{
+						'sample.ts': `import {MutableList} from 'effect'
+import {Sse} from 'effect/encoding'
+export const messages = MutableList.make<string>()
+export const parser = Sse.makeParser(event => { if (event._tag === 'Event') MutableList.append(messages, event.data) })`
+					}
+				],
+				fixes: [
+					{
+						'sample.ts': `import {Match, Schema, pipe} from 'effect'
+export type Loading = typeof Loading.Type
+export const Loading = Schema.TaggedUnion({Failed: {message: Schema.String}, Ready: {value: Schema.String}})
+export function titleOf(state: Loading) { return pipe(Match.value(state), Match.when({_tag: 'Ready'}, ready => ready.value), Match.orElse(failed => failed.message)) }`
 					}
 				]
 			}
 		},
+		fixable: 'code',
 		type: 'problem'
 	}
 })

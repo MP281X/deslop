@@ -1,4 +1,4 @@
-import {Array, DateTime, Match, Number, Option, Record, String, pipe} from 'effect'
+import {Array, DateTime, Function, Match, Number, Option, Record, String, pipe} from 'effect'
 
 import {UnitId} from '#services/inventory/schema.ts'
 
@@ -24,10 +24,10 @@ function failureReason(result: string, status: number, ran: boolean) {
 		),
 		Match.when('signal', () => `Killed by ${signal}`),
 		Match.when('core-dump', () => `Crashed with ${signal}`),
-		Match.when('oom-kill', () => 'Killed for running out of memory'),
-		Match.when('timeout', () => 'Timed out'),
-		Match.when('watchdog', () => 'Stopped answering its watchdog'),
-		Match.when('start-limit-hit', () => 'Restarted too often'),
+		Match.when('oom-kill', Function.constant('Killed for running out of memory')),
+		Match.when('timeout', Function.constant('Timed out')),
+		Match.when('watchdog', Function.constant('Stopped answering its watchdog')),
+		Match.when('start-limit-hit', Function.constant('Restarted too often')),
 		Match.orElse(() => `Failed: ${result}`)
 	)
 }
@@ -40,38 +40,34 @@ export function exitFailure(status: number) {
 
 // Why each failed unit stopped and when, by unit, from `systemctl show -p Id,Result,ExecMainCode,ExecMainStatus,StateChangeTimestamp --timestamp=unix`.
 export function unitFailures(text: string) {
-	return Record.fromEntries(
-		pipe(
-			String.trim(text),
-			String.split(/\n\s*\n/u),
-			Array.filter(String.isNonEmpty),
-			Array.map(block => {
-				const fields = Record.fromEntries(
-					pipe(
-						block,
-						String.split('\n'),
-						Array.filter(String.includes('=')),
-						Array.map(line => {
-							const [key, ...value] = String.split(line, '=')
-							return [key, Array.join(value, '=')] as const
-						})
+	return pipe(
+		String.trim(text),
+		String.split(/\n\s*\n/u),
+		Array.filter(String.isNonEmpty),
+		Record.fromIterableWith(block => {
+			const fields = pipe(
+				block,
+				String.split('\n'),
+				Array.filter(String.includes('=')),
+				Record.fromIterableWith(line => {
+					const [key, ...value] = String.split(line, '=')
+					return [key, Array.join(value, '=')] as const
+				})
+			)
+			return [
+				UnitId.make(fields['Id'] ?? ''),
+				{
+					at: Option.map(Number.parse(String.replace(/^@/u, '')(fields['StateChangeTimestamp'] ?? '')), seconds =>
+						DateTime.mapEpochMillis(DateTime.makeUnsafe(0), () => seconds * 1000)
+					),
+					// A unit whose start step failed never ran its main process, which leaves its code 0.
+					reason: failureReason(
+						fields['Result'] ?? '',
+						Option.getOrElse(Number.parse(fields['ExecMainStatus'] ?? ''), Function.constant(0)),
+						fields['ExecMainCode'] !== '0'
 					)
-				)
-				return [
-					UnitId.make(fields['Id'] ?? ''),
-					{
-						at: Option.map(Number.parse(String.replace(/^@/u, '')(fields['StateChangeTimestamp'] ?? '')), seconds =>
-							DateTime.mapEpochMillis(DateTime.makeUnsafe(0), () => seconds * 1000)
-						),
-						// A unit whose start step failed never ran its main process, which leaves its code 0.
-						reason: failureReason(
-							fields['Result'] ?? '',
-							Option.getOrElse(Number.parse(fields['ExecMainStatus'] ?? ''), () => 0),
-							fields['ExecMainCode'] !== '0'
-						)
-					}
-				] as const
-			})
-		)
+				}
+			] as const
+		})
 	)
 }

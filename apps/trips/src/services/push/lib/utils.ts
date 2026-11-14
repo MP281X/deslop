@@ -11,8 +11,10 @@ import {
 	routeOf,
 	titleOf
 } from '#services/bookings/lib/utils.ts'
-import type {Booking, BookingList, Flight, Leg, Train} from '#services/bookings/schema.ts'
-import type {Activity, AlertCategory, Device, SentAlert, ShowAction} from '#services/push/schema.ts'
+import {Booking} from '#services/bookings/schema.ts'
+import type {BookingList, Flight, Leg, Train} from '#services/bookings/schema.ts'
+import {ShowAction} from '#services/push/schema.ts'
+import type {Activity, AlertCategory, Device, SentAlert} from '#services/push/schema.ts'
 
 export type Span = {end: DateTime.Utc; start: DateTime.Utc}
 
@@ -63,11 +65,11 @@ export function showPlan(
 				onNone: () =>
 					Option.match(Array.head(startersByBundle[bundle] ?? []), {
 						onNone: () => Result.failVoid,
-						onSome: target => Result.succeed<ShowAction>({_tag: 'launch', target})
+						onSome: target => Result.succeed<ShowAction>(ShowAction.cases.launch.make({target}))
 					}),
 				onSome: target => {
 					if (Option.isSome(target.endedAt)) return Result.failVoid
-					return Result.succeed<ShowAction>({_tag: 'refresh', target})
+					return Result.succeed<ShowAction>(ShowAction.cases.refresh.make({target}))
 				}
 			})
 	)
@@ -88,7 +90,7 @@ export function expiredActivities(activities: readonly Activity[], all: BookingL
 
 // The notification that comes with an activity the server starts; iOS shows none without one.
 export function startAlert(journey: Flight | Train) {
-	if (journey._tag === 'flight') {
+	if (Booking.isAnyOf(['flight'])(journey)) {
 		return {
 			body: line([
 				Option.some(routeOf(journey)),
@@ -226,7 +228,7 @@ function flightAlerts(flight: Flight, now: DateTime.Utc) {
 									'Gate',
 									Option.flatMap(flight.live, report => report.departureGate)
 								),
-								() => 'Check the gate'
+								Function.constant('Check the gate')
 							),
 							labelled('group', flight.boardingGroup)
 						]),
@@ -254,12 +256,12 @@ function flightAlerts(flight: Flight, now: DateTime.Utc) {
 // The changes worth a notification, each under a key sent once; a delay counts in steps so a drifting estimate stays quiet.
 export function alertsOf(booking: Booking, now: DateTime.Utc) {
 	if (
-		booking._tag === 'stay' ||
+		Booking.isAnyOf(['stay'])(booking) ||
 		DateTime.isGreaterThan(now, DateTime.addDuration(arrivalOf(booking), Duration.hours(1))) ||
 		DateTime.isLessThan(now, DateTime.subtractDuration(booking.departs, Duration.hours(30)))
 	) {
 		return Array.empty<Alert>()
 	}
-	if (booking._tag === 'train') return trainAlerts(booking)
+	if (Booking.isAnyOf(['train'])(booking)) return trainAlerts(booking)
 	return flightAlerts(booking, now)
 }

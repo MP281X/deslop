@@ -37,7 +37,8 @@ import {nowAtom, refreshAtom, removal} from '#lib/bookings.ts'
 import {mapsAtom, placeLine, ridesOf, uberAtom} from '#lib/rides.ts'
 import {dayAt, primary, problemOf, statusOf, tones} from '#lib/status.ts'
 import {arrivalOf, clockAt, departureOf, MINUTE, routeOf, titleOf} from '#services/bookings/lib/utils.ts'
-import type {Booking, BookingList, Flight, Stay, Tone, Train} from '#services/bookings/schema.ts'
+import {Booking} from '#services/bookings/schema.ts'
+import type {BookingList, Flight, Stay, Tone, Train} from '#services/bookings/schema.ts'
 
 function colorOf(tone?: Tone) {
 	if (tone === undefined || tone === 'plain') return colors.foreground
@@ -320,14 +321,14 @@ export function BookingRoute(props: {bookings: BookingList; id: Booking['id']; o
 										})}
 									</VStack>
 									<Divider />
-									{booking._tag === 'flight' && <FlightEssentials flight={booking} />}
-									{booking._tag === 'train' && <TrainEssentials train={booking} />}
-									{booking._tag === 'stay' && <StayEssentials stay={booking} />}
+									{Booking.isAnyOf(['flight'])(booking) && <FlightEssentials flight={booking} />}
+									{Booking.isAnyOf(['train'])(booking) && <TrainEssentials train={booking} />}
+									{Booking.isAnyOf(['stay'])(booking) && <StayEssentials stay={booking} />}
 								</VStack>
 							</Section>
-							{booking._tag === 'flight' && <FlightFields flight={booking} />}
-							{booking._tag === 'train' && <TrainFields train={booking} />}
-							{booking._tag === 'stay' && <StayFields stay={booking} />}
+							{Booking.isAnyOf(['flight'])(booking) && <FlightFields flight={booking} />}
+							{Booking.isAnyOf(['train'])(booking) && <TrainFields train={booking} />}
+							{Booking.isAnyOf(['stay'])(booking) && <StayFields stay={booking} />}
 							{booking.status === 'confirmed' && <Rides booking={booking} bookings={props.bookings} now={now} />}
 						</Form>
 						<Toolbar.Content>

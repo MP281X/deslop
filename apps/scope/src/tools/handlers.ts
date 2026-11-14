@@ -79,8 +79,8 @@ function operationPage(
 				key: `${pipe(
 					operation.failures,
 					Option.exists(count => count > 0),
-					Boolean.match({onFalse: () => '1', onTrue: () => '0'})
-				)}\t${app.app}\t${operation.name}\t${Option.getOrElse(operation.side, () => '')}`,
+					Boolean.match({onFalse: Function.constant('1'), onTrue: Function.constant('0')})
+				)}\t${app.app}\t${operation.name}\t${Option.getOrElse(operation.side, Function.constant(''))}`,
 				operation
 			}))
 		),

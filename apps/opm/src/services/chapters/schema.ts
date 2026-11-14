@@ -1,4 +1,4 @@
-import {DateTime, Option, Schema, SchemaGetter, Struct, pipe} from 'effect'
+import {DateTime, Function, Option, Schema, SchemaGetter, Struct, pipe} from 'effect'
 
 import {Model} from 'effect/schema'
 
@@ -23,7 +23,7 @@ export const PostedAt = pipe(
 				Option.liftPredicate(() => millis !== 0)
 			)
 		),
-		encode: SchemaGetter.transform(Option.match({onNone: () => 0, onSome: DateTime.toEpochMillis}))
+		encode: SchemaGetter.transform(Option.match({onNone: Function.constant(0), onSome: DateTime.toEpochMillis}))
 	})
 )
 

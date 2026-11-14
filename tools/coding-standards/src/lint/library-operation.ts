@@ -1,4 +1,4 @@
-import {Array, Boolean, Option, Predicate, Record, String, pipe} from 'effect'
+import {Array, Boolean, Function, Option, Predicate, Record, String, pipe} from 'effect'
 
 import {defineRule} from 'vite-plus/lint/plugins'
 import type {Context, ESTree, Fixer} from 'vite-plus/lint/plugins'
@@ -368,7 +368,7 @@ function intermediate(context: Context, node: ESTree.Node) {
 		if (composition.inner.name !== 'filter') return []
 		const first = composition.outer.name === 'head'
 		if (!first && !isEmptinessTest(composition.outer.name)) return []
-		const name = Boolean.match(first, {onFalse: () => 'some', onTrue: () => 'findFirst'})
+		const name = Boolean.match(first, {onFalse: Function.constant('some'), onTrue: Function.constant('findFirst')})
 		const negate = !first && !Array.contains(['isArrayNonEmpty', 'isReadonlyArrayNonEmpty'], composition.outer.name)
 		return operation(`Array.${name}`, 'filtering every item when one match is enough', composition.report, fixer => {
 			if (negate && !composition.nested) return []
@@ -377,7 +377,7 @@ function intermediate(context: Context, node: ESTree.Node) {
 				onSome: call => [
 					fixer.replaceTextRange(
 						[composition.start, composition.end],
-						`${Boolean.match(negate, {onFalse: () => '', onTrue: () => '!'})}Array.${name}(${argumentsText(context, call)})`
+						`${Boolean.match(negate, {onFalse: Function.constant(''), onTrue: Function.constant('!')})}Array.${name}(${argumentsText(context, call)})`
 					)
 				]
 			})
@@ -618,7 +618,10 @@ function typeTest(context: Context, node: ESTree.Node) {
 			}
 			const guard = GUARDS[node.parent.right.value]
 			if (guard === undefined) return []
-			const negation = Boolean.match(node.parent.operator === '!==', {onFalse: () => '', onTrue: () => '!'})
+			const negation = Boolean.match(node.parent.operator === '!==', {
+				onFalse: Function.constant(''),
+				onTrue: Function.constant('!')
+			})
 			const argument = node.argument.name
 			return Option.match(effectImport({context, fixer, name: 'Predicate', node}), {
 				onNone: () => [],
@@ -658,7 +661,10 @@ function nullish(context: Context, node: ESTree.Node) {
 	) {
 		return []
 	}
-	const operator = Boolean.match(node.operator === '&&', {onFalse: () => '===', onTrue: () => '!=='})
+	const operator = Boolean.match(node.operator === '&&', {
+		onFalse: Function.constant('==='),
+		onTrue: Function.constant('!==')
+	})
 	const checks = Array.flatMap(logicalOperands(node, node.operator), operand => {
 		if (
 			operand.type === 'BinaryExpression' &&
@@ -679,7 +685,10 @@ function nullish(context: Context, node: ESTree.Node) {
 		return sameText(context, first.subject, second.subject) && first.nullish !== second.nullish
 	}
 	if (!Array.some(checks, first => Array.some(checks, second => doubled(first, second)))) return []
-	const guard = Boolean.match(node.operator === '&&', {onFalse: () => 'isNullish', onTrue: () => 'isNotNullish'})
+	const guard = Boolean.match(node.operator === '&&', {
+		onFalse: Function.constant('isNullish'),
+		onTrue: Function.constant('isNotNullish')
+	})
 	return operation(`Predicate.${guard}`, 'testing null and undefined separately', node, fixer =>
 		pipe(
 			Array.zip(checks, Array.drop(checks, 1)),
@@ -852,11 +861,56 @@ function oppositeFilters(context: Context, node: ESTree.Node) {
 	})
 }
 
+function unaryEntryMapper(context: Context, node: ESTree.CallExpression) {
+	return (
+		importedMember({context, importedName: 'Array', node: node.callee, propertyName: 'map'}) &&
+		Option.exists(
+			Array.last(node.arguments),
+			callback =>
+				callback.type === 'ArrowFunctionExpression' &&
+				callback.params.length <= 1 &&
+				Array.every(callback.params, parameter => parameter.type !== 'RestElement')
+		)
+	)
+}
+
+function iterableRecord(context: Context, node: ESTree.Node) {
+	if (
+		node.type !== 'CallExpression' ||
+		!importedMember({context, importedName: 'Record', node: node.callee, propertyName: 'fromEntries'})
+	) {
+		return []
+	}
+	const input = node.arguments[0]
+	if (input?.type !== 'CallExpression') return []
+	if (unaryEntryMapper(context, input) && input.arguments.length === 2) {
+		return operation('Record.fromIterableWith', 'mapping entries before building a record', node, fixer =>
+			fixer.replaceText(node, `Record.fromIterableWith(${argumentsText(context, input)})`)
+		)
+	}
+	if (input.callee.type !== 'Identifier' || input.callee.name !== 'pipe') return []
+	const last = Array.last(input.arguments)
+	if (
+		!Option.isSome(last) ||
+		last.value.type !== 'CallExpression' ||
+		last.value.arguments.length !== 1 ||
+		!unaryEntryMapper(context, last.value)
+	) {
+		return []
+	}
+	const mapper = last.value
+	return operation('Record.fromIterableWith', 'mapping entries before building a record', node, fixer => [
+		fixer.removeRange([node.range[0], input.range[0]]),
+		fixer.replaceText(mapper.callee, 'Record.fromIterableWith'),
+		fixer.removeRange([input.range[1], node.range[1]])
+	])
+}
+
 // The first matching shape owns the expression, including its smaller spellings.
 const SHAPES: Record<string, Shape[]> = {
 	ArrowFunctionExpression: [typeGuard],
 	BinaryExpression: [propertyTest, concatenation, emptiness],
-	CallExpression: [sum, runningTotal, intermediate, maximum, oppositeFilters],
+	CallExpression: [iterableRecord, sum, runningTotal, intermediate, maximum, oppositeFilters],
 	FunctionDeclaration: [typeGuard],
 	FunctionExpression: [typeGuard],
 	LogicalExpression: [nullish],
@@ -881,6 +935,11 @@ export const libraryOperation = defineRule({
 			examples: {
 				accepted: [
 					{
+						'sample.ts': `import {Array, Record} from 'effect'
+export function indexed(items: readonly {name: string}[]) { return Record.fromEntries(Array.map(items, (item, index) => [item.name, index])) }
+export function rest(items: readonly {name: string}[]) { return Record.fromEntries(Array.map(items, (...args: [{name: string}, number]) => [args[0].name, args[1]])) }`
+					},
+					{
 						'sample.ts': `import {Array, Filter, Order, Predicate, String, pipe} from 'effect'
 export function splitNotes(notes: readonly {pinned: boolean}[]) { return Array.partition(notes, Filter.fromPredicate(note => note.pinned)) }
 export function maximumOf(values: readonly number[], floor: number) { return pipe(values, Array.prepend(floor), Array.max(Order.Number)) }
@@ -899,6 +958,11 @@ export function totalAmount(notes: readonly {amount: number}[]) { return pipe(no
 					}
 				],
 				fixes: [
+					{
+						'sample.ts': `import {Array, Record, String, pipe} from 'effect'
+export function indexed(items: readonly {name: string}[]) { return Record.fromEntries(Array.map(items, item => [item.name, item])) }
+export function named(items: readonly {name: string}[]) { return Record.fromEntries(pipe(items, Array.filter(item => String.isNonEmpty(item.name)), Array.map(item => [item.name, item.name]))) }`
+					},
 					{
 						'sample.ts': `export function describeValue(value: unknown) { return {isMissing: value === null || value === undefined, isText: typeof value === 'string', value} }`
 					},

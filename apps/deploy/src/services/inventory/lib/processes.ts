@@ -6,6 +6,7 @@ import {
 	Effect,
 	Equal,
 	FileSystem,
+	Function,
 	HashMap,
 	Number,
 	Option,
@@ -43,15 +44,13 @@ export type ProcessReading = {
 export type ProcessMeasurement = {records: readonly ProcessReading[]; time: DateTime.Utc; total: Duration.Duration}
 
 function processStatus(status: string) {
-	const values = Record.fromEntries(
-		pipe(
-			String.trim(status),
-			String.split('\n'),
-			Array.map(line => {
-				const at = Option.getOrThrow(String.indexOf(':')(line))
-				return [String.slice(0, at)(line), String.trim(String.slice(at + 1)(line))] as const
-			})
-		)
+	const values = pipe(
+		String.trim(status),
+		String.split('\n'),
+		Record.fromIterableWith(line => {
+			const at = Option.getOrThrow(String.indexOf(':')(line))
+			return [String.slice(0, at)(line), String.trim(String.slice(at + 1)(line))] as const
+		})
 	)
 	return {
 		memory: Schema.decodeSync(ResidentMemoryFromKiB)(String.split(values['VmRSS'] ?? '', /\s+/u)[0] || '0'),
@@ -245,7 +244,7 @@ export function launchdProcesses(text: string, agents: HashMap.HashMap<ProcessId
 							),
 							Option.map(fields =>
 								pipe(
-									Duration.hours(Option.getOrElse(fields[1], () => 0)),
+									Duration.hours(Option.getOrElse(fields[1], Function.constant(0))),
 									Duration.sum(Duration.minutes(fields[2])),
 									Duration.sum(Duration.seconds(fields[3]))
 								)
@@ -265,7 +264,7 @@ export function launchdProcesses(text: string, agents: HashMap.HashMap<ProcessId
 								name: pipe(
 									Array.head(command),
 									Option.flatMap(head => Array.last(String.split(head, '/'))),
-									Option.getOrElse(() => '')
+									Option.getOrElse(Function.constant(''))
 								),
 								parent: row.parent,
 								pid: row.pid

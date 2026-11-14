@@ -4,6 +4,7 @@ import {
 	DateTime,
 	Duration,
 	Formatter,
+	Function,
 	Option,
 	Order,
 	Predicate,
@@ -58,7 +59,7 @@ const Selection = Schema.Struct({
 	traceId: Schema.OptionFromOptionalKey(TraceId)
 })
 export type NavigationEvent = typeof NavigationEvent.Type
-const NavigationEvent = Schema.TaggedUnion({
+export const NavigationEvent = Schema.TaggedUnion({
 	Back: {},
 	Operation: {operation: OperationKey},
 	Range: {keepTrace: Schema.Boolean, range: Range},
@@ -80,7 +81,7 @@ export const Search = Schema.Struct({
 
 export function navigationOf(search: Search) {
 	return {
-		path: Option.getOrElse(search.pane, () => 'Operations' as const),
+		path: Option.getOrElse(search.pane, Function.constant('Operations' as const)),
 		selection: Option.map(
 			Option.all({app: search.source, name: search.operation, runtime: search.side}),
 			operation => ({operation, spanId: search.span, traceId: search.trace}) satisfies Selection
@@ -116,29 +117,29 @@ function sourceSearch(search: Search, app: AppName) {
 }
 
 export function nextSearch(search: Search, event: NavigationEvent) {
-	if (event._tag === 'Source') return sourceSearch(search, event.app)
-	if (event._tag === 'Operation') {
+	if (NavigationEvent.guards.Source(event)) return sourceSearch(search, event.app)
+	if (NavigationEvent.guards.Operation(event)) {
 		return select(
 			{operation: event.operation, spanId: Option.none(), traceId: Option.none()},
 			search.range,
 			Option.some('Traces')
 		)
 	}
-	if (event._tag === 'Trace') {
+	if (NavigationEvent.guards.Trace(event)) {
 		return select(
 			{...event.selection, spanId: Option.none(), traceId: Option.some(event.selection.traceId)},
 			search.range,
 			Option.some('Trace')
 		)
 	}
-	if (event._tag === 'Span') {
+	if (NavigationEvent.guards.Span(event)) {
 		return select(
 			{...event.selection, spanId: Option.some(event.selection.spanId), traceId: Option.some(event.selection.traceId)},
 			search.range,
 			Option.some('Span')
 		)
 	}
-	if (event._tag === 'Range') {
+	if (NavigationEvent.guards.Range(event)) {
 		const kept = Boolean.match(event.keepTrace, {
 			onFalse: () => ({...search, span: Option.none(), trace: Option.none()}),
 			onTrue: () => search

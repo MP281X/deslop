@@ -55,6 +55,7 @@ class ClipboardOffer extends Context.Service<
 >()('@deslop/components-mobile/lib/clipboard/ClipboardOffer') {}
 
 // A copy is offered once: the change count it was answered at stays in the app's file, so a return offers only a newer copy.
+const clipboardEvents = Machine.events({Answered: {save: Schema.Boolean}, Returned: {}})
 const clipboardMachine = Machine.make({
 	branches: {
 		answered: {checking: {target: 'Checking'}, idle: {target: 'Idle'}},
@@ -71,7 +72,7 @@ const clipboardMachine = Machine.make({
 			return Option.map(yield* offer.detect, kind => ({count, kind}))
 		})
 	},
-	events: Machine.events({Answered: {save: Schema.Boolean}, Returned: {}}),
+	events: clipboardEvents,
 	root: Machine.state({
 		states: {
 			// `returned` records a return during the answer, whose new copy is looked at once the answer is done.
@@ -190,7 +191,7 @@ export function makeClipboard<E extends {_tag: string; message: string}>(options
 	).make(clipboardMachine)
 	const returnsAtom = Atom.make(get => {
 		get(activationsAtom)
-		get.set(atom.send, {_tag: 'Returned'})
+		get.set(atom.send, clipboardEvents.Returned())
 	})
-	return {atom, labels: options.labels, returnsAtom}
+	return {atom, events: clipboardEvents, labels: options.labels, returnsAtom}
 }

@@ -56,7 +56,10 @@ export function ToggleGroupItem(props: {
 			onPress={() => group.onValueChange(props.value)}
 			modifiers={[
 				buttonStyle(
-					Boolean.match(selected, {onFalse: () => 'glass' as const, onTrue: () => 'glassProminent' as const})
+					Boolean.match(selected, {
+						onFalse: Function.constant('glass' as const),
+						onTrue: Function.constant('glassProminent' as const)
+					})
 				),
 				buttonBorderShape('capsule'),
 				controlSize('regular'),

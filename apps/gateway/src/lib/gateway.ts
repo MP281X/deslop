@@ -44,6 +44,7 @@ export const connectAtom = Atom.family((id: ServerId) =>
 export const serversAtom = Atom.keepAlive(liveAtom(RpcClient, 'connections.watch'))
 
 // The field under the bar: its text and why the last add failed, until the next edit; a success clears it.
+export const addEvents = Machine.events({Invalid: {message: Schema.String}, Submit: {}, Typed: {url: Schema.String}})
 export const addAtom = AtomMachine.bind(RpcClient.runtime).make(
 	Machine.make({
 		effects: {
@@ -58,7 +59,7 @@ export const addAtom = AtomMachine.bind(RpcClient.runtime).make(
 				if (server.status !== 'Connected') location.assign(connectUrl(server.id))
 			})
 		},
-		events: Machine.events({Invalid: {message: Schema.String}, Submit: {}, Typed: {url: Schema.String}}),
+		events: addEvents,
 		root: Machine.state({
 			states: {
 				Adding: {fields: {url: Schema.String}},

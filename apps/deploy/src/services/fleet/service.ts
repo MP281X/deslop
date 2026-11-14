@@ -144,8 +144,8 @@ export class Fleet extends Context.Service<
 					Effect.gen(function* () {
 						const url = new URL(RPC_PATH, worker.url)
 						url.protocol = Boolean.match(new URL(worker.url).protocol === 'http:', {
-							onFalse: () => 'wss:',
-							onTrue: () => 'ws:'
+							onFalse: Function.constant('wss:'),
+							onTrue: Function.constant('ws:')
 						})
 						const protocol = yield* Layer.build(
 							pipe(

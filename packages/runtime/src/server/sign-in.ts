@@ -1,4 +1,4 @@
-import {Config, Effect, Layer, Option, Result, Schema, String, pipe} from 'effect'
+import {Config, Effect, Function, Layer, Option, Result, Schema, String, pipe} from 'effect'
 
 import {Digest, SecureRandom} from 'effect/crypto'
 import {Base64Url} from 'effect/encoding'
@@ -125,7 +125,7 @@ function layerSignIn(issuer: string) {
 										}
 										if (Option.isSome(params.error) || Option.isNone(params.code)) {
 											return yield* AuthError.make({
-												message: `Auth answered ${Option.getOrElse(params.error, () => 'without a code')}`
+												message: `Auth answered ${Option.getOrElse(params.error, Function.constant('without a code'))}`
 											})
 										}
 										if (!Option.contains(params.iss, new URL(ISSUER_PATH, issuer).href)) {

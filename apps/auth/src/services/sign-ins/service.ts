@@ -4,6 +4,7 @@ import {
 	Context,
 	Duration,
 	Effect,
+	Function,
 	HashMap,
 	Layer,
 	Match,
@@ -25,8 +26,8 @@ import {People} from '#services/people/service.ts'
 import {makeRecords} from '#services/records/service.ts'
 import type {TransientRecord} from '#services/records/service.ts'
 import {CODE_LENGTH, SIGN_IN_LIFETIME, codeFrom, typedCode} from '#services/sign-ins/lib/utils.ts'
-import type {AnswerParams, AnswerVia, Delivery, SignInCode} from '#services/sign-ins/schema.ts'
-import {AuthorizationStatus, Collected, PendingAuthorization} from '#services/sign-ins/schema.ts'
+import type {AnswerParams, AnswerVia, SignInCode} from '#services/sign-ins/schema.ts'
+import {AuthorizationStatus, Collected, Delivery, PendingAuthorization} from '#services/sign-ins/schema.ts'
 import {
 	addressGroup,
 	browserLabel,
@@ -74,7 +75,10 @@ function pendingOf(entry: TransientRecord<SignIn>) {
 			Device: device => clientIconOf(device.request.clientId)
 		}),
 		id: signIn.id,
-		kind: Boolean.match(signIn.delivery._tag === 'Browser', {onFalse: () => 'App', onTrue: () => 'Browser'})
+		kind: Boolean.match(Delivery.guards.Browser(signIn.delivery), {
+			onFalse: Function.constant('App'),
+			onTrue: Function.constant('Browser')
+		})
 	})
 }
 
@@ -184,7 +188,7 @@ export class SignIns extends Context.Service<
 							Effect.mapError(() => notWaiting)
 						)
 						if (Option.isSome(entry.value.answer)) return yield* notWaiting
-						if (via === 'Token' && entry.value.delivery._tag === 'Browser') {
+						if (via === 'Token' && Delivery.guards.Browser(entry.value.delivery)) {
 							return yield* AuthError.make({
 								message: `A browser sign-in is approved only from a signed-in browser: ask the user to approve it at ${AUTH_URL}`
 							})
@@ -239,7 +243,10 @@ export class SignIns extends Context.Service<
 								AuthError.make({error: 'expired_token', message: 'The device code expired; sign in again'})
 							)
 						)
-						if (entry.value.delivery._tag !== 'Device' || entry.value.delivery.request.clientId !== params.client_id) {
+						if (
+							!Delivery.guards.Device(entry.value.delivery) ||
+							entry.value.delivery.request.clientId !== params.client_id
+						) {
 							return yield* AuthError.make({
 								error: 'invalid_grant',
 								message: 'The device code belongs to another client'
@@ -249,7 +256,7 @@ export class SignIns extends Context.Service<
 							return yield* AuthError.make({error: 'authorization_pending', message: 'Waiting for approval'})
 						}
 						const answer = yield* deliver(entry, Option.none())
-						if (answer._tag !== 'Granted') {
+						if (!Collected.guards.Granted(answer)) {
 							return yield* AuthError.make({error: 'access_denied', message: 'The sign-in was denied'})
 						}
 						return answer.tokens
@@ -262,11 +269,12 @@ export class SignIns extends Context.Service<
 					function* (delivery: Delivery, origin: Origin) {
 						const code = codeFrom(yield* random.randomBytes(CODE_LENGTH))
 						const receiver = yield* randomToken(32)
-						const group = addressGroup(Option.getOrElse(origin.address, () => 'unknown'))
+						const group = addressGroup(Option.getOrElse(origin.address, Function.constant('unknown')))
 						const current = yield* records.values
 						const fromGroup = Array.filter(
 							current,
-							entry => addressGroup(Option.getOrElse(entry.value.origin.address, () => 'unknown')) === group
+							entry =>
+								addressGroup(Option.getOrElse(entry.value.origin.address, Function.constant('unknown'))) === group
 						)
 						if (current.length >= 1000 || fromGroup.length >= 20 || Option.isSome(yield* records.get(code))) {
 							return yield* AuthError.make({error: 'temporarily_unavailable', message: 'Start the sign-in again'})
@@ -298,7 +306,7 @@ export class SignIns extends Context.Service<
 									)
 							})
 						),
-						Stream.takeUntil(status => status._tag !== 'Waiting'),
+						Stream.takeUntil(status => !AuthorizationStatus.guards.Waiting(status)),
 						Stream.withSpan('SignIns.status', {attributes: {'rpc.stream': true}})
 					)
 			})

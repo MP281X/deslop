@@ -56,7 +56,7 @@ export function serverIcons(implementation?: McpSchema.Implementation) {
 export function describe(cause: unknown): string {
 	if (Schema.is(AuthError)(cause)) return cause.message
 	if (Predicate.isTagged(cause, 'TimeoutError')) return 'It did not answer in time'
-	if (HttpClientError.isHttpClientError(cause) && cause.reason._tag === 'StatusCodeError') {
+	if (HttpClientError.isHttpClientError(cause) && cause.reason instanceof HttpClientError.StatusCodeError) {
 		return `It answered HTTP ${cause.reason.response.status}`
 	}
 	if (Schema.is(UpstreamError)(cause)) return describe(cause.cause)

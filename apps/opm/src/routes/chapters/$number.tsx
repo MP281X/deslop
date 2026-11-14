@@ -1,6 +1,6 @@
 import {useAtom, useAtomValue} from '@effect/atom-react'
 
-import {Array, Boolean, Number, Option, pipe} from 'effect'
+import {Array, Boolean, Function, Number, Option, pipe} from 'effect'
 
 import {Toolbar} from '@expo/ui/swift-ui'
 import {
@@ -76,7 +76,7 @@ export function ReaderRoute(props: {chapters: ChapterList; number: ChapterNumber
 							pipe(
 								Array.headNonEmpty(shown).reading,
 								Option.filter(reading => !reading.done),
-								Option.match({onNone: () => 0, onSome: reading => reading.page})
+								Option.match({onNone: Function.constant(0), onSome: reading => reading.page})
 							),
 							{maximum: Number.max(Array.headNonEmpty(shown).pages.length - 1, 0), minimum: 0}
 						)}

@@ -9,6 +9,7 @@ import {
 	Duration,
 	Effect,
 	Exit,
+	Function,
 	HashMap,
 	Layer,
 	Option,
@@ -128,7 +129,9 @@ export class Apns extends Context.Service<Apns>()('@deslop/runtime/server/apns',
 				)
 			}),
 			asApnsError('The APNs key could not sign a token.'),
-			Effect.cachedWithTTL(exit => Exit.match(exit, {onFailure: () => 0, onSuccess: () => '40 minutes'}))
+			Effect.cachedWithTTL(exit =>
+				Exit.match(exit, {onFailure: Function.constant(0), onSuccess: Function.constant('40 minutes')})
+			)
 		)
 		const send = Effect.fnUntraced(function* (request: HttpClientRequest.HttpClientRequest, notification?: string) {
 			const key = notification ?? `${request.method} ${request.url} ${request.headers['apns-channel-id'] ?? ''}`
@@ -148,7 +151,9 @@ export class Apns extends Context.Service<Apns>()('@deslop/runtime/server/apns',
 				Effect.option
 			)
 			if (response.status >= 300) {
-				yield* Effect.logWarning(`APNs refused a push: ${response.status} ${Option.getOrElse(reason, () => '')}`)
+				yield* Effect.logWarning(
+					`APNs refused a push: ${response.status} ${Option.getOrElse(reason, Function.constant(''))}`
+				)
 			}
 			const answer: ApnsAnswer = {
 				channel: Option.fromNullishOr(response.headers['apns-channel-id']),

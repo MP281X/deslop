@@ -1,4 +1,4 @@
-import {Array, Boolean, Match, Option, Record, String, pipe} from 'effect'
+import {Array, Boolean, Function, Match, Option, Record, String, pipe} from 'effect'
 
 import type {ProcessLabel} from '#services/inventory/schema.ts'
 
@@ -48,19 +48,18 @@ function flagParts(token: string) {
 function alias(value: string) {
 	return pipe(
 		Match.value(value),
-		Match.when('vite-plus', () => 'vp'),
+		Match.when('vite-plus', Function.constant('vp')),
 		Match.orElse(() => value)
 	)
 }
 
 // A shell's script: an exec launcher continues with its arguments; otherwise the exec segment, else the first that isn't setup, is the command, without quotes, redirections, `eval` or leading assignments.
 function shellRest(tokens: readonly string[]) {
-	const script = pipe(
-		tokens,
-		Array.get(2),
-		Option.getOrElse(() => '')
-	)
-	const shifts = Option.match(String.match(/\bshift\b/gu)(script), {onNone: () => 0, onSome: matches => matches.length})
+	const script = pipe(tokens, Array.get(2), Option.getOrElse(Function.constant('')))
+	const shifts = Option.match(String.match(/\bshift\b/gu)(script), {
+		onNone: Function.constant(0),
+		onSome: matches => matches.length
+	})
 	if (String.includes('exec "$@"')(script)) return Array.drop(tokens, 4 + shifts)
 	const segments = pipe(
 		String.replaceAll(/\d*[<>]+\|?\s*\S+/gu, '')(String.replaceAll(/['"]/gu, '')(script)),
@@ -79,7 +78,7 @@ function shellRest(tokens: readonly string[]) {
 }
 
 function unwrapTokens(tokens: readonly string[], cwd: Option.Option<string>): readonly string[] {
-	const name = basename(Option.getOrElse(Array.head(tokens), () => ''))
+	const name = basename(Option.getOrElse(Array.head(tokens), Function.constant('')))
 	if (Array.contains(WRAPPERS, name)) {
 		return unwrapTokens(
 			pipe(
@@ -104,14 +103,7 @@ function unwrapTokens(tokens: readonly string[], cwd: Option.Option<string>): re
 			cwd
 		)
 	}
-	if (
-		Array.contains(SHELLS, name) &&
-		pipe(
-			tokens,
-			Array.get(1),
-			Option.getOrElse(() => '')
-		) === '-c'
-	) {
+	if (Array.contains(SHELLS, name) && pipe(tokens, Array.get(1), Option.getOrElse(Function.constant(''))) === '-c') {
 		return unwrapTokens(shellRest(tokens), cwd)
 	}
 	if (Array.contains(RUNTIMES, name)) {
@@ -121,11 +113,7 @@ function unwrapTokens(tokens: readonly string[], cwd: Option.Option<string>): re
 			Option.match({
 				onNone: () => tokens,
 				onSome: index => {
-					const script = pipe(
-						tokens,
-						Array.get(index),
-						Option.getOrElse(() => '')
-					)
+					const script = pipe(tokens, Array.get(index), Option.getOrElse(Function.constant('')))
 					// The innermost package, past pnpm's and Bun's `.pnpm` and `.bun` stores.
 					const pkg = capture(/.*node_modules\/((?:@[^/]+\/)?[^/.][^/]*)\//u, script)
 					const app = Option.orElse(capture(/\.deslop\/([^/]+)\//u, script), () =>
@@ -153,13 +141,13 @@ function unwrap(argv: readonly string[], cwd: Option.Option<string>) {
 		onTrue: () =>
 			pipe(
 				Array.head(argv),
-				Option.getOrElse(() => ''),
+				Option.getOrElse(Function.constant('')),
 				String.split(/\s+/u),
 				Array.filter(String.isNonEmpty)
 			)
 	})
 	return unwrapTokens(
-		[String.replace(/:$/u, '')(Option.getOrElse(Array.head(tokens), () => '')), ...Array.drop(tokens, 1)],
+		[String.replace(/:$/u, '')(Option.getOrElse(Array.head(tokens), Function.constant(''))), ...Array.drop(tokens, 1)],
 		cwd
 	)
 }
@@ -244,14 +232,7 @@ export function commandLabel(argv: readonly string[], cwd: Option.Option<string>
 	const scanned = scan(name, subject, args, [], {})
 	// An interactive shell, such as a terminal tab, runs no script: where it sits tells it apart.
 	if (Array.contains(SHELLS, name) && Array.isReadonlyArrayEmpty(scanned.words)) {
-		return {
-			detail: pipe(
-				cwd,
-				Option.map(basename),
-				Option.getOrElse(() => '')
-			),
-			name
-		}
+		return {detail: pipe(cwd, Option.map(basename), Option.getOrElse(Function.constant(''))), name}
 	}
 	return Option.match(scanned.ssh, {
 		onNone: () => ({
@@ -273,7 +254,10 @@ export function commandLabel(argv: readonly string[], cwd: Option.Option<string>
 				detail: pipe(
 					[
 						ssh.host,
-						Boolean.match(String.isNonEmpty(remote.name), {onFalse: () => '', onTrue: () => `→ ${remote.name}`})
+						Boolean.match(String.isNonEmpty(remote.name), {
+							onFalse: Function.constant(''),
+							onTrue: () => `→ ${remote.name}`
+						})
 					],
 					Array.filter(String.isNonEmpty),
 					Array.join(' ')

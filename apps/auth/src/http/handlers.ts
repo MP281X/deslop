@@ -1,4 +1,4 @@
-import {Array, Duration, Effect, Match, Option, Schema, String, Struct, pipe} from 'effect'
+import {Array, Duration, Effect, Function, Match, Option, Result, Schema, String, Struct, pipe} from 'effect'
 
 import {HttpRouter, HttpServerRequest, HttpServerResponse, UrlParams} from 'effect/http'
 import {RateLimiter} from 'effect/persistence'
@@ -24,7 +24,7 @@ import {PasskeySignIn, RequestOptions} from '#services/passkeys/schema.ts'
 import {Passkeys} from '#services/passkeys/service.ts'
 import {People} from '#services/people/service.ts'
 import {SIGN_IN_LIFETIME, typedCode} from '#services/sign-ins/lib/utils.ts'
-import {BrowserParams, RequestParams} from '#services/sign-ins/schema.ts'
+import {BrowserParams, Delivery, RequestParams} from '#services/sign-ins/schema.ts'
 import {REQUEST_COOKIE, SignIns} from '#services/sign-ins/service.ts'
 import {
 	addressGroup,
@@ -115,7 +115,7 @@ function returnTo(flow: SignInParams, origin: string) {
 				pipe(
 					flow.next,
 					Option.filter(next => returnable(next, origin)),
-					Option.getOrElse(() => '/')
+					Option.getOrElse(Function.constant('/'))
 				),
 			onSome: search => `/?${search}`
 		})
@@ -138,7 +138,7 @@ export const HttpHandlers = HttpRouter.use(router =>
 				const address = pipe(
 					clientAddress(request.headers, request.remoteAddress),
 					Option.map(addressGroup),
-					Option.getOrElse(() => 'unknown')
+					Option.getOrElse(Function.constant('unknown'))
 				)
 				return yield* Effect.matchEffect(
 					limiter.consume({key: `${route}:${address}`, limit: perAddress, onExceeded: 'fail', window: '1 minute'}),
@@ -149,7 +149,7 @@ export const HttpHandlers = HttpRouter.use(router =>
 									headers: {
 										'retry-after': Match.valueTags(failure.reason, {
 											RateLimitExceeded: exceeded => `${Math.ceil(Duration.toSeconds(exceeded.retryAfter))}`,
-											RateLimitStoreError: () => '5'
+											RateLimitStoreError: Function.constant('5')
 										})
 									},
 									status: 429
@@ -207,7 +207,7 @@ export const HttpHandlers = HttpRouter.use(router =>
 								message: 'Use a Deslop web or iOS callback, a loopback callback or a Gateway server callback'
 							})
 						}
-						const name = Option.getOrElse(params.client_name, () => 'Unknown client')
+						const name = Option.getOrElse(params.client_name, Function.constant('Unknown client'))
 						return HttpServerResponse.jsonUnsafe(
 							{
 								client_id: clientIdOf({name, redirects: params.redirect_uris}),
@@ -246,14 +246,16 @@ export const HttpHandlers = HttpRouter.use(router =>
 							Effect.flatMap(
 								Effect.fnUntraced(function* (checked) {
 									if (!webRedirect(checked.redirectUri)) {
-										return waitingAt(yield* signIns.start({_tag: 'Client', request: checked}, originOf(request)))
+										return waitingAt(
+											yield* signIns.start(Delivery.cases.Client.make({request: checked}), originOf(request))
+										)
 									}
 									const browser = yield* pipe(
 										tokens.browserSession(request.headers),
 										Effect.tap(found => people.allowed(found.owner)),
 										Effect.result
 									)
-									if (browser._tag === 'Failure') {
+									if (Result.isFailure(browser)) {
 										if (
 											browser.failure.error === 'temporarily_unavailable' ||
 											browser.failure.error === 'access_denied'
@@ -306,8 +308,7 @@ export const HttpHandlers = HttpRouter.use(router =>
 						const request = yield* HttpServerRequest.HttpServerRequest
 						const params = yield* asAuthError('Send a client_id')(HttpServerRequest.schemaBodyUrlParams(DeviceParams))
 						const started = yield* signIns.start(
-							{
-								_tag: 'Device',
+							Delivery.cases.Device.make({
 								request: {
 									clientId: params.client_id,
 									clientName: (yield* tokens.client({
@@ -316,7 +317,7 @@ export const HttpHandlers = HttpRouter.use(router =>
 										state: Option.none()
 									})).clientName
 								}
-							},
+							}),
 							originOf(request)
 						)
 						return HttpServerResponse.jsonUnsafe({
@@ -469,7 +470,7 @@ export const HttpHandlers = HttpRouter.use(router =>
 						)).next
 						return waitingAt(
 							yield* signIns.start(
-								{_tag: 'Browser', next: Option.filter(next, page => returnable(page, origin))},
+								Delivery.cases.Browser.make({next: Option.filter(next, page => returnable(page, origin))}),
 								originOf(yield* HttpServerRequest.HttpServerRequest)
 							)
 						)
@@ -535,7 +536,7 @@ export const HttpHandlers = HttpRouter.use(router =>
 							HttpServerResponse.expireCookieUnsafe(HttpServerResponse.redirect(found.url), cookie, COOKIE),
 						Session: found =>
 							pipe(
-								HttpServerResponse.redirect(Option.getOrElse(found.next, () => '/')),
+								HttpServerResponse.redirect(Option.getOrElse(found.next, Function.constant('/'))),
 								HttpServerResponse.expireCookieUnsafe(cookie, COOKIE),
 								HttpServerResponse.setCookieUnsafe(SESSION_COOKIE, found.token, session(found.seconds))
 							)

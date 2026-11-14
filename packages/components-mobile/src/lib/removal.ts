@@ -7,6 +7,7 @@ import {Atom} from 'effect/reactivity'
 import {alertFailure} from '#lib/alerts.ts'
 
 type RemovalError = {_tag: string; message: string}
+const removalEvents = Machine.events({Removed: {}, Restored: {}})
 
 // A removal reaches the server only after eight seconds; until then its row can restore it.
 export function makeRemoval<Id extends string, E extends {_tag: string; message: string}>(options: {
@@ -32,7 +33,7 @@ export function makeRemoval<Id extends string, E extends {_tag: string; message:
 						yield* pipe(removal.remove(id), alertFailure(removal.notRemoved))
 					})
 				},
-				events: Machine.events({Removed: {}, Restored: {}}),
+				events: removalEvents,
 				root: Machine.state({states: {Idle: {}, Pending: {}, Removed: {}, Removing: {}}}),
 				timers: {expire: '8 seconds'}
 			}).handle({
@@ -52,10 +53,11 @@ export function makeRemoval<Id extends string, E extends {_tag: string; message:
 		return Atom.keepAlive(Atom.readable(get => get(removing.ref)))
 	})
 	return {
+		events: removalEvents,
 		machine: machineAtom,
 		removeAtom: Atom.writable(Function.constUndefined, (context, id: Id) => {
 			context.get(heldAtom(id))
-			context.set(machineAtom(id).send, {_tag: 'Removed'})
+			context.set(machineAtom(id).send, removalEvents.Removed())
 		})
 	}
 }

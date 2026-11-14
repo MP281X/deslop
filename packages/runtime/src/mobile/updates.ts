@@ -13,6 +13,7 @@ class UpdateError extends Schema.TaggedError<UpdateError>()('UpdateError', {
 }) {}
 
 // A reload looks like a crash to someone switching apps for a moment, so a downloaded update starts on the next launch or on a return after ten minutes away.
+const updateEvents = Machine.events({Returned: {away: Schema.Duration}})
 const updates = AtomMachine.make(
 	Machine.make({
 		branches: {fetched: {downloaded: {target: 'Downloaded'}, idle: {target: 'Idle'}}},
@@ -42,7 +43,7 @@ const updates = AtomMachine.make(
 				{log: 'Warn', message: 'The app update did not start'}
 			)
 		},
-		events: Machine.events({Returned: {away: Schema.Duration}}),
+		events: updateEvents,
 		root: Machine.state({states: {Checking: {}, Downloaded: {}, Idle: {}, Reloading: {}}})
 	}).handle({
 		initial: {target: 'Idle'},
@@ -82,5 +83,5 @@ export const updateAtom = Atom.make(get => {
 	get(activationsAtom)
 	if (!isEnabled) return
 	get.mount(updates.ref)
-	get.set(updates.send, {_tag: 'Returned', away: get.once(awayAtom)})
+	get.set(updates.send, updateEvents.Returned({away: get.once(awayAtom)}))
 })

@@ -6,6 +6,7 @@ import {
 	DateTime,
 	Duration,
 	Effect,
+	Function,
 	Layer,
 	Option,
 	Result,
@@ -23,12 +24,20 @@ import {Migrator, SqlClient, SqlModel, SqlSchema} from 'effect/sql'
 import {Apns, apnsAccepted, apnsDeadToken, apnsRetryable} from '@deslop/runtime/server/apns'
 
 import {ACTIVITY_NAME, activeWindow, activityProps, urgencyOf} from '#services/bookings/lib/utils.ts'
-import type {ActivityProps, Booking, BookingList, Flight, Leg, Train} from '#services/bookings/schema.ts'
-import {BookingId} from '#services/bookings/schema.ts'
+import type {ActivityProps, BookingList, Flight, Leg, Train} from '#services/bookings/schema.ts'
+import {Booking, BookingId} from '#services/bookings/schema.ts'
 import {Bookings} from '#services/bookings/service.ts'
 import {alertsOf, announced, expiredActivities, holds, showPlan, startAlert} from '#services/push/lib/utils.ts'
 import type {Alert} from '#services/push/lib/utils.ts'
-import {Activity, ActivityPropsJson, ChannelId, Device, PushError, SentAlert} from '#services/push/schema.ts'
+import {
+	Activity,
+	ActivityPropsJson,
+	ChannelId,
+	Device,
+	PushError,
+	SentAlert,
+	ShowAction
+} from '#services/push/schema.ts'
 
 const SCHEMES = {'xyz.mp281x.trips': 'trips', 'xyz.mp281x.trips.dev': 'trips-dev'}
 
@@ -200,8 +209,8 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 				activity.channel,
 				{'content-state': next, event: 'update', timestamp: seconds(now)},
 				Boolean.match(urgencyOf(activity.props) === urgencyOf(props), {
-					onFalse: () => 10 as const,
-					onTrue: () => 5 as const
+					onFalse: Function.constant(10 as const),
+					onTrue: Function.constant(5 as const)
 				}),
 				now
 			)
@@ -241,7 +250,7 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 			yield* Effect.forEach(
 				showPlan(yield* asPushReadError(listDevices()), yield* asPushReadError(listActivities()), journey, window),
 				action => {
-					if (action._tag === 'launch') return launch(action.target, showing)
+					if (ShowAction.guards.launch(action)) return launch(action.target, showing)
 					return refresh(action.target, showing.props, now)
 				},
 				{concurrency: 1, discard: true}
@@ -315,7 +324,7 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 						Effect.ignore(
 							Effect.gen(function* () {
 								yield* announce(booking, now)
-								if (booking._tag === 'stay') return
+								if (Booking.isAnyOf(['stay'])(booking)) return
 								yield* Option.match(activeWindow(booking, now), {
 									onNone: () => Effect.void,
 									onSome: window => show(booking, window, all, now)

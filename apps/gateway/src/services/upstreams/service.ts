@@ -1,4 +1,18 @@
-import {Array, Context, Duration, Effect, Exit, Layer, Option, RcMap, Schema, Scope, Semaphore, pipe} from 'effect'
+import {
+	Array,
+	Context,
+	Duration,
+	Effect,
+	Exit,
+	Function,
+	Layer,
+	Option,
+	RcMap,
+	Schema,
+	Scope,
+	Semaphore,
+	pipe
+} from 'effect'
 
 import {SdkHttpError, StreamableHTTPClientTransport, UnauthorizedError} from '@modelcontextprotocol/client'
 import {McpClient, McpClientError, McpProtocol, McpSchema} from 'effect/ai'
@@ -31,19 +45,19 @@ export function upstreamStatus(error: unknown): number {
 	if (error instanceof SdkHttpError) return error.status
 	if (error instanceof UnauthorizedError) return 401
 	if (McpClientError.isMcpClientError(error)) {
-		if (error.reason._tag === 'ClosedError' && error.reason.sessionExpired === true) return 404
-		if (error.reason._tag === 'HttpError') return error.reason.status
+		if (Schema.is(McpClientError.ClosedError)(error.reason) && error.reason.sessionExpired === true) return 404
+		if (Schema.is(McpClientError.HttpError)(error.reason)) return error.reason.status
 	}
 	return 0
 }
 
 const accessToken = Context.Reference<Option.Option<string>>('gateway/UpstreamAccess', {defaultValue: Option.none})
 const requestHeaders = Effect.map(accessToken, token => ({
-	[REQUEST_AUTHORIZATION]: Option.match(token, {onNone: () => '', onSome: value => `Bearer ${value}`})
+	[REQUEST_AUTHORIZATION]: Option.match(token, {onNone: Function.constant(''), onSome: value => `Bearer ${value}`})
 }))
 
 function unsupportedProtocol(error: McpClientError.McpClientError) {
-	if (error.reason._tag === 'HttpError') {
+	if (Schema.is(McpClientError.HttpError)(error.reason)) {
 		return (
 			error.reason.status >= 400 &&
 			error.reason.status < 500 &&
@@ -52,8 +66,8 @@ function unsupportedProtocol(error: McpClientError.McpClientError) {
 		)
 	}
 	return (
-		error.reason._tag === 'UnsupportedError' ||
-		(error.reason._tag === 'ProtocolError' &&
+		Schema.is(McpClientError.UnsupportedError)(error.reason) ||
+		(Schema.is(McpClientError.ProtocolError)(error.reason) &&
 			(error.reason.code === -32_601 || error.reason.code === McpSchema.UNSUPPORTED_PROTOCOL_VERSION_ERROR_CODE))
 	)
 }

@@ -32,7 +32,8 @@
 - **Ownership.** Abstractions add capability or ease reading, not just shorter files; domain names and plain control flow over wrappers and configuration languages.
 - **Imports.** A service folder shows only `schema.ts`, `service.ts` and `lib/utils.ts`; its own files reach the rest with `./`. The runtime is imported by side: `shared`, `server`, `client`, `web`, `mobile`, `config`.
 - **Arguments.** Short, independent arguments stay positional, not wrapped just to name them.
-- **Fixed callbacks.** Only `undefined`, `null`, `true` and `false` use Effect's named function constants. String and number callbacks stay arrows; do not rewrite them to `Function.constant`.
+- **Fixed callbacks.** Literal thunks use `Function.constant`; `undefined`, `null`, `true` and `false` use Effect's named function constants.
+- **Model tags.** `toTaggedUnion.guards` validates the whole case, including a model class's instance identity. Booking JSON decodes to plain objects: discriminate already-typed bookings with `Booking.isAnyOf`, not class guards.
 - **Search serialization.** TanStack serializes both raw parsed search and validated/transformed search. Encode Option transforms through the app's Struct codec before the library's default serialization; both forms are current library inputs, and unrelated keys stay intact.
 - **Personal tools.** No stdio bridge, container, download command or telemetry Collector.
 - **MCP tools.** Serve agent work, not every page action; none for apps agents do not need, including Trips, OPM and Portfolio.

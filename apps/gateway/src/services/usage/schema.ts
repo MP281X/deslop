@@ -1,4 +1,4 @@
-import {Boolean, DateTime, Duration, Schema, pipe} from 'effect'
+import {Boolean, DateTime, Duration, Function, Schema, pipe} from 'effect'
 
 import {DateTimeUtcFromFiniteMillis, DurationFromFiniteMillis} from '@deslop/runtime/shared/time'
 
@@ -18,7 +18,12 @@ export function periodRange(period: Period, now: DateTime.Utc) {
 	const count = {'7d': 7, '24h': 24, '30d': 30}[period]
 	const to = pipe(
 		now,
-		DateTime.startOf(Boolean.match(period === '24h', {onFalse: () => 'day' as const, onTrue: () => 'hour' as const})),
+		DateTime.startOf(
+			Boolean.match(period === '24h', {
+				onFalse: Function.constant('day' as const),
+				onTrue: Function.constant('hour' as const)
+			})
+		),
 		DateTime.addDuration(size)
 	)
 	return {count, from: DateTime.subtractDuration(to, Duration.times(size, count)), size, to} satisfies UsageRange

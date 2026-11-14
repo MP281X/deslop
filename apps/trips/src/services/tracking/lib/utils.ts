@@ -1,7 +1,8 @@
 import {Array, DateTime, Duration, Function, Option, Order, Result, String, pipe} from 'effect'
 
 import {AIRPORT_LEAD, arrivalOf, departureOf, MINUTE} from '#services/bookings/lib/utils.ts'
-import type {Booking, Flight, FlightTracking, Train, TrainTracking} from '#services/bookings/schema.ts'
+import {Booking} from '#services/bookings/schema.ts'
+import type {Flight, FlightTracking, Train, TrainTracking} from '#services/bookings/schema.ts'
 import type {FaFlight, FaFlights, StopPlace, VtStatus, VtStop} from '#services/tracking/schema.ts'
 
 function text(value: Option.Option<string>) {
@@ -229,14 +230,14 @@ function trainInterval(train: Train, now: DateTime.Utc) {
 }
 
 export function checkEvery(booking: Booking, now: DateTime.Utc) {
-	if (booking._tag === 'stay') return Option.none<Duration.Duration>()
-	if (booking._tag === 'flight') return flightInterval(booking, now)
+	if (Booking.isAnyOf(['stay'])(booking)) return Option.none<Duration.Duration>()
+	if (Booking.isAnyOf(['flight'])(booking)) return flightInterval(booking, now)
 	return trainInterval(booking, now)
 }
 
 // The last attempt counts, answered or not, so a failing provider is asked on the same schedule.
 export function isDue(booking: Booking, now: DateTime.Utc, attemptedAt: Option.Option<DateTime.Utc>) {
-	if (booking._tag === 'stay') return false
+	if (Booking.isAnyOf(['stay'])(booking)) return false
 	const checkedAt = Option.match<FlightTracking | TrainTracking, Option.Option<DateTime.Utc>>(booking.live, {
 		onNone: () => attemptedAt,
 		onSome: live =>
@@ -257,7 +258,7 @@ export function isDue(booking: Booking, now: DateTime.Utc, attemptedAt: Option.O
 
 // Live data that missed two of the checks due after it no longer describes the journey, even once tracking stopped; an arrival is final.
 export function isStale(booking: Booking, now: DateTime.Utc) {
-	if (booking._tag === 'stay') return false
+	if (Booking.isAnyOf(['stay'])(booking)) return false
 	return Option.exists<FlightTracking | TrainTracking>(
 		booking.live,
 		live =>

@@ -4,14 +4,13 @@ import {Array, Boolean, DateTime, Function, Option, Order, Record, Schema, Strin
 
 import {AppWindowIcon, GlobeIcon, GraphIcon, HardDrivesIcon} from '@phosphor-icons/react'
 import {AsyncResult, Atom} from 'effect/reactivity'
-import {useState} from 'react'
 import type {ComponentType, SVGProps} from 'react'
 
-import {cn} from '@deslop/components-web/classes'
 import {EmptyState, Loaded} from '@deslop/components-web/fallbacks'
 import {RowsSkeleton} from '@deslop/components-web/item-list'
 import {ThemedMark} from '@deslop/components-web/marks'
 import {ResultError} from '@deslop/components-web/result-error'
+import {Avatar, AvatarFallback, AvatarImage} from '@deslop/components-web/ui/avatar'
 import {Button} from '@deslop/components-web/ui/button'
 import {Card} from '@deslop/components-web/ui/card'
 import {Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle} from '@deslop/components-web/ui/item'
@@ -32,28 +31,18 @@ import {appsAtom, consentAtom, minuteAtom, requestCode} from '#lib/auth.ts'
 import type {PendingAuthorization} from '#services/sign-ins/schema.ts'
 import type {SignedInApp} from '#services/tokens/schema.ts'
 
-type AppIconState = typeof AppIconState.Type
-const AppIconState = Schema.Literals(['failed', 'loaded', 'loading'])
-
 type ClientKind = typeof ClientKind.Type
 const ClientKind = Schema.Literals(['App', 'Browser'])
 
-// A glyph until the app's own icon loads, so a missing icon never draws the browser's broken image; no tile behind either.
+// The primitive owns loading and failed images; either leaves the app glyph visible.
 function AppIcon(props: {origin: string}) {
-	const [state, setState] = useState<AppIconState>('loading')
 	return (
-		<span className="text-muted-foreground relative flex size-4 shrink-0 items-center justify-center">
-			{state !== 'loaded' && <AppWindowIcon className="size-4" />}
-			{state !== 'failed' && (
-				<img
-					src={`${props.origin}/icon`}
-					alt=""
-					className={cn('pixelated absolute inset-0 size-full', state === 'loading' && 'invisible')}
-					onLoad={() => setState('loaded')}
-					onError={() => setState('failed')}
-				/>
-			)}
-		</span>
+		<Avatar size="sm">
+			<AvatarImage src={`${props.origin}/icon`} alt="" />
+			<AvatarFallback>
+				<AppWindowIcon className="size-4" />
+			</AvatarFallback>
+		</Avatar>
 	)
 }
 
@@ -62,7 +51,7 @@ function PendingRowSkeleton() {
 	return (
 		<div className="bg-primary/10">
 			<Item aria-hidden size="row">
-				<ItemMedia className="w-4">
+				<ItemMedia className="w-6">
 					<Skeleton className="size-4" />
 				</ItemMedia>
 				<ItemContent>
@@ -78,13 +67,13 @@ function PendingRowSkeleton() {
 	)
 }
 
-// The signed-in rows a card will hold while its data loads, at the loaded rows' geometry: 16px mark at the gutter, name at 44px, figures right-aligned.
+// The signed-in rows a card will hold while its data loads, at the loaded rows' gutter and text geometry.
 export function SignInRowsSkeleton(props: {pending?: boolean}) {
 	return (
 		<Card size="list">
 			{props.pending === true && <PendingRowSkeleton />}
 			<RowsSkeleton label="Signed in" rows={9}>
-				<ItemMedia className="w-4">
+				<ItemMedia className="w-6">
 					<Skeleton className="size-4" />
 				</ItemMedia>
 				<ItemContent>
@@ -106,7 +95,7 @@ export function PeopleRowsSkeleton() {
 	return (
 		<Card size="list">
 			<RowsSkeleton label="People" rows={3}>
-				<ItemMedia className="w-4">
+				<ItemMedia className="w-6">
 					<Skeleton className="size-4" />
 				</ItemMedia>
 				<ItemContent>
@@ -163,12 +152,12 @@ function ClientRow(props: {client: SignedInApp; now: DateTime.Utc}) {
 			<Item
 				size="row"
 				aria-label={`${props.client.device}, active ${active}${Option.match(address, {
-					onNone: () => '',
+					onNone: Function.constant(''),
 					onSome: value => ` · ${value}`
 				})}`}
 			>
 				{/* The browser or app is the mark alone, so every row's name starts at the same column. */}
-				<ItemMedia className="w-4" role="img" aria-label={props.client.client} title={props.client.client}>
+				<ItemMedia className="w-6" role="img" aria-label={props.client.client} title={props.client.client}>
 					<ClientIcon
 						client={{
 							app: props.client.icon,
@@ -184,7 +173,7 @@ function ClientRow(props: {client: SignedInApp; now: DateTime.Utc}) {
 				<ItemActions>
 					<span className="w-12 shrink-0 text-right font-mono text-xs tabular-nums">{active}</span>
 					<span className="text-muted-foreground w-28 shrink-0 truncate text-right font-mono text-xs max-sm:hidden">
-						{Option.getOrElse(address, () => '')}
+						{Option.getOrElse(address, Function.constant(''))}
 					</span>
 				</ItemActions>
 			</Item>
@@ -208,7 +197,7 @@ function PendingRow(props: {request: PendingAuthorization}) {
 	return (
 		<div role="listitem" className="bg-primary/10">
 			<Item size="row">
-				<ItemMedia className="w-4" role="img" aria-label={props.request.clientName} title={props.request.clientName}>
+				<ItemMedia className="w-6" role="img" aria-label={props.request.clientName} title={props.request.clientName}>
 					<RequestMark request={props.request} />
 				</ItemMedia>
 				<ItemContent>

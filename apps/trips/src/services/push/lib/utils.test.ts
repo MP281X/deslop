@@ -1,28 +1,35 @@
 import {assert, it} from '@effect/vitest'
 
-import {Array, DateTime, Duration, Option, Redacted, Schema, String} from 'effect'
+import {Array, DateTime, Duration, Option, Redacted, Schema, String, Struct} from 'effect'
 
 import {ApnsToken} from '@deslop/runtime/shared/apns'
 
 import {activityProps} from '#services/bookings/lib/utils.ts'
-import {BookingId, Flight, FlightTracking} from '#services/bookings/schema.ts'
+import {BookedPlace, BookingId, Flight, FlightTracking} from '#services/bookings/schema.ts'
 import {alertsOf, announced, expiredActivities, holds, showPlan} from '#services/push/lib/utils.ts'
 import {Activity, ChannelId, Device, SentAlert} from '#services/push/schema.ts'
 import type {AlertCategory} from '#services/push/schema.ts'
 
 const DEPARTS = DateTime.makeUnsafe('2026-10-28T15:40:00Z')
-const FLIGHT = Schema.decodeSync(Flight.json)({
-	_tag: 'flight',
-	airline: 'British Airways',
-	airlineCode: 'BA',
-	arrives: DateTime.toEpochMillis(DateTime.addDuration(DEPARTS, Duration.hours(2.5))),
-	departs: DateTime.toEpochMillis(DEPARTS),
-	from: {code: 'FCO', name: 'Fiumicino', timeZone: 'Europe/Rome'},
-	id: '7f0c8f8e-0d0a-4a5e-9d8f-5b2a1c3d4e5f',
-	number: '553',
-	status: 'confirmed',
-	to: {code: 'LHR', name: 'Heathrow', timeZone: 'Europe/London'}
-})
+const FLIGHT = Struct.pick(
+	Flight.make({
+		airline: 'British Airways',
+		airlineCode: 'BA',
+		arrives: DateTime.addDuration(DEPARTS, Duration.hours(2.5)),
+		boardingAt: Option.none(),
+		boardingGroup: Option.none(),
+		confirmation: Option.none(),
+		departs: DEPARTS,
+		from: Schema.decodeSync(BookedPlace)({code: 'FCO', name: 'Fiumicino', timeZone: 'Europe/Rome'}),
+		id: BookingId.make('7f0c8f8e-0d0a-4a5e-9d8f-5b2a1c3d4e5f'),
+		live: Option.none(),
+		number: '553',
+		seat: Option.none(),
+		status: 'confirmed',
+		to: Schema.decodeSync(BookedPlace)({code: 'LHR', name: 'Heathrow', timeZone: 'Europe/London'})
+	}),
+	Struct.keys(Flight.fields)
+)
 const STARTER = {
 	bundle: 'xyz.mp281x.trips' as const,
 	kind: 'start' as const,

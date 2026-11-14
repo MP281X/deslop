@@ -1,4 +1,4 @@
-import {Array, HashSet, MutableList, Option, Predicate, Record, String, pipe} from 'effect'
+import {Array, Function, HashSet, MutableList, Option, Predicate, Record, String, pipe} from 'effect'
 
 import {defineRule} from 'vite-plus/lint/plugins'
 import type {Context, ESTree, Fixer, Variable} from 'vite-plus/lint/plugins'
@@ -138,7 +138,7 @@ function constantName(context: Context, program: ESTree.Node) {
 		Array.takeWhile(statement => statement.type === 'ImportDeclaration' || Option.isSome(literalConstant(statement))),
 		Array.last,
 		Option.map(statement => statement.range[1]),
-		Option.getOrElse(() => 0)
+		Option.getOrElse(Function.constant(0))
 	)
 	return Array.flatMap(program.body, statement =>
 		pipe(
@@ -308,7 +308,7 @@ export const nameByKind = defineRule({
 			}
 		}
 		return {
-			...Record.fromEntries(Array.map(NAMING, row => [row.selector, listener(row)])),
+			...Record.fromIterableWith(NAMING, row => [row.selector, listener(row)]),
 			'Program:exit': (program: ESTree.Program) => {
 				const executed = Array.filter(descendants(context, program), node =>
 					Array.contains(

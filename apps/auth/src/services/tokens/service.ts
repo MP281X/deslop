@@ -60,12 +60,12 @@ import type {
 	SessionVia,
 	TokenParams,
 	TokenResponse,
-	ClientRequest,
-	Code
+	ClientRequest
 } from '#services/tokens/schema.ts'
 import {
 	AppGrant,
 	BrowserSession,
+	Code,
 	CredentialOwner,
 	Exchange,
 	OwnedSignIns,
@@ -492,7 +492,7 @@ export class Tokens extends Context.Service<
 									Effect.fromOption,
 									Effect.mapError(() => expired)
 								)
-								if (code._tag === 'Used') {
+								if (Code.guards.Used(code)) {
 									yield* deleteFamily(code.family)
 									return Exchange.cases.Replayed.make({
 										message:
@@ -530,8 +530,8 @@ export class Tokens extends Context.Service<
 							Reactivity.mutation(['tokens']),
 							sql.withTransaction
 						)
-						if (result._tag === 'Granted') {
-							yield* codes.consume(key, Option.some({_tag: 'Used', family}))
+						if (Exchange.guards.Granted(result)) {
+							yield* codes.consume(key, Option.some(Code.cases.Used.make({family})))
 						}
 						return result
 					},
@@ -696,7 +696,7 @@ export class Tokens extends Context.Service<
 					),
 					issue: Effect.fn('Tokens.issue')(function* (request: ClientRequest, owner: CredentialOwner) {
 						const code = yield* randomToken(32)
-						yield* codes.create(yield* hash(code), {_tag: 'Fresh', owner, request})
+						yield* codes.create(yield* hash(code), Code.cases.Fresh.make({owner, request}))
 						return code
 					}, asAuthError('Cannot issue the authorization code')),
 					issuer,

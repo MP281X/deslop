@@ -2,7 +2,7 @@
 
 import {NodeRuntime, NodeServices} from '@effect/platform-node'
 
-import {Array, Effect, FileSystem, Number, Option, Path, Schema, String, flow, pipe} from 'effect'
+import {Array, Effect, FileSystem, Number, Option, Path, Predicate, Schema, String, flow, pipe} from 'effect'
 
 import {Generator, getConfig} from '@tanstack/router-generator'
 import {Command, Flag} from 'effect/cli'
@@ -39,7 +39,7 @@ const create = Command.make(
 					Effect.flatMap(Schema.decodeEffect(Schema.fromJsonString(AppPackage))),
 					Effect.map(found => Option.some(found.config.port)),
 					Effect.catchTag('PlatformError', cause => {
-						if (cause.reason._tag === 'NotFound') return Effect.succeedNone
+						if (Predicate.isTagged(cause.reason, 'NotFound')) return Effect.succeedNone
 						return Effect.fail(cause)
 					})
 				),

@@ -1,4 +1,17 @@
-import {Boolean, Context, DateTime, Duration, Effect, Layer, MutableList, Option, Schema, Stream, pipe} from 'effect'
+import {
+	Boolean,
+	Context,
+	DateTime,
+	Duration,
+	Effect,
+	Function,
+	Layer,
+	MutableList,
+	Option,
+	Schema,
+	Stream,
+	pipe
+} from 'effect'
 
 import {Sse} from 'effect/encoding'
 import {Reactivity} from 'effect/reactivity'
@@ -70,12 +83,18 @@ export class AiMetering extends Context.Service<AiMetering>()(
 				yield* pipe(
 					Effect.andThen(
 						addUsage({
-							costUsd: Option.getOrElse(entry.costUsd, () => 0),
-							estimatedCalls: Boolean.match(entry.estimated, {onFalse: () => 0, onTrue: () => 1}),
+							costUsd: Option.getOrElse(entry.costUsd, Function.constant(0)),
+							estimatedCalls: Boolean.match(entry.estimated, {
+								onFalse: Function.constant(0),
+								onTrue: Function.constant(1)
+							}),
 							hour: DateTime.startOf(entry.at, 'hour'),
 							owner: id,
 							spendSource,
-							unknownCostCalls: Boolean.match(entry.costSource === 'unknown', {onFalse: () => 0, onTrue: () => 1})
+							unknownCostCalls: Boolean.match(entry.costSource === 'unknown', {
+								onFalse: Function.constant(0),
+								onTrue: Function.constant(1)
+							})
 						}),
 						deleteUsageBefore({hour: DateTime.subtractDuration(entry.at, Duration.days(30)), owner: id})
 					),

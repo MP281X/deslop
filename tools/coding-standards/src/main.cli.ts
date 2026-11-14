@@ -12,7 +12,7 @@ import packageJson from '#package.json' with {type: 'json'}
 import {haiku} from '#lib/model.ts'
 import {signIn} from '#lib/session.ts'
 
-// Printed after lint leaves a diagnostic, for the agent fixing it; autofix has already run.
+// Printed before formatting and lint, for the agent fixing the diagnostics.
 const TACTICS = `Fix each diagnostic at the cause its message names:
 - No cast, wrapper, spread, suppression or file split just to pass; a documented exception carries its reason.
 - Inline in evaluation order; move a declaration used before its definition up, never into a new module.

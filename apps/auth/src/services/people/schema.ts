@@ -1,4 +1,4 @@
-import {DateTime, Option, Schema, SchemaGetter, pipe} from 'effect'
+import {DateTime, Function, Option, Schema, SchemaGetter, pipe} from 'effect'
 
 import {Model} from 'effect/schema'
 
@@ -34,7 +34,9 @@ export const Person = Schema.Struct({
 					Option.map(DateTime.makeUnsafe)
 				)
 			),
-			encode: SchemaGetter.transform(value => Option.match(value, {onNone: () => 0, onSome: DateTime.toEpochMillis}))
+			encode: SchemaGetter.transform(value =>
+				Option.match(value, {onNone: Function.constant(0), onSome: DateTime.toEpochMillis})
+			)
 		})
 	)
 })

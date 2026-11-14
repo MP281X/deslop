@@ -143,7 +143,7 @@ function tracedOf(row: SettledTrace) {
 
 // The overview's kept traces with their labels and failures; a trace pruned since the overview counted it stays without them until the next read.
 function detailed(overview: Overview, rows: readonly TraceDetail[]) {
-	const byId = Record.fromEntries(Array.map(rows, row => [row.id, row] as const))
+	const byId = Record.fromIterableBy(rows, row => row.id)
 	return {
 		apps: Array.map(overview.apps, app => ({
 			...app,
@@ -281,7 +281,7 @@ function readTraceAnswer(
 	details: boolean,
 	selectedSpanId: Option.Option<SpanId>
 ) {
-	const byId = Record.fromEntries(Array.map(tree.spans, span => [span.spanId, span] as const))
+	const byId = Record.fromIterableBy(tree.spans, span => span.spanId)
 	// The failing span and its parents up to the root, stopping at a parent already walked.
 	const ancestors = HashSet.fromIterable(
 		Array.unfold({id: tree.failureSpanId, seen: HashSet.empty<SpanId>()}, current =>
@@ -662,7 +662,7 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 		const supersede = Effect.fnUntraced(function* (
 			senders: readonly {service: ServiceName; version: Option.Option<ReleaseVersion>}[]
 		) {
-			const known = Record.fromEntries(Array.map(yield* listReleases(), row => [row.service, row.version] as const))
+			const known = Record.fromIterableWith(yield* listReleases(), row => [row.service, row.version] as const)
 			const newest = newestReleases(senders, known)
 			const changed = Array.map(
 				Record.toEntries(Record.filter(newest, (version, service) => known[service] !== version)),
@@ -921,7 +921,7 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 					Stream.mapError(cause => TelemetryError.make({cause, message: UNAVAILABLE})),
 					Stream.buffer({capacity: 1, strategy: 'sliding'}),
 					Stream.flatMap(overview =>
-						Stream.concat(Stream.succeed(overview), Stream.drain(Stream.fromEffect(Effect.sleep(Duration.seconds(1)))))
+						Stream.concat(Stream.succeed(overview), Stream.fromEffectDrain(Effect.sleep(Duration.seconds(1))))
 					),
 					Stream.withSpan('Telemetry.watch', {attributes: {range, 'rpc.stream': true}})
 				),

@@ -1,6 +1,6 @@
 import {useAtom} from '@effect/atom-react'
 
-import {Boolean, Effect, Function, Schema, Stream} from 'effect'
+import {Boolean, Effect, Function, Schema, Stream, pipe} from 'effect'
 
 import {CheckIcon, CopyIcon} from '@phosphor-icons/react'
 import {AsyncResult, Atom} from 'effect/reactivity'
@@ -18,20 +18,18 @@ const CopyButtonSize = Schema.Literals(['default', 'icon-sm'])
 // Each press first clears an earlier check, is true once the clipboard took the value, and false again after the check's moment.
 const copyAtom = Atom.family((value: string) =>
 	Atom.fn(() =>
-		Stream.concat(
-			Stream.succeed(false),
-			Stream.concat(
-				Stream.fromEffect(
-					Effect.as(
-						Effect.tryPromise({
-							catch: cause => ClipboardError.make({cause}),
-							try: () => navigator.clipboard.writeText(value)
-						}),
-						true
-					)
-				),
-				Stream.fromEffect(Effect.as(Effect.sleep('1500 millis'), false))
-			)
+		pipe(
+			Stream.fromEffect(
+				Effect.as(
+					Effect.tryPromise({
+						catch: cause => ClipboardError.make({cause}),
+						try: () => navigator.clipboard.writeText(value)
+					}),
+					true
+				)
+			),
+			Stream.concat(Stream.fromEffect(Effect.as(Effect.sleep('1500 millis'), false))),
+			Stream.prepend([false])
 		)
 	)
 )
@@ -54,13 +52,16 @@ export function CopyButton(props: {
 		<>
 			<Button
 				variant={Boolean.match(failed && !explained, {
-					onFalse: () => 'ghost' as const,
-					onTrue: () => 'destructive' as const
+					onFalse: Function.constant('ghost' as const),
+					onTrue: Function.constant('destructive' as const)
 				})}
 				size={props.size}
 				className={props.className}
 				aria-label={props.label}
-				title={Boolean.match(failed && !explained, {onFalse: Function.constUndefined, onTrue: () => 'Cannot copy'})}
+				title={Boolean.match(failed && !explained, {
+					onFalse: Function.constUndefined,
+					onTrue: Function.constant('Cannot copy')
+				})}
 				onClick={() => copy()}
 			>
 				{props.children}

@@ -16,8 +16,8 @@ import {listReducer} from '@deslop/runtime/shared/list'
 
 import {RpcClient, session} from '#lib/session.ts'
 import {byStart} from '#services/bookings/lib/utils.ts'
-import type {BookingSource, BookingId} from '#services/bookings/schema.ts'
-import {Booking, BookingsError, IMAGE_BYTES} from '#services/bookings/schema.ts'
+import type {BookingId, Booking} from '#services/bookings/schema.ts'
+import {BookingModel, BookingSource, BookingsError, IMAGE_BYTES} from '#services/bookings/schema.ts'
 
 const bookingsFile = new File(Paths.document, 'bookings.json')
 
@@ -30,7 +30,7 @@ export const bookingsAtom = Atom.keepAlive(
 		return cachedList(
 			get,
 			bookingsFile,
-			Booking.json,
+			BookingModel.json,
 			pipe(liveStream(RpcClient, 'bookings.events'), Stream.scan(Array.empty<Booking>, apply), Stream.drop(1)),
 			session.reconnectOrSignOut
 		)
@@ -51,7 +51,7 @@ const bookingFromClipboard = Effect.fnUntraced(function* (offer: ClipboardCopy) 
 		if (image.byteLength === 0 || image.byteLength > IMAGE_BYTES) {
 			return yield* BookingsError.make({message: 'Copy a screenshot smaller than 4 MB and try again.'})
 		}
-		return {_tag: 'image', image} satisfies BookingSource
+		return BookingSource.cases.image.make({image})
 	}
 	const text = pipe(
 		yield* Effect.tryPromise({
@@ -62,12 +62,12 @@ const bookingFromClipboard = Effect.fnUntraced(function* (offer: ClipboardCopy) 
 		String.slice(0, 60_000)
 	)
 	if (String.isEmpty(text)) return yield* BookingsError.make({message: 'The clipboard no longer holds text.'})
-	return {_tag: 'text', text} satisfies BookingSource
+	return BookingSource.cases.text.make({text})
 })
 
 export const clipboard = makeClipboard({
 	// A refused booking is answered, but a lost connection offers the same copy on the next return.
-	answered: error => error._tag === 'BookingsError',
+	answered: Schema.is(BookingsError),
 	detect: Effect.gen(function* () {
 		if (yield* Effect.promise(() => hasImageAsync())) return Option.some<ClipboardKind>('image')
 		if (yield* Effect.promise(() => hasStringAsync())) return Option.some<ClipboardKind>('text')

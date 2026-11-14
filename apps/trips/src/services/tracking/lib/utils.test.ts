@@ -1,8 +1,8 @@
 import {assert, it} from '@effect/vitest'
 
-import {DateTime, Duration, Option, Schema} from 'effect'
+import {DateTime, Duration, Option, Schema, Struct} from 'effect'
 
-import {Flight, Train, TrainTracking} from '#services/bookings/schema.ts'
+import {BookedPlace, BookingId, Flight, Train, TrainTracking} from '#services/bookings/schema.ts'
 import {checkEvery, flightTracking, isStale, trainTracking} from '#services/tracking/lib/utils.ts'
 import {FaFlight, VtStatus} from '#services/tracking/schema.ts'
 
@@ -15,18 +15,24 @@ const ANSWER = Schema.decodeSync(FaFlight)({
 	scheduled_out: '2026-10-28T15:40:00Z',
 	terminal_origin: '3'
 })
-const train = Schema.decodeSync(Train.json)({
-	_tag: 'train',
-	arrives: 0,
-	departs: 0,
-	from: {name: 'Roma Termini', timeZone: 'Europe/Rome'},
-	id: '1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d',
-	number: '9541',
-	operator: 'trenitalia',
-	operatorName: 'Frecciarossa',
-	status: 'confirmed',
-	to: {name: 'Milano Centrale', timeZone: 'Europe/Rome'}
-})
+const train = Struct.pick(
+	Train.make({
+		arrives: DateTime.makeUnsafe(0),
+		coach: Option.none(),
+		confirmation: Option.none(),
+		departs: DateTime.makeUnsafe(0),
+		from: Schema.decodeSync(BookedPlace)({name: 'Roma Termini', timeZone: 'Europe/Rome'}),
+		id: BookingId.make('1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d'),
+		live: Option.none(),
+		number: '9541',
+		operator: 'trenitalia',
+		operatorName: 'Frecciarossa',
+		seat: Option.none(),
+		status: 'confirmed',
+		to: Schema.decodeSync(BookedPlace)({name: 'Milano Centrale', timeZone: 'Europe/Rome'})
+	}),
+	Struct.keys(Train.fields)
+)
 
 it('keeps the gate a flight left for the change it shows', () => {
 	const first = flightTracking({...ANSWER, gate_origin: Option.some('A3')}, DateTime.makeUnsafe(1), Option.none())
@@ -144,17 +150,21 @@ it('reads the platform, the delay it left with and the delay it runs with at the
 it('checks a train each minute near departure and calls live data stale after two missed checks', () => {
 	const departs = DateTime.makeUnsafe('2026-10-28T15:40:00Z')
 	const timetable = Train.make({...train, arrives: DateTime.addDuration(departs, Duration.hours(3)), departs})
-	const flight = Schema.decodeSync(Flight.json)({
-		_tag: 'flight',
+	const flight = Flight.make({
 		airline: 'British Airways',
 		airlineCode: 'BA',
-		arrives: DateTime.toEpochMillis(DateTime.addDuration(departs, Duration.hours(2.5))),
-		departs: DateTime.toEpochMillis(departs),
-		from: {city: 'Rome', code: 'FCO', name: 'Fiumicino', timeZone: 'Europe/Rome'},
-		id: '7f0c8f8e-0d0a-4a5e-9d8f-5b2a1c3d4e5f',
+		arrives: DateTime.addDuration(departs, Duration.hours(2.5)),
+		boardingAt: Option.none(),
+		boardingGroup: Option.none(),
+		confirmation: Option.none(),
+		departs,
+		from: Schema.decodeSync(BookedPlace)({city: 'Rome', code: 'FCO', name: 'Fiumicino', timeZone: 'Europe/Rome'}),
+		id: BookingId.make('7f0c8f8e-0d0a-4a5e-9d8f-5b2a1c3d4e5f'),
+		live: Option.none(),
 		number: '553',
+		seat: Option.none(),
 		status: 'confirmed',
-		to: {city: 'London', code: 'LHR', name: 'Heathrow', timeZone: 'Europe/London'}
+		to: Schema.decodeSync(BookedPlace)({city: 'London', code: 'LHR', name: 'Heathrow', timeZone: 'Europe/London'})
 	})
 	const now = DateTime.subtractDuration(departs, Duration.minutes(30))
 	function live(checkedAt: DateTime.Utc, operator: Train['operator'] = 'trenitalia') {

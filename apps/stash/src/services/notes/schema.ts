@@ -76,6 +76,13 @@ export class Note extends Model.Class<Note>('Note')({
 	static readonly table = 'notes'
 }
 
+export type NoteChangeResult = typeof NoteChangeResult.Type
+export const NoteChangeResult = Schema.TaggedUnion({
+	Changed: {note: Schema.Struct(Note.fields)},
+	Removed: {},
+	Unchanged: {}
+})
+
 // A tag and what belongs under it, so the AI reuses tags by meaning; the definition is the first one the tag was given.
 export class Tag extends Model.Class<Tag>('Tag')({
 	definition: Model.FieldOption(TagDefinition.fields.definition),

@@ -1,6 +1,6 @@
 import {platform} from 'node:process'
 
-import {Array, Boolean, Config, Effect, FileSystem, Path, String, pipe} from 'effect'
+import {Array, Boolean, Config, Effect, FileSystem, Function, Path, String, pipe} from 'effect'
 
 import {agentStatus, installAgent, installUpdateAgent, restartAgent, uninstallAgents} from '#server/launchd.ts'
 import {executeProcess} from '#server/process.ts'
@@ -38,7 +38,13 @@ export const installService = Effect.fnUntraced(function* (
 	)
 	yield* systemctl('daemon-reload')
 	yield* systemctl('enable', unit)
-	yield* systemctl(Boolean.match(options?.restart === false, {onFalse: () => 'restart', onTrue: () => 'start'}), unit)
+	yield* systemctl(
+		Boolean.match(options?.restart === false, {
+			onFalse: Function.constant('restart'),
+			onTrue: Function.constant('start')
+		}),
+		unit
+	)
 	return `${unit} installed\n`
 })
 

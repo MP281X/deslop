@@ -62,13 +62,19 @@ export function TimeAxis(props: {totalMs: Duration.Duration}) {
 							'absolute top-1/2 left-(--axis-left) -translate-y-1/2 whitespace-nowrap',
 							Boolean.match(ratio === 0, {
 								onFalse: () =>
-									Boolean.match(ratio === 1, {onFalse: () => '-translate-x-1/2', onTrue: () => '-translate-x-full'}),
+									Boolean.match(ratio === 1, {
+										onFalse: Function.constant('-translate-x-1/2'),
+										onTrue: Function.constant('-translate-x-full')
+									}),
 								onTrue: Function.constUndefined
 							})
 						)}
 						style={{'--axis-left': `${ratio * 100}%`}}
 					>
-						{Boolean.match(ratio === 0, {onFalse: () => durationOf(Duration.millis(total * ratio)), onTrue: () => '0'})}
+						{Boolean.match(ratio === 0, {
+							onFalse: () => durationOf(Duration.millis(total * ratio)),
+							onTrue: Function.constant('0')
+						})}
 					</span>
 				))}
 			</div>
@@ -93,15 +99,13 @@ export function Flame(props: {focus?: SpanId; onPick: (id: SpanId) => void; trac
 			const probe = surface.current.ownerDocument.createElement('span')
 			probe.className = 'pointer-events-none invisible absolute text-xs whitespace-nowrap'
 			surface.current.appendChild(probe)
-			const widths = Record.fromEntries(
-				pipe(
-					props.trace.spans,
-					Array.filter(span => span.depth <= 1),
-					Array.map(span => {
-						probe.textContent = labelOf(span)
-						return [span.spanId, probe.getBoundingClientRect().width] as const
-					})
-				)
+			const widths = pipe(
+				props.trace.spans,
+				Array.filter(span => span.depth <= 1),
+				Record.fromIterableWith(span => {
+					probe.textContent = labelOf(span)
+					return [span.spanId, probe.getBoundingClientRect().width] as const
+				})
 			)
 			probe.remove()
 			setLabelWidths(widths)
@@ -118,11 +122,7 @@ export function Flame(props: {focus?: SpanId; onPick: (id: SpanId) => void; trac
 				props.trace.spans,
 				Array.filter(span => span.depth <= 1),
 				Array.flatMap((span: TraceTree['spans'][number]) => {
-					const measured = pipe(
-						labelWidths,
-						Record.get(span.spanId),
-						Option.getOrElse(() => 0)
-					)
+					const measured = pipe(labelWidths, Record.get(span.spanId), Option.getOrElse(Function.constant(0)))
 					const bar = Number.max((Duration.toMillis(span.durationMs) / total) * width, 2)
 					if (bar >= measured + FLAME_LABEL_PADDING) return []
 					if ((Duration.toMillis(span.offsetMs) / total) * width + bar + 4 + measured > width) return []
@@ -131,7 +131,7 @@ export function Flame(props: {focus?: SpanId; onPick: (id: SpanId) => void; trac
 			)
 		)
 	)
-	const spansById = Record.fromEntries(Array.map(props.trace.spans, span => [span.spanId, span] as const))
+	const spansById = Record.fromIterableBy(props.trace.spans, span => span.spanId)
 	const placedByLane = Array.groupBy(placed, entry => `${entry.lane}`)
 	const lanes = Array.reduce(placed, 0, (deepest, entry) => Number.max(deepest, entry.lane + 1))
 	const rows = Array.map(placed, entry => {
@@ -139,11 +139,7 @@ export function Flame(props: {focus?: SpanId; onPick: (id: SpanId) => void; trac
 		const duration = durationOf(span.durationMs)
 		const left = (Duration.toMillis(span.offsetMs) / total) * width
 		const bar = Number.max((Duration.toMillis(span.durationMs) / total) * width, 2)
-		const measured = pipe(
-			labelWidths,
-			Record.get(span.spanId),
-			Option.getOrElse(() => 0)
-		)
+		const measured = pipe(labelWidths, Record.get(span.spanId), Option.getOrElse(Function.constant(0)))
 		const inside = span.depth <= 1 && width > 0 && bar >= measured + FLAME_LABEL_PADDING
 		const labelLeft = left + bar + 4
 		const labelRight = labelLeft + measured
@@ -178,7 +174,7 @@ export function Flame(props: {focus?: SpanId; onPick: (id: SpanId) => void; trac
 				})
 			),
 			duration,
-			hit: Number.max(bar + Boolean.match(after, {onFalse: () => 0, onTrue: () => measured + 4}), 12),
+			hit: Number.max(bar + Boolean.match(after, {onFalse: Function.constant(0), onTrue: () => measured + 4}), 12),
 			inside,
 			label: labelOf(span),
 			lane: entry.lane,
@@ -192,7 +188,7 @@ export function Flame(props: {focus?: SpanId; onPick: (id: SpanId) => void; trac
 		const index = pipe(
 			siblings,
 			Array.findFirstIndex(other => other.spanId === span.spanId),
-			Option.getOrElse(() => 0)
+			Option.getOrElse(Function.constant(0))
 		)
 		Option.match(
 			pipe(
@@ -240,17 +236,17 @@ export function Flame(props: {focus?: SpanId; onPick: (id: SpanId) => void; trac
 							aria-hidden
 							data-flame-fill={Boolean.match(row.bar > 2, {
 								onFalse: Function.constUndefined,
-								onTrue: () => '' as const
+								onTrue: Function.constant('' as const)
 							})}
 							className={cn(
 								'absolute inset-y-0 left-0 w-(--flame-bar) overflow-hidden',
 								Boolean.match(row.span.status === 'failed', {
-									onFalse: () => 'bg-(--app)',
-									onTrue: () => 'bg-destructive'
+									onFalse: Function.constant('bg-(--app)'),
+									onTrue: Function.constant('bg-destructive')
 								}),
 								Boolean.match(row.picked, {
 									onFalse: Function.constUndefined,
-									onTrue: () => 'outline-1 outline-foreground outline-offset-[-1px]'
+									onTrue: Function.constant('outline-1 outline-foreground outline-offset-[-1px]')
 								})
 							)}
 							style={{'--flame-bar': `${row.bar}px`}}
@@ -282,7 +278,7 @@ export function Flame(props: {focus?: SpanId; onPick: (id: SpanId) => void; trac
 							type="button"
 							aria-current={Boolean.match(row.picked, {
 								onFalse: Function.constUndefined,
-								onTrue: () => 'true' as const
+								onTrue: Function.constant('true' as const)
 							})}
 							aria-label={row.description}
 							title={row.description}

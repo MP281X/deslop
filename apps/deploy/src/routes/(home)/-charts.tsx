@@ -57,7 +57,7 @@ function nearest(history: MachineHistory, minutes: Duration.Duration, at: number
 		history.samples,
 		Array.map((sample, index) => ({distance: Math.abs(x(history, minutes, sample.time) - at), index})),
 		Array.match({
-			onEmpty: () => 0,
+			onEmpty: Function.constant(0),
 			onNonEmpty: entries =>
 				Array.min(
 					entries,
@@ -92,7 +92,7 @@ function UsageChart(props: {
 			x: pipe(
 				props.history.samples,
 				Array.get(index),
-				Option.match({onNone: () => 0, onSome: sample => x(props.history, props.minutes, sample.time)})
+				Option.match({onNone: Function.constant(0), onSome: sample => x(props.history, props.minutes, sample.time)})
 			),
 			y: ((event.clientY - bounds.top) / bounds.height) * 100
 		})
@@ -144,14 +144,10 @@ function UsageChart(props: {
 							pointerEvents="none"
 						/>
 						{Array.map(
-							Array.mapAccum(
-								props.layers,
-								Array.map(props.history.samples, () => 0),
-								(bottom, band) => {
-									const top = Array.map(bottom, (value, index) => value + (band.values[index] ?? 0))
-									return [top, {band, bottom, top}]
-								}
-							)[1],
+							Array.mapAccum(props.layers, Array.map(props.history.samples, Function.constant(0)), (bottom, band) => {
+								const top = Array.map(bottom, (value, index) => value + (band.values[index] ?? 0))
+								return [top, {band, bottom, top}]
+							})[1],
 							layer => {
 								const fill = bandFill(layer.band.kind, layer.band.opacity, props.names(layer.band.id))
 								const isFocused = Option.exists(focused, focus => focus === layer.band.id)
@@ -179,11 +175,17 @@ function UsageChart(props: {
 											onTrue: () => fill.opacity * 0.15
 										})}
 										stroke={Boolean.match(isFocused, {
-											onFalse: () => 'var(--background)',
-											onTrue: () => 'var(--foreground)'
+											onFalse: Function.constant('var(--background)'),
+											onTrue: Function.constant('var(--foreground)')
 										})}
-										strokeOpacity={Boolean.match(isFocused, {onFalse: () => 1, onTrue: () => 0.7})}
-										strokeWidth={Boolean.match(isFocused, {onFalse: () => 0.6, onTrue: () => 0.75})}
+										strokeOpacity={Boolean.match(isFocused, {
+											onFalse: Function.constant(1),
+											onTrue: Function.constant(0.7)
+										})}
+										strokeWidth={Boolean.match(isFocused, {
+											onFalse: Function.constant(0.6),
+											onTrue: Function.constant(0.75)
+										})}
 										vectorEffect="non-scaling-stroke"
 										onPointerEnter={() => setHoverBand(layer.band)}
 									/>
@@ -224,12 +226,12 @@ function UsageChart(props: {
 									'--tip-x': `${pipe(
 										Option.fromUndefinedOr(cursor),
 										Option.map(value => value.x),
-										Option.getOrElse(() => 0)
+										Option.getOrElse(Function.constant(0))
 									)}%`,
 									'--tip-y': `${pipe(
 										Option.fromUndefinedOr(cursor),
 										Option.map(value => value.y),
-										Option.getOrElse(() => 0)
+										Option.getOrElse(Function.constant(0))
 									)}%`
 								}}
 							/>
@@ -274,8 +276,11 @@ function TimeAxis(props: {className?: string; minutes: Duration.Duration; now: D
 							'absolute top-0 left-(--tick-x) whitespace-nowrap',
 							Boolean.match(tick.x < 8, {
 								onFalse: () =>
-									Boolean.match(tick.x > 92, {onFalse: () => '-translate-x-1/2', onTrue: () => '-translate-x-full'}),
-								onTrue: () => ''
+									Boolean.match(tick.x > 92, {
+										onFalse: Function.constant('-translate-x-1/2'),
+										onTrue: Function.constant('-translate-x-full')
+									}),
+								onTrue: Function.constant('')
 							})
 						)}
 						style={{'--tick-x': `${tick.x}%`}}
@@ -377,9 +382,12 @@ export function ChartBlock(props: {
 	const total = Number.sumAll(Array.map(props.history.disks, disk => disk.total))
 	const disk = Array.map(props.history.samples, sample =>
 		Boolean.match(total > 0, {
-			onFalse: () => 0,
+			onFalse: Function.constant(0),
 			onTrue: () =>
-				Number.clamp((Option.getOrElse(sample.storageUsed, () => 0) / total) * 100, {maximum: 100, minimum: 0})
+				Number.clamp((Option.getOrElse(sample.storageUsed, Function.constant(0)) / total) * 100, {
+					maximum: 100,
+					minimum: 0
+				})
 		})
 	)
 	const charts: readonly {
@@ -393,7 +401,10 @@ export function ChartBlock(props: {
 	}[] = [
 		{
 			cover: false,
-			figure: Boolean.match(latest === undefined, {onFalse: () => bytesOf(latest?.memoryUsed ?? 0), onTrue: () => '—'}),
+			figure: Boolean.match(latest === undefined, {
+				onFalse: () => bytesOf(latest?.memoryUsed ?? 0),
+				onTrue: Function.constant('—')
+			}),
 			focus,
 			format: bytesOf,
 			label: 'Memory',
@@ -402,7 +413,7 @@ export function ChartBlock(props: {
 		},
 		{
 			cover: false,
-			figure: Option.match(cpu, {onNone: () => '—', onSome: percentOf}),
+			figure: Option.match(cpu, {onNone: Function.constant('—'), onSome: percentOf}),
 			focus,
 			format: percentOf,
 			label: 'CPU',
@@ -412,9 +423,12 @@ export function ChartBlock(props: {
 		{
 			cover: true,
 			figure: Option.match(storageUsed, {
-				onNone: () => '—',
+				onNone: Function.constant('—'),
 				onSome: used =>
-					Boolean.match(total > 0, {onFalse: () => '—', onTrue: () => percentOf(Number.round((used / total) * 100, 0))})
+					Boolean.match(total > 0, {
+						onFalse: Function.constant('—'),
+						onTrue: () => percentOf(Number.round((used / total) * 100, 0))
+					})
 			}),
 			format: percentOf,
 			label: 'Disk',
@@ -481,8 +495,8 @@ export function EmptyChart(props: {worker?: string}) {
 			<EmptyState
 				icon={<ChartLineIcon weight="light" />}
 				label={Boolean.match(props.worker === undefined, {
-					onFalse: () => 'No readings in this range',
-					onTrue: () => 'No machine'
+					onFalse: Function.constant('No readings in this range'),
+					onTrue: Function.constant('No machine')
 				})}
 			/>
 		</div>

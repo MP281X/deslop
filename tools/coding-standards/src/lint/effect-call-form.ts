@@ -207,6 +207,7 @@ function stableConstructor(context: LintContext, node: ESTree.CallExpression) {
 		Array.contains(
 			[
 				'Array.empty',
+				'Function.constant',
 				'Effect.succeed',
 				'Effect.sync',
 				'Effect.sleep',
@@ -242,7 +243,7 @@ function stableConstructor(context: LintContext, node: ESTree.CallExpression) {
 				'Schema.withDecodingDefaultTypeKey',
 				'Schema.withDecodingDefaultKey'
 			],
-			`${node.callee.object.name}.${Option.getOrElse(memberName(node.callee), () => '')}`
+			`${node.callee.object.name}.${Option.getOrElse(memberName(node.callee), Function.constant(''))}`
 		) &&
 		isImportBinding({
 			context,
@@ -288,7 +289,7 @@ function argumentKind(context: LintContext, node: ESTree.Node): string {
 			}
 			return 'unknown'
 		}),
-		Option.getOrElse(() => 'unknown')
+		Option.getOrElse(Function.constant('unknown'))
 	)
 }
 
@@ -298,10 +299,10 @@ function predicateDataFirst(context: LintContext, callee: ESTree.MemberExpressio
 	if (first === undefined) return false
 	const firstKind = argumentKind(context, first)
 	const secondKind = Option.match(Option.fromUndefinedOr(second), {
-		onNone: () => 'missing',
+		onNone: Function.constant('missing'),
 		onSome: argument => argumentKind(context, argument)
 	})
-	const method = Option.getOrElse(memberName(callee), () => '')
+	const method = Option.getOrElse(memberName(callee), Function.constant(''))
 	if (method === 'forEach') return secondKind === 'function' || (firstKind !== 'function' && secondKind === 'unknown')
 	if (Array.contains(['zip', 'zipWith', 'raceFirst', 'race', 'merge'], method)) {
 		return secondKind !== 'missing' && secondKind !== 'object'
@@ -966,7 +967,7 @@ function normalizeGenerator(context: LintContext, node: ESTree.Function | ESTree
 					)
 					return fixer.replaceText(
 						node,
-						`Effect.fnUntraced(function* ${Option.match(Option.fromNullishOr(node.typeParameters), {onNone: () => '', onSome: type => context.sourceCode.getText(type)})}(${parameters}) ${context.sourceCode.getText(body)})`
+						`Effect.fnUntraced(function* ${Option.match(Option.fromNullishOr(node.typeParameters), {onNone: Function.constant(''), onSome: type => context.sourceCode.getText(type)})}(${parameters}) ${context.sourceCode.getText(body)})`
 					)
 				},
 				message:

@@ -27,6 +27,7 @@ import {layerOtlp} from '#shared/telemetry.ts'
 
 type SessionJson = typeof SessionJson.Type
 const SessionJson = Schema.fromJsonString(SessionHandle)
+const sessionEvents = Machine.events({Changed: {}, SignIn: {}, SignOut: {}})
 
 const applicationName = `@deslop/${appConfig.slug}`
 const name = String.capitalize(appConfig.slug)
@@ -121,7 +122,7 @@ export function makeSession(server: string, storage: SessionStorage) {
 				signIn,
 				signOut
 			},
-			events: Machine.events({Changed: {}, SignIn: {}, SignOut: {}}),
+			events: sessionEvents,
 			root: Machine.state({
 				states: {
 					Reading: {},
@@ -194,6 +195,7 @@ export function makeSession(server: string, storage: SessionStorage) {
 	return {
 		account: accountAtom,
 		bearer,
+		events: sessionEvents,
 		machine,
 		protocol: pipe(
 			layerSocketProtocol(String.replace(/^http/u, 'ws')(new URL(RPC_PATH, server).href)),
@@ -208,7 +210,7 @@ export function makeSession(server: string, storage: SessionStorage) {
 						Effect.gen(function* () {
 							if (!needsSignIn(error)) return
 							yield* storage.clear
-							yield* Atom.set(machine.send, {_tag: 'Changed'})
+							yield* Atom.set(machine.send, sessionEvents.Changed())
 						}),
 						{log: 'Warn', message: 'The refused session could not be cleared'}
 					)

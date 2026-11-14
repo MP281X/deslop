@@ -1,4 +1,4 @@
-import {Number, Option, Result, Schema, String, pipe} from 'effect'
+import {Function, Number, Option, Result, Schema, String, pipe} from 'effect'
 
 import {Usage} from '#services/ai-metering/schema.ts'
 import type {AiUsageEntry} from '#services/ai-metering/schema.ts'
@@ -38,7 +38,7 @@ export function readUsage(text: string, entry: AiUsageEntry) {
 			...entry,
 			cacheReadTokens,
 			cacheWriteTokens,
-			costSource: Option.match(cost, {onNone: () => entry.costSource, onSome: () => 'provider' as const}),
+			costSource: Option.match(cost, {onNone: () => entry.costSource, onSome: Function.constant('provider' as const)}),
 			costUsd: Option.orElse(cost, () => entry.costUsd),
 			estimated: Option.match(billing, {onNone: () => entry.estimated, onSome: value => value.estimated === true}),
 			// Input is counted without cached tokens, as Anthropic's messages report it; chat completions' prompt_tokens include them, whichever provider serves the shape.
@@ -75,8 +75,8 @@ export function readUsage(text: string, entry: AiUsageEntry) {
 					Option.map(
 						decoded.usageMetadata,
 						value =>
-							Option.getOrElse(value.candidatesTokenCount, () => 0) +
-							Option.getOrElse(value.thoughtsTokenCount, () => 0)
+							Option.getOrElse(value.candidatesTokenCount, Function.constant(0)) +
+							Option.getOrElse(value.thoughtsTokenCount, Function.constant(0))
 					)
 				),
 				Option.getOrElse(() => entry.outputTokens)

@@ -32,6 +32,7 @@ import {MCP_PATH} from '@deslop/runtime/shared/schema'
 
 import {connectionFailure, serverIcons} from '#services/connections/lib/utils.ts'
 import type {ConnectionGeneration, ConnectionState, ServerReference, ServerId} from '#services/connections/schema.ts'
+import {Discovery} from '#services/connections/schema.ts'
 import {Connections, gatewayUrl} from '#services/connections/service.ts'
 import {compact, prunedTools} from '#services/gateway/lib/utils.ts'
 import {RemoteTool, RemoteTools, ToolArguments, ToolRequest} from '#services/gateway/schema.ts'
@@ -269,12 +270,15 @@ export class Gateway extends Context.Service<
 					{concurrency: 1}
 				)
 				yield* updateVisible(server, HashSet.fromIterable(names))
-				yield* connections.report(server.id, server.generation, {
-					_tag: 'Discovered',
-					icons: found.icons,
-					instructions: found.instructions,
-					tools: Array.map(found.tools, tool => tool.name)
-				})
+				yield* connections.report(
+					server.id,
+					server.generation,
+					Discovery.cases.Discovered.make({
+						icons: found.icons,
+						instructions: found.instructions,
+						tools: Array.map(found.tools, tool => tool.name)
+					})
+				)
 			})
 			const lastRead = yield* Ref.make(Option.none<DateTime.Utc>())
 			// Share only in-flight discovery; descriptors remain owned by the MCP registry.
@@ -286,7 +290,7 @@ export class Gateway extends Context.Service<
 						Effect.tapCause(cause => Effect.logWarning(`${server.name} discovery failed`, cause)),
 						Effect.mapError(connectionFailure(server.name)),
 						Effect.tapError(error =>
-							connections.report(server.id, server.generation, {_tag: 'Failed', error: error.message})
+							connections.report(server.id, server.generation, Discovery.cases.Failed.make({error: error.message}))
 						)
 					)
 				})

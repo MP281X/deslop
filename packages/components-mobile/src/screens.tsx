@@ -132,7 +132,12 @@ export function SessionGate(props: {children: ReactNode; logo: number | string; 
 			</MachineState>
 			<MachineState machine={props.session.machine} path="SignedOut">
 				{() => (
-					<SignInScreen logo={props.logo} onSignIn={() => send({_tag: 'SignIn'})} tint={props.tint} waiting={false} />
+					<SignInScreen
+						logo={props.logo}
+						onSignIn={() => send(props.session.events.SignIn())}
+						tint={props.tint}
+						waiting={false}
+					/>
 				)}
 			</MachineState>
 			<MachineState machine={props.session.machine} path="SigningIn">
