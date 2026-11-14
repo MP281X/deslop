@@ -21,10 +21,13 @@ A main-thread call re-reads the whole thread, often 300k tokens; a delegate star
 - **Not used.** Luna gave up on 59% of its runs; Haiku and DeepSeek are out too.
 - **Removals.** Codex rejects `rm -f` and `rm -rf`, so a removal goes to Sonnet.
 - **Step up.** A delegate that returns without its deliverable reruns once on another model, then on Opus 5.5.
+- **Long jobs.** Long or overnight work goes to GPT-6.1 Sol, since Codex's prompt cache does not expire the way Claude's does; preferably on dev through `t3_thread_launch` with `workspaceStrategy`, because a remote `delegate_task` cannot isolate a worktree.
 
 ## Batch
 
-- **One delegate per deliverable.** It owns its files and no sibling touches them, so independent deliverables start together in one turn and merge without conflicts.
+- **What to delegate.** One outcome that finishes independently per delegate; coupled edits stay in one thread, since split halves come back for the main thread to reconcile. A procedure is a skill, not a child agent.
+- **One owner per file.** A delegate owns its files and no sibling touches them, so siblings merge without conflicts.
+- **Parallel.** Delegates that can run together start with `mode: 'async'` in one turn, then the main thread ends its turn; their completions wake it. `mode: 'wait'` calls run one after another, so wait only on a single delegate whose result the next step needs.
 - **Worktrees.** A writing delegate works in its own worktree (`isolation: 'worktree'`) and commits there; the main thread merges. Read-only delegates share the checkout.
 - **Surveys** run once; save the result to a file outside the checkout and cite its path in later briefs.
 - **Reruns** carry only what was missing.

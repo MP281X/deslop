@@ -16,7 +16,7 @@ description: 'Load before the first commit of a task, before the first edit when
 ## Publish
 
 1. **Push** as a draft, one push per affected PR per round, since each push cancels the previous pipeline.
-2. **Describe** by the output skill. The reader decides merge or iterate from the body alone, so leave out file paths, test names, lists of checks and the restated diff. A change that a revert cannot undo (data deleted or moved, a release, a secret changed by hand) opens with a WARNING alert and the manual steps. Trim a recording's still stretches:
+2. **Describe** by filling `.github/pull_request_template.md`'s sections. Trim a recording's still stretches:
 
    ```bash
    ffmpeg -i <recording> -vf "mpdecimate=hi=1:lo=1:frac=0,setpts='if(eq(N,0),0,PREV_OUTPTS+min(PTS-PREV_INPTS,1/TB))',fps=60,scale=out_range=tv,format=yuv420p" -c:v libx264 -pix_fmt yuv420p -color_range tv -movflags +faststart -an <trimmed>.mp4

@@ -18,7 +18,7 @@
 - **Generators.** `vp create app -- --name <name>` (`--kind mobile` for iOS) and `vp create package -- --name <name>`, then `vp install`; never copy one. A new app's first release, mobile before its first push: `.github/releasing.md`, **A new app**.
 - **Updates.** `vp update -r`; `vp outdated -r` then lists only pins. New checks since the last review: `@effect/tsgo`'s README table and changelog, each lint plugin's `rules` against its previous version, Fallow's release notes. Count a candidate rule's hits with `vp exec effect-tsgo --tsrs-lint vp lint -D <rule>`; ask before one that reverses a house form or rewrites hundreds of sites, with a bad example, a good example and its count.
 - **Releases.** `.github/releasing.md`: a new app or tool, following a release, Simulator builds, native tools.
-- **Agent configuration.** `.claude/agents/pair.md` = `.codex/instructions.md` from `# Work` down; each keeps its own `# Harness`. Skills in `.claude/skills` serve both harnesses. The installed `~/deslop` changes only through a merged PR and while no other thread reads it.
+- **Agent configuration.** `.claude/agents/pair.md` = `.codex/instructions.md` from `# Work` down; each keeps its own `# Harness`. Skills in `.claude/skills` and hooks in `.claude/hooks` serve both harnesses. The installed `~/deslop` changes only through a merged PR and while no other thread reads it.
 - **Standards policy.** Define each policy once, in the best tool; prove replacements with the custom rule's failing cases. Only custom rules have tests; upgrades never opt into new rules, and declined rules stay out. The compiler and Effect rules own their checks. Parser checks are static; codebase-wide checks belong to review. No per-package typecheck scripts. Checks must be reachable in consuming codebases, including prevention of encountered patterns. Custom rules must add coverage or safe fixes beyond native rules; accept intended forms and make fixes converge. Each rule's accepted examples and automatic fixes must pass the whole preset, not only that rule; repeated fixes must reach a fixed point.
 
 ## Patterns
@@ -58,4 +58,4 @@
 
 ## Documents
 
-- **Homes.** Each fact lives once: code, then lint; here for operation and user choices; app `AGENTS.md` for product intent; themes for tokens; `.github/releasing.md` for releases; published package `README.md` for its contract; skills for procedures and reply, page or PR shape; PR template for reviewer-facing sections.
+- **Homes.** Each fact lives once: code, then lint; here for operation and user choices; app `AGENTS.md` for product intent; themes for tokens; `.github/releasing.md` for releases; published package `README.md` for its contract; skills for procedures and reply or page shape; the PR template for a PR body's shape.
