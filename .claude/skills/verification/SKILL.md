@@ -18,7 +18,6 @@ Lint owns what a parser can check; this covers running behaviour. Diagnose runs 
 - **Surface.** UI, and backend changes a screen shows, in the T3 browser; native changes in the Device panel. This standing request covers the preview tools.
 - **Capture** representative data once a condition holds, on the head, with its short commit in the caption; a rebase retakes them all.
 - **Fixed means flipped.** The probe that failed on base passes on the head.
-- **Journeys.** Walk each touched journey (an app's `AGENTS.md` `## Journeys`) from input to outcome, failures included; Scope's traces show the backend.
 - **States.** Cold open, deep-link reload and a failed first request; `iphone-12-pro` and 1440×900, plus the widest target reached; dark and light when colour changed; web and iOS side by side when both exist.
 - **Read each capture** for duplicates, clipping, overflow and untruthful loading, empty or error states, and audit web states with `preview_evaluate` and [references/page-audit.js](references/page-audit.js).
 - **Unproved** claims say `unverified: <what was not run>`.

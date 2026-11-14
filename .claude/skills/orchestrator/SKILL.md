@@ -21,9 +21,13 @@ A main-thread call re-reads the whole thread, often 300k tokens; a delegate star
 - **Trial.** GPT-6.1 Terra for bounded reads, searches, runs and checks; compare its reports with Sol's before it becomes a default.
 - **Removals.** Codex rejects `rm -f` and `rm -rf`, so a removal goes to Sonnet.
 - **Step up.** A delegate that returns without its deliverable reruns once on another model, then on Opus 5.5.
-- **Machines.** Main threads and delegates run on dev, sharing its checkout with no transfer. Only validation (Verify, tests, builds) moves to the faster desktop, when `t3_environment_links` lists it `reachable`; otherwise the same brief runs on dev without a target:
-  1. Commit; nothing is pushed.
-  2. `delegate_task` with desktop's `target.environmentId` and `mode: 'async'`. The brief names the dev worktree path and the SHA and says: `git fetch ssh://mp281x@dev<worktree path> <sha>`, `git worktree add --detach /tmp/validate-<sha> FETCH_HEAD`, run the checks there, report, then `git worktree remove --force` it. The fetch creates no branch on either side; a remote delegate rejects worktree isolation, so it makes its own worktree and leaves desktop's project checkout untouched.
+- **Machines.** Main threads and delegates run on dev. Validation (the repository's checks and tests, without fixers, since fixes happen on dev) runs on desktop, about three times faster, whenever `ssh -o ConnectTimeout=3 mp281x@desktop true` succeeds; otherwise in place in the thread's worktree on dev. The main thread commits, then runs one background command, no delegate:
+
+  ```bash
+  ssh mp281x@desktop 'cd ~/<repo> && w=/tmp/validate/<repo>-<dev worktree name> && git fetch -q ssh://mp281x@dev<dev worktree path> <sha> && { git -C $w checkout -q --detach <sha> 2>/dev/null || git worktree add -q --detach $w <sha>; } && cd $w && vp install && <checks> && <tests>'
+  ```
+
+  Each thread owns one validation worktree, reused every iteration so dependencies and the `vp` cache stay warm (Deslop: 29 s cold, 7 s warm), and never shared, so threads need no locks. Nothing is pushed and no branch is created; maintenance removes a settled thread's validation worktree.
 - **Long jobs.** Long or overnight delegates use GPT-6.1 Sol, since Codex's prompt cache does not expire the way Claude's does.
 
 ## Batch

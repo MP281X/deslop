@@ -31,7 +31,7 @@ Each step stands alone: a refusal or failure skips only that step. A thread owns
 4. **Docker,** when no `docker build` or Compose build runs: `docker image prune -a -f`, `docker builder prune -a -f`. Never `docker system prune`.
 5. **pnpm,** when no install runs: `pnpm store prune`.
 6. **Previews.** Remove each stopped `preview-*` unit and its container whose worktree is gone; run an Alchemy preview's `preview:destroy` first. Stop the containers a preview started with it, since Dual's `dualos-local-*-wt-<hash>` Postgres and OpenSandbox outlive the unit; `docker stop` keeps their seeded data, Dual's `settle` destroys it. Dual's public hostname is a Deploy exposure (`dual-preview.mp281x.xyz`): remove it with Deploy's `remove_exposure` once no preview answers behind it. Remove leftover `testcontainers-ryuk-*` and the unnamed Postgres containers of finished test runs.
-7. **Worktrees** of settled threads that no process uses, uncommitted changes included: the settle script, then `git worktree remove --force --force <path>` and `git worktree prune`.
+7. **Worktrees** of settled threads that no process uses, uncommitted changes included: the settle script, then `git worktree remove --force --force <path>` and `git worktree prune`. On desktop this includes `/tmp/validate/<repo>-<dev worktree name>` once its dev worktree's thread is settled.
 8. **Local branches** in `~/deslop` and `~/dual` that no worktree checks out, except the default branch: `git branch -D`.
 9. **Remote branches,** only when the PR or MR is merged or closed, every commit is authored by the user, and no thread's worktree uses it. A failed host query keeps the branch.
 
