@@ -14,14 +14,13 @@
 
 | Role   | Command        | Runs                                                                            |
 | ------ | -------------- | ------------------------------------------------------------------------------- |
-| Fixer  | `vp run fix`   | Before every push and in **Validate**; covers `check`                           |
+| Fixer  | `vp run fix`   | In **Validate** and before each push; covers `check`                            |
 | Checks | `vp run check` | In CI                                                                           |
 | Tests  | `vp run test`  | In CI; **Validate** runs each touched package's with `vp -C <package> run test` |
 
-- **Verify.** The verification skill's **Validate**, then CI on the pushed head.
 - **Ready.** A settled PR is marked ready once CI is green, with no extra Validate run, so the user merges settled PRs one by one.
 - **Server contracts.** A contract change is not done until its built server starts with scratch data and serves the affected MCP tools or RPCs; build and static checks do not register tools.
-- **Judge.** `vp run judge` runs only when the user asks, never in CI, `fix`, `check`, `test` or Verify, because each Haiku call bills the signed-in person's Anthropic account through Gateway.
+- **Judge.** `vp run judge` runs only when the user asks, never in CI, `fix`, `check`, `test` or Validate, because each Haiku call bills the signed-in person's Anthropic account through Gateway.
 - **Generators.** `vp create app -- --name <name>` (`--kind mobile` for iOS) and `vp create package -- --name <name>`, then `vp install`; never copy one. A new app's first release, mobile before its first push: `.github/releasing.md`, **A new app**.
 - **Updates.** `vp update -r`; `vp outdated -r` then lists only pins. New checks since the last review: `@effect/tsgo`'s README table and changelog, each lint plugin's `rules` against its previous version, Fallow's release notes. Count a candidate rule's hits with `vp exec effect-tsgo --tsrs-lint vp lint -D <rule>`; ask before one that reverses a house form or rewrites hundreds of sites, with a bad example, a good example and its count.
 - **Releases.** `.github/releasing.md`: a new app or tool, following a release, Simulator builds, native tools.
@@ -40,7 +39,6 @@
 - **Ownership.** Abstractions add capability or ease reading, not just shorter files; domain names and plain control flow over wrappers and configuration languages.
 - **Imports.** A service folder shows only `schema.ts`, `service.ts` and `lib/utils.ts`; its own files reach the rest with `./`. The runtime is imported by side: `shared`, `server`, `client`, `web`, `mobile`, `config`.
 - **Arguments.** Short, independent arguments stay positional, not wrapped just to name them.
-- **Fixed callbacks.** Literal thunks use `Function.constant`; `undefined`, `null`, `true` and `false` use Effect's named function constants.
 - **Model tags.** `toTaggedUnion.guards` validates the whole case, including a model class's instance identity, so JSON decoded to plain objects fails them: discriminate already-typed values with the union's `isAnyOf` (`Booking.isAnyOf`).
 - **Search serialization.** TanStack serializes both raw parsed search and validated/transformed search. Encode Option transforms through the app's Struct codec before the library's default serialization; both forms are current library inputs, and unrelated keys stay intact.
 - **Personal tools.** No stdio bridge, container, download command or telemetry Collector.
@@ -59,9 +57,9 @@
 - **Targets.** 3440×1440, 1920×1080, ~1512×982; iPhone Air 420×912pt, safe areas and Dynamic Type.
 - **Colour.** Only identity and status carry hue; services without Deslop icons stay grey except Deploy's usage bands. Never label healthy, live, connected or up-to-date states. Dots mark problems, never kinds; kinds take tinted icons.
 - **Layout.** No page titles or panel headers, and no search fields on the web. Web semibold only for the bar's app name; no decorative shadows, only popups raised. No custom iOS bar. Trees have no connectors, tints or fold carets.
-- **Behavior.** No web removal controls or context menus; iOS keeps native long-press menus and swipes. No command palette or hotkeys. Never confirm destruction.
-- **Recovery.** Leave stale rows and panes unmarked; no toasts or page-moving banners. Destructive failures say whether they committed.
-- **Components.** Only shadcn's own animations; pending actions have no spinners.
+- **Behavior.** No web removal controls; iOS keeps native long-press menus and swipes. No hotkeys. Never confirm destruction.
+- **Recovery.** Leave stale rows and panes unmarked; no page-moving banners. Destructive failures say whether they committed.
+- **Components.** Only shadcn's own animations.
 - **Tracing.** Background work rounds are traced; animation ticks, including Portfolio's occupied-room wandering, are not.
 - **Artwork.** Canonical and transparent; never redraw or recolour in a UI pass. Copy Kanagawa pixel art unchanged: `crispEdges`, integer scaling; indexed touch icons crop 192 to 180px on `#0d0c0c`.
 

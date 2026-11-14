@@ -7,10 +7,10 @@ description: 'Load before the first commit of a task, before the first edit when
 
 ## Branches
 
-- **One PR per thing.** More work on the same thing goes into its unmerged PR, edited in place. Split only what is independent, or a different layer of the same thing; each PR runs on its target, with generated files beside their source.
+- **One PR per change.** More work on the same change goes into its unmerged PR, edited in place. Split only what is independent, or a different layer of the same change; each PR runs on its target, with generated files beside their source.
 - **Stacks** ease review, not stepwise merging: PRs that depend on each other form one stack, one branch per layer, each readable alone. Restack with the host's stack commands, because a hand retarget loses the stack's tracking.
 - **Reshape.** Remove a rejected approach from every unmerged layer rather than undoing it in a layer above.
-- **Integration.** Fold corrections into their owning layers, then restack onto the latest default branch before Verify.
+- **Integration.** Fold corrections into their owning layers, then restack onto the latest default branch before Validate.
 - **Before.** When a before/after is claimed, capture Before on base before the first edit.
 
 ## Lifecycle
@@ -24,7 +24,6 @@ stateDiagram-v2
     Ready --> Watching : its layer needs an edit / mark draft, push
 ```
 
-- **Merged or closed,** from any state: `unlink_pull_request`.
 - **Push** once per affected PR per round, since each push cancels the previous pipeline. Every push, drafts included:
 
   ```mermaid
@@ -76,7 +75,7 @@ gh stack unstack --local             # drop tracking of a stack that was never s
 git commit -m 'Draft: <title>'
 script -qec "GLAB_EDITOR='sh -c \"git rev-list --reverse origin/<default>..HEAD > \\\$1\" -' glab stack infer --name <stack> <default>..HEAD" /dev/null
 git add -A && glab stack save -m 'Draft: <title>'    # a new layer; `amend` folds into the checked-out one
-glab stack sync --skip-push                          # restack locally before Verify
+glab stack sync --skip-push                          # restack locally before Validate
 glab stack sync --update-base                        # each push and after a merge below: rebase, drop merged diffs, force-push, open missing MRs
 ```
 

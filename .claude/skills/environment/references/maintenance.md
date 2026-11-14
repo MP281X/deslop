@@ -1,6 +1,6 @@
 # Maintenance
 
-A pass runs without asking, on a Claude model, since Codex rejects its removals:
+A pass removes files (orchestrator, **Route**) and runs without asking:
 
 ```mermaid
 stateDiagram-v2
