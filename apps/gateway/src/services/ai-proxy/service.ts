@@ -319,6 +319,19 @@ export class AiProxy extends Context.Service<AiProxy>()('@deslop/gateway/service
 					yield* sql`INSERT INTO ai_usage_new SELECT owner, hour, 'unattributed', costUsd, unknownCostCalls, 0 FROM ai_usage`
 					yield* sql`DROP TABLE ai_usage`
 					yield* sql`ALTER TABLE ai_usage_new RENAME TO ai_usage`
+				}),
+				'0005_payer_required': Effect.gen(function* () {
+					const sql = yield* SqlClient.SqlClient
+					yield* sql`CREATE TABLE ai_usage_new (
+						owner TEXT NOT NULL, hour INTEGER NOT NULL,
+						spendSource TEXT NOT NULL CHECK (spendSource IN ('balance', 'byok', 'free', 'go', 'go-plus')),
+						costUsd REAL NOT NULL, unknownCostCalls INTEGER NOT NULL, estimatedCalls INTEGER NOT NULL,
+						PRIMARY KEY (owner, hour, spendSource)
+					) STRICT, WITHOUT ROWID`
+					// Spend recorded before it was split by payer is dropped, not guessed.
+					yield* sql`INSERT INTO ai_usage_new SELECT * FROM ai_usage WHERE spendSource <> 'unattributed'`
+					yield* sql`DROP TABLE ai_usage`
+					yield* sql`ALTER TABLE ai_usage_new RENAME TO ai_usage`
 				})
 			}),
 			table: 'ai_migrations'

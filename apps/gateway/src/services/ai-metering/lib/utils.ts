@@ -81,7 +81,11 @@ export function readUsage(text: string, entry: AiUsageEntry) {
 				),
 				Option.getOrElse(() => entry.outputTokens)
 			),
-			spendSource: Option.match(billing, {onNone: () => entry.spendSource, onSome: value => value.billing_source})
+			spendSource: pipe(
+				billing,
+				Option.map(value => value.billing_source),
+				Option.orElse(() => entry.spendSource)
+			)
 		} satisfies AiUsageEntry
 	})
 }

@@ -30,7 +30,7 @@ import {Search} from '#lib/search.ts'
 import {AddKeyDialog, ProviderMark} from '#routes/(home)/-keys.tsx'
 import {aiCost, aiSeries, serverSeries} from '#routes/(home)/-usage.ts'
 import icon from '#routes/icon.svg'
-import {SpendSource} from '#services/ai-metering/schema.ts'
+import {Payer} from '#services/ai-metering/schema.ts'
 import type {AiUsageReport} from '#services/ai-metering/schema.ts'
 import type {AiKeyItem} from '#services/ai-proxy/schema.ts'
 import {ConnectionUrl, ServiceAccountKey} from '#services/ai-proxy/schema.ts'
@@ -38,14 +38,7 @@ import type {ConnectionItem, McpUsageServer} from '#services/connections/schema.
 import {Period} from '#services/usage/schema.ts'
 import type {UsageRange} from '#services/usage/schema.ts'
 
-const SPEND_LABELS: Record<SpendSource, string> = {
-	balance: 'Zen balance',
-	byok: 'Anthropic key',
-	free: 'Free',
-	go: 'Go',
-	'go-plus': 'Go Plus',
-	unattributed: 'Unattributed'
-}
+const PAYER_LABELS: Record<Payer, string> = {balance: 'Zen balance', byok: 'Anthropic key'}
 const PERIODS = Array.map(Period.literals, value => ({label: value, value}))
 
 const route = getRouteApi('/(home)/')
@@ -233,11 +226,20 @@ function ServerRows(props: {period: Period}) {
 	)
 }
 
-// One credential, with each balance's costs and estimates kept apart.
-function KeyRow(props: {info: AiKeyItem; period: UsageRange; report: AiUsageReport}) {
+// One payer of the saved key, in a server row's shape: its figure and range, with the dialog behind it.
+function PayerRow(props: {
+	info: AiKeyItem
+	onOpen: () => void
+	period: UsageRange
+	report: AiUsageReport
+	source: Payer
+}) {
 	return (
 		<div role="listitem">
-			<Item size="row" className="h-auto min-h-8 max-sm:h-auto max-sm:min-h-11">
+			<Item
+				size="row"
+				render={<button type="button" aria-label={`OpenCode, ${PAYER_LABELS[props.source]}`} onClick={props.onOpen} />}
+			>
 				<ItemMedia>
 					<span className="flex size-4 items-center justify-center">
 						<ProviderMark />
@@ -245,7 +247,7 @@ function KeyRow(props: {info: AiKeyItem; period: UsageRange; report: AiUsageRepo
 				</ItemMedia>
 				<ItemContent>
 					<ItemTitle>OpenCode</ItemTitle>
-					<ItemDescription>{`…${props.info.last4}`}</ItemDescription>
+					<ItemDescription>{PAYER_LABELS[props.source]}</ItemDescription>
 				</ItemContent>
 				<ItemActions>
 					{Option.exists(props.info.lastStatus, status => status === 401 || status === 403) && (
@@ -253,42 +255,37 @@ function KeyRow(props: {info: AiKeyItem; period: UsageRange; report: AiUsageRepo
 							<StatusDot status="error" />
 						</span>
 					)}
-					<div className="flex flex-col gap-1">
-						{pipe(
-							SpendSource.literals,
-							Array.filter(
-								source =>
-									source === 'balance' ||
-									source === 'byok' ||
-									Array.some(props.report.totals, total => total.spendSource === source)
-							),
-							Array.map(source => (
-								<div key={source} className="flex items-center justify-end gap-2">
-									<span className="text-muted-foreground text-xs">{SPEND_LABELS[source]}</span>
-									<Sparkline color="var(--muted-foreground)" values={aiSeries(props.report, source, props.period)} />
-									<span className="min-w-12 shrink-0 text-right font-mono text-xs tabular-nums">
-										{aiCost(props.report, source)}
-									</span>
-								</div>
-							))
-						)}
-					</div>
+					<Sparkline color="var(--muted-foreground)" values={aiSeries(props.report, props.source, props.period)} />
+					<span className="w-12 shrink-0 text-right font-mono text-xs tabular-nums">
+						{aiCost(props.report, props.source)}
+					</span>
 				</ItemActions>
 			</Item>
 		</div>
 	)
 }
 
-function KeyUsage(props: {info: AiKeyItem; period: Period}) {
+function KeyUsage(props: {info: AiKeyItem; onOpen: () => void; period: Period}) {
 	return (
 		<Loaded atom={aiUsageAtom(props.period)}>
-			{current => <KeyRow info={props.info} report={current.report} period={current.range} />}
+			{current =>
+				Array.map(Payer.literals, source => (
+					<PayerRow
+						key={source}
+						info={props.info}
+						onOpen={props.onOpen}
+						report={current.report}
+						period={current.range}
+						source={source}
+					/>
+				))
+			}
 		</Loaded>
 	)
 }
 
-// The saved credential has one row; the field adds or replaces it.
-function KeyRows(props: {period: Period}) {
+// The saved credential has a row for each payer it spends from; the field adds or replaces it.
+function KeyRows(props: {onOpen: () => void; period: Period}) {
 	return (
 		<Loaded atom={aiKeyAtom}>
 			{all =>
@@ -297,12 +294,12 @@ function KeyRows(props: {period: Period}) {
 					onSome: info => (
 						<Suspense
 							fallback={
-								<RowsSkeleton label="OpenCode key" rows={1}>
+								<RowsSkeleton label="OpenCode key" rows={Payer.literals.length}>
 									<RowBones />
 								</RowsSkeleton>
 							}
 						>
-							<KeyUsage info={info} period={props.period} />
+							<KeyUsage info={info} onOpen={props.onOpen} period={props.period} />
 						</Suspense>
 					)
 				})
@@ -312,7 +309,7 @@ function KeyRows(props: {period: Period}) {
 }
 
 // Each group is read on its own, so one failing reader leaves the other group's rows.
-function List(props: {period: Period}) {
+function List(props: {onOpen: () => void; period: Period}) {
 	return (
 		<Card size="list">
 			<div role="list" aria-label="MCP servers and AI keys">
@@ -335,7 +332,7 @@ function List(props: {period: Period}) {
 							</RowsSkeleton>
 						}
 					>
-						<KeyRows period={props.period} />
+						<KeyRows onOpen={props.onOpen} period={props.period} />
 					</Suspense>
 				</CatchBoundary>
 			</div>
@@ -474,7 +471,7 @@ function HomeRoute() {
 			<Page>
 				<h1 className="sr-only">Gateway</h1>
 				<AddField onKey={addKey} />
-				<List period={period} />
+				<List onOpen={() => addKey('', '')} period={period} />
 			</Page>
 			<AddKeyDialog
 				key={keyDialog.opened}
