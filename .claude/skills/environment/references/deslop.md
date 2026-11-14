@@ -12,9 +12,8 @@
 
 - **npm.** `matteo_paludgnach` approves a first publish's URL.
 - **Apple.** The App Store signing workflow sets up a new app and Release uploads, both with the App Store Connect API key in repository secrets `ASC_KEY_ID`, `ASC_ISSUER_ID` and `ASC_KEY_P8`; nothing signs in to Apple on a worker.
-- **EAS.** Desktop's Expo session, an owner of `mp281x.xyz`, registers new projects; Release uses `EXPO_TOKEN`. Paid cloud builds need the user's approval.
+- **EAS.** Desktop's Expo session, an owner of `mp281x.xyz`, registers new projects; Release uses `EXPO_TOKEN`.
 
 ## Tracing
 
-- **Public.** `https://scope.mp281x.xyz`.
-- **Tailnet.** `https://dev.tailnet-8c4c.ts.net:4318`, served by `sudo tailscale serve --bg --https=4318 http://127.0.0.1:5106` to Scope's port.
+- **Endpoint.** `https://scope.mp281x.xyz`, for apps and OTLP exporters alike; ingestion at `/v1/traces` needs no sign-in.

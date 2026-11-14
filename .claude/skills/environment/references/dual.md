@@ -22,10 +22,18 @@
 
 Project `DOS`, board 1053, `datapizza.atlassian.net`; the user's account ID `712020:87e4f57e-6b5d-40ab-8dfa-faf159ead71a`.
 
-- **Tools.** Dual's MCP `execute` (`dualos__execute` through the gateway), which finds its own tools (`atlassian-api.*`), never `acli`. Access is a service account: `currentUser()` and `@me` are not the user, so name the account ID. `To Do` is `status = "To Do"` (`statusCategory` also returns Backlog); `Doing` is transition `21`. A slow or confusing step is a Dual defect for the final reply.
-- **Picking.** On "what to work on": rank only unassigned `To Do` Epics, Tasks, Stories and Bugs by priority (`P1` highest), size and fit with the code. After approval, assign each to the user and move it to `Doing`: the only Jira writes.
-- **Assigned.** A ticket key in a request, branch or commit is work the user started: read it, quote the requirements used.
+- **Tools.** Dual's MCP `execute` (`dualos__execute` through the gateway), which finds its own tools (`atlassian-api.*`), never `acli`. Access is a service account: `currentUser()` and `@me` are not the user, so name the account ID. `To Do` is `status = "To Do"` (`statusCategory` also returns Backlog). A slow or confusing step is a Dual defect for the final reply.
 - **Link.** `https://datapizza.atlassian.net/browse/<key>`.
+
+```mermaid
+stateDiagram-v2
+    [*] --> Ranking : user asks what to work on
+    Ranking --> Proposed : unassigned To Do Epics, Tasks, Stories and Bugs ranked by priority (P1 highest), size and fit with the code
+    Proposed --> Ranking : user steers
+    Proposed --> [*] : user approves / assign each to the user, transition 21 to Doing, the only Jira writes
+    [*] --> Reading : a ticket key in a request, branch or commit, work the user started
+    Reading --> [*] : read it / quote the requirements used
+```
 
 ## Google
 
@@ -33,7 +41,13 @@ The same `execute` reads, never writes, the user's work calendar and mail, `matt
 
 ## VPN
 
-`git.datapizza.tech` works only through dev's VPN route. When it does not answer, reconnect on dev (`ssh mp281x@dev` from desktop), give the user the printed sign-in URL once, then check again:
+```mermaid
+stateDiagram-v2
+    [*] --> Probing : the host is needed
+    Probing --> [*] : probe [the sign-in page answers]
+    Probing --> Reconnecting : probe [no answer] / on dev, restart the session below
+    Reconnecting --> Probing : it prints the sign-in URL / give the user the URL once, then probe again
+```
 
 ```bash
 curl -fsS --max-time 5 https://git.datapizza.tech/users/sign_in >/dev/null || {
@@ -54,7 +68,7 @@ After `vp run build:runtime` at the root, from `packages/saas` with its developm
 
 ```bash
 OTEL_RESOURCE_ATTRIBUTES="scope.runtime=server,scope.run.started_unix_nano=$(date +%s%N)" \
-POSTHOG_PROJECT_TOKEN=scope-dev POSTHOG_OTLP_BASE_URL=https://dev.tailnet-8c4c.ts.net:4318 \
+POSTHOG_PROJECT_TOKEN=scope-dev POSTHOG_OTLP_BASE_URL=https://scope.mp281x.xyz \
 bun --env-file .env src/dev.ts api
 # Use the same launch environment with `src/dev.ts worker` for the worker.
 ```
