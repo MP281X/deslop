@@ -1,23 +1,21 @@
 @import '@deslop/components-web/theme.css';
 @source '../../../../packages/components-web/src/**/*.tsx';
 
-/* A process tree: each level indents 12px, and a parent's row pins above the rows under it on the pane's background. */
-@utility tree-sticky {
-	position: sticky;
-	background-color: var(--background);
-	top: calc(var(--tree-depth) * 2rem);
-	z-index: calc(100 - var(--tree-depth));
-	@media (width < 40rem) {
-		top: calc(var(--tree-depth) * 2.75rem);
+:root {
+	--primary: var(--blue);
+	/* Each machine's identity, used by its icon in the bar. */
+	--machine-dev: oklch(from #2c718b l c h);
+	--machine-desktop: oklch(from #98601f l c h);
+}
+
+@media screen and (prefers-color-scheme: dark) {
+	:root {
+		--machine-dev: oklch(from #7fb4ca l c h);
+		--machine-desktop: oklch(from #dca561 l c h);
 	}
 }
 
-/* Each machine's identity, used by its icon in the bar. */
 @theme inline {
 	--color-machine-dev: var(--machine-dev);
 	--color-machine-desktop: var(--machine-desktop);
-}
-
-:root {
-	--primary: var(--blue);
 }

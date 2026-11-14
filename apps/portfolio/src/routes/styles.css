@@ -4,6 +4,9 @@
 @import '@fontsource-variable/ibm-plex-sans';
 @source '../../../../packages/components-web/src/**/*.tsx';
 
+/* A mouse that hovers draws the live cursor; touch and pens keep the system one. */
+@custom-variant mouse (@media (hover: hover) and (pointer: fine));
+
 /* The public CV keeps Geist and its paper tones while the Deslop apps run Lyra. */
 :root {
 	--primary: var(--coral);
@@ -17,8 +20,6 @@
 	--popover: #ffffff;
 	--primary-foreground: #ffffff;
 	--coral: oklch(from #bd4630 l c h);
-	--selection: #e8e6df;
-	--selection-foreground: #0a0a0a;
 	--radius: 0px;
 }
 
@@ -33,8 +34,13 @@
 		--popover: #141313;
 		--primary-foreground: #0d0c0c;
 		--coral: oklch(from #fd7357 l c h);
-		--selection: #3a3833;
-		--selection-foreground: #f5f3ec;
+	}
+}
+
+/* The page reads in Geist; the shared theme sets the Deslop apps' monospace on the root. */
+@layer base {
+	html {
+		@apply font-sans;
 	}
 }
 
@@ -108,10 +114,17 @@
 	margin: 10mm;
 }
 
-/* A dark-mode browser still prints the CV as a light document: the screen tokens never reach paper. */
+/* A dark-mode browser still prints the CV as a light document: the screen tokens never reach paper. The printed CV flows
+   onto as many sheets as it needs, out of the app's full-height shell. */
 @media print {
 	:root {
 		color-scheme: light;
+	}
+
+	html,
+	body {
+		height: auto;
+		overflow: visible;
 	}
 
 	.panel-frosted {

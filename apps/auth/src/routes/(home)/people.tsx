@@ -10,35 +10,39 @@ import type {ReactNode} from 'react'
 
 import {AccountAvatar} from '@deslop/components-web/app-bar'
 import {EmptyState, Loaded} from '@deslop/components-web/fallbacks'
-import {ResultError} from '@deslop/components-web/result-error'
+import {ItemResultError} from '@deslop/components-web/result-error'
 import {Button} from '@deslop/components-web/ui/button'
-import {Card} from '@deslop/components-web/ui/card'
-import {Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle} from '@deslop/components-web/ui/item'
+import {
+	Item,
+	ItemActions,
+	ItemContent,
+	ItemDescription,
+	ItemGroup,
+	ItemMedia,
+	ItemTitle
+} from '@deslop/components-web/ui/item'
 import {monthOf} from '@deslop/runtime/shared/format'
 
 import {accountAtom, admitAtom, peopleAtom} from '#lib/auth.ts'
-import {PeopleRowsSkeleton} from '#lib/components.tsx'
+import {ListCard, PeopleRowsSkeleton} from '#lib/components.tsx'
 import type {Person} from '#services/people/schema.ts'
 
-// The row's own line, then its failed answer beneath it; its actions sit at its end.
-function PersonRow(props: {children?: ReactNode; footer?: ReactNode; person: Person}) {
+// The row's own line, its actions at its end, then its failed answer beneath it.
+function PersonRow(props: {children?: ReactNode; person: Person; variant?: 'outline'}) {
 	return (
-		<div role="listitem">
-			<Item size="row">
-				<ItemMedia>
-					<AccountAvatar account={props.person} small />
-				</ItemMedia>
-				<ItemContent>
-					<ItemTitle>{Option.getOrElse(props.person.fullName, () => props.person.name)}</ItemTitle>
-					{Option.isSome(props.person.fullName) && <ItemDescription>@{props.person.name}</ItemDescription>}
-					{props.person.role === 'Admin' && (
-						<ShieldIcon role="img" aria-label="Admin" className="text-primary size-4 shrink-0 self-center" />
-					)}
-				</ItemContent>
-				{props.children}
-			</Item>
-			{props.footer}
-		</div>
+		<Item role="listitem" size="sm" variant={props.variant}>
+			<ItemMedia>
+				<AccountAvatar account={props.person} size="default" />
+			</ItemMedia>
+			<ItemContent>
+				<ItemTitle>
+					{Option.getOrElse(props.person.fullName, () => props.person.name)}
+					{props.person.role === 'Admin' && <ShieldIcon role="img" aria-label="Admin" className="text-primary" />}
+				</ItemTitle>
+				{Option.isSome(props.person.fullName) && <ItemDescription>@{props.person.name}</ItemDescription>}
+			</ItemContent>
+			{props.children}
+		</Item>
 	)
 }
 
@@ -46,7 +50,7 @@ function PersonRow(props: {children?: ReactNode; footer?: ReactNode; person: Per
 function AskingRow(props: {person: Person}) {
 	const [admit, answer] = useAtom(admitAtom(props.person.id))
 	return (
-		<PersonRow person={props.person} footer={<ResultError result={admit} className="mb-2 ml-9" />}>
+		<PersonRow person={props.person} variant="outline">
 			<ItemActions>
 				<Button
 					variant="outline"
@@ -64,15 +68,16 @@ function AskingRow(props: {person: Person}) {
 					Approve
 				</Button>
 			</ItemActions>
+			<ItemResultError result={admit} />
 		</PersonRow>
 	)
 }
 
-// Every row ends with the same since-date column, wide enough for "Nov 2026" on one line.
+// A member's row ends with the month they joined.
 function Since(props: {since: Person['since']}) {
 	return (
 		<ItemActions>
-			<span className="text-muted-foreground w-16 shrink-0 text-right font-mono text-xs whitespace-nowrap tabular-nums">
+			<span className="text-muted-foreground tabular-nums">
 				{Option.match(props.since, {onNone: Function.constNull, onSome: monthOf})}
 			</span>
 		</ItemActions>
@@ -97,16 +102,16 @@ function Directory() {
 					{Array.match(rows, {
 						onEmpty: () => <EmptyState label="No one yet" icon={<UsersIcon className="size-5" weight="light" />} />,
 						onNonEmpty: entries => (
-							<Card size="list">
-								<div role="list" aria-label="People">
+							<ListCard>
+								<ItemGroup aria-label="People">
 									{Array.map(entries, person =>
 										Boolean.match(person.role === 'Waiting', {
 											onFalse: () => <MemberRow key={person.id} person={person} />,
 											onTrue: () => <AskingRow key={person.id} person={person} />
 										})
 									)}
-								</div>
-							</Card>
+								</ItemGroup>
+							</ListCard>
 						)
 					})}
 				</>
