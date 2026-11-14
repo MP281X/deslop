@@ -210,25 +210,35 @@ function Reading(props: {note: NoteItem}) {
 
 function FullBody(props: {note: NoteItem}) {
 	const full = useAtomSuspense(noteAtom(props.note), {includeFailure: true})
+	if (Option.exists(AsyncResult.error(full), Schema.is(AuthError))) return undefined
+	return pipe(
+		AsyncResult.value(full),
+		Option.flatMap(note => note.body),
+		Option.match({onNone: Function.constUndefined, onSome: body => <Body text={body} />})
+	)
+}
+
+function issueOf(note: NoteItem) {
+	return Option.getOrElse(note.issue, Function.constant('Can’t Read This Link'))
+}
+
+// The note's one problem mark, in the bar as on every screen: a failed read that kept content, else a body that stopped loading.
+function NoteProblem(props: {note: NoteItem; onRetry: () => void}) {
+	const full = useAtomValue(noteAtom(props.note))
 	const reload = useAtomRefresh(noteAtom(props.note))
+	const body = Option.exists(AsyncResult.value(full), note => Option.isSome(note.body))
+	if (props.note.status === 'failed' && (String.isNonEmpty(props.note.summary) || body)) {
+		return (
+			<ToolbarItem placement="topBarLeading">
+				<Problem label={issueOf(props.note)} onRetry={props.onRetry} />
+			</ToolbarItem>
+		)
+	}
+	if (!AsyncResult.isFailure(full) || Option.exists(AsyncResult.error(full), Schema.is(AuthError))) return undefined
 	return (
-		<VStack alignment="leading" spacing={space[4]}>
-			{AsyncResult.isFailure(full) && (
-				<HStack modifiers={[frame({alignment: 'trailing', maxWidth: Infinity})]}>
-					<Problem
-						label="Note body unavailable"
-						saved={Option.exists(AsyncResult.value(full), note => Option.isSome(note.body))}
-						onRetry={reload}
-					/>
-				</HStack>
-			)}
-			{!Option.exists(AsyncResult.error(full), Schema.is(AuthError)) &&
-				Option.match(AsyncResult.value(full), {
-					onNone: Function.constUndefined,
-					onSome: note =>
-						Option.match(note.body, {onNone: Function.constUndefined, onSome: body => <Body text={body} />})
-				})}
-		</VStack>
+		<ToolbarItem placement="topBarLeading">
+			<Problem label="Note body unavailable" saved={body} onRetry={reload} />
+		</ToolbarItem>
 	)
 }
 
@@ -249,7 +259,7 @@ function Detail(props: {note: NoteItem; onRetry: () => void; onTag: (tag: TagNam
 	if (AsyncResult.isFailure(full) && Option.exists(AsyncResult.error(full), Schema.is(AuthError))) {
 		return <FailureContent cause={full.cause} onRetry={reload} />
 	}
-	const issue = Option.getOrElse(props.note.issue, Function.constant('Can’t Read This Link'))
+	const issue = issueOf(props.note)
 	const kept =
 		String.isNonEmpty(props.note.summary) || Option.exists(AsyncResult.value(full), note => Option.isSome(note.body))
 	return (
@@ -287,14 +297,7 @@ function Detail(props: {note: NoteItem; onRetry: () => void; onTag: (tag: TagNam
 									</EmptyContent>
 								</Empty>
 							),
-							onTrue: () => (
-								<VStack alignment="leading" spacing={space[4]}>
-									<HStack modifiers={[frame({alignment: 'trailing', maxWidth: Infinity})]}>
-										<Problem label={issue} onRetry={props.onRetry} />
-									</HStack>
-									<NoteContent note={props.note} />
-								</VStack>
-							)
+							onTrue: () => <NoteContent note={props.note} />
 						})
 					),
 					Match.orElse(() => <NoteContent note={props.note} />)
@@ -349,6 +352,7 @@ function NoteScreen(props: {
 				<Toolbar>
 					<Detail note={item} onRetry={() => regenerate(item.id)} onTag={props.onTag} />
 					<Toolbar.Content>
+						<NoteProblem note={item} onRetry={() => regenerate(item.id)} />
 						{Option.match(item.url, {
 							onNone: Function.constUndefined,
 							onSome: url => (
@@ -397,7 +401,6 @@ function NoteScreen(props: {
 										remove(props.id)
 										props.onClose()
 									}}
-									modifiers={[tint(colors.destructive)]}
 								/>
 							</Menu>
 						</ToolbarItem>

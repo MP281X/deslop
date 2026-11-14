@@ -6,13 +6,13 @@ import {
 	Button,
 	Image,
 	Menu,
+	Overlay,
 	Picker,
+	Rectangle,
 	Section,
 	SwipeActions,
 	Text,
-	Toolbar,
-	ToolbarItem,
-	useNativeState
+	ToolbarItem
 } from '@expo/ui/swift-ui'
 import {
 	accessibilityHidden,
@@ -23,22 +23,18 @@ import {
 	frame,
 	labelStyle,
 	menuOrder,
-	navigationBarTitleDisplayMode,
-	navigationTitle,
 	opacity,
 	pickerStyle,
-	searchable,
 	tag,
 	tint
 } from '@expo/ui/swift-ui/modifiers'
 import {AsyncResult} from 'effect/reactivity'
 import {Suspense, useState} from 'react'
 
-import {AccountMenu} from '@deslop/components-mobile/blocks/account'
 import {ItemGroupSkeleton} from '@deslop/components-mobile/blocks/item-group-skeleton'
+import {ListToolbar} from '@deslop/components-mobile/blocks/list-toolbar'
 import {Loaded} from '@deslop/components-mobile/blocks/loaded'
 import {Problem} from '@deslop/components-mobile/blocks/problem'
-import {bottomBarSearch} from '@deslop/components-mobile/lib/toolbar'
 import {colors, radius} from '@deslop/components-mobile/theme'
 import {Empty, EmptyMedia} from '@deslop/components-mobile/ui/empty'
 import {
@@ -54,7 +50,8 @@ import {
 import {blockingFailure} from '@deslop/runtime/client/live-stream'
 import {dayOf} from '@deslop/runtime/shared/format'
 
-import {chaptersAtom, primary, readAtom, session} from '#lib/chapters.ts'
+import {chaptersAtom, readAtom} from '#lib/chapters.ts'
+import {primary, session} from '#lib/session.ts'
 import {ChapterProgress, Cover} from '#modules/native/index.ts'
 import {byNumber, SERIES_NAMES} from '#services/chapters/lib/utils.ts'
 import type {ChapterNumber} from '#services/chapters/schema.ts'
@@ -148,38 +145,44 @@ function Chapters(props: {onOpen: (number: ChapterNumber, page?: number) => void
 			{all => {
 				const chapters = Array.filter(all, chapter => chapter.series === props.series)
 				const needle = String.toLowerCase(String.trim(props.searched))
-				return pipe(
+				const matches = pipe(
 					chapters,
 					Array.sort(Order.flip(byNumber)),
 					Array.filter(
 						chapter =>
 							String.startsWith(needle)(`${chapter.number}`) ||
 							String.includes(needle)(String.toLowerCase(chapter.title))
-					),
-					Array.match({
-						onEmpty: () => {
-							const [symbol, label] = Boolean.match(String.isEmpty(needle), {
-								onFalse: () => ['magnifyingglass', 'No chapters match'] as const,
-								onTrue: () => ['book.closed', 'No chapters yet'] as const
-							})
-							return (
+					)
+				)
+				if (Array.isReadonlyArrayEmpty(chapters)) {
+					return (
+						<Empty>
+							<EmptyMedia>
+								<Image systemName="book.closed" modifiers={[accessibilityLabel('No chapters')]} />
+							</EmptyMedia>
+						</Empty>
+					)
+				}
+				return (
+					// The no-match state sits over the list, centred on the screen, as SwiftUI's own apps show it.
+					<Overlay>
+						<ItemGroup>
+							<Section>
+								{Array.map(matches, chapter => (
+									<ChapterRow key={chapter.number} chapter={chapter} onOpen={props.onOpen} />
+								))}
+							</Section>
+						</ItemGroup>
+						{Array.isReadonlyArrayEmpty(matches) && (
+							<Overlay.Content>
 								<Empty>
 									<EmptyMedia>
-										<Image systemName={symbol} modifiers={[accessibilityLabel(label)]} />
+										<Image systemName="magnifyingglass" modifiers={[accessibilityLabel('No chapters match')]} />
 									</EmptyMedia>
 								</Empty>
-							)
-						},
-						onNonEmpty: matches => (
-							<ItemGroup>
-								<Section>
-									{Array.map(matches, chapter => (
-										<ChapterRow key={chapter.number} chapter={chapter} onOpen={props.onOpen} />
-									))}
-								</Section>
-							</ItemGroup>
-						)
-					})
+							</Overlay.Content>
+						)}
+					</Overlay>
 				)
 			}}
 		</Loaded>
@@ -191,32 +194,21 @@ export function ChaptersRoute(props: {
 	onSeries: (series: Series) => void
 	series: Series
 }) {
-	const query = useNativeState('')
 	const loaded = useAtomValue(chaptersAtom)
 	const refresh = useAtomRefresh(chaptersAtom)
 	const [searched, setSearched] = useState('')
+	// The chapters on screen stay through an outage; a dot in the bar marks that they stopped updating.
 	return (
-		<Toolbar
-			modifiers={[
-				navigationTitle(SERIES_NAMES[props.series]),
-				navigationBarTitleDisplayMode('large'),
-				searchable(query, {onChange: setSearched, prompt: `Search ${SERIES_NAMES[props.series]}`}),
-				bottomBarSearch
-			]}
-		>
-			<Suspense fallback={<ItemGroupSkeleton rows={10} />}>
-				<Chapters onOpen={props.onOpen} searched={searched} series={props.series} />
-			</Suspense>
-			<Toolbar.Content>
-				{/* The chapters on screen stay through an outage; a dot in the bar marks that they stopped updating. */}
-				{AsyncResult.isFailure(loaded) && Option.isNone(blockingFailure(loaded)) && (
-					<ToolbarItem placement="topBarLeading">
-						<Problem label="Out of date" onRetry={refresh} />
-					</ToolbarItem>
-				)}
-				<ToolbarItem placement="topBarTrailing">
-					<AccountMenu session={session} />
-				</ToolbarItem>
+		<ListToolbar
+			title={SERIES_NAMES[props.series]}
+			prompt={`Search ${SERIES_NAMES[props.series]}`}
+			session={session}
+			onSearch={setSearched}
+			problem={Boolean.match(AsyncResult.isFailure(loaded) && Option.isNone(blockingFailure(loaded)), {
+				onFalse: Function.constUndefined,
+				onTrue: () => <Problem label="Out of date" onRetry={refresh} />
+			})}
+			bottomBar={
 				<ToolbarItem placement="bottomBar">
 					<Menu
 						label={SERIES_NAMES[props.series]}
@@ -241,7 +233,22 @@ export function ChaptersRoute(props: {
 						</Picker>
 					</Menu>
 				</ToolbarItem>
-			</Toolbar.Content>
-		</Toolbar>
+			}
+		>
+			<Suspense
+				fallback={
+					<ItemGroupSkeleton
+						rows={10}
+						media={
+							<ItemMedia>
+								<Rectangle modifiers={[frame({height: 68, width: 48}), clipShape('roundedRectangle', radius)]} />
+							</ItemMedia>
+						}
+					/>
+				}
+			>
+				<Chapters onOpen={props.onOpen} searched={searched} series={props.series} />
+			</Suspense>
+		</ListToolbar>
 	)
 }

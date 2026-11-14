@@ -1,6 +1,6 @@
 import type {ReactNode} from 'react'
 
-// A column page centres one 40rem stack of cards; a workspace takes the viewport. Editorial documents own their separate paper layout.
+// A list app's page centres one 40rem column; a split-pane app's is the Workspace. Editorial documents own their separate paper layout.
 export function Page(props: {children: ReactNode}) {
 	return (
 		// Positioned, so a row's screen-reader text stays beside it in this scroller.

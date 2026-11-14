@@ -3,13 +3,11 @@ import {Array, Boolean, Duration, Function, Match, Number, Option, Record, Strin
 // oxlint-disable-next-line eslint/no-restricted-imports -- useLayoutEffect: the flame measures its surface and label widths after layout and before paint, so bars never draw at a stale width.
 import {useLayoutEffect, useRef, useState} from 'react'
 
-import {APP_HUES} from '@deslop/components-web/lib/apps'
 import {cn} from '@deslop/components-web/lib/utils'
 import {Skeleton} from '@deslop/components-web/ui/skeleton'
 import {durationOf} from '@deslop/runtime/shared/format'
 
 import {lanesOf} from '#lib/flame.ts'
-import {appName} from '#services/telemetry/lib/utils.ts'
 import type {SpanId, TraceTree} from '#services/telemetry/schema.ts'
 
 // The flame's lanes: a 22px bar with 2px between lanes, and a 6px-padded label inside it.
@@ -20,7 +18,7 @@ const FLAME_LABEL_PADDING = 12
 // The flame's 22px lanes while its trace loads, including a lane with two sibling bars; no axis, which the real pane draws only with data.
 export function SpansSkeleton(props: {label: string}) {
 	return (
-		<div aria-busy="true" aria-label={props.label} role="status" className="px-4 pt-1.5 pb-2">
+		<div aria-busy="true" aria-label={props.label} role="status" className="px-2 pt-1.5 pb-2">
 			<div
 				className="relative h-(--flame-height)"
 				style={{'--flame-height': `${4 * FLAME_LANE - (FLAME_LANE - FLAME_BAR)}px`}}
@@ -53,7 +51,7 @@ export function SpansSkeleton(props: {label: string}) {
 export function TimeAxis(props: {totalMs: Duration.Duration}) {
 	const total = Number.max(Duration.toMillis(props.totalMs), 1)
 	return (
-		<div className="text-muted-foreground bg-background sticky top-0 z-10 h-6 shrink-0 border-b px-4 text-xs tabular-nums">
+		<div className="text-muted-foreground bg-background sticky top-0 z-10 h-6 shrink-0 border-b px-2 text-xs tabular-nums">
 			<div className="relative h-full">
 				{Array.map([0, 0.25, 0.5, 0.75, 1] as const, ratio => (
 					<span
@@ -211,7 +209,7 @@ export function Flame(props: {focus?: SpanId; onPick: (id: SpanId) => void; trac
 		)
 	}
 	return (
-		<div className="mt-1.5 mb-2 px-4">
+		<div className="mt-1.5 mb-2 px-2">
 			<div
 				ref={surface}
 				role="group"
@@ -226,7 +224,6 @@ export function Flame(props: {focus?: SpanId; onPick: (id: SpanId) => void; trac
 						data-span-id={row.span.spanId}
 						className="absolute top-(--flame-top) left-(--flame-left) h-5.5 w-(--flame-width)"
 						style={{
-							'--app': APP_HUES[appName(row.span.service)] ?? 'var(--muted-foreground)',
 							'--flame-left': `${row.left}px`,
 							'--flame-top': `${row.lane * FLAME_LANE}px`,
 							'--flame-width': `${row.hit}px`
@@ -241,7 +238,7 @@ export function Flame(props: {focus?: SpanId; onPick: (id: SpanId) => void; trac
 							className={cn(
 								'absolute inset-y-0 left-0 w-(--flame-bar) overflow-hidden',
 								Boolean.match(row.span.status === 'failed', {
-									onFalse: Function.constant('bg-(--app)'),
+									onFalse: Function.constant('bg-primary'),
 									onTrue: Function.constant('bg-destructive')
 								}),
 								Boolean.match(row.picked, {

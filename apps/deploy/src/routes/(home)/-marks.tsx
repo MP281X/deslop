@@ -1,4 +1,4 @@
-import {Array, Boolean, Function, Option, String} from 'effect'
+import {Array, Boolean, Option, String} from 'effect'
 
 import {CubeIcon, TerminalWindowIcon} from '@phosphor-icons/react'
 
@@ -29,33 +29,21 @@ const brands = [
 	{dark: Cloudflare, light: Cloudflare, pattern: /\bcloudflared\b/u}
 ]
 
-export function ApplicationIcon(props: {name: string; process?: string; container?: boolean; small?: boolean}) {
+// A row's mark: the app's own pixel mark filling the row's square, else a software brand or a glyph at 16px.
+export function ApplicationIcon(props: {name: string; process?: string; container?: boolean}) {
 	const brand = Option.getOrUndefined(
 		Array.findFirst(brands, candidate => candidate.pattern.test(`${props.name} ${props.process ?? ''}`))
 	)
 	function mark() {
 		if (brand !== undefined) {
-			// A brand's artwork fills its viewBox, so a 16px box would read heavier than the pixel marks' inset artwork.
-			return (
-				<span className="flex size-3 items-center justify-center">
-					{Boolean.match(brand.light === brand.dark, {
-						onFalse: () => <ThemedMark light={brand.light} dark={brand.dark} className="size-full" />,
-						onTrue: () => <brand.light className="size-full" />
-					})}
-				</span>
-			)
+			return Boolean.match(brand.light === brand.dark, {
+				onFalse: () => <ThemedMark light={brand.light} dark={brand.dark} className="size-4" />,
+				onTrue: () => <brand.light aria-hidden className="size-4" />
+			})
 		}
-		const weight = Boolean.match(props.small === true, {
-			onFalse: Function.constant('light' as const),
-			onTrue: Function.constant('regular' as const)
-		})
-		if (props.container === true) return <CubeIcon className="size-full" weight={weight} />
-		return <TerminalWindowIcon className="size-full" weight={weight} />
+		if (props.container === true) return <CubeIcon aria-hidden className="text-muted-foreground size-4" />
+		return <TerminalWindowIcon aria-hidden className="text-muted-foreground size-4" />
 	}
-	return (
-		<span className="text-muted-foreground inline-flex size-4 shrink-0 items-center justify-center" aria-hidden="true">
-			{/* An app's own mark, also on what is named after it, such as `stash preview` or `stash-update`. */}
-			<AppMark name={String.split(props.name, /[ -]/u)[0]} fallback={mark()} />
-		</span>
-	)
+	// An app's own mark, also on what is named after it, such as `stash preview` or `stash-update`.
+	return <AppMark name={String.split(props.name, /[ -]/u)[0]} fallback={mark()} />
 }

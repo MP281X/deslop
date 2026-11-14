@@ -2,7 +2,6 @@ import {
 	Array,
 	Boolean,
 	DateTime,
-	Duration,
 	Effect,
 	Equal,
 	Filter,
@@ -18,6 +17,8 @@ import {
 	Tuple,
 	pipe
 } from 'effect'
+
+import {ageOf} from '@deslop/runtime/shared/format'
 
 import {AppId, DeployError, ExposureName, ItemId, JobName, UnitId} from '#services/inventory/schema.ts'
 import type {
@@ -392,28 +393,11 @@ export function availablePorts(rows: ReturnType<typeof workloads>) {
 	)
 }
 
-const untilNext = new Intl.RelativeTimeFormat('en', {numeric: 'auto', style: 'narrow'})
-
 export function status(item: InventoryItem) {
 	if (item.kind === 'port') return 'listening'
 	if (item.kind === 'exposure' && Option.contains(item.owned, true)) return 'configured'
 	if (item.kind === 'exposure' && Option.contains(item.publicAccess, true)) return 'public permission'
 	return item.state
-}
-
-// How long ago a service stopped: minutes within the hour, hours within two days, then days.
-function since(at: DateTime.Utc, now: DateTime.Utc) {
-	const minutes = Number.max(0, Number.round(Duration.toMinutes(DateTime.distance(at, now)), 0))
-	if (minutes < 60) return untilNext.format(-minutes, 'minute')
-	if (minutes < 2880) return untilNext.format(-Number.round(minutes / 60, 0), 'hour')
-	return untilNext.format(-Number.round(minutes / 1440, 0), 'day')
-}
-
-// When a timer next starts the job, against the snapshot's clock: minutes within the hour, then hours.
-export function nextRun(next: DateTime.Utc, now: DateTime.Utc) {
-	const minutes = Number.max(0, Number.round(Duration.toMinutes(DateTime.distance(now, next)), 0))
-	if (minutes < 60) return untilNext.format(minutes, 'minute')
-	return untilNext.format(Number.round(minutes / 60, 0), 'hour')
 }
 
 // Why an app needs a look: the failure systemd recorded, else what its detail says.
@@ -425,7 +409,7 @@ export function failureAge(item: InventoryItem, now: DateTime.Utc) {
 	return pipe(
 		item.failure,
 		Option.flatMap(stop => stop.at),
-		Option.map(at => since(at, now))
+		Option.map(at => ageOf(at, now))
 	)
 }
 

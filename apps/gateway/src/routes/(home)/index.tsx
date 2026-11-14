@@ -9,20 +9,21 @@ import {AtomMachine} from '@typeonce/effect-machine/reactivity'
 import {AsyncResult, Atom} from 'effect/reactivity'
 import {Suspense, useState} from 'react'
 import type {ReactNode} from 'react'
+import {Line, LineChart, YAxis} from 'recharts'
 
 import {CopyButton} from '@deslop/components-web/blocks/copy-button'
 import {ImageMark} from '@deslop/components-web/blocks/marks'
 import {StaleProblem} from '@deslop/components-web/blocks/problem'
-import {RowLead} from '@deslop/components-web/blocks/rows'
+import {LoadingRow, RowLead} from '@deslop/components-web/blocks/rows'
 import {Loaded, ReadFailure} from '@deslop/components-web/blocks/states'
 import {StatusDot} from '@deslop/components-web/blocks/status-dot'
-import {APP_HUES, appMarks} from '@deslop/components-web/lib/apps'
 import {AppBar, AppBarChoice} from '@deslop/components-web/shell/app-bar'
 import {Page} from '@deslop/components-web/shell/page'
 import {Button} from '@deslop/components-web/ui/button'
+import {ChartContainer} from '@deslop/components-web/ui/chart'
+import type {ChartConfig} from '@deslop/components-web/ui/chart'
 import {Field, FieldError, FieldGroup} from '@deslop/components-web/ui/field'
 import {InputGroup, InputGroupAddon, InputGroupInput} from '@deslop/components-web/ui/input-group'
-import {Skeleton} from '@deslop/components-web/ui/skeleton'
 import {Table, TableBody, TableCell, TableRow} from '@deslop/components-web/ui/table'
 import {countOf} from '@deslop/runtime/shared/format'
 
@@ -48,18 +49,14 @@ import type {ConnectionItem, McpUsageServer} from '#services/connections/schema.
 import {Period} from '#services/usage/schema.ts'
 import type {UsageRange} from '#services/usage/schema.ts'
 
-// The list's columns: name, action or tools, sparkline, total.
-const COLUMNS = 4
+// The list's columns: name, tools, sparkline, total, then the row's action.
+const COLUMNS = 5
+const SPARKLINE = {calls: {color: 'var(--muted-foreground)'}} satisfies ChartConfig
 const PAYER_LABELS: Record<Payer, string> = {balance: 'Zen balance', byok: 'Anthropic key'}
 const PERIODS = Array.map(Period.literals, value => ({label: value, value}))
 
 const route = getRouteApi('/(home)/')
 
-function serverHue(server: ConnectionItem) {
-	const key = String.toLowerCase(server.id)
-	if (appMarks[key] === undefined) return 'var(--muted-foreground)'
-	return APP_HUES[key] ?? 'var(--muted-foreground)'
-}
 function urgency(server: ConnectionItem) {
 	if (Option.isSome(server.error) || server.status === 'Expired') return 0
 	if (server.status === 'Not connected') return 1
@@ -67,26 +64,24 @@ function urgency(server: ConnectionItem) {
 }
 const byUrgency = Order.mapInput(Order.Number, urgency)
 
-// A 64×14 line of the period's figures in the row's own hue; zeros rest on the baseline.
-function Sparkline(props: {color: string; values: readonly number[]}) {
-	const high = Array.match(props.values, {
-		onEmpty: Function.constant(0),
-		onNonEmpty: values => Array.max(values, Order.Number)
-	})
-	const points = Array.map(props.values, (value, index) => {
-		const x = (index / Number.max(1, props.values.length - 1)) * 64
-		const y = Boolean.match(high === 0, {onFalse: () => 13 - (value / high) * 12, onTrue: Function.constant(13)})
-		return `${x.toFixed(1)} ${y.toFixed(1)}`
-	})
+// A 64×14 line of the period's figures; zeros rest on the baseline.
+function Sparkline(props: {values: readonly number[]}) {
 	return (
-		<svg aria-hidden className="h-3.5 w-16 shrink-0" fill="none" viewBox="0 0 64 14">
-			<path
-				d={`M${Array.join(points, ' L')}`}
-				stroke={props.color}
-				strokeWidth="1.5"
-				vectorEffect="non-scaling-stroke"
-			/>
-		</svg>
+		<div aria-hidden className="flex h-3.5 w-16">
+			<ChartContainer config={SPARKLINE} className="flex-1">
+				<LineChart data={Array.map(props.values, calls => ({calls}))} margin={{bottom: 1, left: 1, right: 1, top: 1}}>
+					<YAxis hide domain={[0, 'dataMax']} />
+					<Line
+						dataKey="calls"
+						type="linear"
+						stroke="var(--color-calls)"
+						strokeWidth={1.5}
+						dot={false}
+						isAnimationActive={false}
+					/>
+				</LineChart>
+			</ChartContainer>
+		</div>
 	)
 }
 
@@ -95,7 +90,7 @@ function ServerIcon(props: {server: ConnectionItem}) {
 	const host = new URL(props.server.url).hostname
 	return (
 		<ImageMark
-			fallback={<HardDrivesIcon />}
+			fallback={<HardDrivesIcon className="size-4" />}
 			sources={pipe(
 				props.server.icons,
 				Array.sort(
@@ -116,11 +111,11 @@ function ServerIcon(props: {server: ConnectionItem}) {
 }
 
 // A row's period: its sparkline from the small breakpoint, then its total.
-function FiguresCells(props: {color: string; figure: string; series: readonly number[]}) {
+function FiguresCells(props: {figure: string; series: readonly number[]}) {
 	return (
 		<>
 			<TableCell className="hidden sm:table-cell">
-				<Sparkline color={props.color} values={props.series} />
+				<Sparkline values={props.series} />
 			</TableCell>
 			<TableCell className="text-right">
 				<span className="tabular-nums">{props.figure}</span>
@@ -164,27 +159,26 @@ function ServerRow(props: {period: UsageRange; report: readonly McpUsageServer[]
 				{props.server.name}
 			</RowLead>
 			<TableCell className="text-right">
-				{Boolean.match(needsUser, {
-					onFalse: () =>
-						props.server.tools > 0 && (
-							<span className="text-muted-foreground inline-flex items-center gap-1.5 tabular-nums" title="Tools">
-								{props.server.tools}
-								<WrenchIcon />
-							</span>
-						),
-					onTrue: () => (
-						<Button
-							size="xs"
-							disabled={AsyncResult.isWaiting(connecting)}
-							aria-label={`${action} ${props.server.name}`}
-							onClick={() => connect()}
-						>
-							{action}
-						</Button>
-					)
-				})}
+				{!needsUser && props.server.tools > 0 && (
+					<span className="text-muted-foreground inline-flex items-center gap-1.5 tabular-nums" title="Tools">
+						{props.server.tools}
+						<WrenchIcon />
+					</span>
+				)}
 			</TableCell>
-			<FiguresCells color={serverHue(props.server)} figure={countOf(Number.sumAll(series))} series={series} />
+			<FiguresCells figure={countOf(Number.sumAll(series))} series={series} />
+			<TableCell>
+				{needsUser && (
+					<Button
+						size="xs"
+						disabled={AsyncResult.isWaiting(connecting)}
+						aria-label={`${action} ${props.server.name}`}
+						onClick={() => connect()}
+					>
+						{action}
+					</Button>
+				)}
+			</TableCell>
 		</TableRow>
 	)
 }
@@ -198,14 +192,8 @@ function RowReadFailure(props: {error: unknown; reset: () => void}) {
 }
 
 // The rows a group will hold while it loads.
-function LoadingRows(props: {label: string; rows: number}) {
-	return Array.map(Array.range(1, props.rows), row => (
-		<TableRow key={row} aria-busy="true" aria-label={props.label}>
-			<TableCell colSpan={COLUMNS}>
-				<Skeleton className="h-6 w-1/3" />
-			</TableCell>
-		</TableRow>
-	))
+function GroupLoading(props: {label: string; rows: number}) {
+	return Array.map(Array.range(1, props.rows), row => <LoadingRow key={row} columns={COLUMNS} label={props.label} />)
 }
 
 // The servers reader first, so a refusal or a failed read shows without waiting for usage.
@@ -219,7 +207,7 @@ function ServerRows(props: {period: Period}) {
 					Array.match({
 						onEmpty: Function.constNull,
 						onNonEmpty: ordered => (
-							<Suspense fallback={<LoadingRows label="MCP servers" rows={ordered.length} />}>
+							<Suspense fallback={<GroupLoading label="MCP servers" rows={ordered.length} />}>
 								<Loaded atom={mcpUsageAtom(props.period)} frame={failure => <FailureRow>{failure}</FailureRow>}>
 									{current =>
 										Array.map(ordered, server => (
@@ -247,11 +235,7 @@ function PayerRow(props: {
 	return (
 		<TableRow>
 			<RowLead
-				mark={
-					<span className="flex size-6 shrink-0 items-center justify-center">
-						<ProviderMark />
-					</span>
-				}
+				mark={<ProviderMark />}
 				after={
 					Option.exists(props.info.lastStatus, status => status === 401 || status === 403) && (
 						<StatusDot status="error" label="Key refused" />
@@ -261,7 +245,12 @@ function PayerRow(props: {
 			>
 				OpenCode
 			</RowLead>
-			<TableCell className="text-right">
+			<TableCell />
+			<FiguresCells
+				figure={aiCost(props.report, props.source)}
+				series={aiSeries(props.report, props.source, props.period)}
+			/>
+			<TableCell>
 				<Button
 					size="icon-xs"
 					variant="ghost"
@@ -272,11 +261,6 @@ function PayerRow(props: {
 					<GearSixIcon />
 				</Button>
 			</TableCell>
-			<FiguresCells
-				color="var(--muted-foreground)"
-				figure={aiCost(props.report, props.source)}
-				series={aiSeries(props.report, props.source, props.period)}
-			/>
 		</TableRow>
 	)
 }
@@ -308,7 +292,7 @@ function KeyRows(props: {onOpen: () => void; period: Period}) {
 				Option.match(all, {
 					onNone: Function.constNull,
 					onSome: credential => (
-						<Suspense fallback={<LoadingRows label="OpenCode key" rows={Payer.literals.length} />}>
+						<Suspense fallback={<GroupLoading label="OpenCode key" rows={Payer.literals.length} />}>
 							<KeyUsage info={credential} onOpen={props.onOpen} period={props.period} />
 						</Suspense>
 					)
@@ -324,12 +308,12 @@ function List(props: {onOpen: () => void; period: Period}) {
 		<Table aria-label="MCP servers and AI keys">
 			<TableBody>
 				<CatchBoundary getResetKey={Function.constant('servers')} errorComponent={RowReadFailure}>
-					<Suspense fallback={<LoadingRows label="MCP servers" rows={3} />}>
+					<Suspense fallback={<GroupLoading label="MCP servers" rows={3} />}>
 						<ServerRows period={props.period} />
 					</Suspense>
 				</CatchBoundary>
 				<CatchBoundary getResetKey={Function.constant('keys')} errorComponent={RowReadFailure}>
-					<Suspense fallback={<LoadingRows label="AI keys" rows={2} />}>
+					<Suspense fallback={<GroupLoading label="AI keys" rows={2} />}>
 						<KeyRows onOpen={props.onOpen} period={props.period} />
 					</Suspense>
 				</CatchBoundary>
@@ -429,7 +413,7 @@ function GatewayProblem(props: {period: Period}) {
 function HomeRoute() {
 	const search: Search = route.useSearch()
 	const navigate = route.useNavigate()
-	const period = Option.getOrElse(search.period, Function.constant('7d' as const))
+	const period = Option.getOrElse(search.period, Function.constant('24h' as const))
 	// Open, which opening it is (so each starts with the pasted secret), and the provider it adds.
 	const [keyDialog, setKeyDialog] = useState<{open: boolean; opened: number; secret: string; url: string}>({
 		open: false,

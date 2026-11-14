@@ -37,6 +37,13 @@ export function ageOf(since: DateTime.DateTime, now: DateTime.DateTime) {
 	return `${Math.floor(minutes / 1440)}d`
 }
 
+// How long until, in the same units: "now" within the first minute, then "in 5m", "in 3h", "in 2d".
+export function dueOf(at: DateTime.DateTime, now: DateTime.DateTime) {
+	const left = ageOf(now, at)
+	if (left === 'now') return left
+	return `in ${left}`
+}
+
 // A measured span: "120 ms", "1.5 s", "42 s", "3 min", "1.2 h". Each bound sits where rounding would reach the next unit, so 59.6 s reads 1 min, not 60 s.
 export function durationOf(duration: Duration.Duration) {
 	const ms = Duration.toMillis(duration)

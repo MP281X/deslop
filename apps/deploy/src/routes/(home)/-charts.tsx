@@ -1,29 +1,31 @@
-import type {Record} from 'effect'
-import {Array, Boolean, DateTime, Duration, Function, Match, Number, Option, Order, Schema, String, pipe} from 'effect'
+import {Array, Boolean, DateTime, Duration, Function, Match, Number, Option, Record, Schema, String, pipe} from 'effect'
 
 import {ChartLineIcon} from '@phosphor-icons/react'
-import {useState} from 'react'
-import type {PointerEvent} from 'react'
+import {Area, AreaChart, CartesianGrid, ReferenceLine, XAxis, YAxis} from 'recharts'
 
 import {cn} from '@deslop/components-web/lib/utils'
+import {ChartContainer, ChartTooltip, ChartTooltipContent} from '@deslop/components-web/ui/chart'
+import type {ChartConfig} from '@deslop/components-web/ui/chart'
 import {Empty, EmptyHeader, EmptyMedia, EmptyTitle} from '@deslop/components-web/ui/empty'
 import {Skeleton} from '@deslop/components-web/ui/skeleton'
-import {Tooltip, TooltipContent, TooltipProvider, TooltipTrigger} from '@deslop/components-web/ui/tooltip'
 import {bytesOf, clockOf, dayOf, percentOf} from '@deslop/runtime/shared/format'
 
 import {chartTicks} from '#routes/(home)/-chart.ts'
-import {bandFill, bands, focusedBand, runs} from '#routes/(home)/-usage.ts'
+import {bandFill, bands, chartPoints, focusedBand} from '#routes/(home)/-usage.ts'
 import type {Band, BandFillKind} from '#routes/(home)/-usage.ts'
 import type {AppId} from '#services/inventory/schema.ts'
 import {bandName, chartWindow} from '#services/metrics/lib/utils.ts'
 import {BandId} from '#services/metrics/schema.ts'
 import type {HistoryQuery, MachineHistory, Sample} from '#services/metrics/schema.ts'
 
-const HEIGHT = 64
 const CHART_LABELS = ['Memory', 'CPU', 'Disk'] as const
 
 type ChartLayerId = typeof ChartLayerId.Type
 const ChartLayerId = Schema.Union([BandId, Schema.Literal('disk')])
+
+type HoveredPoint = typeof HoveredPoint.Type
+// The hovered point as the chart hands it back, untyped: its time and its sample.
+const HoveredPoint = Schema.Struct({at: Schema.Finite, index: Schema.Finite})
 
 // One stacked band: its share at each sample, and the number its tooltip names, in bytes or per cent.
 type ChartLayer = {
@@ -34,43 +36,9 @@ type ChartLayer = {
 	values: readonly number[]
 }
 
-// A run of one sample still gets a slot's width, so a lone reading shows.
-function widen(run: readonly {index: number; x: number}[]) {
-	if (run.length !== 1) return run
-	return [{index: run[0]?.index ?? 0, x: (run[0]?.x ?? 0) - 100 / 60}, ...run]
-}
-
-function y(percent: number, height: number) {
-	return height - (Number.clamp(percent, {maximum: 100, minimum: 0}) / 100) * height
-}
-
-function x(history: MachineHistory, minutes: Duration.Duration, at: DateTime.Utc) {
-	return (
-		(Duration.toMillis(DateTime.distance(chartWindow(minutes, history.time).start, at)) / Duration.toMillis(minutes)) *
-		100
-	)
-}
-
-// The sample nearest the pointer's horizontal place on the chart.
-function nearest(history: MachineHistory, minutes: Duration.Duration, at: number) {
-	return pipe(
-		history.samples,
-		Array.map((sample, index) => ({distance: Math.abs(x(history, minutes, sample.time) - at), index})),
-		Array.match({
-			onEmpty: Function.constant(0),
-			onNonEmpty: entries =>
-				Array.min(
-					entries,
-					Order.mapInput(Order.Number, entry => entry.distance)
-				).index
-		})
-	)
-}
-
-// The machine's share each band holds over time, stacked on the whole machine's 0–100%, with a tooltip and cursor on the hovered band.
+// The machine's share each band holds over time, stacked on the whole machine's 0–100%; blank time is unrecorded. The tooltip names every band's reading at the hovered time, and a selected app's band stands out.
 function UsageChart(props: {
 	className?: string
-	cover?: boolean
 	focus?: Band['id']
 	format: (value: number) => string
 	history: MachineHistory
@@ -80,182 +48,107 @@ function UsageChart(props: {
 	names: (id: ChartLayer['id']) => string
 	recorded: (sample: Sample) => boolean
 }) {
-	const [cursor, setCursor] = useState<{index: number; x: number; y: number}>()
-	const [hoverBand, setHoverBand] = useState<ChartLayer>()
+	const window = chartWindow(props.minutes, props.history.time)
+	const config = Record.fromEntries(
+		Array.map(props.layers, (layer, index) => [
+			`band${index}`,
+			{color: bandFill(layer.kind, layer.opacity).color, label: props.names(layer.id)}
+		])
+	) satisfies ChartConfig
 	const focused = Option.fromUndefinedOr(props.focus)
-	const hovered = Option.all([Option.fromUndefinedOr(cursor), Option.fromUndefinedOr(hoverBand)])
-	function move(event: PointerEvent<SVGSVGElement>) {
-		const bounds = event.currentTarget.getBoundingClientRect()
-		const index = nearest(props.history, props.minutes, ((event.clientX - bounds.left) / bounds.width) * 100)
-		setCursor({
-			index,
-			x: pipe(
-				props.history.samples,
-				Array.get(index),
-				Option.match({onNone: Function.constant(0), onSome: sample => x(props.history, props.minutes, sample.time)})
-			),
-			y: ((event.clientY - bounds.top) / bounds.height) * 100
-		})
-		Option.match(Array.head(props.layers), {
-			onNone: Function.constUndefined,
-			onSome: first =>
-				Boolean.match(props.cover === true, {onFalse: Function.constUndefined, onTrue: () => setHoverBand(first)})
-		})
-	}
-	function leave() {
-		setCursor(undefined)
-		setHoverBand(undefined)
-	}
-	const allRuns = Array.map(runs(props.history, props.minutes, props.recorded), widen)
 	return (
-		<TooltipProvider delay={0}>
-			<Tooltip open={Option.isSome(hovered)} disableHoverablePopup>
-				<figure className={cn('relative flex min-h-0 flex-col', props.className)} aria-label={props.label}>
-					<svg
-						viewBox={`0 0 100 ${HEIGHT}`}
-						preserveAspectRatio="none"
-						className="size-full overflow-visible"
-						role="img"
-						aria-label={`${props.label} over time; blank time is unrecorded`}
-						onPointerLeave={leave}
-						onPointerMove={move}
-					>
-						{Array.map(chartTicks(props.minutes, props.history.time), tick => (
-							<line
-								key={tick.at}
-								x1={tick.x}
-								x2={tick.x}
-								y1="0"
-								y2={HEIGHT}
-								stroke="var(--border)"
-								strokeOpacity="0.5"
-								vectorEffect="non-scaling-stroke"
-								pointerEvents="none"
-							/>
-						))}
-						<line
-							x1="0"
-							x2="100"
-							y1={HEIGHT / 2}
-							y2={HEIGHT / 2}
-							stroke="var(--border)"
-							strokeDasharray="3 3"
-							vectorEffect="non-scaling-stroke"
-							pointerEvents="none"
-						/>
-						{Array.map(
-							Array.mapAccum(props.layers, Array.map(props.history.samples, Function.constant(0)), (bottom, band) => {
-								const top = Array.map(bottom, (value, index) => value + (band.values[index] ?? 0))
-								return [top, {band, bottom, top}]
-							})[1],
-							layer => {
-								const fill = bandFill(layer.band.kind, layer.band.opacity, props.names(layer.band.id))
-								const isFocused = Option.exists(focused, focus => focus === layer.band.id)
-								const dimmed = Option.isSome(focused) && !isFocused
-								return Array.map(allRuns, run => (
-									<polygon
-										key={`${layer.band.id}:${run[0]?.x}`}
-										points={Array.join(
-											[
-												...Array.map(run, point => `${point.x},${y(layer.top[point.index] ?? 0, HEIGHT)}`),
-												...Array.map(
-													Array.reverse(run),
-													point => `${point.x},${y(layer.bottom[point.index] ?? 0, HEIGHT)}`
-												)
-											],
-											' '
-										)}
-										fill={fill.color}
-										fillOpacity={Boolean.match(dimmed, {
-											onFalse: () =>
-												Boolean.match(isFocused, {
-													onFalse: () => fill.opacity,
-													onTrue: () => Number.max(fill.opacity, 0.9)
-												}),
-											onTrue: () => fill.opacity * 0.15
-										})}
-										stroke={Boolean.match(isFocused, {
-											onFalse: Function.constant('var(--background)'),
-											onTrue: Function.constant('var(--foreground)')
-										})}
-										strokeOpacity={Boolean.match(isFocused, {
-											onFalse: Function.constant(1),
-											onTrue: Function.constant(0.7)
-										})}
-										strokeWidth={Boolean.match(isFocused, {
-											onFalse: Function.constant(0.6),
-											onTrue: Function.constant(0.75)
-										})}
-										vectorEffect="non-scaling-stroke"
-										onPointerEnter={() => setHoverBand(layer.band)}
-									/>
-								))
-							}
-						)}
-						{Option.match(Option.fromUndefinedOr(cursor), {
-							onNone: Function.constNull,
-							onSome: value => (
-								<line
-									x1={value.x}
-									x2={value.x}
-									y1="0"
-									y2={HEIGHT}
-									stroke="var(--foreground)"
-									strokeOpacity="0.35"
-									vectorEffect="non-scaling-stroke"
-									pointerEvents="none"
-								/>
-							)
-						})}
-						<line
-							x1="0"
-							x2="100"
-							y1={HEIGHT}
-							y2={HEIGHT}
-							stroke="var(--border)"
-							vectorEffect="non-scaling-stroke"
-							pointerEvents="none"
-						/>
-					</svg>
-					<TooltipTrigger
-						render={
-							<span
-								aria-hidden="true"
-								className="pointer-events-none absolute top-(--tip-y) left-(--tip-x) size-px"
-								style={{
-									'--tip-x': `${pipe(
-										Option.fromUndefinedOr(cursor),
-										Option.map(value => value.x),
-										Option.getOrElse(Function.constant(0))
-									)}%`,
-									'--tip-y': `${pipe(
-										Option.fromUndefinedOr(cursor),
-										Option.map(value => value.y),
-										Option.getOrElse(Function.constant(0))
-									)}%`
-								}}
+		<figure className={cn('flex min-h-0', props.className)} aria-label={props.label}>
+			<ChartContainer
+				config={config}
+				className="flex-1"
+				role="img"
+				aria-label={`${props.label} over time; blank time is unrecorded`}
+			>
+				<AreaChart
+					data={chartPoints(props.history, props.minutes, props.recorded, props.layers)}
+					margin={{bottom: 0, left: 0, right: 0, top: 0}}
+				>
+					<CartesianGrid horizontal={false} />
+					<XAxis
+						hide
+						dataKey="at"
+						type="number"
+						domain={[DateTime.toEpochMillis(window.start), DateTime.toEpochMillis(window.end)]}
+						ticks={Array.map(chartTicks(props.minutes, props.history.time), tick => tick.at)}
+					/>
+					<YAxis hide allowDataOverflow domain={[0, 100]} />
+					<ReferenceLine y={50} stroke="var(--border)" strokeDasharray="3 3" />
+					<ReferenceLine y={0} stroke="var(--border)" />
+					<ChartTooltip
+						isAnimationActive={false}
+						content={
+							<ChartTooltipContent
+								labelFormatter={(_, points) =>
+									pipe(
+										Array.head(points),
+										Option.flatMap(point => Schema.decodeUnknownOption(HoveredPoint)(point.payload)),
+										Option.match({
+											onNone: Function.constant(''),
+											onSome: point => clockOf(DateTime.makeUnsafe(point.at))
+										})
+									)
+								}
+								formatter={(_value, name, item) =>
+									pipe(
+										Option.fromUndefinedOr(name),
+										Option.flatMap(key => Array.findFirst(props.layers, (_, index) => `band${index}` === key)),
+										Option.match({
+											onNone: Function.constNull,
+											onSome: layer => (
+												<>
+													<span className="text-muted-foreground">{props.names(layer.id)}</span>
+													<span className="ms-auto font-mono tabular-nums">
+														{pipe(
+															Schema.decodeUnknownOption(HoveredPoint)(item.payload),
+															Option.flatMap(point => Array.get(layer.readings, point.index)),
+															Option.getOrElse(Function.constant(0)),
+															props.format
+														)}
+													</span>
+												</>
+											)
+										})
+									)
+								}
 							/>
 						}
 					/>
-				</figure>
-				{Option.match(hovered, {
-					onNone: Function.constNull,
-					onSome: value => (
-						<TooltipContent side="top" sideOffset={6} align="start">
-							<span className="font-medium">{props.names(value[1].id)}</span>
-							<span className="opacity-70">
-								{pipe(
-									props.history.samples,
-									Array.get(value[0].index),
-									Option.match({onNone: () => clockOf(DateTime.makeUnsafe(0)), onSome: sample => clockOf(sample.time)})
-								)}
-							</span>
-							<span className="font-mono tabular-nums">{props.format(value[1].readings[value[0].index] ?? 0)}</span>
-						</TooltipContent>
-					)
-				})}
-			</Tooltip>
-		</TooltipProvider>
+					{Array.map(props.layers, (layer, index) => {
+						const fill = bandFill(layer.kind, layer.opacity)
+						const isFocused = Option.contains(focused, layer.id)
+						return (
+							<Area
+								key={layer.id}
+								dataKey={`band${index}`}
+								stackId="usage"
+								type="linear"
+								isAnimationActive={false}
+								activeDot={false}
+								fill={`var(--color-band${index})`}
+								fillOpacity={Boolean.match(Option.isSome(focused) && !isFocused, {
+									onFalse: () =>
+										Boolean.match(isFocused, {
+											onFalse: () => fill.opacity,
+											onTrue: () => Number.max(fill.opacity, 0.9)
+										}),
+									onTrue: () => fill.opacity * 0.15
+								})}
+								stroke={Boolean.match(isFocused, {
+									onFalse: Function.constant('var(--background)'),
+									onTrue: Function.constant('var(--foreground)')
+								})}
+								strokeWidth={1}
+							/>
+						)
+					})}
+				</AreaChart>
+			</ChartContainer>
+		</figure>
 	)
 }
 
@@ -320,7 +213,7 @@ export function ChartSkeleton(props: {isPhone: boolean; minutes: HistoryQuery['m
 		<div aria-busy="true" aria-label="Usage history" role="status" className="flex shrink-0 flex-col border-b">
 			{Boolean.match(props.isPhone, {
 				onFalse: () => (
-					<div className="grid h-8 grid-cols-3 items-center gap-6 border-b px-4">
+					<div className="grid h-8 grid-cols-3 items-center gap-6 border-b px-2">
 						{Array.map(CHART_LABELS, label => (
 							<ChartTitleSkeleton key={label} label={label} />
 						))}
@@ -328,7 +221,7 @@ export function ChartSkeleton(props: {isPhone: boolean; minutes: HistoryQuery['m
 				),
 				onTrue: Function.constNull
 			})}
-			<div className="grid grid-cols-1 gap-3 px-4 py-3 sm:grid-cols-3 sm:gap-6">
+			<div className="grid grid-cols-1 gap-3 px-2 py-3 sm:grid-cols-3 sm:gap-6">
 				{Array.map(CHART_LABELS, (label, index) => (
 					<div key={label} className="flex min-w-0 flex-col gap-1">
 						{Boolean.match(props.isPhone, {
@@ -391,7 +284,6 @@ export function ChartBlock(props: {
 		})
 	)
 	const charts: readonly {
-		cover: boolean
 		figure: string
 		focus?: Band['id']
 		format: (value: number) => string
@@ -400,7 +292,6 @@ export function ChartBlock(props: {
 		recorded: (sample: Sample) => boolean
 	}[] = [
 		{
-			cover: false,
 			figure: Boolean.match(latest === undefined, {
 				onFalse: () => bytesOf(latest?.memoryUsed ?? 0),
 				onTrue: Function.constant('—')
@@ -412,7 +303,6 @@ export function ChartBlock(props: {
 			recorded: Function.constTrue
 		},
 		{
-			cover: false,
 			figure: Option.match(cpu, {onNone: Function.constant('—'), onSome: percentOf}),
 			focus,
 			format: percentOf,
@@ -421,7 +311,6 @@ export function ChartBlock(props: {
 			recorded: sample => Option.isSome(sample.cpu)
 		},
 		{
-			cover: true,
 			figure: Option.match(storageUsed, {
 				onNone: Function.constant('—'),
 				onSome: used =>
@@ -440,7 +329,7 @@ export function ChartBlock(props: {
 		<div className="flex shrink-0 flex-col border-b">
 			{Boolean.match(props.isPhone, {
 				onFalse: () => (
-					<div className="grid h-8 shrink-0 grid-cols-3 items-center gap-6 border-b px-4">
+					<div className="grid h-8 shrink-0 grid-cols-3 items-center gap-6 border-b px-2">
 						{Array.map(charts, chart => (
 							<ChartTitle key={chart.label} figure={chart.figure} label={chart.label} />
 						))}
@@ -448,7 +337,7 @@ export function ChartBlock(props: {
 				),
 				onTrue: Function.constNull
 			})}
-			<div className="grid grid-cols-1 gap-3 px-4 py-3 sm:grid-cols-3 sm:gap-6">
+			<div className="grid grid-cols-1 gap-3 px-2 py-3 sm:grid-cols-3 sm:gap-6">
 				{Array.map(charts, (chart, index) => (
 					<div key={chart.label} className="flex min-w-0 flex-col gap-1">
 						{Boolean.match(props.isPhone, {
@@ -461,7 +350,6 @@ export function ChartBlock(props: {
 						})}
 						<UsageChart
 							className="h-16 sm:h-32"
-							cover={chart.cover}
 							focus={chart.focus}
 							format={chart.format}
 							history={props.history}
@@ -499,7 +387,7 @@ export function EmptyChart(props: {worker?: string}) {
 					</EmptyMedia>
 					<EmptyTitle>
 						{Boolean.match(props.worker === undefined, {
-							onFalse: Function.constant('No readings in this range'),
+							onFalse: Function.constant('No readings'),
 							onTrue: Function.constant('No machine')
 						})}
 					</EmptyTitle>

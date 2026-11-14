@@ -2,7 +2,7 @@ import {useAtomRefresh, useAtomValue} from '@effect/atom-react'
 
 import {Array, Boolean, DateTime, Duration, Function, Option, Record, Schema, String, pipe} from 'effect'
 
-import {HardDrivesIcon, MonitorIcon, TerminalWindowIcon} from '@phosphor-icons/react'
+import {AppWindowIcon, HardDrivesIcon, MonitorIcon, TerminalWindowIcon} from '@phosphor-icons/react'
 import {CatchBoundary, Link, createFileRoute, getRouteApi} from '@tanstack/react-router'
 import {AsyncResult} from 'effect/reactivity'
 import {Suspense, useDeferredValue} from 'react'
@@ -14,6 +14,7 @@ import {Loaded, ReadFailure} from '@deslop/components-web/blocks/states'
 import {StatusDot} from '@deslop/components-web/blocks/status-dot'
 import {mediaQueryAtom} from '@deslop/components-web/lib/media'
 import {AppBarTab, AppBar, AppBarChoice, AppBarTabs} from '@deslop/components-web/shell/app-bar'
+import {Workspace} from '@deslop/components-web/shell/workspace'
 import {Empty, EmptyHeader, EmptyMedia, EmptyTitle} from '@deslop/components-web/ui/empty'
 import {ResizableHandle, ResizablePanel, ResizablePanelGroup} from '@deslop/components-web/ui/resizable'
 import {ScrollArea} from '@deslop/components-web/ui/scroll-area'
@@ -135,7 +136,7 @@ function ProcessList(props: {row: Row}) {
 					<EmptyMedia variant="icon">
 						<TerminalWindowIcon />
 					</EmptyMedia>
-					<EmptyTitle>No processes right now</EmptyTitle>
+					<EmptyTitle>No processes</EmptyTitle>
 				</EmptyHeader>
 			</Empty>
 		),
@@ -158,7 +159,7 @@ function SelectedProcesses(props: {app?: ItemId; pending: boolean; row?: Row}) {
 							<Empty role="status">
 								<EmptyHeader>
 									<EmptyMedia variant="icon">
-										<TerminalWindowIcon />
+										<AppWindowIcon />
 									</EmptyMedia>
 									<EmptyTitle>Select an app</EmptyTitle>
 								</EmptyHeader>
@@ -264,7 +265,7 @@ function PhoneList(props: {
 }
 
 // What the bar opens onto: the two panes on a wide screen, the chart and list on a phone, or the pushed processes.
-function Workspace(props: {
+function Panes(props: {
 	active?: WorkerId
 	authFailure: Option.Option<unknown>
 	free: readonly InventoryItem[]
@@ -286,7 +287,7 @@ function Workspace(props: {
 	)
 	return Option.match(props.authFailure, {
 		onNone: () => (
-			<div className="flex min-h-0 flex-1 flex-col">
+			<Workspace>
 				<h1 className="sr-only">Deploy</h1>
 				{Boolean.match(props.isPhone, {
 					onFalse: () => (
@@ -345,9 +346,13 @@ function Workspace(props: {
 							)
 						})
 				})}
-			</div>
+			</Workspace>
 		),
-		onSome: error => <ReadFailure error={error} reset={props.retryFailed} />
+		onSome: error => (
+			<Workspace>
+				<ReadFailure error={error} reset={props.retryFailed} />
+			</Workspace>
+		)
 	})
 }
 
@@ -358,7 +363,7 @@ function HomeRoute() {
 	function view(next: Partial<Search>) {
 		navigate({search: previous => Schema.encodeSync(Search)({...previous, ...next})})
 	}
-	const minutes = Option.getOrElse(search.range, () => Duration.minutes(60))
+	const minutes = Option.getOrElse(search.range, () => Duration.minutes(1440))
 	// The charts keep the last loaded range, unmarked, until the one the URL asks for arrives.
 	const shownMinutes = useDeferredValue(minutes)
 	const pane = Option.getOrElse(search.pane, Function.constant('apps'))
@@ -445,7 +450,7 @@ function HomeRoute() {
 				name="deploy"
 				controls={Boolean.match(pushed, {
 					onFalse: () => (
-						<div className="flex items-center gap-1">
+						<>
 							<DataProblem minutes={minutes} />
 							<AppBarChoice
 								label="Range"
@@ -453,7 +458,7 @@ function HomeRoute() {
 								options={RANGES}
 								onChange={range => view({range: Option.some(range)})}
 							/>
-						</div>
+						</>
 					),
 					onTrue: () => <DataProblem minutes={minutes} />
 				})}
@@ -470,7 +475,7 @@ function HomeRoute() {
 					onTrue: Function.constUndefined
 				})}
 			/>
-			<Workspace
+			<Panes
 				active={active}
 				authFailure={authFailure}
 				free={free}

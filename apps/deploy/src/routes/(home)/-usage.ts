@@ -11,14 +11,11 @@ import {
 	Order,
 	Record,
 	Schema,
-	String,
 	pipe
 } from 'effect'
 
-import {APP_HUES} from '@deslop/components-web/lib/apps'
-
 import type {AppId} from '#services/inventory/schema.ts'
-import {chartWindow, resolution} from '#services/metrics/lib/utils.ts'
+import {resolution} from '#services/metrics/lib/utils.ts'
 import type {AppSample, BandId, MachineHistory, Sample} from '#services/metrics/schema.ts'
 
 export type BandKind = typeof BandKind.Type
@@ -31,18 +28,12 @@ const BandMetric = Schema.Literals(['cpu', 'memory', 'memoryBytes'])
 // One stacked band, in % of the whole machine at each sample: an app, the low-impact apps together, or what the machine holds beyond the apps.
 export type Band = {cpu: number[]; id: BandId; kind: BandKind; memory: number[]; memoryBytes: number[]; opacity: number}
 
-// A band's fill: a Deslop app in its icon's hue, another process in the page primary at its rank's opacity, and the low-impact and system blocks two darker greys.
-export function bandFill(kind: BandFillKind, opacity: number, name: string) {
+// A band's fill: an app in the page primary at its rank's opacity, and the low-impact and system blocks two darker greys; identity stays in the list's marks.
+export function bandFill(kind: BandFillKind, opacity: number) {
 	if (kind === 'other') return {color: 'var(--input)', opacity: 1}
 	if (kind === 'system') return {color: 'var(--muted)', opacity: 1}
 	if (kind === 'disk') return {color: 'var(--muted-foreground)', opacity: 0.6}
-	return pipe(
-		String.toLowerCase(name),
-		String.split(/[^a-z0-9]+/u),
-		Array.findFirst(word => Record.has(APP_HUES, word)),
-		Option.flatMap(word => Record.get(APP_HUES, word)),
-		Option.match({onNone: () => ({color: 'var(--primary)', opacity}), onSome: color => ({color, opacity: 0.9})})
-	)
+	return {color: 'var(--primary)', opacity}
 }
 
 function peak(values: readonly number[]) {
@@ -165,9 +156,21 @@ export function focusedBand(history: MachineHistory, selected: AppId) {
 	return Option.none<Band['id']>()
 }
 
-// Each sample's place on the range's 0–100 time axis, split where the recording misses a slot, give or take a second of sampling, or a sample lacks the reading, so a gap stays blank.
-export function runs(history: MachineHistory, minutes: Duration.Duration, recorded: (sample: Sample) => boolean) {
-	const window = chartWindow(minutes, history.time)
+// A usage chart's points, each its time, its sample and every band's stacked share by key. Recorded samples come in runs, split where the recording misses a slot, give or take a second of sampling, or a sample lacks the reading; a blank point after each run keeps the gap blank, and a lone reading widens to a slot so it shows.
+export function chartPoints(
+	history: MachineHistory,
+	minutes: Duration.Duration,
+	recorded: (sample: Sample) => boolean,
+	layers: readonly {values: readonly number[]}[]
+) {
+	const slot = Duration.toMillis(resolution(minutes))
+	function pointOf(at: number, index: number, value: (layer: {values: readonly number[]}) => number | null) {
+		return {
+			...Record.fromEntries(Array.map(layers, (layer, band) => [`band${band}`, value(layer)] as const)),
+			at,
+			index
+		}
+	}
 	return pipe(
 		Array.mapAccum(history.samples, {run: 0, time: Option.none<DateTime.Utc>()}, (last, sample, index) => {
 			const run =
@@ -189,15 +192,24 @@ export function runs(history: MachineHistory, minutes: Duration.Duration, record
 					run: run + Boolean.match(recorded(sample), {onFalse: Function.constant(1), onTrue: Function.constant(0)}),
 					time: Option.some(sample.time)
 				},
-				{
-					index,
-					recorded: recorded(sample),
-					run,
-					x: (Duration.toMillis(DateTime.distance(window.start, sample.time)) / Duration.toMillis(minutes)) * 100
-				}
+				{at: DateTime.toEpochMillis(sample.time), index, recorded: recorded(sample), run}
 			]
 		})[1],
 		Array.filter(point => point.recorded),
-		Array.match({onEmpty: () => [], onNonEmpty: all => Array.groupWith(all, (point, first) => point.run === first.run)})
+		Array.match({
+			onEmpty: () => [],
+			onNonEmpty: all => Array.groupWith(all, (point, first) => point.run === first.run)
+		}),
+		Array.flatMap(run => {
+			const last = Array.lastNonEmpty(run)
+			return [
+				...Boolean.match(run.length === 1, {
+					onFalse: () => [],
+					onTrue: () => [pointOf(last.at - slot, last.index, layer => layer.values[last.index] ?? 0)]
+				}),
+				...Array.map(run, point => pointOf(point.at, point.index, layer => layer.values[point.index] ?? 0)),
+				pointOf(last.at + 1, last.index, Function.constNull)
+			]
+		})
 	)
 }
