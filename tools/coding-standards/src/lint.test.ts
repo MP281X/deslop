@@ -1120,7 +1120,7 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 							'export const keyed = Effect.gen(function* () { const index = yield* Ref.get(state); return items[index] })',
 							'export function multiline() {',
 							'	const size = Array.reduce(items, 0, (total, item) =>',
-							'		total + item.length)',
+							'		total * 2 + item.length)',
 							'	return consume(size)',
 							'}',
 							'export function repeated() { const size = text.length; return Array.map(items, () => consume(size)) }',
@@ -2470,6 +2470,18 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 							'	for (const note of notes) MutableHashMap.set(counts, note.id, note.tags.length) // reported',
 							'	return counts',
 							'}',
+							'export function apart() {',
+							'	const ids: string[] = []',
+							"	const label = 'notes'",
+							'	for (const note of notes) ids.push(note.id) // reported',
+							'	return [label, ...ids]',
+							'}',
+							'export function readBetween() {',
+							'	const ids: string[] = []',
+							'	const before = ids.length',
+							'	for (const note of notes) ids.push(note.id)',
+							'	return [before, ids]',
+							'}',
 							'export function numbered() {',
 							'	const lines: string[] = []',
 							'	for (const note of notes) lines.push(`${lines.length}: ${note.id}`)',
@@ -2638,9 +2650,23 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 							'	if (order.total <= 0) return 0',
 							'	return order.total',
 							'}',
-							'export function differentTest() {',
+							'export function implied() {',
 							'	if (order.total <= 0) return 0',
-							'	if (order.total < 0) return 1',
+							'	if (order.total < 0) return 1 // reported',
+							'	if (-1 >= order.total) return 2 // reported',
+							'	if (order.total === 0) return 3 // reported',
+							'	return order.total',
+							'}',
+							'export function differentTest() {',
+							'	if (order.total < 0) return 0',
+							'	if (order.total <= 0) return 1',
+							'	if (order.total < 5) return 2',
+							'	if (order.total > 100) return 3',
+							'	return order.total',
+							'}',
+							'export function otherSubject(limit: number) {',
+							'	if (order.total <= 0) return 0',
+							'	if (limit < 0) return 1',
 							'	return order.total',
 							'}',
 							'export function assigned() {',
@@ -2671,12 +2697,86 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 							'		if (item < 0) continue',
 							'		if (item < 0) continue // reported',
 							'	}',
+							'}',
+							// The examples of the judge question this rule replaced.
+							'export function discount(order: {total: number}) {',
+							'	if (order.total <= 0) return 0',
+							'	const rate = order.total > 100 ? 0.1 : 0.05',
+							'	if (order.total < 0) return 0 // reported',
+							'	return order.total * rate',
+							'}',
+							'export function kept(order: {total: number}) {',
+							'	if (order.total <= 0) return 0',
+							'	const rate = order.total > 100 ? 0.1 : 0.05',
+							'	return order.total * rate',
 							'}'
 						],
 						'\n'
 					)
 				})
 				const lines = reportedLines(result, 'no-repeated-guard')
+				assert.deepStrictEqual(lines.reported, lines.marked)
+			})
+		)
+
+		testApi.effect(
+			'rejects a search by key of an unchanged collection once per item, while keeping indexes, pairwise work and other tests',
+			Effect.fnUntraced(function* () {
+				const result = yield* lintSource({
+					'searches.ts': Array.join(
+						[
+							"import {Array, HashMap, Option, pipe} from 'effect'",
+							'',
+							'type Span = {id: string; serviceId: string}',
+							'type Service = {id: string; name: string}',
+							'declare const spans: Span[]',
+							'declare const services: Service[]',
+							'export const attached = Array.map(spans, span => ({',
+							'	...span,',
+							'	service: Array.findFirst(services, service => service.id === span.serviceId) // reported',
+							'}))',
+							'export function looped() {',
+							'	for (const span of spans) {',
+							'		if (Array.some(services, service => service.id === span.serviceId)) return span // reported',
+							'	}',
+							'	return undefined',
+							'}',
+							'const byId = HashMap.fromIterable(Array.map(services, service => [service.id, service] as const))',
+							'export const indexed = Array.map(spans, span => HashMap.get(byId, span.serviceId))',
+							'export const pairwise = Array.filter(spans, span => Array.some(spans, other => other.id === span.serviceId))',
+							"export const fixed = Array.map(spans, span => Array.some(services, service => service.name === 'web'))",
+							'export const ranged = Array.map(spans, span => Array.filter(services, service => service.id > span.id))',
+							'export const once = Option.map(Array.head(spans), span => Array.some(services, service => service.id === span.serviceId))',
+							'export const own = Array.map(spans, span => {',
+							'	const local = [span]',
+							'	return Array.some(local, item => item.id === span.serviceId)',
+							'})',
+							// The examples of the judge question this rule replaced.
+							'export function attachNative(spans: Span[], services: Service[]) {',
+							'	return spans.map(span => ({...span, service: services.find(service => service.id === span.serviceId)})) // reported',
+							'}',
+							'export function attachIndexed(spans: Span[], services: Service[]) {',
+							'	const byId = new Map(services.map(service => [service.id, service]))',
+							'	return spans.map(span => ({...span, service: byId.get(span.serviceId)}))',
+							'}',
+							'declare const ids: string[]',
+							'declare const label: string',
+							'export const curried = Array.map(spans, span => pipe(services, Array.findFirst(service => service.id === span.serviceId))) // reported',
+							'export const applied = Array.map(spans, span => Array.findFirst((service: Service) => service.id === span.serviceId)(services)) // reported',
+							'export const primitive = Array.filter(spans, span => Array.some(ids, id => id === span.serviceId)) // reported',
+							'export const contained = Array.filter(spans, span => Array.contains(ids, span.serviceId)) // reported',
+							'export const pipedContained = Array.filter(spans, span => pipe(ids, Array.contains(span.serviceId))) // reported',
+							'export const included = spans.filter(span => ids.includes(span.serviceId)) // reported',
+							'export const inText = spans.filter(span => label.includes(span.serviceId))',
+							"const PROVIDERS = ['web', 'worker'] as const",
+							'export const fixedTable = Array.filter(spans, span => Array.some(PROVIDERS, provider => provider === span.serviceId))',
+							'declare const trees: {children: Span[]; id: string}[]',
+							'export const children = Array.map(trees, tree => Array.findFirst(tree.children, child => child.id === tree.id))'
+						],
+						'\n'
+					)
+				})
+				const lines = reportedLines(result, 'no-repeated-search')
 				assert.deepStrictEqual(lines.reported, lines.marked)
 			})
 		)
@@ -2709,6 +2809,76 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 				})
 				const lines = reportedLines(reported, 'no-hand-written-helper')
 				assert.deepStrictEqual(lines.reported, lines.marked)
+				const sums = reportedLines(
+					yield* lintSource({
+						'sums.ts': Array.join(
+							[
+								"import {Array, Number, pipe} from 'effect'",
+								'',
+								'declare const disks: {total: number; used: number}[]',
+								'export const used = Array.reduce(disks, 0, (sum, disk) => sum + disk.used) // reported',
+								'export const flipped = Array.reduce(disks, 0, (sum, disk) => disk.total + sum) // reported',
+								'export const piped = pipe(disks, Array.reduce(0, (sum, disk) => sum + disk.used)) // reported',
+								'export const seeded = Array.reduce(disks, 1, (sum, disk) => sum + disk.used)',
+								'export const counted = Array.reduce(disks, 0, sum => sum + 1)',
+								'export const scaled = Array.reduce(disks, 0, (sum, disk) => sum * 60 + disk.used)',
+								'export const doubled = Array.reduce(disks, 0, (sum, disk) => sum + sum + disk.used)',
+								'export const largest = Array.reduce(disks, 0, (most, disk) => Number.max(most, disk.used))'
+							],
+							'\n'
+						)
+					}),
+					'no-hand-written-helper'
+				)
+				assert.deepStrictEqual(sums.reported, sums.marked)
+				// The examples of the judge question these rules replaced, and running totals kept in a MutableRef.
+				const totals = reportedLines(
+					yield* lintSource({
+						'totals.ts': Array.join(
+							[
+								"import {Array, Effect, MutableRef} from 'effect'",
+								'',
+								'type Note = {tags: string[]; words: number}',
+								'export function wordCount(notes: Note[]) {',
+								'	const total = MutableRef.make(0)',
+								'	for (const note of notes) MutableRef.update(total, count => count + note.words) // reported',
+								'	return MutableRef.get(total)',
+								'}',
+								'export function tagsOf(notes: Note[]) {',
+								'	return Array.flatMap(notes, note => note.tags)',
+								'}',
+								'export function counted(notes: Note[]) {',
+								'	const total = MutableRef.make(0)',
+								'	Array.forEach(notes, () => {',
+								'		MutableRef.update(total, count => 1 + count) // reported',
+								'	})',
+								'	return MutableRef.get(total)',
+								'}',
+								'export function seeded(notes: Note[]) {',
+								'	const total = MutableRef.make(10)',
+								'	for (const note of notes) MutableRef.update(total, count => count + note.words)',
+								'	return MutableRef.get(total)',
+								'}',
+								'export function logged(notes: Note[]) {',
+								'	const total = MutableRef.make(0)',
+								'	for (const note of notes) {',
+								'		MutableRef.update(total, count => count + note.words)',
+								'		Effect.runSync(Effect.log(note.words))',
+								'	}',
+								'	return MutableRef.get(total)',
+								'}',
+								'export function compounded(notes: Note[]) {',
+								'	const total = MutableRef.make(0)',
+								'	for (const note of notes) MutableRef.update(total, count => count + count * note.words)',
+								'	return MutableRef.get(total)',
+								'}'
+							],
+							'\n'
+						)
+					}),
+					'no-hand-written-helper'
+				)
+				assert.deepStrictEqual(totals.reported, totals.marked)
 				const fixed = yield* lintSource(
 					{
 						'imported.ts': Array.join(
@@ -2726,6 +2896,15 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 								'',
 								'declare const words: string[]',
 								"export const titles = Array.map(words, word => (word[0] ?? '').toUpperCase() + word.substring(1))"
+							],
+							'\n'
+						),
+						'summed.ts': Array.join(
+							[
+								"import {Array} from 'effect'",
+								'',
+								'declare const disks: {used: number}[]',
+								'export const used = Array.reduce(disks, 0, (sum, disk) => sum + disk.used)'
 							],
 							'\n'
 						)
@@ -2749,6 +2928,16 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 							'',
 							'declare const words: string[]',
 							'export const titles = Array.map(words, word => String.capitalize(word))',
+							''
+						],
+						'\n'
+					),
+					Array.join(
+						[
+							"import {Array, Number} from 'effect'",
+							'',
+							'declare const disks: {used: number}[]',
+							'export const used = Number.sumAll(Array.map(disks, disk => disk.used))',
 							''
 						],
 						'\n'

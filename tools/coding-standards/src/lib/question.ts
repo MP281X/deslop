@@ -6,7 +6,7 @@ export type Kind = 'code' | 'component' | 'test'
 
 export type Side = {cases: Array.NonEmptyReadonlyArray<string>; example: string}
 
-// One narrow yes-or-no question about `code`, asked of every unit of its kind that its `gate` admits: `yes` is the violation, `message` tells the agent the fix, and the judge checks it answers its own examples. A gate reads only what Jev reads and must hold for every unit the answer could be yes for; without one, every unit is asked.
+// One narrow yes-or-no question about `code`, asked of every unit of its kind that its `gate` admits: `yes` is the violation, `message` tells the agent the fix, and the judge checks it answers its own examples. A gate reads only what the model reads and must hold for every unit the answer could be yes for; without one, every unit is asked.
 export type Question = {
 	gate: (unit: Features) => boolean
 	kind: Kind
@@ -16,7 +16,7 @@ export type Question = {
 	yes: Side
 }
 
-// An example is written indented inside its question; Jev reads it without the opening and closing lines and their shared indent.
+// An example is written indented inside its question; the model reads it without the opening and closing lines and their shared indent.
 function dedent(example: string) {
 	const lines = pipe(String.split(example, '\n'), Array.drop(1), Array.dropRight(1))
 	const indent = Array.match(

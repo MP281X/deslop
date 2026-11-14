@@ -6,7 +6,7 @@ export const CLIENT = 'coding-standards'
 
 export class JudgeError extends Schema.TaggedError<JudgeError>()('JudgeError', {message: Schema.String}) {}
 
-export type Urls = {auth: string; gateway: string}
+export const origins = {auth: 'https://auth.mp281x.xyz', gateway: 'https://gateway.mp281x.xyz'}
 
 type Session = typeof Session.Type
 const Session = Schema.Struct({
@@ -97,13 +97,13 @@ const saveSession = Effect.fnUntraced(function* (session: Session) {
 	})
 })
 
-const exchange = Effect.fnUntraced(function* (urls: Urls, params: Record<string, string>) {
+const exchange = Effect.fnUntraced(function* (params: Record<string, string>) {
 	const client = yield* HttpClient.HttpClient
 	return yield* sessionOf(
 		yield* pipe(
 			client.execute(
 				HttpClientRequest.bodyUrlParams(
-					HttpClientRequest.post(`${urls.auth}/api/auth/oauth2/token`),
+					HttpClientRequest.post(`${origins.auth}/api/auth/oauth2/token`),
 					UrlParams.fromInput(params)
 				)
 			),
@@ -118,11 +118,11 @@ const exchange = Effect.fnUntraced(function* (urls: Urls, params: Record<string,
 })
 
 // RFC 8628: Auth shows a code, a signed-in browser, phone or agent (Auth's `answer_request`) approves it, and the judge polls for its tokens.
-export const signIn = Effect.fnUntraced(function* (urls: Urls) {
+export const signIn = Effect.gen(function* () {
 	const client = yield* HttpClient.HttpClient
 	const registered = yield* pipe(
 		client.execute(
-			yield* HttpClientRequest.bodyJson(HttpClientRequest.post(`${urls.auth}/api/auth/oauth2/register`), {
+			yield* HttpClientRequest.bodyJson(HttpClientRequest.post(`${origins.auth}/api/auth/oauth2/register`), {
 				client_name: CLIENT,
 				// Auth registers clients by their callbacks; a device-code client never receives one.
 				redirect_uris: ['http://127.0.0.1/callback']
@@ -135,7 +135,7 @@ export const signIn = Effect.fnUntraced(function* (urls: Urls) {
 	const device = yield* pipe(
 		client.execute(
 			HttpClientRequest.bodyUrlParams(
-				HttpClientRequest.post(`${urls.auth}/api/auth/oauth2/device_authorization`),
+				HttpClientRequest.post(`${origins.auth}/api/auth/oauth2/device_authorization`),
 				UrlParams.fromInput({client_id: registered.client_id})
 			)
 		),
@@ -149,7 +149,7 @@ export const signIn = Effect.fnUntraced(function* (urls: Urls) {
 	const tokens = yield* pipe(
 		client.execute(
 			HttpClientRequest.bodyUrlParams(
-				HttpClientRequest.post(`${urls.auth}/api/auth/oauth2/token`),
+				HttpClientRequest.post(`${origins.auth}/api/auth/oauth2/token`),
 				UrlParams.fromInput({
 					client_id: registered.client_id,
 					device_code: device.device_code,
@@ -174,11 +174,11 @@ export const signIn = Effect.fnUntraced(function* (urls: Urls) {
 		failed('The sign-in was denied or not approved in time; run `coding-standards sign-in` again')
 	)
 	yield* saveSession(yield* sessionOf(tokens, registered.client_id))
-	yield* Effect.logInfo('Signed in; `coding-standards judge` now asks its questions.')
+	yield* Effect.logInfo('Signed in to Gateway. The judge is parked; run it only when the user explicitly asks.')
 })
 
-// A fresh access token for Gateway, refreshed shortly before it expires; `force` replaces one Gateway refused.
-export const accessToken = Effect.fnUntraced(function* (urls: Urls, force: boolean) {
+// A fresh access token for Gateway, refreshed shortly before it expires.
+export const accessToken = Effect.gen(function* () {
 	const fs = yield* FileSystem.FileSystem
 	const paths = yield* sessionPaths
 	return yield* withSessionLock(
@@ -188,8 +188,8 @@ export const accessToken = Effect.fnUntraced(function* (urls: Urls, force: boole
 				Effect.flatMap(Schema.decodeEffect(Schema.fromJsonString(Session))),
 				failed('Sign in once with `coding-standards sign-in`; the agent approves its code with answer_request')
 			)
-			if (!force && session.expiresAt - 60_000 > (yield* Clock.currentTimeMillis)) return session.accessToken
-			const next = yield* exchange(urls, {
+			if (session.expiresAt - 60_000 > (yield* Clock.currentTimeMillis)) return session.accessToken
+			const next = yield* exchange({
 				client_id: session.clientId,
 				grant_type: 'refresh_token',
 				refresh_token: Redacted.value(session.refreshToken)

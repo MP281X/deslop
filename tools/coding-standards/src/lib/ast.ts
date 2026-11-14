@@ -1,4 +1,4 @@
-import {Array, Graph, Option, Predicate, Record, String, pipe} from 'effect'
+import {Array, Graph, HashSet, Option, Predicate, Record, String, pipe} from 'effect'
 
 import type {Context, ESTree, Fix, Fixer, Scope, Token, Variable} from 'vite-plus/lint/plugins'
 
@@ -816,12 +816,14 @@ export function schemaCycleNames(input: {context: Context; program: ESTree.Progr
 	return pipe(
 		Graph.stronglyConnectedComponents(graph),
 		Array.map(component => Array.getSomes(Array.map(component, index => Graph.getNode(graph, index)))),
-		Array.filter(
-			component =>
+		Array.filter(component => {
+			const members = HashSet.fromIterable(component)
+			return (
 				(component.length > 1 ||
-					Array.some(edges, edge => Array.contains(component, edge.name) && Array.contains(edge.targets, edge.name))) &&
+					Array.some(edges, edge => HashSet.has(members, edge.name) && Array.contains(edge.targets, edge.name))) &&
 				Array.some(component, name => Array.contains(input.seeds, name))
-		),
+			)
+		}),
 		Array.flatten
 	)
 }

@@ -174,13 +174,9 @@ function laneOf(placed: readonly {lane: number; span: Span}[], spanId: string) {
 	return Option.getOrUndefined(Array.findFirst(placed, entry => entry.span.spanId === spanId))?.lane
 }
 
-function assertLanesDisjoint(placed: readonly {lane: number; span: Span}[], lanes: number) {
-	for (const lane of Array.range(0, lanes - 1)) {
-		const laneSpans = pipe(
-			placed,
-			Array.filter(entry => entry.lane === lane),
-			Array.map(entry => entry.span)
-		)
+function assertLanesDisjoint(placed: readonly {lane: number; span: Span}[]) {
+	for (const lane of Record.values(Array.groupBy(placed, entry => `${entry.lane}`))) {
+		const laneSpans = Array.map(lane, entry => entry.span)
 		Array.forEach(laneSpans, (left, index) =>
 			pipe(
 				laneSpans,
@@ -212,14 +208,14 @@ it('gives the root and each job a lane of their own and packs a step into free t
 	assert.strictEqual(laneOf(placed, 'set-up'), 2)
 	assert.strictEqual(laneOf(placed, 'format'), 1)
 	assert.strictEqual(laneOf(placed, 'complete'), 1)
-	assertLanesDisjoint(placed, 3)
+	assertLanesDisjoint(placed)
 })
 
 it('places a zero-length span and keeps every lane interval disjoint', () => {
 	const spans = [span('root', 0, 0, 100), span('job', 1, 10, 20), span('complete', 2, 30, 0), span('tick', 2, 0, 0)]
 	const placed = packedLanesOf(spans)
 	assert.lengthOf(placed, spans.length)
-	assertLanesDisjoint(placed, 2)
+	assertLanesDisjoint(placed)
 })
 
 it('keeps a job’s label space free of a deeper span', () => {

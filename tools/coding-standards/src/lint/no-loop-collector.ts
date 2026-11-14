@@ -125,37 +125,48 @@ function onlyAddsTo(input: {context: Context; declarator: ESTree.VariableDeclara
 export const noLoopCollector = defineRule({
 	create: context => ({
 		BlockStatement: node => {
-			pipe(
-				node.body,
-				Array.zip(Array.drop(node.body, 1)),
-				Array.forEach(pair => {
-					const declaration = pair[0]
-					if (declaration.type !== 'VariableDeclaration' || declaration.declarations.length !== 1) return
-					const declarator = declaration.declarations[0]
-					if (declarator?.id.type !== 'Identifier' || Predicate.isNullish(declarator.init)) return
-					if (!isEmptyCollection(context, declarator.init)) return
-					const name = declarator.id.name
-					const filled = Option.exists(
-						loopBody(context, pair[1]),
-						body =>
-							fills({context, ifs: 0, name, node: body}) &&
-							onlyAddsTo({context, declarator, name, node: body}) &&
-							!containsNode({
-								context,
-								matches: inner => inner.type === 'AwaitExpression' || inner.type === 'YieldExpression',
-								node: body,
-								throughFunctions: false
+			Array.forEach(node.body, (declaration, index) => {
+				if (declaration.type !== 'VariableDeclaration' || declaration.declarations.length !== 1) return
+				const declarator = declaration.declarations[0]
+				if (declarator?.id.type !== 'Identifier' || Predicate.isNullish(declarator.init)) return
+				if (!isEmptyCollection(context, declarator.init)) return
+				const name = declarator.id.name
+				const reads = pipe(
+					variableFromScope({name, scope: context.sourceCode.getScope(declarator)}),
+					Option.map(variable => Array.map(variable.references, reference => reference.identifier.range[0])),
+					Option.getOrElse(() => Array.empty<number>())
+				)
+				// The loop is the first statement after the declaration that touches the collector, however far below it sits.
+				pipe(
+					Array.drop(node.body, index + 1),
+					Array.findFirst(statement =>
+						Array.some(reads, start => start >= statement.range[0] && start < statement.range[1])
+					),
+					Option.filter(statement =>
+						Option.exists(
+							loopBody(context, statement),
+							body =>
+								fills({context, ifs: 0, name, node: body}) &&
+								onlyAddsTo({context, declarator, name, node: body}) &&
+								!containsNode({
+									context,
+									matches: inner => inner.type === 'AwaitExpression' || inner.type === 'YieldExpression',
+									node: body,
+									throughFunctions: false
+								})
+						)
+					),
+					Option.match({
+						onNone: () => undefined,
+						onSome: filled =>
+							context.report({
+								message:
+									'Build the collection with one Array.map, filter, filterMap or flatMap, or Record.fromEntries for keys, instead of filling an empty collector in a loop.',
+								node: filled
 							})
-					)
-					if (filled) {
-						context.report({
-							message:
-								'Build the collection with one Array.map, filter, filterMap or flatMap, or Record.fromEntries for keys, instead of filling an empty collector in a loop.',
-							node: pair[1]
-						})
-					}
-				})
-			)
+					})
+				)
+			})
 		}
 	}),
 	meta: {type: 'problem'}

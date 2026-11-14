@@ -35,6 +35,7 @@
 		"test": "vp test --config ../../vite.config.ts"
 	},
 	"dependencies": {
+		"@effect/ai-anthropic": "latest",
 		"@effect/platform-node": "latest",
 		"@shadcn/lint": "latest",
 		"@typeonce/oxlint-plugin-effect-machine": "latest",

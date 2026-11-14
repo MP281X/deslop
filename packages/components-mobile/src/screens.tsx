@@ -47,7 +47,6 @@ function BlankScreen() {
 }
 
 // A blocking failure is one destructive button carrying its reason; a denial is a lock with no retry.
-// judge-ignore no-hero-failure -- the compact error the question allows: one destructive Retry carrying its icon and short reason, centred only because a blocking failure has the screen to itself
 export function FailureContent(props: {cause: Cause.Cause<unknown>; onRetry: () => void}) {
 	return (
 		<VStack spacing={space[6]} modifiers={FULL_SCREEN}>
@@ -83,7 +82,6 @@ export function FailureContent(props: {cause: Cause.Cause<unknown>; onRetry: () 
 }
 
 // One gate for a screen's content: a blocking failure is the retry card, and the value renders where it stands.
-// judge-ignore no-dropped-content -- blockingFailure keeps a retained value for children, so FailureContent only renders with no value.
 export function Loaded<A, E>(props: {
 	atom: Atom.Atom<AsyncResult.AsyncResult<A, E>>
 	children: (value: A) => ReactNode

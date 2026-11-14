@@ -2,36 +2,30 @@ import {question} from '#lib/question.ts'
 
 export const noInternalsTest = question(
 	'test',
-	'Does the test in `code` assert on private state or incidental internal calls instead of what a caller observes?',
+	'Does an assertion in `code` depend on how the code under test does its work rather than the answer its caller gets?',
 	{
-		message:
-			'Assert what a caller observes; a test of private state breaks with every refactor and survives real bugs.',
+		message: 'Assert the answer a caller gets.',
 		no: {
-			cases: [
-				'Assertions on returned values, persisted outputs, notifications or errors',
-				'Assertions on the request or input sent across a service or network boundary',
-				'Counts of resource acquisition and release, or of deduplicated calls',
-				'Fakes and counters that only drive the scenario'
-			],
+			cases: ['Assertions check returned answers.', 'A stand-in supplies inputs for the scenario.'],
 			example: `
-				it('finds a saved note by its title', async () => {
-					const notes = new Notes(store)
-					await notes.save({title: 'a'})
-					expect(await notes.search('a')).toEqual([{title: 'a'}])
-				})
+				import {assert, it} from '@effect/vitest'
+
+				export function checkTotal(total: (prices: number[]) => number) {
+					it('totals prices', () => { assert.strictEqual(total([2, 3]), 5) })
+				}
 			`
 		},
 		yes: {
 			cases: [
-				'An assertion that reads a private field or internal cache',
-				'An assertion that an internal helper or mock was called, or on how storage is laid out, when no caller requires it'
+				'Assertions inspect storage layout.',
+				'Assertions count internal operations rather than checking their result.'
 			],
 			example: `
-				it('saves a note', async () => {
-					const notes = new Notes(store)
-					await notes.save({title: 'a'})
-					expect(notes['cache'].size).toBe(1)
-				})
+				import {assert, it} from '@effect/vitest'
+
+				export function checkTotal(total: (prices: number[]) => {answer: number; additions: number}) {
+					it('totals prices', () => { assert.strictEqual(total([2, 3]).additions, 2) })
+				}
 			`
 		}
 	}

@@ -370,7 +370,7 @@ export function ChartBlock(props: {
 	const latest = Option.getOrUndefined(Array.last(props.history.samples))
 	const cpu = Option.flatMap(Option.fromUndefinedOr(latest), sample => sample.cpu)
 	const storageUsed = Option.flatMap(Option.fromUndefinedOr(latest), sample => sample.storageUsed)
-	const total = Array.reduce(props.history.disks, 0, (sum, disk) => sum + disk.total)
+	const total = Number.sumAll(Array.map(props.history.disks, disk => disk.total))
 	const disk = Array.map(props.history.samples, sample =>
 		Boolean.match(total > 0, {
 			onFalse: () => 0,

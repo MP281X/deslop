@@ -51,34 +51,6 @@ const ITERATIONS = [
 	'takeWhile',
 	'toSorted'
 ]
-// Calls that look items up in a collection.
-const SEARCHES = [
-	'contains',
-	'containsWith',
-	'countBy',
-	'dedupeWith',
-	'difference',
-	'differenceWith',
-	'every',
-	'exists',
-	'filter',
-	'filterMap',
-	'find',
-	'findFirst',
-	'findFirstIndex',
-	'findIndex',
-	'findLast',
-	'findLastIndex',
-	'includes',
-	'indexOf',
-	'intersection',
-	'intersectionWith',
-	'lastIndexOf',
-	'partition',
-	'some',
-	'union',
-	'unionWith'
-]
 // Calls that change a collection or a reference in place.
 const MUTATIONS = [
 	'add',
@@ -210,10 +182,8 @@ const PRESSABLE_ATTRIBUTES = /^(?:href|on(?:Activate|Click|MouseDown|PointerDown
 const TAB_ELEMENTS = /Tab(?!le)|Segment|tab(?!le)/u
 const ASSERTION_SOURCES =
 	/from ['"](?:vitest|@effect\/vitest(?:\/utils)?|vite-plus\/test|node:assert(?:\/strict)?|assert)['"]/u
-const EXACT_MATCHERS =
-	/^(?:assertEquals|assertFailure|assertLeft|assertRight|assertSome|assertSuccess|deepEqual|deepStrictEqual|equal|include|includeMembers|lengthOf|match|sameDeepMembers|sameMembers|sameOrderedMembers|strictEqual|toBe|toContain|toEqual|toHaveLength|toMatch|toStrictEqual)$/u
 
-// A unit read alone the way Jev reads it: a function parses in parentheses, an example's statement as it is and a method only inside an object; JSX only as TSX and a generic arrow `<T>() =>` only as TS.
+// A unit read alone the way the model reads it: a function parses in parentheses, an example's statement as it is and a method only inside an object; JSX only as TSX and a generic arrow `<T>() =>` only as TS.
 const WRAPPINGS = Array.flatMap(
 	[(text: string) => `(${text})`, (text: string) => text, (text: string) => `({m${text}})`],
 	wrap => Array.map(['unit.tsx', 'unit.ts'], name => ({name, wrap}))
@@ -299,22 +269,6 @@ function isExactLiteral(node: Node): boolean {
 	return false
 }
 
-// Empty values (0, '', [], {}), booleans and null are what code that did nothing tends to return, so they pin no outcome.
-function pinsOutcome(node: Node): boolean {
-	if (node.type === 'Literal') {
-		return Predicate.isNotNull(node.value) && !Predicate.isBoolean(node.value) && node.value !== 0 && node.value !== ''
-	}
-	if (node.type === 'TemplateLiteral') return Array.some(node.quasis, quasi => String.isNonEmpty(quasi.value.raw))
-	if (node.type === 'UnaryExpression') return pinsOutcome(node.argument)
-	if (node.type === 'ArrayExpression') {
-		return pipe(node.elements, Array.filter(Predicate.isNotNull), Array.some(pinsOutcome))
-	}
-	if (node.type === 'ObjectExpression') {
-		return Array.some(node.properties, property => property.type === 'Property' && pinsOutcome(property.value))
-	}
-	return false
-}
-
 // `expect(actual).toBe(expected)` is one assertion holding both values.
 function assertionArguments(node: CallExpression): Argument[] {
 	if (node.callee.type === 'MemberExpression' && node.callee.object.type === 'CallExpression') {
@@ -343,7 +297,7 @@ function comparesComputed(node: Node) {
 	})
 }
 
-// What the judge's gates read of a unit: only what Jev reads too, its code and the imports it uses.
+// What the judge's gates read of a unit: only what the model reads too, its code and the imports it uses.
 export type Features = ReturnType<typeof features>
 
 export function features(text: string, imports: string) {
@@ -369,12 +323,9 @@ export function features(text: string, imports: string) {
 		if (Option.exists(visit.parent, parent => parent.type === 'CallExpression' && parent.callee === node)) return []
 		return [calleeName(node)]
 	})
-	function called(names: readonly string[]) {
-		return Array.some(calls, call => Option.exists(call.name, name => Array.contains(names, name)))
-	}
 	const loops = Array.countBy(all, visit => Array.contains(LOOPS, visit.node.type))
 	const mutates =
-		called(MUTATIONS) ||
+		Array.some(calls, call => Option.exists(call.name, name => Array.contains(MUTATIONS, name))) ||
 		Array.some(
 			all,
 			visit =>
@@ -429,24 +380,6 @@ export function features(text: string, imports: string) {
 				(values.length === 1 && Array.some(values, comparesComputed))
 			)
 		}),
-		// An assertion whose expected value is written out once and pins an outcome.
-		exactExpectation: Array.some(assertions, assertion => {
-			const values = assertionArguments(assertion.node)
-			return (
-				values.length >= 2 &&
-				Option.exists(calleeName(assertion.node.callee), matches(EXACT_MATCHERS)) &&
-				pipe(
-					values,
-					Array.drop(1),
-					Array.some(
-						value =>
-							isExactLiteral(value) &&
-							pinsOutcome(value) &&
-							String.split(parsed.source, String.slice(value.start, value.end)(parsed.source)).length === 2
-					)
-				)
-			)
-		}),
 		hooks: Array.some(
 			calls,
 			call => call.node.callee.type === 'Identifier' && matches(/^use(?:[A-Z]\w*)?$/u)(call.node.callee.name)
@@ -463,7 +396,6 @@ export function features(text: string, imports: string) {
 					(visit.node.type === 'Identifier' && matches(INPUT_OUTPUT)(visit.node.name))
 			) ||
 			Array.some(calls, call => Option.exists(call.name, matches(INPUT_OUTPUT_CALLS))),
-		iterates: loops > 0 || called(ITERATIONS),
 		jsx: Array.some(all, visit => visit.node.type === 'JSXElement' || visit.node.type === 'JSXFragment'),
 		mutates,
 		// Pressables inside a function within the unit, such as a row rendered per item.
@@ -471,8 +403,6 @@ export function features(text: string, imports: string) {
 		pressables: pressables.length,
 		// The unit's own returns, not its callbacks'.
 		returns: Array.countBy(all, visit => visit.node.type === 'ReturnStatement' && visit.depth === 1),
-		searches:
-			called(SEARCHES) || Array.some(references, name => Option.exists(name, found => Array.contains(SEARCHES, found))),
 		stateHooks: Array.some(calls, call => Option.exists(call.name, matches(STATE_HOOKS))),
 		tabHandlers: Array.some(all, visit => {
 			if (visit.node.type !== 'JSXOpeningElement') return false
