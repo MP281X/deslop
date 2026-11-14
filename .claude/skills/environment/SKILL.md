@@ -7,12 +7,12 @@ description: Load before worker operations, previews, devices, tracing, deployme
 
 Two headless Debian workers in one tailnet, same user and paths.
 
-| Name          | Address          | Role                                                                                               |
-| ------------- | ---------------- | -------------------------------------------------------------------------------------------------- |
-| `desktop`     | `100.97.120.3`   | Fastest worker, only for the verification skill's **Validate**; on only when the user turns it on  |
-| `dev`         | `100.68.201.107` | Always on; every main thread and delegate runs here; Deslop apps for `*.mp281x.xyz`, Datapizza VPN |
-| `macbook-pro` | `100.115.207.60` | The user's control plane, the iOS Simulator and a Deploy worker, on demand                         |
-| `iphone`      | `100.117.217.10` | T3 client only                                                                                     |
+| Name          | Address          | Role                                                                                |
+| ------------- | ---------------- | ----------------------------------------------------------------------------------- |
+| `desktop`     | `100.97.120.3`   | Fastest; only the verification skill's **Validate**, when the user turns it on      |
+| `dev`         | `100.68.201.107` | Always on: every thread and delegate, Deslop apps for `*.mp281x.xyz`, Datapizza VPN |
+| `macbook-pro` | `100.115.207.60` | The user's control plane, the iOS Simulator and a Deploy worker, on demand          |
+| `iphone`      | `100.117.217.10` | T3 client only                                                                      |
 
 - **Names.** MagicDNS short names; `<name>.tailnet-8c4c.ts.net` has HTTPS certificates. SSH as `mp281x@dev`, `mp281x@desktop`, `matteopaludgnach@macbook-pro`.
 - **Tools.** `vp` and `vpx` on `PATH`, also over SSH; systemd units need `~/.vite-plus/bin`. `gh`, `glab` and the MCP gateway signed in.

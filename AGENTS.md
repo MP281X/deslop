@@ -12,14 +12,14 @@
 
 ## Commands
 
-| Role   | Command        | Runs                                                                               |
-| ------ | -------------- | ---------------------------------------------------------------------------------- |
-| Fixer  | `vp run fix`   | On dev before every push, drafts included, and before **Validate**; covers `check` |
-| Checks | `vp run check` | In the verification skill's **Validate**, and in CI                                |
-| Tests  | `vp run test`  | In the verification skill's **Validate**, and in CI                                |
+| Role   | Command        | Runs                                                      |
+| ------ | -------------- | --------------------------------------------------------- |
+| Fixer  | `vp run fix`   | On dev before every push and **Validate**; covers `check` |
+| Checks | `vp run check` | In **Validate** and CI                                    |
+| Tests  | `vp run test`  | In **Validate** and CI                                    |
 
-- **Verify.** The fixer, then **Validate** with the checks and tests.
-- **Ready.** A PR the agent has settled, with no further changes planned, is marked ready, so the user merges settled PRs one by one.
+- **Verify.** The fixer, then the verification skill's **Validate** with the checks and tests.
+- **Ready.** A settled PR is marked ready once CI is green, with no extra Validate run, so the user merges settled PRs one by one.
 - **Server contracts.** A contract change is not done until its built server starts with scratch data and serves the affected MCP tools or RPCs; build and static checks do not register tools.
 - **Judge.** `vp run judge` runs only when the user asks, never in CI, `fix`, `check`, `test` or Verify, because each Haiku call bills the signed-in person's Anthropic account through Gateway.
 - **Generators.** `vp create app -- --name <name>` (`--kind mobile` for iOS) and `vp create package -- --name <name>`, then `vp install`; never copy one. A new app's first release, mobile before its first push: `.github/releasing.md`, **A new app**.

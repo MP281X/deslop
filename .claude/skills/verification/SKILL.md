@@ -21,26 +21,23 @@ stateDiagram-v2
 
 ## Validate
 
-The main thread validates a commit itself, with no delegate; the fixer already ran on dev, so validation runs no fixer.
+The main thread validates itself, with no delegate and no fixer, which already ran on dev.
 
 ```mermaid
 stateDiagram-v2
-    [*] --> Probing : main thread commits a SHA
-    Probing --> Desktop : ssh -o ConnectTimeout=3 mp281x@desktop true [succeeds] / the background command below, then t3_background_wait
-    Probing --> Local : ssh probe [fails] / the same checks and tests in place in the thread's dev worktree, in the foreground
-    Desktop --> [*] : command exits / read the exit code and failing lines
-    Local --> [*] : commands exit / read the exit code and failing lines
+    [*] --> Probing : a commit to validate
+    Probing --> Running : ssh -o ConnectTimeout=3 mp281x@desktop true [succeeds] / the command below in the background, then t3_background_wait
+    Probing --> Running : probe [fails] / the checks and tests in the dev worktree, in the foreground
+    Running --> [*] : exit / read the exit code and failing lines
 ```
 
 ```bash
 ssh mp281x@desktop 'cd ~/<repo> && w=/tmp/validate/<repo>-<dev worktree name> && git fetch -q ssh://mp281x@dev<dev worktree path> <sha> && { git -C $w checkout -q --detach <sha> 2>/dev/null || git worktree add -q --detach $w <sha>; } && cd $w && vp install && <checks> && <tests>'
 ```
 
-Each thread owns one validation worktree, reused every iteration so dependencies and the `vp` cache stay warm, and never shared, so threads need no locks. Nothing is pushed and no branch is created; [maintenance](../environment/references/maintenance.md#clean) removes it once the thread settles.
+Each thread reuses its own validation worktree, so dependencies and the `vp` cache stay warm and threads need no locks; nothing is pushed and no branch is created. [Maintenance](../environment/references/maintenance.md#clean) removes it.
 
 ## Prove
-
-Once the user calls the work settled:
 
 - **Surface.** UI, and backend changes a screen shows, in the T3 browser; native changes in the Device panel. This standing request covers the preview tools.
 - **Capture** representative data once a condition holds, on the head, with its short commit in the caption; a rebase retakes them all.
@@ -51,7 +48,7 @@ Once the user calls the work settled:
 
 ## Review
 
-Only for an unresolved consequential question, since a review of decided work re-argues it.
+Never for decided work, which a review only re-argues.
 
 ```mermaid
 stateDiagram-v2

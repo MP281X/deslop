@@ -4,11 +4,11 @@ A pass removes files, so it runs on Sonnet (orchestrator, **Route**), without as
 
 ```mermaid
 stateDiagram-v2
-    [*] --> Update : for each machine that is on, of dev, mp281x@desktop, matteopaludgnach@macbook-pro
+    [*] --> Update : for each worker that is on
     Update --> Clean
     Clean --> Check
-    Check --> Update : next machine
-    Check --> [*] : last machine / report faults, unknown owners, denied steps and a kernel or macOS update waiting on the user's restart
+    Check --> Update : next worker
+    Check --> [*] : last worker / report faults, unknown owners, denied steps and a kernel or macOS update waiting on the user's restart
 ```
 
 - **The user's.** `t3 update`, `t3 doctor --fix`, `t3 service restart` and reboots; a pending T3 update is never reported.
@@ -31,7 +31,7 @@ stateDiagram-v2
 
 ## Clean
 
-Each step stands alone: a refusal or failure skips only that step. A thread owns a worktree through `worktreePath` in `orchestration_v2_projection_threads.payload_json`, delegated children through `lineage.rootThreadId`; `settledAt`, `archived_at` or `deleted_at` settles it.
+A refusal or failure skips only its step. A thread owns a worktree through `worktreePath` in `orchestration_v2_projection_threads.payload_json`, delegated children through `lineage.rootThreadId`; `settledAt`, `archived_at` or `deleted_at` settles it.
 
 1. **Tool caches,** when nothing uses them:
 
@@ -43,7 +43,7 @@ Each step stands alone: a refusal or failure skips only that step. A thread owns
 3. **T3 runtime versions.** Skip while `~/.t3/runtime/service-state.json` shows an uncommitted update. Remove every `~/.t3/runtime/versions/<version>` except `activeVersion`, the launcher named in `~/.config/systemd/user/t3code.service`'s `ExecStart`, and newer ones.
 4. **Docker,** when no `docker build` or Compose build runs: `docker image prune -a -f`, `docker builder prune -a -f`. Never `docker system prune`.
 5. **pnpm,** when no install runs: `pnpm store prune`.
-6. **Previews.** Remove each stopped `preview-*` unit and its container whose worktree is gone; run an Alchemy preview's `preview:destroy` first. Stop the containers a preview started with it, since Dual's `dualos-local-*-wt-<hash>` Postgres and OpenSandbox outlive the unit; `docker stop` keeps their seeded data, Dual's `settle` destroys it. Dual's public hostname is a Deploy exposure (`dual-preview.mp281x.xyz`): remove it with Deploy's `remove_exposure` once no preview answers behind it. Remove leftover `testcontainers-ryuk-*` and the unnamed Postgres containers of finished test runs.
+6. **Previews.** Remove each stopped `preview-*` unit and its container whose worktree is gone, after an Alchemy preview's `preview:destroy`, and stop the containers it started: Dual's `dualos-local-*-wt-<hash>` Postgres and OpenSandbox outlive the unit (`docker stop` keeps their seeded data, Dual's `settle` destroys it). Once no preview answers behind Dual's Deploy exposure `dual-preview.mp281x.xyz`, Deploy's `remove_exposure`. Remove leftover `testcontainers-ryuk-*` and finished test runs' unnamed Postgres containers.
 7. **Worktrees,** uncommitted changes included:
 
    ```mermaid
@@ -92,26 +92,38 @@ Every pass:
 
 ### Debian worker
 
-From netinst; passwordless sudo in `/etc/sudoers.d/99-mp281x-nopasswd` (0440).
+```mermaid
+stateDiagram-v2
+    [*] --> Base : Debian netinst
+    Base --> Packages
+    Packages --> Git
+    Git --> Network
+    Network --> Shell
+    Shell --> T3
+    T3 --> Accounts : show the user each sign-in link
+    Accounts --> KeysOnly : a key login from another machine succeeds
+    KeysOnly --> [*] : sudo sshd -t && sudo systemctl reload ssh
+```
 
-1. Install `sudo`, `network-manager`, `ufw`; `printf 'D /tmp 1777 root root 7d\n' | sudo tee /etc/tmpfiles.d/tmp.conf && sudo systemctl mask tmp.mount`.
-2. Docker, `gh`, `glab`, `unattended-upgrades`, ripgrep, jq, sqlite3, btop; `mp281x` in `docker`; `/etc/docker/daemon.json`: `{"live-restore": true, "ip": "127.0.0.1", "default-network-opts": {"bridge": {"com.docker.network.bridge.host_binding_ipv4": "127.0.0.1"}}}`. desktop: `/etc/apt/apt.conf.d/99force-ipv4` holds `Acquire::ForceIPv4 "true";`.
-3. Git: `rebase.updateRefs`, `rebase.autoSquash`, `rebase.autoStash`, `push.autoSetupRemote`, `fetch.prune`, `rerere.enabled` true; `diff.algorithm histogram`, `merge.conflictStyle zdiff3`, `init.defaultBranch main`.
-4. Tailscale, then over the tailnet `ufw default deny incoming`; dev allows TCP 80, 443, 25565 and UDP 443. dev: `openvpn3 config-import --config <datapizza.ovpn> --name datapizza --persistent`.
+| State    | Commands                                                                                                                                                                                                                                                                                                                                                |
+| -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Base     | Passwordless sudo in `/etc/sudoers.d/99-mp281x-nopasswd` (0440); install `sudo`, `network-manager`, `ufw`; `printf 'D /tmp 1777 root root 7d\n' \| sudo tee /etc/tmpfiles.d/tmp.conf && sudo systemctl mask tmp.mount`                                                                                                                                  |
+| Packages | Docker, `gh`, `glab`, `unattended-upgrades`, ripgrep, jq, sqlite3, btop; `mp281x` in `docker`; `/etc/docker/daemon.json`: `{"live-restore": true, "ip": "127.0.0.1", "default-network-opts": {"bridge": {"com.docker.network.bridge.host_binding_ipv4": "127.0.0.1"}}}`; desktop: `/etc/apt/apt.conf.d/99force-ipv4` holds `Acquire::ForceIPv4 "true";` |
+| Git      | `rebase.updateRefs`, `rebase.autoSquash`, `rebase.autoStash`, `push.autoSetupRemote`, `fetch.prune`, `rerere.enabled` true; `diff.algorithm histogram`, `merge.conflictStyle zdiff3`, `init.defaultBranch main`; [identity](#git-identity)                                                                                                              |
+| Network  | dev: `openvpn3 config-import --config <datapizza.ovpn> --name datapizza --persistent`; the block below; then, over the tailnet, `ufw default deny incoming`, dev allowing TCP 80, 443, 25565 and UDP 443                                                                                                                                                |
+| Shell    | `loginctl enable-linger mp281x`; Vite+ with `VP_HOME="$HOME/.vite-plus"`, Claude Code; `~/.bashrc`'s first lines put `$HOME/.local/bin:$HOME/.vite-plus/bin` on `PATH`; `~/.config/pnpm/config.yaml`: `minimumReleaseAgeExclude: ["@deslop/*"]`                                                                                                         |
+| T3       | `vp install -g t3@nightly`, `t3 service install`, `t3 connect link --headless`, `t3 connect publish`, `t3 browser setup`, `sudo hostnamectl set-hostname --pretty <name>`                                                                                                                                                                               |
+| Accounts | `gh auth login`, `glab auth login --hostname git.datapizza.tech`, `claude auth login`, `codex login --device-auth`; `gh auth setup-git`, `gh extension install github/gh-stack`; clone both repositories; `t3 project add --title <name> <path>`; [agent links](#agent-configuration-links), [MCP sign-in](#mcp-sign-in)                                |
+| KeysOnly | `/etc/ssh/sshd_config.d/10-keys-only.conf`: `UsePAM yes`, `PasswordAuthentication no`, `KbdInteractiveAuthentication no`, `PermitRootLogin no`, `X11Forwarding no`                                                                                                                                                                                      |
 
-   ```bash
-   curl -fsSL https://pkgs.tailscale.com/stable/debian/trixie.noarmor.gpg | sudo tee /usr/share/keyrings/tailscale-archive-keyring.gpg >/dev/null
-   curl -fsSL https://pkgs.tailscale.com/stable/debian/trixie.tailscale-keyring.list | sudo tee /etc/apt/sources.list.d/tailscale.list
-   sudo apt-get update && sudo apt-get install -y tailscale
-   openvpn3 configs-list 2>/dev/null | grep -q datapizza && R=$(getent ahostsv4 git.datapizza.tech | awk 'NR == 1 {print $1}')/32
-   sudo tailscale up --accept-routes --advertise-routes=$R
-   sudo tailscale set --operator=mp281x
-   ```
-
-5. `loginctl enable-linger mp281x`; Vite+ with `VP_HOME="$HOME/.vite-plus"`, Claude Code; `~/.bashrc`'s first lines put `$HOME/.local/bin:$HOME/.vite-plus/bin` on `PATH`. `~/.config/pnpm/config.yaml`: `minimumReleaseAgeExclude: ["@deslop/*"]`.
-6. `vp install -g t3@nightly`, `t3 service install`, `t3 connect link --headless`, `t3 connect publish`, `t3 browser setup`, `sudo hostnamectl set-hostname --pretty <name>`.
-7. Show the user each sign-in link: `gh auth login`, `glab auth login --hostname git.datapizza.tech`, `claude auth login`, `codex login --device-auth`; `gh auth setup-git`, `gh extension install github/gh-stack`; clone both repositories; `t3 project add --title <name> <path>`.
-8. After a key login from another machine, `/etc/ssh/sshd_config.d/10-keys-only.conf`: `UsePAM yes`, `PasswordAuthentication no`, `KbdInteractiveAuthentication no`, `PermitRootLogin no`, `X11Forwarding no`; then `sudo sshd -t && sudo systemctl reload ssh`.
+```bash
+curl -fsSL https://pkgs.tailscale.com/stable/debian/trixie.noarmor.gpg | sudo tee /usr/share/keyrings/tailscale-archive-keyring.gpg >/dev/null
+curl -fsSL https://pkgs.tailscale.com/stable/debian/trixie.tailscale-keyring.list | sudo tee /etc/apt/sources.list.d/tailscale.list
+sudo apt-get update && sudo apt-get install -y tailscale
+openvpn3 configs-list 2>/dev/null | grep -q datapizza && R=$(getent ahostsv4 git.datapizza.tech | awk 'NR == 1 {print $1}')/32
+sudo tailscale up --accept-routes --advertise-routes=$R
+sudo tailscale set --operator=mp281x
+```
 
 ### Agent configuration links
 
@@ -153,7 +165,11 @@ Keep each project's `scripts` (`t3_project_update`) equal to `projectSettingsOve
 
 ### Desktop GPU
 
-Secure Boot stays on; MOK enrollment needs the user at the console.
+```mermaid
+stateDiagram-v2
+    [*] --> Enrolling : the block below
+    Enrolling --> [*] : reboot / the user enrolls the key at the console, since Secure Boot stays on
+```
 
 ```bash
 curl -fsSLo /tmp/cuda-keyring.deb https://developer.download.nvidia.com/compute/cuda/repos/debian13/x86_64/cuda-keyring_1.1-1_all.deb
