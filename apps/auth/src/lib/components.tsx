@@ -6,15 +6,12 @@ import {AppWindowIcon, GlobeIcon, GraphIcon, HardDrivesIcon} from '@phosphor-ico
 import {AsyncResult, Atom} from 'effect/reactivity'
 import type {ComponentType, SVGProps} from 'react'
 
-import {EmptyState, Loaded} from '@deslop/components-web/fallbacks'
-import {RowsSkeleton} from '@deslop/components-web/item-list'
-import {ThemedMark} from '@deslop/components-web/marks'
-import {ResultError} from '@deslop/components-web/result-error'
-import {Avatar, AvatarFallback, AvatarImage} from '@deslop/components-web/ui/avatar'
+import {ImageMark, ThemedMark} from '@deslop/components-web/blocks/marks'
+import {ResultError} from '@deslop/components-web/blocks/result-error'
+import {LoadingRow, LoadingRows, RowLead} from '@deslop/components-web/blocks/rows'
+import {Loaded} from '@deslop/components-web/blocks/states'
 import {Button} from '@deslop/components-web/ui/button'
-import {Card} from '@deslop/components-web/ui/card'
-import {Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle} from '@deslop/components-web/ui/item'
-import {Skeleton} from '@deslop/components-web/ui/skeleton'
+import {Empty, EmptyHeader, EmptyMedia, EmptyTitle} from '@deslop/components-web/ui/empty'
 import {AndroidIcon} from '@deslop/components-web/ui/svgs/androidIcon'
 import {Apple} from '@deslop/components-web/ui/svgs/apple'
 import {AppleDark} from '@deslop/components-web/ui/svgs/appleDark'
@@ -25,6 +22,7 @@ import {CodexLight} from '@deslop/components-web/ui/svgs/codexLight'
 import {Edge} from '@deslop/components-web/ui/svgs/edge'
 import {Firefox} from '@deslop/components-web/ui/svgs/firefox'
 import {Safari} from '@deslop/components-web/ui/svgs/safari'
+import {Table, TableBody, TableCell, TableRow} from '@deslop/components-web/ui/table'
 import {ageOf} from '@deslop/runtime/shared/format'
 
 import {appsAtom, consentAtom, minuteAtom, requestCode} from '#lib/auth.ts'
@@ -34,79 +32,13 @@ import type {SignedInApp} from '#services/tokens/schema.ts'
 type ClientKind = typeof ClientKind.Type
 const ClientKind = Schema.Literals(['App', 'Browser'])
 
-// The primitive owns loading and failed images; either leaves the app glyph visible.
-function AppIcon(props: {origin: string}) {
-	return (
-		<Avatar size="sm">
-			<AvatarImage src={`${props.origin}/icon`} alt="" />
-			<AvatarFallback>
-				<AppWindowIcon className="size-4" />
-			</AvatarFallback>
-		</Avatar>
-	)
-}
-
-// The row whose code lookup is running, where the found sign-in will sit.
-function PendingRowSkeleton() {
-	return (
-		<div className="bg-primary/10">
-			<Item aria-hidden size="row">
-				<ItemMedia className="w-6">
-					<Skeleton className="size-4" />
-				</ItemMedia>
-				<ItemContent>
-					<Skeleton className="h-3 w-24" />
-					<Skeleton className="h-3 w-16" />
-				</ItemContent>
-				<ItemActions>
-					<Skeleton className="h-6 w-14" />
-					<Skeleton className="h-6 w-16" />
-				</ItemActions>
-			</Item>
-		</div>
-	)
-}
-
-// The signed-in rows a card will hold while its data loads, at the loaded rows' gutter and text geometry.
+// The signed-in rows while the list loads, a looked-up sign-in's row first when one is coming.
 export function SignInRowsSkeleton(props: {pending?: boolean}) {
 	return (
-		<Card size="list">
-			{props.pending === true && <PendingRowSkeleton />}
-			<RowsSkeleton label="Signed in" rows={9}>
-				<ItemMedia className="w-6">
-					<Skeleton className="size-4" />
-				</ItemMedia>
-				<ItemContent>
-					<Skeleton className="h-3 w-2/5" />
-				</ItemContent>
-				<ItemActions>
-					<Skeleton className="h-3 w-12 shrink-0" />
-					<div className="shrink-0 max-sm:hidden">
-						<Skeleton className="h-3 w-28" />
-					</div>
-				</ItemActions>
-			</RowsSkeleton>
-		</Card>
-	)
-}
-
-// The people rows a card will hold while the list loads, with the mark, name, handle and since date.
-export function PeopleRowsSkeleton() {
-	return (
-		<Card size="list">
-			<RowsSkeleton label="People" rows={3}>
-				<ItemMedia className="w-6">
-					<Skeleton className="size-4" />
-				</ItemMedia>
-				<ItemContent>
-					<Skeleton className="h-3 w-2/5" />
-					<Skeleton className="h-3 w-16" />
-				</ItemContent>
-				<ItemActions>
-					<Skeleton className="h-3 w-16 shrink-0" />
-				</ItemActions>
-			</RowsSkeleton>
-		</Card>
+		<LoadingRows
+			label="Signed in"
+			rows={Boolean.match(props.pending === true, {onFalse: Function.constant(9), onTrue: Function.constant(10)})}
+		/>
 	)
 }
 
@@ -119,22 +51,30 @@ function Brand(props: {client: Client}) {
 		return pipe(
 			BROWSERS,
 			Record.get(props.client.name),
-			Option.match({onNone: () => <GlobeIcon />, onSome: Mark => <Mark aria-hidden className="size-3.5" />})
+			Option.match({
+				onNone: () => <GlobeIcon className="size-4" />,
+				onSome: Mark => <Mark aria-hidden className="size-4" />
+			})
 		)
 	}
 	if (Option.isSome(String.match(/claude/iu)(props.client.name))) {
-		return <ClaudeAiIcon aria-hidden className="size-3.5" />
+		return <ClaudeAiIcon aria-hidden className="size-4" />
 	}
 	if (Option.isSome(String.match(/codex/iu)(props.client.name))) {
-		return <ThemedMark light={CodexLight} dark={CodexDark} className="size-3.5" />
+		return <ThemedMark light={CodexLight} dark={CodexDark} className="size-4" />
 	}
 	// The gateway runs on a server whatever device approved it, so its glyph wins over the device's logo.
-	if (Option.isSome(String.match(/gateway/iu)(props.client.name))) return <GraphIcon />
+	if (Option.isSome(String.match(/gateway/iu)(props.client.name))) return <GraphIcon className="size-4" />
 	if (Array.contains(['iPhone', 'iPad'], props.client.device)) {
-		return <ThemedMark light={Apple} dark={AppleDark} className="size-3.5" />
+		return <ThemedMark light={Apple} dark={AppleDark} className="size-4" />
 	}
-	if (props.client.device === 'Android') return <AndroidIcon aria-hidden className="size-3.5" />
-	return <HardDrivesIcon />
+	if (props.client.device === 'Android') return <AndroidIcon aria-hidden className="size-4" />
+	return <HardDrivesIcon className="size-4" />
+}
+
+// An app's own icon from its origin, filling the row's mark, else the app glyph.
+function AppIcon(props: {origin: string}) {
+	return <ImageMark sources={[`${props.origin}/icon`]} fallback={<AppWindowIcon className="size-4" />} />
 }
 
 function ClientIcon(props: {client: Client}) {
@@ -144,20 +84,14 @@ function ClientIcon(props: {client: Client}) {
 	})
 }
 
+// One client: its mark, device and last address, then how long ago it was active.
 function ClientRow(props: {client: SignedInApp; now: DateTime.Utc}) {
 	const active = ageOf(props.client.lastActive, props.now)
-	const address = Option.filter(props.client.address, value => value !== props.client.device)
 	return (
-		<div role="listitem">
-			<Item
-				size="row"
-				aria-label={`${props.client.device}, active ${active}${Option.match(address, {
-					onNone: Function.constant(''),
-					onSome: value => ` · ${value}`
-				})}`}
-			>
-				{/* The browser or app is the mark alone, so every row's name starts at the same column. */}
-				<ItemMedia className="w-6" role="img" aria-label={props.client.client} title={props.client.client}>
+		<TableRow aria-label={`${props.client.device}, active ${active}`}>
+			<RowLead
+				markLabel={props.client.client}
+				mark={
 					<ClientIcon
 						client={{
 							app: props.client.icon,
@@ -166,18 +100,19 @@ function ClientRow(props: {client: SignedInApp; now: DateTime.Utc}) {
 							name: props.client.client
 						}}
 					/>
-				</ItemMedia>
-				<ItemContent>
-					<ItemTitle>{props.client.device}</ItemTitle>
-				</ItemContent>
-				<ItemActions>
-					<span className="w-12 shrink-0 text-right font-mono text-xs tabular-nums">{active}</span>
-					<span className="text-muted-foreground w-28 shrink-0 truncate text-right font-mono text-xs max-sm:hidden">
-						{Option.getOrElse(address, Function.constant(''))}
-					</span>
-				</ItemActions>
-			</Item>
-		</div>
+				}
+				detail={pipe(
+					props.client.address,
+					Option.filter(value => value !== props.client.device),
+					Option.getOrUndefined
+				)}
+			>
+				{props.client.device}
+			</RowLead>
+			<TableCell className="text-right">
+				<span className="text-muted-foreground tabular-nums">{active}</span>
+			</TableCell>
+		</TableRow>
 	)
 }
 
@@ -185,27 +120,32 @@ function ClientRow(props: {client: SignedInApp; now: DateTime.Utc}) {
 export function RequestMark(props: {request: PendingAuthorization}) {
 	return Option.match(props.request.icon, {
 		onNone: () =>
-			Boolean.match(props.request.kind === 'Browser', {onFalse: () => <HardDrivesIcon />, onTrue: () => <GlobeIcon />}),
+			Boolean.match(props.request.kind === 'Browser', {
+				onFalse: () => <HardDrivesIcon className="size-4" />,
+				onTrue: () => <GlobeIcon className="size-4" />
+			}),
 		onSome: origin => <AppIcon origin={origin} />
 	})
 }
 
-// A waiting sign-in leads the card, tinted, its code under the label; its answer stays on the row.
+// A waiting sign-in leads the list, its code beside the device; its answer stays on the row.
 function PendingRow(props: {request: PendingAuthorization}) {
 	const [consent, respond] = useAtom(consentAtom)
 	const waiting = AsyncResult.isWaiting(consent)
 	return (
-		<div role="listitem" className="bg-primary/10">
-			<Item size="row">
-				<ItemMedia className="w-6" role="img" aria-label={props.request.clientName} title={props.request.clientName}>
-					<RequestMark request={props.request} />
-				</ItemMedia>
-				<ItemContent>
-					<ItemTitle>{props.request.device}</ItemTitle>
-					<ItemDescription>{requestCode(props.request.id)}</ItemDescription>
-				</ItemContent>
-				<ItemActions>
+		<TableRow>
+			<RowLead
+				markLabel={props.request.clientName}
+				mark={<RequestMark request={props.request} />}
+				after={<ResultError result={consent} />}
+				detail={requestCode(props.request.id)}
+			>
+				{props.request.device}
+			</RowLead>
+			<TableCell>
+				<span className="flex gap-2">
 					<Button
+						size="xs"
 						variant="outline"
 						disabled={waiting}
 						aria-label={`Deny ${props.request.device}`}
@@ -214,16 +154,16 @@ function PendingRow(props: {request: PendingAuthorization}) {
 						Deny
 					</Button>
 					<Button
+						size="xs"
 						disabled={waiting}
 						aria-label={`Approve ${props.request.device}`}
 						onClick={() => respond({accept: true, request: props.request})}
 					>
 						Approve
 					</Button>
-				</ItemActions>
-			</Item>
-			<ResultError result={consent} className="mb-2 ml-9" />
-		</div>
+				</span>
+			</TableCell>
+		</TableRow>
 	)
 }
 
@@ -267,28 +207,30 @@ export function SignInList(props: {checking?: boolean; pending: Option.Option<Pe
 				const clients = clientsOf(sessions.signIns)
 				const checking = props.checking === true && Option.isNone(props.pending)
 				if (Array.isReadonlyArrayEmpty(clients) && Option.isNone(props.pending) && !checking) {
-					return <EmptyState label="No sign-ins" icon={<HardDrivesIcon className="size-5" weight="light" />} />
+					return (
+						<Empty role="status">
+							<EmptyHeader>
+								<EmptyMedia variant="icon">
+									<HardDrivesIcon />
+								</EmptyMedia>
+								<EmptyTitle>No sign-ins</EmptyTitle>
+							</EmptyHeader>
+						</Empty>
+					)
 				}
 				return (
-					<Card size="list">
-						<div role="list" aria-label="Signed-in clients">
-							{Boolean.match(checking, {
-								onFalse: () =>
-									Option.match(props.pending, {
-										onNone: Function.constNull,
-										onSome: request => <PendingRow request={request} />
-									}),
-								onTrue: () => (
-									<div role="status" aria-label="Checking the code">
-										<PendingRowSkeleton />
-									</div>
-								)
+					<Table aria-label="Signed-in clients">
+						<TableBody>
+							{checking && <LoadingRow columns={2} label="Checking the code" />}
+							{Option.match(props.pending, {
+								onNone: Function.constNull,
+								onSome: request => <PendingRow request={request} />
 							})}
 							{Array.map(clients, client => (
 								<ClientRow key={client.family} client={client} now={sessions.now} />
 							))}
-						</div>
-					</Card>
+						</TableBody>
+					</Table>
 				)
 			}}
 		</Loaded>

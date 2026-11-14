@@ -23,8 +23,9 @@
 
 ## Patterns
 
-- **Primitives.** In `packages/components-web`, run `vpx shadcn@latest add --all --overwrite`, point `cn` imports at `#lib/classes.ts`, drop the `cn` dependency and fix only compiler rejections.
+- **Primitives.** In `packages/components-web`, run `vpx shadcn@latest add --all --overwrite` and fix only compiler rejections; the registry's files import `cn` from the `cn` package, which `#lib/utils.ts` re-exports for ours. The registry files otherwise stay untouched: no local variants, and a layout a primitive does not fit changes instead.
 - **Software marks.** Run `vpx shadcn@latest add @svgl/<name>` there; move `src/components/ui/svgs/` to canonical `src/ui/svgs/`, keeping registry artwork but renaming any SVG id another mark already uses (`a` → `edge-a`).
+- **Mobile marks.** Fetch svgl's raw file from `https://svgl.app/library/<name>.svg` (`https://api.svgl.app?search=<title>` lists the names, light and dark apart) into `packages/components-mobile/src/ui/svgs/` unchanged, and import it as `@deslop/components-mobile/ui/svgs/<name>.svg`.
 
 ## Choices
 
@@ -45,6 +46,7 @@
 
 ## Design
 
+- **Palette.** Mobile `palette.ts` mirrors `theme.css` in sRGB hex; a change to one changes the other in the same commit.
 - **References.** Themes: `packages/components-web/src/theme.css`, `packages/components-mobile/src/palette.ts` and `theme.ts`; `base-lyra` primitives: `packages/components-web/src/ui/`; generators: `tools/create-{app,package}/`.
 - **Exemption.** Portfolio is exempt: its own fonts, hotkeys, presence text and artwork, including a 504×504 touch icon on `#fafafa`.
 - **Targets.** 3440×1440, 1920×1080, ~1512×982; iPhone Air 420×912pt, safe areas and Dynamic Type.
@@ -52,7 +54,7 @@
 - **Layout.** No page titles or panel headers, and no search fields on the web. Web semibold only for the bar's app name; no decorative shadows, only popups raised. No custom iOS bar. Trees have no connectors, tints or fold carets.
 - **Behavior.** No web removal controls or context menus; iOS keeps native long-press menus and swipes. No command palette or hotkeys. Never confirm destruction.
 - **Recovery.** Leave stale rows and panes unmarked; no toasts or page-moving banners. Destructive failures say whether they committed.
-- **Components.** Nothing animates; pending actions have no spinners.
+- **Components.** Only shadcn's own animations; pending actions have no spinners.
 - **Tracing.** Background work rounds are traced; animation ticks, including Portfolio's occupied-room wandering, are not.
 - **Artwork.** Canonical and transparent; never redraw or recolour in a UI pass. Copy Kanagawa pixel art unchanged: `crispEdges`, integer scaling; indexed touch icons crop 192 to 180px on `#0d0c0c`.
 

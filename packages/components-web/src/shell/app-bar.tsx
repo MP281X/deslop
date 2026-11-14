@@ -1,11 +1,11 @@
 import {useAtom, useAtomValue} from '@effect/atom-react'
 
-import {Array, Boolean, Effect, Equal, Function, Option, Predicate, Schema, String, Struct, pipe} from 'effect'
+import {Array, Effect, Equal, Function, Option, Predicate, Schema, String, Struct, pipe} from 'effect'
 
 import {CaretLeftIcon} from '@phosphor-icons/react'
 import {AsyncResult, Atom} from 'effect/reactivity'
 import {useState} from 'react'
-import type {KeyboardEvent, ReactElement, ReactNode} from 'react'
+import type {ComponentProps, KeyboardEvent, ReactElement, ReactNode} from 'react'
 
 import {Account} from '@deslop/runtime/shared/schema'
 import {accountAtom} from '@deslop/runtime/web/client'
@@ -13,7 +13,6 @@ import {accountAtom} from '@deslop/runtime/web/client'
 import {Avatar, AvatarFallback, AvatarImage} from '#components/ui/avatar.tsx'
 import {Button} from '#components/ui/button.tsx'
 import {Tabs, TabsList, TabsTrigger} from '#components/ui/tabs.tsx'
-import {cn} from '#lib/classes.ts'
 
 // The menu's floating-ui bundle is the page's heaviest import, so it arrives on intent rather than with the bar.
 const menuModuleAtom = Atom.keepAlive(Atom.fn(() => Effect.promise(() => import('#components/ui/dropdown-menu.tsx'))))
@@ -21,23 +20,25 @@ const menuModuleAtom = Atom.keepAlive(Atom.fn(() => Effect.promise(() => import(
 export type AvatarAccount = typeof AvatarAccount.Type
 const AvatarAccount = Schema.Struct(Struct.pick(Account.fields, ['id', 'name']))
 
-// A GitHub account's picture, or its first letter until the picture loads: 24px in the bar, 16px in a row.
-export function AccountAvatar(props: {account: AvatarAccount; small?: boolean}) {
+// A GitHub account's picture, or its first letter until the picture loads: small in the bar's button, the registry's default in a row.
+export function AccountAvatar(props: {account: AvatarAccount; size: ComponentProps<typeof Avatar>['size']}) {
 	return (
-		<Avatar
-			size={Boolean.match(props.small === true, {
-				onFalse: Function.constant('sm' as const),
-				onTrue: Function.constant('default' as const)
-			})}
-			variant="plain"
-			className={cn(props.small === true && 'size-4')}
-		>
+		<Avatar size={props.size}>
 			<AvatarImage
 				src={`https://avatars.githubusercontent.com/u/${String.replace('github:', '')(props.account.id)}?s=96`}
 				alt={props.account.name}
 			/>
 			<AvatarFallback>{String.toUpperCase(String.slice(0, 1)(props.account.name))}</AvatarFallback>
 		</Avatar>
+	)
+}
+
+// The bar's account control, also the trigger a menu renders as: the avatar in a ghost icon button.
+export function AccountButton(props: ComponentProps<typeof Button> & {account: AvatarAccount}) {
+	return (
+		<Button {...Struct.omit(props, ['account'])} variant="ghost" size="icon-sm" aria-label="Account">
+			<AccountAvatar account={props.account} size="sm" />
+		</Button>
 	)
 }
 
@@ -65,10 +66,8 @@ function AccountMenu() {
 	if (!AsyncResult.isSuccess(account)) return null
 	if (!AsyncResult.isSuccess(loaded) || open === undefined) {
 		return (
-			<Button
-				variant="ghost"
-				size="icon-sm"
-				aria-label="Account"
+			<AccountButton
+				account={account.value}
 				aria-haspopup="menu"
 				aria-expanded={open ?? false}
 				onPointerEnter={load}
@@ -76,17 +75,13 @@ function AccountMenu() {
 				onFocus={load}
 				onClick={activate}
 				onKeyDown={activateWithKey}
-			>
-				<AccountAvatar account={account.value} />
-			</Button>
+			/>
 		)
 	}
 	return (
 		<loaded.value.DropdownMenu open={open} onOpenChange={setOpen}>
-			<loaded.value.DropdownMenuTrigger aria-label="Account" render={<Button variant="ghost" size="icon-sm" />}>
-				<AccountAvatar account={account.value} />
-			</loaded.value.DropdownMenuTrigger>
-			<loaded.value.DropdownMenuContent align="end" className="w-auto min-w-48">
+			<loaded.value.DropdownMenuTrigger render={<AccountButton account={account.value} />} />
+			<loaded.value.DropdownMenuContent align="end" className="w-56">
 				<loaded.value.DropdownMenuGroup>
 					<loaded.value.DropdownMenuLabel>@{account.value.name}</loaded.value.DropdownMenuLabel>
 				</loaded.value.DropdownMenuGroup>
@@ -189,26 +184,19 @@ export function AppBar(props: {
 			{Option.match(Option.fromUndefinedOr(props.heading), {
 				onNone: () => (
 					<Button
-						variant="bare"
+						variant="ghost"
 						nativeButton={false}
 						render={<a href="/" aria-label={props.name} />}
-						className="-mx-2.75 shrink-0"
+						className="shrink-0"
 					>
 						<img src={props.icon} alt="" className="pixelated size-6" />
-						<span className="font-heading ml-1 text-sm font-semibold capitalize max-sm:hidden">{props.name}</span>
+						<span className="font-heading text-sm font-semibold capitalize max-sm:hidden">{props.name}</span>
 					</Button>
 				),
-				// The back caret sits by the rows' 16px mark column and the title by their name column.
 				onSome: heading => (
 					<div className="flex min-w-0 shrink items-center gap-1">
-						<Button
-							variant="ghost"
-							size="icon-sm"
-							className="-ml-2"
-							aria-label={heading.back.label}
-							onClick={heading.back.onClick}
-						>
-							<CaretLeftIcon className="size-4" />
+						<Button variant="ghost" size="icon-sm" aria-label={heading.back.label} onClick={heading.back.onClick}>
+							<CaretLeftIcon />
 						</Button>
 						<span className="font-heading max-w-48 min-w-0 truncate text-sm">{heading.title}</span>
 					</div>

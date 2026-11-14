@@ -2,7 +2,7 @@ import {useAtom, useAtomValue} from '@effect/atom-react'
 
 import {Array, Boolean, Function, Number, Option, pipe} from 'effect'
 
-import {Toolbar} from '@expo/ui/swift-ui'
+import {Image, Toolbar} from '@expo/ui/swift-ui'
 import {
 	accessibilityLabel,
 	frame,
@@ -14,7 +14,7 @@ import type {ViewModifier} from '@expo/ui/swift-ui/modifiers'
 import {AsyncResult} from 'effect/reactivity'
 
 import {space} from '@deslop/components-mobile/theme'
-import {Empty} from '@deslop/components-mobile/ui/empty'
+import {Empty, EmptyMedia} from '@deslop/components-mobile/ui/empty'
 import {Skeleton} from '@deslop/components-mobile/ui/skeleton'
 
 import {readerAtom, unreachableAtom} from '#lib/chapters.ts'
@@ -67,7 +67,13 @@ export function ReaderRoute(props: {chapters: ChapterList; number: ChapterNumber
 				onEmpty: () =>
 					Boolean.match(gaveUp, {
 						onFalse: () => <ReaderLoading />,
-						onTrue: () => <Empty systemImage="book.closed" label="Chapter Unavailable" />
+						onTrue: () => (
+							<Empty>
+								<EmptyMedia>
+									<Image systemName="book.closed" modifiers={[accessibilityLabel('Chapter Unavailable')]} />
+								</EmptyMedia>
+							</Empty>
+						)
 					}),
 				onNonEmpty: shown => (
 					<PageStrip

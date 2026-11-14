@@ -204,6 +204,14 @@ export default defineConfig({
 				}
 			},
 			{
+				// shadcn's utils alias in components.json: the registry imports the `cn` package, and this path re-exports it for the package's own code.
+				files: ['packages/components-web/src/lib/utils.ts'],
+				rules: {
+					'@deslop/coding-standards/no-barrel-module': 'off',
+					'@deslop/coding-standards/service-schema-file': 'off'
+				}
+			},
+			{
 				// Portfolio is exempt from the Design rules: its links and buttons are its own artwork.
 				files: ['apps/portfolio/**'],
 				rules: {'@deslop/coding-standards/no-bare-control': 'off'}

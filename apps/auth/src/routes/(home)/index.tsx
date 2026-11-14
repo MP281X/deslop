@@ -7,7 +7,7 @@ import {createFileRoute, getRouteApi} from '@tanstack/react-router'
 import {AsyncResult} from 'effect/reactivity'
 import {Suspense} from 'react'
 
-import {Field, FieldError} from '@deslop/components-web/ui/field'
+import {Field, FieldError, FieldGroup} from '@deslop/components-web/ui/field'
 import {InputGroup, InputGroupAddon, InputGroupInput} from '@deslop/components-web/ui/input-group'
 
 import {CodeState, codeAtom, codeEvents, codeViewAtom, consentAtom, linkedCodeAtom, signInLabel} from '#lib/auth.ts'
@@ -45,7 +45,7 @@ function Enter(props: {
 	const linked = route.useSearch({select: search => Option.isSome(search.code)})
 	const invalid = CodeState.isAnyOf(['Missing', 'Failed'])(props.state)
 	return (
-		<section className="flex w-full flex-col gap-2">
+		<FieldGroup>
 			<Field data-invalid={invalid}>
 				<InputGroup>
 					<InputGroupAddon>
@@ -72,29 +72,29 @@ function Enter(props: {
 					<FieldError id="code-error">No waiting sign-in has this code.</FieldError>
 				)}
 				{CodeState.isAnyOf(['Failed'])(props.state) && <FieldError id="code-error">{props.state.message}</FieldError>}
+				{Option.match(props.answered, {
+					onNone: Function.constNull,
+					onSome: answer => (
+						<p className="text-muted-foreground flex items-center gap-1.5 text-xs" role="status">
+							{Boolean.match(answer.accept, {
+								onFalse: () => (
+									<>
+										<XIcon className="size-3.5" />
+										{signInLabel(answer.request.clientName, answer.request.device)} denied
+									</>
+								),
+								onTrue: () => (
+									<>
+										<CheckIcon className="size-3.5" />
+										{signInLabel(answer.request.clientName, answer.request.device)} approved
+									</>
+								)
+							})}
+						</p>
+					)
+				})}
 			</Field>
-			{Option.match(props.answered, {
-				onNone: Function.constNull,
-				onSome: answer => (
-					<p className="text-muted-foreground flex items-center gap-1.5 text-xs" role="status">
-						{Boolean.match(answer.accept, {
-							onFalse: () => (
-								<>
-									<XIcon className="size-3.5" />
-									{signInLabel(answer.request.clientName, answer.request.device)} denied
-								</>
-							),
-							onTrue: () => (
-								<>
-									<CheckIcon className="size-3.5" />
-									{signInLabel(answer.request.clientName, answer.request.device)} approved
-								</>
-							)
-						})}
-					</p>
-				)
-			})}
-		</section>
+		</FieldGroup>
 	)
 }
 

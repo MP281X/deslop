@@ -47,7 +47,8 @@
 		"@tanstack/react-router": "latest",
 		"effect": "latest",
 		"react": "latest",
-		"react-dom": "latest"
+		"react-dom": "latest",
+		"recharts": "latest"
 	},
 	"config": {
 		"port": 5102

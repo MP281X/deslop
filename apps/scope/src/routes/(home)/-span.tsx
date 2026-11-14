@@ -1,13 +1,15 @@
 import {Array, Boolean, Function, Option, Record, String, pipe} from 'effect'
 
-import {HardDrivesIcon, LockIcon} from '@phosphor-icons/react'
+import {ArrowSquareOutIcon, HardDrivesIcon, LockIcon} from '@phosphor-icons/react'
+import type {ReactNode} from 'react'
 
-import {cn} from '@deslop/components-web/classes'
-import {AppMark, ThemedMark} from '@deslop/components-web/marks'
+import {AppMark, ThemedMark} from '@deslop/components-web/blocks/marks'
+import {RowMark} from '@deslop/components-web/blocks/rows'
+import {cn} from '@deslop/components-web/lib/utils'
 import {Button} from '@deslop/components-web/ui/button'
-import {Skeleton} from '@deslop/components-web/ui/skeleton'
 import {GithubDark} from '@deslop/components-web/ui/svgs/githubDark'
 import {GithubLight} from '@deslop/components-web/ui/svgs/githubLight'
+import {Table, TableBody, TableCell, TableRow} from '@deslop/components-web/ui/table'
 import {clockOf, durationOf} from '@deslop/runtime/shared/format'
 
 import {attributesOf, errorOf} from '#lib/telemetry.ts'
@@ -31,165 +33,133 @@ const STATUS: Record<string, string> = {
 // Effect's HTTP client error as a status line, method and host; anything else stays as the server wrote it.
 function ErrorText(props: {message: string}) {
 	return Option.match(String.match(/^StatusCode error \((\d{3}) (\w+) (https?:\/\/[^\s)]+)\)$/u)(props.message), {
-		onNone: () => <span className="break-words">{props.message}</span>,
+		onNone: () => props.message,
 		onSome: parts => {
 			const code = parts[1] ?? ''
 			const method = parts[2] ?? ''
 			const url = parts[3] ?? ''
 			return (
-				<span className="flex min-w-0 flex-wrap items-baseline gap-x-2 break-words">
+				<>
 					<span className="font-medium">
 						{code} {pipe(STATUS, Record.get(code), Option.getOrElse(Function.constant('')))}
-					</span>
-					<span>{method}</span>
-					<span className="min-w-0 break-all">{String.replace(/^https?:\/\//u, '')(url)}</span>
-				</span>
+					</span>{' '}
+					{method} {String.replace(/^https?:\/\//u, '')(url)}
+				</>
 			)
 		}
 	})
 }
 
-// What ran outside the apps: GitHub's mark for CI, a little inside its 16px slot as the pixel icons are, else a server glyph.
+// What ran outside the apps: GitHub's mark for CI, else a server glyph, each at 16px.
 export function OutsideMark(props: {ci: boolean}) {
-	if (!props.ci) return <HardDrivesIcon aria-hidden className="text-muted-foreground size-4 shrink-0" />
-	return (
-		<span aria-hidden className="flex size-4 shrink-0 items-center justify-center">
-			<ThemedMark light={GithubLight} dark={GithubDark} className="size-3.5" />
-		</span>
-	)
+	if (!props.ci) return <HardDrivesIcon aria-hidden className="text-muted-foreground size-4" />
+	return <ThemedMark light={GithubLight} dark={GithubDark} className="size-4" />
 }
 
-// The picked span's identity above its details: its app's mark, its name, where it started, and its duration.
+// A failed span or log reads in the destructive colour.
+function failedText(failed: boolean) {
+	return cn(failed && 'text-destructive')
+}
+
+// The picked span's identity across both columns: its app's mark, its name, where it started, and its duration.
 function SpanHeader(props: {span: TraceTree['spans'][number]}) {
 	return (
-		<div role="listitem" className="col-span-2 flex h-8 items-center gap-3 max-sm:h-11">
-			<AppMark name={appName(props.span.service)} fallback={<OutsideMark ci={props.span.runtime === 'ci'} />} />
-			<span
-				className={cn(
-					'min-w-0 truncate',
-					Boolean.match(props.span.status === 'failed', {
-						onFalse: Function.constUndefined,
-						onTrue: Function.constant('text-destructive')
-					})
-				)}
-			>
-				{props.span.name}
-			</span>
-			<span className="text-muted-foreground shrink-0 truncate">
-				{`${appName(props.span.service)} · at ${durationOf(props.span.offsetMs)}`}
-			</span>
-			<span className="ml-auto shrink-0 tabular-nums">{durationOf(props.span.durationMs)}</span>
-		</div>
+		<TableRow>
+			<TableCell colSpan={2}>
+				<span className="flex w-0 min-w-full items-center gap-2">
+					<RowMark>
+						<AppMark name={appName(props.span.service)} fallback={<OutsideMark ci={props.span.runtime === 'ci'} />} />
+					</RowMark>
+					<span className={cn('truncate', failedText(props.span.status === 'failed'))}>{props.span.name}</span>
+					<span className="text-muted-foreground grow basis-0 truncate">
+						{`${appName(props.span.service)} · at ${durationOf(props.span.offsetMs)}`}
+					</span>
+					<span className="ms-auto tabular-nums">{durationOf(props.span.durationMs)}</span>
+				</span>
+			</TableCell>
+		</TableRow>
 	)
 }
 
-// The picked span's header, error, attributes and logs, as stock-height rows with no dividers between them.
-export function SpanDetail(props: {span: TraceTree['spans'][number]}) {
-	const error = errorOf(props.span)
-	const attributes = attributesOf(props.span)
+// One detail of the span on one line: what it is, muted and capped on a phone, then its value cut short with the whole of it on hover, and the action it has.
+function DetailRow(props: {action?: ReactNode; label: ReactNode; title: string; value: ReactNode}) {
 	return (
-		<div
-			role="list"
-			aria-label="Span details"
-			className="grid-cols-detail max-sm:grid-cols-detail-phone grid px-4 text-xs"
-		>
-			<SpanHeader span={props.span} />
-			{Option.match(error, {
-				onNone: Function.constNull,
-				onSome: message => (
-					<div role="listitem" className="col-span-2 grid h-8 grid-cols-subgrid items-center gap-2.5 max-sm:h-11">
-						<span className="text-muted-foreground flex items-center gap-1.5 truncate">
-							{Boolean.match(props.span.status === 'denied', {
+		<TableRow>
+			<TableCell>
+				<span className="text-muted-foreground flex max-w-32 items-center gap-1.5 sm:max-w-none">
+					<span className="truncate">{props.label}</span>
+				</span>
+			</TableCell>
+			<TableCell className="w-full">
+				<span className="flex w-0 min-w-full items-center gap-2" title={props.title}>
+					<span className="truncate">{props.value}</span>
+					{props.action}
+				</span>
+			</TableCell>
+		</TableRow>
+	)
+}
+
+// The picked span's header, error, attributes and logs, one ruled row each; an https URL opens from its row's end.
+export function SpanDetail(props: {span: TraceTree['spans'][number]}) {
+	return (
+		<Table aria-label="Span details">
+			<TableBody>
+				<SpanHeader span={props.span} />
+				{Option.match(errorOf(props.span), {
+					onNone: Function.constNull,
+					onSome: message => (
+						<DetailRow
+							title={message}
+							label={Boolean.match(props.span.status === 'denied', {
 								onFalse: Function.constant('error'),
 								onTrue: () => (
 									<>
-										<LockIcon aria-hidden className="size-3 shrink-0" />
+										<LockIcon aria-hidden />
 										denied
 									</>
 								)
 							})}
-						</span>
-						<span
-							className={cn(
-								'block min-w-0 truncate',
-								Boolean.match(props.span.status === 'failed', {
-									onFalse: Function.constUndefined,
-									onTrue: Function.constant('text-destructive')
-								})
-							)}
-							title={message}
-						>
-							<ErrorText message={message} />
-						</span>
-					</div>
-				)
-			})}
-			{Array.map(attributes, (attribute, index) => (
-				<div
-					key={`${attribute.key}:${index}`}
-					role="listitem"
-					className="col-span-2 grid h-8 grid-cols-subgrid items-center gap-2.5 max-sm:h-11"
-				>
-					<span className="text-muted-foreground truncate" title={attribute.key}>
-						{attribute.key}
-					</span>
-					<span className="block min-w-0 truncate select-text" title={attribute.value}>
-						{Boolean.match(attribute.key === 'url.full' && String.startsWith('https://')(attribute.value), {
-							onFalse: () => attribute.value,
+							value={
+								<span className={failedText(props.span.status === 'failed')}>
+									<ErrorText message={message} />
+								</span>
+							}
+						/>
+					)
+				})}
+				{Array.map(attributesOf(props.span), (attribute, index) => (
+					<DetailRow
+						key={`${attribute.key}:${index}`}
+						title={attribute.value}
+						label={attribute.key}
+						value={attribute.value}
+						action={Boolean.match(attribute.key === 'url.full' && String.startsWith('https://')(attribute.value), {
+							onFalse: Function.constNull,
 							onTrue: () => (
 								<Button
-									variant="link"
+									size="icon-xs"
+									variant="ghost"
 									nativeButton={false}
-									render={<a href={attribute.value} target="_blank" rel="noreferrer" aria-label={attribute.value} />}
-									className="-ml-2.75 max-w-full min-w-0"
+									render={
+										<a href={attribute.value} target="_blank" rel="noreferrer" aria-label={`Open ${attribute.value}`} />
+									}
 								>
-									<span className="truncate">{attribute.value}</span>
+									<ArrowSquareOutIcon />
 								</Button>
 							)
 						})}
-					</span>
-				</div>
-			))}
-			{Array.map(props.span.logs, (log, index) => (
-				<div
-					key={`${log.id}:${index}`}
-					role="listitem"
-					className="grid-cols-log col-span-2 grid h-8 items-center gap-2.5 max-sm:h-11"
-				>
-					<span className="text-muted-foreground truncate tabular-nums">{clockOf(log.time, 'millisecond')}</span>
-					<span
-						className={cn(
-							'text-muted-foreground block min-w-0 truncate',
-							Boolean.match(log.severity >= 17, {
-								onFalse: Function.constUndefined,
-								onTrue: Function.constant('text-destructive')
-							})
-						)}
+					/>
+				))}
+				{Array.map(props.span.logs, (log, index) => (
+					<DetailRow
+						key={`${log.id}:${index}`}
 						title={log.message}
-					>
-						{log.message}
-					</span>
-				</div>
-			))}
-		</div>
-	)
-}
-
-// The inspector's stock-height rows while its span loads, sharing the same max-content key column as the real ones.
-export function DetailSkeleton(props: {label: string}) {
-	return (
-		<div
-			aria-busy="true"
-			aria-label={props.label}
-			role="status"
-			className="grid-cols-detail max-sm:grid-cols-detail-phone grid px-4"
-		>
-			{Array.map(Array.range(1, 6), row => (
-				<div key={row} aria-hidden className="col-span-2 grid h-8 grid-cols-subgrid items-center gap-2.5 max-sm:h-11">
-					<Skeleton className="h-3 w-24" />
-					<Skeleton className="h-3 w-1/2" />
-				</div>
-			))}
-		</div>
+						label={<span className="tabular-nums">{clockOf(log.time, 'millisecond')}</span>}
+						value={<span className={failedText(log.severity >= 17)}>{log.message}</span>}
+					/>
+				))}
+			</TableBody>
+		</Table>
 	)
 }

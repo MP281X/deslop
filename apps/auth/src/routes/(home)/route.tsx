@@ -7,10 +7,11 @@ import {Link, Outlet, createFileRoute, getRouteApi, useMatchRoute} from '@tansta
 import {AsyncResult} from 'effect/reactivity'
 import {Suspense} from 'react'
 
-import {AppBarTab, AppBar, AppBarTabs} from '@deslop/components-web/app-bar'
-import {EmptyState, FailureRetry} from '@deslop/components-web/fallbacks'
-import {Page} from '@deslop/components-web/page'
-import {StaleProblem} from '@deslop/components-web/problem'
+import {StaleProblem} from '@deslop/components-web/blocks/problem'
+import {FailureRetry} from '@deslop/components-web/blocks/states'
+import {AppBarTab, AppBar, AppBarTabs} from '@deslop/components-web/shell/app-bar'
+import {Page} from '@deslop/components-web/shell/page'
+import {Empty, EmptyHeader, EmptyMedia, EmptyTitle} from '@deslop/components-web/ui/empty'
 
 import {accountAtom, appsAtom, peopleAtom, Search, signingOutAtom} from '#lib/auth.ts'
 import {AccountMenu} from '#routes/(home)/-account-menu.tsx'
@@ -55,7 +56,14 @@ function Signed(props: {account: SignedAccount}) {
 	return pipe(
 		Match.value(props.account.role),
 		Match.when('Waiting', () => (
-			<EmptyState label="Waiting for an admin" icon={<HourglassIcon className="size-5" weight="light" />} />
+			<Empty role="status">
+				<EmptyHeader>
+					<EmptyMedia variant="icon">
+						<HourglassIcon />
+					</EmptyMedia>
+					<EmptyTitle>Waiting for an admin</EmptyTitle>
+				</EmptyHeader>
+			</Empty>
 		)),
 		Match.orElse(() => <Outlet />)
 	)
@@ -66,7 +74,16 @@ function SigningOut() {
 	const signOut = useAtomValue(signingOutAtom(next))
 	const retry = useAtomRefresh(signingOutAtom(next))
 	return Option.match(AsyncResult.error(signOut), {
-		onNone: () => <EmptyState label="Signing out" icon={<SignOutIcon weight="light" />} />,
+		onNone: () => (
+			<Empty role="status">
+				<EmptyHeader>
+					<EmptyMedia variant="icon">
+						<SignOutIcon />
+					</EmptyMedia>
+					<EmptyTitle>Signing out</EmptyTitle>
+				</EmptyHeader>
+			</Empty>
+		),
 		onSome: () => <FailureRetry label="Sign-out failed" reset={retry} />
 	})
 }

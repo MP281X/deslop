@@ -6,9 +6,11 @@ import {KeyIcon} from '@phosphor-icons/react'
 import {getRouteApi} from '@tanstack/react-router'
 import {AsyncResult} from 'effect/reactivity'
 
-import {GitHubIcon} from '@deslop/components-web/icons'
+import {ThemedMark} from '@deslop/components-web/blocks/marks'
 import {Button} from '@deslop/components-web/ui/button'
 import {FieldError} from '@deslop/components-web/ui/field'
+import {GithubDark} from '@deslop/components-web/ui/svgs/githubDark'
+import {GithubLight} from '@deslop/components-web/ui/svgs/githubLight'
 
 import {codeSignInAtom, passkeySignInAtom, signInAtom} from '#lib/auth.ts'
 
@@ -45,7 +47,8 @@ export function Providers(props: {verb: SignInVerb}) {
 	return (
 		<>
 			<Button size="lg" className="w-full" disabled={AsyncResult.isWaiting(signIn)} onClick={() => startSignIn()}>
-				<GitHubIcon />
+				{/* The primary button inverts the page, so its mark is the other appearance's artwork. */}
+				<ThemedMark light={GithubDark} dark={GithubLight} />
 				{props.verb} with GitHub
 			</Button>
 			<Button
@@ -66,10 +69,7 @@ export function SignIn() {
 	const next = route.useSearch({select: search => search.next})
 	const [codeSignIn, startCodeSignIn] = useAtom(codeSignInAtom)
 	return (
-		<section
-			className="m-auto flex w-full -translate-y-2 flex-col gap-5 sm:max-w-80 lg:-translate-y-3"
-			aria-label="Sign in"
-		>
+		<section className="m-auto flex w-full flex-col gap-5 sm:max-w-80" aria-label="Sign in">
 			<h1 className="sr-only">Sign in</h1>
 			<div className="flex flex-col gap-2">
 				<Providers verb="Continue" />

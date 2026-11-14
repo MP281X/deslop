@@ -9,6 +9,8 @@ import {alertFailure} from '#lib/alerts.ts'
 type RemovalError = {_tag: string; message: string}
 const removalEvents = Machine.events({Removed: {}, Restored: {}})
 
+export type Removal<Id extends string> = ReturnType<typeof makeRemoval<Id, {_tag: string; message: string}>>
+
 // A removal reaches the server only after eight seconds; until then its row can restore it.
 export function makeRemoval<Id extends string, E extends {_tag: string; message: string}>(options: {
 	notRemoved: string

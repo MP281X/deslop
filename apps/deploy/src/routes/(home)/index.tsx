@@ -2,22 +2,22 @@ import {useAtomRefresh, useAtomValue} from '@effect/atom-react'
 
 import {Array, Boolean, DateTime, Duration, Function, Option, Record, Schema, String, pipe} from 'effect'
 
-import {HardDrivesIcon, MonitorIcon, TerminalWindowIcon} from '@phosphor-icons/react'
+import {AppWindowIcon, HardDrivesIcon, MonitorIcon, TerminalWindowIcon} from '@phosphor-icons/react'
 import {CatchBoundary, Link, createFileRoute, getRouteApi} from '@tanstack/react-router'
 import {AsyncResult} from 'effect/reactivity'
 import {Suspense, useDeferredValue} from 'react'
 import type {ReactNode} from 'react'
 
-import {AppBarTab, AppBar, AppBarChoice, AppBarTabs} from '@deslop/components-web/app-bar'
-import {mediaQueryAtom} from '@deslop/components-web/classes'
-import {EmptyState, Loaded, ReadFailure} from '@deslop/components-web/fallbacks'
-import {RowsSkeleton} from '@deslop/components-web/item-list'
-import {StaleProblem} from '@deslop/components-web/problem'
-import {StatusDot} from '@deslop/components-web/status-dot'
-import {ItemActions, ItemContent, ItemMedia} from '@deslop/components-web/ui/item'
+import {StaleProblem} from '@deslop/components-web/blocks/problem'
+import {LoadingRows} from '@deslop/components-web/blocks/rows'
+import {Loaded, ReadFailure} from '@deslop/components-web/blocks/states'
+import {StatusDot} from '@deslop/components-web/blocks/status-dot'
+import {mediaQueryAtom} from '@deslop/components-web/lib/media'
+import {AppBarTab, AppBar, AppBarChoice, AppBarTabs} from '@deslop/components-web/shell/app-bar'
+import {Workspace} from '@deslop/components-web/shell/workspace'
+import {Empty, EmptyHeader, EmptyMedia, EmptyTitle} from '@deslop/components-web/ui/empty'
 import {ResizableHandle, ResizablePanel, ResizablePanelGroup} from '@deslop/components-web/ui/resizable'
 import {ScrollArea} from '@deslop/components-web/ui/scroll-area'
-import {Skeleton} from '@deslop/components-web/ui/skeleton'
 import {isDenied} from '@deslop/runtime/shared/auth'
 
 import {inventoryAtom, metricsAtom} from '#lib/fleet.ts'
@@ -102,36 +102,11 @@ function MachineTabs(props: {
 						<MachineIcon worker={worker} />
 						<span className="max-w-32 truncate max-sm:sr-only">{machineName(worker)}</span>
 						{/* Only an unreachable machine is marked; one that answers needs no dot. */}
-						{failed && (
-							<span role="img" aria-label="Unavailable" className="flex size-3 shrink-0 items-center justify-center">
-								<StatusDot status="off" />
-							</span>
-						)}
+						{failed && <StatusDot status="off" label="Unavailable" />}
 					</AppBarTab>
 				)
 			})}
 		</AppBarTabs>
-	)
-}
-
-// The processes' loading rows: the real mark and name and detail bars, and its two figures right-aligned at the row's end.
-function ProcessRowsSkeleton(props: {label: string; rows: number}) {
-	return (
-		<RowsSkeleton label={props.label} rows={props.rows}>
-			<ItemMedia>
-				<Skeleton className="size-4" />
-			</ItemMedia>
-			<ItemContent>
-				<div className="flex min-w-0 flex-1 items-baseline gap-2">
-					<Skeleton className="h-3 w-24" />
-					<Skeleton className="h-3 w-2/5" />
-				</div>
-			</ItemContent>
-			<ItemActions>
-				<Skeleton className="h-3 w-14" />
-				<Skeleton className="h-3 w-11" />
-			</ItemActions>
-		</RowsSkeleton>
 	)
 }
 
@@ -155,7 +130,16 @@ function ProcessList(props: {row: Row}) {
 	const processes = Option.getOrElse(props.row.item.processes, Array.empty)
 	const tree = processTree(processes)
 	return Array.match(processes, {
-		onEmpty: () => <EmptyState icon={<TerminalWindowIcon weight="light" />} label="No processes right now" />,
+		onEmpty: () => (
+			<Empty role="status">
+				<EmptyHeader>
+					<EmptyMedia variant="icon">
+						<TerminalWindowIcon />
+					</EmptyMedia>
+					<EmptyTitle>No processes</EmptyTitle>
+				</EmptyHeader>
+			</Empty>
+		),
 		onNonEmpty: () => (
 			<ScrollArea className="min-h-0 flex-1">
 				<Processes tree={tree} />
@@ -171,21 +155,20 @@ function SelectedProcesses(props: {app?: ItemId; pending: boolean; row?: Row}) {
 			{Option.match(Option.fromUndefinedOr(props.row), {
 				onNone: () =>
 					Boolean.match(props.pending && props.app !== undefined, {
-						onFalse: () => <EmptyState icon={<TerminalWindowIcon weight="light" />} label="Select an app" />,
-						onTrue: () => (
-							<div className="min-h-0 flex-1 overflow-hidden">
-								<ProcessRowsSkeleton label="Processes loading" rows={6} />
-							</div>
-						)
+						onFalse: () => (
+							<Empty role="status">
+								<EmptyHeader>
+									<EmptyMedia variant="icon">
+										<AppWindowIcon />
+									</EmptyMedia>
+									<EmptyTitle>Select an app</EmptyTitle>
+								</EmptyHeader>
+							</Empty>
+						),
+						onTrue: () => <LoadingRows label="Processes loading" rows={6} />
 					}),
 				onSome: row => (
-					<Suspense
-						fallback={
-							<div className="min-h-0 flex-1 overflow-hidden">
-								<ProcessRowsSkeleton label="Processes loading" rows={6} />
-							</div>
-						}
-					>
+					<Suspense fallback={<LoadingRows label="Processes loading" rows={6} />}>
 						<InventoryContent>
 							<ProcessList row={row} />
 						</InventoryContent>
@@ -282,7 +265,7 @@ function PhoneList(props: {
 }
 
 // What the bar opens onto: the two panes on a wide screen, the chart and list on a phone, or the pushed processes.
-function Workspace(props: {
+function Panes(props: {
 	active?: WorkerId
 	authFailure: Option.Option<unknown>
 	free: readonly InventoryItem[]
@@ -304,7 +287,7 @@ function Workspace(props: {
 	)
 	return Option.match(props.authFailure, {
 		onNone: () => (
-			<div className="flex min-h-0 flex-1 flex-col">
+			<Workspace>
 				<h1 className="sr-only">Deploy</h1>
 				{Boolean.match(props.isPhone, {
 					onFalse: () => (
@@ -363,9 +346,13 @@ function Workspace(props: {
 							)
 						})
 				})}
-			</div>
+			</Workspace>
 		),
-		onSome: error => <ReadFailure error={error} reset={props.retryFailed} />
+		onSome: error => (
+			<Workspace>
+				<ReadFailure error={error} reset={props.retryFailed} />
+			</Workspace>
+		)
 	})
 }
 
@@ -376,7 +363,7 @@ function HomeRoute() {
 	function view(next: Partial<Search>) {
 		navigate({search: previous => Schema.encodeSync(Search)({...previous, ...next})})
 	}
-	const minutes = Option.getOrElse(search.range, () => Duration.minutes(60))
+	const minutes = Option.getOrElse(search.range, () => Duration.minutes(1440))
 	// The charts keep the last loaded range, unmarked, until the one the URL asks for arrives.
 	const shownMinutes = useDeferredValue(minutes)
 	const pane = Option.getOrElse(search.pane, Function.constant('apps'))
@@ -463,7 +450,7 @@ function HomeRoute() {
 				name="deploy"
 				controls={Boolean.match(pushed, {
 					onFalse: () => (
-						<div className="flex items-center gap-1 max-sm:-ml-3">
+						<>
 							<DataProblem minutes={minutes} />
 							<AppBarChoice
 								label="Range"
@@ -471,7 +458,7 @@ function HomeRoute() {
 								options={RANGES}
 								onChange={range => view({range: Option.some(range)})}
 							/>
-						</div>
+						</>
 					),
 					onTrue: () => <DataProblem minutes={minutes} />
 				})}
@@ -488,7 +475,7 @@ function HomeRoute() {
 					onTrue: Function.constUndefined
 				})}
 			/>
-			<Workspace
+			<Panes
 				active={active}
 				authFailure={authFailure}
 				free={free}

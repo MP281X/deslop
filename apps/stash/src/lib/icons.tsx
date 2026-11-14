@@ -5,13 +5,12 @@ import {Boolean} from 'effect'
 import {AsyncResult} from 'effect/reactivity'
 import {useColorScheme} from 'react-native'
 
-import {assetAtom} from '@deslop/components-mobile/images'
-
-import tiktokDark from './svgs/tiktok-icon-dark.svg'
-import tiktokLight from './svgs/tiktok-icon-light.svg'
-import xLight from './svgs/x.svg'
-import xDark from './svgs/x_dark.svg'
-import youtube from './svgs/youtube.svg'
+import {assetAtom} from '@deslop/components-mobile/lib/images'
+import tiktokDark from '@deslop/components-mobile/ui/svgs/tiktok-icon-dark.svg'
+import tiktokLight from '@deslop/components-mobile/ui/svgs/tiktok-icon-light.svg'
+import xLight from '@deslop/components-mobile/ui/svgs/x.svg'
+import xDark from '@deslop/components-mobile/ui/svgs/x_dark.svg'
+import youtube from '@deslop/components-mobile/ui/svgs/youtube.svg'
 
 import {Logo} from '#modules/native/index.ts'
 

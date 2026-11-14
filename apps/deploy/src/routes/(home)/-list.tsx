@@ -9,24 +9,23 @@ import {AsyncResult, Atom} from 'effect/reactivity'
 import {Suspense} from 'react'
 import type {ReactNode} from 'react'
 
-import {cn} from '@deslop/components-web/classes'
-import {EmptyState, Loaded, ReadFailure} from '@deslop/components-web/fallbacks'
-import {RowsSkeleton} from '@deslop/components-web/item-list'
-import {ResultError} from '@deslop/components-web/result-error'
-import {StatusDot} from '@deslop/components-web/status-dot'
+import {ResultError} from '@deslop/components-web/blocks/result-error'
+import {ChoiceRow, LoadingRows, RowLead} from '@deslop/components-web/blocks/rows'
+import {Loaded, ReadFailure} from '@deslop/components-web/blocks/states'
+import {StatusDot} from '@deslop/components-web/blocks/status-dot'
+import {cn} from '@deslop/components-web/lib/utils'
 import {Badge} from '@deslop/components-web/ui/badge'
 import {Button} from '@deslop/components-web/ui/button'
-import {Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle} from '@deslop/components-web/ui/item'
+import {Empty, EmptyHeader, EmptyMedia, EmptyTitle} from '@deslop/components-web/ui/empty'
 import {ScrollArea} from '@deslop/components-web/ui/scroll-area'
-import {Skeleton} from '@deslop/components-web/ui/skeleton'
-import {timerOf} from '@deslop/runtime/shared/format'
+import {Table, TableBody, TableCell} from '@deslop/components-web/ui/table'
+import {dueOf, timerOf} from '@deslop/runtime/shared/format'
 
 import {inventoryAtom, openExposeAtom, runAtom} from '#lib/fleet.ts'
 import {ApplicationIcon} from '#routes/(home)/-marks.tsx'
 import {host, impactGroups, middleEllipsis} from '#routes/(home)/-rows.ts'
 import {
 	failureAge,
-	nextRun,
 	reasonLine,
 	reasonOf,
 	requestOf,
@@ -49,24 +48,7 @@ export function InventoryContent(props: {children: ReactNode}) {
 	)
 }
 
-// The list's loading rows: the real row's 16px mark at the 16px gutter, a name bar where names sit and a chip-sized box where its ports end.
-function AppRowsSkeleton(props: {label: string; rows: number}) {
-	return (
-		<RowsSkeleton label={props.label} rows={props.rows}>
-			<ItemMedia>
-				<Skeleton className="size-4" />
-			</ItemMedia>
-			<ItemContent>
-				<Skeleton className="h-3 w-2/5" />
-			</ItemContent>
-			<ItemActions>
-				<Skeleton className="h-5 w-12" />
-			</ItemActions>
-		</RowsSkeleton>
-	)
-}
-
-// Every port is one bordered chip whose digits end on the same edge: exposed in foreground text opening its endpoint, exposable in muted text opening the Expose dialog, the rest muted and inert.
+// Every port is one chip: an outlined link opens an exposed endpoint, an outlined button opens the Expose dialog, and the rest are plain and inert. No chip is filled, so a selected row's tint never hides one.
 function Endpoints(props: {free: readonly InventoryItem[]; row: Row}) {
 	const expose = useAtomSet(openExposeAtom)
 	const exposedPorts = HashSet.fromIterable(Array.getSomes(Array.map(props.row.exposures, exposure => exposure.port)))
@@ -86,48 +68,46 @@ function Endpoints(props: {free: readonly InventoryItem[]; row: Row}) {
 				listener =>
 					Option.match(Array.head(freePorts[listener.id] ?? []), {
 						onNone: () => (
-							<Badge key={listener.id} variant="outline">
-								<span className="text-muted-foreground">{Option.getOrUndefined(listener.port)}</span>
+							<Badge key={listener.id} variant="ghost">
+								{Option.getOrUndefined(listener.port)}
 							</Badge>
 						),
 						onSome: port => (
-							<span key={listener.id} className="relative z-10 flex shrink-0">
-								<Badge
-									variant="outline"
-									render={
-										<button
-											type="button"
-											aria-label={`Expose ${workloadName(props.row.item)} :${Option.getOrUndefined(listener.port)}`}
-											onClick={() => expose(port)}
-										/>
-									}
-								>
-									<span className="text-muted-foreground">{Option.getOrUndefined(listener.port)}</span>
-								</Badge>
-							</span>
+							<Badge
+								key={listener.id}
+								variant="outline"
+								render={
+									<button
+										type="button"
+										aria-label={`Expose ${workloadName(props.row.item)} :${Option.getOrUndefined(listener.port)}`}
+										onClick={() => expose(port)}
+									/>
+								}
+							>
+								{Option.getOrUndefined(listener.port)}
+							</Badge>
 						)
 					})
 			)}
 			{Array.map(props.row.exposures, exposure => (
-				<span key={exposure.id} className="relative z-10 flex shrink-0">
-					<Badge
-						variant="outline"
-						render={
-							<a
-								href={Option.getOrUndefined(exposure.url)}
-								target="_blank"
-								rel="noreferrer"
-								title={Option.getOrUndefined(exposure.url)}
-								aria-label={`Open ${Option.getOrUndefined(exposure.url)}`}
-							/>
-						}
-					>
-						{Option.match(exposure.port, {
-							onNone: () => Option.match(exposure.url, {onNone: Function.constant(''), onSome: host}),
-							onSome: port => `${port}`
-						})}
-					</Badge>
-				</span>
+				<Badge
+					key={exposure.id}
+					variant="outline"
+					render={
+						<a
+							href={Option.getOrUndefined(exposure.url)}
+							target="_blank"
+							rel="noreferrer"
+							title={Option.getOrUndefined(exposure.url)}
+							aria-label={`Open ${Option.getOrUndefined(exposure.url)}`}
+						/>
+					}
+				>
+					{Option.match(exposure.port, {
+						onNone: () => Option.match(exposure.url, {onNone: Function.constant(''), onSome: host}),
+						onSome: port => `${port}`
+					})}
+				</Badge>
 			))}
 		</>
 	)
@@ -140,7 +120,7 @@ const elapsedAtom = Atom.family((_job: ItemId) =>
 
 function Elapsed(props: {job: ItemId}) {
 	return (
-		<span className="text-muted-foreground shrink-0 pr-2 font-mono text-xs whitespace-nowrap tabular-nums">
+		<span className="text-muted-foreground tabular-nums">
 			{timerOf(AsyncResult.getOrElse(useAtomValue(elapsedAtom(props.job)), () => Duration.zero))}
 		</span>
 	)
@@ -156,17 +136,13 @@ function RunNow(props: {disabled: boolean; item: InventoryItem; onRun: () => voi
 			aria-label={`Run ${workloadName(props.item)} now`}
 			onClick={props.onRun}
 		>
-			<PlayIcon className="size-3" />
+			<PlayIcon />
 		</Button>
 	)
 }
 
 function RunFailure(props: {item: InventoryItem}) {
-	return (
-		<div className="wrap-anywhere">
-			<ResultError result={useAtomValue(runAtom(props.item.id))} className="mx-4" />
-		</div>
-	)
+	return <ResultError result={useAtomValue(runAtom(props.item.id))} />
 }
 
 // One app or job: its mark, name, ports or reason, and the actions it has at the row's end; the whole row opens its processes.
@@ -189,7 +165,7 @@ function AppRow(props: {
 	const failing = props.row.item.health !== 'quiet'
 	const next = Boolean.match(running, {
 		onFalse: () =>
-			nextRun(
+			dueOf(
 				Option.getOrElse(props.row.item.next, () => props.now),
 				props.now
 			),
@@ -199,14 +175,12 @@ function AppRow(props: {
 		onFalse: () => reasonLine(props.row.item, props.now),
 		onTrue: () => reason
 	})
+	// The row opens its processes; its chips and run button act alone.
 	return (
-		<>
-			<Item size="row" role="listitem" data-selected={props.selected}>
-				{/* The whole row is the hit area; the row itself draws hover, selection and the focus ring, and the controls it holds sit above it. */}
-				<div className="absolute inset-0 z-0 flex flex-col">
-					<Button aria-label={`Open ${fullName}`} variant="bare" className="flex-1" onClick={props.onSelect} />
-				</div>
-				<ItemMedia>
+		<ChoiceRow label={`Open ${fullName}`} selected={props.selected} onSelect={props.onSelect}>
+			<RowLead
+				title={fullName}
+				mark={
 					<ApplicationIcon
 						name={fullName}
 						process={pipe(
@@ -223,69 +197,40 @@ function AppRow(props: {
 						)}
 						container={props.row.item.kind === 'container'}
 					/>
-				</ItemMedia>
-				<ItemContent>
-					<ItemTitle
-						className={Boolean.match(failing, {
-							onFalse: Function.constant('w-full'),
-							onTrue: Function.constant('max-w-1/2')
-						})}
-						title={fullName}
-					>
-						<span className="min-w-0 truncate">{name}</span>
-					</ItemTitle>
-					{failing && (
-						<ItemDescription title={reasonText}>
-							<span className="block truncate">{reasonText}</span>
-						</ItemDescription>
-					)}
-				</ItemContent>
-				<ItemActions className="shrink-0">
-					<span className="flex min-w-0 items-center justify-end gap-1.5">
-						{props.row.item.health !== 'quiet' && (
-							<span
-								title={state}
-								aria-label={state}
-								role="img"
-								className="flex size-3 shrink-0 items-center justify-center"
-							>
-								<StatusDot status={props.row.item.health} />
-							</span>
-						)}
-						{Boolean.match(scheduled, {
-							onFalse: () => <Endpoints free={props.free} row={props.row} />,
-							onTrue: () =>
-								Boolean.match(running, {
-									onFalse: () =>
-										Boolean.match(failing, {
-											onFalse: () => (
-												<span className="text-muted-foreground shrink-0 pr-2 font-mono text-xs whitespace-nowrap tabular-nums">
-													{next}
-												</span>
-											),
-											onTrue: () => (
-												<span className="text-muted-foreground shrink-0 pr-2 font-mono text-xs whitespace-nowrap tabular-nums">
-													{Option.getOrElse(age, () => next)}
-												</span>
-											)
-										}),
-									onTrue: () => <Elapsed job={props.row.item.id} />
-								})
-						})}
-					</span>
-					{/* An endpoint this app exposed is hidden through Deploy's hide_exposure tool, not this page. */}
-					{Boolean.match(scheduled, {
-						onFalse: Function.constNull,
-						onTrue: () => (
-							<span className="relative z-10 flex size-5 shrink-0 items-center justify-center">
-								<RunNow disabled={running} item={props.row.item} onRun={() => run(requestOf(props.row.item))} />
-							</span>
-						)
-					})}
-				</ItemActions>
-			</Item>
-			{scheduled && <RunFailure item={props.row.item} />}
-		</>
+				}
+				after={
+					<>
+						{props.row.item.health !== 'quiet' && <StatusDot status={props.row.item.health} label={state} />}
+						{scheduled && <RunFailure item={props.row.item} />}
+					</>
+				}
+				detail={Boolean.match(failing, {onFalse: Function.constUndefined, onTrue: () => reasonText})}
+			>
+				{name}
+			</RowLead>
+			<TableCell className="text-right">
+				{Boolean.match(scheduled, {
+					onFalse: () => (
+						<span className="inline-flex gap-1">
+							<Endpoints free={props.free} row={props.row} />
+						</span>
+					),
+					onTrue: () =>
+						Boolean.match(running, {
+							onFalse: () => (
+								<span className="text-muted-foreground tabular-nums">
+									{Boolean.match(failing, {onFalse: () => next, onTrue: () => Option.getOrElse(age, () => next)})}
+								</span>
+							),
+							onTrue: () => <Elapsed job={props.row.item.id} />
+						})
+				})}
+			</TableCell>
+			{/* An endpoint this app exposed is hidden through Deploy's hide_exposure tool, not this page. */}
+			<TableCell>
+				{scheduled && <RunNow disabled={running} item={props.row.item} onRun={() => run(requestOf(props.row.item))} />}
+			</TableCell>
+		</ChoiceRow>
 	)
 }
 
@@ -297,21 +242,17 @@ function ListRows(props: {
 	rows: readonly Row[]
 	selectedId?: string
 }) {
-	return (
-		<div role="list">
-			{Array.map(props.rows, row => (
-				<AppRow
-					key={row.item.id}
-					compact={props.compact}
-					free={props.free}
-					now={props.now}
-					onSelect={() => props.onSelect(row)}
-					row={row}
-					selected={props.selectedId === row.item.id}
-				/>
-			))}
-		</div>
-	)
+	return Array.map(props.rows, row => (
+		<AppRow
+			key={row.item.id}
+			compact={props.compact}
+			free={props.free}
+			now={props.now}
+			onSelect={() => props.onSelect(row)}
+			row={row}
+			selected={props.selectedId === row.item.id}
+		/>
+	))
 }
 
 // The apps on one machine: failures first, then high-impact apps by memory, then healthy low-impact apps under their heading, then the jobs a timer starts.
@@ -332,51 +273,33 @@ export function ListPane(props: {
 	const groups = impactGroups(apps, props.history)
 	return (
 		<div className={cn('flex min-h-0 flex-col', props.className)}>
-			<Suspense
-				fallback={
-					<div className="min-h-0 flex-1 overflow-hidden">
-						<AppRowsSkeleton label="Apps loading" rows={8} />
-					</div>
-				}
-			>
+			<Suspense fallback={<LoadingRows label="Apps loading" rows={8} />}>
 				<InventoryContent>
 					{Array.match(props.rows, {
-						onEmpty: () => <EmptyState icon={<AppWindowIcon weight="light" />} label="No apps in this range" />,
+						onEmpty: () => (
+							<Empty role="status">
+								<EmptyHeader>
+									<EmptyMedia variant="icon">
+										<AppWindowIcon />
+									</EmptyMedia>
+									<EmptyTitle>No apps</EmptyTitle>
+								</EmptyHeader>
+							</Empty>
+						),
 						onNonEmpty: () => (
 							<ScrollArea className="min-h-0 flex-1">
-								{Array.isReadonlyArrayNonEmpty(groups.high) && (
-									<ListRows
-										compact={props.compact}
-										free={props.free}
-										now={props.now}
-										onSelect={props.onSelect}
-										rows={groups.high}
-										selectedId={props.selectedId}
-									/>
-								)}
-								{Array.isReadonlyArrayNonEmpty(groups.low) && (
-									<ListRows
-										compact={props.compact}
-										free={props.free}
-										now={props.now}
-										onSelect={props.onSelect}
-										rows={groups.low}
-										selectedId={props.selectedId}
-									/>
-								)}
-								{Boolean.match(Array.isReadonlyArrayNonEmpty(jobs), {
-									onFalse: Function.constNull,
-									onTrue: () => (
+								<Table role="grid" aria-label="Apps">
+									<TableBody>
 										<ListRows
 											compact={props.compact}
 											free={props.free}
 											now={props.now}
 											onSelect={props.onSelect}
-											rows={jobs}
+											rows={[...groups.high, ...groups.low, ...jobs]}
 											selectedId={props.selectedId}
 										/>
-									)
-								})}
+									</TableBody>
+								</Table>
 							</ScrollArea>
 						)
 					})}

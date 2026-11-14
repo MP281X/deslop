@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { cn } from "#lib/classes.ts"
+import { cn } from "cn"
 import {
   DayPicker,
   getDefaultClassNames,

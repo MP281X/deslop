@@ -7,21 +7,12 @@
 		"#components/*": "./src/*"
 	},
 	"exports": {
-		"./app-bar": "./src/app-bar.tsx",
-		"./apps": "./src/apps.ts",
-		"./copy-button": "./src/copy-button.tsx",
-		"./fallbacks": "./src/fallbacks.tsx",
-		"./icons": "./src/icons.tsx",
-		"./item-list": "./src/item-list.tsx",
-		"./marks": "./src/marks.tsx",
-		"./page": "./src/page.tsx",
-		"./problem": "./src/problem.tsx",
-		"./result-error": "./src/result-error.tsx",
-		"./router": "./src/router.tsx",
-		"./status-dot": "./src/status-dot.tsx",
 		"./ui/*": "./src/ui/*.tsx",
 		"./ui/hooks/*": "./src/ui/hooks/*.ts",
-		"./classes": "./src/lib/classes.ts",
+		"./lib/router": "./src/lib/router.tsx",
+		"./lib/*": "./src/lib/*.ts",
+		"./shell/*": "./src/shell/*.tsx",
+		"./blocks/*": "./src/blocks/*.tsx",
 		"./theme.css": "./src/theme.css"
 	},
 	"scripts": {
@@ -36,8 +27,8 @@
 		"@shadcn/react": "latest",
 		"@tanstack/react-router": "latest",
 		"class-variance-authority": "latest",
-		"clsx": "latest",
 		"cmdk": "latest",
+		"cn": "latest",
 		"date-fns": "latest",
 		"effect": "latest",
 		"embla-carousel-react": "latest",
@@ -47,8 +38,8 @@
 		"recharts": "latest",
 		"shadcn": "latest",
 		"shiki": "latest",
-		"tailwind-merge": "latest",
-		"tailwindcss": "latest"
+		"tailwindcss": "latest",
+		"tw-animate-css": "latest"
 	},
 	"peerDependencies": {
 		"react": "^19",
