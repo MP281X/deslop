@@ -12,13 +12,13 @@
 
 ## Commands
 
-| Role   | Command        | Runs                                                      |
-| ------ | -------------- | --------------------------------------------------------- |
-| Fixer  | `vp run fix`   | On dev before every push and **Validate**; covers `check` |
-| Checks | `vp run check` | In **Validate** and CI                                    |
-| Tests  | `vp run test`  | In **Validate** and CI                                    |
+| Role   | Command        | Runs                                                                            |
+| ------ | -------------- | ------------------------------------------------------------------------------- |
+| Fixer  | `vp run fix`   | Before every push and in **Validate**; covers `check`                           |
+| Checks | `vp run check` | In CI                                                                           |
+| Tests  | `vp run test`  | In CI; **Validate** runs each touched package's with `vp -C <package> run test` |
 
-- **Verify.** The fixer, then the verification skill's **Validate** with the checks and tests.
+- **Verify.** The verification skill's **Validate**, then CI on the pushed head.
 - **Ready.** A settled PR is marked ready once CI is green, with no extra Validate run, so the user merges settled PRs one by one.
 - **Server contracts.** A contract change is not done until its built server starts with scratch data and serves the affected MCP tools or RPCs; build and static checks do not register tools.
 - **Judge.** `vp run judge` runs only when the user asks, never in CI, `fix`, `check`, `test` or Verify, because each Haiku call bills the signed-in person's Anthropic account through Gateway.
@@ -67,5 +67,22 @@
 
 ## Documents
 
-- **Homes.** Each fact lives once: code, then lint; here for operation and user choices; app `AGENTS.md` for product intent; themes for tokens; `.github/releasing.md` for releases; published package `README.md` for its contract; skills for procedures; the prompts' Replies section for thread and PR output; the PR template for section guidance.
+**Homes.** Each fact lives once, in the first home its kind matches:
+
+| Kind                                                     | Home                                                       |
+| -------------------------------------------------------- | ---------------------------------------------------------- |
+| What code or lint can enforce                            | The code, then a lint rule                                 |
+| This repository's operation and the user's choices in it | This file                                                  |
+| An app's product intent                                  | That app's `AGENTS.md`                                     |
+| Tokens                                                   | The themes                                                 |
+| Releases                                                 | `.github/releasing.md`                                     |
+| A published package's contract                           | Its `README.md`                                            |
+| Workers, accounts, services and Dual                     | The environment skill and its references                   |
+| Planning, delegate routing and briefs                    | The orchestrator skill                                     |
+| Outside repositories                                     | The orchestrator skill's `references/repos.md`             |
+| PR shape and lifecycle                                   | The pull-requests skill; section guidance, the PR template |
+| Checks, proof and review                                 | The verification skill                                     |
+| Thread and PR output                                     | The prompts' Replies section                               |
+| Rules for every turn                                     | The prompts' `# Work`                                      |
+
 - **Form.** In agent instructions, a process is a Mermaid `stateDiagram-v2` whose transitions read `event [guard] / action`, a lookup is a table, and bullets hold only standing rules; no prose restates a diagram.

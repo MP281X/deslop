@@ -1,6 +1,6 @@
 ---
 name: orchestrator
-description: 'Load before starting any change to a repository (code, config or docs), and when a brief arrives as a delegate.'
+description: 'Load before starting any change to a repository (code, config or docs), before relying on an external package or reading a reference or outside repository, and when a brief arrives as a delegate.'
 ---
 
 # Orchestrator
@@ -24,6 +24,7 @@ stateDiagram-v2
 
 - **Plan.** A UI plan is a rough HTML prototype, an architecture plan a diagram, made in minutes without the code reading a replica needs: 2–3 genuinely different directions you would build, side by side on the same data, without filters or captions; a better idea than the user's is one of them.
 - **Precedent.** Before an edit, read how the neighbouring feature or shared package does it.
+- **Outside code.** Using an external package or needing a reference, clone and read its repository from [Repositories](references/repos.md); never assume its behaviour.
 - **Cleanup** removes what you created and settles delegates and PR threads with their worktrees; the shared preview stays.
 - **One owner.** One main thread per worktree: check `t3_thread_list` first and send evidence to a live owner.
 - **Main.** Do small edits, prototypes and needed reads yourself, since a delegate costs a brief and a report on a thread that re-reads its context every call.

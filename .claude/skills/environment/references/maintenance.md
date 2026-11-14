@@ -48,8 +48,8 @@ A refusal or failure skips only its step. A thread owns a worktree through `work
 
    ```mermaid
    stateDiagram-v2
-       [*] --> Owned : a worktree, desktop's validation ones included
-       Owned --> Settled : its thread settles, a validation worktree's being its dev worktree's thread
+       [*] --> Owned : a worktree
+       Owned --> Settled : its thread settles
        Settled --> Owned : ownership re-read right before removal [a live owner, or a process uses it]
        Settled --> [*] : ownership re-read [still settled, unused] / the settle script, git worktree remove --force --force, git worktree prune
    ```

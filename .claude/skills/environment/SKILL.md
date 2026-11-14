@@ -1,18 +1,18 @@
 ---
 name: environment
-description: Load before a command on another worker, starting a preview, opening a device, reading a trace or runtime error, deploying, publishing, a sign-in, reading Stash data or an outside repository, a maintenance pass, or any Dual task.
+description: Load before a command on another worker, starting a preview, opening a device, reading a trace or runtime error, deploying, publishing, a sign-in, reading Stash data, a maintenance pass, or any Dual task.
 ---
 
 # Environment
 
 Two headless Debian workers in one tailnet, same user and paths.
 
-| Name          | Address          | Role                                                                                |
-| ------------- | ---------------- | ----------------------------------------------------------------------------------- |
-| `desktop`     | `100.97.120.3`   | Fastest; only the verification skill's **Validate**, when the user turns it on      |
-| `dev`         | `100.68.201.107` | Always on: every thread and delegate, Deslop apps for `*.mp281x.xyz`, Datapizza VPN |
-| `macbook-pro` | `100.115.207.60` | The user's control plane, the iOS Simulator and a Deploy worker, on demand          |
-| `iphone`      | `100.117.217.10` | T3 client only                                                                      |
+| Name          | Address          | Role                                                                       |
+| ------------- | ---------------- | -------------------------------------------------------------------------- |
+| `desktop`     | `100.97.120.3`   | Fastest; sometimes off                                                     |
+| `dev`         | `100.68.201.107` | Always on: Deslop apps for `*.mp281x.xyz`, Datapizza VPN                   |
+| `macbook-pro` | `100.115.207.60` | The user's control plane, the iOS Simulator and a Deploy worker, on demand |
+| `iphone`      | `100.117.217.10` | T3 client only                                                             |
 
 - **Names.** MagicDNS short names; `<name>.tailnet-8c4c.ts.net` has HTTPS certificates. SSH as `mp281x@dev`, `mp281x@desktop`, `matteopaludgnach@macbook-pro`.
 - **Tools.** `vp` and `vpx` on `PATH`, also over SSH; systemd units need `~/.vite-plus/bin`. `gh`, `glab` and the MCP gateway signed in.
@@ -26,7 +26,6 @@ Two headless Debian workers in one tailnet, same user and paths.
 | [Deslop](references/deslop.md)           | Production, Stash data, npm, Apple and EAS, tracing      |
 | [Dual](references/dual.md)               | Accounts, merges, preview, Jira, Google, VPN, tracing    |
 | [Maintenance](references/maintenance.md) | Workers, setup, agent links, T3 settings, updates, clean |
-| [Repositories](references/repos.md)      | Outside repositories, what each is the reference for     |
 
 ## Previews
 
