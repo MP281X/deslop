@@ -17,11 +17,14 @@ A main-thread call re-reads the whole thread, often 300k tokens; a delegate star
 | Only when the user picks it                       | Fable 5.2   | `claudeAgent` / `claude-fable-5-2`  |
 
 - **Delegate effort.** Medium (`effort` on Claude, `reasoningEffort` on Codex); high when the task needs it; never low, xhigh or above.
-- **Not used.** Luna stopped early with partial work in most failed runs; Haiku and DeepSeek are out too.
+- **Not used.** Luna stopped early with partial work in most failed runs; Haiku is out too.
 - **Trial.** GPT-6.1 Terra for bounded reads, searches, runs and checks; compare its reports with Sol's before it becomes a default.
 - **Removals.** Codex rejects `rm -f` and `rm -rf`, so a removal goes to Sonnet.
 - **Step up.** A delegate that returns without its deliverable reruns once on another model, then on Opus 5.5.
-- **Machines.** Validation, checks, builds and tests go to desktop when it is on, otherwise dev. Everything else, and anything long or overnight, goes to dev, which is always on. Resolve the linked T3 environments and pass the chosen machine's `target.environmentId` to `delegate_task`; do not launch a top-level thread instead.
+- **Machines.** Main threads run on dev, and so does every delegate by default: it shares the main thread's checkout and needs no transfer. Only validation (Verify, tests, builds) moves to desktop, which runs it much faster, when `t3_environment_links` lists it `reachable`:
+  1. Commit and push the branch.
+  2. `delegate_task` with `target.environmentId` of desktop and `mode: 'async'`. The brief names the branch and SHA and says: fetch it, `git worktree add` it under `/tmp/validate-<sha>`, run the checks there, report, then remove the worktree. A remote delegate runs in desktop's project checkout and rejects worktree isolation, so it makes its own worktree and leaves that checkout untouched.
+  3. When desktop is unreachable, the same brief runs on dev without a target.
 - **Long jobs.** Long or overnight delegates use GPT-6.1 Sol, since Codex's prompt cache does not expire the way Claude's does.
 
 ## Batch

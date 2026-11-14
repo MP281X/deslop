@@ -9,8 +9,8 @@ Two headless Debian workers in one tailnet, same user and paths.
 
 | Name          | Address          | Role                                                                                          |
 | ------------- | ---------------- | --------------------------------------------------------------------------------------------- |
-| `desktop`     | `100.97.120.3`   | Home worker for most development, on only when the user turns it on                           |
-| `dev`         | `100.68.201.107` | Always on, public address: every Deslop app for `*.mp281x.xyz`, Datapizza VPN, overnight work |
+| `desktop`     | `100.97.120.3`   | Fastest worker, for validation only; on only when the user turns it on                        |
+| `dev`         | `100.68.201.107` | Always on, where every thread starts: Deslop apps for `*.mp281x.xyz`, Datapizza VPN           |
 | `macbook-pro` | `100.115.207.60` | The user's control plane, the iOS Simulator and a Deploy worker, on demand                    |
 | `iphone`      | `100.117.217.10` | T3 client only                                                                                |
 
