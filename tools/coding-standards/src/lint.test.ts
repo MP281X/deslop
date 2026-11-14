@@ -431,8 +431,8 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 					)
 				})
 				assert.lengthOf(
-					Array.filter(customCodes(result.stdout), code => code === '@deslop/coding-standards(no-trivial-indirection)'),
-					4
+					Array.filter(customCodes(result.stdout), code => code === '@deslop/coding-standards(no-pass-through-name)'),
+					6
 				)
 			})
 		)
@@ -790,8 +790,9 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 							'@deslop/coding-standards(effect-call-form)',
 							'@deslop/coding-standards(effect-call-form)',
 							'@deslop/coding-standards(effect-call-form)',
-							'@deslop/coding-standards(module-constant)',
-							'@deslop/coding-standards(no-trivial-indirection)',
+							'@deslop/coding-standards(no-pass-through-name)',
+							'@deslop/coding-standards(library-operation)',
+							'@deslop/coding-standards(no-pass-through-name)',
 							'@deslop/coding-standards(effect-call-form)',
 							'@deslop/coding-standards(effect-call-form)',
 							'@deslop/coding-standards(library-operation)',
@@ -813,7 +814,7 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 							'@deslop/coding-standards(no-redundant-annotation)',
 							'@deslop/coding-standards(no-redundant-annotation)',
 							'@deslop/coding-standards(no-property-alias)',
-							'@deslop/coding-standards(no-trivial-indirection)',
+							'@deslop/coding-standards(no-pass-through-name)',
 							'@deslop/coding-standards(no-redundant-annotation)',
 							'@deslop/coding-standards(no-redundant-annotation)',
 							'@deslop/coding-standards(no-reinvented-schema)',
@@ -828,18 +829,18 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 							'@deslop/coding-standards(no-stored-schema-operation)',
 							'@deslop/coding-standards(no-stored-schema-operation)',
 							'@deslop/coding-standards(no-stored-schema-operation)',
-							'@deslop/coding-standards(no-trivial-indirection)',
-							'@deslop/coding-standards(no-trivial-indirection)',
-							'@deslop/coding-standards(no-trivial-indirection)',
-							'@deslop/coding-standards(no-trivial-indirection)',
-							'@deslop/coding-standards(no-trivial-indirection)',
-							'@deslop/coding-standards(no-trivial-indirection)',
-							'@deslop/coding-standards(no-trivial-indirection)',
-							'@deslop/coding-standards(no-trivial-indirection)',
-							'@deslop/coding-standards(no-trivial-indirection)',
-							'@deslop/coding-standards(no-trivial-indirection)',
-							'@deslop/coding-standards(no-trivial-indirection)',
-							'@deslop/coding-standards(no-trivial-indirection)',
+							'@deslop/coding-standards(no-pass-through-name)',
+							'@deslop/coding-standards(no-pass-through-name)',
+							'@deslop/coding-standards(no-pass-through-name)',
+							'@deslop/coding-standards(no-pass-through-name)',
+							'@deslop/coding-standards(no-pass-through-name)',
+							'@deslop/coding-standards(no-pass-through-name)',
+							'@deslop/coding-standards(no-pass-through-name)',
+							'@deslop/coding-standards(no-pass-through-name)',
+							'@deslop/coding-standards(no-pass-through-name)',
+							'@deslop/coding-standards(no-pass-through-name)',
+							'@deslop/coding-standards(no-pass-through-name)',
+							'@deslop/coding-standards(no-pass-through-name)',
 							'@deslop/coding-standards(no-unexplained-disable)',
 							'@deslop/coding-standards(no-unexplained-disable)',
 							'@deslop/coding-standards(no-unexplained-disable)',
@@ -921,12 +922,12 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 					'@deslop/coding-standards(effect-call-form)',
 					'@deslop/coding-standards(effect-call-form)',
 					'@deslop/coding-standards(effect-call-form)',
-					'@deslop/coding-standards(no-trivial-indirection)',
-					'@deslop/coding-standards(no-trivial-indirection)',
-					'@deslop/coding-standards(no-trivial-indirection)',
-					'@deslop/coding-standards(no-trivial-indirection)',
-					'@deslop/coding-standards(no-trivial-indirection)',
-					'@deslop/coding-standards(no-trivial-indirection)',
+					'@deslop/coding-standards(no-pass-through-name)',
+					'@deslop/coding-standards(no-pass-through-name)',
+					'@deslop/coding-standards(no-pass-through-name)',
+					'@deslop/coding-standards(no-pass-through-name)',
+					'@deslop/coding-standards(no-pass-through-name)',
+					'@deslop/coding-standards(no-pass-through-name)',
 					'@deslop/coding-standards(test-assertions)',
 					'@deslop/coding-standards(test-assertions)',
 					'@deslop/coding-standards(test-assertions)'
@@ -1284,20 +1285,20 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 				assert.deepStrictEqual(customCodes(result.stdout), [
 					'@deslop/coding-standards(no-native-method-call)',
 					'@deslop/coding-standards(no-native-method-call)',
+					'@deslop/coding-standards(no-pass-through-name)',
+					'@deslop/coding-standards(no-pass-through-name)',
+					'@deslop/coding-standards(no-pass-through-name)',
+					'@deslop/coding-standards(no-pass-through-name)',
+					'@deslop/coding-standards(no-pass-through-name)',
+					'@deslop/coding-standards(no-pass-through-name)',
+					'@deslop/coding-standards(no-pass-through-name)',
+					'@deslop/coding-standards(no-pass-through-name)',
 					'@deslop/coding-standards(no-property-alias)',
 					'@deslop/coding-standards(no-property-alias)',
 					'@deslop/coding-standards(no-property-alias)',
 					'@deslop/coding-standards(no-property-alias)',
 					'@deslop/coding-standards(no-property-alias)',
-					'@deslop/coding-standards(no-property-alias)',
-					'@deslop/coding-standards(no-single-use-value)',
-					'@deslop/coding-standards(no-single-use-value)',
-					'@deslop/coding-standards(no-single-use-value)',
-					'@deslop/coding-standards(no-single-use-value)',
-					'@deslop/coding-standards(no-single-use-value)',
-					'@deslop/coding-standards(no-single-use-value)',
-					'@deslop/coding-standards(no-trivial-indirection)',
-					'@deslop/coding-standards(no-trivial-indirection)'
+					'@deslop/coding-standards(no-property-alias)'
 				])
 			})
 		)
@@ -1441,8 +1442,9 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 				])
 				// Native rules keep reporting without the deleted migration fixes; retained custom fixes still converge.
 				assert.deepStrictEqual(customCodes(result.stdout), [
+					'@deslop/coding-standards(library-operation)',
+					'@deslop/coding-standards(no-pass-through-name)',
 					'@deslop/coding-standards(no-redundant-annotation)',
-					'@deslop/coding-standards(no-trivial-indirection)',
 					'@deslop/coding-standards(recover-named-failures)'
 				])
 			})
@@ -1716,7 +1718,7 @@ export function maximumOf(values: readonly number[]) { return Array.reduce(value
 						result.stdout.diagnostics,
 						Array.filter(diagnostic =>
 							Array.contains(
-								['@deslop/coding-standards(no-renamed-import)', '@deslop/coding-standards(no-trivial-indirection)'],
+								['@deslop/coding-standards(no-renamed-import)', '@deslop/coding-standards(no-pass-through-name)'],
 								diagnostic.code
 							)
 						),
@@ -2137,12 +2139,12 @@ export function maximumOf(values: readonly number[]) { return Array.reduce(value
 				assert.deepStrictEqual(customCodes(result.stdout), [
 					'@deslop/coding-standards(module-constant)',
 					'@deslop/coding-standards(module-constant)',
-					'@deslop/coding-standards(module-constant)',
 					'@deslop/coding-standards(no-floating-derived-type)',
+					'@deslop/coding-standards(no-pass-through-name)',
+					'@deslop/coding-standards(no-pass-through-name)',
+					'@deslop/coding-standards(no-pass-through-name)',
 					'@deslop/coding-standards(no-property-alias)',
-					'@deslop/coding-standards(no-property-alias)',
-					'@deslop/coding-standards(no-stored-jsx)',
-					'@deslop/coding-standards(no-stored-jsx)'
+					'@deslop/coding-standards(no-property-alias)'
 				])
 				const fixed = yield* lintSource(
 					{
@@ -2861,7 +2863,7 @@ export type Unknown = 'ready' | unknown`
 						'\n'
 					)
 				})
-				const lines = reportedLines(result, 'no-trivial-indirection')
+				const lines = reportedLines(result, 'no-pass-through-name')
 				assert.deepStrictEqual(lines.reported, lines.marked)
 			})
 		)
@@ -3324,7 +3326,7 @@ export type Unknown = 'ready' | unknown`
 						'\n'
 					)
 				})
-				const lines = reportedLines(result, 'no-trivial-indirection')
+				const lines = reportedLines(result, 'no-pass-through-name')
 				assert.deepStrictEqual(lines.reported, lines.marked)
 			})
 		)

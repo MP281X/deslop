@@ -68,7 +68,6 @@ function check(input: {
 		Array.countBy(input.variable.references, reference => reference.isRead()) === 1 &&
 		!String.includes('\n')(input.context.sourceCode.getText(input.found.node))
 	) {
-		input.context.report({message: 'Inline this value at its only use.', node: input.found.node})
 		return
 	}
 	if (!isConstantName(input.found.id.name)) {

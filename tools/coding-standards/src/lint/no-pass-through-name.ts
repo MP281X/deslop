@@ -1,27 +1,43 @@
-import {Array, Function, Option, Predicate, String, pipe} from 'effect'
+import {Array, Function, MutableList, Option, Predicate, String, pipe} from 'effect'
 
 import {defineRule} from 'vite-plus/lint/plugins'
 import type {Context, ESTree} from 'vite-plus/lint/plugins'
 
 import {
 	boundReads,
+	childNodes,
 	composedSteps,
 	effectImport,
 	importedMember,
+	inert,
+	isSchemaOperationCall,
 	matches,
 	memberName,
+	outermost,
 	readable,
 	readsOf,
 	returnedExpression,
 	rootName,
 	singleRead,
 	singleUseThunk,
+	suspends,
+	typeWrapped,
 	variableOf,
 	variableFromScope
 } from '#lib/ast.ts'
 
 const OPTION_WRAPS = ['fromNullOr', 'fromNullishOr', 'fromUndefinedOr', 'some']
 const OPTION_UNWRAPS = ['getOrElse', 'getOrNull', 'getOrUndefined']
+const REPEATING = [
+	'ArrowFunctionExpression',
+	'DoWhileStatement',
+	'ForInStatement',
+	'ForOfStatement',
+	'ForStatement',
+	'FunctionDeclaration',
+	'FunctionExpression',
+	'WhileStatement'
+]
 
 function isExport(node: ESTree.Node | null) {
 	return node?.type === 'ExportNamedDeclaration' || node?.type === 'ExportDefaultDeclaration'
@@ -243,7 +259,7 @@ function singleUseFunction(input: {context: Context; node: ESTree.Function | EST
 	)
 }
 
-export function redundantConstAlias(input: {context: Context; node: ESTree.VariableDeclarator}) {
+function redundantConstAlias(input: {context: Context; node: ESTree.VariableDeclarator}) {
 	if (
 		input.node.parent.type !== 'VariableDeclaration' ||
 		input.node.parent.kind !== 'const' ||
@@ -297,8 +313,6 @@ function singleUseLiteral(input: {context: Context; node: ESTree.VariableDeclara
 		input.node.parent.type !== 'VariableDeclaration' ||
 		input.node.parent.kind !== 'const' ||
 		isExport(input.node.parent.parent) ||
-		// module-constant owns module-level literals.
-		input.node.parent.parent.type === 'Program' ||
 		input.node.id.type !== 'Identifier' ||
 		input.node.id.typeAnnotation !== null ||
 		!(
@@ -502,8 +516,185 @@ function constantName(node: ESTree.Node) {
 	return 'constFalse'
 }
 
-export const noTrivialIndirection = defineRule({
+function unwrapped(node: ESTree.Node): ESTree.Node {
+	return Option.match(typeWrapped(node), {onNone: () => node, onSome: unwrapped})
+}
+
+function runsOnce(node: ESTree.Node, statement: ESTree.Node): boolean {
+	if (node === statement) return true
+	if (node.parent === null) return false
+	if (
+		((node.parent.type === 'ForOfStatement' || node.parent.type === 'ForInStatement') && node.parent.right === node) ||
+		(node.parent.type === 'IfStatement' && node.parent.test === node) ||
+		(node.parent.type === 'ConditionalExpression' && node.parent.test === node) ||
+		(node.parent.type === 'LogicalExpression' && node.parent.left === node)
+	)
+		return runsOnce(node.parent, statement)
+	if (
+		Array.contains(
+			[
+				...REPEATING,
+				'IfStatement',
+				'ConditionalExpression',
+				'LogicalExpression',
+				'ChainExpression',
+				'SwitchStatement',
+				'TryStatement'
+			],
+			node.parent.type
+		)
+	)
+		return false
+	return runsOnce(node.parent, statement)
+}
+
+function insideConditional(node: ESTree.Node, statement: ESTree.Node): boolean {
+	if (node === statement) return false
+	if (node.type === 'ConditionalExpression') return true
+	return node.parent !== null && insideConditional(node.parent, statement)
+}
+
+function executes(context: Context, node: ESTree.Node): boolean {
+	if (
+		Array.contains(
+			[
+				'AwaitExpression',
+				'CallExpression',
+				'MemberExpression',
+				'NewExpression',
+				'SpreadElement',
+				'TaggedTemplateExpression',
+				'YieldExpression'
+			],
+			node.type
+		)
+	)
+		return true
+	if (Array.contains(['ArrowFunctionExpression', 'FunctionDeclaration', 'FunctionExpression'], node.type)) return false
+	return Array.some(childNodes(context, node), child => executes(context, child))
+}
+
+function inlineValue(context: Context, init: ESTree.Expression, read: ESTree.Node, name: string, next: ESTree.Node) {
+	const value = `(${context.sourceCode.getText(init)})`
+	if (read.parent?.type === 'Property' && read.parent.shorthand) return `${name}: ${value}`
+	if (read.range[0] === next.range[0]) return `;${value}`
+	return value
+}
+
+function callableReceiver(read: ESTree.Node) {
+	return (
+		read.parent?.type === 'MemberExpression' &&
+		read.parent.object === read &&
+		read.parent.parent.type === 'CallExpression' &&
+		read.parent.parent.callee === read.parent
+	)
+}
+
+function replaceableValue(init: ESTree.Expression, read: ESTree.Node) {
+	const used = outermost(read)
+	return !(
+		Array.contains(['ClassExpression', 'ObjectExpression'], unwrapped(init).type) ||
+		(used.parent?.type === 'CallExpression' && used.parent.callee === used) ||
+		(used.parent?.type === 'TaggedTemplateExpression' && used.parent.tag === used)
+	)
+}
+
+function bindingCandidate(context: Context, node: ESTree.VariableDeclarator) {
+	if (
+		node.parent.type !== 'VariableDeclaration' ||
+		node.parent.kind !== 'const' ||
+		node.parent.declarations.length !== 1 ||
+		node.parent.parent.type !== 'BlockStatement' ||
+		node.id.type !== 'Identifier' ||
+		node.id.typeAnnotation !== null ||
+		node.init === null
+	)
+		return false
+	return (
+		!redundantConstAlias({context, node}) &&
+		!Array.contains(
+			['ArrowFunctionExpression', 'FunctionExpression', 'JSXElement', 'JSXFragment'],
+			unwrapped(node.init).type
+		) &&
+		!(node.init.type === 'CallExpression' && isSchemaOperationCall({context, node: node.init})) &&
+		!(node.init.type === 'MemberExpression' && Option.isSome(rootName(node.init))) &&
+		!(node.init.type === 'Literal' && !Predicate.hasProperty(node.init, 'regex')) &&
+		!(node.init.type === 'TemplateLiteral' && Array.isArrayEmpty(node.init.expressions)) &&
+		!singleUseLayerPart({context, node})
+	)
+}
+
+function checkBinding(context: Context, node: ESTree.VariableDeclarator, executed: ESTree.Node[]) {
+	if (node.init === null) return
+	if (Array.contains(['JSXElement', 'JSXFragment'], unwrapped(node.init).type)) {
+		context.report({
+			message: 'Write the element where it renders, or make it a component when several places render it.',
+			node
+		})
+		return
+	}
+	if (
+		!bindingCandidate(context, node) ||
+		node.id.type !== 'Identifier' ||
+		node.parent.type !== 'VariableDeclaration' ||
+		node.parent.parent.type !== 'BlockStatement'
+	)
+		return
+	const declaration = node.parent
+	const init = node.init
+	const name = node.id.name
+	const statements = node.parent.parent.body
+	pipe(
+		statements,
+		Array.findFirstIndex(statement => statement === declaration),
+		Option.flatMap(index => Array.get(statements, index + 1)),
+		Option.flatMap(next =>
+			pipe(
+				singleRead({context, name, node}),
+				Option.filter(
+					read =>
+						read.range[0] >= next.range[0] &&
+						read.range[1] <= next.range[1] &&
+						runsOnce(read, next) &&
+						readable({context, init, read}) &&
+						!(init.type === 'ConditionalExpression' && insideConditional(read, next)) &&
+						!(suspends(context, init) && callableReceiver(outermost(read))) &&
+						!Array.some(
+							executed,
+							effectNode => effectNode.range[0] >= next.range[0] && effectNode.range[1] <= read.range[0]
+						)
+				),
+				Option.map(read => ({next, read}))
+			)
+		),
+		Option.map(found =>
+			context.report({
+				fix: fixer => {
+					if (
+						!replaceableValue(init, found.read) ||
+						(executes(context, init) &&
+							!Array.every(context.sourceCode.getTokensBetween(declaration, found.read), inert))
+					)
+						return []
+					return [
+						fixer.remove(declaration),
+						fixer.replaceText(found.read, inlineValue(context, init, found.read, name, found.next))
+					]
+				},
+				message: 'Inline this value into the next statement, its only use.',
+				node
+			})
+		)
+	)
+}
+
+export const noPassThroughName = defineRule({
 	create: context => {
+		const effects = MutableList.make<ESTree.Node>()
+		const bindings = MutableList.make<ESTree.VariableDeclarator>()
+		function effect(node: ESTree.Node) {
+			MutableList.append(effects, node)
+		}
 		function checkFunction(node: ESTree.Function | ESTree.ArrowFunctionExpression) {
 			if (
 				node.type !== 'FunctionDeclaration' &&
@@ -555,7 +746,10 @@ export const noTrivialIndirection = defineRule({
 				}
 				checkFunction(node)
 			},
+			AssignmentExpression: effect,
+			AwaitExpression: effect,
 			CallExpression: node => {
+				effect(node)
 				for (const composition of composedSteps(context, node)) {
 					if (
 						composition.inner.module === 'Option' &&
@@ -572,6 +766,13 @@ export const noTrivialIndirection = defineRule({
 			},
 			FunctionDeclaration: checkFunction,
 			FunctionExpression: checkFunction,
+			NewExpression: effect,
+			'Program:exit': () => {
+				const executed = MutableList.toArray(effects)
+				for (const node of MutableList.toArray(bindings)) {
+					checkBinding(context, node, executed)
+				}
+			},
 			ReturnStatement: node => {
 				if (node.parent.type !== 'BlockStatement' || node.argument?.type !== 'CallExpression') return
 				if (
@@ -599,7 +800,10 @@ export const noTrivialIndirection = defineRule({
 					context.report({message: 'Use the referenced type directly; this second name is an alias.', node})
 				}
 			},
+			TaggedTemplateExpression: effect,
+			UpdateExpression: effect,
 			VariableDeclarator: node => {
+				MutableList.append(bindings, node)
 				if (
 					node.id.type === 'Identifier' &&
 					node.init?.type === 'CallExpression' &&
@@ -640,19 +844,23 @@ export const noTrivialIndirection = defineRule({
 				if (singleUseLayerPart({context, node})) {
 					context.report({message: 'Write this layer part where its only layer uses it.', node})
 				}
-			}
+			},
+			YieldExpression: effect
 		}
 	},
 	meta: {
 		docs: {
 			examples: {
 				accepted: [
+					{'sample.ts': 'export function doubleOf(value: number) { return value * 2 }'},
+					{'sample.tsx': 'export function Title(props: {title: string}) { return <span>{props.title}</span> }'},
 					{
 						'sample.ts': `import {Function, Option} from 'effect'
 export function defaults(value: Option.Option<boolean>) { return [Option.getOrElse(value, Function.constFalse), Option.getOrElse(value, Function.constTrue), Option.getOrElse(value, Function.constNull), Option.getOrElse(value, Function.constUndefined)] }`
 					}
 				],
 				fixes: [
+					{'sample.ts': 'export function doubleOf(value: number) { const doubled = value * 2; return doubled }'},
 					{
 						'sample.ts': `import {Option} from 'effect'
 export function defaults(value: Option.Option<boolean>) { return [Option.getOrElse(value, () => false), Option.getOrElse(value, () => true), Option.getOrElse(value, () => null), Option.getOrElse(value, () => undefined)] }`

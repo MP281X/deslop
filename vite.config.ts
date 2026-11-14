@@ -231,7 +231,7 @@ export default defineConfig({
 			{
 				files: ['tools/coding-standards/src/judge.test.ts'],
 				rules: {
-					'@deslop/coding-standards/no-trivial-indirection': 'off',
+					'@deslop/coding-standards/no-pass-through-name': 'off',
 					'@deslop/coding-standards/recover-named-failures': 'off',
 					'@deslop/coding-standards/test-boundaries': 'off',
 					'@deslop/coding-standards/test-registration': 'off',

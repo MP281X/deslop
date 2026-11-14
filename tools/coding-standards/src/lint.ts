@@ -23,16 +23,14 @@ import {noHandlerOnLabel} from '#lint/no-handler-on-label.ts'
 import {noMisleadingBooleanName} from '#lint/no-misleading-boolean-name.ts'
 import {noMultilineComment} from '#lint/no-multiline-comment.ts'
 import {noNativeMethodCall} from '#lint/no-native-method-call.ts'
+import {noPassThroughName} from '#lint/no-pass-through-name.ts'
 import {noPropertyAlias} from '#lint/no-property-alias.ts'
 import {noRedundantAnnotation} from '#lint/no-redundant-annotation.ts'
 import {noReinventedSchema} from '#lint/no-reinvented-schema.ts'
 import {noRenamedImport} from '#lint/no-renamed-import.ts'
 import {noRepeatedGuard} from '#lint/no-repeated-guard.ts'
 import {noRepeatedSearch} from '#lint/no-repeated-search.ts'
-import {noSingleUseValue} from '#lint/no-single-use-value.ts'
-import {noStoredJsx} from '#lint/no-stored-jsx.ts'
 import {noStoredSchemaOperation} from '#lint/no-stored-schema-operation.ts'
-import {noTrivialIndirection} from '#lint/no-trivial-indirection.ts'
 import {noUnexplainedDisable} from '#lint/no-unexplained-disable.ts'
 import {noUnvalidatedJsonDecode} from '#lint/no-unvalidated-json-decode.ts'
 import {noWallClock} from '#lint/no-wall-clock.ts'
@@ -106,16 +104,14 @@ const RULES = {
 	'no-misleading-boolean-name': noMisleadingBooleanName,
 	'no-multiline-comment': noMultilineComment,
 	'no-native-method-call': noNativeMethodCall,
+	'no-pass-through-name': noPassThroughName,
 	'no-property-alias': noPropertyAlias,
 	'no-redundant-annotation': noRedundantAnnotation,
 	'no-reinvented-schema': noReinventedSchema,
 	'no-renamed-import': noRenamedImport,
 	'no-repeated-guard': noRepeatedGuard,
 	'no-repeated-search': noRepeatedSearch,
-	'no-single-use-value': noSingleUseValue,
-	'no-stored-jsx': noStoredJsx,
 	'no-stored-schema-operation': noStoredSchemaOperation,
-	'no-trivial-indirection': noTrivialIndirection,
 	'no-unexplained-disable': noUnexplainedDisable,
 	'no-unvalidated-json-decode': noUnvalidatedJsonDecode,
 	'no-wall-clock': noWallClock,
