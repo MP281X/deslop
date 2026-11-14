@@ -73,7 +73,7 @@ gh stack unstack --local             # drop tracking of a stack that was never s
 
 ```bash
 git commit -m 'Draft: <title>'
-script -qec "GLAB_EDITOR='sh -c \"git rev-list --reverse origin/<default>..HEAD > \\\$1\" -' glab stack infer --name <stack> <default>..HEAD" /dev/null
+script -qec "GLAB_EDITOR='sh -c \"git rev-list --reverse origin/<default>..HEAD > \\\$1\" -' glab stack infer --name <stack> origin/<default>..HEAD" /dev/null
 git add -A && glab stack save -m 'Draft: <title>'    # a new layer; `amend` folds into the checked-out one
 glab stack sync --skip-push                          # restack locally before Validate
 glab stack sync --update-base                        # each push and after a merge below: rebase, drop merged diffs, force-push, open missing MRs

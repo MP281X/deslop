@@ -28,24 +28,24 @@ Run the repository's checks locally on what you changed: the tests that cover it
 - **Surface.** UI, and backend changes a screen shows, in the T3 browser; native changes in the Device panel. This standing request covers the preview tools.
 - **Capture** representative data once a condition holds, on the head, with its short commit in the caption.
 - **Fixed means flipped.** The probe that failed on base passes on the head.
-- **States.** One trimmed recording per app reached, plus only the states the change touches: cold open, deep-link reload, a failed first request, a viewport (`iphone-12-pro`, 1440×900, the widest target), dark or light.
+- **States.** Only the states the change touches: cold open, deep-link reload, a failed first request, a viewport (`iphone-12-pro`, 1440×900, the widest target), dark or light.
 - **Read each capture** for duplicates, clipping, overflow and untruthful loading, empty or error states, and audit web states with `preview_evaluate` and [references/page-audit.js](references/page-audit.js).
 - **Unproved** claims say `unverified: <what was not run>`.
 
 ## Review
 
-Never for decided work, which a review only re-argues.
+A review checks the work against its settled decisions and never reopens them.
 
 ```mermaid
 stateDiagram-v2
-    [*] --> Reviewing : consequential question open / one read-only reviewer in a fresh context
+    [*] --> Reviewing : review requested / one read-only reviewer in a fresh context
     Reviewing --> [*] : review [no findings]
     Reviewing --> [*] : review [findings the approach survives] / fix them, Validate
     Reviewing --> Replanning : review [a finding the approach itself causes]
     Replanning --> [*]
 ```
 
-- **Input.** The decisions, the user's acceptance criteria, the head and the captures; the reviewer opens its own preview, since source is not evidence.
+- **Input.** The decisions, the user's acceptance criteria, the head and any captures; a UI reviewer opens its own preview, since source does not prove what renders.
 - **Scope.** Architecture, UI/UX and function, not lint's domain.
 - **Finding.** The input, the result, `path:line` and a severity: P1 broken contract, data loss, secret exposure or false claim; P2 architecture or ownership violation; P3 reads worse than the recorded design.
 

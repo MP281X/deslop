@@ -11,7 +11,8 @@ description: 'Load before starting any change to a repository (code, config or d
 stateDiagram-v2
     [*] --> Discussing : request
     Discussing --> Discussing : question / answer and propose
-    Discussing --> Planned : change wanted / show the plan
+    Discussing --> Drafting : [the request approves its own work, or a proposed change holds] / edit, commit
+    Discussing --> Planned : [any other change wanted] / show the plan
     Planned --> Discussing : user steers
     Planned --> Drafting : user approves the plan
     Drafting --> Drafting : steer [inside the plan] / edit, commit
@@ -21,10 +22,10 @@ stateDiagram-v2
     Settled --> [*] : Validate [passes] / the template's captures, push by the pull-requests skill, cleanup
 ```
 
-- **Checks wait for settle.** While drafting, no fixer, checks, tests or pushes unless the user asks; Validate runs them once.
+- **Checks wait for settle.** While drafting, the fixer, checks, tests and pushes wait for Validate unless the user asks; a diagnosis still runs its reproducing probe, and a delegate the proof its brief names.
 - **Plan.** A UI plan is a rough HTML prototype, an architecture plan a diagram, made in minutes without the code reading a replica needs: 2–3 genuinely different directions you would build, side by side on the same data, without filters or captions; a better idea than the user's is one of them.
 - **Precedent.** Before an edit, read how the neighbouring feature or shared package does it.
-- **Outside code.** Using an external package or needing a reference, read its installed source or clone its repository from [Repositories](references/repos.md).
+- **Outside code.** [Repositories](references/repos.md).
 - **One owner.** One main thread per worktree: check `t3_thread_list` first and send evidence to a live owner.
 - **Main.** Do small edits, prototypes and needed reads yourself, since a delegate costs a brief and a report on a thread that re-reads its context every call.
 
