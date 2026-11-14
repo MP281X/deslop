@@ -75,8 +75,8 @@ gh stack unstack --local             # drop tracking of a stack that was never s
 git commit -m 'Draft: <title>'
 script -qec "GLAB_EDITOR='sh -c \"git rev-list --reverse origin/<default>..HEAD > \\\$1\" -' glab stack infer --name <stack> origin/<default>..HEAD" /dev/null
 git add -A && glab stack save -m 'Draft: <title>'    # a new layer; `amend` folds into the checked-out one
-glab stack sync --skip-push                          # restack locally before Validate
-glab stack sync --update-base                        # each push and after a merge below: rebase, drop merged diffs, force-push, open missing MRs
+glab stack sync --skip-push --update-base            # before Validate, and after a merge below: rebase onto the base, drop merged diffs
+glab stack sync                                      # push the validated stack, open missing MRs
 ```
 
 `infer` needs a TTY and an editor, and its range starts at `origin/<default>` since the local default branch can lag; `glab stack create` cannot run in a worktree. `glab stack reorder` takes the same `script` and editor shape, one branch per line, then `glab stack sync`.

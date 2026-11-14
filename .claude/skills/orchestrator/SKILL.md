@@ -79,7 +79,7 @@ stateDiagram-v2
     Checking --> Reporting : [pass]
     Reporting --> [*] : [shared checkout] / report PASS
     Reporting --> [*] : [a PR thread] / commit, push by the pull-requests skill when its work settles, report PASS
-    Working --> [*] : stop [unfinished] / report ISSUES with what is done and what is missing
+    Working --> [*] : stop [unfinished, no proved blocker] / report ISSUES with what is done and what is missing
     Working --> [*] : stop [a command's output proves the blocker] / report BLOCKED
 ```
 

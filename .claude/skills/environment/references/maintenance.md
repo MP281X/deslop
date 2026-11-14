@@ -22,7 +22,7 @@ stateDiagram-v2
        [*] --> Pulling : git -C ~/deslop pull --ff-only
        Pulling --> [*] : pull [succeeds]
        Pulling --> Diffing : pull [a local change blocks it] / git -C ~/deslop diff -w
-       Diffing --> Pulling : diff [empty, a harness re-indent] / git -C ~/deslop restore
+       Diffing --> Pulling : diff [empty, a harness re-indent] / git -C ~/deslop restore .
        Diffing --> [*] : diff [a real change] / it goes into a PR
    ```
 
