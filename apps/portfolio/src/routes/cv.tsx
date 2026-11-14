@@ -101,7 +101,7 @@ function CvRoute() {
 						print()
 					}}
 				>
-					<PrinterIcon className="size-4" />
+					<PrinterIcon />
 				</Button>
 			</div>
 

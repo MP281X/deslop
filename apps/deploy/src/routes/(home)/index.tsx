@@ -14,10 +14,8 @@ import {EmptyState, Loaded, ReadFailure} from '@deslop/components-web/fallbacks'
 import {RowsSkeleton} from '@deslop/components-web/item-list'
 import {StaleProblem} from '@deslop/components-web/problem'
 import {StatusDot} from '@deslop/components-web/status-dot'
-import {ItemActions, ItemContent, ItemMedia} from '@deslop/components-web/ui/item'
 import {ResizableHandle, ResizablePanel, ResizablePanelGroup} from '@deslop/components-web/ui/resizable'
 import {ScrollArea} from '@deslop/components-web/ui/scroll-area'
-import {Skeleton} from '@deslop/components-web/ui/skeleton'
 import {isDenied} from '@deslop/runtime/shared/auth'
 
 import {inventoryAtom, metricsAtom} from '#lib/fleet.ts'
@@ -102,36 +100,11 @@ function MachineTabs(props: {
 						<MachineIcon worker={worker} />
 						<span className="max-w-32 truncate max-sm:sr-only">{machineName(worker)}</span>
 						{/* Only an unreachable machine is marked; one that answers needs no dot. */}
-						{failed && (
-							<span role="img" aria-label="Unavailable" className="flex size-3 shrink-0 items-center justify-center">
-								<StatusDot status="off" />
-							</span>
-						)}
+						{failed && <StatusDot status="off" label="Unavailable" />}
 					</AppBarTab>
 				)
 			})}
 		</AppBarTabs>
-	)
-}
-
-// The processes' loading rows: the real mark and name and detail bars, and its two figures right-aligned at the row's end.
-function ProcessRowsSkeleton(props: {label: string; rows: number}) {
-	return (
-		<RowsSkeleton label={props.label} rows={props.rows}>
-			<ItemMedia>
-				<Skeleton className="size-4" />
-			</ItemMedia>
-			<ItemContent>
-				<div className="flex min-w-0 flex-1 items-baseline gap-2">
-					<Skeleton className="h-3 w-24" />
-					<Skeleton className="h-3 w-2/5" />
-				</div>
-			</ItemContent>
-			<ItemActions>
-				<Skeleton className="h-3 w-14" />
-				<Skeleton className="h-3 w-11" />
-			</ItemActions>
-		</RowsSkeleton>
 	)
 }
 
@@ -172,20 +145,10 @@ function SelectedProcesses(props: {app?: ItemId; pending: boolean; row?: Row}) {
 				onNone: () =>
 					Boolean.match(props.pending && props.app !== undefined, {
 						onFalse: () => <EmptyState icon={<TerminalWindowIcon weight="light" />} label="Select an app" />,
-						onTrue: () => (
-							<div className="min-h-0 flex-1 overflow-hidden">
-								<ProcessRowsSkeleton label="Processes loading" rows={6} />
-							</div>
-						)
+						onTrue: () => <RowsSkeleton label="Processes loading" rows={6} />
 					}),
 				onSome: row => (
-					<Suspense
-						fallback={
-							<div className="min-h-0 flex-1 overflow-hidden">
-								<ProcessRowsSkeleton label="Processes loading" rows={6} />
-							</div>
-						}
-					>
+					<Suspense fallback={<RowsSkeleton label="Processes loading" rows={6} />}>
 						<InventoryContent>
 							<ProcessList row={row} />
 						</InventoryContent>
@@ -463,7 +426,7 @@ function HomeRoute() {
 				name="deploy"
 				controls={Boolean.match(pushed, {
 					onFalse: () => (
-						<div className="flex items-center gap-1 max-sm:-ml-3">
+						<div className="flex items-center gap-1">
 							<DataProblem minutes={minutes} />
 							<AppBarChoice
 								label="Range"

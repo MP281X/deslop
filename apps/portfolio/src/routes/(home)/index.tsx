@@ -294,7 +294,7 @@ function Cursor(input: {cursor: Visitor; own: boolean; viewport: {width: number;
 function OwnCursor(input: {viewport: {width: number; height: number}; color: Option.Option<Color>}) {
 	const cursor = useAtomValue(ownCursorAtom)
 	return (
-		<div className="hidden print:hidden [@media(hover:hover)_and_(pointer:fine)]:contents">
+		<div className="mouse:contents hidden print:hidden">
 			<Cursor
 				own
 				cursor={{
@@ -579,7 +579,7 @@ function PresenceHud(input: {presence: PresenceState; onToggleShortcuts: () => v
 					<span className="hidden sm:inline">{LEGAL_LINE}</span>
 					<span className="sm:hidden">{LEGAL_LINE_NARROW}</span>
 				</span>
-				<span className="pointer-events-auto -mr-1 flex pointer-coarse:hidden">
+				<span className="pointer-events-auto flex pointer-coarse:hidden">
 					<Button
 						variant="ghost"
 						size="xs"
@@ -618,7 +618,7 @@ function RealtimeLayer(input: {
 				)}
 			/>
 			<div className="max-sm:hidden print:hidden">
-				<div className="hidden [@media(hover:hover)_and_(pointer:fine)]:contents">
+				<div className="mouse:contents hidden">
 					{pipe(
 						portfolio.value.visitors,
 						Array.appendAll(portfolio.value.bots),
@@ -691,7 +691,7 @@ function PortfolioRoute() {
 			ref={containerRef}
 			aria-label="Portfolio"
 			role="region"
-			className="portfolio-page focus-visible:ring-border relative min-h-0 flex-1 overflow-x-hidden overflow-y-scroll overscroll-contain focus-visible:ring-1 focus-visible:ring-inset print:h-auto print:overflow-visible [@media(hover:hover)_and_(pointer:fine)]:cursor-none"
+			className="portfolio-page focus-visible:ring-border mouse:cursor-none relative min-h-0 flex-1 overflow-x-hidden overflow-y-scroll overscroll-contain focus-visible:ring-1 focus-visible:ring-inset print:h-auto print:overflow-visible"
 			onKeyDown={event => {
 				if (event.target !== event.currentTarget) return
 				const page = event.currentTarget.clientHeight * 0.9

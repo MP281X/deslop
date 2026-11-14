@@ -48,7 +48,8 @@
 		"shadcn": "latest",
 		"shiki": "latest",
 		"tailwind-merge": "latest",
-		"tailwindcss": "latest"
+		"tailwindcss": "latest",
+		"tw-animate-css": "latest"
 	},
 	"peerDependencies": {
 		"react": "^19",
