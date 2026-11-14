@@ -1,8 +1,3 @@
----
-name: maintenance
-description: Load before a maintenance pass, setting up or repairing a worker, or agent-configuration links.
----
-
 # Maintenance
 
 A pass runs Update, Clean and Check on each machine that is on, without asking: `dev`, `mp281x@desktop`, `matteopaludgnach@macbook-pro`. It runs on Claude Sonnet, since Codex rejects `rm -f` and `rm -rf`. End by reporting what waits on the user's restart (a kernel or macOS update); never pending T3 updates. Never run `t3 update`, `t3 doctor --fix` or `t3 service restart`, and never reboot: those are the user's.

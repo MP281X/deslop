@@ -19,13 +19,14 @@ Two headless Debian workers in one tailnet, same user and paths.
 - **Scratch.** Use `/tmp/<task>/`, on disk, emptied at boot and of files unused for 7 days.
 - **Git refs.** T3 checkpoints under `refs/t3/`; search history with `--branches --remotes`.
 - **Auxiliary services.** Run task-local ones as temporary containers, not installs on the worker.
-- **Workers.** Maintenance, setup, repair, agent links and MCP sign-in: the [maintenance skill](../maintenance/SKILL.md).
+- **Agent sign-in.** [MCP sign-in](references/maintenance.md#mcp-sign-in).
 
-| Reference                           | For                                                   |
-| ----------------------------------- | ----------------------------------------------------- |
-| [Deslop](references/deslop.md)      | Production, Stash data, npm, Apple and EAS, tracing   |
-| [Dual](references/dual.md)          | Accounts, merges, preview, Jira, Google, VPN, tracing |
-| [Repositories](references/repos.md) | Outside repositories, what each is the reference for  |
+| Reference                                | For                                                      |
+| ---------------------------------------- | -------------------------------------------------------- |
+| [Deslop](references/deslop.md)           | Production, Stash data, npm, Apple and EAS, tracing      |
+| [Dual](references/dual.md)               | Accounts, merges, preview, Jira, Google, VPN, tracing    |
+| [Maintenance](references/maintenance.md) | Workers, setup, agent links, T3 settings, updates, clean |
+| [Repositories](references/repos.md)      | Outside repositories, what each is the reference for     |
 
 ## Previews
 
