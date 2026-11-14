@@ -17,7 +17,7 @@ export function EmptyState(props: {action?: ReactNode; icon: ReactNode; label: s
 	return (
 		<Empty role="status" aria-label={props.label}>
 			{props.action ?? (
-				<EmptyMedia aria-hidden variant="symbol">
+				<EmptyMedia aria-hidden variant="icon">
 					{props.icon}
 				</EmptyMedia>
 			)}

@@ -17,7 +17,7 @@ import {
 	DialogHeader,
 	DialogTitle
 } from '@deslop/components-web/ui/dialog'
-import {Field, FieldError, FieldLabel} from '@deslop/components-web/ui/field'
+import {Field, FieldError, FieldGroup, FieldLabel} from '@deslop/components-web/ui/field'
 import {Input} from '@deslop/components-web/ui/input'
 import {Opencode} from '@deslop/components-web/ui/svgs/opencode'
 import {OpencodeDark} from '@deslop/components-web/ui/svgs/opencodeDark'
@@ -49,7 +49,6 @@ export function AddKeyDialog(props: {
 				<Loaded atom={aiKeyAtom}>
 					{key => (
 						<form
-							className="flex flex-col gap-4"
 							onSubmit={event => {
 								event.preventDefault()
 								if (invalidKey || invalidUrl) return
@@ -66,54 +65,58 @@ export function AddKeyDialog(props: {
 								})
 							}}
 						>
-							<DialogHeader>
-								<DialogTitle>OpenCode</DialogTitle>
-							</DialogHeader>
-							<Field data-invalid={invalidKey}>
-								<FieldLabel htmlFor="ai-secret">Service account key</FieldLabel>
-								<Input
-									id="ai-secret"
-									type="password"
-									aria-invalid={invalidKey}
-									aria-describedby="ai-secret-error"
-									autoComplete="off"
-									autoFocus
-									required={Option.isNone(key)}
-									placeholder={Option.match(key, {
-										onNone: Function.constant('OpenCode Console service account key'),
-										onSome: current => `Leave empty to keep …${current.last4}`
-									})}
-									value={secret}
-									disabled={waiting}
-									onChange={event => setSecret(event.target.value)}
-								/>
-								{invalidKey && <FieldError id="ai-secret-error">{KEY_MESSAGE}</FieldError>}
-							</Field>
-							<Field data-invalid={invalidUrl}>
-								<FieldLabel htmlFor="ai-connection">Anthropic Console API URL</FieldLabel>
-								<Input
-									id="ai-connection"
-									type="text"
-									aria-invalid={invalidUrl}
-									aria-describedby="ai-connection-error"
-									value={url}
-									disabled={waiting}
-									placeholder={pipe(
-										key,
-										Option.flatMap(current => current.connectionUrl),
-										Option.getOrElse(Function.constant('https://opencode.ai/inference/custom/conn_…'))
-									)}
-									onChange={event => setUrl(event.target.value)}
-								/>
-								{invalidUrl && <FieldError id="ai-connection-error">{CONNECTION_MESSAGE}</FieldError>}
-							</Field>
-							<ResultError result={result} />
-							<DialogFooter>
-								<DialogClose render={<Button variant="ghost" type="button" disabled={waiting} />}>Cancel</DialogClose>
-								<Button type="submit" disabled={waiting || invalidKey || invalidUrl}>
-									{Boolean.match(waiting, {onFalse: Function.constant('Save'), onTrue: Function.constant('Saving…')})}
-								</Button>
-							</DialogFooter>
+							<FieldGroup>
+								<DialogHeader>
+									<DialogTitle>OpenCode</DialogTitle>
+								</DialogHeader>
+								<Field data-invalid={invalidKey}>
+									<FieldLabel htmlFor="ai-secret">Service account key</FieldLabel>
+									<Input
+										id="ai-secret"
+										type="password"
+										aria-invalid={invalidKey}
+										aria-describedby="ai-secret-error"
+										autoComplete="off"
+										autoFocus
+										required={Option.isNone(key)}
+										placeholder={Option.match(key, {
+											onNone: Function.constant('OpenCode Console service account key'),
+											onSome: current => `Leave empty to keep …${current.last4}`
+										})}
+										value={secret}
+										disabled={waiting}
+										onChange={event => setSecret(event.target.value)}
+									/>
+									{invalidKey && <FieldError id="ai-secret-error">{KEY_MESSAGE}</FieldError>}
+								</Field>
+								<Field data-invalid={invalidUrl}>
+									<FieldLabel htmlFor="ai-connection">Anthropic Console API URL</FieldLabel>
+									<Input
+										id="ai-connection"
+										type="text"
+										aria-invalid={invalidUrl}
+										aria-describedby="ai-connection-error"
+										value={url}
+										disabled={waiting}
+										placeholder={pipe(
+											key,
+											Option.flatMap(current => current.connectionUrl),
+											Option.getOrElse(Function.constant('https://opencode.ai/inference/custom/conn_…'))
+										)}
+										onChange={event => setUrl(event.target.value)}
+									/>
+									{invalidUrl && <FieldError id="ai-connection-error">{CONNECTION_MESSAGE}</FieldError>}
+								</Field>
+								<ResultError result={result} />
+								<DialogFooter>
+									<DialogClose render={<Button variant="outline" type="button" disabled={waiting} />}>
+										Cancel
+									</DialogClose>
+									<Button type="submit" disabled={waiting || invalidKey || invalidUrl}>
+										{Boolean.match(waiting, {onFalse: Function.constant('Save'), onTrue: Function.constant('Saving…')})}
+									</Button>
+								</DialogFooter>
+							</FieldGroup>
 						</form>
 					)}
 				</Loaded>

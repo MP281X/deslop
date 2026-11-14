@@ -17,12 +17,20 @@ import {RowsSkeleton} from '@deslop/components-web/item-list'
 import {Page} from '@deslop/components-web/page'
 import {StaleProblem} from '@deslop/components-web/problem'
 import {StatusDot} from '@deslop/components-web/status-dot'
+import {Avatar, AvatarFallback, AvatarImage} from '@deslop/components-web/ui/avatar'
 import {Button} from '@deslop/components-web/ui/button'
-import {Card} from '@deslop/components-web/ui/card'
-import {Field, FieldError} from '@deslop/components-web/ui/field'
+import {Card, CardContent} from '@deslop/components-web/ui/card'
+import {Field, FieldError, FieldGroup} from '@deslop/components-web/ui/field'
 import {InputGroup, InputGroupAddon, InputGroupInput} from '@deslop/components-web/ui/input-group'
-import {Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle} from '@deslop/components-web/ui/item'
-import {Skeleton} from '@deslop/components-web/ui/skeleton'
+import {
+	Item,
+	ItemActions,
+	ItemContent,
+	ItemDescription,
+	ItemGroup,
+	ItemMedia,
+	ItemTitle
+} from '@deslop/components-web/ui/item'
 import {countOf} from '@deslop/runtime/shared/format'
 
 import {
@@ -87,43 +95,32 @@ function Sparkline(props: {color: string; values: readonly number[]}) {
 	)
 }
 
-// A loading row's blocks at its own row and column geometry; only a server row has a tool count.
-function RowBones(props: {tool?: boolean}) {
-	return (
-		<>
-			<ItemMedia>
-				<Skeleton className="size-4" />
-			</ItemMedia>
-			<ItemContent>
-				<Skeleton className="h-3 w-24" />
-				<Skeleton className="h-3 w-16" />
-			</ItemContent>
-			<ItemActions>
-				{props.tool === true && <Skeleton className="h-3.5 w-7" />}
-				<div className="max-sm:hidden">
-					<Skeleton className="h-3.5 w-16" />
-				</div>
-				<Skeleton className="h-3 w-12" />
-			</ItemActions>
-		</>
-	)
-}
-
+// The server's first icon that loads, trying each source in turn, else a server glyph.
 function FirstImage(props: {sources: string[]}) {
 	const [failed, setFailed] = useState(0)
 	return (
-		<span className="flex size-4 shrink-0 items-center justify-center">
+		<Avatar size="sm">
 			{pipe(
 				props.sources,
 				Array.get(failed),
 				Option.match({
-					onNone: () => <HardDrivesIcon className="text-muted-foreground size-4" />,
+					onNone: Function.constNull,
 					onSome: src => (
-						<img src={src} alt="" className="size-full object-contain" onError={() => setFailed(failed + 1)} />
+						<AvatarImage
+							key={src}
+							src={src}
+							alt=""
+							onLoadingStatusChange={status => {
+								if (status === 'error') setFailed(failed + 1)
+							}}
+						/>
 					)
 				})
 			)}
-		</span>
+			<AvatarFallback>
+				<HardDrivesIcon />
+			</AvatarFallback>
+		</Avatar>
 	)
 }
 
@@ -161,50 +158,39 @@ function ServerRow(props: {period: UsageRange; report: readonly McpUsageServer[]
 	})
 	const series = serverSeries(props.report, props.server.id, props.period)
 	return (
-		<div role="listitem">
-			<Item size="row">
-				<ItemMedia>
-					<ServerIcon server={props.server} />
-				</ItemMedia>
-				<ItemContent>
-					<ItemTitle>{props.server.name}</ItemTitle>
-					<ItemDescription>{new URL(props.server.url).hostname}</ItemDescription>
-				</ItemContent>
-				<ItemActions>
-					{failed && (
-						<span role="img" className="flex shrink-0 items-center" aria-label={failure} title={failure}>
-							<StatusDot status="error" />
-						</span>
-					)}
-					{Boolean.match(needsUser, {
-						onFalse: () =>
-							props.server.tools > 0 && (
-								<span
-									className="text-muted-foreground flex items-center gap-1.5 font-mono text-xs tabular-nums"
-									title="Tools"
-								>
-									{props.server.tools}
-									<WrenchIcon className="size-3.5" />
-								</span>
-							),
-						onTrue: () => (
-							<Button
-								size="xs"
-								disabled={AsyncResult.isWaiting(connecting)}
-								aria-label={`${action} ${props.server.name}`}
-								onClick={() => connect()}
-							>
-								{action}
-							</Button>
-						)
-					})}
-					<Sparkline color={serverHue(props.server)} values={series} />
-					<span className="w-12 shrink-0 text-right font-mono text-xs tabular-nums">
-						{countOf(Number.sumAll(series))}
-					</span>
-				</ItemActions>
-			</Item>
-		</div>
+		<Item role="listitem" size="sm">
+			<ItemMedia>
+				<ServerIcon server={props.server} />
+			</ItemMedia>
+			<ItemContent>
+				<ItemTitle>{props.server.name}</ItemTitle>
+				<ItemDescription>{new URL(props.server.url).hostname}</ItemDescription>
+			</ItemContent>
+			<ItemActions>
+				{failed && <StatusDot status="error" label={failure} />}
+				{Boolean.match(needsUser, {
+					onFalse: () =>
+						props.server.tools > 0 && (
+							<span className="text-muted-foreground flex items-center gap-1.5 tabular-nums" title="Tools">
+								{props.server.tools}
+								<WrenchIcon />
+							</span>
+						),
+					onTrue: () => (
+						<Button
+							size="sm"
+							disabled={AsyncResult.isWaiting(connecting)}
+							aria-label={`${action} ${props.server.name}`}
+							onClick={() => connect()}
+						>
+							{action}
+						</Button>
+					)
+				})}
+				<span className="tabular-nums">{countOf(Number.sumAll(series))}</span>
+				<Sparkline color={serverHue(props.server)} values={series} />
+			</ItemActions>
+		</Item>
 	)
 }
 
@@ -219,13 +205,7 @@ function ServerRows(props: {period: Period}) {
 					Array.match({
 						onEmpty: Function.constNull,
 						onNonEmpty: ordered => (
-							<Suspense
-								fallback={
-									<RowsSkeleton label="MCP servers" rows={ordered.length}>
-										<RowBones tool />
-									</RowsSkeleton>
-								}
-							>
+							<Suspense fallback={<RowsSkeleton label="MCP servers" rows={ordered.length} />}>
 								<Loaded atom={mcpUsageAtom(props.period)}>
 									{current =>
 										Array.map(ordered, server => (
@@ -253,13 +233,11 @@ function PayerRow(props: {
 	return (
 		<div role="listitem">
 			<Item
-				size="row"
+				size="sm"
 				render={<button type="button" aria-label={`OpenCode, ${PAYER_LABELS[props.source]}`} onClick={props.onOpen} />}
 			>
-				<ItemMedia>
-					<span className="flex size-4 items-center justify-center">
-						<ProviderMark />
-					</span>
+				<ItemMedia variant="icon">
+					<ProviderMark />
 				</ItemMedia>
 				<ItemContent>
 					<ItemTitle>OpenCode</ItemTitle>
@@ -267,14 +245,10 @@ function PayerRow(props: {
 				</ItemContent>
 				<ItemActions>
 					{Option.exists(props.info.lastStatus, status => status === 401 || status === 403) && (
-						<span role="img" className="flex shrink-0 items-center" aria-label="Key refused" title="Key refused">
-							<StatusDot status="error" />
-						</span>
+						<StatusDot status="error" label="Key refused" />
 					)}
+					<span className="tabular-nums">{aiCost(props.report, props.source)}</span>
 					<Sparkline color="var(--muted-foreground)" values={aiSeries(props.report, props.source, props.period)} />
-					<span className="w-12 shrink-0 text-right font-mono text-xs tabular-nums">
-						{aiCost(props.report, props.source)}
-					</span>
 				</ItemActions>
 			</Item>
 		</div>
@@ -308,13 +282,7 @@ function KeyRows(props: {onOpen: () => void; period: Period}) {
 				Option.match(all, {
 					onNone: Function.constNull,
 					onSome: credential => (
-						<Suspense
-							fallback={
-								<RowsSkeleton label="OpenCode key" rows={Payer.literals.length}>
-									<RowBones />
-								</RowsSkeleton>
-							}
-						>
+						<Suspense fallback={<RowsSkeleton label="OpenCode key" rows={Payer.literals.length} />}>
 							<KeyUsage info={credential} onOpen={props.onOpen} period={props.period} />
 						</Suspense>
 					)
@@ -327,31 +295,21 @@ function KeyRows(props: {onOpen: () => void; period: Period}) {
 // Each group is read on its own, so one failing reader leaves the other group's rows.
 function List(props: {onOpen: () => void; period: Period}) {
 	return (
-		<Card size="list">
-			<div role="list" aria-label="MCP servers and AI keys">
-				<CatchBoundary getResetKey={Function.constant('servers')} errorComponent={ReadFailure}>
-					<Suspense
-						fallback={
-							<RowsSkeleton label="MCP servers" rows={3}>
-								<RowBones tool />
-							</RowsSkeleton>
-						}
-					>
-						<ServerRows period={props.period} />
-					</Suspense>
-				</CatchBoundary>
-				<CatchBoundary getResetKey={Function.constant('keys')} errorComponent={ReadFailure}>
-					<Suspense
-						fallback={
-							<RowsSkeleton label="AI keys" rows={4}>
-								<RowBones />
-							</RowsSkeleton>
-						}
-					>
-						<KeyRows onOpen={props.onOpen} period={props.period} />
-					</Suspense>
-				</CatchBoundary>
-			</div>
+		<Card>
+			<CardContent>
+				<ItemGroup aria-label="MCP servers and AI keys">
+					<CatchBoundary getResetKey={Function.constant('servers')} errorComponent={ReadFailure}>
+						<Suspense fallback={<RowsSkeleton label="MCP servers" rows={3} />}>
+							<ServerRows period={props.period} />
+						</Suspense>
+					</CatchBoundary>
+					<CatchBoundary getResetKey={Function.constant('keys')} errorComponent={ReadFailure}>
+						<Suspense fallback={<RowsSkeleton label="AI keys" rows={2} />}>
+							<KeyRows onOpen={props.onOpen} period={props.period} />
+						</Suspense>
+					</CatchBoundary>
+				</ItemGroup>
+			</CardContent>
 		</Card>
 	)
 }
@@ -407,28 +365,30 @@ function AddField(props: {onKey: (secret: string, url: string) => void}) {
 				submit()
 			}}
 		>
-			<Field data-invalid={Option.isSome(error)}>
-				<InputGroup>
-					<InputGroupAddon>
-						<LinkIcon />
-					</InputGroupAddon>
-					<InputGroupInput
-						aria-label="MCP server URL or provider key"
-						aria-invalid={Option.isSome(error)}
-						aria-describedby="gateway-add-error"
-						placeholder="Paste an MCP URL or a key"
-						autoComplete="off"
-						spellCheck={false}
-						value={typed}
-						disabled={busy}
-						onChange={event => send(addEvents.Typed({url: event.target.value}))}
-					/>
-				</InputGroup>
-				{Option.match(error, {
-					onNone: Function.constNull,
-					onSome: message => <FieldError id="gateway-add-error">{message}</FieldError>
-				})}
-			</Field>
+			<FieldGroup>
+				<Field data-invalid={Option.isSome(error)}>
+					<InputGroup>
+						<InputGroupAddon>
+							<LinkIcon />
+						</InputGroupAddon>
+						<InputGroupInput
+							aria-label="MCP server URL or provider key"
+							aria-invalid={Option.isSome(error)}
+							aria-describedby="gateway-add-error"
+							placeholder="Paste an MCP URL or a key"
+							autoComplete="off"
+							spellCheck={false}
+							value={typed}
+							disabled={busy}
+							onChange={event => send(addEvents.Typed({url: event.target.value}))}
+						/>
+					</InputGroup>
+					{Option.match(error, {
+						onNone: Function.constNull,
+						onSome: message => <FieldError id="gateway-add-error">{message}</FieldError>
+					})}
+				</Field>
+			</FieldGroup>
 		</form>
 	)
 }
@@ -475,12 +435,7 @@ function HomeRoute() {
 								navigate({search: previous => ({...previous, period: next})})
 							}}
 						/>
-						<CopyButton
-							label="Copy MCP URL"
-							value={`${window.location.origin}/mcp`}
-							size="icon-sm"
-							className="ms-2.5"
-						/>
+						<CopyButton label="Copy MCP URL" value={`${window.location.origin}/mcp`} size="icon-sm" />
 					</>
 				}
 			/>

@@ -15,10 +15,10 @@ import {RowsSkeleton} from '@deslop/components-web/item-list'
 import {AppMark} from '@deslop/components-web/marks'
 import {StaleProblem} from '@deslop/components-web/problem'
 import {StatusDot} from '@deslop/components-web/status-dot'
-import {Item, ItemActions, ItemContent, ItemMedia, ItemTitle} from '@deslop/components-web/ui/item'
+import {Item, ItemActions, ItemContent, ItemDescription, ItemGroup, ItemTitle} from '@deslop/components-web/ui/item'
 import {ResizableHandle, ResizablePanel, ResizablePanelGroup} from '@deslop/components-web/ui/resizable'
 import {ScrollArea} from '@deslop/components-web/ui/scroll-area'
-import {Skeleton} from '@deslop/components-web/ui/skeleton'
+import {Separator} from '@deslop/components-web/ui/separator'
 import {blockingFailure} from '@deslop/runtime/client/live-stream'
 import {ageOf, clockOf, compactCountOf, countOf, durationOf} from '@deslop/runtime/shared/format'
 
@@ -38,7 +38,7 @@ import {
 } from '#lib/telemetry.ts'
 import type {ActiveOperation, OperationKey} from '#lib/telemetry.ts'
 import {Flame, SpansSkeleton, TimeAxis} from '#routes/(home)/-flame.tsx'
-import {DetailSkeleton, OutsideMark, SpanDetail} from '#routes/(home)/-span.tsx'
+import {OutsideMark, SpanDetail} from '#routes/(home)/-span.tsx'
 import icon from '#routes/icon.svg'
 import {Range, rangeStart} from '#services/telemetry/schema.ts'
 import type {
@@ -83,43 +83,6 @@ type WorkspaceProps = {
 	source?: AppName
 }
 
-// The operations rows' geometry while the overview loads: the name at the gutter, then the same figure columns.
-function OperationsSkeleton(props: {label: string}) {
-	return (
-		<RowsSkeleton label={props.label} rows={8}>
-			<ItemContent>
-				<Skeleton className="h-3 w-2/5" />
-			</ItemContent>
-			<ItemActions>
-				<span className="grid-cols-operation grid items-center gap-x-3">
-					<Skeleton className="h-3 w-full" />
-					<Skeleton className="h-3 w-full" />
-					<Skeleton className="h-3 w-full" />
-				</span>
-			</ItemActions>
-		</RowsSkeleton>
-	)
-}
-
-// The trace rows' geometry while the overview loads: the age slot, the short id where names sit, and the duration column.
-function TracesSkeleton(props: {label: string}) {
-	return (
-		<RowsSkeleton label={props.label} rows={8}>
-			<ItemMedia className="w-8">
-				<Skeleton className="h-3 w-6" />
-			</ItemMedia>
-			<ItemContent>
-				<Skeleton className="h-3 w-14" />
-			</ItemContent>
-			<ItemActions>
-				<span className="flex w-12 justify-end">
-					<Skeleton className="h-3 w-10" />
-				</span>
-			</ItemActions>
-		</RowsSkeleton>
-	)
-}
-
 // The bar's app choice: one mark per app, its own icon, GitHub's for CI, else a server glyph, never a letter tile; one is always chosen, and choosing the chosen tab again does nothing.
 function SourceTabs(props: {apps: Overview['apps']; source?: AppName}) {
 	const search = route.useSearch()
@@ -155,39 +118,20 @@ function OverviewContent(props: {children: (overview: Overview) => ReactNode; ra
 	})
 }
 
-// One operation: its name and side when two rows share it, then errors while any row in its list has them, runs and typical duration.
-function OperationRow(props: {
-	active: boolean
-	duplicate: boolean
-	failing: boolean
-	onSelect: () => void
-	operation: Operation
-}) {
-	const side = SIDES[props.operation.runtime]
+// A row of a list that selects one: the whole row is the button, and the chosen one is muted.
+function ChoiceRow(props: {active: boolean; children: ReactNode; label: readonly string[]; onSelect: () => void}) {
 	return (
 		<div role="listitem">
 			<Item
-				size="row"
-				data-selected={Boolean.match(props.active, {
-					onFalse: Function.constUndefined,
-					onTrue: Function.constant('true' as const)
+				size="sm"
+				variant={Boolean.match(props.active, {
+					onFalse: Function.constant('default' as const),
+					onTrue: Function.constant('muted' as const)
 				})}
 				render={
 					<button
 						type="button"
-						aria-label={Array.join(
-							[
-								props.operation.name,
-								...Boolean.match(props.duplicate && side !== '', {onFalse: () => [], onTrue: () => [side]}),
-								...Boolean.match(props.operation.failures > 0, {
-									onFalse: () => [],
-									onTrue: () => [`${countOf(props.operation.failures)} failed`]
-								}),
-								runsOf(props.operation.count),
-								`${durationOf(props.operation.p50Ms)} typical`
-							],
-							', '
-						)}
+						aria-label={Array.join(props.label, ', ')}
 						aria-current={Boolean.match(props.active, {
 							onFalse: Function.constUndefined,
 							onTrue: Function.constant('true' as const)
@@ -196,46 +140,50 @@ function OperationRow(props: {
 					/>
 				}
 			>
-				<ItemContent>
-					<ItemTitle className="w-full" title={props.operation.name}>
-						<span className="min-w-0 truncate">{props.operation.name}</span>
-						{props.duplicate && KINDS[props.operation.runtime]}
-					</ItemTitle>
-				</ItemContent>
-				<ItemActions>
-					<span
-						className={cn(
-							'grid items-center gap-x-3',
-							Boolean.match(props.failing, {
-								onFalse: Function.constant('grid-cols-runs'),
-								onTrue: Function.constant('grid-cols-operation')
-							})
-						)}
-					>
-						{props.failing && (
-							<span
-								className="text-destructive text-right tabular-nums"
-								title={Boolean.match(props.operation.failures > 0, {
-									onFalse: Function.constUndefined,
-									onTrue: () => `${countOf(props.operation.failures)} failed`
-								})}
-							>
-								{Boolean.match(props.operation.failures > 0, {
-									onFalse: Function.constNull,
-									onTrue: () => countOf(props.operation.failures)
-								})}
-							</span>
-						)}
-						<span className="text-muted-foreground text-right tabular-nums" title={runsOf(props.operation.count)}>
-							{compactCountOf(props.operation.count)}
-						</span>
-						<span className="text-right tabular-nums" title="Typical duration">
-							{durationOf(props.operation.p50Ms)}
-						</span>
-					</span>
-				</ItemActions>
+				{props.children}
 			</Item>
 		</div>
+	)
+}
+
+// One operation: its name and side when two rows share it, then its errors when it has any, runs and typical duration.
+function OperationRow(props: {active: boolean; duplicate: boolean; onSelect: () => void; operation: Operation}) {
+	const side = SIDES[props.operation.runtime]
+	return (
+		<ChoiceRow
+			active={props.active}
+			label={[
+				props.operation.name,
+				...Boolean.match(props.duplicate && side !== '', {onFalse: () => [], onTrue: () => [side]}),
+				...Boolean.match(props.operation.failures > 0, {
+					onFalse: () => [],
+					onTrue: () => [`${countOf(props.operation.failures)} failed`]
+				}),
+				runsOf(props.operation.count),
+				`${durationOf(props.operation.p50Ms)} typical`
+			]}
+			onSelect={props.onSelect}
+		>
+			<ItemContent>
+				<ItemTitle title={props.operation.name}>
+					{props.operation.name}
+					{props.duplicate && KINDS[props.operation.runtime]}
+				</ItemTitle>
+			</ItemContent>
+			<ItemActions>
+				{props.operation.failures > 0 && (
+					<span className="text-destructive tabular-nums" title={`${countOf(props.operation.failures)} failed`}>
+						{countOf(props.operation.failures)}
+					</span>
+				)}
+				<span className="text-muted-foreground tabular-nums" title={runsOf(props.operation.count)}>
+					{compactCountOf(props.operation.count)}
+				</span>
+				<span className="tabular-nums" title="Typical duration">
+					{durationOf(props.operation.p50Ms)}
+				</span>
+			</ItemActions>
+		</ChoiceRow>
 	)
 }
 
@@ -249,7 +197,7 @@ function OperationsPane(props: {
 }) {
 	return (
 		<section aria-label="Operations" className={cn('flex h-full min-h-0 flex-col overflow-hidden', props.className)}>
-			<Suspense fallback={<OperationsSkeleton label="Operations" />}>
+			<Suspense fallback={<RowsSkeleton label="Operations" rows={8} />}>
 				<OverviewContent range={props.range}>
 					{overview =>
 						Array.match(operationsOf(overview, Option.fromUndefinedOr(props.source)), {
@@ -258,10 +206,9 @@ function OperationsPane(props: {
 							),
 							onNonEmpty: rows => {
 								const names = Array.groupBy(rows, row => row.operation.name)
-								const failing = Array.some(rows, row => row.operation.failures > 0)
 								return (
 									<ScrollArea className="min-h-0 flex-1">
-										<div role="list">
+										<ItemGroup>
 											{Array.map(rows, row => (
 												<OperationRow
 													key={`${row.app.name} ${row.operation.runtime} ${row.operation.name}`}
@@ -276,12 +223,11 @@ function OperationsPane(props: {
 														Record.get(row.operation.name),
 														Option.exists(group => group.length > 1)
 													)}
-													failing={failing}
 													onSelect={() => props.onSelect(row.app.name, row.operation)}
 													operation={row.operation}
 												/>
 											))}
-										</div>
+										</ItemGroup>
 									</ScrollArea>
 								)
 							}
@@ -296,66 +242,32 @@ function OperationsPane(props: {
 // One trace of the operation: its age, short id with its failure dot right after, and its duration; the row selects it.
 function TraceListRow(props: {active: boolean; now: DateTime.Utc; onSelect: () => void; trace: OperationTrace}) {
 	return (
-		<div role="listitem">
-			<Item
-				size="row"
-				data-selected={Boolean.match(props.active, {
-					onFalse: Function.constUndefined,
-					onTrue: Function.constant('true' as const)
-				})}
-				render={
-					<button
-						type="button"
-						aria-label={Array.join(
-							[
-								ageOf(props.trace.start, props.now),
-								`trace ${traceLabel(props.trace)}`,
-								...Option.match(props.trace.failure, {
-									onNone: () => [],
-									onSome: failure => [`failed in ${failure.span}`]
-								}),
-								durationOf(props.trace.duration)
-							],
-							', '
-						)}
-						aria-current={Boolean.match(props.active, {
-							onFalse: Function.constUndefined,
-							onTrue: Function.constant('true' as const)
-						})}
-						onClick={props.onSelect}
-					/>
-				}
-			>
-				<ItemMedia className="w-8">
-					<span className="text-muted-foreground tabular-nums" title={clockOf(props.trace.start, 'second')}>
-						{ageOf(props.trace.start, props.now)}
-					</span>
-				</ItemMedia>
-				<ItemContent>
-					<span className="flex min-w-0 items-center gap-1.5">
-						<span className="truncate" title={props.trace.id}>
-							{traceLabel(props.trace)}
-						</span>
-						{Option.match(props.trace.failure, {
-							onNone: Function.constNull,
-							onSome: failure => (
-								<span
-									role="img"
-									className="flex shrink-0 items-center"
-									aria-label={`Failed in ${failure.span}`}
-									title={`Failed in ${failure.span}`}
-								>
-									<StatusDot status="error" />
-								</span>
-							)
-						})}
-					</span>
-				</ItemContent>
-				<ItemActions>
-					<span className="w-12 text-right tabular-nums">{durationOf(props.trace.duration)}</span>
-				</ItemActions>
-			</Item>
-		</div>
+		<ChoiceRow
+			active={props.active}
+			label={[
+				ageOf(props.trace.start, props.now),
+				`trace ${traceLabel(props.trace)}`,
+				...Option.match(props.trace.failure, {onNone: () => [], onSome: failure => [`failed in ${failure.span}`]}),
+				durationOf(props.trace.duration)
+			]}
+			onSelect={props.onSelect}
+		>
+			<ItemContent>
+				<ItemTitle title={props.trace.id}>
+					{traceLabel(props.trace)}
+					{Option.match(props.trace.failure, {
+						onNone: Function.constNull,
+						onSome: failure => <StatusDot status="error" label={`Failed in ${failure.span}`} />
+					})}
+				</ItemTitle>
+				<ItemDescription title={clockOf(props.trace.start, 'second')}>
+					{ageOf(props.trace.start, props.now)}
+				</ItemDescription>
+			</ItemContent>
+			<ItemActions>
+				<span className="tabular-nums">{durationOf(props.trace.duration)}</span>
+			</ItemActions>
+		</ChoiceRow>
 	)
 }
 
@@ -371,7 +283,7 @@ function TracesPane(props: {
 	const active = Option.fromUndefinedOr(props.active)
 	return (
 		<section aria-label="Traces" className={cn('flex h-full min-h-0 flex-col overflow-hidden', props.className)}>
-			<Suspense fallback={<TracesSkeleton label="Traces" />}>
+			<Suspense fallback={<RowsSkeleton label="Traces" rows={8} />}>
 				<OverviewContent range={props.range}>
 					{() =>
 						Option.match(active, {
@@ -381,7 +293,7 @@ function TracesPane(props: {
 									onFalse: () => <EmptyState label="No traces" icon={<ChartBarHorizontalIcon weight="light" />} />,
 									onTrue: () => (
 										<ScrollArea className="min-h-0 flex-1">
-											<div role="list">
+											<ItemGroup>
 												{Array.map(current.operation.traces, trace => (
 													<TraceListRow
 														key={trace.id}
@@ -391,7 +303,7 @@ function TracesPane(props: {
 														trace={trace}
 													/>
 												))}
-											</div>
+											</ItemGroup>
 										</ScrollArea>
 									)
 								})
@@ -409,9 +321,7 @@ function SpanDetails(props: {focus: Option.Option<TraceTree['spans'][number]>}) 
 		onNone: () => <EmptyState label="Select a span" icon={<ChartBarHorizontalIcon weight="light" />} />,
 		onSome: span => (
 			<ScrollArea className="min-h-0 flex-1">
-				<div className="flex flex-col">
-					<SpanDetail span={span} />
-				</div>
+				<SpanDetail span={span} />
 			</ScrollArea>
 		)
 	})
@@ -438,9 +348,10 @@ function SpansList(props: {
 			{Boolean.match(props.inlineDetails && Option.isSome(props.focus), {
 				onFalse: Function.constNull,
 				onTrue: () => (
-					<div className="border-t">
+					<>
+						<Separator />
 						{Option.match(props.focus, {onNone: Function.constNull, onSome: span => <SpanDetail span={span} />})}
-					</div>
+					</>
 				)
 			})}
 		</ScrollArea>
@@ -495,7 +406,7 @@ function TracePane(props: {
 			<Suspense
 				fallback={Boolean.match(props.detailOnly === true, {
 					onFalse: () => <SpansSkeleton label="Spans" />,
-					onTrue: () => <DetailSkeleton label="Span details" />
+					onTrue: () => <RowsSkeleton label="Span details" rows={6} />
 				})}
 			>
 				<OverviewContent range={props.range}>
@@ -514,7 +425,7 @@ function TracePane(props: {
 								<Suspense
 									fallback={Boolean.match(props.detailOnly === true, {
 										onFalse: () => <SpansSkeleton label="Spans" />,
-										onTrue: () => <DetailSkeleton label="Span details" />
+										onTrue: () => <RowsSkeleton label="Span details" rows={6} />
 									})}
 								>
 									<Spans

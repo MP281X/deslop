@@ -35,7 +35,7 @@ function ItemSeparator({
 }
 
 const itemVariants = cva(
-  "group/item flex w-full flex-wrap items-center rounded-none border text-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 [a]:hover:bg-muted",
+  "group/item flex w-full flex-wrap items-center rounded-none border text-xs transition-colors duration-100 outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 [a]:transition-colors [a]:hover:bg-muted",
   {
     variants: {
       variant: {
@@ -47,7 +47,6 @@ const itemVariants = cva(
         default: "gap-2.5 px-3 py-2.5",
         sm: "gap-2.5 px-3 py-2.5",
         xs: "gap-2 px-2.5 py-2 in-data-[slot=dropdown-menu-content]:p-0",
-        row: "list-row h-8 flex-nowrap gap-3 border-0 px-4 py-0 text-left hover:bg-muted/30 data-[selected=true]:bg-muted data-[removed=true]:[&_[data-slot=item-title]]:text-muted-foreground data-[removed=true]:[&_[data-slot=item-title]]:line-through max-sm:h-11 [&_[data-slot=item-description]]:block [&_[data-slot=item-description]]:min-w-0 [&_[data-slot=item-description]]:truncate [&_[data-slot=item-title]]:shrink-0 [&>[data-slot=item-content]]:min-w-0 [&>[data-slot=item-content]]:flex-row [&>[data-slot=item-content]]:items-baseline [&>[data-slot=item-content]]:gap-2 [&>[data-slot=item-media]]:translate-y-0 [&>[data-slot=item-media]]:self-center",
       },
     },
     defaultVariants: {

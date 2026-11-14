@@ -6,8 +6,7 @@ import {KeyIcon} from '@phosphor-icons/react'
 import {getRouteApi} from '@tanstack/react-router'
 import {AsyncResult} from 'effect/reactivity'
 
-import {AccountAvatar} from '@deslop/components-web/app-bar'
-import {Button} from '@deslop/components-web/ui/button'
+import {AccountButton} from '@deslop/components-web/app-bar'
 import {
 	DropdownMenu,
 	DropdownMenuContent,
@@ -88,14 +87,12 @@ export function AccountMenu(props: {account: SignedAccount}) {
 	useAtomMount(resumePasskeyAtom(props.account.via))
 	return (
 		<DropdownMenu open={open} onOpenChange={setOpen}>
-			<DropdownMenuTrigger aria-label="Account" render={<Button variant="ghost" size="icon-sm" />}>
-				<AccountAvatar account={props.account} />
-			</DropdownMenuTrigger>
-			<DropdownMenuContent align="end" className="w-auto min-w-48">
+			<DropdownMenuTrigger render={<AccountButton account={props.account} />} />
+			<DropdownMenuContent align="end" className="w-56">
 				<DropdownMenuGroup>
 					<DropdownMenuLabel>
-						<span className="text-foreground">{`@${props.account.name}`}</span>
-						{props.account.role === 'Admin' && <span className="text-muted-foreground"> admin</span>}
+						{`@${props.account.name}`}
+						{props.account.role === 'Admin' && ' · admin'}
 					</DropdownMenuLabel>
 				</DropdownMenuGroup>
 				{props.account.role !== 'Waiting' && <PasskeyItems via={props.account.via} />}

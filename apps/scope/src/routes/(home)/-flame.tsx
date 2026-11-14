@@ -224,7 +224,7 @@ export function Flame(props: {focus?: SpanId; onPick: (id: SpanId) => void; trac
 						key={row.span.spanId}
 						data-flame-bar=""
 						data-span-id={row.span.spanId}
-						className="has-[:focus-visible]:outline-ring absolute top-(--flame-top) left-(--flame-left) h-5.5 w-(--flame-width) has-[:focus-visible]:outline-2"
+						className="absolute top-(--flame-top) left-(--flame-left) h-5.5 w-(--flame-width)"
 						style={{
 							'--app': APP_HUES[appName(row.span.service)] ?? 'var(--muted-foreground)',
 							'--flame-left': `${row.left}px`,
@@ -246,7 +246,7 @@ export function Flame(props: {focus?: SpanId; onPick: (id: SpanId) => void; trac
 								}),
 								Boolean.match(row.picked, {
 									onFalse: Function.constUndefined,
-									onTrue: Function.constant('outline-1 outline-foreground outline-offset-[-1px]')
+									onTrue: Function.constant('outline-foreground -outline-offset-1 outline-1')
 								})
 							)}
 							style={{'--flame-bar': `${row.bar}px`}}
@@ -289,7 +289,7 @@ export function Flame(props: {focus?: SpanId; onPick: (id: SpanId) => void; trac
 									moveFocus(row.span, event.key)
 								}
 							}}
-							className="absolute inset-0 h-full w-full border-0 bg-transparent p-0 outline-none"
+							className="focus-visible:outline-ring absolute inset-0 h-full w-full border-0 bg-transparent p-0 outline-none focus-visible:outline-2"
 						/>
 					</div>
 				))}

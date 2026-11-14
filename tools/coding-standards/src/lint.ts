@@ -33,7 +33,7 @@ import {noStoredSchemaOperation} from '#lint/no-stored-schema-operation.ts'
 import {noUnexplainedDisable} from '#lint/no-unexplained-disable.ts'
 import {noUnvalidatedJsonDecode} from '#lint/no-unvalidated-json-decode.ts'
 import {noWallClock} from '#lint/no-wall-clock.ts'
-import {primitiveClasses} from '#lint/primitive-classes.ts'
+import {classLiterals, primitiveClasses} from '#lint/primitive-classes.ts'
 import {recoverNamedFailures} from '#lint/recover-named-failures.ts'
 import {schemaTypePair} from '#lint/schema-type-pair.ts'
 import {serviceMethodSpan} from '#lint/service-method-span.ts'
@@ -209,6 +209,16 @@ export const lint: OxlintConfig & {
 				// A module augmentation is the one place an interface belongs: TypeScript merges declarations only into interfaces.
 				message: 'Declare a type, not an interface.',
 				selector: 'TSInterfaceDeclaration:not(TSModuleDeclaration TSInterfaceDeclaration)'
+			},
+			{
+				message:
+					"A negative margin pulls a box out of its parent's layout; change the parent's layout, or the primitive's size, instead.",
+				selector: classLiterals('(^|[\\s:])-m[xytrblse]{0,2}-')
+			},
+			{
+				message:
+					'An arbitrary variant writes a selector or condition by hand, and `*:` styles children from outside them; put the class on the element itself, choose its primitive variant, or name the condition once with @custom-variant.',
+				selector: classLiterals('(^|[\\s:])(\\[[^\\s]*\\]|\\*{1,2}):')
 			}
 		],
 

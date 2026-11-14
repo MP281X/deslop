@@ -57,6 +57,7 @@
 			"requireAllFiles": true,
 			"allowUnmatched": [
 				"tools/**",
+				"packages/components-mobile/bin/**",
 				"**/*.config.*",
 				"**/*.test.ts",
 				"apps/*/fingerprint.config.js",

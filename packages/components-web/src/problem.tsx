@@ -10,7 +10,7 @@ import {ageOf} from '@deslop/runtime/shared/format'
 
 import {StatusDot} from '#components/status-dot.tsx'
 import {Button} from '#components/ui/button.tsx'
-import {Popover, PopoverContent, PopoverTitle, PopoverTrigger} from '#components/ui/popover.tsx'
+import {Popover, PopoverContent, PopoverHeader, PopoverTitle, PopoverTrigger} from '#components/ui/popover.tsx'
 
 // The page keeps this reader mounted even when its pane is offscreen.
 // judge-ignore no-silent-fallback -- now is when the problem began, not a stand-in for a failed read.
@@ -92,7 +92,6 @@ function Problem(props: {label: string; reset?: () => void; since?: DateTime.Utc
 				openOnHover
 				delay={150}
 				aria-label={props.label}
-				className="w-16"
 				onFocus={event => {
 					if (returning.current) {
 						returning.current = false
@@ -109,27 +108,21 @@ function Problem(props: {label: string; reset?: () => void; since?: DateTime.Utc
 					returning.current = false
 				}}
 			>
-				<StatusDot status="warning" />
-				<span aria-hidden className="text-muted-foreground font-mono tabular-nums">
+				<StatusDot status="warning" label={props.label} />
+				<span aria-hidden className="text-muted-foreground tabular-nums">
 					{AsyncResult.getOrElse(age, Function.constant('now'))}
 				</span>
 			</PopoverTrigger>
-			<PopoverContent ref={content} initialFocus={false} className="w-auto max-w-xs" align="end">
-				<div className="flex items-center gap-3">
+			<PopoverContent ref={content} initialFocus={false} align="end" className="w-auto">
+				<PopoverHeader>
 					<PopoverTitle>{props.label}</PopoverTitle>
-					{props.reset !== undefined && (
-						<Button
-							ref={retry}
-							variant="ghost"
-							size="icon"
-							aria-label="Try again"
-							title="Try again"
-							onClick={props.reset}
-						>
-							<ArrowClockwiseIcon className="size-4" />
-						</Button>
-					)}
-				</div>
+				</PopoverHeader>
+				{props.reset !== undefined && (
+					<Button ref={retry} variant="outline" size="sm" onClick={props.reset}>
+						<ArrowClockwiseIcon />
+						Try again
+					</Button>
+				)}
 			</PopoverContent>
 		</Popover>
 	)

@@ -23,7 +23,7 @@
 
 ## Patterns
 
-- **Primitives.** In `packages/components-web`, run `vpx shadcn@latest add --all --overwrite`, point `cn` imports at `#lib/classes.ts`, drop the `cn` dependency and fix only compiler rejections.
+- **Primitives.** In `packages/components-web`, run `vpx shadcn@latest add --all --overwrite`, point `cn` imports at `#lib/classes.ts`, drop the `cn` dependency and fix only compiler rejections. The registry files otherwise stay untouched: no local variants, and a layout a primitive does not fit changes instead.
 - **Software marks.** Run `vpx shadcn@latest add @svgl/<name>` there; move `src/components/ui/svgs/` to canonical `src/ui/svgs/`, keeping registry artwork but renaming any SVG id another mark already uses (`a` → `edge-a`).
 
 ## Choices
@@ -52,7 +52,7 @@
 - **Layout.** No page titles or panel headers, and no search fields on the web. Web semibold only for the bar's app name; no decorative shadows, only popups raised. No custom iOS bar. Trees have no connectors, tints or fold carets.
 - **Behavior.** No web removal controls or context menus; iOS keeps native long-press menus and swipes. No command palette or hotkeys. Never confirm destruction.
 - **Recovery.** Leave stale rows and panes unmarked; no toasts or page-moving banners. Destructive failures say whether they committed.
-- **Components.** Nothing animates; pending actions have no spinners.
+- **Components.** Only shadcn's own animations; pending actions have no spinners.
 - **Tracing.** Background work rounds are traced; animation ticks, including Portfolio's occupied-room wandering, are not.
 - **Artwork.** Canonical and transparent; never redraw or recolour in a UI pass. Copy Kanagawa pixel art unchanged: `crispEdges`, integer scaling; indexed touch icons crop 192 to 180px on `#0d0c0c`.
 

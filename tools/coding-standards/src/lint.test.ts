@@ -1506,12 +1506,19 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 							"import {Button} from '@deslop/components-web/ui/button'",
 							"import {Badge} from '@deslop/components-web/ui/badge'",
 							"import {Skeleton} from '@deslop/components-web/ui/skeleton'",
+							"import {PopoverContent} from '@deslop/components-web/ui/popover'",
 							"import {Card} from '#components/ui/card.tsx'",
 							"import {cn} from '#lib/utils.ts'",
 							"import {Widget} from 'some-lib'",
 							'',
 							'export function Painted() { return <Button className="mt-2 w-full hover:bg-muted sm:!px-2 data-[state=open]:text-red-500">Save</Button> } // reported',
-							'export function Placed() { return <Button className="mt-2 w-full max-w-sm flex-1 shrink-0 self-center col-span-2 min-h-0 -mt-1">Save</Button> }',
+							'export function Placed() { return <Button className="mt-2 w-full min-w-0 flex-1 shrink-0 self-center col-span-2 min-h-0">Save</Button> }',
+							'export function Widened() { return <Button className="w-40">Save</Button> } // reported',
+							'export function Borrowed() { return <Button className="w-(--column)">Save</Button> } // reported',
+							'export function Pulled() { return <Button className="-mt-1">Save</Button> } // pulled',
+							'export function Reached() { return <div className="[&>svg]:size-4 *:shrink-0"><Button>Save</Button></div> } // pulled',
+							'export function Popup() { return <PopoverContent className="w-72">Body</PopoverContent> }',
+							'export function Drawn() { return <div className="left-(--x) w-(--width)" /> }',
 							'export function Layered() { return <Button className="relative z-10 pointer-events-auto">Save</Button> } // reported',
 							'export function Sized() { return <Button className="h-9">Save</Button> } // reported',
 							'export function Phoned() { return <Button className="max-sm:h-11">Save</Button> } // reported',
@@ -1541,6 +1548,22 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 						Array.map(entry => entry.number)
 					)
 				)
+				// A negative margin or an arbitrary variant moves or styles a box from outside it, on any element.
+				assert.deepStrictEqual(
+					pipe(
+						result.stdout.diagnostics,
+						Array.filter(diagnostic => diagnostic.code === 'eslint-js(no-restricted-syntax)'),
+						Array.map(diagnostic => diagnostic.labels[0]?.span.line ?? 0),
+						Array.dedupe,
+						Array.sort(Order.Number)
+					),
+					pipe(
+						String.split(result.sources[0] ?? '', '\n'),
+						Array.map((line, index) => ({line, number: index + 1})),
+						Array.filter(entry => String.includes('// pulled')(entry.line)),
+						Array.map(entry => entry.number)
+					)
+				)
 			})
 		)
 
@@ -1553,17 +1576,24 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 							"import {Button} from '@deslop/components-web/ui/button'",
 							"import {Item} from '@deslop/components-web/ui/item'",
 							"import {NativeSelect} from '@deslop/components-web/ui/native-select'",
+							"import {Avatar, AvatarFallback, AvatarImage} from '@deslop/components-web/ui/avatar'",
+							"import {Field, FieldGroup, FieldLabel} from '@deslop/components-web/ui/field'",
+							"import {Input} from '@deslop/components-web/ui/input'",
 							'',
 							'export function Bare() { return <button type="button" aria-label="Save" /> } // reported',
 							'export function Link() { return <a href="/docs" aria-label="Docs" /> } // reported',
-							'export function Field() { return <input aria-label="Name" /> } // reported',
+							'export function Typed() { return <input aria-label="Name" /> } // reported',
 							'export function Pick() { return <select aria-label="Kind" /> } // reported',
 							'export function Notes() { return <textarea aria-label="Notes" /> } // reported',
 							'export function Inside() { return <Item render={<div><button type="button" aria-label="Open" /></div>} /> } // reported',
 							'export function Docs() { return <Button variant="link" nativeButton={false} render={<a href="/docs" aria-label="Docs" />}>Docs</Button> }',
-							'export function Row(props: {open: () => void}) { return <Item size="row" render={<button type="button" aria-label="Open" onClick={props.open} />} /> }',
+							'export function Row(props: {open: () => void}) { return <Item size="sm" render={<button type="button" aria-label="Open" onClick={props.open} />} /> }',
 							'export function Lazy() { return <Item render={props => <button type="button" aria-label="Open" {...props} />} /> }',
-							'export function Kind() { return <NativeSelect aria-label="Kind" /> }'
+							'export function Kind() { return <NativeSelect aria-label="Kind" /> }',
+							'export function Mark(props: {fail: () => void}) { return <img src="/icon" alt="" onError={props.fail} /> } // reported',
+							'export function Face() { return <Avatar><AvatarImage src="/icon" alt="" /><AvatarFallback>A</AvatarFallback></Avatar> }',
+							'export function Loose() { return <form><Input aria-label="Name" /></form> } // reported',
+							'export function Name() { return <form><FieldGroup><Field><FieldLabel htmlFor="name">Name</FieldLabel><Input id="name" /></Field></FieldGroup></form> }'
 						],
 						'\n'
 					)
