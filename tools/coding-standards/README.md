@@ -55,7 +55,7 @@ Native rules enforce function declarations, standalone `pipe`, no ternaries, no 
 {"extends": "@deslop/coding-standards/tsconfig.json"}
 ```
 
-Add your own ignores and repository-specific selectors alongside the preset's `lint.rules['eslint-js/no-restricted-syntax']`. Deslop's gradients, icon weights, RPC names, import allowlist and app-only native-module boundary live in its root configuration, not a `deslopRules` export.
+Add your own ignores and repository-specific selectors alongside the preset's `lint.rules['eslint-js/no-restricted-syntax']`. Deslop's gradients, icon weights, RPC names and app-only native-module boundary live in its root configuration, not a `deslopRules` export.
 
 ## Judge
 
