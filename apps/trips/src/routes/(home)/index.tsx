@@ -54,32 +54,32 @@ import {bookingsAtom, clipboard, nowAtom, removal} from '#lib/bookings.ts'
 import {session} from '#lib/session.ts'
 import {daysUntil, primary, problemOf, statusOf, tones} from '#lib/status.ts'
 import {clockAt, endOf, HOUR, startOf, titleOf} from '#services/bookings/lib/utils.ts'
-import type {Booking} from '#services/bookings/schema.ts'
+import {Booking} from '#services/bookings/schema.ts'
 
 function zoneOf(booking: Booking) {
-	if (booking._tag === 'stay') return booking.place.timeZone
+	if (Booking.isAnyOf(['stay'])(booking)) return booking.place.timeZone
 	return booking.from.timeZone
 }
 
 function headingOf(booking: Booking) {
-	if (booking._tag === 'stay') return booking.name
+	if (Booking.isAnyOf(['stay'])(booking)) return booking.name
 	return `${Option.getOrElse(booking.from.city, () => booking.from.name)} to ${Option.getOrElse(booking.to.city, () => booking.to.name)}`
 }
 
 function scheduleOf(booking: Booking) {
-	if (booking._tag === 'stay') {
+	if (Booking.isAnyOf(['stay'])(booking)) {
 		const nights = Number.round(Duration.toDays(DateTime.distance(booking.checkIn, booking.checkOut)), 0)
-		return `${nights} ${Boolean.match(nights === 1, {onFalse: () => 'nights', onTrue: () => 'night'})} · check-in ${clockAt(booking.checkIn, booking.place.timeZone)}`
+		return `${nights} ${Boolean.match(nights === 1, {onFalse: Function.constant('nights'), onTrue: Function.constant('night')})} · check-in ${clockAt(booking.checkIn, booking.place.timeZone)}`
 	}
 	const departs = clockAt(startOf(booking), booking.from.timeZone)
 	const arrives = clockAt(endOf(booking), booking.to.timeZone)
-	if (booking._tag === 'train') return `${titleOf(booking)} ${departs} → ${arrives}`
+	if (Booking.isAnyOf(['train'])(booking)) return `${titleOf(booking)} ${departs} → ${arrives}`
 	return `${titleOf(booking)} · ${Option.getOrElse(booking.from.code, () => booking.from.name)} ${departs} → ${Option.getOrElse(booking.to.code, () => booking.to.name)} ${arrives}`
 }
 
 // The schedule and the gate or platform it leaves from, each shown once.
 function lineOf(booking: Booking, status: ReturnType<typeof statusOf>) {
-	const where = Option.getOrElse(status.where, () => '')
+	const where = Option.getOrElse(status.where, Function.constant(''))
 	return pipe([scheduleOf(booking), where], Array.filter(String.isNonEmpty), Array.join(' · '))
 }
 
@@ -89,11 +89,13 @@ const Countdown = Schema.TaggedUnion({Days: {days: Schema.Finite}, Now: {}, Same
 function Gutter(props: {countdown: Countdown}) {
 	return (
 		<VStack spacing={0} modifiers={[fixedSize({horizontal: true, vertical: false}), frame({minWidth: 34})]}>
-			{props.countdown._tag === 'Now' && <Text modifiers={[text.data, foregroundStyle(primary)]}>now</Text>}
-			{props.countdown._tag === 'Days' && props.countdown.days < 1 && (
+			{Countdown.isAnyOf(['Now'])(props.countdown) && (
+				<Text modifiers={[text.data, foregroundStyle(primary)]}>now</Text>
+			)}
+			{Countdown.isAnyOf(['Days'])(props.countdown) && props.countdown.days < 1 && (
 				<Text modifiers={[text.data, foregroundStyle(colors.foreground)]}>today</Text>
 			)}
-			{props.countdown._tag === 'Days' && props.countdown.days >= 1 && (
+			{Countdown.isAnyOf(['Days'])(props.countdown) && props.countdown.days >= 1 && (
 				<>
 					<Text
 						modifiers={[
@@ -104,7 +106,10 @@ function Gutter(props: {countdown: Countdown}) {
 						{props.countdown.days}
 					</Text>
 					<Text modifiers={[text.caption, foregroundStyle(colors.mutedForeground)]}>
-						{Boolean.match(props.countdown.days === 1, {onFalse: () => 'days', onTrue: () => 'day'})}
+						{Boolean.match(props.countdown.days === 1, {
+							onFalse: Function.constant('days'),
+							onTrue: Function.constant('day')
+						})}
 					</Text>
 				</>
 			)}
@@ -171,7 +176,7 @@ function BookingRow(props: {
 							<Button
 								label="Undo"
 								systemImage="arrow.uturn.backward"
-								onPress={() => send({_tag: 'Restored'})}
+								onPress={() => send(removal.events.Restored())}
 								modifiers={[labelStyle('iconOnly')]}
 							/>
 						</ItemActions>
@@ -206,7 +211,7 @@ function PastBookings(props: {
 				<BookingRow
 					key={booking.id}
 					booking={booking}
-					countdown={{_tag: 'SameDay'}}
+					countdown={Countdown.cases.SameDay.make({})}
 					now={props.now}
 					onOpen={props.onOpen}
 				/>
@@ -261,14 +266,18 @@ function Bookings(props: {onOpen: (id: Booking['id']) => void; searched: string}
 				</HStack>
 			)}
 			{adding && (
-				<ItemGroupSkeleton rows={1} descriptionLines={2} media={<Gutter countdown={{_tag: 'Days', days: 2}} />} />
+				<ItemGroupSkeleton
+					rows={1}
+					descriptionLines={2}
+					media={<Gutter countdown={Countdown.cases.Days.make({days: 2})} />}
+				/>
 			)}
 			{Array.isReadonlyArrayEmpty(bookings) && !adding && (
 				<Empty>
 					<EmptyAction
 						label="Paste Booking"
 						systemImage="doc.text"
-						onPress={() => paste({_tag: 'Returned'})}
+						onPress={() => paste(clipboard.events.Returned())}
 						tint={primary}
 					/>
 				</Empty>
@@ -284,7 +293,7 @@ function Bookings(props: {onOpen: (id: Booking['id']) => void; searched: string}
 								<BookingRow
 									key={booking.id}
 									booking={booking}
-									countdown={{_tag: 'Now'}}
+									countdown={Countdown.cases.Now.make({})}
 									now={now}
 									onOpen={props.onOpen}
 								/>
@@ -301,11 +310,11 @@ function Bookings(props: {onOpen: (id: Booking['id']) => void; searched: string}
 										ahead,
 										Array.get(position - 1),
 										Option.match({
-											onNone: () => ({_tag: 'Days', days: daysOf(booking)}) as const,
+											onNone: () => Countdown.cases.Days.make({days: daysOf(booking)}),
 											onSome: before =>
 												Boolean.match(daysOf(before) === daysOf(booking), {
-													onFalse: () => ({_tag: 'Days', days: daysOf(booking)}) as const,
-													onTrue: () => ({_tag: 'SameDay'}) as const
+													onFalse: () => Countdown.cases.Days.make({days: daysOf(booking)}),
+													onTrue: () => Countdown.cases.SameDay.make({})
 												})
 										})
 									)}
@@ -349,7 +358,11 @@ export function HomeRoute(props: {onOpen: (id: Booking['id']) => void}) {
 			<PasteSheet clipboard={clipboard}>
 				<Suspense
 					fallback={
-						<ItemGroupSkeleton rows={10} descriptionLines={2} media={<Gutter countdown={{_tag: 'Days', days: 2}} />} />
+						<ItemGroupSkeleton
+							rows={10}
+							descriptionLines={2}
+							media={<Gutter countdown={Countdown.cases.Days.make({days: 2})} />}
+						/>
 					}
 				>
 					<Bookings onOpen={props.onOpen} searched={searched} />

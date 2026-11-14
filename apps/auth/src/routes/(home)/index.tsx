@@ -10,8 +10,8 @@ import {Suspense} from 'react'
 import {Field, FieldError} from '@deslop/components-web/ui/field'
 import {InputGroup, InputGroupAddon, InputGroupInput} from '@deslop/components-web/ui/input-group'
 
-import {codeAtom, codeViewAtom, consentAtom, linkedCodeAtom, signInLabel} from '#lib/auth.ts'
-import type {CodeState, CodeView} from '#lib/auth.ts'
+import {CodeState, codeAtom, codeEvents, codeViewAtom, consentAtom, linkedCodeAtom, signInLabel} from '#lib/auth.ts'
+import type {CodeView} from '#lib/auth.ts'
 import {SignInList, SignInRowsSkeleton} from '#lib/components.tsx'
 import {CODE_LENGTH, typedCode} from '#services/sign-ins/lib/utils.ts'
 import type {PendingAuthorization} from '#services/sign-ins/schema.ts'
@@ -43,7 +43,7 @@ function Enter(props: {
 	typed: string
 }) {
 	const linked = route.useSearch({select: search => Option.isSome(search.code)})
-	const invalid = props.state._tag === 'Missing' || props.state._tag === 'Failed'
+	const invalid = CodeState.isAnyOf(['Missing', 'Failed'])(props.state)
 	return (
 		<section className="flex w-full flex-col gap-2">
 			<Field data-invalid={invalid}>
@@ -63,13 +63,15 @@ function Enter(props: {
 						autoComplete="off"
 						autoCapitalize="characters"
 						spellCheck={false}
-						disabled={props.state._tag === 'Checking'}
+						disabled={CodeState.isAnyOf(['Checking'])(props.state)}
 						aria-invalid={invalid}
 						aria-describedby="code-error"
 					/>
 				</InputGroup>
-				{props.state._tag === 'Missing' && <FieldError id="code-error">No waiting sign-in has this code.</FieldError>}
-				{props.state._tag === 'Failed' && <FieldError id="code-error">{props.state.message}</FieldError>}
+				{CodeState.isAnyOf(['Missing'])(props.state) && (
+					<FieldError id="code-error">No waiting sign-in has this code.</FieldError>
+				)}
+				{CodeState.isAnyOf(['Failed'])(props.state) && <FieldError id="code-error">{props.state.message}</FieldError>}
 			</Field>
 			{Option.match(props.answered, {
 				onNone: Function.constNull,
@@ -102,21 +104,25 @@ function Content(props: CodeView & {onType: (code: string) => void}) {
 			<h1 className="sr-only">Auth</h1>
 			<Enter answered={props.answered} onType={props.onType} state={props.state} typed={props.typed} />
 			<Suspense
-				fallback={<SignInRowsSkeleton pending={props.state._tag === 'Checking' || Option.isSome(props.pending)} />}
+				fallback={
+					<SignInRowsSkeleton pending={CodeState.isAnyOf(['Checking'])(props.state) || Option.isSome(props.pending)} />
+				}
 			>
-				<SignInList checking={props.state._tag === 'Checking'} pending={props.pending} />
+				<SignInList checking={CodeState.isAnyOf(['Checking'])(props.state)} pending={props.pending} />
 			</Suspense>
 		</>
 	)
 }
 
 function SignInsRoute() {
-	useAtomMount(linkedCodeAtom(route.useSearch({select: search => Option.getOrElse(search.code, () => '')})))
+	useAtomMount(
+		linkedCodeAtom(route.useSearch({select: search => Option.getOrElse(search.code, Function.constant(''))}))
+	)
 	// The answer outlives the card: the lookup can drop its request before the consent response arrives.
 	useAtomMount(consentAtom)
 	const send = useAtomSet(codeAtom.send)
 	function type(typed: string) {
-		send({_tag: 'Typed', typed})
+		send(codeEvents.Typed({typed}))
 	}
 	return Option.match(AsyncResult.value(useAtomValue(codeViewAtom)), {
 		onNone: Function.constNull,

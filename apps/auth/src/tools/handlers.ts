@@ -47,8 +47,8 @@ export const layerMcpOwner = Layer.unwrap(
 				Effect.mapError((error: AuthError) =>
 					McpSchema.McpErrorBase.make({
 						code: Boolean.match(error.error === 'temporarily_unavailable', {
-							onFalse: () => -32_001,
-							onTrue: () => -32_603
+							onFalse: Function.constant(-32_001),
+							onTrue: Function.constant(-32_603)
 						}),
 						message: error.message
 					})

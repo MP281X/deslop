@@ -69,11 +69,11 @@ function ChapterRow(props: {chapter: ChapterItem; onOpen: (number: ChapterNumber
 			<Item onPress={() => props.onOpen(props.chapter.number)}>
 				<ItemMedia>
 					<Cover
-						url={Option.getOrElse(Array.head(props.chapter.pages), () => '')}
+						url={Option.getOrElse(Array.head(props.chapter.pages), Function.constant(''))}
 						modifiers={[
 							frame({height: 68, width: 48}),
 							clipShape('roundedRectangle', radius),
-							opacity(Boolean.match(done, {onFalse: () => 1, onTrue: () => 0.45})),
+							opacity(Boolean.match(done, {onFalse: Function.constant(1), onTrue: Function.constant(0.45)})),
 							accessibilityHidden(true)
 						]}
 					/>
@@ -88,7 +88,10 @@ function ChapterRow(props: {chapter: ChapterItem; onOpen: (number: ChapterNumber
 					>{`Chapter ${props.chapter.number}`}</ItemTitle>
 					<ItemDescription>
 						{pipe(
-							[props.chapter.title, Option.match(props.chapter.postedAt, {onNone: () => '', onSome: dayOf})],
+							[
+								props.chapter.title,
+								Option.match(props.chapter.postedAt, {onNone: Function.constant(''), onSome: dayOf})
+							],
 							Array.filter(String.isNonEmpty),
 							Array.join(' · ')
 						)}
@@ -115,10 +118,10 @@ function ChapterRow(props: {chapter: ChapterItem; onOpen: (number: ChapterNumber
 			</Item>
 			<SwipeActions.Actions edge="leading">
 				<Button
-					label={Boolean.match(done, {onFalse: () => 'Read', onTrue: () => 'Unread'})}
+					label={Boolean.match(done, {onFalse: Function.constant('Read'), onTrue: Function.constant('Unread')})}
 					systemImage={Boolean.match(done, {
-						onFalse: () => 'checkmark.circle' as const,
-						onTrue: () => 'circle' as const
+						onFalse: Function.constant('checkmark.circle' as const),
+						onTrue: Function.constant('circle' as const)
 					})}
 					onPress={() =>
 						read({
@@ -126,7 +129,7 @@ function ChapterRow(props: {chapter: ChapterItem; onOpen: (number: ChapterNumber
 							number: props.chapter.number,
 							page: Boolean.match(done, {
 								onFalse: () => Number.max(props.chapter.pages.length - 1, 0),
-								onTrue: () => 0
+								onTrue: Function.constant(0)
 							}),
 							series: props.chapter.series
 						})

@@ -1,10 +1,25 @@
-import {Array, Boolean, DateTime, Duration, HashSet, Number, Option, Order, Record, Schema, String, pipe} from 'effect'
+import {
+	Array,
+	Boolean,
+	DateTime,
+	Duration,
+	Filter,
+	Function,
+	HashSet,
+	Number,
+	Option,
+	Order,
+	Record,
+	Schema,
+	String,
+	pipe
+} from 'effect'
 
 import {APP_HUES} from '@deslop/components-web/apps'
 
 import type {AppId} from '#services/inventory/schema.ts'
 import {chartWindow, resolution} from '#services/metrics/lib/utils.ts'
-import type {BandId, MachineHistory, Sample} from '#services/metrics/schema.ts'
+import type {AppSample, BandId, MachineHistory, Sample} from '#services/metrics/schema.ts'
 
 export type BandKind = typeof BandKind.Type
 const BandKind = Schema.Literals(['app', 'other', 'system'])
@@ -45,12 +60,10 @@ function total(
 function appSeries(history: MachineHistory) {
 	// One lookup per sample, so each app's series reads its entry directly.
 	const indexed = Array.map(history.samples, sample =>
-		Record.fromEntries(
-			pipe(
-				sample.apps,
-				Option.getOrElse(Array.empty),
-				Array.map(app => [app.id, app])
-			)
+		pipe(
+			sample.apps,
+			Option.getOrElse(Array.empty<AppSample>),
+			Record.fromIterableBy(app => app.id)
 		)
 	)
 	const ids = pipe(indexed, Array.flatMap(Record.keys), Array.dedupe)
@@ -66,7 +79,7 @@ function appSeries(history: MachineHistory) {
 			pipe(
 				Record.get(entries, id),
 				Option.flatMap(app => app.cpu),
-				Option.getOrElse(() => 0)
+				Option.getOrElse(Function.constant(0))
 			)
 		),
 		id,
@@ -81,7 +94,7 @@ function appSeries(history: MachineHistory) {
 }
 
 // Never above 5% of the machine's memory or CPU an app is barely visible at the chart's height, so it joins the one low-impact band.
-function lowImpactApp(app: {cpu: readonly number[]; memory: readonly number[]}) {
+function lowImpactApp(app: ReturnType<typeof appSeries>[number]) {
 	return peak(app.memory) < 5 && peak(app.cpu) < 5
 }
 
@@ -98,11 +111,10 @@ export function lowImpactIds(history: MachineHistory) {
 
 export function bands(history: MachineHistory) {
 	const apps = appSeries(history)
-	const lowImpact = Array.filter(apps, lowImpactApp)
-	const large = pipe(
-		apps,
-		Array.difference(lowImpact),
-		Array.sort(Order.mapInput(Order.flip(Order.Number), (app: {memory: number[]}) => peak(app.memory)))
+	const [lowImpact, remaining] = Array.partition(apps, Filter.fromPredicate(lowImpactApp))
+	const large = Array.sort(
+		remaining,
+		Order.mapInput(Order.flip(Order.Number), (app: ReturnType<typeof appSeries>[number]) => peak(app.memory))
 	)
 	const ranked = Array.map(
 		large,
@@ -127,7 +139,7 @@ export function bands(history: MachineHistory) {
 		...other,
 		{
 			cpu: Array.map(history.samples, (sample, index) =>
-				Number.max(0, Option.getOrElse(sample.cpu, () => 0) - total(apps, index, 'cpu'))
+				Number.max(0, Option.getOrElse(sample.cpu, Function.constant(0)) - total(apps, index, 'cpu'))
 			),
 			id: 'system' as const,
 			kind: 'system',
@@ -170,11 +182,11 @@ export function runs(history: MachineHistory, minutes: Duration.Duration, record
 							)
 						)
 					) || !recorded(sample),
-					{onFalse: () => 0, onTrue: () => 1}
+					{onFalse: Function.constant(0), onTrue: Function.constant(1)}
 				)
 			return [
 				{
-					run: run + Boolean.match(recorded(sample), {onFalse: () => 1, onTrue: () => 0}),
+					run: run + Boolean.match(recorded(sample), {onFalse: Function.constant(1), onTrue: Function.constant(0)}),
 					time: Option.some(sample.time)
 				},
 				{

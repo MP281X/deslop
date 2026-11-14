@@ -111,7 +111,7 @@ function Problem(props: {label: string; reset?: () => void; since?: DateTime.Utc
 			>
 				<StatusDot status="warning" />
 				<span aria-hidden className="text-muted-foreground font-mono tabular-nums">
-					{Option.getOrElse(AsyncResult.value(age), () => 'now')}
+					{AsyncResult.getOrElse(age, Function.constant('now'))}
 				</span>
 			</PopoverTrigger>
 			<PopoverContent ref={content} initialFocus={false} className="w-auto max-w-xs" align="end">

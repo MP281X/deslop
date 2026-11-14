@@ -39,8 +39,8 @@ export function impactGroups(rows: readonly Row[], history?: MachineHistory) {
 	})
 	const groups = Array.groupBy(rows, row =>
 		Boolean.match(row.item.health === 'quiet' && Option.exists(owner(row), id => HashSet.has(lowImpact, id)), {
-			onFalse: () => 'high' as const,
-			onTrue: () => 'low' as const
+			onFalse: Function.constant('high' as const),
+			onTrue: Function.constant('low' as const)
 		})
 	)
 	return {high: groups.high ?? [], low: groups.low ?? []}

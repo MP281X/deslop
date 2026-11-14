@@ -10,6 +10,7 @@ import {
 	Effect,
 	Equal,
 	Filter,
+	Function,
 	HashMap,
 	HashSet,
 	Layer,
@@ -224,7 +225,7 @@ export class Chapters extends Context.Service<Chapters>()('@deslop/opm/services/
 						Record.get(answer.chapters, target.chapter),
 						Option.flatMap(chapter => chapter.title),
 						Option.flatten,
-						Option.getOrElse(() => '')
+						Option.getOrElse(Function.constant(''))
 					)
 				)
 			})
@@ -433,7 +434,7 @@ export class Chapters extends Context.Service<Chapters>()('@deslop/opm/services/
 								)
 								const remaining = pipe(
 									answers,
-									Array.map(Result.getOrElse(() => 'retry' as const)),
+									Array.map(Result.getOrElse(Function.constant('retry' as const))),
 									Array.filter(outcome => outcome !== 'dead')
 								)
 								if (

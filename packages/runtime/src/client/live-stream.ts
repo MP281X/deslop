@@ -82,7 +82,8 @@ export function reconnectOnDrop<A, E, R>(stream: Stream.Stream<A, E, R>) {
 		Schedule.while($(Schedule.spaced('1 second')), metadata => {
 			if (Schema.is(AuthError)(metadata.input)) return metadata.input.error === 'temporarily_unavailable'
 			return (
-				Schema.is(RpcClientError.RpcClientError)(metadata.input) && metadata.input.reason._tag !== 'RpcClientDefect'
+				Schema.is(RpcClientError.RpcClientError)(metadata.input) &&
+				!Schema.is(RpcClientError.RpcClientDefect)(metadata.input.reason)
 			)
 		})
 	)

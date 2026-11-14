@@ -26,10 +26,10 @@ export class BookingsError extends Schema.TaggedError<BookingsError>()('Bookings
 export const IMAGE_BYTES = 4_000_000
 
 export type BookingSource = typeof BookingSource.Type
-export const BookingSource = Schema.Union([
-	Schema.TaggedStruct('text', {text: Schema.NonEmptyString.check(Schema.isMaxLength(60_000))}),
-	Schema.TaggedStruct('image', {image: Schema.Uint8Array.check(Schema.isMinLength(1), Schema.isMaxLength(IMAGE_BYTES))})
-])
+export const BookingSource = Schema.TaggedUnion({
+	image: {image: Schema.Uint8Array.check(Schema.isMinLength(1), Schema.isMaxLength(IMAGE_BYTES))},
+	text: {text: Schema.NonEmptyString.check(Schema.isMaxLength(60_000))}
+})
 
 export type BookingId = typeof BookingId.Type
 export const BookingId = pipe(Schema.String, Schema.check(Schema.isUUID()), Schema.brand('BookingId'))
@@ -158,7 +158,8 @@ export class Stay extends Model.Class<Stay>('Stay')({
 
 // What the server, the phone and the wire know a booking by: absent is `Option.none()` in code, NULL in the row and a missing key on the wire.
 export type Booking = typeof Booking.Type
-export const Booking = Model.Union([Flight, Train, Stay])
+export const BookingModel = Model.Union([Flight, Train, Stay])
+export const Booking = Schema.toTaggedUnion('_tag')(BookingModel)
 
 export type BookingList = readonly Booking[]
 
@@ -166,7 +167,7 @@ export type BookingsEvent = typeof BookingsEvent.Type
 export const BookingsEvent = Schema.Struct({
 	removed: Schema.Array(BookingId),
 	reset: Schema.Boolean,
-	upserted: Schema.Array(Booking.json)
+	upserted: Schema.Array(BookingModel.json)
 })
 
 export type Tone = typeof Tone.Type

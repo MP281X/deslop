@@ -24,6 +24,7 @@ import {ageOf, clockOf, compactCountOf, countOf, durationOf} from '@deslop/runti
 
 import {
 	Search,
+	NavigationEvent,
 	focusOf,
 	navigationOf,
 	nextSearch,
@@ -35,7 +36,7 @@ import {
 	traceAtom,
 	traceLabel
 } from '#lib/telemetry.ts'
-import type {ActiveOperation, NavigationEvent, OperationKey} from '#lib/telemetry.ts'
+import type {ActiveOperation, OperationKey} from '#lib/telemetry.ts'
 import {Flame, SpansSkeleton, TimeAxis} from '#routes/(home)/-flame.tsx'
 import {DetailSkeleton, OutsideMark, SpanDetail} from '#routes/(home)/-span.tsx'
 import icon from '#routes/icon.svg'
@@ -64,7 +65,7 @@ const KINDS: Record<Runtime, ReactElement> = {
 
 // One run or many, in the reader's words.
 function runsOf(n: number) {
-	return `${countOf(n)} ${Boolean.match(n === 1, {onFalse: () => 'runs', onTrue: () => 'run'})}`
+	return `${countOf(n)} ${Boolean.match(n === 1, {onFalse: Function.constant('runs'), onTrue: Function.constant('run')})}`
 }
 const route = getRouteApi('/(home)/')
 const RANGES = Array.map(Range.literals, value => ({label: value, value}))
@@ -132,7 +133,7 @@ function SourceTabs(props: {apps: Overview['apps']; source?: AppName}) {
 						<Link
 							to="/"
 							aria-label={app.name}
-							search={Schema.encodeSync(Search)(nextSearch(search, {_tag: 'Source', app: app.name}))}
+							search={Schema.encodeSync(Search)(nextSearch(search, NavigationEvent.cases.Source.make({app: app.name})))}
 							onClick={event => {
 								if (app.name === props.source) event.preventDefault()
 							}}
@@ -167,7 +168,10 @@ function OperationRow(props: {
 		<div role="listitem">
 			<Item
 				size="row"
-				data-selected={Boolean.match(props.active, {onFalse: Function.constUndefined, onTrue: () => 'true' as const})}
+				data-selected={Boolean.match(props.active, {
+					onFalse: Function.constUndefined,
+					onTrue: Function.constant('true' as const)
+				})}
 				render={
 					<button
 						type="button"
@@ -186,7 +190,7 @@ function OperationRow(props: {
 						)}
 						aria-current={Boolean.match(props.active, {
 							onFalse: Function.constUndefined,
-							onTrue: () => 'true' as const
+							onTrue: Function.constant('true' as const)
 						})}
 						onClick={props.onSelect}
 					/>
@@ -202,7 +206,10 @@ function OperationRow(props: {
 					<span
 						className={cn(
 							'grid items-center gap-x-3',
-							Boolean.match(props.failing, {onFalse: () => 'grid-cols-runs', onTrue: () => 'grid-cols-operation'})
+							Boolean.match(props.failing, {
+								onFalse: Function.constant('grid-cols-runs'),
+								onTrue: Function.constant('grid-cols-operation')
+							})
 						)}
 					>
 						{props.failing && (
@@ -292,7 +299,10 @@ function TraceListRow(props: {active: boolean; now: DateTime.Utc; onSelect: () =
 		<div role="listitem">
 			<Item
 				size="row"
-				data-selected={Boolean.match(props.active, {onFalse: Function.constUndefined, onTrue: () => 'true' as const})}
+				data-selected={Boolean.match(props.active, {
+					onFalse: Function.constUndefined,
+					onTrue: Function.constant('true' as const)
+				})}
 				render={
 					<button
 						type="button"
@@ -310,7 +320,7 @@ function TraceListRow(props: {active: boolean; now: DateTime.Utc; onSelect: () =
 						)}
 						aria-current={Boolean.match(props.active, {
 							onFalse: Function.constUndefined,
-							onTrue: () => 'true' as const
+							onTrue: Function.constant('true' as const)
 						})}
 						onClick={props.onSelect}
 					/>
@@ -494,8 +504,8 @@ function TracePane(props: {
 							onNone: () => (
 								<EmptyState
 									label={Boolean.match(props.detailOnly === true, {
-										onFalse: () => 'Select a trace',
-										onTrue: () => 'Select a span'
+										onFalse: Function.constant('Select a trace'),
+										onTrue: Function.constant('Select a span')
 									})}
 									icon={<ChartBarHorizontalIcon weight="light" />}
 								/>
@@ -654,7 +664,7 @@ function HomeRoute() {
 	const isWide = useAtomValue(mediaQueryAtom('(width >= 100rem)'))
 	const search = route.useSearch()
 	const navigate = route.useNavigate()
-	const range = Option.getOrElse(search.range, () => '1h' as const)
+	const range = Option.getOrElse(search.range, Function.constant('1h' as const))
 	const overview = useAtomValue(overviewAtom(range))
 	const refresh = useAtomRefresh(overviewAtom(range))
 	const value = AsyncResult.value(overview)
@@ -674,16 +684,22 @@ function HomeRoute() {
 	}
 
 	function selectOperation(app: AppName, operation: Operation) {
-		send({_tag: 'Operation', operation: {app, name: operation.name, runtime: operation.runtime}})
+		send(NavigationEvent.cases.Operation.make({operation: {app, name: operation.name, runtime: operation.runtime}}))
 	}
 
 	function selectTrace(trace: OperationTrace) {
-		Option.map(selection.activeKey, operation => send({_tag: 'Trace', selection: {operation, traceId: trace.id}}))
+		Option.map(selection.activeKey, operation =>
+			send(NavigationEvent.cases.Trace.make({selection: {operation, traceId: trace.id}}))
+		)
 	}
 
 	function selectSpan(id: SpanId) {
 		Option.map(Option.all({operation: selection.activeKey, trace: selection.activeTrace}), selected =>
-			send({_tag: 'Span', selection: {operation: selected.operation, spanId: id, traceId: selected.trace.id}})
+			send(
+				NavigationEvent.cases.Span.make({
+					selection: {operation: selected.operation, spanId: id, traceId: selected.trace.id}
+				})
+			)
 		)
 	}
 
@@ -691,11 +707,12 @@ function HomeRoute() {
 	function selectRange(next: Range) {
 		Option.match(value, {onNone: Function.constUndefined, onSome: current => setKnown(current.apps)})
 		const cutoff = rangeStart(next, now)
-		send({
-			_tag: 'Range',
-			keepTrace: Option.exists(selection.activeTrace, trace => DateTime.isGreaterThanOrEqualTo(trace.start, cutoff)),
-			range: next
-		})
+		send(
+			NavigationEvent.cases.Range.make({
+				keepTrace: Option.exists(selection.activeTrace, trace => DateTime.isGreaterThanOrEqualTo(trace.start, cutoff)),
+				range: next
+			})
+		)
 	}
 
 	const workspaceProps = {
@@ -728,22 +745,22 @@ function HomeRoute() {
 						back: {
 							label: pipe(
 								Match.value(pane),
-								Match.when('Span', () => 'Trace'),
-								Match.when('Trace', () => 'Traces'),
-								Match.orElse(() => 'Operations')
+								Match.when('Span', Function.constant('Trace')),
+								Match.when('Trace', Function.constant('Traces')),
+								Match.orElse(Function.constant('Operations'))
 							),
-							onClick: () => send({_tag: 'Back'})
+							onClick: () => send(NavigationEvent.cases.Back.make({}))
 						},
 						title: pipe(
 							Match.value(pane),
 							Match.when('Traces', () =>
 								Option.match(selection.activeOperation, {
-									onNone: () => 'Traces',
+									onNone: Function.constant('Traces'),
 									onSome: active => active.operation.name
 								})
 							),
-							Match.when('Span', () => 'Span'),
-							Match.orElse(() => 'Trace')
+							Match.when('Span', Function.constant('Span')),
+							Match.orElse(Function.constant('Trace'))
 						)
 					})
 				})}

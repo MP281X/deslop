@@ -112,12 +112,12 @@ const namedOf = Effect.fnUntraced(function* (name: string, question: Question) {
 })
 
 function answerSchema(questions: Named[]) {
-	return Schema.Struct(Record.fromEntries(Array.map(questions, named => [named.name, Schema.Boolean])))
+	return Schema.Struct(Record.fromIterableWith(questions, named => [named.name, Schema.Boolean]))
 }
 
 const promptOf = Effect.fnUntraced(function* (asked: Asked) {
 	const questions = yield* Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown))(
-		Record.fromEntries(Array.map(asked.questions, named => [named.name, named.prompt]))
+		Record.fromIterableWith(asked.questions, named => [named.name, named.prompt])
 	)
 	const state = yield* Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown))(asked.state)
 	return Prompt.make([

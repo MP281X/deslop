@@ -1,4 +1,4 @@
-import {Array, DateTime, Duration, Effect, Option, String, pipe} from 'effect'
+import {Array, DateTime, Duration, Effect, Function, Option, String, pipe} from 'effect'
 
 import {Atom} from 'effect/reactivity'
 import {geocodeAsync} from 'expo-location'
@@ -7,8 +7,8 @@ import {Linking} from 'react-native'
 import {alertFailure} from '@deslop/components-mobile/alerts'
 
 import {departureOf, stayAfter} from '#services/bookings/lib/utils.ts'
-import type {BookedPlace, Booking, BookingList, Place} from '#services/bookings/schema.ts'
-import {BookingsError} from '#services/bookings/schema.ts'
+import type {BookedPlace, BookingList, Place} from '#services/bookings/schema.ts'
+import {Booking, BookingsError} from '#services/bookings/schema.ts'
 
 export function placeLine(place: Place | BookedPlace) {
 	return pipe(
@@ -17,7 +17,7 @@ export function placeLine(place: Place | BookedPlace) {
 			pipe(
 				place.address,
 				Option.orElse(() => place.city),
-				Option.getOrElse(() => '')
+				Option.getOrElse(Function.constant(''))
 			)
 		],
 		Array.filter(String.isNonEmpty),
@@ -46,7 +46,7 @@ const coordinatesOf = Effect.fnUntraced(function* (place: Place | BookedPlace) {
 export type Ride = {label: string; place: Place | BookedPlace}
 
 export function ridesOf(booking: Booking, bookings: BookingList, now: DateTime.Utc) {
-	if (booking._tag === 'stay') return [{label: booking.name, place: booking.place}] satisfies Ride[]
+	if (Booking.isAnyOf(['stay'])(booking)) return [{label: booking.name, place: booking.place}] satisfies Ride[]
 	const stay = Option.map(
 		stayAfter(bookings, booking),
 		found => ({label: found.name, place: found.place}) satisfies Ride

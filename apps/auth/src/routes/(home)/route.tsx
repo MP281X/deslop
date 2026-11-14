@@ -27,13 +27,20 @@ const TabRoute = Schema.Literals(['/', '/people'])
 // Signed-in accounts see their sign-ins; admins also see people.
 function Tabs(props: {admin: boolean}) {
 	const matchRoute = useMatchRoute()
-	const tabs: {label: string; to: TabRoute}[] = [
-		{label: 'Sign-ins', to: '/'},
-		...Boolean.match(props.admin, {onFalse: () => [], onTrue: () => [{label: 'People', to: '/people' as const}]})
-	]
+	const tabs = pipe(
+		TabRoute.literals,
+		Array.filter(to => to === '/' || props.admin),
+		Array.map(to => ({
+			label: Boolean.match(to === '/', {onFalse: Function.constant('People'), onTrue: Function.constant('Sign-ins')}),
+			to
+		}))
+	)
 	return (
 		<AppBarTabs
-			value={Boolean.match(matchRoute({to: '/people'}) !== false, {onFalse: () => '/', onTrue: () => '/people'})}
+			value={Boolean.match(matchRoute({to: '/people'}) !== false, {
+				onFalse: Function.constant('/'),
+				onTrue: Function.constant('/people')
+			})}
 		>
 			{Array.map(tabs, tab => (
 				<AppBarTab key={tab.to} value={tab.to} render={<Link to={tab.to} />}>

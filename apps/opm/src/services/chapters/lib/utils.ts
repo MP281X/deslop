@@ -178,7 +178,7 @@ export function nameOf(title: string) {
 	const name = String.trim(String.replace(/^.*?(?:Chapter|OPM(?:\s+WC)?)\s+[\d.]+\s*[:–—-]?\s*/iu, '')(title))
 	return Option.match(String.match(/^(?:translated|english(?:\s+translations?)?|translations?|raw)$/iu)(name), {
 		onNone: () => name,
-		onSome: () => ''
+		onSome: Function.constant('')
 	})
 }
 
@@ -200,7 +200,7 @@ export function chaptersFromIndex(index: CubariSeries, kind: Series) {
 					revisedAt: Option.none(),
 					series: kind,
 					source: `https://cubari.moe/read/gist/${INDEXES[kind]}/${entry[0]}/1/`,
-					title: nameOf(Option.getOrElse(Option.flatten(entry[1].title), () => ''))
+					title: nameOf(Option.getOrElse(Option.flatten(entry[1].title), Function.constant('')))
 				})
 			),
 			Result.fromOption(Function.constUndefined)

@@ -1,4 +1,4 @@
-import {Array, Effect, Number, Option, Schema, Stream, String, pipe} from 'effect'
+import {Array, Effect, Function, Number, Option, Schema, Stream, String, pipe} from 'effect'
 
 import {ChildProcess} from 'effect/process'
 
@@ -48,7 +48,7 @@ function changedLines(header: string, body: string[]) {
 	const first = pipe(
 		String.match(HUNK_HEADER)(header),
 		Option.flatMap(found => Number.parse(found[1] ?? '')),
-		Option.getOrElse(() => 0)
+		Option.getOrElse(Function.constant(0))
 	)
 	const positions = Array.scan(body, {changed: Option.none<number>(), next: first}, (at, line) => {
 		if (String.startsWith('+')(line)) return {changed: Option.some(at.next), next: at.next + 1}

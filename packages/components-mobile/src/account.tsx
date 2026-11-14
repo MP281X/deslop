@@ -37,7 +37,7 @@ export function AccountMenu(props: {session: Session}) {
 					label="Sign Out"
 					systemImage="rectangle.portrait.and.arrow.right"
 					role="destructive"
-					onPress={() => send({_tag: 'SignOut'})}
+					onPress={() => send(props.session.events.SignOut())}
 				/>
 			</Section>
 		</Menu>

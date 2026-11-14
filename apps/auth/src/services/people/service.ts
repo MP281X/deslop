@@ -1,4 +1,4 @@
-import {Boolean, Context, DateTime, Effect, Layer, Option, Schema, Stream, String, Struct, pipe} from 'effect'
+import {Boolean, Context, DateTime, Effect, Function, Layer, Option, Schema, Stream, String, Struct, pipe} from 'effect'
 
 import {SecureRandom} from 'effect/crypto'
 import type {Headers} from 'effect/http'
@@ -251,8 +251,8 @@ export class People extends Context.Service<
 													name: profile.login,
 													since,
 													status: Boolean.match(isAdmin(admins, id), {
-														onFalse: () => 'Waiting' as const,
-														onTrue: () => 'Allowed' as const
+														onFalse: Function.constant('Waiting' as const),
+														onTrue: Function.constant('Allowed' as const)
 													})
 												})
 											),

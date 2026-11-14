@@ -1,6 +1,6 @@
 import {useAtom} from '@effect/atom-react'
 
-import {Boolean, Option, Redacted, Schema, String, pipe} from 'effect'
+import {Boolean, Function, Option, Redacted, Schema, String, pipe} from 'effect'
 
 import {AsyncResult} from 'effect/reactivity'
 import {useState} from 'react'
@@ -80,7 +80,7 @@ export function AddKeyDialog(props: {
 									autoFocus
 									required={Option.isNone(key)}
 									placeholder={Option.match(key, {
-										onNone: () => 'OpenCode Console service account key',
+										onNone: Function.constant('OpenCode Console service account key'),
 										onSome: current => `Leave empty to keep …${current.last4}`
 									})}
 									value={secret}
@@ -101,7 +101,7 @@ export function AddKeyDialog(props: {
 									placeholder={pipe(
 										key,
 										Option.flatMap(current => current.connectionUrl),
-										Option.getOrElse(() => 'https://opencode.ai/inference/custom/conn_…')
+										Option.getOrElse(Function.constant('https://opencode.ai/inference/custom/conn_…'))
 									)}
 									onChange={event => setUrl(event.target.value)}
 								/>
@@ -111,7 +111,7 @@ export function AddKeyDialog(props: {
 							<DialogFooter>
 								<DialogClose render={<Button variant="ghost" type="button" disabled={waiting} />}>Cancel</DialogClose>
 								<Button type="submit" disabled={waiting || invalidKey || invalidUrl}>
-									{Boolean.match(waiting, {onFalse: () => 'Save', onTrue: () => 'Saving…'})}
+									{Boolean.match(waiting, {onFalse: Function.constant('Save'), onTrue: Function.constant('Saving…')})}
 								</Button>
 							</DialogFooter>
 						</form>

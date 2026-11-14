@@ -1,10 +1,10 @@
-import {DateTime, Effect, Match, Option, Predicate, Schema, Stream, String, pipe} from 'effect'
+import {DateTime, Effect, Function, Match, Option, Predicate, Schema, Stream, String, pipe} from 'effect'
 
 import {startAuthentication, startRegistration} from '@simplewebauthn/browser'
 import {Machine} from '@typeonce/effect-machine'
 import {AtomMachine} from '@typeonce/effect-machine/reactivity'
 import {FetchHttpClient, HttpClient, HttpClientRequest, HttpClientResponse} from 'effect/http'
-import {AsyncResult, Atom, AtomRpc} from 'effect/reactivity'
+import {Atom, AtomRpc} from 'effect/reactivity'
 
 import {liveAtom, liveStream, reconnectOnDrop} from '@deslop/runtime/client/live-stream'
 import {AUTH_URL, AuthError} from '@deslop/runtime/shared/auth'
@@ -54,12 +54,13 @@ export const accountAtom = Atom.keepAlive(
 )
 
 const Answered = {accept: Schema.Boolean, request: PendingAuthorization}
+export const codeEvents = Machine.events({Answered, Typed: {typed: Schema.String}})
 
 // The code the waiting page shows, typed or opened from its link, proves the request is yours: RFC 8628's device flow.
 export const codeAtom = AtomMachine.bind(RpcClient.runtime).make(
 	Machine.make({
 		branches: {looked: {found: {target: 'Code.Found'}, missing: {target: 'Code.Missing'}}},
-		events: Machine.events({Answered, Typed: {typed: Schema.String}}),
+		events: codeEvents,
 		root: Machine.state({
 			states: {
 				// A full code reads its sign-in live, so a request answered elsewhere or expired leaves the list.
@@ -120,7 +121,7 @@ export const codeAtom = AtomMachine.bind(RpcClient.runtime).make(
 )
 
 export type CodeState = typeof CodeState.Type
-const CodeState = Schema.TaggedUnion({
+export const CodeState = Schema.TaggedUnion({
 	Checking: {},
 	Failed: {message: Schema.String},
 	Found: {},
@@ -135,37 +136,39 @@ export type CodeView = {
 	typed: string
 }
 
-export const codeViewAtom = Atom.map(
-	codeAtom.result,
-	AsyncResult.map(snapshot => {
-		if (snapshot.state.path === 'Typing') {
-			return {
-				answered: snapshot.state.value.answered,
-				pending: Option.none(),
-				state: {_tag: 'Typing'},
-				typed: snapshot.state.value.typed
-			} satisfies CodeView
-		}
-		const view = {answered: Option.none(), pending: Option.none(), typed: snapshot.state.value.code}
-		if (snapshot.state.state.path === 'Code.Found') {
-			return {
-				...view,
-				pending: Option.some(snapshot.state.state.value.request),
-				state: {_tag: 'Found'}
-			} satisfies CodeView
-		}
-		if (snapshot.state.state.path === 'Code.Failed') {
-			return {...view, state: {_tag: 'Failed', message: snapshot.state.state.value.message}} satisfies CodeView
-		}
-		if (snapshot.state.state.path === 'Code.Looking') return {...view, state: {_tag: 'Checking'}} satisfies CodeView
-		return {...view, state: {_tag: 'Missing'}} satisfies CodeView
-	})
-)
+export const codeViewAtom = Atom.mapResult(codeAtom.result, snapshot => {
+	if (snapshot.state.path === 'Typing') {
+		return {
+			answered: snapshot.state.value.answered,
+			pending: Option.none(),
+			state: CodeState.cases.Typing.make({}),
+			typed: snapshot.state.value.typed
+		} satisfies CodeView
+	}
+	const view = {answered: Option.none(), pending: Option.none(), typed: snapshot.state.value.code}
+	if (snapshot.state.state.path === 'Code.Found') {
+		return {
+			...view,
+			pending: Option.some(snapshot.state.state.value.request),
+			state: CodeState.cases.Found.make({})
+		} satisfies CodeView
+	}
+	if (snapshot.state.state.path === 'Code.Failed') {
+		return {
+			...view,
+			state: CodeState.cases.Failed.make({message: snapshot.state.state.value.message})
+		} satisfies CodeView
+	}
+	if (snapshot.state.state.path === 'Code.Looking') {
+		return {...view, state: CodeState.cases.Checking.make({})} satisfies CodeView
+	}
+	return {...view, state: CodeState.cases.Missing.make({})} satisfies CodeView
+})
 
 // Read each time the approve page opens, so returning to it from People does not bring back an answered code.
 export const linkedCodeAtom = Atom.family((code: string) =>
 	Atom.make(get => {
-		get.set(codeAtom.send, {_tag: 'Typed', typed: typedCode(code)})
+		get.set(codeAtom.send, codeEvents.Typed({typed: typedCode(code)}))
 	})
 )
 
@@ -222,7 +225,7 @@ export const consentAtom = RpcClient.runtime.fn((input: {accept: boolean; reques
 	pipe(
 		RpcClient,
 		Effect.flatMap(client => client('sign-ins.answer', {accept: input.accept, request: input.request.id})),
-		Effect.andThen(Effect.sync(() => get.set(codeAtom.send, {_tag: 'Answered', ...input})))
+		Effect.andThen(Effect.sync(() => get.set(codeAtom.send, codeEvents.Answered(input))))
 	)
 )
 
@@ -345,7 +348,7 @@ export const codeSignInAtom = Atom.fn((next: Search['next']) =>
 		try: () =>
 			location.assign(
 				Option.match(next, {
-					onNone: () => '/auth/code',
+					onNone: Function.constant('/auth/code'),
 					onSome: page => `/auth/code?${new URLSearchParams({next: page})}`
 				})
 			)

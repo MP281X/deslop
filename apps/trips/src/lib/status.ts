@@ -6,8 +6,8 @@ import {colors, hues} from '@deslop/components-mobile/theme'
 import {weekdayOf} from '@deslop/runtime/shared/format'
 
 import {clockAt, departureOf, labelled} from '#services/bookings/lib/utils.ts'
-import {Tone} from '#services/bookings/schema.ts'
-import type {Booking, Flight, FlightTracking, Train, TrainTracking} from '#services/bookings/schema.ts'
+import {Booking, Tone} from '#services/bookings/schema.ts'
+import type {Flight, FlightTracking, Train, TrainTracking} from '#services/bookings/schema.ts'
 import {isStale} from '#services/tracking/lib/utils.ts'
 
 // The day where the trip happens, in that place's zone.
@@ -48,11 +48,11 @@ type Problem = typeof Problem.Type
 const Problem = Schema.Struct({label: Schema.String, status: ProblemStatus, tone: ProblemTone})
 
 function statusLine(tone: StatusTone, where: Option.Option<string>) {
-	return {_tag: 'Status' as const, tone, where}
+	return Status.cases.Status.make({tone, where})
 }
 
 function problemLine(label: string, tone: ProblemTone, where: Option.Option<string>) {
-	return {_tag: 'Problem' as const, label, tone, where}
+	return Status.cases.Problem.make({label, tone, where})
 }
 
 function platformOf(live: TrainTracking) {
@@ -106,14 +106,14 @@ function flightStatus(flight: Flight, now: DateTime.Utc) {
 // Where the journey stands, with the gate or platform; old live data says when it was read rather than look current.
 export function statusOf(booking: Booking, now: DateTime.Utc) {
 	if (booking.status === 'cancelled') return problemLine('Cancelled', 'bad', Option.none())
-	if (booking._tag === 'stay') return statusLine('plain', Option.none())
-	if (booking._tag === 'train') return trainStatus(booking, now)
+	if (Booking.isAnyOf(['stay'])(booking)) return statusLine('plain', Option.none())
+	if (Booking.isAnyOf(['train'])(booking)) return trainStatus(booking, now)
 	return flightStatus(booking, now)
 }
 
 // Only a problem gets a dot: a delay, a cancellation, or a live answer that went stale with its age.
 export function problemOf(booking: Booking, status: Status, now: DateTime.Utc) {
-	if (booking._tag !== 'stay' && isStale(booking, now)) {
+	if (!Booking.isAnyOf(['stay'])(booking) && isStale(booking, now)) {
 		return Option.map<FlightTracking | TrainTracking, {label: string; status: 'warning'; tone: 'warn'}>(
 			booking.live,
 			live => ({

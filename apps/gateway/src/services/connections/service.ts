@@ -7,6 +7,7 @@ import {
 	Config,
 	Context,
 	Effect,
+	Function,
 	Layer,
 	Match,
 	Option,
@@ -30,7 +31,7 @@ import {
 import {SecureRandom} from 'effect/crypto'
 import {Base64Url} from 'effect/encoding'
 import type {Headers} from 'effect/http'
-import {FetchHttpClient, HttpClient, HttpClientRequest, HttpClientResponse} from 'effect/http'
+import {FetchHttpClient, HttpClient, HttpClientError, HttpClientRequest, HttpClientResponse} from 'effect/http'
 import {Reactivity} from 'effect/reactivity'
 import {Migrator, SqlClient, SqlModel, SqlSchema} from 'effect/sql'
 
@@ -45,7 +46,6 @@ import type {
 	ConnectionItem,
 	Discovery,
 	McpUsageReport,
-	OAuthClient,
 	TokenExchange,
 	ServerUrl,
 	ConnectionAddress,
@@ -59,6 +59,7 @@ import {
 	ConnectionState,
 	ConnectionGeneration,
 	OAuthState,
+	OAuthClient,
 	ServerId,
 	McpUsageServer,
 	Metadata,
@@ -348,11 +349,11 @@ export class Connections extends Context.Service<
 					}),
 					Effect.flatMap(request => http.execute(request)),
 					Effect.flatMap(HttpClientResponse.schemaBodyJson(Registration)),
-					Effect.map(found => ({_tag: 'Registered' as const, clientId: found.client_id}))
+					Effect.map(found => OAuthClient.cases.Registered.make({clientId: found.client_id}))
 				)
 			}
 			yield* connectable(metadata)
-			return {_tag: 'Document' as const}
+			return OAuthClient.cases.Document.make({})
 		})
 		const exchange = Effect.fnUntraced(function* (
 			connection: ConnectionAddress,
@@ -372,7 +373,10 @@ export class Connections extends Context.Service<
 				Effect.flatMap(HttpClientResponse.schemaBodyJson(Token)),
 				Effect.tapErrorTag('HttpClientError', cause => {
 					// Only 400 and 401 reject the grant itself; a rate limit or a timeout leaves it to the next try.
-					if (cause.reason._tag !== 'StatusCodeError' || !Array.contains([400, 401], cause.reason.response.status)) {
+					if (
+						!(cause.reason instanceof HttpClientError.StatusCodeError) ||
+						!Array.contains([400, 401], cause.reason.response.status)
+					) {
 						return Effect.void
 					}
 					return Option.match(spent, {
@@ -470,7 +474,10 @@ export class Connections extends Context.Service<
 					icons: serverIcons(found.info),
 					instructions: Option.fromUndefinedOr(found.instructions),
 					issuer: Option.none(),
-					mode: Boolean.match(own, {onFalse: () => 'public' as const, onTrue: () => 'deslop' as const}),
+					mode: Boolean.match(own, {
+						onFalse: Function.constant('public' as const),
+						onTrue: Function.constant('deslop' as const)
+					}),
 					name: pipe(
 						Option.fromUndefinedOr(found.info?.name),
 						Option.map(String.trim),
@@ -663,7 +670,7 @@ export class Connections extends Context.Service<
 					Effect.gen(function* () {
 						if (Option.isSome(params.error) || Option.isNone(params.code)) {
 							return yield* AuthError.make({
-								message: `The provider declined the connection (${Option.getOrElse(params.error, () => 'no code')})`
+								message: `The provider declined the connection (${Option.getOrElse(params.error, Function.constant('no code'))})`
 							})
 						}
 						// RFC 9700 §4.4.2: the answer must come from this server's authorization server, by its own callback or its issuer.
@@ -681,7 +688,7 @@ export class Connections extends Context.Service<
 									expectedIssuer: flow.metadata.issuer,
 									iss: Option.getOrUndefined(params.iss),
 									issParameterSupported:
-										flow.client._tag === 'Document' ||
+										OAuthClient.guards.Document(flow.client) ||
 										Option.contains(flow.metadata.authorization_response_iss_parameter_supported, true)
 								})
 						})

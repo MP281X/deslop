@@ -508,13 +508,14 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 								'declare const values: number[]',
 								'declare const offset: number',
 								'declare const span: Parameters<typeof Effect.withParentSpan>[1]',
+								'class Missing extends Schema.TaggedError<Missing>()("Missing", {}) {}',
 								'export function page(input: {offset: number; limit: number}) { return Array.take(Array.drop(values, input.offset), input.limit + 1) }',
 								'export const lazy = Effect.andThen(Effect.as(Effect.void, 1), Effect.sync(() => 2))',
 								'export const sleeping = Effect.andThen(Effect.as(Effect.void, 1), Effect.sleep("1 second"))',
 								'export const promised = Effect.andThen(Effect.as(Effect.void, 1), Effect.promise(async () => 2))',
 								'export const strings = Array.map(Array.filter(["a"], String.includes("a")), String.slice(0, 1))',
-								'export const caught = pipe(Effect.fail({_tag: "Missing"}), Effect.catchTag("Missing", error => Effect.succeed(error._tag)), Effect.as(1))',
-								'export const appliedCatch = Effect.catchTag("Missing", error => Effect.succeed(error._tag))(Effect.fail({_tag: "Missing"}))',
+								'export const caught = pipe(Effect.fail(Missing.make({})), Effect.catchTag("Missing", error => Effect.succeed(error._tag)), Effect.as(1))',
+								'export const appliedCatch = Effect.catchTag("Missing", error => Effect.succeed(error._tag))(Effect.fail(Missing.make({})))',
 								'export const traversed = pipe(values, Effect.forEach(value => Effect.succeed(value), {concurrency: "unbounded"}), Effect.as(1))',
 								'export const zipped = pipe(Effect.succeed(1), Effect.zip(Effect.succeed(2), {concurrent: true}), Effect.as(1))',
 								'export const appliedTraversal = Effect.forEach(value => Effect.succeed(value), {concurrency: "unbounded"})(values)',
@@ -539,7 +540,7 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 				assert.include(source, "Effect.catchTag('Missing', error => Effect.succeed(error._tag))")
 				assert.include(
 					source,
-					"export const appliedCatch = Effect.catchTag(Effect.fail({_tag: 'Missing'}), 'Missing', error =>"
+					"export const appliedCatch = Effect.catchTag(Effect.fail(Missing.make({})), 'Missing', error =>"
 				)
 				assert.include(source, "Effect.forEach(value => Effect.succeed(value), {concurrency: 'unbounded'})")
 				assert.include(source, 'Effect.zip(Effect.succeed(2), {concurrent: true})')
@@ -886,9 +887,9 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 							'declare const flag: boolean',
 							'export function bounded(text: string) { return Boolean.match(String.length(text) > 3, {onFalse: () => text, onTrue: () => String.slice(0, 3)(text)}) }',
 							'export function direct(text: string) { if (String.length(text) > 3) return String.slice(0, 3)(text); return text }',
-							'function label(done: boolean) { return Boolean.match(done, {onFalse: () => "Running", onTrue: () => "Done"}) }',
+							'function label(done: boolean) { return Boolean.match(done, {onFalse: Function.constant("Running"), onTrue: Function.constant("Done")}) }',
 							'export const labelled = label(flag)',
-							'export const generator = Effect.gen(function* () { yield* Effect.void; return Boolean.match(flag, {onFalse: () => "Running", onTrue: () => "Done"}) })',
+							'export const generator = Effect.gen(function* () { yield* Effect.void; return Boolean.match(flag, {onFalse: Function.constant("Running"), onTrue: Function.constant("Done")}) })',
 							'export const grouped = pipe(tags, Array.groupBy(tag => tag))',
 							'export const groupedFirst = Array.groupBy(tags, tag => tag)',
 							'export const mapped = Option.map(maybe, value => value)',
@@ -899,12 +900,12 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 							'export const trueOption: Option.Option<true> = Option.filter(maybeFlag, (value): value is true => value)',
 							'export const indexed = Array.map(tags, (tag, index) => tag + index)',
 							'export const expression = Array.map(tags, tag => Boolean.match(flag, {onFalse: () => tag, onTrue: () => String.toUpperCase(tag)}))',
-							'export function nested(done: boolean) { if (done) { return Boolean.match(flag, {onFalse: () => "Running", onTrue: () => "Done"}) } return "Other" }',
-							'export function methods(done: boolean) { return Boolean.match(done, {onFalse() { return "Running" }, onTrue() { return "Done" }}) }',
-							'export function computed(done: boolean) { return Boolean.match(done, {["onFalse"]: () => "Running", onTrue: () => "Done"}) }',
+							'export function nested(done: boolean) { if (done) { return Boolean.match(flag, {onFalse: Function.constant("Running"), onTrue: Function.constant("Done")}) } return "Other" }',
+							'export function methods(done: boolean) { return Boolean.match(done, {onFalse: Function.constant("Running"), onTrue: Function.constant("Done")}) }',
+							'export function computed(done: boolean) { return Boolean.match(done, {["onFalse"]: Function.constant("Running"), onTrue: Function.constant("Done")}) }',
 							'export function asynchronous(done: boolean) { return Boolean.match(done, {onFalse: async () => "Running", onTrue: async () => "Done"}) }',
-							'export function block(done: boolean) { return Boolean.match(done, {onFalse: () => { return "Running" }, onTrue: () => "Done"}) }',
-							'export function curried(done: boolean) { return pipe(done, Boolean.match({onFalse: () => "Running", onTrue: () => "Done"})) }',
+							'export function block(done: boolean) { return Boolean.match(done, {onFalse: Function.constant("Running"), onTrue: Function.constant("Done")}) }',
+							'export function curried(done: boolean) { return pipe(done, Boolean.match({onFalse: Function.constant("Running"), onTrue: Function.constant("Done")})) }',
 							'export function callbacks(done: boolean) { return Boolean.match(done, {onFalse: Function.constFalse, onTrue: Function.constTrue}) }',
 							'export const failures = Effect.gen(function* () {',
 							'  assert.strictEqual((yield* Effect.flip(load)).message, "gone")',
@@ -928,7 +929,6 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 					'@deslop/coding-standards(effect-call-form)',
 					'@deslop/coding-standards(effect-call-form)',
 					'@deslop/coding-standards(effect-call-form)',
-					'@deslop/coding-standards(no-pass-through-name)',
 					'@deslop/coding-standards(no-pass-through-name)',
 					'@deslop/coding-standards(no-pass-through-name)',
 					'@deslop/coding-standards(no-pass-through-name)',
@@ -2319,6 +2319,29 @@ export function maximumOf(values: readonly number[]) { return Array.reduce(value
 		)
 
 		testApi.effect(
+			'rejects hand-built tags and tag checks while accepting schema and library protocols',
+			Effect.fnUntraced(function* () {
+				const result = yield* lintSource({
+					'tags.ts': `import {Match, Schema, pipe} from 'effect'
+import {Sse} from 'effect/encoding'
+export type State = typeof State.Type
+export const State = Schema.TaggedUnion({Ready: {value: Schema.String}, Failed: {message: Schema.String}})
+export const created = State.cases.Ready.make({value: 'yes'})
+export const raw = {_tag: 'Ready', value: 'yes'} // reported
+export const quoted = {'_tag': 'Ready', value: 'yes'} // reported
+export function ready(state: State) { return state._tag === 'Ready' } // reported
+export function failed(state: State) { return 'Ready' !== state['_tag'] } // reported
+export function known(state: State) { return State.isAnyOf(['Ready', 'Failed'])(state) }
+export function titleOf(state: State) { return State.match(state, {Ready: readyState => readyState.value, Failed: failedState => failedState.message}) }
+export function matched(state: State) { return pipe(Match.value(state), Match.when({_tag: 'Ready', value: 'yes'}, readyState => readyState.value), Match.orElse(failedState => failedState._tag)) } // reported
+export const parser = Sse.makeParser(event => { if (event._tag === 'Event') return event.data; return event.duration })`
+				})
+				const lines = reportedLines(result, 'choices-are-schemas')
+				assert.deepStrictEqual(lines.reported, lines.marked)
+			})
+		)
+
+		testApi.effect(
 			'leaves redundant and duplicate union constituents to the compiler',
 			Effect.fnUntraced(function* () {
 				const result = yield* lintSource({
@@ -2409,7 +2432,7 @@ export type Unknown = 'ready' | unknown`
 				const valid = yield* lintSource({
 					'state-valid.ts': Array.join(
 						[
-							"import {MutableRef, Ref, Schema} from 'effect'",
+							"import {Function, MutableRef, Ref, Schema} from 'effect'",
 							"import * as EffectModules from 'effect'",
 							'',
 							"import {useState} from 'react'",
@@ -2424,7 +2447,7 @@ export type Unknown = 'ready' | unknown`
 							"export const namespace = EffectModules.MutableRef.make<string>('')",
 							'export const unsafe = Ref.makeUnsafe<number>(0)',
 							'export const [literal] = useState<true>(true)',
-							"export const [lazy] = useState<string>(() => '')",
+							"export const [lazy] = useState<string>(Function.constant(''))",
 							'MutableRef.set(inferred, "changed")'
 						],
 						'\n'
@@ -3348,7 +3371,7 @@ export type Unknown = 'ready' | unknown`
 							"export const piped = pipe(maybe, Option.fromNullishOr, Option.getOrElse(() => 'none')) // reported",
 							'export const wrapped = Option.getOrNull(Option.some(maybe)) // reported',
 							"export const curried = Option.getOrElse(() => 'none')(Option.fromNullishOr(maybe)) // reported",
-							'export const mapped = pipe(Option.fromNullishOr(maybe), Option.map(text => text.length), Option.getOrElse(() => 0))',
+							'export const mapped = pipe(Option.fromNullishOr(maybe), Option.map(text => text.length), Option.getOrElse(() => 0)) // reported',
 							"export const fallback = maybe ?? 'none'",
 							'export const copied = Schema.decodeSync(Item)(Schema.encodeSync(Item)(value))',
 							'export const converted = Schema.decodeSync(Other)(Schema.encodeSync(Item)(value))',

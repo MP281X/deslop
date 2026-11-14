@@ -1,6 +1,6 @@
 import {useAtomMount, useAtomSet} from '@effect/atom-react'
 
-import {Option} from 'effect'
+import {Function, Option} from 'effect'
 
 import {useMachineResult} from '@typeonce/effect-machine-react'
 import {AtomMachine} from '@typeonce/effect-machine/reactivity'
@@ -18,11 +18,11 @@ export function PasteSheet(props: {children: ReactNode; clipboard: Clipboard}) {
 		Option.none
 	)
 	const send = useAtomSet(props.clipboard.atom.send)
-	const kind = Option.match(offer, {onNone: () => 'link' as const, onSome: open => open.kind})
+	const kind = Option.match(offer, {onNone: Function.constant('link' as const), onSome: open => open.kind})
 	return (
 		<ClipboardDialog
 			confirm={props.clipboard.labels.confirm}
-			onAnswer={save => send({_tag: 'Answered', save})}
+			onAnswer={save => send(props.clipboard.events.Answered({save}))}
 			open={Option.isSome(offer)}
 			question={props.clipboard.labels.questions[kind]}
 		>

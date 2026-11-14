@@ -22,8 +22,8 @@ import {
 import {HttpClient, HttpClientRequest, HttpClientResponse} from 'effect/http'
 import {Migrator, SqlClient, SqlSchema} from 'effect/sql'
 
-import type {Booking, BookingId} from '#services/bookings/schema.ts'
-import {BookingsError, Flight, Train, TripNumber} from '#services/bookings/schema.ts'
+import type {BookingId} from '#services/bookings/schema.ts'
+import {Booking, BookingsError, Flight, Train, TripNumber} from '#services/bookings/schema.ts'
 import {Bookings} from '#services/bookings/service.ts'
 import {checkEvery, flightTracking, isDue, pickFlight, trainTracking} from '#services/tracking/lib/utils.ts'
 import {FaFlights, Lookups, VtRun, VtStatus} from '#services/tracking/schema.ts'
@@ -67,7 +67,7 @@ export class Tracking extends Context.Service<Tracking>()('@deslop/trips/service
 		const spend = pipe(
 			Effect.gen(function* () {
 				const month = String.slice(0, 7)(iso(yield* DateTime.now))
-				const calls = Option.match(yield* findLookups(month), {onNone: () => 0, onSome: row => row.calls})
+				const calls = Option.match(yield* findLookups(month), {onNone: Function.constant(0), onSome: row => row.calls})
 				if (calls >= MONTHLY_LOOKUPS) {
 					return yield* BookingsError.make({
 						message: `FlightAware's ${MONTHLY_LOOKUPS} lookups for ${month} are used up.`
@@ -170,10 +170,10 @@ export class Tracking extends Context.Service<Tracking>()('@deslop/trips/service
 		const attempts = yield* Ref.make(Record.empty<BookingId, DateTime.Utc>())
 
 		const observe = Effect.fnUntraced(function* (booking: Booking, now: DateTime.Utc) {
-			if (booking._tag === 'stay') return
+			if (Booking.isAnyOf(['stay'])(booking)) return
 			yield* Ref.update(attempts, Record.set(booking.id, now))
 			// A booking saved again meanwhile may name another service, so the answer replaces only the booking it was read for.
-			if (booking._tag === 'flight') {
+			if (Booking.isAnyOf(['flight'])(booking)) {
 				return yield* Option.match(yield* flight(booking, now), {
 					onNone: () => Effect.void,
 					onSome: live =>

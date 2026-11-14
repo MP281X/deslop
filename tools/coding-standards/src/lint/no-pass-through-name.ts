@@ -499,30 +499,70 @@ function componentIndirection(context: Context, node: ESTree.Function | ESTree.A
 	}
 }
 
-function compilerConstant(context: Context, node: ESTree.Node): boolean {
-	if (Predicate.isNullish(node.parent)) return false
-	if (node.parent.type === 'Property' && node.parent.parent.type === 'ObjectExpression') {
-		return compilerConstant(context, node.parent.parent)
-	}
-	return (
-		node.parent.type === 'CallExpression' &&
-		node.parent.callee.type === 'MemberExpression' &&
-		importedMember({context, importedName: 'Effect', node: node.parent.callee}) &&
-		Option.exists(memberName(node.parent.callee), method =>
-			Array.contains(['map', 'match', 'matchEffect', 'sync'], method)
-		)
-	)
-}
-
 function constantName(node: ESTree.Node) {
 	if (node.type === 'Identifier') return 'constUndefined'
 	if (node.type === 'Literal' && node.value === null) return 'constNull'
 	if (node.type === 'Literal' && node.value === true) return 'constTrue'
-	return 'constFalse'
+	if (node.type === 'Literal' && node.value === false) return 'constFalse'
+	return 'constant'
+}
+
+function fixedCallback(context: Context, node: ESTree.Function | ESTree.ArrowFunctionExpression, replacement: string) {
+	context.report({
+		fix: fixer => {
+			if (node.parent.type === 'Property' && node.parent.method) return undefined
+			return pipe(
+				effectImport({context, fixer, name: 'Function', node}),
+				Option.map(imports => [...imports, fixer.replaceText(node, replacement)]),
+				Option.getOrElse(() => [])
+			)
+		},
+		message: `Use ${replacement} for a fixed-value callback.`,
+		node
+	})
 }
 
 function unwrapped(node: ESTree.Node): ESTree.Node {
 	return Option.match(typeWrapped(node), {onNone: () => node, onSome: unwrapped})
+}
+
+function primitiveReturn(node: ESTree.Node) {
+	if (node.type === 'UnaryExpression') {
+		return (
+			Array.contains(['-', '+'], node.operator) &&
+			node.argument.type === 'Literal' &&
+			Predicate.isNumber(node.argument.value)
+		)
+	}
+	return (
+		node.type === 'Literal' &&
+		(node.value === null ||
+			Predicate.isString(node.value) ||
+			Predicate.isNumber(node.value) ||
+			Predicate.isBoolean(node.value) ||
+			Predicate.isBigInt(node.value))
+	)
+}
+
+function fixedReturn(context: Context, node: ESTree.Function | ESTree.ArrowFunctionExpression) {
+	const expression = returnedExpression(node)
+	if (Predicate.isNullish(expression)) {
+		if (node.body?.type === 'BlockStatement' && Array.isArrayEmpty(node.body.body)) {
+			return Option.some('Function.constVoid')
+		}
+		return Option.none<string>()
+	}
+	const returned = unwrapped(expression)
+	const undefinedValue =
+		returned.type === 'Identifier' &&
+		returned.name === 'undefined' &&
+		!Option.exists(variableFromScope({name: returned.name, scope: context.sourceCode.getScope(returned)}), variable =>
+			Array.isArrayNonEmpty(variable.defs)
+		)
+	if (!primitiveReturn(returned) && !undefinedValue) return Option.none<string>()
+	const replacement = constantName(returned)
+	if (replacement === 'constant') return Option.some(`Function.constant(${context.sourceCode.getText(expression)})`)
+	return Option.some(`Function.${replacement}`)
 }
 
 function runsOnce(node: ESTree.Node, statement: ESTree.Node): boolean {
@@ -729,29 +769,21 @@ export const noPassThroughName = defineRule({
 		function checkFunction(node: ESTree.Function | ESTree.ArrowFunctionExpression) {
 			if (
 				node.type !== 'FunctionDeclaration' &&
-				node.parent.type !== 'VariableDeclarator' &&
+				node.parent.type !== 'MethodDefinition' &&
+				!(node.parent.type === 'Property' && node.parent.kind !== 'init') &&
 				!node.async &&
 				!node.generator &&
 				Array.isArrayEmpty(node.params)
 			) {
-				const returned = returnedExpression(node)
-				const literal = returned?.type === 'Literal' && (returned.value === null || Predicate.isBoolean(returned.value))
-				const undefinedValue =
-					returned?.type === 'Identifier' &&
-					returned.name === 'undefined' &&
-					!Option.exists(variableOf(context, returned), variable => Array.isArrayNonEmpty(variable.defs))
-				if ((literal || undefinedValue) && !compilerConstant(context, node)) {
-					const replacement = constantName(returned)
-					context.report({
-						fix: fixer =>
-							pipe(
-								effectImport({context, fixer, name: 'Function', node}),
-								Option.map(imports => [...imports, fixer.replaceText(node, `Function.${replacement}`)]),
-								Option.getOrElse(() => [])
-							),
-						message: `Use Function.${replacement} for a fixed-value callback.`,
-						node
+				if (
+					Option.match(fixedReturn(context, node), {
+						onNone: Function.constFalse,
+						onSome: replacement => {
+							fixedCallback(context, node, replacement)
+							return true
+						}
 					})
+				) {
 					return
 				}
 			}
@@ -883,18 +915,28 @@ export const noPassThroughName = defineRule({
 		docs: {
 			examples: {
 				accepted: [
+					{
+						'sample.ts': `import {Array, Function} from 'effect'
+export const empty = Function.constVoid
+export const signed = Function.constant(-1)
+export function patterns() { return Array.makeBy(2, () => /a/gu) }`
+					},
 					{'sample.ts': 'export function doubleOf(value: number) { return value * 2 }'},
 					{'sample.tsx': 'export function Title(props: {title: string}) { return <span>{props.title}</span> }'},
 					{
 						'sample.ts': `import {Function, Option} from 'effect'
-export function defaults(value: Option.Option<boolean>) { return [Option.getOrElse(value, Function.constFalse), Option.getOrElse(value, Function.constTrue), Option.getOrElse(value, Function.constNull), Option.getOrElse(value, Function.constUndefined)] }`
+export function defaults(value: Option.Option<boolean>) { return [Option.getOrElse(value, Function.constFalse), Option.getOrElse(value, Function.constTrue), Option.getOrElse(value, Function.constNull), Option.getOrElse(value, Function.constUndefined), Option.getOrElse(value, Function.constant('')), Option.getOrElse(value, Function.constant(0))] }`
 					}
 				],
 				fixes: [
+					{
+						'sample.ts': `export const empty = () => {}
+export const signed = () => -1`
+					},
 					{'sample.ts': 'export function doubleOf(value: number) { const doubled = value * 2; return doubled }'},
 					{
 						'sample.ts': `import {Option} from 'effect'
-export function defaults(value: Option.Option<boolean>) { return [Option.getOrElse(value, () => false), Option.getOrElse(value, () => true), Option.getOrElse(value, () => null), Option.getOrElse(value, () => undefined)] }`
+export function defaults(value: Option.Option<boolean>) { return [Option.getOrElse(value, () => false), Option.getOrElse(value, () => true), Option.getOrElse(value, () => null), Option.getOrElse(value, () => undefined), Option.getOrElse(value, () => ''), Option.getOrElse(value, () => 0)] }`
 					}
 				]
 			}

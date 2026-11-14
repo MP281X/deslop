@@ -4,10 +4,12 @@ import {
 	DateTime,
 	Effect,
 	Fiber,
+	Function,
 	Layer,
 	MutableHashMap,
 	Option,
 	Redacted,
+	Result,
 	Schema,
 	Semaphore,
 	String,
@@ -186,7 +188,7 @@ export class Sessions extends Context.Service<
 							message: pipe(
 								yield* Effect.option(HttpClientResponse.schemaBodyJson(Refusal)(response)),
 								Option.flatMap(body => body.error_description),
-								Option.getOrElse(() => 'Auth refused the sign-in')
+								Option.getOrElse(Function.constant('Auth refused the sign-in'))
 							)
 						})
 					}
@@ -291,7 +293,7 @@ export class Sessions extends Context.Service<
 							const renewed = yield* Effect.result(
 								asAuthError('AI access is temporarily unavailable')(refreshed(session.idHash))
 							)
-							if (renewed._tag === 'Success') return Redacted.value(renewed.success.access)
+							if (Result.isSuccess(renewed)) return Redacted.value(renewed.success.access)
 							if (Schema.is(AuthError)(renewed.failure) && renewed.failure.error === 'temporarily_unavailable') {
 								return yield* renewed.failure
 							}

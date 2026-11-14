@@ -115,7 +115,7 @@ export class Auth extends Context.Service<
 							Effect.provideService(Jwks.Jwks, jwks),
 							Effect.provideService(Signature.Signature, signature),
 							Effect.mapError(cause => {
-								if (JoseError.isJoseError(cause) && cause.reason._tag === 'KeySetUnavailable') {
+								if (JoseError.isJoseError(cause) && cause.reason instanceof JoseError.KeySetUnavailable) {
 									return AuthError.make({
 										cause,
 										error: 'temporarily_unavailable',

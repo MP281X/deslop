@@ -31,14 +31,14 @@ function element($: CheerioAPI, input: {base: URL; inner: string; node: AnyNode;
 		Match.value(input.tag),
 		Match.when('li', () => {
 			const marker = Boolean.match($(input.node).parent().is('ol'), {
-				onFalse: () => '-',
+				onFalse: Function.constant('-'),
 				onTrue: () => `${$(input.node).index() + 1}.`
 			})
 			return `\n${String.repeat($(input.node).parents('ul, ol').length - 1)('  ')}${marker} ${text}`
 		}),
 		Match.when('pre', () => `\n\n\`\`\`\n${$(input.node).text()}\n\`\`\`\n\n`),
 		Match.when('code', () => `\`${text}\``),
-		Match.when('br', () => '\n'),
+		Match.when('br', Function.constant('\n')),
 		Match.when('tr', () => `\n${text}`),
 		Match.when(
 			name => name === 'td' || name === 'th',
@@ -140,7 +140,7 @@ export function pageText(html: string, url: URL) {
 									String.match(/(\d+)x\d+/u)(link.attr('sizes') ?? ''),
 									Option.flatMap(match => Array.get(match, 1)),
 									Option.flatMap(Number.parse),
-									Option.getOrElse(() => 0)
+									Option.getOrElse(Function.constant(0))
 								)
 							})),
 							Result.fromOption(Function.constUndefined)

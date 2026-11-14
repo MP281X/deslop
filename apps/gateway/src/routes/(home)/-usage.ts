@@ -1,4 +1,4 @@
-import {Array, Boolean, DateTime, Duration, HashMap, Option, pipe} from 'effect'
+import {Array, Boolean, DateTime, Duration, Function, HashMap, Option, pipe} from 'effect'
 
 import {usdOf} from '@deslop/runtime/shared/format'
 
@@ -8,7 +8,7 @@ import type {UsageRange} from '#services/usage/schema.ts'
 
 // `~` marks a figure that is estimated or missing a call's cost.
 function costOf(sum: AiUsageBreakdown) {
-	return `${Boolean.match(sum.estimatedCalls > 0 || sum.unknownCostCalls > 0, {onFalse: () => '', onTrue: () => '~'})}${usdOf(sum.costUsd)}`
+	return `${Boolean.match(sum.estimatedCalls > 0 || sum.unknownCostCalls > 0, {onFalse: Function.constant(''), onTrue: Function.constant('~')})}${usdOf(sum.costUsd)}`
 }
 
 // Each bucket of the period, filled with zero where nothing was recorded.
@@ -25,13 +25,7 @@ export function aiSeries(report: AiUsageReport, source: SpendSource, range: Usag
 			Array.map(bucket => [bucket.at, bucket.costUsd] as const)
 		)
 	)
-	return seriesOf(range, at =>
-		pipe(
-			costs,
-			HashMap.get(at),
-			Option.getOrElse(() => 0)
-		)
-	)
+	return seriesOf(range, at => pipe(costs, HashMap.get(at), Option.getOrElse(Function.constant(0))))
 }
 export function aiCost(report: AiUsageReport, source: SpendSource) {
 	return pipe(
@@ -47,7 +41,7 @@ export function serverSeries(report: readonly McpUsageServer[], id: ServerId, ra
 			Array.findFirst(row => row.id === id),
 			Option.flatMap(row => Array.findFirst(row.series, bucket => DateTime.Equivalence(bucket.at, at))),
 			Option.map(bucket => bucket.calls),
-			Option.getOrElse(() => 0)
+			Option.getOrElse(Function.constant(0))
 		)
 	)
 }

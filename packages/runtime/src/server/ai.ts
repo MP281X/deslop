@@ -21,8 +21,10 @@ const Refusal = Schema.fromJsonString(Schema.Struct({error: Schema.Struct({messa
 export function aiFailure(cause: unknown) {
 	if (Schema.is(AiUnavailableError)(cause)) return Option.some(cause.message)
 	if (!AiError.isAiError(cause)) return Option.none()
-	if (cause.reason._tag === 'NetworkError') return Option.some(cause.reason.description ?? cause.reason.message)
-	if (cause.reason._tag === 'UnknownError' && cause.reason.http?.body !== undefined) {
+	if (Schema.is(AiError.NetworkError)(cause.reason)) {
+		return Option.some(cause.reason.description ?? cause.reason.message)
+	}
+	if (Schema.is(AiError.UnknownError)(cause.reason) && cause.reason.http?.body !== undefined) {
 		return Option.map(Schema.decodeOption(Refusal)(cause.reason.http.body), body => body.error.message)
 	}
 	return Option.some(cause.reason.message)

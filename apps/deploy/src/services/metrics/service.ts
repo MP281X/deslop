@@ -14,6 +14,7 @@ import {
 	Layer,
 	Number,
 	Option,
+	Predicate,
 	Record,
 	Ref,
 	Schedule,
@@ -173,7 +174,7 @@ export class Metrics extends Context.Service<Metrics>()('@deslop/deploy/services
 							{concurrency: 'unbounded'}
 						),
 						Effect.catchTag('PlatformError', cause => {
-							if (cause.reason._tag === 'NotFound') return Effect.undefined
+							if (Predicate.isTagged(cause.reason, 'NotFound')) return Effect.undefined
 							return Effect.fail(cause)
 						}),
 						Effect.flatMap(stats => {

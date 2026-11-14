@@ -1,7 +1,21 @@
 import {SqliteClient} from '@effect/sql-sqlite-node'
 import {assert, it} from '@effect/vitest'
 
-import {Array, Boolean, Effect, Layer, Option, Order, Predicate, Record, Schema, SchemaAST, String, pipe} from 'effect'
+import {
+	Array,
+	Boolean,
+	Effect,
+	Function,
+	Layer,
+	Option,
+	Order,
+	Predicate,
+	Record,
+	Schema,
+	SchemaAST,
+	String,
+	pipe
+} from 'effect'
 
 import type {Migrator, SqlError} from 'effect/sql'
 import {SqlClient} from 'effect/sql'
@@ -71,7 +85,12 @@ function columnOf(ast: SchemaAST.AST): {readonly nullable: boolean; readonly typ
 	if (SchemaAST.isLiteral(ast)) {
 		return {
 			nullable: false,
-			types: [Boolean.match(Predicate.isString(ast.literal), {onFalse: () => 'INTEGER', onTrue: () => 'TEXT'})]
+			types: [
+				Boolean.match(Predicate.isString(ast.literal), {
+					onFalse: Function.constant('INTEGER'),
+					onTrue: Function.constant('TEXT')
+				})
+			]
 		}
 	}
 	if (SchemaAST.isNumber(ast)) {
@@ -79,7 +98,10 @@ function columnOf(ast: SchemaAST.AST): {readonly nullable: boolean; readonly typ
 			ast.checks ?? [],
 			check => check.annotations?.representation?.id === 'effect/schema/isInt'
 		)
-		return {nullable: false, types: [Boolean.match(integer, {onFalse: () => 'REAL', onTrue: () => 'INTEGER'})]}
+		return {
+			nullable: false,
+			types: [Boolean.match(integer, {onFalse: Function.constant('REAL'), onTrue: Function.constant('INTEGER')})]
+		}
 	}
 	return {nullable: false, types: [`unknown ${ast._tag}`]}
 }

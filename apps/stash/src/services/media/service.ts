@@ -8,6 +8,7 @@ import {
 	Duration,
 	Effect,
 	FileSystem,
+	Function,
 	Layer,
 	Number,
 	Option,
@@ -77,7 +78,7 @@ const transcriptOf = Effect.fnUntraced(function* (
 			message: `Audio chunk has no usable answer (${pipe(
 				candidate,
 				Option.flatMap(value => value.finishReason),
-				Option.getOrElse(() => 'missing or blocked')
+				Option.getOrElse(Function.constant('missing or blocked'))
 			)})`
 		})
 	}
@@ -178,7 +179,7 @@ export class Media extends Context.Service<
 						)
 					}),
 					{
-						times: Boolean.match(Option.isSome(exit), {onFalse: () => 0, onTrue: () => 2}),
+						times: Boolean.match(Option.isSome(exit), {onFalse: Function.constant(0), onTrue: Function.constant(2)}),
 						while: result => result.exitCode !== 0 && isBlocked(result.stderr)
 					}
 				)

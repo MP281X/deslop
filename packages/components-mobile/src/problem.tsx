@@ -1,6 +1,6 @@
 import {useAtomValue} from '@effect/atom-react'
 
-import {Boolean, DateTime, Effect, Option, Stream} from 'effect'
+import {Boolean, DateTime, Effect, Function, Stream} from 'effect'
 
 import {Button, HStack, Image, Menu, Section, Text} from '@expo/ui/swift-ui'
 import {accessibilityLabel, buttonStyle, foregroundStyle, frame, menuIndicator} from '@expo/ui/swift-ui/modifiers'
@@ -42,8 +42,8 @@ export function Problem(props: {label: string; onRetry: () => void; saved?: bool
 					})}
 					<Text modifiers={[text.data, foregroundStyle(colors.mutedForeground)]}>
 						{Boolean.match(props.saved === true, {
-							onFalse: () => Option.getOrElse(AsyncResult.value(age), () => 'now'),
-							onTrue: () => 'Saved copy'
+							onFalse: () => AsyncResult.getOrElse(age, Function.constant('now')),
+							onTrue: Function.constant('Saved copy')
 						})}
 					</Text>
 				</HStack>

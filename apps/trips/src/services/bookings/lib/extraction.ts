@@ -1,12 +1,12 @@
-import {Clock, Context, DateTime, Effect, Layer, Option, Redacted, Schema} from 'effect'
+import {Clock, Context, DateTime, Effect, Function, Layer, Option, Redacted, Schema} from 'effect'
 
 import type {HttpClient} from 'effect/http'
 
 import {AiGateway, AiUnavailableError, aiFailure} from '@deslop/runtime/server/ai'
 import type {UserId} from '@deslop/runtime/shared/auth'
 
-import type {BookingSource, ExtractedItems} from '#services/bookings/schema.ts'
-import {BookingsError, Extraction} from '#services/bookings/schema.ts'
+import type {ExtractedItems} from '#services/bookings/schema.ts'
+import {BookingSource, BookingsError, Extraction} from '#services/bookings/schema.ts'
 
 const INSTRUCTIONS = `You read a booking confirmation or a screenshot of one and list the travel reservations it confirms, for an app that tracks the owner's flights, trains and stays in real time.
 
@@ -44,7 +44,7 @@ export class Extractor extends Context.Service<
 						)
 						const today = `Today: ${DateTime.formatIsoDateUtc(DateTime.makeUnsafe(yield* Clock.currentTimeMillis))}`
 						function content() {
-							if (source._tag === 'image') {
+							if (BookingSource.guards.image(source)) {
 								return [
 									{data: source.image, mediaType: 'image/jpeg', type: 'file' as const},
 									{text: today, type: 'text' as const}
@@ -67,7 +67,7 @@ export class Extractor extends Context.Service<
 					Effect.mapError(cause =>
 						BookingsError.make({
 							cause: Redacted.make(cause),
-							message: Option.getOrElse(aiFailure(cause), () => 'The AI could not read the booking.')
+							message: Option.getOrElse(aiFailure(cause), Function.constant('The AI could not read the booking.'))
 						})
 					)
 				)

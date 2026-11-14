@@ -56,7 +56,7 @@ const byRelease = Order.mapInput(Order.Array(Order.Number), (version: ReleaseVer
 	pipe(
 		version,
 		String.split('.'),
-		Array.map(part => Option.getOrElse(Number.parse(part), () => 0))
+		Array.map(part => Option.getOrElse(Number.parse(part), Function.constant(0)))
 	)
 )
 
@@ -131,11 +131,9 @@ function primitiveOf(value: unknown) {
 
 // OTLP's attribute list as one object, each primitive unwrapped; an array or map keeps the shape OTLP sent.
 function attributesOf(attributes: readonly Attribute[]) {
-	return Record.fromEntries(
-		Array.map(
-			attributes,
-			attribute => [attribute.key, Option.getOrElse(primitiveOf(attribute.value), () => attribute.value)] as const
-		)
+	return Record.fromIterableWith(
+		attributes,
+		attribute => [attribute.key, Option.getOrElse(primitiveOf(attribute.value), () => attribute.value)] as const
 	)
 }
 
@@ -154,7 +152,7 @@ function resourceText(resource: Option.Option<Resource>, key: string) {
 
 // Effect names an HTTP span by its method alone: its route, or a client's path, says which request it was; unrouted server hits, mostly scanners, share one name. A machine step is named for its source.
 function spanName(span: ExportedSpan, attributes: Attributes) {
-	const name = Option.getOrElse(span.name, () => '')
+	const name = Option.getOrElse(span.name, Function.constant(''))
 	if (name === '') return name
 	if (name === 'Machine.invoke') {
 		const source = textOf(attributes, 'machine.invoke.source')
@@ -205,13 +203,13 @@ export function senderOf(resource: Option.Option<Resource>) {
 		runtime: pipe(
 			resourceText(resource, 'scope.runtime'),
 			Option.filter(Schema.is(Runtime)),
-			Option.getOrElse(() => 'unknown' as const)
+			Option.getOrElse(Function.constant('unknown' as const))
 		),
 		service: ServiceName.make(
 			pipe(
 				resourceText(resource, 'service.name'),
 				Option.filter(String.isNonEmpty),
-				Option.getOrElse(() => 'unknown')
+				Option.getOrElse(Function.constant('unknown'))
 			)
 		),
 		version: pipe(
@@ -314,11 +312,11 @@ export function spansOf(payload: TracesRequest) {
 									spanId,
 									start: instantOf(span.startTimeUnixNano),
 									status: Boolean.match(failed, {
-										onFalse: () => 'ok' as const,
+										onFalse: Function.constant('ok' as const),
 										onTrue: () =>
 											Boolean.match(deniedSpan(attributes, exceptions), {
-												onFalse: () => 'failed' as const,
-												onTrue: () => 'denied' as const
+												onFalse: Function.constant('failed' as const),
+												onTrue: Function.constant('denied' as const)
 											})
 									}),
 									traceId
@@ -350,7 +348,7 @@ export function logOf(sender: ReturnType<typeof senderOf>, log: ExportedLog, id:
 		...sender,
 		attributes: attributesOf(Option.getOrElse(log.attributes, Array.empty)),
 		id,
-		message: Option.match(log.body, {onNone: () => '', onSome: body => Array.join(leaves(body), ' ')}),
+		message: Option.match(log.body, {onNone: Function.constant(''), onSome: body => Array.join(leaves(body), ' ')}),
 		receivedAt: Model.Override(receivedAt),
 		severity: severityOf(log.severityNumber, log.severityText),
 		spanId: Option.map(log.spanId, value => SpanId.make(String.toLowerCase(value))),
@@ -540,7 +538,7 @@ function linkedParents(spans: readonly Span[], links: readonly SpanLink[]) {
 export function traceTree(id: TraceId, spans: readonly Span[], logs: readonly Log[], links: readonly SpanLink[]) {
 	const ordered = Array.sort(spans, byStart)
 	const indexed = Array.map(ordered, (span, index) => ({index, span}))
-	const byId = Record.fromEntries(Array.map(indexed, item => [item.span.spanId, item] as const))
+	const byId = Record.fromIterableBy(indexed, item => item.span.spanId)
 	const linked = linkedParents(ordered, links)
 	function parentOf(span: Span) {
 		return pipe(

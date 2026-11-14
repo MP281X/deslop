@@ -1,4 +1,4 @@
-import {Array, DateTime, Duration, Number, Option, Order, Record, Schema, String, Struct, pipe} from 'effect'
+import {Array, DateTime, Duration, Function, Number, Option, Order, Record, Schema, String, Struct, pipe} from 'effect'
 
 import type {AppId} from '#services/inventory/schema.ts'
 import {CpuCounters, LoadAverages} from '#services/metrics/schema.ts'
@@ -33,7 +33,7 @@ export function counters(stat: string, uptime: string, time: DateTime.Utc) {
 			stat,
 			String.split('\n'),
 			Array.head,
-			Option.getOrElse(() => ''),
+			Option.getOrElse(Function.constant('')),
 			String.trim,
 			String.split(/\s+/u),
 			Array.drop(1),
@@ -110,7 +110,7 @@ export function vmStatMemory(text: string, total: number) {
 		pipe(
 			String.match(/page size of ([0-9]+) bytes/u)(text),
 			Option.map(match => match[1] ?? ''),
-			Option.getOrElse(() => '')
+			Option.getOrElse(Function.constant(''))
 		)
 	)
 	function count(name: string) {
@@ -183,15 +183,13 @@ export function sample(
 	previous: Option.Option<Counters>,
 	load: Option.Option<string>
 ) {
-	const values = Record.fromEntries(
-		pipe(
-			String.trim(memory),
-			String.split('\n'),
-			Array.map(line => {
-				const fields = String.split(line, /\s+/u)
-				return [fields[0], Schema.decodeSync(Schema.FiniteFromString)(fields[1] ?? '') * 1024] as const
-			})
-		)
+	const values = pipe(
+		String.trim(memory),
+		String.split('\n'),
+		Record.fromIterableWith(line => {
+			const fields = String.split(line, /\s+/u)
+			return [fields[0], Schema.decodeSync(Schema.FiniteFromString)(fields[1] ?? '') * 1024] as const
+		})
 	)
 	return reading(
 		current,
@@ -207,7 +205,7 @@ export function sample(
 		),
 		Schema.decodeSync(LoadAverages)(
 			pipe(
-				Option.getOrElse(load, () => ''),
+				Option.getOrElse(load, Function.constant('')),
 				String.trim,
 				String.split(/\s+/u),
 				Array.filter(String.isNonEmpty),
@@ -251,12 +249,10 @@ function merge(bucket: Array.NonEmptyReadonlyArray<Sample>) {
 	if (bucket.length === 1) return bucket[0]
 	const reported = Array.filter(bucket, point => Option.isSome(point.apps))
 	const appsById = Array.map(reported, point =>
-		Record.fromEntries(
-			pipe(
-				point.apps,
-				Option.getOrElse(Array.empty),
-				Array.map(app => [app.id, app] as const)
-			)
+		pipe(
+			point.apps,
+			Option.getOrElse(Array.empty<AppSample>),
+			Record.fromIterableBy(app => app.id)
 		)
 	)
 	// An app missing from a point that reported apps used nothing then; one just started has no CPU reading yet.
@@ -287,7 +283,7 @@ function merge(bucket: Array.NonEmptyReadonlyArray<Sample>) {
 							id,
 							memory: pipe(
 								appMean(id, app => Option.some(app.memory)),
-								Option.getOrElse(() => 0),
+								Option.getOrElse(Function.constant(0)),
 								Number.round(0)
 							)
 						})
@@ -352,7 +348,7 @@ export function bandName(id: BandId, labels: Record<AppId, string>) {
 
 // A cgroup whose whole subtree is one app: a service other than a user manager, a Docker container's scope, or the slice a user manager names `app-<name>.slice` for what its sibling `<name>.service` starts, like T3 Code's agents; a template's instances share such a slice without that sibling, so it's walked into.
 export function appCgroup(path: string, siblings: readonly string[]) {
-	const name = Option.getOrElse(Array.last(String.split(path, '/')), () => '')
+	const name = Option.getOrElse(Array.last(String.split(path, '/')), Function.constant(''))
 	if (Option.isSome(String.match(/^docker-[a-f0-9]{12,64}\.scope$/u)(name))) return true
 	if (String.endsWith('.service')(name)) return Option.isNone(String.match(/^user@[0-9]+\.service$/u)(name))
 	return Option.exists(String.match(/\/user@[0-9]+\.service\/app\.slice\/app-([^/]+)\.slice$/u)(path), match =>
@@ -444,15 +440,13 @@ function diskTotal(machine: MachineHistory) {
 function series(machine: MachineHistory, minutes: Duration.Duration, read: (sample: Sample) => Option.Option<number>) {
 	const start = chartWindow(minutes, machine.time).start
 	const slot = resolution(minutes)
-	const bySlot = Record.fromEntries(
-		Array.map(
-			machine.samples,
-			point =>
-				[
-					`${Number.clamp(Math.ceil(Duration.toMillis(DateTime.distance(start, point.time)) / Duration.toMillis(slot)) - 1, {maximum: 59, minimum: 0})}`,
-					point
-				] as const
-		)
+	const bySlot = Record.fromIterableWith(
+		machine.samples,
+		point =>
+			[
+				`${Number.clamp(Math.ceil(Duration.toMillis(DateTime.distance(start, point.time)) / Duration.toMillis(slot)) - 1, {maximum: 59, minimum: 0})}`,
+				point
+			] as const
 	)
 	return Array.makeBy(60, index =>
 		pipe(

@@ -1,4 +1,4 @@
-import {Array, DateTime, Duration, Effect, HashSet, Option, String, pipe} from 'effect'
+import {Array, DateTime, Duration, Effect, Function, HashSet, Option, String, pipe} from 'effect'
 
 import {AsyncResult, Atom} from 'effect/reactivity'
 import {
@@ -14,8 +14,8 @@ import {bookingsAtom} from '#lib/bookings.ts'
 import {BOOKING_LINK, linkOf} from '#lib/deep-links.ts'
 import {placeLine} from '#lib/rides.ts'
 import {arrivalOf, departureOf, endOf, labelled, titleOf} from '#services/bookings/lib/utils.ts'
-import type {Booking, BookingList, Flight, Train} from '#services/bookings/schema.ts'
-import {BookingsError} from '#services/bookings/schema.ts'
+import type {BookingList, Flight, Train} from '#services/bookings/schema.ts'
+import {Booking, BookingsError} from '#services/bookings/schema.ts'
 
 const CALENDAR = 'Trips'
 // The calendar takes one hex, so it copies the dark value of the app's orange.
@@ -23,17 +23,17 @@ const COLOR = '#ffa066'
 
 function notesOf(journey: Flight | Train) {
 	const known = [labelled('Confirmation', journey.confirmation), labelled('Seat', journey.seat)]
-	if (journey._tag === 'flight') return Array.join(Array.getSomes(known), '\n')
+	if (Booking.isAnyOf(['flight'])(journey)) return Array.join(Array.getSomes(known), '\n')
 	return Array.join(Array.getSomes([...known, labelled('Coach', journey.coach)]), '\n')
 }
 
 function eventOf(booking: Booking) {
-	if (booking._tag === 'stay') {
+	if (Booking.isAnyOf(['stay'])(booking)) {
 		return {
 			alarms: [{relativeOffset: -3 * 60}],
 			endDate: DateTime.toDateUtc(booking.checkOut),
 			location: Option.getOrElse(booking.place.address, () => booking.name),
-			notes: Option.getOrElse(labelled('Confirmation', booking.confirmation), () => ''),
+			notes: Option.getOrElse(labelled('Confirmation', booking.confirmation), Function.constant('')),
 			startDate: DateTime.toDateUtc(booking.checkIn),
 			timeZone: booking.place.timeZone,
 			title: booking.name

@@ -1,4 +1,4 @@
-import {Boolean, DateTime, Duration, Effect, Schedule, Stream, pipe} from 'effect'
+import {Boolean, DateTime, Duration, Effect, Function, Schedule, Stream, pipe} from 'effect'
 
 import {type Period, type UsageRange, periodRange} from '#services/usage/schema.ts'
 
@@ -7,7 +7,13 @@ export function usageWindow<A, E, R>(period: Period, watch: (range: UsageRange) 
 	return pipe(
 		Stream.fromEffectSchedule(
 			Effect.void,
-			Schedule.cron(Boolean.match(period === '24h', {onFalse: () => '0 0 * * *', onTrue: () => '0 * * * *'}), 'UTC')
+			Schedule.cron(
+				Boolean.match(period === '24h', {
+					onFalse: Function.constant('0 0 * * *'),
+					onTrue: Function.constant('0 * * * *')
+				}),
+				'UTC'
+			)
 		),
 		// Only parsing the fixed cron expressions can fail here, not reading a report below.
 		Stream.orDie,
@@ -21,10 +27,7 @@ export function usageWindow<A, E, R>(period: Period, watch: (range: UsageRange) 
 						Stream.changes,
 						Stream.buffer({capacity: 1, strategy: 'sliding'}),
 						Stream.flatMap(report =>
-							Stream.concat(
-								Stream.succeed({range, report}),
-								Stream.drain(Stream.fromEffect(Effect.sleep(Duration.seconds(1))))
-							)
+							Stream.concat(Stream.succeed({range, report}), Stream.fromEffectDrain(Effect.sleep(Duration.seconds(1))))
 						)
 					)
 				})

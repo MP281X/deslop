@@ -808,7 +808,7 @@ export function schemaCycleNames(input: {context: Context; program: ESTree.Progr
 		Array.dedupe
 	)
 	const graph = Graph.directed<string, 'reads'>(mutable => {
-		const indices = Record.fromEntries(Array.map(names, name => [name, Graph.addNode(mutable, name)] as const))
+		const indices = Record.fromIterableWith(names, name => [name, Graph.addNode(mutable, name)] as const)
 		for (const edge of edges) {
 			for (const target of edge.targets) {
 				pipe(
