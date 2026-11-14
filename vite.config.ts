@@ -21,141 +21,16 @@ const repositoryRestrictedImports = {
 		}
 	],
 	patterns: [
+		...restrictedImports.patterns,
 		{
-			// All restrictions share one ordered group: Oxlint applies a group's negations to other patterns too.
 			group: [
-				'*',
-				'!node:*',
-				'!node:*/**',
-				'!#*',
-				'!#*/**',
-				'!.',
-				'!./**',
-				'!..',
-				'!../**',
-				'!@deslop',
-				'!@deslop/**',
-				'!**/*.css',
-				'!**/*.svg',
-				'!**/*.png',
-				'!**/*.jpg',
-				'!**/*.jpeg',
-				'!**/*.webp',
-				'!**/*.gif',
-				'!**/*.ico',
-				'!**/*.woff',
-				'!**/*.woff2',
-				'!**/*.ttf',
-				'!**/*.otf',
-				'!**/*\\?*',
-				'!@bacons',
-				'!@effect',
-				'!@expo',
-				'!@fontsource-variable',
-				'!@modelcontextprotocol',
-				'!@phosphor-icons',
-				'!@shadcn',
-				'!@simplewebauthn',
-				'!@tailwindcss',
-				'!@tanstack',
-				'!@typeonce',
-				'!@types',
-				'!@vitejs',
-				...Array.flatMap(
-					[
-						'@bacons/apple-targets',
-						'@deslop/coding-standards',
-						'@deslop/components-mobile',
-						'@deslop/components-web',
-						'@deslop/create-package',
-						'@deslop/runtime',
-						'@effect/ai-anthropic',
-						'@effect/atom-react',
-						'@effect/platform-node',
-						'@effect/sql-sqlite-node',
-						'@effect/tsgo',
-						'@effect/vitest',
-						'@expo/ui',
-						'@fontsource-variable/geist',
-						'@fontsource-variable/geist-mono',
-						'@fontsource-variable/ibm-plex-sans',
-						'@fontsource-variable/jetbrains-mono',
-						'@modelcontextprotocol/client',
-						'@shadcn/lint',
-						'@shadcn/react',
-						'@simplewebauthn/browser',
-						'@simplewebauthn/server',
-						'@tailwindcss/vite',
-						'@tanstack/react-hotkeys',
-						'@tanstack/react-router',
-						'@tanstack/router-generator',
-						'@tanstack/router-plugin',
-						'@typeonce/effect-machine',
-						'@typeonce/effect-machine-react',
-						'@typeonce/oxlint-plugin-effect-machine',
-						'@types/node',
-						'@types/react',
-						'@types/react-dom',
-						'@vitejs/plugin-react',
-						'cheerio',
-						'class-variance-authority',
-						'clsx',
-						'cmdk',
-						'date-fns',
-						'domhandler',
-						'effect',
-						'embla-carousel-react',
-						'expo',
-						'expo-application',
-						'expo-asset',
-						'expo-auth-session',
-						'expo-calendar',
-						'expo-clipboard',
-						'expo-constants',
-						'expo-crypto',
-						'expo-file-system',
-						'expo-location',
-						'expo-notifications',
-						'expo-secure-store',
-						'expo-updates',
-						'expo-web-browser',
-						'expo-widgets',
-						'fallow',
-						'input-otp',
-						'oxc-parser',
-						'oxc-transform-react',
-						'oxlint-plugin-eslint',
-						'oxlint-plugin-react-doctor',
-						'react',
-						'react-day-picker',
-						'react-dom',
-						'react-native',
-						'react-resizable-panels',
-						'recharts',
-						'scheduler',
-						'shadcn',
-						'shiki',
-						'tailwind-merge',
-						'tailwindcss',
-						'toqr',
-						'tsrs',
-						'vite',
-						'vite-plus',
-						'vitest'
-					],
-					name => [`!${name}`, `!${name}/**`]
-				),
-				...Array.flatMap(restrictedImports.patterns, pattern => pattern.group),
-				// Last, so they win over the allowlist above: every spelling of a banned primitive and the libraries behind it.
 				...Array.flatMap(BANNED_PRIMITIVES, name => [`**/ui/${name}`, `**/ui/${name}.tsx`]),
-				'!@phosphor-icons/react',
 				'cmdk',
 				'cmdk/**',
 				'embla-carousel*',
 				'embla-carousel*/**'
 			],
-			message:
-				'Not a dependency of this repository (ask before adding one), not its public export, or what AGENTS.md Design bans.'
+			message: 'AGENTS.md Design bans these primitives and the libraries they wrap.'
 		}
 	]
 }
@@ -245,21 +120,23 @@ export default defineConfig({
 						'error',
 						{
 							...repositoryRestrictedImports,
-							patterns: Array.map(repositoryRestrictedImports.patterns, pattern => ({
-								...pattern,
-								group: [
-									...pattern.group,
-									'expo-notifications',
-									'expo-notifications/**',
-									'expo-calendar',
-									'expo-calendar/**',
-									'expo-location',
-									'expo-location/**',
-									'expo-widgets',
-									'expo-widgets/**'
-								],
-								message: `${pattern.message} App-only native modules and their helpers belong in their consuming app, not a shared package.`
-							}))
+							patterns: [
+								...repositoryRestrictedImports.patterns,
+								{
+									group: [
+										'expo-notifications',
+										'expo-notifications/**',
+										'expo-calendar',
+										'expo-calendar/**',
+										'expo-location',
+										'expo-location/**',
+										'expo-widgets',
+										'expo-widgets/**'
+									],
+									message:
+										'App-only native modules and their helpers belong in their consuming app, not a shared package.'
+								}
+							]
 						}
 					]
 				}
@@ -271,16 +148,19 @@ export default defineConfig({
 						'error',
 						{
 							...repositoryRestrictedImports,
-							patterns: Array.map(repositoryRestrictedImports.patterns, pattern => ({
-								group: [
-									...pattern.group,
-									'expo/config-plugins',
-									'expo/config-plugins/**',
-									'@expo/config-plugins',
-									'@expo/config-plugins/**'
-								],
-								message: `${pattern.message} This file's text is not part of the native fingerprint; plugins and mods live in their own module.`
-							}))
+							patterns: [
+								...repositoryRestrictedImports.patterns,
+								{
+									group: [
+										'expo/config-plugins',
+										'expo/config-plugins/**',
+										'@expo/config-plugins',
+										'@expo/config-plugins/**'
+									],
+									message:
+										"This file's text is not part of the native fingerprint; plugins and mods live in their own module."
+								}
+							]
 						}
 					]
 				}
