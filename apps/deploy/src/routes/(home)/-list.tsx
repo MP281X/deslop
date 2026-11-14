@@ -19,14 +19,13 @@ import {Button} from '@deslop/components-web/ui/button'
 import {Empty, EmptyHeader, EmptyMedia, EmptyTitle} from '@deslop/components-web/ui/empty'
 import {ScrollArea} from '@deslop/components-web/ui/scroll-area'
 import {Table, TableBody, TableCell} from '@deslop/components-web/ui/table'
-import {timerOf} from '@deslop/runtime/shared/format'
+import {dueOf, timerOf} from '@deslop/runtime/shared/format'
 
 import {inventoryAtom, openExposeAtom, runAtom} from '#lib/fleet.ts'
 import {ApplicationIcon} from '#routes/(home)/-marks.tsx'
 import {host, impactGroups, middleEllipsis} from '#routes/(home)/-rows.ts'
 import {
 	failureAge,
-	nextRun,
 	reasonLine,
 	reasonOf,
 	requestOf,
@@ -49,7 +48,7 @@ export function InventoryContent(props: {children: ReactNode}) {
 	)
 }
 
-// Every port is one chip: exposed and outlined, opening its endpoint; exposable and filled, opening the Expose dialog; the rest plain and inert.
+// Every port is one chip: an outlined link opens an exposed endpoint, an outlined button opens the Expose dialog, and the rest are plain and inert. No chip is filled, so a selected row's tint never hides one.
 function Endpoints(props: {free: readonly InventoryItem[]; row: Row}) {
 	const expose = useAtomSet(openExposeAtom)
 	const exposedPorts = HashSet.fromIterable(Array.getSomes(Array.map(props.row.exposures, exposure => exposure.port)))
@@ -76,7 +75,7 @@ function Endpoints(props: {free: readonly InventoryItem[]; row: Row}) {
 						onSome: port => (
 							<Badge
 								key={listener.id}
-								variant="secondary"
+								variant="outline"
 								render={
 									<button
 										type="button"
@@ -166,7 +165,7 @@ function AppRow(props: {
 	const failing = props.row.item.health !== 'quiet'
 	const next = Boolean.match(running, {
 		onFalse: () =>
-			nextRun(
+			dueOf(
 				Option.getOrElse(props.row.item.next, () => props.now),
 				props.now
 			),
@@ -283,7 +282,7 @@ export function ListPane(props: {
 									<EmptyMedia variant="icon">
 										<AppWindowIcon />
 									</EmptyMedia>
-									<EmptyTitle>No apps in this range</EmptyTitle>
+									<EmptyTitle>No apps</EmptyTitle>
 								</EmptyHeader>
 							</Empty>
 						),

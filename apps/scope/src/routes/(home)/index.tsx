@@ -2,7 +2,15 @@ import {useAtomRefresh, useAtomSuspense, useAtomValue} from '@effect/atom-react'
 
 import {Array, Boolean, Cause, DateTime, Function, Match, Option, Record, Schema, pipe} from 'effect'
 
-import {ChartBarHorizontalIcon, DeviceMobileIcon, FlowArrowIcon, GlobeIcon, HardDrivesIcon} from '@phosphor-icons/react'
+import {
+	ChartBarHorizontalIcon,
+	DeviceMobileIcon,
+	FlowArrowIcon,
+	GlobeIcon,
+	HardDrivesIcon,
+	ListBulletsIcon,
+	RectangleIcon
+} from '@phosphor-icons/react'
 import {Link, createFileRoute, getRouteApi} from '@tanstack/react-router'
 import {AsyncResult} from 'effect/reactivity'
 import {Suspense, useState} from 'react'
@@ -16,6 +24,7 @@ import {StatusDot} from '@deslop/components-web/blocks/status-dot'
 import {mediaQueryAtom} from '@deslop/components-web/lib/media'
 import {cn} from '@deslop/components-web/lib/utils'
 import {AppBarTab, AppBar, AppBarChoice, AppBarTabs} from '@deslop/components-web/shell/app-bar'
+import {Workspace} from '@deslop/components-web/shell/workspace'
 import {Empty, EmptyHeader, EmptyMedia, EmptyTitle} from '@deslop/components-web/ui/empty'
 import {ResizableHandle, ResizablePanel, ResizablePanelGroup} from '@deslop/components-web/ui/resizable'
 import {ScrollArea} from '@deslop/components-web/ui/scroll-area'
@@ -54,15 +63,15 @@ import type {
 	TraceTree
 } from '#services/telemetry/schema.ts'
 
-// The side an operation starts on: a 12px muted glyph after the name when two visible rows share it, and its name for their labels.
+// The side an operation starts on: its row's muted glyph, and its name for the labels of two rows that share a name.
 const SIDES: Record<Runtime, string> = {ci: 'CI', mobile: 'iOS', server: 'server', unknown: '', web: 'web'}
 
 const KINDS: Record<Runtime, ReactElement> = {
-	ci: <FlowArrowIcon aria-hidden className="text-muted-foreground size-3 shrink-0" />,
-	mobile: <DeviceMobileIcon aria-hidden className="text-muted-foreground size-3 shrink-0" />,
-	server: <HardDrivesIcon aria-hidden className="text-muted-foreground size-3 shrink-0" />,
-	unknown: <HardDrivesIcon aria-hidden className="text-muted-foreground size-3 shrink-0" />,
-	web: <GlobeIcon aria-hidden className="text-muted-foreground size-3 shrink-0" />
+	ci: <FlowArrowIcon aria-hidden className="text-muted-foreground size-4" />,
+	mobile: <DeviceMobileIcon aria-hidden className="text-muted-foreground size-4" />,
+	server: <HardDrivesIcon aria-hidden className="text-muted-foreground size-4" />,
+	unknown: <HardDrivesIcon aria-hidden className="text-muted-foreground size-4" />,
+	web: <GlobeIcon aria-hidden className="text-muted-foreground size-4" />
 }
 
 // One run or many, in the reader's words.
@@ -105,7 +114,9 @@ function SourceTabs(props: {apps: Overview['apps']; source?: AppName}) {
 						/>
 					}
 				>
-					<AppMark name={app.name} fallback={<OutsideMark ci={Option.contains(app.ci, true)} />} />
+					<span className="flex size-4">
+						<AppMark name={app.name} fallback={<OutsideMark ci={Option.contains(app.ci, true)} />} />
+					</span>
 				</AppBarTab>
 			))}
 		</AppBarTabs>
@@ -120,21 +131,19 @@ function OverviewContent(props: {children: (overview: Overview) => ReactNode; ra
 	})
 }
 
-// A pane with nothing to show yet, or nothing at all.
-function EmptyPane(props: {label: string}) {
+// A pane with nothing to show yet, or nothing at all, under the icon of the thing it holds.
+function EmptyPane(props: {icon: ReactElement; label: string}) {
 	return (
 		<Empty role="status">
 			<EmptyHeader>
-				<EmptyMedia variant="icon">
-					<ChartBarHorizontalIcon />
-				</EmptyMedia>
+				<EmptyMedia variant="icon">{props.icon}</EmptyMedia>
 				<EmptyTitle>{props.label}</EmptyTitle>
 			</EmptyHeader>
 		</Empty>
 	)
 }
 
-// One operation: its name and side when two rows share it, then its errors when it has any, runs and typical duration in their own columns.
+// One operation: its side's glyph, its name and a dot when it failed, then its errors when it has any, runs and typical duration in their own columns; its label names the side when two rows share the name.
 function OperationRow(props: {active: boolean; duplicate: boolean; onSelect: () => void; operation: Operation}) {
 	const side = SIDES[props.operation.runtime]
 	return (
@@ -155,7 +164,15 @@ function OperationRow(props: {active: boolean; duplicate: boolean; onSelect: () 
 			)}
 			onSelect={props.onSelect}
 		>
-			<RowLead title={props.operation.name} after={props.duplicate && KINDS[props.operation.runtime]}>
+			<RowLead
+				title={props.operation.name}
+				mark={KINDS[props.operation.runtime]}
+				after={
+					props.operation.failures > 0 && (
+						<StatusDot status="error" label={`${countOf(props.operation.failures)} failed`} />
+					)
+				}
+			>
 				{props.operation.name}
 			</RowLead>
 			<TableCell className="text-right">
@@ -193,7 +210,7 @@ function OperationsPane(props: {
 				<OverviewContent range={props.range}>
 					{overview =>
 						Array.match(operationsOf(overview, Option.fromUndefinedOr(props.source)), {
-							onEmpty: () => <EmptyPane label="No traces in this range" />,
+							onEmpty: () => <EmptyPane icon={<ListBulletsIcon />} label="No operations" />,
 							onNonEmpty: rows => {
 								const names = Array.groupBy(rows, row => row.operation.name)
 								return (
@@ -284,10 +301,10 @@ function TracesPane(props: {
 				<OverviewContent range={props.range}>
 					{() =>
 						Option.match(active, {
-							onNone: () => <EmptyPane label="Select an operation" />,
+							onNone: () => <EmptyPane icon={<ListBulletsIcon />} label="Select an operation" />,
 							onSome: current =>
 								Boolean.match(Array.isReadonlyArrayNonEmpty(current.operation.traces), {
-									onFalse: () => <EmptyPane label="No traces" />,
+									onFalse: () => <EmptyPane icon={<ChartBarHorizontalIcon />} label="No traces" />,
 									onTrue: () => (
 										<ScrollArea className="min-h-0 flex-1">
 											<Table role="grid" aria-label="Traces">
@@ -317,7 +334,7 @@ function TracesPane(props: {
 // The picked span's details alone, for the phone's pushed span screen.
 function SpanDetails(props: {focus: Option.Option<TraceTree['spans'][number]>}) {
 	return Option.match(props.focus, {
-		onNone: () => <EmptyPane label="Select a span" />,
+		onNone: () => <EmptyPane icon={<RectangleIcon />} label="Select a span" />,
 		onSome: span => (
 			<ScrollArea className="min-h-0 flex-1">
 				<SpanDetail span={span} />
@@ -334,7 +351,7 @@ function SpansList(props: {
 	trace: TraceTree
 }) {
 	if (!Array.isReadonlyArrayNonEmpty(props.trace.spans)) {
-		return <EmptyPane label="No spans" />
+		return <EmptyPane icon={<RectangleIcon />} label="No spans" />
 	}
 	return (
 		<ScrollArea className="min-h-0 flex-1">
@@ -411,14 +428,11 @@ function TracePane(props: {
 				<OverviewContent range={props.range}>
 					{() =>
 						Option.match(trace, {
-							onNone: () => (
-								<EmptyPane
-									label={Boolean.match(props.detailOnly === true, {
-										onFalse: Function.constant('Select a trace'),
-										onTrue: Function.constant('Select a span')
-									})}
-								/>
-							),
+							onNone: () =>
+								Boolean.match(props.detailOnly === true, {
+									onFalse: () => <EmptyPane icon={<ChartBarHorizontalIcon />} label="Select a trace" />,
+									onTrue: () => <EmptyPane icon={<RectangleIcon />} label="Select a span" />
+								}),
 							onSome: current => (
 								<Suspense
 									fallback={Boolean.match(props.detailOnly === true, {
@@ -560,10 +574,10 @@ function MobileWorkspace(props: WorkspaceProps & {pane: ReturnType<typeof naviga
 
 function renderPage(children: ReactNode) {
 	return (
-		<main className="pb-safe-bottom relative flex min-h-0 flex-1 flex-col overflow-hidden">
+		<Workspace>
 			<h1 className="sr-only">Scope</h1>
 			{children}
-		</main>
+		</Workspace>
 	)
 }
 
@@ -573,7 +587,7 @@ function HomeRoute() {
 	const isWide = useAtomValue(mediaQueryAtom('(width >= 100rem)'))
 	const search = route.useSearch()
 	const navigate = route.useNavigate()
-	const range = Option.getOrElse(search.range, Function.constant('1h' as const))
+	const range = Option.getOrElse(search.range, Function.constant('24h' as const))
 	const overview = useAtomValue(overviewAtom(range))
 	const refresh = useAtomRefresh(overviewAtom(range))
 	const value = AsyncResult.value(overview)

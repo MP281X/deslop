@@ -32,19 +32,19 @@ const firstImageAtom = Atom.family((sources: string) =>
 	)
 )
 
-// A row's square image mark at the registry's 24px media size: the first source that loads, else the glyph centred in the same square.
+// A row's image mark, filling the square it is placed in: the first source that loads, else the glyph.
 export function ImageMark(props: {fallback: ReactNode; sources: readonly [string, ...string[]]}) {
 	return Option.match(AsyncResult.value(useAtomValue(firstImageAtom(Array.join(props.sources, '\n')))), {
-		onNone: () => <span className="flex size-6 shrink-0 items-center justify-center">{props.fallback}</span>,
-		onSome: src => <img src={src} alt="" className="size-6 shrink-0 object-contain" />
+		onNone: () => props.fallback,
+		onSome: src => <img src={src} alt="" className="size-full object-contain" />
 	})
 }
 
-// A Deslop app's own pixel mark at 16px, or the fallback for anything that is not one of the apps.
+// A Deslop app's own pixel mark, filling the square it is placed in, or the fallback for anything that is not one of the apps.
 export function AppMark(props: {fallback: ReactNode; name: string}) {
 	return Option.match(Option.fromUndefinedOr(appMarks[props.name]), {
 		onNone: () => props.fallback,
-		onSome: mark => <img src={mark} alt="" className="pixelated size-4 shrink-0" />
+		onSome: mark => <img src={mark} alt="" className="pixelated size-full" />
 	})
 }
 

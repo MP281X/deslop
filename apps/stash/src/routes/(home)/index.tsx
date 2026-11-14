@@ -3,8 +3,7 @@ import {useAtomRefresh, useAtomSet, useAtomValue} from '@effect/atom-react'
 import {Array, Boolean, Function, HashSet, Match, Option, Schema, String, pipe} from 'effect'
 
 import {
-	Button,
-	ContextMenu,
+	Button as NativeButton,
 	Divider,
 	HStack,
 	Image,
@@ -12,22 +11,16 @@ import {
 	Menu,
 	Overlay,
 	Picker,
-	SwipeActions,
 	Text,
 	Toggle,
-	ZStack,
-	Toolbar,
 	ToolbarItem,
 	VStack
 } from '@expo/ui/swift-ui'
-import type {useNativeState} from '@expo/ui/swift-ui'
 import {
-	accessibilityAddTraits,
 	accessibilityElement,
 	accessibilityHidden,
+	accessibilityLabel,
 	aspectRatio,
-	background,
-	clipShape,
 	foregroundStyle,
 	frame,
 	labelStyle,
@@ -35,36 +28,26 @@ import {
 	listRowInsets,
 	listRowSeparator,
 	menuOrder,
-	navigationBarTitleDisplayMode,
-	navigationTitle,
 	pickerStyle,
 	resizable,
-	searchable,
 	tag,
 	tint
 } from '@expo/ui/swift-ui/modifiers'
-import {MachineState} from '@typeonce/effect-machine-react'
 import {AsyncResult} from 'effect/reactivity'
 import {Suspense} from 'react'
 import {Linking} from 'react-native'
 
-import {AccountMenu} from '@deslop/components-mobile/account'
-import {PasteSheet} from '@deslop/components-mobile/paste-sheet'
-import {Problem} from '@deslop/components-mobile/problem'
-import {FailureContent, Loaded} from '@deslop/components-mobile/screens'
-import {colors, radius, space, text} from '@deslop/components-mobile/theme'
-import {bottomBarSearch} from '@deslop/components-mobile/toolbar'
-import {Empty, EmptyAction} from '@deslop/components-mobile/ui/empty'
-import {
-	Item,
-	ItemActions,
-	ItemContent,
-	ItemGroup,
-	ItemMedia,
-	ItemTitle,
-	itemRow
-} from '@deslop/components-mobile/ui/item'
-import {ItemGroupSkeleton, Skeleton} from '@deslop/components-mobile/ui/skeleton'
+import {ItemGroupSkeleton} from '@deslop/components-mobile/blocks/item-group-skeleton'
+import {ListToolbar} from '@deslop/components-mobile/blocks/list-toolbar'
+import {FailureContent, Loaded} from '@deslop/components-mobile/blocks/loaded'
+import {PasteSheet} from '@deslop/components-mobile/blocks/paste-sheet'
+import {Problem} from '@deslop/components-mobile/blocks/problem'
+import {RemovableRow} from '@deslop/components-mobile/blocks/removable-row'
+import {StatusDot} from '@deslop/components-mobile/blocks/status-dot'
+import {colors, space, text} from '@deslop/components-mobile/theme'
+import {Button} from '@deslop/components-mobile/ui/button'
+import {Empty, EmptyContent, EmptyMedia} from '@deslop/components-mobile/ui/empty'
+import {ItemContent, ItemGroup, ItemMedia, ItemTitle} from '@deslop/components-mobile/ui/item'
 import {ToggleGroup, ToggleGroupItem} from '@deslop/components-mobile/ui/toggle-group'
 import {blockingFailure} from '@deslop/runtime/client/live-stream'
 import {isDenied} from '@deslop/runtime/shared/auth'
@@ -103,18 +86,11 @@ function Lines(props: {muted?: boolean; note: NoteItem}) {
 					</HStack>
 				)),
 				Match.when('failed', () => (
-					<HStack
-						spacing={space[1]}
-						modifiers={[
-							accessibilityElement('combine'),
-							Boolean.match(props.muted === true, {
-								onFalse: () => foregroundStyle(colors.destructive),
-								onTrue: () => foregroundStyle(colors.mutedForeground)
-							})
-						]}
-					>
-						<Image systemName="exclamationmark.triangle.fill" modifiers={[text.caption, accessibilityHidden(true)]} />
-						<Text modifiers={[text.detail, lineLimit(1)]}>{`Couldn’t read this ${subjectOf(props.note)}`}</Text>
+					<HStack spacing={space[2]} modifiers={[accessibilityElement('combine')]}>
+						<StatusDot status="error" />
+						<Text modifiers={[text.detail, foregroundStyle(colors.mutedForeground), lineLimit(1)]}>
+							{`Couldn’t read this ${subjectOf(props.note)}`}
+						</Text>
 					</HStack>
 				)),
 				Match.orElse(() => <Byline note={props.note} />)
@@ -127,31 +103,13 @@ function Lines(props: {muted?: boolean; note: NoteItem}) {
 function Thumbnail(props: {id: Note['id']}) {
 	const image = useAtomValue(imageAtom(props.id))
 	if (!AsyncResult.isSuccess(image)) return undefined
-	return (
-		<Image
-			uiImage={image.value}
-			modifiers={[
-				resizable(),
-				aspectRatio({contentMode: 'fill'}),
-				frame({height: 64, width: 64}),
-				clipShape('roundedRectangle', radius),
-				accessibilityHidden(true)
-			]}
-		/>
-	)
+	return <Image uiImage={image.value} modifiers={[resizable(), aspectRatio({contentMode: 'fill'})]} />
 }
 
 function NoteMedia(props: {note: NoteItem}) {
 	const kind = kindOf(props.note)
 	return (
-		<ZStack
-			modifiers={[
-				frame({height: 64, width: 64}),
-				background(colors.card),
-				clipShape('roundedRectangle', radius),
-				accessibilityHidden(true)
-			]}
-		>
+		<ItemMedia variant="image" modifiers={[accessibilityHidden(true)]}>
 			{pipe(
 				Match.value(kind),
 				Match.when(Schema.is(Brand), brand => <BrandLogo brand={kinds[brand].logo} size={24} />),
@@ -160,95 +118,55 @@ function NoteMedia(props: {note: NoteItem}) {
 				))
 			)}
 			{Option.isSome(props.note.image) && <Thumbnail id={props.note.id} />}
-		</ZStack>
-	)
-}
-
-function DeleteButton(props: {onPress: () => void}) {
-	return (
-		<Button
-			label="Delete"
-			systemImage="trash"
-			role="destructive"
-			onPress={props.onPress}
-			modifiers={[tint(colors.destructive)]}
-		/>
+		</ItemMedia>
 	)
 }
 
 function NoteRow(props: {note: NoteItem; onOpen: (id: Note['id']) => void; onRegenerate: (id: Note['id']) => void}) {
-	const machine = removal.machine(props.note.id)
-	const remove = useAtomSet(removal.removeAtom)
-	const send = useAtomSet(machine.send)
 	return (
-		<>
-			<MachineState machine={machine} path="Idle">
-				{() => (
-					<SwipeActions modifiers={[...itemRow, tag(props.note.id)]}>
-						<ContextMenu>
-							<ContextMenu.Trigger>
-								<Item onPress={() => props.onOpen(props.note.id)} modifiers={[accessibilityAddTraits(['isButton'])]}>
-									<ItemMedia>
-										<NoteMedia note={props.note} />
-									</ItemMedia>
-									<Lines note={props.note} />
-								</Item>
-							</ContextMenu.Trigger>
-							<ContextMenu.Items>
-								{Option.match(props.note.url, {
-									onNone: Function.constUndefined,
-									onSome: url => (
-										<Button
-											onPress={() => {
-												Linking.openURL(url)
-											}}
-										>
-											<Label
-												title={Option.match(appOf(props.note), {
-													onNone: Function.constant('Open Link'),
-													onSome: name => `Open in ${name}`
-												})}
-												{...Option.match(brandOf(props.note), {
-													onNone: () => ({systemImage: 'arrow.up.right' as const}),
-													onSome: brand => ({icon: <BrandIcon brand={kinds[brand].logo} />})
-												})}
-											/>
-										</Button>
-									)
-								})}
-								<Button
-									label="Regenerate"
-									systemImage="arrow.clockwise"
-									onPress={() => props.onRegenerate(props.note.id)}
+		<RemovableRow
+			id={props.note.id}
+			removal={removal}
+			modifiers={[tag(props.note.id)]}
+			onOpen={() => props.onOpen(props.note.id)}
+			menu={
+				<>
+					{Option.match(props.note.url, {
+						onNone: Function.constUndefined,
+						onSome: url => (
+							<NativeButton
+								onPress={() => {
+									Linking.openURL(url)
+								}}
+							>
+								<Label
+									title={Option.match(appOf(props.note), {
+										onNone: Function.constant('Open Link'),
+										onSome: name => `Open in ${name}`
+									})}
+									{...Option.match(brandOf(props.note), {
+										onNone: () => ({systemImage: 'arrow.up.right' as const}),
+										onSome: brand => ({icon: <BrandIcon brand={kinds[brand].logo} />})
+									})}
 								/>
-								<DeleteButton onPress={() => remove(props.note.id)} />
-							</ContextMenu.Items>
-						</ContextMenu>
-						<SwipeActions.Actions edge="trailing">
-							<DeleteButton onPress={() => remove(props.note.id)} />
-						</SwipeActions.Actions>
-					</SwipeActions>
-				)}
-			</MachineState>
-			<MachineState machine={machine} path="Pending">
-				{() => (
-					<Item modifiers={itemRow}>
-						<ItemMedia>
-							<NoteMedia note={props.note} />
-						</ItemMedia>
-						<Lines muted note={props.note} />
-						<ItemActions>
-							<Button
-								label="Undo"
-								systemImage="arrow.uturn.backward"
-								onPress={() => send(removal.events.Restored())}
-								modifiers={[labelStyle('iconOnly')]}
-							/>
-						</ItemActions>
-					</Item>
-				)}
-			</MachineState>
-		</>
+							</NativeButton>
+						)
+					})}
+					<NativeButton
+						label="Regenerate"
+						systemImage="arrow.clockwise"
+						onPress={() => props.onRegenerate(props.note.id)}
+					/>
+				</>
+			}
+		>
+			{pending => (
+				<>
+					<NoteMedia note={props.note} />
+					<Lines muted={pending} note={props.note} />
+				</>
+			)}
+		</RemovableRow>
 	)
 }
 
@@ -268,7 +186,6 @@ function KindLabel(props: {kind: Kind}) {
 // A picker row's tag is a string or a number, so "All Notes", which clears the filter, is a toggle beside it.
 function FilterMenu(props: {kind?: Kind; onKind: (kind?: Kind) => void}) {
 	return (
-		// A menu opened from the bottom bar reverses its items unless the order is fixed.
 		<Menu
 			label="Filter"
 			systemImage={Boolean.match(props.kind === undefined, {
@@ -325,12 +242,16 @@ function Notes(props: {kind?: Kind; onOpen: (id: Note['id']) => void; onTag: (na
 						{Array.match(all, {
 							onEmpty: () => (
 								<Empty>
-									<EmptyAction
-										label="Paste Link"
-										systemImage="link"
-										onPress={() => paste(clipboard.events.Returned())}
-										tint={primary}
-									/>
+									<EmptyContent>
+										<Button
+											size="lg"
+											systemImage="link"
+											onPress={() => paste(clipboard.events.Returned())}
+											modifiers={[tint(primary)]}
+										>
+											Paste Link
+										</Button>
+									</EmptyContent>
 								</Empty>
 							),
 							onNonEmpty: () => (
@@ -339,15 +260,18 @@ function Notes(props: {kind?: Kind; onOpen: (id: Note['id']) => void; onTag: (na
 									<ItemGroup>
 										{/* "all" clears the tag, and choosing the chosen tag again does too. */}
 										<ToggleGroup
-											value={props.tag ?? 'all'}
+											value={[props.tag ?? 'all']}
+											variant="outline"
 											onValueChange={value =>
-												Boolean.match(value === 'all' || value === props.tag, {
-													onFalse: () => props.onTag(TagName.make(value)),
-													onTrue: () => props.onTag()
-												})
+												pipe(
+													value,
+													Array.head,
+													Option.filter(name => name !== 'all'),
+													Option.match({onNone: () => props.onTag(), onSome: name => props.onTag(TagName.make(name))})
+												)
 											}
-											tint={primary}
 											modifiers={[
+												tint(primary),
 												listRowSeparator('hidden'),
 												listRowInsets({bottom: space[1], leading: space[4], top: space[1], trailing: space[4]})
 											]}
@@ -368,13 +292,11 @@ function Notes(props: {kind?: Kind; onOpen: (id: Note['id']) => void; onTag: (na
 									</ItemGroup>
 									{filtered && Array.isReadonlyArrayEmpty(notes) && (
 										<Overlay.Content>
-											<Empty
-												systemImage={Boolean.match(String.isEmpty(query), {
-													onFalse: Function.constant('magnifyingglass'),
-													onTrue: Function.constant('tray')
-												})}
-												label="No notes match"
-											/>
+											<Empty>
+												<EmptyMedia>
+													<Image systemName="magnifyingglass" modifiers={[accessibilityLabel('No notes match')]} />
+												</EmptyMedia>
+											</Empty>
 										</Overlay.Content>
 									)}
 								</Overlay>
@@ -394,7 +316,6 @@ export function HomeRoute(props: {
 	onOpen: (id: Note['id']) => void
 	onSearch: (text: string) => void
 	onTag: (name?: TagName) => void
-	query: ReturnType<typeof useNativeState<string>>
 	tag?: TagName
 }) {
 	const notes = useAtomValue(notesAtom)
@@ -406,57 +327,46 @@ export function HomeRoute(props: {
 		!AsyncResult.isInitial(notes) &&
 		Option.isNone(blockingFailure(notes))
 	return (
-		<Toolbar
-			modifiers={[
-				navigationTitle('Stash'),
-				navigationBarTitleDisplayMode('large'),
-				searchable(props.query, {onChange: props.onSearch, prompt: 'Search'}),
-				bottomBarSearch
-			]}
+		<ListToolbar
+			title="Stash"
+			session={session}
+			onSearch={props.onSearch}
+			problem={Boolean.match(saved && (AsyncResult.isFailure(notes) || AsyncResult.isFailure(search)), {
+				onFalse: Function.constUndefined,
+				onTrue: () => (
+					<Problem
+						label={Boolean.match(AsyncResult.isFailure(notes), {
+							onFalse: Function.constant('Search unavailable'),
+							onTrue: Function.constant('Out of date')
+						})}
+						onRetry={() => {
+							refreshNotes()
+							refreshSearch()
+						}}
+					/>
+				)
+			})}
+			bottomBar={
+				<>
+					<ToolbarItem placement="bottomBar">
+						<NativeButton
+							label="Write"
+							systemImage="square.and.pencil"
+							onPress={props.onCompose}
+							modifiers={[labelStyle('iconOnly')]}
+						/>
+					</ToolbarItem>
+					<ToolbarItem placement="bottomBar">
+						<FilterMenu kind={props.kind} onKind={props.onKind} />
+					</ToolbarItem>
+				</>
+			}
 		>
 			<PasteSheet clipboard={clipboard}>
-				<Suspense
-					fallback={
-						<ItemGroupSkeleton
-							rows={10}
-							descriptionLines={1}
-							media={<Skeleton modifiers={[frame({height: 64, width: 64})]} />}
-						/>
-					}
-				>
+				<Suspense fallback={<ItemGroupSkeleton rows={10} descriptionLines={1} media={<ItemMedia variant="image" />} />}>
 					<Notes kind={props.kind} onOpen={props.onOpen} onTag={props.onTag} tag={props.tag} />
 				</Suspense>
 			</PasteSheet>
-			<Toolbar.Content>
-				{saved && (AsyncResult.isFailure(notes) || AsyncResult.isFailure(search)) && (
-					<ToolbarItem placement="topBarLeading">
-						<Problem
-							label={Boolean.match(AsyncResult.isFailure(notes), {
-								onFalse: Function.constant('Search unavailable'),
-								onTrue: Function.constant('Out of date')
-							})}
-							onRetry={() => {
-								refreshNotes()
-								refreshSearch()
-							}}
-						/>
-					</ToolbarItem>
-				)}
-				<ToolbarItem placement="topBarTrailing">
-					<AccountMenu session={session} />
-				</ToolbarItem>
-				<ToolbarItem placement="bottomBar">
-					<Button
-						label="Write"
-						systemImage="square.and.pencil"
-						onPress={props.onCompose}
-						modifiers={[labelStyle('iconOnly')]}
-					/>
-				</ToolbarItem>
-				<ToolbarItem placement="bottomBar">
-					<FilterMenu kind={props.kind} onKind={props.onKind} />
-				</ToolbarItem>
-			</Toolbar.Content>
-		</Toolbar>
+		</ListToolbar>
 	)
 }

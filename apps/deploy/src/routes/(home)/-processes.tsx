@@ -5,7 +5,7 @@ import {Fragment} from 'react'
 import {RowLead} from '@deslop/components-web/blocks/rows'
 import {cn} from '@deslop/components-web/lib/utils'
 import {Table, TableBody, TableCell, TableRow} from '@deslop/components-web/ui/table'
-import {countOf, percentOf} from '@deslop/runtime/shared/format'
+import {bytesOf, percentOf} from '@deslop/runtime/shared/format'
 
 import {ApplicationIcon} from '#routes/(home)/-marks.tsx'
 import type {ProcessNode} from '#services/inventory/lib/utils.ts'
@@ -17,17 +17,14 @@ function ProcessRows(props: {depth: number; nodes: readonly ProcessNode[]}) {
 			<TableRow aria-level={props.depth + 1}>
 				<RowLead
 					title={pipe(node.command, Option.getOrElse(Array.empty), Array.join(' '))}
-					mark={
-						<span className="flex shrink-0 ps-(--indent)" style={{'--indent': `${props.depth * 0.75}rem`}}>
-							<ApplicationIcon name={node.label.name} small />
-						</span>
-					}
+					depth={props.depth}
+					mark={<ApplicationIcon name={node.label.name} />}
 					detail={node.label.detail}
 				>
 					<span className={cn(node.small && 'text-muted-foreground')}>{node.label.name}</span>
 				</RowLead>
 				<TableCell className="text-right">
-					<span className="tabular-nums">{`${countOf(node.memory / 1024 ** 2)} MiB`}</span>
+					<span className="tabular-nums">{bytesOf(node.memory)}</span>
 				</TableCell>
 				<TableCell className="text-right">
 					<span className="text-muted-foreground tabular-nums">

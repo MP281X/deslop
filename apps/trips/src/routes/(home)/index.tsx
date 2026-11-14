@@ -2,57 +2,29 @@ import {useAtomRefresh, useAtomSet, useAtomSuspense, useAtomValue} from '@effect
 
 import {Array, Boolean, DateTime, Duration, Function, Number, Option, Schema, String, pipe} from 'effect'
 
-import {
-	Button,
-	HStack,
-	Section,
-	SwipeActions,
-	Text,
-	Toolbar,
-	ToolbarItem,
-	useNativeState,
-	VStack
-} from '@expo/ui/swift-ui'
-import {
-	fixedSize,
-	font,
-	foregroundStyle,
-	frame,
-	labelStyle,
-	navigationBarTitleDisplayMode,
-	navigationTitle,
-	padding,
-	searchable,
-	tint
-} from '@expo/ui/swift-ui/modifiers'
-import {MachineState, useMachineResult} from '@typeonce/effect-machine-react'
+import {HStack, Image, Overlay, Section, Text, VStack} from '@expo/ui/swift-ui'
+import {accessibilityLabel, fixedSize, font, foregroundStyle, frame, tint} from '@expo/ui/swift-ui/modifiers'
+import {useMachineResult} from '@typeonce/effect-machine-react'
 import {AtomMachine} from '@typeonce/effect-machine/reactivity'
 import {AsyncResult} from 'effect/reactivity'
 import {Suspense, useState} from 'react'
 
-import {AccountMenu} from '@deslop/components-mobile/account'
-import {PasteSheet} from '@deslop/components-mobile/paste-sheet'
-import {Problem} from '@deslop/components-mobile/problem'
-import {FailureContent} from '@deslop/components-mobile/screens'
-import {StatusDot} from '@deslop/components-mobile/status-dot'
+import {ItemGroupSkeleton} from '@deslop/components-mobile/blocks/item-group-skeleton'
+import {ListToolbar} from '@deslop/components-mobile/blocks/list-toolbar'
+import {FailureContent} from '@deslop/components-mobile/blocks/loaded'
+import {PasteSheet} from '@deslop/components-mobile/blocks/paste-sheet'
+import {Problem} from '@deslop/components-mobile/blocks/problem'
+import {RemovableRow} from '@deslop/components-mobile/blocks/removable-row'
+import {StatusDot} from '@deslop/components-mobile/blocks/status-dot'
 import {colors, space, text} from '@deslop/components-mobile/theme'
-import {bottomBarSearch} from '@deslop/components-mobile/toolbar'
-import {Empty, EmptyAction} from '@deslop/components-mobile/ui/empty'
-import {
-	Item,
-	ItemActions,
-	ItemContent,
-	ItemGroup,
-	ItemMedia,
-	ItemTitle,
-	itemRow
-} from '@deslop/components-mobile/ui/item'
-import {ItemGroupSkeleton} from '@deslop/components-mobile/ui/skeleton'
+import {Button} from '@deslop/components-mobile/ui/button'
+import {Empty, EmptyContent, EmptyMedia} from '@deslop/components-mobile/ui/empty'
+import {ItemActions, ItemContent, ItemGroup, ItemMedia, ItemTitle} from '@deslop/components-mobile/ui/item'
 import {blockingFailure} from '@deslop/runtime/client/live-stream'
 
 import {bookingsAtom, clipboard, nowAtom, removal} from '#lib/bookings.ts'
-import {session} from '#lib/session.ts'
-import {daysUntil, primary, problemOf, statusOf, tones} from '#lib/status.ts'
+import {primary, session} from '#lib/session.ts'
+import {daysUntil, problemOf, statusOf, tones} from '#lib/status.ts'
 import {clockAt, endOf, HOUR, startOf, titleOf} from '#services/bookings/lib/utils.ts'
 import {Booking} from '#services/bookings/schema.ts'
 
@@ -123,67 +95,45 @@ function BookingRow(props: {
 	now: DateTime.Utc
 	onOpen: (id: Booking['id']) => void
 }) {
-	const machine = removal.machine(props.booking.id)
-	const remove = useAtomSet(removal.removeAtom)
-	const send = useAtomSet(machine.send)
 	const status = statusOf(props.booking, props.now)
 	return (
-		<>
-			<MachineState machine={machine} path="Idle">
-				{() => (
-					<SwipeActions modifiers={itemRow}>
-						<Item alignment="top" onPress={() => props.onOpen(props.booking.id)}>
-							<ItemMedia>
-								<Gutter countdown={props.countdown} />
-							</ItemMedia>
-							<ItemContent>
-								<ItemTitle>{headingOf(props.booking)}</ItemTitle>
-								<Text modifiers={[text.data, foregroundStyle(colors.mutedForeground)]}>
-									{lineOf(props.booking, status)}
-								</Text>
-							</ItemContent>
-							{Option.match(problemOf(props.booking, status, props.now), {
-								onNone: Function.constUndefined,
-								onSome: problem => (
-									<ItemActions>
-										<HStack spacing={space[2]}>
-											<StatusDot status={problem.status} />
-											<Text modifiers={[text.detail, foregroundStyle(tones[problem.tone])]}>{problem.label}</Text>
-										</HStack>
-									</ItemActions>
-								)
+		<RemovableRow alignment="top" id={props.booking.id} removal={removal} onOpen={() => props.onOpen(props.booking.id)}>
+			{pending => (
+				<>
+					<ItemMedia>
+						<Gutter countdown={props.countdown} />
+					</ItemMedia>
+					<ItemContent>
+						<ItemTitle
+							modifiers={Boolean.match(pending, {
+								onFalse: () => [],
+								onTrue: () => [foregroundStyle(colors.mutedForeground)]
 							})}
-						</Item>
-						<SwipeActions.Actions edge="trailing">
-							<Button label="Delete" systemImage="trash" role="destructive" onPress={() => remove(props.booking.id)} />
-						</SwipeActions.Actions>
-					</SwipeActions>
-				)}
-			</MachineState>
-			<MachineState machine={machine} path="Pending">
-				{() => (
-					<Item alignment="top" modifiers={itemRow}>
-						<ItemMedia>
-							<Gutter countdown={props.countdown} />
-						</ItemMedia>
-						<ItemContent>
-							<ItemTitle modifiers={[foregroundStyle(colors.mutedForeground)]}>{headingOf(props.booking)}</ItemTitle>
-							<Text modifiers={[text.data, foregroundStyle(colors.mutedForeground)]}>
-								{lineOf(props.booking, status)}
-							</Text>
-						</ItemContent>
-						<ItemActions>
-							<Button
-								label="Undo"
-								systemImage="arrow.uturn.backward"
-								onPress={() => send(removal.events.Restored())}
-								modifiers={[labelStyle('iconOnly')]}
-							/>
-						</ItemActions>
-					</Item>
-				)}
-			</MachineState>
-		</>
+						>
+							{headingOf(props.booking)}
+						</ItemTitle>
+						<Text modifiers={[text.data, foregroundStyle(colors.mutedForeground)]}>
+							{lineOf(props.booking, status)}
+						</Text>
+					</ItemContent>
+					{pipe(
+						problemOf(props.booking, status, props.now),
+						Option.filter(() => !pending),
+						Option.match({
+							onNone: Function.constUndefined,
+							onSome: problem => (
+								<ItemActions>
+									<HStack spacing={space[2]}>
+										<StatusDot status={problem.status} />
+										<Text modifiers={[text.detail, foregroundStyle(tones[problem.tone])]}>{problem.label}</Text>
+									</HStack>
+								</ItemActions>
+							)
+						})
+					)}
+				</>
+			)}
+		</RemovableRow>
 	)
 }
 
@@ -260,100 +210,120 @@ function Bookings(props: {onOpen: (id: Booking['id']) => void; searched: string}
 	// One root: a SwiftUI modifier on several sibling views applies to each, so the dialog and the toolbar would repeat.
 	return (
 		<VStack spacing={0} modifiers={[frame({maxHeight: Infinity})]}>
-			{AsyncResult.isFailure(loaded) && (
-				<HStack modifiers={[frame({alignment: 'trailing', maxWidth: Infinity}), padding({horizontal: space[4]})]}>
-					<Problem label="Out of date" onRetry={refresh} />
-				</HStack>
-			)}
 			{adding && (
 				<ItemGroupSkeleton
 					rows={1}
 					descriptionLines={2}
-					media={<Gutter countdown={Countdown.cases.Days.make({days: 2})} />}
+					media={
+						<ItemMedia>
+							<Gutter countdown={Countdown.cases.Days.make({days: 2})} />
+						</ItemMedia>
+					}
 				/>
 			)}
 			{Array.isReadonlyArrayEmpty(bookings) && !adding && (
 				<Empty>
-					<EmptyAction
-						label="Paste Booking"
-						systemImage="doc.text"
-						onPress={() => paste(clipboard.events.Returned())}
-						tint={primary}
-					/>
+					<EmptyContent>
+						<Button
+							size="lg"
+							systemImage="doc.text"
+							onPress={() => paste(clipboard.events.Returned())}
+							modifiers={[tint(primary)]}
+						>
+							Paste Booking
+						</Button>
+					</EmptyContent>
 				</Empty>
 			)}
-			{Array.isReadonlyArrayNonEmpty(bookings) && Array.isReadonlyArrayEmpty(matches) && (
-				<Empty systemImage="magnifyingglass" label="No bookings match" />
-			)}
-			{Array.isReadonlyArrayNonEmpty(matches) && (
-				<ItemGroup modifiers={[tint(primary)]}>
-					{Array.isReadonlyArrayNonEmpty(current) && (
-						<Section title="Now">
-							{Array.map(current, booking => (
-								<BookingRow
-									key={booking.id}
-									booking={booking}
-									countdown={Countdown.cases.Now.make({})}
-									now={now}
-									onOpen={props.onOpen}
-								/>
-							))}
-						</Section>
+			{Array.isReadonlyArrayNonEmpty(bookings) && (
+				// The no-match state sits over the list, centred on the screen, as SwiftUI's own apps show it.
+				<Overlay>
+					<ItemGroup modifiers={[tint(primary)]}>
+						{Array.isReadonlyArrayNonEmpty(current) && (
+							<Section title="Now">
+								{Array.map(current, booking => (
+									<BookingRow
+										key={booking.id}
+										booking={booking}
+										countdown={Countdown.cases.Now.make({})}
+										now={now}
+										onOpen={props.onOpen}
+									/>
+								))}
+							</Section>
+						)}
+						{Array.isReadonlyArrayNonEmpty(ahead) && (
+							<Section title="Upcoming">
+								{Array.map(ahead, (booking, position) => (
+									<BookingRow
+										key={booking.id}
+										booking={booking}
+										countdown={pipe(
+											ahead,
+											Array.get(position - 1),
+											Option.match({
+												onNone: () => Countdown.cases.Days.make({days: daysOf(booking)}),
+												onSome: before =>
+													Boolean.match(daysOf(before) === daysOf(booking), {
+														onFalse: () => Countdown.cases.Days.make({days: daysOf(booking)}),
+														onTrue: () => Countdown.cases.SameDay.make({})
+													})
+											})
+										)}
+										now={now}
+										onOpen={props.onOpen}
+									/>
+								))}
+							</Section>
+						)}
+						{Array.isReadonlyArrayNonEmpty(matches) &&
+							Array.isReadonlyArrayEmpty(current) &&
+							Array.isReadonlyArrayEmpty(ahead) && (
+								<Section>
+									<Empty>
+										<EmptyMedia>
+											<Image systemName="ticket" modifiers={[accessibilityLabel('Nothing coming up')]} />
+										</EmptyMedia>
+									</Empty>
+								</Section>
+							)}
+						<PastBookings
+							bookings={past}
+							expanded={pastOpen}
+							now={now}
+							onExpandedChange={setPastOpen}
+							onOpen={props.onOpen}
+						/>
+					</ItemGroup>
+					{Array.isReadonlyArrayEmpty(matches) && (
+						<Overlay.Content>
+							<Empty>
+								<EmptyMedia>
+									<Image systemName="magnifyingglass" modifiers={[accessibilityLabel('No bookings match')]} />
+								</EmptyMedia>
+							</Empty>
+						</Overlay.Content>
 					)}
-					{Array.isReadonlyArrayNonEmpty(ahead) && (
-						<Section title="Upcoming">
-							{Array.map(ahead, (booking, position) => (
-								<BookingRow
-									key={booking.id}
-									booking={booking}
-									countdown={pipe(
-										ahead,
-										Array.get(position - 1),
-										Option.match({
-											onNone: () => Countdown.cases.Days.make({days: daysOf(booking)}),
-											onSome: before =>
-												Boolean.match(daysOf(before) === daysOf(booking), {
-													onFalse: () => Countdown.cases.Days.make({days: daysOf(booking)}),
-													onTrue: () => Countdown.cases.SameDay.make({})
-												})
-										})
-									)}
-									now={now}
-									onOpen={props.onOpen}
-								/>
-							))}
-						</Section>
-					)}
-					{Array.isReadonlyArrayEmpty(current) && Array.isReadonlyArrayEmpty(ahead) && (
-						<Section>
-							<Empty systemImage="ticket" label="Nothing coming up" />
-						</Section>
-					)}
-					<PastBookings
-						bookings={past}
-						expanded={pastOpen}
-						now={now}
-						onExpandedChange={setPastOpen}
-						onOpen={props.onOpen}
-					/>
-				</ItemGroup>
+				</Overlay>
 			)}
 		</VStack>
 	)
 }
 
-// Native navigation and clipboard/account controls do not wait for the bookings stream.
+// Native navigation and clipboard/account controls do not wait for the bookings stream; the bar marks bookings that stopped updating.
 export function HomeRoute(props: {onOpen: (id: Booking['id']) => void}) {
-	const query = useNativeState('')
 	const [searched, setSearched] = useState('')
+	const loaded = useAtomValue(bookingsAtom)
+	const refresh = useAtomRefresh(bookingsAtom)
 	return (
-		<Toolbar
-			modifiers={[
-				navigationTitle('Trips'),
-				navigationBarTitleDisplayMode('large'),
-				searchable(query, {onChange: setSearched, prompt: 'Search'}),
-				bottomBarSearch
-			]}
+		<ListToolbar
+			title="Trips"
+			session={session}
+			onSearch={setSearched}
+			problem={Boolean.match(AsyncResult.isFailure(loaded) && Option.isNone(blockingFailure(loaded)), {
+				onFalse: Function.constUndefined,
+				onTrue: () => <Problem label="Out of date" onRetry={refresh} />
+			})}
 		>
 			<PasteSheet clipboard={clipboard}>
 				<Suspense
@@ -361,18 +331,17 @@ export function HomeRoute(props: {onOpen: (id: Booking['id']) => void}) {
 						<ItemGroupSkeleton
 							rows={10}
 							descriptionLines={2}
-							media={<Gutter countdown={Countdown.cases.Days.make({days: 2})} />}
+							media={
+								<ItemMedia>
+									<Gutter countdown={Countdown.cases.Days.make({days: 2})} />
+								</ItemMedia>
+							}
 						/>
 					}
 				>
 					<Bookings onOpen={props.onOpen} searched={searched} />
 				</Suspense>
 			</PasteSheet>
-			<Toolbar.Content>
-				<ToolbarItem placement="topBarTrailing">
-					<AccountMenu session={session} />
-				</ToolbarItem>
-			</Toolbar.Content>
-		</Toolbar>
+		</ListToolbar>
 	)
 }
