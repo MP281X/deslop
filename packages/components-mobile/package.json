@@ -18,7 +18,6 @@
 		"./removal": "./src/lib/removal.ts"
 	},
 	"scripts": {
-		"palette": "node bin/palette.ts",
 		"test": "vp test --config ../../vite.config.ts"
 	},
 	"dependencies": {
