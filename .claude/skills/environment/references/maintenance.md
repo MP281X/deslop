@@ -193,7 +193,8 @@ Update, Clean, Check, in that order. End by reporting what waits on the user's r
 
 1. **Packages.** `sudo apt-get update && sudo apt-get upgrade -y && sudo apt-get autoremove -y && sudo apt-get clean`, `vp upgrade`, `gh extension upgrade --all` (`gh-stack` lags per worker). glab: when `curl -fsSL https://gitlab.com/api/v4/projects/gitlab-org%2Fcli/releases/permalink/latest` names a newer `tag_name`, `curl -fLo /tmp/glab.deb` `https://gitlab.com/gitlab-org/cli/-/releases/<tag>/downloads/glab_<version>_linux_amd64.deb` then `sudo dpkg -i /tmp/glab.deb`.
 2. **T3.** The user updates the service from T3's UI. Per worker, the global CLI only: `vp install -g t3@nightly`.
-3. **Mac.** `vp upgrade` ([Mac](#mac)); a pending macOS update is the user's, labelled from `softwareupdate -l`.
+3. **Configuration.** Every worker's `~/deslop` runs main's agent configuration: `git -C ~/deslop pull --ff-only`. A harness that rewrote a linked file (Claude Code re-indents `settings.json`) leaves the checkout dirty and blocks the pull: when `git -C ~/deslop diff -w` is empty, `git -C ~/deslop restore` the file and pull; a real change goes into a PR first.
+4. **Mac.** `vp upgrade` ([Mac](#mac)); a pending macOS update is the user's, labelled from `softwareupdate -l`.
 
 ### Clean
 
