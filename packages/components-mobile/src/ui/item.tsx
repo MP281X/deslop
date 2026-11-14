@@ -137,7 +137,7 @@ export function ItemTitle(props: {children: string; modifiers?: ViewModifier[]})
 
 export function ItemDescription(props: {children: string; modifiers?: ViewModifier[]}) {
 	return (
-		<Text modifiers={[...(props.modifiers ?? []), text.detail, foregroundStyle(colors.mutedForeground), lineLimit(1)]}>
+		<Text modifiers={[...(props.modifiers ?? []), text.detail, foregroundStyle(colors.mutedForeground), lineLimit(2)]}>
 			{props.children}
 		</Text>
 	)
