@@ -12,7 +12,14 @@
 
 ## Commands
 
-- **Verify.** `vp run fix`, then `vp run test`; `fix` covers CI's `vp run check`.
+| Role   | Command        | Runs                                                                               |
+| ------ | -------------- | ---------------------------------------------------------------------------------- |
+| Fixer  | `vp run fix`   | On dev before every push, drafts included, and before **Validate**; covers `check` |
+| Checks | `vp run check` | In the verification skill's **Validate**, and in CI                                |
+| Tests  | `vp run test`  | In the verification skill's **Validate**, and in CI                                |
+
+- **Verify.** The fixer, then **Validate** with the checks and tests.
+- **Ready.** A PR the agent has settled, with no further changes planned, is marked ready, so the user merges settled PRs one by one.
 - **Server contracts.** A contract change is not done until its built server starts with scratch data and serves the affected MCP tools or RPCs; build and static checks do not register tools.
 - **Judge.** `vp run judge` runs only when the user asks, never in CI, `fix`, `check`, `test` or Verify, because each Haiku call bills the signed-in person's Anthropic account through Gateway.
 - **Generators.** `vp create app -- --name <name>` (`--kind mobile` for iOS) and `vp create package -- --name <name>`, then `vp install`; never copy one. A new app's first release, mobile before its first push: `.github/releasing.md`, **A new app**.
@@ -59,3 +66,4 @@
 ## Documents
 
 - **Homes.** Each fact lives once: code, then lint; here for operation and user choices; app `AGENTS.md` for product intent; themes for tokens; `.github/releasing.md` for releases; published package `README.md` for its contract; skills for procedures; the prompts' Replies section for thread and PR output; the PR template for section guidance.
+- **Form.** In agent instructions, a process is a Mermaid `stateDiagram-v2` whose transitions read `event [guard] / action`, a lookup is a table, and bullets hold only standing rules; no prose restates a diagram.

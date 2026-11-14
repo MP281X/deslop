@@ -22,6 +22,12 @@ Pick the one whose subject matches; read its source, never a summary of it.
 
 ## Clones
 
-- **Place.** `/tmp/repos/<repository name>`, read-only: never edit, commit or push there; clone again when the boot emptied it.
-- **Make.** `git clone --depth 1 https://github.com/<owner>/<repository> /tmp/repos/<repository>`.
-- **Reuse.** Only when `git -C /tmp/repos/<repository> remote get-url origin` names that repository; refresh first with `git -C /tmp/repos/<repository> pull --ff-only`.
+Read-only, in `/tmp/repos/<repository>`: never edit, commit or push there.
+
+```mermaid
+stateDiagram-v2
+    [*] --> Checking : a repository is needed
+    Checking --> Reading : git -C /tmp/repos/NAME remote get-url origin [names it] / git -C /tmp/repos/NAME pull --ff-only
+    Checking --> Reading : [missing, or emptied at boot] / git clone --depth 1 https://github.com/OWNER/NAME /tmp/repos/NAME
+    Reading --> [*]
+```

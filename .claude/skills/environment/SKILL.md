@@ -7,12 +7,12 @@ description: Load before worker operations, previews, devices, tracing, deployme
 
 Two headless Debian workers in one tailnet, same user and paths.
 
-| Name          | Address          | Role                                                                                |
-| ------------- | ---------------- | ----------------------------------------------------------------------------------- |
-| `desktop`     | `100.97.120.3`   | Fastest worker, for validation only; on only when the user turns it on              |
-| `dev`         | `100.68.201.107` | Always on, where every thread starts: Deslop apps for `*.mp281x.xyz`, Datapizza VPN |
-| `macbook-pro` | `100.115.207.60` | The user's control plane, the iOS Simulator and a Deploy worker, on demand          |
-| `iphone`      | `100.117.217.10` | T3 client only                                                                      |
+| Name          | Address          | Role                                                                                               |
+| ------------- | ---------------- | -------------------------------------------------------------------------------------------------- |
+| `desktop`     | `100.97.120.3`   | Fastest worker, only for the verification skill's **Validate**; on only when the user turns it on  |
+| `dev`         | `100.68.201.107` | Always on; every main thread and delegate runs here; Deslop apps for `*.mp281x.xyz`, Datapizza VPN |
+| `macbook-pro` | `100.115.207.60` | The user's control plane, the iOS Simulator and a Deploy worker, on demand                         |
+| `iphone`      | `100.117.217.10` | T3 client only                                                                                     |
 
 - **Names.** MagicDNS short names; `<name>.tailnet-8c4c.ts.net` has HTTPS certificates. SSH as `mp281x@dev`, `mp281x@desktop`, `matteopaludgnach@macbook-pro`.
 - **Tools.** `vp` and `vpx` on `PATH`, also over SSH; systemd units need `~/.vite-plus/bin`. `gh`, `glab` and the MCP gateway signed in.
@@ -30,13 +30,27 @@ Two headless Debian workers in one tailnet, same user and paths.
 
 ## Previews
 
-- **One per worktree.** The systemd user unit `preview-<worktree name>`, shared over tailnet HTTPS. After edits, run the project's `preview` script from the worktree root: it replaces the previous run and prints the stable HTTPS URL. The repository's own preview command or a background task bypasses the unit and dies with the turn.
-- **Command.** Read the saved one with `t3_project_read`. Deslop's selects a changed web app, else Portfolio; set `PREVIEW_APP=<app>` to preview another app of the same change. An invalid selection leaves the running preview untouched.
-- **Fresh.** A turn that touched an app ends with its preview running the latest code; without a worktree preview, use the scratch run.
-- **Share** the URL only after it loads sign-in, assets and API calls.
+One per worktree: the systemd user unit `preview-<worktree name>`, shared over tailnet HTTPS.
+
+```mermaid
+stateDiagram-v2
+    [*] --> Stale : edits touch an app
+    Stale --> Starting : run the project's preview script from the worktree root
+    Starting --> Live : stable HTTPS URL printed [sign-in, assets and API calls load] / share the URL
+    Starting --> Stale : [invalid selection] / the running preview stays untouched
+    Live --> Stale : more edits
+    Live --> [*] : worktree gone / maintenance removes the unit
+    note right of Stale : a turn that touched an app ends in Live
+```
+
+- **Script.** Read the saved one with `t3_project_read`. Deslop's selects a changed web app, else Portfolio; `PREVIEW_APP=<app>` previews another app of the same change. The repository's own preview command or a background task bypasses the unit and dies with the turn.
+- **No worktree preview** (Stash): use its scratch run.
 - **Webhooks.** Funnel exposes a whole port: pick a free one of 443, 8443, 10000 and run `sudo tailscale funnel --bg --https=<port> --set-path <path> http://127.0.0.1:<api port><path>`; remove it with `... --set-path <path> off`.
 
 ## Tools
 
-- **Runtime state.** Deploy's `list_apps` or `read_resource_history`, with the full worker name (`dev.mp281x.xyz`, not `dev`), not `ps`, `docker ps`, `ss` or `systemctl`; unit health is `systemctl --failed`.
-- **Runtime error, trace or latency.** Scope's `list_operations`, then `search_traces`, then `read_trace` or `measure_latency`.
+| Question                        | Tool                                                                                                                                        |
+| ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| Runtime state                   | Deploy's `list_apps` or `read_resource_history`, with the full worker name (`dev.mp281x.xyz`), never `ps`, `docker ps`, `ss` or `systemctl` |
+| Unit health                     | `systemctl --failed`                                                                                                                        |
+| Runtime error, trace or latency | Scope's `list_operations`, then `search_traces`, then `read_trace` or `measure_latency`                                                     |

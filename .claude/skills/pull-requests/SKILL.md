@@ -13,19 +13,41 @@ description: 'Load before the first commit of a task, before the first edit when
 - **Integration.** Fold corrections into their owning layers, then restack onto the latest default branch before Verify.
 - **Before.** When a before/after is claimed, capture Before on base before the first edit.
 
-## Publish
+## Lifecycle
 
-1. **Push** as a draft, one push per affected PR per round, since each push cancels the previous pipeline.
-2. **Describe** by filling the repository's template: `.github/pull_request_template.md` on GitHub, `.gitlab/merge_request_templates/Default.md` on GitLab. Trim a recording's still stretches:
+```mermaid
+stateDiagram-v2
+    [*] --> Draft : first push opens it as a draft
+    Draft --> Draft : push [more rounds planned]
+    Draft --> Watching : push [the final head] / watch its pipeline
+    Watching --> Draft : pipeline [fails or conflicts] / fix, recapture what changed, push
+    Watching --> Green : pipeline [required jobs pass] / hand back
+    Green --> Draft : more changes / push
+    Green --> Ready : [user asks, or the repository's AGENTS.md readies a settled PR] / mark ready
+    Ready --> Draft : its layer needs an edit / mark draft first
+    Draft --> Closed : merged or closed
+    Green --> Closed : merged or closed
+    Ready --> Closed : merged or closed
+    Closed --> [*] : / unlink_pull_request
+```
 
-   ```bash
-   ffmpeg -i <recording> -vf "mpdecimate=hi=1:lo=1:frac=0,setpts='if(eq(N,0),0,PREV_OUTPTS+min(PTS-PREV_INPTS,1/TB))',fps=60,scale=out_range=tv,format=yuv420p" -c:v libx264 -pix_fmt yuv420p -color_range tv -movflags +faststart -an <trimmed>.mp4
-   ```
+Push once per affected PR per round, since each push cancels the previous pipeline. Every push, drafts included:
 
-3. **Read back** the rendered body: every diagram draws and every image and video loads.
-4. **Watch** the final head's pipeline; a failure or conflict gets a fix and fresh captures where they changed.
-5. **Hand back** once the required jobs pass.
-6. **Ready** only when the user asks; mark a ready PR draft again before editing its layer.
+```mermaid
+stateDiagram-v2
+    [*] --> Fixing
+    Fixing --> Fixing : the repository's fixer [fails] / fix
+    Fixing --> Pushing : fixer [passes] / commit its changes, push
+    Pushing --> Describing : pushed / update the body for the new head in the same step
+    Describing --> Describing : read back [a diagram, image or video fails to render] / fix the body
+    Describing --> [*] : read back [every diagram draws, every image and video loads]
+```
+
+- **Describe** by filling the repository's template: `.github/pull_request_template.md` on GitHub, `.gitlab/merge_request_templates/Default.md` on GitLab. Trim a recording's still stretches:
+
+  ```bash
+  ffmpeg -i <recording> -vf "mpdecimate=hi=1:lo=1:frac=0,setpts='if(eq(N,0),0,PREV_OUTPTS+min(PTS-PREV_INPTS,1/TB))',fps=60,scale=out_range=tv,format=yuv420p" -c:v libx264 -pix_fmt yuv420p -color_range tv -movflags +faststart -an <trimmed>.mp4
+  ```
 
 ## Commands
 

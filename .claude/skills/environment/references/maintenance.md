@@ -1,24 +1,37 @@
 # Maintenance
 
-A pass runs Update, Clean and Check on each machine that is on, without asking: `dev`, `mp281x@desktop`, `matteopaludgnach@macbook-pro`. It removes files, so it runs on Sonnet (orchestrator, **Removals**). End by reporting what waits on the user's restart (a kernel or macOS update); never pending T3 updates. Never run `t3 update`, `t3 doctor --fix` or `t3 service restart`, and never reboot: those are the user's.
+A pass removes files, so it runs on Sonnet (orchestrator, **Route**), without asking:
 
-**Never touch:**
+```mermaid
+stateDiagram-v2
+    [*] --> Update : for each machine that is on, of dev, mp281x@desktop, matteopaludgnach@macbook-pro
+    Update --> Clean
+    Clean --> Check
+    Check --> Update : next machine
+    Check --> [*] : last machine / report faults, unknown owners, denied steps and a kernel or macOS update waiting on the user's restart
+```
 
-- History: T3's databases and logs, `~/.claude/projects`, `~/.codex/sessions`.
-- Credentials.
-- Production data.
-- Running jobs.
-- Worktrees of running threads.
+- **The user's.** `t3 update`, `t3 doctor --fix`, `t3 service restart` and reboots; a pending T3 update is never reported.
+- **Never touch** history (T3's databases and logs, `~/.claude/projects`, `~/.codex/sessions`), credentials, production data, running jobs or worktrees of running threads.
 
 ## Update
 
 1. **Packages.** `sudo apt-get update && sudo apt-get upgrade -y && sudo apt-get autoremove -y && sudo apt-get clean`, `vp upgrade`, `gh extension upgrade --all`. glab: when `curl -fsSL https://gitlab.com/api/v4/projects/gitlab-org%2Fcli/releases/permalink/latest` names a newer `tag_name`, download `https://gitlab.com/gitlab-org/cli/-/releases/<tag>/downloads/glab_<version>_linux_amd64.deb` and `sudo dpkg -i` it. Mac: `vp upgrade`; label a pending macOS update from `softwareupdate -l`.
 2. **T3 CLI.** `vp install -g t3@nightly`; the service updates from T3's UI.
-3. **Configuration.** On every worker, `git -C ~/deslop pull --ff-only`. A harness rewrite of a linked file (Claude Code re-indents `settings.json`) blocks it: when `git -C ~/deslop diff -w` is empty, `git -C ~/deslop restore` first; a real change goes into a PR.
+3. **Configuration,** on every worker:
+
+   ```mermaid
+   stateDiagram-v2
+       [*] --> Pulling : git -C ~/deslop pull --ff-only
+       Pulling --> [*] : pull [succeeds]
+       Pulling --> Diffing : pull [a local change blocks it] / git -C ~/deslop diff -w
+       Diffing --> Pulling : diff [empty, a harness re-indent] / git -C ~/deslop restore
+       Diffing --> [*] : diff [a real change] / it goes into a PR
+   ```
 
 ## Clean
 
-Each step stands alone: a refusal or failure skips only that step. A thread owns a worktree through `worktreePath` in `orchestration_v2_projection_threads.payload_json`, delegated children through `lineage.rootThreadId`; `settledAt`, `archived_at` or `deleted_at` settles it. Re-read ownership right before removing.
+Each step stands alone: a refusal or failure skips only that step. A thread owns a worktree through `worktreePath` in `orchestration_v2_projection_threads.payload_json`, delegated children through `lineage.rootThreadId`; `settledAt`, `archived_at` or `deleted_at` settles it.
 
 1. **Tool caches,** when nothing uses them:
 
@@ -31,7 +44,16 @@ Each step stands alone: a refusal or failure skips only that step. A thread owns
 4. **Docker,** when no `docker build` or Compose build runs: `docker image prune -a -f`, `docker builder prune -a -f`. Never `docker system prune`.
 5. **pnpm,** when no install runs: `pnpm store prune`.
 6. **Previews.** Remove each stopped `preview-*` unit and its container whose worktree is gone; run an Alchemy preview's `preview:destroy` first. Stop the containers a preview started with it, since Dual's `dualos-local-*-wt-<hash>` Postgres and OpenSandbox outlive the unit; `docker stop` keeps their seeded data, Dual's `settle` destroys it. Dual's public hostname is a Deploy exposure (`dual-preview.mp281x.xyz`): remove it with Deploy's `remove_exposure` once no preview answers behind it. Remove leftover `testcontainers-ryuk-*` and the unnamed Postgres containers of finished test runs.
-7. **Worktrees** of settled threads that no process uses, uncommitted changes included: the settle script, then `git worktree remove --force --force <path>` and `git worktree prune`. On desktop this includes `/tmp/validate/<repo>-<dev worktree name>` once its dev worktree's thread is settled.
+7. **Worktrees,** uncommitted changes included:
+
+   ```mermaid
+   stateDiagram-v2
+       [*] --> Owned : a worktree, desktop's validation ones included
+       Owned --> Settled : its thread settles, a validation worktree's being its dev worktree's thread
+       Settled --> Owned : ownership re-read right before removal [a live owner, or a process uses it]
+       Settled --> [*] : ownership re-read [still settled, unused] / the settle script, git worktree remove --force --force, git worktree prune
+   ```
+
 8. **Local branches** in `~/deslop` and `~/dual` that no worktree checks out, except the default branch: `git branch -D`.
 9. **Remote branches,** only when the PR or MR is merged or closed, every commit is authored by the user, and no thread's worktree uses it. A failed host query keeps the branch.
 
@@ -65,8 +87,6 @@ Every pass:
 - **sshd.** `sudo sshd -T` shows `usepam yes`, `passwordauthentication no`, `permitrootlogin no`.
 - **VPN.** `git -C ~/dual ls-remote -q origin HEAD` succeeds; otherwise reconnect by Dual's **VPN**.
 - **GPU.** desktop, after kernel or driver updates: `nvidia-smi` lists the RTX 5070 and `sudo modinfo -F version nvidia` matches it.
-
-Report faults, unknown owners and denied steps.
 
 ## Setup and repair
 

@@ -5,15 +5,42 @@ description: Load before editing code for a bug or a failed check, before claimi
 
 # Verification
 
-Lint owns what a parser can check; this covers running behaviour. Diagnose runs whenever a bug or check fails; Prove once the user calls the work settled; Review only for an unresolved consequential question, since a review of decided work re-argues it.
+Lint owns what a parser can check; this covers running behaviour. The repository's `AGENTS.md` names its fixer, checks and tests.
 
 ## Diagnose
 
-1. **Reproduce** on base with a failing check, request or capture before forming a theory.
-2. **Fix where the wrong state starts**; a guard, retry or swallowed error only hides it.
-3. **Two strikes.** A check still failing after two edits means the hypothesis is wrong.
+```mermaid
+stateDiagram-v2
+    [*] --> Reproducing : a bug or check fails
+    Reproducing --> Fixing : failing check, request or capture on base, before any theory
+    Fixing --> Probing : edit where the wrong state starts, not a guard, retry or swallowed error
+    Probing --> [*] : probe [passes]
+    Probing --> Fixing : probe [fails after the first edit]
+    Probing --> Reproducing : probe [fails after the second edit] / drop the hypothesis
+```
+
+## Validate
+
+The main thread validates a commit itself, with no delegate; the fixer already ran on dev, so validation runs no fixer.
+
+```mermaid
+stateDiagram-v2
+    [*] --> Probing : main thread commits a SHA
+    Probing --> Desktop : ssh -o ConnectTimeout=3 mp281x@desktop true [succeeds] / the background command below, then t3_background_wait
+    Probing --> Local : ssh probe [fails] / the same checks and tests in place in the thread's dev worktree, in the foreground
+    Desktop --> [*] : command exits / read the exit code and failing lines
+    Local --> [*] : commands exit / read the exit code and failing lines
+```
+
+```bash
+ssh mp281x@desktop 'cd ~/<repo> && w=/tmp/validate/<repo>-<dev worktree name> && git fetch -q ssh://mp281x@dev<dev worktree path> <sha> && { git -C $w checkout -q --detach <sha> 2>/dev/null || git worktree add -q --detach $w <sha>; } && cd $w && vp install && <checks> && <tests>'
+```
+
+Each thread owns one validation worktree, reused every iteration so dependencies and the `vp` cache stay warm, and never shared, so threads need no locks. Nothing is pushed and no branch is created; [maintenance](../environment/references/maintenance.md#clean) removes it once the thread settles.
 
 ## Prove
+
+Once the user calls the work settled:
 
 - **Surface.** UI, and backend changes a screen shows, in the T3 browser; native changes in the Device panel. This standing request covers the preview tools.
 - **Capture** representative data once a condition holds, on the head, with its short commit in the caption; a rebase retakes them all.
@@ -24,7 +51,21 @@ Lint owns what a parser can check; this covers running behaviour. Diagnose runs 
 
 ## Review
 
-One read-only reviewer in a fresh context gets the decisions, the user's acceptance criteria, the head and the captures, and opens its own preview, since source is not evidence. It weighs architecture, UI/UX and function, not lint's domain. Each finding has the input, the result, `path:line` and a severity: P1 broken contract, data loss, secret exposure or false claim; P2 architecture or ownership violation; P3 reads worse than the recorded design. A third round means the approach is wrong.
+Only for an unresolved consequential question, since a review of decided work re-argues it.
+
+```mermaid
+stateDiagram-v2
+    [*] --> Reviewing : consequential question open / one read-only reviewer in a fresh context
+    Reviewing --> [*] : review [no findings]
+    Reviewing --> Fixing : review [findings, first round]
+    Fixing --> Reviewing : fixed / second round
+    Reviewing --> Replanning : review [findings, second round] / the approach is wrong
+    Replanning --> [*]
+```
+
+- **Input.** The decisions, the user's acceptance criteria, the head and the captures; the reviewer opens its own preview, since source is not evidence.
+- **Scope.** Architecture, UI/UX and function, not lint's domain.
+- **Finding.** The input, the result, `path:line` and a severity: P1 broken contract, data loss, secret exposure or false claim; P2 architecture or ownership violation; P3 reads worse than the recorded design.
 
 ## Tests
 
