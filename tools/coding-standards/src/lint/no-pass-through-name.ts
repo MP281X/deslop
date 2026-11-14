@@ -309,14 +309,21 @@ function exportedAlias(input: {context: Context; node: ESTree.VariableDeclarator
 	)
 }
 
-function singleUseLiteral(input: {context: Context; node: ESTree.VariableDeclarator}) {
-	if (input.node.parent.parent?.type === 'Program') return singleUseModulePrimitive(input.context, input.node)
+function privateConstReads(input: {context: Context; node: ESTree.VariableDeclarator}) {
 	if (
 		input.node.parent.type !== 'VariableDeclaration' ||
 		input.node.parent.kind !== 'const' ||
 		isExport(input.node.parent.parent) ||
 		input.node.id.type !== 'Identifier' ||
-		input.node.id.typeAnnotation !== null ||
+		input.node.id.typeAnnotation !== null
+	)
+		{return Option.none()}
+	return readsOf({context: input.context, name: input.node.id.name, node: input.node})
+}
+
+function singleUseLiteral(input: {context: Context; node: ESTree.VariableDeclarator}) {
+	if (input.node.parent.parent?.type === 'Program') return singleUseModulePrimitive(input.context, input.node)
+	if (
 		!(
 			(input.node.init?.type === 'Literal' && !Predicate.hasProperty(input.node.init, 'regex')) ||
 			(input.node.init?.type === 'TemplateLiteral' && Array.isArrayEmpty(input.node.init.expressions))
@@ -325,7 +332,7 @@ function singleUseLiteral(input: {context: Context; node: ESTree.VariableDeclara
 		return false
 	}
 	return Option.exists(
-		readsOf({context: input.context, name: input.node.id.name, node: input.node}),
+		privateConstReads(input),
 		reads => reads.length === 1 && reads[0]?.identifier.parent.type !== 'ExportSpecifier'
 	)
 }
@@ -333,11 +340,6 @@ function singleUseLiteral(input: {context: Context; node: ESTree.VariableDeclara
 function singleUseLayerPart(input: {context: Context; node: ESTree.VariableDeclarator}) {
 	const init = input.node.init
 	if (
-		input.node.parent.type !== 'VariableDeclaration' ||
-		input.node.parent.kind !== 'const' ||
-		isExport(input.node.parent.parent) ||
-		input.node.id.type !== 'Identifier' ||
-		input.node.id.typeAnnotation !== null ||
 		init === null ||
 		// Only a `.layer` read or an `Effect.gen` call can be a layer part; checking that first skips scope analysis.
 		!(
@@ -348,7 +350,7 @@ function singleUseLayerPart(input: {context: Context; node: ESTree.VariableDecla
 	) {
 		return false
 	}
-	return Option.exists(readsOf({context: input.context, name: input.node.id.name, node: input.node}), reads => {
+	return Option.exists(privateConstReads(input), reads => {
 		const consumer = reads[0]?.identifier.parent
 		if (reads.length !== 1 || consumer?.type !== 'CallExpression') return false
 		if (init.type === 'MemberExpression') {
