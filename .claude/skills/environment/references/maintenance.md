@@ -1,14 +1,11 @@
 # Maintenance
 
-A pass removes files, so it runs on Sonnet (orchestrator, **Route**), without asking:
+A pass runs without asking, on a Claude model, since Codex rejects its removals:
 
 ```mermaid
 stateDiagram-v2
-    [*] --> Update : for each worker that is on
-    Update --> Clean
-    Clean --> Check
-    Check --> Update : next worker
-    Check --> [*] : last worker / report faults, unknown owners, denied steps and a kernel or macOS update waiting on the user's restart
+    [*] --> Passing : each worker that is on, concurrently / Update, Clean, Check
+    Passing --> [*] : every worker done / report per worker faults, unknown owners, denied steps and a kernel or macOS update waiting on the user's restart
 ```
 
 - **The user's.** `t3 update`, `t3 doctor --fix`, `t3 service restart` and reboots; a pending T3 update is never reported.

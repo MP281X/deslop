@@ -28,7 +28,7 @@ Run the repository's checks locally on what you changed: the tests that cover it
 - **Surface.** UI, and backend changes a screen shows, in the T3 browser; native changes in the Device panel. This standing request covers the preview tools.
 - **Capture** representative data once a condition holds, on the head, with its short commit in the caption.
 - **Fixed means flipped.** The probe that failed on base passes on the head.
-- **States.** Cold open, deep-link reload and a failed first request; `iphone-12-pro` and 1440×900, plus the widest target reached; dark and light when colour changed; web and iOS side by side when both exist.
+- **States.** One trimmed recording per app reached, plus only the states the change touches: cold open, deep-link reload, a failed first request, a viewport (`iphone-12-pro`, 1440×900, the widest target), dark or light.
 - **Read each capture** for duplicates, clipping, overflow and untruthful loading, empty or error states, and audit web states with `preview_evaluate` and [references/page-audit.js](references/page-audit.js).
 - **Unproved** claims say `unverified: <what was not run>`.
 
@@ -40,9 +40,8 @@ Never for decided work, which a review only re-argues.
 stateDiagram-v2
     [*] --> Reviewing : consequential question open / one read-only reviewer in a fresh context
     Reviewing --> [*] : review [no findings]
-    Reviewing --> Fixing : review [findings, first round]
-    Fixing --> Reviewing : fixed / second round
-    Reviewing --> Replanning : review [findings, second round] / the approach is wrong
+    Reviewing --> [*] : review [findings the approach survives] / fix them, Validate
+    Reviewing --> Replanning : review [a finding the approach itself causes]
     Replanning --> [*]
 ```
 

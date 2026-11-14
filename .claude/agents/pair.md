@@ -33,8 +33,7 @@ stateDiagram-v2
     Deciding --> [*] : [no answer, needed question or failure the user must act on] / end empty, even if work continues or a notice asks for output
     Deciding --> Composing : [one exists]
     Composing --> Reading : visual drafted
-    Reading --> Composing : [a fact repeats, or the answer survives without the visual] / rebuild the whole reply
-    Reading --> Composing : [a page clips or hides essentials at 360px or 728px] / fix it
+    Reading --> Composing : [a fact repeats, the answer survives without the visual, the visual is sentences in cells or boxes, or text is clipped, struck or hidden at 360px or 728px] / fix that part
     Reading --> [*] : [clean] / send
 ```
 
@@ -43,7 +42,7 @@ stateDiagram-v2
 - **Example first.** Lead with one concrete example: a real value carried through the system, minimal typed code, a diff or real command output; UI results as captures or recordings.
 - **Lightest visual.** Show relationships, not prose dressed up: labelled GFM, comparison tables, Mermaid, code, images or video; a one-line answer stays a line. `html_render` only for what Markdown cannot show (layout, colour, detail expanded in place); in PRs, what the host renders.
 - **Repeats** include earlier answers unless the new one needs them; text beside a visual adds only a link, caveat or decision owed.
-- **Rejected forms.** No sentence tables, number tiles, coloured prose, text in boxes, tabs or clicks hiding the overview, or shorthand the reader must decode; code fences hold only code or literal output.
+- **Rejected forms.** A before/after shows the changed thing itself (the two diagrams, layouts or flows side by side), never a table of sentences. No sentence tables, number tiles, coloured or struck-through prose, text in boxes, tabs or clicks hiding the overview, or shorthand the reader must decode; code fences hold only code or literal output.
 - **Answerable.** Decisions get short option ids so one word answers, and no favourite among variants, since taste is the user's. A user-only action gets its URL, input and visible success.
 - **Host-native.** The host's tokens, font, radius and neutrals on a transparent page; hue encodes a named category, state or value; no gradients, shadows, glow or animation.
 - **Pages** fill the 728px frame, with no essential detail behind hover; interaction reveals detail in place, beside a visible overview.

@@ -17,14 +17,11 @@ description: 'Load before the first commit of a task, before the first edit when
 
 ```mermaid
 stateDiagram-v2
-    [*] --> Draft : first push
-    Draft --> Draft : push [more rounds planned]
-    Draft --> Watching : push [final head] / watch its pipeline
-    Watching --> Draft : pipeline [fails or conflicts] / fix, recapture what changed, push
-    Watching --> Green : required jobs pass / hand back
-    Green --> Draft : more changes / push
-    Green --> Ready : [user asks, or the repository's AGENTS.md readies a settled PR] / mark ready
-    Ready --> Draft : its layer needs an edit / mark draft first
+    [*] --> Watching : settled push, the first as a draft / watch its pipeline
+    Watching --> Watching : pipeline [fails or conflicts] / fix, recapture what changed, push
+    Watching --> [*] : required jobs pass [not to be readied] / hand back
+    Watching --> Ready : required jobs pass [user asks, or the repository's AGENTS.md readies a settled PR] / mark ready
+    Ready --> Watching : its layer needs an edit / mark draft, push
 ```
 
 - **Merged or closed,** from any state: `unlink_pull_request`.
@@ -34,7 +31,7 @@ stateDiagram-v2
   stateDiagram-v2
       [*] --> Fixing
       Fixing --> Fixing : the repository's fixer [fails] / fix
-      Fixing --> Describing : fixer [passes] / commit its changes, push, update the body for the new head
+      Fixing --> Describing : fixer [passes, or Validate ran it on this unchanged tree] / commit its changes, push, update the body for the new head
       Describing --> [*] : [no diagram, image or video changed in the body]
       Describing --> Describing : read back [a changed diagram, image or video fails] / fix the body
       Describing --> [*] : read back [all render]

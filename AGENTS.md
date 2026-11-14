@@ -85,4 +85,4 @@
 | Thread and PR output                                     | The prompts' Replies section                               |
 | Rules for every turn                                     | The prompts' `# Work`                                      |
 
-- **Form.** In agent instructions, a process is a Mermaid `stateDiagram-v2` whose transitions read `event [guard] / action`, a lookup is a table, and bullets hold only standing rules; no prose restates a diagram.
+- **Form.** In agent instructions, state only what a reader would otherwise get wrong, never the implicit or what is no concern; a process is a Mermaid `stateDiagram-v2` whose transitions read `event [guard] / action`, a lookup is a table, and bullets hold only standing rules; no prose restates a diagram.

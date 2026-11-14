@@ -41,8 +41,6 @@ The same `execute` reads, never writes, the user's work calendar and mail, `matt
 
 ## VPN
 
-`git.datapizza.tech` works only through dev's VPN route.
-
 ```mermaid
 stateDiagram-v2
     [*] --> Probing : the host is needed

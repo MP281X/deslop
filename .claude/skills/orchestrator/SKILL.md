@@ -14,13 +14,14 @@ stateDiagram-v2
     Discussing --> Planned : change wanted / show the plan
     Planned --> Discussing : user steers
     Planned --> Drafting : user approves the plan
-    Drafting --> Drafting : steer [inside the plan] / edit, commit, push the draft
+    Drafting --> Drafting : steer [inside the plan] / edit, commit
     Drafting --> Discussing : steer [outside the plan]
-    Drafting --> Settled : user calls the work settled / Verify on the integrated head
-    Settled --> Drafting : Verify [fails] / fix
-    Settled --> Done : Verify [passes] / captures, PR polish, cleanup
-    Done --> [*]
+    Drafting --> Settled : user calls the work settled / Validate
+    Settled --> Drafting : Validate [fails] / fix
+    Settled --> [*] : Validate [passes] / refresh the preview, the template's captures, push by the pull-requests skill, cleanup
 ```
+
+- **Checks wait for settle.** While drafting, no fixer, checks, tests, pushes or preview restarts unless the user asks or a capture needs one; Validate runs them once.
 
 - **Plan.** A UI plan is a rough HTML prototype, an architecture plan a diagram, made in minutes without the code reading a replica needs: 2–3 genuinely different directions you would build, side by side on the same data, without filters or captions; a better idea than the user's is one of them.
 - **Precedent.** Before an edit, read how the neighbouring feature or shared package does it.
@@ -52,16 +53,13 @@ The user picks the main thread's model and effort; this table routes delegates.
 ```mermaid
 stateDiagram-v2
     [*] --> Briefing : independent outcomes chosen
-    Briefing --> Running : [no running delegate touches its files] / delegate_task async in the main thread's worktree, all such siblings in one turn, then end the turn
     Briefing --> Queued : [a running delegate touches its files]
     Queued --> Briefing : that delegate integrated
-    Briefing --> Waiting : [the next step needs its result] / delegate_task wait
-    Running --> Integrating : a completion wakes the main thread
-    Waiting --> Integrating : report returns
-    Integrating --> [*] : diff read [matches the decisions, carries its proof] / commit it
-    Integrating --> Running : diff read [deliverable missing, first rerun] / another model
-    Integrating --> Running : diff read [deliverable missing, second rerun] / Opus 5.5
-    Integrating --> [*] : diff read [the Opus rerun failed too] / ask the user, showing the cause from each failed report
+    Briefing --> Running : [no running delegate touches its files] / delegate_task in the main thread's worktree, async with siblings in one turn, or wait when the next step needs its result
+    Running --> Integrating : report returns
+    Integrating --> [*] : diff read [matches the decisions] / commit it
+    Integrating --> Running : diff read [deliverable missing, first time] / rerun on Opus 5.5 with only what was missing
+    Integrating --> [*] : diff read [the rerun failed too] / finish it in the main thread, or ask the user with each report's cause
     [*] --> PRThread : a separate PR must progress in parallel / delegate_task isolation 'worktree', a persistent thread
     PRThread --> PRThread : its next step / t3_thread_send
     PRThread --> [*] : its PR merged or closed
@@ -69,12 +67,11 @@ stateDiagram-v2
 
 - **One checkout.** The main thread already owns its worktree and branch, so delegates get none; sharing one index, they never commit.
 - **One outcome per delegate.** Coupled edits share one thread, since split halves come back for the main thread to reconcile. A procedure is a skill, not a child agent.
-- **Surveys** run once; save the result to a file outside the checkout and cite its path in later briefs.
-- **Reruns** carry only what was missing.
+- **No handoff files.** Context travels in the brief and the report, never a file one side writes and the other reads.
 
 ## Brief
 
-About 1,500 characters: the delegate already has the instructions, the skills and the checkout with its uncommitted edits, but not the thread; a PR thread's worktree starts at the parent's commit, without them. Give only the objective, the settled decisions, the files it owns, what to leave alone, the command that proves it done and the report you want.
+About 1,500 characters: the delegate already has the instructions, the skills and the checkout with its uncommitted edits, but not the thread; a PR thread's worktree starts at the parent's commit, without them. Give only the objective, the settled decisions, the files it owns, what to leave alone, the narrowest command that proves it, when one does, and the report you want.
 
 ## Delegate run
 
@@ -83,12 +80,12 @@ A delegate runs its brief as the approved plan, edits only the brief's files and
 ```mermaid
 stateDiagram-v2
     [*] --> Working : brief arrives
-    Working --> Working : tool truncates or fails / smaller page or another route
-    Working --> Checking : edits made / the brief's checks
+    Working --> Checking : edits made [the brief names a proof] / run it
+    Working --> [*] : edits made [no proof named] / report PASS
     Checking --> Working : [fail]
     Checking --> [*] : [pass, shared checkout] / report PASS
-    Checking --> [*] : [pass, a PR thread] / commit, push by the pull-requests skill, report PASS
-    Working --> [*] : stop [unfinished] / save the work to a file, report ISSUES
+    Checking --> [*] : [pass, a PR thread] / commit, push by the pull-requests skill when its work settles, report PASS
+    Working --> [*] : stop [unfinished] / report ISSUES with what is done and what is missing
     Working --> [*] : stop [a command's output proves the blocker] / report BLOCKED
 ```
 

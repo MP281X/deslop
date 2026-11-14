@@ -10,7 +10,7 @@ Two headless Debian workers in one tailnet, same user and paths.
 | Name          | Address          | Role                                                                       |
 | ------------- | ---------------- | -------------------------------------------------------------------------- |
 | `desktop`     | `100.97.120.3`   | Fastest; sometimes off                                                     |
-| `dev`         | `100.68.201.107` | Always on: Deslop apps for `*.mp281x.xyz`, Datapizza VPN                   |
+| `dev`         | `100.68.201.107` | Always on: Deslop apps for `*.mp281x.xyz`                                  |
 | `macbook-pro` | `100.115.207.60` | The user's control plane, the iOS Simulator and a Deploy worker, on demand |
 | `iphone`      | `100.117.217.10` | T3 client only                                                             |
 
@@ -34,12 +34,11 @@ One per worktree: the systemd user unit `preview-<worktree name>`, shared over t
 ```mermaid
 stateDiagram-v2
     [*] --> Stale : edits touch an app
-    Stale --> Starting : run the project's preview script from the worktree root
+    Stale --> Starting : a capture needs it or the work settles / run the project's preview script from the worktree root
     Starting --> Live : stable HTTPS URL printed [sign-in, assets and API calls load] / share the URL
     Starting --> Stale : [invalid selection] / the running preview stays untouched
     Live --> Stale : more edits
     Live --> [*] : worktree gone / maintenance removes the unit
-    note right of Stale : a turn that touched an app ends in Live
 ```
 
 - **Script.** Read the saved one with `t3_project_read`. Deslop's selects a changed web app, else Portfolio; `PREVIEW_APP=<app>` previews another app of the same change. The repository's own preview command or a background task bypasses the unit and dies with the turn.
