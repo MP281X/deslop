@@ -19,7 +19,7 @@ Lint owns what a parser can check. This skill covers running behaviour, the user
 - **Capture** representative data, after a condition holds rather than a delay. Command output supports a capture, never replaces it; a mock is never proof.
 - **Fresh.** Confirm the preview runs the head before the first capture, and name the short commit in each caption. A later commit retakes the captures whose screen or flow it changed; an amend, rebase or restack retakes them all.
 - **Fixed means flipped.** A bug fix shows the probe that failed on base passing on the integrated head.
-- **Journeys.** Walk each journey the change touches from its input to its outcome, failures included; an app's `AGENTS.md` lists its main ones under `## Journeys`. Scope's traces show what the backend did.
+- **Journeys.** Walk each journey the change touches from its input to its outcome, failures included. Scope's traces show what the backend did.
 - **Each touched screen**, and the navigation its journeys need, on real or planted data:
   - cold first open, reload of a deep link, the first request failing, and on native background then resume;
   - hover, focus and keyboard on changed controls;
