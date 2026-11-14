@@ -9,7 +9,7 @@ import {choicesAreSchemas} from '#lint/choices-are-schemas.ts'
 import {effectCallForm} from '#lint/effect-call-form.ts'
 import {explicitEffectConcurrency} from '#lint/explicit-effect-concurrency.ts'
 import {libraryOperation} from '#lint/library-operation.ts'
-import {moduleConstant} from '#lint/module-constant.ts'
+import {nameByKind} from '#lint/name-by-kind.ts'
 import {noAccumulatingCopy} from '#lint/no-accumulating-copy.ts'
 import {noBareControl} from '#lint/no-bare-control.ts'
 import {noBarrelModule} from '#lint/no-barrel-module.ts'
@@ -20,7 +20,6 @@ import {noDestructuredParameter} from '#lint/no-destructured-parameter.ts'
 import {noFakeRefState} from '#lint/no-fake-ref-state.ts'
 import {noFloatingDerivedType} from '#lint/no-floating-derived-type.ts'
 import {noHandlerOnLabel} from '#lint/no-handler-on-label.ts'
-import {noMisleadingBooleanName} from '#lint/no-misleading-boolean-name.ts'
 import {noMultilineComment} from '#lint/no-multiline-comment.ts'
 import {noNativeMethodCall} from '#lint/no-native-method-call.ts'
 import {noPassThroughName} from '#lint/no-pass-through-name.ts'
@@ -90,7 +89,7 @@ const RULES = {
 	'effect-call-form': effectCallForm,
 	'explicit-effect-concurrency': explicitEffectConcurrency,
 	'library-operation': libraryOperation,
-	'module-constant': moduleConstant,
+	'name-by-kind': nameByKind,
 	'no-accumulating-copy': noAccumulatingCopy,
 	'no-bare-control': noBareControl,
 	'no-barrel-module': noBarrelModule,
@@ -101,7 +100,6 @@ const RULES = {
 	'no-fake-ref-state': noFakeRefState,
 	'no-floating-derived-type': noFloatingDerivedType,
 	'no-handler-on-label': noHandlerOnLabel,
-	'no-misleading-boolean-name': noMisleadingBooleanName,
 	'no-multiline-comment': noMultilineComment,
 	'no-native-method-call': noNativeMethodCall,
 	'no-pass-through-name': noPassThroughName,
@@ -205,43 +203,12 @@ export const lint: OxlintConfig & {
 
 		'eslint-js/no-restricted-syntax': [
 			'error',
-			{
-				message:
-					'Name this declaration for the domain value it holds; data, info, obj, temp, tmp, helper, manager and handle hide that meaning.',
-				selector:
-					':matches(VariableDeclarator > Identifier.id, FunctionDeclaration > Identifier.id, ClassDeclaration > Identifier.id, :matches(FunctionDeclaration, FunctionExpression, ArrowFunctionExpression) > Identifier.params, CatchClause > Identifier.param)[name=/^(data|info|obj|temp|tmp|helper|manager|handle)$/]'
-			},
-			{
-				message: 'Name an error class <Domain>Error.',
-				selector:
-					'ClassDeclaration[superClass.callee.callee.object.name="Schema"][superClass.callee.callee.property.name="TaggedError"]:not([id.name=/Error$/])'
-			},
-			{
-				message: 'Name a span Service.method.',
-				selector:
-					'CallExpression[callee.object.name="Effect"][callee.property.name=/^(withSpan|fn)$/] > Literal.arguments[value]:not([value=/^[A-Z][A-Za-z]*\\.[a-z][A-Za-z]*$/])'
-			},
-			{
-				message: 'Name an atom with the Atom suffix.',
-				selector:
-					'VariableDeclarator:not([id.name=/(Atom|Runtime|Atoms)$/]) > CallExpression.init:matches([callee.object.name="Atom"][callee.property.name=/^(make|readable|fn|fnSync|runtime|writable|family|keepAlive|withLabel)$/], [callee.property.name=/^(atom|fn|pull)$/][callee.object.property.name="runtime"], [callee.property.name=/^(atom|fn|pull)$/][callee.object.name=/Runtime$/], [callee.property.name=/^(atom|fn|pull)$/][callee.object.callee.object.name="Atom"][callee.object.callee.property.name="runtime"])'
-			},
-			{
-				message: 'Name an error mapping combinator as<Domain>Error.',
-				selector:
-					'VariableDeclarator:not([id.name=/^as[A-Z]\\w*Error$/]) > CallExpression[callee.object.name="Effect"][callee.property.name="mapError"][arguments.length=1]'
-			},
 			{message: 'Use const and Effect collection combinators.', selector: 'VariableDeclaration[kind="let"]'},
 			{message: 'Use Match.', selector: 'SwitchStatement'},
 			{
 				// A module augmentation is the one place an interface belongs: TypeScript merges declarations only into interfaces.
 				message: 'Declare a type, not an interface.',
 				selector: 'TSInterfaceDeclaration:not(TSModuleDeclaration TSInterfaceDeclaration)'
-			},
-			{
-				message: 'Name tools in snake_case.',
-				selector:
-					'CallExpression[callee.object.name="Tool"][callee.property.name="make"] > Literal.arguments:first-child:not([value=/^[a-z][a-z0-9]*(_[a-z0-9]+)*$/])'
 			}
 		],
 
@@ -417,10 +384,6 @@ export const lint: OxlintConfig & {
 		'eslint/no-plusplus': 'error',
 		'eslint/no-proto': 'error',
 		'eslint/no-regex-spaces': 'error',
-		'eslint/no-restricted-exports': [
-			'error',
-			{restrictedNamedExportsPattern: '^(?:config|get|layer|list|live|make|run|Error|Failure)$|Live$'}
-		],
 		'eslint/no-restricted-globals': [
 			'error',
 			{

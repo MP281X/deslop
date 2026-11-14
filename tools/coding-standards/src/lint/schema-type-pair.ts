@@ -88,10 +88,6 @@ function reportSchemaVariable(input: {
 	if (input.variable.init === null || !isSchemaDefinition({context: input.context, node: input.variable.init})) return
 	const name = input.variable.id.name
 	if (!matches(/^[A-Z]/u)(name)) {
-		input.context.report({
-			message: 'Give the schema and its immediately preceding type one PascalCase name.',
-			node: input.variable
-		})
 		return
 	}
 

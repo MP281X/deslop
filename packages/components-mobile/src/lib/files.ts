@@ -32,7 +32,7 @@ export function cachedList<S extends Schema.Top, E, R>(
 		R | S['EncodingServices'] | AtomRegistry.AtomRegistry
 	> = Function.identity
 ) {
-	const json = Schema.fromJsonString(Schema.Array(item))
+	const CachedList = Schema.fromJsonString(Schema.Array(item))
 	const hydrate = Option.match(get.self<AsyncResult.AsyncResult<Schema.$Array<S>['Type'], E>>(), {
 		onNone: Function.constTrue,
 		onSome: result => {
@@ -48,7 +48,7 @@ export function cachedList<S extends Schema.Top, E, R>(
 				catch: cause => DeviceError.make({cause, message: `${file.name} could not be read on this iPhone`}),
 				try: () => file.textSync()
 			}),
-			Effect.flatMap(Schema.decodeEffect(json)),
+			Effect.flatMap(Schema.decodeEffect(CachedList)),
 			Effect.option,
 			Stream.fromEffect,
 			Stream.flatMap(cached => Stream.fromIterable(Option.toArray(cached))),
@@ -65,7 +65,7 @@ export function cachedList<S extends Schema.Top, E, R>(
 							FiberHandle.run(
 								writes,
 								pipe(
-									Schema.encodeEffect(json)(list),
+									Schema.encodeEffect(CachedList)(list),
 									Effect.flatMap(text =>
 										Effect.try({
 											catch: cause =>

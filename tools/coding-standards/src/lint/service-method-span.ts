@@ -1,4 +1,4 @@
-import {Array, Option, Predicate, String, pipe} from 'effect'
+import {Array, Option, String, pipe} from 'effect'
 
 import {defineRule} from 'vite-plus/lint/plugins'
 import type {Context, ESTree} from 'vite-plus/lint/plugins'
@@ -53,7 +53,7 @@ function returnValues(context: Context, node: ESTree.Node): ESTree.Node[] {
 	return Array.flatMap(childNodes(context, node), child => returnValues(context, child))
 }
 
-function spanNames(context: Context, value: ESTree.Node): ESTree.Node[] {
+export function spanNames(context: Context, value: ESTree.Node): ESTree.Node[] {
 	const node = resolveBinding(context, value)
 	if (node.type === 'ArrowFunctionExpression') {
 		if (node.body.type !== 'BlockStatement') return spanNames(context, node.body)
@@ -153,52 +153,46 @@ function serviceClass(context: Context, node: ESTree.Node): Option.Option<ESTree
 	return serviceClass(context, node.parent)
 }
 
-// Review owns opaque calls, dynamic span names and effect/stream values; native effectFnOpportunity does not require spans.
+export function publicServiceName(context: Context, node: ESTree.Node) {
+	if (
+		node.type !== 'Property' ||
+		node.parent.type !== 'ObjectExpression' ||
+		!(
+			node.parent.parent.type === 'ReturnStatement' ||
+			(node.parent.parent.type === 'CallExpression' &&
+				node.parent.parent.callee.type === 'MemberExpression' &&
+				Option.contains(memberName(node.parent.parent.callee), 'of'))
+		) ||
+		node.key.type !== 'Identifier'
+	) {
+		return Option.none<string>()
+	}
+	const method = node.key.name
+	return Option.flatMap(serviceClass(context, node), service => {
+		if (service.id === null) return Option.none<string>()
+		if (node.parent.parent?.type === 'CallExpression' && node.parent.parent.callee.type === 'MemberExpression') {
+			if (
+				node.parent.parent.callee.object.type !== 'ThisExpression' &&
+				!(
+					node.parent.parent.callee.object.type === 'Identifier' &&
+					node.parent.parent.callee.object.name === service.id.name
+				)
+			) {
+				return Option.none<string>()
+			}
+		}
+		if (node.parent.parent?.type === 'ReturnStatement') {
+			if (!factoryReturn(context, node.parent.parent)) return Option.none<string>()
+		}
+		return Option.some(`${service.id.name}.${method}`)
+	})
+}
+
+// Requiring a trace boundary is separate from checking the names on existing spans.
 export const serviceMethodSpan = defineRule({
 	create: context => ({
 		Property: node => {
-			if (
-				node.parent.type !== 'ObjectExpression' ||
-				!(
-					node.parent.parent.type === 'ReturnStatement' ||
-					(node.parent.parent.type === 'CallExpression' &&
-						node.parent.parent.callee.type === 'MemberExpression' &&
-						Option.contains(memberName(node.parent.parent.callee), 'of'))
-				) ||
-				node.key.type !== 'Identifier'
-			) {
-				return
-			}
-			const method = node.key.name
-			Option.map(serviceClass(context, node), service => {
-				if (service.id === null) return
-				if (node.parent.parent?.type === 'CallExpression' && node.parent.parent.callee.type === 'MemberExpression') {
-					if (
-						node.parent.parent.callee.object.type !== 'ThisExpression' &&
-						!(
-							node.parent.parent.callee.object.type === 'Identifier' &&
-							node.parent.parent.callee.object.name === service.id.name
-						)
-					) {
-						return
-					}
-				}
-				if (node.parent.parent?.type === 'ReturnStatement') {
-					if (!factoryReturn(context, node.parent.parent)) return
-				}
-				const name = `${service.id.name}.${method}`
-				Array.forEach(spanNames(context, node.value), literal => {
-					if (literal.type !== 'Literal' || !Predicate.isString(literal.value) || literal.value === name) return
-					context.report({
-						// A bound function can serve other methods, so its shared definition needs a manual fix.
-						fix: fixer => {
-							if (literal.range[0] < node.value.range[0] || literal.range[1] > node.value.range[1]) return
-							return fixer.replaceText(literal, `'${name}'`)
-						},
-						message: `Name this public service span '${name}'.`,
-						node: literal
-					})
-				})
+			Option.map(publicServiceName(context, node), name => {
 				Option.match(untraced(context, node.value), {
 					onNone: () => {
 						if (!effectArrow(context, node.value)) return
@@ -257,13 +251,6 @@ return {read: Effect.fnUntraced(function* () { yield* Effect.logDebug('read'); r
 export class Notes extends Context.Service<Notes>()('service-method-span/fixes-1/sample/Notes', {make: Effect.gen(function* () {
 yield* Effect.logDebug('start')
 return {read: (id: string) => Effect.as(Effect.logDebug(id), id)}
-})}) {}`
-					},
-					{
-						'sample.ts': `import {Clock, Context, Effect} from 'effect'
-export class Notes extends Context.Service<Notes>()('service-method-span/fixes-2/sample/Notes', {make: Effect.gen(function* () {
-yield* Effect.logDebug('start')
-return {read: Effect.fn('Other.read')(function* () { yield* Effect.logDebug('read'); return yield* Clock.currentTimeMillis })}
 })}) {}`
 					}
 				]

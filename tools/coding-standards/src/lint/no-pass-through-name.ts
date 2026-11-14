@@ -25,6 +25,7 @@ import {
 	variableOf,
 	variableFromScope
 } from '#lib/ast.ts'
+import {singleUseModulePrimitive} from '#lib/module-literal.ts'
 
 const OPTION_WRAPS = ['fromNullOr', 'fromNullishOr', 'fromUndefinedOr', 'some']
 const OPTION_UNWRAPS = ['getOrElse', 'getOrNull', 'getOrUndefined']
@@ -309,6 +310,7 @@ function exportedAlias(input: {context: Context; node: ESTree.VariableDeclarator
 }
 
 function singleUseLiteral(input: {context: Context; node: ESTree.VariableDeclarator}) {
+	if (input.node.parent.parent?.type === 'Program') return singleUseModulePrimitive(input.context, input.node)
 	if (
 		input.node.parent.type !== 'VariableDeclaration' ||
 		input.node.parent.kind !== 'const' ||
@@ -528,8 +530,9 @@ function runsOnce(node: ESTree.Node, statement: ESTree.Node): boolean {
 		(node.parent.type === 'IfStatement' && node.parent.test === node) ||
 		(node.parent.type === 'ConditionalExpression' && node.parent.test === node) ||
 		(node.parent.type === 'LogicalExpression' && node.parent.left === node)
-	)
+	) {
 		return runsOnce(node.parent, statement)
+	}
 	if (
 		Array.contains(
 			[
@@ -543,8 +546,9 @@ function runsOnce(node: ESTree.Node, statement: ESTree.Node): boolean {
 			],
 			node.parent.type
 		)
-	)
+	) {
 		return false
+	}
 	return runsOnce(node.parent, statement)
 }
 
@@ -568,8 +572,9 @@ function executes(context: Context, node: ESTree.Node): boolean {
 			],
 			node.type
 		)
-	)
+	) {
 		return true
+	}
 	if (Array.contains(['ArrowFunctionExpression', 'FunctionDeclaration', 'FunctionExpression'], node.type)) return false
 	return Array.some(childNodes(context, node), child => executes(context, child))
 }
@@ -608,8 +613,9 @@ function bindingCandidate(context: Context, node: ESTree.VariableDeclarator) {
 		node.id.type !== 'Identifier' ||
 		node.id.typeAnnotation !== null ||
 		node.init === null
-	)
+	) {
 		return false
+	}
 	return (
 		!redundantConstAlias({context, node}) &&
 		!Array.contains(
@@ -624,27 +630,21 @@ function bindingCandidate(context: Context, node: ESTree.VariableDeclarator) {
 	)
 }
 
-function checkBinding(context: Context, node: ESTree.VariableDeclarator, executed: ESTree.Node[]) {
-	if (node.init === null) return
-	if (Array.contains(['JSXElement', 'JSXFragment'], unwrapped(node.init).type)) {
-		context.report({
-			message: 'Write the element where it renders, or make it a component when several places render it.',
-			node
-		})
-		return
-	}
+function inlinePlan(context: Context, node: ESTree.VariableDeclarator, executed: ESTree.Node[]) {
 	if (
+		node.init === null ||
 		!bindingCandidate(context, node) ||
 		node.id.type !== 'Identifier' ||
 		node.parent.type !== 'VariableDeclaration' ||
 		node.parent.parent.type !== 'BlockStatement'
-	)
-		return
+	) {
+		return Option.none()
+	}
 	const declaration = node.parent
 	const init = node.init
 	const name = node.id.name
 	const statements = node.parent.parent.body
-	pipe(
+	return pipe(
 		statements,
 		Array.findFirstIndex(statement => statement === declaration),
 		Option.flatMap(index => Array.get(statements, index + 1)),
@@ -667,24 +667,52 @@ function checkBinding(context: Context, node: ESTree.VariableDeclarator, execute
 				Option.map(read => ({next, read}))
 			)
 		),
-		Option.map(found =>
-			context.report({
-				fix: fixer => {
-					if (
-						!replaceableValue(init, found.read) ||
-						(executes(context, init) &&
-							!Array.every(context.sourceCode.getTokensBetween(declaration, found.read), inert))
-					)
-						return []
-					return [
-						fixer.remove(declaration),
-						fixer.replaceText(found.read, inlineValue(context, init, found.read, name, found.next))
-					]
-				},
-				message: 'Inline this value into the next statement, its only use.',
-				node
-			})
-		)
+		Option.map(found => ({...found, declaration, init, name}))
+	)
+}
+
+export function discardedBindingName(context: Context, node: ESTree.Node, executed: ESTree.Node[]) {
+	if (node.type === 'FunctionDeclaration') return reportsIndirection({context, node})
+	if (node.type !== 'VariableDeclarator' || node.init === null) return false
+	if (node.init.type === 'ArrowFunctionExpression' || node.init.type === 'FunctionExpression') {
+		return reportsIndirection({context, node: node.init})
+	}
+	return (
+		exportedAlias({context, node}) ||
+		redundantConstAlias({context, node}) ||
+		singleUseLiteral({context, node}) ||
+		singleUseLayerPart({context, node}) ||
+		Array.contains(['JSXElement', 'JSXFragment'], unwrapped(node.init).type) ||
+		Option.isSome(inlinePlan(context, node, executed))
+	)
+}
+
+function checkBinding(context: Context, node: ESTree.VariableDeclarator, executed: ESTree.Node[]) {
+	if (node.init !== null && Array.contains(['JSXElement', 'JSXFragment'], unwrapped(node.init).type)) {
+		context.report({
+			message: 'Write the element where it renders, or make it a component when several places render it.',
+			node
+		})
+		return
+	}
+	Option.map(inlinePlan(context, node, executed), found =>
+		context.report({
+			fix: fixer => {
+				if (
+					!replaceableValue(found.init, found.read) ||
+					(executes(context, found.init) &&
+						!Array.every(context.sourceCode.getTokensBetween(found.declaration, found.read), inert))
+				) {
+					return []
+				}
+				return [
+					fixer.remove(found.declaration),
+					fixer.replaceText(found.read, inlineValue(context, found.init, found.read, found.name, found.next))
+				]
+			},
+			message: 'Inline this value into the next statement, its only use.',
+			node
+		})
 	)
 }
 
