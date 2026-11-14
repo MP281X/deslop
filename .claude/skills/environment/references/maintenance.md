@@ -70,11 +70,11 @@ Once per worker, and after a harness replaced a link with a file:
 
 ```bash
 r=~/deslop
-mkdir -p ~/.claude/agents ~/.claude/skills ~/.codex/rules ~/.codex/skills
+mkdir -p ~/.claude/agents ~/.codex/rules ~/.codex/skills
 ln -sfn $r/.claude/settings.json ~/.claude/settings.json
 ln -sfn $r/.claude/agents/pair.md ~/.claude/agents/pair.md
-for s in $r/.claude/skills/*; do n=${s##*/}; rm -f ~/.claude/skills/$n ~/.codex/skills/$n; done
-ln -sfn $r/.claude/skills/* ~/.claude/skills/
+ln -sfn $r/.claude/skills ~/.claude/skills
+find ~/.codex/skills -maxdepth 1 -type l -delete
 ln -sfn ~/.claude/skills/* ~/.codex/skills/
 ln -sfn $r/.codex/global-config.toml ~/.codex/config.toml
 ln -sfn $r/.codex/instructions.md ~/.codex/instructions.md
@@ -82,8 +82,9 @@ ln -sfn $r/.codex/rules/deny.rules ~/.codex/rules/deny.rules
 codex execpolicy check --rules ~/.codex/rules/deny.rules true
 ```
 
-- **New links.** Before merging, link both workers to the future path in `~/deslop`, never a review worktree; they resolve once main fast-forwards. Remove previous links before recreating them; retire only this setup's old links and keep unrelated skills and real directories.
-- **Check.** `find ~/.claude/settings.json ~/.claude/agents/pair.md ~/.codex/config.toml ~/.codex/instructions.md ~/.codex/rules/deny.rules ~/.claude/skills/* ~/.codex/skills/* -maxdepth 0 ! -type l` prints replaced links and unrelated real directories, including HyperFrames; leave those directories alone. `git -C ~/deslop status --short` shows a harness write through a link: carry it into a PR, then `git -C ~/deslop restore` it, since a dirty checkout stops the pull.
+- **Skills.** `~/.claude/skills` is one link to the repository's folder, so a skill added or deleted there needs nothing on the workers. `~/.codex/skills` stays a real folder because Codex writes its own `.system` there; it holds one link per skill, rebuilt by the block above, which also drops links to deleted skills. Skills from outside the repository are not installed.
+- **New links.** Before merging, link both workers to the future path in `~/deslop`, never a review worktree; they resolve once main fast-forwards.
+- **Check.** `find ~/.claude/settings.json ~/.claude/agents/pair.md ~/.claude/skills ~/.codex/config.toml ~/.codex/instructions.md ~/.codex/rules/deny.rules ~/.codex/skills/* -maxdepth 0 ! -type l` prints only `~/.codex/skills/.system`; anything else is a replaced link to restore with the block above. `git -C ~/deslop status --short` shows a harness write through a link: carry it into a PR, then `git -C ~/deslop restore` it, since a dirty checkout stops the pull.
 
 ### T3 settings
 
