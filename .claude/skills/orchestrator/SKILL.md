@@ -17,7 +17,8 @@ A main-thread call re-reads the whole thread, often 300k tokens; a delegate star
 | Only when the user picks it                       | Fable 5.2   | `claudeAgent` / `claude-fable-5-2`  |
 
 - **Delegate effort.** Medium (`effort` on Claude, `reasoningEffort` on Codex); high when the task needs it; never low, xhigh or above.
-- **Not used.** Luna gave up on 59% of its runs; Haiku and DeepSeek are out too.
+- **Not used.** Luna stopped early with partial work in most failed runs; Haiku and DeepSeek are out too.
+- **Trial.** GPT-6.1 Terra for bounded reads, searches, runs and checks; compare its reports with Sol's before it becomes a default.
 - **Removals.** Codex rejects `rm -f` and `rm -rf`, so a removal goes to Sonnet.
 - **Step up.** A delegate that returns without its deliverable reruns once on another model, then on Opus 5.5.
 - **Machines.** Validation, checks, builds and tests go to desktop when it is on, otherwise dev. Everything else, and anything long or overnight, goes to dev, which is always on. Resolve the linked T3 environments and pass the chosen machine's `target.environmentId` to `delegate_task`; do not launch a top-level thread instead.
