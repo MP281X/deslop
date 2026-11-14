@@ -22,8 +22,8 @@ A main-thread call re-reads the whole thread, often 300k tokens; a delegate star
 - **Removals.** Codex rejects `rm -f` and `rm -rf`, so a removal goes to Sonnet.
 - **Step up.** A delegate that returns without its deliverable reruns once on another model, then on Opus 5.5.
 - **Machines.** Main threads run on dev, and so does every delegate by default: it shares the main thread's checkout and needs no transfer. Only validation (Verify, tests, builds) moves to desktop, which runs it much faster, when `t3_environment_links` lists it `reachable`:
-  1. Commit and push the branch.
-  2. `delegate_task` with `target.environmentId` of desktop and `mode: 'async'`. The brief names the branch and SHA and says: fetch it, `git worktree add` it under `/tmp/validate-<sha>`, run the checks there, report, then remove the worktree. A remote delegate runs in desktop's project checkout and rejects worktree isolation, so it makes its own worktree and leaves that checkout untouched.
+  1. Commit; nothing is pushed.
+  2. `delegate_task` with `target.environmentId` of desktop and `mode: 'async'`. The brief names the dev worktree path and the SHA and says: `git fetch ssh://mp281x@dev<worktree path> <sha>`, `git worktree add --detach /tmp/validate-<sha> FETCH_HEAD`, run the checks there, report, then `git worktree remove --force` it. The fetch takes about a second over the tailnet and creates no branch on either side. A remote delegate runs in desktop's project checkout and rejects worktree isolation, so it makes its own worktree and leaves that checkout untouched.
   3. When desktop is unreachable, the same brief runs on dev without a target.
 - **Long jobs.** Long or overnight delegates use GPT-6.1 Sol, since Codex's prompt cache does not expire the way Claude's does.
 
