@@ -1,4 +1,4 @@
-import { cn } from "#lib/classes.ts"
+import { cn } from "cn"
 
 function AspectRatio({
   ratio,

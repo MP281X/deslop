@@ -3,7 +3,7 @@ import {useAtomRefresh, useAtomSet, useAtomSuspense, useAtomValue} from '@effect
 import {Array, Boolean, Function, Match, Option, Schema, String, pipe} from 'effect'
 
 import {
-	Button,
+	Button as NativeButton,
 	Divider,
 	HStack,
 	Image,
@@ -21,10 +21,7 @@ import {
 	accessibilityHidden,
 	accessibilityLabel,
 	aspectRatio,
-	buttonBorderShape,
-	buttonStyle,
 	clipShape,
-	controlSize,
 	foregroundStyle,
 	frame,
 	labelStyle,
@@ -39,10 +36,11 @@ import {AsyncResult} from 'effect/reactivity'
 import {Suspense} from 'react'
 import {Linking} from 'react-native'
 
-import {Problem} from '@deslop/components-mobile/problem'
-import {FailureContent, Loaded} from '@deslop/components-mobile/screens'
+import {FailureContent, Loaded} from '@deslop/components-mobile/blocks/loaded'
+import {Problem} from '@deslop/components-mobile/blocks/problem'
 import {colors, radius, space, text} from '@deslop/components-mobile/theme'
-import {Empty} from '@deslop/components-mobile/ui/empty'
+import {Button} from '@deslop/components-mobile/ui/button'
+import {Empty, EmptyContent, EmptyMedia} from '@deslop/components-mobile/ui/empty'
 import {Skeleton} from '@deslop/components-mobile/ui/skeleton'
 import {ToggleGroup, ToggleGroupItem} from '@deslop/components-mobile/ui/toggle-group'
 import {AuthError} from '@deslop/runtime/shared/auth'
@@ -212,25 +210,35 @@ function Reading(props: {note: NoteItem}) {
 
 function FullBody(props: {note: NoteItem}) {
 	const full = useAtomSuspense(noteAtom(props.note), {includeFailure: true})
+	if (Option.exists(AsyncResult.error(full), Schema.is(AuthError))) return undefined
+	return pipe(
+		AsyncResult.value(full),
+		Option.flatMap(note => note.body),
+		Option.match({onNone: Function.constUndefined, onSome: body => <Body text={body} />})
+	)
+}
+
+function issueOf(note: NoteItem) {
+	return Option.getOrElse(note.issue, Function.constant('Can’t Read This Link'))
+}
+
+// The note's one problem mark, in the bar as on every screen: a failed read that kept content, else a body that stopped loading.
+function NoteProblem(props: {note: NoteItem; onRetry: () => void}) {
+	const full = useAtomValue(noteAtom(props.note))
 	const reload = useAtomRefresh(noteAtom(props.note))
+	const body = Option.exists(AsyncResult.value(full), note => Option.isSome(note.body))
+	if (props.note.status === 'failed' && (String.isNonEmpty(props.note.summary) || body)) {
+		return (
+			<ToolbarItem placement="topBarLeading">
+				<Problem label={issueOf(props.note)} onRetry={props.onRetry} />
+			</ToolbarItem>
+		)
+	}
+	if (!AsyncResult.isFailure(full) || Option.exists(AsyncResult.error(full), Schema.is(AuthError))) return undefined
 	return (
-		<VStack alignment="leading" spacing={space[4]}>
-			{AsyncResult.isFailure(full) && (
-				<HStack modifiers={[frame({alignment: 'trailing', maxWidth: Infinity})]}>
-					<Problem
-						label="Note body unavailable"
-						saved={Option.exists(AsyncResult.value(full), note => Option.isSome(note.body))}
-						onRetry={reload}
-					/>
-				</HStack>
-			)}
-			{!Option.exists(AsyncResult.error(full), Schema.is(AuthError)) &&
-				Option.match(AsyncResult.value(full), {
-					onNone: Function.constUndefined,
-					onSome: note =>
-						Option.match(note.body, {onNone: Function.constUndefined, onSome: body => <Body text={body} />})
-				})}
-		</VStack>
+		<ToolbarItem placement="topBarLeading">
+			<Problem label="Note body unavailable" saved={body} onRetry={reload} />
+		</ToolbarItem>
 	)
 }
 
@@ -251,7 +259,7 @@ function Detail(props: {note: NoteItem; onRetry: () => void; onTag: (tag: TagNam
 	if (AsyncResult.isFailure(full) && Option.exists(AsyncResult.error(full), Schema.is(AuthError))) {
 		return <FailureContent cause={full.cause} onRetry={reload} />
 	}
-	const issue = Option.getOrElse(props.note.issue, Function.constant('Can’t Read This Link'))
+	const issue = issueOf(props.note)
 	const kept =
 		String.isNonEmpty(props.note.summary) || Option.exists(AsyncResult.value(full), note => Option.isSome(note.body))
 	return (
@@ -282,28 +290,14 @@ function Detail(props: {note: NoteItem; onRetry: () => void; onTag: (tag: TagNam
 						Boolean.match(kept, {
 							onFalse: () => (
 								<Empty>
-									<Button
-										label={issue}
-										systemImage="arrow.clockwise"
-										role="destructive"
-										onPress={props.onRetry}
-										modifiers={[
-											buttonStyle('glassProminent'),
-											buttonBorderShape('capsule'),
-											controlSize('large'),
-											tint(colors.destructive)
-										]}
-									/>
+									<EmptyContent>
+										<Button variant="destructive" size="lg" systemImage="arrow.clockwise" onPress={props.onRetry}>
+											{issue}
+										</Button>
+									</EmptyContent>
 								</Empty>
 							),
-							onTrue: () => (
-								<VStack alignment="leading" spacing={space[4]}>
-									<HStack modifiers={[frame({alignment: 'trailing', maxWidth: Infinity})]}>
-										<Problem label={issue} onRetry={props.onRetry} />
-									</HStack>
-									<NoteContent note={props.note} />
-								</VStack>
-							)
+							onTrue: () => <NoteContent note={props.note} />
 						})
 					),
 					Match.orElse(() => <NoteContent note={props.note} />)
@@ -311,7 +305,17 @@ function Detail(props: {note: NoteItem; onRetry: () => void; onTag: (tag: TagNam
 				<Divider />
 				<Byline note={props.note} />
 				{!Array.isReadonlyArrayEmpty(props.note.tags) && (
-					<ToggleGroup value="" onValueChange={value => props.onTag(TagName.make(value))} tint={primary}>
+					<ToggleGroup
+						value={[]}
+						variant="outline"
+						onValueChange={value =>
+							Option.match(Array.head(value), {
+								onNone: Function.constUndefined,
+								onSome: name => props.onTag(TagName.make(name))
+							})
+						}
+						modifiers={[tint(primary)]}
+					>
 						{Array.map(props.note.tags, tag => (
 							<ToggleGroupItem key={tag} value={tag}>
 								{tag}
@@ -337,18 +341,25 @@ function NoteScreen(props: {
 		props.notes,
 		Array.findFirst(item => item.id === props.id),
 		Option.match({
-			onNone: () => <Empty systemImage="trash" label="Note Deleted" />,
+			onNone: () => (
+				<Empty>
+					<EmptyMedia>
+						<Image systemName="trash" modifiers={[accessibilityLabel('Note Deleted')]} />
+					</EmptyMedia>
+				</Empty>
+			),
 			onSome: item => (
 				<Toolbar>
 					<Detail note={item} onRetry={() => regenerate(item.id)} onTag={props.onTag} />
 					<Toolbar.Content>
+						<NoteProblem note={item} onRetry={() => regenerate(item.id)} />
 						{Option.match(item.url, {
 							onNone: Function.constUndefined,
 							onSome: url => (
 								<ToolbarItem placement="topBarTrailing">
 									{Option.match(brandOf(item), {
 										onNone: () => (
-											<Button
+											<NativeButton
 												label="Open Link"
 												systemImage="arrow.up.right"
 												onPress={() => {
@@ -358,7 +369,7 @@ function NoteScreen(props: {
 											/>
 										),
 										onSome: brand => (
-											<Button
+											<NativeButton
 												onPress={() => {
 													Linking.openURL(url)
 												}}
@@ -372,7 +383,7 @@ function NoteScreen(props: {
 												]}
 											>
 												<BrandLogo brand={kinds[brand].logo} size={20} />
-											</Button>
+											</NativeButton>
 										)
 									})}
 								</ToolbarItem>
@@ -381,8 +392,8 @@ function NoteScreen(props: {
 						<ToolbarItem placement="topBarTrailing">
 							<Menu label="More" systemImage="ellipsis" modifiers={[labelStyle('iconOnly')]}>
 								{Option.match(item.url, {onNone: Function.constUndefined, onSome: url => <ShareLink item={url} />})}
-								<Button label="Regenerate" systemImage="arrow.clockwise" onPress={() => regenerate(item.id)} />
-								<Button
+								<NativeButton label="Regenerate" systemImage="arrow.clockwise" onPress={() => regenerate(item.id)} />
+								<NativeButton
 									label="Delete"
 									systemImage="trash"
 									role="destructive"
@@ -390,7 +401,6 @@ function NoteScreen(props: {
 										remove(props.id)
 										props.onClose()
 									}}
-									modifiers={[tint(colors.destructive)]}
 								/>
 							</Menu>
 						</ToolbarItem>

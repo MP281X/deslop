@@ -7,15 +7,12 @@
 		"#components/*": "./src/*"
 	},
 	"exports": {
-		"./*": "./src/*.tsx",
+		"./blocks/*": "./src/blocks/*.tsx",
+		"./lib/*": "./src/lib/*.ts",
 		"./palette": "./src/palette.ts",
 		"./theme": "./src/theme.ts",
-		"./alerts": "./src/lib/alerts.ts",
-		"./files": "./src/lib/files.ts",
-		"./images": "./src/lib/images.ts",
-		"./toolbar": "./src/lib/toolbar.ts",
-		"./clipboard": "./src/lib/clipboard.ts",
-		"./removal": "./src/lib/removal.ts"
+		"./ui/*": "./src/ui/*.tsx",
+		"./ui/svgs/*": "./src/ui/svgs/*"
 	},
 	"scripts": {
 		"test": "vp test --config ../../vite.config.ts"

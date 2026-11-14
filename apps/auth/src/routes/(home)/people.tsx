@@ -8,37 +8,39 @@ import {AsyncResult} from 'effect/reactivity'
 import {Suspense} from 'react'
 import type {ReactNode} from 'react'
 
-import {AccountAvatar} from '@deslop/components-web/app-bar'
-import {EmptyState, Loaded} from '@deslop/components-web/fallbacks'
-import {ResultError} from '@deslop/components-web/result-error'
+import {ResultError} from '@deslop/components-web/blocks/result-error'
+import {LoadingRows, RowLead} from '@deslop/components-web/blocks/rows'
+import {Loaded} from '@deslop/components-web/blocks/states'
+import {AccountAvatar} from '@deslop/components-web/shell/app-bar'
 import {Button} from '@deslop/components-web/ui/button'
-import {Card} from '@deslop/components-web/ui/card'
-import {Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle} from '@deslop/components-web/ui/item'
+import {Empty, EmptyHeader, EmptyMedia, EmptyTitle} from '@deslop/components-web/ui/empty'
+import {Table, TableBody, TableCell, TableRow} from '@deslop/components-web/ui/table'
 import {monthOf} from '@deslop/runtime/shared/format'
 
 import {accountAtom, admitAtom, peopleAtom} from '#lib/auth.ts'
-import {PeopleRowsSkeleton} from '#lib/components.tsx'
 import type {Person} from '#services/people/schema.ts'
 
-// The row's own line, then its failed answer beneath it; its actions sit at its end.
-function PersonRow(props: {children?: ReactNode; footer?: ReactNode; person: Person}) {
+// One person: avatar, name, the admin shield and the handle muted beside it, then the row's last cell.
+function PersonRow(props: {children: ReactNode; error?: ReactNode; person: Person}) {
 	return (
-		<div role="listitem">
-			<Item size="row">
-				<ItemMedia>
-					<AccountAvatar account={props.person} small />
-				</ItemMedia>
-				<ItemContent>
-					<ItemTitle>{Option.getOrElse(props.person.fullName, () => props.person.name)}</ItemTitle>
-					{Option.isSome(props.person.fullName) && <ItemDescription>@{props.person.name}</ItemDescription>}
-					{props.person.role === 'Admin' && (
-						<ShieldIcon role="img" aria-label="Admin" className="text-primary size-4 shrink-0 self-center" />
-					)}
-				</ItemContent>
-				{props.children}
-			</Item>
-			{props.footer}
-		</div>
+		<TableRow>
+			<RowLead
+				mark={<AccountAvatar account={props.person} size="sm" />}
+				after={
+					<>
+						{props.person.role === 'Admin' && <ShieldIcon role="img" aria-label="Admin" className="text-primary" />}
+						{props.error}
+					</>
+				}
+				detail={Option.match(props.person.fullName, {
+					onNone: Function.constUndefined,
+					onSome: () => `@${props.person.name}`
+				})}
+			>
+				{Option.getOrElse(props.person.fullName, () => props.person.name)}
+			</RowLead>
+			<TableCell className="text-right">{props.children}</TableCell>
+		</TableRow>
 	)
 }
 
@@ -46,9 +48,10 @@ function PersonRow(props: {children?: ReactNode; footer?: ReactNode; person: Per
 function AskingRow(props: {person: Person}) {
 	const [admit, answer] = useAtom(admitAtom(props.person.id))
 	return (
-		<PersonRow person={props.person} footer={<ResultError result={admit} className="mb-2 ml-9" />}>
-			<ItemActions>
+		<PersonRow person={props.person} error={<ResultError result={admit} />}>
+			<span className="flex gap-2">
 				<Button
+					size="xs"
 					variant="outline"
 					disabled={AsyncResult.isWaiting(admit)}
 					aria-label={`Deny @${props.person.name}`}
@@ -57,37 +60,30 @@ function AskingRow(props: {person: Person}) {
 					Deny
 				</Button>
 				<Button
+					size="xs"
 					disabled={AsyncResult.isWaiting(admit)}
 					aria-label={`Approve @${props.person.name}`}
 					onClick={() => answer(true)}
 				>
 					Approve
 				</Button>
-			</ItemActions>
+			</span>
 		</PersonRow>
 	)
 }
 
-// Every row ends with the same since-date column, wide enough for "Nov 2026" on one line.
-function Since(props: {since: Person['since']}) {
-	return (
-		<ItemActions>
-			<span className="text-muted-foreground w-16 shrink-0 text-right font-mono text-xs whitespace-nowrap tabular-nums">
-				{Option.match(props.since, {onNone: Function.constNull, onSome: monthOf})}
-			</span>
-		</ItemActions>
-	)
-}
-
+// A member's row ends with the month they joined.
 function MemberRow(props: {person: Person}) {
 	return (
 		<PersonRow person={props.person}>
-			<Since since={props.person.since} />
+			<span className="text-muted-foreground tabular-nums">
+				{Option.match(props.person.since, {onNone: Function.constNull, onSome: monthOf})}
+			</span>
 		</PersonRow>
 	)
 }
 
-// One card: whoever is asking for access first, then everyone with it.
+// One table: whoever is asking for access first, then everyone with it.
 function Directory() {
 	return (
 		<Loaded atom={peopleAtom}>
@@ -95,18 +91,27 @@ function Directory() {
 				<>
 					<h1 className="sr-only">People</h1>
 					{Array.match(rows, {
-						onEmpty: () => <EmptyState label="No one yet" icon={<UsersIcon className="size-5" weight="light" />} />,
+						onEmpty: () => (
+							<Empty role="status">
+								<EmptyHeader>
+									<EmptyMedia variant="icon">
+										<UsersIcon />
+									</EmptyMedia>
+									<EmptyTitle>No people</EmptyTitle>
+								</EmptyHeader>
+							</Empty>
+						),
 						onNonEmpty: entries => (
-							<Card size="list">
-								<div role="list" aria-label="People">
+							<Table aria-label="People">
+								<TableBody>
 									{Array.map(entries, person =>
 										Boolean.match(person.role === 'Waiting', {
 											onFalse: () => <MemberRow key={person.id} person={person} />,
 											onTrue: () => <AskingRow key={person.id} person={person} />
 										})
 									)}
-								</div>
-							</Card>
+								</TableBody>
+							</Table>
 						)
 					})}
 				</>
@@ -118,7 +123,7 @@ function Directory() {
 function PeopleRoute() {
 	if (!Option.exists(useAtomSuspense(accountAtom).value, signed => signed.role === 'Admin')) return <Navigate to="/" />
 	return (
-		<Suspense fallback={<PeopleRowsSkeleton />}>
+		<Suspense fallback={<LoadingRows label="People" rows={3} />}>
 			<Directory />
 		</Suspense>
 	)

@@ -2,11 +2,11 @@ import {useAtomSet} from '@effect/atom-react'
 
 import {Array, Match, Schema, pipe} from 'effect'
 
-import {Host, NavigationDestination, NavigationStack, useNativeState} from '@expo/ui/swift-ui'
+import {Host, NavigationDestination, NavigationStack} from '@expo/ui/swift-ui'
 import {tint} from '@expo/ui/swift-ui/modifiers'
 import {Suspense, useState} from 'react'
 
-import {SessionGate} from '@deslop/components-mobile/screens'
+import {SessionGate} from '@deslop/components-mobile/blocks/session-gate'
 import {colors} from '@deslop/components-mobile/theme'
 
 import {queryAtom} from '#lib/notes.ts'
@@ -26,7 +26,6 @@ function AppRoutes() {
 	const setQuery = useAtomSet(queryAtom)
 	const [tag, setTag] = useState<TagName>()
 	const [kind, setKind] = useState<Kind>()
-	const query = useNativeState('')
 
 	return (
 		<Host style={{flex: 1}}>
@@ -43,7 +42,6 @@ function AppRoutes() {
 				modifiers={[tint(colors.foreground)]}
 			>
 				<HomeRoute
-					query={query}
 					tag={tag}
 					kind={kind}
 					onCompose={() => setPath(['compose'])}

@@ -1,8 +1,8 @@
 import {createFileRoute} from '@tanstack/react-router'
 import {Suspense} from 'react'
 
-import {AppBar} from '@deslop/components-web/app-bar'
-import {Loaded} from '@deslop/components-web/fallbacks'
+import {Loaded} from '@deslop/components-web/blocks/states'
+import {AppBar} from '@deslop/components-web/shell/app-bar'
 import {Skeleton} from '@deslop/components-web/ui/skeleton'
 
 import {nameAtom} from '#lib/client.ts'

@@ -5,8 +5,8 @@ import {getImageAsync, getStringAsync, hasImageAsync} from 'expo-clipboard'
 import {randomUUID} from 'expo-crypto'
 import {File, Paths} from 'expo-file-system'
 
-import {makeClipboard, readClipboard} from '@deslop/components-mobile/clipboard'
-import type {ClipboardKind} from '@deslop/components-mobile/clipboard'
+import {makeClipboard, readClipboard} from '@deslop/components-mobile/lib/clipboard'
+import type {ClipboardKind} from '@deslop/components-mobile/lib/clipboard'
 import {provideRuntimeOnce} from '@deslop/runtime/mobile/session'
 
 import {capture} from '#lib/notes.ts'

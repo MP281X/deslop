@@ -8,7 +8,7 @@ import type {ReactNode} from 'react'
 
 import {Button} from '#components/ui/button.tsx'
 import {FieldError} from '#components/ui/field.tsx'
-import {cn} from '#lib/classes.ts'
+import {cn} from '#lib/utils.ts'
 
 class ClipboardError extends Schema.TaggedError<ClipboardError>()('ClipboardError', {cause: Schema.Defect()}) {}
 
