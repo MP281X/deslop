@@ -21,14 +21,9 @@ import {accountAtom, admitAtom, peopleAtom} from '#lib/auth.ts'
 import type {Person} from '#services/people/schema.ts'
 
 // One person: avatar, name, the admin shield and the handle muted beside it, then the row's last cell.
-function PersonRow(props: {children: ReactNode; error?: ReactNode; person: Person; selected?: boolean}) {
+function PersonRow(props: {children: ReactNode; error?: ReactNode; person: Person}) {
 	return (
-		<TableRow
-			data-state={Boolean.match(props.selected === true, {
-				onFalse: Function.constUndefined,
-				onTrue: Function.constant('selected')
-			})}
-		>
+		<TableRow>
 			<RowLead
 				mark={<AccountAvatar account={props.person} size="sm" />}
 				after={
@@ -53,7 +48,7 @@ function PersonRow(props: {children: ReactNode; error?: ReactNode; person: Perso
 function AskingRow(props: {person: Person}) {
 	const [admit, answer] = useAtom(admitAtom(props.person.id))
 	return (
-		<PersonRow person={props.person} selected error={<ResultError result={admit} />}>
+		<PersonRow person={props.person} error={<ResultError result={admit} />}>
 			<span className="flex gap-2">
 				<Button
 					size="xs"
@@ -102,7 +97,7 @@ function Directory() {
 									<EmptyMedia variant="icon">
 										<UsersIcon />
 									</EmptyMedia>
-									<EmptyTitle>No one yet</EmptyTitle>
+									<EmptyTitle>No people</EmptyTitle>
 								</EmptyHeader>
 							</Empty>
 						),

@@ -2,9 +2,10 @@ import {DateTime, Duration, Number, Option, Schema} from 'effect'
 import type {Record} from 'effect'
 
 import {ProblemStatus} from '@deslop/components-mobile/blocks/status-dot'
-import {colors, hues} from '@deslop/components-mobile/theme'
+import {colors} from '@deslop/components-mobile/theme'
 import {weekdayOf} from '@deslop/runtime/shared/format'
 
+import {primary} from '#lib/session.ts'
 import {clockAt, departureOf, labelled} from '#services/bookings/lib/utils.ts'
 import {Booking, Tone} from '#services/bookings/schema.ts'
 import type {Flight, FlightTracking, Train, TrainTracking} from '#services/bookings/schema.ts'
@@ -21,8 +22,6 @@ export function daysUntil(time: DateTime.Utc, now: DateTime.Utc, timeZone: strin
 	}
 	return Number.round(Duration.toDays(DateTime.distance(day(now), day(time))), 0)
 }
-
-export const primary = hues.orange
 
 export const tones = {
 	bad: colors.destructive,

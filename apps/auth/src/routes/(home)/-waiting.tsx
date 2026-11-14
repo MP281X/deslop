@@ -7,6 +7,7 @@ import {Suspense} from 'react'
 import {toQR} from 'toqr'
 
 import {CopyButton} from '@deslop/components-web/blocks/copy-button'
+import {RowMark} from '@deslop/components-web/blocks/rows'
 import {StatusDot} from '@deslop/components-web/blocks/status-dot'
 import {Button} from '@deslop/components-web/ui/button'
 import {Empty, EmptyContent, EmptyHeader, EmptyMedia, EmptyTitle} from '@deslop/components-web/ui/empty'
@@ -67,7 +68,9 @@ function Request(props: {request: PendingAuthorization}) {
 			<h1 className="sr-only">Approve a sign-in</h1>
 			{/* The identity is what gets approved, so it wraps whole; the mark and the time keep to its first line. */}
 			<div className="flex items-start gap-2 text-sm">
-				<RequestMark request={props.request} />
+				<RowMark>
+					<RequestMark request={props.request} />
+				</RowMark>
 				<p className="min-w-0 flex-1 py-0.5 wrap-break-word">
 					{signInLabel(props.request.clientName, props.request.device)}
 				</p>

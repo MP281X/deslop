@@ -4,6 +4,7 @@ import {ArrowSquareOutIcon, HardDrivesIcon, LockIcon} from '@phosphor-icons/reac
 import type {ReactNode} from 'react'
 
 import {AppMark, ThemedMark} from '@deslop/components-web/blocks/marks'
+import {RowMark} from '@deslop/components-web/blocks/rows'
 import {cn} from '@deslop/components-web/lib/utils'
 import {Button} from '@deslop/components-web/ui/button'
 import {GithubDark} from '@deslop/components-web/ui/svgs/githubDark'
@@ -49,14 +50,10 @@ function ErrorText(props: {message: string}) {
 	})
 }
 
-// What ran outside the apps: GitHub's mark for CI, a little inside its 16px slot as the pixel icons are, else a server glyph.
+// What ran outside the apps: GitHub's mark for CI, else a server glyph, each at 16px.
 export function OutsideMark(props: {ci: boolean}) {
-	if (!props.ci) return <HardDrivesIcon aria-hidden className="text-muted-foreground size-4 shrink-0" />
-	return (
-		<span aria-hidden className="flex size-4 shrink-0 items-center justify-center">
-			<ThemedMark light={GithubLight} dark={GithubDark} className="size-3.5" />
-		</span>
-	)
+	if (!props.ci) return <HardDrivesIcon aria-hidden className="text-muted-foreground size-4" />
+	return <ThemedMark light={GithubLight} dark={GithubDark} className="size-4" />
 }
 
 // A failed span or log reads in the destructive colour.
@@ -70,7 +67,9 @@ function SpanHeader(props: {span: TraceTree['spans'][number]}) {
 		<TableRow>
 			<TableCell colSpan={2}>
 				<span className="flex w-0 min-w-full items-center gap-2">
-					<AppMark name={appName(props.span.service)} fallback={<OutsideMark ci={props.span.runtime === 'ci'} />} />
+					<RowMark>
+						<AppMark name={appName(props.span.service)} fallback={<OutsideMark ci={props.span.runtime === 'ci'} />} />
+					</RowMark>
 					<span className={cn('truncate', failedText(props.span.status === 'failed'))}>{props.span.name}</span>
 					<span className="text-muted-foreground grow basis-0 truncate">
 						{`${appName(props.span.service)} · at ${durationOf(props.span.offsetMs)}`}

@@ -4,15 +4,14 @@ import {Array, Boolean, DateTime, Function, Option, Order, Record, Schema, Strin
 
 import {AppWindowIcon, GlobeIcon, GraphIcon, HardDrivesIcon} from '@phosphor-icons/react'
 import {AsyncResult, Atom} from 'effect/reactivity'
-import type {ComponentType, ReactNode, SVGProps} from 'react'
+import type {ComponentType, SVGProps} from 'react'
 
 import {ImageMark, ThemedMark} from '@deslop/components-web/blocks/marks'
 import {ResultError} from '@deslop/components-web/blocks/result-error'
-import {LoadingRows, RowLead} from '@deslop/components-web/blocks/rows'
+import {LoadingRow, LoadingRows, RowLead} from '@deslop/components-web/blocks/rows'
 import {Loaded} from '@deslop/components-web/blocks/states'
 import {Button} from '@deslop/components-web/ui/button'
 import {Empty, EmptyHeader, EmptyMedia, EmptyTitle} from '@deslop/components-web/ui/empty'
-import {Skeleton} from '@deslop/components-web/ui/skeleton'
 import {AndroidIcon} from '@deslop/components-web/ui/svgs/androidIcon'
 import {Apple} from '@deslop/components-web/ui/svgs/apple'
 import {AppleDark} from '@deslop/components-web/ui/svgs/appleDark'
@@ -33,11 +32,6 @@ import type {SignedInApp} from '#services/tokens/schema.ts'
 type ClientKind = typeof ClientKind.Type
 const ClientKind = Schema.Literals(['App', 'Browser'])
 
-// Every row's mark sits in the same square, so an app's own 24px icon and a 16px glyph start their names at one column.
-function Square(props: {children: ReactNode}) {
-	return <span className="flex size-6 shrink-0 items-center justify-center">{props.children}</span>
-}
-
 // The signed-in rows while the list loads, a looked-up sign-in's row first when one is coming.
 export function SignInRowsSkeleton(props: {pending?: boolean}) {
 	return (
@@ -57,36 +51,35 @@ function Brand(props: {client: Client}) {
 		return pipe(
 			BROWSERS,
 			Record.get(props.client.name),
-			Option.match({onNone: () => <GlobeIcon />, onSome: Mark => <Mark aria-hidden className="size-3.5" />})
+			Option.match({
+				onNone: () => <GlobeIcon className="size-4" />,
+				onSome: Mark => <Mark aria-hidden className="size-4" />
+			})
 		)
 	}
 	if (Option.isSome(String.match(/claude/iu)(props.client.name))) {
-		return <ClaudeAiIcon aria-hidden className="size-3.5" />
+		return <ClaudeAiIcon aria-hidden className="size-4" />
 	}
 	if (Option.isSome(String.match(/codex/iu)(props.client.name))) {
-		return <ThemedMark light={CodexLight} dark={CodexDark} className="size-3.5" />
+		return <ThemedMark light={CodexLight} dark={CodexDark} className="size-4" />
 	}
 	// The gateway runs on a server whatever device approved it, so its glyph wins over the device's logo.
-	if (Option.isSome(String.match(/gateway/iu)(props.client.name))) return <GraphIcon />
+	if (Option.isSome(String.match(/gateway/iu)(props.client.name))) return <GraphIcon className="size-4" />
 	if (Array.contains(['iPhone', 'iPad'], props.client.device)) {
-		return <ThemedMark light={Apple} dark={AppleDark} className="size-3.5" />
+		return <ThemedMark light={Apple} dark={AppleDark} className="size-4" />
 	}
-	if (props.client.device === 'Android') return <AndroidIcon aria-hidden className="size-3.5" />
-	return <HardDrivesIcon />
+	if (props.client.device === 'Android') return <AndroidIcon aria-hidden className="size-4" />
+	return <HardDrivesIcon className="size-4" />
 }
 
-// An app's own icon from its origin, square at the registry's media size, else the app glyph.
+// An app's own icon from its origin, filling the row's mark, else the app glyph.
 function AppIcon(props: {origin: string}) {
-	return <ImageMark sources={[`${props.origin}/icon`]} fallback={<AppWindowIcon />} />
+	return <ImageMark sources={[`${props.origin}/icon`]} fallback={<AppWindowIcon className="size-4" />} />
 }
 
 function ClientIcon(props: {client: Client}) {
 	return Option.match(props.client.app, {
-		onNone: () => (
-			<Square>
-				<Brand client={props.client} />
-			</Square>
-		),
+		onNone: () => <Brand client={props.client} />,
 		onSome: origin => <AppIcon origin={origin} />
 	})
 }
@@ -97,17 +90,16 @@ function ClientRow(props: {client: SignedInApp; now: DateTime.Utc}) {
 	return (
 		<TableRow aria-label={`${props.client.device}, active ${active}`}>
 			<RowLead
+				markLabel={props.client.client}
 				mark={
-					<span role="img" aria-label={props.client.client} title={props.client.client}>
-						<ClientIcon
-							client={{
-								app: props.client.icon,
-								device: props.client.device,
-								kind: props.client.kind,
-								name: props.client.client
-							}}
-						/>
-					</span>
+					<ClientIcon
+						client={{
+							app: props.client.icon,
+							device: props.client.device,
+							kind: props.client.kind,
+							name: props.client.client
+						}}
+					/>
 				}
 				detail={pipe(
 					props.client.address,
@@ -127,30 +119,24 @@ function ClientRow(props: {client: SignedInApp; now: DateTime.Utc}) {
 // A waiting sign-in's mark: the app's own icon from its registered callback, else a browser or a host.
 export function RequestMark(props: {request: PendingAuthorization}) {
 	return Option.match(props.request.icon, {
-		onNone: () => (
-			<Square>
-				{Boolean.match(props.request.kind === 'Browser', {
-					onFalse: () => <HardDrivesIcon />,
-					onTrue: () => <GlobeIcon />
-				})}
-			</Square>
-		),
+		onNone: () =>
+			Boolean.match(props.request.kind === 'Browser', {
+				onFalse: () => <HardDrivesIcon className="size-4" />,
+				onTrue: () => <GlobeIcon className="size-4" />
+			}),
 		onSome: origin => <AppIcon origin={origin} />
 	})
 }
 
-// A waiting sign-in leads the list as the selected row, its code beside the device; its answer stays on the row.
+// A waiting sign-in leads the list, its code beside the device; its answer stays on the row.
 function PendingRow(props: {request: PendingAuthorization}) {
 	const [consent, respond] = useAtom(consentAtom)
 	const waiting = AsyncResult.isWaiting(consent)
 	return (
-		<TableRow data-state="selected">
+		<TableRow>
 			<RowLead
-				mark={
-					<span role="img" aria-label={props.request.clientName} title={props.request.clientName}>
-						<RequestMark request={props.request} />
-					</span>
-				}
+				markLabel={props.request.clientName}
+				mark={<RequestMark request={props.request} />}
 				after={<ResultError result={consent} />}
 				detail={requestCode(props.request.id)}
 			>
@@ -235,13 +221,7 @@ export function SignInList(props: {checking?: boolean; pending: Option.Option<Pe
 				return (
 					<Table aria-label="Signed-in clients">
 						<TableBody>
-							{checking && (
-								<TableRow aria-busy="true" aria-label="Checking the code">
-									<TableCell colSpan={2}>
-										<Skeleton className="h-6 w-1/3" />
-									</TableCell>
-								</TableRow>
-							)}
+							{checking && <LoadingRow columns={2} label="Checking the code" />}
 							{Option.match(props.pending, {
 								onNone: Function.constNull,
 								onSome: request => <PendingRow request={request} />

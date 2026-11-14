@@ -293,6 +293,9 @@ importers:
       react-dom:
         specifier: latest
         version: 19.3.1(react@19.3.1)
+      recharts:
+        specifier: latest
+        version: 3.10.1(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react-is@18.3.1)(react@19.3.1)(redux@5.0.1)
 
   apps/gateway:
     devDependencies:
@@ -332,6 +335,9 @@ importers:
       react-dom:
         specifier: latest
         version: 19.3.1(react@19.3.1)
+      recharts:
+        specifier: latest
+        version: 3.10.1(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react-is@18.3.1)(react@19.3.1)(redux@5.0.1)
 
   apps/opm:
     dependencies:
@@ -490,9 +496,6 @@ importers:
       '@expo/ui':
         specifier: ^58.0.28
         version: 58.0.28(@babel/core@7.29.13(supports-color@8.1.1))(expo@58.0.24)(react-dom@19.3.1(react@19.3.1))(react-native@0.88.1(@babel/core@7.29.13(supports-color@8.1.1))(@types/react@19.3.0)(react@19.3.1)(supports-color@8.1.1))(react@19.3.1)
-      '@typeonce/effect-machine-react':
-        specifier: latest
-        version: 0.46.0(@effect/atom-react@4.1.4(effect@4.1.4)(react@19.3.1)(scheduler@0.27.0))(effect@4.1.4)(react@19.3.1)(scheduler@0.27.0)
       cheerio:
         specifier: latest
         version: 1.2.0

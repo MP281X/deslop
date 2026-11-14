@@ -1,17 +1,5 @@
 import {Array, Option, Record, String, pipe} from 'effect'
 
-// Each Deslop app's icon hue, as the theme names it; a service without one stays zinc grey.
-export const APP_HUES: Record<string, string> = {
-	auth: 'var(--slate)',
-	deploy: 'var(--blue)',
-	gateway: 'var(--pink)',
-	opm: 'var(--ivory)',
-	portfolio: 'var(--coral)',
-	scope: 'var(--cyan)',
-	stash: 'var(--amber)',
-	trips: 'var(--orange)'
-}
-
 // Inlined with the bundle, so a bar's app marks paint with its tabs instead of appearing one by one.
 const icons = import.meta.glob<string>('../../../../apps/*/src/routes/icon.svg', {
 	eager: true,

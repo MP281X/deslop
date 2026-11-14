@@ -1,6 +1,6 @@
 import {Array, Boolean, Effect, Function, HashSet, Option, Order, Queue, Redacted, Schema, Stream, pipe} from 'effect'
 
-import {AtomRpc, Atom} from 'effect/reactivity'
+import {Atom} from 'effect/reactivity'
 import {applicationId} from 'expo-application'
 import {File, Paths} from 'expo-file-system'
 import {
@@ -14,29 +14,17 @@ import {
 } from 'expo-notifications'
 
 import {cachedList, writeAtomically} from '@deslop/components-mobile/lib/files'
-import {hues} from '@deslop/components-mobile/theme'
 import {liveStream} from '@deslop/runtime/client/live-stream'
-import {keychain} from '@deslop/runtime/mobile/keychain'
-import {makeSession, provideRuntimeOnce} from '@deslop/runtime/mobile/session'
+import {provideRuntimeOnce} from '@deslop/runtime/mobile/session'
 import {ApnsToken} from '@deslop/runtime/shared/apns'
-import {RpcStream} from '@deslop/runtime/shared/rpc'
 
+import {RpcClient, session} from '#lib/session.ts'
 import {OpmNative} from '#modules/native/index.ts'
-import {RpcContracts} from '#rpcs/contracts.ts'
 import {byNumber, keyOf, notificationOf} from '#services/chapters/lib/utils.ts'
 import type {ChapterKey, ChapterNumber} from '#services/chapters/schema.ts'
 import {Bundle, ChaptersError} from '#services/chapters/schema.ts'
 import {ReadingChapter} from '#services/reading/schema.ts'
 import type {ChapterItem, ChapterList, ChaptersEvent, ReadingPosition} from '#services/reading/schema.ts'
-
-export const primary = hues.ivory
-
-export const session = makeSession('https://opm.mp281x.xyz', keychain)
-
-class RpcClient extends AtomRpc.Service<RpcClient>()('@deslop/opm/lib/chapters/RpcClient', {
-	group: RpcContracts.middleware(RpcStream),
-	protocol: session.protocol
-}) {}
 
 const chaptersFile = new File(Paths.document, 'chapters.json')
 
