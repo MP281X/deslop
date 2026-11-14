@@ -1,7 +1,7 @@
 import {useAtom, useAtomSet, useAtomValue} from '@effect/atom-react'
 
 import type {DateTime} from 'effect'
-import {Array, Boolean, Duration, Equal, Function, HashSet, Number, Option, Order, Stream, pipe} from 'effect'
+import {Array, Boolean, Duration, Equal, Filter, Function, HashSet, Number, Option, Order, Stream, pipe} from 'effect'
 
 import {AppWindowIcon, PlayIcon} from '@phosphor-icons/react'
 import {CatchBoundary} from '@tanstack/react-router'
@@ -322,11 +322,11 @@ export function ListPane(props: {
 	rows: readonly Row[]
 	selectedId?: string
 }) {
-	const jobs = Array.filter(props.rows, row => Option.contains(row.item.scheduled, true))
-	const groups = impactGroups(
-		Array.filter(props.rows, row => !Option.contains(row.item.scheduled, true)),
-		props.history
+	const [jobs, apps] = Array.partition(
+		props.rows,
+		Filter.fromPredicate(row => Option.contains(row.item.scheduled, true))
 	)
+	const groups = impactGroups(apps, props.history)
 	return (
 		<div className={cn('flex min-h-0 flex-col', props.className)}>
 			<Suspense

@@ -794,18 +794,18 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 							'@deslop/coding-standards(no-trivial-indirection)',
 							'@deslop/coding-standards(effect-call-form)',
 							'@deslop/coding-standards(effect-call-form)',
-							'@deslop/coding-standards(no-double-nullish-check)',
-							'@deslop/coding-standards(no-double-nullish-check)',
+							'@deslop/coding-standards(library-operation)',
+							'@deslop/coding-standards(library-operation)',
 							'@deslop/coding-standards(no-fake-ref-state)',
 							'@deslop/coding-standards(no-fake-ref-state)',
-							'@deslop/coding-standards(prefer-predicate)',
-							'@deslop/coding-standards(prefer-predicate)',
+							'@deslop/coding-standards(library-operation)',
+							'@deslop/coding-standards(library-operation)',
 							'@deslop/coding-standards(no-multiline-comment)',
 							'@deslop/coding-standards(no-multiline-comment)',
-							'@deslop/coding-standards(no-native-emptiness-check)',
-							'@deslop/coding-standards(no-native-emptiness-check)',
-							'@deslop/coding-standards(no-option-value-access)',
-							'@deslop/coding-standards(no-option-value-access)',
+							'@deslop/coding-standards(library-operation)',
+							'@deslop/coding-standards(library-operation)',
+							'@deslop/coding-standards(library-operation)',
+							'@deslop/coding-standards(library-operation)',
 							'@deslop/coding-standards(no-redundant-annotation)',
 							'@deslop/coding-standards(no-redundant-annotation)',
 							'@deslop/coding-standards(no-redundant-annotation)',
@@ -983,13 +983,7 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 					pipe(
 						result.stdout.diagnostics,
 						Array.filter(diagnostic =>
-							Array.contains(
-								[
-									'@deslop/coding-standards(no-intermediate-collection)',
-									'@deslop/coding-standards(no-native-emptiness-check)'
-								],
-								diagnostic.code
-							)
+							Array.contains(['@deslop/coding-standards(library-operation)'], diagnostic.code)
 						),
 						Array.sort(
 							Order.mapInput(
@@ -1000,19 +994,19 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 						Array.map(diagnostic => ({code: diagnostic.code, line: diagnostic.labels[0]?.span.line}))
 					),
 					[
-						{code: '@deslop/coding-standards(no-intermediate-collection)', line: 5},
-						{code: '@deslop/coding-standards(no-intermediate-collection)', line: 6},
-						{code: '@deslop/coding-standards(no-intermediate-collection)', line: 7},
-						{code: '@deslop/coding-standards(no-intermediate-collection)', line: 8},
-						{code: '@deslop/coding-standards(no-intermediate-collection)', line: 9},
-						{code: '@deslop/coding-standards(no-intermediate-collection)', line: 30},
-						{code: '@deslop/coding-standards(no-intermediate-collection)', line: 31},
-						{code: '@deslop/coding-standards(no-intermediate-collection)', line: 32},
-						{code: '@deslop/coding-standards(no-intermediate-collection)', line: 33},
-						{code: '@deslop/coding-standards(no-intermediate-collection)', line: 34},
-						{code: '@deslop/coding-standards(no-native-emptiness-check)', line: 35},
-						{code: '@deslop/coding-standards(no-native-emptiness-check)', line: 36},
-						{code: '@deslop/coding-standards(no-native-emptiness-check)', line: 37}
+						{code: '@deslop/coding-standards(library-operation)', line: 5},
+						{code: '@deslop/coding-standards(library-operation)', line: 6},
+						{code: '@deslop/coding-standards(library-operation)', line: 7},
+						{code: '@deslop/coding-standards(library-operation)', line: 8},
+						{code: '@deslop/coding-standards(library-operation)', line: 9},
+						{code: '@deslop/coding-standards(library-operation)', line: 30},
+						{code: '@deslop/coding-standards(library-operation)', line: 31},
+						{code: '@deslop/coding-standards(library-operation)', line: 32},
+						{code: '@deslop/coding-standards(library-operation)', line: 33},
+						{code: '@deslop/coding-standards(library-operation)', line: 34},
+						{code: '@deslop/coding-standards(library-operation)', line: 35},
+						{code: '@deslop/coding-standards(library-operation)', line: 36},
+						{code: '@deslop/coding-standards(library-operation)', line: 37}
 					]
 				)
 				assert.deepStrictEqual(
@@ -1191,8 +1185,8 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 					Array.sort(
 						[
 							'@deslop/coding-standards(test-assertions)',
-							'@deslop/coding-standards(prefer-predicate)',
-							'@deslop/coding-standards(prefer-predicate)'
+							'@deslop/coding-standards(library-operation)',
+							'@deslop/coding-standards(library-operation)'
 						],
 						String.Order
 					)
@@ -1612,6 +1606,22 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 					),
 					labels.marked
 				)
+			})
+		)
+
+		testApi.effect(
+			'uses partition for opposite filters and a library maximum',
+			Effect.fnUntraced(function* () {
+				const result = yield* lintSource({
+					'sample.ts': `import {Array} from 'effect'
+export function splitNotes(notes: readonly {pinned: boolean}[]) { return {
+pinned: Array.filter(notes, note => note.pinned),
+other: Array.filter(notes, note => !note.pinned) // reported
+} }
+export function maximumOf(values: readonly number[]) { return Array.reduce(values, 0, (highest, value) => Math.max(highest, value)) } // reported`
+				})
+				const lines = reportedLines(result, 'library-operation')
+				assert.deepStrictEqual(lines.reported, lines.marked)
 			})
 		)
 
@@ -2070,11 +2080,11 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 					['--fix']
 				)
 				assert.deepStrictEqual(customCodes(unfixable.stdout), [
-					'@deslop/coding-standards(no-double-nullish-check)',
-					'@deslop/coding-standards(no-double-nullish-check)',
-					'@deslop/coding-standards(prefer-predicate)',
-					'@deslop/coding-standards(prefer-predicate)',
-					'@deslop/coding-standards(prefer-predicate)',
+					'@deslop/coding-standards(library-operation)',
+					'@deslop/coding-standards(library-operation)',
+					'@deslop/coding-standards(library-operation)',
+					'@deslop/coding-standards(library-operation)',
+					'@deslop/coding-standards(library-operation)',
 					'@deslop/coding-standards(schema-type-pair)',
 					'@deslop/coding-standards(schema-type-pair)',
 					'@deslop/coding-standards(schema-type-pair)'
@@ -3072,7 +3082,7 @@ export type Unknown = 'ready' | unknown`
 						'\n'
 					)
 				})
-				const lines = reportedLines(reported, 'no-hand-written-helper')
+				const lines = reportedLines(reported, 'library-operation')
 				assert.deepStrictEqual(lines.reported, lines.marked)
 				const sums = reportedLines(
 					yield* lintSource({
@@ -3093,7 +3103,7 @@ export type Unknown = 'ready' | unknown`
 							'\n'
 						)
 					}),
-					'no-hand-written-helper'
+					'library-operation'
 				)
 				assert.deepStrictEqual(sums.reported, sums.marked)
 				// The examples of the judge question these rules replaced, and running totals kept in a MutableRef.
@@ -3141,7 +3151,7 @@ export type Unknown = 'ready' | unknown`
 							'\n'
 						)
 					}),
-					'no-hand-written-helper'
+					'library-operation'
 				)
 				assert.deepStrictEqual(totals.reported, totals.marked)
 				const fixed = yield* lintSource(
@@ -3239,7 +3249,7 @@ export type Unknown = 'ready' | unknown`
 						'\n'
 					)
 				})
-				const lines = reportedLines(reported, 'no-intermediate-collection')
+				const lines = reportedLines(reported, 'library-operation')
 				assert.deepStrictEqual(lines.reported, lines.marked)
 				const fixed = yield* lintSource(
 					{

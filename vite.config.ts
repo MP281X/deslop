@@ -295,7 +295,7 @@ export default defineConfig({
 				// Skill scripts run inside an app's page through preview_evaluate, with no Effect runtime and no type information.
 				files: ['.claude/skills/**/*.js'],
 				rules: {
-					'@deslop/coding-standards/no-native-emptiness-check': 'off',
+					'@deslop/coding-standards/library-operation': 'off',
 					'@deslop/coding-standards/no-native-method-call': 'off',
 					'effecttsgo/prefer-effect-array': 'off',
 					'effecttsgo/prefer-effect-string': 'off',

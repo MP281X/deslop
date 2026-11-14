@@ -8,6 +8,7 @@ import type {Plugin} from 'vite-plus/lint/plugins'
 import {choicesAreSchemas} from '#lint/choices-are-schemas.ts'
 import {effectCallForm} from '#lint/effect-call-form.ts'
 import {explicitEffectConcurrency} from '#lint/explicit-effect-concurrency.ts'
+import {libraryOperation} from '#lint/library-operation.ts'
 import {moduleConstant} from '#lint/module-constant.ts'
 import {noAccumulatingCopy} from '#lint/no-accumulating-copy.ts'
 import {noBareControl} from '#lint/no-bare-control.ts'
@@ -16,17 +17,12 @@ import {noCollectingLoop} from '#lint/no-collecting-loop.ts'
 import {noCompilerOptOut} from '#lint/no-compiler-opt-out.ts'
 import {noComponentAtomAllocation} from '#lint/no-component-atom-allocation.ts'
 import {noDestructuredParameter} from '#lint/no-destructured-parameter.ts'
-import {noDoubleNullishCheck} from '#lint/no-double-nullish-check.ts'
 import {noFakeRefState} from '#lint/no-fake-ref-state.ts'
 import {noFloatingDerivedType} from '#lint/no-floating-derived-type.ts'
-import {noHandWrittenHelper} from '#lint/no-hand-written-helper.ts'
 import {noHandlerOnLabel} from '#lint/no-handler-on-label.ts'
-import {noIntermediateCollection} from '#lint/no-intermediate-collection.ts'
 import {noMisleadingBooleanName} from '#lint/no-misleading-boolean-name.ts'
 import {noMultilineComment} from '#lint/no-multiline-comment.ts'
-import {noNativeEmptinessCheck} from '#lint/no-native-emptiness-check.ts'
 import {noNativeMethodCall} from '#lint/no-native-method-call.ts'
-import {noOptionValueAccess} from '#lint/no-option-value-access.ts'
 import {noPropertyAlias} from '#lint/no-property-alias.ts'
 import {noRedundantAnnotation} from '#lint/no-redundant-annotation.ts'
 import {noReinventedSchema} from '#lint/no-reinvented-schema.ts'
@@ -40,7 +36,6 @@ import {noTrivialIndirection} from '#lint/no-trivial-indirection.ts'
 import {noUnexplainedDisable} from '#lint/no-unexplained-disable.ts'
 import {noUnvalidatedJsonDecode} from '#lint/no-unvalidated-json-decode.ts'
 import {noWallClock} from '#lint/no-wall-clock.ts'
-import {preferPredicate} from '#lint/prefer-predicate.ts'
 import {primitiveClasses} from '#lint/primitive-classes.ts'
 import {recoverNamedFailures} from '#lint/recover-named-failures.ts'
 import {schemaTypePair} from '#lint/schema-type-pair.ts'
@@ -96,6 +91,7 @@ const RULES = {
 	'choices-are-schemas': choicesAreSchemas,
 	'effect-call-form': effectCallForm,
 	'explicit-effect-concurrency': explicitEffectConcurrency,
+	'library-operation': libraryOperation,
 	'module-constant': moduleConstant,
 	'no-accumulating-copy': noAccumulatingCopy,
 	'no-bare-control': noBareControl,
@@ -104,17 +100,12 @@ const RULES = {
 	'no-compiler-opt-out': noCompilerOptOut,
 	'no-component-atom-allocation': noComponentAtomAllocation,
 	'no-destructured-parameter': noDestructuredParameter,
-	'no-double-nullish-check': noDoubleNullishCheck,
 	'no-fake-ref-state': noFakeRefState,
 	'no-floating-derived-type': noFloatingDerivedType,
-	'no-hand-written-helper': noHandWrittenHelper,
 	'no-handler-on-label': noHandlerOnLabel,
-	'no-intermediate-collection': noIntermediateCollection,
 	'no-misleading-boolean-name': noMisleadingBooleanName,
 	'no-multiline-comment': noMultilineComment,
-	'no-native-emptiness-check': noNativeEmptinessCheck,
 	'no-native-method-call': noNativeMethodCall,
-	'no-option-value-access': noOptionValueAccess,
 	'no-property-alias': noPropertyAlias,
 	'no-redundant-annotation': noRedundantAnnotation,
 	'no-reinvented-schema': noReinventedSchema,
@@ -128,7 +119,6 @@ const RULES = {
 	'no-unexplained-disable': noUnexplainedDisable,
 	'no-unvalidated-json-decode': noUnvalidatedJsonDecode,
 	'no-wall-clock': noWallClock,
-	'prefer-predicate': preferPredicate,
 	'recover-named-failures': recoverNamedFailures,
 	'schema-type-pair': schemaTypePair,
 	'service-method-span': serviceMethodSpan,
@@ -247,7 +237,6 @@ export const lint: OxlintConfig & {
 			},
 			{message: 'Use const and Effect collection combinators.', selector: 'VariableDeclaration[kind="let"]'},
 			{message: 'Use Match.', selector: 'SwitchStatement'},
-			{message: 'Decode with Schema or use Predicate.hasProperty.', selector: 'BinaryExpression[operator="in"]'},
 			{
 				// A module augmentation is the one place an interface belongs: TypeScript merges declarations only into interfaces.
 				message: 'Declare a type, not an interface.',
