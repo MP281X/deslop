@@ -54,7 +54,7 @@ After `vp run build:runtime` at the root, from `packages/saas` with its developm
 
 ```bash
 OTEL_RESOURCE_ATTRIBUTES="scope.runtime=server,scope.run.started_unix_nano=$(date +%s%N)" \
-POSTHOG_PROJECT_TOKEN=scope-dev POSTHOG_OTLP_BASE_URL=https://dev.tailnet-8c4c.ts.net:4318 \
+POSTHOG_PROJECT_TOKEN=scope-dev POSTHOG_OTLP_BASE_URL=https://scope.mp281x.xyz \
 bun --env-file .env src/dev.ts api
 # Use the same launch environment with `src/dev.ts worker` for the worker.
 ```

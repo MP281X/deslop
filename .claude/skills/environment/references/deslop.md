@@ -16,5 +16,4 @@
 
 ## Tracing
 
-- **Public.** `https://scope.mp281x.xyz`.
-- **Tailnet.** `https://dev.tailnet-8c4c.ts.net:4318`, served by `sudo tailscale serve --bg --https=4318 http://127.0.0.1:5106` to Scope's port.
+- **Endpoint.** `https://scope.mp281x.xyz`, for apps and OTLP exporters alike; ingestion at `/v1/traces` needs no sign-in.
