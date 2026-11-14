@@ -3,8 +3,8 @@ import {Array, Boolean, Duration, Function, Match, Number, Option, Record, Strin
 // oxlint-disable-next-line eslint/no-restricted-imports -- useLayoutEffect: the flame measures its surface and label widths after layout and before paint, so bars never draw at a stale width.
 import {useLayoutEffect, useRef, useState} from 'react'
 
-import {APP_HUES} from '@deslop/components-web/apps'
-import {cn} from '@deslop/components-web/classes'
+import {APP_HUES} from '@deslop/components-web/lib/apps'
+import {cn} from '@deslop/components-web/lib/utils'
 import {Skeleton} from '@deslop/components-web/ui/skeleton'
 import {durationOf} from '@deslop/runtime/shared/format'
 

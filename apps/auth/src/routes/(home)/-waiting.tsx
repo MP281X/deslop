@@ -6,11 +6,10 @@ import {ArrowRightIcon, HourglassIcon} from '@phosphor-icons/react'
 import {Suspense} from 'react'
 import {toQR} from 'toqr'
 
-import {CopyButton} from '@deslop/components-web/copy-button'
-import {EmptyState} from '@deslop/components-web/fallbacks'
-import {StatusDot} from '@deslop/components-web/status-dot'
+import {CopyButton} from '@deslop/components-web/blocks/copy-button'
+import {StatusDot} from '@deslop/components-web/blocks/status-dot'
 import {Button} from '@deslop/components-web/ui/button'
-import {Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle} from '@deslop/components-web/ui/item'
+import {Empty, EmptyContent, EmptyHeader, EmptyMedia, EmptyTitle} from '@deslop/components-web/ui/empty'
 import {Separator} from '@deslop/components-web/ui/separator'
 import {timerOf} from '@deslop/runtime/shared/format'
 
@@ -66,17 +65,16 @@ function Request(props: {request: PendingAuthorization}) {
 	return (
 		<section className="m-auto flex w-full flex-col gap-5 sm:max-w-80" aria-label="Sign-in request">
 			<h1 className="sr-only">Approve a sign-in</h1>
-			<Item variant="outline" size="sm">
-				<ItemMedia variant="icon">
-					<RequestMark request={props.request} />
-				</ItemMedia>
-				<ItemContent>
-					<ItemTitle>{signInLabel(props.request.clientName, props.request.device)}</ItemTitle>
-				</ItemContent>
-				<ItemActions>
+			{/* The identity is what gets approved, so it wraps whole; the mark and the time keep to its first line. */}
+			<div className="flex items-start gap-2 text-sm">
+				<RequestMark request={props.request} />
+				<p className="min-w-0 flex-1 py-0.5 wrap-break-word">
+					{signInLabel(props.request.clientName, props.request.device)}
+				</p>
+				<span className="py-0.5">
 					<Countdown expiresAt={props.request.expiresAt} />
-				</ItemActions>
-			</Item>
+				</span>
+			</div>
 			{/* Signing this browser in turns the page into the approver's, where the sign-in waits to be approved. */}
 			{props.request.kind === 'App' && (
 				<div className="flex flex-col gap-2">
@@ -85,17 +83,18 @@ function Request(props: {request: PendingAuthorization}) {
 			)}
 			<Failures />
 			<Separator />
-			<Item size="sm">
-				<ItemMedia>
-					<QrCode text={approveLink(props.request.id)} className="size-24" />
-				</ItemMedia>
-				<ItemContent>
-					<ItemDescription>On a device signed in to Auth, scan this or enter</ItemDescription>
+			<div className="flex items-center gap-4">
+				{/* The theme's own colours, so the dark theme shows light modules on a dark tile. */}
+				<span className="bg-background text-foreground shrink-0 border p-1.5">
+					<QrCode text={approveLink(props.request.id)} className="size-24 sm:size-28" />
+				</span>
+				<div className="flex min-w-0 flex-col items-start gap-1">
+					<p className="text-muted-foreground text-xs/relaxed">On a device signed in to Auth, scan this or enter</p>
 					<CopyButton label={`Copy the code ${code}`} value={code} failure="Cannot copy the code; type it in instead">
 						{code}
 					</CopyButton>
-				</ItemContent>
-			</Item>
+				</div>
+			</div>
 		</section>
 	)
 }
@@ -106,18 +105,31 @@ export function Waiting(props: {account: Option.Option<SignedAccount>; id: SignI
 		useAtomSuspense(requestAtom(props.id)).value,
 		Match.value,
 		Match.tagsExhaustive({
-			Decided: () => <EmptyState label="Continuing" icon={<ArrowRightIcon weight="light" />} />,
+			Decided: () => (
+				<Empty role="status">
+					<EmptyHeader>
+						<EmptyMedia variant="icon">
+							<ArrowRightIcon />
+						</EmptyMedia>
+						<EmptyTitle>Continuing</EmptyTitle>
+					</EmptyHeader>
+				</Empty>
+			),
 			// The link stays expired on every reload, so the way out drops it: Auth's own sign-in, or its sign-ins when signed in.
 			Expired: () => (
-				<EmptyState
-					label="This sign-in expired"
-					icon={<HourglassIcon className="size-5" weight="light" />}
-					action={
+				<Empty role="status">
+					<EmptyHeader>
+						<EmptyMedia variant="icon">
+							<HourglassIcon />
+						</EmptyMedia>
+						<EmptyTitle>This sign-in expired</EmptyTitle>
+					</EmptyHeader>
+					<EmptyContent>
 						<Button variant="outline" onClick={() => location.assign('/')}>
 							Back to Auth
 						</Button>
-					}
-				/>
+					</EmptyContent>
+				</Empty>
 			),
 			Waiting: value =>
 				pipe(

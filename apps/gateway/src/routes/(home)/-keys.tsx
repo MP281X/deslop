@@ -5,9 +5,9 @@ import {Boolean, Function, Option, Redacted, Schema, String, pipe} from 'effect'
 import {AsyncResult} from 'effect/reactivity'
 import {useState} from 'react'
 
-import {Loaded} from '@deslop/components-web/fallbacks'
-import {ThemedMark} from '@deslop/components-web/marks'
-import {ResultError} from '@deslop/components-web/result-error'
+import {ThemedMark} from '@deslop/components-web/blocks/marks'
+import {ResultError} from '@deslop/components-web/blocks/result-error'
+import {Loaded} from '@deslop/components-web/blocks/states'
 import {Button} from '@deslop/components-web/ui/button'
 import {
 	Dialog,

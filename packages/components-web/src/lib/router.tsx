@@ -9,7 +9,7 @@ import {createRoot} from 'react-dom/client'
 import {pageErrorAtom} from '@deslop/runtime/web/client'
 import type {PageErrorSource} from '@deslop/runtime/web/client'
 
-import {NotFound, ReadFailure} from '#components/fallbacks.tsx'
+import {NotFound, ReadFailure} from '#components/blocks/states.tsx'
 
 const reported = new WeakSet<object>()
 

@@ -15,7 +15,7 @@ import {
 	pipe
 } from 'effect'
 
-import {APP_HUES} from '@deslop/components-web/apps'
+import {APP_HUES} from '@deslop/components-web/lib/apps'
 
 import type {AppId} from '#services/inventory/schema.ts'
 import {chartWindow, resolution} from '#services/metrics/lib/utils.ts'

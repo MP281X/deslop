@@ -35,7 +35,7 @@ import {KeyValueStore} from 'effect/persistence'
 import {Atom} from 'effect/reactivity'
 import {Suspense, useRef, useState} from 'react'
 
-import {cn} from '@deslop/components-web/classes'
+import {cn} from '@deslop/components-web/lib/utils'
 import {Button} from '@deslop/components-web/ui/button'
 import {Dialog, DialogContent, DialogHeader, DialogTitle} from '@deslop/components-web/ui/dialog'
 import {Kbd, KbdGroup} from '@deslop/components-web/ui/kbd'

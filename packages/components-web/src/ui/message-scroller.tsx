@@ -5,7 +5,7 @@ import {
   useMessageScrollerScrollable,
   useMessageScrollerVisibility,
 } from "@shadcn/react/message-scroller"
-import { cn } from "#lib/classes.ts"
+import { cn } from "cn"
 
 import { Button } from "#components/ui/button.tsx"
 import { ArrowDownIcon } from "@phosphor-icons/react"

@@ -5,7 +5,7 @@ import {Array, Boolean, Function, Option, Schema, String, pipe} from 'effect'
 import {AsyncResult} from 'effect/reactivity'
 import {useState} from 'react'
 
-import {ResultError} from '@deslop/components-web/result-error'
+import {ResultError} from '@deslop/components-web/blocks/result-error'
 import {Button} from '@deslop/components-web/ui/button'
 import {
 	Dialog,

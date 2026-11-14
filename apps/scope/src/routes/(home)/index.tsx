@@ -8,17 +8,19 @@ import {AsyncResult} from 'effect/reactivity'
 import {Suspense, useState} from 'react'
 import type {ReactElement, ReactNode} from 'react'
 
-import {AppBarTab, AppBar, AppBarChoice, AppBarTabs} from '@deslop/components-web/app-bar'
-import {cn, mediaQueryAtom} from '@deslop/components-web/classes'
-import {EmptyState, Loaded, ReadFailure} from '@deslop/components-web/fallbacks'
-import {RowsSkeleton} from '@deslop/components-web/item-list'
-import {AppMark} from '@deslop/components-web/marks'
-import {StaleProblem} from '@deslop/components-web/problem'
-import {StatusDot} from '@deslop/components-web/status-dot'
-import {Item, ItemActions, ItemContent, ItemDescription, ItemGroup, ItemTitle} from '@deslop/components-web/ui/item'
+import {AppMark} from '@deslop/components-web/blocks/marks'
+import {StaleProblem} from '@deslop/components-web/blocks/problem'
+import {ChoiceRow, LoadingRows, RowLead} from '@deslop/components-web/blocks/rows'
+import {Loaded, ReadFailure} from '@deslop/components-web/blocks/states'
+import {StatusDot} from '@deslop/components-web/blocks/status-dot'
+import {mediaQueryAtom} from '@deslop/components-web/lib/media'
+import {cn} from '@deslop/components-web/lib/utils'
+import {AppBarTab, AppBar, AppBarChoice, AppBarTabs} from '@deslop/components-web/shell/app-bar'
+import {Empty, EmptyHeader, EmptyMedia, EmptyTitle} from '@deslop/components-web/ui/empty'
 import {ResizableHandle, ResizablePanel, ResizablePanelGroup} from '@deslop/components-web/ui/resizable'
 import {ScrollArea} from '@deslop/components-web/ui/scroll-area'
 import {Separator} from '@deslop/components-web/ui/separator'
+import {Table, TableBody, TableCell} from '@deslop/components-web/ui/table'
 import {blockingFailure} from '@deslop/runtime/client/live-stream'
 import {ageOf, clockOf, compactCountOf, countOf, durationOf} from '@deslop/runtime/shared/format'
 
@@ -118,71 +120,61 @@ function OverviewContent(props: {children: (overview: Overview) => ReactNode; ra
 	})
 }
 
-// A row of a list that selects one: the whole row is the button, and the chosen one is muted.
-function ChoiceRow(props: {active: boolean; children: ReactNode; label: readonly string[]; onSelect: () => void}) {
+// A pane with nothing to show yet, or nothing at all.
+function EmptyPane(props: {label: string}) {
 	return (
-		<div role="listitem">
-			<Item
-				size="sm"
-				variant={Boolean.match(props.active, {
-					onFalse: Function.constant('default' as const),
-					onTrue: Function.constant('muted' as const)
-				})}
-				render={
-					<button
-						type="button"
-						aria-label={Array.join(props.label, ', ')}
-						aria-current={Boolean.match(props.active, {
-							onFalse: Function.constUndefined,
-							onTrue: Function.constant('true' as const)
-						})}
-						onClick={props.onSelect}
-					/>
-				}
-			>
-				{props.children}
-			</Item>
-		</div>
+		<Empty role="status">
+			<EmptyHeader>
+				<EmptyMedia variant="icon">
+					<ChartBarHorizontalIcon />
+				</EmptyMedia>
+				<EmptyTitle>{props.label}</EmptyTitle>
+			</EmptyHeader>
+		</Empty>
 	)
 }
 
-// One operation: its name and side when two rows share it, then its errors when it has any, runs and typical duration.
+// One operation: its name and side when two rows share it, then its errors when it has any, runs and typical duration in their own columns.
 function OperationRow(props: {active: boolean; duplicate: boolean; onSelect: () => void; operation: Operation}) {
 	const side = SIDES[props.operation.runtime]
 	return (
 		<ChoiceRow
-			active={props.active}
-			label={[
-				props.operation.name,
-				...Boolean.match(props.duplicate && side !== '', {onFalse: () => [], onTrue: () => [side]}),
-				...Boolean.match(props.operation.failures > 0, {
-					onFalse: () => [],
-					onTrue: () => [`${countOf(props.operation.failures)} failed`]
-				}),
-				runsOf(props.operation.count),
-				`${durationOf(props.operation.p50Ms)} typical`
-			]}
+			selected={props.active}
+			label={Array.join(
+				[
+					props.operation.name,
+					...Boolean.match(props.duplicate && side !== '', {onFalse: () => [], onTrue: () => [side]}),
+					...Boolean.match(props.operation.failures > 0, {
+						onFalse: () => [],
+						onTrue: () => [`${countOf(props.operation.failures)} failed`]
+					}),
+					runsOf(props.operation.count),
+					`${durationOf(props.operation.p50Ms)} typical`
+				],
+				', '
+			)}
 			onSelect={props.onSelect}
 		>
-			<ItemContent>
-				<ItemTitle title={props.operation.name}>
-					{props.operation.name}
-					{props.duplicate && KINDS[props.operation.runtime]}
-				</ItemTitle>
-			</ItemContent>
-			<ItemActions>
+			<RowLead title={props.operation.name} after={props.duplicate && KINDS[props.operation.runtime]}>
+				{props.operation.name}
+			</RowLead>
+			<TableCell className="text-right">
 				{props.operation.failures > 0 && (
 					<span className="text-destructive tabular-nums" title={`${countOf(props.operation.failures)} failed`}>
 						{countOf(props.operation.failures)}
 					</span>
 				)}
+			</TableCell>
+			<TableCell className="text-right">
 				<span className="text-muted-foreground tabular-nums" title={runsOf(props.operation.count)}>
 					{compactCountOf(props.operation.count)}
 				</span>
+			</TableCell>
+			<TableCell className="text-right">
 				<span className="tabular-nums" title="Typical duration">
 					{durationOf(props.operation.p50Ms)}
 				</span>
-			</ItemActions>
+			</TableCell>
 		</ChoiceRow>
 	)
 }
@@ -197,37 +189,37 @@ function OperationsPane(props: {
 }) {
 	return (
 		<section aria-label="Operations" className={cn('flex h-full min-h-0 flex-col overflow-hidden', props.className)}>
-			<Suspense fallback={<RowsSkeleton label="Operations" rows={8} />}>
+			<Suspense fallback={<LoadingRows label="Operations" rows={8} />}>
 				<OverviewContent range={props.range}>
 					{overview =>
 						Array.match(operationsOf(overview, Option.fromUndefinedOr(props.source)), {
-							onEmpty: () => (
-								<EmptyState label="No traces in this range" icon={<ChartBarHorizontalIcon weight="light" />} />
-							),
+							onEmpty: () => <EmptyPane label="No traces in this range" />,
 							onNonEmpty: rows => {
 								const names = Array.groupBy(rows, row => row.operation.name)
 								return (
 									<ScrollArea className="min-h-0 flex-1">
-										<ItemGroup>
-											{Array.map(rows, row => (
-												<OperationRow
-													key={`${row.app.name} ${row.operation.runtime} ${row.operation.name}`}
-													active={
-														props.activeKey !== undefined &&
-														props.activeKey.app === row.app.name &&
-														props.activeKey.runtime === row.operation.runtime &&
-														props.activeKey.name === row.operation.name
-													}
-													duplicate={pipe(
-														names,
-														Record.get(row.operation.name),
-														Option.exists(group => group.length > 1)
-													)}
-													onSelect={() => props.onSelect(row.app.name, row.operation)}
-													operation={row.operation}
-												/>
-											))}
-										</ItemGroup>
+										<Table role="grid" aria-label="Operations">
+											<TableBody>
+												{Array.map(rows, row => (
+													<OperationRow
+														key={`${row.app.name} ${row.operation.runtime} ${row.operation.name}`}
+														active={
+															props.activeKey !== undefined &&
+															props.activeKey.app === row.app.name &&
+															props.activeKey.runtime === row.operation.runtime &&
+															props.activeKey.name === row.operation.name
+														}
+														duplicate={pipe(
+															names,
+															Record.get(row.operation.name),
+															Option.exists(group => group.length > 1)
+														)}
+														onSelect={() => props.onSelect(row.app.name, row.operation)}
+														operation={row.operation}
+													/>
+												))}
+											</TableBody>
+										</Table>
 									</ScrollArea>
 								)
 							}
@@ -239,34 +231,39 @@ function OperationsPane(props: {
 	)
 }
 
-// One trace of the operation: its age, short id with its failure dot right after, and its duration; the row selects it.
+// One trace of the operation: its short id with its failure dot right after, its age and its duration; the row selects it.
 function TraceListRow(props: {active: boolean; now: DateTime.Utc; onSelect: () => void; trace: OperationTrace}) {
 	return (
 		<ChoiceRow
-			active={props.active}
-			label={[
-				ageOf(props.trace.start, props.now),
-				`trace ${traceLabel(props.trace)}`,
-				...Option.match(props.trace.failure, {onNone: () => [], onSome: failure => [`failed in ${failure.span}`]}),
-				durationOf(props.trace.duration)
-			]}
+			selected={props.active}
+			label={Array.join(
+				[
+					ageOf(props.trace.start, props.now),
+					`trace ${traceLabel(props.trace)}`,
+					...Option.match(props.trace.failure, {onNone: () => [], onSome: failure => [`failed in ${failure.span}`]}),
+					durationOf(props.trace.duration)
+				],
+				', '
+			)}
 			onSelect={props.onSelect}
 		>
-			<ItemContent>
-				<ItemTitle title={props.trace.id}>
-					{traceLabel(props.trace)}
-					{Option.match(props.trace.failure, {
-						onNone: Function.constNull,
-						onSome: failure => <StatusDot status="error" label={`Failed in ${failure.span}`} />
-					})}
-				</ItemTitle>
-				<ItemDescription title={clockOf(props.trace.start, 'second')}>
+			<RowLead
+				title={props.trace.id}
+				after={Option.match(props.trace.failure, {
+					onNone: Function.constNull,
+					onSome: failure => <StatusDot status="error" label={`Failed in ${failure.span}`} />
+				})}
+			>
+				{traceLabel(props.trace)}
+			</RowLead>
+			<TableCell className="text-right">
+				<span className="text-muted-foreground tabular-nums" title={clockOf(props.trace.start, 'second')}>
 					{ageOf(props.trace.start, props.now)}
-				</ItemDescription>
-			</ItemContent>
-			<ItemActions>
+				</span>
+			</TableCell>
+			<TableCell className="text-right">
 				<span className="tabular-nums">{durationOf(props.trace.duration)}</span>
-			</ItemActions>
+			</TableCell>
 		</ChoiceRow>
 	)
 }
@@ -283,27 +280,29 @@ function TracesPane(props: {
 	const active = Option.fromUndefinedOr(props.active)
 	return (
 		<section aria-label="Traces" className={cn('flex h-full min-h-0 flex-col overflow-hidden', props.className)}>
-			<Suspense fallback={<RowsSkeleton label="Traces" rows={8} />}>
+			<Suspense fallback={<LoadingRows label="Traces" rows={8} />}>
 				<OverviewContent range={props.range}>
 					{() =>
 						Option.match(active, {
-							onNone: () => <EmptyState label="Select an operation" icon={<ChartBarHorizontalIcon weight="light" />} />,
+							onNone: () => <EmptyPane label="Select an operation" />,
 							onSome: current =>
 								Boolean.match(Array.isReadonlyArrayNonEmpty(current.operation.traces), {
-									onFalse: () => <EmptyState label="No traces" icon={<ChartBarHorizontalIcon weight="light" />} />,
+									onFalse: () => <EmptyPane label="No traces" />,
 									onTrue: () => (
 										<ScrollArea className="min-h-0 flex-1">
-											<ItemGroup>
-												{Array.map(current.operation.traces, trace => (
-													<TraceListRow
-														key={trace.id}
-														active={props.selectedTrace?.id === trace.id}
-														now={props.now}
-														onSelect={() => props.onSelect(trace)}
-														trace={trace}
-													/>
-												))}
-											</ItemGroup>
+											<Table role="grid" aria-label="Traces">
+												<TableBody>
+													{Array.map(current.operation.traces, trace => (
+														<TraceListRow
+															key={trace.id}
+															active={props.selectedTrace?.id === trace.id}
+															now={props.now}
+															onSelect={() => props.onSelect(trace)}
+															trace={trace}
+														/>
+													))}
+												</TableBody>
+											</Table>
 										</ScrollArea>
 									)
 								})
@@ -318,7 +317,7 @@ function TracesPane(props: {
 // The picked span's details alone, for the phone's pushed span screen.
 function SpanDetails(props: {focus: Option.Option<TraceTree['spans'][number]>}) {
 	return Option.match(props.focus, {
-		onNone: () => <EmptyState label="Select a span" icon={<ChartBarHorizontalIcon weight="light" />} />,
+		onNone: () => <EmptyPane label="Select a span" />,
 		onSome: span => (
 			<ScrollArea className="min-h-0 flex-1">
 				<SpanDetail span={span} />
@@ -335,7 +334,7 @@ function SpansList(props: {
 	trace: TraceTree
 }) {
 	if (!Array.isReadonlyArrayNonEmpty(props.trace.spans)) {
-		return <EmptyState label="No spans" icon={<ChartBarHorizontalIcon weight="light" />} />
+		return <EmptyPane label="No spans" />
 	}
 	return (
 		<ScrollArea className="min-h-0 flex-1">
@@ -406,26 +405,25 @@ function TracePane(props: {
 			<Suspense
 				fallback={Boolean.match(props.detailOnly === true, {
 					onFalse: () => <SpansSkeleton label="Spans" />,
-					onTrue: () => <RowsSkeleton label="Span details" rows={6} />
+					onTrue: () => <LoadingRows label="Span details" rows={6} />
 				})}
 			>
 				<OverviewContent range={props.range}>
 					{() =>
 						Option.match(trace, {
 							onNone: () => (
-								<EmptyState
+								<EmptyPane
 									label={Boolean.match(props.detailOnly === true, {
 										onFalse: Function.constant('Select a trace'),
 										onTrue: Function.constant('Select a span')
 									})}
-									icon={<ChartBarHorizontalIcon weight="light" />}
 								/>
 							),
 							onSome: current => (
 								<Suspense
 									fallback={Boolean.match(props.detailOnly === true, {
 										onFalse: () => <SpansSkeleton label="Spans" />,
-										onTrue: () => <RowsSkeleton label="Span details" rows={6} />
+										onTrue: () => <LoadingRows label="Span details" rows={6} />
 									})}
 								>
 									<Spans

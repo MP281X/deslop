@@ -6,22 +6,13 @@ import {AppWindowIcon, GlobeIcon, GraphIcon, HardDrivesIcon} from '@phosphor-ico
 import {AsyncResult, Atom} from 'effect/reactivity'
 import type {ComponentType, ReactNode, SVGProps} from 'react'
 
-import {EmptyState, Loaded} from '@deslop/components-web/fallbacks'
-import {RowsSkeleton} from '@deslop/components-web/item-list'
-import {ThemedMark} from '@deslop/components-web/marks'
-import {ItemResultError} from '@deslop/components-web/result-error'
-import {Avatar, AvatarFallback, AvatarImage} from '@deslop/components-web/ui/avatar'
+import {ImageMark, ThemedMark} from '@deslop/components-web/blocks/marks'
+import {ResultError} from '@deslop/components-web/blocks/result-error'
+import {LoadingRows, RowLead} from '@deslop/components-web/blocks/rows'
+import {Loaded} from '@deslop/components-web/blocks/states'
 import {Button} from '@deslop/components-web/ui/button'
-import {Card, CardContent} from '@deslop/components-web/ui/card'
-import {
-	Item,
-	ItemActions,
-	ItemContent,
-	ItemDescription,
-	ItemGroup,
-	ItemMedia,
-	ItemTitle
-} from '@deslop/components-web/ui/item'
+import {Empty, EmptyHeader, EmptyMedia, EmptyTitle} from '@deslop/components-web/ui/empty'
+import {Skeleton} from '@deslop/components-web/ui/skeleton'
 import {AndroidIcon} from '@deslop/components-web/ui/svgs/androidIcon'
 import {Apple} from '@deslop/components-web/ui/svgs/apple'
 import {AppleDark} from '@deslop/components-web/ui/svgs/appleDark'
@@ -32,6 +23,7 @@ import {CodexLight} from '@deslop/components-web/ui/svgs/codexLight'
 import {Edge} from '@deslop/components-web/ui/svgs/edge'
 import {Firefox} from '@deslop/components-web/ui/svgs/firefox'
 import {Safari} from '@deslop/components-web/ui/svgs/safari'
+import {Table, TableBody, TableCell, TableRow} from '@deslop/components-web/ui/table'
 import {ageOf} from '@deslop/runtime/shared/format'
 
 import {appsAtom, consentAtom, minuteAtom, requestCode} from '#lib/auth.ts'
@@ -41,45 +33,18 @@ import type {SignedInApp} from '#services/tokens/schema.ts'
 type ClientKind = typeof ClientKind.Type
 const ClientKind = Schema.Literals(['App', 'Browser'])
 
-// The app's own icon, or a glyph while it loads or when it has none.
-function AppIcon(props: {origin: string}) {
-	return (
-		<Avatar size="sm">
-			<AvatarImage src={`${props.origin}/icon`} alt="" />
-			<AvatarFallback>
-				<AppWindowIcon />
-			</AvatarFallback>
-		</Avatar>
-	)
+// Every row's mark sits in the same square, so an app's own 24px icon and a 16px glyph start their names at one column.
+function Square(props: {children: ReactNode}) {
+	return <span className="flex size-6 shrink-0 items-center justify-center">{props.children}</span>
 }
 
-// A card of list rows: the one frame every Auth list and its loading rows share.
-export function ListCard(props: {children: ReactNode}) {
-	return (
-		<Card>
-			<CardContent>{props.children}</CardContent>
-		</Card>
-	)
-}
-
-// The signed-in rows a card will hold while its data loads, a looked-up sign-in's row first when one is coming.
+// The signed-in rows while the list loads, a looked-up sign-in's row first when one is coming.
 export function SignInRowsSkeleton(props: {pending?: boolean}) {
 	return (
-		<ListCard>
-			<RowsSkeleton
-				label="Signed in"
-				rows={Boolean.match(props.pending === true, {onFalse: Function.constant(9), onTrue: Function.constant(10)})}
-			/>
-		</ListCard>
-	)
-}
-
-// The people rows a card will hold while the list loads.
-export function PeopleRowsSkeleton() {
-	return (
-		<ListCard>
-			<RowsSkeleton label="People" rows={3} />
-		</ListCard>
+		<LoadingRows
+			label="Signed in"
+			rows={Boolean.match(props.pending === true, {onFalse: Function.constant(9), onTrue: Function.constant(10)})}
+		/>
 	)
 }
 
@@ -110,83 +75,109 @@ function Brand(props: {client: Client}) {
 	return <HardDrivesIcon />
 }
 
+// An app's own icon from its origin, square at the registry's media size, else the app glyph.
+function AppIcon(props: {origin: string}) {
+	return <ImageMark sources={[`${props.origin}/icon`]} fallback={<AppWindowIcon />} />
+}
+
 function ClientIcon(props: {client: Client}) {
 	return Option.match(props.client.app, {
-		onNone: () => <Brand client={props.client} />,
+		onNone: () => (
+			<Square>
+				<Brand client={props.client} />
+			</Square>
+		),
 		onSome: origin => <AppIcon origin={origin} />
 	})
 }
 
+// One client: its mark, device and last address, then how long ago it was active.
 function ClientRow(props: {client: SignedInApp; now: DateTime.Utc}) {
 	const active = ageOf(props.client.lastActive, props.now)
 	return (
-		<Item role="listitem" size="sm" aria-label={`${props.client.device}, active ${active}`}>
-			<ItemMedia variant="icon" role="img" aria-label={props.client.client} title={props.client.client}>
-				<ClientIcon
-					client={{
-						app: props.client.icon,
-						device: props.client.device,
-						kind: props.client.kind,
-						name: props.client.client
-					}}
-				/>
-			</ItemMedia>
-			<ItemContent>
-				<ItemTitle>{props.client.device}</ItemTitle>
-				{pipe(
+		<TableRow aria-label={`${props.client.device}, active ${active}`}>
+			<RowLead
+				mark={
+					<span role="img" aria-label={props.client.client} title={props.client.client}>
+						<ClientIcon
+							client={{
+								app: props.client.icon,
+								device: props.client.device,
+								kind: props.client.kind,
+								name: props.client.client
+							}}
+						/>
+					</span>
+				}
+				detail={pipe(
 					props.client.address,
 					Option.filter(value => value !== props.client.device),
-					Option.match({onNone: Function.constNull, onSome: value => <ItemDescription>{value}</ItemDescription>})
+					Option.getOrUndefined
 				)}
-			</ItemContent>
-			<ItemActions>
+			>
+				{props.client.device}
+			</RowLead>
+			<TableCell className="text-right">
 				<span className="text-muted-foreground tabular-nums">{active}</span>
-			</ItemActions>
-		</Item>
+			</TableCell>
+		</TableRow>
 	)
 }
 
 // A waiting sign-in's mark: the app's own icon from its registered callback, else a browser or a host.
 export function RequestMark(props: {request: PendingAuthorization}) {
 	return Option.match(props.request.icon, {
-		onNone: () =>
-			Boolean.match(props.request.kind === 'Browser', {onFalse: () => <HardDrivesIcon />, onTrue: () => <GlobeIcon />}),
+		onNone: () => (
+			<Square>
+				{Boolean.match(props.request.kind === 'Browser', {
+					onFalse: () => <HardDrivesIcon />,
+					onTrue: () => <GlobeIcon />
+				})}
+			</Square>
+		),
 		onSome: origin => <AppIcon origin={origin} />
 	})
 }
 
-// A waiting sign-in leads the card, outlined, its code under the label; its answer stays on the row.
+// A waiting sign-in leads the list as the selected row, its code beside the device; its answer stays on the row.
 function PendingRow(props: {request: PendingAuthorization}) {
 	const [consent, respond] = useAtom(consentAtom)
 	const waiting = AsyncResult.isWaiting(consent)
 	return (
-		<Item role="listitem" size="sm" variant="outline">
-			<ItemMedia variant="icon" role="img" aria-label={props.request.clientName} title={props.request.clientName}>
-				<RequestMark request={props.request} />
-			</ItemMedia>
-			<ItemContent>
-				<ItemTitle>{props.request.device}</ItemTitle>
-				<ItemDescription>{requestCode(props.request.id)}</ItemDescription>
-			</ItemContent>
-			<ItemActions>
-				<Button
-					variant="outline"
-					disabled={waiting}
-					aria-label={`Deny ${props.request.device}`}
-					onClick={() => respond({accept: false, request: props.request})}
-				>
-					Deny
-				</Button>
-				<Button
-					disabled={waiting}
-					aria-label={`Approve ${props.request.device}`}
-					onClick={() => respond({accept: true, request: props.request})}
-				>
-					Approve
-				</Button>
-			</ItemActions>
-			<ItemResultError result={consent} />
-		</Item>
+		<TableRow data-state="selected">
+			<RowLead
+				mark={
+					<span role="img" aria-label={props.request.clientName} title={props.request.clientName}>
+						<RequestMark request={props.request} />
+					</span>
+				}
+				after={<ResultError result={consent} />}
+				detail={requestCode(props.request.id)}
+			>
+				{props.request.device}
+			</RowLead>
+			<TableCell>
+				<span className="flex gap-2">
+					<Button
+						size="xs"
+						variant="outline"
+						disabled={waiting}
+						aria-label={`Deny ${props.request.device}`}
+						onClick={() => respond({accept: false, request: props.request})}
+					>
+						Deny
+					</Button>
+					<Button
+						size="xs"
+						disabled={waiting}
+						aria-label={`Approve ${props.request.device}`}
+						onClick={() => respond({accept: true, request: props.request})}
+					>
+						Approve
+					</Button>
+				</span>
+			</TableCell>
+		</TableRow>
 	)
 }
 
@@ -230,12 +221,27 @@ export function SignInList(props: {checking?: boolean; pending: Option.Option<Pe
 				const clients = clientsOf(sessions.signIns)
 				const checking = props.checking === true && Option.isNone(props.pending)
 				if (Array.isReadonlyArrayEmpty(clients) && Option.isNone(props.pending) && !checking) {
-					return <EmptyState label="No sign-ins" icon={<HardDrivesIcon className="size-5" weight="light" />} />
+					return (
+						<Empty role="status">
+							<EmptyHeader>
+								<EmptyMedia variant="icon">
+									<HardDrivesIcon />
+								</EmptyMedia>
+								<EmptyTitle>No sign-ins</EmptyTitle>
+							</EmptyHeader>
+						</Empty>
+					)
 				}
 				return (
-					<ListCard>
-						<ItemGroup aria-label="Signed-in clients">
-							{checking && <RowsSkeleton label="Checking the code" rows={1} />}
+					<Table aria-label="Signed-in clients">
+						<TableBody>
+							{checking && (
+								<TableRow aria-busy="true" aria-label="Checking the code">
+									<TableCell colSpan={2}>
+										<Skeleton className="h-6 w-1/3" />
+									</TableCell>
+								</TableRow>
+							)}
 							{Option.match(props.pending, {
 								onNone: Function.constNull,
 								onSome: request => <PendingRow request={request} />
@@ -243,8 +249,8 @@ export function SignInList(props: {checking?: boolean; pending: Option.Option<Pe
 							{Array.map(clients, client => (
 								<ClientRow key={client.family} client={client} now={sessions.now} />
 							))}
-						</ItemGroup>
-					</ListCard>
+						</TableBody>
+					</Table>
 				)
 			}}
 		</Loaded>

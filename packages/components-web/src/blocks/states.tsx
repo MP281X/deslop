@@ -10,20 +10,7 @@ import {blockingFailure} from '@deslop/runtime/client/live-stream'
 import {isDenied, needsSignIn, signInUrl} from '@deslop/runtime/shared/auth'
 
 import {Button} from '#components/ui/button.tsx'
-import {Empty, EmptyMedia} from '#components/ui/empty.tsx'
-
-// Every state is one centred thing: the symbol alone, or the one action that fills the space. The label is for assistive technology.
-export function EmptyState(props: {action?: ReactNode; icon: ReactNode; label: string}) {
-	return (
-		<Empty role="status" aria-label={props.label}>
-			{props.action ?? (
-				<EmptyMedia aria-hidden variant="icon">
-					{props.icon}
-				</EmptyMedia>
-			)}
-		</Empty>
-	)
-}
+import {Empty, EmptyHeader, EmptyMedia, EmptyTitle} from '#components/ui/empty.tsx'
 
 export function NotFound() {
 	return (
@@ -46,7 +33,16 @@ function SignInRedirect(props: {href: string}) {
 
 // fallow-ignore-next-line unused-export -- a denial is only the lock, with nothing to retry; the tests render it directly.
 export function AccessDenied() {
-	return <EmptyState label="Access denied" icon={<LockIcon weight="light" />} />
+	return (
+		<Empty role="status">
+			<EmptyHeader>
+				<EmptyMedia variant="icon">
+					<LockIcon />
+				</EmptyMedia>
+				<EmptyTitle>Access denied</EmptyTitle>
+			</EmptyHeader>
+		</Empty>
+	)
 }
 
 // A failure names itself on the one button that retries it.
@@ -68,15 +64,17 @@ export function ReadFailure(props: {error: unknown; reset: () => void}) {
 	return <FailureRetry reset={props.reset} />
 }
 
-// One gate for a read's content: a refusal, or a failure with nothing kept, is the ReadFailure; otherwise the value renders where it stands.
+// One gate for a read's content: a refusal, or a failure with nothing kept, is the ReadFailure, inside `frame` where the content needs one (a table row); otherwise the value renders where it stands.
 export function Loaded<A, E>(props: {
 	atom: Atom.Atom<AsyncResult.AsyncResult<A, E>>
 	children: (value: A) => ReactNode
+	frame?: (failure: ReactNode) => ReactNode
 }) {
 	const result = useAtomSuspense(props.atom, {includeFailure: true})
 	const refresh = useAtomRefresh(props.atom)
+	const frame = props.frame ?? Function.identity
 	return Option.match(blockingFailure(result), {
 		onNone: () => Option.match(AsyncResult.value(result), {onNone: Function.constNull, onSome: props.children}),
-		onSome: cause => <ReadFailure error={Cause.squash(cause)} reset={refresh} />
+		onSome: cause => frame(<ReadFailure error={Cause.squash(cause)} reset={refresh} />)
 	})
 }

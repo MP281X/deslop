@@ -2,35 +2,28 @@ import {useAtom, useAtomSet} from '@effect/atom-react'
 
 import {Array, Boolean, Function, Number, Option, Order, Schema, String, pipe} from 'effect'
 
-import {HardDrivesIcon, LinkIcon, WrenchIcon} from '@phosphor-icons/react'
+import {GearSixIcon, HardDrivesIcon, LinkIcon, WrenchIcon} from '@phosphor-icons/react'
 import {CatchBoundary, createFileRoute, getRouteApi} from '@tanstack/react-router'
 import {useMachineResult} from '@typeonce/effect-machine-react'
 import {AtomMachine} from '@typeonce/effect-machine/reactivity'
 import {AsyncResult, Atom} from 'effect/reactivity'
 import {Suspense, useState} from 'react'
+import type {ReactNode} from 'react'
 
-import {AppBar, AppBarChoice} from '@deslop/components-web/app-bar'
-import {APP_HUES, appMarks} from '@deslop/components-web/apps'
-import {CopyButton} from '@deslop/components-web/copy-button'
-import {Loaded, ReadFailure} from '@deslop/components-web/fallbacks'
-import {RowsSkeleton} from '@deslop/components-web/item-list'
-import {Page} from '@deslop/components-web/page'
-import {StaleProblem} from '@deslop/components-web/problem'
-import {StatusDot} from '@deslop/components-web/status-dot'
-import {Avatar, AvatarFallback, AvatarImage} from '@deslop/components-web/ui/avatar'
+import {CopyButton} from '@deslop/components-web/blocks/copy-button'
+import {ImageMark} from '@deslop/components-web/blocks/marks'
+import {StaleProblem} from '@deslop/components-web/blocks/problem'
+import {RowLead} from '@deslop/components-web/blocks/rows'
+import {Loaded, ReadFailure} from '@deslop/components-web/blocks/states'
+import {StatusDot} from '@deslop/components-web/blocks/status-dot'
+import {APP_HUES, appMarks} from '@deslop/components-web/lib/apps'
+import {AppBar, AppBarChoice} from '@deslop/components-web/shell/app-bar'
+import {Page} from '@deslop/components-web/shell/page'
 import {Button} from '@deslop/components-web/ui/button'
-import {Card, CardContent} from '@deslop/components-web/ui/card'
 import {Field, FieldError, FieldGroup} from '@deslop/components-web/ui/field'
 import {InputGroup, InputGroupAddon, InputGroupInput} from '@deslop/components-web/ui/input-group'
-import {
-	Item,
-	ItemActions,
-	ItemContent,
-	ItemDescription,
-	ItemGroup,
-	ItemMedia,
-	ItemTitle
-} from '@deslop/components-web/ui/item'
+import {Skeleton} from '@deslop/components-web/ui/skeleton'
+import {Table, TableBody, TableCell, TableRow} from '@deslop/components-web/ui/table'
 import {countOf} from '@deslop/runtime/shared/format'
 
 import {
@@ -55,6 +48,8 @@ import type {ConnectionItem, McpUsageServer} from '#services/connections/schema.
 import {Period} from '#services/usage/schema.ts'
 import type {UsageRange} from '#services/usage/schema.ts'
 
+// The list's columns: name, action or tools, sparkline, total.
+const COLUMNS = 4
 const PAYER_LABELS: Record<Payer, string> = {balance: 'Zen balance', byok: 'Anthropic key'}
 const PERIODS = Array.map(Period.literals, value => ({label: value, value}))
 
@@ -84,7 +79,7 @@ function Sparkline(props: {color: string; values: readonly number[]}) {
 		return `${x.toFixed(1)} ${y.toFixed(1)}`
 	})
 	return (
-		<svg aria-hidden className="h-3.5 w-16 shrink-0 max-sm:hidden" fill="none" viewBox="0 0 64 14">
+		<svg aria-hidden className="h-3.5 w-16 shrink-0" fill="none" viewBox="0 0 64 14">
 			<path
 				d={`M${Array.join(points, ' L')}`}
 				stroke={props.color}
@@ -95,50 +90,52 @@ function Sparkline(props: {color: string; values: readonly number[]}) {
 	)
 }
 
-// The server's first icon that loads, trying each source in turn, else a server glyph.
-function FirstImage(props: {sources: string[]}) {
-	const [failed, setFailed] = useState(0)
+// The server's first icon that loads, else a server glyph; icons a later discovery finds get their turn. Without a tile behind it, an icon drawn for dark backgrounds goes first.
+function ServerIcon(props: {server: ConnectionItem}) {
+	const host = new URL(props.server.url).hostname
 	return (
-		<Avatar size="sm">
-			{pipe(
-				props.sources,
-				Array.get(failed),
-				Option.match({
-					onNone: Function.constNull,
-					onSome: src => (
-						<AvatarImage
-							key={src}
-							src={src}
-							alt=""
-							onLoadingStatusChange={status => {
-								if (status === 'error') setFailed(failed + 1)
-							}}
-						/>
+		<ImageMark
+			fallback={<HardDrivesIcon />}
+			sources={pipe(
+				props.server.icons,
+				Array.sort(
+					Order.mapInput(
+						Order.Boolean,
+						(entry: ConnectionItem['icons'][number]) => !Option.contains(entry.theme, 'dark')
 					)
-				})
+				),
+				Array.map(entry => entry.src),
+				Array.appendAll([
+					`https://${host}/favicon.ico`,
+					`https://${String.replace(/^(?:api|app|mcp)\./u, '')(host)}/favicon.ico`
+				] as const),
+				Array.dedupe
 			)}
-			<AvatarFallback>
-				<HardDrivesIcon />
-			</AvatarFallback>
-		</Avatar>
+		/>
 	)
 }
 
-// Keyed by its sources, so icons a later discovery finds get their turn. Without a tile behind it, an icon drawn for dark backgrounds goes first.
-function ServerIcon(props: {server: ConnectionItem}) {
-	const host = new URL(props.server.url).hostname
-	const sources = Array.dedupe([
-		...pipe(
-			props.server.icons,
-			Array.sort(
-				Order.mapInput(Order.Boolean, (entry: ConnectionItem['icons'][number]) => !Option.contains(entry.theme, 'dark'))
-			),
-			Array.map(entry => entry.src)
-		),
-		`https://${host}/favicon.ico`,
-		`https://${String.replace(/^(?:api|app|mcp)\./u, '')(host)}/favicon.ico`
-	])
-	return <FirstImage key={Array.join(sources, ' ')} sources={sources} />
+// A row's period: its sparkline from the small breakpoint, then its total.
+function FiguresCells(props: {color: string; figure: string; series: readonly number[]}) {
+	return (
+		<>
+			<TableCell className="hidden sm:table-cell">
+				<Sparkline color={props.color} values={props.series} />
+			</TableCell>
+			<TableCell className="text-right">
+				<span className="tabular-nums">{props.figure}</span>
+			</TableCell>
+		</>
+	)
+}
+
+// A list group's failed read, across the whole row.
+function FailureRow(props: {children: ReactNode}) {
+	return (
+		<TableRow>
+			<TableCell colSpan={COLUMNS}>{props.children}</TableCell>
+		</TableRow>
+	)
 }
 
 // One server: its mark, name and host, what it offers or the button that connects it, then its calls over the period.
@@ -158,27 +155,26 @@ function ServerRow(props: {period: UsageRange; report: readonly McpUsageServer[]
 	})
 	const series = serverSeries(props.report, props.server.id, props.period)
 	return (
-		<Item role="listitem" size="sm">
-			<ItemMedia>
-				<ServerIcon server={props.server} />
-			</ItemMedia>
-			<ItemContent>
-				<ItemTitle>{props.server.name}</ItemTitle>
-				<ItemDescription>{new URL(props.server.url).hostname}</ItemDescription>
-			</ItemContent>
-			<ItemActions>
-				{failed && <StatusDot status="error" label={failure} />}
+		<TableRow>
+			<RowLead
+				mark={<ServerIcon server={props.server} />}
+				after={failed && <StatusDot status="error" label={failure} />}
+				detail={new URL(props.server.url).hostname}
+			>
+				{props.server.name}
+			</RowLead>
+			<TableCell className="text-right">
 				{Boolean.match(needsUser, {
 					onFalse: () =>
 						props.server.tools > 0 && (
-							<span className="text-muted-foreground flex items-center gap-1.5 tabular-nums" title="Tools">
+							<span className="text-muted-foreground inline-flex items-center gap-1.5 tabular-nums" title="Tools">
 								{props.server.tools}
 								<WrenchIcon />
 							</span>
 						),
 					onTrue: () => (
 						<Button
-							size="sm"
+							size="xs"
 							disabled={AsyncResult.isWaiting(connecting)}
 							aria-label={`${action} ${props.server.name}`}
 							onClick={() => connect()}
@@ -187,17 +183,35 @@ function ServerRow(props: {period: UsageRange; report: readonly McpUsageServer[]
 						</Button>
 					)
 				})}
-				<span className="tabular-nums">{countOf(Number.sumAll(series))}</span>
-				<Sparkline color={serverHue(props.server)} values={series} />
-			</ItemActions>
-		</Item>
+			</TableCell>
+			<FiguresCells color={serverHue(props.server)} figure={countOf(Number.sumAll(series))} series={series} />
+		</TableRow>
 	)
+}
+
+function RowReadFailure(props: {error: unknown; reset: () => void}) {
+	return (
+		<FailureRow>
+			<ReadFailure error={props.error} reset={props.reset} />
+		</FailureRow>
+	)
+}
+
+// The rows a group will hold while it loads.
+function LoadingRows(props: {label: string; rows: number}) {
+	return Array.map(Array.range(1, props.rows), row => (
+		<TableRow key={row} aria-busy="true" aria-label={props.label}>
+			<TableCell colSpan={COLUMNS}>
+				<Skeleton className="h-6 w-1/3" />
+			</TableCell>
+		</TableRow>
+	))
 }
 
 // The servers reader first, so a refusal or a failed read shows without waiting for usage.
 function ServerRows(props: {period: Period}) {
 	return (
-		<Loaded atom={serversAtom}>
+		<Loaded atom={serversAtom} frame={failure => <FailureRow>{failure}</FailureRow>}>
 			{servers =>
 				pipe(
 					servers,
@@ -205,8 +219,8 @@ function ServerRows(props: {period: Period}) {
 					Array.match({
 						onEmpty: Function.constNull,
 						onNonEmpty: ordered => (
-							<Suspense fallback={<RowsSkeleton label="MCP servers" rows={ordered.length} />}>
-								<Loaded atom={mcpUsageAtom(props.period)}>
+							<Suspense fallback={<LoadingRows label="MCP servers" rows={ordered.length} />}>
+								<Loaded atom={mcpUsageAtom(props.period)} frame={failure => <FailureRow>{failure}</FailureRow>}>
 									{current =>
 										Array.map(ordered, server => (
 											<ServerRow key={server.id} server={server} period={current.range} report={current.report} />
@@ -231,33 +245,45 @@ function PayerRow(props: {
 	source: Payer
 }) {
 	return (
-		<div role="listitem">
-			<Item
-				size="sm"
-				render={<button type="button" aria-label={`OpenCode, ${PAYER_LABELS[props.source]}`} onClick={props.onOpen} />}
-			>
-				<ItemMedia variant="icon">
-					<ProviderMark />
-				</ItemMedia>
-				<ItemContent>
-					<ItemTitle>OpenCode</ItemTitle>
-					<ItemDescription>{PAYER_LABELS[props.source]}</ItemDescription>
-				</ItemContent>
-				<ItemActions>
-					{Option.exists(props.info.lastStatus, status => status === 401 || status === 403) && (
+		<TableRow>
+			<RowLead
+				mark={
+					<span className="flex size-6 shrink-0 items-center justify-center">
+						<ProviderMark />
+					</span>
+				}
+				after={
+					Option.exists(props.info.lastStatus, status => status === 401 || status === 403) && (
 						<StatusDot status="error" label="Key refused" />
-					)}
-					<span className="tabular-nums">{aiCost(props.report, props.source)}</span>
-					<Sparkline color="var(--muted-foreground)" values={aiSeries(props.report, props.source, props.period)} />
-				</ItemActions>
-			</Item>
-		</div>
+					)
+				}
+				detail={PAYER_LABELS[props.source]}
+			>
+				OpenCode
+			</RowLead>
+			<TableCell className="text-right">
+				<Button
+					size="icon-xs"
+					variant="ghost"
+					aria-label={`OpenCode, ${PAYER_LABELS[props.source]}`}
+					title="Key settings"
+					onClick={props.onOpen}
+				>
+					<GearSixIcon />
+				</Button>
+			</TableCell>
+			<FiguresCells
+				color="var(--muted-foreground)"
+				figure={aiCost(props.report, props.source)}
+				series={aiSeries(props.report, props.source, props.period)}
+			/>
+		</TableRow>
 	)
 }
 
 function KeyUsage(props: {info: AiKeyItem; onOpen: () => void; period: Period}) {
 	return (
-		<Loaded atom={aiUsageAtom(props.period)}>
+		<Loaded atom={aiUsageAtom(props.period)} frame={failure => <FailureRow>{failure}</FailureRow>}>
 			{current =>
 				Array.map(Payer.literals, source => (
 					<PayerRow
@@ -277,12 +303,12 @@ function KeyUsage(props: {info: AiKeyItem; onOpen: () => void; period: Period}) 
 // The saved credential has a row for each payer it spends from; the field adds or replaces it.
 function KeyRows(props: {onOpen: () => void; period: Period}) {
 	return (
-		<Loaded atom={aiKeyAtom}>
+		<Loaded atom={aiKeyAtom} frame={failure => <FailureRow>{failure}</FailureRow>}>
 			{all =>
 				Option.match(all, {
 					onNone: Function.constNull,
 					onSome: credential => (
-						<Suspense fallback={<RowsSkeleton label="OpenCode key" rows={Payer.literals.length} />}>
+						<Suspense fallback={<LoadingRows label="OpenCode key" rows={Payer.literals.length} />}>
 							<KeyUsage info={credential} onOpen={props.onOpen} period={props.period} />
 						</Suspense>
 					)
@@ -295,22 +321,20 @@ function KeyRows(props: {onOpen: () => void; period: Period}) {
 // Each group is read on its own, so one failing reader leaves the other group's rows.
 function List(props: {onOpen: () => void; period: Period}) {
 	return (
-		<Card>
-			<CardContent>
-				<ItemGroup aria-label="MCP servers and AI keys">
-					<CatchBoundary getResetKey={Function.constant('servers')} errorComponent={ReadFailure}>
-						<Suspense fallback={<RowsSkeleton label="MCP servers" rows={3} />}>
-							<ServerRows period={props.period} />
-						</Suspense>
-					</CatchBoundary>
-					<CatchBoundary getResetKey={Function.constant('keys')} errorComponent={ReadFailure}>
-						<Suspense fallback={<RowsSkeleton label="AI keys" rows={2} />}>
-							<KeyRows onOpen={props.onOpen} period={props.period} />
-						</Suspense>
-					</CatchBoundary>
-				</ItemGroup>
-			</CardContent>
-		</Card>
+		<Table aria-label="MCP servers and AI keys">
+			<TableBody>
+				<CatchBoundary getResetKey={Function.constant('servers')} errorComponent={RowReadFailure}>
+					<Suspense fallback={<LoadingRows label="MCP servers" rows={3} />}>
+						<ServerRows period={props.period} />
+					</Suspense>
+				</CatchBoundary>
+				<CatchBoundary getResetKey={Function.constant('keys')} errorComponent={RowReadFailure}>
+					<Suspense fallback={<LoadingRows label="AI keys" rows={2} />}>
+						<KeyRows onOpen={props.onOpen} period={props.period} />
+					</Suspense>
+				</CatchBoundary>
+			</TableBody>
+		</Table>
 	)
 }
 

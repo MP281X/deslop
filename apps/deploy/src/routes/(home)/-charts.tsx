@@ -5,8 +5,8 @@ import {ChartLineIcon} from '@phosphor-icons/react'
 import {useState} from 'react'
 import type {PointerEvent} from 'react'
 
-import {cn} from '@deslop/components-web/classes'
-import {EmptyState} from '@deslop/components-web/fallbacks'
+import {cn} from '@deslop/components-web/lib/utils'
+import {Empty, EmptyHeader, EmptyMedia, EmptyTitle} from '@deslop/components-web/ui/empty'
 import {Skeleton} from '@deslop/components-web/ui/skeleton'
 import {Tooltip, TooltipContent, TooltipProvider, TooltipTrigger} from '@deslop/components-web/ui/tooltip'
 import {bytesOf, clockOf, dayOf, percentOf} from '@deslop/runtime/shared/format'
@@ -492,13 +492,19 @@ export function ChartBlock(props: {
 export function EmptyChart(props: {worker?: string}) {
 	return (
 		<div className="flex h-44 shrink-0 items-center justify-center sm:h-64">
-			<EmptyState
-				icon={<ChartLineIcon weight="light" />}
-				label={Boolean.match(props.worker === undefined, {
-					onFalse: Function.constant('No readings in this range'),
-					onTrue: Function.constant('No machine')
-				})}
-			/>
+			<Empty role="status">
+				<EmptyHeader>
+					<EmptyMedia variant="icon">
+						<ChartLineIcon />
+					</EmptyMedia>
+					<EmptyTitle>
+						{Boolean.match(props.worker === undefined, {
+							onFalse: Function.constant('No readings in this range'),
+							onTrue: Function.constant('No machine')
+						})}
+					</EmptyTitle>
+				</EmptyHeader>
+			</Empty>
 		</div>
 	)
 }

@@ -13,7 +13,7 @@ export const APP_HUES: Record<string, string> = {
 }
 
 // Inlined with the bundle, so a bar's app marks paint with its tabs instead of appearing one by one.
-const icons = import.meta.glob<string>('../../../apps/*/src/routes/icon.svg', {
+const icons = import.meta.glob<string>('../../../../apps/*/src/routes/icon.svg', {
 	eager: true,
 	import: 'default',
 	query: '?inline'

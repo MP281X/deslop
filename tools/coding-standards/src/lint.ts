@@ -134,7 +134,8 @@ export const restrictedImports: {
 		{importNames: RUNNERS, message: RUN_MESSAGE, name: 'effect/Effect'}
 	],
 	patterns: [
-		{group: ['@*/*/src', '@*/*/src/**', '@*/*/lib', '@*/*/lib/**'], message: 'Use public package exports.'},
+		// A package's exports map closes whatever `lib/` it does not export; shadcn's `lib/` holds public helpers.
+		{group: ['@*/*/src', '@*/*/src/**'], message: 'Use public package exports.'},
 		// A service folder's public face is its schema, service and lib/utils; its own files reach the rest with `./`.
 		{
 			group: [

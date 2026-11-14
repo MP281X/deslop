@@ -1,21 +1,14 @@
 import {Array, Boolean, Function, Option, Record, String, pipe} from 'effect'
 
-import {HardDrivesIcon, LockIcon} from '@phosphor-icons/react'
-import type {ReactElement, ReactNode} from 'react'
+import {ArrowSquareOutIcon, HardDrivesIcon, LockIcon} from '@phosphor-icons/react'
+import type {ReactNode} from 'react'
 
-import {cn} from '@deslop/components-web/classes'
-import {AppMark, ThemedMark} from '@deslop/components-web/marks'
-import {
-	Item,
-	ItemActions,
-	ItemContent,
-	ItemDescription,
-	ItemGroup,
-	ItemMedia,
-	ItemTitle
-} from '@deslop/components-web/ui/item'
+import {AppMark, ThemedMark} from '@deslop/components-web/blocks/marks'
+import {cn} from '@deslop/components-web/lib/utils'
+import {Button} from '@deslop/components-web/ui/button'
 import {GithubDark} from '@deslop/components-web/ui/svgs/githubDark'
 import {GithubLight} from '@deslop/components-web/ui/svgs/githubLight'
+import {Table, TableBody, TableCell, TableRow} from '@deslop/components-web/ui/table'
 import {clockOf, durationOf} from '@deslop/runtime/shared/format'
 
 import {attributesOf, errorOf} from '#lib/telemetry.ts'
@@ -39,19 +32,18 @@ const STATUS: Record<string, string> = {
 // Effect's HTTP client error as a status line, method and host; anything else stays as the server wrote it.
 function ErrorText(props: {message: string}) {
 	return Option.match(String.match(/^StatusCode error \((\d{3}) (\w+) (https?:\/\/[^\s)]+)\)$/u)(props.message), {
-		onNone: () => <span className="break-words">{props.message}</span>,
+		onNone: () => props.message,
 		onSome: parts => {
 			const code = parts[1] ?? ''
 			const method = parts[2] ?? ''
 			const url = parts[3] ?? ''
 			return (
-				<span className="flex min-w-0 flex-wrap items-baseline gap-x-2 break-words">
+				<>
 					<span className="font-medium">
 						{code} {pipe(STATUS, Record.get(code), Option.getOrElse(Function.constant('')))}
-					</span>
-					<span>{method}</span>
-					<span className="min-w-0 break-all">{String.replace(/^https?:\/\//u, '')(url)}</span>
-				</span>
+					</span>{' '}
+					{method} {String.replace(/^https?:\/\//u, '')(url)}
+				</>
 			)
 		}
 	})
@@ -72,96 +64,103 @@ function failedText(failed: boolean) {
 	return cn(failed && 'text-destructive')
 }
 
-// The picked span's identity above its details: its app's mark, its name, where it started, and its duration.
+// The picked span's identity across both columns: its app's mark, its name, where it started, and its duration.
 function SpanHeader(props: {span: TraceTree['spans'][number]}) {
 	return (
-		<Item role="listitem" size="sm">
-			<ItemMedia variant="icon">
-				<AppMark name={appName(props.span.service)} fallback={<OutsideMark ci={props.span.runtime === 'ci'} />} />
-			</ItemMedia>
-			<ItemContent>
-				<ItemTitle>
-					<span className={failedText(props.span.status === 'failed')}>{props.span.name}</span>
-				</ItemTitle>
-				<ItemDescription>{`${appName(props.span.service)} · at ${durationOf(props.span.offsetMs)}`}</ItemDescription>
-			</ItemContent>
-			<ItemActions>
-				<span className="tabular-nums">{durationOf(props.span.durationMs)}</span>
-			</ItemActions>
-		</Item>
+		<TableRow>
+			<TableCell colSpan={2}>
+				<span className="flex w-0 min-w-full items-center gap-2">
+					<AppMark name={appName(props.span.service)} fallback={<OutsideMark ci={props.span.runtime === 'ci'} />} />
+					<span className={cn('truncate', failedText(props.span.status === 'failed'))}>{props.span.name}</span>
+					<span className="text-muted-foreground grow basis-0 truncate">
+						{`${appName(props.span.service)} · at ${durationOf(props.span.offsetMs)}`}
+					</span>
+					<span className="ms-auto tabular-nums">{durationOf(props.span.durationMs)}</span>
+				</span>
+			</TableCell>
+		</TableRow>
 	)
 }
 
-// One detail of the span: what it is above its value; an https URL's row opens it.
-function DetailRow(props: {label: ReactNode; render?: ReactElement; title: string; value: ReactNode}) {
+// One detail of the span on one line: what it is, muted and capped on a phone, then its value cut short with the whole of it on hover, and the action it has.
+function DetailRow(props: {action?: ReactNode; label: ReactNode; title: string; value: ReactNode}) {
 	return (
-		<Item role="listitem" size="sm" title={props.title} render={props.render}>
-			<ItemContent>
-				<ItemDescription>{props.label}</ItemDescription>
-				<ItemTitle>{props.value}</ItemTitle>
-			</ItemContent>
-		</Item>
+		<TableRow>
+			<TableCell>
+				<span className="text-muted-foreground flex max-w-32 items-center gap-1.5 sm:max-w-none">
+					<span className="truncate">{props.label}</span>
+				</span>
+			</TableCell>
+			<TableCell className="w-full">
+				<span className="flex w-0 min-w-full items-center gap-2" title={props.title}>
+					<span className="truncate">{props.value}</span>
+					{props.action}
+				</span>
+			</TableCell>
+		</TableRow>
 	)
 }
 
-// The picked span's header, error, attributes and logs, as stock list rows.
+// The picked span's header, error, attributes and logs, one ruled row each; an https URL opens from its row's end.
 export function SpanDetail(props: {span: TraceTree['spans'][number]}) {
-	const error = errorOf(props.span)
-	const attributes = attributesOf(props.span)
 	return (
-		<ItemGroup aria-label="Span details">
-			<SpanHeader span={props.span} />
-			{Option.match(error, {
-				onNone: Function.constNull,
-				onSome: message => (
-					<DetailRow
-						title={message}
-						label={Boolean.match(props.span.status === 'denied', {
-							onFalse: Function.constant('error'),
-							onTrue: () => (
-								<>
-									<LockIcon aria-hidden />
-									denied
-								</>
-							)
-						})}
-						value={
-							<span className={failedText(props.span.status === 'failed')}>
-								<ErrorText message={message} />
-							</span>
-						}
-					/>
-				)
-			})}
-			{Array.map(attributes, (attribute, index) =>
-				Boolean.match(attribute.key === 'url.full' && String.startsWith('https://')(attribute.value), {
-					onFalse: () => (
+		<Table aria-label="Span details">
+			<TableBody>
+				<SpanHeader span={props.span} />
+				{Option.match(errorOf(props.span), {
+					onNone: Function.constNull,
+					onSome: message => (
 						<DetailRow
-							key={`${attribute.key}:${index}`}
-							title={attribute.value}
-							label={attribute.key}
-							value={attribute.value}
-						/>
-					),
-					onTrue: () => (
-						<DetailRow
-							key={`${attribute.key}:${index}`}
-							title={attribute.value}
-							label={attribute.key}
-							value={attribute.value}
-							render={<a href={attribute.value} target="_blank" rel="noreferrer" aria-label={attribute.value} />}
+							title={message}
+							label={Boolean.match(props.span.status === 'denied', {
+								onFalse: Function.constant('error'),
+								onTrue: () => (
+									<>
+										<LockIcon aria-hidden />
+										denied
+									</>
+								)
+							})}
+							value={
+								<span className={failedText(props.span.status === 'failed')}>
+									<ErrorText message={message} />
+								</span>
+							}
 						/>
 					)
-				})
-			)}
-			{Array.map(props.span.logs, (log, index) => (
-				<DetailRow
-					key={`${log.id}:${index}`}
-					title={log.message}
-					label={clockOf(log.time, 'millisecond')}
-					value={<span className={failedText(log.severity >= 17)}>{log.message}</span>}
-				/>
-			))}
-		</ItemGroup>
+				})}
+				{Array.map(attributesOf(props.span), (attribute, index) => (
+					<DetailRow
+						key={`${attribute.key}:${index}`}
+						title={attribute.value}
+						label={attribute.key}
+						value={attribute.value}
+						action={Boolean.match(attribute.key === 'url.full' && String.startsWith('https://')(attribute.value), {
+							onFalse: Function.constNull,
+							onTrue: () => (
+								<Button
+									size="icon-xs"
+									variant="ghost"
+									nativeButton={false}
+									render={
+										<a href={attribute.value} target="_blank" rel="noreferrer" aria-label={`Open ${attribute.value}`} />
+									}
+								>
+									<ArrowSquareOutIcon />
+								</Button>
+							)
+						})}
+					/>
+				))}
+				{Array.map(props.span.logs, (log, index) => (
+					<DetailRow
+						key={`${log.id}:${index}`}
+						title={log.message}
+						label={<span className="tabular-nums">{clockOf(log.time, 'millisecond')}</span>}
+						value={<span className={failedText(log.severity >= 17)}>{log.message}</span>}
+					/>
+				))}
+			</TableBody>
+		</Table>
 	)
 }

@@ -32,14 +32,16 @@ export function classLiterals(pattern: string) {
 	)
 }
 
-// The options of `shadcn/no-restyle`. A popup takes a width, as the registry's own examples give one; a skeleton takes a size because the registry has none for it.
+// The options of `shadcn/no-restyle`. A popup takes a width, as the registry's own examples give one; a skeleton takes a size because the registry has none for it; a table cell takes its column's alignment and breakpoint.
 export const primitiveClasses = {
 	allow: PLACEMENT,
 	// The rule's `ui` setting does not reach the JS plugin, so the modules are named; a software mark is sized like an icon.
 	componentImports: ['^@deslop/components-web/ui(?!/svgs)(/|$)', '^#components/ui(?!/svgs)(/|$)'],
 	contracts: [
 		{allow: [...PLACEMENT, ...WIDTH], pattern: '^(?:DialogContent|DropdownMenuContent|PopoverContent|SheetContent)$'},
-		{allow: [...PLACEMENT, ...WIDTH, 'size', 'h', 'min-h', 'max-h'], pattern: '^Skeleton$'}
+		{allow: [...PLACEMENT, ...WIDTH, 'size', 'h', 'min-h', 'max-h'], pattern: '^Skeleton$'},
+		// The registry's table examples align figures right and show a column from a breakpoint (`hidden sm:table-cell`).
+		{allow: [...PLACEMENT, 'display', 'text-alignment'], pattern: '^Table(?:Head|Cell)$'}
 	],
 	// A value from a CSS variable is a size or colour by another name.
 	deny: ['*(--*'],

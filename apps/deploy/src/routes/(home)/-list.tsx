@@ -6,26 +6,19 @@ import {Array, Boolean, Duration, Equal, Filter, Function, HashSet, Number, Opti
 import {AppWindowIcon, PlayIcon} from '@phosphor-icons/react'
 import {CatchBoundary} from '@tanstack/react-router'
 import {AsyncResult, Atom} from 'effect/reactivity'
-import {Fragment, Suspense} from 'react'
+import {Suspense} from 'react'
 import type {ReactNode} from 'react'
 
-import {cn} from '@deslop/components-web/classes'
-import {EmptyState, Loaded, ReadFailure} from '@deslop/components-web/fallbacks'
-import {RowsSkeleton} from '@deslop/components-web/item-list'
-import {ResultError} from '@deslop/components-web/result-error'
-import {StatusDot} from '@deslop/components-web/status-dot'
+import {ResultError} from '@deslop/components-web/blocks/result-error'
+import {ChoiceRow, LoadingRows, RowLead} from '@deslop/components-web/blocks/rows'
+import {Loaded, ReadFailure} from '@deslop/components-web/blocks/states'
+import {StatusDot} from '@deslop/components-web/blocks/status-dot'
+import {cn} from '@deslop/components-web/lib/utils'
 import {Badge} from '@deslop/components-web/ui/badge'
 import {Button} from '@deslop/components-web/ui/button'
-import {
-	Item,
-	ItemContent,
-	ItemDescription,
-	ItemGroup,
-	ItemMedia,
-	ItemSeparator,
-	ItemTitle
-} from '@deslop/components-web/ui/item'
+import {Empty, EmptyHeader, EmptyMedia, EmptyTitle} from '@deslop/components-web/ui/empty'
 import {ScrollArea} from '@deslop/components-web/ui/scroll-area'
+import {Table, TableBody, TableCell} from '@deslop/components-web/ui/table'
 import {timerOf} from '@deslop/runtime/shared/format'
 
 import {inventoryAtom, openExposeAtom, runAtom} from '#lib/fleet.ts'
@@ -128,7 +121,7 @@ const elapsedAtom = Atom.family((_job: ItemId) =>
 
 function Elapsed(props: {job: ItemId}) {
 	return (
-		<span className="text-muted-foreground text-xs tabular-nums">
+		<span className="text-muted-foreground tabular-nums">
 			{timerOf(AsyncResult.getOrElse(useAtomValue(elapsedAtom(props.job)), () => Duration.zero))}
 		</span>
 	)
@@ -138,7 +131,7 @@ function Elapsed(props: {job: ItemId}) {
 function RunNow(props: {disabled: boolean; item: InventoryItem; onRun: () => void}) {
 	return (
 		<Button
-			size="icon-sm"
+			size="icon-xs"
 			variant="ghost"
 			disabled={props.disabled}
 			aria-label={`Run ${workloadName(props.item)} now`}
@@ -183,60 +176,62 @@ function AppRow(props: {
 		onFalse: () => reasonLine(props.row.item, props.now),
 		onTrue: () => reason
 	})
-	// The row opens its processes; its chips and run button sit beside it, outside the row's own button.
+	// The row opens its processes; its chips and run button act alone.
 	return (
-		<div role="listitem">
-			<div className="flex items-center gap-2 pr-3">
-				<Item
-					size="sm"
-					variant={Boolean.match(props.selected, {
-						onFalse: Function.constant('default' as const),
-						onTrue: Function.constant('muted' as const)
-					})}
-					className="min-w-0 flex-1"
-					render={<button type="button" aria-label={`Open ${fullName}`} title={fullName} onClick={props.onSelect} />}
-				>
-					<ItemMedia variant="icon">
-						<ApplicationIcon
-							name={fullName}
-							process={pipe(
-								props.row.item.processes,
-								Option.getOrElse(Array.empty<Process>),
-								Array.match({
-									onEmpty: Function.constUndefined,
-									onNonEmpty: entries =>
-										Array.max(
-											entries,
-											Order.mapInput(Number.Order, (entry: Process) => entry.memory)
-										).name
-								})
-							)}
-							container={props.row.item.kind === 'container'}
-						/>
-					</ItemMedia>
-					<ItemContent>
-						<ItemTitle>{name}</ItemTitle>
-						{failing && <ItemDescription title={reasonText}>{reasonText}</ItemDescription>}
-					</ItemContent>
-				</Item>
-				{props.row.item.health !== 'quiet' && <StatusDot status={props.row.item.health} label={state} />}
+		<ChoiceRow label={`Open ${fullName}`} selected={props.selected} onSelect={props.onSelect}>
+			<RowLead
+				title={fullName}
+				mark={
+					<ApplicationIcon
+						name={fullName}
+						process={pipe(
+							props.row.item.processes,
+							Option.getOrElse(Array.empty<Process>),
+							Array.match({
+								onEmpty: Function.constUndefined,
+								onNonEmpty: entries =>
+									Array.max(
+										entries,
+										Order.mapInput(Number.Order, (entry: Process) => entry.memory)
+									).name
+							})
+						)}
+						container={props.row.item.kind === 'container'}
+					/>
+				}
+				after={
+					<>
+						{props.row.item.health !== 'quiet' && <StatusDot status={props.row.item.health} label={state} />}
+						{scheduled && <RunFailure item={props.row.item} />}
+					</>
+				}
+				detail={Boolean.match(failing, {onFalse: Function.constUndefined, onTrue: () => reasonText})}
+			>
+				{name}
+			</RowLead>
+			<TableCell className="text-right">
 				{Boolean.match(scheduled, {
-					onFalse: () => <Endpoints free={props.free} row={props.row} />,
+					onFalse: () => (
+						<span className="inline-flex gap-1">
+							<Endpoints free={props.free} row={props.row} />
+						</span>
+					),
 					onTrue: () =>
 						Boolean.match(running, {
 							onFalse: () => (
-								<span className="text-muted-foreground text-xs tabular-nums">
+								<span className="text-muted-foreground tabular-nums">
 									{Boolean.match(failing, {onFalse: () => next, onTrue: () => Option.getOrElse(age, () => next)})}
 								</span>
 							),
 							onTrue: () => <Elapsed job={props.row.item.id} />
 						})
 				})}
-				{/* An endpoint this app exposed is hidden through Deploy's hide_exposure tool, not this page. */}
+			</TableCell>
+			{/* An endpoint this app exposed is hidden through Deploy's hide_exposure tool, not this page. */}
+			<TableCell>
 				{scheduled && <RunNow disabled={running} item={props.row.item} onRun={() => run(requestOf(props.row.item))} />}
-			</div>
-			{scheduled && <RunFailure item={props.row.item} />}
-		</div>
+			</TableCell>
+		</ChoiceRow>
 	)
 }
 
@@ -248,21 +243,17 @@ function ListRows(props: {
 	rows: readonly Row[]
 	selectedId?: string
 }) {
-	return (
-		<ItemGroup>
-			{Array.map(props.rows, row => (
-				<AppRow
-					key={row.item.id}
-					compact={props.compact}
-					free={props.free}
-					now={props.now}
-					onSelect={() => props.onSelect(row)}
-					row={row}
-					selected={props.selectedId === row.item.id}
-				/>
-			))}
-		</ItemGroup>
-	)
+	return Array.map(props.rows, row => (
+		<AppRow
+			key={row.item.id}
+			compact={props.compact}
+			free={props.free}
+			now={props.now}
+			onSelect={() => props.onSelect(row)}
+			row={row}
+			selected={props.selectedId === row.item.id}
+		/>
+	))
 }
 
 // The apps on one machine: failures first, then high-impact apps by memory, then healthy low-impact apps under their heading, then the jobs a timer starts.
@@ -283,33 +274,33 @@ export function ListPane(props: {
 	const groups = impactGroups(apps, props.history)
 	return (
 		<div className={cn('flex min-h-0 flex-col', props.className)}>
-			<Suspense fallback={<RowsSkeleton label="Apps loading" rows={8} />}>
+			<Suspense fallback={<LoadingRows label="Apps loading" rows={8} />}>
 				<InventoryContent>
 					{Array.match(props.rows, {
-						onEmpty: () => <EmptyState icon={<AppWindowIcon weight="light" />} label="No apps in this range" />,
+						onEmpty: () => (
+							<Empty role="status">
+								<EmptyHeader>
+									<EmptyMedia variant="icon">
+										<AppWindowIcon />
+									</EmptyMedia>
+									<EmptyTitle>No apps in this range</EmptyTitle>
+								</EmptyHeader>
+							</Empty>
+						),
 						onNonEmpty: () => (
 							<ScrollArea className="min-h-0 flex-1">
-								{pipe(
-									[
-										{name: 'high', rows: groups.high},
-										{name: 'low', rows: groups.low},
-										{name: 'jobs', rows: jobs}
-									],
-									Array.filter(group => Array.isReadonlyArrayNonEmpty(group.rows)),
-									Array.map((group, index) => (
-										<Fragment key={group.name}>
-											{index > 0 && <ItemSeparator />}
-											<ListRows
-												compact={props.compact}
-												free={props.free}
-												now={props.now}
-												onSelect={props.onSelect}
-												rows={group.rows}
-												selectedId={props.selectedId}
-											/>
-										</Fragment>
-									))
-								)}
+								<Table role="grid" aria-label="Apps">
+									<TableBody>
+										<ListRows
+											compact={props.compact}
+											free={props.free}
+											now={props.now}
+											onSelect={props.onSelect}
+											rows={[...groups.high, ...groups.low, ...jobs]}
+											selectedId={props.selectedId}
+										/>
+									</TableBody>
+								</Table>
 							</ScrollArea>
 						)
 					})}

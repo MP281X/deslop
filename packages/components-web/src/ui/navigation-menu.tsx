@@ -1,6 +1,6 @@
 import { NavigationMenu as NavigationMenuPrimitive } from "@base-ui/react/navigation-menu"
 import { cva } from "class-variance-authority"
-import { cn } from "#lib/classes.ts"
+import { cn } from "cn"
 import { CaretDownIcon } from "@phosphor-icons/react"
 
 function NavigationMenu({

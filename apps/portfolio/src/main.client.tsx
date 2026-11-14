@@ -1,4 +1,4 @@
-import {mountRouter} from '@deslop/components-web/router'
+import {mountRouter} from '@deslop/components-web/lib/router'
 
 import {routeTree} from './routeTree.gen.ts'
 

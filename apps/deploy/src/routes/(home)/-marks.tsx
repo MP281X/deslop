@@ -2,7 +2,7 @@ import {Array, Boolean, Function, Option, String} from 'effect'
 
 import {CubeIcon, TerminalWindowIcon} from '@phosphor-icons/react'
 
-import {AppMark, ThemedMark} from '@deslop/components-web/marks'
+import {AppMark, ThemedMark} from '@deslop/components-web/blocks/marks'
 import {Bun} from '@deslop/components-web/ui/svgs/bun'
 import {Cloudflare} from '@deslop/components-web/ui/svgs/cloudflare'
 import {Docker} from '@deslop/components-web/ui/svgs/docker'

@@ -8,12 +8,13 @@ import {AsyncResult} from 'effect/reactivity'
 import {Suspense, useDeferredValue} from 'react'
 import type {ReactNode} from 'react'
 
-import {AppBarTab, AppBar, AppBarChoice, AppBarTabs} from '@deslop/components-web/app-bar'
-import {mediaQueryAtom} from '@deslop/components-web/classes'
-import {EmptyState, Loaded, ReadFailure} from '@deslop/components-web/fallbacks'
-import {RowsSkeleton} from '@deslop/components-web/item-list'
-import {StaleProblem} from '@deslop/components-web/problem'
-import {StatusDot} from '@deslop/components-web/status-dot'
+import {StaleProblem} from '@deslop/components-web/blocks/problem'
+import {LoadingRows} from '@deslop/components-web/blocks/rows'
+import {Loaded, ReadFailure} from '@deslop/components-web/blocks/states'
+import {StatusDot} from '@deslop/components-web/blocks/status-dot'
+import {mediaQueryAtom} from '@deslop/components-web/lib/media'
+import {AppBarTab, AppBar, AppBarChoice, AppBarTabs} from '@deslop/components-web/shell/app-bar'
+import {Empty, EmptyHeader, EmptyMedia, EmptyTitle} from '@deslop/components-web/ui/empty'
 import {ResizableHandle, ResizablePanel, ResizablePanelGroup} from '@deslop/components-web/ui/resizable'
 import {ScrollArea} from '@deslop/components-web/ui/scroll-area'
 import {isDenied} from '@deslop/runtime/shared/auth'
@@ -128,7 +129,16 @@ function ProcessList(props: {row: Row}) {
 	const processes = Option.getOrElse(props.row.item.processes, Array.empty)
 	const tree = processTree(processes)
 	return Array.match(processes, {
-		onEmpty: () => <EmptyState icon={<TerminalWindowIcon weight="light" />} label="No processes right now" />,
+		onEmpty: () => (
+			<Empty role="status">
+				<EmptyHeader>
+					<EmptyMedia variant="icon">
+						<TerminalWindowIcon />
+					</EmptyMedia>
+					<EmptyTitle>No processes right now</EmptyTitle>
+				</EmptyHeader>
+			</Empty>
+		),
 		onNonEmpty: () => (
 			<ScrollArea className="min-h-0 flex-1">
 				<Processes tree={tree} />
@@ -144,11 +154,20 @@ function SelectedProcesses(props: {app?: ItemId; pending: boolean; row?: Row}) {
 			{Option.match(Option.fromUndefinedOr(props.row), {
 				onNone: () =>
 					Boolean.match(props.pending && props.app !== undefined, {
-						onFalse: () => <EmptyState icon={<TerminalWindowIcon weight="light" />} label="Select an app" />,
-						onTrue: () => <RowsSkeleton label="Processes loading" rows={6} />
+						onFalse: () => (
+							<Empty role="status">
+								<EmptyHeader>
+									<EmptyMedia variant="icon">
+										<TerminalWindowIcon />
+									</EmptyMedia>
+									<EmptyTitle>Select an app</EmptyTitle>
+								</EmptyHeader>
+							</Empty>
+						),
+						onTrue: () => <LoadingRows label="Processes loading" rows={6} />
 					}),
 				onSome: row => (
-					<Suspense fallback={<RowsSkeleton label="Processes loading" rows={6} />}>
+					<Suspense fallback={<LoadingRows label="Processes loading" rows={6} />}>
 						<InventoryContent>
 							<ProcessList row={row} />
 						</InventoryContent>

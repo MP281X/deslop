@@ -1,47 +1,52 @@
 import {Array, Function, Option, pipe} from 'effect'
 
-import {cn} from '@deslop/components-web/classes'
-import {ItemTitle} from '@deslop/components-web/ui/item'
+import {Fragment} from 'react'
+
+import {RowLead} from '@deslop/components-web/blocks/rows'
+import {cn} from '@deslop/components-web/lib/utils'
+import {Table, TableBody, TableCell, TableRow} from '@deslop/components-web/ui/table'
 import {countOf, percentOf} from '@deslop/runtime/shared/format'
 
 import {ApplicationIcon} from '#routes/(home)/-marks.tsx'
-import {Tree} from '#routes/(home)/-tree.tsx'
-import type {TreeRow} from '#routes/(home)/-tree.tsx'
 import type {ProcessNode} from '#services/inventory/lib/utils.ts'
 
-// A process ends with its memory and CPU; their units name them without a header.
-function Figures(props: {node: ProcessNode}) {
-	return (
-		<>
-			<span className="tabular-nums">{`${countOf(props.node.memory / 1024 ** 2)} MiB`}</span>
-			<span className="text-muted-foreground tabular-nums">
-				{Option.match(props.node.cpu, {onNone: Function.constant('—'), onSome: percentOf})}
-			</span>
-		</>
-	)
+// One process and the processes under it: each level indents 12px under its parent's mark, with no connector lines, tints or fold carets; small ones read muted. Memory and CPU close the row; their units name them without a header.
+function ProcessRows(props: {depth: number; nodes: readonly ProcessNode[]}) {
+	return Array.map(props.nodes, node => (
+		<Fragment key={node.pid}>
+			<TableRow aria-level={props.depth + 1}>
+				<RowLead
+					title={pipe(node.command, Option.getOrElse(Array.empty), Array.join(' '))}
+					mark={
+						<span className="flex shrink-0 ps-(--indent)" style={{'--indent': `${props.depth * 0.75}rem`}}>
+							<ApplicationIcon name={node.label.name} small />
+						</span>
+					}
+					detail={node.label.detail}
+				>
+					<span className={cn(node.small && 'text-muted-foreground')}>{node.label.name}</span>
+				</RowLead>
+				<TableCell className="text-right">
+					<span className="tabular-nums">{`${countOf(node.memory / 1024 ** 2)} MiB`}</span>
+				</TableCell>
+				<TableCell className="text-right">
+					<span className="text-muted-foreground tabular-nums">
+						{Option.match(node.cpu, {onNone: Function.constant('—'), onSome: percentOf})}
+					</span>
+				</TableCell>
+			</TableRow>
+			<ProcessRows depth={props.depth + 1} nodes={node.children} />
+		</Fragment>
+	))
 }
 
-// One process row: its mark, the command label and its two figures; small ones read muted.
-function rowOf(props: {node: ProcessNode}): TreeRow {
-	const row: TreeRow = {
-		actions: <Figures node={props.node} />,
-		content: (
-			<ItemTitle>
-				<span className={cn(props.node.small && 'text-muted-foreground')}>{props.node.label.name}</span>
-				<span className="text-muted-foreground">{props.node.label.detail}</span>
-			</ItemTitle>
-		),
-		id: props.node.pid,
-		media: <ApplicationIcon name={props.node.label.name} small />,
-		title: pipe(props.node.command, Option.getOrElse(Array.empty), Array.join(' '))
-	}
-	return Array.match(props.node.children, {
-		onEmpty: () => row,
-		onNonEmpty: children => ({...row, children: Array.map(children, child => rowOf({node: child}))})
-	})
-}
-
-// Every process is shown; nesting indents plainly.
+// Every process is shown, as one tree of ruled rows.
 export function Processes(props: {tree: readonly ProcessNode[]}) {
-	return <Tree rows={Array.map(props.tree, node => rowOf({node}))} />
+	return (
+		<Table role="treegrid" aria-label="Processes">
+			<TableBody>
+				<ProcessRows depth={0} nodes={props.tree} />
+			</TableBody>
+		</Table>
+	)
 }

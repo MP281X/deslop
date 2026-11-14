@@ -6,7 +6,7 @@ import {KeyIcon} from '@phosphor-icons/react'
 import {getRouteApi} from '@tanstack/react-router'
 import {AsyncResult} from 'effect/reactivity'
 
-import {AccountButton} from '@deslop/components-web/app-bar'
+import {AccountButton} from '@deslop/components-web/shell/app-bar'
 import {
 	DropdownMenu,
 	DropdownMenuContent,
