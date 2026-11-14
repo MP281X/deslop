@@ -1,4 +1,4 @@
-// Generated from components-web's theme.css by `vp run fix`. Expo's native color boundary accepts sRGB, not OKLCH, and an app config hands these to native code that cannot import the theme.
+// components-web's theme.css in sRGB hex; a change to one changes the other in the same commit.
 export const palette = {
 	colors: {
 		background: {dark: '#09090b', light: '#ffffff'},

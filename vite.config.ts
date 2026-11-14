@@ -255,8 +255,6 @@ export default defineConfig({
 		tasks: {
 			// TSRS_FAST checks each tsconfig's whole program, including files lint ignores; the templates get a syntax-only pass.
 			check: [
-				// Run directly: inside this cached task, a nested `vp run` cannot spawn the `node` shim (os error 22).
-				'node packages/components-mobile/bin/palette.ts --check',
 				'vp fmt --list-different',
 				'TSRS_FAST=1 effect-tsgo --tsrs-lint vp lint --type-aware --type-check --ignore-pattern "tools/*/template/**"',
 				'vp lint tools/create-app/template tools/create-package/template --report-unused-disable-directives-severity=off',
@@ -277,8 +275,6 @@ export default defineConfig({
 				command: [
 					// The tactics print first, so a step that fails below leaves them above its diagnostics, for the agent fixing it.
 					'coding-standards tactics',
-					// The mobile palette is theme.css in sRGB, written before formatting so check sees the same text.
-					'node packages/components-mobile/bin/palette.ts',
 					'vp fmt',
 					'TSRS_FAST=1 effect-tsgo --tsrs-lint vp lint --fix --type-aware --type-check --ignore-pattern "tools/*/template/**"',
 					'vp lint tools/create-app/template tools/create-package/template --fix --report-unused-disable-directives-severity=off',

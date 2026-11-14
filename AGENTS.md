@@ -45,6 +45,7 @@
 
 ## Design
 
+- **Palette.** Mobile `palette.ts` mirrors `theme.css` in sRGB hex; a change to one changes the other in the same commit.
 - **References.** Themes: `packages/components-web/src/theme.css`, `packages/components-mobile/src/palette.ts` and `theme.ts`; `base-lyra` primitives: `packages/components-web/src/ui/`; generators: `tools/create-{app,package}/`.
 - **Exemption.** Portfolio is exempt: its own fonts, hotkeys, presence text and artwork, including a 504×504 touch icon on `#fafafa`.
 - **Targets.** 3440×1440, 1920×1080, ~1512×982; iPhone Air 420×912pt, safe areas and Dynamic Type.

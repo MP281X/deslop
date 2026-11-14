@@ -4,8 +4,8 @@
 @import '@fontsource-variable/jetbrains-mono';
 
 /* shadcn's Lyra with zinc, as `shadcn init` writes it, with Deslop's identity and status hues added. Dark mode follows the
-   system; `screen` keeps a printed page light. An app points --primary at its icon's hue in its styles.css. The mobile
-   palette is generated from this file. */
+   system; `screen` keeps a printed page light. An app points --primary at its icon's hue in its styles.css.
+   components-mobile's palette.ts mirrors this file in sRGB hex; a change to one changes the other in the same commit. */
 :root {
 	/* App and status hues, darkened for white. */
 	--red: oklch(from #c92b38 l c h);

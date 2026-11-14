@@ -1,11 +1,6 @@
 {
 	"$schema": "./node_modules/fallow/schema.json",
-	"entry": [
-		"**/main.*",
-		"apps/*/fingerprint.config.js",
-		"apps/*/targets/*/expo-target.config.js",
-		"packages/components-mobile/bin/palette.ts"
-	],
+	"entry": ["**/main.*", "apps/*/fingerprint.config.js", "apps/*/targets/*/expo-target.config.js"],
 	"includeEntryExports": true,
 	"publicPackages": ["@deslop/coding-standards"],
 	"failOnParseError": true,
@@ -62,7 +57,6 @@
 			"requireAllFiles": true,
 			"allowUnmatched": [
 				"tools/**",
-				"packages/components-mobile/bin/**",
 				"**/*.config.*",
 				"**/*.test.ts",
 				"apps/*/fingerprint.config.js",
