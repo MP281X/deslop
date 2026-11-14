@@ -35,7 +35,7 @@ Each step stands alone: a refusal or failure skips only that step. A thread owns
 3. **T3 runtime versions.** Skip while `~/.t3/runtime/service-state.json` shows an uncommitted update. Remove every `~/.t3/runtime/versions/<version>` except `activeVersion`, the launcher named in `~/.config/systemd/user/t3code.service`'s `ExecStart`, and newer ones.
 4. **Docker,** when no `docker build` or Compose build runs: `docker image prune -a -f`, `docker builder prune -a -f`. Never `docker system prune`.
 5. **pnpm,** when no install runs: `pnpm store prune`.
-6. **Previews.** Remove each stopped `preview-*` unit and its container whose worktree is gone; run an Alchemy preview's `preview:destroy` first.
+6. **Previews.** Remove each stopped `preview-*` unit and its container whose worktree is gone; run an Alchemy preview's `preview:destroy` first. Stopping a preview also stops the containers it started (Dual's `dualos-local-*-wt-<hash>` Postgres and OpenSandbox outlive the unit); `docker stop` keeps their seeded data, while Dual's `settle` destroys it. Remove leftover `testcontainers-ryuk-*` and the unnamed Postgres containers of finished test runs.
 7. **Worktrees** of settled threads that no process uses, uncommitted changes included: the settle script, then `git worktree remove --force --force <path>` and `git worktree prune`.
 8. **Local branches** in `~/deslop` and `~/dual` that no worktree checks out, except the default branch: `git branch -D`.
 9. **Remote branches,** only when the PR or MR is merged or closed, every commit is authored by the user, and no thread's worktree uses it. A failed host query keeps the branch.
