@@ -306,7 +306,7 @@ export class Chapters extends Context.Service<Chapters>()('@deslop/opm/services/
 			const found = yield* Effect.forEach(
 				groups,
 				entry =>
-					pipe(
+					Effect.option(
 						Effect.firstSuccessOf(
 							Array.flatMap(entry[1], candidate =>
 								Array.map(candidate.links, link =>
@@ -328,9 +328,7 @@ export class Chapters extends Context.Service<Chapters>()('@deslop/opm/services/
 									)
 								)
 							)
-						),
-						Effect.asSome,
-						Effect.orElseSucceed(Option.none<Chapter>)
+						)
 					),
 				{concurrency: 1}
 			)

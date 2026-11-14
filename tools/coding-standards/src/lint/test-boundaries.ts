@@ -142,11 +142,6 @@ export const testBoundaries = defineRule({
 		}
 	}),
 	meta: {
-		schema: {
-			items: {enum: ['read-source-text', 'inspect-database', 'execute-program']},
-			type: 'array',
-			uniqueItems: true
-		},
 		docs: {
 			examples: {
 				accepted: [
@@ -158,6 +153,11 @@ it('refuses spending without a balance', () => { assert.isFalse(hasBudget(0)); a
 					}
 				]
 			}
+		},
+		schema: {
+			items: {enum: ['read-source-text', 'inspect-database', 'execute-program']},
+			type: 'array',
+			uniqueItems: true
 		},
 		type: 'problem'
 	}

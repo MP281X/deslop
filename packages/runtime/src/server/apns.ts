@@ -32,6 +32,11 @@ import {DateTimeUtcFromSeconds} from '#shared/time.ts'
 type JwtClaims = typeof JwtClaims.Type
 const JwtClaims = Schema.fromJsonString(Schema.Struct({iat: DateTimeUtcFromSeconds, iss: Schema.String}))
 
+type ApnsPushType = typeof ApnsPushType.Type
+const ApnsPushType = Schema.Literals(['alert', 'liveactivity'])
+type ApnsPriority = typeof ApnsPriority.Type
+const ApnsPriority = Schema.Literals([5, 10])
+
 class ApnsError extends Schema.TaggedError<ApnsError>()('ApnsError', {message: Schema.String}) {}
 
 export type ApnsAnswer = {channel: Option.Option<string>; reason: Option.Option<string>; status: number}
@@ -139,8 +144,8 @@ export class Apns extends Context.Service<Apns>()('@deslop/runtime/server/apns',
 			)
 			const reason = yield* pipe(
 				HttpClientResponse.schemaBodyJson(Schema.Struct({reason: Schema.String}))(response),
-				Effect.map(body => Option.some(body.reason)),
-				Effect.orElseSucceed(() => Option.none<string>())
+				Effect.map(body => body.reason),
+				Effect.option
 			)
 			if (response.status >= 300) {
 				yield* Effect.logWarning(`APNs refused a push: ${response.status} ${Option.getOrElse(reason, () => '')}`)
@@ -187,7 +192,7 @@ export class Apns extends Context.Service<Apns>()('@deslop/runtime/server/apns',
 				),
 			withSignature
 		)
-		function deviceRequest(target: Target, type: 'alert' | 'liveactivity', body: Payload, priority: 5 | 10) {
+		function deviceRequest(target: Target, type: ApnsPushType, body: Payload, priority: ApnsPriority) {
 			return pipe(
 				HttpClientRequest.bodyJson(
 					HttpClientRequest.post(`${hostsOf(target.bundle).devices}/3/device/${Redacted.value(target.token)}`, {
@@ -206,7 +211,7 @@ export class Apns extends Context.Service<Apns>()('@deslop/runtime/server/apns',
 			)
 		}
 		const sendToDevice = Effect.fn('Apns.sendToDevice')(
-			(target: Target, type: 'alert' | 'liveactivity', body: Payload, priority: 5 | 10) =>
+			(target: Target, type: ApnsPushType, body: Payload, priority: ApnsPriority) =>
 				Effect.flatMap(deviceRequest(target, type, body, priority), request => send(request)),
 			withSignature
 		)
@@ -215,7 +220,7 @@ export class Apns extends Context.Service<Apns>()('@deslop/runtime/server/apns',
 				bundle: string,
 				channel: string,
 				aps: Record<string, unknown>,
-				priority: 5 | 10,
+				priority: ApnsPriority,
 				now: DateTime.Utc
 			) {
 				return yield* pipe(

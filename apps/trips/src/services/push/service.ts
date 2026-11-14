@@ -26,14 +26,7 @@ import {ACTIVITY_NAME, activeWindow, activityProps, urgencyOf} from '#services/b
 import type {ActivityProps, Booking, BookingList, Flight, Leg, Train} from '#services/bookings/schema.ts'
 import {BookingId} from '#services/bookings/schema.ts'
 import {Bookings} from '#services/bookings/service.ts'
-import {
-	alertsOf,
-	announced,
-	expiredActivities,
-	holds,
-	showPlan,
-	startAlert
-} from '#services/push/lib/utils.ts'
+import {alertsOf, announced, expiredActivities, holds, showPlan, startAlert} from '#services/push/lib/utils.ts'
 import type {Alert} from '#services/push/lib/utils.ts'
 import {Activity, ActivityPropsJson, ChannelId, Device, PushError, SentAlert} from '#services/push/schema.ts'
 
@@ -296,7 +289,14 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 				onEmpty: () => Effect.void,
 				onNonEmpty: alerts =>
 					pipe(
-						recordSent(Array.map(alerts, alert => ({bookingId: booking.id, category: alert.category, value: Option.fromUndefinedOr(alert.value), sentAt: now}))),
+						recordSent(
+							Array.map(alerts, alert => ({
+								bookingId: booking.id,
+								category: alert.category,
+								sentAt: now,
+								value: Option.fromUndefinedOr(alert.value)
+							}))
+						),
 						Reactivity.mutation(['push']),
 						asPushSaveError
 					)

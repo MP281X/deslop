@@ -1,6 +1,6 @@
 import {useAtom, useAtomSet} from '@effect/atom-react'
 
-import {Array, Boolean, Number, Option, Order, Schema, String, pipe} from 'effect'
+import {Array, Boolean, Function, Number, Option, Order, Schema, String, pipe} from 'effect'
 
 import {HardDrivesIcon, LinkIcon, WrenchIcon} from '@phosphor-icons/react'
 import {CatchBoundary, createFileRoute, getRouteApi} from '@tanstack/react-router'
@@ -201,7 +201,7 @@ function ServerRows(props: {period: Period}) {
 					servers,
 					Array.sort(byUrgency),
 					Array.match({
-						onEmpty: () => null,
+						onEmpty: Function.constNull,
 						onNonEmpty: ordered => (
 							<Suspense
 								fallback={
@@ -290,8 +290,8 @@ function KeyRows(props: {onOpen: () => void; period: Period}) {
 		<Loaded atom={aiKeyAtom}>
 			{all =>
 				Option.match(all, {
-					onNone: () => null,
-					onSome: info => (
+					onNone: Function.constNull,
+					onSome: credential => (
 						<Suspense
 							fallback={
 								<RowsSkeleton label="OpenCode key" rows={Payer.literals.length}>
@@ -299,7 +299,7 @@ function KeyRows(props: {onOpen: () => void; period: Period}) {
 								</RowsSkeleton>
 							}
 						>
-							<KeyUsage info={info} onOpen={props.onOpen} period={props.period} />
+							<KeyUsage info={credential} onOpen={props.onOpen} period={props.period} />
 						</Suspense>
 					)
 				})
@@ -409,7 +409,7 @@ function AddField(props: {onKey: (secret: string, url: string) => void}) {
 					/>
 				</InputGroup>
 				{Option.match(error, {
-					onNone: () => null,
+					onNone: Function.constNull,
 					onSome: message => <FieldError id="gateway-add-error">{message}</FieldError>
 				})}
 			</Field>
