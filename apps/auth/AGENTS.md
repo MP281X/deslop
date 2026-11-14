@@ -1,11 +1,11 @@
 # Auth intent
 
 - **Sign-ins.** One table, most recently active first. A browser's child app sign-ins add to its latest activity, never separate rows; signing it out ends them all. Never narrow the client list.
-- **Session tools.** Every live root family is listed and revocable by id, even when several share a client and device. Only the web page groups them for presentation.
+- **Session tools.** Every live root family is listed and revocable by id; only the web page groups them.
 - **Excluded.** Apps that open on their sign-ins, devices first, a launcher, an activity feed, a page built around a big code field.
 - **Transient records.** GitHub flows, authorization codes, sign-in requests (including device codes) and passkey challenges share expiring in-memory records; a restart cancels them, never a session already issued.
-- **Registration identity.** A removed person can rejoin with the same GitHub id while an old approval or failed credential cleanup still exists; credentials and approvals retain their original registration, never the new one's access.
-- **Callbacks.** Outside local development, web callbacks belong only to first-party `*.mp281x.xyz` apps; a tailnet preview is not an allowed app callback.
+- **Registration identity.** Access belongs to a registration, not a GitHub id: a removed person who rejoins starts a new registration that inherits no earlier credential or approval.
+- **Callbacks.** Outside local development, web callbacks belong only to first-party `*.mp281x.xyz` apps.
 
 ## Journeys
 
