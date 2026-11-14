@@ -1,19 +1,15 @@
 ---
 name: output
-description: Load before every final reply, PR body, plan, mock or page. The reply is its visual; prose carries only what the visual cannot.
+description: Load before every final reply, PR body, plan, prototype or page. The reply is its artifact; text carries only what the artifact cannot.
 ---
 
 # Output
 
-The user reads the reply once, on a phone or a desktop, and never the process.
+The user reads a reply once, on a phone or a desktop. Thread replies and PR bodies follow the same rules.
 
-- **Visual first.** Whatever has structure (a plan, a comparison, a flow, numbers, choices) is shown as one page rendered in the thread; a one-line answer stays a line.
-- **Whole reply.** Judge everything you send, not the page alone: if the words still answer without the page, rebuild it.
-- **Content decides the form.** What differs between the things shown (position, size, order, containment, connection, before and after) chooses it. No catalogue of charts or templates; a page may look unlike the last.
-- **Each fact once.** Words outside the page carry only what it cannot: a link, a caveat, the decision the user owes. Nothing the user has read returns, beside the page or in a later reply, unless the new answer needs it.
-- **Answerable.** A choice the user owes has a short id and shows the option you would take, so one word answers it.
-- **Both widths.** The page is fluid, reading at 360px and filling 728px: check both, and keep nothing needed behind a hover.
-- **The host's look.** Its theme tokens, font, radius and neutrals; a hue only for a category, state or value its legend names. Real content and one worked example; no gradients, shadows, glow or animation.
-- **Short.** Cut the process and whatever the PR already holds; a page taller than a screen needs a reason.
-
-A PR body follows the same rules in what its host renders: captures, figures, diagrams and tables carry it, and a sentence only what they cannot.
+- **The artifact is the reply.** A diagram, chart, prototype, capture or recording, chosen by what differs between the things shown; a one-line answer stays a line. UI results are shown as captures or recordings.
+- **Text** says only what the artifact cannot (a link, a caveat, a decision owed) and never restates it.
+- **Anti-patterns:** tables of sentences, number tiles, coloured prose, an artifact followed by its description, long lists, process narration.
+- **Answerable.** A decision owed has short ids, with the one you would take marked, so one word answers it.
+- **Both widths.** A page reads at 360px and fills 728px, with nothing needed behind a hover.
+- **The host's look.** Its theme tokens, font, radius and neutrals; hue only for what a legend names; no gradients, shadows, glow or animation.

@@ -12,13 +12,13 @@
 
 ## Commands
 
-- **Verify.** `vp run fix`, then `vp run test`; `fix` covers CI's `vp run check` in `vite.config.ts`.
+- **Verify.** `vp run fix`, then `vp run test`; `fix` covers CI's `vp run check`.
 - **Server contracts.** A contract change is not done until its built server starts with scratch data and serves the affected MCP tools or RPCs; build and static checks do not register tools.
-- **Judge.** `vp run judge` exists but is parked: each Haiku call can cost money from the signed-in person's connected Anthropic account through Gateway. Do not run it unless the user explicitly asks; never in CI, `fix`, `check`, `test` or Verify.
+- **Judge.** `vp run judge` runs only when the user asks, never in CI, `fix`, `check`, `test` or Verify, because each Haiku call bills the signed-in person's Anthropic account through Gateway.
 - **Generators.** `vp create app -- --name <name>` (`--kind mobile` for iOS) and `vp create package -- --name <name>`, then `vp install`; never copy one. A new app's first release, mobile before its first push: `.github/releasing.md`, **A new app**.
 - **Updates.** `vp update -r`; `vp outdated -r` then lists only pins. New checks since the last review: `@effect/tsgo`'s README table and changelog, each lint plugin's `rules` against its previous version, Fallow's release notes. Count a candidate rule's hits with `vp exec effect-tsgo --tsrs-lint vp lint -D <rule>`; ask before one that reverses a house form or rewrites hundreds of sites, with a bad example, a good example and its count.
 - **Releases.** `.github/releasing.md`: a new app or tool, following a release, Simulator builds, native tools.
-- **Agent configuration.** `.claude/agents/pair.md` = `.codex/instructions.md` from `# Work` down. Each file keeps its own `# Harness` lines for its harness's tools. Skills live in `.claude/skills`, shared by both harnesses. Change the installed `~/deslop` only through a merged PR, never while other threads use it.
+- **Agent configuration.** `.claude/agents/pair.md` = `.codex/instructions.md` from `# Work` down; each keeps its own `# Harness`. Skills in `.claude/skills` serve both harnesses. The installed `~/deslop` changes only through a merged PR and while no other thread reads it.
 - **Standards policy.** Define each policy once, in the best tool; prove replacements with the custom rule's failing cases. Only custom rules have tests; upgrades never opt into new rules, and declined rules stay out. The compiler and Effect rules own their checks. Parser checks are static; codebase-wide checks belong to review. No per-package typecheck scripts. Checks must be reachable in consuming codebases, including prevention of encountered patterns. Custom rules must add coverage or safe fixes beyond native rules; accept intended forms and make fixes converge. Each rule's accepted examples and automatic fixes must pass the whole preset, not only that rule; repeated fixes must reach a fixed point. The repository's explicit dependency allowlist lives in root lint, not the published preset. Oxlint applies import-group negations across patterns: compose the allowlist and preset restrictions in one ordered group.
 
 ## Patterns
