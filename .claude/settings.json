@@ -117,7 +117,9 @@
 		"SessionStart": [
 			{"hooks": [{"type": "command", "command": "printf 'Execution worker: %s\\n' \"$(hostname -s)\"", "timeout": 5}]}
 		],
-		"Stop": [{"hooks": [{"type": "command", "command": "\"$HOME/deslop/.claude/hooks/visual-restated.sh\"", "timeout": 10}]}]
+		"Stop": [
+			{"hooks": [{"type": "command", "command": "bash \"$HOME/deslop/.claude/hooks/reply-shape.sh\"", "timeout": 10}]}
+		]
 	},
 	"disableWorkflows": true,
 	"enabledPlugins": {

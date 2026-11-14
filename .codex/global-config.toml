@@ -44,7 +44,7 @@ timeout = 5
 [[hooks.Stop]]
 [[hooks.Stop.hooks]]
 type = "command"
-command = "\"$HOME/deslop/.claude/hooks/visual-restated.sh\""
+command = "bash \"$HOME/deslop/.claude/hooks/reply-shape.sh\""
 timeout = 10
 
 # Codex runs a user hook only when this hash of its event and handler matches; app-server `hooks/list` prints the current one.
@@ -52,7 +52,7 @@ timeout = 10
 trusted_hash = "sha256:e963292c7825ded13e242a454d027809ac0c8eb1cabdb193f215e9e095109f5a"
 
 [hooks.state."/home/mp281x/.codex/config.toml:stop:0:0"]
-trusted_hash = "sha256:6877b9c37bbc0915ab4b5987822c4242426283d286e70d8d34b64f784be333fe"
+trusted_hash = "sha256:c6f592ae067481f270889b36048c4121674b959f3b58d8dca371d803f2f4bb70"
 
 [shell_environment_policy]
 set = { GLAB_PAGER = "cat", NO_COLOR = "1" }
