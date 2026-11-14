@@ -42,8 +42,16 @@ export const noBareControl = defineRule({
 		}
 	}),
 	meta: {
-		docs: {examples: {accepted: [{'sample.tsx': `import {Button} from '@deslop/components-web/ui/button'
-export function Save() { return <Button className="w-full" size="lg" render={<button type="button" aria-label="Save" />}>Save</Button> }`}]}},
+		docs: {
+			examples: {
+				accepted: [
+					{
+						'sample.tsx': `import {Button} from '@deslop/components-web/ui/button'
+export function Save() { return <Button className="w-full" size="lg" render={<button type="button" aria-label="Save" />}>Save</Button> }`
+					}
+				]
+			}
+		},
 		type: 'problem'
 	}
 })

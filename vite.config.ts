@@ -1,7 +1,7 @@
 // oxlint-disable-next-line effecttsgo/node-builtin-import -- Vite+ loads this configuration before an Effect runtime; discover native app boundaries synchronously.
 import {globSync} from 'node:fs'
 
-import {Array, Predicate, String} from 'effect'
+import {Array, String} from 'effect'
 
 import {defineConfig} from 'vite-plus'
 
@@ -235,13 +235,7 @@ export default defineConfig({
 					'@deslop/coding-standards/recover-named-failures': 'off',
 					'@deslop/coding-standards/test-boundaries': 'off',
 					'@deslop/coding-standards/test-registration': 'off',
-					'eslint-js/no-restricted-syntax': [
-						'error',
-						...Array.filter(
-							lint.rules['eslint-js/no-restricted-syntax'],
-							restriction => !Predicate.isString(restriction) && !String.includes('data|info|obj')(restriction.selector)
-						)
-					]
+					'eslint-js/no-restricted-syntax': lint.rules['eslint-js/no-restricted-syntax']
 				}
 			},
 			{

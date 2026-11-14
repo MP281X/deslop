@@ -38,8 +38,9 @@ function operation(call: string, shape: string, node: ESTree.Node, fix?: Operati
 }
 
 function propertyTest(_context: Context, node: ESTree.Node) {
-	if (node.type === 'BinaryExpression' && node.operator === 'in' && node.left.type !== 'PrivateIdentifier')
-		{return operation('Schema decoding or Predicate.hasProperty', 'an unvalidated property check', node)}
+	if (node.type === 'BinaryExpression' && node.operator === 'in' && node.left.type !== 'PrivateIdentifier') {
+		return operation('Schema decoding or Predicate.hasProperty', 'an unvalidated property check', node)
+	}
 	return []
 }
 
@@ -549,8 +550,9 @@ function replaceableGuard(node: ESTree.Node) {
 		node.type !== 'ArrowFunctionExpression' &&
 		node.type !== 'FunctionDeclaration' &&
 		node.type !== 'FunctionExpression'
-	)
-		{return Option.none<string>()}
+	) {
+		return Option.none<string>()
+	}
 	const predicate = node.returnType?.typeAnnotation
 	const returned = returnedExpression(node)
 	if (
@@ -721,8 +723,9 @@ function maximum(context: Context, node: ESTree.Node) {
 				fn.type !== 'ArrowFunctionExpression' &&
 				fn.type !== 'FunctionExpression' &&
 				fn.type !== 'FunctionDeclaration'
-			)
-				{return []}
+			) {
+				return []
+			}
 			const body = returnedExpression(fn)
 			if (
 				body?.type !== 'CallExpression' ||
@@ -806,8 +809,9 @@ function predicateBodyText(context: Context, callback: ESTree.Node, expression: 
 }
 
 function predicatePolarity(context: Context, callback: ESTree.Node, expression: ESTree.Node) {
-	if (expression.type === 'UnaryExpression' && expression.operator === '!')
-		{return {negative: true, text: predicateBodyText(context, callback, expression.argument)}}
+	if (expression.type === 'UnaryExpression' && expression.operator === '!') {
+		return {negative: true, text: predicateBodyText(context, callback, expression.argument)}
+	}
 	return {negative: false, text: predicateBodyText(context, callback, expression)}
 }
 
