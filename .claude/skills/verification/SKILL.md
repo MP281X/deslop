@@ -13,7 +13,7 @@ Lint owns what a parser can check; this covers running behaviour. The repository
 stateDiagram-v2
     [*] --> Reproducing : a bug or check fails
     Reproducing --> Fixing : failing check, request or capture on base, before any theory
-    Fixing --> Probing : edit where the wrong state starts, not a guard, retry or swallowed error
+    Fixing --> Probing : edit where the wrong state starts, not a guard, retry or swallowed error downstream of it
     Probing --> [*] : probe [passes]
     Probing --> Fixing : probe [fails after the first edit]
     Probing --> Reproducing : probe [fails after the second edit] / drop the hypothesis

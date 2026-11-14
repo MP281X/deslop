@@ -42,7 +42,7 @@ Claude is smarter in every respect; Codex is weaker but persists until it reache
 | Advisors on a hard architectural decision, both in one turn                                                                                                  | Fable 5.2 and GPT-6.1 Sol at xhigh | `claudeAgent` / `claude-fable-5-2`, `codex` / `gpt-6.1-sol` |
 | Never                                                                                                                                                        | Luna, Haiku                        |                                                             |
 
-- **Other company, other view.** Models of one company think alike, like coworkers; the other company's model is an outsider. A review, an advisor or a second opinion comes from the company that did not write or propose the work.
+- **Other company, other view.** Models of one company think alike, like coworkers; the other company's model is an outsider. A review or second opinion comes from the company that did not write or propose the work; advisors come from both, for both views.
 - **Effort.** Medium (`effort` on Claude, `reasoningEffort` on Codex); high when the task needs it; never low, nor xhigh or above outside the advisor row.
 
 ## Delegation
@@ -58,7 +58,7 @@ stateDiagram-v2
     PRThread --> [*] : its PR merged or closed
 ```
 
-- **One checkout.** The main thread already owns its worktree and branch, so delegates get none; sharing one index, they never commit.
+- **Shared checkout.** Delegates other than PR threads work in the main thread's worktree and branch; sharing one index, they never commit.
 - **One outcome per delegate.** Coupled edits share one thread, since split halves come back for the main thread to reconcile. A procedure is a skill, not a child agent.
 - **No handoff files.** Context travels in the brief and the report, never a file one side writes and the other reads.
 
@@ -73,11 +73,12 @@ A delegate runs its brief as the approved plan, edits only the brief's files and
 ```mermaid
 stateDiagram-v2
     [*] --> Working : brief arrives
-    Working --> Checking : edits made [the brief names a proof] / run it
-    Working --> [*] : edits made [no proof named] / report PASS
+    Working --> Checking : work done [the brief names a proof] / run it
+    Working --> Reporting : work done [no proof named]
     Checking --> Working : [fail]
-    Checking --> [*] : [pass, shared checkout] / report PASS
-    Checking --> [*] : [pass, a PR thread] / commit, push by the pull-requests skill when its work settles, report PASS
+    Checking --> Reporting : [pass]
+    Reporting --> [*] : [shared checkout] / report PASS
+    Reporting --> [*] : [a PR thread] / commit, push by the pull-requests skill when its work settles, report PASS
     Working --> [*] : stop [unfinished] / report ISSUES with what is done and what is missing
     Working --> [*] : stop [a command's output proves the blocker] / report BLOCKED
 ```
