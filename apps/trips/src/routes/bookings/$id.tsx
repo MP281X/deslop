@@ -7,6 +7,7 @@ import {
 	Divider,
 	Form,
 	HStack,
+	Image,
 	LabeledContent,
 	Menu,
 	Section,
@@ -16,6 +17,7 @@ import {
 	VStack
 } from '@expo/ui/swift-ui'
 import {
+	accessibilityLabel,
 	foregroundStyle,
 	frame,
 	labelStyle,
@@ -29,9 +31,9 @@ import {
 } from '@expo/ui/swift-ui/modifiers'
 import {AsyncResult} from 'effect/reactivity'
 
-import {StatusDot} from '@deslop/components-mobile/status-dot'
+import {StatusDot} from '@deslop/components-mobile/blocks/status-dot'
 import {colors, space, text} from '@deslop/components-mobile/theme'
-import {Empty} from '@deslop/components-mobile/ui/empty'
+import {Empty, EmptyMedia} from '@deslop/components-mobile/ui/empty'
 
 import {nowAtom, refreshAtom, removal} from '#lib/bookings.ts'
 import {mapsAtom, placeLine, ridesOf, uberAtom} from '#lib/rides.ts'
@@ -281,11 +283,11 @@ export function BookingRoute(props: {bookings: BookingList; id: Booking['id']; o
 		Array.findFirst(booking => booking.id === props.id),
 		Option.match({
 			onNone: () => (
-				<Empty
-					systemImage="trash"
-					label="Booking Deleted"
-					modifiers={[navigationTitle(''), navigationBarTitleDisplayMode('inline')]}
-				/>
+				<Empty modifiers={[navigationTitle(''), navigationBarTitleDisplayMode('inline')]}>
+					<EmptyMedia>
+						<Image systemName="trash" modifiers={[accessibilityLabel('Booking Deleted')]} />
+					</EmptyMedia>
+				</Empty>
 			),
 			onSome: booking => {
 				const status = statusOf(booking, now)

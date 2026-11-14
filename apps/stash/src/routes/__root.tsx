@@ -6,7 +6,7 @@ import {Host, NavigationDestination, NavigationStack, useNativeState} from '@exp
 import {tint} from '@expo/ui/swift-ui/modifiers'
 import {Suspense, useState} from 'react'
 
-import {SessionGate} from '@deslop/components-mobile/screens'
+import {SessionGate} from '@deslop/components-mobile/blocks/session-gate'
 import {colors} from '@deslop/components-mobile/theme'
 
 import {queryAtom} from '#lib/notes.ts'

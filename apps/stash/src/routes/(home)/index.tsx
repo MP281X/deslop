@@ -3,7 +3,7 @@ import {useAtomRefresh, useAtomSet, useAtomValue} from '@effect/atom-react'
 import {Array, Boolean, Function, HashSet, Match, Option, Schema, String, pipe} from 'effect'
 
 import {
-	Button,
+	Button as NativeButton,
 	ContextMenu,
 	Divider,
 	HStack,
@@ -15,7 +15,6 @@ import {
 	SwipeActions,
 	Text,
 	Toggle,
-	ZStack,
 	Toolbar,
 	ToolbarItem,
 	VStack
@@ -25,9 +24,8 @@ import {
 	accessibilityAddTraits,
 	accessibilityElement,
 	accessibilityHidden,
+	accessibilityLabel,
 	aspectRatio,
-	background,
-	clipShape,
 	foregroundStyle,
 	frame,
 	labelStyle,
@@ -48,13 +46,15 @@ import {AsyncResult} from 'effect/reactivity'
 import {Suspense} from 'react'
 import {Linking} from 'react-native'
 
-import {AccountMenu} from '@deslop/components-mobile/account'
-import {PasteSheet} from '@deslop/components-mobile/paste-sheet'
-import {Problem} from '@deslop/components-mobile/problem'
-import {FailureContent, Loaded} from '@deslop/components-mobile/screens'
-import {colors, radius, space, text} from '@deslop/components-mobile/theme'
-import {bottomBarSearch} from '@deslop/components-mobile/toolbar'
-import {Empty, EmptyAction} from '@deslop/components-mobile/ui/empty'
+import {AccountMenu} from '@deslop/components-mobile/blocks/account'
+import {ItemGroupSkeleton} from '@deslop/components-mobile/blocks/item-group-skeleton'
+import {FailureContent, Loaded} from '@deslop/components-mobile/blocks/loaded'
+import {PasteSheet} from '@deslop/components-mobile/blocks/paste-sheet'
+import {Problem} from '@deslop/components-mobile/blocks/problem'
+import {bottomBarSearch} from '@deslop/components-mobile/lib/toolbar'
+import {colors, space, text} from '@deslop/components-mobile/theme'
+import {Button} from '@deslop/components-mobile/ui/button'
+import {Empty, EmptyContent, EmptyMedia} from '@deslop/components-mobile/ui/empty'
 import {
 	Item,
 	ItemActions,
@@ -64,7 +64,6 @@ import {
 	ItemTitle,
 	itemRow
 } from '@deslop/components-mobile/ui/item'
-import {ItemGroupSkeleton, Skeleton} from '@deslop/components-mobile/ui/skeleton'
 import {ToggleGroup, ToggleGroupItem} from '@deslop/components-mobile/ui/toggle-group'
 import {blockingFailure} from '@deslop/runtime/client/live-stream'
 import {isDenied} from '@deslop/runtime/shared/auth'
@@ -127,31 +126,13 @@ function Lines(props: {muted?: boolean; note: NoteItem}) {
 function Thumbnail(props: {id: Note['id']}) {
 	const image = useAtomValue(imageAtom(props.id))
 	if (!AsyncResult.isSuccess(image)) return undefined
-	return (
-		<Image
-			uiImage={image.value}
-			modifiers={[
-				resizable(),
-				aspectRatio({contentMode: 'fill'}),
-				frame({height: 64, width: 64}),
-				clipShape('roundedRectangle', radius),
-				accessibilityHidden(true)
-			]}
-		/>
-	)
+	return <Image uiImage={image.value} modifiers={[resizable(), aspectRatio({contentMode: 'fill'})]} />
 }
 
 function NoteMedia(props: {note: NoteItem}) {
 	const kind = kindOf(props.note)
 	return (
-		<ZStack
-			modifiers={[
-				frame({height: 64, width: 64}),
-				background(colors.card),
-				clipShape('roundedRectangle', radius),
-				accessibilityHidden(true)
-			]}
-		>
+		<ItemMedia variant="image" modifiers={[accessibilityHidden(true)]}>
 			{pipe(
 				Match.value(kind),
 				Match.when(Schema.is(Brand), brand => <BrandLogo brand={kinds[brand].logo} size={24} />),
@@ -160,13 +141,13 @@ function NoteMedia(props: {note: NoteItem}) {
 				))
 			)}
 			{Option.isSome(props.note.image) && <Thumbnail id={props.note.id} />}
-		</ZStack>
+		</ItemMedia>
 	)
 }
 
 function DeleteButton(props: {onPress: () => void}) {
 	return (
-		<Button
+		<NativeButton
 			label="Delete"
 			systemImage="trash"
 			role="destructive"
@@ -188,9 +169,7 @@ function NoteRow(props: {note: NoteItem; onOpen: (id: Note['id']) => void; onReg
 						<ContextMenu>
 							<ContextMenu.Trigger>
 								<Item onPress={() => props.onOpen(props.note.id)} modifiers={[accessibilityAddTraits(['isButton'])]}>
-									<ItemMedia>
-										<NoteMedia note={props.note} />
-									</ItemMedia>
+									<NoteMedia note={props.note} />
 									<Lines note={props.note} />
 								</Item>
 							</ContextMenu.Trigger>
@@ -198,7 +177,7 @@ function NoteRow(props: {note: NoteItem; onOpen: (id: Note['id']) => void; onReg
 								{Option.match(props.note.url, {
 									onNone: Function.constUndefined,
 									onSome: url => (
-										<Button
+										<NativeButton
 											onPress={() => {
 												Linking.openURL(url)
 											}}
@@ -213,10 +192,10 @@ function NoteRow(props: {note: NoteItem; onOpen: (id: Note['id']) => void; onReg
 													onSome: brand => ({icon: <BrandIcon brand={kinds[brand].logo} />})
 												})}
 											/>
-										</Button>
+										</NativeButton>
 									)
 								})}
-								<Button
+								<NativeButton
 									label="Regenerate"
 									systemImage="arrow.clockwise"
 									onPress={() => props.onRegenerate(props.note.id)}
@@ -233,17 +212,17 @@ function NoteRow(props: {note: NoteItem; onOpen: (id: Note['id']) => void; onReg
 			<MachineState machine={machine} path="Pending">
 				{() => (
 					<Item modifiers={itemRow}>
-						<ItemMedia>
-							<NoteMedia note={props.note} />
-						</ItemMedia>
+						<NoteMedia note={props.note} />
 						<Lines muted note={props.note} />
 						<ItemActions>
 							<Button
-								label="Undo"
+								variant="ghost"
+								size="icon"
 								systemImage="arrow.uturn.backward"
 								onPress={() => send(removal.events.Restored())}
-								modifiers={[labelStyle('iconOnly')]}
-							/>
+							>
+								Undo
+							</Button>
 						</ItemActions>
 					</Item>
 				)}
@@ -325,12 +304,16 @@ function Notes(props: {kind?: Kind; onOpen: (id: Note['id']) => void; onTag: (na
 						{Array.match(all, {
 							onEmpty: () => (
 								<Empty>
-									<EmptyAction
-										label="Paste Link"
-										systemImage="link"
-										onPress={() => paste(clipboard.events.Returned())}
-										tint={primary}
-									/>
+									<EmptyContent>
+										<Button
+											size="lg"
+											systemImage="link"
+											onPress={() => paste(clipboard.events.Returned())}
+											modifiers={[tint(primary)]}
+										>
+											Paste Link
+										</Button>
+									</EmptyContent>
 								</Empty>
 							),
 							onNonEmpty: () => (
@@ -339,15 +322,18 @@ function Notes(props: {kind?: Kind; onOpen: (id: Note['id']) => void; onTag: (na
 									<ItemGroup>
 										{/* "all" clears the tag, and choosing the chosen tag again does too. */}
 										<ToggleGroup
-											value={props.tag ?? 'all'}
+											value={[props.tag ?? 'all']}
+											variant="outline"
 											onValueChange={value =>
-												Boolean.match(value === 'all' || value === props.tag, {
-													onFalse: () => props.onTag(TagName.make(value)),
-													onTrue: () => props.onTag()
-												})
+												pipe(
+													value,
+													Array.head,
+													Option.filter(name => name !== 'all'),
+													Option.match({onNone: () => props.onTag(), onSome: name => props.onTag(TagName.make(name))})
+												)
 											}
-											tint={primary}
 											modifiers={[
+												tint(primary),
 												listRowSeparator('hidden'),
 												listRowInsets({bottom: space[1], leading: space[4], top: space[1], trailing: space[4]})
 											]}
@@ -368,13 +354,17 @@ function Notes(props: {kind?: Kind; onOpen: (id: Note['id']) => void; onTag: (na
 									</ItemGroup>
 									{filtered && Array.isReadonlyArrayEmpty(notes) && (
 										<Overlay.Content>
-											<Empty
-												systemImage={Boolean.match(String.isEmpty(query), {
-													onFalse: Function.constant('magnifyingglass'),
-													onTrue: Function.constant('tray')
-												})}
-												label="No notes match"
-											/>
+											<Empty>
+												<EmptyMedia>
+													<Image
+														systemName={Boolean.match(String.isEmpty(query), {
+															onFalse: Function.constant('magnifyingglass'),
+															onTrue: Function.constant('tray')
+														})}
+														modifiers={[accessibilityLabel('No notes match')]}
+													/>
+												</EmptyMedia>
+											</Empty>
 										</Overlay.Content>
 									)}
 								</Overlay>
@@ -415,15 +405,7 @@ export function HomeRoute(props: {
 			]}
 		>
 			<PasteSheet clipboard={clipboard}>
-				<Suspense
-					fallback={
-						<ItemGroupSkeleton
-							rows={10}
-							descriptionLines={1}
-							media={<Skeleton modifiers={[frame({height: 64, width: 64})]} />}
-						/>
-					}
-				>
+				<Suspense fallback={<ItemGroupSkeleton rows={10} descriptionLines={1} media={<ItemMedia variant="image" />} />}>
 					<Notes kind={props.kind} onOpen={props.onOpen} onTag={props.onTag} tag={props.tag} />
 				</Suspense>
 			</PasteSheet>
@@ -446,7 +428,7 @@ export function HomeRoute(props: {
 					<AccountMenu session={session} />
 				</ToolbarItem>
 				<ToolbarItem placement="bottomBar">
-					<Button
+					<NativeButton
 						label="Write"
 						systemImage="square.and.pencil"
 						onPress={props.onCompose}

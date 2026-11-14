@@ -4,6 +4,7 @@ import {Array, Boolean, Function, Number, Option, Order, String, pipe} from 'eff
 
 import {
 	Button,
+	Image,
 	Menu,
 	Picker,
 	Section,
@@ -33,12 +34,13 @@ import {
 import {AsyncResult} from 'effect/reactivity'
 import {Suspense, useState} from 'react'
 
-import {AccountMenu} from '@deslop/components-mobile/account'
-import {Problem} from '@deslop/components-mobile/problem'
-import {Loaded} from '@deslop/components-mobile/screens'
+import {AccountMenu} from '@deslop/components-mobile/blocks/account'
+import {ItemGroupSkeleton} from '@deslop/components-mobile/blocks/item-group-skeleton'
+import {Loaded} from '@deslop/components-mobile/blocks/loaded'
+import {Problem} from '@deslop/components-mobile/blocks/problem'
+import {bottomBarSearch} from '@deslop/components-mobile/lib/toolbar'
 import {colors, radius} from '@deslop/components-mobile/theme'
-import {bottomBarSearch} from '@deslop/components-mobile/toolbar'
-import {Empty} from '@deslop/components-mobile/ui/empty'
+import {Empty, EmptyMedia} from '@deslop/components-mobile/ui/empty'
 import {
 	Item,
 	ItemActions,
@@ -49,7 +51,6 @@ import {
 	ItemTitle,
 	itemRow
 } from '@deslop/components-mobile/ui/item'
-import {ItemGroupSkeleton} from '@deslop/components-mobile/ui/skeleton'
 import {blockingFailure} from '@deslop/runtime/client/live-stream'
 import {dayOf} from '@deslop/runtime/shared/format'
 
@@ -156,11 +157,19 @@ function Chapters(props: {onOpen: (number: ChapterNumber, page?: number) => void
 							String.includes(needle)(String.toLowerCase(chapter.title))
 					),
 					Array.match({
-						onEmpty: () =>
-							Boolean.match(String.isEmpty(needle), {
-								onFalse: () => <Empty systemImage="magnifyingglass" label="No chapters match" />,
-								onTrue: () => <Empty systemImage="book.closed" label="No chapters yet" />
-							}),
+						onEmpty: () => {
+							const [symbol, label] = Boolean.match(String.isEmpty(needle), {
+								onFalse: () => ['magnifyingglass', 'No chapters match'] as const,
+								onTrue: () => ['book.closed', 'No chapters yet'] as const
+							})
+							return (
+								<Empty>
+									<EmptyMedia>
+										<Image systemName={symbol} modifiers={[accessibilityLabel(label)]} />
+									</EmptyMedia>
+								</Empty>
+							)
+						},
 						onNonEmpty: matches => (
 							<ItemGroup>
 								<Section>

@@ -3,7 +3,7 @@ import {useAtomRefresh, useAtomSet, useAtomSuspense, useAtomValue} from '@effect
 import {Array, Boolean, Function, Match, Option, Schema, String, pipe} from 'effect'
 
 import {
-	Button,
+	Button as NativeButton,
 	Divider,
 	HStack,
 	Image,
@@ -21,10 +21,7 @@ import {
 	accessibilityHidden,
 	accessibilityLabel,
 	aspectRatio,
-	buttonBorderShape,
-	buttonStyle,
 	clipShape,
-	controlSize,
 	foregroundStyle,
 	frame,
 	labelStyle,
@@ -39,10 +36,11 @@ import {AsyncResult} from 'effect/reactivity'
 import {Suspense} from 'react'
 import {Linking} from 'react-native'
 
-import {Problem} from '@deslop/components-mobile/problem'
-import {FailureContent, Loaded} from '@deslop/components-mobile/screens'
+import {FailureContent, Loaded} from '@deslop/components-mobile/blocks/loaded'
+import {Problem} from '@deslop/components-mobile/blocks/problem'
 import {colors, radius, space, text} from '@deslop/components-mobile/theme'
-import {Empty} from '@deslop/components-mobile/ui/empty'
+import {Button} from '@deslop/components-mobile/ui/button'
+import {Empty, EmptyContent, EmptyMedia} from '@deslop/components-mobile/ui/empty'
 import {Skeleton} from '@deslop/components-mobile/ui/skeleton'
 import {ToggleGroup, ToggleGroupItem} from '@deslop/components-mobile/ui/toggle-group'
 import {AuthError} from '@deslop/runtime/shared/auth'
@@ -282,18 +280,11 @@ function Detail(props: {note: NoteItem; onRetry: () => void; onTag: (tag: TagNam
 						Boolean.match(kept, {
 							onFalse: () => (
 								<Empty>
-									<Button
-										label={issue}
-										systemImage="arrow.clockwise"
-										role="destructive"
-										onPress={props.onRetry}
-										modifiers={[
-											buttonStyle('glassProminent'),
-											buttonBorderShape('capsule'),
-											controlSize('large'),
-											tint(colors.destructive)
-										]}
-									/>
+									<EmptyContent>
+										<Button variant="destructive" size="lg" systemImage="arrow.clockwise" onPress={props.onRetry}>
+											{issue}
+										</Button>
+									</EmptyContent>
 								</Empty>
 							),
 							onTrue: () => (
@@ -311,7 +302,17 @@ function Detail(props: {note: NoteItem; onRetry: () => void; onTag: (tag: TagNam
 				<Divider />
 				<Byline note={props.note} />
 				{!Array.isReadonlyArrayEmpty(props.note.tags) && (
-					<ToggleGroup value="" onValueChange={value => props.onTag(TagName.make(value))} tint={primary}>
+					<ToggleGroup
+						value={[]}
+						variant="outline"
+						onValueChange={value =>
+							Option.match(Array.head(value), {
+								onNone: Function.constUndefined,
+								onSome: name => props.onTag(TagName.make(name))
+							})
+						}
+						modifiers={[tint(primary)]}
+					>
 						{Array.map(props.note.tags, tag => (
 							<ToggleGroupItem key={tag} value={tag}>
 								{tag}
@@ -337,7 +338,13 @@ function NoteScreen(props: {
 		props.notes,
 		Array.findFirst(item => item.id === props.id),
 		Option.match({
-			onNone: () => <Empty systemImage="trash" label="Note Deleted" />,
+			onNone: () => (
+				<Empty>
+					<EmptyMedia>
+						<Image systemName="trash" modifiers={[accessibilityLabel('Note Deleted')]} />
+					</EmptyMedia>
+				</Empty>
+			),
 			onSome: item => (
 				<Toolbar>
 					<Detail note={item} onRetry={() => regenerate(item.id)} onTag={props.onTag} />
@@ -348,7 +355,7 @@ function NoteScreen(props: {
 								<ToolbarItem placement="topBarTrailing">
 									{Option.match(brandOf(item), {
 										onNone: () => (
-											<Button
+											<NativeButton
 												label="Open Link"
 												systemImage="arrow.up.right"
 												onPress={() => {
@@ -358,7 +365,7 @@ function NoteScreen(props: {
 											/>
 										),
 										onSome: brand => (
-											<Button
+											<NativeButton
 												onPress={() => {
 													Linking.openURL(url)
 												}}
@@ -372,7 +379,7 @@ function NoteScreen(props: {
 												]}
 											>
 												<BrandLogo brand={kinds[brand].logo} size={20} />
-											</Button>
+											</NativeButton>
 										)
 									})}
 								</ToolbarItem>
@@ -381,8 +388,8 @@ function NoteScreen(props: {
 						<ToolbarItem placement="topBarTrailing">
 							<Menu label="More" systemImage="ellipsis" modifiers={[labelStyle('iconOnly')]}>
 								{Option.match(item.url, {onNone: Function.constUndefined, onSome: url => <ShareLink item={url} />})}
-								<Button label="Regenerate" systemImage="arrow.clockwise" onPress={() => regenerate(item.id)} />
-								<Button
+								<NativeButton label="Regenerate" systemImage="arrow.clockwise" onPress={() => regenerate(item.id)} />
+								<NativeButton
 									label="Delete"
 									systemImage="trash"
 									role="destructive"

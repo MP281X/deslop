@@ -10,9 +10,10 @@ import {tint} from '@expo/ui/swift-ui/modifiers'
 import {AsyncResult} from 'effect/reactivity'
 import {Suspense, useState} from 'react'
 
-import {Loaded, SessionGate} from '@deslop/components-mobile/screens'
+import {ItemGroupSkeleton} from '@deslop/components-mobile/blocks/item-group-skeleton'
+import {Loaded} from '@deslop/components-mobile/blocks/loaded'
+import {SessionGate} from '@deslop/components-mobile/blocks/session-gate'
 import {colors} from '@deslop/components-mobile/theme'
-import {ItemGroupSkeleton} from '@deslop/components-mobile/ui/skeleton'
 
 import {bookingsAtom} from '#lib/bookings.ts'
 import {calendarAtom} from '#lib/calendar.ts'

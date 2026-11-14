@@ -3,8 +3,9 @@ import {useAtomRefresh, useAtomSet, useAtomSuspense, useAtomValue} from '@effect
 import {Array, Boolean, DateTime, Duration, Function, Number, Option, Schema, String, pipe} from 'effect'
 
 import {
-	Button,
+	Button as NativeButton,
 	HStack,
+	Image,
 	Section,
 	SwipeActions,
 	Text,
@@ -14,11 +15,11 @@ import {
 	VStack
 } from '@expo/ui/swift-ui'
 import {
+	accessibilityLabel,
 	fixedSize,
 	font,
 	foregroundStyle,
 	frame,
-	labelStyle,
 	navigationBarTitleDisplayMode,
 	navigationTitle,
 	padding,
@@ -30,14 +31,16 @@ import {AtomMachine} from '@typeonce/effect-machine/reactivity'
 import {AsyncResult} from 'effect/reactivity'
 import {Suspense, useState} from 'react'
 
-import {AccountMenu} from '@deslop/components-mobile/account'
-import {PasteSheet} from '@deslop/components-mobile/paste-sheet'
-import {Problem} from '@deslop/components-mobile/problem'
-import {FailureContent} from '@deslop/components-mobile/screens'
-import {StatusDot} from '@deslop/components-mobile/status-dot'
+import {AccountMenu} from '@deslop/components-mobile/blocks/account'
+import {ItemGroupSkeleton} from '@deslop/components-mobile/blocks/item-group-skeleton'
+import {FailureContent} from '@deslop/components-mobile/blocks/loaded'
+import {PasteSheet} from '@deslop/components-mobile/blocks/paste-sheet'
+import {Problem} from '@deslop/components-mobile/blocks/problem'
+import {StatusDot} from '@deslop/components-mobile/blocks/status-dot'
+import {bottomBarSearch} from '@deslop/components-mobile/lib/toolbar'
 import {colors, space, text} from '@deslop/components-mobile/theme'
-import {bottomBarSearch} from '@deslop/components-mobile/toolbar'
-import {Empty, EmptyAction} from '@deslop/components-mobile/ui/empty'
+import {Button} from '@deslop/components-mobile/ui/button'
+import {Empty, EmptyContent, EmptyMedia} from '@deslop/components-mobile/ui/empty'
 import {
 	Item,
 	ItemActions,
@@ -47,7 +50,6 @@ import {
 	ItemTitle,
 	itemRow
 } from '@deslop/components-mobile/ui/item'
-import {ItemGroupSkeleton} from '@deslop/components-mobile/ui/skeleton'
 import {blockingFailure} from '@deslop/runtime/client/live-stream'
 
 import {bookingsAtom, clipboard, nowAtom, removal} from '#lib/bookings.ts'
@@ -155,7 +157,12 @@ function BookingRow(props: {
 							})}
 						</Item>
 						<SwipeActions.Actions edge="trailing">
-							<Button label="Delete" systemImage="trash" role="destructive" onPress={() => remove(props.booking.id)} />
+							<NativeButton
+								label="Delete"
+								systemImage="trash"
+								role="destructive"
+								onPress={() => remove(props.booking.id)}
+							/>
 						</SwipeActions.Actions>
 					</SwipeActions>
 				)}
@@ -174,11 +181,13 @@ function BookingRow(props: {
 						</ItemContent>
 						<ItemActions>
 							<Button
-								label="Undo"
+								variant="ghost"
+								size="icon"
 								systemImage="arrow.uturn.backward"
 								onPress={() => send(removal.events.Restored())}
-								modifiers={[labelStyle('iconOnly')]}
-							/>
+							>
+								Undo
+							</Button>
 						</ItemActions>
 					</Item>
 				)}
@@ -269,21 +278,33 @@ function Bookings(props: {onOpen: (id: Booking['id']) => void; searched: string}
 				<ItemGroupSkeleton
 					rows={1}
 					descriptionLines={2}
-					media={<Gutter countdown={Countdown.cases.Days.make({days: 2})} />}
+					media={
+						<ItemMedia>
+							<Gutter countdown={Countdown.cases.Days.make({days: 2})} />
+						</ItemMedia>
+					}
 				/>
 			)}
 			{Array.isReadonlyArrayEmpty(bookings) && !adding && (
 				<Empty>
-					<EmptyAction
-						label="Paste Booking"
-						systemImage="doc.text"
-						onPress={() => paste(clipboard.events.Returned())}
-						tint={primary}
-					/>
+					<EmptyContent>
+						<Button
+							size="lg"
+							systemImage="doc.text"
+							onPress={() => paste(clipboard.events.Returned())}
+							modifiers={[tint(primary)]}
+						>
+							Paste Booking
+						</Button>
+					</EmptyContent>
 				</Empty>
 			)}
 			{Array.isReadonlyArrayNonEmpty(bookings) && Array.isReadonlyArrayEmpty(matches) && (
-				<Empty systemImage="magnifyingglass" label="No bookings match" />
+				<Empty>
+					<EmptyMedia>
+						<Image systemName="magnifyingglass" modifiers={[accessibilityLabel('No bookings match')]} />
+					</EmptyMedia>
+				</Empty>
 			)}
 			{Array.isReadonlyArrayNonEmpty(matches) && (
 				<ItemGroup modifiers={[tint(primary)]}>
@@ -326,7 +347,11 @@ function Bookings(props: {onOpen: (id: Booking['id']) => void; searched: string}
 					)}
 					{Array.isReadonlyArrayEmpty(current) && Array.isReadonlyArrayEmpty(ahead) && (
 						<Section>
-							<Empty systemImage="ticket" label="Nothing coming up" />
+							<Empty>
+								<EmptyMedia>
+									<Image systemName="ticket" modifiers={[accessibilityLabel('Nothing coming up')]} />
+								</EmptyMedia>
+							</Empty>
 						</Section>
 					)}
 					<PastBookings
@@ -361,7 +386,11 @@ export function HomeRoute(props: {onOpen: (id: Booking['id']) => void}) {
 						<ItemGroupSkeleton
 							rows={10}
 							descriptionLines={2}
-							media={<Gutter countdown={Countdown.cases.Days.make({days: 2})} />}
+							media={
+								<ItemMedia>
+									<Gutter countdown={Countdown.cases.Days.make({days: 2})} />
+								</ItemMedia>
+							}
 						/>
 					}
 				>

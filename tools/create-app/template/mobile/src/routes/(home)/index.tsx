@@ -8,7 +8,7 @@ import {
 } from '@expo/ui/swift-ui/modifiers'
 import {Suspense} from 'react'
 
-import {Loaded} from '@deslop/components-mobile/screens'
+import {Loaded} from '@deslop/components-mobile/blocks/loaded'
 import {colors, text} from '@deslop/components-mobile/theme'
 
 import {nameAtom} from '#lib/session.ts'

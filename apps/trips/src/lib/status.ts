@@ -1,7 +1,7 @@
 import {DateTime, Duration, Number, Option, Schema} from 'effect'
 import type {Record} from 'effect'
 
-import {ProblemStatus} from '@deslop/components-mobile/status-dot'
+import {ProblemStatus} from '@deslop/components-mobile/blocks/status-dot'
 import {colors, hues} from '@deslop/components-mobile/theme'
 import {weekdayOf} from '@deslop/runtime/shared/format'
 

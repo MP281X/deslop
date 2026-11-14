@@ -1,7 +1,7 @@
 import {Host, NavigationStack} from '@expo/ui/swift-ui'
 import {tint} from '@expo/ui/swift-ui/modifiers'
 
-import {SessionGate} from '@deslop/components-mobile/screens'
+import {SessionGate} from '@deslop/components-mobile/blocks/session-gate'
 import {colors} from '@deslop/components-mobile/theme'
 
 import {primary, session} from '#lib/session.ts'

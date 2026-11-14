@@ -6,7 +6,8 @@ import {Host, NavigationDestination, NavigationStack} from '@expo/ui/swift-ui'
 import {tint} from '@expo/ui/swift-ui/modifiers'
 import {Suspense, useState} from 'react'
 
-import {Loaded, SessionGate} from '@deslop/components-mobile/screens'
+import {Loaded} from '@deslop/components-mobile/blocks/loaded'
+import {SessionGate} from '@deslop/components-mobile/blocks/session-gate'
 import {colors} from '@deslop/components-mobile/theme'
 
 import {chaptersAtom, diagnosticsAtom, openedAtom, primary, pushAtom, session} from '#lib/chapters.ts'

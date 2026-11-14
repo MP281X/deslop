@@ -9,7 +9,7 @@ import {useId} from 'react'
 
 import {ageOf} from '@deslop/runtime/shared/format'
 
-import {StatusDot} from '#components/status-dot.tsx'
+import {StatusDot} from '#components/blocks/status-dot.tsx'
 import {colors, space, text} from '#components/theme.ts'
 
 const ageAtom = Atom.family((_id: string) =>
