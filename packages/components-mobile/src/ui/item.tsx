@@ -129,7 +129,7 @@ export function ItemContent(props: {children: ReactNode; modifiers?: ViewModifie
 
 export function ItemTitle(props: {children: string; modifiers?: ViewModifier[]}) {
 	return (
-		<Text modifiers={[...(props.modifiers ?? []), text.row, foregroundStyle(colors.foreground), lineLimit(2)]}>
+		<Text modifiers={[...(props.modifiers ?? []), text.row, foregroundStyle(colors.foreground), lineLimit(1)]}>
 			{props.children}
 		</Text>
 	)

@@ -1,6 +1,6 @@
 import {Array} from 'effect'
 
-import {accessibilityLabel, lineLimit, redacted} from '@expo/ui/swift-ui/modifiers'
+import {accessibilityLabel, redacted} from '@expo/ui/swift-ui/modifiers'
 import type {ReactNode} from 'react'
 
 import {Item, ItemContent, ItemDescription, ItemGroup, ItemTitle, itemRow} from '#components/ui/item.tsx'
@@ -13,7 +13,7 @@ export function ItemGroupSkeleton(props: {descriptionLines?: number; media?: Rea
 				<Item key={row} alignment="top" modifiers={itemRow}>
 					{props.media}
 					<ItemContent>
-						<ItemTitle modifiers={[lineLimit(1)]}>Placeholder row title</ItemTitle>
+						<ItemTitle>Placeholder row title</ItemTitle>
 						{Array.map(Array.range(1, props.descriptionLines ?? 1), line => (
 							<ItemDescription key={line}>Placeholder detail line</ItemDescription>
 						))}
