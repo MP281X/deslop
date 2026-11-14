@@ -48,5 +48,10 @@ export const noHandlerOnLabel = defineRule({
 			}
 		}
 	},
-	meta: {type: 'problem'}
+	meta: {
+		docs: {examples: {accepted: [{'sample.tsx': `import {Badge} from '@deslop/components-web/ui/badge'
+import {Tabs, TabsContent, TabsList, TabsTrigger} from '@deslop/components-web/ui/tabs'
+export function Views() { return <Tabs defaultValue="notes"><TabsList><TabsTrigger value="notes">Notes</TabsTrigger></TabsList><TabsContent value="notes"><Badge className="mt-2">Saved</Badge></TabsContent></Tabs> }`}]}},
+		type: 'problem'
+	}
 })
