@@ -1,6 +1,6 @@
 # Maintenance
 
-A pass runs Update, Clean and Check on each machine that is on, without asking: `dev`, `mp281x@desktop`, `matteopaludgnach@macbook-pro`. It runs on Claude Sonnet, since Codex rejects `rm -f` and `rm -rf`. End by reporting what waits on the user's restart (a kernel or macOS update); never pending T3 updates. Never run `t3 update`, `t3 doctor --fix` or `t3 service restart`, and never reboot: those are the user's.
+A pass runs Update, Clean and Check on each machine that is on, without asking: `dev`, `mp281x@desktop`, `matteopaludgnach@macbook-pro`. It removes files, so it runs on Sonnet (orchestrator, **Removals**). End by reporting what waits on the user's restart (a kernel or macOS update); never pending T3 updates. Never run `t3 update`, `t3 doctor --fix` or `t3 service restart`, and never reboot: those are the user's.
 
 **Never touch:**
 
@@ -30,7 +30,7 @@ Each step stands alone: a refusal or failure skips only that step. A thread owns
 3. **T3 runtime versions.** Skip while `~/.t3/runtime/service-state.json` shows an uncommitted update. Remove every `~/.t3/runtime/versions/<version>` except `activeVersion`, the launcher named in `~/.config/systemd/user/t3code.service`'s `ExecStart`, and newer ones.
 4. **Docker,** when no `docker build` or Compose build runs: `docker image prune -a -f`, `docker builder prune -a -f`. Never `docker system prune`.
 5. **pnpm,** when no install runs: `pnpm store prune`.
-6. **Previews.** Remove each stopped `preview-*` unit and its container whose worktree is gone; run an Alchemy preview's `preview:destroy` first. Stopping a preview also stops the containers it started (Dual's `dualos-local-*-wt-<hash>` Postgres and OpenSandbox outlive the unit); `docker stop` keeps their seeded data, while Dual's `settle` destroys it. Its public hostname is a Deploy exposure (`dual-preview.mp281x.xyz`): remove it with Deploy's `remove_exposure` once no preview answers behind it. Remove leftover `testcontainers-ryuk-*` and the unnamed Postgres containers of finished test runs.
+6. **Previews.** Remove each stopped `preview-*` unit and its container whose worktree is gone; run an Alchemy preview's `preview:destroy` first. Stop the containers a preview started with it, since Dual's `dualos-local-*-wt-<hash>` Postgres and OpenSandbox outlive the unit; `docker stop` keeps their seeded data, Dual's `settle` destroys it. Dual's public hostname is a Deploy exposure (`dual-preview.mp281x.xyz`): remove it with Deploy's `remove_exposure` once no preview answers behind it. Remove leftover `testcontainers-ryuk-*` and the unnamed Postgres containers of finished test runs.
 7. **Worktrees** of settled threads that no process uses, uncommitted changes included: the settle script, then `git worktree remove --force --force <path>` and `git worktree prune`.
 8. **Local branches** in `~/deslop` and `~/dual` that no worktree checks out, except the default branch: `git branch -D`.
 9. **Remote branches,** only when the PR or MR is merged or closed, every commit is authored by the user, and no thread's worktree uses it. A failed host query keeps the branch.
@@ -63,10 +63,10 @@ Every pass:
 - **Agents.** `find ~/.claude/settings.json ~/.claude/agents/pair.md ~/.claude/skills ~/.codex/config.toml ~/.codex/instructions.md ~/.codex/rules/deny.rules ~/.codex/skills/* -maxdepth 0 ! -type l` prints only `~/.codex/skills/.system`; `find -L ~/.claude/skills ~/.codex/skills -maxdepth 1 -type l` prints nothing; `~/deslop` is clean on current `main`.
 - **T3.** `t3 --version` equals `activeVersion`; `t3 doctor --base-dir ~/.t3 --dry-run` prints "Nothing to repair"; `t3 connect status` ends "✓ Other devices can reach this machine".
 - **sshd.** `sudo sshd -T` shows `usepam yes`, `passwordauthentication no`, `permitrootlogin no`.
-- **VPN.** `git -C ~/dual ls-remote -q origin HEAD` succeeds; otherwise show the user the URL `openvpn3 session-start --config datapizza` prints.
+- **VPN.** `git -C ~/dual ls-remote -q origin HEAD` succeeds; otherwise reconnect by Dual's **VPN**.
 - **GPU.** desktop, after kernel or driver updates: `nvidia-smi` lists the RTX 5070 and `sudo modinfo -F version nvidia` matches it.
 
-Report faults, unknown owners and denied steps; never call a machine pristine.
+Report faults, unknown owners and denied steps.
 
 ## Setup and repair
 

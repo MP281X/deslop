@@ -22,6 +22,6 @@ Pick the one whose subject matches; read its source, never a summary of it.
 
 ## Clones
 
-- **Place.** `/tmp/repos/<repository name>`, read-only: never edit, commit or push there. `/tmp` is emptied at boot, so clone again when absent.
+- **Place.** `/tmp/repos/<repository name>`, read-only: never edit, commit or push there; clone again when the boot emptied it.
 - **Make.** `git clone --depth 1 https://github.com/<owner>/<repository> /tmp/repos/<repository>`.
 - **Reuse.** Only when `git -C /tmp/repos/<repository> remote get-url origin` names that repository; refresh first with `git -C /tmp/repos/<repository> pull --ff-only`.

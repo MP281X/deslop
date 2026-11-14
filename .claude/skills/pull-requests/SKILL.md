@@ -29,7 +29,7 @@ description: 'Load before the first commit of a task, before the first edit when
 
 ## Commands
 
-Captures upload with `--attach`, never through the host's upload API.
+Captures upload with `--attach`, since host API writes are forbidden.
 
 ```bash
 gh pr edit <n> --title '<title>' --body-file - --attach './shot.png#<alt>' <<'EOF'  # ![alt](./shot.png) becomes the upload

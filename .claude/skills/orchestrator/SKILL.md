@@ -21,17 +21,16 @@ A main-thread call re-reads the whole thread, often 300k tokens; a delegate star
 - **Trial.** GPT-6.1 Terra for bounded reads, searches, runs and checks; compare its reports with Sol's before it becomes a default.
 - **Removals.** Codex rejects `rm -f` and `rm -rf`, so a removal goes to Sonnet.
 - **Step up.** A delegate that returns without its deliverable reruns once on another model, then on Opus 5.5.
-- **Machines.** Main threads run on dev, and so does every delegate by default: it shares the main thread's checkout and needs no transfer. Only validation (Verify, tests, builds) moves to desktop, which runs it much faster, when `t3_environment_links` lists it `reachable`:
+- **Machines.** Main threads and delegates run on dev, sharing its checkout with no transfer. Only validation (Verify, tests, builds) moves to the faster desktop, when `t3_environment_links` lists it `reachable`; otherwise the same brief runs on dev without a target:
   1. Commit; nothing is pushed.
-  2. `delegate_task` with `target.environmentId` of desktop and `mode: 'async'`. The brief names the dev worktree path and the SHA and says: `git fetch ssh://mp281x@dev<worktree path> <sha>`, `git worktree add --detach /tmp/validate-<sha> FETCH_HEAD`, run the checks there, report, then `git worktree remove --force` it. The fetch takes about a second over the tailnet and creates no branch on either side. A remote delegate runs in desktop's project checkout and rejects worktree isolation, so it makes its own worktree and leaves that checkout untouched.
-  3. When desktop is unreachable, the same brief runs on dev without a target.
+  2. `delegate_task` with desktop's `target.environmentId` and `mode: 'async'`. The brief names the dev worktree path and the SHA and says: `git fetch ssh://mp281x@dev<worktree path> <sha>`, `git worktree add --detach /tmp/validate-<sha> FETCH_HEAD`, run the checks there, report, then `git worktree remove --force` it. The fetch creates no branch on either side; a remote delegate rejects worktree isolation, so it makes its own worktree and leaves desktop's project checkout untouched.
 - **Long jobs.** Long or overnight delegates use GPT-6.1 Sol, since Codex's prompt cache does not expire the way Claude's does.
 
 ## Batch
 
 - **What to delegate.** One outcome that finishes independently per delegate; coupled edits stay in one thread, since split halves come back for the main thread to reconcile. A procedure is a skill, not a child agent.
 - **One owner per file.** A delegate owns its files and no sibling touches them, so siblings merge without conflicts.
-- **Parallel.** Delegates that can run together start with `mode: 'async'` in one turn, then the main thread ends its turn without text; their completions wake it. If the final answer is not ready, end that turn without text too. `mode: 'wait'` calls run one after another, so wait only on a single delegate whose result the next step needs.
+- **Parallel.** Delegates that can run together start with `mode: 'async'` in one turn, then the main thread ends its turn; their completions wake it. `mode: 'wait'` calls run one after another, so wait only on a single delegate whose result the next step needs.
 - **Worktrees.** A writing delegate works in its own worktree (`isolation: 'worktree'`) and commits there; the main thread merges. Read-only delegates share the checkout.
 - **Surveys** run once; save the result to a file outside the checkout and cite its path in later briefs.
 - **Reruns** carry only what was missing.

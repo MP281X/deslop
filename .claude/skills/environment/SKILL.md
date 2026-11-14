@@ -33,13 +33,10 @@ Two headless Debian workers in one tailnet, same user and paths.
 - **One per worktree.** The systemd user unit `preview-<worktree name>`, shared over tailnet HTTPS. After edits, run the project's `preview` script from the worktree root: it replaces the previous run and prints the stable HTTPS URL. The repository's own preview command or a background task bypasses the unit and dies with the turn.
 - **Command.** Read the saved one with `t3_project_read`. Deslop's selects a changed web app, else Portfolio; set `PREVIEW_APP=<app>` to preview another app of the same change. An invalid selection leaves the running preview untouched.
 - **Fresh.** A turn that touched an app ends with its preview running the latest code; without a worktree preview, use the scratch run.
-- **Share.** Only after the URL loads sign-in, assets and API calls.
+- **Share** the URL only after it loads sign-in, assets and API calls.
 - **Webhooks.** Funnel exposes a whole port: pick a free one of 443, 8443, 10000 and run `sudo tailscale funnel --bg --https=<port> --set-path <path> http://127.0.0.1:<api port><path>`; remove it with `... --set-path <path> off`.
 
 ## Tools
 
-No data means report it and investigate further, not verification.
-
-- **Runtime state.** Call Deploy's `list_apps` or `read_resource_history`, not `ps`, `docker ps`, `ss` or `systemctl`. Use the full worker name, such as `dev.mp281x.xyz`, not `dev`; check unit health with `systemctl --failed`.
-- **Missing tool.** Call `list_mcp_connections` before assuming it is absent.
-- **Runtime error, trace or latency.** Call Scope's `list_operations`, then `search_traces`, then `read_trace` or `measure_latency`.
+- **Runtime state.** Deploy's `list_apps` or `read_resource_history`, with the full worker name (`dev.mp281x.xyz`, not `dev`), not `ps`, `docker ps`, `ss` or `systemctl`; unit health is `systemctl --failed`.
+- **Runtime error, trace or latency.** Scope's `list_operations`, then `search_traces`, then `read_trace` or `measure_latency`.
