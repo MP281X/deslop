@@ -9,6 +9,7 @@ import {
 	Duration,
 	Effect,
 	Equal,
+	Filter,
 	HashMap,
 	HashSet,
 	Layer,
@@ -334,26 +335,24 @@ export class Chapters extends Context.Service<Chapters>()('@deslop/opm/services/
 			)
 			// A known chapter takes only an explicit revision's pages, so a second translation never moves a reader's page.
 			const known = HashSet.fromIterable(Array.map(current, keyOf))
-			const loaded = Array.getSomes(found)
+			const [fresh, revisions] = Array.partition(
+				Array.getSomes(found),
+				Filter.fromPredicate(chapter => !HashSet.has(known, keyOf(chapter)))
+			)
 			yield* pipe(
-				loaded,
-				Array.filter(chapter => !HashSet.has(known, keyOf(chapter))),
-				Effect.forEach(insertChapter, {concurrency: 1, discard: true}),
+				Effect.forEach(fresh, insertChapter, {concurrency: 1, discard: true}),
 				Effect.andThen(
-					pipe(
-						loaded,
-						Array.filter(chapter => HashSet.has(known, keyOf(chapter))),
-						Effect.forEach(
-							chapter =>
-								revise({
-									number: chapter.number,
-									pages: chapter.pages,
-									revisedAt: chapter.postedAt,
-									series: chapter.series,
-									source: chapter.source
-								}),
-							{concurrency: 1, discard: true}
-						)
+					Effect.forEach(
+						revisions,
+						chapter =>
+							revise({
+								number: chapter.number,
+								pages: chapter.pages,
+								revisedAt: chapter.postedAt,
+								series: chapter.series,
+								source: chapter.source
+							}),
+						{concurrency: 1, discard: true}
 					)
 				),
 				Reactivity.mutation(['chapters']),

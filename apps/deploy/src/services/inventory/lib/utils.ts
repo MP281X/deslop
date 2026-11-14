@@ -5,6 +5,7 @@ import {
 	Duration,
 	Effect,
 	Equal,
+	Filter,
 	Function,
 	HashMap,
 	HashSet,
@@ -479,10 +480,13 @@ function sameLabel(first: ProcessLabel, second: ProcessLabel) {
 
 // A child that says the same thing as its parent is the same row: hide it, keep its descendants, and leave its usage in the parent's total.
 function absorb(label: ProcessLabel, children: readonly ProcessNode[]): readonly ProcessNode[] {
-	const matching = Array.filter(children, child => sameLabel(child.label, label))
+	const [matching, other] = Array.partition(
+		children,
+		Filter.fromPredicate(child => sameLabel(child.label, label))
+	)
 	if (Array.isArrayEmpty(matching)) return children
 	return [
-		...Array.filter(children, child => !sameLabel(child.label, label)),
+		...other,
 		...absorb(
 			label,
 			Array.flatMap(matching, child => child.children)
