@@ -28,6 +28,7 @@ A main-thread call re-reads the whole thread, often 300k tokens; a delegate star
   ```
 
   Each thread owns one validation worktree, reused every iteration so dependencies and the `vp` cache stay warm (Deslop: 29 s cold, 7 s warm), and never shared, so threads need no locks. Nothing is pushed and no branch is created; maintenance removes a settled thread's validation worktree.
+
 - **Long jobs.** Long or overnight delegates use GPT-6.1 Sol, since Codex's prompt cache does not expire the way Claude's does.
 
 ## Batch
