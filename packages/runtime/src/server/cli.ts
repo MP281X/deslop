@@ -79,10 +79,11 @@ const configProvider = Effect.fnUntraced(function* (given: Record<string, string
 	)
 	const urls = Option.match(Option.fromUndefinedOr(given['DOMAIN']), {
 		onNone: () => ({
-			APP_URL: pipe(tailnet, Option.filter(String.isNonEmpty), Option.match({
-				onNone: () => `http://localhost:${port}`,
-				onSome: host => `https://${host}:${port}`
-			}))
+			APP_URL: pipe(
+				tailnet,
+				Option.filter(String.isNonEmpty),
+				Option.match({onNone: () => `http://localhost:${port}`, onSome: host => `https://${host}:${port}`})
+			)
 		}),
 		onSome: domain => ({
 			APP_URL: `https://${name}.${domain}`,
