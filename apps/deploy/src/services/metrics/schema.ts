@@ -132,6 +132,7 @@ export const MachineHistory = Schema.Struct({
 	disks: Schema.Array(Disk),
 	error: TextFromEmpty,
 	load: Schema.Array(Schema.Finite),
+	platform: Schema.OptionFromOptionalKey(Schema.Literals(['linux', 'darwin'])),
 	samples: Schema.Array(Sample.json),
 	stale: Schema.Boolean,
 	time: DateTimeUtcFromFiniteMillis,

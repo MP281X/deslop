@@ -2,8 +2,17 @@ import {assert, it} from '@effect/vitest'
 
 import {Array, HashMap, Option} from 'effect'
 
-import {dockApplications, launchAgents, macApplications} from './launchd.ts'
-import {launchdProcesses} from './processes.ts'
+import {
+	applicationBundle,
+	dockApplications,
+	launchAgents,
+	launchProgram,
+	macApplications,
+	systemProgram
+} from './launchd.ts'
+import {attachProcesses, launchdProcesses} from './processes.ts'
+
+import {InventoryItem, ItemId, UnitId, WorkerId} from '#services/inventory/schema.ts'
 
 // Selected records from macbook-pro's `lsappinfo list` on 2026-11-15.
 const APPLICATIONS = `42) "Safari" ASN:0x0-0x717717:
@@ -34,7 +43,7 @@ const AGENTS = `PID\tStatus\tLabel
 it('combines regular Dock applications and running third-party launch agents from Mac output', () => {
 	const apps = macApplications(launchAgents(AGENTS), dockApplications(APPLICATIONS))
 	assert.deepStrictEqual(
-		Array.map(apps, app => [app.label, app.pid]),
+		Array.map(apps, app => [app.name, app.pid]),
 		[
 			['Safari', 46_331],
 			['T3 Code (Nightly)', 77_287],
@@ -54,10 +63,81 @@ it('combines regular Dock applications and running third-party launch agents fro
 	assert.deepStrictEqual(
 		Array.map(records, record => [record.process.pid, Option.getOrThrow(record.owner)]),
 		[
-			[46_331, 'service:user:Safari'],
-			[77_287, 'service:user:T3 Code (Nightly)'],
-			[77_327, 'service:user:T3 Code (Nightly)']
+			[46_331, 'service:user:/System/Volumes/Preboot/Cryptexes/App/System/Applications/Safari.app'],
+			[77_287, 'service:user:/Applications/T3 Code (Nightly).app'],
+			[77_327, 'service:user:/Applications/T3 Code (Nightly).app']
 		]
+	)
+})
+
+// Top-level executable fields from `launchctl print gui/501/<label>` on macbook-pro, 2026-11-15.
+it('resolves enclosing app bundles and system noise from launchd programs', () => {
+	const programs = [
+		'/Library/Application Support/Logitech.localized/LogiOptionsPlus/logioptionsplus_agent.app/Contents/MacOS/logioptionsplus_agent',
+		'/Applications/Workspace ONE Intelligent Hub.app/Contents/Resources/IntelligentHubAgent.app/Contents/MacOS/IntelligentHubAgent',
+		'/Applications/Bitwarden.app/Contents/Frameworks/Squirrel.framework/Resources/ShipIt',
+		'/usr/bin/ssh-agent'
+	]
+	assert.deepStrictEqual(
+		Array.map(programs, program =>
+			Option.getOrNull(Option.flatMap(launchProgram(`gui/501/agent = {\n\tprogram = ${program}\n}`), applicationBundle))
+		),
+		[
+			'/Library/Application Support/Logitech.localized/LogiOptionsPlus/logioptionsplus_agent.app',
+			'/Applications/Workspace ONE Intelligent Hub.app',
+			'/Applications/Bitwarden.app',
+			null
+		]
+	)
+	assert.deepStrictEqual(Array.map(programs, systemProgram), [false, false, false, true])
+	assert.isTrue(systemProgram('/Library/Apple/usr/libexec/oah/translate'))
+	assert.isFalse(systemProgram('/usr-local/tool'))
+	assert.isTrue(Option.isNone(launchProgram('\tprogram = \n\t\tprogram = /usr/bin/nested')))
+})
+
+it('gives the Bitwarden app, updater and their descendants one owner, including its tray-only mode', () => {
+	const bundle = '/Applications/Bitwarden.app'
+	const agents = Array.map(launchAgents('22292\t0\tcom.bitwarden.desktop.ShipIt'), agent => ({
+		...agent,
+		bundle: Option.some(bundle),
+		name: 'Bitwarden'
+	}))
+	const apps = macApplications(
+		agents,
+		dockApplications(`26) "Bitwarden" ASN:0x0-0x36036:
+    bundle path="/Applications/Bitwarden.app"
+    pid = 4016 token=[sess=100015 pid=4016 uid:501,501,501 g:20,20 pV:9446] type="UIElement" flavor=3 Version="70259" fileType="APPL" creator="????" Arch=ARM64`, [bundle])
+	)
+	assert.deepStrictEqual(Array.dedupe(Array.map(apps, app => app.label)), [bundle])
+	assert.deepStrictEqual(Array.map(apps, app => app.name), ['Bitwarden', 'Bitwarden'])
+	const records = launchdProcesses(
+		`4016 1 100 0:01.00 Sat Nov 14 23:47:48 2026 /Applications/Bitwarden.app/Contents/MacOS/Bitwarden
+22292 1 100 0:01.00 Sat Nov 14 23:47:48 2026 /Applications/Bitwarden.app/Contents/Frameworks/Squirrel.framework/Resources/ShipIt
+22293 22292 100 0:01.00 Sat Nov 14 23:47:48 2026 helper`,
+		HashMap.fromIterable(Array.map(apps, app => [app.pid, app.label] as const))
+	)
+	assert.deepStrictEqual(Array.map(records, record => Option.getOrThrow(record.owner)), [
+		`service:user:${bundle}`,
+		`service:user:${bundle}`,
+		`service:user:${bundle}`
+	])
+	const items = attachProcesses(
+		[InventoryItem.make({
+			detail: 'user · application',
+			id: ItemId.make(`macbook-pro:user:${bundle}`),
+			kind: 'service',
+			name: UnitId.make('Bitwarden'),
+			scope: Option.some('user'),
+			state: 'running',
+			unit: Option.some(UnitId.make(bundle)),
+			url: Option.none(),
+			worker: WorkerId.make('macbook-pro')
+		})],
+		records
+	)
+	assert.deepStrictEqual(
+		Array.map(Option.getOrThrow(Option.getOrThrow(Array.head(items)).processes), process => process.pid),
+		[4016, 22_292, 22_293]
 	)
 })
 

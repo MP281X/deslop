@@ -144,7 +144,8 @@ export function itemOwner(item: InventoryItem) {
 			`container:${String.slice(0, 12)(Option.getOrElse(Array.last(String.split(item.id, ':docker:')), Function.constant('')))}`
 		)
 	}
-	return AppId.make(`service:${Option.getOrElse(item.scope, Function.constant('system'))}:${item.name}`)
+	const unit = item.kind === 'service' ? Option.getOrElse(item.unit, () => item.name) : item.name
+	return AppId.make(`service:${Option.getOrElse(item.scope, Function.constant('system'))}:${unit}`)
 }
 
 function fullName(item: InventoryItem) {

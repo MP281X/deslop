@@ -2,7 +2,7 @@ import {useAtomRefresh, useAtomValue} from '@effect/atom-react'
 
 import {Array, Boolean, DateTime, Duration, Function, Option, Record, Schema, String, pipe} from 'effect'
 
-import {AppWindowIcon, HardDrivesIcon, MonitorIcon, TerminalWindowIcon} from '@phosphor-icons/react'
+import {AppWindowIcon, HardDrivesIcon, LaptopIcon, MonitorIcon, TerminalWindowIcon} from '@phosphor-icons/react'
 import {CatchBoundary, Link, createFileRoute, getRouteApi} from '@tanstack/react-router'
 import {AsyncResult} from 'effect/reactivity'
 import {Suspense, useDeferredValue} from 'react'
@@ -51,7 +51,13 @@ function machineName(worker: WorkerId) {
 	return String.split(worker, '.')[0]
 }
 
-function MachineIcon(props: {worker: WorkerId}) {
+function MachineIcon(props: {worker: WorkerId; platform: Option.Option<'linux' | 'darwin'>}) {
+	const Icon = Option.contains(props.platform, 'darwin')
+		? LaptopIcon
+		: Boolean.match(machineName(props.worker) === 'desktop', {
+				onFalse: () => HardDrivesIcon,
+				onTrue: () => MonitorIcon
+			})
 	return (
 		<span
 			aria-hidden="true"
@@ -60,10 +66,7 @@ function MachineIcon(props: {worker: WorkerId}) {
 				{onFalse: Function.constant('text-machine-dev'), onTrue: Function.constant('text-machine-desktop')}
 			)}`}
 		>
-			{Boolean.match(machineName(props.worker) === 'desktop', {
-				onFalse: () => <HardDrivesIcon className="size-4" />,
-				onTrue: () => <MonitorIcon className="size-4" />
-			})}
+			<Icon className="size-4" />
 		</span>
 	)
 }
@@ -99,7 +102,7 @@ function MachineTabs(props: {
 							/>
 						}
 					>
-						<MachineIcon worker={worker} />
+						<MachineIcon worker={worker} platform={histories[worker]?.platform ?? Option.none()} />
 						<span className="max-w-32 truncate max-sm:sr-only">{machineName(worker)}</span>
 						{/* Only an unreachable machine is marked; one that answers needs no dot. */}
 						{failed && <StatusDot status="off" label="Unavailable" />}

@@ -325,6 +325,12 @@ export class Metrics extends Context.Service<Metrics>()('@deslop/deploy/services
 					disks: now.disks,
 					error: yield* Ref.get(failure),
 					load: now.load,
+					platform: Option.some(
+						Boolean.match(platform === 'darwin', {
+							onFalse: Function.constant('linux' as const),
+							onTrue: Function.constant('darwin' as const)
+						})
+					),
 					samples: history(samples, query.minutes, time),
 					stale: Option.match(Array.last(samples), {
 						onNone: Function.constTrue,

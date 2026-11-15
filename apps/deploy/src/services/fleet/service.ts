@@ -68,6 +68,7 @@ function cachedHistory(query: HistoryQuery, time: DateTime.Utc, saved: Option.Op
 	return {
 		disks: Option.match(saved, {onNone: () => [], onSome: machine => machine.disks}),
 		load: Option.match(saved, {onNone: () => [], onSome: machine => machine.load}),
+		platform: Option.flatMap(saved, machine => machine.platform),
 		samples: history(Option.match(saved, {onNone: () => [], onSome: machine => machine.samples}), query.minutes, time),
 		time
 	}
