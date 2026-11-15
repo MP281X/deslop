@@ -31,7 +31,7 @@ import {ChildProcessSpawner} from 'effect/process'
 import {executeProcess} from '@deslop/runtime/server/process'
 
 import {exitFailure, unitFailures} from './lib/failures.ts'
-import {launchAgents} from './lib/launchd.ts'
+import {dockApplications, launchAgents, macApplications} from './lib/launchd.ts'
 import {attachProcesses, launchdProcesses, processReadings, processes} from './lib/processes.ts'
 import type {ProcessMeasurement} from './lib/processes.ts'
 import {type Socket, lsofSockets, probeSocket, socketLine, socketProcess, socketUnit} from './lib/sockets.ts'
@@ -367,11 +367,12 @@ export class Inventory extends Context.Service<
 					)
 				]
 			})
-			// A Mac's Deslop launch agents and listeners, and the processes under each agent, measured together so CPU shares compare like readings.
+			// A Mac's Dock apps, user launch agents and listeners, measured together so CPU shares compare like readings.
 			const darwin: Effect.Effect<Machine> = Effect.gen(function* () {
 				const launchd = yield* Effect.all(
 					{
-						agents: Effect.result(Effect.flatMap(command('launchctl', ['list']), launchAgents)),
+						agents: Effect.result(Effect.map(command('launchctl', ['list']), launchAgents)),
+						applications: Effect.result(Effect.map(command('/usr/bin/lsappinfo', ['list']), dockApplications)),
 						table: Effect.result(
 							command('env', ['LC_ALL=C', 'ps', '-axww', '-o', 'pid=,ppid=,rss=,time=,lstart=,args='])
 						)
@@ -380,16 +381,28 @@ export class Inventory extends Context.Service<
 				)
 				const time = yield* DateTime.now
 				const total = Duration.millis(Number.sumAll(Array.flatMap(cpus(), cpu => Record.values(cpu.times))))
-				const records = Result.map(launchd.table, text => {
-					const agents = HashMap.fromIterable(
-						Array.getSomes(
-							pipe(
-								launchd.agents,
-								Result.getOrElse(() => []),
-								Array.map(agent => Option.map(agent.pid, processId => [processId, agent.label] as const))
-							)
-						)
+				const apps = macApplications(
+					Result.getOrElse(launchd.agents, () => []),
+					Result.getOrElse(launchd.applications, () => [])
+				)
+				function appItems(found: typeof apps) {
+					return Array.map(found, app =>
+						InventoryItem.make({
+							active: true,
+							detail: app.detail,
+							id: ItemId.make(`${worker}:user:${app.label}`),
+							kind: 'service',
+							name: app.label,
+							running: true,
+							scope: Option.some('user'),
+							state: 'running',
+							url: Option.none(),
+							worker
+						})
 					)
+				}
+				const records = Result.map(launchd.table, text => {
+					const agents = HashMap.fromIterable(Array.map(apps, app => [app.pid, app.label] as const))
 					// Every descendant of this Mac's Deploy agent is a collector, including lsof and Tailscale subprocesses.
 					return Array.filter(
 						launchdProcesses(text, agents),
@@ -405,38 +418,44 @@ export class Inventory extends Context.Service<
 						collect(
 							'Launch agents',
 							Effect.map(Effect.fromResult(launchd.agents), agents =>
-								Array.map(agents, agent =>
-									InventoryItem.make({
-										active: Option.isSome(agent.pid),
-										detail: 'user · launch agent',
-										failure: pipe(
-											agent.status,
-											Option.liftPredicate(status => Option.isNone(agent.pid) && status !== 0),
-											Option.map(status => ({at: Option.none(), reason: exitFailure(status)}))
-										),
-										health: Boolean.match(Option.isNone(agent.pid) && agent.status !== 0, {
-											onFalse: Function.constant('quiet' as const),
-											onTrue: Function.constant('error' as const)
-										}),
-										id: ItemId.make(`${worker}:user:${agent.label}`),
-										kind: 'service',
-										name: agent.label,
-										running: Option.isSome(agent.pid),
-										scope: Option.some('user'),
-										state: Option.match(agent.pid, {
-											onNone: () =>
-												Boolean.match(agent.status === 0, {
-													onFalse: Function.constant('failed · failed'),
-													onTrue: Function.constant('inactive · dead')
-												}),
-											onSome: Function.constant('running')
-										}),
-										url: Option.none(),
-										worker
-									})
+								pipe(
+									agents,
+									Array.filter(agent =>
+										Option.match(agent.pid, {
+											onNone: () => Option.exists(agent.status, status => status !== 0),
+											onSome: id => Array.some(apps, app => app.pid === id && app.label === agent.label)
+										})
+									),
+									Array.map(agent =>
+										InventoryItem.make({
+											active: Option.isSome(agent.pid),
+											detail: agent.detail,
+											failure: pipe(
+												agent.status,
+												Option.filter(status => Option.isNone(agent.pid) && status !== 0),
+												Option.map(status => ({at: Option.none(), reason: exitFailure(status)}))
+											),
+											health: Boolean.match(Option.isNone(agent.pid), {
+												onFalse: Function.constant('quiet' as const),
+												onTrue: Function.constant('error' as const)
+											}),
+											id: ItemId.make(`${worker}:user:${agent.label}`),
+											kind: 'service',
+											name: agent.label,
+											running: Option.isSome(agent.pid),
+											scope: Option.some('user'),
+											state: Option.match(agent.pid, {
+												onNone: Function.constant('failed · failed'),
+												onSome: Function.constant('running')
+											}),
+											url: Option.none(),
+											worker
+										})
+									)
 								)
 							)
 						),
+						collect('Applications', Effect.map(Effect.fromResult(launchd.applications), appItems)),
 						collect(
 							'Listening ports',
 							Effect.flatMap(command('lsof', ['-nP', '+c0', '-iTCP', '-sTCP:LISTEN', '-iUDP', '-F', 'pctPnT']), text =>
