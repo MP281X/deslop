@@ -1,5 +1,5 @@
 // fallow-ignore-file unused-type -- Schema types pair with their values so consumers can import either.
-import {Array, Context, Effect, Predicate, Schema, pipe} from 'effect'
+import {Context, Effect, Predicate, Schema, pipe} from 'effect'
 
 import {HttpClient} from 'effect/http'
 import {RpcMiddleware} from 'effect/rpc'
@@ -27,7 +27,7 @@ export type GitHubIdFromString = typeof GitHubIdFromString.Type
 export const GitHubIdFromString = pipe(Schema.FiniteFromString, Schema.decodeTo(GitHubId))
 
 export type User = typeof User.Type
-export const User = Schema.Struct({id: UserId, name: Schema.NonEmptyString})
+export const User = Schema.Struct({admin: Schema.Boolean, id: UserId, name: Schema.NonEmptyString})
 
 // The browser sign-in every `*.<domain>` app reads; tailnet callers need none.
 export const SESSION_COOKIE = '__Secure-deslop-session'
@@ -48,12 +48,7 @@ export const IdentifyRequest = Schema.Struct({
 	session: Schema.OptionFromOptionalKey(Schema.NonEmptyString)
 })
 
-export const DEVELOPER = {id: UserId.make('github:0'), name: 'dev'} satisfies User
-
-// GITHUB_ADMINS lists bare GitHub ids; a user's id carries its provider as a prefix.
-export function isAdmin(admins: readonly GitHubId[], id: UserId) {
-	return Array.some(admins, admin => `github:${admin}` === id)
-}
+export const DEVELOPER = {admin: true, id: UserId.make('github:0'), name: 'dev'} satisfies User
 
 // The app's own route, which hands the browser to Auth and back.
 export function signInUrl(next: string) {

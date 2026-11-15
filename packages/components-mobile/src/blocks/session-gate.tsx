@@ -1,18 +1,22 @@
-import {useAtomMount, useAtomValue} from '@effect/atom-react'
+import {useAtomMount, useAtomSet, useAtomValue} from '@effect/atom-react'
+
+import {Boolean, Function} from 'effect'
 
 import {Host, Rectangle, Text, VStack} from '@expo/ui/swift-ui'
 import {foregroundStyle, frame, padding} from '@expo/ui/swift-ui/modifiers'
 import {AsyncResult} from 'effect/reactivity'
 import type {ReactNode} from 'react'
 
-import {isDeniedCause} from '@deslop/runtime/client/live-stream'
+import {isDeniedCause, needsSignInCause} from '@deslop/runtime/client/live-stream'
 import type {Session} from '@deslop/runtime/mobile/session'
 import {updateAtom} from '@deslop/runtime/mobile/updates'
 
 import {colors, space} from '#components/theme.ts'
+import {Button} from '#components/ui/button.tsx'
 
 export function SessionGate(props: {children: ReactNode; session: Session}) {
 	const account = useAtomValue(props.session.account)
+	const signIn = useAtomSet(props.session.signIn)
 	useAtomMount(updateAtom)
 	if (AsyncResult.isSuccess(account)) return props.children
 	if (AsyncResult.isInitial(account)) {
@@ -23,9 +27,13 @@ export function SessionGate(props: {children: ReactNode; session: Session}) {
 		)
 	}
 	const message = {detail: 'Return to the app to try again.', title: 'Could not reach the server'}
-	if (isDeniedCause(account.cause)) {
-		message.title = 'Connect to Tailscale'
-		message.detail = 'Return to the app after connecting to try again.'
+	const needsSignIn = needsSignInCause(account.cause)
+	if (needsSignIn) {
+		message.title = 'Sign in required'
+		message.detail = 'This device is not on the tailnet.'
+	} else if (isDeniedCause(account.cause)) {
+		message.title = 'Access denied'
+		message.detail = 'This account cannot use the app.'
 	}
 	return (
 		<Host style={{flex: 1}}>
@@ -35,6 +43,10 @@ export function SessionGate(props: {children: ReactNode; session: Session}) {
 			>
 				<Text>{message.title}</Text>
 				<Text modifiers={[foregroundStyle(colors.mutedForeground)]}>{message.detail}</Text>
+				{Boolean.match(needsSignIn, {
+					onFalse: Function.constNull,
+					onTrue: () => <Button onPress={() => signIn()}>Continue with GitHub</Button>
+				})}
 			</VStack>
 		</Host>
 	)

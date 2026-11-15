@@ -6,11 +6,9 @@ import {RpcStream} from '@deslop/runtime/shared/rpc'
 
 import {RpcContracts} from '#rpcs/contracts.ts'
 
-export const SERVER = 'https://stash.mp281x.xyz'
-
 export const primary = hues.amber
 
-export const session = makeSession(SERVER)
+export const session = makeSession()
 
 export class RpcClient extends AtomRpc.Service<RpcClient>()('@deslop/stash/lib/session/RpcClient', {
 	group: RpcContracts.middleware(RpcStream),

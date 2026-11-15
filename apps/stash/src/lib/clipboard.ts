@@ -10,7 +10,7 @@ import type {ClipboardKind} from '@deslop/components-mobile/lib/clipboard'
 import {provideRuntimeOnce} from '@deslop/runtime/mobile/session'
 
 import {capture} from '#lib/notes.ts'
-import {RpcClient, SERVER} from '#lib/session.ts'
+import {RpcClient, session} from '#lib/session.ts'
 import {native} from '#modules/native/index.ts'
 import {captureUrl} from '#services/notes/lib/utils.ts'
 import {NotesError} from '#services/notes/schema.ts'
@@ -24,6 +24,7 @@ const saveImage = Effect.fnUntraced(function* (count: string) {
 		})
 	)
 	if (image === null) return yield* NotesError.make({message: 'The clipboard no longer holds an image.'})
+	const headers = yield* session.headers
 	const id = randomUUID()
 	const file = new File(Paths.cache, `${id}.jpg`)
 	const response = yield* Effect.ensuring(
@@ -31,8 +32,8 @@ const saveImage = Effect.fnUntraced(function* (count: string) {
 			catch: cause => NotesError.make({cause, message: 'The image could not be sent.'}),
 			try: () => {
 				file.writeSync(String.replace(/^data:[^,]*,/u, '')(image.data), {encoding: 'base64'})
-				return file.upload(new URL(`/api/files/${id}`, SERVER).href, {
-					headers: {'content-type': 'image/jpeg'},
+				return file.upload(new URL(`/api/files/${id}`, session.server).href, {
+					headers: {...headers, 'content-type': 'image/jpeg'},
 					httpMethod: 'POST'
 				})
 			}

@@ -21,8 +21,7 @@ const HttpUrl = Schema.String.check(
 	)
 )
 
-export type Origin = typeof Origin.Type
-export const Origin = HttpUrl.check(
+const Origin = HttpUrl.check(
 	Schema.makeFilter(
 		(value: string) =>
 			Option.exists(Result.getSuccess(Url.fromString(value)), url => url.pathname === '/' && url.search === ''),

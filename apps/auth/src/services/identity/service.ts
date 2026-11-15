@@ -6,10 +6,10 @@ import type {Headers} from 'effect/http'
 import {IpNetwork, NetAddress} from 'effect/net'
 import {ChildProcessSpawner} from 'effect/process'
 
-import {Auth, adminIds, identifyRequestOf, localAuth} from '@deslop/runtime/server/auth'
+import {Auth, identifyRequestOf, localAuth} from '@deslop/runtime/server/auth'
 import {executeProcess} from '@deslop/runtime/server/process'
 import {AuthError, DEVELOPER, UserId, asAuthError} from '@deslop/runtime/shared/auth'
-import type {IdentifyRequest, User} from '@deslop/runtime/shared/auth'
+import type {IdentifyRequest} from '@deslop/runtime/shared/auth'
 import type {Account} from '@deslop/runtime/shared/schema'
 
 import type {Profile} from './schema.ts'
@@ -19,7 +19,7 @@ import {CookieSessions} from '#services/cookie-sessions/service.ts'
 import {GitHub} from '#services/github/service.ts'
 import {roleOf} from '#services/people/lib/utils.ts'
 import type {SignedAccount} from '#services/people/schema.ts'
-import {People} from '#services/people/service.ts'
+import {People, adminIds} from '#services/people/service.ts'
 
 export function isMachine(address: string) {
 	return Array.some(
@@ -131,12 +131,13 @@ export class Identity extends Context.Service<
 											return yield* tailnet(found.UserProfile)
 										})
 								}),
-								Effect.map((user: User) => ({id: user.id, signOut: false}))
+								Effect.map((user: {readonly id: UserId}) => ({id: user.id, signOut: false}))
 							),
 						onSome: row => Effect.succeed({id: row.userId, signOut: true})
 					}
 				)
 				const row = yield* people.find(identified.id)
+				const role = roleOf(admins, identified.id, row)
 				return {
 					...(yield* Option.match(row, {
 						onNone: () => people.allowed(identified.id),
@@ -145,8 +146,9 @@ export class Identity extends Context.Service<
 							return people.allowed(identified.id)
 						}
 					})),
+					admin: role === 'Admin',
 					fullName: Option.flatMap(row, member => member.fullName),
-					role: roleOf(admins, identified.id, row),
+					role,
 					signOut: identified.signOut
 				}
 			}, asAuthError('Cannot identify the caller'))

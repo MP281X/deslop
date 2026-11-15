@@ -38,11 +38,11 @@ A new publishable tool, rather than an app, copies the publish fields from `tool
 
 The App Store job uploads the `.ipa` from GitHub's Mac with `altool --upload-package` and fails on Apple's error before publishing the build's EAS Update; read it with `gh run view <run-id> --job <job-id> --log`. Upload is not processing: report uploaded, processing or available, with the run URL and the TestFlight URL from the run's summary. Public TestFlight and App Store release are separate outward actions.
 
-Each worker runs its apps as user services (`npm install --global @deslop/<app>`, then `<app> service install` with the flags `<app> --help` lists), which pick up a newer release on their next update, about every 15 minutes while the worker is on, or at once with `<app> service update`. A release is live when each app's `/api/runtime` returns 200 and reports the new version.
+Each worker runs its apps as user services (`npm install --global @deslop/<app>`, then `<app> service install --domain mp281x.xyz` with the app-specific flags `<app> --help` lists), which pick up a newer release on their next update, about every 15 minutes while the worker is on, or at once with `<app> service update`. A release is live when each app's `/api/runtime` returns 200 and reports the new version.
 
 ## Simulator builds
 
-A branch push touching a mobile app or shared packages builds a missing `<app>-simulator-<fingerprint>` artifact. The app holds the JavaScript of the commit that built it, so embed the branch's bundle before installing it:
+Every command here and every workflow that loads an app's config reads `DESLOP_DOMAIN`, the repository variable of that name (`.env.example`); export it first. A branch push touching a mobile app or shared packages builds a missing `<app>-simulator-<fingerprint>` artifact. The app holds the JavaScript of the commit that built it, so embed the branch's bundle before installing it:
 
 ```bash
 fingerprint=$(cd apps/stash && APP_VARIANT=development npx --yes eas-cli@latest fingerprint:generate --platform ios --build-profile simulator --json --non-interactive | jq -r .hash)

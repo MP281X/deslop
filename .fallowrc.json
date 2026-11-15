@@ -76,8 +76,10 @@
 	"ignoreDependencies": [
 		// Peer-only: one scheduler resolution keeps app and shared atom hooks on the same registry context.
 		"scheduler",
-		// The runtime imports it; each app keeps it so autolinking includes its native module.
-		"expo-updates"
+		// The runtime imports these; each app keeps them so autolinking includes their native modules.
+		"expo-secure-store",
+		"expo-updates",
+		"expo-web-browser"
 	],
 	"ignorePatterns": ["**/*.gen.ts", "tools/*/template/**"],
 	"ignoreExports": [

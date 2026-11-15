@@ -12,7 +12,7 @@ import {activationsAtom} from '@deslop/runtime/mobile/activations'
 import {provideRuntimeOnce} from '@deslop/runtime/mobile/session'
 import {listReducer} from '@deslop/runtime/shared/list'
 
-import {RpcClient, SERVER, session} from '#lib/session.ts'
+import {RpcClient, session} from '#lib/session.ts'
 import type {Note} from '#services/notes/schema.ts'
 import {NoteId, NoteItem, NotesError} from '#services/notes/schema.ts'
 
@@ -68,9 +68,10 @@ export const imageAtom = Atom.family((id: Note['id']) =>
 			const file = new File(images, id)
 			if (file.exists) return file.uri
 			images.create({idempotent: true, intermediates: true})
+			const headers = yield* session.headers
 			const downloaded = yield* Effect.tryPromise({
 				catch: cause => NotesError.make({cause, message: 'The note image could not be downloaded.'}),
-				try: () => File.downloadFileAsync(new URL(`/api/images/${id}`, SERVER).href, file)
+				try: () => File.downloadFileAsync(new URL(`/api/images/${id}`, session.server).href, file, {headers})
 			})
 			return downloaded.uri
 		})

@@ -79,7 +79,7 @@ export const layerServerProtocol = Layer.mergeAll(
 	)
 )
 
-// Traces and logs go to Scope when `--traces` names it, under the package name its web and iOS clients also use.
+// With a domain, traces and logs go to Scope under the package name its web and iOS clients also use.
 export const layerTelemetry = Layer.unwrap(
 	Effect.gen(function* () {
 		const metadata = yield* packageMetadata

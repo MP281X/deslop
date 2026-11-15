@@ -5,7 +5,7 @@ import {Effect, Layer, Schema, pipe} from 'effect'
 import {McpServer} from 'effect/ai'
 import {HttpServerResponse} from 'effect/http'
 
-import {ADMINS, runApp} from '@deslop/runtime/server/cli'
+import {runApp} from '@deslop/runtime/server/cli'
 import {layerMcp, layerRpc} from '@deslop/runtime/server/http'
 
 import {HttpHandlers} from '#http/handlers.ts'
@@ -44,7 +44,11 @@ runApp({
 		layerServices
 	),
 	settings: {
-		GITHUB_ADMINS: ADMINS,
+		GITHUB_ADMINS: {
+			description: 'GitHub user ids, comma-separated, who admit people and manage shared settings',
+			flag: 'admins',
+			schema: Schema.String.check(Schema.isPattern(/^\d+(?:,\d+)*$/u))
+		},
 		GITHUB_CLIENT_ID: {
 			description: "The GitHub app's client id",
 			flag: 'github-client-id',

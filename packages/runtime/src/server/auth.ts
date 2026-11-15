@@ -18,8 +18,6 @@ import {
 	CLIENT_HEADER,
 	CurrentUser,
 	DEVELOPER,
-	GitHubId,
-	GitHubIdFromString,
 	IDENTIFY_PATH,
 	IdentifyRequest,
 	ON_BEHALF_HEADER,
@@ -27,24 +25,16 @@ import {
 	SESSION_COOKIE,
 	UserId,
 	asAuthError,
-	failureOptions,
-	isAdmin
+	failureOptions
 } from '#shared/auth.ts'
 import type {User} from '#shared/auth.ts'
 import {Account} from '#shared/schema.ts'
 
-// Without an issuer (`--auth`) there is no sign-in: every request is this trusted developer.
+// Without a domain there is no sign-in: every request is this trusted developer.
 export const localAuth = Config.map(Config.option(Config.String('AUTH_URL')), Option.isNone)
 
-// Admins come from GITHUB_ADMINS; a local install with no issuer falls back to the developer account when none are named.
-export const adminIds = Effect.gen(function* () {
-	const listed = Config.Array(GitHubIdFromString, 'GITHUB_ADMINS')
-	if (yield* localAuth) return yield* Config.withDefault(listed, [GitHubId.make(0)])
-	return yield* listed
-})
-
-export function requireAdmin(admins: readonly GitHubId[], user: User, message: string) {
-	if (isAdmin(admins, user.id)) return Effect.void
+export function requireAdmin(user: User, message: string) {
+	if (user.admin) return Effect.void
 	return Effect.fail(AuthError.make({error: 'access_denied', message}))
 }
 
@@ -91,7 +81,7 @@ export class Auth extends Context.Service<
 	static readonly makeContext = (account: (headers: Headers.Headers) => Effect.Effect<Account, AuthError>) => {
 		const user = Effect.fn('Auth.user')(function* (headers: Headers.Headers) {
 			const found = yield* account(headers)
-			return {id: found.id, name: found.name}
+			return {admin: found.admin, id: found.id, name: found.name}
 		})
 		return Context.add(
 			Context.make(Auth, Auth.of({account, user})),

@@ -42,7 +42,7 @@ runApp({
 	),
 	settings: {
 		DEPLOY_WORKERS: {
-			description: "The other workers' Deploy origins as name=origin, comma-separated",
+			description: "The other workers' Tailscale machine names, comma-separated",
 			flag: 'workers',
 			schema: WorkerList
 		}

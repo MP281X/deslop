@@ -8,7 +8,7 @@ import {RpcContracts} from '#rpcs/contracts.ts'
 
 export const primary = hues.orange
 
-export const session = makeSession('https://trips.mp281x.xyz')
+export const session = makeSession()
 
 export class RpcClient extends AtomRpc.Service<RpcClient>()('@deslop/trips/lib/session/RpcClient', {
 	group: RpcContracts.middleware(RpcStream),

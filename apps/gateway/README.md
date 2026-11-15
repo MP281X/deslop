@@ -2,7 +2,7 @@
 
 ```bash
 npm install --global @deslop/gateway
-gateway service install --url https://gateway.mp281x.xyz --auth https://auth.mp281x.xyz --admins <github-id>
+gateway service install --domain mp281x.xyz
 ```
 
 Register only `https://<gateway>/mcp` in each harness. Auth names callers by tailnet identity or its shared browser cookie. Admins add servers; HTTPS subdomains of Gateway's parent domain need no OAuth connection and receive the caller's identity, while third-party OAuth connections remain separate. Everyone signed in shares servers. AI keys and usage belong to each person, as described in this app's `AGENTS.md`.
@@ -17,7 +17,7 @@ Collection cursors resume live, key-ordered lists with the same filters; new row
 
 ## AI proxy
 
-App servers start with `--gateway https://gateway.mp281x.xyz`.
+App servers start with `--domain mp281x.xyz`; Gateway's origin is derived from that domain. Auth's account answer supplies admin access; Gateway has no separate admin setting.
 
 Use `AiGateway` from `@deslop/runtime/server/ai`: `yield* gateway.apiUrl` and pass `yield* gateway.authorize(userId)` as the provider client's **construction-time** `transformClient`. Append the model's API-family path from [OpenCode's model catalog](https://opencode.ai/docs/console/models/); Go paths start with `/go`. `AiGateway.languageModel(userId, options)` uses the connected Claude account, never the catalogue balance. Gateway maps the SDK's `/connection/v1/messages?beta=true` to the saved Console API URL plus `/messages?beta=true` and forwards its headers and body.
 

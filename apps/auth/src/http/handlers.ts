@@ -16,7 +16,7 @@ import {Account} from '@deslop/runtime/shared/schema'
 
 import {parentDomain, returnable} from '#services/cookie-sessions/lib/utils.ts'
 import {CookieSessions} from '#services/cookie-sessions/service.ts'
-import {CallbackParams, OAuthState} from '#services/github/schema.ts'
+import {AppSignIn, CallbackParams, OAuthState} from '#services/github/schema.ts'
 import {GitHub} from '#services/github/service.ts'
 import {Identity, isMachine} from '#services/identity/service.ts'
 import {People} from '#services/people/service.ts'
@@ -66,12 +66,29 @@ export const HttpHandlers = HttpRouter.use(router =>
 				})
 			)
 		)
+		// An app opens this in a browser sheet: Auth signs in with GitHub and returns the session on the app's own scheme.
 		yield* router.add(
 			'GET',
 			'/sign-in',
 			respond(
 				Effect.gen(function* () {
-					const started = yield* github.start({next: yield* nextOf(yield* HttpServerRequest.HttpServerRequest)})
+					const request = yield* HttpServerRequest.HttpServerRequest
+					const query = new URL(request.url, canonical).searchParams
+					const app = yield* Boolean.match(query.has('app'), {
+						onFalse: () => Effect.succeed(Option.none<AppSignIn>()),
+						onTrue: () =>
+							pipe(
+								Schema.decodeUnknownEffect(AppSignIn)(Record.fromEntries(query)),
+								Effect.asSome,
+								Effect.mapError(cause =>
+									AuthError.make({cause, error: 'access_denied', message: 'Invalid app sign-in'})
+								)
+							)
+					})
+					const started = yield* github.start({
+						app,
+						next: yield* Option.match(app, {onNone: () => nextOf(request), onSome: () => Effect.succeed(canonical)})
+					})
 					return HttpServerResponse.setCookieUnsafe(
 						HttpServerResponse.redirect(started.url),
 						LOGIN_COOKIE,
@@ -108,16 +125,30 @@ export const HttpHandlers = HttpRouter.use(router =>
 						IdentifyRequest.make({address: Option.none(), onBehalfOf: Option.none(), session: Option.some(secret)}),
 						true
 					)
-					return pipe(
-						HttpServerResponse.redirect(
-							Boolean.match(account.role === 'Waiting', {
-								onFalse: () => result.flow.next,
-								onTrue: () => `/?${new URLSearchParams({next: result.flow.next})}`
-							})
-						),
-						HttpServerResponse.setCookieUnsafe(SESSION_COOKIE, secret, sessionCookie),
-						HttpServerResponse.expireCookieUnsafe(LOGIN_COOKIE, COOKIE)
-					)
+					return yield* Option.match(result.flow.app, {
+						onNone: () =>
+							Effect.succeed(
+								pipe(
+									HttpServerResponse.redirect(
+										Boolean.match(account.role === 'Waiting', {
+											onFalse: () => result.flow.next,
+											onTrue: () => `/?${new URLSearchParams({next: result.flow.next})}`
+										})
+									),
+									HttpServerResponse.setCookieUnsafe(SESSION_COOKIE, secret, sessionCookie),
+									HttpServerResponse.expireCookieUnsafe(LOGIN_COOKIE, COOKIE)
+								)
+							),
+						// An app keeps the session itself, so the browser sheet gets no cookie.
+						onSome: app =>
+							Effect.succeed(
+								HttpServerResponse.expireCookieUnsafe(
+									HttpServerResponse.redirect(`${app.app}://signed-in?${new URLSearchParams({session: secret})}`),
+									LOGIN_COOKIE,
+									COOKIE
+								)
+							)
+					})
 				})
 			)
 		)

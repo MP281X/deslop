@@ -20,6 +20,7 @@ defaults:
 
 env:
   APP_VARIANT: production
+  DESLOP_DOMAIN: ${{ vars.DESLOP_DOMAIN }}
   EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
 
 jobs:

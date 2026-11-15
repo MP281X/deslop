@@ -1,17 +1,24 @@
-import {Boolean, Context, DateTime, Effect, Function, Layer, Option, Schema, String, pipe} from 'effect'
+import {Boolean, Config, Context, DateTime, Effect, Function, Layer, Option, Schema, String, pipe} from 'effect'
 
 import {Reactivity} from 'effect/reactivity'
 import {Migrator, SqlClient, SqlSchema} from 'effect/sql'
 
-import {adminIds, requireAdmin} from '@deslop/runtime/server/auth'
-import {AuthError, UserId, asAuthError, isAdmin} from '@deslop/runtime/shared/auth'
+import {localAuth, requireAdmin} from '@deslop/runtime/server/auth'
+import {AuthError, GitHubId, GitHubIdFromString, UserId, asAuthError} from '@deslop/runtime/shared/auth'
 import type {User} from '@deslop/runtime/shared/auth'
 
-import {listPeople, personOf} from './lib/utils.ts'
+import {isAdmin, listPeople, personOf} from './lib/utils.ts'
 import {Member} from './schema.ts'
 import type {AdmitParams, Person} from './schema.ts'
 
 import {CookieSessions} from '#services/cookie-sessions/service.ts'
+
+// GitHub ids from GITHUB_ADMINS; a local install with none named treats the developer as the admin.
+export const adminIds = Effect.gen(function* () {
+	const listed = Config.Array(GitHubIdFromString, 'GITHUB_ADMINS')
+	if (yield* localAuth) return yield* Config.withDefault(listed, [GitHubId.make(0)])
+	return yield* listed
+})
 
 declare module 'effect/reactivity/Reactivity' {
 	interface Keys {
@@ -24,7 +31,7 @@ export class People extends Context.Service<
 		readonly find: (id: UserId) => Effect.Effect<Option.Option<Member>, AuthError>
 		readonly login: (login: string) => Effect.Effect<Option.Option<Member>, AuthError>
 		readonly register: (
-			user: User,
+			user: {readonly id: UserId; readonly name: string},
 			fullName: Option.Option<string>,
 			tailnet: boolean
 		) => Effect.Effect<Member, AuthError>
@@ -102,7 +109,7 @@ export class People extends Context.Service<
 				return People.of({
 					admit: Effect.fn('People.admit')(
 						function* (params, user) {
-							yield* requireAdmin(admins, user, 'Only an admin can manage people')
+							yield* requireAdmin(user, 'Only an admin can manage people')
 							const row = yield* existing(params.id)
 							if (row.status !== 'Waiting' || isAdmin(admins, row.id)) {
 								return yield* AuthError.make({message: 'This account is not asking for access'})
@@ -127,7 +134,7 @@ export class People extends Context.Service<
 					allowed: Effect.fn('People.allowed')(function* (id) {
 						const row = yield* find(id)
 						if (isAdmin(admins, id)) {
-							return {id, name: Option.match(row, {onNone: () => id, onSome: member => member.name})}
+							return {admin: true, id, name: Option.match(row, {onNone: () => id, onSome: member => member.name})}
 						}
 						if (!Option.exists(row, member => member.status === 'Allowed')) {
 							return yield* AuthError.make({
@@ -137,12 +144,12 @@ export class People extends Context.Service<
 						}
 						return yield* Option.match(row, {
 							onNone: () => Effect.fail(AuthError.make({error: 'access_denied', message: 'This account was removed'})),
-							onSome: member => Effect.succeed({id: member.id, name: member.name})
+							onSome: member => Effect.succeed({admin: false, id: member.id, name: member.name})
 						})
 					}, asAuthError('Cannot read the account')),
 					find,
 					list: Effect.fn('People.list')(function* (user) {
-						yield* requireAdmin(admins, user, 'Only an admin can manage people')
+						yield* requireAdmin(user, 'Only an admin can manage people')
 						return listPeople(yield* all(), admins)
 					}, asAuthError('Cannot read people')),
 					login: Effect.fn('People.login')(function* (login) {
@@ -180,7 +187,7 @@ export class People extends Context.Service<
 					),
 					remove: Effect.fn('People.remove')(
 						function* (id, user) {
-							yield* requireAdmin(admins, user, 'Only an admin can manage people')
+							yield* requireAdmin(user, 'Only an admin can manage people')
 							if (isAdmin(admins, id)) {
 								return yield* AuthError.make({error: 'access_denied', message: 'Admins cannot be removed'})
 							}

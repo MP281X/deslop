@@ -34,7 +34,7 @@ import {FetchHttpClient, Headers, HttpClient, HttpClientError, HttpClientRequest
 import {Reactivity} from 'effect/reactivity'
 import {Migrator, SqlClient, SqlModel, SqlSchema} from 'effect/sql'
 
-import {Auth, adminIds, requireAdmin} from '@deslop/runtime/server/auth'
+import {Auth, requireAdmin} from '@deslop/runtime/server/auth'
 import type {User, UserId} from '@deslop/runtime/shared/auth'
 import {AuthError, ON_BEHALF_HEADER} from '@deslop/runtime/shared/auth'
 import {DateTimeUtcFromFiniteMillis} from '@deslop/runtime/shared/time'
@@ -79,6 +79,10 @@ declare module 'effect/reactivity/Reactivity' {
 }
 
 export const gatewayUrl = Config.String('APP_URL')
+
+function admin(user: User) {
+	return requireAdmin(user, 'Only an admin can manage MCP servers')
+}
 
 // A provider sign-in in progress, for ten minutes and in memory: a restart asks to connect again.
 type Pending = {
@@ -249,11 +253,6 @@ export class Connections extends Context.Service<
 			`
 		})
 
-		// Auth's admins, named by the same setting: only they manage the servers everyone with access shares.
-		const admins = yield* adminIds
-		function admin(user: User) {
-			return requireAdmin(admins, user, 'Only an admin can manage MCP servers')
-		}
 		// Each server's token is read and refreshed one call at a time, so concurrent calls never spend its refresh token twice.
 		const locks = yield* RcMap.make({lookup: (_id: ServerId) => Semaphore.make(1)})
 		const http = HttpClient.filterStatusOk(yield* HttpClient.HttpClient)

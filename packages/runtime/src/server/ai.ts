@@ -66,7 +66,7 @@ export class AiGateway extends Context.Service<
 			const apiUrl = pipe(
 				gateway,
 				Option.match({
-					onNone: () => Effect.fail(AiUnavailableError.make({message: 'Start the app with --gateway'})),
+					onNone: () => Effect.fail(AiUnavailableError.make({message: 'Start the app with --domain'})),
 					onSome: url => Effect.succeed(`${url}/ai`)
 				}),
 				Effect.withSpan('AiGateway.apiUrl')

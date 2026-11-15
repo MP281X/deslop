@@ -1,4 +1,5 @@
 import ImageIO
+import Security
 import SwiftUI
 import UIKit
 import UniformTypeIdentifiers
@@ -159,6 +160,7 @@ private struct Upload {
   let server: URL
   let group: String
   let folder: URL
+  let keychainGroup: String
 
   init() throws {
     // The extension runs from the app's PlugIns/ folder, so the containing app's bundle is two levels up.
@@ -166,14 +168,15 @@ private struct Upload {
     guard
       let app,
       let identifier = app.bundleIdentifier,
+      let keychainGroup = app.object(forInfoDictionaryKey: "DeslopKeychainGroup") as? String,
+      let address = app.object(forInfoDictionaryKey: "DeslopServer") as? String,
+      let server = URL(string: address),
       let container = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: "group.\(identifier)")
     else {
       throw CocoaError(.featureUnsupported)
     }
-    guard let server = URL(string: "https://stash.mp281x.xyz") else {
-      throw CocoaError(.featureUnsupported)
-    }
     self.server = server
+    self.keychainGroup = keychainGroup
     self.group = "group.\(identifier)"
     self.folder = container.appendingPathComponent("uploads", isDirectory: true)
     try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
@@ -212,7 +215,8 @@ private struct Upload {
   private func rejection(_ status: Int) -> NSError {
     let message: String
     switch status {
-    case 401, 403: message = "Connect to Tailscale, then share again."
+    case 401: message = "Open Stash and sign in, then share again."
+    case 403: message = "This account cannot use Stash."
     case 413: message = "This is too large for Stash."
     default: message = "Stash refused this share (HTTP \(status))."
     }
@@ -224,6 +228,7 @@ private struct Upload {
     request.httpMethod = "POST"
     request.timeoutInterval = 10
     request.setValue(type, forHTTPHeaderField: "Content-Type")
+    authorize(&request)
     let (_, response) = try await URLSession.shared.upload(for: request, from: payload)
     guard let response = response as? HTTPURLResponse else { throw URLError(.badServerResponse) }
     return response.statusCode
@@ -233,6 +238,8 @@ private struct Upload {
     var request = URLRequest(url: server.appendingPathComponent(path))
     request.httpMethod = "POST"
     request.setValue(type, forHTTPHeaderField: "Content-Type")
+    // The session stays valid on the server however long the background upload waits.
+    authorize(&request)
     let configuration = URLSessionConfiguration.background(withIdentifier: "\(group).share.\(id)")
     configuration.sharedContainerIdentifier = group
     configuration.isDiscretionary = false
@@ -240,6 +247,30 @@ private struct Upload {
     let session = URLSession(configuration: configuration)
     session.uploadTask(with: request, fromFile: body).resume()
     session.finishTasksAndInvalidate()
+  }
+
+  // Auth names the caller from the session cookie the app saved in the Keychain; a device on the tailnet has none and needs none.
+  private func authorize(_ request: inout URLRequest) {
+    request.httpShouldHandleCookies = false
+    if let secret = secret() {
+      request.setValue("__Secure-deslop-session=\(secret)", forHTTPHeaderField: "Cookie")
+    }
+  }
+
+  private func secret() -> String? {
+    let query: [String: Any] = [
+      kSecClass as String: kSecClassGenericPassword,
+      kSecAttrService as String: "app:no-auth", kSecAttrGeneric as String: Data("session".utf8),
+      kSecAttrAccount as String: Data("session".utf8), kSecAttrAccessGroup as String: keychainGroup,
+      kSecReturnData as String: true, kSecMatchLimit as String: kSecMatchLimitOne,
+    ]
+    var value: CFTypeRef?
+    guard SecItemCopyMatching(query as CFDictionary, &value) == errSecSuccess, let data = value as? Data,
+      let text = String(data: data, encoding: .utf8), !text.isEmpty
+    else {
+      return nil
+    }
+    return text
   }
 }
 

@@ -9,10 +9,12 @@ import {
 	ConfigProvider,
 	Effect,
 	FileSystem,
+	Function,
 	Layer,
 	Logger,
 	Option,
 	Path,
+	Predicate,
 	Record,
 	Schema,
 	Stdio,
@@ -36,12 +38,11 @@ import {
 	layerWeb
 } from '#server/http.ts'
 import {appName, packageMetadata, packageRoot} from '#server/package.ts'
-import {AppError} from '#server/process.ts'
 import {installService, installUpdateService, serviceStatus, uninstallService} from '#server/services.ts'
 import {dataDirectory, layerDataStore} from '#server/store.ts'
 import {activateRelease, updateRelease} from '#server/update.ts'
 import type {RpcAuth} from '#shared/auth.ts'
-import {Origin, Port, SecureOrigin} from '#shared/schema.ts'
+import {Port} from '#shared/schema.ts'
 
 const DEFAULT_HOST = '127.0.0.1'
 
@@ -52,32 +53,40 @@ export type Setting = {
 }
 
 const SETTINGS = {
-	APP_URL: {description: 'Canonical origin, such as the HTTPS name a proxy serves', flag: 'url', schema: Origin},
-	AUTH_URL: {
-		description: 'Deslop Auth origin, on the same machine and parent domain; without it every request is the developer',
-		flag: 'auth',
-		schema: SecureOrigin
+	DOMAIN: {
+		description: 'Parent domain for Deslop apps; without it every caller is the developer',
+		flag: 'domain',
+		schema: Schema.String.check(Schema.isPattern(/^(?:[a-z\d](?:[a-z\d-]*[a-z\d])?\.)+[a-z](?:[a-z\d-]*[a-z\d])?$/iu))
 	},
-	GATEWAY_URL: {description: 'Deslop Gateway origin for AI calls', flag: 'gateway', schema: Origin},
-	HOST: {description: `Listen address; defaults to ${DEFAULT_HOST}`, flag: 'host', schema: Schema.NonEmptyString},
-	OTEL_URL: {description: 'Scope origin to export traces and logs to', flag: 'traces', schema: Origin}
+	HOST: {description: `Listen address; defaults to ${DEFAULT_HOST}`, flag: 'host', schema: Schema.NonEmptyString}
 } satisfies Record<string, Setting>
-
-export const ADMINS = {
-	description: 'GitHub user ids, comma-separated, who admit people and manage shared settings',
-	flag: 'admins',
-	schema: Schema.String.check(Schema.isPattern(/^\d+(?:,\d+)*$/u))
-} satisfies Setting
 
 const configProvider = Effect.fnUntraced(function* (given: Record<string, string>, defaultPort: number) {
 	const port = given['PORT'] ?? `${defaultPort}`
-	const url = given['APP_URL'] ?? `http://localhost:${port}`
-	if (given['AUTH_URL'] !== undefined && new URL(url).protocol !== 'https:') {
-		return yield* AppError.make({message: "With --auth, set --url to the app's HTTPS origin"})
-	}
+	const name = yield* appName
+	const urls = Option.match(Option.fromUndefinedOr(given['DOMAIN']), {
+		onNone: () => ({APP_URL: `http://localhost:${port}`}),
+		onSome: domain => ({
+			APP_URL: `https://${name}.${domain}`,
+			AUTH_URL: `https://auth.${domain}`,
+			GATEWAY_URL: `https://gateway.${domain}`,
+			OTEL_URL: `https://scope.${domain}`
+		})
+	})
+	const environment = ConfigProvider.fromEnv()
 	return ConfigProvider.orElse(
-		ConfigProvider.fromUnknown({HOST: DEFAULT_HOST, ...given, APP_URL: url, PORT: port}),
-		ConfigProvider.fromEnv()
+		ConfigProvider.fromUnknown({HOST: DEFAULT_HOST, ...given, ...urls, PORT: port}),
+		ConfigProvider.make(path => {
+			if (
+				Array.some(
+					path,
+					key => Predicate.isString(key) && Array.contains(['APP_URL', 'AUTH_URL', 'GATEWAY_URL', 'OTEL_URL'], key)
+				)
+			) {
+				return Effect.undefined
+			}
+			return environment.load(path)
+		})
 	)
 })
 
@@ -168,15 +177,16 @@ export function runApp<A, E>(app: App<A, E>) {
 		}
 		const root = Command.withSharedFlags(
 			Command.make(name),
-			Record.map(settings, (setting, key) =>
-				pipe(
+			Record.map(settings, (setting, key) => {
+				const env = Boolean.match(key === 'DOMAIN', {onFalse: () => key, onTrue: Function.constant('DESLOP_DOMAIN')})
+				return pipe(
 					Flag.String(setting.flag),
 					Flag.withSchema(setting.schema),
-					Flag.withFallbackConfig(Config.schema(setting.schema, key)),
-					Flag.withDescription(`${setting.description} [${key}]`),
+					Flag.withFallbackConfig(Config.schema(setting.schema, env)),
+					Flag.withDescription(`${setting.description} [${env}]`),
 					Flag.optional
 				)
-			)
+			})
 		)
 		const given = Effect.map(root, input => Record.getSomes(input))
 		return yield* pipe(

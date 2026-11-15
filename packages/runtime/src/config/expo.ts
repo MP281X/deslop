@@ -1,5 +1,5 @@
 // This file's text is not part of the native fingerprint; plugins and mods live in their own module.
-import {Boolean, Config, Effect, Option} from 'effect'
+import {Boolean, Config, Effect, Option, Schema} from 'effect'
 
 import type {ExpoConfig} from 'expo/config'
 
@@ -10,6 +10,8 @@ export function makeExpoConfig(app: {projectId: string; slug: string}) {
 	// oxlint-disable-next-line eslint/no-restricted-properties -- Expo loads the app config outside any Effect runtime.
 	return Effect.runSync(
 		Effect.gen(function* () {
+			// The one domain every app, Auth and Scope live under; builds and updates fail without it.
+			const domain = yield* Config.schema(Schema.NonEmptyString, 'DESLOP_DOMAIN')
 			const release = yield* Config.withDefault(Config.Int('RELEASE_NUMBER'), 0)
 			const team = yield* Config.option(Config.String('APPLE_TEAM_ID'))
 			const production =
@@ -28,7 +30,7 @@ export function makeExpoConfig(app: {projectId: string; slug: string}) {
 				config: {
 					// The compiler memoizes components, as on the web, so a changed row re-renders without the rest of its list.
 					experiments: {reactCompiler: true},
-					extra: {eas: {projectId: app.projectId}, scheme: variant.scheme},
+					extra: {domain, eas: {projectId: app.projectId}, scheme: variant.scheme},
 					ios: {
 						appleTeamId: Option.getOrUndefined(team),
 						buildNumber: `${release}`,
@@ -43,13 +45,15 @@ export function makeExpoConfig(app: {projectId: string; slug: string}) {
 					orientation: 'portrait',
 					owner: 'mp281x.xyz',
 					platforms: ['ios'],
+					plugins: ['expo-web-browser'],
 					runtimeVersion: {policy: 'fingerprint'},
 					scheme: variant.scheme,
 					slug: app.slug,
 					updates: {url: `https://u.expo.dev/${app.projectId}`},
 					userInterfaceStyle: 'automatic',
 					version: `0.1.${release}`
-				} satisfies ExpoConfig
+				} satisfies ExpoConfig,
+				domain
 			}
 		})
 	)
