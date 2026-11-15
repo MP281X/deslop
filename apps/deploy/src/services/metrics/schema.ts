@@ -104,9 +104,7 @@ export const AppSample = Schema.Struct({
 })
 
 // One point of a worker's history in the series of one spacing: its readings from `since` to `time`, each averaged over the time it covers.
-export class Sample extends Model.Class<Sample>('Sample')({
-	// Each service or container's memory and its CPU as a share of the whole machine, from its cgroup, keyed like `itemOwner`; none where no cgroup was read, as on a Mac.
-	apps: Model.FieldOption(Model.JsonFromString(Schema.Array(AppSample))),
+export class MachineSample extends Model.Class<MachineSample>('MachineSample')({
 	cpu: Model.FieldOption(Schema.Finite),
 	memoryTotal: Schema.Finite,
 	memoryUsed: Schema.Finite,
@@ -119,6 +117,22 @@ export class Sample extends Model.Class<Sample>('Sample')({
 }) {
 	static readonly table = 'samples'
 }
+
+export class AppHistory extends Model.Class<AppHistory>('AppHistory')({
+	app: AppId,
+	cpu: Model.FieldOption(Schema.Finite),
+	memory: Schema.Finite,
+	since: MachineSample.fields.since,
+	step: MachineSample.fields.step
+}) {
+	static readonly table = 'app_samples'
+}
+
+// The chart's machine point with its app rows joined back in; a Mac has no app rows.
+export class Sample extends Model.Class<Sample>('Sample')({
+	...MachineSample.fields,
+	apps: Model.FieldOption(Model.JsonFromString(Schema.Array(AppSample)))
+}) {}
 
 export type Point = typeof Point.Type
 export const Point = Schema.Struct(Struct.omit(Sample.fields, ['since', 'step']))

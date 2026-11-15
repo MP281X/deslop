@@ -2,13 +2,14 @@
 import {DateTime, Duration, Schema, SchemaGetter, pipe} from 'effect'
 
 export type TimeFrame = typeof TimeFrame.Type
-export const TimeFrame = Schema.Literals(['10m', '1h', '24h', '7d'])
+export const TimeFrame = Schema.Literals(['10m', '1h', '24h', '7d', '30d'])
 
 const TIME_FRAME_DURATIONS: Record<TimeFrame, Duration.Duration> = {
 	'1h': Duration.hours(1),
 	'7d': Duration.days(7),
 	'10m': Duration.minutes(10),
-	'24h': Duration.days(1)
+	'24h': Duration.days(1),
+	'30d': Duration.days(30)
 }
 
 export function timeFrameDuration(frame: TimeFrame) {

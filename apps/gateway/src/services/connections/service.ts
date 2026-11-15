@@ -54,7 +54,7 @@ import type {
 } from '#services/connections/schema.ts'
 import {
 	Connection,
-	ConnectionCalls,
+	McpCall,
 	ConnectionGrant,
 	ConnectionState,
 	ConnectionGeneration,
@@ -225,16 +225,13 @@ export class Connections extends Context.Service<
 			`
 		})
 		const countCall = SqlSchema.void({
-			Request: ConnectionCalls.insert,
-			execute: row => sql`
-				INSERT INTO ${sql(ConnectionCalls.table)} ${sql.insert(row)}
-				ON CONFLICT (serverId, minute) DO UPDATE SET calls = calls + excluded.calls
-			`
+			Request: McpCall.insert,
+			execute: row => sql`INSERT INTO ${sql(McpCall.table)} ${sql.insert(row)}`
 		})
 		const deleteCallsBefore = SqlSchema.void({
-			Request: Schema.Struct({minute: DateTimeUtcFromFiniteMillis, serverId: ConnectionCalls.fields.serverId}),
+			Request: Schema.Struct({at: DateTimeUtcFromFiniteMillis, serverId: McpCall.fields.serverId}),
 			execute: request =>
-				sql`DELETE FROM ${sql(ConnectionCalls.table)} WHERE serverId = ${request.serverId} AND minute < ${request.minute}`
+				sql`DELETE FROM ${sql(McpCall.table)} WHERE serverId = ${request.serverId} AND at < ${request.at}`
 		})
 		// Every server, with its calls summed into the range's buckets.
 		const listCalls = SqlSchema.findAll({
@@ -243,8 +240,8 @@ export class Connections extends Context.Service<
 			execute: range => sql`
 				SELECT id, (
 					SELECT json_group_array(json_object('at', at, 'calls', calls)) FROM (
-						SELECT minute - minute % ${range.size} AS at, sum(calls) AS calls FROM ${sql(ConnectionCalls.table)}
-						WHERE serverId = ${sql(Connection.table)}.id AND minute >= ${range.from} AND minute < ${range.to}
+						SELECT at - at % ${range.size} AS at, count(*) AS calls FROM ${sql(McpCall.table)}
+						WHERE serverId = ${sql(Connection.table)}.id AND at >= ${range.from} AND at < ${range.to}
 						GROUP BY 1 ORDER BY 1
 					)
 				) AS series
@@ -616,8 +613,8 @@ export class Connections extends Context.Service<
 				const now = yield* DateTime.now
 				yield* pipe(
 					Effect.andThen(
-						countCall({calls: 1, minute: DateTime.startOf(now, 'minute'), serverId: id}),
-						deleteCallsBefore({minute: DateTime.subtractDuration(now, Duration.days(30)), serverId: id})
+						countCall({at: now, serverId: id}),
+						deleteCallsBefore({at: DateTime.subtractDuration(now, Duration.days(30)), serverId: id})
 					),
 					Reactivity.mutation(['connectionCalls']),
 					sql.withTransaction,
@@ -847,11 +844,22 @@ export class Connections extends Context.Service<
 						) STRICT, WITHOUT ROWID
 					`
 				}),
-				// Hour timestamps already name their first minute; preserve every existing count.
-				'0002_minute_calls': Effect.flatMap(
-					SqlClient.SqlClient,
-					sql => sql`ALTER TABLE connection_calls RENAME COLUMN hour TO minute`
-				)
+				// Expand each historical count into calls dated to that hour.
+				'0002_mcp_calls': Effect.gen(function* () {
+					const sql = yield* SqlClient.SqlClient
+					yield* sql`CREATE TABLE mcp_calls (
+						serverId TEXT NOT NULL REFERENCES connections (id) ON DELETE CASCADE,
+						at INTEGER NOT NULL
+					) STRICT`
+					yield* sql`WITH RECURSIVE calls (serverId, at, remaining) AS (
+						SELECT serverId, hour, calls FROM connection_calls WHERE calls > 0
+						UNION ALL
+						SELECT serverId, at, remaining - 1 FROM calls WHERE remaining > 1
+					)
+					INSERT INTO mcp_calls (serverId, at) SELECT serverId, at FROM calls`
+					yield* sql`DROP TABLE connection_calls`
+					yield* sql`CREATE INDEX mcp_calls_server_at ON mcp_calls (serverId, at)`
+				})
 			}),
 			table: 'connections_migrations'
 		})

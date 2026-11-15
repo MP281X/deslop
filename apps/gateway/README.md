@@ -17,7 +17,7 @@ Collection cursors resume live, key-ordered lists with the same filters; new row
 
 ## AI proxy
 
-Home offers 10m · 1h · 24h · 7d, defaulting to 24h. AI spend and MCP calls are recorded by minute. Series use minute buckets for 10m and 1h, quarter-hours for 24h and hours for 7d; charts sum these into 60 slots, except 10m keeps its ten available minute buckets. Upgrading preserves hourly history at each hour's first minute, not reconstructed call times. Existing thirty-day retention is unchanged.
+Home's time frames, call storage and usage retention are described in this app's `AGENTS.md`.
 
 App servers start with `--domain mp281x.xyz`; Gateway's origin is derived from that domain. Auth's account answer supplies admin access; Gateway has no separate admin setting.
 

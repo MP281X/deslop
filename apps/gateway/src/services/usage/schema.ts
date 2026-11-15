@@ -11,12 +11,13 @@ export const UsageRange = Schema.Struct({
 	to: DateTimeUtcFromFiniteMillis
 })
 
-// Deploy's source spacing, limited to our finest stored unit for ten minutes.
+// Report spacing; the home charts combine these into at most sixty slots.
 const BUCKETS: Record<TimeFrame, Duration.Duration> = {
 	'1h': Duration.minutes(1),
 	'7d': Duration.hours(1),
 	'10m': Duration.minutes(1),
-	'24h': Duration.minutes(15)
+	'24h': Duration.minutes(15),
+	'30d': Duration.hours(12)
 }
 
 export function timeFrameRange(frame: TimeFrame, now: DateTime.Utc) {

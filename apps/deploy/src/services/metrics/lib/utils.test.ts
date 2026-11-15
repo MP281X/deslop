@@ -54,12 +54,12 @@ it('measures CPU deltas and leaves resets and gaps unmeasured', () => {
 
 it('reads each range from plain samples and keeps missing readings unmeasured', () => {
 	const points = [
-		{...POINT, since: DateTime.makeUnsafe(1000), step: Duration.seconds(1), time: DateTime.makeUnsafe(1000)},
+		{...POINT, since: DateTime.makeUnsafe(1000), step: Duration.minutes(1), time: DateTime.makeUnsafe(1000)},
 		{
 			...POINT,
 			cpu: Option.some(20),
 			since: DateTime.makeUnsafe(61_000),
-			step: Duration.seconds(1),
+			step: Duration.minutes(1),
 			time: DateTime.makeUnsafe(61_000)
 		}
 	]
@@ -81,12 +81,15 @@ it('weights an existing rollup by its duration and counts missing apps as zero',
 			time: DateTime.makeUnsafe(18_000)
 		}
 	]
-	const merged = Option.getOrThrow(
-		Array.findFirst(
-			rollup({...POINT, apps: Option.some([]), cpu: Option.some(10), time: DateTime.makeUnsafe(19_000)}, stored),
-			point => Duration.equals(point.step, Duration.seconds(10))
-		)
+	const rolled = rollup(
+		{...POINT, apps: Option.some([]), cpu: Option.some(10), time: DateTime.makeUnsafe(19_000)},
+		stored
 	)
+	assert.deepStrictEqual(
+		Array.map(rolled, point => Duration.toMillis(point.step)),
+		[10_000, 60_000, 900_000, 3_600_000, 21_600_000]
+	)
+	const merged = Option.getOrThrow(Array.findFirst(rolled, point => Duration.equals(point.step, Duration.seconds(10))))
 	assert.deepStrictEqual(
 		[merged.cpu, Option.map(merged.apps, apps => Array.map(apps, app => [app.cpu, app.memory]))],
 		[Option.some(46), Option.some([[Option.some(72), 900]])]
@@ -101,14 +104,14 @@ it('weights an already averaged sample by the interval it covers', () => {
 					...POINT,
 					cpu: Option.some(0),
 					since: DateTime.makeUnsafe(1000),
-					step: Duration.seconds(1),
+					step: Duration.minutes(1),
 					time: DateTime.makeUnsafe(10_000)
 				},
 				{
 					...POINT,
 					cpu: Option.some(100),
 					since: DateTime.makeUnsafe(11_000),
-					step: Duration.seconds(1),
+					step: Duration.minutes(1),
 					time: DateTime.makeUnsafe(20_000)
 				}
 			],

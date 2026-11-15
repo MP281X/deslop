@@ -16,12 +16,13 @@ import type {
 	Point
 } from '#services/metrics/schema.ts'
 
-// Each range's series spacing, so its 60 slots hold a few points each: ten seconds for ten minutes, minutes for an hour, quarter-hours for a day, hours for a week. A series keeps its range.
+// Each range's series spacing, so its 60 slots hold a few points each. A series keeps its range.
 export const SERIES = {
 	10: Duration.seconds(10),
 	60: Duration.minutes(1),
 	1440: Duration.minutes(15),
-	10_080: Duration.hours(1)
+	10_080: Duration.hours(1),
+	43_200: Duration.hours(6)
 }
 
 // One measurement, before it joins a series.
@@ -301,7 +302,7 @@ function merge(bucket: Array.NonEmptyReadonlyArray<Sample>) {
 
 // What a measurement changes in each series: the stored point of the bucket it falls in, merged with it, or a new point.
 export function rollup(point: Point, stored: readonly Sample[]) {
-	return Array.map([SERIES[10], SERIES[60], SERIES[1440], SERIES[10_080]] as const, step => {
+	return Array.map([SERIES[10], SERIES[60], SERIES[1440], SERIES[10_080], SERIES[43_200]] as const, step => {
 		const fresh: Sample = {...point, since: point.time, step}
 		return pipe(
 			stored,
