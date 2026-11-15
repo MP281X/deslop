@@ -41,8 +41,8 @@ const ToolHandlers = ToolContracts.toLayer(
 					)
 				}
 			}),
-			remove_ai_key: Effect.fnUntraced(function* () {
-				yield* ai.removeKey((yield* CurrentUser).id)
+			remove_ai_key: Effect.fnUntraced(function* (input) {
+				yield* ai.removeKey((yield* CurrentUser).id, input.provider)
 				return {}
 			}),
 			remove_mcp_server: Effect.fnUntraced(function* (input) {

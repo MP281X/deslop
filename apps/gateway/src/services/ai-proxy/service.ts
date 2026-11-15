@@ -1,5 +1,6 @@
 import {
 	Array,
+	Boolean,
 	Context,
 	DateTime,
 	Effect,
@@ -32,7 +33,7 @@ import {AuthError, CLIENT_HEADER, ON_BEHALF_HEADER, failureOptions} from '@deslo
 import type {UserId} from '@deslop/runtime/shared/auth'
 
 import type {AiSetKey} from './schema.ts'
-import {AiKey} from './schema.ts'
+import {AiKey, AiKeyItem, AiProvider} from './schema.ts'
 
 import {AiMetering} from '#services/ai-metering/service.ts'
 
@@ -62,37 +63,26 @@ function isClaude(value: string) {
 	return pipe(value, String.match(/(?:^|\/)claude-/iu), Option.isSome)
 }
 
-function destinationOf(key: AiKey, method: string, rest: string, model: Option.Option<AiModelId>) {
+function destinationOf(method: string, rest: string, model: Option.Option<AiModelId>) {
 	const path = inferencePath(rest)
 	if (Option.isNone(path)) {
 		return Result.fail(HttpServerResponse.jsonUnsafe({error: {message: 'Invalid inference path'}}, {status: 400}))
 	}
-	if (!String.startsWith('connection/')(rest)) {
+	if (!String.startsWith('anthropic/')(rest)) {
 		if (Option.exists(model, isClaude) || Option.exists(path, isClaude)) {
 			return Result.fail(
 				HttpServerResponse.jsonUnsafe(
-					{error: {message: 'Claude must use the connected Anthropic account: use /ai/connection/v1/messages'}},
+					{error: {message: 'Claude must use the Anthropic key: use /ai/anthropic/v1/messages'}},
 					{status: 403}
 				)
 			)
 		}
 		return Result.succeed(`https://opencode.ai/inference/${rest}`)
 	}
-	if (method !== 'POST' || pipe(rest, String.match(/^connection\/v1\/messages(?:\?.*)?$/u), Option.isNone)) {
-		return Result.fail(
-			HttpServerResponse.jsonUnsafe({error: {message: 'Unknown connected Claude endpoint'}}, {status: 404})
-		)
+	if (method !== 'POST' || pipe(rest, String.match(/^anthropic\/v1\/messages(?:\?.*)?$/u), Option.isNone)) {
+		return Result.fail(HttpServerResponse.jsonUnsafe({error: {message: 'Unknown Anthropic endpoint'}}, {status: 404}))
 	}
-	return Option.match(key.connectionUrl, {
-		onNone: () =>
-			Result.fail(
-				HttpServerResponse.jsonUnsafe(
-					{error: {message: 'Enter the connected Anthropic provider’s Console API URL in Gateway'}},
-					{status: 402}
-				)
-			),
-		onSome: url => Result.succeed(`${url}${String.slice('connection/v1'.length)(rest)}`)
-	})
+	return Result.succeed(`https://api.anthropic.com/${String.slice('anthropic/'.length)(rest)}`)
 }
 
 const asAuthError = Effect.mapError((cause: unknown) =>
@@ -106,18 +96,24 @@ export class AiProxy extends Context.Service<AiProxy>()('@deslop/gateway/service
 		const client = yield* HttpClient.HttpClient
 		const scope = yield* Scope.Scope
 		const metering = yield* AiMetering
-		const findKey = SqlSchema.findOneOption({
+		const listKeys = SqlSchema.findAll({
 			Request: AiKey.fields.owner,
+			Result: AiKeyItem,
+			execute: owner =>
+				sql`SELECT provider, last4, lastStatus FROM ${sql(AiKey.table)} WHERE owner = ${owner} ORDER BY provider`
+		})
+		const findKey = SqlSchema.findOneOption({
+			Request: Schema.Struct({owner: AiKey.fields.owner, provider: AiProvider}),
 			Result: AiKey,
-			execute: owner => sql`SELECT * FROM ${sql(AiKey.table)} WHERE owner = ${owner}`
+			execute: key => sql`SELECT * FROM ${sql(AiKey.table)} WHERE owner = ${key.owner} AND provider = ${key.provider}`
 		})
 		const saveKey = SqlSchema.void({
 			Request: AiKey.insert,
 			execute: row => sql`INSERT OR REPLACE INTO ${sql(AiKey.table)} ${sql.insert(row)}`
 		})
 		const deleteKey = SqlSchema.void({
-			Request: AiKey.fields.owner,
-			execute: owner => sql`DELETE FROM ${sql(AiKey.table)} WHERE owner = ${owner}`
+			Request: Schema.Struct({owner: AiKey.fields.owner, provider: AiProvider}),
+			execute: key => sql`DELETE FROM ${sql(AiKey.table)} WHERE owner = ${key.owner} AND provider = ${key.provider}`
 		})
 		// Only a changed status writes, and only on the key that answered, never its replacement.
 		const markKey = SqlSchema.void({
@@ -131,9 +127,7 @@ export class AiProxy extends Context.Service<AiProxy>()('@deslop/gateway/service
 		return {
 			key: Effect.fn('AiProxy.key')(function* (id: UserId) {
 				yield* Effect.annotateCurrentSpan('userId', id)
-				return Option.map(yield* asAuthError(findKey(id)), key =>
-					Struct.pick(key, ['connectionUrl', 'last4', 'lastStatus'])
-				)
+				return yield* asAuthError(listKeys(id))
 			}),
 			proxy: Effect.fn('AiProxy.proxy')(function* (rest: string) {
 				const request = yield* HttpServerRequest.HttpServerRequest
@@ -145,10 +139,18 @@ export class AiProxy extends Context.Service<AiProxy>()('@deslop/gateway/service
 						failureOptions(person.failure, 401)
 					)
 				}
-				const key = yield* asAuthError(findKey(person.success.id))
+				const provider = Boolean.match(String.startsWith('anthropic/')(rest), {
+					onFalse: Function.constant('opencode' as const),
+					onTrue: Function.constant('anthropic' as const)
+				})
+				const key = yield* asAuthError(findKey({owner: person.success.id, provider}))
 				if (Option.isNone(key)) {
 					return HttpServerResponse.jsonUnsafe(
-						{error: {message: 'Enter your OpenCode service account key in Gateway'}},
+						{
+							error: {
+								message: `Save your ${Boolean.match(provider === 'anthropic', {onFalse: Function.constant('OpenCode service account'), onTrue: Function.constant('Anthropic API')})} key in Gateway`
+							}
+						},
 						{status: 402}
 					)
 				}
@@ -168,7 +170,12 @@ export class AiProxy extends Context.Service<AiProxy>()('@deslop/gateway/service
 						yield* Schema.decodeUnknownEffect(
 							Schema.Literals(['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'])
 						)(request.method)
-					)('/', {headers: Headers.set(headers, 'authorization', `Bearer ${Redacted.value(foundKey.secret)}`)})
+					)('/', {
+						headers: Boolean.match(provider === 'anthropic', {
+							onFalse: () => Headers.set(headers, 'authorization', `Bearer ${Redacted.value(foundKey.secret)}`),
+							onTrue: () => Headers.set(headers, 'x-api-key', Redacted.value(foundKey.secret))
+						})
+					})
 				}
 				if (request.method !== 'GET' && request.method !== 'HEAD') {
 					const body = new Uint8Array(yield* request.arrayBuffer)
@@ -178,7 +185,7 @@ export class AiProxy extends Context.Service<AiProxy>()('@deslop/gateway/service
 					outgoing.model = Option.flatMap(decoded, value => value.model)
 					outgoing.request = HttpClientRequest.bodyUint8Array(outgoing.request, body, request.headers['content-type'])
 				}
-				const destination = destinationOf(foundKey, request.method, rest, outgoing.model)
+				const destination = destinationOf(request.method, rest, outgoing.model)
 				if (Result.isFailure(destination)) return destination.failure
 				const response = yield* client.execute(HttpClientRequest.setUrl(outgoing.request, destination.success))
 				// Key bookkeeping cannot turn an upstream action that committed into a failed forwarding request.
@@ -197,6 +204,7 @@ export class AiProxy extends Context.Service<AiProxy>()('@deslop/gateway/service
 				yield* Effect.forkIn(
 					metering.record(
 						person.success.id,
+						provider,
 						outgoing.model,
 						now,
 						Option.exists(
@@ -223,24 +231,22 @@ export class AiProxy extends Context.Service<AiProxy>()('@deslop/gateway/service
 					{headers: Headers.removeMany(response.headers, blocked), status: response.status}
 				)
 			}),
-			removeKey: Effect.fn('AiProxy.removeKey')(function* (id: UserId) {
+			removeKey: Effect.fn('AiProxy.removeKey')(function* (id: UserId, provider: AiProvider) {
 				yield* Effect.annotateCurrentSpan('userId', id)
-				return yield* asAuthError(deleteKey(id))
+				return yield* asAuthError(deleteKey({owner: id, provider}))
 			}),
 			setKey: Effect.fn('AiProxy.setKey')(function* (id: UserId, input: AiSetKey) {
 				yield* Effect.annotateCurrentSpan('userId', id)
-				const existing = yield* asAuthError(findKey(id))
-				const secret = Option.orElse(input.secret, () => Option.map(existing, key => key.secret))
-				if (Option.isNone(secret)) {
-					return yield* AuthError.make({message: 'Enter your OpenCode service account key in Gateway'})
-				}
 				return yield* asAuthError(
 					saveKey({
-						connectionUrl: Option.orElse(input.connectionUrl, () => Option.flatMap(existing, key => key.connectionUrl)),
-						last4: String.slice(-4)(Redacted.value(Option.getOrThrow(secret))),
+						last4: String.slice(-4)(Redacted.value(input.secret)),
 						lastStatus: Option.none(),
 						owner: id,
-						secret: Option.getOrThrow(secret)
+						provider: Boolean.match(String.startsWith('sk-ant-')(Redacted.value(input.secret)), {
+							onFalse: Function.constant('opencode' as const),
+							onTrue: Function.constant('anthropic' as const)
+						}),
+						secret: input.secret
 					})
 				)
 			})
@@ -328,6 +334,17 @@ export class AiProxy extends Context.Service<AiProxy>()('@deslop/gateway/service
 					yield* sql`INSERT INTO ai_usage_new SELECT * FROM ai_usage WHERE spendSource <> 'unattributed'`
 					yield* sql`DROP TABLE ai_usage`
 					yield* sql`ALTER TABLE ai_usage_new RENAME TO ai_usage`
+				}),
+				'0006_anthropic_key': Effect.gen(function* () {
+					const sql = yield* SqlClient.SqlClient
+					yield* sql`CREATE TABLE ai_keys_new (
+						owner TEXT NOT NULL, provider TEXT NOT NULL CHECK (provider IN ('opencode', 'anthropic')),
+						secret TEXT NOT NULL, last4 TEXT NOT NULL, lastStatus INTEGER,
+						PRIMARY KEY (owner, provider)
+					) STRICT, WITHOUT ROWID`
+					yield* sql`INSERT INTO ai_keys_new SELECT owner, 'opencode', secret, last4, lastStatus FROM ai_keys`
+					yield* sql`DROP TABLE ai_keys`
+					yield* sql`ALTER TABLE ai_keys_new RENAME TO ai_keys`
 				})
 			}),
 			table: 'ai_migrations'

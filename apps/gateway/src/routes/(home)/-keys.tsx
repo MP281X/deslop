@@ -1,13 +1,12 @@
 import {useAtom} from '@effect/atom-react'
 
-import {Boolean, Function, Option, Redacted, Schema, String, pipe} from 'effect'
+import {Boolean, Function, Redacted, Schema, String} from 'effect'
 
 import {AsyncResult} from 'effect/reactivity'
 import {useState} from 'react'
 
 import {ThemedMark} from '@deslop/components-web/blocks/marks'
 import {ResultError} from '@deslop/components-web/blocks/result-error'
-import {Loaded} from '@deslop/components-web/blocks/states'
 import {Button} from '@deslop/components-web/ui/button'
 import {
 	Dialog,
@@ -22,104 +21,59 @@ import {Input} from '@deslop/components-web/ui/input'
 import {Opencode} from '@deslop/components-web/ui/svgs/opencode'
 import {OpencodeDark} from '@deslop/components-web/ui/svgs/opencodeDark'
 
-import {aiKeyAtom, setKeyAtom} from '#lib/gateway.ts'
-import {CONNECTION_MESSAGE, ConnectionUrl, KEY_MESSAGE, ServiceAccountKey} from '#services/ai-proxy/schema.ts'
+import {setKeyAtom} from '#lib/gateway.ts'
+import {AiKeySecret, KEY_MESSAGE} from '#services/ai-proxy/schema.ts'
 
 export function ProviderMark() {
 	return <ThemedMark light={Opencode} dark={OpencodeDark} className="size-4" />
 }
 
-export function AddKeyDialog(props: {
-	onOpenChange: (open: boolean) => void
-	open: boolean
-	secret: string
-	url: string
-}) {
+export function AddKeyDialog(props: {onOpenChange: (open: boolean) => void; open: boolean; secret: string}) {
 	const [result, save] = useAtom(setKeyAtom)
-	// oxlint-disable-next-line react-doctor/no-derived-useState -- Each opening remounts with the pasted key or Console API URL.
+	// oxlint-disable-next-line react-doctor/no-derived-useState -- Each opening remounts with the pasted key.
 	const [secret, setSecret] = useState(props.secret)
-	// oxlint-disable-next-line react-doctor/no-derived-useState -- Each opening remounts with the pasted key or Console API URL.
-	const [url, setUrl] = useState(props.url)
 	const waiting = AsyncResult.isWaiting(result)
-	const invalidKey = String.isNonEmpty(String.trim(secret)) && !Schema.is(ServiceAccountKey)(String.trim(secret))
-	const invalidUrl = String.isNonEmpty(String.trim(url)) && !Schema.is(ConnectionUrl)(String.trim(url))
+	const invalidKey = String.isNonEmpty(String.trim(secret)) && !Schema.is(AiKeySecret)(String.trim(secret))
 	return (
 		<Dialog open={props.open && !AsyncResult.isSuccess(result)} onOpenChange={props.onOpenChange}>
 			<DialogContent showCloseButton={false}>
-				<Loaded atom={aiKeyAtom}>
-					{key => (
-						<form
-							onSubmit={event => {
-								event.preventDefault()
-								if (invalidKey || invalidUrl) return
-								save({
-									payload: {
-										connectionUrl: Option.liftPredicate(String.trim(url), String.isNonEmpty),
-										secret: pipe(
-											String.trim(secret),
-											Option.liftPredicate(String.isNonEmpty),
-											Option.map(Redacted.make)
-										)
-									},
-									reactivityKeys: ['aiKey']
-								})
-							}}
-						>
-							<FieldGroup>
-								<DialogHeader>
-									<DialogTitle>OpenCode</DialogTitle>
-								</DialogHeader>
-								<Field data-invalid={invalidKey}>
-									<FieldLabel htmlFor="ai-secret">Service account key</FieldLabel>
-									<Input
-										id="ai-secret"
-										type="password"
-										aria-invalid={invalidKey}
-										aria-describedby="ai-secret-error"
-										autoComplete="off"
-										autoFocus
-										required={Option.isNone(key)}
-										placeholder={Option.match(key, {
-											onNone: Function.constant('OpenCode Console service account key'),
-											onSome: current => `Leave empty to keep …${current.last4}`
-										})}
-										value={secret}
-										disabled={waiting}
-										onChange={event => setSecret(event.target.value)}
-									/>
-									{invalidKey && <FieldError id="ai-secret-error">{KEY_MESSAGE}</FieldError>}
-								</Field>
-								<Field data-invalid={invalidUrl}>
-									<FieldLabel htmlFor="ai-connection">Anthropic Console API URL</FieldLabel>
-									<Input
-										id="ai-connection"
-										type="text"
-										aria-invalid={invalidUrl}
-										aria-describedby="ai-connection-error"
-										value={url}
-										disabled={waiting}
-										placeholder={pipe(
-											key,
-											Option.flatMap(current => current.connectionUrl),
-											Option.getOrElse(Function.constant('https://opencode.ai/inference/custom/conn_…'))
-										)}
-										onChange={event => setUrl(event.target.value)}
-									/>
-									{invalidUrl && <FieldError id="ai-connection-error">{CONNECTION_MESSAGE}</FieldError>}
-								</Field>
-								<ResultError result={result} />
-								<DialogFooter>
-									<DialogClose render={<Button variant="outline" type="button" disabled={waiting} />}>
-										Cancel
-									</DialogClose>
-									<Button type="submit" disabled={waiting || invalidKey || invalidUrl}>
-										{Boolean.match(waiting, {onFalse: Function.constant('Save'), onTrue: Function.constant('Saving…')})}
-									</Button>
-								</DialogFooter>
-							</FieldGroup>
-						</form>
-					)}
-				</Loaded>
+				<form
+					onSubmit={event => {
+						event.preventDefault()
+						if (invalidKey) return
+						save({payload: {secret: Redacted.make(String.trim(secret))}, reactivityKeys: ['aiKey']})
+					}}
+				>
+					<FieldGroup>
+						<DialogHeader>
+							<DialogTitle>AI key</DialogTitle>
+						</DialogHeader>
+						<Field data-invalid={invalidKey}>
+							<FieldLabel htmlFor="ai-secret">OpenCode or Anthropic key</FieldLabel>
+							<Input
+								id="ai-secret"
+								type="password"
+								aria-invalid={invalidKey}
+								aria-describedby="ai-secret-error"
+								autoComplete="off"
+								autoFocus
+								required
+								placeholder="oc_sk_… or sk-ant-…"
+								value={secret}
+								disabled={waiting}
+								onChange={event => setSecret(event.target.value)}
+							/>
+							{invalidKey && <FieldError id="ai-secret-error">{KEY_MESSAGE}</FieldError>}
+						</Field>
+						<ResultError result={result} />
+						<DialogFooter>
+							<DialogClose render={<Button variant="outline" type="button" disabled={waiting} />}>Cancel</DialogClose>
+							<Button type="submit" disabled={waiting || invalidKey}>
+								{Boolean.match(waiting, {onFalse: Function.constant('Save'), onTrue: Function.constant('Saving…')})}
+							</Button>
+						</DialogFooter>
+					</FieldGroup>
+				</form>
 			</DialogContent>
 		</Dialog>
 	)
