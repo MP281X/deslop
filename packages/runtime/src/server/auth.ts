@@ -65,11 +65,10 @@ export const clientAddress = HttpMiddleware.make(app =>
 			const unclaimed = Headers.remove(request.headers, CLIENT_HEADER)
 			const headers = pipe(
 				request.remoteAddress,
-				Option.filter(address => !Option.exists(Result.getSuccess(NetAddress.ipFromString(address)), NetAddress.isLoopback)),
-				Option.match({
-					onNone: () => unclaimed,
-					onSome: address => Headers.set(unclaimed, CLIENT_HEADER, address)
-				})
+				Option.filter(
+					address => !Option.exists(Result.getSuccess(NetAddress.ipFromString(address)), NetAddress.isLoopback)
+				),
+				Option.match({onNone: () => unclaimed, onSome: address => Headers.set(unclaimed, CLIENT_HEADER, address)})
 			)
 			return yield* Effect.provideService(app, HttpServerRequest.HttpServerRequest, request.modify({headers}))
 		})
@@ -141,10 +140,15 @@ export class Auth extends Context.Service<
 									Option.getOrElse(yield* Effect.option(response.text), Function.constant('Sign in first'))
 								)
 							}
-							return yield* HttpClientResponse.schemaBodyJson(Account)(yield* HttpClientResponse.filterStatusOk(response))
+							return yield* HttpClientResponse.schemaBodyJson(Account)(
+								yield* HttpClientResponse.filterStatusOk(response)
+							)
 						}, asAuthError('The authorization service is temporarily unavailable')),
 						// A refusal is asked again at once, so a sign-in shows on the next request.
-						{capacity: 1024, timeToLive: Exit.match({onFailure: Function.constant(0), onSuccess: Function.constant('30 seconds')})}
+						{
+							capacity: 1024,
+							timeToLive: Exit.match({onFailure: Function.constant(0), onSuccess: Function.constant('30 seconds')})
+						}
 					)
 					return Auth.makeContext(
 						Effect.fn('Auth.account')(function* (headers: Headers.Headers) {

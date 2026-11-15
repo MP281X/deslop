@@ -26,9 +26,9 @@ import {
 } from 'effect/http'
 import {Migrator, SqlClient, SqlSchema} from 'effect/sql'
 
-import {Auth, localAuth} from '@deslop/runtime/server/auth'
+import {Auth} from '@deslop/runtime/server/auth'
 import {AiModelId} from '@deslop/runtime/shared/ai'
-import {AuthError, bearerOf, failureOptions, isJwt} from '@deslop/runtime/shared/auth'
+import {AuthError, CLIENT_HEADER, ON_BEHALF_HEADER, failureOptions} from '@deslop/runtime/shared/auth'
 import type {UserId} from '@deslop/runtime/shared/auth'
 
 import type {AiSetKey} from './schema.ts'
@@ -46,7 +46,7 @@ const HOP_BY_HOP = [
 	'transfer-encoding',
 	'upgrade'
 ]
-const FORBIDDEN = ['authorization', 'x-api-key', 'cookie', 'host', ...HOP_BY_HOP]
+const FORBIDDEN = ['authorization', 'x-api-key', 'cookie', 'host', CLIENT_HEADER, ON_BEHALF_HEADER, ...HOP_BY_HOP]
 
 function inferencePath(rest: string) {
 	const state = {path: Array.headNonEmpty(String.split(rest, '?'))}
@@ -103,7 +103,6 @@ export class AiProxy extends Context.Service<AiProxy>()('@deslop/gateway/service
 	make: Effect.gen(function* () {
 		const sql = yield* SqlClient.SqlClient
 		const auth = yield* Auth
-		const local = yield* localAuth
 		const client = yield* HttpClient.HttpClient
 		const scope = yield* Scope.Scope
 		const metering = yield* AiMetering
@@ -139,9 +138,6 @@ export class AiProxy extends Context.Service<AiProxy>()('@deslop/gateway/service
 			proxy: Effect.fn('AiProxy.proxy')(function* (rest: string) {
 				const request = yield* HttpServerRequest.HttpServerRequest
 				const now = yield* DateTime.now
-				if (!local && !Option.exists(bearerOf(request.headers), isJwt)) {
-					return HttpServerResponse.jsonUnsafe({error: {message: 'Sign in first'}}, {status: 401})
-				}
 				const person = yield* Effect.result(auth.user(request.headers))
 				if (Result.isFailure(person)) {
 					return HttpServerResponse.jsonUnsafe(

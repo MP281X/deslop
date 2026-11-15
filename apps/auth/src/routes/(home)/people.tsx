@@ -121,7 +121,9 @@ function Directory() {
 }
 
 function PeopleRoute() {
-	if (!Option.exists(useAtomSuspense(accountAtom).value, signed => signed.role === 'Admin')) return <Navigate to="/" />
+	if (!Option.exists(useAtomSuspense(accountAtom).value, signed => signed.role === 'Admin')) {
+		return <Navigate to="/" search={{}} />
+	}
 	return (
 		<Suspense fallback={<LoadingRows label="People" rows={3} />}>
 			<Directory />

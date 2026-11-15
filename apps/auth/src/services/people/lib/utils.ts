@@ -8,10 +8,6 @@ import {Person} from '#services/people/schema.ts'
 
 const ROLE_ORDER = {Admin: 1, Member: 2, Waiting: 0} satisfies Record<Role, number>
 
-export function ownerOf(row: Member) {
-	return {incarnation: row.incarnation, user: {id: row.id, name: row.name}}
-}
-
 export function roleOf(admins: readonly GitHubId[], id: UserId, row: Option.Option<Member>) {
 	if (isAdmin(admins, id)) return 'Admin' as const
 	if (Option.exists(row, found => found.status === 'Allowed')) return 'Member' as const

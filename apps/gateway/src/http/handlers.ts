@@ -3,7 +3,7 @@ import {Duration, Effect, Option, String, pipe} from 'effect'
 import {HttpRouter, HttpServerRequest, HttpServerResponse} from 'effect/http'
 
 import {Auth} from '@deslop/runtime/server/auth'
-import {AuthError, COOKIE, signInUrl} from '@deslop/runtime/shared/auth'
+import {AuthError, signInUrl} from '@deslop/runtime/shared/auth'
 
 import {AiProxy} from '#services/ai-proxy/service.ts'
 import {clientMetadata} from '#services/connections/lib/utils.ts'
@@ -11,6 +11,8 @@ import type {ServerId} from '#services/connections/schema.ts'
 import {Callback, ServerParams} from '#services/connections/schema.ts'
 import {Connections, gatewayUrl} from '#services/connections/service.ts'
 import {Gateway} from '#services/gateway/service.ts'
+
+const COOKIE = {httpOnly: true, path: '/', sameSite: 'lax', secure: true} as const
 
 // A step's answer is never cached; a failure returns to the servers page, whose row shows why.
 function returning<E, R>(step: Effect.Effect<HttpServerResponse.HttpServerResponse, E, R>) {

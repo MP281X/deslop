@@ -9,7 +9,7 @@ import {makeClipboard, readClipboard} from '@deslop/components-mobile/lib/clipbo
 import type {ClipboardCopy, ClipboardKind} from '@deslop/components-mobile/lib/clipboard'
 import {cachedList} from '@deslop/components-mobile/lib/files'
 import {makeRemoval} from '@deslop/components-mobile/lib/removal'
-import {liveStream} from '@deslop/runtime/client/live-stream'
+import {liveStream, reconnectOnDrop} from '@deslop/runtime/client/live-stream'
 import {activationsAtom} from '@deslop/runtime/mobile/activations'
 import {provideRuntimeOnce} from '@deslop/runtime/mobile/session'
 import {listReducer} from '@deslop/runtime/shared/list'
@@ -26,13 +26,13 @@ const apply = listReducer(byStart)
 // The copy on the iPhone opens the trip at the gate even without a network.
 export const bookingsAtom = Atom.keepAlive(
 	RpcClient.runtime.atom(get => {
-		if (!session.signedIn(get)) return Stream.never
+		if (!session.available(get)) return Stream.never
 		return cachedList(
 			get,
 			bookingsFile,
 			BookingModel.json,
 			pipe(liveStream(RpcClient, 'bookings.events'), Stream.scan(Array.empty<Booking>, apply), Stream.drop(1)),
-			session.reconnectOrSignOut
+			reconnectOnDrop
 		)
 	})
 )

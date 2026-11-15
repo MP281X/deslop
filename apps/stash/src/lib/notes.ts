@@ -7,7 +7,7 @@ import {Directory, File, Paths} from 'expo-file-system'
 import {alertFailure} from '@deslop/components-mobile/lib/alerts'
 import {cachedList, writeAtomically} from '@deslop/components-mobile/lib/files'
 import {makeRemoval} from '@deslop/components-mobile/lib/removal'
-import {keepValueThroughOutages, liveStream} from '@deslop/runtime/client/live-stream'
+import {keepValueThroughOutages, liveStream, reconnectOnDrop} from '@deslop/runtime/client/live-stream'
 import {activationsAtom} from '@deslop/runtime/mobile/activations'
 import {provideRuntimeOnce} from '@deslop/runtime/mobile/session'
 import {listReducer} from '@deslop/runtime/shared/list'
@@ -25,13 +25,13 @@ const apply = listReducer(newestFirst)
 // The copy on the iPhone shows the list while the server is out of reach.
 export const notesAtom = Atom.keepAlive(
 	RpcClient.runtime.atom(get => {
-		if (!session.signedIn(get)) return Stream.never
+		if (!session.available(get)) return Stream.never
 		return cachedList(
 			get,
 			listFile,
 			NoteItem.json,
 			pipe(liveStream(RpcClient, 'notes.events'), Stream.scan(Array.empty<NoteItem>, apply), Stream.drop(1)),
-			session.reconnectOrSignOut
+			reconnectOnDrop
 		)
 	})
 )
@@ -45,7 +45,7 @@ export const queryAtom = Atom.make('')
 
 export const searchAtom = RpcClient.runtime.atom(get => {
 	const query = String.trim(get(queryAtom))
-	if (!session.signedIn(get) || String.isEmpty(query)) return Stream.succeed(Option.none())
+	if (!session.available(get) || String.isEmpty(query)) return Stream.succeed(Option.none())
 	return keepValueThroughOutages(
 		get,
 		pipe(
@@ -54,7 +54,7 @@ export const searchAtom = RpcClient.runtime.atom(get => {
 			Stream.unwrap,
 			Stream.map(ids => Option.some(HashSet.fromIterable(ids)))
 		),
-		session.reconnectOrSignOut
+		reconnectOnDrop
 	)
 })
 
@@ -68,13 +68,9 @@ export const imageAtom = Atom.family((id: Note['id']) =>
 			const file = new File(images, id)
 			if (file.exists) return file.uri
 			images.create({idempotent: true, intermediates: true})
-			const token = yield* session.bearer
 			const downloaded = yield* Effect.tryPromise({
 				catch: cause => NotesError.make({cause, message: 'The note image could not be downloaded.'}),
-				try: () =>
-					File.downloadFileAsync(new URL(`/api/images/${id}`, SERVER).href, file, {
-						headers: {authorization: `Bearer ${token}`}
-					})
+				try: () => File.downloadFileAsync(new URL(`/api/images/${id}`, SERVER).href, file)
 			})
 			return downloaded.uri
 		})

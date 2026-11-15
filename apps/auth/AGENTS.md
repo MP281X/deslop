@@ -1,8 +1,7 @@
 # Auth intent
 
-- **Sign-ins.** One table, most recently active first. A browser's child app sign-ins add to its latest activity, never separate rows; signing it out ends them all. Never narrow the client list.
-- **Session tools.** Every live root family is listed and revocable by id; only the web page groups them.
-- **Excluded.** Apps that open on their sign-ins, devices first, a launcher, an activity feed, a page built around a big code field.
-- **Transient records.** GitHub flows, authorization codes, sign-in requests (including device codes) and passkey challenges share expiring in-memory records; a restart cancels them, never a session already issued.
-- **Registration identity.** Access belongs to a registration, not a GitHub id: a removed person who rejoins starts a new registration that inherits no earlier credential or approval.
-- **Callbacks.** Outside local development, web callbacks belong only to first-party `*.mp281x.xyz` apps.
+- **Authority.** Auth names every caller, including its own pages and tools, through a shared browser session or tailnet identity.
+- **Sessions.** One browser session per row, most recently active first; signing one out ends it across all apps. Tailnet callers need no session.
+- **People.** GitHub browser sign-ins wait for an admin unless already allowed or admin. Tailnet invitations approve people automatically; removing them deletes sessions, and their next tailnet request registers them again.
+- **Transient records.** GitHub PKCE flows expire in memory; restarting cancels them, never a browser session already issued.
+- **Excluded.** Passkeys, device codes, app grants, OAuth servers, client registrations and launchers.

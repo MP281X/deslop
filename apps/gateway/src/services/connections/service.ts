@@ -30,14 +30,13 @@ import {
 } from '@modelcontextprotocol/client'
 import {SecureRandom} from 'effect/crypto'
 import {Base64Url} from 'effect/encoding'
-import type {Headers} from 'effect/http'
-import {FetchHttpClient, HttpClient, HttpClientError, HttpClientRequest, HttpClientResponse} from 'effect/http'
+import {FetchHttpClient, Headers, HttpClient, HttpClientError, HttpClientRequest, HttpClientResponse} from 'effect/http'
 import {Reactivity} from 'effect/reactivity'
 import {Migrator, SqlClient, SqlModel, SqlSchema} from 'effect/sql'
 
 import {Auth, adminIds, requireAdmin} from '@deslop/runtime/server/auth'
 import type {User, UserId} from '@deslop/runtime/shared/auth'
-import {AuthError, ISSUER_PATH} from '@deslop/runtime/shared/auth'
+import {AuthError, ON_BEHALF_HEADER} from '@deslop/runtime/shared/auth'
 import {DateTimeUtcFromFiniteMillis} from '@deslop/runtime/shared/time'
 
 import {clientMetadata, connectionFailure, describe, serverIcons, serverName} from '#services/connections/lib/utils.ts'
@@ -89,10 +88,6 @@ type Pending = {
 	metadata: Metadata
 	userId: UserId
 	verifier: string
-}
-
-function siteOf(url: URL) {
-	return pipe(String.split(url.hostname, '.'), Array.drop(1), Array.join('.'))
 }
 
 function asAuthError(message: string) {
@@ -159,18 +154,11 @@ export class Connections extends Context.Service<
 		const clientInfo = clientMetadata(origin)
 		const auth = yield* Auth
 		const upstreams = yield* Upstreams
-		const authUrl = Option.map(yield* Config.option(Config.String('AUTH_URL')), url => new URL(url))
-		// The caller's token opens every Deslop app, so only an HTTPS app on Auth's own site that names Auth receives it; any other server naming Auth stays third-party.
-		function deslop(url: string, authorizationServers: readonly string[]) {
+		const parent = pipe(String.split(new URL(origin).hostname, '.'), Array.drop(1), Array.join('.'))
+		// Only HTTPS subdomains of Gateway's parent domain receive the caller's identity.
+		function deslop(url: string) {
 			const target = new URL(url)
-			return Option.exists(
-				authUrl,
-				issuer =>
-					target.protocol === 'https:' &&
-					String.isEmpty(target.port) &&
-					siteOf(target) === siteOf(issuer) &&
-					Array.contains(authorizationServers, new URL(ISSUER_PATH, issuer).href)
-			)
+			return target.protocol === 'https:' && String.isNonEmpty(parent) && String.endsWith(`.${parent}`)(target.hostname)
 		}
 		function clientIdOf(client: OAuthClient) {
 			return Match.valueTags(client, {Document: () => clientInfo.client_id, Registered: found => found.clientId})
@@ -408,6 +396,36 @@ export class Connections extends Context.Service<
 		})
 
 		const discover = Effect.fnUntraced(function* (initial: ConnectionTarget, headers: Headers.Headers) {
+			const own = deslop(initial.url)
+			const access = yield* Boolean.match(own, {
+				onFalse: () => Effect.succeed(Headers.empty),
+				onTrue: () => Effect.map(auth.user(headers), user => Headers.fromInput({[ON_BEHALF_HEADER]: user.id}))
+			})
+			const available = Effect.fnUntraced(function* () {
+				const found = yield* upstreams.use(initial.url, Effect.succeed(access), client =>
+					Effect.map(client.listTools(), tools => ({info: client.serverInfo, instructions: client.instructions, tools}))
+				)
+				return {
+					...initial,
+					error: Option.none(),
+					icons: serverIcons(found.info),
+					instructions: Option.fromUndefinedOr(found.instructions),
+					issuer: Option.none(),
+					mode: Boolean.match(own, {
+						onFalse: Function.constant('public' as const),
+						onTrue: Function.constant('deslop' as const)
+					}),
+					name: pipe(
+						Option.fromUndefinedOr(found.info?.name),
+						Option.map(String.trim),
+						Option.filter(String.isNonEmpty),
+						Option.getOrElse(() => initial.name)
+					),
+					scope: Option.none(),
+					tools: Array.length(found.tools)
+				} satisfies typeof Connection.insert.Type
+			})
+			if (own) return yield* available()
 			const probe = yield* Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown))({
 				id: 1,
 				jsonrpc: '2.0',
@@ -452,42 +470,7 @@ export class Connections extends Context.Service<
 			if (Option.exists(resourceMetadata, metadata => metadata.resource !== initial.url)) {
 				return yield* AuthError.make({message: 'The MCP metadata names a different resource URL.'})
 			}
-			const own = deslop(
-				initial.url,
-				pipe(
-					resourceMetadata,
-					Option.flatMap(metadata => Option.fromUndefinedOr(metadata.authorization_servers)),
-					Option.getOrElse(() => [])
-				)
-			)
-			if (own || Option.isNone(authorizationMetadata)) {
-				const access = yield* Boolean.match(own, {
-					onFalse: () => Effect.succeed(Option.none<string>()),
-					onTrue: () => Effect.asSome(auth.token(headers))
-				})
-				const found = yield* upstreams.use(initial.url, Effect.succeed(access), client =>
-					Effect.map(client.listTools(), tools => ({info: client.serverInfo, instructions: client.instructions, tools}))
-				)
-				return {
-					...initial,
-					error: Option.none(),
-					icons: serverIcons(found.info),
-					instructions: Option.fromUndefinedOr(found.instructions),
-					issuer: Option.none(),
-					mode: Boolean.match(own, {
-						onFalse: Function.constant('public' as const),
-						onTrue: Function.constant('deslop' as const)
-					}),
-					name: pipe(
-						Option.fromUndefinedOr(found.info?.name),
-						Option.map(String.trim),
-						Option.filter(String.isNonEmpty),
-						Option.getOrElse(() => initial.name)
-					),
-					scope: Option.none(),
-					tools: Array.length(found.tools)
-				} satisfies typeof Connection.insert.Type
-			}
+			if (Option.isNone(authorizationMetadata)) return yield* available()
 			const metadata = yield* Schema.decodeEffect(Metadata)(Option.getOrThrow(authorizationMetadata))
 			yield* connectable(metadata)
 			return {

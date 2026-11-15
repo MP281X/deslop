@@ -19,10 +19,9 @@ import {bookingsAtom} from '#lib/bookings.ts'
 import {calendarAtom} from '#lib/calendar.ts'
 import {openedAtom} from '#lib/deep-links.ts'
 import {pushAtom} from '#lib/notifications.ts'
-import {primary, session} from '#lib/session.ts'
+import {session} from '#lib/session.ts'
 import {HomeRoute} from '#routes/(home)/index.tsx'
 import {BookingRoute} from '#routes/bookings/$id.tsx'
-import icon from '#routes/icon.png'
 import {BookingId} from '#services/bookings/schema.ts'
 
 function Destination(props: {onClose: () => void; value: string}) {
@@ -65,7 +64,7 @@ function AppRoutes() {
 
 export function RootRoute() {
 	return (
-		<SessionGate logo={icon} session={session} tint={primary}>
+		<SessionGate session={session}>
 			<AppRoutes />
 		</SessionGate>
 	)

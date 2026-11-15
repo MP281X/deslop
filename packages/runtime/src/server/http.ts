@@ -23,14 +23,7 @@ import {layerStructuredTools} from '#server/mcp.ts'
 import {appName, packageMetadata} from '#server/package.ts'
 import {failureOptions} from '#shared/auth.ts'
 import {RpcStream, layerRpcStream} from '#shared/rpc.ts'
-import {
-	Account,
-	MANIFEST_PATH,
-	MCP_PATH,
-	RPC_PATH,
-	RUNTIME_PATH,
-	RuntimeConfig
-} from '#shared/schema.ts'
+import {Account, MANIFEST_PATH, MCP_PATH, RPC_PATH, RUNTIME_PATH, RuntimeConfig} from '#shared/schema.ts'
 import {layerOtlp} from '#shared/telemetry.ts'
 
 const LOOPBACK = /^(?:localhost|\d{1,3}(?:\.\d{1,3}){3}|\[[\da-f:.]+\])$/iu

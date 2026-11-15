@@ -1,18 +1,4 @@
-import {
-	Array,
-	Context,
-	Duration,
-	Effect,
-	Exit,
-	Function,
-	Layer,
-	Option,
-	RcMap,
-	Schema,
-	Scope,
-	Semaphore,
-	pipe
-} from 'effect'
+import {Array, Context, Duration, Effect, Exit, Layer, Option, RcMap, Schema, Scope, Semaphore, pipe} from 'effect'
 
 import {SdkHttpError, StreamableHTTPClientTransport, UnauthorizedError} from '@modelcontextprotocol/client'
 import {McpClient, McpClientError, McpProtocol, McpSchema} from 'effect/ai'
@@ -51,10 +37,10 @@ export function upstreamStatus(error: unknown): number {
 	return 0
 }
 
-const accessToken = Context.Reference<Option.Option<string>>('gateway/UpstreamAccess', {defaultValue: Option.none})
-const requestHeaders = Effect.map(accessToken, token => ({
-	[REQUEST_AUTHORIZATION]: Option.match(token, {onNone: Function.constant(''), onSome: value => `Bearer ${value}`})
-}))
+const accessHeaders = Context.Reference<Headers.Headers>('gateway/UpstreamAccess', {defaultValue: () => Headers.empty})
+const requestHeaders = Effect.map(accessHeaders, headers =>
+	pipe(headers, Headers.remove('authorization'), Headers.set(REQUEST_AUTHORIZATION, headers['authorization'] ?? ''))
+)
 
 function unsupportedProtocol(error: McpClientError.McpClientError) {
 	if (Schema.is(McpClientError.HttpError)(error.reason)) {
@@ -81,14 +67,9 @@ export class Upstreams extends Context.Service<Upstreams>()('@deslop/gateway/ser
 		const sessions = yield* RcMap.make({
 			idleTimeToLive: Duration.infinity,
 			lookup: Effect.fnUntraced(function* (url: string) {
-				const token = yield* accessToken
+				const initialHeaders = yield* accessHeaders
 				const client = HttpClient.mapRequestEffect(http, request =>
-					Effect.map(accessToken, access =>
-						Option.match(access, {
-							onNone: () => request,
-							onSome: value => HttpClientRequest.bearerToken(request, value)
-						})
-					)
+					Effect.map(accessHeaders, access => HttpClientRequest.setHeaders(request, access))
 				)
 				const connect = Effect.fnUntraced(function* (protocol: McpProtocol.ProtocolAdapter<McpClient.ProtocolVersion>) {
 					const nativeScope = yield* Scope.make()
@@ -128,13 +109,7 @@ export class Upstreams extends Context.Service<Upstreams>()('@deslop/gateway/ser
 										})
 									})
 								},
-								requestInit: {
-									headers: Option.match(token, {
-										onNone: () => ({}),
-										onSome: value => ({authorization: `Bearer ${value}`})
-									}),
-									redirect: 'error'
-								}
+								requestInit: {headers: initialHeaders, redirect: 'error'}
 							})
 							const sdk = yield* Effect.acquireRelease(Effect.sync(mcpClient), acquired =>
 								endSession(
@@ -183,23 +158,23 @@ export class Upstreams extends Context.Service<Upstreams>()('@deslop/gateway/ser
 			}, Effect.scoped),
 			use: Effect.fn('Upstreams.use')(function* <A, E>(
 				url: string,
-				authorize: Effect.Effect<Option.Option<string>, AuthError>,
+				authorize: Effect.Effect<Headers.Headers, AuthError>,
 				run: (upstream: Upstream) => Effect.Effect<A, E>
 			) {
 				const lock = yield* RcMap.get(locks, url)
 				const execute = Effect.gen(function* () {
 					// Removal, replacement and expiry are checked again before a rejected session is reopened.
-					const token = yield* authorize
+					const headers = yield* authorize
 					const session = yield* pipe(
 						RcMap.get(sessions, url),
 						// Failed acquisitions leave no entry before unlocking.
 						Effect.tapError(() => RcMap.invalidate(sessions, url)),
-						Effect.provideService(accessToken, token),
+						Effect.provideService(accessHeaders, headers),
 						Semaphore.withPermit(lock)
 					)
 					return yield* pipe(
 						run(session),
-						Effect.provideService(accessToken, token),
+						Effect.provideService(accessHeaders, headers),
 						Effect.tapError(() =>
 							Semaphore.withPermit(
 								lock,

@@ -11,10 +11,9 @@ import {SessionGate} from '@deslop/components-mobile/blocks/session-gate'
 import {colors} from '@deslop/components-mobile/theme'
 
 import {chaptersAtom, diagnosticsAtom, openedAtom, pushAtom} from '#lib/chapters.ts'
-import {primary, session} from '#lib/session.ts'
+import {session} from '#lib/session.ts'
 import {ChaptersRoute} from '#routes/(home)/index.tsx'
 import {ReaderRoute, ReaderSkeleton} from '#routes/chapters/$number.tsx'
-import icon from '#routes/icon.png'
 import {keyOf} from '#services/chapters/lib/utils.ts'
 import {ChapterKey, ChapterPath} from '#services/chapters/schema.ts'
 import type {ChapterNumber, Series} from '#services/chapters/schema.ts'
@@ -76,7 +75,7 @@ function AppRoutes() {
 
 export function RootRoute() {
 	return (
-		<SessionGate logo={icon} session={session} tint={primary}>
+		<SessionGate session={session}>
 			<AppRoutes />
 		</SessionGate>
 	)

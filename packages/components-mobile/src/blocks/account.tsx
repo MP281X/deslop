@@ -1,8 +1,8 @@
-import {useAtomSet, useAtomValue} from '@effect/atom-react'
+import {useAtomValue} from '@effect/atom-react'
 
 import {Function, Option} from 'effect'
 
-import {Button, Image, Menu, Section} from '@expo/ui/swift-ui'
+import {Image, Menu, Text} from '@expo/ui/swift-ui'
 import {
 	accessibilityLabel,
 	buttonStyle,
@@ -30,9 +30,7 @@ function Avatar(props: {id: UserId}) {
 	)
 }
 
-// Signing out also ends this app's sign-in at Auth, as in the web app bar.
 export function AccountMenu(props: {session: Session}) {
-	const send = useAtomSet(props.session.machine.send)
 	const account = AsyncResult.value(useAtomValue(props.session.account))
 	return (
 		<Menu
@@ -42,14 +40,7 @@ export function AccountMenu(props: {session: Session}) {
 			})}
 			modifiers={[menuStyle('button'), buttonStyle('plain'), menuIndicator('hidden'), accessibilityLabel('Account')]}
 		>
-			<Section title={Option.match(account, {onNone: Function.constUndefined, onSome: current => `@${current.name}`})}>
-				<Button
-					label="Sign Out"
-					systemImage="rectangle.portrait.and.arrow.right"
-					role="destructive"
-					onPress={() => send(props.session.events.SignOut())}
-				/>
-			</Section>
+			<Text>{Option.match(account, {onNone: Function.constant(''), onSome: current => `@${current.name}`})}</Text>
 		</Menu>
 	)
 }

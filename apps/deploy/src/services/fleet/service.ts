@@ -65,12 +65,9 @@ export const layerPeerAuth = Layer.effectContext(
 		}
 		return Context.add(
 			Auth.makeContext(
-				Auth.of({
-					token: auth.token,
-					user: Effect.fnUntraced(function* (headers: Headers.Headers) {
-						if (yield* isPeer(headers)) return PEER
-						return yield* auth.user(headers)
-					})
+				Effect.fnUntraced(function* (headers: Headers.Headers) {
+					if (yield* isPeer(headers)) return {...PEER, signOut: false}
+					return yield* auth.account(headers)
 				})
 			),
 			PeerRpcAuth,

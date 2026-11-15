@@ -10,10 +10,9 @@ import {SessionGate} from '@deslop/components-mobile/blocks/session-gate'
 import {colors} from '@deslop/components-mobile/theme'
 
 import {queryAtom} from '#lib/notes.ts'
-import {primary, session} from '#lib/session.ts'
+import {session} from '#lib/session.ts'
 import {HomeRoute} from '#routes/(home)/index.tsx'
 import {ComposeRoute} from '#routes/compose.tsx'
-import logo from '#routes/icon.png'
 import {NoteRoute, NoteSkeleton} from '#routes/notes/$id.tsx'
 import type {Kind, TagName} from '#services/notes/schema.ts'
 import {NoteId} from '#services/notes/schema.ts'
@@ -77,7 +76,7 @@ function AppRoutes() {
 
 export function RootRoute() {
 	return (
-		<SessionGate logo={logo} session={session} tint={primary}>
+		<SessionGate session={session}>
 			<AppRoutes />
 		</SessionGate>
 	)

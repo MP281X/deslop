@@ -11,7 +11,6 @@ export default {
 	},
 	plugins: [
 		...app.config.plugins,
-		'expo-secure-store',
 		'expo-notifications',
 		['expo-calendar', {calendarPermission: 'Trips keeps your flights, trains and stays in a Trips calendar.'}],
 		// Only Apple's geocoder, for the coordinates of a stay's address; the app never asks where you are.

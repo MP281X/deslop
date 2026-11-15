@@ -4,8 +4,6 @@ import {Model} from 'effect/schema'
 
 import {GitHubId, User, UserId} from '@deslop/runtime/shared/auth'
 
-import {CredentialOwner, SessionVia} from '#services/tokens/schema.ts'
-
 // Admins come from GITHUB_ADMINS; a member is a GitHub account an admin allowed; anyone else who signed in waits for one.
 export type Role = typeof Role.Type
 export const Role = Schema.Literals(['Admin', 'Member', 'Waiting'])
@@ -18,7 +16,7 @@ export const Account = Schema.Struct({
 })
 
 export type SignedAccount = typeof SignedAccount.Type
-export const SignedAccount = Schema.Struct({...Account.fields, via: SessionVia})
+export const SignedAccount = Schema.Struct({...Account.fields, signOut: Schema.Boolean})
 
 export type Person = typeof Person.Type
 export const Person = Schema.Struct({
@@ -48,8 +46,6 @@ export const MemberStatus = Schema.Literals(['Waiting', 'Allowed'])
 export class Member extends Model.Class<Member>('Member')({
 	fullName: Model.FieldOption(Schema.String),
 	id: User.fields.id,
-	// The registration its credentials belong to; it never leaves the server.
-	incarnation: Model.Sensitive(CredentialOwner.fields.incarnation),
 	name: User.fields.name,
 	// When the account first asked for access, then when an admin allowed it.
 	since: Schema.DateTimeUtcFromMillis,

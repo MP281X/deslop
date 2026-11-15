@@ -46,7 +46,7 @@ export function AccessDenied() {
 }
 
 // A failure names itself on the one button that retries it.
-export function FailureRetry(props: {label?: string; reset: () => void}) {
+function FailureRetry(props: {label?: string; reset: () => void}) {
 	return (
 		<Empty role="alert">
 			<Button variant="destructive" size="sm" onClick={props.reset}>

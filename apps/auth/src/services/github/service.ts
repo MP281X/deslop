@@ -4,16 +4,16 @@ import {Digest, SecureRandom} from 'effect/crypto'
 import {HttpClient, HttpClientRequest, HttpClientResponse, UrlParams} from 'effect/http'
 
 import {localAuth} from '@deslop/runtime/server/auth'
-import {AUTH_URL, AuthError, DEVELOPER, GitHubId, asAuthError} from '@deslop/runtime/shared/auth'
+import {AuthError, DEVELOPER, GitHubId, asAuthError} from '@deslop/runtime/shared/auth'
+
+import {hashOf, randomTokenOf} from './lib/utils.ts'
 
 import {GitHubClientId, GitHubToken, OAuthState} from '#services/github/schema.ts'
 import type {SignInParams} from '#services/github/schema.ts'
 import {GitHubUser} from '#services/people/schema.ts'
 import {makeRecords} from '#services/records/service.ts'
-import {hashOf, randomTokenOf} from '#services/tokens/lib/utils.ts'
 
 const HEADERS = {accept: 'application/vnd.github+json', 'user-agent': '@deslop/auth'}
-const CALLBACK = `${AUTH_URL}/auth/github/callback`
 const DEVELOPER_PROFILE = GitHubUser.make({id: GitHubId.make(0), login: DEVELOPER.name, name: Option.none()})
 
 // GitHub proves who someone is; the step in between lives here for ten minutes, and an Auth restart cancels it.
@@ -26,12 +26,14 @@ export class GitHub extends Context.Service<
 			state: OAuthState
 		) => Effect.Effect<{flow: SignInParams; profile: GitHubUser}, AuthError>
 		readonly profile: (id: GitHubId) => Effect.Effect<GitHubUser, AuthError>
+		readonly login: (login: string) => Effect.Effect<GitHubUser, AuthError>
 		readonly start: (flow: SignInParams) => Effect.Effect<{state: OAuthState; url: string}, AuthError>
 	}
 >()('@deslop/auth/services/github/service/GitHub') {
 	static readonly layer = Layer.effect(
 		GitHub,
 		Effect.gen(function* () {
+			const CALLBACK = new URL('/auth/github/callback', yield* Config.String('APP_URL')).href
 			const flows = yield* makeRecords<OAuthState, SignInParams & {verifier: Option.Option<string>}>(
 				Duration.minutes(10)
 			)
@@ -53,6 +55,7 @@ export class GitHub extends Context.Service<
 					finish: Effect.fn('GitHub.finish')(function* (_code: string, state: OAuthState) {
 						return {flow: Struct.omit(yield* take(state), ['verifier']), profile: DEVELOPER_PROFILE}
 					}),
+					login: () => Effect.withSpan(Effect.succeed(DEVELOPER_PROFILE), 'GitHub.login'),
 					profile: () => Effect.withSpan(Effect.succeed(DEVELOPER_PROFILE), 'GitHub.profile'),
 					start: Effect.fn('GitHub.start')(function* (flow: SignInParams) {
 						const state = OAuthState.make(yield* nonce)
@@ -97,6 +100,11 @@ export class GitHub extends Context.Service<
 					)
 					return {flow, profile}
 				}, asAuthError('GitHub sign-in failed')),
+				login: login =>
+					pipe(
+						user(HttpClientRequest.get(`https://api.github.com/users/${encodeURIComponent(login)}`)),
+						asAuthError('Cannot read the GitHub profile')
+					),
 				profile: Effect.fn('GitHub.profile')(function* (id: GitHubId) {
 					return yield* user(HttpClientRequest.get(`https://api.github.com/user/${id}`))
 				}, asAuthError('Cannot read the GitHub profile')),

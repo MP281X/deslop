@@ -1,11 +1,10 @@
-/** @param {import('expo/config').ExpoConfig & {ios: {bundleIdentifier: string}}} config */
-function targetConfig(config) {
+// oxlint-disable-next-line @deslop/coding-standards/no-pass-through-name -- apple-targets requires a function exported through module.exports.
+function targetConfig() {
 	return {
 		bundleIdentifier: '.share',
 		deploymentTarget: '26.0',
 		displayName: 'stash',
-		entitlements: {'keychain-access-groups': [`$(AppIdentifierPrefix)group.${config.ios.bundleIdentifier}`]},
-		frameworks: ['SwiftUI', 'UIKit', 'UniformTypeIdentifiers', 'Security', 'CoreText'],
+		frameworks: ['SwiftUI', 'UIKit', 'UniformTypeIdentifiers', 'CoreText'],
 		// The share sheet shows the extension's own icon, which apple-targets generates only from this path.
 		icon: '../../src/routes/icon.png',
 		name: 'StashShare',
