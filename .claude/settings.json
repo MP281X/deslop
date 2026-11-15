@@ -12,6 +12,7 @@
 		"CLAUDE_CODE_SILENT_TURN_REMINDER": "0",
 		"CLAUDE_CODE_TERMINAL_MCP_TOOLS": "mcp__t3-code__watch_pull_request,mcp__t3-code__unwatch_pull_request,mcp__t3-code__delegate_task",
 		"CLAUDE_CODE_THRIFTY_SONIC": "0",
+		"DESLOP_DOMAIN": "mp281x.xyz",
 		"GLAB_PAGER": "cat",
 		"NO_COLOR": "1"
 	},
