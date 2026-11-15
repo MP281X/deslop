@@ -8,6 +8,7 @@ import {
 	FileSystem,
 	Function,
 	HashMap,
+	MutableHashSet,
 	Number,
 	Option,
 	Record,
@@ -192,7 +193,7 @@ export function processReadings(
 	}
 }
 
-// A Mac's processes that descend from a Deslop launch agent, from `ps -axww -o pid=,ppid=,rss=,time=,lstart=,args=` in the C locale, keyed like `processOwner` by the agent they run under; `agents` names each agent's PID. Times are milliseconds: `ticks` of CPU, and `start` as an identity that tells a reused PID apart.
+// A Mac's processes under a Dock app or user launch agent, from `ps -axww -o pid=,ppid=,rss=,time=,lstart=,args=` in the C locale, keyed like `processOwner`; `agents` names each app's PID. Times are milliseconds: `ticks` of CPU, and `start` as an identity that tells a reused PID apart.
 export function launchdProcesses(text: string, agents: HashMap.HashMap<ProcessId, UnitId>) {
 	const rows = Array.getSomes(
 		pipe(
@@ -215,18 +216,17 @@ export function launchdProcesses(text: string, agents: HashMap.HashMap<ProcessId
 		)
 	)
 	const parents = HashMap.fromIterable(Array.map(rows, row => [row.pid, row.parent] as const))
-	function agent(pid: ProcessId): Option.Option<UnitId> {
+	function agent(pid: ProcessId, visited = MutableHashSet.empty<ProcessId>()): Option.Option<UnitId> {
+		if (MutableHashSet.has(visited, pid)) return Option.none()
+		MutableHashSet.add(visited, pid)
 		return pipe(
 			agents,
 			HashMap.get(pid),
 			Option.orElse(() =>
-				Option.flatMap(
-					pipe(
-						parents,
-						HashMap.get(pid),
-						Option.filter(parent => parent !== pid)
-					),
-					agent
+				pipe(
+					parents,
+					HashMap.get(pid),
+					Option.flatMap(parent => agent(parent, visited))
 				)
 			)
 		)
