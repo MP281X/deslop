@@ -114,13 +114,11 @@ export class Metrics extends Context.Service<Metrics>()('@deslop/deploy/services
 			yield* saveMachineSamples(machines)
 			yield* deleteAppSamples(machines)
 			const apps = Array.flatMap(rows, row =>
-				Array.map(Option.getOrElse(row.apps, Array.empty), app => ({
-					app: app.id,
-					cpu: app.cpu,
-					memory: app.memory,
-					since: row.since,
-					step: row.step
-				}))
+				pipe(
+					row.apps,
+					Option.getOrElse(Array.empty),
+					Array.map(app => ({app: app.id, cpu: app.cpu, memory: app.memory, since: row.since, step: row.step}))
+				)
 			)
 			if (Array.isReadonlyArrayNonEmpty(apps)) yield* saveAppSamples(apps)
 		})
@@ -144,7 +142,8 @@ export class Metrics extends Context.Service<Metrics>()('@deslop/deploy/services
 								entry =>
 									sql`(step = ${Duration.toMillis(entry[1])} AND since < ${now - pipe(entry[0], Number.parse, Option.getOrThrow, Duration.minutes, Duration.toMillis) - Duration.toMillis(entry[1])})`
 							)
-						)}`
+						)}`,
+					{concurrency: 1}
 				)
 		})
 

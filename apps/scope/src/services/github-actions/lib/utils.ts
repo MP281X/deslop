@@ -1,4 +1,4 @@
-import {Array, Boolean, DateTime, Duration, Function, Option, String, pipe} from 'effect'
+import {Array, Boolean, DateTime, Duration, Function, HashMap, Option, String, pipe} from 'effect'
 
 import type {
 	RepositoryName,
@@ -20,6 +20,10 @@ const LOG_COMMAND =
 // oxlint-disable-next-line eslint/no-control-regex -- ANSI escapes start with the ESC control character.
 const ANSI = /\u001B\[[0-9;]*m/gu
 const INSTRUMENTATION = {attributes: Option.none(), name: 'github-actions'}
+// A step an action runs rather than the workflow's own command: its output is setup, checkout or cleanup chatter.
+const ACTION_STEP = /^(?:Run actions\/|Run \.\/|Post |Set up job$|Complete job$)/u
+// The closing lines of a workflow's own step, where tests, lint and builds print their summaries.
+const STEP_TAIL = 10
 
 // A GitHub instant as exact epoch nanoseconds.
 function nanos(time: DateTime.Utc) {
@@ -43,9 +47,13 @@ function jobSpanId(job: WorkflowJobId) {
 	return SpanId.make(`2${hex(job, 15)}`)
 }
 
+function failed(conclusion: Option.Option<string>) {
+	return Option.exists(conclusion, value => Array.contains(['failure', 'timed_out', 'startup_failure'], value))
+}
+
 // A conclusion as an OTLP status: a failure or timeout failed, success is ok, and a cancelled or skipped one is neither.
 function statusOf(conclusion: Option.Option<string>, message: string) {
-	if (Option.exists(conclusion, value => Array.contains(['failure', 'timed_out', 'startup_failure'], value))) {
+	if (failed(conclusion)) {
 		return Option.some({code: Option.some(2), message: Option.some(message)})
 	}
 	if (Option.contains(conclusion, 'success')) return Option.some({code: Option.some(1), message: Option.some('')})
@@ -248,7 +256,26 @@ export function jobLogs(event: WorkflowJob, log: string) {
 			] as const
 		})
 	)
-	const records = Array.getSomes(lines)
+	// A failed job keeps every line; a successful one keeps runner warnings and errors, and each of its own steps' closing lines, counted from the end.
+	const own = pipe(
+		stepsOf(event.workflow_job),
+		Array.filter(step => Option.isNone(String.match(ACTION_STEP)(step.name))),
+		Array.map(step => stepSpanId(event.workflow_job.id, step.number))
+	)
+	const [, tail] = Array.mapAccum(
+		Array.reverse(Array.getSomes(lines)),
+		HashMap.empty<string, number>(),
+		(seen, record) => {
+			const span = Option.getOrElse(record.spanId, Function.constant(''))
+			const count = Option.getOrElse(HashMap.get(seen, span), Function.constant(0))
+			const kept =
+				failed(event.workflow_job.conclusion) ||
+				Option.exists(record.severityNumber, severity => severity >= 13) ||
+				(Option.exists(record.spanId, id => Array.contains(own, id)) && count < STEP_TAIL)
+			return [HashMap.set(seen, span, count + 1), Option.liftPredicate(record, () => kept)] as const
+		}
+	)
+	const records = Array.reverse(Array.getSomes(tail))
 	return LogsRequest.make({
 		resourceLogs: Option.some([
 			{

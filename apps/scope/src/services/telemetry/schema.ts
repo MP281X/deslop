@@ -21,6 +21,10 @@ export const TraceId = pipe(
 	Schema.brand('TraceId')
 )
 
+// Trace ids as one JSON parameter, however many a query names.
+export type TraceIds = typeof TraceIds.Type
+export const TraceIds = Schema.fromJsonString(Schema.Array(TraceId))
+
 export type SpanId = typeof SpanId.Type
 export const SpanId = pipe(Schema.String, Schema.check(Schema.isPattern(/^[a-fA-F0-9]{16}$/u)), Schema.brand('SpanId'))
 

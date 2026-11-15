@@ -42,7 +42,6 @@ export class GitHubActions extends Context.Service<GitHubActions>()(
 				ingestJob: Effect.fn('GitHubActions.ingestJob')(function* (event: WorkflowJob) {
 					if (event.action !== 'completed' || Option.contains(event.workflow_job.conclusion, 'skipped')) return
 					yield* telemetry.ingestTraces(jobTrace(event))
-					if (!Option.contains(event.workflow_job.conclusion, 'failure')) return
 					yield* Option.match(token, {
 						onNone: () => Effect.void,
 						onSome: credential =>

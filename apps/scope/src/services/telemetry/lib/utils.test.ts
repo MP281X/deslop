@@ -10,24 +10,24 @@ const B = '00000000000000000000000000000002'
 const SERVICE = ServiceName.make('stash-server')
 const NOW = DateTime.makeUnsafe(1000)
 // A stored span as its query answers it; each test names only what it is about.
+const OPEN_SPAN = Schema.encodeSync(Span)({
+	attributes: {},
+	duration: Option.none(),
+	error: Option.none(),
+	exception: Option.none(),
+	name: '',
+	parentSpanId: Option.none(),
+	run: Option.none(),
+	runtime: 'server',
+	service: SERVICE,
+	spanId: SpanId.make('0000000000000001'),
+	start: DateTime.makeUnsafe(0),
+	status: 'ok',
+	traceId: TraceId.make(A),
+	version: Option.none()
+})
 function spanOf(fields: Partial<typeof Span.Encoded>) {
-	return Schema.decodeSync(Span)({
-		attributes: '{}',
-		duration: null,
-		error: null,
-		exception: null,
-		name: '',
-		parentSpanId: null,
-		run: null,
-		runtime: 'server',
-		service: SERVICE,
-		spanId: '0000000000000001',
-		start: 0,
-		status: 'ok',
-		traceId: A,
-		version: null,
-		...fields
-	})
+	return Schema.decodeSync(Span)({...OPEN_SPAN, ...fields})
 }
 
 const SPANS = [

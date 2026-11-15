@@ -91,6 +91,7 @@ import {
 	Trace,
 	TraceDetail,
 	TraceId,
+	TraceIds,
 	TraceQuery,
 	TraceTree
 } from '#services/telemetry/schema.ts'
@@ -110,8 +111,10 @@ declare module 'effect/reactivity/Reactivity' {
 	}
 }
 
-// Trace ids as one JSON parameter, however many a query names.
-const TraceIds = Schema.fromJsonString(Schema.Array(TraceId))
+// One phrase whose last word may be a prefix, so a word still being typed matches.
+function phrase(text: string) {
+	return `"${String.replaceAll('"', '""')(text)}"*`
+}
 
 function tracedOf(row: SettledTrace) {
 	return {
@@ -335,8 +338,7 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 		const rejections = yield* Ref.make(Record.empty<string, Rejection>())
 
 		const statusOf = sql`CASE spans.status WHEN 1 THEN 'failed' WHEN 2 THEN 'denied' ELSE 'ok' END`
-		// Ids are blobs in SQL and hex outside it; `hex(NULL)` is '', which `nullif` turns back into an absence.
-		// A merge patch puts the interned statement back; a span without one patches in a null, which removes nothing.
+		// Ids are blobs in SQL and hex outside; `nullif` turns `hex(NULL)`'s '' back into an absence.
 		const spanColumns = sql`
 			lower(hex(traces.traceId)) AS traceId, lower(hex(spans.span)) AS spanId,
 			nullif(lower(hex(spans.parent)), '') AS parentSpanId,
@@ -362,9 +364,9 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 		// Keep unrouted HTTP traces searchable, but scanners are not application operations.
 		const operationTrace = sql`NOT traces.waits AND traces.name NOT LIKE '% (no route)'`
 		// The trace ids of a JSON array, as a subquery `IN` reads.
-		const traceIds = (ids: string) => sql`(SELECT unhex(value) FROM json_each(${ids}))`
-		// One phrase whose last word may be a prefix, so a word still being typed matches.
-		const phrase = (text: string) => `"${String.replaceAll('"', '""')(text)}"*`
+		function traceIds(ids: string) {
+			return sql`(SELECT unhex(value) FROM json_each(${ids}))`
+		}
 
 		// The traces a query selects; its text matches a span's name, attributes or error, or one of its logs, never its ids or times.
 		function filterTraces(query: typeof TraceQuery.Encoded) {
@@ -447,13 +449,15 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 		})
 
 		// The sender every distinct sender of a batch names, added when new; UNIQUE keeps NULLs apart, so the index compares markers for them.
-		const saveResources = (batch: string, path: string) => sql`
-			INSERT INTO resources (service, runtime, run, version)
-			SELECT DISTINCT value ->> 'service', value ->> 'runtime', value ->> 'run', value ->> 'version'
-			FROM json_each(${batch}, ${path})
-			WHERE true
-			ON CONFLICT DO NOTHING
-		`
+		function saveResources(batch: string, path: string) {
+			return sql`
+				INSERT INTO resources (service, runtime, run, version)
+				SELECT DISTINCT value ->> 'service', value ->> 'runtime', value ->> 'run', value ->> 'version'
+				FROM json_each(${batch}, ${path})
+				WHERE true
+				ON CONFLICT DO NOTHING
+			`
+		}
 		// The stored sender an arriving row names; an absent run or release matches only another absence.
 		const arrivingSender = sql`
 			resources.service = arriving.value ->> 'service' AND resources.runtime = arriving.value ->> 'runtime'
@@ -583,7 +587,7 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 						sql`DELETE FROM spans WHERE trace <= ${last}`,
 						sql`DELETE FROM traces WHERE id <= ${last}`
 					],
-					{discard: true}
+					{concurrency: 1, discard: true}
 				)
 			}
 		})
@@ -862,8 +866,13 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 									traceId: log.traceId ?? ''
 								})
 								// The digest's first six bytes, read as one integer.
-								const bytes = yield* digest.digest(Digest.sha256, utf8.encode(encoded))
-								const id = LogId.make(Array.reduce(bytes.subarray(0, 6), 0, (value, byte) => value * 256 + byte))
+								const id = LogId.make(
+									Array.reduce(
+										(yield* digest.digest(Digest.sha256, utf8.encode(encoded))).subarray(0, 6),
+										0,
+										(value, byte) => value * 256 + byte
+									)
+								)
 								return logOf(item.sender, item.log, id, receivedAt)
 							}),
 							{concurrency: 1}

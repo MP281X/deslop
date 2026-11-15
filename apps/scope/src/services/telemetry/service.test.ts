@@ -50,8 +50,10 @@ it.layer(telemetryLayer)(test => {
 			const trace = yield* telemetry.trace(ID)
 			assert.lengthOf(trace.spans, 1)
 			assert.strictEqual(trace.spans[0]?.attributes['db.query.text'], 'SELECT 42')
-			const found = yield* telemetry.findTraces(Schema.decodeSync(FindTracesParams)({text: 'capture'}))
-			assert.strictEqual(found.total, 1)
+			assert.strictEqual(
+				(yield* telemetry.findTraces(yield* Schema.decodeEffect(FindTracesParams)({text: 'capture'}))).total,
+				1
+			)
 		})
 	)
 	test.effect(
