@@ -277,9 +277,10 @@ export default defineConfig({
 					'coding-standards tactics',
 					// CI installs with a frozen lockfile, so a manifest edit must carry its lockfile.
 					'vp install',
-					'vp fmt',
 					'TSRS_FAST=1 effect-tsgo --tsrs-lint vp lint --fix --type-aware --type-check --ignore-pattern "tools/*/template/**"',
 					'vp lint tools/create-app/template tools/create-package/template --fix --report-unused-disable-directives-severity=off',
+					// After the lint fixes, whose rewrites are unformatted.
+					'vp fmt',
 					'vp run fallow'
 				]
 			},
