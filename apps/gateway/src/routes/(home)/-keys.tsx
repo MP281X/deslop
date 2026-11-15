@@ -1,6 +1,6 @@
 import {useAtom} from '@effect/atom-react'
 
-import {Boolean, Function, Redacted, Schema, String} from 'effect'
+import {Boolean, Function, Match, Redacted, Schema, String, pipe} from 'effect'
 
 import {AsyncResult} from 'effect/reactivity'
 import {useState} from 'react'
@@ -18,14 +18,26 @@ import {
 } from '@deslop/components-web/ui/dialog'
 import {Field, FieldError, FieldGroup, FieldLabel} from '@deslop/components-web/ui/field'
 import {Input} from '@deslop/components-web/ui/input'
+import {AnthropicBlack} from '@deslop/components-web/ui/svgs/anthropicBlack'
+import {AnthropicWhite} from '@deslop/components-web/ui/svgs/anthropicWhite'
+import {Openai} from '@deslop/components-web/ui/svgs/openai'
+import {OpenaiDark} from '@deslop/components-web/ui/svgs/openaiDark'
 import {Opencode} from '@deslop/components-web/ui/svgs/opencode'
 import {OpencodeDark} from '@deslop/components-web/ui/svgs/opencodeDark'
 
 import {setKeyAtom} from '#lib/gateway.ts'
 import {AiKeySecret, KEY_MESSAGE} from '#services/ai-proxy/schema.ts'
+import type {AiProvider} from '#services/ai-proxy/schema.ts'
 
-export function ProviderMark() {
-	return <ThemedMark light={Opencode} dark={OpencodeDark} className="size-4" />
+export function ProviderMark(props: {provider: AiProvider}) {
+	return pipe(
+		props.provider,
+		Match.value,
+		Match.when('anthropic', () => <ThemedMark light={AnthropicBlack} dark={AnthropicWhite} className="size-4" />),
+		Match.when('openai', () => <ThemedMark light={Openai} dark={OpenaiDark} className="size-4" />),
+		Match.when('opencode', () => <ThemedMark light={Opencode} dark={OpencodeDark} className="size-4" />),
+		Match.exhaustive
+	)
 }
 
 export function AddKeyDialog(props: {onOpenChange: (open: boolean) => void; open: boolean; secret: string}) {
@@ -49,7 +61,7 @@ export function AddKeyDialog(props: {onOpenChange: (open: boolean) => void; open
 							<DialogTitle>AI key</DialogTitle>
 						</DialogHeader>
 						<Field data-invalid={invalidKey}>
-							<FieldLabel htmlFor="ai-secret">OpenCode or Anthropic key</FieldLabel>
+							<FieldLabel htmlFor="ai-secret">OpenCode, Anthropic or OpenAI key</FieldLabel>
 							<Input
 								id="ai-secret"
 								type="password"
@@ -58,7 +70,7 @@ export function AddKeyDialog(props: {onOpenChange: (open: boolean) => void; open
 								autoComplete="off"
 								autoFocus
 								required
-								placeholder="oc_sk_… or sk-ant-…"
+								placeholder="oc_sk_…, sk-ant-… or sk-proj-…"
 								value={secret}
 								disabled={waiting}
 								onChange={event => setSecret(event.target.value)}

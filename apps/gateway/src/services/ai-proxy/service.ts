@@ -6,6 +6,7 @@ import {
 	Effect,
 	Function,
 	Layer,
+	Match,
 	Option,
 	Redacted,
 	Result,
@@ -67,6 +68,9 @@ function destinationOf(method: string, rest: string, model: Option.Option<AiMode
 	const path = inferencePath(rest)
 	if (Option.isNone(path)) {
 		return Result.fail(HttpServerResponse.jsonUnsafe({error: {message: 'Invalid inference path'}}, {status: 400}))
+	}
+	if (String.startsWith('openai/')(rest)) {
+		return Result.succeed(`https://api.openai.com/${String.slice('openai/'.length)(rest)}`)
 	}
 	if (!String.startsWith('anthropic/')(rest)) {
 		if (Option.exists(model, isClaude) || Option.exists(path, isClaude)) {
@@ -139,16 +143,19 @@ export class AiProxy extends Context.Service<AiProxy>()('@deslop/gateway/service
 						failureOptions(person.failure, 401)
 					)
 				}
-				const provider = Boolean.match(String.startsWith('anthropic/')(rest), {
-					onFalse: Function.constant('opencode' as const),
-					onTrue: Function.constant('anthropic' as const)
-				})
+				const provider = pipe(
+					rest,
+					Match.value,
+					Match.when(String.startsWith('anthropic/'), Function.constant('anthropic' as const)),
+					Match.when(String.startsWith('openai/'), Function.constant('openai' as const)),
+					Match.orElse(Function.constant('opencode' as const))
+				)
 				const key = yield* asAuthError(findKey({owner: person.success.id, provider}))
 				if (Option.isNone(key)) {
 					return HttpServerResponse.jsonUnsafe(
 						{
 							error: {
-								message: `Save your ${Boolean.match(provider === 'anthropic', {onFalse: Function.constant('OpenCode service account'), onTrue: Function.constant('Anthropic API')})} key in Gateway`
+								message: `Save your ${{anthropic: 'Anthropic API', openai: 'OpenAI API', opencode: 'OpenCode service account'}[provider]} key in Gateway`
 							}
 						},
 						{status: 402}
@@ -242,10 +249,13 @@ export class AiProxy extends Context.Service<AiProxy>()('@deslop/gateway/service
 						last4: String.slice(-4)(Redacted.value(input.secret)),
 						lastStatus: Option.none(),
 						owner: id,
-						provider: Boolean.match(String.startsWith('sk-ant-')(Redacted.value(input.secret)), {
-							onFalse: Function.constant('opencode' as const),
-							onTrue: Function.constant('anthropic' as const)
-						}),
+						provider: pipe(
+							Redacted.value(input.secret),
+							Match.value,
+							Match.when(String.startsWith('sk-ant-'), Function.constant('anthropic' as const)),
+							Match.when(String.startsWith('sk-'), Function.constant('openai' as const)),
+							Match.orElse(Function.constant('opencode' as const))
+						),
 						secret: input.secret
 					})
 				)
@@ -345,6 +355,26 @@ export class AiProxy extends Context.Service<AiProxy>()('@deslop/gateway/service
 					yield* sql`INSERT INTO ai_keys_new SELECT owner, 'opencode', secret, last4, lastStatus FROM ai_keys`
 					yield* sql`DROP TABLE ai_keys`
 					yield* sql`ALTER TABLE ai_keys_new RENAME TO ai_keys`
+				}),
+				'0007_openai_key': Effect.gen(function* () {
+					const sql = yield* SqlClient.SqlClient
+					yield* sql`CREATE TABLE ai_keys_new (
+						owner TEXT NOT NULL, provider TEXT NOT NULL CHECK (provider IN ('opencode', 'anthropic', 'openai')),
+						secret TEXT NOT NULL, last4 TEXT NOT NULL, lastStatus INTEGER,
+						PRIMARY KEY (owner, provider)
+					) STRICT, WITHOUT ROWID`
+					yield* sql`INSERT INTO ai_keys_new SELECT * FROM ai_keys`
+					yield* sql`DROP TABLE ai_keys`
+					yield* sql`ALTER TABLE ai_keys_new RENAME TO ai_keys`
+					yield* sql`CREATE TABLE ai_usage_new (
+						owner TEXT NOT NULL, hour INTEGER NOT NULL,
+						spendSource TEXT NOT NULL CHECK (spendSource IN ('balance', 'byok', 'openai', 'free', 'go', 'go-plus')),
+						costUsd REAL NOT NULL, unknownCostCalls INTEGER NOT NULL, estimatedCalls INTEGER NOT NULL,
+						PRIMARY KEY (owner, hour, spendSource)
+					) STRICT, WITHOUT ROWID`
+					yield* sql`INSERT INTO ai_usage_new SELECT * FROM ai_usage`
+					yield* sql`DROP TABLE ai_usage`
+					yield* sql`ALTER TABLE ai_usage_new RENAME TO ai_usage`
 				})
 			}),
 			table: 'ai_migrations'

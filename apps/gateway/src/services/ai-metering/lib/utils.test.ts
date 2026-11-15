@@ -56,3 +56,51 @@ it('estimates direct Anthropic Messages usage for its payer across streaming upd
 	)
 	assert.closeTo(Option.getOrThrow(long.costUsd), 0.050013, 1e-12)
 })
+
+it('estimates OpenAI Chat Completions and Responses with cached input counted once', () => {
+	const responses = {
+		model: 'gpt-6.1-terra',
+		usage: {input_tokens: 130, input_tokens_details: {cache_write_tokens: 20, cached_tokens: 100}, output_tokens: 5}
+	}
+	const completions = {
+		model: 'gpt-6.1-terra',
+		usage: {
+			completion_tokens: 5,
+			prompt_tokens: 130,
+			prompt_tokens_details: {cache_write_tokens: 20, cached_tokens: 100}
+		}
+	}
+	for (const body of [responses, completions, {response: responses, type: 'response.completed'}]) {
+		const entry = Result.getOrThrow(
+			readUsage(Schema.encodeSync(Schema.fromJsonString(Schema.Unknown))(body), EMPTY, 'openai')
+		)
+		assert.deepStrictEqual(entry.spendSource, Option.some('openai'))
+		assert.deepInclude(entry, {
+			cacheReadTokens: 100,
+			cacheWriteTokens: 20,
+			costSource: 'estimated',
+			estimated: true,
+			inputTokens: 10,
+			outputTokens: 5
+		})
+		assert.closeTo(Option.getOrThrow(entry.costUsd), 0.000065, 1e-12)
+	}
+})
+
+it('keeps OpenAI streaming spend incomplete until usage arrives and retains the final estimate', () => {
+	const start = Result.getOrThrow(
+		readUsage('{"response":{"model":"gpt-6.1-terra","usage":null},"type":"response.created"}', EMPTY, 'openai')
+	)
+	assert.deepStrictEqual(start.spendSource, Option.some('openai'))
+	assert.strictEqual(start.costSource, 'unknown')
+	const end = Result.getOrThrow(
+		readUsage('{"response":{"usage":{"input_tokens":272001,"output_tokens":2}}}', start, 'openai')
+	)
+	assert.closeTo(Option.getOrThrow(end.costUsd), 0.544017, 1e-12)
+	assert.deepStrictEqual(Result.getOrThrow(readUsage('[DONE]', end, 'openai')), end)
+	const unknown = Result.getOrThrow(
+		readUsage('{"model":"unpriced-model","usage":{"input_tokens":10,"output_tokens":5}}', EMPTY, 'openai')
+	)
+	assert.deepInclude(unknown, {costSource: 'unknown', estimated: true, inputTokens: 10, outputTokens: 5})
+	assert.deepStrictEqual(unknown.costUsd, Option.none())
+})

@@ -46,7 +46,7 @@ export const ToolContracts = Toolkit.make(
 	Tool.make('remove_ai_key', {
 		dependencies: [CurrentUser],
 		description:
-			'Use when the user asks to remove their OpenCode or Anthropic credential; stops their calls using that key.',
+			'Use when the user asks to remove their OpenCode, Anthropic or OpenAI credential; stops their calls using that key.',
 		failure: AuthError,
 		parameters: Schema.Struct({provider: AiProvider}),
 		success: Schema.Record(Schema.String, Schema.Never)

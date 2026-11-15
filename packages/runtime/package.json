@@ -19,6 +19,7 @@
 	},
 	"dependencies": {
 		"@effect/ai-anthropic": "latest",
+		"@effect/ai-openai": "latest",
 		"@effect/platform-node": "latest",
 		"@effect/sql-sqlite-node": "latest",
 		"effect": "latest"

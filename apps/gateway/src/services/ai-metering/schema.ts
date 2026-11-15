@@ -9,12 +9,12 @@ import {DateTimeUtcFromFiniteMillis} from '@deslop/runtime/shared/time'
 import {UsageRange} from '#services/usage/schema.ts'
 
 export type SpendSource = typeof SpendSource.Type
-export const SpendSource = Schema.Literals(['balance', 'byok', 'free', 'go', 'go-plus'])
-// The two payers the home list shows a row for.
+export const SpendSource = Schema.Literals(['balance', 'byok', 'openai', 'free', 'go', 'go-plus'])
+// The payers the home list shows a row for.
 export type Payer = typeof Payer.Type
-export const Payer = Schema.Literals(['balance', 'byok'])
+export const Payer = Schema.Literals(['balance', 'byok', 'openai'])
 
-// One person's hour, separated by the billed balance or Anthropic key.
+// One person's hour, separated by the billed balance or provider key.
 export class AiUsage extends Model.Class<AiUsage>('AiUsage')({
 	costUsd: Schema.Finite,
 	estimatedCalls: Schema.Int,
@@ -42,7 +42,7 @@ export const AiUsageEntry = Schema.Struct({
 	inputTokens: Schema.Finite,
 	model: Schema.OptionFromOptional(AiModelId),
 	outputTokens: Schema.Finite,
-	// Anthropic's key identifies its payer; OpenCode must name one in its response.
+	// Direct provider keys identify their payer; OpenCode must name one in its response.
 	spendSource: Schema.OptionFromOptionalKey(SpendSource)
 })
 export type AiUsageBreakdown = typeof AiUsageBreakdown.Type
@@ -59,6 +59,24 @@ export const AiUsageReport = Schema.Struct({
 })
 type Billing = typeof Billing.Type
 const Billing = Schema.Struct({billing_source: SpendSource, estimated: Schema.optional(Schema.Boolean)})
+type InputTokenDetails = typeof InputTokenDetails.Type
+const InputTokenDetails = Schema.Struct({
+	cache_write_tokens: Schema.OptionFromOptionalKey(Schema.Finite),
+	cached_tokens: Schema.OptionFromOptionalKey(Schema.Finite)
+})
+type OpenAiResponse = typeof OpenAiResponse.Type
+const OpenAiResponse = Schema.Struct({
+	model: Schema.OptionFromOptionalKey(AiModelId),
+	usage: Schema.OptionFromOptionalKey(
+		Schema.OptionFromNullOr(
+			Schema.Struct({
+				input_tokens: Schema.OptionFromOptionalKey(Schema.Finite),
+				input_tokens_details: Schema.OptionFromOptionalKey(InputTokenDetails),
+				output_tokens: Schema.OptionFromOptionalKey(Schema.Finite)
+			})
+		)
+	)
+})
 export type Usage = typeof Usage.Type
 export const Usage = Schema.Struct({
 	cost: Schema.OptionFromOptionalKey(Schema.Finite),
@@ -79,6 +97,7 @@ export const Usage = Schema.Struct({
 	),
 	model: Schema.OptionFromOptionalKey(AiModelId),
 	modelVersion: Schema.OptionFromOptionalKey(AiModelId),
+	response: Schema.OptionFromOptionalKey(OpenAiResponse),
 	usage: Schema.OptionFromOptionalKey(
 		Schema.OptionFromNullOr(
 			Schema.Struct({
@@ -87,15 +106,11 @@ export const Usage = Schema.Struct({
 				completion_tokens: Schema.OptionFromOptionalKey(Schema.Finite),
 				cost: Schema.OptionFromOptionalKey(Schema.Finite),
 				input_tokens: Schema.OptionFromOptionalKey(Schema.Finite),
+				input_tokens_details: Schema.OptionFromOptionalKey(InputTokenDetails),
 				opencode: Schema.OptionFromOptionalKey(Billing),
 				output_tokens: Schema.OptionFromOptionalKey(Schema.Finite),
 				prompt_tokens: Schema.OptionFromOptionalKey(Schema.Finite),
-				prompt_tokens_details: Schema.OptionFromOptionalKey(
-					Schema.Struct({
-						cache_write_tokens: Schema.OptionFromOptionalKey(Schema.Finite),
-						cached_tokens: Schema.OptionFromOptionalKey(Schema.Finite)
-					})
-				)
+				prompt_tokens_details: Schema.OptionFromOptionalKey(InputTokenDetails)
 			})
 		)
 	),

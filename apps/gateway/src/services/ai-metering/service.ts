@@ -125,7 +125,7 @@ export class AiMetering extends Context.Service<AiMetering>()(
 								inputTokens: 0,
 								model,
 								outputTokens: 0,
-								spendSource: Option.none()
+								spendSource: Option.liftPredicate('openai' as const, () => provider === 'openai')
 							},
 							pending: ''
 						}

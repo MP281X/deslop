@@ -14,7 +14,7 @@ import {Line, LineChart, YAxis} from 'recharts'
 import {CopyButton} from '@deslop/components-web/blocks/copy-button'
 import {ImageMark} from '@deslop/components-web/blocks/marks'
 import {StaleProblem} from '@deslop/components-web/blocks/problem'
-import {ChoiceRow, LoadingRow, RowLead} from '@deslop/components-web/blocks/rows'
+import {LoadingRow, RowLead} from '@deslop/components-web/blocks/rows'
 import {Loaded, ReadFailure} from '@deslop/components-web/blocks/states'
 import {StatusDot} from '@deslop/components-web/blocks/status-dot'
 import {AppBar, AppBarChoice} from '@deslop/components-web/shell/app-bar'
@@ -42,7 +42,7 @@ import {AddKeyDialog, ProviderMark} from '#routes/(home)/-keys.tsx'
 import {aiCost, aiSeries, serverSeries} from '#routes/(home)/-usage.ts'
 import icon from '#routes/icon.svg'
 import type {AiUsageReport, Payer} from '#services/ai-metering/schema.ts'
-import type {AiKeyItem} from '#services/ai-proxy/schema.ts'
+import type {AiKeyItem, AiProvider} from '#services/ai-proxy/schema.ts'
 import {AiKeySecret} from '#services/ai-proxy/schema.ts'
 import type {ConnectionItem, McpUsageServer} from '#services/connections/schema.ts'
 import {Period} from '#services/usage/schema.ts'
@@ -51,7 +51,9 @@ import type {UsageRange} from '#services/usage/schema.ts'
 // The list's columns: name, tools, sparkline, total.
 const COLUMNS = 4
 const SPARKLINE = {calls: {color: 'var(--muted-foreground)'}} satisfies ChartConfig
-const PAYER_LABELS: Record<Payer, string> = {balance: 'Zen balance', byok: 'Anthropic key'}
+const PAYER_LABELS: Record<Payer, string> = {balance: 'Zen balance', byok: 'Anthropic key', openai: 'OpenAI key'}
+const PROVIDER_NAMES: Record<AiProvider, string> = {anthropic: 'Anthropic', openai: 'OpenAI', opencode: 'OpenCode'}
+const PROVIDER_PAYERS: Record<AiProvider, Payer> = {anthropic: 'byok', openai: 'openai', opencode: 'balance'}
 const PERIODS = Array.map(Period.literals, value => ({label: value, value}))
 
 const route = getRouteApi('/(home)/')
@@ -230,54 +232,38 @@ function ServerRows(props: {period: Period}) {
 }
 
 // One saved key, in a server row's shape: its payer's figure and range.
-function PayerRow(props: {
-	info: AiKeyItem
-	onOpen: () => void
-	period: UsageRange
-	report: AiUsageReport
-	source: Payer
-}) {
+function PayerRow(props: {info: AiKeyItem; period: UsageRange; report: AiUsageReport; source: Payer}) {
 	return (
-		<ChoiceRow label={PAYER_LABELS[props.source]} selected={false} onSelect={props.onOpen}>
+		<TableRow aria-label={PAYER_LABELS[props.source]}>
 			<RowLead
-				mark={Boolean.match(props.source === 'balance', {
-					onFalse: () => <WrenchIcon className="text-muted-foreground size-4" />,
-					onTrue: () => <ProviderMark />
-				})}
+				mark={<ProviderMark provider={props.info.provider} />}
 				after={
 					Option.exists(props.info.lastStatus, status => status === 401 || status === 403) && (
 						<StatusDot status="error" label="Key refused" />
 					)
 				}
-				detail={PAYER_LABELS[props.source]}
+				detail={`••••${props.info.last4}`}
 			>
-				{Boolean.match(props.source === 'balance', {
-					onFalse: Function.constant('Anthropic'),
-					onTrue: Function.constant('OpenCode')
-				})}
+				{PROVIDER_NAMES[props.info.provider]}
 			</RowLead>
 			<TableCell />
 			<FiguresCells
 				figure={aiCost(props.report, props.source)}
 				series={aiSeries(props.report, props.source, props.period)}
 			/>
-		</ChoiceRow>
+		</TableRow>
 	)
 }
 
-function KeyUsage(props: {info: AiKeyItem; onOpen: () => void; period: Period}) {
+function KeyUsage(props: {info: AiKeyItem; period: Period}) {
 	return (
 		<Loaded atom={aiUsageAtom(props.period)} frame={failure => <FailureRow>{failure}</FailureRow>}>
 			{current => (
 				<PayerRow
 					info={props.info}
-					onOpen={props.onOpen}
 					report={current.report}
 					period={current.range}
-					source={Boolean.match(props.info.provider === 'anthropic', {
-						onFalse: Function.constant('balance' as const),
-						onTrue: Function.constant('byok' as const)
-					})}
+					source={PROVIDER_PAYERS[props.info.provider]}
 				/>
 			)}
 		</Loaded>
@@ -285,13 +271,13 @@ function KeyUsage(props: {info: AiKeyItem; onOpen: () => void; period: Period}) 
 }
 
 // Each saved credential has one row; the field adds or replaces it.
-function KeyRows(props: {onOpen: () => void; period: Period}) {
+function KeyRows(props: {period: Period}) {
 	return (
 		<Loaded atom={aiKeyAtom} frame={failure => <FailureRow>{failure}</FailureRow>}>
 			{all =>
 				Array.map(all, credential => (
 					<Suspense key={credential.provider} fallback={<GroupLoading label="AI key" rows={1} />}>
-						<KeyUsage info={credential} onOpen={props.onOpen} period={props.period} />
+						<KeyUsage info={credential} period={props.period} />
 					</Suspense>
 				))
 			}
@@ -300,18 +286,18 @@ function KeyRows(props: {onOpen: () => void; period: Period}) {
 }
 
 // Each group is read on its own, so one failing reader leaves the other group's rows.
-function List(props: {onOpen: () => void; period: Period}) {
+function List(props: {period: Period}) {
 	return (
 		<Table role="grid" aria-label="MCP servers and AI keys">
 			<TableBody>
+				<CatchBoundary getResetKey={Function.constant('keys')} errorComponent={RowReadFailure}>
+					<Suspense fallback={<GroupLoading label="AI keys" rows={3} />}>
+						<KeyRows period={props.period} />
+					</Suspense>
+				</CatchBoundary>
 				<CatchBoundary getResetKey={Function.constant('servers')} errorComponent={RowReadFailure}>
 					<Suspense fallback={<GroupLoading label="MCP servers" rows={3} />}>
 						<ServerRows period={props.period} />
-					</Suspense>
-				</CatchBoundary>
-				<CatchBoundary getResetKey={Function.constant('keys')} errorComponent={RowReadFailure}>
-					<Suspense fallback={<GroupLoading label="AI keys" rows={2} />}>
-						<KeyRows onOpen={props.onOpen} period={props.period} />
 					</Suspense>
 				</CatchBoundary>
 			</TableBody>
@@ -348,7 +334,8 @@ function AddField(props: {onKey: (secret: string) => void}) {
 		if (Option.isNone(Option.liftThrowable(() => new URL(value))())) {
 			send(
 				addEvents.Invalid({
-					message: 'Enter a full HTTPS MCP URL, an OpenCode key (oc_sk_), or an Anthropic API key (sk-ant-).'
+					message:
+						'Enter a full HTTPS MCP URL, an OpenCode key (oc_sk_), an Anthropic key (sk-ant-), or an OpenAI key (sk-).'
 				})
 			)
 			return
@@ -438,7 +425,7 @@ function HomeRoute() {
 			<Page>
 				<h1 className="sr-only">Gateway</h1>
 				<AddField onKey={addKey} />
-				<List onOpen={() => addKey('')} period={period} />
+				<List period={period} />
 			</Page>
 			<AddKeyDialog
 				key={keyDialog.opened}
