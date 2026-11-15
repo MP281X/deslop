@@ -41,11 +41,11 @@ const telemetryLayer = pipe(
 
 it.layer(telemetryLayer)(test => {
 	test.effect(
-		'expires traces three days after receipt',
+		'expires traces seven days after receipt',
 		Effect.fnUntraced(function* () {
 			const telemetry = yield* Telemetry
 			yield* telemetry.ingestTraces(TRACES)
-			yield* TestClock.adjust('71 hours')
+			yield* TestClock.adjust('167 hours')
 			assert.lengthOf((yield* telemetry.trace(ID)).spans, 1)
 			yield* TestClock.adjust('2 hours')
 			assert.instanceOf(yield* Effect.flip(telemetry.trace(ID)), TelemetryError)

@@ -19,10 +19,11 @@ import {Atom, AtomRpc} from 'effect/reactivity'
 
 import {liveAtom} from '@deslop/runtime/client/live-stream'
 import {RpcStream} from '@deslop/runtime/shared/rpc'
+import {TimeFrame} from '@deslop/runtime/shared/time'
 import {layerPageProtocol} from '@deslop/runtime/web/client'
 
 import {RpcContracts} from '#rpcs/contracts.ts'
-import {AppName, Operation, Range, SpanId, TraceId} from '#services/telemetry/schema.ts'
+import {AppName, Operation, SpanId, TraceId} from '#services/telemetry/schema.ts'
 import type {OperationTrace, Overview, TraceTree} from '#services/telemetry/schema.ts'
 
 // The pane Back returns to; from Traces it is the operations, which the URL leaves unnamed.
@@ -62,7 +63,7 @@ export type NavigationEvent = typeof NavigationEvent.Type
 export const NavigationEvent = Schema.TaggedUnion({
 	Back: {},
 	Operation: {operation: OperationKey},
-	Range: {keepTrace: Schema.Boolean, range: Range},
+	Range: {keepTrace: Schema.Boolean, range: TimeFrame},
 	Source: {app: AppName},
 	Span: {selection: Schema.Struct({operation: OperationKey, spanId: SpanId, traceId: TraceId})},
 	Trace: {selection: Schema.Struct({operation: OperationKey, traceId: TraceId})}
@@ -72,7 +73,7 @@ export type Search = typeof Search.Type
 export const Search = Schema.Struct({
 	operation: Schema.OptionFromOptionalKey(Schema.String),
 	pane: Schema.OptionFromOptionalKey(Pane),
-	range: Schema.OptionFromOptionalKey(Range),
+	range: Schema.OptionFromOptionalKey(TimeFrame),
 	side: Schema.OptionFromOptionalKey(Operation.fields.runtime),
 	source: Schema.OptionFromOptionalKey(AppName),
 	span: Schema.OptionFromOptionalKey(SpanId),
@@ -90,7 +91,7 @@ export function navigationOf(search: Search) {
 }
 
 // The URL a selection produces in the given pane; a pick keeps the pane it was made in and the page's time frame.
-function select(selection: Selection, frame: Option.Option<Range>, pane: Option.Option<Pane>) {
+function select(selection: Selection, frame: Option.Option<TimeFrame>, pane: Option.Option<Pane>) {
 	return {
 		operation: Option.some(selection.operation.name),
 		pane,
@@ -174,7 +175,9 @@ function openingApp(overview: Overview) {
 	)
 }
 
-export const overviewAtom = Atom.family((range: Range) => Atom.keepAlive(liveAtom(RpcClient, 'telemetry.watch', range)))
+export const overviewAtom = Atom.family((range: TimeFrame) =>
+	Atom.keepAlive(liveAtom(RpcClient, 'telemetry.watch', range))
+)
 
 const traceAtoms = Atom.family((id: TraceId) => liveAtom(RpcClient, 'telemetry.trace', {id}))
 
