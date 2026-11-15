@@ -684,6 +684,9 @@ importers:
       '@effect/ai-anthropic':
         specifier: latest
         version: 4.1.4(effect@4.1.4)
+      '@effect/ai-openai':
+        specifier: latest
+        version: 4.1.4(effect@4.1.4)
       '@effect/platform-node':
         specifier: latest
         version: 4.1.4(effect@4.1.4)(redis@6.3.1)
@@ -1198,6 +1201,11 @@ packages:
 
   '@effect/ai-anthropic@4.1.4':
     resolution: {integrity: sha512-VDcsyL3k76HhF7YqH8z0gQ0bUybX4ti5RHv3JadDXZvEgNpvUT3p4YBssvKR2HAGa7NXr9yfmFedRilhQM7tdQ==}
+    peerDependencies:
+      effect: ^4.1.4
+
+  '@effect/ai-openai@4.1.4':
+    resolution: {integrity: sha512-xodZLHmt1N7Ziw94jr0nTfG/fgyMZioYKS85fyy2L1kscNurWGllaDaTQyHUSYd8wghqMoc8vV3XPei0+c9NIQ==}
     peerDependencies:
       effect: ^4.1.4
 
@@ -6679,6 +6687,10 @@ snapshots:
   '@dotenvx/primitives@0.8.0': {}
 
   '@effect/ai-anthropic@4.1.4(effect@4.1.4)':
+    dependencies:
+      effect: 4.1.4
+
+  '@effect/ai-openai@4.1.4(effect@4.1.4)':
     dependencies:
       effect: 4.1.4
 

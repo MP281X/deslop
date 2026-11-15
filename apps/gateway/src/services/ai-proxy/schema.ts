@@ -4,12 +4,12 @@ import {Model} from 'effect/schema'
 
 import {User} from '@deslop/runtime/shared/auth'
 
-export const KEY_MESSAGE = 'Enter an OpenCode key starting with oc_sk_ or an Anthropic API key starting with sk-ant-.'
+export const KEY_MESSAGE = 'Enter an OpenCode (oc_sk_), Anthropic (sk-ant-), or OpenAI (sk-) key.'
 export type AiProvider = typeof AiProvider.Type
-export const AiProvider = Schema.Literals(['opencode', 'anthropic'])
+export const AiProvider = Schema.Literals(['opencode', 'anthropic', 'openai'])
 export type AiKeySecret = typeof AiKeySecret.Type
 export const AiKeySecret = Schema.String.check(
-	Schema.isPattern(/^(?:oc_sk_|sk-ant-)[A-Za-z0-9_-]+$/u, {message: KEY_MESSAGE})
+	Schema.isPattern(/^(?:oc_sk_|sk-)[A-Za-z0-9_-]+$/u, {message: KEY_MESSAGE})
 )
 
 // One person's provider credential; the secret never returns to the page.

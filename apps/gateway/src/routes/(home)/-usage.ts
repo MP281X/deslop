@@ -8,7 +8,7 @@ import type {UsageRange} from '#services/usage/schema.ts'
 
 // `~` marks a figure that is estimated or missing a call's cost.
 function costOf(sum: AiUsageBreakdown) {
-	return `${Boolean.match(sum.spendSource === 'byok' || sum.estimatedCalls > 0 || sum.unknownCostCalls > 0, {onFalse: Function.constant(''), onTrue: Function.constant('~')})}${usdOf(sum.costUsd)}`
+	return `${Boolean.match(sum.spendSource === 'byok' || sum.spendSource === 'openai' || sum.estimatedCalls > 0 || sum.unknownCostCalls > 0, {onFalse: Function.constant(''), onTrue: Function.constant('~')})}${usdOf(sum.costUsd)}`
 }
 
 // Each bucket of the period, filled with zero where nothing was recorded.
@@ -33,7 +33,7 @@ export function aiCost(report: AiUsageReport, source: SpendSource) {
 		Array.findFirst(total => total.spendSource === source),
 		Option.match({
 			onNone: () =>
-				`${Boolean.match(source === 'byok', {onFalse: Function.constant(''), onTrue: Function.constant('~')})}${usdOf(0)}`,
+				`${Boolean.match(source === 'byok' || source === 'openai', {onFalse: Function.constant(''), onTrue: Function.constant('~')})}${usdOf(0)}`,
 			onSome: costOf
 		})
 	)

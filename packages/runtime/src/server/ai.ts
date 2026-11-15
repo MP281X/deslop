@@ -1,4 +1,5 @@
 import {AnthropicClient, AnthropicLanguageModel} from '@effect/ai-anthropic'
+import {OpenAiClient, OpenAiLanguageModel} from '@effect/ai-openai'
 
 import {Config, Context, Effect, Function, Layer, Option, Schema, pipe} from 'effect'
 
@@ -56,6 +57,22 @@ export class AiGateway extends Context.Service<
 				model: 'claude-haiku-5-5'
 			}),
 			AnthropicClient.AnthropicClient,
+			client
+		)
+	})
+	static readonly openaiLanguageModel = Effect.fn('AiGateway.openaiLanguageModel')(function* (
+		userId: UserId,
+		options: {maxTokens: number; model: string}
+	) {
+		yield* Effect.annotateCurrentSpan({maxTokens: options.maxTokens, model: options.model, userId})
+		const gateway = yield* AiGateway
+		const client = yield* OpenAiClient.make({
+			apiUrl: `${yield* gateway.apiUrl}/openai/v1`,
+			transformClient: yield* gateway.authorize(userId)
+		})
+		return yield* Effect.provideService(
+			OpenAiLanguageModel.make({config: {max_output_tokens: options.maxTokens}, model: options.model}),
+			OpenAiClient.OpenAiClient,
 			client
 		)
 	})
