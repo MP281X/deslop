@@ -19,7 +19,7 @@ import {RpcSerialization, RpcServer} from 'effect/rpc'
 import type {Rpc, RpcGroup} from 'effect/rpc'
 
 import {Auth, HttpAuth, localAuth} from '#server/auth.ts'
-import {layerStructuredTools} from '#server/mcp.ts'
+import {McpStream, layerStructuredTools} from '#server/mcp.ts'
 import {appName, packageMetadata} from '#server/package.ts'
 import {failureOptions} from '#shared/auth.ts'
 import {RpcStream, layerRpcStream} from '#shared/rpc.ts'
@@ -218,7 +218,7 @@ export function layerMcp<E, R>(options: {instructions: string; registrations: La
 					registrations: Layer.provide(options.registrations, layerStructuredTools),
 					version: metadata.version
 				}),
-				HttpAuth.layer
+				Layer.merge(HttpAuth.layer, McpStream.layer)
 			)
 		})
 	)
