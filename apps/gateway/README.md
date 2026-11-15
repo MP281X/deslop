@@ -17,6 +17,8 @@ Collection cursors resume live, key-ordered lists with the same filters; new row
 
 ## AI proxy
 
+Home offers 10m · 1h · 24h · 7d, defaulting to 24h. AI spend and MCP calls are recorded by minute. Series use minute buckets for 10m and 1h, quarter-hours for 24h and hours for 7d; charts sum these into 60 slots, except 10m keeps its ten available minute buckets. Upgrading preserves hourly history at each hour's first minute, not reconstructed call times. Existing thirty-day retention is unchanged.
+
 App servers start with `--domain mp281x.xyz`; Gateway's origin is derived from that domain. Auth's account answer supplies admin access; Gateway has no separate admin setting.
 
 Use `AiGateway` from `@deslop/runtime/server/ai`: `yield* gateway.apiUrl` and pass `yield* gateway.authorize(userId)` as the provider client's **construction-time** `transformClient`. Append the model's API-family path from [OpenCode's model catalog](https://opencode.ai/docs/console/models/); Go paths start with `/go`. `AiGateway.languageModel(userId, options)` uses the person's Anthropic API key, never the catalogue balance. Gateway maps the SDK's `/anthropic/v1/messages?beta=true` to `https://api.anthropic.com/v1/messages?beta=true`, sends the saved key in `x-api-key`, and forwards the Messages headers and body. Response token usage is metered to that person as estimated spend.

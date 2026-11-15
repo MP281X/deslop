@@ -26,6 +26,7 @@ import {Field, FieldError, FieldGroup} from '@deslop/components-web/ui/field'
 import {InputGroup, InputGroupAddon, InputGroupInput} from '@deslop/components-web/ui/input-group'
 import {Table, TableBody, TableCell, TableRow} from '@deslop/components-web/ui/table'
 import {countOf} from '@deslop/runtime/shared/format'
+import {TimeFrame} from '@deslop/runtime/shared/time'
 
 import {
 	addAtom,
@@ -45,7 +46,6 @@ import type {AiUsageReport, Payer} from '#services/ai-metering/schema.ts'
 import type {AiKeyItem, AiProvider} from '#services/ai-proxy/schema.ts'
 import {AiKeySecret} from '#services/ai-proxy/schema.ts'
 import type {ConnectionItem, McpUsageServer} from '#services/connections/schema.ts'
-import {Period} from '#services/usage/schema.ts'
 import type {UsageRange} from '#services/usage/schema.ts'
 
 // The list's columns: name, tools, sparkline, total.
@@ -54,7 +54,7 @@ const SPARKLINE = {calls: {color: 'var(--muted-foreground)'}} satisfies ChartCon
 const PAYER_LABELS: Record<Payer, string> = {balance: 'Zen balance', byok: 'Anthropic key', openai: 'OpenAI key'}
 const PROVIDER_NAMES: Record<AiProvider, string> = {anthropic: 'Anthropic', openai: 'OpenAI', opencode: 'OpenCode'}
 const PROVIDER_PAYERS: Record<AiProvider, Payer> = {anthropic: 'byok', openai: 'openai', opencode: 'balance'}
-const PERIODS = Array.map(Period.literals, value => ({label: value, value}))
+const PERIODS = Array.map(TimeFrame.literals, value => ({label: value, value}))
 
 const route = getRouteApi('/(home)/')
 
@@ -204,7 +204,7 @@ function GroupLoading(props: {label: string; rows: number}) {
 }
 
 // The servers reader first, so a refusal or a failed read shows without waiting for usage.
-function ServerRows(props: {period: Period}) {
+function ServerRows(props: {period: TimeFrame}) {
 	return (
 		<Loaded atom={serversAtom} frame={failure => <FailureRow>{failure}</FailureRow>}>
 			{servers =>
@@ -255,7 +255,7 @@ function PayerRow(props: {info: AiKeyItem; period: UsageRange; report: AiUsageRe
 	)
 }
 
-function KeyUsage(props: {info: AiKeyItem; period: Period}) {
+function KeyUsage(props: {info: AiKeyItem; period: TimeFrame}) {
 	return (
 		<Loaded atom={aiUsageAtom(props.period)} frame={failure => <FailureRow>{failure}</FailureRow>}>
 			{current => (
@@ -271,7 +271,7 @@ function KeyUsage(props: {info: AiKeyItem; period: Period}) {
 }
 
 // Each saved credential has one row; the field adds or replaces it.
-function KeyRows(props: {period: Period}) {
+function KeyRows(props: {period: TimeFrame}) {
 	return (
 		<Loaded atom={aiKeyAtom} frame={failure => <FailureRow>{failure}</FailureRow>}>
 			{all =>
@@ -286,7 +286,7 @@ function KeyRows(props: {period: Period}) {
 }
 
 // Each group is read on its own, so one failing reader leaves the other group's rows.
-function List(props: {period: Period}) {
+function List(props: {period: TimeFrame}) {
 	return (
 		<Table role="grid" aria-label="MCP servers and AI keys">
 			<TableBody>
@@ -377,7 +377,7 @@ function AddField(props: {onKey: (secret: string) => void}) {
 	)
 }
 
-function GatewayProblem(props: {period: Period}) {
+function GatewayProblem(props: {period: TimeFrame}) {
 	return (
 		<StaleProblem
 			label="Out of date"

@@ -38,6 +38,7 @@ import {Auth, requireAdmin} from '@deslop/runtime/server/auth'
 import type {User, UserId} from '@deslop/runtime/shared/auth'
 import {AuthError, ON_BEHALF_HEADER} from '@deslop/runtime/shared/auth'
 import {DateTimeUtcFromFiniteMillis} from '@deslop/runtime/shared/time'
+import type {TimeFrame} from '@deslop/runtime/shared/time'
 
 import {clientMetadata, connectionFailure, describe, serverIcons, serverName} from '#services/connections/lib/utils.ts'
 import type {
@@ -68,7 +69,6 @@ import {
 } from '#services/connections/schema.ts'
 import {Upstreams} from '#services/upstreams/service.ts'
 import {usageWindow} from '#services/usage/lib/utils.ts'
-import type {Period} from '#services/usage/schema.ts'
 import {UsageRange} from '#services/usage/schema.ts'
 
 declare module 'effect/reactivity/Reactivity' {
@@ -145,7 +145,7 @@ export class Connections extends Context.Service<
 			rejectedToken: Option.Option<string>
 		) => Effect.Effect<string, AuthError>
 		// Each proxied call, summed into the period's buckets by server, in a window that reopens at each bucket boundary.
-		readonly usage: (period: Period) => Stream.Stream<{range: UsageRange; report: McpUsageReport}, AuthError>
+		readonly usage: (period: TimeFrame) => Stream.Stream<{range: UsageRange; report: McpUsageReport}, AuthError>
 		readonly watch: (user: User) => Stream.Stream<ConnectionItem[], AuthError>
 	}
 >()('@deslop/gateway/services/connections/service/Connections') {
@@ -228,13 +228,13 @@ export class Connections extends Context.Service<
 			Request: ConnectionCalls.insert,
 			execute: row => sql`
 				INSERT INTO ${sql(ConnectionCalls.table)} ${sql.insert(row)}
-				ON CONFLICT (serverId, hour) DO UPDATE SET calls = calls + excluded.calls
+				ON CONFLICT (serverId, minute) DO UPDATE SET calls = calls + excluded.calls
 			`
 		})
 		const deleteCallsBefore = SqlSchema.void({
-			Request: Schema.Struct({hour: DateTimeUtcFromFiniteMillis, serverId: ConnectionCalls.fields.serverId}),
+			Request: Schema.Struct({minute: DateTimeUtcFromFiniteMillis, serverId: ConnectionCalls.fields.serverId}),
 			execute: request =>
-				sql`DELETE FROM ${sql(ConnectionCalls.table)} WHERE serverId = ${request.serverId} AND hour < ${request.hour}`
+				sql`DELETE FROM ${sql(ConnectionCalls.table)} WHERE serverId = ${request.serverId} AND minute < ${request.minute}`
 		})
 		// Every server, with its calls summed into the range's buckets.
 		const listCalls = SqlSchema.findAll({
@@ -243,8 +243,8 @@ export class Connections extends Context.Service<
 			execute: range => sql`
 				SELECT id, (
 					SELECT json_group_array(json_object('at', at, 'calls', calls)) FROM (
-						SELECT hour - hour % ${range.size} AS at, sum(calls) AS calls FROM ${sql(ConnectionCalls.table)}
-						WHERE serverId = ${sql(Connection.table)}.id AND hour >= ${range.from} AND hour < ${range.to}
+						SELECT minute - minute % ${range.size} AS at, sum(calls) AS calls FROM ${sql(ConnectionCalls.table)}
+						WHERE serverId = ${sql(Connection.table)}.id AND minute >= ${range.from} AND minute < ${range.to}
 						GROUP BY 1 ORDER BY 1
 					)
 				) AS series
@@ -610,14 +610,14 @@ export class Connections extends Context.Service<
 					Effect.catch(cause => fail(connection, cause))
 				)
 			}, asAuthError('Cannot connect this MCP')),
-			// The bar's longest period: an hour older than 30 days goes as a new call arrives.
+			// Keep the existing thirty-day retention as a new call arrives.
 			called: Effect.fn('Connections.called')(function* (id) {
 				yield* Effect.annotateCurrentSpan('serverId', id)
 				const now = yield* DateTime.now
 				yield* pipe(
 					Effect.andThen(
-						countCall({calls: 1, hour: DateTime.startOf(now, 'hour'), serverId: id}),
-						deleteCallsBefore({hour: DateTime.subtractDuration(now, Duration.days(30)), serverId: id})
+						countCall({calls: 1, minute: DateTime.startOf(now, 'minute'), serverId: id}),
+						deleteCallsBefore({minute: DateTime.subtractDuration(now, Duration.days(30)), serverId: id})
 					),
 					Reactivity.mutation(['connectionCalls']),
 					sql.withTransaction,
@@ -846,6 +846,11 @@ export class Connections extends Context.Service<
 							PRIMARY KEY (serverId, hour)
 						) STRICT, WITHOUT ROWID
 					`
+				}),
+				'0002_minute_calls': Effect.gen(function* () {
+					const sql = yield* SqlClient.SqlClient
+					// Hour timestamps already name their first minute; preserve every existing count.
+					yield* sql`ALTER TABLE connection_calls RENAME COLUMN hour TO minute`
 				})
 			}),
 			table: 'connections_migrations'

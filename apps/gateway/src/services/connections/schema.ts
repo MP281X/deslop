@@ -112,10 +112,10 @@ export class ConnectionGrant extends Model.Class<ConnectionGrant>('ConnectionGra
 	static readonly table = 'connection_grants'
 }
 
-// A server's proxied tool calls in one hour; the page sums the hours into the bar's period, and an hour older than its longest period goes.
+// A server's proxied tool calls in one minute, retained for thirty days.
 export class ConnectionCalls extends Model.Class<ConnectionCalls>('ConnectionCalls')({
 	calls: Schema.Int,
-	hour: Schema.DateTimeUtcFromMillis,
+	minute: Schema.DateTimeUtcFromMillis,
 	serverId: ServerId
 }) {
 	static readonly table = 'connection_calls'

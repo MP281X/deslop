@@ -1,4 +1,4 @@
-import {Array, Boolean, DateTime, Duration, Function, HashMap, Option, pipe} from 'effect'
+import {Array, Boolean, DateTime, Duration, Function, HashMap, Number, Option, pipe} from 'effect'
 
 import {usdOf} from '@deslop/runtime/shared/format'
 
@@ -11,10 +11,20 @@ function costOf(sum: AiUsageBreakdown) {
 	return `${Boolean.match(sum.spendSource === 'byok' || sum.spendSource === 'openai' || sum.estimatedCalls > 0 || sum.unknownCostCalls > 0, {onFalse: Function.constant(''), onTrue: Function.constant('~')})}${usdOf(sum.costUsd)}`
 }
 
-// Each bucket of the period, filled with zero where nothing was recorded.
+// Sum the source buckets into 60 chart slots like Deploy; ten minutes keeps its ten honest minute buckets.
 function seriesOf(range: UsageRange, value: (at: DateTime.Utc) => number) {
-	return Array.map(Array.range(0, range.count - 1), index =>
-		value(DateTime.addDuration(range.from, Duration.times(range.size, index)))
+	const slots = Math.min(60, range.count)
+	return Array.makeBy(slots, index =>
+		Number.sumAll(
+			Array.makeBy(Math.ceil(((index + 1) * range.count) / slots) - Math.ceil((index * range.count) / slots), offset =>
+				value(
+					DateTime.addDuration(
+						range.from,
+						Duration.times(range.size, Math.ceil((index * range.count) / slots) + offset)
+					)
+				)
+			)
+		)
 	)
 }
 export function aiSeries(report: AiUsageReport, source: SpendSource, range: UsageRange) {
