@@ -13,6 +13,7 @@ import {
 	Result,
 	Schema,
 	String,
+	Struct,
 	pipe
 } from 'effect'
 
@@ -97,7 +98,7 @@ export function missingNumbers(chapters: readonly Chapter[], kind: Series) {
 	)
 }
 
-// Every index chapter on a series' first read; later reads fill only the gaps between its lowest and highest known chapter.
+// Every index chapter on a series' first read; later reads silently fill gaps and announce releases above its highest known chapter.
 export function indexChapters(current: readonly Chapter[], chapters: readonly Chapter[], kind: Series) {
 	const known = HashSet.fromIterable(Array.map(current, keyOf))
 	const numbers = numbersOf(current, kind)
@@ -106,9 +107,12 @@ export function indexChapters(current: readonly Chapter[], chapters: readonly Ch
 	}
 	const low = Array.min(numbers, Order.Number)
 	const high = Array.max(numbers, Order.Number)
-	return Array.filter(
+	return pipe(
 		chapters,
-		chapter => !HashSet.has(known, keyOf(chapter)) && chapter.number > low && chapter.number < high
+		Array.filter(chapter => !HashSet.has(known, keyOf(chapter)) && chapter.number > low),
+		Array.map(chapter =>
+			Chapter.make({...Struct.pick(chapter, Struct.keys(Chapter.fields)), notified: chapter.number <= high})
+		)
 	)
 }
 
