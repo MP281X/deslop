@@ -378,45 +378,62 @@ export class Inventory extends Context.Service<
 			// A Mac's Dock apps, user launch agents and listeners, measured together so CPU shares compare like readings.
 			const darwin: Effect.Effect<Machine> = Effect.gen(function* () {
 				const namedAgents = Effect.gen(function* () {
-					const agents = launchAgents(yield* command('launchctl', ['list']))
 					return Array.getSomes(
 						yield* Effect.forEach(
-							agents,
+							launchAgents(yield* command('launchctl', ['list'])),
 							Effect.fnUntraced(function* (agent) {
 								if (String.startsWith('deslop-')(agent.label)) return Option.some(agent)
-								const program = pipe(
+								const program = Option.flatMap(
 									yield* Effect.option(command('launchctl', ['print', `gui/${userInfo().uid}/${agent.label}`])),
-									Option.flatMap(launchProgram)
+									launchProgram
 								)
 								if (Option.exists(program, systemProgram)) return Option.none()
-								const bundle = Option.flatMap(program, applicationBundle)
-								if (Option.isNone(bundle)) return Option.some(agent)
-								// plutil needs no Apple Events, Automation or Accessibility access.
-								let name = Option.none<string>()
-								for (const key of ['CFBundleDisplayName', 'CFBundleName']) {
-									name = pipe(
-										yield* Effect.option(
-											command('/usr/bin/plutil', [
-												'-extract',
-												key,
-												'raw',
-												'-expect',
-												'string',
-												'-o',
-												'-',
-												`${bundle.value}/Contents/Info.plist`
-											])
-										),
-										Option.map(String.trim),
-										Option.filter(String.isNonEmpty)
-									)
-									if (Option.isSome(name)) break
-								}
-								return Option.some({
-									...agent,
-									bundle,
-									name: Option.getOrElse(name, () => String.slice(0, -4)(String.split(bundle.value, '/').at(-1) ?? ''))
-								})
+								return yield* pipe(
+									program,
+									Option.flatMap(applicationBundle),
+									Option.match({
+										onNone: () => Effect.succeedSome(agent),
+										onSome: Effect.fnUntraced(function* (bundle) {
+											// plutil needs no Apple Events, Automation or Accessibility access.
+											const name = yield* Effect.findFirstFilter(['CFBundleDisplayName', 'CFBundleName'], key =>
+												pipe(
+													command('/usr/bin/plutil', [
+														'-extract',
+														key,
+														'raw',
+														'-expect',
+														'string',
+														'-o',
+														'-',
+														`${bundle}/Contents/Info.plist`
+													]),
+													Effect.option,
+													Effect.map(value =>
+														pipe(
+															value,
+															Option.map(String.trim),
+															Option.filter(String.isNonEmpty),
+															Result.fromOption(Function.constUndefined)
+														)
+													)
+												)
+											)
+											return Option.some({
+												...agent,
+												bundle: Option.some(bundle),
+												name: Option.getOrElse(name, () =>
+													pipe(
+														bundle,
+														String.split('/'),
+														Array.last,
+														Option.getOrElse(Function.constant('')),
+														String.slice(0, -4)
+													)
+												)
+											})
+										})
+									})
+								)
 							}),
 							{concurrency: 4}
 						)
@@ -437,31 +454,44 @@ export class Inventory extends Context.Service<
 					applications: Result.map(collected.applications, text =>
 						dockApplications(
 							text,
-							Array.getSomes(Array.map(Result.getOrElse(collected.agents, () => []), agent => agent.bundle))
+							pipe(
+								Result.getOrElse(collected.agents, () => []),
+								Array.map(agent => agent.bundle),
+								Array.getSomes
+							)
 						)
 					)
 				}
 				const time = yield* DateTime.now
-				const total = Duration.millis(Number.sumAll(Array.flatMap(cpus(), cpu => Record.values(cpu.times))))
+				const total = pipe(
+					cpus(),
+					Array.flatMap(cpu => Record.values(cpu.times)),
+					Number.sumAll,
+					Duration.millis
+				)
 				const apps = macApplications(
 					Result.getOrElse(launchd.agents, () => []),
 					Result.getOrElse(launchd.applications, () => [])
 				)
 				function appItems(found: typeof apps) {
-					return Array.map(Array.dedupeWith(found, (left, right) => left.label === right.label), app =>
-						InventoryItem.make({
-							active: true,
-							detail: app.detail,
-							id: ItemId.make(`${worker}:user:${app.label}`),
-							kind: 'service',
-							name: UnitId.make(app.name),
-							running: true,
-							scope: Option.some('user'),
-							state: 'running',
-							unit: Option.some(app.label),
-							url: Option.none(),
-							worker
-						})
+					return pipe(
+						found,
+						Array.dedupeWith((left, right) => left.label === right.label),
+						Array.map(app =>
+							InventoryItem.make({
+								active: true,
+								detail: app.detail,
+								id: ItemId.make(`${worker}:user:${app.label}`),
+								kind: 'service',
+								name: UnitId.make(app.name),
+								running: true,
+								scope: Option.some('user'),
+								state: 'running',
+								unit: Option.some(app.label),
+								url: Option.none(),
+								worker
+							})
+						)
 					)
 				}
 				const records = Result.map(launchd.table, text => {

@@ -31,7 +31,7 @@ import {type Row, availablePorts, processTree, workloadName, workloads} from '#s
 import {ItemId, WorkerId} from '#services/inventory/schema.ts'
 import type {AppId, InventoryItem} from '#services/inventory/schema.ts'
 import {HistoryQuery} from '#services/metrics/schema.ts'
-import type {MachineHistory} from '#services/metrics/schema.ts'
+import type {MachineHistory, Platform} from '#services/metrics/schema.ts'
 
 // A phone shows the list with the machine's chart above it, or one app's processes full-screen.
 type Pane = typeof Pane.Type
@@ -51,13 +51,7 @@ function machineName(worker: WorkerId) {
 	return String.split(worker, '.')[0]
 }
 
-function MachineIcon(props: {worker: WorkerId; platform: Option.Option<'linux' | 'darwin'>}) {
-	const Icon = Option.contains(props.platform, 'darwin')
-		? LaptopIcon
-		: Boolean.match(machineName(props.worker) === 'desktop', {
-				onFalse: () => HardDrivesIcon,
-				onTrue: () => MonitorIcon
-			})
+function MachineIcon(props: {worker: WorkerId; platform: Option.Option<Platform>}) {
 	return (
 		<span
 			aria-hidden="true"
@@ -66,7 +60,18 @@ function MachineIcon(props: {worker: WorkerId; platform: Option.Option<'linux' |
 				{onFalse: Function.constant('text-machine-dev'), onTrue: Function.constant('text-machine-desktop')}
 			)}`}
 		>
-			<Icon className="size-4" />
+			{pipe(
+				props.platform,
+				Option.contains<Platform>('darwin'),
+				Boolean.match({
+					onFalse: () =>
+						Boolean.match(machineName(props.worker) === 'desktop', {
+							onFalse: () => <HardDrivesIcon className="size-4" />,
+							onTrue: () => <MonitorIcon className="size-4" />
+						}),
+					onTrue: () => <LaptopIcon className="size-4" />
+				})
+			)}
 		</span>
 	)
 }

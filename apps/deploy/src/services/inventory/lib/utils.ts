@@ -138,14 +138,19 @@ function ports(items: readonly InventoryItem[]) {
 	)
 }
 
+// A Mac bundle's identity is separate from its display name; Linux services use their unit name for both.
+function serviceUnit(item: InventoryItem) {
+	if (item.kind === 'service') return Option.getOrElse(item.unit, () => item.name)
+	return UnitId.make(item.name)
+}
+
 export function itemOwner(item: InventoryItem) {
 	if (item.kind === 'container') {
 		return AppId.make(
 			`container:${String.slice(0, 12)(Option.getOrElse(Array.last(String.split(item.id, ':docker:')), Function.constant('')))}`
 		)
 	}
-	const unit = item.kind === 'service' ? Option.getOrElse(item.unit, () => item.name) : item.name
-	return AppId.make(`service:${Option.getOrElse(item.scope, Function.constant('system'))}:${unit}`)
+	return AppId.make(`service:${Option.getOrElse(item.scope, Function.constant('system'))}:${serviceUnit(item)}`)
 }
 
 function fullName(item: InventoryItem) {
@@ -217,8 +222,9 @@ export function workloads(items: readonly InventoryItem[]) {
 		items,
 		Array.filter(item => item.kind === 'service' || item.kind === 'container'),
 		Array.map(item => {
-			const attached = Array.filter(byUnit[item.worker]?.[`unit:${item.name}`] ?? [], listener =>
-				Option.exists(listener.unit, unit => unit === item.name)
+			const unit = serviceUnit(item)
+			const attached = Array.filter(byUnit[item.worker]?.[`unit:${unit}`] ?? [], listener =>
+				Option.contains(listener.unit, unit)
 			)
 			const bindings = pipe(
 				item.bindings,
@@ -247,7 +253,7 @@ export function workloads(items: readonly InventoryItem[]) {
 					unit: pipe(
 						item,
 						Option.liftPredicate(owner => owner.kind === 'service'),
-						Option.map(owner => owner.name)
+						Option.map(serviceUnit)
 					),
 					url: Option.none<string>()
 				}))
@@ -259,7 +265,7 @@ export function workloads(items: readonly InventoryItem[]) {
 		pipe(
 			grouped,
 			Array.filter(row => row.item.kind === 'service'),
-			Array.map(row => Tuple.make(row.item.worker, row.item.name))
+			Array.map(row => Tuple.make(row.item.worker, serviceUnit(row.item)))
 		)
 	)
 	const represented = HashSet.fromIterable(

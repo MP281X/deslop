@@ -21,7 +21,7 @@ export function launchProgram(text: string) {
 }
 
 export function systemProgram(path: string) {
-	return /^(?:\/System|\/usr|\/bin|\/sbin|\/Library\/Apple)(?:\/|$)/u.test(path)
+	return Option.isSome(String.match(/^(?:\/System|\/usr|\/bin|\/sbin|\/Library\/Apple)(?:\/|$)/u)(path))
 }
 
 // `application.*` jobs belong to Launch Services, not user launch agents; lsappinfo decides which are regular Dock apps.
@@ -62,9 +62,8 @@ export function dockApplications(text: string, agentBundles: readonly string[] =
 			text,
 			String.split(/\n(?=\s*[0-9]+\))/u),
 			Array.map(block => {
-				const bundle = pipe(
-					String.match(/^\s+bundle path="([^"\n]+)"\s*$/mu)(block),
-					Option.flatMap(match => applicationBundle(match[1] ?? ''))
+				const bundle = Option.flatMap(String.match(/^\s+bundle path="([^"\n]+)"\s*$/mu)(block), match =>
+					applicationBundle(match[1] ?? '')
 				)
 				// A tray-only app can still own a launch agent and listeners (Bitwarden's UIElement).
 				const agentApplication = Option.exists(bundle, value => Array.contains(agentBundles, value))
@@ -96,33 +95,41 @@ export function macApplications(
 	agents: ReturnType<typeof launchAgents>,
 	applications: ReturnType<typeof dockApplications>
 ) {
-	const running = Array.getSomes(Array.map(agents, agent => Option.map(agent.pid, pid => ({...agent, pid}))))
-	const roots = [...applications, ...running]
-	return Array.dedupeWith(
-		Array.map(roots, app => {
+	const running = pipe(
+		agents,
+		Array.map(agent => Option.map(agent.pid, pid => ({...agent, pid}))),
+		Array.getSomes
+	)
+	return pipe(
+		[...applications, ...running],
+		Array.map(app => {
 			const dock = Array.findFirst(
 				applications,
-				candidate => candidate.pid === app.pid ||
-					Option.exists(app.bundle, bundle => Option.contains(candidate.bundle, bundle))
+				candidate =>
+					candidate.pid === app.pid || Option.exists(app.bundle, bundle => Option.contains(candidate.bundle, bundle))
 			)
-			const bundledAgent = Array.findFirst(running, candidate =>
-				Option.exists(app.bundle, bundle => Option.contains(candidate.bundle, bundle))
-			)
-			const name = Option.match(bundledAgent, {
-				onNone: () => Option.match(dock, {onNone: () => app.name, onSome: candidate => candidate.name}),
-				onSome: agent => agent.name
-			})
 			return {
 				...app,
+				detail: Option.match(dock, {onNone: () => app.detail, onSome: candidate => candidate.detail}),
 				label: UnitId.make(
 					Option.getOrElse(app.bundle, () =>
-						Option.getOrElse(Option.map(dock, candidate => candidate.label), () => app.label)
+						pipe(
+							dock,
+							Option.map(candidate => candidate.label),
+							Option.getOrElse(() => app.label)
+						)
 					)
 				),
-				name,
-				detail: Option.match(dock, {onNone: () => app.detail, onSome: candidate => candidate.detail})
+				name: pipe(
+					running,
+					Array.findFirst(candidate => Option.exists(app.bundle, bundle => Option.contains(candidate.bundle, bundle))),
+					Option.match({
+						onNone: () => Option.match(dock, {onNone: () => app.name, onSome: candidate => candidate.name}),
+						onSome: agent => agent.name
+					})
+				)
 			}
 		}),
-		(left, right) => left.pid === right.pid
+		Array.dedupeWith((left, right) => left.pid === right.pid)
 	)
 }
