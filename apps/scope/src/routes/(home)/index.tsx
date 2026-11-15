@@ -23,7 +23,7 @@ import {Loaded, ReadFailure} from '@deslop/components-web/blocks/states'
 import {StatusDot} from '@deslop/components-web/blocks/status-dot'
 import {mediaQueryAtom} from '@deslop/components-web/lib/media'
 import {cn} from '@deslop/components-web/lib/utils'
-import {AppBarTab, AppBar, AppBarChoice, AppBarTabs} from '@deslop/components-web/shell/app-bar'
+import {AppBarTab, AppBar, AppBarChoice, AppBarTabs, AppBarTabsSkeleton} from '@deslop/components-web/shell/app-bar'
 import {Workspace} from '@deslop/components-web/shell/workspace'
 import {Empty, EmptyHeader, EmptyMedia, EmptyTitle} from '@deslop/components-web/ui/empty'
 import {ResizableHandle, ResizablePanel, ResizablePanelGroup} from '@deslop/components-web/ui/resizable'
@@ -97,6 +97,7 @@ type WorkspaceProps = {
 // The bar's app choice: one mark per app, its own icon, GitHub's for CI, else a server glyph, never a letter tile; one is always chosen, and choosing the chosen tab again does nothing.
 function SourceTabs(props: {apps: Overview['apps']; source?: AppName}) {
 	const search = route.useSearch()
+	if (Array.isReadonlyArrayEmpty(props.apps)) return <AppBarTabsSkeleton count={4} />
 	return (
 		<AppBarTabs value={props.source ?? ''}>
 			{Array.map(props.apps, app => (
