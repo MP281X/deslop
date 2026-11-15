@@ -102,6 +102,11 @@ function photosOf(post: FxPost) {
 	]
 }
 
+// Every picture of the saved post, its thread and the posts it links.
+export function conversationPhotos(plan: ReturnType<typeof conversationPlan>, linked: readonly FxPost[]) {
+	return pipe([...plan.context, ...linked], Array.flatMap(photosOf), Array.dedupe, Array.take(30))
+}
+
 export function conversationPlan(conversation: FxConversation, status: FxPost, quote: Option.Option<FxPost>) {
 	const replies: readonly FxPost[] = Option.getOrElse(conversation.replies, () => [])
 	const byId = HashMap.fromIterable(Array.map(Array.reverse(replies), post => [post.id, post] as const))
