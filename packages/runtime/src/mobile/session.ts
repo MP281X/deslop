@@ -48,8 +48,9 @@ export function makeSession() {
 	const auth = `https://auth.${DOMAIN}`
 	const name = String.capitalize(appConfig.slug)
 	const sessionRuntime = Atom.runtime(FetchHttpClient.layer)
+	const cachedAccountAtom = Atom.keepAlive(Atom.make(keychain.account()))
 
-	const accountAtom = sessionRuntime.atom(get => {
+	const revalidationAtom = sessionRuntime.atom(get => {
 		get(activationsAtom)
 		return pipe(
 			headersEffect,
@@ -74,8 +75,34 @@ export function makeSession() {
 						AuthError.make({cause, error: 'temporarily_unavailable', message: 'The server could not be reached'})
 					)
 				)
+			),
+			Effect.tap(account =>
+				Effect.gen(function* () {
+					get.set(cachedAccountAtom, Option.some(account))
+					yield* Effect.ignore(keychain.saveAccount(account), {log: 'Warn'})
+				})
+			),
+			Effect.tapError(error =>
+				Effect.gen(function* () {
+					if (error.error === 'temporarily_unavailable') return
+					get.set(cachedAccountAtom, Option.none())
+					yield* Effect.ignore(keychain.clearAccount, {log: 'Warn'})
+				})
 			)
 		)
+	})
+
+	// A confirmed account opens the app while the foreground check runs; only a refusal discards it.
+	const accountAtom = Atom.make(get => {
+		const revalidation = get(revalidationAtom)
+		return Option.match(get(cachedAccountAtom), {
+			onNone: () => {
+				// Sign-out must not expose the previous successful check while its replacement runs.
+				if (AsyncResult.isSuccess(revalidation)) return AsyncResult.initial<Account, AuthError>()
+				return revalidation
+			},
+			onSome: account => AsyncResult.success<Account, AuthError>(account)
+		})
 	})
 
 	const signInAtom = sessionRuntime.fn((_: void, get) =>
@@ -94,7 +121,7 @@ export function makeSession() {
 				yield* keychain.write(
 					yield* Schema.decodeUnknownEffect(Schema.NonEmptyString)(new URL(result.url).searchParams.get('session'))
 				)
-				get.refresh(accountAtom)
+				get.refresh(revalidationAtom)
 			}),
 			Effect.mapError(cause => AuthError.make({cause, message: `Cannot sign in to ${name}`})),
 			Effect.tapError(error => Effect.sync(() => Alert.alert('Not Signed In', error.message)))
@@ -111,14 +138,18 @@ export function makeSession() {
 				Effect.ignore({log: 'Warn', message: 'Auth did not end the session'})
 			)
 			yield* keychain.clear
-			get.refresh(accountAtom)
+			get.set(cachedAccountAtom, Option.none())
+			get.refresh(revalidationAtom)
 		})
 	)
 
 	return {
 		account: accountAtom,
-		// Reading the account restarts live work on each return from the background, when iOS has closed its sockets.
-		available: (get: Atom.AtomContext) => AsyncResult.isSuccess(get(accountAtom)),
+		// Even an unchanged cached account must restart sockets that iOS closed in the background.
+		available: (get: Atom.AtomContext) => {
+			get(activationsAtom)
+			return AsyncResult.isSuccess(get(accountAtom))
+		},
 		// What a request outside the RPC socket sends for Auth to name the caller.
 		headers: headersEffect,
 		protocol: layerSocketProtocol(
