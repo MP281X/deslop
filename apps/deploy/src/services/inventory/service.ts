@@ -1,4 +1,4 @@
-import {cpus, hostname} from 'node:os'
+import {cpus, hostname, userInfo} from 'node:os'
 import {pid, platform} from 'node:process'
 
 import {
@@ -31,7 +31,14 @@ import {ChildProcessSpawner} from 'effect/process'
 import {executeProcess} from '@deslop/runtime/server/process'
 
 import {exitFailure, unitFailures} from './lib/failures.ts'
-import {dockApplications, launchAgents, macApplications} from './lib/launchd.ts'
+import {
+	applicationBundle,
+	dockApplications,
+	launchAgents,
+	launchProgram,
+	macApplications,
+	systemProgram
+} from './lib/launchd.ts'
 import {attachProcesses, launchdProcesses, processReadings, processes} from './lib/processes.ts'
 import type {ProcessMeasurement} from './lib/processes.ts'
 import {type Socket, lsofSockets, probeSocket, socketLine, socketProcess, socketUnit} from './lib/sockets.ts'
@@ -47,9 +54,10 @@ import {
 	Tailnet,
 	Timer,
 	Unit,
+	UnitId,
 	WorkerId
 } from '#services/inventory/schema.ts'
-import type {RunRequest, UnitId, Snapshot} from '#services/inventory/schema.ts'
+import type {RunRequest, Snapshot} from '#services/inventory/schema.ts'
 
 declare module 'effect/reactivity/Reactivity' {
 	interface Keys {
@@ -369,36 +377,121 @@ export class Inventory extends Context.Service<
 			})
 			// A Mac's Dock apps, user launch agents and listeners, measured together so CPU shares compare like readings.
 			const darwin: Effect.Effect<Machine> = Effect.gen(function* () {
-				const launchd = yield* Effect.all(
+				const namedAgents = Effect.gen(function* () {
+					return Array.getSomes(
+						yield* Effect.forEach(
+							launchAgents(yield* command('launchctl', ['list'])),
+							Effect.fnUntraced(function* (agent) {
+								if (String.startsWith('deslop-')(agent.label)) return Option.some(agent)
+								const program = Option.flatMap(
+									yield* Effect.option(command('launchctl', ['print', `gui/${userInfo().uid}/${agent.label}`])),
+									launchProgram
+								)
+								if (Option.exists(program, systemProgram)) return Option.none()
+								return yield* pipe(
+									program,
+									Option.flatMap(applicationBundle),
+									Option.match({
+										onNone: () => Effect.succeedSome(agent),
+										onSome: Effect.fnUntraced(function* (bundle) {
+											// plutil needs no Apple Events, Automation or Accessibility access.
+											const name = yield* Effect.findFirstFilter(['CFBundleDisplayName', 'CFBundleName'], key =>
+												pipe(
+													command('/usr/bin/plutil', [
+														'-extract',
+														key,
+														'raw',
+														'-expect',
+														'string',
+														'-o',
+														'-',
+														`${bundle}/Contents/Info.plist`
+													]),
+													Effect.option,
+													Effect.map(value =>
+														pipe(
+															value,
+															Option.map(String.trim),
+															Option.filter(String.isNonEmpty),
+															Result.fromOption(Function.constUndefined)
+														)
+													)
+												)
+											)
+											return Option.some({
+												...agent,
+												bundle: Option.some(bundle),
+												name: Option.getOrElse(name, () =>
+													pipe(
+														bundle,
+														String.split('/'),
+														Array.last,
+														Option.getOrElse(Function.constant('')),
+														String.slice(0, -4)
+													)
+												)
+											})
+										})
+									})
+								)
+							}),
+							{concurrency: 4}
+						)
+					)
+				})
+				const collected = yield* Effect.all(
 					{
-						agents: Effect.result(Effect.map(command('launchctl', ['list']), launchAgents)),
-						applications: Effect.result(Effect.map(command('/usr/bin/lsappinfo', ['list']), dockApplications)),
+						agents: Effect.result(namedAgents),
+						applications: Effect.result(command('/usr/bin/lsappinfo', ['list'])),
 						table: Effect.result(
 							command('env', ['LC_ALL=C', 'ps', '-axww', '-o', 'pid=,ppid=,rss=,time=,lstart=,args='])
 						)
 					},
 					{concurrency: 'unbounded'}
 				)
+				const launchd = {
+					...collected,
+					applications: Result.map(collected.applications, text =>
+						dockApplications(
+							text,
+							pipe(
+								Result.getOrElse(collected.agents, () => []),
+								Array.map(agent => agent.bundle),
+								Array.getSomes
+							)
+						)
+					)
+				}
 				const time = yield* DateTime.now
-				const total = Duration.millis(Number.sumAll(Array.flatMap(cpus(), cpu => Record.values(cpu.times))))
+				const total = pipe(
+					cpus(),
+					Array.flatMap(cpu => Record.values(cpu.times)),
+					Number.sumAll,
+					Duration.millis
+				)
 				const apps = macApplications(
 					Result.getOrElse(launchd.agents, () => []),
 					Result.getOrElse(launchd.applications, () => [])
 				)
 				function appItems(found: typeof apps) {
-					return Array.map(found, app =>
-						InventoryItem.make({
-							active: true,
-							detail: app.detail,
-							id: ItemId.make(`${worker}:user:${app.label}`),
-							kind: 'service',
-							name: app.label,
-							running: true,
-							scope: Option.some('user'),
-							state: 'running',
-							url: Option.none(),
-							worker
-						})
+					return pipe(
+						found,
+						Array.dedupeWith((left, right) => left.label === right.label),
+						Array.map(app =>
+							InventoryItem.make({
+								active: true,
+								detail: app.detail,
+								id: ItemId.make(`${worker}:user:${app.label}`),
+								kind: 'service',
+								name: UnitId.make(app.name),
+								running: true,
+								scope: Option.some('user'),
+								state: 'running',
+								unit: Option.some(app.label),
+								url: Option.none(),
+								worker
+							})
+						)
 					)
 				}
 				const records = Result.map(launchd.table, text => {
@@ -417,13 +510,14 @@ export class Inventory extends Context.Service<
 					sources: [
 						collect(
 							'Launch agents',
-							Effect.map(Effect.fromResult(launchd.agents), agents =>
-								pipe(
+							Effect.map(Effect.fromResult(launchd.agents), agents => [
+								...appItems(Array.filter(apps, app => app.detail === 'user · launch agent')),
+								...pipe(
 									agents,
 									Array.filter(agent =>
 										Option.match(agent.pid, {
 											onNone: () => Option.exists(agent.status, status => status !== 0),
-											onSome: id => Array.some(apps, app => app.pid === id && app.label === agent.label)
+											onSome: Function.constFalse
 										})
 									),
 									Array.map(agent =>
@@ -441,7 +535,7 @@ export class Inventory extends Context.Service<
 											}),
 											id: ItemId.make(`${worker}:user:${agent.label}`),
 											kind: 'service',
-											name: agent.label,
+											name: UnitId.make(agent.name),
 											running: Option.isSome(agent.pid),
 											scope: Option.some('user'),
 											state: Option.match(agent.pid, {
@@ -453,9 +547,14 @@ export class Inventory extends Context.Service<
 										})
 									)
 								)
+							])
+						),
+						collect(
+							'Applications',
+							Effect.map(Effect.fromResult(launchd.applications), () =>
+								appItems(Array.filter(apps, app => app.detail === 'user · application'))
 							)
 						),
-						collect('Applications', Effect.map(Effect.fromResult(launchd.applications), appItems)),
 						collect(
 							'Listening ports',
 							Effect.flatMap(command('lsof', ['-nP', '+c0', '-iTCP', '-sTCP:LISTEN', '-iUDP', '-F', 'pctPnT']), text =>

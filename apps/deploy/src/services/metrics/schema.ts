@@ -126,12 +126,16 @@ export const Point = Schema.Struct(Struct.omit(Sample.fields, ['since', 'step'])
 export type Disk = typeof Disk.Type
 export const Disk = Schema.Struct({mount: Schema.String, total: Schema.Finite, used: Schema.Finite})
 
+export type Platform = typeof Platform.Type
+export const Platform = Schema.Literals(['linux', 'darwin'])
+
 export type MachineHistory = typeof MachineHistory.Type
 export const MachineHistory = Schema.Struct({
 	// The newest reading's disks and load averages, which no chart draws over time.
 	disks: Schema.Array(Disk),
 	error: TextFromEmpty,
 	load: Schema.Array(Schema.Finite),
+	platform: Schema.OptionFromOptionalKey(Platform),
 	samples: Schema.Array(Sample.json),
 	stale: Schema.Boolean,
 	time: DateTimeUtcFromFiniteMillis,
