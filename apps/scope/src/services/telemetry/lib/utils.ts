@@ -426,9 +426,8 @@ function subscription(root: SpanFacts, spans: readonly SpanFacts[]) {
 		spans,
 		span =>
 			Option.contains(span.parentSpanId, root.spanId) &&
-			((root.name === 'POST /mcp' && String.includes('/subscriptions/listen')(span.name)) ||
-				(Option.exists(method, name => Option.contains(textOf(span.attributes, 'rpc.method'), name)) &&
-					markedStream(span)))
+			Option.exists(method, name => Option.contains(textOf(span.attributes, 'rpc.method'), name)) &&
+			markedStream(span)
 	)
 }
 

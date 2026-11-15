@@ -401,6 +401,11 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 			JOIN spans AS root ON root.traceId = traces.id AND root.spanId = traces.root
 			LEFT JOIN spans AS broken ON broken.traceId = traces.id AND broken.spanId = traces.broken
 		`
+		// Keep unrouted HTTP traces searchable, but scanners are not application operations.
+		const operationTrace = sql`
+			NOT traces.waits
+			AND root.name IS NOT (json_extract(root.attributes, '$."http.request.method"') || ' (no route)')
+		`
 
 		const listReleases = SqlSchema.findAll({
 			Request: Schema.Void,
@@ -520,7 +525,7 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 					traces.id, traces.start, traces.duration, root.service, root.runtime, root.name,
 					traces.broken IS NOT NULL AS failed
 				${traceJoins}
-				WHERE NOT traces.waits AND traces.start >= ${query.cutoff}
+				WHERE ${operationTrace} AND traces.start >= ${query.cutoff}
 				AND (traces.rooted OR traces.start < ${query.settledBefore})
 			`
 		})
@@ -531,7 +536,7 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 				SELECT root.service, min(root.runtime = 'ci') AS ci, count(*) AS count,
 					sum(traces.broken IS NOT NULL) AS failures
 				${traceJoins}
-				WHERE NOT traces.waits AND (traces.rooted OR traces.start < ${settledBefore})
+				WHERE ${operationTrace} AND (traces.rooted OR traces.start < ${settledBefore})
 				GROUP BY root.service
 			`
 		})
@@ -624,6 +629,11 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 					onSome: services => sql`service IN ${sql.in(services)}`
 				})}
 				AND json_extract(attributes, '$."rpc.stream"') IS NOT 1
+				AND name IS NOT (json_extract(attributes, '$."http.request.method"') || ' (no route)')
+				AND NOT EXISTS (
+					SELECT 1 FROM traces
+					WHERE traces.id = spans.traceId AND traces.root = spans.spanId AND traces.waits
+				)
 				AND json_extract(attributes, '$."machine.invoke.kind"') IS NOT 'Timer'
 			`
 		})
