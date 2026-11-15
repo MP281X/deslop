@@ -17,7 +17,7 @@ description: 'Load before the first commit of a task, before the first edit when
 
 ```mermaid
 stateDiagram-v2
-    [*] --> Watching : settled push, the first as a draft / watch its pipeline
+    [*] --> Watching : any push, the first as a draft / watch its pipeline, never hand back before it ends
     Watching --> Watching : pipeline [fails or conflicts] / fix, recapture what changed, push
     Watching --> [*] : required jobs pass [not to be readied] / hand back
     Watching --> Ready : required jobs pass [user asks, or the repository's AGENTS.md readies a settled PR] / mark ready
