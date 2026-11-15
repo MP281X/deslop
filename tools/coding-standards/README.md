@@ -26,7 +26,7 @@ export default defineConfig({lint: {extends: [lint]}})
 }
 ```
 
-Every action is a subcommand: `tactics`, `judge` or `sign-in`. `coding-standards` with no subcommand prints help; `coding-standards <subcommand> --help` describes that action's options.
+Every action is a subcommand: `tactics` or `judge`. `coding-standards` with no subcommand prints help; `coding-standards <subcommand> --help` describes that action's options.
 
 `coding-standards tactics` prints the lint tactics, so `fix` ends a diagnostic autofix leaves with them, for the agent fixing it.
 
@@ -59,15 +59,14 @@ Each custom rule publishes `meta.docs.examples.accepted`, filename-to-source rec
 
 ## Judge
 
-Claude Haiku 5.5 answers through Effect's AI module and `@effect/ai-anthropic`, only through Deslop Gateway and the signed-in person's connected Anthropic account. Calls can cost money; no catalogue balance is used. Each answer is a schema-checked boolean; yes means a finding.
+Claude Haiku 5.5 answers through Effect's AI module and `@effect/ai-anthropic`, only through the Deslop Gateway at `GATEWAY_URL` and the connected Anthropic account of the worker's tailnet owner, whom Auth names without a sign-in. Calls can cost money; no catalogue balance is used. Each answer is a schema-checked boolean; yes means a finding.
 
 ```bash
-coding-standards sign-in                  # once per machine; approve its code in Auth or with answer_request
 coding-standards judge --dry-run          # plan the current change; sends nothing
 coding-standards judge --base origin/main --dry-run
 ```
 
-`judge` accepts only `--base <ref>`, `--dry-run` and `--user-asked`; `sign-in` and `tactics` have no custom flags. Effect CLI supplies its standard help, version, wizard, completions and log-level flags. More than 20 planned calls, including examples, refuses the entire run before signing in unless `--user-asked` records the user's explicit request. A dry run can plan any size without that flag and sends nothing. Auth and Gateway use their Deslop origins. Generated routes, shared web primitives and generator templates are always excluded by the tool; there is no ignore override.
+`judge` accepts only `--base <ref>`, `--dry-run` and `--user-asked`; `tactics` has no custom flags. Effect CLI supplies its standard help, version, wizard, completions and log-level flags. More than 20 planned calls, including examples, refuses the entire run before calling Gateway unless `--user-asked` records the user's explicit request. A dry run can plan any size without that flag and sends nothing. Generated routes, shared web primitives and generator templates are always excluded by the tool; there is no ignore override.
 
 The judge asks about the functions, components and test cases a change touches, one unit at a time. The change is everything the working tree differs from its merge base with `--base`, by default the pull request's base branch on `origin` when `gh pr view` finds one, else `origin`'s default branch, untracked files included; a repository whose base the judge cannot name fails. The diff only selects units and is never sent. A unit is asked when its lines, the `//` comment lines right above it, an import line it uses, or its file's path changed. Each changed file is read as text under its literal name, whatever `.gitattributes` or git's quoting say.
 

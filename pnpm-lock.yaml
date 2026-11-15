@@ -366,9 +366,6 @@ importers:
       expo-updates:
         specifier: ^58.0.22
         version: 58.0.22(expo@58.0.24)(react-native@0.88.1(@babel/core@7.29.13(supports-color@8.1.1))(@types/react@19.3.0)(react@19.3.1)(supports-color@8.1.1))(react@19.3.1)(supports-color@8.1.1)
-      expo-web-browser:
-        specifier: ^58.0.8
-        version: 58.0.8(expo@58.0.24)(react-native@0.88.1(@babel/core@7.29.13(supports-color@8.1.1))(@types/react@19.3.0)(react@19.3.1)(supports-color@8.1.1))
 
   apps/portfolio:
     devDependencies:
@@ -496,9 +493,6 @@ importers:
       expo-updates:
         specifier: ^58.0.22
         version: 58.0.22(expo@58.0.24)(react-native@0.88.1(@babel/core@7.29.13(supports-color@8.1.1))(@types/react@19.3.0)(react@19.3.1)(supports-color@8.1.1))(react@19.3.1)(supports-color@8.1.1)
-      expo-web-browser:
-        specifier: ^58.0.8
-        version: 58.0.8(expo@58.0.24)(react-native@0.88.1(@babel/core@7.29.13(supports-color@8.1.1))(@types/react@19.3.0)(react@19.3.1)(supports-color@8.1.1))
 
   apps/trips:
     dependencies:
@@ -554,9 +548,6 @@ importers:
       expo-updates:
         specifier: ^58.0.22
         version: 58.0.22(expo@58.0.24)(react-native@0.88.1(@babel/core@7.29.13(supports-color@8.1.1))(@types/react@19.3.0)(react@19.3.1)(supports-color@8.1.1))(react@19.3.1)(supports-color@8.1.1)
-      expo-web-browser:
-        specifier: ^58.0.8
-        version: 58.0.8(expo@58.0.24)(react-native@0.88.1(@babel/core@7.29.13(supports-color@8.1.1))(@types/react@19.3.0)(react@19.3.1)(supports-color@8.1.1))
       expo-widgets:
         specifier: ^58.0.28
         version: 58.0.28(@babel/core@7.29.13(supports-color@8.1.1))(expo@58.0.24)(react-dom@19.3.1(react@19.3.1))(react-native@0.88.1(@babel/core@7.29.13(supports-color@8.1.1))(@types/react@19.3.0)(react@19.3.1)(supports-color@8.1.1))(react@19.3.1)
@@ -4179,12 +4170,6 @@ packages:
     peerDependenciesMeta:
       expo-dev-client:
         optional: true
-
-  expo-web-browser@58.0.8:
-    resolution: {integrity: sha512-x/+50mE/F9QtZtCqLEW+fry82IesI1DBKpN2jy8zUnN1bt1J7wGzs3vq5f3riiBVMFEPnajrGVaTKk7CKE1xKw==}
-    peerDependencies:
-      expo: '*'
-      react-native: '*'
 
   expo-widgets@58.0.28:
     resolution: {integrity: sha512-XLeFBpuviZplRE8DUvsWF+ajRiqvYsiE8BeqYcpYfqRCIesPaqjGmEdn1Vy0Bnzuj7LksU2s4e75pkatJR58HQ==}
@@ -9302,11 +9287,6 @@ snapshots:
       resolve-from: 5.0.0
     transitivePeerDependencies:
       - supports-color
-
-  expo-web-browser@58.0.8(expo@58.0.24)(react-native@0.88.1(@babel/core@7.29.13(supports-color@8.1.1))(@types/react@19.3.0)(react@19.3.1)(supports-color@8.1.1)):
-    dependencies:
-      expo: 58.0.24(@babel/core@7.29.13(supports-color@8.1.1))(expo-widgets@58.0.28)(react-dom@19.3.1(react@19.3.1))(react-native@0.88.1(@babel/core@7.29.13(supports-color@8.1.1))(@types/react@19.3.0)(react@19.3.1)(supports-color@8.1.1))(react@19.3.1)(supports-color@8.1.1)
-      react-native: 0.88.1(@babel/core@7.29.13(supports-color@8.1.1))(@types/react@19.3.0)(react@19.3.1)(supports-color@8.1.1)
 
   expo-widgets@58.0.28(@babel/core@7.29.13(supports-color@8.1.1))(expo@58.0.24)(react-dom@19.3.1(react@19.3.1))(react-native@0.88.1(@babel/core@7.29.13(supports-color@8.1.1))(@types/react@19.3.0)(react@19.3.1)(supports-color@8.1.1))(react@19.3.1):
     dependencies:

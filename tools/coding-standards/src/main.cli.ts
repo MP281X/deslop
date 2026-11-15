@@ -10,7 +10,6 @@ import {judge, layerCache} from '#judge.ts'
 import packageJson from '#package.json' with {type: 'json'}
 
 import {haiku} from '#lib/model.ts'
-import {signIn} from '#lib/session.ts'
 
 // Printed before formatting and lint, for the agent fixing the diagnostics.
 const TACTICS = `Fix each diagnostic at the cause its message names:
@@ -20,7 +19,7 @@ const TACTICS = `Fix each diagnostic at the cause its message names:
 
 const cli = pipe(
 	Command.make('coding-standards'),
-	Command.withDescription('Lint tactics, semantic judging and sign-in'),
+	Command.withDescription('Lint tactics and semantic judging'),
 	Command.withSubcommands([
 		Command.withDescription(
 			Command.make('tactics', {}, () => Console.log(TACTICS)),
@@ -51,10 +50,6 @@ const cli = pipe(
 				input => judge(input, haiku)
 			),
 			'Ask the functions, components and test cases a change touches the questions no remembered answer covers, and report what breaks one'
-		),
-		Command.withDescription(
-			Command.make('sign-in', {}, () => signIn),
-			'Sign the judge in to Gateway once per machine'
 		)
 	]),
 	Command.run({version: packageJson.version})

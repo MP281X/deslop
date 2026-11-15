@@ -43,7 +43,6 @@ export function makeExpoConfig(app: {projectId: string; slug: string}) {
 					orientation: 'portrait',
 					owner: 'mp281x.xyz',
 					platforms: ['ios'],
-					plugins: ['expo-web-browser'],
 					runtimeVersion: {policy: 'fingerprint'},
 					scheme: variant.scheme,
 					slug: app.slug,

@@ -58,8 +58,7 @@
 		"expo-clipboard": "^58.0.4",
 		"expo-crypto": "^58.0.8",
 		"expo-file-system": "^58.0.13",
-		"expo-updates": "^58.0.22",
-		"expo-web-browser": "^58.0.8"
+		"expo-updates": "^58.0.22"
 	},
 	"config": {
 		"port": 5108

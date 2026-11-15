@@ -1,23 +1,14 @@
 import {AnthropicClient, AnthropicLanguageModel} from '@effect/ai-anthropic'
 
-import {Effect, Redacted} from 'effect'
+import {Config, Effect, Schema} from 'effect'
 
-import {HttpClient, HttpClientRequest} from 'effect/http'
-
-import {accessToken, origins} from '#lib/session.ts'
+export class JudgeError extends Schema.TaggedError<JudgeError>()('JudgeError', {message: Schema.String}) {}
 
 export const MODEL = 'claude-haiku-5-5'
 
-// Gateway resolves the signed-in person's connected Anthropic Console URL; no catalogue balance is used.
-const API_URL = `${origins.gateway}/ai/connection`
-
+// Gateway names the worker's tailnet owner and resolves their connected Anthropic Console URL; no catalogue balance is used.
 export const haiku = Effect.gen(function* () {
-	const token = yield* accessToken
-	const client = yield* AnthropicClient.make({
-		apiUrl: API_URL,
-		transformClient: underlying =>
-			HttpClient.mapRequest(underlying, HttpClientRequest.bearerToken(Redacted.value(token)))
-	})
+	const client = yield* AnthropicClient.make({apiUrl: `${yield* Config.String('GATEWAY_URL')}/ai/connection`})
 	return yield* Effect.provideService(
 		AnthropicLanguageModel.make({config: {max_tokens: 1024}, model: MODEL}),
 		AnthropicClient.AnthropicClient,

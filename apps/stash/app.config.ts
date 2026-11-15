@@ -19,5 +19,5 @@ export default {
 			}
 		}
 	},
-	plugins: [...app.config.plugins, '@bacons/apple-targets']
+	plugins: ['@bacons/apple-targets']
 }
