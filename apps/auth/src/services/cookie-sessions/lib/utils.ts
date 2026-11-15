@@ -48,15 +48,10 @@ export function deviceOf(userAgent: string) {
 	)
 }
 
-// "Safari on iPhone": the browser, then the device when the agent names one.
-export function sessionLabel(userAgent: string) {
-	const browser = pipe(
+export function browserOf(userAgent: string) {
+	return pipe(
 		BROWSERS,
 		Array.findFirst(candidate => Array.some(candidate.tokens, token => String.includes(token)(userAgent))),
 		Option.match({onNone: Function.constant('Browser'), onSome: found => found.name})
 	)
-	return Option.match(deviceOf(userAgent), {
-		onNone: Function.constant(browser),
-		onSome: device => `${browser} on ${device}`
-	})
 }

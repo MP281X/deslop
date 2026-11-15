@@ -19,7 +19,7 @@ Two headless Debian workers in one tailnet, same user and paths.
 - **Scratch.** Use `/tmp/<task>/`, on disk, emptied at boot and of files unused for 7 days.
 - **Git refs.** T3 checkpoints under `refs/t3/`; search history with `--branches --remotes`.
 - **Auxiliary services.** Run task-local ones as temporary containers, not installs on the worker.
-- **Agent sign-in.** [MCP sign-in](references/maintenance.md#mcp-sign-in).
+- **Agent MCP.** [Keyring and MCP](references/maintenance.md#keyring-and-mcp).
 
 | Reference                                | For                                                      |
 | ---------------------------------------- | -------------------------------------------------------- |
