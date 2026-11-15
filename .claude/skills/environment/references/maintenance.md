@@ -110,7 +110,7 @@ stateDiagram-v2
 | Network  | dev: `openvpn3 config-import --config <datapizza.ovpn> --name datapizza --persistent`; the block below; then, over the tailnet, `ufw default deny incoming`, dev allowing TCP 80, 443, 25565 and UDP 443                                                                                                                                                |
 | Shell    | `loginctl enable-linger mp281x`; Vite+ with `VP_HOME="$HOME/.vite-plus"`, Claude Code; `~/.bashrc`'s first lines put `$HOME/.local/bin:$HOME/.vite-plus/bin` on `PATH`; `~/.config/pnpm/config.yaml`: `minimumReleaseAgeExclude: ["@deslop/*"]`                                                                                                         |
 | T3       | `vp install -g t3@nightly`, `t3 service install`, `t3 connect link --headless`, `t3 connect publish`, `t3 browser setup`, `sudo hostnamectl set-hostname --pretty <name>`                                                                                                                                                                               |
-| Accounts | `gh auth login`, `glab auth login --hostname git.datapizza.tech`, `claude auth login`, `codex login --device-auth`; `gh auth setup-git`, `gh extension install github/gh-stack`; clone both repositories; `t3 project add --title <name> <path>`; [agent links](#agent-configuration-links), [MCP sign-in](#mcp-sign-in)                                |
+| Accounts | `gh auth login`, `glab auth login --hostname git.datapizza.tech`, `claude auth login`, `codex login --device-auth`; `gh auth setup-git`, `gh extension install github/gh-stack`; clone both repositories; `t3 project add --title <name> <path>`; [agent links](#agent-configuration-links), [keyring and MCP](#keyring-and-mcp)                        |
 | KeysOnly | `/etc/ssh/sshd_config.d/10-keys-only.conf`: `UsePAM yes`, `PasswordAuthentication no`, `KbdInteractiveAuthentication no`, `PermitRootLogin no`, `X11Forwarding no`                                                                                                                                                                                      |
 
 ```bash
@@ -179,7 +179,7 @@ sudo mokutil --import /var/lib/dkms/mok.pub  # password via request_secret, file
 
 `curl -fsSL https://vite.plus | bash`; `~/.zshenv` exports `PATH="$HOME/.local/bin:$HOME/.vite-plus/bin:$PATH"` and `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer`. Xcode: `open "macappstore://apps.apple.com/app/id497799835"`.
 
-### MCP sign-in
+### Keyring and MCP
 
 ```bash
 sudo apt-get install -y gnome-keyring libsecret-tools
