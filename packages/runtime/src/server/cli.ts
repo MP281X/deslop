@@ -19,6 +19,7 @@ import {
 	Schema,
 	Stdio,
 	Stream,
+	String,
 	pipe
 } from 'effect'
 
@@ -38,6 +39,7 @@ import {
 	layerWeb
 } from '#server/http.ts'
 import {appName, packageMetadata, packageRoot} from '#server/package.ts'
+import {executeProcess} from '#server/process.ts'
 import {installService, installUpdateService, serviceStatus, uninstallService} from '#server/services.ts'
 import {dataDirectory, layerDataStore} from '#server/store.ts'
 import {activateRelease, updateRelease} from '#server/update.ts'
@@ -45,6 +47,9 @@ import type {RpcAuth} from '#shared/auth.ts'
 import {Port} from '#shared/schema.ts'
 
 const DEFAULT_HOST = '127.0.0.1'
+
+type TailnetSelf = typeof TailnetSelf.Type
+const TailnetSelf = Schema.Struct({Self: Schema.Struct({DNSName: Schema.String})})
 
 export type Setting = {
 	readonly description: string
@@ -64,8 +69,21 @@ const SETTINGS = {
 const configProvider = Effect.fnUntraced(function* (given: Record<string, string>, defaultPort: number) {
 	const port = given['PORT'] ?? `${defaultPort}`
 	const name = yield* appName
+	// Without a domain, Tailscale Serve publishes the app on this machine's tailnet name at the same port, as worker Deploys and previews do.
+	const tailnet = yield* pipe(
+		executeProcess('tailscale', ['status', '--json']),
+		Effect.flatMap(Schema.decodeUnknownEffect(Schema.fromJsonString(TailnetSelf))),
+		Effect.map(status => String.replace(/\.$/u, '')(status.Self.DNSName)),
+		Effect.timeout('5 seconds'),
+		Effect.option
+	)
 	const urls = Option.match(Option.fromUndefinedOr(given['DOMAIN']), {
-		onNone: () => ({APP_URL: `http://localhost:${port}`}),
+		onNone: () => ({
+			APP_URL: pipe(tailnet, Option.filter(String.isNonEmpty), Option.match({
+				onNone: () => `http://localhost:${port}`,
+				onSome: host => `https://${host}:${port}`
+			}))
+		}),
 		onSome: domain => ({
 			APP_URL: `https://${name}.${domain}`,
 			AUTH_URL: `https://auth.${domain}`,
