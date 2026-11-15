@@ -4,51 +4,51 @@ import {Effect, Layer, Schema, pipe} from 'effect'
 
 import {McpServer} from 'effect/ai'
 import {HttpServerResponse} from 'effect/http'
-import {RateLimiter} from 'effect/persistence'
 
-import {ADMINS, runApp} from '@deslop/runtime/server/cli'
+import {runApp} from '@deslop/runtime/server/cli'
 import {layerMcp, layerRpc} from '@deslop/runtime/server/http'
 
 import {HttpHandlers} from '#http/handlers.ts'
 import icon from '#routes/icon.svg'
 import {RpcContracts} from '#rpcs/contracts.ts'
 import {RpcHandlers} from '#rpcs/handlers.ts'
-import {appCatalogMigrations} from '#services/apps/service.ts'
+import {CookieSessions} from '#services/cookie-sessions/service.ts'
 import {GitHub} from '#services/github/service.ts'
-import {Passkeys} from '#services/passkeys/service.ts'
-import {People, layerIssuerAuth} from '#services/people/service.ts'
-import {SignIns} from '#services/sign-ins/service.ts'
-import {Tokens} from '#services/tokens/service.ts'
+import {Identity, layerIdentityAuth} from '#services/identity/service.ts'
+import {People} from '#services/people/service.ts'
 import {ToolContracts} from '#tools/contracts.ts'
-import {ToolHandlers, layerMcpOwner} from '#tools/handlers.ts'
+import {ToolHandlers} from '#tools/handlers.ts'
 
-// Each service builds on the ones below it: tokens and passkeys, then people (who may use them), then sign-ins.
+// Identity resolves people through shared cookie sessions or the tailnet.
 const layerServices = pipe(
-	Layer.mergeAll(SignIns.layer, Layer.provide(RateLimiter.layer, RateLimiter.layerStoreMemory)),
+	Identity.layer,
 	Layer.provideMerge(People.layer),
-	Layer.provideMerge(Layer.mergeAll(Tokens.layer, Passkeys.layer, GitHub.layer, appCatalogMigrations)),
+	Layer.provideMerge(Layer.mergeAll(CookieSessions.layer, GitHub.layer)),
 	Layer.provide(Layer.succeed(NodeHttpClient.RequestInit, {redirect: 'error'}))
 )
 
 runApp({
-	auth: Layer.provide(layerIssuerAuth, layerServices),
+	auth: Layer.provide(layerIdentityAuth, layerServices),
 	icon,
-	// No other site may frame Auth's pages, so its Approve button cannot be clicked through a disguise.
+	// Access requests cannot be approved through a framing site.
 	middleware: app => Effect.map(app, HttpServerResponse.setHeader('content-security-policy', "frame-ancestors 'none'")),
 	routes: Layer.provide(
 		Layer.mergeAll(
 			HttpHandlers,
 			layerRpc({group: RpcContracts, handlers: RpcHandlers}),
 			layerMcp({
-				instructions:
-					'Use the matching list to identify a session, passkey or person. Use answer_sign_in only for an agent sign-in you started; browser sign-ins require the browser.',
-				registrations: pipe(McpServer.toolkit(ToolContracts), Layer.provide(ToolHandlers), Layer.provide(layerMcpOwner))
+				instructions: 'Manage people as an admin, and list or sign out your browser sessions.',
+				registrations: Layer.provide(McpServer.toolkit(ToolContracts), ToolHandlers)
 			})
 		),
 		layerServices
 	),
 	settings: {
-		GITHUB_ADMINS: ADMINS,
+		GITHUB_ADMINS: {
+			description: 'GitHub user ids, comma-separated, who admit people and manage shared settings',
+			flag: 'admins',
+			schema: Schema.String.check(Schema.isPattern(/^\d+(?:,\d+)*$/u))
+		},
 		GITHUB_CLIENT_ID: {
 			description: "The GitHub app's client id",
 			flag: 'github-client-id',

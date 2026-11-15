@@ -191,8 +191,7 @@ printf '%s\n' '[D-BUS Service]' 'Name=org.freedesktop.secrets' 'Exec=/bin/false'
   > ~/.local/share/dbus-1/services/org.freedesktop.secrets.service
 busctl --user call org.freedesktop.DBus / org.freedesktop.DBus ReloadConfig
 systemctl --user daemon-reload && systemctl --user enable --now secret-service.service
-claude mcp add --transport http --scope user gateway https://gateway.mp281x.xyz/mcp
-claude mcp login --no-browser gateway  # or codex; approve at https://auth.mp281x.xyz
+claude mcp add --transport http --scope user gateway https://gateway.mp281x.xyz/mcp  # or codex; Auth names the worker's tailnet owner, so there is no login
 ```
 
 ### Git identity

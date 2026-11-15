@@ -36,16 +36,11 @@
 		"@deslop/runtime": "workspace:*",
 		"@effect/atom-react": "latest",
 		"@effect/platform-node": "latest",
-		"@effect/sql-sqlite-node": "latest",
 		"@phosphor-icons/react": "latest",
-		"@simplewebauthn/browser": "latest",
-		"@simplewebauthn/server": "latest",
 		"@tanstack/react-router": "latest",
-		"@typeonce/effect-machine": "latest",
 		"effect": "latest",
 		"react": "latest",
-		"react-dom": "latest",
-		"toqr": "latest"
+		"react-dom": "latest"
 	},
 	"config": {
 		"port": 5101

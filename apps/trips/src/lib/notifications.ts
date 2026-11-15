@@ -28,7 +28,7 @@ setNotificationHandler({
 export const pushAtom = RpcClient.runtime.atom(get =>
 	Effect.ignore(
 		Effect.gen(function* () {
-			if (!session.signedIn(get)) return
+			if (!session.available(get)) return
 			const target = yield* apns
 			const client = yield* RpcClient
 			if (

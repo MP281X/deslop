@@ -18,20 +18,12 @@ import {
 import {RpcSerialization, RpcServer} from 'effect/rpc'
 import type {Rpc, RpcGroup} from 'effect/rpc'
 
-import {Auth, layerMcpAuth, localAuth} from '#server/auth.ts'
+import {Auth, HttpAuth, localAuth} from '#server/auth.ts'
 import {layerStructuredTools} from '#server/mcp.ts'
 import {appName, packageMetadata} from '#server/package.ts'
-import {ISSUER_PATH, failureOptions} from '#shared/auth.ts'
+import {failureOptions} from '#shared/auth.ts'
 import {RpcStream, layerRpcStream} from '#shared/rpc.ts'
-import {
-	Account,
-	MANIFEST_PATH,
-	MCP_METADATA_PATH,
-	MCP_PATH,
-	RPC_PATH,
-	RUNTIME_PATH,
-	RuntimeConfig
-} from '#shared/schema.ts'
+import {Account, MANIFEST_PATH, MCP_PATH, RPC_PATH, RUNTIME_PATH, RuntimeConfig} from '#shared/schema.ts'
 import {layerOtlp} from '#shared/telemetry.ts'
 
 const LOOPBACK = /^(?:localhost|\d{1,3}(?:\.\d{1,3}){3}|\[[\da-f:.]+\])$/iu
@@ -87,7 +79,7 @@ export const layerServerProtocol = Layer.mergeAll(
 	)
 )
 
-// Traces and logs go to Scope when `--traces` names it, under the package name its web and iOS clients also use.
+// With a domain, traces and logs go to Scope under the package name its web and iOS clients also use.
 export const layerTelemetry = Layer.unwrap(
 	Effect.gen(function* () {
 		const metadata = yield* packageMetadata
@@ -103,6 +95,7 @@ export const layerRoutes = HttpRouter.use(router =>
 		const auth = yield* Auth
 		const issuer = yield* Config.option(Config.String('AUTH_URL'))
 		const traces = yield* Config.withDefault(Config.String('OTEL_URL'), '')
+		const canonical = yield* Config.String('APP_URL')
 		const metadata = yield* Effect.cached(packageMetadata)
 		yield* router.add(
 			'GET',
@@ -121,14 +114,27 @@ export const layerRoutes = HttpRouter.use(router =>
 			'GET',
 			'/api/account',
 			Effect.gen(function* () {
-				const user = yield* Effect.result(auth.user((yield* HttpServerRequest.HttpServerRequest).headers))
-				if (Result.isFailure(user)) return HttpServerResponse.empty(failureOptions(user.failure, 401))
-				return yield* HttpServerResponse.schemaJson(Account)(
-					{...user.success, signOut: Option.isSome(issuer)},
-					{headers: {'cache-control': 'no-store'}}
-				)
+				const account = yield* Effect.result(auth.account((yield* HttpServerRequest.HttpServerRequest).headers))
+				if (Result.isFailure(account)) return HttpServerResponse.empty(failureOptions(account.failure, 401))
+				return yield* HttpServerResponse.schemaJson(Account)(account.success, {headers: {'cache-control': 'no-store'}})
 			})
 		)
+		// Sign-in and sign-out happen at Auth, whose cookie every app on its domain reads.
+		for (const origin of Option.toArray(issuer)) {
+			for (const step of ['sign-in', 'sign-out']) {
+				yield* router.add(
+					'GET',
+					`/auth/${step}`,
+					Effect.map(HttpServerRequest.HttpServerRequest, request =>
+						HttpServerResponse.redirect(
+							`${new URL(`/${step}`, origin).href}?${new URLSearchParams({
+								next: new URL(request.url, 'http://local').searchParams.get('next') ?? canonical
+							})}`
+						)
+					)
+				)
+			}
+		}
 	})
 )
 
@@ -196,18 +202,15 @@ export function layerRpc<Rpcs extends Rpc.Any, E, R>(options: {
 	)
 }
 
-// Codex speaks MCP's stateless 2026-07-28 revision; Claude still opens a session, which it ends with DELETE.
+// Codex speaks MCP's stateless 2026-07-28 revision; Claude still opens a session, which it ends with DELETE. Callers are named as on every route: by tailnet, Auth's cookie or an app's on-behalf claim.
 export function layerMcp<E, R>(options: {instructions: string; registrations: Layer.Layer<never, E, R>}) {
 	return Layer.unwrap(
 		Effect.gen(function* () {
 			const metadata = yield* packageMetadata
-			const canonical = yield* Config.String('APP_URL')
-			const issuer = yield* Config.option(Config.String('AUTH_URL'))
-			const resource = new URL(MCP_PATH, canonical).href
-			const endpoint = Layer.provide(
+			return Layer.provide(
 				McpServer.layerHttp({
 					allowSessionTermination: true,
-					icons: [{src: new URL('/icon', canonical).href}],
+					icons: [{src: new URL('/icon', yield* Config.String('APP_URL')).href}],
 					instructions: options.instructions,
 					name: yield* appName,
 					path: MCP_PATH,
@@ -215,27 +218,8 @@ export function layerMcp<E, R>(options: {instructions: string; registrations: La
 					registrations: Layer.provide(options.registrations, layerStructuredTools),
 					version: metadata.version
 				}),
-				layerMcpAuth(resource)
+				HttpAuth.layer
 			)
-			return Option.match(issuer, {
-				onNone: () => endpoint,
-				onSome: origin =>
-					Layer.mergeAll(
-						endpoint,
-						HttpRouter.add(
-							'GET',
-							MCP_METADATA_PATH,
-							Effect.succeed(
-								HttpServerResponse.jsonUnsafe({
-									authorization_servers: [new URL(ISSUER_PATH, origin).href],
-									bearer_methods_supported: ['header'],
-									resource,
-									scopes_supported: ['deslop']
-								})
-							)
-						)
-					)
-			})
 		})
 	)
 }

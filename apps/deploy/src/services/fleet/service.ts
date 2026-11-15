@@ -18,7 +18,6 @@ import {
 	Redacted,
 	Ref,
 	Schema,
-	String,
 	Struct,
 	pipe
 } from 'effect'
@@ -29,6 +28,8 @@ import {Reactivity} from 'effect/reactivity'
 import {RpcClient, RpcSerialization} from 'effect/rpc'
 
 import {Auth} from '@deslop/runtime/server/auth'
+import {packageMetadata} from '@deslop/runtime/server/package'
+import {executeProcess} from '@deslop/runtime/server/process'
 import type {User} from '@deslop/runtime/shared/auth'
 import {AuthError, UserId} from '@deslop/runtime/shared/auth'
 import {RpcStream, layerRpcStreamClient} from '@deslop/runtime/shared/rpc'
@@ -45,7 +46,7 @@ import type {HistoryQuery, MachineHistory} from '#services/metrics/schema.ts'
 import {Metrics} from '#services/metrics/service.ts'
 
 // Who another worker's Deploy acts as: its bearer is the shared key, never a person's sign-in.
-const PEER = {id: UserId.make('deploy:peer'), name: 'deploy'} satisfies User
+const PEER = {admin: false, id: UserId.make('deploy:peer'), name: 'deploy'} satisfies User
 
 const makeRemoteClient = RpcClient.make(RpcContracts.middleware(RpcStream), {flatten: true})
 
@@ -65,12 +66,9 @@ export const layerPeerAuth = Layer.effectContext(
 		}
 		return Context.add(
 			Auth.makeContext(
-				Auth.of({
-					token: auth.token,
-					user: Effect.fnUntraced(function* (headers: Headers.Headers) {
-						if (yield* isPeer(headers)) return PEER
-						return yield* auth.user(headers)
-					})
+				Effect.fnUntraced(function* (headers: Headers.Headers) {
+					if (yield* isPeer(headers)) return {...PEER, signOut: false}
+					return yield* auth.account(headers)
 				})
 			),
 			PeerRpcAuth,
@@ -124,12 +122,22 @@ export class Fleet extends Context.Service<
 			const metrics = yield* Metrics
 			const lastMetrics = yield* Ref.make(HashMap.empty<readonly [WorkerId, Duration.Duration], MachineHistory>())
 			const exposures = yield* Exposures
+			const names = yield* Config.withDefault(Config.Array(Schema.String, 'DEPLOY_WORKERS'), [])
+			const suffix = yield* Boolean.match(Array.isReadonlyArrayEmpty(names), {
+				onFalse: () =>
+					pipe(
+						executeProcess('tailscale', ['status', '--json']),
+						Effect.flatMap(
+							Schema.decodeEffect(Schema.fromJsonString(Schema.Struct({MagicDNSSuffix: Schema.NonEmptyString})))
+						),
+						Effect.map(status => status.MagicDNSSuffix)
+					),
+				onTrue: () => Effect.succeed('')
+			})
+			const port = (yield* packageMetadata).config.port
 			const workers = yield* Effect.forEach(
-				yield* Config.withDefault(Config.Array(Schema.String, 'DEPLOY_WORKERS'), []),
-				entry => {
-					const [name, url] = String.split(entry, '=')
-					return Schema.decodeUnknownEffect(Worker)({name, url})
-				},
+				names,
+				name => Schema.decodeEffect(Worker)({name, url: `https://${name}.${suffix}:${port}`}),
 				{concurrency: 1}
 			)
 			// Each worker's Deploy accepts the others by the key all their env files hold, on any network.

@@ -1,89 +1,28 @@
-import {useAtom} from '@effect/atom-react'
+import {Option} from 'effect'
 
-import {Function, Option, Schema, pipe} from 'effect'
-
-import {KeyIcon} from '@phosphor-icons/react'
 import {getRouteApi} from '@tanstack/react-router'
-import {AsyncResult} from 'effect/reactivity'
 
 import {ThemedMark} from '@deslop/components-web/blocks/marks'
 import {Button} from '@deslop/components-web/ui/button'
-import {FieldError} from '@deslop/components-web/ui/field'
 import {GithubDark} from '@deslop/components-web/ui/svgs/githubDark'
 import {GithubLight} from '@deslop/components-web/ui/svgs/githubLight'
 
-import {codeSignInAtom, passkeySignInAtom, signInAtom} from '#lib/auth.ts'
+import type {Search} from '#lib/auth.ts'
 
 const route = getRouteApi('/(home)')
-
-export type SignInVerb = typeof SignInVerb.Type
-const SignInVerb = Schema.Literals(['Approve here', 'Continue'])
-
-export function Failures() {
-	const failed = route.useSearch({select: search => Option.isSome(search.error)})
-	const [signIn] = useAtom(signInAtom)
-	const [codeSignIn] = useAtom(codeSignInAtom)
-	const [passkey] = useAtom(passkeySignInAtom)
-	return (
-		<>
-			{Option.match(
-				pipe(
-					AsyncResult.error(signIn),
-					Option.orElse(() => AsyncResult.error(codeSignIn)),
-					Option.orElse(() => AsyncResult.error(passkey))
-				),
-				{onNone: Function.constNull, onSome: failure => <FieldError>{failure.message}</FieldError>}
-			)}
-			{failed && <FieldError>GitHub sign-in failed. Try again.</FieldError>}
-		</>
-	)
-}
-
-// The two ways to sign this browser in, worded for the page: continuing to Auth, or approving a waiting sign-in here.
-export function Providers(props: {verb: SignInVerb}) {
-	const next = route.useSearch({select: search => search.next})
-	const [signIn, startSignIn] = useAtom(signInAtom)
-	const [passkey, startPasskey] = useAtom(passkeySignInAtom)
-	return (
-		<>
-			<Button size="lg" className="w-full" disabled={AsyncResult.isWaiting(signIn)} onClick={() => startSignIn()}>
-				{/* The primary button inverts the page, so its mark is the other appearance's artwork. */}
-				<ThemedMark light={GithubDark} dark={GithubLight} />
-				{props.verb} with GitHub
-			</Button>
-			<Button
-				size="lg"
-				variant="outline"
-				className="w-full"
-				disabled={AsyncResult.isWaiting(passkey)}
-				onClick={() => startPasskey(next)}
-			>
-				<KeyIcon />
-				{props.verb} with a passkey
-			</Button>
-		</>
-	)
-}
-
 export function SignIn() {
-	const next = route.useSearch({select: search => search.next})
-	const [codeSignIn, startCodeSignIn] = useAtom(codeSignInAtom)
+	const next = route.useSearch({select: (search: Search) => search.next})
 	return (
 		<section className="m-auto flex w-full flex-col gap-5 sm:max-w-80" aria-label="Sign in">
-			<h1 className="sr-only">Sign in</h1>
-			<div className="flex flex-col gap-2">
-				<Providers verb="Continue" />
-				<Button
-					size="lg"
-					variant="ghost"
-					className="w-full"
-					disabled={AsyncResult.isWaiting(codeSignIn)}
-					onClick={() => startCodeSignIn(next)}
-				>
-					Use a sign-in code
-				</Button>
-				<Failures />
-			</div>
+			<Button
+				size="lg"
+				onClick={() =>
+					location.assign(`/sign-in?${new URLSearchParams({next: Option.getOrElse(next, () => location.origin)})}`)
+				}
+			>
+				<ThemedMark light={GithubDark} dark={GithubLight} />
+				Continue with GitHub
+			</Button>
 		</section>
 	)
 }

@@ -1,6 +1,6 @@
 import {Array, HashSet, Number, Option, Order, String, Struct, pipe} from 'effect'
 
-import {UserId, isAdmin} from '@deslop/runtime/shared/auth'
+import {UserId} from '@deslop/runtime/shared/auth'
 import type {GitHubId} from '@deslop/runtime/shared/auth'
 
 import type {Member, Role} from '#services/people/schema.ts'
@@ -8,8 +8,8 @@ import {Person} from '#services/people/schema.ts'
 
 const ROLE_ORDER = {Admin: 1, Member: 2, Waiting: 0} satisfies Record<Role, number>
 
-export function ownerOf(row: Member) {
-	return {incarnation: row.incarnation, user: {id: row.id, name: row.name}}
+export function isAdmin(admins: readonly GitHubId[], id: UserId) {
+	return Array.some(admins, admin => `github:${admin}` === id)
 }
 
 export function roleOf(admins: readonly GitHubId[], id: UserId, row: Option.Option<Member>) {
@@ -20,6 +20,7 @@ export function roleOf(admins: readonly GitHubId[], id: UserId, row: Option.Opti
 
 export function personOf(admins: readonly GitHubId[], row: Member) {
 	return Person.make({
+		admin: isAdmin(admins, row.id),
 		...Struct.pick(row, ['id', 'name']),
 		fullName: Option.filter(row.fullName, String.isNonEmpty),
 		role: roleOf(admins, row.id, Option.some(row)),
@@ -38,6 +39,7 @@ export function listPeople(rows: readonly Member[], admins: readonly GitHubId[])
 				Array.filter(id => !HashSet.has(knownIds, `github:${id}`)),
 				Array.map(id =>
 					Person.make({
+						admin: true,
 						fullName: Option.none(),
 						id: UserId.make(`github:${id}`),
 						name: `GitHub ${id}`,

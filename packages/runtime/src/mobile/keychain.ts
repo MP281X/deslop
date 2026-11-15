@@ -1,23 +1,28 @@
-import {Effect} from 'effect'
+import {Effect, Option, String, pipe} from 'effect'
 
 import {AFTER_FIRST_UNLOCK, deleteItemAsync, getItem, setItem} from 'expo-secure-store'
 
-import type {SessionStorage} from '#mobile/session.ts'
-import {AuthError} from '#shared/auth.ts'
+import {AuthError, SESSION_COOKIE} from '#shared/auth.ts'
 
-// Outside session.ts: loading expo-secure-store crashes an app that does not build its native module.
+// The secret of the session Auth issued this device: in Stash the Keychain access group its share extension reads, in every other app the app's own.
+const KEY = 'session'
+
 export const keychain = {
 	clear: Effect.tryPromise({
 		catch: cause => AuthError.make({cause, message: 'The Keychain could not remove the session'}),
-		try: () => deleteItemAsync('session')
+		try: () => deleteItemAsync(KEY)
 	}),
-	read: Effect.try({
-		catch: cause => AuthError.make({cause, message: 'The Keychain could not read the session'}),
-		try: () => getItem('session') ?? ''
-	}),
-	write: text =>
+	// What Auth reads to name the caller; a tailnet device needs no session, so nothing saved means no header.
+	headers: () =>
+		pipe(
+			getItem(KEY),
+			Option.fromNullishOr,
+			Option.filter(String.isNonEmpty),
+			Option.match({onNone: () => ({}), onSome: secret => ({cookie: `${SESSION_COOKIE}=${secret}`})})
+		),
+	write: (secret: string) =>
 		Effect.try({
 			catch: cause => AuthError.make({cause, message: 'The Keychain could not save the session'}),
-			try: () => setItem('session', text, {keychainAccessible: AFTER_FIRST_UNLOCK})
+			try: () => setItem(KEY, secret, {keychainAccessible: AFTER_FIRST_UNLOCK})
 		})
-} satisfies SessionStorage
+}

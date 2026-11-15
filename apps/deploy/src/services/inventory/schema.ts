@@ -1,4 +1,4 @@
-import {Array, DateTime, Effect, Function, Option, Schema, SchemaGetter, String, Struct, pipe} from 'effect'
+import {DateTime, Effect, Function, Option, Schema, SchemaGetter, String, Struct, pipe} from 'effect'
 
 import {SecureOrigin} from '@deslop/runtime/shared/schema'
 import {DateTimeUtcFromFiniteMillis} from '@deslop/runtime/shared/time'
@@ -213,18 +213,9 @@ export type Worker = typeof Worker.Type
 export const Worker = Schema.Struct({name: WorkerId.check(Schema.isNonEmpty()), url: SecureOrigin})
 
 export type WorkerList = typeof WorkerList.Type
-// `--workers desktop=https://desktop.example.ts.net:5102,…`: the other workers' Deploy origins, by name.
+// `--workers desktop,macbook-pro`: machine names in this tailnet.
 export const WorkerList = Schema.String.check(
-	Schema.isPattern(/^[\w-]+=https?:\/\/[^,=\s]+(?:,[\w-]+=https?:\/\/[^,=\s]+)*$/u),
-	Schema.makeFilter(
-		value =>
-			pipe(
-				value,
-				String.split(','),
-				Array.every(entry => Option.exists(pipe(entry, String.split('='), Array.get(1)), Schema.is(SecureOrigin)))
-			),
-		{expected: 'named HTTPS origins, or loopback HTTP origins'}
-	)
+	Schema.isPattern(/^[a-z\d](?:[a-z\d-]*[a-z\d])?(?:,[a-z\d](?:[a-z\d-]*[a-z\d])?)*$/u)
 )
 
 export type Peer = typeof Peer.Type

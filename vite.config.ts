@@ -275,6 +275,8 @@ export default defineConfig({
 				command: [
 					// The tactics print first, so a step that fails below leaves them above its diagnostics, for the agent fixing it.
 					'coding-standards tactics',
+					// CI installs with a frozen lockfile, so a manifest edit must carry its lockfile.
+					'vp install',
 					'vp fmt',
 					'TSRS_FAST=1 effect-tsgo --tsrs-lint vp lint --fix --type-aware --type-check --ignore-pattern "tools/*/template/**"',
 					'vp lint tools/create-app/template tools/create-package/template --fix --report-unused-disable-directives-severity=off',

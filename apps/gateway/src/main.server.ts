@@ -3,7 +3,7 @@ import {Layer, pipe} from 'effect'
 import {McpServer} from 'effect/ai'
 import {FetchHttpClient} from 'effect/http'
 
-import {ADMINS, runApp} from '@deslop/runtime/server/cli'
+import {runApp} from '@deslop/runtime/server/cli'
 import {layerRpc} from '@deslop/runtime/server/http'
 
 import {AiHttpHandlers, HttpHandlers} from '#http/handlers.ts'
@@ -31,6 +31,5 @@ runApp({
 	routes: Layer.provide(
 		Layer.mergeAll(HttpHandlers, AiHttpHandlers, layerRpc({group: RpcContracts, handlers: RpcHandlers}), GatewayMcp),
 		layerServices
-	),
-	settings: {GITHUB_ADMINS: ADMINS}
+	)
 })

@@ -14,7 +14,7 @@ import {
 } from 'expo-notifications'
 
 import {cachedList, writeAtomically} from '@deslop/components-mobile/lib/files'
-import {liveStream} from '@deslop/runtime/client/live-stream'
+import {liveStream, reconnectOnDrop} from '@deslop/runtime/client/live-stream'
 import {provideRuntimeOnce} from '@deslop/runtime/mobile/session'
 import {ApnsToken} from '@deslop/runtime/shared/apns'
 
@@ -40,14 +40,14 @@ function apply(chapters: ChapterList, event: ChaptersEvent) {
 // The copy on the iPhone opens the app at once; without one the app waits for the server rather than open on nothing.
 export const chaptersAtom = Atom.keepAlive(
 	RpcClient.runtime.atom(get => {
-		if (!session.signedIn(get)) return Stream.never
+		if (!session.available(get)) return Stream.never
 		// A page turn changes one chapter, and the copy is written once the reader pauses.
 		return cachedList(
 			get,
 			chaptersFile,
 			ReadingChapter.json,
 			pipe(liveStream(RpcClient, 'chapters.events'), Stream.scan(Array.empty<ChapterItem>, apply), Stream.drop(1)),
-			session.reconnectOrSignOut
+			reconnectOnDrop
 		)
 	})
 )
@@ -155,7 +155,7 @@ setNotificationHandler({
 export const pushAtom = RpcClient.runtime.atom(get =>
 	Effect.ignore(
 		Effect.gen(function* () {
-			if (!session.signedIn(get)) return
+			if (!session.available(get)) return
 			yield* Effect.tryPromise({
 				catch: cause => ChaptersError.make({cause, message: 'The badge could not be cleared.'}),
 				try: () => setBadgeCountAsync(0)
@@ -228,7 +228,7 @@ ErrorUtils.setGlobalHandler((error, fatal) => {
 export const diagnosticsAtom = RpcClient.runtime.atom(get =>
 	Effect.ignore(
 		Effect.gen(function* () {
-			if (!session.signedIn(get)) return
+			if (!session.available(get)) return
 			if (crashFile.exists) {
 				yield* Effect.logError('A JavaScript error closed the app on an earlier run', crashFile.textSync())
 				crashFile.delete()

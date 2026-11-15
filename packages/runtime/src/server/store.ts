@@ -3,6 +3,7 @@ import {SqliteClient} from '@effect/sql-sqlite-node'
 import {Config, Effect, FileSystem, Function, Layer, Option, Path} from 'effect'
 
 import {Reactivity} from 'effect/reactivity'
+import {Migrator, SqlClient} from 'effect/sql'
 
 import {appName, packageRoot} from '#server/package.ts'
 
@@ -34,16 +35,26 @@ export const dataDirectory = Effect.gen(function* () {
 	return directory
 })
 
+// Every app's database once held its own sign-ins; Auth's cookie replaced them.
+const retiredSessions = Layer.effectDiscard(
+	Migrator.make({})({
+		loader: Migrator.fromRecord({
+			'0002_drop_sessions': Effect.flatMap(SqlClient.SqlClient, sql => sql`DROP TABLE IF EXISTS sessions`)
+		}),
+		table: 'sessions_migrations'
+	})
+)
+
 // The app's one SQLite database sits in `directory`, the data directory in production and a temporary one in tests; the database and the services share one Reactivity, so a committed write reaches every live query.
 export function layerDataStore(directory: string) {
 	return Layer.unwrap(
 		Effect.gen(function* () {
 			const fs = yield* FileSystem.FileSystem
 			const filename = (yield* Path.Path).join(directory, 'data.sqlite')
-			// SQLite creates its file but not the folder around it, and gives its -wal and -shm files the database's own mode: it holds tokens and keys, so only the user reads it.
+			// SQLite creates its file but not the folder around it, and gives its -wal and -shm files the database's own mode: it holds keys and personal data, so only the user reads it.
 			yield* fs.makeDirectory(directory, {mode: 0o700, recursive: true})
 			yield* fs.writeFile(filename, new Uint8Array(), {flag: 'a', mode: 0o600})
-			return Layer.merge(SqliteClient.layer({filename}), Reactivity.layer)
+			return Layer.provideMerge(retiredSessions, Layer.merge(SqliteClient.layer({filename}), Reactivity.layer))
 		})
 	)
 }

@@ -1,6 +1,6 @@
 import {DateTime, Duration, Effect, HashMap, Option, Stream, SubscriptionRef, pipe} from 'effect'
 
-export type TransientRecord<V> = {expiresAt: DateTime.Utc; value: V}
+type TransientRecord<V> = {expiresAt: DateTime.Utc; value: V}
 
 // A restart cancels transient records; their streams observe expiry without a timer per record.
 export const makeRecords = Effect.fnUntraced(function* <K, V>(lifetime: Duration.Duration) {

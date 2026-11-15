@@ -27,7 +27,7 @@ import {Base64Url} from 'effect/encoding'
 import {Headers, HttpRouter, HttpServerRequest, HttpServerResponse} from 'effect/http'
 
 import {Auth} from '@deslop/runtime/server/auth'
-import {AuthError, bearerOf, isJwt} from '@deslop/runtime/shared/auth'
+import {AuthError, ON_BEHALF_HEADER} from '@deslop/runtime/shared/auth'
 import {MCP_PATH} from '@deslop/runtime/shared/schema'
 
 import {connectionFailure, serverIcons} from '#services/connections/lib/utils.ts'
@@ -135,22 +135,18 @@ export class Gateway extends Context.Service<
 				if (current.generation !== server.generation || current.status !== 'Connected') {
 					return yield* AuthError.make({message: `${server.name} is not connected; connect it on ${url}`})
 				}
-				if (current.mode === 'public') return {token: Option.none<string>(), url: current.url}
+				if (current.mode === 'public') return {headers: Headers.empty, token: Option.none<string>(), url: current.url}
 				if (current.mode === 'deslop') {
-					// Every request that reaches here already verified its bearer, so an access token is forwarded without a second check; a session id still becomes its token.
 					return {
-						token: Option.some(
-							yield* pipe(
-								bearerOf(headers),
-								Option.filter(isJwt),
-								Option.match({onNone: () => auth.token(headers), onSome: Effect.succeed})
-							)
-						),
+						headers: Headers.fromInput({[ON_BEHALF_HEADER]: (yield* auth.user(headers)).id}),
+						token: Option.none<string>(),
 						url: current.url
 					}
 				}
+				const token = yield* connections.token(server.id, server.generation, Option.none())
 				return {
-					token: Option.some(yield* connections.token(server.id, server.generation, Option.none())),
+					headers: Headers.fromInput({authorization: `Bearer ${token}`}),
+					token: Option.some(token),
 					url: current.url
 				}
 			})
@@ -162,7 +158,7 @@ export class Gateway extends Context.Service<
 				const upstream = yield* resolveUpstream(server, headers)
 				const authorize = Effect.map(resolveUpstream(server, headers), current => {
 					upstream.token = current.token
-					return current.token
+					return current.headers
 				})
 				return yield* pipe(
 					upstreams.use(upstream.url, authorize, run),

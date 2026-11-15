@@ -14,6 +14,8 @@ export default {
 		},
 		infoPlist: {
 			DeslopKeychainGroup: `$(AppIdentifierPrefix)${app.appGroup}`,
+			// apple-targets sets no Info.plist keys on the extension, so it reads the server from its app's, like the theme.
+			DeslopServer: `https://stash.${app.domain}`,
 			// The share extension draws with these, so its colors are the app's own.
 			DeslopTheme: {
 				background: palette.colors.background,

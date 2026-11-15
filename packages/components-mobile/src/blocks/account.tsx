@@ -1,6 +1,6 @@
 import {useAtomSet, useAtomValue} from '@effect/atom-react'
 
-import {Function, Option} from 'effect'
+import {Function, Option, pipe} from 'effect'
 
 import {Button, Image, Menu, Section} from '@expo/ui/swift-ui'
 import {
@@ -30,9 +30,9 @@ function Avatar(props: {id: UserId}) {
 	)
 }
 
-// Signing out also ends this app's sign-in at Auth, as in the web app bar.
+// Signing out ends the session at Auth for every app; a tailnet device has none, so its menu only names it.
 export function AccountMenu(props: {session: Session}) {
-	const send = useAtomSet(props.session.machine.send)
+	const signOut = useAtomSet(props.session.signOut)
 	const account = AsyncResult.value(useAtomValue(props.session.account))
 	return (
 		<Menu
@@ -43,12 +43,21 @@ export function AccountMenu(props: {session: Session}) {
 			modifiers={[menuStyle('button'), buttonStyle('plain'), menuIndicator('hidden'), accessibilityLabel('Account')]}
 		>
 			<Section title={Option.match(account, {onNone: Function.constUndefined, onSome: current => `@${current.name}`})}>
-				<Button
-					label="Sign Out"
-					systemImage="rectangle.portrait.and.arrow.right"
-					role="destructive"
-					onPress={() => send(props.session.events.SignOut())}
-				/>
+				{pipe(
+					account,
+					Option.filter(current => current.signOut),
+					Option.match({
+						onNone: Function.constNull,
+						onSome: () => (
+							<Button
+								label="Sign Out"
+								systemImage="rectangle.portrait.and.arrow.right"
+								role="destructive"
+								onPress={() => signOut()}
+							/>
+						)
+					})
+				)}
 			</Section>
 		</Menu>
 	)

@@ -20,8 +20,6 @@ import {
 import type {Migrator, SqlError} from 'effect/sql'
 import {SqlClient} from 'effect/sql'
 
-import {Sessions} from '#server/sessions.ts'
-
 type Model = Schema.Top & {readonly table: string}
 
 // A service's migrations need only the app's SqlClient.
@@ -30,7 +28,7 @@ type Migrations = Layer.Layer<never, Migrator.MigrationError | SqlError.SqlError
 type ColumnInfo = typeof ColumnInfo.Type
 const ColumnInfo = Schema.Struct({name: Schema.String, notnull: Schema.BooleanFromBit, type: Schema.String})
 
-// Every app runs on the runtime, whose sessions table sits beside the app's own; then every service whose class carries its `migrations`, and every model that names its `table`, by app: one app is one database.
+// Every service whose class carries its `migrations`, and every model that names its `table`, by app: one app is one database.
 const servers = import.meta.glob('../../../../apps/*/src/main.server.ts')
 const services = import.meta.glob<Record<string, unknown>>('../../../../apps/*/src/services/*/service.ts', {
 	eager: true
@@ -57,16 +55,12 @@ const apps = Array.map(Record.keys(servers), file => {
 			exportsOf(services, app),
 			Array.filter(value => Predicate.hasProperty(value, 'migrations')),
 			Array.map(service => service.migrations),
-			Array.filter((value): value is Migrations => Layer.isLayer(value)),
-			Array.prepend(Sessions.migrations)
+			Array.filter((value): value is Migrations => Layer.isLayer(value))
 		),
-		models: pipe(
+		models: Array.filter(
 			exportsOf(schemas, app),
-			Array.filter(
-				(value): value is Model =>
-					Schema.isSchema(value) && Predicate.hasProperty(value, 'table') && Predicate.isString(value.table)
-			),
-			Array.prepend<Model>(Sessions.model)
+			(value): value is Model =>
+				Schema.isSchema(value) && Predicate.hasProperty(value, 'table') && Predicate.isString(value.table)
 		)
 	}
 })

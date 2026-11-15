@@ -3,7 +3,7 @@ import {Array, Effect, Function, Number, Option, Schema, Stream, String, pipe} f
 import {ChildProcess} from 'effect/process'
 
 import {matches} from '#lib/ast.ts'
-import {JudgeError} from '#lib/session.ts'
+import {JudgeError} from '#lib/model.ts'
 
 // The diff's every setting written out, so a machine's git configuration never changes which lines the change touched; it reads every file as text, whatever the change's attributes say.
 const DIFF = [

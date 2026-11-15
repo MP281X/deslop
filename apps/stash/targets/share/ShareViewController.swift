@@ -169,11 +169,10 @@ private struct Upload {
       let app,
       let identifier = app.bundleIdentifier,
       let keychainGroup = app.object(forInfoDictionaryKey: "DeslopKeychainGroup") as? String,
+      let address = app.object(forInfoDictionaryKey: "DeslopServer") as? String,
+      let server = URL(string: address),
       let container = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: "group.\(identifier)")
     else {
-      throw CocoaError(.featureUnsupported)
-    }
-    guard let server = URL(string: "https://stash.mp281x.xyz") else {
       throw CocoaError(.featureUnsupported)
     }
     self.server = server
@@ -216,7 +215,8 @@ private struct Upload {
   private func rejection(_ status: Int) -> NSError {
     let message: String
     switch status {
-    case 401, 403: message = "Open Stash and sign in again."
+    case 401: message = "Open Stash and sign in, then share again."
+    case 403: message = "This account cannot use Stash."
     case 413: message = "This is too large for Stash."
     default: message = "Stash refused this share (HTTP \(status))."
     }
@@ -228,7 +228,7 @@ private struct Upload {
     request.httpMethod = "POST"
     request.timeoutInterval = 10
     request.setValue(type, forHTTPHeaderField: "Content-Type")
-    request.setValue("Bearer \(try sessionId())", forHTTPHeaderField: "Authorization")
+    authorize(&request)
     let (_, response) = try await URLSession.shared.upload(for: request, from: payload)
     guard let response = response as? HTTPURLResponse else { throw URLError(.badServerResponse) }
     return response.statusCode
@@ -238,8 +238,8 @@ private struct Upload {
     var request = URLRequest(url: server.appendingPathComponent(path))
     request.httpMethod = "POST"
     request.setValue(type, forHTTPHeaderField: "Content-Type")
-    // The session id stays valid on the server however long the background upload waits.
-    request.setValue("Bearer \(try sessionId())", forHTTPHeaderField: "Authorization")
+    // The session stays valid on the server however long the background upload waits.
+    authorize(&request)
     let configuration = URLSessionConfiguration.background(withIdentifier: "\(group).share.\(id)")
     configuration.sharedContainerIdentifier = group
     configuration.isDiscretionary = false
@@ -249,29 +249,29 @@ private struct Upload {
     session.finishTasksAndInvalidate()
   }
 
-  private var keychainQuery: [String: Any] {
-    [kSecClass as String: kSecClassGenericPassword,
-      kSecAttrService as String: "app:no-auth", kSecAttrGeneric as String: Data("session".utf8),
-      kSecAttrAccount as String: Data("session".utf8), kSecAttrAccessGroup as String: keychainGroup]
-  }
-
-  private func sessionId() throws -> String {
-    var query = keychainQuery
-    query[kSecReturnData as String] = true
-    query[kSecMatchLimit as String] = kSecMatchLimitOne
-    var value: CFTypeRef?
-    let status = SecItemCopyMatching(query as CFDictionary, &value)
-    guard status == errSecSuccess, let data = value as? Data,
-      let saved = try? JSONDecoder().decode(StoredSession.self, from: data)
-    else {
-      throw NSError(domain: "Stash", code: 401, userInfo: [NSLocalizedDescriptionKey: "Open Stash and sign in first."])
+  // Auth names the caller from the session cookie the app saved in the Keychain; a device on the tailnet has none and needs none.
+  private func authorize(_ request: inout URLRequest) {
+    request.httpShouldHandleCookies = false
+    if let secret = secret() {
+      request.setValue("__Secure-deslop-session=\(secret)", forHTTPHeaderField: "Cookie")
     }
-    return saved.session
   }
-}
 
-private struct StoredSession: Decodable {
-  let session: String
+  private func secret() -> String? {
+    let query: [String: Any] = [
+      kSecClass as String: kSecClassGenericPassword,
+      kSecAttrService as String: "app:no-auth", kSecAttrGeneric as String: Data("session".utf8),
+      kSecAttrAccount as String: Data("session".utf8), kSecAttrAccessGroup as String: keychainGroup,
+      kSecReturnData as String: true, kSecMatchLimit as String: kSecMatchLimitOne,
+    ]
+    var value: CFTypeRef?
+    guard SecItemCopyMatching(query as CFDictionary, &value) == errSecSuccess, let data = value as? Data,
+      let text = String(data: data, encoding: .utf8), !text.isEmpty
+    else {
+      return nil
+    }
+    return text
+  }
 }
 
 private enum SharedText {

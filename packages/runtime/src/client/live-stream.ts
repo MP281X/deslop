@@ -5,11 +5,16 @@ import type {Atom, AtomRegistry, AtomRpc} from 'effect/reactivity'
 import {RpcClientError} from 'effect/rpc'
 import type {Rpc, RpcClient, RpcSchema} from 'effect/rpc'
 
-import {AuthError, isDenied} from '#shared/auth.ts'
+import {AuthError, isDenied, needsSignIn} from '#shared/auth.ts'
 
 // Whether a failure holds a refusal: a sign-in the server no longer accepts or access it does not grant.
 export function isDeniedCause(cause: Cause.Cause<unknown>) {
 	return Array.some(cause.reasons, reason => Cause.isFailReason(reason) && isDenied(reason.error))
+}
+
+// Whether a failure holds the server asking for a sign-in, as opposed to refusing the account.
+export function needsSignInCause(cause: Cause.Cause<unknown>) {
+	return Array.some(cause.reasons, reason => Cause.isFailReason(reason) && needsSignIn(reason.error))
 }
 
 // The failure a screen shows in place of a read's content: any refusal, or an outage with nothing kept.
