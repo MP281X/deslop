@@ -1,8 +1,14 @@
-import {Duration, Schema, SchemaGetter, SchemaParser, Struct, pipe} from 'effect'
+import {Array, Duration, Schema, SchemaGetter, SchemaParser, Struct, pipe} from 'effect'
 
 import {Model} from 'effect/schema'
 
-import {DateTimeUtcFromFiniteMillis, DurationFromFiniteMillis, DurationFromSeconds} from '@deslop/runtime/shared/time'
+import {
+	DateTimeUtcFromFiniteMillis,
+	DurationFromFiniteMillis,
+	DurationFromSeconds,
+	TimeFrame,
+	timeFrameDuration
+} from '@deslop/runtime/shared/time'
 
 import {AppId, TextFromEmpty, WorkerId} from '#services/inventory/schema.ts'
 
@@ -21,17 +27,19 @@ export type CgroupPath = typeof CgroupPath.Type
 export const CgroupPath = Schema.brand('DeployCgroupPath')(Schema.String)
 
 type HistoryMinutes = typeof HistoryMinutes.Type
-const HistoryMinutes = Schema.Literals([1, 10, 60, 1440, 10_080])
+const HistoryMinutes = Schema.Literals(
+	Array.map(TimeFrame.literals, frame => Duration.toMinutes(timeFrameDuration(frame)))
+)
 
 export type HistoryQuery = typeof HistoryQuery.Type
-// The range back from now, in minutes: a minute, ten, an hour, a day or a week.
+// The shared time frames, encoded in minutes for the URL and metrics queries.
 export const HistoryQuery = Schema.Struct({
 	minutes: pipe(
 		HistoryMinutes,
 		Schema.decodeTo(Schema.Duration, {
 			decode: SchemaGetter.transform(Duration.minutes),
 			encode: SchemaGetter.transformEffect(range =>
-				pipe(range, Duration.toMinutes, SchemaParser.decodeUnknownEffect(HistoryMinutes))
+				pipe(range, Duration.toMinutes, SchemaParser.decodeEffect(HistoryMinutes))
 			)
 		})
 	)

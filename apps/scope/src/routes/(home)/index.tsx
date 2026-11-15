@@ -32,6 +32,7 @@ import {Separator} from '@deslop/components-web/ui/separator'
 import {Table, TableBody, TableCell} from '@deslop/components-web/ui/table'
 import {blockingFailure} from '@deslop/runtime/client/live-stream'
 import {ageOf, clockOf, compactCountOf, countOf, durationOf} from '@deslop/runtime/shared/format'
+import {TimeFrame} from '@deslop/runtime/shared/time'
 
 import {
 	Search,
@@ -51,7 +52,7 @@ import type {ActiveOperation, OperationKey} from '#lib/telemetry.ts'
 import {Flame, SpansSkeleton, TimeAxis} from '#routes/(home)/-flame.tsx'
 import {OutsideMark, SpanDetail} from '#routes/(home)/-span.tsx'
 import icon from '#routes/icon.svg'
-import {Range, rangeStart} from '#services/telemetry/schema.ts'
+import {rangeStart} from '#services/telemetry/schema.ts'
 import type {
 	AppName,
 	Operation,
@@ -79,7 +80,7 @@ function runsOf(n: number) {
 	return `${countOf(n)} ${Boolean.match(n === 1, {onFalse: Function.constant('runs'), onTrue: Function.constant('run')})}`
 }
 const route = getRouteApi('/(home)/')
-const RANGES = Array.map(Range.literals, value => ({label: value, value}))
+const RANGES = Array.map(TimeFrame.literals, value => ({label: value, value}))
 
 type WorkspaceProps = {
 	active?: ActiveOperation
@@ -90,7 +91,7 @@ type WorkspaceProps = {
 	onSelectOperation: (app: AppName, operation: Operation) => void
 	onSelectTrace: (trace: OperationTrace) => void
 	pickedSpan?: SpanId
-	range: Range
+	range: TimeFrame
 	source?: AppName
 }
 
@@ -125,7 +126,7 @@ function SourceTabs(props: {apps: Overview['apps']; source?: AppName}) {
 }
 
 // Suspend the rows, not their shell. Home owns failures; ordinary outages retain the last overview.
-function OverviewContent(props: {children: (overview: Overview) => ReactNode; range: Range}) {
+function OverviewContent(props: {children: (overview: Overview) => ReactNode; range: TimeFrame}) {
 	return Option.match(AsyncResult.value(useAtomSuspense(overviewAtom(props.range), {includeFailure: true})), {
 		onNone: Function.constNull,
 		onSome: props.children
@@ -202,7 +203,7 @@ function OperationsPane(props: {
 	activeKey?: OperationKey
 	className?: string
 	onSelect: (app: AppName, operation: Operation) => void
-	range: Range
+	range: TimeFrame
 	source?: AppName
 }) {
 	return (
@@ -292,7 +293,7 @@ function TracesPane(props: {
 	className?: string
 	now: DateTime.Utc
 	onSelect: (trace: OperationTrace) => void
-	range: Range
+	range: TimeFrame
 	selectedTrace?: OperationTrace
 }) {
 	const active = Option.fromUndefinedOr(props.active)
@@ -376,7 +377,7 @@ function SpansList(props: {
 }
 
 // The page's readers as one mark: the oldest age among those still showing content, and one retry for them all.
-function StaleMark(props: {range: Range; trace?: OperationTrace}) {
+function StaleMark(props: {range: TimeFrame; trace?: OperationTrace}) {
 	return Option.match(Option.fromUndefinedOr(props.trace), {
 		onNone: () => <StaleProblem label="Out of date" readers={[overviewAtom(props.range)]} />,
 		onSome: trace => <StaleProblem label="Out of date" readers={[overviewAtom(props.range), traceAtom(trace.id)]} />
@@ -389,7 +390,7 @@ function Spans(props: {
 	inlineDetails?: boolean
 	onPick: (id: SpanId) => void
 	pickedSpan?: SpanId
-	range: Range
+	range: TimeFrame
 }) {
 	return (
 		<Loaded atom={traceAtom(props.id)}>
@@ -414,7 +415,7 @@ function TracePane(props: {
 	now: DateTime.Utc
 	onPickSpan: (id: SpanId) => void
 	pickedSpan?: SpanId
-	range: Range
+	range: TimeFrame
 	trace?: OperationTrace
 }) {
 	const trace = Option.fromUndefinedOr(props.trace)
@@ -628,7 +629,7 @@ function HomeRoute() {
 	}
 
 	// A new frame keeps the trace it still holds; the URL follows a fallback once the frame's operations arrive.
-	function selectRange(next: Range) {
+	function selectRange(next: TimeFrame) {
 		Option.match(value, {onNone: Function.constUndefined, onSome: current => setKnown(current.apps)})
 		const cutoff = rangeStart(next, now)
 		send(

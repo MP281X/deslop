@@ -26,6 +26,8 @@ import {Digest} from 'effect/crypto'
 import {Reactivity} from 'effect/reactivity'
 import {Migrator, SqlClient, SqlSchema} from 'effect/sql'
 
+import type {TimeFrame} from '@deslop/runtime/shared/time'
+
 import {
 	appName,
 	attributesFlat,
@@ -60,7 +62,6 @@ import type {
 	OperationTrace,
 	OperationsAnswer,
 	Overview,
-	Range,
 	ReadTraceAnswer,
 	ReadTraceParams,
 	Rejection,
@@ -100,7 +101,7 @@ import {
 } from '#services/telemetry/schema.ts'
 
 const MISSING =
-	'No kept telemetry has this trace id: check the id, check ingestion with check_ingestion, or reproduce it if it is older than three days.'
+	'No kept telemetry has this trace id: check the id, check ingestion with check_ingestion, or reproduce it if it is older than seven days.'
 
 const UNAVAILABLE = 'The telemetry storage could not be read or written.'
 
@@ -700,10 +701,10 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 				{onEmpty: () => Effect.void, onNonEmpty: deleteSuperseded}
 			)
 		})
-		// Three days of telemetry: a development debugger needs recent runs, and older ones would slow every query.
+		// Seven days of telemetry cover the longest time frame without keeping older runs in every query.
 		const prune = pipe(
 			DateTime.now,
-			Effect.flatMap(now => deleteExpired(DateTime.subtractDuration(now, Duration.days(3)))),
+			Effect.flatMap(now => deleteExpired(DateTime.subtractDuration(now, Duration.days(7)))),
 			Reactivity.mutation(['telemetry']),
 			sql.withTransaction,
 			asTelemetryError,
@@ -711,7 +712,7 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 			Effect.withSpan('Telemetry.prune')
 		)
 		// The overview as of now, counted over every settled trace; a trace whose root never came joins it a minute after it started.
-		const readOverview = Effect.fnUntraced(function* (range: Range) {
+		const readOverview = Effect.fnUntraced(function* (range: TimeFrame) {
 			const now = yield* DateTime.now
 			const settledBefore = DateTime.subtractDuration(now, Duration.minutes(1))
 			const counted = overviewOf(
@@ -925,7 +926,7 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 			// A trace and every trace a span link joins to it, as one tree.
 			trace: Effect.fn('Telemetry.trace')(tree, asTelemetryError),
 			// What the page watches: read again after each committed write, at most once a second, always the newest.
-			watch: (range: Range) =>
+			watch: (range: TimeFrame) =>
 				pipe(
 					sql.reactive(['telemetry'], readOverview(range)),
 					Stream.mapError(cause => TelemetryError.make({cause, message: UNAVAILABLE})),

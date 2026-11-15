@@ -1,15 +1,13 @@
-import {DateTime, Duration, Effect, Function, Option, Schema, SchemaGetter, Struct, pipe} from 'effect'
+import {Array, DateTime, Duration, Effect, Function, Option, Schema, SchemaGetter, Struct, pipe} from 'effect'
 
 import {Model} from 'effect/schema'
 
-import {DateTimeUtcFromFiniteMillis, DurationFromFiniteMillis} from '@deslop/runtime/shared/time'
-
-const RANGES: Record<Range, Duration.Duration> = {
-	'1h': Duration.hours(1),
-	'3d': Duration.days(3),
-	'10m': Duration.minutes(10),
-	'24h': Duration.days(1)
-}
+import {
+	DateTimeUtcFromFiniteMillis,
+	DurationFromFiniteMillis,
+	TimeFrame,
+	timeFrameDuration
+} from '@deslop/runtime/shared/time'
 
 export class TelemetryError extends Schema.TaggedError<TelemetryError>()('TelemetryError', {
 	cause: Schema.optional(Schema.Defect()),
@@ -176,17 +174,9 @@ export const LogsRequest = Schema.Struct({
 	)
 })
 
-export type Range = typeof Range.Type
-// The page's time frame and the tools' window; three days is what the store keeps.
-export const Range = Schema.Literals(['10m', '1h', '24h', '3d'])
-
-export function rangeDuration(range: Range) {
-	return RANGES[range]
-}
-
 // The oldest start a frame holds, in epoch milliseconds.
-export function rangeStart(range: Range, now: DateTime.Utc) {
-	return DateTime.subtractDuration(now, rangeDuration(range))
+export function rangeStart(range: TimeFrame, now: DateTime.Utc) {
+	return DateTime.subtractDuration(now, timeFrameDuration(range))
 }
 
 export type Runtime = typeof Runtime.Type
@@ -434,9 +424,9 @@ const App = Schema.annotateEncoded<typeof AppName>({
 })(AppName)
 
 export const Since = pipe(
-	Range,
+	TimeFrame,
 	Schema.withDecodingDefaultTypeKey(Effect.succeed('1h' as const)),
-	Schema.annotateEncoded({description: "Time window: '10m', '1h', '24h' or '3d'; default '1h'."})
+	Schema.annotateEncoded({description: `Time window: ${Array.join(TimeFrame.literals, ', ')}; default '1h'.`})
 )
 
 export type ListOperationsParams = typeof ListOperationsParams.Type
