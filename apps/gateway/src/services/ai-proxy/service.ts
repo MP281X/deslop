@@ -376,11 +376,11 @@ export class AiProxy extends Context.Service<AiProxy>()('@deslop/gateway/service
 					yield* sql`DROP TABLE ai_usage`
 					yield* sql`ALTER TABLE ai_usage_new RENAME TO ai_usage`
 				}),
-				'0008_minute_usage': Effect.gen(function* () {
-					const sql = yield* SqlClient.SqlClient
-					// Hour timestamps already name their first minute; preserve every existing payer total.
-					yield* sql`ALTER TABLE ai_usage RENAME COLUMN hour TO minute`
-				})
+				// Hour timestamps already name their first minute; preserve every existing payer total.
+				'0008_minute_usage': Effect.flatMap(
+					SqlClient.SqlClient,
+					sql => sql`ALTER TABLE ai_usage RENAME COLUMN hour TO minute`
+				)
 			}),
 			table: 'ai_migrations'
 		})
