@@ -30,6 +30,20 @@ export function changeNote(note: Note, update: NoteChange) {
 		Match.tag('image', change =>
 			NoteChangeResult.cases.Changed.make({note: {...fields, image: Option.some(change.image)}})
 		),
+		Match.tag('resolve', change =>
+			NoteChangeResult.cases.Changed.make({
+				note: {
+					...fields,
+					source: sourceOf(change.url),
+					title: pipe(
+						note.url,
+						Option.contains(note.title),
+						Boolean.match({onFalse: () => note.title, onTrue: () => change.url})
+					),
+					url: Option.some(change.url)
+				}
+			})
+		),
 		Match.tag('extract', change =>
 			Result.match(change.extraction, {
 				onFailure: error =>

@@ -4,14 +4,19 @@ import {
 	ByteSize,
 	Cause,
 	Context,
+	DateTime,
 	Effect,
+	Fiber,
 	FiberMap,
 	FileSystem,
 	Function,
 	Layer,
 	Match,
+	MutableHashMap,
 	Option,
+	Order,
 	Path,
+	Queue,
 	Random,
 	Result,
 	Schema,
@@ -82,10 +87,11 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 		const organizer = yield* Organizer
 		const images = path.join(directory, 'images')
 		const files = path.join(directory, 'files')
-		const reading = yield* Semaphore.make(2)
-		const tagging = yield* Semaphore.make(1)
+		const tagging = yield* Semaphore.make(8)
 		const runs = yield* FiberMap.make<NoteId>()
 		const mediaReader = yield* makeMediaReader
+		const pending = MutableHashMap.empty<NoteId, {note: Note; effect: Effect.Effect<void, NotesError>}>()
+		const wake = yield* Queue.unbounded<void>()
 		// Writes tell this Reactivity of their commits, so callers need none of their own.
 		const withReactivity = Effect.provideService(Reactivity.Reactivity, yield* Reactivity.Reactivity)
 
@@ -153,7 +159,7 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 			Result: Schema.Struct({count: Schema.Int}),
 			execute: query => sql`SELECT count(*) AS count FROM notes WHERE ${matching(query)}`
 		})
-		// A share of a saved link joins its note: the link is canonical before it is saved, so equal links are one note.
+		// Locally canonical links join immediately; shortened links join after background resolution.
 		const findSaved = SqlSchema.findOneOption({
 			Request: Schema.Struct({id: NoteId, url: Schema.OptionFromNullOr(Schema.String)}),
 			Result: Note,
@@ -161,6 +167,14 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 				SELECT * FROM notes WHERE id = ${request.id} OR url = ${request.url}
 				ORDER BY id = ${request.id} DESC
 				LIMIT 1
+			`
+		})
+		const findResolved = SqlSchema.findOneOption({
+			Request: Schema.Struct({id: NoteId, url: Schema.String}),
+			Result: Note,
+			execute: request => sql`
+				SELECT * FROM notes WHERE id != ${request.id} AND url = ${request.url}
+				ORDER BY createdAt, id LIMIT 1
 			`
 		})
 		const listOrganizing = SqlSchema.findAll({
@@ -299,7 +313,7 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 			})
 		})
 
-		// One note at a time, so two notes read together cannot create rival tags for the same topic.
+		// Haiku calls may overlap; tag definitions and each note's organization still commit atomically.
 		function tag(userId: UserId, id: NoteId, stills: Picture[]) {
 			return pipe(
 				findNote(id),
@@ -379,7 +393,33 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 			yield* tag(userId, note.id, [...input.slides, ...Array.map(frames, still)])
 		})
 
-		const organizeLink = Effect.fnUntraced(function* (userId: UserId, note: Note, link: string) {
+		const resolveLink = Effect.fnUntraced(function* (id: NoteId, link: string) {
+			const url = yield* Effect.catchTag(sources.resolve(link), 'NotesError', () => Effect.succeed(link))
+			return yield* pipe(
+				findNote(id),
+				Effect.flatMap(
+					Option.match({
+						onNone: () => Effect.succeed(Option.none<Note>()),
+						onSome: Effect.fnUntraced(function* (current: Note) {
+							return yield* Option.match(yield* findResolved({id, url}), {
+								onNone: () => Effect.andThen(storeChange(current, NoteChange.cases.resolve.make({url})), findNote(id)),
+								onSome: Effect.fnUntraced(function* (saved: Note) {
+									yield* storeChange(saved, NoteChange.cases.share.make({capture: {id, text: current.text}}))
+									yield* storeChange(current, NoteChange.cases.remove.make({}))
+									return Option.none<Note>()
+								})
+							})
+						})
+					})
+				),
+				sql.withTransaction,
+				asNotesError
+			)
+		})
+
+		// The note as resolved: its canonical link, or the shared one when resolution failed.
+		const organizeLink = Effect.fnUntraced(function* (userId: UserId, note: Note, original: string) {
+			const link = Option.getOrElse(note.url, () => original)
 			const extraction = yield* Effect.result(sources.extract(link))
 			yield* change(note.id, NoteChange.cases.extract.make({extraction}))
 			const slides = yield* Result.match(extraction, {
@@ -438,9 +478,17 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 							onNone: () =>
 								Option.match(note.url, {
 									onNone: () => tag(userId, note.id, []),
-									onSome: link => reading.withPermit(organizeLink(userId, note, link))
+									// A shortened link that resolves to a saved note merges into it, leaving nothing to organize.
+									onSome: link =>
+										Effect.flatMap(
+											resolveLink(note.id, link),
+											Option.match({
+												onNone: () => Effect.void,
+												onSome: resolved => organizeLink(userId, resolved, link)
+											})
+										)
 								}),
-							onSome: type => reading.withPermit(organizeFile(userId, note, type))
+							onSome: type => organizeFile(userId, note, type)
 						})
 					),
 					Effect.tapCause(cause =>
@@ -459,7 +507,9 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 						links: Option.toArray(Option.map(request, span => ({attributes: {'link.type': 'follows-from'}, span}))),
 						root: true
 					}),
-					effect => FiberMap.run(runs, note.id, effect),
+					withReactivity,
+					effect => Effect.sync(() => MutableHashMap.set(pending, note.id, {effect, note})),
+					Effect.andThen(Queue.offer(wake, undefined)),
 					Effect.asVoid
 				)
 			)
@@ -467,6 +517,31 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 
 		// A note a restart interrupted resumes for the person who saved it.
 		yield* Effect.forEach(yield* asNotesError(listOrganizing()), note => start(note.requester, note), {
+			concurrency: 1,
+			discard: true
+		})
+
+		// Workers choose only when free, so fresh captures jump ahead of the resumed backlog.
+		const work = Effect.gen(function* () {
+			yield* Queue.take(wake)
+			yield* pipe(
+				MutableHashMap.values(pending),
+				Array.fromIterable,
+				Array.match({
+					onEmpty: () => Effect.void,
+					onNonEmpty: jobs =>
+						Effect.gen(function* () {
+							const job = Array.max(
+								jobs,
+								Order.Struct({note: Order.Struct({createdAt: DateTime.Order, id: Order.String})})
+							)
+							MutableHashMap.remove(pending, job.note.id)
+							yield* Effect.flatMap(FiberMap.run(runs, job.note.id, job.effect), Fiber.await)
+						})
+				})
+			)
+		})
+		yield* Effect.forEach(Array.range(1, 8), () => pipe(work, Effect.forever, Effect.forkScoped), {
 			concurrency: 1,
 			discard: true
 		})
@@ -522,11 +597,7 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 			capture: Effect.fn('Notes.capture')(function* (userId: UserId, input: Capture) {
 				const text = String.trim(input.text)
 				if (String.isEmpty(text)) return yield* NotesError.make({message: 'Paste a link or write a note.'})
-				const url = yield* pipe(
-					Option.fromUndefinedOr(captureUrl(text)),
-					Option.map(link => Effect.catchTag(sources.resolve(link), 'NotesError', () => Effect.succeed(link))),
-					Effect.transposeOption
-				)
+				const url = Option.fromUndefinedOr(captureUrl(text))
 				const saved = yield* pipe(
 					findSaved({id: input.id, url}),
 					Effect.flatMap(
@@ -621,11 +692,13 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 				return yield* mediaReader.file(link, index)
 			}),
 			regenerate: Effect.fn('Notes.regenerate')(function* (userId: UserId, id: NoteId) {
+				MutableHashMap.remove(pending, id)
 				yield* FiberMap.remove(runs, id)
 				yield* change(id, NoteChange.cases.retry.make({}))
 				yield* start(userId, yield* savedNote(id))
 			}, withReactivity),
 			remove: Effect.fn('Notes.remove')(function* (id: NoteId) {
+				MutableHashMap.remove(pending, id)
 				yield* FiberMap.remove(runs, id)
 				yield* change(id, NoteChange.cases.remove.make({}))
 				yield* pipe(

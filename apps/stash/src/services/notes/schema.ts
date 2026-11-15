@@ -153,6 +153,7 @@ export const NoteChange = Schema.TaggedUnion({
 	},
 	remove: {},
 	request: {requester: UserId},
+	resolve: {url: Schema.String},
 	retry: {},
 	share: {capture: Capture},
 	stop: {},
