@@ -12,6 +12,7 @@ import {accountAtom} from '@deslop/runtime/web/client'
 
 import {Avatar, AvatarFallback, AvatarImage} from '#components/ui/avatar.tsx'
 import {Button} from '#components/ui/button.tsx'
+import {Skeleton} from '#components/ui/skeleton.tsx'
 import {Tabs, TabsList, TabsTrigger} from '#components/ui/tabs.tsx'
 
 // The menu's floating-ui bundle is the page's heaviest import, so it arrives on intent rather than with the bar.
@@ -127,6 +128,21 @@ export function AppBarTabs(props: {children: ReactNode; value: string}) {
 	)
 }
 
+// The strip before its tabs arrive: the real list holding tab-sized blocks (a tab is its 16px mark, 6px padding and 1px border either side), so the bar keeps its size when they come.
+export function AppBarTabsSkeleton(props: {count: number}) {
+	return (
+		<div aria-hidden>
+			<Tabs value="">
+				<TabsList>
+					{Array.makeBy(props.count, index => (
+						<Skeleton key={index} className="h-full w-7.5" />
+					))}
+				</TabsList>
+			</Tabs>
+		</div>
+	)
+}
+
 // A section the current URL can name: the tab navigates through a router link.
 export function AppBarTab(props: {children: ReactNode; render: ReactElement; value: string}) {
 	return (
@@ -205,7 +221,7 @@ export function AppBar(props: {
 			{props.tabs !== undefined && (
 				<nav
 					aria-label="Sections"
-					className="flex min-w-0 flex-1 scrollbar-none items-center overflow-x-auto overscroll-x-contain"
+					className="flex min-w-0 flex-1 scrollbar-none items-center overflow-x-auto overflow-y-hidden overscroll-x-contain"
 				>
 					{props.tabs}
 				</nav>
