@@ -2,10 +2,35 @@ import {assert, it} from '@effect/vitest'
 
 import {Array, Option} from 'effect'
 
-import {notificationOf, postFrom} from '#services/chapters/lib/utils.ts'
-import {ChapterNumber} from '#services/chapters/schema.ts'
+import {indexChapters, notificationOf, postFrom} from '#services/chapters/lib/utils.ts'
+import {Chapter, ChapterNumber} from '#services/chapters/schema.ts'
+import type {Series} from '#services/chapters/schema.ts'
 
 const LINK = '<a href="https://cubari.moe/read/imgchest/abc123xyz/1/1/">[link]</a>'
+
+function chapter(series: Series, number: number, notified: boolean) {
+	return Chapter.make({
+		notified,
+		number: ChapterNumber.make(number),
+		pages: ['https://example.com/page.png'],
+		postedAt: Option.none(),
+		revisedAt: Option.none(),
+		series,
+		source: `https://cubari.moe/read/gist/JYHJU/${number}/1/`,
+		title: ''
+	})
+}
+
+it('announces index releases above the series high while silently filling gaps and keeping known chapters', () => {
+	assert.deepStrictEqual(
+		indexChapters(
+			[chapter('webcomic', 156, true), chapter('webcomic', 158, true), chapter('manga', 243, true)],
+			Array.map([155, 156, 157, 158, 159, 160], number => chapter('webcomic', number, true)),
+			'webcomic'
+		),
+		[chapter('webcomic', 157, true), chapter('webcomic', 159, false), chapter('webcomic', 160, false)]
+	)
+})
 
 it('routes series-qualified notifications', () => {
 	assert.deepStrictEqual(

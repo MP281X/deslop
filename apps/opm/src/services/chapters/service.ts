@@ -233,7 +233,7 @@ export class Chapters extends Context.Service<Chapters>()('@deslop/opm/services/
 
 		const backfill = Effect.fnUntraced(function* (kind: Series) {
 			const index = chaptersFromIndex(yield* series(`https://cubari.moe/read/api/gist/series/${INDEXES[kind]}/`), kind)
-			// A chapter Reddit already supplied keeps its pages; later rounds fill only the gaps the index now covers.
+			// A chapter Reddit already supplied keeps its pages; later rounds fill gaps and discover new index releases.
 			const missing = indexChapters(yield* chapters, index, kind)
 			if (Array.isReadonlyArrayEmpty(missing)) return
 			yield* pipe(
