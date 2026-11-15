@@ -2,7 +2,7 @@ import {DateTime, Duration, Effect, Schedule, Stream, pipe} from 'effect'
 
 import type {TimeFrame} from '@deslop/runtime/shared/time'
 
-import {type UsageRange, timeFrameRange} from '../schema.ts'
+import {type UsageRange, timeFrameRange} from '#services/usage/schema.ts'
 
 // Reopen the frame every minute, including idle expiry; `watch` reads it again after each recorded call.
 export function usageWindow<A, E, R>(frame: TimeFrame, watch: (range: UsageRange) => Stream.Stream<A, E, R>) {

@@ -847,11 +847,11 @@ export class Connections extends Context.Service<
 						) STRICT, WITHOUT ROWID
 					`
 				}),
-				'0002_minute_calls': Effect.gen(function* () {
-					const sql = yield* SqlClient.SqlClient
-					// Hour timestamps already name their first minute; preserve every existing count.
-					yield* sql`ALTER TABLE connection_calls RENAME COLUMN hour TO minute`
-				})
+				// Hour timestamps already name their first minute; preserve every existing count.
+				'0002_minute_calls': Effect.flatMap(
+					SqlClient.SqlClient,
+					sql => sql`ALTER TABLE connection_calls RENAME COLUMN hour TO minute`
+				)
 			}),
 			table: 'connections_migrations'
 		})

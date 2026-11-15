@@ -13,7 +13,7 @@ function costOf(sum: AiUsageBreakdown) {
 
 // Sum the source buckets into 60 chart slots like Deploy; ten minutes keeps its ten honest minute buckets.
 function seriesOf(range: UsageRange, value: (at: DateTime.Utc) => number) {
-	const slots = Math.min(60, range.count)
+	const slots = Number.min(60, range.count)
 	return Array.makeBy(slots, index =>
 		Number.sumAll(
 			Array.makeBy(Math.ceil(((index + 1) * range.count) / slots) - Math.ceil((index * range.count) / slots), offset =>
