@@ -25,7 +25,8 @@ export type SpanId = typeof SpanId.Type
 export const SpanId = pipe(Schema.String, Schema.check(Schema.isPattern(/^[a-fA-F0-9]{16}$/u)), Schema.brand('SpanId'))
 
 export type LogId = typeof LogId.Type
-export const LogId = pipe(Schema.NonEmptyString, Schema.brand('ScopeLogId'))
+// The first six bytes of a record's digest, exact in a number and usable as its row id.
+export const LogId = pipe(Schema.Int, Schema.brand('ScopeLogId'))
 
 export type ServiceName = typeof ServiceName.Type
 export const ServiceName = pipe(Schema.String, Schema.brand('ScopeServiceName'))
@@ -193,90 +194,81 @@ export const Attributes = Schema.Record(Schema.String, Schema.Json)
 // The resource fields every span and log carries: who sent it, from which run of which release.
 const SENDER = {
 	// When the sending process started, which tells its runs apart; none when it does not say.
-	run: Model.FieldOption(Schema.DateTimeUtcFromMillis),
+	run: Schema.OptionFromNullOr(Schema.DateTimeUtcFromMillis),
 	runtime: Runtime,
 	service: ServiceName,
 	// `service.version` as sent; none for a local build.
-	version: Model.FieldOption(ReleaseVersion)
+	version: Schema.OptionFromNullOr(ReleaseVersion)
 }
 
-// One span, read from OTLP once on arrival: the page and the tools read these columns.
-export class Span extends Model.Class<Span>('Span')({
+// One span, read from OTLP once on arrival; queries answer it with hex ids, its sender and its whole attributes.
+export type Span = typeof Span.Type
+export const Span = Schema.Struct({
 	...SENDER,
-	attributes: Model.JsonFromString(Attributes),
+	attributes: Schema.fromJsonString(Attributes),
 	// None while the span is still open, as a running CI workflow is.
-	duration: Model.FieldOption(Schema.DurationFromMillis),
+	duration: Schema.OptionFromNullOr(Schema.DurationFromMillis),
 	// The status message of a failed or denied span.
-	error: Model.FieldOption(Schema.String),
+	error: Schema.OptionFromNullOr(Schema.String),
 	// The message of its first exception, which a failure's diagnosis prefers.
-	exception: Model.FieldOption(Schema.String),
+	exception: Schema.OptionFromNullOr(Schema.String),
 	name: Schema.String,
-	parentSpanId: Model.FieldOption(SpanId),
+	parentSpanId: Schema.OptionFromNullOr(SpanId),
 	spanId: SpanId,
 	// Fractional epoch milliseconds, retained by the public DateTime epoch mapping operation.
 	start: DateTimeUtcFromFiniteMillis,
 	// A denied span failed only on a sign-in it lacked: no count, dot or error filter includes it.
 	status: Schema.Literals(['ok', 'failed', 'denied']),
 	traceId: TraceId
-}) {
-	static readonly table = 'spans'
-}
+})
 
 // A span's link into another trace: the work it started reads as part of the trace that linked it.
-export class SpanLink extends Model.Class<SpanLink>('SpanLink')({
-	linkedSpanId: SpanId,
-	linkedTraceId: TraceId,
-	spanId: SpanId,
-	traceId: TraceId
-}) {
-	static readonly table = 'span_links'
-}
+export type SpanLink = typeof SpanLink.Type
+export const SpanLink = Schema.Struct({linkedSpanId: SpanId, linkedTraceId: TraceId, spanId: SpanId, traceId: TraceId})
 
 // One log record; the identity of one that carries no id of its own is the digest of what it carries.
-export class Log extends Model.Class<Log>('Log')({
+export type Log = typeof Log.Type
+export const Log = Schema.Struct({
 	...SENDER,
-	attributes: Model.JsonFromString(Attributes),
+	attributes: Schema.fromJsonString(Attributes),
 	id: LogId,
 	message: Schema.String,
-	receivedAt: Model.DateTimeInsertFromNumber,
+	// When its export arrived; a log that names no stored trace starts one then.
+	receivedAt: Schema.DateTimeUtcFromMillis,
 	// OTLP's severity number: 17 and above is an error.
 	severity: Schema.Int,
-	spanId: Model.FieldOption(SpanId),
+	spanId: Schema.OptionFromNullOr(SpanId),
 	time: DateTimeUtcFromFiniteMillis,
-	traceId: Model.FieldOption(TraceId)
-}) {
-	static readonly table = 'logs'
-}
+	traceId: Schema.OptionFromNullOr(TraceId)
+})
 
-// What every list reads of a trace, judged again whenever one of its spans arrives.
-export class Trace extends Model.Class<Trace>('Trace')({
+// What every list reads of a trace, judged again whenever one of its spans arrives; the sender, name and label are its root's.
+export type Trace = typeof Trace.Type
+export const Trace = Schema.Struct({
+	...SENDER,
 	// Where the failure broke: the earliest failed span without a failed child.
-	broken: Model.FieldOption(SpanId),
+	broken: Schema.OptionFromNullOr(SpanId),
 	duration: Schema.DurationFromMillis,
 	id: TraceId,
-	// When its first span arrived; retention drops the whole trace from then.
-	receivedAt: Model.DateTimeInsertFromNumber,
+	// The root's `trace.label`, which names the run a row stands for.
+	label: Schema.OptionFromNullOr(Schema.String),
+	name: Schema.String,
+	// When its first span or log arrived; retention drops the whole trace from then.
+	receivedAt: Schema.DateTimeUtcFromMillis,
 	// The span it starts from: one whose parent the trace doesn't hold, the earliest if a skewed clock leaves several.
 	root: SpanId,
 	// Whether a span without a parent has arrived; children export first, so until then the trace may still be growing.
-	rooted: Model.BooleanSqlite,
+	rooted: Schema.Boolean,
+	spans: Schema.Int,
 	start: DateTimeUtcFromFiniteMillis,
 	// A subscription or a machine's timer: its lifetime is a wait, not an operation's latency.
-	waits: Model.BooleanSqlite
-}) {
-	static readonly table = 'traces'
-}
-
-// Each service's newest release seen: what an older one sent may describe a bug since fixed, so it goes.
-export class Release extends Model.Class<Release>('Release')({service: ServiceName, version: ReleaseVersion}) {
-	static readonly table = 'releases'
-}
+	waits: Schema.Boolean
+})
 
 // A trace as the operations list counts it: its root's name and sender, and whether it broke.
 export type SettledTrace = typeof SettledTrace.Type
 export const SettledTrace = Schema.Struct({
-	...Struct.pick(Trace.fields, ['duration', 'id', 'start']),
-	...Struct.pick(Span.fields, ['name', 'runtime', 'service']),
+	...Struct.pick(Trace.fields, ['duration', 'id', 'name', 'runtime', 'service', 'start']),
 	failed: Schema.BooleanFromBit
 })
 
@@ -292,10 +284,9 @@ export const RetainedService = Schema.Struct({
 // What a trace's row shows beyond its numbers: its label, and the name and messages of the span where it broke.
 export type TraceDetail = typeof TraceDetail.Type
 export const TraceDetail = Schema.Struct({
-	...Struct.pick(Trace.fields, ['id']),
+	...Struct.pick(Trace.fields, ['id', 'label']),
 	...Struct.pick(Span.fields, ['error', 'exception']),
-	broken: Schema.OptionFromNullOr(Span.fields.name),
-	label: Schema.OptionFromNullOr(Schema.String)
+	broken: Schema.OptionFromNullOr(Span.fields.name)
 })
 
 // A trace as search_traces answers it, with its span count and the MCP relay it went through.
@@ -314,10 +305,6 @@ export const ServiceRun = Schema.Struct({
 	entries: Schema.Int,
 	lastEvent: DateTimeUtcFromFiniteMillis
 })
-
-// A sender whose release is older than its service's newest.
-export type Superseded = typeof Superseded.Type
-export const Superseded = Schema.Struct({service: Span.fields.service, version: ReleaseVersion})
 
 export type LatencyQuery = typeof LatencyQuery.Type
 export const LatencyQuery = Schema.Struct({
@@ -338,7 +325,20 @@ export const Rejection = Schema.Struct({
 
 export type SpanFacts = typeof SpanFacts.Type
 export const SpanFacts = Schema.Struct(
-	Struct.pick(Span.fields, ['attributes', 'duration', 'name', 'parentSpanId', 'spanId', 'start', 'status', 'traceId'])
+	Struct.pick(Span.fields, [
+		'attributes',
+		'duration',
+		'name',
+		'parentSpanId',
+		'run',
+		'runtime',
+		'service',
+		'spanId',
+		'start',
+		'status',
+		'traceId',
+		'version'
+	])
 )
 export type SpanFailure = typeof SpanFailure.Type
 export const SpanFailure = Schema.Struct(Struct.pick(Span.fields, ['error', 'exception']))
@@ -349,7 +349,7 @@ export const RejectedExport = Schema.Struct(Struct.pick(Rejection.fields, ['cred
 
 export type OperationTrace = typeof OperationTrace.Type
 export const OperationTrace = Schema.Struct({
-	...Struct.pick(Trace.json.fields, ['duration', 'id', 'start']),
+	...Struct.pick(Trace.fields, ['duration', 'id', 'start']),
 	failure: Schema.OptionFromOptionalKey(
 		Schema.Struct({error: Schema.OptionFromOptionalKey(Schema.String), span: Span.fields.name})
 	),
@@ -383,10 +383,10 @@ export const Overview = Schema.Struct({
 // A span as the trace view draws it: its row, where it sits in the tree and the timeline, and its logs. A linked trace's root hangs under the span it links to.
 type TraceSpan = typeof TraceSpan.Type
 const TraceSpan = Schema.Struct({
-	...Span.json.fields,
+	...Span.fields,
 	depth: Schema.Natural,
 	durationMs: DurationFromFiniteMillis,
-	logs: Schema.Array(Log.json),
+	logs: Schema.Array(Log),
 	offsetMs: DurationFromFiniteMillis
 })
 
@@ -397,7 +397,7 @@ export const TraceTree = Schema.Struct({
 	failureSpanId: Schema.OptionFromOptionalKey(SpanId),
 	id: TraceId,
 	// Logs of the trace that name no span it holds.
-	logs: Schema.Array(Log.json),
+	logs: Schema.Array(Log),
 	spans: Schema.Array(TraceSpan)
 })
 
@@ -433,7 +433,7 @@ export type ListOperationsParams = typeof ListOperationsParams.Type
 export const ListOperationsParams = Schema.Struct({app: Schema.OptionFromOptionalKey(App), since: Since})
 
 export type TraceCursor = typeof TraceCursor.Type
-export const TraceCursor = Schema.Struct(Struct.pick(Trace.json.fields, ['duration', 'id', 'start']))
+export const TraceCursor = Schema.Struct(Struct.pick(Trace.fields, ['duration', 'id', 'start']))
 
 // One page of search_traces as the database answers it.
 export type TraceQuery = typeof TraceQuery.Type
@@ -499,7 +499,7 @@ export const ReadTraceParams = Schema.Struct({
 })
 
 export type LogCursor = typeof LogCursor.Type
-export const LogCursor = Schema.Struct(Struct.pick(Log.json.fields, ['id', 'time']))
+export const LogCursor = Schema.Struct(Struct.pick(Log.fields, ['id', 'time']))
 
 // One page of search_logs as the database answers it.
 export type LogQuery = typeof LogQuery.Type
@@ -668,3 +668,83 @@ export const IngestionAnswer = Schema.Struct({
 	rejections: Schema.OptionFromOptionalKey(Schema.Array(IngestionRejection)),
 	services: Schema.Array(IngestionService)
 })
+
+// The stored tables: hex ids become blobs, each sender and SQL statement is stored once, and rows name them by id.
+
+// One sender; UNIQUE keeps NULLs apart, so its index compares an absent run or release as a marker no real one takes.
+export class StoredResource extends Model.Class<StoredResource>('StoredResource')({id: Schema.Int, ...SENDER}) {
+	static readonly table = 'resources'
+}
+
+// One `db.query.text`, which spans name instead of repeating it.
+export class StoredStatement extends Model.Class<StoredStatement>('StoredStatement')({
+	id: Schema.Int,
+	text: Schema.String
+}) {
+	static readonly table = 'statements'
+}
+
+// A trace and what its lists show of its root, so no list reads its spans; ids rise in arrival order, so retention drops a range of them.
+export class StoredTrace extends Model.Class<StoredTrace>('StoredTrace')({
+	broken: Model.FieldOption(Schema.Uint8Array),
+	duration: Schema.DurationFromMillis,
+	id: Schema.Int,
+	label: Model.FieldOption(Schema.String),
+	name: Schema.String,
+	receivedAt: Schema.DateTimeUtcFromMillis,
+	resource: Schema.Int,
+	rooted: Model.BooleanSqlite,
+	spans: Schema.Int,
+	start: DateTimeUtcFromFiniteMillis,
+	// None for the logs of one export that name no trace.
+	traceId: Model.FieldOption(Schema.Uint8Array),
+	waits: Model.BooleanSqlite
+}) {
+	static readonly table = 'traces'
+}
+
+// A span with constant attribute keys and its SQL statement stripped from its attributes; its row id keys its search entry.
+export class StoredSpan extends Model.Class<StoredSpan>('StoredSpan')({
+	attributes: Model.JsonFromString(Attributes),
+	duration: Model.FieldOption(Schema.DurationFromMillis),
+	error: Model.FieldOption(Schema.String),
+	exception: Model.FieldOption(Schema.String),
+	id: Schema.Int,
+	// 0 is work, whose duration is latency; 1 a stream's lifetime, 2 a machine's timer, 3 a request no route answered.
+	kind: Schema.Literals([0, 1, 2, 3]),
+	name: Schema.String,
+	parent: Model.FieldOption(Schema.Uint8Array),
+	resource: Schema.Int,
+	span: Schema.Uint8Array,
+	start: DateTimeUtcFromFiniteMillis,
+	statement: Model.FieldOption(Schema.Int),
+	// 0 ok, 1 failed, 2 denied.
+	status: Schema.Literals([0, 1, 2]),
+	trace: Schema.Int
+}) {
+	static readonly table = 'spans'
+}
+
+// A log under the trace it names, or under its export's own trace when it names none.
+export class StoredLog extends Model.Class<StoredLog>('StoredLog')({
+	attributes: Model.JsonFromString(Attributes),
+	id: LogId,
+	message: Schema.String,
+	resource: Schema.Int,
+	severity: Schema.Int,
+	span: Model.FieldOption(Schema.Uint8Array),
+	time: DateTimeUtcFromFiniteMillis,
+	trace: Schema.Int
+}) {
+	static readonly table = 'logs'
+}
+
+// A link names the trace it points to by id, since that trace may not have arrived.
+export class StoredSpanLink extends Model.Class<StoredSpanLink>('StoredSpanLink')({
+	linkedSpan: Schema.Uint8Array,
+	linkedTrace: Schema.Uint8Array,
+	span: Schema.Uint8Array,
+	trace: Schema.Int
+}) {
+	static readonly table = 'span_links'
+}

@@ -16,8 +16,6 @@ import {
 	pipe
 } from 'effect'
 
-import {Model} from 'effect/schema'
-
 import {
 	AppName,
 	Nano,
@@ -42,6 +40,7 @@ import type {
 	RetainedService,
 	Resource,
 	SpanLink,
+	Trace,
 	TraceTree,
 	TracesRequest,
 	SpanFacts,
@@ -51,59 +50,7 @@ import type {
 // Each operation lists this many traces, its newest failures among them.
 const KEEP = 20
 
-// Releases compare part by part as numbers, so 0.1.1235 is newer than 0.1.999.
-const byRelease = Order.mapInput(Order.Array(Order.Number), (version: ReleaseVersion) =>
-	pipe(
-		version,
-		String.split('.'),
-		Array.map(part => Option.getOrElse(Number.parse(part), Function.constant(0)))
-	)
-)
-
 const byStart = Order.mapInput(DateTime.Order, (span: Pick<Span, 'start'>) => span.start)
-
-export type Sender = {readonly service: ServiceName; readonly version: Option.Option<ReleaseVersion>}
-
-// The fields a judgement of a trace reads, whether the span is stored or still arriving.
-
-// A version Scope can order, numbers joined by dots such as "0.1.1235"; OTel leaves `service.version` free text, so "1.2.0-rc.1" or a commit hash is never older than anything.
-function releaseOf(version: Option.Option<ReleaseVersion>) {
-	return Option.filter(version, value => Option.isSome(String.match(/^\d+(?:\.\d+)*$/u)(value)))
-}
-
-// Each service's newest release among the senders and the ones already known.
-export function newestReleases(senders: readonly Sender[], known: Record<ServiceName, ReleaseVersion>) {
-	const versioned = Array.getSomes(
-		Array.map(senders, sender => Option.map(releaseOf(sender.version), version => ({service: sender.service, version})))
-	)
-	return Record.union(
-		known,
-		pipe(
-			versioned,
-			Array.groupBy(item => item.service),
-			Record.map(group =>
-				pipe(
-					group,
-					Array.map(item => item.version),
-					Array.max(byRelease)
-				)
-			)
-		),
-		Order.max(byRelease)
-	)
-}
-
-// What an older release than its service's newest sent.
-export function supersededBy(newest: Record<ServiceName, ReleaseVersion>) {
-	return (sender: Sender) =>
-		Option.exists(releaseOf(sender.version), version =>
-			pipe(
-				newest,
-				Record.get(sender.service),
-				Option.exists(latest => Order.isLessThan(byRelease)(version, latest))
-			)
-		)
-}
 
 // An OTLP attribute's one primitive value, unwrapped; an integer past what a number holds exactly stays the string OTLP sent.
 function primitiveOf(value: unknown) {
@@ -320,7 +267,7 @@ export function spansOf(payload: TracesRequest) {
 											})
 									}),
 									traceId
-								} satisfies typeof Span.insert.Type
+								} satisfies Span
 							}
 						})
 					)
@@ -349,12 +296,12 @@ export function logOf(sender: ReturnType<typeof senderOf>, log: ExportedLog, id:
 		attributes: attributesOf(Option.getOrElse(log.attributes, Array.empty)),
 		id,
 		message: Option.match(log.body, {onNone: Function.constant(''), onSome: body => Array.join(leaves(body), ' ')}),
-		receivedAt: Model.Override(receivedAt),
+		receivedAt,
 		severity: severityOf(log.severityNumber, log.severityText),
 		spanId: Option.map(log.spanId, value => SpanId.make(String.toLowerCase(value))),
 		time: instantOf(log.timeUnixNano),
 		traceId: Option.map(log.traceId, value => TraceId.make(String.toLowerCase(value)))
-	} satisfies typeof Log.insert.Type
+	} satisfies Log
 }
 
 export function levelOf(severity: number) {
@@ -479,15 +426,22 @@ function traceOf(spans: Array.NonEmptyReadonlyArray<SpanFacts>, receivedAt: Date
 		broken: Option.map(brokeAt(spans), span => span.spanId),
 		duration: timing.durationMs,
 		id: root.traceId,
-		receivedAt: Model.Override(receivedAt),
+		label: textOf(root.attributes, 'trace.label'),
+		name: root.name,
+		receivedAt,
 		root: root.spanId,
 		rooted: Array.some(spans, span => Option.isNone(span.parentSpanId)),
+		run: root.run,
+		runtime: root.runtime,
+		service: root.service,
+		spans: spans.length,
 		start: timing.start,
+		version: root.version,
 		// A machine's timer waits between steps; its lifetime is not the operation's latency either.
 		waits:
 			subscription(root, spans) ||
 			(String.startsWith('Machine.invoke')(root.name) && root.attributes['machine.invoke.kind'] === 'Timer')
-	}
+	} satisfies Trace
 }
 
 // The traces an export touches, whose stored spans `touchedTraces` reads again.
@@ -580,7 +534,7 @@ export function traceTree(id: TraceId, spans: readonly Span[], logs: readonly Lo
 			return {
 				path: [...Array.map(ancestors, parent => parent.index), item.index],
 				value: {
-					...Struct.pick(item.span, Struct.keys(Span.json.fields)),
+					...Struct.pick(item.span, Struct.keys(Span.fields)),
 					depth: ancestors.length,
 					durationMs: spanDuration(item.span),
 					logs: pipe(bySpan, Record.get(item.span.spanId), Option.getOrElse(Array.empty)),

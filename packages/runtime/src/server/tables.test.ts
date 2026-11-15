@@ -75,6 +75,12 @@ function columnOf(ast: SchemaAST.AST): {readonly nullable: boolean; readonly typ
 		}
 	}
 	if (SchemaAST.isNull(ast)) return {nullable: true, types: []}
+	if (
+		SchemaAST.isDeclaration(ast) &&
+		SchemaAST.resolveAt<{readonly id: string}>('representation')(ast)?.id === 'effect/schema/Uint8Array'
+	) {
+		return {nullable: false, types: ['BLOB']}
+	}
 	if (SchemaAST.isString(ast) || SchemaAST.isTemplateLiteral(ast)) return {nullable: false, types: ['TEXT']}
 	if (SchemaAST.isLiteral(ast)) {
 		return {
@@ -115,13 +121,13 @@ function expectedColumns(model: Model) {
 	)
 }
 
-// Every service of the app migrates one database; then each table is compared with its model through SQLite's own description.
+// Every service of the app migrates one database; then each table is compared with its model through SQLite's own description. A full-text index is a virtual table over shadow tables, which SQLite owns.
 const checked = Effect.fnUntraced(function* (migrations: readonly Migrations[], models: readonly Model[]) {
 	const sql = yield* SqlClient.SqlClient
 	yield* Effect.forEach(migrations, Layer.build, {concurrency: 1, discard: true})
 	const tables = yield* sql<{name: string}>`
-		SELECT name FROM sqlite_schema
-		WHERE type = 'table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '%_migrations'
+		SELECT name FROM pragma_table_list
+		WHERE schema = 'main' AND type = 'table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '%_migrations'
 		ORDER BY name
 	`
 	assert.deepStrictEqual(

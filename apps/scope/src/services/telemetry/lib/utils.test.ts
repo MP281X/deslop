@@ -2,77 +2,55 @@ import {assert, it} from '@effect/vitest'
 
 import {Array, DateTime, Duration, Option, Schema, String, pipe} from 'effect'
 
-import {
-	latencyOf,
-	newestReleases,
-	overviewOf,
-	supersededBy,
-	touchedTraces,
-	traceTree
-} from '#services/telemetry/lib/utils.ts'
-import {
-	AppName,
-	OperationTrace,
-	ReleaseVersion,
-	ServiceName,
-	Span,
-	SpanId,
-	SpanLink,
-	TraceId
-} from '#services/telemetry/schema.ts'
+import {latencyOf, overviewOf, touchedTraces, traceTree} from '#services/telemetry/lib/utils.ts'
+import {AppName, OperationTrace, ServiceName, Span, SpanId, SpanLink, TraceId} from '#services/telemetry/schema.ts'
 
 const A = '00000000000000000000000000000001'
 const B = '00000000000000000000000000000002'
 const SERVICE = ServiceName.make('stash-server')
 const NOW = DateTime.makeUnsafe(1000)
-const SPANS = Schema.decodeSync(Schema.Array(Span.json))([
-	{
-		attributes: {},
-		duration: 100,
-		name: 'capture',
+// A stored span as its query answers it; each test names only what it is about.
+function spanOf(fields: Partial<typeof Span.Encoded>) {
+	return Schema.decodeSync(Span)({
+		attributes: '{}',
+		duration: null,
+		error: null,
+		exception: null,
+		name: '',
+		parentSpanId: null,
+		run: null,
 		runtime: 'server',
 		service: SERVICE,
 		spanId: '0000000000000001',
-		start: 10,
+		start: 0,
 		status: 'ok',
-		traceId: A
-	},
-	{
-		attributes: {},
+		traceId: A,
+		version: null,
+		...fields
+	})
+}
+
+const SPANS = [
+	spanOf({duration: 100, name: 'capture', start: 10}),
+	spanOf({
 		duration: 10,
 		name: 'read',
 		parentSpanId: '0000000000000001',
-		runtime: 'server',
-		service: SERVICE,
 		spanId: '0000000000000002',
 		start: 20,
-		status: 'failed',
-		traceId: A
-	},
-	{
-		attributes: {},
-		duration: 200,
-		name: 'share',
-		runtime: 'web',
-		service: SERVICE,
-		spanId: '0000000000000003',
-		start: 0,
-		status: 'ok',
-		traceId: B
-	},
-	{
-		attributes: {},
+		status: 'failed'
+	}),
+	spanOf({duration: 200, name: 'share', runtime: 'web', spanId: '0000000000000003', start: 0, traceId: B}),
+	spanOf({
 		duration: 20,
 		name: 'send',
 		parentSpanId: '0000000000000003',
 		runtime: 'web',
-		service: SERVICE,
 		spanId: '0000000000000004',
 		start: 5,
-		status: 'ok',
 		traceId: B
-	}
-])
+	})
+]
 
 const TRACES = Array.map(
 	[
@@ -98,17 +76,12 @@ function stashOf(overview: ReturnType<typeof overviewOf>) {
 }
 
 it('rejudges arriving span replacements together with the retained trace', () => {
-	const replacement = Schema.decodeSync(Span.json)({
-		attributes: {},
+	const replacement = spanOf({
 		duration: 150,
 		name: 'read',
 		parentSpanId: '0000000000000001',
-		runtime: 'server',
-		service: SERVICE,
 		spanId: '0000000000000002',
-		start: 20,
-		status: 'ok',
-		traceId: A
+		start: 20
 	})
 	assert.deepStrictEqual(
 		Array.map(touchedTraces([replacement], Array.take(SPANS, 2), NOW), trace => [
@@ -128,21 +101,6 @@ it('roots a trace when its late parent arrives', () => {
 			trace.broken
 		]),
 		[[SpanId.make('0000000000000001'), true, Option.some(SpanId.make('0000000000000002'))]]
-	)
-})
-
-it('supersedes only numeric releases older than the newest release of their own service', () => {
-	const senders = [
-		{service: SERVICE, version: Option.some(ReleaseVersion.make('1.9'))},
-		{service: SERVICE, version: Option.some(ReleaseVersion.make('1.10'))},
-		{service: SERVICE, version: Option.some(ReleaseVersion.make('local'))},
-		{service: SERVICE, version: Option.none<ReleaseVersion>()}
-	]
-	const newest = newestReleases(senders, {[SERVICE]: ReleaseVersion.make('1.8')})
-	assert.deepStrictEqual(newest, {[SERVICE]: '1.10'})
-	assert.deepStrictEqual(Array.map(senders, supersededBy(newest)), [true, false, false, false])
-	assert.isFalse(
-		supersededBy(newest)({service: ServiceName.make('other'), version: Option.some(ReleaseVersion.make('1.0'))})
 	)
 })
 
@@ -185,7 +143,7 @@ it('keeps a recent fast failure among the slowest traces', () => {
 })
 
 it('attaches a linked trace beneath the span that started it', () => {
-	const links = Schema.decodeSync(Schema.Array(SpanLink.json))([
+	const links = Schema.decodeSync(Schema.Array(SpanLink))([
 		{linkedSpanId: '0000000000000004', linkedTraceId: B, spanId: '0000000000000001', traceId: A}
 	])
 	assert.deepStrictEqual(
