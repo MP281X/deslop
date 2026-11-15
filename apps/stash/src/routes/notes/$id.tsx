@@ -18,17 +18,13 @@ import {
 import {
 	accessibilityAddTraits,
 	accessibilityElement,
-	accessibilityHidden,
 	accessibilityLabel,
-	aspectRatio,
-	clipShape,
 	foregroundStyle,
 	frame,
 	labelStyle,
 	lineSpacing,
 	padding,
 	redacted,
-	resizable,
 	textSelection,
 	tint
 } from '@expo/ui/swift-ui/modifiers'
@@ -38,7 +34,7 @@ import {Linking} from 'react-native'
 
 import {FailureContent, Loaded} from '@deslop/components-mobile/blocks/loaded'
 import {Problem} from '@deslop/components-mobile/blocks/problem'
-import {colors, radius, space, text} from '@deslop/components-mobile/theme'
+import {colors, space, text} from '@deslop/components-mobile/theme'
 import {Button} from '@deslop/components-mobile/ui/button'
 import {Empty, EmptyContent, EmptyMedia} from '@deslop/components-mobile/ui/empty'
 import {Skeleton} from '@deslop/components-mobile/ui/skeleton'
@@ -48,7 +44,8 @@ import {AuthError} from '@deslop/runtime/shared/auth'
 import {Byline} from '#lib/components.tsx'
 import {BrandLogo} from '#lib/icons.tsx'
 import {appOf, brandOf, kinds, subjectOf} from '#lib/kinds.ts'
-import {imageAtom, noteAtom, notesAtom, regenerateAtom, removal} from '#lib/notes.ts'
+import {noteAtom, notesAtom, regenerateAtom, removal} from '#lib/notes.ts'
+import {Pager} from '#lib/pager.tsx'
 import {primary} from '#lib/session.ts'
 import type {NoteId, NoteItem} from '#services/notes/schema.ts'
 import {TagName} from '#services/notes/schema.ts'
@@ -56,27 +53,6 @@ import {TagName} from '#services/notes/schema.ts'
 const prose = [text.body, lineSpacing(space[1]), foregroundStyle(colors.foreground), textSelection(true)]
 
 const lede = [text.body, lineSpacing(space[1]), foregroundStyle(colors.mutedForeground), textSelection(true)]
-
-// A fixed slot, so the title stays put while the cover loads or when it cannot.
-const coverFrame = [frame({height: 280}), frame({maxWidth: Infinity})]
-
-function Cover(props: {note: NoteItem}) {
-	const image = useAtomValue(imageAtom(props.note.id))
-	if (AsyncResult.isFailure(image)) return <VStack modifiers={coverFrame}>{null}</VStack>
-	if (!AsyncResult.isSuccess(image)) return <Skeleton modifiers={coverFrame} />
-	return (
-		<Image
-			uiImage={image.value}
-			modifiers={[
-				resizable(),
-				aspectRatio({contentMode: 'fit'}),
-				...coverFrame,
-				clipShape('roundedRectangle', radius),
-				accessibilityHidden(true)
-			]}
-		/>
-	)
-}
 
 function BodyLine(props: {line: string}) {
 	return pipe(
@@ -267,62 +243,65 @@ function Detail(props: {note: NoteItem; onRetry: () => void; onTag: (tag: TagNam
 			<VStack
 				alignment="leading"
 				spacing={space[4]}
-				modifiers={[
-					padding({bottom: space[8], horizontal: space[4], top: space[2]}),
-					frame({alignment: 'leading', maxWidth: Infinity})
-				]}
+				modifiers={[padding({bottom: space[8], top: space[2]}), frame({alignment: 'leading', maxWidth: Infinity})]}
 			>
-				<Text
-					modifiers={[
-						text.display,
-						accessibilityAddTraits(['isHeader']),
-						foregroundStyle(colors.foreground),
-						textSelection(true)
-					]}
+				<Pager note={props.note} />
+				<VStack
+					alignment="leading"
+					spacing={space[4]}
+					modifiers={[padding({horizontal: space[4]}), frame({alignment: 'leading', maxWidth: Infinity})]}
 				>
-					{props.note.title}
-				</Text>
-				{Option.isSome(props.note.image) && <Cover note={props.note} />}
-				{pipe(
-					Match.value(props.note.status),
-					Match.when('organizing', () => <Reading note={props.note} />),
-					Match.when('failed', () =>
-						Boolean.match(kept, {
-							onFalse: () => (
-								<Empty>
-									<EmptyContent>
-										<Button variant="destructive" size="lg" systemImage="arrow.clockwise" onPress={props.onRetry}>
-											{issue}
-										</Button>
-									</EmptyContent>
-								</Empty>
-							),
-							onTrue: () => <NoteContent note={props.note} />
-						})
-					),
-					Match.orElse(() => <NoteContent note={props.note} />)
-				)}
-				<Divider />
-				<Byline note={props.note} />
-				{!Array.isReadonlyArrayEmpty(props.note.tags) && (
-					<ToggleGroup
-						value={[]}
-						variant="outline"
-						onValueChange={value =>
-							Option.match(Array.head(value), {
-								onNone: Function.constUndefined,
-								onSome: name => props.onTag(TagName.make(name))
-							})
-						}
-						modifiers={[tint(primary)]}
+					<Text
+						modifiers={[
+							text.display,
+							accessibilityAddTraits(['isHeader']),
+							foregroundStyle(colors.foreground),
+							textSelection(true)
+						]}
 					>
-						{Array.map(props.note.tags, tag => (
-							<ToggleGroupItem key={tag} value={tag}>
-								{tag}
-							</ToggleGroupItem>
-						))}
-					</ToggleGroup>
-				)}
+						{props.note.title}
+					</Text>
+					{pipe(
+						Match.value(props.note.status),
+						Match.when('organizing', () => <Reading note={props.note} />),
+						Match.when('failed', () =>
+							Boolean.match(kept, {
+								onFalse: () => (
+									<Empty>
+										<EmptyContent>
+											<Button variant="destructive" size="lg" systemImage="arrow.clockwise" onPress={props.onRetry}>
+												{issue}
+											</Button>
+										</EmptyContent>
+									</Empty>
+								),
+								onTrue: () => <NoteContent note={props.note} />
+							})
+						),
+						Match.orElse(() => <NoteContent note={props.note} />)
+					)}
+					<Divider />
+					<Byline note={props.note} />
+					{!Array.isReadonlyArrayEmpty(props.note.tags) && (
+						<ToggleGroup
+							value={[]}
+							variant="outline"
+							onValueChange={value =>
+								Option.match(Array.head(value), {
+									onNone: Function.constUndefined,
+									onSome: name => props.onTag(TagName.make(name))
+								})
+							}
+							modifiers={[tint(primary)]}
+						>
+							{Array.map(props.note.tags, tag => (
+								<ToggleGroupItem key={tag} value={tag}>
+									{tag}
+								</ToggleGroupItem>
+							))}
+						</ToggleGroup>
+					)}
+				</VStack>
 			</VStack>
 		</ScrollView>
 	)

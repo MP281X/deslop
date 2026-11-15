@@ -27,7 +27,7 @@ import {Dns, NetAddress} from 'effect/net'
 import {isPublicIp} from '@deslop/runtime/shared/net'
 
 import {pageText} from './page.ts'
-import {conversationPlan, conversationExtraction, tikTokExtraction} from './x.ts'
+import {conversationExtraction, conversationPhotos, conversationPlan, tikTokExtraction} from './x.ts'
 
 import {sourceProxy, sticky} from '#services/media/service.ts'
 import {canonical, isYouTube, plainText, sourceOf} from '#services/notes/lib/utils.ts'
@@ -272,6 +272,18 @@ const tikTokPhotos = Effect.fnUntraced(function* (url: URL) {
 	return tikTokExtraction(item, url)
 })
 
+function isTikTokPhoto(url: URL) {
+	return sourceOf(url.href) === 'TikTok' && String.includes('/photo/')(url.pathname)
+}
+
+// TikTok answers some exits with a login page instead of the post.
+const retriedTikTokPhotos = Effect.fnUntraced(function* (url: URL) {
+	return yield* Effect.retry(tikTokPhotos(url), {
+		times: Boolean.match(Option.isSome(yield* Exit), {onFalse: Function.constant(0), onTrue: Function.constant(2)}),
+		while: error => error.reason === 'UnreadablePhoto'
+	})
+})
+
 const issue = Effect.fnUntraced(function* (url: URL, repository: string, number: string) {
 	const found = yield* decode(GitHubIssue, new URL(`https://api.github.com/repos/${repository}/issues/${number}`))
 	const comments = yield* decode(
@@ -408,7 +420,7 @@ function readLinked(url: URL) {
 	)
 }
 
-const xThread = Effect.fnUntraced(function* (url: URL) {
+const xPlan = Effect.fnUntraced(function* (url: URL) {
 	const id = yield* pipe(
 		String.match(/\/status\/(\d+)/u)(url.pathname),
 		Option.flatMap(match => Array.get(match, 1)),
@@ -417,20 +429,30 @@ const xThread = Effect.fnUntraced(function* (url: URL) {
 	)
 	const conversation = yield* fx(FxConversation, `conversation/${id}`)
 	const status = yield* whole(conversation.status)
+	return conversationPlan(conversation, status, yield* Effect.transposeOption(Option.map(status.quote, whole)))
+})
 
-	const plan = conversationPlan(conversation, status, yield* Effect.transposeOption(Option.map(status.quote, whole)))
+function linkedPosts(plan: Effect.Success<ReturnType<typeof xPlan>>) {
+	return Effect.forEach(
+		plan.posts,
+		linkedId => Effect.option(Effect.map(fx(FxStatus, `status/${linkedId}`), found => found.status)),
+		{concurrency: 'unbounded'}
+	)
+}
+
+const xThread = Effect.fnUntraced(function* (url: URL) {
+	const plan = yield* xPlan(url)
 	const linked = yield* Effect.all(
-		{
-			pages: Effect.forEach(plan.pages, readLinked, {concurrency: 'unbounded'}),
-			posts: Effect.forEach(
-				plan.posts,
-				linkedId => Effect.option(Effect.map(fx(FxStatus, `status/${linkedId}`), found => found.status)),
-				{concurrency: 'unbounded'}
-			)
-		},
+		{pages: Effect.forEach(plan.pages, readLinked, {concurrency: 'unbounded'}), posts: linkedPosts(plan)},
 		{concurrency: 'unbounded'}
 	)
 	return conversationExtraction(url, plan, linked)
+})
+
+// The pictures of the post and what the thread around it shows, without reading the pages it links.
+const xPhotos = Effect.fnUntraced(function* (url: URL) {
+	const plan = yield* xPlan(url)
+	return conversationPhotos(plan, Array.getSomes(yield* linkedPosts(plan)))
 })
 
 export class Sources extends Context.Service<
@@ -438,6 +460,7 @@ export class Sources extends Context.Service<
 	{
 		readonly extract: (url: string) => Effect.Effect<Extraction, NotesError>
 		readonly image: (url: string) => Effect.Effect<Image, NotesError>
+		readonly photos: (url: string) => Effect.Effect<string[], NotesError>
 		readonly resolve: (url: string) => Effect.Effect<string, NotesError>
 	}
 >()('@deslop/stash/services/notes/lib/extraction/Sources') {
@@ -454,16 +477,7 @@ export class Sources extends Context.Service<
 					function* (link) {
 						const url = yield* resolve(new URL(link), 0)
 						const source = sourceOf(url.href)
-						// TikTok answers some exits with a login page instead of the post.
-						if (source === 'TikTok' && String.includes('/photo/')(url.pathname)) {
-							return yield* Effect.retry(tikTokPhotos(url), {
-								times: Boolean.match(Option.isSome(yield* Exit), {
-									onFalse: Function.constant(0),
-									onTrue: Function.constant(2)
-								}),
-								while: error => error.reason === 'UnreadablePhoto'
-							})
-						}
+						if (isTikTokPhoto(url)) return yield* retriedTikTokPhotos(url)
 						if (source === 'TikTok') {
 							return yield* fetchOEmbed(
 								'https://www.tiktok.com/oembed?url=',
@@ -505,6 +519,19 @@ export class Sources extends Context.Service<
 						return {bytes: image.body, type}
 					},
 					timeLimit('15 seconds', 'Loading the preview image took too long.'),
+					through
+				),
+				photos: Effect.fn('Sources.photos')(
+					function* (link) {
+						const url = yield* resolve(new URL(link), 0)
+						if (isTikTokPhoto(url)) {
+							const photos = yield* retriedTikTokPhotos(url)
+							return [...Option.toArray(photos.image), ...Option.getOrElse(photos.slides, Array.empty<string>)]
+						}
+						if (sourceOf(url.href) === 'X') return yield* xPhotos(url)
+						return Array.empty<string>()
+					},
+					timeLimit('1 minute', 'Reading the post took too long.'),
 					through
 				),
 				resolve: Effect.fn('Sources.resolve')(

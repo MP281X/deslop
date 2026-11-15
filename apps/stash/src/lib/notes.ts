@@ -41,6 +41,17 @@ export const noteAtom = Atom.family((item: NoteItem) =>
 	RpcClient.runtime.atom(Effect.flatMap(RpcClient, client => client('notes.body', {id: item.id})))
 )
 
+// How many pictures the note's post shows, asked of the server each time the note opens; without an answer the note keeps its cover.
+export const mediaAtom = Atom.family((id: NoteId) =>
+	RpcClient.runtime.atom(
+		pipe(
+			Effect.flatMap(RpcClient, client => client('notes.media', {id})),
+			Effect.tapError(error => Effect.logWarning('The post media could not be asked for', error)),
+			Effect.orElseSucceed(Function.constant(0))
+		)
+	)
+)
+
 export const queryAtom = Atom.make('')
 
 export const searchAtom = RpcClient.runtime.atom(get => {
@@ -60,21 +71,31 @@ export const searchAtom = RpcClient.runtime.atom(get => {
 
 const images = new Directory(Paths.cache, 'downloads')
 
-// SwiftUI images read local files, so each preview is downloaded into the cache.
+// SwiftUI images read local files, so each picture is downloaded into the cache.
+const download = Effect.fnUntraced(function* (name: string, route: string) {
+	const file = new File(images, name)
+	if (file.exists) return file.uri
+	images.create({idempotent: true, intermediates: true})
+	const headers = yield* session.headers
+	const downloaded = yield* Effect.tryPromise({
+		catch: cause => NotesError.make({cause, message: 'The note image could not be downloaded.'}),
+		try: () => File.downloadFileAsync(new URL(route, session.server).href, file, {headers})
+	})
+	return downloaded.uri
+})
+
 export const imageAtom = Atom.family((id: Note['id']) =>
 	session.runtime.atom(get => {
 		get(activationsAtom)
-		return Effect.gen(function* () {
-			const file = new File(images, id)
-			if (file.exists) return file.uri
-			images.create({idempotent: true, intermediates: true})
-			const headers = yield* session.headers
-			const downloaded = yield* Effect.tryPromise({
-				catch: cause => NotesError.make({cause, message: 'The note image could not be downloaded.'}),
-				try: () => File.downloadFileAsync(new URL(`/api/images/${id}`, session.server).href, file, {headers})
-			})
-			return downloaded.uri
-		})
+		return download(id, `/api/images/${id}`)
+	})
+)
+
+// A picture of the post, from the server's `/api/notes/<path>`.
+export const mediaImageAtom = Atom.family((path: string) =>
+	session.runtime.atom(get => {
+		get(activationsAtom)
+		return download(String.replaceAll('/', '-')(path), `/api/notes/${path}`)
 	})
 )
 

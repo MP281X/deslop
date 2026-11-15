@@ -9,6 +9,10 @@ import {Notes} from '#services/notes/service.ts'
 
 const noteIdParam = HttpRouter.schemaPathParams(Schema.Struct({id: NoteId}))
 
+const mediaParams = HttpRouter.schemaPathParams(
+	Schema.Struct({id: NoteId, index: Schema.FiniteFromString.check(Schema.isInt())})
+)
+
 // The Swift share extension cannot speak the RPC protocol, and SwiftUI images load from a downloaded file.
 export const HttpHandlers = HttpRouter.use(router =>
 	Effect.gen(function* () {
@@ -41,6 +45,18 @@ export const HttpHandlers = HttpRouter.use(router =>
 				return HttpServerResponse.uint8Array(image.bytes, {
 					contentType: image.type,
 					headers: {'cache-control': 'private, max-age=31536000, immutable'}
+				})
+			})
+		)
+		yield* router.add(
+			'GET',
+			'/api/notes/:id/media/:index',
+			Effect.gen(function* () {
+				const params = yield* mediaParams
+				const file = yield* notes.mediaFile(params.id, params.index)
+				return HttpServerResponse.uint8Array(file.bytes, {
+					contentType: file.type,
+					headers: {'cache-control': 'private, max-age=300'}
 				})
 			})
 		)

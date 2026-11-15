@@ -31,6 +31,7 @@ import {listEvents} from '@deslop/runtime/shared/list'
 
 import {changeNote, newNote} from './lib/changes.ts'
 import {Sources} from './lib/extraction.ts'
+import {makeMediaReader} from './lib/media.ts'
 import {Organizer} from './lib/organization.ts'
 import {reconcileOrganization} from './lib/tags.ts'
 import {NoteChange} from './schema.ts'
@@ -84,6 +85,7 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 		const reading = yield* Semaphore.make(2)
 		const tagging = yield* Semaphore.make(1)
 		const runs = yield* FiberMap.make<NoteId>()
+		const mediaReader = yield* makeMediaReader
 		// Writes tell this Reactivity of their commits, so callers need none of their own.
 		const withReactivity = Effect.provideService(Reactivity.Reactivity, yield* Reactivity.Reactivity)
 
@@ -599,6 +601,24 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 					),
 					total: total.count
 				}
+			}),
+			// How many pictures the note's post shows, read from its source now; a source that is gone leaves the note with its cover.
+			media: Effect.fn('Notes.media')(function* (id: NoteId) {
+				return yield* pipe(
+					findNote(id),
+					Effect.map(Option.flatMap(note => note.url)),
+					Effect.flatMap(Option.match({onNone: () => Effect.succeed(0), onSome: mediaReader.count})),
+					optional('The post pictures could not be counted', Function.constant(0))
+				)
+			}),
+			mediaFile: Effect.fn('Notes.mediaFile')(function* (id: NoteId, index: number) {
+				const link = yield* pipe(
+					findNote(id),
+					Effect.map(Option.flatMap(note => note.url)),
+					Effect.flatMap(Effect.fromOption),
+					Effect.mapError(() => NotesError.make({message: 'This note has no media.'}))
+				)
+				return yield* mediaReader.file(link, index)
 			}),
 			regenerate: Effect.fn('Notes.regenerate')(function* (userId: UserId, id: NoteId) {
 				yield* FiberMap.remove(runs, id)

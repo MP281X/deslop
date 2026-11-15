@@ -13,6 +13,7 @@ export class RpcContracts extends RpcGroup.make(
 		payload: Schema.Struct({id: NoteId}),
 		success: Schema.Struct(Struct.pick(Note.json.fields, ['body']))
 	}),
+	Rpc.make('notes.media', {error: NotesError, payload: Schema.Struct({id: NoteId}), success: Schema.Finite}),
 	Rpc.make('notes.search', {
 		error: NotesError,
 		payload: Schema.Struct({query: Schema.String}),

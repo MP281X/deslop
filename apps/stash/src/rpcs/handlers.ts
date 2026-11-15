@@ -12,6 +12,7 @@ export const RpcHandlers = RpcContracts.toLayer(
 			'notes.body': input => notes.body(input.id),
 			'notes.capture': input => Effect.flatMap(CurrentUser, user => notes.capture(user.id, input)),
 			'notes.events': () => notes.events,
+			'notes.media': input => notes.media(input.id),
 			'notes.regenerate': input => Effect.flatMap(CurrentUser, user => notes.regenerate(user.id, input.id)),
 			'notes.remove': input => notes.remove(input.id),
 			'notes.search': input => notes.search(input.query)
