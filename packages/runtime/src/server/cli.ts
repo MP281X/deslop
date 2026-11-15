@@ -25,7 +25,7 @@ import type {HttpServerResponse} from 'effect/http'
 import {HttpRouter} from 'effect/http'
 
 import {AiGateway} from '#server/ai.ts'
-import {Auth} from '#server/auth.ts'
+import {Auth, clientAddress} from '#server/auth.ts'
 import {
 	crossSiteGuard,
 	layerIcon,
@@ -38,8 +38,6 @@ import {
 import {appName, packageMetadata, packageRoot} from '#server/package.ts'
 import {AppError} from '#server/process.ts'
 import {installService, installUpdateService, serviceStatus, uninstallService} from '#server/services.ts'
-import {Sessions} from '#server/sessions.ts'
-import {layerSessionRoutes} from '#server/sign-in.ts'
 import {dataDirectory, layerDataStore} from '#server/store.ts'
 import {activateRelease, updateRelease} from '#server/update.ts'
 import type {RpcAuth} from '#shared/auth.ts'
@@ -56,7 +54,7 @@ export type Setting = {
 const SETTINGS = {
 	APP_URL: {description: 'Canonical origin, such as the HTTPS name a proxy serves', flag: 'url', schema: Origin},
 	AUTH_URL: {
-		description: 'Deslop Auth origin; without it there is no sign-in and every request is the developer',
+		description: 'Deslop Auth origin, on the same machine and parent domain; without it every request is the developer',
 		flag: 'auth',
 		schema: SecureOrigin
 	},
@@ -135,14 +133,13 @@ function server<A, E>(app: App<A, E>) {
 		HttpRouter.serve(
 			pipe(
 				Option.match(Option.fromUndefinedOr(app.auth), {
-					onNone: () => pipe(routes, Layer.merge(layerSessionRoutes), Layer.provide(Auth.layer)),
+					onNone: () => Layer.provide(routes, Auth.layer),
 					onSome: auth => Layer.provide(routes, auth)
 				}),
 				Layer.provideMerge(AiGateway.layer),
-				Layer.provide(Sessions.layer),
 				Layer.provide(Layer.unwrap(Effect.map(dataDirectory, layerDataStore)))
 			),
-			{disableLogger: true, middleware: crossSiteGuard}
+			{disableLogger: true, middleware: handler => clientAddress(crossSiteGuard(handler))}
 		),
 		Layer.provide(
 			Layer.mergeAll(

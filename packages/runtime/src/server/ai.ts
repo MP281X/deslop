@@ -6,7 +6,7 @@ import {AiError} from 'effect/ai'
 import {HttpClient, HttpClientRequest} from 'effect/http'
 
 import {localAuth} from '#server/auth.ts'
-import {Sessions} from '#server/sessions.ts'
+import {ON_BEHALF_HEADER} from '#shared/auth.ts'
 import type {UserId} from '#shared/auth.ts'
 
 export class AiUnavailableError extends Schema.TaggedError<AiUnavailableError>()('AiUnavailableError', {
@@ -63,7 +63,6 @@ export class AiGateway extends Context.Service<
 		Effect.gen(function* () {
 			const gateway = yield* Config.option(Config.String('GATEWAY_URL'))
 			const local = yield* localAuth
-			const sessions = yield* Sessions
 			const apiUrl = pipe(
 				gateway,
 				Option.match({
@@ -75,10 +74,9 @@ export class AiGateway extends Context.Service<
 			const authorize = Effect.fn('AiGateway.authorize')(function* (userId: UserId) {
 				yield* Effect.annotateCurrentSpan('userId', userId)
 				if (local) return Function.identity<HttpClient.HttpClient>
-				const token = yield* Effect.mapError(sessions.tokenOf(userId), cause =>
-					AiUnavailableError.make({cause, message: cause.message})
-				)
-				return (client: HttpClient.HttpClient) => HttpClient.mapRequest(client, HttpClientRequest.bearerToken(token))
+				// Gateway trusts this claim only from an app on Auth's machine, and charges the person's own key.
+				return (client: HttpClient.HttpClient) =>
+					HttpClient.mapRequest(client, HttpClientRequest.setHeader(ON_BEHALF_HEADER, userId))
 			})
 			return AiGateway.of({apiUrl, authorize})
 		})

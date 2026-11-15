@@ -67,13 +67,10 @@ export const RPC_PATH = '/api/rpc'
 
 export const MCP_PATH = '/mcp'
 
-// The protected-resource metadata that tells an MCP client which issuer its bearer must come from.
-export const MCP_METADATA_PATH = '/.well-known/oauth-protected-resource/mcp'
-
 // The browser's installable web app manifest.
 export const MANIFEST_PATH = '/manifest.webmanifest'
 
-// `signOut` is false without an issuer, where everyone is the developer.
+// `signOut` is true only for a browser signed in at Auth; the developer and tailnet callers have nothing to end.
 export type Account = typeof Account.Type
 export const Account = Schema.Struct({...User.fields, signOut: Schema.Boolean})
 
