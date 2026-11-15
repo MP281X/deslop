@@ -15,23 +15,18 @@ import {
 	Layer,
 	Option,
 	Record,
-	Redacted,
 	Ref,
 	Schema,
 	Struct,
 	pipe
 } from 'effect'
 
-import {Digest} from 'effect/crypto'
-import type {Headers} from 'effect/http'
 import {Reactivity} from 'effect/reactivity'
 import {RpcClient, RpcSerialization} from 'effect/rpc'
 
-import {Auth} from '@deslop/runtime/server/auth'
+import {Auth, requireAdmin} from '@deslop/runtime/server/auth'
 import {packageMetadata} from '@deslop/runtime/server/package'
 import {executeProcess} from '@deslop/runtime/server/process'
-import type {User} from '@deslop/runtime/shared/auth'
-import {AuthError, UserId} from '@deslop/runtime/shared/auth'
 import {RpcStream, layerRpcStreamClient} from '@deslop/runtime/shared/rpc'
 import {RPC_PATH} from '@deslop/runtime/shared/schema'
 
@@ -45,39 +40,17 @@ import {history} from '#services/metrics/lib/utils.ts'
 import type {HistoryQuery, MachineHistory} from '#services/metrics/schema.ts'
 import {Metrics} from '#services/metrics/service.ts'
 
-// Who another worker's Deploy acts as: its bearer is the shared key, never a person's sign-in.
-const PEER = {admin: false, id: UserId.make('deploy:peer'), name: 'deploy'} satisfies User
-
 const makeRemoteClient = RpcClient.make(RpcContracts.middleware(RpcStream), {flatten: true})
 
-// Workers authorize each other with the DEPLOY_KEY their env files share, compared by digest; people sign in as on every app.
-export const layerPeerAuth = Layer.effectContext(
+export const layerPeerAuth = Layer.effect(
+	PeerRpcAuth,
 	Effect.gen(function* () {
 		const auth = yield* Auth
-		const digest = yield* Digest.Digest
-		function hash(text: string) {
-			return digest.digestHex(Digest.sha256, new TextEncoder().encode(text))
-		}
-		const expected = yield* Effect.transposeOption(
-			Option.map(yield* Config.option(Config.Redacted('DEPLOY_KEY')), key => hash(`Bearer ${Redacted.value(key)}`))
-		)
-		function isPeer(headers: Headers.Headers) {
-			return Effect.map(hash(headers['authorization'] ?? ''), actual => Option.contains(expected, actual))
-		}
-		return Context.add(
-			Auth.makeContext(
-				Effect.fnUntraced(function* (headers: Headers.Headers) {
-					if (yield* isPeer(headers)) return {...PEER, signOut: false}
-					return yield* auth.account(headers)
-				})
-			),
-			PeerRpcAuth,
-			PeerRpcAuth.of((effect, request) =>
-				Effect.flatMap(isPeer(request.headers), allowed => {
-					if (allowed) return effect
-					return Effect.fail(AuthError.make({message: 'Only another Deploy worker may issue a local command'}))
-				})
-			)
+		return PeerRpcAuth.of((effect, request) =>
+			Effect.gen(function* () {
+				yield* requireAdmin(yield* auth.user(request.headers), 'Only an admin may issue a local command')
+				return yield* effect
+			})
 		)
 	})
 )
@@ -140,16 +113,12 @@ export class Fleet extends Context.Service<
 				name => Schema.decodeEffect(Worker)({name, url: `https://${name}.${suffix}:${port}`}),
 				{concurrency: 1}
 			)
-			// Each worker's Deploy accepts the others by the key all their env files hold, on any network.
-			const peerHeaders = Option.match(yield* Config.option(Config.Redacted('DEPLOY_KEY')), {
-				onNone: () => ({}),
-				onSome: key => ({authorization: `Bearer ${Redacted.value(key)}`})
-			})
 			// Peer requests share the fleet's reconnecting transport, never a request's lifetime.
 			const clients = yield* Effect.forEach(
 				workers,
 				worker =>
 					Effect.gen(function* () {
+						const connected = yield* Ref.make(false)
 						const url = new URL(RPC_PATH, worker.url)
 						url.protocol = Boolean.match(new URL(worker.url).protocol === 'http:', {
 							onFalse: Function.constant('wss:'),
@@ -158,12 +127,18 @@ export class Fleet extends Context.Service<
 						const protocol = yield* Layer.build(
 							pipe(
 								RpcClient.layerProtocolSocket({pingTimeout: Duration.seconds(15)}),
+								Layer.provide(
+									Layer.succeed(RpcClient.ConnectionHooks, {
+										onConnect: Ref.set(connected, true),
+										onDisconnect: Ref.set(connected, false)
+									})
+								),
 								Layer.provide(NodeSocket.layerWebSocket(url.href)),
 								Layer.provide(RpcSerialization.layerSchemaBinary()),
 								Layer.provideMerge(layerRpcStreamClient)
 							)
 						)
-						return [worker.name, yield* Effect.provideContext(makeRemoteClient, protocol)] as const
+						return [worker.name, {client: yield* Effect.provideContext(makeRemoteClient, protocol), connected}] as const
 					}),
 				{concurrency: 'unbounded'}
 			)
@@ -186,13 +161,21 @@ export class Fleet extends Context.Service<
 				}),
 				'Fleet.local'
 			)
-			const remote = Effect.fn('Fleet.remote')(
-				function* <A, E>(worker: Worker, use: (client: RemoteClient, headers: Headers.Input) => Effect.Effect<A, E>) {
-					yield* Effect.annotateCurrentSpan('worker', worker.name)
-					return yield* use(Option.getOrThrow(Record.get(peers, worker.name)), peerHeaders)
-				},
-				Effect.timeout(Duration.seconds(15))
-			)
+			// Disconnected transports reconnect in the background. Do not start a traced RPC until one is open.
+			const remote = Effect.fnUntraced(function* <A, E>(
+				worker: Worker,
+				use: (client: RemoteClient) => Effect.Effect<A, E>
+			) {
+				const peer = Option.getOrThrow(Record.get(peers, worker.name))
+				if (!(yield* Ref.get(peer.connected))) {
+					return yield* DeployError.make({message: 'Worker is unreachable'})
+				}
+				return yield* pipe(
+					use(peer.client),
+					Effect.timeout(Duration.seconds(15)),
+					Effect.withSpan('Fleet.remote', {attributes: {worker: worker.name}})
+				)
+			})
 			function selectedWorker(target: WorkerId) {
 				return pipe(
 					workers,
@@ -236,8 +219,8 @@ export class Fleet extends Context.Service<
 						if (input.worker === localWorker) {
 							return yield* Effect.tap(exposures.expose(Struct.omit(input, ['worker'])), () => inventory.refresh)
 						}
-						return yield* remote(yield* selectedWorker(input.worker), (client, headers) =>
-							client('exposures.apply', Struct.omit(input, ['worker']), {headers})
+						return yield* remote(yield* selectedWorker(input.worker), client =>
+							client('exposures.apply', Struct.omit(input, ['worker']))
 						)
 					},
 					Effect.tap(() => reactivity.invalidate(['deployInventory'])),
@@ -249,8 +232,8 @@ export class Fleet extends Context.Service<
 						if (input.worker === localWorker) {
 							return yield* Effect.tap(exposures.hide(input.name), () => inventory.refresh)
 						}
-						return yield* remote(yield* selectedWorker(input.worker), (client, headers) =>
-							client('exposures.remove', {name: input.name}, {headers})
+						return yield* remote(yield* selectedWorker(input.worker), client =>
+							client('exposures.remove', {name: input.name})
 						)
 					},
 					Effect.tap(() => reactivity.invalidate(['deployInventory'])),
@@ -268,7 +251,7 @@ export class Fleet extends Context.Service<
 						workers,
 						worker =>
 							pipe(
-								remote(worker, (client, headers) => client('metrics.history', query, {headers})),
+								remote(worker, client => client('metrics.history', query)),
 								Effect.timeout(Duration.seconds(2)),
 								Effect.map(value => ({...value, worker: worker.name})),
 								Effect.tapError(cause => Effect.logWarning('A worker history could not be read', cause)),
@@ -300,8 +283,8 @@ export class Fleet extends Context.Service<
 						if (input.worker === localWorker) {
 							return yield* inventory.run(Struct.omit(input, ['worker']))
 						}
-						return yield* remote(yield* selectedWorker(input.worker), (client, headers) =>
-							client('inventory.start', Struct.omit(input, ['worker']), {headers})
+						return yield* remote(yield* selectedWorker(input.worker), client =>
+							client('inventory.start', Struct.omit(input, ['worker']))
 						)
 					},
 					Effect.tap(() => reactivity.invalidate(['deployInventory'])),
@@ -317,7 +300,7 @@ export class Fleet extends Context.Service<
 							workers,
 							worker =>
 								pipe(
-									remote(worker, (client, headers) => client('inventory.snapshot', undefined, {headers})),
+									remote(worker, client => client('inventory.snapshot', undefined)),
 									Effect.timeout(Duration.seconds(2)),
 									Effect.map(
 										snapshot =>
