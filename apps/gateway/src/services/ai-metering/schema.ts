@@ -14,11 +14,11 @@ export const SpendSource = Schema.Literals(['balance', 'byok', 'openai', 'free',
 export type Payer = typeof Payer.Type
 export const Payer = Schema.Literals(['balance', 'byok', 'openai'])
 
-// One person's hour, separated by the billed balance or provider key.
+// One person's minute, separated by the billed balance or provider key.
 export class AiUsage extends Model.Class<AiUsage>('AiUsage')({
 	costUsd: Schema.Finite,
 	estimatedCalls: Schema.Int,
-	hour: Schema.DateTimeUtcFromMillis,
+	minute: Schema.DateTimeUtcFromMillis,
 	owner: Model.Sensitive(User.fields.id),
 	spendSource: SpendSource,
 	unknownCostCalls: Schema.Int
@@ -26,7 +26,7 @@ export class AiUsage extends Model.Class<AiUsage>('AiUsage')({
 	static readonly table = 'ai_usage'
 }
 
-// What a period's report reads of a person's hours.
+// What a period's report reads of a person's minutes.
 export type AiUsageQuery = typeof AiUsageQuery.Type
 export const AiUsageQuery = Schema.Struct({...UsageRange.fields, owner: AiUsage.fields.owner})
 

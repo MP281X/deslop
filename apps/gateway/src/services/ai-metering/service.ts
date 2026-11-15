@@ -21,6 +21,7 @@ import type {AiModelId} from '@deslop/runtime/shared/ai'
 import {AuthError} from '@deslop/runtime/shared/auth'
 import type {UserId} from '@deslop/runtime/shared/auth'
 import {DateTimeUtcFromFiniteMillis} from '@deslop/runtime/shared/time'
+import type {TimeFrame} from '@deslop/runtime/shared/time'
 
 import {readUsage} from './lib/utils.ts'
 import {AiUsage, AiUsageBreakdown, AiUsageQuery} from './schema.ts'
@@ -28,7 +29,6 @@ import type {AiUsageEntry, SpendSource} from './schema.ts'
 
 import type {AiProvider} from '#services/ai-proxy/schema.ts'
 import {usageWindow} from '#services/usage/lib/utils.ts'
-import type {Period} from '#services/usage/schema.ts'
 
 // AiProxy's 0001_ai migration (ai_migrations) created ai_usage; its registration stays there.
 
@@ -48,19 +48,19 @@ export class AiMetering extends Context.Service<AiMetering>()(
 				Request: AiUsage.insert,
 				execute: row => sql`
 				INSERT INTO ${sql(AiUsage.table)} ${sql.insert(row)}
-				ON CONFLICT (owner, hour, spendSource) DO UPDATE SET
+				ON CONFLICT (owner, minute, spendSource) DO UPDATE SET
 					costUsd = costUsd + excluded.costUsd,
 					estimatedCalls = estimatedCalls + excluded.estimatedCalls,
 					unknownCostCalls = unknownCostCalls + excluded.unknownCostCalls
 			`
 			})
 			const deleteUsageBefore = SqlSchema.void({
-				Request: Schema.Struct({hour: DateTimeUtcFromFiniteMillis, owner: AiUsage.fields.owner}),
+				Request: Schema.Struct({minute: DateTimeUtcFromFiniteMillis, owner: AiUsage.fields.owner}),
 				execute: request =>
-					sql`DELETE FROM ${sql(AiUsage.table)} WHERE owner = ${request.owner} AND hour < ${request.hour}`
+					sql`DELETE FROM ${sql(AiUsage.table)} WHERE owner = ${request.owner} AND minute < ${request.minute}`
 			})
 			function within(query: typeof AiUsageQuery.Encoded) {
-				return sql`owner = ${query.owner} AND hour >= ${query.from} AND hour < ${query.to}`
+				return sql`owner = ${query.owner} AND minute >= ${query.from} AND minute < ${query.to}`
 			}
 			const totalUsage = SqlSchema.findAll({
 				Request: AiUsageQuery,
@@ -75,7 +75,7 @@ export class AiMetering extends Context.Service<AiMetering>()(
 				Request: AiUsageQuery,
 				Result: Schema.Struct({at: DateTimeUtcFromFiniteMillis, ...AiUsageBreakdown.fields}),
 				execute: query => sql`
-				SELECT hour - hour % ${query.size} AS at, spendSource, total(costUsd) AS costUsd,
+				SELECT minute - minute % ${query.size} AS at, spendSource, total(costUsd) AS costUsd,
 					sum(unknownCostCalls) AS unknownCostCalls, sum(estimatedCalls) AS estimatedCalls
 				FROM ${sql(AiUsage.table)} WHERE ${within(query)} GROUP BY 1, spendSource ORDER BY 1, spendSource
 			`
@@ -89,7 +89,7 @@ export class AiMetering extends Context.Service<AiMetering>()(
 								onFalse: Function.constant(0),
 								onTrue: Function.constant(1)
 							}),
-							hour: DateTime.startOf(entry.at, 'hour'),
+							minute: DateTime.startOf(entry.at, 'minute'),
 							owner: id,
 							spendSource,
 							unknownCostCalls: Boolean.match(entry.costSource === 'unknown', {
@@ -97,7 +97,7 @@ export class AiMetering extends Context.Service<AiMetering>()(
 								onTrue: Function.constant(1)
 							})
 						}),
-						deleteUsageBefore({hour: DateTime.subtractDuration(entry.at, Duration.days(30)), owner: id})
+						deleteUsageBefore({minute: DateTime.subtractDuration(entry.at, Duration.days(30)), owner: id})
 					),
 					Reactivity.mutation({aiUsage: [id]}),
 					sql.withTransaction,
@@ -181,7 +181,7 @@ export class AiMetering extends Context.Service<AiMetering>()(
 					},
 					Effect.catch(error => Effect.logWarning('AI usage could not be saved', error))
 				),
-				usage: (id: UserId, period: Period) =>
+				usage: (id: UserId, period: TimeFrame) =>
 					Stream.withSpan(
 						usageWindow(period, range =>
 							Stream.mapError(
