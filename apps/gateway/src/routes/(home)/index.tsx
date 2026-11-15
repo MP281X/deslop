@@ -41,10 +41,9 @@ import {Search} from '#lib/search.ts'
 import {AddKeyDialog, ProviderMark} from '#routes/(home)/-keys.tsx'
 import {aiCost, aiSeries, serverSeries} from '#routes/(home)/-usage.ts'
 import icon from '#routes/icon.svg'
-import {Payer} from '#services/ai-metering/schema.ts'
-import type {AiUsageReport} from '#services/ai-metering/schema.ts'
+import type {AiUsageReport, Payer} from '#services/ai-metering/schema.ts'
 import type {AiKeyItem} from '#services/ai-proxy/schema.ts'
-import {ConnectionUrl, ServiceAccountKey} from '#services/ai-proxy/schema.ts'
+import {AiKeySecret} from '#services/ai-proxy/schema.ts'
 import type {ConnectionItem, McpUsageServer} from '#services/connections/schema.ts'
 import {Period} from '#services/usage/schema.ts'
 import type {UsageRange} from '#services/usage/schema.ts'
@@ -230,7 +229,7 @@ function ServerRows(props: {period: Period}) {
 	)
 }
 
-// One payer of the saved key, in a server row's shape: its figure and range; the whole row opens the key's dialog.
+// One saved key, in a server row's shape: its payer's figure and range.
 function PayerRow(props: {
 	info: AiKeyItem
 	onOpen: () => void
@@ -239,9 +238,12 @@ function PayerRow(props: {
 	source: Payer
 }) {
 	return (
-		<ChoiceRow label={`OpenCode, ${PAYER_LABELS[props.source]}`} selected={false} onSelect={props.onOpen}>
+		<ChoiceRow label={PAYER_LABELS[props.source]} selected={false} onSelect={props.onOpen}>
 			<RowLead
-				mark={<ProviderMark />}
+				mark={Boolean.match(props.source === 'balance', {
+					onFalse: () => <WrenchIcon className="text-muted-foreground size-4" />,
+					onTrue: () => <ProviderMark />
+				})}
 				after={
 					Option.exists(props.info.lastStatus, status => status === 401 || status === 403) && (
 						<StatusDot status="error" label="Key refused" />
@@ -249,7 +251,10 @@ function PayerRow(props: {
 				}
 				detail={PAYER_LABELS[props.source]}
 			>
-				OpenCode
+				{Boolean.match(props.source === 'balance', {
+					onFalse: Function.constant('Anthropic'),
+					onTrue: Function.constant('OpenCode')
+				})}
 			</RowLead>
 			<TableCell />
 			<FiguresCells
@@ -263,35 +268,32 @@ function PayerRow(props: {
 function KeyUsage(props: {info: AiKeyItem; onOpen: () => void; period: Period}) {
 	return (
 		<Loaded atom={aiUsageAtom(props.period)} frame={failure => <FailureRow>{failure}</FailureRow>}>
-			{current =>
-				Array.map(Payer.literals, source => (
-					<PayerRow
-						key={source}
-						info={props.info}
-						onOpen={props.onOpen}
-						report={current.report}
-						period={current.range}
-						source={source}
-					/>
-				))
-			}
+			{current => (
+				<PayerRow
+					info={props.info}
+					onOpen={props.onOpen}
+					report={current.report}
+					period={current.range}
+					source={Boolean.match(props.info.provider === 'anthropic', {
+						onFalse: Function.constant('balance' as const),
+						onTrue: Function.constant('byok' as const)
+					})}
+				/>
+			)}
 		</Loaded>
 	)
 }
 
-// The saved credential has a row for each payer it spends from; the field adds or replaces it.
+// Each saved credential has one row; the field adds or replaces it.
 function KeyRows(props: {onOpen: () => void; period: Period}) {
 	return (
 		<Loaded atom={aiKeyAtom} frame={failure => <FailureRow>{failure}</FailureRow>}>
 			{all =>
-				Option.match(all, {
-					onNone: Function.constNull,
-					onSome: credential => (
-						<Suspense fallback={<GroupLoading label="OpenCode key" rows={Payer.literals.length} />}>
-							<KeyUsage info={credential} onOpen={props.onOpen} period={props.period} />
-						</Suspense>
-					)
-				})
+				Array.map(all, credential => (
+					<Suspense key={credential.provider} fallback={<GroupLoading label="AI key" rows={1} />}>
+						<KeyUsage info={credential} onOpen={props.onOpen} period={props.period} />
+					</Suspense>
+				))
 			}
 		</Loaded>
 	)
@@ -318,7 +320,7 @@ function List(props: {onOpen: () => void; period: Period}) {
 }
 
 // The field adds a server URL through the existing flow, or opens the key flow with a pasted key.
-function AddField(props: {onKey: (secret: string, url: string) => void}) {
+function AddField(props: {onKey: (secret: string) => void}) {
 	const send = useAtomSet(addAtom.send)
 	const editing = pipe(useMachineResult(AtomMachine.select(addAtom, 'Editing')), AsyncResult.value, Option.flatten)
 	const adding = pipe(useMachineResult(AtomMachine.select(addAtom, 'Adding')), AsyncResult.value, Option.flatten)
@@ -338,23 +340,15 @@ function AddField(props: {onKey: (secret: string, url: string) => void}) {
 	function submit() {
 		const value = String.trim(typed)
 		if (value === '' || busy) return
-		if (Schema.is(ConnectionUrl)(value)) {
-			props.onKey('', value)
+		if (Schema.is(AiKeySecret)(value)) {
+			props.onKey(value)
 			send(addEvents.Typed({url: ''}))
 			return
 		}
-		if (Schema.is(ServiceAccountKey)(value)) {
-			props.onKey(value, '')
-			send(addEvents.Typed({url: ''}))
-			return
-		}
-		if (
-			Option.isNone(Option.liftThrowable(() => new URL(value))()) ||
-			String.includes('opencode.ai/inference/')(value)
-		) {
+		if (Option.isNone(Option.liftThrowable(() => new URL(value))())) {
 			send(
 				addEvents.Invalid({
-					message: 'Enter a full HTTPS MCP or Console API URL, or an OpenCode service account key starting with oc_sk_.'
+					message: 'Enter a full HTTPS MCP URL, an OpenCode key (oc_sk_), or an Anthropic API key (sk-ant-).'
 				})
 			)
 			return
@@ -410,16 +404,15 @@ function HomeRoute() {
 	const navigate = route.useNavigate()
 	const period = Option.getOrElse(search.period, Function.constant('24h' as const))
 	// Open, which opening it is (so each starts with the pasted secret), and the provider it adds.
-	const [keyDialog, setKeyDialog] = useState<{open: boolean; opened: number; secret: string; url: string}>({
+	const [keyDialog, setKeyDialog] = useState<{open: boolean; opened: number; secret: string}>({
 		open: false,
 		opened: 0,
-		secret: '',
-		url: ''
+		secret: ''
 	})
 	const resetKey = useAtomSet(setKeyAtom)
-	function addKey(secret: string, url: string) {
+	function addKey(secret: string) {
 		resetKey(Atom.Reset)
-		setKeyDialog(previous => ({open: true, opened: previous.opened + 1, secret, url}))
+		setKeyDialog(previous => ({open: true, opened: previous.opened + 1, secret}))
 	}
 
 	return (
@@ -445,13 +438,12 @@ function HomeRoute() {
 			<Page>
 				<h1 className="sr-only">Gateway</h1>
 				<AddField onKey={addKey} />
-				<List onOpen={() => addKey('', '')} period={period} />
+				<List onOpen={() => addKey('')} period={period} />
 			</Page>
 			<AddKeyDialog
 				key={keyDialog.opened}
 				open={keyDialog.open}
 				secret={keyDialog.secret}
-				url={keyDialog.url}
 				onOpenChange={open => setKeyDialog(previous => ({...previous, open}))}
 			/>
 		</div>

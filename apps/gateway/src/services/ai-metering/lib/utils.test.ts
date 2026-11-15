@@ -38,3 +38,21 @@ it('names who billed a call only from what its response reports', () => {
 	)
 	assert.deepStrictEqual(billed.spendSource, Option.some('byok'))
 })
+
+it('estimates direct Anthropic Messages usage for its payer across streaming updates', () => {
+	const start = Result.getOrThrow(
+		readUsage(
+			'{"message":{"model":"claude-haiku-5-5","usage":{"input_tokens":10,"cache_read_input_tokens":100,"cache_creation_input_tokens":20,"output_tokens":1}}}',
+			EMPTY,
+			'anthropic'
+		)
+	)
+	const end = Result.getOrThrow(readUsage('{"usage":{"output_tokens":5}}', start, 'anthropic'))
+	assert.deepStrictEqual(end.spendSource, Option.some('byok'))
+	assert.deepInclude(end, {costSource: 'estimated', estimated: true, inputTokens: 10, outputTokens: 5})
+	assert.closeTo(Option.getOrThrow(end.costUsd), 0.000007, 1e-12)
+	const long = Result.getOrThrow(
+		readUsage('{"model":"claude-haiku-5-5","usage":{"input_tokens":100001,"output_tokens":5}}', EMPTY, 'anthropic')
+	)
+	assert.closeTo(Option.getOrThrow(long.costUsd), 0.050013, 1e-12)
+})

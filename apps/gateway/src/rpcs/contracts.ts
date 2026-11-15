@@ -10,7 +10,7 @@ import {AddServer, ConnectionItem, McpUsageReport} from '#services/connections/s
 import {Period, UsageRange} from '#services/usage/schema.ts'
 
 export class RpcContracts extends RpcGroup.make(
-	Rpc.make('ai-proxy.key', {error: AuthError, success: Schema.Option(AiKeyItem)}),
+	Rpc.make('ai-proxy.key', {error: AuthError, success: Schema.Array(AiKeyItem)}),
 	Rpc.make('ai-proxy.setKey', {error: AuthError, payload: AiSetKey}),
 	Rpc.make('ai-metering.usage', {
 		error: AuthError,

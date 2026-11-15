@@ -26,6 +26,7 @@ import {readUsage} from './lib/utils.ts'
 import {AiUsage, AiUsageBreakdown, AiUsageQuery} from './schema.ts'
 import type {AiUsageEntry, SpendSource} from './schema.ts'
 
+import type {AiProvider} from '#services/ai-proxy/schema.ts'
 import {usageWindow} from '#services/usage/lib/utils.ts'
 import type {Period} from '#services/usage/schema.ts'
 
@@ -107,6 +108,7 @@ export class AiMetering extends Context.Service<AiMetering>()(
 				record: Effect.fn('AiMetering.record')(
 					function* (
 						id: UserId,
+						provider: AiProvider,
 						model: Option.Option<AiModelId>,
 						at: DateTime.Utc,
 						sse: boolean,
@@ -128,7 +130,7 @@ export class AiMetering extends Context.Service<AiMetering>()(
 							pending: ''
 						}
 						const updateUsage = Effect.fnUntraced(function* (text: string) {
-							state.current = yield* Effect.catch(Effect.fromResult(readUsage(text, state.current)), error =>
+							state.current = yield* Effect.catch(Effect.fromResult(readUsage(text, state.current, provider)), error =>
 								Effect.as(
 									Effect.logWarning('AI usage was malformed; keeping previously read usage', error),
 									state.current

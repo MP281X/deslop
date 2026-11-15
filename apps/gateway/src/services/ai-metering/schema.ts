@@ -14,7 +14,7 @@ export const SpendSource = Schema.Literals(['balance', 'byok', 'free', 'go', 'go
 export type Payer = typeof Payer.Type
 export const Payer = Schema.Literals(['balance', 'byok'])
 
-// One person's hour, separated by the balance or account OpenCode billed.
+// One person's hour, separated by the billed balance or Anthropic key.
 export class AiUsage extends Model.Class<AiUsage>('AiUsage')({
 	costUsd: Schema.Finite,
 	estimatedCalls: Schema.Int,
@@ -36,13 +36,13 @@ export const AiUsageEntry = Schema.Struct({
 	at: DateTimeUtcFromFiniteMillis,
 	cacheReadTokens: Schema.Finite,
 	cacheWriteTokens: Schema.Finite,
-	costSource: Schema.Literals(['provider', 'unknown']),
+	costSource: Schema.Literals(['provider', 'estimated', 'unknown']),
 	costUsd: Schema.OptionFromOptionalKey(Schema.Finite),
 	estimated: Schema.Boolean,
 	inputTokens: Schema.Finite,
 	model: Schema.OptionFromOptional(AiModelId),
 	outputTokens: Schema.Finite,
-	// None until a response names who billed it; a call that never does is not recorded.
+	// Anthropic's key identifies its payer; OpenCode must name one in its response.
 	spendSource: Schema.OptionFromOptionalKey(SpendSource)
 })
 export type AiUsageBreakdown = typeof AiUsageBreakdown.Type

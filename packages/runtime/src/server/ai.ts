@@ -45,8 +45,9 @@ export class AiGateway extends Context.Service<
 	) {
 		yield* Effect.annotateCurrentSpan({maxTokens: options.maxTokens, userId})
 		const gateway = yield* AiGateway
+		// Gateway sends Messages to Anthropic with the person's saved API key; callers never receive it.
 		const client = yield* AnthropicClient.make({
-			apiUrl: `${yield* gateway.apiUrl}/connection`,
+			apiUrl: `${yield* gateway.apiUrl}/anthropic`,
 			transformClient: yield* gateway.authorize(userId)
 		})
 		return yield* Effect.provideService(

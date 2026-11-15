@@ -1,9 +1,10 @@
-import {Function, Number, Option, Result, Schema, String, pipe} from 'effect'
+import {Boolean, Function, Number, Option, Result, Schema, String, pipe} from 'effect'
 
 import {Usage} from '#services/ai-metering/schema.ts'
 import type {AiUsageEntry} from '#services/ai-metering/schema.ts'
+import type {AiProvider} from '#services/ai-proxy/schema.ts'
 
-export function readUsage(text: string, entry: AiUsageEntry) {
+export function readUsage(text: string, entry: AiUsageEntry, provider: AiProvider = 'opencode') {
 	if (String.isEmpty(String.trim(text)) || text === '[DONE]') return Result.succeed(entry)
 	return Result.map(Schema.decodeResult(Schema.fromJsonString(Usage))(text), decoded => {
 		const usage = Option.flatten(decoded.usage)
@@ -34,7 +35,7 @@ export function readUsage(text: string, entry: AiUsageEntry) {
 			Option.orElse(() => Option.flatMap(decoded.usageMetadata, value => value.cost)),
 			Option.orElse(() => decoded.cost)
 		)
-		return {
+		const current: AiUsageEntry = {
 			...entry,
 			cacheReadTokens,
 			cacheWriteTokens,
@@ -86,6 +87,31 @@ export function readUsage(text: string, entry: AiUsageEntry) {
 				Option.map(value => value.billing_source),
 				Option.orElse(() => entry.spendSource)
 			)
-		} satisfies AiUsageEntry
+		}
+		if (provider !== 'anthropic' || (Option.isNone(usage) && Option.isNone(messageUsage))) return current
+		// Standard Messages rates: https://platform.claude.com/docs/en/about-claude/pricing
+		const priced = Option.exists(current.model, model => model === 'claude-haiku-5-5')
+		const inputRate = Boolean.match(
+			current.inputTokens + current.cacheReadTokens + current.cacheWriteTokens > 100_000,
+			{onFalse: Function.constant(0.1), onTrue: Function.constant(0.5)}
+		)
+		return {
+			...current,
+			costSource: Boolean.match(priced, {
+				onFalse: Function.constant('unknown' as const),
+				onTrue: Function.constant('estimated' as const)
+			}),
+			costUsd: Option.liftPredicate(
+				((current.inputTokens +
+					current.cacheReadTokens * 0.1 +
+					current.cacheWriteTokens * 1.25 +
+					current.outputTokens * 5) *
+					inputRate) /
+					1_000_000,
+				() => priced
+			),
+			estimated: true,
+			spendSource: Option.some('byok' as const)
+		}
 	})
 }
