@@ -104,6 +104,10 @@ export function makeSession() {
 			onSome: account => AsyncResult.success<Account, AuthError>(account)
 		})
 	})
+	// Revalidation preserves subscriptions unless availability or the account's identity changes.
+	const availableAccountAtom = Atom.map(accountAtom, account =>
+		AsyncResult.isSuccess(account) ? account.value.id : undefined
+	)
 
 	const signInAtom = sessionRuntime.fn((_: void, get) =>
 		pipe(
@@ -148,7 +152,7 @@ export function makeSession() {
 		// Even an unchanged cached account must restart sockets that iOS closed in the background.
 		available: (get: Atom.AtomContext) => {
 			get(activationsAtom)
-			return AsyncResult.isSuccess(get(accountAtom))
+			return get(availableAccountAtom) !== undefined
 		},
 		// What a request outside the RPC socket sends for Auth to name the caller.
 		headers: headersEffect,

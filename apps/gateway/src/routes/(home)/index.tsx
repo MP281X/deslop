@@ -7,7 +7,7 @@ import {CatchBoundary, createFileRoute, getRouteApi} from '@tanstack/react-route
 import {useMachineResult} from '@typeonce/effect-machine-react'
 import {AtomMachine} from '@typeonce/effect-machine/reactivity'
 import {AsyncResult, Atom} from 'effect/reactivity'
-import {Suspense, useState} from 'react'
+import {lazy, Suspense, useState} from 'react'
 import type {ReactNode} from 'react'
 import {Line, LineChart, YAxis} from 'recharts'
 
@@ -39,7 +39,7 @@ import {
 	setKeyAtom
 } from '#lib/gateway.ts'
 import {Search} from '#lib/search.ts'
-import {AddKeyDialog, ProviderMark} from '#routes/(home)/-keys.tsx'
+import {ProviderMark} from '#routes/(home)/-provider-mark.tsx'
 import {aiCost, aiSeries, serverSeries} from '#routes/(home)/-usage.ts'
 import icon from '#routes/icon.svg'
 import type {AiUsageReport, Payer} from '#services/ai-metering/schema.ts'
@@ -55,6 +55,7 @@ const PAYER_LABELS: Record<Payer, string> = {balance: 'Zen balance', byok: 'Anth
 const PROVIDER_NAMES: Record<AiProvider, string> = {anthropic: 'Anthropic', openai: 'OpenAI', opencode: 'OpenCode'}
 const PROVIDER_PAYERS: Record<AiProvider, Payer> = {anthropic: 'byok', openai: 'openai', opencode: 'balance'}
 const PERIODS = Array.map(TimeFrame.literals, value => ({label: value, value}))
+const AddKeyDialog = lazy(() => import('#routes/(home)/-keys.tsx'))
 
 const route = getRouteApi('/(home)/')
 
@@ -427,12 +428,16 @@ function HomeRoute() {
 				<AddField onKey={addKey} />
 				<List period={period} />
 			</Page>
-			<AddKeyDialog
-				key={keyDialog.opened}
-				open={keyDialog.open}
-				secret={keyDialog.secret}
-				onOpenChange={open => setKeyDialog(previous => ({...previous, open}))}
-			/>
+			{keyDialog.open && (
+				<Suspense fallback={null}>
+					<AddKeyDialog
+						key={keyDialog.opened}
+						open={keyDialog.open}
+						secret={keyDialog.secret}
+						onOpenChange={open => setKeyDialog(previous => ({...previous, open}))}
+					/>
+				</Suspense>
+			)}
 		</div>
 	)
 }

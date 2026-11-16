@@ -1,11 +1,10 @@
 import {useAtom} from '@effect/atom-react'
 
-import {Boolean, Function, Match, Redacted, Schema, String, pipe} from 'effect'
+import {Boolean, Function, Redacted, Schema, String} from 'effect'
 
 import {AsyncResult} from 'effect/reactivity'
 import {useState} from 'react'
 
-import {ThemedMark} from '@deslop/components-web/blocks/marks'
 import {ResultError} from '@deslop/components-web/blocks/result-error'
 import {Button} from '@deslop/components-web/ui/button'
 import {
@@ -18,29 +17,11 @@ import {
 } from '@deslop/components-web/ui/dialog'
 import {Field, FieldError, FieldGroup, FieldLabel} from '@deslop/components-web/ui/field'
 import {Input} from '@deslop/components-web/ui/input'
-import {AnthropicBlack} from '@deslop/components-web/ui/svgs/anthropicBlack'
-import {AnthropicWhite} from '@deslop/components-web/ui/svgs/anthropicWhite'
-import {Openai} from '@deslop/components-web/ui/svgs/openai'
-import {OpenaiDark} from '@deslop/components-web/ui/svgs/openaiDark'
-import {Opencode} from '@deslop/components-web/ui/svgs/opencode'
-import {OpencodeDark} from '@deslop/components-web/ui/svgs/opencodeDark'
 
 import {setKeyAtom} from '#lib/gateway.ts'
 import {AiKeySecret, KEY_MESSAGE} from '#services/ai-proxy/schema.ts'
-import type {AiProvider} from '#services/ai-proxy/schema.ts'
 
-export function ProviderMark(props: {provider: AiProvider}) {
-	return pipe(
-		props.provider,
-		Match.value,
-		Match.when('anthropic', () => <ThemedMark light={AnthropicBlack} dark={AnthropicWhite} className="size-4" />),
-		Match.when('openai', () => <ThemedMark light={Openai} dark={OpenaiDark} className="size-4" />),
-		Match.when('opencode', () => <ThemedMark light={Opencode} dark={OpencodeDark} className="size-4" />),
-		Match.exhaustive
-	)
-}
-
-export function AddKeyDialog(props: {onOpenChange: (open: boolean) => void; open: boolean; secret: string}) {
+export default function AddKeyDialog(props: {onOpenChange: (open: boolean) => void; open: boolean; secret: string}) {
 	const [result, save] = useAtom(setKeyAtom)
 	// oxlint-disable-next-line react-doctor/no-derived-useState -- Each opening remounts with the pasted key.
 	const [secret, setSecret] = useState(props.secret)

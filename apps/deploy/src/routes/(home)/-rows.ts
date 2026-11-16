@@ -1,7 +1,6 @@
 import type {Duration} from 'effect'
 import {Array, Boolean, DateTime, Function, HashSet, Option, Order, String, pipe} from 'effect'
 
-import {lowImpactIds} from '#routes/(home)/-usage.ts'
 import {itemOwner, type Row, rowUsageOrder, sourceBelongsToWorker} from '#services/inventory/lib/utils.ts'
 import type {AppId, WorkerId} from '#services/inventory/schema.ts'
 import {chartWindow} from '#services/metrics/lib/utils.ts'
@@ -32,11 +31,7 @@ export const rowOrder = pipe(
 )
 
 // The list's two groups: a failure, warning or app outside the chart's low-impact set stays up; a healthy low-impact app sits under its own heading. No history means no divider.
-export function impactGroups(rows: readonly Row[], history?: MachineHistory) {
-	const lowImpact = Option.match(Option.fromUndefinedOr(history), {
-		onNone: () => HashSet.empty<AppId>(),
-		onSome: lowImpactIds
-	})
+export function impactGroups(rows: readonly Row[], lowImpact: HashSet.HashSet<AppId> = HashSet.empty()) {
 	const groups = Array.groupBy(rows, row =>
 		Boolean.match(row.item.health === 'quiet' && Option.exists(owner(row), id => HashSet.has(lowImpact, id)), {
 			onFalse: Function.constant('high' as const),

@@ -1,6 +1,7 @@
 import {
 	Array,
 	Boolean,
+	Cache,
 	Context,
 	DateTime,
 	Duration,
@@ -16,6 +17,7 @@ import {
 	Ref,
 	Schema,
 	Schedule,
+	Scope,
 	Stream,
 	String,
 	Struct,
@@ -26,7 +28,7 @@ import {Digest} from 'effect/crypto'
 import {Reactivity} from 'effect/reactivity'
 import {Migrator, SqlClient, SqlSchema} from 'effect/sql'
 
-import type {TimeFrame} from '@deslop/runtime/shared/time'
+import {TimeFrame} from '@deslop/runtime/shared/time'
 
 import {
 	appName,
@@ -775,6 +777,27 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 				)
 			)
 		})
+		// Cache lookups may run in an RPC's scope; shared sources belong to this service instead.
+		const scope = yield* Effect.scope
+		const overviews = yield* Cache.make({
+			capacity: TimeFrame.literals.length,
+			lookup: (range: TimeFrame) =>
+				pipe(
+					// Buffer cheap invalidations, not computed overviews. A pending write survives the cooldown.
+					sql.reactive(['telemetry'], Effect.void),
+					Stream.buffer({capacity: 1, strategy: 'sliding'}),
+					Stream.flatMap(() =>
+						Stream.concat(
+							Stream.fromEffect(readOverview(range)),
+							Stream.fromEffectDrain(Effect.sleep(Duration.seconds(1)))
+						)
+					),
+					Stream.mapError(cause => TelemetryError.make({cause, message: UNAVAILABLE})),
+					Stream.withSpan('Telemetry.watch', {attributes: {range, 'rpc.stream': true}}),
+					Stream.share({capacity: 1, replay: 1, strategy: 'sliding'}),
+					Effect.provideService(Scope.Scope, scope)
+				)
+		})
 		const tree = Effect.fnUntraced(function* (id: TraceId) {
 			const traceId = TraceId.make(String.toLowerCase(id))
 			const ids = Array.map(yield* listLinkedTraces(traceId), row => row.id)
@@ -973,16 +996,7 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 			// A trace and every trace a span link joins to it, as one tree.
 			trace: Effect.fn('Telemetry.trace')(tree, asTelemetryError),
 			// What the page watches: read again after each committed write, at most once a second, always the newest.
-			watch: (range: TimeFrame) =>
-				pipe(
-					sql.reactive(['telemetry'], readOverview(range)),
-					Stream.mapError(cause => TelemetryError.make({cause, message: UNAVAILABLE})),
-					Stream.buffer({capacity: 1, strategy: 'sliding'}),
-					Stream.flatMap(overview =>
-						Stream.concat(Stream.succeed(overview), Stream.fromEffectDrain(Effect.sleep(Duration.seconds(1))))
-					),
-					Stream.withSpan('Telemetry.watch', {attributes: {range, 'rpc.stream': true}})
-				),
+			watch: (range: TimeFrame) => Stream.unwrap(Cache.get(overviews, range)),
 			watchTrace: (id: TraceId) =>
 				pipe(
 					sql.reactive(['telemetry'], tree(id)),

@@ -89,19 +89,7 @@ function lowImpactApp(app: ReturnType<typeof appSeries>[number]) {
 	return peak(app.memory) < 5 && peak(app.cpu) < 5
 }
 
-// The apps the chart folds into its low-impact band, which the list's divider uses too.
-export function lowImpactIds(history: MachineHistory) {
-	return HashSet.fromIterable(
-		pipe(
-			appSeries(history),
-			Array.filter(lowImpactApp),
-			Array.map(app => app.id)
-		)
-	)
-}
-
-export function bands(history: MachineHistory) {
-	const apps = appSeries(history)
+function bandsOf(history: MachineHistory, apps: ReturnType<typeof appSeries>) {
 	const [lowImpact, remaining] = Array.partition(apps, Filter.fromPredicate(lowImpactApp))
 	const large = Array.sort(
 		remaining,
@@ -145,14 +133,34 @@ export function bands(history: MachineHistory) {
 	] satisfies Band[]
 }
 
+// One history's derived usage, computed once and shared by the list and the charts: the stacked bands, the apps they fold into the low-impact band (which the list's divider uses too), and every app the range recorded.
+export type Usage = {
+	bands: Band[]
+	history: MachineHistory
+	lowImpact: HashSet.HashSet<AppId>
+	recorded: HashSet.HashSet<AppId>
+}
+
+export function usageOf(history: MachineHistory): Usage {
+	const apps = appSeries(history)
+	return {
+		bands: bandsOf(history, apps),
+		history,
+		lowImpact: HashSet.fromIterable(
+			pipe(
+				apps,
+				Array.filter(lowImpactApp),
+				Array.map(app => app.id)
+			)
+		),
+		recorded: HashSet.fromIterable(Array.map(apps, app => app.id))
+	}
+}
+
 // The band a selected app focuses: its own when the chart draws it, the low-impact block when it shares that, or none when the range never recorded it.
-export function focusedBand(history: MachineHistory, selected: AppId) {
-	const drawn = Array.some(bands(history), band => band.id === selected)
-	const recorded = Array.some(history.samples, sample =>
-		Option.exists(sample.apps, apps => Array.some(apps, app => app.id === selected))
-	)
-	if (drawn) return Option.some<Band['id']>(selected)
-	if (recorded) return Option.some<Band['id']>('other')
+export function focusedBand(usage: Usage, selected: AppId) {
+	if (Array.some(usage.bands, band => band.id === selected)) return Option.some<Band['id']>(selected)
+	if (HashSet.has(usage.recorded, selected)) return Option.some<Band['id']>('other')
 	return Option.none<Band['id']>()
 }
 

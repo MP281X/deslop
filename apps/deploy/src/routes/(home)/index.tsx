@@ -5,7 +5,7 @@ import {Array, Boolean, DateTime, Duration, Function, Option, Record, Schema, St
 import {AppWindowIcon, HardDrivesIcon, LaptopIcon, MonitorIcon, TerminalWindowIcon} from '@phosphor-icons/react'
 import {CatchBoundary, Link, createFileRoute, getRouteApi} from '@tanstack/react-router'
 import {AsyncResult} from 'effect/reactivity'
-import {Suspense, useDeferredValue} from 'react'
+import {Suspense, useDeferredValue, useMemo} from 'react'
 import type {ReactNode} from 'react'
 
 import {StaleProblem} from '@deslop/components-web/blocks/problem'
@@ -26,6 +26,8 @@ import {ChartBlock, ChartSkeleton, EmptyChart} from '#routes/(home)/-charts.tsx'
 import {InventoryContent, ListPane} from '#routes/(home)/-list.tsx'
 import {Processes} from '#routes/(home)/-processes.tsx'
 import {failureOf, rowOrder, owner, ranged} from '#routes/(home)/-rows.ts'
+import {usageOf} from '#routes/(home)/-usage.ts'
+import type {Usage} from '#routes/(home)/-usage.ts'
 import icon from '#routes/icon.svg'
 import {type Row, availablePorts, processTree, workloadName, workloads} from '#services/inventory/lib/utils.ts'
 import {ItemId, WorkerId} from '#services/inventory/schema.ts'
@@ -187,14 +189,14 @@ function SelectedProcesses(props: {app?: ItemId; pending: boolean; row?: Row}) {
 	)
 }
 
-function chartHistoryOf(history?: MachineHistory) {
-	return Option.filter(Option.fromUndefinedOr(history), current => Array.isReadonlyArrayNonEmpty(current.samples))
+function chartUsageOf(usage?: Usage) {
+	return Option.filter(Option.fromUndefinedOr(usage), current => Array.isReadonlyArrayNonEmpty(current.history.samples))
 }
 
 // The desktop detail: the three charts, then the chosen processes.
 function DetailPane(props: {
 	app?: ItemId
-	history?: MachineHistory
+	usage?: Usage
 	labels: Record<AppId, string>
 	minutes: HistoryQuery['minutes']
 	pending: boolean
@@ -206,11 +208,11 @@ function DetailPane(props: {
 		<div className="flex h-full min-h-0 flex-col">
 			<Suspense fallback={<ChartSkeleton isPhone={false} minutes={props.minutes} />}>
 				<MetricsContent minutes={props.minutes}>
-					{Option.match(chartHistoryOf(props.history), {
+					{Option.match(chartUsageOf(props.usage), {
 						onNone: () => <EmptyChart worker={props.worker} />,
-						onSome: history => (
+						onSome: usage => (
 							<ChartBlock
-								history={history}
+								usage={usage}
 								isPhone={false}
 
 								labels={props.labels}
@@ -231,7 +233,7 @@ function DetailPane(props: {
 // A phone's list view: the three short charts, then the rows edge to edge.
 function PhoneList(props: {
 	free: readonly InventoryItem[]
-	history?: MachineHistory
+	usage?: Usage
 	labels: Record<AppId, string>
 	minutes: HistoryQuery['minutes']
 	now: DateTime.Utc
@@ -244,11 +246,11 @@ function PhoneList(props: {
 		<div className="flex min-h-0 flex-1 flex-col">
 			<Suspense fallback={<ChartSkeleton isPhone minutes={props.minutes} />}>
 				<MetricsContent minutes={props.minutes}>
-					{Option.match(chartHistoryOf(props.history), {
+					{Option.match(chartUsageOf(props.usage), {
 						onNone: () => <EmptyChart />,
-						onSome: history => (
+						onSome: usage => (
 							<ChartBlock
-								history={history}
+								usage={usage}
 								isPhone
 								labels={props.labels}
 								minutes={props.minutes}
@@ -262,7 +264,7 @@ function PhoneList(props: {
 				className="min-h-0 flex-1"
 				compact
 				free={props.free}
-				history={props.history}
+				lowImpact={props.usage?.lowImpact}
 				now={props.now}
 				onSelect={props.onSelect}
 				rows={props.rows}
@@ -277,7 +279,7 @@ function Panes(props: {
 	active?: WorkerId
 	authFailure: Option.Option<unknown>
 	free: readonly InventoryItem[]
-	history?: MachineHistory
+	usage?: Usage
 	isPhone: boolean
 	labels: Record<AppId, string>
 	minutes: HistoryQuery['minutes']
@@ -311,7 +313,7 @@ function Panes(props: {
 									className="h-full min-w-0"
 									compact={false}
 									free={props.free}
-									history={props.history}
+									lowImpact={props.usage?.lowImpact}
 
 									now={props.now}
 									onSelect={props.onSelect}
@@ -323,7 +325,7 @@ function Panes(props: {
 							<ResizablePanel className="min-h-0">
 								<DetailPane
 									app={props.selectedApp}
-									history={props.history}
+									usage={props.usage}
 									labels={props.labels}
 									minutes={props.minutes}
 									pending={props.pending}
@@ -339,7 +341,7 @@ function Panes(props: {
 							onFalse: () => (
 								<PhoneList
 									free={props.free}
-									history={props.history}
+									usage={props.usage}
 									labels={props.labels}
 									minutes={props.minutes}
 									now={props.now}
@@ -405,6 +407,9 @@ function HomeRoute() {
 	const history = Option.flatMap(Option.fromUndefinedOr(active), current =>
 		Array.findFirst(shownHistories, machine => machine.worker === current)
 	)
+	// The list and the charts share one derivation per history value.
+	const historyValue = Option.getOrUndefined(history)
+	const usage = useMemo(() => Option.getOrUndefined(Option.map(Option.fromUndefinedOr(historyValue), usageOf)), [historyValue])
 	const rows = pipe(
 		snapshot,
 		Option.map(value => workloads(value.items)),
@@ -430,7 +435,7 @@ function HomeRoute() {
 			Option.match(owner(row), {onNone: () => [], onSome: id => [[id, workloadName(row.item)] as const]})
 		)
 	) satisfies Record<AppId, string>
-	const sorted = Array.sort(ranged(activeRows, shownMinutes, Option.getOrUndefined(history)), rowOrder)
+	const sorted = Array.sort(ranged(activeRows, shownMinutes, historyValue), rowOrder)
 	const selectedRow = Option.getOrUndefined(
 		Option.flatMap(search.app, current => Array.findFirst(activeRows, row => row.item.id === current))
 	)
@@ -487,7 +492,7 @@ function HomeRoute() {
 				active={active}
 				authFailure={authFailure}
 				free={free}
-				history={Option.getOrUndefined(history)}
+				usage={usage}
 				isPhone={isPhone}
 				labels={bandNames}
 				minutes={shownMinutes}

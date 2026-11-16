@@ -1,4 +1,4 @@
-import {Array, Boolean, Duration, Function, Match, Number, Option, Record, String, pipe} from 'effect'
+import {Array, Boolean, Duration, Function, Match, MutableHashMap, Number, Option, Record, String, pipe} from 'effect'
 
 // oxlint-disable-next-line eslint/no-restricted-imports -- useLayoutEffect: the flame measures its surface and label widths after layout and before paint, so bars never draw at a stale width.
 import {useLayoutEffect, useRef, useState} from 'react'
@@ -90,28 +90,51 @@ export function Flame(props: {focus?: SpanId; onPick: (id: SpanId) => void; trac
 	const [width, setWidth] = useState(0)
 	const [labelWidths, setLabelWidths] = useState<Record<SpanId, number>>({})
 	const surface = useRef<HTMLDivElement>(null)
+	const labelCache = useRef(MutableHashMap.empty<string, number>())
 	useLayoutEffect(() => {
 		function measure() {
 			if (surface.current === null) return
 			setWidth(surface.current.getBoundingClientRect().width)
-			const probe = surface.current.ownerDocument.createElement('span')
-			probe.className = 'pointer-events-none invisible absolute text-xs whitespace-nowrap'
-			surface.current.appendChild(probe)
-			const widths = pipe(
-				props.trace.spans,
-				Array.filter(span => span.depth <= 1),
-				Record.fromIterableWith(span => {
-					probe.textContent = labelOf(span)
-					return [span.spanId, probe.getBoundingClientRect().width] as const
-				})
-			)
-			probe.remove()
-			setLabelWidths(widths)
 		}
 		measure()
 		const observer = new ResizeObserver(measure)
 		if (surface.current !== null) observer.observe(surface.current)
 		return () => observer.disconnect()
+	}, [])
+	useLayoutEffect(() => {
+		const element = surface.current
+		if (element === null) return
+		function measureLabels() {
+			let probe: HTMLSpanElement | undefined
+			const widths = pipe(
+				props.trace.spans,
+				Array.filter(span => span.depth <= 1),
+				Record.fromIterableWith(span => {
+					const label = labelOf(span)
+					let measured = Option.getOrUndefined(MutableHashMap.get(labelCache.current, label))
+					if (measured === undefined) {
+						if (probe === undefined) {
+							probe = element.ownerDocument.createElement('span')
+							probe.className = 'pointer-events-none invisible absolute text-xs whitespace-nowrap'
+							element.appendChild(probe)
+						}
+						probe.textContent = label
+						measured = probe.getBoundingClientRect().width
+						MutableHashMap.set(labelCache.current, label, measured)
+					}
+					return [span.spanId, measured] as const
+				})
+			)
+			probe?.remove()
+			setLabelWidths(widths)
+		}
+		function fontsLoaded() {
+			MutableHashMap.clear(labelCache.current)
+			measureLabels()
+		}
+		measureLabels()
+		element.ownerDocument.fonts.addEventListener('loadingdone', fontsLoaded)
+		return () => element.ownerDocument.fonts.removeEventListener('loadingdone', fontsLoaded)
 	}, [props.trace])
 	const placed = lanesOf(
 		props.trace.spans,

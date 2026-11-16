@@ -398,7 +398,7 @@ export class Connections extends Context.Service<
 				onTrue: () => Effect.map(auth.user(headers), user => Headers.fromInput({[ON_BEHALF_HEADER]: user.id}))
 			})
 			const available = Effect.fnUntraced(function* () {
-				const found = yield* upstreams.use(initial.url, Effect.succeed(access), client =>
+				const found = yield* upstreams.use(Effect.succeed({headers: access, url: initial.url}), client =>
 					Effect.map(client.listTools(), tools => ({info: client.serverInfo, instructions: client.instructions, tools}))
 				)
 				return {

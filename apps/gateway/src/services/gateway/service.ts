@@ -41,6 +41,10 @@ import {Upstreams, upstreamStatus} from '#services/upstreams/service.ts'
 const discoveryHeaders = Context.Reference<Headers.Headers>('gateway/DiscoveryHeaders', {
 	defaultValue: () => Headers.empty
 })
+// A listing reads every connection's state once, on its first visibility check, rather than once per tool.
+const listingConnections = Context.Reference<Effect.Effect<readonly ConnectionState[]>>('gateway/ListingConnections', {
+	defaultValue: () => Effect.succeed([])
+})
 
 export class Gateway extends Context.Service<
 	Gateway,
@@ -84,12 +88,6 @@ export class Gateway extends Context.Service<
 			const installed = yield* Ref.make<
 				Record<string, {fingerprint: string; generation: ConnectionGeneration; id: ConnectionState['id']}>
 			>({})
-			const usable = Effect.fnUntraced(function* (id: ConnectionState['id'], generation: ConnectionGeneration) {
-				return Option.exists(
-					yield* Effect.option(connections.get(id)),
-					found => found.generation === generation && found.status === 'Connected'
-				)
-			})
 			const refreshes = yield* Semaphore.make(1)
 			const scope = yield* Effect.scope
 			// McpServer has no removal: a removed tool stays registered, and the usability check hides it from lists and calls.
@@ -122,10 +120,16 @@ export class Gateway extends Context.Service<
 				McpServer.visibility(options =>
 					Effect.gen(function* () {
 						if (!HashSet.has(yield* Ref.get(visible), options.target)) return false
-						return yield* pipe(
-							yield* Ref.get(installed),
-							Record.get(options.target),
-							Option.match({onNone: () => Effect.succeed(false), onSome: entry => usable(entry.id, entry.generation)})
+						const entry = Record.get(yield* Ref.get(installed), options.target)
+						if (Option.isNone(entry)) return false
+						const {id, generation} = entry.value
+						const current =
+							options.method === 'tools/list'
+								? Array.findFirst(yield* yield* listingConnections, found => found.id === id)
+								: yield* Effect.option(connections.get(id))
+						return Option.exists(
+							current,
+							found => found.generation === generation && found.status === 'Connected'
 						)
 					})
 				).layer
@@ -153,21 +157,21 @@ export class Gateway extends Context.Service<
 			const withClient = Effect.fnUntraced(function* <A, E>(
 				server: ServerReference,
 				headers: Headers.Headers,
-				run: Parameters<typeof upstreams.use<A, E>>[2]
+				run: Parameters<typeof upstreams.use<A, E>>[1]
 			) {
-				const upstream = yield* resolveUpstream(server, headers)
+				let token = Option.none<string>()
 				const authorize = Effect.map(resolveUpstream(server, headers), current => {
-					upstream.token = current.token
-					return current.headers
+					token = current.token
+					return current
 				})
 				return yield* pipe(
-					upstreams.use(upstream.url, authorize, run),
+					upstreams.use(authorize, run),
 					Effect.catchIf(
 						error => server.mode === 'oauth' && upstreamStatus(error) === 401,
 						() =>
 							Effect.andThen(
-								connections.token(server.id, server.generation, upstream.token),
-								upstreams.use(upstream.url, authorize, run)
+								connections.token(server.id, server.generation, token),
+								upstreams.use(authorize, run)
 							)
 					),
 					Effect.mapError(connectionFailure(server.name))
@@ -387,6 +391,7 @@ export const GatewayDiscovery = HttpRouter.middleware()(
 	Effect.gen(function* () {
 		const gateway = yield* Gateway
 		const auth = yield* Auth
+		const connections = yield* Connections
 		return app =>
 			Effect.gen(function* () {
 				const request = yield* HttpServerRequest.HttpServerRequest
@@ -410,7 +415,10 @@ export const GatewayDiscovery = HttpRouter.middleware()(
 				}
 				const verified = yield* Effect.result(auth.user(request.headers))
 				if (Result.isSuccess(verified)) yield* gateway.first(request.headers)
-				const response = yield* app
+				const states = Result.isSuccess(verified)
+					? yield* Effect.cached(Effect.catch(connections.definitions, () => Effect.succeed([])))
+					: Effect.succeed([])
+				const response = yield* Effect.provideService(app, listingConnections, states)
 				// A refusal or an Auth outage starts no work with the bearer it could not verify.
 				if (Result.isSuccess(verified)) yield* gateway.refresh(request.headers)
 				return response

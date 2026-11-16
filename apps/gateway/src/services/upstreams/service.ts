@@ -157,14 +157,13 @@ export class Upstreams extends Context.Service<Upstreams>()('@deslop/gateway/ser
 				yield* Semaphore.withPermit(yield* RcMap.get(locks, url), RcMap.invalidate(sessions, url))
 			}, Effect.scoped),
 			use: Effect.fn('Upstreams.use')(function* <A, E>(
-				url: string,
-				authorize: Effect.Effect<Headers.Headers, AuthError>,
+				authorize: Effect.Effect<{headers: Headers.Headers; url: string}, AuthError>,
 				run: (upstream: Upstream) => Effect.Effect<A, E>
 			) {
-				const lock = yield* RcMap.get(locks, url)
 				const execute = Effect.gen(function* () {
 					// Removal, replacement and expiry are checked again before a rejected session is reopened.
-					const headers = yield* authorize
+					const {headers, url} = yield* authorize
+					const lock = yield* RcMap.get(locks, url)
 					const session = yield* pipe(
 						RcMap.get(sessions, url),
 						// Failed acquisitions leave no entry before unlocking.
