@@ -4,7 +4,7 @@ import {Array, DateTime, Duration, Option, Redacted, Schema, String, Struct} fro
 
 import {ApnsToken} from '@deslop/runtime/shared/apns'
 
-import {activityProps} from '#services/bookings/lib/utils.ts'
+import {journeyProps} from '#services/bookings/lib/utils.ts'
 import {BookedPlace, BookingId, Flight, FlightTracking} from '#services/bookings/schema.ts'
 import {alertsOf, announced, expiredActivities, holds, showPlan} from '#services/push/lib/utils.ts'
 import {Activity, ChannelId, Device, SentAlert} from '#services/push/schema.ts'
@@ -41,13 +41,30 @@ const ACTIVITY = {
 	channel: ChannelId.make('current'),
 	endedAt: Option.none<DateTime.Utc>(),
 	leg: 'departure' as const,
-	props: activityProps(FLIGHT, [], DEPARTS),
+	props: journeyProps([FLIGHT], [], DEPARTS),
 	startedAt: DEPARTS
 }
 
 function sentAlert(category: AlertCategory, value: string) {
 	return SentAlert.make({bookingId: FLIGHT.id, category, sentAt: DEPARTS, value: Option.some(value)})
 }
+
+it('relaunches an ended activity only for a newer explicit start request', () => {
+	const endedAt = DateTime.addDuration(DEPARTS, Duration.minutes(5))
+	const activity = Activity.make({...ACTIVITY, endedAt: Option.some(endedAt)})
+	const window = {end: DateTime.addDuration(DEPARTS, Duration.hours(1)), leg: 'departure' as const, start: DEPARTS}
+	assert.deepStrictEqual(showPlan([Device.make(STARTER)], [activity], Flight.make(FLIGHT), window), [])
+	assert.strictEqual(
+		showPlan(
+			[Device.make(STARTER)],
+			[activity],
+			Flight.make(FLIGHT),
+			window,
+			Option.some(DateTime.addDuration(endedAt, Duration.minutes(1)))
+		)[0]?._tag,
+		'launch'
+	)
+})
 
 it('announces a gate change and a fifteen-minute delay once each', () => {
 	const alerts = alertsOf(

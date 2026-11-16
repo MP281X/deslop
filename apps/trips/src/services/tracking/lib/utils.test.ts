@@ -26,9 +26,10 @@ const train = Struct.pick(
 		live: Option.none(),
 		number: '9541',
 		operator: 'trenitalia',
-		operatorName: 'Frecciarossa',
 		seat: Option.none(),
+		service: 'FR 9713',
 		status: 'confirmed',
+		stops: [],
 		to: Schema.decodeSync(BookedPlace)({name: 'Milano Centrale', timeZone: 'Europe/Rome'})
 	}),
 	Struct.keys(Train.fields)
@@ -226,6 +227,6 @@ it('checks a train each minute near departure and calls live data stale after tw
 			),
 			isStale(live(DateTime.makeUnsafe(0), 'other'), now)
 		],
-		[Option.none(), false]
+		[Option.some(Duration.minutes(1)), false]
 	)
 })

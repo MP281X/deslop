@@ -210,11 +210,7 @@ function flightInterval(flight: Flight, now: DateTime.Utc) {
 
 // ViaggiaTreno lists only the day's runs and assigns platforms in the last hour.
 function trainInterval(train: Train, now: DateTime.Utc) {
-	if (
-		train.status === 'cancelled' ||
-		train.operator !== 'trenitalia' ||
-		Option.exists(train.live, live => live.state === 'arrived')
-	) {
+	if (train.status === 'cancelled' || Option.exists(train.live, live => live.state === 'arrived')) {
 		return Option.none<Duration.Duration>()
 	}
 	if (

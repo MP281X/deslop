@@ -1,8 +1,8 @@
-/* oxlint-disable effecttsgo/global-date -- The widget runtime serializes only the layout's body, which cannot import Effect; SwiftUI's timers take a Date. */
+/* oxlint-disable effecttsgo/global-date, effecttsgo/prefer-effect-array -- The widget runtime serializes only the layout's body, which cannot import Effect; SwiftUI's timers take a Date. */
 // oxlint-disable @deslop/coding-standards/swiftui-theme-values -- The widget runtime cannot import the theme, and a Live Activity's fixed type and spacing follow Apple's island metrics.
 import {Schema} from 'effect'
 
-import {HStack, Image, ProgressView, Spacer, Text, VStack} from '@expo/ui/swift-ui'
+import {Circle, HStack, Image, ProgressView, Rectangle, Spacer, Text, VStack} from '@expo/ui/swift-ui'
 import {
 	background,
 	font,
@@ -120,6 +120,40 @@ function JourneyLayout(props: typeof ActivityProps.Encoded) {
 		})
 	}
 
+	// Evenly spaced stops joined by lines, the passed ones in the accent, with their names beneath.
+	function stopBar() {
+		if (props.stops === undefined || props.stops.length < 2) return undefined
+		return (
+			<VStack spacing={3}>
+				<HStack spacing={0}>
+					{props.stops.map((stop, index) => (
+						<HStack key={stop.name} spacing={0}>
+							{index > 0 && (
+								<Rectangle
+									modifiers={[
+										foregroundStyle((stop.passed && tones.info) || '#3a3a40'),
+										frame({maxHeight: 3, maxWidth: Infinity, minHeight: 3})
+									]}
+								/>
+							)}
+							<Circle
+								modifiers={[foregroundStyle((stop.passed && tones.info) || '#3a3a40'), frame({height: 7, width: 7})]}
+							/>
+						</HStack>
+					))}
+				</HStack>
+				<HStack spacing={0}>
+					{props.stops.map((stop, index) => (
+						<HStack key={stop.name} spacing={0}>
+							{index > 0 && <Spacer />}
+							<Text modifiers={[font({size: 9.5}), foregroundStyle(gray), lineLimit(1)]}>{stop.name}</Text>
+						</HStack>
+					))}
+				</HStack>
+			</VStack>
+		)
+	}
+
 	function status() {
 		return (
 			<VStack spacing={8} modifiers={[padding({top: 4})]}>
@@ -164,6 +198,7 @@ function JourneyLayout(props: typeof ActivityProps.Encoded) {
 					<Spacer />
 					{arrival()}
 				</HStack>
+				{stopBar()}
 				{status()}
 			</VStack>
 		),

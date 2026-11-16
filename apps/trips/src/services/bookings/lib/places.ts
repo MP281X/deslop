@@ -2,6 +2,7 @@ import {
 	Array,
 	Cache,
 	Context,
+	HashSet,
 	Duration,
 	Effect,
 	Exit,
@@ -46,6 +47,26 @@ function words(text: string) {
 	)
 }
 
+// Feeds print stations in capitals, "MILANO CENTRALE"; the app shows "Milano Centrale".
+export function stationName(name: string) {
+	return pipe(String.toLowerCase(name), String.split(' '), Array.map(String.capitalize), Array.join(' '))
+}
+
+function significant(name: string) {
+	return Array.filter(words(name), word => word.length >= 3 && !Array.contains(GENERIC, word))
+}
+export function stationNamesMatch(left: string, right: string) {
+	const a = significant(left)
+	const b = significant(right)
+	const aSet = HashSet.fromIterable(a)
+	const bSet = HashSet.fromIterable(b)
+	return (
+		Array.isArrayNonEmpty(a) &&
+		Array.isArrayNonEmpty(b) &&
+		(Array.every(a, word => HashSet.has(bSet, word)) || Array.every(b, word => HashSet.has(aSet, word)))
+	)
+}
+
 function stationMatch(name: string, matches: StopMatches) {
 	const named = Array.filter(matches, match => {
 		const own = words(
@@ -75,12 +96,7 @@ function stationMatch(name: string, matches: StopMatches) {
 					code: Option.some(match.id),
 					latitude: Option.some(match.lat),
 					longitude: Option.some(match.lon),
-					name: pipe(
-						String.toLowerCase(match.name),
-						String.split(' '),
-						Array.map(word => String.capitalize(word)),
-						Array.join(' ')
-					),
+					name: stationName(match.name),
 					timeZone: match.tz
 				}) satisfies Place
 		)

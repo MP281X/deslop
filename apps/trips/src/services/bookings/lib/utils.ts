@@ -1,32 +1,16 @@
-import {
-	Array,
-	Boolean,
-	DateTime,
-	Duration,
-	Equal,
-	Function,
-	Number,
-	Option,
-	Order,
-	Record,
-	String,
-	Struct,
-	pipe
-} from 'effect'
+import {Array, Boolean, DateTime, Duration, Equal, Function, Number, Option, Order, String, Struct, pipe} from 'effect'
 
 import {ActivityProps, Booking, Flight, Stay, Train} from '#services/bookings/schema.ts'
-import type {BookingList, Chip, FlightPhase, Leg, LocalTime, Tone, TrainPhase} from '#services/bookings/schema.ts'
-
-const TRAIN_BRANDS: Record.ReadonlyRecord<string, string> = {
-	frecciabianca: 'FB',
-	frecciargento: 'FA',
-	frecciarossa: 'FR',
-	intercity: 'IC',
-	'intercity notte': 'ICN',
-	italo: 'ITA',
-	regionale: 'REG',
-	'regionale veloce': 'RV'
-}
+import type {
+	BookingList,
+	Chip,
+	FlightPhase,
+	Leg,
+	LocalTime,
+	Tone,
+	TrainPhase,
+	TrainStop
+} from '#services/bookings/schema.ts'
 
 export const MINUTE = Duration.minutes(1)
 export const HOUR = Duration.hours(1)
@@ -107,12 +91,7 @@ export const byStart = Order.mapInput(DateTime.Order, startOf)
 export function titleOf(booking: Booking) {
 	if (Booking.isAnyOf(['stay'])(booking)) return booking.name
 	if (Booking.isAnyOf(['flight'])(booking)) return `${booking.airlineCode} ${booking.number}`
-	const brand = pipe(
-		TRAIN_BRANDS,
-		Record.get(String.toLowerCase(String.trim(booking.operatorName))),
-		Option.getOrElse(() => String.toUpperCase(String.slice(0, 3)(booking.operatorName)))
-	)
-	return `${brand} ${booking.number}`
+	return booking.service
 }
 
 export function routeOf(booking: Booking) {
@@ -169,9 +148,7 @@ function sameReservation(existing: Booking, incoming: Booking) {
 	}
 	if (Booking.isAnyOf(['train'])(existing) && Booking.isAnyOf(['train'])(incoming)) {
 		return (
-			(existing.operator === incoming.operator &&
-				existing.number === incoming.number &&
-				near(existing.departs, incoming.departs)) ||
+			(existing.number === incoming.number && near(existing.departs, incoming.departs)) ||
 			(sameConfirmation(existing, incoming) &&
 				existing.from.name === incoming.from.name &&
 				existing.to.name === incoming.to.name)
@@ -249,15 +226,44 @@ export function upsert(current: BookingList, incoming: BookingList) {
 	)[0]
 }
 
+// A flight's activity opens three hours ahead, a train's one hour.
+export function autoStartOf(legs: readonly (Flight | Train)[]) {
+	const first = Option.getOrThrow(Array.head(legs))
+	return DateTime.subtractDuration(first.departs, {flight: Duration.hours(3), train: HOUR}[first._tag])
+}
+
+function sampleStops(stops: readonly TrainStop[], delay: Duration.Duration, now: DateTime.Utc) {
+	if (!Array.isReadonlyArrayNonEmpty(stops)) return []
+	const count = Number.min(stops.length, 7)
+	return pipe(
+		count,
+		Array.makeBy(index =>
+			Option.getOrThrow(Array.get(stops, Number.round((index * (stops.length - 1)) / Number.max(1, count - 1), 0)))
+		),
+		Array.map(stop => ({
+			name: Array.headNonEmpty(String.split(stop.name, ' ')),
+			passed: pipe(
+				stop.arrives,
+				Option.orElse(() => stop.departs),
+				Option.exists(at => pipe(at, DateTime.addDuration(delay), DateTime.isLessThanOrEqualTo(now)))
+			)
+		}))
+	)
+}
+
 type ActivityWindow = {end: DateTime.Utc; leg: Leg; start: DateTime.Utc}
 
 // A journey longer than ActivityKit's eight hours, delays included, gets a second activity for its arrival.
-function activityWindows(booking: Booking) {
+function activityWindows(booking: Booking, legs: readonly (Flight | Train)[], requested: Option.Option<DateTime.Utc>) {
 	if (Booking.isAnyOf(['stay'])(booking)) return Array.empty<ActivityWindow>()
-	const start = DateTime.subtractDuration(booking.departs, {flight: Duration.hours(3), train: HOUR}[booking._tag])
+	const start = Option.match(requested, {
+		onNone: () => autoStartOf(legs),
+		onSome: at => DateTime.min(at, autoStartOf(legs))
+	})
+	const last = Option.getOrElse(Array.last(legs), () => booking)
 	const end = DateTime.addDuration(
-		arrivalOf(booking),
-		{flight: Duration.minutes(45), train: Duration.minutes(10)}[booking._tag]
+		arrivalOf(last),
+		{flight: Duration.minutes(45), train: Duration.minutes(10)}[last._tag]
 	)
 	if (pipe(start, DateTime.distance(end), Duration.isLessThanOrEqualTo(ACTIVITY_LIFETIME))) {
 		return [{end, leg: 'departure', start}] satisfies ActivityWindow[]
@@ -273,9 +279,14 @@ function activityWindows(booking: Booking) {
 	] satisfies ActivityWindow[]
 }
 
-export function activeWindow(booking: Booking, now: DateTime.Utc) {
+export function activeWindow(
+	booking: Booking,
+	now: DateTime.Utc,
+	legs: readonly (Flight | Train)[] = Array.filter([booking], Booking.isAnyOf(['flight', 'train'])),
+	requested: Option.Option<DateTime.Utc> = Option.none()
+) {
 	return Array.findFirst(
-		activityWindows(booking),
+		activityWindows(booking, legs, requested),
 		window => DateTime.isLessThanOrEqualTo(window.start, now) && DateTime.isLessThan(now, window.end)
 	)
 }
@@ -451,6 +462,7 @@ function flightActivity(flight: Flight, bookings: BookingList, now: DateTime.Utc
 			Option.flatMap(live => live.takeoffActual),
 			Option.filter(() => phase === 'airborne')
 		),
+		stops: Option.none(),
 		symbol: flightSymbol(phase),
 		title: titleOf(flight),
 		to: Option.getOrElse(flight.to.code, () => flight.to.name),
@@ -559,7 +571,11 @@ function trainActivity(train: Train, now: DateTime.Utc) {
 		departureNote: '',
 		departureTime: clockAt(departureOf(train), train.from.timeZone),
 		departureTone: tone,
-		detail: line([labelled('Coach', train.coach), labelled('Seat', train.seat), trainDelayNote(phase, delay)]),
+		detail: line([
+			labelled('Coach', train.coach),
+			labelled('Seat', train.seat),
+			Option.flatMap(train.live, () => trainDelayNote(phase, delay))
+		]),
 		from: train.from.name,
 		headline: trainHeadline(train, phase),
 		kind: 'train',
@@ -567,6 +583,13 @@ function trainActivity(train: Train, now: DateTime.Utc) {
 		note: '',
 		phase,
 		progressFrom: Option.none(),
+		stops: Option.some(
+			sampleStops(
+				train.stops,
+				Option.match(train.live, {onNone: () => Duration.zero, onSome: live => live.delayMinutes}),
+				now
+			)
+		),
 		symbol: Boolean.match(phase === 'cancelled', {
 			onFalse: Function.constant('tram.fill'),
 			onTrue: Function.constant('exclamationmark.triangle.fill')
@@ -577,11 +600,104 @@ function trainActivity(train: Train, now: DateTime.Utc) {
 	} satisfies ActivityProps
 }
 
-export function activityProps(journey: Flight | Train, bookings: BookingList, now: DateTime.Utc) {
+function activityProps(journey: Flight | Train, bookings: BookingList, now: DateTime.Utc) {
 	if (Booking.isAnyOf(['flight'])(journey)) return ActivityProps.make(flightActivity(journey, bookings, now))
 	return ActivityProps.make(trainActivity(journey, now))
 }
 
 export function urgencyOf(props: ActivityProps) {
 	return `${props.phase}|${Option.match(props.chip, {onNone: Function.constant(''), onSome: chip => chip.text})}|${Number.round(Duration.toMinutes(props.delay) / 5, 0)}`
+}
+
+function normalizedStation(name: string) {
+	return pipe(
+		name,
+		String.normalize('NFD'),
+		String.replaceAll(/[̀-ͯ]/gu, ''),
+		String.toLowerCase,
+		String.replaceAll(/[^a-z0-9]+/gu, ' '),
+		String.trim
+	)
+}
+
+function sameStation(left: Train['to'], right: Train['from']) {
+	return (
+		Option.exists(left.code, code => Option.contains(right.code, code)) ||
+		normalizedStation(left.name) === normalizedStation(right.name)
+	)
+}
+
+function scheduledStart(booking: Booking) {
+	if (Booking.isAnyOf(['stay'])(booking)) return booking.checkIn
+	return booking.departs
+}
+
+export function journeysOf(bookings: BookingList) {
+	return pipe(
+		bookings,
+		Array.sort(Order.mapInput(DateTime.Order, scheduledStart)),
+		Array.mapAccum(Array.empty<Array.NonEmptyArray<Booking>>(), (journeys, booking) => {
+			const previous = Array.findFirstIndex(journeys, journey => {
+				const last = Array.lastNonEmpty(journey)
+				if (
+					!Booking.isAnyOf(['train'])(booking) ||
+					booking.status !== 'confirmed' ||
+					!Booking.isAnyOf(['train'])(last) ||
+					last.status !== 'confirmed'
+				) {
+					return false
+				}
+				const gap = DateTime.toEpochMillis(booking.departs) - DateTime.toEpochMillis(last.arrives)
+				return sameStation(last.to, booking.from) && gap >= 0 && gap <= 10_800_000
+			})
+			return [
+				Option.match(previous, {
+					onNone: () => Array.append(journeys, [booking]),
+					onSome: index =>
+						Array.map(journeys, (journey, position) =>
+							Boolean.match(position === index, {onFalse: () => journey, onTrue: () => Array.append(journey, booking)})
+						)
+				}),
+				undefined
+			] as const
+		})
+	)[0]
+}
+
+function arrived(leg: Flight | Train, now: DateTime.Utc) {
+	if (DateTime.isGreaterThanOrEqualTo(now, arrivalOf(leg))) return true
+	if (Booking.isAnyOf(['train'])(leg)) return Option.exists(leg.live, live => live.state === 'arrived')
+	return Option.exists(leg.live, live => live.state === 'arrived' || live.state === 'landed')
+}
+
+export function startable(legs: readonly (Flight | Train)[], now: DateTime.Utc) {
+	return Option.exists(
+		Array.head(legs),
+		first =>
+			Array.every(legs, leg => leg.status === 'confirmed') &&
+			Option.exists(Array.last(legs), last => !arrived(last, now)) &&
+			DateTime.isGreaterThanOrEqualTo(now, DateTime.subtractDuration(first.departs, Duration.hours(7)))
+	)
+}
+
+export function journeyProps(legs: readonly (Flight | Train)[], bookings: BookingList, now: DateTime.Utc) {
+	const index = pipe(
+		legs,
+		Array.findFirstIndex(leg => !arrived(leg, now)),
+		Option.getOrElse(() => legs.length - 1)
+	)
+	const current = Option.getOrThrow(Array.get(legs, index))
+	const props = activityProps(current, bookings, now)
+	return pipe(
+		legs,
+		Array.get(index + 1),
+		Option.match({
+			onNone: () => props,
+			onSome: next =>
+				ActivityProps.make({
+					...props,
+					note: `Change at ${current.to.name} · ${Number.round(Duration.toMinutes(DateTime.distance(arrivalOf(current), departureOf(next))), 0)} min`
+				})
+		})
+	)
 }

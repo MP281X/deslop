@@ -28,6 +28,7 @@ export const IMAGE_BYTES = 4_000_000
 export type BookingSource = typeof BookingSource.Type
 export const BookingSource = Schema.TaggedUnion({
 	image: {image: Schema.Uint8Array.check(Schema.isMinLength(1), Schema.isMaxLength(IMAGE_BYTES))},
+	pdf: {pdf: Schema.Uint8Array.check(Schema.isMinLength(1), Schema.isMaxLength(IMAGE_BYTES))},
 	text: {text: Schema.NonEmptyString.check(Schema.isMaxLength(60_000))}
 })
 
@@ -107,8 +108,13 @@ export class Flight extends Model.Class<Flight>('Flight')({
 	static readonly table = 'flights'
 }
 
-export type TrainOperator = typeof TrainOperator.Type
-export const TrainOperator = Schema.Literals(['trenitalia', 'italo', 'other'])
+export type TrainStop = typeof TrainStop.Type
+export const TrainStop = Schema.Struct({
+	arrives: Schema.OptionFromOptionalKey(DateTimeUtcFromFiniteMillis),
+	code: Schema.OptionFromOptionalKey(PlaceCode),
+	departs: Schema.OptionFromOptionalKey(DateTimeUtcFromFiniteMillis),
+	name: Schema.String
+})
 
 export type TrainTracking = typeof TrainTracking.Type
 export const TrainTracking = Schema.Struct({
@@ -133,10 +139,11 @@ export class Train extends Model.Class<Train>('Train')({
 	id: BookingId,
 	live: Model.FieldOption(Model.JsonFromString(TrainTracking)),
 	number: Schema.String,
-	operator: TrainOperator,
-	operatorName: Schema.String,
+	operator: Schema.String,
 	seat: Model.FieldOption(Schema.String),
+	service: Schema.String,
 	status: ReservationStatus,
+	stops: Model.JsonFromString(Schema.Array(TrainStop)),
 	to: Model.JsonFromString(BookedPlace)
 }) {
 	static readonly table = 'trains'
@@ -212,6 +219,7 @@ export const ActivityProps = Schema.Struct({
 	note: Schema.String,
 	phase: Schema.Union([FlightPhase, TrainPhase]),
 	progressFrom: Schema.OptionFromOptionalKey(DateTimeUtcFromFiniteMillis),
+	stops: Schema.OptionFromOptionalKey(Schema.Array(Schema.Struct({name: Schema.String, passed: Schema.Boolean}))),
 	symbol: Schema.Literals([
 		'airplane',
 		'airplane.arrival',
@@ -258,14 +266,11 @@ export const ExtractedItem = Schema.Union([
 		to: Schema.String.annotate({description: 'IATA airport code'})
 	}),
 	Schema.Struct({
-		arrival: LocalTime,
 		coach: Schema.OptionFromOptionalKey(Schema.String),
 		confirmation: Schema.OptionFromOptionalKey(Schema.String),
 		departure: LocalTime,
 		from: Schema.String.annotate({description: 'Station name as printed, such as Roma Termini'}),
 		kind: Schema.Literal('train'),
-		operator: TrainOperator,
-		operatorName: Schema.String,
 		seat: Schema.OptionFromOptionalKey(Schema.String),
 		status: ReservationStatus,
 		to: Schema.String,
@@ -313,3 +318,32 @@ export const StopMatches = Schema.Array(
 		tz: Schema.OptionFromOptionalKey(Schema.String)
 	})
 )
+
+export type TransitStop = typeof TransitStop.Type
+export const TransitStop = Schema.Struct({
+	arrival: Schema.OptionFromOptionalKey(Schema.String),
+	departure: Schema.OptionFromOptionalKey(Schema.String),
+	lat: Schema.Finite,
+	lon: Schema.Finite,
+	name: Schema.String,
+	stopId: PlaceCode,
+	tz: Schema.String
+})
+export type TransitRuns = typeof TransitRuns.Type
+export const TransitRuns = Schema.Struct({
+	stopTimes: Schema.Array(
+		Schema.Struct({
+			agencyName: Schema.String,
+			place: Schema.Struct({departure: Schema.String, tz: Schema.String}),
+			routeShortName: Schema.String,
+			tripId: Schema.String,
+			tripShortName: Schema.String
+		})
+	)
+})
+export type TransitTrip = typeof TransitTrip.Type
+export const TransitTrip = Schema.Struct({
+	legs: Schema.NonEmptyArray(
+		Schema.Struct({from: TransitStop, intermediateStops: Schema.Array(TransitStop), to: TransitStop})
+	)
+})

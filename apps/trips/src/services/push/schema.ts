@@ -60,5 +60,13 @@ export class SentAlert extends Model.Class<SentAlert>('SentAlert')({
 	static readonly table = 'sent_alerts'
 }
 
+// When the person last asked to start a journey's Live Activity, keyed by its first leg.
+export class StartRequest extends Model.Class<StartRequest>('StartRequest')({
+	at: Schema.DateTimeUtcFromMillis,
+	bookingId: BookingId
+}) {
+	static readonly table = 'requests'
+}
+
 export type ShowAction = typeof ShowAction.Type
 export const ShowAction = Schema.TaggedUnion({launch: {target: Device}, refresh: {target: Activity}})
