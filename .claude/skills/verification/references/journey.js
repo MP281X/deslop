@@ -1,20 +1,56 @@
-// Pass this file's text plus `play([...steps])` to preview_evaluate while the tab records; the verification skill lists the steps.
-async function play(steps) {
+// Pass this file's text plus `play(task, [...steps])` to preview_evaluate while the tab records; the verification skill lists the steps.
+async function play(task, steps) {
+	const head = 56
+	const fit = Math.min((innerWidth - 96) / innerWidth, (innerHeight - head - 24) / innerHeight)
+	const frame = {
+		height: innerHeight * fit,
+		left: (innerWidth - innerWidth * fit) / 2,
+		top: head,
+		width: innerWidth * fit
+	}
+	const camera = {left: frame.left, scale: fit, top: frame.top}
 	document.querySelector('#journey')?.remove()
 	const layer = document.createElement('div')
 	layer.id = 'journey'
 	layer.style.cssText =
-		'position:fixed;inset:0;z-index:2147483647;pointer-events:none;font:500 15px/1.4 system-ui,sans-serif'
-	layer.innerHTML = `<svg width="20" height="29" viewBox="0 0 13 19" style="position:absolute;left:0;top:0;translate:50vw 92vh;transition:translate .5s cubic-bezier(.4,0,.2,1)"><path d="M1 1v14.2l3.7-3.5 2.5 5.9 2.3-1-2.5-5.8H12z" fill="#111" stroke="#fff" stroke-width="1.2" stroke-linejoin="round"/></svg>
+		'position:fixed;inset:0;z-index:2147483647;pointer-events:none;color:#fafafa;font:14px/1.4 ui-sans-serif,system-ui,sans-serif'
+	layer.innerHTML = `<div style="position:absolute;left:${frame.left}px;top:${frame.top}px;width:${frame.width}px;height:${frame.height}px;border-radius:12px;box-shadow:0 0 0 1px #2a2a2a,0 0 0 100vmax #0c0c0c"></div>
+		<div style="position:absolute;left:${frame.left}px;right:${frame.left}px;top:0;height:${head}px;display:flex;align-items:center;gap:12px"><span style="font-weight:500">${task}</span><span style="margin-left:auto;display:flex;gap:3px">${'<i style="width:18px;height:3px;border-radius:2px;background:#ffffff2e;transition:background .3s"></i>'.repeat(steps.length)}</span></div>
+		<svg width="20" height="29" viewBox="0 0 13 19" style="position:absolute;left:0;top:0;translate:${innerWidth / 2}px ${innerHeight}px;transition:translate .5s cubic-bezier(.4,0,.2,1)"><path d="M1 1v14.2l3.7-3.5 2.5 5.9 2.3-1-2.5-5.8H12z" fill="#111" stroke="#fff" stroke-width="1.2" stroke-linejoin="round"/></svg>
 		<i style="position:absolute;left:-20px;top:-20px;width:40px;height:40px;border-radius:50%;border:2px solid #3b82f6;opacity:0"></i>
-		<div style="position:absolute;left:50%;bottom:28px;translate:-50% 0;padding:6px 16px;border-radius:999px;background:#111;color:#fff;outline:1px solid #fff4;white-space:nowrap"></div>`
-	document.body.append(layer)
-	const [cursor, ripple, caption] = layer.children
+		<div style="position:absolute;left:${frame.left + 14}px;top:${frame.top + frame.height - 44}px;padding:5px 14px;border-radius:999px;background:#18181b;color:#fafafa;outline:1px solid #ffffff38;opacity:0;transition:opacity .25s"></div>`
+	document.documentElement.append(layer)
+	const [, header, cursor, ripple, caption] = layer.children
+	const beats = [...header.lastElementChild.children]
+	const page = document.body.style
+	const saved = page.cssText
+	Object.assign(page, {transformOrigin: '0 0', transition: 'transform .8s cubic-bezier(.65,0,.35,1)'})
 
 	function sleep(ms) {
 		return new Promise(resolve => {
 			setTimeout(resolve, ms)
 		})
+	}
+	/** @param {number} value @param {number} low @param {number} high */
+	function clamp(value, low, high) {
+		return Math.min(high, Math.max(low, value))
+	}
+	// The page is scaled into the frame; zooming centres a page point and never shows past the page's edges.
+	/** @param {number} zoom @param {number} x @param {number} y */
+	async function film(zoom, x, y) {
+		camera.scale = fit * zoom
+		camera.left = clamp(
+			frame.left + frame.width / 2 - x * camera.scale,
+			frame.left + frame.width - innerWidth * camera.scale,
+			frame.left
+		)
+		camera.top = clamp(
+			frame.top + frame.height / 2 - y * camera.scale,
+			frame.top + frame.height - innerHeight * camera.scale,
+			frame.top
+		)
+		page.transform = `translate(${camera.left}px, ${camera.top}px) scale(${camera.scale})`
+		await sleep(850)
 	}
 	function shown(element) {
 		const rect = element.getBoundingClientRect()
@@ -49,11 +85,19 @@ async function play(steps) {
 	/** @param {Element} element */
 	async function aim(element) {
 		element.scrollIntoView({block: 'nearest', inline: 'nearest'})
+		const before = element.getBoundingClientRect()
+		await film(
+			1.6,
+			(before.left + before.width / 2 - camera.left) / camera.scale,
+			(before.top + before.height / 2 - camera.top) / camera.scale
+		)
 		const rect = element.getBoundingClientRect()
 		const point = {x: rect.left + Math.min(rect.width / 2, 80), y: rect.top + rect.height * 0.6}
 		cursor.style.translate = `${point.x}px ${point.y}px`
 		ripple.style.translate = cursor.style.translate
 		await sleep(550)
+		const outline = {outline: element.style.outline, outlineOffset: element.style.outlineOffset}
+		Object.assign(element.style, {outline: '2px solid #3b82f6', outlineOffset: '2px'})
 		ripple.animate(
 			[
 				{opacity: 1, scale: 0.2},
@@ -61,6 +105,7 @@ async function play(steps) {
 			],
 			{duration: 450, easing: 'ease-out'}
 		)
+		setTimeout(() => Object.assign(element.style, outline), 700)
 		return point
 	}
 	async function click(element) {
@@ -103,7 +148,7 @@ async function play(steps) {
 	function labelOf(step) {
 		if (step.label) return step.label
 		if (step.type !== undefined) return `Type “${step.type}”`
-		if (step.see !== undefined) return `See “${step.see}”`
+		if (step.see !== undefined) return step.see
 		return step.say ?? step.press ?? step.click
 	}
 	async function act(step) {
@@ -115,7 +160,11 @@ async function play(steps) {
 			await typeFrom(field, step.type, 1)
 		}
 		if (step.press !== undefined) press(step.press)
-		if (step.see !== undefined) await find(step.see, targets, 0)
+		if (step.see !== undefined) {
+			cursor.style.translate = `${innerWidth / 2}px ${innerHeight}px`
+			await film(1, 0, 0)
+			await find(step.see, targets, 0)
+		}
 	}
 	/** @param {number} index */
 	async function run(index, outcomes) {
@@ -126,7 +175,9 @@ async function play(steps) {
 			typeof steps[index] === 'object' && steps[index]
 		)
 		const label = labelOf(step)
-		caption.textContent = `${index + 1}/${steps.length}  ${label}`
+		caption.textContent = label
+		caption.style.opacity = '1'
+		beats[index].style.background = '#fafafa'
 		try {
 			await act(step)
 		} catch (error) {
@@ -136,11 +187,16 @@ async function play(steps) {
 		return run(index + 1, [...outcomes, `${index + 1} ${label}: ok`])
 	}
 
-	// The recording starts in the same turn, so the first step waits for it; the last caption stays until it stops.
-	await sleep(400)
+	// The recording starts in the same turn, so the first step waits for it; the last frame stays until it stops.
+	await film(1, 0, 0)
 	const from = Date.now()
 	const outcomes = await run(0, [])
+	caption.style.opacity = '0'
+	await film(1, 0, 0)
 	await sleep(1200)
-	setTimeout(() => layer.remove(), 5000)
+	setTimeout(() => {
+		layer.remove()
+		page.cssText = saved
+	}, 5000)
 	return {from, outcomes}
 }
