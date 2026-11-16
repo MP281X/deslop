@@ -18,7 +18,7 @@ stateDiagram-v2
     Planned --> [*] : user approves and asks for a handoff [side chat] / send the plan, its picks and its render's path to the main thread
     Drafting --> Drafting : user steers [inside the plan] / edit, commit
     Drafting --> Planned : user steers [outside the plan] / show the plan
-    Drafting --> Validating : user calls the work settled / Validate
+    Drafting --> Validating : the approved work is built / Validate
     Validating --> Planned : Validate [a failure the approach itself causes] / show it
     Validating --> [*] : Validate [passes] / push by the pull-requests skill, cleanup
 ```
@@ -33,7 +33,7 @@ stateDiagram-v2
 - **Plan.** What changes and what stays untouched, each claim traced to code read or run. An open choice shows 2–3 variants you would build, rough, on the same data, differing in interaction model or structure rather than styling, a better idea than the user's among them. Each takes the format that leaves no ambiguity: UI in [prototype.html](references/prototype.html), by its header; structure as a traced value, a contract diff, a role-by-operation grid or sample rows before and after; never prose.
 - **Shared patterns** are approved on one realistic page showing all their states before they spread.
 - **Approved render.** The build matches the picked variant's screens, labels, states and click paths; a difference it needs goes back to the user as a plan.
-- **Checks wait for settle.** While drafting, the fixer, checks, tests and pushes wait for Validate unless the user asks; a diagnosis still runs its probe, and a delegate the proof its brief names.
+- **Checks wait for the build.** While drafting, the fixer, checks, tests and pushes wait for Validate unless the user asks; a diagnosis still runs its probe, and a delegate the proof its brief names.
 - **Precedent.** Before an edit, read how the neighbouring feature or shared package does it. A package's behaviour comes from its installed source, read rather than recalled; [Repositories](references/repos.md) for what neither answers.
 - **One owner.** One main thread per worktree: check `t3_thread_list` first and give the user a live owner's link rather than starting a second.
 - **Yourself.** Small edits, prototypes and reads, since a delegate costs a brief and a report.
@@ -84,7 +84,7 @@ stateDiagram-v2
     Working --> Working : the brief's proof [fails, edit brief] / fix
     Working --> [*] : done [read-only brief] / report PASS, or ISSUES with each finding and failed check
     Working --> [*] : done [edit brief, its proof passed or none named, shared checkout] / report PASS
-    Working --> [*] : done [edit brief, its proof passed or none named, PR thread] / commit, Validate and push by the pull-requests skill once the work is called settled, report PASS
+    Working --> [*] : done [edit brief, its proof passed or none named, PR thread] / commit, Validate and push by the pull-requests skill, report PASS
     Working --> [*] : stuck / report BLOCKED with the output proving it, else ISSUES with what is done and missing
 ```
 

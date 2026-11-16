@@ -1,6 +1,6 @@
 ---
 name: verification
-description: Load when a bug or failed check is reported, when the user calls work settled, before claiming done, fixed or working, before capturing proof, and before a review.
+description: Load when a bug or failed check is reported, when approved work is built, before claiming done, fixed or working, before capturing proof, and before a review.
 ---
 
 # Verification
