@@ -10,6 +10,7 @@ description: 'Load before starting any change to a repository (code, config or d
 ```mermaid
 stateDiagram-v2
     [*] --> Discussing : request
+    [*] --> Drafting : a side chat hands off a plan the user approved [main thread] / edit, commit
     Discussing --> Discussing : question / answer
     Discussing --> Drafting : [evidence leaves one variant, Approval covers the change, main thread] / edit, commit
     Discussing --> Variants : [evidence leaves a taste, product or architecture choice open] / render each decision's variants beside Today
@@ -18,7 +19,7 @@ stateDiagram-v2
     Variants --> Planned : user picks variants / trace each claim to code read or run, show the plan
     Planned --> Discussing : user steers
     Planned --> Drafting : user approves [main thread] / edit, commit
-    Planned --> [*] : user asks for a handoff [side chat] / send the plan and its picked variants to the main thread
+    Planned --> [*] : user approves and asks for a handoff [side chat] / send the plan, its picked variants and their render's path to the main thread
     Drafting --> Drafting : user steers [inside the plan] / edit, commit
     Drafting --> Discussing : user steers [outside the plan]
     Drafting --> Validating : user calls the work settled / Validate
