@@ -7,12 +7,12 @@ import {Atom, AtomRpc} from 'effect/reactivity'
 import {keepValueThroughOutages, liveAtom, reconnectOnDrop} from '@deslop/runtime/client/live-stream'
 import {AuthError} from '@deslop/runtime/shared/auth'
 import {RpcStream} from '@deslop/runtime/shared/rpc'
+import type {TimeFrame} from '@deslop/runtime/shared/time'
 import {addPageTelemetry, layerPageProtocol} from '@deslop/runtime/web/client'
 
 import {RpcContracts} from '#rpcs/contracts.ts'
 import {ServerUrl} from '#services/connections/schema.ts'
 import type {ServerId} from '#services/connections/schema.ts'
-import type {Period} from '#services/usage/schema.ts'
 
 declare module 'effect/reactivity/Reactivity' {
 	interface Keys {
@@ -106,11 +106,11 @@ export const aiKeyAtom = RpcClient.runtime.factory.withReactivity(['aiKey'])(
 )
 
 // A period's report now and after each recorded call; the server reopens the window at each bucket boundary.
-export const aiUsageAtom = Atom.family((period: Period) =>
+export const aiUsageAtom = Atom.family((period: TimeFrame) =>
 	Atom.keepAlive(liveAtom(RpcClient, 'ai-metering.usage', period))
 )
 
-export const mcpUsageAtom = Atom.family((period: Period) =>
+export const mcpUsageAtom = Atom.family((period: TimeFrame) =>
 	Atom.keepAlive(liveAtom(RpcClient, 'connections.usage', period))
 )
 

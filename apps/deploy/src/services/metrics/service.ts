@@ -20,6 +20,7 @@ import {
 	Schedule,
 	Schema,
 	String,
+	Struct,
 	pipe
 } from 'effect'
 
@@ -45,7 +46,7 @@ import {
 	vmStatMemory
 } from '#services/metrics/lib/utils.ts'
 import type {AppReading} from '#services/metrics/lib/utils.ts'
-import {CgroupPath, Counters, Sample} from '#services/metrics/schema.ts'
+import {AppHistory, CgroupPath, Counters, MachineSample, Sample} from '#services/metrics/schema.ts'
 import type {Disk, MachineHistory, HistoryQuery} from '#services/metrics/schema.ts'
 
 const CGROUP = '/sys/fs/cgroup'
@@ -74,40 +75,76 @@ export class Metrics extends Context.Service<Metrics>()('@deslop/deploy/services
 		const sql = yield* SqlClient.SqlClient
 		const worker = yield* Schema.decodeEffect(WorkerId)(hostname())
 
+		// Each machine point with its app rows as one array; the merge patch drops an unmeasured CPU's null key, and a point without app rows, as on a Mac, has none.
+		const joinedSamples = sql`SELECT s.*,
+			CASE WHEN COUNT(a.app) = 0 THEN NULL ELSE
+				json_group_array(json_patch('{}', json_object('id', a.app, 'cpu', a.cpu, 'memory', a.memory)))
+			END AS apps
+			FROM ${sql(MachineSample.table)} s
+			LEFT JOIN ${sql(AppHistory.table)} a ON a.step = s.step AND a.since = s.since`
 		// The stored point of each series that a measurement at this time joins.
 		const listBuckets = SqlSchema.findAll({
 			Request: Sample.fields.time,
 			Result: Sample,
 			execute: time =>
-				sql`SELECT * FROM ${sql(Sample.table)} WHERE ${sql.or(
+				sql`${joinedSamples} WHERE ${sql.or(
 					Array.map(Record.values(SERIES), spacing => {
 						const step = Duration.toMillis(spacing)
-						return sql`(step = ${step} AND since >= ${Math.floor(time / step) * step} AND since < ${(Math.floor(time / step) + 1) * step})`
+						return sql`(s.step = ${step} AND s.since >= ${Math.floor(time / step) * step} AND s.since < ${(Math.floor(time / step) + 1) * step})`
 					})
+				)} GROUP BY s.step, s.since`
+		})
+		const saveMachineSamples = SqlSchema.void({
+			Request: Schema.NonEmptyArray(MachineSample.insert),
+			execute: rows => sql`INSERT OR REPLACE INTO ${sql(MachineSample.table)} ${sql.insert(rows)}`
+		})
+		const deleteAppSamples = SqlSchema.void({
+			Request: Schema.NonEmptyArray(MachineSample.insert),
+			execute: rows =>
+				sql`DELETE FROM ${sql(AppHistory.table)} WHERE ${sql.or(
+					Array.map(rows, row => sql`(step = ${row.step} AND since = ${row.since})`)
 				)}`
 		})
-		const saveSamples = SqlSchema.void({
-			Request: Schema.NonEmptyArray(Sample.insert),
-			execute: rows => sql`INSERT OR REPLACE INTO ${sql(Sample.table)} ${sql.insert(rows)}`
+		const saveAppSamples = SqlSchema.void({
+			Request: Schema.NonEmptyArray(AppHistory.insert),
+			execute: rows => sql`INSERT INTO ${sql(AppHistory.table)} ${sql.insert(rows)}`
+		})
+		const saveSamples = Effect.fnUntraced(function* (rows: Array.NonEmptyReadonlyArray<Sample>) {
+			const machines = Array.map(rows, row => Struct.omit(row, ['apps']))
+			yield* saveMachineSamples(machines)
+			yield* deleteAppSamples(machines)
+			const apps = Array.flatMap(rows, row =>
+				pipe(
+					row.apps,
+					Option.getOrElse(Array.empty),
+					Array.map(app => ({app: app.id, cpu: app.cpu, memory: app.memory, since: row.since, step: row.step}))
+				)
+			)
+			if (Array.isReadonlyArrayNonEmpty(apps)) yield* saveAppSamples(apps)
 		})
 		// One series from a bucket before the range's start: a point covers at most its step, so none that ends inside the range is missed.
 		const listSeries = SqlSchema.findAll({
 			Request: Schema.Struct({after: Sample.fields.since, step: Sample.fields.step}),
 			Result: Sample,
 			execute: query =>
-				sql`SELECT * FROM ${sql(Sample.table)} WHERE step = ${query.step} AND since > ${query.after} ORDER BY since`
+				sql`${joinedSamples} WHERE s.step = ${query.step} AND s.since > ${query.after} GROUP BY s.step, s.since ORDER BY s.since`
 		})
 		// Each series keeps its range, and a bucket goes once all of it has aged out.
 		const deleteExpired = SqlSchema.void({
 			Request: Sample.fields.time,
 			execute: now =>
-				sql`DELETE FROM ${sql(Sample.table)} WHERE ${sql.or(
-					Array.map(
-						Record.toEntries(SERIES),
-						entry =>
-							sql`(step = ${Duration.toMillis(entry[1])} AND since < ${now - pipe(entry[0], Number.parse, Option.getOrThrow, Duration.minutes, Duration.toMillis) - Duration.toMillis(entry[1])})`
-					)
-				)}`
+				Effect.forEach(
+					[AppHistory.table, MachineSample.table],
+					table =>
+						sql`DELETE FROM ${sql(table)} WHERE ${sql.or(
+							Array.map(
+								Record.toEntries(SERIES),
+								entry =>
+									sql`(step = ${Duration.toMillis(entry[1])} AND since < ${now - pipe(entry[0], Number.parse, Option.getOrThrow, Duration.minutes, Duration.toMillis) - Duration.toMillis(entry[1])})`
+							)
+						)}`,
+					{concurrency: 1}
+				)
 		})
 
 		const previous = yield* Ref.make(Option.none<Counters>())
@@ -294,6 +331,7 @@ export class Metrics extends Context.Service<Metrics>()('@deslop/deploy/services
 		const prune = pipe(
 			DateTime.now,
 			Effect.flatMap(deleteExpired),
+			sql.withTransaction,
 			asDeployError,
 			Effect.withSpan('Metrics.prune', {attributes: {worker}})
 		)
@@ -303,7 +341,7 @@ export class Metrics extends Context.Service<Metrics>()('@deslop/deploy/services
 		yield* collect
 		yield* pipe(collect, Effect.schedule(Schedule.fixed(Duration.seconds(1))), Effect.forkScoped)
 		yield* pipe(refreshStorage, Effect.schedule(Schedule.spaced(Duration.seconds(30))), Effect.forkScoped)
-		// The shortest series keeps a minute, so expired points go every minute.
+		// Expired points go every minute.
 		yield* pipe(
 			prune,
 			Effect.ignore({log: 'Error', message: 'Expired resource history could not be deleted'}),
@@ -343,7 +381,7 @@ export class Metrics extends Context.Service<Metrics>()('@deslop/deploy/services
 		}
 	})
 }) {
-	// The table this service owns, made and changed at start in one transaction; one statement per `sql` call, since SQLite runs only the first statement of a string.
+	// The tables this service owns, made and changed at start in one transaction; one statement per `sql` call, since SQLite runs only the first statement of a string.
 	static readonly migrations = Layer.effectDiscard(
 		Migrator.make({})({
 			loader: Migrator.fromRecord({
@@ -363,7 +401,29 @@ export class Metrics extends Context.Service<Metrics>()('@deslop/deploy/services
 							PRIMARY KEY (step, since)
 						) STRICT
 					`
-				)
+				),
+				'0002_app_samples': Effect.gen(function* () {
+					const sql = yield* SqlClient.SqlClient
+					yield* sql`
+						CREATE TABLE app_samples (
+							step INTEGER NOT NULL,
+							since INTEGER NOT NULL,
+							app TEXT NOT NULL,
+							cpu REAL,
+							memory REAL NOT NULL,
+							PRIMARY KEY (step, since, app)
+						) STRICT, WITHOUT ROWID
+					`
+					yield* sql`
+						INSERT INTO app_samples (step, since, app, cpu, memory)
+						SELECT samples.step, samples.since,
+							json_extract(app.value, '$.id'), json_extract(app.value, '$.cpu'), json_extract(app.value, '$.memory')
+						FROM samples, json_each(samples.apps) app
+					`
+					yield* sql`ALTER TABLE samples DROP COLUMN apps`
+					yield* sql`DELETE FROM app_samples WHERE step = 1000`
+					yield* sql`DELETE FROM samples WHERE step = 1000`
+				})
 			}),
 			table: 'metrics_migrations'
 		})

@@ -3,7 +3,7 @@
 - **Operations.** One list for the chosen app, without groups or headings: failures lead, then most recently seen. An operation is a root span's name.
 - **Traces.** A row's hover names the failing span; selecting opens its diagnostic, never a repeated row message. New arrivals appear without rescanning every trace.
 - **Selection.** The URL stores operation, trace and span ids, never record copies.
-- **CI.** GitHub Actions is the CI side: workflows are operations, runs are traces of jobs and steps.
+- **CI.** GitHub Actions is the CI side: workflows are operations, runs are traces of jobs and steps. A failed job keeps its whole log; a successful one keeps runner warnings and errors and the last 10 lines of each step the workflow itself runs.
 - **Phone.** Keep every operation column and push trace detail full-screen; focus follows Tab, never selection.
 
 ## Boundary facts

@@ -17,6 +17,8 @@ Collection cursors resume live, key-ordered lists with the same filters; new row
 
 ## AI proxy
 
+Home's time frames, call storage and usage retention are described in this app's `AGENTS.md`.
+
 App servers start with `--domain mp281x.xyz`; Gateway's origin is derived from that domain. Auth's account answer supplies admin access; Gateway has no separate admin setting.
 
 Use `AiGateway` from `@deslop/runtime/server/ai`: `yield* gateway.apiUrl` and pass `yield* gateway.authorize(userId)` as the provider client's **construction-time** `transformClient`. Append the model's API-family path from [OpenCode's model catalog](https://opencode.ai/docs/console/models/); Go paths start with `/go`. `AiGateway.languageModel(userId, options)` uses the person's Anthropic API key, never the catalogue balance. Gateway maps the SDK's `/anthropic/v1/messages?beta=true` to `https://api.anthropic.com/v1/messages?beta=true`, sends the saved key in `x-api-key`, and forwards the Messages headers and body. Response token usage is metered to that person as estimated spend.

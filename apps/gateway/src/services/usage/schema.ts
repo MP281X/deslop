@@ -1,10 +1,8 @@
-import {Boolean, DateTime, Duration, Function, Schema, pipe} from 'effect'
+import {DateTime, Duration, Schema} from 'effect'
 
-import {DateTimeUtcFromFiniteMillis, DurationFromFiniteMillis} from '@deslop/runtime/shared/time'
+import {DateTimeUtcFromFiniteMillis, DurationFromFiniteMillis, timeFrameDuration} from '@deslop/runtime/shared/time'
+import type {TimeFrame} from '@deslop/runtime/shared/time'
 
-// The page's period and the buckets it covers, ending with the current one: hours for a day, UTC days otherwise.
-export type Period = typeof Period.Type
-export const Period = Schema.Literals(['24h', '7d', '30d'])
 export type UsageRange = typeof UsageRange.Type
 export const UsageRange = Schema.Struct({
 	count: Schema.Finite,
@@ -13,18 +11,24 @@ export const UsageRange = Schema.Struct({
 	to: DateTimeUtcFromFiniteMillis
 })
 
-export function periodRange(period: Period, now: DateTime.Utc) {
-	const size = Boolean.match(period === '24h', {onFalse: () => Duration.days(1), onTrue: () => Duration.hours(1)})
-	const count = {'7d': 7, '24h': 24, '30d': 30}[period]
-	const to = pipe(
-		now,
-		DateTime.startOf(
-			Boolean.match(period === '24h', {
-				onFalse: Function.constant('day' as const),
-				onTrue: Function.constant('hour' as const)
-			})
-		),
-		DateTime.addDuration(size)
-	)
-	return {count, from: DateTime.subtractDuration(to, Duration.times(size, count)), size, to} satisfies UsageRange
+// Report spacing; the home charts combine these into at most sixty slots.
+const BUCKETS: Record<TimeFrame, Duration.Duration> = {
+	'1h': Duration.minutes(1),
+	'7d': Duration.hours(1),
+	'10m': Duration.minutes(1),
+	'24h': Duration.minutes(15),
+	'30d': Duration.hours(12)
+}
+
+export function timeFrameRange(frame: TimeFrame, now: DateTime.Utc) {
+	const duration = timeFrameDuration(frame)
+	const size = BUCKETS[frame]
+	const millis = Duration.toMillis(size)
+	const to = DateTime.mapEpochMillis(now, value => Math.floor(value / millis) * millis + millis)
+	return {
+		count: Duration.toMillis(duration) / millis,
+		from: DateTime.subtractDuration(to, duration),
+		size,
+		to
+	} satisfies UsageRange
 }

@@ -375,6 +375,21 @@ export class AiProxy extends Context.Service<AiProxy>()('@deslop/gateway/service
 					yield* sql`INSERT INTO ai_usage_new SELECT * FROM ai_usage`
 					yield* sql`DROP TABLE ai_usage`
 					yield* sql`ALTER TABLE ai_usage_new RENAME TO ai_usage`
+				}),
+				// Each historical hour becomes one call carrying its full cost and any uncertainty.
+				'0008_ai_calls': Effect.gen(function* () {
+					const sql = yield* SqlClient.SqlClient
+					yield* sql`CREATE TABLE ai_calls (
+						owner TEXT NOT NULL, at INTEGER NOT NULL,
+						spendSource TEXT NOT NULL CHECK (spendSource IN ('balance', 'byok', 'openai', 'free', 'go', 'go-plus')),
+						costUsd REAL NOT NULL,
+						estimated INTEGER NOT NULL CHECK (estimated IN (0, 1)),
+						costKnown INTEGER NOT NULL CHECK (costKnown IN (0, 1))
+					) STRICT`
+					yield* sql`INSERT INTO ai_calls (owner, at, spendSource, costUsd, estimated, costKnown)
+						SELECT owner, hour, spendSource, costUsd, estimatedCalls > 0, unknownCostCalls = 0 FROM ai_usage`
+					yield* sql`DROP TABLE ai_usage`
+					yield* sql`CREATE INDEX ai_calls_owner_at ON ai_calls (owner, at)`
 				})
 			}),
 			table: 'ai_migrations'

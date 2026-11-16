@@ -1,6 +1,6 @@
 import {SqliteClient} from '@effect/sql-sqlite-node'
 
-import {Config, Effect, FileSystem, Function, Layer, Option, Path} from 'effect'
+import {Config, Duration, Effect, FileSystem, Function, Layer, Option, Path, Schedule, pipe} from 'effect'
 
 import {Reactivity} from 'effect/reactivity'
 import {Migrator, SqlClient} from 'effect/sql'
@@ -45,6 +45,23 @@ const retiredSessions = Layer.effectDiscard(
 	})
 )
 
+// WAL commits need no sync of their own to survive a crash of the app; freed pages return to the disk and the planner's statistics stay current every hour. Incremental vacuum takes effect when the database is created, before any table, or after one VACUUM.
+const tuned = Layer.effectDiscard(
+	Effect.gen(function* () {
+		const sql = yield* SqlClient.SqlClient
+		yield* sql`PRAGMA auto_vacuum = INCREMENTAL`
+		yield* sql`PRAGMA synchronous = NORMAL`
+		yield* pipe(
+			sql`PRAGMA incremental_vacuum`,
+			Effect.andThen(sql`PRAGMA optimize`),
+			Effect.withSpan('Store.maintain'),
+			Effect.ignore({log: 'Warn', message: 'The database could not be compacted'}),
+			Effect.schedule(Schedule.spaced(Duration.hours(1))),
+			Effect.forkScoped
+		)
+	})
+)
+
 // The app's one SQLite database sits in `directory`, the data directory in production and a temporary one in tests; the database and the services share one Reactivity, so a committed write reaches every live query.
 export function layerDataStore(directory: string) {
 	return Layer.unwrap(
@@ -54,7 +71,11 @@ export function layerDataStore(directory: string) {
 			// SQLite creates its file but not the folder around it, and gives its -wal and -shm files the database's own mode: it holds keys and personal data, so only the user reads it.
 			yield* fs.makeDirectory(directory, {mode: 0o700, recursive: true})
 			yield* fs.writeFile(filename, new Uint8Array(), {flag: 'a', mode: 0o600})
-			return Layer.provideMerge(retiredSessions, Layer.merge(SqliteClient.layer({filename}), Reactivity.layer))
+			// The settings run before the first migration creates a table.
+			return Layer.provideMerge(
+				retiredSessions,
+				Layer.provideMerge(tuned, Layer.merge(SqliteClient.layer({filename}), Reactivity.layer))
+			)
 		})
 	)
 }

@@ -1,17 +1,4 @@
-import {
-	Boolean,
-	Context,
-	DateTime,
-	Duration,
-	Effect,
-	Function,
-	Layer,
-	MutableList,
-	Option,
-	Schema,
-	Stream,
-	pipe
-} from 'effect'
+import {Context, DateTime, Duration, Effect, Function, Layer, MutableList, Option, Schema, Stream, pipe} from 'effect'
 
 import {Sse} from 'effect/encoding'
 import {Reactivity} from 'effect/reactivity'
@@ -21,16 +8,16 @@ import type {AiModelId} from '@deslop/runtime/shared/ai'
 import {AuthError} from '@deslop/runtime/shared/auth'
 import type {UserId} from '@deslop/runtime/shared/auth'
 import {DateTimeUtcFromFiniteMillis} from '@deslop/runtime/shared/time'
+import type {TimeFrame} from '@deslop/runtime/shared/time'
 
 import {readUsage} from './lib/utils.ts'
-import {AiUsage, AiUsageBreakdown, AiUsageQuery} from './schema.ts'
+import {AiCall, AiUsageBreakdown, AiUsageQuery} from './schema.ts'
 import type {AiUsageEntry, SpendSource} from './schema.ts'
 
 import type {AiProvider} from '#services/ai-proxy/schema.ts'
 import {usageWindow} from '#services/usage/lib/utils.ts'
-import type {Period} from '#services/usage/schema.ts'
 
-// AiProxy's 0001_ai migration (ai_migrations) created ai_usage; its registration stays there.
+// AiProxy's migrations (ai_migrations) own the AI tables.
 
 declare module 'effect/reactivity/Reactivity' {
 	interface Keys {
@@ -45,59 +32,46 @@ export class AiMetering extends Context.Service<AiMetering>()(
 			const sql = yield* SqlClient.SqlClient
 			const withReactivity = Effect.provideService(Reactivity.Reactivity, yield* Reactivity.Reactivity)
 			const addUsage = SqlSchema.void({
-				Request: AiUsage.insert,
-				execute: row => sql`
-				INSERT INTO ${sql(AiUsage.table)} ${sql.insert(row)}
-				ON CONFLICT (owner, hour, spendSource) DO UPDATE SET
-					costUsd = costUsd + excluded.costUsd,
-					estimatedCalls = estimatedCalls + excluded.estimatedCalls,
-					unknownCostCalls = unknownCostCalls + excluded.unknownCostCalls
-			`
+				Request: AiCall.insert,
+				execute: row => sql`INSERT INTO ${sql(AiCall.table)} ${sql.insert(row)}`
 			})
 			const deleteUsageBefore = SqlSchema.void({
-				Request: Schema.Struct({hour: DateTimeUtcFromFiniteMillis, owner: AiUsage.fields.owner}),
-				execute: request =>
-					sql`DELETE FROM ${sql(AiUsage.table)} WHERE owner = ${request.owner} AND hour < ${request.hour}`
+				Request: Schema.Struct({at: DateTimeUtcFromFiniteMillis, owner: AiCall.fields.owner}),
+				execute: request => sql`DELETE FROM ${sql(AiCall.table)} WHERE owner = ${request.owner} AND at < ${request.at}`
 			})
 			function within(query: typeof AiUsageQuery.Encoded) {
-				return sql`owner = ${query.owner} AND hour >= ${query.from} AND hour < ${query.to}`
+				return sql`owner = ${query.owner} AND at >= ${query.from} AND at < ${query.to}`
 			}
 			const totalUsage = SqlSchema.findAll({
 				Request: AiUsageQuery,
 				Result: AiUsageBreakdown,
 				execute: query => sql`
-				SELECT spendSource, total(costUsd) AS costUsd, total(unknownCostCalls) AS unknownCostCalls,
-					total(estimatedCalls) AS estimatedCalls
-				FROM ${sql(AiUsage.table)} WHERE ${within(query)} GROUP BY spendSource ORDER BY spendSource
+				SELECT spendSource, total(costUsd) AS costUsd, sum(1 - costKnown) AS unknownCostCalls,
+					sum(estimated) AS estimatedCalls
+				FROM ${sql(AiCall.table)} WHERE ${within(query)} GROUP BY spendSource ORDER BY spendSource
 			`
 			})
 			const listBuckets = SqlSchema.findAll({
 				Request: AiUsageQuery,
 				Result: Schema.Struct({at: DateTimeUtcFromFiniteMillis, ...AiUsageBreakdown.fields}),
 				execute: query => sql`
-				SELECT hour - hour % ${query.size} AS at, spendSource, total(costUsd) AS costUsd,
-					sum(unknownCostCalls) AS unknownCostCalls, sum(estimatedCalls) AS estimatedCalls
-				FROM ${sql(AiUsage.table)} WHERE ${within(query)} GROUP BY 1, spendSource ORDER BY 1, spendSource
+				SELECT at - at % ${query.size} AS at, spendSource, total(costUsd) AS costUsd,
+					sum(1 - costKnown) AS unknownCostCalls, sum(estimated) AS estimatedCalls
+				FROM ${sql(AiCall.table)} WHERE ${within(query)} GROUP BY 1, spendSource ORDER BY 1, spendSource
 			`
 			})
 			const saveUsage = Effect.fnUntraced(function* (id: UserId, entry: AiUsageEntry, spendSource: SpendSource) {
 				yield* pipe(
 					Effect.andThen(
 						addUsage({
+							at: entry.at,
+							costKnown: entry.costSource !== 'unknown',
 							costUsd: Option.getOrElse(entry.costUsd, Function.constant(0)),
-							estimatedCalls: Boolean.match(entry.estimated, {
-								onFalse: Function.constant(0),
-								onTrue: Function.constant(1)
-							}),
-							hour: DateTime.startOf(entry.at, 'hour'),
+							estimated: entry.estimated,
 							owner: id,
-							spendSource,
-							unknownCostCalls: Boolean.match(entry.costSource === 'unknown', {
-								onFalse: Function.constant(0),
-								onTrue: Function.constant(1)
-							})
+							spendSource
 						}),
-						deleteUsageBefore({hour: DateTime.subtractDuration(entry.at, Duration.days(30)), owner: id})
+						deleteUsageBefore({at: DateTime.subtractDuration(entry.at, Duration.days(30)), owner: id})
 					),
 					Reactivity.mutation({aiUsage: [id]}),
 					sql.withTransaction,
@@ -181,7 +155,7 @@ export class AiMetering extends Context.Service<AiMetering>()(
 					},
 					Effect.catch(error => Effect.logWarning('AI usage could not be saved', error))
 				),
-				usage: (id: UserId, period: Period) =>
+				usage: (id: UserId, period: TimeFrame) =>
 					Stream.withSpan(
 						usageWindow(period, range =>
 							Stream.mapError(

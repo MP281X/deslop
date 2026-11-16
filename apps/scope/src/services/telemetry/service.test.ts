@@ -7,7 +7,7 @@ import {Effect, Layer, Schema, pipe} from 'effect'
 import {Reactivity} from 'effect/reactivity'
 import {TestClock} from 'effect/testing'
 
-import {TelemetryError, TraceId, TracesRequest} from '#services/telemetry/schema.ts'
+import {FindTracesParams, TelemetryError, TraceId, TracesRequest} from '#services/telemetry/schema.ts'
 import {Telemetry} from '#services/telemetry/service.ts'
 
 const TRACES = Schema.decodeSync(TracesRequest)({
@@ -18,6 +18,7 @@ const TRACES = Schema.decodeSync(TracesRequest)({
 				{
 					spans: [
 						{
+							attributes: [{key: 'db.query.text', value: {stringValue: 'SELECT 42'}}],
 							endTimeUnixNano: '10000000',
 							name: 'Notes.capture',
 							spanId: '1111111111111111',
@@ -41,11 +42,26 @@ const telemetryLayer = pipe(
 
 it.layer(telemetryLayer)(test => {
 	test.effect(
-		'expires traces seven days after receipt',
+		'keeps retried spans once, restores interned statements, and searches words',
 		Effect.fnUntraced(function* () {
 			const telemetry = yield* Telemetry
 			yield* telemetry.ingestTraces(TRACES)
-			yield* TestClock.adjust('167 hours')
+			yield* telemetry.ingestTraces(TRACES)
+			const trace = yield* telemetry.trace(ID)
+			assert.lengthOf(trace.spans, 1)
+			assert.strictEqual(trace.spans[0]?.attributes['db.query.text'], 'SELECT 42')
+			assert.strictEqual(
+				(yield* telemetry.findTraces(yield* Schema.decodeEffect(FindTracesParams)({text: 'capture'}))).total,
+				1
+			)
+		})
+	)
+	test.effect(
+		'expires traces thirty days after receipt',
+		Effect.fnUntraced(function* () {
+			const telemetry = yield* Telemetry
+			yield* telemetry.ingestTraces(TRACES)
+			yield* TestClock.adjust('719 hours')
 			assert.lengthOf((yield* telemetry.trace(ID)).spans, 1)
 			yield* TestClock.adjust('2 hours')
 			assert.instanceOf(yield* Effect.flip(telemetry.trace(ID)), TelemetryError)
