@@ -998,6 +998,7 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 		Migrator.make({})({
 			loader: Migrator.fromRecord({
 				'0001_telemetry': Effect.gen(function* () {
+					// fallow-ignore-next-line code-duplication -- Each migration spells out the shapes it creates; migrations never share statements.
 					const sql = yield* SqlClient.SqlClient
 					yield* sql`
 						CREATE TABLE traces (
@@ -1069,7 +1070,9 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 					yield* sql`CREATE TABLE releases (service TEXT PRIMARY KEY, version TEXT NOT NULL) STRICT`
 				}),
 				// Senders and statements stored once, rows keyed by integers and blobs, and search kept by triggers; one statement per table over every row, since it runs on a full database at start.
+				// fallow-ignore-next-line code-duplication -- Each migration spells out the shapes it creates; migrations never share statements.
 				'0002_interned': Effect.gen(function* () {
+					// fallow-ignore-next-line code-duplication -- Each migration spells out the shapes it creates; migrations never share statements.
 					const sql = yield* SqlClient.SqlClient
 					yield* sql`DROP TABLE releases`
 					yield* sql`ALTER TABLE span_links RENAME TO old_span_links`
