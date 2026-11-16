@@ -265,7 +265,7 @@ export function jobLogs(event: WorkflowJob, log: string) {
 		HashMap.empty<string, number>(),
 		(seen, record) => {
 			const span = Option.getOrElse(record.spanId, Function.constant(''))
-			const count = Option.getOrElse(HashMap.get(seen, span), Function.constant(0))
+			const count = pipe(seen, HashMap.get(span), Option.getOrElse(Function.constant(0)))
 			// Ten closing lines hold a step's test, lint or build summary.
 			const kept =
 				failedConclusion(event.workflow_job.conclusion) ||
