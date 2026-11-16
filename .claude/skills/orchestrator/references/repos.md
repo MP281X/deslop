@@ -1,6 +1,6 @@
 # Repositories
 
-The required source whenever you use an external package or need a reference: pick the repository whose subject matches and read its source from the clone, never a summary or memory. An unlisted package: its installed source.
+A package's behaviour comes from its installed source, read rather than recalled. A listed repository answers only what local precedent and installed source cannot; read only the relevant source.
 
 ## Packages we use
 

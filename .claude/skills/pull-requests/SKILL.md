@@ -17,25 +17,17 @@ description: 'Load before the first commit of a task, before the first edit when
 
 ```mermaid
 stateDiagram-v2
-    [*] --> Watching : any push, the first as a draft / watch its pipeline, never hand back before it ends
-    Watching --> Watching : pipeline [fails or conflicts] / fix, recapture what changed, push
-    Watching --> [*] : required jobs pass [not to be readied] / hand back
-    Watching --> Ready : required jobs pass [user asks, or the repository's AGENTS.md readies a settled PR] / mark ready
-    Ready --> Watching : its layer needs an edit / mark draft, push
+    [*] --> Pushing : work to publish / the first push opens a draft, a ready PR whose layer changes goes back to draft
+    Pushing --> Pushing : fixer [fails] / fix
+    Pushing --> Watching : fixer [passes, or Validate ran it on this tree] / commit its changes, push, update the body for the head, read back each changed diagram, image or video
+    Watching --> [*] : pipeline [pending, main thread] / watch_pull_request, end the turn
+    Watching --> [*] : pipeline [pending, a delegate] / report the PR, head and pending checks
+    Watching --> Pushing : pipeline [fails or conflicts] / fix, recapture what changed
+    Watching --> [*] : pipeline [passes, readying authorized by the user or the repository's AGENTS.md] / mark ready, unwatch, hand back
+    Watching --> [*] : pipeline [passes, readying not authorized] / unwatch, hand back
 ```
 
-- **Push** once per affected PR per round, since each push cancels the previous pipeline. Every push, drafts included:
-
-  ```mermaid
-  stateDiagram-v2
-      [*] --> Fixing
-      Fixing --> Fixing : the repository's fixer [fails] / fix
-      Fixing --> Describing : fixer [passes, or Validate ran it on this unchanged tree] / commit its changes, push, update the body for the new head
-      Describing --> [*] : [no diagram, image or video changed in the body]
-      Describing --> Describing : read back [a changed diagram, image or video fails] / fix the body
-      Describing --> [*] : read back [all render]
-  ```
-
+- **Push** once per affected PR per round, since each push cancels the previous pipeline.
 - **Describe** by filling `.github/pull_request_template.md` on GitHub, `.gitlab/merge_request_templates/Default.md` on GitLab. Trim a recording's lead-in (seconds from its start to `play`'s, verification skill) and still stretches:
 
   ```bash
