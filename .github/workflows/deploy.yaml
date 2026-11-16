@@ -19,17 +19,27 @@ defaults:
     shell: bash
 
 jobs:
-  tree:
-    name: Previously verified tree
+  plan:
+    name: Plan
     runs-on: ubuntu-26.04
     permissions:
       contents: read
       actions: read
       pull-requests: read
     outputs:
+      mobile: ${{ steps.apps.outputs.mobile }}
       verified: ${{ steps.proof.outputs.verified }}
     steps:
       - uses: actions/checkout@v7
+      - name: Discover mobile apps
+        id: apps
+        run: |
+          shopt -s nullglob
+          apps=(apps/*/app.config.ts)
+          apps=("${apps[@]%/app.config.ts}")
+          apps=("${apps[@]#apps/}")
+          mobile=$(printf '%s\n' "${apps[@]}" | jq -Rsc 'split("\n") | map(select(length > 0))')
+          echo "mobile=$mobile" >> "$GITHUB_OUTPUT"
       # GitHub's run record is the proof, not a PR-writable artifact, cache or named check.
       # A missing/failed lookup leaves the output unset and runs Verify normally.
       - name: Is this tree already verified?
@@ -62,33 +72,14 @@ jobs:
 
   verify:
     name: Verify
-    needs: tree
-    if: ${{ !cancelled() && needs.tree.outputs.verified != 'true' }}
+    needs: plan
+    if: ${{ !cancelled() && needs.plan.outputs.verified != 'true' }}
     uses: ./.github/workflows/verify.yaml
-
-  verified:
-    name: Verified
-    needs: [tree, verify]
-    if: ${{ !cancelled() && (needs.tree.outputs.verified == 'true' || needs.verify.result == 'success') }}
-    runs-on: ubuntu-26.04
-    outputs:
-      mobile: ${{ steps.apps.outputs.mobile }}
-    steps:
-      - uses: actions/checkout@v7
-      - name: Discover mobile apps
-        id: apps
-        run: |
-          shopt -s nullglob
-          apps=(apps/*/app.config.ts)
-          apps=("${apps[@]%/app.config.ts}")
-          apps=("${apps[@]#apps/}")
-          mobile=$(printf '%s\n' "${apps[@]}" | jq -Rsc 'split("\n") | map(select(length > 0))')
-          echo "mobile=$mobile" >> "$GITHUB_OUTPUT"
 
   publish:
     name: Packages
-    needs: verified
-    if: ${{ !cancelled() && needs.verified.result == 'success' }}
+    needs: [plan, verify]
+    if: ${{ !cancelled() && needs.plan.result == 'success' && (needs.plan.outputs.verified == 'true' || needs.verify.result == 'success') }}
     runs-on: ubuntu-26.04
     permissions:
       contents: read
@@ -145,8 +136,8 @@ jobs:
 
   app:
     name: App
-    needs: verified
-    if: ${{ !cancelled() && needs.verified.result == 'success' && needs.verified.outputs.mobile != '[]' }}
+    needs: [plan, verify]
+    if: ${{ !cancelled() && needs.plan.result == 'success' && (needs.plan.outputs.verified == 'true' || needs.verify.result == 'success') && needs.plan.outputs.mobile != '[]' }}
     permissions:
       contents: read
       actions: read
@@ -154,7 +145,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        app: ${{ fromJSON(needs.verified.outputs.mobile) }}
+        app: ${{ fromJSON(needs.plan.outputs.mobile) }}
     uses: ./.github/workflows/release-app.yaml
     with:
       app: ${{ matrix.app }}
