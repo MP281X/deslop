@@ -11,46 +11,41 @@ Lint owns what a parser can check; this covers running behaviour. The repository
 
 ```mermaid
 stateDiagram-v2
-    [*] --> Reproducing : a bug or check fails
-    Reproducing --> Fixing : failing check, request or capture on the unfixed tree, base for a reported bug or the head for a failure the change introduced, before any theory
-    Reproducing --> [*] : [no probe fails on the unfixed tree] / report the probes run, ask for the failing input
-    Fixing --> Probing : edit where the wrong state starts, not a guard, retry or swallowed error downstream of it
-    Probing --> [*] : probe [passes]
-    Probing --> Fixing : probe [fails after the first edit]
-    Probing --> Reproducing : probe [fails after the second edit] / drop the hypothesis
+    [*] --> Reproducing : a bug or failed check
+    Reproducing --> Fixing : a probe fails on the unfixed tree / base for a reported bug, the head for a failure the change introduced
+    Reproducing --> [*] : [no probe fails] / report the probes run, ask for the failing input
+    Fixing --> [*] : the same probe passes on the head
+    Fixing --> Reproducing : [the second fix fails] / drop the hypothesis
 ```
+
+- **Probe.** A check, request or capture, run before any theory.
+- **Fix** where the wrong state starts, not with a guard, retry or swallowed error downstream of it.
 
 ## Validate
 
-Validate runs the repository's fixer and commits its changes, then, on that commit, the tests covering the change and Prove's evidence for it; evidence stays valid while its inputs are unchanged. CI runs the rest after the push (pull-requests skill).
+Run the repository's fixer and commit its changes, then on that commit the tests covering the change and Prove's evidence for it; evidence stays valid while its inputs are unchanged. CI runs the rest after the push.
 
 ## Prove
 
 - **Surface.** UI, and backend changes a screen shows, in the T3 browser; native changes in the Device panel. This standing request covers the preview tools.
 - **Capture** representative data on the head, after waiting for the state's own text or element, never a timer, with its short commit in the caption.
-- **Record** a flow in one turn: `preview_recording_start`, then `preview_evaluate` with [journey.js](references/journey.js)'s text plus `play(task, [...steps])`, then `preview_recording_stop`. It frames the still page under the task and its step bar and names each step in the frame; it returns `{from, outcomes}`, and the trim starts at `from` minus the recording's `startedAt`. A step is `'Name'`, a click on the visible element labelled Name or a CSS selector; `{type, into}`; `{press}`; `{see}`, waiting for text; or `{say}`, a caption alone; any takes a `label`. The first failed step ends the run with its reason in `outcomes`.
-- **Fixed means flipped.** The probe that failed on the unfixed tree passes on the head.
-- **States.** Of cold open, deep-link reload and a failed first request, only those the change touches, at one of the repository's target viewports (none listed: `iphone-12-pro` and 1440×900), in one colour scheme.
-- **Read each capture** for duplicates, clipping, overflow and untruthful loading, empty or error states, and, beside the approved render when one exists, for a screen, label, state or click path that differs; audit web states with `preview_evaluate` and [references/page-audit.js](references/page-audit.js).
+- **Record** a flow in one turn: `preview_recording_start`, then `preview_evaluate` with [journey.js](references/journey.js)'s text plus `play(task, [...steps])`, then `preview_recording_stop`. A step is `'Name'` (a click on the visible element labelled Name, or a CSS selector), `{type, into}`, `{press}`, `{see}` (waits for text) or `{say}` (a caption alone); any takes a `label`. The first failed step ends the run; `play` returns `{from, outcomes}`, and the trim starts at `from` minus the recording's `startedAt`.
+- **States.** Of cold open, deep-link reload and a failed first request, those the change touches, at one of the repository's target viewports (none listed: `iphone-12-pro` and 1440×900), in one colour scheme.
+- **Read each capture** for duplicates, clipping, overflow, untruthful loading, empty or error states, and any screen, label, state or click path that differs from the approved render; audit web states with `preview_evaluate` and [page-audit.js](references/page-audit.js).
 - **Unproved** claims say `unverified: <what was not run>`.
 
 ## Review
 
 ```mermaid
 stateDiagram-v2
-    [*] --> Reviewing : review requested / a deep read-only pass in a fresh context
-    Reviewing --> [*] : pass [no findings]
-    Reviewing --> [*] : pass [a finding the approach itself causes] / report it, the task returns to Discussing
-    Reviewing --> Fixing : pass [only findings the approach survives] / fix all of them, Validate
-    Fixing --> Reviewing : Validate passes [after the first pass] / the second and last pass
-    Fixing --> [*] : Validate passes [after the second pass] / report what remains
+    [*] --> Reviewing : review requested / one deep read-only pass by the other company, in a fresh context
+    Reviewing --> [*] : [no findings]
+    Reviewing --> Fixing : [findings the approach survives] / fix every one
+    Reviewing --> [*] : [a finding the approach causes] / show it, the task returns to Planned
+    Fixing --> [*] : Validate passes / report what stays unfixed
 ```
 
-- **Depth.** A pass reports every finding it can reach, never a sample; a request to loop until clean still gets two passes.
-- **Input.** The decisions, any approved render, the user's acceptance criteria, the head and any captures; a UI reviewer opens its own preview, since source does not prove what renders.
-- **Scope.** Architecture, UI/UX and function, not lint's domain.
-- **Finding.** The input, the result, `path:line` and a severity: P1 broken contract, data loss, secret exposure or false claim; P2 architecture or ownership violation; P3 a screen, label, state or click path that differs from the approved render, or reads worse than the recorded design.
-
-## Tests
-
-Keep a reproducing probe only under the repository's test choices, at the narrowest public seam.
+- **Depth.** The pass reports every finding it can reach at once, never a sample.
+- **Input.** The decisions, the approved render, the user's acceptance criteria, the head and any captures; a UI reviewer opens its own preview, since source does not prove what renders.
+- **Finding.** Architecture, UI/UX and function, not lint's domain: the input, the result, `path:line` and a severity. P1 broken contract, data loss, secret exposure or false claim; P2 architecture or ownership violation; P3 a difference from the approved render, or a screen that reads worse than the recorded design.
+- **Tests.** Keep a reproducing probe only under the repository's test choices, at the narrowest public seam.

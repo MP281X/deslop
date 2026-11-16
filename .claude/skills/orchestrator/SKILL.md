@@ -9,34 +9,35 @@ description: 'Load before starting any change to a repository (code, config or d
 
 ```mermaid
 stateDiagram-v2
-    [*] --> Discussing : request
-    [*] --> Drafting : a side chat hands off a plan the user approved [main thread] / edit, commit
-    Discussing --> Discussing : question / answer
-    Discussing --> Drafting : [evidence leaves one variant, Approval covers the change, main thread] / edit, commit
-    Discussing --> Variants : [evidence leaves a taste, product or architecture choice open] / render each decision's variants beside Today
-    Discussing --> Planned : [evidence leaves one variant, in a side chat or without Approval covering the change] / trace each claim to code read or run, show the plan
-    Variants --> Variants : user steers or mixes variants / edit the data, render again by path
-    Variants --> Planned : user picks variants / trace each claim to code read or run, show the plan
-    Planned --> Discussing : user steers
+    [*] --> Discussing : request for a change
+    [*] --> Drafting : a side chat hands over a plan the user approved
+    Discussing --> Drafting : [Approval covers it, nothing is left open, main thread] / edit, commit
+    Discussing --> Planned : [otherwise] / settle, show the plan
+    Planned --> Planned : user steers / revise, render again by path
     Planned --> Drafting : user approves [main thread] / edit, commit
-    Planned --> [*] : user approves and asks for a handoff [side chat] / send the plan, its picked variants and their render's path to the main thread
+    Planned --> [*] : user approves [side chat] / send the plan, its picks and its render's path to the main thread
     Drafting --> Drafting : user steers [inside the plan] / edit, commit
-    Drafting --> Discussing : user steers [outside the plan]
+    Drafting --> Planned : user steers [outside the plan] / show the plan
     Drafting --> Validating : user calls the work settled / Validate
-    Validating --> Validating : Validate [fails, the approach survives] / fix
-    Validating --> Discussing : Validate [fails, the approach does not survive] / show the finding
+    Validating --> Validating : Validate [fails inside the plan] / fix
+    Validating --> Planned : Validate [fails the approach] / show the finding
     Validating --> [*] : Validate [passes] / push by the pull-requests skill, cleanup
 ```
 
-- **Checks wait for settle.** While drafting, the fixer, checks, tests and pushes wait for Validate unless the user asks; a diagnosis still runs its reproducing probe, and a delegate the proof its brief names.
-- **Variants.** Rough, made in minutes before any build: 2–3 you would build, differing in interaction model rather than styling, on the same data; a better idea than the user's is one of them.
-- **UI.** [prototype.html](references/prototype.html), by its header. A pattern several screens share is approved on one realistic page showing all its states before it spreads.
-- **Architecture.** Settle first, each from code, docs, tests or a probe where they answer it: what deploys alone and who owns which data; who may do what; which queries, volume and retention shape storage; where each piece of state lives, how long, and which copy is the source; whether a failure is a cancellation, a retry or the user's to act on, and where it is handled; which operating facts remove complexity. Each variant then shows, under its id, the format that leaves no ambiguity for its case (a traced value, a contract diff, a role-by-operation grid, sample rows before and after), never prose, with only the details that change the choice.
-- **Untouched.** Every plan lists what stays untouched beside what changes.
-- **Precedent.** Before an edit, read how the neighbouring feature or shared package does it.
-- **Outside code.** A package's behaviour comes from its installed source, read rather than recalled; [Repositories](references/repos.md) only for what local precedent and installed source cannot answer.
+- **Settle.** Before showing a plan, answer from code, docs, tests or a probe each point it touches, leaving the user only taste, product and business knowledge recorded nowhere:
+  - what deploys alone, and which service owns which data;
+  - who may do what;
+  - the queries, volume and retention that shape storage;
+  - each piece of state's owner, lifetime and source copy;
+  - each failure: a cancellation, a retry or the user's to act on, and where it is handled;
+  - the operating facts that remove complexity.
+- **Plan.** What changes and what stays untouched, each claim traced to code read or run. An open choice shows 2–3 variants you would build, rough, on the same data, differing in interaction model or structure rather than styling, a better idea than the user's among them. Each takes the format that leaves no ambiguity: UI in [prototype.html](references/prototype.html), by its header; structure as a traced value, a contract diff, a role-by-operation grid or sample rows before and after; never prose.
+- **Shared patterns** are approved on one realistic page showing all their states before they spread.
+- **Approved render.** The build matches the picked variant's screens, labels, states and click paths; a difference it needs goes back to the user as a plan.
+- **Checks wait for settle.** While drafting, the fixer, checks, tests and pushes wait for Validate unless the user asks; a diagnosis still runs its probe, and a delegate the proof its brief names.
+- **Precedent.** Before an edit, read how the neighbouring feature or shared package does it. A package's behaviour comes from its installed source, read rather than recalled; [Repositories](references/repos.md) for what neither answers.
 - **One owner.** One main thread per worktree: check `t3_thread_list` first and give the user a live owner's link rather than starting a second.
-- **Main.** Do small edits, prototypes and needed reads yourself, since a delegate costs a brief and a report on a thread that re-reads its context every call.
+- **Yourself.** Small edits, prototypes and reads, since a delegate costs a brief and a report.
 
 ## Route
 
@@ -51,45 +52,35 @@ Delegates go to Codex unless the work needs Claude's judgement: the main thread 
 | Advisors on a hard architectural decision, both in one turn                                                                                                  | Fable 5.2 and GPT-6.1 Sol at high | `claudeAgent` / `claude-fable-5-2`, `codex` / `gpt-6.1-sol` |
 | Never                                                                                                                                                        | Luna, Haiku                       |                                                             |
 
-- **Other company.** A review or second opinion comes from the company that did not write or propose the work; advisors come from both.
+- **Other company.** A review or second opinion comes from the company that did not write or propose the work.
 - **Effort.** Medium (`effort` on Claude, `reasoningEffort` on Codex); high when the task needs it, and for advisors; never low, xhigh or above.
 
 ## Delegation
 
 ```mermaid
 stateDiagram-v2
-    [*] --> Running : outcome briefed / start the delegate by the harness's tool choice, siblings with disjoint files in one turn
-    Running --> [*] : PASS or ISSUES [read-only brief] / use its findings and evidence
-    Running --> [*] : PASS [edit brief, the result matches the decisions] / commit its shared-checkout diff
-    Running --> Running : ISSUES, or PASS missing a decision [edit brief, first time] / resume the child with what the brief left out
-    Running --> [*] : ISSUES, or PASS missing a decision [edit brief, again] / finish it in the main thread
-    Running --> Running : BLOCKED [the main thread can clear it] / clear the blocker, resume the child
-    Running --> [*] : BLOCKED [the main thread cannot clear it] / report the blocker and any action the user can take
-    [*] --> PRThread : a separate PR must progress in parallel / delegate_task isolation 'worktree', a persistent thread
-    PRThread --> PRThread : its next step / t3_thread_send
-    PRThread --> [*] : its PR merged or closed / Cleanup
+    [*] --> Running : brief / start it by the harness's tool choice, siblings with disjoint files in one turn
+    Running --> [*] : PASS [matches the decisions] / use its findings, commit an edit's diff
+    Running --> Running : ISSUES or a missed decision [first time] / resume it with what the brief left out
+    Running --> [*] : ISSUES or a missed decision [again] / finish it yourself
+    Running --> Running : BLOCKED [you can clear it] / clear it, resume
+    Running --> [*] : BLOCKED [you cannot] / report it with the user's action
 ```
 
-- **Shared checkout.** Delegates other than PR threads share the main thread's worktree and branch, so they never commit.
-- **One outcome per delegate.** Coupled edits share one thread, since split halves come back for the main thread to reconcile. A procedure is a skill, not a child agent.
-
-## Brief
-
-About 1,500 characters: the delegate has the instructions, the skills and the checkout, not the thread. Give only the objective, the settled decisions, the approved render's path when one exists, the files it owns, what to leave alone, the narrowest command that proves it, when one does, and the report you want.
+- **Shared checkout.** Delegates share the main thread's worktree and branch and never commit; a separate PR progressing in parallel gets its own `delegate_task` with `isolation: 'worktree'`, driven with `t3_thread_send` until it merges.
+- **One outcome per delegate.** Coupled edits share one delegate. A procedure is a skill, not a child agent.
+- **Brief.** About 1,500 characters, since the delegate has the instructions, skills and checkout but not the thread: the objective, the settled decisions, the approved render's path, the files it owns, what to leave alone, the narrowest command that proves it and the report you want.
 
 ## Delegate run
 
-A delegate runs its brief as the approved plan and edits only the brief's files.
+A delegate runs its brief as the approved plan and edits only its files.
 
 ```mermaid
 stateDiagram-v2
-    [*] --> Working : a brief or a later message arrives
-    Working --> Working : the brief's proof [fails, edit brief] / fix
-    Working --> [*] : work done [read-only brief] / report ISSUES with each finding or failed check, else PASS, with evidence
-    Working --> [*] : work done [edit brief, proof passes or none named, shared checkout] / report PASS
-    Working --> [*] : work done [edit brief, proof passes or none named, PR thread] / commit, then if the brief or a message has called the work settled, Validate and push by the pull-requests skill, report PASS
-    Working --> [*] : cannot finish [a command's output proves the blocker] / report BLOCKED
-    Working --> [*] : cannot finish [no proved blocker] / report ISSUES with what is done and what is missing
+    [*] --> Working : a brief or message
+    Working --> Working : the brief's proof [fails] / fix
+    Working --> [*] : done / a PR thread commits, and Validates and pushes once the work is called settled; report PASS, or ISSUES with each finding
+    Working --> [*] : stuck / report BLOCKED with the output proving it, else ISSUES with what is done and missing
 ```
 
-- **Report.** Short: its status word, then evidence (command, exit code, `path:line`, and a SHA only for a commit it made), not narration.
+- **Report.** Its status word, then evidence: command, exit code, `path:line`, and a SHA only for a commit it made.
