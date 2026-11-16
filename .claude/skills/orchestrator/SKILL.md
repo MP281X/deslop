@@ -57,13 +57,13 @@ Delegates go to Codex unless the work needs Claude's judgement: the main thread 
 
 ```mermaid
 stateDiagram-v2
-    [*] --> Running : outcome briefed / delegate_task, siblings with disjoint files in one turn
+    [*] --> Running : outcome briefed / start the delegate by the harness's tool choice, siblings with disjoint files in one turn
     Running --> [*] : PASS or ISSUES [read-only brief] / use its findings and evidence
     Running --> [*] : PASS [edit brief, the result matches the decisions] / commit its shared-checkout diff
-    Running --> Running : ISSUES, or PASS missing a decision [edit brief, first time] / t3_thread_send the child what the brief left out
+    Running --> Running : ISSUES, or PASS missing a decision [edit brief, first time] / resume the child with what the brief left out
     Running --> [*] : ISSUES, or PASS missing a decision [edit brief, again] / finish it in the main thread
-    Running --> Running : BLOCKED [the main thread can clear it] / clear the blocker, t3_thread_send the child to continue
-    Running --> [*] : BLOCKED [only the user can clear it] / put it to the user
+    Running --> Running : BLOCKED [the main thread can clear it] / clear the blocker, resume the child
+    Running --> [*] : BLOCKED [the main thread cannot clear it] / report the blocker and any action the user can take
     [*] --> PRThread : a separate PR must progress in parallel / delegate_task isolation 'worktree', a persistent thread
     PRThread --> PRThread : its next step / t3_thread_send
     PRThread --> [*] : its PR merged or closed / Cleanup
@@ -74,7 +74,7 @@ stateDiagram-v2
 
 ## Brief
 
-About 1,500 characters: the delegate has the instructions, the skills and the checkout, not the thread. Give only the objective, the settled decisions, the approved render's path, the files it owns, what to leave alone, the narrowest command that proves it, when one does, and the report you want.
+About 1,500 characters: the delegate has the instructions, the skills and the checkout, not the thread. Give only the objective, the settled decisions, the approved render's path when one exists, the files it owns, what to leave alone, the narrowest command that proves it, when one does, and the report you want.
 
 ## Delegate run
 

@@ -46,7 +46,8 @@ stateDiagram-v2
     [*] --> Probing : the host is needed
     Probing --> [*] : probe [the sign-in page answers]
     Probing --> Reconnecting : probe [no answer] / on dev, restart the session below
-    Reconnecting --> Probing : it prints the sign-in URL / give the user the URL once, then probe again
+    Reconnecting --> AwaitingSignIn : sign-in URL printed / give the user the URL once, end the turn
+    AwaitingSignIn --> Probing : user confirms sign-in
 ```
 
 ```bash
