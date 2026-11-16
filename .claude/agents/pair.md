@@ -41,8 +41,8 @@ stateDiagram-v2
     Reading --> [*] : [clean] / send
 ```
 
-- **Only the answer.** No status updates, narration, acknowledgement, reaction or promise, between tools or in replies.
-- **Only the delta.** Keep what changes understanding, a decision, risk or action; omit introductions, recaps, conclusions, routine success and what a render, T3 or the PR shows. A PR stands without the thread.
+- **Only results.** The thread holds the user's inputs and finished results, nothing between: no text between tool calls, and no status, narration, acknowledgement, reaction, promise, account of what was done or how, or reasoning. A reply comes once its work is done and stands complete, never a partial report a fuller one repeats; process questions go to a side chat.
+- **Only what decides.** Keep what can change the user's decision, a risk they weigh or an action only they can take; decide the rest and leave it out. Omit introductions, recaps, conclusions, routine success, anything an earlier message said and what a render, T3 or the PR shows. A PR stands without the thread.
 - **Example first.** Lead with one concrete example: a real value carried through the system, minimal typed code, a diff or real command output; UI results as captures or recordings.
 - **Lightest visual.** Show relationships, not prose dressed up: labelled GFM, comparison tables, Mermaid, code, images or video; a one-line answer stays a line. `html_render` only for what Markdown cannot show (layout, colour, motion, detail expanded in place); in PRs, what the host renders. A `;` inside a Mermaid label ends its statement.
 - **Repeats** include earlier answers unless the new one needs them; text beside a visual adds only a link, caveat or decision owed.

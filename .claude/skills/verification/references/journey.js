@@ -86,11 +86,19 @@ async function play(task, steps) {
 	async function aim(element) {
 		element.scrollIntoView({block: 'nearest', inline: 'nearest'})
 		const before = element.getBoundingClientRect()
-		await film(
-			1.6,
-			(before.left + before.width / 2 - camera.left) / camera.scale,
-			(before.top + before.height / 2 - camera.top) / camera.scale
-		)
+		// The camera holds still while the target sits well inside the zoomed view.
+		const inside =
+			before.left > frame.left + frame.width * 0.1 &&
+			before.right < frame.left + frame.width * 0.9 &&
+			before.top > frame.top + frame.height * 0.1 &&
+			before.bottom < frame.top + frame.height * 0.9
+		if (camera.scale === fit || !inside) {
+			await film(
+				1.3,
+				(before.left + before.width / 2 - camera.left) / camera.scale,
+				(before.top + before.height / 2 - camera.top) / camera.scale
+			)
+		}
 		const rect = element.getBoundingClientRect()
 		const point = {x: rect.left + Math.min(rect.width / 2, 80), y: rect.top + rect.height * 0.6}
 		cursor.style.translate = `${point.x}px ${point.y}px`
