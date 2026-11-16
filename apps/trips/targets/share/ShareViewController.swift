@@ -95,47 +95,59 @@ private struct SaveView: View {
     .task { await save() }
   }
 
+  // Trainline shares a journey with a change as one image per train; each is saved as its own booking, in order.
   private func save() async {
+    var added = 0
     do {
-      let (data, type) = try await SharedTicket.read(from: context)
+      let tickets = try await SharedTicket.read(from: context)
       guard let address = Theme.app?.object(forInfoDictionaryKey: "DeslopServer") as? String,
         let server = URL(string: address)
       else { throw CocoaError(.featureUnsupported) }
-      var request = URLRequest(url: server.appendingPathComponent("share"))
-      request.httpMethod = "POST"
-      request.httpShouldHandleCookies = false
-      request.timeoutInterval = 240
-      request.setValue(type, forHTTPHeaderField: "Content-Type")
-      let (body, response) = try await URLSession.shared.upload(for: request, from: data)
-      guard let response = response as? HTTPURLResponse else { throw URLError(.badServerResponse) }
-      guard (200..<300).contains(response.statusCode) else {
-        throw NSError(domain: "Trips", code: response.statusCode,
-          userInfo: [NSLocalizedDescriptionKey: String(decoding: body, as: UTF8.self)])
+      for (data, type) in tickets {
+        try await send(data, type, to: server)
+        added += 1
       }
       phase = .added
       try? await Task.sleep(for: .milliseconds(700))
       context.completeRequest(returningItems: nil)
     } catch {
-      phase = .failed(error.localizedDescription)
+      let saved = added > 0 ? "\(added) added before this failed. " : ""
+      phase = .failed(saved + error.localizedDescription)
+    }
+  }
+
+  private func send(_ data: Data, _ type: String, to server: URL) async throws {
+    var request = URLRequest(url: server.appendingPathComponent("share"))
+    request.httpMethod = "POST"
+    request.httpShouldHandleCookies = false
+    request.timeoutInterval = 240
+    request.setValue(type, forHTTPHeaderField: "Content-Type")
+    let (body, response) = try await URLSession.shared.upload(for: request, from: data)
+    guard let response = response as? HTTPURLResponse else { throw URLError(.badServerResponse) }
+    guard (200..<300).contains(response.statusCode) else {
+      throw NSError(domain: "Trips", code: response.statusCode,
+        userInfo: [NSLocalizedDescriptionKey: String(decoding: body, as: UTF8.self)])
     }
   }
 }
 
 private enum SharedTicket {
-  static func read(from context: NSExtensionContext) async throws -> (Data, String) {
+  // Every attached pass, PDF or image is a ticket; text and links count only when nothing else was shared.
+  static func read(from context: NSExtensionContext) async throws -> [(Data, String)] {
     let providers = context.inputItems.compactMap { $0 as? NSExtensionItem }.flatMap { $0.attachments ?? [] }
-    for (identifier, type) in [("com.apple.pkpass", "application/vnd.apple.pkpass"),
-      (UTType.pdf.identifier, "application/pdf")]
-    {
-      if let provider = providers.first(where: { $0.hasItemConformingToTypeIdentifier(identifier) }) {
-        return (try await file(provider, identifier), type)
+    var tickets: [(Data, String)] = []
+    for provider in providers {
+      if provider.hasItemConformingToTypeIdentifier("com.apple.pkpass") {
+        tickets.append((try await file(provider, "com.apple.pkpass"), "application/vnd.apple.pkpass"))
+      } else if provider.hasItemConformingToTypeIdentifier(UTType.pdf.identifier) {
+        tickets.append((try await file(provider, UTType.pdf.identifier), "application/pdf"))
+      } else if provider.hasItemConformingToTypeIdentifier(UTType.image.identifier) {
+        let item = try await provider.loadItem(forTypeIdentifier: UTType.image.identifier, options: nil)
+        guard let data = jpeg(from: item) else { throw CocoaError(.fileReadCorruptFile) }
+        tickets.append((data, "image/jpeg"))
       }
     }
-    if let provider = providers.first(where: { $0.hasItemConformingToTypeIdentifier(UTType.image.identifier) }) {
-      let item = try await provider.loadItem(forTypeIdentifier: UTType.image.identifier, options: nil)
-      guard let data = jpeg(from: item) else { throw CocoaError(.fileReadCorruptFile) }
-      return (data, "image/jpeg")
-    }
+    if !tickets.isEmpty { return tickets }
     var texts: [String] = []
     for provider in providers {
       if provider.hasItemConformingToTypeIdentifier(UTType.plainText.identifier),
@@ -151,7 +163,7 @@ private enum SharedTicket {
       throw NSError(domain: "Trips", code: 0,
         userInfo: [NSLocalizedDescriptionKey: "Share an image, PDF, Wallet pass, text or URL."])
     }
-    return (Data(text.utf8), "text/plain; charset=utf-8")
+    return [(Data(text.utf8), "text/plain; charset=utf-8")]
   }
 
   private static func file(_ provider: NSItemProvider, _ identifier: String) async throws -> Data {
