@@ -105,7 +105,9 @@ async function play(task, steps) {
 			],
 			{duration: 450, easing: 'ease-out'}
 		)
-		setTimeout(() => Object.assign(element.style, outline), 700)
+		setTimeout(() => {
+			Object.assign(element.style, outline)
+		}, 700)
 		return point
 	}
 	async function click(element) {
