@@ -8,7 +8,6 @@ async function play(task, steps) {
 		top: head,
 		width: innerWidth * fit
 	}
-	const camera = {left: frame.left, scale: fit, top: frame.top}
 	document.querySelector('#journey')?.remove()
 	const layer = document.createElement('div')
 	layer.id = 'journey'
@@ -24,33 +23,13 @@ async function play(task, steps) {
 	const beats = [...header.lastElementChild.children]
 	const page = document.body.style
 	const saved = page.cssText
-	Object.assign(page, {transformOrigin: '0 0', transition: 'transform .8s cubic-bezier(.65,0,.35,1)'})
+	// The page is scaled once into the frame and stays still.
+	Object.assign(page, {transform: `translate(${frame.left}px, ${frame.top}px) scale(${fit})`, transformOrigin: '0 0'})
 
 	function sleep(ms) {
 		return new Promise(resolve => {
 			setTimeout(resolve, ms)
 		})
-	}
-	/** @param {number} value @param {number} low @param {number} high */
-	function clamp(value, low, high) {
-		return Math.min(high, Math.max(low, value))
-	}
-	// The page is scaled into the frame; zooming centres a page point and never shows past the page's edges.
-	/** @param {number} zoom @param {number} x @param {number} y */
-	async function film(zoom, x, y) {
-		camera.scale = fit * zoom
-		camera.left = clamp(
-			frame.left + frame.width / 2 - x * camera.scale,
-			frame.left + frame.width - innerWidth * camera.scale,
-			frame.left
-		)
-		camera.top = clamp(
-			frame.top + frame.height / 2 - y * camera.scale,
-			frame.top + frame.height - innerHeight * camera.scale,
-			frame.top
-		)
-		page.transform = `translate(${camera.left}px, ${camera.top}px) scale(${camera.scale})`
-		await sleep(850)
 	}
 	function shown(element) {
 		const rect = element.getBoundingClientRect()
@@ -85,20 +64,6 @@ async function play(task, steps) {
 	/** @param {Element} element */
 	async function aim(element) {
 		element.scrollIntoView({block: 'nearest', inline: 'nearest'})
-		const before = element.getBoundingClientRect()
-		// The camera holds still while the target sits well inside the zoomed view.
-		const inside =
-			before.left > frame.left + frame.width * 0.1 &&
-			before.right < frame.left + frame.width * 0.9 &&
-			before.top > frame.top + frame.height * 0.1 &&
-			before.bottom < frame.top + frame.height * 0.9
-		if (camera.scale === fit || !inside) {
-			await film(
-				1.3,
-				(before.left + before.width / 2 - camera.left) / camera.scale,
-				(before.top + before.height / 2 - camera.top) / camera.scale
-			)
-		}
 		const rect = element.getBoundingClientRect()
 		const point = {x: rect.left + Math.min(rect.width / 2, 80), y: rect.top + rect.height * 0.6}
 		cursor.style.translate = `${point.x}px ${point.y}px`
@@ -171,8 +136,6 @@ async function play(task, steps) {
 		}
 		if (step.press !== undefined) press(step.press)
 		if (step.see !== undefined) {
-			cursor.style.translate = `${innerWidth / 2}px ${innerHeight}px`
-			await film(1, 0, 0)
 			await find(step.see, targets, 0)
 		}
 	}
@@ -198,11 +161,10 @@ async function play(task, steps) {
 	}
 
 	// The recording starts in the same turn, so the first step waits for it; the last frame stays until it stops.
-	await film(1, 0, 0)
+	await sleep(400)
 	const from = Date.now()
 	const outcomes = await run(0, [])
 	caption.style.opacity = '0'
-	await film(1, 0, 0)
 	await sleep(1200)
 	setTimeout(() => {
 		layer.remove()

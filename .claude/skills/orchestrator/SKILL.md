@@ -30,7 +30,7 @@ stateDiagram-v2
 - **Checks wait for settle.** While drafting, the fixer, checks, tests and pushes wait for Validate unless the user asks; a diagnosis still runs its reproducing probe, and a delegate the proof its brief names.
 - **Directions.** Rough, made in minutes before any build: 2–3 you would build, differing in interaction model rather than styling, on the same data; a better idea than the user's is one of them.
 - **UI.** [prototype.html](references/prototype.html), by its header.
-- **Architecture.** One Mermaid diagram per direction, its id as the title.
+- **Architecture.** Settle first, each from code, docs, tests or a probe where they answer it: what deploys alone and who owns which data; who may do what; which queries, volume and retention shape storage; where each piece of state lives, how long, and which copy is the source; whether a failure is a cancellation, a retry or the user's to act on, and where it is handled; which operating facts remove complexity. Each direction then shows, under its id, the format that leaves no ambiguity for its case (a traced value, a contract diff, a role-by-operation grid, sample rows before and after), never prose, with only the details that change the choice.
 - **Precedent.** Before an edit, read how the neighbouring feature or shared package does it.
 - **Outside code.** [Repositories](references/repos.md).
 - **One owner.** One main thread per worktree: check `t3_thread_list` first and give the user a live owner's link rather than starting a second.
