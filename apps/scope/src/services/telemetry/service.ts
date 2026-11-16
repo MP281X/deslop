@@ -997,6 +997,7 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 	static readonly migrations = Layer.effectDiscard(
 		Migrator.make({})({
 			loader: Migrator.fromRecord({
+				// fallow-ignore-next-line code-duplication -- Each migration spells out the shapes it creates; migrations never share statements.
 				'0001_telemetry': Effect.gen(function* () {
 					// fallow-ignore-next-line code-duplication -- Each migration spells out the shapes it creates; migrations never share statements.
 					const sql = yield* SqlClient.SqlClient
@@ -1070,7 +1071,6 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 					yield* sql`CREATE TABLE releases (service TEXT PRIMARY KEY, version TEXT NOT NULL) STRICT`
 				}),
 				// Senders and statements stored once, rows keyed by integers and blobs, and search kept by triggers; one statement per table over every row, since it runs on a full database at start.
-				// fallow-ignore-next-line code-duplication -- Each migration spells out the shapes it creates; migrations never share statements.
 				'0002_interned': Effect.gen(function* () {
 					// fallow-ignore-next-line code-duplication -- Each migration spells out the shapes it creates; migrations never share statements.
 					const sql = yield* SqlClient.SqlClient
