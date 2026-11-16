@@ -42,17 +42,17 @@ stateDiagram-v2
 
 Delegates go to Codex unless the work needs Claude's judgement: the main thread runs on the Claude plan, the one to make last, and Codex persists until it reaches a result, good or bad.
 
-| Work                                                                                                                                                         | Model                              | `target`                                                    |
-| ------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------- | ----------------------------------------------------------- |
-| Edits whose architecture is settled; browser and computer use, captures; deep reviews; unbounded exploration; long runs, since Codex's cache does not expire | GPT-6.1 Sol                        | `codex` / `gpt-6.1-sol`                                     |
-| Bounded reads, searches, runs and checks                                                                                                                     | GPT-6.1 Terra                      | `codex` / `gpt-6.1-terra`                                   |
-| UI code; removals, since Codex rejects `rm -f` and `rm -rf`                                                                                                  | Sonnet 5.5                         | `claudeAgent` / `claude-sonnet-5-5`                         |
-| Work that cannot be scoped: an open UI or architecture                                                                                                       | Opus 5.5                           | `claudeAgent` / `claude-opus-5-5`                           |
-| Advisors on a hard architectural decision, both in one turn                                                                                                  | Fable 5.2 and GPT-6.1 Sol at xhigh | `claudeAgent` / `claude-fable-5-2`, `codex` / `gpt-6.1-sol` |
-| Never                                                                                                                                                        | Luna, Haiku                        |                                                             |
+| Work                                                                                                                                                         | Model                             | `target`                                                    |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------- | ----------------------------------------------------------- |
+| Edits whose architecture is settled; browser and computer use, captures; deep reviews; unbounded exploration; long runs, since Codex's cache does not expire | GPT-6.1 Sol                       | `codex` / `gpt-6.1-sol`                                     |
+| Bounded reads, searches, runs and checks                                                                                                                     | GPT-6.1 Terra                     | `codex` / `gpt-6.1-terra`                                   |
+| UI code; removals, since Codex rejects `rm -f` and `rm -rf`                                                                                                  | Sonnet 5.5                        | `claudeAgent` / `claude-sonnet-5-5`                         |
+| Work that cannot be scoped: an open UI or architecture                                                                                                       | Opus 5.5                          | `claudeAgent` / `claude-opus-5-5`                           |
+| Advisors on a hard architectural decision, both in one turn                                                                                                  | Fable 5.2 and GPT-6.1 Sol at high | `claudeAgent` / `claude-fable-5-2`, `codex` / `gpt-6.1-sol` |
+| Never                                                                                                                                                        | Luna, Haiku                       |                                                             |
 
 - **Other company.** A review or second opinion comes from the company that did not write or propose the work; advisors come from both.
-- **Effort.** Medium (`effort` on Claude, `reasoningEffort` on Codex); high when the task needs it; never low, nor xhigh or above outside the advisor row.
+- **Effort.** Medium (`effort` on Claude, `reasoningEffort` on Codex); high when the task needs it, and for advisors; never low, xhigh or above.
 
 ## Delegation
 
