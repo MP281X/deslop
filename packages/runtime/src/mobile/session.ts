@@ -106,7 +106,13 @@ export function makeSession() {
 	})
 	// Revalidation preserves subscriptions unless availability or the account's identity changes.
 	const availableAccountAtom = Atom.map(accountAtom, account =>
-		AsyncResult.isSuccess(account) ? account.value.id : undefined
+		Option.getOrUndefined(
+			pipe(
+				account,
+				Option.liftPredicate(AsyncResult.isSuccess),
+				Option.map(success => success.value.id)
+			)
+		)
 	)
 
 	const signInAtom = sessionRuntime.fn((_: void, get) =>

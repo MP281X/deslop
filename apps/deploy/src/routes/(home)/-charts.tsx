@@ -266,7 +266,6 @@ export function ChartBlock(props: {
 	usage: Usage
 }) {
 	const history = props.usage.history
-	const all = props.usage.bands
 	const focus = Option.getOrUndefined(
 		Option.flatMap(Option.fromUndefinedOr(props.selectedOwner), selected => focusedBand(props.usage, selected))
 	)
@@ -300,7 +299,7 @@ export function ChartBlock(props: {
 			focus,
 			format: bytesOf,
 			label: 'Memory',
-			layers: Array.map(all, band => ({...band, readings: band.memoryBytes, values: band.memory})),
+			layers: Array.map(props.usage.bands, band => ({...band, readings: band.memoryBytes, values: band.memory})),
 			recorded: Function.constTrue
 		},
 		{
@@ -308,7 +307,7 @@ export function ChartBlock(props: {
 			focus,
 			format: percentOf,
 			label: 'CPU',
-			layers: Array.map(all, band => ({...band, readings: band.cpu, values: band.cpu})),
+			layers: Array.map(props.usage.bands, band => ({...band, readings: band.cpu, values: band.cpu})),
 			recorded: sample => Option.isSome(sample.cpu)
 		},
 		{

@@ -232,9 +232,8 @@ export class Inventory extends Context.Service<
 						)
 					)
 				)
-				const rows = listed.rows
 				const failed = pipe(
-					rows,
+					listed.rows,
 					Array.filter(row => row.active === 'failed'),
 					Array.map(row => row.unit)
 				)
@@ -257,7 +256,7 @@ export class Inventory extends Context.Service<
 					),
 					() => unitFailures('')
 				)
-				return Array.map(rows, row =>
+				return Array.map(listed.rows, row =>
 					InventoryItem.make({
 						active: row.active === 'active',
 						detail: `${scope} · ${row.description}`,

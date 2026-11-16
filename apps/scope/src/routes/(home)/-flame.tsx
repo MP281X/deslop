@@ -1,4 +1,4 @@
-import {Array, Boolean, Duration, Function, Match, MutableHashMap, Number, Option, Record, String, pipe} from 'effect'
+import {Array, Boolean, Duration, Function, HashMap, Match, Number, Option, Record, String, pipe} from 'effect'
 
 // oxlint-disable-next-line eslint/no-restricted-imports -- useLayoutEffect: the flame measures its surface and label widths after layout and before paint, so bars never draw at a stale width.
 import {useLayoutEffect, useRef, useState} from 'react'
@@ -14,6 +14,7 @@ import type {SpanId, TraceTree} from '#services/telemetry/schema.ts'
 const FLAME_LANE = 24
 const FLAME_BAR = 22
 const FLAME_LABEL_PADDING = 12
+const NO_WIDTHS = HashMap.empty<string, number>()
 
 // The flame's 22px lanes while its trace loads, including a lane with two sibling bars; no axis, which the real pane draws only with data.
 export function SpansSkeleton(props: {label: string}) {
@@ -80,6 +81,19 @@ export function TimeAxis(props: {totalMs: Duration.Duration}) {
 	)
 }
 
+// Each text's rendered width at the label's size, laid out once in one hidden probe.
+function textWidths(surface: HTMLElement, texts: Array.NonEmptyReadonlyArray<string>) {
+	const probe = surface.ownerDocument.createElement('span')
+	probe.className = 'pointer-events-none invisible absolute text-xs whitespace-nowrap'
+	surface.appendChild(probe)
+	const widths = Array.map(texts, text => {
+		probe.textContent = text
+		return [text, probe.getBoundingClientRect().width] as const
+	})
+	probe.remove()
+	return widths
+}
+
 function labelOf(span: TraceTree['spans'][number]) {
 	return `${span.name} · ${durationOf(span.durationMs)}`
 }
@@ -90,7 +104,8 @@ export function Flame(props: {focus?: SpanId; onPick: (id: SpanId) => void; trac
 	const [width, setWidth] = useState(0)
 	const [labelWidths, setLabelWidths] = useState<Record<SpanId, number>>({})
 	const surface = useRef<HTMLDivElement>(null)
-	const labelCache = useRef(MutableHashMap.empty<string, number>())
+	// Widths by label text, so a live trace's update measures only its new labels; a font load measures them again.
+	const measuredLabels = useRef(NO_WIDTHS)
 	useLayoutEffect(() => {
 		function measure() {
 			if (surface.current === null) return
@@ -102,39 +117,40 @@ export function Flame(props: {focus?: SpanId; onPick: (id: SpanId) => void; trac
 		return () => observer.disconnect()
 	}, [])
 	useLayoutEffect(() => {
-		const element = surface.current
-		if (element === null) return
+		const spans = Array.filter(props.trace.spans, span => span.depth <= 1)
+		const labels = pipe(spans, Array.map(labelOf), Array.dedupe)
 		function measureLabels() {
-			let probe: HTMLSpanElement | undefined
-			const widths = pipe(
-				props.trace.spans,
-				Array.filter(span => span.depth <= 1),
-				Record.fromIterableWith(span => {
-					const label = labelOf(span)
-					let measured = Option.getOrUndefined(MutableHashMap.get(labelCache.current, label))
-					if (measured === undefined) {
-						if (probe === undefined) {
-							probe = element.ownerDocument.createElement('span')
-							probe.className = 'pointer-events-none invisible absolute text-xs whitespace-nowrap'
-							element.appendChild(probe)
-						}
-						probe.textContent = label
-						measured = probe.getBoundingClientRect().width
-						MutableHashMap.set(labelCache.current, label, measured)
-					}
-					return [span.spanId, measured] as const
-				})
+			const element = surface.current
+			if (element === null) return
+			const known = measuredLabels.current
+			const missing = Array.filter(labels, label => !HashMap.has(known, label))
+			// Only the current trace's labels are kept, so a long session holds no more than one trace's widths.
+			measuredLabels.current = HashMap.fromIterable([
+				...Array.getSomes(
+					Array.map(labels, label =>
+						pipe(
+							known,
+							HashMap.get(label),
+							Option.map(measured => [label, measured] as const)
+						)
+					)
+				),
+				...Array.match(missing, {onEmpty: () => [], onNonEmpty: texts => textWidths(element, texts)})
+			])
+			setLabelWidths(
+				Record.fromIterableWith(spans, span => [
+					span.spanId,
+					pipe(measuredLabels.current, HashMap.get(labelOf(span)), Option.getOrElse(Function.constant(0)))
+				])
 			)
-			probe?.remove()
-			setLabelWidths(widths)
 		}
 		function fontsLoaded() {
-			MutableHashMap.clear(labelCache.current)
+			measuredLabels.current = NO_WIDTHS
 			measureLabels()
 		}
 		measureLabels()
-		element.ownerDocument.fonts.addEventListener('loadingdone', fontsLoaded)
-		return () => element.ownerDocument.fonts.removeEventListener('loadingdone', fontsLoaded)
+		document.fonts.addEventListener('loadingdone', fontsLoaded)
+		return () => document.fonts.removeEventListener('loadingdone', fontsLoaded)
 	}, [props.trace])
 	const placed = lanesOf(
 		props.trace.spans,

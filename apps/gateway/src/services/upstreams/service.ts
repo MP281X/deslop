@@ -162,25 +162,25 @@ export class Upstreams extends Context.Service<Upstreams>()('@deslop/gateway/ser
 			) {
 				const execute = Effect.gen(function* () {
 					// Removal, replacement and expiry are checked again before a rejected session is reopened.
-					const {headers, url} = yield* authorize
-					const lock = yield* RcMap.get(locks, url)
+					const access = yield* authorize
+					const lock = yield* RcMap.get(locks, access.url)
 					const session = yield* pipe(
-						RcMap.get(sessions, url),
+						RcMap.get(sessions, access.url),
 						// Failed acquisitions leave no entry before unlocking.
-						Effect.tapError(() => RcMap.invalidate(sessions, url)),
-						Effect.provideService(accessHeaders, headers),
+						Effect.tapError(() => RcMap.invalidate(sessions, access.url)),
+						Effect.provideService(accessHeaders, access.headers),
 						Semaphore.withPermit(lock)
 					)
 					return yield* pipe(
 						run(session),
-						Effect.provideService(accessHeaders, headers),
+						Effect.provideService(accessHeaders, access.headers),
 						Effect.tapError(() =>
 							Semaphore.withPermit(
 								lock,
 								Effect.gen(function* () {
 									// A delayed failure from an old session must not invalidate a newer one.
-									if (Option.exists(yield* RcMap.getOption(sessions, url), value => value === session)) {
-										yield* RcMap.invalidate(sessions, url)
+									if (Option.exists(yield* RcMap.getOption(sessions, access.url), value => value === session)) {
+										yield* RcMap.invalidate(sessions, access.url)
 									}
 								})
 							)

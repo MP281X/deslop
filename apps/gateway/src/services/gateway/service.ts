@@ -1,5 +1,6 @@
 import {
 	Array,
+	Boolean,
 	DateTime,
 	Duration,
 	Context,
@@ -120,16 +121,24 @@ export class Gateway extends Context.Service<
 				McpServer.visibility(options =>
 					Effect.gen(function* () {
 						if (!HashSet.has(yield* Ref.get(visible), options.target)) return false
-						const entry = Record.get(yield* Ref.get(installed), options.target)
-						if (Option.isNone(entry)) return false
-						const {id, generation} = entry.value
-						const current =
-							options.method === 'tools/list'
-								? Array.findFirst(yield* yield* listingConnections, found => found.id === id)
-								: yield* Effect.option(connections.get(id))
-						return Option.exists(
-							current,
-							found => found.generation === generation && found.status === 'Connected'
+						return yield* pipe(
+							yield* Ref.get(installed),
+							Record.get(options.target),
+							Option.match({
+								onNone: () => Effect.succeed(false),
+								onSome: Effect.fnUntraced(function* (entry) {
+									const current = yield* Boolean.match(options.method === 'tools/list', {
+										onFalse: () => Effect.option(connections.get(entry.id)),
+										onTrue: Effect.fnUntraced(function* () {
+											return Array.findFirst(yield* yield* listingConnections, found => found.id === entry.id)
+										})
+									})
+									return Option.exists(
+										current,
+										found => found.generation === entry.generation && found.status === 'Connected'
+									)
+								})
+							})
 						)
 					})
 				).layer
@@ -159,19 +168,18 @@ export class Gateway extends Context.Service<
 				headers: Headers.Headers,
 				run: Parameters<typeof upstreams.use<A, E>>[1]
 			) {
-				let token = Option.none<string>()
-				const authorize = Effect.map(resolveUpstream(server, headers), current => {
-					token = current.token
-					return current
-				})
+				// The token the rejected attempt sent, so a refresh replaces exactly that one.
+				const sent = yield* Ref.make(Option.none<string>())
+				const authorize = Effect.tap(resolveUpstream(server, headers), current => Ref.set(sent, current.token))
 				return yield* pipe(
 					upstreams.use(authorize, run),
 					Effect.catchIf(
 						error => server.mode === 'oauth' && upstreamStatus(error) === 401,
 						() =>
-							Effect.andThen(
-								connections.token(server.id, server.generation, token),
-								upstreams.use(authorize, run)
+							pipe(
+								Ref.get(sent),
+								Effect.flatMap(token => connections.token(server.id, server.generation, token)),
+								Effect.andThen(upstreams.use(authorize, run))
 							)
 					),
 					Effect.mapError(connectionFailure(server.name))
@@ -415,9 +423,13 @@ export const GatewayDiscovery = HttpRouter.middleware()(
 				}
 				const verified = yield* Effect.result(auth.user(request.headers))
 				if (Result.isSuccess(verified)) yield* gateway.first(request.headers)
-				const states = Result.isSuccess(verified)
-					? yield* Effect.cached(Effect.catch(connections.definitions, () => Effect.succeed([])))
-					: Effect.succeed([])
+				// An unreadable connection list hides every upstream tool, as a failed per-tool read did.
+				const states = yield* Effect.cached(
+					Result.match(verified, {
+						onFailure: () => Effect.succeed([]),
+						onSuccess: () => Effect.catchTag(connections.definitions, 'AuthError', () => Effect.succeed([]))
+					})
+				)
 				const response = yield* Effect.provideService(app, listingConnections, states)
 				// A refusal or an Auth outage starts no work with the bearer it could not verify.
 				if (Result.isSuccess(verified)) yield* gateway.refresh(request.headers)

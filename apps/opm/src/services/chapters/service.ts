@@ -246,18 +246,8 @@ export class Chapters extends Context.Service<Chapters>()('@deslop/opm/services/
 		})
 
 		const sync = Effect.gen(function* () {
-			const {indexes, feeds} = yield* Effect.all(
+			const fetched = yield* Effect.all(
 				{
-					// Fetch independently, but replay failures alongside the serialized backfills below.
-					indexes: Effect.forEach(
-						Series.literals,
-						kind =>
-							Effect.map(
-								Effect.result(series(`https://cubari.moe/read/api/gist/series/${INDEXES[kind]}/`)),
-								answer => ({answer, kind})
-							),
-						{concurrency: 'unbounded'}
-					),
 					// One subreddit that does not answer leaves the other's releases for this round.
 					feeds: Effect.forEach(
 						FEEDS,
@@ -300,25 +290,37 @@ export class Chapters extends Context.Service<Chapters>()('@deslop/opm/services/
 								Effect.option
 							),
 						{concurrency: 'unbounded'}
+					),
+					// Fetch independently, but replay failures alongside the serialized backfills below.
+					indexes: Effect.forEach(
+						Series.literals,
+						kind =>
+							Effect.map(
+								Effect.result(series(`https://cubari.moe/read/api/gist/series/${INDEXES[kind]}/`)),
+								answer => ({answer, kind})
+							),
+						{concurrency: 'unbounded'}
 					)
 				},
 				{concurrency: 'unbounded'}
 			)
 			// The index is read every round, so a gap left by a dead reader link fills once its archive entry appears.
 			yield* Effect.forEach(
-				indexes,
-				({answer, kind}) =>
-					Effect.ignore(Effect.flatMap(Effect.fromResult(answer), index => backfill(kind, index)), {
-						log: 'Warn',
-						message: `The ${kind} community index was not read`
-					}),
+				fetched.indexes,
+				read =>
+					pipe(
+						Effect.fromResult(read.answer),
+						Effect.flatMap(index => backfill(read.kind, index)),
+						Effect.ignore({log: 'Warn', message: `The ${read.kind} community index was not read`})
+					),
 				{concurrency: 1, discard: true}
 			)
-			if (Array.every(feeds, Option.isNone)) return yield* ChaptersError.make({message: 'Reddit did not answer.'})
+			if (Array.every(fetched.feeds, Option.isNone))
+				return yield* ChaptersError.make({message: 'Reddit did not answer.'})
 			const now = yield* DateTime.now
 			const current = yield* chapters
 			const candidates = revisionCandidates(
-				[...ARCHIVE_POSTS, ...Array.flatten(Array.getSomes(feeds))],
+				[...ARCHIVE_POSTS, ...Array.flatten(Array.getSomes(fetched.feeds))],
 				current,
 				yield* Ref.get(deadLinks)
 			)

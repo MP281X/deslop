@@ -466,15 +466,13 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 						)
 						return frames
 					}),
-					pipe(
+					Effect.flatMap(
 						optional('No transcript', Option.none<string>)(media.fileTranscript(userId, stored)),
-						Effect.flatMap(
-							Option.match({
-								onNone: () => Effect.void,
-								onSome: text =>
-									change(note.id, NoteChange.cases.video.make({content: Option.none(), transcript: Option.some(text)}))
-							})
-						)
+						Option.match({
+							onNone: () => Effect.void,
+							onSome: text =>
+								change(note.id, NoteChange.cases.video.make({content: Option.none(), transcript: Option.some(text)}))
+						})
 					)
 				],
 				{concurrency: 2}

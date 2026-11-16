@@ -5,7 +5,7 @@ import {Array, Boolean, DateTime, Duration, Function, Option, Record, Schema, St
 import {AppWindowIcon, HardDrivesIcon, LaptopIcon, MonitorIcon, TerminalWindowIcon} from '@phosphor-icons/react'
 import {CatchBoundary, Link, createFileRoute, getRouteApi} from '@tanstack/react-router'
 import {AsyncResult} from 'effect/reactivity'
-import {Suspense, useDeferredValue, useMemo} from 'react'
+import {Suspense, useDeferredValue} from 'react'
 import type {ReactNode} from 'react'
 
 import {StaleProblem} from '@deslop/components-web/blocks/problem'
@@ -404,12 +404,13 @@ function HomeRoute() {
 		...Array.map(shownHistories, machine => machine.worker)
 	])
 	const active = Option.getOrUndefined(Option.orElse(search.machine, () => Array.head(workers)))
-	const history = Option.flatMap(Option.fromUndefinedOr(active), current =>
-		Array.findFirst(shownHistories, machine => machine.worker === current)
+	const history = Option.getOrUndefined(
+		Option.flatMap(Option.fromUndefinedOr(active), current =>
+			Array.findFirst(shownHistories, machine => machine.worker === current)
+		)
 	)
-	// The list and the charts share one derivation per history value.
-	const historyValue = Option.getOrUndefined(history)
-	const usage = useMemo(() => Option.getOrUndefined(Option.map(Option.fromUndefinedOr(historyValue), usageOf)), [historyValue])
+	// The list and the charts share one derivation per history, which the compiler keeps until the history changes.
+	const usage = Option.getOrUndefined(Option.map(Option.fromUndefinedOr(history), usageOf))
 	const rows = pipe(
 		snapshot,
 		Option.map(value => workloads(value.items)),
@@ -435,7 +436,7 @@ function HomeRoute() {
 			Option.match(owner(row), {onNone: () => [], onSome: id => [[id, workloadName(row.item)] as const]})
 		)
 	) satisfies Record<AppId, string>
-	const sorted = Array.sort(ranged(activeRows, shownMinutes, historyValue), rowOrder)
+	const sorted = Array.sort(ranged(activeRows, shownMinutes, history), rowOrder)
 	const selectedRow = Option.getOrUndefined(
 		Option.flatMap(search.app, current => Array.findFirst(activeRows, row => row.item.id === current))
 	)

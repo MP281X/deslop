@@ -141,7 +141,7 @@ export type Usage = {
 	recorded: HashSet.HashSet<AppId>
 }
 
-export function usageOf(history: MachineHistory): Usage {
+export function usageOf(history: MachineHistory) {
 	const apps = appSeries(history)
 	return {
 		bands: bandsOf(history, apps),

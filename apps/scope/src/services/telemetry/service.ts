@@ -778,11 +778,11 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 			)
 		})
 		// Cache lookups may run in an RPC's scope; shared sources belong to this service instead.
-		const scope = yield* Effect.scope
+		const serviceScope = yield* Effect.scope
 		const overviews = yield* Cache.make({
 			capacity: TimeFrame.literals.length,
-			lookup: (range: TimeFrame) =>
-				pipe(
+			lookup: Effect.fnUntraced(function* (range: TimeFrame) {
+				return yield* pipe(
 					// Buffer cheap invalidations, not computed overviews. A pending write survives the cooldown.
 					sql.reactive(['telemetry'], Effect.void),
 					Stream.buffer({capacity: 1, strategy: 'sliding'}),
@@ -795,8 +795,9 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 					Stream.mapError(cause => TelemetryError.make({cause, message: UNAVAILABLE})),
 					Stream.withSpan('Telemetry.watch', {attributes: {range, 'rpc.stream': true}}),
 					Stream.share({capacity: 1, replay: 1, strategy: 'sliding'}),
-					Effect.provideService(Scope.Scope, scope)
+					Effect.provideService(Scope.Scope, serviceScope)
 				)
+			})
 		})
 		const tree = Effect.fnUntraced(function* (id: TraceId) {
 			const traceId = TraceId.make(String.toLowerCase(id))

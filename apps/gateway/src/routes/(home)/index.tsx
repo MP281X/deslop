@@ -1,13 +1,13 @@
-import {useAtom, useAtomSet} from '@effect/atom-react'
+import {useAtom, useAtomSet, useAtomValue} from '@effect/atom-react'
 
-import {Array, Boolean, Function, Number, Option, Order, Schema, String, pipe} from 'effect'
+import {Array, Boolean, Effect, Function, Number, Option, Order, Schema, String, pipe} from 'effect'
 
 import {HardDrivesIcon, LinkIcon, WrenchIcon} from '@phosphor-icons/react'
 import {CatchBoundary, createFileRoute, getRouteApi} from '@tanstack/react-router'
 import {useMachineResult} from '@typeonce/effect-machine-react'
 import {AtomMachine} from '@typeonce/effect-machine/reactivity'
 import {AsyncResult, Atom} from 'effect/reactivity'
-import {lazy, Suspense, useState} from 'react'
+import {Suspense, useState} from 'react'
 import type {ReactNode} from 'react'
 import {Line, LineChart, YAxis} from 'recharts'
 
@@ -55,7 +55,8 @@ const PAYER_LABELS: Record<Payer, string> = {balance: 'Zen balance', byok: 'Anth
 const PROVIDER_NAMES: Record<AiProvider, string> = {anthropic: 'Anthropic', openai: 'OpenAI', opencode: 'OpenCode'}
 const PROVIDER_PAYERS: Record<AiProvider, Payer> = {anthropic: 'byok', openai: 'openai', opencode: 'balance'}
 const PERIODS = Array.map(TimeFrame.literals, value => ({label: value, value}))
-const AddKeyDialog = lazy(() => import('#routes/(home)/-keys.tsx'))
+// The key dialog is its own chunk, fetched after the page's so the page parses without it.
+const keysModuleAtom = Atom.make(Effect.promise(() => import('#routes/(home)/-keys.tsx')))
 
 const route = getRouteApi('/(home)/')
 
@@ -428,16 +429,17 @@ function HomeRoute() {
 				<AddField onKey={addKey} />
 				<List period={period} />
 			</Page>
-			{keyDialog.open && (
-				<Suspense fallback={null}>
-					<AddKeyDialog
+			{Option.match(AsyncResult.value(useAtomValue(keysModuleAtom)), {
+				onNone: Function.constNull,
+				onSome: module => (
+					<module.AddKeyDialog
 						key={keyDialog.opened}
 						open={keyDialog.open}
 						secret={keyDialog.secret}
 						onOpenChange={open => setKeyDialog(previous => ({...previous, open}))}
 					/>
-				</Suspense>
-			)}
+				)
+			})}
 		</div>
 	)
 }

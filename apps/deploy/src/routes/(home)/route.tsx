@@ -1,29 +1,19 @@
 import {useAtomValue} from '@effect/atom-react'
 
-import {Function, Option} from 'effect'
+import {Effect, Function, Option} from 'effect'
 
 import {Outlet, createFileRoute} from '@tanstack/react-router'
-import {Suspense, lazy} from 'react'
+import {AsyncResult, Atom} from 'effect/reactivity'
 
-import {exposeTargetAtom} from '#lib/fleet.ts'
-
-// The dialog's code loads the first time a port's expose opens.
-const ExposeDialog = lazy(async () => {
-	const {ExposeDialog: dialog} = await import('#routes/(home)/-expose.tsx')
-	return {default: dialog}
-})
+// The dialog is its own chunk, fetched after the page's so the page parses without it, and stays mounted once loaded so it closes with its animation.
+const exposeModuleAtom = Atom.make(Effect.promise(() => import('#routes/(home)/-expose.tsx')))
 
 function ShellRoute() {
-	const target = useAtomValue(exposeTargetAtom)
 	return (
 		<>
-			{Option.match(target, {
+			{Option.match(AsyncResult.value(useAtomValue(exposeModuleAtom)), {
 				onNone: Function.constNull,
-				onSome: () => (
-					<Suspense fallback={null}>
-						<ExposeDialog />
-					</Suspense>
-				)
+				onSome: module => <module.ExposeDialog />
 			})}
 			<Outlet />
 		</>
