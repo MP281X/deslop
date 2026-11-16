@@ -87,6 +87,12 @@ import {
 	SettledTrace,
 	Span,
 	SpanLink,
+	StoredLog,
+	StoredResource,
+	StoredSpan,
+	StoredSpanLink,
+	StoredStatement,
+	StoredTrace,
 	TelemetryError,
 	Trace,
 	TraceDetail,
@@ -451,7 +457,7 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 		// The sender every distinct sender of a batch names, added when new; UNIQUE keeps NULLs apart, so the index compares markers for them.
 		function saveResources(batch: string, path: string) {
 			return sql`
-				INSERT INTO resources (service, runtime, run, version)
+				INSERT INTO ${sql(StoredResource.table)} (service, runtime, run, version)
 				SELECT DISTINCT value ->> 'service', value ->> 'runtime', value ->> 'run', value ->> 'version'
 				FROM json_each(${batch}, ${path})
 				WHERE true
@@ -473,7 +479,7 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 				Effect.gen(function* () {
 					yield* saveResources(batch, '$.spans')
 					yield* sql`
-						INSERT INTO statements (text)
+						INSERT INTO ${sql(StoredStatement.table)} (text)
 						SELECT DISTINCT ${arrivingAttributes} ->> '$."db.query.text"' FROM json_each(${batch}, '$.spans') AS arriving
 						WHERE json_type(${arrivingAttributes}, '$."db.query.text"') = 'text'
 						ON CONFLICT DO NOTHING
@@ -582,10 +588,10 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 				const last = sql`(SELECT max(id) FROM traces WHERE receivedAt < ${cutoff})`
 				return Effect.all(
 					[
-						sql`DELETE FROM span_links WHERE trace <= ${last}`,
-						sql`DELETE FROM logs WHERE trace <= ${last}`,
-						sql`DELETE FROM spans WHERE trace <= ${last}`,
-						sql`DELETE FROM traces WHERE id <= ${last}`
+						sql`DELETE FROM ${sql(StoredSpanLink.table)} WHERE trace <= ${last}`,
+						sql`DELETE FROM ${sql(StoredLog.table)} WHERE trace <= ${last}`,
+						sql`DELETE FROM ${sql(StoredSpan.table)} WHERE trace <= ${last}`,
+						sql`DELETE FROM ${sql(StoredTrace.table)} WHERE id <= ${last}`
 					],
 					{concurrency: 1, discard: true}
 				)
