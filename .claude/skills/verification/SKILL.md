@@ -13,6 +13,7 @@ Lint owns what a parser can check; this covers running behaviour. The repository
 stateDiagram-v2
     [*] --> Reproducing : a bug or check fails
     Reproducing --> Fixing : failing check, request or capture on base, before any theory
+    Reproducing --> [*] : [no probe fails on base] / report the probes run, ask for the failing input
     Fixing --> Probing : edit where the wrong state starts, not a guard, retry or swallowed error downstream of it
     Probing --> [*] : probe [passes]
     Probing --> Fixing : probe [fails after the first edit]
@@ -21,7 +22,7 @@ stateDiagram-v2
 
 ## Validate
 
-Validate runs, on the final tree, the repository's fixer, the tests covering the change and Prove's evidence for it; evidence stays valid while its inputs are unchanged. CI runs the rest after the push (pull-requests skill).
+Validate runs the repository's fixer and commits its changes, then, on that commit, the tests covering the change and Prove's evidence for it; evidence stays valid while its inputs are unchanged. CI runs the rest after the push (pull-requests skill).
 
 ## Prove
 

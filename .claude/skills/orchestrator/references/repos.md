@@ -1,6 +1,6 @@
 # Repositories
 
-A package's behaviour comes from its installed source, read rather than recalled. A listed repository answers only what local precedent and installed source cannot; read only the relevant source.
+Read only the relevant source of the repository whose subject matches.
 
 ## Packages we use
 

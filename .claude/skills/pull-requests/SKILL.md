@@ -19,12 +19,13 @@ description: 'Load before the first commit of a task, before the first edit when
 stateDiagram-v2
     [*] --> Pushing : work to publish / the first push opens a draft, a ready PR whose layer changes goes back to draft
     Pushing --> Pushing : fixer [fails] / fix
-    Pushing --> Watching : fixer [passes, or Validate ran it on this tree] / commit its changes, push, update the body for the head, read back each changed diagram, image or video
-    Watching --> [*] : pipeline [pending, main thread] / watch_pull_request, end the turn
-    Watching --> [*] : pipeline [pending, a delegate] / report the PR, head and pending checks
+    Pushing --> Describing : fixer [passes, or Validate ran it on this tree] / commit its changes, push, update the body for the head
+    Describing --> Describing : read back [a changed diagram, image or video fails to render] / fix the body
+    Describing --> Watching : read back [nothing visual changed, or all of it renders]
+    Watching --> Watching : pipeline [pending] / end the turn or the delegate run, the main thread's wake resumes here
     Watching --> Pushing : pipeline [fails or conflicts] / fix, recapture what changed
-    Watching --> [*] : pipeline [passes, readying authorized by the user or the repository's AGENTS.md] / mark ready, unwatch, hand back
-    Watching --> [*] : pipeline [passes, readying not authorized] / unwatch, hand back
+    Watching --> [*] : pipeline [passes, readying authorized by the user or the repository's AGENTS.md] / mark ready, hand back
+    Watching --> [*] : pipeline [passes, readying not authorized] / hand back
 ```
 
 - **Push** once per affected PR per round, since each push cancels the previous pipeline.

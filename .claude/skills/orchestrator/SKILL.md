@@ -11,9 +11,9 @@ description: 'Load before starting any change to a repository (code, config or d
 stateDiagram-v2
     [*] --> Discussing : request
     Discussing --> Discussing : question / answer
-    Discussing --> Drafting : [main thread, Approval covers the change, no taste or product choice open] / edit, commit
-    Discussing --> Variants : [a taste or product choice is open] / render each decision's variants beside Today
-    Discussing --> Planned : [evidence leaves one variant] / trace each claim to code read or run, show the plan
+    Discussing --> Drafting : [evidence leaves one variant, Approval covers the change, main thread] / edit, commit
+    Discussing --> Variants : [evidence leaves a taste, product or architecture choice open] / render each decision's variants beside Today
+    Discussing --> Planned : [evidence leaves one variant, in a side chat or without Approval covering the change] / trace each claim to code read or run, show the plan
     Variants --> Variants : user steers or mixes variants / edit the data, render again by path
     Variants --> Planned : user picks variants / trace each claim to code read or run, show the plan
     Planned --> Discussing : user steers
@@ -33,7 +33,7 @@ stateDiagram-v2
 - **Architecture.** Settle first, each from code, docs, tests or a probe where they answer it: what deploys alone and who owns which data; who may do what; which queries, volume and retention shape storage; where each piece of state lives, how long, and which copy is the source; whether a failure is a cancellation, a retry or the user's to act on, and where it is handled; which operating facts remove complexity. Each variant then shows, under its id, the format that leaves no ambiguity for its case (a traced value, a contract diff, a role-by-operation grid, sample rows before and after), never prose, with only the details that change the choice.
 - **Untouched.** Every plan lists what stays untouched beside what changes.
 - **Precedent.** Before an edit, read how the neighbouring feature or shared package does it.
-- **Outside code.** [Repositories](references/repos.md).
+- **Outside code.** A package's behaviour comes from its installed source, read rather than recalled; [Repositories](references/repos.md) only for what local precedent and installed source cannot answer.
 - **One owner.** One main thread per worktree: check `t3_thread_list` first and give the user a live owner's link rather than starting a second.
 - **Main.** Do small edits, prototypes and needed reads yourself, since a delegate costs a brief and a report on a thread that re-reads its context every call.
 
@@ -58,10 +58,12 @@ Delegates go to Codex unless the work needs Claude's judgement: the main thread 
 ```mermaid
 stateDiagram-v2
     [*] --> Running : outcome briefed / delegate_task, siblings with disjoint files in one turn
-    Running --> [*] : PASS [the result matches the decisions] / commit its shared-checkout diff
-    Running --> Running : ISSUES, or PASS missing a decision [first time] / t3_thread_send the child what the brief left out
-    Running --> [*] : ISSUES, or PASS missing a decision [again] / finish it in the main thread
-    Running --> [*] : BLOCKED / clear the blocker, or put it to the user
+    Running --> [*] : PASS or ISSUES [read-only brief] / use its findings and evidence
+    Running --> [*] : PASS [edit brief, the result matches the decisions] / commit its shared-checkout diff
+    Running --> Running : ISSUES, or PASS missing a decision [edit brief, first time] / t3_thread_send the child what the brief left out
+    Running --> [*] : ISSUES, or PASS missing a decision [edit brief, again] / finish it in the main thread
+    Running --> Running : BLOCKED [the main thread can clear it] / clear the blocker, t3_thread_send the child to continue
+    Running --> [*] : BLOCKED [only the user can clear it] / put it to the user
     [*] --> PRThread : a separate PR must progress in parallel / delegate_task isolation 'worktree', a persistent thread
     PRThread --> PRThread : its next step / t3_thread_send
     PRThread --> [*] : its PR merged or closed / Cleanup
@@ -80,10 +82,11 @@ A delegate runs its brief as the approved plan and edits only the brief's files.
 
 ```mermaid
 stateDiagram-v2
-    [*] --> Working : brief arrives
-    Working --> Working : the brief's proof [fails] / fix
-    Working --> [*] : work done [proof passes or none named, shared checkout] / report PASS
-    Working --> [*] : work done [proof passes or none named, PR thread] / commit, push by the pull-requests skill once the brief or a message calls the work settled, report PASS
+    [*] --> Working : a brief or a later message arrives
+    Working --> Working : the brief's proof [fails, edit brief] / fix
+    Working --> [*] : work done [read-only brief] / report ISSUES with each finding or failed check, else PASS, with evidence
+    Working --> [*] : work done [edit brief, proof passes or none named, shared checkout] / report PASS
+    Working --> [*] : work done [edit brief, proof passes or none named, PR thread] / commit, then if the brief or a message has called the work settled, Validate and push by the pull-requests skill, report PASS
     Working --> [*] : cannot finish [a command's output proves the blocker] / report BLOCKED
     Working --> [*] : cannot finish [no proved blocker] / report ISSUES with what is done and what is missing
 ```
