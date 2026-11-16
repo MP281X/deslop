@@ -2,6 +2,9 @@
 
 Every push to `main` runs `deploy.yaml`: Verify, unless its branch already passed on the same tree, then the npm packages and, for each mobile app, its EAS Update or, for a native fingerprint without a build shipped in the last 80 days, its App Store build, so TestFlight never drops the installed build. An app publishes as `@deslop/<app>` only when what it ships changed; one never published is skipped with a warning until its first publish.
 
+- **History.** `main` is linear: every PR is squash-merged.
+- **Job conditions.** GitHub propagates skipped jobs through dependency chains: a job after an optional Verify needs an explicit status function and Verify's successful result.
+
 ## A new app
 
 After `vp create app -- --name <name>` (`--kind mobile` for iPhone) and `vp install`, the user does two things, each once: approve npm's first publish, and create the App Store Connect record. Everything else is the agent's or happens by itself.
@@ -32,13 +35,13 @@ After `vp create app -- --name <name>` (`--kind mobile` for iPhone) and `vp inst
 
 5. **TestFlight** (automatic, after the merge). Release finds the record by bundle ID, gives it an internal TestFlight group with every build and the testers of the team's other internal groups, builds, uploads and links the TestFlight page in the run's summary. Without a record the app's release fails, naming the bundle ID, the link and the `gh run rerun <run-id> --failed` that retries it once the record exists; the other apps still ship.
 
-A new publishable tool, rather than an app, copies the publish fields from `tools/coding-standards/package.json` and `pack.deps` from its `vite.config.ts`, with version `0.1.0` and the same `repository.url`, and joins Release's Build and Package steps beside it; then its first publish as in step 4, packed with `vp -C tools/<name> pm pack`. A `vp create package` library is bundled into what uses it and never publishes.
+A new publishable tool, rather than an app, copies the publish fields from `tools/coding-standards/package.json` and `pack.deps` from its `vite.config.ts`, with version `0.1.0` and the same `repository.url`, and joins the Packages job's **Build every package** and publish steps beside it; then its first publish as in step 4, packed with `vp -C tools/<name> pm pack`. A `vp create package` library is bundled into what uses it and never publishes.
 
 ## Follow a release
 
 The App Store job uploads the `.ipa` from GitHub's Mac with `altool --upload-package` and fails on Apple's error before publishing the build's EAS Update; read it with `gh run view <run-id> --job <job-id> --log`. Upload is not processing: report uploaded, processing or available, with the run URL and the TestFlight URL from the run's summary. Public TestFlight and App Store release are separate outward actions.
 
-Each worker runs its apps as user services (`npm install --global @deslop/<app>`, then `<app> service install --domain mp281x.xyz` with the app-specific flags `<app> --help` lists), which pick up a newer release on their next update, about every 15 minutes while the worker is on, or at once with `<app> service update`. A release is live when each app's `/api/runtime` returns 200 and reports the new version.
+Each worker's app services pick up a newer release on their next update ([runtime](../packages/runtime/README.md)), or at once with `<app> service update`. A release is live when each app's `/api/runtime` returns 200 and reports the new version.
 
 ## Simulator builds
 

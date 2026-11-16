@@ -1,6 +1,6 @@
 # Repositories
 
-The required source whenever you use an external package or need a reference: pick the repository whose subject matches and read its source from the clone, never a summary or memory. An unlisted package: its installed source.
+Read only the relevant source of the repository whose subject matches.
 
 ## Packages we use
 
@@ -34,6 +34,6 @@ Read-only, in `/tmp/repos/<repository>`: never edit, commit or push there.
 ```mermaid
 stateDiagram-v2
     [*] --> Reading : a repository is needed [/tmp/repos/NAME exists] / git -C /tmp/repos/NAME pull --ff-only
-    [*] --> Reading : a repository is needed [missing, or emptied at boot] / git clone --depth 1 https://github.com/OWNER/NAME /tmp/repos/NAME
+    [*] --> Reading : a repository is needed [missing] / git clone --depth 1 https://github.com/OWNER/NAME /tmp/repos/NAME
     Reading --> [*]
 ```

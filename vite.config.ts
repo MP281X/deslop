@@ -43,8 +43,13 @@ export default defineConfig({
 		]
 	},
 	fmt: {
-		// Icon Composer writes and reads its own JSON layout.
-		ignorePatterns: ['**/*.gen.ts', '**/*.icon/**', 'packages/components-web/src/ui/**'],
+		// Icon Composer writes and reads its own JSON layout; the prototype stays dense because agents read it into context.
+		ignorePatterns: [
+			'**/*.gen.ts',
+			'**/*.icon/**',
+			'packages/components-web/src/ui/**',
+			'.claude/skills/orchestrator/references/prototype.html'
+		],
 
 		arrowParens: 'avoid',
 		bracketSpacing: false,
@@ -171,6 +176,9 @@ export default defineConfig({
 				rules: {
 					'@deslop/coding-standards/library-operation': 'off',
 					'@deslop/coding-standards/no-native-method-call': 'off',
+					'effecttsgo/async-function': 'off',
+					'effecttsgo/global-date': 'off',
+					'effecttsgo/global-timers': 'off',
 					'effecttsgo/prefer-effect-array': 'off',
 					'effecttsgo/prefer-effect-string': 'off',
 					'eslint/no-restricted-globals': 'off',

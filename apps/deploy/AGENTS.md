@@ -9,5 +9,5 @@
 
 ## Boundary facts
 
-- **Peer commands.** DEPLOY_WORKERS lists Tailscale machine names. A peer-only command has no worker target and always commits locally, then refreshes the shared inventory before returning; it never forwards again. Every command's completion invalidates page snapshots.
+- **Peer commands.** A peer-only command has no worker target and always commits locally, then refreshes the shared inventory before returning; it never forwards again. Every command's completion invalidates page snapshots.
 - **Collector input.** Machine output is untrusted: an empty field and a missing key are the same absence, a malformed row is skipped or loses its unreadable metadata, and a failure to parse whole-machine figures is a `DeployError`, never a defect.

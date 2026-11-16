@@ -7,39 +7,30 @@ description: 'Load before the first commit of a task, before the first edit when
 
 ## Branches
 
-- **One PR per change.** More work on the same change goes into its unmerged PR, edited in place. Split only what is independent, or a different layer of the same change; each PR runs on its target, with generated files beside their source.
-- **Stacks** ease review, not stepwise merging: PRs that depend on each other form one stack, one branch per layer, each readable alone. Restack with the host's stack commands, because a hand retarget loses the stack's tracking.
-- **Reshape.** Remove a rejected approach from every unmerged layer rather than undoing it in a layer above.
-- **Integration.** Fold corrections into their owning layers, then restack onto the latest default branch before Validate.
+- **One PR per change.** More work on the same change goes into its unmerged PR. Split only what is independent, or a different layer of the same change, each running on its target with generated files beside their source.
+- **Stacks.** Dependent PRs form one stack, one branch per layer, each readable alone, restacked only with the host's [stack commands](references/stacks.md); a rejected approach leaves every unmerged layer, and corrections fold into their owning layer before restacking onto the latest default branch.
 - **Before.** When a before/after is claimed, capture Before on base before the first edit.
 
 ## Lifecycle
 
 ```mermaid
 stateDiagram-v2
-    [*] --> Watching : any push, the first as a draft / watch its pipeline, never hand back before it ends
-    Watching --> Watching : pipeline [fails or conflicts] / fix, recapture what changed, push
-    Watching --> [*] : required jobs pass [not to be readied] / hand back
-    Watching --> Ready : required jobs pass [user asks, or the repository's AGENTS.md readies a settled PR] / mark ready
-    Ready --> Watching : its layer needs an edit / mark draft, push
+    [*] --> Pushing : work to publish
+    Pushing --> Pushing : the fixer [fails] / fix
+    Pushing --> Describing : the fixer [passes, or Validate ran it on this tree] / commit, push each affected PR once, update the body for the head
+    Describing --> Describing : read back [a changed diagram, image or video fails to render] / fix the body
+    Describing --> Watching : read back [all of it renders]
+    Watching --> Watching : pipeline [pending] / end the turn or run, the PR watch wakes the main thread
+    Watching --> Pushing : pipeline [fails or conflicts] / fix, recapture what changed
+    Watching --> [*] : the PR merges or closes / Cleanup
+    Watching --> [*] : pipeline [passes] / mark ready if the user or the repository's AGENTS.md authorizes it, hand back
 ```
 
-- **Push** once per affected PR per round, since each push cancels the previous pipeline. Every push, drafts included:
-
-  ```mermaid
-  stateDiagram-v2
-      [*] --> Fixing
-      Fixing --> Fixing : the repository's fixer [fails] / fix
-      Fixing --> Describing : fixer [passes, or Validate ran it on this unchanged tree] / commit its changes, push, update the body for the new head
-      Describing --> [*] : [no diagram, image or video changed in the body]
-      Describing --> Describing : read back [a changed diagram, image or video fails] / fix the body
-      Describing --> [*] : read back [all render]
-  ```
-
-- **Describe** by filling `.github/pull_request_template.md` on GitHub, `.gitlab/merge_request_templates/Default.md` on GitLab. Trim a recording's still stretches:
+- **Drafts.** The first push opens a draft; a ready PR whose layer changes goes back to draft.
+- **Describe** by filling `.github/pull_request_template.md` on GitHub, `.gitlab/merge_request_templates/Default.md` on GitLab. Trim a recording to `play`'s start (verification skill) and its still stretches:
 
   ```bash
-  ffmpeg -i <recording> -vf "mpdecimate=hi=1:lo=1:frac=0,setpts='if(eq(N,0),0,PREV_OUTPTS+min(PTS-PREV_INPTS,1/TB))',fps=60,scale=out_range=tv,format=yuv420p" -c:v libx264 -pix_fmt yuv420p -color_range tv -movflags +faststart -an <trimmed>.mp4
+  ffmpeg -ss <lead> -i <recording> -vf "mpdecimate=hi=1:lo=1:frac=0,setpts='if(eq(N,0),0,PREV_OUTPTS+min(PTS-PREV_INPTS,1/TB))',fps=60,scale=out_range=tv,format=yuv420p" -c:v libx264 -pix_fmt yuv420p -color_range tv -movflags +faststart -an <trimmed>.mp4
   ```
 
 ## Commands
@@ -56,27 +47,3 @@ glab mr update <n> --description-file - --attach ./shot.png <<'EOF'   # appends 
 glab api "projects/:id/merge_requests/<n>?render_html=true" | jq -r .description_html
 glab api "projects/:id/pipelines/<pipeline>/jobs?scope[]=failed" | jq -r '.[] | "\(.id) \(.name)"'; glab ci trace <job id>
 ```
-
-**GitHub stacks** act on the checked-out branch's stack; GitHub rebases the next layer when the one below merges.
-
-```bash
-gh stack init <bottom> [<next> …]    # start, or adopt existing branches bottom first
-gh stack add <branch>                # a new layer on top, checked out before its first commit
-gh stack rebase [--upstack]          # before a push, or above an amended layer; --continue or --abort on a conflict
-gh stack submit --auto               # first push: opens each PR as a draft on its parent
-gh stack push                        # later rounds
-gh stack sync --prune                # after a merge below
-gh stack unstack --local             # drop tracking of a stack that was never submitted
-```
-
-**GitLab stacks** act on the stack selected in this worktree: one commit per diff on its own branch, whose first message line is the MR title (`Draft: ` opens a draft). Every MR of a stack comes from `sync`, which never edits an existing MR.
-
-```bash
-git commit -m 'Draft: <title>'
-script -qec "GLAB_EDITOR='sh -c \"git rev-list --reverse origin/<default>..HEAD > \\\$1\" -' glab stack infer --name <stack> origin/<default>..HEAD" /dev/null
-git add -A && glab stack save -m 'Draft: <title>'    # a new layer; `amend` folds into the checked-out one
-glab stack sync --skip-push --update-base            # before Validate, and after a merge below: rebase onto the base, drop merged diffs
-glab stack sync                                      # push the validated stack, open missing MRs
-```
-
-`infer` needs a TTY and an editor, and its range starts at `origin/<default>` since the local default branch can lag; `glab stack create` cannot run in a worktree. `glab stack reorder` takes the same `script` and editor shape, one branch per line, then `glab stack sync`.

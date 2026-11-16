@@ -11,44 +11,50 @@ Lint owns what a parser can check; this covers running behaviour. The repository
 
 ```mermaid
 stateDiagram-v2
-    [*] --> Reproducing : a bug or check fails
-    Reproducing --> Fixing : failing check, request or capture on base, before any theory
-    Fixing --> Probing : edit where the wrong state starts, not a guard, retry or swallowed error downstream of it
-    Probing --> [*] : probe [passes]
-    Probing --> Fixing : probe [fails after the first edit]
-    Probing --> Reproducing : probe [fails after the second edit] / drop the hypothesis
+    [*] --> Reproducing : a bug or failed check
+    Reproducing --> Fixing : a probe fails on the unfixed tree / base for a reported bug, the head for a failure the change introduced
+    Reproducing --> [*] : [no probe fails] / report the probes run, ask for the failing input
+    Fixing --> [*] : the same probe passes on the head
+    Fixing --> Reproducing : [the second fix fails] / drop the hypothesis
 ```
+
+- **Probe.** A check, request or capture, run before any theory.
+- **Fix** where the wrong state starts, not with a guard, retry or swallowed error downstream of it.
 
 ## Validate
 
-Run the repository's checks locally on what you changed: the tests that cover it, and the fixer and checks scoped to the touched packages where the repository's commands allow. Then push; the CI pipeline runs the rest (pull-requests skill, **Lifecycle**).
+```mermaid
+stateDiagram-v2
+    [*] --> Fixing : Validate / run the repository's fixer
+    Fixing --> Fixing : the fixer [fails] / fix
+    Fixing --> Proving : the fixer [passes] / commit its changes, then on that commit run the tests covering the change and Prove's evidence
+    Proving --> Fixing : a test or proof [fails] / fix
+    Proving --> [*] : all pass / CI runs the rest after the push
+```
+
+- **Evidence** stays valid while its inputs are unchanged.
 
 ## Prove
 
 - **Surface.** UI, and backend changes a screen shows, in the T3 browser; native changes in the Device panel. This standing request covers the preview tools.
-- **Capture** representative data once a condition holds, on the head, with its short commit in the caption.
-- **Fixed means flipped.** The probe that failed on base passes on the head.
-- **States.** Only the states the change touches: cold open, deep-link reload, a failed first request, a viewport (`iphone-12-pro`, 1440×900, the widest target), dark or light.
-- **Read each capture** for duplicates, clipping, overflow and untruthful loading, empty or error states, and audit web states with `preview_evaluate` and [references/page-audit.js](references/page-audit.js).
+- **Capture** representative data on the head, after waiting for the state's own text or element, never a timer, with its short commit in the caption.
+- **Record** a flow in one turn: `preview_recording_start`, then `preview_evaluate` with [journey.js](references/journey.js)'s text plus `play(task, [...steps])`, then `preview_recording_stop`. A step is `'Name'` (a click on the visible element labelled Name, or a CSS selector), `{type, into}`, `{press}`, `{see}` (waits for text) or `{say}` (a caption alone); any takes a `label`. The first failed step ends the run; `play` returns `{from, outcomes}`, and the trim starts at `from` minus the recording's `startedAt`.
+- **States.** Of cold open, deep-link reload and a failed first request, those the change touches, at one of the repository's target viewports (none listed: `iphone-12-pro` and 1440×900), in one colour scheme.
+- **Read each capture** for duplicates, clipping, overflow, untruthful loading, empty or error states, and any screen, label, state or click path that differs from the approved render; audit web states with `preview_evaluate` and [page-audit.js](references/page-audit.js).
 - **Unproved** claims say `unverified: <what was not run>`.
 
 ## Review
 
-A review checks the work against its settled decisions and never reopens them.
-
 ```mermaid
 stateDiagram-v2
-    [*] --> Reviewing : review requested / one read-only reviewer in a fresh context
-    Reviewing --> [*] : review [no findings]
-    Reviewing --> [*] : review [findings the approach survives] / fix them, Validate
-    Reviewing --> Replanning : review [a finding the approach itself causes]
-    Replanning --> [*]
+    [*] --> Reviewing : review requested / one deep read-only delegate pass, routed by the orchestrator skill
+    Reviewing --> [*] : [no findings]
+    Reviewing --> [*] : [any finding the approach itself causes] / show it, the task returns to Planned
+    Reviewing --> Fixing : [every finding fits the approach] / fix every one, Validate
+    Fixing --> [*] : Validate passes / report what stays unfixed
 ```
 
-- **Input.** The decisions, the user's acceptance criteria, the head and any captures; a UI reviewer opens its own preview, since source does not prove what renders.
-- **Scope.** Architecture, UI/UX and function, not lint's domain.
-- **Finding.** The input, the result, `path:line` and a severity: P1 broken contract, data loss, secret exposure or false claim; P2 architecture or ownership violation; P3 reads worse than the recorded design.
-
-## Tests
-
-Keep a reproducing probe only under the repository's test choices, at the narrowest public seam.
+- **Depth.** The pass reports every finding it can reach at once, never a sample.
+- **Input.** The decisions, the approved render, the user's acceptance criteria, the head and any captures; a UI reviewer opens its own preview, since source does not prove what renders.
+- **Finding.** Architecture, UI/UX and function, not lint's domain: the input, the result, `path:line` and a severity. P1 broken contract, data loss, secret exposure or false claim; P2 architecture or ownership violation; P3 a difference from the approved render, or a screen that reads worse than the recorded design.
+- **Tests.** Keep a reproducing probe only under the repository's test choices, at the narrowest public seam.
