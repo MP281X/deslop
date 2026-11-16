@@ -43,8 +43,13 @@ export default defineConfig({
 		]
 	},
 	fmt: {
-		// Icon Composer writes and reads its own JSON layout.
-		ignorePatterns: ['**/*.gen.ts', '**/*.icon/**', 'packages/components-web/src/ui/**'],
+		// Icon Composer writes and reads its own JSON layout; the prototype stays dense because agents read it into context.
+		ignorePatterns: [
+			'**/*.gen.ts',
+			'**/*.icon/**',
+			'packages/components-web/src/ui/**',
+			'.claude/skills/orchestrator/references/prototype.html'
+		],
 
 		arrowParens: 'avoid',
 		bracketSpacing: false,

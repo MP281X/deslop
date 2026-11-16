@@ -5,7 +5,7 @@ npm install --global @deslop/gateway
 gateway service install --domain mp281x.xyz
 ```
 
-Register only `https://<gateway>/mcp` in each harness. Auth names callers by tailnet identity or its shared browser cookie. Admins add servers; HTTPS subdomains of Gateway's parent domain need no OAuth connection and receive the caller's identity, while third-party OAuth connections remain separate. Everyone signed in shares servers. AI keys and usage belong to each person, as described in this app's `AGENTS.md`.
+Register only `https://<gateway>/mcp` in each harness. Admins add servers; HTTPS subdomains of Gateway's parent domain need no OAuth connection and receive the caller's identity, while third-party OAuth connections remain separate. Everyone signed in shares servers. AI keys and usage belong to each person, as described in this app's `AGENTS.md`.
 
 ## MCP results
 

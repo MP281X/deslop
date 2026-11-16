@@ -2,6 +2,9 @@
 
 Every push to `main` runs `deploy.yaml`: Verify, unless its branch already passed on the same tree, then the npm packages and, for each mobile app, its EAS Update or, for a native fingerprint without a build shipped in the last 80 days, its App Store build, so TestFlight never drops the installed build. An app publishes as `@deslop/<app>` only when what it ships changed; one never published is skipped with a warning until its first publish.
 
+- **History.** `main` is linear: every PR is squash-merged.
+- **Job conditions.** GitHub propagates skipped jobs through dependency chains: a job after an optional Verify needs an explicit status function and Verify's successful result.
+
 ## A new app
 
 After `vp create app -- --name <name>` (`--kind mobile` for iPhone) and `vp install`, the user does two things, each once: approve npm's first publish, and create the App Store Connect record. Everything else is the agent's or happens by itself.

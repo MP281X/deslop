@@ -4,12 +4,10 @@
 
 - **Task.** No issue tracker: the request is the whole task.
 - **Language.** Apps are English-only.
-- **Users.** One user on three workers: two Debian ones and a Mac whose only Deslop app is Deploy; no portability or general multi-user platform. Everyone with access shares app data except Gateway's person-owned AI keys and usage. Portfolio is public.
+- **Users.** One user on the environment skill's workers; no portability or general multi-user platform. Everyone with access shares app data except Gateway's person-owned AI keys and usage.
 - **Access.** Auth alone names callers: a tailnet device is its owner without signing in, anyone else signs in once with GitHub into Auth's cookie on the parent domain, and an app on Auth's machine may act for a person. Apps keep no sign-in, token or credential of their own.
 - **Compatibility.** Never considered: the apps are personal software that their one user also develops. A change may break any URL, route, RPC or tool name, environment key, wire format, stored shape or installed build; keep no alias, redirect, fallback, version check, conversion or transition window for the old one, and delete any that exists.
 - **Data.** A table changes shape through a numbered SQL migration, the only migration allowed and the only code that knows an earlier shape. Everything stored outside SQL is disposable, production included.
-- **Releases.** Linear and squash-merged.
-- **Release job conditions.** GitHub propagates skipped jobs through dependency chains; jobs after optional verification need an explicit status function and the successful gate's result.
 
 ## Commands
 

@@ -10,23 +10,30 @@ description: 'Load before starting any change to a repository (code, config or d
 ```mermaid
 stateDiagram-v2
     [*] --> Discussing : request
-    Discussing --> Discussing : question / answer and propose
-    Discussing --> Drafting : [the request approves its own work, or a proposed change holds] / edit, commit
-    Discussing --> Planned : [any other change wanted] / show the plan
-    Planned --> Discussing : user steers
-    Planned --> Drafting : user approves the plan
+    Discussing --> Discussing : question / answer
+    Discussing --> Drafting : [the request approves its own work, or a proposed change holds with no better option] / edit, commit
+    Discussing --> Options : [taste or product decides the change] / render 2–3 directions beside Today
+    Discussing --> Checking : [evidence leaves one direction] / draft the plan
+    Options --> Options : user steers or mixes ids / edit the data, render by path
+    Options --> Checking : user picks ids / draft the plan from them
+    Checking --> Planned : one pass traces each claim to code read or run / show the plan, failed claims listed
+    Planned --> Options : user steers
+    Planned --> Drafting : user approves [main thread] / edit, commit
+    Planned --> [*] : user asks for a handoff [side chat] / send the plan and its ids to the main thread
     Drafting --> Drafting : steer [inside the plan] / edit, commit
-    Drafting --> Discussing : steer [outside the plan]
+    Drafting --> Options : steer [outside the plan]
     Drafting --> Settled : user calls the work settled / Validate
     Settled --> Drafting : Validate [fails] / fix
     Settled --> [*] : Validate [passes] / the template's captures, push by the pull-requests skill, cleanup
 ```
 
 - **Checks wait for settle.** While drafting, the fixer, checks, tests and pushes wait for Validate unless the user asks; a diagnosis still runs its reproducing probe, and a delegate the proof its brief names.
-- **Plan.** A UI plan is a rough HTML prototype, an architecture plan a diagram, made in minutes without the code reading a replica needs: 2–3 genuinely different directions you would build, side by side on the same data, without filters or captions; a better idea than the user's is one of them.
+- **Directions.** Rough, made in minutes before any build: 2–3 you would build, differing in interaction model rather than styling, on the same data; a better idea than the user's is one of them. Each lists the parts it is made of, so a mix is one more id listing parts.
+- **UI.** [prototype.html](references/prototype.html), by its header; later rounds edit the same copy and render it by path again.
+- **Architecture.** One Mermaid diagram per direction, its id as the title.
 - **Precedent.** Before an edit, read how the neighbouring feature or shared package does it.
 - **Outside code.** [Repositories](references/repos.md).
-- **One owner.** One main thread per worktree: check `t3_thread_list` first and send evidence to a live owner.
+- **One owner.** One main thread per worktree: check `t3_thread_list` first and give the user a live owner's link rather than starting a second.
 - **Main.** Do small edits, prototypes and needed reads yourself, since a delegate costs a brief and a report on a thread that re-reads its context every call.
 
 ## Route
@@ -60,7 +67,7 @@ stateDiagram-v2
 
 - **Shared checkout.** Delegates other than PR threads work in the main thread's worktree and branch; sharing one index, they never commit.
 - **One outcome per delegate.** Coupled edits share one thread, since split halves come back for the main thread to reconcile. A procedure is a skill, not a child agent.
-- **No handoff files.** Context travels in the brief and the report, never a file one side writes and the other reads.
+- **Desktop runs.** When `t3_environment_links` lists `desktop` connected, Validate's tests and browser checks go to a delegate there (`target.environmentId`): it fetches the commit from this worktree (`git fetch mp281x@dev:<worktree> <sha>`), checks it out detached, runs and reports each command's exit code, editing nothing; fixes stay here.
 
 ## Brief
 
