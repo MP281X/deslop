@@ -5,7 +5,7 @@ npm install --global @deslop/gateway
 gateway service install --domain mp281x.xyz
 ```
 
-Register only `https://<gateway>/mcp` in each harness. Admins add servers; HTTPS subdomains of Gateway's parent domain need no OAuth connection and receive the caller's identity, while third-party OAuth connections remain separate. Everyone signed in shares servers. AI keys and usage belong to each person, as described in this app's `AGENTS.md`.
+Register only `https://<gateway>/mcp` in each harness. Admins add servers; HTTPS subdomains of Gateway's parent domain need no OAuth connection and receive the caller's id in `x-deslop-user`; third-party servers receive only their own OAuth bearer. Everyone signed in shares servers.
 
 ## MCP results
 
@@ -25,6 +25,6 @@ Use `AiGateway` from `@deslop/runtime/server/ai`: `yield* gateway.apiUrl` and pa
 
 `AiGateway.openaiLanguageModel(userId, {model, maxTokens})` uses `@effect/ai-openai` through `/ai/openai/v1/responses`. Gateway forwards `/ai/openai/*` to `https://api.openai.com/*` with the person's key in `Authorization: Bearer <key>`. Chat Completions and Responses usage, including final streaming usage, is attributed to the OpenAI key. Known models use estimated standard token prices from [OpenAI's published pricing](https://developers.openai.com/api/docs/pricing/); unknown models or missing usage remain incomplete. Estimates include cached input and assume standard service and default cache retention, not tool fees or regional premiums.
 
-Paste an `sk-ant-` Anthropic key, `sk-proj-…` or other `sk-` OpenAI key, or `oc_sk_` OpenCode key in the field under the bar and confirm it in the credential dialog. OpenCode continues serving catalogue and Go calls, including Stash audio's Gemini on Zen. Saving a key replaces only that provider's credential. Key rows come first and cannot open the dialog; each shows its provider mark, name, masked key, sparkline and spend. `~` marks estimated or incomplete figures. Callers receive no secrets. A missing key fails with an instruction to save it in Gateway.
+OpenCode continues serving catalogue and Go calls, including Stash audio's Gemini on Zen. Callers receive no secrets. A missing key fails with an instruction to save it in Gateway.
 
 Common flags and service commands: [Deslop app runtime](https://github.com/MP281X/deslop/blob/main/packages/runtime/README.md).

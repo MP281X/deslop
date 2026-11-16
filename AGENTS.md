@@ -7,7 +7,7 @@
 - **Users.** One user on the environment skill's workers; no portability or general multi-user platform. Everyone with access shares app data except Gateway's person-owned AI keys and usage.
 - **Access.** Auth alone names callers: a tailnet device is its owner without signing in, anyone else signs in once with GitHub into Auth's cookie on the parent domain, and an app on Auth's machine may act for a person. Apps keep no sign-in, token or credential of their own.
 - **Compatibility.** Never considered: the apps are personal software that their one user also develops. A change may break any URL, route, RPC or tool name, environment key, wire format, stored shape or installed build; keep no alias, redirect, fallback, version check, conversion or transition window for the old one, and delete any that exists.
-- **Data.** A table changes shape through a numbered SQL migration, the only migration allowed and the only code that knows an earlier shape. Everything stored outside SQL is disposable, production included.
+- **Data.** A table changes shape through a new numbered SQL migration in its service, never an edit to an existing one, the only migration allowed and the only code that knows an earlier shape. Everything stored outside SQL is disposable, production included.
 
 ## Commands
 
@@ -36,7 +36,8 @@
 
 - **AI.** No AI wrapper package.
 - **Ownership.** Abstractions add capability or ease reading, not just shorter files; domain names and plain control flow over wrappers and configuration languages.
-- **Imports.** A service folder shows only `schema.ts`, `service.ts` and `lib/utils.ts`; its own files reach the rest with `./`. The runtime is imported by side: `shared`, `server`, `client`, `web`, `mobile`, `config`.
+- **Services.** `src/services/<name>/` shows only `schema.ts` (shared contracts), `service.ts` (server effects) and `lib/utils.ts` (pure shared logic); its own files reach the rest with `./`. Async page state lives in atoms under a topic-named `src/lib` module.
+- **Imports.** The runtime is imported by side: `shared`, `server`, `client`, `web`, `mobile`, `config`.
 - **Arguments.** Short, independent arguments stay positional, not wrapped just to name them.
 - **Model tags.** `toTaggedUnion.guards` validates the whole case, including a model class's instance identity, so JSON decoded to plain objects fails them: discriminate already-typed values with the union's `isAnyOf` (`Booking.isAnyOf`).
 - **Search serialization.** TanStack serializes both raw parsed search and validated/transformed search. Encode Option transforms through the app's Struct codec before the library's default serialization; both forms are current library inputs, and unrelated keys stay intact.
@@ -52,7 +53,7 @@
 
 - **Palette.** Mobile `palette.ts` mirrors `theme.css` in sRGB hex; a change to one changes the other in the same commit.
 - **References.** Themes: `packages/components-web/src/theme.css`, `packages/components-mobile/src/palette.ts` and `theme.ts`; `base-lyra` primitives: `packages/components-web/src/ui/`; generators: `tools/create-{app,package}/`.
-- **Exemption.** Portfolio is exempt: its own fonts, hotkeys, presence text and artwork, including a 504×504 touch icon on `#fafafa`.
+- **Exemption.** Portfolio keeps its own design, in its `AGENTS.md`.
 - **Targets.** 3440×1440, 1920×1080, ~1512×982; iPhone Air 420×912pt, safe areas and Dynamic Type.
 - **Colour.** Only identity and status carry hue; services without Deslop icons stay grey except Deploy's usage bands. Never label healthy, live, connected or up-to-date states. Dots mark problems, never kinds; kinds take tinted icons.
 - **Layout.** No page titles or panel headers, and no search fields on the web. Web semibold only for the bar's app name; no decorative shadows, only popups raised. No custom iOS bar. Trees have no connectors, tints or fold carets.

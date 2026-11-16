@@ -11,8 +11,8 @@ description: 'Load before starting any change to a repository (code, config or d
 stateDiagram-v2
     [*] --> Discussing : request
     Discussing --> Discussing : question / answer
-    Discussing --> Drafting : [the request approves its own work, or a proposed change holds with no better option] / edit, commit
-    Discussing --> Options : [taste or product decides the change] / render 2–3 directions beside Today
+    Discussing --> Drafting : [Approval covers the change] / edit, commit
+    Discussing --> Options : [taste or product decides the change] / render the directions beside Today
     Discussing --> Checking : [evidence leaves one direction] / draft the plan
     Options --> Options : user steers or mixes ids / edit the data, render by path
     Options --> Checking : user picks ids / draft the plan from them
@@ -28,8 +28,8 @@ stateDiagram-v2
 ```
 
 - **Checks wait for settle.** While drafting, the fixer, checks, tests and pushes wait for Validate unless the user asks; a diagnosis still runs its reproducing probe, and a delegate the proof its brief names.
-- **Directions.** Rough, made in minutes before any build: 2–3 you would build, differing in interaction model rather than styling, on the same data; a better idea than the user's is one of them. Each lists the parts it is made of, so a mix is one more id listing parts.
-- **UI.** [prototype.html](references/prototype.html), by its header; later rounds edit the same copy and render it by path again.
+- **Directions.** Rough, made in minutes before any build: 2–3 you would build, differing in interaction model rather than styling, on the same data; a better idea than the user's is one of them.
+- **UI.** [prototype.html](references/prototype.html), by its header.
 - **Architecture.** One Mermaid diagram per direction, its id as the title.
 - **Precedent.** Before an edit, read how the neighbouring feature or shared package does it.
 - **Outside code.** [Repositories](references/repos.md).
@@ -71,7 +71,7 @@ stateDiagram-v2
 
 ## Brief
 
-About 1,500 characters: the delegate already has the instructions, the skills and the checkout with its uncommitted edits, but not the thread; a PR thread's worktree starts at the parent's commit, without them. Give only the objective, the settled decisions, the files it owns, what to leave alone, the narrowest command that proves it, when one does, and the report you want. A task you cannot scope that tightly goes to Opus 5.5, never to a cheaper model.
+About 1,500 characters: the delegate already has the instructions, the skills and the checkout with its uncommitted edits, but not the thread; a PR thread's worktree starts at the parent's commit, without them. Give only the objective, the settled decisions, the files it owns, what to leave alone, the narrowest command that proves it, when one does, and the report you want.
 
 ## Delegate run
 

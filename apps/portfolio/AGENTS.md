@@ -1,6 +1,6 @@
 # Portfolio
 
-Public profile and printable CV, with live visitor cursors, trails and two wandering server bots. No sign-in or persistence on the server. Each browser tab keeps its guest identity through reloads; tabs sharing an identity share one cursor until the last tab closes.
+Public profile and printable CV, with live visitor cursors, trails and two wandering server bots. No sign-in or persistence on the server. Its own fonts, hotkeys, presence text and artwork, including a 504×504 touch icon on `#fafafa`. Each browser tab keeps its guest identity through reloads; tabs sharing an identity share one cursor until the last tab closes.
 
 The room holds plain state. Its single bot stream runs only while visitors occupy the room; a join span covers each visitor's connection.
 

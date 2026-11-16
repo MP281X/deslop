@@ -11,7 +11,7 @@
 ## Accounts
 
 - **npm.** `matteo_paludgnach` approves a first publish's URL.
-- **Apple.** The App Store signing workflow sets up a new app and Release uploads, both with the App Store Connect API key in repository secrets `ASC_KEY_ID`, `ASC_ISSUER_ID` and `ASC_KEY_P8`; nothing signs in to Apple on a worker.
+- **Apple.** Only GitHub workflows reach Apple, with the App Store Connect API key in repository secrets; nothing signs in to Apple on a worker.
 - **EAS.** Desktop's Expo session, an owner of `mp281x.xyz`, registers new projects; Release uses `EXPO_TOKEN`.
 
 ## Tracing

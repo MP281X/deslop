@@ -1,10 +1,11 @@
 <!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><script>
-/* PROTOTYPE DATA. Copy this file to scratch, Read it with limit 34, edit only this script, check the copy
+/* PROTOTYPE DATA. Copy this file to scratch, Read it with limit 35, edit only this script, check the copy
    with html_preview, then html_render it by path. Never read past this script.
    DECISIONS    one section each, numbered in order: a Today tile and one tile per variant, lettered a, b, c. Play
-                runs `task` in every tile in sync; a clicked tile opens large and plays alone. The user answers `1. a`.
+                runs `task` in every tile in sync; a clicked tile opens large and plays alone.
    variants     letter: {parts, path}. parts: words naming what the variant is made of, which view() reads as
-                has.<word>; Today gets has.today. A mix is one more variant listing parts of others.
+                has.<word>; Today gets has.today. A mix is one more variant listing parts of others. Without
+                variants the decision is a journey: one large tile playing `today`, like a PR video.
    path, today  target ids in click order; `|` marks the still the tile rests on, else start. Clicks are counted.
    start        the state every path begins from.
    SIZE, PHONE  the app's desktop (16:9) and phone sizes in real px; tiles only scale down. Phone sets #stage.ph.
@@ -55,14 +56,12 @@ button:hover,[aria-pressed=true]{color:var(--foreground)}[aria-pressed=true]{bac
 .p-tile.fo .p-fr{border-color:var(--p-ring);outline:1px solid var(--p-ring)}
 .p-view{margin:0 auto 8px;cursor:zoom-out}
 .zm .p-grid{grid-template-columns:repeat(4,minmax(0,1fr))}
-.zm .p-grid :is(.p-parts,.p-cap,.p-dots,.p-n span){display:none}
+.zm .p-grid :is(.p-parts,.p-cap,.p-n span){display:none}
+.solo .p-grid{grid-template-columns:1fr}.solo .p-tile{margin:auto;width:100%;cursor:pointer}.solo .p-th{display:none}
 .p-th{display:flex;align-items:center;gap:6px;height:24px;white-space:nowrap}
 .p-id{font:500 12px/16px var(--font-mono);padding:0 5px;border:1px solid var(--input);border-radius:5px}
-.p-parts,.p-cap,.p-n{color:var(--muted-foreground)}
-.p-cap{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;text-align:right}
-.p-dots{display:flex;gap:3px;margin-left:auto}
-.p-dots i{width:6px;height:6px;border-radius:3px;border:1px solid var(--muted-foreground)}
-.p-dots .y{width:11px}.p-dots .f{background:var(--foreground);border-color:var(--foreground)}
+.p-parts,.p-n{color:var(--muted-foreground)}.p-n{margin-left:auto}
+.p-cap{position:absolute;left:8px;bottom:8px;z-index:10;padding:2px 8px;border-radius:99px;background:var(--foreground);color:var(--background)}.p-cap:empty{display:none}
 .done .p-n{color:var(--foreground)}
 .p-fr{position:relative;overflow:hidden;border:1px solid var(--border);border-radius:var(--radius)}
 .p-cam{position:absolute;top:0;transform-origin:0 0}
@@ -102,12 +101,7 @@ button:hover,[aria-pressed=true]{color:var(--foreground)}[aria-pressed=true]{bac
 #stage.ph .side{width:auto;flex-direction:row;align-items:center;border-right:0;border-bottom:1px solid var(--border)}
 #stage.ph .org{margin:0 auto 0 0}
 #stage.ph .p-grid{grid-template-columns:repeat(auto-fill,minmax(160px,1fr))}
-@media (max-width:599px){
-  .p-grid{grid-template-columns:none!important;grid-auto-flow:column;grid-auto-columns:86%;overflow-x:auto;scroll-snap-type:x mandatory;scrollbar-width:none}
-  .zm .p-grid{grid-auto-columns:calc(25% - 6px)}
-  .p-tile{scroll-snap-align:start}
-  .p-parts{display:none}
-}
+@media (max-width:599px){.p-parts{display:none}}
 @media (prefers-reduced-motion:reduce){.p-cur{transition:none}.app *{animation:none!important}}
 </style></head><body><div id="stage"></div><script>
 let [AW, AH] = SIZE, dark;
@@ -158,7 +152,6 @@ function paint(t, i, still) {
     for (const e of t.app.querySelectorAll(OVERLAYS)) if (still || old.has(e.className)) e.dataset.still = '';
     t.i = i;
   }
-  [...t.dots.children].forEach((d, j) => d.classList.toggle('f', j < i));
   t.el.classList.toggle('done', i >= t.len);
 }
 
@@ -170,13 +163,13 @@ function spot(t, step) {
   return { e, x: x + Math.min(e.offsetWidth / 2, 60), y: y + e.offsetHeight * 0.6 };
 }
 
-// Tiles fit their column at real scale or below; an open tile too small to read on a phone plays at full size and
-// follows the cursor.
+// Tiles fit their column at real scale or below; on a phone, a tile too small to read plays at full size and follows
+// the cursor, except the row under an open tile.
 function fit(sec) {
   for (const t of all(sec)) {
-    if (t == sec.view) t.el.style.maxWidth = AW + 2 + 'px';
+    if (t == sec.view || sec.solo) t.el.style.maxWidth = AW + 2 + 'px';
     t.w = t.fr.clientWidth;
-    t.follow = t == sec.view && innerWidth < 600 && t.w / AW < 0.8;
+    t.follow = (!sec.view || t == sec.view) && innerWidth < 600 && t.w / AW < 0.8;
     t.z = t.follow ? 1 : Math.min(1, t.w / AW);
     t.k = Math.min(1 / t.z, 2.2);
     Object.assign(t.cam.style, { width: AW + 'px', height: AH + 'px', left: t.follow ? 0 : (t.w - AW * t.z) / 2 + 'px', scale: t.z });
@@ -251,8 +244,8 @@ function pause(sec) {
 
 function mount(t, cls) {
   const clicks = t.T.filter((s) => !s.typed).length;
-  t.el = node(`<div class="p-tile ${cls}"><div class="p-th"><span class="p-id">${t.id}</span><span class="p-parts">${words(t.parts).join(' + ')}</span><span class="p-cap"></span><span class="p-dots">${t.T.map((s) => `<i${s.typed ? ' class="y"' : ''}></i>`).join('')}</span><span class="p-n">${clicks}<span> click${clicks == 1 ? '' : 's'}</span></span></div><div class="p-fr"><div class="p-cam"><div class="app"></div>${CURSOR}<i class="p-rip"></i></div></div></div>`);
-  for (const key of ['app', 'cam', 'fr', 'cap', 'dots', 'cur', 'rip']) t[key] = t.el.querySelector(key == 'app' ? '.app' : '.p-' + key);
+  t.el = node(`<div class="p-tile ${cls}"><div class="p-th"><span class="p-id">${t.id}</span><span class="p-parts">${words(t.parts).join(' + ')}</span><span class="p-n">${clicks}<span> click${clicks == 1 ? '' : 's'}</span></span></div><div class="p-fr"><div class="p-cam"><div class="app"></div>${CURSOR}<i class="p-rip"></i></div><span class="p-cap"></span></div></div>`);
+  for (const key of ['app', 'cam', 'fr', 'cap', 'cur', 'rip']) t[key] = t.el.querySelector(key == 'app' ? '.app' : '.p-' + key);
   t.cur.style.translate = `${AW * 0.6}px ${AH * 0.85}px`;
   return t;
 }
@@ -272,7 +265,8 @@ function open(sec, t) {
 }
 
 const secs = DECISIONS.map((d, si) => {
-  const tiles = [['Today', '', d.today], ...Object.entries(d.variants).map(([id, v]) => [id, v.parts, v.path])].map(([id, parts, path], ti) => {
+  const solo = !d.variants;
+  const tiles = [['Today', '', d.today], ...Object.entries(d.variants || {}).map(([id, v]) => [id, v.parts, v.path])].map(([id, parts, path], ti) => {
     const tokens = words(path), has = Object.fromEntries(words(parts).map((p) => [p, true]));
     if (!ti) has.today = true;
     const t = { id, parts, has, ...trace(id, tokens.filter((x) => x != '|'), d.start, has) };
@@ -280,12 +274,12 @@ const secs = DECISIONS.map((d, si) => {
     return mount(t, '');
   });
   const max = Math.max(...tiles.map((t) => t.len));
-  const el = node(`<section class="paused"><div class="p-hd"><span class="p-id">${si + 1}</span><span class="p-name">${d.name}</span><span class="p-task">${d.task}</span><span class="p-tl"><button></button><span class="p-beats">${'<i><span></span></i>'.repeat(max + 1)}</span></span></div><div class="p-grid"></div></section>`);
-  const sec = { el, tiles, max, b: null, gen: 0, playing: false, fo: null, grid: el.querySelector('.p-grid'), beats: el.querySelector('.p-beats'), pp: el.querySelector('button') };
+  const el = node(`<section class="paused${solo ? ' solo' : ''}"><div class="p-hd"><span class="p-id">${si + 1}</span><span class="p-name">${d.name}</span><span class="p-task">${d.task}</span><span class="p-tl"><button></button><span class="p-beats">${'<i><span></span></i>'.repeat(max + 1)}</span></span></div><div class="p-grid"></div></section>`);
+  const sec = { el, tiles, max, b: null, gen: 0, playing: false, fo: null, solo, grid: el.querySelector('.p-grid'), beats: el.querySelector('.p-beats'), pp: el.querySelector('button') };
   for (const t of tiles) sec.grid.append(t.el);
   el.addEventListener('click', (e) => {
     const b = e.target.closest('.p-beats i'), tile = e.target.closest('.p-tile');
-    if (e.target == sec.pp) sec.playing ? pause(sec) : play(sec);
+    if (e.target == sec.pp || (solo && tile)) sec.playing ? pause(sec) : play(sec);
     else if (b) { sec.b = [...sec.beats.children].indexOf(b); pause(sec); }
     else if (tile) open(sec, tiles.find((t) => t.el == tile) || sec.fo);
   });

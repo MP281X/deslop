@@ -176,6 +176,9 @@ export default defineConfig({
 				rules: {
 					'@deslop/coding-standards/library-operation': 'off',
 					'@deslop/coding-standards/no-native-method-call': 'off',
+					'effecttsgo/async-function': 'off',
+					'effecttsgo/global-date': 'off',
+					'effecttsgo/global-timers': 'off',
 					'effecttsgo/prefer-effect-array': 'off',
 					'effecttsgo/prefer-effect-string': 'off',
 					'eslint/no-restricted-globals': 'off',
