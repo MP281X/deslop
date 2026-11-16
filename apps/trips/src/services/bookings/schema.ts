@@ -28,6 +28,7 @@ export const IMAGE_BYTES = 4_000_000
 export type BookingSource = typeof BookingSource.Type
 export const BookingSource = Schema.TaggedUnion({
 	image: {image: Schema.Uint8Array.check(Schema.isMinLength(1), Schema.isMaxLength(IMAGE_BYTES))},
+	pdf: {pdf: Schema.Uint8Array.check(Schema.isMinLength(1), Schema.isMaxLength(IMAGE_BYTES))},
 	text: {text: Schema.NonEmptyString.check(Schema.isMaxLength(60_000))}
 })
 

@@ -1,9 +1,11 @@
 import {Layer, Schema, pipe} from 'effect'
 
 import {Apns, layerApnsClient} from '@deslop/runtime/server/apns'
+import {HttpAuth} from '@deslop/runtime/server/auth'
 import {runApp} from '@deslop/runtime/server/cli'
 import {layerRpc} from '@deslop/runtime/server/http'
 
+import {HttpHandlers} from '#http/handlers.ts'
 import icon from '#routes/icon.svg'
 import {RpcContracts} from '#rpcs/contracts.ts'
 import {RpcHandlers} from '#rpcs/handlers.ts'
@@ -14,7 +16,10 @@ import {Tracking} from '#services/tracking/service.ts'
 runApp({
 	icon,
 	routes: pipe(
-		layerRpc({group: RpcContracts, handlers: RpcHandlers}),
+		Layer.mergeAll(
+			layerRpc({group: RpcContracts, handlers: RpcHandlers}),
+			Layer.provide(HttpHandlers, HttpAuth.layer)
+		),
 		Layer.provide(
 			Layer.mergeAll(Layer.provide(Push.layer, Layer.provide(Apns.layer, layerApnsClient)), Tracking.layer)
 		),

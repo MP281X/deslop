@@ -17,6 +17,7 @@
 	"sideEffects": false,
 	"main": "src/main.client.tsx",
 	"imports": {
+		"#http/*": "./src/http/*",
 		"#lib/*": "./src/lib/*",
 		"#routes/*": "./src/routes/*",
 		"#rpcs/*": "./src/rpcs/*",
@@ -36,6 +37,7 @@
 		"react-native": "0.88.1"
 	},
 	"devDependencies": {
+		"@bacons/apple-targets": "latest",
 		"@deslop/components-mobile": "workspace:*",
 		"@deslop/runtime": "workspace:*",
 		"@effect/atom-react": "latest",

@@ -44,6 +44,12 @@ export class Extractor extends Context.Service<
 						)
 						const today = `Today: ${DateTime.formatIsoDateUtc(DateTime.makeUnsafe(yield* Clock.currentTimeMillis))}`
 						function content() {
+							if (BookingSource.guards.pdf(source)) {
+								return [
+									{data: source.pdf, mediaType: 'application/pdf', type: 'file' as const},
+									{text: today, type: 'text' as const}
+								]
+							}
 							if (BookingSource.guards.image(source)) {
 								return [
 									{data: source.image, mediaType: 'image/jpeg', type: 'file' as const},
