@@ -18,7 +18,7 @@ export const makeMediaReader = Effect.gen(function* () {
 	const lists = yield* Cache.makeWith(sources.photos, {capacity: 32, timeToLive: lifetime})
 	// A residential exit is sometimes offline, so a picture gets two more tries, each from another address.
 	const images = yield* Cache.makeWith((url: string) => Effect.retry(sources.image(url), {times: 2}), {
-		capacity: 16,
+		capacity: 32,
 		timeToLive: lifetime
 	})
 	return {

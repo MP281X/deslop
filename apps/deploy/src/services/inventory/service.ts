@@ -8,6 +8,7 @@ import {
 	Duration,
 	Context,
 	Effect,
+	Fiber,
 	FileSystem,
 	Function,
 	HashMap,
@@ -200,27 +201,39 @@ export class Inventory extends Context.Service<
 					onTrue: Function.constant('system' as const)
 				})
 				const scopeFlags = Boolean.match(system, {onFalse: () => ['--user'], onTrue: () => []})
+				// Each systemctl call costs a few hundred milliseconds, so the timers and units are read side by side.
+				const listed = yield* Effect.all(
+					{
+						rows: Effect.flatMap(
+							command('systemctl', [
+								...scopeFlags,
+								'list-units',
+								'--all',
+								'--type=service',
+								'--output=json',
+								'--no-pager'
+							]),
+							Schema.decodeUnknownEffect(Schema.fromJsonString(Schema.Array(Unit)))
+						),
+						timers: Effect.flatMap(
+							command('systemctl', [...scopeFlags, 'list-timers', '--all', '--output=json', '--no-pager']),
+							Schema.decodeUnknownEffect(Schema.fromJsonString(Schema.Array(Timer)))
+						)
+					},
+					{concurrency: 'unbounded'}
+				)
 				const scheduled = HashMap.fromIterable(
 					Array.getSomes(
-						Array.map(
-							yield* Effect.flatMap(
-								command('systemctl', [...scopeFlags, 'list-timers', '--all', '--output=json', '--no-pager']),
-								Schema.decodeUnknownEffect(Schema.fromJsonString(Schema.Array(Timer)))
-							),
-							timer =>
-								Option.map(
-									timer.activates,
-									unit => [unit, Option.map(timer.next, next => DateTime.mapEpochMillis(next, Math.floor))] as const
-								)
+						Array.map(listed.timers, timer =>
+							Option.map(
+								timer.activates,
+								unit => [unit, Option.map(timer.next, next => DateTime.mapEpochMillis(next, Math.floor))] as const
+							)
 						)
 					)
 				)
-				const rows = yield* Effect.flatMap(
-					command('systemctl', [...scopeFlags, 'list-units', '--all', '--type=service', '--output=json', '--no-pager']),
-					Schema.decodeUnknownEffect(Schema.fromJsonString(Schema.Array(Unit)))
-				)
 				const failed = pipe(
-					rows,
+					listed.rows,
 					Array.filter(row => row.active === 'failed'),
 					Array.map(row => row.unit)
 				)
@@ -243,7 +256,7 @@ export class Inventory extends Context.Service<
 					),
 					() => unitFailures('')
 				)
-				return Array.map(rows, row =>
+				return Array.map(listed.rows, row =>
 					InventoryItem.make({
 						active: row.active === 'active',
 						detail: `${scope} · ${row.description}`,
@@ -617,6 +630,22 @@ export class Inventory extends Context.Service<
 				Effect.scoped(
 					Effect.gen(function* () {
 						const machine = yield* Boolean.match(platform === 'darwin', {onFalse: () => linux, onTrue: () => darwin})
+						// The process table is read while the sources' commands run, not after them.
+						const processing = yield* pipe(
+							machine.processes,
+							Effect.flatMap(current =>
+								Ref.modify(processState, previous => {
+									const next = processReadings(current, previous)
+									return [next.readings, Option.some(next)]
+								})
+							),
+							Effect.timeout(Duration.seconds(3)),
+							Effect.match({
+								onFailure: cause => ({error: Option.some(cause.message), records: []}),
+								onSuccess: records => ({error: Option.none<string>(), records})
+							}),
+							Effect.forkScoped
+						)
 						const sources = yield* Effect.all(
 							[
 								...machine.sources,
@@ -694,20 +723,7 @@ export class Inventory extends Context.Service<
 							],
 							{concurrency: 'unbounded'}
 						)
-						const collected = yield* pipe(
-							machine.processes,
-							Effect.flatMap(current =>
-								Ref.modify(processState, previous => {
-									const next = processReadings(current, previous)
-									return [next.readings, Option.some(next)]
-								})
-							),
-							Effect.timeout(Duration.seconds(3)),
-							Effect.match({
-								onFailure: cause => ({error: Option.some(cause.message), records: []}),
-								onSuccess: records => ({error: Option.none<string>(), records})
-							})
-						)
+						const collected = yield* Fiber.join(processing)
 						return {
 							items: attachProcesses(
 								Array.flatMap(sources, source => source.items),

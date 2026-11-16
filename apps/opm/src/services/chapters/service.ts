@@ -231,8 +231,8 @@ export class Chapters extends Context.Service<Chapters>()('@deslop/opm/services/
 			})
 		})
 
-		const backfill = Effect.fnUntraced(function* (kind: Series) {
-			const index = chaptersFromIndex(yield* series(`https://cubari.moe/read/api/gist/series/${INDEXES[kind]}/`), kind)
+		const backfill = Effect.fnUntraced(function* (kind: Series, answer: CubariSeries) {
+			const index = chaptersFromIndex(answer, kind)
 			// A chapter Reddit already supplied keeps its pages; later rounds fill gaps and discover new index releases.
 			const missing = indexChapters(yield* chapters, index, kind)
 			if (Array.isReadonlyArrayEmpty(missing)) return
@@ -246,60 +246,82 @@ export class Chapters extends Context.Service<Chapters>()('@deslop/opm/services/
 		})
 
 		const sync = Effect.gen(function* () {
-			// The index is read every round, so a gap left by a dead reader link fills once its archive entry appears.
-			yield* Effect.forEach(
-				Series.literals,
-				kind => Effect.ignore(backfill(kind), {log: 'Warn', message: `The ${kind} community index was not read`}),
-				{concurrency: 1, discard: true}
-			)
-			// One subreddit that does not answer leaves the other's releases for this round.
-			const feeds = yield* Effect.forEach(
-				FEEDS,
-				url =>
-					pipe(
-						Effect.scoped(
-							Effect.gen(function* () {
-								const feedClient = yield* Option.match(exit, {
-									onNone: () => Effect.succeed(client),
-									// A residential exit can be offline or flagged by Reddit, so each try leaves from another address.
-									onSome: Effect.fnUntraced(function* (proxy) {
-										const session = `${yield* Random.nextIntBetween(10_000_000, 99_999_999)}`
-										const context = yield* Layer.build(
-											Layer.provide(
-												NodeHttpClient.layerNodeHttpNoAgent,
-												NodeHttpClient.layerAgentOptions({
-													proxyEnv: {
-														HTTP_PROXY: String.replaceAll('{session}', session)(proxy),
-														HTTPS_PROXY: String.replaceAll('{session}', session)(proxy),
-														NODE_ENV: 'production'
-													}
-												})
-											)
+			const fetched = yield* Effect.all(
+				{
+					// One subreddit that does not answer leaves the other's releases for this round.
+					feeds: Effect.forEach(
+						FEEDS,
+						url =>
+							pipe(
+								Effect.scoped(
+									Effect.gen(function* () {
+										const feedClient = yield* Option.match(exit, {
+											onNone: () => Effect.succeed(client),
+											// A residential exit can be offline or flagged by Reddit, so each try leaves from another address.
+											onSome: Effect.fnUntraced(function* (proxy) {
+												const session = `${yield* Random.nextIntBetween(10_000_000, 99_999_999)}`
+												const context = yield* Layer.build(
+													Layer.provide(
+														NodeHttpClient.layerNodeHttpNoAgent,
+														NodeHttpClient.layerAgentOptions({
+															proxyEnv: {
+																HTTP_PROXY: String.replaceAll('{session}', session)(proxy),
+																HTTPS_PROXY: String.replaceAll('{session}', session)(proxy),
+																NODE_ENV: 'production'
+															}
+														})
+													)
+												)
+												return Context.get(context, HttpClient.HttpClient)
+											})
+										})
+										return yield* pipe(
+											HttpClient.get(url, {headers: {'user-agent': BROWSER}}),
+											Effect.flatMap(HttpClientResponse.filterStatusOk),
+											Effect.flatMap(response => response.text),
+											Effect.timeout('20 seconds'),
+											Effect.provideService(HttpClient.HttpClient, feedClient)
 										)
-										return Context.get(context, HttpClient.HttpClient)
 									})
-								})
-								return yield* pipe(
-									HttpClient.get(url, {headers: {'user-agent': BROWSER}}),
-									Effect.flatMap(HttpClientResponse.filterStatusOk),
-									Effect.flatMap(response => response.text),
-									Effect.timeout('20 seconds'),
-									Effect.provideService(HttpClient.HttpClient, feedClient)
-								)
-							})
-						),
-						Effect.retry({times: 3}),
-						Effect.flatMap(postsOf),
-						Effect.tapError(error => Effect.logWarning(`Reddit did not answer ${url}`, error)),
-						Effect.option
+								),
+								Effect.retry({times: 3}),
+								Effect.flatMap(postsOf),
+								Effect.tapError(error => Effect.logWarning(`Reddit did not answer ${url}`, error)),
+								Effect.option
+							),
+						{concurrency: 'unbounded'}
 					),
+					// Fetch independently, but replay failures alongside the serialized backfills below.
+					indexes: Effect.forEach(
+						Series.literals,
+						kind =>
+							Effect.map(
+								Effect.result(series(`https://cubari.moe/read/api/gist/series/${INDEXES[kind]}/`)),
+								answer => ({answer, kind})
+							),
+						{concurrency: 'unbounded'}
+					)
+				},
 				{concurrency: 'unbounded'}
 			)
-			if (Array.every(feeds, Option.isNone)) return yield* ChaptersError.make({message: 'Reddit did not answer.'})
+			// The index is read every round, so a gap left by a dead reader link fills once its archive entry appears.
+			yield* Effect.forEach(
+				fetched.indexes,
+				read =>
+					pipe(
+						Effect.fromResult(read.answer),
+						Effect.flatMap(index => backfill(read.kind, index)),
+						Effect.ignore({log: 'Warn', message: `The ${read.kind} community index was not read`})
+					),
+				{concurrency: 1, discard: true}
+			)
+			if (Array.every(fetched.feeds, Option.isNone)) {
+				return yield* ChaptersError.make({message: 'Reddit did not answer.'})
+			}
 			const now = yield* DateTime.now
 			const current = yield* chapters
 			const candidates = revisionCandidates(
-				[...ARCHIVE_POSTS, ...Array.flatten(Array.getSomes(feeds))],
+				[...ARCHIVE_POSTS, ...Array.flatten(Array.getSomes(fetched.feeds))],
 				current,
 				yield* Ref.get(deadLinks)
 			)
@@ -332,7 +354,7 @@ export class Chapters extends Context.Service<Chapters>()('@deslop/opm/services/
 							)
 						)
 					),
-				{concurrency: 1}
+				{concurrency: 4}
 			)
 			// A known chapter takes only an explicit revision's pages, so a second translation never moves a reader's page.
 			const known = HashSet.fromIterable(Array.map(current, keyOf))

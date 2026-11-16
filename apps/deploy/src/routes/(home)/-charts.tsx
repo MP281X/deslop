@@ -11,8 +11,8 @@ import {Skeleton} from '@deslop/components-web/ui/skeleton'
 import {bytesOf, clockOf, dayOf, percentOf} from '@deslop/runtime/shared/format'
 
 import {chartTicks} from '#routes/(home)/-chart.ts'
-import {bandFill, bands, chartPoints, focusedBand} from '#routes/(home)/-usage.ts'
-import type {Band, BandFillKind} from '#routes/(home)/-usage.ts'
+import {bandFill, chartPoints, focusedBand} from '#routes/(home)/-usage.ts'
+import type {Band, BandFillKind, Usage} from '#routes/(home)/-usage.ts'
 import type {AppId} from '#services/inventory/schema.ts'
 import {bandName, chartWindow} from '#services/metrics/lib/utils.ts'
 import {BandId} from '#services/metrics/schema.ts'
@@ -259,21 +259,21 @@ function ChartTitle(props: {figure: string; label: string}) {
 
 // The machine's three readings over time: apps stacked on the whole machine's 0–100%, and disk used as one band.
 export function ChartBlock(props: {
-	history: MachineHistory
 	isPhone: boolean
 	labels: Record<AppId, string>
 	minutes: HistoryQuery['minutes']
 	selectedOwner?: AppId
+	usage: Usage
 }) {
-	const all = bands(props.history)
+	const history = props.usage.history
 	const focus = Option.getOrUndefined(
-		Option.flatMap(Option.fromUndefinedOr(props.selectedOwner), selected => focusedBand(props.history, selected))
+		Option.flatMap(Option.fromUndefinedOr(props.selectedOwner), selected => focusedBand(props.usage, selected))
 	)
-	const latest = Option.getOrUndefined(Array.last(props.history.samples))
+	const latest = Option.getOrUndefined(Array.last(history.samples))
 	const cpu = Option.flatMap(Option.fromUndefinedOr(latest), sample => sample.cpu)
 	const storageUsed = Option.flatMap(Option.fromUndefinedOr(latest), sample => sample.storageUsed)
-	const total = Number.sumAll(Array.map(props.history.disks, disk => disk.total))
-	const disk = Array.map(props.history.samples, sample =>
+	const total = Number.sumAll(Array.map(history.disks, disk => disk.total))
+	const disk = Array.map(history.samples, sample =>
 		Boolean.match(total > 0, {
 			onFalse: Function.constant(0),
 			onTrue: () =>
@@ -299,7 +299,7 @@ export function ChartBlock(props: {
 			focus,
 			format: bytesOf,
 			label: 'Memory',
-			layers: Array.map(all, band => ({...band, readings: band.memoryBytes, values: band.memory})),
+			layers: Array.map(props.usage.bands, band => ({...band, readings: band.memoryBytes, values: band.memory})),
 			recorded: Function.constTrue
 		},
 		{
@@ -307,7 +307,7 @@ export function ChartBlock(props: {
 			focus,
 			format: percentOf,
 			label: 'CPU',
-			layers: Array.map(all, band => ({...band, readings: band.cpu, values: band.cpu})),
+			layers: Array.map(props.usage.bands, band => ({...band, readings: band.cpu, values: band.cpu})),
 			recorded: sample => Option.isSome(sample.cpu)
 		},
 		{
@@ -352,7 +352,7 @@ export function ChartBlock(props: {
 							className="h-16 sm:h-32"
 							focus={chart.focus}
 							format={chart.format}
-							history={props.history}
+							history={history}
 							label={chart.label}
 							layers={chart.layers}
 							minutes={props.minutes}
@@ -363,11 +363,11 @@ export function ChartBlock(props: {
 							recorded={chart.recorded}
 						/>
 						{Boolean.match(props.isPhone, {
-							onFalse: () => <TimeAxis minutes={props.minutes} now={props.history.time} />,
+							onFalse: () => <TimeAxis minutes={props.minutes} now={history.time} />,
 							onTrue: () =>
 								Boolean.match(index === charts.length - 1, {
 									onFalse: Function.constNull,
-									onTrue: () => <TimeAxis minutes={props.minutes} now={props.history.time} />
+									onTrue: () => <TimeAxis minutes={props.minutes} now={history.time} />
 								})
 						})}
 					</div>

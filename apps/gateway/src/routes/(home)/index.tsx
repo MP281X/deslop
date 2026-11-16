@@ -1,6 +1,6 @@
-import {useAtom, useAtomSet} from '@effect/atom-react'
+import {useAtom, useAtomSet, useAtomValue} from '@effect/atom-react'
 
-import {Array, Boolean, Function, Number, Option, Order, Schema, String, pipe} from 'effect'
+import {Array, Boolean, Effect, Function, Number, Option, Order, Schema, String, pipe} from 'effect'
 
 import {HardDrivesIcon, LinkIcon, WrenchIcon} from '@phosphor-icons/react'
 import {CatchBoundary, createFileRoute, getRouteApi} from '@tanstack/react-router'
@@ -39,7 +39,7 @@ import {
 	setKeyAtom
 } from '#lib/gateway.ts'
 import {Search} from '#lib/search.ts'
-import {AddKeyDialog, ProviderMark} from '#routes/(home)/-keys.tsx'
+import {ProviderMark} from '#routes/(home)/-provider-mark.tsx'
 import {aiCost, aiSeries, serverSeries} from '#routes/(home)/-usage.ts'
 import icon from '#routes/icon.svg'
 import type {AiUsageReport, Payer} from '#services/ai-metering/schema.ts'
@@ -55,6 +55,8 @@ const PAYER_LABELS: Record<Payer, string> = {balance: 'Zen balance', byok: 'Anth
 const PROVIDER_NAMES: Record<AiProvider, string> = {anthropic: 'Anthropic', openai: 'OpenAI', opencode: 'OpenCode'}
 const PROVIDER_PAYERS: Record<AiProvider, Payer> = {anthropic: 'byok', openai: 'openai', opencode: 'balance'}
 const PERIODS = Array.map(TimeFrame.literals, value => ({label: value, value}))
+// The key dialog is its own chunk, fetched after the page's so the page parses without it.
+const keysModuleAtom = Atom.make(Effect.promise(() => import('#routes/(home)/-keys.tsx')))
 
 const route = getRouteApi('/(home)/')
 
@@ -427,12 +429,17 @@ function HomeRoute() {
 				<AddField onKey={addKey} />
 				<List period={period} />
 			</Page>
-			<AddKeyDialog
-				key={keyDialog.opened}
-				open={keyDialog.open}
-				secret={keyDialog.secret}
-				onOpenChange={open => setKeyDialog(previous => ({...previous, open}))}
-			/>
+			{Option.match(AsyncResult.value(useAtomValue(keysModuleAtom)), {
+				onNone: Function.constNull,
+				onSome: module => (
+					<module.AddKeyDialog
+						key={keyDialog.opened}
+						open={keyDialog.open}
+						secret={keyDialog.secret}
+						onOpenChange={open => setKeyDialog(previous => ({...previous, open}))}
+					/>
+				)
+			})}
 		</div>
 	)
 }

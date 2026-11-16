@@ -33,8 +33,7 @@ import {
 	status,
 	workloadName
 } from '#services/inventory/lib/utils.ts'
-import type {InventoryItem, ItemId, Process} from '#services/inventory/schema.ts'
-import type {MachineHistory} from '#services/metrics/schema.ts'
+import type {AppId, InventoryItem, ItemId, Process} from '#services/inventory/schema.ts'
 
 export function InventoryContent(props: {children: ReactNode}) {
 	return (
@@ -260,7 +259,7 @@ export function ListPane(props: {
 	className?: string
 	compact: boolean
 	free: readonly InventoryItem[]
-	history?: MachineHistory
+	lowImpact?: HashSet.HashSet<AppId>
 	now: DateTime.Utc
 	onSelect: (row: Row) => void
 	rows: readonly Row[]
@@ -270,7 +269,7 @@ export function ListPane(props: {
 		props.rows,
 		Filter.fromPredicate(row => Option.contains(row.item.scheduled, true))
 	)
-	const groups = impactGroups(apps, props.history)
+	const groups = impactGroups(apps, props.lowImpact)
 	return (
 		<div className={cn('flex min-h-0 flex-col', props.className)}>
 			<Suspense fallback={<LoadingRows label="Apps loading" rows={8} />}>

@@ -2,7 +2,7 @@ import {createZstdDecompress} from 'node:zlib'
 
 import {NodeStream} from '@effect/platform-node'
 
-import {Array, Context, Effect, FileSystem, Layer, Path, Schema, Stream, pipe} from 'effect'
+import {Array, Cache, Context, Effect, Exit, FileSystem, Function, Layer, Path, Schema, Stream, pipe} from 'effect'
 
 import {ChildProcess} from 'effect/process'
 
@@ -60,5 +60,15 @@ const tool = Effect.fn('ToolPath.resolve')(function* (name: string) {
 })
 
 export class ToolPath extends Context.Service<ToolPath, typeof tool>()('@deslop/runtime/server/process/ToolPath') {
-	static readonly layer = Layer.succeed(this, tool)
+	static readonly layer = Layer.effect(
+		this,
+		Effect.gen(function* () {
+			const paths = yield* Cache.makeWith(tool, {
+				capacity: Infinity,
+				requireServicesAt: 'lookup',
+				timeToLive: Exit.match({onFailure: Function.constant(0), onSuccess: Function.constant('Infinity')})
+			})
+			return (name: string) => Cache.get(paths, name)
+		})
+	)
 }

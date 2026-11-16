@@ -106,12 +106,8 @@ export const aiKeyAtom = RpcClient.runtime.factory.withReactivity(['aiKey'])(
 )
 
 // A period's report now and after each recorded call; the server reopens the window at each bucket boundary.
-export const aiUsageAtom = Atom.family((period: TimeFrame) =>
-	Atom.keepAlive(liveAtom(RpcClient, 'ai-metering.usage', period))
-)
+export const aiUsageAtom = Atom.family((period: TimeFrame) => liveAtom(RpcClient, 'ai-metering.usage', period))
 
-export const mcpUsageAtom = Atom.family((period: TimeFrame) =>
-	Atom.keepAlive(liveAtom(RpcClient, 'connections.usage', period))
-)
+export const mcpUsageAtom = Atom.family((period: TimeFrame) => liveAtom(RpcClient, 'connections.usage', period))
 
 export const setKeyAtom = RpcClient.mutation('ai-proxy.setKey')

@@ -452,20 +452,31 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 		const organizeFile = Effect.fnUntraced(function* (userId: UserId, note: Note, type: FileType) {
 			if (!isVideo(type)) return yield* tag(userId, note.id, [])
 			const stored = path.join(files, note.id)
-			const stills = yield* optional('No video frames', Array.empty<Still>)(media.fileFrames(stored))
-			yield* pipe(
-				Array.head(stills),
-				Option.match({
-					onNone: () => Effect.void,
-					onSome: frame => storeImage(note.id, {bytes: frame.bytes, type: 'image/jpeg'})
-				}),
-				Effect.ignore({log: 'Warn', message: 'The video preview was not kept'})
+			const [stills] = yield* Effect.all(
+				[
+					Effect.gen(function* () {
+						const frames = yield* optional('No video frames', Array.empty<Still>)(media.fileFrames(stored))
+						yield* pipe(
+							Array.head(frames),
+							Option.match({
+								onNone: () => Effect.void,
+								onSome: frame => storeImage(note.id, {bytes: frame.bytes, type: 'image/jpeg'})
+							}),
+							Effect.ignore({log: 'Warn', message: 'The video preview was not kept'})
+						)
+						return frames
+					}),
+					Effect.flatMap(
+						optional('No transcript', Option.none<string>)(media.fileTranscript(userId, stored)),
+						Option.match({
+							onNone: () => Effect.void,
+							onSome: text =>
+								change(note.id, NoteChange.cases.video.make({content: Option.none(), transcript: Option.some(text)}))
+						})
+					)
+				],
+				{concurrency: 2}
 			)
-			yield* Option.match(yield* optional('No transcript', Option.none<string>)(media.fileTranscript(userId, stored)), {
-				onNone: () => Effect.void,
-				onSome: text =>
-					change(note.id, NoteChange.cases.video.make({content: Option.none(), transcript: Option.some(text)}))
-			})
 			yield* tag(userId, note.id, pipe(stills, Array.drop(1), Array.map(still)))
 		})
 
