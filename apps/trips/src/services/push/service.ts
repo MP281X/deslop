@@ -43,7 +43,8 @@ import {
 	Device,
 	PushError,
 	SentAlert,
-	ShowAction
+	ShowAction,
+	StartRequest
 } from '#services/push/schema.ts'
 
 const SCHEMES = {'xyz.mp281x.trips': 'trips', 'xyz.mp281x.trips.dev': 'trips-dev'}
@@ -143,13 +144,13 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 		const asPushSaveError = asPushError('The push state could not be saved.')
 		const listRequests = SqlSchema.findAll({
 			Request: Schema.Void,
-			Result: Schema.Struct({at: Schema.DateTimeUtcFromMillis, bookingId: BookingId}),
-			execute: () => sql`SELECT * FROM requests`
+			Result: StartRequest,
+			execute: () => sql`SELECT * FROM ${sql(StartRequest.table)}`
 		})
 		const recordRequest = SqlSchema.void({
-			Request: Schema.Struct({at: Schema.DateTimeUtcFromMillis, bookingId: BookingId}),
+			Request: StartRequest.insert,
 			execute: row =>
-				sql`INSERT INTO requests ${sql.insert(row)} ON CONFLICT (bookingId) DO UPDATE SET at = excluded.at`
+				sql`INSERT INTO ${sql(StartRequest.table)} ${sql.insert(row)} ON CONFLICT (bookingId) DO UPDATE SET at = excluded.at`
 		})
 
 		const pushStart = Effect.fnUntraced(function* (target: Device, showing: Showing) {

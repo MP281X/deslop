@@ -15,7 +15,7 @@ import {
 import {Booking} from '#services/bookings/schema.ts'
 import type {BookingList, Flight, Leg, Train} from '#services/bookings/schema.ts'
 import {ShowAction} from '#services/push/schema.ts'
-import type {Activity, AlertCategory, Device, SentAlert} from '#services/push/schema.ts'
+import type {Activity, AlertCategory, Device, SentAlert, StartRequest} from '#services/push/schema.ts'
 
 export type Span = {end: DateTime.Utc; start: DateTime.Utc}
 
@@ -86,7 +86,7 @@ export function expiredActivities(
 	activities: readonly Activity[],
 	all: BookingList,
 	now: DateTime.Utc,
-	requests: readonly {bookingId: string; at: DateTime.Utc}[] = []
+	requests: readonly StartRequest[] = []
 ) {
 	const requestsById = Array.groupBy(requests, request => request.bookingId)
 	const byId = Array.groupBy(journeysOf(all), legs => legs[0].id)
