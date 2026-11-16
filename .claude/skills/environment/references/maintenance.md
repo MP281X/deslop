@@ -52,20 +52,20 @@ A refusal or failure skips only its step. A thread owns a worktree through `work
    ```
 
 8. **Local branches** in `~/deslop` and `~/dual` that no worktree checks out, except the default branch: `git branch -D`.
-9. **Remote branches,** only when the host shows the PR or MR merged or closed with every one of its commits authored by the user, and no thread's worktree uses the branch. A failed query or an empty commit list keeps the branch.
+9. **Remote branches,** only when the host shows the PR or MR merged or closed, its head still the branch's tip and every one of its commits authored by the user, and no thread's worktree uses the branch. A failed query or an empty commit list keeps the branch.
 
    ```bash
    git fetch -q --prune origin
    for b in $(git for-each-ref --format='%(refname:lstrip=3)' refs/remotes/origin | grep -vx 'HEAD\|main\|master'); do
      if git remote get-url origin | grep -q github.com; then
-       pr=$(gh pr list --head "$b" --state all --json state,commits -q '.[0]') || continue
-       s=$(jq -r '.state // empty' <<<"$pr"); a=$(jq -r '[.commits[].authors[].email] | unique | join(" ")' <<<"$pr")
+       pr=$(gh pr list --head "$b" --state all --json state,commits,headRefOid -q '.[0]') || continue
+       s=$(jq -r '.state // empty' <<<"$pr"); h=$(jq -r '.headRefOid // empty' <<<"$pr"); a=$(jq -r '[.commits[].authors[].email] | unique | join(" ")' <<<"$pr")
      else
        mr=$(glab mr list --source-branch "$b" --all -F json | jq '.[0]') || continue
-       s=$(jq -r '.state // empty' <<<"$mr"); a=$(glab api "projects/:id/merge_requests/$(jq -r .iid <<<"$mr")/commits" | jq -r '[.[].author_email] | unique | join(" ")')
+       s=$(jq -r '.state // empty' <<<"$mr"); h=$(jq -r '.sha // empty' <<<"$mr"); a=$(glab api "projects/:id/merge_requests/$(jq -r .iid <<<"$mr")/commits" | jq -r '[.[].author_email] | unique | join(" ")')
      fi
      case "$s" in MERGED|CLOSED|merged|closed) ;; *) continue ;; esac
-     [ "$a" = "$(git config user.email)" ] || continue
+     [ "$h" = "$(git rev-parse "origin/$b")" ] && [ "$a" = "$(git config user.email)" ] || continue
      git worktree list --porcelain | grep -qx "branch refs/heads/$b" || git push -q origin --delete "$b"
    done
    ```

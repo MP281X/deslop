@@ -35,11 +35,14 @@ One per worktree: the systemd user unit `preview-<worktree name>`, shared over t
 ```mermaid
 stateDiagram-v2
     [*] --> Stale : edits touch an app
-    Stale --> Live : a capture needs it / run the project's preview script from the worktree root, give its URL once
+    Stale --> Starting : a capture needs it / run the project's preview script from the worktree root
+    Starting --> Live : its HTTPS URL answers / give the URL once
+    Starting --> Stale : [invalid selection] / the running preview stays untouched
+    Starting --> [*] : [startup fails] / Diagnose by the verification skill
     Live --> Stale : more edits
 ```
 
-- **Script.** Read the saved one with `t3_project_read`; it keeps the running preview when its selection is invalid, and maintenance removes a gone worktree's unit. Deslop's selects a changed web app, else Portfolio; `PREVIEW_APP=<app>` previews another app of the same change. The repository's own preview command or a background task bypasses the unit and dies with the turn.
+- **Script.** Read the saved one with `t3_project_read`; maintenance removes a gone worktree's unit. Deslop's selects a changed web app, else Portfolio; `PREVIEW_APP=<app>` previews another app of the same change. The repository's own preview command or a background task bypasses the unit and dies with the turn.
 - **No worktree preview** (Stash): use its scratch run.
 - **Webhooks.** Funnel exposes a whole port: pick a free one of 443, 8443, 10000 and run `sudo tailscale funnel --bg --https=<port> --set-path <path> http://127.0.0.1:<api port><path>`; remove it with `... --set-path <path> off`.
 

@@ -10,17 +10,16 @@ description: 'Load before starting any change to a repository (code, config or d
 ```mermaid
 stateDiagram-v2
     [*] --> Discussing : request for a change
-    [*] --> Drafting : a side chat hands over a plan the user approved
+    [*] --> Drafting : a side chat hands over a plan the user approved [main thread] / edit, commit
     Discussing --> Drafting : [Approval covers it, nothing is left open, main thread] / edit, commit
     Discussing --> Planned : [otherwise] / settle, show the plan
     Planned --> Planned : user steers / revise, render again by path
     Planned --> Drafting : user approves [main thread] / edit, commit
-    Planned --> [*] : user approves [side chat] / send the plan, its picks and its render's path to the main thread
+    Planned --> [*] : user approves and asks for a handoff [side chat] / send the plan, its picks and its render's path to the main thread
     Drafting --> Drafting : user steers [inside the plan] / edit, commit
     Drafting --> Planned : user steers [outside the plan] / show the plan
     Drafting --> Validating : user calls the work settled / Validate
-    Validating --> Validating : Validate [fails inside the plan] / fix
-    Validating --> Planned : Validate [fails the approach] / show the finding
+    Validating --> Planned : Validate [a failure the approach itself causes] / show it
     Validating --> [*] : Validate [passes] / push by the pull-requests skill, cleanup
 ```
 
@@ -43,14 +42,14 @@ stateDiagram-v2
 
 Delegates go to Codex unless the work needs Claude's judgement: the main thread runs on the Claude plan, the one to make last, and Codex persists until it reaches a result, good or bad.
 
-| Work                                                                                                                                                         | Model                             | `target`                                                    |
-| ------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------- | ----------------------------------------------------------- |
-| Edits whose architecture is settled; browser and computer use, captures; deep reviews; unbounded exploration; long runs, since Codex's cache does not expire | GPT-6.1 Sol                       | `codex` / `gpt-6.1-sol`                                     |
-| Bounded reads, searches, runs and checks                                                                                                                     | GPT-6.1 Terra                     | `codex` / `gpt-6.1-terra`                                   |
-| UI code; removals, since Codex rejects `rm -f` and `rm -rf`                                                                                                  | Sonnet 5.5                        | `claudeAgent` / `claude-sonnet-5-5`                         |
-| Work that cannot be scoped: an open UI or architecture                                                                                                       | Opus 5.5                          | `claudeAgent` / `claude-opus-5-5`                           |
-| Advisors on a hard architectural decision, both in one turn                                                                                                  | Fable 5.2 and GPT-6.1 Sol at high | `claudeAgent` / `claude-fable-5-2`, `codex` / `gpt-6.1-sol` |
-| Never                                                                                                                                                        | Luna, Haiku                       |                                                             |
+| Work                                                                                                                                                                     | Model                             | `target`                                                    |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------- | ----------------------------------------------------------- |
+| Edits whose architecture is settled; browser and computer use, captures; reviews of Claude's work; unbounded exploration; long runs, since Codex's cache does not expire | GPT-6.1 Sol                       | `codex` / `gpt-6.1-sol`                                     |
+| Bounded reads, searches, runs and checks                                                                                                                                 | GPT-6.1 Terra                     | `codex` / `gpt-6.1-terra`                                   |
+| UI code; removals, since Codex rejects `rm -f` and `rm -rf`                                                                                                              | Sonnet 5.5                        | `claudeAgent` / `claude-sonnet-5-5`                         |
+| Work that cannot be scoped: an open UI or architecture                                                                                                                   | Opus 5.5                          | `claudeAgent` / `claude-opus-5-5`                           |
+| Advisors on a hard architectural decision, both in one turn                                                                                                              | Fable 5.2 and GPT-6.1 Sol at high | `claudeAgent` / `claude-fable-5-2`, `codex` / `gpt-6.1-sol` |
+| Never                                                                                                                                                                    | Luna, Haiku                       |                                                             |
 
 - **Other company.** A review or second opinion comes from the company that did not write or propose the work.
 - **Effort.** Medium (`effort` on Claude, `reasoningEffort` on Codex); high when the task needs it, and for advisors; never low, xhigh or above.
@@ -60,14 +59,18 @@ Delegates go to Codex unless the work needs Claude's judgement: the main thread 
 ```mermaid
 stateDiagram-v2
     [*] --> Running : brief / start it by the harness's tool choice, siblings with disjoint files in one turn
-    Running --> [*] : PASS [matches the decisions] / use its findings, commit an edit's diff
-    Running --> Running : ISSUES or a missed decision [first time] / resume it with what the brief left out
-    Running --> [*] : ISSUES or a missed decision [again] / finish it yourself
+    Running --> [*] : PASS or ISSUES [read-only brief] / use its findings and evidence
+    Running --> [*] : PASS [edit brief, matches the decisions] / commit its diff
+    Running --> Running : ISSUES or a missed decision [edit brief, first time] / resume it with what the brief left out
+    Running --> [*] : ISSUES or a missed decision [edit brief, again] / finish it yourself
     Running --> Running : BLOCKED [you can clear it] / clear it, resume
     Running --> [*] : BLOCKED [you cannot] / report it with the user's action
+    [*] --> PRThread : a separate PR must progress in parallel / delegate_task with isolation 'worktree'
+    PRThread --> PRThread : its next approved step / t3_thread_send
+    PRThread --> [*] : its PR merges or closes / Cleanup
 ```
 
-- **Shared checkout.** Delegates share the main thread's worktree and branch and never commit; a separate PR progressing in parallel gets its own `delegate_task` with `isolation: 'worktree'`, driven with `t3_thread_send` until it merges.
+- **Shared checkout.** Delegates other than PR threads share the main thread's worktree and branch, so they never commit.
 - **One outcome per delegate.** Coupled edits share one delegate. A procedure is a skill, not a child agent.
 - **Brief.** About 1,500 characters, since the delegate has the instructions, skills and checkout but not the thread: the objective, the settled decisions, the approved render's path, the files it owns, what to leave alone, the narrowest command that proves it and the report you want.
 
@@ -78,8 +81,10 @@ A delegate runs its brief as the approved plan and edits only its files.
 ```mermaid
 stateDiagram-v2
     [*] --> Working : a brief or message
-    Working --> Working : the brief's proof [fails] / fix
-    Working --> [*] : done / a PR thread commits, and Validates and pushes once the work is called settled; report PASS, or ISSUES with each finding
+    Working --> Working : the brief's proof [fails, edit brief] / fix
+    Working --> [*] : done [read-only brief] / report PASS, or ISSUES with each finding and failed check
+    Working --> [*] : done [edit brief, its proof passed or none named, shared checkout] / report PASS
+    Working --> [*] : done [edit brief, its proof passed or none named, PR thread] / commit, Validate and push by the pull-requests skill once the work is called settled, report PASS
     Working --> [*] : stuck / report BLOCKED with the output proving it, else ISSUES with what is done and missing
 ```
 

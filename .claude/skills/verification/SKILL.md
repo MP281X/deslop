@@ -23,7 +23,16 @@ stateDiagram-v2
 
 ## Validate
 
-Run the repository's fixer and commit its changes, then on that commit the tests covering the change and Prove's evidence for it; evidence stays valid while its inputs are unchanged. CI runs the rest after the push.
+```mermaid
+stateDiagram-v2
+    [*] --> Fixing : Validate / run the repository's fixer
+    Fixing --> Fixing : the fixer [fails] / fix
+    Fixing --> Proving : the fixer [passes] / commit its changes, then on that commit run the tests covering the change and Prove's evidence
+    Proving --> Fixing : a test or proof [fails] / fix
+    Proving --> [*] : all pass / CI runs the rest after the push
+```
+
+- **Evidence** stays valid while its inputs are unchanged.
 
 ## Prove
 
@@ -38,10 +47,10 @@ Run the repository's fixer and commit its changes, then on that commit the tests
 
 ```mermaid
 stateDiagram-v2
-    [*] --> Reviewing : review requested / one deep read-only pass by the other company, in a fresh context
+    [*] --> Reviewing : review requested / one deep read-only delegate pass, routed by the orchestrator skill
     Reviewing --> [*] : [no findings]
-    Reviewing --> Fixing : [findings the approach survives] / fix every one
-    Reviewing --> [*] : [a finding the approach causes] / show it, the task returns to Planned
+    Reviewing --> [*] : [any finding the approach itself causes] / show it, the task returns to Planned
+    Reviewing --> Fixing : [every finding fits the approach] / fix every one, Validate
     Fixing --> [*] : Validate passes / report what stays unfixed
 ```
 

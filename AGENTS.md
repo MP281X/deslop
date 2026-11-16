@@ -36,7 +36,7 @@
 
 - **AI.** No AI wrapper package.
 - **Ownership.** Abstractions add capability or ease reading, not just shorter files; domain names and plain control flow over wrappers and configuration languages.
-- **Services.** `src/services/<name>/` shows only `schema.ts` (shared contracts), `service.ts` (server effects) and `lib/utils.ts` (pure shared logic); its own files reach the rest with `./`. Async page state lives in atoms under a topic-named `src/lib` module.
+- **Services.** In `src/services/<name>/`, `schema.ts` holds shared contracts, `service.ts` server effects and `lib/utils.ts` pure shared logic. Async page state lives in atoms under a topic-named `src/lib` module.
 - **Imports.** The runtime is imported by side: `shared`, `server`, `client`, `web`, `mobile`, `config`.
 - **Arguments.** Short, independent arguments stay positional, not wrapped just to name them.
 - **Model tags.** `toTaggedUnion.guards` validates the whole case, including a model class's instance identity, so JSON decoded to plain objects fails them: discriminate already-typed values with the union's `isAnyOf` (`Booking.isAnyOf`).

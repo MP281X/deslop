@@ -23,8 +23,13 @@ async function play(task, steps) {
 	const beats = [...header.lastElementChild.children]
 	const page = document.body.style
 	const saved = page.cssText
-	// The page is scaled once into the frame and stays still.
-	Object.assign(page, {transform: `translate(${frame.left}px, ${frame.top}px) scale(${fit})`, transformOrigin: '0 0'})
+	// The page is scaled once into the frame and stays still; a viewport-sized body keeps fixed dialogs and bars where the app puts them.
+	Object.assign(page, {
+		height: '100vh',
+		overflow: 'auto',
+		transform: `translate(${frame.left}px, ${frame.top}px) scale(${fit})`,
+		transformOrigin: '0 0'
+	})
 
 	function sleep(ms) {
 		return new Promise(resolve => {
@@ -84,6 +89,7 @@ async function play(task, steps) {
 		return point
 	}
 	async function click(element) {
+		if (element.matches(':disabled, [aria-disabled="true"]')) throw new Error('target is disabled')
 		const point = await aim(element)
 		const init = {
 			bubbles: true,
@@ -116,9 +122,10 @@ async function play(task, steps) {
 	}
 	function press(key) {
 		const target = document.activeElement || document.body
-		target.dispatchEvent(new KeyboardEvent('keydown', {bubbles: true, key}))
+		const proceed = target.dispatchEvent(new KeyboardEvent('keydown', {bubbles: true, cancelable: true, key}))
 		target.dispatchEvent(new KeyboardEvent('keyup', {bubbles: true, key}))
-		if (key === 'Enter') target.form?.requestSubmit()
+		// Synthetic keys run no browser default, so Enter submits like a real one unless the app cancelled it.
+		if (proceed && key === 'Enter') target.form?.requestSubmit()
 	}
 	function labelOf(step) {
 		if (step.label) return step.label

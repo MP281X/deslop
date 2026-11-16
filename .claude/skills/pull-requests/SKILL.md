@@ -17,9 +17,12 @@ description: 'Load before the first commit of a task, before the first edit when
 stateDiagram-v2
     [*] --> Pushing : work to publish
     Pushing --> Pushing : the fixer [fails] / fix
-    Pushing --> Watching : the fixer [passes, or Validate ran it on this tree] / commit, push each affected PR once, update the body for the head, read it back rendered
+    Pushing --> Describing : the fixer [passes, or Validate ran it on this tree] / commit, push each affected PR once, update the body for the head
+    Describing --> Describing : read back [a changed diagram, image or video fails to render] / fix the body
+    Describing --> Watching : read back [all of it renders]
     Watching --> Watching : pipeline [pending] / end the turn or run, the PR watch wakes the main thread
     Watching --> Pushing : pipeline [fails or conflicts] / fix, recapture what changed
+    Watching --> [*] : the PR merges or closes / Cleanup
     Watching --> [*] : pipeline [passes] / mark ready if the user or the repository's AGENTS.md authorizes it, hand back
 ```
 
