@@ -6,6 +6,7 @@ import {
 	arrivalOf,
 	clockAt,
 	departureOf,
+	journeysOf,
 	labelled,
 	line,
 	routeOf,
@@ -49,12 +50,17 @@ export function showPlan(
 	devices: readonly Device[],
 	activities: readonly Activity[],
 	journey: Flight | Train,
-	window: Span & {leg: Leg}
+	window: Span & {leg: Leg},
+	requested: Option.Option<DateTime.Utc> = Option.none()
 ) {
 	const starters = Array.filter(devices, device => device.kind === 'start')
 	const covering = Array.filter(
 		activities,
-		item => item.bookingId === journey.id && item.leg === window.leg && holds(item, window)
+		item =>
+			item.bookingId === journey.id &&
+			item.leg === window.leg &&
+			holds(item, window) &&
+			!Option.exists(item.endedAt, ended => Option.exists(requested, at => DateTime.isGreaterThan(at, ended)))
 	)
 	const startersByBundle = Array.groupBy(starters, device => device.bundle)
 	const coveringByBundle = Array.groupBy(covering, item => item.bundle)
@@ -76,14 +82,28 @@ export function showPlan(
 }
 
 // Running activities whose leg is no longer in its window, or whose booking is gone.
-export function expiredActivities(activities: readonly Activity[], all: BookingList, now: DateTime.Utc) {
-	const byId = Array.groupBy(all, booking => booking.id)
+export function expiredActivities(
+	activities: readonly Activity[],
+	all: BookingList,
+	now: DateTime.Utc,
+	requests: readonly {bookingId: string; at: DateTime.Utc}[] = []
+) {
+	const requestsById = Array.groupBy(requests, request => request.bookingId)
+	const byId = Array.groupBy(journeysOf(all), legs => legs[0].id)
 	return Array.filter(
 		activities,
 		activity =>
 			Option.isNone(activity.endedAt) &&
 			!Option.exists(Array.head(byId[activity.bookingId] ?? []), found =>
-				Option.exists(activeWindow(found, now), window => window.leg === activity.leg)
+				Option.exists(
+					activeWindow(
+						found[0],
+						now,
+						Array.filter(found, (booking): booking is Flight | Train => !Booking.isAnyOf(['stay'])(booking)),
+						Option.map(Array.head(requestsById[activity.bookingId] ?? []), request => request.at)
+					),
+					window => window.leg === activity.leg
+				)
 			)
 	)
 }

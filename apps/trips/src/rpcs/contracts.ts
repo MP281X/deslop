@@ -13,5 +13,6 @@ export class RpcContracts extends RpcGroup.make(
 	Rpc.make('bookings.remove', {error: BookingsError, payload: Schema.Struct({id: BookingId})}),
 	// Asks the provider now, at most once a minute while the journey is tracked.
 	Rpc.make('tracking.refresh', {error: BookingsError, payload: Schema.Struct({id: BookingId})}),
-	Rpc.make('push.register', {error: PushError, payload: Device.insert})
+	Rpc.make('push.register', {error: PushError, payload: Device.insert}),
+	Rpc.make('push.start', {error: PushError, payload: Schema.Struct({id: BookingId})})
 ).middleware(RpcAuth) {}

@@ -1,11 +1,145 @@
 import {assert, it} from '@effect/vitest'
 
-import {Array, DateTime, Duration, Option, Schema, Struct} from 'effect'
+import {Array, DateTime, Duration, Option, Schema, Struct, pipe} from 'effect'
 
-import {activeWindow, instantOf, upsert} from '#services/bookings/lib/utils.ts'
-import {BookedPlace, Booking, BookingId, Flight, FlightTracking} from '#services/bookings/schema.ts'
+import {segmentOf} from './timetable.ts'
+
+import {
+	activeWindow,
+	autoStartOf,
+	instantOf,
+	journeysOf,
+	journeyProps,
+	sampleStops,
+	startable,
+	upsert
+} from '#services/bookings/lib/utils.ts'
+import {BookedPlace, Booking, BookingId, Flight, FlightTracking, Train, TrainStop} from '#services/bookings/schema.ts'
 
 const DEPARTS = DateTime.makeUnsafe('2026-10-28T15:40:00Z')
+
+function train(id: string, from: string, to: string, departure: string, arrival: string) {
+	return Train.make({
+		arrives: DateTime.makeUnsafe(arrival),
+		coach: Option.none(),
+		confirmation: Option.none(),
+		departs: DateTime.makeUnsafe(departure),
+		from: Schema.decodeSync(BookedPlace)({name: from, timeZone: 'Europe/Rome'}),
+		id: BookingId.make(id),
+		live: Option.none(),
+		number: '9713',
+		operator: 'TRENITALIA',
+		seat: Option.none(),
+		service: 'FR 9713',
+		status: 'confirmed',
+		stops: [],
+		to: Schema.decodeSync(BookedPlace)({name: to, timeZone: 'Europe/Rome'})
+	})
+}
+
+it('chains confirmed trains at matching stations within three hours and shows the current leg', () => {
+	const first = train(
+		'11111111-1111-4111-8111-111111111111',
+		'Milano',
+		'Venezia Mestre',
+		'2026-11-18T08:00Z',
+		'2026-11-18T10:00Z'
+	)
+	const next = train(
+		'22222222-2222-4222-8222-222222222222',
+		'VENEZIA MESTRE',
+		'Trieste',
+		'2026-11-18T10:14Z',
+		'2026-11-18T12:00Z'
+	)
+	assert.deepStrictEqual(journeysOf([next, first]), [[first, next]])
+	assert.strictEqual(journeyProps([first, next], [], first.departs).note, 'Change at Venezia Mestre · 14 min')
+	assert.strictEqual(journeyProps([first, next], [], first.arrives).from, next.from.name)
+	assert.strictEqual(
+		journeysOf([first, Train.make({...Struct.pick(next, Struct.keys(Train.fields)), status: 'cancelled'})]).length,
+		2
+	)
+	assert.strictEqual(
+		journeysOf([
+			first,
+			Train.make({
+				...Struct.pick(next, Struct.keys(Train.fields)),
+				departs: DateTime.addDuration(first.arrives, Duration.hours(3))
+			})
+		]).length,
+		1
+	)
+	assert.strictEqual(
+		journeysOf([
+			first,
+			Train.make({
+				...Struct.pick(next, Struct.keys(Train.fields)),
+				departs: DateTime.addDuration(first.arrives, Duration.minutes(181))
+			})
+		]).length,
+		2
+	)
+	assert.strictEqual(
+		journeysOf([
+			first,
+			Train.make({
+				...Struct.pick(next, Struct.keys(Train.fields)),
+				departs: DateTime.subtractDuration(first.arrives, Duration.minutes(1))
+			})
+		]).length,
+		2
+	)
+	assert.strictEqual(startable([first, next], DateTime.subtractDuration(first.departs, Duration.hours(7))), true)
+	assert.strictEqual(startable([first, next], DateTime.subtractDuration(first.departs, Duration.minutes(421))), false)
+	assert.strictEqual(startable([first, next], next.arrives), false)
+	assert.deepStrictEqual(autoStartOf([first, next]), DateTime.subtractDuration(first.departs, Duration.hours(1)))
+	assert.deepStrictEqual(
+		Option.map(activeWindow(first, first.departs, [first, next]), window => window.end),
+		Option.some(DateTime.addDuration(next.arrives, Duration.minutes(10)))
+	)
+})
+
+it('samples at most seven scheduled stops with endpoints and delayed passage', () => {
+	const stops = Array.makeBy(10, index =>
+		Schema.decodeSync(TrainStop)({
+			departs: DateTime.toEpochMillis(DateTime.addDuration(DEPARTS, Duration.minutes(index))),
+			name: `Station${index} Centrale`
+		})
+	)
+	assert.deepStrictEqual(
+		Array.map(sampleStops(stops, Duration.minutes(2), DateTime.addDuration(DEPARTS, Duration.minutes(5))), stop => [
+			stop.name,
+			stop.passed
+		]),
+		[
+			['Station0', true],
+			['Station2', true],
+			['Station3', true],
+			['Station5', false],
+			['Station6', false],
+			['Station8', false],
+			['Station9', false]
+		]
+	)
+	assert.deepStrictEqual(sampleStops([], Duration.zero, DEPARTS), [])
+	assert.strictEqual(sampleStops(Array.take(stops, 3), Duration.zero, DEPARTS).length, 3)
+})
+
+it('slices only the booked segment, including both endpoints', () => {
+	const stops = [
+		{name: 'Torino', stopId: 'a'},
+		{name: 'MILANO CENTRALE', stopId: 'b'},
+		{name: 'Brescia', stopId: 'c'},
+		{name: 'Venezia Mestre', stopId: 'd'},
+		{name: 'Trieste', stopId: 'e'}
+	]
+	assert.deepStrictEqual(
+		segmentOf(stops, 'Milano Centrale', 'Venezia Mestre', 'equivalent'),
+		Option.some(pipe(stops, Array.drop(1), Array.take(3)))
+	)
+	assert.deepStrictEqual(segmentOf(stops, 'Milano Centrale', 'Torino', 'b'), Option.none())
+	assert.deepStrictEqual(segmentOf(stops, 'Unknown', 'Trieste', 'unknown'), Option.none())
+})
 const FLIGHT = Struct.pick(
 	Flight.make({
 		airline: 'British Airways',
@@ -91,7 +225,7 @@ it('keeps distinct legs of the same flight number as distinct bookings', () => {
 it('splits long flights into departure and arrival activity windows', () => {
 	const long = Flight.make({...FLIGHT, arrives: DateTime.addDuration(DEPARTS, Duration.hours(11))})
 	assert.deepStrictEqual(
-		Array.map([-1, 4, 10], hours =>
+		Array.map([-1, 2, 10], hours =>
 			Option.map(activeWindow(long, DateTime.addDuration(DEPARTS, Duration.hours(hours))), window => window.leg)
 		),
 		[Option.some('departure'), Option.none(), Option.some('arrival')]

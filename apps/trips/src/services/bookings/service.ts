@@ -9,10 +9,11 @@ import {listEvents} from '@deslop/runtime/shared/list'
 
 import {Extractor} from './lib/extraction.ts'
 import {Places} from './lib/places.ts'
+import {Timetable} from './lib/timetable.ts'
 
 import {byStart, instantOf, upsert} from '#services/bookings/lib/utils.ts'
 import type {Booking, BookingSource, ExtractedItem, LocalTime} from '#services/bookings/schema.ts'
-import {BookingId, BookingsError, Flight, Place, Stay, Train} from '#services/bookings/schema.ts'
+import {BookingId, BookingsError, Flight, Stay, Train} from '#services/bookings/schema.ts'
 
 declare module 'effect/reactivity/Reactivity' {
 	interface Keys {
@@ -37,6 +38,7 @@ export class Bookings extends Context.Service<Bookings>()('@deslop/trips/service
 	make: Effect.gen(function* () {
 		const sql = yield* SqlClient.SqlClient
 		const places = yield* Places
+		const timetable = yield* Timetable
 		const extractor = yield* Extractor
 		const random = yield* SecureRandom.SecureRandom
 		// Writes tell this Reactivity of their commits, so callers need none of their own.
@@ -93,21 +95,6 @@ export class Bookings extends Context.Service<Bookings>()('@deslop/trips/service
 			Stream.withSpan('Bookings.watch', {attributes: {'rpc.stream': true}})
 		)
 
-		// Saved with its zone; an unplaced station of an Italian operator falls back to Italy's, another railway's fails the save.
-		const resolveStation = Effect.fnUntraced(function* (name: string, operator: Train['operator']) {
-			const found = yield* Effect.map(Effect.option(places.station(name)), Option.flatten)
-			const timeZone = yield* pipe(
-				found,
-				Option.flatMap(place => place.timeZone),
-				Option.orElse(() => Option.liftPredicate('Europe/Rome', () => operator !== 'other')),
-				Option.match({
-					onNone: () => BookingsError.make({message: `The station ${name} could not be placed.`}),
-					onSome: Effect.succeed
-				})
-			)
-			return {...Option.getOrElse(found, () => Schema.decodeSync(Place)({name})), timeZone}
-		})
-
 		// Airports and stations resolve from their datasets, so a time reads in the right zone and a ride has coordinates.
 		const resolve = Effect.fnUntraced(function* (item: ExtractedItem) {
 			const base = {confirmation: item.confirmation, id: BookingId.make(yield* random.uuidV4()), status: item.status}
@@ -130,20 +117,13 @@ export class Bookings extends Context.Service<Bookings>()('@deslop/trips/service
 				})
 			}
 			if (item.kind === 'train') {
-				const from = yield* resolveStation(item.from, item.operator)
-				const to = yield* resolveStation(item.to, item.operator)
 				return Train.make({
 					...base,
-					arrives: yield* at(item.arrival, to.timeZone),
+					...(yield* timetable.resolve(item)),
 					coach: item.coach,
-					departs: yield* at(item.departure, from.timeZone),
-					from,
 					live: Option.none(),
 					number: item.trainNumber,
-					operator: item.operator,
-					operatorName: item.operatorName,
-					seat: item.seat,
-					to
+					seat: item.seat
 				})
 			}
 			return Stay.make({
@@ -301,6 +281,13 @@ export class Bookings extends Context.Service<Bookings>()('@deslop/trips/service
 							confirmation TEXT
 						) STRICT
 					`
+				}),
+				'0002_timetable': Effect.gen(function* () {
+					const sql = yield* SqlClient.SqlClient
+					yield* sql`ALTER TABLE trains DROP COLUMN operatorName`
+					yield* sql`ALTER TABLE trains ADD COLUMN service TEXT NOT NULL DEFAULT ''`
+					yield* sql`ALTER TABLE trains ADD COLUMN stops TEXT NOT NULL DEFAULT '[]'`
+					yield* sql`UPDATE trains SET service = number`
 				})
 			}),
 			table: 'bookings_migrations'
@@ -311,4 +298,7 @@ export class Bookings extends Context.Service<Bookings>()('@deslop/trips/service
 }
 
 // Place lookups and extraction are the bookings' own internals; tests provide stand-ins to `Bookings.layer` instead.
-export const layerBookings = Layer.provide(Bookings.layer, Layer.mergeAll(Places.layer, Extractor.layer))
+export const layerBookings = Layer.provide(
+	Bookings.layer,
+	Layer.mergeAll(Places.layer, Extractor.layer, Layer.provide(Timetable.layer, Places.layer))
+)

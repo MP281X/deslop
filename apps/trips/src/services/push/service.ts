@@ -23,7 +23,14 @@ import {Migrator, SqlClient, SqlModel, SqlSchema} from 'effect/sql'
 
 import {Apns, apnsAccepted, apnsDeadToken, apnsRetryable} from '@deslop/runtime/server/apns'
 
-import {ACTIVITY_NAME, activeWindow, activityProps, urgencyOf} from '#services/bookings/lib/utils.ts'
+import {
+	ACTIVITY_NAME,
+	activeWindow,
+	journeyProps,
+	journeysOf,
+	startable,
+	urgencyOf
+} from '#services/bookings/lib/utils.ts'
 import type {ActivityProps, BookingList, Flight, Leg, Train} from '#services/bookings/schema.ts'
 import {Booking, BookingId} from '#services/bookings/schema.ts'
 import {Bookings} from '#services/bookings/service.ts'
@@ -134,6 +141,16 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 
 		const asPushReadError = asPushError('The push state could not be read.')
 		const asPushSaveError = asPushError('The push state could not be saved.')
+		const listRequests = SqlSchema.findAll({
+			Request: Schema.Void,
+			Result: Schema.Struct({at: Schema.DateTimeUtcFromMillis, bookingId: BookingId}),
+			execute: () => sql`SELECT * FROM requests`
+		})
+		const recordRequest = SqlSchema.void({
+			Request: Schema.Struct({at: Schema.DateTimeUtcFromMillis, bookingId: BookingId}),
+			execute: row =>
+				sql`INSERT INTO requests ${sql.insert(row)} ON CONFLICT (bookingId) DO UPDATE SET at = excluded.at`
+		})
 
 		const pushStart = Effect.fnUntraced(function* (target: Device, showing: Showing) {
 			const answer = yield* apns.startActivity(target, showing.leg, {
@@ -232,9 +249,11 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 			journey: Flight | Train,
 			window: Span & {leg: Leg},
 			all: BookingList,
-			now: DateTime.Utc
+			now: DateTime.Utc,
+			legs: readonly (Flight | Train)[],
+			requested: Option.Option<DateTime.Utc>
 		) {
-			const showing = {journey, leg: window.leg, now, props: activityProps(journey, all, now), window} satisfies Showing
+			const showing = {journey, leg: window.leg, now, props: journeyProps(legs, all, now), window} satisfies Showing
 			// An activity that cannot cover the window ends, and the leg starts afresh.
 			yield* pipe(
 				yield* asPushReadError(listActivities()),
@@ -248,7 +267,13 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 				Effect.forEach(activity => finish(activity, now), {concurrency: 1, discard: true})
 			)
 			yield* Effect.forEach(
-				showPlan(yield* asPushReadError(listDevices()), yield* asPushReadError(listActivities()), journey, window),
+				showPlan(
+					yield* asPushReadError(listDevices()),
+					yield* asPushReadError(listActivities()),
+					journey,
+					window,
+					requested
+				),
 				action => {
 					if (ShowAction.guards.launch(action)) return launch(action.target, showing)
 					return refresh(action.target, showing.props, now)
@@ -318,24 +343,30 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 				if (!apns.enabled) return
 				const now = yield* DateTime.now
 				const all = yield* bookings.list
+				const requests = yield* asPushReadError(listRequests())
+				const requestsById = Array.groupBy(requests, request => request.bookingId)
 				yield* Effect.forEach(
-					all,
-					booking =>
-						Effect.ignore(
+					journeysOf(all),
+					journey => {
+						const booking = journey[0]
+						const legs = Array.filter(journey, (leg): leg is Flight | Train => !Booking.isAnyOf(['stay'])(leg))
+						const requested = Option.map(Array.head(requestsById[booking.id] ?? []), request => request.at)
+						return Effect.ignore(
 							Effect.gen(function* () {
-								yield* announce(booking, now)
+								yield* Effect.forEach(journey, leg => announce(leg, now), {concurrency: 1, discard: true})
 								if (Booking.isAnyOf(['stay'])(booking)) return
-								yield* Option.match(activeWindow(booking, now), {
+								yield* Option.match(activeWindow(booking, now, legs, requested), {
 									onNone: () => Effect.void,
-									onSome: window => show(booking, window, all, now)
+									onSome: window => show(booking, window, all, now, legs, requested)
 								})
 							}),
 							{log: 'Warn', message: `The Live Activity of ${booking.id} was not updated`}
-						),
+						)
+					},
 					{concurrency: 1, discard: true}
 				)
 				yield* Effect.forEach(
-					expiredActivities(yield* asPushReadError(listActivities()), all, now),
+					expiredActivities(yield* asPushReadError(listActivities()), all, now, requests),
 					activity => finish(activity, now),
 					{concurrency: 1, discard: true}
 				)
@@ -368,6 +399,22 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 		return {
 			register: Effect.fn('Push.register')(function* (device: typeof Device.insert.Type) {
 				yield* pipe(saveDevice(device), Reactivity.mutation(['push']), asPushSaveError)
+			}, withReactivity),
+			start: Effect.fn('Push.start')(function* (id: BookingId) {
+				const journey = Array.findFirst(
+					journeysOf(yield* asPushError('The bookings could not be read.')(bookings.list)),
+					group => Array.some(group, leg => leg.id === id)
+				)
+				const now = yield* DateTime.now
+				const legs = pipe(
+					journey,
+					Option.toArray,
+					Array.flatten,
+					Array.filter((leg): leg is Flight | Train => !Booking.isAnyOf(['stay'])(leg))
+				)
+				if (!startable(legs, now)) return yield* PushError.make({message: 'This journey cannot be started now.'})
+				yield* asPushSaveError(recordRequest({at: now, bookingId: Option.getOrThrow(Array.head(legs)).id}))
+				yield* tick
 			}, withReactivity)
 		}
 	})
@@ -416,6 +463,9 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 					yield* sql`DROP TABLE packed_alerts`
 					yield* sql`CREATE UNIQUE INDEX alert_value ON sent_alerts (bookingId, category, value) WHERE value IS NOT NULL`
 					yield* sql`CREATE UNIQUE INDEX alert_once ON sent_alerts (bookingId, category) WHERE value IS NULL`
+				}),
+				'0003_requests': Effect.gen(function* () {
+					yield* (yield* SqlClient.SqlClient)`CREATE TABLE requests (bookingId TEXT PRIMARY KEY, at INTEGER NOT NULL) STRICT, WITHOUT ROWID`
 				})
 			}),
 			table: 'push_migrations'
