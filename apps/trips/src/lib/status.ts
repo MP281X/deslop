@@ -1,4 +1,4 @@
-import {DateTime, Duration, Number, Option, Schema} from 'effect'
+import {Array, DateTime, Duration, Number, Option, Schema, pipe} from 'effect'
 import type {Record} from 'effect'
 
 import {ProblemStatus} from '@deslop/components-mobile/blocks/status-dot'
@@ -6,9 +6,9 @@ import {colors} from '@deslop/components-mobile/theme'
 import {weekdayOf} from '@deslop/runtime/shared/format'
 
 import {primary} from '#lib/session.ts'
-import {clockAt, departureOf, labelled} from '#services/bookings/lib/utils.ts'
+import {clockAt, departureOf, endOf, labelled} from '#services/bookings/lib/utils.ts'
 import {Booking, Tone} from '#services/bookings/schema.ts'
-import type {Flight, FlightTracking, Train, TrainTracking} from '#services/bookings/schema.ts'
+import type {Flight, FlightTracking, TrainTracking} from '#services/bookings/schema.ts'
 import {isStale} from '#services/tracking/lib/utils.ts'
 
 // The day where the trip happens, in that place's zone.
@@ -61,23 +61,6 @@ function platformOf(live: TrainTracking) {
 	return labelled('Platform', live.departurePlatform)
 }
 
-function trainStatus(train: Train, now: DateTime.Utc) {
-	if (train.operator !== 'trenitalia') return statusLine('plain', Option.none())
-	return Option.match(train.live, {
-		onNone: () => statusLine('plain', Option.none()),
-		onSome: live => {
-			if (isStale(train, now)) {
-				return problemLine(`Updated ${clockAt(live.checkedAt, train.from.timeZone)}`, 'warn', platformOf(live))
-			}
-			if (live.state === 'arrived') return statusLine('plain', platformOf(live))
-			if (Duration.isGreaterThanOrEqualTo(live.delayMinutes, Duration.minutes(5))) {
-				return problemLine(`+${Duration.toMinutes(live.delayMinutes)} min`, 'warn', platformOf(live))
-			}
-			return statusLine('good', platformOf(live))
-		}
-	})
-}
-
 function gateOf(live: FlightTracking) {
 	return Option.orElse(labelled('Gate', live.departureGate), () => labelled('Terminal', live.departureTerminal))
 }
@@ -106,7 +89,31 @@ function flightStatus(flight: Flight, now: DateTime.Utc) {
 export function statusOf(booking: Booking, now: DateTime.Utc) {
 	if (booking.status === 'cancelled') return problemLine('Cancelled', 'bad', Option.none())
 	if (Booking.isAnyOf(['stay'])(booking)) return statusLine('plain', Option.none())
-	if (Booking.isAnyOf(['train'])(booking)) return trainStatus(booking, now)
+	if (Booking.isAnyOf(['train'])(booking)) {
+		return Option.match(booking.live, {
+			onNone: () => {
+				// A train's tracking starts around an hour out; silence after that is worth a dot.
+				if (
+					booking.status === 'confirmed' &&
+					DateTime.isGreaterThanOrEqualTo(now, DateTime.subtractDuration(booking.departs, Duration.hours(1))) &&
+					DateTime.isLessThan(now, booking.arrives)
+				) {
+					return problemLine('No live data', 'warn', Option.none())
+				}
+				return statusLine('plain', Option.none())
+			},
+			onSome: live => {
+				if (isStale(booking, now)) {
+					return problemLine(`Updated ${clockAt(live.checkedAt, booking.from.timeZone)}`, 'warn', platformOf(live))
+				}
+				if (live.state === 'arrived') return statusLine('plain', platformOf(live))
+				if (Duration.isGreaterThanOrEqualTo(live.delayMinutes, Duration.minutes(5))) {
+					return problemLine(`+${Duration.toMinutes(live.delayMinutes)} min`, 'warn', platformOf(live))
+				}
+				return statusLine('good', platformOf(live))
+			}
+		})
+	}
 	return flightStatus(booking, now)
 }
 
@@ -129,4 +136,17 @@ export function problemOf(booking: Booking, status: Status, now: DateTime.Utc) {
 		return Option.some({label: status.label, status: 'warning' as const, tone: 'warn' as const})
 	}
 	return Option.none<Problem>()
+}
+
+// The leg a journey is on: the first not yet arrived, else the last.
+export function currentOf(journey: Array.NonEmptyReadonlyArray<Booking>, now: DateTime.Utc) {
+	return pipe(
+		journey,
+		Array.findFirst(leg => {
+			if (DateTime.isGreaterThanOrEqualTo(now, endOf(leg))) return false
+			if (Booking.isAnyOf(['stay'])(leg)) return true
+			return !Option.exists<FlightTracking | TrainTracking>(leg.live, live => live.state === 'arrived')
+		}),
+		Option.getOrElse(() => Array.lastNonEmpty(journey))
+	)
 }

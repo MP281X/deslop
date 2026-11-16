@@ -1,6 +1,6 @@
 import {useAtomSet, useAtomValue} from '@effect/atom-react'
 
-import {Array, DateTime, Duration, Function, Option, pipe} from 'effect'
+import {Array, Boolean, DateTime, Duration, Function, Number, Option, pipe} from 'effect'
 
 import {
 	Button,
@@ -30,18 +30,29 @@ import {
 	tint
 } from '@expo/ui/swift-ui/modifiers'
 import {AsyncResult} from 'effect/reactivity'
+import {Fragment} from 'react'
 
 import {StatusDot} from '@deslop/components-mobile/blocks/status-dot'
 import {colors, space, text} from '@deslop/components-mobile/theme'
 import {Empty, EmptyMedia} from '@deslop/components-mobile/ui/empty'
 
-import {nowAtom, refreshAtom, removal} from '#lib/bookings.ts'
+import {nowAtom, refreshAtom, removal, startAtom} from '#lib/bookings.ts'
 import {mapsAtom, placeLine, ridesOf, uberAtom} from '#lib/rides.ts'
 import {primary} from '#lib/session.ts'
-import {dayAt, problemOf, statusOf, tones} from '#lib/status.ts'
-import {arrivalOf, clockAt, departureOf, MINUTE, routeOf, titleOf} from '#services/bookings/lib/utils.ts'
+import {currentOf, dayAt, problemOf, statusOf, tones} from '#lib/status.ts'
+import {
+	arrivalOf,
+	autoStartOf,
+	clockAt,
+	departureOf,
+	journeysOf,
+	MINUTE,
+	routeOf,
+	startable,
+	titleOf
+} from '#services/bookings/lib/utils.ts'
 import {Booking} from '#services/bookings/schema.ts'
-import type {BookingList, Flight, Stay, Tone, Train} from '#services/bookings/schema.ts'
+import type {BookedPlace, BookingList, Flight, Stay, Tone, Train} from '#services/bookings/schema.ts'
 
 function colorOf(tone?: Tone) {
 	if (tone === undefined || tone === 'plain') return colors.foreground
@@ -114,7 +125,7 @@ function FlightFields(props: {flight: Flight}) {
 	)
 }
 
-function TrainFields(props: {train: Train}) {
+function TrainTimes(props: {train: Train}) {
 	return (
 		<>
 			<Section title={`Departure · ${props.train.from.name}`}>
@@ -137,10 +148,92 @@ function TrainFields(props: {train: Train}) {
 					value={Option.getOrUndefined(Option.flatMap(props.train.live, report => report.arrivalPlatform))}
 				/>
 			</Section>
-			<Section title="Booking">
-				<Field label="Train" value={props.train.operatorName} />
-				<Field label="Confirmation" value={Option.getOrUndefined(props.train.confirmation)} />
-			</Section>
+		</>
+	)
+}
+
+function Stops(props: {train: Train}) {
+	const last = props.train.stops.length - 1
+	return (
+		<Section title={`${props.train.service} · ${dayAt(props.train.departs, props.train.from.timeZone)}`}>
+			{Array.map(props.train.stops, (stop, index) => {
+				const end = index === 0 || index === last
+				// Where the train leaves a stop; the last stop shows where it arrives.
+				const time = pipe(
+					Boolean.match(index === last, {
+						onFalse: () => Option.orElse(stop.departs, () => stop.arrives),
+						onTrue: () => Option.orElse(stop.arrives, () => stop.departs)
+					}),
+					Option.map(at => clockAt(at, props.train.from.timeZone)),
+					Option.getOrElse(Function.constant(''))
+				)
+				return (
+					<HStack key={`${index}-${stop.name}`} spacing={space[3]}>
+						<Text
+							modifiers={[
+								text.data,
+								foregroundStyle(
+									Boolean.match(end, {onFalse: () => colors.mutedForeground, onTrue: () => colors.foreground})
+								),
+								frame({minWidth: 44})
+							]}
+						>
+							{time}
+						</Text>
+						<Text
+							modifiers={[
+								Boolean.match(end, {onFalse: () => text.body, onTrue: () => text.row}),
+								foregroundStyle(colors.foreground)
+							]}
+						>
+							{stop.name}
+						</Text>
+					</HStack>
+				)
+			})}
+		</Section>
+	)
+}
+
+function Change(props: {from: Train; to: Train}) {
+	const minutes = Number.round(Duration.toMinutes(DateTime.distance(arrivalOf(props.from), departureOf(props.to))), 0)
+	return (
+		<Section>
+			<HStack spacing={space[2]}>
+				<Image systemName="arrow.triangle.swap" modifiers={[foregroundStyle(colors.mutedForeground)]} />
+				<Text modifiers={[text.detail, foregroundStyle(colors.mutedForeground)]}>
+					{`Change at ${props.from.to.name} · ${minutes} min`}
+				</Text>
+			</HStack>
+		</Section>
+	)
+}
+
+function Trains(props: {trains: readonly Train[]}) {
+	const confirmation = Array.findFirst(props.trains, train => train.confirmation)
+	return (
+		<>
+			{Array.map(props.trains, (train, index) => (
+				<Fragment key={train.id}>
+					{Boolean.match(Array.isReadonlyArrayEmpty(train.stops), {
+						onFalse: () => <Stops train={train} />,
+						onTrue: () => <TrainTimes train={train} />
+					})}
+					{pipe(
+						props.trains,
+						Array.get(index + 1),
+						Option.match({onNone: Function.constUndefined, onSome: next => <Change from={train} to={next} />})
+					)}
+				</Fragment>
+			))}
+			{Option.match(confirmation, {
+				onNone: Function.constUndefined,
+				onSome: found => (
+					<Section title="Booking">
+						<Field label="Confirmation" value={found} />
+					</Section>
+				)
+			})}
 		</>
 	)
 }
@@ -275,13 +368,49 @@ function Rides(props: {booking: Booking; bookings: BookingList; now: DateTime.Ut
 	)
 }
 
+function placeCity(place: BookedPlace) {
+	return Option.getOrElse(place.city, () => place.name)
+}
+
+function routeOfJourney(journey: Array.NonEmptyReadonlyArray<Booking>) {
+	const first = Array.headNonEmpty(journey)
+	if (Booking.isAnyOf(['stay'])(first)) return routeOf(first)
+	const last = Option.getOrElse(Array.last(Array.filter(journey, Booking.isAnyOf(['flight', 'train']))), () => first)
+	return `${placeCity(first.from)} → ${placeCity(last.to)}`
+}
+
+function Start(props: {legs: readonly (Flight | Train)[]; now: DateTime.Utc}) {
+	const start = useAtomSet(startAtom)
+	if (!startable(props.legs, props.now)) return undefined
+	const first = Option.getOrThrow(Array.head(props.legs))
+	const auto = autoStartOf(props.legs)
+	return (
+		<Section
+			footer={pipe(
+				props.now,
+				DateTime.isLessThan(auto),
+				Boolean.match({
+					onFalse: Function.constUndefined,
+					onTrue: () => (
+						<Text modifiers={[text.caption, foregroundStyle(colors.mutedForeground)]}>
+							{`Starts by itself at ${clockAt(auto, first.from.timeZone)}.`}
+						</Text>
+					)
+				})
+			)}
+		>
+			<Button label="Start Live Activity" systemImage="play.fill" onPress={() => start(first.id)} />
+		</Section>
+	)
+}
+
 export function BookingRoute(props: {bookings: BookingList; id: Booking['id']; onClose: () => void}) {
 	const remove = useAtomSet(removal.removeAtom)
 	const refresh = useAtomSet(refreshAtom, {mode: 'promiseExit'})
 	const now = AsyncResult.getOrElse(useAtomValue(nowAtom), DateTime.nowUnsafe)
 	return pipe(
-		props.bookings,
-		Array.findFirst(booking => booking.id === props.id),
+		journeysOf(props.bookings),
+		Array.findFirst(journey => Array.some(journey, leg => leg.id === props.id)),
 		Option.match({
 			onNone: () => (
 				<Empty modifiers={[navigationTitle(''), navigationBarTitleDisplayMode('inline')]}>
@@ -290,10 +419,16 @@ export function BookingRoute(props: {bookings: BookingList; id: Booking['id']; o
 					</EmptyMedia>
 				</Empty>
 			),
-			onSome: booking => {
-				const status = statusOf(booking, now)
+			onSome: journey => {
+				const booking = currentOf(journey, now)
+				const legs = Array.filter(journey, Booking.isAnyOf(['flight', 'train']))
 				return (
-					<Toolbar modifiers={[navigationTitle(titleOf(booking)), navigationBarTitleDisplayMode('inline')]}>
+					<Toolbar
+						modifiers={[
+							navigationTitle(pipe(journey, Array.map(titleOf), Array.join(' · '))),
+							navigationBarTitleDisplayMode('inline')
+						]}
+					>
 						<Form
 							modifiers={[
 								tint(primary),
@@ -311,17 +446,21 @@ export function BookingRoute(props: {bookings: BookingList; id: Booking['id']; o
 								>
 									<VStack alignment="leading" spacing={space[2]}>
 										<Text modifiers={[font({textStyle: 'title2', weight: 'bold'}), foregroundStyle(colors.foreground)]}>
-											{routeOf(booking)}
+											{routeOfJourney(journey)}
 										</Text>
-										{Option.match(problemOf(booking, status, now), {
-											onNone: Function.constUndefined,
-											onSome: problem => (
-												<HStack spacing={space[2]}>
-													<StatusDot status={problem.status} />
-													<Text modifiers={[text.title, foregroundStyle(tones[problem.tone])]}>{problem.label}</Text>
-												</HStack>
-											)
-										})}
+										{pipe(
+											journey,
+											Array.findFirst(leg => problemOf(leg, statusOf(leg, now), now)),
+											Option.match({
+												onNone: Function.constUndefined,
+												onSome: problem => (
+													<HStack spacing={space[2]}>
+														<StatusDot status={problem.status} />
+														<Text modifiers={[text.title, foregroundStyle(tones[problem.tone])]}>{problem.label}</Text>
+													</HStack>
+												)
+											})
+										)}
 									</VStack>
 									<Divider />
 									{Booking.isAnyOf(['flight'])(booking) && <FlightEssentials flight={booking} />}
@@ -329,8 +468,9 @@ export function BookingRoute(props: {bookings: BookingList; id: Booking['id']; o
 									{Booking.isAnyOf(['stay'])(booking) && <StayEssentials stay={booking} />}
 								</VStack>
 							</Section>
+							<Start legs={legs} now={now} />
 							{Booking.isAnyOf(['flight'])(booking) && <FlightFields flight={booking} />}
-							{Booking.isAnyOf(['train'])(booking) && <TrainFields train={booking} />}
+							<Trains trains={Array.filter(journey, Booking.isAnyOf(['train']))} />
 							{Booking.isAnyOf(['stay'])(booking) && <StayFields stay={booking} />}
 							{booking.status === 'confirmed' && <Rides booking={booking} bookings={props.bookings} now={now} />}
 						</Form>
