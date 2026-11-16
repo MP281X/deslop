@@ -315,8 +315,9 @@ export class Chapters extends Context.Service<Chapters>()('@deslop/opm/services/
 					),
 				{concurrency: 1, discard: true}
 			)
-			if (Array.every(fetched.feeds, Option.isNone))
+			if (Array.every(fetched.feeds, Option.isNone)) {
 				return yield* ChaptersError.make({message: 'Reddit did not answer.'})
+			}
 			const now = yield* DateTime.now
 			const current = yield* chapters
 			const candidates = revisionCandidates(
