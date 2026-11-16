@@ -1,3 +1,5 @@
+import {Array, pipe} from 'effect'
+
 import {sourceSkips} from '@deslop/runtime/config/fingerprint'
 
 export {sourceSkips}
@@ -6,9 +8,8 @@ export {sourceSkips}
 export const ignorePaths = ['../../packages/runtime/src/config/expo.ts']
 
 // File by file, because prebuild writes the share extension's generated Assets.xcassets into targets/share.
-export const extraSources = [
-	{filePath: 'targets/share/Info.plist', reasons: ['share extension'], type: 'file'},
-	{filePath: 'targets/share/ShareViewController.swift', reasons: ['share extension'], type: 'file'},
-	{filePath: 'targets/share/expo-target.config.js', reasons: ['share extension'], type: 'file'},
-	{filePath: 'src/routes/icon.png', reasons: ['share extension icon'], type: 'file'}
-]
+export const extraSources = pipe(
+	['targets/share/Info.plist', 'targets/share/ShareViewController.swift', 'targets/share/expo-target.config.js'],
+	Array.map(filePath => ({filePath, reasons: ['share extension'], type: 'file'})),
+	Array.append({filePath: 'src/routes/icon.png', reasons: ['share extension icon'], type: 'file'})
+)

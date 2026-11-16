@@ -8,6 +8,7 @@ import type {UserId} from '@deslop/runtime/shared/auth'
 import {listEvents} from '@deslop/runtime/shared/list'
 
 import {Extractor} from './lib/extraction.ts'
+import {passText} from './lib/pkpass.ts'
 import {Places} from './lib/places.ts'
 import {Timetable} from './lib/timetable.ts'
 
@@ -171,6 +172,7 @@ export class Bookings extends Context.Service<Bookings>()('@deslop/trips/service
 			// What the phone watches: the whole list first, then only what changed, after each commit.
 			events: Stream.withSpan(listEvents(watch), 'Bookings.events', {attributes: {'rpc.stream': true}}),
 			list: pipe(listAll, asBookingsError, Effect.withSpan('Bookings.list')),
+			passText,
 			remove: Effect.fn('Bookings.remove')(function* (id: BookingId) {
 				yield* Effect.annotateCurrentSpan('bookingId', id)
 				yield* pipe(

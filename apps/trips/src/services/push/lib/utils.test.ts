@@ -4,7 +4,7 @@ import {Array, DateTime, Duration, Option, Redacted, Schema, String, Struct} fro
 
 import {ApnsToken} from '@deslop/runtime/shared/apns'
 
-import {activityProps} from '#services/bookings/lib/utils.ts'
+import {journeyProps} from '#services/bookings/lib/utils.ts'
 import {BookedPlace, BookingId, Flight, FlightTracking} from '#services/bookings/schema.ts'
 import {alertsOf, announced, expiredActivities, holds, showPlan} from '#services/push/lib/utils.ts'
 import {Activity, ChannelId, Device, SentAlert} from '#services/push/schema.ts'
@@ -41,7 +41,7 @@ const ACTIVITY = {
 	channel: ChannelId.make('current'),
 	endedAt: Option.none<DateTime.Utc>(),
 	leg: 'departure' as const,
-	props: activityProps(FLIGHT, [], DEPARTS),
+	props: journeyProps([FLIGHT], [], DEPARTS),
 	startedAt: DEPARTS
 }
 

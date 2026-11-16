@@ -16,10 +16,7 @@ import {Tracking} from '#services/tracking/service.ts'
 runApp({
 	icon,
 	routes: pipe(
-		Layer.mergeAll(
-			layerRpc({group: RpcContracts, handlers: RpcHandlers}),
-			Layer.provide(HttpHandlers, HttpAuth.layer)
-		),
+		Layer.mergeAll(layerRpc({group: RpcContracts, handlers: RpcHandlers}), Layer.provide(HttpHandlers, HttpAuth.layer)),
 		Layer.provide(
 			Layer.mergeAll(Layer.provide(Push.layer, Layer.provide(Apns.layer, layerApnsClient)), Tracking.layer)
 		),

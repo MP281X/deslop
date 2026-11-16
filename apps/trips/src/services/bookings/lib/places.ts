@@ -37,7 +37,7 @@ function airportIndex(all: Record<string, unknown>) {
 	)
 }
 
-export function words(text: string) {
+function words(text: string) {
 	return pipe(
 		text,
 		String.normalize('NFD'),

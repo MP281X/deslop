@@ -1,5 +1,5 @@
 import type {Schema} from 'effect'
-import {Array, Cause, Context, DateTime, Duration, Effect, Layer, Number, Option, Order, pipe} from 'effect'
+import {Array, Cause, Context, DateTime, Duration, Effect, Layer, Match, Number, Option, Order, pipe} from 'effect'
 
 import {HttpClient, HttpClientRequest, HttpClientResponse} from 'effect/http'
 
@@ -9,7 +9,7 @@ import {instantOf} from './utils.ts'
 import {BookedPlace, BookingsError, TransitRuns, TransitTrip, TrainStop} from '#services/bookings/schema.ts'
 import type {ExtractedItem} from '#services/bookings/schema.ts'
 
-export function segmentOf<A extends {readonly name: string; readonly stopId: string}>(
+function segmentOf<A extends {readonly name: string; readonly stopId: string}>(
 	stops: readonly A[],
 	from: string,
 	to: string,
@@ -117,9 +117,15 @@ export class Timetable extends Context.Service<Timetable>()('@deslop/trips/servi
 					cause =>
 						BookingsError.make({
 							cause,
-							message: Cause.isNoSuchElementError(cause)
-								? `Train ${item.trainNumber} not found on ${DateTime.format(DateTime.makeUnsafe(item.departure), {day: 'numeric', locale: 'en-GB', month: 'short', timeZone: 'UTC'})}.`
-								: `The timetable did not answer for train ${item.trainNumber}.`
+							message: pipe(
+								Match.value(cause),
+								Match.when(
+									Cause.isNoSuchElementError,
+									() =>
+										`Train ${item.trainNumber} not found on ${DateTime.format(DateTime.makeUnsafe(item.departure), {day: 'numeric', locale: 'en-GB', month: 'short', timeZone: 'UTC'})}.`
+								),
+								Match.orElse(() => `The timetable did not answer for train ${item.trainNumber}.`)
+							)
 						})
 				)
 			})

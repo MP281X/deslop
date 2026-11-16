@@ -232,7 +232,7 @@ export function autoStartOf(legs: readonly (Flight | Train)[]) {
 	return DateTime.subtractDuration(first.departs, {flight: Duration.hours(3), train: HOUR}[first._tag])
 }
 
-export function sampleStops(stops: readonly TrainStop[], delay: Duration.Duration, now: DateTime.Utc) {
+function sampleStops(stops: readonly TrainStop[], delay: Duration.Duration, now: DateTime.Utc) {
 	if (!Array.isReadonlyArrayNonEmpty(stops)) return []
 	const count = Number.min(stops.length, 7)
 	return pipe(
@@ -261,7 +261,10 @@ function activityWindows(booking: Booking, legs: readonly (Flight | Train)[], re
 		onSome: at => DateTime.min(at, autoStartOf(legs))
 	})
 	const last = Option.getOrElse(Array.last(legs), () => booking)
-	const end = DateTime.addDuration(arrivalOf(last), {flight: Duration.minutes(45), train: Duration.minutes(10)}[last._tag])
+	const end = DateTime.addDuration(
+		arrivalOf(last),
+		{flight: Duration.minutes(45), train: Duration.minutes(10)}[last._tag]
+	)
 	if (pipe(start, DateTime.distance(end), Duration.isLessThanOrEqualTo(ACTIVITY_LIFETIME))) {
 		return [{end, leg: 'departure', start}] satisfies ActivityWindow[]
 	}
@@ -597,7 +600,7 @@ function trainActivity(train: Train, now: DateTime.Utc) {
 	} satisfies ActivityProps
 }
 
-export function activityProps(journey: Flight | Train, bookings: BookingList, now: DateTime.Utc) {
+function activityProps(journey: Flight | Train, bookings: BookingList, now: DateTime.Utc) {
 	if (Booking.isAnyOf(['flight'])(journey)) return ActivityProps.make(flightActivity(journey, bookings, now))
 	return ActivityProps.make(trainActivity(journey, now))
 }
