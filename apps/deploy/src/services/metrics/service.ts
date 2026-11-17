@@ -10,14 +10,17 @@ import {
 	Duration,
 	Effect,
 	FileSystem,
+	Filter,
 	Function,
 	Layer,
 	Option,
+	Order,
 	Predicate,
 	Record,
 	Ref,
 	Schedule,
 	Schema,
+	Semaphore,
 	String,
 	Struct,
 	pipe
@@ -55,7 +58,7 @@ import {
 	MachineSample,
 	Sample
 } from '#services/metrics/schema.ts'
-import type {Disk, MachineHistory} from '#services/metrics/schema.ts'
+import type {AppSample, Disk, MachineHistory} from '#services/metrics/schema.ts'
 
 const CGROUP = '/sys/fs/cgroup'
 
@@ -75,6 +78,11 @@ function sampled<A>(read: () => A) {
 		catch: cause => DeployError.make({cause, message: 'The machine sample is unreadable.'}),
 		try: read
 	})
+}
+
+function sameBucket(row: Sample, time: DateTime.Utc) {
+	const step = Duration.toMillis(row.step)
+	return Math.floor(DateTime.toEpochMillis(row.since) / step) === Math.floor(DateTime.toEpochMillis(time) / step)
 }
 
 export class Metrics extends Context.Service<Metrics>()('@deslop/deploy/services/metrics/service/Metrics', {
@@ -326,8 +334,10 @@ export class Metrics extends Context.Service<Metrics>()('@deslop/deploy/services
 			)
 			return {current, value}
 		})
-		// Each measurement joins every series in one commit, so a restart loses nothing measured.
+		const pending = yield* Ref.make<readonly Sample[]>(yield* asDeployError(listBuckets(yield* DateTime.now)))
+		const writes = yield* Semaphore.make(1)
 		const collect = pipe(
+			// judge-ignore no-contradicted-promise -- Effect 4's Filter partition returns [passes, failures]: current contains matching buckets and completed contains the rest.
 			Effect.gen(function* () {
 				const time = yield* DateTime.now
 				const old = yield* Ref.get(previous)
@@ -337,18 +347,47 @@ export class Metrics extends Context.Service<Metrics>()('@deslop/deploy/services
 					onTrue: () => darwin(time, disks, old)
 				})
 				yield* Ref.set(previous, Option.some(measured.current))
-				yield* pipe(
-					listBuckets(time),
-					Effect.flatMap(stored => saveSamples(rollup(measured.value.point, stored))),
-					sql.withTransaction,
-					asDeployError
+				yield* writes.withPermits(1)(
+					Ref.update(pending, rows => {
+						const [current, completed] = Array.partition(
+							rows,
+							Filter.fromPredicate(row => sameBucket(row, time))
+						)
+						return [
+							...completed,
+							...Array.map(rollup(measured.value.point, current), row =>
+								Struct.evolve(row, {
+									apps: readings =>
+										pipe(
+											readings,
+											Option.filter(Array.isReadonlyArrayNonEmpty),
+											Option.map(Array.sort(Order.mapInput(Order.String, (app: AppSample) => app.id)))
+										)
+								})
+							)
+						]
+					})
 				)
 				yield* Ref.set(latest, {disks: measured.value.disks, load: measured.value.load})
 				yield* Ref.set(failure, Option.none())
 			}),
-			Effect.withSpan('Metrics.collect', {attributes: {worker}}),
 			Effect.tapError(cause => Effect.logWarning('Metrics could not be sampled', cause)),
 			Effect.catch(cause => Ref.set(failure, Option.some(cause.message)))
+		)
+		const flush = pipe(
+			Effect.gen(function* () {
+				const rows = yield* Ref.get(pending)
+				if (Array.isReadonlyArrayNonEmpty(rows)) yield* pipe(saveSamples(rows), sql.withTransaction, asDeployError)
+				const time = yield* DateTime.now
+				yield* Ref.set(
+					pending,
+					Array.filter(rows, row => sameBucket(row, time))
+				)
+			}),
+			writes.withPermits(1),
+			Effect.withSpan('Metrics.collect', {attributes: {worker}}),
+			Effect.tapError(cause => Ref.set(failure, Option.some(cause.message))),
+			Effect.ignore({log: 'Error', message: 'Resource history could not be saved'})
 		)
 		const prune = pipe(
 			DateTime.now,
@@ -361,7 +400,10 @@ export class Metrics extends Context.Service<Metrics>()('@deslop/deploy/services
 		yield* prune
 		yield* refreshStorage
 		yield* collect
+		// Registered before the collectors: their scoped fibers stop before the final commit.
+		yield* Effect.addFinalizer(() => flush)
 		yield* pipe(collect, Effect.schedule(Schedule.fixed(Duration.seconds(1))), Effect.forkScoped)
+		yield* pipe(flush, Effect.schedule(Schedule.fixed(Duration.seconds(10))), Effect.forkScoped)
 		yield* pipe(refreshStorage, Effect.schedule(Schedule.spaced(Duration.seconds(30))), Effect.forkScoped)
 		// Expired points go every minute.
 		yield* pipe(
@@ -376,8 +418,23 @@ export class Metrics extends Context.Service<Metrics>()('@deslop/deploy/services
 				yield* Effect.annotateCurrentSpan({minutes: Duration.toMinutes(query.minutes), worker})
 				const time = yield* DateTime.now
 				const step = SERIES[yield* asDeployError(Schema.encodeEffect(HistoryQuery.fields.minutes)(query.minutes))]
-				const samples = yield* asDeployError(
-					listSeries({after: DateTime.subtractDuration(chartWindow(query.minutes, time).start, step), step})
+				const samples = yield* writes.withPermits(1)(
+					Effect.gen(function* () {
+						const stored = yield* asDeployError(
+							listSeries({after: DateTime.subtractDuration(chartWindow(query.minutes, time).start, step), step})
+						)
+						const buffered = Array.filter(yield* Ref.get(pending), row => Duration.equals(row.step, step))
+						return Array.sort(
+							[
+								...Array.filter(
+									stored,
+									row => !Array.some(buffered, value => DateTime.Equivalence(value.since, row.since))
+								),
+								...buffered
+							],
+							Order.mapInput(DateTime.Order, (row: Sample) => row.since)
+						)
+					})
 				)
 				const now = yield* Ref.get(latest)
 				// Built from values the model just decoded, so no sample is checked twice; the RPC encodes it against the schema.
