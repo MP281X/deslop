@@ -12,7 +12,7 @@ export function ListToolbar(props: {
 	bottomBar?: ReactNode
 	children: ReactNode
 	onSearch: (text: string) => void
-	problem?: ReactElement
+	problem?: ReactElement | undefined
 	prompt?: string
 	session: Session
 	title: string

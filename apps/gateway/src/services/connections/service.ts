@@ -449,7 +449,10 @@ export class Connections extends Context.Service<
 								...init,
 								signal: AbortSignal.any([signal, ...Option.toArray(Option.fromNullishOr(init?.signal))])
 							}),
-						resourceMetadataUrl: challenge.resourceMetadataUrl
+						...Option.match(Option.fromUndefinedOr(challenge.resourceMetadataUrl), {
+							onNone: () => ({}),
+							onSome: resourceMetadataUrl => ({resourceMetadataUrl})
+						})
 					})
 			})
 			const resourceMetadata = Option.fromUndefinedOr(discovery.resourceMetadata)
@@ -460,7 +463,7 @@ export class Connections extends Context.Service<
 			return yield* Option.match(authorizationMetadata, {
 				onNone: available,
 				onSome: Effect.fnUntraced(function* (serverMetadata) {
-					const metadata = yield* Schema.decodeEffect(Metadata)(serverMetadata)
+					const metadata = yield* Schema.decodeUnknownEffect(Metadata)(serverMetadata)
 					yield* connectable(metadata)
 					return {
 						...initial,

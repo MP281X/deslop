@@ -37,6 +37,8 @@ The preset leaves type-aware lint and type checking off, so a syntax-only pass s
 
 Add your own ignores and repository-specific selectors alongside the preset's `lint.rules['eslint-js/no-restricted-syntax']`.
 
+The shared compiler enables `exactOptionalPropertyTypes`: omit an absent optional property, or explicitly include `| undefined` when that property forwards an undefined value. Elsewhere, model absence with `Option` rather than an explicit `undefined` type.
+
 ## Rules
 
 Each pattern has one owning check, so a site gets one report and one fix: a custom rule defers to a native rule or the Effect compiler where one already owns the pattern, and competing compiler rewrites stay off.

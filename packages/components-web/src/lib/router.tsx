@@ -81,7 +81,7 @@ export function mountRouter<TRouteTree extends AnyRoute & {types: {routerContext
 				Option.getOrElse(Function.constant('__root__'))
 			),
 			source,
-			stack
+			...Option.match(Option.fromUndefinedOr(stack), {onNone: () => ({}), onSome: value => ({stack: value})})
 		})
 	}
 	// The typed router takes full options in `update`; this view merges the partial one the router has always accepted.

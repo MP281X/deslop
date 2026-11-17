@@ -234,7 +234,7 @@ export class Gateway extends Context.Service<
 					withClient(server, headers, client =>
 						pipe(
 							client.listTools(),
-							Effect.flatMap(result => Effect.map(Schema.decodeEffect(RemoteTools)(result), tools => ({tools}))),
+							Effect.flatMap(result => Effect.map(Schema.decodeUnknownEffect(RemoteTools)(result), tools => ({tools}))),
 							Effect.map(result => ({
 								icons: serverIcons(client.serverInfo),
 								instructions: Option.fromUndefinedOr(client.instructions),

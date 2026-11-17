@@ -96,7 +96,7 @@ export const layerRoutes = HttpRouter.use(router =>
 	Effect.gen(function* () {
 		const auth = yield* Auth
 		const issuer = yield* Config.option(Config.String('AUTH_URL'))
-		const traces = yield* Config.withDefault(Config.String('OTEL_URL'), '')
+		const traces = yield* Config.option(Config.String('OTEL_URL'))
 		const canonical = yield* Config.String('APP_URL')
 		const metadata = yield* Effect.cached(packageMetadata)
 		yield* router.add(

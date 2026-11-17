@@ -184,7 +184,7 @@ function KindLabel(props: {kind: Kind}) {
 }
 
 // A picker row's tag is a string or a number, so "All Notes", which clears the filter, is a toggle beside it.
-function FilterMenu(props: {kind?: Kind; onKind: (kind?: Kind) => void}) {
+function FilterMenu(props: {kind?: Kind | undefined; onKind: (kind?: Kind) => void}) {
 	return (
 		<Menu
 			label="Filter"
@@ -203,7 +203,7 @@ function FilterMenu(props: {kind?: Kind; onKind: (kind?: Kind) => void}) {
 			<Divider />
 			<Picker<Kind>
 				label="Show"
-				selection={props.kind}
+				{...Option.match(Option.fromUndefinedOr(props.kind), {onNone: () => ({}), onSome: selection => ({selection})})}
 				onSelectionChange={props.onKind}
 				modifiers={[pickerStyle('inline')]}
 			>
@@ -216,7 +216,12 @@ function FilterMenu(props: {kind?: Kind; onKind: (kind?: Kind) => void}) {
 }
 
 // judge-ignore no-silent-fallback -- HomeRoute shows Search unavailable with retry for outages; denied searches render FailureContent instead of cached notes.
-function Notes(props: {kind?: Kind; onOpen: (id: Note['id']) => void; onTag: (name?: TagName) => void; tag?: TagName}) {
+function Notes(props: {
+	kind?: Kind | undefined
+	onOpen: (id: Note['id']) => void
+	onTag: (name?: TagName) => void
+	tag?: TagName | undefined
+}) {
 	const regenerate = useAtomSet(regenerateAtom)
 	const paste = useAtomSet(clipboard.atom.send)
 	const query = String.trim(useAtomValue(queryAtom))
@@ -311,13 +316,13 @@ function Notes(props: {kind?: Kind; onOpen: (id: Note['id']) => void; onTag: (na
 }
 
 export function HomeRoute(props: {
-	kind?: Kind
+	kind?: Kind | undefined
 	onCompose: () => void
 	onKind: (kind?: Kind) => void
 	onOpen: (id: Note['id']) => void
 	onSearch: (text: string) => void
 	onTag: (name?: TagName) => void
-	tag?: TagName
+	tag?: TagName | undefined
 }) {
 	const notes = useAtomValue(notesAtom)
 	const refreshNotes = useAtomRefresh(notesAtom)

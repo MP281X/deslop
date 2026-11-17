@@ -99,7 +99,7 @@ function labelOf(span: TraceTree['spans'][number]) {
 }
 
 // One lane per job, deeper spans packed into free time; the root and each job carry their full name and time inside the bar while they fit, else after it in the lane's free time, never clipped.
-export function Flame(props: {focus?: SpanId; onPick: (id: SpanId) => void; trace: TraceTree}) {
+export function Flame(props: {focus?: SpanId | undefined; onPick: (id: SpanId) => void; trace: TraceTree}) {
 	const total = Number.max(Duration.toMillis(props.trace.durationMs), 1)
 	const [width, setWidth] = useState(0)
 	const [labelWidths, setLabelWidths] = useState<Record<SpanId, number>>({})

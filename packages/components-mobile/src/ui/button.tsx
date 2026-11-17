@@ -1,4 +1,4 @@
-import {Boolean, Schema} from 'effect'
+import {Boolean, Option, Schema} from 'effect'
 
 import {Button as NativeButton} from '@expo/ui/swift-ui'
 import type {ButtonProps} from '@expo/ui/swift-ui'
@@ -47,7 +47,10 @@ export function Button(props: {
 	return (
 		<NativeButton
 			label={props.children}
-			systemImage={props.systemImage}
+			{...Option.match(Option.fromUndefinedOr(props.systemImage), {
+				onNone: () => ({}),
+				onSome: systemImage => ({systemImage})
+			})}
 			role={variant.role}
 			onPress={props.onPress}
 			modifiers={[

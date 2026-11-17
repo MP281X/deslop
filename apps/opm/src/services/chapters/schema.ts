@@ -1,4 +1,4 @@
-import {DateTime, Function, Option, Schema, SchemaGetter, Struct, pipe} from 'effect'
+import {Schema, Struct, pipe} from 'effect'
 
 import {Model} from 'effect/schema'
 
@@ -9,22 +9,6 @@ export const ChapterNumber = pipe(Schema.Finite, Schema.brand('ChapterNumber'))
 
 export type ChapterKey = typeof ChapterKey.Type
 export const ChapterKey = pipe(Schema.String, Schema.brand('ChapterKey'))
-
-export type PostedAt = typeof PostedAt.Type
-// The index sends zero for an unknown publication time; it is absence only at this boundary.
-export const PostedAt = pipe(
-	Schema.Finite,
-	Schema.decodeTo(Schema.Option(Schema.DateTimeUtc), {
-		decode: SchemaGetter.transform(millis =>
-			pipe(
-				DateTime.makeUnsafe(0),
-				DateTime.mapEpochMillis(() => millis),
-				Option.liftPredicate(() => millis !== 0)
-			)
-		),
-		encode: SchemaGetter.transform(Option.match({onNone: Function.constant(0), onSome: DateTime.toEpochMillis}))
-	})
-)
 
 export class ChaptersError extends Schema.TaggedError<ChaptersError>()('ChaptersError', {
 	cause: Schema.optional(Schema.Defect()),
@@ -51,7 +35,7 @@ export class Chapter extends Model.Class<Chapter>('Chapter')({
 	// Extras between two chapters carry a half number, such as 8.5.
 	number: ChapterNumber,
 	pages: Model.JsonFromString(Schema.Array(Schema.String)),
-	postedAt: PostedAt,
+	postedAt: Model.FieldOption(DateTimeUtcFromFiniteMillis),
 	// When the revision that supplied the current pages was posted; only a later revision replaces them.
 	revisedAt: Model.FieldOption(serverOnly(DateTimeUtcFromFiniteMillis)),
 	series: Series,

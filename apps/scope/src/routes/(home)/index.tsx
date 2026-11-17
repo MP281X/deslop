@@ -91,13 +91,13 @@ type WorkspaceProps = {
 	onPickSpan: (id: SpanId) => void
 	onSelectOperation: (app: AppName, operation: Operation) => void
 	onSelectTrace: (trace: OperationTrace) => void
-	pickedSpan?: SpanId
+	pickedSpan?: SpanId | undefined
 	range: TimeFrame
-	source?: AppName
+	source?: AppName | undefined
 }
 
 // One tab per app, using its app mark or the CI/server fallback; the supplied source selects it, and clicking that tab again prevents navigation.
-function SourceTabs(props: {apps: Overview['apps']; source?: AppName}) {
+function SourceTabs(props: {apps: Overview['apps']; source?: AppName | undefined}) {
 	const search = route.useSearch()
 	return (
 		<AppBarTabs value={props.source ?? ''}>
@@ -200,11 +200,11 @@ function OperationRow(props: {active: boolean; duplicate: boolean; onSelect: () 
 
 // One operations list, narrowed to the bar's chosen app; no groups or headings.
 function OperationsPane(props: {
-	activeKey?: OperationKey
+	activeKey?: OperationKey | undefined
 	className?: string
 	onSelect: (app: AppName, operation: Operation) => void
 	range: TimeFrame
-	source?: AppName
+	source?: AppName | undefined
 }) {
 	return (
 		<section aria-label="Operations" className={cn('flex h-full min-h-0 flex-col overflow-hidden', props.className)}>
@@ -289,7 +289,7 @@ function TraceListRow(props: {active: boolean; now: DateTime.Utc; onSelect: () =
 
 // The chosen operation's traces; nothing selects until one is chosen.
 function TracesPane(props: {
-	active?: ActiveOperation
+	active?: ActiveOperation | undefined
 	className?: string
 	now: DateTime.Utc
 	onSelect: (trace: OperationTrace) => void
@@ -385,9 +385,9 @@ function StaleMark(props: {range: TimeFrame; trace?: Pick<OperationTrace, 'id'>}
 }
 
 function Spans(props: {
-	detailOnly?: boolean
+	detailOnly?: boolean | undefined
 	id: TraceId
-	inlineDetails?: boolean
+	inlineDetails?: boolean | undefined
 	onPick: (id: SpanId) => void
 	pickedSpan?: SpanId
 }) {
@@ -412,7 +412,7 @@ function TracePane(props: {
 	detailOnly?: boolean
 	inlineDetails?: boolean
 	onPickSpan: (id: SpanId) => void
-	pickedSpan?: SpanId
+	pickedSpan?: SpanId | undefined
 	range: TimeFrame
 	trace?: Pick<OperationTrace, 'id'>
 }) {

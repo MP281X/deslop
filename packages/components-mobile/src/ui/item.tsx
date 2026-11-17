@@ -65,7 +65,7 @@ export function ItemGroup(props: {children: ReactNode; modifiers?: ViewModifier[
 }
 
 export function Item(props: {
-	alignment?: ItemAlignment
+	alignment?: ItemAlignment | undefined
 	children: ReactNode
 	modifiers?: ViewModifier[]
 	onPress?: () => void
@@ -100,7 +100,7 @@ export function Item(props: {
 // `image` is a tile in the Item's size that clips its children, which stack: a placeholder mark under a picture.
 export function ItemMedia(props: {children?: ReactNode; modifiers?: ViewModifier[]; variant?: ItemMediaVariant}) {
 	const side = itemSizes[useContext(ItemSizeContext)].image
-	if (props.variant !== 'image') return <VStack modifiers={props.modifiers}>{props.children}</VStack>
+	if (props.variant !== 'image') return <VStack modifiers={props.modifiers ?? []}>{props.children}</VStack>
 	return (
 		<ZStack
 			modifiers={[

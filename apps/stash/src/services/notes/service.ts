@@ -391,7 +391,7 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 			const [, frames] = yield* Effect.all(
 				[
 					pipe(
-						asMediaNotesError(media.read(userId, input.url, input.video)),
+						asMediaNotesError(media.read(userId, input.url, Option.some(input.video))),
 						// judge-ignore no-silent-fallback -- Video details enrich saved text; failed yt-dlp reads are logged and tagging continues.
 						Effect.tapError(error => Effect.logWarning('The video could not be read', error)),
 						Effect.option,

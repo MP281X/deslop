@@ -240,7 +240,7 @@ function ListRows(props: {
 	now: DateTime.Utc
 	onSelect: (row: Row) => void
 	rows: readonly Row[]
-	selectedId?: string
+	selectedId?: string | undefined
 }) {
 	return Array.map(props.rows, row => (
 		<AppRow
@@ -260,11 +260,11 @@ export function ListPane(props: {
 	className?: string
 	compact: boolean
 	free: readonly InventoryItem[]
-	lowImpact?: HashSet.HashSet<AppId>
+	lowImpact?: HashSet.HashSet<AppId> | undefined
 	now: DateTime.Utc
 	onSelect: (row: Row) => void
 	rows: readonly Row[]
-	selectedId?: string
+	selectedId?: string | undefined
 }) {
 	const [jobs, apps] = Array.partition(
 		props.rows,

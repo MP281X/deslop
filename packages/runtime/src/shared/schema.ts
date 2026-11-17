@@ -58,7 +58,7 @@ export type RuntimeConfig = typeof RuntimeConfig.Type
 export const RuntimeConfig = Schema.Struct({
 	auth: Schema.OptionFromOptionalKey(Origin),
 	name: Schema.String,
-	traces: Schema.String,
+	traces: Schema.OptionFromOptionalKey(Origin),
 	version: AppVersion
 })
 

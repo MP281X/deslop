@@ -6,7 +6,7 @@ import {Skeleton} from '#components/ui/skeleton.tsx'
 import {Table, TableBody, TableCell, TableRow} from '#components/ui/table.tsx'
 
 // Every row's mark sits in one 24px square, a picture filling it and a 16px glyph centred, so names start at one column; a `label` names what it shows.
-export function RowMark(props: {children: ReactNode; label?: string}) {
+export function RowMark(props: {children: ReactNode; label?: string | undefined}) {
 	return (
 		<span
 			role={Option.match(Option.fromUndefinedOr(props.label), {

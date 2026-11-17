@@ -501,6 +501,13 @@ export class Chapters extends Context.Service<Chapters>()('@deslop/opm/services/
 						yield* sql`INSERT INTO devices SELECT token, bundle, 'alert' FROM old_devices`
 						yield* sql`DROP TABLE old_devices`
 						yield* sql`CREATE TABLE deliveries (series TEXT NOT NULL, number REAL NOT NULL, token TEXT NOT NULL, PRIMARY KEY (series, number, token)) STRICT, WITHOUT ROWID`
+					}),
+					'0004_optional_posted_at': Effect.gen(function* () {
+						const sql = yield* SqlClient.SqlClient
+						yield* sql`ALTER TABLE chapters ADD COLUMN publicationTime REAL`
+						yield* sql`UPDATE chapters SET publicationTime = NULLIF(postedAt, 0)`
+						yield* sql`ALTER TABLE chapters DROP COLUMN postedAt`
+						yield* sql`ALTER TABLE chapters RENAME COLUMN publicationTime TO postedAt`
 					})
 				}),
 				table: 'chapters_migrations'

@@ -39,7 +39,7 @@ type ChartLayer = {
 // The machine's share each band holds over time, stacked on the whole machine's 0–100%; blank time is unrecorded. The tooltip names every band's reading at the hovered time, and a selected app's band stands out.
 function UsageChart(props: {
 	className?: string
-	focus?: Band['id']
+	focus?: Band['id'] | undefined
 	format: (value: number) => string
 	history: MachineHistory
 	label: string
@@ -262,7 +262,7 @@ export function ChartBlock(props: {
 	isPhone: boolean
 	labels: Record<AppId, string>
 	minutes: HistoryQuery['minutes']
-	selectedOwner?: AppId
+	selectedOwner?: AppId | undefined
 	usage: Usage
 }) {
 	const history = props.usage.history
@@ -285,7 +285,7 @@ export function ChartBlock(props: {
 	)
 	const charts: readonly {
 		figure: string
-		focus?: Band['id']
+		focus?: Band['id'] | undefined
 		format: (value: number) => string
 		label: string
 		layers: readonly ChartLayer[]
@@ -377,7 +377,7 @@ export function ChartBlock(props: {
 	)
 }
 
-export function EmptyChart(props: {worker?: string}) {
+export function EmptyChart(props: {worker?: string | undefined}) {
 	return (
 		<div className="flex h-44 shrink-0 items-center justify-center sm:h-64">
 			<Empty role="status">

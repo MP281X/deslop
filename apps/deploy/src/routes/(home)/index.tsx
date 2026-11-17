@@ -80,7 +80,7 @@ function MachineIcon(props: {worker: WorkerId; platform: Option.Option<Platform>
 }
 
 function MachineTabs(props: {
-	active?: WorkerId
+	active?: WorkerId | undefined
 	histories: readonly MachineHistory[]
 	inventoryFailure: boolean
 	sources: readonly {error: Option.Option<string>; name: string}[]
@@ -160,7 +160,7 @@ function ProcessList(props: {row: Row}) {
 }
 
 // The processes below the chart, or a phone's pushed pane; nothing selected is one symbol.
-function SelectedProcesses(props: {app?: ItemId; pending: boolean; row?: Row}) {
+function SelectedProcesses(props: {app?: ItemId | undefined; pending: boolean; row?: Row | undefined}) {
 	return (
 		<div className="flex min-h-0 flex-1 flex-col">
 			{Option.match(Option.fromUndefinedOr(props.row), {
@@ -196,14 +196,14 @@ function chartUsageOf(usage?: Usage) {
 
 // The desktop detail: the three charts, then the chosen processes.
 function DetailPane(props: {
-	app?: ItemId
-	usage?: Usage
+	app?: ItemId | undefined
+	usage?: Usage | undefined
 	labels: Record<AppId, string>
 	minutes: HistoryQuery['minutes']
 	pending: boolean
-	row?: Row
-	selectedOwner?: AppId
-	worker?: WorkerId
+	row?: Row | undefined
+	selectedOwner?: AppId | undefined
+	worker?: WorkerId | undefined
 }) {
 	return (
 		<div className="flex h-full min-h-0 flex-col">
@@ -234,14 +234,14 @@ function DetailPane(props: {
 // A phone's list view: the three short charts, then the rows edge to edge.
 function PhoneList(props: {
 	free: readonly InventoryItem[]
-	usage?: Usage
+	usage?: Usage | undefined
 	labels: Record<AppId, string>
 	minutes: HistoryQuery['minutes']
 	now: DateTime.Utc
 	onSelect: (row: Row) => void
 	rows: readonly Row[]
-	selectedId?: ItemId
-	selectedOwner?: AppId
+	selectedId?: ItemId | undefined
+	selectedOwner?: AppId | undefined
 }) {
 	return (
 		<div className="flex min-h-0 flex-1 flex-col">
@@ -277,10 +277,10 @@ function PhoneList(props: {
 
 // What the bar opens onto: the two panes on a wide screen, the chart and list on a phone, or the pushed processes.
 function Panes(props: {
-	active?: WorkerId
+	active?: WorkerId | undefined
 	authFailure: Option.Option<unknown>
 	free: readonly InventoryItem[]
-	usage?: Usage
+	usage?: Usage | undefined
 	isPhone: boolean
 	labels: Record<AppId, string>
 	minutes: HistoryQuery['minutes']
@@ -290,8 +290,8 @@ function Panes(props: {
 	pushed: boolean
 	retryFailed: () => void
 	rows: readonly Row[]
-	selectedApp?: ItemId
-	selectedRow?: Row
+	selectedApp?: ItemId | undefined
+	selectedRow?: Row | undefined
 }) {
 	const selectedOwner = Option.getOrUndefined(
 		Option.flatMap(Option.fromUndefinedOr(props.selectedRow), row => owner(row))

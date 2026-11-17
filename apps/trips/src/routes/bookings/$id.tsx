@@ -64,7 +64,7 @@ function toneIf(changed: boolean, tone: Tone) {
 	return 'plain'
 }
 
-function Field(props: {label: string; tone?: Tone; value?: string}) {
+function Field(props: {label: string; tone?: Tone; value?: string | undefined}) {
 	if (props.value === undefined) return undefined
 	return (
 		<LabeledContent label={props.label}>
@@ -247,7 +247,7 @@ function StayFields(props: {stay: Stay}) {
 	)
 }
 
-function Essential(props: {label: string; tone?: Tone; value?: string}) {
+function Essential(props: {label: string; tone?: Tone; value?: string | undefined}) {
 	if (props.value === undefined) return undefined
 	return (
 		<VStack alignment="leading" spacing={space[1]} modifiers={[frame({alignment: 'leading', maxWidth: Infinity})]}>

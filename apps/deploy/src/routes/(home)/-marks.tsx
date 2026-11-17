@@ -30,7 +30,7 @@ const brands = [
 ]
 
 // A row's mark: the app's own pixel mark filling the row's square, else a software brand or a glyph at 16px.
-export function ApplicationIcon(props: {name: string; process?: string; container?: boolean}) {
+export function ApplicationIcon(props: {name: string; process?: string | undefined; container?: boolean}) {
 	const brand = Option.getOrUndefined(
 		Array.findFirst(brands, candidate => candidate.pattern.test(`${props.name} ${props.process ?? ''}`))
 	)

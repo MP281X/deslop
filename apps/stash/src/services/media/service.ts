@@ -132,7 +132,7 @@ export class Media extends Context.Service<
 		readonly read: (
 			userId: UserId,
 			link: string,
-			fallback?: string
+			video: Option.Option<string>
 		) => Effect.Effect<{info: string; transcript: Effect.Effect<Option.Option<string>, MediaError>}, MediaError>
 	}
 >()('@deslop/stash/services/media/service/Media') {
@@ -482,7 +482,7 @@ export class Media extends Context.Service<
 				userId: UserId,
 				link: string,
 				media: Metadata,
-				fallback?: string
+				video: Option.Option<string>
 			) {
 				const work = yield* fs.makeTempDirectoryScoped({prefix: 'deslop-media-'})
 				for (const track of captionTracks(media)) {
@@ -510,10 +510,19 @@ export class Media extends Context.Service<
 					'-o',
 					path.join(work, 'audio.%(ext)s')
 				]
-				const download = yield* Effect.filterOrElse(
-					fetch([...args, fallback ?? link]),
-					result => result.exitCode === 0 || fallback === undefined || fallback === link,
-					() => fetch([...args, link])
+				// Download the direct video first; if it fails, try the inspected page once.
+				const download = yield* pipe(
+					video,
+					Option.filter(url => url !== link),
+					Option.match({
+						onNone: () => fetch([...args, link]),
+						onSome: url =>
+							Effect.filterOrElse(
+								fetch([...args, url]),
+								result => result.exitCode === 0,
+								() => fetch([...args, link])
+							)
+					})
 				)
 				if (download.exitCode !== 0) {
 					return yield* MediaError.make({message: `yt-dlp cannot download the audio: ${download.stderr}`})
@@ -625,7 +634,7 @@ export class Media extends Context.Service<
 					withProcesses
 				),
 				read: Effect.fn('Media.read')(
-					function* (userId, link, fallback) {
+					function* (userId, link, video) {
 						const inspect = Effect.fnUntraced(function* (url: string) {
 							const dump = yield* fetch([
 								...ytDlpArgs,
@@ -660,18 +669,23 @@ export class Media extends Context.Service<
 							}
 							return {media, url}
 						})
-						const found = yield* Effect.catch(inspect(link), error => {
-							if (fallback !== undefined && fallback !== link) {
-								return Effect.andThen(
-									Effect.logWarning('The primary media link could not be inspected', error),
-									inspect(fallback)
-								)
-							}
-							return Effect.fail(error)
-						})
+						const found = yield* Effect.catch(inspect(link), error =>
+							pipe(
+								video,
+								Option.filter(url => url !== link),
+								Option.match({
+									onNone: () => Effect.fail(error),
+									onSome: url =>
+										Effect.andThen(
+											Effect.logWarning('The primary media link could not be inspected', error),
+											inspect(url)
+										)
+								})
+							)
+						)
 						return {
 							info: mediaMarkdown(found.media, link),
-							transcript: withProcesses(Effect.scoped(transcribe(userId, found.url, found.media, fallback)))
+							transcript: withProcesses(Effect.scoped(transcribe(userId, found.url, found.media, video)))
 						}
 					},
 					Effect.scoped,

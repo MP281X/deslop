@@ -13,8 +13,8 @@ import {UpstreamError} from '#services/connections/schema.ts'
 const REQUEST_AUTHORIZATION = 'x-deslop-mcp-authorization'
 
 type Upstream = {
-	readonly serverInfo?: McpSchema.Implementation
-	readonly instructions?: string
+	readonly serverInfo?: McpSchema.Implementation | undefined
+	readonly instructions?: string | undefined
 	readonly listTools: () => Effect.Effect<
 		readonly McpSchema.Tool[],
 		McpClientError.McpClientError | UpstreamError | Schema.SchemaError
@@ -126,7 +126,7 @@ export class Upstreams extends Context.Service<Upstreams>()('@deslop/gateway/ser
 							return {
 								callTool: Effect.fnUntraced(function* (tool: McpSchema.Tool, args: Record<string, unknown>) {
 									const headers = yield* requestHeaders
-									return yield* Schema.decodeEffect(McpSchema.CallToolResult)(
+									return yield* Schema.decodeUnknownEffect(McpSchema.CallToolResult)(
 										yield* Effect.tryPromise({
 											catch: cause => UpstreamError.make({cause}),
 											try: signal => sdk.callTool({arguments: args, name: tool.name}, {headers, signal})
@@ -144,7 +144,10 @@ export class Upstreams extends Context.Service<Upstreams>()('@deslop/gateway/ser
 										Array.filter(result.tools, tool => tool.execution?.taskSupport !== 'required')
 									)
 								}),
-								serverInfo: sdk.getServerVersion()
+								serverInfo: yield* Option.match(Option.fromUndefinedOr(sdk.getServerVersion()), {
+									onNone: () => Effect.undefined,
+									onSome: Schema.decodeUnknownEffect(McpSchema.Implementation)
+								})
 							}
 						})
 					)
