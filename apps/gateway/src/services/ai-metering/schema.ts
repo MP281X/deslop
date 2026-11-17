@@ -9,10 +9,10 @@ import {DateTimeUtcFromFiniteMillis} from '@deslop/runtime/shared/time'
 import {UsageRange} from '#services/usage/schema.ts'
 
 export type SpendSource = typeof SpendSource.Type
-export const SpendSource = Schema.Literals(['balance', 'byok', 'openai', 'free', 'go', 'go-plus'])
+const SpendSource = Schema.Literals(['balance', 'byok', 'openai', 'free', 'go', 'go-plus'])
 // The payers the home list shows a row for.
 export type Payer = typeof Payer.Type
-export const Payer = Schema.Literals(['balance', 'byok', 'openai'])
+const Payer = Schema.Literals(['balance', 'byok', 'openai'])
 
 // One person's call, attributed to the billed balance or provider key.
 export class AiCall extends Model.Class<AiCall>('AiCall')({

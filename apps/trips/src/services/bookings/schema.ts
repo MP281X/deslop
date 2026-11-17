@@ -49,7 +49,7 @@ export type BookedPlace = typeof BookedPlace.Type
 export const BookedPlace = Schema.Struct({...Place.fields, timeZone: Schema.String})
 
 // Whether the reservation stands; a cancelled one stays listed so the change is visible.
-export const ReservationStatus = Schema.Literals(['confirmed', 'cancelled'])
+const ReservationStatus = Schema.Literals(['confirmed', 'cancelled'])
 
 // What the flight provider reports; every field is absent until the provider knows it, and each check replaces the whole record.
 export type FlightTracking = typeof FlightTracking.Type
@@ -176,7 +176,7 @@ export type Tone = typeof Tone.Type
 export const Tone = Schema.Literals(['good', 'warn', 'bad', 'info', 'plain'])
 
 export type FlightPhase = typeof FlightPhase.Type
-export const FlightPhase = Schema.Literals([
+const FlightPhase = Schema.Literals([
 	'leave',
 	'airport',
 	'gate',
@@ -188,10 +188,10 @@ export const FlightPhase = Schema.Literals([
 ])
 
 export type TrainPhase = typeof TrainPhase.Type
-export const TrainPhase = Schema.Literals(['upcoming', 'platform', 'running', 'arrived', 'cancelled'])
+const TrainPhase = Schema.Literals(['upcoming', 'platform', 'running', 'arrived', 'cancelled'])
 
 export type Chip = typeof Chip.Type
-export const Chip = Schema.Struct({text: Schema.String, tone: Tone})
+const Chip = Schema.Struct({text: Schema.String, tone: Tone})
 
 // What one Live Activity shows, already worded: the widget runtime renders it without logic of its own, and ActivityKit allows 4 KB per update.
 export type ActivityProps = typeof ActivityProps.Type
@@ -234,7 +234,7 @@ export const Leg = Schema.Literals(['departure', 'arrival'])
 
 // Times as the ticket prints them: local "2026-10-28T16:40", or with an offset when the source gives one.
 export type LocalTime = typeof LocalTime.Type
-export const LocalTime = pipe(
+const LocalTime = pipe(
 	Schema.String,
 	Schema.check(Schema.isPattern(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})?$/u)),
 	Schema.annotate({description: 'ISO date and time, local to the place unless the source gives an offset'})
@@ -243,7 +243,7 @@ export const LocalTime = pipe(
 export const TripNumber = Schema.String.check(Schema.isPattern(/^\d+$/u))
 
 export type ExtractedItem = typeof ExtractedItem.Type
-export const ExtractedItem = Schema.Union([
+const ExtractedItem = Schema.Union([
 	Schema.Struct({
 		airlineCode: Schema.String.annotate({description: 'IATA airline designator, such as BA or FR'}),
 		airlineName: Schema.String,
@@ -284,7 +284,7 @@ export const ExtractedItem = Schema.Union([
 ])
 
 export type ExtractedItems = typeof ExtractedItems.Type
-export const ExtractedItems = Schema.Array(ExtractedItem)
+const ExtractedItems = Schema.Array(ExtractedItem)
 
 export const Extraction = Schema.Struct({items: ExtractedItems})
 
@@ -311,7 +311,7 @@ export const StopMatches = Schema.Array(
 	})
 )
 
-export const TransitStop = Schema.Struct({
+const TransitStop = Schema.Struct({
 	arrival: Schema.OptionFromOptionalKey(Schema.DateTimeUtcFromString),
 	departure: Schema.OptionFromOptionalKey(Schema.DateTimeUtcFromString),
 	lat: Schema.Finite,

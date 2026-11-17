@@ -1,22 +1,22 @@
 import {Schema, pipe} from 'effect'
 
 export type WorkflowRunId = typeof WorkflowRunId.Type
-export const WorkflowRunId = pipe(Schema.Int, Schema.brand('WorkflowRunId'))
+const WorkflowRunId = pipe(Schema.Int, Schema.brand('WorkflowRunId'))
 
 export type WorkflowJobId = typeof WorkflowJobId.Type
-export const WorkflowJobId = pipe(Schema.Int, Schema.brand('WorkflowJobId'))
+const WorkflowJobId = pipe(Schema.Int, Schema.brand('WorkflowJobId'))
 
 export type RepositoryName = typeof RepositoryName.Type
-export const RepositoryName = pipe(Schema.String, Schema.brand('GitHubRepositoryName'))
+const RepositoryName = pipe(Schema.String, Schema.brand('GitHubRepositoryName'))
 
 type CommitSha = typeof CommitSha.Type
 const CommitSha = pipe(Schema.String, Schema.brand('GitCommitSha'))
 
 export type WorkflowRunAttempt = typeof WorkflowRunAttempt.Type
-export const WorkflowRunAttempt = pipe(Schema.Int, Schema.brand('WorkflowRunAttempt'))
+const WorkflowRunAttempt = pipe(Schema.Int, Schema.brand('WorkflowRunAttempt'))
 
 export type WorkflowStepNumber = typeof WorkflowStepNumber.Type
-export const WorkflowStepNumber = pipe(Schema.Int, Schema.brand('WorkflowStepNumber'))
+const WorkflowStepNumber = pipe(Schema.Int, Schema.brand('WorkflowStepNumber'))
 
 type Repository = typeof Repository.Type
 // The parts of GitHub's webhook payloads a trace needs; ISO times and nulls are decoded once here.

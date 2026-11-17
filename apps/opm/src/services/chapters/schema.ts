@@ -48,7 +48,7 @@ export class Chapter extends Model.Class<Chapter>('Chapter')({
 export const ChapterNotification = Schema.Struct({path: ChapterPath})
 
 export type ChapterIdentity = typeof ChapterIdentity.Type
-export const ChapterIdentity = Schema.Struct(Struct.pick(Chapter.fields, ['number', 'series']))
+const ChapterIdentity = Schema.Struct(Struct.pick(Chapter.fields, ['number', 'series']))
 
 // A cubari series answer: imgur pages are objects, every other source's pages are links.
 export type CubariSeries = typeof CubariSeries.Type

@@ -7,9 +7,9 @@ import {DateTimeUtcFromFiniteMillis} from '@deslop/runtime/shared/time'
 import {DurationFromMinutes, Place, ProviderFlightId} from '#services/bookings/schema.ts'
 
 export type StopPlace = typeof StopPlace.Type
-export const StopPlace = Schema.Struct(Struct.pick(Place.fields, ['code', 'name']))
+const StopPlace = Schema.Struct(Struct.pick(Place.fields, ['code', 'name']))
 
-export const StationId = pipe(Schema.String, Schema.brand('StationId'))
+const StationId = pipe(Schema.String, Schema.brand('StationId'))
 
 // FlightAware AeroAPI v4 GET /flights/{ident}: times are ISO instants, every operational field is null until known.
 export type FaFlight = typeof FaFlight.Type
@@ -47,7 +47,7 @@ export const VtRun = Schema.Struct({
 })
 
 export type VtStop = typeof VtStop.Type
-export const VtStop = Schema.Struct({
+const VtStop = Schema.Struct({
 	actualFermataType: Schema.OptionFromOptionalNullOr(Schema.Finite),
 	binarioEffettivoArrivoDescrizione: Schema.OptionFromOptionalNullOr(Schema.String),
 	binarioEffettivoPartenzaDescrizione: Schema.OptionFromOptionalNullOr(Schema.String),

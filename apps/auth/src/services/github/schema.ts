@@ -6,6 +6,6 @@ export const GitHubClientId = pipe(Schema.String, Schema.brand('GitHubClientId')
 export type AppSignIn = typeof AppSignIn.Type
 export const AppSignIn = Schema.Struct({app: Schema.Literals(['opm', 'stash', 'trips'])})
 export type SignInParams = typeof SignInParams.Type
-export const SignInParams = Schema.Struct({app: Schema.OptionFromOptionalKey(AppSignIn), next: Schema.NonEmptyString})
+const SignInParams = Schema.Struct({app: Schema.OptionFromOptionalKey(AppSignIn), next: Schema.NonEmptyString})
 export const CallbackParams = Schema.Struct({code: Schema.NonEmptyString, state: GitHubOAuthState})
 export const GitHubToken = Schema.Struct({access_token: Schema.NonEmptyString})

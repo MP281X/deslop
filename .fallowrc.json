@@ -92,7 +92,12 @@
 		{"exports": ["*"], "file": "apps/*/fingerprint.config.js"},
 		{"exports": ["module.exports"], "file": "apps/*/targets/*/expo-target.config.js"},
 		{"exports": ["*"], "file": "packages/runtime/src/shared/{auth,schema,time}.ts"},
-		{"exports": ["*"], "file": "packages/components-web/src/ui/**/*.{ts,tsx}"}
+		{"exports": ["*"], "file": "packages/components-web/src/ui/**/*.{ts,tsx}"},
+		// Tests decode their fixtures from these schemas' encoded form, which production code never imports.
+		{"exports": ["AiUsageEntry"], "file": "apps/gateway/src/services/ai-metering/schema.ts"},
+		{"exports": ["OperationTrace"], "file": "apps/scope/src/services/telemetry/schema.ts"},
+		{"exports": ["FlightTracking", "TrainTracking"], "file": "apps/trips/src/services/bookings/schema.ts"},
+		{"exports": ["FaFlight"], "file": "apps/trips/src/services/tracking/schema.ts"}
 	],
 	"overrides": [
 		{
