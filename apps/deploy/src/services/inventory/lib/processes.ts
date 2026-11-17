@@ -44,7 +44,7 @@ export type ProcessReading = {
 
 export type ProcessMeasurement = {records: readonly ProcessReading[]; time: DateTime.Utc; total: Duration.Duration}
 
-// judge-ignore no-silent-fallback -- Linux omits VmRSS for kernel threads and zombies, which own no resident userspace memory; required PID fields still decode or fail.
+// judge-ignore no-silent-fallback -- Linux omits VmRSS for kernel threads and zombies, which own no resident userspace memory; a missing or empty Pid or PPid fails the reading.
 function processStatus(status: string) {
 	const values = pipe(
 		String.trim(status),
@@ -54,11 +54,15 @@ function processStatus(status: string) {
 			return [String.slice(0, at)(line), String.trim(String.slice(at + 1)(line))] as const
 		})
 	)
+	// A field Linux always prints; missing or empty, it decodes as nothing and fails.
+	function field(name: string) {
+		return pipe(Record.get(values, name), Option.filter(String.isNonEmpty), Option.getOrUndefined)
+	}
 	return {
 		memory: Schema.decodeSync(ResidentMemoryFromKiB)(String.split(values['VmRSS'] ?? '', /\s+/u)[0] || '0'),
 		name: values['Name'] ?? '',
-		parent: Schema.decodeSync(ProcessIdFromString)(values['PPid'] ?? ''),
-		pid: Schema.decodeSync(ProcessIdFromString)(values['Pid'] ?? '')
+		parent: Schema.decodeUnknownSync(ProcessIdFromString)(field('PPid')),
+		pid: Schema.decodeUnknownSync(ProcessIdFromString)(field('Pid'))
 	}
 }
 

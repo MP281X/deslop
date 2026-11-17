@@ -197,7 +197,7 @@ export function ChaptersRoute(props: {
 	const loaded = useAtomValue(chaptersAtom)
 	const refresh = useAtomRefresh(chaptersAtom)
 	const [searched, setSearched] = useState('')
-	// A nonblocking stream failure adds a retryable problem in the bar; Chapters renders the list below.
+	// Chapters already on screen stay through an outage; a retryable problem dot in the bar marks that they stopped updating.
 	return (
 		<ListToolbar
 			title={SERIES_NAMES[props.series]}

@@ -1,4 +1,4 @@
-import {Array, Boolean, Function, Match, Number, Option, Order, Predicate, Result, String, pipe} from 'effect'
+import {Array, Boolean, DateTime, Function, Match, Number, Option, Order, Predicate, Result, String, pipe} from 'effect'
 
 import {load} from 'cheerio'
 import type {CheerioAPI} from 'cheerio'
@@ -77,7 +77,7 @@ function markdown($: CheerioAPI, node: AnyNode, base: URL): string {
 }
 
 // Markdown, so the AI keeps headings, lists and link targets.
-// judge-ignore no-silent-fallback -- Missing or malformed optional page metadata is absent; body text remains the source and the favicon is only a preview.
+// judge-ignore no-silent-fallback -- missing optional page metadata, or a publication date that is not a date, is left out; body text remains the source and the favicon is only a preview.
 export function pageText(html: string, url: URL) {
 	const $ = load(html)
 	$('script, style, noscript, iframe, svg, nav, header, footer, form, aside, button, dialog, template').remove()
@@ -161,9 +161,10 @@ export function pageText(html: string, url: URL) {
 			[
 				pipe(
 					[
-						Option.map(
+						pipe(
 							Option.fromUndefinedOr($('meta[property="article:published_time"]').attr('content')),
-							date => `Published ${date}`
+							Option.flatMap(DateTime.make),
+							Option.map(date => `Published ${DateTime.formatIso(date)}`)
 						),
 						Option.map(
 							Option.fromUndefinedOr(

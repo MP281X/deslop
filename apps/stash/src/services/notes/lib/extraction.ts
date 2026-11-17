@@ -218,7 +218,7 @@ function whole<A extends FxPost>(post: A) {
 	) {
 		return Effect.succeed(post)
 	}
-	// judge-ignore no-silent-fallback -- An article body is optional enrichment; log its failed read and keep the post's own text.
+	// judge-ignore no-silent-fallback -- an article body is optional enrichment: a failed read is logged, and the article still reads as its title among the posts already loaded around it.
 	return pipe(
 		fx(FxStatus, `status/${post.id}`),
 		Effect.map(found => ({...post, ...found.status})),
@@ -312,6 +312,7 @@ const issue = Effect.fnUntraced(function* (url: URL, repository: string, number:
 	})
 })
 
+// A repository without a README answers 404; the note keeps the description and topics.
 const repositoryReadme = Effect.fnUntraced(function* (name: string) {
 	const readmeResponse = yield* attempt(new URL(`https://api.github.com/repos/${name}/readme`), api)
 	if (readmeResponse.status === 404) return Option.none<string>()

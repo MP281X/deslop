@@ -245,7 +245,7 @@ function compactSpan(span: TreeSpan) {
 	}
 }
 
-// The minimum span start, or the first tree log's timestamp when no spans arrived.
+// Where a tree starts: its earliest span, or its earliest log when no span arrived.
 function startOf(tree: TraceTree) {
 	return pipe(
 		tree.spans,
@@ -446,7 +446,7 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 			`
 		})
 
-		// Insert distinct sender tuples at this JSON path, ignoring conflicts with stored resources.
+		// The distinct senders a batch names at this JSON path, added when new; UNIQUE keeps NULLs apart, so the index compares markers for an absent run or version.
 		function saveResources(batch: string, path: string) {
 			return sql`
 				INSERT INTO ${sql(StoredResource.table)} (service, runtime, run, version)
@@ -793,7 +793,7 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 			withReactivity,
 			Effect.withSpan('Telemetry.prune')
 		)
-		// The overview counts operations in the selected range and app tabs over all retained settled traces.
+		// The overview as of now, counted over every settled trace; a trace whose root never came joins it a minute after it started.
 		const readOverview = Effect.fnUntraced(function* (range: TimeFrame) {
 			const now = yield* DateTime.now
 			const settledBefore = DateTime.subtractDuration(now, Duration.minutes(1))

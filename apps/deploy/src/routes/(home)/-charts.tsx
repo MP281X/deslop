@@ -257,7 +257,7 @@ function ChartTitle(props: {figure: string; label: string}) {
 }
 
 // The machine's three readings over time: apps stacked on the whole machine's 0–100%, and disk used as one band.
-// judge-ignore no-silent-fallback -- missing disk readings are excluded by recorded before plotting; numeric placeholders are not displayed as measurements, and absent figures show an em dash.
+// judge-ignore no-silent-fallback -- a disk reading without a known disk size is unrecorded and plots nothing; numeric placeholders are never drawn as measurements, and absent figures show an em dash.
 export function ChartBlock(props: {
 	isPhone: boolean
 	labels: Record<AppId, string>
@@ -322,7 +322,7 @@ export function ChartBlock(props: {
 			format: percentOf,
 			label: 'Disk',
 			layers: [{id: 'disk', kind: 'disk', opacity: 1, readings: disk, values: disk}],
-			recorded: sample => Option.isSome(sample.storageUsed)
+			recorded: sample => total > 0 && Option.isSome(sample.storageUsed)
 		}
 	]
 	return (

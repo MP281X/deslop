@@ -363,7 +363,7 @@ function markedStream(span: Pick<Span, 'attributes'>) {
 	return span.attributes['rpc.stream'] === true
 }
 
-// A root is a subscription if it is marked as a stream or has a direct stream child with the same rpc.method in its trace.
+// A subscription's lifetime is not an action's latency: a root is one when it is marked as a stream or has a direct stream child with the same rpc.method, never for an unrelated nested subscription.
 function subscription(root: SpanFacts, spans: readonly SpanFacts[]) {
 	if (markedStream(root)) return true
 	const method = Option.filter(textOf(root.attributes, 'rpc.method'), String.isNonEmpty)

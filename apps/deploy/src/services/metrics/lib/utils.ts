@@ -1,7 +1,7 @@
 import {Array, DateTime, Duration, Function, Number, Option, Order, Record, Schema, String, Struct, pipe} from 'effect'
 
 import type {AppId} from '#services/inventory/schema.ts'
-import {CpuCounters, LoadAverages} from '#services/metrics/schema.ts'
+import {CpuCounters, LoadAverages, VmStatPages} from '#services/metrics/schema.ts'
 import type {
 	AppSample,
 	AppUsage,
@@ -76,7 +76,7 @@ function cpuUsage(
 	})
 }
 
-// A Mac's counters from `os.cpus()`, in milliseconds summed over its cores, with the supplied monotonic uptime duration and sample time.
+// A Mac's counters from `os.cpus()`, in milliseconds summed over its cores, with the supplied monotonic uptime duration and sample time, since a Mac's uptime has only whole seconds.
 export function cpuCounters(
 	cpus: readonly {times: Record<CpuTime, number>}[],
 	uptime: Duration.Duration,
@@ -91,7 +91,6 @@ export function cpuCounters(
 }
 
 // What Activity Monitor calls used memory, from `vm_stat`: app memory (anonymous less purgeable), wired, and what the compressor occupies.
-// judge-ignore no-silent-fallback -- empty strings are invalid numeric decoder inputs, so missing page size or required counters throw rather than become memory readings.
 export function vmStatMemory(text: string, total: number) {
 	const pages = Record.fromEntries(
 		Array.getSomes(
@@ -107,23 +106,17 @@ export function vmStatMemory(text: string, total: number) {
 			)
 		)
 	)
-	const page = Schema.decodeSync(Schema.FiniteFromString)(
-		pipe(
-			String.match(/page size of ([0-9]+) bytes/u)(text),
-			Option.map(match => match[1] ?? ''),
-			Option.getOrElse(Function.constant(''))
-		)
+	const page = Schema.decodeUnknownSync(Schema.FiniteFromString)(
+		pipe(String.match(/page size of ([0-9]+) bytes/u)(text), Option.flatMap(Array.get(1)), Option.getOrUndefined)
 	)
-	function count(name: string) {
-		return Schema.decodeSync(Schema.FiniteFromString)(pages[name] ?? '')
-	}
+	const counts = Schema.decodeUnknownSync(VmStatPages)(pages)
 	return {
 		total,
 		used: Number.clamp(
-			(count('Anonymous pages') -
-				count('Pages purgeable') +
-				count('Pages wired down') +
-				count('Pages occupied by compressor')) *
+			(counts['Anonymous pages'] -
+				counts['Pages purgeable'] +
+				counts['Pages wired down'] +
+				counts['Pages occupied by compressor']) *
 				page,
 			{maximum: total, minimum: 0}
 		)
@@ -142,7 +135,7 @@ function diskRows(output: string) {
 	)
 }
 
-// A Mac's startup volume from `df -k /`: APFS container use is size less available.
+// A Mac's startup volume from `df -k /`: APFS reports only the system volume's own use, so the container's use is size less available.
 export function rootVolume(text: string) {
 	return Array.map(diskRows(text), fields => {
 		const size = Schema.decodeSync(Schema.FiniteFromString)(fields[1] ?? '') * 1024

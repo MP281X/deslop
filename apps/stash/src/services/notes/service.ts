@@ -208,7 +208,7 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 			return pipe(notes.findById(id), Effect.catchNoSuchElement, asNotesError)
 		}
 
-		// Store a transition against the note the caller read inside its write transaction.
+		// Store a transition against the note the caller reread inside its write transaction, so an intervening change survives and a note removed meanwhile stays removed.
 		function storeChange(note: Note, update: NoteChange) {
 			return pipe(
 				Match.value(changeNote(note, update)),
@@ -360,13 +360,13 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 			)
 		}
 
-		// Read video details and frames, then tag the note; details replace content for non-X links or when useInfo is set.
+		// Read video details and frames, then tag the note; details replace content for non-X links, and for X only when useInfo says the post itself could not be read.
 		const watch = Effect.fnUntraced(function* (
 			userId: UserId,
 			note: Note,
 			input: {slides: Picture[]; url: string; useInfo: boolean; video: string}
 		) {
-			// Read and store video details and any new transcript concurrently with extracting frames; tagging waits for both.
+			// The transcript and the frames each run yt-dlp, so they run concurrently; the transcript is stored as soon as it arrives, and tagging waits for both.
 			const [, frames] = yield* Effect.all(
 				[
 					pipe(
@@ -731,7 +731,7 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 					total: total.count
 				}
 			}),
-			// How many pictures the note's post shows, read from its source now.
+			// How many pictures the note's post shows, read from its source now; a source that is gone leaves the client showing the saved cover.
 			media: Effect.fn('Notes.media')(function* (id: NoteId) {
 				return yield* pipe(
 					findNote(id),

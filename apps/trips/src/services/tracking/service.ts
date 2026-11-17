@@ -199,7 +199,7 @@ export class Tracking extends Context.Service<Tracking>()('@deslop/trips/service
 			})
 		})
 
-		// Admission and its attempt timestamp are atomic; network waits do not hold up other bookings.
+		// Admission and its attempt timestamp are atomic; flights take turns six seconds apart for FlightAware's ten requests a minute, while trains go on independently.
 		const turns = yield* Semaphore.make(1)
 		const check = Effect.fnUntraced(function* (
 			id: BookingId,

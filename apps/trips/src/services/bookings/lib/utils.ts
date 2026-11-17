@@ -176,6 +176,24 @@ function newer<A>(existing: Option.Option<A>, incoming: Option.Option<A>) {
 	return Option.orElse(incoming, () => existing)
 }
 
+function normalizedStation(name: string) {
+	return pipe(
+		name,
+		String.normalize('NFD'),
+		String.replaceAll(/[̀-ͯ]/gu, ''),
+		String.toLowerCase,
+		String.replaceAll(/[^a-z0-9]+/gu, ' '),
+		String.trim
+	)
+}
+
+function sameStation(left: Train['to'], right: Train['from']) {
+	return (
+		Option.exists(left.code, code => Option.contains(right.code, code)) ||
+		normalizedStation(left.name) === normalizedStation(right.name)
+	)
+}
+
 // The same flight, keyed by origin since BA15 flies two legs a day, or a rebooking under the same confirmation and route.
 function sameFlight(existing: Flight, incoming: Flight) {
 	if (!Equal.equals(existing.from.code, incoming.from.code)) return false
@@ -187,14 +205,14 @@ function sameFlight(existing: Flight, incoming: Flight) {
 	)
 }
 
-// The same train leg, keyed by operator and origin since one train number runs several legs, or a rebooking under the same confirmation and route.
+// The same train leg, keyed by operator and origin since one train number runs several legs, or a rebooking under the same confirmation and route; stations compare exactly, never by the timetable's loose match, under which Milano Centrale and Milano Rogoredo are both Milano.
 function sameTrain(existing: Train, incoming: Train) {
-	if (!stationNamesMatch(existing.from.name, incoming.from.name)) return false
+	if (!sameStation(existing.from, incoming.from)) return false
 	return (
 		(existing.operator === incoming.operator &&
 			existing.number === incoming.number &&
 			near(existing.departs, incoming.departs)) ||
-		(sameConfirmation(existing, incoming) && stationNamesMatch(existing.to.name, incoming.to.name))
+		(sameConfirmation(existing, incoming) && sameStation(existing.to, incoming.to))
 	)
 }
 
@@ -656,24 +674,6 @@ function activityProps(journey: Flight | Train, bookings: BookingList, now: Date
 
 export function urgencyOf(props: ActivityProps) {
 	return `${props.phase}|${Option.match(props.chip, {onNone: Function.constant(''), onSome: chip => chip.text})}|${Number.round(Duration.toMinutes(props.delay) / 5, 0)}`
-}
-
-function normalizedStation(name: string) {
-	return pipe(
-		name,
-		String.normalize('NFD'),
-		String.replaceAll(/[̀-ͯ]/gu, ''),
-		String.toLowerCase,
-		String.replaceAll(/[^a-z0-9]+/gu, ' '),
-		String.trim
-	)
-}
-
-function sameStation(left: Train['to'], right: Train['from']) {
-	return (
-		Option.exists(left.code, code => Option.contains(right.code, code)) ||
-		normalizedStation(left.name) === normalizedStation(right.name)
-	)
 }
 
 function scheduledStart(booking: Booking) {

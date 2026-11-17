@@ -24,7 +24,7 @@ function CvSection(input: {title: string; children: React.ReactNode}) {
 	)
 }
 
-// The title and details share a heading with visible dot separators; the aside is a separate, right-aligned span.
+// ATS parsers read the PDF's text, not its layout: the title and details share a heading split by visible dots, never by a gap alone; the aside is a separate, right-aligned span.
 function Entry(input: {title: string; details: string[]; aside: string; children?: React.ReactNode}) {
 	return (
 		<div className="flex break-inside-avoid flex-col gap-0.5">

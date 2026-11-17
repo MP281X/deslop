@@ -154,7 +154,7 @@ export class Bookings extends Context.Service<Bookings>()('@deslop/trips/service
 			})
 		})
 
-		// Merge incoming segments against the list read here; the caller owns the write transaction.
+		// Every segment merges into the bookings as they are inside the caller's write transaction, so two saves never lose each other's merge.
 		const merge = Effect.fnUntraced(function* (incoming: readonly Booking[]) {
 			const current = yield* listAll
 			const stored = Record.fromIterableBy(current, booking => booking.id)

@@ -1,5 +1,4 @@
 import {
-	Boolean,
 	Context,
 	DateTime,
 	Duration,
@@ -172,18 +171,11 @@ export class AiMetering extends Context.Service<AiMetering>()(
 													estimated: false
 												}
 											}
-											// judge-ignore no-silent-fallback -- Interrupted streams can end before billing metadata; retain the key owner's call, with unknown spend if final usage never arrived.
+											// judge-ignore no-silent-fallback -- an interrupted Anthropic stream is still the person's own key, so it is kept with unknown spend; an OpenCode response that never named its payer is not recorded, as for any OpenCode response without one.
 											yield* pipe(
 												state.current.spendSource,
 												Option.orElse(() =>
-													pipe(
-														provider === 'anthropic',
-														Boolean.match({
-															onFalse: Function.constant('balance' as const),
-															onTrue: Function.constant('byok' as const)
-														}),
-														Option.liftPredicate(() => Exit.isFailure(exit))
-													)
+													Option.liftPredicate('byok' as const, () => provider === 'anthropic' && Exit.isFailure(exit))
 												),
 												Option.match({
 													onNone: () => Effect.void,
