@@ -1,6 +1,6 @@
 import {execPath} from 'node:process'
 
-import {Array, Config, Effect, FileSystem, Option, Path, Schema, pipe} from 'effect'
+import {Array, Cause, Config, Effect, Exit, FileSystem, Function, Path, Schema, pipe} from 'effect'
 
 import {HttpClient, HttpClientResponse} from 'effect/http'
 
@@ -59,10 +59,23 @@ export const updateRelease = Effect.fnUntraced(function* (name: string) {
 		]),
 		'5 minutes'
 	)
-	const previous = yield* Effect.option(fs.readLink(path.join(root, 'current')))
-	yield* activateRelease(name, path.join(directory, 'node_modules', '@deslop', name))
-	yield* restartService(name)
-	const kept = [latest, ...Option.toArray(Option.map(previous, link => path.basename(path.resolve(link, '../../..'))))]
+	const previous = yield* fs.readLink(path.join(root, 'current'))
+	yield* Effect.uninterruptible(
+		Effect.gen(function* () {
+			yield* activateRelease(name, path.join(directory, 'node_modules', '@deslop', name))
+			const restarted = yield* Effect.exit(restartService(name))
+			if (Exit.isSuccess(restarted)) return
+			const restored = yield* Effect.exit(activateRelease(name, previous))
+			return yield* AppError.make({
+				cause: restarted.cause,
+				message: `Restart failed: ${Cause.pretty(restarted.cause)}. ${Exit.match(restored, {
+					onFailure: cause => `The previous current link could not be restored: ${Cause.pretty(cause)}`,
+					onSuccess: Function.constant('The previous current link was restored; service state is unknown')
+				})}`
+			})
+		})
+	)
+	const kept = [latest, path.basename(path.resolve(root, previous, '../../..'))]
 	yield* pipe(
 		yield* fs.readDirectory(path.join(root, 'releases')),
 		Array.difference(kept),

@@ -17,6 +17,7 @@ const create = Command.make(
 		const path = yield* Path.Path
 		yield* copyTemplate({
 			from: path.join(import.meta.dirname, '../template'),
+			prepare: () => Effect.void,
 			rewrite: content =>
 				pipe(
 					content,

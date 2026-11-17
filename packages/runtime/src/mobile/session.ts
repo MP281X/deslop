@@ -1,4 +1,4 @@
-import {Effect, Layer, Option, Predicate, Schema, String, pipe} from 'effect'
+import {Effect, Exit, Function, Layer, Option, Predicate, Schema, String, pipe} from 'effect'
 
 import {FetchHttpClient, HttpClient, HttpClientResponse} from 'effect/http'
 import {AsyncResult, Atom} from 'effect/reactivity'
@@ -42,6 +42,7 @@ const layerSessionWebSocket = Layer.succeed(Socket.WebSocketConstructor, url => 
 	return new WebSocket(url, undefined, {headers: keychain.headers()})
 })
 
+// judge-ignore no-silent-fallback -- the Keychain's account is a cache: failing to save or clear it is logged; an outage keeps the cached account while a refusal clears it, and a sign-out the Keychain only partly completes alerts.
 // A device on the tailnet is named without signing in; any other signs in with GitHub at Auth in iOS's authentication sheet, which returns the session's secret on the app's own URL scheme to this app alone.
 export function makeSession() {
 	const server = `https://${appConfig.slug}.${DOMAIN}`
@@ -138,19 +139,40 @@ export function makeSession() {
 		)
 	)
 
-	// Ends the session at Auth, which every app shares; an unreachable Auth still signs this app out.
+	// Ends the session at Auth, which every app shares; an unreachable Auth still signs this app out, and a Keychain that keeps any of it says what stayed.
 	const signOutAtom = sessionRuntime.fn((_: void, get) =>
-		Effect.gen(function* () {
-			yield* pipe(
-				headersEffect,
-				Effect.flatMap(headers => HttpClient.get(`${auth}/sign-out`, {headers})),
-				Effect.timeout('10 seconds'),
-				Effect.ignore({log: 'Warn', message: 'Auth did not end the session'})
-			)
-			yield* keychain.clear
-			get.set(cachedAccountAtom, Option.none())
-			get.refresh(revalidationAtom)
-		})
+		Effect.tapError(
+			Effect.gen(function* () {
+				const remote = yield* pipe(
+					headersEffect,
+					Effect.flatMap(headers => HttpClient.get(`${auth}/sign-out`, {headers})),
+					Effect.flatMap(HttpClientResponse.filterStatusOk),
+					Effect.timeout('10 seconds'),
+					Effect.tapError(cause => Effect.logWarning('Auth did not confirm ending the session', cause)),
+					Effect.exit
+				)
+				const remoteStatus = Exit.match(remote, {
+					onFailure: Function.constant('Auth sign-out was not confirmed'),
+					onSuccess: Function.constant('Auth ended the shared session')
+				})
+				yield* Effect.uninterruptible(
+					Effect.gen(function* () {
+						yield* Effect.mapError(keychain.clearSession, cause =>
+							AuthError.make({cause, message: `${remoteStatus}; this app's saved session was not removed`})
+						)
+						get.set(cachedAccountAtom, Option.none())
+						get.refresh(revalidationAtom)
+						yield* Effect.mapError(keychain.clearAccount, cause =>
+							AuthError.make({
+								cause,
+								message: `${remoteStatus}; this app signed out, but its saved account could not be removed`
+							})
+						)
+					})
+				)
+			}),
+			error => Effect.sync(() => Alert.alert('Sign Out Incomplete', error.message))
+		)
 	)
 
 	return {

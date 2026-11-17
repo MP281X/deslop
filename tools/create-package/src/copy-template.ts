@@ -2,8 +2,9 @@ import {Console, Effect, FileSystem, Path} from 'effect'
 
 import {CliError} from 'effect/cli'
 
-export const copyTemplate = Effect.fnUntraced(function* (input: {
+export const copyTemplate = Effect.fnUntraced(function* <E, R>(input: {
 	from: string
+	prepare: (directory: string) => Effect.Effect<void, E, R>
 	rewrite: (content: string) => string
 	to: string
 }) {
@@ -12,18 +13,29 @@ export const copyTemplate = Effect.fnUntraced(function* (input: {
 	if (yield* fs.exists(input.to)) {
 		return yield* CliError.UserError.make({cause: input.to, userMessage: `${input.to} already exists.`})
 	}
-	yield* Effect.forEach(
-		yield* fs.readDirectory(input.from, {recursive: true}),
-		entry =>
-			Effect.gen(function* () {
-				const from = path.join(input.from, entry)
-				const to = path.join(input.to, entry)
-				if ((yield* fs.stat(from)).type === 'Directory') return
-				yield* fs.makeDirectory(path.dirname(to), {recursive: true})
-				if (path.extname(entry) === '.png') return yield* fs.copyFile(from, to)
-				yield* fs.writeFileString(to, input.rewrite(yield* fs.readFileString(from)))
-			}),
-		{concurrency: 'unbounded'}
+	yield* Effect.scoped(
+		Effect.gen(function* () {
+			const root = path.join(
+				yield* fs.makeTempDirectoryScoped({directory: path.dirname(input.to), prefix: '.scaffold-'}),
+				path.basename(input.to)
+			)
+			yield* fs.makeDirectory(root)
+			yield* Effect.forEach(
+				yield* fs.readDirectory(input.from, {recursive: true}),
+				entry =>
+					Effect.gen(function* () {
+						const from = path.join(input.from, entry)
+						const to = path.join(root, entry)
+						if ((yield* fs.stat(from)).type === 'Directory') return
+						yield* fs.makeDirectory(path.dirname(to), {recursive: true})
+						if (path.extname(entry) === '.png') return yield* fs.copyFile(from, to)
+						yield* fs.writeFileString(to, input.rewrite(yield* fs.readFileString(from)))
+					}),
+				{concurrency: 'unbounded'}
+			)
+			yield* input.prepare(root)
+			yield* fs.rename(root, input.to)
+		})
 	)
 	yield* Console.log(`Created ${input.to}`)
 })

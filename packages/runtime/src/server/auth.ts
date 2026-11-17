@@ -39,6 +39,7 @@ export function requireAdmin(user: User, message: string) {
 }
 
 // What a request carries for Auth: the address the runtime derived, the shared browser cookie and an app's on-behalf claim.
+// judge-ignore no-silent-fallback -- An invalid optional on-behalf claim names nobody; Auth still authenticates the request from its address or session and decides access.
 export function identifyRequestOf(headers: Headers.Headers) {
 	return IdentifyRequest.make({
 		address: Option.fromNullishOr(headers[CLIENT_HEADER]),

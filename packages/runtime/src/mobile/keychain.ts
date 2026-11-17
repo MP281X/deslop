@@ -20,14 +20,11 @@ export const keychain = {
 			Option.liftThrowable(() => getItem(ACCOUNT_KEY))(),
 			Schema.decodeUnknownOption(Schema.fromJsonString(Account))
 		),
-	clear: Effect.andThen(
-		Effect.tryPromise({
-			catch: cause => AuthError.make({cause, message: 'The Keychain could not remove the session'}),
-			try: () => deleteItemAsync(KEY)
-		}),
-		clearAccount
-	),
 	clearAccount,
+	clearSession: Effect.tryPromise({
+		catch: cause => AuthError.make({cause, message: 'The Keychain could not remove the session'}),
+		try: () => deleteItemAsync(KEY)
+	}),
 	// What Auth reads to name the caller; a tailnet device needs no session, so nothing saved means no header.
 	headers: () =>
 		pipe(

@@ -49,7 +49,7 @@ import {Port} from '#shared/schema.ts'
 const DEFAULT_HOST = '127.0.0.1'
 
 type TailnetSelf = typeof TailnetSelf.Type
-const TailnetSelf = Schema.Struct({Self: Schema.Struct({DNSName: Schema.String})})
+const TailnetSelf = Schema.Struct({Self: Schema.Struct({DNSName: Schema.NonEmptyString})})
 
 export type Setting = {
 	readonly description: string
@@ -70,27 +70,21 @@ const configProvider = Effect.fnUntraced(function* (given: Record<string, string
 	const port = given['PORT'] ?? `${defaultPort}`
 	const name = yield* appName
 	// Without a domain, Tailscale Serve publishes the app on this machine's tailnet name at the same port, as worker Deploys and previews do.
-	const tailnet = yield* pipe(
-		executeProcess('tailscale', ['status', '--json']),
-		Effect.flatMap(Schema.decodeUnknownEffect(Schema.fromJsonString(TailnetSelf))),
-		Effect.map(status => String.replace(/\.$/u, '')(status.Self.DNSName)),
-		Effect.timeout('5 seconds'),
-		Effect.option
-	)
-	const urls = Option.match(Option.fromUndefinedOr(given['DOMAIN']), {
-		onNone: () => ({
-			APP_URL: pipe(
-				tailnet,
-				Option.filter(String.isNonEmpty),
-				Option.match({onNone: () => `http://localhost:${port}`, onSome: host => `https://${host}:${port}`})
-			)
-		}),
-		onSome: domain => ({
-			APP_URL: `https://${name}.${domain}`,
-			AUTH_URL: `https://auth.${domain}`,
-			GATEWAY_URL: `https://gateway.${domain}`,
-			OTEL_URL: `https://scope.${domain}`
-		})
+	const urls = yield* Option.match(Option.fromUndefinedOr(given['DOMAIN']), {
+		onNone: () =>
+			pipe(
+				executeProcess('tailscale', ['status', '--json']),
+				Effect.flatMap(Schema.decodeUnknownEffect(Schema.fromJsonString(TailnetSelf))),
+				Effect.map(status => ({APP_URL: `https://${String.replace(/\.$/u, '')(status.Self.DNSName)}:${port}`})),
+				Effect.timeout('5 seconds')
+			),
+		onSome: domain =>
+			Effect.succeed({
+				APP_URL: `https://${name}.${domain}`,
+				AUTH_URL: `https://auth.${domain}`,
+				GATEWAY_URL: `https://gateway.${domain}`,
+				OTEL_URL: `https://scope.${domain}`
+			})
 	})
 	const environment = ConfigProvider.fromEnv()
 	return ConfigProvider.orElse(

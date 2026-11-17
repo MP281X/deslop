@@ -1,8 +1,8 @@
-import {Context, Effect, Function, Layer, pipe} from 'effect'
+import {Context, Effect, Function, Layer, MutableRef, pipe} from 'effect'
 
 import {Machine} from '@typeonce/effect-machine'
 import {AtomMachine} from '@typeonce/effect-machine/reactivity'
-import {Atom} from 'effect/reactivity'
+import {AsyncResult, Atom} from 'effect/reactivity'
 
 import {alertFailure} from '#lib/alerts.ts'
 
@@ -49,16 +49,28 @@ export function makeRemoval<Id extends string, E extends {_tag: string; message:
 			})
 		)
 	)
-	// A removal outlives its row, which a search, a folded section or a closing detail unmounts; the family forgets a machine nothing references, so the hold keeps the machine itself.
+	// A removal outlives its row, which a search, a folded section or a closing detail unmounts, and the family forgets a machine nothing references; this subscription holds the machine itself until undo, completion or failure.
 	const heldAtom = Atom.family((id: Id) => {
 		const removing = machineAtom(id)
-		return Atom.keepAlive(Atom.readable(get => get(removing.ref)))
+		return Atom.readable(get => () => {
+			const pending = MutableRef.make(false)
+			const release = get.registry.subscribe(removing.result, result => {
+				if (
+					AsyncResult.isSuccess(result) &&
+					(result.value.state.path === 'Pending' || result.value.state.path === 'Removing')
+				) {
+					MutableRef.set(pending, true)
+					return
+				}
+				if (MutableRef.get(pending) || AsyncResult.isFailure(result)) release()
+			})
+		})
 	})
 	return {
 		events: removalEvents,
 		machine: machineAtom,
 		removeAtom: Atom.writable(Function.constUndefined, (context, id: Id) => {
-			context.get(heldAtom(id))
+			context.get(heldAtom(id))()
 			context.set(machineAtom(id).send, removalEvents.Removed())
 		})
 	}

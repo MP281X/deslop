@@ -26,7 +26,12 @@ export function aiFailure(cause: unknown) {
 		return Option.some(cause.reason.description ?? cause.reason.message)
 	}
 	if (Schema.is(AiError.UnknownError)(cause.reason) && cause.reason.http?.body !== undefined) {
-		return Option.map(Schema.decodeOption(Refusal)(cause.reason.http.body), body => body.error.message)
+		return Option.some(
+			Option.match(Schema.decodeOption(Refusal)(cause.reason.http.body), {
+				onNone: () => cause.reason.message,
+				onSome: body => body.error.message
+			})
+		)
 	}
 	return Option.some(cause.reason.message)
 }

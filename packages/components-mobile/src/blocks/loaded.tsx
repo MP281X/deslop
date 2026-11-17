@@ -14,7 +14,7 @@ import {blockingFailure, isDeniedCause} from '@deslop/runtime/client/live-stream
 import {Button} from '#components/ui/button.tsx'
 import {Empty, EmptyContent, EmptyMedia} from '#components/ui/empty.tsx'
 
-// A blocking failure is one destructive button carrying its reason; a denial is a lock with no retry.
+// A blocking failure offers a destructive retry button; a denial is a lock with no retry.
 export function FailureContent(props: {cause: Cause.Cause<unknown>; onRetry: () => void}) {
 	return (
 		<Empty>
