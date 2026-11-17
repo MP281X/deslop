@@ -1,6 +1,6 @@
 ---
 name: environment
-description: Load before a command on another worker, Validate's tests, starting a preview, opening a device, reading a trace or runtime error, deploying, publishing, a sign-in, reading Stash data, a maintenance pass, or any Dual task.
+description: Load before a command on another worker, starting a preview, opening a device, reading a trace or runtime error, deploying, publishing, a sign-in, reading Stash data, reading an outside repository or a package's source, a maintenance pass, or any Dual task.
 ---
 
 # Environment
@@ -15,7 +15,6 @@ Two headless Debian workers in one tailnet, same user and paths.
 | `iphone`      | `100.117.217.10` | T3 client only                                                             |
 
 - **Names.** MagicDNS short names; `<name>.tailnet-8c4c.ts.net` has HTTPS certificates. SSH as `mp281x@dev`, `mp281x@desktop`, `matteopaludgnach@macbook-pro`.
-- **Validation worker.** For work on dev, when `desktop` answers SSH, Validate's tests run there over SSH, in a detached worktree under `/tmp/<task>/` of the commit fetched from dev (`git fetch mp281x@dev:<worktree> <sha>`) after `vp install`, never in the installed clone; fixes stay on dev.
 - **Tools.** `vp` and `vpx` on `PATH`, also over SSH; systemd units need `~/.vite-plus/bin`. `gh`, `glab` and the MCP gateway signed in.
 - **Scratch.** Use `/tmp/<task>/`, on disk, emptied at boot and of files unused for 7 days.
 - **Git refs.** T3 checkpoints under `refs/t3/`; search history with `--branches --remotes`.
@@ -27,6 +26,7 @@ Two headless Debian workers in one tailnet, same user and paths.
 | [Deslop](references/deslop.md)           | Production, Stash data, npm, Apple and EAS, tracing      |
 | [Dual](references/dual.md)               | Accounts, merges, preview, Jira, Google, VPN, tracing    |
 | [Maintenance](references/maintenance.md) | Workers, setup, agent links, T3 settings, updates, clean |
+| [Repositories](references/repos.md)      | The packages we use and reference repositories           |
 
 ## Previews
 
@@ -38,7 +38,7 @@ stateDiagram-v2
     Stale --> Starting : a capture needs it / run the project's preview script from the worktree root
     Starting --> Live : its HTTPS URL answers / give the URL once
     Starting --> Stale : [invalid selection] / the running preview stays untouched
-    Starting --> [*] : [startup fails] / Diagnose by the verification skill
+    Starting --> [*] : [startup fails] / find the cause
     Live --> Stale : more edits
 ```
 
