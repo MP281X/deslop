@@ -207,7 +207,6 @@ function fx<S extends Schema.Constraint>(schema: S, path: string) {
 	return decode(schema, new URL(`https://api.fxtwitter.com/2/${path}`))
 }
 
-// judge-ignore no-silent-fallback -- the article body is optional enrichment: a failed fetch is logged and the post keeps the text the conversation already gave.
 // The conversation answer sometimes drops an article's body; the post's own answer keeps it.
 function whole<A extends FxPost>(post: A) {
 	if (

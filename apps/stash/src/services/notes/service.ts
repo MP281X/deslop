@@ -360,6 +360,7 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 			)
 		}
 
+		// judge-ignore no-silent-fallback -- video details, transcript and frames enrich a note already saved: each failure is logged, and tagging goes on with the saved text and pictures.
 		// Read video details and frames, then tag the note; details replace content for non-X links, and for X only when useInfo says the post itself could not be read.
 		const watch = Effect.fnUntraced(function* (
 			userId: UserId,
@@ -731,7 +732,7 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 					total: total.count
 				}
 			}),
-			// How many pictures the note's post shows, read from its source now; a source that is gone leaves the client showing the saved cover.
+			// How many pictures the note's post shows, read from its source now; a note without a link has none.
 			media: Effect.fn('Notes.media')(function* (id: NoteId) {
 				return yield* pipe(
 					findNote(id),
