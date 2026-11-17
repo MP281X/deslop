@@ -9,6 +9,8 @@ import {Array, ByteSize, Config, Effect, FileSystem, Layer, Option, Path, Result
 import {McpProtocol, McpServer} from 'effect/ai'
 import {
 	HttpIncomingMessage,
+	HttpClient,
+	FetchHttpClient,
 	HttpMiddleware,
 	HttpRouter,
 	HttpServerRequest,
@@ -90,7 +92,6 @@ export const layerTelemetry = Layer.unwrap(
 	})
 )
 
-// judge-ignore no-silent-fallback -- OTEL_URL is optional configuration; an absent value disables client tracing rather than replacing a failed operation.
 export const layerRoutes = HttpRouter.use(router =>
 	Effect.gen(function* () {
 		const auth = yield* Auth
@@ -122,19 +123,46 @@ export const layerRoutes = HttpRouter.use(router =>
 		)
 		// Sign-in and sign-out happen at Auth, whose cookie every app on its domain reads.
 		for (const origin of Option.toArray(issuer)) {
-			for (const step of ['sign-in', 'sign-out']) {
-				yield* router.add(
-					'GET',
-					`/auth/${step}`,
-					Effect.map(HttpServerRequest.HttpServerRequest, request =>
-						HttpServerResponse.redirect(
-							`${new URL(`/${step}`, origin).href}?${new URLSearchParams({
-								next: new URL(request.url, 'http://local').searchParams.get('next') ?? canonical
-							})}`
-						)
+			yield* router.add(
+				'GET',
+				'/auth/sign-in',
+				Effect.map(HttpServerRequest.HttpServerRequest, request =>
+					HttpServerResponse.redirect(
+						`${new URL('/sign-in', origin).href}?${new URLSearchParams({
+							next: new URL(request.url, 'http://local').searchParams.get('next') ?? canonical
+						})}`
 					)
 				)
-			}
+			)
+			const client = yield* HttpClient.HttpClient
+			yield* router.add(
+				'POST',
+				'/auth/sign-out',
+				Effect.gen(function* () {
+					const request = yield* HttpServerRequest.HttpServerRequest
+					if (request.headers['origin'] !== new URL(canonical).origin) {
+						return HttpServerResponse.text('Invalid sign-out origin; no changes committed', {status: 403})
+					}
+					const target = new URL('/sign-out', origin)
+					target.search = new URLSearchParams({
+						next: new URL(request.url, canonical).searchParams.get('next') ?? canonical
+					}).toString()
+					return yield* pipe(
+						client.post(target.href, {
+							headers: {cookie: request.headers['cookie'] ?? '', origin: new URL(origin).origin}
+						}),
+						Effect.provideService(FetchHttpClient.RequestInit, {redirect: 'manual'}),
+						Effect.timeout('10 seconds'),
+						Effect.map(HttpServerResponse.fromClientResponse),
+						Effect.tapError(() => Effect.logWarning('Auth did not confirm sign-out')),
+						Effect.catch(() =>
+							Effect.succeed(
+								HttpServerResponse.text('Auth sign-out was not confirmed; the shared session may remain', {status: 503})
+							)
+						)
+					)
+				})
+			)
 		}
 	})
 )

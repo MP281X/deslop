@@ -87,13 +87,16 @@ function AccountMenu() {
 					<loaded.value.DropdownMenuLabel>@{account.value.name}</loaded.value.DropdownMenuLabel>
 				</loaded.value.DropdownMenuGroup>
 				<loaded.value.DropdownMenuSeparator />
-				<loaded.value.DropdownMenuItem
-					variant="destructive"
-					disabled={!account.value.signOut}
-					render={<a aria-label="Sign out" href={`/auth/sign-out?${new URLSearchParams({next: location.href})}`} />}
-				>
-					Sign out
-				</loaded.value.DropdownMenuItem>
+				{/* oxlint-disable-next-line @deslop/coding-standards/no-bare-control -- This menu form submits one action, with no fields to group. */}
+				<form action={`/auth/sign-out?${new URLSearchParams({next: location.href})}`} method="post">
+					<loaded.value.DropdownMenuItem
+						variant="destructive"
+						disabled={!account.value.signOut}
+						render={<button aria-label="Sign out" type="submit" />}
+					>
+						Sign out
+					</loaded.value.DropdownMenuItem>
+				</form>
 			</loaded.value.DropdownMenuContent>
 		</loaded.value.DropdownMenu>
 	)

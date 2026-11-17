@@ -10,7 +10,7 @@ import type {AuthError, UserId} from '@deslop/runtime/shared/auth'
 
 import {CookieSession} from './schema.ts'
 
-import {hashOf, randomTokenOf} from '#services/github/lib/utils.ts'
+import {hashOf, randomTokenOf} from '#services/crypto/lib/utils.ts'
 
 declare module 'effect/reactivity/Reactivity' {
 	interface Keys {

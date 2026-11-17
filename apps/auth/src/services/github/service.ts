@@ -1,4 +1,4 @@
-import {Config, Context, Duration, Effect, Layer, Option, Redacted, Struct, pipe} from 'effect'
+import {Cache, Config, Context, Duration, Effect, Layer, Option, Redacted, Semaphore, Struct, pipe} from 'effect'
 
 import {Digest, SecureRandom} from 'effect/crypto'
 import {HttpClient, HttpClientRequest, HttpClientResponse, UrlParams} from 'effect/http'
@@ -6,12 +6,10 @@ import {HttpClient, HttpClientRequest, HttpClientResponse, UrlParams} from 'effe
 import {localAuth} from '@deslop/runtime/server/auth'
 import {AuthError, DEVELOPER, GitHubId, asAuthError} from '@deslop/runtime/shared/auth'
 
-import {hashOf, randomTokenOf} from './lib/utils.ts'
-
+import {hashOf, randomTokenOf} from '#services/crypto/lib/utils.ts'
 import {GitHubClientId, GitHubToken, OAuthState} from '#services/github/schema.ts'
 import type {SignInParams} from '#services/github/schema.ts'
 import {GitHubUser} from '#services/people/schema.ts'
-import {makeRecords} from '#services/records/service.ts'
 
 const HEADERS = {accept: 'application/vnd.github+json', 'user-agent': '@deslop/auth'}
 const DEVELOPER_PROFILE = GitHubUser.make({id: GitHubId.make(0), login: DEVELOPER.name, name: Option.none()})
@@ -20,12 +18,10 @@ const DEVELOPER_PROFILE = GitHubUser.make({id: GitHubId.make(0), login: DEVELOPE
 export class GitHub extends Context.Service<
 	GitHub,
 	{
-		readonly cancel: (state: OAuthState) => Effect.Effect<SignInParams, AuthError>
 		readonly finish: (
 			code: string,
 			state: OAuthState
 		) => Effect.Effect<{flow: SignInParams; profile: GitHubUser}, AuthError>
-		readonly profile: (id: GitHubId) => Effect.Effect<GitHubUser, AuthError>
 		readonly login: (login: string) => Effect.Effect<GitHubUser, AuthError>
 		readonly start: (flow: SignInParams) => Effect.Effect<{state: OAuthState; url: string}, AuthError>
 	}
@@ -34,32 +30,33 @@ export class GitHub extends Context.Service<
 		GitHub,
 		Effect.gen(function* () {
 			const CALLBACK = new URL('/auth/github/callback', yield* Config.String('APP_URL')).href
-			const flows = yield* makeRecords<OAuthState, SignInParams & {verifier: Option.Option<string>}>(
-				Duration.minutes(10)
-			)
+			const flows = yield* Cache.make<OAuthState, SignInParams & {verifier: Option.Option<string>}, AuthError>({
+				capacity: 64,
+				lookup: () => Effect.fail(AuthError.make({message: 'The sign-in expired'})),
+				timeToLive: Duration.minutes(10)
+			})
+			const callbacks = yield* Semaphore.make(1)
 			const nonce = randomTokenOf(yield* SecureRandom.SecureRandom)(32)
 			const take = Effect.fnUntraced(function* (state: OAuthState) {
-				return (yield* pipe(
-					flows.consume(state, Option.none()),
+				return yield* pipe(
+					Cache.getOption(flows, state),
+					Effect.tap(() => Cache.invalidate(flows, state)),
 					Effect.flatMap(Effect.fromOption),
-					Effect.mapError(() => AuthError.make({message: 'The sign-in expired'}))
-				)).value
-			})
-			const cancel = Effect.fn('GitHub.cancel')(function* (state: OAuthState) {
-				return Struct.omit(yield* take(state), ['verifier'])
+					Effect.mapError(() => AuthError.make({message: 'The sign-in expired'})),
+					Effect.uninterruptible,
+					Semaphore.withPermit(callbacks)
+				)
 			})
 			// Without an issuer there is no GitHub app: the GitHub step returns at once as the developer, an admin there.
 			if (yield* localAuth) {
 				return GitHub.of({
-					cancel,
 					finish: Effect.fn('GitHub.finish')(function* (_code: string, state: OAuthState) {
 						return {flow: Struct.omit(yield* take(state), ['verifier']), profile: DEVELOPER_PROFILE}
 					}),
 					login: () => Effect.withSpan(Effect.succeed(DEVELOPER_PROFILE), 'GitHub.login'),
-					profile: () => Effect.withSpan(Effect.succeed(DEVELOPER_PROFILE), 'GitHub.profile'),
 					start: Effect.fn('GitHub.start')(function* (flow: SignInParams) {
 						const state = OAuthState.make(yield* nonce)
-						yield* flows.create(state, {...flow, verifier: Option.none()})
+						yield* Cache.set(flows, state, {...flow, verifier: Option.none()})
 						return {state, url: `/auth/github/callback?${new URLSearchParams({code: 'development', state})}`}
 					})
 				})
@@ -78,7 +75,6 @@ export class GitHub extends Context.Service<
 				)
 			})
 			return GitHub.of({
-				cancel,
 				finish: Effect.fn('GitHub.finish')(function* (code: string, state: OAuthState) {
 					const flow = yield* take(state)
 					const token = yield* pipe(
@@ -105,13 +101,10 @@ export class GitHub extends Context.Service<
 						user(HttpClientRequest.get(`https://api.github.com/users/${encodeURIComponent(login)}`)),
 						asAuthError('Cannot read the GitHub profile')
 					),
-				profile: Effect.fn('GitHub.profile')(function* (id: GitHubId) {
-					return yield* user(HttpClientRequest.get(`https://api.github.com/user/${id}`))
-				}, asAuthError('Cannot read the GitHub profile')),
 				start: Effect.fn('GitHub.start')(function* (flow: SignInParams) {
 					const state = OAuthState.make(yield* nonce)
 					const verifier = yield* nonce
-					yield* flows.create(state, {...flow, verifier: Option.some(verifier)})
+					yield* Cache.set(flows, state, {...flow, verifier: Option.some(verifier)})
 					const url = new URL('https://github.com/login/oauth/authorize')
 					url.search = UrlParams.toString(
 						UrlParams.fromInput({

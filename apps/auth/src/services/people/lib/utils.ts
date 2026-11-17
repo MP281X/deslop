@@ -41,7 +41,7 @@ export function personOf(admins: readonly GitHubId[], row: Member) {
 		...Struct.pick(row, ['id', 'name']),
 		fullName: Option.filter(row.fullName, String.isNonEmpty),
 		role: roleOf(admins, row.id, Option.some(row)),
-		since: Option.some(row.since)
+		since: row.since
 	})
 }
 
