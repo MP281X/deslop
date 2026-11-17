@@ -1,7 +1,8 @@
-import {DateTime, Duration, Effect, Schedule, Stream, pipe} from 'effect'
+import {DateTime, Effect, Schedule, Stream, pipe} from 'effect'
 
 import {Reactivity} from 'effect/reactivity'
 
+import {liveRead} from '@deslop/runtime/shared/live-read'
 import type {TimeFrame} from '@deslop/runtime/shared/time'
 
 import {type UsageRange, timeFrameRange} from '#services/usage/schema.ts'
@@ -23,11 +24,8 @@ export function usageWindow<A, E, R>(
 					// Keep one pending invalidation during each read and its one-second pause; emit only changed range/report values.
 					return pipe(
 						Reactivity.stream(Effect.void, keys),
-						Stream.buffer({capacity: 1, strategy: 'sliding'}),
-						Stream.mapEffect(() => read(range)),
-						Stream.flatMap(report =>
-							Stream.concat(Stream.succeed({range, report}), Stream.fromEffectDrain(Effect.sleep(Duration.seconds(1))))
-						),
+						liveRead(read(range)),
+						Stream.map(report => ({range, report})),
 						Stream.changes
 					)
 				})

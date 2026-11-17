@@ -14,6 +14,14 @@ export class NotesError extends Schema.TaggedError<NotesError>()('NotesError', {
 export type NoteId = typeof NoteId.Type
 export const NoteId = pipe(Schema.String, Schema.check(Schema.isUUID()), Schema.brand('NoteId'))
 
+// Latest committed change per id, including tombstones, for incremental list readers.
+export class NoteChangeVersion extends Model.Class<NoteChangeVersion>('NoteChangeVersion')({
+	id: NoteId,
+	version: Schema.Int
+}) {
+	static readonly table = 'note_changes'
+}
+
 export type TagName = typeof TagName.Type
 export const TagName = pipe(Schema.NonEmptyString.check(Schema.isMaxLength(40)), Schema.brand('TagName'))
 

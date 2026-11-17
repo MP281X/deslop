@@ -700,11 +700,13 @@ export class StoredStatement extends Model.Class<StoredStatement>('StoredStateme
 export class StoredTrace extends Model.Class<StoredTrace>('StoredTrace')({
 	broken: Model.FieldOption(Schema.Uint8Array),
 	duration: Schema.DurationFromMillis,
+	end: DateTimeUtcFromFiniteMillis,
 	id: Schema.Int,
 	label: Model.FieldOption(Schema.String),
 	name: Schema.String,
 	receivedAt: Schema.DateTimeUtcFromMillis,
 	resource: Schema.Int,
+	root: Model.FieldOption(Schema.Uint8Array),
 	rooted: Model.BooleanSqlite,
 	spans: Schema.Int,
 	start: DateTimeUtcFromFiniteMillis,

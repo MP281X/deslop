@@ -177,12 +177,8 @@ function openingApp(overview: Overview) {
 
 export const overviewAtom = Atom.family((range: TimeFrame) => liveAtom(RpcClient, 'telemetry.watch', range))
 
-const traceAtoms = Atom.family((id: TraceId) => liveAtom(RpcClient, 'telemetry.trace', {id}))
-
 // An open trace follows arrivals, including late children and logs that do not change its duration.
-export function traceAtom(id: TraceId) {
-	return traceAtoms(id)
-}
+export const traceAtom = Atom.family((id: TraceId) => liveAtom(RpcClient, 'telemetry.trace', {id}))
 
 // The page's clock, so ages keep counting on a quiet page.
 export const nowAtom = Atom.make(Stream.mapEffect(Stream.tick(Duration.seconds(30)), () => DateTime.now))
@@ -203,10 +199,6 @@ function valueOf(value: Schema.Json) {
 		Option.filter(inner => Predicate.isString(inner) || Predicate.isNumber(inner) || Predicate.isBoolean(inner)),
 		Option.match({onNone: () => Formatter.formatJson(value), onSome: inner => `${inner}`})
 	)
-}
-
-export function errorOf(span: TraceTree['spans'][number]) {
-	return span.error
 }
 
 // Omit service.name, trace.label and values equal to the span name; failed spans also omit HTTP attributes, and error.type is omitted when it repeats the HTTP status.
@@ -296,7 +288,13 @@ export function selectionOf(overview: Option.Option<Overview>, search: Search, m
 	const activeTrace = Option.flatMap(activeOperation, active =>
 		pipe(
 			Option.flatMap(selection, selected => selected.traceId),
-			Option.flatMap(selected => Array.findFirst(active.operation.traces, trace => trace.id === selected)),
+			Option.map(selected =>
+				pipe(
+					active.operation.traces,
+					Array.findFirst(trace => trace.id === selected),
+					Option.getOrElse(() => ({id: selected}))
+				)
+			),
 			Option.orElse(() => Array.head(active.operation.traces))
 		)
 	)
@@ -308,12 +306,12 @@ export function selectionOf(overview: Option.Option<Overview>, search: Search, m
 	return {activeKey, activeOperation, activeTrace, pickedSpan, source}
 }
 
-// The URL as the page shows it: the chosen app and, once a frame's operations arrive, no operation or trace that frame no longer holds.
+// Drop vanished operation selections, but keep trace ids that need a direct read outside the capped list.
 export function shownSearch(
 	search: Search,
 	selection: {
 		activeOperation: Option.Option<ActiveOperation>
-		activeTrace: Option.Option<OperationTrace>
+		activeTrace: Option.Option<Pick<OperationTrace, 'id'>>
 		source: Option.Option<AppName>
 	},
 	loaded: boolean
