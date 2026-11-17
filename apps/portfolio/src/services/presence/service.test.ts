@@ -31,8 +31,11 @@ it.effect(
 				const ready = yield* Deferred.make<void>()
 				const fiber = yield* pipe(
 					presence.join({color: '#da702c', id: VisitorId.make(id), name: id}, connection),
-					Stream.runForEach(scene =>
-						Effect.andThen(SubscriptionRef.set(seen, scene), Deferred.succeed(ready, undefined))
+					Stream.runForEach(
+						Effect.fnUntraced(function* (scene) {
+							yield* SubscriptionRef.set(seen, scene)
+							yield* Deferred.succeed(ready, undefined)
+						})
 					),
 					Effect.forkScoped
 				)
