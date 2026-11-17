@@ -99,9 +99,12 @@ const lintSource = Effect.fnUntraced(function* (
 	const read = Effect.forEach(files, file => fs.readFileString(file), {concurrency: 'unbounded'})
 	const lint = Effect.scoped(
 		Effect.flatMap(
+			// Vite+ ships a stock tsrs; the Effect-patched one, as in the check task, knows the effecttsgo rules.
 			ChildProcess.make(
-				'vp',
+				'effect-tsgo',
 				[
+					'--tsrs-lint',
+					'vp',
 					'lint',
 					...files,
 					'--format=json',
@@ -2813,7 +2816,7 @@ export type Unknown = 'ready' | unknown`
 				const result = yield* lintSource({
 					'collectors.ts': Array.join(
 						[
-							"import {Array, Effect, MutableHashMap, MutableList} from 'effect'",
+							"import {Array, Effect, MutableHashMap, MutableList, Option} from 'effect'",
 							'',
 							'declare const notes: {id: string; pinned: boolean; tags: string[]}[]',
 							'export function tagsOf() {',
@@ -2860,6 +2863,33 @@ export type Unknown = 'ready' | unknown`
 							'	for (const note of notes) done.push(yield* Effect.succeed(note.id))',
 							'	return done',
 							'})',
+							'export const installedPinned = Effect.gen(function* () {',
+							'	const done: string[] = []',
+							'	for (const note of notes) if (note.pinned) done.push(yield* Effect.succeed(note.id))',
+							'	return done',
+							'})',
+							'export const installedAfterLog = Effect.fn(function* () {',
+							'	const done: string[] = []',
+							"	Effect.runSync(Effect.log('start'))",
+							'	for (const note of notes) done.push(yield* Effect.succeed(note.id))',
+							'	return done',
+							'})',
+							'export const installedNumbered = Effect.fn(function* () {',
+							'	const done: string[] = []',
+							'	for (const note of notes) done.push(yield* Effect.succeed(`${done.length}: ${note.id}`))',
+							'	return done',
+							'})',
+							'export const installedNamed = Effect.fn(function* () {',
+							'	const done: string[] = []',
+							"	const prefix = 'note'",
+							'	for (const note of notes) done.push(yield* Effect.succeed(`${prefix}: ${note.id}`))',
+							'	return done',
+							'})',
+							'export const installedSome = Effect.gen(function* () {',
+							'	const done: string[] = []',
+							'	for (const note of notes) done.push(yield* Option.some(note.id))',
+							'	return done',
+							'})',
 							'export function twoGuards() {',
 							'	const ids: string[] = []',
 							'	for (const note of notes) {',
@@ -2894,7 +2924,16 @@ export type Unknown = 'ready' | unknown`
 						'\n'
 					)
 				})
-				assert.strictEqual(reportedLines(result, 'no-collecting-loop').reported.length, 13)
+				const collecting = reportedLines(result, 'no-collecting-loop').reported
+				// effecttsgo/for-loop-push-to-for-each alone owns the loop whose one statement pushes a yielded effect.
+				const forEach = pipe(
+					result.stdout.diagnostics,
+					Array.filter(diagnostic => diagnostic.code === 'effecttsgo(for-loop-push-to-for-each)'),
+					Array.map(diagnostic => diagnostic.labels[0]?.span.line ?? 0)
+				)
+				assert.strictEqual(collecting.length, 16)
+				assert.strictEqual(forEach.length, 2)
+				assert.deepStrictEqual(Array.intersection(forEach, collecting), [])
 			})
 		)
 

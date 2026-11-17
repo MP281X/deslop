@@ -3,7 +3,7 @@
 This package provides Vite+ lint and TypeScript presets and a `coding-standards` CLI.
 
 ```bash
-vp add -D @deslop/coding-standards@latest @effect/tsgo@latest tsrs@latest
+vp add -D @deslop/coding-standards@latest @effect/tsgo@latest tsrs@latest oxlint-tsgolint@latest
 ```
 
 ```ts
