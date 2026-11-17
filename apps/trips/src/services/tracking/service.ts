@@ -35,10 +35,6 @@ function asBookingsError(message: string) {
 	return Effect.mapError((cause: unknown) => BookingsError.make({cause, message}))
 }
 
-function iso(time: DateTime.Utc) {
-	return DateTime.formatIso(time)
-}
-
 export class Tracking extends Context.Service<Tracking>()('@deslop/trips/services/tracking/service/Tracking', {
 	make: Effect.gen(function* () {
 		const sql = yield* SqlClient.SqlClient
@@ -66,7 +62,7 @@ export class Tracking extends Context.Service<Tracking>()('@deslop/trips/service
 
 		const spend = pipe(
 			Effect.gen(function* () {
-				const month = String.slice(0, 7)(iso(yield* DateTime.now))
+				const month = String.slice(0, 7)(DateTime.formatIso(yield* DateTime.now))
 				const calls = Option.match(yield* findLookups(month), {onNone: Function.constant(0), onSome: row => row.calls})
 				if (calls >= MONTHLY_LOOKUPS) {
 					return yield* BookingsError.make({
@@ -100,7 +96,7 @@ export class Tracking extends Context.Service<Tracking>()('@deslop/trips/service
 						headers: {'x-apikey': Redacted.value(apiKey)},
 						urlParams: {
 							// FlightAware searches at most two days ahead.
-							end: iso(
+							end: DateTime.formatIso(
 								pipe(
 									booking.departs,
 									DateTime.addDuration(Duration.hours(12)),
@@ -109,7 +105,7 @@ export class Tracking extends Context.Service<Tracking>()('@deslop/trips/service
 							),
 							ident_type: 'designator',
 							max_pages: '1',
-							start: iso(DateTime.subtractDuration(booking.departs, Duration.hours(12)))
+							start: DateTime.formatIso(DateTime.subtractDuration(booking.departs, Duration.hours(12)))
 						}
 					}
 				),
@@ -221,9 +217,14 @@ export class Tracking extends Context.Service<Tracking>()('@deslop/trips/service
 		yield* pipe(
 			Effect.gen(function* () {
 				const now = yield* DateTime.now
+				const all = yield* bookings.list
+				yield* Ref.update(
+					attempts,
+					Record.filter((_, id) => Array.some(all, booking => booking.id === id))
+				)
 				const attempted = yield* Ref.get(attempts)
 				yield* pipe(
-					yield* bookings.list,
+					all,
 					Array.filter(booking => isDue(booking, now, Record.get(attempted, booking.id))),
 					Effect.forEach(
 						booking =>

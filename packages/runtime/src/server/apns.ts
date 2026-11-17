@@ -27,6 +27,7 @@ import {HttpClient, HttpClientRequest, HttpClientResponse} from 'effect/http'
 import {Jwk, Jws} from 'effect/jose'
 
 import {DEVELOPMENT_BUNDLE_SUFFIX} from '#config/expo.ts'
+import {ApnsAnswer, apnsAnswer} from '#shared/apns.ts'
 import type {ApnsToken} from '#shared/apns.ts'
 import {DateTimeUtcFromSeconds} from '#shared/time.ts'
 
@@ -40,7 +41,6 @@ const ApnsPriority = Schema.Literals([5, 10])
 
 class ApnsError extends Schema.TaggedError<ApnsError>()('ApnsError', {message: Schema.String}) {}
 
-export type ApnsAnswer = {channel: Option.Option<string>; reason: Option.Option<string>; status: number}
 type Target = {bundle: string; token: Redacted.Redacted<ApnsToken>}
 type Payload = {aps: Record<string, unknown>; [key: string]: unknown}
 
@@ -65,21 +65,6 @@ export const layerApnsClient = Layer.effect(
 		return yield* Effect.provideService(NodeHttpClient.makeUndici, NodeHttpClient.Dispatcher, dispatcher)
 	})
 )
-
-export function apnsDeadToken(answer: ApnsAnswer) {
-	return (
-		answer.status === 410 ||
-		Option.exists(answer.reason, reason => reason === 'BadDeviceToken' || reason === 'Unregistered')
-	)
-}
-
-export function apnsAccepted(answer: ApnsAnswer) {
-	return answer.status >= 200 && answer.status < 300
-}
-
-export function apnsRetryable(answer: ApnsAnswer) {
-	return answer.status === 429 || answer.status >= 500
-}
 
 function asApnsError(message: string) {
 	// Signing and HTTP failures can embed the private key, bearer or device token.
@@ -155,15 +140,15 @@ export class Apns extends Context.Service<Apns>()('@deslop/runtime/server/apns',
 					`APNs refused a push: ${response.status} ${Option.getOrElse(reason, Function.constant(''))}`
 				)
 			}
-			const answer: ApnsAnswer = {
+			const answer = apnsAnswer({
 				channel: Option.fromNullishOr(response.headers['apns-channel-id']),
 				reason,
 				status: response.status
-			}
+			})
 			const receivedAt = yield* DateTime.now
 			yield* Ref.update(retrying, cached => {
 				const current = HashMap.filter(cached, entry => DateTime.isGreaterThan(entry.until, receivedAt))
-				if (!apnsRetryable(answer)) return HashMap.remove(current, key)
+				if (!ApnsAnswer.isAnyOf(['Retry'])(answer)) return HashMap.remove(current, key)
 				return HashMap.set(current, key, {
 					answer,
 					until: DateTime.addDuration(
@@ -268,7 +253,7 @@ export class Apns extends Context.Service<Apns>()('@deslop/runtime/server/apns',
 					Effect.flatMap(request => send(request, key)),
 					Effect.onError(() => deleteChannel(target.bundle, channel))
 				)
-				if (!apnsAccepted(answer)) yield* deleteChannel(target.bundle, channel)
+				if (!ApnsAnswer.isAnyOf(['Accepted'])(answer)) yield* deleteChannel(target.bundle, channel)
 				return {...answer, channel: Option.some(channel)}
 			}, withSignature)
 		}

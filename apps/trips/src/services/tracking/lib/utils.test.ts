@@ -1,8 +1,10 @@
 import {assert, it} from '@effect/vitest'
 
-import {DateTime, Duration, Option, Schema, Struct} from 'effect'
+import {Array, DateTime, Duration, Option, Schema, Struct} from 'effect'
 
+import {journeyProps} from '#services/bookings/lib/utils.ts'
 import {BookedPlace, BookingId, Flight, Train, TrainTracking} from '#services/bookings/schema.ts'
+import {alertsOf} from '#services/push/lib/utils.ts'
 import {checkEvery, flightTracking, isStale, trainTracking} from '#services/tracking/lib/utils.ts'
 import {FaFlight, VtStatus} from '#services/tracking/schema.ts'
 
@@ -34,6 +36,21 @@ const train = Struct.pick(
 	}),
 	Struct.keys(Train.fields)
 )
+
+it('carries a provider cancellation with no stops into the island and one cancellation alert', () => {
+	const now = DateTime.makeUnsafe(0)
+	const live = Option.getOrThrow(
+		trainTracking(Schema.decodeSync(VtStatus)({fermate: [], provvedimento: 1, tipoTreno: 'ST'}), Train.make(train), now)
+	)
+	const booking = Train.make({...train, live: Option.some(live)})
+	assert.strictEqual(live.state, 'cancelled')
+	assert.deepStrictEqual(checkEvery(booking, now), Option.none())
+	assert.deepStrictEqual(
+		Array.map(alertsOf(booking, now), alert => alert.category),
+		['cancelled']
+	)
+	assert.strictEqual(journeyProps([booking], [], now).tone, 'bad')
+})
 
 it('keeps the gate a flight left for the change it shows', () => {
 	const first = flightTracking({...ANSWER, gate_origin: Option.some('A3')}, DateTime.makeUnsafe(1), Option.none())
@@ -73,7 +90,9 @@ it('finds the booked stops by Trenitalia code, else by their printed names', () 
 					stazione: 'ROMA TERMINI'
 				},
 				{actualFermataType: 1, binarioEffettivoArrivoDescrizione: '14', id: 'S05046', stazione: 'BOLOGNA C.LE/AV'}
-			]
+			],
+			provvedimento: 0,
+			tipoTreno: 'PG'
 		}),
 		Train.make({
 			...train,
@@ -106,8 +125,10 @@ it('reads the platform, the delay it left with and the delay it runs with at the
 				},
 				{id: 'S01700', stazione: 'MILANO CENTRALE'}
 			],
+			provvedimento: 0,
 			ritardo: 6,
-			stazioneUltimoRilevamento: '--'
+			stazioneUltimoRilevamento: '--',
+			tipoTreno: 'PG'
 		}),
 		train,
 		DateTime.makeUnsafe(1)
@@ -137,7 +158,9 @@ it('reads the platform, the delay it left with and the delay it runs with at the
 	const left = trainTracking(
 		Schema.decodeSync(VtStatus)({
 			fermate: [{id: 'S08409', partenzaReale: 1, programmata: 0, ritardo: 3, stazione: 'ROMA TERMINI'}],
-			ritardo: 8
+			provvedimento: 0,
+			ritardo: 8,
+			tipoTreno: 'PG'
 		}),
 		train,
 		DateTime.makeUnsafe(2)

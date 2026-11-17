@@ -9,7 +9,6 @@ import {
 	Function,
 	Layer,
 	Option,
-	Result,
 	Schedule,
 	Schema,
 	Semaphore,
@@ -18,10 +17,10 @@ import {
 	pipe
 } from 'effect'
 
-import {Reactivity} from 'effect/reactivity'
 import {Migrator, SqlClient, SqlModel, SqlSchema} from 'effect/sql'
 
-import {Apns, apnsAccepted, apnsDeadToken, apnsRetryable} from '@deslop/runtime/server/apns'
+import {Apns} from '@deslop/runtime/server/apns'
+import {ApnsAnswer, Device} from '@deslop/runtime/shared/apns'
 
 import {
 	ACTIVITY_NAME,
@@ -34,34 +33,32 @@ import {
 import type {ActivityProps, BookingList, Flight, Leg, Train} from '#services/bookings/schema.ts'
 import {Booking, BookingId} from '#services/bookings/schema.ts'
 import {Bookings} from '#services/bookings/service.ts'
-import {alertsOf, announced, expiredActivities, holds, showPlan, startAlert} from '#services/push/lib/utils.ts'
+import {
+	alertsOf,
+	announced,
+	expiredActivities,
+	holds,
+	showPlan,
+	startAlert,
+	unannouncedDevices
+} from '#services/push/lib/utils.ts'
 import type {Alert} from '#services/push/lib/utils.ts'
 import {
 	Activity,
 	ActivityPropsJson,
 	ChannelId,
-	Device,
+	Delivery,
 	PushError,
 	SentAlert,
 	ShowAction,
 	StartRequest
 } from '#services/push/schema.ts'
 
-const SCHEMES = {'xyz.mp281x.trips': 'trips', 'xyz.mp281x.trips.dev': 'trips-dev'}
+const SCHEMES: Record<string, string> = {'xyz.mp281x.trips': 'trips', 'xyz.mp281x.trips.dev': 'trips-dev'}
 
 type Span = {end: DateTime.Utc; start: DateTime.Utc}
 type Showing = {journey: Flight | Train; leg: Leg; now: DateTime.Utc; props: ActivityProps; window: Span}
 type RoundState = {activities: readonly Activity[]; devices: readonly Device[]; sent: readonly SentAlert[]}
-
-declare module 'effect/reactivity/Reactivity' {
-	interface Keys {
-		readonly push: never
-	}
-}
-
-function seconds(time: DateTime.Utc) {
-	return DateTime.toEpochSeconds(time)
-}
 
 function asPushError(message: string) {
 	return Effect.mapError((cause: unknown) => PushError.make({cause, message}))
@@ -82,8 +79,6 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 		const sql = yield* SqlClient.SqlClient
 		const bookings = yield* Bookings
 		const apns = yield* Apns
-		// Writes tell this Reactivity of their commits, so callers need none of their own.
-		const withReactivity = Effect.provideService(Reactivity.Reactivity, yield* Reactivity.Reactivity)
 
 		const activities = yield* SqlModel.makeRepository(Activity, {
 			idColumn: 'channel',
@@ -113,7 +108,7 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 			Request: Device.insert,
 			execute: row => sql`
 				INSERT INTO ${sql(Device.table)} ${sql.insert(row)}
-				ON CONFLICT (bundle, kind) DO UPDATE SET token = excluded.token
+				ON CONFLICT (token) DO UPDATE SET bundle = excluded.bundle, kind = excluded.kind
 			`
 		})
 		// Only while the token is still the one stored, so a token rotated meanwhile stays.
@@ -170,57 +165,66 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 					'content-state': yield* contentState(showing.props),
 					event: 'start',
 					'relevance-score': 100,
-					timestamp: seconds(showing.now)
+					timestamp: DateTime.toEpochSeconds(showing.now)
 				}
 			})
-			if (apnsAccepted(answer)) return Result.succeed(ChannelId.make(Option.getOrThrow(answer.channel)))
-			if (!apnsRetryable(answer)) yield* pipe(forgetDevice(target), Reactivity.mutation(['push']), asPushSaveError)
-			return Result.fail(answer)
+			return yield* ApnsAnswer.match(answer, {
+				Accepted: accepted =>
+					Option.match(accepted.channel, {
+						onNone: () => PushError.make({message: 'Apple accepted a Live Activity without a channel.'}),
+						onSome: channel => Effect.succeed(ChannelId.make(channel))
+					}),
+				DeadToken: dead =>
+					Effect.andThen(
+						asPushSaveError(forgetDevice(target)),
+						PushError.make({cause: dead, message: 'Apple rejected the Live Activity token.'})
+					),
+				Refused: refused =>
+					Effect.andThen(
+						asPushSaveError(forgetDevice(target)),
+						PushError.make({cause: refused, message: 'Apple refused the Live Activity start.'})
+					),
+				Retry: retry => PushError.make({cause: retry, message: 'Apple did not accept the Live Activity start.'})
+			})
 		})
 
 		// A refused start leaves the leg unstarted, so the next round tries again.
 		const launch = Effect.fnUntraced(function* (target: Device, showing: Showing) {
-			const started = yield* pushStart(target, showing)
-			if (Result.isFailure(started)) {
-				return yield* PushError.make({cause: started.failure, message: 'Apple did not accept the Live Activity start.'})
-			}
-			yield* pipe(
+			yield* asPushSaveError(
 				startActivity({
 					bookingId: showing.journey.id,
 					bundle: target.bundle,
-					channel: started.success,
+					channel: yield* pushStart(target, showing),
 					endedAt: Option.none(),
 					leg: showing.leg,
 					props: showing.props,
 					startedAt: showing.now
-				}),
-				Reactivity.mutation(['push']),
-				asPushSaveError
+				})
 			)
 		})
 
+		// judge-ignore no-silent-fallback -- #279 makes permanent APNs refusal terminal: its logged refusal ends this unavailable channel; only Retry keeps it pending.
 		const finish = Effect.fnUntraced(function* (activity: Activity, now: DateTime.Utc) {
 			const answer = yield* apns.broadcast(
 				activity.bundle,
 				activity.channel,
 				{
 					'content-state': yield* contentState(activity.props),
-					'dismissal-date': seconds(DateTime.addDuration(now, Duration.minutes(10))),
+					'dismissal-date': DateTime.toEpochSeconds(DateTime.addDuration(now, Duration.minutes(10))),
 					event: 'end',
-					timestamp: seconds(now)
+					timestamp: DateTime.toEpochSeconds(now)
 				},
 				10,
 				now
 			)
-			if (apnsRetryable(answer)) {
-				return yield* PushError.make({cause: answer, message: 'Apple did not accept the Live Activity end.'})
-			}
+			yield* ApnsAnswer.match(answer, {
+				Accepted: () => Effect.void,
+				DeadToken: () => Effect.void,
+				Refused: () => Effect.void,
+				Retry: retry => PushError.make({cause: retry, message: 'Apple did not accept the Live Activity end.'})
+			})
 			yield* apns.deleteChannel(activity.bundle, activity.channel)
-			yield* pipe(
-				activities.updateVoid({...editable(activity), endedAt: Option.some(now)}),
-				Reactivity.mutation(['push']),
-				asPushSaveError
-			)
+			yield* asPushSaveError(activities.updateVoid({...editable(activity), endedAt: Option.some(now)}))
 		})
 
 		// A change APNs took or will always refuse is remembered; a throttled one is sent again next round.
@@ -231,27 +235,19 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 			const answer = yield* apns.broadcast(
 				activity.bundle,
 				activity.channel,
-				{'content-state': next, event: 'update', timestamp: seconds(now)},
+				{'content-state': next, event: 'update', timestamp: DateTime.toEpochSeconds(now)},
 				Boolean.match(urgencyOf(activity.props) === urgencyOf(props), {
 					onFalse: Function.constant(10 as const),
 					onTrue: Function.constant(5 as const)
 				}),
 				now
 			)
-			if (apnsRetryable(answer)) {
-				return yield* PushError.make({cause: answer, message: 'Apple did not accept the Live Activity update.'})
-			}
-			// A refused channel means the activity is gone.
-			yield* pipe(
-				activities.updateVoid(
-					Boolean.match(apnsDeadToken(answer), {
-						onFalse: () => ({...editable(activity), props}),
-						onTrue: () => ({...editable(activity), endedAt: Option.some(now)})
-					})
-				),
-				Reactivity.mutation(['push']),
-				asPushSaveError
-			)
+			yield* ApnsAnswer.match(answer, {
+				Accepted: () => asPushSaveError(activities.updateVoid({...editable(activity), props})),
+				DeadToken: () => asPushSaveError(activities.updateVoid({...editable(activity), endedAt: Option.some(now)})),
+				Refused: () => asPushSaveError(activities.updateVoid({...editable(activity), props})),
+				Retry: retry => PushError.make({cause: retry, message: 'Apple did not accept the Live Activity update.'})
+			})
 		})
 
 		const show = Effect.fnUntraced(function* (
@@ -291,6 +287,7 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 		})
 
 		// A device whose token died leaves the list with its first failed alert.
+		// judge-ignore no-silent-fallback -- #279 makes a logged permanent refusal terminal for this device, not success at Apple; Retry alone remains pending.
 		const notify = Effect.fnUntraced(function* (device: Device, alert: Alert, booking: Booking) {
 			const answer = yield* apns.sendToDevice(
 				device,
@@ -301,54 +298,56 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 				},
 				10
 			)
-			if (apnsAccepted(answer)) return 'accepted' as const
-			if (apnsRetryable(answer)) return 'retry' as const
-			if (!apnsDeadToken(answer)) return 'refused' as const
-			yield* pipe(forgetDevice(device), Reactivity.mutation(['push']), asPushSaveError)
-			return 'dead' as const
+			return yield* ApnsAnswer.match(answer, {
+				Accepted: () => Effect.succeed(true),
+				DeadToken: () => Effect.as(asPushSaveError(forgetDevice(device)), true),
+				Refused: () => Effect.succeed(true),
+				Retry: () => Effect.succeed(false)
+			})
 		})
 
+		const listDeliveries = SqlSchema.findAll({
+			Request: BookingId,
+			Result: Delivery,
+			execute: id => sql`SELECT * FROM ${sql(Delivery.table)} WHERE bookingId = ${id} ORDER BY sentAt`
+		})
+		const recordDelivery = SqlSchema.void({
+			Request: Delivery.insert,
+			execute: row =>
+				sql`INSERT INTO ${sql(Delivery.table)} ${sql.insert(row)} ON CONFLICT DO UPDATE SET sentAt = excluded.sentAt`
+		})
 		const announce = Effect.fnUntraced(function* (booking: Booking, now: DateTime.Utc, state: RoundState) {
-			const sent = Array.filter(state.sent, alert => alert.bookingId === booking.id)
-			const fresh = Array.filter(alertsOf(booking, now), alert => !announced(sent, alert))
-			if (Array.isReadonlyArrayEmpty(fresh)) return
-			const devices = Array.filter(state.devices, device => device.kind === 'alert')
-			// An alert every device refused for now, such as a throttled one, is sent again next round.
-			const done = yield* Effect.filter(
-				fresh,
-				alert =>
-					pipe(
-						devices,
-						Effect.forEach(
-							device =>
-								Effect.catch(notify(device, alert, booking), cause =>
-									Effect.as(Effect.logWarning('An alert was not sent', Cause.fail(cause)), 'retry' as const)
-								),
-							{concurrency: 1}
-						),
-						Effect.map(
-							outcomes =>
-								!Array.isReadonlyArrayNonEmpty(outcomes) || !Array.every(outcomes, outcome => outcome === 'retry')
-						)
-					),
-				{concurrency: 1}
-			)
-			yield* Array.match(done, {
-				onEmpty: () => Effect.void,
-				onNonEmpty: alerts =>
-					pipe(
-						recordSent(
-							Array.map(alerts, alert => ({
-								bookingId: booking.id,
-								category: alert.category,
-								sentAt: now,
-								value: Option.fromUndefinedOr(alert.value)
-							}))
-						),
-						Reactivity.mutation(['push']),
-						asPushSaveError
+			for (const alert of Array.filter(
+				alertsOf(booking, now),
+				candidate =>
+					!announced(
+						Array.filter(state.sent, sent => sent.bookingId === booking.id),
+						candidate
 					)
-			})
+			)) {
+				const devices = Array.filter(yield* asPushReadError(listDevices()), device => device.kind === 'alert')
+				const delivered = yield* asPushReadError(listDeliveries(booking.id))
+				const row = {
+					bookingId: booking.id,
+					category: alert.category,
+					sentAt: now,
+					value: Option.fromUndefinedOr(alert.value)
+				}
+				const outcomes = yield* Effect.forEach(
+					unannouncedDevices(devices, delivered, alert),
+					device =>
+						Effect.catch(
+							Effect.gen(function* () {
+								if (!(yield* notify(device, alert, booking))) return false
+								yield* asPushSaveError(recordDelivery({...row, token: device.token}))
+								return true
+							}),
+							cause => Effect.as(Effect.logWarning('An alert was not sent', Cause.fail(cause)), false)
+						),
+					{concurrency: 1}
+				)
+				if (Array.every(outcomes, Function.identity)) yield* asPushSaveError(recordSent([row]))
+			}
 		})
 
 		const ticking = yield* Semaphore.make(1)
@@ -397,9 +396,15 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 				yield* pipe(
 					Effect.andThen(
 						forgetEndedBefore(DateTime.subtractDuration(now, Duration.days(2))),
-						forgetSentExcept(Array.map(all, booking => booking.id))
+						Effect.all(
+							[
+								forgetSentExcept(Array.map(all, booking => booking.id)),
+								sql`DELETE FROM requests WHERE bookingId NOT IN ${sql.in(Array.map(all, booking => booking.id))}`,
+								sql`DELETE FROM deliveries WHERE bookingId NOT IN ${sql.in(Array.map(all, booking => booking.id))}`
+							],
+							{concurrency: 1, discard: true}
+						)
 					),
-					Reactivity.mutation(['push']),
 					sql.withTransaction,
 					asPushSaveError
 				)
@@ -421,40 +426,34 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 
 		return {
 			register: Effect.fn('Push.register')(function* (device: typeof Device.insert.Type) {
-				yield* pipe(saveDevice(device), Reactivity.mutation(['push']), asPushSaveError)
-			}, withReactivity),
-			start: Effect.fn('Push.start')(
-				function* (id: BookingId) {
-					if (!apns.enabled) return yield* PushError.make({message: 'The server has no Apple push configuration.'})
-					const all = yield* asPushError('The bookings could not be read.')(bookings.list)
-					const journey = Array.findFirst(journeysOf(all), group => Array.some(group, leg => leg.id === id))
-					const now = yield* DateTime.now
-					const legs = pipe(
-						journey,
-						Option.toArray,
-						Array.flatten,
-						Array.filter((leg): leg is Flight | Train => !Booking.isAnyOf(['stay'])(leg))
-					)
-					if (!startable(legs, now)) return yield* PushError.make({message: 'This journey cannot be started now.'})
-					yield* asPushSaveError(recordRequest({at: now, bookingId: Option.getOrThrow(Array.head(legs)).id}))
-					const booking = Option.getOrThrow(Array.head(legs))
-					const window = yield* Option.match(activeWindow(booking, now, legs, Option.some(now)), {
-						onNone: () => PushError.make({message: 'This journey has no Live Activity window.'}),
-						onSome: Effect.succeed
-					})
-					const state = yield* roundState
-					if (
-						Array.isReadonlyArrayEmpty(showPlan(state.devices, state.activities, booking, window, Option.some(now)))
-					) {
-						return yield* PushError.make({message: 'No registered device can start this Live Activity.'})
-					}
-					yield* asPushError('The Live Activity could not be started.')(
-						show(booking, window, all, now, legs, Option.some(now), state)
-					)
-				},
-				Semaphore.withPermit(ticking),
-				withReactivity
-			)
+				yield* asPushSaveError(saveDevice(device))
+			}),
+			start: Effect.fn('Push.start')(function* (id: BookingId) {
+				if (!apns.enabled) return yield* PushError.make({message: 'The server has no Apple push configuration.'})
+				const all = yield* asPushError('The bookings could not be read.')(bookings.list)
+				const journey = Array.findFirst(journeysOf(all), group => Array.some(group, leg => leg.id === id))
+				const now = yield* DateTime.now
+				const legs = pipe(
+					journey,
+					Option.toArray,
+					Array.flatten,
+					Array.filter((leg): leg is Flight | Train => !Booking.isAnyOf(['stay'])(leg))
+				)
+				if (!startable(legs, now)) return yield* PushError.make({message: 'This journey cannot be started now.'})
+				const booking = Option.getOrThrow(Array.head(legs))
+				const window = yield* Option.match(activeWindow(booking, now, legs, Option.some(now)), {
+					onNone: () => PushError.make({message: 'This journey has no Live Activity window.'}),
+					onSome: Effect.succeed
+				})
+				const state = yield* roundState
+				if (Array.isReadonlyArrayEmpty(showPlan(state.devices, state.activities, booking, window, Option.some(now)))) {
+					return yield* PushError.make({message: 'No registered device can start this Live Activity.'})
+				}
+				yield* asPushSaveError(recordRequest({at: now, bookingId: booking.id}))
+				yield* asPushError('The Live Activity could not be started.')(
+					show(booking, window, all, now, legs, Option.some(now), state)
+				)
+			}, Semaphore.withPermit(ticking))
 		}
 	})
 }) {
@@ -505,6 +504,17 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 				}),
 				'0003_requests': Effect.gen(function* () {
 					yield* (yield* SqlClient.SqlClient)`CREATE TABLE requests (bookingId TEXT PRIMARY KEY, at INTEGER NOT NULL) STRICT, WITHOUT ROWID`
+				}),
+				// judge-ignore no-unrelated-jobs -- One atomic device-delivery migration preserves registered tokens while introducing their receipt table.
+				'0004_device_delivery': Effect.gen(function* () {
+					const sql = yield* SqlClient.SqlClient
+					yield* sql`ALTER TABLE devices RENAME TO old_devices`
+					yield* sql`CREATE TABLE devices (token TEXT PRIMARY KEY, bundle TEXT NOT NULL, kind TEXT NOT NULL) STRICT, WITHOUT ROWID`
+					yield* sql`INSERT INTO devices SELECT token, bundle, kind FROM old_devices`
+					yield* sql`DROP TABLE old_devices`
+					yield* sql`CREATE TABLE deliveries (bookingId TEXT NOT NULL, category TEXT NOT NULL, value TEXT, sentAt INTEGER NOT NULL, token TEXT NOT NULL) STRICT`
+					yield* sql`CREATE UNIQUE INDEX delivery_value ON deliveries (bookingId, category, value, token) WHERE value IS NOT NULL`
+					yield* sql`CREATE UNIQUE INDEX delivery_once ON deliveries (bookingId, category, token) WHERE value IS NULL`
 				})
 			}),
 			table: 'push_migrations'

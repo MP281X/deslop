@@ -2,12 +2,12 @@ import {assert, it} from '@effect/vitest'
 
 import {Array, DateTime, Duration, Option, Redacted, Schema, String, Struct} from 'effect'
 
-import {ApnsToken} from '@deslop/runtime/shared/apns'
+import {ApnsToken, Device} from '@deslop/runtime/shared/apns'
 
 import {journeyProps} from '#services/bookings/lib/utils.ts'
 import {BookedPlace, BookingId, Flight, FlightTracking} from '#services/bookings/schema.ts'
-import {alertsOf, announced, expiredActivities, holds, showPlan} from '#services/push/lib/utils.ts'
-import {Activity, ChannelId, Device, SentAlert} from '#services/push/schema.ts'
+import {alertsOf, announced, expiredActivities, holds, showPlan, unannouncedDevices} from '#services/push/lib/utils.ts'
+import {Activity, ChannelId, Delivery, SentAlert} from '#services/push/schema.ts'
 import type {AlertCategory} from '#services/push/schema.ts'
 
 const DEPARTS = DateTime.makeUnsafe('2026-10-28T15:40:00Z')
@@ -48,6 +48,37 @@ const ACTIVITY = {
 function sentAlert(category: AlertCategory, value: string) {
 	return SentAlert.make({bookingId: FLIGHT.id, category, sentAt: DEPARTS, value: Option.some(value)})
 }
+
+it('retries the other phone without resending an accepted alert, including an older delay step', () => {
+	const first = Device.make({...STARTER, kind: 'alert'})
+	const second = Device.make({...STARTER, kind: 'alert', token: Redacted.make(ApnsToken.make(String.repeat(32)('b')))})
+	const alert = {body: '', category: 'delay' as const, title: '', value: '15'}
+	const accepted = Delivery.make({
+		bookingId: FLIGHT.id,
+		category: 'delay',
+		sentAt: DEPARTS,
+		token: first.token,
+		value: Option.some('15')
+	})
+	assert.deepStrictEqual(unannouncedDevices([first, second], [accepted], alert), [second])
+	assert.deepStrictEqual(unannouncedDevices([first], [accepted], alert), [])
+	assert.deepStrictEqual(unannouncedDevices([], [], alert), [])
+	assert.deepStrictEqual(
+		unannouncedDevices(
+			[first, second],
+			[
+				accepted,
+				Delivery.make({
+					...Struct.pick(accepted, Struct.keys(Delivery.fields)),
+					sentAt: DateTime.addDuration(DEPARTS, Duration.minutes(1)),
+					value: Option.some('30')
+				})
+			],
+			alert
+		),
+		[second]
+	)
+})
 
 it('relaunches an ended activity only for a newer explicit start request', () => {
 	const endedAt = DateTime.addDuration(DEPARTS, Duration.minutes(5))
