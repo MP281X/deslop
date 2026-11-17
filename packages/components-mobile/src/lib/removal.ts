@@ -49,7 +49,7 @@ export function makeRemoval<Id extends string, E extends {_tag: string; message:
 			})
 		)
 	)
-	// The subscription holds the machine while the row is absent, then releases it after undo, completion or failure.
+	// A removal outlives its row, which a search, a folded section or a closing detail unmounts, and the family forgets a machine nothing references; this subscription holds the machine itself until undo, completion or failure.
 	const heldAtom = Atom.family((id: Id) => {
 		const removing = machineAtom(id)
 		return Atom.readable(get => () => {

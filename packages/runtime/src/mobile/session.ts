@@ -138,37 +138,40 @@ export function makeSession() {
 		)
 	)
 
-	// Ends the session at Auth, which every app shares; an unreachable Auth still signs this app out.
+	// Ends the session at Auth, which every app shares; an unreachable Auth still signs this app out, and a Keychain that keeps any of it says what stayed.
 	const signOutAtom = sessionRuntime.fn((_: void, get) =>
-		Effect.gen(function* () {
-			const remote = yield* pipe(
-				headersEffect,
-				Effect.flatMap(headers => HttpClient.get(`${auth}/sign-out`, {headers})),
-				Effect.flatMap(HttpClientResponse.filterStatusOk),
-				Effect.timeout('10 seconds'),
-				Effect.tapError(cause => Effect.logWarning('Auth did not confirm ending the session', cause)),
-				Effect.exit
-			)
-			const remoteStatus = Exit.match(remote, {
-				onFailure: Function.constant('Auth sign-out was not confirmed'),
-				onSuccess: Function.constant('Auth ended the shared session')
-			})
-			yield* Effect.uninterruptible(
-				Effect.gen(function* () {
-					yield* Effect.mapError(keychain.clearSession, cause =>
-						AuthError.make({cause, message: `${remoteStatus}; this app's saved session was not removed`})
-					)
-					get.set(cachedAccountAtom, Option.none())
-					get.refresh(revalidationAtom)
-					yield* Effect.mapError(keychain.clearAccount, cause =>
-						AuthError.make({
-							cause,
-							message: `${remoteStatus}; this app signed out, but its saved account could not be removed`
-						})
-					)
+		Effect.tapError(
+			Effect.gen(function* () {
+				const remote = yield* pipe(
+					headersEffect,
+					Effect.flatMap(headers => HttpClient.get(`${auth}/sign-out`, {headers})),
+					Effect.flatMap(HttpClientResponse.filterStatusOk),
+					Effect.timeout('10 seconds'),
+					Effect.tapError(cause => Effect.logWarning('Auth did not confirm ending the session', cause)),
+					Effect.exit
+				)
+				const remoteStatus = Exit.match(remote, {
+					onFailure: Function.constant('Auth sign-out was not confirmed'),
+					onSuccess: Function.constant('Auth ended the shared session')
 				})
-			)
-		})
+				yield* Effect.uninterruptible(
+					Effect.gen(function* () {
+						yield* Effect.mapError(keychain.clearSession, cause =>
+							AuthError.make({cause, message: `${remoteStatus}; this app's saved session was not removed`})
+						)
+						get.set(cachedAccountAtom, Option.none())
+						get.refresh(revalidationAtom)
+						yield* Effect.mapError(keychain.clearAccount, cause =>
+							AuthError.make({
+								cause,
+								message: `${remoteStatus}; this app signed out, but its saved account could not be removed`
+							})
+						)
+					})
+				)
+			}),
+			error => Effect.sync(() => Alert.alert('Sign Out Incomplete', error.message))
+		)
 	)
 
 	return {
