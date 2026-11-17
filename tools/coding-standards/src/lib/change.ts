@@ -121,7 +121,6 @@ const defaultBranch = Effect.fnUntraced(function* (root: string) {
 	return String.trim(result.stdout)
 })
 
-// judge-ignore no-silent-fallback -- only a branch without a pull request, a repository without a remote, or a gh missing or never signed in takes origin's default branch, the documented base; every other gh or git failure fails the run.
 // The TypeScript files the change adds or edits against its merge base, untracked ones included, with the lines of each as it is now that the change touched; the diff only selects what is asked and is never sent.
 export const change = Effect.fnUntraced(function* (base: Option.Option<string>) {
 	const root = String.trim(yield* git(['rev-parse', '--show-toplevel'], '.'))
@@ -133,8 +132,9 @@ export const change = Effect.fnUntraced(function* (base: Option.Option<string>) 
 					return Option.some(yield* Schema.decodeEffect(Schema.fromJsonString(PullRequest))(result.stdout))
 				}
 				// A branch without a pull request, a repository without a remote, or a gh never signed in to any host: the base is origin's default branch. Any other failure, such as a rejected token or an unreachable host, fails, since the wrong base judges the wrong change.
-				if (matches(/no pull requests found|no git remotes found|To get started with GitHub CLI/u)(result.stderr))
+				if (matches(/no pull requests found|no git remotes found|To get started with GitHub CLI/u)(result.stderr)) {
 					return Option.none<PullRequest>()
+				}
 				return yield* JudgeError.make({message: `gh pr view failed: ${String.trim(result.stderr)}`})
 			})
 		),
