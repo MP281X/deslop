@@ -1,8 +1,9 @@
 import {
 	Boolean,
 	ByteSize,
-	Clock,
+	Cache,
 	Config,
+	Duration,
 	Effect,
 	Function,
 	Layer,
@@ -27,6 +28,7 @@ import {
 } from 'effect/http'
 
 import {Auth} from '@deslop/runtime/server/auth'
+import {CLIENT_HEADER} from '@deslop/runtime/shared/auth'
 
 import {WorkflowJob, WorkflowRun} from '#services/github-actions/schema.ts'
 import {GitHubActions} from '#services/github-actions/service.ts'
@@ -94,8 +96,12 @@ export const HttpHandlers = Layer.provide(
 		Effect.gen(function* () {
 			const telemetry = yield* Telemetry
 			const auth = yield* Auth
-			// Separate aggregate pools keep anonymous traffic from spending identified senders' capacity.
-			const admission = yield* Ref.make({anonymous: {at: 0, used: 0}, identified: {at: 0, used: 0}})
+			// Each sender gets its own one-minute budget, so one flooding address never spends another's.
+			const admissions = yield* Cache.make({
+				capacity: 10_000,
+				lookup: (_sender: string) => Ref.make(0),
+				timeToLive: Duration.minutes(1)
+			})
 			// Rejected exports are counted; headers and bodies are never recorded.
 			const ingest = Effect.fnUntraced(function* <A, I>(
 				route: IngestRoute,
@@ -113,37 +119,24 @@ export const HttpHandlers = Layer.provide(
 					yield* telemetry.reject({credential: credential(), route, status: 503})
 					return HttpServerResponse.jsonUnsafe({code: 14, message: 'Identity service unavailable'}, {status: 503})
 				}
-				// A missing or refused identity is still an admitted public sender, but only in the anonymous pool.
-				const identified = Result.isSuccess(person)
-				const now = yield* Clock.currentTimeMillis
-				const admitted = yield* Ref.modify(admission, pools => {
-					const key = Boolean.match(identified, {
-						onFalse: Function.constant('anonymous' as const),
-						onTrue: Function.constant('identified' as const)
-					})
-					const pool = pools[key]
-					const used = Boolean.match(now - pool.at >= 60_000, {onFalse: () => pool.used, onTrue: Function.constant(0)})
-					if (used >= Boolean.match(identified, {onFalse: Function.constant(120), onTrue: Function.constant(1200)})) {
-						return [false, pools]
+				// Exports per sender and minute. A missing or refused identity is still an admitted public sender, budgeted by its address, which several apps on one machine share; a request without one comes from this machine.
+				const [sender, budget] = Result.match(person, {
+					onFailure: () => [`address:${request.headers[CLIENT_HEADER] ?? 'local'}`, 600] as const,
+					onSuccess: user => [`user:${user.id}`, 1200] as const
+				})
+				const response = yield* Boolean.match(
+					yield* Ref.modify(yield* Cache.get(admissions, sender), used => [used < budget, used + 1]),
+					{
+						onFalse: () =>
+							Effect.succeed(
+								HttpServerResponse.jsonUnsafe(
+									{code: 8, message: 'OTLP admission budget exhausted'},
+									{headers: {'retry-after': '60'}, status: 429}
+								)
+							),
+						onTrue: () => answer(schema, save)
 					}
-					return [
-						true,
-						{
-							...pools,
-							[key]: {at: Boolean.match(used === 0, {onFalse: () => pool.at, onTrue: () => now}), used: used + 1}
-						}
-					]
-				})
-				const response = yield* Boolean.match(admitted, {
-					onFalse: () =>
-						Effect.succeed(
-							HttpServerResponse.jsonUnsafe(
-								{code: 8, message: 'OTLP admission budget exhausted'},
-								{headers: {'retry-after': '60'}, status: 429}
-							)
-						),
-					onTrue: () => answer(schema, save)
-				})
+				)
 				if (response.status >= 400) {
 					yield* telemetry.reject({credential: credential(), route, status: response.status})
 				}

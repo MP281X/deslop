@@ -603,7 +603,8 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 		const boundSize = Effect.gen(function* () {
 			const cutoff = DateTime.subtractDuration(yield* DateTime.now, Duration.days(30))
 			const state = {size: yield* retainedSize()}
-			while (state.size.bytes > 512 * 1024 * 1024 && state.size.last !== 0) {
+			// A disk guard, not the retention rule: thirty days at November's rate (about 110 MB a day) fit under 4 GiB, so the oldest traces go first only when a flood would fill the disk.
+			while (state.size.bytes > 4 * 1024 * 1024 * 1024 && state.size.last !== 0) {
 				yield* deleteExpired({cutoff, last: state.size.last})
 				// FTS deletion markers must be merged before measuring the retained search pages again.
 				yield* sql`INSERT INTO span_search (span_search) VALUES ('optimize')`
