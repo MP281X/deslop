@@ -7,7 +7,7 @@ import {localAuth, requireAdmin} from '@deslop/runtime/server/auth'
 import {AuthError, GitHubId, GitHubIdFromString, UserId, asAuthError} from '@deslop/runtime/shared/auth'
 import type {User} from '@deslop/runtime/shared/auth'
 
-import {authorizeMember, isAdmin, listPeople, personOf} from './lib/utils.ts'
+import {isAdmin, listPeople, personOf} from './lib/utils.ts'
 import {Member} from './schema.ts'
 import type {AdmitParams, Person} from './schema.ts'
 
@@ -29,13 +29,11 @@ export class People extends Context.Service<
 	People,
 	{
 		readonly find: (id: UserId) => Effect.Effect<Option.Option<Member>, AuthError>
-		readonly login: (login: string) => Effect.Effect<Option.Option<Member>, AuthError>
 		readonly register: (
 			user: {readonly id: UserId; readonly name: string},
 			fullName: Option.Option<string>,
 			tailnet: boolean
 		) => Effect.Effect<Member, AuthError>
-		readonly allowed: (id: UserId) => Effect.Effect<User, AuthError>
 		readonly list: (user: User) => Effect.Effect<Person[], AuthError>
 		readonly admit: (params: AdmitParams, user: User) => Effect.Effect<Person, AuthError>
 		readonly remove: (id: UserId, user: User) => Effect.Effect<Person, AuthError>
@@ -65,6 +63,13 @@ export class People extends Context.Service<
 						yield* sql`DROP TABLE IF EXISTS ${sql(table)}`
 					}
 					yield* sql`ALTER TABLE members DROP COLUMN incarnation`
+				}),
+				'0003_nullable_since': Effect.gen(function* () {
+					const sql = yield* SqlClient.SqlClient
+					yield* sql`CREATE TABLE members_next (id TEXT PRIMARY KEY, name TEXT NOT NULL, fullName TEXT, since INTEGER, status TEXT NOT NULL) STRICT`
+					yield* sql`INSERT INTO members_next SELECT id, name, fullName, NULLIF(since, 0), status FROM members`
+					yield* sql`DROP TABLE members`
+					yield* sql`ALTER TABLE members_next RENAME TO members`
 				})
 			}),
 			table: 'members_migrations'
@@ -131,22 +136,11 @@ export class People extends Context.Service<
 						sql.withTransaction,
 						asAuthError('Cannot answer the access request')
 					),
-					allowed: Effect.fn('People.allowed')(function* (id) {
-						return yield* authorizeMember(admins, id, yield* find(id))
-					}, asAuthError('Cannot read the account')),
 					find,
 					list: Effect.fn('People.list')(function* (user) {
 						yield* requireAdmin(user, 'Only an admin can manage people')
 						return listPeople(yield* all(), admins)
 					}, asAuthError('Cannot read people')),
-					login: Effect.fn('People.login')(function* (login) {
-						return yield* SqlSchema.findOneOption({
-							Request: Schema.String,
-							Result: Member,
-							execute: name =>
-								sql`SELECT * FROM ${table} WHERE id LIKE 'github:%' AND lower(name) = lower(${name}) LIMIT 1`
-						})(login)
-					}, asAuthError('Cannot read the person')),
 					register: Effect.fn('People.register')(
 						function* (user, fullName, tailnet) {
 							const status = Boolean.match(tailnet || isAdmin(admins, user.id), {

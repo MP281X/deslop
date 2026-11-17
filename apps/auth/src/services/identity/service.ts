@@ -1,25 +1,22 @@
 import {networkInterfaces} from 'node:os'
 
-import {Array, Cache, Context, Effect, Function, Layer, Option, Record, Result, Schema, String, pipe} from 'effect'
+import {Array, Context, Effect, Layer, Option, Record, Result, String, pipe} from 'effect'
 
 import type {Headers} from 'effect/http'
 import {IpNetwork, NetAddress} from 'effect/net'
-import {ChildProcessSpawner} from 'effect/process'
 
 import {Auth, identifyRequestOf, localAuth} from '@deslop/runtime/server/auth'
-import {executeProcess} from '@deslop/runtime/server/process'
 import {AuthError, DEVELOPER, UserId, asAuthError} from '@deslop/runtime/shared/auth'
 import type {IdentifyRequest} from '@deslop/runtime/shared/auth'
 import type {Account} from '@deslop/runtime/shared/schema'
-
-import type {Profile} from './schema.ts'
-import {Status, Whois} from './schema.ts'
 
 import {CookieSessions} from '#services/cookie-sessions/service.ts'
 import {GitHub} from '#services/github/service.ts'
 import {authorizeMember, roleOf} from '#services/people/lib/utils.ts'
 import type {SignedAccount} from '#services/people/schema.ts'
 import {People, adminIds} from '#services/people/service.ts'
+import type {Profile} from '#services/tailnet/schema.ts'
+import {Tailnet} from '#services/tailnet/service.ts'
 
 export function isMachine(address: string) {
 	return Array.some(
@@ -50,40 +47,11 @@ export class Identity extends Context.Service<
 			const github = yield* GitHub
 			const local = yield* localAuth
 			const admins = yield* adminIds
-			const spawner = yield* ChildProcessSpawner.ChildProcessSpawner
-			const status = yield* Cache.makeWith(
-				() =>
-					pipe(
-						executeProcess('tailscale', ['status', '--json']),
-						Effect.flatMap(Schema.decodeUnknownEffect(Schema.fromJsonString(Status))),
-						Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
-						Effect.timeout('10 seconds'),
-						asAuthError('Cannot read the tailnet owner')
-					),
-				{capacity: 1, timeToLive: Function.constant('1 minute')}
-			)
-			const whois = yield* Cache.makeWith(
-				(address: string) =>
-					pipe(
-						executeProcess('tailscale', ['whois', '--json', address]),
-						Effect.flatMap(Schema.decodeUnknownEffect(Schema.fromJsonString(Whois))),
-						Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
-						Effect.timeout('10 seconds'),
-						asAuthError('Cannot identify the tailnet caller')
-					),
-				{capacity: 1024, timeToLive: Function.constant('1 minute')}
-			)
+			const owners = yield* Tailnet
 			const tailnet = Effect.fnUntraced(function* (profile: Profile) {
 				if (String.endsWith('@github')(profile.LoginName)) {
-					const name = String.slice(0, -7)(profile.LoginName)
-					return yield* Option.match(yield* people.login(name), {
-						onNone: () =>
-							Effect.gen(function* () {
-								const user = yield* github.login(name)
-								return yield* people.register({id: UserId.make(`github:${user.id}`), name: user.login}, user.name, true)
-							}),
-						onSome: member => people.register({id: member.id, name: member.name}, member.fullName, true)
-					})
+					const user = yield* github.login(String.slice(0, -7)(profile.LoginName))
+					return yield* people.register({id: UserId.make(`github:${user.id}`), name: user.login}, user.name, true)
 				}
 				return yield* people.register(
 					{id: UserId.make(`tailnet:${profile.LoginName}`), name: profile.DisplayName || profile.LoginName},
@@ -108,7 +76,7 @@ export class Identity extends Context.Service<
 												return yield* Option.match(request.onBehalfOf, {
 													onNone: () =>
 														Effect.gen(function* () {
-															const found = yield* Cache.get(status, 'self')
+															const found = yield* owners.status
 															if ((found.Self.Tags?.length ?? 0) > 0) {
 																return yield* AuthError.make({message: 'Sign in first'})
 															}
@@ -126,7 +94,7 @@ export class Identity extends Context.Service<
 												})
 											}
 											if (!isTailnet(address)) return yield* AuthError.make({message: 'Sign in first'})
-											const found = yield* Cache.get(whois, address)
+											const found = yield* owners.whois(address)
 											if ((found.Node.Tags?.length ?? 0) > 0) return yield* AuthError.make({message: 'Sign in first'})
 											return yield* tailnet(found.UserProfile)
 										})

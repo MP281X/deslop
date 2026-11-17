@@ -1,6 +1,6 @@
-import {Boolean, Config, Effect, Option, Record, Schema, pipe} from 'effect'
+import {Boolean, Config, Effect, Option, Schema, pipe} from 'effect'
 
-import {Cookies, HttpRouter, HttpServerRequest, HttpServerResponse} from 'effect/http'
+import {HttpRouter, HttpServerRequest, HttpServerResponse} from 'effect/http'
 
 import {localAuth} from '@deslop/runtime/server/auth'
 import {
@@ -9,19 +9,14 @@ import {
 	IDENTIFY_PATH,
 	IdentifyRequest,
 	SESSION_COOKIE,
-	UserId,
 	failureOptions
 } from '@deslop/runtime/shared/auth'
 import {Account} from '@deslop/runtime/shared/schema'
 
-import {parentDomain, returnable} from '#services/cookie-sessions/lib/utils.ts'
-import {CookieSessions} from '#services/cookie-sessions/service.ts'
-import {AppSignIn, CallbackParams, OAuthState} from '#services/github/schema.ts'
-import {GitHub} from '#services/github/service.ts'
+import {parentDomain} from '#services/cookie-sessions/lib/utils.ts'
 import {Identity, isMachine} from '#services/identity/service.ts'
-import {People} from '#services/people/service.ts'
+import {SignIns, association, loginCookie} from '#services/sign-ins/service.ts'
 
-const LOGIN_COOKIE = '__Host-login'
 const COOKIE = {httpOnly: true, path: '/', sameSite: 'lax', secure: true} as const
 function respond<E, R>(effect: Effect.Effect<HttpServerResponse.HttpServerResponse, E, R>) {
 	return pipe(
@@ -35,23 +30,18 @@ function respond<E, R>(effect: Effect.Effect<HttpServerResponse.HttpServerRespon
 export const HttpHandlers = HttpRouter.use(router =>
 	Effect.gen(function* () {
 		const identity = yield* Identity
-		const github = yield* GitHub
-		const people = yield* People
-		const sessions = yield* CookieSessions
+		const signIns = yield* SignIns
 		const canonical = yield* Config.String('APP_URL')
-		const local = yield* localAuth
 		const sessionCookie = {
 			...COOKIE,
-			...Boolean.match(local, {onFalse: () => ({domain: parentDomain(canonical)}), onTrue: () => ({})}),
+			...Boolean.match(yield* localAuth, {onFalse: () => ({domain: parentDomain(canonical)}), onTrue: () => ({})}),
 			maxAge: '365 days' as const
 		}
-		function nextOf(request: HttpServerRequest.HttpServerRequest) {
-			const next = new URL(request.url, canonical).searchParams.get('next') ?? canonical
-			if (!returnable(next, canonical, local)) {
-				return Effect.fail(AuthError.make({error: 'access_denied', message: 'Invalid return URL'}))
-			}
-			return Effect.succeed(next)
-		}
+		yield* router.add(
+			'GET',
+			'/.well-known/apple-app-site-association',
+			Effect.succeed(HttpServerResponse.jsonUnsafe(association))
+		)
 		yield* router.add(
 			'POST',
 			IDENTIFY_PATH,
@@ -61,37 +51,26 @@ export const HttpHandlers = HttpRouter.use(router =>
 						return HttpServerResponse.text('Only this machine may identify callers', {status: 403})
 					}
 					return yield* HttpServerResponse.schemaJson(Account)(
-						yield* identity.resolve(yield* HttpServerRequest.schemaBodyJson(IdentifyRequest))
+						yield* identity.resolve(
+							yield* Effect.mapError(HttpServerRequest.schemaBodyJson(IdentifyRequest), cause =>
+								AuthError.make({cause, error: 'access_denied', message: 'Invalid identify request'})
+							)
+						)
 					)
 				})
 			)
 		)
-		// An app opens this in a browser sheet: Auth signs in with GitHub and returns the session on the app's own scheme.
 		yield* router.add(
 			'GET',
 			'/sign-in',
 			respond(
 				Effect.gen(function* () {
-					const request = yield* HttpServerRequest.HttpServerRequest
-					const query = new URL(request.url, canonical).searchParams
-					const app = yield* Boolean.match(query.has('app'), {
-						onFalse: () => Effect.succeed(Option.none<AppSignIn>()),
-						onTrue: () =>
-							pipe(
-								Schema.decodeUnknownEffect(AppSignIn)(Record.fromEntries(query)),
-								Effect.asSome,
-								Effect.mapError(cause =>
-									AuthError.make({cause, error: 'access_denied', message: 'Invalid app sign-in'})
-								)
-							)
-					})
-					const started = yield* github.start({
-						app,
-						next: yield* Option.match(app, {onNone: () => nextOf(request), onSome: () => Effect.succeed(canonical)})
-					})
+					const started = yield* signIns.start(
+						new URL((yield* HttpServerRequest.HttpServerRequest).url, canonical).searchParams
+					)
 					return HttpServerResponse.setCookieUnsafe(
 						HttpServerResponse.redirect(started.url),
-						LOGIN_COOKIE,
+						loginCookie(started.state),
 						started.state,
 						{...COOKIE, maxAge: '10 minutes'}
 					)
@@ -104,64 +83,33 @@ export const HttpHandlers = HttpRouter.use(router =>
 			respond(
 				Effect.gen(function* () {
 					const request = yield* HttpServerRequest.HttpServerRequest
-					const params = yield* Schema.decodeUnknownEffect(CallbackParams)(
-						Record.fromEntries(new URL(request.url, canonical).searchParams)
+					const result = yield* signIns.finish(new URL(request.url, canonical).searchParams, request.headers)
+					return pipe(
+						HttpServerResponse.redirect(result.target),
+						response =>
+							Option.match(result.session, {
+								onNone: () => response,
+								onSome: secret => HttpServerResponse.setCookieUnsafe(response, SESSION_COOKIE, secret, sessionCookie)
+							}),
+						HttpServerResponse.expireCookieUnsafe(loginCookie(result.state), COOKIE)
 					)
-					if (Cookies.parseHeader(request.headers['cookie'] ?? '')[LOGIN_COOKIE] !== params.state) {
-						return yield* AuthError.make({error: 'access_denied', message: 'This browser did not start the sign-in'})
-					}
-					const result = yield* github.finish(params.code, OAuthState.make(params.state))
-					const member = yield* people.register(
-						{id: UserId.make(`github:${result.profile.id}`), name: result.profile.login},
-						result.profile.name,
-						false
-					)
-					const secret = yield* sessions.create(
-						member.id,
-						Option.fromNullishOr(request.headers[CLIENT_HEADER]),
-						request.headers['user-agent'] ?? 'Browser'
-					)
-					const account = yield* identity.resolve(
-						IdentifyRequest.make({address: Option.none(), onBehalfOf: Option.none(), session: Option.some(secret)}),
-						true
-					)
-					return yield* Option.match(result.flow.app, {
-						onNone: () =>
-							Effect.succeed(
-								pipe(
-									HttpServerResponse.redirect(
-										Boolean.match(account.role === 'Waiting', {
-											onFalse: () => result.flow.next,
-											onTrue: () => `/?${new URLSearchParams({next: result.flow.next})}`
-										})
-									),
-									HttpServerResponse.setCookieUnsafe(SESSION_COOKIE, secret, sessionCookie),
-									HttpServerResponse.expireCookieUnsafe(LOGIN_COOKIE, COOKIE)
-								)
-							),
-						// An app keeps the session itself, so the browser sheet gets no cookie.
-						onSome: app =>
-							Effect.succeed(
-								HttpServerResponse.expireCookieUnsafe(
-									HttpServerResponse.redirect(`${app.app}://signed-in?${new URLSearchParams({session: secret})}`),
-									LOGIN_COOKIE,
-									COOKIE
-								)
-							)
-					})
 				})
 			)
 		)
 		yield* router.add(
-			'GET',
+			'POST',
 			'/sign-out',
 			respond(
 				Effect.gen(function* () {
 					const request = yield* HttpServerRequest.HttpServerRequest
-					const next = yield* nextOf(request)
-					const secret = Cookies.parseHeader(request.headers['cookie'] ?? '')[SESSION_COOKIE]
-					if (secret) yield* sessions.forget(secret)
-					return HttpServerResponse.expireCookieUnsafe(HttpServerResponse.redirect(next), SESSION_COOKIE, sessionCookie)
+					return HttpServerResponse.expireCookieUnsafe(
+						HttpServerResponse.redirect(
+							yield* signIns.signOut(new URL(request.url, canonical).searchParams, request.headers),
+							{status: 303}
+						),
+						SESSION_COOKIE,
+						sessionCookie
+					)
 				})
 			)
 		)

@@ -1,4 +1,4 @@
-import {DateTime, Function, Option, Schema, SchemaGetter, pipe} from 'effect'
+import {Schema} from 'effect'
 
 import {Model} from 'effect/schema'
 
@@ -19,25 +19,7 @@ export type SignedAccount = typeof SignedAccount.Type
 export const SignedAccount = Schema.Struct({...Account.fields, signOut: Schema.Boolean})
 
 export type Person = typeof Person.Type
-export const Person = Schema.Struct({
-	...Account.fields,
-	// An admin whose profile has not arrived has no membership date; the existing wire encodes that as zero.
-	since: pipe(
-		Schema.Finite,
-		Schema.decodeTo(Schema.Option(Schema.DateTimeUtc), {
-			decode: SchemaGetter.transform(value =>
-				pipe(
-					value,
-					Option.liftPredicate(time => time !== 0),
-					Option.map(DateTime.makeUnsafe)
-				)
-			),
-			encode: SchemaGetter.transform(value =>
-				Option.match(value, {onNone: Function.constant(0), onSome: DateTime.toEpochMillis})
-			)
-		})
-	)
-})
+export const Person = Schema.Struct({...Account.fields, since: Schema.OptionFromNullOr(Schema.DateTimeUtcFromMillis)})
 
 export type MemberStatus = typeof MemberStatus.Type
 export const MemberStatus = Schema.Literals(['Waiting', 'Allowed'])
@@ -48,7 +30,7 @@ export class Member extends Model.Class<Member>('Member')({
 	id: User.fields.id,
 	name: User.fields.name,
 	// When the account first asked for access, then when an admin allowed it.
-	since: Schema.DateTimeUtcFromMillis,
+	since: Model.FieldOption(Schema.DateTimeUtcFromMillis),
 	status: MemberStatus
 }) {
 	static readonly table = 'members'

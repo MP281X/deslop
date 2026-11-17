@@ -43,7 +43,7 @@ const layerSessionWebSocket = Layer.succeed(Socket.WebSocketConstructor, url => 
 })
 
 // judge-ignore no-silent-fallback -- the Keychain's account is a cache: failing to save or clear it is logged; an outage keeps the cached account while a refusal clears it, and a sign-out the Keychain only partly completes alerts.
-// A device on the tailnet is named without signing in; any other signs in with GitHub at Auth in iOS's authentication sheet, which returns the session's secret on the app's own URL scheme to this app alone.
+// HTTPS callbacks require Auth's association with this app, not a scheme another app can register.
 export function makeSession() {
 	const server = `https://${appConfig.slug}.${DOMAIN}`
 	const auth = `https://auth.${DOMAIN}`
@@ -123,8 +123,9 @@ export function makeSession() {
 					catch: cause => AuthError.make({cause, message: 'The sign-in sheet could not open'}),
 					try: () =>
 						openAuthSessionAsync(
-							`${auth}/sign-in?${new URLSearchParams({app: appConfig.extra.scheme})}`,
-							`${appConfig.extra.scheme}://signed-in`
+							`${auth}/sign-in?${new URLSearchParams({app: appConfig.slug})}`,
+							`${auth}/signed-in/${appConfig.slug}`,
+							{preferUniversalLinks: true}
 						)
 				})
 				// Closing the sheet is a choice, not a failure.
@@ -145,7 +146,7 @@ export function makeSession() {
 			Effect.gen(function* () {
 				const remote = yield* pipe(
 					headersEffect,
-					Effect.flatMap(headers => HttpClient.get(`${auth}/sign-out`, {headers})),
+					Effect.flatMap(headers => HttpClient.post(`${auth}/sign-out`, {headers: {...headers, origin: auth}})),
 					Effect.flatMap(HttpClientResponse.filterStatusOk),
 					Effect.timeout('10 seconds'),
 					Effect.tapError(cause => Effect.logWarning('Auth did not confirm ending the session', cause)),

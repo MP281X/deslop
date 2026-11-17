@@ -33,6 +33,7 @@ export function makeExpoConfig(app: {projectId: string; slug: string}) {
 					extra: {domain, eas: {projectId: app.projectId}, scheme: variant.scheme},
 					ios: {
 						appleTeamId: Option.getOrUndefined(team),
+						associatedDomains: [`webcredentials:auth.${domain}`],
 						buildNumber: `${release}`,
 						bundleIdentifier: variant.bundleIdentifier,
 						config: {usesNonExemptEncryption: false},

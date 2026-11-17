@@ -16,12 +16,16 @@ import {CookieSessions} from '#services/cookie-sessions/service.ts'
 import {GitHub} from '#services/github/service.ts'
 import {Identity, layerIdentityAuth} from '#services/identity/service.ts'
 import {People} from '#services/people/service.ts'
+import {SignIns} from '#services/sign-ins/service.ts'
+import {Tailnet} from '#services/tailnet/service.ts'
 import {ToolContracts} from '#tools/contracts.ts'
 import {ToolHandlers} from '#tools/handlers.ts'
 
 // Identity resolves people through shared cookie sessions or the tailnet.
 const layerServices = pipe(
-	Identity.layer,
+	SignIns.layer,
+	Layer.provideMerge(Identity.layer),
+	Layer.provide(Tailnet.layer),
 	Layer.provideMerge(People.layer),
 	Layer.provideMerge(Layer.mergeAll(CookieSessions.layer, GitHub.layer)),
 	Layer.provide(Layer.succeed(NodeHttpClient.RequestInit, {redirect: 'error'}))

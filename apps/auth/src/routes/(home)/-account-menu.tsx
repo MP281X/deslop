@@ -17,11 +17,12 @@ export function AccountMenu(props: {account: SignedAccount}) {
 				<DropdownMenuGroup>
 					<DropdownMenuItem disabled>{props.account.name}</DropdownMenuItem>
 					{props.account.signOut && (
-						<DropdownMenuItem
-							onClick={() => location.assign(`/sign-out?${new URLSearchParams({next: location.origin})}`)}
-						>
-							Sign out
-						</DropdownMenuItem>
+						<>
+							{/* oxlint-disable-next-line @deslop/coding-standards/no-bare-control -- This menu form submits one action, with no fields to group. */}
+							<form action="/sign-out" method="post">
+								<DropdownMenuItem render={<button aria-label="Sign out" type="submit" />}>Sign out</DropdownMenuItem>
+							</form>
+						</>
 					)}
 				</DropdownMenuGroup>
 			</DropdownMenuContent>
