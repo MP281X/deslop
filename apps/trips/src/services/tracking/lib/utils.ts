@@ -1,4 +1,4 @@
-import {Array, DateTime, Duration, Function, Option, Order, Result, String, pipe} from 'effect'
+import {Array, Boolean, DateTime, Duration, Function, Option, Order, Result, String, pipe} from 'effect'
 
 import {AIRPORT_LEAD, arrivalOf, departureOf, MINUTE} from '#services/bookings/lib/utils.ts'
 import {Booking} from '#services/bookings/schema.ts'
@@ -125,11 +125,13 @@ function trainState(from: Option.Option<VtStop>, to: Option.Option<VtStop>) {
 	return 'scheduled'
 }
 
-// Only the run that calls at the booked station near the booked time; another day's run of a daily number, or an unplaced station, answers none.
+// The caller selects today's booked run. A full cancellation has no stops; other reports must call at the booked station near its departure time.
 export function trainTracking(answer: VtStatus, train: Train, checkedAt: DateTime.Utc) {
+	const cancelled = answer.tipoTreno === 'ST' && answer.provvedimento === 1
 	const from = stopOf(answer.fermate, train.from)
 	const to = stopOf(answer.fermate, train.to)
 	if (
+		!cancelled &&
 		!Option.exists(from, stop =>
 			Option.exists(stop.programmata, planned =>
 				Duration.isLessThanOrEqualTo(Duration.abs(DateTime.distance(planned, train.departs)), Duration.hours(3))
@@ -165,7 +167,12 @@ export function trainTracking(answer: VtStatus, train: Train, checkedAt: DateTim
 			Option.all({at: answer.oraUltimoRilevamento, station: text(answer.stazioneUltimoRilevamento)}),
 			seen => seen.station !== '--'
 		),
-		state: trainState(from, to)
+		state: Boolean.match(
+			cancelled ||
+				Option.exists(from, stop => Option.contains(stop.actualFermataType, 3)) ||
+				Option.exists(to, stop => Option.contains(stop.actualFermataType, 3)),
+			{onFalse: () => trainState(from, to), onTrue: Function.constant('cancelled' as const)}
+		)
 	}
 	return Option.some(tracking)
 }
@@ -210,7 +217,10 @@ function flightInterval(flight: Flight, now: DateTime.Utc) {
 
 // ViaggiaTreno lists only today's runs and assigns platforms in the last hour: poll from six hours ahead, every minute in the last ninety minutes.
 function trainInterval(train: Train, now: DateTime.Utc) {
-	if (train.status === 'cancelled' || Option.exists(train.live, live => live.state === 'arrived')) {
+	if (
+		train.status === 'cancelled' ||
+		Option.exists(train.live, live => live.state === 'arrived' || live.state === 'cancelled')
+	) {
 		return Option.none<Duration.Duration>()
 	}
 	if (

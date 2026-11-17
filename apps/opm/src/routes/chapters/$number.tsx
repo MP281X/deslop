@@ -20,8 +20,7 @@ import {Skeleton} from '@deslop/components-mobile/ui/skeleton'
 import {readerAtom, unreachableAtom} from '#lib/chapters.ts'
 import {PageStrip} from '#modules/native/index.ts'
 import {byNumber, keyOf} from '#services/chapters/lib/utils.ts'
-import type {ChapterNumber, Series} from '#services/chapters/schema.ts'
-import type {ChapterList} from '#services/reading/schema.ts'
+import type {ChapterNumber, Series, ChapterList} from '#services/chapters/schema.ts'
 
 // The reader's content skeleton; the full-page fallback adds the chapter title.
 function ReaderLoading(props: {modifiers?: ViewModifier[]}) {

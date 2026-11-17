@@ -125,7 +125,7 @@ export const TrainTracking = Schema.Struct({
 	departurePlatform: Schema.OptionFromOptionalKey(Schema.String),
 	departurePlatformPlanned: Schema.OptionFromOptionalKey(Schema.String),
 	lastSeen: Schema.OptionFromOptionalKey(Schema.Struct({at: DateTimeUtcFromFiniteMillis, station: Schema.String})),
-	state: Schema.Literals(['scheduled', 'departed', 'arrived'])
+	state: Schema.Literals(['scheduled', 'departed', 'arrived', 'cancelled'])
 })
 
 // One row of `trains`.

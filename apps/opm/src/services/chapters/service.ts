@@ -31,7 +31,6 @@ import {HttpClient, HttpClientError, HttpClientResponse} from 'effect/http'
 import {Reactivity} from 'effect/reactivity'
 import {Migrator, SqlClient, SqlSchema} from 'effect/sql'
 
-import {Apns, apnsDeadToken, apnsRetryable} from '@deslop/runtime/server/apns'
 import {listEvents} from '@deslop/runtime/shared/list'
 
 import {
@@ -45,8 +44,7 @@ import {
 	pagesOf,
 	postFrom,
 	revisionCandidates,
-	seriesOf,
-	SERIES_NAMES
+	seriesOf
 } from '#services/chapters/lib/utils.ts'
 import {
 	Chapter,
@@ -54,12 +52,13 @@ import {
 	ChaptersError,
 	CubariSeries,
 	DeadLink,
-	Device,
+	ReadingChapter,
+	ReadingPosition,
+	ReadingError,
 	Post,
 	Series
 } from '#services/chapters/schema.ts'
-import {ReadingChapter} from '#services/reading/schema.ts'
-import {Reading} from '#services/reading/service.ts'
+import {Push} from '#services/push/service.ts'
 
 // Anonymous search and JSON are refused. Recent-post Atom still answers; a release can appear on either subreddit only.
 const FEEDS = [
@@ -132,9 +131,10 @@ export class Chapters extends Context.Service<Chapters>()('@deslop/opm/services/
 	make: Effect.gen(function* () {
 		const sql = yield* SqlClient.SqlClient
 		const client = yield* HttpClient.HttpClient
-		const apns = yield* Apns
+		const push = yield* Push
+		const withReactivity = Effect.provideService(Reactivity.Reactivity, yield* Reactivity.Reactivity)
 		const exit = yield* Config.option(Config.String('OPM_PROXY'))
-		// Dead reader links are known only to this run: after a restart each answers its 404 once more.
+		// Keep a dead reader link skipped only while the current discovery posts still reference it.
 		const deadLinks = yield* Ref.make(Array.empty<DeadLink>())
 
 		const listChapters = SqlSchema.findAll({
@@ -166,18 +166,10 @@ export class Chapters extends Context.Service<Chapters>()('@deslop/opm/services/
 				WHERE series = ${row.series} AND number = ${row.number}
 			`
 		})
-		const listDevices = SqlSchema.findAll({
-			Request: Schema.Void,
-			Result: Device,
-			execute: () => sql`SELECT * FROM ${sql(Device.table)}`
-		})
-		const insertDevice = SqlSchema.void({
-			Request: Device.insert,
-			execute: row => sql`INSERT INTO ${sql(Device.table)} ${sql.insert(row)} ON CONFLICT DO NOTHING`
-		})
-		const removeDevice = SqlSchema.void({
-			Request: Device.update,
-			execute: row => sql`DELETE FROM ${sql(Device.table)} WHERE bundle = ${row.bundle} AND token = ${row.token}`
+		const write = SqlSchema.void({
+			Request: ReadingPosition.insert,
+			execute: row =>
+				sql`INSERT INTO ${sql(ReadingPosition.table)} ${sql.insert(row)} ON CONFLICT (series, number) DO UPDATE SET done = excluded.done, page = excluded.page`
 		})
 
 		const chapters = asChaptersError(listChapters())
@@ -304,12 +296,15 @@ export class Chapters extends Context.Service<Chapters>()('@deslop/opm/services/
 			}
 			const now = yield* DateTime.now
 			const current = yield* chapters
-			const candidates = revisionCandidates(
-				[...ARCHIVE_POSTS, ...Array.flatten(Array.getSomes(fetched.feeds))],
-				current,
-				yield* Ref.get(deadLinks)
+			const posts = [...ARCHIVE_POSTS, ...Array.flatten(Array.getSomes(fetched.feeds))]
+			yield* Ref.update(deadLinks, links =>
+				Array.filter(links, dead =>
+					Array.some(posts, post => keyOf(post) === dead.key && Array.contains(post.links, dead.link))
+				)
 			)
-			const groups = Record.toEntries(Array.groupBy(candidates, candidate => keyOf(candidate.post)))
+			const groups = Record.toEntries(
+				Array.groupBy(revisionCandidates(posts, current, yield* Ref.get(deadLinks)), candidate => keyOf(candidate.post))
+			)
 			// The first link that loads wins: a release's best translation can be gone while another still reads.
 			const found = yield* Effect.forEach(
 				groups,
@@ -388,82 +383,26 @@ export class Chapters extends Context.Service<Chapters>()('@deslop/opm/services/
 			}
 		})
 
-		const send = Effect.fnUntraced(function* (chapter: Chapter, device: Device) {
-			const answer = yield* apns.sendToDevice(
-				device,
-				'alert',
-				{
-					aps: {
-						alert: {
-							body: Boolean.match(String.isNonEmpty(chapter.title), {
-								onFalse: () => `${chapter.pages.length} pages, out now`,
-								onTrue: () => chapter.title
-							}),
-							title: `${SERIES_NAMES[chapter.series]} · Chapter ${chapter.number}`
-						},
-						sound: 'default',
-						'thread-id': chapter.series
-					},
-					// expo-notifications exposes the remote userInfo.body as content.data.
-					body: {path: keyOf(chapter)}
-				},
-				10
-			)
-			if (apnsDeadToken(answer)) {
-				yield* asChaptersError(removeDevice(device))
-				return 'dead' as const
-			}
-			if (answer.status === 403 || apnsRetryable(answer)) return 'retry' as const
-			return 'done' as const
-		})
-
-		// Only a round in which every device is retryable remains in the outbox; accepted devices never get repeats.
 		const notify = Effect.gen(function* () {
-			if (!apns.enabled) return
-			const pending = Array.filter(yield* chapters, chapter => !chapter.notified)
-			if (Array.isReadonlyArrayEmpty(pending)) return
-			yield* pipe(
-				pending,
-				Array.sort(byNumber),
-				Effect.forEach(
-					chapter =>
-						Effect.ignore(
-							Effect.gen(function* () {
-								// Re-read after each chapter, so a dead token is never sent the next one.
-								const devices = yield* asChaptersError(listDevices())
-								// A refused device must not prevent the others from receiving this chapter.
-								const answers = yield* Effect.forEach(
-									devices,
-									device =>
-										pipe(
-											send(chapter, device),
-											Effect.tapError(cause => Effect.logWarning('A chapter push failed', cause)),
-											Effect.result
-										),
-									{concurrency: 1}
-								)
-								const remaining = pipe(
-									answers,
-									Array.map(Result.getOrElse(Function.constant('retry' as const))),
-									Array.filter(outcome => outcome !== 'dead')
-								)
-								if (
-									Array.isReadonlyArrayNonEmpty(remaining) &&
-									Array.every(remaining, outcome => outcome === 'retry')
-								) {
-									return yield* ChaptersError.make({message: 'Every device is retryable.'})
-								}
-								yield* pipe(
-									announce({notified: true, number: chapter.number, series: chapter.series}),
-									Reactivity.mutation(['chapters']),
-									asChaptersError
-								)
-								yield* Effect.logInfo(`Announced chapter ${keyOf(chapter)} to ${devices.length} iPhones`)
-							}),
-							{log: 'Warn', message: `Chapter ${keyOf(chapter)} was not announced yet`}
-						),
-					{concurrency: 1, discard: true}
-				)
+			yield* Effect.forEach(
+				pipe(
+					yield* chapters,
+					Array.filter(chapter => !chapter.notified),
+					Array.sort(byNumber)
+				),
+				chapter =>
+					Effect.ignore(
+						Effect.gen(function* () {
+							if (!(yield* push.announce(chapter))) return
+							yield* pipe(
+								announce({notified: true, number: chapter.number, series: chapter.series}),
+								Reactivity.mutation(['chapters']),
+								asChaptersError
+							)
+						}),
+						{log: 'Warn', message: `Chapter ${keyOf(chapter)} was not announced yet`}
+					),
+				{concurrency: 1, discard: true}
 			)
 		})
 
@@ -472,6 +411,12 @@ export class Chapters extends Context.Service<Chapters>()('@deslop/opm/services/
 			sync,
 			Effect.ignore({log: 'Warn', message: 'The chapter sync failed'}),
 			Effect.andThen(Effect.ignore(notify, {log: 'Warn', message: 'The new chapters were not announced'})),
+			Effect.andThen(
+				Effect.ignore(
+					sql`DELETE FROM deliveries WHERE EXISTS (SELECT 1 FROM chapters WHERE chapters.series = deliveries.series AND chapters.number = deliveries.number AND notified = 1)`,
+					{log: 'Warn', message: 'Finished deliveries were not pruned'}
+				)
+			),
 			Effect.withSpan('Chapters.sync'),
 			Effect.repeat(Schedule.spaced('1 hour')),
 			Effect.forkScoped
@@ -480,26 +425,53 @@ export class Chapters extends Context.Service<Chapters>()('@deslop/opm/services/
 		return {
 			// What the iPhone watches: the whole list first, then only the chapters that changed, after each commit.
 			events: pipe(
-				listEvents(
-					Stream.mapError(sql.reactive(['chapters', 'reading'], listChapters()), asStorageChaptersError),
-					keyOf
-				),
+				listEvents(Stream.mapError(sql.reactive(['chapters'], listChapters()), asStorageChaptersError), keyOf),
 				Stream.map(Struct.pick(['reset', 'upserted'])),
 				Stream.withSpan('Chapters.events', {attributes: {'rpc.stream': true}})
 			),
-			register: Effect.fn('Chapters.register')(function* (device: typeof Device.insert.Type) {
-				yield* asChaptersError(insertDevice(device))
-			})
+			write: Effect.fn('Chapters.write')(function* (update: typeof ReadingPosition.insert.Type) {
+				yield* Effect.annotateCurrentSpan({
+					chapter: update.number,
+					done: update.done,
+					page: update.page,
+					series: update.series
+				})
+				yield* pipe(
+					write(update),
+					Reactivity.mutation(['chapters']),
+					Effect.mapError(cause => ReadingError.make({cause, message: 'The reading position could not be saved.'}))
+				)
+			}, withReactivity)
 		}
 	})
 }) {
 	// The tables this service owns, made and changed at start in one transaction; one statement per `sql` call, since SQLite runs only the first statement of a string.
-	static readonly migrations = Layer.effectDiscard(
-		Migrator.make({})({
-			loader: Migrator.fromRecord({
-				'0001_chapters': Effect.gen(function* () {
-					const sql = yield* SqlClient.SqlClient
-					yield* sql`
+	static readonly migrations = Layer.provide(
+		Layer.effectDiscard(
+			Migrator.make({})({
+				loader: Migrator.fromRecord({
+					'0002_reading': Effect.gen(function* () {
+						const sql = yield* SqlClient.SqlClient
+						yield* sql`CREATE TABLE reading (
+						series TEXT NOT NULL, number REAL NOT NULL, done INTEGER NOT NULL, page INTEGER NOT NULL,
+						PRIMARY KEY (series, number), FOREIGN KEY (series, number) REFERENCES chapters (series, number)
+					) STRICT, WITHOUT ROWID`
+						yield* sql`INSERT INTO reading (series, number, done, page)
+						SELECT series, number, json_extract(reading, '$.done'), json_extract(reading, '$.page')
+						FROM chapters WHERE reading IS NOT NULL`
+						yield* sql`ALTER TABLE chapters DROP COLUMN reading`
+					})
+				}),
+				table: 'reading_migrations'
+			})
+		),
+		Layer.effectDiscard(
+			Migrator.make({})({
+				loader: Migrator.fromRecord({
+					// judge-ignore no-unrelated-jobs -- This immutable historical migration created the original catalogue and registry together; moving Reading's ownership must not rewrite it.
+					'0001_chapters': Effect.gen(function* () {
+						const sql = yield* SqlClient.SqlClient
+						yield* sql`
 						CREATE TABLE chapters (
 							series TEXT NOT NULL,
 							number REAL NOT NULL,
@@ -513,22 +485,28 @@ export class Chapters extends Context.Service<Chapters>()('@deslop/opm/services/
 							PRIMARY KEY (series, number)
 						) STRICT
 					`
-					yield* sql`CREATE TABLE devices (token TEXT PRIMARY KEY) STRICT, WITHOUT ROWID`
+						yield* sql`CREATE TABLE devices (token TEXT PRIMARY KEY) STRICT, WITHOUT ROWID`
+					}),
+					'0002_apns_devices': Effect.gen(function* () {
+						const sql = yield* SqlClient.SqlClient
+						// Expo tokens cannot address APNs; every phone registers a native token on its next launch.
+						yield* sql`DROP TABLE devices`
+						yield* sql`CREATE TABLE devices (bundle TEXT NOT NULL, token TEXT NOT NULL, PRIMARY KEY (bundle, token)) STRICT, WITHOUT ROWID`
+					}),
+					// judge-ignore no-unrelated-jobs -- One atomic device-delivery migration preserves registered tokens while introducing their receipt table.
+					'0003_device_delivery': Effect.gen(function* () {
+						const sql = yield* SqlClient.SqlClient
+						yield* sql`ALTER TABLE devices RENAME TO old_devices`
+						yield* sql`CREATE TABLE devices (token TEXT PRIMARY KEY, bundle TEXT NOT NULL, kind TEXT NOT NULL) STRICT, WITHOUT ROWID`
+						yield* sql`INSERT INTO devices SELECT token, bundle, 'alert' FROM old_devices`
+						yield* sql`DROP TABLE old_devices`
+						yield* sql`CREATE TABLE deliveries (series TEXT NOT NULL, number REAL NOT NULL, token TEXT NOT NULL, PRIMARY KEY (series, number, token)) STRICT, WITHOUT ROWID`
+					})
 				}),
-				'0002_apns_devices': Effect.gen(function* () {
-					const sql = yield* SqlClient.SqlClient
-					// Expo tokens cannot address APNs; every phone registers a native token on its next launch.
-					yield* sql`DROP TABLE devices`
-					yield* sql`CREATE TABLE devices (bundle TEXT NOT NULL, token TEXT NOT NULL, PRIMARY KEY (bundle, token)) STRICT, WITHOUT ROWID`
-				})
-			}),
-			table: 'chapters_migrations'
-		})
+				table: 'chapters_migrations'
+			})
+		)
 	)
 
-	// The joined list can start only after Reading has moved its rows out of the catalogue's original table.
-	static readonly layer = Layer.provide(
-		Layer.effect(this, this.make),
-		Layer.provide(Reading.migrations, this.migrations)
-	)
+	static readonly layer = pipe(Layer.effect(this, this.make), Layer.provide(Push.layer), Layer.provide(this.migrations))
 }

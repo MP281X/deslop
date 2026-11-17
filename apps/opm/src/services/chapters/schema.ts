@@ -2,7 +2,6 @@ import {DateTime, Function, Option, Schema, SchemaGetter, Struct, pipe} from 'ef
 
 import {Model} from 'effect/schema'
 
-import {ApnsToken} from '@deslop/runtime/shared/apns'
 import {DateTimeUtcFromFiniteMillis, DateTimeUtcFromFiniteSeconds} from '@deslop/runtime/shared/time'
 
 export type ChapterNumber = typeof ChapterNumber.Type
@@ -45,7 +44,7 @@ export const ChapterPath = Schema.TemplateLiteralParser([
 // The server's own bookkeeping, which never reaches the iPhone.
 const serverOnly = Model.FieldOnly(['select', 'insert', 'update'])
 
-// One row of `chapters`: catalogue and provenance. Reading progress belongs to the reading service.
+// One row of `chapters`: catalogue and provenance. Reading progress lives in its own table.
 export class Chapter extends Model.Class<Chapter>('Chapter')({
 	// Set once every registered iPhone has been told, or when the chapter arrived before anyone could be.
 	notified: serverOnly(Schema.BooleanFromBit),
@@ -66,20 +65,8 @@ export class Chapter extends Model.Class<Chapter>('Chapter')({
 export type ChapterNotification = typeof ChapterNotification.Type
 export const ChapterNotification = Schema.Struct({path: ChapterPath})
 
-export type Bundle = typeof Bundle.Type
-export const Bundle = Schema.Literals(['xyz.mp281x.opm', 'xyz.mp281x.opm.dev'])
-
 export type ChapterIdentity = typeof ChapterIdentity.Type
 export const ChapterIdentity = Schema.Struct(Struct.pick(Chapter.fields, ['number', 'series']))
-
-// The app identifies the APNs environment; release builds use production, Simulator builds sandbox.
-export class Device extends Model.Class<Device>('Device')({
-	bundle: Bundle,
-	// A push token is excluded from public JSON and prints redacted.
-	token: Model.Sensitive(Schema.RedactedFromValue(ApnsToken))
-}) {
-	static readonly table = 'devices'
-}
 
 // A cubari series answer: imgur pages are objects, every other source's pages are links.
 export type CubariSeries = typeof CubariSeries.Type
@@ -107,6 +94,38 @@ export const Post = Schema.Struct({
 	series: Series
 })
 
-// A reader link that answered 404 for its chapter; the sync skips it until the chapter gains another link, and asks again after a restart.
+// A reader link that answered 404 for its chapter; skipped while the current discovery posts still reference it.
 export type DeadLink = typeof DeadLink.Type
 export const DeadLink = Schema.Struct({key: ChapterKey, link: Schema.String})
+
+export class ReadingError extends Schema.TaggedError<ReadingError>()('ReadingError', {
+	cause: Schema.optional(Schema.Defect()),
+	message: Schema.String
+}) {}
+
+export class ReadingPosition extends Model.Class<ReadingPosition>('ReadingPosition')({
+	done: Schema.BooleanFromBit,
+	number: ChapterNumber,
+	page: Schema.Natural,
+	series: Series
+}) {
+	static readonly table = 'reading'
+}
+
+type Position = typeof Position.Type
+const Position = Schema.Struct({...Struct.pick(ReadingPosition.json.fields, ['done', 'page']), done: Schema.Boolean})
+
+// The iPhone's list joins the catalogue with its saved place, without making progress part of a catalogue row.
+export class ReadingChapter extends Model.Class<ReadingChapter>('ReadingChapter')({
+	...Model.fields(Chapter),
+	reading: Model.Field({
+		json: Schema.OptionFromOptionalKey(Position),
+		select: Schema.OptionFromNullOr(Schema.fromJsonString(Position))
+	})
+}) {}
+
+export type ChapterItem = typeof ReadingChapter.json.Type
+export type ChapterList = readonly ChapterItem[]
+
+export type ChaptersEvent = typeof ChaptersEvent.Type
+export const ChaptersEvent = Schema.Struct({reset: Schema.Boolean, upserted: Schema.Array(ReadingChapter.json)})

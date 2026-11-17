@@ -2,16 +2,16 @@ import {Effect} from 'effect'
 
 import {RpcContracts} from '#rpcs/contracts.ts'
 import {Chapters} from '#services/chapters/service.ts'
-import {Reading} from '#services/reading/service.ts'
+import {Push} from '#services/push/service.ts'
 
 export const RpcHandlers = RpcContracts.toLayer(
 	Effect.gen(function* () {
 		const chapters = yield* Chapters
-		const reading = yield* Reading
+		const push = yield* Push
 		return RpcContracts.of({
 			'chapters.events': () => chapters.events,
-			'chapters.register': input => chapters.register(input),
-			'reading.write': input => reading.write(input)
+			'chapters.write': input => chapters.write(input),
+			'push.register': input => push.register(input)
 		})
 	})
 )

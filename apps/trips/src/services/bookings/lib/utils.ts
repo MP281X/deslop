@@ -538,7 +538,7 @@ function flightActivity(flight: Flight, bookings: BookingList, now: DateTime.Utc
 }
 
 function trainPhase(train: Train, now: DateTime.Utc) {
-	if (train.status === 'cancelled') return 'cancelled'
+	if (train.status === 'cancelled' || Option.exists(train.live, live => live.state === 'cancelled')) return 'cancelled'
 	if (Option.exists(train.live, live => live.state === 'arrived')) return 'arrived'
 	if (Option.exists(train.live, live => live.state === 'departed')) return 'running'
 	if (

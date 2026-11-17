@@ -1,4 +1,6 @@
-import {Array, DateTime, Duration, Function, Number, Option, Result, String, pipe} from 'effect'
+import {Array, DateTime, Duration, Function, Number, Option, Redacted, Result, String, pipe} from 'effect'
+
+import type {Device} from '@deslop/runtime/shared/apns'
 
 import {
 	ACTIVITY_LIFETIME,
@@ -15,7 +17,7 @@ import {
 import {Booking} from '#services/bookings/schema.ts'
 import type {BookingList, Flight, Leg, Train} from '#services/bookings/schema.ts'
 import {ShowAction} from '#services/push/schema.ts'
-import type {Activity, AlertCategory, Device, SentAlert, StartRequest} from '#services/push/schema.ts'
+import type {Activity, AlertCategory, Delivery, SentAlert, StartRequest} from '#services/push/schema.ts'
 
 export type Span = {end: DateTime.Utc; start: DateTime.Utc}
 
@@ -42,6 +44,18 @@ export function announced(sent: readonly SentAlert[], alert: Alert) {
 		sent,
 		Array.findLast(found => found.category === alert.category),
 		Option.exists(found => Option.contains(found.value, alert.value))
+	)
+}
+
+// Retry only devices without a terminal answer for this alert; one phone's acceptance says nothing about another.
+export function unannouncedDevices(devices: readonly Device[], deliveries: readonly Delivery[], alert: Alert) {
+	return Array.filter(
+		devices,
+		device =>
+			!announced(
+				Array.filter(deliveries, delivery => Redacted.value(delivery.token) === Redacted.value(device.token)),
+				alert
+			)
 	)
 }
 
@@ -146,7 +160,7 @@ function trainAlerts(train: Train) {
 				category: 'cancelled',
 				title: `${title} is cancelled`
 			}),
-			() => train.status === 'cancelled'
+			() => train.status === 'cancelled' || Option.exists(train.live, live => live.state === 'cancelled')
 		),
 		pipe(
 			train.live,
@@ -165,7 +179,10 @@ function trainAlerts(train: Train) {
 		pipe(
 			train.live,
 			Option.map(live => Duration.toMinutes(live.delayMinutes)),
-			Option.filter(delay => delay >= 10),
+			Option.filter(
+				delay =>
+					delay >= 10 && train.status !== 'cancelled' && !Option.exists(train.live, live => live.state === 'cancelled')
+			),
 			Option.map(
 				delay =>
 					({

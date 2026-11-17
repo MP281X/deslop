@@ -20,6 +20,8 @@ import {
 import type {Migrator, SqlError} from 'effect/sql'
 import {SqlClient} from 'effect/sql'
 
+import {Device} from '#shared/apns.ts'
+
 type Model = Schema.Top & {readonly table: string}
 
 // A service's migrations need only the app's SqlClient.
@@ -58,7 +60,10 @@ const apps = Array.map(Record.keys(servers), file => {
 			Array.filter((value): value is Migrations => Layer.isLayer(value))
 		),
 		models: Array.filter(
-			exportsOf(schemas, app),
+			[
+				...exportsOf(schemas, app),
+				...Boolean.match(app === 'trips' || app === 'opm', {onFalse: () => [], onTrue: () => [Device]})
+			],
 			(value): value is Model =>
 				Schema.isSchema(value) && Predicate.hasProperty(value, 'table') && Predicate.isString(value.table)
 		)

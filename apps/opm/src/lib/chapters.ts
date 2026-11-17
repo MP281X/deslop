@@ -6,7 +6,6 @@ import {
 	HashSet,
 	Option,
 	Order,
-	Queue,
 	Redacted,
 	Schema,
 	Semaphore,
@@ -29,6 +28,7 @@ import {
 
 import {cachedList, writeAtomically} from '@deslop/components-mobile/lib/files'
 import {liveStream, reconnectOnDrop} from '@deslop/runtime/client/live-stream'
+import {pushTokens} from '@deslop/runtime/mobile/push-token'
 import {provideRuntimeOnce} from '@deslop/runtime/mobile/session'
 import {ApnsToken} from '@deslop/runtime/shared/apns'
 import {listReducer} from '@deslop/runtime/shared/list'
@@ -36,10 +36,9 @@ import {listReducer} from '@deslop/runtime/shared/list'
 import {RpcClient, session} from '#lib/session.ts'
 import {OpmNative} from '#modules/native/index.ts'
 import {byNumber, keyOf, notificationOf} from '#services/chapters/lib/utils.ts'
-import type {ChapterKey, ChapterNumber} from '#services/chapters/schema.ts'
-import {Bundle, ChaptersError} from '#services/chapters/schema.ts'
-import {ReadingChapter} from '#services/reading/schema.ts'
-import type {ChapterItem, ChapterList, ReadingPosition} from '#services/reading/schema.ts'
+import type {ChapterKey, ChapterNumber, ChapterItem, ChapterList, ReadingPosition} from '#services/chapters/schema.ts'
+import {ChaptersError, ReadingChapter} from '#services/chapters/schema.ts'
+import {Bundle} from '#services/push/schema.ts'
 
 const chaptersFile = new File(Paths.document, 'chapters.json')
 
@@ -77,7 +76,7 @@ export const readAtom = Atom.keepAlive(
 				provideRuntimeOnce(
 					get,
 					RpcClient.runtime,
-					readingWrites.withPermit(Effect.flatMap(RpcClient, client => client('reading.write', update)))
+					readingWrites.withPermit(Effect.flatMap(RpcClient, client => client('chapters.write', update)))
 				),
 				{log: 'Warn', message: 'The reading position was not saved'}
 			),
@@ -184,33 +183,19 @@ export const pushAtom = RpcClient.runtime.atom(get =>
 			}
 			const bundle = yield* Schema.decodeUnknownEffect(Bundle)(applicationId)
 			const client = yield* RpcClient
-			// fallow-ignore-next-line code-duplication -- Notification registration stays app-owned to avoid autolinking expo-notifications into Stash.
-			yield* pipe(
-				Stream.callback<string, ChaptersError>(queue =>
-					Effect.gen(function* () {
-						yield* Effect.acquireRelease(
-							Effect.sync(() =>
-								addPushTokenListener(token => {
-									Queue.offerUnsafe(queue, `${token.data}`)
-								})
-							),
-							subscription => Effect.sync(() => subscription.remove())
-						)
-						const token = yield* Effect.tryPromise({
-							// fallow-ignore-next-line code-duplication -- Each app owns the native notification module, including its initial token read.
-							catch: cause => ChaptersError.make({cause, message: 'The push token could not be read.'}),
-							try: () => getDevicePushTokenAsync()
-						})
-						yield* Queue.offer(queue, `${token.data}`)
+			yield* Stream.runForEach(
+				pushTokens(
+					addPushTokenListener,
+					Effect.tryPromise({
+						catch: cause => ChaptersError.make({cause, message: 'The push token could not be read.'}),
+						try: () => getDevicePushTokenAsync()
 					})
 				),
-				Stream.changes,
-				Stream.runForEach(token =>
-					Effect.ignore(client('chapters.register', {bundle, token: Redacted.make(ApnsToken.make(token))}), {
+				token =>
+					Effect.ignore(client('push.register', {bundle, kind: 'alert', token: Redacted.make(ApnsToken.make(token))}), {
 						log: 'Warn',
 						message: 'The notification token was not registered'
 					})
-				)
 			)
 		}),
 		{log: 'Warn', message: 'Notifications are not set up on this iPhone'}

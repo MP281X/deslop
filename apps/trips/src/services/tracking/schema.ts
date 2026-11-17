@@ -66,8 +66,10 @@ export type VtStatus = typeof VtStatus.Type
 export const VtStatus = Schema.Struct({
 	fermate: Schema.Array(VtStop),
 	oraUltimoRilevamento: Schema.OptionFromOptionalNullOr(DateTimeUtcFromFiniteMillis),
+	provvedimento: Schema.Finite,
 	ritardo: Schema.OptionFromOptionalNullOr(DurationFromMinutes),
-	stazioneUltimoRilevamento: Schema.OptionFromOptionalNullOr(Schema.String)
+	stazioneUltimoRilevamento: Schema.OptionFromOptionalNullOr(Schema.String),
+	tipoTreno: Schema.String
 })
 
 // FlightAware lookups made in a month, so the monthly allowance holds across restarts; only the current month is kept.

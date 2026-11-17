@@ -8,13 +8,13 @@ import icon from '#routes/icon.svg'
 import {RpcContracts} from '#rpcs/contracts.ts'
 import {RpcHandlers} from '#rpcs/handlers.ts'
 import {Chapters} from '#services/chapters/service.ts'
-import {Reading} from '#services/reading/service.ts'
+import {Push} from '#services/push/service.ts'
 
 runApp({
 	icon,
 	routes: pipe(
 		layerRpc({group: RpcContracts, handlers: RpcHandlers}),
-		Layer.provide(Layer.merge(Chapters.layer, Reading.layer)),
+		Layer.provide(Layer.provideMerge(Chapters.layer, Push.layer)),
 		Layer.provide(Layer.provide(Apns.layer, layerApnsClient))
 	),
 	settings: {

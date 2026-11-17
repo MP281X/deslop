@@ -2,7 +2,7 @@ import {Schema, pipe} from 'effect'
 
 import {Model} from 'effect/schema'
 
-import {ApnsToken} from '@deslop/runtime/shared/apns'
+import {ApnsToken, Device} from '@deslop/runtime/shared/apns'
 
 import {ActivityProps, BookingId, Leg} from '#services/bookings/schema.ts'
 
@@ -22,20 +22,10 @@ export const Bundle = Schema.Literals(['xyz.mp281x.trips', 'xyz.mp281x.trips.dev
 export type ChannelId = typeof ChannelId.Type
 export const ChannelId = pipe(Schema.String, Schema.brand('ChannelId'))
 
-// One row of `devices`, and what the phone registers: one token per kind and app, a new one replacing the one it rotated from.
-export class Device extends Model.Class<Device>('Device')({
-	bundle: Bundle,
-	kind: Schema.Literals(['alert', 'start']),
-	// A push token is excluded from public JSON and prints redacted.
-	token: Model.Sensitive(Schema.RedactedFromValue(ApnsToken))
-}) {
-	static readonly table = 'devices'
-}
-
 // One row of `activities`: a Live Activity the server started for one leg of a journey on one app, updated and ended through its broadcast channel.
 export class Activity extends Model.Class<Activity>('Activity')({
 	bookingId: BookingId,
-	bundle: Bundle,
+	bundle: Schema.String,
 	channel: ChannelId,
 	endedAt: Model.FieldOption(Schema.DateTimeUtcFromMillis),
 	leg: Leg,
@@ -58,6 +48,14 @@ export class SentAlert extends Model.Class<SentAlert>('SentAlert')({
 	value: Model.FieldOption(Schema.String)
 }) {
 	static readonly table = 'sent_alerts'
+}
+
+// Terminal device answers, including partial rounds; retained until the booking leaves so delay steps never repeat.
+export class Delivery extends Model.Class<Delivery>('Delivery')({
+	...Model.fields(SentAlert),
+	token: Model.Sensitive(Schema.RedactedFromValue(ApnsToken))
+}) {
+	static readonly table = 'deliveries'
 }
 
 // When the person last asked to start a journey's Live Activity, keyed by its first leg.

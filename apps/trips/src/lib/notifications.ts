@@ -9,6 +9,7 @@ import {
 } from 'expo-notifications'
 import {addPushToStartTokenListener} from 'expo-widgets'
 
+import {pushTokens} from '@deslop/runtime/mobile/push-token'
 import {ApnsToken} from '@deslop/runtime/shared/apns'
 
 import {RpcClient, session} from '#lib/session.ts'
@@ -25,7 +26,6 @@ setNotificationHandler({
 })
 
 // Asked on the first launch: gate changes and delays reach the iPhone through these, and the server starts the island with the push-to-start token.
-// judge-ignore no-unrelated-jobs -- Both token subscriptions register this authenticated app target with the same push registry for the app lifetime.
 export const pushAtom = RpcClient.runtime.atom(get =>
 	Effect.ignore(
 		Effect.gen(function* () {
@@ -40,24 +40,13 @@ export const pushAtom = RpcClient.runtime.atom(get =>
 			) {
 				// Subscribe before reading the first token, so a rotation while the app stays open reaches the same registry.
 				yield* pipe(
-					Stream.callback<string, BookingsError>(queue =>
-						Effect.gen(function* () {
-							yield* Effect.acquireRelease(
-								Effect.sync(() =>
-									addPushTokenListener(token => {
-										Queue.offerUnsafe(queue, `${token.data}`)
-									})
-								),
-								subscription => Effect.sync(() => subscription.remove())
-							)
-							const token = yield* Effect.tryPromise({
-								catch: cause => BookingsError.make({cause, message: 'The push token could not be read.'}),
-								try: () => getDevicePushTokenAsync()
-							})
-							yield* Queue.offer(queue, `${token.data}`)
+					pushTokens(
+						addPushTokenListener,
+						Effect.tryPromise({
+							catch: cause => BookingsError.make({cause, message: 'The push token could not be read.'}),
+							try: () => getDevicePushTokenAsync()
 						})
 					),
-					Stream.changes,
 					Stream.runForEach(token =>
 						Effect.ignore(
 							client('push.register', {...target, kind: 'alert', token: Redacted.make(ApnsToken.make(token))}),
