@@ -15,6 +15,20 @@ Run `<app> --help` for settings and its README for app-specific setup. Put servi
 
 On macOS, a GUI user must be logged in even when installation runs over SSH: launch agents start at login, not before it. Uninstall preserves application data.
 
+## Authorization contracts
+
+`server/auth.requireAdmin(user, message)` returns a branded `shared/auth.Admin` capability. Admin-only service methods take that value; RPC contracts declare `.middleware(RpcAdmin)` and their handlers read `CurrentAdmin`. MCP and HTTP handlers obtain the capability with `requireAdmin` before calling the service.
+
+Every built app binary has the same authorization check:
+
+```bash
+node apps/deploy/dist/server.js probe
+```
+
+`probe` starts the app's real server, migrations and handlers on an ephemeral loopback port, with temporary data, fixture identities and an isolated configuration provider containing no production credentials. It lists registered routes and RPC contracts, compares MCP `tools/list` with the toolkit contracts supplied to `layerMcp`, and calls each surface anonymously and as a non-admin using contract-derived inputs. Subscriptions stop after their first answer.
+
+The single `publicAccess` list in `src/server/probe.ts` names exceptions and their admitted callers: public pages, protocols, sign-in, presence and ingestion permit anonymous callers; personal APIs permit members but still refuse anonymous callers. Every unnamed surface must refuse both. This checks authorization enforcement, not Auth's identity resolution or external provider integrations.
+
 ## APNs
 
 Provide `layerApnsClient` to `Apns.layer` at the server entry; app services keep their own HTTP client and notification policy. `APNS_KEY` accepts PKCS#8 PEM or base64 DER. The registered bundle selects production or sandbox, not the server's environment.

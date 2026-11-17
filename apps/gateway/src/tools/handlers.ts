@@ -66,6 +66,7 @@ const ToolHandlers = ToolContracts.toLayer(
 
 export const GatewayMcp = pipe(
 	layerMcp({
+		contracts: ToolContracts,
 		instructions:
 			'Tools use <server>__<tool>. Use list_mcp_connections for missing or failing tools; name a server to read its full instructions.',
 		registrations: Layer.provide(McpServer.toolkit(ToolContracts), ToolHandlers)

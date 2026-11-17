@@ -25,6 +25,7 @@ runApp({
 			layerRpc({group: RpcContracts, handlers: RpcHandlers}),
 			Layer.provide(HttpHandlers, HttpAuth.layer),
 			layerMcp({
+				contracts: ToolContracts,
 				instructions:
 					'Stash holds saved articles, videos and posts. Use search_notes when the id is unknown, or read_note directly with a known id; source sections are explicit.',
 				registrations: Layer.provide(McpServer.toolkit(ToolContracts), ToolHandlers)

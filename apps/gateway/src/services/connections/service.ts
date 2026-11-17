@@ -799,17 +799,16 @@ export class Connections extends Context.Service<
 				),
 			// The list is read again after each change and once a minute, so an expired provider shows as expired.
 			watch: user =>
-				Stream.withSpan(
+				pipe(
+					sql.reactive(['connections'], list),
 					Stream.merge(
-						sql.reactive(['connections'], list),
 						pipe(
 							Stream.tick(Duration.minutes(1)),
 							Stream.drop(1),
 							Stream.mapEffect(() => list)
 						)
 					),
-					'Connections.watch',
-					{attributes: {'rpc.stream': true, userId: user.id}}
+					Stream.withSpan('Connections.watch', {attributes: {'rpc.stream': true, userId: user.id}})
 				)
 		})
 	})

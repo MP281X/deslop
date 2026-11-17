@@ -88,43 +88,44 @@ export class Auth extends Context.Service<
 			const found = yield* account(headers)
 			return {admin: found.admin, id: found.id, name: found.name}
 		})
-		const rpcAuth = Context.add(
+		return pipe(
 			Context.make(Auth, Auth.of({account, user})),
-			RpcAuth,
-			RpcAuth.of((effect, request) =>
-				Effect.flatMap(user(request.headers), found =>
-					pipe(
-						effect,
-						Effect.provideService(CurrentUser, found),
-						Effect.raceFirst(
-							pipe(
-								Effect.delay(user(request.headers), '5 minutes'),
-								Effect.retry({
-									schedule: Schedule.spaced('5 seconds'),
-									while: error => error.error === 'temporarily_unavailable'
-								}),
-								Effect.filterOrFail(
-									current => current.id === found.id && current.admin === found.admin && current.name === found.name,
-									() => AuthError.make({error: 'access_denied', message: 'The account changed; reconnect the socket'})
-								),
-								Effect.forever
+			Context.add(
+				RpcAuth,
+				RpcAuth.of((effect, request) =>
+					Effect.flatMap(user(request.headers), found =>
+						pipe(
+							effect,
+							Effect.provideService(CurrentUser, found),
+							Effect.raceFirst(
+								pipe(
+									Effect.delay(user(request.headers), '5 minutes'),
+									Effect.retry({
+										schedule: Schedule.spaced('5 seconds'),
+										while: error => error.error === 'temporarily_unavailable'
+									}),
+									Effect.filterOrFail(
+										current => current.id === found.id && current.admin === found.admin && current.name === found.name,
+										() => AuthError.make({error: 'access_denied', message: 'The account changed; reconnect the socket'})
+									),
+									Effect.forever
+								)
 							)
 						)
 					)
 				)
-			)
-		)
-		return Context.add(
-			rpcAuth,
-			RpcAdmin,
-			RpcAdmin.of((effect, request) =>
-				Effect.gen(function* () {
-					return yield* Effect.provideService(
-						effect,
-						CurrentAdmin,
-						yield* requireAdmin(yield* user(request.headers), 'Only an admin may perform this action')
-					)
-				})
+			),
+			Context.add(
+				RpcAdmin,
+				RpcAdmin.of((effect, request) =>
+					Effect.gen(function* () {
+						return yield* Effect.provideService(
+							effect,
+							CurrentAdmin,
+							yield* requireAdmin(yield* user(request.headers), 'Only an admin may perform this action')
+						)
+					})
+				)
 			)
 		)
 	}

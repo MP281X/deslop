@@ -1,4 +1,4 @@
-import {Duration, Effect, Option, Schema, String, pipe} from 'effect'
+import {Duration, Effect, Option, Result, Schema, String, pipe} from 'effect'
 
 import {HttpRouter, HttpServerRequest, HttpServerResponse} from 'effect/http'
 
@@ -81,7 +81,11 @@ export const HttpHandlers = HttpRouter.use(router =>
 		// A provider the gateway registered with answers at its server's own callback; one using the metadata document at the shared one.
 		const callback = Effect.fnUntraced(function* (route: Option.Option<ServerId>) {
 			const request = yield* HttpServerRequest.HttpServerRequest
-			const user = yield* requireAdmin(yield* auth.user(request.headers), 'Only an admin can manage MCP servers')
+			const named = yield* Effect.result(auth.user(request.headers))
+			if (Result.isFailure(named)) {
+				return HttpServerResponse.text(named.failure.message, failureOptions(named.failure, 401))
+			}
+			const user = yield* requireAdmin(named.success, 'Only an admin can manage MCP servers')
 			const params = yield* HttpServerRequest.schemaSearchParams(Callback)
 			if (request.cookies[`__Host-mcp-${params.state}`] !== params.state) {
 				return yield* AuthError.make({message: 'The connection belongs to another browser'})

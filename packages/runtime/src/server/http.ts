@@ -7,6 +7,7 @@ import {NodeHttpServer} from '@effect/platform-node'
 import {Array, ByteSize, Config, Effect, FileSystem, Layer, Option, Path, Result, String, pipe} from 'effect'
 
 import {McpProtocol, McpServer} from 'effect/ai'
+import type {Toolkit} from 'effect/ai'
 import {
 	HttpIncomingMessage,
 	HttpClient,
@@ -23,6 +24,7 @@ import type {Rpc, RpcGroup} from 'effect/rpc'
 import {Auth, HttpAuth, localAuth} from '#server/auth.ts'
 import {McpStream, layerStructuredTools} from '#server/mcp.ts'
 import {appName, packageMetadata} from '#server/package.ts'
+import {recordRpcContracts, recordToolContracts} from '#server/probe.ts'
 import {failureOptions} from '#shared/auth.ts'
 import {RpcStream, layerRpcStream} from '#shared/rpc.ts'
 import {ACCOUNT_PATH, Account, MANIFEST_PATH, MCP_PATH, RPC_PATH, RUNTIME_PATH, RuntimeConfig} from '#shared/schema.ts'
@@ -213,28 +215,36 @@ export const layerWeb = Layer.unwrap(
 	})
 )
 
-export function layerRpc<Rpcs extends Rpc.Any, E, R>(options: {
+export function layerRpc<Rpcs extends Rpc.AnyWithProps, E, R>(options: {
 	disableTracing?: boolean
 	group: RpcGroup.RpcGroup<Rpcs>
 	handlers: Layer.Layer<Rpc.ToHandler<Rpcs>, E, R>
 }) {
 	return pipe(
-		RpcServer.layerHttp({
-			disableTracing: options.disableTracing,
-			// Marked for every server before its handler or auth check runs, so a subscription is never read as a failed call.
-			group: options.group.middleware(RpcStream),
-			path: RPC_PATH,
-			protocol: 'websocket'
-		}),
+		Layer.merge(
+			Layer.effectDiscard(recordRpcContracts(options.group)),
+			RpcServer.layerHttp({
+				disableTracing: options.disableTracing,
+				// Marked for every server before its handler or auth check runs, so a subscription is never read as a failed call.
+				group: options.group.middleware(RpcStream),
+				path: RPC_PATH,
+				protocol: 'websocket'
+			})
+		),
 		Layer.provide(options.handlers),
 		Layer.provide(layerRpcStream)
 	)
 }
 
 // Codex speaks MCP's stateless 2026-07-28 revision; Claude still opens a session, which it ends with DELETE. Callers are named as on every route: by tailnet, Auth's cookie or an app's on-behalf claim.
-export function layerMcp<E, R>(options: {instructions: string; registrations: Layer.Layer<never, E, R>}) {
+export function layerMcp<E, R>(options: {
+	instructions: string
+	contracts: Toolkit.Any
+	registrations: Layer.Layer<never, E, R>
+}) {
 	return Layer.unwrap(
 		Effect.gen(function* () {
+			yield* recordToolContracts(options.contracts)
 			const metadata = yield* packageMetadata
 			return Layer.provide(
 				McpServer.layerHttp({
@@ -258,3 +268,5 @@ export const layerNodeHttpServer = NodeHttpServer.layerConfig(createServer, {
 	host: Config.String('HOST'),
 	port: Config.Port('PORT')
 })
+
+export const layerProbeHttpServer = NodeHttpServer.layer(createServer, {host: '127.0.0.1', port: 0})

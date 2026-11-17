@@ -32,6 +32,7 @@ runApp({
 		Layer.mergeAll(
 			layerRpc({group: RpcContracts, handlers: RpcHandlers}),
 			layerMcp({
+				contracts: ToolContracts,
 				instructions:
 					'Use list_apps for worker inventory and read_resource_history for resource comparisons. create_exposure and remove_exposure manage owned HTTPS mappings; run_job starts scheduled jobs.',
 				registrations: Layer.provide(McpServer.toolkit(ToolContracts), ToolHandlers)
