@@ -373,6 +373,14 @@ export const Operation = Schema.Struct({
 	traces: Schema.NonEmptyArray(OperationTrace)
 })
 
+// SQL counts the whole range; only the operation's kept traces are decoded separately.
+export type CountedOperation = typeof CountedOperation.Type
+export const CountedOperation = Schema.Struct({
+	...Struct.omit(Operation.fields, ['traces']),
+	app: AppName,
+	latest: Trace.fields.start
+})
+
 export type Overview = typeof Overview.Type
 export const Overview = Schema.Struct({
 	apps: Schema.Array(

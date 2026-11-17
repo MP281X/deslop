@@ -34,7 +34,7 @@ import type {
 	ExportedLog,
 	Log,
 	LogId,
-	Operation,
+	CountedOperation,
 	OperationTrace,
 	Overview,
 	RetainedService,
@@ -46,9 +46,6 @@ import type {
 	SpanFacts,
 	SpanFailure
 } from '#services/telemetry/schema.ts'
-
-// Each operation lists this many traces, its newest failures among them.
-const KEEP = 20
 
 const byStart = Order.mapInput(DateTime.Order, (span: Pick<Span, 'start'>) => span.start)
 
@@ -555,9 +552,6 @@ export function traceTree(id: TraceId, spans: readonly Span[], logs: readonly Lo
 	} satisfies TraceTree
 }
 
-// A settled trace as the overview counts it; only the traces it keeps get their label and failure.
-export type Traced = {app: AppName; failed: boolean; name: string; runtime: Runtime; trace: OperationTrace}
-
 function percentile(times: readonly Duration.Duration[], ratio: number) {
 	return pipe(
 		times,
@@ -576,75 +570,27 @@ export function latencyOf(times: readonly Duration.Duration[]) {
 	}
 }
 
-const slowestFirst = Order.mapInput(Order.flip(Duration.Order), (item: Traced) => item.trace.duration)
-
-// From an operation's traces slowest first: the slowest, with the newest failures always among them, since those are the traces worth opening.
-function keptTraces(slowest: Array.NonEmptyReadonlyArray<Traced>) {
-	const newestFailures = HashSet.fromIterable(
-		pipe(
-			slowest,
-			Array.filter(item => item.failed),
-			Array.sort(Order.mapInput(Order.flip(DateTime.Order), (item: Traced) => item.trace.start)),
-			Array.take(KEEP / 2),
-			Array.map(item => item.trace.id)
-		)
-	)
-	// The newest failures, then the slowest of the rest: the sort is stable, so each part stays slowest first.
-	const chosenFirst = Array.sort(
-		slowest,
-		Order.mapInput(Order.flip(Order.Boolean), (item: Traced) => HashSet.has(newestFailures, item.trace.id))
-	)
-	return pipe(
-		Array.splitAtNonEmpty(chosenFirst, KEEP)[0],
-		Array.sort(slowestFirst),
-		Array.map(item => item.trace)
-	)
-}
-
-type Ordered = {latest: DateTime.Utc; operation: Operation}
-
-// Failing first, then most recently seen: the order the page and the tools list an app's operations in.
-function tracedOperations(group: readonly Traced[]) {
-	return pipe(
-		Record.values(Array.groupBy(group, item => `${item.runtime} ${item.name}`)),
-		Array.map(operation => {
-			const slowest = Array.sort(operation, slowestFirst)
-			// Already in order, so sorting the durations again costs one pass.
-			const latency = latencyOf(Array.reverse(Array.map(slowest, item => item.trace.duration)))
-			return {
-				latest: pipe(
-					operation,
-					Array.map(item => item.trace.start),
-					Array.max<DateTime.Utc>(DateTime.Order)
-				),
-				operation: {
-					count: operation.length,
-					failures: Array.countBy(operation, item => item.failed),
-					name: Array.headNonEmpty(operation).name,
-					p50Ms: latency.p50Ms,
-					p95Ms: latency.p95Ms,
-					runtime: Array.headNonEmpty(operation).runtime,
-					traces: keptTraces(slowest)
-				} satisfies Operation
-			}
-		}),
-		Array.sort(
-			pipe(
-				Order.flip(Order.Boolean),
-				Order.mapInput((item: Ordered) => item.operation.failures > 0),
-				Order.combine(Order.mapInput(Order.flip(DateTime.Order), (item: Ordered) => item.latest))
-			)
-		),
-		Array.map(item => item.operation)
-	)
-}
-
 // Apps with failures lead, then the busiest; each app's operations count only the traces started in the page's time frame, so a quiet app keeps its tab with no rows.
-export function overviewOf(traces: readonly Traced[], services: readonly RetainedService[]) {
+export function overviewOf(
+	traces: readonly (CountedOperation & {traces: Array.NonEmptyReadonlyArray<OperationTrace>})[],
+	services: readonly RetainedService[]
+) {
 	const operations = pipe(
 		traces,
 		Array.groupBy(item => item.app),
-		Record.map(tracedOperations)
+		Record.map(group =>
+			pipe(
+				group,
+				Array.sort(
+					pipe(
+						Order.flip(Order.Boolean),
+						Order.mapInput((item: CountedOperation) => item.failures > 0),
+						Order.combine(Order.mapInput(Order.flip(DateTime.Order), (item: CountedOperation) => item.latest))
+					)
+				),
+				Array.map(item => Struct.omit(item, ['app', 'latest']))
+			)
+		)
 	)
 	return {
 		apps: pipe(
