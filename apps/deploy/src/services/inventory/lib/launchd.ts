@@ -90,7 +90,7 @@ export function dockApplications(text: string, agentBundles: readonly string[] =
 	)
 }
 
-// Prefer the Dock name when Launch Services and launchd report the same process.
+// Merge Dock apps and running agents by PID; prefer bundle metadata for names and the Dock's application detail.
 export function macApplications(
 	agents: ReturnType<typeof launchAgents>,
 	applications: ReturnType<typeof dockApplications>

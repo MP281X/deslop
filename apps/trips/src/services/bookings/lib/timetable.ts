@@ -1,10 +1,10 @@
 import type {Schema} from 'effect'
-import {Array, Cause, Context, DateTime, Duration, Effect, Layer, Match, Number, Option, Order, pipe} from 'effect'
+import {Array, Cause, Context, DateTime, Duration, Effect, Layer, Match, Option, Order, pipe} from 'effect'
 
 import {HttpClient, HttpClientRequest, HttpClientResponse} from 'effect/http'
 
-import {Places, stationName, stationNamesMatch} from './places.ts'
-import {instantOf} from './utils.ts'
+import {Places, stationName} from './places.ts'
+import {stationNamesMatch, instantOf} from './utils.ts'
 
 import {BookedPlace, BookingsError, TransitRuns, TransitTrip, TrainStop} from '#services/bookings/schema.ts'
 import type {ExtractedItem} from '#services/bookings/schema.ts'
@@ -62,7 +62,11 @@ export class Timetable extends Context.Service<Timetable>()('@deslop/trips/servi
 								Array.filter(
 									candidate =>
 										candidate.tripShortName === item.trainNumber &&
-										Math.abs(Date.parse(candidate.place.departure) - DateTime.toEpochMillis(at)) <= 10_800_000
+										pipe(
+											DateTime.distance(candidate.place.departure, at),
+											Duration.abs,
+											Duration.isLessThanOrEqualTo(Duration.hours(3))
+										)
 								),
 								Array.match({
 									onEmpty: () => Option.none<TransitRuns['stopTimes'][number]>(),
@@ -70,8 +74,8 @@ export class Timetable extends Context.Service<Timetable>()('@deslop/trips/servi
 										Option.some(
 											Array.min(
 												candidates,
-												Order.mapInput(Number.Order, candidate =>
-													Math.abs(Date.parse(candidate.place.departure) - DateTime.toEpochMillis(at))
+												Order.mapInput(Duration.Order, candidate =>
+													Duration.abs(DateTime.distance(candidate.place.departure, at))
 												)
 											)
 										)
@@ -97,16 +101,16 @@ export class Timetable extends Context.Service<Timetable>()('@deslop/trips/servi
 							})
 						}
 						return {
-							arrives: DateTime.makeUnsafe(yield* Effect.fromOption(to.arrival)),
-							departs: DateTime.makeUnsafe(yield* Effect.fromOption(from.departure)),
+							arrives: yield* Effect.fromOption(to.arrival),
+							departs: yield* Effect.fromOption(from.departure),
 							from: place(from),
 							operator: run.agencyName,
 							service: run.routeShortName,
 							stops: Array.map(segment, stop =>
 								TrainStop.make({
-									arrives: Option.flatMap(stop.arrival, DateTime.make),
+									arrives: stop.arrival,
 									code: Option.some(stop.stopId),
-									departs: Option.flatMap(stop.departure, DateTime.make),
+									departs: stop.departure,
 									name: stationName(stop.name)
 								})
 							),

@@ -44,6 +44,7 @@ export type ProcessReading = {
 
 export type ProcessMeasurement = {records: readonly ProcessReading[]; time: DateTime.Utc; total: Duration.Duration}
 
+// judge-ignore no-silent-fallback -- Linux omits VmRSS for kernel threads and zombies, which own no resident userspace memory; required PID fields still decode or fail.
 function processStatus(status: string) {
 	const values = pipe(
 		String.trim(status),
@@ -77,6 +78,8 @@ function commandArgs(cmdline: string) {
 	})
 }
 
+// judge-ignore no-silent-fallback -- collector input permits vanished or unreadable individual processes to be skipped and optional metadata to be absent; whole-machine reads still fail.
+// judge-ignore no-unrelated-jobs -- whole-machine CPU ticks are the denominator for these process CPU readings; records, total and time form one measurement.
 export const processes = Effect.gen(function* () {
 	const fs = yield* FileSystem.FileSystem
 	const stat = yield* fs.readFileString('/proc/stat')
@@ -194,6 +197,7 @@ export function processReadings(
 }
 
 // A Mac's processes under a Dock app or user launch agent, from `ps -axww -o pid=,ppid=,rss=,time=,lstart=,args=` in the C locale, keyed like `processOwner`; `agents` names each app's PID. Times are milliseconds: `ticks` of CPU, and `start` as an identity that tells a reused PID apart.
+// judge-ignore no-silent-fallback -- collector input skips malformed ps rows and omits processes not owned by an app; it does not replace a failed ps command.
 export function launchdProcesses(text: string, agents: HashMap.HashMap<ProcessId, UnitId>) {
 	const rows = Array.getSomes(
 		pipe(

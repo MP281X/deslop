@@ -1,6 +1,6 @@
 import {Array, DateTime, Effect, Option, Schema, Stream, String, pipe} from 'effect'
 
-import {AsyncResult, Atom} from 'effect/reactivity'
+import {Atom} from 'effect/reactivity'
 import {getImageAsync, getStringAsync, hasImageAsync, hasStringAsync} from 'expo-clipboard'
 import {File, Paths} from 'expo-file-system'
 
@@ -15,13 +15,13 @@ import {provideRuntimeOnce} from '@deslop/runtime/mobile/session'
 import {listReducer} from '@deslop/runtime/shared/list'
 
 import {RpcClient, session} from '#lib/session.ts'
-import {byStart, journeysOf} from '#services/bookings/lib/utils.ts'
+import {byStart} from '#services/bookings/lib/utils.ts'
 import type {BookingId, Booking} from '#services/bookings/schema.ts'
 import {BookingModel, BookingSource, BookingsError, IMAGE_BYTES} from '#services/bookings/schema.ts'
 
 const bookingsFile = new File(Paths.document, 'bookings.json')
 
-const apply = listReducer(byStart)
+const apply = listReducer(byStart, booking => booking.id)
 
 // The copy on the iPhone opens the trip at the gate even without a network.
 export const bookingsAtom = Atom.keepAlive(
@@ -94,23 +94,23 @@ export const clipboard = makeClipboard({
 
 export const removal = makeRemoval({
 	notRemoved: 'Not Deleted',
-	// A journey's row stands for all its legs, so deleting it deletes each of them.
-	remove: (id: BookingId, get) =>
-		provideRuntimeOnce(
-			get,
-			RpcClient.runtime,
-			Effect.flatMap(RpcClient, client =>
-				Effect.forEach(
-					pipe(
-						journeysOf(AsyncResult.getOrElse(get(bookingsAtom), () => [])),
-						Array.findFirst(journey => Array.some(journey, leg => leg.id === id)),
-						Option.match({onNone: () => [id], onSome: journey => Array.map(journey, leg => leg.id)})
-					),
-					leg => client('bookings.remove', {id: leg}),
-					{concurrency: 1, discard: true}
-				)
-			)
+	// Bookings resolves the journey and deletes all its legs in one transaction.
+	remove: Effect.fnUntraced(function* (id: BookingId, get: Atom.AtomContext) {
+		return yield* Effect.mapError(
+			provideRuntimeOnce(
+				get,
+				RpcClient.runtime,
+				Effect.flatMap(RpcClient, client => client('bookings.remove', {id}))
+			),
+			cause => {
+				if (Schema.is(BookingsError)(cause)) return cause
+				return BookingsError.make({
+					cause,
+					message: 'The server did not confirm whether the journey was deleted. Reconnect to check.'
+				})
+			}
 		)
+	})
 })
 
 export const refreshAtom = Atom.fn((id: Booking['id'], get) =>

@@ -68,7 +68,7 @@ export class Extractor extends Context.Service<
 						return response.value.items
 					},
 					Effect.timeout('3 minutes'),
-					// An overloaded API or an answer outside the schema usually succeeds on the next try.
+					// Retry once unless Gateway reports that AI access is unavailable.
 					Effect.retry({times: 1, while: cause => !Schema.is(AiUnavailableError)(cause)}),
 					Effect.mapError(cause =>
 						BookingsError.make({

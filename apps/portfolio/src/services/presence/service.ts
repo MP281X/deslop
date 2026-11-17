@@ -16,7 +16,7 @@ import {
 } from 'effect'
 
 import {hasMeaningfulMove, upsertVisitor} from './lib/utils.ts'
-import type {JoinVisitor, MoveVisitor, Scene} from './schema.ts'
+import type {JoinVisitor, MoveVisitor, RecolorVisitor, Scene} from './schema.ts'
 import {Color, Visitor, VisitorId} from './schema.ts'
 
 const SERVER_BOTS = [
@@ -45,6 +45,7 @@ export class Presence extends Context.Service<
 	{
 		readonly join: (payload: JoinVisitor) => Stream.Stream<Scene>
 		readonly move: (payload: MoveVisitor) => Effect.Effect<void>
+		readonly recolor: (payload: RecolorVisitor) => Effect.Effect<void>
 	}
 >()('@deslop/portfolio/services/presence/service/Presence') {
 	static readonly layer = Layer.effect(
@@ -132,10 +133,7 @@ export class Presence extends Context.Service<
 					SubscriptionRef.updateSome(room, scene =>
 						pipe(
 							scene.visitors,
-							Array.findFirstIndex(
-								visitor =>
-									visitor.id === payload.id && (visitor.color !== payload.color || hasMeaningfulMove(visitor, payload))
-							),
+							Array.findFirstIndex(visitor => visitor.id === payload.id && hasMeaningfulMove(visitor, payload)),
 							Option.map(index => ({
 								...scene,
 								visitors: Array.map(scene.visitors, (visitor, position) => {
@@ -144,7 +142,20 @@ export class Presence extends Context.Service<
 								})
 							}))
 						)
-					)
+					),
+				recolor: payload =>
+					SubscriptionRef.updateSome(room, scene => {
+						if (!Array.some(scene.visitors, visitor => visitor.id === payload.id && visitor.color !== payload.color)) {
+							return Option.none()
+						}
+						return Option.some({
+							...scene,
+							visitors: Array.map(scene.visitors, visitor => {
+								if (visitor.id === payload.id) return {...visitor, color: payload.color}
+								return visitor
+							})
+						})
+					})
 			})
 		})
 	)

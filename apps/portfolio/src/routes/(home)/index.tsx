@@ -87,9 +87,21 @@ const ownCursorAtom = Atom.make({
 const portfolioAtom = Atom.keepAlive(
 	RpcClient.runtime.atom(get =>
 		Stream.unwrap(
-			Effect.map(get.result(identityAtom), identity =>
-				pipe(
-					liveStream(RpcClient, 'presence.join', {...identity, color: get.once(ownCursorAtom).color}),
+			Effect.map(get.result(identityAtom), identity => {
+				const joined = {color: get.once(ownCursorAtom).color}
+				return pipe(
+					Stream.suspend(() => liveStream(RpcClient, 'presence.join', {...identity, color: joined.color})),
+					Stream.tap(scene =>
+						Effect.sync(() => {
+							pipe(
+								scene.visitors,
+								Array.findFirst(visitor => visitor.id === identity.id),
+								Option.map(visitor => {
+									joined.color = visitor.color
+								})
+							)
+						})
+					),
 					// A dropped socket rejoins with the trails kept, instead of turning the page into an error.
 					reconnectOnDrop,
 					Stream.mapAccum<TrailedScene, Scene, TrailedScene>(
@@ -122,29 +134,45 @@ const portfolioAtom = Atom.keepAlive(
 						}
 					)
 				)
-			)
+			})
 		)
 	)
 )
 
-// Sends this page's cursor while the page is open: at most one move per 50 ms, always the latest, and none too small to see unless the colour changed.
+// Sends this page's position while the page is open: at most one move per 50 ms, always the latest, and none too small to see.
 const sendCursorAtom = RpcClient.runtime.atom(get =>
 	Effect.gen(function* () {
 		const identity = yield* get.result(identityAtom)
 		return yield* pipe(
 			get.stream(ownCursorAtom, {withoutInitialValue: true}),
-			Stream.changesWith((sent, next) => sent.color === next.color && !hasMeaningfulMove(sent, next)),
+			Stream.changesWith((sent, next) => !hasMeaningfulMove(sent, next)),
 			Stream.buffer({capacity: 1, strategy: 'sliding'}),
 			Stream.throttle({cost: Array.length, duration: '50 millis', units: 1}),
 			Stream.runForEach(cursor =>
 				pipe(
 					RpcClient,
-					Effect.flatMap(client => client('presence.move', {...cursor, id: identity.id})),
+					Effect.flatMap(client => client('presence.move', {id: identity.id, x: cursor.x, y: cursor.y})),
 					Effect.ignore({log: 'Debug', message: 'The cursor move did not reach the room'})
 				)
 			)
 		)
 	})
+)
+
+// judge-ignore no-silent-fallback -- recolouring is best-effort presence: failures are logged, no local colour is substituted, and only a server scene changes the visible colour.
+const recolorAtom = RpcClient.runtime.fn((_: void, get) =>
+	Effect.ignore(
+		Effect.gen(function* () {
+			const identity = yield* get.result(identityAtom)
+			const visitor = yield* pipe(
+				yield* get.result(portfolioAtom),
+				scene => Array.findFirst(scene.visitors, item => item.id === identity.id),
+				Effect.fromOption
+			)
+			yield* (yield* RpcClient)('presence.recolor', {color: pickNextCursorColor(visitor.color), id: identity.id})
+		}),
+		{log: 'Debug', message: 'The cursor recolor did not reach the room'}
+	)
 )
 
 // The window's size in pixels, following each resize.
@@ -645,6 +673,7 @@ function RealtimeLayer(input: {
 function PortfolioRoute() {
 	const viewport = useAtomValue(viewportAtom)
 	const setOwnCursor = useAtomSet(ownCursorAtom)
+	const recolor = useAtomSet(recolorAtom)
 	useAtomMount(sendCursorAtom)
 	const containerRef = useRef<HTMLDivElement>(null)
 	const [showShortcuts, setShowShortcuts] = useState(false)
@@ -682,7 +711,7 @@ function PortfolioRoute() {
 			},
 			hotkey
 		})),
-		{callback: () => setOwnCursor(cursor => ({...cursor, color: pickNextCursorColor(cursor.color)})), hotkey: 'R'},
+		{callback: () => recolor(), hotkey: 'R'},
 		{callback: toggleShortcuts, hotkey: {key: '?', shift: true}}
 	])
 

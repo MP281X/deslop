@@ -54,6 +54,7 @@ function alias(value: string) {
 }
 
 // A shell's script: an exec launcher continues with its arguments; otherwise the exec segment, else the first that isn't setup, is the command, without quotes, redirections, `eval` or leading assignments.
+// judge-ignore no-silent-fallback -- shell setup without an identifiable command keeps the actual shell name; this is a label heuristic over masked arguments, not command execution.
 function shellRest(tokens: readonly string[]) {
 	const script = pipe(tokens, Array.get(2), Option.getOrElse(Function.constant('')))
 	const shifts = Option.match(String.match(/\bshift\b/gu)(script), {

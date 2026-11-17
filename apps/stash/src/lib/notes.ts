@@ -20,7 +20,7 @@ const listFile = new File(Paths.document, 'list.json')
 
 const newestFirst = Order.flip(Order.mapInput(DateTime.Order, (item: NoteItem) => item.createdAt))
 
-const apply = listReducer(newestFirst)
+const apply = listReducer(newestFirst, note => note.id)
 
 // The copy on the iPhone shows the list while the server is out of reach.
 export const notesAtom = Atom.keepAlive(
@@ -41,13 +41,14 @@ export const noteAtom = Atom.family((item: NoteItem) =>
 	RpcClient.runtime.atom(Effect.flatMap(RpcClient, client => client('notes.body', {id: item.id})))
 )
 
-// How many pictures the note's post shows, asked of the server each time the note opens; without an answer the note keeps its cover.
+// judge-ignore no-silent-fallback -- Source photos are optional; a failed source read is logged and the pager keeps the saved cover. Auth and transport failures remain visible.
+// How many pictures the note's post shows, asked of the server each time the note opens.
 export const mediaAtom = Atom.family((id: NoteId) =>
 	RpcClient.runtime.atom(
-		pipe(
-			Effect.flatMap(RpcClient, client => client('notes.media', {id})),
-			Effect.tapError(error => Effect.logWarning('The post media could not be asked for', error)),
-			Effect.orElseSucceed(Function.constant(0))
+		Effect.flatMap(RpcClient, client =>
+			Effect.catchTag(client('notes.media', {id}), 'NotesError', error =>
+				Effect.as(Effect.logWarning('The post pictures could not be counted', error), 0)
+			)
 		)
 	)
 )

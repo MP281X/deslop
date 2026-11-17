@@ -122,6 +122,8 @@ function Expose(props: {items: readonly InventoryItem[]; port: InventoryItem}) {
 	)
 }
 
+// judge-ignore no-silent-fallback -- inventory failures are shown by Home; this dialog renders only when both its transient command target and an inventory value exist.
+// judge-ignore no-view-state-in-memory -- this is an unsaved exposure command, not page selection; Tailnet/Public and hostname are transient form inputs.
 export function ExposeDialog() {
 	const [target, setTarget] = useAtom(exposeTargetAtom)
 	return Option.match(Option.all({port: target, snapshot: AsyncResult.value(useAtomValue(inventoryAtom))}), {

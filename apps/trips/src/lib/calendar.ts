@@ -13,7 +13,7 @@ import type {ExpoCalendar} from 'expo-calendar'
 import {bookingsAtom} from '#lib/bookings.ts'
 import {BOOKING_LINK, linkOf} from '#lib/deep-links.ts'
 import {placeLine} from '#lib/rides.ts'
-import {arrivalOf, departureOf, endOf, labelled, titleOf} from '#services/bookings/lib/utils.ts'
+import {arrivalOf, departureOf, endOf, labelled, startOf, titleOf} from '#services/bookings/lib/utils.ts'
 import type {BookingList, Flight, Train} from '#services/bookings/schema.ts'
 import {Booking, BookingsError} from '#services/bookings/schema.ts'
 
@@ -57,13 +57,18 @@ function sameTime(left: DateTime.DateTime.Input, right: DateTime.DateTime.Input)
 	)
 }
 
-function calendarPlan(all: BookingList, events: Awaited<ReturnType<ExpoCalendar['listEvents']>>, now: DateTime.Utc) {
+function calendarPlan(
+	all: BookingList,
+	events: Awaited<ReturnType<ExpoCalendar['listEvents']>>,
+	window: {start: DateTime.Utc; end: DateTime.Utc}
+) {
 	const eventsByUrl = Array.groupBy(events, event => event.url ?? '')
 	const bookings = Array.filter(
 		all,
 		booking =>
 			booking.status === 'confirmed' &&
-			DateTime.isGreaterThan(endOf(booking), DateTime.subtractDuration(now, Duration.days(1)))
+			DateTime.isGreaterThan(endOf(booking), window.start) &&
+			DateTime.isLessThan(startOf(booking), window.end)
 	)
 	const planned = Array.map(bookings, booking => {
 		const details = {...eventOf(booking), url: linkOf(booking.id)}
@@ -148,15 +153,15 @@ export const calendarAtom = Atom.make(get =>
 				})
 			)
 			const now = yield* DateTime.now
+			const window = {
+				end: DateTime.addDuration(now, Duration.days(400)),
+				start: DateTime.subtractDuration(now, Duration.days(1))
+			}
 			const events = yield* Effect.tryPromise({
 				catch: cause => BookingsError.make({cause, message: 'The calendar events could not be listed.'}),
-				try: () =>
-					calendar.listEvents(
-						DateTime.toDateUtc(DateTime.subtractDuration(now, Duration.days(60))),
-						DateTime.toDateUtc(DateTime.addDuration(now, Duration.days(400)))
-					)
+				try: () => calendar.listEvents(DateTime.toDateUtc(window.start), DateTime.toDateUtc(window.end))
 			})
-			const plan = calendarPlan(loaded.value, events, now)
+			const plan = calendarPlan(loaded.value, events, window)
 			yield* Effect.forEach(
 				plan.create,
 				details =>

@@ -44,7 +44,7 @@ export function unitFailures(text: string) {
 		String.trim(text),
 		String.split(/\n\s*\n/u),
 		Array.filter(String.isNonEmpty),
-		Record.fromIterableWith(block => {
+		Array.flatMap(block => {
 			const fields = pipe(
 				block,
 				String.split('\n'),
@@ -54,20 +54,30 @@ export function unitFailures(text: string) {
 					return [key, Array.join(value, '=')] as const
 				})
 			)
+			const id = fields['Id'] ?? ''
+			const result = fields['Result'] ?? ''
+			const status = Number.parse(fields['ExecMainStatus'] ?? '')
+			if (
+				!String.isNonEmpty(id) ||
+				!String.isNonEmpty(result) ||
+				Option.isNone(status) ||
+				!String.isNonEmpty(fields['ExecMainCode'] ?? '')
+			) {
+				return []
+			}
 			return [
-				UnitId.make(fields['Id'] ?? ''),
-				{
-					at: Option.map(Number.parse(String.replace(/^@/u, '')(fields['StateChangeTimestamp'] ?? '')), seconds =>
-						DateTime.mapEpochMillis(DateTime.makeUnsafe(0), () => seconds * 1000)
-					),
-					// A unit whose start step failed never ran its main process, which leaves its code 0.
-					reason: failureReason(
-						fields['Result'] ?? '',
-						Option.getOrElse(Number.parse(fields['ExecMainStatus'] ?? ''), Function.constant(0)),
-						fields['ExecMainCode'] !== '0'
-					)
-				}
-			] as const
-		})
+				[
+					UnitId.make(id),
+					{
+						at: Option.map(Number.parse(String.replace(/^@/u, '')(fields['StateChangeTimestamp'] ?? '')), seconds =>
+							DateTime.mapEpochMillis(DateTime.makeUnsafe(0), () => seconds * 1000)
+						),
+						// A unit whose start step failed never ran its main process, which leaves its code 0.
+						reason: failureReason(result, Option.getOrThrow(status), fields['ExecMainCode'] !== '0')
+					}
+				] as const
+			]
+		}),
+		Record.fromEntries
 	)
 }

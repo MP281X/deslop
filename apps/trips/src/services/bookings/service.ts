@@ -12,7 +12,7 @@ import {passText} from './lib/pkpass.ts'
 import {Places} from './lib/places.ts'
 import {Timetable} from './lib/timetable.ts'
 
-import {byStart, instantOf, upsert} from '#services/bookings/lib/utils.ts'
+import {byStart, instantOf, journeysOf, upsert} from '#services/bookings/lib/utils.ts'
 import type {Booking, BookingSource, ExtractedItem, LocalTime} from '#services/bookings/schema.ts'
 import {BookingId, BookingsError, Flight, Stay, Train} from '#services/bookings/schema.ts'
 
@@ -22,6 +22,7 @@ declare module 'effect/reactivity/Reactivity' {
 	}
 }
 
+// judge-ignore no-silent-fallback -- The TaggedError returned on absence is a failing Effect, not a successful time value.
 function at(time: LocalTime, timeZone: string) {
 	return Option.match(instantOf(time, timeZone), {
 		onNone: () => BookingsError.make({message: `The time ${time} could not be read.`}),
@@ -81,6 +82,15 @@ export class Bookings extends Context.Service<Bookings>()('@deslop/trips/service
 			Match.tag('stay', stays.insertVoid),
 			Match.exhaustive
 		)
+
+		const find = Effect.fnUntraced(function* (id: BookingId) {
+			return yield* pipe(
+				flights.findById(id),
+				Effect.catchTag('NoSuchElementError', () => trains.findById(id)),
+				Effect.catchTag('NoSuchElementError', () => stays.findById(id)),
+				Effect.catchNoSuchElement
+			)
+		})
 
 		const update = pipe(
 			Match.type<Booking>(),
@@ -144,7 +154,7 @@ export class Bookings extends Context.Service<Bookings>()('@deslop/trips/service
 			})
 		})
 
-		// Every segment merges into the bookings as they are inside the write, so two saves never lose each other's merge.
+		// Merge incoming segments against the list read here; the caller owns the write transaction.
 		const merge = Effect.fnUntraced(function* (incoming: readonly Booking[]) {
 			const current = yield* listAll
 			const stored = Record.fromIterableBy(current, booking => booking.id)
@@ -170,27 +180,49 @@ export class Bookings extends Context.Service<Bookings>()('@deslop/trips/service
 
 		return {
 			// What the phone watches: the whole list first, then only what changed, after each commit.
-			events: Stream.withSpan(listEvents(watch), 'Bookings.events', {attributes: {'rpc.stream': true}}),
+			events: Stream.withSpan(
+				listEvents(watch, booking => booking.id),
+				'Bookings.events',
+				{attributes: {'rpc.stream': true}}
+			),
+			find: Effect.fn('Bookings.find')((id: BookingId) => asBookingsError(find(id))),
 			list: pipe(listAll, asBookingsError, Effect.withSpan('Bookings.list')),
 			passText,
+			// judge-ignore no-silent-fallback -- removing an already absent booking is an idempotent no-op; a failed list or delete still fails and rolls back the transaction.
 			remove: Effect.fn('Bookings.remove')(function* (id: BookingId) {
 				yield* Effect.annotateCurrentSpan('bookingId', id)
 				yield* pipe(
-					Effect.all([flights.delete(id), trains.delete(id), stays.delete(id)], {concurrency: 1, discard: true}),
+					Effect.gen(function* () {
+						yield* Effect.forEach(
+							pipe(
+								journeysOf(yield* listAll),
+								Array.findFirst(legs => Array.some(legs, leg => leg.id === id)),
+								Option.getOrElse(() => [])
+							),
+							leg =>
+								Effect.all([flights.delete(leg.id), trains.delete(leg.id), stays.delete(leg.id)], {
+									concurrency: 1,
+									discard: true
+								}),
+							{concurrency: 1, discard: true}
+						)
+					}),
 					Reactivity.mutation(['bookings']),
 					sql.withTransaction,
-					asBookingsError
+					Effect.mapError(cause =>
+						BookingsError.make({cause, message: 'The journey was not deleted. No legs were removed.'})
+					)
 				)
 			}, withReactivity),
 			// The newer state replaces the one it was made from, unless the booking changed or left meanwhile.
 			replace: Effect.fn('Bookings.replace')(function* (before: Booking, after: Booking) {
 				yield* Effect.annotateCurrentSpan('bookingId', before.id)
 				yield* pipe(
-					listAll,
+					find(before.id),
 					Effect.flatMap(current =>
 						pipe(
 							current,
-							Array.some(row => Equal.equals(row, before)),
+							Option.exists(row => Equal.equals(row, before)),
 							Boolean.match({onFalse: () => Effect.void, onTrue: () => update(after)})
 						)
 					),

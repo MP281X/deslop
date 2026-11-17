@@ -37,7 +37,7 @@ export const RpcHandlers = RpcContracts.toLayer(
 				const query = {minutes}
 				return pipe(
 					Stream.fromEffect(fleet.current(query)),
-					Stream.concat(Stream.fromEffect(fleet.metrics(query))),
+					Stream.concat(Stream.fromEffect(Effect.andThen(fleet.metrics(query), fleet.current(query)))),
 					Stream.concat(
 						Stream.merge(
 							Stream.fromEffectSchedule(
@@ -62,27 +62,25 @@ export const RpcHandlers = RpcContracts.toLayer(
 		return RpcContracts.of({
 			'exposures.apply': Effect.fnUntraced(
 				function* (input) {
-					const url = yield* exposures.expose(input)
-					yield* localInventory.refresh
-					return url
+					return yield* Effect.onExit(exposures.expose(input), () => localInventory.refresh)
 				},
-				Reactivity.mutation(['deployInventory'])
+				Effect.onExit(() => Reactivity.invalidate(['deployInventory']))
 			),
 			'exposures.expose': fleet.expose,
 			'exposures.hide': fleet.hide,
 			'exposures.remove': Effect.fnUntraced(
 				function* (input) {
-					yield* exposures.hide(input.name)
-					yield* localInventory.refresh
+					yield* Effect.onExit(exposures.hide(input.name), () => localInventory.refresh)
 				},
-				Reactivity.mutation(['deployInventory'])
+				Effect.onExit(() => Reactivity.invalidate(['deployInventory']))
 			),
 			'inventory.run': fleet.run,
 			'inventory.snapshot': () => fleet.local,
-			'inventory.start': input => Reactivity.mutation(localInventory.run(input), ['deployInventory']),
+			'inventory.start': input =>
+				Effect.onExit(localInventory.run(input), () => Reactivity.invalidate(['deployInventory'])),
 			'inventory.watch': () => inventory,
 			'metrics.history': fleet.history,
-			// Cached history at once, then every worker's fresh one; after that a slot of the range as each fills, at most every 30 seconds, while the other workers refresh beside it, at most every 5 seconds, so a sleeping one never holds back this one's seconds.
+			// Cached peer history with current local history at once, then refreshed peers; local reads recur at most every 30 seconds while peers refresh separately every 5–30 seconds.
 			'metrics.watch': query => Stream.unwrap(Cache.get(metrics, query.minutes))
 		})
 	})

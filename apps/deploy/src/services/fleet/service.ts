@@ -83,7 +83,7 @@ export class Fleet extends Context.Service<
 		readonly local: Effect.Effect<Snapshot>
 		readonly history: (query: HistoryQuery) => Effect.Effect<MachineHistory, DeployError>
 		readonly current: (query: HistoryQuery) => Effect.Effect<MachineHistory[], DeployError>
-		readonly metrics: (query: HistoryQuery) => Effect.Effect<MachineHistory[], DeployError>
+		readonly metrics: (query: HistoryQuery) => Effect.Effect<void>
 		readonly snapshot: Effect.Effect<Snapshot>
 	}
 >()('@deslop/deploy/services/fleet/service/Fleet') {
@@ -218,26 +218,26 @@ export class Fleet extends Context.Service<
 					function* (input) {
 						yield* Effect.annotateCurrentSpan({exposure: input.name, worker: input.worker})
 						if (input.worker === localWorker) {
-							return yield* Effect.tap(exposures.expose(Struct.omit(input, ['worker'])), () => inventory.refresh)
+							return yield* Effect.onExit(exposures.expose(Struct.omit(input, ['worker'])), () => inventory.refresh)
 						}
 						return yield* remote(yield* selectedWorker(input.worker), client =>
 							client('exposures.apply', Struct.omit(input, ['worker']))
 						)
 					},
-					Effect.tap(() => reactivity.invalidate(['deployInventory'])),
+					Effect.onExit(() => reactivity.invalidate(['deployInventory'])),
 					asDeployError
 				),
 				hide: Effect.fn('Fleet.hide')(
 					function* (input) {
 						yield* Effect.annotateCurrentSpan({exposure: input.name, worker: input.worker})
 						if (input.worker === localWorker) {
-							return yield* Effect.tap(exposures.hide(input.name), () => inventory.refresh)
+							return yield* Effect.onExit(exposures.hide(input.name), () => inventory.refresh)
 						}
 						return yield* remote(yield* selectedWorker(input.worker), client =>
 							client('exposures.remove', {name: input.name})
 						)
 					},
-					Effect.tap(() => reactivity.invalidate(['deployInventory'])),
+					Effect.onExit(() => reactivity.invalidate(['deployInventory'])),
 					asDeployError
 				),
 				history: Effect.fn('Fleet.history')(function* (query) {
@@ -247,8 +247,7 @@ export class Fleet extends Context.Service<
 				local,
 				metrics: Effect.fn('Fleet.metrics')(function* (query) {
 					yield* Effect.annotateCurrentSpan({minutes: Duration.toMinutes(query.minutes), workers: workers.length + 1})
-					const own = yield* metrics.read(query)
-					const others = yield* Effect.forEach(
+					yield* Effect.forEach(
 						workers,
 						worker =>
 							pipe(
@@ -276,7 +275,6 @@ export class Fleet extends Context.Service<
 							),
 						{concurrency: 'unbounded'}
 					)
-					return [own, ...others]
 				}),
 				run: Effect.fn('Fleet.run')(
 					function* (input) {
@@ -288,7 +286,7 @@ export class Fleet extends Context.Service<
 							client('inventory.start', Struct.omit(input, ['worker']))
 						)
 					},
-					Effect.tap(() => reactivity.invalidate(['deployInventory'])),
+					Effect.onExit(() => reactivity.invalidate(['deployInventory'])),
 					Effect.mapError(cause => {
 						if (Schema.is(DeployError)(cause)) return cause
 						return DeployError.make({cause, message: 'Worker could not start the job'})

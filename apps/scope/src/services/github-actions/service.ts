@@ -1,16 +1,18 @@
-import {Array, Config, Context, Duration, Effect, Layer, Option, Redacted, Stream, pipe} from 'effect'
+import {Cause, Config, Context, Duration, Effect, Layer, Option, Redacted, Schedule, Stream, pipe} from 'effect'
 
-import {HttpClient, HttpClientRequest, HttpClientResponse} from 'effect/http'
+import {HttpClient, HttpClientError, HttpClientRequest, HttpClientResponse} from 'effect/http'
 
-import {jobLogs, jobTrace, runIds, runTrace} from './lib/utils.ts'
+import {jobLogs, jobTrace, runTrace} from './lib/utils.ts'
 import type {WorkflowJob, WorkflowRun} from './schema.ts'
 
+import {TelemetryError} from '#services/telemetry/schema.ts'
 import {Telemetry} from '#services/telemetry/service.ts'
 
 export class GitHubActions extends Context.Service<GitHubActions>()(
 	'@deslop/scope/services/github-actions/service/GitHubActions',
 	{
 		make: Effect.gen(function* () {
+			const scope = yield* Effect.scope
 			const telemetry = yield* Telemetry
 			const token = yield* Config.option(Config.Redacted('GITHUB_TOKEN'))
 			const client = HttpClient.filterStatusOk(yield* HttpClient.HttpClient)
@@ -34,7 +36,19 @@ export class GitHubActions extends Context.Service<GitHubActions>()(
 					HttpClientResponse.stream,
 					Stream.decodeText,
 					Stream.mkString,
-					Effect.timeout(Duration.seconds(8))
+					Effect.timeout(Duration.seconds(8)),
+					Effect.retry({
+						schedule: Schedule.spaced(Duration.seconds(1)),
+						times: 3,
+						while: error =>
+							Cause.isTimeoutError(error) ||
+							(HttpClientError.isHttpClientError(error) &&
+								(error.reason instanceof HttpClientError.TransportError ||
+									(error.reason instanceof HttpClientError.StatusCodeError && error.reason.response.status >= 500)))
+					}),
+					Effect.mapError(cause =>
+						TelemetryError.make({cause, message: 'GitHub job logs could not be fetched after retries'})
+					)
 				)
 				yield* telemetry.ingestLogs(jobLogs(event, log))
 			})
@@ -44,20 +58,17 @@ export class GitHubActions extends Context.Service<GitHubActions>()(
 					yield* telemetry.ingestTraces(jobTrace(event))
 					yield* Option.match(token, {
 						onNone: () => Effect.void,
-						onSome: credential =>
-							Effect.ignore(ingestJobLogs(event, credential), {log: 'Warn', message: 'A GitHub job log did not arrive'})
+						onSome: Effect.fnUntraced(function* (credential) {
+							yield* pipe(
+								ingestJobLogs(event, credential),
+								Effect.ignore({log: 'Warn', message: 'GitHub job logs could not be ingested'}),
+								Effect.forkIn(scope)
+							)
+						})
 					})
 				}),
 				ingestRun: Effect.fn('GitHubActions.ingestRun')(function* (event: WorkflowRun) {
-					const ids = runIds(event)
-					// GitHub can redeliver a start after the run finished.
-					const finished = yield* Effect.map(
-						Effect.option(telemetry.trace(ids.traceId)),
-						Option.exists(trace =>
-							Array.some(trace.spans, span => span.spanId === ids.spanId && Option.isSome(span.duration))
-						)
-					)
-					if (event.action === 'completed' || (event.action === 'in_progress' && !finished)) {
+					if (event.action === 'completed' || event.action === 'in_progress') {
 						yield* telemetry.ingestTraces(runTrace(event))
 					}
 				})

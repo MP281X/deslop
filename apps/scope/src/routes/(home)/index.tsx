@@ -96,7 +96,7 @@ type WorkspaceProps = {
 	source?: AppName
 }
 
-// The bar's app choice: one mark per app, its own icon, GitHub's for CI, else a server glyph, never a letter tile; one is always chosen, and choosing the chosen tab again does nothing.
+// One tab per app, using its app mark or the CI/server fallback; the supplied source selects it, and clicking that tab again prevents navigation.
 function SourceTabs(props: {apps: Overview['apps']; source?: AppName}) {
 	const search = route.useSearch()
 	if (Array.isReadonlyArrayEmpty(props.apps)) return <AppBarTabsSkeleton count={4} />

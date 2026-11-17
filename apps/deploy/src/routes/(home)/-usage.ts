@@ -213,9 +213,11 @@ export function chartPoints(
 			return [
 				...Boolean.match(run.length === 1, {
 					onFalse: () => [],
-					onTrue: () => [pointOf(last.at - slot, last.index, layer => layer.values[last.index] ?? 0)]
+					onTrue: () => [pointOf(last.at - slot, last.index, layer => layer.values[last.index] ?? Function.constNull())]
 				}),
-				...Array.map(run, point => pointOf(point.at, point.index, layer => layer.values[point.index] ?? 0)),
+				...Array.map(run, point =>
+					pointOf(point.at, point.index, layer => layer.values[point.index] ?? Function.constNull())
+				),
 				pointOf(last.at + 1, last.index, Function.constNull)
 			]
 		})

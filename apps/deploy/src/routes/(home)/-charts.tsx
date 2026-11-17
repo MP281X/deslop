@@ -106,8 +106,7 @@ function UsageChart(props: {
 														{pipe(
 															Schema.decodeUnknownOption(HoveredPoint)(item.payload),
 															Option.flatMap(point => Array.get(layer.readings, point.index)),
-															Option.getOrElse(Function.constant(0)),
-															props.format
+															Option.match({onNone: Function.constant('—'), onSome: props.format})
 														)}
 													</span>
 												</>
@@ -258,6 +257,7 @@ function ChartTitle(props: {figure: string; label: string}) {
 }
 
 // The machine's three readings over time: apps stacked on the whole machine's 0–100%, and disk used as one band.
+// judge-ignore no-silent-fallback -- missing disk readings are excluded by recorded before plotting; numeric placeholders are not displayed as measurements, and absent figures show an em dash.
 export function ChartBlock(props: {
 	isPhone: boolean
 	labels: Record<AppId, string>

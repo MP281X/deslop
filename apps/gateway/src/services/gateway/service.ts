@@ -8,12 +8,12 @@ import {
 	Equal,
 	Fiber,
 	FiberHandle,
+	HashMap,
 	HashSet,
 	Layer,
 	Option,
 	RcMap,
 	Ref,
-	Record,
 	Result,
 	Schema,
 	Semaphore,
@@ -28,7 +28,7 @@ import {Base64Url} from 'effect/encoding'
 import {Headers, HttpRouter, HttpServerRequest, HttpServerResponse} from 'effect/http'
 
 import {Auth} from '@deslop/runtime/server/auth'
-import {AuthError, ON_BEHALF_HEADER} from '@deslop/runtime/shared/auth'
+import {AuthError, ON_BEHALF_HEADER, failureOptions} from '@deslop/runtime/shared/auth'
 import {MCP_PATH} from '@deslop/runtime/shared/schema'
 
 import {connectionFailure, serverIcons} from '#services/connections/lib/utils.ts'
@@ -87,21 +87,19 @@ export class Gateway extends Context.Service<
 			})
 			const visible = yield* Ref.make(HashSet.empty<string>())
 			const installed = yield* Ref.make<
-				Record<string, {fingerprint: string; generation: ConnectionGeneration; id: ConnectionState['id']}>
-			>({})
+				HashMap.HashMap<string, {fingerprint: string; generation: ConnectionGeneration; id: ConnectionState['id']}>
+			>(HashMap.empty())
 			const refreshes = yield* Semaphore.make(1)
 			const scope = yield* Effect.scope
 			// McpServer has no removal: a removed tool stays registered, and the usability check hides it from lists and calls.
 			const remove = Effect.fnUntraced(function* (name: string) {
-				yield* Ref.update(installed, Record.remove(name))
+				yield* Ref.update(installed, HashMap.remove(name))
 				yield* Ref.update(visible, HashSet.remove(name))
-				yield* registry.notifications['notifications/tools/list_changed']({})
 			})
 			const prune = Effect.gen(function* () {
-				yield* Effect.forEach(prunedTools(yield* connections.definitions, yield* Ref.get(installed)), remove, {
-					concurrency: 1,
-					discard: true
-				})
+				const names = prunedTools(yield* connections.definitions, yield* Ref.get(installed))
+				yield* Effect.forEach(names, remove, {concurrency: 1, discard: true})
+				if (Array.isArrayNonEmpty(names)) yield* registry.notifications['notifications/tools/list_changed']({})
 			})
 			const updateVisible = Effect.fnUntraced(function* (server: ConnectionState, names: HashSet.HashSet<string>) {
 				const changed = yield* Ref.modify(visible, current => {
@@ -112,23 +110,31 @@ export class Gateway extends Context.Service<
 					)
 					return [!Equal.equals(current, next), next]
 				})
-				if (changed) yield* registry.notifications['notifications/tools/list_changed']({})
-				for (const entry of Record.toEntries(yield* Ref.get(installed))) {
+				for (const entry of yield* Ref.get(installed)) {
 					if (entry[1].id === server.id && !HashSet.has(names, entry[0])) yield* remove(entry[0])
 				}
+				if (changed) yield* registry.notifications['notifications/tools/list_changed']({})
 			})
 			const services = yield* Layer.build(
+				// judge-ignore no-silent-fallback -- Visibility denies access when authorization cannot be established; it never substitutes a tool result.
 				McpServer.visibility(options =>
 					Effect.gen(function* () {
 						if (!HashSet.has(yield* Ref.get(visible), options.target)) return false
 						return yield* pipe(
 							yield* Ref.get(installed),
-							Record.get(options.target),
+							HashMap.get(options.target),
 							Option.match({
 								onNone: () => Effect.succeed(false),
 								onSome: Effect.fnUntraced(function* (entry) {
 									const current = yield* Boolean.match(options.method === 'tools/list', {
-										onFalse: () => Effect.option(connections.get(entry.id)),
+										onFalse: () =>
+											pipe(
+												connections.get(entry.id),
+												Effect.tapError(error =>
+													Effect.logWarning('Tool visibility could not read its connection', error)
+												),
+												Effect.option
+											),
 										onTrue: Effect.fnUntraced(function* () {
 											return Array.findFirst(yield* yield* listingConnections, found => found.id === entry.id)
 										})
@@ -254,24 +260,25 @@ export class Gateway extends Context.Service<
 						if (
 							!pipe(
 								yield* Ref.get(installed),
-								Record.get(name),
+								HashMap.get(name),
 								Option.exists(entry => entry.fingerprint === `${server.generation}:${fingerprint}`)
 							)
 						) {
+							yield* Ref.update(
+								installed,
+								HashMap.set(name, {
+									fingerprint: `${server.generation}:${fingerprint}`,
+									generation: server.generation,
+									id: server.id
+								})
+							)
+							yield* Ref.update(visible, HashSet.add(name))
 							yield* registry.addTool({
 								annotations: Context.empty(),
 								handle: (input: unknown) => call(reference, compact(tool), input),
 								services,
 								tool: McpSchema.Tool.make({...compact(tool), name})
 							})
-							yield* Ref.update(installed, current => ({
-								...current,
-								[name]: {
-									fingerprint: `${server.generation}:${fingerprint}`,
-									generation: server.generation,
-									id: server.id
-								}
-							}))
 						}
 						return name
 					}),
@@ -375,7 +382,7 @@ export class Gateway extends Context.Service<
 						HashSet.has(yield* Ref.get(visible), name) &&
 						pipe(
 							yield* Ref.get(installed),
-							Record.get(name),
+							HashMap.get(name),
 							Option.exists(entry => entry.generation === current.generation)
 						)
 					) {
@@ -422,17 +429,17 @@ export const GatewayDiscovery = HttpRouter.middleware()(
 					return yield* app
 				}
 				const verified = yield* Effect.result(auth.user(request.headers))
-				if (Result.isSuccess(verified)) yield* gateway.first(request.headers)
-				// An unreadable connection list hides every upstream tool, as a failed per-tool read did.
-				const states = yield* Effect.cached(
-					Result.match(verified, {
-						onFailure: () => Effect.succeed([]),
-						onSuccess: () => Effect.catchTag(connections.definitions, 'AuthError', () => Effect.succeed([]))
-					})
-				)
-				const response = yield* Effect.provideService(app, listingConnections, states)
-				// A refusal or an Auth outage starts no work with the bearer it could not verify.
-				if (Result.isSuccess(verified)) yield* gateway.refresh(request.headers)
+				if (Result.isFailure(verified)) {
+					return HttpServerResponse.jsonUnsafe({error: verified.failure.message}, failureOptions(verified.failure, 401))
+				}
+				yield* gateway.first(request.headers)
+				// A storage outage remains a failed listing rather than an apparently empty registry.
+				const snapshot = yield* Effect.result(connections.definitions)
+				if (Result.isFailure(snapshot)) {
+					return HttpServerResponse.jsonUnsafe({error: snapshot.failure.message}, {status: 503})
+				}
+				const response = yield* Effect.provideService(app, listingConnections, Effect.succeed(snapshot.success))
+				yield* gateway.refresh(request.headers)
 				return response
 			})
 	})

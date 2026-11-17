@@ -51,6 +51,7 @@ const SCHEMES = {'xyz.mp281x.trips': 'trips', 'xyz.mp281x.trips.dev': 'trips-dev
 
 type Span = {end: DateTime.Utc; start: DateTime.Utc}
 type Showing = {journey: Flight | Train; leg: Leg; now: DateTime.Utc; props: ActivityProps; window: Span}
+type RoundState = {activities: readonly Activity[]; devices: readonly Device[]; sent: readonly SentAlert[]}
 
 declare module 'effect/reactivity/Reactivity' {
 	interface Keys {
@@ -124,9 +125,9 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 			`
 		})
 		const listSent = SqlSchema.findAll({
-			Request: BookingId,
+			Request: Schema.Void,
 			Result: SentAlert,
-			execute: id => sql`SELECT * FROM ${sql(SentAlert.table)} WHERE bookingId = ${id} ORDER BY sentAt`
+			execute: () => sql`SELECT * FROM ${sql(SentAlert.table)} ORDER BY sentAt`
 		})
 		const recordSent = SqlSchema.void({
 			Request: Schema.NonEmptyArray(SentAlert.insert),
@@ -142,6 +143,13 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 
 		const asPushReadError = asPushError('The push state could not be read.')
 		const asPushSaveError = asPushError('The push state could not be saved.')
+		const roundState = Effect.gen(function* () {
+			return {
+				activities: yield* asPushReadError(listActivities()),
+				devices: yield* asPushReadError(listDevices()),
+				sent: yield* asPushReadError(listSent())
+			} satisfies RoundState
+		})
 		const listRequests = SqlSchema.findAll({
 			Request: Schema.Void,
 			Result: StartRequest,
@@ -173,7 +181,9 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 		// A refused start leaves the leg unstarted, so the next round tries again.
 		const launch = Effect.fnUntraced(function* (target: Device, showing: Showing) {
 			const started = yield* pushStart(target, showing)
-			if (Result.isFailure(started)) return
+			if (Result.isFailure(started)) {
+				return yield* PushError.make({cause: started.failure, message: 'Apple did not accept the Live Activity start.'})
+			}
 			yield* pipe(
 				startActivity({
 					bookingId: showing.journey.id,
@@ -190,25 +200,21 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 		})
 
 		const finish = Effect.fnUntraced(function* (activity: Activity, now: DateTime.Utc) {
-			const answer = yield* Effect.result(
-				apns.broadcast(
-					activity.bundle,
-					activity.channel,
-					{
-						'content-state': yield* contentState(activity.props),
-						'dismissal-date': seconds(DateTime.addDuration(now, Duration.minutes(10))),
-						event: 'end',
-						timestamp: seconds(now)
-					},
-					10,
-					now
-				)
+			const answer = yield* apns.broadcast(
+				activity.bundle,
+				activity.channel,
+				{
+					'content-state': yield* contentState(activity.props),
+					'dismissal-date': seconds(DateTime.addDuration(now, Duration.minutes(10))),
+					event: 'end',
+					timestamp: seconds(now)
+				},
+				10,
+				now
 			)
-			if (Result.isFailure(answer)) {
-				yield* Effect.logWarning('An activity was not ended', Cause.fail(answer.failure))
-				return
+			if (apnsRetryable(answer)) {
+				return yield* PushError.make({cause: answer, message: 'Apple did not accept the Live Activity end.'})
 			}
-			if (apnsRetryable(answer.success)) return
 			yield* apns.deleteChannel(activity.bundle, activity.channel)
 			yield* pipe(
 				activities.updateVoid({...editable(activity), endedAt: Option.some(now)}),
@@ -232,7 +238,9 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 				}),
 				now
 			)
-			if (apnsRetryable(answer)) return
+			if (apnsRetryable(answer)) {
+				return yield* PushError.make({cause: answer, message: 'Apple did not accept the Live Activity update.'})
+			}
 			// A refused channel means the activity is gone.
 			yield* pipe(
 				activities.updateVoid(
@@ -252,12 +260,13 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 			all: BookingList,
 			now: DateTime.Utc,
 			legs: readonly (Flight | Train)[],
-			requested: Option.Option<DateTime.Utc>
+			requested: Option.Option<DateTime.Utc>,
+			state: RoundState
 		) {
 			const showing = {journey, leg: window.leg, now, props: journeyProps(legs, all, now), window} satisfies Showing
 			// An activity that cannot cover the window ends, and the leg starts afresh.
-			yield* pipe(
-				yield* asPushReadError(listActivities()),
+			const ended = yield* pipe(
+				state.activities,
 				Array.filter(
 					activity =>
 						activity.bookingId === journey.id &&
@@ -265,22 +274,20 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 						Option.isNone(activity.endedAt) &&
 						!holds(activity, window)
 				),
-				Effect.forEach(activity => finish(activity, now), {concurrency: 1, discard: true})
+				Effect.forEach(activity => Effect.result(finish(activity, now)), {concurrency: 1})
 			)
-			yield* Effect.forEach(
-				showPlan(
-					yield* asPushReadError(listDevices()),
-					yield* asPushReadError(listActivities()),
-					journey,
-					window,
-					requested
-				),
+			const outcomes = yield* Effect.forEach(
+				showPlan(state.devices, state.activities, journey, window, requested),
 				action => {
-					if (ShowAction.guards.launch(action)) return launch(action.target, showing)
-					return refresh(action.target, showing.props, now)
+					if (ShowAction.guards.launch(action)) return Effect.result(launch(action.target, showing))
+					return Effect.result(refresh(action.target, showing.props, now))
 				},
-				{concurrency: 1, discard: true}
+				{concurrency: 1}
 			)
+			yield* Option.match(Array.head([...Array.getFailures(ended), ...Array.getFailures(outcomes)]), {
+				onNone: () => Effect.void,
+				onSome: Effect.fail
+			})
 		})
 
 		// A device whose token died leaves the list with its first failed alert.
@@ -301,18 +308,24 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 			return 'dead' as const
 		})
 
-		const announce = Effect.fnUntraced(function* (booking: Booking, now: DateTime.Utc) {
-			const sent = yield* asPushReadError(listSent(booking.id))
+		const announce = Effect.fnUntraced(function* (booking: Booking, now: DateTime.Utc, state: RoundState) {
+			const sent = Array.filter(state.sent, alert => alert.bookingId === booking.id)
 			const fresh = Array.filter(alertsOf(booking, now), alert => !announced(sent, alert))
 			if (Array.isReadonlyArrayEmpty(fresh)) return
-			const devices = Array.filter(yield* asPushReadError(listDevices()), device => device.kind === 'alert')
+			const devices = Array.filter(state.devices, device => device.kind === 'alert')
 			// An alert every device refused for now, such as a throttled one, is sent again next round.
 			const done = yield* Effect.filter(
 				fresh,
 				alert =>
 					pipe(
 						devices,
-						Effect.forEach(device => notify(device, alert, booking), {concurrency: 1}),
+						Effect.forEach(
+							device =>
+								Effect.catch(notify(device, alert, booking), cause =>
+									Effect.as(Effect.logWarning('An alert was not sent', Cause.fail(cause)), 'retry' as const)
+								),
+							{concurrency: 1}
+						),
 						Effect.map(
 							outcomes =>
 								!Array.isReadonlyArrayNonEmpty(outcomes) || !Array.every(outcomes, outcome => outcome === 'retry')
@@ -344,6 +357,7 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 				if (!apns.enabled) return
 				const now = yield* DateTime.now
 				const all = yield* bookings.list
+				const state = yield* roundState
 				const requests = yield* asPushReadError(listRequests())
 				const requestsById = Array.groupBy(requests, request => request.bookingId)
 				yield* Effect.forEach(
@@ -354,11 +368,19 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 						const requested = Option.map(Array.head(requestsById[booking.id] ?? []), request => request.at)
 						return Effect.ignore(
 							Effect.gen(function* () {
-								yield* Effect.forEach(journey, leg => announce(leg, now), {concurrency: 1, discard: true})
+								yield* Effect.forEach(
+									journey,
+									leg =>
+										Effect.ignore(announce(leg, now, state), {
+											log: 'Warn',
+											message: `The alerts of ${leg.id} were not sent`
+										}),
+									{concurrency: 1, discard: true}
+								)
 								if (Booking.isAnyOf(['stay'])(booking)) return
 								yield* Option.match(activeWindow(booking, now, legs, requested), {
 									onNone: () => Effect.void,
-									onSome: window => show(booking, window, all, now, legs, requested)
+									onSome: window => show(booking, window, all, now, legs, requested, state)
 								})
 							}),
 							{log: 'Warn', message: `The Live Activity of ${booking.id} was not updated`}
@@ -367,8 +389,8 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 					{concurrency: 1, discard: true}
 				)
 				yield* Effect.forEach(
-					expiredActivities(yield* asPushReadError(listActivities()), all, now, requests),
-					activity => finish(activity, now),
+					expiredActivities(state.activities, all, now, requests),
+					activity => Effect.ignore(finish(activity, now), {log: 'Warn', message: 'An activity was not ended'}),
 					{concurrency: 1, discard: true}
 				)
 				// Nothing reads an activity two days after it ended, or the alerts of a booking that left.
@@ -401,22 +423,38 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 			register: Effect.fn('Push.register')(function* (device: typeof Device.insert.Type) {
 				yield* pipe(saveDevice(device), Reactivity.mutation(['push']), asPushSaveError)
 			}, withReactivity),
-			start: Effect.fn('Push.start')(function* (id: BookingId) {
-				const journey = Array.findFirst(
-					journeysOf(yield* asPushError('The bookings could not be read.')(bookings.list)),
-					group => Array.some(group, leg => leg.id === id)
-				)
-				const now = yield* DateTime.now
-				const legs = pipe(
-					journey,
-					Option.toArray,
-					Array.flatten,
-					Array.filter((leg): leg is Flight | Train => !Booking.isAnyOf(['stay'])(leg))
-				)
-				if (!startable(legs, now)) return yield* PushError.make({message: 'This journey cannot be started now.'})
-				yield* asPushSaveError(recordRequest({at: now, bookingId: Option.getOrThrow(Array.head(legs)).id}))
-				yield* tick
-			}, withReactivity)
+			start: Effect.fn('Push.start')(
+				function* (id: BookingId) {
+					if (!apns.enabled) return yield* PushError.make({message: 'The server has no Apple push configuration.'})
+					const all = yield* asPushError('The bookings could not be read.')(bookings.list)
+					const journey = Array.findFirst(journeysOf(all), group => Array.some(group, leg => leg.id === id))
+					const now = yield* DateTime.now
+					const legs = pipe(
+						journey,
+						Option.toArray,
+						Array.flatten,
+						Array.filter((leg): leg is Flight | Train => !Booking.isAnyOf(['stay'])(leg))
+					)
+					if (!startable(legs, now)) return yield* PushError.make({message: 'This journey cannot be started now.'})
+					yield* asPushSaveError(recordRequest({at: now, bookingId: Option.getOrThrow(Array.head(legs)).id}))
+					const booking = Option.getOrThrow(Array.head(legs))
+					const window = yield* Option.match(activeWindow(booking, now, legs, Option.some(now)), {
+						onNone: () => PushError.make({message: 'This journey has no Live Activity window.'}),
+						onSome: Effect.succeed
+					})
+					const state = yield* roundState
+					if (
+						Array.isReadonlyArrayEmpty(showPlan(state.devices, state.activities, booking, window, Option.some(now)))
+					) {
+						return yield* PushError.make({message: 'No registered device can start this Live Activity.'})
+					}
+					yield* asPushError('The Live Activity could not be started.')(
+						show(booking, window, all, now, legs, Option.some(now), state)
+					)
+				},
+				Semaphore.withPermit(ticking),
+				withReactivity
+			)
 		}
 	})
 }) {

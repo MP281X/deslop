@@ -184,6 +184,7 @@ function Reading(props: {note: NoteItem}) {
 	)
 }
 
+// judge-ignore no-silent-fallback -- Detail displays authentication failures and NoteProblem displays body-load failures beside retained content.
 function FullBody(props: {note: NoteItem}) {
 	const full = useAtomSuspense(noteAtom(props.note), {includeFailure: true})
 	if (Option.exists(AsyncResult.error(full), Schema.is(AuthError))) return undefined
@@ -229,6 +230,7 @@ function NoteContent(props: {note: NoteItem}) {
 	)
 }
 
+// judge-ignore no-silent-fallback -- The toolbar's NoteProblem shows body-load failures with retry while this pane keeps the saved summary visible.
 function Detail(props: {note: NoteItem; onRetry: () => void; onTag: (tag: TagName) => void}) {
 	const full = useAtomValue(noteAtom(props.note))
 	const reload = useAtomRefresh(noteAtom(props.note))

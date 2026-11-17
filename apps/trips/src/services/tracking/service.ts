@@ -82,6 +82,8 @@ export class Tracking extends Context.Service<Tracking>()('@deslop/trips/service
 			)
 		)
 
+		// A flight holds its turn through the request and a six-second gap; trains never acquire it.
+		const flightTurns = yield* Semaphore.make(1)
 		const flight = Effect.fnUntraced(function* (booking: Flight, now: DateTime.Utc) {
 			const number = yield* asBookingsError('This flight number is invalid. Add its ticket again.')(
 				Schema.decodeEffect(TripNumber)(booking.number)
@@ -112,13 +114,14 @@ export class Tracking extends Context.Service<Tracking>()('@deslop/trips/service
 					}
 				),
 				client.execute,
+				Effect.ensuring(Effect.sleep('6 seconds')),
 				Effect.flatMap(HttpClientResponse.filterStatusOk),
 				Effect.flatMap(HttpClientResponse.schemaBodyJson(FaFlights)),
 				Effect.timeout('20 seconds'),
 				asBookingsError(`FlightAware did not answer for ${booking.airlineCode} ${booking.number}.`)
 			)
 			return Option.map(pickFlight(answer.flights, booking), found => flightTracking(found, now, booking.live))
-		})
+		}, Semaphore.withPermit(flightTurns))
 
 		function viaggiaTreno<S extends Schema.Top>(path: string, schema: S, booking: Train) {
 			return pipe(
@@ -150,7 +153,11 @@ export class Tracking extends Context.Service<Tracking>()('@deslop/trips/service
 				yield* viaggiaTreno(`cercaNumeroTreno/${number}`, VtRun, booking),
 				found =>
 					DateTime.isLessThanOrEqualTo(found.millisDataPartenza, booking.departs) &&
-					pipe(found.millisDataPartenza, DateTime.distance(booking.departs), Duration.isLessThan(Duration.hours(30)))
+					pipe(
+						found.millisDataPartenza,
+						DateTime.distance(booking.departs),
+						Duration.isLessThanOrEqualTo(Duration.days(1))
+					)
 			)
 			return yield* Option.match(run, {
 				onNone: () => Effect.succeedNone,
@@ -171,7 +178,6 @@ export class Tracking extends Context.Service<Tracking>()('@deslop/trips/service
 
 		const observe = Effect.fnUntraced(function* (booking: Booking, now: DateTime.Utc) {
 			if (Booking.isAnyOf(['stay'])(booking)) return
-			yield* Ref.update(attempts, Record.set(booking.id, now))
 			// A booking saved again meanwhile may name another service, so the answer replaces only the booking it was read for.
 			if (Booking.isAnyOf(['flight'])(booking)) {
 				return yield* Option.match(yield* flight(booking, now), {
@@ -193,20 +199,24 @@ export class Tracking extends Context.Service<Tracking>()('@deslop/trips/service
 			})
 		})
 
-		// One lookup at a time keeps within FlightAware's ten a minute and its monthly count exact; each is admitted again once its turn comes.
+		// Admission and its attempt timestamp are atomic; network waits do not hold up other bookings.
 		const turns = yield* Semaphore.make(1)
 		const check = Effect.fnUntraced(function* (
 			id: BookingId,
 			admits: (booking: Booking, now: DateTime.Utc, attempted: Option.Option<DateTime.Utc>) => boolean
 		) {
-			const now = yield* DateTime.now
-			const attempted = Record.get(yield* Ref.get(attempts), id)
-			yield* pipe(
-				yield* bookings.list,
-				Array.findFirst(item => item.id === id && admits(item, now, attempted)),
-				Option.match({onNone: () => Effect.void, onSome: booking => observe(booking, now)})
+			const admitted = yield* Semaphore.withPermit(
+				turns,
+				Effect.gen(function* () {
+					const now = yield* DateTime.now
+					const attempted = Record.get(yield* Ref.get(attempts), id)
+					const booking = Option.filter(yield* bookings.find(id), item => admits(item, now, attempted))
+					if (Option.isSome(booking)) yield* Ref.update(attempts, Record.set(id, now))
+					return Option.map(booking, item => ({booking: item, now}))
+				})
 			)
-		}, Semaphore.withPermit(turns))
+			yield* Option.match(admitted, {onNone: () => Effect.void, onSome: ready => observe(ready.booking, ready.now)})
+		})
 
 		yield* pipe(
 			Effect.gen(function* () {
@@ -222,7 +232,7 @@ export class Tracking extends Context.Service<Tracking>()('@deslop/trips/service
 								Effect.withSpan('Tracking.check', {attributes: {bookingId: booking.id}}),
 								Effect.ignore({log: 'Warn', message: `The live status of ${booking.id} was not read`})
 							),
-						{concurrency: 1, discard: true}
+						{concurrency: 'unbounded', discard: true}
 					)
 				)
 			}),

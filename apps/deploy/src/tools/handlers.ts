@@ -174,7 +174,10 @@ export const ToolHandlers = ToolContracts.toLayer(
 			}),
 			read_resource_history: Effect.fnUntraced(function* (input) {
 				const value = yield* Effect.all(
-					{machines: fleet.metrics({minutes: input.minutes}), snapshot: fleet.snapshot},
+					{
+						machines: Effect.andThen(fleet.metrics({minutes: input.minutes}), fleet.current({minutes: input.minutes})),
+						snapshot: fleet.snapshot
+					},
 					{concurrency: 'unbounded'}
 				)
 				yield* checkWorker(value.snapshot, input.worker)

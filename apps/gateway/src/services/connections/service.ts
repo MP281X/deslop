@@ -152,7 +152,8 @@ export class Connections extends Context.Service<
 	static readonly make = Effect.gen(function* () {
 		const sql = yield* SqlClient.SqlClient
 		// Writes tell this Reactivity of their commits, so callers need none of their own.
-		const withReactivity = Effect.provideService(Reactivity.Reactivity, yield* Reactivity.Reactivity)
+		const reactivity = yield* Reactivity.Reactivity
+		const withReactivity = Effect.provideService(Reactivity.Reactivity, reactivity)
 		const origin = yield* gatewayUrl
 		const callback = `${origin}/oauth/callback`
 		const clientInfo = clientMetadata(origin)
@@ -282,10 +283,14 @@ export class Connections extends Context.Service<
 				Effect.flatMap(
 					Option.match({
 						onNone: () => Effect.void,
-						onSome: found => connections.updateVoid({...editable(found), ...patch(found)})
+						onSome: found => {
+							const before = editable(found)
+							const after = {...before, ...patch(found)}
+							if (Schema.toEquivalence(Connection.update)(before, after)) return Effect.void
+							return Reactivity.mutation(connections.updateVoid(after), ['connections'])
+						}
 					})
 				),
-				Reactivity.mutation(['connections']),
 				sql.withTransaction,
 				withReactivity,
 				asStorageAuthError
@@ -499,7 +504,7 @@ export class Connections extends Context.Service<
 			const message = describe(cause)
 			yield* change(connection.id, connection.generation, () => ({error: Option.some(message)}))
 			if (Schema.is(AuthError)(cause)) return yield* cause
-			return yield* AuthError.make({cause, error: 'temporarily_unavailable', message})
+			return yield* AuthError.make({cause, message})
 		})
 
 		return Connections.of({
@@ -771,15 +776,12 @@ export class Connections extends Context.Service<
 				asAuthError('Cannot refresh this MCP; reconnect it from the MCP page')
 			),
 			usage: period =>
-				Stream.withSpan(
-					usageWindow(period, range =>
-						Stream.mapError(
-							sql.reactive(['connectionCalls'], listCalls(range)),
-							connectionFailure('MCP storage failed')
-						)
+				pipe(
+					usageWindow(period, ['connectionCalls'], range =>
+						Effect.mapError(listCalls(range), connectionFailure('MCP storage failed'))
 					),
-					'Connections.usage',
-					{attributes: {period, 'rpc.stream': true}}
+					Stream.provideService(Reactivity.Reactivity, reactivity),
+					Stream.withSpan('Connections.usage', {attributes: {period, 'rpc.stream': true}})
 				),
 			// The list is read again after each change and once a minute, so an expired provider shows as expired.
 			watch: user =>

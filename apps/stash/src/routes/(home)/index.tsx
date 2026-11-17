@@ -215,6 +215,7 @@ function FilterMenu(props: {kind?: Kind; onKind: (kind?: Kind) => void}) {
 	)
 }
 
+// judge-ignore no-silent-fallback -- HomeRoute shows Search unavailable with retry for outages; denied searches render FailureContent instead of cached notes.
 function Notes(props: {kind?: Kind; onOpen: (id: Note['id']) => void; onTag: (name?: TagName) => void; tag?: TagName}) {
 	const regenerate = useAtomSet(regenerateAtom)
 	const paste = useAtomSet(clipboard.atom.send)

@@ -208,7 +208,7 @@ function flightInterval(flight: Flight, now: DateTime.Utc) {
 	return Option.some(Duration.minutes(5))
 }
 
-// ViaggiaTreno lists only the day's runs and assigns platforms in the last hour.
+// Poll today's runs from six hours ahead, every minute in the last ninety minutes for platform changes.
 function trainInterval(train: Train, now: DateTime.Utc) {
 	if (train.status === 'cancelled' || Option.exists(train.live, live => live.state === 'arrived')) {
 		return Option.none<Duration.Duration>()
