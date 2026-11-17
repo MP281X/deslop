@@ -619,60 +619,62 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 			cutoff: Span.fields.start,
 			settledBefore: Span.fields.start
 		})
-		const listOverview = SqlSchema.findAll({
+		const listOperationCounts = SqlSchema.findAll({
 			Request: OverviewRange,
-			Result: Schema.Struct({
-				...CountedOperation.fields,
-				...Struct.pick(OperationTrace.fields, ['id', 'duration', 'start']),
-				...TraceDetail.fields,
-				firstArrival: Schema.Int
-			}),
+			Result: CountedOperation,
 			execute: query => sql`
 				WITH senders AS MATERIALIZED (
 					SELECT root.id, root.runtime, apps.value AS app
 					FROM resources AS root JOIN json_each(${query.apps}) AS apps ON apps.key = root.service
-				), sample AS MATERIALIZED (
+				), sample AS (
 					SELECT traces.id AS arrival, traces.start, traces.duration,
 						senders.app, senders.runtime, traces.name, traces.broken IS NOT NULL AS failed
 					FROM traces JOIN senders ON senders.id = traces.resource
 					WHERE ${operationTrace} AND traces.start >= ${query.cutoff}
 					AND (traces.rooted OR traces.start < ${query.settledBefore})
-				), counts AS (
-					SELECT app, runtime, name, count(*) AS count, sum(failed) AS failures, max(start) AS latest,
-						min(start) AS first, min(arrival) AS firstArrival, ${percentiles}
-					FROM sample GROUP BY app, runtime, name
-				), ranked AS (
-					SELECT *,
-						ROW_NUMBER() OVER (
-							PARTITION BY app, runtime, name
-							ORDER BY start DESC, arrival DESC
-						) AS newestRank,
-						ROW_NUMBER() OVER (
-							PARTITION BY app, runtime, name
-							ORDER BY duration DESC, start, arrival
-						) AS slowestRank
-					FROM sample
-				), failures AS (
-					SELECT arrival, ROW_NUMBER() OVER (
-						PARTITION BY app, runtime, name ORDER BY start DESC, duration DESC, arrival
-					) AS failureRank FROM sample WHERE failed
-				), candidates AS (
-					SELECT ranked.*, failures.failureRank, ROW_NUMBER() OVER (
-						PARTITION BY app, runtime, name
-						ORDER BY (failed AND failureRank <= 10) DESC, (newestRank <= 5) DESC, duration DESC, start, arrival
-					) AS keptRank
-					FROM ranked LEFT JOIN failures USING(arrival)
-					WHERE failureRank <= 10 OR newestRank <= 5 OR slowestRank <= 20
 				)
-				SELECT counts.*, lower(hex(traces.traceId)) AS id, candidates.duration, candidates.start,
-					traces.label, broken.name AS broken, broken.error, broken.exception
-				FROM candidates JOIN counts USING(app, runtime, name)
-				JOIN traces ON traces.id = candidates.arrival
-				LEFT JOIN spans AS broken ON broken.trace = traces.id AND broken.span = traces.broken
-				WHERE keptRank <= 20
-				ORDER BY counts.first, counts.firstArrival, candidates.duration DESC,
-					(candidates.failed AND candidates.failureRank <= 10) DESC, candidates.start, candidates.arrival
+				SELECT app, runtime, name, count(*) AS count, sum(failed) AS failures, max(start) AS latest, ${percentiles}
+				FROM sample GROUP BY app, runtime, name ORDER BY min(start), min(arrival)
 			`
+		})
+		const listKeptTraces = SqlSchema.findAll({
+			Request: Schema.Struct({
+				...Struct.pick(OverviewRange.fields, ['cutoff', 'settledBefore']),
+				...Struct.pick(CountedOperation.fields, ['runtime', 'name']),
+				services: Schema.Array(ServiceName)
+			}),
+			Result: Schema.Struct({
+				...Struct.pick(OperationTrace.fields, ['id', 'duration', 'start']),
+				...TraceDetail.fields
+			}),
+			execute: query => {
+				const columns = sql`traces.id AS arrival, traces.start, traces.duration`
+				const where = sql`${operationTrace} AND traces.name = ${query.name}
+					AND root.service IN ${sql.in(query.services)} AND root.runtime = ${query.runtime}
+					AND traces.start >= ${query.cutoff} AND (traces.rooted OR traces.start < ${query.settledBefore})`
+				return sql`
+					WITH failures AS (
+						SELECT ${columns} ${traceFrom} WHERE ${where} AND traces.broken IS NOT NULL
+						ORDER BY traces.start DESC, traces.duration DESC, traces.id LIMIT 10
+					), newest AS (
+						SELECT ${columns} ${traceFrom} WHERE ${where}
+						ORDER BY traces.start DESC, traces.id DESC LIMIT 5
+					), slowest AS (
+						SELECT ${columns} ${traceFrom} WHERE ${where}
+						ORDER BY traces.duration DESC, traces.start, traces.id LIMIT 20
+					), candidates AS (
+						SELECT * FROM failures UNION SELECT * FROM newest UNION SELECT * FROM slowest
+					), kept AS (
+						SELECT * FROM candidates ORDER BY arrival IN (SELECT arrival FROM failures) DESC,
+							arrival IN (SELECT arrival FROM newest) DESC, duration DESC, start, arrival LIMIT 20
+					)
+					SELECT lower(hex(traces.traceId)) AS id, kept.start, kept.duration,
+						traces.label, broken.name AS broken, broken.error, broken.exception
+					FROM kept JOIN traces ON traces.id = kept.arrival
+					LEFT JOIN spans AS broken ON broken.trace = traces.id AND broken.span = traces.broken
+					ORDER BY kept.duration DESC, kept.arrival IN (SELECT arrival FROM failures) DESC, kept.start, kept.arrival
+				`
+			}
 		})
 		const listRetainedServices = SqlSchema.findAll({
 			Request: Span.fields.start,
@@ -819,20 +821,20 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 			const now = yield* DateTime.now
 			const settledBefore = DateTime.subtractDuration(now, Duration.minutes(1))
 			const services = yield* listRetainedServices(settledBefore)
-			return overviewOf(
-				Array.map(
-					Record.values(
-						Array.groupBy(
-							yield* listOverview({
-								apps: Record.fromIterableWith(services, row => [row.service, appName(row.service)]),
-								cutoff: rangeStart(range, now),
-								settledBefore
-							}),
-							row => `${row.firstArrival}`
-						)
-					),
-					traces => ({
-						...Struct.pick(Array.headNonEmpty(traces), Struct.keys(CountedOperation.fields)),
+			const apps = Record.fromIterableWith(services, row => [row.service, appName(row.service)])
+			const query = {apps, cutoff: rangeStart(range, now), settledBefore}
+			const operations = yield* Effect.forEach(
+				yield* listOperationCounts(query),
+				Effect.fnUntraced(function* (operation) {
+					const traces = yield* listKeptTraces({
+						...query,
+						...operation,
+						services: Record.keys(Record.filter(apps, app => app === operation.app))
+					})
+					// Retention may remove this operation after the counts were read.
+					if (!Array.isReadonlyArrayNonEmpty(traces)) return Option.none()
+					return Option.some({
+						...operation,
 						traces: Array.map(traces, row => ({
 							duration: row.duration,
 							failure: Option.map(row.broken, span => ({error: diagnosis(row), span})),
@@ -841,9 +843,10 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 							start: row.start
 						}))
 					})
-				),
-				services
+				}),
+				{concurrency: 1}
 			)
+			return overviewOf(Array.getSomes(operations), services)
 		})
 		// Cache lookups may run in an RPC's scope; shared sources belong to this service instead.
 		const serviceScope = yield* Effect.scope
@@ -1399,6 +1402,9 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 					yield* sql`CREATE TRIGGER spans_counted AFTER INSERT ON spans BEGIN
 						UPDATE traces SET spans = spans + 1 WHERE id = new.trace;
 					END`
+				}),
+				'0005_overview_newest': Effect.gen(function* () {
+					yield* (yield* SqlClient.SqlClient)`CREATE INDEX traces_by_operation_start ON traces (name, start DESC, id DESC) WHERE NOT waits`
 				})
 			}),
 			table: 'telemetry_migrations'
