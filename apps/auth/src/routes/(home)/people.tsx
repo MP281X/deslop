@@ -11,6 +11,7 @@ import type {ReactNode} from 'react'
 import {ResultError} from '@deslop/components-web/blocks/result-error'
 import {LoadingRows, RowLead} from '@deslop/components-web/blocks/rows'
 import {Loaded} from '@deslop/components-web/blocks/states'
+import {preload} from '@deslop/components-web/lib/router'
 import {AccountAvatar} from '@deslop/components-web/shell/app-bar'
 import {Button} from '@deslop/components-web/ui/button'
 import {Empty, EmptyHeader, EmptyMedia, EmptyTitle} from '@deslop/components-web/ui/empty'
@@ -131,4 +132,7 @@ function PeopleRoute() {
 	)
 }
 
-export const Route = createFileRoute('/(home)/people')({component: PeopleRoute})
+export const Route = createFileRoute('/(home)/people')({
+	component: PeopleRoute,
+	loader: load => preload(load.context, [peopleAtom])
+})

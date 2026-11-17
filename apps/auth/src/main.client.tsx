@@ -1,14 +1,10 @@
-import {defaultStringifySearch} from '@tanstack/react-router'
-
 import {mountRouter} from '@deslop/components-web/lib/router'
-import {searchSerializerOf} from '@deslop/runtime/web/search'
 
 import {routeTree} from './routeTree.gen.ts'
 
 import {Search} from '#lib/auth.ts'
 
-const router = mountRouter(routeTree)
-router.update({...router.options, stringifySearch: searchSerializerOf(Search, defaultStringifySearch)})
+const router = mountRouter(routeTree, Search)
 
 declare module '@tanstack/react-router' {
 	interface Register {

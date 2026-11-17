@@ -13,6 +13,8 @@
 		<link rel="icon" href="/src/routes/icon.svg" />
 		<link rel="apple-touch-icon" href="/apple-touch-icon.png" />
 		<link rel="manifest" href="/manifest.webmanifest" />
+		<!-- Requested with the page, so the reads waiting on them never add a round trip. -->
+		<link rel="preload" href="/api/runtime" as="fetch" crossorigin />
 
 		<title>Auth</title>
 	</head>

@@ -5,6 +5,7 @@ import {Boolean, Function, Option, Schema} from 'effect'
 import {Link, Outlet, createFileRoute, useMatchRoute} from '@tanstack/react-router'
 import {Suspense} from 'react'
 
+import {preload} from '@deslop/components-web/lib/router'
 import {AppBar, AppBarTab, AppBarTabs} from '@deslop/components-web/shell/app-bar'
 import {Page} from '@deslop/components-web/shell/page'
 
@@ -62,5 +63,6 @@ function ShellRoute() {
 }
 export const Route = createFileRoute('/(home)')({
 	component: ShellRoute,
+	loader: load => preload(load.context, [accountAtom]),
 	validateSearch: Schema.toStandardSchemaV1(Search)
 })

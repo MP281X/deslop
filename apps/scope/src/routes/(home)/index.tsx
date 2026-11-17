@@ -22,6 +22,7 @@ import {ChoiceRow, LoadingRows, RowLead} from '@deslop/components-web/blocks/row
 import {Loaded, ReadFailure} from '@deslop/components-web/blocks/states'
 import {StatusDot} from '@deslop/components-web/blocks/status-dot'
 import {mediaQueryAtom} from '@deslop/components-web/lib/media'
+import {preload} from '@deslop/components-web/lib/router'
 import {cn} from '@deslop/components-web/lib/utils'
 import {AppBarTab, AppBar, AppBarChoice, AppBarTabs, AppBarTabsSkeleton} from '@deslop/components-web/shell/app-bar'
 import {Workspace} from '@deslop/components-web/shell/workspace'
@@ -719,6 +720,17 @@ function HomeRoute() {
 }
 
 export const Route = createFileRoute('/(home)/')({
+	// Ahead of the loader: TypeScript types `load.deps` from the keys before it.
+	loaderDeps: location => ({
+		range: Option.getOrElse(location.search.range, Function.constant('24h' as const)),
+		trace: Option.getOrUndefined(location.search.trace)
+	}),
+
 	component: HomeRoute,
+	loader: load =>
+		preload(load.context, [
+			overviewAtom(load.deps.range),
+			...Array.map(Option.toArray(Option.fromUndefinedOr(load.deps.trace)), traceAtom)
+		]),
 	validateSearch: Schema.toStandardSchemaV1(Search)
 })

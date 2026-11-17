@@ -13,6 +13,7 @@ import {LoadingRows} from '@deslop/components-web/blocks/rows'
 import {Loaded, ReadFailure} from '@deslop/components-web/blocks/states'
 import {StatusDot} from '@deslop/components-web/blocks/status-dot'
 import {mediaQueryAtom} from '@deslop/components-web/lib/media'
+import {preload} from '@deslop/components-web/lib/router'
 import {AppBarTab, AppBar, AppBarChoice, AppBarTabs} from '@deslop/components-web/shell/app-bar'
 import {Workspace} from '@deslop/components-web/shell/workspace'
 import {Empty, EmptyHeader, EmptyMedia, EmptyTitle} from '@deslop/components-web/ui/empty'
@@ -511,6 +512,12 @@ function HomeRoute() {
 }
 
 export const Route = createFileRoute('/(home)/')({
+	// Ahead of the loader: TypeScript types `load.deps` from the keys before it.
+	loaderDeps: location => ({
+		minutes: Duration.toMinutes(Option.getOrElse(location.search.range, () => Duration.minutes(1440)))
+	}),
+
 	component: HomeRoute,
+	loader: load => preload(load.context, [inventoryAtom, metricsAtom(Duration.minutes(load.deps.minutes))]),
 	validateSearch: Schema.toStandardSchemaV1(Search)
 })
