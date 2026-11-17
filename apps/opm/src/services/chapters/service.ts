@@ -457,17 +457,9 @@ export class Chapters extends Context.Service<Chapters>()('@deslop/opm/services/
 	// The tables this service owns, made and changed at start in one transaction; one statement per `sql` call, since SQLite runs only the first statement of a string.
 	static readonly migrations = Layer.provide(
 		Layer.effectDiscard(
-			Migrator.make({})({
-				loader: Migrator.fromRecord(readingMigrations),
-				table: 'reading_migrations'
-			})
+			Migrator.make({})({loader: Migrator.fromRecord(readingMigrations), table: 'reading_migrations'})
 		),
-		Layer.effectDiscard(
-			Migrator.make({})({
-				loader: Migrator.fromRecord(migrations),
-				table: 'chapters_migrations'
-			})
-		)
+		Layer.effectDiscard(Migrator.make({})({loader: Migrator.fromRecord(migrations), table: 'chapters_migrations'}))
 	)
 
 	static readonly layer = pipe(Layer.effect(this, this.make), Layer.provide(Push.layer), Layer.provide(this.migrations))

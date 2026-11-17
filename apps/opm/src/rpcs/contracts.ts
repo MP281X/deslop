@@ -6,13 +6,13 @@ import {Device} from '@deslop/runtime/shared/apns'
 import {RpcAuth} from '@deslop/runtime/shared/auth'
 
 import {ChaptersError, ChaptersEvent, ReadingError, ReadingPosition} from '#services/chapters/schema.ts'
-import {ChapterBundle, PushError} from '#services/push/schema.ts'
+import {ChapterBundle, ChapterPushError} from '#services/push/schema.ts'
 
 export class RpcContracts extends RpcGroup.make(
 	Rpc.make('chapters.events', {error: ChaptersError, stream: true, success: ChaptersEvent}),
 	Rpc.make('chapters.write', {error: ReadingError, payload: ReadingPosition.json}),
 	Rpc.make('push.register', {
-		error: PushError,
+		error: ChapterPushError,
 		payload: Device.insert.mapFields(fields => ({...fields, bundle: ChapterBundle, kind: Schema.Literal('alert')}))
 	})
 ).middleware(RpcAuth) {}

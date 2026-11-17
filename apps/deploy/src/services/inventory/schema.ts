@@ -219,7 +219,7 @@ const Peer = Schema.Struct({
 	TailscaleIPs: Schema.Array(Schema.String)
 })
 
-export const Tailnet = Schema.Struct({
+export const TailnetStatus = Schema.Struct({
 	Peer: Schema.OptionFromOptionalKey(Schema.Record(Schema.String, Peer)),
 	Self: Schema.OptionFromOptionalKey(Peer)
 })

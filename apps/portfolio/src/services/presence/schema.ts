@@ -29,8 +29,8 @@ export const Scene = Schema.Struct({bots: Visitors, visitors: Visitors})
 const Guest = Visitor.mapFields(fields => ({...fields, id: fields.id.check(Schema.isPattern(/^(?!server-)/u))}))
 
 export type JoinVisitor = typeof JoinVisitor.Type
-const JoinVisitor = Schema.Struct(Struct.pick(Guest.fields, ['color', 'id', 'name']))
+export const JoinVisitor = Schema.Struct(Struct.pick(Guest.fields, ['color', 'id', 'name']))
 export type MoveVisitor = typeof MoveVisitor.Type
-const MoveVisitor = Schema.Struct(Struct.pick(Guest.fields, ['id', 'x', 'y']))
+export const MoveVisitor = Schema.Struct(Struct.pick(Guest.fields, ['id', 'x', 'y']))
 export type RecolorVisitor = typeof RecolorVisitor.Type
-const RecolorVisitor = Schema.Struct(Struct.pick(Guest.fields, ['color', 'id']))
+export const RecolorVisitor = Schema.Struct(Struct.pick(Guest.fields, ['color', 'id']))

@@ -10,10 +10,10 @@ import {ApnsAnswer, Device} from '@deslop/runtime/shared/apns'
 import {keyOf, SERIES_NAMES} from '#services/chapters/lib/utils.ts'
 import {ChapterIdentity} from '#services/chapters/schema.ts'
 import type {Chapter} from '#services/chapters/schema.ts'
-import {ChapterDelivery, PushError} from '#services/push/schema.ts'
+import {ChapterDelivery, ChapterPushError} from '#services/push/schema.ts'
 
 function asPushError(message: string) {
-	return Effect.mapError((cause: SqlError.SqlError | Schema.SchemaError) => PushError.make({cause, message}))
+	return Effect.mapError((cause: SqlError.SqlError | Schema.SchemaError) => ChapterPushError.make({cause, message}))
 }
 
 export class Push extends Context.Service<Push>()('@deslop/opm/services/push/service/Push', {

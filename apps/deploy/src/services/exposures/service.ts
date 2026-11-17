@@ -31,7 +31,7 @@ import {migrations} from './migrations.ts'
 import {Exposure} from '#services/exposures/schema.ts'
 import type {ExposeInput} from '#services/exposures/schema.ts'
 import type {ExposureName} from '#services/inventory/schema.ts'
-import {DeployError, InventoryItem, ItemId, Serve, Tailnet, WorkerId} from '#services/inventory/schema.ts'
+import {DeployError, InventoryItem, ItemId, Serve, TailnetStatus, WorkerId} from '#services/inventory/schema.ts'
 
 // A stop waits at most ten seconds for open connections such as WebSockets, never forever.
 function caddyConfig(rows: readonly Exposure[], storage: string) {
@@ -134,7 +134,7 @@ export class Exposures extends Context.Service<Exposures>()('@deslop/deploy/serv
 			}
 			const tailnet = yield* Effect.flatMap(
 				run('tailscale', ['status', '--json']),
-				Schema.decodeEffect(Schema.fromJsonString(Tailnet))
+				Schema.decodeEffect(Schema.fromJsonString(TailnetStatus))
 			)
 			if (!Option.exists(tailnet.Self, self => String.replace(/\.$/u, '')(self.DNSName) === input.hostname)) {
 				return yield* DeployError.make({

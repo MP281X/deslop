@@ -6,10 +6,9 @@ import {ApnsToken} from '@deslop/runtime/shared/apns'
 
 import {ChapterIdentity} from '#services/chapters/schema.ts'
 
-export type ChapterBundle = typeof ChapterBundle.Type
 export const ChapterBundle = Schema.Literals(['xyz.mp281x.opm', 'xyz.mp281x.opm.dev'])
 
-export class PushError extends Schema.TaggedError<PushError>()('PushError', {
+export class ChapterPushError extends Schema.TaggedError<ChapterPushError>()('PushError', {
 	cause: Schema.optional(Schema.Defect()),
 	message: Schema.String
 }) {}
