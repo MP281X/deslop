@@ -190,6 +190,25 @@ function customCodes(output: OxlintOutput) {
 describe('deslop Oxlint plugin', {concurrent: true}, () => {
 	it.layer(NodeServices.layer)(testApi => {
 		testApi.effect(
+			'requires judge ignores to name a question in the registry',
+			// judge-ignore no-internals-test -- The rule's observable answer is its lint diagnostic at each supplied source line; the fixture calls the public lint command.
+			Effect.fnUntraced(function* () {
+				const result = yield* lintSource({
+					'ignores.ts': Array.join(
+						[
+							'// judge-ignore unknown-question -- This is not a registered question. // reported',
+							'export function title(value: string) { return value }',
+							'// judge-ignore no-silent-fallback -- Absence is a valid outcome.',
+							'export function label(value: string) { return value }'
+						],
+						'\n'
+					)
+				})
+				const lines = reportedLines(result, 'no-unexplained-disable')
+				assert.deepStrictEqual(lines.reported, lines.marked)
+			})
+		)
+		testApi.effect(
 			'keeps every accepted example and automatic fix clean under the whole preset at a fixed point',
 			Effect.fnUntraced(function* () {
 				const examples = yield* Effect.forEach(
@@ -779,7 +798,7 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 							'// Then it checks the value.',
 							'/* Explains the next line\n   across two lines */',
 							'// Compares the raw state.',
-							'// judge-ignore no-repeated-search -- this input keeps its reason',
+							'// judge-ignore no-silent-fallback -- this input keeps its reason',
 							'// oxlint-disable-next-line eqeqeq',
 							'const loose = source == "ready"',
 							'// oxlint-disable-next-line sort-keys -- this input keeps its order',
@@ -855,11 +874,6 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 							'@deslop/coding-standards(no-unexplained-disable)',
 							'@deslop/coding-standards(no-unexplained-disable)',
 							'@deslop/coding-standards(no-unvalidated-json-decode)',
-							'@deslop/coding-standards(schema-type-pair)',
-							'@deslop/coding-standards(schema-type-pair)',
-							'@deslop/coding-standards(schema-type-pair)',
-							'@deslop/coding-standards(schema-type-pair)',
-							'@deslop/coding-standards(schema-type-pair)',
 							'@deslop/coding-standards(schema-type-pair)',
 							'@deslop/coding-standards(schema-type-pair)'
 						],
@@ -1435,7 +1449,6 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 							"if (loaded === undefined) throw new Error('missing')",
 							'export const size = () => loaded.length',
 							'export const frozen: readonly string[] = []',
-							'export type Label = typeof Label.Type',
 							'export const Label = Schema.String',
 							'export function shadowed(Label: typeof Schema.Number) {',
 							'	const parsed: typeof Label.Type = 1',
@@ -2166,10 +2179,8 @@ export function decode(input: unknown) { return Schema.decodeUnknownOption(State
 							'	const [size] = useState(1)',
 							'	return <div ref={element} data-size={size} data-handler={handler} data-both={both} />',
 							'}',
-							'export type User = typeof User.Type',
 							"// The user's record.",
 							'export const User = Schema.Struct({name: Schema.String})',
-							'type Local = typeof Local.Type',
 							'const Local = Schema.Struct({id: Schema.String})',
 							'export const locals = [Local]',
 							'export const present = Predicate.isNotNullish(loose)',
@@ -2251,8 +2262,6 @@ export function decode(input: unknown) { return Schema.decodeUnknownOption(State
 					'@deslop/coding-standards(library-operation)',
 					'@deslop/coding-standards(library-operation)',
 					'@deslop/coding-standards(library-operation)',
-					'@deslop/coding-standards(schema-type-pair)',
-					'@deslop/coding-standards(schema-type-pair)',
 					'@deslop/coding-standards(schema-type-pair)'
 				])
 			})
@@ -2859,7 +2868,9 @@ export type Unknown = 'ready' | unknown`
 							'export const spaced = [listRowInsets({leading: space[4]}), lineSpacing(space[1])]',
 							"export const themed = [padding({all: space[4]}), frame({height: 64}), font({textStyle: 'body'}), foregroundStyle(colors.foreground)]",
 							'export function Spaced() { return <VStack spacing={12} /> } // reported',
-							'export function Tight() { return <VStack spacing={0} /> }'
+							'export function Tight() { return <VStack spacing={0} /> }',
+							'export function Widget() { "widget"; return <VStack spacing={12} modifiers={[padding({all: 16}), font({size: 15})]} /> }',
+							'export const widget = () => { "widget"; function nested() { return padding({all: 16}) }; return <VStack spacing={12} modifiers={[nested()]} /> }'
 						],
 						'\n'
 					),

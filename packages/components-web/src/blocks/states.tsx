@@ -31,8 +31,7 @@ function SignInRedirect(props: {href: string}) {
 	return null
 }
 
-// fallow-ignore-next-line unused-export -- a denial is only the lock, with nothing to retry; the tests render it directly.
-export function AccessDenied() {
+function AccessDenied() {
 	return (
 		<Empty role="status">
 			<EmptyHeader>

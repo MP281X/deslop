@@ -207,8 +207,8 @@ importers:
         specifier: latest
         version: 7.0.2007
       scheduler:
-        specifier: ^0.27.0
-        version: 0.27.0
+        specifier: latest
+        version: 0.28.0
       tsrs:
         specifier: 0.25.0-ts7.1.0-beta
         version: 0.25.0-ts7.1.0-beta
@@ -232,7 +232,7 @@ importers:
         version: link:../../packages/runtime
       '@effect/atom-react':
         specifier: latest
-        version: 4.1.4(effect@4.1.4)(react@19.3.1)(scheduler@0.27.0)
+        version: 4.1.4(effect@4.1.4)(react@19.3.1)(scheduler@0.28.0)
       '@effect/platform-node':
         specifier: latest
         version: 4.1.4(effect@4.1.4)(redis@6.3.1)
@@ -262,7 +262,7 @@ importers:
         version: link:../../packages/runtime
       '@effect/atom-react':
         specifier: latest
-        version: 4.1.4(effect@4.1.4)(react@19.3.1)(scheduler@0.27.0)
+        version: 4.1.4(effect@4.1.4)(react@19.3.1)(scheduler@0.28.0)
       '@effect/platform-node':
         specifier: latest
         version: 4.1.4(effect@4.1.4)(redis@6.3.1)
@@ -295,7 +295,7 @@ importers:
         version: link:../../packages/runtime
       '@effect/atom-react':
         specifier: latest
-        version: 4.1.4(effect@4.1.4)(react@19.3.1)(scheduler@0.27.0)
+        version: 4.1.4(effect@4.1.4)(react@19.3.1)(scheduler@0.28.0)
       '@effect/platform-node':
         specifier: latest
         version: 4.1.4(effect@4.1.4)(redis@6.3.1)
@@ -313,7 +313,7 @@ importers:
         version: 0.46.0(effect@4.1.4)
       '@typeonce/effect-machine-react':
         specifier: latest
-        version: 0.46.0(@effect/atom-react@4.1.4(effect@4.1.4)(react@19.3.1)(scheduler@0.27.0))(effect@4.1.4)(react@19.3.1)(scheduler@0.27.0)
+        version: 0.46.0(@effect/atom-react@4.1.4(effect@4.1.4)(react@19.3.1)(scheduler@0.28.0))(effect@4.1.4)(react@19.3.1)(scheduler@0.28.0)
       effect:
         specifier: latest
         version: 4.1.4
@@ -347,7 +347,7 @@ importers:
         version: link:../../packages/runtime
       '@effect/atom-react':
         specifier: latest
-        version: 4.1.4(effect@4.1.4)(react@19.3.1)(scheduler@0.27.0)
+        version: 4.1.4(effect@4.1.4)(react@19.3.1)(scheduler@0.28.0)
       '@effect/platform-node':
         specifier: latest
         version: 4.1.4(effect@4.1.4)(redis@6.3.1)
@@ -386,7 +386,7 @@ importers:
         version: link:../../packages/runtime
       '@effect/atom-react':
         specifier: latest
-        version: 4.1.4(effect@4.1.4)(react@19.3.1)(scheduler@0.27.0)
+        version: 4.1.4(effect@4.1.4)(react@19.3.1)(scheduler@0.28.0)
       '@fontsource-variable/geist':
         specifier: latest
         version: 5.3.0
@@ -425,7 +425,7 @@ importers:
         version: link:../../packages/runtime
       '@effect/atom-react':
         specifier: latest
-        version: 4.1.4(effect@4.1.4)(react@19.3.1)(scheduler@0.27.0)
+        version: 4.1.4(effect@4.1.4)(react@19.3.1)(scheduler@0.28.0)
       '@effect/platform-node':
         specifier: latest
         version: 4.1.4(effect@4.1.4)(redis@6.3.1)
@@ -471,7 +471,7 @@ importers:
         version: link:../../packages/runtime
       '@effect/atom-react':
         specifier: latest
-        version: 4.1.4(effect@4.1.4)(react@19.3.1)(scheduler@0.27.0)
+        version: 4.1.4(effect@4.1.4)(react@19.3.1)(scheduler@0.28.0)
       '@effect/platform-node':
         specifier: latest
         version: 4.1.4(effect@4.1.4)(redis@6.3.1)
@@ -532,7 +532,7 @@ importers:
         version: link:../../packages/runtime
       '@effect/atom-react':
         specifier: latest
-        version: 4.1.4(effect@4.1.4)(react@19.3.1)(scheduler@0.27.0)
+        version: 4.1.4(effect@4.1.4)(react@19.3.1)(scheduler@0.28.0)
       '@expo/ui':
         specifier: ^58.0.29
         version: 58.0.29(@babel/core@7.29.13(supports-color@8.1.1))(expo@58.0.26)(react-dom@19.3.1(react@19.3.1))(react-native@0.88.1(@babel/core@7.29.13(supports-color@8.1.1))(@types/react@19.3.0)(react@19.3.1)(supports-color@8.1.1))(react@19.3.1)
@@ -541,7 +541,7 @@ importers:
         version: 0.46.0(effect@4.1.4)
       '@typeonce/effect-machine-react':
         specifier: latest
-        version: 0.46.0(@effect/atom-react@4.1.4(effect@4.1.4)(react@19.3.1)(scheduler@0.27.0))(effect@4.1.4)(react@19.3.1)(scheduler@0.27.0)
+        version: 0.46.0(@effect/atom-react@4.1.4(effect@4.1.4)(react@19.3.1)(scheduler@0.28.0))(effect@4.1.4)(react@19.3.1)(scheduler@0.28.0)
       effect:
         specifier: latest
         version: 4.1.4
@@ -583,7 +583,7 @@ importers:
         version: link:../runtime
       '@effect/atom-react':
         specifier: latest
-        version: 4.1.4(effect@4.1.4)(react@19.3.1)(scheduler@0.27.0)
+        version: 4.1.4(effect@4.1.4)(react@19.3.1)(scheduler@0.28.0)
       '@expo/ui':
         specifier: ^58.0.29
         version: 58.0.29(@babel/core@7.29.13(supports-color@8.1.1))(expo@58.0.26)(react-dom@19.3.1(react@19.3.1))(react-native@0.88.1(@babel/core@7.29.13(supports-color@8.1.1))(@types/react@19.3.0)(react@19.3.1)(supports-color@8.1.1))(react@19.3.1)
@@ -592,7 +592,7 @@ importers:
         version: 0.46.0(effect@4.1.4)
       '@typeonce/effect-machine-react':
         specifier: latest
-        version: 0.46.0(@effect/atom-react@4.1.4(effect@4.1.4)(react@19.3.1)(scheduler@0.27.0))(effect@4.1.4)(react@19.3.1)(scheduler@0.27.0)
+        version: 0.46.0(@effect/atom-react@4.1.4(effect@4.1.4)(react@19.3.1)(scheduler@0.28.0))(effect@4.1.4)(react@19.3.1)(scheduler@0.28.0)
       effect:
         specifier: latest
         version: 4.1.4
@@ -623,7 +623,7 @@ importers:
         version: link:../runtime
       '@effect/atom-react':
         specifier: latest
-        version: 4.1.4(effect@4.1.4)(react@19.3.1)(scheduler@0.27.0)
+        version: 4.1.4(effect@4.1.4)(react@19.3.1)(scheduler@0.28.0)
       '@fontsource-variable/jetbrains-mono':
         specifier: latest
         version: 5.3.0
@@ -688,9 +688,6 @@ importers:
   packages/runtime:
     dependencies:
       '@effect/ai-anthropic':
-        specifier: latest
-        version: 4.1.4(effect@4.1.4)
-      '@effect/ai-openai':
         specifier: latest
         version: 4.1.4(effect@4.1.4)
       '@effect/platform-node':
@@ -1207,11 +1204,6 @@ packages:
 
   '@effect/ai-anthropic@4.1.4':
     resolution: {integrity: sha512-VDcsyL3k76HhF7YqH8z0gQ0bUybX4ti5RHv3JadDXZvEgNpvUT3p4YBssvKR2HAGa7NXr9yfmFedRilhQM7tdQ==}
-    peerDependencies:
-      effect: ^4.1.4
-
-  '@effect/ai-openai@4.1.4':
-    resolution: {integrity: sha512-xodZLHmt1N7Ziw94jr0nTfG/fgyMZioYKS85fyy2L1kscNurWGllaDaTQyHUSYd8wghqMoc8vV3XPei0+c9NIQ==}
     peerDependencies:
       effect: ^4.1.4
 
@@ -5525,9 +5517,6 @@ packages:
     resolution: {integrity: sha512-42tBVwLWnaQvW5zc4HbZrTuWccECCZfBi92FDuwtqxasH+JbPB3/FOKb1m222K42R4WxuxzzMsTswfzgtSu64Q==}
     engines: {node: '>=11.0.0'}
 
-  scheduler@0.27.0:
-    resolution: {integrity: sha512-eNv+WrVbKu1f3vbYJT/xtiF5syA5HPIMtf9IgY/nKg0sWqzAUEvqY/xm7OcZc/qafLx/iO9FgOmeSAp4v5ti/Q==}
-
   scheduler@0.28.0:
     resolution: {integrity: sha512-juorfCmIkIw8tT+p5BXSm6PJjQF/ycEYmKyzURCIt/RaZIhL+PulbQ9Yu2z1HdOJDdqDTlxA1+xKBmHXJsczAw==}
 
@@ -6717,15 +6706,11 @@ snapshots:
     dependencies:
       effect: 4.1.4
 
-  '@effect/ai-openai@4.1.4(effect@4.1.4)':
-    dependencies:
-      effect: 4.1.4
-
-  '@effect/atom-react@4.1.4(effect@4.1.4)(react@19.3.1)(scheduler@0.27.0)':
+  '@effect/atom-react@4.1.4(effect@4.1.4)(react@19.3.1)(scheduler@0.28.0)':
     dependencies:
       effect: 4.1.4
       react: 19.3.1
-      scheduler: 0.27.0
+      scheduler: 0.28.0
 
   '@effect/platform-node-shared@4.1.4(effect@4.1.4)':
     dependencies:
@@ -8231,13 +8216,13 @@ snapshots:
   '@tsrs/win32-x64@7.1.0-beta.tsrs2':
     optional: true
 
-  '@typeonce/effect-machine-react@0.46.0(@effect/atom-react@4.1.4(effect@4.1.4)(react@19.3.1)(scheduler@0.27.0))(effect@4.1.4)(react@19.3.1)(scheduler@0.27.0)':
+  '@typeonce/effect-machine-react@0.46.0(@effect/atom-react@4.1.4(effect@4.1.4)(react@19.3.1)(scheduler@0.28.0))(effect@4.1.4)(react@19.3.1)(scheduler@0.28.0)':
     dependencies:
-      '@effect/atom-react': 4.1.4(effect@4.1.4)(react@19.3.1)(scheduler@0.27.0)
+      '@effect/atom-react': 4.1.4(effect@4.1.4)(react@19.3.1)(scheduler@0.28.0)
       '@typeonce/effect-machine': 0.46.0(effect@4.1.4)
       effect: 4.1.4
       react: 19.3.1
-      scheduler: 0.27.0
+      scheduler: 0.28.0
 
   '@typeonce/effect-machine@0.46.0(effect@4.1.4)':
     dependencies:
@@ -10912,8 +10897,6 @@ snapshots:
   sandbox-cli-detector@0.2.0: {}
 
   sax@1.6.1: {}
-
-  scheduler@0.27.0: {}
 
   scheduler@0.28.0: {}
 

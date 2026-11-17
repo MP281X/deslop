@@ -15,7 +15,7 @@
 		"effect": "latest",
 		"fallow": "latest",
 		"oxlint-tsgolint": "latest",
-		"scheduler": "^0.27.0",
+		"scheduler": "latest",
 		"tsrs": "0.25.0-ts7.1.0-beta",
 		"vite": "catalog:",
 		"vite-plus": "catalog:",

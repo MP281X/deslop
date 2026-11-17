@@ -11,6 +11,7 @@ import {dataDirectory} from '#server/store.ts'
 
 export class AppError extends Schema.TaggedError<AppError>()('AppError', {
 	cause: Schema.optional(Schema.Defect()),
+	exitCode: Schema.optional(Schema.Int),
 	message: Schema.String
 }) {}
 
@@ -25,7 +26,9 @@ export const executeProcess = Effect.fn('Process.execute')(function* (command: s
 		},
 		{concurrency: 'unbounded'}
 	)
-	if (result.code !== 0) return yield* AppError.make({message: `${command} failed: ${result.stderr}`})
+	if (result.code !== 0) {
+		return yield* AppError.make({exitCode: result.code, message: `${command} failed: ${result.stderr}`})
+	}
 	return result.stdout
 }, Effect.scoped)
 

@@ -26,6 +26,8 @@ import {Migrator, SqlClient, SqlSchema} from 'effect/sql'
 import {AppError, ToolPath, executeProcess} from '@deslop/runtime/server/process'
 import {installService} from '@deslop/runtime/server/services'
 
+import {migrations} from './migrations.ts'
+
 import {Exposure} from '#services/exposures/schema.ts'
 import type {ExposeInput} from '#services/exposures/schema.ts'
 import type {ExposureName} from '#services/inventory/schema.ts'
@@ -291,22 +293,7 @@ export class Exposures extends Context.Service<Exposures>()('@deslop/deploy/serv
 }) {
 	// The table this service owns, made and changed at start in one transaction; one statement per `sql` call, since SQLite runs only the first statement of a string.
 	static readonly migrations = Layer.effectDiscard(
-		Migrator.make({})({
-			loader: Migrator.fromRecord({
-				'0001_exposures': Effect.flatMap(
-					SqlClient.SqlClient,
-					sql => sql`
-						CREATE TABLE exposures (
-							name TEXT PRIMARY KEY,
-							kind TEXT NOT NULL,
-							hostname TEXT NOT NULL,
-							port INTEGER NOT NULL
-						) STRICT
-					`
-				)
-			}),
-			table: 'exposures_migrations'
-		})
+		Migrator.make({})({loader: Migrator.fromRecord(migrations), table: 'exposures_migrations'})
 	)
 
 	static readonly layer = (directory: string) =>

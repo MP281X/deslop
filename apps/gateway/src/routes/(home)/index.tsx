@@ -438,7 +438,7 @@ function HomeRoute() {
 					<module.AddKeyDialog
 						key={keyDialog.opened}
 						open={keyDialog.open}
-						secret={keyDialog.secret}
+						initialSecret={keyDialog.secret}
 						onOpenChange={open => setKeyDialog(previous => ({...previous, open}))}
 					/>
 				)

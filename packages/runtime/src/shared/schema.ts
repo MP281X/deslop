@@ -1,4 +1,3 @@
-// fallow-ignore-file unused-type -- Paired schema types are available to runtime consumers.
 import {Array, Number, Option, Result, Schema} from 'effect'
 
 import {Url} from 'effect/http'

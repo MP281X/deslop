@@ -38,7 +38,6 @@ export const Metadata = Schema.Struct({
 export type Still = typeof Still.Type
 export const Still = Schema.Struct({bytes: Schema.Uint8Array, seconds: DurationFromSeconds})
 
-export type Probe = typeof Probe.Type
 export const Probe = Schema.Struct({
 	format: Schema.OptionFromOptionalKey(
 		Schema.Struct({
@@ -48,13 +47,11 @@ export const Probe = Schema.Struct({
 	streams: Schema.Array(Schema.Struct({codec_type: Schema.String, index: Schema.Int}))
 })
 
-export type CreatorCaptions = typeof CreatorCaptions.Type
 // TikTok's creator-caption JSON is not convertible by FFmpeg.
 export const CreatorCaptions = Schema.Struct({
 	utterances: Schema.Array(Schema.Struct({start_time: Schema.DurationFromMillis, text: Schema.String}))
 })
 
-export type Transcript = typeof Transcript.Type
 export const Transcript = Schema.Union([
 	Schema.Struct({kind: Schema.Literal('silence')}),
 	Schema.Struct({

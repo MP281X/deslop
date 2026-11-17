@@ -28,9 +28,9 @@ import type {HttpServerResponse} from 'effect/http'
 import {HttpRouter} from 'effect/http'
 
 import {AiGateway} from '#server/ai.ts'
-import {Auth, clientAddress} from '#server/auth.ts'
+import {Auth} from '#server/auth.ts'
 import {
-	crossSiteGuard,
+	serverMiddleware,
 	layerIcon,
 	layerNodeHttpServer,
 	layerProbeHttpServer,
@@ -107,7 +107,7 @@ const configProvider = Effect.fnUntraced(function* (given: Record<string, string
 
 const layerPlatform = Layer.mergeAll(NodeServices.layer, NodeHttpClient.layerFetch, NodeCrypto.layer)
 
-export type Provided =
+type Provided =
 	| Layer.Success<typeof layerPlatform>
 	| HttpRouter.HttpRouter
 	| Auth
@@ -120,15 +120,16 @@ export type Provided =
 export type Routes<A, E> = Layer.Layer<
 	A,
 	E,
+	// fallow-ignore-next-line private-type-leak -- App route layers expose inferred platform requirements, not a type callers construct or import.
 	| Provided
 	| HttpRouter.Request<RequestErrorKind, unknown>
 	| HttpRouter.Request<RequestRequiresKind, Provided | HttpRouter.GlobalProvided>
 >
 
-export type RequestErrorKind = typeof RequestErrorKind.Type
-const RequestErrorKind = Schema.Literals(['Error', 'GlobalError'])
-export type RequestRequiresKind = typeof RequestRequiresKind.Type
-const RequestRequiresKind = Schema.Literals(['Requires', 'GlobalRequires'])
+// oxlint-disable-next-line @deslop/coding-standards/choices-are-schemas -- HttpRouter.Request kinds are type-only library markers; no runtime value is decoded or constructed.
+export type RequestErrorKind = 'Error' | 'GlobalError'
+// oxlint-disable-next-line @deslop/coding-standards/choices-are-schemas -- HttpRouter.Request kinds are type-only library markers; no runtime value is decoded or constructed.
+export type RequestRequiresKind = 'Requires' | 'GlobalRequires'
 
 export type App<A, E> = {
 	readonly auth?: Layer.Layer<
@@ -167,7 +168,7 @@ function server<A, E>(app: App<A, E>, listener = layerNodeHttpServer) {
 				Layer.provideMerge(AiGateway.layer),
 				Layer.provide(Layer.unwrap(Effect.map(dataDirectory, layerDataStore)))
 			),
-			{disableLogger: true, middleware: handler => clientAddress(crossSiteGuard(handler))}
+			{disableLogger: true, middleware: serverMiddleware}
 		),
 		Layer.provide(
 			Layer.mergeAll(

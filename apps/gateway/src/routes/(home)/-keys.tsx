@@ -21,10 +21,9 @@ import {Input} from '@deslop/components-web/ui/input'
 import {setKeyAtom} from '#lib/gateway.ts'
 import {AiKeySecret, KEY_MESSAGE} from '#services/ai-proxy/schema.ts'
 
-export function AddKeyDialog(props: {onOpenChange: (open: boolean) => void; open: boolean; secret: string}) {
+export function AddKeyDialog(props: {initialSecret: string; onOpenChange: (open: boolean) => void; open: boolean}) {
 	const [result, save] = useAtom(setKeyAtom)
-	// oxlint-disable-next-line react-doctor/no-derived-useState -- Each opening remounts with the pasted key.
-	const [secret, setSecret] = useState(props.secret)
+	const [secret, setSecret] = useState(props.initialSecret)
 	const waiting = AsyncResult.isWaiting(result)
 	const invalidKey = String.isNonEmpty(String.trim(secret)) && !Schema.is(AiKeySecret)(String.trim(secret))
 	return (

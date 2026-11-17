@@ -66,9 +66,12 @@
 		}
 	},
 	// Extract shared logic at this size; mark imports, schema fields and modifier/prop lists inline as shape-only clones.
-	"duplicates": {"minTokens": 50, "minLines": 5},
+	"duplicates": {"minTokens": 50, "minLines": 5, "ignore": ["apps/*/src/services/*/migrations.ts"]},
 	"health": {
 		"maxCognitive": 14,
+		"thresholdOverrides": [
+			{"files": ["**/handlers.ts"], "maxCognitive": 8, "reason": "Transport handlers delegate decisions to services."}
+		],
 		// No production coverage exists: estimated CRAP must not masquerade as measured risk.
 		"maxCrap": 0,
 		"ignore": ["packages/components-web/src/ui/**"]
@@ -88,7 +91,7 @@
 		{"exports": ["default"], "file": "apps/*/app.config.ts"},
 		{"exports": ["*"], "file": "apps/*/fingerprint.config.js"},
 		{"exports": ["module.exports"], "file": "apps/*/targets/*/expo-target.config.js"},
-		{"exports": ["*"], "file": "apps/*/src/services/*/schema.ts"},
+		{"exports": ["*"], "file": "packages/runtime/src/shared/{auth,schema,time}.ts"},
 		{"exports": ["*"], "file": "packages/components-web/src/ui/**/*.{ts,tsx}"}
 	],
 	"overrides": [
@@ -99,6 +102,7 @@
 		}
 	],
 	"rules": {
+		"deprecated-exports-in-use": "error",
 		"dev-dependencies-in-production": "error",
 		"duplicate-export-aliases": "error",
 		"empty-catalog-groups": "error",
@@ -115,6 +119,11 @@
 		"type-only-dependencies": "error",
 		"unlisted-binaries": "error",
 		"unlisted-dependencies": "error",
+		"unproduced-catch-tags": "error",
+		"unused-component-props": "error",
+		"unused-effect-layers": "error",
+		"unused-store-members": "error",
+		"unused-tagged-errors": "error",
 		"unused-catalog-entries": "error",
 		"unused-dependency-overrides": "error",
 		"unused-dev-dependencies": "error",

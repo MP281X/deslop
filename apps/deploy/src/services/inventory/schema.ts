@@ -12,9 +12,7 @@ export type UnitId = typeof UnitId.Type
 export const UnitId = Schema.brand('DeployUnitId')(Schema.String)
 export type ProcessId = typeof ProcessId.Type
 export const ProcessId = Schema.brand('DeployProcessId')(Schema.Int)
-export type ContainerId = typeof ContainerId.Type
 export const ContainerId = Schema.brand('DeployContainerId')(Schema.String)
-export type JobName = typeof JobName.Type
 export const JobName = Schema.brand('DeployJobName')(Schema.String)
 export type ExposureName = typeof ExposureName.Type
 export const ExposureName = Schema.brand('DeployExposureName')(Schema.String)
@@ -41,7 +39,6 @@ export const CpuTime = Schema.Struct({
 	3: Schema.FiniteFromString
 })
 
-export type TextFromEmpty = typeof TextFromEmpty.Type
 // Some collector records require a string key even when there is no value.
 export const TextFromEmpty = pipe(
 	Schema.String,
@@ -214,7 +211,6 @@ export const WorkerList = Schema.String.check(
 	Schema.isPattern(/^[a-z\d](?:[a-z\d-]*[a-z\d])?(?:,[a-z\d](?:[a-z\d-]*[a-z\d])?)*$/u)
 )
 
-export type Peer = typeof Peer.Type
 export const Peer = Schema.Struct({
 	DNSName: Schema.String,
 	HostName: Schema.String,
@@ -223,7 +219,6 @@ export const Peer = Schema.Struct({
 	TailscaleIPs: Schema.Array(Schema.String)
 })
 
-export type Tailnet = typeof Tailnet.Type
 export const Tailnet = Schema.Struct({
 	Peer: Schema.OptionFromOptionalKey(Schema.Record(Schema.String, Peer)),
 	Self: Schema.OptionFromOptionalKey(Peer)
@@ -325,10 +320,8 @@ export const WorkerInventory = Schema.Struct({
 	worker: WorkerId
 })
 
-export type Inventory = typeof Inventory.Type
 export const Inventory = Schema.Array(WorkerInventory)
 
-export type Timer = typeof Timer.Type
 // `next` is in epoch microseconds.
 export const Timer = Schema.Struct({
 	activates: Schema.OptionFromNullOr(UnitId),
@@ -343,10 +336,8 @@ export const Timer = Schema.Struct({
 	)
 })
 
-export type Unit = typeof Unit.Type
 export const Unit = Schema.Struct({active: Schema.String, description: Schema.String, sub: Schema.String, unit: UnitId})
 
-export type Container = typeof Container.Type
 export const Container = Schema.Struct({
 	ID: ContainerId,
 	Labels: Schema.OptionFromOptionalKey(Schema.String),

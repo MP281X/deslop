@@ -6,9 +6,6 @@
 	"imports": {
 		"#package.*": "./package.*"
 	},
-	"scripts": {
-		"test": "vp test --config ../../vite.config.ts"
-	},
 	"dependencies": {
 		"@deslop/create-package": "workspace:*",
 		"@effect/platform-node": "latest",

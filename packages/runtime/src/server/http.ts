@@ -21,7 +21,7 @@ import {
 import {RpcSerialization, RpcServer} from 'effect/rpc'
 import type {Rpc, RpcGroup} from 'effect/rpc'
 
-import {Auth, HttpAuth, localAuth} from '#server/auth.ts'
+import {Auth, HttpAuth, clientAddress, localAuth} from '#server/auth.ts'
 import {McpStream, layerStructuredTools} from '#server/mcp.ts'
 import {appName, packageMetadata} from '#server/package.ts'
 import {recordRpcContracts, recordToolContracts} from '#server/probe.ts'
@@ -34,7 +34,7 @@ const LOOPBACK = /^(?:localhost|\d{1,3}(?:\.\d{1,3}){3}|\[[\da-f:.]+\])$/iu
 const OTLP = ['/v1/traces', '/v1/logs']
 
 // One cross-site check per app: a foreign Origin is refused except for OTLP, and without an issuer only loopback, IP and canonical hosts are served.
-export const crossSiteGuard = HttpMiddleware.make(app =>
+const crossSiteGuard = HttpMiddleware.make(app =>
 	Effect.gen(function* () {
 		const request = yield* HttpServerRequest.HttpServerRequest
 		const host = request.headers['host'] ?? ''
@@ -64,6 +64,8 @@ export const crossSiteGuard = HttpMiddleware.make(app =>
 		return yield* app
 	})
 )
+
+export const serverMiddleware = HttpMiddleware.make(app => clientAddress(crossSiteGuard(app)))
 
 // Binary RPC frames for every client; public endpoints such as client registration read their body before any sign-in, and streamed uploads keep their own limit.
 export const layerServerProtocol = Layer.mergeAll(

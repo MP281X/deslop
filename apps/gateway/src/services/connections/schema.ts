@@ -16,11 +16,9 @@ export const ServerId = pipe(
 
 export type ConnectionGeneration = typeof ConnectionGeneration.Type
 export const ConnectionGeneration = pipe(Schema.NonEmptyString, Schema.brand('ConnectionGeneration'))
-export type OAuthClientId = typeof OAuthClientId.Type
 export const OAuthClientId = pipe(Schema.NonEmptyString, Schema.brand('OAuthClientId'))
 export type OAuthState = typeof OAuthState.Type
 export const OAuthState = pipe(Schema.NonEmptyString, Schema.brand('GatewayOAuthState'))
-export type OAuthCode = typeof OAuthCode.Type
 export const OAuthCode = pipe(Schema.NonEmptyString, Schema.brand('GatewayOAuthCode'))
 
 export type ServerUrl = typeof ServerUrl.Type
@@ -36,9 +34,7 @@ export const ServerUrl = Schema.NonEmptyString.check(
 	)
 )
 
-export type AddServer = typeof AddServer.Type
 export const AddServer = Schema.Struct({url: ServerUrl})
-export type ServerParams = typeof ServerParams.Type
 export const ServerParams = Schema.Struct({id: ServerId})
 
 export type Metadata = typeof Metadata.Type
@@ -53,9 +49,7 @@ export const Metadata = Schema.Struct({
 	token_endpoint: ServerUrl
 })
 
-export type Registration = typeof Registration.Type
 export const Registration = Schema.Struct({client_id: OAuthClientId})
-export type Token = typeof Token.Type
 export const Token = Schema.Struct({
 	access_token: Schema.RedactedFromValue(Schema.NonEmptyString),
 	expires_in: Schema.OptionFromOptionalKey(
@@ -76,7 +70,6 @@ export const ServerIcon = Schema.Struct({
 })
 
 // Deslop servers take the caller's token and public ones none, so only a third-party server needs a grant; one without a refresh token cannot be renewed once it expires.
-export type ConnectionStatus = typeof ConnectionStatus.Type
 export const ConnectionStatus = Schema.Literals(['Connected', 'Not connected', 'Expired'])
 
 export type FailureReason = typeof FailureReason.Type
@@ -163,7 +156,6 @@ export const ConnectionItem = Schema.Struct({
 	status: ConnectionStatus
 })
 
-export type McpUsageBucket = typeof McpUsageBucket.Type
 export const McpUsageBucket = Schema.Struct({at: DateTimeUtcFromFiniteMillis, calls: Schema.Int})
 export type McpUsageServer = typeof McpUsageServer.Type
 export const McpUsageServer = Schema.Struct({id: ServerId, series: Schema.Array(McpUsageBucket)})

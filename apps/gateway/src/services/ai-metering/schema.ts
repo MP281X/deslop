@@ -77,7 +77,6 @@ const OpenAiResponse = Schema.Struct({
 		)
 	)
 })
-export type Usage = typeof Usage.Type
 export const Usage = Schema.Struct({
 	cost: Schema.OptionFromOptionalKey(Schema.Finite),
 	message: Schema.OptionFromOptionalKey(

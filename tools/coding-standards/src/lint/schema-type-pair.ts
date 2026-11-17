@@ -76,6 +76,28 @@ function readsModuleBinding(context: Context, query: ESTree.TSTypeQuery, name: s
 	)
 }
 
+function missingAlias(input: {
+	context: Context
+	name: string
+	program: ESTree.Program
+	queries: ESTree.TSTypeQuery[]
+	typeStatement: Option.Option<ESTree.Statement | ESTree.ModuleDeclaration>
+}) {
+	return (
+		(Array.some(input.program.body, statement =>
+			Option.exists(typeAlias(statement), declaration => declaration.id.name === input.name)
+		) ||
+			Array.some(
+				input.queries,
+				query =>
+					Option.contains(queriedSchema(query), input.name) && readsModuleBinding(input.context, query, input.name)
+			)) &&
+		!Option.exists(namedTypeAlias(input), declaration =>
+			isInferredType({name: input.name, node: declaration.typeAnnotation})
+		)
+	)
+}
+
 function reportSchemaVariable(input: {
 	context: Context
 	cycleNames: string[]
@@ -117,11 +139,7 @@ function reportSchemaVariable(input: {
 		}
 		return
 	}
-	if (
-		!Option.exists(namedTypeAlias({name, typeStatement}), declaration =>
-			isInferredType({name, node: declaration.typeAnnotation})
-		)
-	) {
+	if (missingAlias({...input, name, typeStatement})) {
 		input.context.report({
 			fix: fixer => {
 				if (!pairable({...input, name})) return []
@@ -192,6 +210,7 @@ export const schemaTypePair = defineRule({
 		docs: {
 			examples: {
 				accepted: [
+					{'sample.ts': `import {Schema} from 'effect'\nexport const Note = Schema.Struct({title: Schema.String})`},
 					{
 						'sample.ts': `import {Schema} from 'effect'
 export type Note = typeof Note.Type

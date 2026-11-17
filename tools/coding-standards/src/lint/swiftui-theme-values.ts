@@ -15,6 +15,18 @@ const PAINTS = [
 	'tint'
 ]
 
+// A widget's serialized body cannot import the app theme, including inside its nested helpers.
+function insideWidget(node: ESTree.Node): boolean {
+	if (
+		node.type === 'BlockStatement' &&
+		Array.some(node.body, statement => statement.type === 'ExpressionStatement' && statement.directive === 'widget')
+	) {
+		return true
+	}
+	if (node.parent === null) return false
+	return insideWidget(node.parent)
+}
+
 function isNumber(node?: ESTree.Node) {
 	return node?.type === 'Literal' && Predicate.isNumber(node.value) && node.value !== 0
 }
@@ -43,7 +55,7 @@ export const swiftuiThemeValues = defineRule({
 		const file = {swiftui: false}
 		return {
 			CallExpression: node => {
-				if (!file.swiftui) return
+				if (!file.swiftui || insideWidget(node)) return
 				const name = calleeName(node)
 				if (
 					(Array.contains(['listRowInsets', 'padding'], name) &&
@@ -78,6 +90,7 @@ export const swiftuiThemeValues = defineRule({
 			JSXAttribute: node => {
 				if (
 					file.swiftui &&
+					!insideWidget(node) &&
 					node.name.type === 'JSXIdentifier' &&
 					node.name.name === 'spacing' &&
 					node.value?.type === 'JSXExpressionContainer' &&
@@ -92,6 +105,11 @@ export const swiftuiThemeValues = defineRule({
 		docs: {
 			examples: {
 				accepted: [
+					{
+						'sample.tsx': `import {Text} from '@expo/ui/swift-ui'
+import {font, padding} from '@expo/ui/swift-ui/modifiers'
+export function Title() { 'widget'; return <Text modifiers={[font({size: 15}), padding({all: 16})]}>Hello</Text> }`
+					},
 					{
 						'sample.tsx': `import {Text} from '@expo/ui/swift-ui'
 import {padding} from '@expo/ui/swift-ui/modifiers'

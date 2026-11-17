@@ -1,6 +1,5 @@
 import {Boolean, Effect, Function, Option, Predicate, String} from 'effect'
 
-import {FetchHttpClient} from 'effect/http'
 import {getImageAsync, getStringAsync, hasImageAsync} from 'expo-clipboard'
 import {randomUUID} from 'expo-crypto'
 import {File, Paths} from 'expo-file-system'
@@ -82,7 +81,6 @@ export const clipboard = makeClipboard({
 	save: (copy, get) =>
 		Boolean.match(copy.kind === 'image', {
 			onFalse: () => provideRuntimeOnce(get, RpcClient.runtime, saveLink(copy.count)),
-			// oxlint-disable-next-line effecttsgo/strict-effect-provide -- The RPC runtime exposes only its client, so the upload brings its own fetch.
-			onTrue: () => Effect.provide(saveImage(copy.count), FetchHttpClient.layer)
+			onTrue: () => provideRuntimeOnce(get, session.runtime, saveImage(copy.count))
 		})
 })

@@ -1,12 +1,10 @@
 import {AnthropicClient, AnthropicLanguageModel} from '@effect/ai-anthropic'
-import {OpenAiClient, OpenAiLanguageModel} from '@effect/ai-openai'
 
-import {Config, Context, Effect, Function, Layer, Option, Schema, pipe} from 'effect'
+import {Config, Context, Effect, Layer, Option, Schema, pipe} from 'effect'
 
 import {AiError} from 'effect/ai'
 import {HttpClient, HttpClientRequest} from 'effect/http'
 
-import {localAuth} from '#server/auth.ts'
 import {ON_BEHALF_HEADER} from '#shared/auth.ts'
 import type {UserId} from '#shared/auth.ts'
 
@@ -65,29 +63,11 @@ export class AiGateway extends Context.Service<
 			client
 		)
 	})
-	static readonly openaiLanguageModel = Effect.fn('AiGateway.openaiLanguageModel')(function* (
-		userId: UserId,
-		options: {maxTokens: number; model: string}
-	) {
-		yield* Effect.annotateCurrentSpan({maxTokens: options.maxTokens, model: options.model, userId})
-		const gateway = yield* AiGateway
-		const client = yield* OpenAiClient.make({
-			apiUrl: `${yield* gateway.apiUrl}/openai/v1`,
-			transformClient: yield* gateway.authorize(userId)
-		})
-		return yield* Effect.provideService(
-			OpenAiLanguageModel.make({config: {max_output_tokens: options.maxTokens}, model: options.model}),
-			OpenAiClient.OpenAiClient,
-			client
-		)
-	})
 	static readonly layer = Layer.effect(
 		this,
 		Effect.gen(function* () {
-			const gateway = yield* Config.option(Config.String('GATEWAY_URL'))
-			const local = yield* localAuth
 			const apiUrl = pipe(
-				gateway,
+				yield* Config.option(Config.String('GATEWAY_URL')),
 				Option.match({
 					onNone: () => Effect.fail(AiUnavailableError.make({message: 'Start the app with --domain'})),
 					onSome: url => Effect.succeed(`${url}/ai`)
@@ -96,7 +76,6 @@ export class AiGateway extends Context.Service<
 			)
 			const authorize = Effect.fn('AiGateway.authorize')(function* (userId: UserId) {
 				yield* Effect.annotateCurrentSpan('userId', userId)
-				if (local) return Function.identity<HttpClient.HttpClient>
 				// Gateway trusts this claim only from an app on Auth's machine, and charges the person's own key.
 				return (client: HttpClient.HttpClient) =>
 					HttpClient.mapRequest(client, HttpClientRequest.setHeader(ON_BEHALF_HEADER, userId))

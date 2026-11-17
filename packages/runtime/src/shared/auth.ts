@@ -1,4 +1,3 @@
-// fallow-ignore-file unused-type -- Schema types pair with their values so consumers can import either.
 import {Context, Effect, Option, Predicate, Schema, String, pipe} from 'effect'
 import type {Brand} from 'effect'
 

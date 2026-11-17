@@ -18,7 +18,6 @@ export class ChaptersError extends Schema.TaggedError<ChaptersError>()('Chapters
 export type Series = typeof Series.Type
 export const Series = Schema.Literals(['manga', 'webcomic'])
 
-export type ChapterPath = typeof ChapterPath.Type
 export const ChapterPath = Schema.TemplateLiteralParser([
 	Series,
 	':',
@@ -46,7 +45,6 @@ export class Chapter extends Model.Class<Chapter>('Chapter')({
 	static readonly table = 'chapters'
 }
 
-export type ChapterNotification = typeof ChapterNotification.Type
 export const ChapterNotification = Schema.Struct({path: ChapterPath})
 
 export type ChapterIdentity = typeof ChapterIdentity.Type

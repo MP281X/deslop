@@ -52,7 +52,6 @@ export const HistoryToolInput = Schema.Struct({
 	worker: Schema.OptionFromOptionalKey(WorkerId.annotate({description: 'A configured worker name.'}))
 })
 
-export type Series = typeof Series.Type
 export const Series = Schema.Array(Schema.OptionFromNullOr(Schema.Finite))
 
 export type AppUsage = typeof AppUsage.Type
@@ -62,7 +61,6 @@ export const AppUsage = Schema.Struct({
 	name: Schema.String
 })
 
-export type MachineNow = typeof MachineNow.Type
 export const MachineNow = Schema.Struct({
 	cpuPct: Schema.OptionFromOptionalKey(Schema.Finite),
 	diskGiB: Schema.OptionFromOptionalKey(Schema.Finite),
@@ -72,7 +70,6 @@ export const MachineNow = Schema.Struct({
 	memoryTotalGiB: Schema.Finite
 })
 
-export type WorkerHistory = typeof WorkerHistory.Type
 export const WorkerHistory = Schema.Struct({
 	apps: Schema.Array(AppUsage),
 	cpuPct: Series,
@@ -86,7 +83,6 @@ export const WorkerHistory = Schema.Struct({
 	worker: WorkerId
 })
 
-export type ResourceHistory = typeof ResourceHistory.Type
 export const ResourceHistory = Schema.Array(WorkerHistory)
 
 export type Counters = typeof Counters.Type
@@ -158,7 +154,6 @@ export const MachineHistory = Schema.Struct({
 })
 
 // The `vm_stat` counters used memory needs; one missing fails the sample instead of reading as zero memory.
-export type VmStatPages = typeof VmStatPages.Type
 export const VmStatPages = Schema.Struct({
 	'Anonymous pages': Schema.FiniteFromString,
 	'Pages occupied by compressor': Schema.FiniteFromString,
