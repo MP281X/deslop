@@ -39,7 +39,7 @@ type ChartLayer = {
 // The machine's share each band holds over time, stacked on the whole machine's 0–100%; blank time is unrecorded. The tooltip names every band's reading at the hovered time, and a selected app's band stands out.
 function UsageChart(props: {
 	className?: string
-	focus?: Band['id'] | undefined
+	focus: Option.Option<Band['id']>
 	format: (value: number) => string
 	history: MachineHistory
 	label: string
@@ -55,7 +55,7 @@ function UsageChart(props: {
 			{color: bandFill(layer.kind, layer.opacity).color, label: props.names(layer.id)}
 		])
 	) satisfies ChartConfig
-	const focused = Option.fromUndefinedOr(props.focus)
+	const focused = props.focus
 	return (
 		<figure className={cn('flex min-h-0', props.className)} aria-label={props.label}>
 			<ChartContainer
@@ -262,13 +262,11 @@ export function ChartBlock(props: {
 	isPhone: boolean
 	labels: Record<AppId, string>
 	minutes: HistoryQuery['minutes']
-	selectedOwner?: AppId | undefined
+	selectedOwner: Option.Option<AppId>
 	usage: Usage
 }) {
 	const history = props.usage.history
-	const focus = Option.getOrUndefined(
-		Option.flatMap(Option.fromUndefinedOr(props.selectedOwner), selected => focusedBand(props.usage, selected))
-	)
+	const focus = Option.flatMap(props.selectedOwner, selected => focusedBand(props.usage, selected))
 	const latest = Option.getOrUndefined(Array.last(history.samples))
 	const cpu = Option.flatMap(Option.fromUndefinedOr(latest), sample => sample.cpu)
 	const storageUsed = Option.flatMap(Option.fromUndefinedOr(latest), sample => sample.storageUsed)
@@ -285,7 +283,7 @@ export function ChartBlock(props: {
 	)
 	const charts: readonly {
 		figure: string
-		focus?: Band['id'] | undefined
+		focus: Option.Option<Band['id']>
 		format: (value: number) => string
 		label: string
 		layers: readonly ChartLayer[]
@@ -319,6 +317,7 @@ export function ChartBlock(props: {
 						onTrue: () => percentOf(Number.round((used / total) * 100, 0))
 					})
 			}),
+			focus: Option.none(),
 			format: percentOf,
 			label: 'Disk',
 			layers: [{id: 'disk', kind: 'disk', opacity: 1, readings: disk, values: disk}],
@@ -377,7 +376,7 @@ export function ChartBlock(props: {
 	)
 }
 
-export function EmptyChart(props: {worker?: string | undefined}) {
+export function EmptyChart(props: {worker: Option.Option<string>}) {
 	return (
 		<div className="flex h-44 shrink-0 items-center justify-center sm:h-64">
 			<Empty role="status">
@@ -386,7 +385,7 @@ export function EmptyChart(props: {worker?: string | undefined}) {
 						<ChartLineIcon />
 					</EmptyMedia>
 					<EmptyTitle>
-						{Boolean.match(props.worker === undefined, {
+						{Boolean.match(Option.isNone(props.worker), {
 							onFalse: Function.constant('No readings'),
 							onTrue: Function.constant('No machine')
 						})}

@@ -6,7 +6,7 @@ import {Skeleton} from '#components/ui/skeleton.tsx'
 import {Table, TableBody, TableCell, TableRow} from '#components/ui/table.tsx'
 
 // Every row's mark sits in one 24px square, a picture filling it and a 16px glyph centred, so names start at one column; a `label` names what it shows.
-export function RowMark(props: {children: ReactNode; label?: string | undefined}) {
+export function RowMark(props: {children: ReactNode; label?: string}) {
 	return (
 		<span
 			role={Option.match(Option.fromUndefinedOr(props.label), {
@@ -39,7 +39,13 @@ export function RowLead(props: {
 				style={{'--indent': `${(props.depth ?? 0) * 0.75}rem`}}
 				title={props.title}
 			>
-				{props.mark !== undefined && <RowMark label={props.markLabel}>{props.mark}</RowMark>}
+				{props.mark !== undefined && (
+					<RowMark
+						{...Option.match(Option.fromUndefinedOr(props.markLabel), {onNone: () => ({}), onSome: label => ({label})})}
+					>
+						{props.mark}
+					</RowMark>
+				)}
 				<span className="truncate">{props.children}</span>
 				{props.after}
 				{props.detail !== undefined && (

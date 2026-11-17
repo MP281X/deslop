@@ -1,3 +1,5 @@
+import {Function, Option} from 'effect'
+
 import {Toolbar, ToolbarItem, useNativeState} from '@expo/ui/swift-ui'
 import {navigationBarTitleDisplayMode, navigationTitle, searchable} from '@expo/ui/swift-ui/modifiers'
 import type {ReactElement, ReactNode} from 'react'
@@ -12,7 +14,7 @@ export function ListToolbar(props: {
 	bottomBar?: ReactNode
 	children: ReactNode
 	onSearch: (text: string) => void
-	problem?: ReactElement | undefined
+	problem: Option.Option<ReactElement>
 	prompt?: string
 	session: Session
 	title: string
@@ -29,7 +31,10 @@ export function ListToolbar(props: {
 		>
 			{props.children}
 			<Toolbar.Content>
-				{props.problem !== undefined && <ToolbarItem placement="topBarLeading">{props.problem}</ToolbarItem>}
+				{Option.match(props.problem, {
+					onNone: Function.constNull,
+					onSome: problem => <ToolbarItem placement="topBarLeading">{problem}</ToolbarItem>
+				})}
 				<ToolbarItem placement="topBarTrailing">
 					<AccountMenu session={props.session} />
 				</ToolbarItem>

@@ -80,7 +80,7 @@ function MachineIcon(props: {worker: WorkerId; platform: Option.Option<Platform>
 }
 
 function MachineTabs(props: {
-	active?: WorkerId | undefined
+	active: Option.Option<WorkerId>
 	histories: readonly MachineHistory[]
 	inventoryFailure: boolean
 	sources: readonly {error: Option.Option<string>; name: string}[]
@@ -89,7 +89,7 @@ function MachineTabs(props: {
 	if (props.workers.length < 2) return null
 	const histories = Record.fromIterableBy(props.histories, machine => machine.worker)
 	return (
-		<AppBarTabs value={props.active ?? props.workers[0] ?? ''}>
+		<AppBarTabs value={Option.getOrElse(props.active, () => props.workers[0] ?? '')}>
 			{Array.map(props.workers, worker => {
 				const failed = failureOf(worker, props.inventoryFailure, props.sources, histories[worker])
 				return (
@@ -160,12 +160,12 @@ function ProcessList(props: {row: Row}) {
 }
 
 // The processes below the chart, or a phone's pushed pane; nothing selected is one symbol.
-function SelectedProcesses(props: {app?: ItemId | undefined; pending: boolean; row?: Row | undefined}) {
+function SelectedProcesses(props: {app: Option.Option<ItemId>; pending: boolean; row: Option.Option<Row>}) {
 	return (
 		<div className="flex min-h-0 flex-1 flex-col">
-			{Option.match(Option.fromUndefinedOr(props.row), {
+			{Option.match(props.row, {
 				onNone: () =>
-					Boolean.match(props.pending && props.app !== undefined, {
+					Boolean.match(props.pending && Option.isSome(props.app), {
 						onFalse: () => (
 							<Empty role="status">
 								<EmptyHeader>
@@ -190,20 +190,20 @@ function SelectedProcesses(props: {app?: ItemId | undefined; pending: boolean; r
 	)
 }
 
-function chartUsageOf(usage?: Usage) {
-	return Option.filter(Option.fromUndefinedOr(usage), current => Array.isReadonlyArrayNonEmpty(current.history.samples))
+function chartUsageOf(usage: Option.Option<Usage>) {
+	return Option.filter(usage, current => Array.isReadonlyArrayNonEmpty(current.history.samples))
 }
 
 // The desktop detail: the three charts, then the chosen processes.
 function DetailPane(props: {
-	app?: ItemId | undefined
-	usage?: Usage | undefined
+	app: Option.Option<ItemId>
+	usage: Option.Option<Usage>
 	labels: Record<AppId, string>
 	minutes: HistoryQuery['minutes']
 	pending: boolean
-	row?: Row | undefined
-	selectedOwner?: AppId | undefined
-	worker?: WorkerId | undefined
+	row: Option.Option<Row>
+	selectedOwner: Option.Option<AppId>
+	worker: Option.Option<WorkerId>
 }) {
 	return (
 		<div className="flex h-full min-h-0 flex-col">
@@ -234,21 +234,21 @@ function DetailPane(props: {
 // A phone's list view: the three short charts, then the rows edge to edge.
 function PhoneList(props: {
 	free: readonly InventoryItem[]
-	usage?: Usage | undefined
+	usage: Option.Option<Usage>
 	labels: Record<AppId, string>
 	minutes: HistoryQuery['minutes']
 	now: DateTime.Utc
 	onSelect: (row: Row) => void
 	rows: readonly Row[]
-	selectedId?: ItemId | undefined
-	selectedOwner?: AppId | undefined
+	selectedId: Option.Option<ItemId>
+	selectedOwner: Option.Option<AppId>
 }) {
 	return (
 		<div className="flex min-h-0 flex-1 flex-col">
 			<Suspense fallback={<ChartSkeleton isPhone minutes={props.minutes} />}>
 				<MetricsContent minutes={props.minutes}>
 					{Option.match(chartUsageOf(props.usage), {
-						onNone: () => <EmptyChart />,
+						onNone: () => <EmptyChart worker={Option.none()} />,
 						onSome: usage => (
 							<ChartBlock
 								usage={usage}
@@ -265,7 +265,7 @@ function PhoneList(props: {
 				className="min-h-0 flex-1"
 				compact
 				free={props.free}
-				lowImpact={props.usage?.lowImpact}
+				lowImpact={Option.map(props.usage, usage => usage.lowImpact)}
 				now={props.now}
 				onSelect={props.onSelect}
 				rows={props.rows}
@@ -277,10 +277,10 @@ function PhoneList(props: {
 
 // What the bar opens onto: the two panes on a wide screen, the chart and list on a phone, or the pushed processes.
 function Panes(props: {
-	active?: WorkerId | undefined
+	active: Option.Option<WorkerId>
 	authFailure: Option.Option<unknown>
 	free: readonly InventoryItem[]
-	usage?: Usage | undefined
+	usage: Option.Option<Usage>
 	isPhone: boolean
 	labels: Record<AppId, string>
 	minutes: HistoryQuery['minutes']
@@ -290,12 +290,10 @@ function Panes(props: {
 	pushed: boolean
 	retryFailed: () => void
 	rows: readonly Row[]
-	selectedApp?: ItemId | undefined
-	selectedRow?: Row | undefined
+	selectedApp: Option.Option<ItemId>
+	selectedRow: Option.Option<Row>
 }) {
-	const selectedOwner = Option.getOrUndefined(
-		Option.flatMap(Option.fromUndefinedOr(props.selectedRow), row => owner(row))
-	)
+	const selectedOwner = Option.flatMap(props.selectedRow, owner)
 	return Option.match(props.authFailure, {
 		onNone: () => (
 			<Workspace>
@@ -314,12 +312,12 @@ function Panes(props: {
 									className="h-full min-w-0"
 									compact={false}
 									free={props.free}
-									lowImpact={props.usage?.lowImpact}
+									lowImpact={Option.map(props.usage, usage => usage.lowImpact)}
 
 									now={props.now}
 									onSelect={props.onSelect}
 									rows={props.rows}
-									selectedId={props.selectedRow?.item.id}
+									selectedId={Option.map(props.selectedRow, row => row.item.id)}
 								/>
 							</ResizablePanel>
 							<ResizableHandle />
@@ -348,7 +346,7 @@ function Panes(props: {
 									now={props.now}
 									onSelect={props.onSelect}
 									rows={props.rows}
-									selectedId={props.selectedRow?.item.id}
+									selectedId={Option.map(props.selectedRow, row => row.item.id)}
 									selectedOwner={selectedOwner}
 								/>
 							),
@@ -404,14 +402,12 @@ function HomeRoute() {
 		),
 		...Array.map(shownHistories, machine => machine.worker)
 	])
-	const active = Option.getOrUndefined(Option.orElse(search.machine, () => Array.head(workers)))
-	const history = Option.getOrUndefined(
-		Option.flatMap(Option.fromUndefinedOr(active), current =>
-			Array.findFirst(shownHistories, machine => machine.worker === current)
-		)
+	const active = Option.orElse(search.machine, () => Array.head(workers))
+	const history = Option.flatMap(active, current =>
+		Array.findFirst(shownHistories, machine => machine.worker === current)
 	)
 	// The list and the charts share one derivation per history, which the compiler keeps until the history changes.
-	const usage = Option.getOrUndefined(Option.map(Option.fromUndefinedOr(history), usageOf))
+	const usage = Option.map(history, usageOf)
 	const rows = pipe(
 		snapshot,
 		Option.map(value => workloads(value.items)),
@@ -428,7 +424,7 @@ function HomeRoute() {
 		Option.map(value => value.time),
 		Option.getOrElse(DateTime.nowUnsafe)
 	)
-	const activeRows = Option.match(Option.fromUndefinedOr(active), {
+	const activeRows = Option.match(active, {
 		onNone: () => [],
 		onSome: current => Array.filter(rows, row => row.item.worker === current)
 	})
@@ -438,9 +434,7 @@ function HomeRoute() {
 		)
 	) satisfies Record<AppId, string>
 	const sorted = Array.sort(ranged(activeRows, shownMinutes, history), rowOrder)
-	const selectedRow = Option.getOrUndefined(
-		Option.flatMap(search.app, current => Array.findFirst(activeRows, row => row.item.id === current))
-	)
+	const selectedRow = Option.flatMap(search.app, current => Array.findFirst(activeRows, row => row.item.id === current))
 	function selectRow(row: Row) {
 		view({app: Option.some(row.item.id), pane: Option.some('process')})
 	}
@@ -451,14 +445,16 @@ function HomeRoute() {
 	return (
 		<div className="flex min-h-0 flex-1 flex-col">
 			<AppBar
-				heading={Boolean.match(pushed, {
-					onFalse: Function.constUndefined,
+				{...Boolean.match(pushed, {
+					onFalse: () => ({}),
 					onTrue: () => ({
-						back: {label: 'Back', onClick: () => view({pane: Option.some('apps')})},
-						title: Option.match(Option.fromUndefinedOr(selectedRow), {
-							onNone: Function.constant('Processes'),
-							onSome: entry => workloadName(entry.item)
-						})
+						heading: {
+							back: {label: 'Back', onClick: () => view({pane: Option.some('apps')})},
+							title: Option.match(selectedRow, {
+								onNone: Function.constant('Processes'),
+								onSome: entry => workloadName(entry.item)
+							})
+						}
 					})
 				})}
 				icon={icon}
@@ -504,7 +500,7 @@ function HomeRoute() {
 				pushed={pushed}
 				retryFailed={retryFailed}
 				rows={sorted}
-				selectedApp={Option.getOrUndefined(search.app)}
+				selectedApp={search.app}
 				selectedRow={selectedRow}
 			/>
 		</div>

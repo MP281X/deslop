@@ -396,14 +396,14 @@ export class Connections extends Context.Service<
 					...initial,
 					error: Option.none(),
 					icons: serverIcons(found.info),
-					instructions: Option.fromUndefinedOr(found.instructions),
+					instructions: found.instructions,
 					issuer: Option.none(),
 					mode: Boolean.match(own, {
 						onFalse: Function.constant('public' as const),
 						onTrue: Function.constant('deslop' as const)
 					}),
 					name: pipe(
-						Option.fromUndefinedOr(found.info?.name),
+						Option.map(found.info, server => server.name),
 						Option.map(String.trim),
 						Option.filter(String.isNonEmpty),
 						Option.getOrElse(() => initial.name)

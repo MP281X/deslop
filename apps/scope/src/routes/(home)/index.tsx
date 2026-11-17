@@ -84,23 +84,23 @@ const route = getRouteApi('/(home)/')
 const RANGES = Array.map(TimeFrame.literals, value => ({label: value, value}))
 
 type WorkspaceProps = {
-	active?: ActiveOperation
-	activeKey?: OperationKey
-	activeTrace?: Pick<OperationTrace, 'id'>
+	active: Option.Option<ActiveOperation>
+	activeKey: Option.Option<OperationKey>
+	activeTrace: Option.Option<Pick<OperationTrace, 'id'>>
 	now: DateTime.Utc
 	onPickSpan: (id: SpanId) => void
 	onSelectOperation: (app: AppName, operation: Operation) => void
 	onSelectTrace: (trace: OperationTrace) => void
-	pickedSpan?: SpanId | undefined
+	pickedSpan: Option.Option<SpanId>
 	range: TimeFrame
-	source?: AppName | undefined
+	source: Option.Option<AppName>
 }
 
 // One tab per app, using its app mark or the CI/server fallback; the supplied source selects it, and clicking that tab again prevents navigation.
-function SourceTabs(props: {apps: Overview['apps']; source?: AppName | undefined}) {
+function SourceTabs(props: {apps: Overview['apps']; source: Option.Option<AppName>}) {
 	const search = route.useSearch()
 	return (
-		<AppBarTabs value={props.source ?? ''}>
+		<AppBarTabs value={Option.getOrElse(props.source, Function.constant(''))}>
 			{Array.map(props.apps, app => (
 				<AppBarTab
 					key={app.name}
@@ -111,7 +111,7 @@ function SourceTabs(props: {apps: Overview['apps']; source?: AppName | undefined
 							aria-label={app.name}
 							search={Schema.encodeSync(Search)(nextSearch(search, NavigationEvent.cases.Source.make({app: app.name})))}
 							onClick={event => {
-								if (app.name === props.source) event.preventDefault()
+								if (Option.contains(props.source, app.name)) event.preventDefault()
 							}}
 						/>
 					}
@@ -200,18 +200,18 @@ function OperationRow(props: {active: boolean; duplicate: boolean; onSelect: () 
 
 // One operations list, narrowed to the bar's chosen app; no groups or headings.
 function OperationsPane(props: {
-	activeKey?: OperationKey | undefined
+	activeKey: Option.Option<OperationKey>
 	className?: string
 	onSelect: (app: AppName, operation: Operation) => void
 	range: TimeFrame
-	source?: AppName | undefined
+	source: Option.Option<AppName>
 }) {
 	return (
 		<section aria-label="Operations" className={cn('flex h-full min-h-0 flex-col overflow-hidden', props.className)}>
 			<Suspense fallback={<LoadingRows label="Operations" rows={8} />}>
 				<OverviewContent range={props.range}>
 					{overview =>
-						Array.match(operationsOf(overview, Option.fromUndefinedOr(props.source)), {
+						Array.match(operationsOf(overview, props.source), {
 							onEmpty: () => <EmptyPane icon={<ListBulletsIcon />} label="No operations" />,
 							onNonEmpty: rows => {
 								const names = Array.groupBy(rows, row => row.operation.name)
@@ -222,12 +222,13 @@ function OperationsPane(props: {
 												{Array.map(rows, row => (
 													<OperationRow
 														key={`${row.app.name} ${row.operation.runtime} ${row.operation.name}`}
-														active={
-															props.activeKey !== undefined &&
-															props.activeKey.app === row.app.name &&
-															props.activeKey.runtime === row.operation.runtime &&
-															props.activeKey.name === row.operation.name
-														}
+														active={Option.exists(
+															props.activeKey,
+															key =>
+																key.app === row.app.name &&
+																key.runtime === row.operation.runtime &&
+																key.name === row.operation.name
+														)}
 														duplicate={pipe(
 															names,
 															Record.get(row.operation.name),
@@ -289,14 +290,14 @@ function TraceListRow(props: {active: boolean; now: DateTime.Utc; onSelect: () =
 
 // The chosen operation's traces; nothing selects until one is chosen.
 function TracesPane(props: {
-	active?: ActiveOperation | undefined
+	active: Option.Option<ActiveOperation>
 	className?: string
 	now: DateTime.Utc
 	onSelect: (trace: OperationTrace) => void
 	range: TimeFrame
-	selectedTrace?: Pick<OperationTrace, 'id'>
+	selectedTrace: Option.Option<Pick<OperationTrace, 'id'>>
 }) {
-	const active = Option.fromUndefinedOr(props.active)
+	const active = props.active
 	return (
 		<section aria-label="Traces" className={cn('flex h-full min-h-0 flex-col overflow-hidden', props.className)}>
 			<Suspense fallback={<LoadingRows label="Traces" rows={8} />}>
@@ -314,7 +315,7 @@ function TracesPane(props: {
 													{Array.map(current.operation.traces, trace => (
 														<TraceListRow
 															key={trace.id}
-															active={props.selectedTrace?.id === trace.id}
+															active={Option.exists(props.selectedTrace, selected => selected.id === trace.id)}
 															now={props.now}
 															onSelect={() => props.onSelect(trace)}
 															trace={trace}
@@ -358,11 +359,7 @@ function SpansList(props: {
 	return (
 		<ScrollArea className="min-h-0 flex-1">
 			<TimeAxis totalMs={props.trace.durationMs} />
-			<Flame
-				focus={Option.getOrUndefined(Option.map(props.focus, span => span.spanId))}
-				onPick={props.onPick}
-				trace={props.trace}
-			/>
+			<Flame focus={Option.map(props.focus, span => span.spanId)} onPick={props.onPick} trace={props.trace} />
 			{Boolean.match(props.inlineDetails && Option.isSome(props.focus), {
 				onFalse: Function.constNull,
 				onTrue: () => (
@@ -377,24 +374,24 @@ function SpansList(props: {
 }
 
 // The page's readers as one mark: the oldest age among those still showing content, and one retry for them all.
-function StaleMark(props: {range: TimeFrame; trace?: Pick<OperationTrace, 'id'>}) {
-	return Option.match(Option.fromUndefinedOr(props.trace), {
+function StaleMark(props: {range: TimeFrame; trace: Option.Option<Pick<OperationTrace, 'id'>>}) {
+	return Option.match(props.trace, {
 		onNone: () => <StaleProblem label="Out of date" readers={[overviewAtom(props.range)]} />,
 		onSome: trace => <StaleProblem label="Out of date" readers={[overviewAtom(props.range), traceAtom(trace.id)]} />
 	})
 }
 
 function Spans(props: {
-	detailOnly?: boolean | undefined
+	detailOnly?: boolean
 	id: TraceId
-	inlineDetails?: boolean | undefined
+	inlineDetails?: boolean
 	onPick: (id: SpanId) => void
-	pickedSpan?: SpanId
+	pickedSpan: Option.Option<SpanId>
 }) {
 	return (
 		<Loaded atom={traceAtom(props.id)}>
 			{trace => {
-				const focus = focusOf(trace, Option.fromUndefinedOr(props.pickedSpan))
+				const focus = focusOf(trace, props.pickedSpan)
 				if (props.detailOnly === true) {
 					return <SpanDetails focus={focus} />
 				}
@@ -412,11 +409,11 @@ function TracePane(props: {
 	detailOnly?: boolean
 	inlineDetails?: boolean
 	onPickSpan: (id: SpanId) => void
-	pickedSpan?: SpanId | undefined
+	pickedSpan: Option.Option<SpanId>
 	range: TimeFrame
-	trace?: Pick<OperationTrace, 'id'>
+	trace: Option.Option<Pick<OperationTrace, 'id'>>
 }) {
-	const trace = Option.fromUndefinedOr(props.trace)
+	const trace = props.trace
 	return (
 		<section aria-label="Trace" className={cn('flex h-full min-h-0 flex-col overflow-hidden', props.className)}>
 			<Suspense
@@ -442,9 +439,9 @@ function TracePane(props: {
 								>
 									<Spans
 										key={current.id}
-										detailOnly={props.detailOnly}
+										detailOnly={props.detailOnly === true}
 										id={current.id}
-										inlineDetails={props.inlineDetails}
+										inlineDetails={props.inlineDetails === true}
 										onPick={props.onPickSpan}
 										pickedSpan={props.pickedSpan}
 									/>
@@ -637,16 +634,16 @@ function HomeRoute() {
 	}
 
 	const workspaceProps = {
-		active: Option.getOrUndefined(selection.activeOperation),
-		activeKey: Option.getOrUndefined(selection.activeKey),
-		activeTrace: Option.getOrUndefined(selection.activeTrace),
+		active: selection.activeOperation,
+		activeKey: selection.activeKey,
+		activeTrace: selection.activeTrace,
 		now,
 		onPickSpan: selectSpan,
 		onSelectOperation: selectOperation,
 		onSelectTrace: selectTrace,
-		pickedSpan: Option.getOrUndefined(selection.pickedSpan),
+		pickedSpan: selection.pickedSpan,
 		range,
-		source: Option.getOrUndefined(selection.source)
+		source: selection.source
 	}
 	const workspace = Boolean.match(isMobile, {
 		onFalse: () =>
@@ -660,36 +657,38 @@ function HomeRoute() {
 	return (
 		<div className="flex min-h-0 flex-1 flex-col">
 			<AppBar
-				heading={Boolean.match(isMobile && pane !== 'Operations', {
-					onFalse: Function.constUndefined,
+				{...Boolean.match(isMobile && pane !== 'Operations', {
+					onFalse: () => ({}),
 					onTrue: () => ({
-						back: {
-							label: pipe(
+						heading: {
+							back: {
+								label: pipe(
+									Match.value(pane),
+									Match.when('Span', Function.constant('Trace')),
+									Match.when('Trace', Function.constant('Traces')),
+									Match.orElse(Function.constant('Operations'))
+								),
+								onClick: () => send(NavigationEvent.cases.Back.make({}))
+							},
+							title: pipe(
 								Match.value(pane),
-								Match.when('Span', Function.constant('Trace')),
-								Match.when('Trace', Function.constant('Traces')),
-								Match.orElse(Function.constant('Operations'))
-							),
-							onClick: () => send(NavigationEvent.cases.Back.make({}))
-						},
-						title: pipe(
-							Match.value(pane),
-							Match.when('Traces', () =>
-								Option.match(selection.activeOperation, {
-									onNone: Function.constant('Traces'),
-									onSome: active => active.operation.name
-								})
-							),
-							Match.when('Span', Function.constant('Span')),
-							Match.orElse(Function.constant('Trace'))
-						)
+								Match.when('Traces', () =>
+									Option.match(selection.activeOperation, {
+										onNone: Function.constant('Traces'),
+										onSome: active => active.operation.name
+									})
+								),
+								Match.when('Span', Function.constant('Span')),
+								Match.orElse(Function.constant('Trace'))
+							)
+						}
 					})
 				})}
 				icon={icon}
 				name="scope"
 				controls={
 					<>
-						<StaleMark range={range} trace={Option.getOrUndefined(selection.activeTrace)} />
+						<StaleMark range={range} trace={selection.activeTrace} />
 						{Boolean.match(isMobile && pane !== 'Operations', {
 							onFalse: () => <AppBarChoice label="Range" value={range} options={RANGES} onChange={selectRange} />,
 							onTrue: Function.constNull
@@ -699,12 +698,7 @@ function HomeRoute() {
 				tabs={Boolean.match(isMobile && pane !== 'Operations', {
 					onFalse: () =>
 						Boolean.match(AsyncResult.isInitial(overview) && Array.isReadonlyArrayEmpty(apps), {
-							onFalse: () => (
-								<SourceTabs
-									apps={apps}
-									source={Option.getOrUndefined(Option.orElse(selection.source, () => search.source))}
-								/>
-							),
+							onFalse: () => <SourceTabs apps={apps} source={Option.orElse(selection.source, () => search.source)} />,
 							onTrue: () => <AppBarTabsSkeleton count={4} />
 						}),
 					onTrue: Function.constUndefined

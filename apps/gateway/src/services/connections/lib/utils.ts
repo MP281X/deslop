@@ -43,9 +43,11 @@ export function clientMetadata(url: string) {
 }
 
 // The icons a server names in its MCP server info, kept to a few a page can show, each small enough to stream to it.
-export function serverIcons(implementation?: McpSchema.Implementation) {
+export function serverIcons(implementation: Option.Option<McpSchema.Implementation>) {
 	return pipe(
-		implementation?.icons ?? [],
+		implementation,
+		Option.toArray,
+		Array.flatMap(server => server.icons ?? []),
 		Array.filter(
 			icon => Option.isSome(String.match(/^(?:https:|data:image\/)/u)(icon.src)) && icon.src.length <= 32_768
 		),

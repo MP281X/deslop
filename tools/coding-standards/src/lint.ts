@@ -286,11 +286,6 @@ export const lint: OxlintConfig & {
 			{message: 'Use const and Effect collection combinators.', selector: 'VariableDeclaration[kind="let"]'},
 			{message: 'Use Match.', selector: 'SwitchStatement'},
 			{
-				message: 'Use Option for absence; only optional properties may explicitly forward undefined.',
-				selector:
-					'TSUndefinedKeyword:not(TSPropertySignature[optional=true] > TSTypeAnnotation > TSUnionType > TSUndefinedKeyword)'
-			},
-			{
 				// A module augmentation is the one place an interface belongs: TypeScript merges declarations only into interfaces.
 				message: 'Declare a type, not an interface.',
 				selector: 'TSInterfaceDeclaration:not(TSModuleDeclaration TSInterfaceDeclaration)'
@@ -804,7 +799,8 @@ export const lint: OxlintConfig & {
 					ReadonlyArray: 'Use readonly T[].',
 					ReadonlyMap: MAP_MESSAGE,
 					ReadonlySet: SET_MESSAGE,
-					Set: SET_MESSAGE
+					Set: SET_MESSAGE,
+					undefined: 'Use an optional property or parameter, or let inference supply undefined.'
 				}
 			}
 		],

@@ -13,8 +13,8 @@ import {UpstreamError} from '#services/connections/schema.ts'
 const REQUEST_AUTHORIZATION = 'x-deslop-mcp-authorization'
 
 type Upstream = {
-	readonly serverInfo?: McpSchema.Implementation | undefined
-	readonly instructions?: string | undefined
+	readonly serverInfo: Option.Option<McpSchema.Implementation>
+	readonly instructions: Option.Option<string>
 	readonly listTools: () => Effect.Effect<
 		readonly McpSchema.Tool[],
 		McpClientError.McpClientError | UpstreamError | Schema.SchemaError
@@ -87,9 +87,9 @@ export class Upstreams extends Context.Service<Upstreams>()('@deslop/gateway/ser
 					Effect.catchIf(unsupportedProtocol, () => connect(McpProtocol.v2025_11_25)),
 					Effect.map(value => ({
 						callTool: (tool: McpSchema.Tool, args: Record<string, unknown>) => value.callTool({arguments: args, tool}),
-						instructions: value.instructions,
+						instructions: Option.fromUndefinedOr(value.instructions),
 						listTools: () => value.listTools(),
-						serverInfo: value.serverInfo
+						serverInfo: Option.fromUndefinedOr(value.serverInfo)
 					})),
 					// Effect supports only 2025-11-25 and 2026-07-28. A server choosing another revision needs SDK negotiation.
 					Effect.catchIf(unsupportedProtocol, () =>
@@ -133,7 +133,7 @@ export class Upstreams extends Context.Service<Upstreams>()('@deslop/gateway/ser
 										})
 									)
 								}),
-								instructions: sdk.getInstructions(),
+								instructions: Option.fromUndefinedOr(sdk.getInstructions()),
 								listTools: Effect.fnUntraced(function* () {
 									const headers = yield* requestHeaders
 									const result = yield* Effect.tryPromise({
@@ -145,8 +145,8 @@ export class Upstreams extends Context.Service<Upstreams>()('@deslop/gateway/ser
 									)
 								}),
 								serverInfo: yield* Option.match(Option.fromUndefinedOr(sdk.getServerVersion()), {
-									onNone: () => Effect.undefined,
-									onSome: Schema.decodeUnknownEffect(McpSchema.Implementation)
+									onNone: () => Effect.succeedNone,
+									onSome: server => Effect.asSome(Schema.decodeUnknownEffect(McpSchema.Implementation)(server))
 								})
 							}
 						})

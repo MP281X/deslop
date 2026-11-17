@@ -65,7 +65,7 @@ export function ItemGroup(props: {children: ReactNode; modifiers?: ViewModifier[
 }
 
 export function Item(props: {
-	alignment?: ItemAlignment | undefined
+	alignment?: ItemAlignment
 	children: ReactNode
 	modifiers?: ViewModifier[]
 	onPress?: () => void

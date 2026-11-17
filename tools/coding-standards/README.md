@@ -37,7 +37,7 @@ The preset leaves type-aware lint and type checking off, so a syntax-only pass s
 
 Add your own ignores and repository-specific selectors alongside the preset's `lint.rules['eslint-js/no-restricted-syntax']`.
 
-The shared compiler enables `exactOptionalPropertyTypes`: omit an absent optional property, or explicitly include `| undefined` when that property forwards an undefined value. Elsewhere, model absence with `Option` rather than an explicit `undefined` type.
+The shared compiler enables `exactOptionalPropertyTypes`: omit an absent optional property, or pass an `Option` through when absence is part of the value. Explicit `| undefined` is reserved for third-party contracts that require it.
 
 ## Rules
 

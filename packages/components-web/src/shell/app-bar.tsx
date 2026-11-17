@@ -193,7 +193,7 @@ export function AppBarChoice<A>(props: {
 export function AppBar(props: {
 	account?: ReactNode
 	controls?: ReactNode
-	heading?: {back: {label: string; onClick: () => void}; title: string} | undefined
+	heading?: {back: {label: string; onClick: () => void}; title: string}
 	icon: string
 	name: string
 	tabs?: ReactNode

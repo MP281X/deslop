@@ -184,11 +184,11 @@ function KindLabel(props: {kind: Kind}) {
 }
 
 // A picker row's tag is a string or a number, so "All Notes", which clears the filter, is a toggle beside it.
-function FilterMenu(props: {kind?: Kind | undefined; onKind: (kind?: Kind) => void}) {
+function FilterMenu(props: {kind: Option.Option<Kind>; onKind: (kind: Option.Option<Kind>) => void}) {
 	return (
 		<Menu
 			label="Filter"
-			systemImage={Boolean.match(props.kind === undefined, {
+			systemImage={Boolean.match(Option.isNone(props.kind), {
 				onFalse: Function.constant('line.3.horizontal.decrease.circle.fill'),
 				onTrue: Function.constant('line.3.horizontal.decrease')
 			})}
@@ -197,14 +197,14 @@ function FilterMenu(props: {kind?: Kind | undefined; onKind: (kind?: Kind) => vo
 			<Toggle
 				label="All Notes"
 				systemImage="tray"
-				isOn={props.kind === undefined}
-				onIsOnChange={() => props.onKind()}
+				isOn={Option.isNone(props.kind)}
+				onIsOnChange={() => props.onKind(Option.none())}
 			/>
 			<Divider />
 			<Picker<Kind>
 				label="Show"
-				{...Option.match(Option.fromUndefinedOr(props.kind), {onNone: () => ({}), onSome: selection => ({selection})})}
-				onSelectionChange={props.onKind}
+				{...Option.match(props.kind, {onNone: () => ({}), onSome: selection => ({selection})})}
+				onSelectionChange={kind => props.onKind(Option.some(kind))}
 				modifiers={[pickerStyle('inline')]}
 			>
 				{Array.map(Kind.literals, kind => (
@@ -217,10 +217,10 @@ function FilterMenu(props: {kind?: Kind | undefined; onKind: (kind?: Kind) => vo
 
 // judge-ignore no-silent-fallback -- HomeRoute shows Search unavailable with retry for outages; denied searches render FailureContent instead of cached notes.
 function Notes(props: {
-	kind?: Kind | undefined
+	kind: Option.Option<Kind>
 	onOpen: (id: Note['id']) => void
-	onTag: (name?: TagName) => void
-	tag?: TagName | undefined
+	onTag: (name: Option.Option<TagName>) => void
+	tag: Option.Option<TagName>
 }) {
 	const regenerate = useAtomSet(regenerateAtom)
 	const paste = useAtomSet(clipboard.atom.send)
@@ -238,11 +238,11 @@ function Notes(props: {
 					all,
 					note =>
 						Option.match(found, {onNone: Function.constTrue, onSome: ids => HashSet.has(ids, note.id)}) &&
-						(props.tag === undefined || Array.contains(note.tags, props.tag)) &&
-						(props.kind === undefined || kindOf(note) === props.kind)
+						Option.match(props.tag, {onNone: Function.constTrue, onSome: name => Array.contains(note.tags, name)}) &&
+						Option.match(props.kind, {onNone: Function.constTrue, onSome: kind => kindOf(note) === kind})
 				)
 				const tags = Array.map(tagCounts(all), entry => entry.tag)
-				const filtered = String.isNonEmpty(query) || props.tag !== undefined || props.kind !== undefined
+				const filtered = String.isNonEmpty(query) || Option.isSome(props.tag) || Option.isSome(props.kind)
 				return (
 					<VStack spacing={0} modifiers={[frame({maxHeight: Infinity})]}>
 						{Array.match(all, {
@@ -266,14 +266,16 @@ function Notes(props: {
 									<ItemGroup>
 										{/* "all" clears the tag, and choosing the chosen tag again does too. */}
 										<ToggleGroup
-											value={[props.tag ?? 'all']}
+											value={[Option.getOrElse(props.tag, Function.constant('all'))]}
 											variant="outline"
 											onValueChange={value =>
-												pipe(
-													value,
-													Array.head,
-													Option.filter(name => name !== 'all'),
-													Option.match({onNone: () => props.onTag(), onSome: name => props.onTag(TagName.make(name))})
+												props.onTag(
+													pipe(
+														value,
+														Array.head,
+														Option.filter(name => name !== 'all'),
+														Option.map(name => TagName.make(name))
+													)
 												)
 											}
 											modifiers={[
@@ -316,13 +318,13 @@ function Notes(props: {
 }
 
 export function HomeRoute(props: {
-	kind?: Kind | undefined
+	kind: Option.Option<Kind>
 	onCompose: () => void
-	onKind: (kind?: Kind) => void
+	onKind: (kind: Option.Option<Kind>) => void
 	onOpen: (id: Note['id']) => void
 	onSearch: (text: string) => void
-	onTag: (name?: TagName) => void
-	tag?: TagName | undefined
+	onTag: (name: Option.Option<TagName>) => void
+	tag: Option.Option<TagName>
 }) {
 	const notes = useAtomValue(notesAtom)
 	const refreshNotes = useAtomRefresh(notesAtom)
@@ -338,19 +340,20 @@ export function HomeRoute(props: {
 			session={session}
 			onSearch={props.onSearch}
 			problem={Boolean.match(saved && (AsyncResult.isFailure(notes) || AsyncResult.isFailure(search)), {
-				onFalse: Function.constUndefined,
-				onTrue: () => (
-					<Problem
-						label={Boolean.match(AsyncResult.isFailure(notes), {
-							onFalse: Function.constant('Search unavailable'),
-							onTrue: Function.constant('Out of date')
-						})}
-						onRetry={() => {
-							refreshNotes()
-							refreshSearch()
-						}}
-					/>
-				)
+				onFalse: () => Option.none(),
+				onTrue: () =>
+					Option.some(
+						<Problem
+							label={Boolean.match(AsyncResult.isFailure(notes), {
+								onFalse: Function.constant('Search unavailable'),
+								onTrue: Function.constant('Out of date')
+							})}
+							onRetry={() => {
+								refreshNotes()
+								refreshSearch()
+							}}
+						/>
+					)
 			})}
 			bottomBar={
 				<>

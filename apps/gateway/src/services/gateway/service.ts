@@ -237,7 +237,7 @@ export class Gateway extends Context.Service<
 							Effect.flatMap(result => Effect.map(Schema.decodeUnknownEffect(RemoteTools)(result), tools => ({tools}))),
 							Effect.map(result => ({
 								icons: serverIcons(client.serverInfo),
-								instructions: Option.fromUndefinedOr(client.instructions),
+								instructions: client.instructions,
 								...result
 							}))
 						)

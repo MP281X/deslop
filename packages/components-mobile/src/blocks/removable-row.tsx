@@ -1,5 +1,7 @@
 import {useAtomSet} from '@effect/atom-react'
 
+import {Struct} from 'effect'
+
 import {Button as NativeButton, ContextMenu, SwipeActions} from '@expo/ui/swift-ui'
 import {accessibilityAddTraits} from '@expo/ui/swift-ui/modifiers'
 import type {ViewModifier} from '@expo/ui/swift-ui/modifiers'
@@ -37,7 +39,7 @@ export function RemovableRow<Id extends string>(props: {
 						<ContextMenu>
 							<ContextMenu.Trigger>
 								<Item
-									alignment={props.alignment}
+									{...Struct.pick(props, ['alignment'])}
 									onPress={props.onOpen}
 									modifiers={[accessibilityAddTraits(['isButton'])]}
 								>
@@ -57,7 +59,7 @@ export function RemovableRow<Id extends string>(props: {
 			</MachineState>
 			<MachineState machine={machine} path="Pending">
 				{() => (
-					<Item alignment={props.alignment} modifiers={itemRow}>
+					<Item {...Struct.pick(props, ['alignment'])} modifiers={itemRow}>
 						{props.children(true)}
 						<ItemActions>
 							<Button
