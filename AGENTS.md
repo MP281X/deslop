@@ -76,11 +76,14 @@
 | Releases                                                 | `.github/releasing.md`                                     |
 | A published package's contract                           | Its `README.md`                                            |
 | Workers, accounts, services and Dual                     | The environment skill and its references                   |
-| Planning, delegate routing and briefs                    | The orchestrator skill                                     |
+| Plans, variants and prototypes                           | The plan skill                                             |
+| Unattended runs                                          | The sleep skill                                            |
+| The repository process, delegate routing and briefs      | The orchestrator skill                                     |
 | Outside repositories                                     | The orchestrator skill's `references/repos.md`             |
 | PR shape and lifecycle                                   | The pull-requests skill; section guidance, the PR template |
 | Checks, proof and review                                 | The verification skill                                     |
 | Thread and PR output                                     | The prompts' Replies section                               |
 | Rules for every turn                                     | The prompts' `# Work`                                      |
 
-- **Form.** In agent instructions, state only what a reader would otherwise get wrong, never the implicit or what is no concern; a process is a Mermaid `stateDiagram-v2` whose transitions read `event [guard] / action`, a lookup is a table, and bullets hold only standing rules; no prose restates a diagram.
+- **Form.** In agent instructions, state only what a reader would otherwise get wrong, never the implicit or what is no concern; a process is a Mermaid `stateDiagram-v2` whose transitions read `event [guard] / action`, a lookup is a table, a form the agent must produce is one worked example, and bullets hold only standing rules; no prose restates a diagram.
+- **Evals.** A change to a prompt or skill is judged on replays before it merges, never on the next thread: a delegate in the changed worktree answers a real past message, and its reply is scored against the user's recorded complaints, with its minutes, steps and calls per step. A worktree's prompt and new skills take effect there; edits to an installed skill do not, and say so under Not proven.

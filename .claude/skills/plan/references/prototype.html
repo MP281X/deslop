@@ -1,13 +1,14 @@
 <!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><script>
-/* PROTOTYPE DATA. Copy this file to scratch, Read it with limit 35, edit only this script, check the copy
+/* PROTOTYPE DATA. Copy this file to scratch, Read it with limit 36, edit only this script, check the copy
    with html_preview, then html_render it by path. Never read past this script.
-   DECISIONS    one section each, numbered in order: a Today tile and one tile per variant, lettered a, b, c. Play
+   DECISIONS    one section each, numbered in order from FIRST: a Today tile and one tile per variant, lettered a, b, c. Play
                 runs `task` in every tile in sync; a clicked tile opens large and plays alone.
    variants     letter: {parts, path}. parts: words naming what the variant is made of, which view() reads as
                 has.<word>; Today gets has.today. A mix is one more variant listing parts of others. Without
                 variants the decision is a journey: one large tile playing `today`, like a PR video.
    path, today  target ids in click order; `|` marks the still the tile rests on, else start. Clicks are counted.
    start        the state every path begins from.
+   FIRST        the number of the first decision: the thread's next free number, so its count never restarts.
    SIZE, PHONE  the app's desktop (16:9) and phone sizes in real px; tiles only scale down. Phone sets #stage.ph.
    THEME        the codebase's shadcn tokens, its :root and .dark declarations; empty strings keep T3's.
    view(s, has) the app's HTML for state s: only the screens the decisions touch, with the app's real labels and data;
@@ -16,7 +17,7 @@
    Kit          .side .org .nav | main h1 .row .m | .inp .sel .chip .btn .on | .pop .sheet (inline position, width)
                 .scrim > .dlg | .it .f .ft .toast
    A path id with no target on screen logs a console error naming the tile and step. */
-const SIZE = [800, 450], PHONE = [390, 760];
+const FIRST = 1, SIZE = [800, 450], PHONE = [390, 760];
 const THEME = { light: '', dark: '' };
 const DECISIONS = [
   { name: 'Rename', task: 'Rename Project to Atlas', start: {},
@@ -274,7 +275,7 @@ const secs = DECISIONS.map((d, si) => {
     return mount(t, '');
   });
   const max = Math.max(...tiles.map((t) => t.len));
-  const el = node(`<section class="paused${solo ? ' solo' : ''}"><div class="p-hd"><span class="p-id">${si + 1}</span><span class="p-name">${d.name}</span><span class="p-task">${d.task}</span><span class="p-tl"><button></button><span class="p-beats">${'<i><span></span></i>'.repeat(max + 1)}</span></span></div><div class="p-grid"></div></section>`);
+  const el = node(`<section class="paused${solo ? ' solo' : ''}"><div class="p-hd"><span class="p-id">${si + FIRST}</span><span class="p-name">${d.name}</span><span class="p-task">${d.task}</span><span class="p-tl"><button></button><span class="p-beats">${'<i><span></span></i>'.repeat(max + 1)}</span></span></div><div class="p-grid"></div></section>`);
   const sec = { el, tiles, max, b: null, gen: 0, playing: false, fo: null, solo, grid: el.querySelector('.p-grid'), beats: el.querySelector('.p-beats'), pp: el.querySelector('button') };
   for (const t of tiles) sec.grid.append(t.el);
   el.addEventListener('click', (e) => {

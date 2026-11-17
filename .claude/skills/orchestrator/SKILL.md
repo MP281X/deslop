@@ -30,13 +30,13 @@ stateDiagram-v2
   - each piece of state's owner, lifetime and source copy;
   - each failure: a cancellation, a retry or the user's to act on, and where it is handled;
   - the operating facts that remove complexity.
-- **Plan.** What changes and what stays untouched, each claim traced to code read or run. An open choice shows 2–3 variants you would build, rough, on the same data, differing in interaction model or structure rather than styling, a better idea than the user's among them. Each takes the format that leaves no ambiguity: UI in [prototype.html](references/prototype.html), by its header; structure as a traced value, a contract diff, a role-by-operation grid or sample rows before and after; never prose.
+- **Plan.** What changes and what stays untouched, each claim traced to code read or run.
 - **Shared patterns** are approved on one realistic page showing all their states before they spread.
 - **Approved render.** The build matches the picked variant's screens, labels, states and click paths; a difference it needs goes back to the user as a plan.
-- **Checks wait for the build.** While drafting, the fixer, checks, tests and pushes wait for Validate unless the user asks; a diagnosis still runs its probe, and a delegate the proof its brief names.
+- **Checks wait for the build.** The fixer, the full check and the push run once, in the main thread, in Validate. Until then a diagnosis runs its probe and a delegate only the tests of the package it touched.
 - **Precedent.** Before an edit, read how the neighbouring feature or shared package does it. A package's behaviour comes from its installed source, read rather than recalled; [Repositories](references/repos.md) for what neither answers.
 - **One owner.** One main thread per worktree: check `t3_thread_list` first and give the user a live owner's link rather than starting a second.
-- **Yourself.** Small edits, prototypes and reads, since a delegate costs a brief and a report.
+- **Yourself.** Small edits, prototypes and reads, since a delegate costs a brief and a report. A long burst of reading or browsing goes to a delegate: its context starts empty, while each step of yours re-reads the whole thread.
 
 ## Route
 
@@ -48,7 +48,7 @@ Delegates go to Codex unless the work needs Claude's judgement: the main thread 
 | Bounded reads, searches, runs and checks                                                                                                                                 | GPT-6.1 Terra                     | `codex` / `gpt-6.1-terra`                                   |
 | UI code; removals, since Codex rejects `rm -f` and `rm -rf`                                                                                                              | Sonnet 5.5                        | `claudeAgent` / `claude-sonnet-5-5`                         |
 | Work that cannot be scoped: an open UI or architecture                                                                                                                   | Opus 5.5                          | `claudeAgent` / `claude-opus-5-5`                           |
-| Advisors on a hard architectural decision, both in one turn                                                                                                              | Fable 5.2 and GPT-6.1 Sol at high | `claudeAgent` / `claude-fable-5-2`, `codex` / `gpt-6.1-sol` |
+| Advisors, both in one turn: a tradeoff's verdict, a hard architectural decision, the user's choices in sleep mode                                                        | Fable 5.2 and GPT-6.1 Sol at high | `claudeAgent` / `claude-fable-5-2`, `codex` / `gpt-6.1-sol` |
 | Never                                                                                                                                                                    | Luna, Haiku                       |                                                             |
 
 - **Other company.** A review or second opinion comes from the company that did not write or propose the work.
@@ -60,9 +60,9 @@ Delegates go to Codex unless the work needs Claude's judgement: the main thread 
 stateDiagram-v2
     [*] --> Running : brief / start it by the harness's tool choice, siblings with disjoint files in one turn
     Running --> [*] : PASS or ISSUES [read-only brief] / use its findings and evidence
-    Running --> [*] : PASS [edit brief, matches the decisions] / commit its diff
-    Running --> Running : ISSUES or a missed decision [edit brief, first time] / resume it with what the brief left out
-    Running --> [*] : ISSUES or a missed decision [edit brief, again] / finish it yourself
+    Running --> [*] : PASS [edit brief] / read its diff once against the decisions, fix what is off yourself, commit
+    Running --> Running : ISSUES [edit brief, first time] / resume it with what the brief left out
+    Running --> [*] : ISSUES [edit brief, again] / finish it yourself
     Running --> Running : BLOCKED [you can clear it] / clear it, resume
     Running --> [*] : BLOCKED [you cannot] / report it with the user's action
     [*] --> PRThread : a separate PR must progress in parallel / delegate_task with isolation 'worktree'
@@ -71,8 +71,8 @@ stateDiagram-v2
 ```
 
 - **Shared checkout.** Delegates other than PR threads share the main thread's worktree and branch, so they never commit.
-- **One outcome per delegate.** Coupled edits share one delegate. A procedure is a skill, not a child agent.
-- **Brief.** About 1,500 characters, since the delegate has the instructions, skills and checkout but not the thread: the objective, the settled decisions, the approved render's path, the files it owns, what to leave alone, the narrowest command that proves it and the report you want.
+- **One outcome per delegate,** whole and strictly scoped: few large delegates, since each starts cold and reads again what the task already read. Coupled edits share one delegate. A procedure is a skill, not a child agent. No delegate reviews another between steps.
+- **Brief.** About 1,500 characters, since the delegate has the instructions, skills and checkout but not the thread: the objective, the settled decisions, the approved render's path, the files and lines it starts from and owns, what to leave alone, the narrowest command that proves it, and the proof you want back: that command's output or a capture, never a summary.
 
 ## Delegate run
 
