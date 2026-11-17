@@ -1,8 +1,10 @@
 import './styles.css'
 
-import {HeadContent, createRootRoute} from '@tanstack/react-router'
+import {HeadContent, createRootRouteWithContext} from '@tanstack/react-router'
 
-export const Route = createRootRoute({
+import type {RouterContext} from '@deslop/components-web/lib/router'
+
+export const Route = createRootRouteWithContext<RouterContext>()({
 	shellComponent: props => (
 		<div className="bg-background text-foreground pt-safe-top pr-safe-right pl-safe-left flex h-dvh w-dvw flex-col print:h-auto print:w-auto">
 			<HeadContent />

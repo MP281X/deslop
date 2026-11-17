@@ -2,6 +2,7 @@ import {createFileRoute} from '@tanstack/react-router'
 import {Suspense} from 'react'
 
 import {Loaded} from '@deslop/components-web/blocks/states'
+import {preload} from '@deslop/components-web/lib/router'
 import {AppBar} from '@deslop/components-web/shell/app-bar'
 import {Skeleton} from '@deslop/components-web/ui/skeleton'
 
@@ -10,7 +11,7 @@ import icon from '#routes/icon.svg'
 
 // Every RPC requires a user: the gate sends a signed-out visitor to Auth, which returns here.
 function HomeRoute() {
-	// The first load suspends to a skeleton; React keeps a shown fallback at least 300ms, so it never blinks.
+	// The loader's read usually arrives with the page; a slower one suspends to this skeleton, which React keeps at least 300ms, so it never blinks.
 	return (
 		<>
 			<AppBar icon={icon} name="template-app" />
@@ -21,4 +22,7 @@ function HomeRoute() {
 	)
 }
 
-export const Route = createFileRoute('/(home)/')({component: HomeRoute})
+export const Route = createFileRoute('/(home)/')({
+	component: HomeRoute,
+	loader: load => preload(load.context, [nameAtom])
+})

@@ -17,6 +17,7 @@ import {StaleProblem} from '@deslop/components-web/blocks/problem'
 import {LoadingRow, RowLead} from '@deslop/components-web/blocks/rows'
 import {Loaded, ReadFailure} from '@deslop/components-web/blocks/states'
 import {StatusDot} from '@deslop/components-web/blocks/status-dot'
+import {preload} from '@deslop/components-web/lib/router'
 import {AppBar, AppBarChoice} from '@deslop/components-web/shell/app-bar'
 import {Page} from '@deslop/components-web/shell/page'
 import {Button} from '@deslop/components-web/ui/button'
@@ -445,6 +446,11 @@ function HomeRoute() {
 }
 
 export const Route = createFileRoute('/(home)/')({
+	// Ahead of the loader: TypeScript types `load.deps` from the keys before it.
+	loaderDeps: location => ({period: Option.getOrElse(location.search.period, Function.constant('24h' as const))}),
+
 	component: HomeRoute,
+	loader: load =>
+		preload(load.context, [serversAtom, aiKeyAtom, aiUsageAtom(load.deps.period), mcpUsageAtom(load.deps.period)]),
 	validateSearch: Schema.toStandardSchemaV1(Search)
 })
