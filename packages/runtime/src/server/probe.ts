@@ -38,7 +38,7 @@ import {Account} from '#shared/schema.ts'
 // Opaque URL checks and minimum-length APNs tokens need explicit, contract-validated examples instead of small arbitrary strings.
 const FIXED_INPUTS: Record<string, unknown> = {
 	'gateway connections.add': {url: 'https://example.com/mcp'},
-	'opm chapters.register': {bundle: 'xyz.mp281x.opm.dev', token: '00000000000000000000000000000000'},
+	'opm push.register': {bundle: 'xyz.mp281x.opm.dev', kind: 'alert', token: '00000000000000000000000000000000'},
 	'trips push.register': {bundle: 'xyz.mp281x.trips.dev', kind: 'alert', token: '00000000000000000000000000000000'}
 }
 
@@ -76,7 +76,7 @@ const publicAccess: readonly {readonly app: string; readonly surface: string; re
 			'GET /*',
 			'GET /api/rpc',
 			'GET /auth/sign-in',
-			'GET /auth/sign-out'
+			'POST /auth/sign-out'
 		],
 		surface => ({app: '*', callers: Caller.literals, surface: `http ${surface}`})
 	),
@@ -86,11 +86,10 @@ const publicAccess: readonly {readonly app: string; readonly surface: string; re
 		callers: ['member'] as const,
 		surface: `http ${surface}`
 	})),
-	...Array.map(['GET /sign-in', 'GET /sign-out', 'GET /auth/github/callback'], surface => ({
-		app: 'auth',
-		callers: Caller.literals,
-		surface: `http ${surface}`
-	})),
+	...Array.map(
+		['GET /.well-known/apple-app-site-association', 'GET /sign-in', 'POST /sign-out', 'GET /auth/github/callback'],
+		surface => ({app: 'auth', callers: Caller.literals, surface: `http ${surface}`})
+	),
 	{app: 'auth', callers: Caller.literals, surface: 'rpc people.account'},
 	{app: 'auth', callers: ['member'], surface: 'rpc sessions.watch'},
 	...Array.map(['list_sessions', 'sign_out_session'], name => ({
@@ -120,7 +119,7 @@ const publicAccess: readonly {readonly app: string; readonly surface: string; re
 	})),
 	{app: 'gateway', callers: Caller.literals, surface: 'http GET /oauth/client.json'},
 	{app: 'gateway', callers: ['member'], surface: 'http * /ai/*'},
-	...Array.map(['chapters.events', 'chapters.register', 'reading.write'], name => ({
+	...Array.map(['chapters.events', 'push.register', 'chapters.write'], name => ({
 		app: 'opm',
 		callers: ['member'] as const,
 		surface: `rpc ${name}`

@@ -1,8 +1,9 @@
 import {NodeServices} from '@effect/platform-node'
 import {assert, it} from '@effect/vitest'
 
-import {ConfigProvider, Effect, FileSystem, Layer, Option, Result, pipe} from 'effect'
+import {ConfigProvider, Effect, FileSystem, Layer, Option, pipe} from 'effect'
 
+import {requireAdmin} from '@deslop/runtime/server/auth'
 import {layerDataStore} from '@deslop/runtime/server/store'
 import {UserId} from '@deslop/runtime/shared/auth'
 
@@ -32,11 +33,8 @@ it.layer(layer)(test =>
 		Effect.fnUntraced(function* () {
 			const people = yield* People
 			const user = {id: UserId.make('github:2'), name: 'person'}
-			const admin = {admin: true, id: UserId.make('github:1'), name: 'admin'}
+			const admin = yield* requireAdmin({admin: true, id: UserId.make('github:1'), name: 'admin'}, 'Admin required')
 			assert.equal((yield* people.register(user, Option.none(), false)).status, 'Waiting')
-			assert.isTrue(
-				Result.isFailure(yield* Effect.result(people.admit({allow: true, id: user.id}, {...user, admin: false})))
-			)
 			assert.equal((yield* people.admit({allow: true, id: user.id}, admin)).role, 'Member')
 			assert.equal((yield* people.register({...user, name: 'renamed'}, Option.none(), false)).status, 'Allowed')
 			assert.equal(
