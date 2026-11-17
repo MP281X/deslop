@@ -18,6 +18,7 @@ import {
 } from 'effect'
 
 import {Headers, HttpClient, HttpClientRequest, HttpServerRequest, HttpServerResponse} from 'effect/http'
+import {Reactivity} from 'effect/reactivity'
 import {Migrator, SqlClient, SqlSchema} from 'effect/sql'
 
 import {Auth} from '@deslop/runtime/server/auth'
@@ -89,9 +90,17 @@ const asAuthError = Effect.mapError((cause: unknown) =>
 	AuthError.make({cause, error: 'temporarily_unavailable', message: 'AI Gateway storage failed'})
 )
 
+declare module 'effect/reactivity/Reactivity' {
+	interface Keys {
+		readonly aiKeys: UserId
+	}
+}
+
 export class AiProxy extends Context.Service<AiProxy>()('@deslop/gateway/services/ai-proxy/service/AiProxy', {
 	make: Effect.gen(function* () {
 		const sql = yield* SqlClient.SqlClient
+		const reactivity = yield* Reactivity.Reactivity
+		const withReactivity = Effect.provideService(Reactivity.Reactivity, reactivity)
 		const auth = yield* Auth
 		const client = yield* HttpClient.HttpClient
 		const metering = yield* AiMetering
@@ -110,9 +119,11 @@ export class AiProxy extends Context.Service<AiProxy>()('@deslop/gateway/service
 			Request: AiKey.insert,
 			execute: row => sql`INSERT OR REPLACE INTO ${sql(AiKey.table)} ${sql.insert(row)}`
 		})
-		const deleteKey = SqlSchema.void({
+		const deleteKey = SqlSchema.findOneOption({
 			Request: Schema.Struct({owner: AiKey.fields.owner, provider: AiProvider}),
-			execute: key => sql`DELETE FROM ${sql(AiKey.table)} WHERE owner = ${key.owner} AND provider = ${key.provider}`
+			Result: Schema.Struct({provider: AiProvider}),
+			execute: key =>
+				sql`DELETE FROM ${sql(AiKey.table)} WHERE owner = ${key.owner} AND provider = ${key.provider} RETURNING provider`
 		})
 		// Only a changed status writes, and only on the key that answered, never its replacement.
 		const markKey = SqlSchema.void({
@@ -124,10 +135,12 @@ export class AiProxy extends Context.Service<AiProxy>()('@deslop/gateway/service
 			`
 		})
 		return {
-			key: Effect.fn('AiProxy.key')(function* (id: UserId) {
-				yield* Effect.annotateCurrentSpan('userId', id)
-				return yield* asAuthError(listKeys(id))
-			}),
+			key: (id: UserId) =>
+				pipe(
+					sql.reactive({aiKeys: [id]}, asAuthError(listKeys(id))),
+					Stream.provideService(Reactivity.Reactivity, reactivity),
+					Stream.withSpan('AiProxy.key', {attributes: {'rpc.stream': true, userId: id}})
+				),
 			proxy: Effect.fn('AiProxy.proxy')(function* (rest: string) {
 				const request = yield* HttpServerRequest.HttpServerRequest
 				const now = yield* DateTime.now
@@ -197,8 +210,11 @@ export class AiProxy extends Context.Service<AiProxy>()('@deslop/gateway/service
 						const response = yield* client.execute(HttpClientRequest.setUrl(outgoing.request, destination.success))
 						// Key bookkeeping cannot turn an upstream action that committed into a failed forwarding request.
 						yield* Effect.ignore(
-							asAuthError(
-								markKey({lastStatus: Option.some(response.status), owner: person.success.id, secret: foundKey.secret})
+							pipe(
+								markKey({lastStatus: Option.some(response.status), owner: person.success.id, secret: foundKey.secret}),
+								Reactivity.mutation({aiKeys: [person.success.id]}),
+								withReactivity,
+								asAuthError
 							),
 							{log: 'Warn', message: 'AI key status could not be saved'}
 						)
@@ -232,11 +248,22 @@ export class AiProxy extends Context.Service<AiProxy>()('@deslop/gateway/service
 			}),
 			removeKey: Effect.fn('AiProxy.removeKey')(function* (id: UserId, provider: AiProvider) {
 				yield* Effect.annotateCurrentSpan('userId', id)
-				return yield* asAuthError(deleteKey({owner: id, provider}))
+				if (
+					Option.isNone(
+						yield* pipe(
+							deleteKey({owner: id, provider}),
+							Reactivity.mutation({aiKeys: [id]}),
+							withReactivity,
+							asAuthError
+						)
+					)
+				) {
+					return yield* AuthError.make({message: `No ${provider} key is saved. Nothing changed.`})
+				}
 			}),
 			setKey: Effect.fn('AiProxy.setKey')(function* (id: UserId, input: AiSetKey) {
 				yield* Effect.annotateCurrentSpan('userId', id)
-				return yield* asAuthError(
+				return yield* pipe(
 					saveKey({
 						last4: String.slice(-4)(Redacted.value(input.secret)),
 						lastStatus: Option.none(),
@@ -249,7 +276,10 @@ export class AiProxy extends Context.Service<AiProxy>()('@deslop/gateway/service
 							Match.orElse(Function.constant('opencode' as const))
 						),
 						secret: input.secret
-					})
+					}),
+					Reactivity.mutation({aiKeys: [id]}),
+					withReactivity,
+					asAuthError
 				)
 			})
 		}

@@ -1,12 +1,12 @@
 import {execPath} from 'node:process'
 
-import {Array, Cause, Config, Effect, Exit, FileSystem, Function, Path, Schema, pipe} from 'effect'
+import {Array, Cause, Config, Effect, Exit, FileSystem, Function, Path, Schedule, Schema, pipe} from 'effect'
 
 import {HttpClient, HttpClientResponse} from 'effect/http'
 
 import {AppError, executeProcess} from '#server/process.ts'
 import {restartService} from '#server/services.ts'
-import {AppVersion} from '#shared/schema.ts'
+import {AppVersion, RUNTIME_PATH, RuntimeConfig} from '#shared/schema.ts'
 
 const serviceDirectory = Effect.fnUntraced(function* (name: string) {
 	return (yield* Path.Path).join(yield* Config.String('HOME'), '.deslop', name)
@@ -24,7 +24,7 @@ export const activateRelease = Effect.fnUntraced(function* (name: string, target
 })
 
 // Never two processes: the service manager stops the old one before starting the new.
-export const updateRelease = Effect.fnUntraced(function* (name: string) {
+export const updateRelease = Effect.fnUntraced(function* (name: string, origin: string) {
 	const fs = yield* FileSystem.FileSystem
 	const path = yield* Path.Path
 	const root = yield* serviceDirectory(name)
@@ -63,12 +63,28 @@ export const updateRelease = Effect.fnUntraced(function* (name: string) {
 	yield* Effect.uninterruptible(
 		Effect.gen(function* () {
 			yield* activateRelease(name, path.join(directory, 'node_modules', '@deslop', name))
-			const restarted = yield* Effect.exit(restartService(name))
+			const restarted = yield* Effect.exit(
+				Effect.andThen(
+					restartService(name),
+					pipe(
+						HttpClient.get(new URL(RUNTIME_PATH, origin).href),
+						Effect.flatMap(HttpClientResponse.filterStatusOk),
+						Effect.flatMap(HttpClientResponse.schemaBodyJson(RuntimeConfig)),
+						Effect.filterOrFail(
+							release => release.name === name && release.version === latest,
+							() => AppError.make({message: 'The promoted release is not serving yet'})
+						),
+						Effect.timeout('2 seconds'),
+						Effect.retry({schedule: Schedule.spaced('1 second')}),
+						Effect.timeout('30 seconds')
+					)
+				)
+			)
 			if (Exit.isSuccess(restarted)) return
 			const restored = yield* Effect.exit(activateRelease(name, previous))
 			return yield* AppError.make({
 				cause: restarted.cause,
-				message: `Restart failed: ${Cause.pretty(restarted.cause)}. ${Exit.match(restored, {
+				message: `The new release did not start serving: ${Cause.pretty(restarted.cause)}. ${Exit.match(restored, {
 					onFailure: cause => `The previous current link could not be restored: ${Cause.pretty(cause)}`,
 					onSuccess: Function.constant('The previous current link was restored; service state is unknown')
 				})}`

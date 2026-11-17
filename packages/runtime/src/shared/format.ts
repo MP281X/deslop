@@ -125,7 +125,9 @@ export function compactCountOf(value: number) {
 export function bytesOf(value: number) {
 	if (value >= 1024 ** 4) return `${fraction.format(value / 1024 ** 4)} TiB`
 	if (value >= 1024 ** 3) return `${fraction.format(value / 1024 ** 3)} GiB`
-	return `${fraction.format(value / 1024 ** 2)} MiB`
+	if (value >= 1024 ** 2) return `${fraction.format(value / 1024 ** 2)} MiB`
+	if (value >= 1024) return `${fraction.format(value / 1024)} KiB`
+	return `${fraction.format(value)} B`
 }
 
 export function percentOf(value: number) {

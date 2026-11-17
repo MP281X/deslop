@@ -24,7 +24,7 @@ import {DateTimeUtcFromFiniteMillis} from '@deslop/runtime/shared/time'
 import type {TimeFrame} from '@deslop/runtime/shared/time'
 
 import {readUsage} from './lib/utils.ts'
-import {AiCall, AiUsageBreakdown, AiUsageQuery, Usage} from './schema.ts'
+import {AiCall, AiUsageBreakdown, AiUsageQuery} from './schema.ts'
 import type {AiUsageEntry, SpendSource} from './schema.ts'
 
 import type {AiProvider} from '#services/ai-proxy/schema.ts'
@@ -112,33 +112,14 @@ export class AiMetering extends Context.Service<AiMetering>()(
 								pending: ''
 							}
 							const updateUsage = Effect.fnUntraced(function* (text: string) {
-								state.finalUsage ||= Option.exists(
-									Schema.decodeOption(Schema.fromJsonString(Usage))(text),
-									value =>
-										Option.isSome(value.cost) ||
-										Option.exists(
-											Option.flatten(value.usage),
-											usage =>
-												Option.isSome(usage.output_tokens) ||
-												Option.isSome(usage.completion_tokens) ||
-												Option.isSome(usage.cost)
-										) ||
-										Option.exists(value.response, response =>
-											Option.exists(Option.flatten(response.usage), usage => Option.isSome(usage.output_tokens))
-										) ||
-										Option.exists(
-											value.usageMetadata,
-											usage => Option.isSome(usage.candidatesTokenCount) || Option.isSome(usage.cost)
-										)
+								const read = yield* Effect.catch(Effect.fromResult(readUsage(text, state.current, provider)), error =>
+									Effect.as(Effect.logWarning('AI usage was malformed; keeping previously read usage', error), {
+										entry: state.current,
+										finalUsage: false
+									})
 								)
-								state.current = yield* Effect.catch(
-									Effect.fromResult(readUsage(text, state.current, provider)),
-									error =>
-										Effect.as(
-											Effect.logWarning('AI usage was malformed; keeping previously read usage', error),
-											state.current
-										)
-								)
+								state.current = read.entry
+								state.finalUsage ||= read.finalUsage
 							})
 							const decoder = new TextDecoder()
 							const events = MutableList.make<string>()

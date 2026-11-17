@@ -1,5 +1,5 @@
 // fallow-ignore-file unused-type -- Schema types pair with their values so consumers can import either.
-import {Context, Effect, Predicate, Schema, pipe} from 'effect'
+import {Context, Effect, Option, Predicate, Schema, String, pipe} from 'effect'
 
 import {HttpClient} from 'effect/http'
 import {RpcMiddleware} from 'effect/rpc'
@@ -19,6 +19,13 @@ export class AuthError extends Schema.TaggedError<AuthError>()('AuthError', {
 // `github:<id>` for a GitHub account, `tailnet:<login>` for a tailnet login from another identity provider.
 export type UserId = typeof UserId.Type
 export const UserId = pipe(Schema.NonEmptyString, Schema.brand('UserId'))
+
+export function avatarUrlOf(id: UserId) {
+	return Option.map(
+		String.match(/^github:([1-9]\d*)$/u)(id),
+		() => `https://avatars.githubusercontent.com/u/${String.slice('github:'.length)(id)}?s=96`
+	)
+}
 
 export type GitHubId = typeof GitHubId.Type
 export const GitHubId = pipe(Schema.Int, Schema.brand('GitHubId'))

@@ -7,6 +7,7 @@ import {AsyncResult, Atom} from 'effect/reactivity'
 import {useState} from 'react'
 import type {ComponentProps, KeyboardEvent, ReactElement, ReactNode} from 'react'
 
+import {avatarUrlOf} from '@deslop/runtime/shared/auth'
 import {Account} from '@deslop/runtime/shared/schema'
 import {accountAtom} from '@deslop/runtime/web/client'
 
@@ -25,10 +26,7 @@ const AvatarAccount = Schema.Struct(Struct.pick(Account.fields, ['id', 'name']))
 export function AccountAvatar(props: {account: AvatarAccount; size: ComponentProps<typeof Avatar>['size']}) {
 	return (
 		<Avatar size={props.size ?? 'default'}>
-			<AvatarImage
-				src={`https://avatars.githubusercontent.com/u/${String.replace('github:', '')(props.account.id)}?s=96`}
-				alt={props.account.name}
-			/>
+			<AvatarImage src={Option.getOrUndefined(avatarUrlOf(props.account.id))} alt={props.account.name} />
 			<AvatarFallback>{String.toUpperCase(String.slice(0, 1)(props.account.name))}</AvatarFallback>
 		</Avatar>
 	)

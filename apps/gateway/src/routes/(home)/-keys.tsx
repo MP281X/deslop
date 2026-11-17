@@ -34,7 +34,7 @@ export function AddKeyDialog(props: {onOpenChange: (open: boolean) => void; open
 					onSubmit={event => {
 						event.preventDefault()
 						if (invalidKey) return
-						save({payload: {secret: Redacted.make(String.trim(secret))}, reactivityKeys: ['aiKey']})
+						save({payload: {secret: Redacted.make(String.trim(secret))}})
 					}}
 				>
 					<FieldGroup>

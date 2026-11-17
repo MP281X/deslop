@@ -67,11 +67,9 @@ export const ToolHandlers = ToolContracts.toLayer(
 			}),
 			remove_note: input => Effect.as(notes.remove(input.id), {id: input.id}),
 			save_note: Effect.fnUntraced(function* (input) {
-				const user = yield* CurrentUser
-				const saved = yield* notes.capture(user.id, {id: NoteId.make(yield* random.uuidV4()), text: input.text})
-				if (saved.status !== 'failed') return row(saved)
-				yield* notes.regenerate(user.id, saved.id)
-				return {...row(saved), status: 'organizing' as const}
+				return row(
+					yield* notes.capture((yield* CurrentUser).id, {id: NoteId.make(yield* random.uuidV4()), text: input.text})
+				)
 			}),
 			search_notes: input =>
 				Effect.map(

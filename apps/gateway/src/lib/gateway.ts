@@ -1,10 +1,10 @@
-import {Effect, Option, Schema, Stream} from 'effect'
+import {Effect, Option, Schema} from 'effect'
 
 import {Machine} from '@typeonce/effect-machine'
 import {AtomMachine} from '@typeonce/effect-machine/reactivity'
 import {Atom, AtomRpc} from 'effect/reactivity'
 
-import {keepValueThroughOutages, liveAtom, reconnectOnDrop} from '@deslop/runtime/client/live-stream'
+import {liveAtom} from '@deslop/runtime/client/live-stream'
 import {AuthError} from '@deslop/runtime/shared/auth'
 import {RpcStream} from '@deslop/runtime/shared/rpc'
 import type {TimeFrame} from '@deslop/runtime/shared/time'
@@ -13,12 +13,6 @@ import {addPageTelemetry, layerPageProtocol} from '@deslop/runtime/web/client'
 import {RpcContracts} from '#rpcs/contracts.ts'
 import {ServerUrl} from '#services/connections/schema.ts'
 import type {ServerId} from '#services/connections/schema.ts'
-
-declare module 'effect/reactivity/Reactivity' {
-	interface Keys {
-		readonly aiKey: never
-	}
-}
 
 addPageTelemetry('@deslop/gateway')
 
@@ -94,16 +88,7 @@ export const addAtom = AtomMachine.bind(RpcClient.runtime).make(
 	})
 )
 
-// Read like the live streams, so a refusal clears the keys too; saving a key rereads them.
-export const aiKeyAtom = RpcClient.runtime.factory.withReactivity(['aiKey'])(
-	RpcClient.runtime.atom(get =>
-		keepValueThroughOutages(
-			get,
-			Stream.fromEffect(Effect.flatMap(RpcClient, client => client('ai-proxy.key', undefined))),
-			reconnectOnDrop
-		)
-	)
-)
+export const aiKeyAtom = Atom.keepAlive(liveAtom(RpcClient, 'ai-proxy.key'))
 
 // A period's report now and after each recorded call; the server reopens the window at each bucket boundary.
 export const aiUsageAtom = Atom.family((period: TimeFrame) => liveAtom(RpcClient, 'ai-metering.usage', period))

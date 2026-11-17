@@ -25,7 +25,7 @@ import {McpStream, layerStructuredTools} from '#server/mcp.ts'
 import {appName, packageMetadata} from '#server/package.ts'
 import {failureOptions} from '#shared/auth.ts'
 import {RpcStream, layerRpcStream} from '#shared/rpc.ts'
-import {Account, MANIFEST_PATH, MCP_PATH, RPC_PATH, RUNTIME_PATH, RuntimeConfig} from '#shared/schema.ts'
+import {ACCOUNT_PATH, Account, MANIFEST_PATH, MCP_PATH, RPC_PATH, RUNTIME_PATH, RuntimeConfig} from '#shared/schema.ts'
 import {layerOtlp} from '#shared/telemetry.ts'
 
 const LOOPBACK = /^(?:localhost|\d{1,3}(?:\.\d{1,3}){3}|\[[\da-f:.]+\])$/iu
@@ -114,7 +114,7 @@ export const layerRoutes = HttpRouter.use(router =>
 		)
 		yield* router.add(
 			'GET',
-			'/api/account',
+			ACCOUNT_PATH,
 			Effect.gen(function* () {
 				const account = yield* Effect.result(auth.account((yield* HttpServerRequest.HttpServerRequest).headers))
 				if (Result.isFailure(account)) return HttpServerResponse.empty(failureOptions(account.failure, 401))

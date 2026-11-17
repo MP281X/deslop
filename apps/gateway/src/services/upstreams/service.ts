@@ -177,8 +177,9 @@ export class Upstreams extends Context.Service<Upstreams>()('@deslop/gateway/ser
 					return yield* pipe(
 						run(session),
 						Effect.provideService(accessHeaders, access.headers),
-						Effect.tapError(() =>
-							Semaphore.withPermit(
+						Effect.tapError(error => {
+							if (upstreamStatus(error) !== 401 && upstreamStatus(error) !== 404) return Effect.void
+							return Semaphore.withPermit(
 								lock,
 								Effect.gen(function* () {
 									// A delayed failure from an old session must not invalidate a newer one.
@@ -187,7 +188,7 @@ export class Upstreams extends Context.Service<Upstreams>()('@deslop/gateway/ser
 									}
 								})
 							)
-						)
+						})
 					)
 				})
 				return yield* Effect.catchIf(

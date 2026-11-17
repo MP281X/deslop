@@ -6,12 +6,14 @@ import {Socket} from 'effect/socket'
 import {openAuthSessionAsync} from 'expo-web-browser'
 import {Alert} from 'react-native'
 
+import {readAccount} from '#client/account.ts'
 import {layerSocketProtocol} from '#client/protocol.ts'
 import {activationsAtom} from '#mobile/activations.ts'
 import {appConfig} from '#mobile/app.ts'
 import {keychain} from '#mobile/keychain.ts'
 import {AuthError} from '#shared/auth.ts'
-import {Account, RPC_PATH} from '#shared/schema.ts'
+import type {Account} from '#shared/schema.ts'
+import {RPC_PATH} from '#shared/schema.ts'
 import {layerOtlp} from '#shared/telemetry.ts'
 
 const DOMAIN = appConfig.extra.domain
@@ -36,13 +38,37 @@ function sendsHandshakeHeaders(
 	return Predicate.isFunction(constructor) && constructor.length === 3
 }
 
-// Auth reads the session from the cookie in the handshake.
-const layerSessionWebSocket = Layer.succeed(Socket.WebSocketConstructor, url => {
-	if (!sendsHandshakeHeaders(WebSocket)) throw new TypeError('This WebSocket cannot send the session cookie')
-	return new WebSocket(url, undefined, {headers: keychain.headers()})
-})
+// Every reconnect reads the Keychain through the same guarded effect as HTTP.
+function sessionSocket(url: string) {
+	return Layer.effect(
+		Socket.Socket,
+		Socket.fromWebSocket(
+			Effect.acquireRelease(
+				pipe(
+					headersEffect,
+					Effect.flatMap(headers =>
+						Effect.try({
+							catch: cause =>
+								AuthError.make({cause, error: 'temporarily_unavailable', message: 'The session socket could not open'}),
+							try: () => {
+								if (!sendsHandshakeHeaders(WebSocket)) {
+									throw new TypeError('This WebSocket cannot send the session cookie')
+								}
+								return new WebSocket(url, undefined, {headers})
+							}
+						})
+					),
+					Effect.mapError(
+						// oxlint-disable-next-line @deslop/coding-standards/recover-named-failures -- SocketError requires a reason; SocketOpenError preserves the original cause inside it.
+						cause => Socket.SocketError.make({reason: Socket.SocketOpenError.make({cause, kind: 'Unknown'})})
+					)
+				),
+				ws => Effect.sync(() => ws.close(1000))
+			)
+		)
+	)
+}
 
-// judge-ignore no-silent-fallback -- the Keychain's account is a cache: failing to save or clear it is logged; an outage keeps the cached account while a refusal clears it, and a sign-out the Keychain only partly completes alerts.
 // HTTPS callbacks require Auth's association with this app, not a scheme another app can register.
 export function makeSession() {
 	const server = `https://${appConfig.slug}.${DOMAIN}`
@@ -55,28 +81,7 @@ export function makeSession() {
 		get(activationsAtom)
 		return pipe(
 			headersEffect,
-			Effect.flatMap(headers => HttpClient.get(new URL('/api/account', server).href, {headers})),
-			Effect.filterOrFail(
-				response => response.status !== 401,
-				() => AuthError.make({message: `Sign in to ${name}`})
-			),
-			Effect.filterOrFail(
-				response => response.status !== 403,
-				() => AuthError.make({error: 'access_denied', message: `${name} refused this account`})
-			),
-			Effect.flatMap(HttpClientResponse.filterStatusOk),
-			Effect.flatMap(HttpClientResponse.schemaBodyJson(Account)),
-			Effect.timeout('10 seconds'),
-			// Anything but a refusal is an outage, which keeps the app retrying instead of asking to sign in.
-			Effect.mapError(cause =>
-				pipe(
-					cause,
-					Option.liftPredicate(Schema.is(AuthError)),
-					Option.getOrElse(() =>
-						AuthError.make({cause, error: 'temporarily_unavailable', message: 'The server could not be reached'})
-					)
-				)
-			),
+			Effect.flatMap(headers => readAccount(server, headers)),
 			Effect.tap(account =>
 				Effect.gen(function* () {
 					get.set(cachedAccountAtom, Option.some(account))
@@ -185,10 +190,7 @@ export function makeSession() {
 		},
 		// What a request outside the RPC socket sends for Auth to name the caller.
 		headers: headersEffect,
-		protocol: layerSocketProtocol(
-			String.replace(/^http/u, 'ws')(new URL(RPC_PATH, server).href),
-			layerSessionWebSocket
-		),
+		protocol: layerSocketProtocol(sessionSocket(String.replace(/^http/u, 'ws')(new URL(RPC_PATH, server).href))),
 		runtime: sessionRuntime,
 		server,
 		signIn: signInAtom,

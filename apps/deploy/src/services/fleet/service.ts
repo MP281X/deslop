@@ -4,7 +4,6 @@ import {NodeSocket} from '@effect/platform-node'
 
 import {
 	Array,
-	Boolean,
 	DateTime,
 	Duration,
 	Config,
@@ -17,10 +16,12 @@ import {
 	Record,
 	Ref,
 	Schema,
+	String,
 	Struct,
 	pipe
 } from 'effect'
 
+import {ChildProcessSpawner} from 'effect/process'
 import {Reactivity} from 'effect/reactivity'
 import {RpcClient, RpcSerialization} from 'effect/rpc'
 
@@ -28,13 +29,13 @@ import {Auth, requireAdmin} from '@deslop/runtime/server/auth'
 import {packageMetadata} from '@deslop/runtime/server/package'
 import {executeProcess} from '@deslop/runtime/server/process'
 import {RpcStream, layerRpcStreamClient} from '@deslop/runtime/shared/rpc'
-import {RPC_PATH} from '@deslop/runtime/shared/schema'
+import {RPC_PATH, SecureOrigin} from '@deslop/runtime/shared/schema'
 
 import {PeerRpcAuth, RpcContracts} from '#rpcs/contracts.ts'
 import type {ExposeRequest, HideRequest} from '#services/exposures/schema.ts'
 import {Exposures} from '#services/exposures/service.ts'
-import {DeployError, ItemId, Worker} from '#services/inventory/schema.ts'
-import type {RunRequest, WorkerId, Snapshot} from '#services/inventory/schema.ts'
+import {DeployError, ItemId, WorkerId} from '#services/inventory/schema.ts'
+import type {RunRequest, Snapshot} from '#services/inventory/schema.ts'
 import {Inventory} from '#services/inventory/service.ts'
 import {history} from '#services/metrics/lib/utils.ts'
 import type {HistoryQuery, MachineHistory} from '#services/metrics/schema.ts'
@@ -92,39 +93,40 @@ export class Fleet extends Context.Service<
 		Effect.gen(function* () {
 			const inventory = yield* Inventory
 			const reactivity = yield* Reactivity.Reactivity
+			const spawner = yield* ChildProcessSpawner.ChildProcessSpawner
 			const localWorker = hostname()
 			const metrics = yield* Metrics
 			const lastMetrics = yield* Ref.make(HashMap.empty<readonly [WorkerId, Duration.Duration], MachineHistory>())
 			const exposures = yield* Exposures
-			const names = yield* Config.withDefault(Config.Array(Schema.String, 'DEPLOY_WORKERS'), [])
-			const suffix = yield* Boolean.match(Array.isReadonlyArrayEmpty(names), {
-				onFalse: () =>
-					pipe(
-						executeProcess('tailscale', ['status', '--json']),
-						Effect.flatMap(
-							Schema.decodeEffect(Schema.fromJsonString(Schema.Struct({MagicDNSSuffix: Schema.NonEmptyString})))
-						),
-						Effect.map(status => status.MagicDNSSuffix)
-					),
-				onTrue: () => Effect.succeed('')
-			})
-			const port = (yield* packageMetadata).config.port
-			const workers = yield* Effect.forEach(
-				names,
-				name => Schema.decodeEffect(Worker)({name, url: `https://${name}.${suffix}:${port}`}),
-				{concurrency: 1}
+			const names = yield* Config.withDefault(Config.Array(WorkerId.check(Schema.isNonEmpty()), 'DEPLOY_WORKERS'), [])
+			const suffix = pipe(
+				executeProcess('tailscale', ['status', '--json']),
+				Effect.flatMap(
+					Schema.decodeEffect(Schema.fromJsonString(Schema.Struct({MagicDNSSuffix: Schema.NonEmptyString})))
+				),
+				Effect.map(status => status.MagicDNSSuffix),
+				Effect.timeout('5 seconds'),
+				Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner)
 			)
-			// Peer requests share the fleet's reconnecting transport, never a request's lifetime.
+			const port = (yield* packageMetadata).config.port
+			const workers = Array.map(names, name => ({name}))
 			const clients = yield* Effect.forEach(
 				workers,
 				worker =>
 					Effect.gen(function* () {
 						const connected = yield* Ref.make(false)
-						const url = new URL(RPC_PATH, worker.url)
-						url.protocol = Boolean.match(new URL(worker.url).protocol === 'http:', {
-							onFalse: Function.constant('wss:'),
-							onTrue: Function.constant('ws:')
-						})
+						const url = pipe(
+							suffix,
+							Effect.flatMap(value => Schema.decodeEffect(SecureOrigin)(`https://${worker.name}.${value}:${port}`)),
+							Effect.map(origin => `${String.replace('https:', 'wss:')(origin)}${RPC_PATH}`),
+							Effect.tapError(error =>
+								Effect.andThen(
+									Effect.logWarning('Peer address is unavailable; retrying in five seconds', error),
+									Effect.sleep('5 seconds')
+								)
+							),
+							Effect.eventually
+						)
 						const protocol = yield* Layer.build(
 							pipe(
 								RpcClient.layerProtocolSocket({pingTimeout: Duration.seconds(15)}),
@@ -134,7 +136,7 @@ export class Fleet extends Context.Service<
 										onDisconnect: Ref.set(connected, false)
 									})
 								),
-								Layer.provide(NodeSocket.layerWebSocket(url.href)),
+								Layer.provide(NodeSocket.layerWebSocket(url)),
 								Layer.provide(RpcSerialization.layerSchemaBinary()),
 								Layer.provideMerge(layerRpcStreamClient)
 							)
@@ -164,7 +166,7 @@ export class Fleet extends Context.Service<
 			)
 			// Disconnected transports reconnect in the background. Do not start a traced RPC until one is open.
 			const remote = Effect.fnUntraced(function* <A, E>(
-				worker: Worker,
+				worker: {name: WorkerId},
 				use: (client: RemoteClient) => Effect.Effect<A, E>
 			) {
 				const peer = yield* pipe(
