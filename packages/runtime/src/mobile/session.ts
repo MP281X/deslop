@@ -42,6 +42,7 @@ const layerSessionWebSocket = Layer.succeed(Socket.WebSocketConstructor, url => 
 	return new WebSocket(url, undefined, {headers: keychain.headers()})
 })
 
+// judge-ignore no-silent-fallback -- the Keychain's account is a cache: failing to save or clear it is logged; an outage keeps the cached account while a refusal clears it, and a sign-out the Keychain only partly completes alerts.
 // A device on the tailnet is named without signing in; any other signs in with GitHub at Auth in iOS's authentication sheet, which returns the session's secret on the app's own URL scheme to this app alone.
 export function makeSession() {
 	const server = `https://${appConfig.slug}.${DOMAIN}`
