@@ -297,11 +297,11 @@ function comparesComputed(node: Node) {
 	})
 }
 
-// What the judge's gates read of a unit: only what the model reads too, its code and the imports it uses.
+// What the judge's gates read of a unit, including whether the parser found it at a composition boundary.
 export type Features = ReturnType<typeof features>
 
-// judge-ignore no-silent-fallback -- a unit is a whole function, method or test call cut from a file that parsed, and an example is written to parse, so one wrapping always parses; the last form is never a substitute for a failure.
-export function features(text: string, imports: string) {
+// judge-ignore no-silent-fallback -- readSource supplies whole functions, methods and tests from a parsed file, and examples are written to parse, so a wrapping always parses; the last form is not a substitute for a failure.
+export function features(text: string, imports: string, composition: boolean = false) {
 	// A unit comes from a file that parsed and an example is written to parse, so one wrapping parses without errors; the method wrapping, last, is read as it parses.
 	const parsed = pipe(
 		WRAPPINGS,
@@ -381,6 +381,7 @@ export function features(text: string, imports: string) {
 				(values.length === 1 && Array.some(values, comparesComputed))
 			)
 		}),
+		composition,
 		hooks: Array.some(
 			calls,
 			call => call.node.callee.type === 'Identifier' && matches(/^use(?:[A-Z]\w*)?$/u)(call.node.callee.name)

@@ -10,6 +10,7 @@ import {StatusDot} from '#components/blocks/status-dot.tsx'
 import {problemAgeAtom} from '#components/lib/problem.ts'
 import {colors, space, text} from '#components/theme.ts'
 
+// Native menus own presentation and touch recovery; a saved copy stays quiet instead of becoming an error card.
 export function Problem(props: {
 	label: string
 	onRetry: () => void

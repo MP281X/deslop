@@ -116,7 +116,7 @@ export class Gateway extends Context.Service<
 				if (changed) yield* registry.notifications['notifications/tools/list_changed']({})
 			})
 			const services = yield* Layer.build(
-				// judge-ignore no-silent-fallback -- Visibility denies access when authorization cannot be established; it never substitutes a tool result.
+				// judge-ignore no-silent-fallback -- MCP visibility is an access predicate, not a tool answer: failing to establish authorization denies visibility without replacing any requested tool result.
 				McpServer.visibility(options =>
 					Effect.gen(function* () {
 						if (!HashSet.has(yield* Ref.get(visible), options.target)) return false
@@ -317,6 +317,7 @@ export class Gateway extends Context.Service<
 				return pipe(RcMap.get(reading, id), Effect.provideService(discoveryHeaders, headers), Effect.scoped)
 			}
 			const discovery = yield* FiberHandle.make<void, never>()
+			// judge-ignore no-silent-fallback -- This scope-owned discovery round updates the existing MCP registry and reports failures on connection rows; it does not return an operation result to callers.
 			const read = Effect.fnUntraced(function* (headers: Headers.Headers) {
 				yield* Effect.ensuring(
 					pipe(
@@ -338,6 +339,7 @@ export class Gateway extends Context.Service<
 				)
 			})
 			// The caller waits up to 2 seconds; a slow read finishes in the gateway's scope, and its defect never fails the caller.
+			// judge-ignore no-silent-fallback -- The joined fiber is background discovery, not the requested MCP operation; callers use the registry independently, and failures are logged while discovery keeps its scope.
 			const settle = Effect.fnUntraced(function* (fiber: Fiber.Fiber<void>) {
 				yield* pipe(
 					Fiber.join(fiber),

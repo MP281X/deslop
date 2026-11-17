@@ -43,6 +43,7 @@ const RuleExamples = Schema.Struct({
 type RuleExampleKind = typeof RuleExampleKind.Type
 const RuleExampleKind = Schema.Literals(['accepted', 'fixes'])
 
+// judge-ignore no-silent-fallback -- Oxlint reports diagnostics in JSON stdout and its exit code, both returned unchanged; the stderr filter removes only Rolldown's timing footer, not a successful replacement for failed lint.
 const lintSource = Effect.fnUntraced(function* (
 	input: Record<string, string>,
 	flags: string[] = [],
@@ -159,7 +160,6 @@ const lintSource = Effect.fnUntraced(function* (
 })
 
 // The lines a rule reports across the linted sources, beside the lines the first source marks `// reported`.
-// judge-ignore no-silent-fallback -- no source marks line 0, so a report without a label fails the comparison instead of vanishing.
 function reportedLines(result: {sources: string[]; stdout: OxlintOutput}, rule: string) {
 	return {
 		marked: pipe(
@@ -4103,7 +4103,6 @@ export type Unknown = 'ready' | unknown`
 
 		testApi.effect(
 			'keeps every schema definition in its service schema file',
-			// judge-ignore no-repeated-search -- This lint fixture has five fixed input paths; suffix matching resolves Oxlint's absolute filenames.
 			Effect.fnUntraced(function* () {
 				const inputs = {
 					'src/elsewhere/values.ts': Array.join(

@@ -7,7 +7,7 @@ import {commentOf, sourceOf} from './utils.ts'
 import {Note, NoteChangeResult} from '#services/notes/schema.ts'
 import type {Capture, FileType, NoteChange} from '#services/notes/schema.ts'
 
-// judge-ignore no-silent-fallback -- Extraction is optional enrichment: a failed extraction records its issue only when no saved content exists; organization can still use the saved content.
+// judge-ignore no-silent-fallback -- Notes logs extraction failures before this pure reducer sees their Result; saved content remains usable, and the worker's failure policy records an issue when no saved content exists.
 export function changeNote(note: Note, update: NoteChange) {
 	const fields = Struct.pick(note, Struct.keys(Note.fields))
 	return pipe(

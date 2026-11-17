@@ -194,6 +194,7 @@ function PastBookings(props: {
 	)
 }
 
+// judge-ignore no-silent-fallback -- nowAtom is an infallible clock stream in lib/bookings; the direct clock read supplies its initial tick, while the booking reader's real failures still render their failure view.
 function Bookings(props: {onOpen: (id: Booking['id']) => void; searched: string}) {
 	const loaded = useAtomSuspense(bookingsAtom, {includeFailure: true})
 	const refresh = useAtomRefresh(bookingsAtom)

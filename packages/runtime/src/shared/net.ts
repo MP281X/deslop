@@ -55,7 +55,6 @@ export function isIpAddress(address: string) {
 }
 
 // An address the internet routes to, with an IPv4-mapped IPv6 address read as that IPv4 address.
-// judge-ignore no-silent-fallback -- Invalid input is not a public IP address; false denies access rather than substituting a successful address lookup.
 export function isPublicAddress(address: string) {
 	return Option.exists(Result.getSuccess(NetAddress.ipFromString(address)), ip => {
 		if (NetAddress.isIpv6Address(ip)) {

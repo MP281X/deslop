@@ -26,7 +26,6 @@ function Destination(props: {number: ChapterNumber; series: Series}) {
 	)
 }
 
-// judge-ignore no-silent-fallback -- the native navigation path is built from ChapterKey values; an undecodable entry has no destination, while chapter loading failures are rendered by Loaded.
 function AppRoutes() {
 	useAtomMount(pushAtom)
 	useAtomMount(diagnosticsAtom)

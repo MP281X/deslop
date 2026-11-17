@@ -1,4 +1,4 @@
-import {Array, Boolean, Function, HashSet, Option, Predicate, Record, Result, String, pipe} from 'effect'
+import {Array, Boolean, Function, HashSet, Option, Order, Predicate, Record, Result, String, pipe} from 'effect'
 
 import type {ImportDeclaration, ImportDeclarationSpecifier} from 'oxc-parser'
 import {parseSync, visitorKeys} from 'oxc-parser'
@@ -12,6 +12,7 @@ const IGNORE = /judge-ignore (\S+) -- (\S.*)$/u
 
 // A unit with only the imports it uses, so an import added for another unit asks nothing again; `names` are the imported bindings it uses, its text opens with the comments right above it, and `ignores` maps each question its `judge-ignore` comments opt out of to the reason given.
 export type Unit = {
+	composition: boolean
 	end: number
 	ignores: Record<string, string>
 	imports: string
@@ -67,6 +68,70 @@ function callPath(node: Node): string[] {
 			)
 		)
 	]
+}
+
+// Composition callbacks register independent handlers. Nested business functions are still jobs, not composition.
+function composition(ancestors: Node[], imported: Record<string, string>) {
+	return Array.some(ancestors, (node, index) => {
+		if (node.type !== 'CallExpression') return false
+		const chain = callPath(node)
+		const inside = Array.drop(ancestors, index + 1)
+		const functions = Array.countBy(inside, ancestor => Array.contains(FUNCTIONS, ancestor.type))
+		if (
+			Array.join(chain, '.') === 'defineRule' &&
+			pipe(
+				imported,
+				Record.get('defineRule'),
+				Option.exists(matches(/^import \{defineRule\} from ['"]vite-plus\/lint\/plugins['"]$/u))
+			)
+		) {
+			const create = Array.findFirstIndex(
+				inside,
+				ancestor =>
+					ancestor.type === 'Property' &&
+					Option.exists(nodeAt(ancestor, 'key'), key => Option.contains(field(key, 'name'), 'create'))
+			)
+			return (
+				functions <= 1 &&
+				Option.exists(Array.last(ancestors), parent => parent.type === 'Property') &&
+				Option.exists(create, at =>
+					pipe(
+						inside,
+						Array.drop(at + 1),
+						Array.every(ancestor =>
+							Array.contains(
+								[
+									...FUNCTIONS,
+									'BlockStatement',
+									'ReturnStatement',
+									'ObjectExpression',
+									'ParenthesizedExpression',
+									'Property'
+								],
+								ancestor.type
+							)
+						)
+					)
+				)
+			)
+		}
+		if (
+			Array.join(chain, '.') === 'HttpRouter.use' &&
+			pipe(
+				imported,
+				Record.get('HttpRouter'),
+				Option.exists(matches(/^import \{HttpRouter\} from ['"]effect\/http['"]$/u))
+			)
+		) {
+			return functions <= 1
+		}
+		return (
+			functions === 0 &&
+			chain[0] === 'Layer' &&
+			Array.contains(['effect', 'unwrap'], chain[1] ?? '') &&
+			pipe(imported, Record.get('Layer'), Option.exists(matches(/^import \{Layer\} from ['"]effect['"]$/u)))
+		)
+	})
 }
 
 function isTestCall(node: Node, bindings: HashSet.HashSet<string>) {
@@ -180,7 +245,7 @@ function units(
 			return [line]
 		})
 	)
-	function unit(kind: Kind, node: Node, line: number) {
+	function unit(kind: Kind, node: Node, line: number, ancestors: Node[]) {
 		// The opt-outs sit in the comment lines right above the unit, beside any explanation the model reads with the code.
 		const above = pipe(
 			Array.unfold(line - 1, number =>
@@ -191,6 +256,7 @@ function units(
 		)
 		const names = Array.filter(Array.dedupe(identifiers(node)), name => Record.has(imported, name))
 		return {
+			composition: composition(ancestors, imported),
 			end: lineOf(node.end),
 			ignores: Record.fromEntries(
 				Array.flatMap(above, comment =>
@@ -242,10 +308,15 @@ function units(
 			Array.map(binding => binding.local)
 		)
 	])
-	function visit(node: Node, parent: Option.Option<Node>, bindings: HashSet.HashSet<string>): Unit[] {
+	function visit(
+		node: Node,
+		parent: Option.Option<Node>,
+		bindings: HashSet.HashSet<string>,
+		ancestors: Node[]
+	): Unit[] {
 		const line = lineOf(node.start)
 		const length = lineOf(node.end) - line + 1
-		if (tests && isTestCall(node, bindings)) return [unit('test', node, line)]
+		if (tests && isTestCall(node, bindings)) return [unit('test', node, line, ancestors)]
 		const chain = callPath(node)
 		const layered =
 			tests &&
@@ -264,7 +335,10 @@ function units(
 						Array.flatMap(parameter => Option.toArray(Option.filter(field(parameter, 'name'), Predicate.isString)))
 					)
 			})
-			return visit(child, Option.some(node), HashSet.union(bindings, HashSet.fromIterable(parameters)))
+			return visit(child, Option.some(node), HashSet.union(bindings, HashSet.fromIterable(parameters)), [
+				...ancestors,
+				node
+			])
 		}
 		const nested = Boolean.match(tests, {onFalse: () => [], onTrue: () => Array.flatMap(childrenOf(node), next)})
 		if (Array.some(nested, found => found.kind === 'test')) return nested
@@ -280,14 +354,24 @@ function units(
 						onTrue: Function.constant('component')
 					}),
 					span,
-					lineOf(span.start)
+					lineOf(span.start),
+					ancestors
 				)
 			]
 		}
 		if (tests) return nested
 		return Array.flatMap(childrenOf(node), next)
 	}
-	return visit(parsed.program, Option.none(), registrations)
+	const selected = visit(parsed.program, Option.none(), registrations, [])
+	return {
+		unattached: pipe(
+			Array.fromIterable(commentLines),
+			Array.filter(line => matches(IGNORE)(lines[line - 1] ?? '')),
+			Array.filter(line => !Array.some(selected, found => line >= found.start && line < found.line)),
+			Array.sort(Order.Number)
+		),
+		units: selected
+	}
 }
 
 // A file read once: why the parser cannot read it, such as a syntax error or a NUL byte, since its units would be partial; else its import lines and units.
@@ -296,7 +380,7 @@ export function readSource(filename: string, source: string) {
 	return Option.match(Array.head(parsed.errors), {
 		onNone: () => {
 			const imported = importsOf(source, parsed.program)
-			return Result.succeed({imports: imported, units: units(filename, source, parsed, imported)})
+			return Result.succeed({imports: imported, ...units(filename, source, parsed, imported)})
 		},
 		onSome: error => Result.fail(error.message)
 	})

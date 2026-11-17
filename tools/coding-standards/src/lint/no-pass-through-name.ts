@@ -865,7 +865,6 @@ export const noPassThroughName = defineRule({
 			},
 			TaggedTemplateExpression: effect,
 			UpdateExpression: effect,
-			// judge-ignore no-unrelated-jobs -- an Oxlint visitor runs each of the rule's declaration checks on the declarator it visits; each report stands alone.
 			VariableDeclarator: node => {
 				MutableList.append(bindings, node)
 				if (

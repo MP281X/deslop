@@ -68,7 +68,6 @@ declare module 'effect/reactivity/Reactivity' {
 }
 
 // Each listener with its unit, the app a Node listener's working directory names, and whether it answers HTTP; `unit` and `cwd` read a PID the platform's way.
-// judge-ignore no-silent-fallback -- this is protocol detection, not a required HTTP read: a refused or timed-out HEAD is a negative probe; listener metadata is optional.
 function portItems(
 	sockets: readonly Socket[],
 	worker: WorkerId,
@@ -176,7 +175,6 @@ function collect<E extends {readonly message: string}, R>(name: string, effect: 
 	)
 }
 
-// judge-ignore no-silent-fallback -- AGENTS.md's collector rule: a malformed container row is skipped, while a failed docker listing still fails its source.
 // One JSON container per line of `docker ps --format '{{json .}}'`.
 function containerRows(listing: string) {
 	return pipe(
@@ -223,7 +221,7 @@ export class Inventory extends Context.Service<
 			const worker = yield* Schema.decodeEffect(WorkerId)(hostname())
 			const selfProcess = yield* Schema.decodeEffect(ProcessId)(pid)
 			const processState = yield* Ref.make(Option.none<ReturnType<typeof processReadings>>())
-			// A refused or timed-out HEAD is the negative result of protocol detection, not a required collector read.
+			// judge-ignore no-silent-fallback -- A refused or timed-out HEAD is a negative protocol probe, not a replacement for a required collector read.
 			function head(port: number) {
 				return pipe(
 					http.head(`http://127.0.0.1:${port}/`, {
@@ -265,7 +263,6 @@ export class Inventory extends Context.Service<
 				if (identity === '') return head(port)
 				return Cache.get(probes, [port, identity])
 			}
-			// judge-ignore no-silent-fallback -- service and timer listings must succeed; failure diagnostics are optional and the listed failed state still marks the service as unhealthy.
 			const units = Effect.fnUntraced(function* (system: boolean) {
 				const scope = Boolean.match(system, {
 					onFalse: Function.constant('user' as const),
@@ -432,7 +429,6 @@ export class Inventory extends Context.Service<
 					collect('Docker', docker),
 					collect(
 						'Listening ports',
-						// judge-ignore no-silent-fallback -- PID cwd and cgroup are optional metadata; proc entries can vanish or be unreadable while the listener itself remains useful.
 						Effect.flatMap(command('ss', ['-H', '-lntup']), text =>
 							portItems(
 								Array.getSomes(pipe(String.trim(text), String.split('\n'), Array.map(socketLine))),
@@ -491,7 +487,7 @@ export class Inventory extends Context.Service<
 			})
 			// A Mac's Dock apps, user launch agents and listeners, measured together so CPU shares compare like readings.
 			const darwin: Effect.Effect<Machine> = Effect.gen(function* () {
-				// judge-ignore no-silent-fallback -- unresolved agents retain their actual label and bundle basename by product policy; launchctl list failure still fails this source.
+				// judge-ignore no-silent-fallback -- Product policy keeps unresolved launch agents under their actual label and bundle basename; a failed launchctl listing still fails this source.
 				const namedAgents = Effect.gen(function* () {
 					return Array.getSomes(
 						yield* Effect.forEach(

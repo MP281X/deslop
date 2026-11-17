@@ -71,6 +71,7 @@ const readingWrites = Semaphore.makeUnsafe(1)
 // Queue writes without cancelling page turns; the client is read once so a reconnect replays none.
 export const readAtom = Atom.keepAlive(
 	Atom.fn(
+		// judge-ignore no-silent-fallback -- readerAtom moves the visible page independently; this queue only persists progress in the background, logs failed writes, and returns no saved position.
 		(update: typeof ReadingPosition.json.Type, get) =>
 			Effect.ignore(
 				provideRuntimeOnce(

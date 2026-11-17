@@ -91,7 +91,6 @@ const Signature = pipe(
 export const HttpHandlers = Layer.provide(
 	// OTLP is intentionally public: absent or refused identity uses the anonymous budget; identity outages return 503.
 	// judge-ignore no-silent-fallback -- A refused optional Auth identity selects anonymous admission by the approved public-ingest policy; it is not a failed export. Auth outages and every rejected export remain explicit 503/4xx responses.
-	// judge-ignore no-unrelated-jobs -- this router composition registers the OTLP and signed GitHub ingestion endpoints; each request is dispatched to its own handler.
 	HttpRouter.use(router =>
 		Effect.gen(function* () {
 			const telemetry = yield* Telemetry

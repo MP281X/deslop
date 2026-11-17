@@ -176,8 +176,9 @@ export const judge = Effect.fnUntraced(function* <E, R>(
 		{concurrency: 'unbounded'}
 	)
 	const changed = yield* change(options.base)
+	// judge-ignore no-contradicted-promise -- Effect 4 Array.partition returns [passes, fails], so the gate's passing questions are applicable and its failing questions are skipped.
 	const unitAsked = Effect.fnUntraced(function* (file: string, unit: Unit) {
-		const read = features(unit.text, unit.imports)
+		const read = features(unit.text, unit.imports, unit.composition)
 		const [applicable, skipped] = pipe(
 			questions,
 			Array.filter(named => Array.contains(ASKED[unit.kind], named.kind)),
@@ -199,6 +200,7 @@ export const judge = Effect.fnUntraced(function* <E, R>(
 			return yield* Result.match(readSource(file.path, yield* fs.readFileString(path.join(changed.root, file.path))), {
 				onFailure: reason =>
 					Effect.succeed({
+						invalidIgnores: Array.empty<string>(),
 						judged: Array.empty<Asked>(),
 						unreadable: [{reason: `the parser cannot read it: ${reason}`, where: file.path}]
 					}),
@@ -210,6 +212,11 @@ export const judge = Effect.fnUntraced(function* <E, R>(
 						})
 						const moved = !Option.contains(file.before, file.path)
 						return {
+							invalidIgnores: Array.map(
+								now.unattached,
+								line =>
+									`${file.path}:${line}-${line} judge-ignore This comment does not apply to a judged unit; remove it.`
+							),
 							judged: yield* pipe(
 								now.units,
 								Array.filter(
@@ -437,6 +444,14 @@ export const judge = Effect.fnUntraced(function* <E, R>(
 		)
 	)
 	const findings = [
+		...Array.flatMap(read, entry => entry.invalidIgnores),
+		...Array.flatMap(judged, entry =>
+			pipe(
+				Record.keys(entry.ignores),
+				Array.filter(name => !pipe(QUESTIONS, Record.keys, Array.contains<string>(name))),
+				Array.map(name => `${entry.where} ${name} Unknown question; remove its judge-ignore comment.`)
+			)
+		),
 		...Array.flatMap(outcomes, found =>
 			Option.match(found.value, {
 				onNone: () => [],

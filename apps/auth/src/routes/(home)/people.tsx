@@ -121,6 +121,7 @@ function Directory() {
 	)
 }
 
+// judge-ignore no-silent-fallback -- useAtomSuspense without includeFailure throws account failures; this redirect is only a successful guest or non-admin identity, under the router's error boundary.
 function PeopleRoute() {
 	if (!Option.exists(useAtomSuspense(accountAtom).value, signed => signed.role === 'Admin')) {
 		return <Navigate to="/" search={{}} />

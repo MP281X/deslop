@@ -260,7 +260,6 @@ function ChartTitle(props: {figure: string; label: string}) {
 }
 
 // The machine's three readings over time: apps stacked on the whole machine's 0–100%, and disk used as one band.
-// judge-ignore no-silent-fallback -- a disk reading without a known disk size is unrecorded and plots nothing; numeric placeholders are never drawn as measurements, and absent figures show an em dash.
 export function ChartBlock(props: {
 	isPhone: boolean
 	labels: Record<AppId, string>

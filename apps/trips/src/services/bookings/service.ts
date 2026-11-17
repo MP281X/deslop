@@ -23,7 +23,6 @@ declare module 'effect/reactivity/Reactivity' {
 	}
 }
 
-// judge-ignore no-silent-fallback -- The TaggedError returned on absence is a failing Effect, not a successful time value.
 function at(time: LocalTime, timeZone: string) {
 	return Option.match(instantOf(time, timeZone), {
 		onNone: () => BookingsError.make({message: `The time ${time} could not be read.`}),
@@ -189,23 +188,26 @@ export class Bookings extends Context.Service<Bookings>()('@deslop/trips/service
 			find: Effect.fn('Bookings.find')((id: BookingId) => asBookingsError(find(id))),
 			list: pipe(listAll, asBookingsError, Effect.withSpan('Bookings.list')),
 			passText,
-			// judge-ignore no-silent-fallback -- removing an already absent booking is an idempotent no-op; a failed list or delete still fails and rolls back the transaction.
 			remove: Effect.fn('Bookings.remove')(function* (id: BookingId) {
 				yield* Effect.annotateCurrentSpan('bookingId', id)
 				yield* pipe(
 					Effect.gen(function* () {
-						yield* Effect.forEach(
-							pipe(
-								journeysOf(yield* listAll),
-								Array.findFirst(legs => Array.some(legs, leg => leg.id === id)),
-								Option.getOrElse(() => [])
-							),
-							leg =>
-								Effect.all([flights.delete(leg.id), trains.delete(leg.id), stays.delete(leg.id)], {
-									concurrency: 1,
-									discard: true
-								}),
-							{concurrency: 1, discard: true}
+						yield* pipe(
+							journeysOf(yield* listAll),
+							Array.findFirst(legs => Array.some(legs, leg => leg.id === id)),
+							Option.match({
+								onNone: () => Effect.void,
+								onSome: journey =>
+									Effect.forEach(
+										journey,
+										leg =>
+											Effect.all([flights.delete(leg.id), trains.delete(leg.id), stays.delete(leg.id)], {
+												concurrency: 1,
+												discard: true
+											}),
+										{concurrency: 1, discard: true}
+									)
+							})
 						)
 					}),
 					Reactivity.mutation(['bookings']),
