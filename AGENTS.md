@@ -11,19 +11,18 @@
 
 ## Commands
 
-| Role   | Command        | Runs                                                                            |
-| ------ | -------------- | ------------------------------------------------------------------------------- |
-| Fixer  | `vp run fix`   | In **Validate** and before each push; covers `check`                            |
-| Checks | `vp run check` | In CI                                                                           |
-| Tests  | `vp run test`  | In CI; **Validate** runs each touched package's with `vp -C <package> run test` |
+| Role   | Command        | Runs                                                         |
+| ------ | -------------- | ------------------------------------------------------------ |
+| Fixer  | `vp run fix`   | Before each push; covers `check`                             |
+| Checks | `vp run check` | In CI                                                        |
+| Tests  | `vp run test`  | In CI; a touched package's alone, `vp -C <package> run test` |
 
-- **Ready.** A settled PR is marked ready once CI is green, with no extra Validate run, so the user merges settled PRs one by one.
 - **Server contracts.** A contract change is not done until its built server starts with scratch data and serves the affected MCP tools or RPCs; build and static checks do not register tools.
-- **Judge.** `vp run judge` runs only when the user asks, never in CI, `fix`, `check`, `test` or Validate, because each Haiku call bills the signed-in person's Anthropic account through Gateway.
+- **Judge.** `vp run judge` runs only when the user asks, never in CI, `fix`, `check` or `test`, because each Haiku call bills the signed-in person's Anthropic account through Gateway.
 - **Generators.** `vp create app -- --name <name>` (`--kind mobile` for iOS) and `vp create package -- --name <name>`, then `vp install`; never copy one. A new app's first release, mobile before its first push: `.github/releasing.md`, **A new app**.
 - **Updates.** `vp update -r`; `vp outdated -r` then lists only pins. New checks since the last review: `@effect/tsgo`'s README table and changelog, each lint plugin's `rules` against its previous version, Fallow's release notes. Count a candidate rule's hits with `vp exec effect-tsgo --tsrs-lint vp lint -D <rule>`; ask before one that reverses a house form or rewrites hundreds of sites, with a bad example, a good example and its count.
 - **Releases.** `.github/releasing.md`: a new app or tool, following a release, Simulator builds, native tools.
-- **Agent configuration.** `.claude/agents/pair.md` = `.codex/instructions.md` from `# Work` down; each keeps its own `# Harness`. Skills in `.claude/skills` serve both harnesses. The installed `~/deslop` changes only through a merged PR.
+- **Agent configuration.** `.claude/agents/pair.md` = `.codex/instructions.md` from `# Work` down; each keeps its own `# Harness`. Skills in `.claude/skills` serve both harnesses. The installed `~/deslop` changes only through a merged PR; one that adds or removes a skill is followed by the maintenance reference's agent links, since Codex reads only linked skills.
 - **Standards policy.** Define each policy once, in the best tool; prove replacements with the custom rule's failing cases. Only custom rules have tests; upgrades never opt into new rules, and declined rules stay out. The compiler and Effect rules own their checks. Parser checks are static; codebase-wide checks belong to review. No per-package typecheck scripts. Checks must be reachable in consuming codebases, including prevention of encountered patterns. Custom rules must add coverage or safe fixes beyond native rules and accept intended forms; each rule's accepted examples and automatic fixes pass the whole preset, not only that rule, and repeated fixes reach a fixed point.
 
 ## Patterns
@@ -67,23 +66,23 @@
 
 **Homes.** Each fact lives once, in the first home its kind matches:
 
-| Kind                                                     | Home                                                       |
-| -------------------------------------------------------- | ---------------------------------------------------------- |
-| What code or lint can enforce                            | The code, then a lint rule                                 |
-| This repository's operation and the user's choices in it | This file                                                  |
-| An app's product intent                                  | That app's `AGENTS.md`                                     |
-| Tokens                                                   | The themes                                                 |
-| Releases                                                 | `.github/releasing.md`                                     |
-| A published package's contract                           | Its `README.md`                                            |
-| Workers, accounts, services and Dual                     | The environment skill and its references                   |
-| Plans, variants and prototypes                           | The plan skill                                             |
-| Unattended runs                                          | The sleep skill                                            |
-| The repository process, delegate routing and briefs      | The orchestrator skill                                     |
-| Outside repositories                                     | The orchestrator skill's `references/repos.md`             |
-| PR shape and lifecycle                                   | The pull-requests skill; section guidance, the PR template |
-| Checks, proof and review                                 | The verification skill                                     |
-| Thread and PR output                                     | The prompts' Replies section                               |
-| Rules for every turn                                     | The prompts' `# Work`                                      |
+| Kind                                                      | Home                                          |
+| --------------------------------------------------------- | --------------------------------------------- |
+| What code or lint can enforce                             | The code, then a lint rule                    |
+| This repository's operation and the user's choices in it  | This file                                     |
+| An app's product intent                                   | That app's `AGENTS.md`                        |
+| Tokens                                                    | The themes                                    |
+| Releases                                                  | `.github/releasing.md`                        |
+| A published package's contract                            | Its `README.md`                               |
+| Workers, accounts, services and Dual                      | The environment skill and its references      |
+| Outside repositories                                      | The environment skill's `references/repos.md` |
+| Plans, variants, prototypes, advisors, council and sleep  | The plan skill                                |
+| Approved work up to a reviewed draft, models, briefs, PRs | The build skill                               |
+| A delegate's own rules                                    | The builder and reviewer skills               |
+| Captures and recordings                                   | The captures skill                            |
+| PR section guidance                                       | The PR template                               |
+| Thread and PR output                                      | The prompts' Replies section                  |
+| Rules for every turn                                      | The prompts' `# Work`                         |
 
 - **Form.** In agent instructions, state only what a reader would otherwise get wrong, never the implicit or what is no concern; a process is a Mermaid `stateDiagram-v2` whose transitions read `event [guard] / action`, a lookup is a table, a form the agent must produce is one worked example, and bullets hold only standing rules; no prose restates a diagram.
-- **Evals.** A change to a prompt or skill is judged on replays before it merges, never on the next thread: a delegate in the changed worktree answers a real past message, and its reply is scored against the user's recorded complaints, with its minutes, steps and calls per step. A worktree's prompt and new skills take effect there; edits to an installed skill do not, and say so under Not proven.
+- **Evals.** A change to a prompt or skill is replayed before it merges, never tried on the next thread: a Claude delegate in the changed worktree answers a real past message, changing nothing, and its reply is scored against what the user complained about in that thread, with its minutes, steps and calls per step. Only Claude reads a worktree's prompt and its new skills; Codex, and edits to a skill already installed, cannot be replayed and say so under Not proven.

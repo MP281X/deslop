@@ -1,4 +1,4 @@
-// Pass this file's text plus `play(task, [...steps])` to preview_evaluate while the tab records; the verification skill lists the steps.
+// Pass this file's text plus `play(task, [...steps])` to preview_evaluate while the tab records; the captures skill lists the steps.
 async function play(task, steps) {
 	const head = 56
 	const fit = Math.min((innerWidth - 96) / innerWidth, (innerHeight - head - 24) / innerHeight)

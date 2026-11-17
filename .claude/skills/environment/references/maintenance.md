@@ -1,6 +1,6 @@
 # Maintenance
 
-A pass removes files (orchestrator, **Route**) and runs without asking:
+A pass removes files (build skill, **Delegates**) and runs without asking:
 
 ```mermaid
 stateDiagram-v2
