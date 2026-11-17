@@ -99,9 +99,12 @@ const lintSource = Effect.fnUntraced(function* (
 	const read = Effect.forEach(files, file => fs.readFileString(file), {concurrency: 'unbounded'})
 	const lint = Effect.scoped(
 		Effect.flatMap(
+			// Vite+ ships a stock tsrs; the Effect-patched one, as in the check task, knows the effecttsgo rules.
 			ChildProcess.make(
-				'vp',
+				'effect-tsgo',
 				[
+					'--tsrs-lint',
+					'vp',
 					'lint',
 					...files,
 					'--format=json',

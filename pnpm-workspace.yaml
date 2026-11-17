@@ -4,8 +4,8 @@ packages:
   - tools/*
 
 catalog:
-  vite-plus: 1.6.0
-  vite: npm:@voidzero-dev/vite-plus-core@1.6.0
+  vite-plus: 1.7.0
+  vite: npm:@voidzero-dev/vite-plus-core@8.3.8000
 
 overrides:
   vite: 'catalog:'
@@ -13,15 +13,6 @@ overrides:
   'fallow>fallow-type-aware': '-'
   # apple-targets 5.0.0 pins the SDK 55 config loader, which needs TypeScript 5; SDK 58's loader works the same.
   '@bacons/apple-targets>@expo/prebuild-config': ^58.0
-
-# Vite+ exposes Vite 8 under its own package version; accept it only for these inspected Vite 8 consumers.
-peerDependencyRules:
-  allowedVersions:
-    '@tailwindcss/vite@4.3.5>vite': 1.6.0
-    '@tanstack/router-plugin@1.169.0>vite': 1.6.0
-    '@vitejs/plugin-react@6.3.0>vite': 1.6.0
-    '@vitest/mocker@5.1.0>vite': 1.6.0
-    'vitest@5.1.0>vite': 1.6.0
 
 packageExtensions:
   # apple-targets 5.0.0 loads these without declaring them.
