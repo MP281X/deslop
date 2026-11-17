@@ -300,6 +300,7 @@ function comparesComputed(node: Node) {
 // What the judge's gates read of a unit: only what the model reads too, its code and the imports it uses.
 export type Features = ReturnType<typeof features>
 
+// judge-ignore no-silent-fallback -- every unit and example parses under one wrapping; the method wrapping is the last form, read as it parses, not a hidden failure.
 export function features(text: string, imports: string) {
 	// A unit comes from a file that parsed and an example is written to parse, so one wrapping parses without errors; the method wrapping, last, is read as it parses.
 	const parsed = pipe(

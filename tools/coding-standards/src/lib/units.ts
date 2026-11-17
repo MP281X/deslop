@@ -1,4 +1,4 @@
-import {Array, Boolean, Function, HashSet, Option, Predicate, Record, String, pipe} from 'effect'
+import {Array, Boolean, Function, HashSet, Option, Predicate, Record, Result, String, pipe} from 'effect'
 
 import type {ImportDeclaration, ImportDeclarationSpecifier} from 'oxc-parser'
 import {parseSync, visitorKeys} from 'oxc-parser'
@@ -116,15 +116,9 @@ function identifiers(node: Node): string[] {
 	]
 }
 
-// Why the parser cannot read a file, such as a syntax error or a NUL byte: its units would be partial, so none is asked.
-export function parseError(filename: string, source: string) {
-	return Option.map(Array.head(parseSync(filename, source).errors), error => error.message)
-}
-
-// Each imported binding of a file and its import line, so a unit's imports can be compared with the file's before the change.
-export function importLines(filename: string, source: string) {
+function importsOf(source: string, program: ReturnType<typeof parseSync>['program']) {
 	return Record.fromEntries(
-		Array.flatMap(parseSync(filename, source).program.body, statement => {
+		Array.flatMap(program.body, statement => {
 			if (statement.type !== 'ImportDeclaration') return []
 			return Array.map(
 				statement.specifiers,
@@ -134,20 +128,38 @@ export function importLines(filename: string, source: string) {
 	)
 }
 
+// Each imported binding of a file and its import line, so a unit's imports can be compared with the file's before the change.
+export function importLines(filename: string, source: string) {
+	return importsOf(source, parseSync(filename, source).program)
+}
+
+// The number of `starts` at or before `offset`, by halving the sorted run between `low` and `high`.
+function countUpTo(starts: number[], offset: number, low: number, high: number): number {
+	if (low >= high) return low
+	const middle = low + Math.floor((high - low) / 2)
+	if (
+		pipe(
+			starts,
+			Array.get(middle),
+			Option.exists(start => start <= offset)
+		)
+	) {
+		return countUpTo(starts, offset, middle + 1, high)
+	}
+	return countUpTo(starts, offset, low, middle)
+}
+
 // The pieces of a file worth judging alone, outermost first so none holds another: test cases in test files, then functions of a bounded size.
-export function units(filename: string, source: string) {
-	const parsed = parseSync(filename, source)
-	const imported = importLines(filename, source)
+function units(
+	filename: string,
+	source: string,
+	parsed: ReturnType<typeof parseSync>,
+	imported: Record<string, string>
+) {
 	const lines = String.split(source, '\n')
 	const starts = Array.scan(lines, 0, (offset, line) => offset + line.length + 1)
 	function lineOf(offset: number) {
-		return (
-			pipe(
-				starts,
-				Array.findLastIndex(start => start <= offset),
-				Option.getOrElse(Function.constant(0))
-			) + 1
-		)
+		return countUpTo(starts, offset, 0, starts.length)
 	}
 	// The lines that hold only a `//` comment, by the parser's own reading, so a string or template that quotes one is code.
 	const commentLines = HashSet.fromIterable(
@@ -162,9 +174,9 @@ export function units(filename: string, source: string) {
 	function unit(kind: Kind, node: Node, line: number) {
 		// The opt-outs sit in the comment lines right above the unit, beside any explanation the model reads with the code.
 		const above = pipe(
-			Array.range(1, line - 1),
-			Array.reverse,
-			Array.takeWhile(number => HashSet.has(commentLines, number)),
+			Array.unfold(line - 1, number =>
+				Option.liftPredicate([number, number - 1] as const, () => HashSet.has(commentLines, number))
+			),
 			Array.reverse,
 			Array.map(number => String.trimStart(lines[number - 1] ?? ''))
 		)
@@ -265,4 +277,16 @@ export function units(filename: string, source: string) {
 		return Array.flatMap(childrenOf(node), next)
 	}
 	return visit(parsed.program, Option.none(), registrations)
+}
+
+// A file read once: why the parser cannot read it, such as a syntax error or a NUL byte, since its units would be partial; else its import lines and units.
+export function readSource(filename: string, source: string) {
+	const parsed = parseSync(filename, source)
+	return Option.match(Array.head(parsed.errors), {
+		onNone: () => {
+			const imported = importsOf(source, parsed.program)
+			return Result.succeed({imports: imported, units: units(filename, source, parsed, imported)})
+		},
+		onSome: error => Result.fail(error.message)
+	})
 }

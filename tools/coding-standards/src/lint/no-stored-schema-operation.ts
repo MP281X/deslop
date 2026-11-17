@@ -5,7 +5,7 @@ import type {ESTree} from 'vite-plus/lint/plugins'
 
 import {isSchemaOperationCall} from '#lib/ast.ts'
 
-// An options object passed straight to a call, such as a router's `{validateSearch: Schema.decodeUnknownSync(Search)}`, hands the operation to its consumer; `Object.freeze` and `Object.assign` only keep it.
+// An options object passed straight to a call, such as a router's `{validateSearch: Schema.decodeUnknownSync(Search)}`, hands the operation to its consumer; `Object.freeze`, `Object.assign` and every other `Object` helper only keep it.
 function passedToCall(input: {call: ESTree.Node | null; options: ESTree.Node}) {
 	return (
 		Predicate.isNotNull(input.call) &&

@@ -19,8 +19,11 @@ export const noViewStateInMemory = question(
 				'The page reads its selection from URL search parameters.'
 			],
 			example: `
-				export function Notes(props: {search: {selected: string}}) {
-					return <p>{props.search.selected}</p>
+				import {useSearch} from '@tanstack/react-router'
+
+				export function Notes() {
+					const search = useSearch({from: '/notes'})
+					return <p>{search.selected}</p>
 				}
 			`
 		},

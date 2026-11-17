@@ -15,11 +15,10 @@ function insideFunction(node: ESTree.Node): boolean {
 
 // The root must name the same binding at every read, or inlining reads a shadowing one.
 function sameRoot(input: {context: Context; declarator: ESTree.Node; name: string; read: ESTree.Node}) {
-	return (
-		Option.getOrUndefined(
-			variableFromScope({name: input.name, scope: input.context.sourceCode.getScope(input.declarator)})
-		) ===
-		Option.getOrUndefined(variableFromScope({name: input.name, scope: input.context.sourceCode.getScope(input.read)}))
+	// A root that resolves at neither read is the same global at both.
+	return Option.makeEquivalence<unknown>((declared, read) => declared === read)(
+		variableFromScope({name: input.name, scope: input.context.sourceCode.getScope(input.declarator)}),
+		variableFromScope({name: input.name, scope: input.context.sourceCode.getScope(input.read)})
 	)
 }
 
@@ -82,7 +81,7 @@ function enclosed(input: {block: ESTree.Node; node: ESTree.Node; types: string[]
 	return enclosed({...input, node: input.node.parent})
 }
 
-// TypeScript keeps a narrowed alias inside a callback but drops a narrowed property path, so the alias is needed only when a callback reads a path that a check narrowed, or when a check before the alias narrowed its property.
+// TypeScript keeps a narrowed alias inside a callback but drops a narrowed property path, so the alias is needed when a callback reads a path that a check narrowed, or when a check before the alias narrowed its property; an alias that is not among a function body's leading declarations is kept, since this cannot follow its narrowing.
 function needsAlias(input: {context: Context; declaration: ESTree.VariableDeclaration; reads: ESTree.Node[]}) {
 	if (
 		input.declaration.parent.type !== 'BlockStatement' ||

@@ -59,7 +59,7 @@ Each custom rule publishes `meta.docs.examples.accepted`, filename-to-source rec
 
 ## Judge
 
-Claude Haiku 5.5 answers through Effect's AI module and `@effect/ai-anthropic`, only through `https://gateway.<DESLOP_DOMAIN>/ai/connection` and the connected Anthropic account of the worker's tailnet owner, whom Auth names without a sign-in. Calls can cost money; no catalogue balance is used. Each answer is a schema-checked boolean; yes means a finding.
+Claude Haiku 5.5 answers through Effect's AI module and `@effect/ai-anthropic`, only through `https://gateway.<DESLOP_DOMAIN>/ai/anthropic` and the saved Anthropic key of the worker's tailnet owner, whom Auth names without a sign-in. Calls cost money. Each answer is a schema-checked boolean under `answers`, written after a required `analysis` field, and is named after the condition itself (`silent-fallback`, never `no-silent-fallback`, under which true reads as absence); true means a finding.
 
 ```bash
 coding-standards judge --dry-run          # plan the current change; sends nothing

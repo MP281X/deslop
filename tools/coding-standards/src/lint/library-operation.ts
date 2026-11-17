@@ -177,7 +177,7 @@ function addedTo(context: Context, body: ESTree.Node, totalName: string) {
 	)
 }
 
-// `(total, item) => total + amount`: one addition per item, which Number.sumAll makes from 0 in the same order; a literal amount counts, which Array.length says.
+// `(total, item) => total + amount`: one addition per item, which Number.sumAll makes from 0 in the same order; a literal amount is a count, which Array.length says instead, so it is no summand.
 function summand(context: Context, callback: ESTree.Node) {
 	if (callback.type !== 'ArrowFunctionExpression' || callback.params.length !== 2) return Option.none()
 	const total = callback.params[0]

@@ -1,4 +1,4 @@
-import {Array, Effect, Function, Number, Option, Schema, Stream, String, pipe} from 'effect'
+import {Array, Boolean, Effect, Function, Number, Option, Schema, Stream, String, pipe} from 'effect'
 
 import {ChildProcess} from 'effect/process'
 
@@ -44,11 +44,11 @@ function fields(output: string) {
 }
 
 // The lines of the file as it is now that a hunk adds, or that a removal sits before.
-function changedLines(header: string, body: string[]) {
-	const first = pipe(
+const changedLines = Effect.fnUntraced(function* (header: string, body: string[]) {
+	const first = yield* pipe(
 		String.match(HUNK_HEADER)(header),
 		Option.flatMap(found => Number.parse(found[1] ?? '')),
-		Option.getOrElse(Function.constant(0))
+		Effect.fromOption(() => JudgeError.make({message: `git printed a hunk header the judge cannot read: ${header}`}))
 	)
 	const positions = Array.scan(body, {changed: Option.none<number>(), next: first}, (at, line) => {
 		if (String.startsWith('+')(line)) return {changed: Option.some(at.next), next: at.next + 1}
@@ -56,7 +56,7 @@ function changedLines(header: string, body: string[]) {
 		return {changed: Option.none(), next: at.next + 1}
 	})
 	return Array.getSomes(Array.map(positions, at => at.changed))
-}
+})
 
 // The runs of lines that each open with a line `opens` matches, up to the next one; lines before the first belong to none.
 function between(lines: string[], opens: (line: string) => boolean) {
@@ -73,30 +73,38 @@ function between(lines: string[], opens: (line: string) => boolean) {
 	})
 }
 
-// A changed file: its path now and at the base, and how it changed.
-type Entry = {before: Option.Option<string>; path: string; status: string}
-
-// `git diff --name-status -z`: a status, then one path, or the old and new paths of a rename or copy.
-function entriesOf(output: string) {
+// `git diff --name-status -z`: a status, then one path, or the old and new paths of a rename or copy; a record cut short fails, since the judge cannot tell which file it names.
+const entriesOf = Effect.fnUntraced(function* (output: string) {
 	const parts = fields(output)
-	function from(index: number): Entry[] {
-		const status = parts[index]
-		if (status === undefined) return []
-		if (matches(/^[RC]/u)(status)) {
-			return [
-				{
-					before: Option.fromNullishOr(parts[index + 1]),
-					path: parts[index + 2] ?? '',
-					status: String.slice(0, 1)(status)
-				},
-				...from(index + 3)
-			]
-		}
-		const path = parts[index + 1] ?? ''
-		return [{before: Option.liftPredicate(path, () => status !== 'A'), path, status}, ...from(index + 2)]
-	}
-	return from(0)
-}
+	return yield* Effect.forEach(
+		Array.unfold(0, index =>
+			pipe(
+				parts,
+				Array.get(index),
+				Option.map(status => {
+					const pathAt =
+						index +
+						Boolean.match(matches(/^[RC]/u)(status), {onFalse: Function.constant(1), onTrue: Function.constant(2)})
+					return [{index, pathAt, status}, pathAt + 1] as const
+				})
+			)
+		),
+		record =>
+			Effect.gen(function* () {
+				const path = yield* pipe(
+					parts,
+					Array.get(record.pathAt),
+					Effect.fromOption(() => JudgeError.make({message: `git listed a ${record.status} change without its path`}))
+				)
+				// A rename or copy names its old path first; any other change but an addition had this path at the base.
+				if (record.pathAt > record.index + 1) {
+					return {before: Array.get(parts, record.index + 1), path, status: String.slice(0, 1)(record.status)}
+				}
+				return {before: Option.liftPredicate(path, () => record.status !== 'A'), path, status: record.status}
+			}),
+		{concurrency: 1}
+	)
+})
 
 const defaultBranch = Effect.fnUntraced(function* (root: string) {
 	const result = yield* run('git', ['symbolic-ref', '--quiet', '--short', 'refs/remotes/origin/HEAD'], root)
@@ -108,6 +116,7 @@ const defaultBranch = Effect.fnUntraced(function* (root: string) {
 	return String.trim(result.stdout)
 })
 
+// judge-ignore no-silent-fallback -- a branch without a pull request, or a machine without gh, has no pull request base by design; the default branch is the documented base, and every git failure fails the run.
 // The TypeScript files the change adds or edits against its merge base, untracked ones included, with the lines of each as it is now that the change touched; the diff only selects what is asked and is never sent.
 export const change = Effect.fnUntraced(function* (base: Option.Option<string>) {
 	const root = String.trim(yield* git(['rev-parse', '--show-toplevel'], '.'))
@@ -135,7 +144,7 @@ export const change = Effect.fnUntraced(function* (base: Option.Option<string>) 
 			glob => `:(top,exclude,glob)${glob}`
 		)
 	]
-	const tracked = entriesOf(
+	const tracked = yield* entriesOf(
 		yield* git([...DIFF, '--name-status', '-z', '--no-relative', mergeBase, '--', ...pathspec], root)
 	)
 	// Each section of the patch is the file the NUL-separated list names at the same place, so no path is read from the patch's own text.
@@ -150,16 +159,19 @@ export const change = Effect.fnUntraced(function* (base: Option.Option<string>) 
 	}
 	return {
 		files: [
-			...pipe(
+			...(yield* pipe(
 				tracked,
 				Array.zip(sections),
-				Array.map(pair => ({
-					...pair[0],
-					touched: Array.flatMap(between(pair[1], String.startsWith('@@ ')), hunk =>
-						changedLines(hunk[0] ?? '', Array.drop(hunk, 1))
-					)
-				}))
-			),
+				Effect.forEach(
+					pair =>
+						pipe(
+							between(pair[1], String.startsWith('@@ ')),
+							Effect.forEach(hunk => changedLines(hunk[0] ?? '', Array.drop(hunk, 1)), {concurrency: 1}),
+							Effect.map(hunks => ({...pair[0], touched: Array.flatten(hunks)}))
+						),
+					{concurrency: 1}
+				)
+			)),
 			// An untracked file is new, so every unit in it is asked.
 			...Array.map(
 				fields(yield* git(['ls-files', '-z', '--others', '--exclude-standard', '--', ...pathspec], root)),

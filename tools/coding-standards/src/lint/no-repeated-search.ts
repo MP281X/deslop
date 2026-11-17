@@ -88,7 +88,7 @@ function perItem(context: Context, node: ESTree.Node, name: string) {
 	)
 }
 
-// `item => item.key === outer.key` or `id => id === outer.id`, with `item` the search callback's own parameter: the other side is the per-item value it matches.
+// `item => item.key === outer.key` or `id => id === outer.id`, with `item` the search callback's own parameter: the other side, the outer value every item is compared with.
 function keyOf(search?: ESTree.Node) {
 	if (search?.type !== 'ArrowFunctionExpression') return Option.none<ESTree.Node>()
 	const parameter = search.params[0]

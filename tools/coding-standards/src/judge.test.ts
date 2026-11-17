@@ -37,16 +37,23 @@ function functionSource(name: string, suffix: string) {
 	]
 }
 
+// judge-ignore no-unrelated-jobs -- the fixture's helpers share one temporary home and git identity: checkout writes the change that run judges.
+// `misjudged` is the answer field of the question whose self-check the stub answers wrongly.
 const fixture = Effect.fnUntraced(function* (misjudged: string = '') {
 	const fs = yield* FileSystem.FileSystem
 	const path = yield* Path.Path
 	const home = yield* fs.makeTempDirectoryScoped({prefix: 'coding-standards-home-'})
+	// A failed git command fails the fixture, so no case runs against a half-made checkout.
 	const git = Effect.fnUntraced(function* (directory: string, args: string[]) {
-		yield* Effect.scoped(
-			Effect.flatMap(
-				ChildProcess.make('git', args, {cwd: directory, env: IDENTITY, extendEnv: true}),
-				child => child.exitCode
-			)
+		assert.strictEqual(
+			yield* Effect.scoped(
+				Effect.flatMap(
+					ChildProcess.make('git', args, {cwd: directory, env: IDENTITY, extendEnv: true}),
+					child => child.exitCode
+				)
+			),
+			0,
+			`git ${Array.join(args, ' ')}`
 		)
 	})
 	const write = Effect.fnUntraced(function* (directory: string, files: Record<string, string[]>) {
@@ -99,9 +106,9 @@ const fixture = Effect.fnUntraced(function* (misjudged: string = '') {
 						`if (yes) return [name, name !== '${misjudged}']`,
 						'if (no) return [name, false]',
 						`if (name === '${misjudged}') throw new Error('An untrusted question was used')`,
-						"return [name, name === 'no-view-state-in-memory' && (code.includes('Flagged') || code.includes('Ignored'))]",
+						"return [name, name === 'view-state-in-memory' && (code.includes('Flagged') || code.includes('Ignored'))]",
 						'}))',
-						'const textAnswer = yield* Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown))(answers)',
+						"const textAnswer = yield* Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown))({analysis: '', answers})",
 						"return [Response.makePart('text', {text: textAnswer}), Response.makePart('finish', {reason: 'stop', usage: new Response.Usage({inputTokens: {total: 100, uncached: 100, cacheRead: 0, cacheWrite: 0}, outputTokens: {total: 10, text: 10, reasoning: 0}})})]",
 						'}), streamText: () => Stream.empty',
 						'})',
@@ -237,6 +244,7 @@ describe('coding-standards judge', () => {
 			}, Effect.scoped)
 		)
 
+		// judge-ignore no-internals-test -- the call and token counts are the summary line the judge prints, its documented contract for remembered answers.
 		test.effect(
 			'reuses remembered answers and asks only the edited unit again',
 			Effect.fnUntraced(function* () {
@@ -302,7 +310,7 @@ describe('coding-standards judge', () => {
 		test.effect(
 			'leaves a question unreadable when its self-check fails instead of trusting its unit answers',
 			Effect.fnUntraced(function* () {
-				const f = yield* fixture('no-contradicted-promise')
+				const f = yield* fixture('contradicted-promise')
 				const result = yield* f.run(
 					yield* f.checkout({'text.ts': ["import {Array, String} from 'effect'", ...functionSource('first', 'a')]})
 				)
