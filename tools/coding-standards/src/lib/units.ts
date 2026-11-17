@@ -33,6 +33,15 @@ function field(node: unknown, key: string) {
 	return Option.some(node[key])
 }
 
+function isMethod(node: Node) {
+	if (node.type === 'MethodDefinition') return true
+	return (
+		node.type === 'Property' &&
+		(Option.exists(field(node, 'method'), method => method === true) ||
+			Option.exists(field(node, 'kind'), kind => kind === 'get' || kind === 'set'))
+	)
+}
+
 function nodeAt(node: Node, key: string) {
 	return Option.filter(field(node, key), isNode)
 }
@@ -262,14 +271,16 @@ function units(
 		if (Array.contains(FUNCTIONS, node.type) && length <= 150) {
 			// A function of a few lines holds too little to judge.
 			if (length < 6) return []
+			// A method's function starts at its parameters, so the unit is the whole method: its name, `async`, `*`, `static` and accessor kind belong to what it does.
+			const span = pipe(parent, Option.filter(isMethod), Option.getOrElse(Function.constant(node)))
 			return [
 				unit(
 					Boolean.match(tsx && Option.exists(nameOf(node, parent), matches(/^[A-Z]/u)), {
 						onFalse: Function.constant('code'),
 						onTrue: Function.constant('component')
 					}),
-					node,
-					line
+					span,
+					lineOf(span.start)
 				)
 			]
 		}

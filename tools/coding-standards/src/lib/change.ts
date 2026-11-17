@@ -25,11 +25,16 @@ type PullRequest = typeof PullRequest.Type
 const PullRequest = Schema.Struct({baseRefName: Schema.String, number: Schema.Finite})
 
 const run = Effect.fnUntraced(function* (command: string, args: string[], cwd: string) {
-	const child = yield* ChildProcess.make(command, args, {cwd, stderr: 'ignore', stdout: 'pipe'})
-	const output = yield* Effect.all([Stream.mkString(Stream.decodeText(child.stdout)), child.exitCode], {
-		concurrency: 'unbounded'
-	})
-	return {exitCode: output[1], stdout: output[0]}
+	const child = yield* ChildProcess.make(command, args, {cwd, stderr: 'pipe', stdout: 'pipe'})
+	const output = yield* Effect.all(
+		[
+			Stream.mkString(Stream.decodeText(child.stdout)),
+			Stream.mkString(Stream.decodeText(child.stderr)),
+			child.exitCode
+		],
+		{concurrency: 'unbounded'}
+	)
+	return {exitCode: output[2], stderr: output[1], stdout: output[0]}
 }, Effect.scoped)
 
 // Paths are read raw: git quotes none it prints, and the lists it prints end each path with a NUL.
@@ -116,18 +121,22 @@ const defaultBranch = Effect.fnUntraced(function* (root: string) {
 	return String.trim(result.stdout)
 })
 
-// judge-ignore no-silent-fallback -- a branch without a pull request, or a machine without gh, has no pull request base by design; the default branch is the documented base, and every git failure fails the run.
 // The TypeScript files the change adds or edits against its merge base, untracked ones included, with the lines of each as it is now that the change touched; the diff only selects what is asked and is never sent.
 export const change = Effect.fnUntraced(function* (base: Option.Option<string>) {
 	const root = String.trim(yield* git(['rev-parse', '--show-toplevel'], '.'))
 	const pullRequest = yield* pipe(
 		run('gh', ['pr', 'view', '--json', 'baseRefName,number'], root),
-		Effect.flatMap(result => {
-			// No pull request for this branch, or no host gh can reach: the base is origin's default branch.
-			if (result.exitCode !== 0) return Effect.succeedNone
-			return Effect.asSome(Schema.decodeEffect(Schema.fromJsonString(PullRequest))(result.stdout))
-		}),
-		// No gh on this machine is the same: a repository without a pull request host.
+		Effect.flatMap(
+			Effect.fnUntraced(function* (result) {
+				if (result.exitCode === 0) {
+					return Option.some(yield* Schema.decodeEffect(Schema.fromJsonString(PullRequest))(result.stdout))
+				}
+				// A branch without a pull request, or a repository without a remote: the base is origin's default branch. Any other failure, such as a signed-out gh, fails, since the wrong base judges the wrong change.
+				if (matches(/no pull requests found|no git remotes found/u)(result.stderr)) return Option.none<PullRequest>()
+				return yield* JudgeError.make({message: `gh pr view failed: ${String.trim(result.stderr)}`})
+			})
+		),
+		// No gh on this machine: a repository without a pull request host.
 		Effect.catchTag('PlatformError', () => Effect.succeedNone)
 	)
 	const baseRef = yield* pipe(
