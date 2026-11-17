@@ -11,7 +11,7 @@ import icon from '#routes/icon.svg'
 import {RpcContracts} from '#rpcs/contracts.ts'
 import {RpcHandlers} from '#rpcs/handlers.ts'
 import {Exposures} from '#services/exposures/service.ts'
-import {Fleet, layerPeerAuth} from '#services/fleet/service.ts'
+import {Fleet} from '#services/fleet/service.ts'
 import {WorkerList} from '#services/inventory/schema.ts'
 import {Inventory} from '#services/inventory/service.ts'
 import {Metrics} from '#services/metrics/service.ts'
@@ -28,7 +28,7 @@ const layerServices = pipe(
 
 runApp({
 	icon,
-	routes: pipe(
+	routes: Layer.provide(
 		Layer.mergeAll(
 			layerRpc({group: RpcContracts, handlers: RpcHandlers}),
 			layerMcp({
@@ -37,8 +37,7 @@ runApp({
 				registrations: Layer.provide(McpServer.toolkit(ToolContracts), ToolHandlers)
 			})
 		),
-		Layer.provide(layerServices),
-		Layer.provide(layerPeerAuth)
+		layerServices
 	),
 	settings: {
 		DEPLOY_WORKERS: {

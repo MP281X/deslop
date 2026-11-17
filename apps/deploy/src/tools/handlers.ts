@@ -2,6 +2,9 @@ import {hostname} from 'node:os'
 
 import {Array, Boolean, Effect, HashSet, Option, Order, String, Struct, pipe} from 'effect'
 
+import {requireAdmin} from '@deslop/runtime/server/auth'
+import {CurrentUser} from '@deslop/runtime/shared/auth'
+
 import {Fleet} from '#services/fleet/service.ts'
 import {jobRequest, listApps, ownerNames} from '#services/inventory/lib/utils.ts'
 import {DeployError, WorkerId} from '#services/inventory/schema.ts'
@@ -171,9 +174,13 @@ export const ToolHandlers = ToolContracts.toLayer(
 	Effect.map(Fleet, fleet =>
 		ToolContracts.of({
 			create_exposure: Effect.fnUntraced(function* (input) {
+				const admin = yield* requireAdmin(yield* CurrentUser, 'Only an admin can create exposures')
 				yield* checkWorker(yield* fleet.snapshot, input.worker)
 				return {
-					url: yield* fleet.expose({...input, worker: Option.getOrElse(input.worker, () => WorkerId.make(hostname()))})
+					url: yield* fleet.expose(
+						{...input, worker: Option.getOrElse(input.worker, () => WorkerId.make(hostname()))},
+						admin
+					)
 				}
 			}),
 			list_apps: Effect.fnUntraced(function* (input) {
@@ -205,14 +212,19 @@ export const ToolHandlers = ToolContracts.toLayer(
 				}
 			}),
 			remove_exposure: Effect.fnUntraced(function* (input) {
+				const admin = yield* requireAdmin(yield* CurrentUser, 'Only an admin can remove exposures')
 				yield* checkWorker(yield* fleet.snapshot, input.worker)
-				yield* fleet.hide({name: input.name, worker: Option.getOrElse(input.worker, () => WorkerId.make(hostname()))})
+				yield* fleet.hide(
+					{name: input.name, worker: Option.getOrElse(input.worker, () => WorkerId.make(hostname()))},
+					admin
+				)
 				return input
 			}),
 			run_job: Effect.fnUntraced(function* (input) {
+				const admin = yield* requireAdmin(yield* CurrentUser, 'Only an admin can run jobs')
 				const snapshot = yield* fleet.snapshot
 				yield* checkWorker(snapshot, input.worker)
-				yield* fleet.run(yield* jobRequest(snapshot, input))
+				yield* fleet.run(yield* jobRequest(snapshot, input), admin)
 				return {started: true as const}
 			})
 		})

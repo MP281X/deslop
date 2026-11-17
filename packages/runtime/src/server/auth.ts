@@ -1,4 +1,4 @@
-import {Cache, Config, Context, Effect, Exit, Function, Layer, Option, Result, Schedule, Schema, pipe} from 'effect'
+import {Brand, Cache, Config, Context, Effect, Exit, Function, Layer, Option, Result, Schedule, Schema, pipe} from 'effect'
 
 import {
 	Cookies,
@@ -17,24 +17,28 @@ import {
 	AuthError,
 	CLIENT_HEADER,
 	CurrentUser,
+	CurrentAdmin,
 	DEVELOPER,
 	IDENTIFY_PATH,
 	IdentifyRequest,
 	ON_BEHALF_HEADER,
 	RpcAuth,
+	RpcAdmin,
 	SESSION_COOKIE,
 	UserId,
 	asAuthError,
 	failureOptions
 } from '#shared/auth.ts'
-import type {User} from '#shared/auth.ts'
+import type {Admin, User} from '#shared/auth.ts'
 import {Account} from '#shared/schema.ts'
 
 // Without a domain there is no sign-in: every request is this trusted developer.
 export const localAuth = Config.map(Config.option(Config.String('AUTH_URL')), Option.isNone)
 
+const admin = Brand.nominal<Admin>()
+
 export function requireAdmin(user: User, message: string) {
-	if (user.admin) return Effect.void
+	if (user.admin) return Effect.succeed(admin(user))
 	return Effect.fail(AuthError.make({error: 'access_denied', message}))
 }
 
@@ -84,7 +88,7 @@ export class Auth extends Context.Service<
 			const found = yield* account(headers)
 			return {admin: found.admin, id: found.id, name: found.name}
 		})
-		return Context.add(
+		const rpcAuth = Context.add(
 			Context.make(Auth, Auth.of({account, user})),
 			RpcAuth,
 			RpcAuth.of((effect, request) =>
@@ -108,6 +112,19 @@ export class Auth extends Context.Service<
 						)
 					)
 				)
+			)
+		)
+		return Context.add(
+			rpcAuth,
+			RpcAdmin,
+			RpcAdmin.of((effect, request) =>
+				Effect.gen(function* () {
+					return yield* Effect.provideService(
+						effect,
+						CurrentAdmin,
+						yield* requireAdmin(yield* user(request.headers), 'Only an admin may perform this action')
+					)
+				})
 			)
 		)
 	}

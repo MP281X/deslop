@@ -43,7 +43,7 @@ import {executeProcess} from '#server/process.ts'
 import {installService, installUpdateService, serviceStatus, uninstallService} from '#server/services.ts'
 import {dataDirectory, layerDataStore} from '#server/store.ts'
 import {activateRelease, updateRelease} from '#server/update.ts'
-import type {RpcAuth} from '#shared/auth.ts'
+import type {RpcAuth, RpcAdmin} from '#shared/auth.ts'
 import {Port} from '#shared/schema.ts'
 
 const DEFAULT_HOST = '127.0.0.1'
@@ -111,6 +111,7 @@ export type Provided =
 	| Auth
 	| AiGateway
 	| RpcAuth
+	| RpcAdmin
 	| Layer.Success<ReturnType<typeof layerDataStore>>
 	| Layer.Success<typeof layerServerProtocol>
 
@@ -129,7 +130,7 @@ const RequestRequiresKind = Schema.Literals(['Requires', 'GlobalRequires'])
 
 export type App<A, E> = {
 	readonly auth?: Layer.Layer<
-		Auth | RpcAuth,
+		Auth | RpcAuth | RpcAdmin,
 		E,
 		Layer.Success<typeof layerPlatform> | Layer.Success<ReturnType<typeof layerDataStore>>
 	>
