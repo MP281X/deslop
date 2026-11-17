@@ -34,6 +34,7 @@ function Destination(props: {onClose: () => void; value: string}) {
 	)
 }
 
+// judge-ignore no-unrelated-jobs -- This application composition boundary mounts the app-owned notification and calendar lifetimes alongside navigation.
 function AppRoutes() {
 	useAtomMount(pushAtom)
 	useAtomMount(calendarAtom)

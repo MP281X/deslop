@@ -197,7 +197,7 @@ export function ChaptersRoute(props: {
 	const loaded = useAtomValue(chaptersAtom)
 	const refresh = useAtomRefresh(chaptersAtom)
 	const [searched, setSearched] = useState('')
-	// The chapters on screen stay through an outage; a dot in the bar marks that they stopped updating.
+	// Chapters already on screen stay through an outage; a retryable problem dot in the bar marks that they stopped updating.
 	return (
 		<ListToolbar
 			title={SERIES_NAMES[props.series]}

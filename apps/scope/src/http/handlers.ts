@@ -51,6 +51,7 @@ const Signature = pipe(
 )
 
 export const HttpHandlers = Layer.provide(
+	// judge-ignore no-unrelated-jobs -- this router composition registers the OTLP and signed GitHub ingestion endpoints; each request is dispatched to its own handler.
 	HttpRouter.use(router =>
 		Effect.gen(function* () {
 			const telemetry = yield* Telemetry

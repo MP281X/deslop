@@ -60,10 +60,14 @@ function timeLimit(duration: Duration.Input, message: string, reason?: NotesErro
 	return Effect.timeoutOrElse({duration, orElse: () => Effect.fail(NotesError.make({message, reason}))})
 }
 
-function readText(characters: number) {
+function readText(bytes: number) {
 	return (response: HttpClientResponse.HttpClientResponse) =>
 		pipe(
-			Stream.limitBytes(response.stream, ByteSize.bytes(characters), () => Stream.empty),
+			response.stream,
+			Stream.mapError(cause => NotesError.make({cause, message: 'The source could not be read.'})),
+			Stream.limitBytes(ByteSize.bytes(bytes), () =>
+				Stream.fail(NotesError.make({message: 'The source is too large to read.'}))
+			),
 			Stream.decodeText,
 			Stream.mkString
 		)
@@ -213,11 +217,11 @@ function whole<A extends FxPost>(post: A) {
 	) {
 		return Effect.succeed(post)
 	}
-	// Without its body the article still reads as its title among the posts already loaded around it.
+	// judge-ignore no-silent-fallback -- an article body is optional enrichment: a failed read is logged, and the article still reads as its title among the posts already loaded around it.
 	return pipe(
 		fx(FxStatus, `status/${post.id}`),
 		Effect.map(found => ({...post, ...found.status})),
-		Effect.catch(error => Effect.as(Effect.logWarning('The article body did not load', error), post))
+		Effect.catch(error => Effect.as(Effect.logWarning('The article body was not read', error), post))
 	)
 }
 
@@ -307,15 +311,24 @@ const issue = Effect.fnUntraced(function* (url: URL, repository: string, number:
 	})
 })
 
+// A repository without a README answers 404; the note keeps the description and topics.
+const repositoryReadme = Effect.fnUntraced(function* (name: string) {
+	const readmeResponse = yield* attempt(new URL(`https://api.github.com/repos/${name}/readme`), api)
+	if (readmeResponse.status === 404) return Option.none<string>()
+	const body = yield* pipe(
+		readmeResponse.body,
+		Effect.fromOption,
+		Effect.mapError(() => NotesError.make({message: `The README answered with status ${readmeResponse.status}.`}))
+	)
+	const file = yield* Effect.mapError(Schema.decodeEffect(Schema.fromJsonString(GitHubReadme))(body), cause =>
+		NotesError.make({cause, message: 'The README metadata could not be read.'})
+	)
+	return Option.some((yield* follow(new URL(file.download_url), api, 0)).body)
+})
+
 const repository = Effect.fnUntraced(function* (url: URL, name: string) {
 	const found = yield* decode(GitHubRepo, new URL(`https://api.github.com/repos/${name}`))
-	const readme = yield* pipe(
-		decode(GitHubReadme, new URL(`https://api.github.com/repos/${name}/readme`)),
-		Effect.flatMap(file => follow(new URL(file.download_url), api, 0)),
-		Effect.map(file => file.body),
-		// A repository without a README answers 404; the note keeps the description and topics.
-		Effect.option
-	)
+	const readme = yield* repositoryReadme(name)
 	return Extraction.make({
 		author: Option.some(found.owner.login),
 		image: Option.some(`https://opengraph.githubassets.com/1/${name}`),
@@ -416,6 +429,8 @@ function readLinked(url: URL) {
 		}),
 		Effect.map(found => `### ${found.title}\n\n${found.url}\n\n${String.slice(0, 40_000)(found.text)}`),
 		timeLimit('40 seconds', 'The linked page took too long.'),
+		// judge-ignore no-silent-fallback -- A failed linked page is logged and absent, not a failure to read the post itself.
+		Effect.tapError(error => Effect.logWarning('The linked page was not read', error)),
 		Effect.option
 	)
 }
@@ -432,10 +447,17 @@ const xPlan = Effect.fnUntraced(function* (url: URL) {
 	return conversationPlan(conversation, status, yield* Effect.transposeOption(Option.map(status.quote, whole)))
 })
 
+// judge-ignore no-silent-fallback -- a linked page or quoted post that fails to load is logged and skipped, so one dead link never loses the post's own text.
 function linkedPosts(plan: Effect.Success<ReturnType<typeof xPlan>>) {
 	return Effect.forEach(
 		plan.posts,
-		linkedId => Effect.option(Effect.map(fx(FxStatus, `status/${linkedId}`), found => found.status)),
+		// judge-ignore no-silent-fallback -- A failed linked post is logged and absent; the original post remains readable.
+		linkedId =>
+			pipe(
+				Effect.map(fx(FxStatus, `status/${linkedId}`), found => found.status),
+				Effect.tapError(error => Effect.logWarning('The linked post was not read', error)),
+				Effect.option
+			),
 		{concurrency: 'unbounded'}
 	)
 }

@@ -7,6 +7,7 @@ import {CurrentUser} from '@deslop/runtime/shared/auth'
 import {BookingSource, BookingsError, IMAGE_BYTES} from '#services/bookings/schema.ts'
 import {Bookings} from '#services/bookings/service.ts'
 
+// judge-ignore no-contradicted-promise -- The share endpoint accepts URLs as text/plain ticket input, not as a separate content type; unsupported content types get 415.
 export const HttpHandlers = HttpRouter.use(router =>
 	Effect.gen(function* () {
 		const bookings = yield* Bookings

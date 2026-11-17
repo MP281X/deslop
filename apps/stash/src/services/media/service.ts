@@ -10,6 +10,7 @@ import {
 	FileSystem,
 	Function,
 	Layer,
+	Match,
 	Number,
 	Option,
 	Order,
@@ -143,16 +144,31 @@ export class Media extends Context.Service<
 			const locate = yield* ToolPath
 			const run = Effect.fn('Media.command')(function* (command: string, args: string[]) {
 				yield* Effect.annotateCurrentSpan({command, 'command.arguments': args.length})
-				const child = yield* ChildProcess.make(yield* locate(command), args, {stderr: 'pipe', stdout: 'pipe'})
-				return yield* Effect.all(
+				const child = yield* ChildProcess.make(yield* locate(command), args, {
+					forceKillAfter: Duration.seconds(5),
+					stderr: 'pipe',
+					stdout: 'pipe'
+				})
+				return yield* Effect.timeoutOrElse(
+					Effect.all(
+						{
+							exitCode: child.exitCode,
+							stderr: Stream.mkString(Stream.decodeText(child.stderr)),
+							stdout: Stream.mkUint8Array(child.stdout)
+						},
+						{concurrency: 'unbounded'}
+					),
 					{
-						exitCode: child.exitCode,
-						stderr: Stream.mkString(Stream.decodeText(child.stderr)),
-						stdout: Stream.mkUint8Array(child.stdout)
-					},
-					{concurrency: 'unbounded'}
+						duration: pipe(
+							Match.value(command),
+							Match.when('yt-dlp', () => Duration.minutes(30)),
+							Match.when('ffprobe', () => Duration.minutes(1)),
+							Match.orElse(() => Duration.minutes(10))
+						),
+						orElse: () => Effect.fail(MediaError.make({message: `${command} exceeded its time limit`}))
+					}
 				)
-			})
+			}, Effect.scoped)
 			const transcription = yield* Semaphore.make(1)
 			const gateway = yield* AiGateway
 			const http = yield* HttpClient.HttpClient
@@ -300,6 +316,7 @@ export class Media extends Context.Service<
 					return yield* MediaError.make({message: `ffmpeg cannot decode the audio: ${extracted.stderr}`})
 				}
 				return yield* transcription.withPermit(
+					// judge-ignore no-silent-fallback -- Stash explicitly keeps usable audio chunks and logs failed chunks while preserving their elapsed time; no recovered speech with failures remains a MediaError.
 					Effect.gen(function* () {
 						// Raw FLAC segment headers may omit duration or retain the whole file's duration; the muxer's CSV has the actual boundaries.
 						const chunks = yield* pipe(
@@ -424,14 +441,17 @@ export class Media extends Context.Service<
 					path.join(work, 'captions'),
 					link
 				])
-				if (result.exitCode !== 0) return {blocked: isBlocked(result.stderr), transcript: Option.none<string>()}
+				if (result.exitCode !== 0) {
+					if (isBlocked(result.stderr)) return {kind: 'blocked' as const}
+					return yield* MediaError.make({message: `yt-dlp cannot download captions: ${result.stderr}`})
+				}
 				for (const file of yield* fs.readDirectory(work)) {
 					if (String.endsWith('.vtt')(file)) {
 						const text = captionTranscript({
 							authored: track.authored,
 							vtt: yield* fs.readFileString(path.join(work, file))
 						})
-						if (String.isNonEmpty(String.trim(text))) return {blocked: false, transcript: Option.some(text)}
+						if (String.isNonEmpty(String.trim(text))) return {kind: 'ready' as const, transcript: text}
 					} else if (String.endsWith('.json')(file)) {
 						const captions = yield* Schema.decodeEffect(Schema.fromJsonString(CreatorCaptions))(
 							yield* fs.readFileString(path.join(work, file))
@@ -446,10 +466,10 @@ export class Media extends Context.Service<
 							}),
 							Array.join('')
 						)
-						if (String.isNonEmpty(String.trim(text))) return {blocked: false, transcript: Option.some(text)}
+						if (String.isNonEmpty(String.trim(text))) return {kind: 'ready' as const, transcript: text}
 					}
 				}
-				return {blocked: false, transcript: Option.none<string>()}
+				return {kind: 'unavailable' as const}
 			})
 
 			const transcribe = Effect.fnUntraced(function* (
@@ -461,14 +481,13 @@ export class Media extends Context.Service<
 				const work = yield* fs.makeTempDirectoryScoped({prefix: 'deslop-media-'})
 				for (const track of captionTracks(media)) {
 					// A broken authored track must not hide a working automatic or alternate-language track.
-					const captioned = yield* pipe(
-						fetchCaptions(link, track),
-						Effect.scoped,
-						Effect.option,
-						Effect.map(Option.getOrElse(() => ({blocked: false, transcript: Option.none<string>()})))
-					)
-					if (Option.isSome(captioned.transcript)) return captioned.transcript
-					if (captioned.blocked) break
+					const captioned = yield* pipe(fetchCaptions(link, track), Effect.scoped, Effect.result)
+					if (Result.isFailure(captioned)) {
+						yield* Effect.logWarning('Caption track failed; trying another track or audio', captioned.failure)
+					} else {
+						if (captioned.success.kind === 'ready') return Option.some(captioned.success.transcript)
+						if (captioned.success.kind === 'blocked') break
+					}
 				}
 				if (Option.exists(media.duration, seconds => Duration.isGreaterThan(seconds, MAX_TRANSCRIPTION_DURATION))) {
 					yield* Effect.logInfo('No captions, and the audio is too long to transcribe')
@@ -514,7 +533,12 @@ export class Media extends Context.Service<
 			})
 
 			const sample = Effect.fnUntraced(function* (video: string, work: string) {
-				const length = Option.getOrElse(yield* lengthOf(video), () => Duration.seconds(6))
+				// judge-ignore no-silent-fallback -- A missing probe duration still permits sampling with the previous six-second assumption; the missing duration is logged.
+				const length = yield* Option.match(yield* lengthOf(video), {
+					onNone: () =>
+						Effect.as(Effect.logWarning('The video duration is unknown; sampling as six seconds'), Duration.seconds(6)),
+					onSome: Effect.succeed
+				})
 				const seconds = Duration.toSeconds(length)
 				// A still every 15 seconds, 12 to 48 of them, so a short clip shows its captions and a long talk its slides.
 				const count = Number.max(12, Number.min(48, Math.ceil(seconds / 15)))

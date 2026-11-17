@@ -75,7 +75,7 @@ function repositoryTraces(repository: RepositoryName, spans: readonly ExportedSp
 	})
 }
 
-export function runIds(event: WorkflowRun) {
+function runIds(event: WorkflowRun) {
 	return {
 		spanId: runSpanId(event.workflow_run.id),
 		traceId: traceIdOf(event.workflow_run.id, event.workflow_run.run_attempt)

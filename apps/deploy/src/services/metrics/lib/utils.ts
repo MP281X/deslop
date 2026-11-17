@@ -1,7 +1,7 @@
 import {Array, DateTime, Duration, Function, Number, Option, Order, Record, Schema, String, Struct, pipe} from 'effect'
 
 import type {AppId} from '#services/inventory/schema.ts'
-import {CpuCounters, LoadAverages} from '#services/metrics/schema.ts'
+import {CpuCounters, LoadAverages, VmStatPages} from '#services/metrics/schema.ts'
 import type {
 	AppSample,
 	AppUsage,
@@ -41,7 +41,7 @@ export function counters(stat: string, uptime: string, time: DateTime.Utc) {
 		)
 	)
 	return {
-		cpuIdle: Duration.millis(((values[3] ?? 0) + (values[4] ?? 0)) * 10),
+		cpuIdle: Duration.millis((Option.getOrThrow(Array.get(values, 3)) + Option.getOrThrow(Array.get(values, 4))) * 10),
 		cpuTotal: Duration.millis(Number.sumAll(values) * 10),
 		time,
 		uptime: Duration.seconds(Schema.decodeSync(Schema.FiniteFromString)(String.split(uptime, ' ')[0]))
@@ -76,7 +76,7 @@ function cpuUsage(
 	})
 }
 
-// A Mac's counters from `os.cpus()`, in milliseconds summed over its cores; `uptime` is a monotonic clock in seconds, since the Mac's own uptime counts whole seconds.
+// A Mac's counters from `os.cpus()`, in milliseconds summed over its cores, with the supplied monotonic uptime duration and sample time, since a Mac's uptime has only whole seconds.
 export function cpuCounters(
 	cpus: readonly {times: Record<CpuTime, number>}[],
 	uptime: Duration.Duration,
@@ -106,30 +106,24 @@ export function vmStatMemory(text: string, total: number) {
 			)
 		)
 	)
-	const page = Schema.decodeSync(Schema.FiniteFromString)(
-		pipe(
-			String.match(/page size of ([0-9]+) bytes/u)(text),
-			Option.map(match => match[1] ?? ''),
-			Option.getOrElse(Function.constant(''))
-		)
+	const page = Schema.decodeUnknownSync(Schema.FiniteFromString)(
+		pipe(String.match(/page size of ([0-9]+) bytes/u)(text), Option.flatMap(Array.get(1)), Option.getOrUndefined)
 	)
-	function count(name: string) {
-		return Schema.decodeSync(Schema.FiniteFromString)(pages[name] ?? '')
-	}
+	const counts = Schema.decodeUnknownSync(VmStatPages)(pages)
 	return {
 		total,
 		used: Number.clamp(
-			(count('Anonymous pages') -
-				count('Pages purgeable') +
-				count('Pages wired down') +
-				count('Pages occupied by compressor')) *
+			(counts['Anonymous pages'] -
+				counts['Pages purgeable'] +
+				counts['Pages wired down'] +
+				counts['Pages occupied by compressor']) *
 				page,
 			{maximum: total, minimum: 0}
 		)
 	}
 }
 
-// A Mac's startup volume from `df -k /`: APFS reports the system volume's own use, so its container's use is size less available.
+// Nonempty whitespace-separated rows after df's header.
 function diskRows(output: string) {
 	return pipe(
 		output,
@@ -141,6 +135,7 @@ function diskRows(output: string) {
 	)
 }
 
+// A Mac's startup volume from `df -k /`: APFS reports only the system volume's own use, so the container's use is size less available.
 export function rootVolume(text: string) {
 	return Array.map(diskRows(text), fields => {
 		const size = Schema.decodeSync(Schema.FiniteFromString)(fields[1] ?? '') * 1024
@@ -193,7 +188,12 @@ export function sample(
 	)
 	return reading(
 		current,
-		{total: values['MemTotal:'] ?? 0, used: (values['MemTotal:'] ?? 0) - (values['MemAvailable:'] ?? 0)},
+		{
+			total: Schema.decodeUnknownSync(Schema.Finite)(values['MemTotal:']),
+			used:
+				Schema.decodeUnknownSync(Schema.Finite)(values['MemTotal:']) -
+				Schema.decodeUnknownSync(Schema.Finite)(values['MemAvailable:'])
+		},
 		pipe(
 			disk,
 			Option.match({onNone: () => [], onSome: diskRows}),
@@ -227,7 +227,7 @@ export function chartWindow(range: Duration.Duration, now: DateTime.Utc) {
 	return {end, start: DateTime.subtractDuration(end, range)}
 }
 
-// The readings of a bucket's samples averaged over the time each covers, skipping missing ones: a merged point counts for its span, a second point for its second.
+// Average known readings by their inclusive coverage: time minus since plus one second, including a lone reading's second.
 function mean(bucket: readonly Sample[], read: (point: Sample, index: number) => Option.Option<number>) {
 	const known = Array.getSomes(
 		Array.map(bucket, (point, index) =>
@@ -436,7 +436,7 @@ function diskTotal(machine: MachineHistory) {
 	})
 }
 
-// Each of the range's 60 slots in order: a slot without a sample stays null, as the page's charts leave it blank.
+// Each of the range's 60 slots in order, with None for a missing sample or reading and Some for its rounded value.
 function series(machine: MachineHistory, minutes: Duration.Duration, read: (sample: Sample) => Option.Option<number>) {
 	const start = chartWindow(minutes, machine.time).start
 	const slot = resolution(minutes)

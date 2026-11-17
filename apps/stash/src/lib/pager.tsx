@@ -1,4 +1,4 @@
-import {useAtomValue} from '@effect/atom-react'
+import {useAtomRefresh, useAtomValue} from '@effect/atom-react'
 
 import {Array, Boolean, Function, Match, Number, Option, pipe} from 'effect'
 
@@ -15,6 +15,8 @@ import {
 import {AsyncResult} from 'effect/reactivity'
 import {useState} from 'react'
 
+import {FailureContent} from '@deslop/components-mobile/blocks/loaded'
+import {Problem} from '@deslop/components-mobile/blocks/problem'
 import {colors, space} from '@deslop/components-mobile/theme'
 import {Skeleton} from '@deslop/components-mobile/ui/skeleton'
 
@@ -28,7 +30,14 @@ const slot = [frame({height: 320}), frame({maxWidth: Infinity})]
 
 function Picture(props: {atom: ReturnType<typeof imageAtom>}) {
 	const image = useAtomValue(props.atom)
-	if (AsyncResult.isFailure(image)) return <VStack modifiers={slot}>{null}</VStack>
+	const reload = useAtomRefresh(props.atom)
+	if (AsyncResult.isFailure(image)) {
+		return (
+			<VStack modifiers={slot}>
+				<FailureContent cause={image.cause} onRetry={reload} />
+			</VStack>
+		)
+	}
 	if (!AsyncResult.isSuccess(image)) return <Skeleton modifiers={slot} />
 	return (
 		<Image
@@ -50,7 +59,16 @@ function PageView(props: {note: NoteItem; page: Page}) {
 // The post's pictures: one swipeable pager with its dots below, and no dots for a single page.
 export function Pager(props: {note: NoteItem}) {
 	const media = useAtomValue(mediaAtom(props.note.id))
+	const reload = useAtomRefresh(mediaAtom(props.note.id))
 	const [selected, setSelected] = useState(0)
+	if (AsyncResult.isFailure(media)) {
+		return (
+			<VStack spacing={space[2]}>
+				{Option.isSome(props.note.image) && <Picture atom={imageAtom(props.note.id)} />}
+				<Problem label="Post pictures unavailable" onRetry={reload} />
+			</VStack>
+		)
+	}
 	const pages = pagesOf(
 		Option.isSome(props.note.image),
 		props.note.id,

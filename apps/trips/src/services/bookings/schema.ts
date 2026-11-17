@@ -321,8 +321,8 @@ export const StopMatches = Schema.Array(
 
 export type TransitStop = typeof TransitStop.Type
 export const TransitStop = Schema.Struct({
-	arrival: Schema.OptionFromOptionalKey(Schema.String),
-	departure: Schema.OptionFromOptionalKey(Schema.String),
+	arrival: Schema.OptionFromOptionalKey(Schema.DateTimeUtcFromString),
+	departure: Schema.OptionFromOptionalKey(Schema.DateTimeUtcFromString),
 	lat: Schema.Finite,
 	lon: Schema.Finite,
 	name: Schema.String,
@@ -334,7 +334,7 @@ export const TransitRuns = Schema.Struct({
 	stopTimes: Schema.Array(
 		Schema.Struct({
 			agencyName: Schema.String,
-			place: Schema.Struct({departure: Schema.String, tz: Schema.String}),
+			place: Schema.Struct({departure: Schema.DateTimeUtcFromString, tz: Schema.String}),
 			routeShortName: Schema.String,
 			tripId: Schema.String,
 			tripShortName: Schema.String

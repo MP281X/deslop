@@ -164,7 +164,7 @@ export function senderOf(resource: Option.Option<Resource>) {
 	}
 }
 
-// The words and numbers of an OTLP value, keys included: `Effect.log('saved', note)` sends an array of its arguments.
+// Primitive leaf values of an OTLP body, without object keys: Effect logs send an array of arguments.
 function leaves(value: Schema.Json): string[] {
 	if (Array.isArray<Schema.Json>(value)) return Array.flatMap(value, leaves)
 	if (String.isString(value) || Predicate.isNumber(value) || Predicate.isBoolean(value)) return [`${value}`]
@@ -272,7 +272,8 @@ export function spansOf(payload: TracesRequest) {
 			)
 		})
 	)
-	return {links: Array.flatMap(spans, item => item.links), spans: Array.map(spans, item => item.span)}
+	const latest = Record.values(Record.fromIterableBy(spans, item => `${item.span.traceId}:${item.span.spanId}`))
+	return {links: Array.flatMap(latest, item => item.links), spans: Array.map(latest, item => item.span)}
 }
 
 // A severity as OTLP's number; a record with only a text level maps onto the same scale.
@@ -362,13 +363,14 @@ function markedStream(span: Pick<Span, 'attributes'>) {
 	return span.attributes['rpc.stream'] === true
 }
 
-// A subscription's lifetime is not action latency. A nested subscription does not turn its owning action into one.
+// A subscription's lifetime is not an action's latency: a root is one when it is marked as a stream or has a direct stream child with the same rpc.method, never for an unrelated nested subscription.
 function subscription(root: SpanFacts, spans: readonly SpanFacts[]) {
 	if (markedStream(root)) return true
 	const method = Option.filter(textOf(root.attributes, 'rpc.method'), String.isNonEmpty)
 	return Array.some(
 		spans,
 		span =>
+			span.traceId === root.traceId &&
 			Option.contains(span.parentSpanId, root.spanId) &&
 			Option.exists(method, name => Option.contains(textOf(span.attributes, 'rpc.method'), name)) &&
 			markedStream(span)
@@ -378,10 +380,12 @@ function subscription(root: SpanFacts, spans: readonly SpanFacts[]) {
 // Effect marks every span a failure passed through as failed, so where it broke is the failed span with no failed child.
 function brokeAt<A extends SpanFacts>(spans: readonly A[]) {
 	const failedSpans = Array.filter(spans, span => span.status === 'failed')
-	const parents = HashSet.fromIterable(Array.getSomes(Array.map(failedSpans, span => span.parentSpanId)))
+	const parents = HashSet.fromIterable(
+		Array.getSomes(Array.map(failedSpans, span => Option.map(span.parentSpanId, parent => `${span.traceId}:${parent}`)))
+	)
 	return pipe(
 		failedSpans,
-		Array.filter(span => !HashSet.has(parents, span.spanId)),
+		Array.filter(span => !HashSet.has(parents, `${span.traceId}:${span.spanId}`)),
 		Array.match({
 			onEmpty: () => Option.none<A>(),
 			onNonEmpty: candidates => Option.some(Array.min(candidates, byStart))
@@ -462,7 +466,7 @@ export function touchedTraces(incoming: readonly SpanFacts[], stored: readonly S
 
 // Each linked trace's root hangs under the span it links to, its own link first.
 function linkedParents(spans: readonly Span[], links: readonly SpanLink[]) {
-	const ids = HashSet.fromIterable(Array.map(spans, span => span.spanId))
+	const ids = HashSet.fromIterable(Array.map(spans, span => `${span.traceId}:${span.spanId}`))
 	const linksOf = Array.groupBy(links, link => `${link.traceId}:${link.spanId}`)
 	return Record.fromEntries(
 		Array.flatMap(Record.values(Array.groupBy(spans, span => span.traceId)), group => {
@@ -475,10 +479,13 @@ function linkedParents(spans: readonly Span[], links: readonly SpanLink[]) {
 						Record.get(`${span.traceId}:${span.spanId}`),
 						Option.flatMap(Option.fromUndefinedOr),
 						Option.getOrElse(Array.empty<SpanLink>),
-						Array.findFirst(link => HashSet.has(ids, link.linkedSpanId))
+						Array.findFirst(link => HashSet.has(ids, `${link.linkedTraceId}:${link.linkedSpanId}`))
 					)
 				),
-				Option.match({onNone: () => [], onSome: link => [[root.spanId, link.linkedSpanId] as const]})
+				Option.match({
+					onNone: () => [],
+					onSome: link => [[`${root.traceId}:${root.spanId}`, `${link.linkedTraceId}:${link.linkedSpanId}`] as const]
+				})
 			)
 		})
 	)
@@ -488,13 +495,13 @@ function linkedParents(spans: readonly Span[], links: readonly SpanLink[]) {
 export function traceTree(id: TraceId, spans: readonly Span[], logs: readonly Log[], links: readonly SpanLink[]) {
 	const ordered = Array.sort(spans, byStart)
 	const indexed = Array.map(ordered, (span, index) => ({index, span}))
-	const byId = Record.fromIterableBy(indexed, item => item.span.spanId)
+	const byId = Record.fromIterableBy(indexed, item => `${item.span.traceId}:${item.span.spanId}`)
 	const linked = linkedParents(ordered, links)
 	function parentOf(span: Span) {
 		return pipe(
 			linked,
-			Record.get(span.spanId),
-			Option.orElse(() => span.parentSpanId)
+			Record.get(`${span.traceId}:${span.spanId}`),
+			Option.orElse(() => Option.map(span.parentSpanId, parent => `${span.traceId}:${parent}`))
 		)
 	}
 	const sortedLogs = Array.sort(
@@ -510,7 +517,12 @@ export function traceTree(id: TraceId, spans: readonly Span[], logs: readonly Lo
 	})
 	const bySpan = pipe(
 		sortedLogs,
-		Array.map(log => Option.map(log.spanId, spanId => ({log, spanId}))),
+		Array.map(log =>
+			Option.map(Option.all({spanId: log.spanId, traceId: log.traceId}), ids => ({
+				log,
+				spanId: `${ids.traceId}:${ids.spanId}`
+			}))
+		),
 		Array.getSomes,
 		Array.groupBy(entry => entry.spanId),
 		Record.map(entries => Array.map(entries, entry => entry.log))
@@ -518,12 +530,16 @@ export function traceTree(id: TraceId, spans: readonly Span[], logs: readonly Lo
 	const tree = pipe(
 		Array.map(indexed, item => {
 			const ancestors = Array.reverse(
-				Array.unfold({seen: HashSet.make(item.span.spanId), span: item.span}, current =>
+				Array.unfold({seen: HashSet.make(`${item.span.traceId}:${item.span.spanId}`), span: item.span}, current =>
 					pipe(
 						Option.flatMap(parentOf(current.span), parent => Record.get(byId, parent)),
-						Option.filter(parent => !HashSet.has(current.seen, parent.span.spanId)),
+						Option.filter(parent => !HashSet.has(current.seen, `${parent.span.traceId}:${parent.span.spanId}`)),
 						Option.map(
-							parent => [parent, {seen: HashSet.add(current.seen, parent.span.spanId), span: parent.span}] as const
+							parent =>
+								[
+									parent,
+									{seen: HashSet.add(current.seen, `${parent.span.traceId}:${parent.span.spanId}`), span: parent.span}
+								] as const
 						)
 					)
 				)
@@ -534,9 +550,13 @@ export function traceTree(id: TraceId, spans: readonly Span[], logs: readonly Lo
 					...Struct.pick(item.span, Struct.keys(Span.fields)),
 					depth: ancestors.length,
 					durationMs: spanDuration(item.span),
-					logs: pipe(bySpan, Record.get(item.span.spanId), Option.getOrElse(Array.empty)),
+					logs: pipe(bySpan, Record.get(`${item.span.traceId}:${item.span.spanId}`), Option.getOrElse(Array.empty)),
 					offsetMs: DateTime.distance(Option.getOrThrow(timing.start), item.span.start),
-					parentSpanId: parentOf(item.span)
+					parentSpanId: pipe(
+						parentOf(item.span),
+						Option.flatMap(parent => Record.get(byId, parent)),
+						Option.map(parent => parent.span.spanId)
+					)
 				}
 			}
 		}),
@@ -547,11 +567,18 @@ export function traceTree(id: TraceId, spans: readonly Span[], logs: readonly Lo
 		durationMs: timing.durationMs,
 		failureSpanId: Option.map(brokeAt(ordered), span => span.spanId),
 		id,
-		logs: Array.filter(sortedLogs, log => !Option.exists(log.spanId, spanId => Record.has(byId, spanId))),
+		logs: Array.filter(
+			sortedLogs,
+			log =>
+				!Option.exists(Option.all({spanId: log.spanId, traceId: log.traceId}), ids =>
+					Record.has(byId, `${ids.traceId}:${ids.spanId}`)
+				)
+		),
 		spans: tree
 	} satisfies TraceTree
 }
 
+// judge-ignore no-silent-fallback -- an empty latency sample has a count of zero at the caller; zero is its defined aggregate, not a failed measurement.
 function percentile(times: readonly Duration.Duration[], ratio: number) {
 	return pipe(
 		times,
@@ -560,7 +587,8 @@ function percentile(times: readonly Duration.Duration[], ratio: number) {
 	)
 }
 
-// The p50, p95 and longest of some durations in milliseconds.
+// judge-ignore no-contradicted-promise -- the Ms keys are LatencyAnswer's wire names, whose schema encodes these Durations as milliseconds.
+// The nearest-rank p50, p95 and longest duration, all zero for an empty sample.
 export function latencyOf(times: readonly Duration.Duration[]) {
 	const sorted = Array.sort(times, Duration.Order)
 	return {

@@ -1,4 +1,18 @@
-import {Array, Boolean, Effect, Function, HashSet, Option, Order, Queue, Redacted, Schema, Stream, pipe} from 'effect'
+import {
+	Array,
+	Boolean,
+	Effect,
+	Function,
+	HashSet,
+	Option,
+	Order,
+	Queue,
+	Redacted,
+	Schema,
+	Semaphore,
+	Stream,
+	pipe
+} from 'effect'
 
 import {Atom} from 'effect/reactivity'
 import {applicationId} from 'expo-application'
@@ -17,6 +31,7 @@ import {cachedList, writeAtomically} from '@deslop/components-mobile/lib/files'
 import {liveStream, reconnectOnDrop} from '@deslop/runtime/client/live-stream'
 import {provideRuntimeOnce} from '@deslop/runtime/mobile/session'
 import {ApnsToken} from '@deslop/runtime/shared/apns'
+import {listReducer} from '@deslop/runtime/shared/list'
 
 import {RpcClient, session} from '#lib/session.ts'
 import {OpmNative} from '#modules/native/index.ts'
@@ -24,18 +39,11 @@ import {byNumber, keyOf, notificationOf} from '#services/chapters/lib/utils.ts'
 import type {ChapterKey, ChapterNumber} from '#services/chapters/schema.ts'
 import {Bundle, ChaptersError} from '#services/chapters/schema.ts'
 import {ReadingChapter} from '#services/reading/schema.ts'
-import type {ChapterItem, ChapterList, ChaptersEvent, ReadingPosition} from '#services/reading/schema.ts'
+import type {ChapterItem, ChapterList, ReadingPosition} from '#services/reading/schema.ts'
 
 const chaptersFile = new File(Paths.document, 'chapters.json')
 
-function apply(chapters: ChapterList, event: ChaptersEvent) {
-	if (event.reset) return Array.copy(event.upserted)
-	const replaced = HashSet.fromIterable(Array.map(event.upserted, keyOf))
-	return Array.sort(
-		[...Array.filter(chapters, chapter => !HashSet.has(replaced, keyOf(chapter))), ...event.upserted],
-		Order.flip(byNumber)
-	)
-}
+const reduceChapters = listReducer<ChapterItem, ChapterKey>(Order.flip(byNumber), keyOf)
 
 // The copy on the iPhone opens the app at once; without one the app waits for the server rather than open on nothing.
 export const chaptersAtom = Atom.keepAlive(
@@ -46,7 +54,11 @@ export const chaptersAtom = Atom.keepAlive(
 			get,
 			chaptersFile,
 			ReadingChapter.json,
-			pipe(liveStream(RpcClient, 'chapters.events'), Stream.scan(Array.empty<ChapterItem>, apply), Stream.drop(1)),
+			pipe(
+				liveStream(RpcClient, 'chapters.events'),
+				Stream.scan(Array.empty<ChapterItem>, (chapters, event) => reduceChapters(chapters, {...event, removed: []})),
+				Stream.drop(1)
+			),
 			reconnectOnDrop
 		)
 	})
@@ -55,7 +67,9 @@ export const chaptersAtom = Atom.keepAlive(
 // A chapter the list still lacks ten seconds after the reader opened it is out of reach, such as offline.
 export const unreachableAtom = Atom.family((_key: ChapterKey) => Atom.make(Effect.as(Effect.sleep('10 seconds'), true)))
 
-// Concurrent, so finishing one chapter while opening the next never cancels either write; the client is read once so a reconnect replays none.
+const readingWrites = Semaphore.makeUnsafe(1)
+
+// Queue writes without cancelling page turns; the client is read once so a reconnect replays none.
 export const readAtom = Atom.keepAlive(
 	Atom.fn(
 		(update: typeof ReadingPosition.json.Type, get) =>
@@ -63,7 +77,7 @@ export const readAtom = Atom.keepAlive(
 				provideRuntimeOnce(
 					get,
 					RpcClient.runtime,
-					Effect.flatMap(RpcClient, client => client('reading.write', update))
+					readingWrites.withPermit(Effect.flatMap(RpcClient, client => client('reading.write', update)))
 				),
 				{log: 'Warn', message: 'The reading position was not saved'}
 			),
@@ -207,6 +221,7 @@ const crashFile = new File(Paths.document, 'crash.txt')
 
 // iOS's crash report shows only React Native rethrowing a fatal JavaScript error, so its stack waits on disk for the next launch.
 const fatalHandler = ErrorUtils.getGlobalHandler()
+// judge-ignore no-unrelated-jobs -- the same fatal error is persisted for the next launch and passed to the original handler; persistence failure must not stop fatal handling.
 ErrorUtils.setGlobalHandler((error, fatal) => {
 	if (fatal === true) {
 		Option.map(

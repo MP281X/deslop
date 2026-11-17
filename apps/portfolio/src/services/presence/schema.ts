@@ -27,4 +27,6 @@ export const Scene = Schema.Struct({bots: Visitors, visitors: Visitors})
 export type JoinVisitor = typeof JoinVisitor.Type
 export const JoinVisitor = Schema.Struct(Struct.pick(Visitor.fields, ['color', 'id', 'name']))
 export type MoveVisitor = typeof MoveVisitor.Type
-export const MoveVisitor = Schema.Struct(Struct.pick(Visitor.fields, ['color', 'id', 'x', 'y']))
+export const MoveVisitor = Schema.Struct(Struct.pick(Visitor.fields, ['id', 'x', 'y']))
+export type RecolorVisitor = typeof RecolorVisitor.Type
+export const RecolorVisitor = Schema.Struct(Struct.pick(Visitor.fields, ['color', 'id']))

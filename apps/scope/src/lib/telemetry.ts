@@ -209,7 +209,7 @@ export function errorOf(span: TraceTree['spans'][number]) {
 	return span.error
 }
 
-// Attributes, without anything that only repeats the row: its name, code.function, or the status code the error line carries.
+// Omit service.name, trace.label and values equal to the span name; failed spans also omit HTTP attributes, and error.type is omitted when it repeats the HTTP status.
 export function attributesOf(span: TraceTree['spans'][number]) {
 	const failing = span.status === 'failed'
 	const attributes = pipe(

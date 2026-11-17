@@ -17,7 +17,7 @@ import {Status, Whois} from './schema.ts'
 
 import {CookieSessions} from '#services/cookie-sessions/service.ts'
 import {GitHub} from '#services/github/service.ts'
-import {roleOf} from '#services/people/lib/utils.ts'
+import {authorizeMember, roleOf} from '#services/people/lib/utils.ts'
 import type {SignedAccount} from '#services/people/schema.ts'
 import {People, adminIds} from '#services/people/service.ts'
 
@@ -122,7 +122,7 @@ export class Identity extends Context.Service<
 																})
 															)
 														}),
-													onSome: people.allowed
+													onSome: id => Effect.succeed({id})
 												})
 											}
 											if (!isTailnet(address)) return yield* AuthError.make({message: 'Sign in first'})
@@ -140,10 +140,10 @@ export class Identity extends Context.Service<
 				const role = roleOf(admins, identified.id, row)
 				return {
 					...(yield* Option.match(row, {
-						onNone: () => people.allowed(identified.id),
+						onNone: () => authorizeMember(admins, identified.id, row),
 						onSome: member => {
 							if (waiting && identified.signOut) return Effect.succeed({id: member.id, name: member.name})
-							return people.allowed(identified.id)
+							return authorizeMember(admins, identified.id, row)
 						}
 					})),
 					admin: role === 'Admin',

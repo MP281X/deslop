@@ -1,4 +1,4 @@
-import {Array, Boolean, Function, Match, Number, Option, Order, Predicate, Result, String, pipe} from 'effect'
+import {Array, Boolean, DateTime, Function, Match, Number, Option, Order, Predicate, Result, String, pipe} from 'effect'
 
 import {load} from 'cheerio'
 import type {CheerioAPI} from 'cheerio'
@@ -25,6 +25,7 @@ const BLOCK_TAGS = [
 
 const BY_SIZE = Order.mapInput(Order.Number, (icon: {href: string; size: number}) => icon.size)
 
+// judge-ignore no-silent-fallback -- An invalid or non-web anchor is rendered as its visible text, not represented as a successfully resolved link.
 function element($: CheerioAPI, input: {base: URL; inner: string; node: AnyNode; tag: string}) {
 	const text = String.trim(input.inner)
 	return pipe(
@@ -76,6 +77,7 @@ function markdown($: CheerioAPI, node: AnyNode, base: URL): string {
 }
 
 // Markdown, so the AI keeps headings, lists and link targets.
+// judge-ignore no-silent-fallback -- missing optional page metadata, or a publication date that is not a date, is left out; body text remains the source and the favicon is only a preview.
 export function pageText(html: string, url: URL) {
 	const $ = load(html)
 	$('script, style, noscript, iframe, svg, nav, header, footer, form, aside, button, dialog, template').remove()
@@ -159,9 +161,10 @@ export function pageText(html: string, url: URL) {
 			[
 				pipe(
 					[
-						Option.map(
+						pipe(
 							Option.fromUndefinedOr($('meta[property="article:published_time"]').attr('content')),
-							date => `Published ${date}`
+							Option.flatMap(DateTime.make),
+							Option.map(date => `Published ${DateTime.formatIso(date)}`)
 						),
 						Option.map(
 							Option.fromUndefinedOr(

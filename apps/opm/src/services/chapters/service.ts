@@ -8,10 +8,8 @@ import {
 	DateTime,
 	Duration,
 	Effect,
-	Equal,
 	Filter,
 	Function,
-	HashMap,
 	HashSet,
 	Layer,
 	Option,
@@ -34,6 +32,7 @@ import {Reactivity} from 'effect/reactivity'
 import {Migrator, SqlClient, SqlSchema} from 'effect/sql'
 
 import {Apns, apnsDeadToken, apnsRetryable} from '@deslop/runtime/server/apns'
+import {listEvents} from '@deslop/runtime/shared/list'
 
 import {
 	byNumber,
@@ -60,7 +59,6 @@ import {
 	Series
 } from '#services/chapters/schema.ts'
 import {ReadingChapter} from '#services/reading/schema.ts'
-import type {ChaptersEvent} from '#services/reading/schema.ts'
 import {Reading} from '#services/reading/service.ts'
 
 // Anonymous search and JSON are refused. Recent-post Atom still answers; a release can appear on either subreddit only.
@@ -95,20 +93,6 @@ declare module 'effect/reactivity/Reactivity' {
 	interface Keys {
 		readonly chapters: never
 	}
-}
-
-// The chapters a list read again holds with other values than before; a row read again is a new object, so values decide.
-function changed(chapters: readonly ReadingChapter[], before: readonly ReadingChapter[]) {
-	const previous = HashMap.fromIterable(Array.map(before, chapter => [keyOf(chapter), chapter] as const))
-	return Array.filter(
-		chapters,
-		chapter =>
-			!pipe(
-				previous,
-				HashMap.get(keyOf(chapter)),
-				Option.exists(item => Equal.equals(item, chapter))
-			)
-	)
 }
 
 function elementText(element: Xml.Element, name: string) {
@@ -330,7 +314,7 @@ export class Chapters extends Context.Service<Chapters>()('@deslop/opm/services/
 			const found = yield* Effect.forEach(
 				groups,
 				entry =>
-					Effect.option(
+					Effect.result(
 						Effect.firstSuccessOf(
 							Array.flatMap(entry[1], candidate =>
 								Array.map(candidate.links, link =>
@@ -358,9 +342,10 @@ export class Chapters extends Context.Service<Chapters>()('@deslop/opm/services/
 			)
 			// A known chapter takes only an explicit revision's pages, so a second translation never moves a reader's page.
 			const known = HashSet.fromIterable(Array.map(current, keyOf))
-			const [fresh, revisions] = Array.partition(
-				Array.getSomes(found),
-				Filter.fromPredicate(chapter => !HashSet.has(known, keyOf(chapter)))
+			const [fresh, revisions] = pipe(
+				found,
+				Array.getSuccesses,
+				Array.partition(Filter.fromPredicate(chapter => !HashSet.has(known, keyOf(chapter))))
 			)
 			yield* pipe(
 				Effect.forEach(fresh, insertChapter, {concurrency: 1, discard: true}),
@@ -391,12 +376,15 @@ export class Chapters extends Context.Service<Chapters>()('@deslop/opm/services/
 					groups,
 					Array.zip(found),
 					Array.filterMap(pair =>
-						Option.match(pair[1], {onNone: () => Result.succeed(pair[0][0]), onSome: () => Result.failVoid})
+						Result.match(pair[1], {
+							onFailure: error => Result.succeed({error, key: pair[0][0]}),
+							onSuccess: () => Result.failVoid
+						})
 					)
 				)
 			])
 			if (Array.isReadonlyArrayNonEmpty(unreadable)) {
-				yield* Effect.logWarning(`No readable source for ${Array.join(unreadable, ', ')}`)
+				yield* Effect.logWarning('No readable source for chapters', unreadable)
 			}
 		})
 
@@ -492,23 +480,11 @@ export class Chapters extends Context.Service<Chapters>()('@deslop/opm/services/
 		return {
 			// What the iPhone watches: the whole list first, then only the chapters that changed, after each commit.
 			events: pipe(
-				sql.reactive(['chapters', 'reading'], listChapters()),
-				Stream.mapError(asStorageChaptersError),
-				Stream.mapAccum(
-					() => Option.none<readonly ReadingChapter[]>(),
-					(previous, current) =>
-						[
-							Option.some(current),
-							Option.match(previous, {
-								onNone: () => [{reset: true, upserted: current} satisfies ChaptersEvent],
-								onSome: before =>
-									Array.match(changed(current, before), {
-										onEmpty: () => Array.empty<ChaptersEvent>(),
-										onNonEmpty: upserted => [{reset: false, upserted} satisfies ChaptersEvent]
-									})
-							})
-						] as const
+				listEvents(
+					Stream.mapError(sql.reactive(['chapters', 'reading'], listChapters()), asStorageChaptersError),
+					keyOf
 				),
+				Stream.map(Struct.pick(['reset', 'upserted'])),
 				Stream.withSpan('Chapters.events', {attributes: {'rpc.stream': true}})
 			),
 			register: Effect.fn('Chapters.register')(function* (device: typeof Device.insert.Type) {

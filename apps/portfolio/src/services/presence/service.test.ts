@@ -46,13 +46,13 @@ it.effect(
 		assert.deepStrictEqual(idsOf(scene.visitors), ['guest', 'observer'])
 		assert.deepStrictEqual(idsOf(scene.bots), ['server-alpha', 'server-beta'])
 
-		yield* presence.move({color: '#da702c', id: VisitorId.make('guest'), x: 0.2, y: 0.3})
+		yield* presence.move({id: VisitorId.make('guest'), x: 0.2, y: 0.3})
 		yield* until(guestAt(0.2, 0.3))
 
 		const secondTab = yield* watch('guest')
 		yield* until(guestAt(0.5, 0.5))
 		yield* Fiber.interrupt(firstTab)
-		yield* presence.move({color: '#da702c', id: VisitorId.make('guest'), x: 0.7, y: 0.7})
+		yield* presence.move({id: VisitorId.make('guest'), x: 0.7, y: 0.7})
 		yield* until(guestAt(0.7, 0.7))
 
 		yield* Fiber.interrupt(secondTab)

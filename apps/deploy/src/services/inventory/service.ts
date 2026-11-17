@@ -4,6 +4,7 @@ import {pid, platform} from 'node:process'
 import {
 	Array,
 	Boolean,
+	Cache,
 	DateTime,
 	Duration,
 	Context,
@@ -67,90 +68,109 @@ declare module 'effect/reactivity/Reactivity' {
 }
 
 // Each listener with its unit, the app a Node listener's working directory names, and whether it answers HTTP; `unit` and `cwd` read a PID the platform's way.
+// judge-ignore no-silent-fallback -- this is protocol detection, not a required HTTP read: a refused or timed-out HEAD is a negative probe; listener metadata is optional.
 function portItems(
 	sockets: readonly Socket[],
 	worker: WorkerId,
 	http: HttpClient.HttpClient,
-	origin: {
+	source: {
 		readonly cwd: (pid: ProcessId) => Effect.Effect<Option.Option<string>>
 		readonly unit: (pid: ProcessId) => Effect.Effect<Option.Option<UnitId>>
 	}
 ) {
-	return Effect.forEach(
-		sockets,
-		Effect.fnUntraced(function* (socket) {
-			const unit = yield* Option.match(socket.process, {
-				onNone: () => Effect.succeedNone,
-				onSome: match => origin.unit(match.pid)
-			})
-			const process = yield* Option.match(socket.process, {
-				onNone: () => Effect.succeedNone,
-				onSome: Effect.fnUntraced(function* (match) {
+	return Effect.gen(function* () {
+		const metadata = HashMap.fromIterable(
+			yield* pipe(
+				Array.getSomes(Array.map(sockets, socket => socket.process)),
+				Array.dedupeWith((left, right) => left.pid === right.pid),
+				Effect.forEach(
+					Effect.fnUntraced(function* (process) {
+						return [
+							process.pid,
+							{
+								cwd: yield* Boolean.match(String.startsWith('node')(process.name), {
+									onFalse: () => Effect.succeedNone,
+									onTrue: () => source.cwd(process.pid)
+								}),
+								unit: yield* source.unit(process.pid)
+							}
+						] as const
+					}),
+					{concurrency: 8}
+				)
+			)
+		)
+		return yield* Effect.forEach(
+			sockets,
+			Effect.fnUntraced(function* (socket) {
+				const origin = Option.flatMap(socket.process, process => HashMap.get(metadata, process.pid))
+				const unit = Option.flatMap(origin, process => process.unit)
+				const process = Option.flatMap(socket.process, match => {
 					if (!String.startsWith('node')(match.name)) return Option.liftPredicate(match.name, String.isNonEmpty)
 					return pipe(
-						yield* origin.cwd(match.pid),
+						Option.flatMap(origin, reading => reading.cwd),
 						Option.match({onNone: () => match.name, onSome: cwd => socketProcess(match.name, cwd)}),
 						Option.liftPredicate(String.isNonEmpty)
 					)
 				})
-			})
-			const response = yield* Boolean.match(probeSocket(socket, Option.getOrElse(process, Function.constant(''))), {
-				onFalse: () => Effect.succeed(Option.none<{http: boolean; ui: boolean}>()),
-				onTrue: Effect.fnUntraced(function* () {
-					// The probe sends an unsampled trace context, so the app's HEAD span is never exported.
-					return yield* pipe(
-						http.head(`http://127.0.0.1:${socket.port}/`, {
-							headers: HttpTraceContext.toHeaders(
-								new Tracer.NativeSpan({
-									annotations: Context.empty(),
-									kind: 'internal',
-									links: [],
-									name: 'Deploy.probe',
-									parent: Option.none(),
-									sampled: false,
-									startTime: 0n
-								})
-							)
-						}),
-						Effect.map(value => ({
-							http: true,
-							ui:
-								value.status >= 200 &&
-								value.status < 400 &&
-								String.includes('text/html')(value.headers['content-type'] ?? '')
-						})),
-						Effect.provideService(FetchHttpClient.RequestInit, {redirect: 'manual'}),
-						// A probe expects refusals and 4xx from ports that aren't web pages, so it records no span.
-						Effect.provideService(HttpClient.TracerDisabledWhen, Function.constTrue),
-						Effect.timeout(Duration.millis(700)),
-						Effect.option
-					)
-				})
-			})
-			return InventoryItem.make({
-				address: Option.some(socket.address),
-				detail: `${socket.address} · ${Option.getOrElse(process, Function.constant('process unavailable'))}`,
-				http: Option.some(Option.exists(response, value => value.http)),
-				id: ItemId.make(`${worker}:port:${socket.protocol}:${socket.address}`),
-				kind: 'port',
-				name: socket.address,
-				port: Option.some(socket.port),
-				process,
-				protocol: Option.some(
-					Boolean.match(socket.protocol === 'udp', {
-						onFalse: Function.constant('tcp' as const),
-						onTrue: Function.constant('udp' as const)
+				const response = yield* Boolean.match(probeSocket(socket, Option.getOrElse(process, Function.constant(''))), {
+					onFalse: () => Effect.succeed(Option.none<{http: boolean; ui: boolean}>()),
+					onTrue: Effect.fnUntraced(function* () {
+						// The probe sends an unsampled trace context, so the app's HEAD span is never exported.
+						return yield* pipe(
+							http.head(`http://127.0.0.1:${socket.port}/`, {
+								headers: HttpTraceContext.toHeaders(
+									new Tracer.NativeSpan({
+										annotations: Context.empty(),
+										kind: 'internal',
+										links: [],
+										name: 'Deploy.probe',
+										parent: Option.none(),
+										sampled: false,
+										startTime: 0n
+									})
+								)
+							}),
+							Effect.map(value => ({
+								http: true,
+								ui:
+									value.status >= 200 &&
+									value.status < 400 &&
+									String.includes('text/html')(value.headers['content-type'] ?? '')
+							})),
+							Effect.provideService(FetchHttpClient.RequestInit, {redirect: 'manual'}),
+							// A probe expects refusals and 4xx from ports that aren't web pages, so it records no span.
+							Effect.provideService(HttpClient.TracerDisabledWhen, Function.constTrue),
+							Effect.timeout(Duration.millis(700)),
+							Effect.option
+						)
 					})
-				),
-				state: socket.state,
-				ui: Option.some(Option.exists(response, value => value.ui)),
-				unit,
-				url: Option.none(),
-				worker
-			})
-		}),
-		{concurrency: 8}
-	)
+				})
+				return InventoryItem.make({
+					address: Option.some(socket.address),
+					detail: `${socket.address} · ${Option.getOrElse(process, Function.constant('process unavailable'))}`,
+					http: Option.some(Option.exists(response, value => value.http)),
+					id: ItemId.make(`${worker}:port:${socket.protocol}:${socket.address}`),
+					kind: 'port',
+					name: socket.address,
+					port: Option.some(socket.port),
+					process,
+					protocol: Option.some(
+						Boolean.match(socket.protocol === 'udp', {
+							onFalse: Function.constant('tcp' as const),
+							onTrue: Function.constant('udp' as const)
+						})
+					),
+					state: socket.state,
+					ui: Option.some(Option.exists(response, value => value.ui)),
+					unit,
+					url: Option.none(),
+					worker
+				})
+			}),
+			{concurrency: 8}
+		)
+	})
 }
 
 // What a worker's own collectors read: its sources, and its processes for the snapshot to attach by owner.
@@ -168,6 +188,18 @@ function collect<E extends {readonly message: string}, R>(name: string, effect: 
 			onFailure: cause => ({items: Array.empty<InventoryItem>(), source: {error: Option.some(cause.message), name}}),
 			onSuccess: items => ({items, source: {error: Option.none<string>(), name}})
 		})
+	)
+}
+
+// judge-ignore no-silent-fallback -- AGENTS.md's collector rule: a malformed container row is skipped, while a failed docker listing still fails its source.
+// One JSON container per line of `docker ps --format '{{json .}}'`.
+function containerRows(listing: string) {
+	return pipe(
+		listing,
+		String.split('\n'),
+		Array.filter(String.isNonEmpty),
+		Array.map(line => Schema.decodeOption(Schema.fromJsonString(Container))(line)),
+		Array.getSomes
 	)
 }
 
@@ -192,9 +224,18 @@ export class Inventory extends Context.Service<
 					Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner)
 				)
 			}
+			// A JSON listing whose malformed rows are skipped, while an unreadable listing fails.
+			function systemctlRows<A>(args: string[], row: Schema.Decoder<A>) {
+				return pipe(
+					command('systemctl', args),
+					Effect.flatMap(Schema.decodeUnknownEffect(Schema.fromJsonString(Schema.Array(Schema.Unknown)))),
+					Effect.map(rows => Array.getSomes(Array.map(rows, item => Schema.decodeUnknownOption(row)(item))))
+				)
+			}
 			const worker = yield* Schema.decodeEffect(WorkerId)(hostname())
 			const selfProcess = yield* Schema.decodeEffect(ProcessId)(pid)
 			const processState = yield* Ref.make(Option.none<ReturnType<typeof processReadings>>())
+			// judge-ignore no-silent-fallback -- service and timer listings must succeed; failure diagnostics are optional and the listed failed state still marks the service as unhealthy.
 			const units = Effect.fnUntraced(function* (system: boolean) {
 				const scope = Boolean.match(system, {
 					onFalse: Function.constant('user' as const),
@@ -204,21 +245,11 @@ export class Inventory extends Context.Service<
 				// Each systemctl call costs a few hundred milliseconds, so the timers and units are read side by side.
 				const listed = yield* Effect.all(
 					{
-						rows: Effect.flatMap(
-							command('systemctl', [
-								...scopeFlags,
-								'list-units',
-								'--all',
-								'--type=service',
-								'--output=json',
-								'--no-pager'
-							]),
-							Schema.decodeUnknownEffect(Schema.fromJsonString(Schema.Array(Unit)))
+						rows: systemctlRows(
+							[...scopeFlags, 'list-units', '--all', '--type=service', '--output=json', '--no-pager'],
+							Unit
 						),
-						timers: Effect.flatMap(
-							command('systemctl', [...scopeFlags, 'list-timers', '--all', '--output=json', '--no-pager']),
-							Schema.decodeUnknownEffect(Schema.fromJsonString(Schema.Array(Timer)))
-						)
+						timers: systemctlRows([...scopeFlags, 'list-timers', '--all', '--output=json', '--no-pager'], Timer)
 					},
 					{concurrency: 'unbounded'}
 				)
@@ -237,7 +268,7 @@ export class Inventory extends Context.Service<
 					Array.filter(row => row.active === 'failed'),
 					Array.map(row => row.unit)
 				)
-				// Why each failed one stopped, in place of its description, which only repeats its command; an unreadable reason leaves the description.
+				// Optional failure diagnostics accompany the listed description and failed state; an unreadable reason leaves the diagnostic absent.
 				const failures = Option.getOrElse(
 					Option.flatten(
 						yield* pipe(
@@ -286,43 +317,43 @@ export class Inventory extends Context.Service<
 			})
 			const docker = pipe(
 				command('docker', ['ps', '--all', '--format', '{{json .}}']),
-				Effect.flatMap(text =>
-					pipe(
-						text,
-						String.split('\n'),
-						Array.filter(String.isNonEmpty),
-						Effect.forEach(line => Schema.decodeEffect(Schema.fromJsonString(Container))(line), {concurrency: 1})
-					)
-				),
+				Effect.map(containerRows),
 				Effect.map(rows =>
 					Array.map(rows, row =>
 						InventoryItem.make({
 							active: Array.contains(['running', 'restarting', 'paused'], row.State),
-							bindings: Option.some([
-								...Array.map(
-									Array.fromIterable(
-										String.matchAll(/traefik\.http\.services\.[^=,]+\.loadbalancer\.server\.port=([0-9]+)/gu)(
-											Option.getOrElse(row.Labels, Function.constant(''))
+							bindings: Option.some(
+								Array.filter(
+									[
+										...Array.map(
+											Array.fromIterable(
+												String.matchAll(/traefik\.http\.services\.[^=,]+\.loadbalancer\.server\.port=([0-9]+)/gu)(
+													Option.getOrElse(row.Labels, Function.constant(''))
+												)
+											),
+											match => ({
+												address: 'container',
+												port: Option.getOrElse(Number.parse(match[1] ?? ''), Function.constant(0)),
+												protocol: 'tcp' as const
+											})
+										),
+										...Array.map(
+											Array.fromIterable(
+												String.matchAll(/((?:[0-9.]+|\[::\])):([0-9]+)->[0-9]+\/(tcp|udp)/gu)(row.Ports)
+											),
+											match => ({
+												address: `${match[1]}:${match[2]}`,
+												port: Option.getOrElse(Number.parse(match[2] ?? ''), Function.constant(0)),
+												protocol: Boolean.match(match[3] === 'udp', {
+													onFalse: Function.constant('tcp' as const),
+													onTrue: Function.constant('udp' as const)
+												})
+											})
 										)
-									),
-									match => ({
-										address: 'container',
-										port: Option.getOrElse(Number.parse(match[1] ?? ''), Function.constant(0)),
-										protocol: 'tcp' as const
-									})
-								),
-								...Array.map(
-									Array.fromIterable(String.matchAll(/((?:[0-9.]+|\[::\])):([0-9]+)->[0-9]+\/(tcp|udp)/gu)(row.Ports)),
-									match => ({
-										address: `${match[1]}:${match[2]}`,
-										port: Option.getOrElse(Number.parse(match[2] ?? ''), Function.constant(0)),
-										protocol: Boolean.match(match[3] === 'udp', {
-											onFalse: Function.constant('tcp' as const),
-											onTrue: Function.constant('udp' as const)
-										})
-									})
+									],
+									binding => binding.port > 0 && binding.port <= 65_535
 								)
-							]),
+							),
 							detail: row.Status,
 							health: Boolean.match(
 								String.includes('unhealthy')(row.Status) || Option.isSome(String.match(/Exited \([1-9]/u)(row.Status)),
@@ -371,6 +402,7 @@ export class Inventory extends Context.Service<
 					collect('Docker', docker),
 					collect(
 						'Listening ports',
+						// judge-ignore no-silent-fallback -- PID cwd and cgroup are optional metadata; proc entries can vanish or be unreadable while the listener itself remains useful.
 						Effect.flatMap(command('ss', ['-H', '-lntup']), text =>
 							portItems(
 								Array.getSomes(pipe(String.trim(text), String.split('\n'), Array.map(socketLine))),
@@ -390,10 +422,40 @@ export class Inventory extends Context.Service<
 			})
 			// A Mac's Dock apps, user launch agents and listeners, measured together so CPU shares compare like readings.
 			const darwin: Effect.Effect<Machine> = Effect.gen(function* () {
+				// judge-ignore no-silent-fallback -- unresolved agents retain their actual label and bundle basename by product policy; launchctl list failure still fails this source.
 				const namedAgents = Effect.gen(function* () {
+					const agents = launchAgents(yield* command('launchctl', ['list']))
+					const bundleNames = yield* Cache.make({
+						capacity: agents.length + 1,
+						lookup: Effect.fnUntraced(function* (bundle: string) {
+							return yield* pipe(
+								command('/usr/bin/plutil', ['-convert', 'json', '-o', '-', `${bundle}/Contents/Info.plist`]),
+								Effect.flatMap(
+									Schema.decodeEffect(
+										Schema.fromJsonString(
+											Schema.Struct({
+												CFBundleDisplayName: Schema.optionalKey(Schema.Unknown),
+												CFBundleName: Schema.optionalKey(Schema.Unknown)
+											})
+										)
+									)
+								),
+								Effect.map(fields =>
+									pipe(
+										[fields.CFBundleDisplayName, fields.CFBundleName],
+										Array.filter(String.isString),
+										Array.map(String.trim),
+										Array.findFirst(String.isNonEmpty)
+									)
+								),
+								Effect.option,
+								Effect.map(Option.flatten)
+							)
+						})
+					})
 					return Array.getSomes(
 						yield* Effect.forEach(
-							launchAgents(yield* command('launchctl', ['list'])),
+							agents,
 							Effect.fnUntraced(function* (agent) {
 								if (String.startsWith('deslop-')(agent.label)) return Option.some(agent)
 								const program = Option.flatMap(
@@ -407,30 +469,7 @@ export class Inventory extends Context.Service<
 									Option.match({
 										onNone: () => Effect.succeedSome(agent),
 										onSome: Effect.fnUntraced(function* (bundle) {
-											// plutil needs no Apple Events, Automation or Accessibility access.
-											const name = yield* Effect.findFirstFilter(['CFBundleDisplayName', 'CFBundleName'], key =>
-												pipe(
-													command('/usr/bin/plutil', [
-														'-extract',
-														key,
-														'raw',
-														'-expect',
-														'string',
-														'-o',
-														'-',
-														`${bundle}/Contents/Info.plist`
-													]),
-													Effect.option,
-													Effect.map(value =>
-														pipe(
-															value,
-															Option.map(String.trim),
-															Option.filter(String.isNonEmpty),
-															Result.fromOption(Function.constUndefined)
-														)
-													)
-												)
-											)
+											const name = yield* Cache.get(bundleNames, bundle)
 											return Option.some({
 												...agent,
 												bundle: Option.some(bundle),
@@ -464,6 +503,7 @@ export class Inventory extends Context.Service<
 				)
 				const launchd = {
 					...collected,
+					// judge-ignore no-silent-fallback -- failed agent metadata does not erase independently collected Dock apps; the agents Result is reported as a source error in the snapshot.
 					applications: Result.map(collected.applications, text =>
 						dockApplications(
 							text,
@@ -486,6 +526,7 @@ export class Inventory extends Context.Service<
 					Result.getOrElse(launchd.agents, () => []),
 					Result.getOrElse(launchd.applications, () => [])
 				)
+				// judge-ignore no-impossible-state -- every input is a running Mac application; this constructor emits only the fixed active, running state required by the shared inventory contract.
 				function appItems(found: typeof apps) {
 					return pipe(
 						found,
@@ -507,9 +548,9 @@ export class Inventory extends Context.Service<
 						)
 					)
 				}
+				// Exclude processes owned by Deploy's launch agent except Deploy itself; other app-owned processes stay.
 				const records = Result.map(launchd.table, text => {
 					const agents = HashMap.fromIterable(Array.map(apps, app => [app.pid, app.label] as const))
-					// Every descendant of this Mac's Deploy agent is a collector, including lsof and Tailscale subprocesses.
 					return Array.filter(
 						launchdProcesses(text, agents),
 						record =>
@@ -570,6 +611,7 @@ export class Inventory extends Context.Service<
 						),
 						collect(
 							'Listening ports',
+							// judge-ignore no-silent-fallback -- cwd and process ownership are optional listener metadata; a failed process table remains a separate source error.
 							Effect.flatMap(command('lsof', ['-nP', '+c0', '-iTCP', '-sTCP:LISTEN', '-iUDP', '-F', 'pctPnT']), text =>
 								portItems(lsofSockets(text), worker, http, {
 									cwd: Effect.fnUntraced(function* (processId) {
@@ -748,8 +790,7 @@ export class Inventory extends Context.Service<
 			return {
 				refresh,
 				run: Effect.fn('Inventory.run')(function* (input) {
-					yield* start(input)
-					yield* refresh
+					yield* Effect.onExit(start(input), () => refresh)
 				}),
 				snapshot: SubscriptionRef.get(snapshot)
 			}

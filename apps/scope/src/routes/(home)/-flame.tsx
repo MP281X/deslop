@@ -222,11 +222,9 @@ export function Flame(props: {focus?: SpanId; onPick: (id: SpanId) => void; trac
 	})
 	function moveFocus(span: TraceTree['spans'][number], key: string) {
 		const siblings = Array.filter(props.trace.spans, other => other.depth === span.depth)
-		const index = pipe(
-			siblings,
-			Array.findFirstIndex(other => other.spanId === span.spanId),
-			Option.getOrElse(Function.constant(0))
-		)
+		const position = Array.findFirstIndex(siblings, other => other.spanId === span.spanId)
+		if (Option.isNone(position)) return
+		const index = Option.getOrThrow(position)
 		Option.match(
 			pipe(
 				Match.value(key),

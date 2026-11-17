@@ -1,4 +1,17 @@
-import {Context, DateTime, Duration, Effect, Function, Layer, MutableList, Option, Schema, Stream, pipe} from 'effect'
+import {
+	Context,
+	DateTime,
+	Duration,
+	Effect,
+	Exit,
+	Function,
+	Layer,
+	MutableList,
+	Option,
+	Schema,
+	Stream,
+	pipe
+} from 'effect'
 
 import {Sse} from 'effect/encoding'
 import {Reactivity} from 'effect/reactivity'
@@ -11,7 +24,7 @@ import {DateTimeUtcFromFiniteMillis} from '@deslop/runtime/shared/time'
 import type {TimeFrame} from '@deslop/runtime/shared/time'
 
 import {readUsage} from './lib/utils.ts'
-import {AiCall, AiUsageBreakdown, AiUsageQuery} from './schema.ts'
+import {AiCall, AiUsageBreakdown, AiUsageQuery, Usage} from './schema.ts'
 import type {AiUsageEntry, SpendSource} from './schema.ts'
 
 import type {AiProvider} from '#services/ai-proxy/schema.ts'
@@ -79,44 +92,55 @@ export class AiMetering extends Context.Service<AiMetering>()(
 				)
 			})
 			return {
-				record: Effect.fn('AiMetering.record')(
-					function* (
-						id: UserId,
-						provider: AiProvider,
-						model: Option.Option<AiModelId>,
-						at: DateTime.Utc,
-						sse: boolean,
-						body: ReadableStream<Uint8Array>
-					) {
-						const state: {current: AiUsageEntry; pending: string} = {
-							current: {
-								at,
-								cacheReadTokens: 0,
-								cacheWriteTokens: 0,
-								costSource: 'unknown',
-								costUsd: Option.none(),
-								estimated: false,
-								inputTokens: 0,
-								model,
-								outputTokens: 0,
-								spendSource: Option.liftPredicate('openai' as const, () => provider === 'openai')
-							},
-							pending: ''
-						}
-						const updateUsage = Effect.fnUntraced(function* (text: string) {
-							state.current = yield* Effect.catch(Effect.fromResult(readUsage(text, state.current, provider)), error =>
-								Effect.as(
-									Effect.logWarning('AI usage was malformed; keeping previously read usage', error),
-									state.current
+				observe: Effect.fn('AiMetering.observe')(
+					(id: UserId, provider: AiProvider, model: Option.Option<AiModelId>, at: DateTime.Utc, sse: boolean) =>
+						Effect.sync(() => {
+							const state: {current: AiUsageEntry; finalUsage: boolean; pending: string} = {
+								current: {
+									at,
+									cacheReadTokens: 0,
+									cacheWriteTokens: 0,
+									costSource: 'unknown',
+									costUsd: Option.none(),
+									estimated: false,
+									inputTokens: 0,
+									model,
+									outputTokens: 0,
+									spendSource: Option.liftPredicate('openai' as const, () => provider === 'openai')
+								},
+								finalUsage: false,
+								pending: ''
+							}
+							const updateUsage = Effect.fnUntraced(function* (text: string) {
+								state.finalUsage ||= Option.exists(
+									Schema.decodeOption(Schema.fromJsonString(Usage))(text),
+									value =>
+										Option.isSome(value.cost) ||
+										Option.exists(
+											Option.flatten(value.usage),
+											usage =>
+												Option.isSome(usage.output_tokens) ||
+												Option.isSome(usage.completion_tokens) ||
+												Option.isSome(usage.cost)
+										) ||
+										Option.exists(value.response, response =>
+											Option.exists(Option.flatten(response.usage), usage => Option.isSome(usage.output_tokens))
+										) ||
+										Option.exists(
+											value.usageMetadata,
+											usage => Option.isSome(usage.candidatesTokenCount) || Option.isSome(usage.cost)
+										)
 								)
-							)
-						})
-						const stream = Stream.fromReadableStream({
-							evaluate: () => body,
-							onError: cause =>
-								AuthError.make({cause, error: 'temporarily_unavailable', message: 'AI usage could not be read'})
-						})
-						if (sse) {
+								state.current = yield* Effect.catch(
+									Effect.fromResult(readUsage(text, state.current, provider)),
+									error =>
+										Effect.as(
+											Effect.logWarning('AI usage was malformed; keeping previously read usage', error),
+											state.current
+										)
+								)
+							})
+							const decoder = new TextDecoder()
 							const events = MutableList.make<string>()
 							const parser = Sse.makeParser(event => {
 								if (event._tag === 'Event') MutableList.append(events, event.data)
@@ -127,44 +151,59 @@ export class AiMetering extends Context.Service<AiMetering>()(
 								MutableList.clear(events)
 								if (error !== undefined) return yield* error
 							})
-							yield* pipe(
-								stream,
-								Stream.decodeText,
-								Stream.runForEach(feed),
-								Effect.ignore({log: 'Warn', message: 'AI usage response could not be read'})
-							)
-							yield* Effect.ignore(feed('\n\n'), {log: 'Warn', message: 'AI usage response could not be read'})
-						} else {
-							const decoder = new TextDecoder()
-							yield* pipe(
-								stream,
-								Stream.takeWhile(() => state.pending.length <= 10 * 1024 * 1024),
-								Stream.runForEach(chunk =>
-									Effect.sync(() => {
-										state.pending += decoder.decode(chunk, {stream: true})
-									})
-								),
-								Effect.ignore({log: 'Warn', message: 'AI usage response could not be read'})
-							)
-							yield* updateUsage(state.pending)
-						}
-						yield* Option.match(state.current.spendSource, {
-							onNone: () => Effect.void,
-							onSome: spendSource => saveUsage(id, state.current, spendSource)
+							return {
+								save: (exit: Exit.Exit<unknown, unknown>) =>
+									Effect.catchCause(
+										Effect.gen(function* () {
+											if (sse) {
+												yield* Effect.ignore(feed(`${decoder.decode()}\n\n`), {
+													log: 'Warn',
+													message: 'AI usage response could not be read'
+												})
+											} else {
+												yield* updateUsage(state.pending + decoder.decode())
+											}
+											if (Exit.isFailure(exit) && !state.finalUsage) {
+												state.current = {
+													...state.current,
+													costSource: 'unknown',
+													costUsd: Option.none(),
+													estimated: false
+												}
+											}
+											// judge-ignore no-silent-fallback -- an interrupted Anthropic stream is still the person's own key, so it is kept with unknown spend; an OpenCode response that never named its payer is not recorded, as for any OpenCode response without one.
+											yield* pipe(
+												state.current.spendSource,
+												Option.orElse(() =>
+													Option.liftPredicate('byok' as const, () => provider === 'anthropic' && Exit.isFailure(exit))
+												),
+												Option.match({
+													onNone: () => Effect.void,
+													onSome: spendSource => saveUsage(id, state.current, spendSource)
+												})
+											)
+										}),
+										error => Effect.logWarning('AI usage could not be saved', error)
+									),
+								write: (chunk: Uint8Array) =>
+									Effect.catchCause(
+										Effect.gen(function* () {
+											const text = decoder.decode(chunk, {stream: true})
+											if (sse) yield* feed(text)
+											else if (state.pending.length <= 10 * 1024 * 1024) state.pending += text
+										}),
+										cause => Effect.logWarning('AI usage response could not be read', cause)
+									)
+							}
 						})
-					},
-					Effect.catch(error => Effect.logWarning('AI usage could not be saved', error))
 				),
 				usage: (id: UserId, period: TimeFrame) =>
 					Stream.withSpan(
-						usageWindow(period, range =>
-							Stream.mapError(
-								sql.reactive(
-									{aiUsage: [id]},
-									Effect.all(
-										{series: listBuckets({...range, owner: id}), totals: totalUsage({...range, owner: id})},
-										{concurrency: 1}
-									)
+						usageWindow(period, {aiUsage: [id]}, range =>
+							Effect.mapError(
+								Effect.all(
+									{series: listBuckets({...range, owner: id}), totals: totalUsage({...range, owner: id})},
+									{concurrency: 1}
 								),
 								cause => AuthError.make({cause, error: 'temporarily_unavailable', message: 'AI usage storage failed'})
 							)

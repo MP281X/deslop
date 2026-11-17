@@ -67,6 +67,7 @@ function canonicalUrl(link: string) {
 	})
 }
 
+// judge-ignore no-silent-fallback -- Malformed URL-shaped text is not a captured link; the caller keeps the original text as a plain note.
 export function captureUrl(text: string) {
 	return pipe(
 		String.match(URL_PATTERN)(text),
@@ -116,6 +117,7 @@ export function tagCounts(notes: readonly Pick<NoteItem, 'tags'>[]) {
 }
 
 // A query's lowercase words: a `#word` names a tag every result carries, any other word is text every result contains.
+// judge-ignore no-contradicted-promise -- Effect v4 Array.partition returns passes first, so the # predicate places tags in the first array.
 export function queryWords(query: string) {
 	const [tags, terms] = Array.partition(
 		pipe(query, String.toLowerCase, String.split(/\s+/u), Array.filter(String.isNonEmpty)),

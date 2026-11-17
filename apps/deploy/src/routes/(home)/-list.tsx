@@ -117,6 +117,7 @@ const elapsedAtom = Atom.family((_job: ItemId) =>
 	Atom.make(Stream.map(Stream.zipWithIndex(Stream.tick(Duration.seconds(1))), tick => Duration.seconds(tick[1])))
 )
 
+// judge-ignore no-silent-fallback -- the infallible tick stream starts at zero; before its first value no elapsed second has passed.
 function Elapsed(props: {job: ItemId}) {
 	return (
 		<span className="text-muted-foreground tabular-nums">

@@ -24,6 +24,7 @@ import {
 	pipe
 } from 'effect'
 
+import type {PlatformError} from 'effect/PlatformError'
 import {Migrator, SqlClient, SqlSchema} from 'effect/sql'
 
 import {executeProcess} from '@deslop/runtime/server/process'
@@ -154,14 +155,22 @@ export class Metrics extends Context.Service<Metrics>()('@deslop/deploy/services
 		const latest = yield* Ref.make<{disks: readonly Disk[]; load: readonly number[]}>({disks: [], load: []})
 		const failure = yield* Ref.make(Option.none<string>())
 		// The cgroups that are each one app, opened level by level through slices and user managers without entering an app; a cgroup gone mid-walk has no children.
-		function walk(pending: readonly CgroupPath[], found: readonly CgroupPath[]): Effect.Effect<readonly CgroupPath[]> {
+		function walk(
+			pending: readonly CgroupPath[],
+			found: readonly CgroupPath[]
+		): Effect.Effect<readonly CgroupPath[], PlatformError> {
 			if (Array.isReadonlyArrayEmpty(pending)) return Effect.succeed(found)
 			return pipe(
 				pending,
 				Effect.forEach(
 					path =>
-						Effect.option(
-							Effect.map(fs.readDirectory(`${CGROUP}${path}`), names =>
+						pipe(
+							fs.readDirectory(`${CGROUP}${path}`),
+							Effect.catchTag('PlatformError', cause => {
+								if (Predicate.isTagged(cause.reason, 'NotFound')) return Effect.succeed(Array.empty<string>())
+								return Effect.fail(cause)
+							}),
+							Effect.map(names =>
 								pipe(
 									names,
 									Array.filter(name => Option.isSome(String.match(/\.(?:slice|scope|service)$/u)(name))),
@@ -175,7 +184,7 @@ export class Metrics extends Context.Service<Metrics>()('@deslop/deploy/services
 					{concurrency: 'unbounded'}
 				),
 				Effect.flatMap(levels => {
-					const children = Array.flatten(Array.getSomes(levels))
+					const children = Array.flatten(levels)
 					return walk(
 						pipe(
 							children,

@@ -1,9 +1,12 @@
-import {Array, HashSet, Option, Predicate, Record, Struct, Tuple, pipe} from 'effect'
+import {Array, type HashMap, HashSet, Option, Predicate, Record, Struct, Tuple, pipe} from 'effect'
 
 import type {ConnectionState, ServerIdentity} from '#services/connections/schema.ts'
 import type {RemoteTool} from '#services/gateway/schema.ts'
 
-export function prunedTools(definitions: readonly ConnectionState[], installed: Record<string, ServerIdentity>) {
+export function prunedTools(
+	definitions: readonly ConnectionState[],
+	installed: HashMap.HashMap<string, ServerIdentity>
+) {
 	const connected = HashSet.fromIterable(
 		pipe(
 			definitions,
@@ -12,7 +15,7 @@ export function prunedTools(definitions: readonly ConnectionState[], installed: 
 		)
 	)
 	return pipe(
-		Record.toEntries(installed),
+		Array.fromIterable(installed),
 		Array.filter(entry => !HashSet.has(connected, Tuple.make(entry[1].id, entry[1].generation))),
 		Array.map(entry => entry[0])
 	)

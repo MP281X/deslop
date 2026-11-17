@@ -10,6 +10,10 @@ function portOf(address: string) {
 export function socketLine(line: string) {
 	const fields = String.split(String.trim(line), /\s+/u)
 	const address = fields[4] ?? ''
+	const state = fields[1] ?? ''
+	if (!Array.contains(['tcp', 'udp'], fields[0]) || !String.isNonEmpty(state) || !String.isNonEmpty(address)) {
+		return Option.none()
+	}
 	return Option.map(portOf(address), port => ({
 		address,
 		port,
@@ -17,7 +21,7 @@ export function socketLine(line: string) {
 			Option.map(Schema.decodeOption(ProcessIdFromString)(match[2] ?? ''), pid => ({name: match[1] ?? '', pid}))
 		),
 		protocol: fields[0],
-		state: fields[1] ?? 'listening'
+		state
 	}))
 }
 

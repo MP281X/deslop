@@ -1,4 +1,18 @@
-import {Array, Boolean, DateTime, Duration, Equal, Function, Number, Option, Order, String, Struct, pipe} from 'effect'
+import {
+	Array,
+	Boolean,
+	DateTime,
+	Duration,
+	Equal,
+	Function,
+	HashSet,
+	Number,
+	Option,
+	Order,
+	String,
+	Struct,
+	pipe
+} from 'effect'
 
 import {ActivityProps, Booking, Flight, Stay, Train} from '#services/bookings/schema.ts'
 import type {
@@ -12,6 +26,8 @@ import type {
 	TrainStop
 } from '#services/bookings/schema.ts'
 
+const GENERIC = ['bahnhof', 'central', 'centraal', 'centrale', 'gare', 'hauptbahnhof', 'hbf', 'station', 'stazione']
+
 export const MINUTE = Duration.minutes(1)
 export const HOUR = Duration.hours(1)
 
@@ -22,6 +38,32 @@ const STATION_LEAD = Duration.minutes(15)
 export const ACTIVITY_LIFETIME = Duration.hours(7.5)
 
 export const ACTIVITY_NAME = 'JourneyActivity'
+
+export function stationWords(text: string) {
+	return pipe(
+		text,
+		String.normalize('NFD'),
+		String.replaceAll(/[̀-ͯ]/gu, ''),
+		String.toLowerCase,
+		String.split(/[^a-z0-9]+/u)
+	)
+}
+
+function significant(name: string) {
+	return Array.filter(stationWords(name), word => word.length >= 3 && !Array.contains(GENERIC, word))
+}
+
+export function stationNamesMatch(left: string, right: string) {
+	const a = significant(left)
+	const b = significant(right)
+	const aSet = HashSet.fromIterable(a)
+	const bSet = HashSet.fromIterable(b)
+	return (
+		Array.isArrayNonEmpty(a) &&
+		Array.isArrayNonEmpty(b) &&
+		(Array.every(a, word => HashSet.has(bSet, word)) || Array.every(b, word => HashSet.has(aSet, word)))
+	)
+}
 
 // A time with an offset or Z stands for itself.
 export function instantOf(time: LocalTime, timeZone: string) {
@@ -46,7 +88,7 @@ export function line(parts: Option.Option<string>[]) {
 
 export function departureOf(booking: Flight | Train) {
 	if (Booking.isAnyOf(['train'])(booking)) {
-		// A train still to leave waits for its timetable, however early it runs before.
+		// Use the departure-specific delay when known; otherwise do not move departure earlier for a negative running delay.
 		return DateTime.addDuration(
 			booking.departs,
 			Option.match(booking.live, {
@@ -62,6 +104,7 @@ export function departureOf(booking: Flight | Train) {
 	)
 }
 
+// judge-ignore no-contradicted-promise -- Returns the best known arrival, actual or estimated when live data supplies it and otherwise scheduled.
 export function arrivalOf(booking: Flight | Train) {
 	if (Booking.isAnyOf(['train'])(booking)) {
 		return DateTime.addDuration(
@@ -133,27 +176,51 @@ function newer<A>(existing: Option.Option<A>, incoming: Option.Option<A>) {
 	return Option.orElse(incoming, () => existing)
 }
 
-// The same segment, keyed by origin since BA15 flies two legs a day, or a rebooking under the same confirmation and route.
+function normalizedStation(name: string) {
+	return pipe(
+		name,
+		String.normalize('NFD'),
+		String.replaceAll(/[̀-ͯ]/gu, ''),
+		String.toLowerCase,
+		String.replaceAll(/[^a-z0-9]+/gu, ' '),
+		String.trim
+	)
+}
+
+function sameStation(left: Train['to'], right: Train['from']) {
+	return (
+		Option.exists(left.code, code => Option.contains(right.code, code)) ||
+		normalizedStation(left.name) === normalizedStation(right.name)
+	)
+}
+
+// The same flight, keyed by origin since BA15 flies two legs a day, or a rebooking under the same confirmation and route.
+function sameFlight(existing: Flight, incoming: Flight) {
+	if (!Equal.equals(existing.from.code, incoming.from.code)) return false
+	return (
+		(existing.airlineCode === incoming.airlineCode &&
+			existing.number === incoming.number &&
+			near(existing.departs, incoming.departs)) ||
+		(sameConfirmation(existing, incoming) && Equal.equals(existing.to.code, incoming.to.code))
+	)
+}
+
+// The same train leg, keyed by operator and origin since one train number runs several legs, or a rebooking under the same confirmation and route; stations compare exactly, never by the timetable's loose match, under which Milano Centrale and Milano Rogoredo are both Milano.
+function sameTrain(existing: Train, incoming: Train) {
+	if (!sameStation(existing.from, incoming.from)) return false
+	return (
+		(existing.operator === incoming.operator &&
+			existing.number === incoming.number &&
+			near(existing.departs, incoming.departs)) ||
+		(sameConfirmation(existing, incoming) && sameStation(existing.to, incoming.to))
+	)
+}
+
 function sameReservation(existing: Booking, incoming: Booking) {
 	if (Booking.isAnyOf(['flight'])(existing) && Booking.isAnyOf(['flight'])(incoming)) {
-		return (
-			(existing.airlineCode === incoming.airlineCode &&
-				existing.number === incoming.number &&
-				Equal.equals(existing.from.code, incoming.from.code) &&
-				near(existing.departs, incoming.departs)) ||
-			(sameConfirmation(existing, incoming) &&
-				Equal.equals(existing.from.code, incoming.from.code) &&
-				Equal.equals(existing.to.code, incoming.to.code))
-		)
+		return sameFlight(existing, incoming)
 	}
-	if (Booking.isAnyOf(['train'])(existing) && Booking.isAnyOf(['train'])(incoming)) {
-		return (
-			(existing.number === incoming.number && near(existing.departs, incoming.departs)) ||
-			(sameConfirmation(existing, incoming) &&
-				existing.from.name === incoming.from.name &&
-				existing.to.name === incoming.to.name)
-		)
-	}
+	if (Booking.isAnyOf(['train'])(existing) && Booking.isAnyOf(['train'])(incoming)) return sameTrain(existing, incoming)
 	if (Booking.isAnyOf(['stay'])(existing) && Booking.isAnyOf(['stay'])(incoming)) {
 		return (
 			sameConfirmation(existing, incoming) ||
@@ -607,24 +674,6 @@ function activityProps(journey: Flight | Train, bookings: BookingList, now: Date
 
 export function urgencyOf(props: ActivityProps) {
 	return `${props.phase}|${Option.match(props.chip, {onNone: Function.constant(''), onSome: chip => chip.text})}|${Number.round(Duration.toMinutes(props.delay) / 5, 0)}`
-}
-
-function normalizedStation(name: string) {
-	return pipe(
-		name,
-		String.normalize('NFD'),
-		String.replaceAll(/[̀-ͯ]/gu, ''),
-		String.toLowerCase,
-		String.replaceAll(/[^a-z0-9]+/gu, ' '),
-		String.trim
-	)
-}
-
-function sameStation(left: Train['to'], right: Train['from']) {
-	return (
-		Option.exists(left.code, code => Option.contains(right.code, code)) ||
-		normalizedStation(left.name) === normalizedStation(right.name)
-	)
 }
 
 function scheduledStart(booking: Booking) {

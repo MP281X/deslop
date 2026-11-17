@@ -98,7 +98,7 @@ export function missingNumbers(chapters: readonly Chapter[], kind: Series) {
 	)
 }
 
-// Every index chapter on a series' first read; later reads silently fill gaps and announce releases above its highest known chapter.
+// Keep unknown index chapters on the first read; later keep only unknown chapters above the known minimum, marking those at or below the known maximum as notified.
 export function indexChapters(current: readonly Chapter[], chapters: readonly Chapter[], kind: Series) {
 	const known = HashSet.fromIterable(Array.map(current, keyOf))
 	const numbers = numbersOf(current, kind)

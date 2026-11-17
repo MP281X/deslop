@@ -15,6 +15,7 @@ export function mcpClient() {
 }
 
 // A finished upstream session says goodbye within a bound, then closes; either failure only warns.
+// judge-ignore no-silent-fallback -- best-effort session teardown logs each failure and still closes the client; it returns no upstream data or successful call answer.
 export function endSession(
 	transport: Pick<StreamableHTTPClientTransport, 'terminateSession'>,
 	client: Pick<Client, 'close'>,

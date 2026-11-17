@@ -1,6 +1,6 @@
-import {Array, HashSet, Number, Option, Order, String, Struct, pipe} from 'effect'
+import {Array, Effect, HashSet, Number, Option, Order, String, Struct, pipe} from 'effect'
 
-import {UserId} from '@deslop/runtime/shared/auth'
+import {AuthError, UserId} from '@deslop/runtime/shared/auth'
 import type {GitHubId} from '@deslop/runtime/shared/auth'
 
 import type {Member, Role} from '#services/people/schema.ts'
@@ -11,6 +11,23 @@ const ROLE_ORDER = {Admin: 1, Member: 2, Waiting: 0} satisfies Record<Role, numb
 export function isAdmin(admins: readonly GitHubId[], id: UserId) {
 	return Array.some(admins, admin => `github:${admin}` === id)
 }
+
+export const authorizeMember = Effect.fnUntraced(function* (
+	admins: readonly GitHubId[],
+	id: UserId,
+	row: Option.Option<Member>
+) {
+	if (isAdmin(admins, id)) {
+		return {admin: true, id, name: Option.match(row, {onNone: () => id, onSome: member => member.name})}
+	}
+	if (!Option.exists(row, member => member.status === 'Allowed')) {
+		return yield* AuthError.make({error: 'access_denied', message: 'An admin has not allowed this account yet'})
+	}
+	return yield* Option.match(row, {
+		onNone: () => Effect.fail(AuthError.make({error: 'access_denied', message: 'This account was removed'})),
+		onSome: member => Effect.succeed({admin: false, id: member.id, name: member.name})
+	})
+})
 
 export function roleOf(admins: readonly GitHubId[], id: UserId, row: Option.Option<Member>) {
 	if (isAdmin(admins, id)) return 'Admin' as const

@@ -2,25 +2,25 @@ import {Array, Equal, HashMap, HashSet, Option, Stream, pipe} from 'effect'
 import type {Order} from 'effect'
 
 // A live list travels as its changes: the server diffs each new list against the last, and a client folds them back in order.
-export type ListEvent<A extends {id: string}> = {
-	readonly removed: readonly A['id'][]
+export type ListEvent<A, K extends string> = {
+	readonly removed: readonly K[]
 	readonly reset: boolean
 	readonly upserted: readonly A[]
 }
 
-export function listEvents<A extends {id: string}, E, R>(lists: Stream.Stream<readonly A[], E, R>) {
+export function listEvents<A, K extends string, E, R>(lists: Stream.Stream<readonly A[], E, R>, keyOf: (item: A) => K) {
 	return Stream.mapAccum(
 		lists,
 		() => Option.none<readonly A[]>(),
 		(previous, current) => {
 			const events = Option.match(previous, {
-				onNone: () => [{removed: Array.empty<A['id']>(), reset: true, upserted: current}],
+				onNone: () => [{removed: Array.empty<K>(), reset: true, upserted: current}],
 				onSome: before => {
-					const kept = HashMap.fromIterable(Array.map(before, item => [item.id, item] as const))
-					const ids = HashSet.fromIterable(Array.map(current, item => item.id))
+					const kept = HashMap.fromIterable(Array.map(before, item => [keyOf(item), item] as const))
+					const ids = HashSet.fromIterable(Array.map(current, keyOf))
 					const removed = pipe(
 						before,
-						Array.map(item => item.id),
+						Array.map(keyOf),
 						Array.filter(id => !HashSet.has(ids, id))
 					)
 					const upserted = Array.filter(
@@ -29,7 +29,7 @@ export function listEvents<A extends {id: string}, E, R>(lists: Stream.Stream<re
 						item =>
 							!pipe(
 								kept,
-								HashMap.get(item.id),
+								HashMap.get(keyOf(item)),
 								Option.exists(old => Equal.equals(old, item))
 							)
 					)
@@ -42,10 +42,10 @@ export function listEvents<A extends {id: string}, E, R>(lists: Stream.Stream<re
 	)
 }
 
-export function listReducer<A extends {id: string}>(order: Order.Order<A>) {
-	return (items: readonly A[], event: ListEvent<A>) => {
+export function listReducer<A, K extends string>(order: Order.Order<A>, keyOf: (item: A) => K) {
+	return (items: readonly A[], event: ListEvent<A, K>) => {
 		if (event.reset) return Array.sort(event.upserted, order)
-		const replaced = HashSet.fromIterable([...event.removed, ...Array.map(event.upserted, item => item.id)])
-		return Array.sort([...Array.filter(items, item => !HashSet.has(replaced, item.id)), ...event.upserted], order)
+		const replaced = HashSet.fromIterable([...event.removed, ...Array.map(event.upserted, keyOf)])
+		return Array.sort([...Array.filter(items, item => !HashSet.has(replaced, keyOf(item))), ...event.upserted], order)
 	}
 }

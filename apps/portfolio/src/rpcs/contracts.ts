@@ -14,5 +14,6 @@ export class RpcContracts extends RpcGroup.make(
 		stream: true,
 		success: Scene
 	}),
-	Rpc.make('presence.move', {payload: Schema.Struct(Struct.pick(Guest.fields, ['color', 'id', 'x', 'y']))})
+	Rpc.make('presence.move', {payload: Schema.Struct(Struct.pick(Guest.fields, ['id', 'x', 'y']))}),
+	Rpc.make('presence.recolor', {payload: Schema.Struct(Struct.pick(Guest.fields, ['color', 'id']))})
 ) {}

@@ -446,7 +446,7 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 			`
 		})
 
-		// The sender every distinct sender of a batch names, added when new; UNIQUE keeps NULLs apart, so the index compares markers for them.
+		// The distinct senders a batch names at this JSON path, added when new; UNIQUE keeps NULLs apart, so the index compares markers for an absent run or version.
 		function saveResources(batch: string, path: string) {
 			return sql`
 				INSERT INTO ${sql(StoredResource.table)} (service, runtime, run, version)
@@ -583,7 +583,9 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 						sql`DELETE FROM ${sql(StoredSpanLink.table)} WHERE trace <= ${last}`,
 						sql`DELETE FROM ${sql(StoredLog.table)} WHERE trace <= ${last}`,
 						sql`DELETE FROM ${sql(StoredSpan.table)} WHERE trace <= ${last}`,
-						sql`DELETE FROM ${sql(StoredTrace.table)} WHERE id <= ${last}`
+						sql`DELETE FROM ${sql(StoredTrace.table)} WHERE id <= ${last}`,
+						sql`DELETE FROM ${sql(StoredResource.table)} WHERE id NOT IN (SELECT resource FROM traces UNION SELECT resource FROM spans UNION SELECT resource FROM logs)`,
+						sql`DELETE FROM ${sql(StoredStatement.table)} WHERE id NOT IN (SELECT statement FROM spans WHERE statement IS NOT NULL)`
 					],
 					{concurrency: 1, discard: true}
 				)
@@ -770,7 +772,7 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 			`
 		})
 
-		// The services an app's name covers, or every service when none is asked for.
+		// Some of the retained service names matching an app, or None to leave the caller's service filter unrestricted.
 		const servicesOf = Effect.fnUntraced(function* (app: Option.Option<AppName>) {
 			if (Option.isNone(app)) return Option.none<readonly ServiceName[]>()
 			return Option.some(
@@ -911,56 +913,63 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 				function* (payload: LogsRequest) {
 					const receivedAt = yield* DateTime.now
 					const logs = yield* pipe(
-						Option.getOrElse(payload.resourceLogs, () => []),
-						Array.flatMap(group => {
-							const sender = senderOf(group.resource)
-							return pipe(
-								group.scopeLogs,
-								Option.getOrElse(() => []),
-								Array.flatMap(scope =>
-									pipe(
-										scope.logRecords,
-										Option.getOrElse(() => []),
-										Array.map(log => ({group, log, sender}))
-									)
-								)
-							)
-						}),
+						payload.resourceLogs,
+						Option.getOrElse(Array.empty<Option.Option.Value<LogsRequest['resourceLogs']>[number]>),
 						Effect.forEach(
-							Effect.fnUntraced(function* (item) {
-								// A log record has no id of its own, so the identity is what it carries.
-								const log = yield* Schema.encodeEffect(ExportedLog)(item.log)
+							Effect.fnUntraced(function* (group) {
+								const sender = senderOf(group.resource)
 								const resource = yield* Effect.transposeOption(
-									Option.map(item.group.resource, Schema.encodeEffect(Resource))
+									Option.map(group.resource, Schema.encodeEffect(Resource))
 								)
-								const encoded = yield* Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown))({
-									attributes: log.attributes ?? [],
-									body: log.body ?? {},
-									observedTimeUnixNano: log.observedTimeUnixNano ?? '',
-									resource: Option.getOrElse(resource, () => ({})),
-									severityNumber: log.severityNumber,
-									severityText: log.severityText ?? '',
-									spanId: log.spanId ?? '',
-									timeUnixNano: log.timeUnixNano,
-									traceId: log.traceId ?? ''
-								})
-								// The digest's first six bytes, read as one integer.
-								const id = LogId.make(
-									Array.reduce(
-										(yield* digest.digest(Digest.sha256, utf8.encode(encoded))).subarray(0, 6),
-										0,
-										(value, byte) => value * 256 + byte
+								return pipe(
+									group.scopeLogs,
+									Option.getOrElse(() => []),
+									Array.flatMap(scope =>
+										pipe(
+											scope.logRecords,
+											Option.getOrElse(() => []),
+											Array.map(log => ({log, resource, sender}))
+										)
 									)
 								)
-								return logOf(item.sender, item.log, id, receivedAt)
 							}),
 							{concurrency: 1}
+						),
+						Effect.map(Array.flatten),
+						Effect.flatMap(items =>
+							Effect.forEach(
+								items,
+								Effect.fnUntraced(function* (item) {
+									// A log record has no id of its own, so the identity is what it carries.
+									const log = yield* Schema.encodeEffect(ExportedLog)(item.log)
+									const encoded = yield* Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown))({
+										attributes: log.attributes ?? [],
+										body: log.body ?? {},
+										observedTimeUnixNano: log.observedTimeUnixNano ?? '',
+										resource: Option.getOrElse(item.resource, () => ({})),
+										severityNumber: log.severityNumber,
+										severityText: log.severityText ?? '',
+										spanId: log.spanId ?? '',
+										timeUnixNano: log.timeUnixNano,
+										traceId: log.traceId ?? ''
+									})
+									// The digest's first six bytes, read as one integer.
+									const id = LogId.make(
+										Array.reduce(
+											(yield* digest.digest(Digest.sha256, utf8.encode(encoded))).subarray(0, 6),
+											0,
+											(value, byte) => value * 256 + byte
+										)
+									)
+									return logOf(item.sender, item.log, id, receivedAt)
+								}),
+								{concurrency: 1}
+							)
 						)
 					)
-					yield* saveLogs(logs)
+					yield* sql.withTransaction(saveLogs(logs))
 				},
 				Reactivity.mutation(['telemetry']),
-				sql.withTransaction,
 				asTelemetryError,
 				withReactivity
 			),
@@ -969,11 +978,25 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 				function* (payload: TracesRequest) {
 					const receivedAt = yield* DateTime.now
 					const incoming = spansOf(payload)
-					yield* saveExport({
-						links: incoming.links,
-						spans: incoming.spans,
-						traces: touchedTraces(incoming.spans, yield* listSpans(traceIdsOf(incoming.spans)), receivedAt)
-					})
+					const stored = yield* listSpans(traceIdsOf(incoming.spans))
+					// A late CI start cannot replace a completed span; read and write share this transaction.
+					const completed = HashSet.fromIterable(
+						pipe(
+							stored,
+							Array.filter(span => span.runtime === 'ci' && Option.isSome(span.duration)),
+							Array.map(span => `${span.traceId}:${span.spanId}`)
+						)
+					)
+					const spans = Array.filter(
+						incoming.spans,
+						span =>
+							!(
+								span.runtime === 'ci' &&
+								Option.isNone(span.duration) &&
+								HashSet.has(completed, `${span.traceId}:${span.spanId}`)
+							)
+					)
+					yield* saveExport({links: incoming.links, spans, traces: touchedTraces(spans, stored, receivedAt)})
 				},
 				Reactivity.mutation(['telemetry']),
 				sql.withTransaction,
@@ -983,13 +1006,17 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 			listOperations: Effect.fn('Telemetry.listOperations')(function* (input: ListOperationsParams) {
 				return operationsAnswer(yield* readOverview(input.since), input.app)
 			}, asTelemetryError),
+			// Aggregate completed action spans selected by listLatencies; return their count, failures and durations rounded to tenths of a millisecond.
 			measureLatency: Effect.fn('Telemetry.measureLatency')(function* (input: MeasureLatencyParams) {
-				const rows = yield* listLatencies({
-					cutoff: rangeStart(input.since, yield* DateTime.now),
-					name: input.name,
-					services: yield* servicesOf(input.app)
-				})
-				const latency = latencyOf(Array.map(rows, row => Option.getOrElse(row.duration, () => Duration.zero)))
+				const rows = Array.filter(
+					yield* listLatencies({
+						cutoff: rangeStart(input.since, yield* DateTime.now),
+						name: input.name,
+						services: yield* servicesOf(input.app)
+					}),
+					row => Option.isSome(row.duration)
+				)
+				const latency = latencyOf(Array.getSomes(Array.map(rows, row => row.duration)))
 				return {
 					count: rows.length,
 					failures: Array.countBy(rows, row => row.status === 'failed'),

@@ -48,8 +48,16 @@ export function ReaderRoute(props: {chapters: ChapterList; number: ChapterNumber
 	const reader = keyOf(props)
 	const following = pipe(
 		props.chapters,
-		Array.sort(byNumber),
-		Array.filter(chapter => chapter.series === props.series && chapter.number >= props.number)
+		Array.findFirst(chapter => chapter.series === props.series && chapter.number === props.number),
+		Option.match({
+			onNone: () => Array.empty<ChapterList[number]>(),
+			onSome: opened =>
+				pipe(
+					props.chapters,
+					Array.filter(chapter => chapter.series === opened.series && chapter.number >= opened.number),
+					Array.sort(byNumber)
+				)
+		})
 	)
 	const [state, turn] = useAtom(readerAtom(reader))
 	const visible = Array.take(following, state.shown)

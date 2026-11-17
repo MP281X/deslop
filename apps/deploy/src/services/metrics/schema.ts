@@ -155,3 +155,12 @@ export const MachineHistory = Schema.Struct({
 	time: DateTimeUtcFromFiniteMillis,
 	worker: WorkerId
 })
+
+// The `vm_stat` counters used memory needs; one missing fails the sample instead of reading as zero memory.
+export type VmStatPages = typeof VmStatPages.Type
+export const VmStatPages = Schema.Struct({
+	'Anonymous pages': Schema.FiniteFromString,
+	'Pages occupied by compressor': Schema.FiniteFromString,
+	'Pages purgeable': Schema.FiniteFromString,
+	'Pages wired down': Schema.FiniteFromString
+})

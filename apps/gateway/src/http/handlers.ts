@@ -1,9 +1,9 @@
-import {Duration, Effect, Option, String, pipe} from 'effect'
+import {Duration, Effect, Option, Schema, String, pipe} from 'effect'
 
 import {HttpRouter, HttpServerRequest, HttpServerResponse} from 'effect/http'
 
 import {Auth} from '@deslop/runtime/server/auth'
-import {AuthError, signInUrl} from '@deslop/runtime/shared/auth'
+import {AuthError, failureOptions, signInUrl} from '@deslop/runtime/shared/auth'
 
 import {AiProxy} from '#services/ai-proxy/service.ts'
 import {clientMetadata} from '#services/connections/lib/utils.ts'
@@ -14,12 +14,21 @@ import {Gateway} from '#services/gateway/service.ts'
 
 const COOKIE = {httpOnly: true, path: '/', sameSite: 'lax', secure: true} as const
 
-// A step's answer is never cached; a failure returns to the servers page, whose row shows why.
+// judge-ignore no-silent-fallback -- a failed OAuth step returns to the servers page, whose row records the issue; an Auth outage or refusal answers 503 or 403 with its message.
+// A step's answer is never cached.
 function returning<E, R>(step: Effect.Effect<HttpServerResponse.HttpServerResponse, E, R>) {
 	return pipe(
 		step,
 		Effect.tapError(cause => Effect.logWarning('The sign-in callback could not be completed', cause)),
-		Effect.orElseSucceed(() => HttpServerResponse.redirect('/')),
+		Effect.catch(error => {
+			if (
+				Schema.is(AuthError)(error) &&
+				(error.error === 'temporarily_unavailable' || error.error === 'access_denied')
+			) {
+				return Effect.succeed(HttpServerResponse.text(error.message, failureOptions(error, 500)))
+			}
+			return Effect.succeed(HttpServerResponse.redirect('/'))
+		}),
 		Effect.map(HttpServerResponse.setHeader('cache-control', 'no-store'))
 	)
 }
@@ -38,22 +47,32 @@ export const HttpHandlers = HttpRouter.use(router =>
 				Effect.gen(function* () {
 					const request = yield* HttpServerRequest.HttpServerRequest
 					const params = yield* HttpServerRequest.schemaSearchParams(ServerParams)
-					return yield* Option.match(yield* Effect.option(auth.user(request.headers)), {
-						onNone: () => Effect.succeed(HttpServerResponse.redirect(signInUrl(`${url}${request.url}`))),
-						onSome: user =>
-							Effect.map(connections.begin(params.id, user), started =>
-								Option.match(started.state, {
-									onNone: () => HttpServerResponse.redirect(started.url),
-									onSome: state =>
-										HttpServerResponse.setCookieUnsafe(
-											HttpServerResponse.redirect(started.url),
-											`__Host-mcp-${state}`,
-											state,
-											{...COOKIE, maxAge: Duration.minutes(10)}
-										)
-								})
-							)
-					})
+					return yield* Option.match(
+						yield* pipe(
+							auth.user(request.headers),
+							Effect.asSome,
+							Effect.catchTag('AuthError', error => {
+								if (error.error === 'temporarily_unavailable') return Effect.fail(error)
+								return Effect.succeedNone
+							})
+						),
+						{
+							onNone: () => Effect.succeed(HttpServerResponse.redirect(signInUrl(`${url}${request.url}`))),
+							onSome: user =>
+								Effect.map(connections.begin(params.id, user), started =>
+									Option.match(started.state, {
+										onNone: () => HttpServerResponse.redirect(started.url),
+										onSome: state =>
+											HttpServerResponse.setCookieUnsafe(
+												HttpServerResponse.redirect(started.url),
+												`__Host-mcp-${state}`,
+												state,
+												{...COOKIE, maxAge: Duration.minutes(10)}
+											)
+									})
+								)
+						}
+					)
 				})
 			)
 		)

@@ -7,7 +7,7 @@ import {localAuth, requireAdmin} from '@deslop/runtime/server/auth'
 import {AuthError, GitHubId, GitHubIdFromString, UserId, asAuthError} from '@deslop/runtime/shared/auth'
 import type {User} from '@deslop/runtime/shared/auth'
 
-import {isAdmin, listPeople, personOf} from './lib/utils.ts'
+import {authorizeMember, isAdmin, listPeople, personOf} from './lib/utils.ts'
 import {Member} from './schema.ts'
 import type {AdmitParams, Person} from './schema.ts'
 
@@ -132,20 +132,7 @@ export class People extends Context.Service<
 						asAuthError('Cannot answer the access request')
 					),
 					allowed: Effect.fn('People.allowed')(function* (id) {
-						const row = yield* find(id)
-						if (isAdmin(admins, id)) {
-							return {admin: true, id, name: Option.match(row, {onNone: () => id, onSome: member => member.name})}
-						}
-						if (!Option.exists(row, member => member.status === 'Allowed')) {
-							return yield* AuthError.make({
-								error: 'access_denied',
-								message: 'An admin has not allowed this account yet'
-							})
-						}
-						return yield* Option.match(row, {
-							onNone: () => Effect.fail(AuthError.make({error: 'access_denied', message: 'This account was removed'})),
-							onSome: member => Effect.succeed({admin: false, id: member.id, name: member.name})
-						})
+						return yield* authorizeMember(admins, id, yield* find(id))
 					}, asAuthError('Cannot read the account')),
 					find,
 					list: Effect.fn('People.list')(function* (user) {
@@ -166,16 +153,17 @@ export class People extends Context.Service<
 								onFalse: Function.constant('Waiting'),
 								onTrue: Function.constant('Allowed')
 							})
+							const row = yield* find(user.id)
 							if (
 								Option.exists(
-									yield* find(user.id),
+									row,
 									member =>
 										member.name === user.name &&
 										Option.getOrUndefined(member.fullName) === Option.getOrUndefined(fullName) &&
 										(status === 'Waiting' || member.status === 'Allowed')
 								)
 							) {
-								return yield* existing(user.id)
+								return yield* Effect.fromOption(row)
 							}
 							yield* mutate(
 								sql`INSERT INTO ${table} (id, name, fullName, since, status) VALUES (${user.id}, ${user.name}, ${Option.getOrUndefined(Option.filter(fullName, String.isNonEmpty))}, ${DateTime.toEpochMillis(yield* DateTime.now)}, ${status}) ON CONFLICT (id) DO UPDATE SET name = excluded.name, fullName = excluded.fullName, status = CASE WHEN excluded.status = 'Allowed' THEN 'Allowed' ELSE ${table}.status END`

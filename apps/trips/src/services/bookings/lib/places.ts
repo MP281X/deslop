@@ -2,7 +2,6 @@ import {
 	Array,
 	Cache,
 	Context,
-	HashSet,
 	Duration,
 	Effect,
 	Exit,
@@ -18,11 +17,12 @@ import {
 
 import {HttpClient, HttpClientRequest, HttpClientResponse} from 'effect/http'
 
+import {stationNamesMatch, stationWords} from './utils.ts'
+
 import type {BookedPlace, Place} from '#services/bookings/schema.ts'
 import {Airport, BookingsError, PlaceCode, StopMatches} from '#services/bookings/schema.ts'
 
 const RAIL = ['HIGHSPEED_RAIL', 'LONG_DISTANCE', 'NIGHT_RAIL', 'REGIONAL_FAST_RAIL', 'REGIONAL_RAIL', 'SUBURBAN']
-const GENERIC = ['bahnhof', 'central', 'centraal', 'centrale', 'gare', 'hauptbahnhof', 'hbf', 'station', 'stazione']
 
 function airportIndex(all: Record<string, unknown>) {
 	return Record.fromEntries(
@@ -37,55 +37,20 @@ function airportIndex(all: Record<string, unknown>) {
 	)
 }
 
-function words(text: string) {
-	return pipe(
-		text,
-		String.normalize('NFD'),
-		String.replaceAll(/[̀-ͯ]/gu, ''),
-		String.toLowerCase,
-		String.split(/[^a-z0-9]+/u)
-	)
-}
-
 // Feeds print stations in capitals, "MILANO CENTRALE"; the app shows "Milano Centrale".
 export function stationName(name: string) {
 	return pipe(String.toLowerCase(name), String.split(' '), Array.map(String.capitalize), Array.join(' '))
 }
 
-function significant(name: string) {
-	return Array.filter(words(name), word => word.length >= 3 && !Array.contains(GENERIC, word))
-}
-export function stationNamesMatch(left: string, right: string) {
-	const a = significant(left)
-	const b = significant(right)
-	const aSet = HashSet.fromIterable(a)
-	const bSet = HashSet.fromIterable(b)
-	return (
-		Array.isArrayNonEmpty(a) &&
-		Array.isArrayNonEmpty(b) &&
-		(Array.every(a, word => HashSet.has(bSet, word)) || Array.every(b, word => HashSet.has(aSet, word)))
-	)
-}
-
 function stationMatch(name: string, matches: StopMatches) {
-	const named = Array.filter(matches, match => {
-		const own = words(
-			`${match.name} ${pipe(
-				Array.flatten(Option.toArray(match.areas)),
-				Array.map(area => area.name),
-				Array.join(' ')
-			)}`
-		)
-		return pipe(
-			words(name),
-			Array.findFirst(word => String.length(word) >= 3 && !Array.contains(GENERIC, word)),
-			Option.exists(word => Array.contains(own, word))
-		)
-	})
+	const named = Array.filter(matches, match => stationNamesMatch(name, match.name))
 	return pipe(
 		named,
-		Array.findFirst(match =>
-			Option.exists(match.modes, modes => Array.some(modes, mode => Array.contains(RAIL, mode)))
+		Array.findFirst(match => Array.join(stationWords(match.name), ' ') === Array.join(stationWords(name), ' ')),
+		Option.orElse(() =>
+			Array.findFirst(named, match =>
+				Option.exists(match.modes, modes => Array.some(modes, mode => Array.contains(RAIL, mode)))
+			)
 		),
 		Option.orElse(() => Array.head(named)),
 		Option.map(

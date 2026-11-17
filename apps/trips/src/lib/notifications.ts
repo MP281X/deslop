@@ -25,6 +25,7 @@ setNotificationHandler({
 })
 
 // Asked on the first launch: gate changes and delays reach the iPhone through these, and the server starts the island with the push-to-start token.
+// judge-ignore no-unrelated-jobs -- Both token subscriptions register this authenticated app target with the same push registry for the app lifetime.
 export const pushAtom = RpcClient.runtime.atom(get =>
 	Effect.ignore(
 		Effect.gen(function* () {
