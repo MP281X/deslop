@@ -258,20 +258,25 @@ export function focusOf(trace: TraceTree, pickedSpan: Option.Option<SpanId>) {
 	)
 }
 
-// The app, operation, trace and span the URL selects; a desktop layout defaults to the app's first operation and phone starts empty.
+// A quiet frame is not a missing trace: retain explicit URL ids for the detail reader; defaults apply only without a trace id.
 export function selectionOf(overview: Option.Option<Overview>, search: Search, mobile: boolean) {
+	const selection = navigationOf(search).selection
+	const requested = Option.flatMap(selection, selected => selected.traceId)
 	const source = pipe(
 		search.source,
-		Option.filter(name => Option.exists(overview, current => Array.some(current.apps, app => app.name === name))),
+		Option.filter(
+			name =>
+				Option.isSome(requested) ||
+				Option.exists(overview, current => Array.some(current.apps, app => app.name === name))
+		),
 		Option.orElse(() => Option.flatMap(overview, openingApp))
 	)
-	const selection = navigationOf(search).selection
 	const activeOperation = pipe(
 		Option.map(selection, selected => selected.operation),
 		Option.flatMap(key => Option.flatMap(overview, current => findOperation(current, key))),
 		Option.filter(active => Option.contains(source, active.app.name)),
 		Option.orElse(() =>
-			Boolean.match(mobile, {
+			Boolean.match(mobile || Option.isSome(requested), {
 				onFalse: () =>
 					Option.flatMap(overview, current =>
 						Option.map(Array.head(operationsOf(current, source)), row => ({app: row.app, operation: row.operation}))
@@ -280,23 +285,27 @@ export function selectionOf(overview: Option.Option<Overview>, search: Search, m
 			})
 		)
 	)
-	const activeKey = Option.map(activeOperation, active => ({
-		app: active.app.name,
-		name: active.operation.name,
-		runtime: active.operation.runtime
-	}))
-	const activeTrace = Option.flatMap(activeOperation, active =>
-		pipe(
-			Option.flatMap(selection, selected => selected.traceId),
-			Option.map(selected =>
-				pipe(
-					active.operation.traces,
-					Array.findFirst(trace => trace.id === selected),
-					Option.getOrElse(() => ({id: selected}))
-				)
-			),
-			Option.orElse(() => Array.head(active.operation.traces))
+	const activeKey = pipe(
+		activeOperation,
+		Option.map(active => ({app: active.app.name, name: active.operation.name, runtime: active.operation.runtime})),
+		Option.orElse(() =>
+			pipe(
+				selection,
+				Option.filter(selected => Option.isSome(selected.traceId)),
+				Option.map(selected => selected.operation)
+			)
 		)
+	)
+	const activeTrace = pipe(
+		requested,
+		Option.map(id =>
+			pipe(
+				activeOperation,
+				Option.flatMap(active => Array.findFirst(active.operation.traces, trace => trace.id === id)),
+				Option.getOrElse(() => ({id}))
+			)
+		),
+		Option.orElse(() => Option.flatMap(activeOperation, active => Array.head(active.operation.traces)))
 	)
 	const pickedSpan = pipe(
 		selection,
@@ -306,7 +315,7 @@ export function selectionOf(overview: Option.Option<Overview>, search: Search, m
 	return {activeKey, activeOperation, activeTrace, pickedSpan, source}
 }
 
-// Drop vanished operation selections, but keep trace ids that need a direct read outside the capped list.
+// Without a direct trace, drop vanished operation selections; explicit trace URLs keep their ids and context.
 export function shownSearch(
 	search: Search,
 	selection: {
@@ -327,7 +336,7 @@ export function shownSearch(
 				Option.contains(chosen.operation, active.operation.name) &&
 				Option.contains(chosen.side, active.operation.runtime)
 		)
-	if (staleOperation) {
+	if (staleOperation && Option.isNone(chosen.trace)) {
 		return {...chosen, operation: Option.none(), side: Option.none(), span: Option.none(), trace: Option.none()}
 	}
 	if (
