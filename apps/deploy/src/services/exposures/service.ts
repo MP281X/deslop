@@ -20,9 +20,10 @@ import {
 } from 'effect'
 
 import {ChildProcessSpawner} from 'effect/process'
+import type {SqlError} from 'effect/sql'
 import {Migrator, SqlClient, SqlSchema} from 'effect/sql'
 
-import {ToolPath, executeProcess} from '@deslop/runtime/server/process'
+import {AppError, ToolPath, executeProcess} from '@deslop/runtime/server/process'
 import {installService} from '@deslop/runtime/server/services'
 
 import {Exposure} from '#services/exposures/schema.ts'
@@ -65,7 +66,7 @@ function exposureUrl(row: Exposure) {
 	return `https://${row.hostname}`
 }
 
-const asStorageDeployError = Effect.mapError((cause: unknown) =>
+const asStorageDeployError = Effect.mapError((cause: SqlError.SqlError | Schema.SchemaError) =>
 	DeployError.make({cause, message: 'The owned exposures could not be read or written.'})
 )
 
@@ -155,7 +156,7 @@ export class Exposures extends Context.Service<Exposures>()('@deslop/deploy/serv
 			)
 			yield* Effect.retry(
 				run(binary, ['reload', '--address', '127.0.0.1:20219', '--config', configFile, '--adapter', 'caddyfile']),
-				{schedule: Schedule.spaced(Duration.millis(200)), times: 10}
+				{schedule: Schedule.spaced(Duration.millis(200)), times: 10, while: Schema.is(AppError)}
 			)
 		})
 
@@ -221,7 +222,7 @@ export class Exposures extends Context.Service<Exposures>()('@deslop/deploy/serv
 						cause =>
 							DeployError.make({
 								cause,
-								message: `The owned exposure was saved, but HTTPS setup did not finish. Inspect it before retrying. ${cause.message}`
+								message: `The owned exposure was saved, but HTTPS setup did not finish. Inspect it before retrying.`
 							})
 					)
 					return exposureUrl(exposure)
@@ -261,7 +262,7 @@ export class Exposures extends Context.Service<Exposures>()('@deslop/deploy/serv
 				Effect.mapError(cause =>
 					DeployError.make({
 						cause,
-						message: `The ownership record was not removed; the external mapping may have changed. ${cause.message}`
+						message: `The ownership record was not removed; the external mapping may have changed.`
 					})
 				)
 			),

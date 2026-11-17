@@ -1,4 +1,4 @@
-import {useAtomRefresh, useAtomSet, useAtomValue} from '@effect/atom-react'
+import {useAtomMount, useAtomRefresh, useAtomSet, useAtomValue} from '@effect/atom-react'
 
 import {Array, Boolean, Function, HashSet, Match, Option, Schema, String, pipe} from 'effect'
 
@@ -50,6 +50,7 @@ import {Empty, EmptyContent, EmptyMedia} from '@deslop/components-mobile/ui/empt
 import {ItemContent, ItemGroup, ItemMedia, ItemTitle} from '@deslop/components-mobile/ui/item'
 import {ToggleGroup, ToggleGroupItem} from '@deslop/components-mobile/ui/toggle-group'
 import {blockingFailure} from '@deslop/runtime/client/live-stream'
+import {problemSinceAtom} from '@deslop/runtime/client/problem'
 import {isDenied} from '@deslop/runtime/shared/auth'
 
 import {clipboard} from '#lib/clipboard.ts'
@@ -327,6 +328,8 @@ export function HomeRoute(props: {
 	tag: Option.Option<TagName>
 }) {
 	const notes = useAtomValue(notesAtom)
+	useAtomMount(problemSinceAtom(notesAtom))
+	useAtomMount(problemSinceAtom(searchAtom))
 	const refreshNotes = useAtomRefresh(notesAtom)
 	const search = useAtomValue(searchAtom)
 	const refreshSearch = useAtomRefresh(searchAtom)
@@ -344,6 +347,7 @@ export function HomeRoute(props: {
 				onTrue: () =>
 					Option.some(
 						<Problem
+							source={Boolean.match(AsyncResult.isFailure(notes), {onFalse: () => searchAtom, onTrue: () => notesAtom})}
 							label={Boolean.match(AsyncResult.isFailure(notes), {
 								onFalse: Function.constant('Search unavailable'),
 								onTrue: Function.constant('Out of date')

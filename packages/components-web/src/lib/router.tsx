@@ -25,7 +25,10 @@ export function preload<E>(context: RouterContext, atoms: readonly Atom.Atom<Asy
 	// oxlint-disable-next-line no-restricted-properties -- TanStack Router awaits a loader's Promise.
 	return Effect.runPromise(
 		pipe(
-			Effect.forEach(atoms, atom => AtomRegistry.mount(context.registry, atom), {discard: true}),
+			Effect.forEach(atoms, atom => AtomRegistry.mount(context.registry, atom), {
+				concurrency: 'unbounded',
+				discard: true
+			}),
 			Effect.andThen(Effect.sleep('30 seconds')),
 			Effect.scoped,
 			Effect.forkDetach,

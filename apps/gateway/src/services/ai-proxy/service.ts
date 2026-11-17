@@ -19,6 +19,7 @@ import {
 
 import {Headers, HttpClient, HttpClientRequest, HttpServerRequest, HttpServerResponse} from 'effect/http'
 import {Reactivity} from 'effect/reactivity'
+import type {SqlError} from 'effect/sql'
 import {Migrator, SqlClient, SqlSchema} from 'effect/sql'
 
 import {Auth} from '@deslop/runtime/server/auth'
@@ -86,7 +87,7 @@ function destinationOf(method: string, rest: string, model: Option.Option<AiMode
 	return Result.succeed(`https://api.anthropic.com/${String.slice('anthropic/'.length)(rest)}`)
 }
 
-const asAuthError = Effect.mapError((cause: unknown) =>
+const asAuthError = Effect.mapError((cause: SqlError.SqlError | Schema.SchemaError) =>
 	AuthError.make({cause, error: 'temporarily_unavailable', message: 'AI Gateway storage failed'})
 )
 
@@ -147,7 +148,7 @@ export class AiProxy extends Context.Service<AiProxy>()('@deslop/gateway/service
 				const person = yield* Effect.result(auth.user(request.headers))
 				if (Result.isFailure(person)) {
 					return HttpServerResponse.jsonUnsafe(
-						{error: {message: person.failure.message}},
+						{error: {message: 'AI access could not be verified. Check your sign-in or try again shortly.'}},
 						failureOptions(person.failure, 401)
 					)
 				}

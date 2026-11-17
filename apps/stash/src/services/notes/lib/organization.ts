@@ -1,4 +1,4 @@
-import {Array, Context, Effect, Function, Layer, Option, Redacted, Schema, String, pipe} from 'effect'
+import {Array, Cause, Context, Effect, Function, Layer, Option, Redacted, Schema, String, pipe} from 'effect'
 
 import type {HttpClient} from 'effect/http'
 
@@ -158,7 +158,8 @@ export class Organizer extends Context.Service<
 					// An overloaded API or an answer outside the schema usually succeeds on the next try.
 					Effect.retry({
 						times: 1,
-						while: cause => !Schema.is(NotesError)(cause) && !Schema.is(AiUnavailableError)(cause)
+						while: cause =>
+							!Cause.isTimeoutError(cause) && !Schema.is(NotesError)(cause) && !Schema.is(AiUnavailableError)(cause)
 					}),
 					Effect.mapError(cause => {
 						if (Schema.is(NotesError)(cause)) return cause

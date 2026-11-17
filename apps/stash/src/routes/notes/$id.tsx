@@ -1,4 +1,4 @@
-import {useAtomRefresh, useAtomSet, useAtomSuspense, useAtomValue} from '@effect/atom-react'
+import {useAtomMount, useAtomRefresh, useAtomSet, useAtomSuspense, useAtomValue} from '@effect/atom-react'
 
 import {Array, Boolean, Function, Match, Option, Schema, String, pipe} from 'effect'
 
@@ -39,6 +39,7 @@ import {Button} from '@deslop/components-mobile/ui/button'
 import {Empty, EmptyContent, EmptyMedia} from '@deslop/components-mobile/ui/empty'
 import {Skeleton} from '@deslop/components-mobile/ui/skeleton'
 import {ToggleGroup, ToggleGroupItem} from '@deslop/components-mobile/ui/toggle-group'
+import {problemSinceAtom} from '@deslop/runtime/client/problem'
 import {AuthError} from '@deslop/runtime/shared/auth'
 
 import {Byline} from '#lib/components.tsx'
@@ -202,19 +203,20 @@ function issueOf(note: NoteItem) {
 // The note's one problem mark, in the bar as on every screen: a failed read that kept content, else a body that stopped loading.
 function NoteProblem(props: {note: NoteItem; onRetry: () => void}) {
 	const full = useAtomValue(noteAtom(props.note))
+	useAtomMount(problemSinceAtom(noteAtom(props.note)))
 	const reload = useAtomRefresh(noteAtom(props.note))
 	const body = Option.exists(AsyncResult.value(full), note => Option.isSome(note.body))
 	if (props.note.status === 'failed' && (String.isNonEmpty(props.note.summary) || body)) {
 		return (
 			<ToolbarItem placement="topBarLeading">
-				<Problem label={issueOf(props.note)} onRetry={props.onRetry} />
+				<Problem source={noteAtom(props.note)} label={issueOf(props.note)} onRetry={props.onRetry} />
 			</ToolbarItem>
 		)
 	}
 	if (!AsyncResult.isFailure(full) || Option.exists(AsyncResult.error(full), Schema.is(AuthError))) return undefined
 	return (
 		<ToolbarItem placement="topBarLeading">
-			<Problem label="Note body unavailable" saved={body} onRetry={reload} />
+			<Problem source={noteAtom(props.note)} label="Note body unavailable" saved={body} onRetry={reload} />
 		</ToolbarItem>
 	)
 }
@@ -230,9 +232,9 @@ function NoteContent(props: {note: NoteItem}) {
 	)
 }
 
-// judge-ignore no-silent-fallback -- The toolbar's NoteProblem shows body-load failures with retry while this pane keeps the saved summary visible.
 function Detail(props: {note: NoteItem; onRetry: () => void; onTag: (tag: TagName) => void}) {
 	const full = useAtomValue(noteAtom(props.note))
+	useAtomMount(problemSinceAtom(noteAtom(props.note)))
 	const reload = useAtomRefresh(noteAtom(props.note))
 	if (AsyncResult.isFailure(full) && Option.exists(AsyncResult.error(full), Schema.is(AuthError))) {
 		return <FailureContent cause={full.cause} onRetry={reload} />

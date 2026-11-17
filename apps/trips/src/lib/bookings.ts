@@ -1,4 +1,4 @@
-import {Array, DateTime, Effect, Option, Schema, Stream, String, pipe} from 'effect'
+import {Array, Effect, Option, Schema, Stream, String, pipe} from 'effect'
 
 import {Atom} from 'effect/reactivity'
 import {getImageAsync, getStringAsync, hasImageAsync, hasStringAsync} from 'expo-clipboard'
@@ -9,6 +9,7 @@ import {makeClipboard, readClipboard} from '@deslop/components-mobile/lib/clipbo
 import type {ClipboardCopy, ClipboardKind} from '@deslop/components-mobile/lib/clipboard'
 import {cachedList} from '@deslop/components-mobile/lib/files'
 import {makeRemoval} from '@deslop/components-mobile/lib/removal'
+import {clockAtom} from '@deslop/runtime/client/clock'
 import {liveStream, reconnectOnDrop} from '@deslop/runtime/client/live-stream'
 import {activationsAtom} from '@deslop/runtime/mobile/activations'
 import {provideRuntimeOnce} from '@deslop/runtime/mobile/session'
@@ -141,6 +142,6 @@ export const startAtom = Atom.fn((id: Booking['id'], get) =>
 )
 
 export const nowAtom = Atom.make(get => {
-	get(activationsAtom)
-	return Stream.mapEffect(Stream.tick('1 minute'), () => DateTime.now)
+	get.subscribe(activationsAtom, () => get.refresh(clockAtom('1 minute')))
+	return get(clockAtom('1 minute'))
 })

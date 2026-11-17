@@ -17,6 +17,7 @@ import {
 	pipe
 } from 'effect'
 
+import type {SqlError} from 'effect/sql'
 import {Migrator, SqlClient, SqlModel, SqlSchema} from 'effect/sql'
 
 import {Apns} from '@deslop/runtime/server/apns'
@@ -30,7 +31,7 @@ import {
 	startable,
 	urgencyOf
 } from '#services/bookings/lib/utils.ts'
-import type {ActivityProps, BookingList, Flight, Leg, Train} from '#services/bookings/schema.ts'
+import type {ActivityProps, BookingList, Flight, Leg, Train, BookingsError} from '#services/bookings/schema.ts'
 import {Booking, BookingId} from '#services/bookings/schema.ts'
 import {Bookings} from '#services/bookings/service.ts'
 import {
@@ -61,7 +62,16 @@ type Showing = {journey: Flight | Train; leg: Leg; now: DateTime.Utc; props: Act
 type RoundState = {activities: readonly Activity[]; devices: readonly Device[]; sent: readonly SentAlert[]}
 
 function asPushError(message: string) {
-	return Effect.mapError((cause: unknown) => PushError.make({cause, message}))
+	return Effect.mapError(
+		(
+			cause:
+				| SqlError.SqlError
+				| Schema.SchemaError
+				| BookingsError
+				| PushError
+				| Effect.Error<ReturnType<typeof Apns.Service.startActivity>>
+		) => PushError.make({cause, message})
+	)
 }
 
 // The activity's columns an update writes, to change only some of them.

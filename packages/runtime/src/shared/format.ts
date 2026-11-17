@@ -94,9 +94,9 @@ export function clockOf(at: DateTime.DateTime, unit: ClockUnit = 'minute') {
 }
 
 // A day: "21 Oct" this year, "21 Oct 2025" in another.
-export function dayOf(at: DateTime.DateTime) {
+export function dayOf(at: DateTime.DateTime, now: DateTime.DateTime) {
 	const year = dateFormat(at, 'year')
-	if (year.format(DateTime.toEpochMillis(at)) === year.format(DateTime.toEpochMillis(DateTime.nowUnsafe()))) {
+	if (year.format(DateTime.toEpochMillis(at)) === year.format(DateTime.toEpochMillis(now))) {
 		return inZone(at, 'day')
 	}
 	return inZone(at, 'dayWithYear')

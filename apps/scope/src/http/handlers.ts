@@ -179,7 +179,7 @@ export const HttpHandlers = Layer.provide(
 							{
 								CryptoError: () => Effect.succeed(HttpServerResponse.empty({status: 401})),
 								HttpServerError: () => Effect.succeed(HttpServerResponse.empty({status: 400})),
-								SchemaError: error => Effect.succeed(HttpServerResponse.text(error.message, {status: 400})),
+								SchemaError: () => Effect.succeed(HttpServerResponse.text('Invalid GitHub event body', {status: 400})),
 								TelemetryError: () => Effect.succeed(HttpServerResponse.empty({status: 503}))
 							}
 						)

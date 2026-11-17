@@ -2,6 +2,7 @@ import {Array, Boolean, Context, Effect, Equal, Layer, Match, Option, Record, Sc
 
 import {SecureRandom} from 'effect/crypto'
 import {Reactivity} from 'effect/reactivity'
+import type {SqlError} from 'effect/sql'
 import {Migrator, SqlClient, SqlModel, SqlSchema} from 'effect/sql'
 
 import type {UserId} from '@deslop/runtime/shared/auth'
@@ -30,7 +31,7 @@ function at(time: LocalTime, timeZone: string) {
 	})
 }
 
-function asStorageBookingsError(cause: unknown) {
+function asStorageBookingsError(cause: SqlError.SqlError | Schema.SchemaError) {
 	return BookingsError.make({cause, message: 'The trips storage failed.'})
 }
 
@@ -244,11 +245,8 @@ export class Bookings extends Context.Service<Bookings>()('@deslop/trips/service
 				const issues = Array.getFailures(resolved)
 				if (Array.isReadonlyArrayNonEmpty(issues)) {
 					return yield* BookingsError.make({
-						message: pipe(
-							issues,
-							Array.map(error => error.message),
-							Array.join(' ')
-						)
+						cause: issues,
+						message: 'Some ticket segments could not be resolved. Check their places and times; no segments were saved.'
 					})
 				}
 				yield* pipe(

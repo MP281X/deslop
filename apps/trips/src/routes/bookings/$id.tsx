@@ -29,7 +29,6 @@ import {
 	textSelection,
 	tint
 } from '@expo/ui/swift-ui/modifiers'
-import {AsyncResult} from 'effect/reactivity'
 import {Fragment} from 'react'
 
 import {StatusDot} from '@deslop/components-mobile/blocks/status-dot'
@@ -392,7 +391,7 @@ function Start(props: {legs: readonly (Flight | Train)[]; now: DateTime.Utc}) {
 export function BookingRoute(props: {bookings: BookingList; id: Booking['id']; onClose: () => void}) {
 	const remove = useAtomSet(removal.removeAtom)
 	const refresh = useAtomSet(refreshAtom, {mode: 'promiseExit'})
-	const now = AsyncResult.getOrElse(useAtomValue(nowAtom), DateTime.nowUnsafe)
+	const now = useAtomValue(nowAtom)
 	return pipe(
 		journeysOf(props.bookings),
 		Array.findFirst(journey => Array.some(journey, leg => leg.id === props.id)),

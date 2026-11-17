@@ -1,6 +1,7 @@
 import {useAtomRefresh, useAtomValue} from '@effect/atom-react'
 
-import {Array, Boolean, DateTime, Duration, Function, Option, Record, Schema, String, pipe} from 'effect'
+import type {DateTime} from 'effect'
+import {Array, Boolean, Duration, Function, Option, Record, Schema, String, pipe} from 'effect'
 
 import {AppWindowIcon, HardDrivesIcon, LaptopIcon, MonitorIcon, TerminalWindowIcon} from '@phosphor-icons/react'
 import {CatchBoundary, Link, createFileRoute, getRouteApi} from '@tanstack/react-router'
@@ -19,6 +20,7 @@ import {Workspace} from '@deslop/components-web/shell/workspace'
 import {Empty, EmptyHeader, EmptyMedia, EmptyTitle} from '@deslop/components-web/ui/empty'
 import {ResizableHandle, ResizablePanel, ResizablePanelGroup} from '@deslop/components-web/ui/resizable'
 import {ScrollArea} from '@deslop/components-web/ui/scroll-area'
+import {clockAtom} from '@deslop/runtime/client/clock'
 import {isDenied} from '@deslop/runtime/shared/auth'
 
 import {inventoryAtom, metricsAtom} from '#lib/fleet.ts'
@@ -419,11 +421,7 @@ function HomeRoute() {
 		Option.map(value => value.sources),
 		Option.getOrElse(() => [])
 	)
-	const now = pipe(
-		snapshot,
-		Option.map(value => value.time),
-		Option.getOrElse(DateTime.nowUnsafe)
-	)
+	const now = useAtomValue(clockAtom('1 second'))
 	const activeRows = Option.match(active, {
 		onNone: () => [],
 		onSome: current => Array.filter(rows, row => row.item.worker === current)

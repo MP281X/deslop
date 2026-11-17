@@ -277,7 +277,7 @@ export class Media extends Context.Service<
 							// Partial speech stays useful: every failed chunk is logged; failures with no recovered speech fail the transcription.
 							const speech = yield* Effect.mapError(
 								Effect.all({authorize: gateway.authorize(userId), url: gateway.apiUrl}, {concurrency: 'unbounded'}),
-								cause => MediaError.make({cause: Redacted.make(cause), message: cause.message})
+								cause => MediaError.make({cause: Redacted.make(cause), message: 'Transcription could not be authorized. Check the AI Gateway account.'})
 							)
 							const work = yield* fs.makeTempDirectoryScoped({prefix: 'deslop-speech-'})
 							// Two-minute s16 mono chunks stay below 4 MiB of FLAC and 5.34 MiB after base64, inside Gateway's 10 MiB body limit.

@@ -29,6 +29,7 @@ import {
 import {Xml} from 'effect/encoding'
 import {HttpClient, HttpClientError, HttpClientResponse} from 'effect/http'
 import {Reactivity} from 'effect/reactivity'
+import type {SqlError} from 'effect/sql'
 import {Migrator, SqlClient, SqlSchema} from 'effect/sql'
 
 import {listEvents} from '@deslop/runtime/shared/list'
@@ -121,7 +122,7 @@ function postsOf(feed: string) {
 	)
 }
 
-function asStorageChaptersError(cause: unknown) {
+function asStorageChaptersError(cause: SqlError.SqlError | Schema.SchemaError) {
 	return ChaptersError.make({cause, message: 'The chapter storage failed.'})
 }
 
@@ -231,36 +232,42 @@ export class Chapters extends Context.Service<Chapters>()('@deslop/opm/services/
 							pipe(
 								Effect.scoped(
 									Effect.gen(function* () {
-										const feedClient = yield* Option.match(exit, {
-											onNone: () => Effect.succeed(client),
-											// A residential exit can be offline or flagged by Reddit, so each try leaves from another address.
-											onSome: Effect.fnUntraced(function* (proxy) {
-												const session = `${yield* Random.nextIntBetween(10_000_000, 99_999_999)}`
-												const context = yield* Layer.build(
-													Layer.provide(
-														NodeHttpClient.layerNodeHttpNoAgent,
-														NodeHttpClient.layerAgentOptions({
-															proxyEnv: {
-																HTTP_PROXY: String.replaceAll('{session}', session)(proxy),
-																HTTPS_PROXY: String.replaceAll('{session}', session)(proxy),
-																NODE_ENV: 'production'
-															}
-														})
-													)
-												)
-												return Context.get(context, HttpClient.HttpClient)
+										const feedClient = HttpClient.transform(client, (_response, request) =>
+											Effect.gen(function* () {
+												const nextClient = yield* Option.match(exit, {
+													onNone: () => Effect.succeed(client),
+													// A residential exit can be offline or flagged by Reddit, so each try leaves from another address.
+													onSome: Effect.fnUntraced(function* (proxy) {
+														const session = `${yield* Random.nextIntBetween(10_000_000, 99_999_999)}`
+														const context = yield* Layer.build(
+															Layer.provide(
+																NodeHttpClient.layerNodeHttpNoAgent,
+																NodeHttpClient.layerAgentOptions({
+																	proxyEnv: {
+																		HTTP_PROXY: String.replaceAll('{session}', session)(proxy),
+																		HTTPS_PROXY: String.replaceAll('{session}', session)(proxy),
+																		NODE_ENV: 'production'
+																	}
+																})
+															)
+														)
+														return Context.get(context, HttpClient.HttpClient)
+													})
+												})
+												return yield* nextClient.execute(request)
 											})
-										})
+										)
 										return yield* pipe(
-											HttpClient.get(url, {headers: {'user-agent': BROWSER}}),
+											HttpClient.retryTransient(feedClient, {schedule: Schedule.exponential('1 second'), times: 3}).get(
+												url,
+												{headers: {'user-agent': BROWSER}}
+											),
 											Effect.flatMap(HttpClientResponse.filterStatusOk),
 											Effect.flatMap(response => response.text),
-											Effect.timeout('20 seconds'),
-											Effect.provideService(HttpClient.HttpClient, feedClient)
+											Effect.timeout('20 seconds')
 										)
 									})
 								),
-								Effect.retry({times: 3}),
 								Effect.flatMap(postsOf),
 								Effect.tapError(error => Effect.logWarning(`Reddit did not answer ${url}`, error)),
 								Effect.option

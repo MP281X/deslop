@@ -2,7 +2,6 @@ import {
 	Array,
 	Boolean,
 	DateTime,
-	Duration,
 	Formatter,
 	Function,
 	Option,
@@ -10,13 +9,13 @@ import {
 	Predicate,
 	Record,
 	Schema,
-	Stream,
 	String,
 	pipe
 } from 'effect'
 
 import {Atom, AtomRpc} from 'effect/reactivity'
 
+import {clockAtom} from '@deslop/runtime/client/clock'
 import {liveAtom} from '@deslop/runtime/client/live-stream'
 import {RpcStream} from '@deslop/runtime/shared/rpc'
 import {TimeFrame} from '@deslop/runtime/shared/time'
@@ -181,7 +180,7 @@ export const overviewAtom = Atom.family((range: TimeFrame) => liveAtom(RpcClient
 export const traceAtom = Atom.family((id: TraceId) => liveAtom(RpcClient, 'telemetry.trace', {id}))
 
 // The page's clock, so ages keep counting on a quiet page.
-export const nowAtom = Atom.make(Stream.mapEffect(Stream.tick(Duration.seconds(30)), () => DateTime.now))
+export const nowAtom = clockAtom('30 seconds')
 
 // A trace's name in a row or heading: the source's own number when it has one, else the id's short form.
 export function traceLabel(trace: OperationTrace) {

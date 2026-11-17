@@ -1,4 +1,4 @@
-import {useAtomRefresh, useAtomSet, useAtomSuspense, useAtomValue} from '@effect/atom-react'
+import {useAtomMount, useAtomRefresh, useAtomSet, useAtomSuspense, useAtomValue} from '@effect/atom-react'
 
 import {Array, Boolean, DateTime, Duration, Function, Number, Option, Schema, String, pipe} from 'effect'
 
@@ -21,6 +21,7 @@ import {Button} from '@deslop/components-mobile/ui/button'
 import {Empty, EmptyContent, EmptyMedia} from '@deslop/components-mobile/ui/empty'
 import {ItemActions, ItemContent, ItemGroup, ItemMedia, ItemTitle} from '@deslop/components-mobile/ui/item'
 import {blockingFailure} from '@deslop/runtime/client/live-stream'
+import {problemSinceAtom} from '@deslop/runtime/client/problem'
 
 import {bookingsAtom, clipboard, nowAtom, removal} from '#lib/bookings.ts'
 import {primary, session} from '#lib/session.ts'
@@ -199,7 +200,7 @@ function Bookings(props: {onOpen: (id: Booking['id']) => void; searched: string}
 	const paste = useAtomSet(clipboard.atom.send)
 	const [pastOpen, setPastOpen] = useState(false)
 
-	const now = AsyncResult.getOrElse(useAtomValue(nowAtom), DateTime.nowUnsafe)
+	const now = useAtomValue(nowAtom)
 	const adding = pipe(
 		useMachineResult(AtomMachine.select(clipboard.atom, 'Answering')),
 		AsyncResult.value,
@@ -337,13 +338,15 @@ function Bookings(props: {onOpen: (id: Booking['id']) => void; searched: string}
 export function HomeRoute(props: {onOpen: (id: Booking['id']) => void}) {
 	const [searched, setSearched] = useState('')
 	const loaded = useAtomValue(bookingsAtom)
+	useAtomMount(problemSinceAtom(bookingsAtom))
+	const refresh = useAtomRefresh(bookingsAtom)
 	return (
 		<ListToolbar
 			title="Trips"
 			session={session}
 			onSearch={setSearched}
 			problem={Option.liftPredicate(
-				<Problem label="Out of date" onRetry={useAtomRefresh(bookingsAtom)} />,
+				<Problem source={bookingsAtom} label="Out of date" onRetry={refresh} />,
 				() => AsyncResult.isFailure(loaded) && Option.isNone(blockingFailure(loaded))
 			)}
 		>

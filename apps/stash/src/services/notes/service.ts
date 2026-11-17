@@ -1,3 +1,4 @@
+import type {SchemaIssue} from 'effect'
 import {
 	Array,
 	Boolean,
@@ -29,7 +30,9 @@ import {
 	pipe
 } from 'effect'
 
+import type {PlatformError} from 'effect/PlatformError'
 import {Reactivity} from 'effect/reactivity'
+import type {SqlError} from 'effect/sql'
 import {Migrator, SqlClient, SqlModel, SqlSchema} from 'effect/sql'
 
 import {dataDirectory} from '@deslop/runtime/server/store'
@@ -71,13 +74,23 @@ function still(frame: Still) {
 
 const isVideo = String.startsWith('video/')
 
-function asStorageNotesError(cause: unknown) {
+function asStorageNotesError(
+	cause:
+		| SqlError.SqlError
+		| Schema.SchemaError
+		| SchemaIssue.Issue
+		| PlatformError
+		| Cause.NoSuchElementError
+		| NotesError
+) {
 	return NotesError.make({cause, message: 'The notes or their files could not be read or written.'})
 }
 
 const asNotesError = Effect.mapError(asStorageNotesError)
 
-const asMediaNotesError = Effect.mapError((cause: MediaError) => NotesError.make({cause, message: cause.message}))
+const asMediaNotesError = Effect.mapError((cause: MediaError) =>
+	NotesError.make({cause, message: 'Media processing failed; the note is saved. Try processing it again.'})
+)
 
 const missing = NotesError.make({message: 'No note has this id; find its id with search_notes.'})
 
@@ -344,7 +357,8 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 					organizer.organize(userId, {images: pictures, note, tags: yield* asNotesError(listTagEntries())})
 				),
 				{
-					onFailure: error => change(note.id, NoteChange.cases.fail.make({message: error.message})),
+					onFailure: () =>
+						change(note.id, NoteChange.cases.fail.make({message: 'This note could not be processed. Try again.'})),
 					onSuccess: organization => organized(note.id, organization)
 				}
 			)

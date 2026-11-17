@@ -1,9 +1,12 @@
+import {useAtomValue} from '@effect/atom-react'
+
 import {Array, Match, Option, Schema, pipe} from 'effect'
 
 import {HStack, Image, Text} from '@expo/ui/swift-ui'
 import {accessibilityElement, accessibilityHidden, foregroundStyle, lineLimit} from '@expo/ui/swift-ui/modifiers'
 
 import {colors, space, text} from '@deslop/components-mobile/theme'
+import {clockAtom} from '@deslop/runtime/client/clock'
 import {dayOf} from '@deslop/runtime/shared/format'
 
 import {BrandLogo} from '#lib/icons.tsx'
@@ -27,12 +30,13 @@ function SourceIcon(props: {kind: Kind}) {
 }
 
 export function Byline(props: {note: NoteItem}) {
+	const now = useAtomValue(clockAtom('1 minute'))
 	return (
 		<HStack spacing={space[1]} modifiers={[accessibilityElement('combine')]}>
 			<SourceIcon kind={kindOf(props.note)} />
 			<Text modifiers={[text.caption, foregroundStyle(colors.mutedForeground), lineLimit(1)]}>
 				{pipe(
-					[Option.orElse(props.note.author, () => siteOf(props.note)), Option.some(dayOf(props.note.createdAt))],
+					[Option.orElse(props.note.author, () => siteOf(props.note)), Option.some(dayOf(props.note.createdAt, now))],
 					Array.getSomes,
 					Array.join(' · ')
 				)}

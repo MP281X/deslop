@@ -1,35 +1,22 @@
 import {useAtomValue} from '@effect/atom-react'
 
-import {Boolean, DateTime, Effect, Function, Stream} from 'effect'
+import {Boolean, Function} from 'effect'
 
 import {Button, HStack, Image, Menu, Section, Text} from '@expo/ui/swift-ui'
 import {accessibilityLabel, buttonStyle, foregroundStyle, frame, menuIndicator} from '@expo/ui/swift-ui/modifiers'
-import {AsyncResult, Atom} from 'effect/reactivity'
-import {useId} from 'react'
-
-import {ageOf} from '@deslop/runtime/shared/format'
+import type {AsyncResult, Atom} from 'effect/reactivity'
 
 import {StatusDot} from '#components/blocks/status-dot.tsx'
+import {problemAgeAtom} from '#components/lib/problem.ts'
 import {colors, space, text} from '#components/theme.ts'
 
-const ageAtom = Atom.family((_id: string) =>
-	Atom.withLabel(
-		Atom.make(
-			Stream.unwrap(
-				Effect.gen(function* () {
-					const since = yield* DateTime.now
-					return Stream.mapEffect(Stream.tick('1 minute'), () => Effect.map(DateTime.now, now => ageOf(since, now)))
-				})
-			)
-		),
-		'problem-age'
-	)
-)
-
-// Native menus own presentation and touch recovery; a saved copy stays quiet instead of becoming an error card.
-// judge-ignore no-silent-fallback -- The infallible clock stream starts at mount; now is its initial age, not a failed read's replacement.
-export function Problem(props: {label: string; onRetry: () => void; saved?: boolean}) {
-	const age = useAtomValue(ageAtom(useId()))
+export function Problem(props: {
+	label: string
+	onRetry: () => void
+	saved?: boolean
+	source: Atom.Atom<AsyncResult.AsyncResult<unknown, unknown>>
+}) {
+	const age = useAtomValue(problemAgeAtom(props.source))
 	return (
 		<Menu
 			modifiers={[buttonStyle('plain'), menuIndicator('hidden')]}
@@ -42,10 +29,7 @@ export function Problem(props: {label: string; onRetry: () => void; saved?: bool
 						)
 					})}
 					<Text modifiers={[text.data, foregroundStyle(colors.mutedForeground)]}>
-						{Boolean.match(props.saved === true, {
-							onFalse: () => AsyncResult.getOrElse(age, Function.constant('now')),
-							onTrue: Function.constant('Saved copy')
-						})}
+						{Boolean.match(props.saved === true, {onFalse: () => age, onTrue: Function.constant('Saved copy')})}
 					</Text>
 				</HStack>
 			}

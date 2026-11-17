@@ -1,27 +1,18 @@
 import {useAtomRefresh, useAtomValue} from '@effect/atom-react'
 
-import {Array, DateTime, Effect, Function, Option, Stream, pipe} from 'effect'
+import {Array, DateTime, Function, Option, pipe} from 'effect'
 
 import {ArrowClockwiseIcon} from '@phosphor-icons/react'
 import {AsyncResult, Atom} from 'effect/reactivity'
 import {useId, useRef, useState} from 'react'
 
+import {clockAtom} from '@deslop/runtime/client/clock'
+import {problemSinceAtom} from '@deslop/runtime/client/problem'
 import {ageOf} from '@deslop/runtime/shared/format'
 
 import {StatusDot} from '#components/blocks/status-dot.tsx'
 import {Button} from '#components/ui/button.tsx'
 import {Popover, PopoverContent, PopoverHeader, PopoverTitle, PopoverTrigger} from '#components/ui/popover.tsx'
-
-// The page keeps this reader mounted even when its pane is offscreen.
-// fallow-ignore-next-line unused-export -- the tests drive the age this atom keeps directly.
-export const problemSinceAtom = Atom.family((source: Atom.Atom<AsyncResult.AsyncResult<unknown, unknown>>) =>
-	Atom.make(get => {
-		if (!AsyncResult.isFailure(get(source))) return Option.none<DateTime.Utc>()
-		return Option.orElse(Option.flatten(get.self<Option.Option<DateTime.Utc>>()), () =>
-			Option.some(DateTime.nowUnsafe())
-		)
-	})
-)
 
 // fallow-ignore-next-line unused-export -- the oldest reader still showing content, whose tests drive the age and retry protocol directly.
 export const staleSinceAtom = Atom.family((readers: readonly Atom.Atom<AsyncResult.AsyncResult<unknown, unknown>>[]) =>
@@ -43,29 +34,21 @@ export const staleSinceAtom = Atom.family((readers: readonly Atom.Atom<AsyncResu
 	)
 )
 
-const ageAtom = Atom.family((identity: DateTime.Utc | string) =>
-	Atom.make(
-		Stream.unwrap(
-			Effect.map(DateTime.now, started =>
-				Stream.mapEffect(Stream.tick('1 second'), () =>
-					Effect.map(DateTime.now, now =>
-						ageOf(
-							pipe(
-								identity,
-								Option.liftPredicate(DateTime.isDateTime),
-								Option.getOrElse(() => started)
-							),
-							now
-						)
-					)
-				)
-			)
+const ageAtom = Atom.family((identity: DateTime.Utc | string) => {
+	const startedAtom = Atom.make(get => get.once(clockAtom('1 second')))
+	return Atom.make(get =>
+		ageOf(
+			pipe(
+				identity,
+				Option.liftPredicate(DateTime.isDateTime),
+				Option.getOrElse(() => get(startedAtom))
+			),
+			get(clockAtom('1 second'))
 		)
 	)
-)
+})
 
 // The popup works with hover, keyboard and touch.
-// judge-ignore no-silent-fallback -- The infallible clock stream starts at mount; now is its initial age, not a failed read's replacement.
 function Problem(props: {label: string; reset?: () => void; since?: DateTime.Utc}) {
 	const id = useId()
 	const age = useAtomValue(ageAtom(props.since ?? id))
@@ -110,7 +93,7 @@ function Problem(props: {label: string; reset?: () => void; since?: DateTime.Utc
 			>
 				<StatusDot status="warning" label={props.label} />
 				<span aria-hidden className="text-muted-foreground tabular-nums">
-					{AsyncResult.getOrElse(age, Function.constant('now'))}
+					{age}
 				</span>
 			</PopoverTrigger>
 			<PopoverContent ref={content} initialFocus={false} align="end" className="w-auto">

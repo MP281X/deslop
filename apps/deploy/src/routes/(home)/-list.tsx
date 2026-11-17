@@ -1,7 +1,6 @@
 import {useAtom, useAtomSet, useAtomValue} from '@effect/atom-react'
 
-import type {DateTime} from 'effect'
-import {Array, Boolean, Duration, Equal, Filter, Function, HashSet, Number, Option, Order, Stream, pipe} from 'effect'
+import {DateTime, Array, Boolean, Equal, Filter, Function, HashSet, Number, Option, Order, pipe} from 'effect'
 
 import {AppWindowIcon, PlayIcon} from '@phosphor-icons/react'
 import {CatchBoundary} from '@tanstack/react-router'
@@ -19,6 +18,7 @@ import {Button} from '@deslop/components-web/ui/button'
 import {Empty, EmptyHeader, EmptyMedia, EmptyTitle} from '@deslop/components-web/ui/empty'
 import {ScrollArea} from '@deslop/components-web/ui/scroll-area'
 import {Table, TableBody, TableCell} from '@deslop/components-web/ui/table'
+import {clockAtom} from '@deslop/runtime/client/clock'
 import {dueOf, timerOf} from '@deslop/runtime/shared/format'
 
 import {inventoryAtom, openExposeAtom, runAtom} from '#lib/fleet.ts'
@@ -113,17 +113,13 @@ function Endpoints(props: {free: readonly InventoryItem[]; row: Row}) {
 }
 
 // A running job's time: it starts counting when its row shows it, once a second, in the column that shows the next start.
-const elapsedAtom = Atom.family((_job: ItemId) =>
-	Atom.make(Stream.map(Stream.zipWithIndex(Stream.tick(Duration.seconds(1))), tick => Duration.seconds(tick[1])))
-)
+const elapsedAtom = Atom.family((_job: ItemId) => {
+	const sinceAtom = Atom.make(get => get.once(clockAtom('1 second')))
+	return Atom.make(get => DateTime.distance(get(sinceAtom), get(clockAtom('1 second'))))
+})
 
-// judge-ignore no-silent-fallback -- the infallible tick stream starts at zero; before its first value no elapsed second has passed.
 function Elapsed(props: {job: ItemId}) {
-	return (
-		<span className="text-muted-foreground tabular-nums">
-			{timerOf(AsyncResult.getOrElse(useAtomValue(elapsedAtom(props.job)), () => Duration.zero))}
-		</span>
-	)
+	return <span className="text-muted-foreground tabular-nums">{timerOf(useAtomValue(elapsedAtom(props.job)))}</span>
 }
 
 // A timer's job, started now at its row's end; it waits, disabled, while the job runs.

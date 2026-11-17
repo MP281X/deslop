@@ -7,7 +7,6 @@ import type {Plugin} from 'vite-plus/lint/plugins'
 
 import {choicesAreSchemas} from '#lint/choices-are-schemas.ts'
 import {effectCallForm} from '#lint/effect-call-form.ts'
-import {explicitEffectConcurrency} from '#lint/explicit-effect-concurrency.ts'
 import {libraryOperation} from '#lint/library-operation.ts'
 import {nameByKind} from '#lint/name-by-kind.ts'
 import {noAccumulatingCopy} from '#lint/no-accumulating-copy.ts'
@@ -35,6 +34,7 @@ import {noUnvalidatedJsonDecode} from '#lint/no-unvalidated-json-decode.ts'
 import {noWallClock} from '#lint/no-wall-clock.ts'
 import {classLiterals, primitiveClasses} from '#lint/primitive-classes.ts'
 import {recoverNamedFailures} from '#lint/recover-named-failures.ts'
+import {retryPolicy} from '#lint/retry-policy.ts'
 import {schemaTypePair} from '#lint/schema-type-pair.ts'
 import {serviceMethodSpan} from '#lint/service-method-span.ts'
 import {serviceSchemaFile} from '#lint/service-schema-file.ts'
@@ -140,7 +140,6 @@ const RESTRICTED_PROPERTIES = [
 const RULES = {
 	'choices-are-schemas': choicesAreSchemas,
 	'effect-call-form': effectCallForm,
-	'explicit-effect-concurrency': explicitEffectConcurrency,
 	'library-operation': libraryOperation,
 	'name-by-kind': nameByKind,
 	'no-accumulating-copy': noAccumulatingCopy,
@@ -167,6 +166,7 @@ const RULES = {
 	'no-unvalidated-json-decode': noUnvalidatedJsonDecode,
 	'no-wall-clock': noWallClock,
 	'recover-named-failures': recoverNamedFailures,
+	'retry-policy': retryPolicy,
 	'schema-type-pair': schemaTypePair,
 	'service-method-span': serviceMethodSpan,
 	'service-schema-file': serviceSchemaFile,
@@ -283,6 +283,16 @@ export const lint: OxlintConfig & {
 				selector:
 					'MemberExpression[object.type="MemberExpression"][object.property.name="guards"], MemberExpression[object.type="MemberExpression"][object.property.value="guards"]'
 			},
+			{
+				message: 'Keep the source error typed; do not widen an error mapper to unknown.',
+				selector:
+					'CallExpression[callee.property.name="mapError"] > ArrowFunctionExpression > Identifier[typeAnnotation.typeAnnotation.type="TSUnknownKeyword"]'
+			},
+			{
+				message: 'Keep the cause for diagnostics and give this boundary its own actionable message.',
+				selector:
+					'CallExpression[callee.property.name=/^(make|json|jsonUnsafe|mapError|catch|catchTag|catchTags|catchCause|catchIf)$/] Property[key.name="message"] MemberExpression[property.name="message"], NewExpression[callee.name=/Error$/] MemberExpression[property.name="message"]'
+			},
 			{message: 'Use const and Effect collection combinators.', selector: 'VariableDeclaration[kind="let"]'},
 			{message: 'Use Match.', selector: 'SwitchStatement'},
 			{
@@ -303,12 +313,14 @@ export const lint: OxlintConfig & {
 		],
 
 		'effecttsgo/any-unknown-in-error-context': 'error',
+		'effecttsgo/catch-unfailable-effect': 'error',
 		'effecttsgo/class-self-mismatch': 'error',
 		'effecttsgo/duplicate-package': 'error',
 		'effecttsgo/effect-fn-implicit-any': 'error',
 		'effecttsgo/error-payload-shadows-name': 'error',
 		'effecttsgo/floating-effect': 'error',
 		'effecttsgo/floating-effect-in-vitest': 'error',
+		'effecttsgo/missing-concurrency-option': 'error',
 		'effecttsgo/missing-effect-context': 'error',
 		'effecttsgo/missing-effect-error': 'error',
 		'effecttsgo/missing-layer-context': 'error',
@@ -321,6 +333,7 @@ export const lint: OxlintConfig & {
 		'effecttsgo/promise-in-effect-success': 'error',
 		'effecttsgo/schema-class-object-literal': 'error',
 		'effecttsgo/schema-literal-non-finite': 'error',
+		'effecttsgo/unknown-in-effect-catch': 'error',
 
 		'effecttsgo/effect-fn-iife': 'error',
 		'effecttsgo/effect-gen-uses-adapter': 'error',
@@ -852,6 +865,7 @@ export const lint: OxlintConfig & {
 		'typescript/no-unsafe-return': 'error',
 		'typescript/no-unsafe-unary-minus': 'error',
 		'typescript/no-useless-default-assignment': 'error',
+		'typescript/only-throw-error': 'error',
 		'typescript/prefer-nullish-coalescing': ['error', {ignoreTernaryTests: true}],
 		'typescript/prefer-optional-chain': 'error',
 		'typescript/prefer-readonly': ['error', {}],

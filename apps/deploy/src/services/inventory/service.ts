@@ -206,7 +206,9 @@ export class Inventory extends Context.Service<
 			function command(name: string, args: string[]) {
 				return pipe(
 					executeProcess(name, args),
-					Effect.mapError(cause => DeployError.make({cause, message: cause.message})),
+					Effect.mapError(cause =>
+						DeployError.make({cause, message: `Could not run ${name}; inspect the worker's process logs.`})
+					),
 					Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner)
 				)
 			}
@@ -422,7 +424,7 @@ export class Inventory extends Context.Service<
 				processes: pipe(
 					processes,
 					Effect.provideService(FileSystem.FileSystem, fs),
-					Effect.mapError(cause => DeployError.make({cause, message: cause.message}))
+					Effect.mapError(cause => DeployError.make({cause, message: 'The worker processes could not be read.'}))
 				),
 				sources: [
 					collect('User services', units(false)),

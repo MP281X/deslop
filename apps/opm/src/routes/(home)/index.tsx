@@ -1,4 +1,4 @@
-import {useAtomRefresh, useAtomSet, useAtomValue} from '@effect/atom-react'
+import {useAtomMount, useAtomRefresh, useAtomSet, useAtomValue} from '@effect/atom-react'
 
 import {Array, Boolean, Function, Number, Option, Order, String, pipe} from 'effect'
 
@@ -47,7 +47,9 @@ import {
 	ItemTitle,
 	itemRow
 } from '@deslop/components-mobile/ui/item'
+import {clockAtom} from '@deslop/runtime/client/clock'
 import {blockingFailure} from '@deslop/runtime/client/live-stream'
+import {problemSinceAtom} from '@deslop/runtime/client/problem'
 import {dayOf} from '@deslop/runtime/shared/format'
 
 import {chaptersAtom, readAtom} from '#lib/chapters.ts'
@@ -59,6 +61,7 @@ import {Series} from '#services/chapters/schema.ts'
 
 // Every prop keeps its identity while the chapter is unchanged, so a page turn in the reader re-renders one row.
 function ChapterRow(props: {chapter: ChapterItem; onOpen: (number: ChapterNumber) => void}) {
+	const now = useAtomValue(clockAtom('1 minute'))
 	const read = useAtomSet(readAtom)
 	const done = Option.exists(props.chapter.reading, reading => reading.done)
 	return (
@@ -87,7 +90,7 @@ function ChapterRow(props: {chapter: ChapterItem; onOpen: (number: ChapterNumber
 						{pipe(
 							[
 								props.chapter.title,
-								Option.match(props.chapter.postedAt, {onNone: Function.constant(''), onSome: dayOf})
+								Option.match(props.chapter.postedAt, {onNone: Function.constant(''), onSome: at => dayOf(at, now)})
 							],
 							Array.filter(String.isNonEmpty),
 							Array.join(' · ')
@@ -194,6 +197,7 @@ export function ChaptersRoute(props: {
 	series: Series
 }) {
 	const loaded = useAtomValue(chaptersAtom)
+	useAtomMount(problemSinceAtom(chaptersAtom))
 	const refresh = useAtomRefresh(chaptersAtom)
 	const [searched, setSearched] = useState('')
 	// Chapters already on screen stay through an outage; a retryable problem dot in the bar marks that they stopped updating.
@@ -204,7 +208,7 @@ export function ChaptersRoute(props: {
 			session={session}
 			onSearch={setSearched}
 			problem={Option.liftPredicate(
-				<Problem label="Out of date" onRetry={refresh} />,
+				<Problem source={chaptersAtom} label="Out of date" onRetry={refresh} />,
 				() => AsyncResult.isFailure(loaded) && Option.isNone(blockingFailure(loaded))
 			)}
 			bottomBar={

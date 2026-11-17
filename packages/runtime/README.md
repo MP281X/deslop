@@ -20,3 +20,7 @@ On macOS, a GUI user must be logged in even when installation runs over SSH: lau
 Provide `layerApnsClient` to `Apns.layer` at the server entry; app services keep their own HTTP client and notification policy. `APNS_KEY` accepts PKCS#8 PEM or base64 DER. The registered bundle selects production or sandbox, not the server's environment.
 
 Apps own per-device delivery records and exhaustively handle `shared/apns`'s `ApnsAnswer`: `Accepted`, `Retry`, `DeadToken` or `Refused`. Its shared `Device` model keeps tokens redacted. `mobile/push-token`'s `pushTokens(listener, readerEffect)` takes the app's Expo listener and initial-token reader; the runtime must not import `expo-notifications` and autolink it into every app.
+
+## Client clocks
+
+`client/clock` exports `clockAtom(every: Duration.Input): Atom<DateTime.Utc>`. Its first read is synchronous and current; the same cadence input shares a timer while observed. `client/problem` exports `problemSinceAtom(reader)`, an `Option<DateTime.Utc>` that starts on the reader's first failure and clears on recovery; mount it with the reader, not only its conditional error indicator. `shared/format`'s `dayOf(at, now)` takes the same explicit clock value as `ageOf`.

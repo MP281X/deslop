@@ -1,5 +1,6 @@
 import {
 	Array,
+	Cause,
 	Cache,
 	Context,
 	Duration,
@@ -88,7 +89,11 @@ export class Places extends Context.Service<
 					Effect.flatMap(HttpClientResponse.filterStatusOk),
 					Effect.flatMap(HttpClientResponse.schemaBodyJson(Schema.Record(Schema.String, Schema.Unknown))),
 					Effect.timeout('60 seconds'),
-					Effect.retry({schedule: Schedule.exponential('2 seconds'), times: 2}),
+					Effect.retry({
+						schedule: Schedule.exponential('2 seconds'),
+						times: 2,
+						while: error => Cause.isTimeoutError(error) || HttpClient.isTransientError(error)
+					}),
 					Effect.map(airportIndex)
 				),
 				exit => Exit.match(exit, {onFailure: () => Duration.zero, onSuccess: () => Duration.days(30)})
