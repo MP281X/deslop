@@ -29,7 +29,7 @@ import {
 	tint
 } from '@expo/ui/swift-ui/modifiers'
 import {AsyncResult} from 'effect/reactivity'
-import {Suspense, useState} from 'react'
+import {useState} from 'react'
 
 import {ItemGroupSkeleton} from '@deslop/components-mobile/blocks/item-group-skeleton'
 import {ListToolbar} from '@deslop/components-mobile/blocks/list-toolbar'
@@ -141,7 +141,19 @@ function ChapterRow(props: {chapter: ChapterItem; onOpen: (number: ChapterNumber
 
 function Chapters(props: {onOpen: (number: ChapterNumber, page?: number) => void; searched: string; series: Series}) {
 	return (
-		<Loaded atom={chaptersAtom}>
+		<Loaded
+			atom={chaptersAtom}
+			fallback={
+				<ItemGroupSkeleton
+					rows={10}
+					media={
+						<ItemMedia>
+							<Rectangle modifiers={[frame({height: 68, width: 48}), clipShape('roundedRectangle', radius)]} />
+						</ItemMedia>
+					}
+				/>
+			}
+		>
 			{all => {
 				const chapters = Array.filter(all, chapter => chapter.series === props.series)
 				const needle = String.toLowerCase(String.trim(props.searched))
@@ -235,20 +247,7 @@ export function ChaptersRoute(props: {
 				</ToolbarItem>
 			}
 		>
-			<Suspense
-				fallback={
-					<ItemGroupSkeleton
-						rows={10}
-						media={
-							<ItemMedia>
-								<Rectangle modifiers={[frame({height: 68, width: 48}), clipShape('roundedRectangle', radius)]} />
-							</ItemMedia>
-						}
-					/>
-				}
-			>
-				<Chapters onOpen={props.onOpen} searched={searched} series={props.series} />
-			</Suspense>
+			<Chapters onOpen={props.onOpen} searched={searched} series={props.series} />
 		</ListToolbar>
 	)
 }

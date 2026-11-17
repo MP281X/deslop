@@ -6,7 +6,6 @@ import {
 	navigationTitle,
 	redacted
 } from '@expo/ui/swift-ui/modifiers'
-import {Suspense} from 'react'
 
 import {Loaded} from '@deslop/components-mobile/blocks/loaded'
 import {colors, text} from '@deslop/components-mobile/theme'
@@ -17,17 +16,16 @@ export function HomeRoute() {
 	return (
 		<Toolbar modifiers={[navigationTitle('template-app'), navigationBarTitleDisplayMode('large')]}>
 			<VStack modifiers={[frame({maxHeight: Infinity, maxWidth: Infinity})]}>
-				<Suspense
+				<Loaded
+					atom={nameAtom}
 					fallback={
 						<Text modifiers={[text.body, foregroundStyle(colors.foreground), redacted('placeholder')]}>
 							@deslop/template-app
 						</Text>
 					}
 				>
-					<Loaded atom={nameAtom}>
-						{name => <Text modifiers={[text.body, foregroundStyle(colors.foreground)]}>{name}</Text>}
-					</Loaded>
-				</Suspense>
+					{name => <Text modifiers={[text.body, foregroundStyle(colors.foreground)]}>{name}</Text>}
+				</Loaded>
 			</VStack>
 		</Toolbar>
 	)

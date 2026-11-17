@@ -4,7 +4,7 @@ import {Array, Match, Schema, pipe} from 'effect'
 
 import {Host, NavigationDestination, NavigationStack} from '@expo/ui/swift-ui'
 import {tint} from '@expo/ui/swift-ui/modifiers'
-import {Suspense, useState} from 'react'
+import {useState} from 'react'
 
 import {SessionGate} from '@deslop/components-mobile/blocks/session-gate'
 import {colors} from '@deslop/components-mobile/theme'
@@ -13,7 +13,7 @@ import {queryAtom} from '#lib/notes.ts'
 import {session} from '#lib/session.ts'
 import {HomeRoute} from '#routes/(home)/index.tsx'
 import {ComposeRoute} from '#routes/compose.tsx'
-import {NoteRoute, NoteSkeleton} from '#routes/notes/$id.tsx'
+import {NoteRoute} from '#routes/notes/$id.tsx'
 import type {Kind, TagName} from '#services/notes/schema.ts'
 import {NoteId} from '#services/notes/schema.ts'
 
@@ -51,22 +51,20 @@ function AppRoutes() {
 				/>
 				{Array.map(path, id => (
 					<NavigationDestination key={id} value={id}>
-						<Suspense fallback={<NoteSkeleton />}>
-							{pipe(
-								Match.value(id),
-								Match.when('compose', () => <ComposeRoute onDone={() => setPath([])} />),
-								Match.orElse(() => (
-									<NoteRoute
-										id={NoteId.make(id)}
-										onClose={() => setPath([])}
-										onTag={name => {
-											setTag(name)
-											setPath([])
-										}}
-									/>
-								))
-							)}
-						</Suspense>
+						{pipe(
+							Match.value(id),
+							Match.when('compose', () => <ComposeRoute onDone={() => setPath([])} />),
+							Match.orElse(() => (
+								<NoteRoute
+									id={NoteId.make(id)}
+									onClose={() => setPath([])}
+									onTag={name => {
+										setTag(name)
+										setPath([])
+									}}
+								/>
+							))
+						)}
 					</NavigationDestination>
 				))}
 			</NavigationStack>

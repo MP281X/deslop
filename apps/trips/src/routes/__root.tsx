@@ -8,7 +8,7 @@ import {Array, Option} from 'effect'
 import {Host, NavigationDestination, NavigationStack} from '@expo/ui/swift-ui'
 import {tint} from '@expo/ui/swift-ui/modifiers'
 import {AsyncResult} from 'effect/reactivity'
-import {Suspense, useState} from 'react'
+import {useState} from 'react'
 
 import {ItemGroupSkeleton} from '@deslop/components-mobile/blocks/item-group-skeleton'
 import {Loaded} from '@deslop/components-mobile/blocks/loaded'
@@ -26,7 +26,7 @@ import {BookingId} from '#services/bookings/schema.ts'
 
 function Destination(props: {onClose: () => void; value: string}) {
 	return (
-		<Loaded atom={bookingsAtom}>
+		<Loaded atom={bookingsAtom} fallback={<ItemGroupSkeleton rows={10} />}>
 			{bookings => (
 				<BookingRoute key={props.value} bookings={bookings} id={BookingId.make(props.value)} onClose={props.onClose} />
 			)}
@@ -52,9 +52,7 @@ function AppRoutes() {
 				<HomeRoute onOpen={id => setPath([id])} />
 				{Array.map(path, value => (
 					<NavigationDestination key={value} value={value}>
-						<Suspense fallback={<ItemGroupSkeleton rows={10} />}>
-							<Destination value={value} onClose={() => setPath([])} />
-						</Suspense>
+						<Destination value={value} onClose={() => setPath([])} />
 					</NavigationDestination>
 				))}
 			</NavigationStack>

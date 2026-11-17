@@ -1,4 +1,4 @@
-import {useAtomRefresh, useAtomSet, useAtomSuspense, useAtomValue} from '@effect/atom-react'
+import {useAtomRefresh, useAtomSet, useAtomValue} from '@effect/atom-react'
 
 import {Array, Boolean, Function, Match, Option, Schema, String, pipe} from 'effect'
 
@@ -29,7 +29,6 @@ import {
 	tint
 } from '@expo/ui/swift-ui/modifiers'
 import {AsyncResult} from 'effect/reactivity'
-import {Suspense} from 'react'
 import {Linking} from 'react-native'
 
 import {FailureContent, Loaded} from '@deslop/components-mobile/blocks/loaded'
@@ -135,7 +134,7 @@ function Placeholder() {
 	)
 }
 
-export function NoteSkeleton() {
+function NoteSkeleton() {
 	return (
 		<VStack
 			alignment="leading"
@@ -185,7 +184,8 @@ function Reading(props: {note: NoteItem}) {
 }
 
 function FullBody(props: {note: NoteItem}) {
-	const full = useAtomSuspense(noteAtom(props.note), {includeFailure: true})
+	const full = useAtomValue(noteAtom(props.note))
+	if (AsyncResult.isInitial(full)) return <Placeholder />
 	if (Option.exists(AsyncResult.error(full), Schema.is(AuthError))) return undefined
 	return pipe(
 		AsyncResult.value(full),
@@ -222,9 +222,7 @@ function NoteContent(props: {note: NoteItem}) {
 	return (
 		<VStack alignment="leading" spacing={space[4]}>
 			{String.isNonEmpty(props.note.summary) && <Text modifiers={lede}>{props.note.summary}</Text>}
-			<Suspense fallback={<Placeholder />}>
-				<FullBody note={props.note} />
-			</Suspense>
+			<FullBody note={props.note} />
 		</VStack>
 	)
 }
@@ -392,7 +390,7 @@ function NoteScreen(props: {
 
 export function NoteRoute(props: {id: NoteId; onClose: () => void; onTag: (tag: TagName) => void}) {
 	return (
-		<Loaded atom={notesAtom}>
+		<Loaded atom={notesAtom} fallback={<NoteSkeleton />}>
 			{notes => <NoteScreen id={props.id} notes={notes} onClose={props.onClose} onTag={props.onTag} />}
 		</Loaded>
 	)

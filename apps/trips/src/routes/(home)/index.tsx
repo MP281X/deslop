@@ -1,4 +1,4 @@
-import {useAtomRefresh, useAtomSet, useAtomSuspense, useAtomValue} from '@effect/atom-react'
+import {useAtomRefresh, useAtomSet, useAtomValue} from '@effect/atom-react'
 
 import {Array, Boolean, DateTime, Duration, Function, Number, Option, Schema, String, pipe} from 'effect'
 
@@ -7,7 +7,7 @@ import {accessibilityLabel, fixedSize, font, foregroundStyle, frame, tint} from 
 import {useMachineResult} from '@typeonce/effect-machine-react'
 import {AtomMachine} from '@typeonce/effect-machine/reactivity'
 import {AsyncResult} from 'effect/reactivity'
-import {Suspense, useState} from 'react'
+import {useState} from 'react'
 
 import {ItemGroupSkeleton} from '@deslop/components-mobile/blocks/item-group-skeleton'
 import {ListToolbar} from '@deslop/components-mobile/blocks/list-toolbar'
@@ -194,7 +194,7 @@ function PastBookings(props: {
 }
 
 function Bookings(props: {onOpen: (id: Booking['id']) => void; searched: string}) {
-	const loaded = useAtomSuspense(bookingsAtom, {includeFailure: true})
+	const loaded = useAtomValue(bookingsAtom)
 	const refresh = useAtomRefresh(bookingsAtom)
 	const paste = useAtomSet(clipboard.atom.send)
 	const [pastOpen, setPastOpen] = useState(false)
@@ -206,6 +206,19 @@ function Bookings(props: {onOpen: (id: Booking['id']) => void; searched: string}
 		Option.flatten,
 		Option.exists(current => current.save)
 	)
+	if (AsyncResult.isInitial(loaded)) {
+		return (
+			<ItemGroupSkeleton
+				rows={10}
+				descriptionLines={2}
+				media={
+					<ItemMedia>
+						<Gutter countdown={Countdown.cases.Days.make({days: 2})} />
+					</ItemMedia>
+				}
+			/>
+		)
+	}
 	const blocking = Option.getOrUndefined(blockingFailure(loaded))
 	if (blocking !== undefined) return <FailureContent cause={blocking} onRetry={refresh} />
 	const bookings = AsyncResult.getOrElse(loaded, () => [])
@@ -349,21 +362,7 @@ export function HomeRoute(props: {onOpen: (id: Booking['id']) => void}) {
 			})}
 		>
 			<PasteSheet clipboard={clipboard}>
-				<Suspense
-					fallback={
-						<ItemGroupSkeleton
-							rows={10}
-							descriptionLines={2}
-							media={
-								<ItemMedia>
-									<Gutter countdown={Countdown.cases.Days.make({days: 2})} />
-								</ItemMedia>
-							}
-						/>
-					}
-				>
-					<Bookings onOpen={props.onOpen} searched={searched} />
-				</Suspense>
+				<Bookings onOpen={props.onOpen} searched={searched} />
 			</PasteSheet>
 		</ListToolbar>
 	)

@@ -34,7 +34,6 @@ import {
 	tint
 } from '@expo/ui/swift-ui/modifiers'
 import {AsyncResult} from 'effect/reactivity'
-import {Suspense} from 'react'
 import {Linking} from 'react-native'
 
 import {ItemGroupSkeleton} from '@deslop/components-mobile/blocks/item-group-skeleton'
@@ -223,7 +222,10 @@ function Notes(props: {kind?: Kind; onOpen: (id: Note['id']) => void; onTag: (na
 	const refreshSearch = useAtomRefresh(searchAtom)
 	const found = pipe(search, AsyncResult.value, Option.flatten)
 	return (
-		<Loaded atom={notesAtom}>
+		<Loaded
+			atom={notesAtom}
+			fallback={<ItemGroupSkeleton rows={10} descriptionLines={1} media={<ItemMedia variant="image" />} />}
+		>
 			{all => {
 				if (AsyncResult.isFailure(search) && Option.exists(AsyncResult.error(search), isDenied)) {
 					return <FailureContent cause={search.cause} onRetry={refreshSearch} />
@@ -363,9 +365,7 @@ export function HomeRoute(props: {
 			}
 		>
 			<PasteSheet clipboard={clipboard}>
-				<Suspense fallback={<ItemGroupSkeleton rows={10} descriptionLines={1} media={<ItemMedia variant="image" />} />}>
-					<Notes kind={props.kind} onOpen={props.onOpen} onTag={props.onTag} tag={props.tag} />
-				</Suspense>
+				<Notes kind={props.kind} onOpen={props.onOpen} onTag={props.onTag} tag={props.tag} />
 			</PasteSheet>
 		</ListToolbar>
 	)

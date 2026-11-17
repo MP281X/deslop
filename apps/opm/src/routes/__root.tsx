@@ -4,7 +4,7 @@ import {Array, Function, Option, Schema} from 'effect'
 
 import {Host, NavigationDestination, NavigationStack} from '@expo/ui/swift-ui'
 import {tint} from '@expo/ui/swift-ui/modifiers'
-import {Suspense, useState} from 'react'
+import {useState} from 'react'
 
 import {Loaded} from '@deslop/components-mobile/blocks/loaded'
 import {SessionGate} from '@deslop/components-mobile/blocks/session-gate'
@@ -20,7 +20,7 @@ import type {ChapterNumber, Series} from '#services/chapters/schema.ts'
 
 function Destination(props: {number: ChapterNumber; series: Series}) {
 	return (
-		<Loaded atom={chaptersAtom}>
+		<Loaded atom={chaptersAtom} fallback={<ReaderSkeleton number={props.number} />}>
 			{chapters => <ReaderRoute chapters={chapters} number={props.number} series={props.series} />}
 		</Loaded>
 	)
@@ -61,9 +61,7 @@ function AppRoutes() {
 						onNone: Function.constUndefined,
 						onSome: target => (
 							<NavigationDestination key={value} value={value}>
-								<Suspense fallback={<ReaderSkeleton number={target[2]} />}>
-									<Destination number={target[2]} series={target[0]} />
-								</Suspense>
+								<Destination number={target[2]} series={target[0]} />
 							</NavigationDestination>
 						)
 					})

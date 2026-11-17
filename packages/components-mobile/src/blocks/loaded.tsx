@@ -1,4 +1,4 @@
-import {useAtomRefresh, useAtomSuspense} from '@effect/atom-react'
+import {useAtomRefresh, useAtomValue} from '@effect/atom-react'
 
 import {Boolean, Function, Option} from 'effect'
 import type {Cause} from 'effect'
@@ -36,13 +36,17 @@ export function FailureContent(props: {cause: Cause.Cause<unknown>; onRetry: () 
 	)
 }
 
-// One gate for a screen's content: a blocking failure is the retry card, and the value renders where it stands.
+// One gate for a screen's content: the fallback while nothing has arrived, a blocking failure as the retry card, and the value where it stands.
 export function Loaded<A, E>(props: {
 	atom: Atom.Atom<AsyncResult.AsyncResult<A, E>>
 	children: (value: A) => ReactNode
+	fallback: ReactNode
 }) {
-	const loaded = useAtomSuspense(props.atom, {includeFailure: true})
+	const loaded = useAtomValue(props.atom)
 	const refresh = useAtomRefresh(props.atom)
+	if (AsyncResult.isInitial(loaded)) {
+		return props.fallback
+	}
 	return Option.match(blockingFailure(loaded), {
 		onNone: () => Option.match(AsyncResult.value(loaded), {onNone: Function.constNull, onSome: props.children}),
 		onSome: cause => <FailureContent cause={cause} onRetry={refresh} />
