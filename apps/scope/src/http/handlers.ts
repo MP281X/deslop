@@ -1,7 +1,32 @@
-import {Config, Effect, Layer, Option, Redacted, Schema, SchemaGetter, String, pipe} from 'effect'
+import {
+	Boolean,
+	ByteSize,
+	Clock,
+	Config,
+	Effect,
+	Function,
+	Layer,
+	Option,
+	Redacted,
+	Ref,
+	Result,
+	Schema,
+	SchemaGetter,
+	String,
+	pipe
+} from 'effect'
 
 import {Mac} from 'effect/crypto'
-import {HttpMiddleware, HttpRouter, HttpServerRequest, HttpServerResponse} from 'effect/http'
+import {
+	HttpIncomingMessage,
+	HttpMiddleware,
+	HttpRouter,
+	HttpServerError,
+	HttpServerRequest,
+	HttpServerResponse
+} from 'effect/http'
+
+import {Auth} from '@deslop/runtime/server/auth'
 
 import {WorkflowJob, WorkflowRun} from '#services/github-actions/schema.ts'
 import {GitHubActions} from '#services/github-actions/service.ts'
@@ -23,13 +48,24 @@ function answer<A, I>(schema: Schema.Codec<A, I>, save: (payload: A) => Effect.E
 		}
 		return pipe(
 			HttpServerRequest.schemaBodyJson(schema),
+			Effect.provideService(HttpIncomingMessage.MaxBodySize, ByteSize.mebibytes(1)),
 			Effect.flatMap(save),
 			Effect.as(HttpServerResponse.text('{}', {contentType: 'application/json'})),
 			Effect.catchTags({
-				HttpServerError: () =>
+				HttpServerError: error =>
+					Effect.succeed(
+						HttpServerResponse.jsonUnsafe(
+							{code: 3, message: 'Invalid or oversized OTLP body'},
+							{
+								status: Boolean.match(
+									error.reason instanceof HttpServerError.RequestParseError && error.reason.reason === 'BodyTooLarge',
+									{onFalse: Function.constant(400), onTrue: Function.constant(413)}
+								)
+							}
+						)
+					),
+				SchemaError: () =>
 					Effect.succeed(HttpServerResponse.jsonUnsafe({code: 3, message: 'Invalid OTLP JSON body'}, {status: 400})),
-				SchemaError: error =>
-					Effect.succeed(HttpServerResponse.jsonUnsafe({code: 3, message: error.message}, {status: 400})),
 				TelemetryError: () =>
 					Effect.succeed(
 						HttpServerResponse.jsonUnsafe({code: 14, message: 'Telemetry storage unavailable'}, {status: 503})
@@ -51,10 +87,15 @@ const Signature = pipe(
 )
 
 export const HttpHandlers = Layer.provide(
+	// OTLP is intentionally public: absent or refused identity uses the anonymous budget; identity outages return 503.
+	// judge-ignore no-silent-fallback -- A refused optional Auth identity selects anonymous admission by the approved public-ingest policy; it is not a failed export. Auth outages and every rejected export remain explicit 503/4xx responses.
 	// judge-ignore no-unrelated-jobs -- this router composition registers the OTLP and signed GitHub ingestion endpoints; each request is dispatched to its own handler.
 	HttpRouter.use(router =>
 		Effect.gen(function* () {
 			const telemetry = yield* Telemetry
+			const auth = yield* Auth
+			// Separate aggregate pools keep anonymous traffic from spending identified senders' capacity.
+			const admission = yield* Ref.make({anonymous: {at: 0, used: 0}, identified: {at: 0, used: 0}})
 			// Rejected exports are counted; headers and bodies are never recorded.
 			const ingest = Effect.fnUntraced(function* <A, I>(
 				route: IngestRoute,
@@ -62,13 +103,48 @@ export const HttpHandlers = Layer.provide(
 				save: (payload: A) => Effect.Effect<void, TelemetryError>
 			) {
 				const request = yield* HttpServerRequest.HttpServerRequest
-				const response = yield* answer(schema, save)
-				if (response.status >= 400) {
-					function credential() {
-						if (request.headers['authorization'] !== undefined) return 'authorization' as const
-						if (request.headers['cookie'] !== undefined) return 'cookie' as const
-						return 'none' as const
+				function credential() {
+					if (request.headers['authorization'] !== undefined) return 'authorization' as const
+					if (request.headers['cookie'] !== undefined) return 'cookie' as const
+					return 'none' as const
+				}
+				const person = yield* Effect.result(auth.user(request.headers))
+				if (Result.isFailure(person) && person.failure.error === 'temporarily_unavailable') {
+					yield* telemetry.reject({credential: credential(), route, status: 503})
+					return HttpServerResponse.jsonUnsafe({code: 14, message: 'Identity service unavailable'}, {status: 503})
+				}
+				// A missing or refused identity is still an admitted public sender, but only in the anonymous pool.
+				const identified = Result.isSuccess(person)
+				const now = yield* Clock.currentTimeMillis
+				const admitted = yield* Ref.modify(admission, pools => {
+					const key = Boolean.match(identified, {
+						onFalse: Function.constant('anonymous' as const),
+						onTrue: Function.constant('identified' as const)
+					})
+					const pool = pools[key]
+					const used = Boolean.match(now - pool.at >= 60_000, {onFalse: () => pool.used, onTrue: Function.constant(0)})
+					if (used >= Boolean.match(identified, {onFalse: Function.constant(120), onTrue: Function.constant(1200)})) {
+						return [false, pools]
 					}
+					return [
+						true,
+						{
+							...pools,
+							[key]: {at: Boolean.match(used === 0, {onFalse: () => pool.at, onTrue: () => now}), used: used + 1}
+						}
+					]
+				})
+				const response = yield* Boolean.match(admitted, {
+					onFalse: () =>
+						Effect.succeed(
+							HttpServerResponse.jsonUnsafe(
+								{code: 8, message: 'OTLP admission budget exhausted'},
+								{headers: {'retry-after': '60'}, status: 429}
+							)
+						),
+					onTrue: () => answer(schema, save)
+				})
+				if (response.status >= 400) {
 					yield* telemetry.reject({credential: credential(), route, status: response.status})
 				}
 				return response

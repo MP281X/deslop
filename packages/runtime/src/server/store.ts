@@ -28,6 +28,7 @@ export const dataDirectory = Effect.gen(function* () {
 		onSome: root => Effect.succeed(path.join(root, '.deslop', name))
 	})
 	yield* (yield* FileSystem.FileSystem).makeDirectory(directory, {mode: 0o700, recursive: true})
+	yield* (yield* FileSystem.FileSystem).chmod(directory, 0o700)
 	return directory
 })
 

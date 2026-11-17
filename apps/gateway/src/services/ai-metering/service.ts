@@ -106,7 +106,7 @@ export class AiMetering extends Context.Service<AiMetering>()(
 									inputTokens: 0,
 									model,
 									outputTokens: 0,
-									spendSource: Option.liftPredicate('openai' as const, () => provider === 'openai')
+									spendSource: Option.none()
 								},
 								finalUsage: false,
 								pending: ''
@@ -171,17 +171,10 @@ export class AiMetering extends Context.Service<AiMetering>()(
 													estimated: false
 												}
 											}
-											// judge-ignore no-silent-fallback -- an interrupted Anthropic stream is still the person's own key, so it is kept with unknown spend; an OpenCode response that never named its payer is not recorded, as for any OpenCode response without one.
-											yield* pipe(
-												state.current.spendSource,
-												Option.orElse(() =>
-													Option.liftPredicate('byok' as const, () => provider === 'anthropic' && Exit.isFailure(exit))
-												),
-												Option.match({
-													onNone: () => Effect.void,
-													onSome: spendSource => saveUsage(id, state.current, spendSource)
-												})
-											)
+											yield* Option.match(state.current.spendSource, {
+												onNone: () => Effect.void,
+												onSome: spendSource => saveUsage(id, state.current, spendSource)
+											})
 										}),
 										error => Effect.logWarning('AI usage could not be saved', error)
 									),

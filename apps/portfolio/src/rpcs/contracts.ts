@@ -1,19 +1,10 @@
-import {Schema, Struct} from 'effect'
-
 import {Rpc, RpcGroup} from 'effect/rpc'
 
-import {Scene, Visitor} from '#services/presence/schema.ts'
-
-type Guest = typeof Guest.Type
-const Guest = Visitor.mapFields(fields => ({...fields, id: fields.id.check(Schema.isPattern(/^(?!server-)/u))}))
+import {JoinVisitor, MoveVisitor, PresenceError, RecolorVisitor, Scene} from '#services/presence/schema.ts'
 
 // Visitors are guests, so the room needs no sign-in, unlike every other app's RPC.
 export class RpcContracts extends RpcGroup.make(
-	Rpc.make('presence.join', {
-		payload: Schema.Struct(Struct.pick(Guest.fields, ['color', 'id', 'name'])),
-		stream: true,
-		success: Scene
-	}),
-	Rpc.make('presence.move', {payload: Schema.Struct(Struct.pick(Guest.fields, ['id', 'x', 'y']))}),
-	Rpc.make('presence.recolor', {payload: Schema.Struct(Struct.pick(Guest.fields, ['color', 'id']))})
+	Rpc.make('presence.join', {error: PresenceError, payload: JoinVisitor, stream: true, success: Scene}),
+	Rpc.make('presence.move', {error: PresenceError, payload: MoveVisitor}),
+	Rpc.make('presence.recolor', {error: PresenceError, payload: RecolorVisitor})
 ) {}

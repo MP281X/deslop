@@ -7,9 +7,9 @@ export const RpcHandlers = RpcContracts.toLayer(
 	Effect.gen(function* () {
 		const presence = yield* Presence
 		return RpcContracts.of({
-			'presence.join': presence.join,
-			'presence.move': presence.move,
-			'presence.recolor': presence.recolor
+			'presence.join': (payload, options) => presence.join(payload, options.client.id),
+			'presence.move': (payload, options) => presence.move(payload, options.client.id),
+			'presence.recolor': (payload, options) => presence.recolor(payload, options.client.id)
 		})
 	})
 )

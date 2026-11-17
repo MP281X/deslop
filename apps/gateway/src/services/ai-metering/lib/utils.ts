@@ -122,6 +122,7 @@ export function readUsage(text: string, entry: AiUsageEntry, provider: AiProvide
 						(Option.isSome(value.output_tokens) || Option.isSome(value.completion_tokens))
 				) ||
 				Option.exists(responseUsage, value => Option.isSome(value.input_tokens) && Option.isSome(value.output_tokens))
+			if (!hasTokens) return current
 			const estimatedCost = pipe(
 				rates,
 				Option.filter(() => hasTokens),

@@ -575,9 +575,9 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 		})
 		// Trace ids rise in arrival order, so retention drops every trace up to the newest one received before the cutoff, with its spans, logs, links and search entries.
 		const deleteExpired = SqlSchema.void({
-			Request: Trace.fields.receivedAt,
-			execute: cutoff => {
-				const last = sql`(SELECT max(id) FROM traces WHERE receivedAt < ${cutoff})`
+			Request: Schema.Struct({cutoff: Trace.fields.receivedAt, last: Schema.Int}),
+			execute: input => {
+				const last = sql`max(${input.last}, coalesce((SELECT max(id) FROM traces WHERE receivedAt < ${input.cutoff}), 0))`
 				return Effect.all(
 					[
 						sql`DELETE FROM ${sql(StoredSpanLink.table)} WHERE trace <= ${last}`,
@@ -589,6 +589,26 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 					],
 					{concurrency: 1, discard: true}
 				)
+			}
+		})
+		const retainedSize = SqlSchema.findOne({
+			Request: Schema.Void,
+			Result: Schema.Struct({bytes: Schema.Finite, last: Schema.Int}),
+			execute: () => sql`SELECT
+				(SELECT page_size FROM pragma_page_size) *
+				((SELECT page_count FROM pragma_page_count) - (SELECT freelist_count FROM pragma_freelist_count)) AS bytes,
+				coalesce((SELECT max(id) FROM (SELECT id FROM traces ORDER BY id LIMIT 128)), 0) AS last`
+		})
+		// Live SQLite pages include rows, indexes and search; freed pages are reused, not counted as retained data.
+		const boundSize = Effect.gen(function* () {
+			const cutoff = DateTime.subtractDuration(yield* DateTime.now, Duration.days(30))
+			const state = {size: yield* retainedSize()}
+			while (state.size.bytes > 512 * 1024 * 1024 && state.size.last !== 0) {
+				yield* deleteExpired({cutoff, last: state.size.last})
+				// FTS deletion markers must be merged before measuring the retained search pages again.
+				yield* sql`INSERT INTO span_search (span_search) VALUES ('optimize')`
+				yield* sql`INSERT INTO log_search (log_search) VALUES ('optimize')`
+				state.size = yield* retainedSize()
 			}
 		})
 		// Match appName in SQL so services with the same app and runtime share percentiles and kept traces.
@@ -786,7 +806,8 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 		// Thirty days of telemetry cover the longest time frame without keeping older runs in every query.
 		const prune = pipe(
 			DateTime.now,
-			Effect.flatMap(now => deleteExpired(DateTime.subtractDuration(now, Duration.days(30)))),
+			Effect.flatMap(now => deleteExpired({cutoff: DateTime.subtractDuration(now, Duration.days(30)), last: 0})),
+			Effect.andThen(boundSize),
 			Reactivity.mutation(['telemetry']),
 			sql.withTransaction,
 			asTelemetryError,
@@ -967,7 +988,7 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 							)
 						)
 					)
-					yield* sql.withTransaction(saveLogs(logs))
+					yield* sql.withTransaction(Effect.andThen(saveLogs(logs), boundSize))
 				},
 				Reactivity.mutation(['telemetry']),
 				asTelemetryError,
@@ -997,6 +1018,7 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 							)
 					)
 					yield* saveExport({links: incoming.links, spans, traces: touchedTraces(spans, stored, receivedAt)})
+					yield* boundSize
 				},
 				Reactivity.mutation(['telemetry']),
 				sql.withTransaction,

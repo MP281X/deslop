@@ -387,6 +387,7 @@ export function availablePorts(rows: ReturnType<typeof workloads>) {
 				row.listeners,
 				Array.filter(
 					listener =>
+						Option.exists(listener.port, port => port >= 1024) &&
 						(!Array.some(row.listeners, candidate => Option.contains(candidate.ui, true)) ||
 							Option.contains(listener.ui, true)) &&
 						!Option.exists(row.item.links, Array.isReadonlyArrayNonEmpty) &&

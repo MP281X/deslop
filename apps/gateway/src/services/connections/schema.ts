@@ -1,4 +1,4 @@
-import {Option, Result, Schema, Struct, pipe} from 'effect'
+import {Function, Option, Result, Schema, Struct, pipe} from 'effect'
 
 import {Url} from 'effect/http'
 import {Model} from 'effect/schema'
@@ -79,9 +79,30 @@ export const ServerIcon = Schema.Struct({
 export type ConnectionStatus = typeof ConnectionStatus.Type
 export const ConnectionStatus = Schema.Literals(['Connected', 'Not connected', 'Expired'])
 
+export type FailureReason = typeof FailureReason.Type
+export const FailureReason = Schema.TaggedUnion({
+	HttpStatus: {code: Schema.Int},
+	Refused: {},
+	Timeout: {},
+	Unauthorized: {},
+	Unavailable: {},
+	Unknown: {}
+})
+
+export function failureMessage(reason: FailureReason) {
+	return FailureReason.match(reason, {
+		HttpStatus: value => `It answered HTTP ${value.code}`,
+		Refused: Function.constant('The connection was refused'),
+		Timeout: Function.constant('It did not answer in time'),
+		Unauthorized: Function.constant('Authorization was refused'),
+		Unavailable: Function.constant('The connection is unavailable'),
+		Unknown: Function.constant('It failed for an unknown reason')
+	})
+}
+
 // One MCP server everyone with access shares, as its last discovery found it.
 export class Connection extends Model.Class<Connection>('Connection')({
-	error: Model.FieldOption(Schema.String),
+	error: Model.FieldOption(Model.JsonFromString(FailureReason)),
 	// Made when the server is added: work begun for a server that was removed and added again never lands on the new one.
 	generation: ConnectionGeneration,
 	icons: Model.JsonFromString(Schema.Array(ServerIcon)),
@@ -157,7 +178,7 @@ export const Discovery = Schema.TaggedUnion({
 		instructions: Schema.OptionFromOptionalKey(Schema.String),
 		tools: Schema.Array(Schema.String)
 	},
-	Failed: {error: Schema.String}
+	Failed: {error: FailureReason}
 })
 
 export type Callback = typeof Callback.Type

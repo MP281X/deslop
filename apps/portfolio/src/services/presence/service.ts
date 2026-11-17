@@ -1,11 +1,14 @@
 import {
 	Array,
 	Boolean,
+	Clock,
 	Context,
 	DateTime,
 	Duration,
 	Effect,
+	Function,
 	Layer,
+	MutableHashMap,
 	Number,
 	Option,
 	Record,
@@ -17,7 +20,7 @@ import {
 
 import {hasMeaningfulMove, upsertVisitor} from './lib/utils.ts'
 import type {JoinVisitor, MoveVisitor, RecolorVisitor, Scene} from './schema.ts'
-import {Color, Visitor, VisitorId} from './schema.ts'
+import {Color, PresenceError, Visitor, VisitorId} from './schema.ts'
 
 const SERVER_BOTS = [
 	{
@@ -43,15 +46,17 @@ const SERVER_BOTS = [
 export class Presence extends Context.Service<
 	Presence,
 	{
-		readonly join: (payload: JoinVisitor) => Stream.Stream<Scene>
-		readonly move: (payload: MoveVisitor) => Effect.Effect<void>
-		readonly recolor: (payload: RecolorVisitor) => Effect.Effect<void>
+		readonly join: (payload: JoinVisitor, connection: number) => Stream.Stream<Scene, PresenceError>
+		readonly move: (payload: MoveVisitor, connection: number) => Effect.Effect<void, PresenceError>
+		readonly recolor: (payload: RecolorVisitor, connection: number) => Effect.Effect<void, PresenceError>
 	}
 >()('@deslop/portfolio/services/presence/service/Presence') {
 	static readonly layer = Layer.effect(
 		this,
 		Effect.gen(function* () {
 			const start = yield* DateTime.now
+			// At most 128 visitors and 256 joined sockets; each socket owns one cursor identity.
+			const connections = MutableHashMap.empty<number, {id: VisitorId; lastMove: number}>()
 			// One cursor per identity; a visitor remains until its last tab closes.
 			const room = yield* SubscriptionRef.make<Scene & {tabs: Record<VisitorId, number>}>({
 				bots: [],
@@ -94,18 +99,37 @@ export class Presence extends Context.Service<
 			)
 
 			return Presence.of({
-				join: payload =>
+				join: (payload, connection) =>
 					Stream.withSpan(
 						Stream.unwrap(
 							Effect.gen(function* () {
-								yield* Effect.acquireRelease(
-									SubscriptionRef.update(room, scene => ({
-										...scene,
-										tabs: {...scene.tabs, [payload.id]: (scene.tabs[payload.id] ?? 0) + 1},
-										visitors: upsertVisitor(scene.visitors, Visitor.make({...payload, x: 0.5, y: 0.5}))
-									})),
-									() =>
-										SubscriptionRef.update(room, scene => {
+								const admitted = yield* Effect.acquireRelease(
+									SubscriptionRef.modify(room, scene => {
+										const tabs = Record.get(scene.tabs, payload.id)
+										if (
+											MutableHashMap.has(connections, connection) ||
+											MutableHashMap.size(connections) >= 256 ||
+											(Option.isNone(tabs) && scene.visitors.length >= 128)
+										) {
+											return [false, scene]
+										}
+										MutableHashMap.set(connections, connection, {id: payload.id, lastMove: -Infinity})
+										return [
+											true,
+											{
+												...scene,
+												tabs: {...scene.tabs, [payload.id]: Option.getOrElse(tabs, Function.constant(0)) + 1},
+												visitors: Boolean.match(Option.isNone(tabs), {
+													onFalse: () => scene.visitors,
+													onTrue: () => upsertVisitor(scene.visitors, Visitor.make({...payload, x: 0.5, y: 0.5}))
+												})
+											}
+										]
+									}),
+									accepted => {
+										if (!accepted) return Effect.void
+										return SubscriptionRef.update(room, scene => {
+											MutableHashMap.remove(connections, connection)
 											const remaining = Option.getOrThrow(Record.get(scene.tabs, payload.id)) - 1
 											if (remaining > 0) return {...scene, tabs: {...scene.tabs, [payload.id]: remaining}}
 											const visitors = Array.filter(scene.visitors, visitor => visitor.id !== payload.id)
@@ -118,7 +142,13 @@ export class Presence extends Context.Service<
 												visitors
 											}
 										})
+									}
 								)
+								if (!admitted) {
+									return Stream.fail(
+										PresenceError.make({message: 'Room capacity reached or connection already joined'})
+									)
+								}
 								return pipe(
 									SubscriptionRef.changes(room),
 									Stream.map(scene => ({bots: scene.bots, visitors: scene.visitors})),
@@ -129,33 +159,48 @@ export class Presence extends Context.Service<
 						'Presence.join',
 						{attributes: {'rpc.stream': true, visitorId: payload.id}}
 					),
-				move: payload =>
-					SubscriptionRef.updateSome(room, scene =>
-						pipe(
-							scene.visitors,
-							Array.findFirstIndex(visitor => visitor.id === payload.id && hasMeaningfulMove(visitor, payload)),
-							Option.map(index => ({
+				move: Effect.fn('Presence.move')((payload, connection) =>
+					Effect.gen(function* () {
+						const joined = Option.getOrUndefined(MutableHashMap.get(connections, connection))
+						if (joined === undefined) return yield* PresenceError.make({message: 'Join the room before moving'})
+						const now = yield* Clock.currentTimeMillis
+						if (now - joined.lastMove < 50) return yield* PresenceError.make({message: 'Cursor move rate exceeded'})
+						joined.lastMove = now
+						yield* SubscriptionRef.updateSome(room, scene =>
+							pipe(
+								scene.visitors,
+								Array.findFirstIndex(visitor => visitor.id === joined.id && hasMeaningfulMove(visitor, payload)),
+								Option.map(index => ({
+									...scene,
+									visitors: Array.map(scene.visitors, (visitor, position) => {
+										if (position === index) return {...visitor, x: payload.x, y: payload.y}
+										return visitor
+									})
+								}))
+							)
+						)
+					})
+				),
+				recolor: Effect.fn('Presence.recolor')((payload, connection) =>
+					Effect.suspend(() => {
+						const joined = Option.getOrUndefined(MutableHashMap.get(connections, connection))
+						if (joined === undefined) {
+							return Effect.fail(PresenceError.make({message: 'Join the room before recoloring'}))
+						}
+						return SubscriptionRef.updateSome(room, scene => {
+							if (!Array.some(scene.visitors, visitor => visitor.id === joined.id && visitor.color !== payload.color)) {
+								return Option.none()
+							}
+							return Option.some({
 								...scene,
-								visitors: Array.map(scene.visitors, (visitor, position) => {
-									if (position === index) return {...visitor, ...payload}
+								visitors: Array.map(scene.visitors, visitor => {
+									if (visitor.id === joined.id) return {...visitor, color: payload.color}
 									return visitor
 								})
-							}))
-						)
-					),
-				recolor: payload =>
-					SubscriptionRef.updateSome(room, scene => {
-						if (!Array.some(scene.visitors, visitor => visitor.id === payload.id && visitor.color !== payload.color)) {
-							return Option.none()
-						}
-						return Option.some({
-							...scene,
-							visitors: Array.map(scene.visitors, visitor => {
-								if (visitor.id === payload.id) return {...visitor, color: payload.color}
-								return visitor
 							})
 						})
 					})
+				)
 			})
 		})
 	)
