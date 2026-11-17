@@ -746,7 +746,7 @@ importers:
         specifier: latest
         version: 4.1.4(effect@4.1.4)(redis@6.3.1)
       '@effect/tsgo':
-        specifier: '>=0.67'
+        specifier: '>=0.70'
         version: 0.70.0
       '@shadcn/lint':
         specifier: latest

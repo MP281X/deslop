@@ -2816,7 +2816,7 @@ export type Unknown = 'ready' | unknown`
 				const result = yield* lintSource({
 					'collectors.ts': Array.join(
 						[
-							"import {Array, Effect, MutableHashMap, MutableList} from 'effect'",
+							"import {Array, Effect, MutableHashMap, MutableList, Option} from 'effect'",
 							'',
 							'declare const notes: {id: string; pinned: boolean; tags: string[]}[]',
 							'export function tagsOf() {',
@@ -2868,6 +2868,28 @@ export type Unknown = 'ready' | unknown`
 							'	for (const note of notes) if (note.pinned) done.push(yield* Effect.succeed(note.id))',
 							'	return done',
 							'})',
+							'export const installedAfterLog = Effect.fn(function* () {',
+							'	const done: string[] = []',
+							"	Effect.runSync(Effect.log('start'))",
+							'	for (const note of notes) done.push(yield* Effect.succeed(note.id))',
+							'	return done',
+							'})',
+							'export const installedNumbered = Effect.fn(function* () {',
+							'	const done: string[] = []',
+							'	for (const note of notes) done.push(yield* Effect.succeed(`${done.length}: ${note.id}`))',
+							'	return done',
+							'})',
+							'export const installedNamed = Effect.fn(function* () {',
+							'	const done: string[] = []',
+							"	const prefix = 'note'",
+							'	for (const note of notes) done.push(yield* Effect.succeed(`${prefix}: ${note.id}`))',
+							'	return done',
+							'})',
+							'export const installedSome = Effect.gen(function* () {',
+							'	const done: string[] = []',
+							'	for (const note of notes) done.push(yield* Option.some(note.id))',
+							'	return done',
+							'})',
 							'export function twoGuards() {',
 							'	const ids: string[] = []',
 							'	for (const note of notes) {',
@@ -2909,8 +2931,8 @@ export type Unknown = 'ready' | unknown`
 					Array.filter(diagnostic => diagnostic.code === 'effecttsgo(for-loop-push-to-for-each)'),
 					Array.map(diagnostic => diagnostic.labels[0]?.span.line ?? 0)
 				)
-				assert.strictEqual(collecting.length, 13)
-				assert.strictEqual(forEach.length, 1)
+				assert.strictEqual(collecting.length, 16)
+				assert.strictEqual(forEach.length, 2)
 				assert.deepStrictEqual(Array.intersection(forEach, collecting), [])
 			})
 		)

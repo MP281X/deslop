@@ -45,7 +45,7 @@
 		"oxlint-plugin-react-doctor": "latest"
 	},
 	"peerDependencies": {
-		"@effect/tsgo": ">=0.67",
+		"@effect/tsgo": ">=0.70",
 		"vite-plus": "^1.3"
 	}
 }
