@@ -32,11 +32,11 @@ stateDiagram-v2
 
 | Work                                                                                                               | Model               |
 | ------------------------------------------------------------------------------------------------------------------ | ------------------- |
-| Edits whose architecture is settled; the browser, the emulator, captures, the first look; open research; long runs | GPT-6.1 Sol         |
+| Edits whose architecture is settled; the browser, the emulator, captures, the first look; open research; long runs | GPT-6.2 Sol         |
 | Bounded reads, searches, runs and checks                                                                           | GPT-6.1 Terra       |
 | UI code; removals, since Codex rejects `rm -f` and `rm -rf`                                                        | Sonnet 5.5          |
 | Work that cannot be scoped                                                                                         | Opus 5.5            |
-| The final review                                                                                                   | GPT-6.1 Sol at high |
+| The final review                                                                                                   | GPT-6.2 Sol at high |
 | Never, outside a council                                                                                           | Luna, Haiku         |
 
 - **Effort.** Medium unless the table says high.
