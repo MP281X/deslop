@@ -43,7 +43,6 @@ const RuleExamples = Schema.Struct({
 type RuleExampleKind = typeof RuleExampleKind.Type
 const RuleExampleKind = Schema.Literals(['accepted', 'fixes'])
 
-// judge-ignore no-silent-fallback -- Oxlint reports diagnostics in JSON stdout and its exit code, both returned unchanged; the stderr filter removes only Rolldown's timing footer, not a successful replacement for failed lint.
 const lintSource = Effect.fnUntraced(function* (
 	input: Record<string, string>,
 	flags: string[] = [],
