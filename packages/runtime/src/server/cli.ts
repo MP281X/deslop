@@ -205,8 +205,10 @@ export function runApp<A, E>(app: App<A, E>) {
 		return yield* pipe(
 			root,
 			Command.withHandler(input =>
-				Effect.flatMap(configProvider(Record.getSomes(input), metadata.config.port), values =>
-					Effect.provideService(server(app), ConfigProvider.ConfigProvider, values)
+				Effect.provideServiceEffect(
+					server(app),
+					ConfigProvider.ConfigProvider,
+					configProvider(Record.getSomes(input), metadata.config.port)
 				)
 			),
 			Command.withSubcommands([

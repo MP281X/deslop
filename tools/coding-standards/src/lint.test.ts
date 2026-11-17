@@ -2860,6 +2860,11 @@ export type Unknown = 'ready' | unknown`
 							'	for (const note of notes) done.push(yield* Effect.succeed(note.id))',
 							'	return done',
 							'})',
+							'export const installedPinned = Effect.gen(function* () {',
+							'	const done: string[] = []',
+							'	for (const note of notes) if (note.pinned) done.push(yield* Effect.succeed(note.id))',
+							'	return done',
+							'})',
 							'export function twoGuards() {',
 							'	const ids: string[] = []',
 							'	for (const note of notes) {',
@@ -2894,7 +2899,16 @@ export type Unknown = 'ready' | unknown`
 						'\n'
 					)
 				})
-				assert.strictEqual(reportedLines(result, 'no-collecting-loop').reported.length, 13)
+				const collecting = reportedLines(result, 'no-collecting-loop').reported
+				// effecttsgo/for-loop-push-to-for-each alone owns the loop whose one statement pushes a yielded effect.
+				const forEach = pipe(
+					result.stdout.diagnostics,
+					Array.filter(diagnostic => diagnostic.code === 'effecttsgo(for-loop-push-to-for-each)'),
+					Array.map(diagnostic => diagnostic.labels[0]?.span.line ?? 0)
+				)
+				assert.strictEqual(collecting.length, 13)
+				assert.strictEqual(forEach.length, 1)
+				assert.deepStrictEqual(Array.intersection(forEach, collecting), [])
 			})
 		)
 
