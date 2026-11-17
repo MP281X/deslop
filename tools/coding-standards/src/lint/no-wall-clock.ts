@@ -68,8 +68,9 @@ function insideEffect(context: Context, node: ESTree.Node): boolean {
 }
 
 function insideRender(context: Context, node: ESTree.Node): boolean {
-	if (node.type === 'JSXAttribute' && node.name.type === 'JSXIdentifier' && String.startsWith('on')(node.name.name))
+	if (node.type === 'JSXAttribute' && node.name.type === 'JSXIdentifier' && String.startsWith('on')(node.name.name)) {
 		return false
+	}
 	if (isFunction(node)) {
 		if (effectCallback(context, node)) return false
 		if (node.type === 'FunctionDeclaration') return node.id !== null && matches(/^[A-Z]/u)(node.id.name)
