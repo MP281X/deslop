@@ -48,7 +48,7 @@ import {
 	Activity,
 	ActivityPropsJson,
 	ChannelId,
-	Delivery,
+	AlertDelivery,
 	PushError,
 	SentAlert,
 	ShowAction,
@@ -318,13 +318,13 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 
 		const listDeliveries = SqlSchema.findAll({
 			Request: BookingId,
-			Result: Delivery,
-			execute: id => sql`SELECT * FROM ${sql(Delivery.table)} WHERE bookingId = ${id} ORDER BY sentAt`
+			Result: AlertDelivery,
+			execute: id => sql`SELECT * FROM ${sql(AlertDelivery.table)} WHERE bookingId = ${id} ORDER BY sentAt`
 		})
 		const recordDelivery = SqlSchema.void({
-			Request: Delivery.insert,
+			Request: AlertDelivery.insert,
 			execute: row =>
-				sql`INSERT INTO ${sql(Delivery.table)} ${sql.insert(row)} ON CONFLICT DO UPDATE SET sentAt = excluded.sentAt`
+				sql`INSERT INTO ${sql(AlertDelivery.table)} ${sql.insert(row)} ON CONFLICT DO UPDATE SET sentAt = excluded.sentAt`
 		})
 		const announce = Effect.fnUntraced(function* (booking: Booking, now: DateTime.Utc, state: RoundState) {
 			for (const alert of Array.filter(

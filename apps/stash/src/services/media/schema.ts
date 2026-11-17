@@ -18,8 +18,8 @@ export const Comment = Schema.Struct({
 })
 
 // Caption records are opaque to Stash; yt-dlp downloads their supported formats.
-export type Metadata = typeof Metadata.Type
-export const Metadata = Schema.Struct({
+export type MediaMetadata = typeof MediaMetadata.Type
+export const MediaMetadata = Schema.Struct({
 	_type: Schema.OptionFromOptionalKey(Schema.String),
 	automatic_captions: Schema.OptionFromOptionalNullOr(Schema.Record(Schema.String, Schema.Array(Schema.JsonObject))),
 	chapters: Schema.OptionFromOptionalNullOr(

@@ -22,7 +22,6 @@ export const TraceId = pipe(
 )
 
 // Trace ids as one JSON parameter, however many a query names.
-export type TraceIds = typeof TraceIds.Type
 export const TraceIds = Schema.fromJsonString(Schema.Array(TraceId))
 
 export type SpanId = typeof SpanId.Type
@@ -38,7 +37,6 @@ export const ServiceName = pipe(Schema.String, Schema.brand('ScopeServiceName'))
 export type AppName = typeof AppName.Type
 export const AppName = pipe(Schema.String, Schema.brand('ScopeAppName'))
 
-export type ReleaseVersion = typeof ReleaseVersion.Type
 export const ReleaseVersion = pipe(Schema.String, Schema.brand('ScopeReleaseVersion'))
 
 type McpServerName = typeof McpServerName.Type
@@ -47,7 +45,6 @@ export const McpServerName = pipe(Schema.String, Schema.brand('ScopeMcpServerNam
 type McpToolName = typeof McpToolName.Type
 export const McpToolName = pipe(Schema.String, Schema.brand('ScopeMcpToolName'))
 
-export type Nano = typeof Nano.Type
 // OTLP's decimal epoch nanoseconds stay exact until ingestion projects a stored instant or duration.
 export const Nano = pipe(
 	Schema.String.check(Schema.isPattern(/^\d{1,20}$/u)),
@@ -270,7 +267,6 @@ export const Trace = Schema.Struct({
 })
 
 // A trace as the operations list counts it: its root's name and sender, and whether it broke.
-export type SettledTrace = typeof SettledTrace.Type
 export const SettledTrace = Schema.Struct({
 	...Struct.pick(Trace.fields, ['duration', 'id', 'name', 'runtime', 'service', 'start']),
 	failed: Schema.BooleanFromBit
@@ -303,14 +299,12 @@ export const FoundTrace = Schema.Struct({
 })
 
 // Each service's latest run: how much it sent, when it last did, and what it said it was.
-export type ServiceRun = typeof ServiceRun.Type
 export const ServiceRun = Schema.Struct({
 	...Struct.pick(Span.fields, ['run', 'runtime', 'service', 'version']),
 	entries: Schema.Int,
 	lastEvent: DateTimeUtcFromFiniteMillis
 })
 
-export type LatencyQuery = typeof LatencyQuery.Type
 export const LatencyQuery = Schema.Struct({
 	cutoff: DateTimeUtcFromFiniteMillis,
 	name: Span.fields.name,
@@ -416,10 +410,8 @@ export const TraceTree = Schema.Struct({
 type ATTRIBUTE_VALUE = typeof ATTRIBUTE_VALUE.Type
 const ATTRIBUTE_VALUE = Schema.Union([Schema.String, Schema.Finite, Schema.Boolean])
 // The tools' attributes: primitive values only, without what only repeats the row.
-export type ToolAttributes = typeof ToolAttributes.Type
 export const ToolAttributes = Schema.Record(Schema.String, ATTRIBUTE_VALUE)
 
-export type LogLevel = typeof LogLevel.Type
 export const LogLevel = Schema.Literals(['debug', 'error', 'info', 'trace', 'warn'])
 
 export type CompactLog = typeof CompactLog.Type
@@ -444,7 +436,6 @@ export const Since = pipe(
 export type ListOperationsParams = typeof ListOperationsParams.Type
 export const ListOperationsParams = Schema.Struct({app: Schema.OptionFromOptionalKey(App), since: Since})
 
-export type TraceCursor = typeof TraceCursor.Type
 export const TraceCursor = Schema.Struct(Struct.pick(Trace.fields, ['duration', 'id', 'start']))
 
 // One page of search_traces as the database answers it.
@@ -510,7 +501,6 @@ export const ReadTraceParams = Schema.Struct({
 	)
 })
 
-export type LogCursor = typeof LogCursor.Type
 export const LogCursor = Schema.Struct(Struct.pick(Log.fields, ['id', 'time']))
 
 // One page of search_logs as the database answers it.
@@ -602,7 +592,6 @@ export const TracesAnswer = Schema.Struct({
 	traces: Schema.Array(TraceRow)
 })
 
-export type ReadSpan = typeof ReadSpan.Type
 export const ReadSpan = Schema.Struct({
 	app: AppName,
 	at: DurationFromFiniteMillis.annotate({description: 'Start offset from the trace start in milliseconds.'}),
@@ -628,7 +617,6 @@ export const ReadTraceAnswer = Schema.Struct({
 	spans: Schema.Array(ReadSpan)
 })
 
-export type LogRow = typeof LogRow.Type
 export const LogRow = Schema.Struct({
 	app: AppName,
 	at: Schema.DateTimeUtcFromString,
@@ -656,7 +644,6 @@ export const LatencyAnswer = Schema.Struct({
 	p95Ms: DurationFromFiniteMillis
 })
 
-export type IngestionService = typeof IngestionService.Type
 export const IngestionService = Schema.Struct({
 	app: AppName,
 	entries: Schema.Int,
@@ -666,7 +653,6 @@ export const IngestionService = Schema.Struct({
 	side: Schema.OptionFromOptionalKey(Side)
 })
 
-export type IngestionRejection = typeof IngestionRejection.Type
 export const IngestionRejection = Schema.Struct({
 	count: Schema.Int,
 	credential: Schema.Literals(['authorization', 'cookie', 'none']),

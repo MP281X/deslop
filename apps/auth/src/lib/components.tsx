@@ -19,9 +19,9 @@ import {ageOf} from '@deslop/runtime/shared/format'
 
 import {sessionsAtom} from '#lib/auth.ts'
 import {browserOf, deviceOf} from '#services/cookie-sessions/lib/utils.ts'
-import type {Device} from '#services/cookie-sessions/schema.ts'
+import type {SessionDevice} from '#services/cookie-sessions/schema.ts'
 
-function DeviceLogo(props: {device: Option.Option<Device>}) {
+function DeviceLogo(props: {device: Option.Option<SessionDevice>}) {
 	return Option.match(props.device, {
 		onNone: () => <GlobeIcon className="size-4" />,
 		onSome: device => {
@@ -34,7 +34,7 @@ function DeviceLogo(props: {device: Option.Option<Device>}) {
 }
 
 // The device's own logo, named for screen readers since the row shows no device text, else a globe for an agent that names none.
-function DeviceMark(props: {device: Option.Option<Device>}) {
+function DeviceMark(props: {device: Option.Option<SessionDevice>}) {
 	return (
 		<span
 			role="img"

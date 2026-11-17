@@ -7,7 +7,7 @@ import {ApnsToken, Device} from '@deslop/runtime/shared/apns'
 import {journeyProps} from '#services/bookings/lib/utils.ts'
 import {BookedPlace, BookingId, Flight, FlightTracking} from '#services/bookings/schema.ts'
 import {alertsOf, announced, expiredActivities, holds, showPlan, unannouncedDevices} from '#services/push/lib/utils.ts'
-import {Activity, ChannelId, Delivery, SentAlert} from '#services/push/schema.ts'
+import {Activity, ChannelId, AlertDelivery, SentAlert} from '#services/push/schema.ts'
 import type {AlertCategory} from '#services/push/schema.ts'
 
 const DEPARTS = DateTime.makeUnsafe('2026-10-28T15:40:00Z')
@@ -53,7 +53,7 @@ it('retries the other phone without resending an accepted alert, including an ol
 	const first = Device.make({...STARTER, kind: 'alert'})
 	const second = Device.make({...STARTER, kind: 'alert', token: Redacted.make(ApnsToken.make(String.repeat(32)('b')))})
 	const alert = {body: '', category: 'delay' as const, title: '', value: '15'}
-	const accepted = Delivery.make({
+	const accepted = AlertDelivery.make({
 		bookingId: FLIGHT.id,
 		category: 'delay',
 		sentAt: DEPARTS,
@@ -68,8 +68,8 @@ it('retries the other phone without resending an accepted alert, including an ol
 			[first, second],
 			[
 				accepted,
-				Delivery.make({
-					...Struct.pick(accepted, Struct.keys(Delivery.fields)),
+				AlertDelivery.make({
+					...Struct.pick(accepted, Struct.keys(AlertDelivery.fields)),
 					sentAt: DateTime.addDuration(DEPARTS, Duration.minutes(1)),
 					value: Option.some('30')
 				})

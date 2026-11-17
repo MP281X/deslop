@@ -320,7 +320,7 @@ export const WorkerInventory = Schema.Struct({
 	worker: WorkerId
 })
 
-export const Inventory = Schema.Array(WorkerInventory)
+export const WorkerInventories = Schema.Array(WorkerInventory)
 
 // `next` is in epoch microseconds.
 export const Timer = Schema.Struct({

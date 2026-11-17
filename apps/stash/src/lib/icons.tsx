@@ -14,15 +14,15 @@ import youtube from '@deslop/components-mobile/ui/svgs/youtube.svg'
 
 import {Logo} from '#modules/native/index.ts'
 
-export type Brand = {dark: string; light: string}
+export type BrandArtwork = {dark: string; light: string}
 
 export const brands = {
 	tiktok: {dark: tiktokDark, light: tiktokLight},
 	x: {dark: xDark, light: xLight},
 	youtube: {dark: youtube, light: youtube}
-} satisfies Record<string, Brand>
+} satisfies Record<string, BrandArtwork>
 
-export function BrandLogo(props: {brand: Brand; size: number}) {
+export function BrandLogo(props: {brand: BrandArtwork; size: number}) {
 	const uri = useAtomValue(
 		assetAtom(
 			Boolean.match(useColorScheme() === 'dark', {onFalse: () => props.brand.light, onTrue: () => props.brand.dark})
@@ -33,7 +33,7 @@ export function BrandLogo(props: {brand: Brand; size: number}) {
 }
 
 // Menus draw icons in the text color, so they take the light logo's shape.
-export function BrandIcon(props: {brand: Brand}) {
+export function BrandIcon(props: {brand: BrandArtwork}) {
 	const uri = useAtomValue(assetAtom(props.brand.light))
 	if (!AsyncResult.isSuccess(uri)) return undefined
 	return <Logo uri={uri.value} size={18} template />

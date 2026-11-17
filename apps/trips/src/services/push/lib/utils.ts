@@ -17,7 +17,7 @@ import {
 import {Booking} from '#services/bookings/schema.ts'
 import type {BookingList, Flight, Leg, Train} from '#services/bookings/schema.ts'
 import {ShowAction} from '#services/push/schema.ts'
-import type {Activity, AlertCategory, Delivery, SentAlert, StartRequest} from '#services/push/schema.ts'
+import type {Activity, AlertCategory, AlertDelivery, SentAlert, StartRequest} from '#services/push/schema.ts'
 
 export type Span = {end: DateTime.Utc; start: DateTime.Utc}
 
@@ -48,7 +48,7 @@ export function announced(sent: readonly SentAlert[], alert: Alert) {
 }
 
 // Retry only devices without a terminal answer for this alert; one phone's acceptance says nothing about another.
-export function unannouncedDevices(devices: readonly Device[], deliveries: readonly Delivery[], alert: Alert) {
+export function unannouncedDevices(devices: readonly Device[], deliveries: readonly AlertDelivery[], alert: Alert) {
 	return Array.filter(
 		devices,
 		device =>

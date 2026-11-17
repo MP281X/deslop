@@ -3,12 +3,12 @@ import {assert, it} from '@effect/vitest'
 import {Option, Schema} from 'effect'
 
 import {captionTracks, captionTranscript, speechOnly} from '#services/media/lib/utils.ts'
-import {Metadata} from '#services/media/schema.ts'
+import {MediaMetadata} from '#services/media/schema.ts'
 
 it('keeps authored alternatives and automatic captions in the original language', () => {
 	assert.deepStrictEqual(
 		captionTracks(
-			Schema.decodeSync(Metadata)({
+			Schema.decodeSync(MediaMetadata)({
 				automatic_captions: {af: [{}], en: [{}], 'en-orig': [{}], it: [{}]},
 				subtitles: {it: [{}]},
 				title: 'A talk'

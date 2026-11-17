@@ -60,11 +60,11 @@ import {
 	ConnectionGrant,
 	ConnectionState,
 	ConnectionGeneration,
-	OAuthState,
+	ConnectionOAuthState,
 	OAuthClient,
 	ServerId,
 	McpUsageServer,
-	Metadata,
+	ServerMetadata,
 	Registration,
 	Token,
 	UpstreamError
@@ -87,7 +87,7 @@ type Pending = {
 	client: OAuthClient
 	generation: ConnectionGeneration
 	id: ServerId
-	metadata: Metadata
+	metadata: ServerMetadata
 	userId: UserId
 	verifier: string
 }
@@ -106,7 +106,7 @@ function editable(connection: Connection) {
 const removedServer = AuthError.make({message: 'This MCP was removed. Add it again on the MCP page.'})
 
 // A provider that registers clients gets one per connection, with that server's own callback; otherwise it must name itself in its answers.
-function connectable(metadata: Metadata) {
+function connectable(metadata: ServerMetadata) {
 	if (
 		Option.isSome(metadata.registration_endpoint) ||
 		(Option.contains(metadata.client_id_metadata_document_supported, true) &&
@@ -129,7 +129,7 @@ export class Connections extends Context.Service<
 		readonly begin: (
 			id: ServerId,
 			user: Admin
-		) => Effect.Effect<{state: Option.Option<OAuthState>; url: string}, AuthError>
+		) => Effect.Effect<{state: Option.Option<ConnectionOAuthState>; url: string}, AuthError>
 		readonly called: (id: ServerId) => Effect.Effect<void>
 		// `route` is the server id a registered client's callback carries; the metadata document's callback carries none.
 		readonly complete: (params: Callback, route: Option.Option<ServerId>, user: Admin) => Effect.Effect<void, AuthError>
@@ -257,7 +257,7 @@ export class Connections extends Context.Service<
 		const http = HttpClient.filterStatusOk(yield* HttpClient.HttpClient)
 		const fetch = yield* FetchHttpClient.Fetch
 		const random = yield* SecureRandom.SecureRandom
-		const pending = yield* Cache.make<OAuthState, Pending, AuthError>({
+		const pending = yield* Cache.make<ConnectionOAuthState, Pending, AuthError>({
 			capacity: 64,
 			lookup: () => Effect.fail(AuthError.make({message: 'The connection expired; connect it again'})),
 			timeToLive: Duration.minutes(10)
@@ -464,7 +464,7 @@ export class Connections extends Context.Service<
 			return yield* Option.match(authorizationMetadata, {
 				onNone: available,
 				onSome: Effect.fnUntraced(function* (serverMetadata) {
-					const metadata = yield* Schema.decodeUnknownEffect(Metadata)(serverMetadata)
+					const metadata = yield* Schema.decodeUnknownEffect(ServerMetadata)(serverMetadata)
 					yield* connectable(metadata)
 					return {
 						...initial,
@@ -542,13 +542,13 @@ export class Connections extends Context.Service<
 				return yield* Option.match(Option.all({issuer: connection.issuer, scope: connection.scope}), {
 					onNone: Effect.fnUntraced(function* () {
 						yield* change(id, connection.generation, () => ({error: Option.none()}))
-						return {state: Option.none<OAuthState>(), url: '/'}
+						return {state: Option.none<ConnectionOAuthState>(), url: '/'}
 					}),
 					onSome: Effect.fnUntraced(function* (oauth) {
 						return yield* pipe(
 							Effect.gen(function* () {
 								// Check the provider's current capabilities before authorization.
-								const metadata = yield* Schema.decodeUnknownEffect(Metadata)(
+								const metadata = yield* Schema.decodeUnknownEffect(ServerMetadata)(
 									yield* Effect.tryPromise({
 										catch: cause => UpstreamError.make({cause}),
 										try: signal =>
@@ -586,8 +586,8 @@ export class Connections extends Context.Service<
 										)
 									})
 								})
-								const stateId = OAuthState.make(yield* nonce)
-								const encodedMetadata = yield* Schema.encodeEffect(Metadata)(metadata)
+								const stateId = ConnectionOAuthState.make(yield* nonce)
+								const encodedMetadata = yield* Schema.encodeEffect(ServerMetadata)(metadata)
 								const authorization = yield* Effect.tryPromise({
 									catch: cause => UpstreamError.make({cause}),
 									try: () =>

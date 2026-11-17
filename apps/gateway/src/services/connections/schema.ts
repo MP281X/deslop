@@ -17,8 +17,8 @@ export const ServerId = pipe(
 export type ConnectionGeneration = typeof ConnectionGeneration.Type
 export const ConnectionGeneration = pipe(Schema.NonEmptyString, Schema.brand('ConnectionGeneration'))
 export const OAuthClientId = pipe(Schema.NonEmptyString, Schema.brand('OAuthClientId'))
-export type OAuthState = typeof OAuthState.Type
-export const OAuthState = pipe(Schema.NonEmptyString, Schema.brand('GatewayOAuthState'))
+export type ConnectionOAuthState = typeof ConnectionOAuthState.Type
+export const ConnectionOAuthState = pipe(Schema.NonEmptyString, Schema.brand('GatewayOAuthState'))
 export const OAuthCode = pipe(Schema.NonEmptyString, Schema.brand('GatewayOAuthCode'))
 
 export type ServerUrl = typeof ServerUrl.Type
@@ -37,8 +37,8 @@ export const ServerUrl = Schema.NonEmptyString.check(
 export const AddServer = Schema.Struct({url: ServerUrl})
 export const ServerParams = Schema.Struct({id: ServerId})
 
-export type Metadata = typeof Metadata.Type
-export const Metadata = Schema.Struct({
+export type ServerMetadata = typeof ServerMetadata.Type
+export const ServerMetadata = Schema.Struct({
 	authorization_endpoint: ServerUrl,
 	authorization_response_iss_parameter_supported: Schema.OptionFromOptionalKey(Schema.Boolean),
 	client_id_metadata_document_supported: Schema.OptionFromOptionalKey(Schema.Boolean),
@@ -178,7 +178,7 @@ export const Callback = Schema.Struct({
 	code: Schema.OptionFromOptionalKey(OAuthCode),
 	error: Schema.OptionFromOptionalKey(Schema.String),
 	iss: Schema.OptionFromOptionalKey(Schema.NonEmptyString),
-	state: OAuthState
+	state: ConnectionOAuthState
 })
 
 export type TokenExchange = typeof TokenExchange.Type
