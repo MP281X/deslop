@@ -1,6 +1,6 @@
 import {assert, it} from '@effect/vitest'
 
-import {Array, DateTime, Duration, Option, Schema, String, pipe} from 'effect'
+import {Array, Boolean, DateTime, Duration, Function, Option, Schema, pipe} from 'effect'
 
 import {latencyOf, overviewOf, touchedTraces, traceTree} from '#services/telemetry/lib/utils.ts'
 import {AppName, OperationTrace, ServiceName, Span, SpanId, SpanLink, TraceId} from '#services/telemetry/schema.ts'
@@ -60,20 +60,20 @@ const TRACES = Array.map(
 	],
 	input => ({
 		app: AppName.make(input.app),
-		failed: input.failed,
+		count: 1,
+		failures: Boolean.match(input.failed, {onFalse: Function.constant(0), onTrue: Function.constant(1)}),
+		latest: DateTime.makeUnsafe(input.start),
 		name: input.name,
+		p50Ms: Duration.millis(input.duration),
+		p95Ms: Duration.millis(input.duration),
 		runtime: 'server' as const,
-		trace: Schema.decodeSync(OperationTrace)({duration: input.duration, id: input.id, start: input.start})
+		traces: [Schema.decodeSync(OperationTrace)({duration: input.duration, id: input.id, start: input.start})] as const
 	})
 )
 const RETAINED = [
 	{ci: false, count: 2, failures: 0, service: ServiceName.make('stash')},
 	{ci: false, count: 1, failures: 1, service: ServiceName.make('gateway')}
 ]
-
-function stashOf(overview: ReturnType<typeof overviewOf>) {
-	return Option.getOrThrow(Array.findFirst(overview.apps, app => app.name === 'stash'))
-}
 
 it('rejudges arriving span replacements together with the retained trace', () => {
 	const replacement = spanOf({
@@ -112,36 +112,6 @@ it('computes nearest-rank latency percentiles from unordered durations', () => {
 	)
 })
 
-it('keeps a recent fast failure among the slowest traces', () => {
-	const traces = Array.map(
-		[
-			{duration: 1, failed: true, start: 100},
-			...Array.map([2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21], duration => ({
-				duration,
-				failed: false,
-				start: 0
-			}))
-		],
-		input => ({
-			app: AppName.make('stash'),
-			failed: input.failed,
-			name: 'capture',
-			runtime: 'server' as const,
-			trace: Schema.decodeSync(OperationTrace)({
-				duration: input.duration,
-				id: String.padStart(32, '0')(input.duration.toString(16)),
-				start: input.start
-			})
-		})
-	)
-	assert.deepStrictEqual(
-		Array.map(stashOf(overviewOf(traces, RETAINED)).operations[0]?.traces ?? [], trace =>
-			Duration.toMillis(trace.duration)
-		),
-		[21, 20, 19, 18, 17, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 1]
-	)
-})
-
 it('attaches a linked trace beneath the span that started it', () => {
 	const links = Schema.decodeSync(Schema.Array(SpanLink))([
 		{linkedSpanId: '0000000000000004', linkedTraceId: B, spanId: '0000000000000001', traceId: A}
@@ -173,13 +143,16 @@ it('counts operations in the selected range while keeping retained app tabs', ()
 it('orders failing operations before newer successful operations', () => {
 	assert.deepStrictEqual(
 		Array.map(
-			stashOf(
-				overviewOf(
-					[
-						{...Option.getOrThrow(Array.get(TRACES, 0)), name: 'recent'},
-						{...Option.getOrThrow(Array.get(TRACES, 1)), failed: true, name: 'broken'}
-					],
-					RETAINED
+			Option.getOrThrow(
+				Array.findFirst(
+					overviewOf(
+						[
+							{...Option.getOrThrow(Array.get(TRACES, 0)), name: 'recent'},
+							{...Option.getOrThrow(Array.get(TRACES, 1)), failures: 1, name: 'broken'}
+						],
+						RETAINED
+					).apps,
+					app => app.name === 'stash'
 				)
 			).operations,
 			operation => operation.name

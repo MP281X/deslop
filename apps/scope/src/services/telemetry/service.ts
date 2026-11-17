@@ -45,7 +45,6 @@ import {
 	traceIdsOf,
 	traceTree
 } from '#services/telemetry/lib/utils.ts'
-import type {Traced} from '#services/telemetry/lib/utils.ts'
 import type {
 	CompactLog,
 	LogFacts,
@@ -75,6 +74,7 @@ import type {
 } from '#services/telemetry/schema.ts'
 import {
 	FoundTrace,
+	CountedOperation,
 	ExportedLog,
 	LatencyQuery,
 	Log,
@@ -122,16 +122,6 @@ declare module 'effect/reactivity/Reactivity' {
 // One phrase whose last word may be a prefix, so a word still being typed matches.
 function phrase(text: string) {
 	return `"${String.replaceAll('"', '""')(text)}"*`
-}
-
-function tracedOf(row: SettledTrace) {
-	return {
-		app: appName(row.service),
-		failed: row.failed,
-		name: row.name,
-		runtime: row.runtime,
-		trace: {duration: row.duration, failure: Option.none(), id: row.id, label: Option.none(), start: row.start}
-	} satisfies Traced
 }
 
 // The overview's kept traces with their labels and failures; a trace pruned since the overview counted it stays without them until the next read.
@@ -599,18 +589,59 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 				)
 			}
 		})
-		// Every trace the operations list can show: not a wait, and rooted or a minute old, since its root may never come.
-		const listSettled = SqlSchema.findAll({
-			Request: Schema.Struct({cutoff: Span.fields.start, settledBefore: Span.fields.start}),
-			Result: SettledTrace,
+		// Match appName in SQL so services with the same app and runtime share percentiles and kept traces.
+		const serviceName = sql`CASE WHEN substr(root.service, 1, 8) = '@deslop/' THEN substr(root.service, 9) ELSE root.service END`
+		const appColumn = sql`CASE
+			WHEN substr(${serviceName}, -7) IN ('-server', '-client') THEN substr(${serviceName}, 1, length(${serviceName}) - 7)
+			WHEN substr(${serviceName}, -4) = '-ios' THEN substr(${serviceName}, 1, length(${serviceName}) - 4)
+			ELSE ${serviceName} END`
+		const OverviewRange = Schema.Struct({cutoff: Span.fields.start, settledBefore: Span.fields.start})
+		const listOperationCounts = SqlSchema.findAll({
+			Request: OverviewRange,
+			Result: CountedOperation,
 			execute: query => sql`
 				SELECT
-					lower(hex(traces.traceId)) AS id, traces.start, traces.duration, root.service, root.runtime, traces.name,
-					traces.broken IS NOT NULL AS failed
+					${appColumn} AS app, root.runtime, traces.name, count(*) AS count,
+					sum(traces.broken IS NOT NULL) AS failures, max(traces.start) AS latest,
+					json_extract(json_group_array(traces.duration ORDER BY traces.duration),
+						'$[' || ((count(*) + 1) / 2 - 1) || ']') AS p50Ms,
+					json_extract(json_group_array(traces.duration ORDER BY traces.duration),
+						'$[' || ((count(*) * 95 + 99) / 100 - 1) || ']') AS p95Ms
 				${traceFrom}
 				WHERE ${operationTrace} AND traces.start >= ${query.cutoff}
 				AND (traces.rooted OR traces.start < ${query.settledBefore})
+				GROUP BY app, root.runtime, traces.name
+				ORDER BY min(traces.start), min(traces.id)
 			`
+		})
+		const listKeptTraces = SqlSchema.findAll({
+			Request: Schema.Struct({
+				...OverviewRange.fields,
+				...Struct.pick(CountedOperation.fields, ['app', 'runtime', 'name'])
+			}),
+			Result: SettledTrace,
+			execute: query => {
+				const columns = sql`lower(hex(traces.traceId)) AS id, traces.id AS arrival, traces.start, traces.duration,
+					root.service, root.runtime, traces.name, traces.broken IS NOT NULL AS failed`
+				const where = sql`${operationTrace} AND traces.name = ${query.name}
+					AND ${appColumn} = ${query.app} AND root.runtime = ${query.runtime}
+					AND traces.start >= ${query.cutoff} AND (traces.rooted OR traces.start < ${query.settledBefore})`
+				return sql`
+					WITH failures AS (
+						SELECT ${columns} ${traceFrom} WHERE ${where} AND traces.broken IS NOT NULL
+						ORDER BY traces.start DESC, traces.duration DESC, traces.id LIMIT 10
+					), slowest AS (
+						SELECT ${columns} ${traceFrom} WHERE ${where}
+						ORDER BY traces.duration DESC, traces.start, traces.id LIMIT 20
+					), candidates AS (
+						SELECT * FROM failures UNION SELECT * FROM slowest
+					), kept AS (
+						SELECT * FROM candidates
+						ORDER BY id IN (SELECT id FROM failures) DESC, duration DESC, start, arrival LIMIT 20
+					)
+					SELECT * FROM kept ORDER BY duration DESC, id IN (SELECT id FROM failures) DESC, start, arrival
+				`
+			}
 		})
 		const listRetainedServices = SqlSchema.findAll({
 			Request: Span.fields.start,
@@ -764,8 +795,26 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 		const readOverview = Effect.fnUntraced(function* (range: TimeFrame) {
 			const now = yield* DateTime.now
 			const settledBefore = DateTime.subtractDuration(now, Duration.minutes(1))
+			const query = {cutoff: rangeStart(range, now), settledBefore}
 			const counted = overviewOf(
-				Array.map(yield* listSettled({cutoff: rangeStart(range, now), settledBefore}), tracedOf),
+				yield* Effect.forEach(
+					yield* listOperationCounts(query),
+					Effect.fnUntraced(function* (operation) {
+						const traces = yield* listKeptTraces({...query, ...operation})
+						if (!Array.isReadonlyArrayNonEmpty(traces)) return yield* TelemetryError.make({message: UNAVAILABLE})
+						return {
+							...operation,
+							traces: Array.map(traces, row => ({
+								duration: row.duration,
+								failure: Option.none(),
+								id: row.id,
+								label: Option.none(),
+								start: row.start
+							}))
+						}
+					}),
+					{concurrency: 1}
+				),
 				yield* listRetainedServices(settledBefore)
 			)
 			return detailed(
@@ -776,7 +825,7 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 					)
 				)
 			)
-		})
+		}, sql.withTransaction)
 		// Cache lookups may run in an RPC's scope; shared sources belong to this service instead.
 		const serviceScope = yield* Effect.scope
 		const overviews = yield* Cache.make({
@@ -1307,6 +1356,11 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 							VALUES ('delete', old.id, old.message, old.attributes);
 						END
 					`
+				}),
+				'0003_overview': Effect.gen(function* () {
+					const sql = yield* SqlClient.SqlClient
+					yield* sql`CREATE INDEX traces_by_operation_duration ON traces (name, duration DESC, start, id) WHERE NOT waits`
+					yield* sql`CREATE INDEX traces_by_operation_failure ON traces (name, start DESC, duration DESC, id) WHERE NOT waits AND broken IS NOT NULL`
 				})
 			}),
 			table: 'telemetry_migrations'
