@@ -1,6 +1,7 @@
 // fallow-ignore-file duplicate-export -- Each app owns its folder-named Push service; their context identities and notification policies are distinct.
 import {Array, Context, Effect, Function, Layer, Redacted, Schema} from 'effect'
 
+import type {SqlError} from 'effect/sql'
 import {SqlClient, SqlSchema} from 'effect/sql'
 
 import {Apns} from '@deslop/runtime/server/apns'
@@ -12,7 +13,7 @@ import type {Chapter} from '#services/chapters/schema.ts'
 import {Delivery, PushError} from '#services/push/schema.ts'
 
 function asPushError(message: string) {
-	return Effect.mapError((cause: unknown) => PushError.make({cause, message}))
+	return Effect.mapError((cause: SqlError.SqlError | Schema.SchemaError) => PushError.make({cause, message}))
 }
 
 export class Push extends Context.Service<Push>()('@deslop/opm/services/push/service/Push', {
