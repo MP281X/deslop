@@ -131,8 +131,9 @@ export const change = Effect.fnUntraced(function* (base: Option.Option<string>) 
 				if (result.exitCode === 0) {
 					return Option.some(yield* Schema.decodeEffect(Schema.fromJsonString(PullRequest))(result.stdout))
 				}
-				// A branch without a pull request, or a repository without a remote: the base is origin's default branch. Any other failure, such as a signed-out gh, fails, since the wrong base judges the wrong change.
-				if (matches(/no pull requests found|no git remotes found/u)(result.stderr)) return Option.none<PullRequest>()
+				// A branch without a pull request, a repository without a remote, or a gh never signed in to any host: the base is origin's default branch. Any other failure, such as a rejected token or an unreachable host, fails, since the wrong base judges the wrong change.
+				if (matches(/no pull requests found|no git remotes found|To get started with GitHub CLI/u)(result.stderr))
+					return Option.none<PullRequest>()
 				return yield* JudgeError.make({message: `gh pr view failed: ${String.trim(result.stderr)}`})
 			})
 		),
