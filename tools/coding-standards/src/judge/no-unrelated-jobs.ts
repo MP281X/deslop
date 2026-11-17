@@ -16,11 +16,15 @@ export const noUnrelatedJobs = question('code', 'Does `code` do two jobs that us
 	yes: {
 		cases: ['Separate parts serve different purposes and share no results.'],
 		example: `
-			import {Effect} from 'effect'
+			import {Effect, Ref} from 'effect'
 
-			export const save = Effect.fnUntraced(function* (index: Effect.Effect<number>, prune: Effect.Effect<void>) {
-				yield* index
-				yield* prune
+			export const saveNote = Effect.fnUntraced(function* (
+				note: string,
+				store: (text: string) => Effect.Effect<void>,
+				visits: Ref.Ref<number>
+			) {
+				yield* store(note)
+				yield* Ref.set(visits, 0)
 			})
 		`
 	}

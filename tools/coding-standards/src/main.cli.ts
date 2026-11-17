@@ -2,7 +2,7 @@
 
 import {NodeCrypto, NodeHttpClient, NodeRuntime, NodeServices} from '@effect/platform-node'
 
-import {Console, Effect, Layer, pipe} from 'effect'
+import {Console, Effect, pipe} from 'effect'
 
 import {Command, Flag} from 'effect/cli'
 
@@ -47,7 +47,8 @@ const cli = pipe(
 						Flag.withDefault(false)
 					)
 				},
-				input => judge(input, haiku)
+				// oxlint-disable-next-line effecttsgo/strict-effect-provide -- the judge subcommand is the cache's entry point: only it remembers answers, so only it opens the cache directory.
+				input => Effect.provide(judge(input, haiku), layerCache)
 			),
 			'Ask the functions, components and test cases a change touches the questions no remembered answer covers, and report what breaks one'
 		)
@@ -55,9 +56,4 @@ const cli = pipe(
 	Command.run({version: packageJson.version})
 )
 
-NodeRuntime.runMain(
-	Effect.provide(
-		cli,
-		Layer.provideMerge(layerCache, Layer.mergeAll(NodeServices.layer, NodeHttpClient.layerNodeHttp, NodeCrypto.layer))
-	)
-)
+NodeRuntime.runMain(Effect.provide(cli, [NodeServices.layer, NodeHttpClient.layerNodeHttp, NodeCrypto.layer]))

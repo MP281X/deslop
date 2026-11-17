@@ -183,12 +183,12 @@ const TAB_ELEMENTS = /Tab(?!le)|Segment|tab(?!le)/u
 const ASSERTION_SOURCES =
 	/from ['"](?:vitest|@effect\/vitest(?:\/utils)?|vite-plus\/test|node:assert(?:\/strict)?|assert)['"]/u
 
-// A unit read alone the way the model reads it: a function parses in parentheses, an example's statement as it is and a method only inside an object; JSX only as TSX and a generic arrow `<T>() =>` only as TS.
+// A unit read alone the way the model reads it: a function parses in parentheses, an example's statement as it is and a whole method only inside a class body; JSX only as TSX and a generic arrow `<T>() =>` only as TS.
 const WRAPPINGS = Array.flatMap(
-	[(text: string) => `(${text})`, (text: string) => text, (text: string) => `({m${text}})`],
+	[(text: string) => `(${text})`, (text: string) => text, (text: string) => `(class {${text}})`],
 	wrap => Array.map(['unit.tsx', 'unit.ts'], name => ({name, wrap}))
 )
-const METHOD = {name: 'unit.ts', wrap: (text: string) => `({m${text}})`}
+const METHOD = {name: 'unit.ts', wrap: (text: string) => `(class {${text}})`}
 
 type Visit = {depth: number; node: Node; parent: Option.Option<Node>}
 
@@ -300,6 +300,7 @@ function comparesComputed(node: Node) {
 // What the judge's gates read of a unit: only what the model reads too, its code and the imports it uses.
 export type Features = ReturnType<typeof features>
 
+// judge-ignore no-silent-fallback -- a unit is a whole function, method or test call cut from a file that parsed, and an example is written to parse, so one wrapping always parses; the last form is never a substitute for a failure.
 export function features(text: string, imports: string) {
 	// A unit comes from a file that parsed and an example is written to parse, so one wrapping parses without errors; the method wrapping, last, is read as it parses.
 	const parsed = pipe(

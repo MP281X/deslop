@@ -59,7 +59,7 @@ Each custom rule publishes `meta.docs.examples.accepted`, filename-to-source rec
 
 ## Judge
 
-Claude Haiku 5.5 answers through Effect's AI module and `@effect/ai-anthropic`, only through `https://gateway.<DESLOP_DOMAIN>/ai/connection` and the connected Anthropic account of the worker's tailnet owner, whom Auth names without a sign-in. Calls can cost money; no catalogue balance is used. Each answer is a schema-checked boolean; yes means a finding.
+Claude Haiku 5.5 answers through Effect's AI module and `@effect/ai-anthropic`, only through `https://gateway.<DESLOP_DOMAIN>/ai/anthropic` and the saved Anthropic key of the worker's tailnet owner, whom Auth names without a sign-in. Calls cost money. Each answer is a schema-checked boolean under `answers`, written after a required `analysis` field, and is named after the condition itself (`silent-fallback`, never `no-silent-fallback`, under which true reads as absence); true means a finding.
 
 ```bash
 coding-standards judge --dry-run          # plan the current change; sends nothing
@@ -68,7 +68,7 @@ coding-standards judge --base origin/main --dry-run
 
 `judge` accepts only `--base <ref>`, `--dry-run` and `--user-asked`; `tactics` has no custom flags. Effect CLI supplies its standard help, version, wizard, completions and log-level flags. More than 20 planned calls, including examples, refuses the entire run before calling Gateway unless `--user-asked` records the user's explicit request. A dry run can plan any size without that flag and sends nothing. Generated routes, shared web primitives and generator templates are always excluded by the tool; there is no ignore override.
 
-The judge asks about the functions, components and test cases a change touches, one unit at a time. The change is everything the working tree differs from its merge base with `--base`, by default the pull request's base branch on `origin` when `gh pr view` finds one, else `origin`'s default branch, untracked files included; a repository whose base the judge cannot name fails. The diff only selects units and is never sent. A unit is asked when its lines, the `//` comment lines right above it, an import line it uses, or its file's path changed. Each changed file is read as text under its literal name, whatever `.gitattributes` or git's quoting say.
+The judge asks about the functions, components and test cases a change touches, one unit at a time. The change is everything the working tree differs from its merge base with `--base`, by default the base branch on `origin` of the branch's open pull request, else `origin`'s default branch when the branch has none or `gh` is missing or asks to sign in, untracked files included; a `gh` that fails to list pull requests, such as with a rejected token, and a repository whose base the judge cannot name fail. The diff only selects units and is never sent. A unit is asked when its lines, the `//` comment lines right above it, an import line it uses, or its file's path changed. Each changed file is read as text under its literal name, whatever `.gitattributes` or git's quoting say.
 
 Haiku reads one unit alone: its code with those comments, its file's path and the import lines it uses. Each question asks one narrow thing about that unit. A question with a gate is asked only of the units it admits: a gate reads only what the model reads and admits every unit the answer could be yes for.
 

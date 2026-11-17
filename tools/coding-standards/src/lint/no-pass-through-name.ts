@@ -206,7 +206,7 @@ function unexportedBindingName(node: ESTree.Function | ESTree.ArrowFunctionExpre
 	return Option.none()
 }
 
-// Inlining a call copies each argument into every use of its parameter, so only a name or a literal may be read twice.
+// Inlining a call copies each argument into every use of its parameter, so an argument whose parameter is read twice must be a name or a literal.
 function copiesSafely(input: {
 	call: ESTree.CallExpression
 	context: Context
@@ -500,7 +500,7 @@ function componentIndirection(context: Context, node: ESTree.Function | ESTree.A
 }
 
 function constantName(node: ESTree.Node) {
-	if (node.type === 'Identifier') return 'constUndefined'
+	if (node.type === 'Identifier' && node.name === 'undefined') return 'constUndefined'
 	if (node.type === 'Literal' && node.value === null) return 'constNull'
 	if (node.type === 'Literal' && node.value === true) return 'constTrue'
 	if (node.type === 'Literal' && node.value === false) return 'constFalse'
@@ -865,6 +865,7 @@ export const noPassThroughName = defineRule({
 			},
 			TaggedTemplateExpression: effect,
 			UpdateExpression: effect,
+			// judge-ignore no-unrelated-jobs -- an Oxlint visitor runs each of the rule's declaration checks on the declarator it visits; each report stands alone.
 			VariableDeclarator: node => {
 				MutableList.append(bindings, node)
 				if (

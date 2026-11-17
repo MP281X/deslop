@@ -155,7 +155,8 @@ const lintSource = Effect.fnUntraced(function* (
 	}
 })
 
-// The lines a rule reports in the first source, beside the lines that source marks `// reported`.
+// The lines a rule reports across the linted sources, beside the lines the first source marks `// reported`.
+// judge-ignore no-silent-fallback -- no source marks line 0, so a report without a label fails the comparison instead of vanishing.
 function reportedLines(result: {sources: string[]; stdout: OxlintOutput}, rule: string) {
 	return {
 		marked: pipe(

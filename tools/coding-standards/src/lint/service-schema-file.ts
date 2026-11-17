@@ -56,44 +56,54 @@ function definitions(context: Context, declaration: ReturnType<typeof exported>)
 	return Array.empty<ESTree.Node>()
 }
 
+// A service class takes its folder's name.
+function checkServiceName(context: Context, node: ESTree.Class) {
+	if (!matches(/[/\\]src[/\\]services[/\\][^/\\]+[/\\]service\.ts$/u)(context.filename) || node.id === null) return
+	function serviceBase(base: ESTree.Expression): boolean {
+		if (base.type === 'CallExpression') return base.callee.type !== 'Super' && serviceBase(base.callee)
+		return importedMember({context, importedName: 'Context', node: base, propertyName: 'Service'})
+	}
+	if (node.superClass === null || !serviceBase(node.superClass)) return
+	const expected = pipe(
+		String.split(context.filename, /[/\\]/u),
+		Array.reverse,
+		Array.getUnsafe(1),
+		String.split('-'),
+		Array.map(String.capitalize),
+		Array.join('')
+	)
+	if (String.toLowerCase(node.id.name) !== String.toLowerCase(expected)) {
+		context.report({message: `Name this service ${expected}, or give its folder the service's name.`, node: node.id})
+	}
+}
+
+// Only a service's public lib/utils.ts is named utils.
+function checkUtilsName(context: Context, program: ESTree.Program) {
+	if (
+		matches(/[/\\]utils\.[cm]?[jt]sx?$/u)(context.filename) &&
+		!matches(/[/\\]services[/\\][^/\\]+[/\\]lib[/\\]utils\.ts$/u)(context.filename)
+	) {
+		context.report({
+			message: "Name this file for its topic; utils.ts is only a service's public lib/utils.ts.",
+			node: program
+		})
+	}
+}
+
+// A service's exported schemas live in its schema.ts.
+function checkSchemaPlacement(context: Context, program: ESTree.Program) {
+	if (!SERVICE_PATH.test(context.filename) || SCHEMA_FILE.test(context.filename) || isTestFile(context)) return
+	for (const node of Array.flatMap(program.body, statement => definitions(context, exported(statement)))) {
+		report(context, node)
+	}
+}
+
 export const serviceSchemaFile = defineRule({
 	create: context => ({
-		ClassDeclaration: node => {
-			if (!matches(/[/\\]src[/\\]services[/\\][^/\\]+[/\\]service\.ts$/u)(context.filename) || node.id === null) return
-			function serviceBase(base: ESTree.Expression): boolean {
-				if (base.type === 'CallExpression') return base.callee.type !== 'Super' && serviceBase(base.callee)
-				return importedMember({context, importedName: 'Context', node: base, propertyName: 'Service'})
-			}
-			if (node.superClass === null || !serviceBase(node.superClass)) return
-			const expected = pipe(
-				String.split(context.filename, /[/\\]/u),
-				Array.reverse,
-				Array.getUnsafe(1),
-				String.split('-'),
-				Array.map(String.capitalize),
-				Array.join('')
-			)
-			if (String.toLowerCase(node.id.name) !== String.toLowerCase(expected)) {
-				context.report({
-					message: `Name this service ${expected}, or give its folder the service's name.`,
-					node: node.id
-				})
-			}
-		},
+		ClassDeclaration: node => checkServiceName(context, node),
 		Program: program => {
-			if (
-				matches(/[/\\]utils\.[cm]?[jt]sx?$/u)(context.filename) &&
-				!matches(/[/\\]services[/\\][^/\\]+[/\\]lib[/\\]utils\.ts$/u)(context.filename)
-			) {
-				context.report({
-					message: "Name this file for its topic; utils.ts is only a service's public lib/utils.ts.",
-					node: program
-				})
-			}
-			if (!SERVICE_PATH.test(context.filename) || SCHEMA_FILE.test(context.filename) || isTestFile(context)) return
-			for (const node of Array.flatMap(program.body, statement => definitions(context, exported(statement)))) {
-				report(context, node)
-			}
+			checkUtilsName(context, program)
+			checkSchemaPlacement(context, program)
 		}
 	}),
 	meta: {

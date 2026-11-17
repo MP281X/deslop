@@ -199,7 +199,7 @@ function dual(context: LintContext, node: ESTree.Node) {
 	)
 }
 
-// Only immutable reads and inert construction may move across a step; other arguments keep their evaluation order.
+// Only immutable reads and constructors of Effects or values that run nothing when built may move across a step; other arguments keep their evaluation order.
 function stableConstructor(context: LintContext, node: ESTree.CallExpression) {
 	return (
 		node.callee.type === 'MemberExpression' &&
@@ -522,7 +522,7 @@ function normalizeCallee(context: LintContext, node: ESTree.CallExpression) {
 	}
 }
 
-function normalizeSchema(context: LintContext, node: ESTree.CallExpression) {
+function normalizeCurriedSchema(context: LintContext, node: ESTree.CallExpression) {
 	if (
 		node.callee.type === 'CallExpression' &&
 		schemaOperation(context, node.callee.callee, ['withDecodingDefaultKey', 'withDecodingDefaultTypeKey']) &&
@@ -546,6 +546,9 @@ function normalizeSchema(context: LintContext, node: ESTree.CallExpression) {
 			node
 		})
 	}
+}
+
+function normalizeSchemaMethod(context: LintContext, node: ESTree.CallExpression) {
 	if (
 		node.callee.type === 'CallExpression' &&
 		schemaOperation(context, node.callee.callee, ['check', 'annotate']) &&
@@ -843,7 +846,7 @@ function normalizePipe(context: LintContext, node: ESTree.CallExpression) {
 	}
 }
 
-function normalizeDual(context: LintContext, node: ESTree.CallExpression) {
+function normalizeCurriedDual(context: LintContext, node: ESTree.CallExpression) {
 	if (
 		node.callee.type === 'CallExpression' &&
 		Option.isSome(dual(context, node.callee.callee)) &&
@@ -868,6 +871,9 @@ function normalizeDual(context: LintContext, node: ESTree.CallExpression) {
 			node
 		})
 	}
+}
+
+function normalizeNestedSteps(context: LintContext, node: ESTree.CallExpression) {
 	if (!dataFirst(context, node) || !dataFirst(context, node.arguments[0] ?? node)) return
 	const pipeline = Option.getOrUndefined(chain(context, node))
 	context.report({
@@ -983,9 +989,11 @@ export const effectCallForm = defineRule({
 		CallExpression: node => {
 			normalizeForwarding(context, node)
 			normalizeCallee(context, node)
-			normalizeSchema(context, node)
+			normalizeCurriedSchema(context, node)
+			normalizeSchemaMethod(context, node)
 			normalizePipe(context, node)
-			normalizeDual(context, node)
+			normalizeCurriedDual(context, node)
+			normalizeNestedSteps(context, node)
 		},
 		FunctionExpression: node => normalizeGenerator(context, node)
 	}),

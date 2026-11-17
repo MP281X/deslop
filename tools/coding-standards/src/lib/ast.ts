@@ -840,7 +840,7 @@ export function suspends(context: Context, node: ESTree.Node): boolean {
 	return Array.some(childNodes(context, node), child => suspends(context, child))
 }
 
-// Between the slot and its statement only markup, a declaration or a yield may stand, so the moved value is not buried in an expression.
+// Between the slot and its statement, or an expression-bodied arrow, only markup, a declaration, an await or a yield may stand, so the moved value is not buried in an expression.
 function surface(node: ESTree.Node): boolean {
 	if (
 		Array.contains(['ExpressionStatement', 'ReturnStatement', 'VariableDeclaration'], node.type) ||

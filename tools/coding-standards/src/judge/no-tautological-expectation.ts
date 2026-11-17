@@ -21,7 +21,10 @@ export const noTautologicalExpectation = question(
 				import {assert, it} from '@effect/vitest'
 
 				export function checkTotal(total: (prices: number[]) => number) {
-					it('totals prices', () => { assert.strictEqual(total([2, 3]), 2 + 3) })
+					it('totals prices', () => {
+						const prices = [2, 3]
+						assert.strictEqual(total(prices), prices.reduce((sum, price) => sum + price, 0))
+					})
 				}
 			`
 		}

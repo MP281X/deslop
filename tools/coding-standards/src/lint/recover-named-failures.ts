@@ -135,7 +135,8 @@ function insertField(input: {field: string; fields: ESTree.ObjectExpression; fix
 	)
 }
 
-function constructedClass(node?: ESTree.Node | null) {
+// The binding `new X(…)` or a static `X.method(…)` calls on: the error class when the call builds one, as `X.make(…)` does.
+function calledBinding(node?: ESTree.Node | null) {
 	if (node?.type === 'NewExpression' && node.callee.type === 'Identifier') return Option.some(node.callee)
 	if (
 		node?.type === 'CallExpression' &&
@@ -179,7 +180,7 @@ function hasCauseField(context: Context, node: ESTree.Node): boolean {
 
 // The error is declared in this file with a `cause: Schema.Defect()` field; an imported one, or one with another field, is left to a person.
 function declaresCause(context: Context, node?: ESTree.Node | null) {
-	return Option.exists(constructedClass(node), name =>
+	return Option.exists(calledBinding(node), name =>
 		Option.exists(variableOf(context, name), variable =>
 			Array.some(
 				variable.defs,
@@ -363,6 +364,7 @@ function checkPromise(context: Context, node: ESTree.CallExpression) {
 }
 
 export const recoverNamedFailures = defineRule({
+	// judge-ignore no-unrelated-jobs -- an Oxlint rule's visitors each check one node kind for the same policy, recovering named failures.
 	create: context => ({
 		CallExpression: node => {
 			const name = effectMethod({context, node})
