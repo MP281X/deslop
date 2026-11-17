@@ -19,12 +19,13 @@ stateDiagram-v2
     Draft --> Reviewing : the pipeline is green / the final review
     Reviewing --> Fixing : findings / fix every one, walk the touched flow again, push
     Reviewing --> [*] : no findings / show the result
+    Fixing --> Fixing : the pipeline fails or conflicts / fix
     Fixing --> [*] : the pipeline is green / show the result, with what stays unfixed
 ```
 
-- **Using.** UI, and backend changes a screen shows, in the T3 browser; native changes in the Device panel. This standing request covers the preview and device tools.
+- **Using.** UI, and backend changes a screen shows, in the T3 browser; native changes in the Device panel. This standing request covers the preview and device tools. The walk runs on a commit, whose SHA its captures carry, and its proof holds while what it shows is unchanged.
 - **First look.** A `reviewer` delegate that gets the running app and nothing else, neither diff nor plan.
-- **Draft.** The fixer, a commit, a push and a draft PR, by [pull-requests](references/pull-requests.md), read before the first commit. A claimed before/after needs its Before captured on base before the first edit.
+- **Draft.** The tests of each package you edited yourself, the fixer, a commit, a push and a draft PR, by [pull-requests](references/pull-requests.md), read before the first commit. A claimed before/after needs its Before captured on base before the first edit.
 - **Final review.** Once, when nothing can still change: one `reviewer` delegate per PR in one turn, each given the plan, its prototype's path and the PR, and one more over the whole stack as one diff when it has several PRs.
 
 ## Delegates
@@ -40,7 +41,7 @@ stateDiagram-v2
 
 - **Effort.** Medium unless the table says high.
 - **Split.** Small edits and reads stay with you. A delegate gets one whole outcome on files no other touches, coupled edits together, in your worktree and branch; a long burst of reading or browsing is one too.
-- **Brief.** About 1,500 characters, since the delegate has the prompt, the skills and the checkout but not the thread. Its first line names its skill: `builder` to edit, `reviewer` for a first look or a final review, `build` for a separate PR in its own worktree (`isolation: 'worktree'`), none for a read, an advisor or a council member.
+- **Brief.** About 1,500 characters, since the delegate has the prompt, the skills and the checkout but not the thread. Its first line names its skill: `builder` to edit, `reviewer` for a first look or a final review, none for a read, an advisor or a council member.
 
   ```text
   Load the `builder` skill.
