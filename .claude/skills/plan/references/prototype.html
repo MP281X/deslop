@@ -14,8 +14,8 @@
    view(s, has) the app's HTML for state s: only the screens the decisions touch, with the app's real labels and data;
                 Today as the current code behaves. The example below is a placeholder to replace whole.
    k(id, patch, html, class, typed)  a click target merging patch into s, typing `typed` first; a falsy id is inert.
-   Kit          .side .org .nav | main h1 .row .m | .inp .sel .chip .btn .on | .pop .sheet (inline position, width)
-                .scrim > .dlg | .it .f .ft .toast
+   Kit          .side .org .nav | main .row .m | .inp .sel .chip .btn .on | .pop .sheet (inline position, width)
+                .scrim > .dlg | .it .f .ft. Use the repository's layout rules, not a page title or toast.
    A path id with no target on screen logs a console error naming the tile and step. */
 const FIRST = 1, SIZE = [800, 450], PHONE = [390, 760];
 const THEME = { light: '', dark: '' };
@@ -25,13 +25,13 @@ const DECISIONS = [
     variants: { a: { parts: 'inline', path: 'title | save' }, b: { parts: 'menu', path: 'menu | rename save' } } }
 ];
 function view(s, has) {
-  const name = s.name || 'Project', done = { name: 'Atlas', edit: 0, dlg: 0, toast: 1 };
+  const name = s.name || 'Project', done = { name: 'Atlas', edit: 0, dlg: 0 };
   const title = s.edit ? k('save', done, name, 'inp', 'Atlas') : has.inline ? k('title', { edit: 1 }, name) : name;
   const menu = has.inline ? '' : k('menu', { menu: 1 }, '⋯', 'chip');
   const item = has.menu ? k('rename', { menu: 0, edit: 1 }, 'Rename', 'it') : k('settings', { menu: 0, dlg: 1 }, 'Settings', 'it');
   const pop = s.menu ? `<div class=pop style="right:16px;top:40px;width:140px">${item}<span class=it>Archive</span></div>` : '';
-  const dlg = s.dlg ? `<div class=scrim><div class=dlg><h1>Settings</h1><div class=f><span class=m>Name</span>${k('name', { draft: 1 }, s.draft ? 'Atlas' : name, 'inp', 'Atlas')}</div><div class=ft>${k('save', done, 'Save', 'btn')}</div></div></div>` : '';
-  return `<div class=side><span class=org><b>A</b>Acme</span><span class="nav on">Projects</span><span class=nav>Members</span></div><main><h1>${title}${menu}</h1><div class=row><span class=m>Status</span>Active</div><div class=row><span class=m>Owner</span>You</div>${pop}${s.toast ? '<div class=toast>Renamed</div>' : ''}</main>${dlg}`;
+  const dlg = s.dlg ? `<div class=scrim><div class=dlg><div class=f><span class=m>Name</span>${k('name', { draft: 1 }, s.draft ? 'Atlas' : name, 'inp', 'Atlas')}</div><div class=ft>${k('save', done, 'Save', 'btn')}</div></div></div>` : '';
+  return `<div class=side><span class=org><b>A</b>Acme</span><span class="nav on">Projects</span><span class=nav>Members</span></div><main><div class=row>${title}${menu}</div><div class=row><span class=m>Owner</span>You</div>${pop}</main>${dlg}`;
 }
 </script>
 <!-- ENGINE -->
@@ -78,7 +78,6 @@ button:hover,[aria-pressed=true]{color:var(--foreground)}[aria-pressed=true]{bac
   .org b{width:18px;height:18px;border-radius:4px;display:grid;place-items:center;font-size:10px;background:var(--foreground);color:var(--background)}
   .nav{padding:4px 8px;border-radius:6px;color:var(--muted-foreground)}
   main{position:relative;flex:1;min-width:0;padding:12px 16px}
-  h1{display:flex;justify-content:space-between;align-items:center;margin:0 0 10px;font-size:15px;font-weight:600}
   .row{display:flex;justify-content:space-between;align-items:center;gap:8px;min-height:34px;padding:5px 4px;border-bottom:1px solid var(--border)}
   .m{color:var(--muted-foreground)}
   .sel,.inp{border:1px solid var(--input);border-radius:6px;padding:3px 8px}
@@ -93,7 +92,6 @@ button:hover,[aria-pressed=true]{color:var(--foreground)}[aria-pressed=true]{bac
   .it{display:flex;justify-content:space-between;gap:8px;padding:4px 8px;border-radius:6px}
   .f{display:grid;gap:4px;margin-bottom:10px}
   .ft{display:flex;justify-content:flex-end;gap:10px}
-  .toast{position:absolute;right:12px;bottom:10px;padding:4px 10px;border-radius:6px;font-size:12px;background:var(--foreground);color:var(--background);animation:p-pop .24s ease-out}
   .ring{outline:calc(2px*var(--k)) solid var(--p-ring);outline-offset:calc(1px*var(--k))}
   .ring[data-y]::after{content:'';display:inline-block;width:1px;height:1em;margin-left:1px;vertical-align:-2px;background:currentColor}
   [data-still]{animation:none}
@@ -106,7 +104,7 @@ button:hover,[aria-pressed=true]{color:var(--foreground)}[aria-pressed=true]{bac
 @media (prefers-reduced-motion:reduce){.p-cur{transition:none}.app *{animation:none!important}}
 </style></head><body><div id="stage"></div><script>
 let [AW, AH] = SIZE, dark;
-const BEAT = 900, HOLD = 2400, PRESS = 520, OVERLAYS = '.pop,.dlg,.sheet,.toast,.scrim';
+const BEAT = 900, HOLD = 2400, PRESS = 520, OVERLAYS = '.pop,.dlg,.sheet,.scrim';
 const CURSOR = '<svg class="p-cur" viewBox="0 0 13 19"><path d="M1 1v14.2l3.7-3.5 2.5 5.9 2.3-1-2.5-5.8H12z" fill="var(--foreground)" stroke="var(--background)" stroke-width="1.2" stroke-linejoin="round"/></svg>';
 const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;');
 const words = (s) => s.trim().split(/\s+/).filter(Boolean);

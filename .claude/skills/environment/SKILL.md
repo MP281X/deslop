@@ -5,7 +5,7 @@ description: Load before a command on another worker, starting a preview, openin
 
 # Environment
 
-Two headless Debian workers in one tailnet, same user and paths.
+Two headless Debian workers, a MacBook and an iPhone in one tailnet.
 
 | Name          | Address          | Role                                                                       |
 | ------------- | ---------------- | -------------------------------------------------------------------------- |
@@ -15,8 +15,8 @@ Two headless Debian workers in one tailnet, same user and paths.
 | `iphone`      | `100.117.217.10` | T3 client only                                                             |
 
 - **Names.** MagicDNS short names; `<name>.tailnet-8c4c.ts.net` has HTTPS certificates. SSH as `mp281x@dev`, `mp281x@desktop`, `matteopaludgnach@macbook-pro`.
-- **Tools.** `vp` and `vpx` on `PATH`, also over SSH; systemd units need `~/.vite-plus/bin`. `gh`, `glab` and the MCP gateway signed in.
-- **Scratch.** Use `/tmp/<task>/`, on disk, emptied at boot and of files unused for 7 days.
+- **Tools.** `vp` and `vpx` on `PATH`, also over SSH; `gh`, `glab` and the MCP gateway signed in.
+- **Scratch.** Use the harness's session scratch directory when it provides one; otherwise `/tmp/<task>/`.
 - **Git refs.** T3 checkpoints under `refs/t3/`; search history with `--branches --remotes`.
 - **Auxiliary services.** Run task-local ones as temporary containers, not installs on the worker.
 - **Agent MCP.** [Keyring and MCP](references/maintenance.md#keyring-and-mcp).
@@ -37,13 +37,12 @@ stateDiagram-v2
     [*] --> Stale : edits touch an app
     Stale --> Starting : a capture needs it / run the project's preview script from the worktree root
     Starting --> Live : its HTTPS URL answers / give the URL once
-    Starting --> Stale : [invalid selection] / the running preview stays untouched
-    Starting --> [*] : [startup fails] / find the cause
+    Starting --> Stale : selection checked [invalid] / the running preview stays untouched
+    Starting --> [*] : startup fails / find the cause
     Live --> Stale : more edits
 ```
 
 - **Script.** Read the saved one with `t3_project_read`; maintenance removes a gone worktree's unit. Deslop's selects a changed web app, else Portfolio; `PREVIEW_APP=<app>` previews another app of the same change. The repository's own preview command or a background task bypasses the unit and dies with the turn.
-- **No worktree preview** (Stash): use its scratch run.
 - **Webhooks.** Funnel exposes a whole port: pick a free one of 443, 8443, 10000 and run `sudo tailscale funnel --bg --https=<port> --set-path <path> http://127.0.0.1:<api port><path>`; remove it with `... --set-path <path> off`.
 
 ## Tools
