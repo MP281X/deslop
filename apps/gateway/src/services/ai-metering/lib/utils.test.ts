@@ -91,7 +91,7 @@ it('keeps OpenAI streaming spend incomplete until usage arrives and retains the 
 	const start = Result.getOrThrow(
 		readUsage('{"response":{"model":"gpt-6.1-terra","usage":null},"type":"response.created"}', EMPTY, 'openai')
 	)
-	assert.deepStrictEqual(start.spendSource, Option.some('openai'))
+	assert.deepStrictEqual(start.spendSource, Option.none())
 	assert.strictEqual(start.costSource, 'unknown')
 	const end = Result.getOrThrow(
 		readUsage('{"response":{"usage":{"input_tokens":272001,"output_tokens":2}}}', start, 'openai')

@@ -1,5 +1,5 @@
 import {hostname} from 'node:os'
-import {platform} from 'node:process'
+import {arch, platform} from 'node:process'
 
 import {
 	Array,
@@ -191,9 +191,9 @@ export class Exposures extends Context.Service<Exposures>()('@deslop/deploy/serv
 						return yield* DeployError.make({message: 'Explicitly confirm public access before publishing a port'})
 					}
 					// Public exposure runs the bundled Caddy, a Linux x64 build.
-					if (input.kind === 'public' && platform !== 'linux') {
+					if (input.kind === 'public' && (platform !== 'linux' || arch !== 'x64')) {
 						return yield* DeployError.make({
-							message: 'Public exposure needs a Linux worker; expose this port to the tailnet'
+							message: 'Public exposure needs a Linux x64 worker; expose this port to the tailnet'
 						})
 					}
 					const exposure = Exposure.make(Struct.omit(input, ['publicAccess']))

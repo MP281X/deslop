@@ -501,10 +501,9 @@ export class Connections extends Context.Service<
 			} satisfies typeof Connection.insert.Type
 		})
 		const fail = Effect.fnUntraced(function* (connection: ConnectionState, cause: unknown) {
-			const message = describe(cause)
-			yield* change(connection.id, connection.generation, () => ({error: Option.some(message)}))
-			if (Schema.is(AuthError)(cause)) return yield* cause
-			return yield* AuthError.make({cause, message})
+			const reason = describe(cause)
+			yield* change(connection.id, connection.generation, () => ({error: Option.some(reason)}))
+			return yield* connectionFailure(connection.name)(cause)
 		})
 
 		return Connections.of({
@@ -861,6 +860,9 @@ export class Connections extends Context.Service<
 					INSERT INTO mcp_calls (serverId, at) SELECT serverId, at FROM calls`
 					yield* sql`DROP TABLE connection_calls`
 					yield* sql`CREATE INDEX mcp_calls_server_at ON mcp_calls (serverId, at)`
+				}),
+				'0003_failure_reasons': Effect.gen(function* () {
+					yield* (yield* SqlClient.SqlClient)`UPDATE connections SET error = NULL`
 				})
 			}),
 			table: 'connections_migrations'

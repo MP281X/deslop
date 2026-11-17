@@ -1,5 +1,7 @@
 import {Schema, Struct, pipe} from 'effect'
 
+export class PresenceError extends Schema.TaggedError<PresenceError>()('PresenceError', {message: Schema.String}) {}
+
 export type VisitorId = typeof VisitorId.Type
 export const VisitorId = pipe(Schema.NonEmptyString.check(Schema.isMaxLength(32)), Schema.brand('PortfolioVisitorId'))
 
@@ -24,9 +26,11 @@ export const Visitors = Schema.Array(Visitor)
 export type Scene = typeof Scene.Type
 export const Scene = Schema.Struct({bots: Visitors, visitors: Visitors})
 
+const Guest = Visitor.mapFields(fields => ({...fields, id: fields.id.check(Schema.isPattern(/^(?!server-)/u))}))
+
 export type JoinVisitor = typeof JoinVisitor.Type
-export const JoinVisitor = Schema.Struct(Struct.pick(Visitor.fields, ['color', 'id', 'name']))
+export const JoinVisitor = Schema.Struct(Struct.pick(Guest.fields, ['color', 'id', 'name']))
 export type MoveVisitor = typeof MoveVisitor.Type
-export const MoveVisitor = Schema.Struct(Struct.pick(Visitor.fields, ['id', 'x', 'y']))
+export const MoveVisitor = Schema.Struct(Struct.pick(Guest.fields, ['id', 'x', 'y']))
 export type RecolorVisitor = typeof RecolorVisitor.Type
-export const RecolorVisitor = Schema.Struct(Struct.pick(Visitor.fields, ['color', 'id']))
+export const RecolorVisitor = Schema.Struct(Struct.pick(Guest.fields, ['color', 'id']))

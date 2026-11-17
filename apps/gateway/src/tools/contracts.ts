@@ -5,7 +5,7 @@ import {Tool, Toolkit} from 'effect/ai'
 import {AuthError, CurrentUser} from '@deslop/runtime/shared/auth'
 
 import {AiProvider} from '#services/ai-proxy/schema.ts'
-import {ConnectionStatus, ServerId} from '#services/connections/schema.ts'
+import {ConnectionStatus, FailureReason, ServerId} from '#services/connections/schema.ts'
 
 export const ToolContracts = Toolkit.make(
 	Tool.make('list_mcp_connections', {
@@ -20,7 +20,7 @@ export const ToolContracts = Toolkit.make(
 		success: Schema.Struct({
 			servers: Schema.Array(
 				Schema.Struct({
-					error: Schema.OptionFromOptionalKey(Schema.String),
+					error: Schema.OptionFromOptionalKey(FailureReason),
 					id: ServerId,
 					instructions: Schema.OptionFromOptionalKey(Schema.String),
 					status: ConnectionStatus,

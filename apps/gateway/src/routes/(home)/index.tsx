@@ -47,6 +47,7 @@ import type {AiUsageReport, Payer} from '#services/ai-metering/schema.ts'
 import type {AiKeyItem, AiProvider} from '#services/ai-proxy/schema.ts'
 import {AiKeySecret} from '#services/ai-proxy/schema.ts'
 import type {ConnectionItem, McpUsageServer} from '#services/connections/schema.ts'
+import {failureMessage} from '#services/connections/schema.ts'
 import type {UsageRange} from '#services/usage/schema.ts'
 
 // The list's columns: name, tools, sparkline, total.
@@ -145,7 +146,8 @@ function ServerRow(props: {period: UsageRange; report: readonly McpUsageServer[]
 	const failed = props.server.status === 'Expired' || Option.isSome(props.server.error)
 	// A fixed name per failure: the upstream's own text can carry a response body or a bearer token.
 	const failure = Boolean.match(props.server.status === 'Expired', {
-		onFalse: Function.constant('Server unavailable'),
+		onFalse: () =>
+			Option.match(props.server.error, {onNone: Function.constant('Server unavailable'), onSome: failureMessage}),
 		onTrue: Function.constant('Authorization expired')
 	})
 	const action = Boolean.match(connected, {

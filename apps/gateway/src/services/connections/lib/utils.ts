@@ -1,21 +1,21 @@
-import {Array, Duration, Effect, Option, Predicate, Schema, String, pipe} from 'effect'
+import {Array, Boolean, Duration, Effect, Option, Predicate, Schema, String, pipe} from 'effect'
 
-import {Client} from '@modelcontextprotocol/client'
+import {Client, SdkHttpError, UnauthorizedError} from '@modelcontextprotocol/client'
 import type {StreamableHTTPClientTransport} from '@modelcontextprotocol/client'
 import type {McpSchema} from 'effect/ai'
+import {McpClientError} from 'effect/ai'
 import {HttpClientError} from 'effect/http'
 
 import {AuthError} from '@deslop/runtime/shared/auth'
 
-import {OAuthClientId, UpstreamError} from '#services/connections/schema.ts'
-import type {SessionKind, ServerIcon} from '#services/connections/schema.ts'
+import {FailureReason, OAuthClientId, failureMessage} from '#services/connections/schema.ts'
+import type {SessionKind, ServerIcon, UpstreamError} from '#services/connections/schema.ts'
 
 export function mcpClient() {
 	return new Client({name: 'Deslop MCP gateway', version: '0.1.0'}, {versionNegotiation: {mode: 'auto'}})
 }
 
 // A finished upstream session says goodbye within a bound, then closes; either failure only warns.
-// judge-ignore no-silent-fallback -- best-effort session teardown logs each failure and still closes the client; it returns no upstream data or successful call answer.
 export function endSession(
 	transport: Pick<StreamableHTTPClientTransport, 'terminateSession'>,
 	client: Pick<Client, 'close'>,
@@ -54,24 +54,37 @@ export function serverIcons(implementation?: McpSchema.Implementation) {
 	) satisfies ServerIcon[]
 }
 
-export function describe(cause: unknown): string {
-	if (Schema.is(AuthError)(cause)) return cause.message
-	if (Predicate.isTagged(cause, 'TimeoutError')) return 'It did not answer in time'
+export function describe(cause: unknown, depth = 0): FailureReason {
+	if (depth >= 8) return FailureReason.cases.Unknown.make({})
+	if (Predicate.isTagged(cause, 'TimeoutError')) return FailureReason.cases.Timeout.make({})
+	if (cause instanceof SdkHttpError) return FailureReason.cases.HttpStatus.make({code: cause.status})
+	if (cause instanceof UnauthorizedError) return FailureReason.cases.Unauthorized.make({})
 	if (HttpClientError.isHttpClientError(cause) && cause.reason instanceof HttpClientError.StatusCodeError) {
-		return `It answered HTTP ${cause.reason.response.status}`
+		return FailureReason.cases.HttpStatus.make({code: cause.reason.response.status})
 	}
-	if (Schema.is(UpstreamError)(cause)) return describe(cause.cause)
-	if (Predicate.hasProperty(cause, 'message') && Predicate.isString(cause.message)) {
-		return String.slice(0, 300)(cause.message)
+	if (McpClientError.isMcpClientError(cause) && Schema.is(McpClientError.HttpError)(cause.reason)) {
+		return FailureReason.cases.HttpStatus.make({code: cause.reason.status})
 	}
-	return 'It failed for an unknown reason'
+	if (Predicate.isError(cause) && cause.cause !== undefined) return describe(cause.cause, depth + 1)
+	if (Schema.is(AuthError)(cause)) {
+		return Boolean.match(cause.error === 'temporarily_unavailable', {
+			onFalse: () => FailureReason.cases.Unauthorized.make({}),
+			onTrue: () => FailureReason.cases.Unavailable.make({})
+		})
+	}
+	if (Predicate.hasProperty(cause, 'code') && cause.code === 'ECONNREFUSED') return FailureReason.cases.Refused.make({})
+	return FailureReason.cases.Unknown.make({})
 }
 
-// A connection failure keeps its Auth error as it is; anything else becomes an outage the page can retry.
+// Only fixed failure labels cross the boundary, including the serialized error's optional cause.
 export function connectionFailure(prefix: string) {
 	return (cause: unknown) => {
-		if (Schema.is(AuthError)(cause)) return cause
-		return AuthError.make({cause, error: 'temporarily_unavailable', message: `${prefix}: ${describe(cause)}`})
+		const message = `${prefix}: ${failureMessage(describe(cause))}`
+		if (Schema.is(AuthError)(cause)) {
+			if (cause.error === undefined) return AuthError.make({message})
+			return AuthError.make({error: cause.error, message})
+		}
+		return AuthError.make({error: 'temporarily_unavailable', message})
 	}
 }
 

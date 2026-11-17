@@ -62,6 +62,12 @@ function destinationOf(method: string, rest: string, model: Option.Option<AiMode
 		return Result.fail(HttpServerResponse.jsonUnsafe({error: {message: 'Invalid inference path'}}, {status: 400}))
 	}
 	if (String.startsWith('openai/')(rest)) {
+		if (
+			method !== 'POST' ||
+			pipe(rest, String.match(/^openai\/v1\/(?:responses|chat\/completions)(?:\?.*)?$/u), Option.isNone)
+		) {
+			return Result.fail(HttpServerResponse.jsonUnsafe({error: {message: 'Unknown OpenAI endpoint'}}, {status: 404}))
+		}
 		return Result.succeed(`https://api.openai.com/${String.slice('openai/'.length)(rest)}`)
 	}
 	if (!String.startsWith('anthropic/')(rest)) {
