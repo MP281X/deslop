@@ -1,14 +1,8 @@
-import {Array, Duration, Schema, SchemaGetter, SchemaParser, Struct, pipe} from 'effect'
+import {Duration, Schema, SchemaGetter, SchemaParser, Struct, pipe} from 'effect'
 
 import {Model} from 'effect/schema'
 
-import {
-	DateTimeUtcFromFiniteMillis,
-	DurationFromFiniteMillis,
-	DurationFromSeconds,
-	TimeFrame,
-	timeFrameDuration
-} from '@deslop/runtime/shared/time'
+import {DateTimeUtcFromFiniteMillis, DurationFromFiniteMillis, DurationFromSeconds} from '@deslop/runtime/shared/time'
 
 import {AppId, TextFromEmpty, WorkerId} from '#services/inventory/schema.ts'
 
@@ -18,7 +12,16 @@ export type CpuTime = typeof CpuTime.Type
 export const CpuTime = Schema.Literals(['idle', 'irq', 'nice', 'sys', 'user'])
 
 type CpuCounters = typeof CpuCounters.Type
-export const CpuCounters = Schema.Array(Schema.FiniteFromString).check(Schema.isMinLength(5))
+export const CpuCounters = Schema.TupleWithRest(
+	Schema.Tuple([
+		Schema.FiniteFromString,
+		Schema.FiniteFromString,
+		Schema.FiniteFromString,
+		Schema.FiniteFromString,
+		Schema.FiniteFromString
+	]),
+	[Schema.FiniteFromString]
+)
 
 type LoadAverages = typeof LoadAverages.Type
 export const LoadAverages = Schema.Array(Schema.FiniteFromString)
@@ -26,10 +29,8 @@ export const LoadAverages = Schema.Array(Schema.FiniteFromString)
 export type CgroupPath = typeof CgroupPath.Type
 export const CgroupPath = Schema.brand('DeployCgroupPath')(Schema.String)
 
-type HistoryMinutes = typeof HistoryMinutes.Type
-const HistoryMinutes = Schema.Literals(
-	Array.map(TimeFrame.literals, frame => Duration.toMinutes(timeFrameDuration(frame)))
-)
+export type HistoryMinutes = typeof HistoryMinutes.Type
+export const HistoryMinutes = Schema.Literals([10, 60, 1440, 10_080, 43_200])
 
 export type HistoryQuery = typeof HistoryQuery.Type
 // The shared time frames, encoded in minutes for the URL and metrics queries.
@@ -39,7 +40,7 @@ export const HistoryQuery = Schema.Struct({
 		Schema.decodeTo(Schema.Duration, {
 			decode: SchemaGetter.transform(Duration.minutes),
 			encode: SchemaGetter.transformEffect(range =>
-				pipe(range, Duration.toMinutes, SchemaParser.decodeEffect(HistoryMinutes))
+				pipe(range, Duration.toMinutes, SchemaParser.decodeUnknownEffect(HistoryMinutes))
 			)
 		})
 	)

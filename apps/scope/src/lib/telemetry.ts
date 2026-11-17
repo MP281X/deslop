@@ -118,29 +118,29 @@ function sourceSearch(search: Search, app: AppName) {
 }
 
 export function nextSearch(search: Search, event: NavigationEvent) {
-	if (NavigationEvent.guards.Source(event)) return sourceSearch(search, event.app)
-	if (NavigationEvent.guards.Operation(event)) {
+	if (NavigationEvent.isAnyOf(['Source'])(event)) return sourceSearch(search, event.app)
+	if (NavigationEvent.isAnyOf(['Operation'])(event)) {
 		return select(
 			{operation: event.operation, spanId: Option.none(), traceId: Option.none()},
 			search.range,
 			Option.some('Traces')
 		)
 	}
-	if (NavigationEvent.guards.Trace(event)) {
+	if (NavigationEvent.isAnyOf(['Trace'])(event)) {
 		return select(
 			{...event.selection, spanId: Option.none(), traceId: Option.some(event.selection.traceId)},
 			search.range,
 			Option.some('Trace')
 		)
 	}
-	if (NavigationEvent.guards.Span(event)) {
+	if (NavigationEvent.isAnyOf(['Span'])(event)) {
 		return select(
 			{...event.selection, spanId: Option.some(event.selection.spanId), traceId: Option.some(event.selection.traceId)},
 			search.range,
 			Option.some('Span')
 		)
 	}
-	if (NavigationEvent.guards.Range(event)) {
+	if (NavigationEvent.isAnyOf(['Range'])(event)) {
 		const kept = Boolean.match(event.keepTrace, {
 			onFalse: () => ({...search, span: Option.none(), trace: Option.none()}),
 			onTrue: () => search

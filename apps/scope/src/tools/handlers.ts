@@ -137,16 +137,30 @@ function traceResult(
 				TelemetryError.make({message: 'section=attributes requires span; choose a span id from read_trace.'})
 			)
 		}
-		const attrs = Option.getOrElse(Option.getOrThrow(Array.head(spans)).attrs, () => ({}))
-		if (Option.exists(input.attribute, key => !Record.has(attrs, key))) {
+		if (!Array.isReadonlyArrayNonEmpty(spans)) {
 			return Result.fail(
 				TelemetryError.make({
-					message: `Unknown attribute ${Option.getOrThrow(input.attribute)}; valid attributes: ${Array.join(Record.keys(attrs), ', ')}.`
+					message: 'This span is not in this trace page; omit span and use nextOffset to locate it.'
 				})
 			)
 		}
-		const window = attributeWindow(attrs, input)
-		return Result.succeed({...metadata, ...window, attributes: Option.some(window.attributes), spans: []})
+		const attrs = Option.getOrElse(Array.headNonEmpty(spans).attrs, () => ({}))
+		return pipe(
+			input.attribute,
+			Option.filter(key => !Record.has(attrs, key)),
+			Option.match({
+				onNone: () => {
+					const window = attributeWindow(attrs, input)
+					return Result.succeed({...metadata, ...window, attributes: Option.some(window.attributes), spans: []})
+				},
+				onSome: key =>
+					Result.fail(
+						TelemetryError.make({
+							message: `Unknown attribute ${key}; valid attributes: ${Array.join(Record.keys(attrs), ', ')}.`
+						})
+					)
+			})
+		)
 	}
 	if (input.section === 'logs') {
 		const all = Boolean.match(Option.isNone(input.span), {

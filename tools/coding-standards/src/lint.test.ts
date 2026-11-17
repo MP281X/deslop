@@ -1698,6 +1698,101 @@ export function maximumOf(values: readonly number[]) { return Array.reduce(value
 		)
 
 		testApi.effect(
+			'requires total production reads while preserving test assertions and all other property restrictions',
+			Effect.fnUntraced(function* () {
+				const rejected = yield* lintSource(
+					{
+						'access.ts': `import {Array, Option, Result} from 'effect'
+declare const title: Option.Option<string>
+declare const answer: Result.Result<string, string>
+declare const names: readonly string[]
+export const titleText = Option.getOrThrow(title)
+export const answerText = Result.getOrThrow(answer)
+export const first = Array.getUnsafe(names, 0)
+export const nested = Option.getOrNull(title)`
+					},
+					[],
+					true
+				)
+				assert.lengthOf(
+					Array.filter(
+						rejected.stdout.diagnostics,
+						diagnostic => diagnostic.code === 'eslint(no-restricted-properties)'
+					),
+					4
+				)
+				const accepted = yield* lintSource(
+					{
+						'access.test.ts': `import {assert, it} from '@effect/vitest'
+import {Array, Option, Result} from 'effect'
+it('reads asserted outcomes', () => {
+assert.strictEqual(Option.getOrThrow(Option.some('title')), 'title')
+assert.strictEqual(Result.getOrThrow(Result.succeed('answer')), 'answer')
+assert.strictEqual(Array.getUnsafe(['name'], 0), 'name')
+})`
+					},
+					[],
+					true
+				)
+				assert.deepStrictEqual(accepted.stdout.diagnostics, [])
+			})
+		)
+
+		testApi.effect(
+			'rejects guard-then-unwrap for Option checks and uses total combinators',
+			Effect.fnUntraced(function* () {
+				const result = yield* lintSource({
+					'reads.ts': `import {Option, String, pipe} from 'effect'
+export function some(title: Option.Option<string>) { if (Option.isSome(title)) return Option.getOrThrow(title); return '' } // reported
+export function none(title: Option.Option<string>) { if (Option.isNone(title)) return ''; return Option.getOrThrow(title) } // reported
+export function exists(title: Option.Option<string>) { if (Option.exists(title, String.isNonEmpty)) return Option.getOrThrow(title); return '' } // reported
+export function contains(title: Option.Option<string>) { return Option.contains(title, 'yes') && Option.getOrThrow(title) } // reported
+export function unless(title: Option.Option<string>) { if (!Option.exists(title, String.isNonEmpty)) return ''; return Option.getOrThrow(title) } // reported
+export function piped(title: Option.Option<string>) { if (Option.isNone(title)) return ''; return pipe(title, Option.getOrThrow, String.capitalize) } // reported
+export function mapped(title: Option.Option<string>) { return Option.map(title, String.capitalize) }`
+				})
+				const lines = reportedLines(result, 'library-operation')
+				assert.deepStrictEqual(lines.reported, lines.marked)
+			})
+		)
+
+		testApi.effect(
+			'discriminates typed schema unions without validating model identity',
+			Effect.fnUntraced(function* () {
+				const rejected = yield* lintSource(
+					{
+						'tags.ts': `import {Schema} from 'effect'
+type State = typeof State.Type
+const State = Schema.TaggedUnion({Failed: {message: Schema.String}, Ready: {title: Schema.String}})
+export function titleOf(state: State) { if (State.guards.Ready(state)) return state.title; return state.message }
+export function computed(state: State) { return State['guards']['Ready'](state) }`
+					},
+					[],
+					true
+				)
+				assert.lengthOf(
+					Array.filter(
+						rejected.stdout.diagnostics,
+						diagnostic => diagnostic.code === 'eslint-js(no-restricted-syntax)'
+					),
+					2
+				)
+				const accepted = yield* lintSource(
+					{
+						'tags.ts': `import {Schema} from 'effect'
+type State = typeof State.Type
+const State = Schema.TaggedUnion({Failed: {message: Schema.String}, Ready: {title: Schema.String}})
+export function titleOf(state: State) { if (State.isAnyOf(['Ready'])(state)) return state.title; return state.message }
+export function decode(input: unknown) { return Schema.decodeUnknownOption(State)(input) }`
+					},
+					[],
+					true
+				)
+				assert.deepStrictEqual(accepted.stdout.diagnostics, [])
+			})
+		)
+
+		testApi.effect(
 			'reports Phosphor weights outside the size band',
 			Effect.fnUntraced(function* () {
 				const result = yield* lintSource(

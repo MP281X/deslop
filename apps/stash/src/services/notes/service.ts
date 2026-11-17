@@ -626,22 +626,27 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 			const publication = yield* RcMap.get(publications, input.id)
 			return yield* pipe(
 				Effect.gen(function* () {
-					const existing = yield* findNote(input.id)
-					if (Option.isSome(existing)) return {fresh: false, note: Option.getOrThrow(existing)}
-					yield* asNotesError(fs.rename(partial, stored))
-					const note = yield* pipe(
-						Note.insert.makeEffect(newNote(userId, {id: input.id, text: ''}, Option.none(), Option.some(input.type))),
-						Effect.flatMap(notes.insert),
-						Reactivity.mutation(['notes']),
-						asNotesError,
-						Effect.onError(() =>
-							Effect.ignore(fs.remove(stored, {force: true}), {
-								log: 'Warn',
-								message: 'An unaccepted upload stays on disk'
-							})
-						)
-					)
-					return {fresh: true, note}
+					return yield* Option.match(yield* findNote(input.id), {
+						onNone: Effect.fnUntraced(function* () {
+							yield* asNotesError(fs.rename(partial, stored))
+							const note = yield* pipe(
+								Note.insert.makeEffect(
+									newNote(userId, {id: input.id, text: ''}, Option.none(), Option.some(input.type))
+								),
+								Effect.flatMap(notes.insert),
+								Reactivity.mutation(['notes']),
+								asNotesError,
+								Effect.onError(() =>
+									Effect.ignore(fs.remove(stored, {force: true}), {
+										log: 'Warn',
+										message: 'An unaccepted upload stays on disk'
+									})
+								)
+							)
+							return {fresh: true, note}
+						}),
+						onSome: note => Effect.succeed({fresh: false, note})
+					})
 				}),
 				sql.withTransaction,
 				Semaphore.withPermit(publication),

@@ -167,7 +167,14 @@ export class Fleet extends Context.Service<
 				worker: Worker,
 				use: (client: RemoteClient) => Effect.Effect<A, E>
 			) {
-				const peer = Option.getOrThrow(Record.get(peers, worker.name))
+				const peer = yield* pipe(
+					peers,
+					Record.get(worker.name),
+					Option.match({
+						onNone: () => DeployError.make({message: `Worker ${worker.name} is not configured.`}),
+						onSome: Effect.succeed
+					})
+				)
 				if (!(yield* Ref.get(peer.connected))) {
 					return yield* DeployError.make({message: 'Worker is unreachable'})
 				}

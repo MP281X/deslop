@@ -99,18 +99,28 @@ function spanName(span: ExportedSpan, attributes: Attributes) {
 	const name = Option.getOrElse(span.name, Function.constant(''))
 	if (name === '') return name
 	if (name === 'Machine.invoke') {
-		const source = textOf(attributes, 'machine.invoke.source')
-		if (Option.exists(source, String.isNonEmpty)) return `Machine.invoke ${Option.getOrThrow(source)}`
+		return pipe(
+			textOf(attributes, 'machine.invoke.source'),
+			Option.filter(String.isNonEmpty),
+			Option.match({onNone: () => name, onSome: source => `Machine.invoke ${source}`})
+		)
 	}
 	if (!Option.contains(textOf(attributes, 'http.request.method'), name)) return name
-	const route = textOf(attributes, 'http.route')
-	if (Option.exists(route, String.isNonEmpty)) return `${name} ${Option.getOrThrow(route)}`
-	// OTLP's SpanKind 2 is a server answering a request.
-	if (Option.contains(span.kind, 2)) return `${name} (no route)`
 	return pipe(
-		textOf(attributes, 'url.path'),
+		textOf(attributes, 'http.route'),
 		Option.filter(String.isNonEmpty),
-		Option.match({onNone: () => name, onSome: path => `${name} ${path}`})
+		Option.match({
+			onNone: () => {
+				// OTLP's SpanKind 2 is a server answering a request.
+				if (Option.contains(span.kind, 2)) return `${name} (no route)`
+				return pipe(
+					textOf(attributes, 'url.path'),
+					Option.filter(String.isNonEmpty),
+					Option.match({onNone: () => name, onSome: path => `${name} ${path}`})
+				)
+			},
+			onSome: route => `${name} ${route}`
+		})
 	)
 }
 
@@ -129,9 +139,8 @@ export function sideOf(service: ServiceName | AppName, value: Runtime) {
 
 // The stored encoding truncates epoch nanoseconds to microseconds, then represents them as fractional milliseconds.
 function instantOf(nanos: Duration.Duration) {
-	return DateTime.mapEpochMillis(
-		DateTime.makeUnsafe(0),
-		() => Option.getOrThrow(Number.parse((Duration.toNanosUnsafe(nanos) / 1000n).toString())) / 1000
+	return DateTime.mapEpochMillis(DateTime.makeUnsafe(0), () =>
+		Duration.toMillis(Duration.micros(Duration.toNanosUnsafe(nanos) / 1000n))
 	)
 }
 
@@ -278,13 +287,14 @@ export function spansOf(payload: TracesRequest) {
 
 // A severity as OTLP's number; a record with only a text level maps onto the same scale.
 function severityOf(number: Option.Option<number>, text: Option.Option<string>) {
-	if (Option.isSome(number)) return Option.getOrThrow(number)
-	const level = Option.map(text, String.toUpperCase)
-	if (Option.exists(level, value => value === 'FATAL' || value === 'ERROR')) return 17
-	if (Option.contains(level, 'WARN')) return 13
-	if (Option.contains(level, 'INFO')) return 9
-	if (Option.contains(level, 'DEBUG')) return 5
-	return 0
+	return Option.getOrElse(number, () => {
+		const level = Option.map(text, String.toUpperCase)
+		if (Option.exists(level, value => value === 'FATAL' || value === 'ERROR')) return 17
+		if (Option.contains(level, 'WARN')) return 13
+		if (Option.contains(level, 'INFO')) return 9
+		if (Option.contains(level, 'DEBUG')) return 5
+		return 0
+	})
 }
 
 // One log record of an OTLP logs export, under the identity its digest gave it.
@@ -528,38 +538,40 @@ export function traceTree(id: TraceId, spans: readonly Span[], logs: readonly Lo
 		Record.map(entries => Array.map(entries, entry => entry.log))
 	)
 	const tree = pipe(
-		Array.map(indexed, item => {
-			const ancestors = Array.reverse(
-				Array.unfold({seen: HashSet.make(`${item.span.traceId}:${item.span.spanId}`), span: item.span}, current =>
-					pipe(
-						Option.flatMap(parentOf(current.span), parent => Record.get(byId, parent)),
-						Option.filter(parent => !HashSet.has(current.seen, `${parent.span.traceId}:${parent.span.spanId}`)),
-						Option.map(
-							parent =>
-								[
-									parent,
-									{seen: HashSet.add(current.seen, `${parent.span.traceId}:${parent.span.spanId}`), span: parent.span}
-								] as const
+		Array.flatMap(Option.toArray(timing.start), start =>
+			Array.map(indexed, item => {
+				const ancestors = Array.reverse(
+					Array.unfold({seen: HashSet.make(`${item.span.traceId}:${item.span.spanId}`), span: item.span}, current =>
+						pipe(
+							Option.flatMap(parentOf(current.span), parent => Record.get(byId, parent)),
+							Option.filter(parent => !HashSet.has(current.seen, `${parent.span.traceId}:${parent.span.spanId}`)),
+							Option.map(
+								parent =>
+									[
+										parent,
+										{seen: HashSet.add(current.seen, `${parent.span.traceId}:${parent.span.spanId}`), span: parent.span}
+									] as const
+							)
 						)
 					)
 				)
-			)
-			return {
-				path: [...Array.map(ancestors, parent => parent.index), item.index],
-				value: {
-					...Struct.pick(item.span, Struct.keys(Span.fields)),
-					depth: ancestors.length,
-					durationMs: spanDuration(item.span),
-					logs: pipe(bySpan, Record.get(`${item.span.traceId}:${item.span.spanId}`), Option.getOrElse(Array.empty)),
-					offsetMs: DateTime.distance(Option.getOrThrow(timing.start), item.span.start),
-					parentSpanId: pipe(
-						parentOf(item.span),
-						Option.flatMap(parent => Record.get(byId, parent)),
-						Option.map(parent => parent.span.spanId)
-					)
+				return {
+					path: [...Array.map(ancestors, parent => parent.index), item.index],
+					value: {
+						...Struct.pick(item.span, Struct.keys(Span.fields)),
+						depth: ancestors.length,
+						durationMs: spanDuration(item.span),
+						logs: pipe(bySpan, Record.get(`${item.span.traceId}:${item.span.spanId}`), Option.getOrElse(Array.empty)),
+						offsetMs: DateTime.distance(start, item.span.start),
+						parentSpanId: pipe(
+							parentOf(item.span),
+							Option.flatMap(parent => Record.get(byId, parent)),
+							Option.map(parent => parent.span.spanId)
+						)
+					}
 				}
-			}
-		}),
+			})
+		),
 		Array.sort(Order.Struct({path: Order.Array(Order.Number)})),
 		Array.map(node => node.value)
 	)

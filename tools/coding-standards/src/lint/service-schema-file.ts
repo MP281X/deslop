@@ -64,14 +64,14 @@ function checkServiceName(context: Context, node: ESTree.Class) {
 		return importedMember({context, importedName: 'Context', node: base, propertyName: 'Service'})
 	}
 	if (node.superClass === null || !serviceBase(node.superClass)) return
-	const expected = pipe(
-		String.split(context.filename, /[/\\]/u),
-		Array.reverse,
-		Array.getUnsafe(1),
-		String.split('-'),
-		Array.map(String.capitalize),
-		Array.join('')
+	const folder = pipe(
+		context.filename,
+		String.match(/[/\\]src[/\\]services[/\\]([^/\\]+)[/\\]service\.ts$/u),
+		Option.flatMap(Array.get(1)),
+		Option.getOrUndefined
 	)
+	if (folder === undefined) return
+	const expected = pipe(folder, String.split('-'), Array.map(String.capitalize), Array.join(''))
 	if (String.toLowerCase(node.id.name) !== String.toLowerCase(expected)) {
 		context.report({message: `Name this service ${expected}, or give its folder the service's name.`, node: node.id})
 	}

@@ -329,21 +329,7 @@ export class Connections extends Context.Service<
 			definitions,
 			Array.map(row => Struct.pick(row, ['error', 'icons', 'id', 'name', 'status', 'tools', 'url']))
 		)
-		const register = Effect.fnUntraced(function* (metadata: Metadata, id: ServerId) {
-			if (Option.isSome(metadata.registration_endpoint)) {
-				return yield* pipe(
-					HttpClientRequest.bodyJson(HttpClientRequest.post(Option.getOrThrow(metadata.registration_endpoint)), {
-						...Struct.omit(clientInfo, ['client_id']),
-						redirect_uris: [`${callback}/${id}`]
-					}),
-					Effect.flatMap(request => http.execute(request)),
-					Effect.flatMap(HttpClientResponse.schemaBodyJson(Registration)),
-					Effect.map(found => OAuthClient.cases.Registered.make({clientId: found.client_id}))
-				)
-			}
-			yield* connectable(metadata)
-			return OAuthClient.cases.Document.make({})
-		})
+
 		const exchange = Effect.fnUntraced(function* (
 			connection: ConnectionAddress,
 			issued: ConnectionIssuer,
@@ -471,34 +457,38 @@ export class Connections extends Context.Service<
 			if (Option.exists(resourceMetadata, metadata => metadata.resource !== initial.url)) {
 				return yield* AuthError.make({message: 'The MCP metadata names a different resource URL.'})
 			}
-			if (Option.isNone(authorizationMetadata)) return yield* available()
-			const metadata = yield* Schema.decodeEffect(Metadata)(Option.getOrThrow(authorizationMetadata))
-			yield* connectable(metadata)
-			return {
-				...initial,
-				error: Option.none(),
-				icons: [],
-				instructions: Option.none(),
-				issuer: Option.some(metadata.issuer),
-				mode: 'oauth',
-				name: pipe(
-					resourceMetadata,
-					Option.flatMap(found => Option.fromUndefinedOr(found.resource_name)),
-					Option.map(String.trim),
-					Option.filter(String.isNonEmpty),
-					Option.getOrElse(() => initial.name)
-				),
-				scope: Option.some(
-					challenge.scope ??
-						pipe(
+			return yield* Option.match(authorizationMetadata, {
+				onNone: available,
+				onSome: Effect.fnUntraced(function* (serverMetadata) {
+					const metadata = yield* Schema.decodeEffect(Metadata)(serverMetadata)
+					yield* connectable(metadata)
+					return {
+						...initial,
+						error: Option.none(),
+						icons: [],
+						instructions: Option.none(),
+						issuer: Option.some(metadata.issuer),
+						mode: 'oauth',
+						name: pipe(
 							resourceMetadata,
-							Option.flatMap(found => Option.fromUndefinedOr(found.scopes_supported)),
-							Option.getOrElse(() => []),
-							Array.join(' ')
-						)
-				),
-				tools: 0
-			} satisfies typeof Connection.insert.Type
+							Option.flatMap(found => Option.fromUndefinedOr(found.resource_name)),
+							Option.map(String.trim),
+							Option.filter(String.isNonEmpty),
+							Option.getOrElse(() => initial.name)
+						),
+						scope: Option.some(
+							challenge.scope ??
+								pipe(
+									resourceMetadata,
+									Option.flatMap(found => Option.fromUndefinedOr(found.scopes_supported)),
+									Option.getOrElse(() => []),
+									Array.join(' ')
+								)
+						),
+						tools: 0
+					} satisfies typeof Connection.insert.Type
+				})
+			})
 		})
 		const fail = Effect.fnUntraced(function* (connection: ConnectionState, cause: unknown) {
 			const reason = describe(cause)
@@ -547,69 +537,90 @@ export class Connections extends Context.Service<
 			begin: Effect.fn('Connections.begin')(function* (id: ServerId, user: User) {
 				yield* admin(user)
 				const connection = yield* get(id)
-				const oauth = Option.all({issuer: connection.issuer, scope: connection.scope})
-				if (Option.isNone(oauth)) {
-					yield* change(id, connection.generation, () => ({error: Option.none()}))
-					return {state: Option.none<OAuthState>(), url: '/'}
-				}
-				return yield* pipe(
-					Effect.gen(function* () {
-						// Check the provider's current capabilities before authorization.
-						const metadata = yield* Schema.decodeUnknownEffect(Metadata)(
-							yield* Effect.tryPromise({
-								catch: cause => UpstreamError.make({cause}),
-								try: signal =>
-									discoverAuthorizationServerMetadata(Option.getOrThrow(oauth).issuer, {
-										fetchFn: (target, init) =>
-											fetch(target, {
-												...init,
-												signal: AbortSignal.any([signal, ...Option.toArray(Option.fromNullishOr(init?.signal))])
+				return yield* Option.match(Option.all({issuer: connection.issuer, scope: connection.scope}), {
+					onNone: Effect.fnUntraced(function* () {
+						yield* change(id, connection.generation, () => ({error: Option.none()}))
+						return {state: Option.none<OAuthState>(), url: '/'}
+					}),
+					onSome: Effect.fnUntraced(function* (oauth) {
+						return yield* pipe(
+							Effect.gen(function* () {
+								// Check the provider's current capabilities before authorization.
+								const metadata = yield* Schema.decodeUnknownEffect(Metadata)(
+									yield* Effect.tryPromise({
+										catch: cause => UpstreamError.make({cause}),
+										try: signal =>
+											discoverAuthorizationServerMetadata(oauth.issuer, {
+												fetchFn: (target, init) =>
+													fetch(target, {
+														...init,
+														signal: AbortSignal.any([signal, ...Option.toArray(Option.fromNullishOr(init?.signal))])
+													})
 											})
 									})
-							})
-						)
-						if (!Option.exists(metadata.code_challenge_methods_supported, methods => Array.contains(methods, 'S256'))) {
-							return yield* AuthError.make({
-								message: 'The provider must advertise S256 PKCE and safe authorization endpoints.'
-							})
-						}
-						// Each connection registers anew, so a client registered for an earlier callback is never reused; the server keeps its grant until the new client has tokens.
-						const registered = yield* register(metadata, id)
-						const stateId = OAuthState.make(yield* nonce)
-						const encodedMetadata = yield* Schema.encodeEffect(Metadata)(metadata)
-						const authorization = yield* Effect.tryPromise({
-							catch: cause => UpstreamError.make({cause}),
-							try: () =>
-								startAuthorization(metadata.issuer, {
-									clientInformation: {client_id: clientIdOf(registered)},
-									metadata: {
-										...encodedMetadata,
-										code_challenge_methods_supported: [...(encodedMetadata.code_challenge_methods_supported ?? [])],
-										response_types_supported: [...(encodedMetadata.response_types_supported ?? [])]
-									},
-									redirectUrl: Match.valueTags(registered, {
-										Document: () => callback,
-										Registered: () => `${callback}/${id}`
+								)
+								if (
+									!Option.exists(metadata.code_challenge_methods_supported, methods => Array.contains(methods, 'S256'))
+								) {
+									return yield* AuthError.make({
+										message: 'The provider must advertise S256 PKCE and safe authorization endpoints.'
+									})
+								}
+								// Each connection registers anew, so a client registered for an earlier callback is never reused; the server keeps its grant until the new client has tokens.
+								const registered = yield* Option.match(metadata.registration_endpoint, {
+									onNone: Effect.fnUntraced(function* () {
+										yield* connectable(metadata)
+										return OAuthClient.cases.Document.make({})
 									}),
-									resource: connection.url,
-									scope: Option.getOrThrow(oauth).scope,
-									state: stateId
+									onSome: Effect.fnUntraced(function* (endpoint) {
+										return yield* pipe(
+											HttpClientRequest.bodyJson(HttpClientRequest.post(endpoint), {
+												...Struct.omit(clientInfo, ['client_id']),
+												redirect_uris: [`${callback}/${id}`]
+											}),
+											Effect.flatMap(request => http.execute(request)),
+											Effect.flatMap(HttpClientResponse.schemaBodyJson(Registration)),
+											Effect.map(found => OAuthClient.cases.Registered.make({clientId: found.client_id}))
+										)
+									})
 								})
-						})
-						yield* Cache.set(pending, stateId, {
-							client: registered,
-							generation: connection.generation,
-							id,
-							metadata,
-							userId: user.id,
-							verifier: authorization.codeVerifier
-						})
-						return {state: Option.some(stateId), url: authorization.authorizationUrl.href}
-					}),
-					Effect.timeout(Duration.seconds(20)),
-					Effect.tapError(cause => Effect.logWarning('The MCP connection could not be completed', cause)),
-					Effect.catch(cause => fail(connection, cause))
-				)
+								const stateId = OAuthState.make(yield* nonce)
+								const encodedMetadata = yield* Schema.encodeEffect(Metadata)(metadata)
+								const authorization = yield* Effect.tryPromise({
+									catch: cause => UpstreamError.make({cause}),
+									try: () =>
+										startAuthorization(metadata.issuer, {
+											clientInformation: {client_id: clientIdOf(registered)},
+											metadata: {
+												...encodedMetadata,
+												code_challenge_methods_supported: [...(encodedMetadata.code_challenge_methods_supported ?? [])],
+												response_types_supported: [...(encodedMetadata.response_types_supported ?? [])]
+											},
+											redirectUrl: Match.valueTags(registered, {
+												Document: () => callback,
+												Registered: () => `${callback}/${id}`
+											}),
+											resource: connection.url,
+											scope: oauth.scope,
+											state: stateId
+										})
+								})
+								yield* Cache.set(pending, stateId, {
+									client: registered,
+									generation: connection.generation,
+									id,
+									metadata,
+									userId: user.id,
+									verifier: authorization.codeVerifier
+								})
+								return {state: Option.some(stateId), url: authorization.authorizationUrl.href}
+							}),
+							Effect.timeout(Duration.seconds(20)),
+							Effect.tapError(cause => Effect.logWarning('The MCP connection could not be completed', cause)),
+							Effect.catch(cause => fail(connection, cause))
+						)
+					})
+				})
 			}, asAuthError('Cannot connect this MCP')),
 			// Keep the existing thirty-day retention as a new call arrives.
 			called: Effect.fn('Connections.called')(function* (id) {
@@ -651,11 +662,17 @@ export class Connections extends Context.Service<
 				}
 				yield* pipe(
 					Effect.gen(function* () {
-						if (Option.isSome(params.error) || Option.isNone(params.code)) {
-							return yield* AuthError.make({
-								message: `The provider declined the connection (${Option.getOrElse(params.error, Function.constant('no code'))})`
+						const code = yield* pipe(
+							params.code,
+							Option.filter(() => Option.isNone(params.error)),
+							Option.match({
+								onNone: () =>
+									AuthError.make({
+										message: `The provider declined the connection (${Option.getOrElse(params.error, Function.constant('no code'))})`
+									}),
+								onSome: Effect.succeed
 							})
-						}
+						)
 						// RFC 9700 §4.4.2: the answer must come from this server's authorization server, by its own callback or its issuer.
 						const fromIssuer = Match.valueTags(flow.client, {
 							Document: () => Option.isNone(route),
@@ -671,7 +688,7 @@ export class Connections extends Context.Service<
 									expectedIssuer: flow.metadata.issuer,
 									iss: Option.getOrUndefined(params.iss),
 									issParameterSupported:
-										OAuthClient.guards.Document(flow.client) ||
+										OAuthClient.isAnyOf(['Document'])(flow.client) ||
 										Option.contains(flow.metadata.authorization_response_iss_parameter_supported, true)
 								})
 						})
@@ -679,7 +696,7 @@ export class Connections extends Context.Service<
 							connection,
 							{clientId: clientIdOf(flow.client), tokenEndpoint: flow.metadata.token_endpoint},
 							{
-								code: Option.getOrThrow(params.code),
+								code,
 								code_verifier: flow.verifier,
 								grant_type: 'authorization_code',
 								redirect_uri: Match.valueTags(flow.client, {

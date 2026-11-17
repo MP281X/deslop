@@ -39,6 +39,7 @@ export function exitFailure(status: number) {
 }
 
 // Why each failed unit stopped and when, by unit, from `systemctl show -p Id,Result,ExecMainCode,ExecMainStatus,StateChangeTimestamp --timestamp=unix`.
+// judge-ignore no-silent-fallback -- inventory health already records the failed unit independently; absent or malformed exit metadata omits only its optional explanation, never the failing state.
 export function unitFailures(text: string) {
 	return pipe(
 		String.trim(text),
@@ -57,26 +58,24 @@ export function unitFailures(text: string) {
 			const id = fields['Id'] ?? ''
 			const result = fields['Result'] ?? ''
 			const status = Number.parse(fields['ExecMainStatus'] ?? '')
-			if (
-				!String.isNonEmpty(id) ||
-				!String.isNonEmpty(result) ||
-				Option.isNone(status) ||
-				!String.isNonEmpty(fields['ExecMainCode'] ?? '')
-			) {
+			if (!String.isNonEmpty(id) || !String.isNonEmpty(result) || !String.isNonEmpty(fields['ExecMainCode'] ?? '')) {
 				return []
 			}
-			return [
-				[
-					UnitId.make(id),
-					{
-						at: Option.map(Number.parse(String.replace(/^@/u, '')(fields['StateChangeTimestamp'] ?? '')), seconds =>
-							DateTime.mapEpochMillis(DateTime.makeUnsafe(0), () => seconds * 1000)
-						),
-						// A unit whose start step failed never ran its main process, which leaves its code 0.
-						reason: failureReason(result, Option.getOrThrow(status), fields['ExecMainCode'] !== '0')
-					}
-				] as const
-			]
+			return Option.match(status, {
+				onNone: () => [],
+				onSome: exitStatus => [
+					[
+						UnitId.make(id),
+						{
+							at: Option.map(Number.parse(String.replace(/^@/u, '')(fields['StateChangeTimestamp'] ?? '')), seconds =>
+								DateTime.mapEpochMillis(DateTime.makeUnsafe(0), () => seconds * 1000)
+							),
+							// A unit whose start step failed never ran its main process, which leaves its code 0.
+							reason: failureReason(result, exitStatus, fields['ExecMainCode'] !== '0')
+						}
+					] as const
+				]
+			})
 		}),
 		Record.fromEntries
 	)

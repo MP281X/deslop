@@ -415,6 +415,7 @@ function collectionRead(context: Context, node: ESTree.Node) {
 }
 
 function optionCheck(context: Context, test: ESTree.Node, text: string, some: boolean): boolean {
+	if (test.type === 'UnaryExpression' && test.operator === '!') return optionCheck(context, test.argument, text, !some)
 	const variant = Boolean.match(some, {
 		onFalse: () => ({name: 'isNone', operator: '||'}),
 		onTrue: () => ({name: 'isSome', operator: '&&'})
@@ -424,7 +425,12 @@ function optionCheck(context: Context, test: ESTree.Node, text: string, some: bo
 	}
 	return (
 		test.type === 'CallExpression' &&
-		importedMember({context, importedName: 'Option', node: test.callee, propertyName: variant.name}) &&
+		test.callee.type === 'MemberExpression' &&
+		importedMember({context, importedName: 'Option', node: test.callee}) &&
+		Option.exists(
+			memberName(test.callee),
+			name => name === variant.name || (some && Array.contains(['exists', 'contains'], name))
+		) &&
 		test.arguments[0] !== undefined &&
 		context.sourceCode.getText(test.arguments[0]) === text
 	)
@@ -467,6 +473,23 @@ function guardedOption(context: Context, node: ESTree.Node, text: string): boole
 }
 
 function optionRead(context: Context, node: ESTree.Node) {
+	if (
+		node.type === 'MemberExpression' &&
+		importedMember({context, importedName: 'Option', node, propertyName: 'getOrThrow'}) &&
+		node.parent.type === 'CallExpression'
+	) {
+		const value = node.parent.arguments[0]
+		if (
+			value !== undefined &&
+			(node.parent.callee === node ||
+				(node.parent.callee.type === 'Identifier' &&
+					node.parent.callee.name === 'pipe' &&
+					node.parent.arguments[1] === node)) &&
+			guardedOption(context, node.parent, context.sourceCode.getText(value))
+		) {
+			return operation('Option.match, Option.map or Option.getOrElse', 'unwrapping after a guard', node)
+		}
+	}
 	if (
 		node.type === 'MemberExpression' &&
 		Option.contains(memberName(node), 'value') &&
@@ -889,21 +912,19 @@ function iterableRecord(context: Context, node: ESTree.Node) {
 		)
 	}
 	if (input.callee.type !== 'Identifier' || input.callee.name !== 'pipe') return []
-	const last = Array.last(input.arguments)
-	if (
-		!Option.isSome(last) ||
-		last.value.type !== 'CallExpression' ||
-		last.value.arguments.length !== 1 ||
-		!unaryEntryMapper(context, last.value)
-	) {
-		return []
-	}
-	const mapper = last.value
-	return operation('Record.fromIterableWith', 'mapping entries before building a record', node, fixer => [
-		fixer.removeRange([node.range[0], input.range[0]]),
-		fixer.replaceText(mapper.callee, 'Record.fromIterableWith'),
-		fixer.removeRange([input.range[1], node.range[1]])
-	])
+	return Option.match(Array.last(input.arguments), {
+		onNone: () => [],
+		onSome: mapper => {
+			if (mapper.type !== 'CallExpression' || mapper.arguments.length !== 1 || !unaryEntryMapper(context, mapper)) {
+				return []
+			}
+			return operation('Record.fromIterableWith', 'mapping entries before building a record', node, fixer => [
+				fixer.removeRange([node.range[0], input.range[0]]),
+				fixer.replaceText(mapper.callee, 'Record.fromIterableWith'),
+				fixer.removeRange([input.range[1], node.range[1]])
+			])
+		}
+	})
 }
 
 // The first matching shape owns the expression, including its smaller spellings.
@@ -934,6 +955,11 @@ export const libraryOperation = defineRule({
 		docs: {
 			examples: {
 				accepted: [
+					{
+						'sample.ts': `import {Array, Filter, Function, Option, String} from 'effect'
+export function display(title: Option.Option<string>) { return Option.match(title, {onNone: Function.constant('Untitled'), onSome: String.capitalize}) }
+export function present(titles: readonly Option.Option<string>[]) { return Array.filterMap(titles, Filter.fromPredicateOption(title => Option.map(title, String.capitalize))) }`
+					},
 					{
 						'sample.ts': `import {Array, Record} from 'effect'
 export function indexed(items: readonly {name: string}[]) { return Record.fromEntries(Array.map(items, (item, index) => [item.name, index])) }

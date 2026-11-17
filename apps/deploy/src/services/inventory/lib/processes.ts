@@ -1,5 +1,6 @@
 import {
 	Array,
+	Filter,
 	Boolean,
 	DateTime,
 	Duration,
@@ -49,10 +50,15 @@ function processStatus(status: string) {
 	const values = pipe(
 		String.trim(status),
 		String.split('\n'),
-		Record.fromIterableWith(line => {
-			const at = Option.getOrThrow(String.indexOf(':')(line))
-			return [String.slice(0, at)(line), String.trim(String.slice(at + 1)(line))] as const
-		})
+		Array.filterMap(
+			Filter.fromPredicateOption(line =>
+				Option.map(
+					String.indexOf(':')(line),
+					at => [String.slice(0, at)(line), String.trim(String.slice(at + 1)(line))] as const
+				)
+			)
+		),
+		Record.fromEntries
 	)
 	// A field Linux always prints; missing or empty, it decodes as nothing and fails.
 	function field(name: string) {

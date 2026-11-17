@@ -82,6 +82,59 @@ const RUNNERS = [
 const SET_MESSAGE =
 	'Use HashSet, or MutableHashSet for local mutation; for identity keys, wrap objects the code owns in Equal.byReferenceUnsafe, which marks them reference-compared globally.'
 
+const RESTRICTED_PROPERTIES = [
+	{message: 'Use standalone pipe.', property: 'pipe'},
+	{message: 'Name the log level: Effect.logInfo, logWarning, logError or logDebug.', object: 'Effect', property: 'log'},
+	...Array.map(['useSearch', 'useParams', 'useNavigate', 'useLoaderData', 'useRouteContext'], property => ({
+		message: 'Use getRouteApi(path) and its typed route hooks.',
+		object: 'Route',
+		property
+	})),
+	// The Effect compiler's preferEffectRecord diagnostic owns keys, values, entries, fromEntries, hasOwn and hasOwnProperty.
+	{
+		allowProperties: ['entries', 'fromEntries', 'hasOwn', 'keys', 'values'],
+		message: "Use Record or Struct from 'effect'.",
+		object: 'Object'
+	},
+	...Array.map(RUNNERS, property => ({message: RUN_MESSAGE, object: 'Effect', property})),
+	{message: RUN_MESSAGE, object: 'ManagedRuntime', property: 'make'},
+	{message: 'Use Number.max.', object: 'Math', property: 'max'},
+	{message: 'Use Option.getOrUndefined; undefined marks an absent value.', object: 'Option', property: 'getOrNull'},
+	{message: 'Use Number.min.', object: 'Math', property: 'min'},
+	{message: 'Use Number.round.', object: 'Math', property: 'round'},
+	...Array.map(REACT_LEGACY_APIS, property => ({message: REACT_LEGACY_MESSAGE, object: 'React', property})),
+	{message: 'Use Schema.Struct.', object: 'Schema', property: 'Class'},
+	{message: 'Use a branded schema.', object: 'Schema', property: 'Opaque'},
+	{message: 'Use Schema.Struct.', object: 'Schema', property: 'TaggedClass'},
+	{message: 'Use Schema.Struct.', object: 'Data', property: 'Class'},
+	{message: 'Use Schema.TaggedError.', object: 'Data', property: 'Error'},
+	{message: 'Use Schema.Struct.', object: 'Data', property: 'TaggedClass'},
+	{message: 'Use Schema.TaggedError.', object: 'Data', property: 'TaggedError'},
+	...Array.map(
+		[
+			'addEventListener',
+			'cancelAnimationFrame',
+			'cancelIdleCallback',
+			'dispatchEvent',
+			'localStorage',
+			'navigator',
+			'removeEventListener',
+			'requestAnimationFrame',
+			'requestIdleCallback',
+			'sessionStorage',
+			'structuredClone'
+		],
+		property => ({message: `Use the bare ${property} global.`, object: 'window', property})
+	),
+	...Array.map(['setInterval', 'setTimeout'], property => ({
+		message: 'Use Effect.sleep or Schedule.',
+		object: 'window',
+		property
+	})),
+	{message: 'Use HttpClient.', object: 'window', property: 'fetch'},
+	{message: 'Use Clock.', object: 'window', property: 'performance'}
+]
+
 // Checks of Deslop's own choices, which only Deslop's conventions can serve.
 
 const RULES = {
@@ -173,6 +226,26 @@ export const lint: OxlintConfig & {
 	],
 	options: {denyWarnings: true, reportUnusedDisableDirectives: 'deny', typeAware: false, typeCheck: false},
 	overrides: [
+		{
+			excludeFiles: ['**/*.test.ts', '**/*.test.tsx'],
+			files: ['**/*'],
+			rules: {
+				'eslint/no-restricted-properties': [
+					'error',
+					...RESTRICTED_PROPERTIES,
+					...Array.map(['Option', 'Result'], object => ({
+						message: 'Match the result, or carry the known value in its type.',
+						object,
+						property: 'getOrThrow'
+					})),
+					{
+						message: 'Use a non-empty type or findFirstWithIndex; do not assert an index exists.',
+						object: 'Array',
+						property: 'getUnsafe'
+					}
+				]
+			}
+		},
 		{files: ['**/*.config.ts', '**/app.plugin.js'], rules: {'import/no-default-export': 'off'}},
 		// Expo resolves a config plugin only from the package's app.plugin.js, which re-exports the plugin.
 		{files: ['**/app.plugin.js'], rules: {'@deslop/coding-standards/no-barrel-module': 'off'}},
@@ -204,6 +277,12 @@ export const lint: OxlintConfig & {
 
 		'eslint-js/no-restricted-syntax': [
 			'error',
+			{
+				message:
+					'Discriminate typed unions with isAnyOf or match; schema guards validate the entire value, including model identity.',
+				selector:
+					'MemberExpression[object.type="MemberExpression"][object.property.name="guards"], MemberExpression[object.type="MemberExpression"][object.property.value="guards"]'
+			},
 			{message: 'Use const and Effect collection combinators.', selector: 'VariableDeclaration[kind="let"]'},
 			{message: 'Use Match.', selector: 'SwitchStatement'},
 			{
@@ -435,63 +514,7 @@ export const lint: OxlintConfig & {
 			}
 		],
 		'eslint/no-restricted-imports': ['error', restrictedImports],
-		'eslint/no-restricted-properties': [
-			'error',
-			{message: 'Use standalone pipe.', property: 'pipe'},
-			{
-				message: 'Name the log level: Effect.logInfo, logWarning, logError or logDebug.',
-				object: 'Effect',
-				property: 'log'
-			},
-			...Array.map(['useSearch', 'useParams', 'useNavigate', 'useLoaderData', 'useRouteContext'], property => ({
-				message: 'Use getRouteApi(path) and its typed route hooks.',
-				object: 'Route',
-				property
-			})),
-			// The Effect compiler's preferEffectRecord diagnostic owns keys, values, entries, fromEntries, hasOwn and hasOwnProperty.
-			{
-				allowProperties: ['entries', 'fromEntries', 'hasOwn', 'keys', 'values'],
-				message: "Use Record or Struct from 'effect'.",
-				object: 'Object'
-			},
-			...Array.map(RUNNERS, property => ({message: RUN_MESSAGE, object: 'Effect', property})),
-			{message: RUN_MESSAGE, object: 'ManagedRuntime', property: 'make'},
-			{message: 'Use Number.max.', object: 'Math', property: 'max'},
-			{message: 'Use Option.getOrUndefined; undefined marks an absent value.', object: 'Option', property: 'getOrNull'},
-			{message: 'Use Number.min.', object: 'Math', property: 'min'},
-			{message: 'Use Number.round.', object: 'Math', property: 'round'},
-			...Array.map(REACT_LEGACY_APIS, property => ({message: REACT_LEGACY_MESSAGE, object: 'React', property})),
-			{message: 'Use Schema.Struct.', object: 'Schema', property: 'Class'},
-			{message: 'Use a branded schema.', object: 'Schema', property: 'Opaque'},
-			{message: 'Use Schema.Struct.', object: 'Schema', property: 'TaggedClass'},
-			{message: 'Use Schema.Struct.', object: 'Data', property: 'Class'},
-			{message: 'Use Schema.TaggedError.', object: 'Data', property: 'Error'},
-			{message: 'Use Schema.Struct.', object: 'Data', property: 'TaggedClass'},
-			{message: 'Use Schema.TaggedError.', object: 'Data', property: 'TaggedError'},
-			...Array.map(
-				[
-					'addEventListener',
-					'cancelAnimationFrame',
-					'cancelIdleCallback',
-					'dispatchEvent',
-					'localStorage',
-					'navigator',
-					'removeEventListener',
-					'requestAnimationFrame',
-					'requestIdleCallback',
-					'sessionStorage',
-					'structuredClone'
-				],
-				property => ({message: `Use the bare ${property} global.`, object: 'window', property})
-			),
-			...Array.map(['setInterval', 'setTimeout'], property => ({
-				message: 'Use Effect.sleep or Schedule.',
-				object: 'window',
-				property
-			})),
-			{message: 'Use HttpClient.', object: 'window', property: 'fetch'},
-			{message: 'Use Clock.', object: 'window', property: 'performance'}
-		],
+		'eslint/no-restricted-properties': ['error', ...RESTRICTED_PROPERTIES],
 		'eslint/no-return-assign': 'error',
 		'eslint/no-self-assign': 'error',
 		'eslint/no-self-compare': 'error',

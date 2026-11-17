@@ -382,7 +382,7 @@ function routeOfJourney(journey: Array.NonEmptyReadonlyArray<Booking>) {
 function Start(props: {legs: readonly (Flight | Train)[]; now: DateTime.Utc}) {
 	const start = useAtomSet(startAtom)
 	if (!startable(props.legs, props.now)) return undefined
-	const first = Option.getOrThrow(Array.head(props.legs))
+	const first = Array.headNonEmpty(props.legs)
 	const auto = autoStartOf(props.legs)
 	return (
 		<Section

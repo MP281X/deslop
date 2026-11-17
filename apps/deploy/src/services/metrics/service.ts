@@ -12,7 +12,6 @@ import {
 	FileSystem,
 	Function,
 	Layer,
-	Number,
 	Option,
 	Predicate,
 	Record,
@@ -47,8 +46,16 @@ import {
 	vmStatMemory
 } from '#services/metrics/lib/utils.ts'
 import type {AppReading} from '#services/metrics/lib/utils.ts'
-import {AppHistory, CgroupPath, Counters, MachineSample, Sample} from '#services/metrics/schema.ts'
-import type {Disk, MachineHistory, HistoryQuery} from '#services/metrics/schema.ts'
+import {
+	AppHistory,
+	CgroupPath,
+	Counters,
+	HistoryMinutes,
+	HistoryQuery,
+	MachineSample,
+	Sample
+} from '#services/metrics/schema.ts'
+import type {Disk, MachineHistory} from '#services/metrics/schema.ts'
 
 const CGROUP = '/sys/fs/cgroup'
 
@@ -139,9 +146,9 @@ export class Metrics extends Context.Service<Metrics>()('@deslop/deploy/services
 					table =>
 						sql`DELETE FROM ${sql(table)} WHERE ${sql.or(
 							Array.map(
-								Record.toEntries(SERIES),
-								entry =>
-									sql`(step = ${Duration.toMillis(entry[1])} AND since < ${now - pipe(entry[0], Number.parse, Option.getOrThrow, Duration.minutes, Duration.toMillis) - Duration.toMillis(entry[1])})`
+								HistoryMinutes.literals,
+								minutes =>
+									sql`(step = ${Duration.toMillis(SERIES[minutes])} AND since < ${now - Duration.toMillis(Duration.minutes(minutes)) - Duration.toMillis(SERIES[minutes])})`
 							)
 						)}`,
 					{concurrency: 1}
@@ -211,28 +218,34 @@ export class Metrics extends Context.Service<Metrics>()('@deslop/deploy/services
 			const readings = yield* Effect.forEach(
 				yield* appCgroups,
 				path =>
-					pipe(
-						Effect.all(
-							{
-								cpu: fs.readFileString(`${CGROUP}${path}/cpu.stat`),
-								memory: fs.readFileString(`${CGROUP}${path}/memory.stat`)
-							},
-							{concurrency: 'unbounded'}
-						),
-						Effect.catchTag('PlatformError', cause => {
-							if (Predicate.isTagged(cause.reason, 'NotFound')) return Effect.undefined
-							return Effect.fail(cause)
-						}),
-						Effect.flatMap(stats => {
-							if (stats === undefined) return Effect.succeedNone
-							return Option.match(cgroupUsage(stats.cpu, stats.memory), {
-								onNone: () =>
-									Effect.fail(DeployError.make({message: `The cgroup counters for ${path} are missing or invalid.`})),
-								onSome: usage =>
-									Effect.succeedSome([path, {id: Option.getOrThrow(processOwner(path)), ...usage}] as const)
-							})
+					Option.match(processOwner(path), {
+						onNone: () => Effect.fail(DeployError.make({message: `The cgroup ${path} has no app owner.`})),
+						onSome: Effect.fnUntraced(function* (id) {
+							return yield* pipe(
+								Effect.all(
+									{
+										cpu: fs.readFileString(`${CGROUP}${path}/cpu.stat`),
+										memory: fs.readFileString(`${CGROUP}${path}/memory.stat`)
+									},
+									{concurrency: 'unbounded'}
+								),
+								Effect.catchTag('PlatformError', cause => {
+									if (Predicate.isTagged(cause.reason, 'NotFound')) return Effect.undefined
+									return Effect.fail(cause)
+								}),
+								Effect.flatMap(stats => {
+									if (stats === undefined) return Effect.succeedNone
+									return Option.match(cgroupUsage(stats.cpu, stats.memory), {
+										onNone: () =>
+											Effect.fail(
+												DeployError.make({message: `The cgroup counters for ${path} are missing or invalid.`})
+											),
+										onSome: usage => Effect.succeedSome([path, {id, ...usage}] as const)
+									})
+								})
+							)
 						})
-					),
+					}),
 				{concurrency: 8}
 			)
 			return Record.fromEntries(Array.getSomes(readings))
@@ -362,7 +375,7 @@ export class Metrics extends Context.Service<Metrics>()('@deslop/deploy/services
 			read: Effect.fn('Metrics.read')(function* (query: HistoryQuery) {
 				yield* Effect.annotateCurrentSpan({minutes: Duration.toMinutes(query.minutes), worker})
 				const time = yield* DateTime.now
-				const step = Option.getOrThrow(Record.get(SERIES, `${Duration.toMinutes(query.minutes)}`))
+				const step = SERIES[yield* asDeployError(Schema.encodeEffect(HistoryQuery.fields.minutes)(query.minutes))]
 				const samples = yield* asDeployError(
 					listSeries({after: DateTime.subtractDuration(chartWindow(query.minutes, time).start, step), step})
 				)

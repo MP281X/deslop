@@ -11,18 +11,23 @@ import {ToolContracts} from '#tools/contracts.ts'
 
 function checkWorker(snapshot: Snapshot, worker: Option.Option<WorkerId>) {
 	const workers = listApps(snapshot, {app: Option.none(), failing: Option.none(), worker: Option.none()})
-	if (Option.exists(worker, selected => !Array.some(workers, row => row.worker === selected))) {
-		return Effect.fail(
-			DeployError.make({
-				message: `Unknown worker ${Option.getOrThrow(worker)}; valid workers: ${pipe(
-					workers,
-					Array.map(row => row.worker),
-					Array.join(', ')
-				)}. Nothing changed.`
-			})
-		)
-	}
-	return Effect.void
+	return pipe(
+		worker,
+		Option.filter(selected => !Array.some(workers, row => row.worker === selected)),
+		Option.match({
+			onNone: () => Effect.void,
+			onSome: selected =>
+				Effect.fail(
+					DeployError.make({
+						message: `Unknown worker ${selected}; valid workers: ${pipe(
+							workers,
+							Array.map(row => row.worker),
+							Array.join(', ')
+						)}. Nothing changed.`
+					})
+				)
+		})
+	)
 }
 
 function processPaths(tree: readonly ProcessSummary[], prefix: string): readonly string[] {
@@ -122,24 +127,28 @@ function inventoryPage(
 }
 
 function focusedInventory(workers: readonly WorkerInventory[], app: Option.Option<string>) {
-	if (Option.isNone(app)) return workers
-	const query = String.toLowerCase(Option.getOrThrow(app))
-	function matchingName(row: {readonly name: string}) {
-		return pipe(row.name, String.toLowerCase, String.includes(query))
-	}
-	return Array.map(workers, worker => ({
-		...worker,
-		exposures: pipe(
-			worker.exposures,
-			Option.map(rows => Array.filter(rows, matchingName)),
-			Option.orElseSome(() => [])
-		),
-		jobs: pipe(
-			worker.jobs,
-			Option.map(rows => Array.filter(rows, matchingName)),
-			Option.orElseSome(() => [])
-		)
-	}))
+	return Option.match(app, {
+		onNone: () => workers,
+		onSome: queryText => {
+			const query = String.toLowerCase(queryText)
+			function matchingName(row: {readonly name: string}) {
+				return pipe(row.name, String.toLowerCase, String.includes(query))
+			}
+			return Array.map(workers, worker => ({
+				...worker,
+				exposures: pipe(
+					worker.exposures,
+					Option.map(rows => Array.filter(rows, matchingName)),
+					Option.orElseSome(() => [])
+				),
+				jobs: pipe(
+					worker.jobs,
+					Option.map(rows => Array.filter(rows, matchingName)),
+					Option.orElseSome(() => [])
+				)
+			}))
+		}
+	})
 }
 
 function metricSummary(series: readonly Option.Option<number>[]) {

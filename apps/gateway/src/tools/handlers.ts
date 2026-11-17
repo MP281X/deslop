@@ -18,15 +18,21 @@ const ToolHandlers = ToolContracts.toLayer(
 		return ToolContracts.of({
 			list_mcp_connections: Effect.fnUntraced(function* (input) {
 				const all = yield* connections.definitions
-				if (Option.exists(input.server, id => !Array.some(all, server => server.id === id))) {
-					return yield* AuthError.make({
-						message: `Unknown server ${Option.getOrThrow(input.server)}; valid servers: ${pipe(
-							all,
-							Array.map(server => server.id),
-							Array.join(', ')
-						)}. Nothing changed.`
+				yield* pipe(
+					input.server,
+					Option.filter(id => !Array.some(all, server => server.id === id)),
+					Option.match({
+						onNone: () => Effect.void,
+						onSome: id =>
+							AuthError.make({
+								message: `Unknown server ${id}; valid servers: ${pipe(
+									all,
+									Array.map(server => server.id),
+									Array.join(', ')
+								)}. Nothing changed.`
+							})
 					})
-				}
+				)
 				return {
 					servers: pipe(
 						all,
