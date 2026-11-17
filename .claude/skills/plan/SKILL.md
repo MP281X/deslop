@@ -26,8 +26,8 @@ stateDiagram-v2
 
 At any stage, when a decision is open or you are stuck. One brief, the same to each: the question, the options, and the user's words and `AGENTS.md` choices that bear on it.
 
-|         | Advisors                                                                                               | Council                                                                                               |
-| ------- | ------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------- |
-| For     | A choice between known options                                                                         | No clear direction: ideas, approaches                                                                 |
-| Who     | Fable 5.2 at high; GPT-6.1 Sol at high beside it for architecture, in sleep, and when you run on Fable | GPT-6.1 Terra, GPT-6 Luna, Sonnet 5.5 and Haiku 5.5 at medium, read-only, each from a different angle |
-| Returns | The pros and cons of every option, and a verdict                                                       | An approach each: merge their best parts, or show them as the variants                                |
+|         | Advisors                                                                                                 | Council                                                                                               |
+| ------- | -------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| For     | A choice between known options                                                                           | No clear direction: ideas, approaches                                                                 |
+| Who     | Fable 5.2 at high; GPT-6.2 Astra at high beside it for architecture, in sleep, and when you run on Fable | GPT-6.1 Terra, GPT-6 Luna, Sonnet 5.5 and Haiku 5.5 at medium, read-only, each from a different angle |
+| Returns | The pros and cons of every option, and a verdict                                                         | An approach each: merge their best parts, or show them as the variants                                |
