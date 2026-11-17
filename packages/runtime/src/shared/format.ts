@@ -1,16 +1,26 @@
-import {DateTime, Duration, Number, Schema, String} from 'effect'
+import {DateTime, Duration, MutableHashMap, Number, Option, Schema, String, pipe} from 'effect'
 
 // One English form for what a person reads on the web and the iPhone: dates day first on a 24-hour clock ("21 Oct", "15:28"), numbers grouped ("1,234", "$1.23").
-const DATES = 'en-GB'
 const NUMBERS = 'en'
 const CLOCKS = {
 	millisecond: {fractionalSecondDigits: 3, hour: '2-digit', hourCycle: 'h23', minute: '2-digit', second: '2-digit'},
 	minute: {hour: '2-digit', hourCycle: 'h23', minute: '2-digit'},
 	second: {hour: '2-digit', hourCycle: 'h23', minute: '2-digit', second: '2-digit'}
 } satisfies Record<ClockUnit, Intl.DateTimeFormatOptions>
+const DATE_KINDS = {
+	...CLOCKS,
+	day: {day: 'numeric', month: 'short'},
+	dayWithYear: {day: 'numeric', month: 'short', year: 'numeric'},
+	month: {month: 'short', year: 'numeric'},
+	weekday: {day: 'numeric', month: 'short', weekday: 'short'},
+	year: {year: 'numeric'}
+} satisfies Record<string, Intl.DateTimeFormatOptions>
+const dateFormats = MutableHashMap.empty<string, Intl.DateTimeFormat>()
 
 export type ClockUnit = typeof ClockUnit.Type
 const ClockUnit = Schema.Literals(['millisecond', 'minute', 'second'])
+type DateKind = typeof DateKind.Type
+const DateKind = Schema.Union([ClockUnit, Schema.Literals(['day', 'dayWithYear', 'month', 'weekday', 'year'])])
 
 const count = new Intl.NumberFormat(NUMBERS, {maximumFractionDigits: 0})
 const compactCount = new Intl.NumberFormat(NUMBERS, {maximumFractionDigits: 1, notation: 'compact'})
@@ -23,9 +33,27 @@ const usd = new Intl.NumberFormat(NUMBERS, {
 })
 
 // A UTC instant reads in this device's zone; a zoned one in its own, such as a station's.
-function inZone(at: DateTime.DateTime, options: Intl.DateTimeFormatOptions) {
-	if (DateTime.isZoned(at)) return DateTime.format(at, {...options, locale: DATES})
-	return DateTime.formatLocal(at, {...options, locale: DATES})
+function dateFormat(at: DateTime.DateTime, kind: DateKind) {
+	const zone = pipe(
+		at,
+		Option.liftPredicate(DateTime.isZoned),
+		Option.match({onNone: DateTime.zoneMakeLocal, onSome: zoned => zoned.zone}),
+		DateTime.zoneToString
+	)
+	const key = `${zone}/${kind}`
+	return pipe(
+		dateFormats,
+		MutableHashMap.get(key),
+		Option.getOrElse(() => {
+			const format = new Intl.DateTimeFormat('en-GB', {...DATE_KINDS[kind], timeZone: zone})
+			MutableHashMap.set(dateFormats, key, format)
+			return format
+		})
+	)
+}
+
+function inZone(at: DateTime.DateTime, kind: DateKind) {
+	return dateFormat(at, kind).format(DateTime.toEpochMillis(at))
 }
 
 // How long ago, in its largest whole unit: "now" within the first minute, then "5m", "3h", "2d".
@@ -62,25 +90,26 @@ export function timerOf(duration: Duration.Duration) {
 
 // The time of day: "15:28", or to the second or millisecond where a trace needs it.
 export function clockOf(at: DateTime.DateTime, unit: ClockUnit = 'minute') {
-	return inZone(at, CLOCKS[unit])
+	return inZone(at, unit)
 }
 
 // A day: "21 Oct" this year, "21 Oct 2025" in another.
 export function dayOf(at: DateTime.DateTime) {
-	if (DateTime.getPart(at, 'year') === DateTime.getPart(DateTime.nowUnsafe(), 'year')) {
-		return inZone(at, {day: 'numeric', month: 'short'})
+	const year = dateFormat(at, 'year')
+	if (year.format(DateTime.toEpochMillis(at)) === year.format(DateTime.toEpochMillis(DateTime.nowUnsafe()))) {
+		return inZone(at, 'day')
 	}
-	return inZone(at, {day: 'numeric', month: 'short', year: 'numeric'})
+	return inZone(at, 'dayWithYear')
 }
 
 // A day with its weekday, for plans: "Fri 21 Nov".
 export function weekdayOf(at: DateTime.DateTime) {
-	return inZone(at, {day: 'numeric', month: 'short', weekday: 'short'})
+	return inZone(at, 'weekday')
 }
 
 // A month: "Nov 2026".
 export function monthOf(at: DateTime.DateTime) {
-	return inZone(at, {month: 'short', year: 'numeric'})
+	return inZone(at, 'month')
 }
 
 export function countOf(value: number) {

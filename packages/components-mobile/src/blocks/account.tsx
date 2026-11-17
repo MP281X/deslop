@@ -20,6 +20,7 @@ import type {UserId} from '@deslop/runtime/shared/auth'
 import {avatarAtom} from '#lib/images.ts'
 
 // A circle, like the web's avatar: the picture and its fallback both fill the same 28pt disc.
+// judge-ignore no-silent-fallback -- The account identity comes from the session; its optional decorative picture can be replaced by a person symbol without claiming a downloaded photo.
 function Avatar(props: {id: UserId}) {
 	const picture = useAtomValue(avatarAtom(props.id))
 	if (!AsyncResult.isSuccess(picture)) {
@@ -31,6 +32,7 @@ function Avatar(props: {id: UserId}) {
 }
 
 // Signing out ends the session at Auth for every app; a tailnet device has none, so its menu only names it.
+// judge-ignore no-silent-fallback -- SessionGate owns account failures; this menu keeps the last account visible and never invents an identity when none is available.
 export function AccountMenu(props: {session: Session}) {
 	const signOut = useAtomSet(props.session.signOut)
 	const account = AsyncResult.value(useAtomValue(props.session.account))

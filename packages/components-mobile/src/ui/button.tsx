@@ -32,7 +32,7 @@ const buttonVariants = {
 	outline: {modifiers: [buttonStyle('glass')], role: 'default'}
 } satisfies Record<ButtonVariant, {modifiers: ViewModifier[]; role: ButtonProps['role']}>
 
-// A caller's modifiers come first, so they win over the defaults like a className. An icon size shows only the symbol; the children still name the button for VoiceOver.
+// Caller modifiers precede variant, size and disabled modifiers. An icon size shows only the symbol; the children still name the button for VoiceOver.
 export function Button(props: {
 	children: string
 	disabled?: boolean

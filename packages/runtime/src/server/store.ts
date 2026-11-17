@@ -1,6 +1,7 @@
 import {SqliteClient} from '@effect/sql-sqlite-node'
 
-import {Config, Duration, Effect, FileSystem, Function, Layer, Option, Path, Schedule, pipe} from 'effect'
+import {Config, Duration, Effect, FileSystem, Layer, Option, Path, Schedule, pipe} from 'effect'
+import type {PlatformError} from 'effect'
 
 import {Reactivity} from 'effect/reactivity'
 import {Migrator, SqlClient} from 'effect/sql'
@@ -10,14 +11,9 @@ import {appName, packageRoot} from '#server/package.ts'
 // A checkout holds `pnpm-workspace.yaml` at its root; an npm installation has none above it.
 const checkoutRoot = Effect.fnUntraced(function* (
 	directory: string
-): Effect.fn.Return<Option.Option<string>, never, FileSystem.FileSystem | Path.Path> {
+): Effect.fn.Return<Option.Option<string>, PlatformError.PlatformError, FileSystem.FileSystem | Path.Path> {
 	const path = yield* Path.Path
-	if (
-		Option.getOrElse(
-			yield* Effect.option((yield* FileSystem.FileSystem).exists(path.join(directory, 'pnpm-workspace.yaml'))),
-			Function.constFalse
-		)
-	) {
+	if (yield* (yield* FileSystem.FileSystem).exists(path.join(directory, 'pnpm-workspace.yaml'))) {
 		return Option.some(directory)
 	}
 	if (path.dirname(directory) === directory) return Option.none()

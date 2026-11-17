@@ -13,7 +13,6 @@ import {Button} from '#components/ui/button.tsx'
 import {Popover, PopoverContent, PopoverHeader, PopoverTitle, PopoverTrigger} from '#components/ui/popover.tsx'
 
 // The page keeps this reader mounted even when its pane is offscreen.
-// judge-ignore no-silent-fallback -- now is when the problem began, not a stand-in for a failed read.
 // fallow-ignore-next-line unused-export -- the tests drive the age this atom keeps directly.
 export const problemSinceAtom = Atom.family((source: Atom.Atom<AsyncResult.AsyncResult<unknown, unknown>>) =>
 	Atom.make(get => {
@@ -66,6 +65,7 @@ const ageAtom = Atom.family((identity: DateTime.Utc | string) =>
 )
 
 // The popup works with hover, keyboard and touch.
+// judge-ignore no-silent-fallback -- The infallible clock stream starts at mount; now is its initial age, not a failed read's replacement.
 function Problem(props: {label: string; reset?: () => void; since?: DateTime.Utc}) {
 	const id = useId()
 	const age = useAtomValue(ageAtom(props.since ?? id))

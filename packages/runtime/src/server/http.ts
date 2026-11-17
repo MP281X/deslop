@@ -90,6 +90,7 @@ export const layerTelemetry = Layer.unwrap(
 	})
 )
 
+// judge-ignore no-silent-fallback -- OTEL_URL is optional configuration; an absent value disables client tracing rather than replacing a failed operation.
 export const layerRoutes = HttpRouter.use(router =>
 	Effect.gen(function* () {
 		const auth = yield* Auth

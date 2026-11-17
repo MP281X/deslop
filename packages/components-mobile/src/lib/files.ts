@@ -19,6 +19,7 @@ export function writeAtomically(file: File, text: string) {
 }
 
 // A cold start hydrates from disk, and writes stay off the path that shows the list.
+// judge-ignore no-silent-fallback -- The disk copy is disposable: unreadable cache emits no list and waits for live data, whose failures remain failures; failed cache writes are logged.
 export function cachedList<S extends Schema.Top, E, R>(
 	get: Atom.AtomContext,
 	file: File,

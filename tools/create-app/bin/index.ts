@@ -5,7 +5,7 @@ import {NodeRuntime, NodeServices} from '@effect/platform-node'
 import {Array, Effect, FileSystem, Number, Option, Path, Predicate, Schema, String, flow, pipe} from 'effect'
 
 import {Generator, getConfig} from '@tanstack/router-generator'
-import {Command, Flag} from 'effect/cli'
+import {CliError, Command, Flag} from 'effect/cli'
 
 import {copyTemplate} from '@deslop/create-package'
 import {nameFlag} from '@deslop/create-package/cli'
@@ -47,22 +47,31 @@ const create = Command.make(
 		)
 		yield* copyTemplate({
 			from: path.join(import.meta.dirname, '../template', input.kind),
+			prepare: directory => {
+				if (input.kind === 'mobile') return Effect.void
+				return Effect.tryPromise({
+					catch: cause =>
+						CliError.UserError.make({cause, userMessage: 'Route generation failed; the app was not created'}),
+					try: () =>
+						new Generator({
+							config: getConfig(
+								{
+									autoCodeSplitting: true,
+									target: 'react',
+									tmpDir: path.join(directory, 'node_modules/.cache/tanstack')
+								},
+								directory
+							),
+							root: directory
+						}).run()
+				})
+			},
 			rewrite: flow(
 				String.replaceAll('template-app', input.name),
 				String.replaceAll('"port": 5100', `"port": ${Array.max([5100, ...Array.getSomes(ports)], Number.Order) + 1}`)
 			),
 			to: root
 		})
-		if (input.kind === 'mobile') return
-		yield* Effect.promise(() =>
-			new Generator({
-				config: getConfig(
-					{autoCodeSplitting: true, target: 'react', tmpDir: path.join(root, 'node_modules/.cache/tanstack')},
-					root
-				),
-				root
-			}).run()
-		)
 	})
 )
 

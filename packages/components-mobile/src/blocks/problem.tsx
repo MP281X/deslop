@@ -27,6 +27,7 @@ const ageAtom = Atom.family((_id: string) =>
 )
 
 // Native menus own presentation and touch recovery; a saved copy stays quiet instead of becoming an error card.
+// judge-ignore no-silent-fallback -- The infallible clock stream starts at mount; now is its initial age, not a failed read's replacement.
 export function Problem(props: {label: string; onRetry: () => void; saved?: boolean}) {
 	const age = useAtomValue(ageAtom(useId()))
 	return (
