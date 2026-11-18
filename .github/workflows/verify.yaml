@@ -48,7 +48,7 @@ jobs:
       - name: One default port per app
         shell: bash
         run: |
-          ports=$(jq -r '"\(.config.port)\t\(input_filename)"' apps/*/package.json)
+          ports=$(jq -r '"\(.config.port | tojson)\t\(input_filename)"' apps/*/package.json)
           failed=0
           while IFS=$'\t' read -r port manifest; do
             if ! [[ $port =~ ^[0-9]+$ ]] || ((10#$port < 1024 || 10#$port > 65535)); then

@@ -247,6 +247,10 @@ async function play(task, steps) {
 	async function act(step) {
 		const targets = 'body *'
 		const results = []
+		// Text already on the page cannot show what a click or key did.
+		if (step.see !== undefined && (step.click ?? step.press) !== undefined && query(step.see, targets)) {
+			throw new Error(`"${step.see}" was on the page before the step: name text the step brings`)
+		}
 		if (step.click !== undefined) {
 			const element = await find(step.click, targets, 0)
 			const checked = element.checked
