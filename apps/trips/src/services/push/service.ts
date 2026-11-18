@@ -12,6 +12,7 @@ import {
 	Option,
 	Queue,
 	Ref,
+	Result,
 	Schedule,
 	Schema,
 	Semaphore,
@@ -464,19 +465,30 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 						Option.isNone(activity.endedAt) &&
 						!holds(activity, window)
 				),
-				Effect.forEach(activity => Effect.result(finish(activity, now)), {concurrency: 1})
+				Effect.forEach(
+					activity => Effect.map(Effect.result(finish(activity, now)), result => ({bundle: activity.bundle, result})),
+					{concurrency: 1}
+				)
 			)
-			// A leg starts only once its earlier activity ended, so a start never retires a channel Apple no longer has while its activity waits to be forgotten.
-			yield* Option.match(Array.head(Array.getFailures(ended)), {onNone: () => Effect.void, onSome: Effect.fail})
+			// An app's leg starts only once its earlier activity ended, so a start never retires a channel Apple no longer has while its activity waits to be forgotten; an activity that covers the leg is refreshed all the same.
+			const held = pipe(
+				ended,
+				Array.filter(end => Result.isFailure(end.result)),
+				Array.map(end => end.bundle)
+			)
 			const outcomes = yield* Effect.forEach(
 				showPlan(state.devices, state.activities, legs, window, requested),
 				action => {
-					if (ShowAction.isAnyOf(['launch'])(action)) return Effect.result(launch(action.target, showing))
-					return Effect.result(refresh(action.target, showing.props, now))
+					if (!ShowAction.isAnyOf(['launch'])(action)) return Effect.result(refresh(action.target, showing.props, now))
+					if (Array.contains(held, action.target.bundle)) return Effect.result(Effect.void)
+					return Effect.result(launch(action.target, showing))
 				},
 				{concurrency: 1}
 			)
-			yield* Option.match(Array.head(Array.getFailures(outcomes)), {onNone: () => Effect.void, onSome: Effect.fail})
+			yield* Option.match(
+				Array.head([...Array.getFailures(Array.map(ended, end => end.result)), ...Array.getFailures(outcomes)]),
+				{onNone: () => Effect.void, onSome: Effect.fail}
+			)
 		})
 
 		// A device whose token died leaves the list with its first failed alert.
