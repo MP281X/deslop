@@ -32,9 +32,12 @@ import {CLIENT_HEADER} from '@deslop/runtime/shared/auth'
 
 import {WorkflowJob, WorkflowRun} from '#services/github-actions/schema.ts'
 import {GitHubActions} from '#services/github-actions/service.ts'
-import type {TelemetryError} from '#services/telemetry/schema.ts'
+import type {Origin, TelemetryError} from '#services/telemetry/schema.ts'
 import {LogsRequest, TracesRequest} from '#services/telemetry/schema.ts'
 import {Telemetry} from '#services/telemetry/service.ts'
+
+// OTLP's names for the records a partial success rejected.
+const REJECTED = {'/v1/logs': 'rejectedLogRecords', '/v1/traces': 'rejectedSpans'} satisfies Record<IngestRoute, string>
 
 // Any page, server or phone may export without signing in, as OTLP receivers take it.
 const cors = HttpMiddleware.cors({allowedHeaders: ['content-type'], allowedMethods: ['POST']})
@@ -43,7 +46,11 @@ type IngestRoute = typeof IngestRoute.Type
 const IngestRoute = Schema.Literals(['/v1/traces', '/v1/logs'])
 
 // OTLP/HTTP JSON, uncompressed: protobuf and gzip are refused as unsupported, not read as broken JSON. The status codes and `code` values are the protocol's own.
-function answer<A, I>(schema: Schema.Codec<A, I>, save: (payload: A) => Effect.Effect<void, TelemetryError>) {
+function answer<A, I>(
+	route: IngestRoute,
+	schema: Schema.Codec<A, I>,
+	save: (payload: A) => Effect.Effect<number, TelemetryError>
+) {
 	return Effect.flatMap(HttpServerRequest.HttpServerRequest, request => {
 		if (
 			!String.startsWith('application/json')(request.headers['content-type'] ?? '') ||
@@ -57,7 +64,20 @@ function answer<A, I>(schema: Schema.Codec<A, I>, save: (payload: A) => Effect.E
 			HttpServerRequest.schemaBodyJson(schema),
 			Effect.provideService(HttpIncomingMessage.MaxBodySize, ByteSize.mebibytes(1)),
 			Effect.flatMap(save),
-			Effect.as(HttpServerResponse.text('{}', {contentType: 'application/json'})),
+			// Records under a name only GitHub's webhook writes are rejected, the rest of the export kept.
+			Effect.map(rejected =>
+				HttpServerResponse.jsonUnsafe(
+					Boolean.match(rejected > 0, {
+						onFalse: () => ({}),
+						onTrue: () => ({
+							partialSuccess: {
+								errorMessage: 'GitHub repository names are written only by the GitHub webhook',
+								[REJECTED[route]]: `${rejected}`
+							}
+						})
+					})
+				)
+			),
 			Effect.catchTags({
 				HttpServerError: error =>
 					Effect.succeed(
@@ -109,7 +129,7 @@ export const HttpHandlers = Layer.provide(
 			const ingest = Effect.fnUntraced(function* <A, I>(
 				route: IngestRoute,
 				schema: Schema.Codec<A, I>,
-				save: (payload: A) => Effect.Effect<void, TelemetryError>
+				save: (payload: A, origin: Origin) => Effect.Effect<number, TelemetryError>
 			) {
 				const request = yield* HttpServerRequest.HttpServerRequest
 				function credential() {
@@ -137,7 +157,17 @@ export const HttpHandlers = Layer.provide(
 									{headers: {'retry-after': '60'}, status: 429}
 								)
 							),
-						onTrue: () => answer(schema, save)
+						// A caller Auth names is identified; an anonymous export never replaces what an identified one stored.
+						onTrue: () =>
+							answer(route, schema, payload =>
+								save(
+									payload,
+									Result.match(person, {
+										onFailure: Function.constant('anonymous' as const),
+										onSuccess: Function.constant('identified' as const)
+									})
+								)
+							)
 					}
 				)
 				if (response.status >= 400) {
