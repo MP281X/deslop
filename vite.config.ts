@@ -12,19 +12,48 @@ const BANNED_PRIMITIVES = ['alert-dialog', 'carousel', 'command', 'context-menu'
 const SPINNER_ICONS = ['CircleNotch', 'Spinner', 'SpinnerBall', 'SpinnerGap']
 
 // Each worktree previews in its own systemd user unit, which outlives the agent's turn, on a port derived from its path and shared over tailnet HTTPS.
-const PREVIEW_UNIT = 'u=preview-${PWD##*/} p=$((20000 + 0x$(printf %s "$PWD" | sha256sum | cut -c1-4) % 10000))'
+const PREVIEW_UNIT = Array.join(
+	[
+		'u=preview-${PWD##*/} p=$((20000 + 0x$(printf %s "$PWD" | sha256sum | cut -c1-4) % 10000)) m=$(git rev-parse --git-path preview-serve)',
+		'fail() { printf "%s\\n" "$1" >&2; exit 1; }',
+		// Every checkout's tailnet entry proxies the same loopback address, so only the marker says this checkout added it.
+		'served() { tailscale serve status --json | jq -e --arg p $p ".TCP[\\$p]" >/dev/null; }',
+		'unserve() { [ -f "$m" ] || return 0; ! served || sudo tailscale serve --https=$p off >/dev/null || return 1; rm "$m"; }',
+		// The unit is named by folder alone, so a checkout elsewhere with the same folder name may own it.
+		'd=$(systemctl --user show -P WorkingDirectory $u); [[ -z $d || $d -ef . ]] || fail "$u runs $d, not this checkout"'
+	],
+	'\n'
+)
 const PREVIEW = Array.join(
 	[
-		`${PREVIEW_UNIT} h=$(hostname -s).tailnet-8c4c.ts.net a=$1`,
-		// Without an app argument, the first web app this branch changes, else Portfolio.
-		'[ -n "$a" ] || a=$({ git diff --name-only origin/main...HEAD; git status --porcelain | cut -c4-; } 2>/dev/null | grep -oP "^apps/\\K[^/]+" | sort -u | while read -r x; do [ -f "apps/$x/src/main.client.tsx" ] && echo "$x"; done | awk NR==1)',
+		PREVIEW_UNIT,
+		'h=$(hostname -s).tailnet-8c4c.ts.net a=$1 t=${PREVIEW_DEADLINE:-300}',
+		// Without an app argument, the first app with a web page this branch changes, else Portfolio; an iOS app's server has no page, so it previews only by name.
+		'[ -n "$a" ] || a=$({ git diff --name-only origin/main...HEAD; git status --porcelain --no-renames | cut -c4-; } 2>/dev/null | grep -oP "^apps/\\K[^/]+" | sort -u | while read -r x; do [ -f "apps/$x/index.html" ] && echo "$x"; done | awk NR==1)',
 		'a=${a:-portfolio}',
-		'[[ $a =~ ^[a-z][a-z0-9-]*$ && -f apps/$a/src/main.client.tsx ]] || { printf "Not a web app: %s\\n" "$a" >&2; exit 1; }',
-		'systemctl --user stop $u 2>/dev/null; systemctl --user reset-failed $u 2>/dev/null',
+		'[[ $a =~ ^[a-z][a-z0-9-]*$ && -f apps/$a/src/main.server.ts ]] || fail "Not an app: $a"',
+		// Tailscale's own listeners on the tailnet addresses carry the serve entry, not an app.
+		'listeners() { ss -Hltnp "sport = :$p" | grep -v %tailscale0; }',
+		'ours() { local l x; l=$(listeners) && while read -r x; do [[ $x =~ pid=([0-9]+) && $(cat /proc/${BASH_REMATCH[1]}/cgroup 2>/dev/null) == */$u.service ]] || return 1; done <<<"$l"; }',
+		'[ -z "$d" ] || systemctl --user stop $u',
+		// Two checkouts can derive the same port: the second fails instead of handing out the first one's app.
+		'! l=$(listeners) || fail "Port $p is taken by another server: $l"',
+		'! served || [ -f "$m" ] || fail "Tailnet port $p is served for another checkout"',
 		'systemd-run --user -G -d -u $u -E PATH="$HOME/.vite-plus/bin:$PATH" -E HOST=127.0.0.1 -E PORT=$p vp run --no-cache --filter "@deslop/$a" preview || exit 1',
-		// Any HTTP answer means the server listens: Trips answers 404 at the root.
-		'until curl -so /dev/null http://127.0.0.1:$p; do systemctl --user is-active -q $u || exit 1; sleep 2; done',
-		'sudo tailscale serve --bg --https=$p http://127.0.0.1:$p >/dev/null || { systemctl --user stop $u; exit 1; }',
+		'i=$(systemctl --user show -P InvocationID $u)',
+		'trap "systemctl --user stop $u 2>/dev/null; unserve" EXIT',
+		'die() { printf "%s\\n" "$1" >&2; journalctl --user _SYSTEMD_INVOCATION_ID=$i -o cat -n 20 >&2; exit 1; }',
+		// Trips answers 404 at the root, so readiness asks every app's runtime endpoint for its name.
+		'until ours && [[ $(curl -s --max-time 5 http://127.0.0.1:$p/api/runtime | jq -r .name 2>/dev/null) == "$a" ]]; do',
+		'systemctl --user is-active -q $u || die "$u stopped before serving $a"',
+		'! l=$(listeners) || ours || die "Port $p was taken by another server while $a started: $l"',
+		'((SECONDS < t)) || die "$a did not answer on port $p within ${t}s"',
+		'sleep 2',
+		'done',
+		': >"$m"',
+		'sudo tailscale serve --bg --https=$p http://127.0.0.1:$p >/dev/null || die "Tailscale did not serve port $p"',
+		'until [[ $(curl -s --max-time 5 https://$h:$p/api/runtime | jq -r .name 2>/dev/null) == "$a" ]]; do ((SECONDS < t)) || die "https://$h:$p did not answer within ${t}s"; sleep 2; done',
+		'trap - EXIT',
 		'echo "$a: https://$h:$p"'
 	],
 	'\n'
@@ -305,7 +334,7 @@ export default defineConfig({
 			preview: {cache: false, command: `bash -c '${PREVIEW}' preview`},
 			'preview:stop': {
 				cache: false,
-				command: `bash -c '${PREVIEW_UNIT}; systemctl --user stop $u; sudo tailscale serve --https=$p off 2>/dev/null || true'`
+				command: `bash -c '${PREVIEW_UNIT}\n[ -z "$d" ] || systemctl --user stop $u\nunserve'`
 			},
 			test: 'vp run -r --parallel test'
 		}
