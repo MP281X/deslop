@@ -1,4 +1,4 @@
-import {Boolean, Option, Result, Schema, pipe} from 'effect'
+import {Boolean, Effect, Option, Result, Schema, pipe} from 'effect'
 
 import {Model} from 'effect/schema'
 
@@ -47,6 +47,12 @@ export const ApnsAnswer = Schema.TaggedUnion({
 	Retry: answerFields,
 	TooLarge: answerFields
 })
+
+// A failed start names the channel Apple created for it while deleting it was not confirmed, for the app to delete later.
+export class ApnsError extends Schema.TaggedError<ApnsError>()('ApnsError', {
+	channel: pipe(Schema.Option(Schema.String), Schema.withConstructorDefault(Effect.succeedNone)),
+	message: Schema.String
+}) {}
 
 // Apple's notification body limit is 4096 bytes; a larger one is answered without asking Apple.
 export function tooLargeAnswer(bytes: number) {

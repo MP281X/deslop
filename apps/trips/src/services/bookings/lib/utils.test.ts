@@ -12,6 +12,7 @@ import {
 	instantOf,
 	journeysOf,
 	journeyProps,
+	segmentOf,
 	startable,
 	stayAfter,
 	upsert
@@ -22,6 +23,7 @@ import {
 	BookingId,
 	Flight,
 	FlightTracking,
+	PlaceCode,
 	Stay,
 	Train,
 	TrainStop,
@@ -389,5 +391,40 @@ it('splits long flights into departure and arrival activity windows', () => {
 	assert.deepStrictEqual(
 		Option.map(activeWindow(FLIGHT, DateTime.addDuration(DEPARTS, Duration.hours(2))), window => window.leg),
 		Option.some('departure')
+	)
+})
+
+function transitStop(stopId: string, name: string) {
+	return {
+		arrival: Option.none(),
+		departure: Option.none(),
+		lat: 0,
+		lon: 0,
+		name,
+		stopId: PlaceCode.make(stopId),
+		tz: 'Europe/Rome'
+	}
+}
+
+const RUN = [
+	transitStop('rm', 'ROMA TERMINI'),
+	transitStop('mr', 'MILANO ROGOREDO'),
+	transitStop('mc', 'MILANO CENTRALE')
+]
+
+function ends(found: ReturnType<typeof segmentOf>) {
+	return Option.map(found, segment => [Array.map(segment.stops, item => item.stopId), segment.rank])
+}
+
+it('ends a train at the exact station even when a looser match comes first', () => {
+	const from = {code: Option.some('rm'), name: 'Roma Termini'}
+	assert.deepStrictEqual(
+		ends(segmentOf(RUN, from, {code: Option.none(), name: 'Milano Centrale'})),
+		Option.some([['rm', 'mr', 'mc'], 1])
+	)
+	// The stop id Transitous named for the printed station wins over a spelling that matches Rogoredo as loosely.
+	assert.deepStrictEqual(
+		ends(segmentOf(RUN, from, {code: Option.some('mc'), name: 'Milano C.le'})),
+		Option.some([['rm', 'mr', 'mc'], 0])
 	)
 })
