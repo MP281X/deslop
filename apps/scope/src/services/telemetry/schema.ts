@@ -310,7 +310,7 @@ export const FoundTrace = Schema.Struct({
 })
 
 export type ServiceRun = typeof ServiceRun.Type
-// Each service's latest run: how much it sent, when it last did, and what it said it was.
+// Each service's latest run, the one heard from last: how much it sent, when it last did, and what it said it was.
 export const ServiceRun = Schema.Struct({
 	...Struct.pick(Span.fields, ['run', 'runtime', 'service', 'version']),
 	entries: Schema.Int,

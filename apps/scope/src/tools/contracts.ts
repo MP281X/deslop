@@ -128,7 +128,7 @@ export const ToolContracts = Toolkit.make(
 		.annotate(Tool.Strict, true),
 	Tool.make('check_ingestion', {
 		description:
-			'Check missing or stale exporters by app, release, run start and last event; an absent service sent nothing in thirty days. Rejections are global because unauthenticated exports cannot be assigned to an app; use list_operations after ingestion resumes.',
+			'Check missing or stale exporters by app, release, run start and last event; each service shows the run heard from last, with its start as the process reported it, and an absent service sent nothing in thirty days. Rejections are global because unauthenticated exports cannot be assigned to an app; use list_operations after ingestion resumes.',
 		failure: TelemetryError,
 		parameters: Schema.Struct({app: Schema.OptionFromOptionalKey(AppName)}),
 		success: Schema.Struct({

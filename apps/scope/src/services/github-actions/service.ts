@@ -13,6 +13,7 @@ import {
 	Result,
 	Schema,
 	Stream,
+	String,
 	pipe
 } from 'effect'
 
@@ -40,7 +41,7 @@ declare module 'effect/reactivity/Reactivity' {
 	}
 }
 
-// How long GitHub asked to wait, when it said so in seconds.
+// How long GitHub asked to wait, when it said so in whole seconds, at most an hour; a date or any other form is ignored.
 function retryAfter(error: HttpClientError.HttpClientError | Cause.TimeoutError | TelemetryError) {
 	if (!HttpClientError.isHttpClientError(error) || !(error.reason instanceof HttpClientError.StatusCodeError)) {
 		return Duration.zero
@@ -48,8 +49,12 @@ function retryAfter(error: HttpClientError.HttpClientError | Cause.TimeoutError 
 	return pipe(
 		error.reason.response.headers['retry-after'],
 		Option.fromUndefinedOr,
+		Option.filter(value => Option.isSome(String.match(/^\d+$/u)(value))),
 		Option.flatMap(Number.parse),
-		Option.match({onNone: () => Duration.zero, onSome: Duration.seconds})
+		Option.match({
+			onNone: () => Duration.zero,
+			onSome: seconds => Duration.min(Duration.seconds(seconds), Duration.hours(1))
+		})
 	)
 }
 
@@ -121,7 +126,7 @@ export class GitHubActions extends Context.Service<GitHubActions>()(
 						jobRecords(event, logLines(read(event))),
 						// Each fetch holds one line and one batch of records, never a whole log.
 						Stream.grouped(500),
-						// A batch's number keeps equal lines of different batches apart, and a replayed fetch writes the same ones.
+						// A batch's number keeps equal lines of different batches apart, and a fetch replayed over an unchanged log (GitHub is asked only after the job completed) writes the same ids, so nothing is stored twice; a log that changed between attempts can leave duplicates.
 						Stream.zipWithIndex,
 						Stream.runForEach(batch => telemetry.ingestLogs(jobLogs(event, batch[0], batch[1]), 'github'))
 					)

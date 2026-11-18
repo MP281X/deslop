@@ -45,9 +45,11 @@ import {
 	diagnosis,
 	levelOf,
 	logOf,
+	logTimeOf,
 	overviewOf,
-	sideOf,
 	senderOf,
+	sideOf,
+	skewOf,
 	spansOf,
 	traceTree
 } from '#services/telemetry/lib/utils.ts'
@@ -828,7 +830,7 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 				})}
 			`
 		})
-		// Each service's latest run: what its senders of that run sent, and when they last did.
+		// Each service's latest run, the one heard from last (the greater start settles a tie): what its senders of that run sent, and when they last did.
 		const listRuns = SqlSchema.findAll({
 			Request: Schema.Void,
 			Result: ServiceRun,
@@ -846,7 +848,15 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 						FROM resources
 					),
 					sending AS (SELECT * FROM senders WHERE entries > 0),
-					latest AS (SELECT service, max(coalesce(run, 0)) AS run FROM sending GROUP BY service)
+					heard AS (
+						SELECT
+							service, coalesce(run, 0) AS run,
+							row_number() OVER (
+								PARTITION BY service ORDER BY max(lastEvent) DESC, coalesce(run, 0) DESC
+							) AS place
+						FROM sending GROUP BY service, coalesce(run, 0)
+					),
+					latest AS (SELECT service, run FROM heard WHERE place = 1)
 				SELECT
 					sending.service, sum(sending.entries) AS entries, max(sending.lastEvent) AS lastEvent,
 					max(sending.run) AS run, max(sending.runtime) AS runtime, max(sending.version) AS version
@@ -1045,21 +1055,20 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 						Effect.forEach(
 							Effect.fnUntraced(function* (group) {
 								// All logs in the group share one sender, regardless of instrumentation scope.
-								const sender = admittedSender(senderOf(group.resource, receivedAt), origin)
+								const sender = admittedSender(senderOf(group.resource), origin)
 								const resource = yield* Effect.transposeOption(
 									Option.map(group.resource, Schema.encodeEffect(Resource))
 								)
-								return pipe(
+								const records = pipe(
 									group.scopeLogs,
 									Option.getOrElse(() => []),
-									Array.flatMap(scope =>
-										pipe(
-											scope.logRecords,
-											Option.getOrElse(() => []),
-											Array.map(log => ({log, resource, sender}))
-										)
-									)
+									Array.flatMap(scope => Option.getOrElse(scope.logRecords, () => []))
 								)
+								const skew = skewOf(
+									Array.flatMap(records, record => Option.toArray(logTimeOf(record))),
+									receivedAt
+								)
+								return Array.map(records, log => ({log, resource, sender, skew}))
 							}),
 							{concurrency: 1}
 						),
@@ -1105,7 +1114,8 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 										LogId.make(
 											Array.reduce(bytes.subarray(1, 7), (bytes[0] ?? 0) % 32, (value, byte) => value * 256 + byte)
 										),
-										receivedAt
+										receivedAt,
+										entry.item.skew
 									)
 								}),
 								{concurrency: 1}
