@@ -1,4 +1,4 @@
-import type {SchemaIssue} from 'effect'
+import type {SchemaIssue, Tracer} from 'effect'
 import {
 	Array,
 	Boolean,
@@ -7,6 +7,7 @@ import {
 	Context,
 	DateTime,
 	Effect,
+	Exit,
 	Fiber,
 	FiberMap,
 	FileSystem,
@@ -144,8 +145,14 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 		const publications = yield* RcMap.make({lookup: (_id: NoteId) => Semaphore.make(1)})
 		const runs = yield* FiberMap.make<NoteId>()
 		const mediaReader = yield* makeMediaReader
-		const pending = MutableHashMap.empty<NoteId, {note: Note; effect: Effect.Effect<void, NotesError>}>()
-		const wake = yield* Queue.unbounded<void>()
+		// One token per note queued for a worker.
+		const ready = yield* Queue.unbounded<void>()
+		// A signal only says when to look for organizing notes, so signals sent while a claim runs wait as one.
+		const signals = yield* Queue.sliding<void>(1)
+		// Claims, starts, stops and removals take turns, so no claim starts a note that is being stopped or deleted.
+		const dispatch = yield* Semaphore.make(1)
+		// The request each run follows from, kept only to link its trace.
+		const requests = MutableHashMap.empty<NoteId, Tracer.Span>()
 		// Writes tell this Reactivity of their commits, so callers need none of their own.
 		const withReactivity = Effect.provideService(Reactivity.Reactivity, yield* Reactivity.Reactivity)
 
@@ -267,11 +274,15 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 			Result: Schema.Struct(Struct.pick(Note.fields, ['file', 'id', 'image'])),
 			execute: () => sql`SELECT id, file, image FROM notes WHERE file IS NOT NULL OR image IS NOT NULL`
 		})
+		// A note still organizing is pending work, so a restart or a request that ended early leaves it to be claimed again.
+		const Pending = Schema.Struct(Struct.pick(Note.fields, ['createdAt', 'id']))
 		const listOrganizing = SqlSchema.findAll({
 			Request: Schema.Void,
-			Result: Note,
-			execute: () => sql`SELECT * FROM notes WHERE status = ${'organizing' satisfies Note['status']}`
+			Result: Pending,
+			execute: () => sql`SELECT createdAt, id FROM notes WHERE status = ${'organizing' satisfies Note['status']}`
 		})
+		// Organizing notes waiting for a worker.
+		const queued = MutableHashMap.empty<NoteId, typeof Pending.Type>()
 		// Tags in use, most used first, with their definitions.
 		const listTagEntries = SqlSchema.findAll({
 			Request: Schema.Void,
@@ -337,14 +348,26 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 			)
 		}
 
+		function changeIn(id: NoteId, update: NoteChange) {
+			return Effect.flatMap(
+				findNote(id),
+				Option.match({onNone: () => Effect.void, onSome: note => storeChange(note, update)})
+			)
+		}
+
 		function change(id: NoteId, update: NoteChange) {
-			return pipe(
-				Effect.flatMap(
-					findNote(id),
-					Option.match({onNone: () => Effect.void, onSome: note => storeChange(note, update)})
-				),
-				sql.withTransaction,
-				asNotesError
+			return pipe(changeIn(id, update), sql.withTransaction, asNotesError)
+		}
+
+		// Called in the transaction that leaves the note organizing: once it commits, the claim looks at once and the run links back to this request.
+		function organizeLater(id: NoteId) {
+			return Effect.flatMap(Effect.option(Effect.currentSpan), request =>
+				sql.afterCommit(
+					Effect.andThen(
+						Effect.sync(() => Option.map(request, span => MutableHashMap.set(requests, id, span))),
+						Queue.offer(signals, undefined)
+					)
+				)
 			)
 		}
 
@@ -490,11 +513,12 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 			note: Note,
 			input: {slides: Picture[]; url: string; useInfo: boolean; video: string}
 		) {
-			// The transcript and the frames each run yt-dlp, so they run concurrently; the transcript is stored as soon as it arrives, and tagging waits for both.
+			// The transcript and the frames each run yt-dlp, so they run concurrently under the note's one media budget; the transcript is stored as soon as it arrives, and tagging waits for both.
+			const budget = yield* media.budget
 			const [, frames] = yield* Effect.all(
 				[
 					pipe(
-						asMediaNotesError(media.read(userId, input.url, Option.some(input.video))),
+						asMediaNotesError(media.read(budget, userId, input.url, Option.some(input.video))),
 						Effect.tapError(error => Effect.logWarning('The video could not be read', error)),
 						Effect.option,
 						Effect.flatMap(read =>
@@ -519,14 +543,14 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 							)
 						)
 					),
-					Effect.catch(asMediaNotesError(media.frames(input.video)), error =>
+					Effect.catch(asMediaNotesError(media.frames(budget, input.video)), error =>
 						Effect.as(Effect.logWarning('No video frames', error), Array.empty<Still>())
 					)
 				],
 				{concurrency: 2}
 			)
 			yield* tag(userId, note.id, [...input.slides, ...Array.map(frames, still)])
-		})
+		}, Effect.scoped)
 
 		// judge-ignore no-silent-fallback -- Sources.resolve only canonicalizes an already usable shared URL; organizeLink performs content extraction separately, so a logged resolution failure may keep the shared URL.
 		const resolveLink = Effect.fnUntraced(function* (id: NoteId, link: string) {
@@ -598,10 +622,11 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 		const organizeFile = Effect.fnUntraced(function* (userId: UserId, note: Note, type: FileType) {
 			if (!isVideo(type)) return yield* tag(userId, note.id, [])
 			const stored = path.join(files, note.id)
+			const budget = yield* media.budget
 			const [stills] = yield* Effect.all(
 				[
 					Effect.gen(function* () {
-						const frames = yield* Effect.catch(asMediaNotesError(media.fileFrames(stored)), error =>
+						const frames = yield* Effect.catch(asMediaNotesError(media.fileFrames(budget, stored)), error =>
 							Effect.as(Effect.logWarning('No video frames', error), Array.empty<Still>())
 						)
 						yield* pipe(
@@ -618,7 +643,7 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 					Option.match(note.transcript, {
 						onNone: () =>
 							pipe(
-								media.fileTranscript(userId, stored),
+								media.fileTranscript(budget, userId, stored),
 								Effect.catchTag('MediaError', untranscribed(note.id)),
 								Effect.flatMap(
 									Option.match({
@@ -637,34 +662,46 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 				{concurrency: 2}
 			)
 			yield* tag(userId, note.id, pipe(stills, Array.drop(1), Array.map(still)))
-		})
+		}, Effect.scoped)
 
-		function enqueueOrganization(userId: UserId, note: Note) {
-			return Effect.flatMap(Effect.option(Effect.currentSpan), request =>
-				pipe(
-					change(note.id, NoteChange.cases.request.make({requester: userId})),
-					Effect.andThen(
-						Option.match(note.file, {
-							onNone: () =>
-								Option.match(note.url, {
-									onNone: () => tag(userId, note.id, []),
-									// Skip organization when resolution finds no remaining note, including after merging a duplicate.
-									onSome: link =>
-										Effect.flatMap(
-											resolveLink(note.id, link),
-											Option.match({
-												onNone: () => Effect.void,
-												onSome: resolved => organizeLink(userId, resolved, link)
-											})
-										)
-								}),
-							onSome: type => organizeFile(userId, note, type)
+		// A worker reads the note again when it starts, so a note deleted, finished or asked again while it waited runs as it is now.
+		function organize(id: NoteId) {
+			return Effect.suspend(() => {
+				const request = MutableHashMap.get(requests, id)
+				MutableHashMap.remove(requests, id)
+				return pipe(
+					findNote(id),
+					Effect.flatMap(
+						Option.match({
+							onNone: () => Effect.void,
+							onSome: note =>
+								Boolean.match(note.status === 'organizing', {
+									onFalse: () => Effect.void,
+									onTrue: () =>
+										Option.match(note.file, {
+											onNone: () =>
+												Option.match(note.url, {
+													onNone: () => tag(note.requester, note.id, []),
+													// Skip organization when resolution finds no remaining note, including after merging a duplicate.
+													onSome: link =>
+														Effect.flatMap(
+															resolveLink(note.id, link),
+															Option.match({
+																onNone: () => Effect.void,
+																onSome: resolved => organizeLink(note.requester, resolved, link)
+															})
+														)
+												}),
+											onSome: type => organizeFile(note.requester, note, type)
+										})
+								})
 						})
 					),
-					Effect.tapCause(cause =>
-						Boolean.match(Cause.hasInterruptsOnly(cause), {
+					// A run that ends without settling its note, failed or not, marks it failed, so no claim pays for it again; only a stop or removal interrupts it.
+					Effect.onExit(exit =>
+						Boolean.match(Exit.isFailure(exit) && Cause.hasInterruptsOnly(exit.cause), {
 							onFalse: () =>
-								Effect.ignore(change(note.id, NoteChange.cases.stop.make({})), {
+								Effect.ignore(change(id, NoteChange.cases.stop.make({})), {
 									log: 'Warn',
 									message: 'A stopped tagging run could not be recorded'
 								}),
@@ -673,16 +710,12 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 					),
 					// A finished or cancelled capture must not keep its request's trace open; the pipeline links back to it instead.
 					Effect.withSpan('Notes.organize', {
-						attributes: {'note.id': note.id},
+						attributes: {'note.id': id},
 						links: Option.toArray(Option.map(request, span => ({attributes: {'link.type': 'follows-from'}, span}))),
 						root: true
-					}),
-					withReactivity,
-					effect => Effect.sync(() => MutableHashMap.set(pending, note.id, {effect, note})),
-					Effect.andThen(Queue.offer(wake, undefined)),
-					Effect.asVoid
+					})
 				)
-			)
+			})
 		}
 
 		// A crash can leave an upload half received, a published file whose row never committed, a preview without its row's mark, or a deleted note's files; at start only files a kept note owns stay.
@@ -722,32 +755,52 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 			)
 		)
 
-		// A note a restart interrupted resumes for the person who saved it.
-		yield* Effect.forEach(yield* asNotesError(listOrganizing()), note => enqueueOrganization(note.requester, note), {
-			concurrency: 1,
-			discard: true
-		})
+		// Queues every organizing note this server is neither queuing nor running, so repeated signals and scans start each note once.
+		const claim = Semaphore.withPermit(
+			dispatch,
+			Effect.gen(function* () {
+				const fresh = Array.filter(
+					yield* asNotesError(listOrganizing()),
+					note => !MutableHashMap.has(queued, note.id) && !FiberMap.hasUnsafe(runs, note.id)
+				)
+				yield* Effect.forEach(
+					fresh,
+					note =>
+						Effect.andThen(
+							Effect.sync(() => MutableHashMap.set(queued, note.id, note)),
+							Queue.offer(ready, undefined)
+						),
+					{concurrency: 1, discard: true}
+				)
+			})
+		)
+		// A commit that leaves a note organizing signals at once; the scan at start and each minute also claims a note whose signal was lost.
+		yield* pipe(
+			Stream.merge(Stream.tick('1 minute'), Stream.fromQueue(signals)),
+			Stream.runForEach(() =>
+				Effect.catch(claim, error => Effect.logWarning('The notes waiting to be organized could not be read', error))
+			),
+			Effect.forkScoped
+		)
 
 		// Workers choose only when free, so fresh captures jump ahead of the resumed backlog.
-		const work = Effect.gen(function* () {
-			yield* Queue.take(wake)
-			yield* pipe(
-				MutableHashMap.values(pending),
-				Array.fromIterable,
-				Array.match({
-					onEmpty: () => Effect.void,
-					onNonEmpty: jobs =>
-						Effect.gen(function* () {
-							const job = Array.max(
-								jobs,
-								Order.Struct({note: Order.Struct({createdAt: DateTime.Order, id: Order.String})})
-							)
-							MutableHashMap.remove(pending, job.note.id)
-							yield* Effect.flatMap(FiberMap.run(runs, job.note.id, job.effect), Fiber.await)
-						})
+		const start = Semaphore.withPermit(
+			dispatch,
+			Effect.suspend(() =>
+				Array.match(Array.fromIterable(MutableHashMap.values(queued)), {
+					onEmpty: () => Effect.succeedNone,
+					onNonEmpty: waiting => {
+						const next = Array.max(waiting, Order.Struct({createdAt: DateTime.Order, id: Order.String}))
+						MutableHashMap.remove(queued, next.id)
+						return Effect.asSome(FiberMap.run(runs, next.id, organize(next.id)))
+					}
 				})
 			)
-		})
+		)
+		const work = Effect.andThen(
+			Queue.take(ready),
+			Effect.flatMap(start, run => Effect.forEach(Option.toArray(run), Fiber.await, {concurrency: 1, discard: true}))
+		)
 		yield* Effect.forEach(Array.range(1, 8), () => pipe(work, Effect.forever, Effect.forkScoped), {
 			concurrency: 1,
 			discard: true
@@ -814,12 +867,13 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 					return yield* Option.match(yield* findNote(input.id), {
 						onNone: Effect.fnUntraced(function* () {
 							yield* asNotesError(fs.rename(partial, stored))
-							const note = yield* pipe(
+							yield* pipe(
 								Note.insert.makeEffect(
 									newNote(userId, {id: input.id, text: ''}, Option.none(), Option.some(input.type))
 								),
 								Effect.flatMap(notes.insert),
 								Effect.tap(() => reindex(input.id)),
+								Effect.tap(() => organizeLater(input.id)),
 								Reactivity.mutation(['notes']),
 								asNotesError,
 								Effect.onError(() =>
@@ -829,9 +883,8 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 									})
 								)
 							)
-							return {fresh: true, note}
 						}),
-						onSome: note => Effect.succeed({fresh: false, note})
+						onSome: () => Effect.void
 					})
 				}),
 				sql.withTransaction,
@@ -850,40 +903,41 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 					return yield* NotesError.make({message: 'Paste a link or write a note.', reason: 'Invalid'})
 				}
 				const url = Option.fromUndefinedOr(captureUrl(text))
-				const saved = yield* pipe(
+				// The note and the work of organizing it commit together, so a request that ends early still leaves it to a worker.
+				const id = yield* pipe(
 					retired(input.id),
 					Effect.flatMap(
 						Option.match({
-							onNone: () =>
-								Effect.flatMap(
-									findSaved({id: input.id, url}),
-									Option.match({
-										onNone: () =>
-											pipe(
-												Note.insert.makeEffect(newNote(userId, {...input, text}, url, Option.none())),
-												Effect.flatMap(notes.insert),
-												Effect.tap(() => reindex(input.id)),
-												Reactivity.mutation(['notes']),
-												Effect.map(note => ({fresh: true, note, retry: false}))
-											),
-										// A share of a saved note adds its new words, unless it is the same capture sent again; only a new share asks a failed note again, so a resend pays for nothing. A capture id that joins another note's link stays retired into it, so its resend after that note's deletion is refused as deleted.
-										onSome: Effect.fnUntraced(function* (found) {
-											yield* storeChange(found, NoteChange.cases.share.make({capture: {...input, text}}))
-											if (found.id !== input.id) yield* retire({id: input.id, mergedInto: Option.some(found.id)})
-											return {fresh: false, note: found, retry: found.status === 'failed' && found.id !== input.id}
-										})
+							onNone: Effect.fnUntraced(function* () {
+								return yield* Option.match(yield* findSaved({id: input.id, url}), {
+									onNone: () =>
+										pipe(
+											Note.insert.makeEffect(newNote(userId, {...input, text}, url, Option.none())),
+											Effect.flatMap(notes.insert),
+											Effect.tap(() => reindex(input.id)),
+											Effect.tap(() => organizeLater(input.id)),
+											Reactivity.mutation(['notes']),
+											Effect.as(input.id)
+										),
+									// A share of a saved note adds its new words, unless it is the same capture sent again; only a new share asks a failed note again, so a resend pays for nothing. A capture id that joins another note's link stays retired into it, so its resend after that note's deletion is refused as deleted.
+									onSome: Effect.fnUntraced(function* (found: Note) {
+										yield* storeChange(found, NoteChange.cases.share.make({capture: {...input, text}}))
+										if (found.id !== input.id) yield* retire({id: input.id, mergedInto: Option.some(found.id)})
+										if (found.status === 'failed' && found.id !== input.id) {
+											yield* changeIn(found.id, NoteChange.cases.retry.make({requester: userId}))
+											yield* organizeLater(found.id)
+										}
+										return found.id
 									})
-								),
-							onSome: joined => Effect.succeed({fresh: false, note: joined, retry: false})
+								})
+							}),
+							onSome: joined => Effect.succeed(joined.id)
 						})
 					),
 					sql.withTransaction,
 					asNotesError
 				)
-				if (saved.retry) yield* change(saved.note.id, NoteChange.cases.retry.make({}))
-				const item = yield* savedItem(saved.note.id)
-				if (saved.fresh || saved.retry) yield* enqueueOrganization(userId, yield* savedNote(saved.note.id))
-				return item
+				return yield* savedItem(id)
 			}, withReactivity),
 			captureFile: Effect.fn('Notes.captureFile')(function* (
 				userId: UserId,
@@ -892,11 +946,8 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 				// A resend of a kept upload answers with its note and a deleted one as deleted, without reading the body again.
 				return yield* Option.match(yield* asNotesError(retired(input.id)), {
 					onNone: Effect.fnUntraced(function* () {
-						if (Option.isSome(yield* findNote(input.id))) return yield* savedItem(input.id)
-						const saved = yield* Effect.scoped(receive(userId, input))
-						const item = yield* savedItem(input.id)
-						if (saved.fresh) yield* enqueueOrganization(userId, saved.note)
-						return item
+						if (Option.isNone(yield* findNote(input.id))) yield* Effect.scoped(receive(userId, input))
+						return yield* savedItem(input.id)
 					}),
 					onSome: joined => savedItem(joined.id)
 				})
@@ -1013,19 +1064,37 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 				return yield* mediaReader.file(link, index)
 			}),
 			regenerate: Effect.fn('Notes.regenerate')(function* (userId: UserId, id: NoteId) {
-				MutableHashMap.remove(pending, id)
-				yield* FiberMap.remove(runs, id)
-				yield* change(id, NoteChange.cases.retry.make({}))
-				yield* enqueueOrganization(userId, yield* savedNote(id))
+				yield* savedNote(id)
+				// A run in progress stops before the note starts over, and no claim starts it in between.
+				yield* Semaphore.withPermit(
+					dispatch,
+					Effect.andThen(
+						FiberMap.remove(runs, id),
+						pipe(
+							changeIn(id, NoteChange.cases.retry.make({requester: userId})),
+							Effect.andThen(organizeLater(id)),
+							sql.withTransaction,
+							asNotesError
+						)
+					)
+				)
 			}, withReactivity),
 			remove: Effect.fn('Notes.remove')(
 				function* (id: NoteId) {
-					MutableHashMap.remove(pending, id)
-					yield* FiberMap.remove(runs, id)
-					// An upload of this id publishes under the same permit, so its file lands before the removal or never.
+					const publication = yield* RcMap.get(publications, id)
+					// No claim starts the note again between stopping its run and deleting it.
 					yield* Semaphore.withPermit(
-						yield* RcMap.get(publications, id),
-						Effect.andThen(change(id, NoteChange.cases.remove.make({into: Option.none()})), removeFiles(id))
+						dispatch,
+						Effect.gen(function* () {
+							MutableHashMap.remove(queued, id)
+							MutableHashMap.remove(requests, id)
+							yield* FiberMap.remove(runs, id)
+							// An upload of this id publishes under the same permit, so its file lands before the removal or never.
+							yield* Semaphore.withPermit(
+								publication,
+								Effect.andThen(change(id, NoteChange.cases.remove.make({into: Option.none()})), removeFiles(id))
+							)
+						})
 					)
 				},
 				Effect.scoped,
