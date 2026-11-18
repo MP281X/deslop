@@ -35,6 +35,14 @@ export const BookingSource = Schema.TaggedUnion({
 export type BookingId = typeof BookingId.Type
 export const BookingId = pipe(Schema.String, Schema.check(Schema.isUUID()), Schema.brand('BookingId'))
 
+export type BookingIds = typeof BookingIds.Type
+// The legs of one journey as the phone showed them; a delete removes these and no others.
+export const BookingIds = Schema.NonEmptyArray(BookingId).check(Schema.isMaxLength(50))
+
+export type IssuedOn = typeof IssuedOn.Type
+// The date a ticket or confirmation was issued or last changed, as "YYYY-MM-DD", which orders as text.
+export const IssuedOn = Schema.String.check(Schema.isPattern(/^\d{4}-\d{2}-\d{2}$/u))
+
 // Coordinates and the time zone never come from the ticket.
 export type Place = typeof Place.Type
 export const Place = Schema.Struct({
@@ -99,6 +107,7 @@ export class Flight extends Model.Class<Flight>('Flight')({
 	departs: Schema.DateTimeUtcFromMillis,
 	from: Model.JsonFromString(BookedPlace),
 	id: BookingId,
+	issued: Model.FieldOption(IssuedOn),
 	live: Model.FieldOption(Model.JsonFromString(FlightTracking)),
 	number: Schema.String,
 	seat: Model.FieldOption(Schema.String),
@@ -139,6 +148,7 @@ export class Train extends Model.Class<Train>('Train')({
 	departs: Schema.DateTimeUtcFromMillis,
 	from: Model.JsonFromString(BookedPlace),
 	id: BookingId,
+	issued: Model.FieldOption(IssuedOn),
 	live: Model.FieldOption(Model.JsonFromString(TrainTracking)),
 	number: Schema.String,
 	operator: Schema.String,
@@ -158,6 +168,7 @@ export class Stay extends Model.Class<Stay>('Stay')({
 	checkOut: Schema.DateTimeUtcFromMillis,
 	confirmation: Model.FieldOption(Schema.String),
 	id: BookingId,
+	issued: Model.FieldOption(IssuedOn),
 	name: Schema.String,
 	place: Model.JsonFromString(BookedPlace),
 	status: ReservationStatus
@@ -303,7 +314,12 @@ export type ExtractedItems = typeof ExtractedItems.Type
 export const ExtractedItems = Schema.Array(ExtractedItem)
 
 export type BookingExtraction = typeof BookingExtraction.Type
-export const BookingExtraction = Schema.Struct({items: ExtractedItems})
+export const BookingExtraction = Schema.Struct({
+	issued: Schema.OptionFromOptionalKey(
+		IssuedOn.annotate({description: 'The date this document was issued or last changed, as YYYY-MM-DD'})
+	),
+	items: ExtractedItems
+})
 
 export type Airport = typeof Airport.Type
 export const Airport = Schema.Struct({

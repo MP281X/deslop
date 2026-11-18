@@ -38,6 +38,7 @@ function train(id: string, from: string, to: string, departure: string, arrival:
 		departs: DateTime.makeUnsafe(departure),
 		from: Schema.decodeSync(BookedPlace)({name: from, timeZone: 'Europe/Rome'}),
 		id: BookingId.make(id),
+		issued: Option.none(),
 		live: Option.none(),
 		number: '9713',
 		operator: 'TRENITALIA',
@@ -174,6 +175,7 @@ const FLIGHT = Struct.pick(
 		departs: DEPARTS,
 		from: Schema.decodeSync(BookedPlace)({code: 'FCO', name: 'Fiumicino', timeZone: 'Europe/Rome'}),
 		id: BookingId.make('7f0c8f8e-0d0a-4a5e-9d8f-5b2a1c3d4e5f'),
+		issued: Option.none(),
 		live: Option.none(),
 		number: '553',
 		seat: Option.none(),
@@ -270,6 +272,7 @@ function stay(id: string, city: string) {
 		checkOut: DateTime.makeUnsafe('2026-11-19T09:00Z'),
 		confirmation: Option.none(),
 		id: BookingId.make(id),
+		issued: Option.none(),
 		name: `Hotel in ${city}`,
 		place: Schema.decodeSync(BookedPlace)({
 			address: `Via Roma 1, ${city}, Italy`,

@@ -23,7 +23,7 @@ import {ItemActions, ItemContent, ItemGroup, ItemMedia, ItemTitle} from '@deslop
 import {blockingFailure} from '@deslop/runtime/client/live-stream'
 import {problemSinceAtom} from '@deslop/runtime/client/problem'
 
-import {bookingsAtom, clipboard, nowAtom, removal} from '#lib/bookings.ts'
+import {bookingsAtom, clipboard, journeyKey, nowAtom, removal} from '#lib/bookings.ts'
 import {primary, session} from '#lib/session.ts'
 import {currentOf, daysUntil, problemOf, statusOf, tones} from '#lib/status.ts'
 import {clockAt, dayMark, daysBetween, endOf, HOUR, journeysOf, startOf, titleOf} from '#services/bookings/lib/utils.ts'
@@ -118,7 +118,7 @@ function BookingRow(props: {
 	return (
 		<RemovableRow
 			alignment="top"
-			id={Array.headNonEmpty(props.journey).id}
+			id={journeyKey(props.journey)}
 			removal={removal}
 			onOpen={() => props.onOpen(Array.headNonEmpty(props.journey).id)}
 		>
