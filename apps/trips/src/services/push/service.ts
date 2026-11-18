@@ -7,9 +7,11 @@ import {
 	Duration,
 	Effect,
 	Function,
+	HashSet,
 	Layer,
 	Option,
 	Queue,
+	Ref,
 	Schedule,
 	Schema,
 	Semaphore,
@@ -122,6 +124,21 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 			Result: Retirement,
 			execute: () => sql`SELECT * FROM ${sql(Retirement.table)} ORDER BY retiredAt`
 		})
+		const findRetirement = SqlSchema.findOneOption({
+			Request: ChannelId,
+			Result: Retirement,
+			execute: channel => sql`SELECT * FROM ${sql(Retirement.table)} WHERE channel = ${channel}`
+		})
+		// A channel that never started has no content to end and no activity; an ended activity's row keeps its activity.
+		const findUnstarted = SqlSchema.findOneOption({
+			Request: Schema.String,
+			Result: Retirement,
+			execute: bundle => sql`
+				SELECT * FROM ${sql(Retirement.table)}
+				WHERE bundle = ${bundle} AND props IS NULL AND channel NOT IN (SELECT channel FROM ${sql(Activity.table)})
+				LIMIT 1
+			`
+		})
 		const endSent = SqlSchema.void({
 			Request: ChannelId,
 			execute: channel => sql`UPDATE ${sql(Retirement.table)} SET props = NULL WHERE channel = ${channel}`
@@ -137,6 +154,8 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 		// Signals that a retirement was written; signals sent while the worker is busy make one more pass, not one each.
 		const retiring = yield* Queue.sliding<void>(1)
 		const wake = Queue.offer(retiring, undefined)
+		// Channels whose start is in flight, which the worker leaves to it; known in memory only, so after a crash the worker deletes them.
+		const starting = yield* Ref.make(HashSet.empty<ChannelId>())
 		const forgetEndedBefore = SqlSchema.void({
 			Request: Schema.DateTimeUtcFromMillis,
 			execute: time => sql`DELETE FROM ${sql(Activity.table)} WHERE endedAt < ${time}`
@@ -205,81 +224,28 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 				sql`INSERT INTO ${sql(StartRequest.table)} ${sql.insert(row)} ON CONFLICT (bookingId) DO UPDATE SET at = excluded.at`
 		})
 
-		// Apple holds the channel of a start it did not accept, or that failed, until it confirms deleting it; that channel is retired in the transaction that saves the start's other outcome.
-		const unstarted = Effect.fnUntraced(function* (
-			channel: Option.Option<string>,
-			target: Device,
-			now: DateTime.Utc,
-			forget: Effect.Effect<void, SqlError.SqlError | Schema.SchemaError>
-		) {
-			yield* pipe(
-				forget,
-				Effect.andThen(
-					Option.match(channel, {
-						onNone: () => Effect.void,
-						onSome: held =>
-							recordRetirement({
-								bundle: target.bundle,
-								channel: ChannelId.make(held),
-								props: Option.none(),
-								retiredAt: now
-							})
-					})
-				),
-				sql.withTransaction,
-				asPushSaveError
-			)
-			if (Option.isSome(channel)) yield* wake
-		})
-
-		const pushStart = Effect.fnUntraced(function* (target: Device, showing: Showing) {
-			const answer = yield* Effect.tapError(
-				apns.startActivity(target, showing.leg, {
-					aps: {
-						alert: startAlert(showing.journey),
-						attributes: {url: `${SCHEMES[target.bundle]}://booking/${showing.journey.id}`},
-						'attributes-type': 'LiveActivityAttributes',
-						'content-state': yield* contentState(showing.props),
-						event: 'start',
-						'relevance-score': 100,
-						timestamp: DateTime.toEpochSeconds(showing.now)
-					}
-				}),
-				error =>
-					Option.match(error.channel, {
-						onNone: () => Effect.void,
-						onSome: channel => unstarted(Option.some(channel), target, showing.now, Effect.void)
-					})
-			)
-			return yield* ApnsAnswer.match(answer, {
-				Accepted: accepted =>
-					Option.match(accepted.channel, {
-						onNone: () => PushError.make({message: 'Apple accepted a Live Activity without a channel.'}),
-						onSome: channel => Effect.succeed(ChannelId.make(channel))
-					}),
+		// A start that Apple did not accept leaves its channel owed to the worker; a rejected or refused token also leaves the device.
+		function settle(answer: ApnsAnswer, target: Device) {
+			return ApnsAnswer.match(answer, {
+				Accepted: () => Effect.void,
+				ChannelGone: gone =>
+					PushError.make({cause: gone, message: 'Apple does not know the channel of the Live Activity start.'}),
 				DeadToken: dead =>
 					Effect.andThen(
-						unstarted(dead.channel, target, showing.now, forgetDevice(target)),
+						asPushSaveError(forgetDevice(target)),
 						PushError.make({cause: dead, message: 'Apple rejected the Live Activity token.'})
 					),
 				Refused: refused =>
 					Effect.andThen(
-						unstarted(refused.channel, target, showing.now, forgetDevice(target)),
+						asPushSaveError(forgetDevice(target)),
 						PushError.make({cause: refused, message: 'Apple refused the Live Activity start.'})
 					),
-				Retry: retry =>
-					Effect.andThen(
-						unstarted(retry.channel, target, showing.now, Effect.void),
-						PushError.make({cause: retry, message: 'Apple did not accept the Live Activity start.'})
-					),
+				Retry: retry => PushError.make({cause: retry, message: 'Apple did not accept the Live Activity start.'}),
 				// The journey's words are too long, which no token can fix, so the iPhone stays registered.
 				TooLarge: tooLarge =>
-					Effect.andThen(
-						unstarted(tooLarge.channel, target, showing.now, Effect.void),
-						PushError.make({cause: tooLarge, message: 'The Live Activity has too much text to start.'})
-					)
+					PushError.make({cause: tooLarge, message: 'The Live Activity has too much text to start.'})
 			})
-		})
+		}
 
 		// An activity ends in the transaction that queues its channel's retirement; the worker then sends the end and deletes the channel.
 		const finish = Effect.fnUntraced(function* (activity: Activity, now: DateTime.Utc) {
@@ -299,40 +265,77 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 			yield* wake
 		})
 
-		// A refused start leaves the leg unstarted, so the next round tries again; a start retires the running activity it replaces, so no channel leaves the tables unretired.
-		const launch = Effect.fnUntraced(function* (target: Device, showing: Showing) {
-			const row = {
-				bookingId: showing.journey.id,
-				bundle: target.bundle,
-				channel: yield* pushStart(target, showing),
-				endedAt: Option.none(),
-				leg: showing.leg,
-				props: showing.props,
-				startedAt: showing.now
-			}
-			const replaced = yield* pipe(
-				findRunning(row),
-				Effect.tap(
-					Option.match({
-						onNone: () => Effect.void,
-						onSome: activity =>
-							recordRetirement({
-								bundle: activity.bundle,
-								channel: activity.channel,
-								props: Option.some(activity.props),
-								retiredAt: showing.now
+		// A channel is written down as owed before its start is sent, so a crash or a refused start leaves it for the worker to delete; the transaction that saves the started activity removes that row, and the one it replaces is retired in it.
+		const startOn = Effect.fnUntraced(function* (
+			target: Device,
+			showing: Showing,
+			body: {aps: Record<string, unknown>}
+		) {
+			const channel = ChannelId.make(yield* apns.createChannel(target.bundle))
+			yield* Effect.acquireUseRelease(
+				Ref.update(starting, HashSet.add(channel)),
+				Effect.fnUntraced(function* () {
+					yield* asPushSaveError(
+						recordRetirement({bundle: target.bundle, channel, props: Option.none(), retiredAt: showing.now})
+					)
+					yield* settle(yield* apns.startActivity(target, showing.leg, channel, body), target)
+					const row = {
+						bookingId: showing.journey.id,
+						bundle: target.bundle,
+						channel,
+						endedAt: Option.none(),
+						leg: showing.leg,
+						props: showing.props,
+						startedAt: showing.now
+					}
+					yield* pipe(
+						forgetRetirement(channel),
+						Effect.andThen(findRunning(row)),
+						Effect.tap(
+							Option.match({
+								onNone: () => Effect.void,
+								onSome: activity =>
+									recordRetirement({
+										bundle: activity.bundle,
+										channel: activity.channel,
+										props: Option.some(activity.props),
+										retiredAt: showing.now
+									})
 							})
-					})
-				),
-				Effect.tap(() => startActivity(row)),
-				sql.withTransaction,
-				asPushSaveError
+						),
+						Effect.tap(() => startActivity(row)),
+						sql.withTransaction,
+						asPushSaveError
+					)
+				}),
+				() => pipe(starting, Ref.update(HashSet.remove(channel)), Effect.andThen(wake))
 			)
-			if (Option.isSome(replaced)) yield* wake
+		})
+
+		// A start waits while Apple has not confirmed deleting an earlier channel of its app that never started, so an outage makes no more channels; an ended activity's channel awaiting its delete does not hold one.
+		const launch = Effect.fnUntraced(function* (target: Device, showing: Showing) {
+			if (Option.isSome(yield* asPushReadError(findUnstarted(target.bundle)))) {
+				return yield* PushError.make({message: 'Apple has not confirmed deleting the channel of an earlier start.'})
+			}
+			const body = {
+				aps: {
+					alert: startAlert(showing.journey),
+					attributes: {url: `${SCHEMES[target.bundle]}://booking/${showing.journey.id}`},
+					'attributes-type': 'LiveActivityAttributes',
+					'content-state': yield* contentState(showing.props),
+					event: 'start',
+					'relevance-score': 100,
+					timestamp: DateTime.toEpochSeconds(showing.now)
+				}
+			}
+			yield* Option.match(yield* apns.startHeld(target, showing.leg, body), {
+				onNone: () => startOn(target, showing, body),
+				onSome: answer => settle(answer, target)
+			})
 		})
 
 		// judge-ignore no-silent-fallback -- #279 makes permanent APNs refusal terminal: its logged refusal ends this unavailable channel; only Retry keeps it pending.
-		// The end goes first, once; the retirement is forgotten only after Apple deleted the channel or answered that it never will, so a throttled answer or a restart leaves it for the next pass.
+		// The end goes first; the retirement is forgotten only after Apple deleted the channel or answered that it never will, so a throttled answer or a restart leaves it for the next pass, and an end Apple accepted is sent again when Trips stops before it saved that it was sent.
 		const retire = Effect.fnUntraced(function* (retirement: Retirement, now: DateTime.Utc) {
 			yield* Option.match(retirement.props, {
 				onNone: () => Effect.void,
@@ -364,6 +367,16 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 			yield* asPushSaveError(forgetRetirement(retirement.channel))
 		})
 
+		// A channel whose start is in flight is that start's until it saves the activity or fails.
+		const retireUnlessStarting = Effect.fnUntraced(function* (listed: Retirement, now: DateTime.Utc) {
+			if (HashSet.has(yield* Ref.get(starting), listed.channel)) return
+			// Read again, since the start may have saved the channel as an activity after the list was read.
+			yield* Option.match(yield* asPushReadError(findRetirement(listed.channel)), {
+				onNone: () => Effect.void,
+				onSome: current => retire(current, now)
+			})
+		})
+
 		// Claims every pending retirement at start, after each signal, and each minute for the answers Apple asked to retry.
 		yield* pipe(
 			Effect.gen(function* () {
@@ -372,7 +385,10 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 				yield* Effect.forEach(
 					yield* asPushReadError(listRetirements()),
 					retirement =>
-						Effect.ignore(retire(retirement, now), {log: 'Warn', message: 'A Live Activity channel was not retired'}),
+						Effect.ignore(retireUnlessStarting(retirement, now), {
+							log: 'Warn',
+							message: 'A Live Activity channel was not retired'
+						}),
 					{concurrency: 1, discard: true}
 				)
 			}),
@@ -399,6 +415,8 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 			)
 			yield* ApnsAnswer.match(answer, {
 				Accepted: () => asPushSaveError(activities.updateVoid({...editable(activity), props})),
+				// Apple has no such channel, so nothing is owed for it and the leg can start again.
+				ChannelGone: () => asPushSaveError(activities.updateVoid({...editable(activity), endedAt: Option.some(now)})),
 				DeadToken: () => asPushSaveError(activities.updateVoid({...editable(activity), endedAt: Option.some(now)})),
 				Refused: () => asPushSaveError(activities.updateVoid({...editable(activity), props})),
 				Retry: retry => PushError.make({cause: retry, message: 'Apple did not accept the Live Activity update.'}),
@@ -463,6 +481,7 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 			)
 			return yield* ApnsAnswer.match(answer, {
 				Accepted: () => Effect.succeed(true),
+				ChannelGone: () => Effect.succeed(true),
 				DeadToken: () => Effect.as(asPushSaveError(forgetDevice(device)), true),
 				Refused: () => Effect.succeed(true),
 				Retry: () => Effect.succeed(false),

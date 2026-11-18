@@ -1,4 +1,4 @@
-import {Boolean, Effect, Option, Result, Schema, pipe} from 'effect'
+import {Boolean, Option, Schema, pipe} from 'effect'
 
 import {Model} from 'effect/schema'
 
@@ -39,20 +39,17 @@ export function deviceHeaders(
 
 const answerFields = {channel: Schema.Option(Schema.String), reason: Schema.Option(Schema.String), status: Schema.Int}
 export type ApnsAnswer = typeof ApnsAnswer.Type
-// `TooLarge` is the payload's fault, never the token's: no device or channel is retired for it.
+// `TooLarge` is the payload's fault, never the token's: no device or channel is retired for it. `ChannelGone` is Apple saying a broadcast channel no longer exists: nothing more is owed for it, and nothing more is sent to it.
 export const ApnsAnswer = Schema.TaggedUnion({
 	Accepted: answerFields,
+	ChannelGone: answerFields,
 	DeadToken: answerFields,
 	Refused: answerFields,
 	Retry: answerFields,
 	TooLarge: answerFields
 })
 
-// A failed start names the channel Apple created for it while deleting it was not confirmed, for the app to delete later.
-export class ApnsError extends Schema.TaggedError<ApnsError>()('ApnsError', {
-	channel: pipe(Schema.Option(Schema.String), Schema.withConstructorDefault(Effect.succeedNone)),
-	message: Schema.String
-}) {}
+export class ApnsError extends Schema.TaggedError<ApnsError>()('ApnsError', {message: Schema.String}) {}
 
 // Apple's notification body limit is 4096 bytes; a larger one is answered without asking Apple.
 export function tooLargeAnswer(bytes: number) {
@@ -65,19 +62,12 @@ export function tooLargeAnswer(bytes: number) {
 	)
 }
 
-// A channel that Apple did not confirm deleting is still Apple's, so an unstarted activity keeps naming it.
-export function unconfirmedChannel(channel: string, deleted: Result.Result<ApnsAnswer, unknown>) {
-	return Option.liftPredicate(
-		channel,
-		() => Result.isFailure(deleted) || ApnsAnswer.isAnyOf(['Retry'])(deleted.success)
-	)
-}
-
 export function apnsAnswer(answer: {channel: Option.Option<string>; reason: Option.Option<string>; status: number}) {
 	if (answer.status >= 200 && answer.status < 300) return ApnsAnswer.cases.Accepted.make(answer)
 	if (answer.status === 413 || Option.contains(answer.reason, 'PayloadTooLarge')) {
 		return ApnsAnswer.cases.TooLarge.make(answer)
 	}
+	if (Option.contains(answer.reason, 'ChannelNotRegistered')) return ApnsAnswer.cases.ChannelGone.make(answer)
 	// An expired provider token is our signature's fault: the token is renewed and the device kept.
 	if (Option.contains(answer.reason, 'ExpiredProviderToken')) return ApnsAnswer.cases.Retry.make(answer)
 	if (

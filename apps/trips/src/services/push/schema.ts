@@ -37,11 +37,11 @@ export class Activity extends Model.Class<Activity>('Activity')({
 	static readonly table = 'activities'
 }
 
-// One row of `retirements`: a channel Apple may still hold, written with the change that retired it and forgotten only once Apple deleted it or answered that it never will, so a restart resumes it.
+// One row of `retirements`: a channel Apple may still hold, written with the change that retired it, or before the start that will use it is sent, and forgotten only once Apple deleted it or answered that it never will, so a restart resumes it.
 export class Retirement extends Model.Class<Retirement>('Retirement')({
 	bundle: Schema.String,
 	channel: ChannelId,
-	// What the activity last showed while its end is still to be sent; none once Apple took the end, and for a start Apple never accepted.
+	// What the activity last showed while its end is still to be sent; none once Apple took the end, and for a channel whose start is not saved as an activity.
 	props: Model.FieldOption(Model.JsonFromString(ActivityProps)),
 	retiredAt: Schema.DateTimeUtcFromMillis
 }) {
