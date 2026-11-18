@@ -229,15 +229,23 @@ function forkedUnder(context: Context, node: ESTree.Node, owner: ESTree.Node): b
 	return forkedUnder(context, node.parent, owner)
 }
 
+// What an argument spells out: a literal's value, or the text of a template without substitutions.
+function spelled(argument: ESTree.Node) {
+	if (argument.type === 'Literal') return Option.some(argument.value)
+	if (argument.type !== 'TemplateLiteral' || Array.isReadonlyArrayNonEmpty(argument.expressions)) return Option.none()
+	return Option.map(Array.head(argument.quasis), quasi => quasi.value.cooked)
+}
+
 // The length a call spells out as its one literal, such as `'1 second'`, `500` milliseconds or `1n` nanosecond; a name or any other expression leaves it unknown.
 function literalLength(call: ESTree.CallExpression) {
 	return pipe(
 		call.arguments,
-		Array.filter(argument => argument.type === 'Literal'),
-		Array.map(argument =>
+		Array.map(spelled),
+		Array.getSomes,
+		Array.map(value =>
 			Schema.decodeUnknownOption(
 				Schema.Union([Schema.DurationFromMillis, Schema.DurationFromNanos, Schema.DurationFromString])
-			)(argument.value)
+			)(value)
 		),
 		Array.getSomes,
 		Option.liftPredicate(lengths => lengths.length === 1),
