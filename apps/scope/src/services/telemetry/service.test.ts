@@ -12,6 +12,7 @@ import {
 	Function,
 	Layer,
 	Option,
+	Order,
 	Schema,
 	Stream,
 	String,
@@ -33,6 +34,11 @@ import {
 	TracesRequest
 } from '#services/telemetry/schema.ts'
 import {Telemetry} from '#services/telemetry/service.ts'
+
+// Receipt is the test clock's first hour; a day ahead is a clock far past the ten minutes allowed.
+const RECEIVED_NS = 3_600_000_000_000n
+const FAST_NS = 86_400_000_000_000n
+const MINUTE_NS = 60_000_000_000n
 
 const TRACES = Schema.decodeSync(TracesRequest)({
 	resourceSpans: [
@@ -571,28 +577,90 @@ it.layer(telemetryLayer)(test =>
 	)
 )
 
+function ns(value: bigint) {
+	return `${value}`
+}
+
+function runExport(started: bigint, at: bigint) {
+	return Schema.decodeEffect(TracesRequest)({
+		resourceSpans: [
+			{
+				resource: {
+					attributes: [
+						{key: 'service.name', value: {stringValue: 'run-server'}},
+						{key: 'scope.run.started_unix_nano', value: {stringValue: ns(started)}}
+					]
+				},
+				scopeSpans: [
+					{
+						spans: [
+							{
+								endTimeUnixNano: ns(at),
+								name: 'work',
+								spanId: '1111111111111111',
+								startTimeUnixNano: ns(at),
+								traceId: pipe(`${at}`, String.padStart(32, 'd'))
+							}
+						]
+					}
+				]
+			}
+		]
+	})
+}
+
 it.layer(telemetryLayer)(test =>
 	test.effect(
-		'stores a span ending more than ten minutes ahead of receipt as ending at its receipt',
+		"moves a fast clock's whole export back together, keeping every length and offset as sent",
 		Effect.fnUntraced(function* () {
 			const telemetry = yield* Telemetry
-			const id = TraceId.make('fffffffffffffffffffffffffffffffc')
+			const parent = TraceId.make('fffffffffffffffffffffffffffffffa')
+			const long = TraceId.make('fffffffffffffffffffffffffffffffb')
 			yield* TestClock.adjust('1 hour')
 			yield* telemetry.ingestTraces(
 				yield* serverExport('clock-server', [
 					{
-						endTimeUnixNano: '90000000000000',
-						name: 'unfinished',
+						endTimeUnixNano: ns(FAST_NS + 4_000_000_000n),
+						name: 'parent',
 						spanId: '1111111111111111',
-						startTimeUnixNano: '3000000000000',
-						traceId: id
+						startTimeUnixNano: ns(FAST_NS),
+						traceId: parent
+					},
+					{
+						endTimeUnixNano: ns(FAST_NS + 3_000_000_000n),
+						name: 'child',
+						parentSpanId: '1111111111111111',
+						spanId: '2222222222222222',
+						startTimeUnixNano: ns(FAST_NS + 2_000_000_000n),
+						traceId: parent
+					},
+					{
+						endTimeUnixNano: ns(FAST_NS + 660_000_000_000n),
+						name: 'eleven minutes',
+						spanId: '3333333333333333',
+						startTimeUnixNano: ns(FAST_NS),
+						traceId: long
 					}
 				]),
 				'identified'
 			)
 			assert.deepStrictEqual(
-				Array.map((yield* telemetry.trace(id)).spans, span => Duration.toMillis(span.durationMs)),
-				[600_000]
+				Array.map((yield* telemetry.trace(parent)).spans, span => [
+					span.name,
+					DateTime.toEpochMillis(span.start),
+					Duration.toMillis(span.durationMs)
+				]),
+				[
+					['parent', 2_940_000, 4000],
+					['child', 2_942_000, 1000]
+				]
+			)
+			assert.deepStrictEqual(
+				Array.map((yield* telemetry.trace(long)).spans, span => [
+					DateTime.toEpochMillis(span.start),
+					Duration.toMillis(span.durationMs)
+				]),
+				[[2_940_000, 660_000]]
 			)
 		})
 	)
@@ -600,58 +668,140 @@ it.layer(telemetryLayer)(test =>
 
 it.layer(telemetryLayer)(test =>
 	test.effect(
-		'stores a span or log more than ten minutes ahead of receipt at its receipt',
+		'shifts a group only when its newest time is more than ten minutes past receipt',
 		Effect.fnUntraced(function* () {
 			const telemetry = yield* Telemetry
-			const id = TraceId.make('fffffffffffffffffffffffffffffff9')
 			yield* TestClock.adjust('1 hour')
-			yield* telemetry.ingestTraces(
-				yield* serverExport('clock-server', [
-					{
-						endTimeUnixNano: '86400010000000',
-						name: 'tomorrow',
-						spanId: '1111111111111111',
-						startTimeUnixNano: '86400000000000',
-						traceId: id
-					},
-					{
-						endTimeUnixNano: '4140000000000',
-						name: 'nine minutes ahead',
-						parentSpanId: '1111111111111111',
-						spanId: '2222222222222222',
-						startTimeUnixNano: '4140000000000',
-						traceId: id
-					}
-				]),
-				'identified'
+			const cases = [
+				// Only its end is past the limit: it ends at receipt and keeps its length.
+				{
+					durationMs: 900_000,
+					end: RECEIVED_NS + 20n * MINUTE_NS,
+					id: 'eeeeeeeeeeeeeeeeeeeeeeeeeeeeeee1',
+					start: RECEIVED_NS + 5n * MINUTE_NS,
+					startMs: 2_700_000
+				},
+				{
+					durationMs: 0,
+					end: RECEIVED_NS + 10n * MINUTE_NS,
+					id: 'eeeeeeeeeeeeeeeeeeeeeeeeeeeeeee2',
+					start: RECEIVED_NS + 10n * MINUTE_NS,
+					startMs: 4_200_000
+				},
+				{
+					durationMs: 60_000,
+					end: RECEIVED_NS - 29n * MINUTE_NS,
+					id: 'eeeeeeeeeeeeeeeeeeeeeeeeeeeeeee3',
+					start: RECEIVED_NS - 30n * MINUTE_NS,
+					startMs: 1_800_000
+				},
+				// An end before its start never stores a negative length.
+				{
+					durationMs: 0,
+					end: FAST_NS - MINUTE_NS,
+					id: 'eeeeeeeeeeeeeeeeeeeeeeeeeeeeeee4',
+					start: FAST_NS,
+					startMs: 3_600_000
+				}
+			]
+			yield* Effect.forEach(
+				cases,
+				item =>
+					Effect.flatMap(
+						serverExport('clock-server', [
+							{
+								endTimeUnixNano: ns(item.end),
+								name: 'work',
+								spanId: '1111111111111111',
+								startTimeUnixNano: ns(item.start),
+								traceId: item.id
+							}
+						]),
+						request => telemetry.ingestTraces(request, 'identified')
+					),
+				{concurrency: 1}
 			)
+			assert.deepStrictEqual(
+				yield* Effect.forEach(
+					cases,
+					item =>
+						Effect.map(telemetry.trace(TraceId.make(item.id)), trace =>
+							Array.map(trace.spans, span => [DateTime.toEpochMillis(span.start), Duration.toMillis(span.durationMs)])
+						),
+					{concurrency: 1}
+				),
+				Array.map(cases, item => [[item.startMs, item.durationMs]])
+			)
+		})
+	)
+)
+
+it.layer(telemetryLayer)(test =>
+	test.effect(
+		"moves the logs of a fast clock's export back together, observed-only records included",
+		Effect.fnUntraced(function* () {
+			const telemetry = yield* Telemetry
+			yield* TestClock.adjust('1 hour')
 			yield* telemetry.ingestLogs(
 				yield* Schema.decodeEffect(LogsRequest)({
 					resourceLogs: [
 						{
 							resource: {attributes: [{key: 'service.name', value: {stringValue: 'clock-server'}}]},
-							scopeLogs: [{logRecords: [{body: {stringValue: 'tomorrow'}, timeUnixNano: '86400000000000'}]}]
+							scopeLogs: [
+								{
+									logRecords: [
+										{body: {stringValue: 'five seconds before'}, timeUnixNano: ns(FAST_NS - 5_000_000_000n)},
+										{body: {stringValue: 'observed'}, observedTimeUnixNano: ns(FAST_NS + 1_000_000_000n)}
+									]
+								}
+							]
 						}
 					]
 				}),
 				'identified'
 			)
 			assert.deepStrictEqual(
-				Array.map((yield* telemetry.trace(id)).spans, span => [
-					span.name,
-					DateTime.toEpochMillis(span.start),
-					Duration.toMillis(span.durationMs)
-				]),
-				[
-					['tomorrow', 3_600_000, 10],
-					['nine minutes ahead', 4_140_000, 0]
-				]
+				pipe(
+					(yield* telemetry.searchLogs(yield* Schema.decodeEffect(SearchLogsParams)({}))).logs,
+					Array.map(log => DateTime.toEpochMillis(log.at)),
+					Array.sort(Order.Number)
+				),
+				[3_594_000, 3_600_000]
+			)
+		})
+	)
+)
+
+it.layer(telemetryLayer)(test =>
+	test.effect(
+		'keeps a fast process one run however often it sends, and calls the run heard from last the latest',
+		Effect.fnUntraced(function* () {
+			const telemetry = yield* Telemetry
+			yield* TestClock.adjust('1 hour')
+			yield* Effect.forEach(
+				[0n, 1n, 2n, 3n],
+				offset =>
+					pipe(
+						runExport(FAST_NS, RECEIVED_NS + offset),
+						Effect.flatMap(request => telemetry.ingestTraces(request, 'identified')),
+						Effect.andThen(TestClock.adjust('1 second'))
+					),
+				{concurrency: 1}
 			)
 			assert.deepStrictEqual(
-				Array.map((yield* telemetry.searchLogs(yield* Schema.decodeEffect(SearchLogsParams)({}))).logs, log =>
-					DateTime.toEpochMillis(log.at)
-				),
-				[3_600_000]
+				Array.map((yield* telemetry.checkIngestion()).services, service => [
+					service.entries,
+					Option.map(service.runStarted, DateTime.toEpochMillis)
+				]),
+				[[4, Option.some(86_400_000)]]
+			)
+			yield* telemetry.ingestTraces(yield* runExport(RECEIVED_NS, RECEIVED_NS + 10_000_000_000n), 'identified')
+			assert.deepStrictEqual(
+				Array.map((yield* telemetry.checkIngestion()).services, service => [
+					service.entries,
+					Option.map(service.runStarted, DateTime.toEpochMillis)
+				]),
+				[[1, Option.some(3_600_000)]]
 			)
 		})
 	)

@@ -147,20 +147,27 @@ function instantOf(nanos: Duration.Duration) {
 	)
 }
 
-// A time more than ten minutes past its receipt comes from a wrong clock, so the record happened when it arrived.
-function receivedBy(time: Duration.Duration, receivedAt: DateTime.Utc) {
+// A clock that runs fast shifts its whole group of an export: when the group's newest time is more than ten minutes past its receipt, every time in it moves back by the excess, so the newest lands at receipt and every length and offset stays as sent. One absurd time moves its whole group into the past, and the spans of one trace that arrive in different exports are shifted separately.
+export function skewOf(times: readonly Duration.Duration[], receivedAt: DateTime.Utc) {
 	const received = Duration.nanos(BigInt(DateTime.toEpochMillis(receivedAt)) * 1_000_000n)
-	if (Duration.isGreaterThan(time, Duration.sum(received, Duration.minutes(10)))) return received
-	return time
+	const newest = Array.reduce(times, Duration.zero, Duration.max)
+	if (Duration.isGreaterThan(newest, Duration.sum(received, Duration.minutes(10)))) {
+		return Duration.subtract(newest, received)
+	}
+	return Duration.zero
+}
+
+function shifted(time: Duration.Duration, skew: Duration.Duration) {
+	return pipe(time, Duration.subtract(skew), Duration.max(Duration.zero))
 }
 
 // Who sent a record: its service, the side it runs on, the run its process started and the release it built.
-export function senderOf(resource: Option.Option<Resource>, receivedAt: DateTime.Utc) {
+export function senderOf(resource: Option.Option<Resource>) {
 	return {
 		run: pipe(
 			resourceText(resource, 'scope.run.started_unix_nano'),
 			Option.flatMap(Schema.decodeOption(Nano)),
-			Option.map(started => instantOf(receivedBy(started, receivedAt))),
+			Option.map(instantOf),
 			Option.map(DateTime.startOf('millisecond'))
 		),
 		runtime: pipe(
@@ -217,11 +224,18 @@ export function spansOf(payload: TracesRequest, origin: Origin, receivedAt: Date
 		Option.getOrElse(Array.empty),
 		Array.map(group => ({
 			// All spans in the group share one sender, regardless of instrumentation scope.
-			sender: admittedSender(senderOf(group.resource, receivedAt), origin),
+			sender: admittedSender(senderOf(group.resource), origin),
 			spans: pipe(
 				group.scopeSpans,
 				Option.getOrElse(() => []),
 				Array.flatMap(scope => Option.getOrElse(scope.spans, () => []))
+			)
+		})),
+		Array.map(group => ({
+			...group,
+			skew: skewOf(
+				Array.flatMap(group.spans, span => [span.startTimeUnixNano, ...Option.toArray(span.endTimeUnixNano)]),
+				receivedAt
 			)
 		}))
 	)
@@ -243,9 +257,6 @@ export function spansOf(payload: TracesRequest, origin: Origin, receivedAt: Date
 					const failed = Option.exists(span.status, status => Option.contains(status.code, 2))
 					const traceId = TraceId.make(String.toLowerCase(span.traceId))
 					const spanId = SpanId.make(String.toLowerCase(span.spanId))
-					const start = receivedBy(span.startTimeUnixNano, receivedAt)
-					// A start pulled back to receipt takes the end with it, so a span on a fast clock keeps its length.
-					const skew = Duration.subtract(span.startTimeUnixNano, start)
 					return {
 						links: pipe(
 							span.links,
@@ -270,7 +281,7 @@ export function spansOf(payload: TracesRequest, origin: Origin, receivedAt: Date
 							// Subtract before rounding the start so short spans at modern epochs retain their duration.
 							duration: Option.map(span.endTimeUnixNano, end =>
 								pipe(
-									Duration.subtract(receivedBy(Duration.subtract(end, skew), receivedAt), start),
+									Duration.subtract(end, span.startTimeUnixNano),
 									Duration.max(Duration.zero),
 									Duration.toMillis,
 									Duration.millis
@@ -290,7 +301,7 @@ export function spansOf(payload: TracesRequest, origin: Origin, receivedAt: Date
 							name: spanName(span, attributes),
 							parentSpanId: Option.map(span.parentSpanId, id => SpanId.make(String.toLowerCase(id))),
 							spanId,
-							start: instantOf(start),
+							start: instantOf(shifted(span.startTimeUnixNano, group.skew)),
 							status: Boolean.match(failed, {
 								onFalse: Function.constant('ok' as const),
 								onTrue: () =>
@@ -330,8 +341,23 @@ function severityOf(number: Option.Option<number>, text: Option.Option<string>) 
 	})
 }
 
-// One log record of an OTLP logs export, under the identity its digest gave it.
-export function logOf(sender: ReturnType<typeof senderOf>, log: ExportedLog, id: LogId, receivedAt: DateTime.Utc) {
+// When a log record says it happened: its event time, else when it was observed.
+export function logTimeOf(log: ExportedLog) {
+	return pipe(
+		log.timeUnixNano,
+		Option.filter(Duration.isPositive),
+		Option.orElse(() => Option.filter(log.observedTimeUnixNano, Duration.isPositive))
+	)
+}
+
+// One log record of an OTLP logs export, under the identity its digest gave it; `skew` is its group's.
+export function logOf(
+	sender: ReturnType<typeof senderOf>,
+	log: ExportedLog,
+	id: LogId,
+	receivedAt: DateTime.Utc,
+	skew: Duration.Duration
+) {
 	return {
 		...sender,
 		attributes: attributesOf(Option.getOrElse(log.attributes, Array.empty)),
@@ -341,11 +367,7 @@ export function logOf(sender: ReturnType<typeof senderOf>, log: ExportedLog, id:
 		severity: severityOf(log.severityNumber, log.severityText),
 		spanId: Option.map(log.spanId, value => SpanId.make(String.toLowerCase(value))),
 		// A record without an event time happened when it was observed, else when its export arrived.
-		time: pipe(
-			Option.filter(log.timeUnixNano, Duration.isPositive),
-			Option.orElse(() => Option.filter(log.observedTimeUnixNano, Duration.isPositive)),
-			Option.match({onNone: () => receivedAt, onSome: nanos => instantOf(receivedBy(nanos, receivedAt))})
-		),
+		time: Option.match(logTimeOf(log), {onNone: () => receivedAt, onSome: nanos => instantOf(shifted(nanos, skew))}),
 		traceId: Option.map(log.traceId, value => TraceId.make(String.toLowerCase(value)))
 	} satisfies Log
 }
