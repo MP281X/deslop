@@ -75,6 +75,8 @@ export const uninstallService = Effect.fnUntraced(function* (name: string) {
 	const path = yield* Path.Path
 	const directory = yield* unitDirectory
 	yield* systemctl('disable', '--now', `deslop-${name}-update.timer`, `deslop-${name}.service`)
+	// The timer's oneshot may already be running; stopping waits for it, as launchd's bootout does for its agent.
+	yield* systemctl('stop', `deslop-${name}-update.service`)
 	yield* Effect.forEach(
 		[`deslop-${name}.service`, `deslop-${name}-update.service`, `deslop-${name}-update.timer`],
 		file => fs.remove(path.join(directory, file), {force: true}),
