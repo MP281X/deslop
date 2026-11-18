@@ -1,6 +1,18 @@
 import {RegistryContext, scheduleTask} from '@effect/atom-react'
 
-import {Array, Effect, Function, Option, Predicate, String, pipe} from 'effect'
+import {
+	Array,
+	Boolean,
+	Duration,
+	Effect,
+	Fiber,
+	Function,
+	MutableHashMap,
+	Option,
+	Predicate,
+	String,
+	pipe
+} from 'effect'
 
 import {RouterProvider, createRouter, defaultStringifySearch} from '@tanstack/react-router'
 import type {AnyRoute, AnyRouter} from '@tanstack/react-router'
@@ -20,20 +32,51 @@ const reported = new WeakSet<object>()
 // What every route's loader is given: the registry its page's atoms live in.
 export type RouterContext = {readonly registry: AtomRegistry.AtomRegistry}
 
-// A loader's answer: its page's reads open beside the page's code and stay open half a minute, by when the page reads them or they were not wanted. The route renders with their first answers, so a quick read shows no skeleton; after 200ms it renders without them, and its Suspense shows one.
-export function preload<E>(context: RouterContext, atoms: readonly Atom.Atom<AsyncResult.AsyncResult<unknown, E>>[]) {
+// Each read a loader holds open, by its atom: a later load of the same read replaces the hold rather than adding one.
+const holds = MutableHashMap.empty<Atom.Atom<unknown>, {readonly fiber: Fiber.Fiber<void>; readonly owner: object}>()
+
+function holdOf(atom: Atom.Atom<unknown>) {
+	return MutableHashMap.get(holds, atom)
+}
+
+// A loader's answer: its page's reads open beside the page's code. A navigation's page reads them as soon as it renders, so they are held 5 seconds; a preload on intent holds them 30, by when the page reads them or they were not wanted. The route renders with their first answers, so a quick read shows no skeleton; after 200ms it renders without them, and its Suspense shows one.
+export function preload<E>(
+	load: {readonly context: RouterContext; readonly preload: boolean},
+	atoms: readonly Atom.Atom<AsyncResult.AsyncResult<unknown, E>>[]
+) {
+	const hold = Boolean.match(load.preload, {
+		onFalse: Function.constant(Duration.seconds(5)),
+		onTrue: Function.constant(Duration.seconds(30))
+	})
 	// oxlint-disable-next-line no-restricted-properties -- TanStack Router awaits a loader's Promise.
 	return Effect.runPromise(
 		pipe(
-			Effect.forEach(atoms, atom => AtomRegistry.mount(context.registry, atom), {
-				concurrency: 'unbounded',
-				discard: true
-			}),
-			Effect.andThen(Effect.sleep('30 seconds')),
-			Effect.scoped,
-			Effect.forkDetach,
+			Effect.forEach(
+				atoms,
+				atom =>
+					Effect.gen(function* () {
+						const owner = {}
+						const previous = holdOf(atom)
+						const fiber = yield* pipe(
+							AtomRegistry.mount(load.context.registry, atom),
+							Effect.andThen(Effect.sleep(hold)),
+							Effect.ensuring(
+								Effect.sync(() => {
+									if (Option.exists(holdOf(atom), held => held.owner === owner)) {
+										MutableHashMap.remove(holds, atom)
+									}
+								})
+							),
+							Effect.scoped,
+							Effect.forkDetach({startImmediately: true})
+						)
+						MutableHashMap.set(holds, atom, {fiber, owner})
+						yield* Option.match(previous, {onNone: () => Effect.void, onSome: held => Fiber.interrupt(held.fiber)})
+					}),
+				{concurrency: 'unbounded', discard: true}
+			),
 			Effect.andThen(
-				Effect.forEach(atoms, atom => pipe(context.registry, AtomRegistry.getResult(atom), Effect.exit), {
+				Effect.forEach(atoms, atom => pipe(load.context.registry, AtomRegistry.getResult(atom), Effect.exit), {
 					concurrency: 'unbounded',
 					discard: true
 				})
