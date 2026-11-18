@@ -310,7 +310,7 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 				Effect.forEach(activity => Effect.result(finish(activity, now)), {concurrency: 1})
 			)
 			const outcomes = yield* Effect.forEach(
-				showPlan(state.devices, state.activities, journey, window, requested),
+				showPlan(state.devices, state.activities, legs, window, requested),
 				action => {
 					if (ShowAction.isAnyOf(['launch'])(action)) return Effect.result(launch(action.target, showing))
 					return Effect.result(refresh(action.target, showing.props, now))
@@ -497,7 +497,7 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 					onSome: Effect.succeed
 				})
 				const state = yield* roundState
-				if (Array.isReadonlyArrayEmpty(showPlan(state.devices, state.activities, booking, window, Option.some(now)))) {
+				if (Array.isReadonlyArrayEmpty(showPlan(state.devices, state.activities, legs, window, Option.some(now)))) {
 					return yield* PushError.make({message: 'No registered device can start this Live Activity.'})
 				}
 				yield* asPushSaveError(recordRequest({at: now, bookingId: booking.id}))

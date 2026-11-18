@@ -825,13 +825,18 @@ export function arrived(leg: Flight | Train, now: DateTime.Utc) {
 	return Option.exists(leg.live, live => live.state === 'arrived' || live.state === 'landed')
 }
 
+// One cancelled leg cancels the journey: no new Live Activity starts, however it is asked for.
+export function cancelledJourney(legs: readonly (Flight | Train)[]): boolean {
+	return Array.some(legs, cancelledOf)
+}
+
 export function startable(
 	legs: readonly (Flight | Train)[],
 	now: DateTime.Utc
 ): legs is Array.NonEmptyReadonlyArray<Flight | Train> {
 	return (
 		Array.isReadonlyArrayNonEmpty(legs) &&
-		Array.every(legs, leg => !cancelledOf(leg)) &&
+		!cancelledJourney(legs) &&
 		!arrived(Array.lastNonEmpty(legs), now) &&
 		DateTime.isGreaterThanOrEqualTo(now, DateTime.subtractDuration(Array.headNonEmpty(legs).departs, Duration.hours(7)))
 	)

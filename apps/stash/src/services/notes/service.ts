@@ -863,13 +863,12 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 												Reactivity.mutation(['notes']),
 												Effect.map(note => ({fresh: true, note, retry: false}))
 											),
-										// A share of a saved note adds its new words, unless it is the same capture sent again; only a new share asks a failed note again, so a resend pays for nothing.
-										onSome: found =>
-											Effect.as(storeChange(found, NoteChange.cases.share.make({capture: {...input, text}})), {
-												fresh: false,
-												note: found,
-												retry: found.status === 'failed' && found.id !== input.id
-											})
+										// A share of a saved note adds its new words, unless it is the same capture sent again; only a new share asks a failed note again, so a resend pays for nothing. A capture id that joins another note's link stays retired into it, so its resend after that note's deletion is refused as deleted.
+										onSome: Effect.fnUntraced(function* (found) {
+											yield* storeChange(found, NoteChange.cases.share.make({capture: {...input, text}}))
+											if (found.id !== input.id) yield* retire({id: input.id, mergedInto: Option.some(found.id)})
+											return {fresh: false, note: found, retry: found.status === 'failed' && found.id !== input.id}
+										})
 									})
 								),
 							onSome: joined => Effect.succeed({fresh: false, note: joined, retry: false})

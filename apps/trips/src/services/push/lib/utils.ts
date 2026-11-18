@@ -7,6 +7,7 @@ import {
 	activeWindow,
 	arrivalClockOf,
 	arrivalOf,
+	cancelledJourney,
 	cancelledOf,
 	clockAt,
 	departureOf,
@@ -66,19 +67,19 @@ export function unannouncedDevices(devices: readonly Device[], deliveries: reado
 	)
 }
 
-// Per app: refresh the activity that covers the leg, or start one with the app's push-to-start token; an ended one stays ended.
+// Per app: refresh the activity that covers the leg, or start one with the app's push-to-start token; an ended one stays ended, and a cancelled journey only shows its cancellation on a running one.
 export function showPlan(
 	devices: readonly Device[],
 	activities: readonly Activity[],
-	journey: Flight | Train,
+	legs: Array.NonEmptyReadonlyArray<Flight | Train>,
 	window: Span & {leg: Leg},
 	requested: Option.Option<DateTime.Utc> = Option.none()
 ) {
-	const starters = Array.filter(devices, device => device.kind === 'start')
+	const starters = Array.filter(devices, device => device.kind === 'start' && !cancelledJourney(legs))
 	const covering = Array.filter(
 		activities,
 		item =>
-			item.bookingId === journey.id &&
+			item.bookingId === Array.headNonEmpty(legs).id &&
 			item.leg === window.leg &&
 			holds(item, window) &&
 			!Option.exists(item.endedAt, ended => Option.exists(requested, at => DateTime.isGreaterThan(at, ended)))
