@@ -29,14 +29,18 @@ import {HttpClient, HttpClientRequest, HttpClientResponse} from 'effect/http'
 import {Jwk, Jws} from 'effect/jose'
 
 import {DEVELOPMENT_BUNDLE_SUFFIX} from '#config/expo.ts'
-import {ApnsAnswer, apnsAnswer, deviceHeaders, tooLargeAnswer} from '#shared/apns.ts'
+import {ApnsAnswer, apnsAnswer, deviceHeaders, tooLargeAnswer, unconfirmedChannel} from '#shared/apns.ts'
 import type {ApnsPriority, ApnsPushType, ApnsToken} from '#shared/apns.ts'
 import {DateTimeUtcFromSeconds} from '#shared/time.ts'
 
 type JwtClaims = typeof JwtClaims.Type
 const JwtClaims = Schema.fromJsonString(Schema.Struct({iat: DateTimeUtcFromSeconds, iss: Schema.String}))
 
-class ApnsError extends Schema.TaggedError<ApnsError>()('ApnsError', {message: Schema.String}) {}
+// A failed start names the channel Apple created for it while deleting it was not confirmed, for the app to delete later.
+export class ApnsError extends Schema.TaggedError<ApnsError>()('ApnsError', {
+	channel: pipe(Schema.Option(Schema.String), Schema.withConstructorDefault(Effect.succeedNone)),
+	message: Schema.String
+}) {}
 
 type Target = {bundle: string; token: Redacted.Redacted<ApnsToken>}
 type Payload = {aps: Record<string, unknown>; [key: string]: unknown}
@@ -176,6 +180,7 @@ export class Apns extends Context.Service<Apns>()('@deslop/runtime/server/apns',
 			const answer = yield* pipe(
 				HttpClientRequest.post(`${hostsOf(bundle).channels}/1/apps/${bundle}/channels`),
 				HttpClientRequest.bodyJson({'message-storage-policy': 1, 'push-type': 'LiveActivity'}),
+				asApnsError('The channel request could not be written.'),
 				Effect.flatMap(request => send(request))
 			)
 			return yield* pipe(answer.channel, Effect.fromOption, asApnsError(`APNs created no channel: ${answer.status}`))
@@ -230,6 +235,7 @@ export class Apns extends Context.Service<Apns>()('@deslop/runtime/server/apns',
 						}
 					}),
 					HttpClientRequest.bodyJson({aps}),
+					asApnsError('The broadcast request could not be written.'),
 					Effect.flatMap(request => send(request))
 				)
 			}, withSignature),
@@ -265,26 +271,26 @@ export class Apns extends Context.Service<Apns>()('@deslop/runtime/server/apns',
 				const tooLarge = Option.getOrUndefined(yield* oversized(yield* startRequest('')))
 				if (tooLarge !== undefined) return tooLarge
 				const channel = yield* createChannel(target.bundle)
-				const answer = yield* pipe(
+				const started = yield* pipe(
 					startRequest(channel),
 					Effect.flatMap(request => send(request, key)),
-					Effect.onError(() =>
+					Effect.result,
+					// An interrupted start leaves no one to name its channel.
+					Effect.onInterrupt(() =>
 						Effect.ignore(deleteChannel(target.bundle, channel), {
 							log: 'Warn',
 							message: 'An unstarted activity channel was not deleted'
 						})
 					)
 				)
-				if (ApnsAnswer.isAnyOf(['Accepted'])(answer)) return {...answer, channel: Option.some(channel)}
-				// An unstarted activity still names its channel while Apple has not confirmed deleting it.
-				const deleted = yield* Effect.result(deleteChannel(target.bundle, channel))
-				return {
-					...answer,
-					channel: Option.liftPredicate(
-						channel,
-						() => Result.isFailure(deleted) || ApnsAnswer.isAnyOf(['Retry'])(deleted.success)
-					)
+				if (Result.isSuccess(started) && ApnsAnswer.isAnyOf(['Accepted'])(started.success)) {
+					return {...started.success, channel: Option.some(channel)}
 				}
+				const unconfirmed = unconfirmedChannel(channel, yield* Effect.result(deleteChannel(target.bundle, channel)))
+				if (Result.isFailure(started)) {
+					return yield* ApnsError.make({channel: unconfirmed, message: 'APNs could not start the activity.'})
+				}
+				return {...started.success, channel: unconfirmed}
 			}, withSignature)
 		}
 	})

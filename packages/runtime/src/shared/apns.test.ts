@@ -1,8 +1,8 @@
 import {assert, it} from '@effect/vitest'
 
-import {Option} from 'effect'
+import {Option, Result} from 'effect'
 
-import {apnsAnswer, deviceHeaders, tooLargeAnswer} from './apns.ts'
+import {ApnsAnswer, apnsAnswer, deviceHeaders, tooLargeAnswer, unconfirmedChannel} from './apns.ts'
 
 function answer(status: number, reason?: string) {
 	return apnsAnswer({channel: Option.none(), reason: Option.fromUndefinedOr(reason), status})._tag
@@ -56,5 +56,17 @@ it('sends a collapse id as Apple’s collapse header, and none when the alert ha
 			deviceHeaders('xyz.example.app', 'alert', 10)['apns-collapse-id']
 		],
 		['onepunch:200', undefined]
+	)
+})
+
+it('hands back the channel of a failed start unless Apple confirmed deleting it', () => {
+	const fields = {channel: Option.none(), reason: Option.none()}
+	assert.deepStrictEqual(
+		[
+			unconfirmedChannel('c1', Result.succeed(ApnsAnswer.cases.Accepted.make({...fields, status: 200}))),
+			unconfirmedChannel('c1', Result.succeed(ApnsAnswer.cases.Retry.make({...fields, status: 503}))),
+			unconfirmedChannel('c1', Result.fail('The delete was not answered'))
+		],
+		[Option.none(), Option.some('c1'), Option.some('c1')]
 	)
 })

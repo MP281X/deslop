@@ -1,4 +1,4 @@
-import {Boolean, Option, Schema, pipe} from 'effect'
+import {Boolean, Option, Result, Schema, pipe} from 'effect'
 
 import {Model} from 'effect/schema'
 
@@ -56,6 +56,14 @@ export function tooLargeAnswer(bytes: number) {
 		Option.map(() =>
 			ApnsAnswer.cases.TooLarge.make({channel: Option.none(), reason: Option.some('PayloadTooLarge'), status: 413})
 		)
+	)
+}
+
+// A channel that Apple did not confirm deleting is still Apple's, so an unstarted activity keeps naming it.
+export function unconfirmedChannel(channel: string, deleted: Result.Result<ApnsAnswer, unknown>) {
+	return Option.liftPredicate(
+		channel,
+		() => Result.isFailure(deleted) || ApnsAnswer.isAnyOf(['Retry'])(deleted.success)
 	)
 }
 
