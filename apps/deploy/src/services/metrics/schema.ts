@@ -52,6 +52,10 @@ export const HistoryToolInput = Schema.Struct({
 	worker: Schema.OptionFromOptionalKey(WorkerId.annotate({description: 'A configured worker name.'}))
 })
 
+export type MetricsWatch = typeof MetricsWatch.Type
+// A page's range and the machine it charts; with none, the first in the fleet's order.
+export const MetricsWatch = Schema.Struct({...HistoryQuery.fields, worker: Schema.OptionFromOptionalKey(WorkerId)})
+
 export type MetricSeries = typeof MetricSeries.Type
 export const MetricSeries = Schema.Array(Schema.OptionFromNullOr(Schema.Finite))
 
@@ -104,15 +108,24 @@ export const AppSample = Schema.Struct({
 	memory: Schema.Finite
 })
 
-// One point of a worker's history in the series of one spacing: its readings from `since` to `time`, each averaged over the time it covers.
+// How long a point's readings of one kind were measured, in milliseconds: one second per reading, so time between `since` and `time` that went unread doesn't weigh in its average.
+export type Coverage = typeof Coverage.Type
+export const Coverage = pipe(Schema.Int, Schema.decodeTo(DurationFromFiniteMillis))
+
+// One point of a worker's history in the series of one spacing: its readings from `since` to `time`, each averaged over the time it was measured.
 export class MachineSample extends Model.Class<MachineSample>('MachineSample')({
+	// Apps measured with none above the cutoff are an empty list, not an unread one.
+	appsCoverage: Coverage,
 	cpu: Model.FieldOption(Schema.Finite),
+	cpuCoverage: Coverage,
+	memoryCoverage: Coverage,
 	memoryTotal: Schema.Finite,
 	memoryUsed: Schema.Finite,
 	since: pipe(Schema.Int, Schema.decodeTo(DateTimeUtcFromFiniteMillis)),
 	// The series' spacing in milliseconds: each range reads the one whose 60 slots hold a few points each.
 	step: pipe(Schema.Int, Schema.decodeTo(DurationFromFiniteMillis)),
 	// The machine's used space in bytes, summed over its mounted disks.
+	storageCoverage: Coverage,
 	storageUsed: Model.FieldOption(Schema.Finite),
 	time: pipe(Schema.Int, Schema.decodeTo(DateTimeUtcFromFiniteMillis))
 }) {
@@ -156,6 +169,10 @@ export const MachineHistory = Schema.Struct({
 	time: DateTimeUtcFromFiniteMillis,
 	worker: WorkerId
 })
+
+export type MetricSource = typeof MetricSource.Type
+// What a worker's history reads or writes, each failing on its own.
+export const MetricSource = Schema.Literals(['apps', 'disks', 'sample', 'save'])
 
 export type VmStatPages = typeof VmStatPages.Type
 // The `vm_stat` counters used memory needs; one missing fails the sample instead of reading as zero memory.

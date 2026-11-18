@@ -286,7 +286,7 @@ export function ListPane(props: {
 						),
 						onNonEmpty: () => (
 							<ScrollArea className="min-h-0 flex-1">
-								<Table role="grid" aria-label="Apps">
+								<Table aria-label="Apps">
 									<TableBody>
 										<ListRows
 											compact={props.compact}

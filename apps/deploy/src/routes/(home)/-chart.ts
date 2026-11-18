@@ -7,12 +7,20 @@ import {chartWindow} from '#services/metrics/lib/utils.ts'
 // Within an hour, ticks every 2 or 15 minutes from the epoch, which land on round local times wherever the step divides the zone's offset: everywhere but 2 minutes in zones 45 minutes off the hour.
 const STEPS: Record<number, number> = {10: 120_000, 60: 900_000}
 
+// A week ticks every local midnight and a month every seventh, so eight ticks always reach the window's end.
+const DAYS: Record<number, number> = {10_080: 1, 43_200: 7}
+
 export const RANGES = Array.map(TimeFrame.literals, frame => ({label: frame, value: timeFrameDuration(frame)}))
 
-export function chartTicks(range: Duration.Duration, now: DateTime.Utc) {
+// A range of a week or more labels its ticks with dates; a shorter one with clock times.
+export function datedRange(range: Duration.Duration) {
+	return Duration.toMinutes(range) >= 10_080
+}
+
+export function chartTicks(range: Duration.Duration, now: DateTime.Utc, timeZone: DateTime.TimeZone) {
 	const minutes = Duration.toMinutes(range)
 	const window = chartWindow(range, now)
-	const start = DateTime.makeZonedUnsafe(window.start, {timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone})
+	const start = DateTime.makeZonedUnsafe(window.start, {timeZone})
 	const step = STEPS[minutes]
 	function tick(index: number) {
 		if (step !== undefined) return (Math.floor(DateTime.toEpochMillis(window.start) / step) + 1 + index) * step
@@ -25,7 +33,9 @@ export function chartTicks(range: Duration.Duration, now: DateTime.Utc) {
 			})
 			return DateTime.toEpochMillis(DateTime.setParts(first, {hour: DateTime.toParts(first).hour + index * 6}))
 		}
-		return DateTime.toEpochMillis(pipe(start, DateTime.startOf('day'), DateTime.add({days: index + 1})))
+		return DateTime.toEpochMillis(
+			pipe(start, DateTime.startOf('day'), DateTime.add({days: (index + 1) * (DAYS[minutes] ?? 1)}))
+		)
 	}
 	return pipe(
 		8,

@@ -11,6 +11,7 @@ import {
 	WorkerInventory,
 	WorkerId,
 	ManagedApp,
+	InventoryCursor,
 	InventoryQuery,
 	RunJobInput
 } from '#services/inventory/schema.ts'
@@ -43,13 +44,13 @@ export const ToolContracts = Toolkit.make(
 		failure: DeployError,
 		parameters: Schema.Struct({
 			...InventoryQuery.fields,
-			cursor: Schema.OptionFromOptionalKey(Schema.String),
+			cursor: Schema.OptionFromOptionalKey(InventoryCursor),
 			limit: PageLimit,
 			processLimit: PageLimit,
 			processOffset: pipe(Schema.Natural, Schema.withDecodingDefaultTypeKey(Effect.succeed(0)))
 		}),
 		success: Schema.Struct({
-			nextCursor: Schema.OptionFromOptionalKey(Schema.String),
+			nextCursor: Schema.OptionFromOptionalKey(InventoryCursor),
 			workers: Schema.Array(
 				WorkerInventory.mapFields(fields => ({
 					...fields,

@@ -8,7 +8,7 @@ import {UnitId} from '#services/inventory/schema.ts'
 
 it('distinguishes a failed start from a process exit and retains when it failed', () => {
 	const failures = unitFailures(
-		'Id=app.service\nResult=exit-code\nExecMainCode=0\nExecMainStatus=203\nStateChangeTimestamp=@123\n\nId=worker.service\nResult=exit-code\nExecMainCode=1\nExecMainStatus=137\nStateChangeTimestamp=@124\n'
+		'Id=app.service\nActiveState=failed\nResult=exit-code\nExecMainCode=0\nExecMainStatus=203\nStateChangeTimestamp=@123\n\nId=worker.service\nActiveState=failed\nResult=exit-code\nExecMainCode=1\nExecMainStatus=137\nStateChangeTimestamp=@124\n'
 	)
 	assert.deepStrictEqual(
 		Record.get(failures, UnitId.make('app.service')),
@@ -23,4 +23,14 @@ it('distinguishes a failed start from a process exit and retains when it failed'
 it('explains a signalled launch agent and a numeric exit separately', () => {
 	assert.strictEqual(exitFailure(-11), 'Killed by SIGSEGV')
 	assert.strictEqual(exitFailure(2), 'Exited with code 2')
+})
+
+it('gives no reason for a unit that recovered after it was listed', () => {
+	assert.isTrue(
+		Record.isEmptyRecord(
+			unitFailures(
+				'Id=systemd-journald.service\nActiveState=active\nResult=success\nExecMainCode=0\nExecMainStatus=0\nStateChangeTimestamp=@125\n'
+			)
+		)
+	)
 })
