@@ -56,6 +56,35 @@ function hostsOf(bundle: string) {
 	return {channels: 'https://api-manage-broadcast.push.apple.com:2196', devices: 'https://api.push.apple.com'}
 }
 
+// What Apple reads beside a device push's body; a later alert with the same collapse id replaces the one on the phone.
+export function deviceHeaders(
+	bundle: string,
+	type: ApnsPushType,
+	priority: ApnsPriority,
+	collapseId?: string
+): Record<string, string> {
+	return {
+		'apns-priority': `${priority}`,
+		'apns-push-type': type,
+		'apns-topic': Boolean.match(type === 'liveactivity', {
+			onFalse: () => bundle,
+			onTrue: () => `${bundle}.push-type.liveactivity`
+		}),
+		...Option.match(Option.fromUndefinedOr(collapseId), {onNone: () => ({}), onSome: id => ({'apns-collapse-id': id})})
+	}
+}
+
+// Apple refuses a larger body, so it is answered without asking Apple.
+export function tooLargeAnswer(bytes: number) {
+	return pipe(
+		bytes,
+		Option.liftPredicate(size => size > APNS_PAYLOAD_BYTES),
+		Option.map(() =>
+			ApnsAnswer.cases.TooLarge.make({channel: Option.none(), reason: Option.some('PayloadTooLarge'), status: 413})
+		)
+	)
+}
+
 export const layerApnsClient = Layer.effect(
 	HttpClient.HttpClient,
 	Effect.gen(function* () {
@@ -120,18 +149,20 @@ export class Apns extends Context.Service<Apns>()('@deslop/runtime/server/apns',
 				Exit.match(exit, {onFailure: Function.constant(0), onSuccess: Function.constant('40 minutes')})
 			)
 		)
+		const oversized = Effect.fnUntraced(function* (request: HttpClientRequest.HttpClientRequest) {
+			if (!Predicate.isTagged(request.body, 'Uint8Array')) return Option.none()
+			const answer = tooLargeAnswer(request.body.contentLength)
+			if (Option.isSome(answer)) {
+				yield* Effect.logWarning(`An APNs payload of ${request.body.contentLength} bytes was not sent`)
+			}
+			return answer
+		})
 		const send = Effect.fnUntraced(function* (request: HttpClientRequest.HttpClientRequest, notification?: string) {
 			const key = notification ?? `${request.method} ${request.url} ${request.headers['apns-channel-id'] ?? ''}`
 			const pending = Option.getOrUndefined(yield* deferred(key))
 			if (pending !== undefined) return pending
-			if (Predicate.isTagged(request.body, 'Uint8Array') && request.body.contentLength > APNS_PAYLOAD_BYTES) {
-				yield* Effect.logWarning(`An APNs payload of ${request.body.contentLength} bytes was not sent`)
-				return ApnsAnswer.cases.TooLarge.make({
-					channel: Option.none(),
-					reason: Option.some('PayloadTooLarge'),
-					status: 413
-				})
-			}
+			const tooLarge = Option.getOrUndefined(yield* oversized(request))
+			if (tooLarge !== undefined) return tooLarge
 			const token = Redacted.value(yield* providerToken)
 			const response = yield* pipe(
 				client.execute(HttpClientRequest.setHeader(request, 'authorization', `bearer ${token}`)),
@@ -193,18 +224,17 @@ export class Apns extends Context.Service<Apns>()('@deslop/runtime/server/apns',
 				),
 			withSignature
 		)
-		function deviceRequest(target: Target, type: ApnsPushType, body: Payload, priority: ApnsPriority) {
+		function deviceRequest(
+			target: Target,
+			type: ApnsPushType,
+			body: Payload,
+			priority: ApnsPriority,
+			collapseId?: string
+		) {
 			return pipe(
 				HttpClientRequest.bodyJson(
 					HttpClientRequest.post(`${hostsOf(target.bundle).devices}/3/device/${Redacted.value(target.token)}`, {
-						headers: {
-							'apns-priority': `${priority}`,
-							'apns-push-type': type,
-							'apns-topic': Boolean.match(type === 'liveactivity', {
-								onFalse: () => target.bundle,
-								onTrue: () => `${target.bundle}.push-type.liveactivity`
-							})
-						}
+						headers: deviceHeaders(target.bundle, type, priority, collapseId)
 					}),
 					body
 				),
@@ -212,8 +242,8 @@ export class Apns extends Context.Service<Apns>()('@deslop/runtime/server/apns',
 			)
 		}
 		const sendToDevice = Effect.fn('Apns.sendToDevice')(
-			(target: Target, type: ApnsPushType, body: Payload, priority: ApnsPriority) =>
-				Effect.flatMap(deviceRequest(target, type, body, priority), request => send(request)),
+			(target: Target, type: ApnsPushType, body: Payload, priority: ApnsPriority, collapseId?: string) =>
+				Effect.flatMap(deviceRequest(target, type, body, priority, collapseId), request => send(request)),
 			withSignature
 		)
 		return {
@@ -249,18 +279,28 @@ export class Apns extends Context.Service<Apns>()('@deslop/runtime/server/apns',
 				const key = `start ${target.bundle} ${Redacted.value(target.token)} ${attributes} ${leg}`
 				const pending = Option.getOrUndefined(yield* deferred(key))
 				if (pending !== undefined) return pending
-				const channel = yield* createChannel(target.bundle)
-				const payload = {
-					...body,
-					aps: {
-						...Struct.omit(body.aps, ['relevance-score', 'timestamp']),
-						'input-push-channel': channel,
-						'relevance-score': body.aps['relevance-score'],
-						timestamp: body.aps['timestamp']
-					}
+				function startRequest(channel: string) {
+					return deviceRequest(
+						target,
+						'liveactivity',
+						{
+							...body,
+							aps: {
+								...Struct.omit(body.aps, ['relevance-score', 'timestamp']),
+								'input-push-channel': channel,
+								'relevance-score': body.aps['relevance-score'],
+								timestamp: body.aps['timestamp']
+							}
+						},
+						10
+					)
 				}
+				// A start too large without its channel id never gets one, so no round creates a channel only to delete it.
+				const tooLarge = Option.getOrUndefined(yield* oversized(yield* startRequest('')))
+				if (tooLarge !== undefined) return tooLarge
+				const channel = yield* createChannel(target.bundle)
 				const answer = yield* pipe(
-					deviceRequest(target, 'liveactivity', payload, 10),
+					startRequest(channel),
 					Effect.flatMap(request => send(request, key)),
 					Effect.onError(() =>
 						Effect.ignore(deleteChannel(target.bundle, channel), {
