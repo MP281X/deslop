@@ -1,14 +1,14 @@
 import {assert, it} from '@effect/vitest'
 
-import {Option, Result} from 'effect'
+import {Option} from 'effect'
 
-import {ApnsAnswer, apnsAnswer, deviceHeaders, tooLargeAnswer, unconfirmedChannel} from './apns.ts'
+import {apnsAnswer, deviceHeaders, tooLargeAnswer} from './apns.ts'
 
 function answer(status: number, reason?: string) {
 	return apnsAnswer({channel: Option.none(), reason: Option.fromUndefinedOr(reason), status})._tag
 }
 
-it('separates accepted delivery, retry, dead tokens, oversized payloads and permanent refusal', () => {
+it('separates accepted delivery, retry, dead tokens, gone channels, oversized payloads and permanent refusal', () => {
 	assert.deepStrictEqual(
 		[
 			answer(200),
@@ -18,6 +18,7 @@ it('separates accepted delivery, retry, dead tokens, oversized payloads and perm
 			answer(410),
 			answer(400, 'BadDeviceToken'),
 			answer(400, 'Unregistered'),
+			answer(400, 'ChannelNotRegistered'),
 			answer(403, 'ExpiredProviderToken'),
 			answer(413, 'PayloadTooLarge'),
 			answer(403),
@@ -31,6 +32,7 @@ it('separates accepted delivery, retry, dead tokens, oversized payloads and perm
 			'DeadToken',
 			'DeadToken',
 			'DeadToken',
+			'ChannelGone',
 			'Retry',
 			'TooLarge',
 			'Refused',
@@ -56,17 +58,5 @@ it('sends a collapse id as Apple’s collapse header, and none when the alert ha
 			deviceHeaders('xyz.example.app', 'alert', 10)['apns-collapse-id']
 		],
 		['onepunch:200', undefined]
-	)
-})
-
-it('hands back the channel of a failed start unless Apple confirmed deleting it', () => {
-	const fields = {channel: Option.none(), reason: Option.none()}
-	assert.deepStrictEqual(
-		[
-			unconfirmedChannel('c1', Result.succeed(ApnsAnswer.cases.Accepted.make({...fields, status: 200}))),
-			unconfirmedChannel('c1', Result.succeed(ApnsAnswer.cases.Retry.make({...fields, status: 503}))),
-			unconfirmedChannel('c1', Result.fail('The delete was not answered'))
-		],
-		[Option.none(), Option.some('c1'), Option.some('c1')]
 	)
 })

@@ -16,7 +16,6 @@ import {
 	Predicate,
 	Redacted,
 	Ref,
-	Result,
 	Schema,
 	String,
 	Struct,
@@ -29,7 +28,7 @@ import {HttpClient, HttpClientRequest, HttpClientResponse} from 'effect/http'
 import {Jwk, Jws} from 'effect/jose'
 
 import {DEVELOPMENT_BUNDLE_SUFFIX} from '#config/expo.ts'
-import {ApnsAnswer, ApnsError, apnsAnswer, deviceHeaders, tooLargeAnswer, unconfirmedChannel} from '#shared/apns.ts'
+import {ApnsAnswer, ApnsError, apnsAnswer, deviceHeaders, tooLargeAnswer} from '#shared/apns.ts'
 import type {ApnsPriority, ApnsPushType, ApnsToken} from '#shared/apns.ts'
 import {DateTimeUtcFromSeconds} from '#shared/time.ts'
 
@@ -211,6 +210,30 @@ export class Apns extends Context.Service<Apns>()('@deslop/runtime/server/apns',
 				Effect.flatMap(deviceRequest(target, type, body, priority, collapseId), request => send(request)),
 			withSignature
 		)
+		// Attributes identify the booking, while the leg distinguishes its departure and arrival activities.
+		const startKey = Effect.fnUntraced(function* (target: Target, leg: string, body: Payload) {
+			const attributes = yield* pipe(
+				Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown))(body.aps['attributes']),
+				asApnsError('The activity attributes could not be written.')
+			)
+			return `start ${target.bundle} ${Redacted.value(target.token)} ${attributes} ${leg}`
+		})
+		function startRequest(target: Target, body: Payload, channel: string) {
+			return deviceRequest(
+				target,
+				'liveactivity',
+				{
+					...body,
+					aps: {
+						...Struct.omit(body.aps, ['relevance-score', 'timestamp']),
+						'input-push-channel': channel,
+						'relevance-score': body.aps['relevance-score'],
+						timestamp: body.aps['timestamp']
+					}
+				},
+				10
+			)
+		}
 		return {
 			broadcast: Effect.fn('Apns.broadcast')(function* (
 				bundle: string,
@@ -233,59 +256,26 @@ export class Apns extends Context.Service<Apns>()('@deslop/runtime/server/apns',
 					Effect.flatMap(request => send(request))
 				)
 			}, withSignature),
+			createChannel,
 			deleteChannel,
 			enabled: Option.isSome(signer),
 			sendToDevice,
-			startActivity: Effect.fn('Apns.startActivity')(function* (target: Target, leg: string, body: Payload) {
-				// Attributes identify the booking, while the leg distinguishes its departure and arrival activities.
-				const attributes = yield* pipe(
-					Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown))(body.aps['attributes']),
-					asApnsError('The activity attributes could not be written.')
-				)
-				const key = `start ${target.bundle} ${Redacted.value(target.token)} ${attributes} ${leg}`
-				const pending = Option.getOrUndefined(yield* deferred(key))
-				if (pending !== undefined) return pending
-				function startRequest(channel: string) {
-					return deviceRequest(
-						target,
-						'liveactivity',
-						{
-							...body,
-							aps: {
-								...Struct.omit(body.aps, ['relevance-score', 'timestamp']),
-								'input-push-channel': channel,
-								'relevance-score': body.aps['relevance-score'],
-								timestamp: body.aps['timestamp']
-							}
-						},
-						10
-					)
-				}
-				// A start too large without its channel id never gets one, so no round creates a channel only to delete it.
-				const tooLarge = Option.getOrUndefined(yield* oversized(yield* startRequest('')))
-				if (tooLarge !== undefined) return tooLarge
-				const channel = yield* createChannel(target.bundle)
-				const started = yield* pipe(
-					startRequest(channel),
-					Effect.flatMap(request => send(request, key)),
-					Effect.result,
-					// An interrupted start leaves no one to name its channel.
-					Effect.onInterrupt(() =>
-						Effect.ignore(deleteChannel(target.bundle, channel), {
-							log: 'Warn',
-							message: 'An unstarted activity channel was not deleted'
-						})
-					)
-				)
-				if (Result.isSuccess(started) && ApnsAnswer.isAnyOf(['Accepted'])(started.success)) {
-					return {...started.success, channel: Option.some(channel)}
-				}
-				const unconfirmed = unconfirmedChannel(channel, yield* Effect.result(deleteChannel(target.bundle, channel)))
-				if (Result.isFailure(started)) {
-					return yield* ApnsError.make({channel: unconfirmed, message: 'APNs could not start the activity.'})
-				}
-				return {...started.success, channel: unconfirmed}
-			}, withSignature)
+			// Starts the activity on a channel the caller created and wrote down; deleting the channel is the caller's.
+			startActivity: Effect.fn('Apns.startActivity')(function* (
+				target: Target,
+				leg: string,
+				channel: string,
+				body: Payload
+			) {
+				return yield* send(yield* startRequest(target, body, channel), yield* startKey(target, leg, body))
+			}, withSignature),
+			// The answer a start gets without asking Apple, which is the retry it was given a moment ago, or too large, for which no channel is created.
+			startHeld: Effect.fn('Apns.startHeld')(function* (target: Target, leg: string, body: Payload) {
+				const pending = Option.getOrUndefined(yield* deferred(yield* startKey(target, leg, body)))
+				if (pending !== undefined) return Option.some(pending)
+				// Without its channel id, which is all a start has before its channel exists.
+				return yield* oversized(yield* startRequest(target, body, ''))
+			})
 		}
 	})
 }) {

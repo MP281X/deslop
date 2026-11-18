@@ -28,11 +28,11 @@ import {Bookings} from '#services/bookings/service.ts'
 import {Push} from '#services/push/service.ts'
 
 const ID = BookingId.make('1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d')
-const STARTER = {
-	bundle: 'xyz.mp281x.trips',
-	kind: 'start' as const,
-	token: Redacted.make(ApnsToken.make(String.repeat(64)('a')))
+function starter(bundle: string, token: string) {
+	return {bundle, kind: 'start' as const, token: Redacted.make(ApnsToken.make(String.repeat(64)(token)))}
 }
+const STARTER = starter('xyz.mp281x.trips', 'a')
+const DEV_STARTER = starter('xyz.mp281x.trips.dev', 'b')
 const ANSWER = {channel: Option.none(), reason: Option.none(), status: 503}
 
 // A train three hours out, which only a person's request starts.
@@ -56,11 +56,20 @@ const journey = Effect.map(DateTime.now, now => [
 	})
 ])
 
-// Apple names a new channel for each start and accepts none, or when `fails`, the start errors after naming it; each channel delete is queued for the test to read, waits for `gate`, and is done only for the channels in `deleted`, retried for the rest.
-const apple = Effect.fnUntraced(function* (deleted: readonly string[], gate: Deferred.Deferred<void>, fails?: boolean) {
+type StartOutcome = typeof StartOutcome.Type
+const StartOutcome = Schema.Literals(['fails', 'hangs'])
+
+// Apple names a new channel for each start and accepts none; the start of `how` errors, or never answers, instead. Each channel delete is queued for the test to read, waits for `gate`, and is done only for the channels in `deleted`, retried for the rest.
+const apple = Effect.fnUntraced(function* (
+	deleted: readonly string[],
+	gate: Deferred.Deferred<void>,
+	how?: StartOutcome
+) {
 	const asked = yield* Queue.unbounded<string>()
-	const started = MutableRef.make(0)
+	const created = MutableRef.make(0)
+	const sent = yield* Deferred.make<void>()
 	const layer = Layer.mock(Apns, {
+		createChannel: () => Effect.sync(() => `c${MutableRef.incrementAndGet(created)}`),
 		deleteChannel: (_, channel) =>
 			Effect.gen(function* () {
 				yield* Queue.offer(asked, channel)
@@ -71,12 +80,13 @@ const apple = Effect.fnUntraced(function* (deleted: readonly string[], gate: Def
 		enabled: true,
 		startActivity: () =>
 			Effect.suspend(() => {
-				const channel = Option.some(`c${MutableRef.incrementAndGet(started)}`)
-				if (fails === true) return ApnsError.make({channel, message: 'APNs did not answer.'})
-				return Effect.succeed(ApnsAnswer.cases.Retry.make({...ANSWER, channel}))
-			})
+				if (how === 'fails') return ApnsError.make({message: 'APNs did not answer.'})
+				if (how === 'hangs') return Effect.andThen(Deferred.succeed(sent, undefined), Effect.never)
+				return Effect.succeed(ApnsAnswer.cases.Retry.make(ANSWER))
+			}),
+		startHeld: () => Effect.succeedNone
 	})
-	return {asked, layer}
+	return {asked, created, layer, sent}
 })
 
 const open = Effect.tap(Deferred.make<void>(), gate => Deferred.succeed(gate, undefined))
@@ -110,23 +120,15 @@ const startUnaccepted = Effect.flatMap(Push, push =>
 // Real time, and real files, so a restart reopens the database the last run wrote.
 it.layer(NodeServices.layer, {excludeTestServices: true})(test => {
 	test.effect(
-		'a channel Apple kept for a start it did not accept is deleted after a restart, and forgotten once Apple answers',
+		'a channel Apple kept for a start it did not accept is deleted after every restart until Apple answers',
 		Effect.fnUntraced(function* () {
 			const folder = yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped()
-			yield* serve(
-				folder,
-				(yield* apple([], yield* open)).layer,
-				journey,
-				Effect.andThen(startUnaccepted, startUnaccepted)
-			)
-			// The journey left while the server was down; the channels Apple kept for it did not.
+			yield* serve(folder, (yield* apple([], yield* open)).layer, journey, startUnaccepted)
+			// The journey left while the server was down; the channel Apple kept for it did not.
+			const throttled = yield* apple([], yield* open)
+			assert.strictEqual(yield* serve(folder, throttled.layer, Effect.succeed([]), Queue.take(throttled.asked)), 'c1')
 			const answered = yield* apple(['c1'], yield* open)
-			assert.deepStrictEqual(
-				yield* serve(folder, answered.layer, Effect.succeed([]), Queue.takeBetween(answered.asked, 2, 2)),
-				['c1', 'c2']
-			)
-			const again = yield* apple([], yield* open)
-			assert.strictEqual(yield* serve(folder, again.layer, Effect.succeed([]), Queue.take(again.asked)), 'c2')
+			assert.strictEqual(yield* serve(folder, answered.layer, Effect.succeed([]), Queue.take(answered.asked)), 'c1')
 		})
 	)
 
@@ -134,9 +136,47 @@ it.layer(NodeServices.layer, {excludeTestServices: true})(test => {
 		'a channel of a start that failed after Apple created it is deleted after a restart',
 		Effect.fnUntraced(function* () {
 			const folder = yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped()
-			yield* serve(folder, (yield* apple([], yield* open, true)).layer, journey, startUnaccepted)
+			yield* serve(folder, (yield* apple([], yield* open, 'fails')).layer, journey, startUnaccepted)
 			const answered = yield* apple(['c1'], yield* open)
 			assert.strictEqual(yield* serve(folder, answered.layer, Effect.succeed([]), Queue.take(answered.asked)), 'c1')
+		})
+	)
+
+	test.effect(
+		'a channel whose start Trips stopped before Apple answered is deleted after a restart',
+		Effect.fnUntraced(function* () {
+			const folder = yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped()
+			const hanging = yield* apple([], yield* open, 'hangs')
+			yield* serve(
+				folder,
+				hanging.layer,
+				journey,
+				Effect.gen(function* () {
+					const push = yield* Push
+					yield* push.register(STARTER)
+					yield* Effect.forkChild(push.start(ID))
+					yield* Deferred.await(hanging.sent)
+				})
+			)
+			const answered = yield* apple(['c1'], yield* open)
+			assert.strictEqual(yield* serve(folder, answered.layer, Effect.succeed([]), Queue.take(answered.asked)), 'c1')
+		})
+	)
+
+	test.effect(
+		'no channel is made for an app while one that never started is still owed its delete',
+		Effect.fnUntraced(function* () {
+			const throttled = yield* apple([], yield* open)
+			yield* serve(
+				yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped(),
+				throttled.layer,
+				journey,
+				Effect.andThen(
+					startUnaccepted,
+					Effect.forEach(Array.range(1, 3), () => startUnaccepted, {concurrency: 1, discard: true})
+				)
+			)
+			assert.strictEqual(MutableRef.get(throttled.created), 1)
 		})
 	)
 
@@ -152,12 +192,10 @@ it.layer(NodeServices.layer, {excludeTestServices: true})(test => {
 				Effect.gen(function* () {
 					yield* startUnaccepted
 					assert.strictEqual(yield* Queue.take(throttled.asked), 'c1')
-					yield* Effect.forEach(Array.range(2, 4), () => startUnaccepted, {concurrency: 1, discard: true})
+					// Another app has its own channel, which the first one's wait does not hold.
+					yield* Effect.andThen((yield* Push).register(DEV_STARTER), Effect.flip((yield* Push).start(ID)))
 					yield* Deferred.succeed(gate, undefined)
-					assert.deepStrictEqual(yield* Queue.takeBetween(throttled.asked, 4, 4), ['c1', 'c2', 'c3', 'c4'])
-					// Apple asked to retry, so every channel stays and the next signal finds all of them.
-					yield* startUnaccepted
-					assert.deepStrictEqual(yield* Queue.takeBetween(throttled.asked, 5, 5), ['c1', 'c2', 'c3', 'c4', 'c5'])
+					assert.deepStrictEqual(yield* Queue.takeBetween(throttled.asked, 2, 2), ['c1', 'c2'])
 				})
 			)
 		})
