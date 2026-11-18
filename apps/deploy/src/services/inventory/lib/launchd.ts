@@ -20,6 +20,7 @@ export function launchProgram(text: string) {
 	)
 }
 
+// Keep OS background programs from crowding out the user's apps.
 export function systemProgram(path: string) {
 	return Option.isSome(String.match(/^(?:\/System|\/usr|\/bin|\/sbin|\/Library\/Apple)(?:\/|$)/u)(path))
 }

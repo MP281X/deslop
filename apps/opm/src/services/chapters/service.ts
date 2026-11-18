@@ -169,6 +169,7 @@ export class Chapters extends Context.Service<Chapters>()('@deslop/opm/services/
 				WHERE series = ${row.series} AND number = ${row.number}
 			`
 		})
+		// Community imports and chapter revisions must not overwrite the reader's place.
 		const write = SqlSchema.void({
 			Request: ReadingPosition.insert,
 			execute: row =>

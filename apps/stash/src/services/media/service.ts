@@ -85,7 +85,9 @@ const transcriptOf = Effect.fnUntraced(function* (
 			onSome: Effect.succeed
 		})
 	)
+	// A bad model response must not hide missing speech as silence.
 	if (answer.kind === 'silence') return answer
+	// An out-of-range timestamp could put speech in the wrong part of the assembled transcript.
 	const segments = Array.filter(
 		answer.segments,
 		segment =>
@@ -348,6 +350,7 @@ export class Media extends Context.Service<
 														{
 															parts: [
 																{
+																	// Chunk-local times let recovered sentences keep their place in the original audio.
 																	text: 'Transcribe all spoken words verbatim in their original language as sentence segments with start times in seconds from the beginning of this audio chunk. Return kind "speech" and its segments. Do not summarize, translate or invent speech. Only for silence or music without speech, return kind "silence".'
 																},
 																{

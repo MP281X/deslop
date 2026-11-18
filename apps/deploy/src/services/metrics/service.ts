@@ -69,6 +69,7 @@ const asDeployError = Effect.mapError((cause: SqlError.SqlError | Schema.SchemaE
 	DeployError.make({cause, message: 'The resource history could not be read or written.'})
 )
 
+// An unreadable machine should report a monitoring error rather than crash the sampler.
 function counted(read: () => Counters) {
 	return Effect.flatMap(
 		Effect.try({catch: cause => DeployError.make({cause, message: 'The machine counters are unreadable.'}), try: read}),

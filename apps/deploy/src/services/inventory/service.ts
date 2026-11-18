@@ -460,6 +460,7 @@ export class Inventory extends Context.Service<
 				capacity: Infinity,
 				// judge-ignore no-silent-fallback -- missing bundle metadata keeps the agent label or bundle basename, as required by Deploy's Mac policy.
 				lookup: Effect.fnUntraced(function* (bundle: string) {
+					// Reading the bundle directly avoids asking for macOS Automation access just to name a row.
 					return yield* pipe(
 						command('/usr/bin/plutil', ['-convert', 'json', '-o', '-', `${bundle}/Contents/Info.plist`]),
 						Effect.flatMap(

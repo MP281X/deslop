@@ -44,6 +44,7 @@ const requestHeaders = Effect.map(accessHeaders, headers =>
 
 function unsupportedProtocol(error: McpClientError.McpClientError) {
 	if (Schema.is(McpClientError.HttpError)(error.reason)) {
+		// Older servers can reject the offered revision with a generic client error before negotiation.
 		return (
 			error.reason.status >= 400 &&
 			error.reason.status < 500 &&
@@ -64,6 +65,7 @@ export class Upstreams extends Context.Service<Upstreams>()('@deslop/gateway/ser
 		const fetch = yield* FetchHttpClient.Fetch
 		// Locks are resources, not an evictable cache: an active server can never acquire a second lock.
 		const locks = yield* RcMap.make({lookup: (_url: string) => Semaphore.make(1)})
+		// Discovery and actions must use the same negotiated upstream capabilities.
 		const sessions = yield* RcMap.make({
 			idleTimeToLive: Duration.infinity,
 			lookup: Effect.fnUntraced(function* (url: string) {
@@ -174,6 +176,7 @@ export class Upstreams extends Context.Service<Upstreams>()('@deslop/gateway/ser
 						Effect.provideService(accessHeaders, access.headers),
 						Semaphore.withPermit(lock)
 					)
+					// A slow upstream action must not hold up discovery or another action.
 					return yield* pipe(
 						run(session),
 						Effect.provideService(accessHeaders, access.headers),

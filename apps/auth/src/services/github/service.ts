@@ -45,6 +45,7 @@ export class GitHub extends Context.Service<
 		GitHub,
 		Effect.gen(function* () {
 			const CALLBACK = new URL('/auth/github/callback', yield* Config.String('APP_URL')).href
+			// A pending sign-in can be discarded without signing anyone out.
 			const flows = yield* Cache.make<GitHubOAuthState, SignInParams & {verifier: Option.Option<string>}, AuthError>({
 				capacity: 64,
 				lookup: () => Effect.fail(AuthError.make({message: 'The sign-in expired'})),

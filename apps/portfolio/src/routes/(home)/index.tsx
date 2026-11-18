@@ -102,7 +102,7 @@ const portfolioAtom = Atom.keepAlive(
 							)
 						})
 					),
-					// A dropped socket rejoins with the trails kept, instead of turning the page into an error.
+					// A dropped socket can rejoin with its trails, but retrying an unreadable scene will not repair it.
 					reconnectOnDrop,
 					Stream.mapAccum<TrailedScene, Scene, TrailedScene>(
 						() => ({bots: [], trails: [], visitors: []}),

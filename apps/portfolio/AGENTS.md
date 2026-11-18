@@ -1,7 +1,5 @@
 # Portfolio
 
-Public profile and printable CV, with live visitor cursors, trails and two wandering server bots. No sign-in or persistence on the server. Its own design, exempt from the repository's app design rules: fonts, hotkeys, presence text and artwork, including a 504×504 touch icon on `#fafafa`. Each browser tab keeps its guest identity through reloads; tabs sharing an identity share one cursor until the last tab closes.
-
-The room holds plain state. Its single bot stream runs only while visitors occupy the room; a join span covers each visitor's connection.
-
-Presence defects, such as a tab open across a release receiving a scene it cannot decode, are terminal, unlike retried transport drops: the realtime boundary shows an unavailable HUD without replacing the public profile or CV. The server's scene owns each identity's colour.
+- **Profile.** Show a public profile and printable CV. Do not require sign-in or persist visitor data.
+- **Presence.** Show live visitor cursors, trails and two wandering bots. A tab keeps its guest identity through reloads. Tabs with the same identity share one cursor and colour until the last tab closes. If presence is unavailable, say so without replacing the profile or CV.
+- **Design.** Keep Portfolio's own fonts, hotkeys, presence text and artwork, including the 504×504 touch icon on `#fafafa`. Portfolio is exempt from the repository's app design rules.

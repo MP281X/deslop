@@ -69,6 +69,7 @@ export const NavigationEvent = Schema.TaggedUnion({
 })
 
 export type Search = typeof Search.Type
+// A shared link should open the current record, not carry a stale copy of it.
 export const Search = Schema.Struct({
 	operation: Schema.OptionFromOptionalKey(Schema.String),
 	pane: Schema.OptionFromOptionalKey(Pane),

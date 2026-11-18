@@ -1,7 +1,6 @@
 # Gateway intent
 
-- **AI.** Each person saves one key per provider: OpenCode for catalogue and Go, Anthropic for Claude, and OpenAI for its API. Home shows saved keys first, then servers in one table without a separator. Key rows are inert, showing the provider's mark and name, masked key, sparkline and payer figure (Zen balance, Anthropic key or OpenAI key). OpenCode calls whose responses name no payer are not recorded. `~` marks estimated or incomplete spend.
-- **Upstreams.** One scoped session per server serves discovery and calls. Effect's client handles its supported protocol revisions; the SDK is retained for OAuth and servers that negotiate a revision Effect cannot speak. While choosing, a 4xx other than 401/403 can mean an older server rejected the modern revision, so it takes the legacy path. Only a failure that cannot have committed is retried: a 404 session or 401 authorization rejection re-establishes the session; an ambiguous call failure never retries the action.
-- **Callers.** Calls and discovery on one upstream session run concurrently. Only session acquisition and invalidation share a lock.
+- **AI.** Each person saves one key per provider: OpenCode for catalogue and Go, Anthropic for Claude, and OpenAI for its API. Show keys before servers in one table, without a separator. Key rows do not open anything. Show the provider's mark and name, masked key, sparkline and payer figure (Zen balance, Anthropic key or OpenAI key). Do not count OpenCode calls with no reported payer. Mark estimated or incomplete spend with `~`.
+- **Actions.** Do not repeat an action if it might already have happened.
 - **Excluded.** Tabs, a detail pane, a charts card, an app breakdown, a summary line, an Add server button or dialog.
-- **Paste.** The field under the bar is the only way to add or replace a provider key or add a server URL. Its credential dialog submits the new secret; it is not a second confirmation of destruction.
+- **Paste.** Use only the field under the bar to add or replace a key or add a server URL. The credential dialog submits the new secret. It does not ask for a second confirmation.
