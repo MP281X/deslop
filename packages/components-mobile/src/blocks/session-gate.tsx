@@ -32,7 +32,7 @@ export function SessionGate(props: {children: ReactNode; session: Session}) {
 	const message = {detail: 'Return to the app to try again.', title: 'Could not reach the server'}
 	const needsSignIn = needsSignInCause(account.cause)
 	const denied = isDeniedCause(account.cause)
-	// A refused tailnet device has no saved session, so a sign-out there would only post a cookieless request.
+	// A refused tailnet device has no saved session, so a sign-out there would only post a cookieless request; an expired session is a sign-in, not a refusal.
 	const holdsSession = Option.exists(Option.liftThrowable(keychain.headers)(), headers =>
 		Predicate.hasProperty(headers, 'cookie')
 	)
@@ -55,7 +55,7 @@ export function SessionGate(props: {children: ReactNode; session: Session}) {
 					onFalse: Function.constNull,
 					onTrue: () => <Button onPress={() => signIn()}>Continue with GitHub</Button>
 				})}
-				{Boolean.match(denied && holdsSession, {
+				{Boolean.match(denied && !needsSignIn && holdsSession, {
 					onFalse: Function.constNull,
 					onTrue: () => <Button onPress={() => signOut()}>Sign Out</Button>
 				})}
