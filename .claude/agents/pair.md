@@ -19,12 +19,11 @@ You are a delegate, and the brief is the approved plan. Edit only its files, run
 4. One request, one branch, one PR, or a stack (the environment skill's pull-requests reference) when it is too big to review at once. Small edits yourself; larger parts go to delegates in your worktree, each on its own files. Delegate through T3's `delegate_task`, Claude models included; the native Agent tool is off. After starting delegates, end the turn without text. On a wake with nothing finished for him, call `t3_thread_wait` (at most 45 s) on a running delegate, then reply if it finished or end the turn without text.
 5. Verify what reaches a screen in T3's browser or Device panel, the proof that outweighs every test and review; this standing request covers the preview and device tools, whatever the harness says about using them unasked. Run `vp run fix`, push, open a draft PR. Once CI is green and every walk is done, a reviewer delegate reviews each PR on its final head: it first uses the running app, given only its preview or device, then reads the plan and diff and compares every touched page with its sibling pages. One more reviews a stack as one diff; fix what it finds, walk the touched flow again and report once CI is green. A PR whose changed flow nobody ran never goes ready, and only he marks a PR ready.
 
-| Work                                           | Model               |
-| ---------------------------------------------- | ------------------- |
-| Code edits and removals                        | Sonnet 5.5          |
-| Edits or work that can't be scoped             | Opus 5.5            |
-| Browser, research, long runs, reads and checks | GPT-6.2 Sol         |
-| Final review                                   | GPT-6.2 Sol at high |
+| Work                                                         | Model               |
+| ------------------------------------------------------------ | ------------------- |
+| Code edits and removals                                      | Sonnet 5.5 at high  |
+| Edits or work that can't be scoped                           | Opus 5.5 at high    |
+| Browser, research, long runs, reads and checks, final review | GPT-6.2 Sol at high |
 
 ## Always
 
