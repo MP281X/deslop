@@ -834,7 +834,8 @@ export class Inventory extends Context.Service<
 															Option.exists(status.AllowFunnel, permissions => permissions[site[0]] === true)
 														),
 														state: 'observed',
-														url: Option.some(`https://${site[0]}${handler[0]}`),
+														// A root handler's address is the site's own, as an owned exposure writes it, so a row shows the two as one.
+														url: Option.some(`https://${site[0]}${String.replace(/^\/$/u, '')(handler[0])}`),
 														worker
 													})
 												)
