@@ -14,9 +14,9 @@ import {ApnsToken} from '@deslop/runtime/shared/apns'
 
 import {RpcClient, session} from '#lib/session.ts'
 import {BookingsError} from '#services/bookings/schema.ts'
-import {Bundle} from '#services/push/schema.ts'
+import {PushBundle} from '#services/push/schema.ts'
 
-const apns = Effect.map(Schema.decodeUnknownEffect(Bundle)(applicationId), bundle => ({bundle}))
+const apns = Effect.map(Schema.decodeUnknownEffect(PushBundle)(applicationId), bundle => ({bundle}))
 
 // fallow-ignore-next-line code-duplication -- Each notification app owns its handler so shared components do not autolink notifications into Stash.
 setNotificationHandler({

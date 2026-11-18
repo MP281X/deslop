@@ -9,8 +9,8 @@ export const WorkflowJobId = pipe(Schema.Int, Schema.brand('WorkflowJobId'))
 export type RepositoryName = typeof RepositoryName.Type
 export const RepositoryName = pipe(Schema.String, Schema.brand('GitHubRepositoryName'))
 
-type CommitSha = typeof CommitSha.Type
-const CommitSha = pipe(Schema.String, Schema.brand('GitCommitSha'))
+export type CommitSha = typeof CommitSha.Type
+export const CommitSha = pipe(Schema.String, Schema.brand('GitCommitSha'))
 
 export type WorkflowRunAttempt = typeof WorkflowRunAttempt.Type
 export const WorkflowRunAttempt = pipe(Schema.Int, Schema.brand('WorkflowRunAttempt'))
@@ -18,12 +18,12 @@ export const WorkflowRunAttempt = pipe(Schema.Int, Schema.brand('WorkflowRunAtte
 export type WorkflowStepNumber = typeof WorkflowStepNumber.Type
 export const WorkflowStepNumber = pipe(Schema.Int, Schema.brand('WorkflowStepNumber'))
 
-type Repository = typeof Repository.Type
+export type Repository = typeof Repository.Type
 // The parts of GitHub's webhook payloads a trace needs; ISO times and nulls are decoded once here.
-const Repository = Schema.Struct({full_name: RepositoryName})
+export const Repository = Schema.Struct({full_name: RepositoryName})
 
 export type Step = typeof Step.Type
-const Step = Schema.Struct({
+export const Step = Schema.Struct({
 	completed_at: Schema.OptionFromNullOr(Schema.DateTimeUtcFromString),
 	conclusion: Schema.OptionFromNullOr(Schema.String),
 	name: Schema.String,

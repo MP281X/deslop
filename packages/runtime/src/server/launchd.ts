@@ -1,11 +1,9 @@
 import {userInfo} from 'node:os'
 import {execPath} from 'node:process'
 
-import {Array, Config, Effect, FileSystem, Option, Path, Stream, String, pipe} from 'effect'
+import {Array, Config, Effect, FileSystem, Option, Path, String, pipe} from 'effect'
 
-import {ChildProcess} from 'effect/process'
-
-import {AppError, executeProcess} from '#server/process.ts'
+import {executeProcess} from '#server/process.ts'
 
 function xml(value: string) {
 	return pipe(
@@ -29,16 +27,16 @@ function bootout(file: string) {
 
 const loaded = Effect.fn('Launchd.loaded')(function* (target: string) {
 	yield* Effect.annotateCurrentSpan({command: 'launchctl', target})
-	const process = yield* ChildProcess.make('launchctl', ['print', target], {stderr: 'pipe', stdout: 'ignore'})
-	const result = yield* Effect.all(
-		{code: process.exitCode, stderr: Stream.mkString(Stream.decodeText(process.stderr))},
-		{concurrency: 'unbounded'}
+	return yield* pipe(
+		executeProcess('launchctl', ['print', target]),
+		Effect.as(true),
+		Effect.catchTag('AppError', error => {
+			// launchctl error 113: "Could not find specified service".
+			if (error.exitCode === 113) return Effect.succeed(false)
+			return Effect.fail(error)
+		})
 	)
-	// launchctl error 113: "Could not find specified service".
-	if (result.code === 113) return false
-	if (result.code !== 0) return yield* AppError.make({message: `launchctl failed: ${result.stderr}`})
-	return true
-}, Effect.scoped)
+})
 
 const agentDirectory = Effect.gen(function* () {
 	return (yield* Path.Path).join(yield* Config.String('HOME'), 'Library', 'LaunchAgents')

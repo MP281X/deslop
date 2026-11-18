@@ -1,4 +1,3 @@
-// fallow-ignore-file unused-type -- Codecs expose their decoded types to consuming apps.
 import {DateTime, Duration, Schema, SchemaGetter, pipe} from 'effect'
 
 export type TimeFrame = typeof TimeFrame.Type

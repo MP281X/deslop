@@ -61,7 +61,7 @@ import {imageAtom, notesAtom, queryAtom, regenerateAtom, removal, searchAtom} fr
 import {primary, session} from '#lib/session.ts'
 import {tagCounts} from '#services/notes/lib/utils.ts'
 import type {Note, NoteItem} from '#services/notes/schema.ts'
-import {Brand, Kind, TagName} from '#services/notes/schema.ts'
+import {BrandedKind, Kind, TagName} from '#services/notes/schema.ts'
 
 // The summary waits in the note, so the list scans fast.
 function Lines(props: {muted?: boolean; note: NoteItem}) {
@@ -113,7 +113,7 @@ function NoteMedia(props: {note: NoteItem}) {
 		<ItemMedia variant="image" modifiers={[accessibilityHidden(true)]}>
 			{pipe(
 				Match.value(kind),
-				Match.when(Schema.is(Brand), brand => <BrandLogo brand={kinds[brand].logo} size={24} />),
+				Match.when(Schema.is(BrandedKind), brand => <BrandLogo brand={kinds[brand].logo} size={24} />),
 				Match.orElse(other => (
 					<Image systemName={kinds[other].symbol} size={24} modifiers={[foregroundStyle(colors.mutedForeground)]} />
 				))
@@ -172,7 +172,7 @@ function NoteRow(props: {note: NoteItem; onOpen: (id: Note['id']) => void; onReg
 }
 
 function KindLabel(props: {kind: Kind}) {
-	if (Schema.is(Brand)(props.kind)) {
+	if (Schema.is(BrandedKind)(props.kind)) {
 		return (
 			<Label
 				title={kinds[props.kind].label}

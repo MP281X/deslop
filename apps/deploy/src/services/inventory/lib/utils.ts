@@ -25,7 +25,7 @@ import type {
 	InventoryItem,
 	SocketAddress,
 	SocketBinding,
-	App,
+	ManagedApp,
 	InventoryQuery,
 	HttpsExposure,
 	Job,
@@ -603,7 +603,7 @@ function appOf(row: Row, withProcesses: boolean) {
 		),
 		state: row.item.state,
 		url
-	} satisfies App
+	} satisfies ManagedApp
 }
 
 function exposureOf(item: Extract<InventoryItem, {kind: 'exposure'}>) {

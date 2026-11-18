@@ -1,7 +1,6 @@
 import {Array, Boolean, Duration, Function, HashMap, Match, Number, Option, Record, String, pipe} from 'effect'
 
-// oxlint-disable-next-line eslint/no-restricted-imports -- useLayoutEffect: the flame measures its surface and label widths after layout and before paint, so bars never draw at a stale width.
-import {useLayoutEffect, useRef, useState} from 'react'
+import {useRef, useState} from 'react'
 
 import {cn} from '@deslop/components-web/lib/utils'
 import {Skeleton} from '@deslop/components-web/ui/skeleton'
@@ -106,22 +105,17 @@ export function Flame(props: {focus: Option.Option<SpanId>; onPick: (id: SpanId)
 	const surface = useRef<HTMLDivElement>(null)
 	// Widths by label text, so a live trace's update measures only its new labels; a font load measures them again.
 	const measuredLabels = useRef(NO_WIDTHS)
-	useLayoutEffect(() => {
+	function measureSurface(element: HTMLDivElement) {
+		surface.current = element
 		function measure() {
-			if (surface.current === null) return
-			setWidth(surface.current.getBoundingClientRect().width)
+			setWidth(element.getBoundingClientRect().width)
 		}
 		measure()
 		const observer = new ResizeObserver(measure)
-		if (surface.current !== null) observer.observe(surface.current)
-		return () => observer.disconnect()
-	}, [])
-	useLayoutEffect(() => {
+		observer.observe(element)
 		const spans = Array.filter(props.trace.spans, span => span.depth <= 1)
 		const labels = pipe(spans, Array.map(labelOf), Array.dedupe)
 		function measureLabels() {
-			const element = surface.current
-			if (element === null) return
 			const known = measuredLabels.current
 			const missing = Array.filter(labels, label => !HashMap.has(known, label))
 			// Only the current trace's labels are kept, so a long session holds no more than one trace's widths.
@@ -150,8 +144,12 @@ export function Flame(props: {focus: Option.Option<SpanId>; onPick: (id: SpanId)
 		}
 		measureLabels()
 		document.fonts.addEventListener('loadingdone', fontsLoaded)
-		return () => document.fonts.removeEventListener('loadingdone', fontsLoaded)
-	}, [props.trace])
+		return () => {
+			surface.current = null
+			observer.disconnect()
+			document.fonts.removeEventListener('loadingdone', fontsLoaded)
+		}
+	}
 	const placed = lanesOf(
 		props.trace.spans,
 		Record.fromEntries(
@@ -247,7 +245,7 @@ export function Flame(props: {focus: Option.Option<SpanId>; onPick: (id: SpanId)
 	return (
 		<div className="mt-1.5 mb-2 px-2">
 			<div
-				ref={surface}
+				ref={measureSurface}
 				role="group"
 				aria-label="Spans"
 				className="relative h-(--flame-height) w-full"

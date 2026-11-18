@@ -60,6 +60,7 @@ export const noRenamedImport = defineRule({
 			// Expo exports generic verbs, and SwiftUI components share names with ports (`Button`); the named import gives them their domain without a namespace.
 			if (node.parent.type === 'ImportDeclaration' && isExpoModule(node.parent.source.value)) return
 			if (imported === node.local.name || (imported === 'it' && node.local.name === 'test')) return
+			if (Option.isSome(boundVariable({name: imported, scope: context.sourceCode.getScope(node)}))) return
 			context.report({
 				fix: fixer => {
 					if (node.imported.type === 'Literal' || imported === 'default') return []
@@ -74,6 +75,11 @@ export const noRenamedImport = defineRule({
 		docs: {
 			examples: {
 				accepted: [
+					{
+						'sample.ts': `import type {Context} from 'effect'
+import type {Context as LintContext} from 'vite-plus/lint/plugins'
+export function contexts(context: LintContext, services: Context.Context<never>) { return {context, services} }`
+					},
 					{
 						'sample.ts': `import {Function, Option} from 'effect'
 export function selectedTitle(title: Option.Option<string>) { return Option.getOrElse(title, Function.constNull) }`

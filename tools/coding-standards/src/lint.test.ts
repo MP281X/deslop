@@ -190,6 +190,82 @@ function customCodes(output: OxlintOutput) {
 describe('deslop Oxlint plugin', {concurrent: true}, () => {
 	it.layer(NodeServices.layer)(testApi => {
 		testApi.effect(
+			'exports both members of schema-file pairs and keeps private pairs outside schema.ts',
+			Effect.fnUntraced(function* () {
+				const inputs = {
+					'outside.ts': Array.join(
+						[
+							"import {Schema} from 'effect'",
+							'type Note = typeof Note.Type',
+							'const Note = Schema.Struct({title: Schema.String})',
+							'export function titleOf(note: Note) { return note.title }'
+						],
+						'\n'
+					),
+					'src/services/local/schema.ts': Array.join(
+						[
+							"import {Schema} from 'effect'",
+							'type Note = typeof Note.Type',
+							'const Note = Schema.Struct({title: Schema.String})',
+							'export function titleOf(note: Note) { return note.title }'
+						],
+						'\n'
+					),
+					'src/services/public/schema.ts': Array.join(
+						[
+							"import {Schema} from 'effect'",
+							'export type Note = typeof Note.Type',
+							'const Note = Schema.Struct({title: Schema.String})'
+						],
+						'\n'
+					)
+				}
+				const rejected = yield* lintSource(inputs, [], true)
+				assert.deepStrictEqual(customCodes(rejected.stdout), [
+					'@deslop/coding-standards(schema-type-pair)',
+					'@deslop/coding-standards(schema-type-pair)'
+				])
+				assert.deepStrictEqual(
+					Array.map(rejected.stdout.diagnostics, diagnostic => diagnostic.message),
+					[
+						'Export the Schema and its type together from schema.ts',
+						'Export the Schema and its type together from schema.ts'
+					]
+				)
+				const fixed = yield* lintSource(inputs, ['--fix'], true)
+				assert.deepStrictEqual(fixed.stdout.diagnostics, [])
+				const sources = Record.fromEntries(Array.zip(Record.keys(inputs), fixed.sources))
+				assert.include(
+					sources['src/services/local/schema.ts'] ?? '',
+					'export type Note = typeof Note.Type\nexport const Note = Schema.Struct'
+				)
+				assert.include(sources['src/services/public/schema.ts'] ?? '', 'export const Note = Schema.Struct')
+				assert.include(sources['outside.ts'] ?? '', '\ntype Note = typeof Note.Type\nconst Note = Schema.Struct')
+				const settled = yield* lintSource(sources, ['--fix'], true)
+				assert.deepStrictEqual(settled.stdout.diagnostics, [])
+				assert.deepStrictEqual(settled.sources, fixed.sources)
+			})
+		)
+		testApi.effect(
+			'requires judge ignores to name a question in the registry',
+			// judge-ignore no-internals-test -- The rule's observable answer is its lint diagnostic at each supplied source line; the fixture calls the public lint command.
+			Effect.fnUntraced(function* () {
+				const result = yield* lintSource({
+					'ignores.ts': Array.join(
+						[
+							'// judge-ignore unknown-question -- This is not a registered question. // reported',
+							'export function title(value: string) { return value }',
+							'// judge-ignore no-silent-fallback -- Absence is a valid outcome.',
+							'export function label(value: string) { return value }'
+						],
+						'\n'
+					)
+				})
+				const lines = reportedLines(result, 'no-unexplained-disable')
+				assert.deepStrictEqual(lines.reported, lines.marked)
+			})
+		)
+		testApi.effect(
 			'keeps every accepted example and automatic fix clean under the whole preset at a fixed point',
 			Effect.fnUntraced(function* () {
 				const examples = yield* Effect.forEach(
@@ -779,7 +855,7 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 							'// Then it checks the value.',
 							'/* Explains the next line\n   across two lines */',
 							'// Compares the raw state.',
-							'// judge-ignore no-repeated-search -- this input keeps its reason',
+							'// judge-ignore no-silent-fallback -- this input keeps its reason',
 							'// oxlint-disable-next-line eqeqeq',
 							'const loose = source == "ready"',
 							'// oxlint-disable-next-line sort-keys -- this input keeps its order',
@@ -2859,7 +2935,9 @@ export type Unknown = 'ready' | unknown`
 							'export const spaced = [listRowInsets({leading: space[4]}), lineSpacing(space[1])]',
 							"export const themed = [padding({all: space[4]}), frame({height: 64}), font({textStyle: 'body'}), foregroundStyle(colors.foreground)]",
 							'export function Spaced() { return <VStack spacing={12} /> } // reported',
-							'export function Tight() { return <VStack spacing={0} /> }'
+							'export function Tight() { return <VStack spacing={0} /> }',
+							'export function Widget() { "widget"; return <VStack spacing={12} modifiers={[padding({all: 16}), font({size: 15})]} /> }',
+							'export const widget = () => { "widget"; function nested() { return padding({all: 16}) }; return <VStack spacing={12} modifiers={[nested()]} /> }'
 						],
 						'\n'
 					),

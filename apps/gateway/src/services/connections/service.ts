@@ -40,6 +40,8 @@ import {AuthError, ON_BEHALF_HEADER} from '@deslop/runtime/shared/auth'
 import {DateTimeUtcFromFiniteMillis} from '@deslop/runtime/shared/time'
 import type {TimeFrame} from '@deslop/runtime/shared/time'
 
+import {migrations} from './migrations.ts'
+
 import {clientMetadata, connectionFailure, describe, serverIcons, serverName} from '#services/connections/lib/utils.ts'
 import type {
 	Callback,
@@ -58,11 +60,11 @@ import {
 	ConnectionGrant,
 	ConnectionState,
 	ConnectionGeneration,
-	OAuthState,
+	ConnectionOAuthState,
 	OAuthClient,
 	ServerId,
 	McpUsageServer,
-	Metadata,
+	ServerMetadata,
 	Registration,
 	Token,
 	UpstreamError
@@ -85,7 +87,7 @@ type Pending = {
 	client: OAuthClient
 	generation: ConnectionGeneration
 	id: ServerId
-	metadata: Metadata
+	metadata: ServerMetadata
 	userId: UserId
 	verifier: string
 }
@@ -104,7 +106,7 @@ function editable(connection: Connection) {
 const removedServer = AuthError.make({message: 'This MCP was removed. Add it again on the MCP page.'})
 
 // A provider that registers clients gets one per connection, with that server's own callback; otherwise it must name itself in its answers.
-function connectable(metadata: Metadata) {
+function connectable(metadata: ServerMetadata) {
 	if (
 		Option.isSome(metadata.registration_endpoint) ||
 		(Option.contains(metadata.client_id_metadata_document_supported, true) &&
@@ -127,7 +129,7 @@ export class Connections extends Context.Service<
 		readonly begin: (
 			id: ServerId,
 			user: Admin
-		) => Effect.Effect<{state: Option.Option<OAuthState>; url: string}, AuthError>
+		) => Effect.Effect<{state: Option.Option<ConnectionOAuthState>; url: string}, AuthError>
 		readonly called: (id: ServerId) => Effect.Effect<void>
 		// `route` is the server id a registered client's callback carries; the metadata document's callback carries none.
 		readonly complete: (params: Callback, route: Option.Option<ServerId>, user: Admin) => Effect.Effect<void, AuthError>
@@ -255,7 +257,7 @@ export class Connections extends Context.Service<
 		const http = HttpClient.filterStatusOk(yield* HttpClient.HttpClient)
 		const fetch = yield* FetchHttpClient.Fetch
 		const random = yield* SecureRandom.SecureRandom
-		const pending = yield* Cache.make<OAuthState, Pending, AuthError>({
+		const pending = yield* Cache.make<ConnectionOAuthState, Pending, AuthError>({
 			capacity: 64,
 			lookup: () => Effect.fail(AuthError.make({message: 'The connection expired; connect it again'})),
 			timeToLive: Duration.minutes(10)
@@ -462,7 +464,7 @@ export class Connections extends Context.Service<
 			return yield* Option.match(authorizationMetadata, {
 				onNone: available,
 				onSome: Effect.fnUntraced(function* (serverMetadata) {
-					const metadata = yield* Schema.decodeUnknownEffect(Metadata)(serverMetadata)
+					const metadata = yield* Schema.decodeUnknownEffect(ServerMetadata)(serverMetadata)
 					yield* connectable(metadata)
 					return {
 						...initial,
@@ -540,13 +542,13 @@ export class Connections extends Context.Service<
 				return yield* Option.match(Option.all({issuer: connection.issuer, scope: connection.scope}), {
 					onNone: Effect.fnUntraced(function* () {
 						yield* change(id, connection.generation, () => ({error: Option.none()}))
-						return {state: Option.none<OAuthState>(), url: '/'}
+						return {state: Option.none<ConnectionOAuthState>(), url: '/'}
 					}),
 					onSome: Effect.fnUntraced(function* (oauth) {
 						return yield* pipe(
 							Effect.gen(function* () {
 								// Check the provider's current capabilities before authorization.
-								const metadata = yield* Schema.decodeUnknownEffect(Metadata)(
+								const metadata = yield* Schema.decodeUnknownEffect(ServerMetadata)(
 									yield* Effect.tryPromise({
 										catch: cause => UpstreamError.make({cause}),
 										try: signal =>
@@ -584,8 +586,8 @@ export class Connections extends Context.Service<
 										)
 									})
 								})
-								const stateId = OAuthState.make(yield* nonce)
-								const encodedMetadata = yield* Schema.encodeEffect(Metadata)(metadata)
+								const stateId = ConnectionOAuthState.make(yield* nonce)
+								const encodedMetadata = yield* Schema.encodeEffect(ServerMetadata)(metadata)
 								const authorization = yield* Effect.tryPromise({
 									catch: cause => UpstreamError.make({cause}),
 									try: () =>
@@ -815,67 +817,7 @@ export class Connections extends Context.Service<
 
 	// The tables this service owns, made and changed at start in one transaction; one statement per `sql` call, since SQLite runs only the first statement of a string.
 	static readonly migrations = Layer.effectDiscard(
-		Migrator.make({})({
-			loader: Migrator.fromRecord({
-				'0001_connections': Effect.gen(function* () {
-					const sql = yield* SqlClient.SqlClient
-					yield* sql`
-						CREATE TABLE connections (
-							id TEXT PRIMARY KEY,
-							url TEXT NOT NULL UNIQUE,
-							generation TEXT NOT NULL,
-							mode TEXT NOT NULL,
-							name TEXT NOT NULL,
-							tools INTEGER NOT NULL,
-							icons TEXT NOT NULL,
-							instructions TEXT,
-							error TEXT,
-							issuer TEXT,
-							scope TEXT
-						) STRICT
-					`
-					yield* sql`
-						CREATE TABLE connection_grants (
-							serverId TEXT PRIMARY KEY REFERENCES connections (id) ON DELETE CASCADE,
-							accessToken TEXT NOT NULL,
-							refreshToken TEXT,
-							expiresAt REAL NOT NULL,
-							clientId TEXT NOT NULL,
-							tokenEndpoint TEXT NOT NULL
-						) STRICT
-					`
-					// Keyed by server first, so a server's period reads as one range of the table.
-					yield* sql`
-						CREATE TABLE connection_calls (
-							serverId TEXT NOT NULL REFERENCES connections (id) ON DELETE CASCADE,
-							hour INTEGER NOT NULL,
-							calls INTEGER NOT NULL,
-							PRIMARY KEY (serverId, hour)
-						) STRICT, WITHOUT ROWID
-					`
-				}),
-				// Expand each historical count into calls dated to that hour.
-				'0002_mcp_calls': Effect.gen(function* () {
-					const sql = yield* SqlClient.SqlClient
-					yield* sql`CREATE TABLE mcp_calls (
-						serverId TEXT NOT NULL REFERENCES connections (id) ON DELETE CASCADE,
-						at INTEGER NOT NULL
-					) STRICT`
-					yield* sql`WITH RECURSIVE calls (serverId, at, remaining) AS (
-						SELECT serverId, hour, calls FROM connection_calls WHERE calls > 0
-						UNION ALL
-						SELECT serverId, at, remaining - 1 FROM calls WHERE remaining > 1
-					)
-					INSERT INTO mcp_calls (serverId, at) SELECT serverId, at FROM calls`
-					yield* sql`DROP TABLE connection_calls`
-					yield* sql`CREATE INDEX mcp_calls_server_at ON mcp_calls (serverId, at)`
-				}),
-				'0003_failure_reasons': Effect.gen(function* () {
-					yield* (yield* SqlClient.SqlClient)`UPDATE connections SET error = NULL`
-				})
-			}),
-			table: 'connections_migrations'
-		})
+		Migrator.make({})({loader: Migrator.fromRecord(migrations), table: 'connections_migrations'})
 	)
 
 	static readonly layer = Layer.provide(Layer.effect(Connections, Connections.make), Connections.migrations)

@@ -4,7 +4,7 @@ import {Option, Schema, String, pipe} from 'effect'
 import {brands} from '#lib/icons.tsx'
 import {isYouTube} from '#services/notes/lib/utils.ts'
 import type {Kind, NoteItem} from '#services/notes/schema.ts'
-import {Brand} from '#services/notes/schema.ts'
+import {BrandedKind} from '#services/notes/schema.ts'
 
 export const kinds = {
 	file: {label: 'Photos and Videos', symbol: 'photo'},
@@ -40,7 +40,7 @@ export function subjectOf(note: NoteItem) {
 }
 
 export function brandOf(note: NoteItem) {
-	return Option.liftPredicate(kindOf(note), Schema.is(Brand))
+	return Option.liftPredicate(kindOf(note), Schema.is(BrandedKind))
 }
 
 export function appOf(note: NoteItem) {

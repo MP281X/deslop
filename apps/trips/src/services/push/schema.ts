@@ -6,8 +6,8 @@ import {ApnsToken, Device} from '@deslop/runtime/shared/apns'
 
 import {ActivityProps, BookingId, Leg} from '#services/bookings/schema.ts'
 
-// The content-state's props, which expo-widgets reads as a JSON string.
 export type ActivityPropsJson = typeof ActivityPropsJson.Type
+// The content-state's props, which expo-widgets reads as a JSON string.
 export const ActivityPropsJson = Schema.fromJsonString(ActivityProps)
 
 export class PushError extends Schema.TaggedError<PushError>()('PushError', {
@@ -15,9 +15,9 @@ export class PushError extends Schema.TaggedError<PushError>()('PushError', {
 	message: Schema.String
 }) {}
 
+export type PushBundle = typeof PushBundle.Type
 // The release app, on Apple's production push service, and the Simulator build, on its sandbox; the server pushes to no other app.
-export type Bundle = typeof Bundle.Type
-export const Bundle = Schema.Literals(['xyz.mp281x.trips', 'xyz.mp281x.trips.dev'])
+export const PushBundle = Schema.Literals(['xyz.mp281x.trips', 'xyz.mp281x.trips.dev'])
 
 export type ChannelId = typeof ChannelId.Type
 export const ChannelId = pipe(Schema.String, Schema.brand('ChannelId'))
@@ -51,7 +51,7 @@ export class SentAlert extends Model.Class<SentAlert>('SentAlert')({
 }
 
 // Terminal device answers, including partial rounds; retained until the booking leaves so delay steps never repeat.
-export class Delivery extends Model.Class<Delivery>('Delivery')({
+export class AlertDelivery extends Model.Class<AlertDelivery>('Delivery')({
 	...Model.fields(SentAlert),
 	token: Model.Sensitive(Schema.RedactedFromValue(ApnsToken))
 }) {

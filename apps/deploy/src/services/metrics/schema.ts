@@ -8,10 +8,10 @@ import {AppId, TextFromEmpty, WorkerId} from '#services/inventory/schema.ts'
 
 export type BandId = typeof BandId.Type
 export const BandId = Schema.Union([AppId, Schema.Literals(['other', 'system'])])
-export type CpuTime = typeof CpuTime.Type
-export const CpuTime = Schema.Literals(['idle', 'irq', 'nice', 'sys', 'user'])
+export type CpuState = typeof CpuState.Type
+export const CpuState = Schema.Literals(['idle', 'irq', 'nice', 'sys', 'user'])
 
-type CpuCounters = typeof CpuCounters.Type
+export type CpuCounters = typeof CpuCounters.Type
 export const CpuCounters = Schema.TupleWithRest(
 	Schema.Tuple([
 		Schema.FiniteFromString,
@@ -23,7 +23,7 @@ export const CpuCounters = Schema.TupleWithRest(
 	[Schema.FiniteFromString]
 )
 
-type LoadAverages = typeof LoadAverages.Type
+export type LoadAverages = typeof LoadAverages.Type
 export const LoadAverages = Schema.Array(Schema.FiniteFromString)
 
 export type CgroupPath = typeof CgroupPath.Type
@@ -52,8 +52,8 @@ export const HistoryToolInput = Schema.Struct({
 	worker: Schema.OptionFromOptionalKey(WorkerId.annotate({description: 'A configured worker name.'}))
 })
 
-export type Series = typeof Series.Type
-export const Series = Schema.Array(Schema.OptionFromNullOr(Schema.Finite))
+export type MetricSeries = typeof MetricSeries.Type
+export const MetricSeries = Schema.Array(Schema.OptionFromNullOr(Schema.Finite))
 
 export type AppUsage = typeof AppUsage.Type
 export const AppUsage = Schema.Struct({
@@ -75,11 +75,11 @@ export const MachineNow = Schema.Struct({
 export type WorkerHistory = typeof WorkerHistory.Type
 export const WorkerHistory = Schema.Struct({
 	apps: Schema.Array(AppUsage),
-	cpuPct: Series,
-	diskPct: Series,
+	cpuPct: MetricSeries,
+	diskPct: MetricSeries,
 	error: Schema.OptionFromOptionalKey(Schema.String),
 	from: Schema.DateTimeUtcFromString,
-	memoryPct: Series,
+	memoryPct: MetricSeries,
 	now: Schema.OptionFromOptionalKey(MachineNow),
 	stale: Schema.OptionFromOptionalKey(Schema.Literal(true)),
 	stepSeconds: DurationFromSeconds,
@@ -157,8 +157,8 @@ export const MachineHistory = Schema.Struct({
 	worker: WorkerId
 })
 
-// The `vm_stat` counters used memory needs; one missing fails the sample instead of reading as zero memory.
 export type VmStatPages = typeof VmStatPages.Type
+// The `vm_stat` counters used memory needs; one missing fails the sample instead of reading as zero memory.
 export const VmStatPages = Schema.Struct({
 	'Anonymous pages': Schema.FiniteFromString,
 	'Pages occupied by compressor': Schema.FiniteFromString,

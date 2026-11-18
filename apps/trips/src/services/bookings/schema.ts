@@ -51,8 +51,8 @@ export const Place = Schema.Struct({
 export type BookedPlace = typeof BookedPlace.Type
 export const BookedPlace = Schema.Struct({...Place.fields, timeZone: Schema.String})
 
-// Whether the reservation stands; a cancelled one stays listed so the change is visible.
 export type ReservationStatus = typeof ReservationStatus.Type
+// Whether the reservation stands; a cancelled one stays listed so the change is visible.
 export const ReservationStatus = Schema.Literals(['confirmed', 'cancelled'])
 
 // What the flight provider reports; every field is absent until the provider knows it, and each check replaces the whole record.
@@ -292,8 +292,8 @@ export const ExtractedItem = Schema.Union([
 export type ExtractedItems = typeof ExtractedItems.Type
 export const ExtractedItems = Schema.Array(ExtractedItem)
 
-export type Extraction = typeof Extraction.Type
-export const Extraction = Schema.Struct({items: ExtractedItems})
+export type BookingExtraction = typeof BookingExtraction.Type
+export const BookingExtraction = Schema.Struct({items: ExtractedItems})
 
 export type Airport = typeof Airport.Type
 export const Airport = Schema.Struct({

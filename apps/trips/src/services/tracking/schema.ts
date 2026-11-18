@@ -37,8 +37,8 @@ export const FaFlight = Schema.Struct({
 export type FaFlights = typeof FaFlights.Type
 export const FaFlights = Schema.Struct({flights: Schema.Array(FaFlight)})
 
-// ViaggiaTreno's run lookup: today's run of a train number, from its origin station.
 export type VtRun = typeof VtRun.Type
+// ViaggiaTreno's run lookup: today's run of a train number, from its origin station.
 export const VtRun = Schema.Struct({
 	codLocOrig: StationId.check(Schema.isPattern(/^[A-Za-z0-9_-]+$/u)),
 	millisDataPartenza: pipe(

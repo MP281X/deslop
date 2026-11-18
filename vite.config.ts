@@ -107,16 +107,9 @@ export default defineConfig({
 				files: ['**/packages/runtime/src/server/tables.test.ts'],
 				rules: {'@deslop/coding-standards/test-boundaries': ['error', 'inspect-database']}
 			},
-			// The judge's program harness is owned by the separate judge overhaul.
 			{
 				files: ['tools/coding-standards/src/judge.test.ts'],
-				rules: {
-					'@deslop/coding-standards/no-pass-through-name': 'off',
-					'@deslop/coding-standards/recover-named-failures': 'off',
-					'@deslop/coding-standards/test-boundaries': 'off',
-					'@deslop/coding-standards/test-registration': 'off',
-					'eslint-js/no-restricted-syntax': lint.rules['eslint-js/no-restricted-syntax']
-				}
+				rules: {'@deslop/coding-standards/test-boundaries': ['error', 'execute-program']}
 			},
 			{
 				files: ['packages/**'],
@@ -202,14 +195,7 @@ export default defineConfig({
 					'packages/components-mobile/**',
 					'tools/create-app/template/mobile/**'
 				],
-				rules: {
-					'shadcn/no-arbitrary-values': 'off',
-					'shadcn/no-inline-styles': 'off',
-					'shadcn/no-raw-colors': 'off',
-					'shadcn/no-restyle': 'off',
-					'shadcn/no-unknown-classes': 'off',
-					'shadcn/require-static-classes': 'off'
-				}
+				rules: {'shadcn/no-inline-styles': 'off'}
 			},
 			{
 				// shadcn's utils alias in components.json: the registry imports the `cn` package, and this path re-exports it for the package's own code.

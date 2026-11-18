@@ -30,8 +30,8 @@ export const PostId = pipe(Schema.String, Schema.brand('PostId'))
 export type PostAuthorId = typeof PostAuthorId.Type
 export const PostAuthorId = pipe(Schema.String, Schema.brand('PostAuthorId'))
 
-// A tag and what belongs under it, as the AI defines it.
 export type TagDefinition = typeof TagDefinition.Type
+// A tag and what belongs under it, as the AI defines it.
 export const TagDefinition = Schema.Struct({
 	definition: Schema.NonEmptyString.check(Schema.isMaxLength(240)),
 	tag: TagName
@@ -43,8 +43,8 @@ export const Source = Schema.Literals(['TikTok', 'X', 'Website', 'Note'])
 export type Kind = typeof Kind.Type
 export const Kind = Schema.Literals(['tiktok', 'x', 'youtube', 'web', 'note', 'file'])
 
-export type Brand = typeof Brand.Type
-export const Brand = Kind.pick(['tiktok', 'x', 'youtube'])
+export type BrandedKind = typeof BrandedKind.Type
+export const BrandedKind = Kind.pick(['tiktok', 'x', 'youtube'])
 
 export type ImageType = typeof ImageType.Type
 export const ImageType = Schema.Literals(['image/jpeg', 'image/png', 'image/webp', 'image/gif'])

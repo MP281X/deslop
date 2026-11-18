@@ -8,7 +8,7 @@ import {AuthError, CLIENT_HEADER, IdentifyRequest, SESSION_COOKIE, UserId} from 
 
 import {returnable} from '#services/cookie-sessions/lib/utils.ts'
 import {CookieSessions} from '#services/cookie-sessions/service.ts'
-import type {OAuthState} from '#services/github/schema.ts'
+import type {GitHubOAuthState} from '#services/github/schema.ts'
 import {AppSignIn, CallbackParams} from '#services/github/schema.ts'
 import {GitHub} from '#services/github/service.ts'
 import {Identity} from '#services/identity/service.ts'
@@ -29,11 +29,11 @@ export const association = {
 export class SignIns extends Context.Service<
 	SignIns,
 	{
-		readonly start: (query: URLSearchParams) => Effect.Effect<{state: OAuthState; url: string}, AuthError>
+		readonly start: (query: URLSearchParams) => Effect.Effect<{state: GitHubOAuthState; url: string}, AuthError>
 		readonly finish: (
 			query: URLSearchParams,
 			headers: Headers.Headers
-		) => Effect.Effect<{state: OAuthState; target: string; session: Option.Option<string>}, AuthError>
+		) => Effect.Effect<{state: GitHubOAuthState; target: string; session: Option.Option<string>}, AuthError>
 		readonly signOut: (query: URLSearchParams, headers: Headers.Headers) => Effect.Effect<string, AuthError>
 	}
 >()('@deslop/auth/services/sign-ins/service/SignIns') {

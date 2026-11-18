@@ -38,7 +38,7 @@ import {OpmNative} from '#modules/native/index.ts'
 import {byNumber, keyOf, notificationOf} from '#services/chapters/lib/utils.ts'
 import type {ChapterKey, ChapterNumber, ChapterItem, ChapterList, ReadingPosition} from '#services/chapters/schema.ts'
 import {ChaptersError, ReadingChapter} from '#services/chapters/schema.ts'
-import {Bundle} from '#services/push/schema.ts'
+import {ChapterBundle} from '#services/push/schema.ts'
 
 const chaptersFile = new File(Paths.document, 'chapters.json')
 
@@ -181,7 +181,7 @@ export const pushAtom = RpcClient.runtime.atom(get =>
 			) {
 				return
 			}
-			const bundle = yield* Schema.decodeUnknownEffect(Bundle)(applicationId)
+			const bundle = yield* Schema.decodeUnknownEffect(ChapterBundle)(applicationId)
 			const client = yield* RpcClient
 			yield* Stream.runForEach(
 				pushTokens(

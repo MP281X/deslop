@@ -14,8 +14,7 @@ import {StatusDot} from '#components/blocks/status-dot.tsx'
 import {Button} from '#components/ui/button.tsx'
 import {Popover, PopoverContent, PopoverHeader, PopoverTitle, PopoverTrigger} from '#components/ui/popover.tsx'
 
-// fallow-ignore-next-line unused-export -- the oldest reader still showing content, whose tests drive the age and retry protocol directly.
-export const staleSinceAtom = Atom.family((readers: readonly Atom.Atom<AsyncResult.AsyncResult<unknown, unknown>>[]) =>
+const staleSinceAtom = Atom.family((readers: readonly Atom.Atom<AsyncResult.AsyncResult<unknown, unknown>>[]) =>
 	Atom.readable(
 		get =>
 			pipe(

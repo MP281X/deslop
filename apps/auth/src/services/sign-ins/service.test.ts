@@ -9,7 +9,7 @@ import {GitHubId, SESSION_COOKIE, UserId} from '@deslop/runtime/shared/auth'
 import {SignIns, loginCookie} from './service.ts'
 
 import {CookieSessions} from '#services/cookie-sessions/service.ts'
-import {AppSignIn, OAuthState} from '#services/github/schema.ts'
+import {AppSignIn, GitHubOAuthState} from '#services/github/schema.ts'
 import {GitHub} from '#services/github/service.ts'
 import {Identity} from '#services/identity/service.ts'
 import {Member} from '#services/people/schema.ts'
@@ -26,7 +26,7 @@ const layer = pipe(
 					flow: {app: Schema.decodeUnknownOption(AppSignIn)({app: state}), next: 'https://stash.example.test'},
 					profile: {id: GitHubId.make(2), login: 'person', name: Option.none()}
 				}),
-			start: () => Effect.succeed({state: OAuthState.make('state'), url: 'https://github.com/login'})
+			start: () => Effect.succeed({state: GitHubOAuthState.make('state'), url: 'https://github.com/login'})
 		})
 	),
 	Layer.provide(Layer.mock(People, {register: () => Effect.succeed(Member.make(member))})),

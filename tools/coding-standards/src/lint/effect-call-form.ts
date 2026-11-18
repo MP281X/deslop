@@ -43,7 +43,6 @@ import {Command} from 'effect/cli'
 import {Headers, HttpClient, HttpClientRequest, HttpClientResponse, HttpRouter, HttpServerResponse} from 'effect/http'
 import {Atom, AtomRegistry, AsyncResult, Reactivity} from 'effect/reactivity'
 import {defineRule} from 'vite-plus/lint/plugins'
-// oxlint-disable-next-line @deslop/coding-standards/no-renamed-import -- Effect's Context module and the linter's Context type are distinct contracts.
 import type {Context as LintContext, ESTree, Fixer} from 'vite-plus/lint/plugins'
 
 import {

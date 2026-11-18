@@ -1,6 +1,6 @@
 import {Array, Boolean, Duration, Function, Number, Option, Order, Record, Schema, String, pipe} from 'effect'
 
-import type {Metadata, Comment} from '#services/media/schema.ts'
+import type {MediaMetadata, Comment} from '#services/media/schema.ts'
 
 const BLOCKED =
 	/not a bot|requir(?:es|ing) login|login required|CONNECT tunnel failed|unable to connect to proxy|tunnel connection failed|ProxyError|HTTP Error (?:403|429|5\d\d)|Requested format is not available|timed out/iu
@@ -36,7 +36,7 @@ function commentLine(comment: Comment) {
 	)
 }
 
-export function captionTracks(media: Metadata) {
+export function captionTracks(media: MediaMetadata) {
 	const automatic = Record.keys(Option.getOrElse(media.automatic_captions, () => ({})))
 	const original = Option.orElse(media.language, () =>
 		pipe(automatic, Array.findFirst(String.endsWith('-orig')), Option.map(String.replace(/-orig$/u, '')))
@@ -95,7 +95,7 @@ export function clock(seconds: Duration.Duration) {
 	return `${String.padStart(2, '0')(`${(parts.days * 24 + parts.hours) * 60 + parts.minutes}`)}:${String.padStart(2, '0')(`${parts.seconds}`)}`
 }
 
-export function mediaMarkdown(media: Metadata, link: string) {
+export function mediaMarkdown(media: MediaMetadata, link: string) {
 	const details = pipe(
 		[
 			media.uploader,

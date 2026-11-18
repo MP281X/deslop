@@ -5,8 +5,8 @@ import {Model} from 'effect/schema'
 import {UserId} from '@deslop/runtime/shared/auth'
 
 // What a browser's user agent says it runs on.
-export type Device = typeof Device.Type
-export const Device = Schema.Literals(['iPhone', 'iPad', 'Android', 'Mac', 'Windows', 'Linux'])
+export type SessionDevice = typeof SessionDevice.Type
+export const SessionDevice = Schema.Literals(['iPhone', 'iPad', 'Android', 'Mac', 'Windows', 'Linux'])
 
 // One browser signed in at Auth; its cookie holds the secret whose hash is the id.
 export class CookieSession extends Model.Class<CookieSession>('CookieSession')({

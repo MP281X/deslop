@@ -2,10 +2,10 @@ import {Array, Function, Option, Result, String, pipe} from 'effect'
 
 import {Url} from 'effect/http'
 
-import type {Device} from '#services/cookie-sessions/schema.ts'
+import type {SessionDevice} from '#services/cookie-sessions/schema.ts'
 
 // An Android agent also names Linux, so the order decides.
-const DEVICES: readonly {name: Device; token: string}[] = [
+const DEVICES: readonly {name: SessionDevice; token: string}[] = [
 	{name: 'iPhone', token: 'iPhone'},
 	{name: 'iPad', token: 'iPad'},
 	{name: 'Android', token: 'Android'},

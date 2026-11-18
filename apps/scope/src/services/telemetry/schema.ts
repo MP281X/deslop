@@ -21,8 +21,8 @@ export const TraceId = pipe(
 	Schema.brand('TraceId')
 )
 
-// Trace ids as one JSON parameter, however many a query names.
 export type TraceIds = typeof TraceIds.Type
+// Trace ids as one JSON parameter, however many a query names.
 export const TraceIds = Schema.fromJsonString(Schema.Array(TraceId))
 
 export type SpanId = typeof SpanId.Type
@@ -41,10 +41,10 @@ export const AppName = pipe(Schema.String, Schema.brand('ScopeAppName'))
 export type ReleaseVersion = typeof ReleaseVersion.Type
 export const ReleaseVersion = pipe(Schema.String, Schema.brand('ScopeReleaseVersion'))
 
-type McpServerName = typeof McpServerName.Type
+export type McpServerName = typeof McpServerName.Type
 export const McpServerName = pipe(Schema.String, Schema.brand('ScopeMcpServerName'))
 
-type McpToolName = typeof McpToolName.Type
+export type McpToolName = typeof McpToolName.Type
 export const McpToolName = pipe(Schema.String, Schema.brand('ScopeMcpToolName'))
 
 export type Nano = typeof Nano.Type
@@ -57,8 +57,8 @@ export const Nano = pipe(
 	})
 )
 
-type SpanIdFromEmpty = typeof SpanIdFromEmpty.Type
-const SpanIdFromEmpty = pipe(
+export type SpanIdFromEmpty = typeof SpanIdFromEmpty.Type
+export const SpanIdFromEmpty = pipe(
 	Schema.OptionFromOptionalKey(Schema.Union([SpanId, Schema.Literal('')])),
 	Schema.decodeTo(Schema.Option(Schema.toType(SpanId)), {
 		decode: SchemaGetter.transform(value => Option.filter(value, (id): id is SpanId => id !== '')),
@@ -66,8 +66,8 @@ const SpanIdFromEmpty = pipe(
 	})
 )
 
-type TraceIdFromEmpty = typeof TraceIdFromEmpty.Type
-const TraceIdFromEmpty = pipe(
+export type TraceIdFromEmpty = typeof TraceIdFromEmpty.Type
+export const TraceIdFromEmpty = pipe(
 	Schema.OptionFromOptionalKey(Schema.Union([TraceId, Schema.Literal('')])),
 	Schema.decodeTo(Schema.Option(Schema.toType(TraceId)), {
 		decode: SchemaGetter.transform(value => Option.filter(value, (id): id is TraceId => id !== '')),
@@ -83,8 +83,8 @@ export const Resource = Schema.Struct({attributes: Schema.OptionFromOptionalKey(
 	parseOptions: {onExcessProperty: 'preserve'}
 })
 
-type SpanDetails = typeof SpanDetails.Type
-const SpanDetails = Schema.Struct({
+export type SpanDetails = typeof SpanDetails.Type
+export const SpanDetails = Schema.Struct({
 	attributes: Schema.OptionFromOptionalKey(Schema.Array(Attribute)),
 	events: Schema.OptionFromOptionalKey(
 		Schema.Array(
@@ -246,8 +246,8 @@ export const Log = Schema.Struct({
 	traceId: Schema.OptionFromNullOr(TraceId)
 })
 
-// What every list reads of a trace, judged again whenever one of its spans arrives; the sender, name and label are its root's.
 export type Trace = typeof Trace.Type
+// What every list reads of a trace, judged again whenever one of its spans arrives; the sender, name and label are its root's.
 export const Trace = Schema.Struct({
 	...SENDER,
 	// Where the failure broke: the earliest failed span without a failed child.
@@ -269,14 +269,14 @@ export const Trace = Schema.Struct({
 	waits: Schema.Boolean
 })
 
-// A trace as the operations list counts it: its root's name and sender, and whether it broke.
 export type SettledTrace = typeof SettledTrace.Type
+// A trace as the operations list counts it: its root's name and sender, and whether it broke.
 export const SettledTrace = Schema.Struct({
 	...Struct.pick(Trace.fields, ['duration', 'id', 'name', 'runtime', 'service', 'start']),
 	failed: Schema.BooleanFromBit
 })
 
-// App tabs count every retained settled trace, independently of the operations' time frame.
+// AppFilter tabs count every retained settled trace, independently of the operations' time frame.
 export type RetainedService = typeof RetainedService.Type
 export const RetainedService = Schema.Struct({
 	ci: Schema.BooleanFromBit,
@@ -285,8 +285,8 @@ export const RetainedService = Schema.Struct({
 	service: Span.fields.service
 })
 
-// What a trace's row shows beyond its numbers: its label, and the name and messages of the span where it broke.
 export type TraceDetail = typeof TraceDetail.Type
+// What a trace's row shows beyond its numbers: its label, and the name and messages of the span where it broke.
 export const TraceDetail = Schema.Struct({
 	...Struct.pick(Trace.fields, ['id', 'label']),
 	...Struct.pick(Span.fields, ['error', 'exception']),
@@ -302,8 +302,8 @@ export const FoundTrace = Schema.Struct({
 	spans: Schema.Int
 })
 
-// Each service's latest run: how much it sent, when it last did, and what it said it was.
 export type ServiceRun = typeof ServiceRun.Type
+// Each service's latest run: how much it sent, when it last did, and what it said it was.
 export const ServiceRun = Schema.Struct({
 	...Struct.pick(Span.fields, ['run', 'runtime', 'service', 'version']),
 	entries: Schema.Int,
@@ -393,8 +393,8 @@ export const Overview = Schema.Struct({
 })
 
 // A span as the trace view draws it: its row, where it sits in the tree and the timeline, and its logs. A linked trace's root hangs under the span it links to.
-type TraceSpan = typeof TraceSpan.Type
-const TraceSpan = Schema.Struct({
+export type TraceSpan = typeof TraceSpan.Type
+export const TraceSpan = Schema.Struct({
 	...Span.fields,
 	depth: Schema.Natural,
 	durationMs: DurationFromFiniteMillis,
@@ -413,10 +413,10 @@ export const TraceTree = Schema.Struct({
 	spans: Schema.Array(TraceSpan)
 })
 
-type ATTRIBUTE_VALUE = typeof ATTRIBUTE_VALUE.Type
-const ATTRIBUTE_VALUE = Schema.Union([Schema.String, Schema.Finite, Schema.Boolean])
-// The tools' attributes: primitive values only, without what only repeats the row.
+export type ATTRIBUTE_VALUE = typeof ATTRIBUTE_VALUE.Type
+export const ATTRIBUTE_VALUE = Schema.Union([Schema.String, Schema.Finite, Schema.Boolean])
 export type ToolAttributes = typeof ToolAttributes.Type
+// The tools' attributes: primitive values only, without what only repeats the row.
 export const ToolAttributes = Schema.Record(Schema.String, ATTRIBUTE_VALUE)
 
 export type LogLevel = typeof LogLevel.Type
@@ -429,12 +429,13 @@ export const CompactLog = Schema.Struct({
 	message: Schema.String
 })
 
-type App = typeof App.Type
+export type AppFilter = typeof AppFilter.Type
 // The tools' inputs: every field optional except where a tool cannot answer without it.
-const App = Schema.annotateEncoded<typeof AppName>({
+export const AppFilter = Schema.annotateEncoded<typeof AppName>({
 	description: 'App name as list_operations shows it, such as "trips"; omit for every app.'
 })(AppName)
 
+export type Since = typeof Since.Type
 export const Since = pipe(
 	TimeFrame,
 	Schema.withDecodingDefaultTypeKey(Effect.succeed('1h' as const)),
@@ -442,7 +443,7 @@ export const Since = pipe(
 )
 
 export type ListOperationsParams = typeof ListOperationsParams.Type
-export const ListOperationsParams = Schema.Struct({app: Schema.OptionFromOptionalKey(App), since: Since})
+export const ListOperationsParams = Schema.Struct({app: Schema.OptionFromOptionalKey(AppFilter), since: Since})
 
 export type TraceCursor = typeof TraceCursor.Type
 export const TraceCursor = Schema.Struct(Struct.pick(Trace.fields, ['duration', 'id', 'start']))
@@ -461,7 +462,7 @@ export const TraceQuery = Schema.Struct({
 })
 export type FindTracesParams = typeof FindTracesParams.Type
 export const FindTracesParams = Schema.Struct({
-	app: Schema.OptionFromOptionalKey(App),
+	app: Schema.OptionFromOptionalKey(AppFilter),
 	cursor: Schema.OptionFromOptionalKey(TraceCursor),
 	errors: pipe(
 		Schema.Boolean,
@@ -525,7 +526,7 @@ export const LogQuery = Schema.Struct({
 })
 export type SearchLogsParams = typeof SearchLogsParams.Type
 export const SearchLogsParams = Schema.Struct({
-	app: Schema.OptionFromOptionalKey(App),
+	app: Schema.OptionFromOptionalKey(AppFilter),
 	cursor: Schema.OptionFromOptionalKey(LogCursor),
 	level: pipe(
 		Schema.Literals(['error', 'warn', 'info', 'debug']),
@@ -553,7 +554,7 @@ export const SearchLogsParams = Schema.Struct({
 
 export type MeasureLatencyParams = typeof MeasureLatencyParams.Type
 export const MeasureLatencyParams = Schema.Struct({
-	app: Schema.OptionFromOptionalKey(App),
+	app: Schema.OptionFromOptionalKey(AppFilter),
 	name: Schema.annotateEncoded<Schema.NonEmptyString>({
 		description: 'Exact span name, such as "notes.search" or "GET /api/notes".'
 	})(Schema.NonEmptyString),

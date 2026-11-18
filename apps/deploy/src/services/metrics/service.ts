@@ -32,6 +32,8 @@ import {Migrator, SqlClient, SqlSchema} from 'effect/sql'
 
 import {executeProcess} from '@deslop/runtime/server/process'
 
+import {migrations} from './migrations.ts'
+
 import {processOwner} from '#services/inventory/lib/utils.ts'
 import {DeployError, WorkerId} from '#services/inventory/schema.ts'
 import {
@@ -465,50 +467,7 @@ export class Metrics extends Context.Service<Metrics>()('@deslop/deploy/services
 }) {
 	// The tables this service owns, made and changed at start in one transaction; one statement per `sql` call, since SQLite runs only the first statement of a string.
 	static readonly migrations = Layer.effectDiscard(
-		Migrator.make({})({
-			loader: Migrator.fromRecord({
-				// Keyed by series, then time, so a range reads one span of the key; its rows carry the apps' JSON, too wide for WITHOUT ROWID.
-				'0001_metrics': Effect.flatMap(
-					SqlClient.SqlClient,
-					sql => sql`
-						CREATE TABLE samples (
-							step INTEGER NOT NULL,
-							since INTEGER NOT NULL,
-							time INTEGER NOT NULL,
-							cpu REAL,
-							memoryTotal REAL NOT NULL,
-							memoryUsed REAL NOT NULL,
-							storageUsed REAL,
-							apps TEXT,
-							PRIMARY KEY (step, since)
-						) STRICT
-					`
-				),
-				'0002_app_samples': Effect.gen(function* () {
-					const sql = yield* SqlClient.SqlClient
-					yield* sql`
-						CREATE TABLE app_samples (
-							step INTEGER NOT NULL,
-							since INTEGER NOT NULL,
-							app TEXT NOT NULL,
-							cpu REAL,
-							memory REAL NOT NULL,
-							PRIMARY KEY (step, since, app)
-						) STRICT, WITHOUT ROWID
-					`
-					yield* sql`
-						INSERT INTO app_samples (step, since, app, cpu, memory)
-						SELECT samples.step, samples.since,
-							json_extract(app.value, '$.id'), json_extract(app.value, '$.cpu'), json_extract(app.value, '$.memory')
-						FROM samples, json_each(samples.apps) app
-					`
-					yield* sql`ALTER TABLE samples DROP COLUMN apps`
-					yield* sql`DELETE FROM app_samples WHERE step = 1000`
-					yield* sql`DELETE FROM samples WHERE step = 1000`
-				})
-			}),
-			table: 'metrics_migrations'
-		})
+		Migrator.make({})({loader: Migrator.fromRecord(migrations), table: 'metrics_migrations'})
 	)
 
 	static readonly layer = Layer.provide(Layer.effect(this, this.make), this.migrations)

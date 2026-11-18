@@ -45,7 +45,7 @@ import type {Still} from '#services/media/schema.ts'
 import {
 	CreatorCaptions,
 	MediaError,
-	Metadata,
+	MediaMetadata,
 	Probe,
 	Transcript,
 	TranscriptionResponse
@@ -485,7 +485,7 @@ export class Media extends Context.Service<
 			const transcribe = Effect.fnUntraced(function* (
 				userId: UserId,
 				link: string,
-				media: Metadata,
+				media: MediaMetadata,
 				video: Option.Option<string>
 			) {
 				const work = yield* fs.makeTempDirectoryScoped({prefix: 'deslop-media-'})
@@ -662,7 +662,7 @@ export class Media extends Context.Service<
 									message: `yt-dlp cannot read the video: ${String.replaceAll(/https?:\/\/\S+/gu, '<link>')(dump.stderr)}`
 								})
 							}
-							const media = yield* Schema.decodeEffect(Schema.fromJsonString(Metadata))(
+							const media = yield* Schema.decodeEffect(Schema.fromJsonString(MediaMetadata))(
 								new TextDecoder().decode(dump.stdout)
 							)
 							if (Option.contains(media._type, 'playlist')) {

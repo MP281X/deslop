@@ -193,11 +193,6 @@ export class Auth extends Context.Service<
 	)
 }
 
-const unavailable = HttpServerResponse.text('The authorization service is temporarily unavailable; retry later', {
-	headers: {'retry-after': '5'},
-	status: 503
-})
-
 export const HttpAuth = HttpRouter.middleware<{provides: CurrentUser}>()(
 	Effect.gen(function* () {
 		const auth = yield* Auth
@@ -205,7 +200,6 @@ export const HttpAuth = HttpRouter.middleware<{provides: CurrentUser}>()(
 			Effect.gen(function* () {
 				const user = yield* Effect.result(auth.user((yield* HttpServerRequest.HttpServerRequest).headers))
 				if (Result.isFailure(user)) {
-					if (user.failure.error === 'temporarily_unavailable') return unavailable
 					return HttpServerResponse.text(user.failure.message, failureOptions(user.failure, 401))
 				}
 				return yield* Effect.provideService(app, CurrentUser, user.success)

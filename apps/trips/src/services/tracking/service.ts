@@ -24,6 +24,8 @@ import type {HttpClientError} from 'effect/http'
 import {HttpClient, HttpClientRequest, HttpClientResponse} from 'effect/http'
 import {Migrator, SqlClient, SqlSchema} from 'effect/sql'
 
+import {migrations} from './migrations.ts'
+
 import type {BookingId} from '#services/bookings/schema.ts'
 import {Booking, BookingsError, Flight, Train, TripNumber} from '#services/bookings/schema.ts'
 import {Bookings} from '#services/bookings/service.ts'
@@ -270,14 +272,7 @@ export class Tracking extends Context.Service<Tracking>()('@deslop/trips/service
 }) {
 	// The table this service owns, made and changed at start in one transaction.
 	static readonly migrations = Layer.effectDiscard(
-		Migrator.make({})({
-			loader: Migrator.fromRecord({
-				'0001_lookups': Effect.gen(function* () {
-					yield* (yield* SqlClient.SqlClient)`CREATE TABLE lookups (month TEXT PRIMARY KEY, calls INTEGER NOT NULL) STRICT`
-				})
-			}),
-			table: 'tracking_migrations'
-		})
+		Migrator.make({})({loader: Migrator.fromRecord(migrations), table: 'tracking_migrations'})
 	)
 
 	static readonly layer = Layer.provide(Layer.effect(this, this.make), this.migrations)

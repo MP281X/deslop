@@ -668,8 +668,7 @@ function RealtimeLayer(input: {
 	)
 }
 
-// oxlint-disable jsx-a11y/no-noninteractive-tabindex, jsx-a11y/no-noninteractive-element-interactions -- The portfolio is one keyboard-scrolling region; it needs focus and paging keys.
-// judge-ignore no-silent-fallback -- PresenceHud renders the Offline case as presence unavailable; the error boundary does not supply a successful visitor scene or substitute local cursor data.
+// judge-ignore no-silent-fallback -- Early input lacks a DOM ref or viewport; the presence boundary reports Offline instead of substituting a successful scene.
 function PortfolioRoute() {
 	const viewport = useAtomValue(viewportAtom)
 	const setOwnCursor = useAtomSet(ownCursorAtom)
@@ -721,30 +720,6 @@ function PortfolioRoute() {
 			aria-label="Portfolio"
 			role="region"
 			className="portfolio-page focus-visible:ring-border mouse:cursor-none relative min-h-0 flex-1 overflow-x-hidden overflow-y-scroll overscroll-contain focus-visible:ring-1 focus-visible:ring-inset print:h-auto print:overflow-visible"
-			onKeyDown={event => {
-				if (event.target !== event.currentTarget) return
-				const page = event.currentTarget.clientHeight * 0.9
-				if (event.key === 'Home' || event.key === 'End') {
-					event.preventDefault()
-					event.currentTarget.scrollTo({
-						top: Boolean.match(event.key === 'Home', {
-							onFalse: () => event.currentTarget.scrollHeight,
-							onTrue: Function.constant(0)
-						})
-					})
-					return
-				}
-				if (event.key === ' ') {
-					event.preventDefault()
-					event.currentTarget.scrollBy({top: Boolean.match(event.shiftKey, {onFalse: () => page, onTrue: () => -page})})
-					return
-				}
-				const amount = {ArrowDown: 80, ArrowUp: -80, PageDown: page, PageUp: -page}[event.key]
-				if (amount !== undefined) {
-					event.preventDefault()
-					event.currentTarget.scrollBy({top: amount})
-				}
-			}}
 			onPointerMove={updatePointer}
 			tabIndex={0}
 		>

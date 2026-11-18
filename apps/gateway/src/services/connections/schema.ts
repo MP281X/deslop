@@ -18,8 +18,8 @@ export type ConnectionGeneration = typeof ConnectionGeneration.Type
 export const ConnectionGeneration = pipe(Schema.NonEmptyString, Schema.brand('ConnectionGeneration'))
 export type OAuthClientId = typeof OAuthClientId.Type
 export const OAuthClientId = pipe(Schema.NonEmptyString, Schema.brand('OAuthClientId'))
-export type OAuthState = typeof OAuthState.Type
-export const OAuthState = pipe(Schema.NonEmptyString, Schema.brand('GatewayOAuthState'))
+export type ConnectionOAuthState = typeof ConnectionOAuthState.Type
+export const ConnectionOAuthState = pipe(Schema.NonEmptyString, Schema.brand('GatewayOAuthState'))
 export type OAuthCode = typeof OAuthCode.Type
 export const OAuthCode = pipe(Schema.NonEmptyString, Schema.brand('GatewayOAuthCode'))
 
@@ -41,8 +41,8 @@ export const AddServer = Schema.Struct({url: ServerUrl})
 export type ServerParams = typeof ServerParams.Type
 export const ServerParams = Schema.Struct({id: ServerId})
 
-export type Metadata = typeof Metadata.Type
-export const Metadata = Schema.Struct({
+export type ServerMetadata = typeof ServerMetadata.Type
+export const ServerMetadata = Schema.Struct({
 	authorization_endpoint: ServerUrl,
 	authorization_response_iss_parameter_supported: Schema.OptionFromOptionalKey(Schema.Boolean),
 	client_id_metadata_document_supported: Schema.OptionFromOptionalKey(Schema.Boolean),
@@ -75,8 +75,8 @@ export const ServerIcon = Schema.Struct({
 	theme: Schema.OptionFromOptionalKey(Schema.Literals(['light', 'dark']))
 })
 
-// Deslop servers take the caller's token and public ones none, so only a third-party server needs a grant; one without a refresh token cannot be renewed once it expires.
 export type ConnectionStatus = typeof ConnectionStatus.Type
+// Deslop servers take the caller's token and public ones none, so only a third-party server needs a grant; one without a refresh token cannot be renewed once it expires.
 export const ConnectionStatus = Schema.Literals(['Connected', 'Not connected', 'Expired'])
 
 export type FailureReason = typeof FailureReason.Type
@@ -186,7 +186,7 @@ export const Callback = Schema.Struct({
 	code: Schema.OptionFromOptionalKey(OAuthCode),
 	error: Schema.OptionFromOptionalKey(Schema.String),
 	iss: Schema.OptionFromOptionalKey(Schema.NonEmptyString),
-	state: OAuthState
+	state: ConnectionOAuthState
 })
 
 export type TokenExchange = typeof TokenExchange.Type

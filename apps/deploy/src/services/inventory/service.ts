@@ -53,7 +53,7 @@ import {
 	ItemId,
 	ProcessId,
 	Serve,
-	Tailnet,
+	TailnetStatus,
 	Timer,
 	Unit,
 	UnitId,
@@ -736,7 +736,7 @@ export class Inventory extends Context.Service<
 									'Tailnet',
 									pipe(
 										command('tailscale', ['status', '--json']),
-										Effect.flatMap(Schema.decodeEffect(Schema.fromJsonString(Tailnet))),
+										Effect.flatMap(Schema.decodeEffect(Schema.fromJsonString(TailnetStatus))),
 										Effect.map(status =>
 											Array.map(Option.toArray(status.Self), peer =>
 												InventoryItem.make({

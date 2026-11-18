@@ -1,12 +1,11 @@
-// fallow-ignore-file unused-type -- Paired schema types are available to runtime consumers.
 import {Array, Number, Option, Result, Schema} from 'effect'
 
 import {Url} from 'effect/http'
 
 import {User} from '#shared/auth.ts'
 
-type HttpUrl = typeof HttpUrl.Type
-const HttpUrl = Schema.String.check(
+export type HttpUrl = typeof HttpUrl.Type
+export const HttpUrl = Schema.String.check(
 	Schema.makeFilter(
 		(value: string) =>
 			Option.exists(

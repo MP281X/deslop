@@ -10,10 +10,10 @@ import {ApnsAnswer, Device} from '@deslop/runtime/shared/apns'
 import {keyOf, SERIES_NAMES} from '#services/chapters/lib/utils.ts'
 import {ChapterIdentity} from '#services/chapters/schema.ts'
 import type {Chapter} from '#services/chapters/schema.ts'
-import {Delivery, PushError} from '#services/push/schema.ts'
+import {ChapterDelivery, ChapterPushError} from '#services/push/schema.ts'
 
 function asPushError(message: string) {
-	return Effect.mapError((cause: SqlError.SqlError | Schema.SchemaError) => PushError.make({cause, message}))
+	return Effect.mapError((cause: SqlError.SqlError | Schema.SchemaError) => ChapterPushError.make({cause, message}))
 }
 
 export class Push extends Context.Service<Push>()('@deslop/opm/services/push/service/Push', {
@@ -38,13 +38,13 @@ export class Push extends Context.Service<Push>()('@deslop/opm/services/push/ser
 		})
 		const listDeliveries = SqlSchema.findAll({
 			Request: ChapterIdentity,
-			Result: Delivery,
+			Result: ChapterDelivery,
 			execute: chapter =>
-				sql`SELECT * FROM ${sql(Delivery.table)} WHERE series = ${chapter.series} AND number = ${chapter.number}`
+				sql`SELECT * FROM ${sql(ChapterDelivery.table)} WHERE series = ${chapter.series} AND number = ${chapter.number}`
 		})
 		const recordDelivery = SqlSchema.void({
-			Request: Delivery.insert,
-			execute: row => sql`INSERT INTO ${sql(Delivery.table)} ${sql.insert(row)} ON CONFLICT DO NOTHING`
+			Request: ChapterDelivery.insert,
+			execute: row => sql`INSERT INTO ${sql(ChapterDelivery.table)} ${sql.insert(row)} ON CONFLICT DO NOTHING`
 		})
 		return {
 			announce: Effect.fn('Push.announce')(function* (chapter: Chapter) {
