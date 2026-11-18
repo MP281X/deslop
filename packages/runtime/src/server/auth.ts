@@ -96,6 +96,10 @@ export class Auth extends Context.Service<
 							pipe(
 								Effect.delay(user(request.headers), '5 minutes'),
 								Effect.retry({while: error => error.error === 'temporarily_unavailable'}),
+								Effect.filterOrFail(
+									current => current.id === found.id && current.admin === found.admin && current.name === found.name,
+									() => AuthError.make({error: 'access_denied', message: 'The account changed; reconnect the socket'})
+								),
 								Effect.forever
 							)
 						)

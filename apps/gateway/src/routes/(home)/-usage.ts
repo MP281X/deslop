@@ -42,8 +42,7 @@ export function aiCost(report: AiUsageReport, source: SpendSource) {
 		report.totals,
 		Array.findFirst(total => total.spendSource === source),
 		Option.match({
-			onNone: () =>
-				`${Boolean.match(source === 'byok' || source === 'openai', {onFalse: Function.constant(''), onTrue: Function.constant('~')})}${usdOf(0)}`,
+			onNone: () => costOf({costUsd: 0, estimatedCalls: 0, spendSource: source, unknownCostCalls: 0}),
 			onSome: costOf
 		})
 	)

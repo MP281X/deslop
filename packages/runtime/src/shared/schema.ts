@@ -54,6 +54,8 @@ export const AppVersion = Schema.String.check(Schema.isPattern(/^0\.1\.\d+$/u))
 
 export const RUNTIME_PATH = '/api/runtime'
 
+export const ACCOUNT_PATH = '/api/account'
+
 export type RuntimeConfig = typeof RuntimeConfig.Type
 export const RuntimeConfig = Schema.Struct({
 	auth: Schema.OptionFromOptionalKey(Origin),

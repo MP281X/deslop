@@ -198,11 +198,14 @@ export class Gateway extends Context.Service<
 						Effect.serviceOption(HttpServerRequest.HttpServerRequest),
 						Effect.fromOption
 					)
-					yield* connections.called(server.id)
 					const args = yield* Schema.decodeUnknownEffect(ToolArguments)(input ?? {})
 					return yield* withClient(server, request.headers, client =>
 						Effect.tap(client.callTool(tool, args), result =>
-							Effect.annotateCurrentSpan({'mcp.is_error': result.isError === true})
+							pipe(
+								connections.called(server.id),
+								Effect.ignore({log: 'Warn', message: 'Accepted MCP call could not be counted'}),
+								Effect.andThen(Effect.annotateCurrentSpan({'mcp.is_error': result.isError === true}))
+							)
 						)
 					)
 				},

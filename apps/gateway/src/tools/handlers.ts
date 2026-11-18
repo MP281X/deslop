@@ -49,7 +49,7 @@ const ToolHandlers = ToolContracts.toLayer(
 			}),
 			remove_ai_key: Effect.fnUntraced(function* (input) {
 				yield* ai.removeKey((yield* CurrentUser).id, input.provider)
-				return {}
+				return {provider: input.provider}
 			}),
 			remove_mcp_server: Effect.fnUntraced(function* (input) {
 				yield* connections.remove(input.server, yield* CurrentUser)

@@ -1,4 +1,4 @@
-import {execPath} from 'node:process'
+import {execArgv, execPath} from 'node:process'
 
 import {NodeCrypto, NodeHttpClient, NodeRuntime, NodeServices} from '@effect/platform-node'
 
@@ -230,13 +230,23 @@ export function runApp<A, E>(app: App<A, E>) {
 							const args = Array.flatten(
 								Record.collect(flags, (key, value) => [`--${settings[key]?.flag ?? key}`, value])
 							)
-							yield* output(yield* installService(name, [execPath, entry, ...args]))
-							yield* installUpdateService(name, [execPath, entry, 'service', 'update'])
+							yield* output(yield* installService(name, [execPath, ...execArgv, entry, ...args]))
+							yield* installUpdateService(name, [execPath, ...execArgv, entry, ...args, 'service', 'update'])
 						})
 					),
 					Command.make('status', {}, () => Effect.flatMap(serviceStatus(name), output)),
 					Command.make('uninstall', {}, () => Effect.flatMap(uninstallService(name), output)),
-					Command.make('update', {}, () => Effect.flatMap(updateRelease(name), output))
+					Command.make(
+						'update',
+						{},
+						Effect.fnUntraced(function* () {
+							const flags = yield* given
+							return yield* Effect.flatMap(
+								updateRelease(name, `http://${flags['HOST'] ?? DEFAULT_HOST}:${flags['PORT'] ?? metadata.config.port}`),
+								output
+							)
+						})
+					)
 				])
 			]),
 			Command.run({version: metadata.version})

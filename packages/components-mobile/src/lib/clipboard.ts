@@ -65,12 +65,21 @@ const clipboardMachine = Machine.make({
 		answer: Effect.fnUntraced(function* (answer: Answer) {
 			return yield* (yield* ClipboardOffer).answer(answer)
 		}),
-		inspect: Effect.gen(function* () {
-			const offer = yield* ClipboardOffer
-			const count = `${clipboardChangeCount()}`
-			if (offer.file.exists && offer.file.textSync() === count) return Option.none<ClipboardCopy>()
-			return Option.map(yield* offer.detect, kind => ({count, kind}))
-		})
+		inspect: Effect.tapError(
+			Effect.gen(function* () {
+				const offer = yield* ClipboardOffer
+				const inspected = yield* Effect.try({
+					catch: cause => ClipboardError.make({cause, message: 'The clipboard could not be checked.'}),
+					try: () => {
+						const count = `${clipboardChangeCount()}`
+						return {answered: offer.file.exists && offer.file.textSync() === count, count}
+					}
+				})
+				if (inspected.answered) return Option.none<ClipboardCopy>()
+				return Option.map(yield* offer.detect, kind => ({count: inspected.count, kind}))
+			}),
+			error => Effect.logWarning('The clipboard could not be checked', error)
+		)
 	},
 	events: clipboardEvents,
 	root: Machine.state({
@@ -121,6 +130,7 @@ const clipboardMachine = Machine.make({
 							onSome: offer => transition.select.offered({data: offer})
 						})
 				},
+				onFailure: {target: 'Idle'},
 				src: 'inspect'
 			},
 			on: {Returned: {reenter: true, target: 'Checking'}}

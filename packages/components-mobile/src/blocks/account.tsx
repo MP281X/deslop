@@ -26,9 +26,12 @@ function Avatar(props: {id: UserId}) {
 	if (!AsyncResult.isSuccess(picture)) {
 		return <Image systemName="person.crop.circle" modifiers={[frame({height: 28, width: 28})]} />
 	}
-	return (
-		<Image uiImage={picture.value} modifiers={[resizable(), frame({height: 28, width: 28}), clipShape('circle')]} />
-	)
+	return Option.match(picture.value, {
+		onNone: () => <Image systemName="person.crop.circle" modifiers={[frame({height: 28, width: 28})]} />,
+		onSome: uri => (
+			<Image uiImage={uri} modifiers={[resizable(), frame({height: 28, width: 28}), clipShape('circle')]} />
+		)
+	})
 }
 
 // Signing out ends the session at Auth for every app; a tailnet device has none, so its menu only names it.

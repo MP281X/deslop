@@ -1,6 +1,5 @@
 import {DateTime, Effect, Function, Option, Schema, SchemaGetter, String, Struct, pipe} from 'effect'
 
-import {SecureOrigin} from '@deslop/runtime/shared/schema'
 import {DateTimeUtcFromFiniteMillis} from '@deslop/runtime/shared/time'
 
 export type WorkerId = typeof WorkerId.Type
@@ -208,9 +207,6 @@ export const Snapshot = Schema.Struct({
 	time: DateTimeUtcFromFiniteMillis,
 	workers: Schema.Array(WorkerId)
 })
-
-export type Worker = typeof Worker.Type
-export const Worker = Schema.Struct({name: WorkerId.check(Schema.isNonEmpty()), url: SecureOrigin})
 
 export type WorkerList = typeof WorkerList.Type
 // `--workers desktop,macbook-pro`: machine names in this tailnet.

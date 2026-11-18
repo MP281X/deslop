@@ -1,13 +1,15 @@
 import {Cause, Context, Effect, Layer, MutableRef, Option, Schema, pipe} from 'effect'
 
-import {FetchHttpClient, HttpClient, HttpClientResponse} from 'effect/http'
+import {FetchHttpClient} from 'effect/http'
 import {OtlpExporter} from 'effect/observability'
 import {Atom} from 'effect/reactivity'
+import {Socket} from 'effect/socket'
 
 import {layerWebTelemetry} from './telemetry.ts'
 
+import {readAccount} from '#client/account.ts'
 import {layerSocketProtocol} from '#client/protocol.ts'
-import {Account, RPC_PATH} from '#shared/schema.ts'
+import {RPC_PATH} from '#shared/schema.ts'
 
 const errorTelemetry = MutableRef.make(Option.none<Context.Context<never>>())
 
@@ -42,16 +44,15 @@ export const pageErrorAtom = Atom.fn(
 )
 
 // The signed-in account the runtime serves; without an issuer it is the developer, who cannot sign out.
-export const accountAtom = Atom.runtime(FetchHttpClient.layer).atom(
-	pipe(
-		HttpClient.get('/api/account'),
-		Effect.flatMap(HttpClientResponse.filterStatusOk),
-		Effect.flatMap(HttpClientResponse.schemaBodyJson(Account))
-	)
-)
+export const accountAtom = Atom.runtime(FetchHttpClient.layer).atom(readAccount(''))
 
 // The page's RPC socket to its own origin.
-export const layerPageProtocol = layerSocketProtocol(Effect.sync(() => `${location.origin}${RPC_PATH}`))
+export const layerPageProtocol = layerSocketProtocol(
+	Layer.provide(
+		Socket.layerWebSocket(Effect.sync(() => `${location.origin}${RPC_PATH}`)),
+		Socket.layerWebSocketConstructorGlobal
+	)
+)
 
 // Traces every atom of the page under the app's name; Scope's page skips it, so it never traces itself.
 export function addPageTelemetry(applicationName: string) {

@@ -4,6 +4,7 @@ import {Boolean, Effect, Function, Schema, Stream, pipe} from 'effect'
 
 import {CheckIcon, CopyIcon} from '@phosphor-icons/react'
 import {AsyncResult, Atom} from 'effect/reactivity'
+import {useId} from 'react'
 import type {ReactNode} from 'react'
 
 import {Button} from '#components/ui/button.tsx'
@@ -16,8 +17,8 @@ export type CopyButtonSize = typeof CopyButtonSize.Type
 const CopyButtonSize = Schema.Literals(['default', 'icon-sm'])
 
 // Each press first clears an earlier check, is true once the clipboard took the value, and false again after the check's moment.
-const copyAtom = Atom.family((value: string) =>
-	Atom.fn(() =>
+const copyAtom = Atom.family((_id: string) =>
+	Atom.fn((value: string) =>
 		pipe(
 			Stream.fromEffect(
 				Effect.as(
@@ -43,7 +44,7 @@ export function CopyButton(props: {
 	size?: CopyButtonSize
 	value: string
 }) {
-	const [result, copy] = useAtom(copyAtom(props.value))
+	const [result, copy] = useAtom(copyAtom(useId()))
 	const copied = AsyncResult.isSuccess(result) && result.value
 	// A retry in flight is no longer the failure it follows.
 	const failed = AsyncResult.isFailure(result) && !result.waiting
@@ -62,7 +63,7 @@ export function CopyButton(props: {
 					onFalse: Function.constUndefined,
 					onTrue: Function.constant('Cannot copy')
 				})}
-				onClick={() => copy()}
+				onClick={() => copy(props.value)}
 			>
 				{props.children}
 				{Boolean.match(copied, {

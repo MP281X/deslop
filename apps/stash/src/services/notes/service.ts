@@ -91,6 +91,15 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 		const organizer = yield* Organizer
 		const images = path.join(directory, 'images')
 		const files = path.join(directory, 'files')
+		function removeFiles(id: NoteId) {
+			return pipe(
+				fs.remove(path.join(images, id), {force: true}),
+				Effect.andThen(fs.remove(path.join(files, id), {force: true})),
+				Effect.mapError(cause =>
+					NotesError.make({cause, message: 'The note was deleted, but its saved files could not be removed.'})
+				)
+			)
+		}
 		const publications = yield* RcMap.make({lookup: (_id: NoteId) => Semaphore.make(1)})
 		const runs = yield* FiberMap.make<NoteId>()
 		const mediaReader = yield* makeMediaReader
@@ -433,7 +442,6 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 		})
 
 		const resolveLink = Effect.fnUntraced(function* (id: NoteId, link: string) {
-			// judge-ignore no-silent-fallback -- Short-link resolution only canonicalizes; log failure and read the shared URL itself.
 			const url = yield* Effect.catch(sources.resolve(link), error =>
 				Effect.as(Effect.logWarning('The short link was not resolved', error), link)
 			)
@@ -455,7 +463,8 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 					})
 				),
 				sql.withTransaction,
-				asNotesError
+				asNotesError,
+				Effect.tap(note => Option.match(note, {onNone: () => removeFiles(id), onSome: () => Effect.void}))
 			)
 		})
 
@@ -704,8 +713,10 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 					sql.withTransaction,
 					asNotesError
 				)
+				const retry = saved.note.status === 'failed'
+				if (retry) yield* change(saved.note.id, NoteChange.cases.retry.make({}))
 				const item = yield* savedItem(saved.note.id)
-				if (saved.fresh) yield* enqueueOrganization(userId, saved.note)
+				if (saved.fresh || retry) yield* enqueueOrganization(userId, yield* savedNote(saved.note.id))
 				return item
 			}, withReactivity),
 			captureFile: Effect.fn('Notes.captureFile')(function* (
@@ -820,13 +831,7 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 				MutableHashMap.remove(pending, id)
 				yield* FiberMap.remove(runs, id)
 				yield* change(id, NoteChange.cases.remove.make({}))
-				yield* pipe(
-					fs.remove(path.join(images, id), {force: true}),
-					Effect.andThen(fs.remove(path.join(files, id), {force: true})),
-					Effect.mapError(cause =>
-						NotesError.make({cause, message: 'The note was deleted, but its saved files could not be removed.'})
-					)
-				)
+				yield* removeFiles(id)
 			}, withReactivity),
 			// The ids matching a query, read again after each commit; `#word` names a tag.
 			search: (query: string) =>

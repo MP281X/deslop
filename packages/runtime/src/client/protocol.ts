@@ -1,20 +1,16 @@
 import {Layer, pipe} from 'effect'
-import type {Effect} from 'effect'
 
 import {RpcClient, RpcSerialization} from 'effect/rpc'
-import {Socket} from 'effect/socket'
+import type {Socket} from 'effect/socket'
 
 import {layerRpcStreamClient} from '#shared/rpc.ts'
 
-// The one RPC transport of the web and iOS clients: binary frames over a WebSocket that reopens after a transient drop; iOS brings its own constructor to send the session cookie.
-export function layerSocketProtocol(
-	url: string | Effect.Effect<string>,
-	constructor: Layer.Layer<Socket.WebSocketConstructor> = Socket.layerWebSocketConstructorGlobal
-) {
+// The one RPC transport of the web and iOS clients: binary frames over a socket that reopens after a transient drop; iOS supplies its guarded session handshake.
+export function layerSocketProtocol(socket: Layer.Layer<Socket.Socket>) {
 	return pipe(
 		// The default ping timeout equals the 5-second ping interval, so any pong delay closes the socket.
 		RpcClient.layerProtocolSocket({pingTimeout: '15 seconds', retryTransientErrors: true}),
-		Layer.provide(Layer.provide(Socket.layerWebSocket(url), constructor)),
+		Layer.provide(socket),
 		Layer.provideMerge(RpcSerialization.layerSchemaBinary()),
 		Layer.provideMerge(layerRpcStreamClient)
 	)
