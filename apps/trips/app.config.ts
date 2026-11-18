@@ -7,7 +7,12 @@ export default {
 	...app.config,
 	ios: {
 		...app.config.ios,
+		entitlements: {
+			// A Keychain item saved without a group lands in the app's first group, the one the share extension reads.
+			'keychain-access-groups': [`$(AppIdentifierPrefix)${app.appGroup}`]
+		},
 		infoPlist: {
+			DeslopKeychainGroup: `$(AppIdentifierPrefix)${app.appGroup}`,
 			DeslopServer: `https://trips.${app.domain}`,
 			DeslopTheme: {
 				background: palette.colors.background,

@@ -1,4 +1,18 @@
-import {Array, Boolean, Context, Effect, Equal, Layer, Match, Option, Record, Schema, Stream, pipe} from 'effect'
+import {
+	Array,
+	Boolean,
+	Context,
+	DateTime,
+	Effect,
+	Equal,
+	Layer,
+	Match,
+	Option,
+	Record,
+	Schema,
+	Stream,
+	pipe
+} from 'effect'
 
 import {SecureRandom} from 'effect/crypto'
 import {Reactivity} from 'effect/reactivity'
@@ -25,10 +39,16 @@ declare module 'effect/reactivity/Reactivity' {
 }
 
 function at(time: LocalTime, timeZone: string) {
-	return Option.match(instantOf(time, timeZone), {
+	return Option.match(instantOf(time, Option.some(timeZone)), {
 		onNone: () => BookingsError.make({message: `The time ${time} could not be read.`}),
 		onSome: Effect.succeed
 	})
+}
+
+// A ticket read wrong can end before it starts; nothing is saved from it.
+function inOrder(start: DateTime.Utc, end: DateTime.Utc, what: string) {
+	if (DateTime.isLessThan(start, end)) return Effect.void
+	return BookingsError.make({message: `${what} ends before it starts; check the ticket's dates and times.`})
 }
 
 function asStorageBookingsError(cause: SqlError.SqlError | Schema.SchemaError) {
@@ -119,6 +139,8 @@ export class Bookings extends Context.Service<Bookings>()('@deslop/trips/service
 
 		const watch = pipe(
 			sql.reactive(['bookings'], listAll),
+			// Only the newest list matters to a reader that falls behind.
+			Stream.buffer({capacity: 1, strategy: 'sliding'}),
 			Stream.mapError(asStorageBookingsError),
 			Stream.withSpan('Bookings.watch', {attributes: {'rpc.stream': true}})
 		)
@@ -129,14 +151,17 @@ export class Bookings extends Context.Service<Bookings>()('@deslop/trips/service
 			if (item.kind === 'flight') {
 				const from = yield* places.airport(item.from)
 				const to = yield* places.airport(item.to)
+				const departs = yield* at(item.departure, from.timeZone)
+				const arrives = yield* at(item.arrival, to.timeZone)
+				yield* inOrder(departs, arrives, `${item.airlineCode} ${item.flightNumber}`)
 				return Flight.make({
 					...base,
 					airline: item.airlineName,
 					airlineCode: item.airlineCode,
-					arrives: yield* at(item.arrival, to.timeZone),
+					arrives,
 					boardingAt: yield* Effect.transposeOption(Option.map(item.boarding, boarding => at(boarding, from.timeZone))),
 					boardingGroup: item.boardingGroup,
-					departs: yield* at(item.departure, from.timeZone),
+					departs,
 					from,
 					live: Option.none(),
 					number: item.flightNumber,
@@ -154,10 +179,13 @@ export class Bookings extends Context.Service<Bookings>()('@deslop/trips/service
 					seat: item.seat
 				})
 			}
+			const checkIn = yield* at(item.checkIn, item.timeZone)
+			const checkOut = yield* at(item.checkOut, item.timeZone)
+			yield* inOrder(checkIn, checkOut, item.name)
 			return Stay.make({
 				...base,
-				checkIn: yield* at(item.checkIn, item.timeZone),
-				checkOut: yield* at(item.checkOut, item.timeZone),
+				checkIn,
+				checkOut,
 				name: item.name,
 				place: {
 					address: Option.some(item.address),

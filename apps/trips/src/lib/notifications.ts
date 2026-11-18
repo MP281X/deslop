@@ -1,4 +1,4 @@
-import {Effect, Queue, Redacted, Schema, Stream, pipe} from 'effect'
+import {Effect, Option, Redacted, Schema} from 'effect'
 
 import {applicationId} from 'expo-application'
 import {
@@ -9,7 +9,7 @@ import {
 } from 'expo-notifications'
 import {addPushToStartTokenListener} from 'expo-widgets'
 
-import {pushTokens} from '@deslop/runtime/mobile/push-token'
+import {registerPushTokens} from '@deslop/runtime/mobile/push-token'
 import {ApnsToken} from '@deslop/runtime/shared/apns'
 
 import {RpcClient, session} from '#lib/session.ts'
@@ -25,54 +25,45 @@ setNotificationHandler({
 		Promise.resolve({shouldPlaySound: true, shouldSetBadge: false, shouldShowBanner: true, shouldShowList: true})
 })
 
-// Asked on the first launch: gate changes and delays reach the iPhone through these, and the server starts the island with the push-to-start token.
+// Asked on the first launch: gate changes and delays reach the iPhone through these, and the server starts the island with the push-to-start token. The two registrations run apart, so an unanswered permission prompt never holds back the island's token.
 export const pushAtom = RpcClient.runtime.atom(get =>
 	Effect.ignore(
 		Effect.gen(function* () {
-			if (!session.available(get)) return
+			if (Option.isNone(session.admitted(get))) return
 			const target = yield* apns
 			const client = yield* RpcClient
-			if (
-				(yield* Effect.tryPromise({
+			const alerts = Effect.gen(function* () {
+				const permission = yield* Effect.tryPromise({
 					catch: cause => BookingsError.make({cause, message: 'The notification permission could not be asked.'}),
 					try: () => requestPermissionsAsync()
-				})).granted
-			) {
+				})
+				if (!permission.granted) return
 				// Subscribe before reading the first token, so a rotation while the app stays open reaches the same registry.
-				yield* pipe(
-					pushTokens(
-						addPushTokenListener,
-						Effect.tryPromise({
-							catch: cause => BookingsError.make({cause, message: 'The push token could not be read.'}),
-							try: () => getDevicePushTokenAsync()
-						})
-					),
-					Stream.runForEach(token =>
-						Effect.ignore(
-							client('push.register', {...target, kind: 'alert', token: Redacted.make(ApnsToken.make(token))}),
-							{log: 'Warn', message: 'The notification token was not registered'}
-						)
-					),
-					Effect.forkScoped
+				yield* registerPushTokens(
+					addPushTokenListener,
+					Effect.tryPromise({
+						catch: cause => BookingsError.make({cause, message: 'The push token could not be read.'}),
+						try: () => getDevicePushTokenAsync()
+					}),
+					token => client('push.register', {...target, kind: 'alert', token: Redacted.make(ApnsToken.make(token))})
 				)
-			}
-			// iOS hands out the push-to-start token and its rotations whenever it likes, for as long as the app runs.
-			yield* Stream.runForEach(
-				Stream.callback<string>(queue =>
-					Effect.acquireRelease(
-						Effect.sync(() =>
-							addPushToStartTokenListener(event => {
-								Queue.offerUnsafe(queue, event.activityPushToStartToken)
-							})
-						),
-						subscription => Effect.sync(() => subscription.remove())
-					)
-				),
-				token =>
-					Effect.ignore(
-						client('push.register', {...target, kind: 'start', token: Redacted.make(ApnsToken.make(token))}),
-						{log: 'Warn', message: 'The Live Activity token was not registered'}
-					)
+			})
+			// iOS hands out the push-to-start token and its rotations to the listener whenever it likes, for as long as the app runs; there is nothing to read first.
+			const nothingToRead: Effect.Effect<{data: string}> = Effect.never
+			const starts = registerPushTokens(
+				listener =>
+					addPushToStartTokenListener(event => {
+						listener({data: event.activityPushToStartToken})
+					}),
+				nothingToRead,
+				token => client('push.register', {...target, kind: 'start', token: Redacted.make(ApnsToken.make(token))})
+			)
+			yield* Effect.all(
+				[
+					Effect.ignore(alerts, {log: 'Warn', message: 'Notifications are not set up on this iPhone'}),
+					Effect.ignore(starts, {log: 'Warn', message: 'Live Activities are not set up on this iPhone'})
+				],
+				{concurrency: 'unbounded', discard: true}
 			)
 		}),
 		{log: 'Warn', message: 'Notifications are not set up on this iPhone'}
