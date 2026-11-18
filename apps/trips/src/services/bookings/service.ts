@@ -84,13 +84,29 @@ export class Bookings extends Context.Service<Bookings>()('@deslop/trips/service
 			Match.exhaustive
 		)
 
+		// A booking lives in one of three tables; missing from the others is expected, not a failed lookup.
+		const findFlight = SqlSchema.findOneOption({
+			Request: BookingId,
+			Result: Flight,
+			execute: id => sql`SELECT * FROM ${sql(Flight.table)} WHERE id = ${id}`
+		})
+		const findTrain = SqlSchema.findOneOption({
+			Request: BookingId,
+			Result: Train,
+			execute: id => sql`SELECT * FROM ${sql(Train.table)} WHERE id = ${id}`
+		})
+		const findStay = SqlSchema.findOneOption({
+			Request: BookingId,
+			Result: Stay,
+			execute: id => sql`SELECT * FROM ${sql(Stay.table)} WHERE id = ${id}`
+		})
 		const find = Effect.fnUntraced(function* (id: BookingId) {
-			return yield* pipe(
-				flights.findById(id),
-				Effect.catchTag('NoSuchElementError', () => trains.findById(id)),
-				Effect.catchTag('NoSuchElementError', () => stays.findById(id)),
-				Effect.catchNoSuchElement
-			)
+			const flight: Option.Option<Booking> = yield* findFlight(id)
+			if (Option.isSome(flight)) return flight
+			const train: Option.Option<Booking> = yield* findTrain(id)
+			if (Option.isSome(train)) return train
+			const stay: Option.Option<Booking> = yield* findStay(id)
+			return stay
 		})
 
 		const update = pipe(
