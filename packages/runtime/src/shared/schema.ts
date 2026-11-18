@@ -5,7 +5,7 @@ import {Url} from 'effect/http'
 import {User} from '#shared/auth.ts'
 
 export type HttpUrl = typeof HttpUrl.Type
-const HttpUrl = Schema.String.check(
+export const HttpUrl = Schema.String.check(
 	Schema.makeFilter(
 		(value: string) =>
 			Option.exists(

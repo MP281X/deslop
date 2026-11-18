@@ -21,7 +21,7 @@ export const OAuthClientId = pipe(Schema.NonEmptyString, Schema.brand('OAuthClie
 export type ConnectionOAuthState = typeof ConnectionOAuthState.Type
 export const ConnectionOAuthState = pipe(Schema.NonEmptyString, Schema.brand('GatewayOAuthState'))
 export type OAuthCode = typeof OAuthCode.Type
-const OAuthCode = pipe(Schema.NonEmptyString, Schema.brand('GatewayOAuthCode'))
+export const OAuthCode = pipe(Schema.NonEmptyString, Schema.brand('GatewayOAuthCode'))
 
 export type ServerUrl = typeof ServerUrl.Type
 export const ServerUrl = Schema.NonEmptyString.check(
@@ -70,7 +70,7 @@ export type OAuthClient = typeof OAuthClient.Type
 export const OAuthClient = Schema.TaggedUnion({Document: {}, Registered: {clientId: OAuthClientId}})
 
 export type ServerIcon = typeof ServerIcon.Type
-const ServerIcon = Schema.Struct({
+export const ServerIcon = Schema.Struct({
 	src: Schema.String,
 	theme: Schema.OptionFromOptionalKey(Schema.Literals(['light', 'dark']))
 })
@@ -143,18 +143,18 @@ export type ConnectionState = typeof ConnectionState.Type
 export const ConnectionState = Schema.Struct({...Connection.fields, status: ConnectionStatus})
 
 export type SessionKind = typeof SessionKind.Type
-const SessionKind = Schema.Literals(['upstream', 'anonymous'])
+export const SessionKind = Schema.Literals(['upstream', 'anonymous'])
 
 export type ServerReference = typeof ServerReference.Type
-const ServerReference = Schema.Struct(Struct.pick(ConnectionState.fields, ['id', 'generation', 'name', 'mode']))
+export const ServerReference = Schema.Struct(Struct.pick(ConnectionState.fields, ['id', 'generation', 'name', 'mode']))
 export type ServerIdentity = typeof ServerIdentity.Type
-const ServerIdentity = Schema.Struct(Struct.pick(ConnectionState.fields, ['id', 'generation']))
+export const ServerIdentity = Schema.Struct(Struct.pick(ConnectionState.fields, ['id', 'generation']))
 export type ConnectionAddress = typeof ConnectionAddress.Type
-const ConnectionAddress = Schema.Struct(Struct.pick(Connection.fields, ['generation', 'id', 'url']))
+export const ConnectionAddress = Schema.Struct(Struct.pick(Connection.fields, ['generation', 'id', 'url']))
 export type ConnectionIssuer = typeof ConnectionIssuer.Type
-const ConnectionIssuer = Schema.Struct(Struct.pick(ConnectionGrant.fields, ['clientId', 'tokenEndpoint']))
+export const ConnectionIssuer = Schema.Struct(Struct.pick(ConnectionGrant.fields, ['clientId', 'tokenEndpoint']))
 export type ConnectionTarget = typeof ConnectionTarget.Type
-const ConnectionTarget = Schema.Struct(Struct.pick(Connection.fields, ['generation', 'id', 'name', 'url']))
+export const ConnectionTarget = Schema.Struct(Struct.pick(Connection.fields, ['generation', 'id', 'name', 'url']))
 
 // A server as the page shows it.
 export type ConnectionItem = typeof ConnectionItem.Type
@@ -164,7 +164,7 @@ export const ConnectionItem = Schema.Struct({
 })
 
 export type McpUsageBucket = typeof McpUsageBucket.Type
-const McpUsageBucket = Schema.Struct({at: DateTimeUtcFromFiniteMillis, calls: Schema.Int})
+export const McpUsageBucket = Schema.Struct({at: DateTimeUtcFromFiniteMillis, calls: Schema.Int})
 export type McpUsageServer = typeof McpUsageServer.Type
 export const McpUsageServer = Schema.Struct({id: ServerId, series: Schema.Array(McpUsageBucket)})
 export type McpUsageReport = typeof McpUsageReport.Type
@@ -190,7 +190,7 @@ export const Callback = Schema.Struct({
 })
 
 export type TokenExchange = typeof TokenExchange.Type
-const TokenExchange = Schema.Union([
+export const TokenExchange = Schema.Union([
 	Schema.Struct({
 		code: OAuthCode,
 		code_verifier: Schema.String,

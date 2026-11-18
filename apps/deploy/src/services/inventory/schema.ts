@@ -13,7 +13,7 @@ export const UnitId = Schema.brand('DeployUnitId')(Schema.String)
 export type ProcessId = typeof ProcessId.Type
 export const ProcessId = Schema.brand('DeployProcessId')(Schema.Int)
 export type ContainerId = typeof ContainerId.Type
-const ContainerId = Schema.brand('DeployContainerId')(Schema.String)
+export const ContainerId = Schema.brand('DeployContainerId')(Schema.String)
 export type JobName = typeof JobName.Type
 export const JobName = Schema.brand('DeployJobName')(Schema.String)
 export type ExposureName = typeof ExposureName.Type
@@ -52,7 +52,7 @@ export const TextFromEmpty = pipe(
 )
 
 export type OptionalTextFromEmpty = typeof OptionalTextFromEmpty.Type
-const OptionalTextFromEmpty = pipe(
+export const OptionalTextFromEmpty = pipe(
 	Schema.OptionFromOptionalKey(Schema.String),
 	Schema.decodeTo(Schema.Option(Schema.String), {
 		decode: SchemaGetter.transform(value => Option.filter(value, String.isNonEmpty)),
@@ -66,7 +66,7 @@ export class DeployError extends Schema.TaggedError<DeployError>()('DeployError'
 }) {}
 
 export type ProcessLabel = typeof ProcessLabel.Type
-const ProcessLabel = Schema.Struct({
+export const ProcessLabel = Schema.Struct({
 	// What the process is, readable: its program or app name and the few arguments that say which one.
 	detail: Schema.String,
 	name: Schema.String
@@ -85,7 +85,7 @@ export const Process = Schema.Struct({
 })
 
 export type InventoryFields = typeof InventoryFields.Type
-const InventoryFields = Schema.Struct({
+export const InventoryFields = Schema.Struct({
 	active: pipe(Schema.Boolean, Schema.withConstructorDefault(Effect.succeed(false))),
 	address: pipe(Schema.OptionFromOptionalKey(Schema.String), Schema.withConstructorDefault(Effect.succeedNone)),
 	bindings: pipe(
@@ -151,15 +151,15 @@ const InventoryFields = Schema.Struct({
 })
 
 export type NonPortItem = typeof NonPortItem.Type
-const NonPortItem = Schema.Union([
+export const NonPortItem = Schema.Union([
 	InventoryFields.mapFields(fields => ({...fields, kind: Schema.Literal('service'), name: UnitId})),
 	InventoryFields.mapFields(fields => ({...fields, kind: Schema.Literal('exposure'), name: ExposureName})),
 	InventoryFields.mapFields(fields => ({...fields, kind: Schema.Literals(['container', 'peer'])}))
 ])
 
-type PortItem = typeof PortItem.Type
+export type PortItem = typeof PortItem.Type
 // Socket collectors always emit the process text, including an empty string when unavailable.
-const PortItem = InventoryFields.mapFields(fields => ({
+export const PortItem = InventoryFields.mapFields(fields => ({
 	...fields,
 	kind: Schema.Literal('port'),
 	process: pipe(
@@ -176,13 +176,13 @@ export type InventoryItem = typeof InventoryItem.Type
 export const InventoryItem = Schema.Union([...NonPortItem.members, PortItem])
 
 export type SocketBinding = typeof SocketBinding.Type
-const SocketBinding = Schema.Struct({
+export const SocketBinding = Schema.Struct({
 	address: Schema.String,
 	port: Schema.Finite,
 	protocol: Schema.Literals(['tcp', 'udp'])
 })
 export type SocketAddress = typeof SocketAddress.Type
-const SocketAddress = Schema.Struct(Struct.pick(InventoryFields.fields, ['address', 'port', 'protocol']))
+export const SocketAddress = Schema.Struct(Struct.pick(InventoryFields.fields, ['address', 'port', 'protocol']))
 
 export type Snapshot = typeof Snapshot.Type
 export const Snapshot = Schema.Struct({
@@ -215,7 +215,7 @@ export const WorkerList = Schema.String.check(
 )
 
 export type Peer = typeof Peer.Type
-const Peer = Schema.Struct({
+export const Peer = Schema.Struct({
 	DNSName: Schema.String,
 	HostName: Schema.String,
 	OS: Schema.String,
@@ -275,7 +275,7 @@ export type ProcessSummary = {
 	mib: number
 	name: string
 }
-const ProcessSummary = Schema.Struct({
+export const ProcessSummary = Schema.Struct({
 	children: Schema.OptionFromOptionalKey(
 		Schema.Array(Schema.suspend((): Schema.Codec<ProcessSummary, ProcessSummaryEncoded> => ProcessSummary))
 	),
@@ -298,7 +298,7 @@ export const ManagedApp = Schema.Struct({
 })
 
 export type Job = typeof Job.Type
-const Job = Schema.Struct({
+export const Job = Schema.Struct({
 	failure: Schema.OptionFromOptionalKey(Schema.String),
 	id: ItemId,
 	name: JobName,
@@ -308,7 +308,7 @@ const Job = Schema.Struct({
 })
 
 export type HttpsExposure = typeof HttpsExposure.Type
-const HttpsExposure = Schema.Struct({
+export const HttpsExposure = Schema.Struct({
 	access: Schema.Literals(['tailnet', 'public']),
 	id: ItemId,
 	name: ExposureName,
@@ -326,7 +326,7 @@ export const WorkerInventory = Schema.Struct({
 })
 
 export type WorkerInventories = typeof WorkerInventories.Type
-const WorkerInventories = Schema.Array(WorkerInventory)
+export const WorkerInventories = Schema.Array(WorkerInventory)
 
 export type Timer = typeof Timer.Type
 // `next` is in epoch microseconds.

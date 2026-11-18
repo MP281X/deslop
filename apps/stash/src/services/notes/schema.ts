@@ -28,14 +28,17 @@ export const TagName = pipe(Schema.NonEmptyString.check(Schema.isMaxLength(40)),
 export type PostId = typeof PostId.Type
 export const PostId = pipe(Schema.String, Schema.brand('PostId'))
 export type PostAuthorId = typeof PostAuthorId.Type
-const PostAuthorId = pipe(Schema.String, Schema.brand('PostAuthorId'))
+export const PostAuthorId = pipe(Schema.String, Schema.brand('PostAuthorId'))
 
 export type TagDefinition = typeof TagDefinition.Type
 // A tag and what belongs under it, as the AI defines it.
-const TagDefinition = Schema.Struct({definition: Schema.NonEmptyString.check(Schema.isMaxLength(240)), tag: TagName})
+export const TagDefinition = Schema.Struct({
+	definition: Schema.NonEmptyString.check(Schema.isMaxLength(240)),
+	tag: TagName
+})
 
 export type Source = typeof Source.Type
-const Source = Schema.Literals(['TikTok', 'X', 'Website', 'Note'])
+export const Source = Schema.Literals(['TikTok', 'X', 'Website', 'Note'])
 
 export type Kind = typeof Kind.Type
 export const Kind = Schema.Literals(['tiktok', 'x', 'youtube', 'web', 'note', 'file'])
@@ -47,10 +50,10 @@ export type ImageType = typeof ImageType.Type
 export const ImageType = Schema.Literals(['image/jpeg', 'image/png', 'image/webp', 'image/gif'])
 
 export type Image = typeof Image.Type
-const Image = Schema.Struct({bytes: Schema.Uint8Array, type: ImageType})
+export const Image = Schema.Struct({bytes: Schema.Uint8Array, type: ImageType})
 
 export type Picture = typeof Picture.Type
-const Picture = Schema.Struct({...Image.fields, label: Schema.String})
+export const Picture = Schema.Struct({...Image.fields, label: Schema.String})
 
 export type FileType = typeof FileType.Type
 export const FileType = Schema.Literals(['image/jpeg', 'video/mp4', 'video/quicktime'])
@@ -166,7 +169,7 @@ export const NoteChange = Schema.TaggedUnion({
 })
 
 export type FxArticle = typeof FxArticle.Type
-const FxArticle = Schema.Struct({
+export const FxArticle = Schema.Struct({
 	content: Schema.Struct({
 		blocks: Schema.Array(
 			Schema.Struct({
@@ -197,7 +200,7 @@ const FxArticle = Schema.Struct({
 })
 
 export type FxPost = typeof FxPost.Type
-const FxPost = Schema.Struct({
+export const FxPost = Schema.Struct({
 	article: Schema.OptionFromOptionalKey(FxArticle),
 	author: Schema.Struct({id: PostAuthorId, name: Schema.String, screen_name: Schema.String}),
 	created_timestamp: DateTimeUtcFromFiniteSeconds,

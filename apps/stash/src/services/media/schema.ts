@@ -8,7 +8,7 @@ export class MediaError extends Schema.TaggedError<MediaError>()('MediaError', {
 }) {}
 
 export type Comment = typeof Comment.Type
-const Comment = Schema.Struct({
+export const Comment = Schema.Struct({
 	author: Schema.OptionFromOptionalNullOr(Schema.String),
 	author_is_uploader: Schema.OptionFromOptionalNullOr(Schema.Boolean),
 	is_pinned: Schema.OptionFromOptionalNullOr(Schema.Boolean),
@@ -36,7 +36,7 @@ export const MediaMetadata = Schema.Struct({
 })
 
 export type Still = typeof Still.Type
-const Still = Schema.Struct({bytes: Schema.Uint8Array, seconds: DurationFromSeconds})
+export const Still = Schema.Struct({bytes: Schema.Uint8Array, seconds: DurationFromSeconds})
 
 export type Probe = typeof Probe.Type
 export const Probe = Schema.Struct({

@@ -58,7 +58,7 @@ export const Nano = pipe(
 )
 
 export type SpanIdFromEmpty = typeof SpanIdFromEmpty.Type
-const SpanIdFromEmpty = pipe(
+export const SpanIdFromEmpty = pipe(
 	Schema.OptionFromOptionalKey(Schema.Union([SpanId, Schema.Literal('')])),
 	Schema.decodeTo(Schema.Option(Schema.toType(SpanId)), {
 		decode: SchemaGetter.transform(value => Option.filter(value, (id): id is SpanId => id !== '')),
@@ -67,7 +67,7 @@ const SpanIdFromEmpty = pipe(
 )
 
 export type TraceIdFromEmpty = typeof TraceIdFromEmpty.Type
-const TraceIdFromEmpty = pipe(
+export const TraceIdFromEmpty = pipe(
 	Schema.OptionFromOptionalKey(Schema.Union([TraceId, Schema.Literal('')])),
 	Schema.decodeTo(Schema.Option(Schema.toType(TraceId)), {
 		decode: SchemaGetter.transform(value => Option.filter(value, (id): id is TraceId => id !== '')),
@@ -76,7 +76,7 @@ const TraceIdFromEmpty = pipe(
 )
 
 export type Attribute = typeof Attribute.Type
-const Attribute = Schema.Struct({key: Schema.String, value: Schema.JsonObject})
+export const Attribute = Schema.Struct({key: Schema.String, value: Schema.JsonObject})
 
 export type Resource = typeof Resource.Type
 export const Resource = Schema.Struct({attributes: Schema.OptionFromOptionalKey(Schema.Array(Attribute))}).annotate({
@@ -84,7 +84,7 @@ export const Resource = Schema.Struct({attributes: Schema.OptionFromOptionalKey(
 })
 
 export type SpanDetails = typeof SpanDetails.Type
-const SpanDetails = Schema.Struct({
+export const SpanDetails = Schema.Struct({
 	attributes: Schema.OptionFromOptionalKey(Schema.Array(Attribute)),
 	events: Schema.OptionFromOptionalKey(
 		Schema.Array(
@@ -108,7 +108,7 @@ const SpanDetails = Schema.Struct({
 
 // A span as OTLP exports it; Scope reads it once on arrival into a `Span` row.
 export type ExportedSpan = typeof ExportedSpan.Type
-const ExportedSpan = Schema.Struct({
+export const ExportedSpan = Schema.Struct({
 	...SpanDetails.fields,
 	endTimeUnixNano: Schema.OptionFromOptionalKey(Nano),
 	kind: Schema.OptionFromOptionalKey(Schema.Json),
@@ -193,7 +193,7 @@ export const Side = Schema.Literals(['web', 'mobile', 'server', 'ci'])
 
 // An attribute's one value: a string, number or boolean as OTLP wrapped it, unwrapped; anything else stays as sent.
 export type Attributes = typeof Attributes.Type
-const Attributes = Schema.Record(Schema.String, Schema.Json)
+export const Attributes = Schema.Record(Schema.String, Schema.Json)
 
 // The resource fields every span and log carries: who sent it, from which run of which release.
 const SENDER = {
@@ -271,7 +271,7 @@ export const Trace = Schema.Struct({
 
 export type SettledTrace = typeof SettledTrace.Type
 // A trace as the operations list counts it: its root's name and sender, and whether it broke.
-const SettledTrace = Schema.Struct({
+export const SettledTrace = Schema.Struct({
 	...Struct.pick(Trace.fields, ['duration', 'id', 'name', 'runtime', 'service', 'start']),
 	failed: Schema.BooleanFromBit
 })
@@ -319,7 +319,7 @@ export const LatencyQuery = Schema.Struct({
 })
 
 export type Rejection = typeof Rejection.Type
-const Rejection = Schema.Struct({
+export const Rejection = Schema.Struct({
 	count: Schema.Natural,
 	credential: Schema.Literals(['authorization', 'cookie', 'none']),
 	lastAt: DateTimeUtcFromFiniteMillis,
@@ -328,7 +328,7 @@ const Rejection = Schema.Struct({
 })
 
 export type SpanFacts = typeof SpanFacts.Type
-const SpanFacts = Schema.Struct(
+export const SpanFacts = Schema.Struct(
 	Struct.pick(Span.fields, [
 		'attributes',
 		'duration',
@@ -345,11 +345,11 @@ const SpanFacts = Schema.Struct(
 	])
 )
 export type SpanFailure = typeof SpanFailure.Type
-const SpanFailure = Schema.Struct(Struct.pick(Span.fields, ['error', 'exception']))
+export const SpanFailure = Schema.Struct(Struct.pick(Span.fields, ['error', 'exception']))
 export type LogFacts = typeof LogFacts.Type
-const LogFacts = Schema.Struct(Struct.pick(Log.fields, ['message', 'severity', 'time']))
+export const LogFacts = Schema.Struct(Struct.pick(Log.fields, ['message', 'severity', 'time']))
 export type RejectedExport = typeof RejectedExport.Type
-const RejectedExport = Schema.Struct(Struct.pick(Rejection.fields, ['credential', 'route', 'status']))
+export const RejectedExport = Schema.Struct(Struct.pick(Rejection.fields, ['credential', 'route', 'status']))
 
 export type OperationTrace = typeof OperationTrace.Type
 export const OperationTrace = Schema.Struct({
@@ -394,7 +394,7 @@ export const Overview = Schema.Struct({
 
 // A span as the trace view draws it: its row, where it sits in the tree and the timeline, and its logs. A linked trace's root hangs under the span it links to.
 export type TraceSpan = typeof TraceSpan.Type
-const TraceSpan = Schema.Struct({
+export const TraceSpan = Schema.Struct({
 	...Span.fields,
 	depth: Schema.Natural,
 	durationMs: DurationFromFiniteMillis,
@@ -414,16 +414,16 @@ export const TraceTree = Schema.Struct({
 })
 
 export type ATTRIBUTE_VALUE = typeof ATTRIBUTE_VALUE.Type
-const ATTRIBUTE_VALUE = Schema.Union([Schema.String, Schema.Finite, Schema.Boolean])
+export const ATTRIBUTE_VALUE = Schema.Union([Schema.String, Schema.Finite, Schema.Boolean])
 export type ToolAttributes = typeof ToolAttributes.Type
 // The tools' attributes: primitive values only, without what only repeats the row.
 export const ToolAttributes = Schema.Record(Schema.String, ATTRIBUTE_VALUE)
 
 export type LogLevel = typeof LogLevel.Type
-const LogLevel = Schema.Literals(['debug', 'error', 'info', 'trace', 'warn'])
+export const LogLevel = Schema.Literals(['debug', 'error', 'info', 'trace', 'warn'])
 
 export type CompactLog = typeof CompactLog.Type
-const CompactLog = Schema.Struct({
+export const CompactLog = Schema.Struct({
 	at: Schema.DateTimeUtcFromString.annotate({description: 'ISO-8601 log timestamp.'}),
 	level: LogLevel,
 	message: Schema.String
@@ -431,11 +431,12 @@ const CompactLog = Schema.Struct({
 
 export type AppFilter = typeof AppFilter.Type
 // The tools' inputs: every field optional except where a tool cannot answer without it.
-const AppFilter = Schema.annotateEncoded<typeof AppName>({
+export const AppFilter = Schema.annotateEncoded<typeof AppName>({
 	description: 'App name as list_operations shows it, such as "trips"; omit for every app.'
 })(AppName)
 
-const Since = pipe(
+export type Since = typeof Since.Type
+export const Since = pipe(
 	TimeFrame,
 	Schema.withDecodingDefaultTypeKey(Effect.succeed('1h' as const)),
 	Schema.annotateEncoded({description: `Time window: ${Array.join(TimeFrame.literals, ', ')}; default '1h'.`})
@@ -445,7 +446,7 @@ export type ListOperationsParams = typeof ListOperationsParams.Type
 export const ListOperationsParams = Schema.Struct({app: Schema.OptionFromOptionalKey(AppFilter), since: Since})
 
 export type TraceCursor = typeof TraceCursor.Type
-const TraceCursor = Schema.Struct(Struct.pick(Trace.fields, ['duration', 'id', 'start']))
+export const TraceCursor = Schema.Struct(Struct.pick(Trace.fields, ['duration', 'id', 'start']))
 
 // One page of search_traces as the database answers it.
 export type TraceQuery = typeof TraceQuery.Type
@@ -511,7 +512,7 @@ export const ReadTraceParams = Schema.Struct({
 })
 
 export type LogCursor = typeof LogCursor.Type
-const LogCursor = Schema.Struct(Struct.pick(Log.fields, ['id', 'time']))
+export const LogCursor = Schema.Struct(Struct.pick(Log.fields, ['id', 'time']))
 
 // One page of search_logs as the database answers it.
 export type LogQuery = typeof LogQuery.Type
@@ -561,7 +562,7 @@ export const MeasureLatencyParams = Schema.Struct({
 })
 
 export type OperationRow = typeof OperationRow.Type
-const OperationRow = Schema.Struct({
+export const OperationRow = Schema.Struct({
 	failure: Schema.OptionFromOptionalKey(
 		Schema.Struct({error: Schema.OptionFromOptionalKey(Schema.String), span: Schema.String, trace: TraceId})
 	),
@@ -580,7 +581,7 @@ export const OperationsAnswer = Schema.Struct({
 })
 
 export type TraceRow = typeof TraceRow.Type
-const TraceRow = Schema.Struct({
+export const TraceRow = Schema.Struct({
 	app: AppName,
 	at: Schema.DateTimeUtcFromString.annotate({description: 'ISO-8601 trace start timestamp.'}),
 	failure: Schema.OptionFromOptionalKey(
@@ -667,7 +668,7 @@ export const IngestionService = Schema.Struct({
 })
 
 export type IngestionRejection = typeof IngestionRejection.Type
-const IngestionRejection = Schema.Struct({
+export const IngestionRejection = Schema.Struct({
 	count: Schema.Int,
 	credential: Schema.Literals(['authorization', 'cookie', 'none']),
 	lastAt: Schema.DateTimeUtcFromString,

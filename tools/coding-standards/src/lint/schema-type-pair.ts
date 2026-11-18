@@ -1,4 +1,4 @@
-import {Array, MutableList, Option, Predicate, pipe} from 'effect'
+import {Array, Boolean, Function, MutableList, Option, Predicate, pipe} from 'effect'
 
 import {defineRule} from 'vite-plus/lint/plugins'
 import type {Context, ESTree} from 'vite-plus/lint/plugins'
@@ -16,11 +16,6 @@ import {
 } from '#lib/ast.ts'
 
 const EXPORT_PREFIXES: Record<string, string> = {ExportNamedDeclaration: 'export '}
-
-function typeExportPrefix(context: Context, statement: ESTree.Statement) {
-	if (matches(/(?:^|[/\\])schema\.ts$/u)(context.filename)) return 'export '
-	return EXPORT_PREFIXES[statement.type] ?? ''
-}
 
 function namedTypeAlias(input: {
 	name: string
@@ -81,6 +76,40 @@ function readsModuleBinding(context: Context, query: ESTree.TSTypeQuery, name: s
 	)
 }
 
+function reportPairExports(
+	context: Context,
+	statement: ESTree.Statement,
+	type: ESTree.Statement | ESTree.ModuleDeclaration
+) {
+	if (type.type !== 'TSTypeAliasDeclaration' && statement.type !== 'VariableDeclaration') return
+	context.report({
+		fix: fixer =>
+			pipe(
+				[type, statement],
+				Array.filter(
+					node =>
+						node.type === 'TSTypeAliasDeclaration' ||
+						(node.type === 'VariableDeclaration' && node.declarations.length === 1)
+				),
+				Array.map(node => fixer.insertTextBefore(node, 'export '))
+			),
+		message: 'Export the Schema and its type together from schema.ts',
+		node: statement
+	})
+}
+
+function reportSchemaAnnotations(context: Context, id: ESTree.BindingIdentifier, init: ESTree.Expression) {
+	if (init.type === 'TSSatisfiesExpression' && schemaSchemaType({context, node: init.typeAnnotation})) {
+		context.report({message: 'Infer this schema instead of restating Schema.Schema.', node: init})
+	}
+	if (
+		Predicate.isNotNullish(id.typeAnnotation) &&
+		schemaSchemaType({context, node: id.typeAnnotation.typeAnnotation})
+	) {
+		context.report({message: 'Infer this schema instead of annotating Schema.Schema.', node: id})
+	}
+}
+
 function reportSchemaVariable(input: {
 	context: Context
 	cycleNames: string[]
@@ -90,7 +119,7 @@ function reportSchemaVariable(input: {
 	variable: ESTree.VariableDeclarator
 }) {
 	if (input.variable.id.type !== 'Identifier') return
-	if (input.variable.init === null || !isSchemaDefinition({context: input.context, node: input.variable.init})) return
+	if (input.variable.init === null) return
 	const name = input.variable.id.name
 	if (!matches(/^[A-Z]/u)(name)) {
 		return
@@ -102,29 +131,16 @@ function reportSchemaVariable(input: {
 		Option.filter(index => index > 0),
 		Option.flatMap(index => Array.get(input.program.body, index - 1))
 	)
-	pipe(
-		typeStatement,
-		Option.filter(
-			statement =>
-				matches(/(?:^|[/\\])schema\.ts$/u)(input.context.filename) &&
-				statement.type === 'TSTypeAliasDeclaration' &&
-				statement.id.name === name
-		),
-		Option.map(statement =>
-			input.context.report({
-				fix: fixer => fixer.insertTextBefore(statement, 'export '),
-				message: `Export the type ${name} from schema.ts even when its Schema stays private.`,
-				node: statement
-			})
-		)
-	)
+	const schemaFile = matches(/(?:^|[/\\])schema\.ts$/u)(input.context.filename)
+	const alias = namedTypeAlias({name, typeStatement})
+	const inferred = Option.exists(alias, declaration => isInferredType({name, node: declaration.typeAnnotation}))
+	const schema = isSchemaDefinition({context: input.context, node: input.variable.init})
+	if (schemaFile && Option.isSome(alias) && (schema || inferred)) {
+		Option.map(typeStatement, type => reportPairExports(input.context, input.statement, type))
+	}
+	if (!schema) return
 	if (Array.contains(input.cycleNames, name)) {
-		if (
-			!Option.exists(
-				namedTypeAlias({name, typeStatement}),
-				declaration => !isInferredType({name, node: declaration.typeAnnotation})
-			)
-		) {
+		if (!Option.exists(alias, declaration => !isInferredType({name, node: declaration.typeAnnotation}))) {
 			input.context.report({
 				message: `Write \`type ${name} = ...\` by hand immediately before this recursive Schema; typeof ${name}.Type is circular.`,
 				node: input.variable
@@ -138,11 +154,7 @@ function reportSchemaVariable(input: {
 		}
 		return
 	}
-	if (
-		!Option.exists(namedTypeAlias({name, typeStatement}), declaration =>
-			isInferredType({name, node: declaration.typeAnnotation})
-		)
-	) {
+	if (!inferred) {
 		input.context.report({
 			fix: fixer => {
 				if (!pairable({...input, name})) return []
@@ -151,12 +163,13 @@ function reportSchemaVariable(input: {
 					Array.head,
 					Option.getOrElse(() => input.statement)
 				).range[0]
+				const prefix = Boolean.match(schemaFile, {
+					onFalse: () => EXPORT_PREFIXES[input.statement.type] ?? '',
+					onTrue: Function.constant('export ')
+				})
 				// The file's other `typeof Name.Type` queries read the new alias in the same edit, which the compiler's unnecessaryTypeofType would otherwise ask for by hand.
 				return [
-					fixer.insertTextBeforeRange(
-						[start, start],
-						`${typeExportPrefix(input.context, input.statement)}type ${name} = typeof ${name}.Type\n`
-					),
+					fixer.insertTextBeforeRange([start, start], `${prefix}type ${name} = typeof ${name}.Type\n`),
 					...pipe(
 						input.queries,
 						Array.filter(
@@ -170,18 +183,7 @@ function reportSchemaVariable(input: {
 			node: input.variable
 		})
 	}
-	if (
-		input.variable.init.type === 'TSSatisfiesExpression' &&
-		schemaSchemaType({context: input.context, node: input.variable.init.typeAnnotation})
-	) {
-		input.context.report({message: 'Infer this schema instead of restating Schema.Schema.', node: input.variable.init})
-	}
-	if (
-		Predicate.isNotNullish(input.variable.id.typeAnnotation) &&
-		schemaSchemaType({context: input.context, node: input.variable.id.typeAnnotation.typeAnnotation})
-	) {
-		input.context.report({message: 'Infer this schema instead of annotating Schema.Schema.', node: input.variable.id})
-	}
+	reportSchemaAnnotations(input.context, input.variable.id, input.variable.init)
 }
 
 export const schemaTypePair = defineRule({
@@ -216,7 +218,7 @@ export const schemaTypePair = defineRule({
 					{
 						'src/services/notes/schema.ts': `import {Schema} from 'effect'
 export type Note = typeof Note.Type
-const Note = Schema.Struct({title: Schema.String})`
+export const Note = Schema.Struct({title: Schema.String})`
 					},
 					{
 						'sample.ts': `import {Schema} from 'effect'
@@ -228,6 +230,7 @@ export function titleOf(note: Note) { return note.title }`
 				fixes: [
 					{
 						'src/services/notes/schema.ts': `import {Schema} from 'effect'
+export type Note = typeof Note.Type
 const Note = Schema.Struct({title: Schema.String})`
 					},
 					{

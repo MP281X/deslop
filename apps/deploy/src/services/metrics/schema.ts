@@ -9,7 +9,7 @@ import {AppId, TextFromEmpty, WorkerId} from '#services/inventory/schema.ts'
 export type BandId = typeof BandId.Type
 export const BandId = Schema.Union([AppId, Schema.Literals(['other', 'system'])])
 export type CpuState = typeof CpuState.Type
-const CpuState = Schema.Literals(['idle', 'irq', 'nice', 'sys', 'user'])
+export const CpuState = Schema.Literals(['idle', 'irq', 'nice', 'sys', 'user'])
 
 export type CpuCounters = typeof CpuCounters.Type
 export const CpuCounters = Schema.TupleWithRest(
@@ -53,13 +53,17 @@ export const HistoryToolInput = Schema.Struct({
 })
 
 export type MetricSeries = typeof MetricSeries.Type
-const MetricSeries = Schema.Array(Schema.OptionFromNullOr(Schema.Finite))
+export const MetricSeries = Schema.Array(Schema.OptionFromNullOr(Schema.Finite))
 
 export type AppUsage = typeof AppUsage.Type
-const AppUsage = Schema.Struct({cpu: Schema.OptionFromOptionalKey(Schema.Finite), mib: Schema.Int, name: Schema.String})
+export const AppUsage = Schema.Struct({
+	cpu: Schema.OptionFromOptionalKey(Schema.Finite),
+	mib: Schema.Int,
+	name: Schema.String
+})
 
 export type MachineNow = typeof MachineNow.Type
-const MachineNow = Schema.Struct({
+export const MachineNow = Schema.Struct({
 	cpuPct: Schema.OptionFromOptionalKey(Schema.Finite),
 	diskGiB: Schema.OptionFromOptionalKey(Schema.Finite),
 	diskTotalGiB: Schema.OptionFromOptionalKey(Schema.Finite),
@@ -83,7 +87,7 @@ export const WorkerHistory = Schema.Struct({
 })
 
 export type ResourceHistory = typeof ResourceHistory.Type
-const ResourceHistory = Schema.Array(WorkerHistory)
+export const ResourceHistory = Schema.Array(WorkerHistory)
 
 export type Counters = typeof Counters.Type
 export const Counters = Schema.Struct({
@@ -94,7 +98,11 @@ export const Counters = Schema.Struct({
 })
 
 export type AppSample = typeof AppSample.Type
-const AppSample = Schema.Struct({cpu: Schema.OptionFromOptionalKey(Schema.Finite), id: AppId, memory: Schema.Finite})
+export const AppSample = Schema.Struct({
+	cpu: Schema.OptionFromOptionalKey(Schema.Finite),
+	id: AppId,
+	memory: Schema.Finite
+})
 
 // One point of a worker's history in the series of one spacing: its readings from `since` to `time`, each averaged over the time it covers.
 export class MachineSample extends Model.Class<MachineSample>('MachineSample')({
@@ -128,13 +136,13 @@ export class Sample extends Model.Class<Sample>('Sample')({
 }) {}
 
 export type Point = typeof Point.Type
-const Point = Schema.Struct(Struct.omit(Sample.fields, ['since', 'step']))
+export const Point = Schema.Struct(Struct.omit(Sample.fields, ['since', 'step']))
 
 export type Disk = typeof Disk.Type
-const Disk = Schema.Struct({mount: Schema.String, total: Schema.Finite, used: Schema.Finite})
+export const Disk = Schema.Struct({mount: Schema.String, total: Schema.Finite, used: Schema.Finite})
 
 export type Platform = typeof Platform.Type
-const Platform = Schema.Literals(['linux', 'darwin'])
+export const Platform = Schema.Literals(['linux', 'darwin'])
 
 export type MachineHistory = typeof MachineHistory.Type
 export const MachineHistory = Schema.Struct({

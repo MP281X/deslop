@@ -9,10 +9,10 @@ import {DateTimeUtcFromFiniteMillis} from '@deslop/runtime/shared/time'
 import {UsageRange} from '#services/usage/schema.ts'
 
 export type SpendSource = typeof SpendSource.Type
-const SpendSource = Schema.Literals(['balance', 'byok', 'openai', 'free', 'go', 'go-plus'])
+export const SpendSource = Schema.Literals(['balance', 'byok', 'openai', 'free', 'go', 'go-plus'])
 // The payers the home list shows a row for.
 export type Payer = typeof Payer.Type
-const Payer = Schema.Literals(['balance', 'byok', 'openai'])
+export const Payer = Schema.Literals(['balance', 'byok', 'openai'])
 
 // One person's call, attributed to the billed balance or provider key.
 export class AiCall extends Model.Class<AiCall>('AiCall')({
@@ -58,14 +58,14 @@ export const AiUsageReport = Schema.Struct({
 	totals: Schema.Array(AiUsageBreakdown)
 })
 export type Billing = typeof Billing.Type
-const Billing = Schema.Struct({billing_source: SpendSource, estimated: Schema.optional(Schema.Boolean)})
+export const Billing = Schema.Struct({billing_source: SpendSource, estimated: Schema.optional(Schema.Boolean)})
 export type InputTokenDetails = typeof InputTokenDetails.Type
-const InputTokenDetails = Schema.Struct({
+export const InputTokenDetails = Schema.Struct({
 	cache_write_tokens: Schema.OptionFromOptionalKey(Schema.Finite),
 	cached_tokens: Schema.OptionFromOptionalKey(Schema.Finite)
 })
 export type OpenAiResponse = typeof OpenAiResponse.Type
-const OpenAiResponse = Schema.Struct({
+export const OpenAiResponse = Schema.Struct({
 	model: Schema.OptionFromOptionalKey(AiModelId),
 	usage: Schema.OptionFromOptionalKey(
 		Schema.OptionFromNullOr(

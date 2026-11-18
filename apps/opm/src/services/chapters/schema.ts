@@ -97,7 +97,10 @@ export class ReadingPosition extends Model.Class<ReadingPosition>('ReadingPositi
 }
 
 export type Position = typeof Position.Type
-const Position = Schema.Struct({...Struct.pick(ReadingPosition.json.fields, ['done', 'page']), done: Schema.Boolean})
+export const Position = Schema.Struct({
+	...Struct.pick(ReadingPosition.json.fields, ['done', 'page']),
+	done: Schema.Boolean
+})
 
 // The iPhone's list joins the catalogue with its saved place, without making progress part of a catalogue row.
 export class ReadingChapter extends Model.Class<ReadingChapter>('ReadingChapter')({

@@ -190,9 +190,18 @@ function customCodes(output: OxlintOutput) {
 describe('deslop Oxlint plugin', {concurrent: true}, () => {
 	it.layer(NodeServices.layer)(testApi => {
 		testApi.effect(
-			'exports schema-file types even when their schemas stay private',
+			'exports both members of schema-file pairs and keeps private pairs outside schema.ts',
 			Effect.fnUntraced(function* () {
 				const inputs = {
+					'outside.ts': Array.join(
+						[
+							"import {Schema} from 'effect'",
+							'type Note = typeof Note.Type',
+							'const Note = Schema.Struct({title: Schema.String})',
+							'export function titleOf(note: Note) { return note.title }'
+						],
+						'\n'
+					),
 					'src/services/local/schema.ts': Array.join(
 						[
 							"import {Schema} from 'effect'",
@@ -211,17 +220,28 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 						'\n'
 					)
 				}
-				assert.deepStrictEqual(customCodes((yield* lintSource(inputs, [], true)).stdout), [
+				const rejected = yield* lintSource(inputs, [], true)
+				assert.deepStrictEqual(customCodes(rejected.stdout), [
+					'@deslop/coding-standards(schema-type-pair)',
 					'@deslop/coding-standards(schema-type-pair)'
 				])
+				assert.deepStrictEqual(
+					Array.map(rejected.stdout.diagnostics, diagnostic => diagnostic.message),
+					[
+						'Export the Schema and its type together from schema.ts',
+						'Export the Schema and its type together from schema.ts'
+					]
+				)
 				const fixed = yield* lintSource(inputs, ['--fix'], true)
 				assert.deepStrictEqual(fixed.stdout.diagnostics, [])
-				assert.include(fixed.sources[0] ?? '', 'export type Note = typeof Note.Type')
-				const settled = yield* lintSource(
-					Record.fromEntries(Array.zip(Record.keys(inputs), fixed.sources)),
-					['--fix'],
-					true
+				const sources = Record.fromEntries(Array.zip(Record.keys(inputs), fixed.sources))
+				assert.include(
+					sources['src/services/local/schema.ts'] ?? '',
+					'export type Note = typeof Note.Type\nexport const Note = Schema.Struct'
 				)
+				assert.include(sources['src/services/public/schema.ts'] ?? '', 'export const Note = Schema.Struct')
+				assert.include(sources['outside.ts'] ?? '', '\ntype Note = typeof Note.Type\nconst Note = Schema.Struct')
+				const settled = yield* lintSource(sources, ['--fix'], true)
 				assert.deepStrictEqual(settled.stdout.diagnostics, [])
 				assert.deepStrictEqual(settled.sources, fixed.sources)
 			})

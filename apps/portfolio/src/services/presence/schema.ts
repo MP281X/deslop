@@ -26,7 +26,8 @@ export const Visitors = Schema.Array(Visitor)
 export type Scene = typeof Scene.Type
 export const Scene = Schema.Struct({bots: Visitors, visitors: Visitors})
 
-const Guest = Visitor.mapFields(fields => ({...fields, id: fields.id.check(Schema.isPattern(/^(?!server-)/u))}))
+export type Guest = typeof Guest.Type
+export const Guest = Visitor.mapFields(fields => ({...fields, id: fields.id.check(Schema.isPattern(/^(?!server-)/u))}))
 
 export type JoinVisitor = typeof JoinVisitor.Type
 export const JoinVisitor = Schema.Struct(Struct.pick(Guest.fields, ['color', 'id', 'name']))
