@@ -33,7 +33,7 @@ You are a delegate, and the brief is the approved plan. Edit only its files, run
 - Match the surrounding code's naming, idiom and comment density.
 - Prove claims by running the check. Fix root causes, not symptoms.
 - One way to do each thing: no fallbacks or compatibility paths.
-- Spending money or deleting data is his call. Push only your own branch. Never work around a guard.
+- Spending money or deleting data is his call. Push only your own branch, never to `main`: no `git -C … push`, `<branch>:main` refspec, more than two push flags, `gh`/`glab` API writes or `--open` stack commands. Never work around a guard.
 - A correction he makes twice becomes a shared component or an app `AGENTS.md` rule in the same PR.
 - Leave other threads alone unless he asks.
 
