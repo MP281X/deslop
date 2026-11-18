@@ -35,6 +35,9 @@ jobs:
         id: apps
         uses: ./.github/actions/mobile-apps
       # GitHub's run record is the proof, not a PR-writable artifact, cache or named check.
+      # A pull request run tests GitHub's merge with its base of that moment, `main` or a stack's lower layer, so it proves this release only when that merge holds this commit's tree.
+      # Its run name starts with that merge commit: once the trees match, the run name came from this commit's own verify.yaml.
+      # A skipped job leaves a run green, so every job must have succeeded, the four named ones included.
       # A missing/failed lookup leaves the output unset and runs Verify normally.
       - name: Is this tree already verified?
         id: proof
@@ -45,24 +48,28 @@ jobs:
           pulls=$(gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/pulls")
           head=$(jq -r --arg repo "$GITHUB_REPOSITORY" --arg sha "$GITHUB_SHA" '
             [.[] | select(.merged_at != null and .merge_commit_sha == $sha
-              and .base.ref == "main" and .base.repo.full_name == $repo and .head.repo.full_name == $repo)]
+              and .base.repo.full_name == $repo and .head.repo.full_name == $repo)]
             | if length == 1 then .[0].head.sha else empty end' <<< "$pulls")
           [[ -n $head ]] || exit 0
 
-          git fetch --no-tags --depth=1 origin "$head"
-          tree=$(git rev-parse 'HEAD^{tree}')
-          [[ $tree == "$(git rev-parse "$head^{tree}")" ]] || exit 0
-
-          runs=$(gh api --paginate --slurp "repos/$GITHUB_REPOSITORY/actions/workflows/verify.yaml/runs?head_sha=$head&event=push&status=success&per_page=100")
-          run=$(jq -r --arg repo "$GITHUB_REPOSITORY" --arg head "$head" '
-            [.[] | .workflow_runs[] | select(.head_sha == $head and .event == "push"
+          tree=$(gh api "repos/$GITHUB_REPOSITORY/git/commits/$GITHUB_SHA" --jq .tree.sha)
+          runs=$(gh api --paginate --slurp "repos/$GITHUB_REPOSITORY/actions/workflows/verify.yaml/runs?head_sha=$head&event=pull_request&status=success&per_page=100")
+          tested=$(jq -r --arg repo "$GITHUB_REPOSITORY" --arg head "$head" '
+            .[] | .workflow_runs[] | select(.head_sha == $head and .event == "pull_request"
               and .status == "completed" and .conclusion == "success"
               and .path == ".github/workflows/verify.yaml"
-              and .repository.full_name == $repo and .head_repository.full_name == $repo)]
-            | first | .id // empty' <<< "$runs")
-          [[ -n $run ]] || exit 0
-          echo "- Tree $tree already passed [Verify]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$run)." >> "$GITHUB_STEP_SUMMARY"
-          echo "verified=true" >> "$GITHUB_OUTPUT"
+              and .repository.full_name == $repo and .head_repository.full_name == $repo
+              and (.display_title | test("^[0-9a-f]{40}( |$)")))
+            | "\(.id) \(.display_title[0:40])"' <<< "$runs")
+          while read -r run merge; do
+            [[ -n $run && $(gh api "repos/$GITHUB_REPOSITORY/git/commits/$merge" --jq .tree.sha) == "$tree" ]] || continue
+            gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run/jobs?per_page=100" | jq -e '
+              [.jobs[] | select(.conclusion == "success") | .name] as $passed
+              | (.jobs | length) == ($passed | length) and (["Build", "Check", "Generated apps", "Test"] - $passed) == []' > /dev/null || continue
+            echo "- Tree $tree already passed [Verify]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$run)." >> "$GITHUB_STEP_SUMMARY"
+            echo "verified=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          done <<< "$tested"
 
   verify:
     name: Verify

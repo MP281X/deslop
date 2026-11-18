@@ -1,11 +1,13 @@
 name: Verify
+# The run record names only the pull request's head; Release reads the merge commit GitHub tested from here.
+run-name: ${{ github.sha }} ${{ github.event.pull_request.title }}
 
-# Every branch push; Release repeats this unless the merged tree already passed.
+# Every pull request, on GitHub's merge with its base rather than the branch alone; Release repeats this unless the merged tree already passed.
 on:
-  push:
-    branches-ignore: [main]
+  pull_request:
   workflow_call:
 
+# For a pull request the ref is its merge ref, so a new push replaces only that pull request's older run.
 concurrency:
   group: verify-${{ github.ref }}
   cancel-in-progress: true
@@ -14,7 +16,7 @@ permissions:
   contents: read
 
 jobs:
-  # Release calls this only for a tree no branch run verified, so its probe runs before anything ships.
+  # Release calls this only for a tree no pull request run verified, so its probe runs before anything ships.
   build:
     name: Build
     runs-on: ubuntu-26.04
