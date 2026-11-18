@@ -29,18 +29,12 @@ import {HttpClient, HttpClientRequest, HttpClientResponse} from 'effect/http'
 import {Jwk, Jws} from 'effect/jose'
 
 import {DEVELOPMENT_BUNDLE_SUFFIX} from '#config/expo.ts'
-import {ApnsAnswer, apnsAnswer, deviceHeaders, tooLargeAnswer, unconfirmedChannel} from '#shared/apns.ts'
+import {ApnsAnswer, ApnsError, apnsAnswer, deviceHeaders, tooLargeAnswer, unconfirmedChannel} from '#shared/apns.ts'
 import type {ApnsPriority, ApnsPushType, ApnsToken} from '#shared/apns.ts'
 import {DateTimeUtcFromSeconds} from '#shared/time.ts'
 
 type JwtClaims = typeof JwtClaims.Type
 const JwtClaims = Schema.fromJsonString(Schema.Struct({iat: DateTimeUtcFromSeconds, iss: Schema.String}))
-
-// A failed start names the channel Apple created for it while deleting it was not confirmed, for the app to delete later.
-export class ApnsError extends Schema.TaggedError<ApnsError>()('ApnsError', {
-	channel: pipe(Schema.Option(Schema.String), Schema.withConstructorDefault(Effect.succeedNone)),
-	message: Schema.String
-}) {}
 
 type Target = {bundle: string; token: Redacted.Redacted<ApnsToken>}
 type Payload = {aps: Record<string, unknown>; [key: string]: unknown}

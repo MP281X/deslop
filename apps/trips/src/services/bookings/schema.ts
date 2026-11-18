@@ -102,6 +102,7 @@ export class Flight extends Model.Class<Flight>('Flight')({
 	airlineCode: Schema.String,
 	arrives: Schema.DateTimeUtcFromMillis,
 	boardingAt: Model.FieldOption(Schema.DateTimeUtcFromMillis),
+	// fallow-ignore-next-line code-duplication -- A flight and a train each spell out their own columns; the fields they share are shape, not logic.
 	boardingGroup: Model.FieldOption(Schema.String),
 	confirmation: Model.FieldOption(Schema.String),
 	departs: Schema.DateTimeUtcFromMillis,

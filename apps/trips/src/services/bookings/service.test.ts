@@ -1,9 +1,11 @@
+import {NodeServices} from '@effect/platform-node'
 import {assert, it} from '@effect/vitest'
 
-import {Array, DateTime, Duration, Effect, Function, Layer, MutableRef, Option, String, pipe} from 'effect'
+import {Array, DateTime, Duration, Effect, FileSystem, Function, Layer, MutableRef, Option, String, pipe} from 'effect'
 
 import {SecureRandom} from 'effect/crypto'
 
+import {layerDataStore} from '@deslop/runtime/server/store'
 import {UserId} from '@deslop/runtime/shared/auth'
 
 import {Extractor} from './lib/extraction.ts'
@@ -14,7 +16,6 @@ import {journeysOf} from '#services/bookings/lib/utils.ts'
 import type {BookingExtraction, ExtractedItem} from '#services/bookings/schema.ts'
 import {BookedPlace, Booking, BookingSource, PlaceCode} from '#services/bookings/schema.ts'
 import {Bookings} from '#services/bookings/service.ts'
-import {scratchFolder, scratchStore} from '#services/scratch-store.ts'
 
 const USER = UserId.make('github:1')
 
@@ -64,32 +65,35 @@ function flight(departure: string, seat: string) {
 
 const next = MutableRef.make<BookingExtraction>({issued: Option.none(), items: []})
 
-// The test sets what the next shared ticket reads as; trains run fifty minutes between the stations the ticket prints, at the time it prints.
-const bookingsLayer = Layer.unwrap(
-	Effect.map(scratchFolder, folder =>
-		pipe(
-			Bookings.layer,
-			Layer.provide(Layer.mock(Extractor, {read: () => Effect.sync(() => MutableRef.get(next))})),
-			Layer.provide(Layer.mock(Places, {airport: code => Effect.succeed(place(code))})),
-			Layer.provide(
-				Layer.mock(Timetable, {
-					resolve: item => {
-						const departs = DateTime.makeUnsafe(`${item.departure}Z`)
-						return Effect.succeed({
-							arrives: DateTime.addDuration(departs, Duration.minutes(50)),
-							departs,
-							from: place(item.from),
-							operator: 'Trenitalia',
-							service: `FR ${item.trainNumber}`,
-							stops: [],
-							to: place(item.to)
-						})
-					}
+// The test sets what the next shared ticket reads as; trains run fifty minutes between the stations the ticket prints, at the time it prints; each test gets its own scratch database.
+const bookingsLayer = pipe(
+	Bookings.layer,
+	Layer.provide(Layer.mock(Extractor, {read: () => Effect.sync(() => MutableRef.get(next))})),
+	Layer.provide(Layer.mock(Places, {airport: code => Effect.succeed(place(code))})),
+	Layer.provide(
+		Layer.mock(Timetable, {
+			resolve: item => {
+				const departs = DateTime.makeUnsafe(`${item.departure}Z`)
+				return Effect.succeed({
+					arrives: DateTime.addDuration(departs, Duration.minutes(50)),
+					departs,
+					from: place(item.from),
+					operator: 'Trenitalia',
+					service: `FR ${item.trainNumber}`,
+					stops: [],
+					to: place(item.to)
 				})
-			),
-			Layer.provide(Layer.merge(scratchStore(folder), SecureRandom.layerWebCrypto))
+			}
+		})
+	),
+	Layer.provide(
+		Layer.unwrap(
+			Effect.gen(function* () {
+				return layerDataStore(yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped())
+			})
 		)
-	)
+	),
+	Layer.provide(Layer.merge(NodeServices.layer, SecureRandom.layerWebCrypto))
 )
 
 function share(document: BookingExtraction) {

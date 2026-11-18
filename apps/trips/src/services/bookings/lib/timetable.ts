@@ -1,79 +1,24 @@
-import {
-	Array,
-	Cause,
-	Context,
-	DateTime,
-	Duration,
-	Effect,
-	Layer,
-	Number,
-	Option,
-	Order,
-	Result,
-	Schema,
-	String,
-	pipe
-} from 'effect'
+import {Array, Cause, Context, DateTime, Duration, Effect, Layer, Option, Order, Schema, String, pipe} from 'effect'
 
 import {HttpClient, HttpClientRequest, HttpClientResponse} from 'effect/http'
 
 import {Places, stationName} from './places.ts'
-import {instantOf, normalizedStation, stationNamesMatch} from './utils.ts'
+import {bySurety, instantOf, segmentOf} from './utils.ts'
+import type {Surety} from './utils.ts'
 
 import {BookedPlace, BookingsError, TransitRuns, TransitTrip, TrainStop} from '#services/bookings/schema.ts'
 import type {ExtractedItem, TransitStop} from '#services/bookings/schema.ts'
 
-// A booked station: the stop id Transitous gave its name, when it found one, and the name as the ticket prints it.
-export type Wanted = {code: Option.Option<string>; name: string}
-
-// How surely a stop is the booked station: its stop id, then its exact name, then a looser name, under which Milano Rogoredo and Milano Centrale are both Milano.
-function rankOf(stop: TransitStop, wanted: Wanted) {
-	if (Option.contains(wanted.code, stop.stopId)) return Option.some(0)
-	if (normalizedStation(stop.name) === normalizedStation(wanted.name)) return Option.some(1)
-	if (stationNamesMatch(wanted.name, stop.name)) return Option.some(2)
-	return Option.none()
-}
-
-type Surety = {readonly rank: number}
-type StopCandidate = Surety & {readonly index: number}
 type RunCandidate = Surety & {
 	readonly gap: Duration.Duration
 	readonly run: TransitRuns['stopTimes'][number]
 	readonly stops: readonly TransitStop[]
 }
 
-const bySurety = Order.mapInput(Number.Order, (candidate: Surety) => candidate.rank)
-const surestStop = Order.combine(
-	bySurety,
-	Order.mapInput(Number.Order, (candidate: StopCandidate) => candidate.index)
-)
 const surestRun = Order.combine(
 	bySurety,
 	Order.mapInput(Duration.Order, (candidate: RunCandidate) => candidate.gap)
 )
-
-// The surest stop for the station from `after` on, the earliest among equally sure ones.
-function bestStop(stops: readonly TransitStop[], wanted: Wanted, after: number) {
-	const found = Array.filterMap(stops, (stop, index) =>
-		pipe(
-			rankOf(stop, wanted),
-			Option.filter(() => index >= after),
-			Option.match({onNone: () => Result.failVoid, onSome: rank => Result.succeed({index, rank})})
-		)
-	)
-	if (!Array.isReadonlyArrayNonEmpty(found)) return Option.none()
-	return Option.some(Array.min(found, surestStop))
-}
-
-// The stretch of one run between the booked stations, each end at its surest stop, ranked so that a run whose stops match exactly wins over one that matches loosely.
-export function segmentOf(stops: readonly TransitStop[], from: Wanted, to: Wanted) {
-	return Option.flatMap(bestStop(stops, from, 0), first =>
-		Option.map(bestStop(stops, to, first.index + 1), last => ({
-			rank: first.rank + last.rank,
-			stops: pipe(stops, Array.drop(first.index), Array.take(last.index - first.index + 1))
-		}))
-	)
-}
 
 function place(stop: TransitStop) {
 	return BookedPlace.make({
