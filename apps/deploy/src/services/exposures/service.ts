@@ -24,7 +24,7 @@ import {Migrator, SqlClient, SqlSchema} from 'effect/sql'
 
 import type {Admin} from '@deslop/runtime/shared/auth'
 
-import {ownedConflict, refusal, restoreRefusal} from './lib/policy.ts'
+import {ownedConflict, refusal, reservedPort, restoreRefusal} from './lib/policy.ts'
 import {makeReconciler} from './lib/reconciler.ts'
 import {migrations} from './migrations.ts'
 
@@ -108,7 +108,7 @@ export class Exposures extends Context.Service<Exposures>()('@deslop/deploy/serv
 		const lock = yield* Semaphore.make(1)
 		// A pass reads the rows and changes the proxies inside one hold, and a removal is saved inside another, so no pass publishes a row from before its removal was saved.
 		const passLock = yield* Semaphore.make(1)
-		// The public sites Caddy last loaded in this process; none until the first pass loads them, so Caddy restarts onto this release's binary.
+		// The public sites Caddy last loaded in this process; none until the first pass loads them, so Caddy restarts onto this release's binary, and none again after a failed load, since what Caddy then holds is unknown.
 		const loaded = yield* Ref.make(Option.none<string>())
 		// Why each exposure is not yet as saved, from the last pass.
 		const problems = yield* Ref.make<Record<ExposureName, string>>({})
@@ -117,7 +117,7 @@ export class Exposures extends Context.Service<Exposures>()('@deslop/deploy/serv
 			return {owner: portOwner(items, port), runtime: yield* proxies.runtime(port)}
 		})
 
-		// Caddy loads the public rows to publish when they differ from what it last loaded; a removal's row goes only once Caddy no longer serves it.
+		// Caddy loads the public rows to publish when they differ from what it last loaded, and again after any failed load; a removal's row goes only after a load that succeeded.
 		const reconcileCaddy = Effect.fnUntraced(function* (
 			rows: readonly {held: Option.Option<string>; publish: boolean; row: Exposure}[]
 		) {
@@ -138,7 +138,13 @@ export class Exposures extends Context.Service<Exposures>()('@deslop/deploy/serv
 					Boolean.match({
 						onFalse: () => Effect.succeedNone,
 						onTrue: () =>
-							pipe(proxies.apply(sites), Effect.andThen(Ref.set(loaded, Option.some(key))), Effect.flip, Effect.option)
+							pipe(
+								proxies.apply(sites),
+								Effect.andThen(Ref.set(loaded, Option.some(key))),
+								Effect.tapError(() => Ref.set(loaded, Option.none())),
+								Effect.flip,
+								Effect.option
+							)
 					})
 				)
 			)
@@ -196,7 +202,7 @@ export class Exposures extends Context.Service<Exposures>()('@deslop/deploy/serv
 			)
 		})
 
-		// Makes the worker match the rows: active rows whose port still belongs to their owner are published, the rest are not, and a removal's row goes once nothing serves it.
+		// Makes the worker match the rows: active rows whose port still belongs to their owner are published, the rest are not, and a removal's row goes once Deploy's own mapping is gone, not once nothing serves the address: a mapping changed outside Deploy is left alone and its row still goes.
 		const reconciler = yield* makeReconciler(
 			Semaphore.withPermit(
 				passLock,
@@ -277,6 +283,11 @@ export class Exposures extends Context.Service<Exposures>()('@deslop/deploy/serv
 							message: 'Public exposure needs a Linux x64 worker; expose this port to the tailnet'
 						})
 					}
+					// A reserved port is refused before any lookup, since the lookup connects to it.
+					yield* Option.match(reservedPort(input.port), {
+						onNone: () => Effect.void,
+						onSome: message => DeployError.make({message})
+					})
 					yield* inventory.refresh
 					const found = yield* listener((yield* inventory.snapshot).items, input.port)
 					yield* Option.match(refusal(input, found), {
