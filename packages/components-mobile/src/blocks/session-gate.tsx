@@ -1,6 +1,6 @@
 import {useAtomMount, useAtomSet, useAtomValue} from '@effect/atom-react'
 
-import {Boolean, Function} from 'effect'
+import {Boolean, Function, Option, Predicate} from 'effect'
 
 import {Host, Rectangle, Text, VStack} from '@expo/ui/swift-ui'
 import {foregroundStyle, frame, padding} from '@expo/ui/swift-ui/modifiers'
@@ -8,6 +8,7 @@ import {AsyncResult} from 'effect/reactivity'
 import type {ReactNode} from 'react'
 
 import {isDeniedCause, needsSignInCause} from '@deslop/runtime/client/live-stream'
+import {keychain} from '@deslop/runtime/mobile/keychain'
 import type {Session} from '@deslop/runtime/mobile/session'
 import {updateAtom} from '@deslop/runtime/mobile/updates'
 
@@ -18,6 +19,7 @@ import {Button} from '#components/ui/button.tsx'
 export function SessionGate(props: {children: ReactNode; session: Session}) {
 	const account = useAtomValue(props.session.account)
 	const signIn = useAtomSet(props.session.signIn)
+	const signOut = useAtomSet(props.session.signOut)
 	useAtomMount(updateAtom)
 	if (AsyncResult.isSuccess(account)) return props.children
 	if (AsyncResult.isInitial(account)) {
@@ -29,10 +31,15 @@ export function SessionGate(props: {children: ReactNode; session: Session}) {
 	}
 	const message = {detail: 'Return to the app to try again.', title: 'Could not reach the server'}
 	const needsSignIn = needsSignInCause(account.cause)
+	const denied = isDeniedCause(account.cause)
+	// A refused tailnet device has no saved session, so a sign-out there would only post a cookieless request.
+	const holdsSession = Option.exists(Option.liftThrowable(keychain.headers)(), headers =>
+		Predicate.hasProperty(headers, 'cookie')
+	)
 	if (needsSignIn) {
 		message.title = 'Sign in required'
 		message.detail = 'This device is not on the tailnet.'
-	} else if (isDeniedCause(account.cause)) {
+	} else if (denied) {
 		message.title = 'Access denied'
 		message.detail = 'This account cannot use the app.'
 	}
@@ -47,6 +54,10 @@ export function SessionGate(props: {children: ReactNode; session: Session}) {
 				{Boolean.match(needsSignIn, {
 					onFalse: Function.constNull,
 					onTrue: () => <Button onPress={() => signIn()}>Continue with GitHub</Button>
+				})}
+				{Boolean.match(denied && holdsSession, {
+					onFalse: Function.constNull,
+					onTrue: () => <Button onPress={() => signOut()}>Sign Out</Button>
 				})}
 			</VStack>
 		</Host>
