@@ -213,7 +213,12 @@ async function play(task, steps) {
 		await sleep(100)
 		return waitForChange(changed, waited + 100)
 	}
-	// Runs the action and reports whether the page answered it within the wait: a new address, what `extra` sees, or a DOM change outside the overlay and outside every part that already changed on its own in the second before, as an animated page's parts do.
+	/** @param {MutationRecord} record */
+	function partOf(record) {
+		if (record.type === 'childList') return record.target
+		return record.target.parentNode ?? record.target
+	}
+	// Runs the action and reports whether the page answered it within the wait: a new address, what `extra` sees, or a DOM change outside the overlay and outside every part that already changed on its own in the second before, as an animated page's parts do. A part is the changed node's parent, so an animation that redraws a different sibling each frame is not an answer, nor is a change to a node the page has already removed.
 	/** @template T @param {() => T | Promise<T>} prepare @param {(prepared: T) => void} action @param {(prepared: T) => boolean} extra */
 	async function responds(prepare, action, extra) {
 		const from = location.href
@@ -225,7 +230,7 @@ async function play(task, steps) {
 		observer.observe(document, {attributes: true, characterData: true, childList: true, subtree: true})
 		const [prepared] = await Promise.all([prepare(), sleep(1000)])
 		records.push(...observer.takeRecords())
-		const busy = new Set(records.map(record => record.target))
+		const busy = new Set(records.map(partOf))
 		const before = records.length
 		/** @param {Node | null} node @returns {boolean} */
 		function moving(node) {
@@ -236,7 +241,9 @@ async function play(task, steps) {
 			() =>
 				location.href !== from ||
 				extra(prepared) ||
-				records.slice(before).some(record => !layer.contains(record.target) && !moving(record.target)),
+				records
+					.slice(before)
+					.some(record => record.target.isConnected && !layer.contains(record.target) && !moving(record.target)),
 			0
 		)
 		observer.disconnect()
