@@ -144,7 +144,7 @@ async function play(task, steps) {
 		const order = [
 			...document.querySelectorAll('a[href],button,input,select,textarea,summary,[tabindex]:not([tabindex^="-"])')
 		].filter(element => !layer.contains(element) && !element.matches(':disabled') && shown(element))
-		return order[(order.indexOf(from) + 1) % order.length]
+		return order.at((order.indexOf(from) + 1) % order.length)
 	}
 	function press(key) {
 		const target = document.activeElement || document.body
@@ -211,7 +211,9 @@ async function play(task, steps) {
 		if (step.press !== undefined) {
 			const before = document.activeElement
 			const responded = await responds(
-				() => press(step.press),
+				() => {
+					press(step.press)
+				},
 				() => document.activeElement !== before
 			)
 			if (!responded) throw new Error(`the page did not respond to ${step.press}`)
