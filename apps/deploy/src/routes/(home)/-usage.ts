@@ -40,60 +40,64 @@ function peak(values: readonly number[]) {
 	return Array.reduce(values, 0, Number.max)
 }
 
-function total(
-	group: readonly {cpu: number[]; memory: number[]; memoryBytes: number[]}[],
-	index: number,
-	key: BandMetric
-) {
-	return Number.sumAll(Array.map(group, app => app[key][index] ?? 0))
+type Reading = {cpu: number; id: AppId; index: number; memory: number; memoryBytes: number}
+
+// Each app's readings, one per sample it was in, so an app the range barely saw costs only those; apps' memory is measured apart from the machine's, so they shrink to fit inside it.
+function appReadings(history: MachineHistory) {
+	return pipe(
+		history.samples,
+		Array.map(sample => Option.getOrElse(sample.apps, Array.empty<AppSample>)),
+		Array.flatMap((apps, index) => {
+			const sample = history.samples[index]
+			const fit = Number.min(
+				1,
+				(sample?.memoryUsed ?? 0) / Number.max(1, Number.sumAll(Array.map(apps, app => app.memory)))
+			)
+			return Array.map(
+				apps,
+				app =>
+					({
+						cpu: Option.getOrElse(app.cpu, Function.constant(0)),
+						id: app.id,
+						index,
+						memory: ((app.memory * fit) / Number.max(1, sample?.memoryTotal ?? 1)) * 100,
+						memoryBytes: app.memory
+					}) satisfies Reading
+			)
+		}),
+		Array.groupBy(reading => reading.id)
+	)
 }
 
-function appSeries(history: MachineHistory) {
-	// One lookup per sample, so each app's series reads its entry directly.
-	const indexed = Array.map(history.samples, sample =>
-		pipe(
-			sample.apps,
-			Option.getOrElse(Array.empty<AppSample>),
-			Record.fromIterableBy(app => app.id)
-		)
+// Readings summed per sample, as a dense series over the history.
+function series(history: MachineHistory, readings: readonly Reading[], key: BandMetric) {
+	const bySample = Array.groupBy(readings, reading => `${reading.index}`)
+	return Array.map(history.samples, (_, index) =>
+		Number.sumAll(Array.map(bySample[`${index}`] ?? [], reading => reading[key]))
 	)
-	const ids = pipe(indexed, Array.flatMap(Record.keys), Array.dedupe)
-	// Apps' memory and the machine's used memory are measured apart, so together they can disagree by a little; the apps shrink to fit inside it.
-	const fit = Array.map(history.samples, (sample, index) =>
-		Number.min(
-			1,
-			sample.memoryUsed / Number.max(1, Number.sumAll(Array.map(ids, id => indexed[index]?.[id]?.memory ?? 0)))
-		)
-	)
-	return Array.map(ids, id => ({
-		cpu: Array.map(indexed, entries =>
-			pipe(
-				Record.get(entries, id),
-				Option.flatMap(app => app.cpu),
-				Option.getOrElse(Function.constant(0))
-			)
-		),
-		id,
-		memory: Array.map(
-			indexed,
-			(entries, index) =>
-				(((entries[id]?.memory ?? 0) * (fit[index] ?? 1)) / Number.max(1, history.samples[index]?.memoryTotal ?? 1)) *
-				100
-		),
-		memoryBytes: Array.map(indexed, entries => entries[id]?.memory ?? 0)
-	}))
 }
 
 // Never above 5% of the machine's memory or CPU an app is barely visible at the chart's height, so it joins the one low-impact band.
-function lowImpactApp(app: ReturnType<typeof appSeries>[number]) {
-	return peak(app.memory) < 5 && peak(app.cpu) < 5
+function lowImpactApp(readings: readonly Reading[]) {
+	return (
+		peak(Array.map(readings, reading => reading.memory)) < 5 && peak(Array.map(readings, reading => reading.cpu)) < 5
+	)
 }
 
-function bandsOf(history: MachineHistory, apps: ReturnType<typeof appSeries>) {
-	const [lowImpact, remaining] = Array.partition(apps, Filter.fromPredicate(lowImpactApp))
-	const large = Array.sort(
+function bandsOf(history: MachineHistory, apps: ReturnType<typeof appReadings>) {
+	const [lowImpact, remaining] = Array.partition(
+		Record.toEntries(apps),
+		Filter.fromPredicate(entry => lowImpactApp(entry[1]))
+	)
+	const large = pipe(
 		remaining,
-		Order.mapInput(Order.flip(Order.Number), (app: ReturnType<typeof appSeries>[number]) => peak(app.memory))
+		Array.map(entry => ({
+			cpu: series(history, entry[1], 'cpu'),
+			id: entry[0],
+			memory: series(history, entry[1], 'memory'),
+			memoryBytes: series(history, entry[1], 'memoryBytes')
+		})),
+		Array.sort(Order.mapInput(Order.flip(Order.Number), (app: {memory: number[]}) => peak(app.memory)))
 	)
 	const ranked = Array.map(
 		large,
@@ -102,31 +106,40 @@ function bandsOf(history: MachineHistory, apps: ReturnType<typeof appSeries>) {
 	)
 	const other = Array.match(lowImpact, {
 		onEmpty: () => [],
-		onNonEmpty: group => [
-			{
-				cpu: Array.map(history.samples, (_, index) => total(group, index, 'cpu')),
-				id: 'other' as const,
-				kind: 'other' as const,
-				memory: Array.map(history.samples, (_, index) => total(group, index, 'memory')),
-				memoryBytes: Array.map(history.samples, (_, index) => total(group, index, 'memoryBytes')),
-				opacity: 0.35
-			}
-		]
+		onNonEmpty: group => {
+			const readings = Array.flatMap(group, entry => entry[1])
+			return [
+				{
+					cpu: series(history, readings, 'cpu'),
+					id: 'other' as const,
+					kind: 'other' as const,
+					memory: series(history, readings, 'memory'),
+					memoryBytes: series(history, readings, 'memoryBytes'),
+					opacity: 0.35
+				}
+			]
+		}
 	})
+	const all = Array.flatMap(Record.values(apps), Function.identity)
+	const used = {
+		cpu: series(history, all, 'cpu'),
+		memory: series(history, all, 'memory'),
+		memoryBytes: series(history, all, 'memoryBytes')
+	}
 	return [
 		...ranked,
 		...other,
 		{
 			cpu: Array.map(history.samples, (sample, index) =>
-				Number.max(0, Option.getOrElse(sample.cpu, Function.constant(0)) - total(apps, index, 'cpu'))
+				Number.max(0, Option.getOrElse(sample.cpu, Function.constant(0)) - (used.cpu[index] ?? 0))
 			),
 			id: 'system' as const,
 			kind: 'system',
 			memory: Array.map(history.samples, (sample, index) =>
-				Number.max(0, (sample.memoryUsed / Number.max(1, sample.memoryTotal)) * 100 - total(apps, index, 'memory'))
+				Number.max(0, (sample.memoryUsed / Number.max(1, sample.memoryTotal)) * 100 - (used.memory[index] ?? 0))
 			),
 			memoryBytes: Array.map(history.samples, (sample, index) =>
-				Number.max(0, sample.memoryUsed - total(apps, index, 'memoryBytes'))
+				Number.max(0, sample.memoryUsed - (used.memoryBytes[index] ?? 0))
 			),
 			opacity: 0.18
 		}
@@ -142,18 +155,18 @@ export type Usage = {
 }
 
 export function usageOf(history: MachineHistory) {
-	const apps = appSeries(history)
+	const apps = appReadings(history)
 	return {
 		bands: bandsOf(history, apps),
 		history,
 		lowImpact: HashSet.fromIterable(
 			pipe(
-				apps,
-				Array.filter(lowImpactApp),
-				Array.map(app => app.id)
+				Record.toEntries(apps),
+				Array.filter(entry => lowImpactApp(entry[1])),
+				Array.map(entry => entry[0])
 			)
 		),
-		recorded: HashSet.fromIterable(Array.map(apps, app => app.id))
+		recorded: HashSet.fromIterable(Record.keys(apps))
 	}
 }
 

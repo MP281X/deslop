@@ -9,9 +9,11 @@ import {
 	Context,
 	Duration,
 	Effect,
+	Exit,
 	FileSystem,
 	Filter,
 	Function,
+	HashMap,
 	Layer,
 	Option,
 	Order,
@@ -44,7 +46,10 @@ import {
 	chartWindow,
 	counters,
 	cpuCounters,
+	expired,
 	history,
+	coverageOf,
+	linuxDisks,
 	reading,
 	rollup,
 	rootVolume,
@@ -61,7 +66,7 @@ import {
 	MachineSample,
 	Sample
 } from '#services/metrics/schema.ts'
-import type {AppSample, Disk, MachineHistory} from '#services/metrics/schema.ts'
+import type {AppSample, Disk, MachineHistory, MetricSource} from '#services/metrics/schema.ts'
 
 const CGROUP = '/sys/fs/cgroup'
 
@@ -84,6 +89,10 @@ function sampled<A>(read: () => A) {
 	})
 }
 
+function readDisks(read: () => readonly Disk[]) {
+	return Effect.try({catch: cause => DeployError.make({cause, message: 'The disk sizes are unreadable.'}), try: read})
+}
+
 function sameBucket(row: Sample, time: DateTime.Utc) {
 	const step = Duration.toMillis(row.step)
 	return Math.floor(DateTime.toEpochMillis(row.since) / step) === Math.floor(DateTime.toEpochMillis(time) / step)
@@ -95,9 +104,9 @@ export class Metrics extends Context.Service<Metrics>()('@deslop/deploy/services
 		const sql = yield* SqlClient.SqlClient
 		const worker = yield* Schema.decodeEffect(WorkerId)(hostname())
 
-		// Each machine point with its app rows as one array; the merge patch drops an unmeasured CPU's null key, and a point without app rows, as on a Mac, has none.
+		// Each machine point with its app rows as one array; the merge patch drops an unmeasured CPU's null key. A point that measured apps without rows has an empty array; one that never measured them, as on a Mac, has none.
 		const joinedSamples = sql`SELECT s.*,
-			CASE WHEN COUNT(a.app) = 0 THEN NULL ELSE
+			CASE WHEN COUNT(a.app) = 0 THEN CASE WHEN s.appsCoverage > 0 THEN '[]' END ELSE
 				json_group_array(json_patch('{}', json_object('id', a.app, 'cpu', a.cpu, 'memory', a.memory)))
 			END AS apps
 			FROM ${sql(MachineSample.table)} s
@@ -129,18 +138,27 @@ export class Metrics extends Context.Service<Metrics>()('@deslop/deploy/services
 			Request: Schema.NonEmptyArray(AppHistory.insert),
 			execute: rows => sql`INSERT INTO ${sql(AppHistory.table)} ${sql.insert(rows)}`
 		})
+		// Statements of at most 500 rows, well inside SQLite's bound on variables however many apps a backlog holds.
 		const saveSamples = Effect.fnUntraced(function* (rows: Array.NonEmptyReadonlyArray<Sample>) {
-			const machines = Array.map(rows, row => Struct.omit(row, ['apps']))
-			yield* saveMachineSamples(machines)
-			yield* deleteAppSamples(machines)
-			const apps = Array.flatMap(rows, row =>
-				pipe(
-					row.apps,
-					Option.getOrElse(Array.empty),
-					Array.map(app => ({app: app.id, cpu: app.cpu, memory: app.memory, since: row.since, step: row.step}))
-				)
+			const machines = pipe(
+				rows,
+				Array.map(row => Struct.omit(row, ['apps'])),
+				Array.chunksOf(500)
 			)
-			if (Array.isReadonlyArrayNonEmpty(apps)) yield* saveAppSamples(apps)
+			yield* Effect.forEach(machines, saveMachineSamples, {concurrency: 1})
+			yield* Effect.forEach(machines, deleteAppSamples, {concurrency: 1})
+			yield* pipe(
+				rows,
+				Array.flatMap(row =>
+					pipe(
+						row.apps,
+						Option.getOrElse(Array.empty),
+						Array.map(app => ({app: app.id, cpu: app.cpu, memory: app.memory, since: row.since, step: row.step}))
+					)
+				),
+				Array.chunksOf(500),
+				Effect.forEach(saveAppSamples, {concurrency: 1})
+			)
 		})
 		// One series from a bucket before the range's start: a point covers at most its step, so none that ends inside the range is missed.
 		const listSeries = SqlSchema.findAll({
@@ -169,10 +187,19 @@ export class Metrics extends Context.Service<Metrics>()('@deslop/deploy/services
 
 		const previous = yield* Ref.make(Option.none<Counters>())
 		const lastApps = yield* Ref.make(Option.none<AppReading>())
-		const storage = yield* Ref.make(Option.none<string>())
+		const storage = yield* Ref.make<readonly Disk[]>([])
 		// The newest measurement's disks and load averages, which no chart draws over time.
 		const latest = yield* Ref.make<{disks: readonly Disk[]; load: readonly number[]}>({disks: [], load: []})
-		const failure = yield* Ref.make(Option.none<string>())
+		// Each source's last failure, cleared only by that source's next success, so a good sample never hides a failed save.
+		const problems = yield* Ref.make(HashMap.empty<MetricSource, string>())
+		function report(source: MetricSource, problem: Option.Option<string>) {
+			return Ref.update(problems, current =>
+				Option.match(problem, {
+					onNone: () => HashMap.remove(current, source),
+					onSome: message => HashMap.set(current, source, message)
+				})
+			)
+		}
 		// The cgroups that are each one app, opened level by level through slices and user managers without entering an app; a cgroup gone mid-walk has no children.
 		function walk(
 			pending: readonly CgroupPath[],
@@ -262,35 +289,46 @@ export class Metrics extends Context.Service<Metrics>()('@deslop/deploy/services
 			)
 			return Record.fromEntries(Array.getSomes(readings))
 		})
+		// A disk that never answers is killed after ten seconds and leaves the last disks read; a row df writes that isn't a disk fails only the disks.
 		const refreshStorage = pipe(
-			Effect.scoped(
-				Boolean.match(platform === 'darwin', {
-					onFalse: () =>
-						executeProcess('df', [
-							'-B1',
-							'--output=target,size,used',
-							'-x',
-							'tmpfs',
-							'-x',
-							'devtmpfs',
-							'-x',
-							'overlay',
-							'-x',
-							'squashfs',
-							'-x',
-							'efivarfs'
-						]),
-					onTrue: () => executeProcess('df', ['-k', '/'])
-				})
-			),
-			Effect.flatMap(text => Ref.set(storage, Option.some(text))),
+			Boolean.match(platform === 'darwin', {
+				onFalse: () =>
+					Effect.flatMap(
+						executeProcess(
+							'df',
+							[
+								'-B1',
+								'--output=target,size,used',
+								'-x',
+								'tmpfs',
+								'-x',
+								'devtmpfs',
+								'-x',
+								'overlay',
+								'-x',
+								'squashfs',
+								'-x',
+								'efivarfs'
+							],
+							{timeout: '10 seconds'}
+						),
+						text => readDisks(() => linuxDisks(text))
+					),
+				onTrue: () =>
+					Effect.flatMap(executeProcess('df', ['-k', '/'], {timeout: '10 seconds'}), text =>
+						readDisks(() => rootVolume(text))
+					)
+			}),
+			Effect.flatMap(disks => Ref.set(storage, disks)),
+			Effect.andThen(report('disks', Option.none())),
 			Effect.withSpan('Metrics.refreshStorage', {attributes: {worker}}),
+			Effect.tapError(cause => report('disks', Option.some(cause.message))),
 			Effect.ignore({log: 'Warn', message: 'The disk sizes were not read'})
 		)
-		// A Linux sample reads /proc, and each app's cgroup, so the history can split memory and CPU by app; a slow cgroup read only drops the apps.
+		// A Linux sample reads /proc, and each app's cgroup, so the history can split memory and CPU by app; a slow or failed cgroup read only drops the apps.
 		const linux = Effect.fnUntraced(function* (
 			time: DateTime.Utc,
-			disks: Option.Option<string>,
+			disks: readonly Disk[],
 			old: Option.Option<Counters>
 		) {
 			const files = yield* Effect.all(
@@ -312,31 +350,32 @@ export class Metrics extends Context.Service<Metrics>()('@deslop/deploy/services
 						return [appShares(cgroups, last), Option.some(cgroups)]
 					})
 				),
+				Effect.tap(report('apps', Option.none())),
 				Effect.asSome,
 				Effect.catchTag('TimeoutError', cause =>
 					Effect.as(Effect.logWarning('Per-app metrics exceeded their sampling window', cause), Option.none())
+				),
+				Effect.catch(cause =>
+					pipe(
+						Effect.logWarning('Per-app metrics could not be read', cause),
+						Effect.andThen(report('apps', Option.some(cause.message))),
+						Effect.as(Option.none())
+					)
 				)
 			)
 			const value = yield* sampled(() => sample(current, files.memory, disks, old, Option.some(files.load)))
-			return {current, value: {...value, point: {...value.point, apps: shares}}}
+			return {current, value: {...value, point: {...value.point, apps: shares, appsCoverage: coverageOf(shares)}}}
 		})
 		// A Mac has no cgroups, so its samples carry no apps.
 		const darwin = Effect.fnUntraced(function* (
 			time: DateTime.Utc,
-			disks: Option.Option<string>,
+			disks: readonly Disk[],
 			old: Option.Option<Counters>
 		) {
-			const memory = yield* Effect.scoped(executeProcess('vm_stat', []))
 			const uptime = Duration.nanos(yield* Clock.monotonicTimeNanos)
 			const current = yield* counted(() => cpuCounters(cpus(), uptime, time))
-			const value = yield* sampled(() =>
-				reading(
-					current,
-					vmStatMemory(memory, totalmem()),
-					Option.match(disks, {onNone: () => [], onSome: rootVolume}),
-					loadavg(),
-					old
-				)
+			const value = yield* Effect.flatMap(executeProcess('vm_stat', [], {timeout: '2 seconds'}), memory =>
+				sampled(() => reading(current, vmStatMemory(memory, totalmem()), disks, loadavg(), old))
 			)
 			return {current, value}
 		})
@@ -348,11 +387,11 @@ export class Metrics extends Context.Service<Metrics>()('@deslop/deploy/services
 				const time = yield* DateTime.now
 				const old = yield* Ref.get(previous)
 				const disks = yield* Ref.get(storage)
-				const measured = yield* Boolean.match(platform === 'darwin', {
+				const measurement = yield* Boolean.match(platform === 'darwin', {
 					onFalse: () => linux(time, disks, old),
 					onTrue: () => darwin(time, disks, old)
 				})
-				yield* Ref.set(previous, Option.some(measured.current))
+				yield* Ref.set(previous, Option.some(measurement.current))
 				yield* writes.withPermits(1)(
 					Ref.update(pending, rows => {
 						const [current, completed] = Array.partition(
@@ -361,56 +400,80 @@ export class Metrics extends Context.Service<Metrics>()('@deslop/deploy/services
 						)
 						return [
 							...completed,
-							...Array.map(rollup(measured.value.point, current), row =>
+							...Array.map(rollup(measurement.value.point, current), row =>
 								Struct.evolve(row, {
-									apps: readings =>
-										pipe(
-											readings,
-											Option.filter(Array.isReadonlyArrayNonEmpty),
-											Option.map(Array.sort(Order.mapInput(Order.String, (app: AppSample) => app.id)))
-										)
+									apps: Option.map(Array.sort(Order.mapInput(Order.String, (app: AppSample) => app.id)))
 								})
 							)
 						]
 					})
 				)
-				yield* Ref.set(latest, {disks: measured.value.disks, load: measured.value.load})
-				yield* Ref.set(failure, Option.none())
+				yield* Ref.set(latest, {disks: measurement.value.disks, load: measurement.value.load})
+				yield* report('sample', Option.none())
 			}),
 			Effect.tapError(cause => Effect.logWarning('Metrics could not be sampled', cause)),
-			Effect.catch(cause => Ref.set(failure, Option.some(cause.message)))
+			Effect.catch(cause => report('sample', Option.some(cause.message)))
 		)
+		// A save that keeps failing holds no bucket its range has already dropped, so the backlog stays bounded.
 		const flush = pipe(
 			Effect.gen(function* () {
 				const rows = yield* Ref.get(pending)
-				if (Array.isReadonlyArrayNonEmpty(rows)) yield* pipe(saveSamples(rows), sql.withTransaction, asDeployError)
+				const saved = yield* Effect.exit(
+					Effect.gen(function* () {
+						if (Array.isReadonlyArrayNonEmpty(rows)) yield* pipe(saveSamples(rows), sql.withTransaction, asDeployError)
+					})
+				)
 				const time = yield* DateTime.now
 				yield* Ref.set(
 					pending,
-					Array.filter(rows, row => sameBucket(row, time))
+					Array.filter(rows, row =>
+						Boolean.match(Exit.isSuccess(saved), {
+							onFalse: () => !expired(row, time),
+							onTrue: () => sameBucket(row, time)
+						})
+					)
 				)
+				return yield* saved
 			}),
 			writes.withPermits(1),
+			Effect.andThen(report('save', Option.none())),
 			Effect.withSpan('Metrics.collect', {attributes: {worker}}),
-			Effect.tapError(cause => Ref.set(failure, Option.some(cause.message))),
+			Effect.tapError(cause => report('save', Option.some(cause.message))),
 			Effect.ignore({log: 'Error', message: 'Resource history could not be saved'})
 		)
-		const prune = pipe(
-			DateTime.now,
-			Effect.flatMap(deleteExpired),
-			sql.withTransaction,
-			asDeployError,
-			Effect.withSpan('Metrics.prune', {attributes: {worker}})
-		)
+		// The wall clock's offset from the monotonic one, and since when it has held: history is pruned only by a wall clock that has kept time for ten minutes, so a clock stepped ahead and then corrected deletes nothing.
+		const offset = Effect.gen(function* () {
+			const monotonic = Duration.toMillis(Duration.nanos(yield* Clock.monotonicTimeNanos))
+			return {monotonic, offset: (yield* Clock.currentTimeMillis) - monotonic}
+		})
+		const steady = yield* Ref.make(yield* offset)
+		const prune = Effect.gen(function* () {
+			const current = yield* offset
+			const since = yield* Ref.updateAndGet(steady, last =>
+				Boolean.match(Math.abs(current.offset - last.offset) > 60_000, {
+					onFalse: () => ({...last, offset: current.offset}),
+					onTrue: () => current
+				})
+			)
+			if (current.monotonic - since.monotonic < Duration.toMillis(Duration.minutes(10))) {
+				return yield* Effect.logDebug('The wall clock moved recently; history is kept until it holds')
+			}
+			yield* pipe(
+				DateTime.now,
+				Effect.flatMap(deleteExpired),
+				sql.withTransaction,
+				asDeployError,
+				Effect.withSpan('Metrics.prune', {attributes: {worker}})
+			)
+		})
 
-		yield* prune
-		yield* refreshStorage
+		// The first sample doesn't wait for df: its disks arrive with the first answer.
 		yield* collect
 		// Registered before the collectors: their scoped fibers stop before the final commit.
 		yield* Effect.addFinalizer(() => flush)
 		yield* pipe(collect, Effect.schedule(Schedule.fixed(Duration.seconds(1))), Effect.forkScoped)
 		yield* pipe(flush, Effect.schedule(Schedule.fixed(Duration.seconds(10))), Effect.forkScoped)
-		yield* pipe(refreshStorage, Effect.schedule(Schedule.spaced(Duration.seconds(30))), Effect.forkScoped)
+		yield* pipe(refreshStorage, Effect.repeat(Schedule.spaced(Duration.seconds(30))), Effect.forkScoped)
 		// Expired points go every minute.
 		yield* pipe(
 			prune,
@@ -446,7 +509,12 @@ export class Metrics extends Context.Service<Metrics>()('@deslop/deploy/services
 				// Built from values the model just decoded, so no sample is checked twice; the RPC encodes it against the schema.
 				return {
 					disks: now.disks,
-					error: yield* Ref.get(failure),
+					error: pipe(
+						yield* Ref.get(problems),
+						HashMap.toValues,
+						Option.liftPredicate(Array.isReadonlyArrayNonEmpty),
+						Option.map(Array.join('; '))
+					),
 					load: now.load,
 					platform: Option.some(
 						Boolean.match(platform === 'darwin', {

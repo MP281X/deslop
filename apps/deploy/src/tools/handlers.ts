@@ -8,25 +8,21 @@ import {CurrentUser} from '@deslop/runtime/shared/auth'
 import {Fleet} from '#services/fleet/service.ts'
 import {jobRequest, listApps, ownerNames} from '#services/inventory/lib/utils.ts'
 import {DeployError, WorkerId} from '#services/inventory/schema.ts'
-import type {ProcessSummary, Snapshot, WorkerInventory} from '#services/inventory/schema.ts'
+import type {InventoryCursor, ProcessSummary, WorkerInventory} from '#services/inventory/schema.ts'
 import {resourceHistory} from '#services/metrics/lib/utils.ts'
 import {ToolContracts} from '#tools/contracts.ts'
 
-function checkWorker(snapshot: Snapshot, worker: Option.Option<WorkerId>) {
-	const workers = listApps(snapshot, {app: Option.none(), failing: Option.none(), worker: Option.none()})
+// A target is checked against the configured workers, so a command never waits on reading the fleet first.
+function checkWorker(workers: readonly WorkerId[], worker: Option.Option<WorkerId>) {
 	return pipe(
 		worker,
-		Option.filter(selected => !Array.some(workers, row => row.worker === selected)),
+		Option.filter(selected => !Array.contains(workers, selected)),
 		Option.match({
 			onNone: () => Effect.void,
 			onSome: selected =>
 				Effect.fail(
 					DeployError.make({
-						message: `Unknown worker ${selected}; valid workers: ${pipe(
-							workers,
-							Array.map(row => row.worker),
-							Array.join(', ')
-						)}. Nothing changed.`
+						message: `Unknown worker ${selected}; valid workers: ${Array.join(workers, ', ')}. Nothing changed.`
 					})
 				)
 		})
@@ -74,27 +70,33 @@ function processPage(nodes: readonly ProcessSummary[], offset: number, limit: nu
 	}
 }
 
+const cursorOrder = pipe(
+	Order.mapInput(Order.String, (key: InventoryCursor) => key[0]),
+	Order.combine(Order.mapInput(Order.String, (key: InventoryCursor) => key[1])),
+	Order.combine(Order.mapInput(Order.String, (key: InventoryCursor) => key[2]))
+)
+
 function inventoryPage(
 	workers: readonly WorkerInventory[],
-	input: {cursor: Option.Option<string>; limit: number; processLimit: number; processOffset: number}
+	input: {cursor: Option.Option<InventoryCursor>; limit: number; processLimit: number; processOffset: number}
 ) {
 	const remaining = pipe(
 		workers,
 		Array.flatMap(worker => [
-			...Array.map(worker.apps, row => `${worker.worker}\tapps\t${row.id}`),
+			...Array.map(worker.apps, row => [worker.worker, 'apps', row.id] satisfies InventoryCursor),
 			...pipe(
 				worker.jobs,
 				Option.getOrElse(Array.empty),
-				Array.map(row => `${worker.worker}\tjobs\t${row.id}`)
+				Array.map(row => [worker.worker, 'jobs', row.id] satisfies InventoryCursor)
 			),
 			...pipe(
 				worker.exposures,
 				Option.getOrElse(Array.empty),
-				Array.map(row => `${worker.worker}\texposures\t${row.id}`)
+				Array.map(row => [worker.worker, 'exposures', row.id] satisfies InventoryCursor)
 			)
 		]),
-		Array.sort(Order.String),
-		Array.filter(key => !Option.exists(input.cursor, cursor => key <= cursor))
+		Array.sort(cursorOrder),
+		Array.filter(key => !Option.exists(input.cursor, cursor => Order.isLessThanOrEqualTo(cursorOrder)(key, cursor)))
 	)
 	const page = Array.take(remaining, input.limit)
 	const selected = HashSet.fromIterable(page)
@@ -108,7 +110,7 @@ function inventoryPage(
 			...Struct.pick(worker, ['worker', 'errors']),
 			apps: pipe(
 				worker.apps,
-				Array.filter(row => HashSet.has(selected, `${worker.worker}\tapps\t${row.id}`)),
+				Array.filter(row => HashSet.has(selected, [worker.worker, 'apps', row.id])),
 				Array.map(row =>
 					Option.match(row.processes, {
 						onNone: () => ({...row, nextProcessOffset: Option.none<number>(), processesOmitted: Option.none<number>()}),
@@ -120,10 +122,10 @@ function inventoryPage(
 				)
 			),
 			exposures: Option.map(worker.exposures, exposures =>
-				Array.filter(exposures, row => HashSet.has(selected, `${worker.worker}\texposures\t${row.id}`))
+				Array.filter(exposures, row => HashSet.has(selected, [worker.worker, 'exposures', row.id]))
 			),
 			jobs: Option.map(worker.jobs, jobs =>
-				Array.filter(jobs, row => HashSet.has(selected, `${worker.worker}\tjobs\t${row.id}`))
+				Array.filter(jobs, row => HashSet.has(selected, [worker.worker, 'jobs', row.id]))
 			)
 		}))
 	}
@@ -175,7 +177,7 @@ export const ToolHandlers = ToolContracts.toLayer(
 		ToolContracts.of({
 			create_exposure: Effect.fnUntraced(function* (input) {
 				const admin = yield* requireAdmin(yield* CurrentUser, 'Only an admin can create exposures')
-				yield* checkWorker(yield* fleet.snapshot, input.worker)
+				yield* checkWorker(fleet.workers, input.worker)
 				return {
 					url: yield* fleet.expose(
 						{...input, worker: Option.getOrElse(input.worker, () => WorkerId.make(hostname()))},
@@ -184,11 +186,11 @@ export const ToolHandlers = ToolContracts.toLayer(
 				}
 			}),
 			list_apps: Effect.fnUntraced(function* (input) {
-				const snapshot = yield* fleet.snapshot
-				yield* checkWorker(snapshot, input.worker)
-				return inventoryPage(focusedInventory(listApps(snapshot, input), input.app), input)
+				yield* checkWorker(fleet.workers, input.worker)
+				return inventoryPage(focusedInventory(listApps(yield* fleet.snapshot, input), input.app), input)
 			}),
 			read_resource_history: Effect.fnUntraced(function* (input) {
+				yield* checkWorker(fleet.workers, input.worker)
 				const value = yield* Effect.all(
 					{
 						machines: Effect.andThen(fleet.metrics({minutes: input.minutes}), fleet.current({minutes: input.minutes})),
@@ -196,7 +198,6 @@ export const ToolHandlers = ToolContracts.toLayer(
 					},
 					{concurrency: 'unbounded'}
 				)
-				yield* checkWorker(value.snapshot, input.worker)
 				return {
 					workers: Array.map(resourceHistory(value.machines, input, ownerNames(value.snapshot)), worker =>
 						Boolean.match(input.series, {
@@ -213,7 +214,7 @@ export const ToolHandlers = ToolContracts.toLayer(
 			}),
 			remove_exposure: Effect.fnUntraced(function* (input) {
 				const admin = yield* requireAdmin(yield* CurrentUser, 'Only an admin can remove exposures')
-				yield* checkWorker(yield* fleet.snapshot, input.worker)
+				yield* checkWorker(fleet.workers, input.worker)
 				yield* fleet.hide(
 					{name: input.name, worker: Option.getOrElse(input.worker, () => WorkerId.make(hostname()))},
 					admin
@@ -222,9 +223,8 @@ export const ToolHandlers = ToolContracts.toLayer(
 			}),
 			run_job: Effect.fnUntraced(function* (input) {
 				const admin = yield* requireAdmin(yield* CurrentUser, 'Only an admin can run jobs')
-				const snapshot = yield* fleet.snapshot
-				yield* checkWorker(snapshot, input.worker)
-				yield* fleet.run(yield* jobRequest(snapshot, input), admin)
+				yield* checkWorker(fleet.workers, input.worker)
+				yield* fleet.run(yield* jobRequest(yield* fleet.snapshot, input), admin)
 				return {started: true as const}
 			})
 		})

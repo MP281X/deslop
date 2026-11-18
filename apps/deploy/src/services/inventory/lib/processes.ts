@@ -72,16 +72,23 @@ function processStatus(status: string) {
 	}
 }
 
-// What a process was started with, as its arguments: flags and variables named like secrets, the value after such a flag, long opaque strings and URL credentials are masked, and each argument and their number are capped.
+// What a process was started with, read only to label it, never sent: flags, variables and headers named like secrets and the values after them or after an auth scheme, long opaque strings and URL credentials are masked, and each argument and their number are capped.
 function commandArgs(cmdline: string) {
 	const args = pipe(cmdline, String.split('\0'), Array.filter(String.isNonEmpty), Array.take(40))
 	return Array.map(args, (arg, index) => {
 		if (Option.isSome(String.match(/^-{0,2}[\w.-]+=/u)(arg)) && SECRET.test(String.split(arg, '=')[0])) {
 			return `${String.split(arg, '=')[0]}=…`
 		}
-		// A secret flag's separate value, or a long opaque argument; the executable and flags themselves stay readable.
+		// A header written as one argument, such as `Authorization: Bearer …`.
+		if (Option.isSome(String.match(/^[\w-]+:\s/u)(arg)) && SECRET.test(String.split(arg, ':')[0])) {
+			return `${String.split(arg, ':')[0]}: …`
+		}
+		// A secret flag's or header's separate value, the credential after an auth scheme, or a long opaque argument; the executable and flags themselves stay readable.
 		const previous = args[index - 1] ?? ''
-		const secretValue = String.startsWith('-')(previous) && !String.includes('=')(previous) && SECRET.test(previous)
+		const secretValue =
+			(String.startsWith('-')(previous) && !String.includes('=')(previous) && SECRET.test(previous)) ||
+			(Option.isSome(String.match(/^[\w-]+:$/u)(previous)) && SECRET.test(previous)) ||
+			Option.isSome(String.match(/^(?:bearer|basic|digest|token)$/iu)(previous))
 		const opaque = !String.startsWith('/')(arg) && Option.isSome(String.match(/^[\w+/=-]{32,}$/u)(arg))
 		if (index > 0 && (secretValue || (!String.startsWith('-')(arg) && opaque))) return '…'
 		return String.slice(0, 200)(String.replaceAll(/:\/\/[^/@\s]+@/gu, '://…@')(arg))
@@ -107,7 +114,7 @@ export const processes = Effect.gen(function* () {
 						const status = yield* fs.readFileString(`/proc/${pid}/status`)
 						const processStat = yield* fs.readFileString(`/proc/${pid}/stat`)
 						const cwd = yield* Effect.option(fs.readLink(`/proc/${pid}/cwd`))
-						// A process whose arguments can't be read still counts, without its preview.
+						// A process whose arguments can't be read still counts, labelled by its name.
 						const command = Option.map(yield* Effect.option(fs.readFileString(`/proc/${pid}/cmdline`)), commandArgs)
 						const fields = String.split(
 							String.slice((yield* Effect.fromOption(String.lastIndexOf(')')(processStat))) + 2)(processStat),
@@ -121,7 +128,6 @@ export const processes = Effect.gen(function* () {
 							owner: processOwner(yield* fs.readFileString(`/proc/${pid}/cgroup`)),
 							process: Process.make({
 								...parsed,
-								command,
 								cpu: Option.none(),
 								// The label reads the masked arguments; a kernel thread or a zombie has none, so its name stands alone.
 								label: pipe(
@@ -235,8 +241,28 @@ export function launchdStarts(text: string) {
 	return HashMap.fromIterable(Array.map(launchdRows(text), row => [row.pid, row.start] as const))
 }
 
-// A Mac's app-owned processes; agents names each app's PID, and start distinguishes a reused PID.
-export function launchdProcesses(text: string, agents: HashMap.HashMap<ProcessId, UnitId>) {
+// Each process's executable path from `ps -axww -o pid=,comm=`, whose path is the only field after the PID.
+export function launchdExecutables(text: string) {
+	return HashMap.fromIterable(
+		pipe(
+			text,
+			String.split('\n'),
+			Array.map(line =>
+				Option.flatMap(String.match(/^\s*([0-9]+)\s+(\/.*\S)\s*$/u)(line), match =>
+					Option.map(Schema.decodeOption(ProcessIdFromString)(match[1] ?? ''), pid => [pid, match[2] ?? ''] as const)
+				)
+			),
+			Array.getSomes
+		)
+	)
+}
+
+// A Mac's app-owned processes; agents names each app's PID, executables their paths, and start distinguishes a reused PID.
+export function launchdProcesses(
+	text: string,
+	agents: HashMap.HashMap<ProcessId, UnitId>,
+	executables: HashMap.HashMap<ProcessId, string>
+) {
 	const rows = launchdRows(text)
 	const parents = HashMap.fromIterable(Array.map(rows, row => [row.pid, row.parent] as const))
 	function agent(pid: ProcessId, visited = MutableHashSet.empty<ProcessId>()): Option.Option<UnitId> {
@@ -276,11 +302,29 @@ export function launchdProcesses(text: string, agents: HashMap.HashMap<ProcessId
 						)
 					}),
 					times => {
-						const command = commandArgs(pipe(String.trim(row.args), String.split(/\s+/u), Array.join('\0')))
+						// ps joins the arguments with spaces, so an executable path that holds spaces is taken whole from its own listing.
+						const args = String.trim(row.args)
+						const command = commandArgs(
+							pipe(
+								executables,
+								HashMap.get(row.pid),
+								Option.filter(path => String.startsWith(path)(args)),
+								Option.match({
+									onNone: () => pipe(args, String.split(/\s+/u), Array.join('\0')),
+									onSome: path =>
+										pipe(
+											String.slice(path.length)(args),
+											String.trim,
+											String.split(/\s+/u),
+											Array.prepend(path),
+											Array.join('\0')
+										)
+								})
+							)
+						)
 						return {
 							owner: Option.some(AppId.make(`service:user:${unit}`)),
 							process: Process.make({
-								command: Option.some(command),
 								cpu: Option.none(),
 								label: commandLabel(command, Option.none()),
 								memory: row.memory,

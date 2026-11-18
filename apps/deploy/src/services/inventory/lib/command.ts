@@ -2,7 +2,62 @@ import {Array, Boolean, Function, Match, Option, Record, String, pipe} from 'eff
 
 import type {ProcessLabel} from '#services/inventory/schema.ts'
 
-const WRAPPERS = ['env', 'nice', 'nohup', 'setsid', 'exec', 'timeout', 'sudo', 'stdbuf', 'systemd-run']
+// Each wrapper with the flags that take the next argument as their value, and how many arguments it reads before its command: timeout's duration.
+const WRAPPERS: Record<string, {readonly operands: number; readonly values: readonly string[]}> = {
+	env: {operands: 0, values: ['-u', '--unset', '-C', '--chdir', '-S', '--split-string']},
+	exec: {operands: 0, values: ['-a']},
+	nice: {operands: 0, values: ['-n', '--adjustment']},
+	nohup: {operands: 0, values: []},
+	setsid: {operands: 0, values: []},
+	stdbuf: {operands: 0, values: ['-i', '-o', '-e', '--input', '--output', '--error']},
+	sudo: {
+		operands: 0,
+		values: [
+			'-u',
+			'--user',
+			'-g',
+			'--group',
+			'-h',
+			'--host',
+			'-p',
+			'--prompt',
+			'-C',
+			'--close-from',
+			'-D',
+			'--chdir',
+			'-r',
+			'--role',
+			'-t',
+			'--type',
+			'-U',
+			'--other-user',
+			'-T',
+			'--command-timeout'
+		]
+	},
+	'systemd-run': {
+		operands: 0,
+		values: [
+			'-u',
+			'--unit',
+			'-p',
+			'--property',
+			'-M',
+			'--machine',
+			'-E',
+			'--setenv',
+			'--slice',
+			'--description',
+			'--uid',
+			'--gid',
+			'--nice',
+			'--working-directory',
+			'-H',
+			'--host'
+		]
+	},
+	timeout: {operands: 1, values: ['-k', '--kill-after', '-s', '--signal']}
+}
 const RUNTIMES = ['node', 'bun', 'deno', 'python', 'python3']
 const SHELLS = ['sh', 'bash', 'zsh', 'dash']
 // Shell setup that runs before the command, such as an agent's snapshot `source`, `shopt` and `\builtin unalias` lines.
@@ -77,32 +132,26 @@ function shellRest(tokens: readonly string[]) {
 	)
 }
 
+// A wrapper's command: past its flags, their separate values, its own operands and env's assignments, or past `--`.
+function wrapped(
+	args: readonly string[],
+	wrapper: {readonly operands: number; readonly values: readonly string[]}
+): readonly string[] {
+	return Option.match(Array.head(args), {
+		onNone: () => args,
+		onSome: token => {
+			if (token === '--') return Array.drop(args, 1)
+			if (Array.contains(wrapper.values, token)) return wrapped(Array.drop(args, 2), wrapper)
+			if (isFlag(token) || assignment(token)) return wrapped(Array.drop(args, 1), wrapper)
+			return Array.drop(args, wrapper.operands)
+		}
+	})
+}
+
 function unwrapTokens(tokens: readonly string[], cwd: Option.Option<string>): readonly string[] {
 	const name = basename(Option.getOrElse(Array.head(tokens), Function.constant('')))
-	if (Array.contains(WRAPPERS, name)) {
-		return unwrapTokens(
-			pipe(
-				Array.findFirstIndex(tokens, token => token === '--'),
-				Option.filter(index => index > 0),
-				Option.match({
-					onNone: () => {
-						const tail = Array.drop(tokens, 1)
-						return pipe(
-							tail,
-							Array.findFirstIndex(token => !isFlag(token) && !assignment(token)),
-							Option.match({
-								onNone: () => Array.empty<string>(),
-								onSome: start =>
-									Array.filter(tail, (token, index) => index >= start && !isFlag(token) && !assignment(token))
-							})
-						)
-					},
-					onSome: index => Array.drop(tokens, index + 1)
-				})
-			),
-			cwd
-		)
-	}
+	const wrapper = WRAPPERS[name]
+	if (wrapper !== undefined) return unwrapTokens(wrapped(Array.drop(tokens, 1), wrapper), cwd)
 	if (Array.contains(SHELLS, name) && pipe(tokens, Array.get(1), Option.getOrElse(Function.constant(''))) === '-c') {
 		return unwrapTokens(shellRest(tokens), cwd)
 	}
