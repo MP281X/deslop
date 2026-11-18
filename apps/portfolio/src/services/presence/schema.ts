@@ -2,8 +2,13 @@ import {Schema, Struct, pipe} from 'effect'
 
 export class PresenceError extends Schema.TaggedError<PresenceError>()('PresenceError', {message: Schema.String}) {}
 
+// The room names each cursor; every page sees it, so it grants nothing.
 export type VisitorId = typeof VisitorId.Type
 export const VisitorId = pipe(Schema.NonEmptyString.check(Schema.isMaxLength(32)), Schema.brand('PortfolioVisitorId'))
+
+// A tab's private guest key: tabs that hold it share one cursor, and no scene carries it.
+export type GuestKey = typeof GuestKey.Type
+export const GuestKey = pipe(Schema.String.check(Schema.isUUID(4)), Schema.brand('PortfolioGuestKey'))
 
 // A visitor's cursor and trail stay in theme.css's palette.
 export type Color = typeof Color.Type
@@ -22,16 +27,17 @@ export const Visitor = Schema.Struct({
 export type Visitors = typeof Visitors.Type
 export const Visitors = Schema.Array(Visitor)
 
-// The room's cursors and the wandering server marks; only the visitors are tabs.
+// The room's cursors and the wandering server marks; only the visitors are tabs, and `own` is the joining tab's cursor.
 export type Scene = typeof Scene.Type
-export const Scene = Schema.Struct({bots: Visitors, visitors: Visitors})
+export const Scene = Schema.Struct({bots: Visitors, own: VisitorId, visitors: Visitors})
 
-export type Guest = typeof Guest.Type
-export const Guest = Visitor.mapFields(fields => ({...fields, id: fields.id.check(Schema.isPattern(/^(?!server-)/u))}))
+// What a joined socket may change.
+export type Command = typeof Command.Type
+export const Command = Schema.Literals(['move', 'recolor'])
 
 export type JoinVisitor = typeof JoinVisitor.Type
-export const JoinVisitor = Schema.Struct(Struct.pick(Guest.fields, ['color', 'id', 'name']))
+export const JoinVisitor = Schema.Struct({...Struct.pick(Visitor.fields, ['color', 'name']), key: GuestKey})
 export type MoveVisitor = typeof MoveVisitor.Type
-export const MoveVisitor = Schema.Struct(Struct.pick(Guest.fields, ['id', 'x', 'y']))
+export const MoveVisitor = Schema.Struct(Struct.pick(Visitor.fields, ['x', 'y']))
 export type RecolorVisitor = typeof RecolorVisitor.Type
-export const RecolorVisitor = Schema.Struct(Struct.pick(Guest.fields, ['color', 'id']))
+export const RecolorVisitor = Schema.Struct(Struct.pick(Visitor.fields, ['color']))
