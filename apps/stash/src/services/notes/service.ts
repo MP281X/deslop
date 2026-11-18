@@ -172,7 +172,7 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 		const dispatch = yield* Semaphore.make(1)
 		// The request each run follows from, kept only to link its trace.
 		const requests = MutableHashMap.empty<NoteId, Tracer.Span>()
-		// Notes whose last run ended without its outcome stored, because every write failed. No claim starts them again until the person asks again or the server restarts, so a storage failure costs one provider request per note per server run; kept in memory, not in a table.
+		// Notes whose last run ended without its outcome stored, because every write failed. No claim starts them again until the person asks again or the server restarts, so a storage failure costs one run per note per server run, which asks until it has one answer, at most twice when the provider answers with an error; kept in memory, not in a table.
 		const unrecorded = MutableHashSet.empty<NoteId>()
 		// Writes tell this Reactivity of their commits, so callers need none of their own.
 		const withReactivity = Effect.provideService(Reactivity.Reactivity, yield* Reactivity.Reactivity)
@@ -746,7 +746,7 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 								})
 						})
 					),
-					// A run that ends without settling its note, failed or not, marks it failed, so while the server runs no claim asks the provider again: one request per run. When even that write fails for good, the note is remembered as unrecorded and left alone. A restart cuts a run short and the next start asks again, so a charge can repeat. Only a stop or removal interrupts the write.
+					// A run that ends without settling its note, failed or not, marks it failed, so while the server runs no claim asks the provider again: one run asks until it has one answer, at most twice when the provider answers with an error. When even that write fails for good, the note is remembered as unrecorded and left alone. A restart cuts a run short and the next start asks again, so a charge can repeat. Only a stop or removal interrupts the write.
 					Effect.onExit(exit =>
 						Boolean.match(Exit.isFailure(exit) && Cause.hasInterruptsOnly(exit.cause), {
 							onFalse: () =>
@@ -1107,17 +1107,15 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 			}),
 			regenerate: Effect.fn('Notes.regenerate')(function* (userId: UserId, id: NoteId) {
 				yield* savedNote(id)
-				// A run in progress stops before the note starts over, and no claim starts it in between.
+				// A restart that fails leaves the run and the answer it waits to store alone. The run stops inside the transaction, after the write took the database's write lock, so its answer cannot land over the new run's state, and no claim starts the note in between.
 				yield* Semaphore.withPermit(
 					dispatch,
-					Effect.andThen(
-						FiberMap.remove(runs, id),
-						pipe(
-							changeIn(id, NoteChange.cases.retry.make({requester: userId})),
-							Effect.andThen(organizeLater(id)),
-							sql.withTransaction,
-							asNotesError
-						)
+					pipe(
+						changeIn(id, NoteChange.cases.retry.make({requester: userId})),
+						Effect.andThen(FiberMap.remove(runs, id)),
+						Effect.andThen(organizeLater(id)),
+						sql.withTransaction,
+						asNotesError
 					)
 				)
 			}, withReactivity),
