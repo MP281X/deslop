@@ -1,8 +1,10 @@
 import {assert, it} from '@effect/vitest'
 
-import {Array, String} from 'effect'
+import {Array, Boolean, Effect, Result, String, pipe} from 'effect'
 
-import {captureUrl, fitPictures, fitText, queryWords, tagCounts} from '#services/notes/lib/utils.ts'
+import {Dns, NetAddress} from 'effect/net'
+
+import {captureUrl, fitPictures, fitText, publicAddress, queryWords, tagCounts} from '#services/notes/lib/utils.ts'
 import {TagName} from '#services/notes/schema.ts'
 
 it('maps every share of the same post to one canonical link', () => {
@@ -85,3 +87,36 @@ it('keeps pictures in order until they fill the request', () => {
 		['preview', 'slide']
 	)
 })
+
+it.effect(
+	'reads only a named host whose every address is public',
+	Effect.fnUntraced(function* () {
+		// intranet.example also resolves into a private network.
+		const dns = Dns.make({
+			lookup: Effect.fnUntraced(function* (host) {
+				return yield* pipe(
+					Boolean.match(host === 'intranet.example', {
+						onFalse: () => ['93.184.216.34'],
+						onTrue: () => ['93.184.216.34', '10.0.0.7']
+					}),
+					Array.map(address => Result.getOrThrow(NetAddress.ipFromString(address))),
+					Effect.succeed
+				)
+			})
+		})
+		const answers = yield* Effect.forEach(
+			['https://example.com/clip', 'https://intranet.example/clip', 'http://10.0.0.7/clip', 'file:///etc/passwd'],
+			link =>
+				Effect.map(Effect.result(Effect.provideService(publicAddress(new URL(link)), Dns.Dns, dns)), answer =>
+					Result.match(answer, {onFailure: error => error.message, onSuccess: NetAddress.formatIp})
+				),
+			{concurrency: 1}
+		)
+		assert.deepStrictEqual(answers, [
+			'93.184.216.34',
+			'The link points to a private network.',
+			'Only public web links can be read.',
+			'Only public web links can be read.'
+		])
+	})
+)
