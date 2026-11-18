@@ -130,3 +130,32 @@ it.effect(
 		)
 	})
 )
+
+it.effect(
+	"keeps no step's last lines from a download that was cut, so its retry stores them once",
+	Effect.fnUntraced(function* () {
+		const passed = {
+			...JOB,
+			workflow_job: {
+				...JOB.workflow_job,
+				conclusion: Option.some('success'),
+				steps: Array.map(JOB.workflow_job.steps, step => ({...step, conclusion: Option.some('success')}))
+			}
+		}
+		const read = yield* pipe(
+			Stream.make('2026-11-18T10:00:01.0000000Z ##[warning]deprecated\n2026-11-18T10:00:02.0000000Z line\n'),
+			Stream.concat(Stream.fail('cut')),
+			logLines,
+			lines => jobRecords(passed, lines),
+			Stream.result,
+			Stream.runCollect
+		)
+		assert.deepStrictEqual(
+			Array.map(
+				Array.fromIterable(read),
+				Result.match({onFailure: Function.identity, onSuccess: record => record.body})
+			),
+			[Option.some({stringValue: 'deprecated'}), 'cut']
+		)
+	})
+)
