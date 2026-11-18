@@ -102,6 +102,7 @@ function Endpoints(props: {free: readonly InventoryItem[]; row: Row}) {
 						/>
 					}
 				>
+					{exposure.health !== 'quiet' && <StatusDot status={exposure.health} label={reasonOf(exposure)} />}
 					{Option.match(exposure.port, {
 						onNone: () => Option.match(exposure.url, {onNone: Function.constant(''), onSome: host}),
 						onSome: port => `${port}`

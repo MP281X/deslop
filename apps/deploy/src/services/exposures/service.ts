@@ -105,6 +105,8 @@ export class Exposures extends Context.Service<Exposures>()('@deslop/deploy/serv
 		})
 		const owned = asStorageDeployError(listExposures())
 		const lock = yield* Semaphore.make(1)
+		// A pass reads the rows and changes the proxies inside one hold, and a removal is saved inside another, so no pass publishes a row from before its removal was saved.
+		const passLock = yield* Semaphore.make(1)
 		// The public sites Caddy last loaded in this process; none until the first pass loads them, so Caddy restarts onto this release's binary.
 		const loaded = yield* Ref.make(Option.none<string>())
 		// Why each exposure is not yet as saved, from the last pass.
@@ -157,16 +159,15 @@ export class Exposures extends Context.Service<Exposures>()('@deslop/deploy/serv
 			})
 		})
 
-		// Tailscale Serve maps each tailnet row to publish and drops Deploy's own mapping of the rest; a mapping changed outside Deploy is never touched.
+		// Tailscale Serve maps each tailnet row to publish and drops Deploy's own mapping of the rest; a mapping changed outside Deploy is left alone. The status is read right before each row's command and the CLI has no conditional removal, so a change landing during that one command can still be overwritten.
 		const reconcileTailnet = Effect.fnUntraced(function* (
 			rows: readonly {held: Option.Option<string>; publish: boolean; row: Exposure}[]
 		) {
 			if (!Array.isReadonlyArrayNonEmpty(rows)) return Record.empty<ExposureName, string>()
-			const status = yield* Effect.result(proxies.serveStatus)
 			const outcomes = yield* Effect.forEach(
 				rows,
 				Effect.fnUntraced(function* (entry) {
-					const current = yield* Effect.fromResult(status)
+					const current = yield* proxies.serveStatus
 					const present = servesPort(current, entry.row.port)
 					if (entry.publish && present && !ownsMapping(current, entry.row)) {
 						return yield* DeployError.make({
@@ -196,44 +197,49 @@ export class Exposures extends Context.Service<Exposures>()('@deslop/deploy/serv
 
 		// Makes the worker match the rows: active rows whose port still belongs to their owner are published, the rest are not, and a removal's row goes once nothing serves it.
 		const reconciler = yield* makeReconciler(
-			Effect.withSpan(
-				Effect.gen(function* () {
-					yield* inventory.ensureFresh
-					const items = (yield* inventory.snapshot).items
-					const decided = yield* Effect.forEach(
-						yield* owned,
-						Effect.fnUntraced(function* (row) {
-							if (row.state === 'removing') return {held: Option.none<string>(), publish: false, row}
-							const found = yield* listener(items, row.port)
-							// A row saved before Deploy recorded owners takes the owner it first finds.
-							yield* Effect.forEach(
-								Option.toArray(Option.filter(found.owner, () => Option.isNone(row.owner))),
-								owner => asStorageDeployError(recordOwner({name: row.name, owner})),
-								{concurrency: 1, discard: true}
-							)
-							const held = restoreRefusal(row, found)
-							return {held, publish: Option.isNone(held), row}
-						}),
-						{concurrency: 'unbounded'}
-					)
-					const found = {
-						...Record.fromIterableWith(
-							Array.getSomes(
-								Array.map(decided, entry => Option.map(entry.held, reason => [entry.row.name, reason] as const))
+			Semaphore.withPermit(
+				passLock,
+				Effect.withSpan(
+					Effect.gen(function* () {
+						const rows = yield* owned
+						// Read after the rows, so a row saved just before this pass is judged on what listens once it was saved.
+						yield* inventory.refresh
+						const items = (yield* inventory.snapshot).items
+						const decided = yield* Effect.forEach(
+							rows,
+							Effect.fnUntraced(function* (row) {
+								if (row.state === 'removing') return {held: Option.none<string>(), publish: false, row}
+								const found = yield* listener(items, row.port)
+								// A row saved before Deploy recorded owners takes the owner it first finds.
+								yield* Effect.forEach(
+									Option.toArray(Option.filter(found.owner, () => Option.isNone(row.owner))),
+									owner => asStorageDeployError(recordOwner({name: row.name, owner})),
+									{concurrency: 1, discard: true}
+								)
+								const held = restoreRefusal(row, found)
+								return {held, publish: Option.isNone(held), row}
+							}),
+							{concurrency: 'unbounded'}
+						)
+						const found = {
+							...Record.fromIterableWith(
+								Array.getSomes(
+									Array.map(decided, entry => Option.map(entry.held, reason => [entry.row.name, reason] as const))
+								),
+								Function.identity
 							),
-							Function.identity
-						),
-						...(yield* reconcileCaddy(Array.filter(decided, entry => entry.row.kind === 'public'))),
-						...(yield* reconcileTailnet(Array.filter(decided, entry => entry.row.kind === 'tailnet')))
-					}
-					yield* Ref.set(problems, found)
-					if (!Record.isEmptyRecord(found)) {
-						yield* Effect.logWarning('Owned exposures are not yet as saved; Deploy tries again', found)
-					}
-					return found
-				}),
-				'Exposures.reconcile',
-				{attributes: {worker}}
+							...(yield* reconcileCaddy(Array.filter(decided, entry => entry.row.kind === 'public'))),
+							...(yield* reconcileTailnet(Array.filter(decided, entry => entry.row.kind === 'tailnet')))
+						}
+						yield* Ref.set(problems, found)
+						if (!Record.isEmptyRecord(found)) {
+							yield* Effect.logWarning('Owned exposures are not yet as saved; Deploy tries again', found)
+						}
+						return found
+					}),
+					'Exposures.reconcile',
+					{attributes: {worker}}
+				)
 			),
 			Record.isEmptyRecord
 		)
@@ -337,7 +343,7 @@ export class Exposures extends Context.Service<Exposures>()('@deslop/deploy/serv
 						}
 					}
 					// The intent is saved before anything external changes, and a saved removal is never published again.
-					yield* asStorageDeployError(markRemoving(name))
+					yield* Semaphore.withPermit(passLock, asStorageDeployError(markRemoving(name)))
 					yield* settle(name, 'The removal is saved and Deploy finishes it on its own')
 				},
 				Semaphore.withPermit(lock),

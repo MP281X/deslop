@@ -61,14 +61,16 @@ export function ownedConflict(owned: readonly Exposure[], exposure: Exposure) {
 	return Option.none()
 }
 
-// Why a saved exposure is not published again, checked at every restore: its port changed owner, or it may no longer be published.
+// Why a saved exposure is not published again, checked at every restore: nothing listens on its port, its port changed owner, or it may no longer be published.
 export function restoreRefusal(row: Exposure, listener: Listener) {
-	return pipe(
-		Option.zipWith(row.owner, listener.owner, (saved, current) => ({current, saved})),
-		Option.filter(owners => owners.current !== owners.saved),
-		Option.map(
-			owners => `Port ${row.port} now belongs to ${owners.current}, not ${owners.saved}, so it is not published again`
-		),
-		Option.orElse(() => refusal(row, listener))
-	)
+	return Option.match(listener.owner, {
+		onNone: () => Option.some(`Nothing listens on 127.0.0.1:${row.port}, so it is not published until its owner does`),
+		onSome: current =>
+			pipe(
+				row.owner,
+				Option.filter(saved => saved !== current),
+				Option.map(saved => `Port ${row.port} now belongs to ${current}, not ${saved}, so it is not published again`),
+				Option.orElse(() => refusal(row, listener))
+			)
+	})
 }
