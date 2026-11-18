@@ -34,7 +34,6 @@ import {importLines, readExample, readSource} from '#lib/units.ts'
 import type {Unit} from '#lib/units.ts'
 
 const CONCURRENCY = 16
-const MAX_CALLS = 20
 const EXAMPLE_FILES = {code: 'src/example.ts', component: 'src/example.tsx', test: 'src/example.test.ts'}
 const ASKED: Record<Kind, Kind[]> = {code: ['code'], component: ['code', 'component'], test: ['test']}
 const COULD_NOT_READ = 'Could not read, so the judge cannot vouch for the change:'
@@ -362,9 +361,10 @@ export const judge = Effect.fnUntraced(function* <E, R>(
 		if (Array.isArrayNonEmpty(unreadable)) return yield* ReportedJudgeError.make({})
 		return
 	}
-	if (calls.length > MAX_CALLS && !options.userAsked) {
+	// Every request is billed, so any run that would send one needs the user's explicit ask; a run that asks nothing spends nothing.
+	if (Array.isArrayNonEmpty(calls) && !options.userAsked) {
 		return yield* JudgeError.make({
-			message: `${scale}; nothing was sent. More than ${MAX_CALLS} calls requires --user-asked, only when the user explicitly requests this run. The judge is parked.`
+			message: `${scale}; nothing was sent. A paid run needs the user's explicit ask and --user-asked. The judge is parked.`
 		})
 	}
 	const spent = yield* Ref.make({cached: 0, calls: 0, input: 0, output: 0, unmetered: 0})
