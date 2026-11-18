@@ -1,8 +1,8 @@
 import {assert, it} from '@effect/vitest'
 
-import {Option, Result, Schema} from 'effect'
+import {Array, Option, Result, Schema, pipe} from 'effect'
 
-import {readUsage} from './utils.ts'
+import {readUsage, totalsOf} from './utils.ts'
 
 import {AiUsageEntry} from '#services/ai-metering/schema.ts'
 
@@ -107,4 +107,42 @@ it('keeps OpenAI streaming spend incomplete until usage arrives and retains the 
 	)
 	assert.deepInclude(unknown, {costSource: 'unknown', estimated: true, inputTokens: 10, outputTokens: 5})
 	assert.deepStrictEqual(unknown.costUsd, Option.none())
+})
+
+it('settles Anthropic usage only at message_stop, so a stream that breaks off or errors stays incomplete', () => {
+	const events = [
+		'{"type":"message_start","message":{"model":"claude-haiku-5-5","usage":{"input_tokens":10,"output_tokens":1}}}',
+		'{"type":"message_delta","usage":{"output_tokens":5}}',
+		'{"type":"message_stop"}'
+	]
+	assert.deepStrictEqual(
+		pipe(
+			events,
+			Array.scan({entry: EMPTY, finalUsage: false}, (state, text) =>
+				Result.getOrThrow(readUsage(text, state.entry, 'anthropic'))
+			),
+			Array.map(state => state.finalUsage)
+		),
+		[false, false, false, true]
+	)
+	assert.isFalse(
+		Result.getOrThrow(readUsage('{"type":"error","error":{"type":"overloaded_error"}}', EMPTY, 'anthropic')).finalUsage
+	)
+	const whole = readUsage(
+		'{"type":"message","model":"claude-haiku-5-5","usage":{"input_tokens":10,"output_tokens":5}}',
+		EMPTY,
+		'anthropic'
+	)
+	assert.isTrue(Result.getOrThrow(whole).finalUsage)
+})
+
+it("sums a report's totals per payer from the same buckets its sparkline draws", () => {
+	const bucket = {costUsd: 0.5, estimatedCalls: 1, spendSource: 'openai', unknownCostCalls: 0} as const
+	assert.deepStrictEqual(
+		totalsOf([bucket, {...bucket, costUsd: 0.25, unknownCostCalls: 1}, {...bucket, spendSource: 'balance'}]),
+		[
+			{costUsd: 0.5, estimatedCalls: 1, spendSource: 'balance', unknownCostCalls: 0},
+			{costUsd: 0.75, estimatedCalls: 2, spendSource: 'openai', unknownCostCalls: 1}
+		]
+	)
 })
