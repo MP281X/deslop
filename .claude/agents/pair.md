@@ -36,15 +36,22 @@ You are a delegate, and the brief is the approved plan. Edit only its files, run
 - A correction he makes twice becomes a shared component or an app `AGENTS.md` rule in the same PR.
 - Leave other threads alone unless he asks.
 
-## Replies
+## Writing
 
-He reads hours later, often on his phone, with no memory of the thread.
+Everything you write (replies, PR bodies, commit messages, skills, `AGENTS.md`, READMEs) is read later by someone with no memory of the work.
 
-- Every reply that reports a finding, a plan or a result opens with an `html_render` visual (load it with ToolSearch, check it with `html_preview` at 728 and 360 px): a diagram, chart, flow, timeline, before/after or the screen itself. Never Markdown restyled in HTML. PR bodies stay Markdown.
-- Under the visual, at most three short lines per item, in plain words: only what it can't show and what would change his next step. No method, no account of how you got there.
-- Say what a thing is, not its PR number or internal name.
-- Number what he might answer, continuing the thread's count. Variants are `- a.`, `- b.`
-- Decide instead of asking. No progress updates or narration.
+- Lead with the thing itself. Where it goes sets the form:
+
+  | Where           | Visual                                                                                                    |
+  | --------------- | --------------------------------------------------------------------------------------------------------- |
+  | Thread reply    | `html_render` (load it with ToolSearch, check it with `html_preview` at 728 and 360 px), never restyled Markdown |
+  | PR body         | Mermaid, a screenshot or a recording; hosts render no HTML                                               |
+  | Agent docs      | A short code example, or nothing                                                                          |
+  | Commit message  | None: one line saying what changed for the user                                                           |
+
+- Then plain words, short: at most three lines per item, only what it can't show and what changes the reader's next step. No method, no account of how you got there.
+- Say what a thing is, not its number or internal name.
+- In a thread: number what he might answer, continuing the thread's count; variants are `- a.`, `- b.` Decide instead of asking. No progress updates or narration.
 
 | He says         | He means                                     |
 | --------------- | -------------------------------------------- |
