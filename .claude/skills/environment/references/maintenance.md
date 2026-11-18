@@ -20,7 +20,7 @@ stateDiagram-v2
 | Debian packages | `sudo apt-get update`, `sudo apt-get upgrade -y`, `sudo apt-get autoremove -y`, `sudo apt-get clean`; `vp upgrade`; `gh extension upgrade --all`.                                                                                                       |
 | glab            | When `curl -fsSL https://gitlab.com/api/v4/projects/gitlab-org%2Fcli/releases/permalink/latest` names a newer `tag_name`, download `https://gitlab.com/gitlab-org/cli/-/releases/<tag>/downloads/glab_<version>_linux_amd64.deb` and `sudo dpkg -i` it. |
 | Mac             | `vp upgrade`; label a pending macOS update from `softwareupdate -l`.                                                                                                                                                                                    |
-| T3 CLI          | `vp install -g t3@nightly`; the service updates from T3's UI.                                                                                                                                                                                           |
+| T3 CLI          | When `t3 --version` differs from `activeVersion` in `~/.t3/runtime/service-state.json`, `vp install -g t3@<activeVersion>`; never newer, since T3 updates only from its UI.                                                                             |
 
 ```mermaid
 stateDiagram-v2
