@@ -315,6 +315,8 @@ export const Job = Schema.Struct({
 export type HttpsExposure = typeof HttpsExposure.Type
 export const HttpsExposure = Schema.Struct({
 	access: Schema.Literals(['tailnet', 'public']),
+	// Why the worker does not yet serve it as saved: a removal still finishing, a failed change Deploy retries, or a port that changed owner.
+	failure: Schema.OptionFromOptionalKey(Schema.String),
 	id: ItemId,
 	name: ExposureName,
 	port: Schema.OptionFromOptionalKey(Schema.Int),
