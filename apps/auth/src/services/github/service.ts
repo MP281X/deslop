@@ -1,7 +1,22 @@
-import {Cache, Config, Context, Duration, Effect, Layer, Option, Redacted, Semaphore, Struct, pipe} from 'effect'
+import {
+	Boolean,
+	Cache,
+	Config,
+	Context,
+	Duration,
+	Effect,
+	Exit,
+	Function,
+	Layer,
+	Option,
+	Redacted,
+	Semaphore,
+	Struct,
+	pipe
+} from 'effect'
 
 import {Digest, SecureRandom} from 'effect/crypto'
-import {HttpClient, HttpClientRequest, HttpClientResponse, UrlParams} from 'effect/http'
+import {HttpClient, HttpClientError, HttpClientRequest, HttpClientResponse, UrlParams} from 'effect/http'
 
 import {localAuth} from '@deslop/runtime/server/auth'
 import {AuthError, DEVELOPER, GitHubId, asAuthError} from '@deslop/runtime/shared/auth'
@@ -74,6 +89,23 @@ export class GitHub extends Context.Service<
 					Effect.timeout('10 seconds')
 				)
 			})
+			// GitHub answers 60 anonymous lookups an hour, and every tailnet request names its caller by login.
+			const logins = yield* Cache.makeWith(
+				(login: string) =>
+					Effect.mapError(
+						user(HttpClientRequest.get(`https://api.github.com/users/${encodeURIComponent(login)}`)),
+						cause =>
+							Boolean.match(HttpClientError.isHttpClientError(cause) && cause.response?.status === 404, {
+								onFalse: () =>
+									AuthError.make({cause, error: 'temporarily_unavailable', message: 'GitHub could not be reached'}),
+								onTrue: () => AuthError.make({cause, message: 'GitHub no longer knows this login'})
+							})
+					),
+				{
+					capacity: 64,
+					timeToLive: exit => Exit.match(exit, {onFailure: Function.constant(0), onSuccess: Function.constant('1 day')})
+				}
+			)
 			return GitHub.of({
 				finish: Effect.fn('GitHub.finish')(function* (code: string, state: OAuthState) {
 					const flow = yield* take(state)
@@ -96,11 +128,7 @@ export class GitHub extends Context.Service<
 					)
 					return {flow, profile}
 				}, asAuthError('GitHub sign-in failed')),
-				login: login =>
-					pipe(
-						user(HttpClientRequest.get(`https://api.github.com/users/${encodeURIComponent(login)}`)),
-						asAuthError('Cannot read the GitHub profile')
-					),
+				login: login => Cache.get(logins, login),
 				start: Effect.fn('GitHub.start')(function* (flow: SignInParams) {
 					const state = OAuthState.make(yield* nonce)
 					const verifier = yield* nonce
