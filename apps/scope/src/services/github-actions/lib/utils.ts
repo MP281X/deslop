@@ -1,4 +1,4 @@
-import {Array, Boolean, DateTime, Duration, Function, HashMap, Option, String, pipe} from 'effect'
+import {Array, Boolean, DateTime, Duration, Function, HashMap, Option, Stream, String, pipe} from 'effect'
 
 import type {
 	RepositoryName,
@@ -9,9 +9,11 @@ import type {
 	WorkflowRunId,
 	WorkflowStepNumber
 } from '#services/github-actions/schema.ts'
-import type {ExportedSpan} from '#services/telemetry/schema.ts'
+import type {ExportedLog, ExportedSpan} from '#services/telemetry/schema.ts'
 import {LogsRequest, SpanId, TraceId, TracesRequest} from '#services/telemetry/schema.ts'
 
+// A runner line past this many characters is cut, so a line that never ends holds no more of the log in memory.
+const LINE_LIMIT = 64 * 1024
 // A log line as GitHub writes it: an ISO time, then the runner's message.
 const LOG_LINE = /^(\d{4}-\d{2}-\d{2}T\S+Z) (.*)$/u
 // A runner command such as `##[error]` or `[command]`; group and action markers only divide the page.
@@ -202,82 +204,138 @@ function lineNanos(stamp: string, time: DateTime.Utc) {
 	return Duration.nanos(BigInt(Math.floor(DateTime.toEpochMillis(time) / 1000)) * 1_000_000_000n + BigInt(fraction))
 }
 
-// The job's log as one log record per line, on the step whose time holds it and the job otherwise, so a trace's steps show their own output.
-export function jobLogs(event: WorkflowJob, log: string) {
+// A log's text as lines, each cut at LINE_LIMIT characters; only the line being read is held, never the whole log.
+export function logLines<E, R>(log: Stream.Stream<string, E, R>) {
+	return Stream.mapAccum(
+		log,
+		Function.constant(''),
+		(partial, chunk) => {
+			const lines = String.split(`${partial}${chunk}`, '\n')
+			return [
+				String.slice(0, LINE_LIMIT)(Array.lastNonEmpty(lines)),
+				Array.map(Array.initNonEmpty(lines), String.slice(0, LINE_LIMIT))
+			] as const
+		},
+		{onHalt: partial => Array.filter([partial], String.isNonEmpty)}
+	)
+}
+
+// One runner line as a log record on the step whose time holds it, the job otherwise, so a buffered line written late still finds its step.
+function lineReader(event: WorkflowJob) {
 	const traceId = traceIdOf(event.workflow_job.run_id, event.workflow_job.run_attempt)
 	const steps = Array.map(stepsOf(event.workflow_job), step => ({
 		end: step.completed,
 		spanId: stepSpanId(event.workflow_job.id, step.number),
 		start: step.started
 	}))
-	// A line belongs to the step whose time holds it, the job otherwise; a buffered line written late still finds its step.
-	const lines = pipe(
-		log,
-		String.split('\n'),
-		Array.map(raw =>
-			pipe(
-				raw,
-				String.replaceAll(ANSI, ''),
-				String.trim,
-				String.match(LOG_LINE),
-				Option.flatMap(match => {
-					const message = match[2] ?? ''
-					return Option.map(DateTime.make(match[1] ?? ''), date => ({
-						...Option.match(String.match(LOG_COMMAND)(message), {
-							onNone: () => ({command: '', message}),
-							onSome: command => ({command: command[1] ?? '', message: command[2] ?? ''})
-						}),
-						nanos: lineNanos(match[1] ?? '', date),
-						time: date
-					}))
-				}),
-				Option.filter(
-					line => String.trim(line.message) !== '' && line.command !== 'group' && line.command !== 'endgroup'
-				),
-				Option.map(line => ({
-					attributes: Option.none(),
-					body: Option.some({stringValue: line.message}),
-					observedTimeUnixNano: Option.none(),
-					severityNumber: Option.some(severityOf(line.command)),
-					severityText: Option.none(),
-					spanId: Option.some(
-						pipe(
-							steps,
-							Array.findFirst(
-								step =>
-									DateTime.isGreaterThanOrEqualTo(line.time, step.start) &&
-									DateTime.isLessThanOrEqualTo(line.time, step.end)
-							),
-							Option.match({onNone: () => jobSpanId(event.workflow_job.id), onSome: step => step.spanId})
-						)
-					),
-					timeUnixNano: Option.some(line.nanos),
-					traceId: Option.some(traceId)
+	return (raw: string) =>
+		pipe(
+			raw,
+			String.replaceAll(ANSI, ''),
+			String.trim,
+			String.match(LOG_LINE),
+			Option.flatMap(match => {
+				const message = match[2] ?? ''
+				return Option.map(DateTime.make(match[1] ?? ''), date => ({
+					...Option.match(String.match(LOG_COMMAND)(message), {
+						onNone: () => ({command: '', message}),
+						onSome: command => ({command: command[1] ?? '', message: command[2] ?? ''})
+					}),
+					nanos: lineNanos(match[1] ?? '', date),
+					time: date
 				}))
+			}),
+			Option.filter(
+				line => String.trim(line.message) !== '' && line.command !== 'group' && line.command !== 'endgroup'
+			),
+			Option.map(
+				line =>
+					({
+						attributes: Option.none(),
+						body: Option.some({stringValue: line.message}),
+						observedTimeUnixNano: Option.none(),
+						severityNumber: Option.some(severityOf(line.command)),
+						severityText: Option.none(),
+						spanId: Option.some(
+							pipe(
+								steps,
+								Array.findFirst(
+									step =>
+										DateTime.isGreaterThanOrEqualTo(line.time, step.start) &&
+										DateTime.isLessThanOrEqualTo(line.time, step.end)
+								),
+								Option.match({onNone: () => jobSpanId(event.workflow_job.id), onSome: step => step.spanId})
+							)
+						),
+						timeUnixNano: Option.some(line.nanos),
+						traceId: Option.some(traceId)
+					}) satisfies ExportedLog
 			)
 		)
-	)
-	// A failed job keeps every line; a successful one keeps runner warnings and errors, and each of its own steps' closing lines, counted from the end.
+}
+
+function warns(record: ExportedLog) {
+	return Option.exists(record.severityNumber, severity => severity >= 13)
+}
+
+// The records a job's log keeps, as they are read: a failed job keeps every line; a successful one keeps runner warnings and errors, and the last ten lines of each of its own steps, which hold their test, lint or build summary.
+export function jobRecords<E, R>(event: WorkflowJob, lines: Stream.Stream<string, E, R>) {
+	const read = lineReader(event)
+	const failed = failedConclusion(event.workflow_job.conclusion)
 	const own = pipe(
 		stepsOf(event.workflow_job),
 		Array.filter(step => Option.isNone(String.match(ACTION_STEP)(step.name))),
 		Array.map(step => stepSpanId(event.workflow_job.id, step.number))
 	)
-	const [, tail] = Array.mapAccum(
-		pipe(lines, Array.getSomes, Array.reverse),
-		HashMap.empty<string, number>(),
-		(seen, record) => {
-			const span = Option.getOrElse(record.spanId, Function.constant(''))
-			const count = pipe(seen, HashMap.get(span), Option.getOrElse(Function.constant(0)))
-			// Ten closing lines hold a step's test, lint or build summary.
-			const kept =
-				failedConclusion(event.workflow_job.conclusion) ||
-				Option.exists(record.severityNumber, severity => severity >= 13) ||
-				(Option.exists(record.spanId, id => Array.contains(own, id)) && count < 10)
-			return [HashMap.set(seen, span, count + 1), Option.liftPredicate(record, () => kept)] as const
+	return Stream.mapAccum(
+		lines,
+		() => HashMap.empty<string, readonly ExportedLog[]>(),
+		(tails, line) =>
+			Option.match(read(line), {
+				onNone: () => [tails, []] as const,
+				// An export's record, as the steps' last lines emitted at the end are.
+				onSome: (record: ExportedLog) => {
+					const kept = Array.filter([record], () => failed || warns(record))
+					if (failed) return [tails, kept] as const
+					return pipe(
+						record.spanId,
+						Option.filter(span => Array.contains(own, span)),
+						Option.match({
+							onNone: () => [tails, kept] as const,
+							onSome: span =>
+								[
+									HashMap.set(
+										tails,
+										span,
+										pipe(
+											tails,
+											HashMap.get(span),
+											Option.getOrElse(Array.empty<ExportedLog>),
+											Array.takeRight(9),
+											Array.append(record)
+										)
+									),
+									kept
+								] as const
+						})
+					)
+				}
+			}),
+		// A warning among a step's last lines was kept when it was read.
+		{
+			onHalt: tails =>
+				pipe(
+					HashMap.values(tails),
+					Array.fromIterable,
+					Array.flatten,
+					Array.filter(record => !warns(record))
+				)
 		}
 	)
-	const records = pipe(tail, Array.getSomes, Array.reverse)
+}
+
+// Some of a job's log records as one export under its repository.
+export function jobLogs(event: WorkflowJob, records: readonly ExportedLog[]) {
 	return LogsRequest.make({
 		resourceLogs: Option.some([
 			{
