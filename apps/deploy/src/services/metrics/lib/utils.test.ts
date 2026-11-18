@@ -90,7 +90,7 @@ it('weights an existing rollup by its coverage and counts missing apps as zero',
 	const stored = [
 		{
 			...POINT,
-			apps: Option.some([{cpu: Option.some(80), id: APP, memory: 1000}]),
+			apps: Option.some([{cpu: Option.some(80), cpuCoverage: Duration.seconds(9), id: APP, memory: 1000}]),
 			appsCoverage: Duration.seconds(9),
 			cpu: Option.some(50),
 			cpuCoverage: Duration.seconds(9),
@@ -225,6 +225,54 @@ it('averages apps over the seconds that measured them, an empty measurement coun
 			Option.map(Array.map(app => app.memory))
 		),
 		Option.some([20])
+	)
+})
+
+function rollApp(readings: readonly {cpu: Option.Option<number>; second: number}[]) {
+	return Array.reduce(readings, Array.empty<Sample>(), (stored, reading) =>
+		rollup(
+			{
+				...POINT,
+				apps: Option.some([{cpu: reading.cpu, id: APP, memory: 100}]),
+				appsCoverage: Duration.seconds(1),
+				time: DateTime.makeUnsafe(reading.second * 1000)
+			},
+			stored
+		)
+	)
+}
+
+function appCpu(rolled: readonly Sample[]) {
+	return pipe(
+		Array.head(rolled),
+		Option.flatMap(point => point.apps),
+		Option.flatMap(Array.head),
+		Option.flatMap(app => app.cpu)
+	)
+}
+
+it('averages an app’s CPU over the time it was read, however long it was running', () => {
+	// An app's first second has no CPU to difference: the next two average 80 and 20, not 60.
+	assert.deepStrictEqual(
+		appCpu(
+			rollApp([
+				{cpu: Option.none(), second: 0},
+				{cpu: Option.some(80), second: 1},
+				{cpu: Option.some(20), second: 2}
+			])
+		),
+		Option.some(50)
+	)
+	// Seconds between the readings went unread: each reading still weighs one second.
+	assert.deepStrictEqual(
+		appCpu(
+			rollApp([
+				{cpu: Option.some(10), second: 0},
+				{cpu: Option.some(20), second: 5},
+				{cpu: Option.some(90), second: 6}
+			])
+		),
+		Option.some(40)
 	)
 })
 

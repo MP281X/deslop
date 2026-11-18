@@ -58,6 +58,7 @@ const WRAPPERS: Record<string, {readonly operands: number; readonly values: read
 	},
 	timeout: {operands: 1, values: ['-k', '--kill-after', '-s', '--signal']}
 }
+const SECRET = /(?:token|secret|passw(?:or)?d|key|auth|credential|cookie|session)/iu
 const RUNTIMES = ['node', 'bun', 'deno', 'python', 'python3']
 const SHELLS = ['sh', 'bash', 'zsh', 'dash']
 // Shell setup that runs before the command, such as an agent's snapshot `source`, `shopt` and `\builtin unalias` lines.
@@ -100,6 +101,28 @@ function flagParts(token: string) {
 	})
 }
 
+// Flags, variables and headers named like secrets and the values after them or after an auth scheme, long opaque strings and URL credentials are masked, and each argument is capped.
+export function maskArguments(args: readonly string[]) {
+	return Array.map(args, (arg, index) => {
+		if (Option.isSome(String.match(/^-{0,2}[\w.-]+=/u)(arg)) && SECRET.test(String.split(arg, '=')[0])) {
+			return `${String.split(arg, '=')[0]}=…`
+		}
+		// A header written as one argument, such as `Authorization: Bearer …`.
+		if (Option.isSome(String.match(/^[\w-]+:\s/u)(arg)) && SECRET.test(String.split(arg, ':')[0])) {
+			return `${String.split(arg, ':')[0]}: …`
+		}
+		// A secret flag's or header's separate value, the credential after an auth scheme, or a long opaque argument; the executable and flags themselves stay readable.
+		const previous = args[index - 1] ?? ''
+		const secretValue =
+			(String.startsWith('-')(previous) && !String.includes('=')(previous) && SECRET.test(previous)) ||
+			(Option.isSome(String.match(/^[\w-]+:$/u)(previous)) && SECRET.test(previous)) ||
+			Option.isSome(String.match(/^(?:bearer|basic|digest|token)$/iu)(previous))
+		const opaque = !String.startsWith('/')(arg) && Option.isSome(String.match(/^[\w+/=-]{32,}$/u)(arg))
+		if (index > 0 && (secretValue || (!String.startsWith('-')(arg) && opaque))) return '…'
+		return String.slice(0, 200)(String.replaceAll(/:\/\/[^/@\s]+@/gu, '://…@')(arg))
+	})
+}
+
 function alias(value: string) {
 	return pipe(
 		Match.value(value),
@@ -108,7 +131,22 @@ function alias(value: string) {
 	)
 }
 
-// A shell's script: an exec launcher continues with its arguments; otherwise the exec segment, else the first that isn't setup, is the command, without quotes, redirections, `eval` or leading assignments.
+// A script's words with their quotes and escapes taken off, so a quoted value stays one word.
+function shellWords(script: string) {
+	return pipe(
+		Array.fromIterable(String.matchAll(/(?:[^\s'"\\]|\\.|'[^']*'?|"(?:[^"\\]|\\.)*"?)+/gsu)(script)),
+		Array.map(word =>
+			pipe(
+				Array.fromIterable(String.matchAll(/'([^']*)'?|"((?:[^"\\]|\\.)*)"?|\\(.)|([^'"\\]+)/gsu)(word[0])),
+				Array.map(piece => piece[1] ?? piece[3] ?? piece[4] ?? String.replaceAll(/\\(.)/gsu, '$1')(piece[2] ?? '')),
+				Array.join('')
+			)
+		),
+		Array.filter(String.isNonEmpty)
+	)
+}
+
+// A shell's script: an exec launcher continues with its arguments; otherwise the exec segment, else the first that isn't setup, is the command, without quotes, redirections, `eval` or leading assignments. The script's words are masked like any command's arguments.
 function shellRest(tokens: readonly string[]) {
 	const script = pipe(tokens, Array.get(2), Option.getOrElse(Function.constant('')))
 	const shifts = Option.match(String.match(/\bshift\b/gu)(script), {
@@ -117,7 +155,9 @@ function shellRest(tokens: readonly string[]) {
 	})
 	if (String.includes('exec "$@"')(script)) return Array.drop(tokens, 4 + shifts)
 	const segments = pipe(
-		String.replaceAll(/\d*[<>]+\|?\s*\S+/gu, '')(String.replaceAll(/['"]/gu, '')(script)),
+		maskArguments(shellWords(script)),
+		Array.join(' '),
+		String.replaceAll(/\d*[<>]+\|?\s*\S+/gu, ''),
 		String.split(/\s*(?:\|\|?|;|&&)\s*/u),
 		Array.map(segment =>
 			pipe(String.replace(/^eval\s+/u, '')(String.trim(segment)), String.split(/\s+/u), Array.dropWhile(assignment))
@@ -192,7 +232,8 @@ function unwrap(argv: readonly string[], cwd: Option.Option<string>) {
 				Array.head(argv),
 				Option.getOrElse(Function.constant('')),
 				String.split(/\s+/u),
-				Array.filter(String.isNonEmpty)
+				Array.filter(String.isNonEmpty),
+				maskArguments
 			)
 	})
 	return unwrapTokens(

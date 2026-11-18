@@ -254,12 +254,12 @@ export function chartWindow(range: Duration.Duration, now: DateTime.Utc) {
 // Average known readings by how long each was measured, so unread time between them weighs nothing.
 function mean(
 	bucket: readonly Sample[],
-	coverage: (point: Sample) => Duration.Duration,
+	coverage: (point: Sample, index: number) => Duration.Duration,
 	read: (point: Sample, index: number) => Option.Option<number>
 ) {
 	const known = Array.getSomes(
 		Array.map(bucket, (point, index) =>
-			Option.map(read(point, index), value => ({value, weight: Duration.toMillis(coverage(point))}))
+			Option.map(read(point, index), value => ({value, weight: Duration.toMillis(coverage(point, index))}))
 		)
 	)
 	if (Number.sumAll(Array.map(known, entry => entry.weight)) === 0) return Option.none<number>()
@@ -269,8 +269,13 @@ function mean(
 	)
 }
 
-function coverageSum(bucket: readonly Sample[], coverage: (point: Sample) => Duration.Duration) {
-	return Array.reduce(bucket, Duration.zero, (sum, point) => Duration.sum(sum, coverage(point)))
+function coverageSum(bucket: readonly Sample[], coverage: (point: Sample, index: number) => Duration.Duration) {
+	return Array.reduce(bucket, Duration.zero, (sum, point, index) => Duration.sum(sum, coverage(point, index)))
+}
+
+// How long an app's CPU was measured in a point that measured apps; one missing from it used nothing for as long as the point measured.
+function cpuCoverage(app: Option.Option<AppSample>, point: Sample) {
+	return Option.match(app, {onNone: () => point.appsCoverage, onSome: found => found.cpuCoverage})
 }
 
 // A bucket's samples as one point: its use averaged over the bucket, so a short spike still counts; sizes and totals from the latest.
@@ -284,13 +289,19 @@ function merge(bucket: Array.NonEmptyReadonlyArray<Sample>) {
 			Record.fromIterableBy(app => app.id)
 		)
 	)
-	// An app missing from a point that measured apps used nothing then; one just started has no CPU reading yet.
-	function appMean(id: AppId, read: (app: AppSample) => Option.Option<number>) {
+	function appPoint(id: AppId, index: number) {
+		return Option.fromUndefinedOr(appsById[index]?.[id])
+	}
+	// An app missing from a point that measured apps used nothing then, for as long as the point measured; one just started has no CPU reading yet, so its CPU average counts only the time it was read.
+	function appMean(
+		id: AppId,
+		coverage: (app: Option.Option<AppSample>, point: Sample) => Duration.Duration,
+		read: (app: AppSample) => Option.Option<number>
+	) {
 		return mean(
 			reported,
-			point => point.appsCoverage,
-			(_point, index) =>
-				Option.match(Option.fromUndefinedOr(appsById[index]?.[id]), {onNone: () => Option.some(0), onSome: read})
+			(point, index) => coverage(appPoint(id, index), point),
+			(_point, index) => Option.match(appPoint(id, index), {onNone: () => Option.some(0), onSome: read})
 		)
 	}
 	const last = Array.lastNonEmpty(bucket)
@@ -311,10 +322,15 @@ function merge(bucket: Array.NonEmptyReadonlyArray<Sample>) {
 							)
 						),
 						id => ({
-							cpu: appMean(id, app => app.cpu),
+							cpu: appMean(id, cpuCoverage, app => app.cpu),
+							cpuCoverage: coverageSum(reported, (point, index) => cpuCoverage(appPoint(id, index), point)),
 							id,
 							memory: pipe(
-								appMean(id, app => Option.some(app.memory)),
+								appMean(
+									id,
+									(_app, point) => point.appsCoverage,
+									app => Option.some(app.memory)
+								),
 								Option.getOrElse(Function.constant(0)),
 								Number.round(0)
 							)
@@ -351,7 +367,19 @@ function merge(bucket: Array.NonEmptyReadonlyArray<Sample>) {
 // What a measurement changes in each series: the stored point of the bucket it falls in, merged with it, or a new point.
 export function rollup(point: Point, stored: readonly Sample[]) {
 	return Array.map([SERIES[10], SERIES[60], SERIES[1440], SERIES[10_080], SERIES[43_200]] as const, step => {
-		const fresh: Sample = {...point, since: point.time, step}
+		// A reading covers the whole second its CPU was read, or none when it wasn't.
+		const fresh: Sample = {
+			...point,
+			apps: Option.map(
+				point.apps,
+				Array.map(app => ({
+					...app,
+					cpuCoverage: Option.match(app.cpu, {onNone: () => Duration.zero, onSome: () => point.appsCoverage})
+				}))
+			),
+			since: point.time,
+			step
+		}
 		return pipe(
 			stored,
 			Array.findFirst(row => Duration.equals(row.step, step)),
