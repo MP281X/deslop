@@ -14,14 +14,20 @@ import {writeAtomically} from '#lib/files.ts'
 export type ClipboardKind = typeof ClipboardKind.Type
 const ClipboardKind = Schema.Literals(['image', 'link', 'text'])
 
-function clipboardChangeCount() {
-	return requireNativeModule<{clipboardChangeCount: () => number}>('DeslopComponents').clipboardChangeCount()
+function native() {
+	return requireNativeModule<{
+		clipboardChangeCount: () => number
+		clipboardImage: (maxBytes: number) => PromiseLike<unknown>
+	}>('DeslopComponents')
 }
+
+type CopiedImage = typeof CopiedImage.Type
+const CopiedImage = Schema.NullOr(Schema.Struct({bytes: Schema.Finite, uri: Schema.optionalKey(Schema.String)}))
 
 export type ClipboardCopy = {readonly count: string; readonly kind: ClipboardKind}
 type Answer = ClipboardCopy & {readonly save: boolean}
 
-class ClipboardError extends Schema.TaggedError<ClipboardError>()('ClipboardError', {
+export class ClipboardError extends Schema.TaggedError<ClipboardError>()('ClipboardError', {
 	cause: Schema.optional(Schema.Defect()),
 	message: Schema.String
 }) {}
@@ -31,7 +37,7 @@ export function readClipboard<A, E, R>(count: string, read: Effect.Effect<A, E, 
 	const unchanged = Effect.flatMap(
 		Effect.try({
 			catch: cause => ClipboardError.make({cause, message: 'The clipboard could not be checked.'}),
-			try: () => `${clipboardChangeCount()}`
+			try: () => `${native().clipboardChangeCount()}`
 		}),
 		current => {
 			if (current === count) return Effect.void
@@ -41,6 +47,50 @@ export function readClipboard<A, E, R>(count: string, read: Effect.Effect<A, E, 
 	return Effect.andThen(
 		unchanged,
 		Effect.tap(read, () => unchanged)
+	)
+}
+
+function megabytes(bytes: number) {
+	return Math.ceil(bytes / 1_000_000)
+}
+
+// The copied image as a JPEG file for the caller's scope, read and sized natively so a large copy is refused before JavaScript holds its bytes; the file is removed when the scope closes.
+export function copiedImage(count: string, maxBytes: number) {
+	return Effect.acquireRelease(
+		pipe(
+			readClipboard(
+				count,
+				Effect.tryPromise({
+					catch: cause => ClipboardError.make({cause, message: 'The copied image could not be read.'}),
+					try: () => native().clipboardImage(maxBytes)
+				})
+			),
+			Effect.flatMap(answer =>
+				Effect.mapError(Schema.decodeUnknownEffect(CopiedImage)(answer), cause =>
+					ClipboardError.make({cause, message: 'The copied image could not be read.'})
+				)
+			),
+			Effect.flatMap(image => {
+				if (image === null) return ClipboardError.make({message: 'The clipboard no longer holds an image.'})
+				return Option.match(Option.fromUndefinedOr(image.uri), {
+					onNone: () =>
+						ClipboardError.make({
+							message: `The copied image is ${megabytes(image.bytes)} MB; copy one under ${megabytes(maxBytes)} MB and try again.`
+						}),
+					onSome: uri => Effect.succeed(new File(uri))
+				})
+			})
+		),
+		file =>
+			Effect.ignore(
+				Effect.try({
+					catch: cause => ClipboardError.make({cause, message: 'The copied image could not be removed.'}),
+					try: () => {
+						if (file.exists) file.delete()
+					}
+				}),
+				{log: 'Warn', message: 'The copied image stayed in the temporary directory'}
+			)
 	)
 }
 
@@ -71,7 +121,7 @@ const clipboardMachine = Machine.make({
 				const inspected = yield* Effect.try({
 					catch: cause => ClipboardError.make({cause, message: 'The clipboard could not be checked.'}),
 					try: () => {
-						const count = `${clipboardChangeCount()}`
+						const count = `${native().clipboardChangeCount()}`
 						return {answered: offer.file.exists && offer.file.textSync() === count, count}
 					}
 				})
