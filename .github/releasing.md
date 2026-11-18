@@ -13,7 +13,7 @@ stateDiagram-v2
     Record --> Packing : user creates the record / build and pack
     Packing --> Publishing : packed command runs / show npm's first-publish and trust URLs
     Publishing --> Draft : user approves both URLs / record the approvals
-    Draft --> [*] : user merges [within npm's two-day trust window] / follow Release and TestFlight
+    Draft --> [*] : user merges / follow Release until Packages publishes, within npm's two-day trust window
 ```
 
 | State   | Input or command                                                                                                                                                                                                                                                                    |
@@ -30,17 +30,17 @@ stateDiagram-v2
 | Any other unexpected prompt                    | Add it to the workflow only if its default is the intended answer.                                                                                   |
 | Apple 403                                      | Replace `ASC_KEY_ID`, `ASC_ISSUER_ID` and `ASC_KEY_P8` with an Admin-access key.                                                                     |
 
-Packing, with the command's working directory set to `apps/<name>`; the subshell restores the manifest even on failure:
+Packing, with the command's working directory set to `apps/<name>`, packs as Release does. The subshell stops at the first failure, so a failed build leaves the fresh `$PACK` empty instead of packing an older `dist`, and it restores the manifest either way:
 
 ```bash
 PACK=$(mktemp -d)
-vp run build
 (
   set -e
   cp package.json "$PACK/manifest.json"
   trap 'cp "$PACK/manifest.json" package.json' EXIT
+  vp run build
   npm pkg delete dependencies devDependencies scripts main
-  npm pack --pack-destination "$PACK"
+  vp pm pack --pack-destination "$PACK"
 )
 vpx --package "$PACK"/deslop-<name>-0.1.0.tgz <name> --help
 ```
@@ -55,24 +55,37 @@ script -qefc "npm publish $PACK/deslop-<name>-0.1.0.tgz --auth-type=web" /dev/nu
 script -qefc 'npm trust github @deslop/<name> --file deploy.yaml --repo MP281X/deslop --allow-publish --yes' /dev/null
 ```
 
+A trust record expires unless a trusted publish succeeds within two days of `npm trust`, and Release publishes packages only after every iPhone app ships: merge early enough for that Release to reach Packages. An expired record can't be used or edited; `npm trust list @deslop/<name>` shows its id, `npm trust revoke @deslop/<name> --id=<id>` removes it, then run the trust command again.
+
 A publishable tool uses `tools/coding-standards`' publish fields and `pack.deps`, starts at `0.1.0` and joins the Packages job; pack it with `vp -C tools/<name> pm pack` for its first publish. Generated libraries are bundled into their consumers, not published.
 
 ## Follow a release
 
-The App Store job uploads the `.ipa` from GitHub's Mac with `altool --upload-package` and fails on Apple's error before publishing the build's EAS Update; read it with `gh run view <run-id> --job <job-id> --log`. Upload is not processing: report uploaded, processing or available, with the run URL and the TestFlight URL from the run's summary. Public TestFlight and App Store release are separate outward actions.
+Read a failed job with `gh run view <run-id> --job <job-id> --log`. Each state is separate; report each, with the run URL:
 
-A release is live when each app's `/api/runtime` returns 200 and reports the new version.
+| State  | Reached when                                                                                                                                                                                                                             |
+| ------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Apple  | `altool --upload-package` succeeded and the run holds the `<app>-app-store-<fingerprint>` receipt; a retry then skips the build. Uploaded is not processing: check processing or available at the TestFlight URL from the run's summary. |
+| Update | The EAS Update reached the branch the `production` channel serves. A run older than the served update publishes none, and its summary says so. A phone gets it only on a build with the same fingerprint.                                |
+| npm    | `npm view @deslop/<name>@0.1.<run-number> fingerprint` answers. A retry finds a version an earlier attempt published; a version newer than the run's stays.                                                                              |
+| Worker | The worker's update timer installed it: `/api/runtime` returns 200 and reports the new version.                                                                                                                                          |
+
+Public TestFlight and App Store release are separate outward actions.
 
 ## Simulator builds
 
-Every command here and every workflow that loads an app's config reads `DESLOP_DOMAIN`, the repository variable of that name (`.env.example`); export it first. A branch push touching a mobile app or shared packages builds a missing `<app>-simulator-<fingerprint>` artifact. The app holds the JavaScript of the commit that built it, so embed the branch's bundle before installing it:
+Every command here and every workflow that loads an app's config reads `DESLOP_DOMAIN`, the repository variable of that name (`.env.example`); export it first. A branch push touching a mobile app or shared packages builds a missing `<app>-simulator-<fingerprint>` artifact. Take a build only from a push run of `simulator.yaml` whose commit has this checkout's Simulator workflows, as the workflow does. The app holds the JavaScript of the commit that built it, so embed the branch's bundle before installing it:
 
 ```bash
 # Run in apps/stash:
 fingerprint=$(APP_VARIANT=development vpx eas-cli@latest fingerprint:generate --platform ios --build-profile simulator --json --non-interactive | jq -r .hash)
 # Run the remaining commands from the worktree root:
-run=$(gh api "repos/MP281X/deslop/actions/artifacts?name=stash-simulator-$fingerprint" --jq '[.artifacts[] | select(.expired | not)][0].workflow_run.id')
-gh run download $run --name stash-simulator-$fingerprint --dir /tmp/stash-sim
+for candidate in $(gh api "repos/MP281X/deslop/actions/artifacts?name=stash-simulator-$fingerprint" --jq '.artifacts[] | select(.expired | not) | "\(.workflow_run.id):\(.workflow_run.head_sha)"'); do
+  run=${candidate%%:*} commit=${candidate#*:}
+  [[ $(gh api "repos/MP281X/deslop/actions/runs/$run" --jq '.path + " " + .event') == '.github/workflows/simulator.yaml push' ]] && git fetch --no-tags origin "$commit" && git diff --quiet "$commit" HEAD -- .github/workflows/simulator.yaml .github/workflows/simulator-app.yaml .github/actions/setup && break
+  run=
+done
+gh run download "$run" --name stash-simulator-$fingerprint --dir /tmp/stash-sim
 tar -xzf /tmp/stash-sim/simulator.tar.gz -C /tmp/stash-sim
 APP_VARIANT=development vp -C apps/stash exec expo export:embed --platform ios --dev false --bundle-output /tmp/stash-sim/stashdev.app/main.jsbundle --assets-dest /tmp/stash-sim/stashdev.app
 vp -C apps/stash exec expo prebuild --platform ios --no-install --clean

@@ -1,6 +1,6 @@
 name: App Store build
 
-# The Simulator build needs no provisioning profile, so only a signed App Store build proves a native config change ships.
+# The Simulator build needs no provisioning profile, so only a signed App Store build proves a native change ships.
 on:
   push:
     branches-ignore: [main]
@@ -8,6 +8,12 @@ on:
       - apps/*/app.config.ts
       - apps/*/eas.json
       - apps/*/targets/*/expo-target.config.js
+      - '**.swift'
+      - '**.plist'
+      - '**.entitlements'
+      - '**.podspec'
+      - '**/expo-module.config.json'
+      - packages/runtime/src/config/expo.ts
       - .github/workflows/app-store-build.yaml
 
 permissions:
@@ -27,7 +33,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with: {fetch-depth: 2}
-      - name: Discover changed native config
+      - name: Discover changed native inputs
         id: apps
         env:
           BASE: ${{ github.event.before }}
@@ -39,12 +45,15 @@ jobs:
             BASE=$(gh api "repos/$GITHUB_REPOSITORY/compare/$DEFAULT_BRANCH...$GITHUB_SHA" --jq .merge_base_commit.sha)
           fi
           git cat-file -e "$BASE^{commit}" 2>/dev/null || git fetch --no-tags --depth=1 origin "$BASE"
-          workflow=$(git diff --quiet "$BASE" HEAD -- .github/workflows/app-store-build.yaml && echo false || echo true)
+          # Diff names, not globs, so a deleted input still counts; the same inputs as the trigger's paths.
+          changed=$(git diff --name-only "$BASE" HEAD)
+          native=$(grep -E '\.(swift|plist|entitlements|podspec)$|(^|/)expo-module\.config\.json$|^apps/[^/]+/(app\.config\.ts|eas\.json|targets/[^/]+/expo-target\.config\.js)$|^packages/runtime/src/config/expo\.ts$|^\.github/workflows/app-store-build\.yaml$' <<< "$changed" || true)
+          # Every app builds from the shared config, components and this workflow, so a change outside apps/ proves them all.
+          shared=$(grep -v '^apps/' <<< "$native" || true)
           apps=()
           for config in apps/*/app.config.ts; do
             app=${config%/app.config.ts}
-            # Diff names, not globs, so a deleted target config still counts.
-            if [[ $workflow == true ]] || grep -qE '^apps/[^/]+/(app\.config\.ts|eas\.json|targets/[^/]+/expo-target\.config\.js)$' <<< "$(git diff --name-only "$BASE" HEAD -- "$app")"; then apps+=("${app#apps/}"); fi
+            if [[ -n $shared ]] || grep -q "^$app/" <<< "$native"; then apps+=("${app#apps/}"); fi
           done
           mobile=$(printf '%s\n' "${apps[@]}" | jq -Rsc 'split("\n") | map(select(length > 0))')
           echo "mobile=$mobile" >> "$GITHUB_OUTPUT"

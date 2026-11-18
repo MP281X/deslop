@@ -31,7 +31,7 @@
 		"test": "vp test --config ../../vite.config.ts"
 	},
 	"dependencies": {
-		"expo": "^58.0.24",
+		"expo": "^58.0.26",
 		"react": "latest",
 		"react-native": "0.88.1"
 	},
@@ -39,11 +39,11 @@
 		"@deslop/components-mobile": "workspace:*",
 		"@deslop/runtime": "workspace:*",
 		"@effect/atom-react": "latest",
-		"@expo/ui": "^58.0.28",
+		"@expo/ui": "^58.0.29",
 		"effect": "latest",
 		"expo-secure-store": "^58.0.3",
 		"expo-updates": "^58.0.22",
-		"expo-web-browser": "^58.0.8"
+		"expo-web-browser": "^58.1.0"
 	},
 	"config": {
 		"port": 5100

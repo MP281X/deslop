@@ -6,6 +6,7 @@ on:
       app: {type: string, required: true}
 
 env:
+  APP: ${{ inputs.app }}
   APP_VARIANT: production
   DESLOP_DOMAIN: ${{ vars.DESLOP_DOMAIN }}
   EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
@@ -24,6 +25,7 @@ jobs:
     outputs:
       app-store: ${{ steps.app-store.outputs.id }}
       artifact: ${{ steps.fingerprint.outputs.artifact }}
+      fingerprint: ${{ steps.fingerprint.outputs.hash }}
       native: ${{ steps.fingerprint.outputs.native }}
     defaults:
       run:
@@ -34,27 +36,41 @@ jobs:
       - uses: ./.github/actions/setup
         with: {eas: 'true'}
 
+      # A rerun of an older release finds a newer one already served and ships nothing over it.
+      - name: Find the served update
+        id: served
+        uses: ./.github/actions/served-update
+        with:
+          app: ${{ inputs.app }}
+
       # Nothing ships when neither the app nor what it builds from changed since its last update.
       - name: Check for changes since the last update
         id: changes
+        if: steps.served.outputs.superseded == 'false'
+        env:
+          COMMIT: ${{ steps.served.outputs.commit }}
         run: |
-          group=$(eas update:list --branch production --limit 1 --json --non-interactive | jq -r '.currentPage[0].group // empty')
-          commit=
-          if [[ -n $group ]]; then commit=$(eas update:view "$group" --json | jq -r '.[0].gitCommitHash'); fi
           changed=true
-          if [[ -n $commit ]] && git cat-file -e "$commit^{commit}" && git diff --quiet "$commit" -- . ../../packages ../../pnpm-lock.yaml; then changed=false; fi
+          if [[ -n $COMMIT ]] && git cat-file -e "$COMMIT^{commit}" && git diff --quiet "$COMMIT" -- . ../../packages ../../pnpm-lock.yaml; then changed=false; fi
           echo "changed=$changed" >> "$GITHUB_OUTPUT"
 
-      # A shipped build leaves an artifact named for its fingerprint that expires after 80 days, ten before TestFlight drops the build, so the next release builds it again; a failed build leaves none and is tried again.
+      # Apple's acceptance leaves a receipt from a Release run on main, named for the fingerprint, that expires after 80 days, ten before TestFlight drops the build, so the next release builds it again; a failed upload leaves none and is tried again.
       - name: Check for a native change
         id: fingerprint
+        if: steps.served.outputs.superseded == 'false'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           hash=$(eas fingerprint:generate --platform ios --build-profile production --json --non-interactive | jq -r .hash)
-          artifact="${{ inputs.app }}-app-store-$hash"
-          native=$(gh api "repos/$GITHUB_REPOSITORY/actions/artifacts?name=$artifact" --jq '[.artifacts[] | select(.expired | not)] | length == 0')
+          artifact="$APP-app-store-$hash"
+          runs=$(gh api "repos/$GITHUB_REPOSITORY/actions/artifacts?name=$artifact&per_page=100" --jq '[.artifacts[] | select((.expired | not) and .workflow_run.head_branch == "main") | .workflow_run.id] | unique | .[]')
+          native=true
+          for run in $runs; do
+            producer=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run" --jq '[.path, .event, .head_repository.full_name] | join(" ")')
+            if [[ $producer == ".github/workflows/deploy.yaml push $GITHUB_REPOSITORY" ]]; then native=false; fi
+          done
           echo "artifact=$artifact" >> "$GITHUB_OUTPUT"
+          echo "hash=$hash" >> "$GITHUB_OUTPUT"
           echo "native=$native" >> "$GITHUB_OUTPUT"
 
       - uses: ./.github/actions/app-store-connect
@@ -101,32 +117,67 @@ jobs:
         working-directory: apps/${{ inputs.app }}
     steps:
       - uses: actions/checkout@v7
+        with: {fetch-depth: 0}
+
+      # Apple refuses a build number it has, so a retry after an accepted upload resumes at the update.
+      - name: Find this run's App Store receipt
+        id: receipt
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ARTIFACT: ${{ needs.update.outputs.artifact }}
+        run: |
+          uploaded=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/artifacts?name=$ARTIFACT" --jq '.artifacts | length > 0')
+          echo "uploaded=$uploaded" >> "$GITHUB_OUTPUT"
       - uses: ./.github/actions/setup
-        with: {eas: 'true', ios: 'true'}
+        with:
+          eas: 'true'
+          ios: ${{ steps.receipt.outputs.uploaded == 'false' }}
+      # A rerun of an older release's job finds a newer one already served and ships nothing over it.
+      - name: Find the served update
+        id: served
+        uses: ./.github/actions/served-update
+        with:
+          app: ${{ inputs.app }}
       - name: Build the App Store app
+        if: steps.served.outputs.superseded == 'false' && steps.receipt.outputs.uploaded == 'false'
         run: eas build --local --profile production --platform ios --non-interactive --output "$RUNNER_TEMP/app.ipa"
       - name: Upload to the App Store
+        id: upload
+        if: steps.served.outputs.superseded == 'false' && steps.receipt.outputs.uploaded == 'false'
         env:
           ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
           ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
           ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
           APP_STORE_ID: ${{ needs.update.outputs.app-store }}
+          FINGERPRINT: ${{ needs.update.outputs.fingerprint }}
         run: |
+          jq -n --arg app "$APP" --arg id "$APP_STORE_ID" --arg build "$RELEASE_NUMBER" --arg fingerprint "$FINGERPRINT" --arg commit "$GITHUB_SHA" \
+            '{app: $app, appStoreId: $id, version: "0.1.\($build)", build: $build, fingerprint: $fingerprint, commit: $commit}' > "$RUNNER_TEMP/receipt.json"
           umask 077
           mkdir -p "$HOME/.appstoreconnect/private_keys"
           printf '%s\n' "$ASC_KEY_P8" > "$HOME/.appstoreconnect/private_keys/AuthKey_$ASC_KEY_ID.p8"
           xcrun altool --upload-package "$RUNNER_TEMP/app.ipa" --api-key "$ASC_KEY_ID" --api-issuer "$ASC_ISSUER_ID"
-          echo "- ${{ inputs.app }} uploaded: https://appstoreconnect.apple.com/apps/$APP_STORE_ID/testflight/ios" >> "$GITHUB_STEP_SUMMARY"
+          echo "- $APP uploaded: https://appstoreconnect.apple.com/apps/$APP_STORE_ID/testflight/ios" >> "$GITHUB_STEP_SUMMARY"
       - name: Remove the App Store Connect key
         if: always()
         env:
           ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
         run: rm -f "$HOME/.appstoreconnect/private_keys/AuthKey_$ASC_KEY_ID.p8"
-      - name: Publish the EAS Update for the new build
-        run: eas update --channel production --environment production --platform ios --non-interactive --message "$(git log -1 --format=%s)"
-      - name: Record the shipped build
+      # Recorded the moment Apple accepts, even when the run is cancelled, so neither a retry nor the next release uploads this fingerprint again.
+      - name: Record Apple's acceptance
+        if: always() && steps.upload.outcome == 'success'
         uses: actions/upload-artifact@v7
         with:
           name: ${{ needs.update.outputs.artifact }}
-          path: ${{ runner.temp }}/app.ipa
+          path: ${{ runner.temp }}/receipt.json
           retention-days: 80
+      # The build takes minutes, in which a newer release can have shipped.
+      - name: Find the served update again
+        id: served-again
+        if: steps.served.outputs.superseded == 'false'
+        uses: ./.github/actions/served-update
+        with:
+          app: ${{ inputs.app }}
+      - name: Publish the EAS Update for the new build
+        if: steps.served-again.outputs.superseded == 'false'
+        run: eas update --channel production --environment production --platform ios --non-interactive --message "$(git log -1 --format=%s)"

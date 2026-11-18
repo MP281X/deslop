@@ -95,55 +95,92 @@ jobs:
         run: |
           vp run build
 
-      # pnpm applies publishConfig while packing; npm uploads the README metadata that pnpm omits.
-      - name: Publish @deslop/coding-standards
-        working-directory: tools/coding-standards
+      # A package publishes when the tarball npm would receive changes, less its version; pnpm applies publishConfig while packing, npm uploads the README metadata pnpm omits.
+      - name: Publish changed packages
+        env:
+          RELEASE: 0.1.${{ github.run_number }}
         run: |
-          fingerprint=$({ find dist src/lib/css-properties.d.ts tsconfig.json README.md -type f | LC_ALL=C sort | xargs sha256sum; jq -S 'del(.version, .fingerprint)' package.json; } | sha256sum | cut -c1-64)
-          if ! published=$(npm view @deslop/coding-standards fingerprint 2> "$RUNNER_TEMP/view-coding-standards"); then
-            grep -q E404 "$RUNNER_TEMP/view-coding-standards" || { cat "$RUNNER_TEMP/view-coding-standards" >&2; exit 1; }
-            echo "::error::@deslop/coding-standards needs its first publish and trusted-publisher setup; see .github/releasing.md"
-            exit 1
-          elif [ "$published" != "$fingerprint" ]; then
-            npm pkg set "fingerprint=$fingerprint"
-            vp pm version "0.1.${{ github.run_number }}" -- --no-git-tag-version --no-git-checks
-            vp pm pack --pack-destination "$RUNNER_TEMP/package"
-            npm publish --loglevel=warn "$RUNNER_TEMP"/package/*.tgz
-            echo "- @deslop/coding-standards 0.1.${{ github.run_number }}" >> "$GITHUB_STEP_SUMMARY"
-          else
-            echo "- @deslop/coding-standards unchanged" >> "$GITHUB_STEP_SUMMARY"
-          fi
-
-      # An app publishes only when its shipped fingerprint changes; everything is bundled, so its published manifest drops dependencies, scripts and the Expo entry.
-      - name: Publish changed apps
-        run: |
-          shopt -s nullglob
-          apps=(apps/*/package.json)
-          apps=("${apps[@]%/package.json}")
-          apps=("${apps[@]#apps/}")
-          publish() {
-            cd "apps/$1"
-            # find fails on an app without bin/ after listing what exists.
-            fingerprint=$({ { find dist bin README.md -type f 2>/dev/null || true; } | LC_ALL=C sort | xargs sha256sum; jq -S 'del(.version)' package.json; } | sha256sum | cut -c1-64)
-            if ! published=$(npm view "@deslop/$1" fingerprint 2> "$RUNNER_TEMP/view-$1"); then
-              # Only a missing package is a first publish; any other failure, such as the registry being down, fails the app.
-              grep -q E404 "$RUNNER_TEMP/view-$1" || { cat "$RUNNER_TEMP/view-$1" >&2; return 1; }
-              echo "::warning::@deslop/$1 needs its first publish and trusted-publisher setup; see .github/releasing.md"
-              echo "- @deslop/$1 unpublished" > "$RUNNER_TEMP/summary-$1"
-            elif [ "$published" != "$fingerprint" ]; then
-              npm pkg set "version=0.1.${{ github.run_number }}" "fingerprint=$fingerprint"
-              npm pkg delete dependencies devDependencies scripts main
-              npm publish --loglevel=warn
-              echo "- @deslop/$1 0.1.${{ github.run_number }}" > "$RUNNER_TEMP/summary-$1"
-            else
-              echo "- @deslop/$1 unchanged" > "$RUNNER_TEMP/summary-$1"
-            fi
+          shopt -s nullglob inherit_errexit
+          view() {
+            local answer error
+            error=$(mktemp)
+            if answer=$(npm view "$@" --json 2> "$error"); then printf '%s\n' "$answer"; return; fi
+            # Only a missing package or version answers nothing; any other failure, such as the registry being down, fails the package.
+            grep -q E404 "$error" || { cat "$error" >&2; return 1; }
           }
+          pack() {
+            local into
+            into=$(mktemp -d)
+            vp pm pack --pack-destination "$into" > /dev/null
+            printf '%s\n' "$into"/*.tgz
+          }
+          fingerprint() {
+            local unpacked
+            unpacked=$(mktemp -d)
+            tar -xzf "$1" -C "$unpacked"
+            cd "$unpacked/package"
+            { find . -type f ! -path ./package.json -print0 | LC_ALL=C sort -z | xargs -0r sha256sum; jq -S 'del(.version, .fingerprint)' package.json; } | sha256sum | cut -c1-64
+          }
+          # An app bundles everything, so its manifest drops dependencies, scripts and the Expo entry; the standards CLI bundles its version, so it builds again after the bump.
+          publish() {
+            local name tarball fingerprint exact latest current summary
+            summary="$RUNNER_TEMP/summary-${1//\//-}"
+            cd "$1"
+            name=$(jq -r .name package.json)
+            if [[ $2 == app ]]; then npm pkg delete dependencies devDependencies scripts main; fi
+            tarball=$(pack)
+            fingerprint=$(fingerprint "$tarball")
+            # The version is the run's: a retry finds what an earlier attempt published instead of uploading it again.
+            exact=$(view "$name@$RELEASE" fingerprint)
+            if [[ -n $exact ]]; then
+              if [[ $(jq -r . <<< "$exact") != "$fingerprint" ]]; then
+                echo "::error::$name@$RELEASE already holds another build; publish this commit from a new run"
+                return 1
+              fi
+              echo "- $name $RELEASE, accepted in an earlier attempt" > "$summary"
+              return
+            fi
+            latest=$(view "$name" version fingerprint)
+            if [[ -z $latest ]]; then
+              echo "::warning::$name needs its first publish and trusted-publisher setup; see .github/releasing.md"
+              echo "- $name unpublished" > "$summary"
+              return
+            fi
+            current=$(jq -r .version <<< "$latest")
+            if [[ $(jq -r .fingerprint <<< "$latest") == "$fingerprint" ]]; then
+              echo "- $name unchanged" > "$summary"
+              return
+            # npm moves latest to whatever publishes, so a rerun of an older run would roll the servers back.
+            elif ((${current##*.} > ${RELEASE##*.})); then
+              echo "- $name $current is newer than this release and stays" > "$summary"
+              return
+            fi
+            npm pkg set "version=$RELEASE" "fingerprint=$fingerprint"
+            if [[ $2 == tool ]]; then vp run build >&2; fi
+            tarball=$(pack)
+            if ! npm publish --loglevel=warn "$tarball"; then
+              # npm can hold a version it accepted before listing it, and answers a second publish with E409.
+              exact=$(view "$name@$RELEASE" fingerprint)
+              if [[ -n $exact && $(jq -r . <<< "$exact") == "$fingerprint" ]]; then
+                echo "- $name $RELEASE, accepted in an earlier attempt" > "$summary"
+                return
+              fi
+              echo "::error::npm refused $name@$RELEASE; if an earlier attempt published it, rerun once npm view $name@$RELEASE answers"
+              return 1
+            fi
+            echo "- $name $RELEASE" > "$summary"
+          }
+          packages=(tools/coding-standards apps/*/package.json)
+          packages=("${packages[@]%/package.json}")
           pids=()
-          for app in "${apps[@]}"; do publish "$app" & pids+=($!); done
+          for package in "${packages[@]}"; do
+            kind=app
+            if [[ $package == tools/* ]]; then kind=tool; fi
+            publish "$package" "$kind" & pids+=($!)
+          done
           failed=0
           for pid in "${pids[@]}"; do wait "$pid" || failed=1; done
-          for app in "${apps[@]}"; do cat "$RUNNER_TEMP/summary-$app" 2>/dev/null >> "$GITHUB_STEP_SUMMARY" || echo "- @deslop/$app failed" >> "$GITHUB_STEP_SUMMARY"; done
+          for package in "${packages[@]}"; do cat "$RUNNER_TEMP/summary-${package//\//-}" 2>/dev/null >> "$GITHUB_STEP_SUMMARY" || echo "- $package failed" >> "$GITHUB_STEP_SUMMARY"; done
           exit "$failed"
 
   app:
