@@ -177,12 +177,8 @@ function openingApp(overview: Overview) {
 
 export const overviewAtom = Atom.family((range: TimeFrame) => liveAtom(RpcClient, 'telemetry.watch', range))
 
-const traceAtoms = Atom.family((id: TraceId) => liveAtom(RpcClient, 'telemetry.trace', {id}))
-
 // An open trace follows arrivals, including late children and logs that do not change its duration.
-export function traceAtom(id: TraceId) {
-	return traceAtoms(id)
-}
+export const traceAtom = Atom.family((id: TraceId) => liveAtom(RpcClient, 'telemetry.trace', {id}))
 
 // The page's clock, so ages keep counting on a quiet page.
 export const nowAtom = Atom.make(Stream.mapEffect(Stream.tick(Duration.seconds(30)), () => DateTime.now))
@@ -203,10 +199,6 @@ function valueOf(value: Schema.Json) {
 		Option.filter(inner => Predicate.isString(inner) || Predicate.isNumber(inner) || Predicate.isBoolean(inner)),
 		Option.match({onNone: () => Formatter.formatJson(value), onSome: inner => `${inner}`})
 	)
-}
-
-export function errorOf(span: TraceTree['spans'][number]) {
-	return span.error
 }
 
 // Omit service.name, trace.label and values equal to the span name; failed spans also omit HTTP attributes, and error.type is omitted when it repeats the HTTP status.
@@ -266,20 +258,25 @@ export function focusOf(trace: TraceTree, pickedSpan: Option.Option<SpanId>) {
 	)
 }
 
-// The app, operation, trace and span the URL selects; a desktop layout defaults to the app's first operation and phone starts empty.
+// A quiet frame is not a missing trace: retain explicit URL ids for the detail reader; defaults apply only without a trace id.
 export function selectionOf(overview: Option.Option<Overview>, search: Search, mobile: boolean) {
+	const selection = navigationOf(search).selection
+	const requested = Option.flatMap(selection, selected => selected.traceId)
 	const source = pipe(
 		search.source,
-		Option.filter(name => Option.exists(overview, current => Array.some(current.apps, app => app.name === name))),
+		Option.filter(
+			name =>
+				Option.isSome(requested) ||
+				Option.exists(overview, current => Array.some(current.apps, app => app.name === name))
+		),
 		Option.orElse(() => Option.flatMap(overview, openingApp))
 	)
-	const selection = navigationOf(search).selection
 	const activeOperation = pipe(
 		Option.map(selection, selected => selected.operation),
 		Option.flatMap(key => Option.flatMap(overview, current => findOperation(current, key))),
 		Option.filter(active => Option.contains(source, active.app.name)),
 		Option.orElse(() =>
-			Boolean.match(mobile, {
+			Boolean.match(mobile || Option.isSome(requested), {
 				onFalse: () =>
 					Option.flatMap(overview, current =>
 						Option.map(Array.head(operationsOf(current, source)), row => ({app: row.app, operation: row.operation}))
@@ -288,17 +285,27 @@ export function selectionOf(overview: Option.Option<Overview>, search: Search, m
 			})
 		)
 	)
-	const activeKey = Option.map(activeOperation, active => ({
-		app: active.app.name,
-		name: active.operation.name,
-		runtime: active.operation.runtime
-	}))
-	const activeTrace = Option.flatMap(activeOperation, active =>
-		pipe(
-			Option.flatMap(selection, selected => selected.traceId),
-			Option.flatMap(selected => Array.findFirst(active.operation.traces, trace => trace.id === selected)),
-			Option.orElse(() => Array.head(active.operation.traces))
+	const activeKey = pipe(
+		activeOperation,
+		Option.map(active => ({app: active.app.name, name: active.operation.name, runtime: active.operation.runtime})),
+		Option.orElse(() =>
+			pipe(
+				selection,
+				Option.filter(selected => Option.isSome(selected.traceId)),
+				Option.map(selected => selected.operation)
+			)
 		)
+	)
+	const activeTrace = pipe(
+		requested,
+		Option.map(id =>
+			pipe(
+				activeOperation,
+				Option.flatMap(active => Array.findFirst(active.operation.traces, trace => trace.id === id)),
+				Option.getOrElse(() => ({id}))
+			)
+		),
+		Option.orElse(() => Option.flatMap(activeOperation, active => Array.head(active.operation.traces)))
 	)
 	const pickedSpan = pipe(
 		selection,
@@ -308,12 +315,12 @@ export function selectionOf(overview: Option.Option<Overview>, search: Search, m
 	return {activeKey, activeOperation, activeTrace, pickedSpan, source}
 }
 
-// The URL as the page shows it: the chosen app and, once a frame's operations arrive, no operation or trace that frame no longer holds.
+// Without a direct trace, drop vanished operation selections; explicit trace URLs keep their ids and context.
 export function shownSearch(
 	search: Search,
 	selection: {
 		activeOperation: Option.Option<ActiveOperation>
-		activeTrace: Option.Option<OperationTrace>
+		activeTrace: Option.Option<Pick<OperationTrace, 'id'>>
 		source: Option.Option<AppName>
 	},
 	loaded: boolean
@@ -329,7 +336,7 @@ export function shownSearch(
 				Option.contains(chosen.operation, active.operation.name) &&
 				Option.contains(chosen.side, active.operation.runtime)
 		)
-	if (staleOperation) {
+	if (staleOperation && Option.isNone(chosen.trace)) {
 		return {...chosen, operation: Option.none(), side: Option.none(), span: Option.none(), trace: Option.none()}
 	}
 	if (

@@ -1,14 +1,13 @@
 import {assert, it} from '@effect/vitest'
 
-import {Array, Boolean, DateTime, Duration, Function, Option, Schema, pipe} from 'effect'
+import {Array, Boolean, DateTime, Duration, Function, Option, Schema} from 'effect'
 
-import {latencyOf, overviewOf, touchedTraces, traceTree} from '#services/telemetry/lib/utils.ts'
+import {overviewOf, traceTree} from '#services/telemetry/lib/utils.ts'
 import {AppName, OperationTrace, ServiceName, Span, SpanId, SpanLink, TraceId} from '#services/telemetry/schema.ts'
 
 const A = '00000000000000000000000000000001'
 const B = '00000000000000000000000000000002'
 const SERVICE = ServiceName.make('stash-server')
-const NOW = DateTime.makeUnsafe(1000)
 // A stored span as its query answers it; each test names only what it is about.
 const OPEN_SPAN = Schema.encodeSync(Span)({
 	attributes: {},
@@ -74,43 +73,6 @@ const RETAINED = [
 	{ci: false, count: 2, failures: 0, service: ServiceName.make('stash')},
 	{ci: false, count: 1, failures: 1, service: ServiceName.make('gateway')}
 ]
-
-it('rejudges arriving span replacements together with the retained trace', () => {
-	const replacement = spanOf({
-		duration: 150,
-		name: 'read',
-		parentSpanId: '0000000000000001',
-		spanId: '0000000000000002',
-		start: 20
-	})
-	assert.deepStrictEqual(
-		Array.map(touchedTraces([replacement], Array.take(SPANS, 2), NOW), trace => [
-			trace.root,
-			trace.broken,
-			Duration.toMillis(trace.duration)
-		]),
-		[[SpanId.make('0000000000000001'), Option.none(), 160]]
-	)
-})
-
-it('roots a trace when its late parent arrives', () => {
-	assert.deepStrictEqual(
-		Array.map(touchedTraces(Array.take(SPANS, 1), pipe(SPANS, Array.drop(1), Array.take(1)), NOW), trace => [
-			trace.root,
-			trace.rooted,
-			trace.broken
-		]),
-		[[SpanId.make('0000000000000001'), true, Option.some(SpanId.make('0000000000000002'))]]
-	)
-})
-
-it('computes nearest-rank latency percentiles from unordered durations', () => {
-	const latency = latencyOf(Array.map([100, 2, 4, 1, 3], Duration.millis))
-	assert.deepStrictEqual(
-		[Duration.toMillis(latency.p50Ms), Duration.toMillis(latency.p95Ms), Duration.toMillis(latency.maxMs)],
-		[3, 100, 100]
-	)
-})
 
 it('attaches a linked trace beneath the span that started it', () => {
 	const links = Schema.decodeSync(Schema.Array(SpanLink))([

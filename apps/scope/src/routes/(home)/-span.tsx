@@ -12,7 +12,7 @@ import {GithubLight} from '@deslop/components-web/ui/svgs/githubLight'
 import {Table, TableBody, TableCell, TableRow} from '@deslop/components-web/ui/table'
 import {clockOf, durationOf} from '@deslop/runtime/shared/format'
 
-import {attributesOf, errorOf} from '#lib/telemetry.ts'
+import {attributesOf} from '#lib/telemetry.ts'
 import {appName} from '#services/telemetry/lib/utils.ts'
 import type {TraceTree} from '#services/telemetry/schema.ts'
 
@@ -106,7 +106,7 @@ export function SpanDetail(props: {span: TraceTree['spans'][number]}) {
 		<Table aria-label="Span details">
 			<TableBody>
 				<SpanHeader span={props.span} />
-				{Option.match(errorOf(props.span), {
+				{Option.match(props.span.error, {
 					onNone: Function.constNull,
 					onSome: message => (
 						<DetailRow

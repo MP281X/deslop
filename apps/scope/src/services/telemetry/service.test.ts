@@ -2,7 +2,7 @@ import {NodeCrypto} from '@effect/platform-node'
 import {SqliteClient} from '@effect/sql-sqlite-node'
 import {assert, it} from '@effect/vitest'
 
-import {Array, Boolean, Duration, Effect, Function, Layer, Option, Schema, Stream, String, pipe} from 'effect'
+import {Array, Boolean, Duration, Effect, Function, Layer, Option, Schema, Stream, String, Struct, pipe} from 'effect'
 
 import {Reactivity} from 'effect/reactivity'
 import {TestClock} from 'effect/testing'
@@ -40,7 +40,112 @@ const telemetryLayer = pipe(
 	Layer.provide(NodeCrypto.layer)
 )
 
+function ciExport(spans: readonly unknown[]) {
+	return Schema.decodeUnknownEffect(TracesRequest)({
+		resourceSpans: [
+			{
+				resource: {
+					attributes: [
+						{key: 'service.name', value: {stringValue: 'read-proof'}},
+						{key: 'scope.runtime', value: {stringValue: 'ci'}}
+					]
+				},
+				scopeSpans: [{spans}]
+			}
+		]
+	})
+}
+
 it.layer(telemetryLayer)(test => {
+	test.effect(
+		'keeps trace facts current through late roots, replacements, retries and late CI starts',
+		Effect.fnUntraced(function* () {
+			const telemetry = yield* Telemetry
+			const id = TraceId.make('fffffffffffffffffffffffffffffff1')
+			const child = {
+				endTimeUnixNano: '30000000',
+				name: 'child',
+				parentSpanId: '1111111111111111',
+				spanId: '2222222222222222',
+				startTimeUnixNano: '20000000',
+				status: {code: 2},
+				traceId: id
+			}
+			const root = {
+				endTimeUnixNano: '100000000',
+				name: 'root',
+				spanId: '1111111111111111',
+				startTimeUnixNano: '0',
+				status: {code: 2},
+				traceId: id
+			}
+			yield* telemetry.ingestTraces(yield* ciExport([child]))
+			yield* telemetry.ingestTraces(yield* ciExport([root]))
+			assert.deepStrictEqual(
+				Array.map(
+					(yield* telemetry.findTraces(yield* Schema.decodeEffect(FindTracesParams)({app: 'read-proof'}))).traces,
+					trace => [trace.operation, trace.spans, Duration.toMillis(trace.ms), trace.failure]
+				),
+				[['root', 2, 100, Option.some('child')]]
+			)
+			const replacement = {...child, endTimeUnixNano: '170000000', status: {code: 1}}
+			yield* telemetry.ingestTraces(yield* ciExport([replacement]))
+			yield* telemetry.ingestTraces(yield* ciExport([replacement]))
+			yield* telemetry.ingestTraces(
+				yield* ciExport([{...Struct.omit(root, ['endTimeUnixNano']), name: 'late start', status: {code: 1}}])
+			)
+			assert.deepStrictEqual(
+				Array.map(
+					(yield* telemetry.findTraces(yield* Schema.decodeEffect(FindTracesParams)({app: 'read-proof'}))).traces,
+					trace => [trace.operation, trace.spans, Duration.toMillis(trace.ms), trace.failure]
+				),
+				[['root', 2, 170, Option.some('root')]]
+			)
+			assert.strictEqual(Duration.toMillis((yield* telemetry.trace(id)).durationMs), 170)
+		})
+	)
+	test.effect(
+		'keeps the newest five successful runs alongside slow runs within the cap',
+		Effect.fnUntraced(function* () {
+			const telemetry = yield* Telemetry
+			yield* telemetry.ingestTraces(
+				yield* Schema.decodeEffect(TracesRequest)({
+					resourceSpans: [
+						{
+							resource: {attributes: [{key: 'service.name', value: {stringValue: 'recent-server'}}]},
+							scopeSpans: [
+								{
+									spans: Array.map(Array.range(0, 39), index => ({
+										endTimeUnixNano: '40000000',
+										name: 'run',
+										spanId: '1111111111111111',
+										startTimeUnixNano: `${index * 1_000_000}`,
+										traceId: String.padStart(32, '0')((index + 1).toString(16))
+									}))
+								}
+							]
+						}
+					]
+				})
+			)
+			assert.deepStrictEqual(
+				Array.map(
+					Option.getOrThrow(
+						Array.head(
+							Option.getOrThrow(
+								Array.findFirst(
+									Option.getOrThrow(yield* Stream.runHead(telemetry.watch('24h'))).apps,
+									app => app.name === 'recent'
+								)
+							).operations
+						)
+					).traces,
+					trace => Duration.toMillis(trace.duration)
+				),
+				[...Array.reverse(Array.range(26, 40)), 5, 4, 3, 2, 1]
+			)
+		})
+	)
 	test.effect(
 		'counts merged app operations with nearest-rank latency and keeps slow traces plus newest failures',
 		Effect.fnUntraced(function* () {

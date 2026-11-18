@@ -40,7 +40,6 @@ import type {
 	RetainedService,
 	Resource,
 	SpanLink,
-	Trace,
 	TraceTree,
 	TracesRequest,
 	SpanFacts,
@@ -369,24 +368,6 @@ function spanDuration(span: Pick<Span, 'duration'>) {
 	return Option.getOrElse(span.duration, () => Duration.zero)
 }
 
-function markedStream(span: Pick<Span, 'attributes'>) {
-	return span.attributes['rpc.stream'] === true
-}
-
-// A subscription's lifetime is not an action's latency: a root is one when it is marked as a stream or has a direct stream child with the same rpc.method, never for an unrelated nested subscription.
-function subscription(root: SpanFacts, spans: readonly SpanFacts[]) {
-	if (markedStream(root)) return true
-	const method = Option.filter(textOf(root.attributes, 'rpc.method'), String.isNonEmpty)
-	return Array.some(
-		spans,
-		span =>
-			span.traceId === root.traceId &&
-			Option.contains(span.parentSpanId, root.spanId) &&
-			Option.exists(method, name => Option.contains(textOf(span.attributes, 'rpc.method'), name)) &&
-			markedStream(span)
-	)
-}
-
 // Effect marks every span a failure passed through as failed, so where it broke is the failed span with no failed child.
 function brokeAt<A extends SpanFacts>(spans: readonly A[]) {
 	const failedSpans = Array.filter(spans, span => span.status === 'failed')
@@ -427,51 +408,6 @@ function timingOf(spans: Array.NonEmptyReadonlyArray<SpanFacts>) {
 		),
 		start
 	}
-}
-
-// What every list reads of one trace, judged from all of its spans.
-function traceOf(spans: Array.NonEmptyReadonlyArray<SpanFacts>, receivedAt: DateTime.Utc) {
-	const root = traceRoot(spans)
-	const timing = timingOf(spans)
-	return {
-		broken: Option.map(brokeAt(spans), span => span.spanId),
-		duration: timing.durationMs,
-		id: root.traceId,
-		label: textOf(root.attributes, 'trace.label'),
-		name: root.name,
-		receivedAt,
-		root: root.spanId,
-		rooted: Array.some(spans, span => Option.isNone(span.parentSpanId)),
-		run: root.run,
-		runtime: root.runtime,
-		service: root.service,
-		spans: spans.length,
-		start: timing.start,
-		version: root.version,
-		// A machine's timer waits between steps; its lifetime is not the operation's latency either.
-		waits:
-			subscription(root, spans) ||
-			(String.startsWith('Machine.invoke')(root.name) && root.attributes['machine.invoke.kind'] === 'Timer')
-	} satisfies Trace
-}
-
-// The traces an export touches, whose stored spans `touchedTraces` reads again.
-export function traceIdsOf(spans: readonly SpanFacts[]) {
-	return Array.dedupe(Array.map(spans, span => span.traceId))
-}
-
-// Each trace an export touches, judged again over its stored spans with the arriving copies in place of theirs.
-export function touchedTraces(incoming: readonly SpanFacts[], stored: readonly SpanFacts[], receivedAt: DateTime.Utc) {
-	const arriving = HashSet.fromIterable(Array.map(incoming, span => `${span.traceId}:${span.spanId}`))
-	return Array.map(
-		Record.values(
-			Array.groupBy(
-				[...Array.filter(stored, span => !HashSet.has(arriving, `${span.traceId}:${span.spanId}`)), ...incoming],
-				span => span.traceId
-			)
-		),
-		spans => traceOf(spans, receivedAt)
-	)
 }
 
 // Each linked trace's root hangs under the span it links to, its own link first.
@@ -588,26 +524,6 @@ export function traceTree(id: TraceId, spans: readonly Span[], logs: readonly Lo
 		),
 		spans: tree
 	} satisfies TraceTree
-}
-
-// judge-ignore no-silent-fallback -- an empty latency sample has a count of zero at the caller; zero is its defined aggregate, not a failed measurement.
-function percentile(times: readonly Duration.Duration[], ratio: number) {
-	return pipe(
-		times,
-		Array.get(Number.max(0, Math.ceil(times.length * ratio) - 1)),
-		Option.getOrElse(() => Duration.zero)
-	)
-}
-
-// judge-ignore no-contradicted-promise -- the Ms keys are LatencyAnswer's wire names, whose schema encodes these Durations as milliseconds.
-// The nearest-rank p50, p95 and longest duration, all zero for an empty sample.
-export function latencyOf(times: readonly Duration.Duration[]) {
-	const sorted = Array.sort(times, Duration.Order)
-	return {
-		maxMs: Option.getOrElse(Array.last(sorted), () => Duration.zero),
-		p50Ms: percentile(sorted, 0.5),
-		p95Ms: percentile(sorted, 0.95)
-	}
 }
 
 // Apps with failures lead, then the busiest; each app's operations count only the traces started in the page's time frame, so a quiet app keeps its tab with no rows.

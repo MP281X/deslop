@@ -58,7 +58,7 @@ export const ToolContracts = Toolkit.make(
 		.annotate(Tool.Strict, true),
 	Tool.make('search_traces', {
 		description:
-			'Find requests, actions or jobs by app, operation, span or text, newest or slowest first; rows include MCP server/tool identity when recorded. Continue with nextCursor and the same filters, or read_trace(id) for a selected trace.',
+			'Find requests, actions or jobs by app, operation, span or word-prefix text, newest or slowest first; rows include MCP server/tool identity when recorded. Continue with nextCursor and the same filters, or read_trace(id) for a selected trace.',
 		failure: TelemetryError,
 		parameters: FindTracesParams,
 		success: TracesAnswer

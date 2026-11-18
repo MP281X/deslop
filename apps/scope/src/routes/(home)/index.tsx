@@ -1,6 +1,6 @@
 import {useAtomRefresh, useAtomSuspense, useAtomValue} from '@effect/atom-react'
 
-import {Array, Boolean, Cause, DateTime, Function, Match, Option, Record, Schema, pipe} from 'effect'
+import {Array, Boolean, Cause, DateTime, Function, Match, Option, Predicate, Record, Schema, pipe} from 'effect'
 
 import {
 	ChartBarHorizontalIcon,
@@ -68,11 +68,11 @@ import type {
 // The side an operation starts on: its row's muted glyph, and its name for the labels of two rows that share a name.
 const SIDES: Record<Runtime, string> = {ci: 'CI', mobile: 'iOS', server: 'server', unknown: '', web: 'web'}
 
-const KINDS: Record<Runtime, ReactElement> = {
+const KINDS: Record<Runtime, ReactNode> = {
 	ci: <FlowArrowIcon aria-hidden className="text-muted-foreground size-4" />,
 	mobile: <DeviceMobileIcon aria-hidden className="text-muted-foreground size-4" />,
 	server: <HardDrivesIcon aria-hidden className="text-muted-foreground size-4" />,
-	unknown: <HardDrivesIcon aria-hidden className="text-muted-foreground size-4" />,
+	unknown: undefined,
 	web: <GlobeIcon aria-hidden className="text-muted-foreground size-4" />
 }
 
@@ -86,7 +86,7 @@ const RANGES = Array.map(TimeFrame.literals, value => ({label: value, value}))
 type WorkspaceProps = {
 	active?: ActiveOperation
 	activeKey?: OperationKey
-	activeTrace?: OperationTrace
+	activeTrace?: Pick<OperationTrace, 'id'>
 	now: DateTime.Utc
 	onPickSpan: (id: SpanId) => void
 	onSelectOperation: (app: AppName, operation: Operation) => void
@@ -99,7 +99,6 @@ type WorkspaceProps = {
 // One tab per app, using its app mark or the CI/server fallback; the supplied source selects it, and clicking that tab again prevents navigation.
 function SourceTabs(props: {apps: Overview['apps']; source?: AppName}) {
 	const search = route.useSearch()
-	if (Array.isReadonlyArrayEmpty(props.apps)) return <AppBarTabsSkeleton count={4} />
 	return (
 		<AppBarTabs value={props.source ?? ''}>
 			{Array.map(props.apps, app => (
@@ -295,7 +294,7 @@ function TracesPane(props: {
 	now: DateTime.Utc
 	onSelect: (trace: OperationTrace) => void
 	range: TimeFrame
-	selectedTrace?: OperationTrace
+	selectedTrace?: Pick<OperationTrace, 'id'>
 }) {
 	const active = Option.fromUndefinedOr(props.active)
 	return (
@@ -378,7 +377,7 @@ function SpansList(props: {
 }
 
 // The page's readers as one mark: the oldest age among those still showing content, and one retry for them all.
-function StaleMark(props: {range: TimeFrame; trace?: OperationTrace}) {
+function StaleMark(props: {range: TimeFrame; trace?: Pick<OperationTrace, 'id'>}) {
 	return Option.match(Option.fromUndefinedOr(props.trace), {
 		onNone: () => <StaleProblem label="Out of date" readers={[overviewAtom(props.range)]} />,
 		onSome: trace => <StaleProblem label="Out of date" readers={[overviewAtom(props.range), traceAtom(trace.id)]} />
@@ -391,7 +390,6 @@ function Spans(props: {
 	inlineDetails?: boolean
 	onPick: (id: SpanId) => void
 	pickedSpan?: SpanId
-	range: TimeFrame
 }) {
 	return (
 		<Loaded atom={traceAtom(props.id)}>
@@ -413,11 +411,10 @@ function TracePane(props: {
 	className?: string
 	detailOnly?: boolean
 	inlineDetails?: boolean
-	now: DateTime.Utc
 	onPickSpan: (id: SpanId) => void
 	pickedSpan?: SpanId
 	range: TimeFrame
-	trace?: OperationTrace
+	trace?: Pick<OperationTrace, 'id'>
 }) {
 	const trace = Option.fromUndefinedOr(props.trace)
 	return (
@@ -450,7 +447,6 @@ function TracePane(props: {
 										inlineDetails={props.inlineDetails}
 										onPick={props.onPickSpan}
 										pickedSpan={props.pickedSpan}
-										range={props.range}
 									/>
 								</Suspense>
 							)
@@ -485,8 +481,6 @@ function NarrowWorkspace(props: WorkspaceProps) {
 			</div>
 			<TracePane
 				inlineDetails
-
-				now={props.now}
 				onPickSpan={props.onPickSpan}
 				pickedSpan={props.pickedSpan}
 				range={props.range}
@@ -523,8 +517,6 @@ function WideWorkspace(props: WorkspaceProps) {
 			<ResizablePanel minSize={320}>
 				<TracePane
 					inlineDetails
-
-					now={props.now}
 					onPickSpan={props.onPickSpan}
 					pickedSpan={props.pickedSpan}
 					range={props.range}
@@ -563,7 +555,6 @@ function MobileWorkspace(props: WorkspaceProps & {pane: ReturnType<typeof naviga
 					<TracePane
 						className="min-h-0 flex-1"
 						detailOnly={props.pane === 'Span'}
-						now={props.now}
 						onPickSpan={props.onPickSpan}
 						pickedSpan={props.pickedSpan}
 						range={props.range}
@@ -598,6 +589,7 @@ function HomeRoute() {
 	const [known, setKnown] = useState<Overview['apps']>(() => [])
 	const apps = Option.match(value, {onNone: () => known, onSome: current => current.apps})
 	const failure = blockingFailure(overview)
+	// nowAtom cannot fail; wall time seeds only its initial empty value, not a failed read.
 	const now = AsyncResult.getOrElse(useAtomValue(nowAtom), DateTime.nowUnsafe)
 
 	// One app is always chosen: a URL naming none, or one this data no longer has, falls back to the newest failure, else the first tab.
@@ -629,13 +621,16 @@ function HomeRoute() {
 		)
 	}
 
-	// A new frame keeps the trace it still holds; the URL follows a fallback once the frame's operations arrive.
+	// A new frame applies its cutoff to listed traces; directly opened ids stay readable outside the capped list.
 	function selectRange(next: TimeFrame) {
 		Option.match(value, {onNone: Function.constUndefined, onSome: current => setKnown(current.apps)})
 		const cutoff = rangeStart(next, now)
 		send(
 			NavigationEvent.cases.Range.make({
-				keepTrace: Option.exists(selection.activeTrace, trace => DateTime.isGreaterThanOrEqualTo(trace.start, cutoff)),
+				keepTrace: Option.exists(
+					selection.activeTrace,
+					trace => !Predicate.hasProperty(trace, 'start') || DateTime.isGreaterThanOrEqualTo(trace.start, cutoff)
+				),
 				range: next
 			})
 		)
@@ -702,12 +697,16 @@ function HomeRoute() {
 					</>
 				}
 				tabs={Boolean.match(isMobile && pane !== 'Operations', {
-					onFalse: () => (
-						<SourceTabs
-							apps={apps}
-							source={Option.getOrUndefined(Option.orElse(selection.source, () => search.source))}
-						/>
-					),
+					onFalse: () =>
+						Boolean.match(AsyncResult.isInitial(overview) && Array.isReadonlyArrayEmpty(apps), {
+							onFalse: () => (
+								<SourceTabs
+									apps={apps}
+									source={Option.getOrUndefined(Option.orElse(selection.source, () => search.source))}
+								/>
+							),
+							onTrue: () => <AppBarTabsSkeleton count={4} />
+						}),
 					onTrue: Function.constUndefined
 				})}
 			/>

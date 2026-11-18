@@ -10,6 +10,7 @@ import {
 	FiberMap,
 	FileSystem,
 	Function,
+	HashSet,
 	Layer,
 	Match,
 	MutableHashMap,
@@ -17,6 +18,7 @@ import {
 	Order,
 	Path,
 	Queue,
+	Ref,
 	RcMap,
 	Result,
 	Schema,
@@ -32,7 +34,6 @@ import {Migrator, SqlClient, SqlModel, SqlSchema} from 'effect/sql'
 
 import {dataDirectory} from '@deslop/runtime/server/store'
 import type {UserId} from '@deslop/runtime/shared/auth'
-import {listEvents} from '@deslop/runtime/shared/list'
 
 import {changeNote, newNote} from './lib/changes.ts'
 import {Sources} from './lib/extraction.ts'
@@ -46,7 +47,17 @@ import type {MediaError, Still} from '#services/media/schema.ts'
 import {Media} from '#services/media/service.ts'
 import {captureUrl, commentOf, hasVideo, queryWords, sourceOf} from '#services/notes/lib/utils.ts'
 import type {Capture, Extraction, FileType, Image, Picture, Organization} from '#services/notes/schema.ts'
-import {Note, NoteId, NoteItem, NotesCursor, NotesError, NoteTag, Tag, TagEntry} from '#services/notes/schema.ts'
+import {
+	Note,
+	NoteId,
+	NoteItem,
+	NoteChangeVersion,
+	NotesCursor,
+	NotesError,
+	NoteTag,
+	Tag,
+	TagEntry
+} from '#services/notes/schema.ts'
 
 declare module 'effect/reactivity/Reactivity' {
 	interface Keys {
@@ -80,7 +91,6 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 		const organizer = yield* Organizer
 		const images = path.join(directory, 'images')
 		const files = path.join(directory, 'files')
-		const tagging = yield* Semaphore.make(8)
 		const publications = yield* RcMap.make({lookup: (_id: NoteId) => Semaphore.make(1)})
 		const runs = yield* FiberMap.make<NoteId>()
 		const mediaReader = yield* makeMediaReader
@@ -108,8 +118,9 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 				),
 				...Array.map(
 					query.terms,
-					term => sql`instr(lower(concat_ws(' ', title, summary, author, text, content, topics, body, screenText,
-						transcript, url, (SELECT group_concat(tag, ' ') FROM note_tags WHERE noteId = notes.id))), ${term}) > 0`
+					term => sql`notes.rowid IN (
+					SELECT rowid FROM note_search WHERE note_search MATCH ${`"${String.replaceAll('"', '""')(term)}"*`}
+				)`
 				)
 			])
 		}
@@ -125,6 +136,17 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 			Request: NoteId,
 			Result: NoteItem,
 			execute: id => sql`SELECT ${itemColumns} FROM notes WHERE id = ${id}`
+		})
+		const listChanges = SqlSchema.findAll({
+			Request: Schema.Int,
+			Result: NoteChangeVersion,
+			execute: version =>
+				sql`SELECT id, version FROM ${sql(NoteChangeVersion.table)} WHERE version > ${version} ORDER BY version`
+		})
+		const changedItems = SqlSchema.findAll({
+			Request: Schema.Array(NoteId),
+			Result: NoteItem,
+			execute: ids => sql`SELECT ${itemColumns} FROM notes WHERE id IN ${sql.in(ids)} ORDER BY createdAt DESC, id DESC`
 		})
 		const findIds = SqlSchema.findAll({
 			Request: Query,
@@ -323,9 +345,7 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 		function tag(userId: UserId, id: NoteId, stills: Picture[]) {
 			return pipe(
 				findNote(id),
-				Effect.flatMap(
-					Option.match({onNone: () => Effect.void, onSome: note => tagging.withPermit(tagNote(userId, note, stills))})
-				),
+				Effect.flatMap(Option.match({onNone: () => Effect.void, onSome: note => tagNote(userId, note, stills)})),
 				Effect.withSpan('Notes.tag', {attributes: {'note.id': id}})
 			)
 		}
@@ -700,7 +720,43 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 			}, withReactivity),
 			// What the phone watches: the whole list first, then only what changed, after each commit.
 			events: pipe(
-				listEvents(sql.reactive(['notes'], listItems()), note => note.id),
+				Stream.unwrap(
+					Effect.gen(function* () {
+						const cursor = yield* Ref.make(Option.none<number>())
+						return sql.reactive(
+							['notes'],
+							sql.withTransaction(
+								Effect.gen(function* () {
+									const previous = yield* Ref.get(cursor)
+									const changes = yield* listChanges(Option.getOrElse(previous, Function.constant(0)))
+									const version = Option.getOrElse(Array.last(changes), () => ({
+										version: Option.getOrElse(previous, Function.constant(0))
+									})).version
+									const reset = Option.isNone(previous)
+									const items = yield* Boolean.match(reset, {
+										onFalse: () => changedItems(Array.map(changes, row => row.id)),
+										onTrue: () => listItems()
+									})
+									const present = HashSet.fromIterable(Array.map(items, item => item.id))
+									yield* Ref.set(cursor, Option.some(version))
+									return {
+										removed: pipe(
+											changes,
+											Array.filter(row => !HashSet.has(present, row.id)),
+											Array.map(row => row.id)
+										),
+										reset,
+										upserted: items
+									}
+								})
+							)
+						)
+					})
+				),
+				Stream.filter(
+					event =>
+						event.reset || Array.isReadonlyArrayNonEmpty(event.upserted) || Array.isReadonlyArrayNonEmpty(event.removed)
+				),
 				Stream.mapError(asStorageNotesError),
 				Stream.withSpan('Notes.events', {attributes: {'rpc.stream': true}})
 			),
@@ -829,6 +885,43 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 						) STRICT, WITHOUT ROWID
 					`
 					yield* sql`CREATE INDEX note_tags_by_tag ON note_tags (tag)`
+				}),
+				'0002_search_changes': Effect.gen(function* () {
+					const sql = yield* SqlClient.SqlClient
+					yield* sql`CREATE VIRTUAL TABLE note_search USING fts5(text, tags, tokenize = 'unicode61')`
+					yield* sql`INSERT INTO note_search(rowid, text, tags)
+						SELECT rowid, concat_ws(' ', title, summary, author, text, content, topics, body, screenText, transcript, url),
+							(SELECT group_concat(tag, ' ') FROM note_tags WHERE noteId = notes.id) FROM notes`
+					yield* sql`CREATE TABLE note_changes (id TEXT PRIMARY KEY, version INTEGER NOT NULL) STRICT`
+					yield* sql`CREATE INDEX note_changes_by_version ON note_changes(version)`
+					yield* sql`CREATE TRIGGER notes_insert AFTER INSERT ON notes BEGIN
+						INSERT INTO note_search(rowid, text, tags) VALUES(new.rowid,
+							concat_ws(' ', new.title, new.summary, new.author, new.text, new.content, new.topics, new.body, new.screenText, new.transcript, new.url), '');
+						INSERT INTO note_changes(id, version) VALUES(new.id, (SELECT coalesce(max(version), 0) + 1 FROM note_changes))
+							ON CONFLICT(id) DO UPDATE SET version = excluded.version;
+					END`
+					yield* sql`CREATE TRIGGER notes_update AFTER UPDATE ON notes BEGIN
+						UPDATE note_search SET text = concat_ws(' ', new.title, new.summary, new.author, new.text, new.content, new.topics, new.body, new.screenText, new.transcript, new.url) WHERE rowid = new.rowid;
+						INSERT INTO note_changes(id, version) VALUES(new.id, (SELECT coalesce(max(version), 0) + 1 FROM note_changes))
+							ON CONFLICT(id) DO UPDATE SET version = excluded.version;
+					END`
+					yield* sql`CREATE TRIGGER notes_delete AFTER DELETE ON notes BEGIN
+						DELETE FROM note_search WHERE rowid = old.rowid;
+						INSERT INTO note_changes(id, version) VALUES(old.id, (SELECT coalesce(max(version), 0) + 1 FROM note_changes))
+							ON CONFLICT(id) DO UPDATE SET version = excluded.version;
+					END`
+					yield* sql`CREATE TRIGGER note_tags_insert AFTER INSERT ON note_tags BEGIN
+						UPDATE note_search SET tags = (SELECT group_concat(tag, ' ') FROM note_tags WHERE noteId = new.noteId)
+							WHERE rowid = (SELECT rowid FROM notes WHERE id = new.noteId);
+						INSERT INTO note_changes(id, version) VALUES(new.noteId, (SELECT coalesce(max(version), 0) + 1 FROM note_changes))
+							ON CONFLICT(id) DO UPDATE SET version = excluded.version;
+					END`
+					yield* sql`CREATE TRIGGER note_tags_delete AFTER DELETE ON note_tags BEGIN
+						UPDATE note_search SET tags = (SELECT group_concat(tag, ' ') FROM note_tags WHERE noteId = old.noteId)
+							WHERE rowid = (SELECT rowid FROM notes WHERE id = old.noteId);
+						INSERT INTO note_changes(id, version) VALUES(old.noteId, (SELECT coalesce(max(version), 0) + 1 FROM note_changes))
+							ON CONFLICT(id) DO UPDATE SET version = excluded.version;
+					END`
 				})
 			}),
 			table: 'notes_migrations'

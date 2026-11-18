@@ -28,21 +28,19 @@ import {Digest} from 'effect/crypto'
 import {Reactivity} from 'effect/reactivity'
 import {Migrator, SqlClient, SqlSchema} from 'effect/sql'
 
+import {liveRead} from '@deslop/runtime/shared/live-read'
 import {TimeFrame} from '@deslop/runtime/shared/time'
 
 import {
 	appName,
 	attributesFlat,
 	diagnosis,
-	latencyOf,
 	levelOf,
 	logOf,
 	overviewOf,
 	sideOf,
 	senderOf,
 	spansOf,
-	touchedTraces,
-	traceIdsOf,
 	traceTree
 } from '#services/telemetry/lib/utils.ts'
 import type {
@@ -51,14 +49,12 @@ import type {
 	RejectedExport,
 	FindTracesParams,
 	IngestionAnswer,
-	LatencyAnswer,
 	ListOperationsParams,
 	LogsAnswer,
 	LogsRequest,
 	MeasureLatencyParams,
 	Operation,
 	OperationRow,
-	OperationTrace,
 	OperationsAnswer,
 	Overview,
 	ReadTraceAnswer,
@@ -68,11 +64,11 @@ import type {
 	TraceRow,
 	TracesAnswer,
 	TracesRequest,
-	AppName,
-	ServiceName,
 	SpanId
 } from '#services/telemetry/schema.ts'
 import {
+	AppName,
+	ServiceName,
 	FoundTrace,
 	CountedOperation,
 	ExportedLog,
@@ -86,7 +82,8 @@ import {
 	Resource,
 	RetainedService,
 	ServiceRun,
-	SettledTrace,
+	OperationTrace,
+	LatencyAnswer,
 	Span,
 	SpanLink,
 	StoredLog,
@@ -122,32 +119,6 @@ declare module 'effect/reactivity/Reactivity' {
 // One phrase whose last word may be a prefix, so a word still being typed matches.
 function phrase(text: string) {
 	return `"${String.replaceAll('"', '""')(text)}"*`
-}
-
-// The overview's kept traces with their labels and failures; a trace pruned since the overview counted it stays without them until the next read.
-function detailed(overview: Overview, rows: readonly TraceDetail[]) {
-	const byId = Record.fromIterableBy(rows, row => row.id)
-	return {
-		apps: Array.map(overview.apps, app => ({
-			...app,
-			operations: Array.map(app.operations, operation => ({
-				...operation,
-				traces: Array.map(operation.traces, trace =>
-					pipe(
-						byId,
-						Record.get(trace.id),
-						Option.match({
-							onNone: () => trace,
-							onSome: row => {
-								const error = diagnosis(row)
-								return {...trace, failure: Option.map(row.broken, span => ({error, span})), label: row.label}
-							}
-						})
-					)
-				)
-			}))
-		}))
-	} satisfies Overview
 }
 
 // Failing traces above the rest, then the newest: the largest is an operation's newest failure when it has one.
@@ -324,13 +295,12 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 		const utf8 = new TextEncoder()
 		const rejections = yield* Ref.make(Record.empty<string, Rejection>())
 
-		const statusOf = sql`CASE spans.status WHEN 1 THEN 'failed' WHEN 2 THEN 'denied' ELSE 'ok' END`
 		// Ids are blobs in SQL and hex outside; `nullif` turns `hex(NULL)`'s '' back into an absence.
 		const spanColumns = sql`
 			lower(hex(traces.traceId)) AS traceId, lower(hex(spans.span)) AS spanId,
 			nullif(lower(hex(spans.parent)), '') AS parentSpanId,
 			resources.service, resources.runtime, resources.run, resources.version,
-			spans.name, spans.start, spans.duration, ${statusOf} AS status, spans.error, spans.exception,
+			spans.name, spans.start, spans.duration, CASE spans.status WHEN 1 THEN 'failed' WHEN 2 THEN 'denied' ELSE 'ok' END AS status, spans.error, spans.exception,
 			json_patch(spans.attributes, json_object('db.query.text', statements.text)) AS attributes
 		`
 		const spanFrom = sql`
@@ -451,10 +421,10 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 			AND resources.run IS arriving.value ->> 'run' AND resources.version IS arriving.value ->> 'version'
 		`
 		const arrivingAttributes = sql`(arriving.value ->> 'attributes')`
-		// An export's spans, the traces they touch and their links: one statement per table for the whole export, so search indexes only the spans that changed.
+		// Batch upsert the export, then refresh only its traces through indexed boundary, root and failure lookups.
 		const saveExport = SqlSchema.void({
 			Request: Schema.fromJsonString(
-				Schema.Struct({links: Schema.Array(SpanLink), spans: Schema.Array(Span), traces: Schema.Array(Trace)})
+				Schema.Struct({links: Schema.Array(SpanLink), receivedAt: Trace.fields.receivedAt, spans: Schema.Array(Span)})
 			),
 			execute: batch =>
 				Effect.gen(function* () {
@@ -467,20 +437,16 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 					`
 					// A trace keeps the time its first span or log arrived.
 					yield* sql`
-						INSERT INTO traces (traceId, resource, name, label, start, duration, spans, broken, rooted, waits, receivedAt)
+						INSERT INTO traces (traceId, resource, name, start, duration, spans, rooted, waits, receivedAt, end)
 						SELECT
-							unhex(arriving.value ->> 'id'), resources.id, arriving.value ->> 'name', arriving.value ->> 'label',
-							arriving.value ->> 'start', arriving.value ->> 'duration', arriving.value ->> 'spans',
-							unhex(arriving.value ->> 'broken'), arriving.value ->> 'rooted', arriving.value ->> 'waits',
-							arriving.value ->> 'receivedAt'
-						FROM json_each(${batch}, '$.traces') AS arriving JOIN resources ON ${arrivingSender}
+							unhex(arriving.value ->> 'traceId'), min(resources.id), '', min(arriving.value ->> 'start'), 0, 0, 0, 1,
+							${batch} ->> 'receivedAt', min(arriving.value ->> 'start')
+						FROM json_each(${batch}, '$.spans') AS arriving JOIN resources ON ${arrivingSender}
 						WHERE true
-						ON CONFLICT (traceId) DO UPDATE SET
-							resource = excluded.resource, name = excluded.name, label = excluded.label, start = excluded.start,
-							duration = excluded.duration, spans = excluded.spans, broken = excluded.broken,
-							rooted = excluded.rooted, waits = excluded.waits
+						GROUP BY arriving.value ->> 'traceId'
+						ON CONFLICT (traceId) DO NOTHING
 					`
-					// A retried export or a finished run sends a span again; the newer copy replaces the stored one. Constant keys go, and the statement is stored once.
+					// Replace retried spans except a late CI start after completion; strip the listed attributes and intern SQL statements.
 					yield* sql`
 						INSERT INTO spans (trace, span, parent, resource, name, kind, start, duration, status, error, exception, statement, attributes)
 						SELECT
@@ -508,14 +474,43 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 							parent = excluded.parent, resource = excluded.resource, name = excluded.name, kind = excluded.kind,
 							start = excluded.start, duration = excluded.duration, status = excluded.status, error = excluded.error,
 							exception = excluded.exception, statement = excluded.statement, attributes = excluded.attributes
+						WHERE NOT (excluded.duration IS NULL AND spans.duration IS NOT NULL
+							AND (SELECT runtime FROM resources WHERE id = excluded.resource) = 'ci')
 					`
-					// A waiting trace's root is a stream too: an RPC span inherits its subscription child's wait.
+					// Indexed boundary and candidate lookups touch only changed traces, never decode their stored spans.
 					yield* sql`
-						UPDATE spans SET kind = 1
-						FROM json_each(${batch}, '$.traces') AS arriving
-						JOIN traces ON traces.traceId = unhex(arriving.value ->> 'id')
-						WHERE arriving.value ->> 'waits' AND spans.kind = 0
-						AND spans.trace = traces.id AND spans.span = unhex(arriving.value ->> 'root')
+						UPDATE traces SET
+							start = (SELECT start FROM spans WHERE trace = traces.id ORDER BY start, id LIMIT 1),
+							end = (SELECT start + coalesce(duration, 0) FROM spans WHERE trace = traces.id
+								ORDER BY start + coalesce(duration, 0) DESC LIMIT 1),
+							root = coalesce((SELECT candidate.span FROM spans AS candidate WHERE candidate.trace = traces.id
+								AND NOT EXISTS (SELECT 1 FROM spans AS parent WHERE parent.trace = traces.id AND parent.span = candidate.parent)
+								ORDER BY candidate.start, candidate.id LIMIT 1),
+								(SELECT span FROM spans WHERE trace = traces.id ORDER BY start, id LIMIT 1)),
+							broken = (SELECT candidate.span FROM spans AS candidate WHERE candidate.trace = traces.id AND candidate.status = 1
+								AND NOT EXISTS (SELECT 1 FROM spans AS child WHERE child.trace = traces.id AND child.parent = candidate.span AND child.status = 1)
+								ORDER BY candidate.start, candidate.id LIMIT 1),
+							rooted = EXISTS (SELECT 1 FROM spans WHERE trace = traces.id AND parent IS NULL)
+						WHERE traceId IN (SELECT unhex(value ->> 'traceId') FROM json_each(${batch}, '$.spans'))
+					`
+					yield* sql`
+						UPDATE traces SET duration = (SELECT (start - traces.start) + coalesce(duration, 0)
+							FROM spans WHERE trace = traces.id ORDER BY start + coalesce(duration, 0) DESC LIMIT 1),
+							resource = root.resource, name = root.name,
+							label = CASE WHEN json_type(root.attributes, '$."trace.label"') = 'text' THEN root.attributes ->> '$."trace.label"' END,
+							waits = coalesce(root.attributes ->> '$."rpc.stream"' = 1, 0)
+								OR coalesce(substr(root.name, 1, 14) = 'Machine.invoke' AND root.attributes ->> '$."machine.invoke.kind"' = 'Timer', 0)
+								OR EXISTS (SELECT 1 FROM spans AS child WHERE child.trace = traces.id AND child.parent = root.span
+									AND child.attributes ->> '$."rpc.stream"' = 1
+									AND root.attributes ->> '$."rpc.method"' != ''
+									AND child.attributes ->> '$."rpc.method"' = root.attributes ->> '$."rpc.method"')
+						FROM spans AS root WHERE root.trace = traces.id AND root.span = traces.root
+						AND traces.traceId IN (SELECT unhex(value ->> 'traceId') FROM json_each(${batch}, '$.spans'))
+					`
+					yield* sql`
+						UPDATE spans SET kind = 1 FROM traces WHERE traces.id = spans.trace AND spans.span = traces.root
+						AND traces.waits AND spans.kind = 0
+						AND traces.traceId IN (SELECT unhex(value ->> 'traceId') FROM json_each(${batch}, '$.spans'))
 					`
 					yield* sql`
 						INSERT INTO span_links (trace, span, linkedTrace, linkedSpan)
@@ -536,10 +531,10 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 					yield* saveResources(batch, '$')
 					// A log starts the trace it names when no span of it has arrived; the logs that name none share one trace for their export.
 					yield* sql`
-						INSERT INTO traces (traceId, resource, name, start, duration, spans, rooted, waits, receivedAt)
+						INSERT INTO traces (traceId, resource, name, start, duration, spans, rooted, waits, receivedAt, end)
 						SELECT
 							unhex(arriving.value ->> 'traceId'), min(resources.id), '', min(arriving.value ->> 'time'), 0, 0, 0, 1,
-							min(arriving.value ->> 'receivedAt')
+							min(arriving.value ->> 'receivedAt'), min(arriving.value ->> 'time')
 						FROM json_each(${batch}) AS arriving JOIN resources ON ${arrivingSender}
 						WHERE true
 						GROUP BY arriving.value ->> 'traceId'
@@ -601,57 +596,72 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 				state.size = yield* retainedSize()
 			}
 		})
-		// Match appName in SQL so services with the same app and runtime share percentiles and kept traces.
-		const serviceName = sql`CASE WHEN substr(root.service, 1, 8) = '@deslop/' THEN substr(root.service, 9) ELSE root.service END`
-		const appColumn = sql`CASE
-			WHEN substr(${serviceName}, -7) IN ('-server', '-client') THEN substr(${serviceName}, 1, length(${serviceName}) - 7)
-			WHEN substr(${serviceName}, -4) = '-ios' THEN substr(${serviceName}, 1, length(${serviceName}) - 4)
-			ELSE ${serviceName} END`
-		const OverviewRange = Schema.Struct({cutoff: Span.fields.start, settledBefore: Span.fields.start})
+		// Nearest-rank latency has one definition for overview and measurement, including empty samples.
+		const percentiles = sql`
+			coalesce(json_extract(json_group_array(sample.duration ORDER BY sample.duration),
+				'$[' || max(0, (count(*) + 1) / 2 - 1) || ']'), 0) AS p50Ms,
+			coalesce(json_extract(json_group_array(sample.duration ORDER BY sample.duration),
+				'$[' || max(0, (count(*) * 95 + 99) / 100 - 1) || ']'), 0) AS p95Ms
+		`
+		const OverviewRange = Schema.Struct({
+			apps: Schema.fromJsonString(Schema.Record(ServiceName, AppName)),
+			cutoff: Span.fields.start,
+			settledBefore: Span.fields.start
+		})
 		const listOperationCounts = SqlSchema.findAll({
 			Request: OverviewRange,
 			Result: CountedOperation,
 			execute: query => sql`
-				SELECT
-					${appColumn} AS app, root.runtime, traces.name, count(*) AS count,
-					sum(traces.broken IS NOT NULL) AS failures, max(traces.start) AS latest,
-					json_extract(json_group_array(traces.duration ORDER BY traces.duration),
-						'$[' || ((count(*) + 1) / 2 - 1) || ']') AS p50Ms,
-					json_extract(json_group_array(traces.duration ORDER BY traces.duration),
-						'$[' || ((count(*) * 95 + 99) / 100 - 1) || ']') AS p95Ms
-				${traceFrom}
-				WHERE ${operationTrace} AND traces.start >= ${query.cutoff}
-				AND (traces.rooted OR traces.start < ${query.settledBefore})
-				GROUP BY app, root.runtime, traces.name
-				ORDER BY min(traces.start), min(traces.id)
+				WITH senders AS MATERIALIZED (
+					SELECT root.id, root.runtime, apps.value AS app
+					FROM resources AS root JOIN json_each(${query.apps}) AS apps ON apps.key = root.service
+				), sample AS (
+					SELECT traces.id AS arrival, traces.start, traces.duration,
+						senders.app, senders.runtime, traces.name, traces.broken IS NOT NULL AS failed
+					FROM traces JOIN senders ON senders.id = traces.resource
+					WHERE ${operationTrace} AND traces.start >= ${query.cutoff}
+					AND (traces.rooted OR traces.start < ${query.settledBefore})
+				)
+				SELECT app, runtime, name, count(*) AS count, sum(failed) AS failures, max(start) AS latest, ${percentiles}
+				FROM sample GROUP BY app, runtime, name ORDER BY min(start), min(arrival)
 			`
 		})
 		const listKeptTraces = SqlSchema.findAll({
 			Request: Schema.Struct({
-				...OverviewRange.fields,
-				...Struct.pick(CountedOperation.fields, ['app', 'runtime', 'name'])
+				...Struct.pick(OverviewRange.fields, ['cutoff', 'settledBefore']),
+				...Struct.pick(CountedOperation.fields, ['runtime', 'name']),
+				services: Schema.Array(ServiceName)
 			}),
-			Result: SettledTrace,
+			Result: Schema.Struct({
+				...Struct.pick(OperationTrace.fields, ['id', 'duration', 'start']),
+				...TraceDetail.fields
+			}),
 			execute: query => {
-				const columns = sql`lower(hex(traces.traceId)) AS id, traces.id AS arrival, traces.start, traces.duration,
-					root.service, root.runtime, traces.name, traces.broken IS NOT NULL AS failed`
+				const columns = sql`traces.id AS arrival, traces.start, traces.duration`
 				const where = sql`${operationTrace} AND traces.name = ${query.name}
-					AND ${appColumn} = ${query.app} AND root.runtime = ${query.runtime}
+					AND root.service IN ${sql.in(query.services)} AND root.runtime = ${query.runtime}
 					AND traces.start >= ${query.cutoff} AND (traces.rooted OR traces.start < ${query.settledBefore})`
 				return sql`
 					WITH failures AS (
 						SELECT ${columns} ${traceFrom} WHERE ${where} AND traces.broken IS NOT NULL
 						ORDER BY traces.start DESC, traces.duration DESC, traces.id LIMIT 10
+					), newest AS (
+						SELECT ${columns} ${traceFrom} WHERE ${where}
+						ORDER BY traces.start DESC, traces.id DESC LIMIT 5
 					), slowest AS (
 						SELECT ${columns} ${traceFrom} WHERE ${where}
 						ORDER BY traces.duration DESC, traces.start, traces.id LIMIT 20
 					), candidates AS (
-						SELECT * FROM failures UNION SELECT * FROM slowest
+						SELECT * FROM failures UNION SELECT * FROM newest UNION SELECT * FROM slowest
 					), kept AS (
-						SELECT * FROM candidates
-						ORDER BY id IN (SELECT id FROM failures) DESC, duration DESC, start, arrival LIMIT 20
+						SELECT * FROM candidates ORDER BY arrival IN (SELECT arrival FROM failures) DESC,
+							arrival IN (SELECT arrival FROM newest) DESC, duration DESC, start, arrival LIMIT 20
 					)
-					SELECT * FROM kept ORDER BY duration DESC, id IN (SELECT id FROM failures) DESC, start, arrival
+					SELECT lower(hex(traces.traceId)) AS id, kept.start, kept.duration,
+						traces.label, broken.name AS broken, broken.error, broken.exception
+					FROM kept JOIN traces ON traces.id = kept.arrival
+					LEFT JOIN spans AS broken ON broken.trace = traces.id AND broken.span = traces.broken
+					ORDER BY kept.duration DESC, kept.arrival IN (SELECT arrival FROM failures) DESC, kept.start, kept.arrival
 				`
 			}
 		})
@@ -663,16 +673,6 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 				${traceFrom}
 				WHERE ${operationTrace} AND (traces.rooted OR traces.start < ${settledBefore})
 				GROUP BY root.service
-			`
-		})
-		// The label and failure of the traces the overview keeps, read for them alone.
-		const listDetails = SqlSchema.findAll({
-			Request: TraceIds,
-			Result: TraceDetail,
-			execute: ids => sql`
-				SELECT lower(hex(traces.traceId)) AS id, traces.label, broken.name AS broken, broken.error, broken.exception
-				${traceJoins}
-				WHERE traces.traceId IN ${traceIds(ids)}
 			`
 		})
 		const listServices = SqlSchema.findAll({
@@ -741,13 +741,14 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 			execute: query => sql`SELECT count(*) AS count ${logFrom} WHERE ${filterLogs(query)}`
 		})
 		// The spans of one name that measure work: a stream, a machine's timer and an unrouted request are kinds of their own.
-		const listLatencies = SqlSchema.findAll({
+		const readLatency = SqlSchema.findOne({
 			Request: LatencyQuery,
-			Result: Schema.Struct(Struct.pick(Span.fields, ['duration', 'status'])),
+			Result: LatencyAnswer,
 			execute: query => sql`
-				SELECT spans.duration, ${statusOf} AS status
-				FROM spans JOIN resources ON resources.id = spans.resource
-				WHERE spans.kind = 0 AND spans.name = ${query.name} AND spans.start >= ${query.cutoff}
+				SELECT count(*) AS count, coalesce(sum(sample.status = 1), 0) AS failures,
+					coalesce(max(sample.duration), 0) AS maxMs, ${percentiles}
+				FROM spans AS sample JOIN resources ON resources.id = sample.resource
+				WHERE sample.kind = 0 AND sample.duration IS NOT NULL AND sample.name = ${query.name} AND sample.start >= ${query.cutoff}
 				AND ${Option.match(Option.fromNullOr(query.services), {
 					onNone: () => sql`1=1`,
 					onSome: services => sql`resources.service IN ${sql.in(services)}`
@@ -808,52 +809,43 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 		const readOverview = Effect.fnUntraced(function* (range: TimeFrame) {
 			const now = yield* DateTime.now
 			const settledBefore = DateTime.subtractDuration(now, Duration.minutes(1))
-			const query = {cutoff: rangeStart(range, now), settledBefore}
-			const counted = overviewOf(
-				yield* Effect.forEach(
-					yield* listOperationCounts(query),
-					Effect.fnUntraced(function* (operation) {
-						const traces = yield* listKeptTraces({...query, ...operation})
-						if (!Array.isReadonlyArrayNonEmpty(traces)) return yield* TelemetryError.make({message: UNAVAILABLE})
-						return {
-							...operation,
-							traces: Array.map(traces, row => ({
-								duration: row.duration,
-								failure: Option.none(),
-								id: row.id,
-								label: Option.none(),
-								start: row.start
-							}))
-						}
-					}),
-					{concurrency: 1}
-				),
-				yield* listRetainedServices(settledBefore)
+			const services = yield* listRetainedServices(settledBefore)
+			const apps = Record.fromIterableWith(services, row => [row.service, appName(row.service)])
+			const query = {apps, cutoff: rangeStart(range, now), settledBefore}
+			const operations = yield* Effect.forEach(
+				yield* listOperationCounts(query),
+				Effect.fnUntraced(function* (operation) {
+					const traces = yield* listKeptTraces({
+						...query,
+						...operation,
+						services: Record.keys(Record.filter(apps, app => app === operation.app))
+					})
+					// Retention may remove this operation after the counts were read.
+					if (!Array.isReadonlyArrayNonEmpty(traces)) return Option.none()
+					return Option.some({
+						...operation,
+						traces: Array.map(traces, row => ({
+							duration: row.duration,
+							failure: Option.map(row.broken, span => ({error: diagnosis(row), span})),
+							id: row.id,
+							label: row.label,
+							start: row.start
+						}))
+					})
+				}),
+				{concurrency: 1}
 			)
-			return detailed(
-				counted,
-				yield* listDetails(
-					Array.flatMap(counted.apps, app =>
-						Array.flatMap(app.operations, operation => Array.map(operation.traces, trace => trace.id))
-					)
-				)
-			)
-		}, sql.withTransaction)
+			return overviewOf(Array.getSomes(operations), services)
+		})
 		// Cache lookups may run in an RPC's scope; shared sources belong to this service instead.
 		const serviceScope = yield* Effect.scope
 		const overviews = yield* Cache.make({
 			capacity: TimeFrame.literals.length,
 			lookup: Effect.fnUntraced(function* (range: TimeFrame) {
 				return yield* pipe(
-					// Buffer cheap invalidations, not computed overviews. A pending write survives the cooldown.
+					// liveRead owns buffering and the cooldown; the shared stream replays its latest answer.
 					sql.reactive(['telemetry'], Effect.void),
-					Stream.buffer({capacity: 1, strategy: 'sliding'}),
-					Stream.flatMap(() =>
-						Stream.concat(
-							Stream.fromEffect(readOverview(range)),
-							Stream.fromEffectDrain(Effect.sleep(Duration.seconds(1)))
-						)
-					),
+					liveRead(readOverview(range)),
 					Stream.mapError(cause => TelemetryError.make({cause, message: UNAVAILABLE})),
 					Stream.withSpan('Telemetry.watch', {attributes: {range, 'rpc.stream': true}}),
 					Stream.share({capacity: 1, replay: 1, strategy: 'sliding'}),
@@ -988,26 +980,7 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 			ingestTraces: Effect.fn('Telemetry.ingestTraces')(
 				function* (payload: TracesRequest) {
 					const receivedAt = yield* DateTime.now
-					const incoming = spansOf(payload)
-					const stored = yield* listSpans(traceIdsOf(incoming.spans))
-					// A late CI start cannot replace a completed span; read and write share this transaction.
-					const completed = HashSet.fromIterable(
-						pipe(
-							stored,
-							Array.filter(span => span.runtime === 'ci' && Option.isSome(span.duration)),
-							Array.map(span => `${span.traceId}:${span.spanId}`)
-						)
-					)
-					const spans = Array.filter(
-						incoming.spans,
-						span =>
-							!(
-								span.runtime === 'ci' &&
-								Option.isNone(span.duration) &&
-								HashSet.has(completed, `${span.traceId}:${span.spanId}`)
-							)
-					)
-					yield* saveExport({links: incoming.links, spans, traces: touchedTraces(spans, stored, receivedAt)})
+					yield* saveExport({...spansOf(payload), receivedAt})
 					yield* boundSize
 				},
 				Reactivity.mutation(['telemetry']),
@@ -1016,26 +989,26 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 				withReactivity
 			),
 			listOperations: Effect.fn('Telemetry.listOperations')(function* (input: ListOperationsParams) {
-				return operationsAnswer(yield* readOverview(input.since), input.app)
-			}, asTelemetryError),
-			// Aggregate completed action spans selected by listLatencies; return their count, failures and durations rounded to tenths of a millisecond.
-			measureLatency: Effect.fn('Telemetry.measureLatency')(function* (input: MeasureLatencyParams) {
-				const rows = Array.filter(
-					yield* listLatencies({
-						cutoff: rangeStart(input.since, yield* DateTime.now),
-						name: input.name,
-						services: yield* servicesOf(input.app)
-					}),
-					row => Option.isSome(row.duration)
+				return operationsAnswer(
+					Option.getOrThrow(yield* Stream.runHead(Stream.unwrap(Cache.get(overviews, input.since)))),
+					input.app
 				)
-				const latency = latencyOf(Array.getSomes(Array.map(rows, row => row.duration)))
+			}, asTelemetryError),
+			// Aggregate completed action spans; return their count, failures and durations rounded to tenths of a millisecond.
+			measureLatency: Effect.fn('Telemetry.measureLatency')(function* (input: MeasureLatencyParams) {
+				const measured = yield* readLatency({
+					cutoff: rangeStart(input.since, yield* DateTime.now),
+					name: input.name,
+					services: yield* servicesOf(input.app)
+				})
 				return {
-					count: rows.length,
-					failures: Array.countBy(rows, row => row.status === 'failed'),
-					maxMs: Duration.millis(Number.round(Duration.toMillis(latency.maxMs), 1)),
-					p50Ms: Duration.millis(Number.round(Duration.toMillis(latency.p50Ms), 1)),
-					p95Ms: Duration.millis(Number.round(Duration.toMillis(latency.p95Ms), 1))
-				} satisfies LatencyAnswer
+					...measured,
+					...pipe(
+						measured,
+						Struct.pick(['maxMs', 'p50Ms', 'p95Ms']),
+						Record.map(duration => Duration.millis(Number.round(Duration.toMillis(duration), 1)))
+					)
+				}
 			}, asTelemetryError),
 			readTrace: Effect.fn('Telemetry.readTrace')(function* (
 				input: ReadTraceParams,
@@ -1106,7 +1079,8 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 			watch: (range: TimeFrame) => Stream.unwrap(Cache.get(overviews, range)),
 			watchTrace: (id: TraceId) =>
 				pipe(
-					sql.reactive(['telemetry'], tree(id)),
+					sql.reactive(['telemetry'], Effect.void),
+					liveRead(tree(id)),
 					Stream.changesWith(Schema.toEquivalence(TraceTree)),
 					Stream.mapError(cause => TelemetryError.make({cause, message: UNAVAILABLE})),
 					Stream.withSpan('Telemetry.watchTrace', {attributes: {id, 'rpc.stream': true}})
@@ -1418,6 +1392,26 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 					const sql = yield* SqlClient.SqlClient
 					yield* sql`CREATE INDEX traces_by_operation_duration ON traces (name, duration DESC, start, id) WHERE NOT waits`
 					yield* sql`CREATE INDEX traces_by_operation_failure ON traces (name, start DESC, duration DESC, id) WHERE NOT waits AND broken IS NOT NULL`
+				}),
+				'0004_trace_facts': Effect.gen(function* () {
+					const sql = yield* SqlClient.SqlClient
+					yield* sql`ALTER TABLE traces ADD COLUMN end REAL NOT NULL DEFAULT 0`
+					yield* sql`ALTER TABLE traces ADD COLUMN root BLOB`
+					yield* sql`CREATE INDEX spans_by_trace_start ON spans(trace, start, id)`
+					yield* sql`CREATE INDEX spans_by_trace_end ON spans(trace, (start + coalesce(duration, 0)) DESC)`
+					yield* sql`CREATE INDEX spans_by_trace_failure ON spans(trace, start, id) WHERE status = 1`
+					yield* sql`CREATE INDEX spans_by_trace_parent_status ON spans(trace, parent, status)`
+					yield* sql`UPDATE traces SET end = start + duration, root = (
+						SELECT candidate.span FROM spans AS candidate WHERE candidate.trace = traces.id
+						AND NOT EXISTS (SELECT 1 FROM spans AS parent WHERE parent.trace = traces.id AND parent.span = candidate.parent)
+						ORDER BY candidate.start, candidate.id LIMIT 1
+					)`
+					yield* sql`CREATE TRIGGER spans_counted AFTER INSERT ON spans BEGIN
+						UPDATE traces SET spans = spans + 1 WHERE id = new.trace;
+					END`
+				}),
+				'0005_overview_newest': Effect.gen(function* () {
+					yield* (yield* SqlClient.SqlClient)`CREATE INDEX traces_by_operation_start ON traces (name, start DESC, id DESC) WHERE NOT waits`
 				})
 			}),
 			table: 'telemetry_migrations'
