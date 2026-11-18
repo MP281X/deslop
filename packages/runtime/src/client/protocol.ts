@@ -159,7 +159,7 @@ export function layerSocketProtocol(socket: Layer.Layer<Socket.Socket>) {
 }
 
 // A write the transport failed: one the socket never sent changed nothing, while a dropped or unanswered one may have taken effect. Neither is sent again.
-export class WriteError extends Schema.TaggedError<WriteError>()('WriteError', {
+class WriteError extends Schema.TaggedError<WriteError>()('WriteError', {
 	cause: Schema.Defect(),
 	message: Schema.String
 }) {}

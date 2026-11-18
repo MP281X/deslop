@@ -16,7 +16,7 @@ import type {Scene, Visitors} from '#services/presence/schema.ts'
 
 addPageTelemetry('@deslop/portfolio')
 
-export class RpcClient extends AtomRpc.Service<RpcClient>()('@deslop/portfolio/lib/presence/RpcClient', {
+class RpcClient extends AtomRpc.Service<RpcClient>()('@deslop/portfolio/lib/presence/RpcClient', {
 	group: RpcContracts.middleware(RpcStream),
 	protocol: layerPageProtocol
 }) {}

@@ -466,11 +466,14 @@ export function probeServer<A, E>(
 				...Array.map(rpcs, rpc => `rpc ${rpc.name}`),
 				...Array.map(tools, tool => `tool ${tool.name}`)
 			]
-			for (const entry of publicAccess) {
-				if (entry.app === app && !Array.contains(registered, entry.surface)) {
-					return yield* fail(`${app}: publicAccess names ${entry.surface}, which this app does not register`)
-				}
-			}
+			yield* pipe(
+				publicAccess,
+				Array.findFirst(entry => entry.app === app && !Array.contains(registered, entry.surface)),
+				Option.match({
+					onNone: () => Effect.void,
+					onSome: entry => fail(`${app}: publicAccess names ${entry.surface}, which this app does not register`)
+				})
+			)
 			// An unnamed surface must refuse the caller; a named one must admit it unless its entry says why the probe's fabricated request is refused.
 			const judge = Effect.fnUntraced(function* (
 				surface: string,

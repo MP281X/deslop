@@ -29,17 +29,12 @@ import {HttpClient, HttpClientRequest, HttpClientResponse} from 'effect/http'
 import {Jwk, Jws} from 'effect/jose'
 
 import {DEVELOPMENT_BUNDLE_SUFFIX} from '#config/expo.ts'
-import {APNS_PAYLOAD_BYTES, ApnsAnswer, apnsAnswer} from '#shared/apns.ts'
-import type {ApnsToken} from '#shared/apns.ts'
+import {ApnsAnswer, apnsAnswer, deviceHeaders, tooLargeAnswer} from '#shared/apns.ts'
+import type {ApnsPriority, ApnsPushType, ApnsToken} from '#shared/apns.ts'
 import {DateTimeUtcFromSeconds} from '#shared/time.ts'
 
 type JwtClaims = typeof JwtClaims.Type
 const JwtClaims = Schema.fromJsonString(Schema.Struct({iat: DateTimeUtcFromSeconds, iss: Schema.String}))
-
-type ApnsPushType = typeof ApnsPushType.Type
-const ApnsPushType = Schema.Literals(['alert', 'liveactivity'])
-type ApnsPriority = typeof ApnsPriority.Type
-const ApnsPriority = Schema.Literals([5, 10])
 
 class ApnsError extends Schema.TaggedError<ApnsError>()('ApnsError', {message: Schema.String}) {}
 
@@ -54,35 +49,6 @@ function hostsOf(bundle: string) {
 		}
 	}
 	return {channels: 'https://api-manage-broadcast.push.apple.com:2196', devices: 'https://api.push.apple.com'}
-}
-
-// What Apple reads beside a device push's body; a later alert with the same collapse id replaces the one on the phone.
-export function deviceHeaders(
-	bundle: string,
-	type: ApnsPushType,
-	priority: ApnsPriority,
-	collapseId?: string
-): Record<string, string> {
-	return {
-		'apns-priority': `${priority}`,
-		'apns-push-type': type,
-		'apns-topic': Boolean.match(type === 'liveactivity', {
-			onFalse: () => bundle,
-			onTrue: () => `${bundle}.push-type.liveactivity`
-		}),
-		...Option.match(Option.fromUndefinedOr(collapseId), {onNone: () => ({}), onSome: id => ({'apns-collapse-id': id})})
-	}
-}
-
-// Apple refuses a larger body, so it is answered without asking Apple.
-export function tooLargeAnswer(bytes: number) {
-	return pipe(
-		bytes,
-		Option.liftPredicate(size => size > APNS_PAYLOAD_BYTES),
-		Option.map(() =>
-			ApnsAnswer.cases.TooLarge.make({channel: Option.none(), reason: Option.some('PayloadTooLarge'), status: 413})
-		)
-	)
 }
 
 export const layerApnsClient = Layer.effect(

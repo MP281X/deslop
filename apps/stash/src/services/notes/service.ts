@@ -1133,26 +1133,23 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 				// The service writes each search row from text `searchable` folds, so the triggers keep only the change versions.
 				'0004_searchable_text': Effect.gen(function* () {
 					const sql = yield* SqlClient.SqlClient
-					yield* sql`DROP TRIGGER notes_insert`
-					yield* sql`DROP TRIGGER notes_update`
-					yield* sql`DROP TRIGGER note_tags_insert`
-					yield* sql`DROP TRIGGER note_tags_delete`
-					yield* sql`CREATE TRIGGER notes_insert AFTER INSERT ON notes BEGIN
-						INSERT INTO note_changes(id, version) VALUES(new.id, (SELECT coalesce(max(version), 0) + 1 FROM note_changes))
-							ON CONFLICT(id) DO UPDATE SET version = excluded.version;
-					END`
-					yield* sql`CREATE TRIGGER notes_update AFTER UPDATE ON notes BEGIN
-						INSERT INTO note_changes(id, version) VALUES(new.id, (SELECT coalesce(max(version), 0) + 1 FROM note_changes))
-							ON CONFLICT(id) DO UPDATE SET version = excluded.version;
-					END`
-					yield* sql`CREATE TRIGGER note_tags_insert AFTER INSERT ON note_tags BEGIN
-						INSERT INTO note_changes(id, version) VALUES(new.noteId, (SELECT coalesce(max(version), 0) + 1 FROM note_changes))
-							ON CONFLICT(id) DO UPDATE SET version = excluded.version;
-					END`
-					yield* sql`CREATE TRIGGER note_tags_delete AFTER DELETE ON note_tags BEGIN
-						INSERT INTO note_changes(id, version) VALUES(old.noteId, (SELECT coalesce(max(version), 0) + 1 FROM note_changes))
-							ON CONFLICT(id) DO UPDATE SET version = excluded.version;
-					END`
+					yield* Effect.forEach(
+						[
+							{event: 'INSERT', note: 'new.id', table: 'notes', trigger: 'notes_insert'},
+							{event: 'UPDATE', note: 'new.id', table: 'notes', trigger: 'notes_update'},
+							{event: 'INSERT', note: 'new.noteId', table: 'note_tags', trigger: 'note_tags_insert'},
+							{event: 'DELETE', note: 'old.noteId', table: 'note_tags', trigger: 'note_tags_delete'}
+						],
+						change =>
+							Effect.andThen(
+								sql`DROP TRIGGER ${sql(change.trigger)}`,
+								sql`CREATE TRIGGER ${sql(change.trigger)} AFTER ${sql.literal(change.event)} ON ${sql(change.table)} BEGIN
+									INSERT INTO note_changes(id, version) VALUES(${sql.literal(change.note)}, (SELECT coalesce(max(version), 0) + 1 FROM note_changes))
+										ON CONFLICT(id) DO UPDATE SET version = excluded.version;
+								END`
+							),
+						{concurrency: 1, discard: true}
+					)
 					yield* sql`DELETE FROM note_search`
 					yield* indexNotes(sql, sql`1 = 1`)
 				})

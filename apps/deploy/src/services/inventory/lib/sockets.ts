@@ -1,12 +1,8 @@
 import {Array, Boolean, Function, Iterable, Number, Option, Schema, String, pipe} from 'effect'
 
+import {ipv4Reachable} from '#services/inventory/lib/utils.ts'
 import {ProcessIdFromString, UnitId} from '#services/inventory/schema.ts'
 import type {ProcessId, ServiceScope} from '#services/inventory/schema.ts'
-
-// A listener 127.0.0.1 reaches: IPv4 loopback or any address, or a dual-stack wildcard (`*`), which a probe still has to answer. An IPv6-only or interface address is out of a loopback proxy's reach.
-export function ipv4Reachable(address: string) {
-	return Option.isSome(String.match(/^(?:127\.0\.0\.1|0\.0\.0\.0|\*):/u)(address))
-}
 
 function portOf(address: string) {
 	return Number.parse(Array.lastNonEmpty(String.split(address, ':')))

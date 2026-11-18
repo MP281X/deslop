@@ -20,8 +20,6 @@ import {
 
 import {ageOf} from '@deslop/runtime/shared/format'
 
-import {ipv4Reachable} from './sockets.ts'
-
 import {AppId, DeployError, ExposureName, ItemId, JobName, UnitId} from '#services/inventory/schema.ts'
 import type {
 	InventoryItem,
@@ -83,6 +81,11 @@ export function processOwner(cgroup: string) {
 			)
 		)
 	)
+}
+
+// A listener 127.0.0.1 reaches: IPv4 loopback or any address, or a dual-stack wildcard (`*`), which a probe still has to answer. An IPv6-only or interface address is out of a loopback proxy's reach.
+export function ipv4Reachable(address: string) {
+	return Option.isSome(String.match(/^(?:127\.0\.0\.1|0\.0\.0\.0|\*):/u)(address))
 }
 
 // A loopback proxy can only reach these TCP listeners, not a tailnet-interface-only socket or UDP.

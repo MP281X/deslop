@@ -34,12 +34,7 @@ const TextWindow = Schema.Struct({
 
 export type OperationCursor = typeof OperationCursor.Type
 // The last row's place in list_operations' order: failing first, then app, name and side.
-export const OperationCursor = Schema.Struct({
-	app: AppName,
-	failed: Schema.Boolean,
-	name: Schema.String,
-	side: Schema.String
-})
+const OperationCursor = Schema.Struct({app: AppName, failed: Schema.Boolean, name: Schema.String, side: Schema.String})
 
 type AttributeWindow = typeof AttributeWindow.Type
 const AttributeWindow = Schema.Struct({

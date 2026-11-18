@@ -177,16 +177,6 @@ export class Fleet extends Context.Service<
 					Effect.withSpan('Fleet.remote', {attributes: {worker: worker.name}})
 				)
 			})
-			function selectedWorker(target: WorkerId) {
-				return pipe(
-					workers,
-					Array.findFirst(worker => worker.name === target),
-					Effect.fromOption,
-					Effect.mapError(cause =>
-						DeployError.make({cause, message: 'This worker is not configured on the control plane'})
-					)
-				)
-			}
 			const peerSnapshot = Effect.fn('Fleet.peerSnapshot')(function* (name: WorkerId) {
 				const worker = {name}
 				const read = yield* pipe(
@@ -270,6 +260,18 @@ export class Fleet extends Context.Service<
 					Effect.asVoid
 				)
 			}
+			// A command on a peer refreshes that peer however it ends, since a failed one may have changed it.
+			function onPeer<A, E>(name: WorkerId, use: (client: RemoteClient) => Effect.Effect<A, E>) {
+				return pipe(
+					workers,
+					Array.findFirst(worker => worker.name === name),
+					Effect.fromOption,
+					Effect.mapError(cause =>
+						DeployError.make({cause, message: 'This worker is not configured on the control plane'})
+					),
+					Effect.flatMap(worker => Effect.onExit(remote(worker, use), () => refreshPeer(name)))
+				)
+			}
 			// Wake inventory viewers after commands even on failure, since a failed command may have changed the worker.
 			return Fleet.of({
 				current: Effect.fn('Fleet.current')(function* (query) {
@@ -293,12 +295,7 @@ export class Fleet extends Context.Service<
 								() => inventory.refresh
 							)
 						}
-						return yield* Effect.onExit(
-							remote(yield* selectedWorker(input.worker), client =>
-								client('exposures.apply', Struct.omit(input, ['worker']))
-							),
-							() => refreshPeer(input.worker)
-						)
+						return yield* onPeer(input.worker, client => client('exposures.apply', Struct.omit(input, ['worker'])))
 					},
 					Effect.onExit(() => reactivity.invalidate(['deployInventory'])),
 					asDeployError
@@ -309,10 +306,7 @@ export class Fleet extends Context.Service<
 						if (input.worker === localWorker) {
 							return yield* Effect.onExit(exposures.hide(input.name, admin), () => inventory.refresh)
 						}
-						return yield* Effect.onExit(
-							remote(yield* selectedWorker(input.worker), client => client('exposures.remove', {name: input.name})),
-							() => refreshPeer(input.worker)
-						)
+						return yield* onPeer(input.worker, client => client('exposures.remove', {name: input.name}))
 					},
 					Effect.onExit(() => reactivity.invalidate(['deployInventory'])),
 					asDeployError
@@ -335,12 +329,7 @@ export class Fleet extends Context.Service<
 						if (input.worker === localWorker) {
 							return yield* inventory.run(Struct.omit(input, ['worker']), admin)
 						}
-						return yield* Effect.onExit(
-							remote(yield* selectedWorker(input.worker), client =>
-								client('inventory.start', Struct.omit(input, ['worker']))
-							),
-							() => refreshPeer(input.worker)
-						)
+						return yield* onPeer(input.worker, client => client('inventory.start', Struct.omit(input, ['worker'])))
 					},
 					Effect.onExit(() => reactivity.invalidate(['deployInventory'])),
 					Effect.mapError(cause => {

@@ -4,7 +4,6 @@ import {Array, DateTime, Option, Struct} from 'effect'
 
 import {
 	chaptersFromIndex,
-	indexChapters,
 	keyOf,
 	missingRanges,
 	notificationOf,
@@ -42,11 +41,16 @@ function chapter(series: Series, number: number, notified: boolean, postedAt = O
 
 it('announces index releases above the series high while silently filling gaps and keeping known chapters', () => {
 	assert.deepStrictEqual(
-		indexChapters(
+		roundChapters(
 			[chapter('webcomic', 156, true), chapter('webcomic', 158, true), chapter('manga', 243, true)],
-			Array.map([155, 156, 157, 158, 159, 160], number => chapter('webcomic', number, true)),
-			'webcomic'
-		),
+			[],
+			[
+				{
+					chapters: Array.map([155, 156, 157, 158, 159, 160], number => chapter('webcomic', number, true)),
+					kind: 'webcomic'
+				}
+			]
+		).backfilled,
 		[chapter('webcomic', 157, true), chapter('webcomic', 159, false), chapter('webcomic', 160, false)]
 	)
 })
