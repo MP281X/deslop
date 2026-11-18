@@ -16,10 +16,11 @@ const PREVIEW_UNIT = Array.join(
 	[
 		'u=preview-${PWD##*/} p=$((20000 + 0x$(printf %s "$PWD" | sha256sum | cut -c1-4) % 10000)) m=$(git rev-parse --git-path preview-serve) h=$(hostname -s).tailnet-8c4c.ts.net',
 		'fail() { printf "%s\\n" "$1" >&2; exit 1; }',
-		// Only the marker says this checkout added the tailnet entry, and a marker can outlive it: nothing is removed or reused unless the port's whole entry is still this host's root proxied to this preview's loopback port.
-		'served() { tailscale serve status --json | jq -e --arg p $p ".TCP[\\$p]" >/dev/null; }',
-		'proxied() { tailscale serve status --json | jq -e --arg s :$p --arg k $h:$p --arg to http://127.0.0.1:$p "[.Web // {} | to_entries[] | select(.key | endswith(\\$s)) | {key, handlers: .value.Handlers}] == [{key: \\$k, handlers: {\\"/\\": {Proxy: \\$to}}}]" >/dev/null; }',
-		'unserve() { [ -f "$m" ] || return 0; ! proxied || sudo tailscale serve --https=$p off >/dev/null || return 1; rm "$m"; }',
+		// Only the marker says this checkout added the tailnet entry, and a marker can outlive it: nothing is removed or reused unless the port's whole entry is still this host's root proxied to this preview's loopback port, and nothing changes while Tailscale cannot say what it serves.
+		'serving() { s=$(tailscale serve status --json) && jq -e "type == \\"object\\"" <<<"$s" >/dev/null || fail "Tailscale did not say what it serves on port $p"; }',
+		'served() { jq -e --arg p $p ".TCP[\\$p]" <<<"$s" >/dev/null; }',
+		'proxied() { jq -e --arg s :$p --arg k $h:$p --arg to http://127.0.0.1:$p "[.Web // {} | to_entries[] | select(.key | endswith(\\$s)) | {key, handlers: .value.Handlers}] == [{key: \\$k, handlers: {\\"/\\": {Proxy: \\$to}}}]" <<<"$s" >/dev/null; }',
+		'unserve() { [ -f "$m" ] || return 0; serving; ! proxied || sudo tailscale serve --https=$p off >/dev/null || return 1; rm "$m"; }',
 		// The unit is named by folder alone, so a checkout elsewhere with the same folder name may own it.
 		'd=$(systemctl --user show -P WorkingDirectory $u); [[ -z $d || $d -ef . ]] || fail "$u runs $d, not this checkout"'
 	],
@@ -39,7 +40,7 @@ const PREVIEW = Array.join(
 		'[ -z "$d" ] || systemctl --user stop $u',
 		// Two checkouts can derive the same port: the second fails instead of handing out the first one's app.
 		'! l=$(listeners) || fail "Port $p is taken by another server: $l"',
-		'! served || { [ -f "$m" ] && proxied; } || fail "Tailnet port $p is served for something else"',
+		'serving; ! served || { [ -f "$m" ] && proxied; } || fail "Tailnet port $p is served for something else"',
 		'systemd-run --user -G -d -u $u -E PATH="$HOME/.vite-plus/bin:$PATH" -E HOST=127.0.0.1 -E PORT=$p vp run --no-cache --filter "@deslop/$a" preview || exit 1',
 		'i=$(systemctl --user show -P InvocationID $u)',
 		'trap "systemctl --user stop $u 2>/dev/null; unserve" EXIT',
