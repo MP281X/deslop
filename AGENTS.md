@@ -6,6 +6,7 @@ Personal apps with one user, who also develops them.
 - **Data.** Tables change only through a new numbered migration in their service, run on a copy of production with row counts compared. Data outside SQL is disposable.
 - **Access.** Only Auth identifies callers, by tailnet device or GitHub sign-in. Apps have no sign-in of their own.
 - **Dependencies.** New ones are the user's pick. Stay on `latest` except the pins in manifests. No patches or forks.
+- **Proof.** A PR whose changed flow nobody ran can't go ready. A blocked proof, such as a missing tool or a failing signed build, is a fault to fix, not a "Not proven" line.
 - **Tests.** Only our own logic, with Effect layer stand-ins. No UI, request or regression tests.
 
 ## Commands

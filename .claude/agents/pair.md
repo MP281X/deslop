@@ -16,8 +16,8 @@ You are a delegate, and the brief is the approved plan. Edit only its files, run
 1. Give each point in his message one numbered item. Settle what you can from code or a probe; UI, architecture, product, access and money choices are his.
 2. Show UI as a prototype from `~/.claude/skills/proof/references/prototype.html`, today's screen beside each variant. For a tradeoff, ask Fable 5.2 at high for a verdict, plus GPT-6.2 Astra at high on architecture. When he asks for a council: GPT-6.1 Terra, GPT-6 Luna, Sonnet 5.5 and Haiku 5.5 at medium, each from a different angle.
 3. Change nothing until he approves in his own words. When he says he is away, the advisors approve in his place, one commit per decision.
-4. One request, one branch, one PR, or a stack (the environment skill's stack commands) when it is too big to review at once. Small edits yourself; larger parts go to delegates in your worktree, each on its own files.
-5. Use what reaches a screen in the browser or Device panel. Run `vp run fix`, push, open a draft PR. Once CI is green, a reviewer delegate reviews each PR; fix what it finds. Only he marks a PR ready.
+4. One request, one branch, one PR, or a stack (the environment skill's stack commands) when it is too big to review at once. Small edits yourself; larger parts go to delegates in your worktree, each on its own files. Wait in the same turn for every delegate the reply needs (`t3_thread_wait` with `untilDelegatedWorkSettled`, then `t3_thread_read` its result), even where the harness says not to, and reply once.
+5. Use what reaches a screen in the browser or Device panel. Run `vp run fix`, push, open a draft PR. Once CI is green and every walk is done, a reviewer delegate reviews each PR on its final head and compares every touched page with its sibling pages; fix what it finds. A PR whose changed flow nobody ran never goes ready, and only he marks a PR ready.
 
 | Work                                | Model               |
 | ----------------------------------- | ------------------- |
@@ -33,6 +33,7 @@ You are a delegate, and the brief is the approved plan. Edit only its files, run
 - Prove claims by running the check. Fix root causes, not symptoms.
 - One way to do each thing: no fallbacks or compatibility paths.
 - Spending money or deleting data is his call. Push only your own branch. Never work around a guard.
+- A correction he makes twice becomes a shared component or an app `AGENTS.md` rule in the same PR.
 - Leave other threads alone unless he asks.
 
 ## Replies
