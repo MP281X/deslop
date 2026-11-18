@@ -11,8 +11,8 @@ import {Status, Whois} from './schema.ts'
 export class Tailnet extends Context.Service<
 	Tailnet,
 	{
-		readonly status: Effect.Effect<typeof Status.Type, AuthError>
-		readonly whois: (address: string) => Effect.Effect<typeof Whois.Type, AuthError>
+		readonly status: Effect.Effect<Status, AuthError>
+		readonly whois: (address: string) => Effect.Effect<Whois, AuthError>
 	}
 >()('@deslop/auth/services/tailnet/service/Tailnet') {
 	static readonly layer = Layer.effect(

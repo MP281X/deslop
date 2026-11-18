@@ -8,6 +8,7 @@ import {GitHubId, User, UserId} from '@deslop/runtime/shared/auth'
 export type Role = typeof Role.Type
 const Role = Schema.Literals(['Admin', 'Member', 'Waiting'])
 
+export type Account = typeof Account.Type
 const Account = Schema.Struct({...User.fields, fullName: Schema.OptionFromOptionalKey(Schema.String), role: Role})
 
 export type SignedAccount = typeof SignedAccount.Type
@@ -16,6 +17,7 @@ export const SignedAccount = Schema.Struct({...Account.fields, signOut: Schema.B
 export type Person = typeof Person.Type
 export const Person = Schema.Struct({...Account.fields, since: Schema.OptionFromNullOr(Schema.DateTimeUtcFromMillis)})
 
+export type MemberStatus = typeof MemberStatus.Type
 const MemberStatus = Schema.Literals(['Waiting', 'Allowed'])
 
 // One row of `members`: a GitHub account that signed in, from its first sign-in until an admin removes or declines it.

@@ -57,14 +57,14 @@ export const AiUsageReport = Schema.Struct({
 	series: Schema.Array(Schema.Struct({at: DateTimeUtcFromFiniteMillis, ...AiUsageBreakdown.fields})),
 	totals: Schema.Array(AiUsageBreakdown)
 })
-type Billing = typeof Billing.Type
+export type Billing = typeof Billing.Type
 const Billing = Schema.Struct({billing_source: SpendSource, estimated: Schema.optional(Schema.Boolean)})
-type InputTokenDetails = typeof InputTokenDetails.Type
+export type InputTokenDetails = typeof InputTokenDetails.Type
 const InputTokenDetails = Schema.Struct({
 	cache_write_tokens: Schema.OptionFromOptionalKey(Schema.Finite),
 	cached_tokens: Schema.OptionFromOptionalKey(Schema.Finite)
 })
-type OpenAiResponse = typeof OpenAiResponse.Type
+export type OpenAiResponse = typeof OpenAiResponse.Type
 const OpenAiResponse = Schema.Struct({
 	model: Schema.OptionFromOptionalKey(AiModelId),
 	usage: Schema.OptionFromOptionalKey(
@@ -77,6 +77,7 @@ const OpenAiResponse = Schema.Struct({
 		)
 	)
 })
+export type Usage = typeof Usage.Type
 export const Usage = Schema.Struct({
 	cost: Schema.OptionFromOptionalKey(Schema.Finite),
 	message: Schema.OptionFromOptionalKey(

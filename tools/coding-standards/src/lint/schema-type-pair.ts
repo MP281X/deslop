@@ -17,6 +17,11 @@ import {
 
 const EXPORT_PREFIXES: Record<string, string> = {ExportNamedDeclaration: 'export '}
 
+function typeExportPrefix(context: Context, statement: ESTree.Statement) {
+	if (matches(/(?:^|[/\\])schema\.ts$/u)(context.filename)) return 'export '
+	return EXPORT_PREFIXES[statement.type] ?? ''
+}
+
 function namedTypeAlias(input: {
 	name: string
 	typeStatement: Option.Option<ESTree.Statement | ESTree.ModuleDeclaration>
@@ -76,28 +81,6 @@ function readsModuleBinding(context: Context, query: ESTree.TSTypeQuery, name: s
 	)
 }
 
-function missingAlias(input: {
-	context: Context
-	name: string
-	program: ESTree.Program
-	queries: ESTree.TSTypeQuery[]
-	typeStatement: Option.Option<ESTree.Statement | ESTree.ModuleDeclaration>
-}) {
-	return (
-		(Array.some(input.program.body, statement =>
-			Option.exists(typeAlias(statement), declaration => declaration.id.name === input.name)
-		) ||
-			Array.some(
-				input.queries,
-				query =>
-					Option.contains(queriedSchema(query), input.name) && readsModuleBinding(input.context, query, input.name)
-			)) &&
-		!Option.exists(namedTypeAlias(input), declaration =>
-			isInferredType({name: input.name, node: declaration.typeAnnotation})
-		)
-	)
-}
-
 function reportSchemaVariable(input: {
 	context: Context
 	cycleNames: string[]
@@ -119,6 +102,22 @@ function reportSchemaVariable(input: {
 		Option.filter(index => index > 0),
 		Option.flatMap(index => Array.get(input.program.body, index - 1))
 	)
+	pipe(
+		typeStatement,
+		Option.filter(
+			statement =>
+				matches(/(?:^|[/\\])schema\.ts$/u)(input.context.filename) &&
+				statement.type === 'TSTypeAliasDeclaration' &&
+				statement.id.name === name
+		),
+		Option.map(statement =>
+			input.context.report({
+				fix: fixer => fixer.insertTextBefore(statement, 'export '),
+				message: `Export the type ${name} from schema.ts even when its Schema stays private.`,
+				node: statement
+			})
+		)
+	)
 	if (Array.contains(input.cycleNames, name)) {
 		if (
 			!Option.exists(
@@ -139,7 +138,11 @@ function reportSchemaVariable(input: {
 		}
 		return
 	}
-	if (missingAlias({...input, name, typeStatement})) {
+	if (
+		!Option.exists(namedTypeAlias({name, typeStatement}), declaration =>
+			isInferredType({name, node: declaration.typeAnnotation})
+		)
+	) {
 		input.context.report({
 			fix: fixer => {
 				if (!pairable({...input, name})) return []
@@ -152,7 +155,7 @@ function reportSchemaVariable(input: {
 				return [
 					fixer.insertTextBeforeRange(
 						[start, start],
-						`${EXPORT_PREFIXES[input.statement.type] ?? ''}type ${name} = typeof ${name}.Type\n`
+						`${typeExportPrefix(input.context, input.statement)}type ${name} = typeof ${name}.Type\n`
 					),
 					...pipe(
 						input.queries,
@@ -210,7 +213,11 @@ export const schemaTypePair = defineRule({
 		docs: {
 			examples: {
 				accepted: [
-					{'sample.ts': `import {Schema} from 'effect'\nexport const Note = Schema.Struct({title: Schema.String})`},
+					{
+						'src/services/notes/schema.ts': `import {Schema} from 'effect'
+export type Note = typeof Note.Type
+const Note = Schema.Struct({title: Schema.String})`
+					},
 					{
 						'sample.ts': `import {Schema} from 'effect'
 export type Note = typeof Note.Type
@@ -219,6 +226,10 @@ export function titleOf(note: Note) { return note.title }`
 					}
 				],
 				fixes: [
+					{
+						'src/services/notes/schema.ts': `import {Schema} from 'effect'
+const Note = Schema.Struct({title: Schema.String})`
+					},
 					{
 						'sample.ts': `import {Schema} from 'effect'
 export const Note = Schema.Struct({title: Schema.String})

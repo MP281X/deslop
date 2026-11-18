@@ -25,19 +25,25 @@ export class NoteChangeVersion extends Model.Class<NoteChangeVersion>('NoteChang
 export type TagName = typeof TagName.Type
 export const TagName = pipe(Schema.NonEmptyString.check(Schema.isMaxLength(40)), Schema.brand('TagName'))
 
+export type PostId = typeof PostId.Type
 export const PostId = pipe(Schema.String, Schema.brand('PostId'))
+export type PostAuthorId = typeof PostAuthorId.Type
 const PostAuthorId = pipe(Schema.String, Schema.brand('PostAuthorId'))
 
+export type TagDefinition = typeof TagDefinition.Type
 // A tag and what belongs under it, as the AI defines it.
 const TagDefinition = Schema.Struct({definition: Schema.NonEmptyString.check(Schema.isMaxLength(240)), tag: TagName})
 
+export type Source = typeof Source.Type
 const Source = Schema.Literals(['TikTok', 'X', 'Website', 'Note'])
 
 export type Kind = typeof Kind.Type
 export const Kind = Schema.Literals(['tiktok', 'x', 'youtube', 'web', 'note', 'file'])
 
+export type BrandedKind = typeof BrandedKind.Type
 export const BrandedKind = Kind.pick(['tiktok', 'x', 'youtube'])
 
+export type ImageType = typeof ImageType.Type
 export const ImageType = Schema.Literals(['image/jpeg', 'image/png', 'image/webp', 'image/gif'])
 
 export type Image = typeof Image.Type
@@ -75,6 +81,7 @@ export class Note extends Model.Class<Note>('Note')({
 	static readonly table = 'notes'
 }
 
+export type NoteChangeResult = typeof NoteChangeResult.Type
 export const NoteChangeResult = Schema.TaggedUnion({
 	Changed: {note: Schema.Struct(Note.fields)},
 	Removed: {},
@@ -100,6 +107,7 @@ export class NoteItem extends Model.Class<NoteItem>('NoteItem')({
 	tags: Model.Field({json: Schema.Array(TagName), select: Schema.fromJsonString(Schema.Array(TagName))})
 }) {}
 
+export type NotesEvent = typeof NotesEvent.Type
 export const NotesEvent = Schema.Struct({
 	removed: Schema.Array(NoteId),
 	reset: Schema.Boolean,
@@ -217,6 +225,7 @@ const FxPost = Schema.Struct({
 	text: Schema.String
 })
 
+export type FxStatus = typeof FxStatus.Type
 export const FxStatus = Schema.Struct({
 	status: Schema.Struct({...FxPost.fields, quote: Schema.OptionFromOptionalKey(FxPost)})
 })
@@ -255,6 +264,7 @@ export const TikTokPage = Schema.Struct({
 	})
 })
 
+export type GitHubRepo = typeof GitHubRepo.Type
 export const GitHubRepo = Schema.Struct({
 	description: Schema.OptionFromNullOr(Schema.String),
 	full_name: Schema.String,
@@ -263,13 +273,17 @@ export const GitHubRepo = Schema.Struct({
 	topics: Schema.OptionFromOptionalKey(Schema.Array(Schema.String))
 })
 
+export type GitHubComment = typeof GitHubComment.Type
 export const GitHubComment = Schema.Struct({
 	body: Schema.OptionFromNullOr(Schema.String),
 	user: Schema.Struct({login: Schema.String})
 })
 
+export type GitHubIssue = typeof GitHubIssue.Type
 export const GitHubIssue = Schema.Struct({...GitHubComment.fields, state: Schema.String, title: Schema.String})
 
+export type GitHubReadme = typeof GitHubReadme.Type
 export const GitHubReadme = Schema.Struct({download_url: Schema.String})
 
+export type Reader = typeof Reader.Type
 export const Reader = Schema.Struct({data: Schema.Struct({content: Schema.String, title: Schema.String})})

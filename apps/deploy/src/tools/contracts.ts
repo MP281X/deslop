@@ -10,7 +10,7 @@ import {
 	DeployError,
 	WorkerInventory,
 	WorkerId,
-	App,
+	ManagedApp,
 	InventoryQuery,
 	RunJobInput
 } from '#services/inventory/schema.ts'
@@ -55,7 +55,7 @@ export const ToolContracts = Toolkit.make(
 					...fields,
 					apps: Schema.Array(
 						Schema.Struct({
-							...App.fields,
+							...ManagedApp.fields,
 							nextProcessOffset: Schema.OptionFromOptionalKey(Schema.Natural),
 							processesOmitted: Schema.OptionFromOptionalKey(Schema.Natural)
 						})

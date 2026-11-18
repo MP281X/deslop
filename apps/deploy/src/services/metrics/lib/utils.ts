@@ -8,7 +8,7 @@ import type {
 	CgroupPath,
 	Counters,
 	BandId,
-	CpuTime,
+	CpuState,
 	Disk,
 	HistoryToolInput,
 	HistoryMinutes,
@@ -80,7 +80,7 @@ function cpuUsage(
 
 // A Mac's counters from `os.cpus()`, in milliseconds summed over its cores, with the supplied monotonic uptime duration and sample time, since a Mac's uptime has only whole seconds.
 export function cpuCounters(
-	cpus: readonly {times: Record<CpuTime, number>}[],
+	cpus: readonly {times: Record<CpuState, number>}[],
 	uptime: Duration.Duration,
 	time: DateTime.Utc
 ) {

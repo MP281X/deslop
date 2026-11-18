@@ -190,6 +190,43 @@ function customCodes(output: OxlintOutput) {
 describe('deslop Oxlint plugin', {concurrent: true}, () => {
 	it.layer(NodeServices.layer)(testApi => {
 		testApi.effect(
+			'exports schema-file types even when their schemas stay private',
+			Effect.fnUntraced(function* () {
+				const inputs = {
+					'src/services/local/schema.ts': Array.join(
+						[
+							"import {Schema} from 'effect'",
+							'type Note = typeof Note.Type',
+							'const Note = Schema.Struct({title: Schema.String})',
+							'export function titleOf(note: Note) { return note.title }'
+						],
+						'\n'
+					),
+					'src/services/public/schema.ts': Array.join(
+						[
+							"import {Schema} from 'effect'",
+							'export type Note = typeof Note.Type',
+							'const Note = Schema.Struct({title: Schema.String})'
+						],
+						'\n'
+					)
+				}
+				assert.deepStrictEqual(customCodes((yield* lintSource(inputs, [], true)).stdout), [
+					'@deslop/coding-standards(schema-type-pair)'
+				])
+				const fixed = yield* lintSource(inputs, ['--fix'], true)
+				assert.deepStrictEqual(fixed.stdout.diagnostics, [])
+				assert.include(fixed.sources[0] ?? '', 'export type Note = typeof Note.Type')
+				const settled = yield* lintSource(
+					Record.fromEntries(Array.zip(Record.keys(inputs), fixed.sources)),
+					['--fix'],
+					true
+				)
+				assert.deepStrictEqual(settled.stdout.diagnostics, [])
+				assert.deepStrictEqual(settled.sources, fixed.sources)
+			})
+		)
+		testApi.effect(
 			'requires judge ignores to name a question in the registry',
 			// judge-ignore no-internals-test -- The rule's observable answer is its lint diagnostic at each supplied source line; the fixture calls the public lint command.
 			Effect.fnUntraced(function* () {
@@ -875,6 +912,11 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 							'@deslop/coding-standards(no-unexplained-disable)',
 							'@deslop/coding-standards(no-unvalidated-json-decode)',
 							'@deslop/coding-standards(schema-type-pair)',
+							'@deslop/coding-standards(schema-type-pair)',
+							'@deslop/coding-standards(schema-type-pair)',
+							'@deslop/coding-standards(schema-type-pair)',
+							'@deslop/coding-standards(schema-type-pair)',
+							'@deslop/coding-standards(schema-type-pair)',
 							'@deslop/coding-standards(schema-type-pair)'
 						],
 						String.Order
@@ -1449,6 +1491,7 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 							"if (loaded === undefined) throw new Error('missing')",
 							'export const size = () => loaded.length',
 							'export const frozen: readonly string[] = []',
+							'export type Label = typeof Label.Type',
 							'export const Label = Schema.String',
 							'export function shadowed(Label: typeof Schema.Number) {',
 							'	const parsed: typeof Label.Type = 1',
@@ -2179,8 +2222,10 @@ export function decode(input: unknown) { return Schema.decodeUnknownOption(State
 							'	const [size] = useState(1)',
 							'	return <div ref={element} data-size={size} data-handler={handler} data-both={both} />',
 							'}',
+							'export type User = typeof User.Type',
 							"// The user's record.",
 							'export const User = Schema.Struct({name: Schema.String})',
+							'type Local = typeof Local.Type',
 							'const Local = Schema.Struct({id: Schema.String})',
 							'export const locals = [Local]',
 							'export const present = Predicate.isNotNullish(loose)',
@@ -2262,6 +2307,8 @@ export function decode(input: unknown) { return Schema.decodeUnknownOption(State
 					'@deslop/coding-standards(library-operation)',
 					'@deslop/coding-standards(library-operation)',
 					'@deslop/coding-standards(library-operation)',
+					'@deslop/coding-standards(schema-type-pair)',
+					'@deslop/coding-standards(schema-type-pair)',
 					'@deslop/coding-standards(schema-type-pair)'
 				])
 			})

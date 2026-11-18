@@ -18,6 +18,7 @@ export class ChaptersError extends Schema.TaggedError<ChaptersError>()('Chapters
 export type Series = typeof Series.Type
 export const Series = Schema.Literals(['manga', 'webcomic'])
 
+export type ChapterPath = typeof ChapterPath.Type
 export const ChapterPath = Schema.TemplateLiteralParser([
 	Series,
 	':',
@@ -45,6 +46,7 @@ export class Chapter extends Model.Class<Chapter>('Chapter')({
 	static readonly table = 'chapters'
 }
 
+export type ChapterNotification = typeof ChapterNotification.Type
 export const ChapterNotification = Schema.Struct({path: ChapterPath})
 
 export type ChapterIdentity = typeof ChapterIdentity.Type
@@ -94,7 +96,7 @@ export class ReadingPosition extends Model.Class<ReadingPosition>('ReadingPositi
 	static readonly table = 'reading'
 }
 
-type Position = typeof Position.Type
+export type Position = typeof Position.Type
 const Position = Schema.Struct({...Struct.pick(ReadingPosition.json.fields, ['done', 'page']), done: Schema.Boolean})
 
 // The iPhone's list joins the catalogue with its saved place, without making progress part of a catalogue row.
@@ -109,4 +111,5 @@ export class ReadingChapter extends Model.Class<ReadingChapter>('ReadingChapter'
 export type ChapterItem = typeof ReadingChapter.json.Type
 export type ChapterList = readonly ChapterItem[]
 
+export type ChaptersEvent = typeof ChaptersEvent.Type
 export const ChaptersEvent = Schema.Struct({reset: Schema.Boolean, upserted: Schema.Array(ReadingChapter.json)})

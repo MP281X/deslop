@@ -6,7 +6,7 @@ import {AiGateway, AiUnavailableError, aiFailure} from '@deslop/runtime/server/a
 import type {UserId} from '@deslop/runtime/shared/auth'
 
 import type {ExtractedItems} from '#services/bookings/schema.ts'
-import {BookingSource, BookingsError, Extraction} from '#services/bookings/schema.ts'
+import {BookingSource, BookingsError, BookingExtraction} from '#services/bookings/schema.ts'
 
 const INSTRUCTIONS = `You read a booking confirmation or a screenshot of one and list the travel reservations it confirms, for an app that tracks the owner's flights, trains and stays in real time.
 
@@ -63,7 +63,7 @@ export class Extractor extends Context.Service<
 								{content: INSTRUCTIONS, role: 'system'},
 								{content: content(), role: 'user'}
 							],
-							schema: Extraction
+							schema: BookingExtraction
 						})
 						return response.value.items
 					},

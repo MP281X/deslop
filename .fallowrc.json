@@ -101,6 +101,11 @@
 	],
 	"overrides": [
 		{
+			// Schema types are exported by policy, even when only their private schemas are used.
+			"files": ["apps/*/src/services/*/schema.ts"],
+			"rules": {"unused-types": "off"}
+		},
+		{
 			// shadcn's CLI owns these files and their exported prop types.
 			"files": ["packages/components-web/src/ui/**"],
 			"rules": {"private-type-leaks": "off"}

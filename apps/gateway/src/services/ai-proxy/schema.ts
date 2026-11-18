@@ -7,6 +7,7 @@ import {User} from '@deslop/runtime/shared/auth'
 export const KEY_MESSAGE = 'Enter an OpenCode (oc_sk_), Anthropic (sk-ant-), or OpenAI (sk-) key.'
 export type AiProvider = typeof AiProvider.Type
 export const AiProvider = Schema.Literals(['opencode', 'anthropic', 'openai'])
+export type AiKeySecret = typeof AiKeySecret.Type
 export const AiKeySecret = Schema.String.check(
 	Schema.isPattern(/^(?:oc_sk_|sk-)[A-Za-z0-9_-]+$/u, {message: KEY_MESSAGE})
 )

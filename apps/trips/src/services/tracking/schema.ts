@@ -9,6 +9,7 @@ import {DurationFromMinutes, Place, ProviderFlightId} from '#services/bookings/s
 export type StopPlace = typeof StopPlace.Type
 const StopPlace = Schema.Struct(Struct.pick(Place.fields, ['code', 'name']))
 
+export type StationId = typeof StationId.Type
 const StationId = pipe(Schema.String, Schema.brand('StationId'))
 
 // FlightAware AeroAPI v4 GET /flights/{ident}: times are ISO instants, every operational field is null until known.
@@ -36,6 +37,7 @@ export const FaFlight = Schema.Struct({
 export type FaFlights = typeof FaFlights.Type
 export const FaFlights = Schema.Struct({flights: Schema.Array(FaFlight)})
 
+export type VtRun = typeof VtRun.Type
 // ViaggiaTreno's run lookup: today's run of a train number, from its origin station.
 export const VtRun = Schema.Struct({
 	codLocOrig: StationId.check(Schema.isPattern(/^[A-Za-z0-9_-]+$/u)),

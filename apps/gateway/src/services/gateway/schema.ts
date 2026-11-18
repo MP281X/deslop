@@ -2,7 +2,9 @@ import {Schema} from 'effect'
 
 import {McpSchema} from 'effect/ai'
 
+export type ToolArguments = typeof ToolArguments.Type
 export const ToolArguments = Schema.Record(Schema.String, Schema.Unknown)
+export type ToolRequest = typeof ToolRequest.Type
 export const ToolRequest = Schema.Union([
 	Schema.Struct({method: Schema.Literal('tools/list')}),
 	Schema.Struct({
@@ -27,4 +29,5 @@ export const RemoteTool = Schema.Struct({
 	)
 })
 
+export type RemoteTools = typeof RemoteTools.Type
 export const RemoteTools = Schema.Array(RemoteTool)

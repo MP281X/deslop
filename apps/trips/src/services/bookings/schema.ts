@@ -4,6 +4,7 @@ import {Model} from 'effect/schema'
 
 import {DateTimeUtcFromFiniteMillis} from '@deslop/runtime/shared/time'
 
+export type DurationFromMinutes = typeof DurationFromMinutes.Type
 export const DurationFromMinutes = pipe(
 	Schema.Finite,
 	Schema.decodeTo(Schema.Duration, {
@@ -12,7 +13,9 @@ export const DurationFromMinutes = pipe(
 	})
 )
 
+export type PlaceCode = typeof PlaceCode.Type
 export const PlaceCode = pipe(Schema.String, Schema.brand('PlaceCode'))
+export type ProviderFlightId = typeof ProviderFlightId.Type
 export const ProviderFlightId = pipe(Schema.String, Schema.brand('ProviderFlightId'))
 
 export class BookingsError extends Schema.TaggedError<BookingsError>()('BookingsError', {
@@ -48,6 +51,7 @@ export const Place = Schema.Struct({
 export type BookedPlace = typeof BookedPlace.Type
 export const BookedPlace = Schema.Struct({...Place.fields, timeZone: Schema.String})
 
+export type ReservationStatus = typeof ReservationStatus.Type
 // Whether the reservation stands; a cancelled one stays listed so the change is visible.
 const ReservationStatus = Schema.Literals(['confirmed', 'cancelled'])
 
@@ -166,6 +170,7 @@ export const Booking = Schema.toTaggedUnion('_tag')(BookingModel)
 
 export type BookingList = readonly Booking[]
 
+export type BookingsEvent = typeof BookingsEvent.Type
 export const BookingsEvent = Schema.Struct({
 	removed: Schema.Array(BookingId),
 	reset: Schema.Boolean,
@@ -240,6 +245,7 @@ const LocalTime = pipe(
 	Schema.annotate({description: 'ISO date and time, local to the place unless the source gives an offset'})
 )
 
+export type TripNumber = typeof TripNumber.Type
 export const TripNumber = Schema.String.check(Schema.isPattern(/^\d+$/u))
 
 export type ExtractedItem = typeof ExtractedItem.Type
@@ -286,8 +292,10 @@ const ExtractedItem = Schema.Union([
 export type ExtractedItems = typeof ExtractedItems.Type
 const ExtractedItems = Schema.Array(ExtractedItem)
 
-export const Extraction = Schema.Struct({items: ExtractedItems})
+export type BookingExtraction = typeof BookingExtraction.Type
+export const BookingExtraction = Schema.Struct({items: ExtractedItems})
 
+export type Airport = typeof Airport.Type
 export const Airport = Schema.Struct({
 	city: Schema.String,
 	iata: PlaceCode,
@@ -311,6 +319,7 @@ export const StopMatches = Schema.Array(
 	})
 )
 
+export type TransitStop = typeof TransitStop.Type
 const TransitStop = Schema.Struct({
 	arrival: Schema.OptionFromOptionalKey(Schema.DateTimeUtcFromString),
 	departure: Schema.OptionFromOptionalKey(Schema.DateTimeUtcFromString),
@@ -332,6 +341,7 @@ export const TransitRuns = Schema.Struct({
 		})
 	)
 })
+export type TransitTrip = typeof TransitTrip.Type
 export const TransitTrip = Schema.Struct({
 	legs: Schema.NonEmptyArray(
 		Schema.Struct({from: TransitStop, intermediateStops: Schema.Array(TransitStop), to: TransitStop})
