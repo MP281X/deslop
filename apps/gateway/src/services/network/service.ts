@@ -15,7 +15,7 @@ function requestUrl(input: RequestInfo | URL) {
 	return new URL(input.toString())
 }
 
-// The most one answer from an upstream or its provider may carry is 8 MiB; past it the body errors, whichever client reads it.
+// The most one answer from an MCP server or its sign-in provider may carry is 8 MiB; past it the body errors, whichever client reads it. An AI provider's answer never passes here: AiProxy streams it on its own client, bounded by its wait for headers and its idle gap, not in size.
 function bounded(response: Response) {
 	if (response.body === null) return response
 	const read = {bytes: 0}

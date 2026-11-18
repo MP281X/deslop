@@ -14,8 +14,7 @@ import {
 	asAuthError
 } from '@deslop/runtime/shared/auth'
 
-import type {GitHubOAuthState} from '#services/github/schema.ts'
-import {AppSignIn, CallbackParams} from '#services/github/schema.ts'
+import {AppSignIn, CallbackParams, GitHubOAuthState} from '#services/github/schema.ts'
 import {GitHub} from '#services/github/service.ts'
 import {Identity} from '#services/identity/service.ts'
 import {People} from '#services/people/service.ts'
@@ -66,19 +65,27 @@ export class SignIns extends Context.Service<
 			}
 			return SignIns.of({
 				finish: Effect.fn('SignIns.finish')(function* (query, headers) {
-					if (query.has('error')) {
-						return yield* AuthError.make({error: 'access_denied', message: 'GitHub sign-in was cancelled'})
-					}
-					const params = yield* Effect.mapError(
-						Schema.decodeUnknownEffect(CallbackParams)(Record.fromEntries(query)),
+					const state = yield* Effect.mapError(
+						Schema.decodeUnknownEffect(GitHubOAuthState)(query.get('state')),
 						cause => AuthError.make({cause, error: 'access_denied', message: 'Invalid GitHub callback'})
 					)
 					const pending = yield* github.resume(
-						params.state,
-						Cookies.parseHeader(headers['cookie'] ?? '')[loginCookie(params.state)] ?? ''
+						state,
+						Cookies.parseHeader(headers['cookie'] ?? '')[loginCookie(state)] ?? ''
 					)
+					// Only a flow this browser started hears why GitHub ended it; a callback that matches none is refused above.
 					return yield* pipe(
-						github.finish(params.code, pending),
+						Effect.succeed(query),
+						Effect.filterOrFail(
+							params => !params.has('error'),
+							() => AuthError.make({error: 'access_denied', message: 'GitHub sign-in was cancelled'})
+						),
+						Effect.flatMap(params =>
+							Effect.mapError(Schema.decodeUnknownEffect(CallbackParams)(Record.fromEntries(params)), cause =>
+								AuthError.make({cause, error: 'access_denied', message: 'Invalid GitHub callback'})
+							)
+						),
+						Effect.flatMap(params => github.finish(params.code, pending)),
 						// The person, their session and the answer they get commit together, so an admin's decision lands before or after the whole sign-in.
 						Effect.flatMap(profile =>
 							sql.withTransaction(
@@ -109,7 +116,7 @@ export class SignIns extends Context.Service<
 							Option.match(pending.app, {
 								onNone: () => ({
 									session: Option.some(signed.secret),
-									state: params.state,
+									state,
 									target: Boolean.match(signed.account.role === 'Waiting', {
 										onFalse: () => pending.next,
 										onTrue: () => `/?${new URLSearchParams({next: pending.next})}`
@@ -117,7 +124,7 @@ export class SignIns extends Context.Service<
 								}),
 								onSome: app => ({
 									session: Option.none<string>(),
-									state: params.state,
+									state,
 									target: new URL(`/signed-in/${app.app}?${new URLSearchParams({session: signed.secret})}`, canonical)
 										.href
 								})
@@ -127,7 +134,7 @@ export class SignIns extends Context.Service<
 						Effect.catchTag('AuthError', error =>
 							Effect.succeed({
 								session: Option.none<string>(),
-								state: params.state,
+								state,
 								target: Option.match(pending.app, {
 									onNone: () => `/?${new URLSearchParams({error: error.message, next: pending.next})}`,
 									onSome: app =>

@@ -65,7 +65,7 @@ const layer = pipe(
 
 it.layer(layer)(test => {
 	test.effect.each(['opm', 'stash', 'trips'] as const)(
-		'hands %s only to Auth HTTPS, never a browser cookie, and a refusal there too',
+		'hands %s only to Auth HTTPS, never a browser cookie, and a refusal or cancel there too',
 		Effect.fnUntraced(function* (app) {
 			const signIns = yield* SignIns
 			const cookie = Headers.fromInput({cookie: `${loginCookie(app)}=${app}; ${loginCookie('second')}=second`})
@@ -75,6 +75,10 @@ it.layer(layer)(test => {
 			assert.equal(
 				(yield* signIns.finish(new URLSearchParams({code: 'refused', state: app}), cookie)).target,
 				`https://auth.example.test/signed-in/${app}?${new URLSearchParams({error: 'The sign-in expired; sign in again'})}`
+			)
+			assert.equal(
+				(yield* signIns.finish(new URLSearchParams({error: 'access_denied', state: app}), cookie)).target,
+				`https://auth.example.test/signed-in/${app}?${new URLSearchParams({error: 'GitHub sign-in was cancelled'})}`
 			)
 		})
 	)
@@ -93,7 +97,15 @@ it.layer(layer)(test => {
 					Option.none()
 				]
 			)
-			for (const query of ['error=access_denied', 'state=state', 'code=code&state=other']) {
+			const cancelled = yield* signIns.finish(new URLSearchParams({error: 'access_denied', state: 'state'}), cookie)
+			assert.deepStrictEqual(
+				[cancelled.target, cancelled.session],
+				[
+					`/?${new URLSearchParams({error: 'GitHub sign-in was cancelled', next: 'https://stash.example.test/'})}`,
+					Option.none()
+				]
+			)
+			for (const query of ['error=access_denied', 'error=access_denied&state=other', 'code=code&state=other']) {
 				const result = yield* Effect.result(signIns.finish(new URLSearchParams(query), cookie))
 				assert.isTrue(Result.isFailure(result))
 				if (Result.isFailure(result)) assert.equal(result.failure._tag, 'AuthError')

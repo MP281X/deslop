@@ -21,7 +21,7 @@ it.effect(
 	})
 )
 
-it('keeps identity headers from the upgrade request and drops them from frames', () => {
+it('keeps identity headers and the session cookie from the upgrade request and drops them from frames', () => {
 	assert.deepStrictEqual(
 		upgradeOnlyHeaders([
 			['cookie', 'session'],
@@ -29,6 +29,7 @@ it('keeps identity headers from the upgrade request and drops them from frames',
 			['x-deslop-frame', ''],
 			['X-Deslop-Client', '100.64.0.2'],
 			['x-deslop-user', 'github:1'],
+			['Cookie', 'frame-session'],
 			['x-probe-caller', 'member']
 		]),
 		[
@@ -38,6 +39,13 @@ it('keeps identity headers from the upgrade request and drops them from frames',
 		]
 	)
 	assert.deepStrictEqual(upgradeOnlyHeaders([['x-deslop-user', 'github:1']]), [])
+	assert.deepStrictEqual(
+		upgradeOnlyHeaders([
+			['x-deslop-frame', ''],
+			['cookie', 'frame-session']
+		]),
+		[]
+	)
 })
 
 const named: Effect.Effect<User, AuthError> = Effect.succeed(DEVELOPER)
