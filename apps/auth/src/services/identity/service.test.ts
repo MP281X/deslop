@@ -1,8 +1,8 @@
 import {assert, it} from '@effect/vitest'
 
-import {ConfigProvider, DateTime, Effect, Layer, Option, Result, pipe} from 'effect'
+import {Boolean, ConfigProvider, DateTime, Effect, Layer, Option, Result, Schema, pipe} from 'effect'
 
-import {GitHubId, IdentifyRequest, UserId} from '@deslop/runtime/shared/auth'
+import {GitHubId, IdentifyRequest, UserId, asAuthError} from '@deslop/runtime/shared/auth'
 
 import {Identity} from './service.ts'
 
@@ -11,8 +11,12 @@ import {Member} from '#services/people/schema.ts'
 import {People} from '#services/people/service.ts'
 import {CookieSession} from '#services/sessions/schema.ts'
 import {Sessions} from '#services/sessions/service.ts'
+import {StatusJson, WhoisJson} from '#services/tailnet/schema.ts'
 import {Tailnet} from '#services/tailnet/service.ts'
 
+// Two tailnet users whose ids differ only past 2^53, as `tailscale` writes them; the other user comes first.
+const OWNER = '{"DisplayName": "Person", "ID": 9007199254740993, "LoginName": "person@github"}'
+const OTHER = '{"DisplayName": "Other", "ID": 9007199254740992, "LoginName": "other@example.com"}'
 const ID = UserId.make('github:2')
 const member = {fullName: Option.none(), id: ID, name: 'person', since: Option.none(), status: 'Allowed' as const}
 const configuration = ConfigProvider.layer(
@@ -50,12 +54,22 @@ function layer(tags: string[], status: Member['status']) {
 		),
 		Layer.provide(
 			Layer.succeed(Tailnet, {
-				status: Effect.succeed({
-					Self: {Tags: tags, UserID: 1},
-					User: {'1': {DisplayName: 'Person', ID: 1, LoginName: 'person@github'}}
-				}),
-				whois: () =>
-					Effect.succeed({Node: {Tags: tags}, UserProfile: {DisplayName: 'Person', ID: 1, LoginName: 'person@github'}})
+				status: pipe(
+					Schema.decodeEffect(StatusJson)(
+						`{"Self": {"UserID": 9007199254740993}, "User": {"9007199254740992": ${OTHER}, "9007199254740993": ${OWNER}}}`
+					),
+					Effect.map(found => ({...found, Self: {...found.Self, Tags: tags}})),
+					asAuthError('Cannot read the tailnet owner')
+				),
+				whois: Effect.fnUntraced(function* (address) {
+					const found = yield* pipe(
+						Schema.decodeEffect(WhoisJson)(
+							`{"Node": {}, "UserProfile": ${Boolean.match(address === '100.64.0.2', {onFalse: () => OWNER, onTrue: () => OTHER})}}`
+						),
+						asAuthError('Cannot identify the tailnet caller')
+					)
+					return {...found, Node: {Tags: tags}}
+				})
 			})
 		),
 		Layer.provide(configuration)
@@ -94,6 +108,28 @@ it.layer(layer([], 'Allowed'))(test =>
 				Result.isFailure(
 					yield* Effect.result(identity.resolve({...request, address: Option.some('8.8.8.8'), session: Option.none()}))
 				)
+			)
+		})
+	)
+)
+
+it.layer(layer([], 'Allowed'))(test =>
+	test.effect(
+		'tailnet users whose ids differ only past 2^53 stay two people',
+		Effect.fnUntraced(function* () {
+			const identity = yield* Identity
+			const request = IdentifyRequest.make({
+				address: Option.some('127.0.0.1'),
+				onBehalfOf: Option.none(),
+				session: Option.none()
+			})
+			assert.deepStrictEqual(
+				[
+					(yield* identity.resolve(request)).id,
+					(yield* identity.resolve({...request, address: Option.some('100.64.0.1')})).id,
+					(yield* identity.resolve({...request, address: Option.some('100.64.0.2')})).id
+				],
+				['github:3', 'github:3', 'tailnet:other@example.com']
 			)
 		})
 	)
