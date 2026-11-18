@@ -4,4 +4,4 @@
 
 <!-- Working: one trimmed recording per app the change reaches, each step named inside the frame, each under the claim it proves. -->
 
-<!-- Not proven: one line per changed thing nothing above shows working, and why. Delete when there is none. -->
+<!-- Not proven: only what nothing can run before merge, and why; a blocked proof is fixed, not listed. Delete when there is none. -->

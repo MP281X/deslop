@@ -58,6 +58,7 @@ export const Nano = pipe(
 )
 
 export type SpanIdFromEmpty = typeof SpanIdFromEmpty.Type
+// Senders that emit blank IDs should correlate the same way as senders that omit them.
 export const SpanIdFromEmpty = pipe(
 	Schema.OptionFromOptionalKey(Schema.Union([SpanId, Schema.Literal('')])),
 	Schema.decodeTo(Schema.Option(Schema.toType(SpanId)), {
@@ -79,6 +80,7 @@ export type Attribute = typeof Attribute.Type
 export const Attribute = Schema.Struct({key: Schema.String, value: Schema.JsonObject})
 
 export type Resource = typeof Resource.Type
+// Vendor fields should survive decoding without becoming requirements for other exporters.
 export const Resource = Schema.Struct({attributes: Schema.OptionFromOptionalKey(Schema.Array(Attribute))}).annotate({
 	parseOptions: {onExcessProperty: 'preserve'}
 })

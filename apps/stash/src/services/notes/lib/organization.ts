@@ -99,6 +99,7 @@ export class Organizer extends Context.Service<
 			return Organizer.of({
 				organize: Effect.fn('Organizer.organize')(
 					function* (userId, input) {
+						// Organisation spend belongs to the person's Anthropic key, not their catalogue balance.
 						const model = yield* Effect.provideContext(
 							AiGateway.languageModel(userId, {maxTokens: 32_000}),
 							modelContext

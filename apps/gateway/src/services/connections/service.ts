@@ -441,6 +441,7 @@ export class Connections extends Context.Service<
 					yield* Effect.tryPromise({catch: cause => UpstreamError.make({cause}), try: () => body.cancel()})
 				})
 			})
+			// OAuth discovery must follow the server's advertised challenge and metadata.
 			const discovery = yield* Effect.tryPromise({
 				catch: cause => UpstreamError.make({cause}),
 				try: signal =>

@@ -16,33 +16,23 @@ Two headless Debian workers, a MacBook and an iPhone in one tailnet.
 
 - **Names.** MagicDNS short names; `<name>.tailnet-8c4c.ts.net` has HTTPS certificates. SSH as `mp281x@dev`, `mp281x@desktop`, `matteopaludgnach@macbook-pro`.
 - **Tools.** `vp` and `vpx` on `PATH`, also over SSH; `gh`, `glab` and the MCP gateway signed in.
-- **Scratch.** Use the harness's session scratch directory when it provides one; otherwise `/tmp/<task>/`.
 - **Git refs.** T3 checkpoints under `refs/t3/`; search history with `--branches --remotes`.
 - **Auxiliary services.** Run task-local ones as temporary containers, not installs on the worker.
 - **Agent MCP.** [Keyring and MCP](references/maintenance.md#keyring-and-mcp).
 
-| Reference                                | For                                                      |
-| ---------------------------------------- | -------------------------------------------------------- |
-| [Deslop](references/deslop.md)           | Production, Stash data, npm, Apple and EAS, tracing      |
-| [Dual](references/dual.md)               | Accounts, merges, preview, Jira, Google, VPN, tracing    |
-| [Maintenance](references/maintenance.md) | Workers, setup, agent links, T3 settings, updates, clean |
-| [Repositories](references/repos.md)      | The packages we use and reference repositories           |
+| Reference                                    | For                                                      |
+| -------------------------------------------- | -------------------------------------------------------- |
+| [Deslop](references/deslop.md)               | Production, Stash data, npm, Apple and EAS, tracing      |
+| [Dual](references/dual.md)                   | Accounts, merges, preview, Jira, Google, VPN, tracing    |
+| [Maintenance](references/maintenance.md)     | Workers, setup, agent links, T3 settings, updates, clean |
+| [Repositories](references/repos.md)          | The packages we use and reference repositories           |
+| [Pull requests](references/pull-requests.md) | Drafts, stacks, GitHub and GitLab stack commands         |
 
 ## Previews
 
 One per worktree: the systemd user unit `preview-<worktree name>`, shared over tailnet HTTPS.
 
-```mermaid
-stateDiagram-v2
-    [*] --> Stale : edits touch an app
-    Stale --> Starting : a capture needs it / run the project's preview script from the worktree root
-    Starting --> Live : its HTTPS URL answers / give the URL once
-    Starting --> Stale : selection checked [invalid] / the running preview stays untouched
-    Starting --> [*] : startup fails / find the cause
-    Live --> Stale : more edits
-```
-
-- **Script.** Read the saved one with `t3_project_read`; maintenance removes a gone worktree's unit. Deslop's selects a changed web app, else Portfolio; `PREVIEW_APP=<app>` previews another app of the same change. The repository's own preview command or a background task bypasses the unit and dies with the turn.
+- **Script.** When a capture needs it, start the preview from the worktree root and give its HTTPS URL once it answers. Deslop's is `vp run preview [app]`, by default the first web app the branch changes, else Portfolio; `vp run preview:stop` ends it. Elsewhere, run the project's preview script (read it with `t3_project_read`). An app's own `preview` script or a background task bypasses the unit and dies with the turn. Maintenance removes a gone worktree's unit.
 - **Webhooks.** Funnel exposes a whole port: pick a free one of 443, 8443, 10000 and run `sudo tailscale funnel --bg --https=<port> --set-path <path> http://127.0.0.1:<api port><path>`; remove it with `... --set-path <path> off`.
 
 ## Tools

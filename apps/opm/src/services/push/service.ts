@@ -48,6 +48,7 @@ export class Push extends Context.Service<Push>()('@deslop/opm/services/push/ser
 		})
 		return {
 			announce: Effect.fn('Push.announce')(function* (chapter: Chapter) {
+				// New registrations should not receive alerts for chapters announced without a working recipient.
 				if (!apns.enabled) return true
 				const devices = yield* asPushReadError(listDevices())
 				const delivered = yield* asPushReadError(listDeliveries(chapter))
@@ -75,6 +76,7 @@ export class Push extends Context.Service<Push>()('@deslop/opm/services/push/ser
 									},
 									10
 								)
+								// A retry for one device must not send the same alert to the others again.
 								const remember = Effect.as(
 									asPushSaveError(
 										recordDelivery({number: chapter.number, series: chapter.series, token: device.token})

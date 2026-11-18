@@ -925,6 +925,7 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 						Option.getOrElse(Array.empty<Option.Option.Value<LogsRequest['resourceLogs']>[number]>),
 						Effect.forEach(
 							Effect.fnUntraced(function* (group) {
+								// All logs in the group share one sender, regardless of instrumentation scope.
 								const sender = senderOf(group.resource)
 								const resource = yield* Effect.transposeOption(
 									Option.map(group.resource, Schema.encodeEffect(Resource))
@@ -950,6 +951,7 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 								Effect.fnUntraced(function* (item) {
 									// A log record has no id of its own, so the identity is what it carries.
 									const log = yield* Schema.encodeEffect(ExportedLog)(item.log)
+									// Retries must deduplicate even if the exporter changes how it writes absent fields.
 									const encoded = yield* Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown))({
 										attributes: log.attributes ?? [],
 										body: log.body ?? {},

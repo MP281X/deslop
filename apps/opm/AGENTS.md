@@ -1,7 +1,6 @@
 # OPM intent
 
-- **Discovery.** Chapters arrive automatically, never from a pasted link. English manga comes first; the webcomic is secondary. A chapter is wanted the day it is posted, not the minute; follow the communities, never one translator.
-- **Chapters.** Each row opens its chapter at the saved page; no separate Continue Reading row.
-- **Reader.** One continuous page strip grows into the next chapter as it is reached; a tap shows the system bars.
-- **Progress.** Chapters owns saved pages in the reading table; discovery never writes a reader's place.
-- **Notifications.** Each device's terminal delivery is remembered; only retryable devices are sent again. A chapter with no registered phone or no APNs transport counts as announced: registration sends no backlog.
+- **Discovery.** Chapters arrive automatically, never from a pasted link. Prioritise the English manga over the webcomic. Find chapters the day they are posted. Follow communities, not a single translator.
+- **Chapters.** Open each chapter at its saved page. Do not add a Continue Reading row. Finding chapters does not change a reader's place.
+- **Reader.** Keep pages in one continuous strip. Add the next chapter when the reader reaches it. A tap shows the system bars.
+- **Notifications.** Announce new chapters without repeating alerts on a device. Registering a phone does not send a backlog.

@@ -53,6 +53,7 @@ export class Presence extends Context.Service<
 >()('@deslop/portfolio/services/presence/service/Presence') {
 	static readonly layer = Layer.effect(
 		this,
+		// Visitor state should not outlive the running room.
 		Effect.gen(function* () {
 			const start = yield* DateTime.now
 			// At most 128 visitors and 256 joined sockets; each socket owns one cursor identity.
@@ -100,6 +101,7 @@ export class Presence extends Context.Service<
 
 			return Presence.of({
 				join: (payload, connection) =>
+					// A connection's trace should include its departure, not just admission.
 					Stream.withSpan(
 						Stream.unwrap(
 							Effect.gen(function* () {

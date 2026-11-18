@@ -76,10 +76,11 @@ jobs:
     if: ${{ !cancelled() && needs.plan.outputs.verified != 'true' }}
     uses: ./.github/workflows/verify.yaml
 
+  # Servers ship only after every app build ships, so a server never runs ahead of the apps that talk to it.
   publish:
     name: Packages
-    needs: [plan, verify]
-    if: ${{ !cancelled() && needs.plan.result == 'success' && (needs.plan.outputs.verified == 'true' || needs.verify.result == 'success') }}
+    needs: [plan, verify, app]
+    if: ${{ !cancelled() && needs.plan.result == 'success' && (needs.plan.outputs.verified == 'true' || needs.verify.result == 'success') && (needs.app.result == 'success' || needs.app.result == 'skipped') }}
     runs-on: ubuntu-26.04
     permissions:
       contents: read
@@ -152,7 +153,7 @@ jobs:
     permissions:
       contents: read
       actions: read
-    # One app's failed release leaves the others to ship.
+    # One app's failed release leaves the other apps to ship, but holds the servers.
     strategy:
       fail-fast: false
       matrix:

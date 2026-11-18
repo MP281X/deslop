@@ -61,6 +61,7 @@ export const RpcHandlers = RpcContracts.toLayer(
 				)
 			}
 		})
+		// The sender already chose this worker and needs fresh inventory when it gets the reply.
 		return RpcContracts.of({
 			'exposures.apply': Effect.fnUntraced(
 				function* (input) {

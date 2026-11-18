@@ -197,6 +197,7 @@ export function spansOf(payload: TracesRequest) {
 		payload.resourceSpans,
 		Option.getOrElse(Array.empty),
 		Array.flatMap(group => {
+			// All spans in the group share one sender, regardless of instrumentation scope.
 			const sender = senderOf(group.resource)
 			return pipe(
 				group.scopeSpans,
@@ -240,6 +241,7 @@ export function spansOf(payload: TracesRequest) {
 								span: {
 									...sender,
 									attributes,
+									// Subtract before rounding the start so short spans at modern epochs retain their duration.
 									duration: Option.map(span.endTimeUnixNano, end =>
 										pipe(
 											Duration.subtract(end, span.startTimeUnixNano),

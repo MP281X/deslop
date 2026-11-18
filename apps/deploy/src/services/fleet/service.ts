@@ -184,6 +184,7 @@ export class Fleet extends Context.Service<
 					)
 				)
 			}
+			// Wake inventory viewers after commands even on failure, since a failed command may have changed the worker.
 			return Fleet.of({
 				current: Effect.fn('Fleet.current')(function* (query) {
 					yield* Effect.annotateCurrentSpan({minutes: Duration.toMinutes(query.minutes), workers: workers.length + 1})
