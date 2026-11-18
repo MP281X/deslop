@@ -1,36 +1,50 @@
-import {useAtomSuspense} from '@effect/atom-react'
-
-import {Boolean, Function, Option, Schema} from 'effect'
+import {Boolean, Function, Option, Schema, pipe} from 'effect'
 
 import {Link, Outlet, createFileRoute, useMatchRoute} from '@tanstack/react-router'
 import {Suspense} from 'react'
 
+import {StaleProblem} from '@deslop/components-web/blocks/problem'
+import {Loaded} from '@deslop/components-web/blocks/states'
 import {preload} from '@deslop/components-web/lib/router'
 import {AppBar, AppBarTab, AppBarTabs} from '@deslop/components-web/shell/app-bar'
 import {Page} from '@deslop/components-web/shell/page'
 
-import {accountAtom, Search} from '#lib/auth.ts'
+import {accountAtom, peopleAtom, Search, sessionsAtom} from '#lib/auth.ts'
 import {AccountMenu} from '#routes/(home)/-account-menu.tsx'
 import {SignIn} from '#routes/(home)/-sign-in.tsx'
 import icon from '#routes/icon.svg'
+import type {SignedAccount} from '#services/people/schema.ts'
 
-function Content() {
-	const account = useAtomSuspense(accountAtom).value
-	const match = useMatchRoute()
+function Content(props: {account: Option.Option<SignedAccount>}) {
+	const tab = Boolean.match(useMatchRoute()({to: '/people'}) !== false, {
+		onFalse: Function.constant('/' as const),
+		onTrue: Function.constant('/people' as const)
+	})
 	return (
 		<>
 			<AppBar
 				name="auth"
 				icon={icon}
-				account={Option.match(account, {onNone: Function.constNull, onSome: user => <AccountMenu account={user} />})}
+				account={Option.match(props.account, {
+					onNone: Function.constNull,
+					onSome: user => <AccountMenu account={user} />
+				})}
+				controls={
+					<StaleProblem
+						label="Out of date"
+						readers={pipe(
+							props.account,
+							Option.exists(user => user.role !== 'Waiting'),
+							Boolean.match({
+								onFalse: () => [accountAtom],
+								onTrue: () => [accountAtom, {'/': sessionsAtom, '/people': peopleAtom}[tab]]
+							})
+						)}
+					/>
+				}
 				tabs={
-					Option.exists(account, user => user.role === 'Admin') && (
-						<AppBarTabs
-							value={Boolean.match(match({to: '/people'}) !== false, {
-								onFalse: Function.constant('/'),
-								onTrue: Function.constant('/people')
-							})}
-						>
+					Option.exists(props.account, user => user.role === 'Admin') && (
+						<AppBarTabs value={tab}>
 							<AppBarTab value="/" render={<Link to="/" search={{}} />}>
 								Sessions
 							</AppBarTab>
@@ -42,7 +56,7 @@ function Content() {
 				}
 			/>
 			<Page>
-				{Option.match(account, {
+				{Option.match(props.account, {
 					onNone: () => <SignIn />,
 					onSome: user =>
 						Boolean.match(user.role === 'Waiting', {
@@ -54,15 +68,16 @@ function Content() {
 		</>
 	)
 }
+// An outage keeps the last account on screen, marked out of date; with none kept, the failure is the page.
 function ShellRoute() {
 	return (
 		<Suspense fallback={null}>
-			<Content />
+			<Loaded atom={accountAtom}>{account => <Content account={account} />}</Loaded>
 		</Suspense>
 	)
 }
 export const Route = createFileRoute('/(home)')({
 	component: ShellRoute,
-	loader: load => preload(load.context, [accountAtom]),
+	loader: load => preload(load, [accountAtom]),
 	validateSearch: Schema.toStandardSchemaV1(Search)
 })

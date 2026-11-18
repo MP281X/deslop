@@ -2,17 +2,25 @@ import {Array, Boolean, Config, Context, Effect, Layer, Option, Record, Schema, 
 
 import {Cookies} from 'effect/http'
 import type {Headers} from 'effect/http'
+import {SqlClient} from 'effect/sql'
 
 import {localAuth} from '@deslop/runtime/server/auth'
-import {AuthError, CLIENT_HEADER, IdentifyRequest, SESSION_COOKIE, UserId} from '@deslop/runtime/shared/auth'
+import {
+	AuthError,
+	CLIENT_HEADER,
+	IdentifyRequest,
+	SESSION_COOKIE,
+	UserId,
+	asAuthError
+} from '@deslop/runtime/shared/auth'
 
-import {returnable} from '#services/cookie-sessions/lib/utils.ts'
-import {CookieSessions} from '#services/cookie-sessions/service.ts'
 import type {GitHubOAuthState} from '#services/github/schema.ts'
 import {AppSignIn, CallbackParams} from '#services/github/schema.ts'
 import {GitHub} from '#services/github/service.ts'
 import {Identity} from '#services/identity/service.ts'
 import {People} from '#services/people/service.ts'
+import {returnTarget} from '#services/sessions/lib/utils.ts'
+import {Sessions} from '#services/sessions/service.ts'
 
 export function loginCookie(state: string) {
 	return `__Host-login-${state}`
@@ -29,7 +37,9 @@ export const association = {
 export class SignIns extends Context.Service<
 	SignIns,
 	{
-		readonly start: (query: URLSearchParams) => Effect.Effect<{state: GitHubOAuthState; url: string}, AuthError>
+		readonly start: (
+			query: URLSearchParams
+		) => Effect.Effect<{sealed: string; state: GitHubOAuthState; url: string}, AuthError>
 		readonly finish: (
 			query: URLSearchParams,
 			headers: Headers.Headers
@@ -42,14 +52,17 @@ export class SignIns extends Context.Service<
 		Effect.gen(function* () {
 			const github = yield* GitHub
 			const people = yield* People
-			const sessions = yield* CookieSessions
+			const sessions = yield* Sessions
 			const identity = yield* Identity
+			const sql = yield* SqlClient.SqlClient
 			const canonical = yield* Config.String('APP_URL')
 			const local = yield* localAuth
 			function nextOf(query: URLSearchParams) {
-				const next = query.get('next') ?? canonical
-				if (returnable(next, canonical, local)) return Effect.succeed(next)
-				return Effect.fail(AuthError.make({error: 'access_denied', message: 'Invalid return URL'}))
+				return pipe(
+					returnTarget(query.get('next') ?? canonical, canonical, local),
+					Effect.fromOption,
+					Effect.mapError(() => AuthError.make({error: 'access_denied', message: 'Invalid return URL'}))
+				)
 			}
 			return SignIns.of({
 				finish: Effect.fn('SignIns.finish')(function* (query, headers) {
@@ -60,38 +73,69 @@ export class SignIns extends Context.Service<
 						Schema.decodeUnknownEffect(CallbackParams)(Record.fromEntries(query)),
 						cause => AuthError.make({cause, error: 'access_denied', message: 'Invalid GitHub callback'})
 					)
-					if (Cookies.parseHeader(headers['cookie'] ?? '')[loginCookie(params.state)] !== params.state) {
-						return yield* AuthError.make({error: 'access_denied', message: 'This browser did not start the sign-in'})
-					}
-					const result = yield* github.finish(params.code, params.state)
-					const secret = yield* sessions.create(
-						(yield* people.register(
-							{id: UserId.make(`github:${result.profile.id}`), name: result.profile.login},
-							result.profile.name,
-							false
-						)).id,
-						Option.fromNullishOr(headers[CLIENT_HEADER]),
-						headers['user-agent'] ?? 'Browser'
+					const pending = yield* github.resume(
+						params.state,
+						Cookies.parseHeader(headers['cookie'] ?? '')[loginCookie(params.state)] ?? ''
 					)
-					const account = yield* identity.resolve(
-						IdentifyRequest.make({address: Option.none(), onBehalfOf: Option.none(), session: Option.some(secret)}),
-						true
-					)
-					return Option.match(result.flow.app, {
-						onNone: () => ({
-							session: Option.some(secret),
-							state: params.state,
-							target: Boolean.match(account.role === 'Waiting', {
-								onFalse: () => result.flow.next,
-								onTrue: () => `/?${new URLSearchParams({next: result.flow.next})}`
+					return yield* pipe(
+						github.finish(params.code, pending),
+						// The person, their session and the answer they get commit together, so an admin's decision lands before or after the whole sign-in.
+						Effect.flatMap(profile =>
+							sql.withTransaction(
+								Effect.gen(function* () {
+									const secret = yield* sessions.create(
+										(yield* people.register(
+											{id: UserId.make(`github:${profile.id}`), name: profile.login},
+											profile.name,
+											false
+										)).id,
+										Option.fromNullishOr(headers[CLIENT_HEADER]),
+										headers['user-agent'] ?? 'Browser'
+									)
+									const account = yield* identity.resolve(
+										IdentifyRequest.make({
+											address: Option.none(),
+											onBehalfOf: Option.none(),
+											session: Option.some(secret)
+										}),
+										true
+									)
+									return {account, secret}
+								})
+							)
+						),
+						asAuthError('Cannot finish the sign-in'),
+						Effect.map(signed =>
+							Option.match(pending.app, {
+								onNone: () => ({
+									session: Option.some(signed.secret),
+									state: params.state,
+									target: Boolean.match(signed.account.role === 'Waiting', {
+										onFalse: () => pending.next,
+										onTrue: () => `/?${new URLSearchParams({next: pending.next})}`
+									})
+								}),
+								onSome: app => ({
+									session: Option.none<string>(),
+									state: params.state,
+									target: new URL(`/signed-in/${app.app}?${new URLSearchParams({session: signed.secret})}`, canonical)
+										.href
+								})
 							})
-						}),
-						onSome: app => ({
-							session: Option.none<string>(),
-							state: params.state,
-							target: new URL(`/signed-in/${app.app}?${new URLSearchParams({session: secret})}`, canonical).href
-						})
-					})
+						),
+						// GitHub has spent the code by now, so the person lands where a new sign-in starts, told why this one failed.
+						Effect.catchTag('AuthError', error =>
+							Effect.succeed({
+								session: Option.none<string>(),
+								state: params.state,
+								target: Option.match(pending.app, {
+									onNone: () => `/?${new URLSearchParams({error: error.message, next: pending.next})}`,
+									onSome: app =>
+										new URL(`/signed-in/${app.app}?${new URLSearchParams({error: error.message})}`, canonical).href
+								})
+							})
+						)
+					)
 				}),
 				signOut: Effect.fn('SignIns.signOut')(function* (query, headers) {
 					if (headers['origin'] !== new URL(canonical).origin) {

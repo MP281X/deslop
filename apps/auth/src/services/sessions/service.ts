@@ -14,11 +14,11 @@ import {hashOf, randomTokenOf} from '#services/crypto/lib/utils.ts'
 
 declare module 'effect/reactivity/Reactivity' {
 	interface Keys {
-		readonly cookieSessions: never
+		readonly sessions: never
 	}
 }
-export class CookieSessions extends Context.Service<
-	CookieSessions,
+export class Sessions extends Context.Service<
+	Sessions,
 	{
 		readonly create: (user: UserId, address: Option.Option<string>, browser: string) => Effect.Effect<string, AuthError>
 		readonly current: (secret: string) => Effect.Effect<Option.Option<CookieSession>, AuthError>
@@ -27,7 +27,7 @@ export class CookieSessions extends Context.Service<
 		readonly forget: (secret: string) => Effect.Effect<void, AuthError>
 		readonly forgetPerson: (user: UserId) => Effect.Effect<void, AuthError>
 	}
->()('@deslop/auth/services/cookie-sessions/service/CookieSessions') {
+>()('@deslop/auth/services/sessions/service/Sessions') {
 	static readonly migrations = Layer.effectDiscard(
 		Migrator.make({})({
 			loader: Migrator.fromRecord({
@@ -42,7 +42,7 @@ export class CookieSessions extends Context.Service<
 	)
 	static readonly layer = Layer.provide(
 		Layer.effect(
-			CookieSessions,
+			Sessions,
 			Effect.gen(function* () {
 				const sql = yield* SqlClient.SqlClient
 				const reactivity = yield* Reactivity.Reactivity
@@ -52,7 +52,7 @@ export class CookieSessions extends Context.Service<
 				function mutate<A, E, R>(effect: Effect.Effect<A, E, R>) {
 					return pipe(
 						effect,
-						Reactivity.mutation(['cookieSessions']),
+						Reactivity.mutation(['sessions']),
 						Effect.provideService(Reactivity.Reactivity, reactivity)
 					)
 				}
@@ -62,8 +62,8 @@ export class CookieSessions extends Context.Service<
 					Request: CookieSession.insert,
 					execute: row => sql`INSERT INTO ${table} ${sql.insert(row)}`
 				})
-				return CookieSessions.of({
-					create: Effect.fn('CookieSessions.create')(
+				return Sessions.of({
+					create: Effect.fn('Sessions.create')(
 						function* (user, address, browser) {
 							const secret = yield* random(32)
 							const now = yield* DateTime.now
@@ -73,7 +73,7 @@ export class CookieSessions extends Context.Service<
 						mutate,
 						asAuthError('Cannot create the session')
 					),
-					current: Effect.fn('CookieSessions.current')(function* (secret) {
+					current: Effect.fn('Sessions.current')(function* (secret) {
 						const id = yield* hash(secret)
 						const now = DateTime.toEpochMillis(yield* DateTime.now)
 						const since = DateTime.toEpochMillis(yield* cutoff)
@@ -84,21 +84,21 @@ export class CookieSessions extends Context.Service<
 								sql`UPDATE ${table} SET lastSeenAt = ${now} WHERE id = ${id} AND lastSeenAt > ${since} RETURNING *`
 						})()
 					}, asAuthError('Cannot read the session')),
-					forget: Effect.fn('CookieSessions.forget')(
+					forget: Effect.fn('Sessions.forget')(
 						function* (secret) {
 							yield* sql`DELETE FROM ${table} WHERE id = ${yield* hash(secret)}`
 						},
 						mutate,
 						asAuthError('Cannot sign out; no changes committed')
 					),
-					forgetPerson: Effect.fn('CookieSessions.forgetPerson')(
+					forgetPerson: Effect.fn('Sessions.forgetPerson')(
 						function* (user) {
 							yield* sql`DELETE FROM ${table} WHERE userId = ${user}`
 						},
 						mutate,
 						asAuthError('Cannot sign out the person; no changes committed')
 					),
-					list: Effect.fn('CookieSessions.list')(function* (user) {
+					list: Effect.fn('Sessions.list')(function* (user) {
 						const since = DateTime.toEpochMillis(yield* cutoff)
 						return yield* SqlSchema.findAll({
 							Request: Schema.Void,
@@ -107,7 +107,7 @@ export class CookieSessions extends Context.Service<
 								sql`SELECT * FROM ${table} WHERE userId = ${user} AND lastSeenAt > ${since} ORDER BY lastSeenAt DESC`
 						})()
 					}, asAuthError('Cannot list sessions')),
-					remove: Effect.fn('CookieSessions.remove')(
+					remove: Effect.fn('Sessions.remove')(
 						function* (id: string, user: UserId) {
 							yield* sql`DELETE FROM ${table} WHERE id = ${id} AND userId = ${user}`
 						},
@@ -117,6 +117,6 @@ export class CookieSessions extends Context.Service<
 				})
 			})
 		),
-		CookieSessions.migrations
+		Sessions.migrations
 	)
 }

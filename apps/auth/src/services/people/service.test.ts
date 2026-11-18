@@ -1,7 +1,9 @@
 import {NodeServices} from '@effect/platform-node'
 import {assert, it} from '@effect/vitest'
 
-import {ConfigProvider, Effect, FileSystem, Layer, Option, pipe} from 'effect'
+import {ConfigProvider, Effect, FileSystem, Layer, MutableRef, Option, pipe} from 'effect'
+
+import {Reactivity} from 'effect/reactivity'
 
 import {requireAdmin} from '@deslop/runtime/server/auth'
 import {layerDataStore} from '@deslop/runtime/server/store'
@@ -9,25 +11,28 @@ import {UserId} from '@deslop/runtime/shared/auth'
 
 import {People} from './service.ts'
 
-import {CookieSessions} from '#services/cookie-sessions/service.ts'
+import {Sessions} from '#services/sessions/service.ts'
 
-const layer = pipe(
-	People.layer,
-	Layer.provide(
-		Layer.unwrap(
-			Effect.gen(function* () {
-				return layerDataStore(yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped())
-			})
+// Each test gets its own scratch database.
+function layer() {
+	return pipe(
+		People.layer,
+		Layer.provideMerge(
+			Layer.unwrap(
+				Effect.gen(function* () {
+					return layerDataStore(yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped())
+				})
+			)
+		),
+		Layer.provide(Layer.mock(Sessions, {forgetPerson: () => Effect.void})),
+		Layer.provide(NodeServices.layer),
+		Layer.provide(
+			ConfigProvider.layer(ConfigProvider.fromUnknown({AUTH_URL: 'https://auth.example.test', GITHUB_ADMINS: '1'}))
 		)
-	),
-	Layer.provide(Layer.mock(CookieSessions, {forgetPerson: () => Effect.void})),
-	Layer.provide(NodeServices.layer),
-	Layer.provide(
-		ConfigProvider.layer(ConfigProvider.fromUnknown({AUTH_URL: 'https://auth.example.test', GITHUB_ADMINS: '1'}))
 	)
-)
+}
 
-it.layer(layer)(test =>
+it.layer(layer())(test =>
 	test.effect(
 		'browser accounts wait; admission persists across sign-in; tailnet and admins are admitted',
 		Effect.fnUntraced(function* () {
@@ -46,6 +51,25 @@ it.layer(layer)(test =>
 			yield* people.register(declined, Option.none(), false)
 			yield* people.admit({allow: false, id: declined.id}, admin)
 			assert.isTrue(Option.isNone(yield* people.find(declined.id)))
+		})
+	)
+)
+
+it.layer(layer())(test =>
+	test.effect(
+		'an empty profile name is no change, so an unchanged person costs no write',
+		Effect.fnUntraced(function* () {
+			const people = yield* People
+			const reactivity = yield* Reactivity.Reactivity
+			const writes = MutableRef.make(0)
+			reactivity.registerUnsafe(['people'], () => {
+				MutableRef.increment(writes)
+			})
+			const user = {id: UserId.make('github:5'), name: 'person'}
+			yield* people.register(user, Option.some(''), true)
+			yield* people.register(user, Option.some(''), true)
+			assert.isTrue(Option.isNone((yield* people.register(user, Option.some(''), true)).fullName))
+			assert.equal(MutableRef.get(writes), 1)
 		})
 	)
 )
