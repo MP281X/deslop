@@ -113,11 +113,10 @@ const serving = Effect.fnUntraced(function* (url: string, name: string, version:
 			release => release.name === name && release.version === version,
 			() => AppError.make({message: `${name} ${version} is not serving yet`})
 		),
-		// A slow answer is asked for again over the same window a restarted service gets, not taken for a service that is down.
-		Effect.timeout('2 seconds'),
+		// A request is never cut short: a slow answer gets the whole window a restarted service gets, and only a refused or wrong one is asked for again.
 		Effect.retry({
 			schedule: Schedule.spaced('1 second'),
-			while: error => Array.contains(['HttpClientError', 'SchemaError', 'AppError', 'TimeoutError'], error._tag)
+			while: error => Array.contains(['HttpClientError', 'SchemaError', 'AppError'], error._tag)
 		}),
 		Effect.timeout('30 seconds')
 	)
@@ -146,6 +145,10 @@ function startRelease(name: string, url: string, release: string) {
 	)
 }
 
+const releaseExists = Effect.fnUntraced(function* (release: string) {
+	return Option.isSome(yield* Effect.option(versionIn(release)))
+})
+
 const describeRelease = Effect.fnUntraced(function* (name: string, release: string) {
 	return Option.match(yield* Effect.option(versionIn(release)), {
 		onNone: () => `${name} at ${release}`,
@@ -169,6 +172,10 @@ const promoteRelease = Effect.fnUntraced(function* (
 		Option.match({
 			onNone: () => Effect.succeed('No other release is recorded as serving; the service is down'),
 			onSome: Effect.fnUntraced(function* (release) {
+				// `current` moves only onto a release that is on disk, so the next run can still start the one that failed.
+				if (!(yield* releaseExists(release))) {
+					return `The release recorded as serving at ${release} is missing, so ${name} stays linked to ${yield* describeRelease(name, target)} and is down`
+				}
 				const exit = yield* Effect.exit(startRelease(name, url, release))
 				const label = yield* describeRelease(name, release)
 				return Exit.match(exit, {
@@ -185,20 +192,35 @@ const promoteRelease = Effect.fnUntraced(function* (
 	})
 })
 
+// A `current` that names a deleted release is replaced by the one recorded as serving; with neither on disk nothing moves.
+const releaseToRun = Effect.fnUntraced(function* (name: string, current: string, recorded: Option.Option<string>) {
+	if (yield* releaseExists(current)) return current
+	function missing(rest: string) {
+		return AppError.make({message: `The ${name} release at ${current} is missing, and ${rest}`})
+	}
+	return yield* Option.match(recorded, {
+		onNone: () => missing('none is recorded as serving'),
+		onSome: Effect.fnUntraced(function* (release) {
+			if (yield* releaseExists(release)) return release
+			return yield* missing(`so is the one recorded as serving at ${release}`)
+		})
+	})
+})
+
 // Never two processes: the service manager stops the old one before starting the new. Callers hold the lifecycle lock.
 export const updateRelease = Effect.fnUntraced(function* (name: string, url: string) {
 	const fs = yield* FileSystem.FileSystem
 	const path = yield* Path.Path
 	const root = yield* serviceDirectory(name)
 	const releases = path.join(root, 'releases')
-	const linked = yield* fs.readLink(path.join(root, 'current'))
+	const current = yield* fs.readLink(path.join(root, 'current'))
+	const recorded = yield* Effect.option(fs.readLink(path.join(root, 'serving')))
+	const linked = yield* releaseToRun(name, current, recorded)
 	const running = yield* versionIn(linked)
 	// An update killed after it linked a release, or after that release failed to start, leaves the service on another one or down; it is brought back before anything is downloaded.
-	const restarted = Exit.isFailure(yield* Effect.exit(serving(url, name, running)))
+	const restarted = linked !== current || Exit.isFailure(yield* Effect.exit(serving(url, name, running)))
 	if (restarted) {
-		yield* Effect.uninterruptible(
-			promoteRelease(name, url, linked, yield* Effect.option(fs.readLink(path.join(root, 'serving'))))
-		)
+		yield* Effect.uninterruptible(promoteRelease(name, url, linked, recorded))
 	} else {
 		yield* linkRelease(name, 'serving', linked)
 	}
