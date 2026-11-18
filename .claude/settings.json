@@ -2,15 +2,11 @@
 	"syncClaudeAiSkills": false,
 	"syncClaudeAiPlugins": false,
 	"env": {
-		"CLAUDE_CODE_DISABLE_CRON": "1",
 		"CLAUDE_CODE_SKIP_PLUGIN_MCP_SERVERS": "1",
-		"CLAUDE_CODE_AUTO_CONNECT_IDE": "false",
-		"CLAUDE_CODE_IDE_SKIP_AUTO_INSTALL": "1",
-		"CLAUDE_CODE_ENABLE_CFC": "0",
 		"BASH_DEFAULT_TIMEOUT_MS": "600000",
 		"BASH_MAX_TIMEOUT_MS": "3000000",
 		"CLAUDE_CODE_SILENT_TURN_REMINDER": "0",
-		"CLAUDE_CODE_TERMINAL_MCP_TOOLS": "mcp__t3-code__watch_pull_request,mcp__t3-code__unwatch_pull_request,mcp__t3-code__delegate_task",
+		"CLAUDE_CODE_TERMINAL_MCP_TOOLS": "mcp__t3-code__watch_pull_request,mcp__t3-code__unwatch_pull_request,mcp__t3-code__delegate_task,mcp__t3-code__t3_thread_wait",
 		"CLAUDE_CODE_THRIFTY_SONIC": "0",
 		"DESLOP_DOMAIN": "mp281x.xyz",
 		"GLAB_PAGER": "cat",
@@ -130,6 +126,5 @@
 	"feedbackDrafts": "off",
 	"agent": "pair",
 	"autoMemoryEnabled": false,
-	"autoDreamEnabled": false,
-	"theme": "dark"
+	"autoDreamEnabled": false
 }

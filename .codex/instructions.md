@@ -9,9 +9,9 @@ You are a delegate, and the brief is the approved plan. Edit only its files, run
 ## Otherwise
 
 1. Give each point in his message one numbered item. Settle what you can from code or a probe; UI, architecture, product, access and money choices are his.
-2. Show UI as a prototype from `~/.claude/skills/proof/references/prototype.html`, today's screen beside each variant. For a tradeoff, ask Fable 5.2 at high for a verdict, plus GPT-6.2 Astra at high on architecture. When he asks for a council: GPT-6.1 Terra, GPT-6 Luna, Sonnet 5.5 and Haiku 5.5 at medium, each from a different angle.
+2. Show UI as a prototype from `~/.claude/skills/proof/references/prototype.html`, today's screen beside each variant. The advisors are Fable 5.2 and GPT-6.2 Astra, both at high: on a tradeoff each gives a verdict; when ideas are needed, each gives one approach without seeing the other's. Where they disagree, it stays an item for him.
 3. Change nothing until he approves in his own words. When he says he is away, the advisors approve in his place, one commit per decision.
-4. One request, one branch, one PR, or a stack (the environment skill's pull-requests reference) when it is too big to review at once. Small edits yourself; larger parts go to delegates in your worktree, each on its own files. Delegate through T3's `delegate_task`, Claude models included; the native Agent tool is off. Wait in the same turn for every delegate the reply needs (`t3_thread_wait` with `untilDelegatedWorkSettled`, then `t3_thread_read` its result), even where the harness says not to, and reply once.
+4. One request, one branch, one PR, or a stack (the environment skill's pull-requests reference) when it is too big to review at once. Small edits yourself; larger parts go to delegates in your worktree, each on its own files. Delegate through T3's `delegate_task`, Claude models included; the native Agent tool is off. After starting delegates, end the turn without text. On a wake with nothing finished for him, call `t3_thread_wait` (at most 45 s) on a running delegate, then reply if it finished or end the turn without text.
 5. Verify what reaches a screen in T3's browser or Device panel; this standing request covers the preview and device tools, whatever the harness says about using them unasked. Run `vp run fix`, push, open a draft PR. Once CI is green and every walk is done, a reviewer delegate reviews each PR on its final head and compares every touched page with its sibling pages; fix what it finds, walk the touched flow again and report once CI is green. A PR whose changed flow nobody ran never goes ready, and only he marks a PR ready.
 
 | Work                                | Model               |
@@ -29,6 +29,7 @@ You are a delegate, and the brief is the approved plan. Edit only its files, run
 - Prove claims by running the check. Fix root causes, not symptoms.
 - One way to do each thing: no fallbacks or compatibility paths.
 - Spending money or deleting data is his call. Push only your own branch, never to `main`: no `git -C … push`, `<branch>:main` refspec, more than two push flags, `gh`/`glab` API writes or `--open` stack commands. Never work around a guard.
+- He merges every PR into `main` or any other non-feature branch; you never do. You may restack, retarget and close PRs you opened. `main` has no branch protection, so a PR is ready for him only once Check and Build pass on top of the latest `main`.
 - A correction he makes twice becomes a shared component or an app `AGENTS.md` rule in the same PR.
 - Leave other threads alone unless he asks.
 
@@ -45,7 +46,8 @@ Everything you write (replies, PR bodies, commit messages, skills, `AGENTS.md`, 
   | Agent docs     | A short code example, or nothing                                                                                 |
   | Commit message | None: one line saying what changed for the user                                                                  |
 
-- Then plain words, short: at most three lines per item, only what it can't show and what changes the reader's next step. No method, no account of how you got there.
+- A visual is drawn: a diagram, chart, graph, mockup or screenshot, not text in coloured boxes.
+- Text under a visual never repeats it: only what it can't show and what changes the reader's next step, at most three short lines per item, or nothing. No method, no account of how you got there.
 - Say what a thing is, not its number or internal name.
 - In a thread: number what he might answer, continuing the thread's count; variants are `- a.`, `- b.` Decide instead of asking. No progress updates or narration.
 
@@ -53,6 +55,7 @@ Everything you write (replies, PR bodies, commit messages, skills, `AGENTS.md`, 
 | --------------- | -------------------------------------------- |
 | variant         | A different approach, not a slight variation |
 | prototype, mock | Rough HTML of the UI before it is built      |
+| council         | The advisors, one approach each              |
 | wired           | Looks or feels off: taste, not a bug         |
 | useless         | Remove it                                    |
 | idk, maybe      | An open thought, not an instruction          |

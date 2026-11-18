@@ -11,6 +11,24 @@ import {lint, restrictedImports} from './tools/coding-standards/src/lint.ts'
 const BANNED_PRIMITIVES = ['alert-dialog', 'carousel', 'command', 'context-menu', 'drawer', 'spinner', 'toast']
 const SPINNER_ICONS = ['CircleNotch', 'Spinner', 'SpinnerBall', 'SpinnerGap']
 
+// Each worktree previews in its own systemd user unit, which outlives the agent's turn, on a port derived from its path and shared over tailnet HTTPS.
+const PREVIEW_UNIT = 'u=preview-${PWD##*/} p=$((20000 + 0x$(printf %s "$PWD" | sha256sum | cut -c1-4) % 10000))'
+const PREVIEW = Array.join(
+	[
+		`${PREVIEW_UNIT} h=$(hostname -s).tailnet-8c4c.ts.net a=$1`,
+		// Without an app argument, the first web app this branch changes, else Portfolio.
+		'[ -n "$a" ] || a=$({ git diff --name-only origin/main...HEAD; git status --porcelain | cut -c4-; } 2>/dev/null | grep -oP "^apps/\\K[^/]+" | sort -u | while read -r x; do [ -f "apps/$x/src/main.client.tsx" ] && echo "$x"; done | awk NR==1)',
+		'a=${a:-portfolio}',
+		'[[ $a =~ ^[a-z][a-z0-9-]*$ && -f apps/$a/src/main.client.tsx ]] || { printf "Not a web app: %s\\n" "$a" >&2; exit 1; }',
+		'systemctl --user stop $u 2>/dev/null; systemctl --user reset-failed $u 2>/dev/null',
+		'systemd-run --user -G -d -u $u -E PATH="$HOME/.vite-plus/bin:$PATH" -E HOST=127.0.0.1 -E PORT=$p vp run --no-cache --filter "@deslop/$a" preview || exit 1',
+		'until curl -fso /dev/null http://127.0.0.1:$p; do systemctl --user is-active -q $u || exit 1; sleep 2; done',
+		'sudo tailscale serve --bg --https=$p http://127.0.0.1:$p >/dev/null || exit 1',
+		'echo "$a: https://$h:$p"'
+	],
+	'\n'
+)
+
 const repositoryRestrictedImports = {
 	paths: [
 		...restrictedImports.paths,
@@ -271,6 +289,8 @@ export default defineConfig({
 					'coding-standards tactics',
 					// CI installs with a frozen lockfile, so a manifest edit must carry its lockfile.
 					'vp install',
+					// Before the lint too, so a lint error that stops the run still leaves every file formatted.
+					'vp fmt',
 					'TSRS_FAST=1 effect-tsgo --tsrs-lint vp lint --fix --type-aware --type-check --ignore-pattern "tools/*/template/**"',
 					'vp lint tools/create-app/template tools/create-package/template --fix --report-unused-disable-directives-severity=off',
 					// After the lint fixes, whose rewrites are unformatted.
@@ -280,6 +300,12 @@ export default defineConfig({
 			},
 			// Parked: only an explicit user request runs this paid-capable command, never routine verification.
 			judge: {cache: false, command: 'coding-standards judge'},
+			// `vp run preview [app]`; bash -c receives the app as $1.
+			preview: {cache: false, command: `bash -c '${PREVIEW}' preview`},
+			'preview:stop': {
+				cache: false,
+				command: `bash -c '${PREVIEW_UNIT}; systemctl --user stop $u; sudo tailscale serve --https=$p off 2>/dev/null || true'`
+			},
 			test: 'vp run -r --parallel test'
 		}
 	},

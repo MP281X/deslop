@@ -32,7 +32,7 @@ Two headless Debian workers, a MacBook and an iPhone in one tailnet.
 
 One per worktree: the systemd user unit `preview-<worktree name>`, shared over tailnet HTTPS.
 
-- **Script.** When a capture needs it, run the project's preview script (read it with `t3_project_read`) from the worktree root, and give its HTTPS URL once it answers. Maintenance removes a gone worktree's unit. Deslop's selects a changed web app, else Portfolio; `PREVIEW_APP=<app>` previews another app of the same change. The repository's own preview command or a background task bypasses the unit and dies with the turn.
+- **Script.** When a capture needs it, start the preview from the worktree root and give its HTTPS URL once it answers. Deslop's is `vp run preview [app]`, by default the first web app the branch changes, else Portfolio; `vp run preview:stop` ends it. Elsewhere, run the project's preview script (read it with `t3_project_read`). An app's own `preview` script or a background task bypasses the unit and dies with the turn. Maintenance removes a gone worktree's unit.
 - **Webhooks.** Funnel exposes a whole port: pick a free one of 443, 8443, 10000 and run `sudo tailscale funnel --bg --https=<port> --set-path <path> http://127.0.0.1:<api port><path>`; remove it with `... --set-path <path> off`.
 
 ## Tools
