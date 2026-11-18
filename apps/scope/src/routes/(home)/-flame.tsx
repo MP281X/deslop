@@ -105,8 +105,8 @@ export function Flame(props: {focus: Option.Option<SpanId>; onPick: (id: SpanId)
 	const surface = useRef<HTMLDivElement>(null)
 	// Widths by label text, so a live trace's update measures only its new labels; a font load measures them again.
 	const measuredLabels = useRef(NO_WIDTHS)
+	// The compiler keeps this callback while the spans are the same, so React attaches it once per trace; a ref written here would make it new each render, and each re-attachment's fresh label widths render again without end.
 	function measureSurface(element: HTMLDivElement) {
-		surface.current = element
 		function measure() {
 			setWidth(element.getBoundingClientRect().width)
 		}
@@ -145,7 +145,6 @@ export function Flame(props: {focus: Option.Option<SpanId>; onPick: (id: SpanId)
 		measureLabels()
 		document.fonts.addEventListener('loadingdone', fontsLoaded)
 		return () => {
-			surface.current = null
 			observer.disconnect()
 			document.fonts.removeEventListener('loadingdone', fontsLoaded)
 		}
@@ -243,7 +242,7 @@ export function Flame(props: {focus: Option.Option<SpanId>; onPick: (id: SpanId)
 		)
 	}
 	return (
-		<div className="mt-1.5 mb-2 px-2">
+		<div ref={surface} className="mt-1.5 mb-2 px-2">
 			<div
 				ref={measureSurface}
 				role="group"
