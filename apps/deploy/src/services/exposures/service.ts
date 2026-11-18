@@ -155,13 +155,20 @@ export class Exposures extends Context.Service<Exposures>()('@deslop/deploy/serv
 					Effect.forEach(entry => asStorageDeployError(deleteRemoved(entry.row.name)), {concurrency: 1, discard: true})
 				)
 			}
+			// After a failed load Caddy still holds what it last loaded, so a held row's reason also says its withdrawal has not reached Caddy.
 			return Option.match(failure, {
 				onNone: () => Record.empty<ExposureName, string>(),
 				onSome: cause =>
-					pipe(
+					Record.fromIterableWith(
 						rows,
-						Array.filter(entry => Option.isNone(entry.held)),
-						Record.fromIterableWith(entry => [entry.row.name, cause.message] as const)
+						entry =>
+							[
+								entry.row.name,
+								Option.match(entry.held, {
+									onNone: () => cause.message,
+									onSome: reason => `${reason}. Caddy has not loaded this yet: ${cause.message}`
+								})
+							] as const
 					)
 			})
 		})
@@ -216,6 +223,9 @@ export class Exposures extends Context.Service<Exposures>()('@deslop/deploy/serv
 							rows,
 							Effect.fnUntraced(function* (row) {
 								if (row.state === 'removing') return {held: Option.none<string>(), publish: false, row}
+								// A reserved port is held before any lookup, since the lookup connects to it.
+								const reserved = reservedPort(row.port)
+								if (Option.isSome(reserved)) return {held: reserved, publish: false, row}
 								const found = yield* listener(items, row.port)
 								// A row saved before Deploy recorded owners takes the owner it first finds.
 								yield* Effect.forEach(
