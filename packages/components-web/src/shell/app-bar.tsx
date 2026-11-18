@@ -93,7 +93,6 @@ function AccountMenu() {
 					<loaded.value.DropdownMenuLabel>@{account.value.name}</loaded.value.DropdownMenuLabel>
 				</loaded.value.DropdownMenuGroup>
 				<loaded.value.DropdownMenuSeparator />
-				{/* oxlint-disable-next-line @deslop/coding-standards/no-bare-control -- This menu form submits one action, with no fields to group. */}
 				<form action={`/auth/sign-out?${new URLSearchParams({next: location.href})}`} method="post">
 					<loaded.value.DropdownMenuItem
 						variant="destructive"
