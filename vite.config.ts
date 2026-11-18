@@ -7,7 +7,7 @@ import {defineConfig} from 'vite-plus'
 
 import {lint, restrictedImports} from './tools/coding-standards/src/lint.ts'
 
-// The registry keeps every primitive as a file; these break AGENTS.md's Design rules (motion, spinners, toasts, context menus, a command palette, a destruction confirmation), so nothing outside it imports them by any spelling, nor the libraries they wrap.
+// The registry keeps every primitive as a file; this repository's restricted imports own the excluded primitives and their wrapped libraries.
 const BANNED_PRIMITIVES = ['alert-dialog', 'carousel', 'command', 'context-menu', 'drawer', 'spinner', 'toast']
 const SPINNER_ICONS = ['CircleNotch', 'Spinner', 'SpinnerBall', 'SpinnerGap']
 
@@ -16,7 +16,7 @@ const repositoryRestrictedImports = {
 		...restrictedImports.paths,
 		{
 			importNames: Array.flatMap(SPINNER_ICONS, icon => [icon, `${icon}Icon`]),
-			message: 'AGENTS.md Design: pending actions have no spinners.',
+			message: 'Pending actions have no spinners; keep their state in the action itself.',
 			name: '@phosphor-icons/react'
 		}
 	],
@@ -30,7 +30,7 @@ const repositoryRestrictedImports = {
 				'embla-carousel*',
 				'embla-carousel*/**'
 			],
-			message: 'AGENTS.md Design bans these primitives and the libraries they wrap.'
+			message: 'These primitives and their wrapped libraries are excluded by the repository restricted-imports policy.'
 		}
 	]
 }

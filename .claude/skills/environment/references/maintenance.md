@@ -1,11 +1,13 @@
 # Maintenance
 
-A pass removes files (build skill, **Delegates**) and runs without asking:
+A pass removes files (build skill, **Delegates**) under the approved maintenance scope:
 
 ```mermaid
 stateDiagram-v2
-    [*] --> Passing : each worker that is on, concurrently / Update, Clean, Check
-    Passing --> [*] : every worker done / report per worker faults, unknown owners, denied steps and a kernel or macOS update waiting on the user's restart
+    [*] --> Updating : maintenance approved / run each powered-on worker concurrently
+    Updating --> Cleaning : updates finish / clean unused resources
+    Cleaning --> Checking : cleanup finishes / run Check
+    Checking --> [*] : every worker checked / report faults, unknown owners, denied steps and an update waiting on the user's restart
 ```
 
 - **The user's.** `t3 update`, `t3 doctor --fix`, `t3 service restart` and reboots; a pending T3 update is never reported.
@@ -13,69 +15,70 @@ stateDiagram-v2
 
 ## Update
 
-1. **Packages.** `sudo apt-get update && sudo apt-get upgrade -y && sudo apt-get autoremove -y && sudo apt-get clean`, `vp upgrade`, `gh extension upgrade --all`. glab: when `curl -fsSL https://gitlab.com/api/v4/projects/gitlab-org%2Fcli/releases/permalink/latest` names a newer `tag_name`, download `https://gitlab.com/gitlab-org/cli/-/releases/<tag>/downloads/glab_<version>_linux_amd64.deb` and `sudo dpkg -i` it. Mac: `vp upgrade`; label a pending macOS update from `softwareupdate -l`.
-2. **T3 CLI.** `vp install -g t3@nightly`; the service updates from T3's UI.
-3. **Configuration,** on every worker:
+| Target          | Action                                                                                                                                                                                                                                                  |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Debian packages | `sudo apt-get update`, `sudo apt-get upgrade -y`, `sudo apt-get autoremove -y`, `sudo apt-get clean`; `vp upgrade`; `gh extension upgrade --all`.                                                                                                       |
+| glab            | When `curl -fsSL https://gitlab.com/api/v4/projects/gitlab-org%2Fcli/releases/permalink/latest` names a newer `tag_name`, download `https://gitlab.com/gitlab-org/cli/-/releases/<tag>/downloads/glab_<version>_linux_amd64.deb` and `sudo dpkg -i` it. |
+| Mac             | `vp upgrade`; label a pending macOS update from `softwareupdate -l`.                                                                                                                                                                                    |
+| T3 CLI          | `vp install -g t3@nightly`; the service updates from T3's UI.                                                                                                                                                                                           |
 
-   ```mermaid
-   stateDiagram-v2
-       [*] --> Pulling : git -C ~/deslop pull --ff-only
-       Pulling --> [*] : pull [succeeds]
-       Pulling --> Diffing : pull [a local change blocks it] / git -C ~/deslop diff -w
-       Diffing --> Pulling : diff [empty, a harness re-indent] / git -C ~/deslop restore .
-       Diffing --> [*] : diff [a real change] / it goes into a PR
-   ```
+```mermaid
+stateDiagram-v2
+    [*] --> Pulling : configuration update / git -C ~/deslop pull --ff-only
+    Pulling --> [*] : pull succeeds
+    Pulling --> Diffing : pull blocked by local changes / git -C ~/deslop diff -w
+    Diffing --> Pulling : diff read [only a harness re-indent] / git -C ~/deslop restore .
+    Diffing --> [*] : diff read [a real change] / it goes into a PR
+```
 
 ## Clean
 
 A refusal or failure skips only its step. A thread owns a worktree through `worktreePath` in `orchestration_v2_projection_threads.payload_json`, delegated children through `lineage.rootThreadId`; `settledAt`, `archived_at` or `deleted_at` settles it.
 
-1. **Tool caches,** when nothing uses them:
+| Target          | Guard and action                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Tool caches     | When unused, `rm -rf ~/.cache/{ms-playwright,node-gyp,puppeteer,google-chrome-for-testing-headless} ~/.npm/_npx`.                                                                                                                                                                                                                                                                                                                                                 |
+| Claude versions | Remove `~/.local/share/claude/versions/<version>` except the one `claude --version` reports.                                                                                                                                                                                                                                                                                                                                                                      |
+| T3 versions     | Skip while `~/.t3/runtime/service-state.json` shows an uncommitted update. Keep `activeVersion`, the launcher named in `~/.config/systemd/user/t3code.service`'s `ExecStart`, and newer versions under `~/.t3/runtime/versions`.                                                                                                                                                                                                                                  |
+| Docker          | When no Docker or Compose build runs, `docker image prune -a -f` and `docker builder prune -a -f`; never `docker system prune`.                                                                                                                                                                                                                                                                                                                                   |
+| pnpm            | When no install runs, `pnpm store prune`.                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| Previews        | For gone worktrees, run Alchemy's `preview:destroy`, remove stopped `preview-*` units and their containers, and stop their surviving Dual `dualos-local-*-wt-<hash>` Postgres and OpenSandbox containers. `docker stop` preserves seed data; Dual's `settle` destroys it. Remove Deploy's `dual-preview.mp281x.xyz` exposure only when no preview answers behind it. Remove leftover `testcontainers-ryuk-*` and finished test runs' unnamed Postgres containers. |
+| Local branches  | In `~/deslop` and `~/dual`, `git branch -D` only for branches no worktree checks out, never the default branch.                                                                                                                                                                                                                                                                                                                                                   |
+| Remote branches | Use the block below only for merged or closed PRs whose head equals the branch tip, whose nonempty commit list is entirely the user's, and whose branch no thread uses. A failed query keeps the branch.                                                                                                                                                                                                                                                          |
+| Mac caches      | Keep active Claude, Node and Vite+ versions; use the Mac block below.                                                                                                                                                                                                                                                                                                                                                                                             |
 
-   ```bash
-   rm -rf ~/.cache/{ms-playwright,node-gyp,puppeteer,google-chrome-for-testing-headless} ~/.npm/_npx
-   ```
+```mermaid
+stateDiagram-v2
+    [*] --> Owned : worktree discovered
+    Owned --> Settled : its thread settles
+    Settled --> Owned : ownership re-read right before removal [a live owner, or a process uses it]
+    Settled --> [*] : ownership re-read [still settled, unused] / the settle script, git worktree remove --force --force, git worktree prune
+```
 
-2. **Claude Code versions.** Remove every `~/.local/share/claude/versions/<version>` except the one `claude --version` reports.
-3. **T3 runtime versions.** Skip while `~/.t3/runtime/service-state.json` shows an uncommitted update. Remove every `~/.t3/runtime/versions/<version>` except `activeVersion`, the launcher named in `~/.config/systemd/user/t3code.service`'s `ExecStart`, and newer ones.
-4. **Docker,** when no `docker build` or Compose build runs: `docker image prune -a -f`, `docker builder prune -a -f`. Never `docker system prune`.
-5. **pnpm,** when no install runs: `pnpm store prune`.
-6. **Previews.** Remove each stopped `preview-*` unit and its container whose worktree is gone, after an Alchemy preview's `preview:destroy`, and stop the containers it started: Dual's `dualos-local-*-wt-<hash>` Postgres and OpenSandbox outlive the unit (`docker stop` keeps their seeded data, Dual's `settle` destroys it). Once no preview answers behind Dual's Deploy exposure `dual-preview.mp281x.xyz`, Deploy's `remove_exposure`. Remove leftover `testcontainers-ryuk-*` and finished test runs' unnamed Postgres containers.
-7. **Worktrees,** uncommitted changes included:
+Remote branches:
 
-   ```mermaid
-   stateDiagram-v2
-       [*] --> Owned : a worktree
-       Owned --> Settled : its thread settles
-       Settled --> Owned : ownership re-read right before removal [a live owner, or a process uses it]
-       Settled --> [*] : ownership re-read [still settled, unused] / the settle script, git worktree remove --force --force, git worktree prune
-   ```
+```bash
+git fetch -q --prune origin
+for b in $(git for-each-ref --format='%(refname:lstrip=3)' refs/remotes/origin | grep -vx 'HEAD\|main\|master'); do
+  if git remote get-url origin | grep -q github.com; then
+    pr=$(gh pr list --head "$b" --state all --json state,commits,headRefOid -q '.[0]') || continue
+    s=$(jq -r '.state // empty' <<<"$pr"); h=$(jq -r '.headRefOid // empty' <<<"$pr"); a=$(jq -r '[.commits[].authors[].email] | unique | join(" ")' <<<"$pr")
+  else
+    mr=$(glab mr list --source-branch "$b" --all -F json | jq '.[0]') || continue
+    s=$(jq -r '.state // empty' <<<"$mr"); h=$(jq -r '.sha // empty' <<<"$mr"); a=$(glab api "projects/:id/merge_requests/$(jq -r .iid <<<"$mr")/commits" | jq -r '[.[].author_email] | unique | join(" ")')
+  fi
+  case "$s" in MERGED|CLOSED|merged|closed) ;; *) continue ;; esac
+  [ "$h" = "$(git rev-parse "origin/$b")" ] && [ "$a" = "$(git config user.email)" ] || continue
+  git worktree list --porcelain | grep -qx "branch refs/heads/$b" || git push -q origin --delete "$b"
+done
+```
 
-8. **Local branches** in `~/deslop` and `~/dual` that no worktree checks out, except the default branch: `git branch -D`.
-9. **Remote branches,** only when the host shows the PR or MR merged or closed, its head still the branch's tip and every one of its commits authored by the user, and no thread's worktree uses the branch. A failed query or an empty commit list keeps the branch.
+Mac caches:
 
-   ```bash
-   git fetch -q --prune origin
-   for b in $(git for-each-ref --format='%(refname:lstrip=3)' refs/remotes/origin | grep -vx 'HEAD\|main\|master'); do
-     if git remote get-url origin | grep -q github.com; then
-       pr=$(gh pr list --head "$b" --state all --json state,commits,headRefOid -q '.[0]') || continue
-       s=$(jq -r '.state // empty' <<<"$pr"); h=$(jq -r '.headRefOid // empty' <<<"$pr"); a=$(jq -r '[.commits[].authors[].email] | unique | join(" ")' <<<"$pr")
-     else
-       mr=$(glab mr list --source-branch "$b" --all -F json | jq '.[0]') || continue
-       s=$(jq -r '.state // empty' <<<"$mr"); h=$(jq -r '.sha // empty' <<<"$mr"); a=$(glab api "projects/:id/merge_requests/$(jq -r .iid <<<"$mr")/commits" | jq -r '[.[].author_email] | unique | join(" ")')
-     fi
-     case "$s" in MERGED|CLOSED|merged|closed) ;; *) continue ;; esac
-     [ "$h" = "$(git rev-parse "origin/$b")" ] && [ "$a" = "$(git config user.email)" ] || continue
-     git worktree list --porcelain | grep -qx "branch refs/heads/$b" || git push -q origin --delete "$b"
-   done
-   ```
-
-10. **Mac.** Keep only active Claude, Node and Vite+ versions; remove caches:
-
-    ```bash
-    find ~/Library/Caches -maxdepth 1 -type d \( -iname '*updater*' -o -name '*.ShipIt' -o -name 'com.apple.Safari*' -o -name 'com.t3tools.t3code*' \) -exec rm -r -- {} +
-    rm -rf ~/Library/Caches/Google/Chrome ~/.cache/codex-runtimes "$HOME/Library/Application Support"/t3code*/{Cache,"Code Cache"}
-    ```
+```bash
+find ~/Library/Caches -maxdepth 1 -type d \( -iname '*updater*' -o -name '*.ShipIt' -o -name 'com.apple.Safari*' -o -name 'com.t3tools.t3code*' \) -exec rm -r -- {} +
+rm -rf ~/Library/Caches/Google/Chrome ~/.cache/codex-runtimes "$HOME/Library/Application Support"/t3code*/{Cache,"Code Cache"}
+```
 
 ## Check
 
@@ -97,14 +100,14 @@ Every pass:
 ```mermaid
 stateDiagram-v2
     [*] --> Base : Debian netinst
-    Base --> Packages
-    Packages --> Git
-    Git --> Network
-    Network --> Shell
-    Shell --> T3
-    T3 --> Accounts : show the user each sign-in link
-    Accounts --> KeysOnly : a key login from another machine succeeds
-    KeysOnly --> [*] : sudo sshd -t && sudo systemctl reload ssh
+    Base --> Packages : base configured / install packages
+    Packages --> Git : packages installed / configure Git
+    Git --> Network : Git configured / configure networking
+    Network --> Shell : networking configured / configure the shell
+    Shell --> T3 : shell configured / install T3
+    T3 --> Accounts : T3 installed / show the user each sign-in link
+    Accounts --> KeysOnly : a key login from another machine succeeds / disable password login
+    KeysOnly --> [*] : sshd configuration validates / sudo sshd -t, then sudo systemctl reload ssh
 ```
 
 | State    | Commands                                                                                                                                                                                                                                                                                                                                                |
@@ -169,7 +172,7 @@ Keep each project's `scripts` (`t3_project_update`) equal to `projectSettingsOve
 
 ```mermaid
 stateDiagram-v2
-    [*] --> Enrolling : the block below
+    [*] --> Enrolling : GPU setup needed / run the block below
     Enrolling --> [*] : reboot / the user enrolls the key at the console, since Secure Boot stays on
 ```
 

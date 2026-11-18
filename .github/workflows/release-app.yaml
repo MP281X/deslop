@@ -20,6 +20,7 @@ jobs:
   update:
     name: Update
     runs-on: ubuntu-26.04
+    timeout-minutes: 20
     outputs:
       app-store: ${{ steps.app-store.outputs.id }}
       artifact: ${{ steps.fingerprint.outputs.artifact }}

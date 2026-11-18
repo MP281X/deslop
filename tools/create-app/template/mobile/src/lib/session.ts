@@ -1,12 +1,9 @@
 import {AtomRpc} from 'effect/reactivity'
 
-import {colors} from '@deslop/components-mobile/theme'
 import {makeSession} from '@deslop/runtime/mobile/session'
 import {RpcStream} from '@deslop/runtime/shared/rpc'
 
 import {RpcContracts} from '#rpcs/contracts.ts'
-
-export const primary = colors.foreground
 
 export const session = makeSession()
 

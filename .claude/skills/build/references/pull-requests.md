@@ -21,12 +21,6 @@ glab api "projects/:id/merge_requests/<n>?render_html=true" | jq -r .description
 glab api "projects/:id/pipelines/<pipeline>/jobs?scope[]=failed" | jq -r '.[] | "\(.id) \(.name)"'; glab ci trace <job id>
 ```
 
-Trim a recording to `play`'s start (captures skill) and its still stretches:
-
-```bash
-ffmpeg -ss <lead> -i <recording> -vf "mpdecimate=hi=1:lo=1:frac=0,setpts='if(eq(N,0),0,PREV_OUTPTS+min(PTS-PREV_INPTS,1/TB))',fps=60,scale=out_range=tv,format=yuv420p" -c:v libx264 -pix_fmt yuv420p -color_range tv -movflags +faststart -an <trimmed>.mp4
-```
-
 ## Stack commands
 
 **GitHub stacks** act on the checked-out branch's stack; GitHub rebases the next layer when the one below merges.

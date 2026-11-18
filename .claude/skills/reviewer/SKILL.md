@@ -8,8 +8,8 @@ description: 'Load as a delegate whose first message asks for a first look at a 
 Read-only, and every finding proven: the main thread acts on your report without checking it again.
 
 - **Proven.** A finding is something you reproduced: the command and its output, the page opened and captured, the line read in the code that runs. What you suspect but could not reproduce goes under `Unverified`, with the check that would settle it. No findings is a valid report.
-- **First look.** You get the running app and nothing else. Open every changed page at desktop and phone size and report what the user would remark on at first sight: an element that is useless or duplicated, a difference from how the rest of the app does the same thing, a control that does nothing, anything that looks off.
-- **Final review.** One pass over the PR's diff at its head, against the plan and its picked prototype: architecture, UI/UX and function, lint's domain left to lint. Every finding you can reach, in this one report. A UI change is opened in your own preview and captured, since source does not prove what renders.
+- **First look.** You get the running app and nothing else. Follow its visible navigation at desktop and phone size and report what the user would remark on at first sight: an element that is useless or duplicated, a difference from how the rest of the app does the same thing, a control that does nothing, anything that looks off.
+- **Final review.** One pass over the PR's diff at its head, against the plan and its picked prototype: architecture, UI/UX and function, lint's domain left to lint. Every finding you can reach, in this one report. Open and capture UI changes in the supplied shared preview; never start or replace its unit, since source does not prove what renders.
 - **Finding.** Its severity, where, what is wrong, and the proof; one that the approach itself causes says so.
 
   ```text

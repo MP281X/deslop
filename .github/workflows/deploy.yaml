@@ -96,11 +96,22 @@ jobs:
 
       # pnpm applies publishConfig while packing; npm uploads the README metadata that pnpm omits.
       - name: Publish @deslop/coding-standards
+        working-directory: tools/coding-standards
         run: |
-          vp -C tools/coding-standards pm version "0.1.${{ github.run_number }}" -- --no-git-tag-version --no-git-checks
-          vp -C tools/coding-standards pm pack --pack-destination "$RUNNER_TEMP/package"
-          npm publish --loglevel=warn "$RUNNER_TEMP"/package/*.tgz
-          echo "- @deslop/coding-standards 0.1.${{ github.run_number }}" >> "$GITHUB_STEP_SUMMARY"
+          fingerprint=$({ find dist src/lib/css-properties.d.ts tsconfig.json README.md -type f | LC_ALL=C sort | xargs sha256sum; jq -S 'del(.version, .fingerprint)' package.json; } | sha256sum | cut -c1-64)
+          if ! published=$(npm view @deslop/coding-standards fingerprint 2> "$RUNNER_TEMP/view-coding-standards"); then
+            grep -q E404 "$RUNNER_TEMP/view-coding-standards" || { cat "$RUNNER_TEMP/view-coding-standards" >&2; exit 1; }
+            echo "::error::@deslop/coding-standards needs its first publish and trusted-publisher setup; see .github/releasing.md"
+            exit 1
+          elif [ "$published" != "$fingerprint" ]; then
+            npm pkg set "fingerprint=$fingerprint"
+            vp pm version "0.1.${{ github.run_number }}" -- --no-git-tag-version --no-git-checks
+            vp pm pack --pack-destination "$RUNNER_TEMP/package"
+            npm publish --loglevel=warn "$RUNNER_TEMP"/package/*.tgz
+            echo "- @deslop/coding-standards 0.1.${{ github.run_number }}" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "- @deslop/coding-standards unchanged" >> "$GITHUB_STEP_SUMMARY"
+          fi
 
       # An app publishes only when its shipped fingerprint changes; everything is bundled, so its published manifest drops dependencies, scripts and the Expo entry.
       - name: Publish changed apps

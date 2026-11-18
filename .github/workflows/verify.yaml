@@ -33,8 +33,38 @@ jobs:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup
         with: {tasks: 'true'}
+      - name: Shared agent instructions
+        shell: bash
+        run: diff <(sed -n '/^# Work/,$p' .claude/agents/pair.md) <(sed -n '/^# Work/,$p' .codex/instructions.md)
       - name: Format, lint, types and dead code
         run: vp run check
+
+  templates:
+    name: Generated apps
+    runs-on: ubuntu-26.04
+    timeout-minutes: 20
+    env:
+      DESLOP_DOMAIN: ${{ vars.DESLOP_DOMAIN }}
+      CI: 'true'
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup
+        with: {tasks: 'true'}
+      - name: Generate web and mobile apps
+        run: |
+          vp create app -- --name ciweb
+          vp create app -- --name cimobile --kind mobile
+          vp install --no-frozen-lockfile
+      - name: Type-check generated apps
+        run: |
+          vp exec effect-tsgo tsrs --noEmit --project apps/ciweb/tsconfig.json
+          vp exec effect-tsgo tsrs --noEmit --project apps/cimobile/tsconfig.json
+      - name: Build generated web app and mobile server
+        run: |
+          vp -C apps/ciweb run build
+          vp -C apps/cimobile run build
+      - name: Bundle generated iOS JavaScript
+        run: vp -C apps/cimobile exec expo export --platform ios --output-dir dist/ios
 
   test:
     name: Test

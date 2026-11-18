@@ -23,9 +23,9 @@ stateDiagram-v2
     Fixing --> [*] : the pipeline is green / show the result, with what stays unfixed
 ```
 
-- **Using.** UI, and backend changes a screen shows, in the T3 browser; native changes in the Device panel. This standing request covers the preview and device tools. The walk runs on a commit, whose SHA its captures carry, and its proof holds while what it shows is unchanged.
+- **Using.** UI, and backend changes a screen shows, in the T3 browser; native changes in the Device panel. This standing request covers the preview and device tools. The walk runs on a commit, and its proof holds while what it shows is unchanged.
 - **First look.** A `reviewer` delegate that gets the running app and nothing else, neither diff nor plan.
-- **Draft.** The tests of each package you edited yourself, the fixer, a commit, a push and a draft PR, by [pull-requests](references/pull-requests.md), read before the first commit. A claimed before/after needs its Before captured on base before the first edit.
+- **Draft.** The package checks `AGENTS.md` names, the fixer, a commit, a push and a draft PR, by [pull-requests](references/pull-requests.md), read before the first commit.
 - **Final review.** Once, when nothing can still change: one `reviewer` delegate per PR in one turn, each given the plan, its prototype's path and the PR, and one more over the whole stack as one diff when it has several PRs.
 
 ## Delegates

@@ -8,7 +8,7 @@ description: 'Load when the user asks for a change, reports a problem, gives fee
 ```mermaid
 stateDiagram-v2
     [*] --> Settling : a message from the user / split it into its points
-    Settling --> Shown : every point has its history, its measurement and, where a cost decides it, the advisors' verdict / one item per point
+    Settling --> Shown : every point is settled / one item per point with its history, measurement and required verdict
     Shown --> Settling : he comments / revise what he commented on, the rest stands
     Shown --> [*] : he approves [main thread] / load the build skill
     Shown --> [*] : he approves and asks for a handoff [side chat] / send the main thread the plan, his picks and the render's path
@@ -24,7 +24,9 @@ stateDiagram-v2
 
 ## Advisors and council
 
-At any stage, when a decision is open or you are stuck. One brief, the same to each: the question, the options, and the user's words and `AGENTS.md` choices that bear on it.
+- **Advisors.** At any stage, get their verdict for every item whose cost changes what the user sees or waits for, and whenever the Sleep rule applies.
+- **Council.** Use it when no clear direction remains or you are stuck.
+- **Brief.** The same to each: the question, the options, and the user's words and `AGENTS.md` choices that bear on it.
 
 |         | Advisors                                                                                                 | Council                                                                                               |
 | ------- | -------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |

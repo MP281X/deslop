@@ -20,6 +20,7 @@ jobs:
   fingerprint:
     name: Fingerprint
     runs-on: ubuntu-26.04
+    timeout-minutes: 10
     outputs:
       artifact: ${{ steps.fingerprint.outputs.artifact }}
       built: ${{ steps.fingerprint.outputs.built }}
@@ -31,7 +32,7 @@ jobs:
         id: fingerprint
         working-directory: apps/${{ inputs.app }}
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           hash=$(eas fingerprint:generate --platform ios --build-profile simulator --json --non-interactive | jq -r .hash)
           artifact="${{ inputs.app }}-simulator-$hash"

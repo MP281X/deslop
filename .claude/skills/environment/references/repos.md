@@ -35,5 +35,5 @@ Read-only, in `/tmp/repos/<repository>`: never edit, commit or push there.
 stateDiagram-v2
     [*] --> Reading : a repository is needed [/tmp/repos/NAME exists] / git -C /tmp/repos/NAME pull --ff-only
     [*] --> Reading : a repository is needed [missing] / git clone --depth 1 https://github.com/OWNER/NAME /tmp/repos/NAME
-    Reading --> [*]
+    Reading --> [*] : relevant source read
 ```
