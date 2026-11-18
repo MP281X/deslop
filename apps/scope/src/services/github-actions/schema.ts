@@ -69,3 +69,11 @@ export const WorkflowRun = Schema.Struct({
 		updated_at: Schema.DateTimeUtcFromString
 	})
 })
+
+export type LogFetch = typeof LogFetch.Type
+// A job whose log the webhook asked for, as the worker claims it: the delivery that asked and how many attempts already failed.
+export const LogFetch = Schema.Struct({
+	attempts: Schema.Int,
+	event: Schema.fromJsonString(WorkflowJob),
+	job: WorkflowJobId
+})

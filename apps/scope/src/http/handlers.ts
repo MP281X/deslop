@@ -32,6 +32,7 @@ import {CLIENT_HEADER} from '@deslop/runtime/shared/auth'
 
 import {WorkflowJob, WorkflowRun} from '#services/github-actions/schema.ts'
 import {GitHubActions} from '#services/github-actions/service.ts'
+import {GitHubLogs} from '#services/github-logs/service.ts'
 import type {Origin, TelemetryError} from '#services/telemetry/schema.ts'
 import {LogsRequest, TracesRequest} from '#services/telemetry/schema.ts'
 import {Telemetry} from '#services/telemetry/service.ts'
@@ -221,5 +222,5 @@ export const HttpHandlers = Layer.provide(
 			})
 		})
 	),
-	GitHubActions.layer
+	Layer.provide(GitHubActions.layer, GitHubLogs.layer)
 )
