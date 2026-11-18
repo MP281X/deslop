@@ -2,12 +2,11 @@
 
 import {NodeCrypto, NodeHttpClient, NodeRuntime, NodeServices} from '@effect/platform-node'
 
-import {Console, Effect, pipe} from 'effect'
+import {Console, Effect, FileSystem, Path, Schema, pipe} from 'effect'
 
 import {Command, Flag} from 'effect/cli'
 
 import {judge, layerCache} from '#judge.ts'
-import packageJson from '#package.json' with {type: 'json'}
 
 import {haiku} from '#lib/model.ts'
 
@@ -17,7 +16,10 @@ const TACTICS = `Fix each diagnostic at the cause its message names:
 - Inline in evaluation order; move a declaration used before its definition up, never into a new module.
 - Delete a whole unused declaration, never only its header.`
 
-const cli = pipe(
+type Manifest = typeof Manifest.Type
+const Manifest = Schema.fromJsonString(Schema.Struct({version: Schema.String}))
+
+const command = pipe(
 	Command.make('coding-standards'),
 	Command.withDescription('Lint tactics and semantic judging'),
 	Command.withSubcommands([
@@ -52,8 +54,17 @@ const cli = pipe(
 			),
 			'Ask the functions, components and test cases a change touches the questions no remembered answer covers, and report what breaks one'
 		)
-	]),
-	Command.run({version: packageJson.version})
+	])
 )
+
+// The release bumps the packed manifest after the build, so the version is read from the manifest beside the running file, in source and in dist alike.
+const cli = Effect.gen(function* () {
+	const manifest = yield* Schema.decodeEffect(Manifest)(
+		yield* (yield* FileSystem.FileSystem).readFileString(
+			yield* (yield* Path.Path).fromFileUrl(new URL('../package.json', import.meta.url))
+		)
+	)
+	return yield* Command.run(command, {version: manifest.version})
+})
 
 NodeRuntime.runMain(Effect.provide(cli, [NodeServices.layer, NodeHttpClient.layerNodeHttp, NodeCrypto.layer]))

@@ -105,9 +105,22 @@ function recursive(input: {context: Context; node: FunctionNode}) {
 	)
 }
 
+// An exported function's return type is its public contract: it can widen what inference would narrow, as `(): string` over a constant.
+function exported(node: FunctionNode) {
+	if (node.type === 'FunctionDeclaration') {
+		return node.parent.type === 'ExportNamedDeclaration' || node.parent.type === 'ExportDefaultDeclaration'
+	}
+	return (
+		node.parent.type === 'VariableDeclarator' &&
+		node.parent.parent.type === 'VariableDeclaration' &&
+		node.parent.parent.parent.type === 'ExportNamedDeclaration'
+	)
+}
+
 export function redundantReturnAnnotation(context: Context, node: FunctionNode) {
 	return (
 		Predicate.isNotNullish(node.returnType) &&
+		!exported(node) &&
 		node.body !== null &&
 		node.returnType.typeAnnotation.type !== 'TSTypePredicate' &&
 		!(
@@ -232,9 +245,18 @@ export const noRedundantAnnotation = defineRule({
 	meta: {
 		docs: {
 			examples: {
-				accepted: [{'sample.ts': 'export function doubleOf(value: number) { return value * 2 }'}],
+				accepted: [
+					{'sample.ts': 'export function doubleOf(value: number) { return value * 2 }'},
+					{
+						'sample.ts':
+							"const PREFIX = 'note'\nexport function prefixOf(): string { return PREFIX }\nexport const plural = `${PREFIX}s`"
+					}
+				],
 				fixes: [
-					{'sample.ts': 'export function doubleOf(value: number): number { return value * 2 }'},
+					{
+						'sample.ts':
+							'function doubleOf(value: number): number { return value * 2 }\nexport const doubled = [doubleOf(2), doubleOf(3)]'
+					},
 					{
 						'sample.tsx': `import {useRef, useState} from 'react'
 export function Editor() { const [title, setTitle] = useState<string>(''); return <div ref={useRef<HTMLDivElement | null>(null)} onFocus={() => setTitle('Focused')}>{title}</div> }`

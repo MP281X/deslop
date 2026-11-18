@@ -424,7 +424,8 @@ export const lint: OxlintConfig & {
 		'effecttsgo/unnecessary-effect-gen': 'error',
 		'effecttsgo/unnecessary-fail-yieldable-error': 'error',
 		'effecttsgo/unnecessary-pipe': 'error',
-		'effecttsgo/unnecessary-pipe-chain': 'error',
+		// effect-call-form flattens a nested pipe only where its steps keep their evaluation order, and fixes it; a method pipe is restricted.
+		'effecttsgo/unnecessary-pipe-chain': 'off',
 		'effecttsgo/unnecessary-typeof-type': 'error',
 
 		'eslint/accessor-pairs': ['error', {enforceForClassMembers: true, enforceForTSTypes: true}],

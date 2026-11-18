@@ -138,7 +138,13 @@ const lintSource = Effect.fnUntraced(function* (
 	)
 	// The repository's fix command formats after the lint fixes, so a fixed source is compared as the formatter leaves it.
 	if (Array.contains(flags, '--fix')) {
-		yield* Effect.flatMap(ChildProcess.make('vp', ['fmt', ...files], {cwd: root}), formatter => formatter.exitCode)
+		assert.strictEqual(
+			yield* Effect.scoped(
+				Effect.flatMap(ChildProcess.make('vp', ['fmt', ...files], {cwd: root}), formatter => formatter.exitCode)
+			),
+			ChildProcessSpawner.ExitCode(0),
+			'the formatter accepts the fixed sources'
+		)
 	}
 	return {
 		exitCode: result.linted.exitCode,
@@ -253,7 +259,11 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 							'// judge-ignore unknown-question -- This is not a registered question. // reported',
 							'export function title(value: string) { return value }',
 							'// judge-ignore no-silent-fallback -- Absence is a valid outcome.',
-							'export function label(value: string) { return value }'
+							'export function label(value: string) { return value }',
+							'// judge-ignore no-silent-fallback // reported',
+							'export function name(value: string) { return value }',
+							'// oxlint-disablement of the old reader is described in the README.',
+							'export function heading(value: string) { return value }'
 						],
 						'\n'
 					)
@@ -292,23 +302,27 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 				assert.strictEqual(accepted.exitCode, ChildProcessSpawner.ExitCode(0))
 				const before = yield* lintSource(inputs('fixes'), [], true)
 				assert.isNotEmpty(before.stdout.diagnostics)
-				for (const rule of examples) {
-					for (const index of Array.map(rule.examples.fixes ?? [], (_, position) => position)) {
-						const owned = Array.filter(before.stdout.diagnostics, diagnostic =>
-							String.includes(`/${rule.name}/fixes-${index}/`)(diagnostic.filename ?? '')
-						)
-						assert.include(
-							Array.map(owned, diagnostic => diagnostic.code),
-							`@deslop/coding-standards(${rule.name})`,
-							`${rule.name} fix ${index}`
-						)
-						assert.deepStrictEqual(
-							Array.dedupe(customCodes({diagnostics: owned})),
-							[`@deslop/coding-standards(${rule.name})`],
-							`${rule.name} fix ${index} has one custom owner`
-						)
-					}
-				}
+				assert.deepStrictEqual(
+					Array.flatMap(examples, rule =>
+						Array.flatMap(rule.examples.fixes ?? [], (_, index) => {
+							// A native rule may report the shape a custom fix settles; another custom rule, an Effect rule or a type error may not.
+							const codes = pipe(
+								before.stdout.diagnostics,
+								Array.filter(diagnostic => String.includes(`/${rule.name}/fixes-${index}/`)(diagnostic.filename ?? '')),
+								Array.map(diagnostic => diagnostic.code),
+								Array.filter(code =>
+									Option.isSome(
+										String.match(/^(?:@deslop\/coding-standards|effecttsgo)\(|^typescript\(TS\d+\)$/u)(code)
+									)
+								),
+								Array.dedupe
+							)
+							if (Array.join(codes, ', ') === `@deslop/coding-standards(${rule.name})`) return []
+							return [`${rule.name} fix ${index} has other owners: ${Array.join(codes, ', ')}`]
+						})
+					),
+					[]
+				)
 				const fixed = yield* lintSource(inputs('fixes'), ['--fix'], true)
 				assert.isTrue(fixed.settled)
 				assert.deepStrictEqual(fixed.stdout.diagnostics, [])
@@ -666,6 +680,33 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 			})
 		)
 		testApi.effect(
+			'reports a one-step pipe without a fix where the call would move its step or give it a receiver',
+			Effect.fnUntraced(function* () {
+				const source = Array.join(
+					[
+						"import {Option, pipe} from 'effect'",
+						'',
+						'export function apply(reader: {base: number; project: (n: number) => number}) { return pipe(2, reader.project) } // reported',
+						'export function forward(reader: {project: (n: number) => number}, next: () => number) { return pipe(next(), value => reader.project(value)) } // reported',
+						'export function calculate(change: () => number) {',
+						'	let project = (n: number) => n + 1',
+						'	project = n => n * 10',
+						'	return pipe(change(), project) // reported',
+						'}',
+						'export const unwrapped = pipe(Option.some(1), Option.getOrThrow) // reported'
+					],
+					'\n'
+				)
+				const lines = reportedLines(yield* lintSource({'steps.ts': source}), 'effect-call-form')
+				assert.deepStrictEqual(lines.reported, lines.marked)
+				const result = yield* lintSource({'steps.ts': source}, ['--fix'])
+				assert.include(result.sources[0] ?? '', 'pipe(2, reader.project)')
+				assert.include(result.sources[0] ?? '', 'pipe(next(), value => reader.project(value))')
+				assert.include(result.sources[0] ?? '', 'pipe(change(), project)')
+				assert.include(result.sources[0] ?? '', 'Option.getOrThrow(Option.some(1))')
+			})
+		)
+		testApi.effect(
 			'names atoms produced from an inline runtime',
 			Effect.fnUntraced(function* () {
 				assert.lengthOf(
@@ -890,7 +931,6 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 							'@deslop/coding-standards(library-operation)',
 							'@deslop/coding-standards(library-operation)',
 							'@deslop/coding-standards(library-operation)',
-							'@deslop/coding-standards(no-redundant-annotation)',
 							'@deslop/coding-standards(no-redundant-annotation)',
 							'@deslop/coding-standards(no-redundant-annotation)',
 							'@deslop/coding-standards(no-redundant-annotation)',
@@ -1476,7 +1516,7 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 							'export const named = Effect.mapError(work, error => new Failed({cause: error, message: error}))',
 							"export const caught = Effect.tryPromise({catch: cause => Failed.make({cause, message: 'down'}), try: () => fetch('/')})",
 							'export const read = (path: string): Effect.Effect<string> => Effect.succeed(path)',
-							'export const next = (count: number) => count + 1',
+							'export const next = (count: number): number => count + 1',
 							'export function shown(panel: string | null) {',
 							"	if (panel === null) return ''",
 							'	const show = () => panel.length',
@@ -1528,7 +1568,6 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 					'@deslop/coding-standards(name-by-kind)',
 					'@deslop/coding-standards(name-by-kind)',
 					'@deslop/coding-standards(no-pass-through-name)',
-					'@deslop/coding-standards(no-redundant-annotation)',
 					'@deslop/coding-standards(recover-named-failures)'
 				])
 			})
@@ -1672,7 +1711,9 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 							'export function Mark(props: {fail: () => void}) { return <img src="/icon" alt="" onError={props.fail} /> } // reported',
 							'export function Face() { return <Avatar><AvatarImage src="/icon" alt="" /><AvatarFallback>A</AvatarFallback></Avatar> }',
 							'export function Loose() { return <form><Input aria-label="Name" /></form> } // reported',
-							'export function Name() { return <form><FieldGroup><Field><FieldLabel htmlFor="name">Name</FieldLabel><Input id="name" /></Field></FieldGroup></form> }'
+							'export function Name() { return <form><FieldGroup><Field><FieldLabel htmlFor="name">Name</FieldLabel><Input id="name" /></Field></FieldGroup></form> }',
+							'export function Named() { return <form aria-label="<FieldGroup>"><Input aria-label="Name" /></form> } // reported',
+							'export function SignOut() { return <form action="/sign-out" method="post"><Button type="submit">Sign out</Button></form> }'
 						],
 						'\n'
 					)
@@ -1708,13 +1749,24 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 							'export function Tab() { return <Tabs value="a"><TabsList><TabsTrigger value="a" onClick={Function.constUndefined}>A</TabsTrigger></TabsList></Tabs> } // reported',
 							'export function Label() { return <Badge variant="outline">New</Badge> }',
 							'export function Action() { return <Button onClick={Function.constUndefined}>Save</Button> }',
-							'export function Picker(props: {pick: (value: string) => void}) { return <Tabs value="a" onValueChange={props.pick}><TabsList><TabsTrigger value="a">A</TabsTrigger></TabsList></Tabs> }'
+							'export function Picker(props: {pick: (value: string) => void}) { return <Tabs value="a" onValueChange={props.pick}><TabsList><TabsTrigger value="a">A</TabsTrigger></TabsList></Tabs> }',
+							'export function Spread(props: {onClick: () => void}) { return <Badge variant="outline" {...props}>New</Badge> } // reported'
 						],
 						'\n'
 					)
 				})
 				const labels = reportedLines(result, 'no-handler-on-label')
 				assert.deepStrictEqual(labels.reported, labels.marked)
+				const local = reportedLines(
+					yield* lintSource({
+						'badge.tsx':
+							'export function Badge(props: {children: string; onClick: () => void}) { return <button type="button" onClick={props.onClick}>{props.children}</button> }',
+						'labels.tsx':
+							"import {Badge} from './badge.tsx'\nexport function Run(props: {run: () => void}) { return <Badge onClick={props.run}>Run</Badge> }"
+					}),
+					'no-handler-on-label'
+				)
+				assert.deepStrictEqual(local.reported, [])
 				assert.deepStrictEqual(
 					pipe(
 						result.stdout.diagnostics,
@@ -2502,7 +2554,9 @@ export function decode(input: unknown) { return Schema.decodeUnknownOption(State
 							'export type Missing = string | null | undefined',
 							'export type Saved = typeof Saved.Type',
 							"export const Saved = Schema.Literals(['draft', 'published'])",
-							"export function inferred(value: number): 'small' | 'large' { if (value < 2) return 'small'; return 'large' }",
+							"function inferred(value: number): 'small' | 'large' { if (value < 2) return 'small'; return 'large' }",
+							'export const sizes = [inferred(1), inferred(3)]',
+							"export function exported(value: number): 'small' | 'large' { if (value < 2) return 'small'; return 'large' } // reported",
 							"export function recursive(value: number): 'small' | 'large' { if (value < 2) return 'small'; return recursive(value - 1) } // reported"
 						],
 						'\n'
@@ -2691,6 +2745,7 @@ export type Unknown = 'ready' | unknown`
 							'export const zero = Effect.orElseSucceed(load(1), () => 0)',
 							'export function Counter() { const local = Atom.make(0); return <span>{countAtom.label}{local.label}</span> }',
 							'export function Check(props: {value: unknown}) { return <span>{String(Atom.isAtom(props.value))}</span> }',
+							'export function Start(props: {start: (atom: Atom.Atom<number>) => void}) { return <span onClick={() => props.start(Atom.make(0))}>Start</span> }',
 							'export function Frozen() { "use no memo"; return <div /> }',
 							'export const faded = "bg-linear-to-b from-muted to-background"',
 							'export const painted = "bg-[radial-gradient(circle,var(--muted),transparent)]"'
@@ -2934,7 +2989,18 @@ export type Unknown = 'ready' | unknown`
 							'export function Spaced() { return <VStack spacing={12} /> } // reported',
 							'export function Tight() { return <VStack spacing={0} /> }',
 							'export function Widget() { "widget"; return <VStack spacing={12} modifiers={[padding({all: 16}), font({size: 15})]} /> }',
-							'export const widget = () => { "widget"; function nested() { return padding({all: 16}) }; return <VStack spacing={12} modifiers={[nested()]} /> }'
+							'export const widget = () => { "widget"; function nested() { return padding({all: 16}) }; return <VStack spacing={12} modifiers={[nested()]} /> }',
+							'const GAP = 17',
+							'export function Named() { return <VStack spacing={GAP} modifiers={[padding({all: GAP})]} /> } // reported'
+						],
+						'\n'
+					),
+					// A local helper that shares a modifier's name is not one.
+					'shared.tsx': Array.join(
+						[
+							"import {Text} from '@expo/ui/swift-ui'",
+							'function padding(input: {digits: number}) { return String(input.digits) }',
+							'export function Digits() { return <Text>{padding({digits: 2})}</Text> }'
 						],
 						'\n'
 					),
@@ -3239,6 +3305,17 @@ export type Unknown = 'ready' | unknown`
 							'		if (item < 0) continue',
 							'		if (item < 0) continue // reported',
 							'	}',
+							'}',
+							'export function either(x: number, y: number) {',
+							'	if (x === 0 || y === 0) return 0',
+							'	if (x === 0) return 1 // reported',
+							'	return x + y',
+							'}',
+							// The compiler narrows a repeated reference check, so typescript/no-unnecessary-condition owns it.
+							'export function narrowed(input: {readonly ready: boolean}) {',
+							'	if (input.ready) return 1',
+							'	if (input.ready) return 2',
+							'	return 3',
 							'}',
 							// The examples of the judge question this rule replaced.
 							'export function discount(order: {total: number}) {',
@@ -3701,7 +3778,7 @@ export type Unknown = 'ready' | unknown`
 		)
 
 		testApi.effect(
-			'reports real-clock waits in tests, and TestClock sleeps that nothing in the file drives',
+			'reports real-clock waits in tests, and TestClock sleeps that nothing in their own case drives',
 			Effect.fnUntraced(function* () {
 				const driven = yield* lintSource({
 					'sleeps.test.ts': Array.join(
@@ -3736,7 +3813,12 @@ export type Unknown = 'ready' | unknown`
 							'',
 							"import {Effect} from 'effect'",
 							'',
+							"import {TestClock} from 'effect/testing'",
+							'',
 							"it.effect('never moves time', () => Effect.sleep('1 second')) // reported",
+							"it.effect('moves another case time', () => TestClock.adjust('1 second'))",
+							"it.effect('times out on the time it moves', () => Effect.gen(function* () { yield* Effect.forkChild(Effect.timeoutOption(Effect.never, '1 second')); yield* TestClock.adjust('1 second') }))",
+							"it.effect('guards a hang beside a case that moves time', () => Effect.timeoutOption(Effect.never, '1 second')) // reported",
 							"it.effect('runs', () => Effect.void)"
 						],
 						'\n'
@@ -3806,7 +3888,16 @@ export type Unknown = 'ready' | unknown`
 							"export const budget = pipe(work, Effect.retry({while: error => error === 'offline'}), Effect.timeout('10 seconds'))",
 							"export const directBudget = Effect.timeout(Effect.retry(work, {while: error => error === 'offline'}), '10 seconds')",
 							"export const perTry = pipe(work, Effect.timeout('10 seconds'), Effect.retry({while: error => error === 'offline'})) // reported",
-							'export function unrelated(Effect: {retry: (options: {times: number}) => void}) { return Effect.retry({times: 2}) }'
+							'export function unrelated(Effect: {retry: (options: {times: number}) => void}) { return Effect.retry({times: 2}) }',
+							"export const cadence = Effect.retry(work, {schedule: Schedule.spaced('1 second'), while: error => error === 'offline'}) // reported",
+							"export const counted = Effect.retry(work, {schedule: Schedule.upTo(Schedule.spaced('1 second'), {times: 3}), while: error => error === 'offline'})",
+							"export const lasting = Effect.retry(work, {schedule: Schedule.during('1 minute'), while: error => error === 'offline'})",
+							"export const anyEnds = Effect.retry(work, {schedule: Schedule.min([Schedule.spaced('1 second'), Schedule.recurs(3)]), while: error => error === 'offline'}) // reported",
+							"export const allEnd = Effect.retry(work, {schedule: Schedule.max([Schedule.spaced('1 second'), Schedule.recurs(3)]), while: error => error === 'offline'})",
+							"function cadenceFor(ready: boolean) { if (ready) return Schedule.recurs(3); return Schedule.spaced('1 second') }",
+							"export const branched = (ready: boolean) => Effect.retry(work, {schedule: cadenceFor(ready), while: error => error === 'offline'}) // reported",
+							"const read = Effect.retry(work, {while: error => error === 'offline'})",
+							"export const named = [Effect.timeout(read, '1 second'), pipe(read, Effect.as(1), Effect.timeout('1 second'))]"
 						],
 						'\n'
 					)

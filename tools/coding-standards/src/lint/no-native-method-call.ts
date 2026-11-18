@@ -1,4 +1,4 @@
-import {Array, Option, Predicate, Record, String, pipe} from 'effect'
+import {Array, Function, Option, Predicate, Record, String, pipe} from 'effect'
 
 import {defineRule} from 'vite-plus/lint/plugins'
 import type {Context, ESTree} from 'vite-plus/lint/plugins'
@@ -118,12 +118,34 @@ function provenString(context: Context, node: ESTree.Expression | ESTree.Super) 
 	return value.type === 'TemplateLiteral' || (value.type === 'Literal' && Predicate.isString(value.value))
 }
 
-function ownsMethod(input: {context: Context; receiver: ESTree.Expression}) {
+// A receiver declared as an Effect service, as `path: Path.Path`, or as an object type with this method, as `queue: {push: …}`, owns it.
+function declaresMethod(input: {context: Context; method: string; receiver: ESTree.Expression}) {
+	return Option.exists(declaredType(input.context, input.receiver), type => {
+		if (type.type === 'TSTypeReference') {
+			return (
+				type.typeName.type === 'TSQualifiedName' &&
+				type.typeName.left.type === 'Identifier' &&
+				type.typeName.left.name === type.typeName.right.name
+			)
+		}
+		return (
+			type.type === 'TSTypeLiteral' &&
+			Array.some(
+				type.members,
+				member =>
+					(member.type === 'TSPropertySignature' || member.type === 'TSMethodSignature') &&
+					member.key.type === 'Identifier' &&
+					member.key.name === input.method
+			)
+		)
+	})
+}
+
+function ownsMethod(input: {context: Context; method: string; receiver: ESTree.Expression}) {
 	const root = chainRoot(input.receiver)
 	const throughCall = root !== memberRoot(input.receiver)
-	if (isYieldedService(root)) return true
+	if (isYieldedService(root) || declaresMethod(input)) return true
 	if (root.type !== 'Identifier') return false
-	if (root.name === 'path') return !throughCall
 	return pipe(
 		variableOf(input.context, root),
 		// A global such as Buffer can appear as a variable without definitions.
@@ -157,7 +179,11 @@ export const noNativeMethodCall = defineRule({
 					memberName(node.callee),
 					name => Record.has(REPLACEMENTS, name) || name === 'test' || name === 'exec'
 				) ||
-				ownsMethod({context, receiver: node.callee.object}) ||
+				ownsMethod({
+					context,
+					method: Option.getOrElse(memberName(node.callee), Function.constant('')),
+					receiver: node.callee.object
+				}) ||
 				provenString(context, node.callee.object)
 			) {
 				return

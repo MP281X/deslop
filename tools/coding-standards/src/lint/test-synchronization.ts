@@ -1,4 +1,4 @@
-import {Array, Boolean, MutableList, Option, Predicate} from 'effect'
+import {Array, MutableList, Option, Predicate, pipe} from 'effect'
 
 import {defineRule} from 'vite-plus/lint/plugins'
 import type {Context, ESTree} from 'vite-plus/lint/plugins'
@@ -156,6 +156,33 @@ function inside(node: ESTree.Node, ancestor: ESTree.Node): boolean {
 	return inside(node.parent, ancestor)
 }
 
+// The test case or hook a node belongs to, else the file: a TestClock that another case advances never moves this one's time.
+function caseOf(context: Context, node: ESTree.Node): ESTree.Node {
+	if (node.parent === null) return node
+	if (
+		node.parent.type === 'CallExpression' &&
+		Array.some(node.parent.arguments, argument => argument === node) &&
+		(testHook(context, node.parent.callee) || Option.isSome(testChain(context, node.parent.callee)))
+	) {
+		return node.parent
+	}
+	return caseOf(context, node.parent)
+}
+
+function drivesClock(context: Context, node: ESTree.Node) {
+	return containsNode({
+		context,
+		matches: child => isTestClockCall(context, child, 'adjust') || isTestClockCall(context, child, 'setTime'),
+		node,
+		throughFunctions: true
+	})
+}
+
+// A wait or a timeout on the TestClock is the behaviour under test only where its own case advances that clock.
+function undriven(context: Context, node: ESTree.Node) {
+	return !drivesClock(context, caseOf(context, node))
+}
+
 function assertionIn(context: Context, node: ESTree.Node, seen: ESTree.Node[] = []): boolean {
 	if (Array.contains(seen, node)) return false
 	return containsNode({
@@ -179,6 +206,7 @@ export const testSynchronization = defineRule({
 	create: context => {
 		if (!isTestFile(context)) return {}
 		const waits = MutableList.make<ESTree.Node>()
+		const timeouts = MutableList.make<ESTree.Node>()
 		const findings = MutableList.make<{message: string; node: ESTree.Node}>()
 		function loop(node: Loop) {
 			if (
@@ -251,10 +279,15 @@ export const testSynchronization = defineRule({
 					else MutableList.append(waits, node)
 					return
 				}
+				const timeout = Array.some(['timeout', 'timeoutOption', 'timeoutOrElse'], propertyName =>
+					importedMember({context, importedName: 'Effect', node, propertyName})
+				)
+				if (timeout && !onRealClock(context, node)) {
+					MutableList.append(timeouts, node)
+					return
+				}
 				if (
-					Array.some(['timeout', 'timeoutOption', 'timeoutOrElse'], propertyName =>
-						importedMember({context, importedName: 'Effect', node, propertyName})
-					) ||
+					timeout ||
 					Option.exists(testChain(context, node), chain => Option.contains(Array.last(chain.members), 'flakyTest'))
 				) {
 					MutableList.append(findings, {
@@ -264,27 +297,28 @@ export const testSynchronization = defineRule({
 					})
 				}
 			},
-			'Program:exit': program => {
-				const all = Array.appendAll(
-					MutableList.toArray(findings),
-					Boolean.match(
-						containsNode({
-							context,
-							matches: node => isTestClockCall(context, node, 'adjust') || isTestClockCall(context, node, 'setTime'),
-							node: program,
-							throughFunctions: true
-						}),
-						{
-							onFalse: () =>
-								Array.map(MutableList.toArray(waits), node => ({
-									message:
-										'Advance TestClock for time-dependent logic, or await its Deferred, Latch, Queue or Stream milestone.',
-									node
-								})),
-							onTrue: Array.empty
-						}
+			'Program:exit': () => {
+				const all = [
+					...MutableList.toArray(findings),
+					...pipe(
+						MutableList.toArray(waits),
+						Array.filter(node => undriven(context, node)),
+						Array.map(node => ({
+							message:
+								'Advance TestClock for time-dependent logic, or await its Deferred, Latch, Queue or Stream milestone.',
+							node
+						}))
+					),
+					...pipe(
+						MutableList.toArray(timeouts),
+						Array.filter(node => undriven(context, node)),
+						Array.map(node => ({
+							message:
+								'Use the project timeout only; await a milestone or advance TestClock instead of adding hang guards or flaky retries.',
+							node
+						}))
 					)
-				)
+				]
 				for (const finding of all) {
 					if (!Array.some(all, other => other.node !== finding.node && inside(finding.node, other.node))) {
 						context.report(finding)

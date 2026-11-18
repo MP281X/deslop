@@ -121,10 +121,9 @@ const defaultBranch = Effect.fnUntraced(function* (root: string) {
 	return String.trim(result.stdout)
 })
 
-// The TypeScript files the change adds or edits against its merge base, untracked ones included, with the lines of each as it is now that the change touched; the diff only selects what is asked and is never sent.
+// The branch this change goes into: its open pull request's base, else origin's default branch.
 // judge-ignore no-silent-fallback -- The documented CLI contract uses origin's default branch only without gh or when gh exits 4 to request sign-in; every other git or gh failure fails the run.
-export const change = Effect.fnUntraced(function* (base: Option.Option<string>) {
-	const root = String.trim(yield* git(['rev-parse', '--show-toplevel'], '.'))
+const pullRequestBase = Effect.fnUntraced(function* (root: string) {
 	// A machine without gh, or a gh that asks to sign in (its documented exit code 4), has no pull request host: the base is origin's default branch. A branch without a pull request lists none; any other failure, such as a rejected token or an unreachable host, fails, since the wrong base judges the wrong change.
 	const pullRequest = yield* pipe(
 		run(
@@ -154,12 +153,24 @@ export const change = Effect.fnUntraced(function* (base: Option.Option<string>) 
 		),
 		Effect.catchTag('PlatformError', () => Effect.succeedNone)
 	)
-	const baseRef = yield* pipe(
-		base,
-		Option.orElse(() => Option.map(pullRequest, found => `origin/${found.baseRefName}`)),
-		Option.match({onNone: () => defaultBranch(root), onSome: Effect.succeed})
-	)
-	const mergeBase = String.trim(yield* git(['merge-base', baseRef, 'HEAD'], root))
+	return yield* Option.match(pullRequest, {
+		onNone: () => Effect.map(defaultBranch(root), baseRef => ({baseRef, source: `the change since ${baseRef}`})),
+		onSome: found =>
+			Effect.succeed({
+				baseRef: `origin/${found.baseRefName}`,
+				source: `pull request #${found.number} into origin/${found.baseRefName}`
+			})
+	})
+})
+
+// The TypeScript files the change adds or edits against its merge base, untracked ones included, with the lines of each as it is now that the change touched; the diff only selects what is asked and is never sent. A base the caller names needs no pull request host.
+export const change = Effect.fnUntraced(function* (base: Option.Option<string>) {
+	const root = String.trim(yield* git(['rev-parse', '--show-toplevel'], '.'))
+	const target = yield* Option.match(base, {
+		onNone: () => pullRequestBase(root),
+		onSome: baseRef => Effect.succeed({baseRef, source: `the change since ${baseRef}`})
+	})
+	const mergeBase = String.trim(yield* git(['merge-base', target.baseRef, 'HEAD'], root))
 	const pathspec = [
 		':(top,glob)**/*.ts',
 		':(top,glob)**/*.tsx',
@@ -204,10 +215,7 @@ export const change = Effect.fnUntraced(function* (base: Option.Option<string>) 
 		],
 		mergeBase,
 		root,
-		source: Option.match(pullRequest, {
-			onNone: () => `the change since ${baseRef}`,
-			onSome: found => `pull request #${found.number} into ${baseRef}`
-		})
+		source: target.source
 	}
 })
 

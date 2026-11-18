@@ -1,4 +1,4 @@
-import {Array, Function, MutableList, Option, Predicate, String, pipe} from 'effect'
+import {Array, Boolean, Function, MutableList, Option, Predicate, String, pipe} from 'effect'
 
 import {defineRule} from 'vite-plus/lint/plugins'
 import type {Context, ESTree, Variable} from 'vite-plus/lint/plugins'
@@ -216,7 +216,8 @@ function report(input: {
 							...Array.map(reads, read => fixer.replaceText(read, replacement({name: input.name, read, text})))
 						]
 					},
-					message: `Read ${text} where it is used; TypeScript narrows the property path just as it narrows the alias.`,
+					// Inlining a read used twice reads it twice; an annotated alias is the deliberate single read of a getter or a changing value.
+					message: `Read ${text} where it is used; TypeScript narrows the property path just as it narrows the alias.${Boolean.match(reads.length === 1, {onFalse: Function.constant(' Keep an alias that reads a getter or a changing value once on purpose, with a type annotation.'), onTrue: Function.constant('')})}`,
 					node: input.node
 				})
 		})
