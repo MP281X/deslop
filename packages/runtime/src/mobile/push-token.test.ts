@@ -1,6 +1,6 @@
 import {assert, it} from '@effect/vitest'
 
-import {Deferred, Effect, Function, Queue, Ref} from 'effect'
+import {Array, Deferred, Effect, Function, Queue, Ref} from 'effect'
 
 import {TestClock} from 'effect/testing'
 
@@ -15,13 +15,14 @@ it.effect(
 		const listeners = yield* Queue.unbounded<(token: Token) => void>()
 		const registered = yield* Queue.unbounded<string>()
 		const firstRead = yield* Deferred.make<Token>()
+		const firstReadAnswered = yield* Deferred.make<void>()
 		yield* Effect.forkChild(
 			registerPushTokens(
 				listener => {
 					Queue.offerUnsafe(listeners, listener)
 					return {remove: Function.constVoid}
 				},
-				Deferred.await(firstRead),
+				Effect.tap(Deferred.await(firstRead), () => Deferred.succeed(firstReadAnswered, undefined)),
 				token => Queue.offer(registered, token)
 			)
 		)
@@ -29,6 +30,9 @@ it.effect(
 		listener({data: 'rotated'})
 		assert.strictEqual(yield* Queue.take(registered), 'rotated')
 		yield* Deferred.succeed(firstRead, {data: 'stale'})
+		// The older read settles before the next rotation, so a registration of it would come first.
+		yield* Deferred.await(firstReadAnswered)
+		yield* Effect.forEach(Array.range(1, 10), () => Effect.yieldNow, {concurrency: 1, discard: true})
 		listener({data: 'next'})
 		assert.strictEqual(yield* Queue.take(registered), 'next')
 	})

@@ -44,7 +44,14 @@ import {layerProbeRouter, probeServer} from '#server/probe.ts'
 import {executeProcess} from '#server/process.ts'
 import {installService, installUpdateService, serviceStatus, uninstallService} from '#server/services.ts'
 import {dataDirectory, layerDataStore} from '#server/store.ts'
-import {activateRelease, runtimeUrl, updateRelease, updaterNpm, withLifecycleLock} from '#server/update.ts'
+import {
+	activateRelease,
+	confirmRelease,
+	runtimeUrl,
+	updateRelease,
+	updaterNpm,
+	withLifecycleLock
+} from '#server/update.ts'
 import type {RpcAuth, RpcAdmin} from '#shared/auth.ts'
 import {Port} from '#shared/schema.ts'
 
@@ -229,7 +236,7 @@ export function runApp<A, E>(app: App<A, E>) {
 							yield* configProvider(flags, metadata.config.port)
 							// The timer this installs can only ever succeed with an npm beside this Node and an address to check.
 							yield* updaterNpm
-							yield* runtimeUrl(flags['HOST'] ?? DEFAULT_HOST, flags['PORT'] ?? `${metadata.config.port}`)
+							const url = yield* runtimeUrl(flags['HOST'] ?? DEFAULT_HOST, flags['PORT'] ?? `${metadata.config.port}`)
 							// The unit runs whatever `current` links to: this package now, the updater's releases later.
 							const entry = path.join(
 								yield* activateRelease(name, yield* fs.realPath(packageRoot)),
@@ -241,6 +248,8 @@ export function runApp<A, E>(app: App<A, E>) {
 							)
 							yield* output(yield* installService(name, [execPath, ...execArgv, entry, ...args]))
 							yield* installUpdateService(name, [execPath, ...execArgv, entry, ...args, 'service', 'update'])
+							// The first release that answers is the one the first update falls back to.
+							yield* confirmRelease(name, url)
 						}, withLifecycleLock(name))
 					),
 					Command.make('status', {}, () => Effect.flatMap(serviceStatus(name), output)),

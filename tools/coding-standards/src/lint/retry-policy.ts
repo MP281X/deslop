@@ -92,6 +92,61 @@ function budgeted(context: Context, node: ESTree.CallExpression) {
 	)
 }
 
+type Property = ESTree.ObjectExpression['properties'][number]
+
+function propertyName(property: Property) {
+	if (property.type === 'SpreadElement') return ''
+	if (property.key.type === 'Identifier') return property.key.name
+	if (property.key.type === 'Literal' && Predicate.isString(property.key.value)) return property.key.value
+	return ''
+}
+
+function spreadProperties(node: ESTree.ObjectExpression): Property[] {
+	return Array.flatMap(node.properties, property => {
+		if (property.type === 'SpreadElement' && property.argument.type === 'ObjectExpression') {
+			return spreadProperties(property.argument)
+		}
+		return [property]
+	})
+}
+
+// The options that take effect: a later one replaces an earlier one of its name, and one set to `undefined` leaves the name unset.
+function effectiveProperties(node: ESTree.ObjectExpression) {
+	const all = spreadProperties(node)
+	return Array.filter(all, (property, index) => {
+		const name = propertyName(property)
+		if (name === '') return true
+		if (property.type === 'Property' && property.value.type === 'Identifier' && property.value.name === 'undefined') {
+			return false
+		}
+		return !pipe(
+			all,
+			Array.drop(index + 1),
+			Array.some(later => propertyName(later) === name)
+		)
+	})
+}
+
+function optionPolicy(property: Property, read: (node: ESTree.Node) => RetryPolicy) {
+	if (property.type === 'SpreadElement') return read(property.argument)
+	const name = propertyName(property)
+	if (name === 'times') return {...NONE, bound: true}
+	if (name === 'schedule') return read(property.value)
+	return {...NONE, predicate: Array.contains(['while', 'until'], name)}
+}
+
+// `Schedule.upTo` ends only with a duration or a count; options that name neither bound nothing.
+function upToBound(node: ESTree.CallExpression) {
+	return Option.match(Array.last(node.arguments), {
+		onNone: Function.constTrue,
+		onSome: options =>
+			options.type !== 'ObjectExpression' ||
+			Array.some(effectiveProperties(options), property =>
+				Array.contains(['duration', 'times'], propertyName(property))
+			)
+	})
+}
+
 function scheduleCall(node: ESTree.CallExpression, read: (node: ESTree.Node) => RetryPolicy) {
 	const name = pipe(
 		node.callee,
@@ -105,26 +160,14 @@ function scheduleCall(node: ESTree.CallExpression, read: (node: ESTree.Node) => 
 		}
 		return [read(argument)]
 	})
-	if (Array.contains(['recurs', 'during', 'upTo'], name)) return {...either(parts), bound: true}
+	if (name === 'upTo') return {...either(parts), bound: either(parts).bound || upToBound(node)}
+	if (Array.contains(['recurs', 'during'], name)) return {...either(parts), bound: true}
 	if (Array.contains(['spaced', 'fixed', 'exponential', 'fibonacci', 'windowed', 'cron'], name)) {
 		return {...either(parts), cadence: true}
 	}
 	if (name === 'while') return {...either(parts), predicate: true}
 	if (Array.contains(['min', 'concat'], name)) return both(parts)
 	return either(parts)
-}
-
-function optionPolicy(
-	property: ESTree.ObjectExpression['properties'][number],
-	read: (node: ESTree.Node) => RetryPolicy
-) {
-	if (property.type === 'SpreadElement') return read(property.argument)
-	const name = {value: ''}
-	if (property.key.type === 'Identifier') name.value = property.key.name
-	if (property.key.type === 'Literal' && Predicate.isString(property.key.value)) name.value = property.key.value
-	if (name.value === 'times') return {...NONE, bound: true}
-	if (name.value === 'schedule') return read(property.value)
-	return {...NONE, predicate: Array.contains(['while', 'until'], name.value)}
 }
 
 function callPolicy(context: Context, node: ESTree.CallExpression, read: (node: ESTree.Node) => RetryPolicy) {
@@ -159,7 +202,7 @@ function policy(context: Context, node: ESTree.Node, seen: readonly ESTree.Node[
 		return {...NONE, bound: importedMember({context, importedName: 'Schedule', node, propertyName: 'once'})}
 	}
 	if (node.type === 'ObjectExpression') {
-		return either(Array.map(node.properties, property => optionPolicy(property, read)))
+		return either(Array.map(effectiveProperties(node), property => optionPolicy(property, read)))
 	}
 	if (node.type === 'CallExpression') return callPolicy(context, node, read)
 	if (
@@ -203,7 +246,7 @@ export const retryPolicy = defineRule({
 			}
 			context.report({
 				message:
-					'Name retryable failures with while/until and end the retry with times, Schedule.recurs, Schedule.upTo, Schedule.during or a timeout around it; a cadence such as Schedule.spaced alone retries forever. Use HttpClient.retryTransient for HTTP.',
+					'Name retryable failures with while/until and end the retry with times, Schedule.recurs, Schedule.upTo with a duration or times, Schedule.during or a timeout around it; a cadence such as Schedule.spaced alone retries forever, and a times set to undefined or an empty Schedule.upTo limit ends nothing. Use HttpClient.retryTransient for HTTP.',
 				node
 			})
 		}

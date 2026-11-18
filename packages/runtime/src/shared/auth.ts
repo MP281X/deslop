@@ -136,18 +136,23 @@ export function failureOptions(error: unknown, status: number) {
 const IDENTITY_RECHECK = Duration.minutes(5)
 const IDENTITY_LEASE = Duration.minutes(15)
 
-// Fails once Auth refuses the caller or names someone else, or stays unreachable until its last answer is fifteen minutes old.
+// Fails once Auth refuses the caller or names someone else, or stays unreachable until its last answer is fifteen minutes old, counting the time an unanswered check is in flight.
 export function recheckUser(current: Effect.Effect<User, AuthError>, found: User) {
 	return pipe(
 		current,
 		Effect.retry({
-			// The recheck delay already spent part of the lease, which runs from the last answer.
-			schedule: Schedule.upTo(Schedule.spaced('5 seconds'), {
-				duration: Duration.subtract(IDENTITY_LEASE, IDENTITY_RECHECK)
-			}),
+			schedule: Schedule.upTo(Schedule.spaced('5 seconds'), {duration: IDENTITY_LEASE}),
 			while: error => error.error === 'temporarily_unavailable'
 		}),
 		Effect.delay(IDENTITY_RECHECK),
+		// Each pass starts at an answer, so the lease ends this long after it, whichever check is still running.
+		Effect.timeoutOrElse({
+			duration: IDENTITY_LEASE,
+			orElse: () =>
+				Effect.fail(
+					AuthError.make({error: 'temporarily_unavailable', message: 'Auth did not answer for fifteen minutes'})
+				)
+		}),
 		Effect.filterOrFail(
 			next => next.id === found.id && next.admin === found.admin && next.name === found.name,
 			() => AuthError.make({error: 'access_denied', message: 'The account changed; reconnect the socket'})

@@ -1,7 +1,7 @@
 import {Effect, Exit, Function, Layer, MutableRef, Option, Predicate, String, pipe} from 'effect'
 
 import {FetchHttpClient, HttpClient, HttpClientResponse} from 'effect/http'
-import {AsyncResult, Atom} from 'effect/reactivity'
+import {AsyncResult, Atom, AtomRegistry} from 'effect/reactivity'
 import {Socket} from 'effect/socket'
 import {openAuthSessionAsync} from 'expo-web-browser'
 import {Alert} from 'react-native'
@@ -128,9 +128,11 @@ export function makeSession() {
 		return AuthError.make({cause, message: `Cannot sign in to ${name}`})
 	}
 	const signInAtom = sessionRuntime.fn(
-		(_: void, get) =>
+		(_: void) =>
 			Effect.gen(function* () {
 				if (MutableRef.getAndSet(signingIn, true)) return
+				// The registry outlives the press: an ignored second press rebuilds this atom's context, and a refresh through that one does nothing.
+				const registry = yield* AtomRegistry.AtomRegistry
 				yield* pipe(
 					Effect.gen(function* () {
 						const result = yield* Effect.tryPromise({
@@ -149,7 +151,7 @@ export function makeSession() {
 							Effect.fail(cannotSignIn(cause))
 						)
 						yield* Effect.mapError(keychain.write(secret), cannotSignIn)
-						get.refresh(revalidationAtom)
+						registry.refresh(revalidationAtom)
 					}),
 					Effect.tapError(error => Effect.sync(() => Alert.alert('Not Signed In', error.message))),
 					Effect.uninterruptible,

@@ -85,6 +85,20 @@ it.effect(
 )
 
 it.effect(
+	'ends a stream fifteen minutes after its last answer even when each check takes ten seconds to fail',
+	Effect.fnUntraced(function* () {
+		const answer = yield* Ref.make(named)
+		const stream = yield* openStream(answer)
+		yield* Ref.set(answer, Effect.andThen(Effect.sleep('10 seconds'), unavailable))
+		yield* TestClock.adjust('899 seconds')
+		assert.isUndefined(stream.pollUnsafe())
+		yield* TestClock.adjust('1 second')
+		assert.isDefined(stream.pollUnsafe())
+		assert.strictEqual((yield* Effect.flip(Fiber.join(stream))).error, 'temporarily_unavailable')
+	})
+)
+
+it.effect(
 	'ends a stream at the next check when Auth refuses its caller',
 	Effect.fnUntraced(function* () {
 		const answer = yield* Ref.make(named)
