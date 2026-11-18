@@ -90,12 +90,13 @@ it('refuses a Deslop unit that does not say how it runs, and publishes any other
 	)
 })
 
-it('does not restore a row whose port now belongs to another owner, and checks a row saved without one only by policy', () => {
+it('does not restore a row whose port is empty or now belongs to another owner, and checks a row saved without one only by policy', () => {
 	const row = saved(Option.some('user:web.service'))
 	const listener = {owner: Option.some('user:other.service'), runtime: Option.none()}
 	assert.isTrue(Option.isSome(restoreRefusal(row, listener)))
 	assert.isTrue(Option.isNone(restoreRefusal(row, {...listener, owner: Option.some('user:web.service')})))
-	assert.isTrue(Option.isNone(restoreRefusal(row, {...listener, owner: Option.none()})))
+	assert.isTrue(Option.isSome(restoreRefusal(row, {...listener, owner: Option.none()})))
+	assert.isTrue(Option.isSome(restoreRefusal(saved(Option.none()), {...listener, owner: Option.none()})))
 	assert.isTrue(Option.isNone(restoreRefusal(saved(Option.none()), listener)))
 })
 

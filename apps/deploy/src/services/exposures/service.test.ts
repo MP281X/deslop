@@ -1,7 +1,21 @@
 import {NodeServices} from '@effect/platform-node'
 import {assert, it} from '@effect/vitest'
 
-import {Array, Context, DateTime, Effect, FileSystem, Layer, MutableRef, Option, Queue, pipe} from 'effect'
+import {
+	Array,
+	Context,
+	DateTime,
+	Deferred,
+	Effect,
+	Fiber,
+	FileSystem,
+	Layer,
+	MutableRef,
+	Option,
+	Queue,
+	Record,
+	pipe
+} from 'effect'
 
 import {TestClock} from 'effect/testing'
 
@@ -12,6 +26,7 @@ import {UserId} from '@deslop/runtime/shared/auth'
 import {Exposures} from './service.ts'
 
 import type {Exposure} from '#services/exposures/schema.ts'
+import type {Serve} from '#services/inventory/schema.ts'
 import {DeployError, ExposureName, InventoryItem, ItemId, UnitId, WorkerId} from '#services/inventory/schema.ts'
 import {Inventory} from '#services/inventory/service.ts'
 import {Proxies} from '#services/proxies/service.ts'
@@ -24,14 +39,14 @@ const WEB = {
 	publicAccess: true
 }
 
-function listening(unit: string) {
+function listening(unit: string, port = 5173) {
 	return InventoryItem.make({
-		address: Option.some('127.0.0.1:5173'),
+		address: Option.some(`127.0.0.1:${port}`),
 		detail: '',
-		id: ItemId.make('test:port:tcp:127.0.0.1:5173'),
+		id: ItemId.make(`test:port:tcp:127.0.0.1:${port}`),
 		kind: 'port',
-		name: '127.0.0.1:5173',
-		port: Option.some(5173),
+		name: `127.0.0.1:${port}`,
+		port: Option.some(port),
 		protocol: Option.some('tcp'),
 		scope: Option.some('user'),
 		state: 'LISTEN',
@@ -41,11 +56,18 @@ function listening(unit: string) {
 	})
 }
 
-// The worker as a test sets it: what listens on port 5173 and whether Caddy loads a change; each set of sites Caddy is asked to load is queued by name.
+// The worker as a test sets it: what listens on port 5173 (and, as another unit, on 5174), what the inventory last read of it, whether Caddy loads a change, and Tailscale Serve's mappings; each set of sites Caddy is asked to load is queued by name.
 const worker = Effect.fnUntraced(function* () {
-	const owner = MutableRef.make('web.service')
+	const owner = MutableRef.make(Option.some('web.service'))
+	const seen = MutableRef.make(Option.some('web.service'))
 	const caddyUp = MutableRef.make(true)
+	const gate = MutableRef.make(Option.none<Deferred.Deferred<void>>())
+	const afterCheck = MutableRef.make(Effect.void)
+	const serving = MutableRef.make<Serve>({AllowFunnel: Option.none(), TCP: Option.none(), Web: Option.none()})
+	const unserveFails = MutableRef.make(false)
+	const afterUnserve = MutableRef.make(Effect.void)
 	const asked = yield* Queue.unbounded<readonly string[]>()
+	const unserved = yield* Queue.unbounded<number>()
 	const layer = Layer.mergeAll(
 		Layer.mock(Proxies, {
 			apply: Effect.fnUntraced(function* (rows: readonly Exposure[]) {
@@ -53,23 +75,50 @@ const worker = Effect.fnUntraced(function* () {
 					asked,
 					Array.map(rows, row => row.name)
 				)
+				yield* Option.match(MutableRef.get(gate), {onNone: () => Effect.void, onSome: Deferred.await})
 				if (!MutableRef.get(caddyUp)) return yield* DeployError.make({message: 'Caddy is down'})
 			}),
 			runtime: () => Effect.succeedNone,
-			validate: () => Effect.void
+			serve: port =>
+				Effect.sync(() => {
+					MutableRef.update(serving, status => ({
+						...status,
+						TCP: Option.some({...Option.getOrElse(status.TCP, () => ({})), [`${port}`]: {HTTPS: true}}),
+						Web: Option.some({
+							...Option.getOrElse(status.Web, () => ({})),
+							[`web.ts.net:${port}`]: {Handlers: {'/': {Proxy: Option.some(`http://127.0.0.1:${port}`)}}}
+						})
+					}))
+				}),
+			serveStatus: Effect.sync(() => MutableRef.get(serving)),
+			tailnetName: Effect.succeedSome('web.ts.net'),
+			unserve: Effect.fnUntraced(function* (port: number) {
+				yield* Queue.offer(unserved, port)
+				if (MutableRef.get(unserveFails)) return yield* DeployError.make({message: 'Tailscale is down'})
+				MutableRef.update(serving, status => ({
+					...status,
+					TCP: Option.map(status.TCP, Record.remove(`${port}`)),
+					Web: Option.map(status.Web, Record.remove(`web.ts.net:${port}`))
+				}))
+				yield* MutableRef.get(afterUnserve)
+			}),
+			validate: () => MutableRef.get(afterCheck)
 		}),
 		Layer.mock(Inventory, {
 			ensureFresh: Effect.void,
-			refresh: Effect.void,
+			refresh: Effect.sync(() => MutableRef.set(seen, MutableRef.get(owner))),
 			snapshot: Effect.map(DateTime.now, time => ({
-				items: [listening(MutableRef.get(owner))],
+				items: [
+					...Option.toArray(Option.map(MutableRef.get(seen), unit => listening(unit))),
+					listening('second.service', 5174)
+				],
 				sources: [],
 				time,
 				workers: []
 			}))
 		})
 	)
-	return {asked, caddyUp, layer, owner}
+	return {afterCheck, afterUnserve, asked, caddyUp, gate, layer, owner, serving, unserveFails, unserved}
 })
 
 // One Deploy start over the database in `folder`, for this scope; a second start on the same folder is a restart.
@@ -88,6 +137,10 @@ function start(folder: string, standIns: Layer.Layer<Proxies | Inventory>) {
 }
 
 const admin = requireAdmin({admin: true, id: UserId.make('github:1'), name: 'admin'}, 'Admin required')
+
+function tailnet(name: string, port: number) {
+	return {hostname: 'web.ts.net', kind: 'tailnet' as const, name: ExposureName.make(name), port, publicAccess: false}
+}
 
 function states(items: Effect.Success<typeof Exposures.Service.items>) {
 	return Array.map(items, item => [item.name, item.state, item.health] as const)
@@ -143,7 +196,7 @@ it.layer(NodeServices.layer)(test => {
 					yield* (yield* start(folder, host.layer)).expose(WEB, yield* admin)
 				})
 			)
-			MutableRef.set(host.owner, 'other.service')
+			MutableRef.set(host.owner, Option.some('other.service'))
 			const items = yield* (yield* start(folder, host.layer)).items
 			assert.deepStrictEqual(states(items), [['web', 'configured; check backend', 'warning']])
 			assert.include(
@@ -151,6 +204,101 @@ it.layer(NodeServices.layer)(test => {
 				'now belongs to user:other.service'
 			)
 			assert.deepStrictEqual(yield* Queue.takeAll(host.asked), [['web'], []])
+		}, Effect.scoped)
+	)
+
+	test.effect(
+		'an exposure whose port nobody listens on is not published, and is published again once its owner listens',
+		Effect.fnUntraced(function* () {
+			const folder = yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped()
+			const host = yield* worker()
+			yield* Effect.scoped(
+				Effect.gen(function* () {
+					yield* (yield* start(folder, host.layer)).expose(WEB, yield* admin)
+				})
+			)
+			MutableRef.set(host.owner, Option.none())
+			const exposures = yield* start(folder, host.layer)
+			const items = yield* exposures.items
+			assert.deepStrictEqual(states(items), [['web', 'configured; check backend', 'warning']])
+			assert.include(
+				Option.getOrThrow(Option.flatMap(Array.head(items), item => item.failure)).reason,
+				'Nothing listens'
+			)
+			MutableRef.set(host.owner, Option.some('web.service'))
+			yield* TestClock.adjust('5 seconds')
+			assert.deepStrictEqual(yield* Queue.takeAll(host.asked), [['web'], [], ['web']])
+			assert.deepStrictEqual(states(yield* exposures.items), [['web', 'configured; check backend', 'quiet']])
+		}, Effect.scoped)
+	)
+
+	test.effect(
+		'a listener swapped after expose checked the port is held by the pass that follows the save',
+		Effect.fnUntraced(function* () {
+			const host = yield* worker()
+			MutableRef.set(
+				host.afterCheck,
+				Effect.sync(() => MutableRef.set(host.owner, Option.some('other.service')))
+			)
+			const exposures = yield* start(yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped(), host.layer)
+			assert.instanceOf(yield* Effect.flip(exposures.expose(WEB, yield* admin)), DeployError)
+			assert.include(
+				Option.getOrThrow(Option.flatMap(Array.head(yield* exposures.items), item => item.failure)).reason,
+				'now belongs to user:other.service'
+			)
+			assert.deepStrictEqual(yield* Queue.takeAll(host.asked), [[]])
+		}, Effect.scoped)
+	)
+
+	test.effect(
+		'a removal waits for a pass already applying rows, and the next pass never publishes the row again',
+		Effect.fnUntraced(function* () {
+			const host = yield* worker()
+			MutableRef.set(host.caddyUp, false)
+			const exposures = yield* start(yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped(), host.layer)
+			yield* Effect.flip(exposures.expose(WEB, yield* admin))
+			const release = yield* Deferred.make<void>()
+			MutableRef.set(host.gate, Option.some(release))
+			yield* Queue.takeAll(host.asked)
+			yield* TestClock.adjust('5 seconds')
+			assert.deepStrictEqual(yield* Queue.take(host.asked), ['web'])
+			const removal = yield* Effect.forkChild(exposures.hide(WEB.name, yield* admin), {startImmediately: true})
+			yield* Effect.forEach(Array.range(1, 50), () => Effect.yieldNow, {concurrency: 1, discard: true})
+			assert.deepStrictEqual(states(yield* exposures.items), [['web', 'configured; check backend', 'warning']])
+			MutableRef.set(host.gate, Option.none())
+			MutableRef.set(host.caddyUp, true)
+			yield* Deferred.succeed(release, undefined)
+			yield* Fiber.join(removal)
+			assert.deepStrictEqual(yield* exposures.items, [])
+			assert.deepStrictEqual(yield* Queue.takeAll(host.asked), [[]])
+		}, Effect.scoped)
+	)
+
+	test.effect(
+		'a tailnet mapping changed after the pass began is left alone when a later row’s removal would drop it',
+		Effect.fnUntraced(function* () {
+			const host = yield* worker()
+			const exposures = yield* start(yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped(), host.layer)
+			yield* exposures.expose(tailnet('first', 5173), yield* admin)
+			yield* exposures.expose(tailnet('second', 5174), yield* admin)
+			MutableRef.set(host.unserveFails, true)
+			yield* Effect.flip(exposures.hide(ExposureName.make('first'), yield* admin))
+			MutableRef.set(host.unserveFails, false)
+			MutableRef.set(
+				host.afterUnserve,
+				Effect.sync(() => {
+					MutableRef.update(host.serving, status => ({
+						...status,
+						Web: Option.map(
+							status.Web,
+							Record.set('web.ts.net:5174', {Handlers: {'/': {Proxy: Option.some('http://127.0.0.1:9')}}})
+						)
+					}))
+				})
+			)
+			yield* exposures.hide(ExposureName.make('second'), yield* admin)
+			assert.deepStrictEqual(yield* Queue.takeAll(host.unserved), [5173, 5173])
+			assert.deepStrictEqual(yield* exposures.items, [])
 		}, Effect.scoped)
 	)
 })
