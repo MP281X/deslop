@@ -1,9 +1,40 @@
 import {Array, Boolean, Function, HashMap, HashSet, Number, Option, Record, Tuple, pipe} from 'effect'
 
-import type {Visitor, VisitorId, Visitors} from '#services/presence/schema.ts'
+import type {Color, Visitor, VisitorId, Visitors} from '#services/presence/schema.ts'
 
 // The trail grid's pitch in CSS pixels; a cell paints all but the 2px of grid line.
 const CELL = 26
+
+// Each pass is a translucent square over the passes before it.
+const PASS_OPACITY = 0.22
+
+// Each palette colour's channels, for blending passes; a colour added to the palette fails the type check here.
+const CHANNELS: Record<Color, {blue: number; green: number; red: number}> = {
+	'#3aa99f': {blue: 0x9f, green: 0xa9, red: 0x3a},
+	'#8b7ec8': {blue: 0xc8, green: 0x7e, red: 0x8b},
+	'#4385be': {blue: 0xbe, green: 0x85, red: 0x43},
+	'#ce5d97': {blue: 0x97, green: 0x5d, red: 0xce},
+	'#d0a215': {blue: 0x15, green: 0xa2, red: 0xd0},
+	'#da702c': {blue: 0x2c, green: 0x70, red: 0xda}
+}
+
+// The passes over one cell, newest first, painted once as the source-over blend their stacked squares make: crossing colours mix and a repeated colour darkens.
+function blend(colors: Array.NonEmptyReadonlyArray<Color>) {
+	const opacity = 1 - (1 - PASS_OPACITY) ** Array.length(colors)
+	const blended = Array.reduce(colors, {blue: 0, green: 0, red: 0}, (sum, color, depth) => {
+		const weight = (PASS_OPACITY * (1 - PASS_OPACITY) ** depth) / opacity
+		return {
+			blue: sum.blue + CHANNELS[color].blue * weight,
+			green: sum.green + CHANNELS[color].green * weight,
+			red: sum.red + CHANNELS[color].red * weight
+		}
+	})
+	// Thousandths of a channel are finer than any screen shows, and keep float noise out of the page.
+	return {
+		fill: `rgb(${Number.round(blended.red, 3)} ${Number.round(blended.green, 3)} ${Number.round(blended.blue, 3)})`,
+		opacity
+	}
+}
 
 // The latest 180 positions in the order cursors reached them; a recolour starts a new stretch where the cursor is.
 export function appendTrails(
@@ -26,7 +57,7 @@ export function appendTrails(
 	return pipe(trails, Array.appendAll(moved), Array.takeRight(180))
 }
 
-// One cell per grid step between a cursor's positions, in the newest stretch's colour; a cell crossed again paints a further layer, as overlapping translucent squares do.
+// One cell per grid step between a cursor's positions, in the colour of the stretch that reached it; a cell crossed again blends every pass, as overlapping translucent squares do.
 export function trailCells(trails: Visitors, viewport: {height: number; width: number}) {
 	const [, segments] = Array.mapAccum(
 		trails,
@@ -62,7 +93,12 @@ export function trailCells(trails: Visitors, viewport: {height: number; width: n
 		Array.flatten,
 		Array.reverse,
 		Array.groupBy(cell => `${cell.x}:${cell.y}`),
-		Record.collect((key, layers) => ({...Array.headNonEmpty(layers), key, layers: Array.length(layers)})),
+		Record.collect((key, passes) => ({
+			...blend(Array.map(passes, pass => pass.color)),
+			key,
+			x: Array.headNonEmpty(passes).x,
+			y: Array.headNonEmpty(passes).y
+		})),
 		Array.take(1024)
 	)
 }

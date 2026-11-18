@@ -21,7 +21,7 @@ import {Button} from '@deslop/components-web/ui/button'
 import {Dialog, DialogContent, DialogHeader, DialogTitle} from '@deslop/components-web/ui/dialog'
 import {Kbd, KbdGroup} from '@deslop/components-web/ui/kbd'
 
-import {ownCursorAtom, recolorAtom, sceneAtom, sendCursorAtom} from '#lib/presence.ts'
+import {ownColorAtom, ownCursorAtom, recolorAtom, sceneAtom, sendCursorAtom} from '#lib/presence.ts'
 import {contacts, education, experience, languages, profile, projects, skills, summary} from '#lib/profile.ts'
 import {trailCells} from '#lib/trails.ts'
 import {VisitorId, Visitors} from '#services/presence/schema.ts'
@@ -79,15 +79,7 @@ function TrailGrid(input: {trails: Visitors; viewport: {width: number; height: n
 			shapeRendering="crispEdges"
 		>
 			{Array.map(trailCells(input.trails, input.viewport), cell => (
-				<rect
-					key={cell.key}
-					x={cell.x}
-					y={cell.y}
-					width={24}
-					height={24}
-					fill={cell.color}
-					fillOpacity={1 - 0.78 ** cell.layers}
-				/>
+				<rect key={cell.key} x={cell.x} y={cell.y} width={24} height={24} fill={cell.fill} fillOpacity={cell.opacity} />
 			))}
 		</svg>
 	)
@@ -158,7 +150,12 @@ function OwnCursor(input: {viewport: {width: number; height: number}}) {
 		<div className="mouse:contents hidden print:hidden">
 			<Cursor
 				own
-				cursor={{...useAtomValue(ownCursorAtom), id: VisitorId.make('own'), name: 'You'}}
+				cursor={{
+					...useAtomValue(ownCursorAtom),
+					color: useAtomValue(ownColorAtom),
+					id: VisitorId.make('own'),
+					name: 'You'
+				}}
 				viewport={input.viewport}
 			/>
 		</div>
@@ -385,7 +382,7 @@ function VisitorCount(props: {visitors: Visitors}) {
 		<>
 			<span
 				className="size-1.5 rounded-full bg-(--identity-color)"
-				style={{'--identity-color': useAtomValue(ownCursorAtom).color}}
+				style={{'--identity-color': useAtomValue(ownColorAtom)}}
 			/>
 			<span className="text-foreground tabular-nums">{Array.length(props.visitors)}</span>
 			<span className="text-muted-foreground">
@@ -517,11 +514,10 @@ function PortfolioRoute() {
 		event.currentTarget.style.setProperty('--pointer-x', `${event.clientX}px`)
 		event.currentTarget.style.setProperty('--pointer-y', `${event.clientY}px`)
 		if (viewport.width === 0 || viewport.height === 0) return
-		setOwnCursor(cursor => ({
-			...cursor,
+		setOwnCursor({
 			x: Number.clamp(event.clientX / viewport.width, {maximum: 0.999999, minimum: 0}),
 			y: Number.clamp(event.clientY / viewport.height, {maximum: 0.999999, minimum: 0})
-		}))
+		})
 	}
 
 	useHotkeys([
