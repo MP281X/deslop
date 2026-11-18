@@ -29,7 +29,7 @@ export type SpanId = typeof SpanId.Type
 export const SpanId = pipe(Schema.String, Schema.check(Schema.isPattern(/^[a-fA-F0-9]{16}$/u)), Schema.brand('SpanId'))
 
 export type LogId = typeof LogId.Type
-// The first six bytes of a record's digest, exact in a number and usable as its row id.
+// The first 53 bits of a record's digest, exact in a number and usable as its row id.
 export const LogId = pipe(Schema.Int, Schema.brand('ScopeLogId'))
 
 export type ServiceName = typeof ServiceName.Type
@@ -135,7 +135,8 @@ export const ExportedLog = Schema.Struct({
 	severityNumber: Schema.OptionFromOptionalKey(Schema.Int),
 	severityText: Schema.OptionFromOptionalKey(Schema.String),
 	spanId: SpanIdFromEmpty,
-	timeUnixNano: Nano,
+	// Optional in OTLP, where 0 also means unknown.
+	timeUnixNano: Schema.OptionFromOptionalKey(Nano),
 	traceId: TraceIdFromEmpty
 }).annotate({parseOptions: {onExcessProperty: 'preserve'}})
 
@@ -349,7 +350,7 @@ export const SpanFacts = Schema.Struct(
 export type SpanFailure = typeof SpanFailure.Type
 export const SpanFailure = Schema.Struct(Struct.pick(Span.fields, ['error', 'exception']))
 export type LogFacts = typeof LogFacts.Type
-export const LogFacts = Schema.Struct(Struct.pick(Log.fields, ['message', 'severity', 'time']))
+export const LogFacts = Schema.Struct(Struct.pick(Log.fields, ['message', 'severity', 'spanId', 'time']))
 export type RejectedExport = typeof RejectedExport.Type
 export const RejectedExport = Schema.Struct(Struct.pick(Rejection.fields, ['credential', 'route', 'status']))
 
@@ -428,7 +429,8 @@ export type CompactLog = typeof CompactLog.Type
 export const CompactLog = Schema.Struct({
 	at: Schema.DateTimeUtcFromString.annotate({description: 'ISO-8601 log timestamp.'}),
 	level: LogLevel,
-	message: Schema.String
+	message: Schema.String,
+	span: Schema.OptionFromOptionalKey(SpanId.annotate({description: 'Span id the log was written under.'}))
 })
 
 export type AppFilter = typeof AppFilter.Type
@@ -565,10 +567,12 @@ export const MeasureLatencyParams = Schema.Struct({
 
 export type OperationRow = typeof OperationRow.Type
 export const OperationRow = Schema.Struct({
+	failedTraces: Schema.OptionFromOptionalKey(
+		Schema.Int.annotate({description: 'Runs whose trace holds any failed span, not only a failed root.'})
+	),
 	failure: Schema.OptionFromOptionalKey(
 		Schema.Struct({error: Schema.OptionFromOptionalKey(Schema.String), span: Schema.String, trace: TraceId})
 	),
-	failures: Schema.OptionFromOptionalKey(Schema.Int),
 	name: Schema.String,
 	p50Ms: DurationFromFiniteMillis,
 	p95Ms: DurationFromFiniteMillis,
@@ -601,7 +605,6 @@ export const TraceRow = Schema.Struct({
 export type TracesAnswer = typeof TracesAnswer.Type
 export const TracesAnswer = Schema.Struct({
 	nextCursor: Schema.OptionFromOptionalKey(TraceCursor),
-	total: Schema.Int,
 	traces: Schema.Array(TraceRow)
 })
 
@@ -617,7 +620,10 @@ export const ReadSpan = Schema.Struct({
 	ms: DurationFromFiniteMillis.annotate({description: 'Span duration in milliseconds.'}),
 	name: Schema.String,
 	parent: Schema.OptionFromOptionalKey(SpanId),
-	side: Schema.OptionFromOptionalKey(Side)
+	side: Schema.OptionFromOptionalKey(Side),
+	trace: Schema.OptionFromOptionalKey(
+		TraceId.annotate({description: 'The linked trace this span belongs to, when not the trace read.'})
+	)
 })
 
 export type ReadTraceAnswer = typeof ReadTraceAnswer.Type
@@ -636,6 +642,7 @@ export const LogRow = Schema.Struct({
 	app: AppName,
 	at: Schema.DateTimeUtcFromString,
 	attrs: Schema.OptionFromOptionalKey(ToolAttributes),
+	id: LogId,
 	level: LogLevel,
 	message: Schema.String,
 	side: Schema.OptionFromOptionalKey(Side),
@@ -646,14 +653,13 @@ export const LogRow = Schema.Struct({
 export type LogsAnswer = typeof LogsAnswer.Type
 export const LogsAnswer = Schema.Struct({
 	logs: Schema.Array(LogRow),
-	nextCursor: Schema.OptionFromOptionalKey(LogCursor),
-	total: Schema.Int
+	nextCursor: Schema.OptionFromOptionalKey(LogCursor)
 })
 
 export type LatencyAnswer = typeof LatencyAnswer.Type
 export const LatencyAnswer = Schema.Struct({
 	count: Schema.Int,
-	failures: Schema.Int,
+	failedSpans: Schema.Int.annotate({description: 'Samples of this span name that failed themselves.'}),
 	maxMs: DurationFromFiniteMillis,
 	p50Ms: DurationFromFiniteMillis,
 	p95Ms: DurationFromFiniteMillis
