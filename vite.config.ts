@@ -48,7 +48,7 @@ export default defineConfig({
 			'**/*.gen.ts',
 			'**/*.icon/**',
 			'packages/components-web/src/ui/**',
-			'.claude/skills/plan/references/prototype.html'
+			'.claude/skills/proof/references/prototype.html'
 		],
 
 		arrowParens: 'avoid',

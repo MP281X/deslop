@@ -1,6 +1,6 @@
 # Maintenance
 
-A pass removes files (build skill, **Delegates**) under the approved maintenance scope:
+A pass runs under the approved maintenance scope; removals go to a Sonnet delegate, since Codex rejects `rm -rf`:
 
 ```mermaid
 stateDiagram-v2
