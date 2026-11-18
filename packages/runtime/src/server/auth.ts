@@ -3,6 +3,7 @@ import {
 	Cache,
 	Config,
 	Context,
+	Duration,
 	Effect,
 	Exit,
 	Function,
@@ -83,9 +84,32 @@ export const clientAddress = HttpMiddleware.make(app =>
 	)
 )
 
+const IDENTITY_RECHECK = Duration.minutes(5)
+const IDENTITY_LEASE = Duration.minutes(15)
+
 function refusalOf(status: number, message: string) {
 	if (status === 403) return AuthError.make({error: 'access_denied', message})
 	return AuthError.make({message})
+}
+
+// Fails once Auth refuses the caller or names someone else, or stays unreachable until its last answer is fifteen minutes old.
+export function recheckUser(current: Effect.Effect<User, AuthError>, found: User) {
+	return pipe(
+		current,
+		Effect.retry({
+			// The recheck delay already spent part of the lease, which runs from the last answer.
+			schedule: Schedule.upTo(Schedule.spaced('5 seconds'), {
+				duration: Duration.subtract(IDENTITY_LEASE, IDENTITY_RECHECK)
+			}),
+			while: error => error.error === 'temporarily_unavailable'
+		}),
+		Effect.delay(IDENTITY_RECHECK),
+		Effect.filterOrFail(
+			next => next.id === found.id && next.admin === found.admin && next.name === found.name,
+			() => AuthError.make({error: 'access_denied', message: 'The account changed; reconnect the socket'})
+		),
+		Effect.forever
+	)
 }
 
 export class Auth extends Context.Service<
@@ -110,20 +134,7 @@ export class Auth extends Context.Service<
 						pipe(
 							effect,
 							Effect.provideService(CurrentUser, found),
-							Effect.raceFirst(
-								pipe(
-									Effect.delay(user(request.headers), '5 minutes'),
-									Effect.retry({
-										schedule: Schedule.spaced('5 seconds'),
-										while: error => error.error === 'temporarily_unavailable'
-									}),
-									Effect.filterOrFail(
-										current => current.id === found.id && current.admin === found.admin && current.name === found.name,
-										() => AuthError.make({error: 'access_denied', message: 'The account changed; reconnect the socket'})
-									),
-									Effect.forever
-								)
-							)
+							Effect.raceFirst(recheckUser(user(request.headers), found))
 						)
 					)
 				)
