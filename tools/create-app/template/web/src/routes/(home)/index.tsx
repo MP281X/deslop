@@ -24,5 +24,5 @@ function HomeRoute() {
 
 export const Route = createFileRoute('/(home)/')({
 	component: HomeRoute,
-	loader: load => preload(load.context, [nameAtom])
+	loader: load => preload(load, [nameAtom])
 })
