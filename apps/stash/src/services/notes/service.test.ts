@@ -509,6 +509,85 @@ it.layer(NodeServices.layer)(test =>
 
 it.layer(NodeServices.layer)(test =>
 	test.effect(
+		'keeps the run and the answer it waits to store when a Regenerate fails on a busy database',
+		Effect.fnUntraced(function* () {
+			const directory = yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped()
+			const requests = yield* Ref.make(0)
+			const asked = yield* Deferred.make<void>()
+			const answered = yield* Deferred.make<void>()
+			const user = UserId.make('github:1')
+			return yield* Effect.scoped(
+				Effect.gen(function* () {
+					const context = yield* Layer.build(
+						notesIn(directory, () =>
+							pipe(
+								Ref.update(requests, count => count + 1),
+								Effect.andThen(Deferred.succeed(asked, undefined)),
+								Effect.andThen(Deferred.await(answered)),
+								Effect.as(ORGANIZATION)
+							)
+						)
+					)
+					const notes = Context.get(context, Notes)
+					yield* notes.capture(user, {id: FIRST, text: 'Lentils with cumin'})
+					yield* Deferred.await(asked)
+					const release = yield* lockDatabase(directory)
+					yield* Deferred.succeed(answered, undefined)
+					// The answer cannot be stored yet and waits to be tried again.
+					yield* TestClock.adjust('1 second')
+					const failure = yield* Effect.flip(notes.regenerate(user, FIRST))
+					yield* release
+					const final = yield* settledAfterTicks(notes)
+					// The minute scans since would have asked the provider again had the run been lost.
+					assert.deepStrictEqual(
+						[failure._tag, final.status, final.title, yield* Ref.get(requests)],
+						['NotesError', 'ready', 'Soup', 1]
+					)
+				})
+			)
+		})
+	)
+)
+
+it.layer(NodeServices.layer)(test =>
+	test.effect(
+		'starts one new run on Regenerate and keeps nothing of the answer the old run waited for',
+		Effect.fnUntraced(function* () {
+			const directory = yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped()
+			const requests = yield* Ref.make(0)
+			const asked = yield* Deferred.make<void>()
+			const user = UserId.make('github:1')
+			return yield* Effect.scoped(
+				Effect.gen(function* () {
+					const context = yield* Layer.build(
+						notesIn(directory, () =>
+							pipe(
+								requests,
+								Ref.updateAndGet(count => count + 1),
+								Effect.flatMap(count =>
+									Boolean.match(count === 1, {
+										onFalse: () => Effect.succeed({...ORGANIZATION, title: 'Again'}),
+										// The first run waits for an answer that never comes.
+										onTrue: () => Effect.andThen(Deferred.succeed(asked, undefined), Effect.never)
+									})
+								)
+							)
+						)
+					)
+					const notes = Context.get(context, Notes)
+					yield* notes.capture(user, {id: FIRST, text: 'Lentils with cumin'})
+					yield* Deferred.await(asked)
+					yield* notes.regenerate(user, FIRST)
+					const final = yield* settledAfterTicks(notes)
+					assert.deepStrictEqual([final.status, final.title, yield* Ref.get(requests)], ['ready', 'Again', 2])
+				})
+			)
+		})
+	)
+)
+
+it.layer(NodeServices.layer)(test =>
+	test.effect(
 		'asks the provider once for a note it cannot record, until the person asks again',
 		Effect.fnUntraced(function* () {
 			const directory = yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped()
