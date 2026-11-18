@@ -28,15 +28,8 @@ import {Dns, NetAddress} from 'effect/net'
 import {pageText} from './page.ts'
 import {conversationExtraction, conversationPhotos, conversationPlan, tikTokExtraction} from './x.ts'
 
-import {
-	canonical,
-	isYouTube,
-	plainText,
-	publicAddress,
-	sourceOf,
-	sourceProxy,
-	sticky
-} from '#services/notes/lib/utils.ts'
+import {sourceProxy} from '#services/media/service.ts'
+import {canonical, isYouTube, plainText, publicAddress, sourceOf, sticky} from '#services/notes/lib/utils.ts'
 import type {FxPost, Image} from '#services/notes/schema.ts'
 import {
 	Extraction,

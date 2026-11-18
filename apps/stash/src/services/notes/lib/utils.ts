@@ -1,4 +1,4 @@
-import {Array, Config, Effect, Filter, Function, Number, Option, Order, Record, Redacted, Result, String, pipe} from 'effect'
+import {Array, Effect, Filter, Function, Number, Option, Order, Record, Redacted, Result, String, pipe} from 'effect'
 
 import {Dns, NetAddress} from 'effect/net'
 
@@ -184,9 +184,6 @@ export function fitPictures(images: readonly Picture[]) {
 		result => Array.getSomes(result[1])
 	)
 }
-
-// When set, every read of a source exits through this proxy, so sites never see the server's address; `{session}` keeps one exit address per request.
-export const sourceProxy = Config.option(Config.Redacted('STASH_PROXY'))
 
 export function sticky(proxy: Redacted.Redacted, session: string) {
 	return Redacted.make(String.replaceAll('{session}', session)(Redacted.value(proxy)))

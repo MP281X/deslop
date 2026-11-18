@@ -4,6 +4,7 @@ import {
 	Array,
 	Boolean,
 	ByteSize,
+	Config,
 	Context,
 	DateTime,
 	Duration,
@@ -59,7 +60,7 @@ import {
 	Transcript,
 	TranscriptionResponse
 } from '#services/media/schema.ts'
-import {isYouTube, publicAddress, sourceProxy, sticky} from '#services/notes/lib/utils.ts'
+import {isYouTube, publicAddress, sticky} from '#services/notes/lib/utils.ts'
 import {NotesError} from '#services/notes/schema.ts'
 
 // A local input opens only files, so a crafted container or playlist cannot make ffmpeg or ffprobe fetch.
@@ -170,6 +171,9 @@ function withinDeadline(budget: MediaBudget) {
 			})
 		)
 }
+
+// When set, every read of a source exits through this proxy, so sites never see the server's address; `{session}` keeps one exit address per request.
+export const sourceProxy = Config.option(Config.Redacted('STASH_PROXY'))
 
 export class Media extends Context.Service<
 	Media,
