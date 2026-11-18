@@ -1,6 +1,6 @@
 import {assert, it} from '@effect/vitest'
 
-import {Array, Deferred, Effect, Fiber, Function, Ref, pipe} from 'effect'
+import {Array, Deferred, Effect, Fiber, Function, Number, Ref, String, pipe} from 'effect'
 
 import {TestClock} from 'effect/testing'
 
@@ -21,7 +21,8 @@ it.effect(
 				}
 				return pass
 			}),
-			Function.constTrue
+			Function.constTrue,
+			Number.Equivalence
 		)
 		const first = yield* Effect.forkChild(reconciler.request, {startImmediately: true})
 		yield* Deferred.await(running)
@@ -43,7 +44,8 @@ it.effect(
 		const passes = yield* Ref.make(0)
 		const reconciler = yield* makeReconciler(
 			Ref.updateAndGet(passes, count => count + 1),
-			pass => pass > 1
+			pass => pass > 1,
+			Number.Equivalence
 		)
 		assert.strictEqual(yield* reconciler.request, 1)
 		yield* TestClock.adjust('5 seconds')
@@ -63,7 +65,8 @@ it.effect(
 				Ref.updateAndGet(count => count + 1),
 				Effect.filterOrFail(pass => pass >= 3, Function.constant('Caddy is down'))
 			),
-			Function.constTrue
+			Function.constTrue,
+			Number.Equivalence
 		)
 		assert.strictEqual(yield* Effect.flip(reconciler.request), 'Caddy is down')
 		yield* TestClock.adjust('5 seconds')
@@ -74,5 +77,35 @@ it.effect(
 		assert.strictEqual(yield* Ref.get(passes), 3)
 		yield* TestClock.adjust('10 minutes')
 		assert.strictEqual(yield* Ref.get(passes), 3)
+	}, Effect.scoped)
+)
+
+it.effect(
+	'the pause grows while a pass leaves the same thing unfinished and starts again when that changes',
+	Effect.fnUntraced(function* () {
+		const passes = yield* Ref.make(0)
+		const held = yield* Ref.make('notes')
+		const reconciler = yield* makeReconciler(
+			pipe(
+				passes,
+				Ref.update(count => count + 1),
+				Effect.andThen(Ref.get(held))
+			),
+			Function.constFalse,
+			String.Equivalence
+		)
+		assert.strictEqual(yield* reconciler.request, 'notes')
+		yield* TestClock.adjust('5 seconds')
+		yield* TestClock.adjust('10 seconds')
+		assert.strictEqual(yield* Ref.get(passes), 3)
+		yield* Ref.set(held, 'stash')
+		yield* TestClock.adjust('20 seconds')
+		assert.strictEqual(yield* Ref.get(passes), 4)
+		yield* TestClock.adjust('5 seconds')
+		assert.strictEqual(yield* Ref.get(passes), 5)
+		yield* TestClock.adjust('5 seconds')
+		assert.strictEqual(yield* Ref.get(passes), 5)
+		yield* TestClock.adjust('5 seconds')
+		assert.strictEqual(yield* Ref.get(passes), 6)
 	}, Effect.scoped)
 )

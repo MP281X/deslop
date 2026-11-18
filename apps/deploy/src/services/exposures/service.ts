@@ -14,6 +14,7 @@ import {
 	Result,
 	Schema,
 	Semaphore,
+	String,
 	Struct,
 	pipe
 } from 'effect'
@@ -241,7 +242,8 @@ export class Exposures extends Context.Service<Exposures>()('@deslop/deploy/serv
 					{attributes: {worker}}
 				)
 			),
-			Record.isEmptyRecord
+			Record.isEmptyRecord,
+			Record.makeEquivalence(String.Equivalence)
 		)
 		// Pending removals finish and saved exposures return before Deploy serves.
 		yield* Effect.ignore(reconciler.request, {
