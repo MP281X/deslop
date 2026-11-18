@@ -205,9 +205,9 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 				sql`INSERT INTO ${sql(StartRequest.table)} ${sql.insert(row)} ON CONFLICT (bookingId) DO UPDATE SET at = excluded.at`
 		})
 
-		// Apple holds the channel of a start it did not accept until it confirms deleting it; that channel is retired in the transaction that saves the start's other outcome.
+		// Apple holds the channel of a start it did not accept, or that failed, until it confirms deleting it; that channel is retired in the transaction that saves the start's other outcome.
 		const unstarted = Effect.fnUntraced(function* (
-			answer: ApnsAnswer,
+			channel: Option.Option<string>,
 			target: Device,
 			now: DateTime.Utc,
 			forget: Effect.Effect<void, SqlError.SqlError | Schema.SchemaError>
@@ -215,12 +215,12 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 			yield* pipe(
 				forget,
 				Effect.andThen(
-					Option.match(answer.channel, {
+					Option.match(channel, {
 						onNone: () => Effect.void,
-						onSome: channel =>
+						onSome: held =>
 							recordRetirement({
 								bundle: target.bundle,
-								channel: ChannelId.make(channel),
+								channel: ChannelId.make(held),
 								props: Option.none(),
 								retiredAt: now
 							})
@@ -229,21 +229,28 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 				sql.withTransaction,
 				asPushSaveError
 			)
-			if (Option.isSome(answer.channel)) yield* wake
+			if (Option.isSome(channel)) yield* wake
 		})
 
 		const pushStart = Effect.fnUntraced(function* (target: Device, showing: Showing) {
-			const answer = yield* apns.startActivity(target, showing.leg, {
-				aps: {
-					alert: startAlert(showing.journey),
-					attributes: {url: `${SCHEMES[target.bundle]}://booking/${showing.journey.id}`},
-					'attributes-type': 'LiveActivityAttributes',
-					'content-state': yield* contentState(showing.props),
-					event: 'start',
-					'relevance-score': 100,
-					timestamp: DateTime.toEpochSeconds(showing.now)
-				}
-			})
+			const answer = yield* Effect.tapError(
+				apns.startActivity(target, showing.leg, {
+					aps: {
+						alert: startAlert(showing.journey),
+						attributes: {url: `${SCHEMES[target.bundle]}://booking/${showing.journey.id}`},
+						'attributes-type': 'LiveActivityAttributes',
+						'content-state': yield* contentState(showing.props),
+						event: 'start',
+						'relevance-score': 100,
+						timestamp: DateTime.toEpochSeconds(showing.now)
+					}
+				}),
+				error =>
+					Option.match(error.channel, {
+						onNone: () => Effect.void,
+						onSome: channel => unstarted(Option.some(channel), target, showing.now, Effect.void)
+					})
+			)
 			return yield* ApnsAnswer.match(answer, {
 				Accepted: accepted =>
 					Option.match(accepted.channel, {
@@ -252,23 +259,23 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 					}),
 				DeadToken: dead =>
 					Effect.andThen(
-						unstarted(dead, target, showing.now, forgetDevice(target)),
+						unstarted(dead.channel, target, showing.now, forgetDevice(target)),
 						PushError.make({cause: dead, message: 'Apple rejected the Live Activity token.'})
 					),
 				Refused: refused =>
 					Effect.andThen(
-						unstarted(refused, target, showing.now, forgetDevice(target)),
+						unstarted(refused.channel, target, showing.now, forgetDevice(target)),
 						PushError.make({cause: refused, message: 'Apple refused the Live Activity start.'})
 					),
 				Retry: retry =>
 					Effect.andThen(
-						unstarted(retry, target, showing.now, Effect.void),
+						unstarted(retry.channel, target, showing.now, Effect.void),
 						PushError.make({cause: retry, message: 'Apple did not accept the Live Activity start.'})
 					),
 				// The journey's words are too long, which no token can fix, so the iPhone stays registered.
 				TooLarge: tooLarge =>
 					Effect.andThen(
-						unstarted(tooLarge, target, showing.now, Effect.void),
+						unstarted(tooLarge.channel, target, showing.now, Effect.void),
 						PushError.make({cause: tooLarge, message: 'The Live Activity has too much text to start.'})
 					)
 			})
