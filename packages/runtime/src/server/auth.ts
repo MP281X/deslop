@@ -1,4 +1,18 @@
-import {Cache, Config, Context, Effect, Exit, Function, Layer, Option, Result, Schedule, Schema, pipe} from 'effect'
+import {
+	Brand,
+	Cache,
+	Config,
+	Context,
+	Effect,
+	Exit,
+	Function,
+	Layer,
+	Option,
+	Result,
+	Schedule,
+	Schema,
+	pipe
+} from 'effect'
 
 import {
 	Cookies,
@@ -17,24 +31,28 @@ import {
 	AuthError,
 	CLIENT_HEADER,
 	CurrentUser,
+	CurrentAdmin,
 	DEVELOPER,
 	IDENTIFY_PATH,
 	IdentifyRequest,
 	ON_BEHALF_HEADER,
 	RpcAuth,
+	RpcAdmin,
 	SESSION_COOKIE,
 	UserId,
 	asAuthError,
 	failureOptions
 } from '#shared/auth.ts'
-import type {User} from '#shared/auth.ts'
+import type {Admin, User} from '#shared/auth.ts'
 import {Account} from '#shared/schema.ts'
 
 // Without a domain there is no sign-in: every request is this trusted developer.
 export const localAuth = Config.map(Config.option(Config.String('AUTH_URL')), Option.isNone)
 
+const admin = Brand.nominal<Admin>()
+
 export function requireAdmin(user: User, message: string) {
-	if (user.admin) return Effect.void
+	if (user.admin) return Effect.succeed(admin(user))
 	return Effect.fail(AuthError.make({error: 'access_denied', message}))
 }
 
@@ -84,29 +102,43 @@ export class Auth extends Context.Service<
 			const found = yield* account(headers)
 			return {admin: found.admin, id: found.id, name: found.name}
 		})
-		return Context.add(
+		return pipe(
 			Context.make(Auth, Auth.of({account, user})),
-			RpcAuth,
-			RpcAuth.of((effect, request) =>
-				Effect.flatMap(user(request.headers), found =>
-					pipe(
-						effect,
-						Effect.provideService(CurrentUser, found),
-						Effect.raceFirst(
-							pipe(
-								Effect.delay(user(request.headers), '5 minutes'),
-								Effect.retry({
-									schedule: Schedule.spaced('5 seconds'),
-									while: error => error.error === 'temporarily_unavailable'
-								}),
-								Effect.filterOrFail(
-									current => current.id === found.id && current.admin === found.admin && current.name === found.name,
-									() => AuthError.make({error: 'access_denied', message: 'The account changed; reconnect the socket'})
-								),
-								Effect.forever
+			Context.add(
+				RpcAuth,
+				RpcAuth.of((effect, request) =>
+					Effect.flatMap(user(request.headers), found =>
+						pipe(
+							effect,
+							Effect.provideService(CurrentUser, found),
+							Effect.raceFirst(
+								pipe(
+									Effect.delay(user(request.headers), '5 minutes'),
+									Effect.retry({
+										schedule: Schedule.spaced('5 seconds'),
+										while: error => error.error === 'temporarily_unavailable'
+									}),
+									Effect.filterOrFail(
+										current => current.id === found.id && current.admin === found.admin && current.name === found.name,
+										() => AuthError.make({error: 'access_denied', message: 'The account changed; reconnect the socket'})
+									),
+									Effect.forever
+								)
 							)
 						)
 					)
+				)
+			),
+			Context.add(
+				RpcAdmin,
+				RpcAdmin.of((effect, request) =>
+					Effect.gen(function* () {
+						return yield* Effect.provideService(
+							effect,
+							CurrentAdmin,
+							yield* requireAdmin(yield* user(request.headers), 'Only an admin may perform this action')
+						)
+					})
 				)
 			)
 		)

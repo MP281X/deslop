@@ -1,6 +1,6 @@
 import {Effect, Stream} from 'effect'
 
-import {CurrentUser} from '@deslop/runtime/shared/auth'
+import {CurrentAdmin, CurrentUser} from '@deslop/runtime/shared/auth'
 
 import {RpcContracts} from '#rpcs/contracts.ts'
 import {AiMetering} from '#services/ai-metering/service.ts'
@@ -21,13 +21,13 @@ export const RpcHandlers = RpcContracts.toLayer(
 				yield* ai.setKey((yield* CurrentUser).id, input)
 			}),
 			'connections.add': Effect.fnUntraced(function* (input, options) {
-				const added = yield* connections.add(input.url, yield* CurrentUser, options.headers)
+				const added = yield* connections.add(input.url, yield* CurrentAdmin, options.headers)
 				// A new server's tools are read now, so its first list is not empty.
 				yield* gateway.connected(options.headers)
 				return added
 			}),
-			'connections.usage': period => connections.usage(period),
-			'connections.watch': () => Stream.unwrap(Effect.map(CurrentUser, connections.watch))
+			'connections.usage': period => Stream.unwrap(Effect.map(CurrentAdmin, admin => connections.usage(period, admin))),
+			'connections.watch': () => Stream.unwrap(Effect.map(CurrentAdmin, connections.watch))
 		})
 	})
 )

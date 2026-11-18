@@ -2,6 +2,8 @@ import {Cache, Duration, Effect, Record, Schedule, Scope, Stream, pipe} from 'ef
 
 import {Reactivity} from 'effect/reactivity'
 
+import {CurrentAdmin} from '@deslop/runtime/shared/auth'
+
 import {RpcContracts} from '#rpcs/contracts.ts'
 import {Exposures} from '#services/exposures/service.ts'
 import {Fleet} from '#services/fleet/service.ts'
@@ -66,15 +68,15 @@ export const RpcHandlers = RpcContracts.toLayer(
 				},
 				Effect.onExit(() => Reactivity.invalidate(['deployInventory']))
 			),
-			'exposures.expose': fleet.expose,
-			'exposures.hide': fleet.hide,
+			'exposures.expose': input => Effect.flatMap(CurrentAdmin, admin => fleet.expose(input, admin)),
+			'exposures.hide': input => Effect.flatMap(CurrentAdmin, admin => fleet.hide(input, admin)),
 			'exposures.remove': Effect.fnUntraced(
 				function* (input) {
 					yield* Effect.onExit(exposures.hide(input.name), () => localInventory.refresh)
 				},
 				Effect.onExit(() => Reactivity.invalidate(['deployInventory']))
 			),
-			'inventory.run': fleet.run,
+			'inventory.run': input => Effect.flatMap(CurrentAdmin, admin => fleet.run(input, admin)),
 			'inventory.snapshot': () => Effect.andThen(localInventory.ensureFresh, fleet.local),
 			'inventory.start': input =>
 				Effect.onExit(localInventory.run(input), () => Reactivity.invalidate(['deployInventory'])),

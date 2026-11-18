@@ -41,6 +41,7 @@ runApp({
 			HttpHandlers,
 			layerRpc({group: RpcContracts, handlers: RpcHandlers}),
 			layerMcp({
+				contracts: ToolContracts,
 				instructions: 'Manage people as an admin, and list or sign out your browser sessions.',
 				registrations: Layer.provide(McpServer.toolkit(ToolContracts), ToolHandlers)
 			})

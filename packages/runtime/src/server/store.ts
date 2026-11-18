@@ -7,6 +7,7 @@ import {Reactivity} from 'effect/reactivity'
 import {Migrator, SqlClient} from 'effect/sql'
 
 import {appName, packageRoot} from '#server/package.ts'
+import {AuthorizationProbe} from '#server/probe.ts'
 
 // A checkout holds `pnpm-workspace.yaml` at its root; an npm installation has none above it.
 const checkoutRoot = Effect.fnUntraced(function* (
@@ -21,15 +22,21 @@ const checkoutRoot = Effect.fnUntraced(function* (
 })
 
 export const dataDirectory = Effect.gen(function* () {
-	const path = yield* Path.Path
-	const name = yield* appName
-	const directory = yield* Option.match(yield* checkoutRoot(packageRoot), {
-		onNone: () => Effect.map(Config.String('HOME'), home => path.join(home, '.deslop', name)),
-		onSome: root => Effect.succeed(path.join(root, '.deslop', name))
+	return yield* Option.match(yield* Effect.serviceOption(AuthorizationProbe), {
+		onNone: () =>
+			Effect.gen(function* () {
+				const path = yield* Path.Path
+				const name = yield* appName
+				const directory = yield* Option.match(yield* checkoutRoot(packageRoot), {
+					onNone: () => Effect.map(Config.String('HOME'), home => path.join(home, '.deslop', name)),
+					onSome: root => Effect.succeed(path.join(root, '.deslop', name))
+				})
+				yield* (yield* FileSystem.FileSystem).makeDirectory(directory, {mode: 0o700, recursive: true})
+				yield* (yield* FileSystem.FileSystem).chmod(directory, 0o700)
+				return directory
+			}),
+		onSome: probe => Effect.succeed(probe.directory)
 	})
-	yield* (yield* FileSystem.FileSystem).makeDirectory(directory, {mode: 0o700, recursive: true})
-	yield* (yield* FileSystem.FileSystem).chmod(directory, 0o700)
-	return directory
 })
 
 // Every app's database once held its own sign-ins; Auth's cookie replaced them.

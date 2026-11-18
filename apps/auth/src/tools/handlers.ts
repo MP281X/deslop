@@ -1,5 +1,6 @@
 import {Effect} from 'effect'
 
+import {requireAdmin} from '@deslop/runtime/server/auth'
 import {CurrentUser} from '@deslop/runtime/shared/auth'
 
 import {ToolContracts} from './contracts.ts'
@@ -13,13 +14,16 @@ export const ToolHandlers = ToolContracts.toLayer(
 		const sessions = yield* CookieSessions
 		return {
 			list_people: Effect.fnUntraced(function* () {
-				return {people: yield* people.list(yield* CurrentUser)}
+				return {people: yield* people.list(yield* requireAdmin(yield* CurrentUser, 'Only an admin can manage people'))}
 			}),
 			list_sessions: Effect.fnUntraced(function* () {
 				return {sessions: yield* sessions.list((yield* CurrentUser).id)}
 			}),
 			remove_person: Effect.fnUntraced(function* (input) {
-				return yield* people.remove(input.id, yield* CurrentUser)
+				return yield* people.remove(
+					input.id,
+					yield* requireAdmin(yield* CurrentUser, 'Only an admin can manage people')
+				)
 			}),
 			sign_out_session: Effect.fnUntraced(function* (input) {
 				yield* sessions.remove(input.id, (yield* CurrentUser).id)

@@ -2,6 +2,7 @@ import {Array, Effect, Function, Layer, Option, Struct, pipe} from 'effect'
 
 import {McpServer} from 'effect/ai'
 
+import {requireAdmin} from '@deslop/runtime/server/auth'
 import {layerMcp} from '@deslop/runtime/server/http'
 import {AuthError, CurrentUser} from '@deslop/runtime/shared/auth'
 
@@ -52,7 +53,10 @@ const ToolHandlers = ToolContracts.toLayer(
 				return {provider: input.provider}
 			}),
 			remove_mcp_server: Effect.fnUntraced(function* (input) {
-				yield* connections.remove(input.server, yield* CurrentUser)
+				yield* connections.remove(
+					input.server,
+					yield* requireAdmin(yield* CurrentUser, 'Only an admin can manage MCP servers')
+				)
 				yield* gateway.removed
 				return {server: input.server}
 			})
@@ -62,6 +66,7 @@ const ToolHandlers = ToolContracts.toLayer(
 
 export const GatewayMcp = pipe(
 	layerMcp({
+		contracts: ToolContracts,
 		instructions:
 			'Tools use <server>__<tool>. Use list_mcp_connections for missing or failing tools; name a server to read its full instructions.',
 		registrations: Layer.provide(McpServer.toolkit(ToolContracts), ToolHandlers)

@@ -34,8 +34,8 @@ import {FetchHttpClient, Headers, HttpClient, HttpClientError, HttpClientRequest
 import {Reactivity} from 'effect/reactivity'
 import {Migrator, SqlClient, SqlModel, SqlSchema} from 'effect/sql'
 
-import {Auth, requireAdmin} from '@deslop/runtime/server/auth'
-import type {User, UserId} from '@deslop/runtime/shared/auth'
+import {Auth} from '@deslop/runtime/server/auth'
+import type {Admin, UserId} from '@deslop/runtime/shared/auth'
 import {AuthError, ON_BEHALF_HEADER} from '@deslop/runtime/shared/auth'
 import {DateTimeUtcFromFiniteMillis} from '@deslop/runtime/shared/time'
 import type {TimeFrame} from '@deslop/runtime/shared/time'
@@ -80,10 +80,6 @@ declare module 'effect/reactivity/Reactivity' {
 
 export const gatewayUrl = Config.String('APP_URL')
 
-function admin(user: User) {
-	return requireAdmin(user, 'Only an admin can manage MCP servers')
-}
-
 // A provider sign-in in progress, for ten minutes and in memory: a restart asks to connect again.
 type Pending = {
 	client: OAuthClient
@@ -127,17 +123,17 @@ function connectable(metadata: Metadata) {
 export class Connections extends Context.Service<
 	Connections,
 	{
-		readonly add: (url: ServerUrl, user: User, headers: Headers.Headers) => Effect.Effect<ConnectionItem, AuthError>
+		readonly add: (url: ServerUrl, user: Admin, headers: Headers.Headers) => Effect.Effect<ConnectionItem, AuthError>
 		readonly begin: (
 			id: ServerId,
-			user: User
+			user: Admin
 		) => Effect.Effect<{state: Option.Option<OAuthState>; url: string}, AuthError>
 		readonly called: (id: ServerId) => Effect.Effect<void>
 		// `route` is the server id a registered client's callback carries; the metadata document's callback carries none.
-		readonly complete: (params: Callback, route: Option.Option<ServerId>, user: User) => Effect.Effect<void, AuthError>
+		readonly complete: (params: Callback, route: Option.Option<ServerId>, user: Admin) => Effect.Effect<void, AuthError>
 		readonly definitions: Effect.Effect<ConnectionState[], AuthError>
 		readonly get: (id: ServerId) => Effect.Effect<ConnectionState, AuthError>
-		readonly remove: (id: ServerId, user: User) => Effect.Effect<void, AuthError>
+		readonly remove: (id: ServerId, user: Admin) => Effect.Effect<void, AuthError>
 		readonly report: (id: ServerId, generation: ConnectionGeneration, outcome: Discovery) => Effect.Effect<void>
 		readonly token: (
 			id: ServerId,
@@ -145,8 +141,11 @@ export class Connections extends Context.Service<
 			rejectedToken: Option.Option<string>
 		) => Effect.Effect<string, AuthError>
 		// Each proxied call, summed into the period's buckets by server, in a window that reopens at each bucket boundary.
-		readonly usage: (period: TimeFrame) => Stream.Stream<{range: UsageRange; report: McpUsageReport}, AuthError>
-		readonly watch: (user: User) => Stream.Stream<ConnectionItem[], AuthError>
+		readonly usage: (
+			period: TimeFrame,
+			admin: Admin
+		) => Stream.Stream<{range: UsageRange; report: McpUsageReport}, AuthError>
+		readonly watch: (user: Admin) => Stream.Stream<ConnectionItem[], AuthError>
 	}
 >()('@deslop/gateway/services/connections/service/Connections') {
 	static readonly make = Effect.gen(function* () {
@@ -501,8 +500,7 @@ export class Connections extends Context.Service<
 
 		return Connections.of({
 			add: Effect.fn('Connections.add')(
-				function* (input: ServerUrl, user: User, headers: Headers.Headers) {
-					yield* admin(user)
+				function* (input: ServerUrl, _user: Admin, headers: Headers.Headers) {
 					const url = new URL(input).href
 					if (new URL(url).origin === origin) {
 						return yield* AuthError.make({message: 'The gateway cannot connect to itself'})
@@ -537,8 +535,7 @@ export class Connections extends Context.Service<
 				Effect.timeout(Duration.seconds(20)),
 				asAuthError('Cannot add this MCP. Check its public HTTPS URL and OAuth discovery support')
 			),
-			begin: Effect.fn('Connections.begin')(function* (id: ServerId, user: User) {
-				yield* admin(user)
+			begin: Effect.fn('Connections.begin')(function* (id: ServerId, user: Admin) {
 				const connection = yield* get(id)
 				return yield* Option.match(Option.all({issuer: connection.issuer, scope: connection.scope}), {
 					onNone: Effect.fnUntraced(function* () {
@@ -643,9 +640,8 @@ export class Connections extends Context.Service<
 			complete: Effect.fn('Connections.complete')(function* (
 				params: Callback,
 				route: Option.Option<ServerId>,
-				user: User
+				user: Admin
 			) {
-				yield* admin(user)
 				// The flow is taken once, whatever the provider answered.
 				const flow = yield* pipe(
 					Cache.getOption(pending, params.state),
@@ -717,8 +713,7 @@ export class Connections extends Context.Service<
 			definitions,
 			get,
 			// The server's grant and calls go with it.
-			remove: Effect.fn('Connections.remove')(function* (id: ServerId, user: User) {
-				yield* admin(user)
+			remove: Effect.fn('Connections.remove')(function* (id: ServerId) {
 				const connection = yield* get(id)
 				const removed = yield* pipe(
 					deleteConnection(id),
@@ -804,22 +799,16 @@ export class Connections extends Context.Service<
 				),
 			// The list is read again after each change and once a minute, so an expired provider shows as expired.
 			watch: user =>
-				Stream.withSpan(
-					Stream.unwrap(
-						Effect.as(
-							admin(user),
-							Stream.merge(
-								sql.reactive(['connections'], list),
-								pipe(
-									Stream.tick(Duration.minutes(1)),
-									Stream.drop(1),
-									Stream.mapEffect(() => list)
-								)
-							)
+				pipe(
+					sql.reactive(['connections'], list),
+					Stream.merge(
+						pipe(
+							Stream.tick(Duration.minutes(1)),
+							Stream.drop(1),
+							Stream.mapEffect(() => list)
 						)
 					),
-					'Connections.watch',
-					{attributes: {'rpc.stream': true, userId: user.id}}
+					Stream.withSpan('Connections.watch', {attributes: {'rpc.stream': true, userId: user.id}})
 				)
 		})
 	})

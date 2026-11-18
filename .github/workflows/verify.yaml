@@ -25,6 +25,11 @@ jobs:
         with: {tasks: 'true'}
       - name: Build applications
         run: vp run build
+      - name: Probe built server authorization
+        run: |
+          for entry in apps/*/src/main.server.ts; do
+            node "${entry%/src/main.server.ts}/dist/server.js" probe
+          done
 
   check:
     name: Check

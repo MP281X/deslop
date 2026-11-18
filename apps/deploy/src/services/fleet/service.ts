@@ -25,13 +25,13 @@ import {ChildProcessSpawner} from 'effect/process'
 import {Reactivity} from 'effect/reactivity'
 import {RpcClient, RpcSerialization} from 'effect/rpc'
 
-import {Auth, requireAdmin} from '@deslop/runtime/server/auth'
 import {packageMetadata} from '@deslop/runtime/server/package'
 import {executeProcess} from '@deslop/runtime/server/process'
+import type {Admin} from '@deslop/runtime/shared/auth'
 import {RpcStream, layerRpcStreamClient} from '@deslop/runtime/shared/rpc'
 import {RPC_PATH, SecureOrigin} from '@deslop/runtime/shared/schema'
 
-import {PeerRpcAuth, RpcContracts} from '#rpcs/contracts.ts'
+import {RpcContracts} from '#rpcs/contracts.ts'
 import type {ExposeRequest, HideRequest} from '#services/exposures/schema.ts'
 import {Exposures} from '#services/exposures/service.ts'
 import {DeployError, ItemId, WorkerId} from '#services/inventory/schema.ts'
@@ -43,18 +43,6 @@ import {Metrics} from '#services/metrics/service.ts'
 
 const makeRemoteClient = RpcClient.make(RpcContracts.middleware(RpcStream), {flatten: true})
 
-export const layerPeerAuth = Layer.effect(
-	PeerRpcAuth,
-	Effect.gen(function* () {
-		const auth = yield* Auth
-		return PeerRpcAuth.of((effect, request) =>
-			Effect.gen(function* () {
-				yield* requireAdmin(yield* auth.user(request.headers), 'Only an admin may issue a local command')
-				return yield* effect
-			})
-		)
-	})
-)
 type RemoteClient = Effect.Success<typeof makeRemoteClient>
 
 function asDeployError<A, E>(effect: Effect.Effect<A, E>) {
@@ -78,9 +66,9 @@ function cachedHistory(query: HistoryQuery, time: DateTime.Utc, saved: Option.Op
 export class Fleet extends Context.Service<
 	Fleet,
 	{
-		readonly expose: (input: ExposeRequest) => Effect.Effect<string, DeployError>
-		readonly hide: (input: HideRequest) => Effect.Effect<void, DeployError>
-		readonly run: (input: RunRequest) => Effect.Effect<void, DeployError>
+		readonly expose: (input: ExposeRequest, admin: Admin) => Effect.Effect<string, DeployError>
+		readonly hide: (input: HideRequest, admin: Admin) => Effect.Effect<void, DeployError>
+		readonly run: (input: RunRequest, admin: Admin) => Effect.Effect<void, DeployError>
 		readonly local: Effect.Effect<Snapshot>
 		readonly history: (query: HistoryQuery) => Effect.Effect<MachineHistory, DeployError>
 		readonly current: (query: HistoryQuery) => Effect.Effect<MachineHistory[], DeployError>

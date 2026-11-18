@@ -3,9 +3,9 @@ import {Boolean, Config, Context, DateTime, Effect, Function, Layer, Option, Sch
 import {Reactivity} from 'effect/reactivity'
 import {Migrator, SqlClient, SqlSchema} from 'effect/sql'
 
-import {localAuth, requireAdmin} from '@deslop/runtime/server/auth'
+import {localAuth} from '@deslop/runtime/server/auth'
 import {AuthError, GitHubId, GitHubIdFromString, UserId, asAuthError} from '@deslop/runtime/shared/auth'
-import type {User} from '@deslop/runtime/shared/auth'
+import type {Admin} from '@deslop/runtime/shared/auth'
 
 import {isAdmin, listPeople, personOf} from './lib/utils.ts'
 import {Member} from './schema.ts'
@@ -34,9 +34,9 @@ export class People extends Context.Service<
 			fullName: Option.Option<string>,
 			tailnet: boolean
 		) => Effect.Effect<Member, AuthError>
-		readonly list: (user: User) => Effect.Effect<Person[], AuthError>
-		readonly admit: (params: AdmitParams, user: User) => Effect.Effect<Person, AuthError>
-		readonly remove: (id: UserId, user: User) => Effect.Effect<Person, AuthError>
+		readonly list: (admin: Admin) => Effect.Effect<Person[], AuthError>
+		readonly admit: (params: AdmitParams, admin: Admin) => Effect.Effect<Person, AuthError>
+		readonly remove: (id: UserId, admin: Admin) => Effect.Effect<Person, AuthError>
 	}
 >()('@deslop/auth/services/people/service/People') {
 	static readonly migrations = Layer.effectDiscard(
@@ -113,8 +113,7 @@ export class People extends Context.Service<
 				})
 				return People.of({
 					admit: Effect.fn('People.admit')(
-						function* (params, user) {
-							yield* requireAdmin(user, 'Only an admin can manage people')
+						function* (params) {
 							const row = yield* existing(params.id)
 							if (row.status !== 'Waiting' || isAdmin(admins, row.id)) {
 								return yield* AuthError.make({message: 'This account is not asking for access'})
@@ -137,8 +136,7 @@ export class People extends Context.Service<
 						asAuthError('Cannot answer the access request')
 					),
 					find,
-					list: Effect.fn('People.list')(function* (user) {
-						yield* requireAdmin(user, 'Only an admin can manage people')
+					list: Effect.fn('People.list')(function* () {
 						return listPeople(yield* all(), admins)
 					}, asAuthError('Cannot read people')),
 					register: Effect.fn('People.register')(
@@ -168,8 +166,7 @@ export class People extends Context.Service<
 						asAuthError('Cannot register the person')
 					),
 					remove: Effect.fn('People.remove')(
-						function* (id, user) {
-							yield* requireAdmin(user, 'Only an admin can manage people')
+						function* (id) {
 							if (isAdmin(admins, id)) {
 								return yield* AuthError.make({error: 'access_denied', message: 'Admins cannot be removed'})
 							}

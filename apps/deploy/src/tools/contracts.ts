@@ -2,6 +2,8 @@ import {Effect, Schema, pipe} from 'effect'
 
 import {Tool, Toolkit} from 'effect/ai'
 
+import {AuthError, CurrentUser} from '@deslop/runtime/shared/auth'
+
 import {ExposeInput} from '#services/exposures/schema.ts'
 import {
 	ExposureName,
@@ -77,18 +79,20 @@ export const ToolContracts = Toolkit.make(
 		.annotate(Tool.Readonly, true)
 		.annotate(Tool.Strict, true),
 	Tool.make('create_exposure', {
+		dependencies: [CurrentUser],
 		description:
 			'Give a local port the requested HTTPS hostname and ownership name on a configured worker; public exposure requires explicit publicAccess=true consent. Returns the URL, adds no authentication and starts no application; list_apps shows owned exposures.',
-		failure: DeployError,
+		failure: Schema.Union([AuthError, DeployError]),
 		parameters: Schema.Struct({...ExposeInput.fields, worker: Schema.OptionFromOptionalKey(WorkerId)}),
 		success: Schema.Struct({url: Schema.String})
 	})
 		.annotate(Tool.Destructive, true)
 		.annotate(Tool.Strict, true),
 	Tool.make('remove_exposure', {
+		dependencies: [CurrentUser],
 		description:
 			'Remove an HTTPS exposure Deploy owns by name and optional worker from list_apps, not its backend. Externally changed Tailscale mappings are refused; inspect list_apps after an uncertain failure.',
-		failure: DeployError,
+		failure: Schema.Union([AuthError, DeployError]),
 		parameters: Schema.Struct({
 			name: ExposureName.check(Schema.isNonEmpty()),
 			worker: Schema.OptionFromOptionalKey(WorkerId)
@@ -98,9 +102,10 @@ export const ToolContracts = Toolkit.make(
 		.annotate(Tool.Destructive, true)
 		.annotate(Tool.Strict, true),
 	Tool.make('run_job', {
+		dependencies: [CurrentUser],
 		description:
 			'Start a scheduled job now by name from list_apps; pass worker to disambiguate machines. started means accepted, not completed; inspect list_apps or Scope for the outcome.',
-		failure: DeployError,
+		failure: Schema.Union([AuthError, DeployError]),
 		parameters: RunJobInput,
 		success: Schema.Struct({started: Schema.Literal(true)})
 	}).annotate(Tool.Strict, true)

@@ -21,6 +21,7 @@ runApp({
 			HttpHandlers,
 			layerRpc({group: RpcContracts, handlers: RpcHandlers}),
 			layerMcp({
+				contracts: ToolContracts,
 				instructions:
 					'For an overview use list_operations; if you have a trace id, read_trace directly. search_traces finds individual requests and search_logs finds uncorrelated causes.',
 				registrations: Layer.provide(McpServer.toolkit(ToolContracts), ToolHandlers)

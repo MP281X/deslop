@@ -1,5 +1,6 @@
 // fallow-ignore-file unused-type -- Schema types pair with their values so consumers can import either.
 import {Context, Effect, Option, Predicate, Schema, String, pipe} from 'effect'
+import type {Brand} from 'effect'
 
 import {HttpClient} from 'effect/http'
 import {RpcMiddleware} from 'effect/rpc'
@@ -35,6 +36,15 @@ export const GitHubIdFromString = pipe(Schema.FiniteFromString, Schema.decodeTo(
 
 export type User = typeof User.Type
 export const User = Schema.Struct({admin: Schema.Boolean, id: UserId, name: Schema.NonEmptyString})
+
+export type Admin = User & Brand.Brand<'Admin'>
+
+export class CurrentAdmin extends Context.Service<CurrentAdmin, Admin>()('@deslop/runtime/shared/auth/CurrentAdmin') {}
+
+export class RpcAdmin extends RpcMiddleware.Service<RpcAdmin, {provides: CurrentAdmin}>()(
+	'@deslop/runtime/shared/auth/RpcAdmin',
+	{error: AuthError}
+) {}
 
 // The browser sign-in every `*.<domain>` app reads; tailnet callers need none.
 export const SESSION_COOKIE = '__Secure-deslop-session'

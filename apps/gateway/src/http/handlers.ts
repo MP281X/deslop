@@ -1,8 +1,8 @@
-import {Duration, Effect, Option, Schema, String, pipe} from 'effect'
+import {Duration, Effect, Option, Result, Schema, String, pipe} from 'effect'
 
 import {HttpRouter, HttpServerRequest, HttpServerResponse} from 'effect/http'
 
-import {Auth} from '@deslop/runtime/server/auth'
+import {Auth, requireAdmin} from '@deslop/runtime/server/auth'
 import {AuthError, failureOptions, signInUrl} from '@deslop/runtime/shared/auth'
 
 import {AiProxy} from '#services/ai-proxy/service.ts'
@@ -52,24 +52,26 @@ export const HttpHandlers = HttpRouter.use(router =>
 							auth.user(request.headers),
 							Effect.asSome,
 							Effect.catchTag('AuthError', error => {
-								if (error.error === 'temporarily_unavailable') return Effect.fail(error)
+								if (error.error !== undefined) return Effect.fail(error)
 								return Effect.succeedNone
 							})
 						),
 						{
 							onNone: () => Effect.succeed(HttpServerResponse.redirect(signInUrl(`${url}${request.url}`))),
 							onSome: user =>
-								Effect.map(connections.begin(params.id, user), started =>
-									Option.match(started.state, {
-										onNone: () => HttpServerResponse.redirect(started.url),
-										onSome: state =>
-											HttpServerResponse.setCookieUnsafe(
-												HttpServerResponse.redirect(started.url),
-												`__Host-mcp-${state}`,
-												state,
-												{...COOKIE, maxAge: Duration.minutes(10)}
-											)
-									})
+								Effect.flatMap(requireAdmin(user, 'Only an admin can manage MCP servers'), admin =>
+									Effect.map(connections.begin(params.id, admin), started =>
+										Option.match(started.state, {
+											onNone: () => HttpServerResponse.redirect(started.url),
+											onSome: state =>
+												HttpServerResponse.setCookieUnsafe(
+													HttpServerResponse.redirect(started.url),
+													`__Host-mcp-${state}`,
+													state,
+													{...COOKIE, maxAge: Duration.minutes(10)}
+												)
+										})
+									)
 								)
 						}
 					)
@@ -79,7 +81,11 @@ export const HttpHandlers = HttpRouter.use(router =>
 		// A provider the gateway registered with answers at its server's own callback; one using the metadata document at the shared one.
 		const callback = Effect.fnUntraced(function* (route: Option.Option<ServerId>) {
 			const request = yield* HttpServerRequest.HttpServerRequest
-			const user = yield* auth.user(request.headers)
+			const named = yield* Effect.result(auth.user(request.headers))
+			if (Result.isFailure(named)) {
+				return HttpServerResponse.text(named.failure.message, failureOptions(named.failure, 401))
+			}
+			const user = yield* requireAdmin(named.success, 'Only an admin can manage MCP servers')
 			const params = yield* HttpServerRequest.schemaSearchParams(Callback)
 			if (request.cookies[`__Host-mcp-${params.state}`] !== params.state) {
 				return yield* AuthError.make({message: 'The connection belongs to another browser'})

@@ -33,17 +33,19 @@ import {
 	crossSiteGuard,
 	layerIcon,
 	layerNodeHttpServer,
+	layerProbeHttpServer,
 	layerServerProtocol,
 	layerRoutes,
 	layerTelemetry,
 	layerWeb
 } from '#server/http.ts'
 import {appName, packageMetadata, packageRoot} from '#server/package.ts'
+import {layerProbeRouter, probeServer} from '#server/probe.ts'
 import {executeProcess} from '#server/process.ts'
 import {installService, installUpdateService, serviceStatus, uninstallService} from '#server/services.ts'
 import {dataDirectory, layerDataStore} from '#server/store.ts'
 import {activateRelease, updateRelease} from '#server/update.ts'
-import type {RpcAuth} from '#shared/auth.ts'
+import type {RpcAuth, RpcAdmin} from '#shared/auth.ts'
 import {Port} from '#shared/schema.ts'
 
 const DEFAULT_HOST = '127.0.0.1'
@@ -111,6 +113,7 @@ export type Provided =
 	| Auth
 	| AiGateway
 	| RpcAuth
+	| RpcAdmin
 	| Layer.Success<ReturnType<typeof layerDataStore>>
 	| Layer.Success<typeof layerServerProtocol>
 
@@ -129,7 +132,7 @@ const RequestRequiresKind = Schema.Literals(['Requires', 'GlobalRequires'])
 
 export type App<A, E> = {
 	readonly auth?: Layer.Layer<
-		Auth | RpcAuth,
+		Auth | RpcAuth | RpcAdmin,
 		E,
 		Layer.Success<typeof layerPlatform> | Layer.Success<ReturnType<typeof layerDataStore>>
 	>
@@ -143,13 +146,16 @@ export type App<A, E> = {
 	readonly telemetry?: false
 }
 
-function server<A, E>(app: App<A, E>) {
-	const routes = Layer.provide(
+function server<A, E>(app: App<A, E>, listener = layerNodeHttpServer) {
+	const routes = pipe(
 		Layer.mergeAll(app.routes, layerRoutes, layerIcon(app.icon), layerWeb),
-		Option.match(Option.fromUndefinedOr(app.middleware), {
-			onNone: () => Layer.empty,
-			onSome: middleware => HttpRouter.middleware()(middleware).layer
-		})
+		Layer.provide(layerProbeRouter),
+		Layer.provide(
+			Option.match(Option.fromUndefinedOr(app.middleware), {
+				onNone: () => Layer.empty,
+				onSome: middleware => HttpRouter.middleware()(middleware).layer
+			})
+		)
 	)
 	return pipe(
 		HttpRouter.serve(
@@ -169,9 +175,8 @@ function server<A, E>(app: App<A, E>) {
 				Boolean.match(app.telemetry === false, {onFalse: () => layerTelemetry, onTrue: () => Layer.empty})
 			)
 		),
-		Layer.provide(layerNodeHttpServer),
-		Layer.provide(layerPlatform),
-		Layer.launch
+		Layer.provideMerge(listener),
+		Layer.provide(layerPlatform)
 	)
 }
 
@@ -206,12 +211,13 @@ export function runApp<A, E>(app: App<A, E>) {
 			root,
 			Command.withHandler(input =>
 				Effect.provideServiceEffect(
-					server(app),
+					Layer.launch(server(app)),
 					ConfigProvider.ConfigProvider,
 					configProvider(Record.getSomes(input), metadata.config.port)
 				)
 			),
 			Command.withSubcommands([
+				Command.make('probe', {}, () => probeServer(auth => server({...app, auth}, layerProbeHttpServer))),
 				Command.withSubcommands(Command.make('service'), [
 					Command.make(
 						'install',

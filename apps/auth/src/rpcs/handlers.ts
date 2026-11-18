@@ -3,7 +3,7 @@ import {Array, Effect, Option, Stream} from 'effect'
 import {SqlClient} from 'effect/sql'
 
 import {identifyRequestOf} from '@deslop/runtime/server/auth'
-import {CurrentUser} from '@deslop/runtime/shared/auth'
+import {CurrentAdmin, CurrentUser} from '@deslop/runtime/shared/auth'
 
 import {RpcContracts} from '#rpcs/contracts.ts'
 import {ListedSession} from '#services/cookie-sessions/schema.ts'
@@ -21,9 +21,10 @@ export const RpcHandlers = RpcContracts.toLayer(
 			'people.account': (_, options) =>
 				sql.reactive(['people', 'cookieSessions'], identity.resolve(identifyRequestOf(options.headers), true)),
 			'people.admit': Effect.fnUntraced(function* (input) {
-				return yield* people.admit(input, yield* CurrentUser)
+				return yield* people.admit(input, yield* CurrentAdmin)
 			}),
-			'people.watch': () => Stream.unwrap(Effect.map(CurrentUser, user => sql.reactive(['people'], people.list(user)))),
+			'people.watch': () =>
+				Stream.unwrap(Effect.map(CurrentAdmin, admin => sql.reactive(['people'], people.list(admin)))),
 			'sessions.watch': (_, options) =>
 				Stream.unwrap(
 					Effect.gen(function* () {
