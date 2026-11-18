@@ -1,5 +1,20 @@
 import type {Cause} from 'effect'
-import {Array, Boolean, Context, DateTime, Duration, Effect, Layer, Option, Result, Schema, Stream, pipe} from 'effect'
+import {
+	Array,
+	Boolean,
+	Context,
+	DateTime,
+	Duration,
+	Effect,
+	Function,
+	Layer,
+	Number,
+	Option,
+	Result,
+	Schema,
+	Stream,
+	pipe
+} from 'effect'
 
 import {HttpClientError} from 'effect/http'
 import {Reactivity} from 'effect/reactivity'
@@ -23,6 +38,19 @@ declare module 'effect/reactivity/Reactivity' {
 		// A job's log was asked for, so the worker claims it.
 		readonly ci_log_fetches: never
 	}
+}
+
+// How long GitHub asked to wait, when it said so in seconds.
+function retryAfter(error: HttpClientError.HttpClientError | Cause.TimeoutError | TelemetryError) {
+	if (!HttpClientError.isHttpClientError(error) || !(error.reason instanceof HttpClientError.StatusCodeError)) {
+		return Duration.zero
+	}
+	return pipe(
+		error.reason.response.headers['retry-after'],
+		Option.fromUndefinedOr,
+		Option.flatMap(Number.parse),
+		Option.match({onNone: () => Duration.zero, onSome: Duration.seconds})
+	)
 }
 
 // A failure worth another attempt: GitHub or the network faltered, or the storage was busy; any other refusal stays refused.
@@ -93,7 +121,9 @@ export class GitHubActions extends Context.Service<GitHubActions>()(
 						jobRecords(event, logLines(read(event))),
 						// Each fetch holds one line and one batch of records, never a whole log.
 						Stream.grouped(500),
-						Stream.runForEach(records => telemetry.ingestLogs(jobLogs(event, records), 'github'))
+						// A batch's number keeps equal lines of different batches apart, and a replayed fetch writes the same ones.
+						Stream.zipWithIndex,
+						Stream.runForEach(batch => telemetry.ingestLogs(jobLogs(event, batch[0], batch[1]), 'github'))
 					)
 				},
 				Effect.timeout(Duration.minutes(5))
@@ -102,8 +132,12 @@ export class GitHubActions extends Context.Service<GitHubActions>()(
 			const attempt = Effect.fnUntraced(function* (fetch: LogFetch, read: LogReader) {
 				const result = yield* Effect.result(fetchLog(fetch.event, read))
 				const now = yield* DateTime.now
-				// Six attempts, the waits between them doubling from a minute, before a log that keeps failing is given up on.
+				// Six attempts, the waits between them doubling from a minute or as long as GitHub asked, before a log that keeps failing is given up on.
 				const retry = Result.isFailure(result) && transient(result.failure) && fetch.attempts < 5
+				const wait = Duration.max(
+					Duration.minutes(2 ** fetch.attempts),
+					Result.match(result, {onFailure: retryAfter, onSuccess: Function.constant(Duration.zero)})
+				)
 				if (Result.isFailure(result)) {
 					yield* Effect.annotateLogs(Effect.logWarning('GitHub job logs could not be ingested', result.failure), {
 						'github.job': fetch.job,
@@ -113,7 +147,7 @@ export class GitHubActions extends Context.Service<GitHubActions>()(
 				yield* settle({
 					dueAt: Boolean.match(retry, {
 						onFalse: Option.none,
-						onTrue: () => Option.some(DateTime.addDuration(now, Duration.minutes(2 ** fetch.attempts)))
+						onTrue: () => Option.some(DateTime.addDuration(now, wait))
 					}),
 					job: fetch.job,
 					now

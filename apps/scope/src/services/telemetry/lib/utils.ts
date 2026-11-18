@@ -147,13 +147,20 @@ function instantOf(nanos: Duration.Duration) {
 	)
 }
 
+// A time more than ten minutes past its receipt comes from a wrong clock, so the record happened when it arrived.
+function receivedBy(time: Duration.Duration, receivedAt: DateTime.Utc) {
+	const received = Duration.nanos(BigInt(DateTime.toEpochMillis(receivedAt)) * 1_000_000n)
+	if (Duration.isGreaterThan(time, Duration.sum(received, Duration.minutes(10)))) return received
+	return time
+}
+
 // Who sent a record: its service, the side it runs on, the run its process started and the release it built.
-export function senderOf(resource: Option.Option<Resource>) {
+export function senderOf(resource: Option.Option<Resource>, receivedAt: DateTime.Utc) {
 	return {
 		run: pipe(
 			resourceText(resource, 'scope.run.started_unix_nano'),
 			Option.flatMap(Schema.decodeOption(Nano)),
-			Option.map(instantOf),
+			Option.map(started => instantOf(receivedBy(started, receivedAt))),
 			Option.map(DateTime.startOf('millisecond'))
 		),
 		runtime: pipe(
@@ -176,18 +183,12 @@ export function senderOf(resource: Option.Option<Resource>) {
 	}
 }
 
-// The sender an export may write as, or none: only GitHub's signed webhook writes under a repository's name, and an anonymous `ci` runtime is not shown as CI.
+// The sender an export may write as, or none: only GitHub's signed webhook writes under a repository's name, as the views name the app, and an anonymous `ci` runtime is not shown as CI.
 export function admittedSender(sender: ReturnType<typeof senderOf>, origin: Origin) {
 	if (origin === 'github') return Option.some(sender)
-	if (Option.isSome(String.match(REPOSITORY)(sender.service))) return Option.none()
+	if (Option.isSome(String.match(REPOSITORY)(String.trim(appName(sender.service))))) return Option.none()
 	if (origin === 'anonymous' && sender.runtime === 'ci') return Option.some({...sender, runtime: 'unknown' as const})
 	return Option.some(sender)
-}
-
-// A time more than ten minutes past its receipt comes from a wrong clock, so the record happened when it arrived.
-function receivedBy(time: DateTime.Utc, receivedAt: DateTime.Utc) {
-	if (DateTime.isGreaterThan(time, DateTime.addDuration(receivedAt, Duration.minutes(10)))) return receivedAt
-	return time
 }
 
 // Primitive leaf values of an OTLP body, without object keys: Effect logs send an array of arguments.
@@ -216,7 +217,7 @@ export function spansOf(payload: TracesRequest, origin: Origin, receivedAt: Date
 		Option.getOrElse(Array.empty),
 		Array.map(group => ({
 			// All spans in the group share one sender, regardless of instrumentation scope.
-			sender: admittedSender(senderOf(group.resource), origin),
+			sender: admittedSender(senderOf(group.resource, receivedAt), origin),
 			spans: pipe(
 				group.scopeSpans,
 				Option.getOrElse(() => []),
@@ -242,6 +243,9 @@ export function spansOf(payload: TracesRequest, origin: Origin, receivedAt: Date
 					const failed = Option.exists(span.status, status => Option.contains(status.code, 2))
 					const traceId = TraceId.make(String.toLowerCase(span.traceId))
 					const spanId = SpanId.make(String.toLowerCase(span.spanId))
+					const start = receivedBy(span.startTimeUnixNano, receivedAt)
+					// A start pulled back to receipt takes the end with it, so a span on a fast clock keeps its length.
+					const skew = Duration.subtract(span.startTimeUnixNano, start)
 					return {
 						links: pipe(
 							span.links,
@@ -266,7 +270,7 @@ export function spansOf(payload: TracesRequest, origin: Origin, receivedAt: Date
 							// Subtract before rounding the start so short spans at modern epochs retain their duration.
 							duration: Option.map(span.endTimeUnixNano, end =>
 								pipe(
-									Duration.subtract(end, span.startTimeUnixNano),
+									Duration.subtract(receivedBy(Duration.subtract(end, skew), receivedAt), start),
 									Duration.max(Duration.zero),
 									Duration.toMillis,
 									Duration.millis
@@ -286,7 +290,7 @@ export function spansOf(payload: TracesRequest, origin: Origin, receivedAt: Date
 							name: spanName(span, attributes),
 							parentSpanId: Option.map(span.parentSpanId, id => SpanId.make(String.toLowerCase(id))),
 							spanId,
-							start: receivedBy(instantOf(span.startTimeUnixNano), receivedAt),
+							start: instantOf(start),
 							status: Boolean.match(failed, {
 								onFalse: Function.constant('ok' as const),
 								onTrue: () =>
@@ -340,7 +344,7 @@ export function logOf(sender: ReturnType<typeof senderOf>, log: ExportedLog, id:
 		time: pipe(
 			Option.filter(log.timeUnixNano, Duration.isPositive),
 			Option.orElse(() => Option.filter(log.observedTimeUnixNano, Duration.isPositive)),
-			Option.match({onNone: () => receivedAt, onSome: nanos => receivedBy(instantOf(nanos), receivedAt)})
+			Option.match({onNone: () => receivedAt, onSome: nanos => instantOf(receivedBy(nanos, receivedAt))})
 		),
 		traceId: Option.map(log.traceId, value => TraceId.make(String.toLowerCase(value)))
 	} satisfies Log
