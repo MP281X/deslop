@@ -25,6 +25,7 @@ You are a delegate, and the brief is the approved plan. Edit only its files, run
 ## Always
 
 - Before changing how something works, find out why it is that way (`gh pr list --state merged --search`, `git log -S`). Never silently undo a deliberate decision.
+- Match the surrounding code's naming, idiom and comment density.
 - Prove claims by running the check. Fix root causes, not symptoms.
 - One way to do each thing: no fallbacks or compatibility paths.
 - Spending money or deleting data is his call. Push only your own branch. Never work around a guard.
