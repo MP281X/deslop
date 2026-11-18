@@ -437,7 +437,7 @@ it.layer(telemetryLayer)(test =>
 
 it.layer(telemetryLayer)(test =>
 	test.effect(
-		'never lets an anonymous export replace an identified span or log, and lets an identified one replace an anonymous one',
+		'never lets an anonymous export replace an identified span, and lets an identified one replace an anonymous one',
 		Effect.fnUntraced(function* () {
 			const telemetry = yield* Telemetry
 			const id = TraceId.make('fffffffffffffffffffffffffffffff5')
@@ -483,6 +483,32 @@ it.layer(telemetryLayer)(test =>
 			assert.deepStrictEqual(
 				Array.map((yield* telemetry.trace(id)).spans, item => item.name),
 				['real']
+			)
+		})
+	)
+)
+
+it.layer(telemetryLayer)(test =>
+	test.effect(
+		'lets an identified export take over an anonymous log and keeps it as long as a new one',
+		Effect.fnUntraced(function* () {
+			const telemetry = yield* Telemetry
+			const logs = yield* Schema.decodeEffect(LogsRequest)({
+				resourceLogs: [
+					{
+						resource: {attributes: [{key: 'service.name', value: {stringValue: 'owner-server'}}]},
+						// Without a time of its own the record happened when its export arrived.
+						scopeLogs: [{logRecords: [{body: {stringValue: 'kept'}}]}]
+					}
+				]
+			})
+			yield* telemetry.ingestLogs(logs, 'anonymous')
+			yield* TestClock.adjust('29 days')
+			yield* telemetry.ingestLogs(logs, 'identified')
+			yield* TestClock.adjust('2 days')
+			assert.lengthOf(
+				(yield* telemetry.searchLogs(yield* Schema.decodeEffect(SearchLogsParams)({since: '30d'}))).logs,
+				1
 			)
 		})
 	)

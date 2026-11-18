@@ -286,50 +286,59 @@ export function jobRecords<E, R>(event: WorkflowJob, lines: Stream.Stream<string
 		Array.filter(step => Option.isNone(String.match(ACTION_STEP)(step.name))),
 		Array.map(step => stepSpanId(event.workflow_job.id, step.number))
 	)
-	return Stream.mapAccum(
+	return pipe(
 		lines,
-		() => HashMap.empty<string, readonly ExportedLog[]>(),
-		(tails, line) =>
-			Option.match(read(line), {
-				onNone: () => [tails, []] as const,
-				// An export's record, as the steps' last lines emitted at the end are.
-				onSome: (record: ExportedLog) => {
-					const kept = Array.filter([record], () => failed || warns(record))
-					if (failed) return [tails, kept] as const
-					return pipe(
-						record.spanId,
-						Option.filter(span => Array.contains(own, span)),
-						Option.match({
-							onNone: () => [tails, kept] as const,
-							onSome: span =>
-								[
-									HashMap.set(
-										tails,
-										span,
-										pipe(
-											tails,
-											HashMap.get(span),
-											Option.getOrElse(Array.empty<ExportedLog>),
-											Array.takeRight(9),
-											Array.append(record)
-										)
-									),
-									kept
-								] as const
+		Stream.map(Option.some),
+		// The closing none arrives only when the log ended cleanly: a download cut short emits no step's last lines, which its retry would store again in another batch.
+		Stream.concat(Stream.make(Option.none<string>())),
+		Stream.mapAccum(
+			() => HashMap.empty<string, readonly ExportedLog[]>(),
+			(tails, line) =>
+				Option.match(line, {
+					// A warning among a step's last lines was kept when it was read.
+					onNone: () =>
+						[
+							tails,
+							pipe(
+								HashMap.values(tails),
+								Array.fromIterable,
+								Array.flatten,
+								Array.filter(record => !warns(record))
+							)
+						] as const,
+					onSome: content =>
+						Option.match(read(content), {
+							onNone: () => [tails, []] as const,
+							// An export's record, as the steps' last lines emitted at the end are.
+							onSome: (record: ExportedLog) => {
+								const kept = Array.filter([record], () => failed || warns(record))
+								if (failed) return [tails, kept] as const
+								return pipe(
+									record.spanId,
+									Option.filter(span => Array.contains(own, span)),
+									Option.match({
+										onNone: () => [tails, kept] as const,
+										onSome: span =>
+											[
+												HashMap.set(
+													tails,
+													span,
+													pipe(
+														tails,
+														HashMap.get(span),
+														Option.getOrElse(Array.empty<ExportedLog>),
+														Array.takeRight(9),
+														Array.append(record)
+													)
+												),
+												kept
+											] as const
+									})
+								)
+							}
 						})
-					)
-				}
-			}),
-		// A warning among a step's last lines was kept when it was read.
-		{
-			onHalt: tails =>
-				pipe(
-					HashMap.values(tails),
-					Array.fromIterable,
-					Array.flatten,
-					Array.filter(record => !warns(record))
-				)
-		}
+				})
+		)
 	)
 }
 
