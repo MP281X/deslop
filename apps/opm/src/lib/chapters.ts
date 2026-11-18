@@ -1,8 +1,8 @@
 import {
 	Array,
-	Boolean,
 	Effect,
 	Function,
+	HashMap,
 	HashSet,
 	Option,
 	Order,
@@ -13,7 +13,7 @@ import {
 	pipe
 } from 'effect'
 
-import {Atom} from 'effect/reactivity'
+import {AsyncResult, Atom} from 'effect/reactivity'
 import {applicationId} from 'expo-application'
 import {File, Paths} from 'expo-file-system'
 import {
@@ -28,15 +28,18 @@ import {
 
 import {cachedList, writeAtomically} from '@deslop/components-mobile/lib/files'
 import {liveStream, reconnectOnDrop} from '@deslop/runtime/client/live-stream'
-import {pushTokens} from '@deslop/runtime/mobile/push-token'
+import {registerPushTokens} from '@deslop/runtime/mobile/push-token'
 import {provideRuntimeOnce} from '@deslop/runtime/mobile/session'
 import {ApnsToken} from '@deslop/runtime/shared/apns'
+import type {UserId} from '@deslop/runtime/shared/auth'
 import {listReducer} from '@deslop/runtime/shared/list'
 
+import type {ReaderState} from '#lib/reader.ts'
+import {turnPage} from '#lib/reader.ts'
 import {RpcClient, session} from '#lib/session.ts'
 import {OpmNative} from '#modules/native/index.ts'
 import {byNumber, keyOf, notificationOf} from '#services/chapters/lib/utils.ts'
-import type {ChapterKey, ChapterNumber, ChapterItem, ChapterList, ReadingPosition} from '#services/chapters/schema.ts'
+import type {ChapterKey, ChapterItem, Position, ReadingPosition} from '#services/chapters/schema.ts'
 import {ChaptersError, ReadingChapter} from '#services/chapters/schema.ts'
 import {ChapterBundle} from '#services/push/schema.ts'
 
@@ -46,11 +49,11 @@ const reduceChapters = listReducer<ChapterItem, ChapterKey>(Order.flip(byNumber)
 
 // The copy on the iPhone opens the app at once; without one the app waits for the server rather than open on nothing.
 export const chaptersAtom = Atom.keepAlive(
-	RpcClient.runtime.atom(get => {
-		if (!session.available(get)) return Stream.never
+	RpcClient.runtime.atom(get =>
 		// A page turn changes one chapter, and the copy is written once the reader pauses.
-		return cachedList(
+		cachedList(
 			get,
+			session,
 			chaptersFile,
 			ReadingChapter.json,
 			pipe(
@@ -60,93 +63,62 @@ export const chaptersAtom = Atom.keepAlive(
 			),
 			reconnectOnDrop
 		)
-	})
+	)
 )
 
 // A chapter the list still lacks ten seconds after the reader opened it is out of reach, such as offline.
 export const unreachableAtom = Atom.family((_key: ChapterKey) => Atom.make(Effect.as(Effect.sleep('10 seconds'), true)))
 
+// Each account's places that did not reach the server, such as pages turned offline, kept while the app runs.
+const unsavedByAccountAtom = Atom.family((_account: UserId) =>
+	Atom.keepAlive(Atom.make(HashMap.empty<ChapterKey, Position>()))
+)
+
+// The admitted account's unsaved places; the list and the reader show them over the server's, and opening the chapter saves them again.
+export const unsavedAtom = Atom.make(get =>
+	Option.match(session.admitted(get), {
+		onNone: () => HashMap.empty<ChapterKey, Position>(),
+		onSome: account => get(unsavedByAccountAtom(account))
+	})
+)
+
 const readingWrites = Semaphore.makeUnsafe(1)
 
-// Queue writes without cancelling page turns; the client is read once so a reconnect replays none.
+// Queue writes without cancelling page turns; a function atom reads the client and the account once, so a reconnect replays none.
 export const readAtom = Atom.keepAlive(
 	Atom.fn(
-		(update: typeof ReadingPosition.json.Type, get) =>
-			Effect.ignore(
+		(update: typeof ReadingPosition.json.Type, get) => {
+			const unsaved = Option.map(AsyncResult.value(get(session.account)), account => unsavedByAccountAtom(account.id))
+			function keep(places: (current: HashMap.HashMap<ChapterKey, Position>) => HashMap.HashMap<ChapterKey, Position>) {
+				return Effect.sync(() => Option.map(unsaved, atom => get.set(atom, places(get(atom)))))
+			}
+			return pipe(
 				provideRuntimeOnce(
 					get,
 					RpcClient.runtime,
 					readingWrites.withPermit(Effect.flatMap(RpcClient, client => client('chapters.write', update)))
 				),
-				{log: 'Warn', message: 'The reading position was not saved'}
-			),
+				Effect.tap(() => keep(HashMap.remove(keyOf(update)))),
+				// Only a write the server never answered leaves its place on the iPhone; a refused one is not kept.
+				Effect.tapErrorTag('WriteError', () =>
+					keep(HashMap.set(keyOf(update), {done: update.done, page: update.page}))
+				),
+				Effect.ignore({log: 'Warn', message: 'The reading position was not saved'})
+			)
+		},
 		{concurrent: true}
 	)
 )
 
-// One page turn in a reader opened on a chapter: the chapters from it on, in order, and the strip's page index.
-type PageTurn = {following: ChapterList; index: number; opened: ChapterNumber}
-
-// What one opened reader has passed: how many chapters its strip shows, the chapter in view and those it finished, so a page turn before the server's copy of the list arrives cannot unfinish one.
-type ReaderState = {finished: HashSet.HashSet<ChapterNumber>; inView: Option.Option<ChapterNumber>; shown: number}
-
 const readerStateAtom = Atom.family((_reader: ChapterKey) =>
-	Atom.make<ReaderState>({finished: HashSet.empty(), inView: Option.none(), shown: 2})
+	Atom.make<ReaderState>({finished: HashSet.empty(), inView: Option.none(), strip: []})
 )
-
-// The reading positions one page turn saves, in order, and the reader's next state; none for a page past the shown chapters. Passing into the next chapter finishes every page of the one before it, and reaching the last shown chapter adds the next.
-function turnPage(state: ReaderState, turn: PageTurn) {
-	const shown = Array.take(turn.following, state.shown)
-	return pipe(
-		Array.zip(
-			shown,
-			Array.scan(shown, 0, (total, chapter) => total + chapter.pages.length)
-		),
-		Array.findFirst(pair => turn.index < pair[1] + pair[0].pages.length),
-		Option.map(pair => {
-			const chapter = pair[0]
-			const page = turn.index - pair[1]
-			const previous = Option.getOrElse(state.inView, () => turn.opened)
-			const before = Array.findFirst(shown, item => item.number === previous && item.number < chapter.number)
-			const passed = Option.match(before, {
-				onNone: () => state.finished,
-				onSome: item => HashSet.add(state.finished, item.number)
-			})
-			// A finished chapter stays finished while it is read again; only "Unread" in the list starts it over.
-			const finished = Boolean.match(
-				page === chapter.pages.length - 1 || Option.exists(chapter.reading, reading => reading.done),
-				{onFalse: () => passed, onTrue: () => HashSet.add(passed, chapter.number)}
-			)
-			const last = Option.exists(Array.last(shown), item => item.number === chapter.number)
-			const saves: (typeof ReadingPosition.json.Type)[] = [
-				...Option.toArray(
-					Option.map(before, item => ({
-						done: true,
-						number: item.number,
-						page: item.pages.length - 1,
-						series: item.series
-					}))
-				),
-				{done: HashSet.has(finished, chapter.number), number: chapter.number, page, series: chapter.series}
-			]
-			const next: ReaderState = {
-				finished,
-				inView: Option.some(chapter.number),
-				shown: Boolean.match(last && state.shown < turn.following.length, {
-					onFalse: () => state.shown,
-					onTrue: () => state.shown + 1
-				})
-			}
-			return {next, saves}
-		})
-	)
-}
 
 // Each page turn saves the reading position and moves the reader on.
 export const readerAtom = Atom.family((reader: ChapterKey) =>
 	Atom.writable(
 		get => get(readerStateAtom(reader)),
-		(context, turn: PageTurn) =>
+		(context, turn: Parameters<typeof turnPage>[1]) =>
 			Option.match(turnPage(context.get(readerStateAtom(reader)), turn), {
 				onNone: Function.constUndefined,
 				onSome: turned => {
@@ -168,7 +140,7 @@ setNotificationHandler({
 export const pushAtom = RpcClient.runtime.atom(get =>
 	Effect.ignore(
 		Effect.gen(function* () {
-			if (!session.available(get)) return
+			if (Option.isNone(session.admitted(get))) return
 			yield* Effect.tryPromise({
 				catch: cause => ChaptersError.make({cause, message: 'The badge could not be cleared.'}),
 				try: () => setBadgeCountAsync(0)
@@ -183,19 +155,13 @@ export const pushAtom = RpcClient.runtime.atom(get =>
 			}
 			const bundle = yield* Schema.decodeUnknownEffect(ChapterBundle)(applicationId)
 			const client = yield* RpcClient
-			yield* Stream.runForEach(
-				pushTokens(
-					addPushTokenListener,
-					Effect.tryPromise({
-						catch: cause => ChaptersError.make({cause, message: 'The push token could not be read.'}),
-						try: () => getDevicePushTokenAsync()
-					})
-				),
-				token =>
-					Effect.ignore(client('push.register', {bundle, kind: 'alert', token: Redacted.make(ApnsToken.make(token))}), {
-						log: 'Warn',
-						message: 'The notification token was not registered'
-					})
+			yield* registerPushTokens(
+				addPushTokenListener,
+				Effect.tryPromise({
+					catch: cause => ChaptersError.make({cause, message: 'The push token could not be read.'}),
+					try: () => getDevicePushTokenAsync()
+				}),
+				token => client('push.register', {bundle, kind: 'alert', token: Redacted.make(ApnsToken.make(token))})
 			)
 		}),
 		{log: 'Warn', message: 'Notifications are not set up on this iPhone'}
@@ -228,7 +194,7 @@ ErrorUtils.setGlobalHandler((error, fatal) => {
 export const diagnosticsAtom = RpcClient.runtime.atom(get =>
 	Effect.ignore(
 		Effect.gen(function* () {
-			if (!session.available(get)) return
+			if (Option.isNone(session.admitted(get))) return
 			if (crashFile.exists) {
 				yield* Effect.logError('A JavaScript error closed the app on an earlier run', crashFile.textSync())
 				crashFile.delete()

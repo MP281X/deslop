@@ -1,19 +1,38 @@
 import {assert, it} from '@effect/vitest'
 
-import {Array, Option} from 'effect'
+import {Array, DateTime, Option, Struct} from 'effect'
 
-import {indexChapters, notificationOf, postFrom} from '#services/chapters/lib/utils.ts'
-import {Chapter, ChapterNumber} from '#services/chapters/schema.ts'
+import {
+	chaptersFromIndex,
+	indexChapters,
+	keyOf,
+	missingRanges,
+	notificationOf,
+	postFrom,
+	revisionCandidates,
+	roundChapters
+} from '#services/chapters/lib/utils.ts'
+import {Chapter, ChapterNumber, Post} from '#services/chapters/schema.ts'
 import type {Series} from '#services/chapters/schema.ts'
 
 const LINK = '<a href="https://cubari.moe/read/imgchest/abc123xyz/1/1/">[link]</a>'
 
-function chapter(series: Series, number: number, notified: boolean) {
+function redditPost(number: number, revised: boolean, at: string, link: string) {
+	return Post.make({
+		links: [link],
+		number: ChapterNumber.make(number),
+		postedAt: DateTime.makeUnsafe(at),
+		revised,
+		series: 'manga'
+	})
+}
+
+function chapter(series: Series, number: number, notified: boolean, postedAt = Option.none<DateTime.Utc>()) {
 	return Chapter.make({
 		notified,
 		number: ChapterNumber.make(number),
 		pages: ['https://example.com/page.png'],
-		postedAt: Option.none(),
+		postedAt,
 		revisedAt: Option.none(),
 		series,
 		source: `https://cubari.moe/read/gist/JYHJU/${number}/1/`,
@@ -91,5 +110,112 @@ it('classifies English manga and webcomic releases, preserving revisions and ski
 			Option.none(),
 			Option.none()
 		]
+	)
+})
+
+it('reads the reader links and publication time of a post', () => {
+	assert.deepStrictEqual(
+		Option.map(
+			postFrom({
+				content: `${LINK} <a href="https://cubari.moe/read/gist/OPM/242/1/">mirror</a> ${LINK}`,
+				published: '2026-10-21T15:27:52+00:00',
+				title: 'Chapter 242 [English]'
+			}),
+			found => [found.links, DateTime.formatIso(found.postedAt)]
+		),
+		Option.some([
+			['https://cubari.moe/read/imgchest/abc123xyz/1', 'https://cubari.moe/read/gist/OPM/242'],
+			'2026-10-21T15:27:52.000Z'
+		])
+	)
+})
+
+it('reads an index chapter once per number, from its first translated group of https pages', () => {
+	const group = {English: ['https://example.com/en.png']}
+	assert.deepStrictEqual(
+		Array.map(
+			chaptersFromIndex(
+				{
+					chapters: {
+						'1e12': {groups: group, release_date: Option.none(), title: Option.none()},
+						'123suffix': {groups: group, release_date: Option.none(), title: Option.none()},
+						'243.5': {groups: group, release_date: Option.none(), title: Option.none()},
+						'243.50': {groups: group, release_date: Option.none(), title: Option.none()},
+						'244': {
+							groups: {Japanese: ['https://example.com/jp.png'], ...group},
+							release_date: Option.none(),
+							title: Option.none()
+						},
+						'245': {
+							groups: {English: ['http://example.com/en.png']},
+							release_date: Option.none(),
+							title: Option.none()
+						},
+						Infinity: {groups: group, release_date: Option.none(), title: Option.none()},
+						NaN: {groups: group, release_date: Option.none(), title: Option.none()}
+					}
+				},
+				'manga'
+			),
+			found => `${found.number} ${Array.join(found.pages, ' ')}`
+		),
+		['244 https://example.com/en.png', '243.5 https://example.com/en.png']
+	)
+})
+
+it('reports each run of missing whole numbers once, however far apart its neighbours', () => {
+	assert.deepStrictEqual(
+		missingRanges(
+			Array.map([230, 233, 233.5, 234, 1e12], number => chapter('manga', number, true)),
+			'manga'
+		),
+		[
+			{from: 231, to: 232},
+			{from: 235, to: 1e12 - 1}
+		]
+	)
+	assert.deepStrictEqual(missingRanges([chapter('manga', 243.5, true)], 'manga'), [])
+})
+
+it('tries the first post of a new chapter and the newest revision of a known one first', () => {
+	assert.deepStrictEqual(
+		Array.map(
+			revisionCandidates(
+				[
+					redditPost(244, false, '2026-11-18T09:00:00Z', 'https://cubari.moe/read/imgchest/first/'),
+					redditPost(244, false, '2026-11-18T10:00:00Z', 'https://cubari.moe/read/imgchest/repost/'),
+					redditPost(243, true, '2026-11-18T09:01:00Z', 'https://cubari.moe/read/imgchest/older/'),
+					redditPost(243, true, '2026-11-18T09:02:00Z', 'https://cubari.moe/read/imgchest/newer/')
+				],
+				[chapter('manga', 243, true, Option.some(DateTime.makeUnsafe('2026-11-01T00:00:00Z')))],
+				[]
+			),
+			group => [group[0], Array.map(group[1], candidate => candidate.links[0])]
+		),
+		[
+			[
+				keyOf({number: ChapterNumber.make(244), series: 'manga'}),
+				['https://cubari.moe/read/imgchest/first/', 'https://cubari.moe/read/imgchest/repost/']
+			],
+			[
+				keyOf({number: ChapterNumber.make(243), series: 'manga'}),
+				['https://cubari.moe/read/imgchest/newer/', 'https://cubari.moe/read/imgchest/older/']
+			]
+		]
+	)
+})
+
+it('keeps the pages Reddit brings in the round the index brings the same chapter', () => {
+	const fromReddit = Chapter.make({
+		...Struct.pick(chapter('manga', 244, false), Struct.keys(Chapter.fields)),
+		pages: ['https://example.com/reddit.png']
+	})
+	assert.deepStrictEqual(
+		roundChapters(
+			[],
+			[fromReddit],
+			[{chapters: [chapter('manga', 243, true), chapter('manga', 244, true)], kind: 'manga'}]
+		),
+		{backfilled: [chapter('manga', 243, true)], fresh: [fromReddit], revisions: []}
 	)
 })
