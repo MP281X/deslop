@@ -99,7 +99,7 @@ export const activateRelease = Effect.fnUntraced(function* (name: string, target
 	return current
 })
 
-const serving = Effect.fnUntraced(function* (url: string, name: string, version: AppVersion) {
+const answers = Effect.fnUntraced(function* (url: string, name: string, version: AppVersion) {
 	return yield* pipe(
 		HttpClient.get(url),
 		Effect.flatMap(HttpClientResponse.filterStatusOk),
@@ -108,7 +108,13 @@ const serving = Effect.fnUntraced(function* (url: string, name: string, version:
 			release => release.name === name && release.version === version,
 			() => AppError.make({message: `${name} ${version} is not serving yet`})
 		),
-		Effect.timeout('2 seconds'),
+		Effect.timeout('2 seconds')
+	)
+})
+
+const serving = Effect.fnUntraced(function* (url: string, name: string, version: AppVersion) {
+	return yield* pipe(
+		answers(url, name, version),
 		Effect.retry({
 			schedule: Schedule.spaced('1 second'),
 			while: error => Array.contains(['HttpClientError', 'SchemaError', 'AppError', 'TimeoutError'], error._tag)
@@ -117,20 +123,83 @@ const serving = Effect.fnUntraced(function* (url: string, name: string, version:
 	)
 })
 
+const versionIn = Effect.fnUntraced(function* (directory: string) {
+	const fs = yield* FileSystem.FileSystem
+	return (yield* Schema.decodeEffect(Schema.fromJsonString(Schema.Struct({version: AppVersion})))(
+		yield* fs.readFileString((yield* Path.Path).join(directory, 'package.json'))
+	)).version
+})
+
+// Links the release, restarts the service onto it and proves it answers; a release that does not is replaced by the previous one, proven the same way.
+const promoteRelease = Effect.fnUntraced(function* (
+	name: string,
+	url: string,
+	target: {readonly path: string; readonly version: AppVersion},
+	previous: Option.Option<{readonly path: string; readonly version: AppVersion}>
+) {
+	const promoted = yield* pipe(
+		activateRelease(name, target.path),
+		Effect.andThen(restartService(name)),
+		Effect.andThen(serving(url, name, target.version)),
+		Effect.exit
+	)
+	if (Exit.isSuccess(promoted)) return
+	// The previous release runs again on the data the new one may have migrated, so it is proven, not assumed.
+	const restored = yield* Option.match(previous, {
+		onNone: () => Effect.succeed('No earlier release is kept; the service is down'),
+		onSome: Effect.fnUntraced(function* (release) {
+			const exit = yield* pipe(
+				activateRelease(name, release.path),
+				Effect.andThen(restartService(name)),
+				Effect.andThen(serving(url, name, release.version)),
+				Effect.exit
+			)
+			return Exit.match(exit, {
+				onFailure: cause =>
+					`${name} ${release.version} did not start serving again either; the service is down: ${Cause.pretty(cause)}`,
+				onSuccess: () => `${name} ${release.version} is serving again`
+			})
+		})
+	})
+	return yield* AppError.make({
+		cause: promoted.cause,
+		message: `${name} ${target.version} did not start serving: ${Cause.pretty(promoted.cause)}. ${restored}`
+	})
+})
+
 // Never two processes: the service manager stops the old one before starting the new. Callers hold the lifecycle lock.
 export const updateRelease = Effect.fnUntraced(function* (name: string, url: string) {
 	const fs = yield* FileSystem.FileSystem
 	const path = yield* Path.Path
 	const root = yield* serviceDirectory(name)
-	const running = (yield* Schema.decodeEffect(Schema.fromJsonString(Schema.Struct({version: AppVersion})))(
-		yield* fs.readFileString(path.join(root, 'current', 'package.json'))
-	)).version
+	const running = yield* versionIn(path.join(root, 'current'))
 	const latest = (yield* pipe(
 		HttpClient.filterStatusOk(yield* HttpClient.HttpClient).get(`https://registry.npmjs.org/@deslop%2f${name}/latest`),
 		Effect.flatMap(HttpClientResponse.schemaBodyJson(Schema.Struct({version: AppVersion}))),
 		Effect.timeout('15 seconds')
 	)).version
-	if (latest === running) return `${name} ${running} is current\n`
+	if (latest === running) {
+		// An update killed after it linked the release, or after the release failed to start, leaves the service on another one or down.
+		if (Exit.isSuccess(yield* Effect.exit(answers(url, name, running)))) return `${name} ${running} is current\n`
+		yield* fs.makeDirectory(path.join(root, 'releases'), {mode: 0o700, recursive: true})
+		yield* Effect.uninterruptible(
+			promoteRelease(
+				name,
+				url,
+				{path: yield* fs.readLink(path.join(root, 'current')), version: running},
+				// A killed update leaves its release in `releases` beside the one before it, which is the fallback.
+				pipe(
+					yield* fs.readDirectory(path.join(root, 'releases')),
+					Array.findFirst(entry => !String.startsWith('.')(entry) && entry !== running),
+					Option.map(version => ({
+						path: path.join(root, 'releases', version, 'node_modules', '@deslop', name),
+						version
+					}))
+				)
+			)
+		)
+		return `${name} ${running} was not serving; it is serving now\n`
+	}
 	const npm = yield* updaterNpm
 	const releases = path.join(root, 'releases')
 	const directory = path.join(releases, latest)
@@ -174,26 +243,12 @@ export const updateRelease = Effect.fnUntraced(function* (name: string, url: str
 		})
 	)
 	yield* Effect.uninterruptible(
-		Effect.gen(function* () {
-			yield* activateRelease(name, path.join(directory, 'node_modules', '@deslop', name))
-			const promoted = yield* Effect.exit(Effect.andThen(restartService(name), serving(url, name, latest)))
-			if (Exit.isSuccess(promoted)) return
-			// The previous release runs again on the data the new one may have migrated, so it is proven, not assumed.
-			const restored = yield* pipe(
-				activateRelease(name, previous),
-				Effect.andThen(restartService(name)),
-				Effect.andThen(serving(url, name, running)),
-				Effect.exit
-			)
-			return yield* AppError.make({
-				cause: promoted.cause,
-				message: `${name} ${latest} did not start serving: ${Cause.pretty(promoted.cause)}. ${Exit.match(restored, {
-					onFailure: cause =>
-						`${name} ${running} did not start serving again either; the service is down: ${Cause.pretty(cause)}`,
-					onSuccess: () => `${name} ${running} is serving again`
-				})}`
-			})
-		})
+		promoteRelease(
+			name,
+			url,
+			{path: path.join(directory, 'node_modules', '@deslop', name), version: latest},
+			Option.some({path: previous, version: running})
+		)
 	)
 	const kept = [latest, path.basename(path.resolve(root, previous, '../../..'))]
 	yield* pipe(

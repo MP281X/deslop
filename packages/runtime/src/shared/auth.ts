@@ -57,14 +57,14 @@ export const ON_BEHALF_HEADER = 'x-deslop-user'
 // Effect appends each frame's headers to the upgrade request's; this entry marks where a client's own begin.
 export const FRAME_HEADERS = 'x-deslop-frame'
 
-// The derived address and an app's on-behalf claim come only from the upgrade request the proxy and `clientAddress` checked.
+// The derived address, an app's on-behalf claim and the session cookie come only from the upgrade request the proxy and `clientAddress` checked; browsers and iOS apps send the cookie there.
 export function upgradeOnlyHeaders(headers: readonly [string, string][]) {
 	const start = Array.findFirstIndex(headers, entry => entry[0] === FRAME_HEADERS)
 	return Array.filter(
 		headers,
 		(entry, index) =>
 			Option.exists(start, boundary => index < boundary) ||
-			!Array.contains([FRAME_HEADERS, CLIENT_HEADER, ON_BEHALF_HEADER], String.toLowerCase(entry[0]))
+			!Array.contains([FRAME_HEADERS, CLIENT_HEADER, ON_BEHALF_HEADER, 'cookie'], String.toLowerCase(entry[0]))
 	)
 }
 
