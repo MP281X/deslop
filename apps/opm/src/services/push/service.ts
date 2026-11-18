@@ -1,5 +1,6 @@
 // fallow-ignore-file duplicate-export -- Each app owns its folder-named Push service; their context identities and notification policies are distinct.
-import {Array, Context, Effect, Function, Layer, Redacted, Schema} from 'effect'
+import type {Schema} from 'effect'
+import {Array, Context, Effect, Function, Layer} from 'effect'
 
 import type {SqlError} from 'effect/sql'
 import {SqlClient, SqlSchema} from 'effect/sql'
@@ -22,44 +23,56 @@ export class Push extends Context.Service<Push>()('@deslop/opm/services/push/ser
 		const apns = yield* Apns
 		const asPushReadError = asPushError('The push state could not be read.')
 		const asPushSaveError = asPushError('The push state could not be saved.')
-		const listDevices = SqlSchema.findAll({
-			Request: Schema.Void,
-			Result: Device,
-			execute: () => sql`SELECT * FROM devices`
-		})
 		const saveDevice = SqlSchema.void({
 			Request: Device.insert,
 			execute: row =>
 				sql`INSERT INTO devices ${sql.insert(row)} ON CONFLICT (token) DO UPDATE SET bundle = excluded.bundle, kind = excluded.kind`
 		})
+		// Only the registration Apple answered for: a phone that registered the token again under another bundle meanwhile keeps it.
 		const forgetDevice = SqlSchema.void({
 			Request: Device.insert,
-			execute: row => sql`DELETE FROM devices WHERE token = ${row.token}`
+			execute: row =>
+				sql`DELETE FROM devices WHERE token = ${row.token} AND bundle = ${row.bundle} AND kind = ${row.kind}`
 		})
-		const listDeliveries = SqlSchema.findAll({
+		// The devices registered when a chapter's announcement first runs are the ones it is for; a later registration gets no backlog.
+		const takeRecipients = SqlSchema.void({
 			Request: ChapterIdentity,
-			Result: ChapterDelivery,
-			execute: chapter =>
-				sql`SELECT * FROM ${sql(ChapterDelivery.table)} WHERE series = ${chapter.series} AND number = ${chapter.number}`
+			execute: chapter => sql`
+				INSERT INTO ${sql(ChapterDelivery.table)} (series, number, token, done)
+				SELECT ${chapter.series}, ${chapter.number}, token, 0 FROM devices
+				WHERE NOT EXISTS (
+					SELECT 1 FROM ${sql(ChapterDelivery.table)} WHERE series = ${chapter.series} AND number = ${chapter.number}
+				)
+			`
 		})
-		const recordDelivery = SqlSchema.void({
-			Request: ChapterDelivery.insert,
-			execute: row => sql`INSERT INTO ${sql(ChapterDelivery.table)} ${sql.insert(row)} ON CONFLICT DO NOTHING`
+		// A recipient whose device was forgotten since is skipped.
+		const listWaiting = SqlSchema.findAll({
+			Request: ChapterIdentity,
+			Result: Device,
+			execute: chapter => sql`
+				SELECT devices.* FROM ${sql(ChapterDelivery.table)} JOIN devices USING (token)
+				WHERE series = ${chapter.series} AND number = ${chapter.number} AND done = 0
+			`
+		})
+		const finishDelivery = SqlSchema.void({
+			Request: ChapterDelivery.update,
+			execute: row => sql`
+				UPDATE ${sql(ChapterDelivery.table)} SET done = ${row.done}
+				WHERE series = ${row.series} AND number = ${row.number} AND token = ${row.token}
+			`
 		})
 		return {
+			// Every device hears of a chapter at least once: an alert Apple accepted just before its answer could be recorded is sent again, since recording first would lose the alert to a crash.
 			announce: Effect.fn('Push.announce')(function* (chapter: Chapter) {
 				// New registrations should not receive alerts for chapters announced without a working recipient.
 				if (!apns.enabled) return true
-				const devices = yield* asPushReadError(listDevices())
-				const delivered = yield* asPushReadError(listDeliveries(chapter))
+				const identity = {number: chapter.number, series: chapter.series}
+				yield* asPushSaveError(takeRecipients(identity))
 				const outcomes = yield* Effect.forEach(
-					devices,
+					yield* asPushReadError(listWaiting(identity)),
 					device =>
 						Effect.catch(
 							Effect.gen(function* () {
-								if (Array.some(delivered, row => Redacted.value(row.token) === Redacted.value(device.token))) {
-									return true
-								}
 								const answer = yield* apns.sendToDevice(
 									device,
 									'alert',
@@ -77,17 +90,17 @@ export class Push extends Context.Service<Push>()('@deslop/opm/services/push/ser
 									10
 								)
 								// A retry for one device must not send the same alert to the others again.
-								const remember = Effect.as(
-									asPushSaveError(
-										recordDelivery({number: chapter.number, series: chapter.series, token: device.token})
-									),
+								const finish = Effect.as(
+									asPushSaveError(finishDelivery({...identity, done: true, token: device.token})),
 									true
 								)
 								return yield* ApnsAnswer.match(answer, {
-									Accepted: () => remember,
+									Accepted: () => finish,
 									DeadToken: () => Effect.as(asPushSaveError(forgetDevice(device)), true),
-									Refused: () => remember,
-									Retry: () => Effect.succeed(false)
+									Refused: () => finish,
+									Retry: () => Effect.succeed(false),
+									// The payload is at fault, not the device: it stays registered, and the same alert would only be refused again.
+									TooLarge: () => finish
 								})
 							}),
 							cause => Effect.as(Effect.logWarning('A chapter push failed', cause), false)

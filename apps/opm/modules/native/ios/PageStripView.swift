@@ -144,10 +144,14 @@ final class StripController: NSObject, UIScrollViewDelegate {
   // Height over width of each page; a page keeps a typical manga shape until its image arrives.
   private var aspects: [CGFloat] = []
   private var pendingStart: Int?
-  private var prefetches: [URL: URLSessionDataTask?] = [:]
+  // The pages with an image or a download near the screen, and the downloads ahead, by index; scrolling touches only these.
+  private var loaded = Set<Int>()
+  private var prefetches: [Int: Task<Void, Never>] = [:]
   private var current = -1
   private var laidOutWidth: CGFloat = 0
   private var adjusting = false
+  // Until the reader drags, the strip sits where it was restored, which may be the bottom without the last page being read.
+  private var dragged = false
   var onPage: (Int) -> Void = { _ in }
   var onTap: () -> Void = {}
   var onScroll: () -> Void = {}
@@ -157,6 +161,8 @@ final class StripController: NSObject, UIScrollViewDelegate {
     scrollView.delegate = self
     scrollView.backgroundColor = .black
     scrollView.contentInsetAdjustmentBehavior = .never
+    // A strip shorter than the screen still takes a drag, which reads its last page and adds the next chapter.
+    scrollView.alwaysBounceVertical = true
     scrollView.onLayout = { [weak self] in self?.fit() }
     scrollView.onWindow = { [weak self] in
       if let self {
@@ -184,6 +190,7 @@ final class StripController: NSObject, UIScrollViewDelegate {
     aspects = []
     self.pages = pages
     current = -1
+    dragged = false
     pages.forEach(add)
     pendingStart = min(max(start, 0), max(pageViews.count - 1, 0))
     layout()
@@ -254,22 +261,30 @@ final class StripController: NSObject, UIScrollViewDelegate {
 
   // Save and restore the same top-edge anchor, including pages shorter than half the screen.
   // Until the strip has scrolled to its start, the top page is not the one being read, so nothing is reported.
-  // At the bottom, even a short final page counts as read.
+  // At the bottom the reader dragged to, even a short final page counts as read.
   private func track() {
     guard !pageViews.isEmpty, pendingStart == nil, !adjusting else { return }
-    let top = scrollView.contentOffset.y + scrollView.contentInset.top + 1
-    let index =
-      bottomOffset > -scrollView.contentInset.top && scrollView.contentOffset.y >= bottomOffset - 1
-      ? pageViews.count - 1 : pageViews.firstIndex { $0.frame.maxY > top } ?? pageViews.count - 1
-    for (position, view) in pageViews.enumerated() {
-      if position >= index - 2 && position <= index + 4 {
-        view.load()
-      } else if position < index - 6 || position > index + 8 {
-        view.unload()
-      }
-      if position > index + 4 && position <= index + 16 {
-        prefetch(view)
-      }
+    let last = pageViews.count - 1
+    let index = dragged && scrollView.contentOffset.y >= bottomOffset - 1 ? last : topIndex()
+    let shown = max(index - 2, 0)...min(index + 4, last)
+    let kept = (index - 6)...(index + 8)
+    for position in loaded where !kept.contains(position) {
+      pageViews[position].unload()
+      loaded.remove(position)
+    }
+    for position in shown {
+      pageViews[position].load()
+      loaded.insert(position)
+    }
+    // The image hosts take a second or two per page, so the pages after the loaded ones download ahead into the disk cache;
+    // a download for pages the reader jumped away from stops, and one that failed is tried again when its page comes near.
+    let ahead = (index + 5)...(index + 16)
+    for (position, task) in prefetches where !ahead.contains(position) {
+      task.cancel()
+      prefetches.removeValue(forKey: position)
+    }
+    for position in ahead where position <= last && prefetches[position] == nil {
+      if let url = pageViews[position].url { prefetches[position] = PageLoader.prefetch(url) }
     }
     if index != current {
       current = index
@@ -277,10 +292,20 @@ final class StripController: NSObject, UIScrollViewDelegate {
     }
   }
 
-  // The image hosts take a second or two per page, so the pages after the loaded ones download ahead into the disk cache.
-  private func prefetch(_ view: PageView) {
-    guard let url = view.url, prefetches[url] == nil else { return }
-    prefetches.updateValue(PageLoader.prefetch(url), forKey: url)
+  // The first page whose bottom is below the top of the screen; pages are laid out in order, so halving finds it.
+  private func topIndex() -> Int {
+    let top = scrollView.contentOffset.y + scrollView.contentInset.top + 1
+    var low = 0
+    var high = pageViews.count - 1
+    while low < high {
+      let middle = (low + high) / 2
+      if pageViews[middle].frame.maxY > top { high = middle } else { low = middle + 1 }
+    }
+    return low
+  }
+
+  func scrollViewWillBeginDragging(_ scrollView: UIScrollView) {
+    dragged = true
   }
 
   func scrollViewDidScroll(_ scrollView: UIScrollView) {
@@ -294,8 +319,9 @@ final class StripController: NSObject, UIScrollViewDelegate {
 
   func stop() {
     bar.detach()
-    pageViews.forEach { $0.unload() }
-    prefetches.values.forEach { $0?.cancel() }
+    loaded.forEach { pageViews[$0].unload() }
+    loaded = []
+    prefetches.values.forEach { $0.cancel() }
     prefetches = [:]
   }
 }
@@ -386,8 +412,14 @@ final class PageView: UIImageView, UIContextMenuInteractionDelegate {
   }
 }
 
+// Pages come from whatever hosts a translation links, so the phone loads only public https links, a bounded number of bytes
+// and pixels each, and cancels a download nobody waits for.
 enum PageLoader {
-  // Pages never change at their link, so a read chapter opens again from the disk without the network.
+  private static let maxBytes = 32 << 20
+  private static let maxPixels = 64_000_000
+
+  // Pages never change at their link, so a read chapter opens again from the disk without the network. Only a whole page
+  // that answered 200 is kept, so an error page or a cut-off download is fetched again.
   private static let cache = URLCache(
     memoryCapacity: 16 << 20, diskCapacity: 1 << 30,
     directory: FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first?
@@ -399,36 +431,76 @@ enum PageLoader {
 
   private static func makeSession(connections: Int) -> URLSession {
     let configuration = URLSessionConfiguration.default
-    configuration.urlCache = cache
-    configuration.requestCachePolicy = .returnCacheDataElseLoad
+    configuration.urlCache = nil
+    configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
     configuration.httpMaximumConnectionsPerHost = connections
     configuration.timeoutIntervalForRequest = 20
-    return URLSession(configuration: configuration)
+    return URLSession(configuration: configuration, delegate: Redirects.shared, delegateQueue: nil)
   }
 
-  static func prefetch(_ url: URL) -> URLSessionDataTask? {
-    guard cache.cachedResponse(for: URLRequest(url: url)) == nil else { return nil }
-    let task = ahead.dataTask(with: url) { _, _, _ in }
-    task.resume()
-    return task
+  // A name on the public internet over https: no plain http, no address typed as numbers, no name on the local network.
+  static func admits(_ url: URL?) -> Bool {
+    guard let url, url.scheme == "https", let host = url.host(percentEncoded: false)?.lowercased(), !host.isEmpty
+    else { return false }
+    if host == "localhost" || host.hasSuffix(".local") || host.hasSuffix(".localhost") { return false }
+    if host.contains(":") || host.allSatisfy({ $0.isNumber || $0 == "." }) { return false }
+    return true
   }
 
-  // `size` is the longest side in pixels: a whole screen for a page, a few points for a cover. An error page or bytes
-  // that are no image leave the cache, so the next try downloads the page again.
+  static func prefetch(_ url: URL) -> Task<Void, Never> {
+    Task.detached(priority: .utility) {
+      let request = URLRequest(url: url)
+      if cache.cachedResponse(for: request) == nil { _ = await download(request, session: ahead) }
+    }
+  }
+
+  // `size` is the longest side in pixels: a whole screen for a page, a few points for a cover. Bytes that are no image
+  // leave the cache, so the next try downloads the page again.
   static func image(_ url: URL, size: Int) async -> UIImage? {
-    guard let (data, response) = try? await session.data(from: url), !Task.isCancelled else { return nil }
-    guard (response as? HTTPURLResponse)?.statusCode == 200,
-      let image = await Task.detached(priority: .userInitiated, operation: { decode(data, size: size) }).value
-    else {
-      cache.removeCachedResponse(for: URLRequest(url: url))
+    guard admits(url) else { return nil }
+    let request = URLRequest(url: url)
+    // Off the main thread: reading a download byte by byte and decoding both take long enough to stall scrolling.
+    let work = Task.detached(priority: .userInitiated) { () -> UIImage? in
+      var data = cache.cachedResponse(for: request)?.data
+      if data == nil { data = await download(request, session: session) }
+      guard let data, !Task.isCancelled else { return nil }
+      guard let image = decode(data, size: size) else {
+        cache.removeCachedResponse(for: request)
+        return nil
+      }
+      return image
+    }
+    return await withTaskCancellationHandler { await work.value } onCancel: { work.cancel() }
+  }
+
+  // Stops at `maxBytes`, whatever length the answer claims, and keeps a whole 200 answer for next time.
+  private static func download(_ request: URLRequest, session: URLSession) async -> Data? {
+    guard admits(request.url),
+      let (bytes, response) = try? await session.bytes(for: request),
+      let answer = response as? HTTPURLResponse, answer.statusCode == 200,
+      answer.expectedContentLength <= Int64(maxBytes)
+    else { return nil }
+    var data = Data()
+    if answer.expectedContentLength > 0 { data.reserveCapacity(Int(answer.expectedContentLength)) }
+    do {
+      for try await byte in bytes {
+        guard data.count < maxBytes else { return nil }
+        data.append(byte)
+      }
+    } catch {
       return nil
     }
-    return image
+    cache.storeCachedResponse(CachedURLResponse(response: answer, data: data), for: request)
+    return data
   }
 
-  // Decoding off the main thread, and no larger than needed, keeps scrolling smooth and memory flat.
+  // Decoding no larger than needed keeps memory flat; a picture with more pixels than any page is not decoded at all.
   private static func decode(_ data: Data, size: Int) -> UIImage? {
-    guard let source = CGImageSourceCreateWithData(data as CFData, [kCGImageSourceShouldCache: false] as CFDictionary)
+    guard let source = CGImageSourceCreateWithData(data as CFData, [kCGImageSourceShouldCache: false] as CFDictionary),
+      let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
+      let width = properties[kCGImagePropertyPixelWidth] as? Int,
+      let height = properties[kCGImagePropertyPixelHeight] as? Int,
+      width > 0, height > 0, width <= maxPixels / height
     else { return nil }
     let options =
       [
@@ -439,5 +511,17 @@ enum PageLoader {
       ] as CFDictionary
     guard let image = CGImageSourceCreateThumbnailAtIndex(source, 0, options) else { return nil }
     return UIImage(cgImage: image)
+  }
+}
+
+// A redirect is followed only to a link the loader would load itself.
+final class Redirects: NSObject, URLSessionTaskDelegate, Sendable {
+  static let shared = Redirects()
+
+  func urlSession(
+    _ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse,
+    newRequest request: URLRequest, completionHandler: @escaping (URLRequest?) -> Void
+  ) {
+    completionHandler(PageLoader.admits(request.url) ? request : nil)
   }
 }
