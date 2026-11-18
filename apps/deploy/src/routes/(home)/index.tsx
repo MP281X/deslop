@@ -28,7 +28,7 @@ import {inventoryAtom, metricsAtom} from '#lib/fleet.ts'
 import {RANGES} from '#routes/(home)/-chart.ts'
 import {ChartBlock, ChartSkeleton, EmptyChart} from '#routes/(home)/-charts.tsx'
 import {InventoryContent, ListPane} from '#routes/(home)/-list.tsx'
-import {Processes} from '#routes/(home)/-processes.tsx'
+import {Processes, Reasons} from '#routes/(home)/-processes.tsx'
 import {failureOf, rowOrder, owner, ranged} from '#routes/(home)/-rows.ts'
 import {usageOf} from '#routes/(home)/-usage.ts'
 import type {Usage} from '#routes/(home)/-usage.ts'
@@ -188,6 +188,7 @@ function SelectedProcesses(props: {app: Option.Option<ItemId>; pending: boolean;
 				onSome: row => (
 					<Suspense fallback={<LoadingRows label="Processes loading" rows={6} />}>
 						<InventoryContent>
+							<Reasons row={row} />
 							<ProcessList row={row} />
 						</InventoryContent>
 					</Suspense>
