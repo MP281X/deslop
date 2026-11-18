@@ -6,6 +6,7 @@ import {
 	Cause,
 	Context,
 	DateTime,
+	Duration,
 	Effect,
 	Exit,
 	Fiber,
@@ -23,6 +24,7 @@ import {
 	Ref,
 	RcMap,
 	Result,
+	Schedule,
 	Schema,
 	Semaphore,
 	Stream,
@@ -33,8 +35,8 @@ import {
 
 import type {PlatformError} from 'effect/PlatformError'
 import {Reactivity} from 'effect/reactivity'
-import type {SqlError, Statement} from 'effect/sql'
-import {Migrator, SqlClient, SqlModel, SqlSchema} from 'effect/sql'
+import type {Statement} from 'effect/sql'
+import {Migrator, SqlClient, SqlError, SqlModel, SqlSchema} from 'effect/sql'
 
 import {dataDirectory} from '@deslop/runtime/server/store'
 import type {UserId} from '@deslop/runtime/shared/auth'
@@ -92,13 +94,29 @@ function asStorageNotesError(
 
 const asNotesError = Effect.mapError(asStorageNotesError)
 
-const asMediaNotesError = Effect.mapError((cause: MediaError) =>
-	NotesError.make({cause, message: 'Media processing failed; the note is saved. Try processing it again.'})
-)
-
 const missing = NotesError.make({message: 'No note has this id; find its id with search_notes.'})
 
 const removed = NotesError.make({message: 'This note was deleted after it was saved.', reason: 'Removed'})
+
+// SQLite waits its busy timeout for the write lock before it reports the database locked, so a retryable SQL error, wrapped or not, is a database still busy; any other storage failure is not helped by waiting.
+function busy(error: unknown) {
+	const cause = pipe(
+		Match.value(error),
+		Match.when(Schema.is(NotesError), failure => failure.cause),
+		Match.orElse(Function.identity)
+	)
+	return SqlError.isSqlError(cause) && cause.isRetryable
+}
+
+const patiently = Schedule.modifyDelay(Schedule.exponential('1 second'), step =>
+	Effect.succeed(Duration.min(step.duration, Duration.seconds(30)))
+)
+
+// What a provider answered, or the end of a run, is tried again with a growing pause until the database takes it: dropping it would ask the provider, and charge, again. A stop or a removal interrupts the wait.
+function untilStored<A, E, R>(write: Effect.Effect<A, E, R>) {
+	// oxlint-disable-next-line @deslop/coding-standards/retry-policy -- Only a busy database is retried, and the write is the one way an answer already paid for is kept; a bound would drop it and ask the provider again.
+	return Effect.retry(write, {schedule: patiently, while: busy})
+}
 
 // The search row of each note the condition selects, from its texts and tags as `searchable` spells them, so the index and a query fold text alike.
 const indexNotes = Effect.fnUntraced(function* (sql: SqlClient.SqlClient, condition: Statement.Fragment) {
@@ -359,6 +377,11 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 			return pipe(changeIn(id, update), sql.withTransaction, asNotesError)
 		}
 
+		// A change that stores a provider's answer or settles the run.
+		function persist(id: NoteId, update: NoteChange) {
+			return pipe(changeIn(id, update), sql.withTransaction, untilStored, asNotesError)
+		}
+
 		// Called in the transaction that leaves the note organizing: once it commits, the claim looks at once and the run links back to this request.
 		function organizeLater(id: NoteId) {
 			return Effect.flatMap(Effect.option(Effect.currentSpan), request =>
@@ -425,6 +448,7 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 					})
 				),
 				sql.withTransaction,
+				untilStored,
 				asNotesError
 			)
 		}
@@ -452,7 +476,7 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 				String.isEmpty(commentOf(note.text)) &&
 				Array.isReadonlyArrayEmpty(pictures)
 			) {
-				return yield* change(note.id, NoteChange.cases.empty.make({}))
+				return yield* persist(note.id, NoteChange.cases.empty.make({}))
 			}
 			yield* Result.match(
 				yield* Effect.result(
@@ -460,7 +484,7 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 				),
 				{
 					// The organizer's message is already safe to show, and some, such as a missing key, say what to do.
-					onFailure: error => change(note.id, NoteChange.cases.fail.make({issue: error.message})),
+					onFailure: error => persist(note.id, NoteChange.cases.fail.make({issue: error.message})),
 					onSuccess: organization => organized(note.id, organization, note.text)
 				}
 			)
@@ -503,19 +527,29 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 			)
 		}
 
-		// A transcription Gateway refused, such as for a missing key, leaves its instruction on the note; any other failure is only logged.
+		// A media failure is logged; one Gateway refused, whose message says what to do, or one that spent the note's budget also leaves its message on the note, so a note that ends with nothing to read says why.
+		function explained(id: NoteId, error: MediaError) {
+			if (error.reason === undefined) return Effect.void
+			return change(id, NoteChange.cases.issue.make({issue: error.message}))
+		}
+
 		function untranscribed(id: NoteId) {
 			return (error: MediaError) =>
 				pipe(
 					Effect.logWarning('No transcript', error),
-					Effect.andThen(
-						Boolean.match(error.reason === 'Refused', {
-							onFalse: () => Effect.void,
-							onTrue: () => change(id, NoteChange.cases.issue.make({issue: error.message}))
-						})
-					),
+					Effect.andThen(explained(id, error)),
 					Effect.as(Option.none<string>())
 				)
+		}
+
+		function framesOf(id: NoteId, frames: Effect.Effect<Still[], MediaError>) {
+			return Effect.catch(frames, error =>
+				pipe(
+					Effect.logWarning('No video frames', error),
+					Effect.andThen(explained(id, error)),
+					Effect.as(Array.empty<Still>())
+				)
+			)
 		}
 
 		// Read video details and frames, then tag the note; details replace content for non-X links, and for X only when useInfo says the post itself could not be read.
@@ -529,8 +563,10 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 			const [, frames] = yield* Effect.all(
 				[
 					pipe(
-						asMediaNotesError(media.read(budget, userId, input.url, Option.some(input.video))),
-						Effect.tapError(error => Effect.logWarning('The video could not be read', error)),
+						media.read(budget, userId, input.url, Option.some(input.video)),
+						Effect.tapError(error =>
+							Effect.andThen(Effect.logWarning('The video could not be read', error), explained(note.id, error))
+						),
 						Effect.option,
 						Effect.flatMap(read =>
 							pipe(
@@ -539,7 +575,7 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 								Effect.transposeOption,
 								Effect.map(Option.flatten),
 								Effect.flatMap(transcript =>
-									change(
+									persist(
 										note.id,
 										NoteChange.cases.video.make({
 											content: pipe(
@@ -554,9 +590,7 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 							)
 						)
 					),
-					Effect.catch(asMediaNotesError(media.frames(budget, input.video)), error =>
-						Effect.as(Effect.logWarning('No video frames', error), Array.empty<Still>())
-					)
+					framesOf(note.id, media.frames(budget, input.video))
 				],
 				{concurrency: 2}
 			)
@@ -637,9 +671,7 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 			const [stills] = yield* Effect.all(
 				[
 					Effect.gen(function* () {
-						const frames = yield* Effect.catch(asMediaNotesError(media.fileFrames(budget, stored)), error =>
-							Effect.as(Effect.logWarning('No video frames', error), Array.empty<Still>())
-						)
+						const frames = yield* framesOf(note.id, media.fileFrames(budget, stored))
 						yield* pipe(
 							Array.head(frames),
 							Option.match({
@@ -660,7 +692,7 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 									Option.match({
 										onNone: () => Effect.void,
 										onSome: text =>
-											change(
+											persist(
 												note.id,
 												NoteChange.cases.video.make({content: Option.none(), transcript: Option.some(text)})
 											)
@@ -708,11 +740,11 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 								})
 						})
 					),
-					// A run that ends without settling its note, failed or not, marks it failed, so no claim pays for it again; only a stop or removal interrupts it.
+					// A run that ends without settling its note, failed or not, marks it failed, so while the server runs no claim asks the provider again: one request per run. A restart cuts a run short and the next start asks again, so a charge can repeat. Only a stop or removal interrupts the write.
 					Effect.onExit(exit =>
 						Boolean.match(Exit.isFailure(exit) && Cause.hasInterruptsOnly(exit.cause), {
 							onFalse: () =>
-								Effect.ignore(change(id, NoteChange.cases.stop.make({})), {
+								Effect.ignore(Effect.interruptible(persist(id, NoteChange.cases.stop.make({}))), {
 									log: 'Warn',
 									message: 'A stopped tagging run could not be recorded'
 								}),

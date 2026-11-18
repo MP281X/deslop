@@ -88,3 +88,28 @@ it('keeps words shared after the organization read the note under its body', () 
 	if (!NoteChangeResult.isAnyOf(['Changed'])(later)) return assert.fail('Expected a shared note')
 	assert.deepStrictEqual(later.note.body, Option.some('Recipe\n> add the appendix\n> served cold'))
 })
+
+function emptied(note: Note) {
+	const result = changeNote(note, NoteChange.cases.empty.make({}))
+	if (!NoteChangeResult.isAnyOf(['Changed'])(result)) return assert.fail('Expected a failed note')
+	return result.note
+}
+
+it('says a note with a file has nothing to read in the file, a link nothing at the link, and keeps a cause already found', () => {
+	const created = {createdAt: DateTime.makeUnsafe(0)}
+	const file = Note.make({...newNote(USER, CAPTURE, Option.none(), Option.some('video/mp4')), ...created})
+	const link = Note.make({
+		...newNote(USER, CAPTURE, Option.some('https://example.com/article'), Option.none()),
+		...created
+	})
+	const explained = changeNote(file, NoteChange.cases.issue.make({issue: 'ffprobe exceeded its time limit'}))
+	if (!NoteChangeResult.isAnyOf(['Changed'])(explained)) return assert.fail('Expected an explained note')
+	assert.deepStrictEqual(
+		[emptied(file).issue, emptied(link).issue, emptied(Note.make(explained.note)).issue],
+		[
+			Option.some('Nothing to read in this file.'),
+			Option.some('Nothing to read at this link.'),
+			Option.some('ffprobe exceeded its time limit')
+		]
+	)
+})

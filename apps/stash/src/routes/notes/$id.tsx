@@ -199,7 +199,12 @@ function FullBody(props: {note: NoteItem}) {
 }
 
 function issueOf(note: NoteItem) {
-	return Option.getOrElse(note.issue, Function.constant('Can’t Read This Link'))
+	return Option.getOrElse(note.issue, () =>
+		Boolean.match(Option.isSome(note.file), {
+			onFalse: Function.constant('Can’t Read This Link'),
+			onTrue: Function.constant('Can’t Read This File')
+		})
+	)
 }
 
 // The note's one problem mark, in the bar as on every screen: a failed read that kept content, else a body that stopped loading.
