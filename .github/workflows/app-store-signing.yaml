@@ -1,6 +1,6 @@
 name: App Store signing
 
-# Once per new iPhone app, started by an agent before the app's first release: `.github/releasing.md`.
+# Set up a new iPhone app or replace App Store profiles missing an entitlement: `.github/releasing.md`.
 # The one place this repository drives an interactive tool. eas-cli registers a new app's identifiers and gives it the team's certificate only
 # interactively; its non-interactive mode stops at the missing certificate. Expect answers the two prompts a new app gets and fails on any other.
 on:
@@ -41,30 +41,138 @@ jobs:
           issuer-id: ${{ secrets.ASC_ISSUER_ID }}
           key: ${{ secrets.ASC_KEY_P8 }}
 
-      # Setup turns Apple capabilities on and off to match the app's entitlements, so it only touches identifiers that were never signed for the App Store.
-      - name: Refuse an app that is already signed
+      - name: Inspect App Store profiles and delete stale ones
+        id: profiles
         run: |
-          ids=$(vp exec expo config --type public --json | jq -c '[.ios.bundleIdentifier] + [.extra.eas.build.experimental.ios.appExtensions[]?.bundleIdentifier]')
-          query=$(jq -r 'join(",")' <<< "$ids")
-          signed=$(curl --fail-with-body --silent --show-error --globoff --header "Authorization: Bearer $ASC_TOKEN" \
-            "https://api.appstoreconnect.apple.com/v1/bundleIds?filter[identifier]=$query&include=profiles&limit=200&limit[profiles]=50" |
-            jq -c --argjson ids "$ids" '
-              [.included[]? | select(.type == "profiles" and .attributes.profileType == "IOS_APP_STORE") | .id] as $store
-              | [.data[] | select(.attributes.identifier | IN($ids[]))
-                | select(any(.relationships.profiles.data[]?; .id | IN($store[])))
-                | .attributes.identifier]')
-          unsigned=$(jq -nc --argjson ids "$ids" --argjson signed "$signed" '$ids - $signed')
-          if [[ $unsigned == '[]' ]]; then
-            echo "::error::Already signed for the App Store: $(jq -r 'join(", ")' <<< "$signed"). Releases build with that signing; there is nothing to set up."
-            exit 1
-          elif [[ $signed != '[]' ]]; then
-            echo "::error::Partly signed: App Store profiles for $(jq -r 'join(", ")' <<< "$signed"), none for $(jq -r 'join(", ")' <<< "$unsigned"); an earlier run stopped partway. Delete the App Store profiles of $(jq -r 'join(", ")' <<< "$signed") at https://developer.apple.com/account/resources/profiles/list, then run this workflow again."
-            exit 1
-          fi
+          vp exec expo config --type introspect --json > "$RUNNER_TEMP/signing-config.json"
+          cat > "$RUNNER_TEMP/signing-profiles.py" <<'PY'
+          import base64
+          import json
+          import os
+          import plistlib
+          import subprocess
+          import sys
+          from pathlib import Path
+          from urllib.error import HTTPError
+          from urllib.parse import urlencode
+          from urllib.request import Request, urlopen
+
+          api = "https://api.appstoreconnect.apple.com/v1"
+          temp = Path(os.environ["RUNNER_TEMP"])
+
+          def request(url, method="GET", payload=None):
+              if not url.startswith(f"{api}/"):
+                  raise ValueError(f"Unexpected App Store Connect URL: {url}")
+              headers = {"Authorization": f'Bearer {os.environ["ASC_TOKEN"]}', "Content-Type": "application/json"}
+              body = json.dumps(payload).encode() if payload is not None else None
+              try:
+                  return urlopen(Request(url, data=body, headers=headers, method=method))
+              except HTTPError as error:
+                  fail(f"Apple {method} {url} returned {error.code}: {error.read().decode(errors='replace').strip()}")
+
+          def records(path):
+              url = f"{api}/{path}"
+              while url:
+                  with request(url) as response:
+                      page = json.load(response)
+                  yield from page["data"]
+                  url = page["links"].get("next")
+
+          def entitlements(profile):
+              plist = subprocess.run(
+                  ["openssl", "cms", "-verify", "-inform", "DER", "-noverify"],
+                  input=base64.b64decode(profile["attributes"]["profileContent"], validate=True),
+                  stdout=subprocess.PIPE, check=True,
+              ).stdout
+              return plistlib.loads(plist)["Entitlements"]
+
+          def fail(message):
+              sys.exit(f"::error::{message}")
+
+          config = json.loads((temp / "signing-config.json").read_text())
+          main = config["ios"]["bundleIdentifier"]
+          targets = {main: config["_internal"]["modResults"]["ios"]["entitlements"]}
+          for extension in config["extra"]["eas"].get("build", {}).get("experimental", {}).get("ios", {}).get("appExtensions", []):
+              targets[extension["bundleIdentifier"]] = extension.get("entitlements") or {}
+
+          query = urlencode({"filter[identifier]": ",".join(targets), "limit": 200})
+          bundles = {bundle["attributes"]["identifier"]: bundle["id"] for bundle in records(f"bundleIds?{query}")}
+          profiles = {identifier: [] for identifier in targets}
+          for identifier in targets:
+              if identifier not in bundles:
+                  continue
+              bundle_id = bundles[identifier]
+              profiles[identifier] = [
+                  profile for profile in records(f"bundleIds/{bundle_id}/profiles?limit=200")
+                  if profile["attributes"]["profileType"] == "IOS_APP_STORE"
+              ]
+
+          # Compare keys, not values: profiles can authorize wildcards, and distribution uses a different aps-environment.
+          def missing(identifier, profile):
+              return sorted(targets[identifier].keys() - entitlements(profile).keys())
+
+          snapshot = temp / "signing-profile-ids.json"
+          if sys.argv[1] == "verify":
+              before = json.loads(snapshot.read_text())
+              for identifier, existing in profiles.items():
+                  if not existing:
+                      fail(f"No App Store profile for {identifier} after setup")
+                  created = [profile for profile in existing if profile["id"] not in before[identifier]]
+                  for profile in created:
+                      absent = missing(identifier, profile)
+                      print(f'Created {identifier}: {profile["attributes"]["name"]} ({profile["id"]})')
+                      if absent:
+                          fail(f'New profile for {identifier} lacks {", ".join(absent)}')
+                      print(f'{identifier}: all declared entitlements present ({", ".join(sorted(targets[identifier]))})')
+              sys.exit(0)
+
+          signed = [identifier for identifier, existing in profiles.items() if existing]
+          unsigned = [identifier for identifier, existing in profiles.items() if not existing]
+          if signed and unsigned:
+              fail(f'Partly signed: App Store profiles for {", ".join(signed)}, none for {", ".join(unsigned)}. Delete the App Store profiles of {", ".join(signed)} at https://developer.apple.com/account/resources/profiles/list, then run this workflow again.')
+
+          # A non-interactive release can enter the main target before EAS authenticates to Apple.
+          for identifier in signed:
+              if "com.apple.developer.associated-domains" not in targets[identifier]:
+                  continue
+              bundle_id = bundles[identifier]
+              if any(
+                  capability["attributes"]["capabilityType"] == "ASSOCIATED_DOMAINS"
+                  for capability in records(f"bundleIds/{bundle_id}/bundleIdCapabilities")
+              ):
+                  continue
+              payload = {"data": {
+                  "type": "bundleIdCapabilities",
+                  "attributes": {"capabilityType": "ASSOCIATED_DOMAINS"},
+                  "relationships": {"bundleId": {"data": {"type": "bundleIds", "id": bundle_id}}},
+              }}
+              with request(f"{api}/bundleIdCapabilities", "POST", payload) as response:
+                  capability = json.load(response)["data"]
+                  print(f'Enabled Associated Domains for {identifier} ({capability["id"]})')
+
+          stale = []
+          for identifier, existing in profiles.items():
+              for profile in existing:
+                  absent = missing(identifier, profile)
+                  if absent:
+                      stale.append((identifier, profile, absent))
+          if signed and not stale:
+              fail(f'Already signed for the App Store: {", ".join(signed)}. Releases build with that signing; there is nothing to set up.')
+
+          snapshot.write_text(json.dumps({identifier: [p["id"] for p in existing] for identifier, existing in profiles.items()}))
+          with open(os.environ["GITHUB_OUTPUT"], "a") as output:
+              print(f"refresh={int(bool(stale))}", file=output)
+          for identifier, profile, absent in stale:
+              with request(f'{api}/profiles/{profile["id"]}', "DELETE"):
+                  print(f'Deleted {identifier}: {profile["attributes"]["name"]} ({profile["id"]}); missing {", ".join(absent)}')
+          PY
+          python3 "$RUNNER_TEMP/signing-profiles.py" prepare
 
       - name: Set up signing
         env:
           ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+          # A refresh only changes profiles, not the capabilities of the existing App IDs.
+          EXPO_NO_CAPABILITY_SYNC: ${{ steps.profiles.outputs.refresh }}
           EXPO_APPLE_TEAM_ID: 99K7MQUK7F
           EXPO_APPLE_TEAM_TYPE: INDIVIDUAL
           EXPO_ASC_API_KEY_PATH: ${{ runner.temp }}/asc.p8
@@ -88,3 +196,6 @@ jobs:
             }
             exit [lindex [wait] 3]
           '
+
+      - name: Verify new App Store profiles
+        run: python3 "$RUNNER_TEMP/signing-profiles.py" verify
