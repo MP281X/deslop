@@ -41,6 +41,10 @@ export const MediaMetadata = Schema.Struct({
 	uploader: Schema.OptionFromOptionalNullOr(Schema.String)
 })
 
+// What one note's media work may spend: every call stops at the deadline, and its tools write only into the folder, whose size is bounded while they run.
+export type MediaBudget = typeof MediaBudget.Type
+export const MediaBudget = Schema.Struct({deadline: Schema.DateTimeUtc, directory: Schema.String})
+
 export type Still = typeof Still.Type
 export const Still = Schema.Struct({bytes: Schema.Uint8Array, seconds: DurationFromSeconds})
 

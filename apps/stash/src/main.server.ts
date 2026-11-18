@@ -14,7 +14,7 @@ import {HttpHandlers} from '#http/handlers.ts'
 import icon from '#routes/icon.svg'
 import {RpcContracts} from '#rpcs/contracts.ts'
 import {RpcHandlers} from '#rpcs/handlers.ts'
-import {Media} from '#services/media/service.ts'
+import {layerMedia} from '#services/media/service.ts'
 import {layerNotes} from '#services/notes/service.ts'
 import {ToolContracts} from '#tools/contracts.ts'
 import {ToolHandlers} from '#tools/handlers.ts'
@@ -33,7 +33,7 @@ runApp({
 			})
 		),
 		Layer.provide(layerNotes),
-		Layer.provide(Media.layer),
+		Layer.provide(layerMedia),
 		Layer.provide(AiGateway.layer),
 		Layer.provide(ToolPath.layer),
 		Layer.provide(NodeDns.layer)

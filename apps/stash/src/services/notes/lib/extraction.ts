@@ -11,6 +11,7 @@ import {
 	Layer,
 	Option,
 	Random,
+	Redacted,
 	Result,
 	Schema,
 	Stream,
@@ -24,13 +25,18 @@ import {HttpClient} from 'effect/http'
 import type {HttpClientResponse} from 'effect/http'
 import {Dns, NetAddress} from 'effect/net'
 
-import {isPublicIp} from '@deslop/runtime/shared/net'
-
 import {pageText} from './page.ts'
 import {conversationExtraction, conversationPhotos, conversationPlan, tikTokExtraction} from './x.ts'
 
-import {sourceProxy, sticky} from '#services/media/service.ts'
-import {canonical, isYouTube, plainText, sourceOf} from '#services/notes/lib/utils.ts'
+import {
+	canonical,
+	isYouTube,
+	plainText,
+	publicAddress,
+	sourceOf,
+	sourceProxy,
+	sticky
+} from '#services/notes/lib/utils.ts'
 import type {FxPost, Image} from '#services/notes/schema.ts'
 import {
 	Extraction,
@@ -52,7 +58,7 @@ const CHALLENGE =
 
 const UNREACHABLE = 'The link could not be loaded.'
 
-const Exit = Context.Reference<Option.Option<string>>('@deslop/stash/services/notes/lib/extraction/Exit', {
+const Exit = Context.Reference<Option.Option<Redacted.Redacted>>('@deslop/stash/services/notes/lib/extraction/Exit', {
 	defaultValue: Option.none
 })
 
@@ -92,21 +98,7 @@ const readSource = Effect.fnUntraced(function* <A, E>(
 	url: URL,
 	read: (response: HttpClientResponse.HttpClientResponse) => Effect.Effect<A, E>
 ) {
-	if (
-		(url.protocol !== 'https:' && url.protocol !== 'http:') ||
-		String.isNonEmpty(url.username) ||
-		Result.isSuccess(NetAddress.ipFromString(url.hostname)) ||
-		!String.includes('.')(url.hostname)
-	) {
-		return yield* NotesError.make({message: 'Only public web links can be read.'})
-	}
-	const addresses = yield* Effect.mapError((yield* Dns.Dns).lookup(url.hostname, {family: 'IPv4'}), cause =>
-		NotesError.make({cause, message: 'The link host could not be found.'})
-	)
-	if (!Array.every(addresses, isPublicIp)) {
-		return yield* NotesError.make({message: 'The link points to a private network.'})
-	}
-	const address = NetAddress.formatIp(Array.headNonEmpty(addresses))
+	const address = NetAddress.formatIp(yield* publicAddress(url))
 	const session = `${yield* Random.nextIntBetween(10_000_000, 99_999_999)}`
 	const proxy = Option.map(yield* Exit, exit => sticky(exit, session))
 	return yield* pipe(
@@ -143,7 +135,9 @@ const readSource = Effect.fnUntraced(function* <A, E>(
 						}),
 					// Expo's types make NODE_ENV required in every environment object.
 					onSome: exit =>
-						NodeHttpClient.layerAgentOptions({proxyEnv: {HTTP_PROXY: exit, HTTPS_PROXY: exit, NODE_ENV: 'production'}})
+						NodeHttpClient.layerAgentOptions({
+							proxyEnv: {HTTP_PROXY: Redacted.value(exit), HTTPS_PROXY: Redacted.value(exit), NODE_ENV: 'production'}
+						})
 				})
 			)
 		),

@@ -1,6 +1,11 @@
-import {Array, Filter, Function, Number, Option, Order, Record, String, pipe} from 'effect'
+import {Array, Config, Effect, Filter, Function, Number, Option, Order, Record, Redacted, Result, String, pipe} from 'effect'
+
+import {Dns, NetAddress} from 'effect/net'
+
+import {isPublicIp} from '@deslop/runtime/shared/net'
 
 import type {NoteItem, Picture, TagName} from '#services/notes/schema.ts'
+import {NotesError} from '#services/notes/schema.ts'
 
 const URL_PATTERN = /https?:\/\/[^\s<>"]+/iu
 
@@ -179,3 +184,29 @@ export function fitPictures(images: readonly Picture[]) {
 		result => Array.getSomes(result[1])
 	)
 }
+
+// When set, every read of a source exits through this proxy, so sites never see the server's address; `{session}` keeps one exit address per request.
+export const sourceProxy = Config.option(Config.Redacted('STASH_PROXY'))
+
+export function sticky(proxy: Redacted.Redacted, session: string) {
+	return Redacted.make(String.replaceAll('{session}', session)(Redacted.value(proxy)))
+}
+
+// A source is read only from a named web host whose every IPv4 address is public; the media tools fetch only links that pass it too.
+export const publicAddress = Effect.fnUntraced(function* (url: URL) {
+	if (
+		(url.protocol !== 'https:' && url.protocol !== 'http:') ||
+		String.isNonEmpty(url.username) ||
+		Result.isSuccess(NetAddress.ipFromString(url.hostname)) ||
+		!String.includes('.')(url.hostname)
+	) {
+		return yield* NotesError.make({message: 'Only public web links can be read.'})
+	}
+	const addresses = yield* Effect.mapError((yield* Dns.Dns).lookup(url.hostname, {family: 'IPv4'}), cause =>
+		NotesError.make({cause, message: 'The link host could not be found.'})
+	)
+	if (!Array.every(addresses, isPublicIp)) {
+		return yield* NotesError.make({message: 'The link points to a private network.'})
+	}
+	return Array.headNonEmpty(addresses)
+})
