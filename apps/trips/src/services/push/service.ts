@@ -39,6 +39,7 @@ import {
 	announced,
 	expiredActivities,
 	holds,
+	perDevice,
 	showPlan,
 	startAlert,
 	unannouncedDevices
@@ -54,12 +55,13 @@ import {
 	ShowAction,
 	StartRequest
 } from '#services/push/schema.ts'
+import {isStale} from '#services/tracking/lib/utils.ts'
 
 const SCHEMES: Record<string, string> = {'xyz.mp281x.trips': 'trips', 'xyz.mp281x.trips.dev': 'trips-dev'}
 
 type Span = {end: DateTime.Utc; start: DateTime.Utc}
 type Showing = {journey: Flight | Train; leg: Leg; now: DateTime.Utc; props: ActivityProps; window: Span}
-type RoundState = {activities: readonly Activity[]; devices: readonly Device[]; sent: readonly SentAlert[]}
+type RoundState = {activities: readonly Activity[]; devices: readonly Device[]}
 
 function asPushError(message: string) {
 	return Effect.mapError(
@@ -121,6 +123,14 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 				ON CONFLICT (token) DO UPDATE SET bundle = excluded.bundle, kind = excluded.kind
 			`
 		})
+		// One Live Activity shows per app, started with the token of the iPhone that registered last; older ones would only be tried in the table's order.
+		const forgetOtherStarters = SqlSchema.void({
+			Request: Device.insert,
+			execute: row => sql`
+				DELETE FROM ${sql(Device.table)}
+				WHERE bundle = ${row.bundle} AND kind = 'start' AND token <> ${row.token}
+			`
+		})
 		// Only while the token is still the one stored, so a token rotated meanwhile stays.
 		const forgetDevice = SqlSchema.void({
 			Request: Device.insert,
@@ -130,9 +140,9 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 			`
 		})
 		const listSent = SqlSchema.findAll({
-			Request: Schema.Void,
+			Request: BookingId,
 			Result: SentAlert,
-			execute: () => sql`SELECT * FROM ${sql(SentAlert.table)} ORDER BY sentAt`
+			execute: id => sql`SELECT * FROM ${sql(SentAlert.table)} WHERE bookingId = ${id} ORDER BY sentAt`
 		})
 		const recordSent = SqlSchema.void({
 			Request: Schema.NonEmptyArray(SentAlert.insert),
@@ -151,8 +161,7 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 		const roundState = Effect.gen(function* () {
 			return {
 				activities: yield* asPushReadError(listActivities()),
-				devices: yield* asPushReadError(listDevices()),
-				sent: yield* asPushReadError(listSent())
+				devices: yield* asPushReadError(listDevices())
 			} satisfies RoundState
 		})
 		const listRequests = SqlSchema.findAll({
@@ -194,7 +203,10 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 						asPushSaveError(forgetDevice(target)),
 						PushError.make({cause: refused, message: 'Apple refused the Live Activity start.'})
 					),
-				Retry: retry => PushError.make({cause: retry, message: 'Apple did not accept the Live Activity start.'})
+				Retry: retry => PushError.make({cause: retry, message: 'Apple did not accept the Live Activity start.'}),
+				// The journey's words are too long, which no token can fix, so the iPhone stays registered.
+				TooLarge: tooLarge =>
+					PushError.make({cause: tooLarge, message: 'The Live Activity has too much text to start.'})
 			})
 		})
 
@@ -214,6 +226,7 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 		})
 
 		// judge-ignore no-silent-fallback -- #279 makes permanent APNs refusal terminal: its logged refusal ends this unavailable channel; only Retry keeps it pending.
+		// The activity counts as ended only once Apple also deleted its channel or answered that it never will; until then the next round asks again.
 		const finish = Effect.fnUntraced(function* (activity: Activity, now: DateTime.Utc) {
 			const answer = yield* apns.broadcast(
 				activity.bundle,
@@ -231,9 +244,15 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 				Accepted: () => Effect.void,
 				DeadToken: () => Effect.void,
 				Refused: () => Effect.void,
-				Retry: retry => PushError.make({cause: retry, message: 'Apple did not accept the Live Activity end.'})
+				Retry: retry => PushError.make({cause: retry, message: 'Apple did not accept the Live Activity end.'}),
+				TooLarge: () => Effect.void
 			})
-			yield* apns.deleteChannel(activity.bundle, activity.channel)
+			const deleted = yield* asPushError('Apple was not asked to delete the Live Activity channel.')(
+				apns.deleteChannel(activity.bundle, activity.channel)
+			)
+			if (ApnsAnswer.isAnyOf(['Retry'])(deleted)) {
+				return yield* PushError.make({cause: deleted, message: 'Apple did not delete the Live Activity channel.'})
+			}
 			yield* asPushSaveError(activities.updateVoid({...editable(activity), endedAt: Option.some(now)}))
 		})
 
@@ -256,7 +275,9 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 				Accepted: () => asPushSaveError(activities.updateVoid({...editable(activity), props})),
 				DeadToken: () => asPushSaveError(activities.updateVoid({...editable(activity), endedAt: Option.some(now)})),
 				Refused: () => asPushSaveError(activities.updateVoid({...editable(activity), props})),
-				Retry: retry => PushError.make({cause: retry, message: 'Apple did not accept the Live Activity update.'})
+				Retry: retry => PushError.make({cause: retry, message: 'Apple did not accept the Live Activity update.'}),
+				// Sending the same text again would be refused again, so it is remembered like a refusal and the activity stays.
+				TooLarge: () => asPushSaveError(activities.updateVoid({...editable(activity), props}))
 			})
 		})
 
@@ -269,7 +290,13 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 			requested: Option.Option<DateTime.Utc>,
 			state: RoundState
 		) {
-			const showing = {journey, leg: window.leg, now, props: journeyProps(legs, all, now), window} satisfies Showing
+			const showing = {
+				journey,
+				leg: window.leg,
+				now,
+				props: journeyProps(legs, all, now, leg => isStale(leg, now)),
+				window
+			} satisfies Showing
 			// An activity that cannot cover the window ends, and the leg starts afresh.
 			const ended = yield* pipe(
 				state.activities,
@@ -312,7 +339,9 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 				Accepted: () => Effect.succeed(true),
 				DeadToken: () => Effect.as(asPushSaveError(forgetDevice(device)), true),
 				Refused: () => Effect.succeed(true),
-				Retry: () => Effect.succeed(false)
+				Retry: () => Effect.succeed(false),
+				// The alert itself can never fit, so it is final for this device, which stays registered.
+				TooLarge: () => Effect.succeed(true)
 			})
 		})
 
@@ -326,38 +355,44 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 			execute: row =>
 				sql`INSERT INTO ${sql(AlertDelivery.table)} ${sql.insert(row)} ON CONFLICT DO UPDATE SET sentAt = excluded.sentAt`
 		})
-		const announce = Effect.fnUntraced(function* (booking: Booking, now: DateTime.Utc, state: RoundState) {
-			for (const alert of Array.filter(
-				alertsOf(booking, now),
-				candidate =>
-					!announced(
-						Array.filter(state.sent, sent => sent.bookingId === booking.id),
-						candidate
+		// Only a booking with something to say reads its receipts, through their index on (bookingId, sentAt).
+		const announce = Effect.fnUntraced(function* (booking: Booking, now: DateTime.Utc) {
+			const candidates = alertsOf(booking, now)
+			if (Array.isReadonlyArrayEmpty(candidates)) return
+			const sent = yield* asPushReadError(listSent(booking.id))
+			const due = Array.filter(candidates, alert => perDevice(alert) || !announced(sent, alert))
+			if (Array.isReadonlyArrayEmpty(due)) return
+			const delivered = yield* asPushReadError(listDeliveries(booking.id))
+			yield* Effect.forEach(
+				due,
+				Effect.fnUntraced(function* (alert) {
+					const devices = Array.filter(yield* asPushReadError(listDevices()), device => device.kind === 'alert')
+					const row = {
+						bookingId: booking.id,
+						category: alert.category,
+						sentAt: now,
+						value: Option.fromUndefinedOr(alert.value)
+					}
+					const pending = unannouncedDevices(devices, delivered, alert)
+					// The booking-wide record of a per-device value is a summary, written once every phone has it.
+					if (perDevice(alert) && Array.isReadonlyArrayEmpty(pending) && announced(sent, alert)) return
+					const outcomes = yield* Effect.forEach(
+						pending,
+						device =>
+							Effect.catch(
+								Effect.gen(function* () {
+									if (!(yield* notify(device, alert, booking))) return false
+									yield* asPushSaveError(recordDelivery({...row, token: device.token}))
+									return true
+								}),
+								cause => Effect.as(Effect.logWarning('An alert was not sent', Cause.fail(cause)), false)
+							),
+						{concurrency: 1}
 					)
-			)) {
-				const devices = Array.filter(yield* asPushReadError(listDevices()), device => device.kind === 'alert')
-				const delivered = yield* asPushReadError(listDeliveries(booking.id))
-				const row = {
-					bookingId: booking.id,
-					category: alert.category,
-					sentAt: now,
-					value: Option.fromUndefinedOr(alert.value)
-				}
-				const outcomes = yield* Effect.forEach(
-					unannouncedDevices(devices, delivered, alert),
-					device =>
-						Effect.catch(
-							Effect.gen(function* () {
-								if (!(yield* notify(device, alert, booking))) return false
-								yield* asPushSaveError(recordDelivery({...row, token: device.token}))
-								return true
-							}),
-							cause => Effect.as(Effect.logWarning('An alert was not sent', Cause.fail(cause)), false)
-						),
-					{concurrency: 1}
-				)
-				if (Array.every(outcomes, Function.identity)) yield* asPushSaveError(recordSent([row]))
-			}
+					if (Array.every(outcomes, Function.identity)) yield* asPushSaveError(recordSent([row]))
+				}),
+				{concurrency: 1, discard: true}
+			)
 		})
 
 		const ticking = yield* Semaphore.make(1)
@@ -369,8 +404,9 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 				const state = yield* roundState
 				const requests = yield* asPushReadError(listRequests())
 				const requestsById = Array.groupBy(requests, request => request.bookingId)
+				const journeys = journeysOf(all)
 				yield* Effect.forEach(
-					journeysOf(all),
+					journeys,
 					journey => {
 						const booking = journey[0]
 						const legs = Array.filter(journey, (leg): leg is Flight | Train => !Booking.isAnyOf(['stay'])(leg))
@@ -380,10 +416,7 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 								yield* Effect.forEach(
 									journey,
 									leg =>
-										Effect.ignore(announce(leg, now, state), {
-											log: 'Warn',
-											message: `The alerts of ${leg.id} were not sent`
-										}),
+										Effect.ignore(announce(leg, now), {log: 'Warn', message: `The alerts of ${leg.id} were not sent`}),
 									{concurrency: 1, discard: true}
 								)
 								if (Booking.isAnyOf(['stay'])(booking)) return
@@ -399,7 +432,7 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 					{concurrency: 1, discard: true}
 				)
 				yield* Effect.forEach(
-					expiredActivities(state.activities, all, now, requests),
+					expiredActivities(state.activities, journeys, now, requests),
 					activity => Effect.ignore(finish(activity, now), {log: 'Warn', message: 'An activity was not ended'}),
 					{concurrency: 1, discard: true}
 				)
@@ -437,7 +470,14 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 
 		return {
 			register: Effect.fn('Push.register')(function* (device: typeof Device.insert.Type) {
-				yield* asPushSaveError(saveDevice(device))
+				yield* pipe(
+					Effect.gen(function* () {
+						yield* saveDevice(device)
+						if (device.kind === 'start') yield* forgetOtherStarters(device)
+					}),
+					sql.withTransaction,
+					asPushSaveError
+				)
 			}),
 			start: Effect.fn('Push.start')(function* (id: BookingId) {
 				if (!apns.enabled) return yield* PushError.make({message: 'The server has no Apple push configuration.'})
@@ -526,6 +566,12 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 					yield* sql`CREATE TABLE deliveries (bookingId TEXT NOT NULL, category TEXT NOT NULL, value TEXT, sentAt INTEGER NOT NULL, token TEXT NOT NULL) STRICT`
 					yield* sql`CREATE UNIQUE INDEX delivery_value ON deliveries (bookingId, category, value, token) WHERE value IS NOT NULL`
 					yield* sql`CREATE UNIQUE INDEX delivery_once ON deliveries (bookingId, category, token) WHERE value IS NULL`
+				}),
+				// A round reads one booking's receipts in the order they were sent; neither partial unique index covers that read.
+				'0005_receipt_order': Effect.gen(function* () {
+					const sql = yield* SqlClient.SqlClient
+					yield* sql`CREATE INDEX delivery_order ON deliveries (bookingId, sentAt)`
+					yield* sql`CREATE INDEX alert_order ON sent_alerts (bookingId, sentAt)`
 				})
 			}),
 			table: 'push_migrations'

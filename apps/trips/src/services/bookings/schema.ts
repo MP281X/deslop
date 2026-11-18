@@ -113,7 +113,9 @@ export const TrainStop = Schema.Struct({
 	arrives: Schema.OptionFromOptionalKey(DateTimeUtcFromFiniteMillis),
 	code: Schema.OptionFromOptionalKey(PlaceCode),
 	departs: Schema.OptionFromOptionalKey(DateTimeUtcFromFiniteMillis),
-	name: Schema.String
+	name: Schema.String,
+	// The stop's own zone, since a train can cross one; stops saved before it was kept read in the departure's.
+	timeZone: Schema.OptionFromOptionalKey(Schema.String)
 })
 
 export type TrainTracking = typeof TrainTracking.Type
@@ -248,44 +250,52 @@ export const LocalTime = pipe(
 export type TripNumber = typeof TripNumber.Type
 export const TripNumber = Schema.String.check(Schema.isPattern(/^\d+$/u))
 
+export type Short = typeof Short.Type
+// What a ticket prints in a few words, bounded so a misread field cannot outgrow the Live Activity's 4 KB update.
+export const Short = Schema.String.check(Schema.isMaxLength(40))
+export type Name = typeof Name.Type
+export const Name = Schema.String.check(Schema.isMaxLength(120))
+
 export type ExtractedItem = typeof ExtractedItem.Type
 export const ExtractedItem = Schema.Union([
 	Schema.Struct({
-		airlineCode: Schema.String.annotate({description: 'IATA airline designator, such as BA or FR'}),
-		airlineName: Schema.String,
+		airlineCode: Short.annotate({description: 'IATA airline designator, such as BA or FR'}),
+		airlineName: Name,
 		arrival: LocalTime,
 		boarding: Schema.OptionFromOptionalKey(LocalTime),
-		boardingGroup: Schema.OptionFromOptionalKey(Schema.String),
-		confirmation: Schema.OptionFromOptionalKey(Schema.String),
+		boardingGroup: Schema.OptionFromOptionalKey(Short),
+		confirmation: Schema.OptionFromOptionalKey(Short),
 		departure: LocalTime,
 		flightNumber: TripNumber.annotate({description: 'Digits only, such as 553'}),
-		from: Schema.String.annotate({description: 'IATA airport code'}),
+		from: Short.annotate({description: 'IATA airport code'}),
 		kind: Schema.Literal('flight'),
-		seat: Schema.OptionFromOptionalKey(Schema.String),
+		seat: Schema.OptionFromOptionalKey(Short),
 		status: ReservationStatus,
-		to: Schema.String.annotate({description: 'IATA airport code'})
+		to: Short.annotate({description: 'IATA airport code'})
 	}),
 	Schema.Struct({
-		coach: Schema.OptionFromOptionalKey(Schema.String),
-		confirmation: Schema.OptionFromOptionalKey(Schema.String),
+		coach: Schema.OptionFromOptionalKey(Short),
+		confirmation: Schema.OptionFromOptionalKey(Short),
 		departure: LocalTime,
-		from: Schema.String.annotate({description: 'Station name as printed, such as Roma Termini'}),
+		from: Name.annotate({description: 'Station name as printed, such as Roma Termini'}),
 		kind: Schema.Literal('train'),
-		seat: Schema.OptionFromOptionalKey(Schema.String),
+		seat: Schema.OptionFromOptionalKey(Short),
 		status: ReservationStatus,
-		to: Schema.String,
+		to: Name,
 		trainNumber: TripNumber.annotate({description: 'Digits only, such as 9541'})
 	}),
 	Schema.Struct({
-		address: Schema.String.annotate({description: 'Full street address with city and country'}),
+		address: Schema.String.check(Schema.isMaxLength(300)).annotate({
+			description: 'Full street address with city and country'
+		}),
 		checkIn: LocalTime,
 		checkOut: LocalTime,
-		city: Schema.String,
-		confirmation: Schema.OptionFromOptionalKey(Schema.String),
+		city: Name,
+		confirmation: Schema.OptionFromOptionalKey(Short),
 		kind: Schema.Literal('stay'),
-		name: Schema.String,
+		name: Name,
 		status: ReservationStatus,
-		timeZone: Schema.String.annotate({description: 'IANA time zone of the city, such as Europe/London'})
+		timeZone: Short.annotate({description: 'IANA time zone of the city, such as Europe/London'})
 	})
 ])
 

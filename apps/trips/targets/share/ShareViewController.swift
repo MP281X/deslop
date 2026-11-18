@@ -95,15 +95,22 @@ private struct SaveView: View {
     .task { await save() }
   }
 
-  // Trainline shares a journey with a change as one image per train; each is saved as its own booking, in order.
+  // Trainline shares a journey with a change as one image per train; each is read, sent and released in order, so one
+  // ticket is in memory at a time and the ones sent before a failure stay saved.
   private func save() async {
     var added = 0
     do {
-      let tickets = try await SharedTicket.read(from: context)
       guard let address = Theme.app?.object(forInfoDictionaryKey: "DeslopServer") as? String,
         let server = URL(string: address)
       else { throw CocoaError(.featureUnsupported) }
-      for (data, type) in tickets {
+      let tickets = SharedTicket.providers(in: context)
+      if tickets.isEmpty {
+        let text = try await SharedTicket.text(from: context)
+        try await send(Data(text.utf8), "text/plain; charset=utf-8", to: server)
+        added += 1
+      }
+      for provider in tickets {
+        let (data, type) = try await SharedTicket.read(provider)
         try await send(data, type, to: server)
         added += 1
       }
@@ -119,35 +126,68 @@ private struct SaveView: View {
   private func send(_ data: Data, _ type: String, to server: URL) async throws {
     var request = URLRequest(url: server.appendingPathComponent("share"))
     request.httpMethod = "POST"
-    request.httpShouldHandleCookies = false
     request.timeoutInterval = 240
     request.setValue(type, forHTTPHeaderField: "Content-Type")
+    authorize(&request)
     let (body, response) = try await URLSession.shared.upload(for: request, from: data)
     guard let response = response as? HTTPURLResponse else { throw URLError(.badServerResponse) }
     guard (200..<300).contains(response.statusCode) else {
-      throw NSError(domain: "Trips", code: response.statusCode,
-        userInfo: [NSLocalizedDescriptionKey: String(decoding: body, as: UTF8.self)])
+      let message = response.statusCode == 401
+        ? "Open Trips and sign in, then share again."
+        : String(decoding: body, as: UTF8.self)
+      throw NSError(domain: "Trips", code: response.statusCode, userInfo: [NSLocalizedDescriptionKey: message])
     }
+  }
+
+  // Auth names the caller from the session cookie the app saved in the Keychain; a device on the tailnet has none and needs none.
+  private func authorize(_ request: inout URLRequest) {
+    request.httpShouldHandleCookies = false
+    guard let group = Theme.app?.object(forInfoDictionaryKey: "DeslopKeychainGroup") as? String else { return }
+    let query: [String: Any] = [
+      kSecClass as String: kSecClassGenericPassword,
+      kSecAttrService as String: "app:no-auth", kSecAttrGeneric as String: Data("session".utf8),
+      kSecAttrAccount as String: Data("session".utf8), kSecAttrAccessGroup as String: group,
+      kSecReturnData as String: true, kSecMatchLimit as String: kSecMatchLimitOne,
+    ]
+    var value: CFTypeRef?
+    guard SecItemCopyMatching(query as CFDictionary, &value) == errSecSuccess, let data = value as? Data,
+      let secret = String(data: data, encoding: .utf8), !secret.isEmpty
+    else { return }
+    request.setValue("__Secure-deslop-session=\(secret)", forHTTPHeaderField: "Cookie")
   }
 }
 
 private enum SharedTicket {
+  // The server's limit for one ticket; a larger one is refused here before it is read into memory.
+  static let maxBytes = 4_000_000
+
+  static func tooLarge() -> NSError {
+    NSError(domain: "Trips", code: 413, userInfo: [NSLocalizedDescriptionKey: "This ticket is larger than 4 MB."])
+  }
+
   // Every attached pass, PDF or image is a ticket; text and links count only when nothing else was shared.
-  static func read(from context: NSExtensionContext) async throws -> [(Data, String)] {
-    let providers = context.inputItems.compactMap { $0 as? NSExtensionItem }.flatMap { $0.attachments ?? [] }
-    var tickets: [(Data, String)] = []
-    for provider in providers {
-      if provider.hasItemConformingToTypeIdentifier("com.apple.pkpass") {
-        tickets.append((try await file(provider, "com.apple.pkpass"), "application/vnd.apple.pkpass"))
-      } else if provider.hasItemConformingToTypeIdentifier(UTType.pdf.identifier) {
-        tickets.append((try await file(provider, UTType.pdf.identifier), "application/pdf"))
-      } else if provider.hasItemConformingToTypeIdentifier(UTType.image.identifier) {
-        let item = try await provider.loadItem(forTypeIdentifier: UTType.image.identifier, options: nil)
-        guard let data = jpeg(from: item) else { throw CocoaError(.fileReadCorruptFile) }
-        tickets.append((data, "image/jpeg"))
-      }
+  static func providers(in context: NSExtensionContext) -> [NSItemProvider] {
+    context.inputItems.compactMap { $0 as? NSExtensionItem }.flatMap { $0.attachments ?? [] }.filter {
+      $0.hasItemConformingToTypeIdentifier("com.apple.pkpass")
+        || $0.hasItemConformingToTypeIdentifier(UTType.pdf.identifier)
+        || $0.hasItemConformingToTypeIdentifier(UTType.image.identifier)
     }
-    if !tickets.isEmpty { return tickets }
+  }
+
+  static func read(_ provider: NSItemProvider) async throws -> (Data, String) {
+    if provider.hasItemConformingToTypeIdentifier("com.apple.pkpass") {
+      return (try await file(provider, "com.apple.pkpass"), "application/vnd.apple.pkpass")
+    }
+    if provider.hasItemConformingToTypeIdentifier(UTType.pdf.identifier) {
+      return (try await file(provider, UTType.pdf.identifier), "application/pdf")
+    }
+    let item = try await provider.loadItem(forTypeIdentifier: UTType.image.identifier, options: nil)
+    guard let data = jpeg(from: item) else { throw CocoaError(.fileReadCorruptFile) }
+    return (data, "image/jpeg")
+  }
+
+  static func text(from context: NSExtensionContext) async throws -> String {
+    let providers = context.inputItems.compactMap { $0 as? NSExtensionItem }.flatMap { $0.attachments ?? [] }
     var texts: [String] = []
     for provider in providers {
       if provider.hasItemConformingToTypeIdentifier(UTType.plainText.identifier),
@@ -163,38 +203,64 @@ private enum SharedTicket {
       throw NSError(domain: "Trips", code: 0,
         userInfo: [NSLocalizedDescriptionKey: "Share an image, PDF, Wallet pass, text or URL."])
     }
-    return [(Data(text.utf8), "text/plain; charset=utf-8")]
+    return text
   }
 
+  // The file's size is checked before its bytes are read, and closing the sheet cancels the provider's copy.
   private static func file(_ provider: NSItemProvider, _ identifier: String) async throws -> Data {
-    try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Data, Error>) in
-      _ = provider.loadFileRepresentation(forTypeIdentifier: identifier) { url, error in
-        guard let url else {
-          continuation.resume(throwing: error ?? CocoaError(.fileReadUnknown))
-          return
-        }
-        // The temporary URL is valid only while this handler runs.
-        continuation.resume(with: Result(catching: { try Data(contentsOf: url) }))
+    let progress = Progress()
+    return try await withTaskCancellationHandler {
+      try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Data, Error>) in
+        progress.addChild(
+          provider.loadFileRepresentation(forTypeIdentifier: identifier) { url, error in
+            guard let url else {
+              continuation.resume(throwing: error ?? CocoaError(.fileReadUnknown))
+              return
+            }
+            // The temporary URL is valid only while this handler runs.
+            continuation.resume(with: Result(catching: {
+              let size = try url.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? Int.max
+              guard size <= SharedTicket.maxBytes else { throw SharedTicket.tooLarge() }
+              return try Data(contentsOf: url)
+            }))
+          }, withPendingUnitCount: 1)
+      }
+    } onCancel: {
+      progress.cancel()
+    }
+  }
+
+  // Every image, whatever the provider hands over, is drawn at most 4096 pixels on its long side, then smaller until
+  // its JPEG fits the server's limit.
+  private static func jpeg(from item: NSSecureCoding) -> Data? {
+    let render: (CGFloat) -> UIImage?
+    if let image = item as? UIImage {
+      render = { side in
+        let longest = max(image.size.width, image.size.height) * image.scale
+        let factor = min(1, side / longest) * image.scale
+        return image.preparingThumbnail(of: CGSize(width: image.size.width * factor, height: image.size.height * factor))
+      }
+    } else {
+      let source: CGImageSource?
+      if let data = item as? Data {
+        source = CGImageSourceCreateWithData(data as CFData, nil)
+      } else if let url = item as? URL {
+        source = CGImageSourceCreateWithURL(url as CFURL, nil)
+      } else { source = nil }
+      guard let source else { return nil }
+      render = { side in
+        let options: [CFString: Any] = [
+          kCGImageSourceCreateThumbnailFromImageAlways: true,
+          kCGImageSourceCreateThumbnailWithTransform: true,
+          kCGImageSourceThumbnailMaxPixelSize: side,
+        ]
+        return CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary).map { UIImage(cgImage: $0) }
       }
     }
-  }
-
-  private static func jpeg(from item: NSSecureCoding) -> Data? {
-    if let image = item as? UIImage { return image.jpegData(compressionQuality: 0.85) }
-    let source: CGImageSource?
-    if let data = item as? Data {
-      source = CGImageSourceCreateWithData(data as CFData, nil)
-    } else if let url = item as? URL {
-      source = CGImageSourceCreateWithURL(url as CFURL, nil)
-    } else { source = nil }
-    let options: [CFString: Any] = [
-      kCGImageSourceCreateThumbnailFromImageAlways: true,
-      kCGImageSourceCreateThumbnailWithTransform: true,
-      kCGImageSourceThumbnailMaxPixelSize: 4096,
-    ]
-    guard let source, let image = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) else {
-      return nil
+    for side: CGFloat in [4096, 2048, 1024] {
+      guard let data = render(side)?.jpegData(compressionQuality: 0.85) else { return nil }
+      if data.count <= maxBytes { return data }
     }
-    return UIImage(cgImage: image).jpegData(compressionQuality: 0.85)
+    return nil
   }
 }

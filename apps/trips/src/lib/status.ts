@@ -6,7 +6,7 @@ import {colors} from '@deslop/components-mobile/theme'
 import {weekdayOf} from '@deslop/runtime/shared/format'
 
 import {primary} from '#lib/session.ts'
-import {clockAt, departureOf, endOf, labelled} from '#services/bookings/lib/utils.ts'
+import {arrived, cancelledOf, clockAt, daysBetween, departureOf, endOf, labelled} from '#services/bookings/lib/utils.ts'
 import {Booking, Tone} from '#services/bookings/schema.ts'
 import type {Flight, FlightTracking, TrainTracking} from '#services/bookings/schema.ts'
 import {isStale} from '#services/tracking/lib/utils.ts'
@@ -17,10 +17,7 @@ export function dayAt(time: DateTime.Utc, timeZone: string) {
 }
 
 export function daysUntil(time: DateTime.Utc, now: DateTime.Utc, timeZone: string) {
-	function day(at: DateTime.Utc) {
-		return DateTime.startOf(DateTime.makeZonedUnsafe(at, {timeZone}), 'day')
-	}
-	return Number.round(Duration.toDays(DateTime.distance(day(now), day(time))), 0)
+	return daysBetween(now, timeZone, time, timeZone)
 }
 
 export const tones = {
@@ -70,7 +67,6 @@ function flightStatus(flight: Flight, now: DateTime.Utc) {
 	return Option.match(flight.live, {
 		onNone: () => statusLine('plain', Option.none()),
 		onSome: live => {
-			if (live.state === 'cancelled') return problemLine('Cancelled', 'bad', Option.none())
 			if (live.state === 'diverted') return problemLine('Diverted', 'bad', Option.none())
 			if (isStale(flight, now)) {
 				return problemLine(`Updated ${clockAt(live.checkedAt, flight.from.timeZone)}`, 'warn', gateOf(live))
@@ -87,7 +83,7 @@ function flightStatus(flight: Flight, now: DateTime.Utc) {
 
 // Where the journey stands, with the gate or platform; old live data says when it was read rather than look current.
 export function statusOf(booking: Booking, now: DateTime.Utc) {
-	if (booking.status === 'cancelled') return problemLine('Cancelled', 'bad', Option.none())
+	if (cancelledOf(booking)) return problemLine('Cancelled', 'bad', Option.none())
 	if (Booking.isAnyOf(['stay'])(booking)) return statusLine('plain', Option.none())
 	if (Booking.isAnyOf(['train'])(booking)) {
 		return Option.match(booking.live, {
@@ -138,14 +134,13 @@ export function problemOf(booking: Booking, status: Status, now: DateTime.Utc) {
 	return Option.none<Problem>()
 }
 
-// The leg a journey is on: the first not yet arrived, else the last.
+// The leg a journey is on: the first not yet arrived, by the same rule as the island, else the last.
 export function currentOf(journey: Array.NonEmptyReadonlyArray<Booking>, now: DateTime.Utc) {
 	return pipe(
 		journey,
 		Array.findFirst(leg => {
-			if (DateTime.isGreaterThanOrEqualTo(now, endOf(leg))) return false
-			if (Booking.isAnyOf(['stay'])(leg)) return true
-			return !Option.exists<FlightTracking | TrainTracking>(leg.live, live => live.state === 'arrived')
+			if (Booking.isAnyOf(['stay'])(leg)) return DateTime.isLessThan(now, endOf(leg))
+			return !arrived(leg, now)
 		}),
 		Option.getOrElse(() => Array.lastNonEmpty(journey))
 	)

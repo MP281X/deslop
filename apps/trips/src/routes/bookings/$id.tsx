@@ -1,6 +1,6 @@
 import {useAtomSet, useAtomValue} from '@effect/atom-react'
 
-import {Array, Boolean, DateTime, Duration, Function, Number, Option, pipe} from 'effect'
+import {Array, Boolean, DateTime, Duration, Function, Option, pipe} from 'effect'
 
 import {
 	Button,
@@ -40,8 +40,10 @@ import {mapsAtom, placeLine, ridesOf, uberAtom} from '#lib/rides.ts'
 import {primary} from '#lib/session.ts'
 import {currentOf, dayAt, problemOf, statusOf, tones} from '#lib/status.ts'
 import {
+	arrivalClockOf,
 	arrivalOf,
 	autoStartOf,
+	changeOf,
 	clockAt,
 	departureOf,
 	journeysOf,
@@ -74,11 +76,12 @@ function Field(props: {label: string; tone?: Tone; value: Option.Option<string>}
 	})
 }
 
-function moved(scheduled: DateTime.Utc, current: DateTime.Utc, timeZone: string) {
-	if (Duration.isLessThan(Duration.abs(DateTime.distance(scheduled, current)), MINUTE)) {
-		return clockAt(scheduled, timeZone)
+// The arrival with the days it lands after the departure's date, and the scheduled clock when it moved.
+function arrives(journey: Flight | Train) {
+	if (Duration.isLessThan(Duration.abs(DateTime.distance(journey.arrives, arrivalOf(journey))), MINUTE)) {
+		return arrivalClockOf(journey)
 	}
-	return `${clockAt(current, timeZone)} (${clockAt(scheduled, timeZone)})`
+	return `${arrivalClockOf(journey)} (${clockAt(journey.arrives, journey.to.timeZone)})`
 }
 
 function FlightFields(props: {flight: Flight}) {
@@ -93,10 +96,7 @@ function FlightFields(props: {flight: Flight}) {
 				/>
 			</Section>
 			<Section title={`Arrival · ${props.flight.to.name}`}>
-				<Field
-					label="Arrives"
-					value={Option.some(moved(props.flight.arrives, arrivalOf(props.flight), props.flight.to.timeZone))}
-				/>
+				<Field label="Arrives" value={Option.some(arrives(props.flight))} />
 				<Field label="Terminal" value={Option.flatMap(props.flight.live, report => report.arrivalTerminal)} />
 				<Field label="Gate" value={Option.flatMap(props.flight.live, report => report.arrivalGate)} />
 				<Field label="Baggage belt" tone="good" value={Option.flatMap(props.flight.live, report => report.belt)} />
@@ -126,10 +126,7 @@ function TrainTimes(props: {train: Train}) {
 				/>
 			</Section>
 			<Section title={`Arrival · ${props.train.to.name}`}>
-				<Field
-					label="Arrives"
-					value={Option.some(moved(props.train.arrives, arrivalOf(props.train), props.train.to.timeZone))}
-				/>
+				<Field label="Arrives" value={Option.some(arrives(props.train))} />
 				<Field label="Platform" value={Option.flatMap(props.train.live, report => report.arrivalPlatform)} />
 			</Section>
 		</>
@@ -148,7 +145,13 @@ function Stops(props: {train: Train}) {
 						onFalse: () => Option.orElse(stop.departs, () => stop.arrives),
 						onTrue: () => Option.orElse(stop.arrives, () => stop.departs)
 					}),
-					Option.map(at => clockAt(at, props.train.from.timeZone)),
+					// Each stop in its own zone, since a train can cross one.
+					Option.map(at =>
+						clockAt(
+							at,
+							Option.getOrElse(stop.timeZone, () => props.train.from.timeZone)
+						)
+					),
 					Option.getOrElse(Function.constant(''))
 				)
 				return (
@@ -180,14 +183,11 @@ function Stops(props: {train: Train}) {
 }
 
 function Change(props: {from: Train; to: Train}) {
-	const minutes = Number.round(Duration.toMinutes(DateTime.distance(arrivalOf(props.from), departureOf(props.to))), 0)
 	return (
 		<Section>
 			<HStack spacing={space[2]}>
 				<Image systemName="arrow.triangle.swap" modifiers={[foregroundStyle(colors.mutedForeground)]} />
-				<Text modifiers={[text.detail, foregroundStyle(colors.mutedForeground)]}>
-					{`Change at ${props.from.to.name} · ${minutes} min`}
-				</Text>
+				<Text modifiers={[text.detail, foregroundStyle(colors.mutedForeground)]}>{changeOf(props.from, props.to)}</Text>
 			</HStack>
 		</Section>
 	)
@@ -388,7 +388,7 @@ function Start(props: {legs: readonly (Flight | Train)[]; now: DateTime.Utc}) {
 	)
 }
 
-export function BookingRoute(props: {bookings: BookingList; id: Booking['id']; onClose: () => void}) {
+export function BookingRoute(props: {bookings: BookingList; id: Booking['id']; offline: boolean; onClose: () => void}) {
 	const remove = useAtomSet(removal.removeAtom)
 	const refresh = useAtomSet(refreshAtom, {mode: 'promiseExit'})
 	const now = useAtomValue(nowAtom)
@@ -396,10 +396,14 @@ export function BookingRoute(props: {bookings: BookingList; id: Booking['id']; o
 		journeysOf(props.bookings),
 		Array.findFirst(journey => Array.some(journey, leg => leg.id === props.id)),
 		Option.match({
+			// Only a list the server answered says the booking is gone; a copy kept offline may predate it.
 			onNone: () => (
 				<Empty modifiers={[navigationTitle(''), navigationBarTitleDisplayMode('inline')]}>
 					<EmptyMedia>
-						<Image systemName="trash" modifiers={[accessibilityLabel('Booking Deleted')]} />
+						{Boolean.match(props.offline, {
+							onFalse: () => <Image systemName="trash" modifiers={[accessibilityLabel('Booking Deleted')]} />,
+							onTrue: () => <Image systemName="icloud.slash" modifiers={[accessibilityLabel('Booking Not Loaded')]} />
+						})}
 					</EmptyMedia>
 				</Empty>
 			),

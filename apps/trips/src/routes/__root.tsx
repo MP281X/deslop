@@ -25,10 +25,17 @@ import {BookingRoute} from '#routes/bookings/$id.tsx'
 import {BookingId} from '#services/bookings/schema.ts'
 
 function Destination(props: {onClose: () => void; value: string}) {
+	const live = useAtomValue(bookingsAtom)
 	return (
 		<Loaded atom={bookingsAtom}>
 			{bookings => (
-				<BookingRoute key={props.value} bookings={bookings} id={BookingId.make(props.value)} onClose={props.onClose} />
+				<BookingRoute
+					key={props.value}
+					bookings={bookings}
+					id={BookingId.make(props.value)}
+					offline={AsyncResult.isFailure(live)}
+					onClose={props.onClose}
+				/>
 			)}
 		</Loaded>
 	)

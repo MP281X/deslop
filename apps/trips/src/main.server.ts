@@ -1,5 +1,6 @@
-import {Layer, Schema, pipe} from 'effect'
+import {ByteSize, Layer, Schema, pipe} from 'effect'
 
+import {AiGateway} from '@deslop/runtime/server/ai'
 import {Apns, layerApnsClient} from '@deslop/runtime/server/apns'
 import {HttpAuth} from '@deslop/runtime/server/auth'
 import {runApp} from '@deslop/runtime/server/cli'
@@ -15,12 +16,15 @@ import {Tracking} from '#services/tracking/service.ts'
 
 runApp({
 	icon,
+	// A pasted ticket travels in one frame: up to 4 MB of image, plus framing.
+	maxFrameSize: ByteSize.mebibytes(5),
 	routes: pipe(
 		Layer.mergeAll(layerRpc({group: RpcContracts, handlers: RpcHandlers}), Layer.provide(HttpHandlers, HttpAuth.layer)),
 		Layer.provide(
 			Layer.mergeAll(Layer.provide(Push.layer, Layer.provide(Apns.layer, layerApnsClient)), Tracking.layer)
 		),
-		Layer.provide(layerBookings)
+		Layer.provide(layerBookings),
+		Layer.provide(AiGateway.layer)
 	),
 	settings: {
 		APNS_KEY_ID: {description: "The APNs signing key's id", flag: 'apns-key-id', schema: Schema.NonEmptyString},

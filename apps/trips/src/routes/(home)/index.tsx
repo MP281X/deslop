@@ -1,6 +1,6 @@
 import {useAtomMount, useAtomRefresh, useAtomSet, useAtomSuspense, useAtomValue} from '@effect/atom-react'
 
-import {Array, Boolean, DateTime, Duration, Function, Number, Option, Schema, String, pipe} from 'effect'
+import {Array, Boolean, DateTime, Duration, Function, Option, Schema, String, pipe} from 'effect'
 
 import {HStack, Image, Overlay, Section, Text, VStack} from '@expo/ui/swift-ui'
 import {accessibilityLabel, fixedSize, font, foregroundStyle, frame, tint} from '@expo/ui/swift-ui/modifiers'
@@ -26,7 +26,7 @@ import {problemSinceAtom} from '@deslop/runtime/client/problem'
 import {bookingsAtom, clipboard, nowAtom, removal} from '#lib/bookings.ts'
 import {primary, session} from '#lib/session.ts'
 import {currentOf, daysUntil, problemOf, statusOf, tones} from '#lib/status.ts'
-import {clockAt, endOf, HOUR, journeysOf, startOf, titleOf} from '#services/bookings/lib/utils.ts'
+import {clockAt, dayMark, daysBetween, endOf, HOUR, journeysOf, startOf, titleOf} from '#services/bookings/lib/utils.ts'
 import {Booking} from '#services/bookings/schema.ts'
 
 type Journey = Array.NonEmptyReadonlyArray<Booking>
@@ -55,12 +55,13 @@ function headingOf(journey: Journey) {
 function scheduleOf(journey: Journey) {
 	const first = Array.headNonEmpty(journey)
 	if (Booking.isAnyOf(['stay'])(first)) {
-		const nights = Number.round(Duration.toDays(DateTime.distance(first.checkIn, first.checkOut)), 0)
+		// Nights are the dates slept over, not the hours: 22:30 to 09:00 the next day is one.
+		const nights = daysBetween(first.checkIn, first.place.timeZone, first.checkOut, first.place.timeZone)
 		return `${nights} ${Boolean.match(nights === 1, {onFalse: Function.constant('nights'), onTrue: Function.constant('night')})} · check-in ${clockAt(first.checkIn, first.place.timeZone)}`
 	}
 	const last = Option.getOrElse(Array.last(Array.filter(journey, Booking.isAnyOf(['flight', 'train']))), () => first)
 	const departs = clockAt(startOfJourney(journey), first.from.timeZone)
-	const arrives = clockAt(endOfJourney(journey), last.to.timeZone)
+	const arrives = `${clockAt(endOfJourney(journey), last.to.timeZone)}${dayMark(daysBetween(startOfJourney(journey), first.from.timeZone, endOfJourney(journey), last.to.timeZone))}`
 	if (Booking.isAnyOf(['train'])(first)) {
 		return `${pipe(journey, Array.map(titleOf), Array.join(' · '))} ${departs} → ${arrives}`
 	}
