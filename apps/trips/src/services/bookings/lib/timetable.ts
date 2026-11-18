@@ -7,7 +7,7 @@ import {bySurety, instantOf, segmentOf} from './utils.ts'
 import type {Surety} from './utils.ts'
 
 import {BookedPlace, BookingsError, TransitRuns, TransitTrip, TrainStop} from '#services/bookings/schema.ts'
-import type {ExtractedItem, TransitStop} from '#services/bookings/schema.ts'
+import type {ExtractedItem, Place, TransitStop} from '#services/bookings/schema.ts'
 
 type RunCandidate = Surety & {
 	readonly gap: Duration.Duration
@@ -54,7 +54,13 @@ export class Timetable extends Context.Service<Timetable>()('@deslop/trips/servi
 					Effect.gen(function* () {
 						const station = yield* Effect.fromOption(yield* places.station(item.from))
 						const code = yield* Effect.fromOption(station.code)
-						const destination = yield* places.station(item.to)
+						// Only the ranking's exact stop id needs this lookup; without it the run's stops still rank by name.
+						const destination = yield* Effect.catch(places.station(item.to), cause =>
+							Effect.as(
+								Effect.logWarning('The destination station could not be looked up', cause),
+								Option.none<Place>()
+							)
+						)
 						// A time with an offset needs no zone; a wall time reads in the station's.
 						const at = yield* Option.match(instantOf(item.departure, station.timeZone), {
 							onNone: () => BookingsError.make({message: `The time ${item.departure} could not be read.`}),

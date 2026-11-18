@@ -12,6 +12,7 @@ import {
 	instantOf,
 	journeysOf,
 	journeyProps,
+	realIssueDate,
 	segmentOf,
 	startable,
 	stayAfter,
@@ -359,6 +360,15 @@ it('merges tickets for the same leg and retains live data only while its schedul
 			booking => Booking.isAnyOf(['flight'])(booking) && booking.live
 		),
 		[Option.none()]
+	)
+})
+
+it('reads an issue date no calendar has as no date', () => {
+	assert.deepStrictEqual(
+		Array.map(['2026-11-01', '2024-02-29', '9999-99-99', '2026-02-30', '2026-13-01'], date =>
+			realIssueDate(Option.some(date))
+		),
+		[Option.some('2026-11-01'), Option.some('2024-02-29'), Option.none(), Option.none(), Option.none()]
 	)
 })
 
