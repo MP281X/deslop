@@ -252,7 +252,7 @@ export function Flame(props: {focus: Option.Option<SpanId>; onPick: (id: SpanId)
 			>
 				{Array.map(rows, row => (
 					<div
-						key={row.span.spanId}
+						key={`${row.span.traceId}:${row.span.spanId}`}
 						data-flame-bar=""
 						data-span-id={row.span.spanId}
 						className="absolute top-(--flame-top) left-(--flame-left) h-5.5 w-(--flame-width)"

@@ -81,8 +81,8 @@ function SpanHeader(props: {span: TraceTree['spans'][number]}) {
 	)
 }
 
-// One detail of the span on one line: what it is, muted and capped on a phone, then its value cut short with the whole of it on hover, and the action it has.
-function DetailRow(props: {action?: ReactNode; label: ReactNode; title: string; value: ReactNode}) {
+// One detail of the span: what it is, muted and capped on a phone, then its value on one line cut short with the whole of it on hover, or wrapped whole, and the action it has.
+function DetailRow(props: {action?: ReactNode; label: ReactNode; title: string; value: ReactNode; wrap?: boolean}) {
 	return (
 		<TableRow>
 			<TableCell>
@@ -92,7 +92,14 @@ function DetailRow(props: {action?: ReactNode; label: ReactNode; title: string; 
 			</TableCell>
 			<TableCell className="w-full">
 				<span className="flex w-0 min-w-full items-center gap-2" title={props.title}>
-					<span className="truncate">{props.value}</span>
+					<span
+						className={Boolean.match(props.wrap === true, {
+							onFalse: Function.constant('truncate'),
+							onTrue: Function.constant('wrap-anywhere whitespace-pre-wrap')
+						})}
+					>
+						{props.value}
+					</span>
 					{props.action}
 				</span>
 			</TableCell>
@@ -100,8 +107,8 @@ function DetailRow(props: {action?: ReactNode; label: ReactNode; title: string; 
 	)
 }
 
-// The picked span's header, error, attributes and logs, one ruled row each; an https URL opens from its row's end.
-export function SpanDetail(props: {span: TraceTree['spans'][number]}) {
+// The picked span's header, error, attributes and logs, one ruled row each; an https URL opens from its row's end. The phone's full-screen span wraps its error and logs whole, where no pointer can hover them.
+export function SpanDetail(props: {span: TraceTree['spans'][number]; wrap?: boolean}) {
 	return (
 		<Table aria-label="Span details">
 			<TableBody>
@@ -110,6 +117,7 @@ export function SpanDetail(props: {span: TraceTree['spans'][number]}) {
 					onNone: Function.constNull,
 					onSome: message => (
 						<DetailRow
+							wrap={props.wrap === true}
 							title={message}
 							label={Boolean.match(props.span.status === 'denied', {
 								onFalse: Function.constant('error'),
@@ -154,6 +162,7 @@ export function SpanDetail(props: {span: TraceTree['spans'][number]}) {
 				{Array.map(props.span.logs, (log, index) => (
 					<DetailRow
 						key={`${log.id}:${index}`}
+						wrap={props.wrap === true}
 						title={log.message}
 						label={<span className="tabular-nums">{clockOf(log.time, 'millisecond')}</span>}
 						value={<span className={failedText(log.severity >= 17)}>{log.message}</span>}

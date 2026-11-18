@@ -1,6 +1,6 @@
 import {useAtomRefresh, useAtomSuspense, useAtomValue} from '@effect/atom-react'
 
-import {Array, Boolean, Cause, DateTime, Function, Match, Option, Predicate, Record, Schema, pipe} from 'effect'
+import {Array, Boolean, Cause, DateTime, Function, Match, Option, Predicate, Record, Schema, String, pipe} from 'effect'
 
 import {
 	ChartBarHorizontalIcon,
@@ -21,6 +21,7 @@ import {StaleProblem} from '@deslop/components-web/blocks/problem'
 import {ChoiceRow, LoadingRows, RowLead} from '@deslop/components-web/blocks/rows'
 import {Loaded, ReadFailure} from '@deslop/components-web/blocks/states'
 import {StatusDot} from '@deslop/components-web/blocks/status-dot'
+import {appMarks} from '@deslop/components-web/lib/apps'
 import {mediaQueryAtom} from '@deslop/components-web/lib/media'
 import {preload} from '@deslop/components-web/lib/router'
 import {cn} from '@deslop/components-web/lib/utils'
@@ -96,7 +97,7 @@ type WorkspaceProps = {
 	source: Option.Option<AppName>
 }
 
-// One tab per app, using its app mark or the CI/server fallback; the supplied source selects it, and clicking that tab again prevents navigation.
+// One tab per app, using its app mark, else the CI/server glyph beside the last part of the name it was sent under; the supplied source selects it, and clicking that tab again prevents navigation.
 function SourceTabs(props: {apps: Overview['apps']; source: Option.Option<AppName>}) {
 	const search = route.useSearch()
 	return (
@@ -119,6 +120,14 @@ function SourceTabs(props: {apps: Overview['apps']; source: Option.Option<AppNam
 					<span className="flex size-4">
 						<AppMark name={app.name} fallback={<OutsideMark ci={Option.contains(app.ci, true)} />} />
 					</span>
+					{pipe(
+						appMarks,
+						Record.has(app.name),
+						Boolean.match({
+							onFalse: () => <span className="text-xs">{pipe(app.name, String.split('/'), Array.lastNonEmpty)}</span>,
+							onTrue: Function.constNull
+						})
+					)}
 				</AppBarTab>
 			))}
 		</AppBarTabs>
@@ -179,13 +188,19 @@ function OperationRow(props: {active: boolean; duplicate: boolean; onSelect: () 
 			</RowLead>
 			<TableCell className="text-right">
 				{props.operation.failures > 0 && (
-					<span className="text-destructive tabular-nums" title={`${countOf(props.operation.failures)} failed`}>
+					<span
+						className="text-destructive in-data-[state=selected]:text-foreground tabular-nums"
+						title={`${countOf(props.operation.failures)} failed`}
+					>
 						{countOf(props.operation.failures)}
 					</span>
 				)}
 			</TableCell>
 			<TableCell className="text-right">
-				<span className="text-muted-foreground tabular-nums" title={runsOf(props.operation.count)}>
+				<span
+					className="text-muted-foreground in-data-[state=selected]:text-foreground tabular-nums"
+					title={runsOf(props.operation.count)}
+				>
 					{compactCountOf(props.operation.count)}
 				</span>
 			</TableCell>
@@ -217,7 +232,7 @@ function OperationsPane(props: {
 								const names = Array.groupBy(rows, row => row.operation.name)
 								return (
 									<ScrollArea className="min-h-0 flex-1">
-										<Table role="grid" aria-label="Operations">
+										<Table aria-label="Operations">
 											<TableBody>
 												{Array.map(rows, row => (
 													<OperationRow
@@ -277,7 +292,10 @@ function TraceListRow(props: {active: boolean; now: DateTime.Utc; onSelect: () =
 				{traceLabel(props.trace)}
 			</RowLead>
 			<TableCell className="text-right">
-				<span className="text-muted-foreground tabular-nums" title={clockOf(props.trace.start, 'second')}>
+				<span
+					className="text-muted-foreground in-data-[state=selected]:text-foreground tabular-nums"
+					title={clockOf(props.trace.start, 'second')}
+				>
 					{ageOf(props.trace.start, props.now)}
 				</span>
 			</TableCell>
@@ -310,7 +328,7 @@ function TracesPane(props: {
 									onFalse: () => <EmptyPane icon={<ChartBarHorizontalIcon />} label="No traces" />,
 									onTrue: () => (
 										<ScrollArea className="min-h-0 flex-1">
-											<Table role="grid" aria-label="Traces">
+											<Table aria-label="Traces">
 												<TableBody>
 													{Array.map(current.operation.traces, trace => (
 														<TraceListRow
@@ -340,7 +358,7 @@ function SpanDetails(props: {focus: Option.Option<TraceTree['spans'][number]>}) 
 		onNone: () => <EmptyPane icon={<RectangleIcon />} label="Select a span" />,
 		onSome: span => (
 			<ScrollArea className="min-h-0 flex-1">
-				<SpanDetail span={span} />
+				<SpanDetail span={span} wrap />
 			</ScrollArea>
 		)
 	})
@@ -588,8 +606,12 @@ function HomeRoute() {
 	const failure = blockingFailure(overview)
 	const now = useAtomValue(nowAtom)
 
-	// One app is always chosen: a URL naming none, or one this data no longer has, falls back to the newest failure, else the first tab.
-	const selection = selectionOf(value, search, isMobile)
+	// One app is always chosen: a URL naming none, or one this data no longer has, falls back to the newest failure, else the first tab. That opening choice holds while the page stays open, so a later failure elsewhere never switches apps under the reader.
+	const [opened, setOpened] = useState(Option.none<AppName>)
+	const selection = selectionOf(value, {...search, source: Option.orElse(search.source, () => opened)}, isMobile)
+	if (Option.isNone(search.source) && Option.isNone(opened) && Option.isSome(selection.source)) {
+		setOpened(selection.source)
+	}
 	// The selection as the page shows it, which the next navigation writes: the chosen app, without an operation or trace this frame no longer holds.
 	const shown = shownSearch(search, selection, Option.isSome(value))
 	const pane = navigationOf(shown).path
@@ -720,7 +742,7 @@ export const Route = createFileRoute('/(home)/')({
 
 	component: HomeRoute,
 	loader: load =>
-		preload(load.context, [
+		preload(load, [
 			overviewAtom(load.deps.range),
 			...Array.map(Option.toArray(Option.fromUndefinedOr(load.deps.trace)), traceAtom)
 		]),
