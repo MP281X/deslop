@@ -37,12 +37,12 @@ Everything you write (replies, PR bodies, commit messages, skills, `AGENTS.md`, 
 
 - Lead with the thing itself. Where it goes sets the form:
 
-  | Where           | Visual                                                                                                    |
-  | --------------- | --------------------------------------------------------------------------------------------------------- |
-  | Thread reply    | `html_render` (load it with ToolSearch, check it with `html_preview` at 728 and 360 px), never restyled Markdown |
-  | PR body         | Mermaid, a screenshot or a recording; hosts render no HTML                                               |
-  | Agent docs      | A short code example, or nothing                                                                          |
-  | Commit message  | None: one line saying what changed for the user                                                           |
+  | Where          | Visual                                                                                                           |
+  | -------------- | ---------------------------------------------------------------------------------------------------------------- |
+  | Thread reply   | `html_render` (load it with ToolSearch, check it with `html_preview` at 728 and 360 px), never restyled Markdown |
+  | PR body        | Mermaid, a screenshot or a recording; hosts render no HTML                                                       |
+  | Agent docs     | A short code example, or nothing                                                                                 |
+  | Commit message | None: one line saying what changed for the user                                                                  |
 
 - Then plain words, short: at most three lines per item, only what it can't show and what changes the reader's next step. No method, no account of how you got there.
 - Say what a thing is, not its number or internal name.
