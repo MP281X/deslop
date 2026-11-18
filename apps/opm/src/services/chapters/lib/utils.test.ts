@@ -167,6 +167,33 @@ it('reads an index chapter once per number, from its first translated group of h
 	)
 })
 
+function only(page: string) {
+	return {groups: {English: [page]}, release_date: Option.none(), title: Option.none()}
+}
+
+it('drops a chapter none of whose pages the reader would load', () => {
+	assert.deepStrictEqual(
+		Array.map(
+			chaptersFromIndex(
+				{
+					chapters: {
+						'1': only('https://example.com/ok.png'),
+						'2': only('https://localhost/private.png'),
+						'3': only('https://127.0.0.1/private.png'),
+						'4': only('https://93.184.216.34/page.png'),
+						'5': only('https://[::1]/private.png'),
+						'6': only('https://printer.local/page.png'),
+						'7': only('https://cdn.localhost/page.png')
+					}
+				},
+				'manga'
+			),
+			found => found.number
+		),
+		[1]
+	)
+})
+
 it('reports each run of missing whole numbers once, however far apart its neighbours', () => {
 	assert.deepStrictEqual(
 		missingRanges(

@@ -126,3 +126,22 @@ it.layer(notesLayer)(test =>
 		})
 	)
 )
+
+it.layer(notesLayer)(test =>
+	test.effect(
+		'never brings a note back from a resend of a capture that joined a deleted note',
+		Effect.fnUntraced(function* () {
+			const notes = yield* Notes
+			const user = UserId.make('github:1')
+			yield* notes.capture(user, {id: FIRST, text: 'https://example.com/gear first'})
+			yield* notes.capture(user, {id: SECOND, text: 'https://example.com/gear?utm_source=review second'})
+			assert.strictEqual((yield* notes.list({cursor: Option.none(), limit: 10, query: ''})).total, 1)
+			yield* notes.remove(FIRST)
+			const resent = yield* Effect.flip(
+				notes.capture(user, {id: SECOND, text: 'https://example.com/gear?utm_source=review second'})
+			)
+			assert.strictEqual(resent.reason, 'Removed')
+			assert.strictEqual((yield* notes.list({cursor: Option.none(), limit: 10, query: ''})).total, 0)
+		})
+	)
+)

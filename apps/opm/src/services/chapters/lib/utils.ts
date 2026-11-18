@@ -19,6 +19,8 @@ import {
 
 import {Base64Url} from 'effect/encoding'
 
+import {isIpAddress} from '@deslop/runtime/shared/net'
+
 import type {ChapterIdentity, ChapterState, CubariSeries, DeadLink, Post, Series} from '#services/chapters/schema.ts'
 import {
 	Chapter,
@@ -205,7 +207,23 @@ export function seriesOf(link: string) {
 	}))
 }
 
-// Only an https link reaches the iPhone, which loads every page it is given; the dead proxy's links unwrap to the file they point at.
+// What the reader's page loader admits: a name on the public internet over https, never plain http, an address typed as numbers or a name on the local network.
+function loadable(link: string) {
+	return Option.exists(
+		Option.fromNullishOr(URL.parse(link)),
+		url =>
+			url.protocol === 'https:' &&
+			url.hostname !== '' &&
+			url.hostname !== 'localhost' &&
+			!String.endsWith('.local')(url.hostname) &&
+			!String.endsWith('.localhost')(url.hostname) &&
+			!String.includes(':')(url.hostname) &&
+			!isIpAddress(url.hostname) &&
+			Option.isNone(String.match(/^[\d.]+$/u)(url.hostname))
+	)
+}
+
+// Only a link the reader loads reaches the iPhone, which loads every page it is given; the dead proxy's links unwrap to the file they point at.
 function publicLink(link: string) {
 	return pipe(
 		Option.fromNullishOr(WRAPPED.exec(link)?.groups?.['encoded']),
@@ -213,7 +231,7 @@ function publicLink(link: string) {
 			onNone: () => Option.some(link),
 			onSome: encoded => Result.getSuccess(Base64Url.decodeString(encoded))
 		}),
-		Option.filter(String.startsWith('https://'))
+		Option.filter(loadable)
 	)
 }
 

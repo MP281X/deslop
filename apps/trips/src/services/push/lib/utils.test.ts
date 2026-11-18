@@ -92,12 +92,12 @@ it('relaunches an ended activity only for a newer explicit start request', () =>
 	const endedAt = DateTime.addDuration(DEPARTS, Duration.minutes(5))
 	const activity = Activity.make({...ACTIVITY, endedAt: Option.some(endedAt)})
 	const window = {end: DateTime.addDuration(DEPARTS, Duration.hours(1)), leg: 'departure' as const, start: DEPARTS}
-	assert.deepStrictEqual(showPlan([Device.make(STARTER)], [activity], Flight.make(FLIGHT), window), [])
+	assert.deepStrictEqual(showPlan([Device.make(STARTER)], [activity], [Flight.make(FLIGHT)], window), [])
 	assert.strictEqual(
 		showPlan(
 			[Device.make(STARTER)],
 			[activity],
-			Flight.make(FLIGHT),
+			[Flight.make(FLIGHT)],
 			window,
 			Option.some(DateTime.addDuration(endedAt, Duration.minutes(1)))
 		)[0]?._tag,
@@ -166,7 +166,7 @@ it('refreshes a covering activity or launches a new one per app while an ended l
 			showPlan(
 				[Device.make(STARTER), Device.make({...STARTER, bundle: 'xyz.mp281x.trips.dev'})],
 				[Activity.make(ACTIVITY), ended],
-				FLIGHT,
+				[FLIGHT],
 				window
 			),
 			action => [action._tag, action.target.bundle]
@@ -174,8 +174,14 @@ it('refreshes a covering activity or launches a new one per app while an ended l
 		[['refresh', 'xyz.mp281x.trips']]
 	)
 	assert.deepStrictEqual(
-		Array.map(showPlan([Device.make(STARTER)], [], FLIGHT, window), action => action._tag),
+		Array.map(showPlan([Device.make(STARTER)], [], [FLIGHT], window), action => action._tag),
 		['launch']
+	)
+	const cancelled = Flight.make({...FLIGHT, status: 'cancelled'})
+	assert.deepStrictEqual(showPlan([Device.make(STARTER)], [], [cancelled], window), [])
+	assert.deepStrictEqual(
+		Array.map(showPlan([Device.make(STARTER)], [Activity.make(ACTIVITY)], [cancelled], window), action => action._tag),
+		['refresh']
 	)
 })
 

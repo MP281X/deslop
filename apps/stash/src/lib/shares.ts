@@ -114,7 +114,7 @@ const settle = Effect.fnUntraced(function* (body: File, now: number) {
 			})
 	})
 	if (accepted(answer.status)) return yield* remove(files)
-	if (answer.status >= 400 && answer.status < 500) return yield* refused(answer.body, files)
+	if (final(answer.status)) return yield* refused(answer.body, files)
 })
 
 // Each return to Stash settles the shares the extension queued while the app was away.
