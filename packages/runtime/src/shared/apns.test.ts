@@ -8,7 +8,7 @@ function answer(status: number, reason?: string) {
 	return apnsAnswer({channel: Option.none(), reason: Option.fromUndefinedOr(reason), status})._tag
 }
 
-it('separates accepted delivery, retry, dead tokens and permanent refusal', () => {
+it('separates accepted delivery, retry, dead tokens, oversized payloads and permanent refusal', () => {
 	assert.deepStrictEqual(
 		[
 			answer(200),
@@ -18,9 +18,23 @@ it('separates accepted delivery, retry, dead tokens and permanent refusal', () =
 			answer(410),
 			answer(400, 'BadDeviceToken'),
 			answer(400, 'Unregistered'),
+			answer(403, 'ExpiredProviderToken'),
+			answer(413, 'PayloadTooLarge'),
 			answer(403),
 			answer(400, 'TopicDisallowed')
 		],
-		['Accepted', 'Retry', 'Retry', 'Retry', 'DeadToken', 'DeadToken', 'DeadToken', 'Refused', 'Refused']
+		[
+			'Accepted',
+			'Retry',
+			'Retry',
+			'Retry',
+			'DeadToken',
+			'DeadToken',
+			'DeadToken',
+			'Retry',
+			'TooLarge',
+			'Refused',
+			'Refused'
+		]
 	)
 })

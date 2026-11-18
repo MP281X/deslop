@@ -156,23 +156,34 @@ export class Auth extends Context.Service<
 					const issuer = yield* Config.String('AUTH_URL')
 					const client = yield* HttpClient.HttpClient
 					const answers = yield* Cache.makeWith(
-						Effect.fnUntraced(function* (body: string) {
-							const response = yield* pipe(
-								HttpClientRequest.post(new URL(IDENTIFY_PATH, issuer).href),
-								HttpClientRequest.bodyText(body, 'application/json'),
-								client.execute,
-								Effect.timeout('10 seconds')
-							)
-							if (response.status === 401 || response.status === 403) {
-								return yield* refusalOf(
-									response.status,
-									Option.getOrElse(yield* Effect.option(response.text), Function.constant('Sign in first'))
+						Effect.fnUntraced(
+							function* (body: string) {
+								const response = yield* pipe(
+									HttpClientRequest.post(new URL(IDENTIFY_PATH, issuer).href),
+									HttpClientRequest.bodyText(body, 'application/json'),
+									client.execute
 								)
-							}
-							return yield* HttpClientResponse.schemaBodyJson(Account)(
-								yield* HttpClientResponse.filterStatusOk(response)
-							)
-						}, asAuthError('The authorization service is temporarily unavailable')),
+								if (response.status === 401 || response.status === 403) {
+									return yield* refusalOf(
+										response.status,
+										Option.getOrElse(yield* Effect.option(response.text), Function.constant('Sign in first'))
+									)
+								}
+								return yield* HttpClientResponse.schemaBodyJson(Account)(
+									yield* HttpClientResponse.filterStatusOk(response)
+								)
+							},
+							Effect.timeout('10 seconds'),
+							// Only Auth's 401 or 403 refuses a caller; a slow, failing or unreadable answer is Auth's fault.
+							Effect.mapError(cause => {
+								if (Schema.is(AuthError)(cause)) return cause
+								return AuthError.make({
+									cause,
+									error: 'temporarily_unavailable',
+									message: 'The authorization service is temporarily unavailable'
+								})
+							})
+						),
 						// A refusal is asked again at once, so a sign-in shows on the next request.
 						{
 							capacity: 1024,

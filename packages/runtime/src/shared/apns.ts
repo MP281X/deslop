@@ -16,15 +16,25 @@ export class Device extends Model.Class<Device>('Device')({
 
 const answerFields = {channel: Schema.Option(Schema.String), reason: Schema.Option(Schema.String), status: Schema.Int}
 export type ApnsAnswer = typeof ApnsAnswer.Type
+// `TooLarge` is the payload's fault, never the token's: no device or channel is retired for it.
 export const ApnsAnswer = Schema.TaggedUnion({
 	Accepted: answerFields,
 	DeadToken: answerFields,
 	Refused: answerFields,
-	Retry: answerFields
+	Retry: answerFields,
+	TooLarge: answerFields
 })
+
+// Apple's notification body limit; a larger one is answered without asking Apple.
+export const APNS_PAYLOAD_BYTES = 4096
 
 export function apnsAnswer(answer: {channel: Option.Option<string>; reason: Option.Option<string>; status: number}) {
 	if (answer.status >= 200 && answer.status < 300) return ApnsAnswer.cases.Accepted.make(answer)
+	if (answer.status === 413 || Option.contains(answer.reason, 'PayloadTooLarge')) {
+		return ApnsAnswer.cases.TooLarge.make(answer)
+	}
+	// An expired provider token is our signature's fault: the token is renewed and the device kept.
+	if (Option.contains(answer.reason, 'ExpiredProviderToken')) return ApnsAnswer.cases.Retry.make(answer)
 	if (
 		answer.status === 410 ||
 		Option.exists(answer.reason, reason => reason === 'BadDeviceToken' || reason === 'Unregistered')
