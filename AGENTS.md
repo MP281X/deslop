@@ -7,6 +7,7 @@ Personal apps with one user, who also develops them.
 - **Access.** Only Auth identifies callers, by tailnet device or GitHub sign-in. Apps have no sign-in of their own.
 - **Dependencies.** New ones are the user's pick. Stay on `latest` except the pins in manifests. No patches or forks.
 - **Proof.** A PR whose changed flow nobody ran can't go ready. A blocked proof, such as a missing tool or a failing signed build, is a fault to fix, not a "Not proven" line.
+- **Not wanted.** An AI wrapper package; a stdio bridge, container or OpenTelemetry Collector (apps send telemetry straight to Scope); MCP tools for apps agents don't need (Trips, OPM, Portfolio).
 - **Tests.** Only our own logic, with Effect layer stand-ins. No UI, request or regression tests.
 
 ## Commands
@@ -21,7 +22,7 @@ Personal apps with one user, who also develops them.
 
 - `palette.ts` mirrors `theme.css`.
 - Hue only for identity and status. Never label healthy states. Dots mark problems.
-- No page titles, panel headers, web search fields, hotkeys, custom animations, web delete buttons or delete confirmations.
+- No page titles, panel headers, web search fields, hotkeys, custom animations, web delete buttons, delete confirmations, custom iOS bar or banners that move the page.
 - Targets: 3440×1440, 1920×1080, 1512×982 and iPhone Air.
 - Artwork stays unchanged. Pixel art uses `crispEdges` and integer scaling.
 

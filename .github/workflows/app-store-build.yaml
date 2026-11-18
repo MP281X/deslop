@@ -43,7 +43,8 @@ jobs:
           apps=()
           for config in apps/*/app.config.ts; do
             app=${config%/app.config.ts}
-            if [[ $workflow == true ]] || ! git diff --quiet "$BASE" HEAD -- "$app/app.config.ts" "$app/eas.json" "$app"/targets/*/expo-target.config.js; then apps+=("${app#apps/}"); fi
+            # Diff names, not globs, so a deleted target config still counts.
+            if [[ $workflow == true ]] || grep -qE '^apps/[^/]+/(app\.config\.ts|eas\.json|targets/[^/]+/expo-target\.config\.js)$' <<< "$(git diff --name-only "$BASE" HEAD -- "$app")"; then apps+=("${app#apps/}"); fi
           done
           mobile=$(printf '%s\n' "${apps[@]}" | jq -Rsc 'split("\n") | map(select(length > 0))')
           echo "mobile=$mobile" >> "$GITHUB_OUTPUT"
