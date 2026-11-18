@@ -41,7 +41,7 @@ export function AccountButton(props: ComponentProps<typeof Button> & {account: A
 	)
 }
 
-// Signing out goes through Auth, which ends the session every app shares.
+// Signing out goes through Auth, which ends the session every app shares; a tailnet caller has no session to end, so no sign-out.
 function AccountMenu() {
 	const account = useAtomValue(accountAtom)
 	const [loaded, loadMenu] = useAtom(menuModuleAtom)
@@ -92,16 +92,19 @@ function AccountMenu() {
 				<loaded.value.DropdownMenuGroup>
 					<loaded.value.DropdownMenuLabel>@{account.value.name}</loaded.value.DropdownMenuLabel>
 				</loaded.value.DropdownMenuGroup>
-				<loaded.value.DropdownMenuSeparator />
-				<form action={`/auth/sign-out?${new URLSearchParams({next: location.href})}`} method="post">
-					<loaded.value.DropdownMenuItem
-						variant="destructive"
-						disabled={!account.value.signOut}
-						render={<button aria-label="Sign out" type="submit" />}
-					>
-						Sign out
-					</loaded.value.DropdownMenuItem>
-				</form>
+				{account.value.signOut && (
+					<>
+						<loaded.value.DropdownMenuSeparator />
+						<form action={`/auth/sign-out?${new URLSearchParams({next: location.href})}`} method="post">
+							<loaded.value.DropdownMenuItem
+								variant="destructive"
+								render={<button aria-label="Sign out" type="submit" />}
+							>
+								Sign out
+							</loaded.value.DropdownMenuItem>
+						</form>
+					</>
+				)}
 			</loaded.value.DropdownMenuContent>
 		</loaded.value.DropdownMenu>
 	)
