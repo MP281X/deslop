@@ -542,12 +542,19 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 						) AS derived
 						WHERE spans.id = derived.id AND spans.kind != derived.kind
 					`
+					// A late CI start leaves the completed span as it was, so its links stay too.
+					const kept = sql`(
+						SELECT traces.id, unhex(late.value ->> 'spanId') FROM json_each(${batch}, '$.spans') AS late
+						JOIN traces ON traces.traceId = unhex(late.value ->> 'traceId')
+						JOIN spans ON spans.trace = traces.id AND spans.span = unhex(late.value ->> 'spanId')
+						WHERE late.value ->> 'duration' IS NULL AND late.value ->> 'runtime' = 'ci' AND spans.duration IS NOT NULL
+					)`
 					// A resent span's links replace the ones it sent before.
 					yield* sql`
 						DELETE FROM span_links WHERE (trace, span) IN (
 							SELECT traces.id, unhex(arriving.value ->> 'spanId') FROM json_each(${batch}, '$.spans') AS arriving
 							JOIN traces ON traces.traceId = unhex(arriving.value ->> 'traceId')
-						)
+						) AND (trace, span) NOT IN ${kept}
 					`
 					yield* sql`
 						INSERT INTO span_links (trace, span, linkedTrace, linkedSpan)
@@ -556,7 +563,7 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 							unhex(arriving.value ->> 'linkedSpanId')
 						FROM json_each(${batch}, '$.links') AS arriving
 						JOIN traces ON traces.traceId = unhex(arriving.value ->> 'traceId')
-						WHERE true
+						WHERE (traces.id, unhex(arriving.value ->> 'spanId')) NOT IN ${kept}
 						ON CONFLICT DO NOTHING
 					`
 				})
