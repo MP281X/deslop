@@ -9,6 +9,7 @@ import {
 	Function,
 	Layer,
 	Option,
+	Queue,
 	Schedule,
 	Schema,
 	Semaphore,
@@ -51,6 +52,7 @@ import {
 	ChannelId,
 	AlertDelivery,
 	PushError,
+	Retirement,
 	SentAlert,
 	ShowAction,
 	StartRequest
@@ -107,6 +109,34 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 			Request: Activity.insert,
 			execute: row => sql`INSERT OR REPLACE INTO ${sql(Activity.table)} ${sql.insert(row)}`
 		})
+		const findRunning = SqlSchema.findOneOption({
+			Request: Activity.insert,
+			Result: Activity,
+			execute: row => sql`
+				SELECT * FROM ${sql(Activity.table)}
+				WHERE bookingId = ${row.bookingId} AND leg = ${row.leg} AND bundle = ${row.bundle} AND endedAt IS NULL
+			`
+		})
+		const listRetirements = SqlSchema.findAll({
+			Request: Schema.Void,
+			Result: Retirement,
+			execute: () => sql`SELECT * FROM ${sql(Retirement.table)} ORDER BY retiredAt`
+		})
+		const endSent = SqlSchema.void({
+			Request: ChannelId,
+			execute: channel => sql`UPDATE ${sql(Retirement.table)} SET props = NULL WHERE channel = ${channel}`
+		})
+		const forgetRetirement = SqlSchema.void({
+			Request: ChannelId,
+			execute: channel => sql`DELETE FROM ${sql(Retirement.table)} WHERE channel = ${channel}`
+		})
+		const recordRetirement = SqlSchema.void({
+			Request: Retirement.insert,
+			execute: row => sql`INSERT INTO ${sql(Retirement.table)} ${sql.insert(row)} ON CONFLICT (channel) DO NOTHING`
+		})
+		// Signals that a retirement was written; signals sent while the worker is busy make one more pass, not one each.
+		const retiring = yield* Queue.sliding<void>(1)
+		const wake = Queue.offer(retiring, undefined)
 		const forgetEndedBefore = SqlSchema.void({
 			Request: Schema.DateTimeUtcFromMillis,
 			execute: time => sql`DELETE FROM ${sql(Activity.table)} WHERE endedAt < ${time}`
@@ -175,6 +205,33 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 				sql`INSERT INTO ${sql(StartRequest.table)} ${sql.insert(row)} ON CONFLICT (bookingId) DO UPDATE SET at = excluded.at`
 		})
 
+		// Apple holds the channel of a start it did not accept until it confirms deleting it; that channel is retired in the transaction that saves the start's other outcome.
+		const unstarted = Effect.fnUntraced(function* (
+			answer: ApnsAnswer,
+			target: Device,
+			now: DateTime.Utc,
+			forget: Effect.Effect<void, SqlError.SqlError | Schema.SchemaError>
+		) {
+			yield* pipe(
+				forget,
+				Effect.andThen(
+					Option.match(answer.channel, {
+						onNone: () => Effect.void,
+						onSome: channel =>
+							recordRetirement({
+								bundle: target.bundle,
+								channel: ChannelId.make(channel),
+								props: Option.none(),
+								retiredAt: now
+							})
+					})
+				),
+				sql.withTransaction,
+				asPushSaveError
+			)
+			if (Option.isSome(answer.channel)) yield* wake
+		})
+
 		const pushStart = Effect.fnUntraced(function* (target: Device, showing: Showing) {
 			const answer = yield* apns.startActivity(target, showing.leg, {
 				aps: {
@@ -195,66 +252,128 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 					}),
 				DeadToken: dead =>
 					Effect.andThen(
-						asPushSaveError(forgetDevice(target)),
+						unstarted(dead, target, showing.now, forgetDevice(target)),
 						PushError.make({cause: dead, message: 'Apple rejected the Live Activity token.'})
 					),
 				Refused: refused =>
 					Effect.andThen(
-						asPushSaveError(forgetDevice(target)),
+						unstarted(refused, target, showing.now, forgetDevice(target)),
 						PushError.make({cause: refused, message: 'Apple refused the Live Activity start.'})
 					),
-				Retry: retry => PushError.make({cause: retry, message: 'Apple did not accept the Live Activity start.'}),
+				Retry: retry =>
+					Effect.andThen(
+						unstarted(retry, target, showing.now, Effect.void),
+						PushError.make({cause: retry, message: 'Apple did not accept the Live Activity start.'})
+					),
 				// The journey's words are too long, which no token can fix, so the iPhone stays registered.
 				TooLarge: tooLarge =>
-					PushError.make({cause: tooLarge, message: 'The Live Activity has too much text to start.'})
+					Effect.andThen(
+						unstarted(tooLarge, target, showing.now, Effect.void),
+						PushError.make({cause: tooLarge, message: 'The Live Activity has too much text to start.'})
+					)
 			})
 		})
 
-		// A refused start leaves the leg unstarted, so the next round tries again.
-		const launch = Effect.fnUntraced(function* (target: Device, showing: Showing) {
-			yield* asPushSaveError(
-				startActivity({
-					bookingId: showing.journey.id,
-					bundle: target.bundle,
-					channel: yield* pushStart(target, showing),
-					endedAt: Option.none(),
-					leg: showing.leg,
-					props: showing.props,
-					startedAt: showing.now
-				})
+		// An activity ends in the transaction that queues its channel's retirement; the worker then sends the end and deletes the channel.
+		const finish = Effect.fnUntraced(function* (activity: Activity, now: DateTime.Utc) {
+			yield* pipe(
+				activities.updateVoid({...editable(activity), endedAt: Option.some(now)}),
+				Effect.andThen(
+					recordRetirement({
+						bundle: activity.bundle,
+						channel: activity.channel,
+						props: Option.some(activity.props),
+						retiredAt: now
+					})
+				),
+				sql.withTransaction,
+				asPushSaveError
 			)
+			yield* wake
+		})
+
+		// A refused start leaves the leg unstarted, so the next round tries again; a start retires the running activity it replaces, so no channel leaves the tables unretired.
+		const launch = Effect.fnUntraced(function* (target: Device, showing: Showing) {
+			const row = {
+				bookingId: showing.journey.id,
+				bundle: target.bundle,
+				channel: yield* pushStart(target, showing),
+				endedAt: Option.none(),
+				leg: showing.leg,
+				props: showing.props,
+				startedAt: showing.now
+			}
+			const replaced = yield* pipe(
+				findRunning(row),
+				Effect.tap(
+					Option.match({
+						onNone: () => Effect.void,
+						onSome: activity =>
+							recordRetirement({
+								bundle: activity.bundle,
+								channel: activity.channel,
+								props: Option.some(activity.props),
+								retiredAt: showing.now
+							})
+					})
+				),
+				Effect.tap(() => startActivity(row)),
+				sql.withTransaction,
+				asPushSaveError
+			)
+			if (Option.isSome(replaced)) yield* wake
 		})
 
 		// judge-ignore no-silent-fallback -- #279 makes permanent APNs refusal terminal: its logged refusal ends this unavailable channel; only Retry keeps it pending.
-		// The activity counts as ended only once Apple also deleted its channel or answered that it never will; until then the next round asks again.
-		const finish = Effect.fnUntraced(function* (activity: Activity, now: DateTime.Utc) {
-			const answer = yield* apns.broadcast(
-				activity.bundle,
-				activity.channel,
-				{
-					'content-state': yield* contentState(activity.props),
-					'dismissal-date': DateTime.toEpochSeconds(DateTime.addDuration(now, Duration.minutes(10))),
-					event: 'end',
-					timestamp: DateTime.toEpochSeconds(now)
-				},
-				10,
-				now
-			)
-			yield* ApnsAnswer.match(answer, {
-				Accepted: () => Effect.void,
-				DeadToken: () => Effect.void,
-				Refused: () => Effect.void,
-				Retry: retry => PushError.make({cause: retry, message: 'Apple did not accept the Live Activity end.'}),
-				TooLarge: () => Effect.void
+		// The end goes first, once; the retirement is forgotten only after Apple deleted the channel or answered that it never will, so a throttled answer or a restart leaves it for the next pass.
+		const retire = Effect.fnUntraced(function* (retirement: Retirement, now: DateTime.Utc) {
+			yield* Option.match(retirement.props, {
+				onNone: () => Effect.void,
+				onSome: Effect.fnUntraced(function* (props) {
+					const answer = yield* apns.broadcast(
+						retirement.bundle,
+						retirement.channel,
+						{
+							'content-state': yield* contentState(props),
+							'dismissal-date': DateTime.toEpochSeconds(DateTime.addDuration(now, Duration.minutes(10))),
+							event: 'end',
+							timestamp: DateTime.toEpochSeconds(now)
+						},
+						10,
+						now
+					)
+					if (ApnsAnswer.isAnyOf(['Retry'])(answer)) {
+						return yield* PushError.make({cause: answer, message: 'Apple did not accept the Live Activity end.'})
+					}
+					yield* asPushSaveError(endSent(retirement.channel))
+				})
 			})
 			const deleted = yield* asPushError('Apple was not asked to delete the Live Activity channel.')(
-				apns.deleteChannel(activity.bundle, activity.channel)
+				apns.deleteChannel(retirement.bundle, retirement.channel)
 			)
 			if (ApnsAnswer.isAnyOf(['Retry'])(deleted)) {
 				return yield* PushError.make({cause: deleted, message: 'Apple did not delete the Live Activity channel.'})
 			}
-			yield* asPushSaveError(activities.updateVoid({...editable(activity), endedAt: Option.some(now)}))
+			yield* asPushSaveError(forgetRetirement(retirement.channel))
 		})
+
+		// Claims every pending retirement at start, after each signal, and each minute for the answers Apple asked to retry.
+		yield* pipe(
+			Effect.gen(function* () {
+				if (!apns.enabled) return
+				const now = yield* DateTime.now
+				yield* Effect.forEach(
+					yield* asPushReadError(listRetirements()),
+					retirement =>
+						Effect.ignore(retire(retirement, now), {log: 'Warn', message: 'A Live Activity channel was not retired'}),
+					{concurrency: 1, discard: true}
+				)
+			}),
+			Effect.ignore({log: 'Warn', message: 'The Live Activity retirements could not be read'}),
+			Effect.andThen(Effect.timeoutOrElse(Queue.take(retiring), {duration: '1 minute', orElse: () => Effect.void})),
+			Effect.forever,
+			Effect.forkScoped
+		)
 
 		// A change APNs took or will always refuse is remembered; a throttled one is sent again next round.
 		const refresh = Effect.fnUntraced(function* (activity: Activity, props: ActivityProps, now: DateTime.Utc) {
@@ -572,6 +691,17 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 					const sql = yield* SqlClient.SqlClient
 					yield* sql`CREATE INDEX delivery_order ON deliveries (bookingId, sentAt)`
 					yield* sql`CREATE INDEX alert_order ON sent_alerts (bookingId, sentAt)`
+				}),
+				// Channels still to end or delete; every activity ended before it had its channel deleted already.
+				'0006_retirements': Effect.gen(function* () {
+					yield* (yield* SqlClient.SqlClient)`
+						CREATE TABLE retirements (
+							channel TEXT PRIMARY KEY,
+							bundle TEXT NOT NULL,
+							props TEXT,
+							retiredAt INTEGER NOT NULL
+						) STRICT, WITHOUT ROWID
+					`
 				})
 			}),
 			table: 'push_migrations'
