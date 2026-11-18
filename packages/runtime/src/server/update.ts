@@ -26,6 +26,9 @@ import {AppError, executeProcess} from '#server/process.ts'
 import {restartService} from '#server/services.ts'
 import {AppVersion, RUNTIME_PATH, RuntimeConfig} from '#shared/schema.ts'
 
+// The file the unit starts, inside a release.
+const ENTRYPOINT = 'dist/server.js'
+
 const serviceDirectory = Effect.fnUntraced(function* (name: string) {
 	return (yield* Path.Path).join(yield* Config.String('HOME'), '.deslop', name)
 })
@@ -145,8 +148,10 @@ function startRelease(name: string, url: string, release: string) {
 	)
 }
 
+// A release is on disk only when its package and the file the unit starts are both there.
 const releaseExists = Effect.fnUntraced(function* (release: string) {
-	return Option.isSome(yield* Effect.option(versionIn(release)))
+	if (Option.isNone(yield* Effect.option(versionIn(release)))) return false
+	return yield* (yield* FileSystem.FileSystem).exists((yield* Path.Path).join(release, ENTRYPOINT))
 })
 
 const describeRelease = Effect.fnUntraced(function* (name: string, release: string) {
@@ -172,9 +177,9 @@ const promoteRelease = Effect.fnUntraced(function* (
 		Option.match({
 			onNone: () => Effect.succeed('No other release is recorded as serving; the service is down'),
 			onSome: Effect.fnUntraced(function* (release) {
-				// `current` moves only onto a release that is on disk, so the next run can still start the one that failed.
+				// `current` moves only onto a release that is on disk with its entry file, so the next run can still start the one that failed.
 				if (!(yield* releaseExists(release))) {
-					return `The release recorded as serving at ${release} is missing, so ${name} stays linked to ${yield* describeRelease(name, target)} and is down`
+					return `The release recorded as serving at ${release} is missing or has no ${ENTRYPOINT}, so ${name} stays linked to ${yield* describeRelease(name, target)} and is down`
 				}
 				const exit = yield* Effect.exit(startRelease(name, url, release))
 				const label = yield* describeRelease(name, release)
@@ -196,7 +201,7 @@ const promoteRelease = Effect.fnUntraced(function* (
 const releaseToRun = Effect.fnUntraced(function* (name: string, current: string, recorded: Option.Option<string>) {
 	if (yield* releaseExists(current)) return current
 	function missing(rest: string) {
-		return AppError.make({message: `The ${name} release at ${current} is missing, and ${rest}`})
+		return AppError.make({message: `The ${name} release at ${current} is missing or has no ${ENTRYPOINT}, and ${rest}`})
 	}
 	return yield* Option.match(recorded, {
 		onNone: () => missing('none is recorded as serving'),
@@ -264,7 +269,7 @@ export const updateRelease = Effect.fnUntraced(function* (name: string, url: str
 			const version = (yield* Schema.decodeEffect(Schema.fromJsonString(Schema.Struct({version: AppVersion})))(
 				yield* fs.readFileString(path.join(installed, 'package.json'))
 			)).version
-			if (version !== latest || !(yield* fs.exists(path.join(installed, 'dist', 'server.js')))) {
+			if (version !== latest || !(yield* fs.exists(path.join(installed, ENTRYPOINT)))) {
 				return yield* AppError.make({message: `npm did not install ${name} ${latest}`})
 			}
 			yield* fs.remove(directory, {force: true, recursive: true})

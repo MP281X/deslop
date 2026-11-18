@@ -1,4 +1,4 @@
-import {Array, MutableList, Option, Predicate, String, pipe} from 'effect'
+import {Array, Duration, MutableList, Option, Predicate, Schema, String, pipe} from 'effect'
 
 import {defineRule} from 'vite-plus/lint/plugins'
 import type {Context, ESTree} from 'vite-plus/lint/plugins'
@@ -243,7 +243,37 @@ function endsAtOnce(node: ESTree.MemberExpression) {
 	)
 }
 
-// A sleep the test's own fiber waits out before it advances TestClock never ends: the clock moves only afterwards, unless a fiber forked earlier moves it or the sleep lasts no time.
+// The length a call spells out as its one literal, such as `'1 second'` or `500`; a name or any other expression leaves it unknown.
+function literalLength(call: ESTree.CallExpression) {
+	return pipe(
+		call.arguments,
+		Array.filter(argument => argument.type === 'Literal'),
+		Array.map(argument =>
+			Schema.decodeUnknownOption(Schema.Union([Schema.DurationFromMillis, Schema.DurationFromString]))(argument.value)
+		),
+		Array.getSomes,
+		Option.liftPredicate(lengths => lengths.length === 1),
+		Option.flatMap(Array.head)
+	)
+}
+
+// Whether the advance lasts as long as the wait; a length the rule cannot read counts as long enough.
+function coversWait(context: Context, wait: ESTree.MemberExpression, advance: ESTree.Node) {
+	if (
+		advance.type !== 'CallExpression' ||
+		!isTestClockCall(context, advance, 'adjust') ||
+		wait.parent.type !== 'CallExpression' ||
+		wait.parent.callee !== wait
+	) {
+		return true
+	}
+	const waited = literalLength(wait.parent)
+	return !Option.exists(literalLength(advance), length =>
+		Option.exists(waited, other => Duration.isLessThan(length, other))
+	)
+}
+
+// A sleep the test's own fiber waits out before it advances TestClock never ends: the clock moves only afterwards, unless a fiber forked earlier moves it by as much as the sleep lasts.
 function sleepsBeforeAdvancing(context: Context, node: ESTree.Node) {
 	if (
 		node.type !== 'MemberExpression' ||
@@ -255,14 +285,14 @@ function sleepsBeforeAdvancing(context: Context, node: ESTree.Node) {
 	}
 	const owner = ownerOf(node)
 	return (
-		!endsAtOnce(node) &&
 		suspends(context, node) &&
 		!containsNode({
 			context,
 			matches: child =>
 				(isTestClockCall(context, child, 'adjust') || isTestClockCall(context, child, 'setTime')) &&
 				child.range[1] < node.range[0] &&
-				forkedUnder(context, child, owner),
+				forkedUnder(context, child, owner) &&
+				coversWait(context, node, child),
 			node: owner,
 			throughFunctions: true
 		}) &&
@@ -271,7 +301,7 @@ function sleepsBeforeAdvancing(context: Context, node: ESTree.Node) {
 			matches: child =>
 				(isTestClockCall(context, child, 'adjust') || isTestClockCall(context, child, 'setTime')) &&
 				child.range[0] > node.range[1] &&
-				runsInPlace(context, child, owner),
+				(runsInPlace(context, child, owner) || forkedUnder(context, child, owner)),
 			node: owner,
 			throughFunctions: true
 		})
@@ -371,7 +401,7 @@ export const testSynchronization = defineRule({
 			MemberExpression: node => {
 				if (isClockWait(context, node)) {
 					if (onRealClock(context, node)) MutableList.append(findings, {message: MESSAGE, node})
-					else MutableList.append(waits, node)
+					else if (!endsAtOnce(node)) MutableList.append(waits, node)
 					return
 				}
 				const timeout = Array.some(['timeout', 'timeoutOption', 'timeoutOrElse'], propertyName =>
