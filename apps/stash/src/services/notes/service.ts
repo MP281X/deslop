@@ -757,8 +757,10 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 			return Effect.flatMap(findNote(id), Option.match({onNone: () => Effect.fail(missing), onSome: Effect.succeed}))
 		}
 
-		// A retired capture id answers with the note it joined, or as deleted; none says the id was never retired.
-		function retired(id: NoteId) {
+		// A retired capture id answers with the note it joined, followed through any later joins, or as deleted; none says the id was never retired.
+		function retired(
+			id: NoteId
+		): Effect.Effect<Option.Option<Note>, NotesError | SqlError.SqlError | Schema.SchemaError> {
 			return Effect.flatMap(
 				findRetired(id),
 				Option.match({
@@ -766,7 +768,8 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 					onSome: Effect.fnUntraced(function* (row: RetiredNote) {
 						const joined = yield* Option.match(row.mergedInto, {
 							onNone: () => Effect.succeed(Option.none<Note>()),
-							onSome: findNote
+							onSome: into =>
+								Effect.flatMap(findNote(into), Option.match({onNone: () => retired(into), onSome: Effect.succeedSome}))
 						})
 						if (Option.isNone(joined)) return yield* removed
 						return joined

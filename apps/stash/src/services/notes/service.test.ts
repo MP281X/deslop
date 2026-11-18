@@ -2,7 +2,7 @@ import {NodeServices} from '@effect/platform-node'
 import {SqliteClient} from '@effect/sql-sqlite-node'
 import {assert, it} from '@effect/vitest'
 
-import {Array, Deferred, Effect, FileSystem, Layer, Option, Stream, String, Fiber, pipe} from 'effect'
+import {Array, Boolean, Context, Deferred, Effect, FileSystem, Layer, Option, Stream, String, Fiber, pipe} from 'effect'
 
 import {Reactivity} from 'effect/reactivity'
 
@@ -15,23 +15,30 @@ import {Media} from '#services/media/service.ts'
 import {NoteId, NotesError} from '#services/notes/schema.ts'
 import {Notes} from '#services/notes/service.ts'
 
+const SHORT = 'https://t.co/fixture'
+const FINAL = 'https://example.com/final'
 const FIRST = NoteId.make('6f1c9a52-8d0e-4c3b-9a51-2f6d7e8b9c01')
 const SECOND = NoteId.make('6f1c9a52-8d0e-4c3b-9a51-2f6d7e8b9c02')
 const THIRD = NoteId.make('6f1c9a52-8d0e-4c3b-9a51-2f6d7e8b9c03')
+const FOURTH = NoteId.make('6f1c9a52-8d0e-4c3b-9a51-2f6d7e8b9c04')
 
-const notesLayer = pipe(
-	Layer.unwrap(
-		Effect.gen(function* () {
-			const fs = yield* FileSystem.FileSystem
-			return Notes.layer(yield* fs.makeTempDirectoryScoped())
-		})
-	),
-	Layer.provide(Layer.merge(SqliteClient.layer({filename: ':memory:'}), Reactivity.layer)),
-	Layer.provide(Layer.mock(Sources, {resolve: Effect.succeed})),
-	Layer.provide(Layer.mock(Organizer, {organize: () => Effect.fail(NotesError.make({message: 'Offline'}))})),
-	Layer.provide(Layer.mock(Media, {})),
-	Layer.provide(NodeServices.layer)
-)
+function notesLayerWith<R>(sources: Layer.Layer<Sources, never, R>) {
+	return pipe(
+		Layer.unwrap(
+			Effect.gen(function* () {
+				const fs = yield* FileSystem.FileSystem
+				return Notes.layer(yield* fs.makeTempDirectoryScoped())
+			})
+		),
+		Layer.provide(Layer.merge(SqliteClient.layer({filename: ':memory:'}), Reactivity.layer)),
+		Layer.provide(sources),
+		Layer.provide(Layer.mock(Organizer, {organize: () => Effect.fail(NotesError.make({message: 'Offline'}))})),
+		Layer.provide(Layer.mock(Media, {})),
+		Layer.provide(NodeServices.layer)
+	)
+}
+
+const notesLayer = notesLayerWith(Layer.mock(Sources, {resolve: Effect.succeed}))
 
 // Each case gets its own database and folder, so no case sees another's notes.
 it.layer(notesLayer)(test =>
@@ -141,6 +148,57 @@ it.layer(notesLayer)(test =>
 				notes.capture(user, {id: SECOND, text: 'https://example.com/gear?utm_source=review second'})
 			)
 			assert.strictEqual(resent.reason, 'Removed')
+			assert.strictEqual((yield* notes.list({cursor: Option.none(), limit: 10, query: ''})).total, 0)
+		})
+	)
+)
+
+// Holds the short link's resolution until the case releases it.
+class Gate extends Context.Service<Gate, Deferred.Deferred<void>>()('@deslop/stash/services/notes/service.test/Gate') {
+	static readonly layer = Layer.effect(this, Deferred.make<void>())
+}
+
+const joiningLayer = Layer.provideMerge(
+	notesLayerWith(
+		Layer.unwrap(
+			Effect.map(Gate, gate =>
+				Layer.mock(Sources, {
+					resolve: url =>
+						Boolean.match(url === SHORT, {
+							onFalse: () => Effect.succeed(url),
+							onTrue: () => Effect.as(Deferred.await(gate), FINAL)
+						})
+				})
+			)
+		)
+	),
+	Gate.layer
+)
+
+it.layer(joiningLayer)(test =>
+	test.effect(
+		'follows a capture that joined a note through the note that later joins another',
+		Effect.fnUntraced(function* () {
+			const notes = yield* Notes
+			const user = UserId.make('github:1')
+			yield* notes.capture(user, {id: FIRST, text: FINAL})
+			yield* notes.capture(user, {id: SECOND, text: SHORT})
+			yield* notes.capture(user, {id: THIRD, text: SHORT})
+			yield* notes.capture(user, {id: FOURTH, text: SHORT})
+			const watching = yield* Deferred.make<void>()
+			const joined = yield* pipe(
+				notes.events,
+				Stream.tap(() => Deferred.succeed(watching, undefined)),
+				Stream.filter(event => Array.contains(event.removed, SECOND)),
+				Stream.runHead,
+				Effect.forkChild
+			)
+			yield* Deferred.await(watching)
+			yield* Deferred.succeed(yield* Gate, undefined)
+			yield* Fiber.join(joined)
+			assert.strictEqual((yield* notes.capture(user, {id: THIRD, text: SHORT})).id, FIRST)
+			yield* notes.remove(FIRST)
+			assert.strictEqual((yield* Effect.flip(notes.capture(user, {id: FOURTH, text: SHORT}))).reason, 'Removed')
 			assert.strictEqual((yield* notes.list({cursor: Option.none(), limit: 10, query: ''})).total, 0)
 		})
 	)
