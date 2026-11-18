@@ -1,6 +1,6 @@
 import {useAtomSet} from '@effect/atom-react'
 
-import {Array, Match, Schema, pipe} from 'effect'
+import {Array, Match, Option, Schema, pipe} from 'effect'
 
 import {Host, NavigationDestination, NavigationStack} from '@expo/ui/swift-ui'
 import {tint} from '@expo/ui/swift-ui/modifiers'
@@ -23,8 +23,8 @@ const NavigationPath = Schema.Union([NoteId, Schema.Literal('compose')])
 function AppRoutes() {
 	const [path, setPath] = useState<NavigationPath[]>([])
 	const setQuery = useAtomSet(queryAtom)
-	const [tag, setTag] = useState<TagName>()
-	const [kind, setKind] = useState<Kind>()
+	const [tag, setTag] = useState(Option.none<TagName>)
+	const [kind, setKind] = useState(Option.none<Kind>)
 
 	return (
 		<Host style={{flex: 1}}>
@@ -60,7 +60,7 @@ function AppRoutes() {
 										id={NoteId.make(id)}
 										onClose={() => setPath([])}
 										onTag={name => {
-											setTag(name)
+											setTag(Option.some(name))
 											setPath([])
 										}}
 									/>

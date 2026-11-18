@@ -10,6 +10,7 @@
 		"noImplicitOverride": true,
 		"allowUnreachableCode": false,
 		"noUncheckedIndexedAccess": true,
+		"exactOptionalPropertyTypes": true,
 		"noPropertyAccessFromIndexSignature": true,
 		"target": "ESNext",
 		"module": "ESNext",

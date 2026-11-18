@@ -32,7 +32,7 @@ export function makeExpoConfig(app: {projectId: string; slug: string}) {
 					experiments: {reactCompiler: true},
 					extra: {domain, eas: {projectId: app.projectId}, scheme: variant.scheme},
 					ios: {
-						appleTeamId: Option.getOrUndefined(team),
+						...Option.match(team, {onNone: () => ({}), onSome: appleTeamId => ({appleTeamId})}),
 						associatedDomains: [`webcredentials:auth.${domain}`],
 						buildNumber: `${release}`,
 						bundleIdentifier: variant.bundleIdentifier,

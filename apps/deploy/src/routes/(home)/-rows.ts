@@ -42,33 +42,38 @@ export function impactGroups(rows: readonly Row[], lowImpact: HashSet.HashSet<Ap
 }
 
 // The rows whose apps the range recorded; a history without app readings, such as a Mac's, keeps them all.
-export function ranged(rows: readonly Row[], minutes: Duration.Duration, history?: MachineHistory) {
-	if (history === undefined || !Array.some(history.samples, sample => Option.isSome(sample.apps))) return rows
-	const recorded = HashSet.fromIterable(
-		Array.flatMap(history.samples, sample =>
-			pipe(
-				sample.apps,
-				Option.getOrElse(Array.empty),
-				Array.map(app => app.id)
-			)
-		)
-	)
-	const start = chartWindow(minutes, history.time).start
-	return Array.filter(
-		rows,
-		row =>
-			Option.contains(row.item.scheduled, true) ||
-			Option.match(owner(row), {
-				onNone: Function.constTrue,
-				onSome: id =>
-					HashSet.has(recorded, id) ||
+export function ranged(rows: readonly Row[], minutes: Duration.Duration, current: Option.Option<MachineHistory>) {
+	return Option.match(current, {
+		onNone: () => rows,
+		onSome: history => {
+			if (!Array.some(history.samples, sample => Option.isSome(sample.apps))) return rows
+			const recorded = HashSet.fromIterable(
+				Array.flatMap(history.samples, sample =>
 					pipe(
-						row.item.failure,
-						Option.flatMap(failure => failure.at),
-						Option.exists(at => DateTime.isGreaterThanOrEqualTo(at, start))
+						sample.apps,
+						Option.getOrElse(Array.empty),
+						Array.map(app => app.id)
 					)
-			})
-	)
+				)
+			)
+			const start = chartWindow(minutes, history.time).start
+			return Array.filter(
+				rows,
+				row =>
+					Option.contains(row.item.scheduled, true) ||
+					Option.match(owner(row), {
+						onNone: Function.constTrue,
+						onSome: id =>
+							HashSet.has(recorded, id) ||
+							pipe(
+								row.item.failure,
+								Option.flatMap(failure => failure.at),
+								Option.exists(at => DateTime.isGreaterThanOrEqualTo(at, start))
+							)
+					})
+			)
+		}
+	})
 }
 
 export function failureOf(

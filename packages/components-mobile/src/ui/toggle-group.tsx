@@ -35,7 +35,7 @@ export function ToggleGroup(props: {
 	variant?: ToggleGroupVariant
 }) {
 	return (
-		<ScrollView axes="horizontal" showsIndicators={false} modifiers={props.modifiers}>
+		<ScrollView axes="horizontal" showsIndicators={false} modifiers={props.modifiers ?? []}>
 			<HStack spacing={space[2]}>
 				<ToggleGroupContext
 					value={{

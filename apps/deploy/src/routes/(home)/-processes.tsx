@@ -18,7 +18,7 @@ function ProcessRows(props: {depth: number; nodes: readonly ProcessNode[]}) {
 				<RowLead
 					title={pipe(node.command, Option.getOrElse(Array.empty), Array.join(' '))}
 					depth={props.depth}
-					mark={<ApplicationIcon name={node.label.name} />}
+					mark={<ApplicationIcon name={node.label.name} process={Option.none()} />}
 					detail={node.label.detail}
 				>
 					<span className={cn(node.small && 'text-muted-foreground')}>{node.label.name}</span>

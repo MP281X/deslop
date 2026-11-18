@@ -203,10 +203,10 @@ export function ChaptersRoute(props: {
 			prompt={`Search ${SERIES_NAMES[props.series]}`}
 			session={session}
 			onSearch={setSearched}
-			problem={Boolean.match(AsyncResult.isFailure(loaded) && Option.isNone(blockingFailure(loaded)), {
-				onFalse: Function.constUndefined,
-				onTrue: () => <Problem label="Out of date" onRetry={refresh} />
-			})}
+			problem={Option.liftPredicate(
+				<Problem label="Out of date" onRetry={refresh} />,
+				() => AsyncResult.isFailure(loaded) && Option.isNone(blockingFailure(loaded))
+			)}
 			bottomBar={
 				<ToolbarItem placement="bottomBar">
 					<Menu

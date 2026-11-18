@@ -39,7 +39,13 @@ export function RowLead(props: {
 				style={{'--indent': `${(props.depth ?? 0) * 0.75}rem`}}
 				title={props.title}
 			>
-				{props.mark !== undefined && <RowMark label={props.markLabel}>{props.mark}</RowMark>}
+				{props.mark !== undefined && (
+					<RowMark
+						{...Option.match(Option.fromUndefinedOr(props.markLabel), {onNone: () => ({}), onSome: label => ({label})})}
+					>
+						{props.mark}
+					</RowMark>
+				)}
 				<span className="truncate">{props.children}</span>
 				{props.after}
 				{props.detail !== undefined && (

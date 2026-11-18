@@ -1,4 +1,4 @@
-import {Array, Boolean, Option, String} from 'effect'
+import {Array, Boolean, Function, Option, String} from 'effect'
 
 import {CubeIcon, TerminalWindowIcon} from '@phosphor-icons/react'
 
@@ -30,9 +30,11 @@ const brands = [
 ]
 
 // A row's mark: the app's own pixel mark filling the row's square, else a software brand or a glyph at 16px.
-export function ApplicationIcon(props: {name: string; process?: string; container?: boolean}) {
+export function ApplicationIcon(props: {name: string; process: Option.Option<string>; container?: boolean}) {
 	const brand = Option.getOrUndefined(
-		Array.findFirst(brands, candidate => candidate.pattern.test(`${props.name} ${props.process ?? ''}`))
+		Array.findFirst(brands, candidate =>
+			candidate.pattern.test(`${props.name} ${Option.getOrElse(props.process, Function.constant(''))}`)
+		)
 	)
 	function mark() {
 		if (brand !== undefined) {

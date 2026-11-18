@@ -32,7 +32,6 @@ function Avatar(props: {id: UserId}) {
 }
 
 // Signing out ends the session at Auth for every app; a tailnet device has none, so its menu only names it.
-// judge-ignore no-silent-fallback -- SessionGate owns account failures; this menu keeps the last account visible and never invents an identity when none is available.
 export function AccountMenu(props: {session: Session}) {
 	const signOut = useAtomSet(props.session.signOut)
 	const account = AsyncResult.value(useAtomValue(props.session.account))
@@ -44,7 +43,7 @@ export function AccountMenu(props: {session: Session}) {
 			})}
 			modifiers={[menuStyle('button'), buttonStyle('plain'), menuIndicator('hidden'), accessibilityLabel('Account')]}
 		>
-			<Section title={Option.match(account, {onNone: Function.constUndefined, onSome: current => `@${current.name}`})}>
+			<Section {...Option.match(account, {onNone: () => ({}), onSome: current => ({title: `@${current.name}`})})}>
 				{pipe(
 					account,
 					Option.filter(current => current.signOut),

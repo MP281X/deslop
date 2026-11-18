@@ -947,7 +947,11 @@ export const libraryOperation = defineRule({
 				shapes,
 				Array.findFirst(shape => Array.head(shape(context, node))),
 				Option.map(match =>
-					context.report({fix: match.fix, message: `Use ${match.call} instead of ${match.shape}.`, node: match.node})
+					context.report({
+						...Option.match(Option.fromUndefinedOr(match.fix), {onNone: () => ({}), onSome: fix => ({fix})}),
+						message: `Use ${match.call} instead of ${match.shape}.`,
+						node: match.node
+					})
 				)
 			)
 		}),

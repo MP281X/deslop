@@ -5,6 +5,7 @@ import {HttpClient, HttpClientResponse} from 'effect/http'
 import {RUNTIME_PATH, RuntimeConfig} from '#shared/schema.ts'
 import {layerOtlp} from '#shared/telemetry.ts'
 
+// judge-ignore no-silent-fallback -- Telemetry is optional: config failures are logged, and tracing stays off rather than preventing the app from opening.
 export function layerWebTelemetry(applicationName: string) {
 	return Layer.unwrap(
 		Effect.gen(function* () {
@@ -18,10 +19,11 @@ export function layerWebTelemetry(applicationName: string) {
 			)
 			return Option.match(config, {
 				onNone: () => Layer.empty,
-				onSome: settings => {
-					if (settings.traces === '') return Layer.empty
-					return layerOtlp(`${applicationName}-client`, settings.traces, 'web', settings.version)
-				}
+				onSome: settings =>
+					Option.match(settings.traces, {
+						onNone: () => Layer.empty,
+						onSome: traces => layerOtlp(`${applicationName}-client`, traces, 'web', settings.version)
+					})
 			})
 		})
 	)

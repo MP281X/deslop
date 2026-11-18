@@ -187,12 +187,14 @@ function AppRow(props: {
 							props.row.item.processes,
 							Option.getOrElse(Array.empty<Process>),
 							Array.match({
-								onEmpty: Function.constUndefined,
+								onEmpty: () => Option.none<string>(),
 								onNonEmpty: entries =>
-									Array.max(
-										entries,
-										Order.mapInput(Number.Order, (entry: Process) => entry.memory)
-									).name
+									Option.some(
+										Array.max(
+											entries,
+											Order.mapInput(Number.Order, (entry: Process) => entry.memory)
+										).name
+									)
 							})
 						)}
 						container={props.row.item.kind === 'container'}
@@ -240,7 +242,7 @@ function ListRows(props: {
 	now: DateTime.Utc
 	onSelect: (row: Row) => void
 	rows: readonly Row[]
-	selectedId?: string
+	selectedId: Option.Option<string>
 }) {
 	return Array.map(props.rows, row => (
 		<AppRow
@@ -250,7 +252,7 @@ function ListRows(props: {
 			now={props.now}
 			onSelect={() => props.onSelect(row)}
 			row={row}
-			selected={props.selectedId === row.item.id}
+			selected={Option.contains(props.selectedId, row.item.id)}
 		/>
 	))
 }
@@ -260,17 +262,17 @@ export function ListPane(props: {
 	className?: string
 	compact: boolean
 	free: readonly InventoryItem[]
-	lowImpact?: HashSet.HashSet<AppId>
+	lowImpact: Option.Option<HashSet.HashSet<AppId>>
 	now: DateTime.Utc
 	onSelect: (row: Row) => void
 	rows: readonly Row[]
-	selectedId?: string
+	selectedId: Option.Option<string>
 }) {
 	const [jobs, apps] = Array.partition(
 		props.rows,
 		Filter.fromPredicate(row => Option.contains(row.item.scheduled, true))
 	)
-	const groups = impactGroups(apps, props.lowImpact)
+	const groups = impactGroups(apps, Option.getOrElse(props.lowImpact, HashSet.empty))
 	return (
 		<div className={cn('flex min-h-0 flex-col', props.className)}>
 			<Suspense fallback={<LoadingRows label="Apps loading" rows={8} />}>

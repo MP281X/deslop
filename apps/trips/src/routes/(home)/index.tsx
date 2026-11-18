@@ -337,16 +337,15 @@ function Bookings(props: {onOpen: (id: Booking['id']) => void; searched: string}
 export function HomeRoute(props: {onOpen: (id: Booking['id']) => void}) {
 	const [searched, setSearched] = useState('')
 	const loaded = useAtomValue(bookingsAtom)
-	const refresh = useAtomRefresh(bookingsAtom)
 	return (
 		<ListToolbar
 			title="Trips"
 			session={session}
 			onSearch={setSearched}
-			problem={Boolean.match(AsyncResult.isFailure(loaded) && Option.isNone(blockingFailure(loaded)), {
-				onFalse: Function.constUndefined,
-				onTrue: () => <Problem label="Out of date" onRetry={refresh} />
-			})}
+			problem={Option.liftPredicate(
+				<Problem label="Out of date" onRetry={useAtomRefresh(bookingsAtom)} />,
+				() => AsyncResult.isFailure(loaded) && Option.isNone(blockingFailure(loaded))
+			)}
 		>
 			<PasteSheet clipboard={clipboard}>
 				<Suspense

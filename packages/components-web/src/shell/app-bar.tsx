@@ -24,7 +24,7 @@ const AvatarAccount = Schema.Struct(Struct.pick(Account.fields, ['id', 'name']))
 // A GitHub account's picture, or its first letter until the picture loads: small in the bar's button, the registry's default in a row.
 export function AccountAvatar(props: {account: AvatarAccount; size: ComponentProps<typeof Avatar>['size']}) {
 	return (
-		<Avatar size={props.size}>
+		<Avatar size={props.size ?? 'default'}>
 			<AvatarImage
 				src={`https://avatars.githubusercontent.com/u/${String.replace('github:', '')(props.account.id)}?s=96`}
 				alt={props.account.name}
