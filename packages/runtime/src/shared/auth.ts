@@ -71,6 +71,14 @@ export function signInUrl(next: string) {
 	return `${new URL(next).origin}/auth/sign-in?${new URLSearchParams({next})}`
 }
 
+// Auth hands an iOS app the new session's secret, or tells it why the sign-in failed.
+export const signedInSecret = Effect.fnUntraced(function* (url: string) {
+	const params = new URL(url).searchParams
+	const error = params.get('error')
+	if (error !== null) return yield* AuthError.make({message: error})
+	return yield* Schema.decodeUnknownEffect(Schema.NonEmptyString)(params.get('session'))
+})
+
 export function needsSignIn(error: unknown) {
 	return Schema.is(AuthError)(error) && error.error === undefined
 }

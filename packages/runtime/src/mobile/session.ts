@@ -1,4 +1,4 @@
-import {Effect, Exit, Function, Layer, MutableRef, Option, Predicate, Schema, String, pipe} from 'effect'
+import {Effect, Exit, Function, Layer, MutableRef, Option, Predicate, String, pipe} from 'effect'
 
 import {FetchHttpClient, HttpClient, HttpClientResponse} from 'effect/http'
 import {AsyncResult, Atom} from 'effect/reactivity'
@@ -11,7 +11,7 @@ import {layerSocketProtocol, writeOutcome} from '#client/protocol.ts'
 import {activationsAtom} from '#mobile/activations.ts'
 import {appConfig} from '#mobile/app.ts'
 import {keychain} from '#mobile/keychain.ts'
-import {AuthError} from '#shared/auth.ts'
+import {AuthError, signedInSecret} from '#shared/auth.ts'
 import type {Account} from '#shared/schema.ts'
 import {RPC_PATH} from '#shared/schema.ts'
 import {layerOtlp} from '#shared/telemetry.ts'
@@ -124,6 +124,9 @@ export function makeSession() {
 
 	// One sign-in at a time: iOS shows a single sheet, and a second press must not interrupt the first before its callback reaches the Keychain.
 	const signingIn = MutableRef.make(false)
+	function cannotSignIn(cause: unknown) {
+		return AuthError.make({cause, message: `Cannot sign in to ${name}`})
+	}
 	const signInAtom = sessionRuntime.fn(
 		(_: void, get) =>
 			Effect.gen(function* () {
@@ -131,7 +134,7 @@ export function makeSession() {
 				yield* pipe(
 					Effect.gen(function* () {
 						const result = yield* Effect.tryPromise({
-							catch: cause => AuthError.make({cause, message: 'The sign-in sheet could not open'}),
+							catch: cannotSignIn,
 							try: () =>
 								openAuthSessionAsync(
 									`${auth}/sign-in?${new URLSearchParams({app: appConfig.slug})}`,
@@ -141,12 +144,13 @@ export function makeSession() {
 						})
 						// Closing the sheet is a choice, not a failure.
 						if (result.type !== 'success') return
-						yield* keychain.write(
-							yield* Schema.decodeUnknownEffect(Schema.NonEmptyString)(new URL(result.url).searchParams.get('session'))
+						// Auth's reason for a failed sign-in is the alert's text.
+						const secret = yield* Effect.catchTag(signedInSecret(result.url), 'SchemaError', cause =>
+							Effect.fail(cannotSignIn(cause))
 						)
+						yield* Effect.mapError(keychain.write(secret), cannotSignIn)
 						get.refresh(revalidationAtom)
 					}),
-					Effect.mapError(cause => AuthError.make({cause, message: `Cannot sign in to ${name}`})),
 					Effect.tapError(error => Effect.sync(() => Alert.alert('Not Signed In', error.message))),
 					Effect.uninterruptible,
 					Effect.ensuring(Effect.sync(() => MutableRef.set(signingIn, false)))
