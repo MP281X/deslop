@@ -222,7 +222,28 @@ function suspends(context: Context, node: ESTree.Node): boolean {
 	)
 }
 
-// A sleep the test's own fiber waits out before it advances TestClock never ends: the clock moves only afterwards.
+// Whether a fork between the node and its owner runs it in a fiber of its own.
+function forkedUnder(context: Context, node: ESTree.Node, owner: ESTree.Node): boolean {
+	if (node === owner || node.parent === null) return false
+	if (node.type === 'CallExpression' && forksWork(context, node)) return true
+	return forkedUnder(context, node.parent, owner)
+}
+
+// `Effect.sleep(0)` ends at once, so it never waits for the clock.
+function endsAtOnce(node: ESTree.MemberExpression) {
+	return (
+		node.parent.type === 'CallExpression' &&
+		node.parent.callee === node &&
+		Array.some(
+			node.parent.arguments,
+			argument =>
+				argument.type === 'Literal' &&
+				(argument.value === 0 || (Predicate.isString(argument.value) && String.startsWith('0 ')(argument.value)))
+		)
+	)
+}
+
+// A sleep the test's own fiber waits out before it advances TestClock never ends: the clock moves only afterwards, unless a fiber forked earlier moves it or the sleep lasts no time.
 function sleepsBeforeAdvancing(context: Context, node: ESTree.Node) {
 	if (
 		node.type !== 'MemberExpression' ||
@@ -234,7 +255,17 @@ function sleepsBeforeAdvancing(context: Context, node: ESTree.Node) {
 	}
 	const owner = ownerOf(node)
 	return (
+		!endsAtOnce(node) &&
 		suspends(context, node) &&
+		!containsNode({
+			context,
+			matches: child =>
+				(isTestClockCall(context, child, 'adjust') || isTestClockCall(context, child, 'setTime')) &&
+				child.range[1] < node.range[0] &&
+				forkedUnder(context, child, owner),
+			node: owner,
+			throughFunctions: true
+		}) &&
 		containsNode({
 			context,
 			matches: child =>

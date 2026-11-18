@@ -3796,6 +3796,8 @@ export type Unknown = 'ready' | unknown`
 							"it.effect('forks the sleep, moves the clock, then joins', () => Effect.gen(function* () { const sleeper = yield* pipe(Effect.sleep('1 second'), Effect.forkChild); yield* TestClock.adjust('1 second'); yield* Fiber.join(sleeper) }))",
 							"it.effect('sleeps in a fiber of its own', () => Effect.gen(function* () { yield* Effect.forkChild(Effect.gen(function* () { yield* Effect.sleep('1 second') })); yield* TestClock.adjust('1 second') }))",
 							"it.effect('moves time', () => Effect.gen(function* () { yield* Effect.forkChild(Effect.sleep('1 minute')); yield* TestClock.adjust('1 minute') }))",
+							"it.effect('sleeps while a forked fiber moves the clock', () => Effect.gen(function* () { const driver = yield* Effect.forkChild(TestClock.adjust('1 second')); yield* Effect.sleep('1 second'); yield* Fiber.join(driver); yield* TestClock.adjust('1 second') }))",
+							"it.effect('sleeps no time', () => Effect.gen(function* () { yield* Effect.sleep(0); yield* TestClock.adjust('1 second') }))",
 							"it.effect('sleeps for real', () => TestClock.withLive(Effect.sleep('100 millis'))) // reported",
 							"it.effect('pipes into the live clock', () => Effect.sleep('100 millis').pipe(TestClock.withLive)) // reported",
 							"it.live('sleeps live', () => Effect.sleep('100 millis')) // reported",
