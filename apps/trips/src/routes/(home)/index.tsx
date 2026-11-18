@@ -339,14 +339,13 @@ export function HomeRoute(props: {onOpen: (id: Booking['id']) => void}) {
 	const [searched, setSearched] = useState('')
 	const loaded = useAtomValue(bookingsAtom)
 	useAtomMount(problemSinceAtom(bookingsAtom))
-	const refresh = useAtomRefresh(bookingsAtom)
 	return (
 		<ListToolbar
 			title="Trips"
 			session={session}
 			onSearch={setSearched}
 			problem={Option.liftPredicate(
-				<Problem source={bookingsAtom} label="Out of date" onRetry={refresh} />,
+				<Problem source={bookingsAtom} label="Out of date" onRetry={useAtomRefresh(bookingsAtom)} />,
 				() => AsyncResult.isFailure(loaded) && Option.isNone(blockingFailure(loaded))
 			)}
 		>
