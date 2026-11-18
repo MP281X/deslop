@@ -144,26 +144,30 @@ function DataProblem(props: {machine: Option.Option<WorkerId>; minutes: HistoryQ
 	)
 }
 
+// The opened row scrolls as one, so every reason and the processes under them can be reached; with no processes their symbol takes the room the reasons leave.
 function ProcessList(props: {row: Row}) {
 	const processes = Option.getOrElse(props.row.item.processes, Array.empty)
 	const tree = processTree(processes)
-	return Array.match(processes, {
-		onEmpty: () => (
-			<Empty role="status">
-				<EmptyHeader>
-					<EmptyMedia variant="icon">
-						<TerminalWindowIcon />
-					</EmptyMedia>
-					<EmptyTitle>No processes</EmptyTitle>
-				</EmptyHeader>
-			</Empty>
-		),
-		onNonEmpty: () => (
-			<ScrollArea className="min-h-0 flex-1">
-				<Processes tree={tree} />
-			</ScrollArea>
-		)
-	})
+	return (
+		<ScrollArea className="min-h-0 flex-1">
+			<div className="flex min-h-full flex-col">
+				<Reasons row={props.row} />
+				{Array.match(processes, {
+					onEmpty: () => (
+						<Empty role="status">
+							<EmptyHeader>
+								<EmptyMedia variant="icon">
+									<TerminalWindowIcon />
+								</EmptyMedia>
+								<EmptyTitle>No processes</EmptyTitle>
+							</EmptyHeader>
+						</Empty>
+					),
+					onNonEmpty: () => <Processes tree={tree} />
+				})}
+			</div>
+		</ScrollArea>
+	)
 }
 
 // The processes below the chart, or a phone's pushed pane; nothing selected is one symbol.
@@ -188,7 +192,6 @@ function SelectedProcesses(props: {app: Option.Option<ItemId>; pending: boolean;
 				onSome: row => (
 					<Suspense fallback={<LoadingRows label="Processes loading" rows={6} />}>
 						<InventoryContent>
-							<Reasons row={row} />
 							<ProcessList row={row} />
 						</InventoryContent>
 					</Suspense>
