@@ -17,7 +17,7 @@ import {
 	pipe
 } from 'effect'
 
-import {Apns} from '@deslop/runtime/server/apns'
+import {Apns, ApnsError} from '@deslop/runtime/server/apns'
 import {ApnsAnswer, ApnsToken} from '@deslop/runtime/shared/apns'
 
 import {BookedPlace, BookingId, Train} from '#services/bookings/schema.ts'
@@ -54,8 +54,8 @@ const journey = Effect.map(DateTime.now, now => [
 	})
 ])
 
-// Apple names a new channel for each start and accepts none; each channel delete is queued for the test to read, waits for `gate`, and is done only for the channels in `deleted`, retried for the rest.
-const apple = Effect.fnUntraced(function* (deleted: readonly string[], gate: Deferred.Deferred<void>) {
+// Apple names a new channel for each start and accepts none, or when `fails`, the start errors after naming it; each channel delete is queued for the test to read, waits for `gate`, and is done only for the channels in `deleted`, retried for the rest.
+const apple = Effect.fnUntraced(function* (deleted: readonly string[], gate: Deferred.Deferred<void>, fails?: boolean) {
 	const asked = yield* Queue.unbounded<string>()
 	const started = MutableRef.make(0)
 	const layer = Layer.mock(Apns, {
@@ -68,9 +68,11 @@ const apple = Effect.fnUntraced(function* (deleted: readonly string[], gate: Def
 			}),
 		enabled: true,
 		startActivity: () =>
-			Effect.sync(() =>
-				ApnsAnswer.cases.Retry.make({...ANSWER, channel: Option.some(`c${MutableRef.incrementAndGet(started)}`)})
-			)
+			Effect.suspend(() => {
+				const channel = Option.some(`c${MutableRef.incrementAndGet(started)}`)
+				if (fails === true) return ApnsError.make({channel, message: 'APNs did not answer.'})
+				return Effect.succeed(ApnsAnswer.cases.Retry.make({...ANSWER, channel}))
+			})
 	})
 	return {asked, layer}
 })
@@ -121,6 +123,16 @@ it.live(
 		)
 		const again = yield* apple([], yield* open)
 		assert.strictEqual(yield* serve(folder, again.layer, Effect.succeed([]), Queue.take(again.asked)), 'c2')
+	})
+)
+
+it.live(
+	'a channel of a start that failed after Apple created it is deleted after a restart',
+	Effect.fnUntraced(function* () {
+		const folder = yield* scratchFolder
+		yield* serve(folder, (yield* apple([], yield* open, true)).layer, journey, startUnaccepted)
+		const answered = yield* apple(['c1'], yield* open)
+		assert.strictEqual(yield* serve(folder, answered.layer, Effect.succeed([]), Queue.take(answered.asked)), 'c1')
 	})
 )
 
