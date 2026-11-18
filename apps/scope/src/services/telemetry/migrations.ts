@@ -331,5 +331,11 @@ export const migrations = {
 				UPDATE traces SET start = root.start, duration = max(traces.end - root.start, 0)
 				FROM spans AS root WHERE root.trace = traces.id AND root.span = traces.root
 			`
+	}),
+	// Whether Auth identified each row's sender; rows stored before it was recorded stay identified, so they show and correct as they did.
+	'0007_identified_senders': Effect.gen(function* () {
+		const sql = yield* SqlClient.SqlClient
+		yield* sql`ALTER TABLE spans ADD COLUMN identified INTEGER NOT NULL DEFAULT 1`
+		yield* sql`ALTER TABLE logs ADD COLUMN identified INTEGER NOT NULL DEFAULT 1`
 	})
 }

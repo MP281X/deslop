@@ -50,12 +50,12 @@ export class GitHubActions extends Context.Service<GitHubActions>()(
 						TelemetryError.make({cause, message: 'GitHub job logs could not be fetched after retries'})
 					)
 				)
-				yield* telemetry.ingestLogs(jobLogs(event, log))
+				yield* telemetry.ingestLogs(jobLogs(event, log), 'github')
 			})
 			return {
 				ingestJob: Effect.fn('GitHubActions.ingestJob')(function* (event: WorkflowJob) {
 					if (event.action !== 'completed' || Option.contains(event.workflow_job.conclusion, 'skipped')) return
-					yield* telemetry.ingestTraces(jobTrace(event))
+					yield* telemetry.ingestTraces(jobTrace(event), 'github')
 					yield* Option.match(token, {
 						onNone: () => Effect.void,
 						onSome: Effect.fnUntraced(function* (credential) {
@@ -69,7 +69,7 @@ export class GitHubActions extends Context.Service<GitHubActions>()(
 				}),
 				ingestRun: Effect.fn('GitHubActions.ingestRun')(function* (event: WorkflowRun) {
 					if (event.action === 'completed' || event.action === 'in_progress') {
-						yield* telemetry.ingestTraces(runTrace(event))
+						yield* telemetry.ingestTraces(runTrace(event), 'github')
 					}
 				})
 			}

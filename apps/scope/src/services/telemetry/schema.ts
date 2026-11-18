@@ -190,6 +190,10 @@ export function rangeStart(range: TimeFrame, now: DateTime.Utc) {
 export type Runtime = typeof Runtime.Type
 export const Runtime = Schema.Literals(['web', 'mobile', 'server', 'ci', 'unknown'])
 
+// Who wrote an export: GitHub's signed webhook, a caller Auth identified by tailnet device or sign-in, or an anonymous OTLP exporter.
+export type Origin = typeof Origin.Type
+export const Origin = Schema.Literals(['github', 'identified', 'anonymous'])
+
 // The side the tools name instead of a package suffix; a resource without one falls back to its service name.
 export type Side = typeof Side.Type
 export const Side = Schema.Literals(['web', 'mobile', 'server', 'ci'])
@@ -733,6 +737,8 @@ export class StoredSpan extends Model.Class<StoredSpan>('StoredSpan')({
 	error: Model.FieldOption(Schema.String),
 	exception: Model.FieldOption(Schema.String),
 	id: Schema.Int,
+	// Whether Auth identified its sender; an anonymous export never replaces an identified span.
+	identified: Model.BooleanSqlite,
 	// 0 is work, whose duration is latency; 1 a stream's lifetime, 2 a machine's timer, 3 a request no route answered.
 	kind: Schema.Literals([0, 1, 2, 3]),
 	name: Schema.String,
@@ -752,6 +758,8 @@ export class StoredSpan extends Model.Class<StoredSpan>('StoredSpan')({
 export class StoredLog extends Model.Class<StoredLog>('StoredLog')({
 	attributes: Model.JsonFromString(Attributes),
 	id: LogId,
+	// Whether Auth identified its sender; an identified export replaces an anonymous record with the same digest.
+	identified: Model.BooleanSqlite,
 	message: Schema.String,
 	resource: Schema.Int,
 	severity: Schema.Int,

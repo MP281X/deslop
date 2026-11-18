@@ -34,6 +34,7 @@ import type {
 	ExportedLog,
 	Log,
 	LogId,
+	Origin,
 	CountedOperation,
 	OperationTrace,
 	Overview,
@@ -45,6 +46,9 @@ import type {
 	SpanFacts,
 	SpanFailure
 } from '#services/telemetry/schema.ts'
+
+// A GitHub repository's full name, as GitHub Actions runs are stored under.
+const REPOSITORY = /^[A-Za-z\d][A-Za-z\d-]{0,38}\/[\w.-]{1,100}$/u
 
 const byStart = Order.mapInput(DateTime.Order, (span: Pick<Span, 'start'>) => span.start)
 
@@ -172,6 +176,20 @@ export function senderOf(resource: Option.Option<Resource>) {
 	}
 }
 
+// The sender an export may write as, or none: only GitHub's signed webhook writes under a repository's name, and an anonymous `ci` runtime is not shown as CI.
+export function admittedSender(sender: ReturnType<typeof senderOf>, origin: Origin) {
+	if (origin === 'github') return Option.some(sender)
+	if (Option.isSome(String.match(REPOSITORY)(sender.service))) return Option.none()
+	if (origin === 'anonymous' && sender.runtime === 'ci') return Option.some({...sender, runtime: 'unknown' as const})
+	return Option.some(sender)
+}
+
+// A time more than ten minutes past its receipt comes from a wrong clock, so the record happened when it arrived.
+export function receivedBy(time: DateTime.Utc, receivedAt: DateTime.Utc) {
+	if (DateTime.isGreaterThan(time, DateTime.addDuration(receivedAt, Duration.minutes(10)))) return receivedAt
+	return time
+}
+
 // Primitive leaf values of an OTLP body, without object keys: Effect logs send an array of arguments.
 function leaves(value: Schema.Json): string[] {
 	if (Array.isArray<Schema.Json>(value)) return Array.flatMap(value, leaves)
@@ -191,99 +209,109 @@ function deniedSpan(attributes: Attributes, exceptions: readonly Attributes[]) {
 	})
 }
 
-// The rows an OTLP traces export stores: one per span, and one per link into another trace.
-export function spansOf(payload: TracesRequest) {
-	const spans = pipe(
+// The rows an OTLP traces export stores: one per span its origin may write, and one per link into another trace; the spans it may not write are counted.
+export function spansOf(payload: TracesRequest, origin: Origin, receivedAt: DateTime.Utc) {
+	const groups = pipe(
 		payload.resourceSpans,
 		Option.getOrElse(Array.empty),
-		Array.flatMap(group => {
+		Array.map(group => ({
 			// All spans in the group share one sender, regardless of instrumentation scope.
-			const sender = senderOf(group.resource)
-			return pipe(
+			sender: admittedSender(senderOf(group.resource), origin),
+			spans: pipe(
 				group.scopeSpans,
 				Option.getOrElse(() => []),
-				Array.flatMap(scope =>
-					pipe(
-						scope.spans,
-						Option.getOrElse(() => []),
-						Array.map(span => {
-							const attributes = attributesOf(Option.getOrElse(span.attributes, Array.empty))
-							const exceptions = Option.match(span.events, {
-								onNone: () => [],
-								onSome: events =>
-									pipe(
-										events,
-										Array.filter(event => event.name === 'exception'),
-										Array.map(event => attributesOf(Option.getOrElse(event.attributes, () => [])))
-									)
-							})
-							const failed = Option.exists(span.status, status => Option.contains(status.code, 2))
-							const traceId = TraceId.make(String.toLowerCase(span.traceId))
-							const spanId = SpanId.make(String.toLowerCase(span.spanId))
-							return {
-								links: pipe(
-									span.links,
-									Option.getOrElse(() => []),
-									Array.flatMap(link =>
-										Boolean.match(String.toLowerCase(link.traceId) === traceId, {
-											onFalse: () => [
-												{
-													linkedSpanId: SpanId.make(String.toLowerCase(link.spanId)),
-													linkedTraceId: TraceId.make(String.toLowerCase(link.traceId)),
-													spanId,
-													traceId
-												}
-											],
-											onTrue: () => []
-										})
-									)
-								),
-								span: {
-									...sender,
-									attributes,
-									// Subtract before rounding the start so short spans at modern epochs retain their duration.
-									duration: Option.map(span.endTimeUnixNano, end =>
-										pipe(
-											Duration.subtract(end, span.startTimeUnixNano),
-											Duration.max(Duration.zero),
-											Duration.toMillis,
-											Duration.millis
-										)
-									),
-									error: pipe(
-										span.status,
-										Option.flatMap(status => status.message),
-										Option.filter(Predicate.isString),
-										Option.filter(message => failed && String.isNonEmpty(message))
-									),
-									exception: pipe(
-										Array.head(exceptions),
-										Option.flatMap(exception => textOf(exception, 'exception.message')),
-										Option.filter(String.isNonEmpty)
-									),
-									name: spanName(span, attributes),
-									parentSpanId: Option.map(span.parentSpanId, id => SpanId.make(String.toLowerCase(id))),
-									spanId,
-									start: instantOf(span.startTimeUnixNano),
-									status: Boolean.match(failed, {
-										onFalse: Function.constant('ok' as const),
-										onTrue: () =>
-											Boolean.match(deniedSpan(attributes, exceptions), {
-												onFalse: Function.constant('failed' as const),
-												onTrue: Function.constant('denied' as const)
-											})
-									}),
-									traceId
-								} satisfies Span
-							}
-						})
-					)
-				)
+				Array.flatMap(scope => Option.getOrElse(scope.spans, () => []))
 			)
+		}))
+	)
+	const spans = Array.flatMap(groups, group =>
+		Option.match(group.sender, {
+			onNone: () => [],
+			onSome: sender =>
+				Array.map(group.spans, span => {
+					const attributes = attributesOf(Option.getOrElse(span.attributes, Array.empty))
+					const exceptions = Option.match(span.events, {
+						onNone: () => [],
+						onSome: events =>
+							pipe(
+								events,
+								Array.filter(event => event.name === 'exception'),
+								Array.map(event => attributesOf(Option.getOrElse(event.attributes, () => [])))
+							)
+					})
+					const failed = Option.exists(span.status, status => Option.contains(status.code, 2))
+					const traceId = TraceId.make(String.toLowerCase(span.traceId))
+					const spanId = SpanId.make(String.toLowerCase(span.spanId))
+					return {
+						links: pipe(
+							span.links,
+							Option.getOrElse(() => []),
+							Array.flatMap(link =>
+								Boolean.match(String.toLowerCase(link.traceId) === traceId, {
+									onFalse: () => [
+										{
+											linkedSpanId: SpanId.make(String.toLowerCase(link.spanId)),
+											linkedTraceId: TraceId.make(String.toLowerCase(link.traceId)),
+											spanId,
+											traceId
+										}
+									],
+									onTrue: () => []
+								})
+							)
+						),
+						span: {
+							...sender,
+							attributes,
+							// Subtract before rounding the start so short spans at modern epochs retain their duration.
+							duration: Option.map(span.endTimeUnixNano, end =>
+								pipe(
+									Duration.subtract(end, span.startTimeUnixNano),
+									Duration.max(Duration.zero),
+									Duration.toMillis,
+									Duration.millis
+								)
+							),
+							error: pipe(
+								span.status,
+								Option.flatMap(status => status.message),
+								Option.filter(Predicate.isString),
+								Option.filter(message => failed && String.isNonEmpty(message))
+							),
+							exception: pipe(
+								Array.head(exceptions),
+								Option.flatMap(exception => textOf(exception, 'exception.message')),
+								Option.filter(String.isNonEmpty)
+							),
+							name: spanName(span, attributes),
+							parentSpanId: Option.map(span.parentSpanId, id => SpanId.make(String.toLowerCase(id))),
+							spanId,
+							start: receivedBy(instantOf(span.startTimeUnixNano), receivedAt),
+							status: Boolean.match(failed, {
+								onFalse: Function.constant('ok' as const),
+								onTrue: () =>
+									Boolean.match(deniedSpan(attributes, exceptions), {
+										onFalse: Function.constant('failed' as const),
+										onTrue: Function.constant('denied' as const)
+									})
+							}),
+							traceId
+						} satisfies Span
+					}
+				})
 		})
 	)
 	const latest = Record.values(Record.fromIterableBy(spans, item => `${item.span.traceId}:${item.span.spanId}`))
-	return {links: Array.flatMap(latest, item => item.links), spans: Array.map(latest, item => item.span)}
+	return {
+		links: Array.flatMap(latest, item => item.links),
+		rejected: pipe(
+			groups,
+			Array.filter(group => Option.isNone(group.sender)),
+			Array.map(group => group.spans.length),
+			Number.sumAll
+		),
+		spans: Array.map(latest, item => item.span)
+	}
 }
 
 // A severity as OTLP's number; a record with only a text level maps onto the same scale.
@@ -312,7 +340,7 @@ export function logOf(sender: ReturnType<typeof senderOf>, log: ExportedLog, id:
 		time: pipe(
 			Option.filter(log.timeUnixNano, Duration.isPositive),
 			Option.orElse(() => Option.filter(log.observedTimeUnixNano, Duration.isPositive)),
-			Option.match({onNone: () => receivedAt, onSome: instantOf})
+			Option.match({onNone: () => receivedAt, onSome: nanos => receivedBy(instantOf(nanos), receivedAt)})
 		),
 		traceId: Option.map(log.traceId, value => TraceId.make(String.toLowerCase(value)))
 	} satisfies Log
