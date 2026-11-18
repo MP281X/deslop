@@ -1,4 +1,4 @@
-import {Array, MutableList, Option, Predicate, pipe} from 'effect'
+import {Array, MutableList, Option, Predicate, String, pipe} from 'effect'
 
 import {defineRule} from 'vite-plus/lint/plugins'
 import type {Context, ESTree} from 'vite-plus/lint/plugins'
@@ -183,6 +183,70 @@ function undriven(context: Context, node: ESTree.Node) {
 	return !drivesClock(context, caseOf(context, node))
 }
 
+function forksWork(context: Context, node: ESTree.Node) {
+	return containsNode({
+		context,
+		matches: child =>
+			child.type === 'MemberExpression' &&
+			importedMember({context, importedName: 'Effect', node: child}) &&
+			Option.exists(memberName(child), String.startsWith('fork')),
+		node,
+		throughFunctions: false
+	})
+}
+
+// Whether the node runs in its owner's own fiber: no function boundary and no fork between them.
+function runsInPlace(context: Context, node: ESTree.Node, owner: ESTree.Node): boolean {
+	if (node === owner) return true
+	if (node.parent === null || isFunction(node) || (node.type === 'CallExpression' && forksWork(context, node))) {
+		return false
+	}
+	return runsInPlace(context, node.parent, owner)
+}
+
+function ownerOf(node: ESTree.Node): ESTree.Node {
+	if (node.parent === null || isFunction(node)) return node
+	return ownerOf(node.parent)
+}
+
+// Whether a `yield*` suspends on the wait, as in `yield* Effect.sleep(…)`, rather than a call taking it as a value.
+function suspends(context: Context, node: ESTree.Node): boolean {
+	if (node.parent === null) return false
+	if (node.parent.type === 'YieldExpression') return true
+	if (node.parent.type === 'MemberExpression') return node.parent.object === node && suspends(context, node.parent)
+	if (node.parent.type !== 'CallExpression' || forksWork(context, node.parent)) return false
+
+	return (
+		(node.parent.callee === node || isPipe(node.parent) || Option.contains(Array.head(node.parent.arguments), node)) &&
+		suspends(context, node.parent)
+	)
+}
+
+// A sleep the test's own fiber waits out before it advances TestClock never ends: the clock moves only afterwards.
+function sleepsBeforeAdvancing(context: Context, node: ESTree.Node) {
+	if (
+		node.type !== 'MemberExpression' ||
+		!Array.some(['sleep', 'delay'], propertyName =>
+			importedMember({context, importedName: 'Effect', node, propertyName})
+		)
+	) {
+		return false
+	}
+	const owner = ownerOf(node)
+	return (
+		suspends(context, node) &&
+		containsNode({
+			context,
+			matches: child =>
+				(isTestClockCall(context, child, 'adjust') || isTestClockCall(context, child, 'setTime')) &&
+				child.range[0] > node.range[1] &&
+				runsInPlace(context, child, owner),
+			node: owner,
+			throughFunctions: true
+		})
+	)
+}
+
 function assertionIn(context: Context, node: ESTree.Node, seen: ESTree.Node[] = []): boolean {
 	if (Array.contains(seen, node)) return false
 	return containsNode({
@@ -306,6 +370,15 @@ export const testSynchronization = defineRule({
 						Array.map(node => ({
 							message:
 								'Advance TestClock for time-dependent logic, or await its Deferred, Latch, Queue or Stream milestone.',
+							node
+						}))
+					),
+					...pipe(
+						MutableList.toArray(waits),
+						Array.filter(node => !undriven(context, node) && sleepsBeforeAdvancing(context, node)),
+						Array.map(node => ({
+							message:
+								'This wait blocks the fiber that advances TestClock, so the clock never moves: fork the waiting effect with Effect.forkChild before TestClock.adjust, then join it.',
 							node
 						}))
 					),
