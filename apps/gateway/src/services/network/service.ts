@@ -15,6 +15,27 @@ function requestUrl(input: RequestInfo | URL) {
 	return new URL(input.toString())
 }
 
+// The most one answer from an upstream or its provider may carry is 8 MiB; past it the body errors, whichever client reads it.
+function bounded(response: Response) {
+	if (response.body === null) return response
+	const read = {bytes: 0}
+	return new Response(
+		response.body.pipeThrough(
+			new TransformStream<Uint8Array, Uint8Array>({
+				transform: (chunk, controller) => {
+					read.bytes += chunk.byteLength
+					if (read.bytes > 8 * 1024 * 1024) {
+						controller.error(AuthError.make({message: 'The MCP server answered more than 8 MiB'}))
+						return
+					}
+					controller.enqueue(chunk)
+				}
+			})
+		),
+		{headers: response.headers, status: response.status, statusText: response.statusText}
+	)
+}
+
 // Validate at socket lookup, not in a separate DNS preflight: a rebinding must never select a private address.
 const layerPublicFetch = Layer.effect(
 	FetchHttpClient.Fetch,
@@ -62,7 +83,8 @@ const layerPublicFetch = Layer.effect(
 				return Effect.runPromise(Effect.fail(AuthError.make({message: 'MCP endpoints must use public HTTPS URLs'})))
 			}
 			const init: RequestInit & {dispatcher: typeof dispatcher} = {...options, dispatcher, redirect: 'error'}
-			return fetch(input, init)
+			// oxlint-disable-next-line @deslop/coding-standards/no-native-method-call -- fetch's own Promise is the value FetchHttpClient.Fetch must return.
+			return fetch(input, init).then(bounded)
 		}
 	})
 )

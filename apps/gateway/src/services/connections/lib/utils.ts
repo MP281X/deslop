@@ -8,27 +8,11 @@ import {HttpClientError} from 'effect/http'
 
 import {AuthError} from '@deslop/runtime/shared/auth'
 
-import {FailureReason, OAuthClientId, failureMessage} from '#services/connections/schema.ts'
-import type {SessionKind, ServerIcon, UpstreamError} from '#services/connections/schema.ts'
+import {FailureReason, OAuthClientId, UpstreamExchangeError, failureMessage} from '#services/connections/schema.ts'
+import type {ServerIcon} from '#services/connections/schema.ts'
 
 export function mcpClient() {
 	return new Client({name: 'Deslop MCP gateway', version: '0.1.0'}, {versionNegotiation: {mode: 'auto'}})
-}
-
-// A finished upstream session says goodbye within a bound, then closes; either failure only warns.
-export function endSession(
-	transport: Pick<StreamableHTTPClientTransport, 'terminateSession'>,
-	client: Pick<Client, 'close'>,
-	fail: (cause: unknown) => AuthError | UpstreamError,
-	kind: SessionKind
-) {
-	return pipe(
-		Effect.tryPromise({catch: fail, try: () => transport.terminateSession()}),
-		Effect.timeout(Duration.seconds(3)),
-		Effect.ignore({log: 'Warn', message: `Cannot terminate the ${kind} MCP session`}),
-		Effect.andThen(Effect.tryPromise({catch: fail, try: () => client.close()})),
-		Effect.ignore({log: 'Warn', message: `Cannot close the ${kind} MCP client`})
-	)
 }
 
 export function clientMetadata(url: string) {
@@ -58,6 +42,7 @@ export function serverIcons(implementation: Option.Option<McpSchema.Implementati
 
 export function describe(cause: unknown, depth = 0): FailureReason {
 	if (depth >= 8) return FailureReason.cases.Unknown.make({})
+	if (Schema.is(UpstreamExchangeError)(cause)) return cause.reason
 	if (Predicate.isTagged(cause, 'TimeoutError')) return FailureReason.cases.Timeout.make({})
 	if (cause instanceof SdkHttpError) return FailureReason.cases.HttpStatus.make({code: cause.status})
 	if (cause instanceof UnauthorizedError) return FailureReason.cases.Unauthorized.make({})
@@ -78,6 +63,20 @@ export function describe(cause: unknown, depth = 0): FailureReason {
 	return FailureReason.cases.Unknown.make({})
 }
 
+// A finished upstream session says goodbye within a bound, then closes; either failure only warns, with its fixed reason.
+export function endSession(
+	transport: Pick<StreamableHTTPClientTransport, 'terminateSession'>,
+	client: Pick<Client, 'close'>
+) {
+	return pipe(
+		Effect.tryPromise({catch: describe, try: () => transport.terminateSession()}),
+		Effect.timeout(Duration.seconds(3)),
+		Effect.ignore({log: 'Warn', message: 'Cannot terminate the upstream MCP session'}),
+		Effect.andThen(Effect.tryPromise({catch: describe, try: () => client.close()})),
+		Effect.ignore({log: 'Warn', message: 'Cannot close the upstream MCP client'})
+	)
+}
+
 // Only fixed failure labels cross the boundary, including the serialized error's optional cause.
 export function connectionFailure(prefix: string) {
 	return (cause: unknown) => {
@@ -96,7 +95,8 @@ export function serverName(url: string) {
 		String.replace(/^(?:api|app|mcp)\./u, ''),
 		String.split('.'),
 		Array.headNonEmpty,
-		String.replaceAll(/[^a-z0-9_-]/giu, '-'),
+		// No underscores: the first `__` in a tool's name must end its server id.
+		String.replaceAll(/[^a-z0-9-]/giu, '-'),
 		String.replaceAll(/^[^a-z0-9]+|[^a-z0-9]+$/giu, ''),
 		String.slice(0, 16),
 		String.toLowerCase

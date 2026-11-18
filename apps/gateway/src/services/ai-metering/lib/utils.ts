@@ -1,7 +1,7 @@
-import {Boolean, Function, Number, Option, Record, Result, Schema, String, pipe} from 'effect'
+import {Array, Boolean, Function, Number, Option, Record, Result, Schema, String, pipe} from 'effect'
 
-import {Usage} from '#services/ai-metering/schema.ts'
-import type {AiUsageEntry} from '#services/ai-metering/schema.ts'
+import {SpendSource, Usage} from '#services/ai-metering/schema.ts'
+import type {AiUsageBreakdown, AiUsageEntry} from '#services/ai-metering/schema.ts'
 import type {AiProvider} from '#services/ai-proxy/schema.ts'
 
 // OpenAI's standard USD per million tokens (developers.openai.com/api/docs/pricing), checked 2026-11-15.
@@ -176,23 +176,49 @@ function usageOf(decoded: Usage, entry: AiUsageEntry, provider: AiProvider) {
 	}
 }
 
+// Whether this event settles the call's usage: Anthropic repeats cumulative counts until `message_stop`, and an in-band error before it leaves them partial.
+function settles(decoded: Usage, provider: AiProvider) {
+	if (provider === 'anthropic') {
+		return (
+			Option.contains(decoded.type, 'message_stop') ||
+			(Option.contains(decoded.type, 'message') && Option.isSome(Option.flatten(decoded.usage)))
+		)
+	}
+	return (
+		Option.isSome(decoded.cost) ||
+		Option.exists(
+			Option.flatten(decoded.usage),
+			usage => Option.isSome(usage.output_tokens) || Option.isSome(usage.completion_tokens) || Option.isSome(usage.cost)
+		) ||
+		Option.exists(decoded.response, response =>
+			Option.exists(Option.flatten(response.usage), usage => Option.isSome(usage.output_tokens))
+		) ||
+		Option.exists(
+			decoded.usageMetadata,
+			usage => Option.isSome(usage.candidatesTokenCount) || Option.isSome(usage.cost)
+		)
+	)
+}
+
 export function readUsage(text: string, entry: AiUsageEntry, provider: AiProvider = 'opencode') {
 	if (String.isEmpty(String.trim(text)) || text === '[DONE]') return Result.succeed({entry, finalUsage: false})
 	return Result.map(Schema.decodeResult(Schema.fromJsonString(Usage))(text), decoded => ({
 		entry: usageOf(decoded, entry, provider),
-		finalUsage:
-			Option.isSome(decoded.cost) ||
-			Option.exists(
-				Option.flatten(decoded.usage),
-				usage =>
-					Option.isSome(usage.output_tokens) || Option.isSome(usage.completion_tokens) || Option.isSome(usage.cost)
-			) ||
-			Option.exists(decoded.response, response =>
-				Option.exists(Option.flatten(response.usage), usage => Option.isSome(usage.output_tokens))
-			) ||
-			Option.exists(
-				decoded.usageMetadata,
-				usage => Option.isSome(usage.candidatesTokenCount) || Option.isSome(usage.cost)
-			)
+		finalUsage: settles(decoded, provider)
 	}))
+}
+
+// A report's totals per payer, summed from its buckets.
+export function totalsOf(series: readonly AiUsageBreakdown[]) {
+	const payers = Array.groupBy(series, bucket => bucket.spendSource)
+	return Array.getSomes(
+		Array.map(SpendSource.literals, spendSource =>
+			Option.map(Option.fromUndefinedOr(payers[spendSource]), buckets => ({
+				costUsd: Number.sumAll(Array.map(buckets, bucket => bucket.costUsd)),
+				estimatedCalls: Number.sumAll(Array.map(buckets, bucket => bucket.estimatedCalls)),
+				spendSource,
+				unknownCostCalls: Number.sumAll(Array.map(buckets, bucket => bucket.unknownCostCalls))
+			}))
+		)
+	)
 }

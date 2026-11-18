@@ -1,6 +1,6 @@
-import {useAtom} from '@effect/atom-react'
+import {useAtom, useAtomSet} from '@effect/atom-react'
 
-import {Boolean, Function, Redacted, Schema, String} from 'effect'
+import {Boolean, Function, Option, Redacted, Schema, String} from 'effect'
 
 import {AsyncResult} from 'effect/reactivity'
 import {useState} from 'react'
@@ -18,22 +18,29 @@ import {
 import {Field, FieldError, FieldGroup, FieldLabel} from '@deslop/components-web/ui/field'
 import {Input} from '@deslop/components-web/ui/input'
 
-import {setKeyAtom} from '#lib/gateway.ts'
+import {pastedKeyAtom, setKeyAtom} from '#lib/gateway.ts'
 import {AiKeySecret, KEY_MESSAGE} from '#services/ai-proxy/schema.ts'
 
-export function AddKeyDialog(props: {initialSecret: string; onOpenChange: (open: boolean) => void; open: boolean}) {
+// Mounted only while a pasted key waits: closing or saving unmounts it, and its copy of the key with it.
+export function AddKeyDialog(props: {initialSecret: string}) {
 	const [result, save] = useAtom(setKeyAtom)
+	const dismiss = useAtomSet(pastedKeyAtom)
 	const [secret, setSecret] = useState(props.initialSecret)
 	const waiting = AsyncResult.isWaiting(result)
 	const invalidKey = String.isNonEmpty(String.trim(secret)) && !Schema.is(AiKeySecret)(String.trim(secret))
 	return (
-		<Dialog open={props.open && !AsyncResult.isSuccess(result)} onOpenChange={props.onOpenChange}>
+		<Dialog
+			open
+			onOpenChange={open => {
+				if (!open) dismiss(Option.none())
+			}}
+		>
 			<DialogContent showCloseButton={false}>
 				<form
 					onSubmit={event => {
 						event.preventDefault()
 						if (invalidKey) return
-						save({payload: {secret: Redacted.make(String.trim(secret))}})
+						save({secret: Redacted.make(String.trim(secret))})
 					}}
 				>
 					<FieldGroup>
