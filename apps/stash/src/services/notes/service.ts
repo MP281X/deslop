@@ -371,6 +371,17 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 			)
 		}
 
+		// A new note is searchable and waits for a claim from the transaction that saves it.
+		function insertNote(note: ReturnType<typeof newNote>) {
+			return pipe(
+				Note.insert.makeEffect(note),
+				Effect.flatMap(notes.insert),
+				Effect.tap(() => reindex(note.id)),
+				Effect.tap(() => organizeLater(note.id)),
+				Reactivity.mutation(['notes'])
+			)
+		}
+
 		const storeImage = Effect.fnUntraced(function* (id: NoteId, image: Image) {
 			yield* asNotesError(fs.writeFile(path.join(images, id), image.bytes, {mode: 0o600}))
 			yield* change(id, NoteChange.cases.image.make({image: image.type}))
@@ -868,13 +879,7 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 						onNone: Effect.fnUntraced(function* () {
 							yield* asNotesError(fs.rename(partial, stored))
 							yield* pipe(
-								Note.insert.makeEffect(
-									newNote(userId, {id: input.id, text: ''}, Option.none(), Option.some(input.type))
-								),
-								Effect.flatMap(notes.insert),
-								Effect.tap(() => reindex(input.id)),
-								Effect.tap(() => organizeLater(input.id)),
-								Reactivity.mutation(['notes']),
+								insertNote(newNote(userId, {id: input.id, text: ''}, Option.none(), Option.some(input.type))),
 								asNotesError,
 								Effect.onError(() =>
 									Effect.ignore(fs.remove(stored, {force: true}), {
@@ -910,15 +915,7 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 						Option.match({
 							onNone: Effect.fnUntraced(function* () {
 								return yield* Option.match(yield* findSaved({id: input.id, url}), {
-									onNone: () =>
-										pipe(
-											Note.insert.makeEffect(newNote(userId, {...input, text}, url, Option.none())),
-											Effect.flatMap(notes.insert),
-											Effect.tap(() => reindex(input.id)),
-											Effect.tap(() => organizeLater(input.id)),
-											Reactivity.mutation(['notes']),
-											Effect.as(input.id)
-										),
+									onNone: () => Effect.as(insertNote(newNote(userId, {...input, text}, url, Option.none())), input.id),
 									// A share of a saved note adds its new words, unless it is the same capture sent again; only a new share asks a failed note again, so a resend pays for nothing. A capture id that joins another note's link stays retired into it, so its resend after that note's deletion is refused as deleted.
 									onSome: Effect.fnUntraced(function* (found: Note) {
 										yield* storeChange(found, NoteChange.cases.share.make({capture: {...input, text}}))
