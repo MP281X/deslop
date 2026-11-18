@@ -294,8 +294,8 @@ export function upsert(current: BookingList, incoming: BookingList) {
 }
 
 // A flight's activity opens three hours ahead, a train's one hour.
-export function autoStartOf(legs: readonly (Flight | Train)[]) {
-	const first = Option.getOrThrow(Array.head(legs))
+export function autoStartOf(legs: Array.NonEmptyReadonlyArray<Flight | Train>) {
+	const first = Array.headNonEmpty(legs)
 	return DateTime.subtractDuration(first.departs, {flight: Duration.hours(3), train: HOUR}[first._tag])
 }
 
@@ -304,9 +304,8 @@ function sampleStops(stops: readonly TrainStop[], delay: Duration.Duration, now:
 	const count = Number.min(stops.length, 7)
 	return pipe(
 		count,
-		Array.makeBy(index =>
-			Option.getOrThrow(Array.get(stops, Number.round((index * (stops.length - 1)) / Number.max(1, count - 1), 0)))
-		),
+		Array.makeBy(index => Array.get(stops, Number.round((index * (stops.length - 1)) / Number.max(1, count - 1), 0))),
+		Array.getSomes,
 		Array.map(stop => ({
 			name: Array.headNonEmpty(String.split(stop.name, ' ')),
 			passed: pipe(
@@ -323,6 +322,7 @@ type ActivityWindow = {end: DateTime.Utc; leg: Leg; start: DateTime.Utc}
 // A journey longer than ActivityKit's eight hours, delays included, gets a second activity for its arrival.
 function activityWindows(booking: Booking, legs: readonly (Flight | Train)[], requested: Option.Option<DateTime.Utc>) {
 	if (Booking.isAnyOf(['stay'])(booking)) return Array.empty<ActivityWindow>()
+	if (!Array.isReadonlyArrayNonEmpty(legs)) return Array.empty<ActivityWindow>()
 	const start = Option.match(requested, {
 		onNone: () => autoStartOf(legs),
 		onSome: at => DateTime.min(at, autoStartOf(legs))
@@ -719,23 +719,28 @@ function arrived(leg: Flight | Train, now: DateTime.Utc) {
 	return Option.exists(leg.live, live => live.state === 'arrived' || live.state === 'landed')
 }
 
-export function startable(legs: readonly (Flight | Train)[], now: DateTime.Utc) {
-	return Option.exists(
-		Array.head(legs),
-		first =>
-			Array.every(legs, leg => leg.status === 'confirmed') &&
-			Option.exists(Array.last(legs), last => !arrived(last, now)) &&
-			DateTime.isGreaterThanOrEqualTo(now, DateTime.subtractDuration(first.departs, Duration.hours(7)))
+export function startable(
+	legs: readonly (Flight | Train)[],
+	now: DateTime.Utc
+): legs is Array.NonEmptyReadonlyArray<Flight | Train> {
+	return (
+		Array.isReadonlyArrayNonEmpty(legs) &&
+		Array.every(legs, leg => leg.status === 'confirmed') &&
+		!arrived(Array.lastNonEmpty(legs), now) &&
+		DateTime.isGreaterThanOrEqualTo(now, DateTime.subtractDuration(Array.headNonEmpty(legs).departs, Duration.hours(7)))
 	)
 }
 
-export function journeyProps(legs: readonly (Flight | Train)[], bookings: BookingList, now: DateTime.Utc) {
-	const index = pipe(
+export function journeyProps(
+	legs: Array.NonEmptyReadonlyArray<Flight | Train>,
+	bookings: BookingList,
+	now: DateTime.Utc
+) {
+	const [current, index] = pipe(
 		legs,
-		Array.findFirstIndex(leg => !arrived(leg, now)),
-		Option.getOrElse(() => legs.length - 1)
+		Array.findFirstWithIndex(leg => !arrived(leg, now)),
+		Option.getOrElse(() => [Array.lastNonEmpty(legs), legs.length - 1] as const)
 	)
-	const current = Option.getOrThrow(Array.get(legs, index))
 	const props = activityProps(current, bookings, now)
 	return pipe(
 		legs,

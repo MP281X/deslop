@@ -1,4 +1,4 @@
-import {Array, HashSet, Option, Predicate, String} from 'effect'
+import {Array, HashSet, Option, Predicate, String, pipe} from 'effect'
 
 import {defineRule} from 'vite-plus/lint/plugins'
 import type {Context, ESTree} from 'vite-plus/lint/plugins'
@@ -159,8 +159,7 @@ export const choicesAreSchemas = defineRule({
 				}
 				if (sseCallback(context, node)) return
 				context.report({
-					message:
-						'Check tags with the schema guards or isAnyOf; use the owning Effect type predicate for library values.',
+					message: 'Check typed tags with isAnyOf or match; use the owning Effect type predicate for library values.',
 					node
 				})
 			},
@@ -168,25 +167,25 @@ export const choicesAreSchemas = defineRule({
 				if (!importedMember({context, importedName: 'Match', node: node.callee, propertyName: 'when'})) return
 				const pattern = node.arguments[0]
 				if (pattern?.type !== 'ObjectExpression') return
-				const tag = Array.findFirst(pattern.properties, tagProperty)
-				if (!Option.isSome(tag)) return
-				context.report({
-					fix: fixer => {
-						if (
-							pattern.properties.length !== 1 ||
-							tag.value.type !== 'Property' ||
-							tag.value.value.type !== 'Literal'
-						) {
-							return undefined
-						}
-						return [
-							fixer.replaceText(node.callee, 'Match.tag'),
-							fixer.replaceText(pattern, context.sourceCode.getText(tag.value.value))
-						]
-					},
-					message: 'Match tags with the schema match method or Match.tag, not a hand-written _tag pattern.',
-					node
-				})
+				pipe(
+					pattern.properties,
+					Array.findFirst(tagProperty),
+					Option.map(tag => {
+						context.report({
+							fix: fixer => {
+								if (pattern.properties.length !== 1 || tag.type !== 'Property' || tag.value.type !== 'Literal') {
+									return undefined
+								}
+								return [
+									fixer.replaceText(node.callee, 'Match.tag'),
+									fixer.replaceText(pattern, context.sourceCode.getText(tag.value))
+								]
+							},
+							message: 'Match tags with the schema match method or Match.tag, not a hand-written _tag pattern.',
+							node
+						})
+					})
+				)
 			},
 			ObjectExpression: node => {
 				if (!Array.some(node.properties, tagProperty)) return
@@ -227,7 +226,7 @@ export const Status = Schema.Literals(['draft', 'published'])`
 						'sample.ts': `import {Schema} from 'effect'
 export type Loading = typeof Loading.Type
 export const Loading = Schema.TaggedUnion({Failed: {message: Schema.String}, Ready: {value: Schema.String}})
-export function titleOf(state: Loading) { if (Loading.guards.Ready(state)) return state.value; return state.message }
+export function titleOf(state: Loading) { if (Loading.isAnyOf(['Ready'])(state)) return state.value; return state.message }
 export const created = Loading.cases.Ready.make({value: 'ready'})
 export function known(state: Loading) { return Loading.isAnyOf(['Ready', 'Failed'])(state) }`
 					},

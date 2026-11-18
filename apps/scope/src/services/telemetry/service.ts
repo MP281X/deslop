@@ -245,24 +245,13 @@ function compactSpan(span: TreeSpan) {
 	}
 }
 
-// Where a tree starts: its earliest span, or its earliest log when no span arrived.
-function startOf(tree: TraceTree) {
-	return pipe(
-		tree.spans,
-		Array.map(span => span.start),
-		Array.match({
-			onEmpty: () => Option.map(Array.head(tree.logs), log => log.time),
-			onNonEmpty: starts => Option.some(Array.min<DateTime.Utc>(starts, DateTime.Order))
-		})
-	)
-}
-
 function readTraceAnswer(
 	tree: TraceTree,
 	limit: number,
 	offset: number,
 	details: boolean,
-	selectedSpanId: Option.Option<SpanId>
+	selectedSpanId: Option.Option<SpanId>,
+	at: DateTime.Utc
 ) {
 	const byId = Record.fromIterableBy(tree.spans, span => span.spanId)
 	// The failing span and its parents up to the root, stopping at a parent already walked.
@@ -311,7 +300,7 @@ function readTraceAnswer(
 	const logs = Array.map(tree.logs, compactLog)
 	const omitted = tree.spans.length - spans.length
 	return {
-		at: Option.getOrThrow(startOf(tree)),
+		at,
 		failure: tree.failureSpanId,
 		id: tree.id,
 		logs: Option.liftPredicate(logs, Array.isReadonlyArrayNonEmpty),
@@ -1054,7 +1043,25 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 				spanId: Option.Option<SpanId> = Option.none(),
 				details: boolean = false
 			) {
-				return readTraceAnswer(yield* tree(input.id), input.limit, offset, details, spanId)
+				const value = yield* tree(input.id)
+				return readTraceAnswer(
+					value,
+					input.limit,
+					offset,
+					details,
+					spanId,
+					yield* Option.match(
+						pipe(
+							value.spans,
+							Array.map(span => span.start),
+							Array.match({
+								onEmpty: () => Option.map(Array.head(value.logs), log => log.time),
+								onNonEmpty: starts => Option.some(Array.min<DateTime.Utc>(starts, DateTime.Order))
+							})
+						),
+						{onNone: () => TelemetryError.make({message: MISSING}), onSome: Effect.succeed}
+					)
+				)
 			}, asTelemetryError),
 			reject: Effect.fn('Telemetry.reject')(function* (input: RejectedExport) {
 				const now = yield* DateTime.now

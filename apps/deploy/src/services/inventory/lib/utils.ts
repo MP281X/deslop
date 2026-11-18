@@ -531,14 +531,6 @@ function workerNames(snapshot: Snapshot) {
 	return Array.dedupe([...snapshot.workers, ...Array.map(snapshot.items, item => item.worker)])
 }
 
-function sourceWorker(source: {readonly name: string}, workers: readonly WorkerId[], local: Option.Option<WorkerId>) {
-	return pipe(
-		workers,
-		Array.findFirst(worker => sourceBelongsToWorker(source, worker)),
-		Option.orElse(() => local)
-	)
-}
-
 function errorsOf(
 	sources: readonly {readonly error: Option.Option<string>; readonly name: string}[],
 	workers: readonly WorkerId[],
@@ -547,10 +539,19 @@ function errorsOf(
 	const local = Array.head(workers)
 	return pipe(
 		sources,
-		Array.filter(
-			source => Option.isSome(source.error) && Option.contains(sourceWorker(source, workers, local), worker)
+		Array.filter(source =>
+			pipe(
+				workers,
+				Array.findFirst(candidate => sourceBelongsToWorker(source, candidate)),
+				Option.orElse(() => local),
+				Option.contains(worker)
+			)
 		),
-		Array.map(source => `${String.replace(`${worker} · `, '')(source.name)}: ${Option.getOrThrow(source.error)}`)
+		Array.filterMap(
+			Filter.fromPredicateOption(source =>
+				Option.map(source.error, error => `${String.replace(`${worker} · `, '')(source.name)}: ${error}`)
+			)
+		)
 	)
 }
 
@@ -607,17 +608,21 @@ function appOf(row: Row, withProcesses: boolean) {
 }
 
 function exposureOf(item: Extract<InventoryItem, {kind: 'exposure'}>) {
-	return {
-		access: pipe(
-			item.publicAccess,
-			Option.contains(true),
-			Boolean.match({onFalse: Function.constant('tailnet' as const), onTrue: Function.constant('public' as const)})
-		),
-		id: item.id,
-		name: ExposureName.make(item.name),
-		port: item.port,
-		url: Option.getOrThrow(item.url)
-	} satisfies HttpsExposure
+	return Option.map(
+		item.url,
+		url =>
+			({
+				access: pipe(
+					item.publicAccess,
+					Option.contains(true),
+					Boolean.match({onFalse: Function.constant('tailnet' as const), onTrue: Function.constant('public' as const)})
+				),
+				id: item.id,
+				name: ExposureName.make(item.name),
+				port: item.port,
+				url
+			}) satisfies HttpsExposure
+	)
 }
 
 function matches(row: Row, app: string) {
@@ -691,7 +696,7 @@ export function listApps(snapshot: Snapshot, input: InventoryQuery) {
 				own,
 				Array.flatMap(row => {
 					if (row.item.kind !== 'exposure' || onlyFailing) return []
-					return [exposureOf(row.item)]
+					return Option.toArray(exposureOf(row.item))
 				}),
 				Array.sort(Order.mapInput(Order.String, (exposure: HttpsExposure) => exposure.url))
 			)
@@ -743,12 +748,12 @@ export const jobRequest = Effect.fnUntraced(function* (snapshot: Snapshot, input
 			!Option.exists(input.worker, worker => row.item.worker !== worker) &&
 			(workloadName(row.item) === input.job || row.item.name === input.job)
 	)
-	if (Array.isArrayEmpty(matching)) {
+	if (!Array.isArrayNonEmpty(matching)) {
 		return yield* DeployError.make({message: `No scheduled job named ${input.job}; list_apps shows the jobs.`})
 	}
 	if (matching.length > 1) {
 		return yield* DeployError.make({message: `${input.job} runs on more than one worker; pass its worker.`})
 	}
 
-	return requestOf(Option.getOrThrow(Array.head(matching)).item)
+	return requestOf(Array.headNonEmpty(matching).item)
 })

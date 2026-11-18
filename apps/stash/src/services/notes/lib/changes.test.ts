@@ -33,16 +33,16 @@ it('merges new words from another share while a retried capture stays unchanged'
 			capture: {id: NoteId.make('6f1c9a52-8d0e-4c3b-9a51-2f6d7e8b9c02'), text: 'CUMIN soup'}
 		})
 	)
-	if (!NoteChangeResult.guards.Changed(shared)) return assert.fail('Expected a changed note')
+	if (!NoteChangeResult.isAnyOf(['Changed'])(shared)) return assert.fail('Expected a changed note')
 	assert.strictEqual(shared.note.text, 'lentils cumin\nsoup')
 	assert.strictEqual(changeNote(NOTE, NoteChange.cases.share.make({capture: CAPTURE}))._tag, 'Unchanged')
 })
 
 it('starts a failed note over and publishes the completed organization', () => {
 	const failed = changeNote(NOTE, NoteChange.cases.fail.make({message: 'Offline'}))
-	if (!NoteChangeResult.guards.Changed(failed)) return assert.fail('Expected a failed note')
+	if (!NoteChangeResult.isAnyOf(['Changed'])(failed)) return assert.fail('Expected a failed note')
 	const retried = changeNote(Note.make(failed.note), NoteChange.cases.retry.make({}))
-	if (!NoteChangeResult.guards.Changed(retried)) return assert.fail('Expected a retry')
+	if (!NoteChangeResult.isAnyOf(['Changed'])(retried)) return assert.fail('Expected a retry')
 	assert.deepStrictEqual([retried.note.status, retried.note.issue], ['organizing', Option.none()])
 	const ready = changeNote(
 		Note.make(retried.note),
@@ -50,6 +50,6 @@ it('starts a failed note over and publishes the completed organization', () => {
 			organization: {body: 'Recipe', screenText: '', summary: 'Lentil soup', title: 'Soup', topics: 'cooking'}
 		})
 	)
-	if (!NoteChangeResult.guards.Changed(ready)) return assert.fail('Expected an organized note')
+	if (!NoteChangeResult.isAnyOf(['Changed'])(ready)) return assert.fail('Expected an organized note')
 	assert.deepStrictEqual([ready.note.status, ready.note.title, ready.note.summary], ['ready', 'Soup', 'Lentil soup'])
 })

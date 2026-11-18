@@ -255,7 +255,7 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 			window: Span & {leg: Leg},
 			all: BookingList,
 			now: DateTime.Utc,
-			legs: readonly (Flight | Train)[],
+			legs: Array.NonEmptyReadonlyArray<Flight | Train>,
 			requested: Option.Option<DateTime.Utc>,
 			state: RoundState
 		) {
@@ -275,7 +275,7 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 			const outcomes = yield* Effect.forEach(
 				showPlan(state.devices, state.activities, journey, window, requested),
 				action => {
-					if (ShowAction.guards.launch(action)) return Effect.result(launch(action.target, showing))
+					if (ShowAction.isAnyOf(['launch'])(action)) return Effect.result(launch(action.target, showing))
 					return Effect.result(refresh(action.target, showing.props, now))
 				},
 				{concurrency: 1}
@@ -377,6 +377,7 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 									{concurrency: 1, discard: true}
 								)
 								if (Booking.isAnyOf(['stay'])(booking)) return
+								if (!Array.isArrayNonEmpty(legs)) return
 								yield* Option.match(activeWindow(booking, now, legs, requested), {
 									onNone: () => Effect.void,
 									onSome: window => show(booking, window, all, now, legs, requested, state)
@@ -440,7 +441,7 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 					Array.filter((leg): leg is Flight | Train => !Booking.isAnyOf(['stay'])(leg))
 				)
 				if (!startable(legs, now)) return yield* PushError.make({message: 'This journey cannot be started now.'})
-				const booking = Option.getOrThrow(Array.head(legs))
+				const booking = Array.headNonEmpty(legs)
 				const window = yield* Option.match(activeWindow(booking, now, legs, Option.some(now)), {
 					onNone: () => PushError.make({message: 'This journey has no Live Activity window.'}),
 					onSome: Effect.succeed

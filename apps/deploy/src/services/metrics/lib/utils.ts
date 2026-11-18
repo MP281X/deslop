@@ -11,6 +11,7 @@ import type {
 	CpuTime,
 	Disk,
 	HistoryToolInput,
+	HistoryMinutes,
 	MachineHistory,
 	Sample,
 	Point
@@ -23,12 +24,13 @@ export const SERIES = {
 	1440: Duration.minutes(15),
 	10_080: Duration.hours(1),
 	43_200: Duration.hours(6)
-}
+} satisfies Record<HistoryMinutes, Duration.Duration>
 
 // One measurement, before it joins a series.
 
+// judge-ignore no-unrelated-jobs -- CPU ticks and boot age are fields of one same-time Counters sample, used together to calculate utilization.
 export function counters(stat: string, uptime: string, time: DateTime.Utc) {
-	const values = Schema.decodeSync(CpuCounters)(
+	const values = Schema.decodeUnknownSync(CpuCounters)(
 		pipe(
 			stat,
 			String.split('\n'),
@@ -41,7 +43,7 @@ export function counters(stat: string, uptime: string, time: DateTime.Utc) {
 		)
 	)
 	return {
-		cpuIdle: Duration.millis((Option.getOrThrow(Array.get(values, 3)) + Option.getOrThrow(Array.get(values, 4))) * 10),
+		cpuIdle: Duration.millis((values[3] + values[4]) * 10),
 		cpuTotal: Duration.millis(Number.sumAll(values) * 10),
 		time,
 		uptime: Duration.seconds(Schema.decodeSync(Schema.FiniteFromString)(String.split(uptime, ' ')[0]))

@@ -43,13 +43,11 @@ const HOP_BY_HOP = [
 const FORBIDDEN = ['authorization', 'x-api-key', 'cookie', 'host', CLIENT_HEADER, ON_BEHALF_HEADER, ...HOP_BY_HOP]
 
 function inferencePath(rest: string) {
-	const state = {path: Array.headNonEmpty(String.split(rest, '?'))}
-	while (String.includes('%')(state.path)) {
-		const decoded = Option.liftThrowable(decodeURIComponent)(state.path)
-		if (Option.isNone(decoded)) return Option.none<string>()
-		state.path = Option.getOrThrow(decoded)
+	const state: {path: Option.Option<string>} = {path: Option.some(Array.headNonEmpty(String.split(rest, '?')))}
+	while (Option.exists(state.path, String.includes('%'))) {
+		state.path = Option.flatMap(state.path, Option.liftThrowable(decodeURIComponent))
 	}
-	return Option.liftPredicate(state.path, value => !String.includes('..')(value))
+	return Option.filter(state.path, value => !String.includes('..')(value))
 }
 
 function isClaude(value: string) {
@@ -147,79 +145,89 @@ export class AiProxy extends Context.Service<AiProxy>()('@deslop/gateway/service
 					Match.when(String.startsWith('openai/'), Function.constant('openai' as const)),
 					Match.orElse(Function.constant('opencode' as const))
 				)
-				const key = yield* asAuthError(findKey({owner: person.success.id, provider}))
-				if (Option.isNone(key)) {
-					return HttpServerResponse.jsonUnsafe(
-						{
-							error: {
-								message: `Save your ${{anthropic: 'Anthropic API', openai: 'OpenAI API', opencode: 'OpenCode service account'}[provider]} key in Gateway`
-							}
-						},
-						{status: 402}
-					)
-				}
-				const foundKey = Option.getOrThrow(key)
-				const headers = Headers.removeMany(request.headers, [
-					...FORBIDDEN,
-					...pipe(
-						Option.fromUndefinedOr(request.headers['connection']),
-						Option.map(String.split(',')),
-						Option.getOrElse(() => []),
-						Array.map(value => String.toLowerCase(String.trim(value)))
-					)
-				])
-				const outgoing = {
-					model: Option.none<AiModelId>(),
-					request: HttpClientRequest.make(
-						yield* Schema.decodeUnknownEffect(
-							Schema.Literals(['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'])
-						)(request.method)
-					)('/', {
-						headers: Boolean.match(provider === 'anthropic', {
-							onFalse: () => Headers.set(headers, 'authorization', `Bearer ${Redacted.value(foundKey.secret)}`),
-							onTrue: () => Headers.set(headers, 'x-api-key', Redacted.value(foundKey.secret))
-						})
+				return yield* Option.match(yield* asAuthError(findKey({owner: person.success.id, provider})), {
+					onNone: () =>
+						Effect.succeed(
+							HttpServerResponse.jsonUnsafe(
+								{
+									error: {
+										message: `Save your ${{anthropic: 'Anthropic API', openai: 'OpenAI API', opencode: 'OpenCode service account'}[provider]} key in Gateway`
+									}
+								},
+								{status: 402}
+							)
+						),
+					onSome: Effect.fnUntraced(function* (foundKey) {
+						const headers = Headers.removeMany(request.headers, [
+							...FORBIDDEN,
+							...pipe(
+								Option.fromUndefinedOr(request.headers['connection']),
+								Option.map(String.split(',')),
+								Option.getOrElse(() => []),
+								Array.map(value => String.toLowerCase(String.trim(value)))
+							)
+						])
+						const outgoing = {
+							model: Option.none<AiModelId>(),
+							request: HttpClientRequest.make(
+								yield* Schema.decodeUnknownEffect(
+									Schema.Literals(['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'])
+								)(request.method)
+							)('/', {
+								headers: Boolean.match(provider === 'anthropic', {
+									onFalse: () => Headers.set(headers, 'authorization', `Bearer ${Redacted.value(foundKey.secret)}`),
+									onTrue: () => Headers.set(headers, 'x-api-key', Redacted.value(foundKey.secret))
+								})
+							})
+						}
+						if (request.method !== 'GET' && request.method !== 'HEAD') {
+							const body = new Uint8Array(yield* request.arrayBuffer)
+							const decoded = Schema.decodeOption(
+								Schema.fromJsonString(Schema.Struct({model: Schema.OptionFromOptionalKey(AiModelId)}))
+							)(new TextDecoder().decode(body))
+							outgoing.model = Option.flatMap(decoded, value => value.model)
+							outgoing.request = HttpClientRequest.bodyUint8Array(
+								outgoing.request,
+								body,
+								request.headers['content-type']
+							)
+						}
+						const destination = destinationOf(request.method, rest, outgoing.model)
+						if (Result.isFailure(destination)) return destination.failure
+						const response = yield* client.execute(HttpClientRequest.setUrl(outgoing.request, destination.success))
+						// Key bookkeeping cannot turn an upstream action that committed into a failed forwarding request.
+						yield* Effect.ignore(
+							asAuthError(
+								markKey({lastStatus: Option.some(response.status), owner: person.success.id, secret: foundKey.secret})
+							),
+							{log: 'Warn', message: 'AI key status could not be saved'}
+						)
+						const meter = yield* metering.observe(
+							foundKey.owner,
+							provider,
+							outgoing.model,
+							now,
+							Option.exists(
+								Option.fromUndefinedOr(response.headers['content-type']),
+								String.includes('text/event-stream')
+							)
+						)
+						const blocked = [
+							...HOP_BY_HOP,
+							'content-encoding',
+							'content-length',
+							...pipe(
+								Option.fromUndefinedOr(response.headers['connection']),
+								Option.map(String.split(',')),
+								Option.getOrElse(() => []),
+								Array.map(name => String.toLowerCase(String.trim(name)))
+							)
+						]
+						return HttpServerResponse.stream(
+							pipe(response.stream, Stream.tap(meter.write), Stream.onExit(meter.save)),
+							{headers: Headers.removeMany(response.headers, blocked), status: response.status}
+						)
 					})
-				}
-				if (request.method !== 'GET' && request.method !== 'HEAD') {
-					const body = new Uint8Array(yield* request.arrayBuffer)
-					const decoded = Schema.decodeOption(
-						Schema.fromJsonString(Schema.Struct({model: Schema.OptionFromOptionalKey(AiModelId)}))
-					)(new TextDecoder().decode(body))
-					outgoing.model = Option.flatMap(decoded, value => value.model)
-					outgoing.request = HttpClientRequest.bodyUint8Array(outgoing.request, body, request.headers['content-type'])
-				}
-				const destination = destinationOf(request.method, rest, outgoing.model)
-				if (Result.isFailure(destination)) return destination.failure
-				const response = yield* client.execute(HttpClientRequest.setUrl(outgoing.request, destination.success))
-				// Key bookkeeping cannot turn an upstream action that committed into a failed forwarding request.
-				yield* Effect.ignore(
-					asAuthError(
-						markKey({lastStatus: Option.some(response.status), owner: person.success.id, secret: foundKey.secret})
-					),
-					{log: 'Warn', message: 'AI key status could not be saved'}
-				)
-				const meter = yield* metering.observe(
-					foundKey.owner,
-					provider,
-					outgoing.model,
-					now,
-					Option.exists(Option.fromUndefinedOr(response.headers['content-type']), String.includes('text/event-stream'))
-				)
-				const blocked = [
-					...HOP_BY_HOP,
-					'content-encoding',
-					'content-length',
-					...pipe(
-						Option.fromUndefinedOr(response.headers['connection']),
-						Option.map(String.split(',')),
-						Option.getOrElse(() => []),
-						Array.map(name => String.toLowerCase(String.trim(name)))
-					)
-				]
-				return HttpServerResponse.stream(pipe(response.stream, Stream.tap(meter.write), Stream.onExit(meter.save)), {
-					headers: Headers.removeMany(response.headers, blocked),
-					status: response.status
 				})
 			}),
 			removeKey: Effect.fn('AiProxy.removeKey')(function* (id: UserId, provider: AiProvider) {

@@ -130,17 +130,26 @@ export class Presence extends Context.Service<
 										if (!accepted) return Effect.void
 										return SubscriptionRef.update(room, scene => {
 											MutableHashMap.remove(connections, connection)
-											const remaining = Option.getOrThrow(Record.get(scene.tabs, payload.id)) - 1
-											if (remaining > 0) return {...scene, tabs: {...scene.tabs, [payload.id]: remaining}}
-											const visitors = Array.filter(scene.visitors, visitor => visitor.id !== payload.id)
-											return {
-												bots: Boolean.match(Array.isReadonlyArrayEmpty(visitors), {
-													onFalse: () => scene.bots,
-													onTrue: () => []
-												}),
-												tabs: Record.remove(scene.tabs, payload.id),
-												visitors
-											}
+											return pipe(
+												scene.tabs,
+												Record.modify(payload.id, count => count - 1),
+												Option.match({
+													onNone: () => scene,
+													onSome: updated => {
+														const tabs = Record.filter(updated, count => count > 0)
+														if (Record.has(tabs, payload.id)) return {...scene, tabs}
+														const visitors = Array.filter(scene.visitors, visitor => visitor.id !== payload.id)
+														return {
+															bots: Boolean.match(Array.isReadonlyArrayEmpty(visitors), {
+																onFalse: () => scene.bots,
+																onTrue: () => []
+															}),
+															tabs,
+															visitors
+														}
+													}
+												})
+											)
 										})
 									}
 								)

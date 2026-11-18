@@ -144,11 +144,11 @@ export function captionTranscript(input: {authored: boolean; vtt: string}) {
 		Array.flatMap(block => {
 			const lines = String.split(block, '\n')
 			return pipe(
-				Array.findFirstIndex(lines, String.includes('-->')),
-				Option.map(index => {
+				Array.findFirstWithIndex(lines, String.includes('-->')),
+				Option.map(found => {
+					const [timing, index] = found
 					const times = pipe(
-						lines,
-						Array.getUnsafe(index),
+						timing,
 						String.split(' --> '),
 						Array.map(time =>
 							pipe(

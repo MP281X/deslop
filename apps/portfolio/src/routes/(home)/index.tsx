@@ -594,7 +594,7 @@ function PresenceHud(input: {presence: PresenceState; onToggleShortcuts: () => v
 							<>
 								<span className="bg-muted-foreground/50 size-1.5 rounded-full" />
 								<span className="text-muted-foreground truncate">
-									{Boolean.match(PresenceState.guards.Offline(state), {
+									{Boolean.match(PresenceState.isAnyOf(['Offline'])(state), {
 										onFalse: Function.constant('presence connecting'),
 										onTrue: Function.constant('presence unavailable')
 									})}

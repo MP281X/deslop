@@ -353,10 +353,14 @@ export class Gateway extends Context.Service<
 			})
 			const refresh = Effect.fn('Gateway.refresh')(function* (headers: Headers.Headers) {
 				const now = yield* DateTime.now
-				const last = yield* Ref.get(lastRead)
-				if (Option.isNone(last)) return
 				// An agent lists tools far more often than upstreams change, so a registry younger than 30 seconds answers alone.
-				if (pipe(last, Option.getOrThrow, DateTime.distance(now), Duration.isLessThan(Duration.seconds(30)))) return
+				if (
+					!Option.exists(yield* Ref.get(lastRead), at =>
+						pipe(at, DateTime.distance(now), Duration.isGreaterThanOrEqualTo(Duration.seconds(30)))
+					)
+				) {
+					return
+				}
 				yield* FiberHandle.run(
 					discovery,
 					Effect.withSpan(refreshes.withPermits(1)(read(headers)), 'Gateway.discover'),
@@ -375,26 +379,29 @@ export class Gateway extends Context.Service<
 					const found = Array.findFirst(yield* connections.definitions, entry =>
 						String.startsWith(`${entry.id}__`)(name)
 					)
-					if (Option.isNone(found)) return
-					const current = Option.getOrThrow(found)
-					if (
-						current.status === 'Connected' &&
-						HashSet.has(yield* Ref.get(visible), name) &&
-						pipe(
-							yield* Ref.get(installed),
-							HashMap.get(name),
-							Option.exists(entry => entry.generation === current.generation)
-						)
-					) {
-						return
-					}
-					// Registered calls use MCP's own auth check; discovery needs a verified bearer before starting work.
-					if (!(yield* authorize)) return
-					// A saved descriptor is not evidence that the server is still authorized.
-					if (current.status !== 'Connected') {
-						return yield* AuthError.make({message: `${current.name} is not connected; connect it on ${url}`})
-					}
-					yield* readServer(current.id, headers)
+					return yield* Option.match(found, {
+						onNone: () => Effect.void,
+						onSome: Effect.fnUntraced(function* (current) {
+							if (
+								current.status === 'Connected' &&
+								HashSet.has(yield* Ref.get(visible), name) &&
+								pipe(
+									yield* Ref.get(installed),
+									HashMap.get(name),
+									Option.exists(entry => entry.generation === current.generation)
+								)
+							) {
+								return
+							}
+							// Registered calls use MCP's own auth check; discovery needs a verified bearer before starting work.
+							if (!(yield* authorize)) return
+							// A saved descriptor is not evidence that the server is still authorized.
+							if (current.status !== 'Connected') {
+								return yield* AuthError.make({message: `${current.name} is not connected; connect it on ${url}`})
+							}
+							yield* readServer(current.id, headers)
+						})
+					})
 				})
 			})
 		})

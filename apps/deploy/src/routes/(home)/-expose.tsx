@@ -27,7 +27,7 @@ import type {InventoryItem} from '#services/inventory/schema.ts'
 type ExposureKind = typeof ExposureKind.Type
 const ExposureKind = Schema.Literals(['tailnet', 'public'])
 
-function Expose(props: {items: readonly InventoryItem[]; port: InventoryItem}) {
+function Expose(props: {items: readonly InventoryItem[]; port: InventoryItem; portNumber: number}) {
 	const [result, expose] = useAtom(exposeAtom)
 	const [kind, setKind] = useState<ExposureKind>('tailnet')
 	const [hostname, setHostname] = useState('')
@@ -49,11 +49,11 @@ function Expose(props: {items: readonly InventoryItem[]; port: InventoryItem}) {
 					kind,
 					name: ExposureName.make(
 						Boolean.match(kind === 'public', {
-							onFalse: () => `tailnet:${Option.getOrThrow(props.port.port)}`,
+							onFalse: () => `tailnet:${props.portNumber}`,
 							onTrue: () => `public:${hostname}`
 						})
 					),
-					port: Option.getOrThrow(props.port.port),
+					port: props.portNumber,
 					publicAccess: kind === 'public',
 					worker: props.port.worker
 				})
@@ -123,7 +123,6 @@ function Expose(props: {items: readonly InventoryItem[]; port: InventoryItem}) {
 }
 
 // judge-ignore no-silent-fallback -- inventory failures are shown by Home; this dialog renders only when both its transient command target and an inventory value exist.
-// judge-ignore no-view-state-in-memory -- this is an unsaved exposure command, not page selection; Tailnet/Public and hostname are transient form inputs.
 export function ExposeDialog() {
 	const [target, setTarget] = useAtom(exposeTargetAtom)
 	return Option.match(Option.all({port: target, snapshot: AsyncResult.value(useAtomValue(inventoryAtom))}), {
@@ -137,7 +136,12 @@ export function ExposeDialog() {
 			>
 				{/* Cancel already closes it, so the corner X would be the same action twice. */}
 				<DialogContent showCloseButton={false}>
-					<Expose key={open.port.id} items={open.snapshot.items} port={open.port} />
+					{Option.match(open.port.port, {
+						onNone: Function.constNull,
+						onSome: portNumber => (
+							<Expose key={open.port.id} items={open.snapshot.items} port={open.port} portNumber={portNumber} />
+						)
+					})}
 				</DialogContent>
 			</Dialog>
 		)

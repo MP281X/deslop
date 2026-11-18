@@ -72,45 +72,44 @@ function titleOf(node: ESTree.Node) {
 export const testRegistration = defineRule({
 	create: context => ({
 		CallExpression: node => {
-			const found = testChain(context, node.callee)
-			if (Option.isNone(found)) return
-			const chain = Option.getOrThrow(found)
-			const title = node.arguments[0]
-			if (title === undefined) return
-			if (
-				matches(
-					/\b(?:regression|no longer|anymore|legacy|previous implementation)\b|(?:#|\b(?:issue|pr|pull request)\s*#?)\d+/iu
-				)(titleOf(resolveBinding(context, title)))
-			) {
-				context.report({
-					message: 'State the current rule in the present tense; delete scenarios about superseded code.',
-					node: title
-				})
-				return
-			}
-			if (
-				Array.some(node.arguments, isFunction) &&
-				repeated(node) !== false &&
-				(hasEffectMember(chain.members) ||
-					!Array.contains(['describe', 'it', 'suite', 'test'], chain.root.name) ||
-					repeated(node) === 'callback')
-			) {
-				context.report({
-					message:
-						'Register independent cases with it.effect.each(cases)(title, body), not a loop or collection callback.',
-					node
-				})
-				return
-			}
-			if (
-				Array.some(node.arguments, isFunction) &&
-				Option.isSome(testChain(context, node.callee)) &&
-				Array.some(node.arguments, argument =>
-					Array.some(optionKeys(argument), key => Array.contains(['fails', 'only', 'skip', 'todo'], key))
-				)
-			) {
-				context.report({message: MESSAGE, node})
-			}
+			Option.map(testChain(context, node.callee), chain => {
+				const title = node.arguments[0]
+				if (title === undefined) return
+				if (
+					matches(
+						/\b(?:regression|no longer|anymore|legacy|previous implementation)\b|(?:#|\b(?:issue|pr|pull request)\s*#?)\d+/iu
+					)(titleOf(resolveBinding(context, title)))
+				) {
+					context.report({
+						message: 'State the current rule in the present tense; delete scenarios about superseded code.',
+						node: title
+					})
+					return
+				}
+				if (
+					Array.some(node.arguments, isFunction) &&
+					repeated(node) !== false &&
+					(hasEffectMember(chain.members) ||
+						!Array.contains(['describe', 'it', 'suite', 'test'], chain.root.name) ||
+						repeated(node) === 'callback')
+				) {
+					context.report({
+						message:
+							'Register independent cases with it.effect.each(cases)(title, body), not a loop or collection callback.',
+						node
+					})
+					return
+				}
+				if (
+					Array.some(node.arguments, isFunction) &&
+					Option.isSome(testChain(context, node.callee)) &&
+					Array.some(node.arguments, argument =>
+						Array.some(optionKeys(argument), key => Array.contains(['fails', 'only', 'skip', 'todo'], key))
+					)
+				) {
+					context.report({message: MESSAGE, node})
+				}
+			})
 		},
 		MemberExpression: node => {
 			if (skips(context, node)) context.report({message: MESSAGE, node: node.property})

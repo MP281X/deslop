@@ -222,27 +222,26 @@ export function Flame(props: {focus?: SpanId; onPick: (id: SpanId) => void; trac
 	})
 	function moveFocus(span: TraceTree['spans'][number], key: string) {
 		const siblings = Array.filter(props.trace.spans, other => other.depth === span.depth)
-		const position = Array.findFirstIndex(siblings, other => other.spanId === span.spanId)
-		if (Option.isNone(position)) return
-		const index = Option.getOrThrow(position)
-		Option.match(
-			pipe(
-				Match.value(key),
-				Match.when('ArrowLeft', () => Array.get(siblings, index - 1)),
-				Match.when('ArrowRight', () => Array.get(siblings, index + 1)),
-				Match.when('ArrowUp', () =>
-					Array.findFirst(props.trace.spans, other => Option.contains(span.parentSpanId, other.spanId))
-				),
-				Match.when('ArrowDown', () =>
-					Array.findFirst(props.trace.spans, other => Option.contains(other.parentSpanId, span.spanId))
-				),
-				Match.orElse(() => Option.none<TraceTree['spans'][number]>())
+
+		pipe(
+			Array.findFirstIndex(siblings, other => other.spanId === span.spanId),
+			Option.flatMap(index =>
+				pipe(
+					Match.value(key),
+					Match.when('ArrowLeft', () => Array.get(siblings, index - 1)),
+					Match.when('ArrowRight', () => Array.get(siblings, index + 1)),
+					Match.when('ArrowUp', () =>
+						Array.findFirst(props.trace.spans, other => Option.contains(span.parentSpanId, other.spanId))
+					),
+					Match.when('ArrowDown', () =>
+						Array.findFirst(props.trace.spans, other => Option.contains(other.parentSpanId, span.spanId))
+					),
+					Match.orElse(() => Option.none<TraceTree['spans'][number]>())
+				)
 			),
-			{
-				onNone: Function.constUndefined,
-				onSome: next =>
-					surface.current?.querySelector<HTMLButtonElement>(`[data-span-id="${next.spanId}"] button`)?.focus()
-			}
+			Option.map(next =>
+				surface.current?.querySelector<HTMLButtonElement>(`[data-span-id="${next.spanId}"] button`)?.focus()
+			)
 		)
 	}
 	return (

@@ -30,7 +30,7 @@ const BLOCKED = Array.map(
 		'64:ff9b:1::/48',
 		'fec0::/10'
 	],
-	source => Result.getOrThrow(IpNetwork.fromString(source))
+	IpNetwork.fromStringUnsafe
 )
 
 function isPrivateAddress(ip: NetAddress.IpAddress) {
