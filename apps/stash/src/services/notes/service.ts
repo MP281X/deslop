@@ -1107,12 +1107,18 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 			}),
 			regenerate: Effect.fn('Notes.regenerate')(function* (userId: UserId, id: NoteId) {
 				yield* savedNote(id)
-				// A restart that fails leaves the run and the answer it waits to store alone. The run stops inside the transaction, after the write took the database's write lock, so its answer cannot land over the new run's state, and no claim starts the note in between.
+				// A restart that fails leaves the run and the answer it waits to store alone. The run stops inside the transaction, after the write took the database's write lock, so its answer cannot land over the new run's state, and no claim starts the note in between. A stopped run's note counts as unrecorded until the commit, which clears that, so a restart whose commit fails is not asked again by a scan: only by the person.
 				yield* Semaphore.withPermit(
 					dispatch,
 					pipe(
 						changeIn(id, NoteChange.cases.retry.make({requester: userId})),
-						Effect.andThen(FiberMap.remove(runs, id)),
+						Effect.andThen(
+							Effect.suspend(() => {
+								if (!FiberMap.hasUnsafe(runs, id)) return Effect.void
+								MutableHashSet.add(unrecorded, id)
+								return FiberMap.remove(runs, id)
+							})
+						),
 						Effect.andThen(organizeLater(id)),
 						sql.withTransaction,
 						asNotesError
