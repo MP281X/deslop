@@ -11,7 +11,7 @@ import {isAdmin, listPeople, personOf} from './lib/utils.ts'
 import {Member} from './schema.ts'
 import type {AdmitParams, Person} from './schema.ts'
 
-import {CookieSessions} from '#services/cookie-sessions/service.ts'
+import {Sessions} from '#services/sessions/service.ts'
 
 // GitHub ids from GITHUB_ADMINS; a local install with none named treats the developer as the admin.
 export const adminIds = Effect.gen(function* () {
@@ -82,12 +82,12 @@ export class People extends Context.Service<
 				const sql = yield* SqlClient.SqlClient
 				const admins = yield* adminIds
 				const reactivity = yield* Reactivity.Reactivity
-				const sessions = yield* CookieSessions
+				const sessions = yield* Sessions
 				const table = sql(Member.table)
 				function mutate<A, E, R>(effect: Effect.Effect<A, E, R>) {
 					return pipe(
 						effect,
-						Reactivity.mutation(['people', 'cookieSessions']),
+						Reactivity.mutation(['people', 'sessions']),
 						Effect.provideService(Reactivity.Reactivity, reactivity)
 					)
 				}
@@ -140,25 +140,27 @@ export class People extends Context.Service<
 						return listPeople(yield* all(), admins)
 					}, asAuthError('Cannot read people')),
 					register: Effect.fn('People.register')(
-						function* (user, fullName, tailnet) {
+						function* (user, profileName, tailnet) {
 							const status = Boolean.match(tailnet || isAdmin(admins, user.id), {
 								onFalse: Function.constant('Waiting'),
 								onTrue: Function.constant('Allowed')
 							})
+							// An empty name is stored as none, so it is compared as none: an unchanged person costs no write.
+							const fullName = Option.getOrUndefined(Option.filter(profileName, String.isNonEmpty))
 							const row = yield* find(user.id)
 							if (
 								Option.exists(
 									row,
 									member =>
 										member.name === user.name &&
-										Option.getOrUndefined(member.fullName) === Option.getOrUndefined(fullName) &&
+										Option.getOrUndefined(member.fullName) === fullName &&
 										(status === 'Waiting' || member.status === 'Allowed')
 								)
 							) {
 								return yield* Effect.fromOption(row)
 							}
 							yield* mutate(
-								sql`INSERT INTO ${table} (id, name, fullName, since, status) VALUES (${user.id}, ${user.name}, ${Option.getOrUndefined(Option.filter(fullName, String.isNonEmpty))}, ${DateTime.toEpochMillis(yield* DateTime.now)}, ${status}) ON CONFLICT (id) DO UPDATE SET name = excluded.name, fullName = excluded.fullName, status = CASE WHEN excluded.status = 'Allowed' THEN 'Allowed' ELSE ${table}.status END`
+								sql`INSERT INTO ${table} (id, name, fullName, since, status) VALUES (${user.id}, ${user.name}, ${fullName}, ${DateTime.toEpochMillis(yield* DateTime.now)}, ${status}) ON CONFLICT (id) DO UPDATE SET name = excluded.name, fullName = excluded.fullName, status = CASE WHEN excluded.status = 'Allowed' THEN 'Allowed' ELSE ${table}.status END`
 							)
 							return yield* existing(user.id)
 						},

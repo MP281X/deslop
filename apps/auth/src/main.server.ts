@@ -12,10 +12,10 @@ import {HttpHandlers} from '#http/handlers.ts'
 import icon from '#routes/icon.svg'
 import {RpcContracts} from '#rpcs/contracts.ts'
 import {RpcHandlers} from '#rpcs/handlers.ts'
-import {CookieSessions} from '#services/cookie-sessions/service.ts'
 import {GitHub} from '#services/github/service.ts'
 import {Identity, layerIdentityAuth} from '#services/identity/service.ts'
 import {People} from '#services/people/service.ts'
+import {Sessions} from '#services/sessions/service.ts'
 import {SignIns} from '#services/sign-ins/service.ts'
 import {Tailnet} from '#services/tailnet/service.ts'
 import {ToolContracts} from '#tools/contracts.ts'
@@ -27,7 +27,7 @@ const layerServices = pipe(
 	Layer.provideMerge(Identity.layer),
 	Layer.provide(Tailnet.layer),
 	Layer.provideMerge(People.layer),
-	Layer.provideMerge(Layer.mergeAll(CookieSessions.layer, GitHub.layer)),
+	Layer.provideMerge(Layer.mergeAll(Sessions.layer, GitHub.layer)),
 	Layer.provide(Layer.succeed(NodeHttpClient.RequestInit, {redirect: 'error'}))
 )
 

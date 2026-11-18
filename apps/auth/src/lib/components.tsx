@@ -2,12 +2,13 @@ import {useAtomValue} from '@effect/atom-react'
 
 import {Array, Boolean, Function, Option} from 'effect'
 
-import {GlobeIcon} from '@phosphor-icons/react'
+import {BrowsersIcon, GlobeIcon} from '@phosphor-icons/react'
 
 import {ThemedMark} from '@deslop/components-web/blocks/marks'
 import {RowLead} from '@deslop/components-web/blocks/rows'
 import {Loaded} from '@deslop/components-web/blocks/states'
 import {Badge} from '@deslop/components-web/ui/badge'
+import {Empty, EmptyHeader, EmptyMedia, EmptyTitle} from '@deslop/components-web/ui/empty'
 import {AndroidIcon} from '@deslop/components-web/ui/svgs/androidIcon'
 import {Apple} from '@deslop/components-web/ui/svgs/apple'
 import {AppleDark} from '@deslop/components-web/ui/svgs/appleDark'
@@ -18,8 +19,8 @@ import {clockAtom} from '@deslop/runtime/client/clock'
 import {ageOf} from '@deslop/runtime/shared/format'
 
 import {sessionsAtom} from '#lib/auth.ts'
-import {browserOf, deviceOf} from '#services/cookie-sessions/lib/utils.ts'
-import type {SessionDevice} from '#services/cookie-sessions/schema.ts'
+import {browserOf, deviceOf} from '#services/sessions/lib/utils.ts'
+import type {SessionDevice} from '#services/sessions/schema.ts'
 
 function DeviceLogo(props: {device: Option.Option<SessionDevice>}) {
 	return Option.match(props.device, {
@@ -52,7 +53,16 @@ export function Sessions() {
 		<Loaded atom={sessionsAtom}>
 			{rows =>
 				Array.match(rows, {
-					onEmpty: () => <p className="text-muted-foreground">No browser sessions</p>,
+					onEmpty: () => (
+						<Empty role="status">
+							<EmptyHeader>
+								<EmptyMedia variant="icon">
+									<BrowsersIcon />
+								</EmptyMedia>
+								<EmptyTitle>No browser sessions</EmptyTitle>
+							</EmptyHeader>
+						</Empty>
+					),
 					onNonEmpty: sessions => (
 						<Table aria-label="Browser sessions">
 							<TableBody>

@@ -5,13 +5,13 @@ import {CurrentUser} from '@deslop/runtime/shared/auth'
 
 import {ToolContracts} from './contracts.ts'
 
-import {CookieSessions} from '#services/cookie-sessions/service.ts'
 import {People} from '#services/people/service.ts'
+import {Sessions} from '#services/sessions/service.ts'
 
 export const ToolHandlers = ToolContracts.toLayer(
 	Effect.gen(function* () {
 		const people = yield* People
-		const sessions = yield* CookieSessions
+		const sessions = yield* Sessions
 		return {
 			list_people: Effect.fnUntraced(function* () {
 				return {people: yield* people.list(yield* requireAdmin(yield* CurrentUser, 'Only an admin can manage people'))}
