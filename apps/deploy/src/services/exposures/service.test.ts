@@ -3,6 +3,7 @@ import {assert, it} from '@effect/vitest'
 
 import {
 	Array,
+	Boolean,
 	Context,
 	DateTime,
 	Deferred,
@@ -65,6 +66,7 @@ const worker = Effect.fnUntraced(function* () {
 	const afterCheck = MutableRef.make(Effect.void)
 	const serving = MutableRef.make<Serve>({AllowFunnel: Option.none(), TCP: Option.none(), Web: Option.none()})
 	const unserveFails = MutableRef.make(false)
+	const statusUnreadable = MutableRef.make(false)
 	const afterUnserve = MutableRef.make(Effect.void)
 	const asked = yield* Queue.unbounded<readonly string[]>()
 	const unserved = yield* Queue.unbounded<number>()
@@ -90,7 +92,12 @@ const worker = Effect.fnUntraced(function* () {
 						})
 					}))
 				}),
-			serveStatus: Effect.sync(() => MutableRef.get(serving)),
+			serveStatus: Effect.suspend(() =>
+				Boolean.match(MutableRef.get(statusUnreadable), {
+					onFalse: () => Effect.succeed(MutableRef.get(serving)),
+					onTrue: () => DeployError.make({message: 'Tailscale is down'})
+				})
+			),
 			tailnetName: Effect.succeedSome('web.ts.net'),
 			unserve: Effect.fnUntraced(function* (port: number) {
 				yield* Queue.offer(unserved, port)
@@ -118,7 +125,19 @@ const worker = Effect.fnUntraced(function* () {
 			}))
 		})
 	)
-	return {afterCheck, afterUnserve, asked, caddyUp, gate, layer, owner, serving, unserveFails, unserved}
+	return {
+		afterCheck,
+		afterUnserve,
+		asked,
+		caddyUp,
+		gate,
+		layer,
+		owner,
+		serving,
+		statusUnreadable,
+		unserveFails,
+		unserved
+	}
 })
 
 // One Deploy start over the database in `folder`, for this scope; a second start on the same folder is a restart.
@@ -298,6 +317,22 @@ it.layer(NodeServices.layer)(test => {
 			)
 			yield* exposures.hide(ExposureName.make('second'), yield* admin)
 			assert.deepStrictEqual(yield* Queue.takeAll(host.unserved), [5173, 5173])
+			assert.deepStrictEqual(yield* exposures.items, [])
+		}, Effect.scoped)
+	)
+
+	test.effect(
+		'a tailnet removal is saved while Tailscale Serve cannot be read, and finishes once it can',
+		Effect.fnUntraced(function* () {
+			const host = yield* worker()
+			const exposures = yield* start(yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped(), host.layer)
+			yield* exposures.expose(tailnet('first', 5173), yield* admin)
+			MutableRef.set(host.statusUnreadable, true)
+			assert.instanceOf(yield* Effect.flip(exposures.hide(ExposureName.make('first'), yield* admin)), DeployError)
+			assert.deepStrictEqual(states(yield* exposures.items), [['first', 'removing', 'warning']])
+			MutableRef.set(host.statusUnreadable, false)
+			yield* TestClock.adjust('5 seconds')
+			assert.deepStrictEqual(yield* Queue.takeAll(host.unserved), [5173])
 			assert.deepStrictEqual(yield* exposures.items, [])
 		}, Effect.scoped)
 	)

@@ -379,7 +379,8 @@ export function workloads(items: readonly InventoryItem[]) {
 						),
 						...exposed
 					],
-					(a: InventoryItem, b: InventoryItem) => Equal.equals(a.url, b.url)
+					(a: InventoryItem, b: InventoryItem) =>
+						Equal.equals(a.url, b.url) && Equal.equals(a.publicAccess, b.publicAccess)
 				)
 			}
 		}),

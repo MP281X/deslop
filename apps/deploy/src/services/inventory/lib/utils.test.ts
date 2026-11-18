@@ -126,6 +126,31 @@ it('joins a service with its listener and exposure on the same worker', () => {
 	)
 })
 
+// The exposure ids shown on the row of a service with its listener.
+function joined(...exposures: InventoryItem[]) {
+	return Array.map(
+		workloads([
+			SERVICE,
+			{...LISTENER, scope: Option.some('user' as const), unit: Option.some(UnitId.make('app.service'))},
+			...exposures
+		]),
+		row => Array.map(row.exposures, exposure => exposure.id)
+	)
+}
+
+it('shows a public mapping of an owned private address beside the owned exposure', () => {
+	const owned = {...EXPOSURE, publicAccess: Option.some(false)}
+	const observed = {
+		...EXPOSURE,
+		id: ItemId.make('dev:observed'),
+		owned: Option.some(false),
+		publicAccess: Option.some(true),
+		state: 'observed'
+	}
+	assert.deepStrictEqual(joined(owned, observed), [[owned.id, observed.id]])
+	assert.deepStrictEqual(joined(owned, {...observed, publicAccess: Option.some(false)}), [[owned.id]])
+})
+
 it('matches published container routes only to host TCP bindings', () => {
 	const container = InventoryItem.make({
 		active: true,

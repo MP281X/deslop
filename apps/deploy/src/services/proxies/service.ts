@@ -85,20 +85,21 @@ export class Proxies extends Context.Service<
 						Effect.timeout(Duration.seconds(30))
 					)
 				}
+				// Each call stages in a file of its own, so a validation never overwrites the rows another call is about to load.
 				const written = Effect.fnUntraced(function* (rows: readonly Exposure[]) {
 					const binary = yield* caddy
 					yield* fs.makeDirectory(path.join(directory, 'caddy'), {mode: 0o700, recursive: true})
-					yield* fs.writeFileString(`${configFile}.next`, caddyConfig(rows, path.join(directory, 'caddy')), {
-						mode: 0o600
-					})
-					yield* run(binary, ['validate', '--config', `${configFile}.next`, '--adapter', 'caddyfile'])
-					return binary
+					const staged = yield* fs.makeTempFileScoped({directory, prefix: 'Caddyfile.'})
+					yield* fs.chmod(staged, 0o600)
+					yield* fs.writeFileString(staged, caddyConfig(rows, path.join(directory, 'caddy')))
+					yield* run(binary, ['validate', '--config', staged, '--adapter', 'caddyfile'])
+					return {binary, staged}
 				})
 				return Proxies.of({
 					apply: Effect.fn('Proxies.apply')(
 						function* (rows) {
-							const binary = yield* written(rows)
-							yield* fs.rename(`${configFile}.next`, configFile)
+							const config = yield* written(rows)
+							yield* fs.rename(config.staged, configFile)
 							// A reload keeps Caddy's process, so one still running an earlier release's binary restarts onto this one.
 							const running = yield* pipe(
 								run('systemctl', ['--user', 'show', '--property=MainPID', '--value', 'deslop-deploy-caddy.service']),
@@ -114,10 +115,10 @@ export class Proxies extends Context.Service<
 							yield* pipe(
 								installService(
 									'deploy-caddy',
-									[binary, 'run', '--config', configFile, '--adapter', 'caddyfile'],
+									[config.binary, 'run', '--config', configFile, '--adapter', 'caddyfile'],
 									pipe(
 										running,
-										Option.filter(current => current === binary),
+										Option.filter(current => current === config.binary),
 										Option.match({onNone: Function.constUndefined, onSome: () => ({restart: false as const})})
 									)
 								),
@@ -126,7 +127,7 @@ export class Proxies extends Context.Service<
 								Effect.provideService(Path.Path, path)
 							)
 							yield* Effect.retry(
-								run(binary, [
+								run(config.binary, [
 									'reload',
 									'--address',
 									`127.0.0.1:${CADDY_ADMIN_PORT}`,
