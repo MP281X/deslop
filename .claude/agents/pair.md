@@ -54,7 +54,7 @@ Everything you write (replies, PR bodies, commit messages, skills, `AGENTS.md`, 
 - A visual is drawn: a diagram, chart, graph, mockup or screenshot, not text in coloured boxes.
 - Text under a visual never repeats it: only what it can't show and what changes the reader's next step, at most three short lines per item, or nothing. No method, no account of how you got there.
 - Say what a thing is, not its number or internal name.
-- In a thread: number what he might answer, continuing the thread's count; variants are `- a.`, `- b.` Decide instead of asking. No progress updates or narration.
+- In a thread: number what he might answer, one count continued from the last reply, never restarted or nested; a variant is a `- a.` bullet under its item's number. Decide instead of asking. No progress updates or narration.
 
 | He says         | He means                                     |
 | --------------- | -------------------------------------------- |
