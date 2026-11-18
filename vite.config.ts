@@ -16,8 +16,8 @@ const PREVIEW_UNIT = Array.join(
 	[
 		'u=preview-${PWD##*/} p=$((20000 + 0x$(printf %s "$PWD" | sha256sum | cut -c1-4) % 10000)) m=$(git rev-parse --git-path preview-serve) h=$(hostname -s).tailnet-8c4c.ts.net',
 		'fail() { printf "%s\\n" "$1" >&2; exit 1; }',
-		// Only the marker says this checkout added the tailnet entry, and a marker can outlive it: nothing is removed or reused unless the port's whole entry is still this host's root proxied to this preview's loopback port, and nothing changes while Tailscale cannot say what it serves: its answer is one JSON object, and a question that answer cannot settle stops the run.
-		'serving() { s=$(tailscale serve status --json) && s=$(jq -ces "select(length == 1 and (.[0] | type == \\"object\\")) | .[0]" <<<"$s") || fail "Tailscale did not say what it serves on port $p"; }',
+		// Only the marker says this checkout added the tailnet entry, and a marker can outlive it: nothing is removed or reused unless the port's whole entry is still this host's root proxied to this preview's loopback port, and nothing changes while Tailscale cannot say what it serves: its answer is one JSON object whose port and site maps, sites and handlers are objects or absent, and a question that answer cannot settle stops the run.
+		'serving() { s=$(tailscale serve status --json) && s=$(jq -ces "select(length == 1) | .[0] | select(type == \\"object\\" and ([.TCP, .Web, (.Web // {} | .[]?), (.Web // {} | .[]? | .Handlers?)] | all(type == \\"object\\" or type == \\"null\\")))" <<<"$s") || fail "Tailscale did not say what it serves on port $p"; }',
 		'asked() { local r=0; jq -e "$@" <<<"$s" >/dev/null || r=$?; ((r < 2)) || fail "Tailscale did not say what it serves on port $p"; return $r; }',
 		'served() { asked --arg p $p ".TCP // {} | has(\\$p)"; }',
 		'proxied() { asked --arg s :$p --arg k $h:$p --arg to http://127.0.0.1:$p "[.Web // {} | to_entries[] | select(.key | endswith(\\$s)) | {key, handlers: .value.Handlers}] == [{key: \\$k, handlers: {\\"/\\": {Proxy: \\$to}}}]"; }',
