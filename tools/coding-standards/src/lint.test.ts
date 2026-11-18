@@ -2591,7 +2591,7 @@ export type Unknown = 'ready' | unknown`
 		)
 
 		testApi.effect(
-			'reports implicit concurrency, dropped causes, empty recoveries, render-time atoms, barrels and gradients',
+			'reports dropped causes, empty recoveries, render-time atoms, barrels and gradients',
 			Effect.fnUntraced(function* () {
 				const result = yield* lintSource({
 					'barrel.ts': "export {Effect} from 'effect'\nexport * from 'effect/Option'",
@@ -2600,21 +2600,10 @@ export type Unknown = 'ready' | unknown`
 							"import {Array, Effect, Schema} from 'effect'",
 							"import {Atom} from 'effect/reactivity'",
 							'',
-							'declare const items: number[]',
-							'declare const options: {concurrency: number}',
 							'declare function load(id: number): Effect.Effect<number>',
 							'declare function download(): Promise<string>',
 							'class Failed extends Schema.TaggedError<Failed>()("Failed", {cause: Schema.optional(Schema.Defect()), message: Schema.String}) {}',
 							'const countAtom = Atom.make(0)',
-							'export const sequential = Effect.forEach(items, load)',
-							'export const dataLast = Effect.forEach(load)',
-							'export const combined = Effect.all([load(1), load(2)])',
-							'export const discarded = Effect.all([load(1)], {discard: true})',
-							'export const parallel = Effect.forEach(items, load, {concurrency: "unbounded"})',
-							'export const ordered = Effect.forEach(load, {concurrency: 1})',
-							'export const forwarded = Effect.all([load(1)], options)',
-							'export const piped = Effect.forEach((id: number) => load(id), options)',
-							'export const struct = Effect.all({one: load(1)}, {concurrency: 2})',
 							'export const dropped = Effect.mapError(load(1), failure => Failed.make({message: "Cannot load"}))',
 							'export const tried = Effect.tryPromise({catch: failure => Failed.make({message: "Cannot download"}), try: download})',
 							'export const kept = Effect.mapError(load(1), cause => Failed.make({cause, message: "Cannot load"}))',
@@ -2639,7 +2628,6 @@ export type Unknown = 'ready' | unknown`
 					'reexports.ts': "export {Option} from 'effect'"
 				})
 				const rules = [
-					'explicit-effect-concurrency',
 					'no-barrel-module',
 					'no-compiler-opt-out',
 					'no-component-atom-allocation',
@@ -2651,10 +2639,6 @@ export type Unknown = 'ready' | unknown`
 					),
 					Array.map(
 						[
-							'explicit-effect-concurrency',
-							'explicit-effect-concurrency',
-							'explicit-effect-concurrency',
-							'explicit-effect-concurrency',
 							'no-barrel-module',
 							'no-barrel-module',
 							'no-barrel-module',
@@ -2722,29 +2706,18 @@ export type Unknown = 'ready' | unknown`
 		)
 
 		testApi.effect(
-			'distinguishes named data-last callbacks and absent error causes',
+			'distinguishes kept error causes from absent ones',
 			Effect.fnUntraced(function* () {
 				const source = [
 					"import {Effect, Redacted, Schema} from 'effect'",
 					'',
-					'declare const items: number[]',
-					'declare const options: {concurrency: number}',
-					'function load(id: number) { return Effect.succeed(id) }',
 					'class Failed extends Schema.TaggedError<Failed>()("Failed", {cause: Schema.Unknown}) {}',
-					'export const dataLast = Effect.forEach(load, options)',
-					'export const dataFirst = Effect.forEach(items, load)',
 					'export const missing = Effect.mapError(Effect.fail("failure"), failure => Failed.make({cause: undefined}))',
 					'export const nullCause = Effect.mapError(Effect.fail("failure"), failure => Failed.make({"cause": null}))',
 					'export const voidCause = Effect.mapError(Effect.fail("failure"), failure => Failed.make({cause: void failure}))',
 					'export const kept = Effect.mapError(Effect.fail("failure"), failure => Failed.make({cause: failure}))',
 					'export const redacted = Effect.mapError(Effect.fail("failure"), failure => Failed.make({cause: Redacted.make(failure)}))',
-					'export function shadowed(undefined: string) { return Effect.mapError(Effect.fail("failure"), failure => Failed.make({cause: undefined})) }',
-					'const loadUntraced = Effect.fnUntraced(function* (id: number) { return yield* Effect.succeed(id) })',
-					'const loadTraced = Effect.fn("load")(function* (id: number) { return yield* Effect.succeed(id) })',
-					'export const untraced = Effect.forEach(loadUntraced, options)',
-					'export const traced = Effect.forEach(loadTraced, options)',
-					'const loadDirect = Effect.fn(function* (id: number) { return yield* Effect.succeed(id) })',
-					'export const direct = Effect.forEach(loadDirect, options)'
+					'export function shadowed(undefined: string) { return Effect.mapError(Effect.fail("failure"), failure => Failed.make({cause: undefined})) }'
 				]
 				const result = yield* lintSource({'precision.ts': Array.join(source, '\n')})
 				assert.strictEqual(result.stderr, '')
@@ -2752,13 +2725,7 @@ export type Unknown = 'ready' | unknown`
 					pipe(
 						result.stdout.diagnostics,
 						Array.filter(diagnostic =>
-							Array.contains(
-								[
-									'@deslop/coding-standards(explicit-effect-concurrency)',
-									'@deslop/coding-standards(recover-named-failures)'
-								],
-								diagnostic.code
-							)
+							Array.contains(['@deslop/coding-standards(recover-named-failures)'], diagnostic.code)
 						),
 						Array.map(
 							diagnostic =>
@@ -2767,7 +2734,7 @@ export type Unknown = 'ready' | unknown`
 						Array.sort(String.Order)
 					),
 					pipe(
-						[7, 8, 9, 10, 13],
+						[3, 4, 5, 8],
 						Array.map(index => source[index] ?? ''),
 						Array.sort(String.Order)
 					)
@@ -3740,6 +3707,59 @@ export type Unknown = 'ready' | unknown`
 					)
 				})
 				const lines = reportedLines(result, 'test-synchronization')
+				assert.deepStrictEqual(lines.reported, lines.marked)
+			})
+		)
+
+		testApi.effect(
+			'retry-policy follows named and composed schedules and requires classification',
+			Effect.fnUntraced(function* () {
+				const result = yield* lintSource({
+					'retry.ts': Array.join(
+						[
+							"import {Effect, Schedule, Stream, pipe} from 'effect'",
+							"import {HttpClient} from 'effect/http'",
+							'declare const work: Effect.Effect<void, string>',
+							'export const blind = Effect.retry(work, {times: 2}) // reported',
+							"export const spin = Effect.retry(work, {while: error => error === 'offline'}) // reported",
+							'export const forever = Stream.retry(Stream.fromEffect(work), Schedule.forever) // reported',
+							"export const finite = Effect.retry(work, {times: 2, while: error => error === 'offline'})",
+							"const schedule = Schedule.while(Schedule.spaced('1 second'), metadata => metadata.input === 'offline')",
+							'export const supervised = Stream.retry(Stream.fromEffect(work), schedule)',
+							"export const composed = Stream.retry(Stream.fromEffect(work), $ => Schedule.while($(Schedule.spaced('1 second')), metadata => metadata.input === 'offline'))",
+							'export const http = HttpClient.retryTransient({times: 2})',
+							'export const unboundedHttp = HttpClient.retryTransient({}) // reported',
+							"export const budget = pipe(work, Effect.retry({while: error => error === 'offline'}), Effect.timeout('10 seconds'))",
+							"export const directBudget = Effect.timeout(Effect.retry(work, {while: error => error === 'offline'}), '10 seconds')",
+							"export const perTry = pipe(work, Effect.timeout('10 seconds'), Effect.retry({while: error => error === 'offline'})) // reported",
+							'export function unrelated(Effect: {retry: (options: {times: number}) => void}) { return Effect.retry({times: 2}) }'
+						],
+						'\n'
+					)
+				})
+				const lines = reportedLines(result, 'retry-policy')
+				assert.deepStrictEqual(lines.reported, lines.marked)
+			})
+		)
+
+		testApi.effect(
+			'no-wall-clock reports render reads and callback references, not fixed dates',
+			Effect.fnUntraced(function* () {
+				const result = yield* lintSource({
+					'clock.tsx': Array.join(
+						[
+							"import {DateTime, Option} from 'effect'",
+							'export function Time() { return <span>{DateTime.toEpochMillis(DateTime.nowUnsafe())}</span> } // reported',
+							'export function Default() { return Option.getOrElse(Option.none(), DateTime.nowUnsafe) } // reported',
+							"export function Fixed() { return DateTime.makeUnsafe('2026-01-01') }",
+							'export function Button() { return <button onClick={() => DateTime.nowUnsafe()}>Time</button> }',
+							'export function RefButton() { return <button onClick={DateTime.nowUnsafe}>Time</button> }',
+							'export function Custom(DateTime: {nowUnsafe: () => string}) { return DateTime.nowUnsafe() }'
+						],
+						'\n'
+					)
+				})
+				const lines = reportedLines(result, 'no-wall-clock')
 				assert.deepStrictEqual(lines.reported, lines.marked)
 			})
 		)

@@ -586,8 +586,7 @@ function HomeRoute() {
 	const [known, setKnown] = useState<Overview['apps']>(() => [])
 	const apps = Option.match(value, {onNone: () => known, onSome: current => current.apps})
 	const failure = blockingFailure(overview)
-	// nowAtom cannot fail; wall time seeds only its initial empty value, not a failed read.
-	const now = AsyncResult.getOrElse(useAtomValue(nowAtom), DateTime.nowUnsafe)
+	const now = useAtomValue(nowAtom)
 
 	// One app is always chosen: a URL naming none, or one this data no longer has, falls back to the newest failure, else the first tab.
 	const selection = selectionOf(value, search, isMobile)

@@ -1,4 +1,4 @@
-import {Cache, Config, Context, Effect, Exit, Function, Layer, Option, Result, Schema, pipe} from 'effect'
+import {Cache, Config, Context, Effect, Exit, Function, Layer, Option, Result, Schedule, Schema, pipe} from 'effect'
 
 import {
 	Cookies,
@@ -95,7 +95,10 @@ export class Auth extends Context.Service<
 						Effect.raceFirst(
 							pipe(
 								Effect.delay(user(request.headers), '5 minutes'),
-								Effect.retry({while: error => error.error === 'temporarily_unavailable'}),
+								Effect.retry({
+									schedule: Schedule.spaced('5 seconds'),
+									while: error => error.error === 'temporarily_unavailable'
+								}),
 								Effect.filterOrFail(
 									current => current.id === found.id && current.admin === found.admin && current.name === found.name,
 									() => AuthError.make({error: 'access_denied', message: 'The account changed; reconnect the socket'})

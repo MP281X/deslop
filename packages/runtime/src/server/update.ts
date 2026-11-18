@@ -75,7 +75,10 @@ export const updateRelease = Effect.fnUntraced(function* (name: string, origin: 
 							() => AppError.make({message: 'The promoted release is not serving yet'})
 						),
 						Effect.timeout('2 seconds'),
-						Effect.retry({schedule: Schedule.spaced('1 second')}),
+						Effect.retry({
+							schedule: Schedule.spaced('1 second'),
+							while: error => Array.contains(['HttpClientError', 'SchemaError', 'AppError', 'TimeoutError'], error._tag)
+						}),
 						Effect.timeout('30 seconds')
 					)
 				)

@@ -1,3 +1,4 @@
+import type {Cause} from 'effect'
 import {
 	Array,
 	Boolean,
@@ -26,6 +27,7 @@ import {
 
 import {Digest} from 'effect/crypto'
 import {Reactivity} from 'effect/reactivity'
+import type {SqlError} from 'effect/sql'
 import {Migrator, SqlClient, SqlSchema} from 'effect/sql'
 
 import {liveRead} from '@deslop/runtime/shared/live-read'
@@ -108,7 +110,10 @@ const UNAVAILABLE = 'The telemetry storage could not be read or written.'
 
 const LEVELS = {debug: 5, error: 17, info: 9, warn: 13}
 
-const asTelemetryError = Effect.mapError((cause: unknown) => TelemetryError.make({cause, message: UNAVAILABLE}))
+const asTelemetryError = Effect.mapError(
+	(cause: SqlError.SqlError | Schema.SchemaError | Cause.NoSuchElementError | TelemetryError) =>
+		TelemetryError.make({cause, message: UNAVAILABLE})
+)
 
 declare module 'effect/reactivity/Reactivity' {
 	interface Keys {

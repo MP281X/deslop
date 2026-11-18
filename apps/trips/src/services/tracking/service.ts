@@ -1,5 +1,6 @@
 import {
 	Array,
+	Cause,
 	Config,
 	Context,
 	DateTime,
@@ -19,6 +20,7 @@ import {
 	pipe
 } from 'effect'
 
+import type {HttpClientError} from 'effect/http'
 import {HttpClient, HttpClientRequest, HttpClientResponse} from 'effect/http'
 import {Migrator, SqlClient, SqlSchema} from 'effect/sql'
 
@@ -32,7 +34,9 @@ import {FaFlights, Lookups, VtRun, VtStatus} from '#services/tracking/schema.ts'
 const MONTHLY_LOOKUPS = 1000
 
 function asBookingsError(message: string) {
-	return Effect.mapError((cause: unknown) => BookingsError.make({cause, message}))
+	return Effect.mapError((cause: HttpClientError.HttpClientError | Schema.SchemaError | Cause.TimeoutError) =>
+		BookingsError.make({cause, message})
+	)
 }
 
 export class Tracking extends Context.Service<Tracking>()('@deslop/trips/services/tracking/service/Tracking', {
@@ -135,7 +139,11 @@ export class Tracking extends Context.Service<Tracking>()('@deslop/trips/service
 					return Effect.asSome(HttpClientResponse.schemaBodyJson(schema)(response))
 				}),
 				Effect.timeout('15 seconds'),
-				Effect.retry({schedule: Schedule.exponential('1 second'), times: 2}),
+				Effect.retry({
+					schedule: Schedule.exponential('1 second'),
+					times: 2,
+					while: error => Cause.isTimeoutError(error) || HttpClient.isTransientError(error)
+				}),
 				asBookingsError(`ViaggiaTreno did not answer for train ${booking.number}.`)
 			)
 		}

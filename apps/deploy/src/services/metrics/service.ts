@@ -27,6 +27,7 @@ import {
 } from 'effect'
 
 import type {PlatformError} from 'effect/PlatformError'
+import type {SqlError} from 'effect/sql'
 import {Migrator, SqlClient, SqlSchema} from 'effect/sql'
 
 import {executeProcess} from '@deslop/runtime/server/process'
@@ -62,7 +63,7 @@ import type {AppSample, Disk, MachineHistory} from '#services/metrics/schema.ts'
 
 const CGROUP = '/sys/fs/cgroup'
 
-const asDeployError = Effect.mapError((cause: unknown) =>
+const asDeployError = Effect.mapError((cause: SqlError.SqlError | Schema.SchemaError) =>
 	DeployError.make({cause, message: 'The resource history could not be read or written.'})
 )
 

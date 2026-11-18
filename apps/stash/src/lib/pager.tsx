@@ -1,4 +1,4 @@
-import {useAtomRefresh, useAtomValue} from '@effect/atom-react'
+import {useAtomMount, useAtomRefresh, useAtomValue} from '@effect/atom-react'
 
 import {Array, Boolean, Function, Match, Number, Option, pipe} from 'effect'
 
@@ -19,6 +19,7 @@ import {FailureContent} from '@deslop/components-mobile/blocks/loaded'
 import {Problem} from '@deslop/components-mobile/blocks/problem'
 import {colors, space} from '@deslop/components-mobile/theme'
 import {Skeleton} from '@deslop/components-mobile/ui/skeleton'
+import {problemSinceAtom} from '@deslop/runtime/client/problem'
 
 import {imageAtom, mediaAtom, mediaImageAtom} from '#lib/notes.ts'
 import type {Page} from '#lib/pages.ts'
@@ -59,13 +60,14 @@ function PageView(props: {note: NoteItem; page: Page}) {
 // The post's pictures: one swipeable pager with its dots below, and no dots for a single page.
 export function Pager(props: {note: NoteItem}) {
 	const media = useAtomValue(mediaAtom(props.note.id))
+	useAtomMount(problemSinceAtom(mediaAtom(props.note.id)))
 	const reload = useAtomRefresh(mediaAtom(props.note.id))
 	const [selected, setSelected] = useState(0)
 	if (AsyncResult.isFailure(media)) {
 		return (
 			<VStack spacing={space[2]}>
 				{Option.isSome(props.note.image) && <Picture atom={imageAtom(props.note.id)} />}
-				<Problem label="Post pictures unavailable" onRetry={reload} />
+				<Problem source={mediaAtom(props.note.id)} label="Post pictures unavailable" onRetry={reload} />
 			</VStack>
 		)
 	}

@@ -1,4 +1,6 @@
-import {Array, Boolean, DateTime, Function, Option} from 'effect'
+import {useAtomValue} from '@effect/atom-react'
+
+import {Array, Boolean, Function, Option} from 'effect'
 
 import {GlobeIcon} from '@phosphor-icons/react'
 
@@ -12,6 +14,7 @@ import {AppleDark} from '@deslop/components-web/ui/svgs/appleDark'
 import {Linux} from '@deslop/components-web/ui/svgs/linux'
 import {Windows} from '@deslop/components-web/ui/svgs/windows'
 import {Table, TableBody, TableCell, TableRow} from '@deslop/components-web/ui/table'
+import {clockAtom} from '@deslop/runtime/client/clock'
 import {ageOf} from '@deslop/runtime/shared/format'
 
 import {sessionsAtom} from '#lib/auth.ts'
@@ -44,6 +47,7 @@ function DeviceMark(props: {device: Option.Option<Device>}) {
 }
 
 export function Sessions() {
+	const now = useAtomValue(clockAtom('1 minute'))
 	return (
 		<Loaded atom={sessionsAtom}>
 			{rows =>
@@ -69,9 +73,7 @@ export function Sessions() {
 											{browserOf(session.browser)}
 										</RowLead>
 										<TableCell className="text-right">
-											<span className="text-muted-foreground tabular-nums">
-												{ageOf(session.lastSeenAt, DateTime.nowUnsafe())}
-											</span>
+											<span className="text-muted-foreground tabular-nums">{ageOf(session.lastSeenAt, now)}</span>
 										</TableCell>
 									</TableRow>
 								))}

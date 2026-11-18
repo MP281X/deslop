@@ -1,3 +1,5 @@
+import {useAtomValue} from '@effect/atom-react'
+
 import {Array, Boolean, DateTime, Duration, Function, Match, Number, Option, Record, Schema, String, pipe} from 'effect'
 
 import {ChartLineIcon} from '@phosphor-icons/react'
@@ -8,6 +10,7 @@ import {ChartContainer, ChartTooltip, ChartTooltipContent} from '@deslop/compone
 import type {ChartConfig} from '@deslop/components-web/ui/chart'
 import {Empty, EmptyHeader, EmptyMedia, EmptyTitle} from '@deslop/components-web/ui/empty'
 import {Skeleton} from '@deslop/components-web/ui/skeleton'
+import {clockAtom} from '@deslop/runtime/client/clock'
 import {bytesOf, clockOf, dayOf, percentOf} from '@deslop/runtime/shared/format'
 
 import {chartTicks} from '#routes/(home)/-chart.ts'
@@ -186,7 +189,7 @@ function TimeAxis(props: {className?: string; minutes: Duration.Duration; now: D
 									onTrue: () => clockOf(DateTime.makeUnsafe(tick.at))
 								})
 							),
-							Match.when(10_080, () => dayOf(DateTime.makeUnsafe(tick.at))),
+							Match.when(10_080, () => dayOf(DateTime.makeUnsafe(tick.at), props.now)),
 							Match.orElse(() => clockOf(DateTime.makeUnsafe(tick.at)))
 						)}
 					</span>
@@ -207,7 +210,7 @@ function ChartTitleSkeleton(props: {label: string}) {
 }
 
 export function ChartSkeleton(props: {isPhone: boolean; minutes: HistoryQuery['minutes']}) {
-	const now = DateTime.nowUnsafe()
+	const now = useAtomValue(clockAtom('1 minute'))
 	return (
 		<div aria-busy="true" aria-label="Usage history" role="status" className="flex shrink-0 flex-col border-b">
 			{Boolean.match(props.isPhone, {
