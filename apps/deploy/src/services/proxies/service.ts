@@ -71,6 +71,18 @@ export class Proxies extends Context.Service<
 				const path = yield* Path.Path
 				const http = yield* HttpClient.HttpClient
 				yield* fs.makeDirectory(directory, {mode: 0o700, recursive: true})
+				// A Deploy killed during a reload leaves its staging entry behind; the startup Caddyfile has no dot after its name.
+				yield* Effect.flatMap(
+					fs.readDirectory(directory),
+					Effect.forEach(
+						name =>
+							Boolean.match(String.startsWith('Caddyfile.')(name), {
+								onFalse: () => Effect.void,
+								onTrue: () => fs.remove(path.join(directory, name), {force: true, recursive: true})
+							}),
+						{discard: true}
+					)
+				)
 				// Unpacked on the first public exposure, not on every start.
 				const caddy = pipe(
 					(yield* ToolPath)('caddy'),

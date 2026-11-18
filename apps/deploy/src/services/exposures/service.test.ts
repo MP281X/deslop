@@ -23,6 +23,7 @@ import {TestClock} from 'effect/testing'
 import {requireAdmin} from '@deslop/runtime/server/auth'
 import {layerDataStore} from '@deslop/runtime/server/store'
 import {UserId} from '@deslop/runtime/shared/auth'
+import type {RuntimeConfig} from '@deslop/runtime/shared/schema'
 
 import {Exposures} from './service.ts'
 
@@ -69,6 +70,7 @@ const worker = Effect.fnUntraced(function* () {
 	const statusUnreadable = MutableRef.make(false)
 	const afterUnserve = MutableRef.make(Effect.void)
 	const asked = yield* Queue.unbounded<readonly string[]>()
+	const probed = yield* Queue.unbounded<number>()
 	const unserved = yield* Queue.unbounded<number>()
 	const layer = Layer.mergeAll(
 		Layer.mock(Proxies, {
@@ -80,7 +82,10 @@ const worker = Effect.fnUntraced(function* () {
 				yield* Option.match(MutableRef.get(gate), {onNone: () => Effect.void, onSome: Deferred.await})
 				if (!MutableRef.get(caddyUp)) return yield* DeployError.make({message: 'Caddy is down'})
 			}),
-			runtime: () => Effect.succeedNone,
+			runtime: Effect.fnUntraced(function* (port: number) {
+				yield* Queue.offer(probed, port)
+				return Option.none<RuntimeConfig>()
+			}),
 			serve: port =>
 				Effect.sync(() => {
 					MutableRef.update(serving, status => ({
@@ -133,6 +138,7 @@ const worker = Effect.fnUntraced(function* () {
 		gate,
 		layer,
 		owner,
+		probed,
 		serving,
 		statusUnreadable,
 		unserveFails,
@@ -202,6 +208,32 @@ it.layer(NodeServices.layer)(test => {
 			MutableRef.set(host.caddyUp, true)
 			yield* TestClock.adjust('5 seconds')
 			assert.deepStrictEqual(yield* Queue.take(host.asked), ['web'])
+		}, Effect.scoped)
+	)
+
+	test.effect(
+		'a removal after a failed Caddy load loads Caddy again before its row is deleted',
+		Effect.fnUntraced(function* () {
+			const host = yield* worker()
+			const exposures = yield* start(yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped(), host.layer)
+			yield* exposures.expose(WEB, yield* admin)
+			MutableRef.set(host.caddyUp, false)
+			const second = {...WEB, hostname: 'second.example.com', name: ExposureName.make('second'), port: 5174}
+			assert.instanceOf(yield* Effect.flip(exposures.expose(second, yield* admin)), DeployError)
+			MutableRef.set(host.caddyUp, true)
+			yield* exposures.hide(second.name, yield* admin)
+			assert.deepStrictEqual(yield* Queue.takeAll(host.asked), [['web'], ['second', 'web'], ['web']])
+			assert.deepStrictEqual(states(yield* exposures.items), [['web', 'configured; check backend', 'quiet']])
+		}, Effect.scoped)
+	)
+
+	test.effect(
+		'Caddy’s admin port is refused before anything connects to it',
+		Effect.fnUntraced(function* () {
+			const host = yield* worker()
+			const exposures = yield* start(yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped(), host.layer)
+			assert.instanceOf(yield* Effect.flip(exposures.expose({...WEB, port: 20_219}, yield* admin)), DeployError)
+			assert.strictEqual(yield* Queue.size(host.probed), 0)
 		}, Effect.scoped)
 	)
 

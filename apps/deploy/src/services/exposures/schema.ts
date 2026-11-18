@@ -12,7 +12,7 @@ export class Exposure extends Model.Class<Exposure>('Exposure')({
 	),
 	kind: Schema.Literals(['tailnet', 'public']),
 	name: ExposureName.check(Schema.isNonEmpty(), Schema.isMaxLength(260)),
-	// Who listened on the port when it was published; a port that later belongs to someone else is not published again.
+	// Who listened on the port when it was published; a new owner of the port never gets the site, and it returns when this owner listens again.
 	owner: Model.FieldOption(Schema.String),
 	port: Schema.Int.check(Schema.isBetween({maximum: 65_535, minimum: 1024})),
 	// What should be true on the worker: `removing` is saved before any external change and never published again.

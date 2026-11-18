@@ -1,4 +1,4 @@
-import {Array, Option, String, pipe} from 'effect'
+import {Array, Function, Option, String, pipe} from 'effect'
 
 import type {RuntimeConfig} from '@deslop/runtime/shared/schema'
 
@@ -8,9 +8,19 @@ import {CADDY_ADMIN_PORT} from '#services/proxies/service.ts'
 // What answers on a port, as Deploy reads it: the inventory's owner, none when nothing listens, and the Deslop runtime it reports, if any.
 export type Listener = {readonly owner: Option.Option<string>; readonly runtime: Option.Option<RuntimeConfig>}
 
+// Why a port is never published whatever listens on it, known without connecting to it; none for any other port.
+export function reservedPort(port: number) {
+	return pipe(
+		port,
+		Option.liftPredicate(candidate => candidate === CADDY_ADMIN_PORT),
+		Option.map(Function.constant('Caddy’s admin port is never published'))
+	)
+}
+
 // Why `exposure` may not be published over what now listens on its port; none when it may.
 export function refusal(exposure: Omit<ExposeInput, 'publicAccess'>, listener: Listener) {
-	if (exposure.port === CADDY_ADMIN_PORT) return Option.some('Caddy’s admin port is never published')
+	const reserved = reservedPort(exposure.port)
+	if (Option.isSome(reserved)) return reserved
 	// A Deslop app runs as `deslop-<name>` and says so at its runtime endpoint; a preview or dev server only says so.
 	return pipe(
 		listener.runtime,
@@ -61,7 +71,7 @@ export function ownedConflict(owned: readonly Exposure[], exposure: Exposure) {
 	return Option.none()
 }
 
-// Why a saved exposure is not published again, checked at every restore: nothing listens on its port, its port changed owner, or it may no longer be published.
+// Why a saved exposure is not published at this restore: nothing listens on its port, its port changed owner, or it may no longer be published. The site is kept, so it is published again once its saved owner listens on the port again; a new owner never gets it.
 export function restoreRefusal(row: Exposure, listener: Listener) {
 	return Option.match(listener.owner, {
 		onNone: () => Option.some(`Nothing listens on 127.0.0.1:${row.port}, so it is not published until its owner does`),
@@ -69,7 +79,10 @@ export function restoreRefusal(row: Exposure, listener: Listener) {
 			pipe(
 				row.owner,
 				Option.filter(saved => saved !== current),
-				Option.map(saved => `Port ${row.port} now belongs to ${current}, not ${saved}, so it is not published again`),
+				Option.map(
+					saved =>
+						`Port ${row.port} now belongs to ${current}, not ${saved}, so the new owner never gets this site; it returns when ${saved} listens again`
+				),
 				Option.orElse(() => refusal(row, listener))
 			)
 	})
