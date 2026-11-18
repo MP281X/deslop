@@ -45,23 +45,59 @@ async function play(task, steps) {
 		const rect = element.getBoundingClientRect()
 		return rect.width > 0 && rect.height > 0 && getComputedStyle(element).visibility !== 'hidden' && !faded(element)
 	}
+	function words(text) {
+		return (text || '').trim().replaceAll(/\s+/gu, ' ')
+	}
+	function squashed(text) {
+		return (text || '').replaceAll(/\s+/gu, '')
+	}
+	function ownLabel(element) {
+		return (
+			words(
+				(element.getAttribute('aria-labelledby') || '')
+					.split(' ')
+					.filter(Boolean)
+					.map(id => document.getElementById(id)?.textContent)
+					.join(' ')
+			) || words(element.getAttribute('aria-label'))
+		)
+	}
+	// Content as the accessibility tree reads it: a child's own label stands for its text, hidden children add nothing and a block-level child is a separate word.
+	/** @param {Node} node @returns {string} */
+	function contentOf(node) {
+		if (node instanceof Text) return node.data
+		if (!(node instanceof Element) || node.matches('[aria-hidden="true"],script,style,template')) return ''
+		const style = getComputedStyle(node)
+		if (style.display === 'none' || style.visibility === 'hidden') return ''
+		const text = ownLabel(node) || [...node.childNodes].map(contentOf).join('')
+		if (style.display.startsWith('inline')) return text
+		return ` ${text} `
+	}
+	// The name the accessibility tree gives a row, cell or control: its labelling, a field's label, its content, then its title or placeholder.
 	function nameOf(element) {
 		const names = [
-			element.getAttribute('aria-label'),
-			(element.getAttribute('aria-labelledby') || '')
-				.split(' ')
-				.map(id => document.getElementById(id)?.textContent)
-				.join(' '),
-			element.getAttribute('placeholder'),
-			element.labels?.[0]?.textContent,
-			element.textContent
+			ownLabel(element),
+			[...(element.labels || [])].map(label => label.textContent).join(' '),
+			contentOf(element),
+			element.getAttribute('title'),
+			element.getAttribute('placeholder')
 		]
-		return names.map(text => (text || '').trim().replaceAll(/\s+/gu, ' ')).find(Boolean) || ''
+		return names.map(words).find(Boolean) || ''
 	}
-	function query(name, pool) {
-		if (/^[#.[]/u.test(name)) return [...document.querySelectorAll(name)].find(shown)
+	function query(target, pool) {
+		// A target is a CSS selector when it parses as one and uses selector syntax; anything else is a name.
+		if (/[#.[:>]/u.test(target) && CSS.supports(`selector(${target})`)) {
+			return [...document.querySelectorAll(target)].find(shown)
+		}
+		const text = squashed(target)
 		const hits = [...document.querySelectorAll(pool)].filter(
-			element => !layer.contains(element) && nameOf(element) === name && shown(element)
+			element =>
+				!layer.contains(element) &&
+				(squashed(element.textContent).includes(text) ||
+					element.matches('[aria-label],[aria-labelledby],[title],[placeholder]') ||
+					element.labels?.length > 0) &&
+				nameOf(element) === target &&
+				shown(element)
 		)
 		// The innermost element carrying the name, so a row's button wins over the row.
 		return hits.find(element => !hits.some(other => other !== element && element.contains(other)))
@@ -71,7 +107,7 @@ async function play(task, steps) {
 	async function find(name, pool, waited) {
 		const element = query(name, pool)
 		if (element) return element
-		if (waited >= 8000) throw new Error(`no visible target named "${name}"`)
+		if (waited >= 8000) throw new Error(`no visible target "${name}"`)
 		await sleep(200)
 		return find(name, pool, waited + 200)
 	}
@@ -103,9 +139,11 @@ async function play(task, steps) {
 		}, 700)
 		return point
 	}
-	async function click(element) {
+	function enabled(element) {
 		if (element.matches(':disabled, [aria-disabled="true"]')) throw new Error('target is disabled')
-		const point = await aim(element)
+	}
+	/** @param {Element} element @param {{x: number, y: number}} point */
+	function tap(element, point) {
 		// A synthetic click reaches any element, so what a real pointer would hit decides whether this one counts.
 		const hit = document.elementFromPoint(point.x, point.y)
 		if (!hit || !(element.contains(hit) || hit.contains(element))) {
@@ -127,6 +165,10 @@ async function play(task, steps) {
 		element.dispatchEvent(new MouseEvent('mouseup', init))
 		element.focus?.()
 		element.click()
+	}
+	async function click(element) {
+		enabled(element)
+		tap(element, await aim(element))
 	}
 	// React tracks a field's value through the prototype's setter, so typing goes through it.
 	/** @param {number} end */
@@ -158,47 +200,67 @@ async function play(task, steps) {
 		if (proceed && key === 'Tab') tabbable(target)?.focus()
 	}
 	// Typed text is never captioned: a recording must not show a secret or private text.
-	function labelOf(step) {
+	function captionOf(step) {
 		if (step.label) return step.label
 		if (step.type !== undefined) return `Type into ${step.into}`
 		if (step.see !== undefined) return step.see
 		return step.say ?? step.press ?? step.click
 	}
-	/** @param {() => boolean} extra @param {number} waited @param {unknown[]} mutations @param {URL} from */
-	async function waitForChange(extra, waited, mutations, from) {
-		if (mutations.length > 0 || location.href !== from.href || extra()) return true
+	/** @param {() => boolean} changed @param {number} waited */
+	async function waitForChange(changed, waited) {
+		if (changed()) return true
 		if (waited >= 1500) return false
 		await sleep(100)
-		return waitForChange(extra, waited + 100, mutations, from)
+		return waitForChange(changed, waited + 100)
 	}
-	// Runs the action and reports whether the page itself changed within the wait: DOM mutations outside the overlay, a new address, or what `extra` sees.
-	/** @param {() => unknown} action @param {() => boolean} extra */
-	async function responds(action, extra) {
-		const from = new URL(location.href)
-		const mutations = []
-		const observer = new MutationObserver(records => {
-			mutations.push(...records.filter(record => !layer.contains(record.target)))
+	// Runs the action and reports whether the page answered it within the wait: a new address, what `extra` sees, or a DOM change outside the overlay and outside every part that already changed on its own in the second before, as an animated page's parts do.
+	/** @template T @param {() => T | Promise<T>} prepare @param {(prepared: T) => void} action @param {(prepared: T) => boolean} extra */
+	async function responds(prepare, action, extra) {
+		const from = location.href
+		/** @type {MutationRecord[]} */
+		const records = []
+		const observer = new MutationObserver(found => {
+			records.push(...found)
 		})
 		observer.observe(document, {attributes: true, characterData: true, childList: true, subtree: true})
-		await action()
-		const changed = await waitForChange(extra, 0, mutations, from)
+		const [prepared] = await Promise.all([prepare(), sleep(1000)])
+		records.push(...observer.takeRecords())
+		const busy = new Set(records.map(record => record.target))
+		const before = records.length
+		/** @param {Node | null} node @returns {boolean} */
+		function moving(node) {
+			return node !== null && (busy.has(node) || moving(node.parentNode))
+		}
+		action(prepared)
+		const changed = await waitForChange(
+			() =>
+				location.href !== from ||
+				extra(prepared) ||
+				records.slice(before).some(record => !layer.contains(record.target) && !moving(record.target)),
+			0
+		)
 		observer.disconnect()
 		return changed
 	}
 	async function act(step) {
-		const targets = 'a,button,input,label,summary,select,textarea,[role],[tabindex],td,li,span,div,p'
+		const targets = 'body *'
 		const results = []
 		if (step.click !== undefined) {
 			const element = await find(step.click, targets, 0)
 			const checked = element.checked
 			// Only a text field counts focus as a response: any click focuses a button.
 			const focuses = element.matches('input,textarea,select') && document.activeElement !== element
+			enabled(element)
 			const responded = await responds(
-				() => click(element),
+				() => aim(element),
+				point => {
+					tap(element, point)
+				},
 				() => element.checked !== checked || (focuses && document.activeElement === element)
 			)
-			if (!responded) throw new Error('the page did not respond to the click')
-			results.push('the page responded')
+			// A step that names what it should show is proven by that text instead.
+			if (!responded && step.see === undefined) throw new Error('the page did not respond to the click')
+			if (responded) results.push('the page responded')
 		}
 		if (step.type !== undefined) {
 			const field = await find(step.into, 'input,textarea', 0)
@@ -209,15 +271,15 @@ async function play(task, steps) {
 			results.push('the field holds the text')
 		}
 		if (step.press !== undefined) {
-			const before = document.activeElement
 			const responded = await responds(
+				() => document.activeElement,
 				() => {
 					press(step.press)
 				},
-				() => document.activeElement !== before
+				before => document.activeElement !== before
 			)
-			if (!responded) throw new Error(`the page did not respond to ${step.press}`)
-			results.push('the page responded')
+			if (!responded && step.see === undefined) throw new Error(`the page did not respond to ${step.press}`)
+			if (responded) results.push('the page responded')
 		}
 		if (step.see !== undefined) {
 			await find(step.see, targets, 0)
@@ -234,7 +296,7 @@ async function play(task, steps) {
 			typeof steps[index] === 'string' && {click: steps[index]},
 			typeof steps[index] === 'object' && steps[index]
 		)
-		const label = labelOf(step)
+		const label = captionOf(step)
 		caption.textContent = label
 		caption.style.opacity = '1'
 		beats[index].style.background = '#fafafa'

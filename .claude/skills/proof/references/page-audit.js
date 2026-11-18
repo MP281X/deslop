@@ -1,5 +1,5 @@
-// Pass this file's text to preview_evaluate on each captured state; it returns what a reader would flag. It only reads the page.
-function auditPage() {
+// Pass this file's text plus `auditPage()` to preview_evaluate on each captured state; it returns what a reader would flag. It only reads the page.
+async function auditPage() {
 	const paint = document.createElement('canvas').getContext('2d', {willReadFrequently: true})
 
 	function visible(element) {
@@ -60,10 +60,35 @@ function auditPage() {
 			rect.width * rect.height >= parent.width * parent.height * 0.9
 		)
 	}
-	function overlapping(first, second) {
+	// The part of a box its scrolling and clipping ancestors leave drawn; a fixed element is clipped by none of them, and the body's overflow belongs to the viewport.
+	/** @param {Element} element @param {{bottom: number, left: number, right: number, top: number}} box */
+	function clipped(element, box) {
+		if (
+			!element.parentElement ||
+			element.parentElement === document.body ||
+			getComputedStyle(element).position === 'fixed'
+		) {
+			return box
+		}
+		const style = getComputedStyle(element.parentElement)
+		if (style.overflowX === 'visible' && style.overflowY === 'visible') return clipped(element.parentElement, box)
+		const edge = element.parentElement.getBoundingClientRect()
+		return clipped(element.parentElement, {
+			bottom: Math.min(box.bottom, edge.bottom),
+			left: Math.max(box.left, edge.left),
+			right: Math.min(box.right, edge.right),
+			top: Math.max(box.top, edge.top)
+		})
+	}
+	function drawn(element) {
+		const rect = element.getBoundingClientRect()
+		return clipped(element, {bottom: rect.bottom, left: rect.left, right: rect.right, top: rect.top})
+	}
+	/** @param {Map<Element, {bottom: number, left: number, right: number, top: number}>} boxes */
+	function overlapping(first, second, boxes) {
 		if (first.contains(second) || second.contains(first) || overlay(first) || overlay(second)) return false
-		const a = first.getBoundingClientRect()
-		const b = second.getBoundingClientRect()
+		const a = boxes.get(first)
+		const b = boxes.get(second)
 		const overlapX = Math.min(a.right, b.right) - Math.max(a.left, b.left)
 		const overlapY = Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top)
 		return overlapX > 2 && overlapY > 2
@@ -84,9 +109,25 @@ function auditPage() {
 	function over(top, bottom) {
 		return [0, 1, 2].map(index => top[index] * top[3] + bottom[index] * (1 - top[3]))
 	}
-	// The opaque color behind an element: every ancestor's background composited from the root down onto white.
+	// The canvas under the root: Chrome's dark canvas when the page's color scheme, declared in CSS or its color-scheme meta, resolves to dark.
+	function canvas() {
+		const declared = getComputedStyle(document.documentElement).colorScheme
+		const schemes = (
+			(declared === 'normal' && document.querySelector('meta[name="color-scheme"]')?.getAttribute('content')) ||
+			declared
+		).split(/\s+/u)
+		if (
+			schemes.includes('dark') &&
+			(!schemes.includes('light') || matchMedia('(prefers-color-scheme: dark)').matches)
+		) {
+			return [18, 18, 18]
+		}
+		return [255, 255, 255]
+	}
+	const base = canvas()
+	// The opaque color behind an element: every ancestor's background composited from the root down onto the canvas.
 	function backdrop(element) {
-		if (!element) return [255, 255, 255]
+		if (!element) return base
 		return over(channels(getComputedStyle(element).backgroundColor), backdrop(element.parentElement))
 	}
 	function luminance(rgb) {
@@ -135,17 +176,37 @@ function auditPage() {
 	}
 	// Pairs of controls that overlap: each is compared with the next fifty by left edge, which bounds the work on a page of thousands.
 	function overlaps(elements) {
-		const sorted = [...elements].sort(
-			(first, second) => first.getBoundingClientRect().left - second.getBoundingClientRect().left
-		)
+		const boxes = new Map(elements.map(element => [element, drawn(element)]))
+		const sorted = [...elements].sort((first, second) => boxes.get(first).left - boxes.get(second).left)
 		return sorted
 			.flatMap((first, index) =>
 				sorted
 					.slice(index + 1, index + 51)
-					.filter(second => overlapping(first, second))
+					.filter(second => overlapping(first, second, boxes))
 					.map(second => `${describe(first)} ↔ ${describe(second)}`)
 			)
 			.slice(0, 15)
+	}
+
+	function sleep(ms) {
+		return new Promise(resolve => {
+			setTimeout(resolve, ms)
+		})
+	}
+	// A transition caught midway, such as a theme switch, is read once it settles; what still runs after three seconds or repeats forever is left out of the contrast check and named instead.
+	const finite = document
+		.getAnimations()
+		.filter(
+			animation => animation.playState === 'running' && animation.effect?.getComputedTiming().endTime !== Infinity
+		)
+	await Promise.race([Promise.allSettled(finite.map(animation => animation.finished)), sleep(3000)])
+	const animated = document
+		.getAnimations()
+		.filter(animation => animation.playState === 'running')
+		.map(animation => animation.effect?.target)
+		.filter(Boolean)
+	function moving(element) {
+		return animated.some(target => target.contains(element))
 	}
 
 	const all = [...document.querySelectorAll('body *')].filter(visible)
@@ -158,7 +219,10 @@ function auditPage() {
 	const errors = all.filter(element =>
 		element.matches('[role="alert"], [data-slot="alert"][data-variant="destructive"]')
 	)
-	const texts = all.filter(element => element.children.length === 0 && textOf(element).length > 1)
+	const faint = all
+		.filter(element => element.children.length === 0 && textOf(element).length > 1)
+		.filter(element => !element.closest('[disabled], [aria-disabled="true"]'))
+		.filter(element => contrast(element) < 3 || (!large(element) && contrast(element) < 4.5))
 	const selected = all.filter(element =>
 		element.matches(
 			'[aria-selected="true"], [aria-current]:not([aria-current="false"]), [aria-checked="true"], [data-state="active"], [data-state="on"], [data-selected="true"]'
@@ -202,17 +266,26 @@ function auditPage() {
 			)
 			.map(describe),
 		errors: errors.map(describe),
-		lowContrast: texts
-			.filter(element => !element.closest('[disabled], [aria-disabled="true"]'))
-			.filter(element => contrast(element) < 3 || (!large(element) && contrast(element) < 4.5))
+		inTransition: faint.filter(moving).slice(0, 15).map(describe),
+		lowContrast: faint
+			.filter(element => !moving(element))
 			.slice(0, 15)
 			.map(element => `${describe(element)} ${contrast(element).toFixed(1)}:1`),
 		overlaps: overlaps(controls),
 		pageOverflow: Math.max(0, document.documentElement.scrollWidth - innerWidth),
 		repeatedActions: repeated(controls.map(nameOf).filter(Boolean)),
-		repeatedText: repeated(texts.map(textOf)),
+		// The same text twice in one place: an element repeating its previous sibling, as a duplicated row or a label shown beside itself. Text repeated in separate places, such as several charts' axes or one title held in several jobs, is content.
+		repeatedText: all
+			.filter(
+				element =>
+					element.previousElementSibling &&
+					visible(element.previousElementSibling) &&
+					/\p{L}/u.test(textOf(element)) &&
+					textOf(element.previousElementSibling) === textOf(element)
+			)
+			.slice(0, 15)
+			.map(describe),
 		unnamed: controls.filter(element => !nameOf(element)).map(describe),
 		viewport: `${innerWidth}×${innerHeight}`
 	}
 }
-auditPage()
