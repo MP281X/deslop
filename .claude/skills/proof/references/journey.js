@@ -213,12 +213,7 @@ async function play(task, steps) {
 		await sleep(100)
 		return waitForChange(changed, waited + 100)
 	}
-	/** @param {MutationRecord} record */
-	function partOf(record) {
-		if (record.type === 'childList') return record.target
-		return record.target.parentNode ?? record.target
-	}
-	// Runs the action and reports whether the page answered it within the wait: a new address, what `extra` sees, or a DOM change outside the overlay and outside every part that already changed on its own in the second before, as an animated page's parts do. A part is the changed node's parent, so an animation that redraws a different sibling each frame is not an answer, nor is a change to a node the page has already removed.
+	// Runs the action and reports whether the page answered it within the wait: a new address, what `extra` sees, or, on a page that was still for the second before, a DOM change outside the overlay. A page that changes on its own cannot show which change is the answer, so `still` is false and the step must name what it shows; an update that happens to land in a still page's wait counts as its answer.
 	/** @template T @param {() => T | Promise<T>} prepare @param {(prepared: T) => void} action @param {(prepared: T) => boolean} extra */
 	async function responds(prepare, action, extra) {
 		const from = location.href
@@ -228,26 +223,26 @@ async function play(task, steps) {
 			records.push(...found)
 		})
 		observer.observe(document, {attributes: true, characterData: true, childList: true, subtree: true})
+		/** @param {MutationRecord} record */
+		function shows(record) {
+			return record.target.isConnected && !layer.contains(record.target)
+		}
 		const [prepared] = await Promise.all([prepare(), sleep(1000)])
 		records.push(...observer.takeRecords())
-		const busy = new Set(records.map(partOf))
+		const still = !records.some(shows)
 		const before = records.length
-		/** @param {Node | null} node @returns {boolean} */
-		function moving(node) {
-			return node !== null && (busy.has(node) || moving(node.parentNode))
-		}
 		action(prepared)
 		const changed = await waitForChange(
-			() =>
-				location.href !== from ||
-				extra(prepared) ||
-				records
-					.slice(before)
-					.some(record => record.target.isConnected && !layer.contains(record.target) && !moving(record.target)),
+			() => location.href !== from || extra(prepared) || (still && records.slice(before).some(shows)),
 			0
 		)
 		observer.disconnect()
-		return changed
+		return {changed, still}
+	}
+	// Why a step without `see` failed: nothing answered, or the page's own changes hide whether anything did.
+	function unanswered(still, action) {
+		if (still) return `the page did not respond to ${action}`
+		return `the page changes on its own, so add \`see\` with the text ${action} should show`
 	}
 	async function act(step) {
 		const targets = 'body *'
@@ -266,8 +261,8 @@ async function play(task, steps) {
 				() => element.checked !== checked || (focuses && document.activeElement === element)
 			)
 			// A step that names what it should show is proven by that text instead.
-			if (!responded && step.see === undefined) throw new Error('the page did not respond to the click')
-			if (responded) results.push('the page responded')
+			if (!responded.changed && step.see === undefined) throw new Error(unanswered(responded.still, 'the click'))
+			if (responded.changed) results.push('the page responded')
 		}
 		if (step.type !== undefined) {
 			const field = await find(step.into, 'input,textarea', 0)
@@ -285,8 +280,8 @@ async function play(task, steps) {
 				},
 				before => document.activeElement !== before
 			)
-			if (!responded && step.see === undefined) throw new Error(`the page did not respond to ${step.press}`)
-			if (responded) results.push('the page responded')
+			if (!responded.changed && step.see === undefined) throw new Error(unanswered(responded.still, step.press))
+			if (responded.changed) results.push('the page responded')
 		}
 		if (step.see !== undefined) {
 			await find(step.see, targets, 0)
