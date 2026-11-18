@@ -38,7 +38,7 @@ function at(id: VisitorId, x: number, y: number) {
 		Array.some(scene.visitors, visitor => visitor.id === id && visitor.x === x && visitor.y === y)
 }
 
-// A tab in the room: its cursor's public id, a wait for the first scene that matches, and how many scenes it has read.
+// A tab in the room: its cursor's public id, the scene it read last, a wait for the first scene that matches, and how many scenes it has read.
 const tab = Effect.fnUntraced(function* (presence: typeof Presence.Service, key: GuestKey, connection: number) {
 	const ready = yield* Deferred.make<Scene>()
 	const seen = yield* SubscriptionRef.make<Option.Option<Scene>>(Option.none())
@@ -56,6 +56,7 @@ const tab = Effect.fnUntraced(function* (presence: typeof Presence.Service, key:
 	)
 	return {
 		fiber,
+		latest: Effect.flatMap(SubscriptionRef.get(seen), Effect.fromOption),
 		own: (yield* Deferred.await(ready)).own,
 		read,
 		until: Effect.fnUntraced(function* (predicate: (scene: Scene) => boolean) {
@@ -94,8 +95,14 @@ it.effect(
 				Array.some(next.visitors, visitor => visitor.id === first.own && visitor.color === '#4385be')
 		)
 
+		// A reloaded tab rejoins with its own random colour and no pointer yet: the shared cursor stays where and as it was.
 		const second = yield* tab(presence, GUEST, 2)
 		assert.strictEqual(second.own, first.own)
+		yield* publish
+		assert.deepStrictEqual(
+			Array.findFirst((yield* observer.latest).visitors, visitor => visitor.id === first.own),
+			Option.some({color: '#4385be', id: first.own, name: 'tab-1', x: 0.2, y: 0.3})
+		)
 		yield* Fiber.interrupt(first.fiber)
 		yield* presence.move({x: 0.7, y: 0.7}, 2)
 		yield* publish
