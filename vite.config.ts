@@ -14,11 +14,11 @@ const SPINNER_ICONS = ['CircleNotch', 'Spinner', 'SpinnerBall', 'SpinnerGap']
 // Each worktree previews in its own systemd user unit, which outlives the agent's turn, on a port derived from its path and shared over tailnet HTTPS.
 const PREVIEW_UNIT = Array.join(
 	[
-		'u=preview-${PWD##*/} p=$((20000 + 0x$(printf %s "$PWD" | sha256sum | cut -c1-4) % 10000)) m=$(git rev-parse --git-path preview-serve)',
+		'u=preview-${PWD##*/} p=$((20000 + 0x$(printf %s "$PWD" | sha256sum | cut -c1-4) % 10000)) m=$(git rev-parse --git-path preview-serve) h=$(hostname -s).tailnet-8c4c.ts.net',
 		'fail() { printf "%s\\n" "$1" >&2; exit 1; }',
-		// Every checkout's tailnet entry proxies the same loopback address, so only the marker says this checkout added it; a marker left beside an entry that now proxies elsewhere removes nothing.
+		// Only the marker says this checkout added the tailnet entry, and a marker can outlive it: nothing is removed or reused unless the port's whole entry is still this host's root proxied to this preview's loopback port.
 		'served() { tailscale serve status --json | jq -e --arg p $p ".TCP[\\$p]" >/dev/null; }',
-		'proxied() { tailscale serve status --json | jq -e --arg s :$p --arg to http://127.0.0.1:$p "[.Web // {} | to_entries[] | select(.key | endswith(\\$s)) | .value.Handlers[].Proxy] == [\\$to]" >/dev/null; }',
+		'proxied() { tailscale serve status --json | jq -e --arg s :$p --arg k $h:$p --arg to http://127.0.0.1:$p "[.Web // {} | to_entries[] | select(.key | endswith(\\$s)) | {key, handlers: .value.Handlers}] == [{key: \\$k, handlers: {\\"/\\": {Proxy: \\$to}}}]" >/dev/null; }',
 		'unserve() { [ -f "$m" ] || return 0; ! proxied || sudo tailscale serve --https=$p off >/dev/null || return 1; rm "$m"; }',
 		// The unit is named by folder alone, so a checkout elsewhere with the same folder name may own it.
 		'd=$(systemctl --user show -P WorkingDirectory $u); [[ -z $d || $d -ef . ]] || fail "$u runs $d, not this checkout"'
@@ -28,7 +28,7 @@ const PREVIEW_UNIT = Array.join(
 const PREVIEW = Array.join(
 	[
 		PREVIEW_UNIT,
-		'h=$(hostname -s).tailnet-8c4c.ts.net a=$1 t=${PREVIEW_DEADLINE:-300}',
+		'a=$1 t=${PREVIEW_DEADLINE:-300}',
 		// Without an app argument, the first app with a web page this branch changes, else Portfolio; an iOS app's server has no page, so it previews only by name.
 		'[ -n "$a" ] || a=$({ git diff --name-only origin/main...HEAD; git status --porcelain --no-renames | cut -c4-; } 2>/dev/null | grep -oP "^apps/\\K[^/]+" | sort -u | while read -r x; do [ -f "apps/$x/index.html" ] && echo "$x"; done | awk NR==1)',
 		'a=${a:-portfolio}',

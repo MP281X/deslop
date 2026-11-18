@@ -227,17 +227,20 @@ async function play(task, steps) {
 		function shows(record) {
 			return record.target.isConnected && !layer.contains(record.target)
 		}
-		const [prepared] = await Promise.all([prepare(), sleep(1000)])
-		records.push(...observer.takeRecords())
-		const still = !records.some(shows)
-		const before = records.length
-		action(prepared)
-		const changed = await waitForChange(
-			() => location.href !== from || extra(prepared) || (still && records.slice(before).some(shows)),
-			0
-		)
-		observer.disconnect()
-		return {changed, still}
+		try {
+			const [prepared] = await Promise.all([prepare(), sleep(1000)])
+			records.push(...observer.takeRecords())
+			const still = !records.some(shows)
+			const before = records.length
+			action(prepared)
+			const changed = await waitForChange(
+				() => location.href !== from || extra(prepared) || (still && records.slice(before).some(shows)),
+				0
+			)
+			return {changed, still}
+		} finally {
+			observer.disconnect()
+		}
 	}
 	// Why a step without `see` failed: nothing answered, or the page's own changes hide whether anything did.
 	function unanswered(still, action) {
@@ -247,9 +250,11 @@ async function play(task, steps) {
 	async function act(step) {
 		const targets = 'body *'
 		const results = []
-		// Text already on the page cannot show what a click or key did.
-		if (step.see !== undefined && (step.click ?? step.press) !== undefined && query(step.see, targets)) {
-			throw new Error(`"${step.see}" was on the page before the step: name text the step brings`)
+		// Text already on the page cannot show what a click or key did, so it is looked for at the last moment before the action.
+		function unseen() {
+			if (step.see !== undefined && query(step.see, targets)) {
+				throw new Error(`"${step.see}" was on the page before the step: name text the step brings`)
+			}
 		}
 		if (step.click !== undefined) {
 			const element = await find(step.click, targets, 0)
@@ -260,6 +265,7 @@ async function play(task, steps) {
 			const responded = await responds(
 				() => aim(element),
 				point => {
+					unseen()
 					tap(element, point)
 				},
 				() => element.checked !== checked || (focuses && document.activeElement === element)
@@ -280,6 +286,7 @@ async function play(task, steps) {
 			const responded = await responds(
 				() => document.activeElement,
 				() => {
+					unseen()
 					press(step.press)
 				},
 				before => document.activeElement !== before

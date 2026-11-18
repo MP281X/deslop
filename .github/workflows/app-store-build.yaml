@@ -53,10 +53,13 @@ jobs:
           # Every app builds from the shared config, components and this workflow, so a change outside apps/ proves them all.
           shared=0
           touched=()
+          # Written to files first: a diff or a list that fails stops this step instead of selecting no app.
+          git diff --name-only --no-renames -z "$BASE" HEAD > "$RUNNER_TEMP/changed"
+          jq -r '.[]' <<< "$MOBILE" > "$RUNNER_TEMP/mobile"
           while IFS= read -r -d '' path; do
             [[ $path =~ $native ]] || continue
             if [[ $path =~ ^apps/([^/]+)/ ]]; then touched+=("${BASH_REMATCH[1]}"); else shared=1; fi
-          done < <(git diff --name-only --no-renames -z "$BASE" HEAD)
+          done < "$RUNNER_TEMP/changed"
           apps=()
           while read -r app; do
             selected=$shared
@@ -64,7 +67,7 @@ jobs:
               if [[ $name == "$app" ]]; then selected=1; fi
             done
             if ((selected)); then apps+=("$app"); fi
-          done < <(jq -r '.[]' <<< "$MOBILE")
+          done < "$RUNNER_TEMP/mobile"
           mobile=$(printf '%s\n' "${apps[@]}" | jq -Rsc 'split("\n") | map(select(length > 0))')
           echo "mobile=$mobile" >> "$GITHUB_OUTPUT"
 
