@@ -301,6 +301,7 @@ export class Fleet extends Context.Service<
 				),
 				snapshot: Effect.withSpan(
 					Effect.gen(function* () {
+						yield* inventory.ensureFresh
 						const own = yield* local
 						const others = yield* Effect.forEach(
 							workers,

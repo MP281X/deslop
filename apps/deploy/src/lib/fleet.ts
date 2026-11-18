@@ -1,4 +1,4 @@
-import {Duration, Effect, Function, Option, Stream, pipe} from 'effect'
+import {Effect, Function, Option, Stream, pipe} from 'effect'
 
 import {Atom, AtomRpc} from 'effect/reactivity'
 
@@ -54,15 +54,9 @@ export const openExposeAtom = Atom.writable(Function.constUndefined, (context, p
 	context.set(exposeTargetAtom, Option.some(port))
 })
 
-// Starts a timer's job now; keyed by the job's row, so its failure shows there. It stays waiting at least ten seconds, the time the inventory takes to show the job running.
+// Starts a timer's job now; keyed by the job's row, so its failure shows there.
 export const runAtom = Atom.family((_id: ItemId) =>
-	RpcClient.runtime.fn((input: RunRequest) =>
-		pipe(
-			RpcClient,
-			Effect.flatMap(client => client('inventory.run', input)),
-			Effect.zip(Effect.sleep(Duration.seconds(10)), {concurrent: true})
-		)
-	)
+	RpcClient.runtime.fn((input: RunRequest) => Effect.flatMap(RpcClient, client => client('inventory.run', input)))
 )
 
 export const metricsAtom = Atom.family((minutes: HistoryQuery['minutes']) =>

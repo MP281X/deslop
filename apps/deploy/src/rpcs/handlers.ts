@@ -75,12 +75,12 @@ export const RpcHandlers = RpcContracts.toLayer(
 				Effect.onExit(() => Reactivity.invalidate(['deployInventory']))
 			),
 			'inventory.run': fleet.run,
-			'inventory.snapshot': () => fleet.local,
+			'inventory.snapshot': () => Effect.andThen(localInventory.ensureFresh, fleet.local),
 			'inventory.start': input =>
 				Effect.onExit(localInventory.run(input), () => Reactivity.invalidate(['deployInventory'])),
 			'inventory.watch': () => inventory,
 			'metrics.history': fleet.history,
-			// Cached peer history with current local history at once, then refreshed peers; local reads recur at most every 30 seconds, apart from peer refreshes every 5–30 seconds, so a sleeping peer never delays them.
+			// Emit cached peer history before refreshing peers; subsequent local and peer samplers run concurrently.
 			'metrics.watch': query => Stream.unwrap(Cache.get(metrics, query.minutes))
 		})
 	})

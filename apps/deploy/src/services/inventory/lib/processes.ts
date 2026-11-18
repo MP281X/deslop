@@ -206,10 +206,9 @@ export function processReadings(
 	}
 }
 
-// A Mac's processes under a Dock app or user launch agent, from `ps -axww -o pid=,ppid=,rss=,time=,lstart=,args=` in the C locale, keyed like `processOwner`; `agents` names each app's PID. Times are milliseconds: `ticks` of CPU, and `start` as an identity that tells a reused PID apart.
-// judge-ignore no-silent-fallback -- collector input skips malformed ps rows and omits processes not owned by an app; it does not replace a failed ps command.
-export function launchdProcesses(text: string, agents: HashMap.HashMap<ProcessId, UnitId>) {
-	const rows = Array.getSomes(
+// All readable rows from `ps -axww -o pid=,ppid=,rss=,time=,lstart=,args=` in the C locale.
+function launchdRows(text: string) {
+	return Array.getSomes(
 		pipe(
 			text,
 			String.split('\n'),
@@ -229,6 +228,16 @@ export function launchdProcesses(text: string, agents: HashMap.HashMap<ProcessId
 			)
 		)
 	)
+}
+
+// Listener identities need all processes, including those outside a Dock app or launch agent.
+export function launchdStarts(text: string) {
+	return HashMap.fromIterable(Array.map(launchdRows(text), row => [row.pid, row.start] as const))
+}
+
+// A Mac's app-owned processes; agents names each app's PID, and start distinguishes a reused PID.
+export function launchdProcesses(text: string, agents: HashMap.HashMap<ProcessId, UnitId>) {
+	const rows = launchdRows(text)
 	const parents = HashMap.fromIterable(Array.map(rows, row => [row.pid, row.parent] as const))
 	function agent(pid: ProcessId, visited = MutableHashSet.empty<ProcessId>()): Option.Option<UnitId> {
 		if (MutableHashSet.has(visited, pid)) return Option.none()

@@ -9,6 +9,7 @@ import {
 	Duration,
 	Context,
 	Effect,
+	Exit,
 	Fiber,
 	FileSystem,
 	Function,
@@ -19,7 +20,6 @@ import {
 	Record,
 	Ref,
 	Result,
-	Schedule,
 	Schema,
 	String,
 	SubscriptionRef,
@@ -41,7 +41,7 @@ import {
 	macApplications,
 	systemProgram
 } from './lib/launchd.ts'
-import {attachProcesses, launchdProcesses, processReadings, processes} from './lib/processes.ts'
+import {attachProcesses, launchdProcesses, launchdStarts, processReadings, processes} from './lib/processes.ts'
 import type {ProcessMeasurement} from './lib/processes.ts'
 import {type Socket, lsofSockets, probeSocket, socketLine, socketProcess, socketUnit} from './lib/sockets.ts'
 
@@ -72,10 +72,11 @@ declare module 'effect/reactivity/Reactivity' {
 function portItems(
 	sockets: readonly Socket[],
 	worker: WorkerId,
-	http: HttpClient.HttpClient,
+	probe: (port: number, identity: string) => Effect.Effect<Option.Option<{http: boolean; ui: boolean}>>,
 	source: {
 		readonly cwd: (pid: ProcessId) => Effect.Effect<Option.Option<string>>
 		readonly unit: (pid: ProcessId) => Effect.Effect<Option.Option<UnitId>>
+		readonly start: (pid: ProcessId) => Effect.Effect<Option.Option<string>>
 	}
 ) {
 	return Effect.gen(function* () {
@@ -92,6 +93,7 @@ function portItems(
 									onFalse: () => Effect.succeedNone,
 									onTrue: () => source.cwd(process.pid)
 								}),
+								start: yield* source.start(process.pid),
 								unit: yield* source.unit(process.pid)
 							}
 						] as const
@@ -115,36 +117,19 @@ function portItems(
 				})
 				const response = yield* Boolean.match(probeSocket(socket, Option.getOrElse(process, Function.constant(''))), {
 					onFalse: () => Effect.succeed(Option.none<{http: boolean; ui: boolean}>()),
-					onTrue: Effect.fnUntraced(function* () {
-						// The probe sends an unsampled trace context, so the app's HEAD span is never exported.
-						return yield* pipe(
-							http.head(`http://127.0.0.1:${socket.port}/`, {
-								headers: HttpTraceContext.toHeaders(
-									new Tracer.NativeSpan({
-										annotations: Context.empty(),
-										kind: 'internal',
-										links: [],
-										name: 'Deploy.probe',
-										parent: Option.none(),
-										sampled: false,
-										startTime: 0n
-									})
-								)
-							}),
-							Effect.map(value => ({
-								http: true,
-								ui:
-									value.status >= 200 &&
-									value.status < 400 &&
-									String.includes('text/html')(value.headers['content-type'] ?? '')
-							})),
-							Effect.provideService(FetchHttpClient.RequestInit, {redirect: 'manual'}),
-							// A probe expects refusals and 4xx from ports that aren't web pages, so it records no span.
-							Effect.provideService(HttpClient.TracerDisabledWhen, Function.constTrue),
-							Effect.timeout(Duration.millis(700)),
-							Effect.option
+					onTrue: () =>
+						probe(
+							socket.port,
+							Option.match(socket.process, {
+								onNone: Function.constant(''),
+								onSome: listener =>
+									pipe(
+										origin,
+										Option.flatMap(value => value.start),
+										Option.match({onNone: Function.constant(''), onSome: start => `${listener.pid}:${start}`})
+									)
+							})
 						)
-					})
 				})
 				return InventoryItem.make({
 					address: Option.some(socket.address),
@@ -207,6 +192,7 @@ export class Inventory extends Context.Service<
 	Inventory,
 	{
 		readonly refresh: Effect.Effect<void>
+		readonly ensureFresh: Effect.Effect<void>
 		readonly run: (input: Omit<RunRequest, 'worker'>) => Effect.Effect<void, DeployError>
 		readonly snapshot: Effect.Effect<Snapshot>
 	}
@@ -235,6 +221,48 @@ export class Inventory extends Context.Service<
 			const worker = yield* Schema.decodeEffect(WorkerId)(hostname())
 			const selfProcess = yield* Schema.decodeEffect(ProcessId)(pid)
 			const processState = yield* Ref.make(Option.none<ReturnType<typeof processReadings>>())
+			// A refused or timed-out HEAD is the negative result of protocol detection, not a required collector read.
+			function head(port: number) {
+				return pipe(
+					http.head(`http://127.0.0.1:${port}/`, {
+						headers: HttpTraceContext.toHeaders(
+							new Tracer.NativeSpan({
+								annotations: Context.empty(),
+								kind: 'internal',
+								links: [],
+								name: 'Deploy.probe',
+								parent: Option.none(),
+								sampled: false,
+								startTime: 0n
+							})
+						)
+					}),
+					Effect.map(value => ({
+						http: true,
+						ui:
+							value.status >= 200 &&
+							value.status < 400 &&
+							String.includes('text/html')(value.headers['content-type'] ?? '')
+					})),
+					Effect.provideService(FetchHttpClient.RequestInit, {redirect: 'manual'}),
+					Effect.provideService(HttpClient.TracerDisabledWhen, Function.constTrue),
+					Effect.timeout(Duration.millis(700)),
+					Effect.option
+				)
+			}
+			const probes = yield* Cache.makeWith((key: readonly [number, string]) => head(key[0]), {
+				capacity: Infinity,
+				timeToLive: exit =>
+					Boolean.match(Exit.isSuccess(exit) && Option.isSome(exit.value), {
+						onFalse: () => Duration.seconds(5),
+						onTrue: () => Duration.infinity
+					})
+			})
+			function probe(port: number, identity: string) {
+				// Without a readable start time a reused PID cannot be distinguished, so do not cache it.
+				if (identity === '') return head(port)
+				return Cache.get(probes, [port, identity])
+			}
 			// judge-ignore no-silent-fallback -- service and timer listings must succeed; failure diagnostics are optional and the listed failed state still marks the service as unhealthy.
 			const units = Effect.fnUntraced(function* (system: boolean) {
 				const scope = Boolean.match(system, {
@@ -407,9 +435,18 @@ export class Inventory extends Context.Service<
 							portItems(
 								Array.getSomes(pipe(String.trim(text), String.split('\n'), Array.map(socketLine))),
 								worker,
-								http,
+								probe,
 								{
 									cwd: processId => Effect.option(fs.readLink(`/proc/${processId}/cwd`)),
+									start: processId =>
+										Effect.map(
+											Effect.option(fs.readFileString(`/proc/${processId}/stat`)),
+											Option.flatMap(stat =>
+												Option.flatMap(String.lastIndexOf(')')(stat), at =>
+													pipe(String.slice(at + 2)(stat), String.split(/\s+/u), Array.get(19))
+												)
+											)
+										),
 									unit: processId =>
 										Effect.map(Effect.option(fs.readFileString(`/proc/${processId}/cgroup`)), cgroup =>
 											socketUnit(Option.getOrElse(cgroup, Function.constant('')))
@@ -420,42 +457,43 @@ export class Inventory extends Context.Service<
 					)
 				]
 			})
+			// Bundle paths identify names for this layer's lifetime, not just one snapshot.
+			const bundleNames = yield* Cache.make({
+				capacity: Infinity,
+				// judge-ignore no-silent-fallback -- missing bundle metadata keeps the agent label or bundle basename, as required by Deploy's Mac policy.
+				lookup: Effect.fnUntraced(function* (bundle: string) {
+					return yield* pipe(
+						command('/usr/bin/plutil', ['-convert', 'json', '-o', '-', `${bundle}/Contents/Info.plist`]),
+						Effect.flatMap(
+							Schema.decodeEffect(
+								Schema.fromJsonString(
+									Schema.Struct({
+										CFBundleDisplayName: Schema.optionalKey(Schema.Unknown),
+										CFBundleName: Schema.optionalKey(Schema.Unknown)
+									})
+								)
+							)
+						),
+						Effect.map(fields =>
+							pipe(
+								[fields.CFBundleDisplayName, fields.CFBundleName],
+								Array.filter(String.isString),
+								Array.map(String.trim),
+								Array.findFirst(String.isNonEmpty)
+							)
+						),
+						Effect.option,
+						Effect.map(Option.flatten)
+					)
+				})
+			})
 			// A Mac's Dock apps, user launch agents and listeners, measured together so CPU shares compare like readings.
 			const darwin: Effect.Effect<Machine> = Effect.gen(function* () {
 				// judge-ignore no-silent-fallback -- unresolved agents retain their actual label and bundle basename by product policy; launchctl list failure still fails this source.
 				const namedAgents = Effect.gen(function* () {
-					const agents = launchAgents(yield* command('launchctl', ['list']))
-					const bundleNames = yield* Cache.make({
-						capacity: agents.length + 1,
-						lookup: Effect.fnUntraced(function* (bundle: string) {
-							return yield* pipe(
-								command('/usr/bin/plutil', ['-convert', 'json', '-o', '-', `${bundle}/Contents/Info.plist`]),
-								Effect.flatMap(
-									Schema.decodeEffect(
-										Schema.fromJsonString(
-											Schema.Struct({
-												CFBundleDisplayName: Schema.optionalKey(Schema.Unknown),
-												CFBundleName: Schema.optionalKey(Schema.Unknown)
-											})
-										)
-									)
-								),
-								Effect.map(fields =>
-									pipe(
-										[fields.CFBundleDisplayName, fields.CFBundleName],
-										Array.filter(String.isString),
-										Array.map(String.trim),
-										Array.findFirst(String.isNonEmpty)
-									)
-								),
-								Effect.option,
-								Effect.map(Option.flatten)
-							)
-						})
-					})
 					return Array.getSomes(
 						yield* Effect.forEach(
-							agents,
+							launchAgents(yield* command('launchctl', ['list'])),
 							Effect.fnUntraced(function* (agent) {
 								if (String.startsWith('deslop-')(agent.label)) return Option.some(agent)
 								const program = Option.flatMap(
@@ -559,6 +597,11 @@ export class Inventory extends Context.Service<
 					)
 				})
 				const owned = Result.getOrElse(records, Array.empty<Result.Result.Success<typeof records>[number]>)
+				const starts = pipe(
+					launchd.table,
+					Result.map(launchdStarts),
+					Result.getOrElse(HashMap.empty<ProcessId, string>)
+				)
 				return {
 					processes: Effect.map(Effect.fromResult(records), found => ({records: found, time, total})),
 					sources: [
@@ -611,9 +654,8 @@ export class Inventory extends Context.Service<
 						),
 						collect(
 							'Listening ports',
-							// judge-ignore no-silent-fallback -- cwd and process ownership are optional listener metadata; a failed process table remains a separate source error.
 							Effect.flatMap(command('lsof', ['-nP', '+c0', '-iTCP', '-sTCP:LISTEN', '-iUDP', '-F', 'pctPnT']), text =>
-								portItems(lsofSockets(text), worker, http, {
+								portItems(lsofSockets(text), worker, probe, {
 									cwd: Effect.fnUntraced(function* (processId) {
 										return pipe(
 											yield* Effect.option(command('lsof', ['-nP', '-a', '-p', `${processId}`, '-d', 'cwd', '-Fn'])),
@@ -623,6 +665,7 @@ export class Inventory extends Context.Service<
 											Option.map(String.slice(1))
 										)
 									}),
+									start: processId => Effect.succeed(HashMap.get(starts, processId)),
 									unit: processId =>
 										Effect.succeed(
 											pipe(
@@ -781,13 +824,17 @@ export class Inventory extends Context.Service<
 				{attributes: {worker}}
 			)
 			const snapshot = yield* SubscriptionRef.make(yield* collectSnapshot)
-			const refresh = pipe(
-				snapshot,
-				SubscriptionRef.updateEffect(() => collectSnapshot),
-				Effect.withSpan('Inventory.refresh')
+			const [ensureFresh, invalidate] = yield* Effect.cachedInvalidateWithTTL(
+				pipe(
+					snapshot,
+					SubscriptionRef.updateEffect(() => collectSnapshot),
+					Effect.withSpan('Inventory.refresh')
+				),
+				Duration.seconds(5)
 			)
-			yield* pipe(refresh, Effect.schedule(Schedule.spaced(Duration.seconds(5))), Effect.forkScoped)
+			const refresh = Effect.andThen(invalidate, ensureFresh)
 			return {
+				ensureFresh,
 				refresh,
 				run: Effect.fn('Inventory.run')(function* (input) {
 					yield* Effect.onExit(start(input), () => refresh)
