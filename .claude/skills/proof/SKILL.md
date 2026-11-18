@@ -16,7 +16,7 @@ ffmpeg -ss <lead> -i <recording> -vf "mpdecimate=hi=1:lo=1:frac=0,setpts='if(eq(
 
 ## PR body
 
-Each push fills `.github/pull_request_template.md` (GitLab: `.gitlab/merge_request_templates/Default.md`) for the head, then reads it back rendered and fixes what fails to render. Uploads go through `--attach`, since host API writes are blocked.
+Each push rewrites the body from `.github/pull_request_template.md` (GitLab: `.gitlab/merge_request_templates/Default.md`), never appends to it, then reads it back rendered and fixes what fails to render. It describes the change at the head: never rounds, rebases or other PRs. Uploads go through `--attach`, since host API writes are blocked.
 
 ```bash
 gh pr edit <n> --title '<title>' --body-file - --attach './shot.png#<alt>' <<'EOF'  # ![alt](./shot.png) becomes the upload
