@@ -69,9 +69,12 @@ function UsageChart(props: {
 					data={chartPoints(props.history, props.minutes, props.recorded, props.layers)}
 					margin={{bottom: 0, left: 0, right: 0, top: 0}}
 				>
-					<CartesianGrid horizontal={false} />
+					{/* Grid lines only at the ticks, never at the chart's edges. */}
+					<CartesianGrid horizontal={false} syncWithTicks />
+					{/* Every tick keeps its grid line: the hidden axis would otherwise drop ticks whose unshown labels overlap. */}
 					<XAxis
 						hide
+						interval={0}
 						dataKey="at"
 						type="number"
 						domain={[DateTime.toEpochMillis(window.start), DateTime.toEpochMillis(window.end)]}
