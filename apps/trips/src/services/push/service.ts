@@ -466,6 +466,8 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 				),
 				Effect.forEach(activity => Effect.result(finish(activity, now)), {concurrency: 1})
 			)
+			// A leg starts only once its earlier activity ended, so a start never retires a channel Apple no longer has while its activity waits to be forgotten.
+			yield* Option.match(Array.head(Array.getFailures(ended)), {onNone: () => Effect.void, onSome: Effect.fail})
 			const outcomes = yield* Effect.forEach(
 				showPlan(state.devices, state.activities, legs, window, requested),
 				action => {
@@ -474,10 +476,7 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 				},
 				{concurrency: 1}
 			)
-			yield* Option.match(Array.head([...Array.getFailures(ended), ...Array.getFailures(outcomes)]), {
-				onNone: () => Effect.void,
-				onSome: Effect.fail
-			})
+			yield* Option.match(Array.head(Array.getFailures(outcomes)), {onNone: () => Effect.void, onSome: Effect.fail})
 		})
 
 		// A device whose token died leaves the list with its first failed alert.
