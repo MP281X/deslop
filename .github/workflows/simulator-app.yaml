@@ -27,7 +27,7 @@ jobs:
       artifact: ${{ steps.fingerprint.outputs.artifact }}
       built: ${{ steps.fingerprint.outputs.built }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup
         with: {eas: 'true'}
       # A build is reused only when this repository's Simulator workflow, unchanged from this commit's, made it on a push; the summary names the commit it came from.
@@ -67,7 +67,7 @@ jobs:
       # The Simulator host is Apple silicon; the default universal binary compiles every file twice.
       GYM_XCARGS: ARCHS=arm64
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup
         with: {eas: 'true', ios: 'true'}
       - name: Build the Simulator app
@@ -76,7 +76,7 @@ jobs:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
         run: eas build --local --profile simulator --platform ios --non-interactive --output "$RUNNER_TEMP/simulator.tar.gz"
       - name: Upload the Simulator app
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ${{ needs.fingerprint.outputs.artifact }}
           path: ${{ runner.temp }}/simulator.tar.gz

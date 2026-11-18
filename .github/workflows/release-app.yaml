@@ -37,7 +37,7 @@ jobs:
       run:
         working-directory: apps/${{ inputs.app }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with: {fetch-depth: 0}
       - uses: ./.github/actions/setup
         with: {eas: 'true'}
@@ -128,7 +128,7 @@ jobs:
       run:
         working-directory: apps/${{ inputs.app }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with: {fetch-depth: 0}
 
       # Apple refuses a build number it has, so a retry after an accepted upload resumes at the update.
@@ -181,7 +181,7 @@ jobs:
       # Recorded the moment Apple accepts, even when the run is cancelled, so neither a retry nor the next release uploads this fingerprint again.
       - name: Record Apple's acceptance
         if: always() && steps.upload.outcome == 'success'
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ${{ needs.update.outputs.artifact }}
           path: ${{ runner.temp }}/receipt.json
