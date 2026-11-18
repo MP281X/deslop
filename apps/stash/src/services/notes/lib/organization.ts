@@ -1,18 +1,4 @@
-import {
-	Array,
-	Boolean,
-	Cause,
-	Context,
-	Effect,
-	Function,
-	Layer,
-	Number,
-	Option,
-	Redacted,
-	Schema,
-	String,
-	pipe
-} from 'effect'
+import {Array, Boolean, Cause, Context, Effect, Function, Layer, Option, Redacted, Schema, pipe} from 'effect'
 
 import type {HttpClient} from 'effect/http'
 
@@ -21,6 +7,7 @@ import type {UserId} from '@deslop/runtime/shared/auth'
 
 import {normalizeTags} from './tags.ts'
 
+import {fitPictures, fitText} from '#services/notes/lib/utils.ts'
 import type {Note, Picture, TagEntry} from '#services/notes/schema.ts'
 import {NotesError, Organization} from '#services/notes/schema.ts'
 
@@ -92,42 +79,6 @@ Tags group entries across the whole collection, so the same topic must always ge
 Reread the title, summary and key points against the source: each number and claim keeps its scope, condition and certainty. Then reread the body line by line and cut every line that repeats another, is noise, or would not change what a developer does or believes.`
 
 // A rough token count that never undercounts by much: about four ASCII characters a token, and a token for any other character, which is how Chinese, Japanese and emoji spend them.
-function tokensOf(text: string) {
-	const other = String.length(text) - String.length(String.replaceAll(/[\u0080-\u{10ffff}]/gu, '')(text))
-	return (String.length(text) - other) / 4 + other
-}
-
-function cut(text: string, tokens: number) {
-	const estimate = tokensOf(text)
-	if (estimate <= tokens) return text
-	return `${String.slice(0, Math.floor((String.length(text) * tokens) / estimate))(text)}\n[cut here]`
-}
-
-// The content and the transcript share one budget of about 100,000 tokens, so with the pictures, the prompt and 32,000 output tokens one request stays inside the model's window; a short one leaves its share to the other.
-export function fitText(content: string, transcript: string) {
-	const budget = 100_000
-	const half = budget / 2
-	return {
-		content: cut(content, Number.max(half, budget - tokensOf(transcript))),
-		transcript: cut(transcript, Number.max(half, budget - tokensOf(content)))
-	}
-}
-
-// Pictures travel as base64 inside Gateway's 10 MiB request: they share 6 MiB in the order given, which puts the preview and the post's own images before video stills, and Anthropic takes at most 5 MB and 100 of them.
-export function fitPictures(images: readonly Picture[]) {
-	return pipe(
-		images,
-		Array.mapAccum({bytes: 0, count: 0}, (used, image) => {
-			const bytes = used.bytes + image.bytes.byteLength
-			if (image.bytes.byteLength > 5_000_000 || bytes > 6 * 1024 * 1024 || used.count >= 100) {
-				return [used, Option.none<Picture>()]
-			}
-			return [{bytes, count: used.count + 1}, Option.some(image)]
-		}),
-		result => Array.getSomes(result[1])
-	)
-}
-
 export class Organizer extends Context.Service<
 	Organizer,
 	{

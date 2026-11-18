@@ -57,6 +57,17 @@ function machineName(worker: WorkerId) {
 	return String.split(worker, '.')[0]
 }
 
+// A machine's apps, in the range already chosen.
+function machineSearch(worker: WorkerId) {
+	return (previous: Partial<Search>) =>
+		Schema.encodeSync(Search)({
+			app: Option.none(),
+			machine: Option.some(worker),
+			pane: Option.some('apps'),
+			range: previous.range ?? Option.none()
+		})
+}
+
 function MachineIcon(props: {worker: WorkerId; platform: Option.Option<Platform>}) {
 	return (
 		<span
@@ -96,23 +107,7 @@ function MachineTabs(props: {
 			{Array.map(props.workers, worker => {
 				const failed = failureOf(worker, props.inventoryFailure, props.sources, histories[worker])
 				return (
-					<AppBarTab
-						key={worker}
-						value={worker}
-						render={
-							<Link
-								to="/"
-								search={previous =>
-									Schema.encodeSync(Search)({
-										app: Option.none(),
-										machine: Option.some(worker),
-										pane: Option.some('apps'),
-										range: previous.range ?? Option.none()
-									})
-								}
-							/>
-						}
-					>
+					<AppBarTab key={worker} value={worker} render={<Link to="/" search={machineSearch(worker)} />}>
 						<MachineIcon worker={worker} platform={histories[worker]?.platform ?? Option.none()} />
 						<span className="max-w-32 truncate max-sm:sr-only">{machineName(worker)}</span>
 						{/* Only an unreachable machine is marked; one that answers needs no dot. */}
@@ -304,22 +299,7 @@ function MissingMachine(props: {machine: WorkerId; workers: readonly WorkerId[]}
 					onNone: Function.constNull,
 					onSome: worker => (
 						<EmptyContent>
-							<Button
-								variant="outline"
-								render={
-									<Link
-										to="/"
-										search={previous =>
-											Schema.encodeSync(Search)({
-												app: Option.none(),
-												machine: Option.some(worker),
-												pane: Option.some('apps'),
-												range: previous.range ?? Option.none()
-											})
-										}
-									/>
-								}
-							>
+							<Button variant="outline" render={<Link to="/" search={machineSearch(worker)} />}>
 								Show {machineName(worker)}
 							</Button>
 						</EmptyContent>

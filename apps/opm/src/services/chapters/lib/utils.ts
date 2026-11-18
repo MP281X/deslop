@@ -132,7 +132,7 @@ export function missingRanges(chapters: readonly ChapterIdentity[], kind: Series
 }
 
 // Keep unknown index chapters on the first read; later keep only unknown chapters above the known minimum, marking those at or below the known maximum as notified.
-export function indexChapters(current: readonly ChapterIdentity[], chapters: readonly Chapter[], kind: Series) {
+function indexChapters(current: readonly ChapterIdentity[], chapters: readonly Chapter[], kind: Series) {
 	const known = HashSet.fromIterable(Array.map(current, keyOf))
 	const numbers = numbersOf(current, kind)
 	if (!Array.isReadonlyArrayNonEmpty(numbers)) {

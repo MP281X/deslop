@@ -34,7 +34,7 @@ import {ApnsToken} from '@deslop/runtime/shared/apns'
 import type {UserId} from '@deslop/runtime/shared/auth'
 import {listReducer} from '@deslop/runtime/shared/list'
 
-import type {ReaderState} from '#lib/reader.ts'
+import type {PageTurn, ReaderState} from '#lib/reader.ts'
 import {turnPage} from '#lib/reader.ts'
 import {RpcClient, session} from '#lib/session.ts'
 import {OpmNative} from '#modules/native/index.ts'
@@ -118,7 +118,7 @@ const readerStateAtom = Atom.family((_reader: ChapterKey) =>
 export const readerAtom = Atom.family((reader: ChapterKey) =>
 	Atom.writable(
 		get => get(readerStateAtom(reader)),
-		(context, turn: Parameters<typeof turnPage>[1]) =>
+		(context, turn: PageTurn) =>
 			Option.match(turnPage(context.get(readerStateAtom(reader)), turn), {
 				onNone: Function.constUndefined,
 				onSome: turned => {

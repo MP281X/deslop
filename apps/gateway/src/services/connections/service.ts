@@ -517,11 +517,25 @@ export class Connections extends Context.Service<
 				})
 			})
 		})
-		const fail = Effect.fnUntraced(function* (connection: ConnectionState, cause: unknown) {
-			const reason = describe(cause)
-			yield* change(connection.id, connection.generation, () => ({error: Option.some(reason)}))
-			return yield* connectionFailure(connection.name)(cause)
-		})
+		// A connection step that fails or outlasts its limit leaves its reason on the connection.
+		function settle(connection: ConnectionState, limit: Duration.Duration) {
+			return <A, E, R>(step: Effect.Effect<A, E, R>) =>
+				pipe(
+					step,
+					Effect.timeout(limit),
+					// Only the fixed reason reaches the log: a provider's own text can carry a body or a token.
+					Effect.tapError(cause =>
+						Effect.logWarning(`The MCP connection could not be completed: ${failureMessage(describe(cause))}`)
+					),
+					Effect.catch(
+						Effect.fnUntraced(function* (cause) {
+							const reason = describe(cause)
+							yield* change(connection.id, connection.generation, () => ({error: Option.some(reason)}))
+							return yield* connectionFailure(connection.name)(cause)
+						})
+					)
+				)
+		}
 
 		return Connections.of({
 			add: Effect.fn('Connections.add')(
@@ -652,12 +666,7 @@ export class Connections extends Context.Service<
 								})
 								return {state: Option.some(stateId), url: authorization.authorizationUrl.href}
 							}),
-							Effect.timeout(Duration.seconds(20)),
-							// Only the fixed reason reaches the log: a provider's own text can carry a body or a token.
-							Effect.tapError(cause =>
-								Effect.logWarning(`The MCP connection could not be completed: ${failureMessage(describe(cause))}`)
-							),
-							Effect.catch(cause => fail(connection, cause))
+							settle(connection, Duration.seconds(20))
 						)
 					})
 				})
@@ -752,11 +761,7 @@ export class Connections extends Context.Service<
 						)
 					}),
 					Effect.scoped,
-					Effect.timeout(Duration.seconds(30)),
-					Effect.tapError(cause =>
-						Effect.logWarning(`The MCP connection could not be completed: ${failureMessage(describe(cause))}`)
-					),
-					Effect.catch(cause => fail(connection, cause))
+					settle(connection, Duration.seconds(30))
 				)
 			}, asAuthError('Cannot finish the connection')),
 			definitions,

@@ -26,13 +26,11 @@ import {Auth, HttpAuth, clientAddress, localAuth} from '#server/auth.ts'
 import {McpStream, layerStructuredTools} from '#server/mcp.ts'
 import {appName, packageMetadata} from '#server/package.ts'
 import {recordRpcContracts, recordToolContracts} from '#server/probe.ts'
-import {CLIENT_HEADER, ON_BEHALF_HEADER, failureOptions} from '#shared/auth.ts'
+import {FRAME_HEADERS, failureOptions, upgradeOnlyHeaders} from '#shared/auth.ts'
 import {RpcStream, layerRpcStream} from '#shared/rpc.ts'
 import {ACCOUNT_PATH, Account, MANIFEST_PATH, MCP_PATH, RPC_PATH, RUNTIME_PATH, RuntimeConfig} from '#shared/schema.ts'
 import {layerOtlp} from '#shared/telemetry.ts'
 
-// Effect appends each frame's headers to the upgrade request's; this entry marks where a client's own begin.
-const FRAME_HEADERS = 'x-deslop-frame'
 const LOOPBACK = /^(?:localhost|\d{1,3}(?:\.\d{1,3}){3}|\[[\da-f:.]+\])$/iu
 const OTLP = ['/v1/traces', '/v1/logs']
 
@@ -219,17 +217,6 @@ export const layerWeb = Layer.unwrap(
 		)
 	})
 )
-
-// The derived address and an app's on-behalf claim come only from the upgrade request the proxy and `clientAddress` checked.
-export function upgradeOnlyHeaders(headers: readonly [string, string][]) {
-	const start = Array.findFirstIndex(headers, entry => entry[0] === FRAME_HEADERS)
-	return Array.filter(
-		headers,
-		(entry, index) =>
-			Option.exists(start, boundary => index < boundary) ||
-			!Array.contains([FRAME_HEADERS, CLIENT_HEADER, ON_BEHALF_HEADER], String.toLowerCase(entry[0]))
-	)
-}
 
 const layerRpcProtocol = Layer.effect(
 	RpcServer.Protocol,

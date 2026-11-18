@@ -22,7 +22,4 @@ function HomeRoute() {
 	)
 }
 
-export const Route = createFileRoute('/(home)/')({
-	component: HomeRoute,
-	loader: load => preload(load, [nameAtom])
-})
+export const Route = createFileRoute('/(home)/')({component: HomeRoute, loader: load => preload(load, [nameAtom])})

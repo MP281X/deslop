@@ -1,4 +1,4 @@
-import {Context, Effect, Option, Predicate, Schema, String, pipe} from 'effect'
+import {Array, Context, Duration, Effect, Option, Predicate, Schedule, Schema, String, pipe} from 'effect'
 import type {Brand} from 'effect'
 
 import {HttpClient} from 'effect/http'
@@ -54,6 +54,20 @@ export const CLIENT_HEADER = 'x-deslop-client'
 // A Deslop app on Auth's machine acting for a person, as Gateway does for an agent and an app does for its AI calls.
 export const ON_BEHALF_HEADER = 'x-deslop-user'
 
+// Effect appends each frame's headers to the upgrade request's; this entry marks where a client's own begin.
+export const FRAME_HEADERS = 'x-deslop-frame'
+
+// The derived address and an app's on-behalf claim come only from the upgrade request the proxy and `clientAddress` checked.
+export function upgradeOnlyHeaders(headers: readonly [string, string][]) {
+	const start = Array.findFirstIndex(headers, entry => entry[0] === FRAME_HEADERS)
+	return Array.filter(
+		headers,
+		(entry, index) =>
+			Option.exists(start, boundary => index < boundary) ||
+			!Array.contains([FRAME_HEADERS, CLIENT_HEADER, ON_BEHALF_HEADER], String.toLowerCase(entry[0]))
+	)
+}
+
 export const IDENTIFY_PATH = '/api/identify'
 
 // What an app forwards for Auth to name the caller.
@@ -97,6 +111,19 @@ export function asAuthError(message: string) {
 	})
 }
 
+// Only an AuthError refuses a caller; a slow, failing or unreadable answer is an outage, which clients keep retrying.
+export function outageUnlessRefused(message: string) {
+	return <A, E, R>(answer: Effect.Effect<A, E, R>) =>
+		pipe(
+			answer,
+			Effect.timeout('10 seconds'),
+			Effect.mapError(cause => {
+				if (Schema.is(AuthError)(cause)) return cause
+				return AuthError.make({cause, error: 'temporarily_unavailable', message})
+			})
+		)
+}
+
 // An outage keeps clients retrying instead of looking like a permanent refusal.
 export function failureOptions(error: unknown, status: number) {
 	if (Schema.is(AuthError)(error) && error.error === 'temporarily_unavailable') {
@@ -104,6 +131,29 @@ export function failureOptions(error: unknown, status: number) {
 	}
 	if (Schema.is(AuthError)(error) && error.error === 'access_denied') return {status: 403}
 	return {status}
+}
+
+const IDENTITY_RECHECK = Duration.minutes(5)
+const IDENTITY_LEASE = Duration.minutes(15)
+
+// Fails once Auth refuses the caller or names someone else, or stays unreachable until its last answer is fifteen minutes old.
+export function recheckUser(current: Effect.Effect<User, AuthError>, found: User) {
+	return pipe(
+		current,
+		Effect.retry({
+			// The recheck delay already spent part of the lease, which runs from the last answer.
+			schedule: Schedule.upTo(Schedule.spaced('5 seconds'), {
+				duration: Duration.subtract(IDENTITY_LEASE, IDENTITY_RECHECK)
+			}),
+			while: error => error.error === 'temporarily_unavailable'
+		}),
+		Effect.delay(IDENTITY_RECHECK),
+		Effect.filterOrFail(
+			next => next.id === found.id && next.admin === found.admin && next.name === found.name,
+			() => AuthError.make({error: 'access_denied', message: 'The account changed; reconnect the socket'})
+		),
+		Effect.forever
+	)
 }
 
 export class CurrentUser extends Context.Service<CurrentUser, User>()('@deslop/runtime/shared/auth/CurrentUser') {}

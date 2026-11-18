@@ -2,7 +2,8 @@ import {assert, it} from '@effect/vitest'
 
 import {Array, Option} from 'effect'
 
-import {ipv4Reachable, lsofSockets, socketLine} from './sockets.ts'
+import {lsofSockets, socketLine} from './sockets.ts'
+import {ipv4Reachable} from './utils.ts'
 
 it('reads a quoted process name and keeps a dual-stack wildcard within loopback reach', () => {
 	const socket = Option.getOrThrow(socketLine('tcp LISTEN 0 5 *:31000 *:* users:(("name"quote",pid=111,fd=5))'))

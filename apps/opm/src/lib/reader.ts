@@ -4,7 +4,7 @@ import {keyOf} from '#services/chapters/lib/utils.ts'
 import type {ChapterKey, ChapterList, ChapterNumber, Position, ReadingPosition} from '#services/chapters/schema.ts'
 
 // One page turn in a reader opened on a chapter: the chapters from it on, in order, and the strip's page index.
-type PageTurn = {following: ChapterList; index: number; opened: ChapterNumber}
+export type PageTurn = {following: ChapterList; index: number; opened: ChapterNumber}
 
 // What one opened reader has passed: the chapters its strip shows, the chapter in view and those it finished. The strip is kept from the first page turn on and only grows at its end, so a revised page or a filled gap cannot move the reader, and every page index the strip reported still names the same page.
 export type ReaderState = {
