@@ -332,13 +332,18 @@ it.layer(NodeServices.layer)(test =>
 	)
 )
 
-// A second connection on the notes database in the folder that holds its write lock until it rolls back, as another process would.
-const lockDatabase = Effect.fnUntraced(function* (directory: string) {
+// A second connection on the notes database in the folder, as another process would open it.
+const otherConnection = Effect.fnUntraced(function* (directory: string) {
 	const path = yield* Path.Path
 	const context = yield* Layer.build(
 		Layer.provide(SqliteClient.layer({filename: path.join(directory, 'notes.db')}), Reactivity.layer)
 	)
-	const other = Context.get(context, SqliteClient.SqliteClient)
+	return Context.get(context, SqliteClient.SqliteClient)
+})
+
+// The other connection holds the write lock until it rolls back.
+const lockDatabase = Effect.fnUntraced(function* (directory: string) {
+	const other = yield* otherConnection(directory)
 	yield* other`BEGIN IMMEDIATE`
 	return other`ROLLBACK`
 })
@@ -446,6 +451,137 @@ it.layer(NodeServices.layer)(test =>
 					'failed',
 					Option.some('Nothing to read in this file.')
 				]
+			)
+		})
+	)
+)
+
+// Waits for the note to leave organizing, while the clock runs on so a write waiting to be tried again gets its turn.
+function settledAfterTicks(notes: Notes['Service']) {
+	return pipe(
+		TestClock.adjust('30 seconds'),
+		Effect.andThen(notes.get(FIRST)),
+		Effect.repeat({times: 100, until: note => note.status !== 'organizing'})
+	)
+}
+
+it.layer(NodeServices.layer)(test =>
+	test.effect(
+		'keeps the note and the answer it waits to store when its deletion fails on a busy database',
+		Effect.fnUntraced(function* () {
+			const directory = yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped()
+			const requests = yield* Ref.make(0)
+			const asked = yield* Deferred.make<void>()
+			const answered = yield* Deferred.make<void>()
+			const user = UserId.make('github:1')
+			return yield* Effect.scoped(
+				Effect.gen(function* () {
+					const context = yield* Layer.build(
+						notesIn(directory, () =>
+							pipe(
+								Ref.update(requests, count => count + 1),
+								Effect.andThen(Deferred.succeed(asked, undefined)),
+								Effect.andThen(Deferred.await(answered)),
+								Effect.as(ORGANIZATION)
+							)
+						)
+					)
+					const notes = Context.get(context, Notes)
+					yield* notes.capture(user, {id: FIRST, text: 'Lentils with cumin'})
+					yield* Deferred.await(asked)
+					const release = yield* lockDatabase(directory)
+					yield* Deferred.succeed(answered, undefined)
+					// The answer cannot be stored yet and waits to be tried again.
+					yield* TestClock.adjust('1 second')
+					const failure = yield* Effect.flip(notes.remove(FIRST))
+					yield* release
+					const final = yield* settledAfterTicks(notes)
+					// The minute scans since would have asked the provider again had the run been lost.
+					assert.deepStrictEqual(
+						[failure._tag, final.status, final.title, yield* Ref.get(requests)],
+						['NotesError', 'ready', 'Soup', 1]
+					)
+				})
+			)
+		})
+	)
+)
+
+it.layer(NodeServices.layer)(test =>
+	test.effect(
+		'asks the provider once for a note it cannot record, until the person asks again',
+		Effect.fnUntraced(function* () {
+			const directory = yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped()
+			const asked = yield* Ref.make(Array.empty<NoteId>())
+			const user = UserId.make('github:1')
+			const timesAsked = Effect.map(
+				Ref.get(asked),
+				Array.countBy(id => id === FIRST)
+			)
+			return yield* Effect.scoped(
+				Effect.gen(function* () {
+					const context = yield* Layer.build(
+						notesIn(directory, (_userId, input) =>
+							pipe(asked, Ref.update(Array.append(input.note.id)), Effect.as(ORGANIZATION))
+						)
+					)
+					const notes = Context.get(context, Notes)
+					const other = yield* otherConnection(directory)
+					// Every update of the first note fails for good, as a full disk would.
+					yield* other.unsafe(
+						`CREATE TRIGGER reject_first BEFORE UPDATE ON notes WHEN old.id = '${FIRST}' BEGIN SELECT RAISE(ABORT, 'rejected'); END`
+					)
+					yield* notes.capture(user, {id: FIRST, text: 'Lentils with cumin'})
+					yield* TestClock.adjust('1 second')
+					// The scans each minute and the next capture's claim find the first note still organizing.
+					yield* TestClock.adjust('3 minutes')
+					yield* notes.capture(user, {id: SECOND, text: 'Cumin history'})
+					yield* TestClock.adjust('3 minutes')
+					assert.deepStrictEqual([(yield* notes.get(FIRST)).status, yield* timesAsked], ['organizing', 1])
+					yield* other.unsafe('DROP TRIGGER reject_first')
+					yield* notes.regenerate(user, FIRST)
+					assert.deepStrictEqual([(yield* settledAfterTicks(notes)).status, yield* timesAsked], ['ready', 2])
+				})
+			)
+		})
+	)
+)
+
+it.layer(NodeServices.layer)(test =>
+	test.effect(
+		'keeps the message of a limit a video reached while the database is busy',
+		Effect.fnUntraced(function* () {
+			const directory = yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped()
+			const asked = yield* Deferred.make<void>()
+			const gate = yield* Deferred.make<void>()
+			const error = MediaError.make({message: 'ffprobe exceeded its time limit', reason: 'Budget'})
+			const reading = Effect.andThen(Deferred.succeed(asked, undefined), Deferred.await(gate))
+			return yield* Effect.scoped(
+				Effect.gen(function* () {
+					const context = yield* Layer.build(
+						notesIn(directory, () => Effect.succeed(ORGANIZATION), {
+							budget: Effect.succeed({deadline: DateTime.makeUnsafe(0), directory}),
+							fileFrames: () => Effect.andThen(reading, Effect.fail(error)),
+							fileTranscript: () => Effect.andThen(reading, Effect.fail(error))
+						})
+					)
+					const notes = Context.get(context, Notes)
+					yield* notes.captureFile(UserId.make('github:1'), {
+						body: Stream.make(new Uint8Array([1])),
+						id: FIRST,
+						type: 'video/mp4'
+					})
+					yield* Deferred.await(asked)
+					const release = yield* lockDatabase(directory)
+					yield* Deferred.succeed(gate, undefined)
+					yield* TestClock.adjust('1 second')
+					yield* release
+					const final = yield* settledAfterTicks(notes)
+					assert.deepStrictEqual(
+						[final.status, final.issue],
+						['failed', Option.some('ffprobe exceeded its time limit')]
+					)
+				})
 			)
 		})
 	)

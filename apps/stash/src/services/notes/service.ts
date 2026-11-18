@@ -17,6 +17,7 @@ import {
 	Layer,
 	Match,
 	MutableHashMap,
+	MutableHashSet,
 	Option,
 	Order,
 	Path,
@@ -171,6 +172,8 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 		const dispatch = yield* Semaphore.make(1)
 		// The request each run follows from, kept only to link its trace.
 		const requests = MutableHashMap.empty<NoteId, Tracer.Span>()
+		// Notes whose last run ended without its outcome stored, because every write failed. No claim starts them again until the person asks again or the server restarts, so a storage failure costs one provider request per note per server run; kept in memory, not in a table.
+		const unrecorded = MutableHashSet.empty<NoteId>()
 		// Writes tell this Reactivity of their commits, so callers need none of their own.
 		const withReactivity = Effect.provideService(Reactivity.Reactivity, yield* Reactivity.Reactivity)
 
@@ -382,12 +385,15 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 			return pipe(changeIn(id, update), sql.withTransaction, untilStored, asNotesError)
 		}
 
-		// Called in the transaction that leaves the note organizing: once it commits, the claim looks at once and the run links back to this request.
+		// Called in the transaction that leaves the note organizing: once it commits, the person has asked again, the claim looks at once and the run links back to this request.
 		function organizeLater(id: NoteId) {
 			return Effect.flatMap(Effect.option(Effect.currentSpan), request =>
 				sql.afterCommit(
 					Effect.andThen(
-						Effect.sync(() => Option.map(request, span => MutableHashMap.set(requests, id, span))),
+						Effect.sync(() => {
+							MutableHashSet.remove(unrecorded, id)
+							return Option.map(request, span => MutableHashMap.set(requests, id, span))
+						}),
 						Queue.offer(signals, undefined)
 					)
 				)
@@ -530,7 +536,7 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 		// A media failure is logged; one Gateway refused, whose message says what to do, or one that spent the note's budget also leaves its message on the note, so a note that ends with nothing to read says why.
 		function explained(id: NoteId, error: MediaError) {
 			if (error.reason === undefined) return Effect.void
-			return change(id, NoteChange.cases.issue.make({issue: error.message}))
+			return persist(id, NoteChange.cases.issue.make({issue: error.message}))
 		}
 
 		function untranscribed(id: NoteId) {
@@ -740,14 +746,15 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 								})
 						})
 					),
-					// A run that ends without settling its note, failed or not, marks it failed, so while the server runs no claim asks the provider again: one request per run. A restart cuts a run short and the next start asks again, so a charge can repeat. Only a stop or removal interrupts the write.
+					// A run that ends without settling its note, failed or not, marks it failed, so while the server runs no claim asks the provider again: one request per run. When even that write fails for good, the note is remembered as unrecorded and left alone. A restart cuts a run short and the next start asks again, so a charge can repeat. Only a stop or removal interrupts the write.
 					Effect.onExit(exit =>
 						Boolean.match(Exit.isFailure(exit) && Cause.hasInterruptsOnly(exit.cause), {
 							onFalse: () =>
-								Effect.ignore(Effect.interruptible(persist(id, NoteChange.cases.stop.make({}))), {
-									log: 'Warn',
-									message: 'A stopped tagging run could not be recorded'
-								}),
+								pipe(
+									Effect.interruptible(persist(id, NoteChange.cases.stop.make({}))),
+									Effect.tapError(() => Effect.sync(() => MutableHashSet.add(unrecorded, id))),
+									Effect.ignore({log: 'Warn', message: 'A stopped tagging run could not be recorded'})
+								),
 							onTrue: () => Effect.void
 						})
 					),
@@ -804,7 +811,10 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 			Effect.gen(function* () {
 				const fresh = Array.filter(
 					yield* asNotesError(listOrganizing()),
-					note => !MutableHashMap.has(queued, note.id) && !FiberMap.hasUnsafe(runs, note.id)
+					note =>
+						!MutableHashMap.has(queued, note.id) &&
+						!FiberMap.hasUnsafe(runs, note.id) &&
+						!MutableHashSet.has(unrecorded, note.id)
 				)
 				yield* Effect.forEach(
 					fresh,
@@ -952,7 +962,10 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 									onSome: Effect.fnUntraced(function* (found: Note) {
 										yield* storeChange(found, NoteChange.cases.share.make({capture: {...input, text}}))
 										if (found.id !== input.id) yield* retire({id: input.id, mergedInto: Option.some(found.id)})
-										if (found.status === 'failed' && found.id !== input.id) {
+										if (
+											(found.status === 'failed' || MutableHashSet.has(unrecorded, found.id)) &&
+											found.id !== input.id
+										) {
 											yield* changeIn(found.id, NoteChange.cases.retry.make({requester: userId}))
 											yield* organizeLater(found.id)
 										}
@@ -1110,20 +1123,23 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 			}, withReactivity),
 			remove: Effect.fn('Notes.remove')(
 				function* (id: NoteId) {
-					const publication = yield* RcMap.get(publications, id)
-					// No claim starts the note again between stopping its run and deleting it.
+					// No claim starts the note again between its deletion and the end of its run.
 					yield* Semaphore.withPermit(
 						dispatch,
-						Effect.gen(function* () {
-							MutableHashMap.remove(queued, id)
-							MutableHashMap.remove(requests, id)
-							yield* FiberMap.remove(runs, id)
-							// An upload of this id publishes under the same permit, so its file lands before the removal or never.
-							yield* Semaphore.withPermit(
-								publication,
-								Effect.andThen(change(id, NoteChange.cases.remove.make({into: Option.none()})), removeFiles(id))
-							)
-						})
+						// An upload of this id publishes under the same permit, so its file lands before the removal or never.
+						Semaphore.withPermit(
+							yield* RcMap.get(publications, id),
+							Effect.gen(function* () {
+								// A deletion that fails leaves the run and the answer it waits to store alone.
+								yield* change(id, NoteChange.cases.remove.make({into: Option.none()}))
+								MutableHashMap.remove(queued, id)
+								MutableHashMap.remove(requests, id)
+								MutableHashSet.remove(unrecorded, id)
+								// The run ends before its files go, so it cannot write a preview after them; its stores find no note.
+								yield* FiberMap.remove(runs, id)
+								yield* removeFiles(id)
+							})
+						)
 					)
 				},
 				Effect.scoped,
