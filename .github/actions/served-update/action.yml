@@ -5,6 +5,9 @@ inputs:
   app:
     description: The app's directory name under `apps`.
     required: true
+  expo-token:
+    description: The Expo token, secret `EXPO_TOKEN`; reading a channel needs a login.
+    required: true
 
 outputs:
   commit:
@@ -22,6 +25,8 @@ runs:
       id: served
       shell: bash
       working-directory: apps/${{ inputs.app }}
+      env:
+        EXPO_TOKEN: ${{ inputs.expo-token }}
       run: |
         commit=$(eas channel:view production --json --non-interactive | jq -r '
           .currentPage as $channel

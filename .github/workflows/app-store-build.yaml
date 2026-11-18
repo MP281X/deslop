@@ -33,14 +33,17 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with: {fetch-depth: 2}
+      - name: Discover mobile apps
+        id: mobile
+        uses: ./.github/actions/mobile-apps
       - name: Discover changed native inputs
         id: apps
         env:
           BASE: ${{ github.event.before }}
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
           GH_TOKEN: ${{ github.token }}
+          MOBILE: ${{ steps.mobile.outputs.apps }}
         run: |
-          shopt -s nullglob
           if [[ $BASE =~ ^0+$ ]]; then
             BASE=$(gh api "repos/$GITHUB_REPOSITORY/compare/$DEFAULT_BRANCH...$GITHUB_SHA" --jq .merge_base_commit.sha)
           fi
@@ -51,10 +54,9 @@ jobs:
           # Every app builds from the shared config, components and this workflow, so a change outside apps/ proves them all.
           shared=$(grep -v '^apps/' <<< "$native" || true)
           apps=()
-          for config in apps/*/app.config.ts; do
-            app=${config%/app.config.ts}
-            if [[ -n $shared ]] || grep -q "^$app/" <<< "$native"; then apps+=("${app#apps/}"); fi
-          done
+          while read -r app; do
+            if [[ -n $shared ]] || grep -q "^apps/$app/" <<< "$native"; then apps+=("$app"); fi
+          done < <(jq -r '.[]' <<< "$MOBILE")
           mobile=$(printf '%s\n' "${apps[@]}" | jq -Rsc 'split("\n") | map(select(length > 0))')
           echo "mobile=$mobile" >> "$GITHUB_OUTPUT"
 
@@ -69,12 +71,13 @@ jobs:
       fail-fast: false
       matrix:
         app: ${{ fromJSON(needs.apps.outputs.mobile) }}
+    # A branch signs here on purpose, so the job waits for the user's approval: `.github/releasing.md`, Host setup.
+    environment: signing
     runs-on: xcode-27
     timeout-minutes: 60
     env:
       APP_VARIANT: production
       DESLOP_DOMAIN: ${{ vars.DESLOP_DOMAIN }}
-      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
       EAS_BUILD_DISABLE_EXPO_DOCTOR_STEP: 1
     defaults:
       run:
@@ -85,4 +88,6 @@ jobs:
         with: {eas: 'true', ios: 'true'}
       # The same signed build Release uploads, with the same provisioning profiles; nothing is uploaded.
       - name: Build the signed App Store app
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
         run: eas build --local --profile production --platform ios --non-interactive --output "$RUNNER_TEMP/app.ipa"

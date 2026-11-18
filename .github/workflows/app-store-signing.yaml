@@ -21,11 +21,23 @@ defaults:
 env:
   APP_VARIANT: production
   DESLOP_DOMAIN: ${{ vars.DESLOP_DOMAIN }}
-  EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
 
 jobs:
+  # Before the approval below, so a name that is no app never reaches a reviewer.
+  app:
+    name: App
+    runs-on: ubuntu-26.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/mobile-apps
+        with:
+          app: ${{ inputs.app }}
+
   signing:
     name: Signing
+    needs: app
+    # A branch signs here on purpose, so the job waits for the user's approval: `.github/releasing.md`, Host setup.
+    environment: signing
     runs-on: ubuntu-26.04
     timeout-minutes: 20
     defaults:
@@ -171,6 +183,7 @@ jobs:
       - name: Set up signing
         env:
           ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
           # A refresh only changes profiles, not the capabilities of the existing App IDs.
           EXPO_NO_CAPABILITY_SYNC: ${{ steps.profiles.outputs.refresh }}
           EXPO_APPLE_TEAM_ID: 99K7MQUK7F

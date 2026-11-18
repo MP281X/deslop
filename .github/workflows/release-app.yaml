@@ -4,12 +4,16 @@ on:
   workflow_call:
     inputs:
       app: {type: string, required: true}
+    secrets:
+      EXPO_TOKEN: {required: true}
+      ASC_KEY_ID: {required: true}
+      ASC_ISSUER_ID: {required: true}
+      ASC_KEY_P8: {required: true}
 
 env:
   APP: ${{ inputs.app }}
   APP_VARIANT: production
   DESLOP_DOMAIN: ${{ vars.DESLOP_DOMAIN }}
-  EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
   RELEASE_NUMBER: ${{ github.run_number }}
 
 # bash -eo pipefail: a failed command inside a pipeline or an assignment fails its step.
@@ -20,6 +24,8 @@ defaults:
 jobs:
   update:
     name: Update
+    # The environment is limited to `main`: `.github/releasing.md`, Host setup.
+    environment: release
     runs-on: ubuntu-26.04
     timeout-minutes: 20
     outputs:
@@ -42,6 +48,7 @@ jobs:
         uses: ./.github/actions/served-update
         with:
           app: ${{ inputs.app }}
+          expo-token: ${{ secrets.EXPO_TOKEN }}
 
       # Nothing ships when neither the app nor what it builds from changed since its last update.
       - name: Check for changes since the last update
@@ -60,6 +67,7 @@ jobs:
         if: steps.served.outputs.superseded == 'false'
         env:
           GH_TOKEN: ${{ github.token }}
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
         run: |
           hash=$(eas fingerprint:generate --platform ios --build-profile production --json --non-interactive | jq -r .hash)
           artifact="$APP-app-store-$hash"
@@ -101,12 +109,16 @@ jobs:
 
       - name: Publish the EAS Update
         if: steps.changes.outputs.changed == 'true' && steps.fingerprint.outputs.native == 'false'
-        run: eas update --channel production --environment production --platform ios --non-interactive --message "$(git log -1 --format=%s)"
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: eas update --channel production --environment production --platform ios --non-interactive --message="$(git log -1 --format=%s)"
 
   app-store:
     name: App Store
     needs: update
     if: ${{ !cancelled() && needs.update.result == 'success' && needs.update.outputs.native == 'true' }}
+    # The environment is limited to `main`: `.github/releasing.md`, Host setup.
+    environment: release
     concurrency: ios-${{ inputs.app }}
     runs-on: xcode-27
     timeout-minutes: 60
@@ -138,8 +150,11 @@ jobs:
         uses: ./.github/actions/served-update
         with:
           app: ${{ inputs.app }}
+          expo-token: ${{ secrets.EXPO_TOKEN }}
       - name: Build the App Store app
         if: steps.served.outputs.superseded == 'false' && steps.receipt.outputs.uploaded == 'false'
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
         run: eas build --local --profile production --platform ios --non-interactive --output "$RUNNER_TEMP/app.ipa"
       - name: Upload to the App Store
         id: upload
@@ -178,6 +193,9 @@ jobs:
         uses: ./.github/actions/served-update
         with:
           app: ${{ inputs.app }}
+          expo-token: ${{ secrets.EXPO_TOKEN }}
       - name: Publish the EAS Update for the new build
         if: steps.served-again.outputs.superseded == 'false'
-        run: eas update --channel production --environment production --platform ios --non-interactive --message "$(git log -1 --format=%s)"
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: eas update --channel production --environment production --platform ios --non-interactive --message="$(git log -1 --format=%s)"
