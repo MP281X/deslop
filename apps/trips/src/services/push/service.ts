@@ -63,6 +63,9 @@ import {isStale} from '#services/tracking/lib/utils.ts'
 
 const SCHEMES: Record<string, string> = {'xyz.mp281x.trips': 'trips', 'xyz.mp281x.trips.dev': 'trips-dev'}
 
+// A channel written down before its start is sent was never retired, so it carries the epoch where a retired one carries the time it was; that tells it from a started channel whose end Apple took, whose activity may be gone.
+const UNSTARTED = DateTime.makeUnsafe(0)
+
 type Span = {end: DateTime.Utc; start: DateTime.Utc}
 type Showing = {journey: Flight | Train; leg: Leg; now: DateTime.Utc; props: ActivityProps; window: Span}
 type RoundState = {activities: readonly Activity[]; devices: readonly Device[]}
@@ -129,13 +132,13 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 			Result: Retirement,
 			execute: channel => sql`SELECT * FROM ${sql(Retirement.table)} WHERE channel = ${channel}`
 		})
-		// A channel that never started has no content to end and no activity; an ended activity's row keeps its activity.
+		// A channel that never started has no content to end; one that started and was ended is retired, with or without its activity.
 		const findUnstarted = SqlSchema.findOneOption({
 			Request: Schema.String,
 			Result: Retirement,
 			execute: bundle => sql`
 				SELECT * FROM ${sql(Retirement.table)}
-				WHERE bundle = ${bundle} AND props IS NULL AND channel NOT IN (SELECT channel FROM ${sql(Activity.table)})
+				WHERE bundle = ${bundle} AND props IS NULL AND retiredAt = ${DateTime.toEpochMillis(UNSTARTED)}
 				LIMIT 1
 			`
 		})
@@ -156,6 +159,8 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 		const wake = Queue.offer(retiring, undefined)
 		// Channels whose start is in flight, which the worker leaves to it; known in memory only, so after a crash the worker deletes them.
 		const starting = yield* Ref.make(HashSet.empty<ChannelId>())
+		// Channels Apple answered it no longer has, until the activity of each is forgotten; known in memory only, so a restart asks Apple once more.
+		const lost = yield* Ref.make(HashSet.empty<ChannelId>())
 		const forgetEndedBefore = SqlSchema.void({
 			Request: Schema.DateTimeUtcFromMillis,
 			execute: time => sql`DELETE FROM ${sql(Activity.table)} WHERE endedAt < ${time}`
@@ -247,8 +252,16 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 			})
 		}
 
+		// Apple has no such channel, so nothing is owed for it: the activity is forgotten and the next round starts its leg afresh, one start per round at most, as after a start that failed. The channel stays known as gone until the write succeeds, so a failed one is tried again without asking Apple.
+		const forget = Effect.fnUntraced(function* (activity: Activity) {
+			yield* Ref.update(lost, HashSet.add(activity.channel))
+			yield* asPushSaveError(activities.delete(activity.channel))
+			yield* Ref.update(lost, HashSet.remove(activity.channel))
+		})
+
 		// An activity ends in the transaction that queues its channel's retirement; the worker then sends the end and deletes the channel.
 		const finish = Effect.fnUntraced(function* (activity: Activity, now: DateTime.Utc) {
+			if (HashSet.has(yield* Ref.get(lost), activity.channel)) return yield* forget(activity)
 			yield* pipe(
 				activities.updateVoid({...editable(activity), endedAt: Option.some(now)}),
 				Effect.andThen(
@@ -276,7 +289,7 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 				Ref.update(starting, HashSet.add(channel)),
 				Effect.fnUntraced(function* () {
 					yield* asPushSaveError(
-						recordRetirement({bundle: target.bundle, channel, props: Option.none(), retiredAt: showing.now})
+						recordRetirement({bundle: target.bundle, channel, props: Option.none(), retiredAt: UNSTARTED})
 					)
 					yield* settle(yield* apns.startActivity(target, showing.leg, channel, body), target)
 					const row = {
@@ -400,6 +413,7 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 
 		// A change APNs took or will always refuse is remembered; a throttled one is sent again next round.
 		const refresh = Effect.fnUntraced(function* (activity: Activity, props: ActivityProps, now: DateTime.Utc) {
+			if (HashSet.has(yield* Ref.get(lost), activity.channel)) return yield* forget(activity)
 			const shown = yield* contentState(activity.props)
 			const next = yield* contentState(props)
 			if (next.props === shown.props) return
@@ -415,8 +429,7 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 			)
 			yield* ApnsAnswer.match(answer, {
 				Accepted: () => asPushSaveError(activities.updateVoid({...editable(activity), props})),
-				// Apple has no such channel, so nothing is owed for it and the leg can start again.
-				ChannelGone: () => asPushSaveError(activities.updateVoid({...editable(activity), endedAt: Option.some(now)})),
+				ChannelGone: () => forget(activity),
 				DeadToken: () => asPushSaveError(activities.updateVoid({...editable(activity), endedAt: Option.some(now)})),
 				Refused: () => asPushSaveError(activities.updateVoid({...editable(activity), props})),
 				Retry: retry => PushError.make({cause: retry, message: 'Apple did not accept the Live Activity update.'}),

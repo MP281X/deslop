@@ -3,6 +3,7 @@ import {assert, it} from '@effect/vitest'
 
 import {
 	Array,
+	Boolean,
 	DateTime,
 	Deferred,
 	Duration,
@@ -28,6 +29,7 @@ import {Bookings} from '#services/bookings/service.ts'
 import {Push} from '#services/push/service.ts'
 
 const ID = BookingId.make('1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d')
+const OTHER = BookingId.make('2b3c4d5e-6f7a-4b8c-9d0e-1f2a3b4c5d6e')
 function starter(bundle: string, token: string) {
 	return {bundle, kind: 'start' as const, token: Redacted.make(ApnsToken.make(String.repeat(64)(token)))}
 }
@@ -36,25 +38,28 @@ const DEV_STARTER = starter('xyz.mp281x.trips.dev', 'b')
 const ANSWER = {channel: Option.none(), reason: Option.none(), status: 503}
 
 // A train three hours out, which only a person's request starts.
-const journey = Effect.map(DateTime.now, now => [
-	Train.make({
+function trainAt(now: DateTime.Utc, id: BookingId, seat: Option.Option<string>) {
+	return Train.make({
 		arrives: DateTime.addDuration(now, Duration.hours(4)),
 		coach: Option.none(),
 		confirmation: Option.none(),
 		departs: DateTime.addDuration(now, Duration.hours(3)),
 		from: Schema.decodeSync(BookedPlace)({name: 'Milano', timeZone: 'Europe/Rome'}),
-		id: ID,
+		id,
 		issued: Option.none(),
 		live: Option.none(),
 		number: '2',
 		operator: 'Trenitalia',
-		seat: Option.none(),
+		seat,
 		service: 'IC 2',
 		status: 'confirmed',
 		stops: [],
 		to: Schema.decodeSync(BookedPlace)({name: 'Verona', timeZone: 'Europe/Rome'})
 	})
-])
+}
+const journey = Effect.map(DateTime.now, now => [trainAt(now, ID, Option.none())])
+const seated = Effect.map(DateTime.now, now => [trainAt(now, ID, Option.some('12B'))])
+const both = Effect.map(DateTime.now, now => [trainAt(now, ID, Option.none()), trainAt(now, OTHER, Option.none())])
 
 type StartOutcome = typeof StartOutcome.Type
 const StartOutcome = Schema.Literals(['fails', 'hangs'])
@@ -88,6 +93,33 @@ const apple = Effect.fnUntraced(function* (
 	})
 	return {asked, created, layer, sent}
 })
+
+// Apple accepts every start and end and keeps every channel its delete is asked for; `update` is what it answers an update.
+const running = Effect.fnUntraced(function* (update: ApnsAnswer) {
+	const asked = yield* Queue.unbounded<string>()
+	const created = MutableRef.make(0)
+	const layer = Layer.mock(Apns, {
+		broadcast: (_bundle, _channel, aps) =>
+			Effect.succeed(
+				Boolean.match(aps['event'] === 'update', {
+					onFalse: () => ApnsAnswer.cases.Accepted.make({...ANSWER, status: 200}),
+					onTrue: () => update
+				})
+			),
+		createChannel: () => Effect.sync(() => `c${MutableRef.incrementAndGet(created)}`),
+		deleteChannel: Effect.fnUntraced(function* (_bundle: string, channel: string) {
+			yield* Queue.offer(asked, channel)
+			return ApnsAnswer.cases.Retry.make(ANSWER)
+		}),
+		enabled: true,
+		startActivity: () => Effect.succeed(ApnsAnswer.cases.Accepted.make({...ANSWER, status: 200})),
+		startHeld: () => Effect.succeedNone
+	})
+	return {asked, created, layer}
+})
+
+// A start of a booking that is not there waits for the round holding the push service, so the round that began with the server has ended when it fails.
+const afterRound = Effect.flatMap(Push, push => Effect.flip(push.start(OTHER)))
 
 const open = Effect.tap(Deferred.make<void>(), gate => Deferred.succeed(gate, undefined))
 
@@ -198,6 +230,48 @@ it.layer(NodeServices.layer, {excludeTestServices: true})(test => {
 					assert.deepStrictEqual(yield* Queue.takeBetween(throttled.asked, 2, 2), ['c1', 'c2'])
 				})
 			)
+		})
+	)
+
+	test.effect(
+		'a channel Apple kept after its ended activity was replaced does not hold the start of another journey',
+		Effect.fnUntraced(function* () {
+			const folder = yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped()
+			const kept = yield* running(ApnsAnswer.cases.Accepted.make({...ANSWER, status: 200}))
+			yield* serve(
+				folder,
+				kept.layer,
+				journey,
+				Effect.flatMap(Push, push => Effect.andThen(push.register(STARTER), push.start(ID)))
+			)
+			// The journey left while the server was down, and the end Apple took left its channel to delete.
+			assert.strictEqual(yield* serve(folder, kept.layer, Effect.succeed([]), Queue.take(kept.asked)), 'c1')
+			yield* serve(
+				folder,
+				kept.layer,
+				both,
+				Effect.flatMap(Push, push => Effect.andThen(push.start(ID), push.start(OTHER)))
+			)
+			assert.strictEqual(MutableRef.get(kept.created), 3)
+		})
+	)
+
+	test.effect(
+		'a leg whose channel Apple answers is gone starts on a new channel in the next round',
+		Effect.fnUntraced(function* () {
+			const folder = yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped()
+			const kept = yield* running(ApnsAnswer.cases.ChannelGone.make({...ANSWER, status: 400}))
+			yield* serve(
+				folder,
+				kept.layer,
+				journey,
+				Effect.flatMap(Push, push => Effect.andThen(push.register(STARTER), push.start(ID)))
+			)
+			// The first round of this run shows the new seat on the channel Apple answers is gone.
+			yield* serve(folder, kept.layer, seated, afterRound)
+			assert.strictEqual(MutableRef.get(kept.created), 1)
+			yield* serve(folder, kept.layer, seated, afterRound)
+			assert.strictEqual(MutableRef.get(kept.created), 2)
 		})
 	)
 })
