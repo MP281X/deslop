@@ -43,6 +43,7 @@ export class Retirement extends Model.Class<Retirement>('Retirement')({
 	channel: ChannelId,
 	// What the activity last showed while its end is still to be sent; none once Apple took the end, and for a channel whose start is not saved as an activity.
 	props: Model.FieldOption(Model.JsonFromString(ActivityProps)),
+	// The epoch for a channel written before its start is sent, which is what holds new starts until Apple deleted it.
 	retiredAt: Schema.DateTimeUtcFromMillis
 }) {
 	static readonly table = 'retirements'
