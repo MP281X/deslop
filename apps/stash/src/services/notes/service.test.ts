@@ -2,9 +2,26 @@ import {NodeServices} from '@effect/platform-node'
 import {SqliteClient} from '@effect/sql-sqlite-node'
 import {assert, it} from '@effect/vitest'
 
-import {Array, Boolean, Context, Deferred, Effect, FileSystem, Layer, Option, Stream, String, Fiber, pipe} from 'effect'
+import {
+	Array,
+	Boolean,
+	Context,
+	Deferred,
+	Effect,
+	FileSystem,
+	Layer,
+	Option,
+	Path,
+	Queue,
+	Ref,
+	Stream,
+	String,
+	Fiber,
+	pipe
+} from 'effect'
 
 import {Reactivity} from 'effect/reactivity'
+import {TestClock} from 'effect/testing'
 
 import {UserId} from '@deslop/runtime/shared/auth'
 
@@ -12,7 +29,8 @@ import {Sources} from './lib/extraction.ts'
 import {Organizer} from './lib/organization.ts'
 
 import {Media} from '#services/media/service.ts'
-import {NoteId, NotesError} from '#services/notes/schema.ts'
+import type {Organization} from '#services/notes/schema.ts'
+import {NoteId, NotesError, TagName} from '#services/notes/schema.ts'
 import {Notes} from '#services/notes/service.ts'
 
 const SHORT = 'https://t.co/fixture'
@@ -21,6 +39,16 @@ const FIRST = NoteId.make('6f1c9a52-8d0e-4c3b-9a51-2f6d7e8b9c01')
 const SECOND = NoteId.make('6f1c9a52-8d0e-4c3b-9a51-2f6d7e8b9c02')
 const THIRD = NoteId.make('6f1c9a52-8d0e-4c3b-9a51-2f6d7e8b9c03')
 const FOURTH = NoteId.make('6f1c9a52-8d0e-4c3b-9a51-2f6d7e8b9c04')
+
+const ORGANIZATION: Organization = {
+	body: 'Recipe',
+	definitions: [],
+	screenText: '',
+	summary: 'Lentil soup',
+	tags: [TagName.make('cooking')],
+	title: 'Soup',
+	topics: 'cooking'
+}
 
 function notesLayerWith<R>(sources: Layer.Layer<Sources, never, R>) {
 	return pipe(
@@ -200,6 +228,100 @@ it.layer(joiningLayer)(test =>
 			yield* notes.remove(FIRST)
 			assert.strictEqual((yield* Effect.flip(notes.capture(user, {id: FOURTH, text: SHORT}))).reason, 'Removed')
 			assert.strictEqual((yield* notes.list({cursor: Option.none(), limit: 10, query: ''})).total, 0)
+		})
+	)
+)
+
+// A server on the notes database in the folder, as a restart would start it again.
+function notesIn(directory: string, organize: Organizer['Service']['organize']) {
+	return pipe(
+		Layer.unwrap(
+			Effect.map(Path.Path, path =>
+				Layer.provide(
+					Notes.layer(directory),
+					Layer.merge(SqliteClient.layer({filename: path.join(directory, 'notes.db')}), Reactivity.layer)
+				)
+			)
+		),
+		Layer.provide(Layer.mock(Sources, {resolve: Effect.succeed})),
+		Layer.provide(Layer.mock(Organizer, {organize})),
+		Layer.provide(Layer.mock(Media, {}))
+	)
+}
+
+// Waits until the list holds the notes and none is organizing, read again after each commit.
+function settled(notes: Notes['Service'], count: number) {
+	return pipe(
+		notes.events,
+		Stream.mapEffect(() => notes.list({cursor: Option.none(), limit: count, query: ''})),
+		Stream.filter(page => page.total === count && Array.every(page.items, item => item.status !== 'organizing')),
+		Stream.runHead
+	)
+}
+
+it.layer(NodeServices.layer)(test =>
+	test.effect(
+		'organizes a note a restart stopped midway, for the person who saved it',
+		Effect.fnUntraced(function* () {
+			const directory = yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped()
+			const user = UserId.make('github:1')
+			const started = yield* Deferred.make<void>()
+			// The first server saves the note and stops while its organizer is still working.
+			yield* Effect.scoped(
+				Effect.gen(function* () {
+					const context = yield* Layer.build(
+						notesIn(directory, () => Effect.andThen(Deferred.succeed(started, undefined), Effect.never))
+					)
+					yield* Context.get(context, Notes).capture(user, {id: FIRST, text: 'Lentils with cumin'})
+					yield* Deferred.await(started)
+				})
+			)
+			// The next server on the same data claims the note at start.
+			const requesters = yield* Ref.make(Array.empty<UserId>())
+			const note = yield* Effect.scoped(
+				Effect.gen(function* () {
+					const context = yield* Layer.build(
+						notesIn(directory, userId => pipe(requesters, Ref.update(Array.append(userId)), Effect.as(ORGANIZATION)))
+					)
+					const notes = Context.get(context, Notes)
+					yield* settled(notes, 1)
+					return yield* notes.get(FIRST)
+				})
+			)
+			assert.deepStrictEqual([note.status, note.title, yield* Ref.get(requesters)], ['ready', 'Soup', [user]])
+		})
+	)
+)
+
+it.layer(NodeServices.layer)(test =>
+	test.effect(
+		'starts a running note once however often scans and signals look for organizing notes',
+		Effect.fnUntraced(function* () {
+			const directory = yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped()
+			const user = UserId.make('github:1')
+			const started = yield* Queue.unbounded<NoteId>()
+			const open = yield* Deferred.make<void>()
+			const calls = yield* Effect.scoped(
+				Effect.gen(function* () {
+					const context = yield* Layer.build(
+						notesIn(directory, (_userId, input) =>
+							pipe(Queue.offer(started, input.note.id), Effect.andThen(Deferred.await(open)), Effect.as(ORGANIZATION))
+						)
+					)
+					const notes = Context.get(context, Notes)
+					yield* notes.capture(user, {id: FIRST, text: 'Lentils with cumin'})
+					const first = yield* Queue.take(started)
+					// The scans each minute and the next capture's claim all find the first note organizing while free workers wait.
+					yield* TestClock.adjust('3 minutes')
+					yield* notes.capture(user, {id: FIRST, text: 'Lentils with cumin'})
+					yield* notes.capture(user, {id: SECOND, text: 'Cumin history'})
+					const second = yield* Queue.take(started)
+					yield* Deferred.succeed(open, undefined)
+					yield* settled(notes, 2)
+					return [first, second, ...(yield* Queue.clear(started))]
+				})
+			)
+			assert.deepStrictEqual(calls, [FIRST, SECOND])
 		})
 	)
 )

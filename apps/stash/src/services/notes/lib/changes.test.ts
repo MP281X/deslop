@@ -38,12 +38,16 @@ it('merges new words from another share while a retried capture stays unchanged'
 	assert.strictEqual(changeNote(NOTE, NoteChange.cases.share.make({capture: CAPTURE}))._tag, 'Unchanged')
 })
 
-it('starts a failed note over and publishes the completed organization', () => {
+it('starts a failed note over for whoever asked and publishes the completed organization', () => {
 	const failed = changeNote(NOTE, NoteChange.cases.fail.make({issue: 'Offline'}))
 	if (!NoteChangeResult.isAnyOf(['Changed'])(failed)) return assert.fail('Expected a failed note')
-	const retried = changeNote(Note.make(failed.note), NoteChange.cases.retry.make({}))
+	const other = UserId.make('github:2')
+	const retried = changeNote(Note.make(failed.note), NoteChange.cases.retry.make({requester: other}))
 	if (!NoteChangeResult.isAnyOf(['Changed'])(retried)) return assert.fail('Expected a retry')
-	assert.deepStrictEqual([retried.note.status, retried.note.issue], ['organizing', Option.none()])
+	assert.deepStrictEqual(
+		[retried.note.status, retried.note.issue, retried.note.requester],
+		['organizing', Option.none(), other]
+	)
 	const ready = changeNote(
 		Note.make(retried.note),
 		NoteChange.cases.organize.make({
