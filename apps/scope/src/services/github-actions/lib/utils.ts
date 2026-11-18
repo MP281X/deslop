@@ -204,19 +204,18 @@ function lineNanos(stamp: string, time: DateTime.Utc) {
 	return Duration.nanos(BigInt(Math.floor(DateTime.toEpochMillis(time) / 1000)) * 1_000_000_000n + BigInt(fraction))
 }
 
-// A log's text as lines, each cut at LINE_LIMIT characters; only the line being read is held, never the whole log.
+// A log's text as lines, each cut at LINE_LIMIT characters; only the line being read is held, never the whole log. The closing newline ends the last line only when the log ended cleanly, so a download cut mid-line leaves no half line.
 export function logLines<E, R>(log: Stream.Stream<string, E, R>) {
-	return Stream.mapAccum(
+	return pipe(
 		log,
-		Function.constant(''),
-		(partial, chunk) => {
+		Stream.concat(Stream.make('\n')),
+		Stream.mapAccum(Function.constant(''), (partial, chunk) => {
 			const lines = String.split(`${partial}${chunk}`, '\n')
 			return [
 				String.slice(0, LINE_LIMIT)(Array.lastNonEmpty(lines)),
 				Array.map(Array.initNonEmpty(lines), String.slice(0, LINE_LIMIT))
 			] as const
-		},
-		{onHalt: partial => Array.filter([partial], String.isNonEmpty)}
+		})
 	)
 }
 

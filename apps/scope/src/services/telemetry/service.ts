@@ -830,7 +830,7 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 				})}
 			`
 		})
-		// Each service's latest run, the one heard from last (the greater start settles a tie): what its senders of that run sent, and when they last did.
+		// Each service's latest run, the one with the newest stored span start or log time (the greater run start settles a tie): what its senders of that run sent, and when they last did.
 		const listRuns = SqlSchema.findAll({
 			Request: Schema.Void,
 			Result: ServiceRun,

@@ -774,7 +774,7 @@ it.layer(telemetryLayer)(test =>
 
 it.layer(telemetryLayer)(test =>
 	test.effect(
-		'keeps a fast process one run however often it sends, and calls the run heard from last the latest',
+		'keeps a fast process one run however often it sends, and calls the run with the newest stored time the latest',
 		Effect.fnUntraced(function* () {
 			const telemetry = yield* Telemetry
 			yield* TestClock.adjust('1 hour')
