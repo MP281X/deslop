@@ -337,8 +337,13 @@ export class Exposures extends Context.Service<Exposures>()('@deslop/deploy/serv
 						Effect.mapError(cause => DeployError.make({cause, message: 'Deploy does not own this exposure'}))
 					)
 					if (exposure.kind === 'tailnet' && exposure.state === 'active') {
-						const status = yield* proxies.serveStatus
-						if (servesPort(status, exposure.port) && !ownsMapping(status, exposure)) {
+						// An unreadable status does not stop the removal: the pass checks ownership again before it changes Serve.
+						if (
+							Option.exists(
+								yield* Effect.option(proxies.serveStatus),
+								status => servesPort(status, exposure.port) && !ownsMapping(status, exposure)
+							)
+						) {
 							return yield* DeployError.make({
 								message: 'This mapping was changed outside Deploy; refusing to remove it'
 							})
