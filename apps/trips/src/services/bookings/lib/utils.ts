@@ -21,6 +21,7 @@ import type {
 	Chip,
 	FlightPhase,
 	FlightTracking,
+	IssuedOn,
 	Leg,
 	LocalTime,
 	Tone,
@@ -390,6 +391,13 @@ function combine(existing: Booking, incoming: Booking) {
 		})
 	}
 	return incoming
+}
+
+// An issue date that names a day no calendar has reads as none, so it never outranks a real document; JavaScript rolls "2026-02-30" over to March, which the round trip catches.
+export function realIssueDate(issued: Option.Option<IssuedOn>) {
+	return Option.filter(issued, date =>
+		Option.exists(DateTime.make(date), day => String.startsWith(date)(DateTime.formatIso(day)))
+	)
 }
 
 export function upsert(current: BookingList, incoming: BookingList) {

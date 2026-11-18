@@ -28,7 +28,7 @@ import {Places} from './lib/places.ts'
 import {Timetable} from './lib/timetable.ts'
 import {migrations} from './migrations.ts'
 
-import {byStart, instantOf, upsert} from '#services/bookings/lib/utils.ts'
+import {byStart, instantOf, realIssueDate, upsert} from '#services/bookings/lib/utils.ts'
 import type {Booking, BookingIds, BookingSource, ExtractedItem, IssuedOn, LocalTime} from '#services/bookings/schema.ts'
 import {BookingId, BookingsError, Flight, Stay, Train} from '#services/bookings/schema.ts'
 
@@ -283,7 +283,7 @@ export class Bookings extends Context.Service<Bookings>()('@deslop/trips/service
 				// Every segment or none, so a ticket is never half saved; the failure names the place to fix.
 				const resolved = yield* Effect.forEach(
 					extraction.items,
-					item => Effect.result(resolve(item, extraction.issued)),
+					item => Effect.result(resolve(item, realIssueDate(extraction.issued))),
 					{concurrency: 1}
 				)
 				const issues = Array.getFailures(resolved)
