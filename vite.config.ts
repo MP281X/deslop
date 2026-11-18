@@ -16,10 +16,11 @@ const PREVIEW_UNIT = Array.join(
 	[
 		'u=preview-${PWD##*/} p=$((20000 + 0x$(printf %s "$PWD" | sha256sum | cut -c1-4) % 10000)) m=$(git rev-parse --git-path preview-serve) h=$(hostname -s).tailnet-8c4c.ts.net',
 		'fail() { printf "%s\\n" "$1" >&2; exit 1; }',
-		// Only the marker says this checkout added the tailnet entry, and a marker can outlive it: nothing is removed or reused unless the port's whole entry is still this host's root proxied to this preview's loopback port, and nothing changes while Tailscale cannot say what it serves.
-		'serving() { s=$(tailscale serve status --json) && jq -e "type == \\"object\\"" <<<"$s" >/dev/null || fail "Tailscale did not say what it serves on port $p"; }',
-		'served() { jq -e --arg p $p ".TCP[\\$p]" <<<"$s" >/dev/null; }',
-		'proxied() { jq -e --arg s :$p --arg k $h:$p --arg to http://127.0.0.1:$p "[.Web // {} | to_entries[] | select(.key | endswith(\\$s)) | {key, handlers: .value.Handlers}] == [{key: \\$k, handlers: {\\"/\\": {Proxy: \\$to}}}]" <<<"$s" >/dev/null; }',
+		// Only the marker says this checkout added the tailnet entry, and a marker can outlive it: nothing is removed or reused unless the port's whole entry is still this host's root proxied to this preview's loopback port, and nothing changes while Tailscale cannot say what it serves: its answer is one JSON object, and a question that answer cannot settle stops the run.
+		'serving() { s=$(tailscale serve status --json) && s=$(jq -ces "select(length == 1 and (.[0] | type == \\"object\\")) | .[0]" <<<"$s") || fail "Tailscale did not say what it serves on port $p"; }',
+		'asked() { local r=0; jq -e "$@" <<<"$s" >/dev/null || r=$?; ((r < 2)) || fail "Tailscale did not say what it serves on port $p"; return $r; }',
+		'served() { asked --arg p $p ".TCP // {} | has(\\$p)"; }',
+		'proxied() { asked --arg s :$p --arg k $h:$p --arg to http://127.0.0.1:$p "[.Web // {} | to_entries[] | select(.key | endswith(\\$s)) | {key, handlers: .value.Handlers}] == [{key: \\$k, handlers: {\\"/\\": {Proxy: \\$to}}}]"; }',
 		'unserve() { [ -f "$m" ] || return 0; serving; ! proxied || sudo tailscale serve --https=$p off >/dev/null || return 1; rm "$m"; }',
 		// The unit is named by folder alone, so a checkout elsewhere with the same folder name may own it.
 		'd=$(systemctl --user show -P WorkingDirectory $u); [[ -z $d || $d -ef . ]] || fail "$u runs $d, not this checkout"'
@@ -37,10 +38,12 @@ const PREVIEW = Array.join(
 		// Tailscale's own listeners on the tailnet addresses carry the serve entry, not an app.
 		'listeners() { ss -Hltnp "sport = :$p" | grep -v %tailscale0; }',
 		'ours() { local l x; l=$(listeners) && while read -r x; do [[ $x =~ pid=([0-9]+) && $(cat /proc/${BASH_REMATCH[1]}/cgroup 2>/dev/null) == */$u.service ]] || return 1; done <<<"$l"; }',
+		// The running preview stops only once Tailscale said what it serves.
+		'serving',
 		'[ -z "$d" ] || systemctl --user stop $u',
 		// Two checkouts can derive the same port: the second fails instead of handing out the first one's app.
 		'! l=$(listeners) || fail "Port $p is taken by another server: $l"',
-		'serving; ! served || { [ -f "$m" ] && proxied; } || fail "Tailnet port $p is served for something else"',
+		'! served || { [ -f "$m" ] && proxied; } || fail "Tailnet port $p is served for something else"',
 		'systemd-run --user -G -d -u $u -E PATH="$HOME/.vite-plus/bin:$PATH" -E HOST=127.0.0.1 -E PORT=$p vp run --no-cache --filter "@deslop/$a" preview || exit 1',
 		'i=$(systemctl --user show -P InvocationID $u)',
 		'trap "systemctl --user stop $u 2>/dev/null; unserve" EXIT',
@@ -336,7 +339,7 @@ export default defineConfig({
 			preview: {cache: false, command: `bash -c '${PREVIEW}' preview`},
 			'preview:stop': {
 				cache: false,
-				command: `bash -c '${PREVIEW_UNIT}\n[ -z "$d" ] || systemctl --user stop $u\nunserve'`
+				command: `bash -c '${PREVIEW_UNIT}\n[ ! -f "$m" ] || serving\n[ -z "$d" ] || systemctl --user stop $u\nunserve'`
 			},
 			test: 'vp run -r --parallel test'
 		}
