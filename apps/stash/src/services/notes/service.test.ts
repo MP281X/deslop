@@ -588,6 +588,58 @@ it.layer(NodeServices.layer)(test =>
 
 it.layer(NodeServices.layer)(test =>
 	test.effect(
+		'leaves a note whose Regenerate could not commit to the person, not to the next scan',
+		Effect.fnUntraced(function* () {
+			const directory = yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped()
+			const requests = yield* Ref.make(0)
+			const asked = yield* Deferred.make<void>()
+			const user = UserId.make('github:1')
+			return yield* Effect.scoped(
+				Effect.gen(function* () {
+					const context = yield* Layer.build(
+						notesIn(directory, () =>
+							pipe(
+								requests,
+								Ref.updateAndGet(count => count + 1),
+								Effect.flatMap(count =>
+									Boolean.match(count === 1, {
+										onFalse: () => Effect.succeed({...ORGANIZATION, title: 'Again'}),
+										// The first run waits for an answer that never comes.
+										onTrue: () => Effect.andThen(Deferred.succeed(asked, undefined), Effect.never)
+									})
+								)
+							)
+						)
+					)
+					const notes = Context.get(context, Notes)
+					yield* notes.capture(user, {id: FIRST, text: 'Lentils with cumin'})
+					yield* Deferred.await(asked)
+					const other = yield* otherConnection(directory)
+					// The restart's write succeeds and its commit fails: the row it adds has no parent, which SQLite checks only then.
+					yield* other.unsafe('CREATE TABLE parent (id INTEGER PRIMARY KEY)')
+					yield* other.unsafe('CREATE TABLE child (id INTEGER REFERENCES parent (id) DEFERRABLE INITIALLY DEFERRED)')
+					yield* other.unsafe(
+						`CREATE TRIGGER orphan AFTER UPDATE ON notes WHEN new.id = '${FIRST}' BEGIN INSERT INTO child VALUES (1); END`
+					)
+					const failure = yield* Effect.flip(notes.regenerate(user, FIRST))
+					yield* other.unsafe('DROP TRIGGER orphan')
+					// The minute scans since would have asked the provider again for the run the restart stopped.
+					yield* TestClock.adjust('3 minutes')
+					const waiting = [(yield* notes.get(FIRST)).status, yield* Ref.get(requests)]
+					yield* notes.regenerate(user, FIRST)
+					const final = yield* settledAfterTicks(notes)
+					assert.deepStrictEqual(
+						[failure._tag, waiting, final.status, final.title, yield* Ref.get(requests)],
+						['NotesError', ['organizing', 1], 'ready', 'Again', 2]
+					)
+				})
+			)
+		})
+	)
+)
+
+it.layer(NodeServices.layer)(test =>
+	test.effect(
 		'asks the provider once for a note it cannot record, until the person asks again',
 		Effect.fnUntraced(function* () {
 			const directory = yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped()
