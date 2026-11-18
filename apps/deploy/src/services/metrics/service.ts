@@ -310,7 +310,9 @@ export class Metrics extends Context.Service<Metrics>()('@deslop/deploy/services
 					})
 				),
 				Effect.asSome,
-				Effect.catchTag('TimeoutError', () => Effect.succeedNone)
+				Effect.catchTag('TimeoutError', cause =>
+					Effect.as(Effect.logWarning('Per-app metrics exceeded their sampling window', cause), Option.none())
+				)
 			)
 			const value = yield* sampled(() => sample(current, files.memory, disks, old, Option.some(files.load)))
 			return {current, value: {...value, point: {...value.point, apps: shares}}}

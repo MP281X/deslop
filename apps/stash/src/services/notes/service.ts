@@ -325,13 +325,11 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 			)
 		}
 
-		// judge-ignore no-silent-fallback -- a preview file outside SQL is disposable, so a missing one is logged and tagging goes on with the text.
 		const tagNote = Effect.fnUntraced(function* (userId: UserId, note: Note, stills: Picture[]) {
 			const label = Boolean.match(Option.isNone(note.file), {
 				onFalse: Function.constant('The saved photo'),
 				onTrue: Function.constant('Preview image')
 			})
-			// judge-ignore no-silent-fallback -- Disposable preview files may be gone; log their loss and tag the saved text and other pictures.
 			const pictures = [
 				...(yield* pipe(
 					Option.toArray(note.image),
@@ -382,14 +380,12 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 			)
 		})
 
-		// judge-ignore no-silent-fallback -- an expired preview URL or dead slide is logged and skipped; the remaining slides still tag the note.
 		function readSlides(slides: Extraction['slides']) {
 			return pipe(
 				slides,
 				Option.toArray,
 				Array.flatten,
 				Effect.forEach(
-					// judge-ignore no-silent-fallback -- One expired slide is logged and omitted without discarding other pictures or the post text.
 					(image, index) =>
 						pipe(
 							sources.image(image),
@@ -403,7 +399,6 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 			)
 		}
 
-		// judge-ignore no-silent-fallback -- video details, transcript and frames enrich a note already saved: each failure is logged, and tagging goes on with the saved text and pictures.
 		// Read video details and frames, then tag the note; details replace content for non-X links, and for X only when useInfo says the post itself could not be read.
 		const watch = Effect.fnUntraced(function* (
 			userId: UserId,
@@ -415,13 +410,11 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 				[
 					pipe(
 						asMediaNotesError(media.read(userId, input.url, Option.some(input.video))),
-						// judge-ignore no-silent-fallback -- Video details enrich saved text; failed yt-dlp reads are logged and tagging continues.
 						Effect.tapError(error => Effect.logWarning('The video could not be read', error)),
 						Effect.option,
 						Effect.flatMap(read =>
 							pipe(
 								Option.filter(read, () => Option.isNone(note.transcript)),
-								// judge-ignore no-silent-fallback -- A failed optional transcript is logged; saved text and pictures still reach tagging.
 								Option.map(details =>
 									Effect.catch(asMediaNotesError(details.transcript), error =>
 										Effect.as(Effect.logWarning('No transcript', error), Option.none<string>())
@@ -445,7 +438,6 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 							)
 						)
 					),
-					// judge-ignore no-silent-fallback -- Failed frame extraction is logged; existing slides and saved text still reach tagging.
 					Effect.catch(asMediaNotesError(media.frames(input.video)), error =>
 						Effect.as(Effect.logWarning('No video frames', error), Array.empty<Still>())
 					)
@@ -455,6 +447,7 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 			yield* tag(userId, note.id, [...input.slides, ...Array.map(frames, still)])
 		})
 
+		// judge-ignore no-silent-fallback -- Sources.resolve only canonicalizes an already usable shared URL; organizeLink performs content extraction separately, so a logged resolution failure may keep the shared URL.
 		const resolveLink = Effect.fnUntraced(function* (id: NoteId, link: string) {
 			const url = yield* Effect.catch(sources.resolve(link), error =>
 				Effect.as(Effect.logWarning('The short link was not resolved', error), link)
@@ -485,12 +478,15 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 		// The note as resolved: its canonical link, or the shared one when resolution failed.
 		const organizeLink = Effect.fnUntraced(function* (userId: UserId, note: Note, original: string) {
 			const link = Option.getOrElse(note.url, () => original)
-			const extraction = yield* Effect.result(sources.extract(link))
+			const extraction = yield* pipe(
+				sources.extract(link),
+				Effect.tapError(error => Effect.logWarning('The saved link could not be extracted', error)),
+				Effect.result
+			)
 			yield* change(note.id, NoteChange.cases.extract.make({extraction}))
 			const slides = yield* Result.match(extraction, {
 				onFailure: () => Effect.succeed(Array.empty<Picture>()),
 				onSuccess: Effect.fnUntraced(function* (page) {
-					// judge-ignore no-silent-fallback -- Expired previews are logged and omitted; the extracted text remains usable.
 					yield* Effect.ignore(keepPreview(note, page.image), {log: 'Warn', message: 'The preview image was not kept'})
 					return yield* readSlides(page.slides)
 				})
@@ -518,14 +514,12 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 			)
 		})
 
-		// judge-ignore no-silent-fallback -- frames and transcript are optional enrichment: their failures are logged and the uploaded note is still tagged.
 		const organizeFile = Effect.fnUntraced(function* (userId: UserId, note: Note, type: FileType) {
 			if (!isVideo(type)) return yield* tag(userId, note.id, [])
 			const stored = path.join(files, note.id)
 			const [stills] = yield* Effect.all(
 				[
 					Effect.gen(function* () {
-						// judge-ignore no-silent-fallback -- Disposable video files and failed ffmpeg reads are logged; tagging still uses saved content.
 						const frames = yield* Effect.catch(asMediaNotesError(media.fileFrames(stored)), error =>
 							Effect.as(Effect.logWarning('No video frames', error), Array.empty<Still>())
 						)
@@ -539,7 +533,6 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 						)
 						return frames
 					}),
-					// judge-ignore no-silent-fallback -- Optional transcription failures are logged; tagging still uses saved content and frames.
 					pipe(
 						asMediaNotesError(media.fileTranscript(userId, stored)),
 						Effect.catch(error => Effect.as(Effect.logWarning('No transcript', error), Option.none<string>())),

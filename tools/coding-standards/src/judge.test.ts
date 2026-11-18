@@ -1,9 +1,13 @@
 import {NodeServices} from '@effect/platform-node'
 import {assert, describe, it} from '@effect/vitest'
 
-import {Array, Effect, FileSystem, Path, Record, Stream, String, pipe} from 'effect'
+import {Array, Effect, FileSystem, Path, Record, Result, Stream, String, pipe} from 'effect'
 
 import {ChildProcess} from 'effect/process'
+
+import {noUnrelatedJobs} from '#judge/no-unrelated-jobs.ts'
+import {features} from '#lib/features.ts'
+import {readSource} from '#lib/units.ts'
 
 const IDENTITY = {
 	GIT_AUTHOR_EMAIL: 'judge@example.com',
@@ -37,48 +41,53 @@ function functionSource(name: string, suffix: string) {
 	]
 }
 
-// judge-ignore no-unrelated-jobs -- the fixture's helpers share one temporary home and git identity: checkout writes the change that run judges.
+// A failed git command fails the fixture, so no case runs against a half-made checkout.
+const git = Effect.fnUntraced(function* (directory: string, args: string[]) {
+	assert.strictEqual(
+		yield* Effect.scoped(
+			Effect.flatMap(
+				ChildProcess.make('git', args, {cwd: directory, env: IDENTITY, extendEnv: true}),
+				child => child.exitCode
+			)
+		),
+		0,
+		`git ${Array.join(args, ' ')}`
+	)
+})
+
+const write = Effect.fnUntraced(function* (directory: string, files: Record<string, string[]>) {
+	const fs = yield* FileSystem.FileSystem
+	const path = yield* Path.Path
+	yield* Effect.forEach(
+		Record.toEntries(files),
+		entry =>
+			Effect.gen(function* () {
+				yield* fs.makeDirectory(path.dirname(path.join(directory, entry[0])), {recursive: true})
+				yield* fs.writeFileString(path.join(directory, entry[0]), Array.join(entry[1], '\n'))
+			}),
+		{concurrency: 'unbounded'}
+	)
+})
+
+const checkout = Effect.fnUntraced(function* (files: Record<string, string[]>) {
+	const fs = yield* FileSystem.FileSystem
+	const directory = yield* fs.makeTempDirectoryScoped({prefix: 'coding-standards-checkout-'})
+	yield* git(directory, ['init', '-q', '-b', 'main'])
+	yield* write(directory, {'README.md': ['# Notes']})
+	yield* git(directory, ['add', '-A'])
+	yield* git(directory, ['commit', '-q', '-m', 'Start'])
+	yield* git(directory, ['checkout', '-q', '-b', 'change'])
+	yield* write(directory, files)
+	yield* git(directory, ['add', '-A'])
+	yield* git(directory, ['commit', '-q', '--allow-empty', '-m', 'Change'])
+	return directory
+})
+
 // `misjudged` is the answer field of the question whose self-check the stub answers wrongly.
 const fixture = Effect.fnUntraced(function* (misjudged: string = '') {
 	const fs = yield* FileSystem.FileSystem
 	const path = yield* Path.Path
 	const home = yield* fs.makeTempDirectoryScoped({prefix: 'coding-standards-home-'})
-	// A failed git command fails the fixture, so no case runs against a half-made checkout.
-	const git = Effect.fnUntraced(function* (directory: string, args: string[]) {
-		assert.strictEqual(
-			yield* Effect.scoped(
-				Effect.flatMap(
-					ChildProcess.make('git', args, {cwd: directory, env: IDENTITY, extendEnv: true}),
-					child => child.exitCode
-				)
-			),
-			0,
-			`git ${Array.join(args, ' ')}`
-		)
-	})
-	const write = Effect.fnUntraced(function* (directory: string, files: Record<string, string[]>) {
-		yield* Effect.forEach(
-			Record.toEntries(files),
-			entry =>
-				Effect.gen(function* () {
-					yield* fs.makeDirectory(path.dirname(path.join(directory, entry[0])), {recursive: true})
-					yield* fs.writeFileString(path.join(directory, entry[0]), Array.join(entry[1], '\n'))
-				}),
-			{concurrency: 'unbounded'}
-		)
-	})
-	const checkout = Effect.fnUntraced(function* (files: Record<string, string[]>) {
-		const directory = yield* fs.makeTempDirectoryScoped({prefix: 'coding-standards-checkout-'})
-		yield* git(directory, ['init', '-q', '-b', 'main'])
-		yield* write(directory, {'README.md': ['# Notes']})
-		yield* git(directory, ['add', '-A'])
-		yield* git(directory, ['commit', '-q', '-m', 'Start'])
-		yield* git(directory, ['checkout', '-q', '-b', 'change'])
-		yield* write(directory, files)
-		yield* git(directory, ['add', '-A'])
-		yield* git(directory, ['commit', '-q', '--allow-empty', '-m', 'Change'])
-		return directory
-	})
 	const run = Effect.fnUntraced(function* (directory: string, flags: string[] = []) {
 		const child = yield* ChildProcess.make(
 			'node',
@@ -139,6 +148,57 @@ const fixture = Effect.fnUntraced(function* (misjudged: string = '') {
 })
 
 describe('coding-standards judge', () => {
+	it('asks jobs, not rule visitors or router and Layer composition callbacks', () => {
+		const body = Array.join(
+			['const one = read()', 'const two = other()', 'save(one)', 'report(two)', 'return one'],
+			'\n'
+		)
+		const padding = String.repeat(151)('\n')
+		const ruleImport = "import {defineRule} from 'vite-plus/lint/plugins'\n"
+		const routerImport = "import {HttpRouter} from 'effect/http'\n"
+		const layerImport = "import {Layer} from 'effect'\n"
+		const sources = [
+			{
+				asked: false,
+				code: `${ruleImport}defineRule({create: context => ({\nCallExpression: node => {\n${body}\n}\n})})`
+			},
+			{
+				asked: false,
+				code: `${ruleImport}defineRule({create: context => ({\n${padding}CallExpression: node => {\n${body}\n}\n})})`
+			},
+			{asked: false, code: `${routerImport}HttpRouter.use(router => Effect.gen(function* () {\n${body}\n}))`},
+			{asked: false, code: `${layerImport}Layer.effect(Service, Effect.gen(function* () {\n${body}\n}))`},
+			{asked: false, code: `${layerImport}Layer.unwrap(Effect.gen(function* () {\n${body}\n}))`},
+			{asked: true, code: `${layerImport}Layer.succeed(Service, {read: () => {\n${body}\n}})`},
+			{
+				asked: true,
+				code: `${ruleImport}defineRule({create: context => {\n${padding}const helpers = {read: () => {\n${body}\n}}\nreturn {}\n}})`
+			},
+			{
+				asked: true,
+				code: `${layerImport}Layer.effect(Service, Effect.gen(function* () {\n${padding}function job() {\n${body}\n}\n}))`
+			},
+			{
+				asked: true,
+				code: `${routerImport}HttpRouter.use(router => Effect.gen(function* () {\n${padding}function job() {\n${body}\n}\n}))`
+			},
+			{asked: true, code: `defineRule({create: context => ({\nCallExpression: node => {\n${body}\n}\n})})`},
+			{asked: true, code: `function job() {\n${body}\n}`},
+			{asked: true, code: `const text = 'defineRule HttpRouter.use Layer.effect';\nfunction job() {\n${body}\n}`}
+		]
+		for (const source of sources) {
+			const parsed = Result.getOrThrow(readSource('source.ts', source.code))
+			assert.isAbove(parsed.units.length, 0)
+			for (const unit of parsed.units) {
+				assert.strictEqual(
+					noUnrelatedJobs.gate(features(unit.text, unit.imports, unit.composition)),
+					source.asked,
+					source.code
+				)
+			}
+		}
+	})
+
 	it.layer(NodeServices.layer, {excludeTestServices: true})(test => {
 		test.effect(
 			'reports findings and distinguishes suppressed findings from stale ignores',
@@ -154,7 +214,14 @@ describe('coding-standards judge', () => {
 							ignore,
 							...componentSource('Ignored'),
 							ignore,
-							...componentSource('Passing')
+							...componentSource('Passing'),
+							'// judge-ignore no-repeated-search -- retired question',
+							'// judge-ignore toString -- inherited properties are not questions',
+							...componentSource('Unknown')
+						],
+						'unused.ts': [
+							'// judge-ignore no-silent-fallback -- no function follows this comment',
+							'export const value = 1'
 						]
 					})
 				)
@@ -165,7 +232,13 @@ describe('coding-standards judge', () => {
 					'page.tsx:21-28 no-view-state-in-memory This now passes; remove its judge-ignore comment.'
 				)
 				assert.include(result.output, 'suppressed by judge-ignore: selection is temporary in this embedded widget')
-				assert.include(result.output, '— 2 findings, 0 could not read, 1 suppressed')
+				assert.include(result.output, 'no-repeated-search Unknown question; remove its judge-ignore comment.')
+				assert.include(result.output, 'toString Unknown question; remove its judge-ignore comment.')
+				assert.include(
+					result.output,
+					'unused.ts:1-1 judge-ignore This comment does not apply to a judged unit; remove it.'
+				)
+				assert.include(result.output, '— 5 findings, 0 could not read, 1 suppressed')
 			}, Effect.scoped)
 		)
 

@@ -217,7 +217,6 @@ function whole<A extends FxPost>(post: A) {
 	) {
 		return Effect.succeed(post)
 	}
-	// judge-ignore no-silent-fallback -- an article body is optional enrichment: a failed read is logged, and the article still reads as its title among the posts already loaded around it.
 	return pipe(
 		fx(FxStatus, `status/${post.id}`),
 		Effect.map(found => ({...post, ...found.status})),
@@ -412,8 +411,16 @@ const readPage = Effect.fnUntraced(function* (url: URL) {
 						onTrue: () =>
 							pipe(
 								reader(url),
-								Effect.map(rendered => ({...rendered, author: extraction.author, image: extraction.image})),
-								Effect.catchTag('NotesError', () => Effect.succeed(extraction))
+								Effect.tapError(error =>
+									Effect.logWarning('The rendered article could not be read; keeping its extracted text', error)
+								),
+								Effect.option,
+								Effect.map(
+									Option.match({
+										onNone: () => extraction,
+										onSome: rendered => ({...rendered, author: extraction.author, image: extraction.image})
+									})
+								)
 							)
 					})
 			})
@@ -429,7 +436,6 @@ function readLinked(url: URL) {
 		}),
 		Effect.map(found => `### ${found.title}\n\n${found.url}\n\n${String.slice(0, 40_000)(found.text)}`),
 		timeLimit('40 seconds', 'The linked page took too long.'),
-		// judge-ignore no-silent-fallback -- A failed linked page is logged and absent, not a failure to read the post itself.
 		Effect.tapError(error => Effect.logWarning('The linked page was not read', error)),
 		Effect.option
 	)
@@ -447,11 +453,9 @@ const xPlan = Effect.fnUntraced(function* (url: URL) {
 	return conversationPlan(conversation, status, yield* Effect.transposeOption(Option.map(status.quote, whole)))
 })
 
-// judge-ignore no-silent-fallback -- a linked page or quoted post that fails to load is logged and skipped, so one dead link never loses the post's own text.
 function linkedPosts(plan: Effect.Success<ReturnType<typeof xPlan>>) {
 	return Effect.forEach(
 		plan.posts,
-		// judge-ignore no-silent-fallback -- A failed linked post is logged and absent; the original post remains readable.
 		linkedId =>
 			pipe(
 				Effect.map(fx(FxStatus, `status/${linkedId}`), found => found.status),

@@ -3,7 +3,7 @@ import {Duration, Effect, Option, Result, Schema, String, pipe} from 'effect'
 import {HttpRouter, HttpServerRequest, HttpServerResponse} from 'effect/http'
 
 import {Auth, requireAdmin} from '@deslop/runtime/server/auth'
-import {AuthError, failureOptions, signInUrl} from '@deslop/runtime/shared/auth'
+import {AuthError, failureOptions, needsSignIn, signInUrl} from '@deslop/runtime/shared/auth'
 
 import {AiProxy} from '#services/ai-proxy/service.ts'
 import {clientMetadata} from '#services/connections/lib/utils.ts'
@@ -52,7 +52,7 @@ export const HttpHandlers = HttpRouter.use(router =>
 							auth.user(request.headers),
 							Effect.asSome,
 							Effect.catchTag('AuthError', error => {
-								if (error.error !== undefined) return Effect.fail(error)
+								if (!needsSignIn(error)) return Effect.fail(error)
 								return Effect.succeedNone
 							})
 						),

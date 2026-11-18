@@ -552,12 +552,9 @@ export class Media extends Context.Service<
 			})
 
 			const sample = Effect.fnUntraced(function* (video: string, work: string) {
-				// judge-ignore no-silent-fallback -- A missing probe duration still permits sampling with the previous six-second assumption; the missing duration is logged.
-				const length = yield* Option.match(yield* lengthOf(video), {
-					onNone: () =>
-						Effect.as(Effect.logWarning('The video duration is unknown; sampling as six seconds'), Duration.seconds(6)),
-					onSome: Effect.succeed
-				})
+				const length = yield* Effect.fromOption(yield* lengthOf(video), () =>
+					MediaError.make({message: 'The video duration is unknown; frames could not be sampled.'})
+				)
 				const seconds = Duration.toSeconds(length)
 				// A still every 15 seconds, 12 to 48 of them, so a short clip shows its captions and a long talk its slides.
 				const count = Number.max(12, Number.min(48, Math.ceil(seconds / 15)))

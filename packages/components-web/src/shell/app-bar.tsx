@@ -2,7 +2,7 @@ import {useAtom, useAtomValue} from '@effect/atom-react'
 
 import {Array, Effect, Equal, Function, Option, Predicate, Schema, String, Struct, pipe} from 'effect'
 
-import {CaretLeftIcon} from '@phosphor-icons/react'
+import {ArrowClockwiseIcon, CaretLeftIcon} from '@phosphor-icons/react'
 import {AsyncResult, Atom} from 'effect/reactivity'
 import {useState} from 'react'
 import type {ComponentProps, KeyboardEvent, ReactElement, ReactNode} from 'react'
@@ -63,6 +63,14 @@ function AccountMenu() {
 	}
 
 	if (!AsyncResult.isSuccess(account)) return null
+	if (AsyncResult.isFailure(loaded)) {
+		return (
+			<Button variant="destructive" size="sm" aria-label="Account menu unavailable. Try again" onClick={activate}>
+				<ArrowClockwiseIcon />
+				Retry account menu
+			</Button>
+		)
+	}
 	if (!AsyncResult.isSuccess(loaded) || open === undefined) {
 		return (
 			<AccountButton

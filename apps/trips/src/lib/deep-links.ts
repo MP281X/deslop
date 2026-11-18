@@ -7,7 +7,7 @@ import {Linking} from 'react-native'
 
 import {appConfig} from '@deslop/runtime/mobile/app'
 
-import {BookingId} from '#services/bookings/schema.ts'
+import {BookingId, BookingsError} from '#services/bookings/schema.ts'
 
 export const BOOKING_LINK = `${appConfig.extra.scheme}://booking/`
 
@@ -37,10 +37,21 @@ export const openedAtom = Atom.keepAlive(
 		pipe(
 			Stream.fromEffect(
 				Effect.map(
-					Effect.promise(() => Linking.getInitialURL()),
+					pipe(
+						Effect.tryPromise({
+							catch: cause => BookingsError.make({cause, message: 'The initial booking link could not be read.'}),
+							try: () => Linking.getInitialURL()
+						}),
+						Effect.tapError(error => Effect.logWarning('The initial booking link could not be read', error)),
+						Effect.option
+					),
 					url =>
 						// A notification tapped while the app was closed launches it without a URL.
-						Option.orElse(bookingIn(url), () => tapped(getLastNotificationResponse()))
+						pipe(
+							url,
+							Option.flatMap(bookingIn),
+							Option.orElse(() => tapped(getLastNotificationResponse()))
+						)
 				)
 			),
 			Stream.merge(

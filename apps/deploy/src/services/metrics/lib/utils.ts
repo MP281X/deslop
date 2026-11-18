@@ -140,8 +140,8 @@ function diskRows(output: string) {
 // A Mac's startup volume from `df -k /`: APFS reports only the system volume's own use, so the container's use is size less available.
 export function rootVolume(text: string) {
 	return Array.map(diskRows(text), fields => {
-		const size = Schema.decodeSync(Schema.FiniteFromString)(fields[1] ?? '') * 1024
-		return {mount: '/', total: size, used: size - Schema.decodeSync(Schema.FiniteFromString)(fields[3] ?? '') * 1024}
+		const size = Schema.decodeUnknownSync(Schema.FiniteFromString)(fields[1]) * 1024
+		return {mount: '/', total: size, used: size - Schema.decodeUnknownSync(Schema.FiniteFromString)(fields[3]) * 1024}
 	})
 }
 

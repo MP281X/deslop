@@ -11,6 +11,7 @@ import type {ReactNode} from 'react'
 import type {Clipboard} from '#lib/clipboard.ts'
 
 // The one clipboard question every list wraps itself in; the app's labels decide its wording. A system alert asks it over the wrapped screen; a confirmation popover would point away from it.
+// judge-ignore no-silent-fallback -- The supplied clipboard actor starts Idle and has no Offered state while checking; this sheet selects that state rather than answering a clipboard read with invented content.
 export function PasteSheet(props: {children: ReactNode; clipboard: Clipboard}) {
 	useAtomMount(props.clipboard.returnsAtom)
 	const offer = AsyncResult.getOrElse(

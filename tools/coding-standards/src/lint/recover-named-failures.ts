@@ -364,7 +364,6 @@ function checkPromise(context: Context, node: ESTree.CallExpression) {
 }
 
 export const recoverNamedFailures = defineRule({
-	// judge-ignore no-unrelated-jobs -- an Oxlint rule's visitors each check one node kind for the same policy, recovering named failures.
 	create: context => ({
 		CallExpression: node => {
 			const name = effectMethod({context, node})

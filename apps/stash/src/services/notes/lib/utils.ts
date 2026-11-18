@@ -67,7 +67,6 @@ function canonicalUrl(link: string) {
 	})
 }
 
-// judge-ignore no-silent-fallback -- Malformed URL-shaped text is not a captured link; the caller keeps the original text as a plain note.
 export function captureUrl(text: string) {
 	return pipe(
 		String.match(URL_PATTERN)(text),

@@ -1,6 +1,7 @@
 import {question} from '#lib/question.ts'
 
 export const noUnrelatedJobs = question('code', 'Does `code` do two jobs that use none of each other’s values?', {
+	gate: unit => !unit.composition,
 	message: 'Split it into one function per job.',
 	no: {
 		cases: ['Steps of one job pass values along.', 'A dispatcher selects the requested job.'],

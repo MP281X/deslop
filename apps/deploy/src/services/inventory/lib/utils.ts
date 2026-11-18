@@ -566,7 +566,6 @@ function portsOf(row: Row) {
 	)
 }
 
-// judge-ignore no-silent-fallback -- health already records failure; optional exit metadata only refines the visible failing state, and its absence cannot make the item healthy.
 function failureOf(item: InventoryItem) {
 	if (item.health === 'quiet') return {failure: Option.none<string>(), since: Option.none<DateTime.Utc>()}
 	return {

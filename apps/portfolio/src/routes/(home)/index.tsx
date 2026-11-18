@@ -159,7 +159,6 @@ const sendCursorAtom = RpcClient.runtime.atom(get =>
 	})
 )
 
-// judge-ignore no-silent-fallback -- recolouring is best-effort presence: failures are logged, no local colour is substituted, and only a server scene changes the visible colour.
 const recolorAtom = RpcClient.runtime.fn((_: void, get) =>
 	Effect.ignore(
 		Effect.gen(function* () {
@@ -670,6 +669,7 @@ function RealtimeLayer(input: {
 }
 
 // oxlint-disable jsx-a11y/no-noninteractive-tabindex, jsx-a11y/no-noninteractive-element-interactions -- The portfolio is one keyboard-scrolling region; it needs focus and paging keys.
+// judge-ignore no-silent-fallback -- PresenceHud renders the Offline case as presence unavailable; the error boundary does not supply a successful visitor scene or substitute local cursor data.
 function PortfolioRoute() {
 	const viewport = useAtomValue(viewportAtom)
 	const setOwnCursor = useAtomSet(ownCursorAtom)

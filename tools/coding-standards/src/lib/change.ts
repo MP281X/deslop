@@ -121,8 +121,8 @@ const defaultBranch = Effect.fnUntraced(function* (root: string) {
 	return String.trim(result.stdout)
 })
 
-// judge-ignore no-silent-fallback -- only a machine without gh, or a gh that exits 4 to ask for sign-in, takes origin's default branch, the documented base; every other gh or git failure fails the run.
 // The TypeScript files the change adds or edits against its merge base, untracked ones included, with the lines of each as it is now that the change touched; the diff only selects what is asked and is never sent.
+// judge-ignore no-silent-fallback -- The documented CLI contract uses origin's default branch only without gh or when gh exits 4 to request sign-in; every other git or gh failure fails the run.
 export const change = Effect.fnUntraced(function* (base: Option.Option<string>) {
 	const root = String.trim(yield* git(['rev-parse', '--show-toplevel'], '.'))
 	// A machine without gh, or a gh that asks to sign in (its documented exit code 4), has no pull request host: the base is origin's default branch. A branch without a pull request lists none; any other failure, such as a rejected token or an unreachable host, fails, since the wrong base judges the wrong change.
