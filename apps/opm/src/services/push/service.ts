@@ -87,7 +87,9 @@ export class Push extends Context.Service<Push>()('@deslop/opm/services/push/ser
 										},
 										body: {path: keyOf(chapter)}
 									},
-									10
+									10,
+									// An alert sent again after its answer was lost replaces the first on the phone.
+									keyOf(chapter)
 								)
 								// A retry for one device must not send the same alert to the others again.
 								const finish = Effect.as(
