@@ -5,8 +5,8 @@ import {DurationFromSeconds} from '@deslop/runtime/shared/time'
 export class MediaError extends Schema.TaggedError<MediaError>()('MediaError', {
 	cause: Schema.optional(Schema.Defect()),
 	message: Schema.String,
-	// Gateway refused the person's request, such as for a missing key, so every later request would be refused too.
-	reason: Schema.optional(Schema.Literal('Refused'))
+	// Refused: Gateway refused the person's request, such as for a missing key, so every later request would be refused too. Budget: the note's own allowance ran out, whether a tool's deadline or output cap, its folder or its hour.
+	reason: Schema.optional(Schema.Literals(['Refused', 'Budget']))
 }) {}
 
 // Gateway's refusal, whose message tells the person what to do.

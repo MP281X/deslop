@@ -6,6 +6,7 @@ import {
 	Array,
 	Boolean,
 	Context,
+	DateTime,
 	Deferred,
 	Effect,
 	FileSystem,
@@ -28,6 +29,7 @@ import {UserId} from '@deslop/runtime/shared/auth'
 import {Sources} from './lib/extraction.ts'
 import {Organizer} from './lib/organization.ts'
 
+import {MediaError} from '#services/media/schema.ts'
 import {Media} from '#services/media/service.ts'
 import type {Organization} from '#services/notes/schema.ts'
 import {NoteId, NotesError, TagName} from '#services/notes/schema.ts'
@@ -233,19 +235,23 @@ it.layer(joiningLayer)(test =>
 )
 
 // A server on the notes database in the folder, as a restart would start it again.
-function notesIn(directory: string, organize: Organizer['Service']['organize']) {
+function notesIn(directory: string, organize: Organizer['Service']['organize'], media: Partial<Media['Service']> = {}) {
 	return pipe(
 		Layer.unwrap(
 			Effect.map(Path.Path, path =>
 				Layer.provide(
 					Notes.layer(directory),
-					Layer.merge(SqliteClient.layer({filename: path.join(directory, 'notes.db')}), Reactivity.layer)
+					// A busy database answers at once, so no case waits on SQLite's own timeout.
+					Layer.merge(
+						SqliteClient.layer({busyTimeout: '0 millis', filename: path.join(directory, 'notes.db')}),
+						Reactivity.layer
+					)
 				)
 			)
 		),
 		Layer.provide(Layer.mock(Sources, {resolve: Effect.succeed})),
 		Layer.provide(Layer.mock(Organizer, {organize})),
-		Layer.provide(Layer.mock(Media, {}))
+		Layer.provide(Layer.mock(Media, media))
 	)
 }
 
@@ -322,6 +328,125 @@ it.layer(NodeServices.layer)(test =>
 				})
 			)
 			assert.deepStrictEqual(calls, [FIRST, SECOND])
+		})
+	)
+)
+
+// A second connection on the notes database in the folder that holds its write lock until it rolls back, as another process would.
+const lockDatabase = Effect.fnUntraced(function* (directory: string) {
+	const path = yield* Path.Path
+	const context = yield* Layer.build(
+		Layer.provide(SqliteClient.layer({filename: path.join(directory, 'notes.db')}), Reactivity.layer)
+	)
+	const other = Context.get(context, SqliteClient.SqliteClient)
+	yield* other`BEGIN IMMEDIATE`
+	return other`ROLLBACK`
+})
+
+// Runs a note whose organizer answers while the database is locked, then releases the lock; the note is read until it settles.
+const organizedBehindLock = Effect.fnUntraced(function* (answer: Effect.Effect<Organization, NotesError>) {
+	const directory = yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped()
+	const requests = yield* Ref.make(0)
+	const asked = yield* Deferred.make<void>()
+	const answered = yield* Deferred.make<void>()
+	return yield* Effect.scoped(
+		Effect.gen(function* () {
+			const context = yield* Layer.build(
+				notesIn(directory, () =>
+					pipe(
+						Ref.update(requests, count => count + 1),
+						Effect.andThen(Deferred.succeed(asked, undefined)),
+						Effect.andThen(Deferred.await(answered)),
+						Effect.andThen(answer)
+					)
+				)
+			)
+			const notes = Context.get(context, Notes)
+			yield* notes.capture(UserId.make('github:1'), {id: FIRST, text: 'Lentils with cumin'})
+			yield* Deferred.await(asked)
+			const release = yield* lockDatabase(directory)
+			yield* Deferred.succeed(answered, undefined)
+			// The minute scans find the note while the answer cannot be stored.
+			yield* TestClock.adjust('3 minutes')
+			const waiting = yield* notes.get(FIRST)
+			yield* release
+			const final = yield* pipe(
+				TestClock.adjust('30 seconds'),
+				Effect.andThen(notes.get(FIRST)),
+				Effect.repeat({times: 100, until: note => note.status !== 'organizing'})
+			)
+			return {final, requests: yield* Ref.get(requests), waiting}
+		})
+	)
+})
+
+it.layer(NodeServices.layer)(test =>
+	test.effect(
+		'stores the organization once the database is free again, without asking the provider twice',
+		Effect.fnUntraced(function* () {
+			const run = yield* organizedBehindLock(Effect.succeed(ORGANIZATION))
+			assert.deepStrictEqual(
+				[run.waiting.status, run.final.status, run.final.title, run.requests],
+				['organizing', 'ready', 'Soup', 1]
+			)
+		})
+	)
+)
+
+it.layer(NodeServices.layer)(test =>
+	test.effect(
+		'stores a provider failure once the database is free again, without asking the provider twice',
+		Effect.fnUntraced(function* () {
+			const run = yield* organizedBehindLock(Effect.fail(NotesError.make({message: 'Provider down'})))
+			assert.deepStrictEqual(
+				[run.waiting.status, run.final.status, run.final.issue, run.requests],
+				['organizing', 'failed', Option.some('Provider down'), 1]
+			)
+		})
+	)
+)
+
+// An uploaded video whose tools all fail with the error, so nothing in it can be read.
+const unreadableVideo = Effect.fnUntraced(function* (error: MediaError) {
+	const directory = yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped()
+	return yield* Effect.scoped(
+		Effect.gen(function* () {
+			const context = yield* Layer.build(
+				notesIn(directory, () => Effect.succeed(ORGANIZATION), {
+					budget: Effect.succeed({deadline: DateTime.makeUnsafe(0), directory}),
+					fileFrames: () => Effect.fail(error),
+					fileTranscript: () => Effect.fail(error)
+				})
+			)
+			const notes = Context.get(context, Notes)
+			yield* notes.captureFile(UserId.make('github:1'), {
+				body: Stream.make(new Uint8Array([1])),
+				id: FIRST,
+				type: 'video/mp4'
+			})
+			yield* settled(notes, 1)
+			return yield* notes.get(FIRST)
+		})
+	)
+})
+
+it.layer(NodeServices.layer)(test =>
+	test.effect(
+		'leaves the budget a video spent on its note, and says a malformed file has nothing to read in it',
+		Effect.fnUntraced(function* () {
+			const spent = yield* unreadableVideo(
+				MediaError.make({message: 'ffprobe exceeded its time limit', reason: 'Budget'})
+			)
+			const malformed = yield* unreadableVideo(MediaError.make({message: 'ffprobe cannot inspect the media'}))
+			assert.deepStrictEqual(
+				[spent.status, spent.issue, malformed.status, malformed.issue],
+				[
+					'failed',
+					Option.some('ffprobe exceeded its time limit'),
+					'failed',
+					Option.some('Nothing to read in this file.')
+				]
+			)
 		})
 	)
 )

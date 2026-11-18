@@ -157,8 +157,15 @@ function refused(response: HttpClientResponse.HttpClientResponse) {
 
 function output(stream: Stream.Stream<Uint8Array, PlatformError>, command: string, limit: ByteSize.ByteSize) {
 	return Stream.limitBytes<PlatformError | MediaError, never>(stream, limit, () =>
-		Stream.fail(MediaError.make({message: `${command} wrote more than Stash reads.`}))
+		Stream.fail(MediaError.make({message: `${command} wrote more than Stash reads.`, reason: 'Budget'}))
 	)
+}
+
+function outgrown() {
+	return MediaError.make({
+		message: `The note's media work outgrew its ${ByteSize.format(NOTE_BYTES)}.`,
+		reason: 'Budget'
+	})
 }
 
 // Every media call of a note stops at the note's deadline, however its tools and requests divide the time.
@@ -167,7 +174,8 @@ function withinDeadline(budget: MediaBudget) {
 		Effect.flatMap(DateTime.now, now =>
 			Effect.timeoutOrElse(effect, {
 				duration: pipe(now, DateTime.distance(budget.deadline), Duration.max(Duration.zero)),
-				orElse: () => Effect.fail(MediaError.make({message: "The note's media work ran past its hour."}))
+				orElse: () =>
+					Effect.fail(MediaError.make({message: "The note's media work ran past its hour.", reason: 'Budget'}))
 			})
 		)
 }
@@ -235,10 +243,13 @@ export class Media extends Context.Service<
 					)
 					return Array.reduce(sizes, ByteSize.bytes(0), ByteSize.sum)
 				})
-				// A tool that fills the note's folder past its allowance is stopped while it writes, not found out afterwards.
+				// The allowance is checked once a second while a tool runs and once more when it exits, not enforced as a quota: a tool can exceed it for up to a second, and what it leaves behind is found before its output is accepted.
 				const overspent = Effect.fnUntraced(function* (folder: string) {
 					while (!ByteSize.isGreaterThan(yield* used(folder), NOTE_BYTES)) yield* Effect.sleep('1 second')
-					return yield* MediaError.make({message: `The note's media work outgrew its ${ByteSize.format(NOTE_BYTES)}.`})
+					return yield* outgrown()
+				})
+				const withinAllowance = Effect.fnUntraced(function* (folder: string) {
+					if (ByteSize.isGreaterThan(yield* used(folder), NOTE_BYTES)) return yield* outgrown()
 				})
 				const run = Effect.fn('Media.command')(function* (
 					budget: MediaBudget,
@@ -267,6 +278,7 @@ export class Media extends Context.Service<
 							{concurrency: 'unbounded'}
 						),
 						Effect.raceFirst(overspent(budget.directory)),
+						Effect.tap(() => withinAllowance(budget.directory)),
 						Effect.timeoutOrElse({
 							duration: pipe(
 								Match.value(command),
@@ -274,7 +286,8 @@ export class Media extends Context.Service<
 								Match.when('ffprobe', () => Duration.minutes(1)),
 								Match.orElse(() => Duration.minutes(10))
 							),
-							orElse: () => Effect.fail(MediaError.make({message: `${command} exceeded its time limit`}))
+							orElse: () =>
+								Effect.fail(MediaError.make({message: `${command} exceeded its time limit`, reason: 'Budget'}))
 						})
 					)
 				}, Effect.scoped)

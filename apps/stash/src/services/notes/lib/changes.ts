@@ -131,7 +131,14 @@ export function changeNote(note: Note, update: NoteChange) {
 			NoteChangeResult.cases.Changed.make({
 				note: {
 					...fields,
-					issue: Option.orElse(note.issue, () => Option.some('Nothing to read at this link.')),
+					issue: Option.orElse(note.issue, () =>
+						Option.some(
+							Boolean.match(Option.isSome(note.file), {
+								onFalse: Function.constant('Nothing to read at this link.'),
+								onTrue: Function.constant('Nothing to read in this file.')
+							})
+						)
+					),
 					status: 'failed' as const
 				}
 			})
