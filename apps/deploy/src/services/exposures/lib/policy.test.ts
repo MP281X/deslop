@@ -1,10 +1,10 @@
 import {assert, it} from '@effect/vitest'
 
-import {Option} from 'effect'
+import {Array, Option} from 'effect'
 
 import {AppVersion} from '@deslop/runtime/shared/schema'
 
-import {refusal, restoreRefusal} from './policy.ts'
+import {ownedConflict, refusal, restoreRefusal} from './policy.ts'
 
 import {Exposure} from '#services/exposures/schema.ts'
 import {ExposureName} from '#services/inventory/schema.ts'
@@ -97,4 +97,31 @@ it('does not restore a row whose port now belongs to another owner, and checks a
 	assert.isTrue(Option.isNone(restoreRefusal(row, {...listener, owner: Option.some('user:web.service')})))
 	assert.isTrue(Option.isNone(restoreRefusal(row, {...listener, owner: Option.none()})))
 	assert.isTrue(Option.isNone(restoreRefusal(saved(Option.none()), listener)))
+})
+
+function tailnet(name: string, port: number) {
+	return Exposure.make({
+		...exposure(name, 'web.example.com', port),
+		kind: 'tailnet',
+		owner: Option.none(),
+		state: 'active'
+	})
+}
+
+it('saves an exposure only under a free name, on a hostname no public site or same-port mapping holds', () => {
+	assert.deepStrictEqual(
+		Array.map(
+			[
+				ownedConflict(
+					[saved(Option.none())],
+					Exposure.make({...exposure('web', 'other.example.com'), owner: Option.none(), state: 'active'})
+				),
+				ownedConflict([saved(Option.none())], tailnet('admin', 8443)),
+				ownedConflict([tailnet('admin', 8443)], tailnet('grafana', 8443)),
+				ownedConflict([tailnet('admin', 8443)], tailnet('grafana', 9443))
+			],
+			Option.isSome
+		),
+		[true, true, true, false]
+	)
 })

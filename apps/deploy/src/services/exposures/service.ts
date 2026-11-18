@@ -23,7 +23,7 @@ import {Migrator, SqlClient, SqlSchema} from 'effect/sql'
 
 import type {Admin} from '@deslop/runtime/shared/auth'
 
-import {refusal, restoreRefusal} from './lib/policy.ts'
+import {ownedConflict, refusal, restoreRefusal} from './lib/policy.ts'
 import {makeReconciler} from './lib/reconciler.ts'
 import {migrations} from './migrations.ts'
 
@@ -283,19 +283,10 @@ export class Exposures extends Context.Service<Exposures>()('@deslop/deploy/serv
 					}
 					const exposure = Exposure.make({...Struct.omit(input, ['publicAccess']), owner: found.owner, state: 'active'})
 					const current = yield* owned
-					if (Array.some(current, row => row.name === exposure.name)) {
-						return yield* DeployError.make({
-							message: 'Remove the existing owned exposure, and let its removal finish, before changing it'
-						})
-					}
-					if (
-						Array.some(
-							current,
-							row => row.hostname === exposure.hostname && (row.kind === 'public' || row.port === exposure.port)
-						)
-					) {
-						return yield* DeployError.make({message: 'This hostname or port already has an owned exposure'})
-					}
+					yield* Option.match(ownedConflict(current, exposure), {
+						onNone: () => Effect.void,
+						onSome: message => DeployError.make({message})
+					})
 					if (exposure.kind === 'tailnet') {
 						const status = yield* proxies.serveStatus
 						if (

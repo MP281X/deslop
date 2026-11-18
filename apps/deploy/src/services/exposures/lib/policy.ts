@@ -1,4 +1,4 @@
-import {Option, String, pipe} from 'effect'
+import {Array, Option, String, pipe} from 'effect'
 
 import type {RuntimeConfig} from '@deslop/runtime/shared/schema'
 
@@ -43,6 +43,22 @@ export function refusal(exposure: Omit<ExposeInput, 'publicAccess'>, listener: L
 			})
 		)
 	)
+}
+
+// Why `exposure` may not be saved beside the owned ones: its name is taken, or an owned exposure holds its hostname as a public site or on the same port; none when it may.
+export function ownedConflict(owned: readonly Exposure[], exposure: Exposure) {
+	if (Array.some(owned, row => row.name === exposure.name)) {
+		return Option.some('Remove the existing owned exposure, and let its removal finish, before changing it')
+	}
+	if (
+		Array.some(
+			owned,
+			row => row.hostname === exposure.hostname && (row.kind === 'public' || row.port === exposure.port)
+		)
+	) {
+		return Option.some('This hostname or port already has an owned exposure')
+	}
+	return Option.none()
 }
 
 // Why a saved exposure is not published again, checked at every restore: its port changed owner, or it may no longer be published.
