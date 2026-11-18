@@ -115,12 +115,31 @@ export function tagCounts(notes: readonly Pick<NoteItem, 'tags'>[]) {
 	)
 }
 
-// A query's lowercase words: a `#word` names a tag every result carries, any other word is text every result contains.
+// The text search indexes and reads, so both sides spell a word alike: compatibility and decomposed forms folded, a language name such as c++ or c# one word of its own, and each character of Chinese and Japanese, written without spaces, a word, so a phrase of them matches inside a longer run.
+export function searchable(text: string) {
+	return pipe(
+		text,
+		String.normalize('NFKC'),
+		String.replaceAll(/(\p{L})\+\+(?![\p{L}\p{N}+])/gu, '$1plusplus'),
+		String.replaceAll(/(\p{L})#(?![\p{L}\p{N}#])/gu, '$1sharp'),
+		String.replaceAll(/([\p{scx=Han}\p{scx=Hiragana}\p{scx=Katakana}])/gu, ' $1 '),
+		plainText
+	)
+}
+
+// A query's lowercase words: a `#word` names a tag every result carries, any other word is text every result contains; a word search cannot index, such as lone punctuation, asks for nothing.
 // judge-ignore no-contradicted-promise -- Effect v4 Array.partition returns passes first, so the # predicate places tags in the first array.
 export function queryWords(query: string) {
 	const [tags, terms] = Array.partition(
 		pipe(query, String.toLowerCase, String.split(/\s+/u), Array.filter(String.isNonEmpty)),
 		Filter.fromPredicate(String.startsWith('#'))
 	)
-	return {tags: pipe(tags, Array.map(String.slice(1)), Array.filter(String.isNonEmpty)), terms}
+	return {
+		tags: pipe(tags, Array.map(String.slice(1)), Array.filter(String.isNonEmpty)),
+		terms: pipe(
+			terms,
+			Array.map(searchable),
+			Array.filter(term => Option.isSome(String.match(/[\p{L}\p{N}]/u)(term)))
+		)
+	}
 }

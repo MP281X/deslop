@@ -1,8 +1,8 @@
 import {assert, it} from '@effect/vitest'
 
-import {Array} from 'effect'
+import {Array, String} from 'effect'
 
-import {captureUrl, tagCounts} from '#services/notes/lib/utils.ts'
+import {captureUrl, queryWords, tagCounts} from '#services/notes/lib/utils.ts'
 import {TagName} from '#services/notes/schema.ts'
 
 it('maps every share of the same post to one canonical link', () => {
@@ -49,4 +49,12 @@ it('orders tags by how many notes use them, then by name', () => {
 			{count: 1, tag: 'quick meals'}
 		]
 	)
+})
+
+it('reads a query the way the index spells its words', () => {
+	assert.deepStrictEqual(queryWords('#Cooking 図書館 C++ c# ガラス !'), {
+		tags: ['cooking'],
+		terms: ['図 書 館', 'cplusplus', 'csharp', 'ガ ラ ス']
+	})
+	assert.deepStrictEqual(queryWords(String.normalize('NFD')('ガラス')), queryWords('ガラス'))
 })

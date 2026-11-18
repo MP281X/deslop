@@ -226,8 +226,8 @@ function Notes(props: {
 	const regenerate = useAtomSet(regenerateAtom)
 	const paste = useAtomSet(clipboard.atom.send)
 	const query = String.trim(useAtomValue(queryAtom))
-	const search = useAtomValue(searchAtom)
-	const refreshSearch = useAtomRefresh(searchAtom)
+	const search = useAtomValue(searchAtom(query))
+	const refreshSearch = useAtomRefresh(searchAtom(query))
 	const found = pipe(search, AsyncResult.value, Option.flatten)
 	return (
 		<Loaded atom={notesAtom}>
@@ -328,11 +328,12 @@ export function HomeRoute(props: {
 	tag: Option.Option<TagName>
 }) {
 	const notes = useAtomValue(notesAtom)
+	const query = String.trim(useAtomValue(queryAtom))
 	useAtomMount(problemSinceAtom(notesAtom))
-	useAtomMount(problemSinceAtom(searchAtom))
+	useAtomMount(problemSinceAtom(searchAtom(query)))
 	const refreshNotes = useAtomRefresh(notesAtom)
-	const search = useAtomValue(searchAtom)
-	const refreshSearch = useAtomRefresh(searchAtom)
+	const search = useAtomValue(searchAtom(query))
+	const refreshSearch = useAtomRefresh(searchAtom(query))
 	const saved =
 		!(AsyncResult.isFailure(search) && Option.exists(AsyncResult.error(search), isDenied)) &&
 		!AsyncResult.isInitial(notes) &&
@@ -347,7 +348,10 @@ export function HomeRoute(props: {
 				onTrue: () =>
 					Option.some(
 						<Problem
-							source={Boolean.match(AsyncResult.isFailure(notes), {onFalse: () => searchAtom, onTrue: () => notesAtom})}
+							source={Boolean.match(AsyncResult.isFailure(notes), {
+								onFalse: () => searchAtom(query),
+								onTrue: () => notesAtom
+							})}
 							label={Boolean.match(AsyncResult.isFailure(notes), {
 								onFalse: Function.constant('Search unavailable'),
 								onTrue: Function.constant('Out of date')

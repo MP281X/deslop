@@ -1,10 +1,9 @@
 import {Boolean, Effect, Function, Option, Predicate, String} from 'effect'
 
-import {getImageAsync, getStringAsync, hasImageAsync} from 'expo-clipboard'
+import {getStringAsync, hasImageAsync} from 'expo-clipboard'
 import {randomUUID} from 'expo-crypto'
-import {File, Paths} from 'expo-file-system'
 
-import {makeClipboard, readClipboard} from '@deslop/components-mobile/lib/clipboard'
+import {copiedImage, makeClipboard, readClipboard} from '@deslop/components-mobile/lib/clipboard'
 import type {ClipboardKind} from '@deslop/components-mobile/lib/clipboard'
 import {provideRuntimeOnce} from '@deslop/runtime/mobile/session'
 
@@ -14,35 +13,23 @@ import {native} from '#modules/native/index.ts'
 import {captureUrl} from '#services/notes/lib/utils.ts'
 import {NotesError} from '#services/notes/schema.ts'
 
+// The upload runs inside the copied file's scope, and an interruption cancels it before the file is removed.
 const saveImage = Effect.fnUntraced(function* (count: string) {
-	const image = yield* readClipboard(
-		count,
-		Effect.tryPromise({
-			catch: cause => NotesError.make({cause, message: 'The copied image could not be read.'}),
-			try: () => getImageAsync({format: 'jpeg', jpegQuality: 0.85})
-		})
-	)
-	if (image === null) return yield* NotesError.make({message: 'The clipboard no longer holds an image.'})
+	const file = yield* copiedImage(count, 20_000_000)
 	const headers = yield* session.headers
-	const id = randomUUID()
-	const file = new File(Paths.cache, `${id}.jpg`)
-	const response = yield* Effect.ensuring(
-		Effect.tryPromise({
-			catch: cause => NotesError.make({cause, message: 'The image could not be sent.'}),
-			try: () => {
-				file.writeSync(String.replace(/^data:[^,]*,/u, '')(image.data), {encoding: 'base64'})
-				return file.upload(new URL(`/api/files/${id}`, session.server).href, {
-					headers: {...headers, 'content-type': 'image/jpeg'},
-					httpMethod: 'POST'
-				})
-			}
-		}),
-		Effect.sync(() => file.delete())
-	)
+	const response = yield* Effect.tryPromise({
+		catch: cause => NotesError.make({cause, message: 'The image could not be sent.'}),
+		try: signal =>
+			file.upload(new URL(`/api/files/${randomUUID()}`, session.server).href, {
+				headers: {...headers, 'content-type': 'image/jpeg'},
+				httpMethod: 'POST',
+				signal
+			})
+	})
 	if (response.status >= 300) {
 		return yield* NotesError.make({message: `The server refused the image with status ${response.status}.`})
 	}
-})
+}, Effect.scoped)
 
 const saveLink = Effect.fnUntraced(function* (count: string) {
 	const text = String.trim(

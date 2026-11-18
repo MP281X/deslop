@@ -18,22 +18,27 @@ import {NoteId, NoteItem, NotesError} from '#services/notes/schema.ts'
 
 const listFile = new File(Paths.document, 'list.json')
 
-const newestFirst = Order.flip(Order.mapInput(DateTime.Order, (item: NoteItem) => item.createdAt))
+// The server's order, newest first and then by id, so notes saved in the same millisecond keep their place.
+const newestFirst = pipe(
+	Order.mapInput(DateTime.Order, (item: NoteItem) => item.createdAt),
+	Order.combine(Order.mapInput(Order.String, (item: NoteItem) => item.id)),
+	Order.flip
+)
 
 const apply = listReducer(newestFirst, note => note.id)
 
 // The copy on the iPhone shows the list while the server is out of reach.
 export const notesAtom = Atom.keepAlive(
-	RpcClient.runtime.atom(get => {
-		if (!session.available(get)) return Stream.never
-		return cachedList(
+	RpcClient.runtime.atom(get =>
+		cachedList(
 			get,
+			session,
 			listFile,
 			NoteItem.json,
 			pipe(liveStream(RpcClient, 'notes.events'), Stream.scan(Array.empty<NoteItem>, apply), Stream.drop(1)),
 			reconnectOnDrop
 		)
-	})
+	)
 )
 
 // The list replaces an item when its note changes, so the new item loads the note again.
@@ -55,28 +60,46 @@ export const mediaAtom = Atom.family((id: NoteId) =>
 
 export const queryAtom = Atom.make('')
 
-export const searchAtom = RpcClient.runtime.atom(get => {
-	const query = String.trim(get(queryAtom))
-	if (!session.available(get) || String.isEmpty(query)) return Stream.succeed(Option.none())
-	return keepValueThroughOutages(
-		get,
-		pipe(
-			Effect.sleep('250 millis'),
-			Effect.as(liveStream(RpcClient, 'notes.search', {query})),
-			Stream.unwrap,
-			Stream.map(ids => Option.some(HashSet.fromIterable(ids)))
-		),
-		reconnectOnDrop
-	)
-})
+// One reader per trimmed query, so the ids it keeps through an outage are always that query's own.
+export const searchAtom = Atom.family((query: string) =>
+	RpcClient.runtime.atom(get => {
+		if (Option.isNone(session.admitted(get)) || String.isEmpty(query)) return Stream.succeed(Option.none())
+		return keepValueThroughOutages(
+			get,
+			pipe(
+				Effect.sleep('250 millis'),
+				Effect.as(liveStream(RpcClient, 'notes.search', {query})),
+				Stream.unwrap,
+				Stream.map(ids => Option.some(HashSet.fromIterable(ids)))
+			),
+			reconnectOnDrop
+		)
+	})
+)
 
 const images = new Directory(Paths.cache, 'downloads')
 
+// A post's pictures can change order at their source, so each launch keeps its own copies and drops those of the launches before it; a note's cover never changes.
+const pictures = new Directory(Paths.cache, `pictures-${randomUUID()}`)
+
+const dropOlderPictures = Effect.ignore(
+	Effect.try({
+		catch: cause => NotesError.make({cause, message: 'Older post pictures could not be removed from this iPhone.'}),
+		try: () => {
+			if (pictures.exists) return
+			Array.forEach(new Directory(Paths.cache).list(), entry => {
+				if (entry instanceof Directory && String.startsWith('pictures-')(entry.name)) entry.delete()
+			})
+		}
+	}),
+	{log: 'Warn', message: 'Older post pictures stay in the cache'}
+)
+
 // SwiftUI images read local files, so each picture is downloaded into the cache.
-const download = Effect.fnUntraced(function* (name: string, route: string) {
-	const file = new File(images, name)
+const download = Effect.fnUntraced(function* (folder: Directory, name: string, route: string) {
+	const file = new File(folder, name)
 	if (file.exists) return file.uri
-	images.create({idempotent: true, intermediates: true})
+	folder.create({idempotent: true, intermediates: true})
 	const headers = yield* session.headers
 	const downloaded = yield* Effect.tryPromise({
 		catch: cause => NotesError.make({cause, message: 'The note image could not be downloaded.'}),
@@ -88,7 +111,7 @@ const download = Effect.fnUntraced(function* (name: string, route: string) {
 export const imageAtom = Atom.family((id: Note['id']) =>
 	session.runtime.atom(get => {
 		get(activationsAtom)
-		return download(id, `/api/images/${id}`)
+		return download(images, id, `/api/images/${id}`)
 	})
 )
 
@@ -96,7 +119,10 @@ export const imageAtom = Atom.family((id: Note['id']) =>
 export const mediaImageAtom = Atom.family((path: string) =>
 	session.runtime.atom(get => {
 		get(activationsAtom)
-		return download(String.replaceAll('/', '-')(path), `/api/notes/${path}`)
+		return Effect.andThen(
+			dropOlderPictures,
+			download(pictures, String.replaceAll('/', '-')(path), `/api/notes/${path}`)
+		)
 	})
 )
 
