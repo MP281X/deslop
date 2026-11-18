@@ -101,16 +101,21 @@ export const Counters = Schema.Struct({
 	uptime: DurationFromSeconds
 })
 
-export type AppSample = typeof AppSample.Type
-export const AppSample = Schema.Struct({
+// How long a point's readings of one kind were measured, in milliseconds: one second per reading, so time between `since` and `time` that went unread doesn't weigh in its average.
+export type Coverage = typeof Coverage.Type
+export const Coverage = pipe(Schema.Int, Schema.decodeTo(DurationFromFiniteMillis))
+
+// One app's measurement; its first has no CPU to difference.
+export type AppMeasurement = typeof AppMeasurement.Type
+export const AppMeasurement = Schema.Struct({
 	cpu: Schema.OptionFromOptionalKey(Schema.Finite),
 	id: AppId,
 	memory: Schema.Finite
 })
 
-// How long a point's readings of one kind were measured, in milliseconds: one second per reading, so time between `since` and `time` that went unread doesn't weigh in its average.
-export type Coverage = typeof Coverage.Type
-export const Coverage = pipe(Schema.Int, Schema.decodeTo(DurationFromFiniteMillis))
+// An app in a point: how long its CPU was measured within the point's apps coverage, which its own average weighs by.
+export type AppSample = typeof AppSample.Type
+export const AppSample = Schema.Struct({...AppMeasurement.fields, cpuCoverage: Coverage})
 
 // One point of a worker's history in the series of one spacing: its readings from `since` to `time`, each averaged over the time it was measured.
 export class MachineSample extends Model.Class<MachineSample>('MachineSample')({
@@ -148,8 +153,12 @@ export class Sample extends Model.Class<Sample>('Sample')({
 	apps: Model.FieldOption(Model.JsonFromString(Schema.Array(AppSample)))
 }) {}
 
+// A measurement before it joins a series: its apps are readings that have no coverage of their own yet.
 export type Point = typeof Point.Type
-export const Point = Schema.Struct(Struct.omit(Sample.fields, ['since', 'step']))
+export const Point = Schema.Struct({
+	...Struct.omit(Sample.fields, ['apps', 'since', 'step']),
+	apps: Schema.Option(Schema.Array(AppMeasurement))
+})
 
 export type Disk = typeof Disk.Type
 export const Disk = Schema.Struct({mount: Schema.String, total: Schema.Finite, used: Schema.Finite})

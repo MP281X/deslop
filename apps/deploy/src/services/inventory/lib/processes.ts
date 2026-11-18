@@ -18,7 +18,7 @@ import {
 	pipe
 } from 'effect'
 
-import {commandLabel} from './command.ts'
+import {commandLabel, maskArguments} from './command.ts'
 
 import {itemOwner, processOwner} from '#services/inventory/lib/utils.ts'
 import {
@@ -32,7 +32,6 @@ import {
 } from '#services/inventory/schema.ts'
 import type {InventoryItem, UnitId, ProcessId} from '#services/inventory/schema.ts'
 
-const SECRET = /(?:token|secret|passw(?:or)?d|key|auth|credential|cookie|session)/iu
 const PROCESS_INTERVAL = Duration.seconds(2)
 
 export type ProcessReading = {
@@ -72,27 +71,9 @@ function processStatus(status: string) {
 	}
 }
 
-// What a process was started with, read only to label it, never sent: flags, variables and headers named like secrets and the values after them or after an auth scheme, long opaque strings and URL credentials are masked, and each argument and their number are capped.
+// What a process was started with, read only to label it, never sent: each argument is masked and their number capped.
 function commandArgs(cmdline: string) {
-	const args = pipe(cmdline, String.split('\0'), Array.filter(String.isNonEmpty), Array.take(40))
-	return Array.map(args, (arg, index) => {
-		if (Option.isSome(String.match(/^-{0,2}[\w.-]+=/u)(arg)) && SECRET.test(String.split(arg, '=')[0])) {
-			return `${String.split(arg, '=')[0]}=…`
-		}
-		// A header written as one argument, such as `Authorization: Bearer …`.
-		if (Option.isSome(String.match(/^[\w-]+:\s/u)(arg)) && SECRET.test(String.split(arg, ':')[0])) {
-			return `${String.split(arg, ':')[0]}: …`
-		}
-		// A secret flag's or header's separate value, the credential after an auth scheme, or a long opaque argument; the executable and flags themselves stay readable.
-		const previous = args[index - 1] ?? ''
-		const secretValue =
-			(String.startsWith('-')(previous) && !String.includes('=')(previous) && SECRET.test(previous)) ||
-			(Option.isSome(String.match(/^[\w-]+:$/u)(previous)) && SECRET.test(previous)) ||
-			Option.isSome(String.match(/^(?:bearer|basic|digest|token)$/iu)(previous))
-		const opaque = !String.startsWith('/')(arg) && Option.isSome(String.match(/^[\w+/=-]{32,}$/u)(arg))
-		if (index > 0 && (secretValue || (!String.startsWith('-')(arg) && opaque))) return '…'
-		return String.slice(0, 200)(String.replaceAll(/:\/\/[^/@\s]+@/gu, '://…@')(arg))
-	})
+	return maskArguments(pipe(cmdline, String.split('\0'), Array.filter(String.isNonEmpty), Array.take(40)))
 }
 
 // judge-ignore no-silent-fallback -- collector input permits vanished or unreadable individual processes to be skipped and optional metadata to be absent; whole-machine reads still fail.

@@ -104,10 +104,10 @@ export class Metrics extends Context.Service<Metrics>()('@deslop/deploy/services
 		const sql = yield* SqlClient.SqlClient
 		const worker = yield* Schema.decodeEffect(WorkerId)(hostname())
 
-		// Each machine point with its app rows as one array; the merge patch drops an unmeasured CPU's null key. A point that measured apps without rows has an empty array; one that never measured them, as on a Mac, has none.
+		// Each machine point with its app rows as one array; the merge patch drops an unmeasured CPU's null key, and a stored app's CPU counts as measured for the whole point, which its row doesn't record. A point that measured apps without rows has an empty array; one that never measured them, as on a Mac, has none.
 		const joinedSamples = sql`SELECT s.*,
 			CASE WHEN COUNT(a.app) = 0 THEN CASE WHEN s.appsCoverage > 0 THEN '[]' END ELSE
-				json_group_array(json_patch('{}', json_object('id', a.app, 'cpu', a.cpu, 'memory', a.memory)))
+				json_group_array(json_patch('{}', json_object('id', a.app, 'cpu', a.cpu, 'cpuCoverage', CASE WHEN a.cpu IS NULL THEN 0 ELSE s.appsCoverage END, 'memory', a.memory)))
 			END AS apps
 			FROM ${sql(MachineSample.table)} s
 			LEFT JOIN ${sql(AppHistory.table)} a ON a.step = s.step AND a.since = s.since`
