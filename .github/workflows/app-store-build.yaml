@@ -48,8 +48,8 @@ jobs:
             BASE=$(gh api "repos/$GITHUB_REPOSITORY/compare/$DEFAULT_BRANCH...$GITHUB_SHA" --jq .merge_base_commit.sha)
           fi
           git cat-file -e "$BASE^{commit}" 2>/dev/null || git fetch --no-tags --depth=1 origin "$BASE"
-          # Diff names, not globs, and both names of a rename, so a deleted or renamed input still counts; the same inputs as the trigger's paths.
-          changed=$(git diff --name-only --no-renames "$BASE" HEAD)
+          # Diff names, not globs, both names of a rename, and unquoted, so a deleted, renamed or non-ASCII input still counts; the same inputs as the trigger's paths.
+          changed=$(git diff --name-only --no-renames -z "$BASE" HEAD | tr '\0' '\n')
           native=$(grep -E '\.(swift|plist|entitlements|podspec)$|(^|/)expo-module\.config\.json$|^apps/[^/]+/(app\.config\.ts|eas\.json|targets/[^/]+/expo-target\.config\.js)$|^packages/runtime/src/config/expo\.ts$|^\.github/workflows/app-store-build\.yaml$' <<< "$changed" || true)
           # Every app builds from the shared config, components and this workflow, so a change outside apps/ proves them all.
           shared=$(grep -v '^apps/' <<< "$native" || true)
