@@ -185,7 +185,7 @@ export function admittedSender(sender: ReturnType<typeof senderOf>, origin: Orig
 }
 
 // A time more than ten minutes past its receipt comes from a wrong clock, so the record happened when it arrived.
-export function receivedBy(time: DateTime.Utc, receivedAt: DateTime.Utc) {
+function receivedBy(time: DateTime.Utc, receivedAt: DateTime.Utc) {
 	if (DateTime.isGreaterThan(time, DateTime.addDuration(receivedAt, Duration.minutes(10)))) return receivedAt
 	return time
 }
