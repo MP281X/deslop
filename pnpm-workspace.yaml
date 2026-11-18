@@ -22,4 +22,4 @@ packageExtensions:
       '@expo/plist': ^0.10
       chalk: ^4.1
 strictPeerDependencies: true
-minimumReleaseAge: 0
+minimumReleaseAge: 1440
