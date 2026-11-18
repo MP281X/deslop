@@ -244,7 +244,6 @@ export const Log = Schema.Struct({
 })
 
 // What every list reads of a trace, judged again whenever one of its spans arrives; the sender, name and label are its root's.
-export type Trace = typeof Trace.Type
 export const Trace = Schema.Struct({
 	...SENDER,
 	// Where the failure broke: the earliest failed span without a failed child.
@@ -267,7 +266,7 @@ export const Trace = Schema.Struct({
 })
 
 // A trace as the operations list counts it: its root's name and sender, and whether it broke.
-export const SettledTrace = Schema.Struct({
+const SettledTrace = Schema.Struct({
 	...Struct.pick(Trace.fields, ['duration', 'id', 'name', 'runtime', 'service', 'start']),
 	failed: Schema.BooleanFromBit
 })
@@ -282,7 +281,6 @@ export const RetainedService = Schema.Struct({
 })
 
 // What a trace's row shows beyond its numbers: its label, and the name and messages of the span where it broke.
-export type TraceDetail = typeof TraceDetail.Type
 export const TraceDetail = Schema.Struct({
 	...Struct.pick(Trace.fields, ['id', 'label']),
 	...Struct.pick(Span.fields, ['error', 'exception']),
@@ -635,7 +633,6 @@ export const LogsAnswer = Schema.Struct({
 	total: Schema.Int
 })
 
-export type LatencyAnswer = typeof LatencyAnswer.Type
 export const LatencyAnswer = Schema.Struct({
 	count: Schema.Int,
 	failures: Schema.Int,
