@@ -71,7 +71,7 @@ export function ownedConflict(owned: readonly Exposure[], exposure: Exposure) {
 	return Option.none()
 }
 
-// Why a saved exposure is not published at this restore: nothing listens on its port, its port changed owner, or it may no longer be published. The site is kept, so it is published again once its saved owner listens on the port again; a new owner never gets it.
+// Why a saved exposure is not published at this restore: nothing listens on its port, its port changed owner, or it may no longer be published. The row is kept, so it is published again once its saved owner listens on the port again; a new owner is never published under it, though it is still served until the proxy takes the withdrawal.
 export function restoreRefusal(row: Exposure, listener: Listener) {
 	return Option.match(listener.owner, {
 		onNone: () => Option.some(`Nothing listens on 127.0.0.1:${row.port}, so it is not published until its owner does`),
@@ -81,7 +81,7 @@ export function restoreRefusal(row: Exposure, listener: Listener) {
 				Option.filter(saved => saved !== current),
 				Option.map(
 					saved =>
-						`Port ${row.port} now belongs to ${current}, not ${saved}, so the new owner never gets this site; it returns when ${saved} listens again`
+						`Port ${row.port} now belongs to ${current}, not ${saved}, so Deploy withdraws this site; it returns when ${saved} listens again`
 				),
 				Option.orElse(() => refusal(row, listener))
 			)

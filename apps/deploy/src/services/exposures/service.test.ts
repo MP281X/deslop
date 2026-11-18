@@ -259,6 +259,34 @@ it.layer(NodeServices.layer)(test => {
 	)
 
 	test.effect(
+		'an exposure whose port changed owner while Caddy refuses loads says its withdrawal has not reached Caddy',
+		Effect.fnUntraced(function* () {
+			const host = yield* worker()
+			const exposures = yield* start(yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped(), host.layer)
+			yield* exposures.expose(WEB, yield* admin)
+			MutableRef.set(host.owner, Option.some('other.service'))
+			MutableRef.set(host.caddyUp, false)
+			assert.instanceOf(
+				yield* Effect.flip(
+					exposures.expose(
+						{...WEB, hostname: 'second.example.com', name: ExposureName.make('second'), port: 5174},
+						yield* admin
+					)
+				),
+				DeployError
+			)
+			const reason = pipe(
+				yield* exposures.items,
+				Array.findFirst(item => item.name === WEB.name),
+				Option.flatMap(item => item.failure),
+				Option.getOrThrow
+			).reason
+			assert.include(reason, 'now belongs to user:other.service')
+			assert.include(reason, 'Caddy has not loaded this yet: Caddy is down')
+		}, Effect.scoped)
+	)
+
+	test.effect(
 		'an exposure whose port nobody listens on is not published, and is published again once its owner listens',
 		Effect.fnUntraced(function* () {
 			const folder = yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped()
