@@ -22,8 +22,9 @@ const PREVIEW = Array.join(
 		'[[ $a =~ ^[a-z][a-z0-9-]*$ && -f apps/$a/src/main.client.tsx ]] || { printf "Not a web app: %s\\n" "$a" >&2; exit 1; }',
 		'systemctl --user stop $u 2>/dev/null; systemctl --user reset-failed $u 2>/dev/null',
 		'systemd-run --user -G -d -u $u -E PATH="$HOME/.vite-plus/bin:$PATH" -E HOST=127.0.0.1 -E PORT=$p vp run --no-cache --filter "@deslop/$a" preview || exit 1',
-		'until curl -fso /dev/null http://127.0.0.1:$p; do systemctl --user is-active -q $u || exit 1; sleep 2; done',
-		'sudo tailscale serve --bg --https=$p http://127.0.0.1:$p >/dev/null || exit 1',
+		// Any HTTP answer means the server listens: Trips answers 404 at the root.
+		'until curl -so /dev/null http://127.0.0.1:$p; do systemctl --user is-active -q $u || exit 1; sleep 2; done',
+		'sudo tailscale serve --bg --https=$p http://127.0.0.1:$p >/dev/null || { systemctl --user stop $u; exit 1; }',
 		'echo "$a: https://$h:$p"'
 	],
 	'\n'

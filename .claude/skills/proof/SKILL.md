@@ -25,5 +25,7 @@ EOF
 gh pr edit <n> --attach './proof.mp4'    # appends the video URL: move it under its claim, alone in its paragraph
 gh api repos/<owner>/<repo>/pulls/<n> -H 'Accept: application/vnd.github.html+json' --jq .body_html
 glab mr update <n> --description-file - --attach ./shot.png <<'EOF'   # appends the reference: move it under its claim
+<body>
+EOF
 glab api "projects/:id/merge_requests/<n>?render_html=true" | jq -r .description_html
 ```
