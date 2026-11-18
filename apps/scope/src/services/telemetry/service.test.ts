@@ -103,8 +103,9 @@ it.layer(telemetryLayer)(test =>
 				status: {code: 2},
 				traceId: id
 			}
+			yield* telemetry.ingestTraces(TRACES)
 			yield* telemetry.ingestTraces(yield* ciExport([child]))
-			yield* telemetry.ingestTraces(yield* ciExport([root]))
+			yield* telemetry.ingestTraces(yield* ciExport([{...root, links: [{spanId: '1111111111111111', traceId: ID}]}]))
 			assert.deepStrictEqual(
 				Array.map(
 					(yield* telemetry.findTraces(yield* Schema.decodeEffect(FindTracesParams)({app: 'read-proof'}))).traces,
@@ -126,6 +127,11 @@ it.layer(telemetryLayer)(test =>
 				[['root', 2, 170, Option.some('root')]]
 			)
 			assert.strictEqual(Duration.toMillis((yield* telemetry.trace(id)).durationMs), 170)
+			// The late start named no links, but the completed span it left alone still links to the other trace.
+			assert.deepStrictEqual(
+				Array.map((yield* telemetry.trace(id)).spans, span => span.traceId),
+				[ID, id, id]
+			)
 		})
 	)
 )
