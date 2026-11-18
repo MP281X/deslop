@@ -989,10 +989,10 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 				withReactivity
 			),
 			listOperations: Effect.fn('Telemetry.listOperations')(function* (input: ListOperationsParams) {
-				return operationsAnswer(
-					Option.getOrThrow(yield* Stream.runHead(Stream.unwrap(Cache.get(overviews, input.since)))),
-					input.app
+				const overview = yield* Effect.fromOption(
+					yield* Stream.runHead(Stream.unwrap(Cache.get(overviews, input.since)))
 				)
+				return operationsAnswer(overview, input.app)
 			}, asTelemetryError),
 			// Aggregate completed action spans; return their count, failures and durations rounded to tenths of a millisecond.
 			measureLatency: Effect.fn('Telemetry.measureLatency')(function* (input: MeasureLatencyParams) {
