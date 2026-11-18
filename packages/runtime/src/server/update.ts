@@ -148,10 +148,13 @@ function startRelease(name: string, url: string, release: string) {
 	)
 }
 
-// A release is on disk only when its package and the file the unit starts are both there.
+// A release is on disk only when its package and the file the unit starts are both there; a folder or a dangling link in that file's place is not one.
 const releaseExists = Effect.fnUntraced(function* (release: string) {
 	if (Option.isNone(yield* Effect.option(versionIn(release)))) return false
-	return yield* (yield* FileSystem.FileSystem).exists((yield* Path.Path).join(release, ENTRYPOINT))
+	return Option.exists(
+		yield* Effect.option((yield* FileSystem.FileSystem).stat((yield* Path.Path).join(release, ENTRYPOINT))),
+		entry => entry.type === 'File'
+	)
 })
 
 const describeRelease = Effect.fnUntraced(function* (name: string, release: string) {
@@ -269,7 +272,7 @@ export const updateRelease = Effect.fnUntraced(function* (name: string, url: str
 			const version = (yield* Schema.decodeEffect(Schema.fromJsonString(Schema.Struct({version: AppVersion})))(
 				yield* fs.readFileString(path.join(installed, 'package.json'))
 			)).version
-			if (version !== latest || !(yield* fs.exists(path.join(installed, ENTRYPOINT)))) {
+			if (version !== latest || !(yield* releaseExists(installed))) {
 				return yield* AppError.make({message: `npm did not install ${name} ${latest}`})
 			}
 			yield* fs.remove(directory, {force: true, recursive: true})

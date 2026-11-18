@@ -229,31 +229,28 @@ function forkedUnder(context: Context, node: ESTree.Node, owner: ESTree.Node): b
 	return forkedUnder(context, node.parent, owner)
 }
 
-// `Effect.sleep(0)` ends at once, so it never waits for the clock.
-function endsAtOnce(node: ESTree.MemberExpression) {
-	return (
-		node.parent.type === 'CallExpression' &&
-		node.parent.callee === node &&
-		Array.some(
-			node.parent.arguments,
-			argument =>
-				argument.type === 'Literal' &&
-				(argument.value === 0 || (Predicate.isString(argument.value) && String.startsWith('0 ')(argument.value)))
-		)
-	)
-}
-
-// The length a call spells out as its one literal, such as `'1 second'` or `500`; a name or any other expression leaves it unknown.
+// The length a call spells out as its one literal, such as `'1 second'`, `500` milliseconds or `1n` nanosecond; a name or any other expression leaves it unknown.
 function literalLength(call: ESTree.CallExpression) {
 	return pipe(
 		call.arguments,
 		Array.filter(argument => argument.type === 'Literal'),
 		Array.map(argument =>
-			Schema.decodeUnknownOption(Schema.Union([Schema.DurationFromMillis, Schema.DurationFromString]))(argument.value)
+			Schema.decodeUnknownOption(
+				Schema.Union([Schema.DurationFromMillis, Schema.DurationFromNanos, Schema.DurationFromString])
+			)(argument.value)
 		),
 		Array.getSomes,
 		Option.liftPredicate(lengths => lengths.length === 1),
 		Option.flatMap(Array.head)
+	)
+}
+
+// A wait of no length, such as `Effect.sleep(0)`, ends at once, so it never waits for the clock.
+function endsAtOnce(node: ESTree.MemberExpression) {
+	return (
+		node.parent.type === 'CallExpression' &&
+		node.parent.callee === node &&
+		Option.exists(literalLength(node.parent), Duration.isZero)
 	)
 }
 
@@ -273,7 +270,22 @@ function coversWait(context: Context, wait: ESTree.MemberExpression, advance: ES
 	)
 }
 
-// A sleep the test's own fiber waits out before it advances TestClock never ends: the clock moves only afterwards, unless a fiber forked earlier moves it by as much as the sleep lasts.
+// Whether a fiber forked before the wait moves the clock, and with `enough` by as much as the wait lasts.
+function movedBefore(context: Context, wait: ESTree.MemberExpression, enough: boolean) {
+	const owner = ownerOf(wait)
+	return containsNode({
+		context,
+		matches: child =>
+			(isTestClockCall(context, child, 'adjust') || isTestClockCall(context, child, 'setTime')) &&
+			child.range[1] < wait.range[0] &&
+			forkedUnder(context, child, owner) &&
+			(!enough || coversWait(context, wait, child)),
+		node: owner,
+		throughFunctions: true
+	})
+}
+
+// A sleep the test's own fiber waits out never ends when the clock moves only afterwards, or only by less in a fiber forked earlier: a fiber forked earlier has to move it by as much as the sleep lasts.
 function sleepsBeforeAdvancing(context: Context, node: ESTree.Node) {
 	if (
 		node.type !== 'MemberExpression' ||
@@ -286,25 +298,17 @@ function sleepsBeforeAdvancing(context: Context, node: ESTree.Node) {
 	const owner = ownerOf(node)
 	return (
 		suspends(context, node) &&
-		!containsNode({
-			context,
-			matches: child =>
-				(isTestClockCall(context, child, 'adjust') || isTestClockCall(context, child, 'setTime')) &&
-				child.range[1] < node.range[0] &&
-				forkedUnder(context, child, owner) &&
-				coversWait(context, node, child),
-			node: owner,
-			throughFunctions: true
-		}) &&
-		containsNode({
-			context,
-			matches: child =>
-				(isTestClockCall(context, child, 'adjust') || isTestClockCall(context, child, 'setTime')) &&
-				child.range[0] > node.range[1] &&
-				(runsInPlace(context, child, owner) || forkedUnder(context, child, owner)),
-			node: owner,
-			throughFunctions: true
-		})
+		!movedBefore(context, node, true) &&
+		(movedBefore(context, node, false) ||
+			containsNode({
+				context,
+				matches: child =>
+					(isTestClockCall(context, child, 'adjust') || isTestClockCall(context, child, 'setTime')) &&
+					child.range[0] > node.range[1] &&
+					(runsInPlace(context, child, owner) || forkedUnder(context, child, owner)),
+				node: owner,
+				throughFunctions: true
+			}))
 	)
 }
 
