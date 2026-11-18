@@ -299,22 +299,40 @@ private final class UploadRecorder: NSObject, URLSessionDataDelegate, @unchecked
 }
 
 // A provider that never answers would keep the sheet saying "Saving…", so each load is cancelled after 20 seconds,
-// which ends it with an error; Progress calls the handler once either way.
+// which ends it with an error; a load that ignores the cancellation still answers only once.
 private func loaded<T: Sendable>(_ start: (@escaping @Sendable (T?, Error?) -> Void) -> Progress) async throws -> T {
   try await withCheckedThrowingContinuation { continuation in
+    let once = Once(continuation)
     let progress = start { value, error in
       if let value {
-        continuation.resume(returning: value)
+        once.resume(returning: value)
       } else {
-        continuation.resume(throwing: error ?? CocoaError(.fileReadUnknown))
+        once.resume(throwing: error ?? CocoaError(.fileReadUnknown))
       }
     }
     DispatchQueue.main.asyncAfter(deadline: .now() + 20) { progress.cancel() }
   }
 }
 
+private final class Once<T: Sendable>: @unchecked Sendable {
+  private let lock = NSLock()
+  private var continuation: CheckedContinuation<T, Error>?
+
+  init(_ continuation: CheckedContinuation<T, Error>) {
+    self.continuation = continuation
+  }
+
+  func resume(returning value: T) {
+    lock.withLock { continuation.take() }?.resume(returning: value)
+  }
+
+  func resume(throwing error: Error) {
+    lock.withLock { continuation.take() }?.resume(throwing: error)
+  }
+}
+
 private enum SharedText {
-  // TikTok and X share a link, Safari a link and its title, other apps plain text.
+  // TikTok and X share a link, Safari a link and its title or a selection, other apps plain text.
   static func read(from context: NSExtensionContext) async -> (text: String, hasLink: Bool) {
     var texts: [String] = []
     var links: [String] = []
@@ -325,17 +343,39 @@ private enum SharedText {
       {
         links.append(url.absoluteString)
       }
-      if provider.hasItemConformingToTypeIdentifier(UTType.plainText.identifier),
-        let text: String = try? await loaded({ done in
-          provider.loadObject(ofClass: String.self) { text, error in done(text, error) }
-        })
-      {
+      if let text = await registeredText(from: provider) {
         texts.append(text)
       }
+    }
+    // Safari hands a selection over as one plain-text attachment with the same text in the item, so the item is read only without one.
+    if texts.isEmpty, links.isEmpty {
+      texts = context.inputItems.compactMap { ($0 as? NSExtensionItem)?.attributedContentText?.string }
     }
     let body = texts.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
     let extra = links.filter { link in !body.contains { $0.contains(link) } }
     return ((body + extra).joined(separator: "\n"), !links.isEmpty)
+  }
+
+  // loadObject(ofClass: String.self) accepts only UTF-8 text, so the item is loaded by the type the provider registered,
+  // as a string, an attributed string or encoded bytes. loadItem has no Progress, so the cancellation is this one's.
+  private static func registeredText(from provider: NSItemProvider) async -> String? {
+    guard let type = provider.registeredTypeIdentifiers.first(where: { UTType($0)?.conforms(to: .plainText) == true })
+    else { return nil }
+    return try? await loaded { done in
+      let progress = Progress(totalUnitCount: 1)
+      progress.cancellationHandler = { done(nil, CocoaError(.userCancelled)) }
+      provider.loadItem(forTypeIdentifier: type, options: nil) { item, error in
+        let text: String?
+        switch item {
+        case let string as String: text = string
+        case let string as NSAttributedString: text = string.string
+        case let bytes as Data: text = String(data: bytes, encoding: .utf8) ?? String(data: bytes, encoding: .utf16)
+        default: text = nil
+        }
+        done(text, error)
+      }
+      return progress
+    }
   }
 }
 
