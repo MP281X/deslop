@@ -246,7 +246,8 @@ function newer<A>(existing: Option.Option<A>, incoming: Option.Option<A>) {
 	return Option.orElse(incoming, () => existing)
 }
 
-function normalizedStation(name: string) {
+// A station's name as words, so an exact name matches whatever its case, accents and punctuation.
+export function normalizedStation(name: string) {
 	return pipe(
 		name,
 		String.normalize('NFD'),
@@ -304,6 +305,7 @@ function rideFields(existing: Flight | Train, incoming: Flight | Train) {
 	return {
 		confirmation: newer(existing.confirmation, incoming.confirmation),
 		id: existing.id,
+		issued: newer(existing.issued, incoming.issued),
 		seat: newer(existing.seat, incoming.seat)
 	}
 }
@@ -338,7 +340,8 @@ function combine(existing: Booking, incoming: Booking) {
 		return Stay.make({
 			...Struct.pick(incoming, Struct.keys(Stay.fields)),
 			confirmation: newer(existing.confirmation, incoming.confirmation),
-			id: existing.id
+			id: existing.id,
+			issued: newer(existing.issued, incoming.issued)
 		})
 	}
 	return incoming
@@ -352,7 +355,15 @@ export function upsert(current: BookingList, incoming: BookingList) {
 			Option.match({
 				onNone: () => [[...bookings, booking], undefined] as const,
 				onSome: existing => {
-					const merged = combine(existing, booking)
+					// A document dated before the one a booking was read from is older news and changes nothing; when either carries no date, the later share wins.
+					const merged = Boolean.match(
+						pipe(
+							existing.issued,
+							Option.zipWith(booking.issued, (stored, read) => Order.isLessThan(String.Order)(read, stored)),
+							Option.getOrElse(Function.constFalse)
+						),
+						{onFalse: () => combine(existing, booking), onTrue: () => existing}
+					)
 					return [
 						Array.map(bookings, item => Boolean.match(item === existing, {onFalse: () => item, onTrue: () => merged})),
 						undefined

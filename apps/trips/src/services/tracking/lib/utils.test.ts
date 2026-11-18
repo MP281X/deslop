@@ -25,6 +25,7 @@ const train = Struct.pick(
 		departs: DateTime.makeUnsafe(0),
 		from: Schema.decodeSync(BookedPlace)({name: 'Roma Termini', timeZone: 'Europe/Rome'}),
 		id: BookingId.make('1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d'),
+		issued: Option.none(),
 		live: Option.none(),
 		number: '9541',
 		operator: 'trenitalia',
@@ -193,6 +194,7 @@ it('checks a train each minute near departure and calls live data stale after tw
 		departs,
 		from: Schema.decodeSync(BookedPlace)({city: 'Rome', code: 'FCO', name: 'Fiumicino', timeZone: 'Europe/Rome'}),
 		id: BookingId.make('7f0c8f8e-0d0a-4a5e-9d8f-5b2a1c3d4e5f'),
+		issued: Option.none(),
 		live: Option.none(),
 		number: '553',
 		seat: Option.none(),
@@ -276,6 +278,7 @@ it('keeps the flight it identified before while it is still near the booked time
 		departs: DateTime.makeUnsafe('2026-10-28T15:40:00Z'),
 		from: Schema.decodeSync(BookedPlace)({code: 'FCO', name: 'Fiumicino', timeZone: 'Europe/Rome'}),
 		id: BookingId.make('7f0c8f8e-0d0a-4a5e-9d8f-5b2a1c3d4e5f'),
+		issued: Option.none(),
 		live: Option.some(
 			flightTracking(
 				{...ANSWER, fa_flight_id: ProviderFlightId.make('previous')},

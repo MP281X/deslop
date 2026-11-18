@@ -1,24 +1,77 @@
-import {Array, Cause, Context, DateTime, Duration, Effect, Layer, Option, Order, Schema, String, pipe} from 'effect'
+import {
+	Array,
+	Cause,
+	Context,
+	DateTime,
+	Duration,
+	Effect,
+	Layer,
+	Number,
+	Option,
+	Order,
+	Result,
+	Schema,
+	String,
+	pipe
+} from 'effect'
 
 import {HttpClient, HttpClientRequest, HttpClientResponse} from 'effect/http'
 
 import {Places, stationName} from './places.ts'
-import {stationNamesMatch, instantOf} from './utils.ts'
+import {instantOf, normalizedStation, stationNamesMatch} from './utils.ts'
 
 import {BookedPlace, BookingsError, TransitRuns, TransitTrip, TrainStop} from '#services/bookings/schema.ts'
 import type {ExtractedItem, TransitStop} from '#services/bookings/schema.ts'
 
-function segmentOf(stops: readonly TransitStop[], from: string, to: string, code: string) {
-	return pipe(
-		stops,
-		Array.findFirstIndex(stop => stop.stopId === code || stationNamesMatch(from, stop.name)),
-		Option.flatMap(first =>
-			pipe(
-				stops,
-				Array.findFirstIndex((stop, index) => index > first && stationNamesMatch(to, stop.name)),
-				Option.map(last => pipe(stops, Array.drop(first), Array.take(last - first + 1)))
-			)
+// A booked station: the stop id Transitous gave its name, when it found one, and the name as the ticket prints it.
+export type Wanted = {code: Option.Option<string>; name: string}
+
+// How surely a stop is the booked station: its stop id, then its exact name, then a looser name, under which Milano Rogoredo and Milano Centrale are both Milano.
+function rankOf(stop: TransitStop, wanted: Wanted) {
+	if (Option.contains(wanted.code, stop.stopId)) return Option.some(0)
+	if (normalizedStation(stop.name) === normalizedStation(wanted.name)) return Option.some(1)
+	if (stationNamesMatch(wanted.name, stop.name)) return Option.some(2)
+	return Option.none()
+}
+
+type Surety = {readonly rank: number}
+type StopCandidate = Surety & {readonly index: number}
+type RunCandidate = Surety & {
+	readonly gap: Duration.Duration
+	readonly run: TransitRuns['stopTimes'][number]
+	readonly stops: readonly TransitStop[]
+}
+
+const bySurety = Order.mapInput(Number.Order, (candidate: Surety) => candidate.rank)
+const surestStop = Order.combine(
+	bySurety,
+	Order.mapInput(Number.Order, (candidate: StopCandidate) => candidate.index)
+)
+const surestRun = Order.combine(
+	bySurety,
+	Order.mapInput(Duration.Order, (candidate: RunCandidate) => candidate.gap)
+)
+
+// The surest stop for the station from `after` on, the earliest among equally sure ones.
+function bestStop(stops: readonly TransitStop[], wanted: Wanted, after: number) {
+	const found = Array.filterMap(stops, (stop, index) =>
+		pipe(
+			rankOf(stop, wanted),
+			Option.filter(() => index >= after),
+			Option.match({onNone: () => Result.failVoid, onSome: rank => Result.succeed({index, rank})})
 		)
+	)
+	if (!Array.isReadonlyArrayNonEmpty(found)) return Option.none()
+	return Option.some(Array.min(found, surestStop))
+}
+
+// The stretch of one run between the booked stations, each end at its surest stop, ranked so that a run whose stops match exactly wins over one that matches loosely.
+export function segmentOf(stops: readonly TransitStop[], from: Wanted, to: Wanted) {
+	return Option.flatMap(bestStop(stops, from, 0), first =>
+		Option.map(bestStop(stops, to, first.index + 1), last => ({
+			rank: first.rank + last.rank,
+			stops: pipe(stops, Array.drop(first.index), Array.take(last.index - first.index + 1))
+		}))
 	)
 }
 
@@ -56,6 +109,7 @@ export class Timetable extends Context.Service<Timetable>()('@deslop/trips/servi
 					Effect.gen(function* () {
 						const station = yield* Effect.fromOption(yield* places.station(item.from))
 						const code = yield* Effect.fromOption(station.code)
+						const destination = yield* places.station(item.to)
 						// A time with an offset needs no zone; a wall time reads in the station's.
 						const at = yield* Option.match(instantOf(item.departure, station.timeZone), {
 							onNone: () => BookingsError.make({message: `The time ${item.departure} could not be read.`}),
@@ -66,7 +120,7 @@ export class Timetable extends Context.Service<Timetable>()('@deslop/trips/servi
 							{n: 1000, stopId: code, time: DateTime.formatIso(DateTime.subtractDuration(at, Duration.hours(3)))},
 							TransitRuns
 						)
-						// The runs of that number nearest the booked time, of which the first that serves both booked stations is the train.
+						// The runs of that number nearest the booked time; of those that serve both booked stations, the one whose stops match surest, then the nearest, is the train.
 						const matches = yield* pipe(
 							runs.stopTimes,
 							Array.filter(
@@ -95,26 +149,38 @@ export class Timetable extends Context.Service<Timetable>()('@deslop/trips/servi
 													Array.flatMap(leg => [leg.from, ...leg.intermediateStops, leg.to]),
 													Array.dedupeAdjacentWith((left, right) => left.stopId === right.stopId)
 												),
-												item.from,
-												item.to,
-												code
+												{code: Option.some(code), name: item.from},
+												{code: Option.flatMap(destination, found => found.code), name: item.to}
 											),
-											segment => ({run, segment})
+											segment => ({
+												gap: Duration.abs(DateTime.distance(run.place.departure, at)),
+												rank: segment.rank,
+												run,
+												stops: segment.stops
+											})
 										)
 									),
 								{concurrency: 1}
 							)
 						)
-						const found = yield* Effect.fromOption(Array.head(Array.getSomes(matches)))
-						const from = yield* Effect.fromOption(Array.head(found.segment))
-						const to = yield* Effect.fromOption(Array.last(found.segment))
+						const found = yield* pipe(
+							matches,
+							Array.getSomes,
+							Array.match({
+								onEmpty: () => Option.none<RunCandidate>(),
+								onNonEmpty: viable => Option.some(Array.min(viable, surestRun))
+							}),
+							Effect.fromOption
+						)
+						const from = yield* Effect.fromOption(Array.head(found.stops))
+						const to = yield* Effect.fromOption(Array.last(found.stops))
 						return {
 							arrives: yield* Effect.fromOption(to.arrival),
 							departs: yield* Effect.fromOption(from.departure),
 							from: place(from),
 							operator: found.run.agencyName,
 							service: found.run.routeShortName,
-							stops: Array.map(found.segment, stop =>
+							stops: Array.map(found.stops, stop =>
 								TrainStop.make({
 									arrives: stop.arrival,
 									code: Option.some(stop.stopId),
