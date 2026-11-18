@@ -51,7 +51,7 @@ export class GitHubActions extends Context.Service<GitHubActions>()(
 					requestedAt: Schema.DateTimeUtcFromMillis
 				}),
 				execute: row => sql`
-					INSERT INTO ci_log_fetches (job, event, attempts, dueAt, requestedAt)
+					INSERT INTO ${sql(LogFetch.table)} (job, event, attempts, dueAt, requestedAt)
 					VALUES (${row.job}, ${row.event}, 0, ${row.requestedAt}, ${row.requestedAt})
 					ON CONFLICT (job) DO NOTHING
 				`
@@ -60,7 +60,7 @@ export class GitHubActions extends Context.Service<GitHubActions>()(
 				Request: Schema.DateTimeUtcFromMillis,
 				Result: LogFetch,
 				execute: now => sql`
-					SELECT job, event, attempts FROM ci_log_fetches
+					SELECT * FROM ${sql(LogFetch.table)}
 					WHERE finishedAt IS NULL AND dueAt <= ${now}
 					ORDER BY dueAt, job LIMIT ${CLAIMED}
 				`
@@ -72,7 +72,7 @@ export class GitHubActions extends Context.Service<GitHubActions>()(
 					now: Schema.DateTimeUtcFromMillis
 				}),
 				execute: row => sql`
-					UPDATE ci_log_fetches SET
+					UPDATE ${sql(LogFetch.table)} SET
 						attempts = attempts + 1,
 						dueAt = coalesce(${row.dueAt}, dueAt),
 						finishedAt = iif(${row.dueAt} IS NULL, ${row.now}, NULL)
@@ -82,7 +82,7 @@ export class GitHubActions extends Context.Service<GitHubActions>()(
 			// A finished job is remembered as long as its trace is kept.
 			const forget = SqlSchema.void({
 				Request: Schema.DateTimeUtcFromMillis,
-				execute: before => sql`DELETE FROM ci_log_fetches WHERE finishedAt < ${before}`
+				execute: before => sql`DELETE FROM ${sql(LogFetch.table)} WHERE finishedAt < ${before}`
 			})
 
 			// The log streams through: lines are parsed as they arrive and kept records are stored a batch at a time.
