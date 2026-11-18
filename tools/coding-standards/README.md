@@ -56,7 +56,7 @@ coding-standards judge --dry-run          # plan the current change; sends nothi
 coding-standards judge --base origin/main --dry-run
 ```
 
-Use `coding-standards judge --help` for flags. A dry run sends nothing; `--user-asked` records the explicit request for a paid run, not permission inferred from a general build request.
+Use `coding-standards judge --help` for flags. A dry run sends nothing and never needs `--user-asked`. Every other run that would send a request to the model fails before the first one unless `--user-asked` records the user's explicit request for that paid run, not permission inferred from a general build request.
 
 The judge asks about the functions, components and test cases a change touches, one unit at a time. The change is everything the working tree differs from its merge base with `--base`, which needs no `gh`; by default the base branch on `origin` of the branch's open pull request, else `origin`'s default branch when the branch has none or `gh` is missing or asks to sign in, untracked files included; a `gh` that fails to list pull requests, such as with a rejected token, and a repository whose base the judge cannot name fail. The diff only selects units and is never sent. A unit is asked when its lines, the `//` comment lines right above it, an import line it uses, or its file's path changed. Each changed file is read as text under its literal name, whatever `.gitattributes` or git's quoting say; a symlink, or a file under a symlinked directory, is never read and counts under Could not read.
 
@@ -76,4 +76,4 @@ The run exits 0 only when Findings and Could not read are both zero.
 - **Could not read** fails the run: a touched file the parser cannot read or the judge will not follow, a question whose self-check failed or cannot run, and a unit Gateway or Haiku left without a valid structured answer. A path git cannot match to its diff fails outright.
 - **Suppressed** does not fail: put `judge-ignore <question> -- <reason>` in a `//` comment line right above a unit; lint rejects a `judge-ignore` without both. Suppressions print their reason. A no answer or a gate that skips the unit reports a stale suppression.
 
-`--dry-run` exits 1 for unreadable input, not for the run-wide call limit.
+`--dry-run` exits 1 for unreadable input, never for the missing `--user-asked`.

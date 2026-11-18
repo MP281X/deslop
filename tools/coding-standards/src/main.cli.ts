@@ -45,7 +45,9 @@ const command = pipe(
 					),
 					userAsked: pipe(
 						Flag.Boolean('user-asked'),
-						Flag.withDescription('The user explicitly requested this run; allow more than 20 planned calls'),
+						Flag.withDescription(
+							'The user explicitly requested this paid run; without it a run that would send a request fails first'
+						),
 						Flag.withDefault(false)
 					)
 				},
