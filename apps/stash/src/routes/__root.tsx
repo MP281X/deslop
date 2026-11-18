@@ -1,4 +1,4 @@
-import {useAtomSet} from '@effect/atom-react'
+import {useAtomMount, useAtomSet} from '@effect/atom-react'
 
 import {Array, Match, Option, Schema, pipe} from 'effect'
 
@@ -11,6 +11,7 @@ import {colors} from '@deslop/components-mobile/theme'
 
 import {queryAtom} from '#lib/notes.ts'
 import {session} from '#lib/session.ts'
+import {sharesAtom} from '#lib/shares.ts'
 import {HomeRoute} from '#routes/(home)/index.tsx'
 import {ComposeRoute} from '#routes/compose.tsx'
 import {NoteRoute, NoteSkeleton} from '#routes/notes/$id.tsx'
@@ -25,6 +26,7 @@ function AppRoutes() {
 	const setQuery = useAtomSet(queryAtom)
 	const [tag, setTag] = useState(Option.none<TagName>)
 	const [kind, setKind] = useState(Option.none<Kind>)
+	useAtomMount(sharesAtom)
 
 	return (
 		<Host style={{flex: 1}}>

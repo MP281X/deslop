@@ -1,7 +1,7 @@
 Pod::Spec.new do |s|
   s.name           = 'StashNative'
   s.version        = '1.0.0'
-  s.summary        = 'Clipboard checks and SwiftUI pieces that Expo UI lacks.'
+  s.summary        = 'Clipboard checks, answers to shared uploads and SwiftUI pieces that Expo UI lacks.'
   s.author         = 'mp281x'
   s.homepage       = 'https://github.com/MP281X/deslop'
   s.platforms      = {

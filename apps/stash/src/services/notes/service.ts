@@ -32,7 +32,7 @@ import {
 
 import type {PlatformError} from 'effect/PlatformError'
 import {Reactivity} from 'effect/reactivity'
-import type {SqlError} from 'effect/sql'
+import type {SqlError, Statement} from 'effect/sql'
 import {Migrator, SqlClient, SqlModel, SqlSchema} from 'effect/sql'
 
 import {dataDirectory} from '@deslop/runtime/server/store'
@@ -48,7 +48,7 @@ import {NoteChange} from './schema.ts'
 import {clock} from '#services/media/lib/utils.ts'
 import type {MediaError, Still} from '#services/media/schema.ts'
 import {Media} from '#services/media/service.ts'
-import {captureUrl, commentOf, hasVideo, queryWords, sourceOf} from '#services/notes/lib/utils.ts'
+import {captureUrl, commentOf, hasVideo, queryWords, searchable, sourceOf} from '#services/notes/lib/utils.ts'
 import type {Capture, Extraction, FileType, Image, Picture, Organization} from '#services/notes/schema.ts'
 import {
 	Note,
@@ -58,6 +58,7 @@ import {
 	NotesCursor,
 	NotesError,
 	NoteTag,
+	RetiredNote,
 	Tag,
 	TagEntry
 } from '#services/notes/schema.ts'
@@ -83,6 +84,8 @@ function asStorageNotesError(
 		| Cause.NoSuchElementError
 		| NotesError
 ) {
+	// A NotesError already says what happened, such as a deleted note's retired id.
+	if (Schema.is(NotesError)(cause)) return cause
 	return NotesError.make({cause, message: 'The notes or their files could not be read or written.'})
 }
 
@@ -93,6 +96,31 @@ const asMediaNotesError = Effect.mapError((cause: MediaError) =>
 )
 
 const missing = NotesError.make({message: 'No note has this id; find its id with search_notes.'})
+
+const removed = NotesError.make({message: 'This note was deleted after it was saved.', reason: 'Removed'})
+
+// The search row of each note the condition selects, from its texts and tags as `searchable` spells them, so the index and a query fold text alike.
+const indexNotes = Effect.fnUntraced(function* (sql: SqlClient.SqlClient, condition: Statement.Fragment) {
+	const rows = yield* SqlSchema.findAll({
+		Request: Schema.Void,
+		Result: Schema.Struct({rowid: Schema.Int, tags: Schema.String, text: Schema.String}),
+		execute: () => sql`
+			SELECT rowid,
+				concat_ws(' ', title, summary, author, text, content, topics, body, screenText, transcript, url) AS text,
+				coalesce((SELECT group_concat(tag, ' ') FROM note_tags WHERE noteId = notes.id), '') AS tags
+			FROM notes WHERE ${condition}
+		`
+	})()
+	yield* Effect.forEach(
+		rows,
+		row =>
+			Effect.andThen(
+				sql`DELETE FROM note_search WHERE rowid = ${row.rowid}`,
+				sql`INSERT INTO note_search(rowid, text, tags) VALUES (${row.rowid}, ${searchable(row.text)}, ${searchable(row.tags)})`
+			),
+		{concurrency: 1, discard: true}
+	)
+})
 
 export class Notes extends Context.Service<Notes>()('@deslop/stash/services/notes/service/Notes', {
 	make: Effect.fnUntraced(function* (directory: string) {
@@ -123,6 +151,9 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 
 		yield* asNotesError(fs.makeDirectory(images, {mode: 0o700, recursive: true}))
 		yield* asNotesError(fs.makeDirectory(files, {mode: 0o700, recursive: true}))
+		function reindex(id: NoteId) {
+			return indexNotes(sql, sql`id = ${id}`)
+		}
 
 		const notes = yield* SqlModel.makeRepository(Note, {idColumn: 'id', spanPrefix: 'Notes', tableName: Note.table})
 
@@ -159,6 +190,11 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 			Result: NoteItem,
 			execute: id => sql`SELECT ${itemColumns} FROM notes WHERE id = ${id}`
 		})
+		const latestVersion = SqlSchema.findOne({
+			Request: Schema.Void,
+			Result: Schema.Struct({version: Schema.Int}),
+			execute: () => sql`SELECT coalesce(max(version), 0) AS version FROM ${sql(NoteChangeVersion.table)}`
+		})
 		const listChanges = SqlSchema.findAll({
 			Request: Schema.Int,
 			Result: NoteChangeVersion,
@@ -185,7 +221,8 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 					matching(request),
 					...Array.map(
 						Array.fromNullishOr(request.cursor),
-						cursor => sql`(createdAt < ${cursor.createdAt} OR (createdAt = ${cursor.createdAt} AND id < ${cursor.id}))`
+						// One row-value bound lets SQLite seek the index instead of scanning the newer notes again.
+						cursor => sql`(createdAt, id) < (${cursor.createdAt}, ${cursor.id})`
 					)
 				])}
 				ORDER BY createdAt DESC, id DESC
@@ -214,6 +251,21 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 				SELECT * FROM notes WHERE id != ${request.id} AND url = ${request.url}
 				ORDER BY createdAt, id LIMIT 1
 			`
+		})
+		const findRetired = SqlSchema.findOneOption({
+			Request: NoteId,
+			Result: RetiredNote,
+			execute: id => sql`SELECT * FROM ${sql(RetiredNote.table)} WHERE id = ${id}`
+		})
+		const retire = SqlSchema.void({
+			Request: RetiredNote.insert,
+			execute: row => sql`INSERT OR REPLACE INTO ${sql(RetiredNote.table)} ${sql.insert(row)}`
+		})
+		// The files each kept note owns: a preview or photo in images, an uploaded video in files.
+		const listOwners = SqlSchema.findAll({
+			Request: Schema.Void,
+			Result: Schema.Struct(Struct.pick(Note.fields, ['file', 'id', 'image'])),
+			execute: () => sql`SELECT id, file, image FROM notes WHERE file IS NOT NULL OR image IS NOT NULL`
 		})
 		const listOrganizing = SqlSchema.findAll({
 			Request: Schema.Void,
@@ -257,12 +309,28 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 			return pipe(
 				Match.value(changeNote(note, update)),
 				Match.tag('Unchanged', () => Effect.void),
-				Match.tag('Removed', () => Reactivity.mutation(notes.delete(note.id), ['notes'])),
+				// The id stays retired, so a late resend of its capture cannot bring the note back.
+				Match.tag('Removed', () =>
+					pipe(
+						notes.delete(note.id),
+						Effect.andThen(
+							retire({
+								id: note.id,
+								mergedInto: pipe(
+									Match.value(update),
+									Match.tag('remove', removal => removal.into),
+									Match.orElse(() => Option.none<NoteId>())
+								)
+							})
+						),
+						Reactivity.mutation(['notes'])
+					)
+				),
 				Match.tag('Changed', changed =>
 					pipe(
 						notes.update(Struct.pick(changed.note, Struct.keys(Note.update.fields))),
-						Reactivity.mutation(['notes']),
-						Effect.asVoid
+						Effect.andThen(reindex(note.id)),
+						Reactivity.mutation(['notes'])
 					)
 				),
 				Match.exhaustive
@@ -287,7 +355,8 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 
 		const writeOrganization = Effect.fnUntraced(function* (
 			note: Note,
-			found: ReturnType<typeof reconcileOrganization>
+			found: ReturnType<typeof reconcileOrganization>,
+			read: string
 		) {
 			yield* deleteNoteTags(note.id)
 			yield* Array.match(found.tags, {
@@ -298,11 +367,11 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 						insertNoteTags(Array.map(tags, (entry, position) => ({noteId: note.id, position, tag: entry.name})))
 					)
 			})
-			yield* storeChange(note, NoteChange.cases.organize.make({organization: found.organization}))
+			yield* storeChange(note, NoteChange.cases.organize.make({organization: found.organization, read}))
 		})
 
-		// The organized note, its tags and their definitions land together or not at all, and watchers hear of it once it commits; a note removed meanwhile stays removed.
-		function organized(id: NoteId, organization: Organization) {
+		// The organized note, its tags and their definitions land together or not at all, and watchers hear of it once it commits; a note removed meanwhile stays removed, and words shared after `read` stay visible.
+		function organized(id: NoteId, organization: Organization, read: string) {
 			return pipe(
 				Effect.flatMap(
 					findNote(id),
@@ -315,7 +384,8 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 									reconcileOrganization(
 										organization,
 										Array.map(entries, entry => entry.name)
-									)
+									),
+									read
 								)
 							)
 					})
@@ -355,9 +425,9 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 					organizer.organize(userId, {images: pictures, note, tags: yield* asNotesError(listTagEntries())})
 				),
 				{
-					onFailure: () =>
-						change(note.id, NoteChange.cases.fail.make({message: 'This note could not be processed. Try again.'})),
-					onSuccess: organization => organized(note.id, organization)
+					// The organizer's message is already safe to show, and some, such as a missing key, say what to do.
+					onFailure: error => change(note.id, NoteChange.cases.fail.make({issue: error.message})),
+					onSuccess: organization => organized(note.id, organization, note.text)
 				}
 			)
 		})
@@ -399,6 +469,21 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 			)
 		}
 
+		// A transcription Gateway refused, such as for a missing key, leaves its instruction on the note; any other failure is only logged.
+		function untranscribed(id: NoteId) {
+			return (error: MediaError) =>
+				pipe(
+					Effect.logWarning('No transcript', error),
+					Effect.andThen(
+						Boolean.match(error.reason === 'Refused', {
+							onFalse: () => Effect.void,
+							onTrue: () => change(id, NoteChange.cases.issue.make({issue: error.message}))
+						})
+					),
+					Effect.as(Option.none<string>())
+				)
+		}
+
 		// Read video details and frames, then tag the note; details replace content for non-X links, and for X only when useInfo says the post itself could not be read.
 		const watch = Effect.fnUntraced(function* (
 			userId: UserId,
@@ -415,11 +500,7 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 						Effect.flatMap(read =>
 							pipe(
 								Option.filter(read, () => Option.isNone(note.transcript)),
-								Option.map(details =>
-									Effect.catch(asMediaNotesError(details.transcript), error =>
-										Effect.as(Effect.logWarning('No transcript', error), Option.none<string>())
-									)
-								),
+								Option.map(details => Effect.catchTag(details.transcript, 'MediaError', untranscribed(note.id))),
 								Effect.transposeOption,
 								Effect.map(Option.flatten),
 								Effect.flatMap(transcript =>
@@ -462,7 +543,7 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 								onNone: () => Effect.andThen(storeChange(current, NoteChange.cases.resolve.make({url})), findNote(id)),
 								onSome: Effect.fnUntraced(function* (saved: Note) {
 									yield* storeChange(saved, NoteChange.cases.share.make({capture: {id, text: current.text}}))
-									yield* storeChange(current, NoteChange.cases.remove.make({}))
+									yield* storeChange(current, NoteChange.cases.remove.make({into: Option.some(saved.id)}))
 									return Option.none<Note>()
 								})
 							})
@@ -533,17 +614,25 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 						)
 						return frames
 					}),
-					pipe(
-						asMediaNotesError(media.fileTranscript(userId, stored)),
-						Effect.catch(error => Effect.as(Effect.logWarning('No transcript', error), Option.none<string>())),
-						Effect.flatMap(
-							Option.match({
-								onNone: () => Effect.void,
-								onSome: text =>
-									change(note.id, NoteChange.cases.video.make({content: Option.none(), transcript: Option.some(text)}))
-							})
-						)
-					)
+					// A transcript an earlier run committed is reused, so a restart does not pay for it again.
+					Option.match(note.transcript, {
+						onNone: () =>
+							pipe(
+								media.fileTranscript(userId, stored),
+								Effect.catchTag('MediaError', untranscribed(note.id)),
+								Effect.flatMap(
+									Option.match({
+										onNone: () => Effect.void,
+										onSome: text =>
+											change(
+												note.id,
+												NoteChange.cases.video.make({content: Option.none(), transcript: Option.some(text)})
+											)
+									})
+								)
+							),
+						onSome: () => Effect.void
+					})
 				],
 				{concurrency: 2}
 			)
@@ -596,6 +685,43 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 			)
 		}
 
+		// A crash can leave an upload half received, a published file whose row never committed, a preview without its row's mark, or a deleted note's files; at start only files a kept note owns stay.
+		const owners = yield* asNotesError(listOwners())
+		const sweep = Effect.fnUntraced(function* (folder: string, keep: (name: string) => boolean) {
+			yield* pipe(
+				yield* fs.readDirectory(folder),
+				Array.filter(name => !keep(name)),
+				Effect.forEach(name => fs.remove(path.join(folder, name), {force: true, recursive: true}), {
+					concurrency: 'unbounded',
+					discard: true
+				})
+			)
+		})
+		const previews = HashSet.fromIterable(
+			pipe(
+				owners,
+				Array.filter(owner => Option.isSome(owner.image)),
+				Array.map(owner => owner.id)
+			)
+		)
+		const videos = HashSet.fromIterable(
+			pipe(
+				owners,
+				Array.filter(owner => Option.exists(owner.file, isVideo)),
+				Array.map(owner => owner.id)
+			)
+		)
+		yield* asNotesError(
+			Effect.all(
+				[
+					sweep(images, name => HashSet.has(previews, name)),
+					sweep(files, name => HashSet.has(videos, name)),
+					sweep(directory, name => !String.startsWith('upload-')(name))
+				],
+				{concurrency: 'unbounded'}
+			)
+		)
+
 		// A note a restart interrupted resumes for the person who saved it.
 		yield* Effect.forEach(yield* asNotesError(listOrganizing()), note => enqueueOrganization(note.requester, note), {
 			concurrency: 1,
@@ -631,6 +757,24 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 			return Effect.flatMap(findNote(id), Option.match({onNone: () => Effect.fail(missing), onSome: Effect.succeed}))
 		}
 
+		// A retired capture id answers with the note it joined, or as deleted; none says the id was never retired.
+		function retired(id: NoteId) {
+			return Effect.flatMap(
+				findRetired(id),
+				Option.match({
+					onNone: () => Effect.succeed(Option.none<Note>()),
+					onSome: Effect.fnUntraced(function* (row: RetiredNote) {
+						const joined = yield* Option.match(row.mergedInto, {
+							onNone: () => Effect.succeed(Option.none<Note>()),
+							onSome: findNote
+						})
+						if (Option.isNone(joined)) return yield* removed
+						return joined
+					})
+				})
+			)
+		}
+
 		// The note just saved, or the one it joined, as the list shows it.
 		function savedItem(id: NoteId) {
 			return Effect.flatMap(
@@ -652,7 +796,7 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 				input.body,
 				Stream.mapError(cause => NotesError.make({cause, message: 'The upload broke off.'})),
 				Stream.limitBytes(ByteSize.gibibytes(1), () =>
-					Stream.fail(NotesError.make({message: 'The file is larger than 1 GiB.'}))
+					Stream.fail(NotesError.make({message: 'The file is larger than 1 GiB.', reason: 'TooLarge'}))
 				),
 				Stream.run(fs.sink(partial, {mode: 0o600})),
 				Effect.catchTag('PlatformError', cause =>
@@ -662,6 +806,8 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 			const publication = yield* RcMap.get(publications, input.id)
 			return yield* pipe(
 				Effect.gen(function* () {
+					// Removal holds the same permit, so an upload either lands before it or finds its id retired.
+					if (Option.isSome(yield* findRetired(input.id))) return yield* removed
 					return yield* Option.match(yield* findNote(input.id), {
 						onNone: Effect.fnUntraced(function* () {
 							yield* asNotesError(fs.rename(partial, stored))
@@ -670,6 +816,7 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 									newNote(userId, {id: input.id, text: ''}, Option.none(), Option.some(input.type))
 								),
 								Effect.flatMap(notes.insert),
+								Effect.tap(() => reindex(input.id)),
 								Reactivity.mutation(['notes']),
 								asNotesError,
 								Effect.onError(() =>
@@ -696,77 +843,106 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 			}),
 			capture: Effect.fn('Notes.capture')(function* (userId: UserId, input: Capture) {
 				const text = String.trim(input.text)
-				if (String.isEmpty(text)) return yield* NotesError.make({message: 'Paste a link or write a note.'})
+				if (String.isEmpty(text)) {
+					return yield* NotesError.make({message: 'Paste a link or write a note.', reason: 'Invalid'})
+				}
 				const url = Option.fromUndefinedOr(captureUrl(text))
 				const saved = yield* pipe(
-					findSaved({id: input.id, url}),
+					retired(input.id),
 					Effect.flatMap(
 						Option.match({
 							onNone: () =>
-								pipe(
-									Note.insert.makeEffect(newNote(userId, {...input, text}, url, Option.none())),
-									Effect.flatMap(notes.insert),
-									Reactivity.mutation(['notes']),
-									Effect.map(note => ({fresh: true, note}))
+								Effect.flatMap(
+									findSaved({id: input.id, url}),
+									Option.match({
+										onNone: () =>
+											pipe(
+												Note.insert.makeEffect(newNote(userId, {...input, text}, url, Option.none())),
+												Effect.flatMap(notes.insert),
+												Effect.tap(() => reindex(input.id)),
+												Reactivity.mutation(['notes']),
+												Effect.map(note => ({fresh: true, note, retry: false}))
+											),
+										// A share of a saved note adds its new words, unless it is the same capture sent again; only a new share asks a failed note again, so a resend pays for nothing.
+										onSome: found =>
+											Effect.as(storeChange(found, NoteChange.cases.share.make({capture: {...input, text}})), {
+												fresh: false,
+												note: found,
+												retry: found.status === 'failed' && found.id !== input.id
+											})
+									})
 								),
-							// A share of a saved note adds its new words, unless it is the same capture sent again.
-							onSome: found =>
-								Effect.as(storeChange(found, NoteChange.cases.share.make({capture: {...input, text}})), {
-									fresh: false,
-									note: found
-								})
+							onSome: joined => Effect.succeed({fresh: false, note: joined, retry: false})
 						})
 					),
 					sql.withTransaction,
 					asNotesError
 				)
-				const retry = saved.note.status === 'failed'
-				if (retry) yield* change(saved.note.id, NoteChange.cases.retry.make({}))
+				if (saved.retry) yield* change(saved.note.id, NoteChange.cases.retry.make({}))
 				const item = yield* savedItem(saved.note.id)
-				if (saved.fresh || retry) yield* enqueueOrganization(userId, yield* savedNote(saved.note.id))
+				if (saved.fresh || saved.retry) yield* enqueueOrganization(userId, yield* savedNote(saved.note.id))
 				return item
 			}, withReactivity),
 			captureFile: Effect.fn('Notes.captureFile')(function* (
 				userId: UserId,
 				input: {body: Stream.Stream<Uint8Array, unknown>; id: NoteId; type: FileType}
 			) {
-				if (Option.isSome(yield* findNote(input.id))) return yield* savedItem(input.id)
-				const saved = yield* Effect.scoped(receive(userId, input))
-				const item = yield* savedItem(input.id)
-				if (saved.fresh) yield* enqueueOrganization(userId, saved.note)
-				return item
+				// A resend of a kept upload answers with its note and a deleted one as deleted, without reading the body again.
+				return yield* Option.match(yield* asNotesError(retired(input.id)), {
+					onNone: Effect.fnUntraced(function* () {
+						if (Option.isSome(yield* findNote(input.id))) return yield* savedItem(input.id)
+						const saved = yield* Effect.scoped(receive(userId, input))
+						const item = yield* savedItem(input.id)
+						if (saved.fresh) yield* enqueueOrganization(userId, saved.note)
+						return item
+					}),
+					onSome: joined => savedItem(joined.id)
+				})
 			}, withReactivity),
 			// What the phone watches: the whole list first, then only what changed, after each commit.
 			events: pipe(
 				Stream.unwrap(
 					Effect.gen(function* () {
 						const cursor = yield* Ref.make(Option.none<number>())
-						return sql.reactive(
-							['notes'],
-							sql.withTransaction(
-								Effect.gen(function* () {
-									const previous = yield* Ref.get(cursor)
-									const changes = yield* listChanges(Option.getOrElse(previous, Function.constant(0)))
-									const version = Option.getOrElse(Array.last(changes), () => ({
-										version: Option.getOrElse(previous, Function.constant(0))
-									})).version
-									const reset = Option.isNone(previous)
-									const items = yield* Boolean.match(reset, {
-										onFalse: () => changedItems(Array.map(changes, row => row.id)),
-										onTrue: () => listItems()
+						return pipe(
+							sql.reactive(['notes'], Effect.void),
+							// Commits a slow reader has not caught up with wait as one, since the next read takes every change after its cursor.
+							Stream.buffer({capacity: 1, strategy: 'sliding'}),
+							Stream.mapEffect(() =>
+								sql.withTransaction(
+									Effect.gen(function* () {
+										const previous = yield* Ref.get(cursor)
+										const reset = Option.isNone(previous)
+										// A reset sends every note, so it reads only the newest version, not every change and tombstone before it.
+										const changes = yield* Option.match(previous, {
+											onNone: () => Effect.succeed(Array.empty<NoteChangeVersion>()),
+											onSome: listChanges
+										})
+										const version = yield* Option.match(Array.last(changes), {
+											onNone: () =>
+												Option.match(previous, {
+													onNone: () => Effect.map(latestVersion(), row => row.version),
+													onSome: Effect.succeed
+												}),
+											onSome: row => Effect.succeed(row.version)
+										})
+										const items = yield* Boolean.match(reset, {
+											onFalse: () => changedItems(Array.map(changes, row => row.id)),
+											onTrue: () => listItems()
+										})
+										const present = HashSet.fromIterable(Array.map(items, item => item.id))
+										yield* Ref.set(cursor, Option.some(version))
+										return {
+											removed: pipe(
+												changes,
+												Array.filter(row => !HashSet.has(present, row.id)),
+												Array.map(row => row.id)
+											),
+											reset,
+											upserted: items
+										}
 									})
-									const present = HashSet.fromIterable(Array.map(items, item => item.id))
-									yield* Ref.set(cursor, Option.some(version))
-									return {
-										removed: pipe(
-											changes,
-											Array.filter(row => !HashSet.has(present, row.id)),
-											Array.map(row => row.id)
-										),
-										reset,
-										upserted: items
-									}
-								})
+								)
 							)
 						)
 					})
@@ -798,8 +974,14 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 				query: string
 			}) {
 				const words = queryWords(input.query)
-				const found = yield* asNotesError(pageItems({...words, cursor: input.cursor, limit: input.limit + 1}))
-				const total = yield* asNotesError(countMatching(words))
+				// The page and its total come from one short read, so a deletion between them cannot disagree.
+				const [found, total] = yield* pipe(
+					Effect.all([pageItems({...words, cursor: input.cursor, limit: input.limit + 1}), countMatching(words)], {
+						concurrency: 1
+					}),
+					sql.withTransaction,
+					asNotesError
+				)
 				const page = Array.take(found, input.limit)
 				return {
 					items: page,
@@ -834,12 +1016,19 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 				yield* change(id, NoteChange.cases.retry.make({}))
 				yield* enqueueOrganization(userId, yield* savedNote(id))
 			}, withReactivity),
-			remove: Effect.fn('Notes.remove')(function* (id: NoteId) {
-				MutableHashMap.remove(pending, id)
-				yield* FiberMap.remove(runs, id)
-				yield* change(id, NoteChange.cases.remove.make({}))
-				yield* removeFiles(id)
-			}, withReactivity),
+			remove: Effect.fn('Notes.remove')(
+				function* (id: NoteId) {
+					MutableHashMap.remove(pending, id)
+					yield* FiberMap.remove(runs, id)
+					// An upload of this id publishes under the same permit, so its file lands before the removal or never.
+					yield* Semaphore.withPermit(
+						yield* RcMap.get(publications, id),
+						Effect.andThen(change(id, NoteChange.cases.remove.make({into: Option.none()})), removeFiles(id))
+					)
+				},
+				Effect.scoped,
+				withReactivity
+			),
 			// The ids matching a query, read again after each commit; `#word` names a tag.
 			search: (query: string) =>
 				pipe(
@@ -850,6 +1039,8 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 							Array.map(row => row.id)
 						)
 					),
+					// A slow reader gets only the newest matches.
+					Stream.buffer({capacity: 1, strategy: 'sliding'}),
 					Stream.changes,
 					Stream.mapError(asStorageNotesError),
 					Stream.withSpan('Notes.search', {attributes: {'rpc.stream': true}})
@@ -934,6 +1125,36 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 						INSERT INTO note_changes(id, version) VALUES(old.noteId, (SELECT coalesce(max(version), 0) + 1 FROM note_changes))
 							ON CONFLICT(id) DO UPDATE SET version = excluded.version;
 					END`
+				}),
+				'0003_retired_notes': Effect.flatMap(
+					SqlClient.SqlClient,
+					sql => sql`CREATE TABLE retired_notes (id TEXT PRIMARY KEY, mergedInto TEXT) STRICT`
+				),
+				// The service writes each search row from text `searchable` folds, so the triggers keep only the change versions.
+				'0004_searchable_text': Effect.gen(function* () {
+					const sql = yield* SqlClient.SqlClient
+					yield* sql`DROP TRIGGER notes_insert`
+					yield* sql`DROP TRIGGER notes_update`
+					yield* sql`DROP TRIGGER note_tags_insert`
+					yield* sql`DROP TRIGGER note_tags_delete`
+					yield* sql`CREATE TRIGGER notes_insert AFTER INSERT ON notes BEGIN
+						INSERT INTO note_changes(id, version) VALUES(new.id, (SELECT coalesce(max(version), 0) + 1 FROM note_changes))
+							ON CONFLICT(id) DO UPDATE SET version = excluded.version;
+					END`
+					yield* sql`CREATE TRIGGER notes_update AFTER UPDATE ON notes BEGIN
+						INSERT INTO note_changes(id, version) VALUES(new.id, (SELECT coalesce(max(version), 0) + 1 FROM note_changes))
+							ON CONFLICT(id) DO UPDATE SET version = excluded.version;
+					END`
+					yield* sql`CREATE TRIGGER note_tags_insert AFTER INSERT ON note_tags BEGIN
+						INSERT INTO note_changes(id, version) VALUES(new.noteId, (SELECT coalesce(max(version), 0) + 1 FROM note_changes))
+							ON CONFLICT(id) DO UPDATE SET version = excluded.version;
+					END`
+					yield* sql`CREATE TRIGGER note_tags_delete AFTER DELETE ON note_tags BEGIN
+						INSERT INTO note_changes(id, version) VALUES(old.noteId, (SELECT coalesce(max(version), 0) + 1 FROM note_changes))
+							ON CONFLICT(id) DO UPDATE SET version = excluded.version;
+					END`
+					yield* sql`DELETE FROM note_search`
+					yield* indexNotes(sql, sql`1 = 1`)
 				})
 			}),
 			table: 'notes_migrations'

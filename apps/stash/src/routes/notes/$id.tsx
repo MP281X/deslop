@@ -45,6 +45,7 @@ import {AuthError} from '@deslop/runtime/shared/auth'
 import {Byline} from '#lib/components.tsx'
 import {BrandLogo} from '#lib/icons.tsx'
 import {appOf, brandOf, kinds, subjectOf} from '#lib/kinds.ts'
+import {webLinksOnly} from '#lib/markdown.ts'
 import {noteAtom, notesAtom, regenerateAtom, removal} from '#lib/notes.ts'
 import {Pager} from '#lib/pager.tsx'
 import {primary} from '#lib/session.ts'
@@ -111,6 +112,7 @@ function Body(props: {text: string}) {
 				String.split('\n'),
 				Array.map(String.trim),
 				Array.filter(String.isNonEmpty),
+				Array.map(webLinksOnly),
 				Array.map((line, index) => (
 					// oxlint-disable-next-line react/no-array-index-key -- Note lines have no identity beyond their position; editing text replaces that position's contents.
 					<BodyLine key={index} line={line} />
