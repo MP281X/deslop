@@ -480,6 +480,16 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 						GROUP BY arriving.value ->> 'traceId'
 						ON CONFLICT (traceId) DO NOTHING
 					`
+					// An identified span replacing an anonymous one makes its trace as new as this export, so retention keeps it.
+					yield* sql`
+						UPDATE traces SET receivedAt = ${batch} ->> 'receivedAt'
+						WHERE ${batch} ->> 'identified' AND id IN (
+							SELECT spans.trace FROM json_each(${batch}, '$.spans') AS arriving
+							JOIN traces AS arrived ON arrived.traceId = unhex(arriving.value ->> 'traceId')
+							JOIN spans ON spans.trace = arrived.id AND spans.span = unhex(arriving.value ->> 'spanId')
+							WHERE NOT spans.identified
+						)
+					`
 					// Replace retried spans except a late CI start after completion, and an identified span by an anonymous export; strip the listed attributes and intern SQL statements.
 					yield* sql`
 						INSERT INTO spans (trace, span, parent, resource, name, kind, start, duration, status, error, exception, statement, attributes, identified)
@@ -587,7 +597,14 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 			execute: batch =>
 				Effect.gen(function* () {
 					yield* saveResources(batch, '$.logs')
-					// An identified export takes over the digests an anonymous one stored first.
+					// An identified export takes over the digests an anonymous one stored first, and makes their traces as new as itself.
+					yield* sql`
+						UPDATE traces SET receivedAt = (SELECT min(value ->> 'receivedAt') FROM json_each(${batch}, '$.logs'))
+						WHERE ${batch} ->> 'identified' AND id IN (
+							SELECT trace FROM logs WHERE NOT identified
+							AND id IN (SELECT value ->> 'id' FROM json_each(${batch}, '$.logs'))
+						)
+					`
 					yield* sql`
 						DELETE FROM logs WHERE ${batch} ->> 'identified' AND NOT identified
 						AND id IN (SELECT value ->> 'id' FROM json_each(${batch}, '$.logs'))
@@ -1028,7 +1045,7 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 						Effect.forEach(
 							Effect.fnUntraced(function* (group) {
 								// All logs in the group share one sender, regardless of instrumentation scope.
-								const sender = admittedSender(senderOf(group.resource), origin)
+								const sender = admittedSender(senderOf(group.resource, receivedAt), origin)
 								const resource = yield* Effect.transposeOption(
 									Option.map(group.resource, Schema.encodeEffect(Resource))
 								)

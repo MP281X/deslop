@@ -457,6 +457,31 @@ it.layer(telemetryLayer)(test =>
 	)
 )
 
+it.layer(telemetryLayer)(test =>
+	test.effect(
+		'keeps an identified replacement as long as a new trace',
+		Effect.fnUntraced(function* () {
+			const telemetry = yield* Telemetry
+			const id = TraceId.make('fffffffffffffffffffffffffffffffa')
+			const span = {
+				endTimeUnixNano: '10000000',
+				name: 'guess',
+				spanId: '1111111111111111',
+				startTimeUnixNano: '0',
+				traceId: id
+			}
+			yield* telemetry.ingestTraces(yield* serverExport('owner-server', [span]), 'anonymous')
+			yield* TestClock.adjust('29 days')
+			yield* telemetry.ingestTraces(yield* serverExport('owner-server', [{...span, name: 'real'}]), 'identified')
+			yield* TestClock.adjust('2 days')
+			assert.deepStrictEqual(
+				Array.map((yield* telemetry.trace(id)).spans, item => item.name),
+				['real']
+			)
+		})
+	)
+)
+
 function repositoryExport(runtime: string) {
 	return Schema.decodeEffect(TracesRequest)({
 		resourceSpans: [
@@ -484,6 +509,31 @@ function repositoryExport(runtime: string) {
 		]
 	})
 }
+
+it.layer(telemetryLayer)(test =>
+	test.effect(
+		'refuses every service name that shows as a repository name',
+		Effect.fnUntraced(function* () {
+			const telemetry = yield* Telemetry
+			for (const service of [' MP281X/deslop ', '@deslop/MP281X/deslop', 'MP281X/deslop-server']) {
+				assert.strictEqual(
+					yield* telemetry.ingestTraces(
+						yield* serverExport(service, [
+							{
+								endTimeUnixNano: '10000000',
+								spanId: '1111111111111111',
+								startTimeUnixNano: '0',
+								traceId: 'fffffffffffffffffffffffffffffffb'
+							}
+						]),
+						'identified'
+					),
+					1
+				)
+			}
+		})
+	)
+)
 
 it.layer(telemetryLayer)(test =>
 	test.effect(
@@ -516,6 +566,33 @@ it.layer(telemetryLayer)(test =>
 					span => span.runtime
 				),
 				['unknown']
+			)
+		})
+	)
+)
+
+it.layer(telemetryLayer)(test =>
+	test.effect(
+		'stores a span ending more than ten minutes ahead of receipt as ending at its receipt',
+		Effect.fnUntraced(function* () {
+			const telemetry = yield* Telemetry
+			const id = TraceId.make('fffffffffffffffffffffffffffffffc')
+			yield* TestClock.adjust('1 hour')
+			yield* telemetry.ingestTraces(
+				yield* serverExport('clock-server', [
+					{
+						endTimeUnixNano: '90000000000000',
+						name: 'unfinished',
+						spanId: '1111111111111111',
+						startTimeUnixNano: '3000000000000',
+						traceId: id
+					}
+				]),
+				'identified'
+			)
+			assert.deepStrictEqual(
+				Array.map((yield* telemetry.trace(id)).spans, span => Duration.toMillis(span.durationMs)),
+				[600_000]
 			)
 		})
 	)

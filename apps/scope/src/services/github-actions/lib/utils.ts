@@ -334,13 +334,17 @@ export function jobRecords<E, R>(event: WorkflowJob, lines: Stream.Stream<string
 	)
 }
 
-// Some of a job's log records as one export under its repository.
-export function jobLogs(event: WorkflowJob, records: readonly ExportedLog[]) {
+// Some of a job's log records as one export under its repository; the batch is the export's place in the log.
+export function jobLogs(event: WorkflowJob, records: readonly ExportedLog[], batch: number) {
 	return LogsRequest.make({
 		resourceLogs: Option.some([
 			{
 				resource: Option.some({
-					attributes: Option.some([text('service.name', event.repository.full_name), text('scope.runtime', 'ci')])
+					attributes: Option.some([
+						text('service.name', event.repository.full_name),
+						text('scope.runtime', 'ci'),
+						text('github.log_batch', `${batch}`)
+					])
 				}),
 				scopeLogs: Option.some([{logRecords: Option.some(records), scope: INSTRUMENTATION}])
 			}

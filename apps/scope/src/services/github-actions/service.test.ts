@@ -1,7 +1,21 @@
 import {NodeCrypto, NodeServices} from '@effect/platform-node'
 import {assert, it} from '@effect/vitest'
 
-import {Array, Context, Deferred, Effect, FileSystem, Layer, Option, Ref, Schema, Stream, pipe} from 'effect'
+import {
+	Array,
+	Context,
+	Deferred,
+	Effect,
+	FileSystem,
+	Layer,
+	Number,
+	Option,
+	Ref,
+	Schema,
+	Stream,
+	String,
+	pipe
+} from 'effect'
 
 import {layerDataStore} from '@deslop/runtime/server/store'
 
@@ -101,6 +115,36 @@ it.layer(NodeServices.layer, {excludeTestServices: true})(test =>
 				Option.some(['build failed'])
 			)
 			assert.strictEqual(yield* Ref.get(requests), 2)
+		})
+	)
+)
+
+it.layer(NodeServices.layer, {excludeTestServices: true})(test =>
+	test.effect(
+		'keeps every repeated line of a failed job log across its batches',
+		Effect.fnUntraced(function* () {
+			const directory = yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped()
+			const requests = yield* Ref.make(0)
+			assert.isTrue(
+				Option.isSome(
+					yield* Effect.scoped(
+						Effect.gen(function* () {
+							const context = yield* Layer.build(
+								server(
+									directory,
+									gitHub(requests, Effect.succeed(String.repeat(501)('2026-11-18T10:00:08.0000000Z ##[error]again\n')))
+								)
+							)
+							yield* Context.get(context, GitHubActions).ingestJob(JOB)
+							return yield* pipe(
+								Context.get(context, Telemetry).watchTrace(TraceId.make('00000000000000000000000100000001')),
+								Stream.filter(trace => Number.sumAll(Array.map(trace.spans, span => span.logs.length)) === 501),
+								Stream.runHead
+							)
+						})
+					)
+				)
+			)
 		})
 	)
 )
