@@ -1,7 +1,25 @@
-import {Array, Option, Record, String, pipe} from 'effect'
+import {Array, Option, Record, pipe} from 'effect'
 
 import {defineRule} from 'vite-plus/lint/plugins'
-import type {ESTree} from 'vite-plus/lint/plugins'
+import type {Context, ESTree} from 'vite-plus/lint/plugins'
+
+import {containsNode} from '#lib/ast.ts'
+
+// The controls that make a form's fields; a form with none, such as a sign-out action, has nothing to group.
+const FIELDS = [
+	'Checkbox',
+	'Field',
+	'Input',
+	'InputGroup',
+	'NativeSelect',
+	'RadioGroup',
+	'Select',
+	'Switch',
+	'Textarea',
+	'input',
+	'select',
+	'textarea'
+]
 
 const MESSAGES: Record<string, string> = {
 	a: 'Write a link as <Button variant="link" nativeButton={false} render={<a href={url} aria-label={label} />}>{label}</Button>; a raw <a> is only the render of a primitive.',
@@ -32,6 +50,18 @@ function renderedBy(node: ESTree.Node | null): boolean {
 	return Array.contains(RENDER_PATHS, node.type) && renderedBy(node.parent)
 }
 
+function holdsElement(context: Context, node: ESTree.Node, names: string[]) {
+	return containsNode({
+		context,
+		matches: child =>
+			child.type === 'JSXOpeningElement' &&
+			child.name.type === 'JSXIdentifier' &&
+			Array.contains(names, child.name.name),
+		node,
+		throughFunctions: true
+	})
+}
+
 function hasAttribute(node: ESTree.JSXOpeningElement, name: string) {
 	return Array.some(
 		node.attributes,
@@ -46,7 +76,11 @@ export const noBareControl = defineRule({
 		JSXOpeningElement: node => {
 			if (node.name.type !== 'JSXIdentifier' || renderedBy(node.parent.parent)) return
 			if (node.name.name === 'img' && hasAttribute(node, 'onError')) context.report({message: FALLBACK_IMAGE, node})
-			if (node.name.name === 'form' && !String.includes('<FieldGroup')(context.sourceCode.getText(node.parent))) {
+			if (
+				node.name.name === 'form' &&
+				holdsElement(context, node.parent, FIELDS) &&
+				!holdsElement(context, node.parent, ['FieldGroup'])
+			) {
 				context.report({
 					message:
 						"A form's fields sit in a <FieldGroup>, which spaces and labels them; the form itself takes no layout.",
@@ -71,7 +105,8 @@ import {Field, FieldGroup, FieldLabel} from '@deslop/components-web/ui/field'
 import {Input} from '@deslop/components-web/ui/input'
 export function Save() { return <Button className="w-full" size="lg" render={<button type="button" aria-label="Save" />}>Save</Button> }
 export function Face() { return <Avatar><AvatarImage src="/face.png" alt="" /><AvatarFallback>F</AvatarFallback></Avatar> }
-export function Name() { return <form><FieldGroup><Field><FieldLabel htmlFor="name">Name</FieldLabel><Input id="name" /></Field></FieldGroup></form> }`
+export function Name() { return <form><FieldGroup><Field><FieldLabel htmlFor="name">Name</FieldLabel><Input id="name" /></Field></FieldGroup></form> }
+export function SignOut() { return <form action="/sign-out" method="post"><Button type="submit">Sign out</Button></form> }`
 					}
 				]
 			}

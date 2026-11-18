@@ -396,6 +396,23 @@ function stable(context: LintContext, node: ESTree.Node): boolean {
 	)
 }
 
+// A direct call reads its callee before the subject and calls a member on its object, so only an immutable binding, an Effect module's export or a built step keeps the result.
+function inertCallee(context: LintContext, node: ESTree.Node) {
+	if (node.type === 'Identifier') return immutable(context, node)
+	if (node.type === 'CallExpression') return stable(context, node)
+	if (node.type !== 'MemberExpression' || node.computed || node.object.type !== 'Identifier') return false
+	return (
+		transaction(context, node) ||
+		(Record.has(MODULES, node.object.name) &&
+			isImportBinding({
+				context,
+				importedName: node.object.name,
+				node: node.object,
+				source: moduleSource(node.object.name)
+			}))
+	)
+}
+
 function directArguments(callee: ESTree.Node, subjects: ESTree.Node[], args: ESTree.Node[]) {
 	if (tagFirst(callee)) return [...args, ...subjects]
 	return [...subjects, ...args]
@@ -492,10 +509,14 @@ function normalizeForwarding(context: LintContext, node: ESTree.CallExpression) 
 	context.report({
 		fix: fixer => {
 			if (subject === undefined || subject.type === 'SpreadElement' || node.arguments.length !== 1) return []
-			return Option.match(plainForwarding(context, arrow), {
-				onNone: () => [],
-				onSome: call => [fixer.replaceText(node, forwardCall(context, call, text(context, subject)))]
-			})
+			return pipe(
+				plainForwarding(context, arrow),
+				Option.filter(call => inertCallee(context, call.callee)),
+				Option.match({
+					onNone: () => [],
+					onSome: call => [fixer.replaceText(node, forwardCall(context, call, text(context, subject)))]
+				})
+			)
 		},
 		message: 'Write this computation plainly instead of immediately applying an arrow.',
 		node
@@ -634,7 +655,7 @@ function singleStepReplacement(context: LintContext, node: ESTree.CallExpression
 	}
 	const plain = Option.getOrUndefined(plainForwarding(context, step))
 	if (plain !== undefined) {
-		return Boolean.match(isPipeCall(context, plain), {
+		return Boolean.match(isPipeCall(context, plain) || !inertCallee(context, plain.callee), {
 			onFalse: () => Option.some(forwardCall(context, plain, text(context, subject))),
 			onTrue: () => Option.none<string>()
 		})
@@ -659,7 +680,7 @@ function singleStepReplacement(context: LintContext, node: ESTree.CallExpression
 			`${text(context, step.callee)}${typeArguments(context, step)}(${argumentsText(context, directArguments(step.callee, [subject], step.arguments))})`
 		)
 	}
-	if (step.type !== 'Identifier' && !stable(context, step)) return Option.none<string>()
+	if (!inertCallee(context, step)) return Option.none<string>()
 	return Option.some(`${text(context, step)}(${text(context, subject)})`)
 }
 
@@ -734,10 +755,16 @@ function normalizeSingleStep(context: LintContext, node: ESTree.CallExpression) 
 	) {
 		return
 	}
+	const unfixed = Boolean.match(Option.isSome(singleStepReplacement(context, node)), {
+		onFalse: Function.constant(
+			' A direct call reads the step before its subject and calls it on its object; check neither changes the result.'
+		),
+		onTrue: Function.constant('')
+	})
 	if (Option.isSome(plainForwarding(context, step))) {
 		context.report({
 			fix: fixer => singleStepFixes(context, node, fixer),
-			message: 'Call the operation directly instead of forwarding a pipeline subject.',
+			message: `Call the operation directly instead of forwarding a pipeline subject.${unfixed}`,
 			node
 		})
 		return
@@ -753,7 +780,7 @@ function normalizeSingleStep(context: LintContext, node: ESTree.CallExpression) 
 	}
 	context.report({
 		fix: fixer => singleStepFixes(context, node, fixer),
-		message: 'One step is a plain call; reserve pipe for two or more steps.',
+		message: `One step is a plain call; reserve pipe for two or more steps.${unfixed}`,
 		node
 	})
 }
@@ -1019,9 +1046,9 @@ export function shifted(values: readonly number[]) { return pipe(pipe(values, Ar
 					{
 						'sample.ts': `import {Effect, Schema} from 'effect'
 export type Count = typeof Count.Type
-export const Count = Schema.withDecodingDefaultTypeKey(Effect.succeed(30))(Schema.Int)
+export const Count = Schema.withDecodingDefaultTypeKey<typeof Schema.Int>(Effect.succeed(30))(Schema.Int)
 export type PositiveCount = typeof PositiveCount.Type
-export const PositiveCount = Schema.check(Schema.isGreaterThan(0))(Schema.Finite)`
+export const PositiveCount = Schema.check<typeof Schema.Finite>(Schema.isGreaterThan(0))(Schema.Finite)`
 					},
 					{
 						'sample.ts': `import {Effect} from 'effect'

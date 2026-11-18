@@ -30,7 +30,7 @@ import {features} from '#lib/features.ts'
 import {JudgeError, MODEL} from '#lib/model.ts'
 import type {Kind, Question} from '#lib/question.ts'
 import {QUESTIONS} from '#lib/questions.ts'
-import {importLines, readSource} from '#lib/units.ts'
+import {importLines, readExample, readSource} from '#lib/units.ts'
 import type {Unit} from '#lib/units.ts'
 
 const CONCURRENCY = 16
@@ -159,13 +159,53 @@ export const judge = Effect.fnUntraced(function* <E, R>(
 		entry => Effect.map(namedOf(entry[0], entry[1]), named => ({...named, ...entry[1]})),
 		{concurrency: 'unbounded'}
 	)
+	// Each example is asked as the unit the judge would cut from it, so a question answers its examples in the form it answers the change.
+	const sides = Array.map(questions, named => ({
+		named,
+		sides: Array.map(
+			[
+				{example: named.yes.example, side: 'yes', yes: true},
+				{example: named.no.example, side: 'no', yes: false}
+			],
+			side => ({
+				...side,
+				unit: Result.match(readExample(EXAMPLE_FILES[named.kind], side.example), {
+					onFailure: () => Option.none<Unit>(),
+					onSuccess: parsed => Array.findFirst(parsed.units, unit => Array.contains(ASKED[unit.kind], named.kind))
+				})
+			})
+		)
+	}))
+	const unselected = Array.flatMap(sides, entry =>
+		pipe(
+			Array.findFirst(entry.sides, side => Option.isNone(side.unit)),
+			Option.map(side => ({
+				reason: `the judge selects no unit from its ${side.side} example; question not used`,
+				where: entry.named.name
+			})),
+			Option.toArray
+		)
+	)
+	const gateMisses = Array.flatMap(sides, entry =>
+		Array.flatMap(entry.sides, side => {
+			if (
+				!side.yes ||
+				!Option.exists(side.unit, unit => !entry.named.gate(features(unit.text, unit.imports, unit.composition)))
+			) {
+				return []
+			}
+			return [{reason: 'gate skips its yes example; question not used', where: entry.named.name}]
+		})
+	)
+	// A question the judge cannot ask of its own examples has nothing to check its answers against, so it is never asked.
+	const unusable = HashSet.fromIterable(Array.map([...unselected, ...gateMisses], entry => entry.where))
 	const changed = yield* change(options.base)
 	// judge-ignore no-contradicted-promise -- Effect 4 Array.partition returns [passes, fails], so the gate's passing questions are applicable and its failing questions are skipped.
 	const unitAsked = Effect.fnUntraced(function* (file: string, unit: Unit) {
 		const read = features(unit.text, unit.imports, unit.composition)
 		const [applicable, skipped] = pipe(
 			questions,
-			Array.filter(named => Array.contains(ASKED[unit.kind], named.kind)),
+			Array.filter(named => Array.contains(ASKED[unit.kind], named.kind) && !HashSet.has(unusable, named.name)),
 			Array.partition(Filter.fromPredicate(named => named.gate(read)))
 		)
 		const state = {code: unit.text, file, imports: unit.imports}
@@ -178,10 +218,25 @@ export const judge = Effect.fnUntraced(function* <E, R>(
 			where: `${file}:${unit.line}-${unit.end}`
 		}
 	})
+	const root = yield* fs.realPath(changed.root)
 	const read = yield* Effect.forEach(
 		changed.files,
 		Effect.fnUntraced(function* (file) {
-			return yield* Result.match(readSource(file.path, yield* fs.readFileString(path.join(changed.root, file.path))), {
+			const full = path.join(changed.root, file.path)
+			// A symlink, at the file or a directory above it, can point outside the repository, and the judge sends what it reads.
+			if (!((yield* fs.lstat(full)).type === 'File' && (yield* fs.realPath(full)) === path.join(root, file.path))) {
+				return {
+					invalidIgnores: Array.empty<string>(),
+					judged: Array.empty<Asked>(),
+					unreadable: [
+						{
+							reason: 'it is a symlink or no regular file; the judge reads only files inside the repository',
+							where: file.path
+						}
+					]
+				}
+			}
+			return yield* Result.match(readSource(file.path, yield* fs.readFileString(full)), {
 				onFailure: reason =>
 					Effect.succeed({
 						invalidIgnores: Array.empty<string>(),
@@ -220,29 +275,29 @@ export const judge = Effect.fnUntraced(function* <E, R>(
 	)
 	const judged = Array.flatMap(read, entry => entry.judged)
 	const examples: Example[] = yield* pipe(
-		questions,
-		Array.flatMap(named => [
-			{code: named.yes.example, named, side: 'yes', yes: true},
-			{code: named.no.example, named, side: 'no', yes: false}
-		]),
+		sides,
+		Array.flatMap(entry => {
+			if (HashSet.has(unusable, entry.named.name)) return []
+			return Array.flatMap(entry.sides, side =>
+				Option.match(side.unit, {onNone: () => [], onSome: unit => [{...side, named: entry.named, unit}]})
+			)
+		}),
 		Effect.forEach(
-			example =>
-				Effect.gen(function* () {
-					const state = {code: example.code, file: EXAMPLE_FILES[example.named.kind], imports: ''}
-					return {
-						ignores: Record.empty<string, string>(),
-						key: yield* stateKey(state),
-						questions: [example.named],
-						skipped: [],
-						state,
-						where: `${example.side} example`,
-						yes: example.yes
-					}
-				}),
+			Effect.fnUntraced(function* (example) {
+				const state = {code: example.unit.text, file: EXAMPLE_FILES[example.named.kind], imports: example.unit.imports}
+				return {
+					ignores: Record.empty<string, string>(),
+					key: yield* stateKey(state),
+					questions: [example.named],
+					skipped: [],
+					state,
+					where: `${example.side} example`,
+					yes: example.yes
+				}
+			}),
 			{concurrency: CONCURRENCY}
 		)
 	)
-	const gateMisses = Array.filter(questions, named => !named.gate(features(named.yes.example, '')))
 	const plan = Effect.fnUntraced(function* (entries: Asked[]) {
 		return yield* Effect.forEach(
 			Record.values(Array.groupBy(entries, entry => entry.key)),
@@ -405,10 +460,7 @@ export const judge = Effect.fnUntraced(function* <E, R>(
 			]
 		})
 	)
-	const calibration = [
-		...failedExamples,
-		...Array.map(gateMisses, named => ({reason: 'gate skips its yes example; question not used', where: named.name}))
-	]
+	const calibration = [...failedExamples, ...unselected, ...gateMisses]
 	const untrusted = HashSet.fromIterable(Array.map(calibration, entry => entry.where))
 	function trusted(named: Named) {
 		return !HashSet.has(untrusted, named.name)

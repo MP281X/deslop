@@ -3,6 +3,10 @@ import {Array, Option, Predicate, String, pipe} from 'effect'
 import {defineRule} from 'vite-plus/lint/plugins'
 import type {Context, ESTree} from 'vite-plus/lint/plugins'
 
+import {isImportBinding, matches, resolveBinding} from '#lib/ast.ts'
+
+const SWIFT_UI = /^@expo\/ui\/swift-ui(?:\/|$)/u
+
 // The modifiers that paint, whose colours come from the theme instead of a hex string.
 const PAINTS = [
 	'background',
@@ -27,13 +31,17 @@ function insideWidget(node: ESTree.Node): boolean {
 	return insideWidget(node.parent)
 }
 
-function isNumber(node?: ESTree.Node) {
-	return node?.type === 'Literal' && Predicate.isNumber(node.value) && node.value !== 0
+// A literal, or a constant naming one, so a size moved into a local name is still a size.
+function isNumber(context: Context, node?: ESTree.Node) {
+	if (node === undefined) return false
+	const value = resolveBinding(context, node)
+	return value.type === 'Literal' && Predicate.isNumber(value.value) && value.value !== 0
 }
 
-function calleeName(node: ESTree.CallExpression) {
-	if (node.callee.type === 'Identifier') return node.callee.name
-	return ''
+// Only a modifier imported from Expo UI's SwiftUI is one; a local function may share its name.
+function modifierName(context: Context, node: ESTree.CallExpression) {
+	if (node.callee.type !== 'Identifier' || !isImportBinding({context, node: node.callee, source: SWIFT_UI})) return ''
+	return node.callee.name
 }
 
 function properties(node?: ESTree.Node) {
@@ -52,15 +60,15 @@ function report(context: Context, node: ESTree.Node, message: string) {
 
 export const swiftuiThemeValues = defineRule({
 	create: context => {
-		const file = {swiftui: false}
+		const file = {elements: Array.empty<string>()}
 		return {
 			CallExpression: node => {
-				if (!file.swiftui || insideWidget(node)) return
-				const name = calleeName(node)
+				if (insideWidget(node)) return
+				const name = modifierName(context, node)
 				if (
 					(Array.contains(['listRowInsets', 'padding'], name) &&
-						Array.some(properties(node.arguments[0]), property => isNumber(property.value))) ||
-					(name === 'lineSpacing' && isNumber(node.arguments[0]))
+						Array.some(properties(node.arguments[0]), property => isNumber(context, property.value))) ||
+					(name === 'lineSpacing' && isNumber(context, node.arguments[0]))
 				) {
 					report(context, node, 'Space with the theme’s spacing steps, such as padding({all: space[4]}).')
 				}
@@ -85,18 +93,28 @@ export const swiftuiThemeValues = defineRule({
 				}
 			},
 			ImportDeclaration: node => {
-				if (String.startsWith('@expo/ui/swift-ui')(node.source.value)) file.swiftui = true
+				if (matches(SWIFT_UI)(node.source.value)) {
+					file.elements = [...file.elements, ...Array.map(node.specifiers, specifier => specifier.local.name)]
+				}
 			},
-			JSXAttribute: node => {
+			JSXOpeningElement: node => {
 				if (
-					file.swiftui &&
-					!insideWidget(node) &&
-					node.name.type === 'JSXIdentifier' &&
-					node.name.name === 'spacing' &&
-					node.value?.type === 'JSXExpressionContainer' &&
-					isNumber(node.value.expression)
+					node.name.type !== 'JSXIdentifier' ||
+					!Array.contains(file.elements, node.name.name) ||
+					insideWidget(node)
 				) {
-					report(context, node, 'Space a stack with the theme’s spacing steps, such as spacing={space[3]}.')
+					return
+				}
+				for (const attribute of node.attributes) {
+					if (
+						attribute.type === 'JSXAttribute' &&
+						attribute.name.type === 'JSXIdentifier' &&
+						attribute.name.name === 'spacing' &&
+						attribute.value?.type === 'JSXExpressionContainer' &&
+						isNumber(context, attribute.value.expression)
+					) {
+						report(context, attribute, 'Space a stack with the theme’s spacing steps, such as spacing={space[3]}.')
+					}
 				}
 			}
 		}

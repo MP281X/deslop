@@ -6,7 +6,20 @@
 	"failOnParseError": true,
 	"boundaries": {
 		"zones": [
-			{"name": "test", "patterns": ["apps/*/src/lib/*.test.ts", "packages/runtime/src/**/*.test.ts"]},
+			// Tests and tooling may read any zone, and no shipped zone may read them, so neither bridges client and server.
+			{"name": "test", "patterns": ["**/*.test.ts"]},
+			{
+				"name": "tooling",
+				"patterns": [
+					"tools/**",
+					"vite.config.ts",
+					"apps/*/{app,metro,vite}.config.ts",
+					"apps/*/fingerprint.config.js",
+					"apps/*/targets/**"
+				]
+			},
+			// Build configuration the server also reads; it imports no zone, so it carries nothing across.
+			{"name": "config", "patterns": ["packages/runtime/src/config/**"]},
 			{
 				"name": "shared",
 				"patterns": [
@@ -40,11 +53,12 @@
 			}
 		],
 		"rules": [
+			{"from": "config", "allow": ["config"]},
 			{"from": "client", "allow": ["client", "shared"]},
 			{"from": "shared", "allow": ["shared"]},
 			{"from": "entry", "allow": ["entry", "transport", "server", "shared"]},
 			{"from": "transport", "allow": ["transport", "server", "shared"]},
-			{"from": "server", "allow": ["server", "shared"]}
+			{"from": "server", "allow": ["server", "shared", "config"]}
 		],
 		// Configuration, files and stores are the server's; shared code also holds no client state.
 		"calls": {
@@ -53,17 +67,7 @@
 				{"from": "client", "callee": ["Config.*", "FileSystem.*", "SqlClient.*"]}
 			]
 		},
-		"coverage": {
-			"requireAllFiles": true,
-			"allowUnmatched": [
-				"tools/**",
-				"**/*.config.*",
-				"**/*.test.ts",
-				"apps/*/fingerprint.config.js",
-				"apps/*/targets/**",
-				"packages/runtime/src/config/**"
-			]
-		}
+		"coverage": {"requireAllFiles": true}
 	},
 	// Extract shared logic at this size; mark imports, schema fields and modifier/prop lists inline as shape-only clones.
 	"duplicates": {"minTokens": 50, "minLines": 5, "ignore": ["apps/*/src/services/*/migrations.ts"]},
@@ -89,14 +93,18 @@
 		{"exports": ["default"], "file": "apps/*/app.config.ts"},
 		{"exports": ["*"], "file": "apps/*/fingerprint.config.js"},
 		{"exports": ["module.exports"], "file": "apps/*/targets/*/expo-target.config.js"},
-		{"exports": ["*"], "file": "packages/runtime/src/shared/{auth,schema,time}.ts"},
 		{"exports": ["*"], "file": "packages/components-web/src/ui/**/*.{ts,tsx}"}
 	],
 	"overrides": [
 		{
 			// Schemas and their types are exported in pairs by policy
-			"files": ["apps/*/src/services/*/schema.ts"],
+			"files": ["apps/*/src/services/*/schema.ts", "packages/runtime/src/shared/schema.ts"],
 			"rules": {"unused-exports": "off", "unused-types": "off"}
+		},
+		{
+			// A shared codec's type is exported beside it even where callers read only the value.
+			"files": ["packages/runtime/src/shared/{auth,time}.ts"],
+			"rules": {"unused-types": "off"}
 		},
 		{
 			// shadcn's CLI owns these files and their exported prop types.
