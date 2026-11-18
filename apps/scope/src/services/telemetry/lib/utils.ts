@@ -147,7 +147,7 @@ function instantOf(nanos: Duration.Duration) {
 	)
 }
 
-// A clock that runs fast shifts its whole group of an export: when the group's newest time is more than ten minutes past its receipt, every time in it moves back by the excess, so the newest lands at receipt and every length and offset stays as sent. One absurd time moves its whole group into the past, and the spans of one trace that arrive in different exports are shifted separately.
+// A clock that runs fast shifts its whole group of an export: when the group's newest time is more than ten minutes past its receipt, every time in it moves back by the excess, so the newest lands at receipt and every length and offset stays as sent. One absurd time moves its whole group into the past, where a time before 1970 is stored at 1970, and the spans and logs of one trace that arrive in different exports are shifted separately, so a log can land outside its span.
 export function skewOf(times: readonly Duration.Duration[], receivedAt: DateTime.Utc) {
 	const received = Duration.nanos(BigInt(DateTime.toEpochMillis(receivedAt)) * 1_000_000n)
 	const newest = Array.reduce(times, Duration.zero, Duration.max)

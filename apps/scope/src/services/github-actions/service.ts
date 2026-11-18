@@ -49,6 +49,7 @@ function retryAfter(error: HttpClientError.HttpClientError | Cause.TimeoutError 
 	return pipe(
 		error.reason.response.headers['retry-after'],
 		Option.fromUndefinedOr,
+		Option.map(String.trim),
 		Option.filter(value => Option.isSome(String.match(/^\d+$/u)(value))),
 		Option.flatMap(Number.parse),
 		Option.match({

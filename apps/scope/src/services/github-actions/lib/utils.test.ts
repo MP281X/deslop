@@ -1,6 +1,6 @@
 import {assert, it} from '@effect/vitest'
 
-import {Array, Duration, Effect, Option, Schema, Stream, String} from 'effect'
+import {Array, Duration, Effect, Function, Option, Result, Schema, Stream, String, pipe} from 'effect'
 
 import {jobRecords, logLines} from '#services/github-actions/lib/utils.ts'
 import {WorkflowJob} from '#services/github-actions/schema.ts'
@@ -89,6 +89,20 @@ it.effect(
 			),
 			[5, 6, 65_536]
 		)
+	})
+)
+
+it.effect(
+	'leaves no half line when the download is cut mid-line',
+	Effect.fnUntraced(function* () {
+		const read = yield* pipe(
+			Stream.make('first\nsec'),
+			Stream.concat(Stream.fail('cut')),
+			logLines,
+			Stream.result,
+			Stream.runCollect
+		)
+		assert.deepStrictEqual(Array.map(Array.fromIterable(read), Result.getOrElse(Function.identity)), ['first', 'cut'])
 	})
 )
 
