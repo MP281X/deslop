@@ -1,4 +1,4 @@
-import {Array, Effect, Option, Schema, Stream, String, pipe} from 'effect'
+import {Array, DateTime, Effect, Option, Schema, Stream, String, pipe} from 'effect'
 
 import {Atom} from 'effect/reactivity'
 import {getStringAsync, hasImageAsync, hasStringAsync} from 'expo-clipboard'
@@ -152,7 +152,9 @@ export const startAtom = Atom.fn((id: Booking['id'], get) =>
 	)
 )
 
+// A return reads the time again, as each tick does. Refreshing the clock from a listener of this atom rebuilt it, which added the listener again while the return was still calling them: the app never yielded.
 export const nowAtom = Atom.make(get => {
-	get.subscribe(activationsAtom, () => get.refresh(clockAtom('1 minute')))
-	return get(clockAtom('1 minute'))
+	get(activationsAtom)
+	get(clockAtom('1 minute'))
+	return DateTime.nowUnsafe()
 })
