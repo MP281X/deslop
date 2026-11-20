@@ -20,7 +20,7 @@
 
 ## AWS
 
-The `aws` CLI is read-only: read and list, never create, change, delete, start, stop or invoke anything, whatever the role allows. Its default profile is the user's SSO role `DualosOperator` on account `datapizzadevprod`, region `eu-south-1`. An expired session needs `aws sso login --sso-session datapizza --use-device-code --no-browser`: give the user the autofill URL once and end the turn.
+The `aws` CLI is only for Dual's resources, and read-only: never create, change, delete, start, stop or invoke anything, whatever the role allows. Leave the account's other projects alone. Its default profile is the user's SSO role `DualosOperator` on account `datapizzadevprod`, region `eu-south-1`. An expired session needs `aws sso login --sso-session datapizza --use-device-code --no-browser`: give the user the autofill URL once and end the turn.
 
 ## Jira
 
