@@ -834,7 +834,7 @@ export const lint: OxlintConfig & {
 		'typescript/no-confusing-void-expression': ['error', {ignoreVoidReturningFunctions: true}],
 		'typescript/no-deprecated': 'error',
 		'typescript/no-duplicate-type-constituents': 'error',
-		// `navigate` is TanStack Router's: a navigation settles its own failures in the route's error boundary, and its promise only says the loaders finished. tsgolint matches it by name only.
+		// `navigate` is TanStack Router's: a navigation settles its own failures in the route's error boundary, and its promise only says the loaders finished. tsrs matches it by name only.
 		'typescript/no-floating-promises': [
 			'error',
 			{
