@@ -44,7 +44,7 @@ export type ProcessReading = {
 
 export type ProcessMeasurement = {records: readonly ProcessReading[]; time: DateTime.Utc; total: Duration.Duration}
 
-// judge-ignore no-silent-fallback -- Linux omits VmRSS for kernel threads and zombies, which own no resident userspace memory; a missing or empty Pid or PPid fails the reading.
+// Linux omits VmRSS for kernel threads and zombies, which own no resident userspace memory; a missing or empty Pid or PPid fails the reading.
 function processStatus(status: string) {
 	const values = pipe(
 		String.trim(status),
@@ -76,8 +76,7 @@ function commandArgs(cmdline: string) {
 	return maskArguments(pipe(cmdline, String.split('\0'), Array.filter(String.isNonEmpty), Array.take(40)))
 }
 
-// judge-ignore no-silent-fallback -- collector input permits vanished or unreadable individual processes to be skipped and optional metadata to be absent; whole-machine reads still fail.
-// judge-ignore no-unrelated-jobs -- whole-machine CPU ticks are the denominator for these process CPU readings; records, total and time form one measurement.
+// Collector input permits vanished or unreadable individual processes to be skipped and optional metadata to be absent; whole-machine reads still fail.
 export const processes = Effect.gen(function* () {
 	const fs = yield* FileSystem.FileSystem
 	const stat = yield* fs.readFileString('/proc/stat')

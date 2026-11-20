@@ -133,7 +133,6 @@ export function searchable(text: string) {
 }
 
 // A query's lowercase words: a `#word` names a tag every result carries, any other word is text every result contains; a word search cannot index, such as lone punctuation, asks for nothing.
-// judge-ignore no-contradicted-promise -- Effect v4 Array.partition returns passes first, so the # predicate places tags in the first array.
 export function queryWords(query: string) {
 	const [tags, terms] = Array.partition(
 		pipe(query, String.toLowerCase, String.split(/\s+/u), Array.filter(String.isNonEmpty)),

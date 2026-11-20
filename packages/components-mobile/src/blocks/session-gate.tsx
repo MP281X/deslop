@@ -15,7 +15,7 @@ import {updateAtom} from '@deslop/runtime/mobile/updates'
 import {colors, space} from '#components/theme.ts'
 import {Button} from '#components/ui/button.tsx'
 
-// judge-ignore no-unrelated-jobs -- The application gate owns both session admission and the update subscription, which must stay mounted even while sign-in blocks its children.
+// The gate owns session admission and the update subscription, which stays mounted while sign-in blocks its children.
 export function SessionGate(props: {children: ReactNode; session: Session}) {
 	const account = useAtomValue(props.session.account)
 	const signIn = useAtomSet(props.session.signIn)

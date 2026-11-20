@@ -39,7 +39,6 @@ export function exitFailure(status: number) {
 }
 
 // Why each failed unit stopped and when, by unit, from `systemctl show -p Id,ActiveState,Result,ExecMainCode,ExecMainStatus,StateChangeTimestamp --timestamp=unix`. A unit that recovered between its listing and this read is no longer failed, so it has no reason.
-// judge-ignore no-silent-fallback -- inventory health already records the failed unit independently; absent or malformed exit metadata omits only its optional explanation, never the failing state.
 export function unitFailures(text: string) {
 	return pipe(
 		String.trim(text),

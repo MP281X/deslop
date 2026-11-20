@@ -64,7 +64,6 @@ export function ReadFailure(props: {error: unknown; reset: () => void}) {
 }
 
 // One gate for a read's content: a refusal, or a failure with nothing kept, is the ReadFailure, inside `frame` where the content needs one (a table row); otherwise the value renders where it stands.
-// judge-ignore no-silent-fallback -- blockingFailure defines which retained data remains renderable; callers' StaleProblem readers own nonblocking outage presentation, while this gate renders refusals and failures with nothing retained.
 export function Loaded<A, E>(props: {
 	atom: Atom.Atom<AsyncResult.AsyncResult<A, E>>
 	children: (value: A) => ReactNode

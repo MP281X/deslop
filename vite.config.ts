@@ -161,10 +161,6 @@ export default defineConfig({
 				rules: {'@deslop/coding-standards/test-boundaries': ['error', 'inspect-database']}
 			},
 			{
-				files: ['tools/coding-standards/src/judge.test.ts'],
-				rules: {'@deslop/coding-standards/test-boundaries': ['error', 'execute-program']}
-			},
-			{
 				files: ['packages/**'],
 				rules: {
 					'eslint/no-restricted-imports': [
@@ -338,8 +334,6 @@ export default defineConfig({
 					'vp run fallow'
 				]
 			},
-			// Parked: only an explicit user request runs this paid-capable command, never routine verification.
-			judge: {cache: false, command: 'coding-standards judge'},
 			// `vp run preview [app]`; bash -c receives the app as $1.
 			preview: {cache: false, command: `bash -c '${PREVIEW}' preview`},
 			'preview:stop': {
