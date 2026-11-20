@@ -104,7 +104,16 @@
 			"Bash(*glab api*--method PATCH*)",
 			"Bash(*glab api*--method DELETE*)",
 			"Bash(*glab api graphql*=mutation*)",
-			"Bash(*glab api graphql*'mutation*)"
+			"Bash(*glab api graphql*'mutation*)",
+			"Bash(*aws * create-*)",
+			"Bash(*aws * put-*)",
+			"Bash(*aws * update-*)",
+			"Bash(*aws * modify-*)",
+			"Bash(*aws * delete-*)",
+			"Bash(*aws * terminate-*)",
+			"Bash(*aws s3 rm*)",
+			"Bash(*aws s3 rb*)",
+			"Bash(*aws s3 mv*)"
 		]
 	},
 	"disableClaudeAiConnectors": true,

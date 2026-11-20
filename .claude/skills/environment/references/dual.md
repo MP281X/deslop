@@ -18,6 +18,10 @@
 - **Preview.** T3's `preview` script runs `bun run preview` and prints its URL; `settle` destroys its data.
 - **Webhooks.** Funnel `/api/webhooks` to the preview port, which proxies `/api` to the API.
 
+## AWS
+
+The `aws` CLI is only for Dual's resources, and read-only: never create, change, delete, start, stop or invoke anything, whatever the role allows. Leave the account's other projects alone. Its default profile is the user's SSO role `DualosOperator` on account `datapizzadevprod`, region `eu-south-1`. An expired session needs `aws sso login --sso-session datapizza --use-device-code --no-browser`: give the user the autofill URL once and end the turn.
+
 ## Jira
 
 Project `DOS`, board 1053, `datapizza.atlassian.net`; the user's account ID `712020:87e4f57e-6b5d-40ab-8dfa-faf159ead71a`.
