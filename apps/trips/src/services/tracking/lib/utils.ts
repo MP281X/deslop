@@ -56,6 +56,15 @@ export function pickFlight(flights: FaFlights['flights'], flight: Flight) {
 	)
 }
 
+// FlightAware is asked for the airline's number around the booked departure, so every ticket of one flight shares that answer and picks its own operation from it.
+export function sameLookup(flight: Flight, other: Flight) {
+	return (
+		flight.airlineCode === other.airlineCode &&
+		flight.number === other.number &&
+		DateTime.Equivalence(flight.departs, other.departs)
+	)
+}
+
 function flightState(answer: FaFlight) {
 	if (answer.cancelled) return 'cancelled'
 	if (answer.diverted) return 'diverted'
