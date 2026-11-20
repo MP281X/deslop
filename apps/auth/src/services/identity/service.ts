@@ -104,13 +104,14 @@ export class Identity extends Context.Service<
 					}
 				)
 				const row = yield* people.find(identified.id)
-				const role = roleOf(admins, identified.id, row)
+				// Only a session is a browser; the tailnet and an app acting for someone bring no browser approval to check.
+				const role = roleOf(admins, identified.id, row, identified.signOut)
 				return {
 					...(yield* Option.match(row, {
-						onNone: () => authorizeMember(admins, identified.id, row),
+						onNone: () => authorizeMember(admins, identified.id, row, identified.signOut),
 						onSome: member => {
 							if (waiting && identified.signOut) return Effect.succeed({id: member.id, name: member.name})
-							return authorizeMember(admins, identified.id, row)
+							return authorizeMember(admins, identified.id, row, identified.signOut)
 						}
 					})),
 					admin: role === 'Admin',

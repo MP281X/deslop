@@ -1,5 +1,5 @@
 import type {Option} from 'effect'
-import {Context, DateTime, Effect, Layer, Schema, pipe} from 'effect'
+import {Context, DateTime, Duration, Effect, Layer, Schedule, Schema, pipe} from 'effect'
 
 import {Digest, SecureRandom} from 'effect/crypto'
 import {Reactivity} from 'effect/reactivity'
@@ -67,6 +67,15 @@ export class Sessions extends Context.Service<
 					Request: CookieSession.insert,
 					execute: row => sql`INSERT INTO ${table} ${sql.insert(row)}`
 				})
+				// An expired session can never be used or listed again, so nobody hears that it goes.
+				yield* pipe(
+					cutoff,
+					Effect.flatMap(since => sql`DELETE FROM ${table} WHERE lastSeenAt <= ${DateTime.toEpochMillis(since)}`),
+					Effect.withSpan('Sessions.sweep'),
+					Effect.ignore({log: 'Warn', message: 'Expired sessions could not be deleted'}),
+					Effect.repeat(Schedule.spaced(Duration.hours(1))),
+					Effect.forkScoped
+				)
 				return Sessions.of({
 					create: Effect.fn('Sessions.create')(
 						function* (user, address, browser) {

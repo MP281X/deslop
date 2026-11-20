@@ -18,7 +18,14 @@ import {People} from '#services/people/service.ts'
 import {Sessions} from '#services/sessions/service.ts'
 
 const ID = UserId.make('github:2')
-const member = {fullName: Option.none(), id: ID, name: 'person', since: Option.none(), status: 'Allowed' as const}
+const member = {
+	fullName: Option.none(),
+	id: ID,
+	name: 'person',
+	since: Option.none(),
+	status: Option.some('Allowed' as const),
+	tailnet: false
+}
 // A sealed login cookie stands in as its own state; the code `refused` is one GitHub turns down.
 const layer = pipe(
 	SignIns.layer,
