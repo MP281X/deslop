@@ -28,8 +28,8 @@ import {Places} from './lib/places.ts'
 import {Timetable} from './lib/timetable.ts'
 import {migrations} from './migrations.ts'
 
-import {byStart, instantOf, realIssueDate, upsert} from '#services/bookings/lib/utils.ts'
-import type {Booking, BookingIds, BookingSource, ExtractedItem, IssuedOn, LocalTime} from '#services/bookings/schema.ts'
+import {byStart, instantOf, upsert} from '#services/bookings/lib/utils.ts'
+import type {Booking, BookingIds, BookingSource, ExtractedItem, LocalTime} from '#services/bookings/schema.ts'
 import {BookingId, BookingsError, Flight, Stay, Train} from '#services/bookings/schema.ts'
 
 declare module 'effect/reactivity/Reactivity' {
@@ -146,13 +146,8 @@ export class Bookings extends Context.Service<Bookings>()('@deslop/trips/service
 		)
 
 		// Airports and stations resolve from their datasets, so a time reads in the right zone and a ride has coordinates.
-		const resolve = Effect.fnUntraced(function* (item: ExtractedItem, issued: Option.Option<IssuedOn>) {
-			const base = {
-				confirmation: item.confirmation,
-				id: BookingId.make(yield* random.uuidV4()),
-				issued,
-				status: item.status
-			}
+		const resolve = Effect.fnUntraced(function* (item: ExtractedItem) {
+			const base = {confirmation: item.confirmation, id: BookingId.make(yield* random.uuidV4()), status: item.status}
 			if (item.kind === 'flight') {
 				const from = yield* places.airport(item.from)
 				const to = yield* places.airport(item.to)
@@ -274,18 +269,14 @@ export class Bookings extends Context.Service<Bookings>()('@deslop/trips/service
 			}, withReactivity),
 			save: Effect.fn('Bookings.save')(function* (userId: UserId, source: BookingSource) {
 				yield* Effect.annotateCurrentSpan('userId', userId)
-				const extraction = yield* extractor.read(userId, source)
-				if (Array.isReadonlyArrayEmpty(extraction.items)) {
+				const items = yield* extractor.read(userId, source)
+				if (Array.isReadonlyArrayEmpty(items)) {
 					return yield* BookingsError.make({
 						message: 'No booking found. Copy a confirmation or boarding pass and try again.'
 					})
 				}
 				// Every segment or none, so a ticket is never half saved; the failure names the place to fix.
-				const resolved = yield* Effect.forEach(
-					extraction.items,
-					item => Effect.result(resolve(item, realIssueDate(extraction.issued))),
-					{concurrency: 1}
-				)
+				const resolved = yield* Effect.forEach(items, item => Effect.result(resolve(item)), {concurrency: 1})
 				const issues = Array.getFailures(resolved)
 				if (Array.isReadonlyArrayNonEmpty(issues)) {
 					return yield* BookingsError.make({

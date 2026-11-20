@@ -58,12 +58,5 @@ export const migrations = {
 		yield* sql`ALTER TABLE trains ADD COLUMN service TEXT NOT NULL DEFAULT ''`
 		yield* sql`ALTER TABLE trains ADD COLUMN stops TEXT NOT NULL DEFAULT '[]'`
 		yield* sql`UPDATE trains SET service = number`
-	}),
-	// The date of the document each booking was last read from; rows saved before it was kept have none and merge as before.
-	'0003_issued': Effect.gen(function* () {
-		const sql = yield* SqlClient.SqlClient
-		yield* sql`ALTER TABLE flights ADD COLUMN issued TEXT`
-		yield* sql`ALTER TABLE trains ADD COLUMN issued TEXT`
-		yield* sql`ALTER TABLE stays ADD COLUMN issued TEXT`
 	})
 }

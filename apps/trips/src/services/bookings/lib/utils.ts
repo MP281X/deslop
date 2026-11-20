@@ -21,7 +21,6 @@ import type {
 	Chip,
 	FlightPhase,
 	FlightTracking,
-	IssuedOn,
 	Leg,
 	LocalTime,
 	Tone,
@@ -240,8 +239,13 @@ function near(left: DateTime.Utc, right: DateTime.Utc) {
 	return pipe(DateTime.distance(left, right), Duration.abs, Duration.isLessThan(Duration.hours(20)))
 }
 
+// A code as printed, so "abc123 " and "ABC123" are the same one.
+function codeOf(booking: Booking) {
+	return Option.map(booking.confirmation, code => pipe(code, String.trim, String.toUpperCase))
+}
+
 function sameConfirmation(left: Booking, right: Booking) {
-	return Option.exists(left.confirmation, code => Option.contains(right.confirmation, code))
+	return Option.exists(codeOf(left), code => Option.contains(codeOf(right), code))
 }
 
 // A field the newer ticket leaves out keeps what the older one printed.
@@ -334,6 +338,8 @@ function sameTrain(existing: Train, incoming: Train) {
 }
 
 function sameReservation(existing: Booking, incoming: Booking) {
+	// Two codes that both exist and differ are two travellers, never one booking.
+	if (Option.exists(codeOf(existing), code => Option.exists(codeOf(incoming), other => other !== code))) return false
 	if (Booking.isAnyOf(['flight'])(existing) && Booking.isAnyOf(['flight'])(incoming)) {
 		return sameFlight(existing, incoming)
 	}
@@ -351,7 +357,6 @@ function rideFields(existing: Flight | Train, incoming: Flight | Train) {
 	return {
 		confirmation: newer(existing.confirmation, incoming.confirmation),
 		id: existing.id,
-		issued: newer(existing.issued, incoming.issued),
 		seat: newer(existing.seat, incoming.seat)
 	}
 }
@@ -386,18 +391,10 @@ function combine(existing: Booking, incoming: Booking) {
 		return Stay.make({
 			...Struct.pick(incoming, Struct.keys(Stay.fields)),
 			confirmation: newer(existing.confirmation, incoming.confirmation),
-			id: existing.id,
-			issued: newer(existing.issued, incoming.issued)
+			id: existing.id
 		})
 	}
 	return incoming
-}
-
-// An issue date that names a day no calendar has reads as none, so it never outranks a real document; JavaScript rolls "2026-02-30" over to March, which the round trip catches.
-export function realIssueDate(issued: Option.Option<IssuedOn>) {
-	return Option.filter(issued, date =>
-		Option.exists(DateTime.make(date), day => String.startsWith(date)(DateTime.formatIso(day)))
-	)
 }
 
 export function upsert(current: BookingList, incoming: BookingList) {
@@ -408,15 +405,7 @@ export function upsert(current: BookingList, incoming: BookingList) {
 			Option.match({
 				onNone: () => [[...bookings, booking], undefined] as const,
 				onSome: existing => {
-					// A document dated before the one a booking was read from is older news and changes nothing; when either carries no date, the later share wins.
-					const merged = Boolean.match(
-						pipe(
-							existing.issued,
-							Option.zipWith(booking.issued, (stored, read) => Order.isLessThan(String.Order)(read, stored)),
-							Option.getOrElse(Function.constFalse)
-						),
-						{onFalse: () => combine(existing, booking), onTrue: () => existing}
-					)
+					const merged = combine(existing, booking)
 					return [
 						Array.map(bookings, item => Boolean.match(item === existing, {onFalse: () => item, onTrue: () => merged})),
 						undefined

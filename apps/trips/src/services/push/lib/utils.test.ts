@@ -30,7 +30,6 @@ const FLIGHT = Struct.pick(
 		departs: DEPARTS,
 		from: Schema.decodeSync(BookedPlace)({code: 'FCO', name: 'Fiumicino', timeZone: 'Europe/Rome'}),
 		id: BookingId.make('7f0c8f8e-0d0a-4a5e-9d8f-5b2a1c3d4e5f'),
-		issued: Option.none(),
 		live: Option.none(),
 		number: '553',
 		seat: Option.none(),
@@ -276,7 +275,6 @@ it('words a delay by where the train is', () => {
 			departs,
 			from: Schema.decodeSync(BookedPlace)({name: 'Milano', timeZone: 'Europe/Rome'}),
 			id: BookingId.make('1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d'),
-			issued: Option.none(),
 			live: Option.some(
 				Schema.decodeSync(TrainTracking)({
 					checkedAt: DateTime.toEpochMillis(DateTime.addDuration(departs, Duration.minutes(25))),

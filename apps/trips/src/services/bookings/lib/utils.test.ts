@@ -12,7 +12,6 @@ import {
 	instantOf,
 	journeysOf,
 	journeyProps,
-	realIssueDate,
 	segmentOf,
 	startable,
 	stayAfter,
@@ -41,7 +40,6 @@ function train(id: string, from: string, to: string, departure: string, arrival:
 		departs: DateTime.makeUnsafe(departure),
 		from: Schema.decodeSync(BookedPlace)({name: from, timeZone: 'Europe/Rome'}),
 		id: BookingId.make(id),
-		issued: Option.none(),
 		live: Option.none(),
 		number: '9713',
 		operator: 'TRENITALIA',
@@ -178,7 +176,6 @@ const FLIGHT = Struct.pick(
 		departs: DEPARTS,
 		from: Schema.decodeSync(BookedPlace)({code: 'FCO', name: 'Fiumicino', timeZone: 'Europe/Rome'}),
 		id: BookingId.make('7f0c8f8e-0d0a-4a5e-9d8f-5b2a1c3d4e5f'),
-		issued: Option.none(),
 		live: Option.none(),
 		number: '553',
 		seat: Option.none(),
@@ -275,7 +272,6 @@ function stay(id: string, city: string) {
 		checkOut: DateTime.makeUnsafe('2026-11-19T09:00Z'),
 		confirmation: Option.none(),
 		id: BookingId.make(id),
-		issued: Option.none(),
 		name: `Hotel in ${city}`,
 		place: Schema.decodeSync(BookedPlace)({
 			address: `Via Roma 1, ${city}, Italy`,
@@ -363,13 +359,19 @@ it('merges tickets for the same leg and retains live data only while its schedul
 	)
 })
 
-it('reads an issue date no calendar has as no date', () => {
+it('keeps tickets with different confirmation codes as separate bookings', () => {
+	function other(confirmation: Option.Option<string>) {
+		return Flight.make({...FLIGHT, confirmation, id: BookingId.make('cccccccc-0d0a-4a5e-9d8f-5b2a1c3d4e5f')})
+	}
+	const held = Flight.make({...FLIGHT, confirmation: Option.some('ABC123')})
 	assert.deepStrictEqual(
-		Array.map(['2026-11-01', '2024-02-29', '9999-99-99', '2026-02-30', '2026-13-01'], date =>
-			realIssueDate(Option.some(date))
+		Array.map(
+			[Option.some('XYZ789'), Option.some(' abc123 '), Option.none()],
+			confirmation => upsert([held], [other(confirmation)]).length
 		),
-		[Option.some('2026-11-01'), Option.some('2024-02-29'), Option.none(), Option.none(), Option.none()]
+		[2, 1, 1]
 	)
+	assert.lengthOf(upsert([FLIGHT], [other(Option.some('XYZ789'))]), 1)
 })
 
 it('keeps distinct legs of the same flight number as distinct bookings', () => {

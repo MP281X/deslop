@@ -46,7 +46,6 @@ function trainAt(now: DateTime.Utc, id: BookingId, seat: Option.Option<string>) 
 		departs: DateTime.addDuration(now, Duration.hours(3)),
 		from: Schema.decodeSync(BookedPlace)({name: 'Milano', timeZone: 'Europe/Rome'}),
 		id,
-		issued: Option.none(),
 		live: Option.none(),
 		number: '2',
 		operator: 'Trenitalia',

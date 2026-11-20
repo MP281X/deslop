@@ -1,7 +1,7 @@
 import {NodeServices} from '@effect/platform-node'
 import {assert, it} from '@effect/vitest'
 
-import {Array, DateTime, Duration, Effect, FileSystem, Function, Layer, MutableRef, Option, String, pipe} from 'effect'
+import {Array, DateTime, Duration, Effect, FileSystem, Layer, MutableRef, Option, pipe} from 'effect'
 
 import {SecureRandom} from 'effect/crypto'
 
@@ -13,7 +13,7 @@ import {Places} from './lib/places.ts'
 import {Timetable} from './lib/timetable.ts'
 
 import {journeysOf} from '#services/bookings/lib/utils.ts'
-import type {BookingExtraction, ExtractedItem} from '#services/bookings/schema.ts'
+import type {ExtractedItem, ExtractedItems} from '#services/bookings/schema.ts'
 import {BookedPlace, Booking, BookingSource, PlaceCode} from '#services/bookings/schema.ts'
 import {Bookings} from '#services/bookings/service.ts'
 
@@ -45,25 +45,7 @@ function train(trainNumber: string, from: string, to: string, departure: string,
 	} satisfies ExtractedItem
 }
 
-function flight(departure: string, seat: string) {
-	return {
-		airlineCode: 'BA',
-		airlineName: 'British Airways',
-		arrival: `${String.slice(0, 11)(departure)}14:00`,
-		boarding: Option.none(),
-		boardingGroup: Option.none(),
-		confirmation: Option.some('PNR'),
-		departure,
-		flightNumber: '553',
-		from: 'LHR',
-		kind: 'flight',
-		seat: Option.some(seat),
-		status: 'confirmed',
-		to: 'FCO'
-	} satisfies ExtractedItem
-}
-
-const next = MutableRef.make<BookingExtraction>({issued: Option.none(), items: []})
+const next = MutableRef.make<ExtractedItems>([])
 
 // The test sets what the next shared ticket reads as; trains run fifty minutes between the stations the ticket prints, at the time it prints; each test gets its own scratch database.
 const bookingsLayer = pipe(
@@ -96,7 +78,7 @@ const bookingsLayer = pipe(
 	Layer.provide(Layer.merge(NodeServices.layer, SecureRandom.layerWebCrypto))
 )
 
-function share(document: BookingExtraction) {
+function share(document: ExtractedItems) {
 	MutableRef.set(next, document)
 	return Effect.flatMap(Bookings, bookings => bookings.save(USER, BookingSource.cases.text.make({text: 'ticket'})))
 }
@@ -106,17 +88,14 @@ it.layer(bookingsLayer)(test =>
 		'a delete removes the legs the phone showed and none that joined their journey since',
 		Effect.fnUntraced(function* () {
 			const bookings = yield* Bookings
-			yield* share({issued: Option.none(), items: [train('1', 'Milano', 'Verona', '2026-11-19T08:00', 'ONE')]})
+			yield* share([train('1', 'Milano', 'Verona', '2026-11-19T08:00', 'ONE')])
 			const shown = yield* bookings.list
 			if (!Array.isReadonlyArrayNonEmpty(shown)) return assert.fail('The first ticket was not saved.')
 			// Another ticket's connection at Verona joins the journey on the server while the phone still shows the first.
-			yield* share({
-				issued: Option.none(),
-				items: [
-					train('2', 'Bologna', 'Verona', '2026-11-19T09:00', 'TWO'),
-					train('3', 'Verona', 'Venezia', '2026-11-19T10:00', 'TWO')
-				]
-			})
+			yield* share([
+				train('2', 'Bologna', 'Verona', '2026-11-19T09:00', 'TWO'),
+				train('3', 'Verona', 'Venezia', '2026-11-19T10:00', 'TWO')
+			])
 			assert.deepStrictEqual(
 				Array.map(journeysOf(yield* bookings.list), journey => journey.length),
 				[2, 1]
@@ -130,34 +109,6 @@ it.layer(bookingsLayer)(test =>
 				),
 				['FR 2', 'FR 3']
 			)
-		})
-	)
-)
-
-it.layer(bookingsLayer)(test =>
-	test.effect(
-		'an older dated document never undoes a newer one; an undated one wins as the later share',
-		Effect.fnUntraced(function* () {
-			const original = {issued: Option.some('2026-11-01'), items: [flight('2026-11-19T10:00', '14A')]}
-			const seats = pipe(
-				Bookings,
-				Effect.flatMap(bookings => bookings.list),
-				Effect.map(Array.filter(Booking.isAnyOf(['flight']))),
-				Effect.map(
-					Array.map(booking => [
-						Option.getOrElse(booking.seat, Function.constant('')),
-						Option.getOrElse(booking.issued, Function.constant(''))
-					])
-				)
-			)
-			yield* share({issued: Option.some('2026-11-10'), items: [flight('2026-11-26T10:00', '16C')]})
-			yield* share(original)
-			assert.deepStrictEqual(yield* seats, [['16C', '2026-11-10']])
-			yield* share({issued: Option.none(), items: [flight('2026-11-27T10:00', '20F')]})
-			assert.deepStrictEqual(yield* seats, [['20F', '2026-11-10']])
-			// The date kept from the rebooking still guards the booking against the original confirmation.
-			yield* share(original)
-			assert.deepStrictEqual(yield* seats, [['20F', '2026-11-10']])
 		})
 	)
 )
