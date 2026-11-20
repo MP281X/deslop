@@ -12,6 +12,7 @@ import {UserId} from '@deslop/runtime/shared/auth'
 import {People} from './service.ts'
 
 import {Sessions} from '#services/sessions/service.ts'
+import {TailnetUserId} from '#services/tailnet/schema.ts'
 
 // Each test gets its own scratch database; `forgotten` hears whose sessions were deleted.
 function layer(forgotten = MutableRef.make(Array.empty<UserId>())) {
@@ -101,6 +102,43 @@ it.layer(layer())(test =>
 			yield* people.register(user, Option.some(''), true)
 			assert.isTrue(Option.isNone((yield* people.register(user, Option.some(''), true)).fullName))
 			assert.equal(MutableRef.get(writes), 1)
+		})
+	)
+)
+
+it.layer(layer())(test =>
+	test.effect(
+		'a tailnet user keeps its first account, a removed person loses it, and declining keeps it',
+		Effect.fnUntraced(function* () {
+			const people = yield* People
+			const admin = yield* requireAdmin({admin: true, id: UserId.make('github:1'), name: 'admin'}, 'Admin required')
+			const tailnetId = TailnetUserId.make('9007199254740993')
+			const user = {id: UserId.make('github:6'), name: 'person'}
+			const other = {id: UserId.make('github:7'), name: 'other'}
+			// Nobody is bound to someone who is not here.
+			yield* people.bind(tailnetId, other.id)
+			assert.isTrue(Option.isNone(yield* people.bound(tailnetId)))
+			yield* people.register(user, Option.none(), true)
+			yield* people.register(other, Option.none(), true)
+			yield* people.bind(tailnetId, user.id)
+			yield* people.bind(tailnetId, other.id)
+			assert.deepStrictEqual(
+				Option.map(yield* people.bound(tailnetId), member => member.id),
+				Option.some(user.id)
+			)
+			yield* people.register(user, Option.none(), false)
+			yield* people.admit({allow: false, id: user.id}, admin)
+			assert.deepStrictEqual(
+				Option.map(yield* people.bound(tailnetId), member => member.id),
+				Option.some(user.id)
+			)
+			yield* people.remove(user.id, admin)
+			assert.isTrue(Option.isNone(yield* people.bound(tailnetId)))
+			yield* people.bind(tailnetId, other.id)
+			assert.deepStrictEqual(
+				Option.map(yield* people.bound(tailnetId), member => member.id),
+				Option.some(other.id)
+			)
 		})
 	)
 )

@@ -1,6 +1,18 @@
 import {assert, it} from '@effect/vitest'
 
-import {Boolean, ConfigProvider, DateTime, Effect, Layer, Option, Result, Schema, pipe} from 'effect'
+import {
+	Boolean,
+	ConfigProvider,
+	DateTime,
+	Effect,
+	Layer,
+	MutableHashMap,
+	MutableRef,
+	Option,
+	Result,
+	Schema,
+	pipe
+} from 'effect'
 
 import {GitHubId, IdentifyRequest, UserId, asAuthError} from '@deslop/runtime/shared/auth'
 
@@ -30,11 +42,26 @@ const configuration = ConfigProvider.layer(
 	ConfigProvider.fromUnknown({AUTH_URL: 'https://auth.example.test', GITHUB_ADMINS: '1'})
 )
 
-function layer(tags: string[], status: Member['status'] = member.status, tailnet = false) {
+// The account GitHub names for the person's login now, and how many times it was asked.
+function lookupsOf() {
+	return {account: MutableRef.make(GitHubId.make(3)), asked: MutableRef.make(0)}
+}
+
+function layer(tags: string[], status: Member['status'] = member.status, tailnet = false, lookups = lookupsOf()) {
+	const bindings = MutableHashMap.empty<string, UserId>()
 	return pipe(
 		Identity.layer,
 		Layer.provide(
 			Layer.mock(People, {
+				bind: (tailnetId, id) => Effect.sync(() => MutableHashMap.set(bindings, tailnetId, id)),
+				bound: tailnetId =>
+					Effect.succeed(
+						pipe(
+							bindings,
+							MutableHashMap.get(tailnetId),
+							Option.map(id => Member.make({...member, id, status, tailnet}))
+						)
+					),
 				find: id => Effect.succeedSome(Member.make({...member, id, status, tailnet})),
 				register: user => Effect.succeed(Member.make({...member, ...user}))
 			})
@@ -57,7 +84,13 @@ function layer(tags: string[], status: Member['status'] = member.status, tailnet
 			})
 		),
 		Layer.provide(
-			Layer.mock(GitHub, {login: () => Effect.succeed({id: GitHubId.make(3), login: 'person', name: Option.none()})})
+			Layer.mock(GitHub, {
+				login: () =>
+					Effect.sync(() => {
+						MutableRef.increment(lookups.asked)
+						return {id: MutableRef.get(lookups.account), login: 'person', name: Option.none()}
+					})
+			})
 		),
 		Layer.provide(
 			Layer.succeed(Tailnet, {
@@ -85,7 +118,7 @@ function layer(tags: string[], status: Member['status'] = member.status, tailnet
 
 it.layer(layer([]))(test =>
 	test.effect(
-		'sessions win; only this machine may act on behalf; GitHub logins resolve to current ids',
+		'sessions win; only this machine may act on behalf; a GitHub login resolves to its account',
 		Effect.fnUntraced(function* () {
 			const identity = yield* Identity
 			const request = IdentifyRequest.make({
@@ -200,6 +233,28 @@ it.layer(layer([], Option.some('Waiting'), true))(test =>
 			const browser = {...request, address: Option.none(), session: Option.some('valid')}
 			assert.isTrue(Result.isFailure(yield* Effect.result(identity.resolve(browser))))
 			assert.equal((yield* identity.resolve(browser, true)).role, 'Waiting')
+		})
+	)
+)
+
+const lookups = lookupsOf()
+it.layer(layer([], member.status, false, lookups))(test =>
+	test.effect(
+		'a tailnet user stays the GitHub account it was first resolved to, without asking GitHub again',
+		Effect.fnUntraced(function* () {
+			const identity = yield* Identity
+			const request = IdentifyRequest.make({
+				address: Option.some('100.64.0.1'),
+				onBehalfOf: Option.none(),
+				session: Option.none()
+			})
+			assert.equal((yield* identity.resolve(request)).id, 'github:3')
+			assert.equal((yield* identity.resolve(request)).id, 'github:3')
+			assert.equal(MutableRef.get(lookups.asked), 1)
+			// The login changed hands: the tailnet user is still the account it was bound to.
+			MutableRef.set(lookups.account, GitHubId.make(5))
+			assert.equal((yield* identity.resolve({...request, address: Option.some('127.0.0.1')})).id, 'github:3')
+			assert.equal(MutableRef.get(lookups.asked), 1)
 		})
 	)
 )

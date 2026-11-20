@@ -1,6 +1,6 @@
 import {networkInterfaces} from 'node:os'
 
-import {Array, Context, Effect, Layer, Option, Record, Result, String, pipe} from 'effect'
+import {Array, Context, Effect, Layer, Option, RcMap, Record, Result, Semaphore, String, pipe} from 'effect'
 
 import type {Headers} from 'effect/http'
 import {IpNetwork, NetAddress} from 'effect/net'
@@ -15,7 +15,7 @@ import {authorizeMember, roleOf} from '#services/people/lib/utils.ts'
 import type {SignedAccount} from '#services/people/schema.ts'
 import {People, adminIds} from '#services/people/service.ts'
 import {Sessions} from '#services/sessions/service.ts'
-import type {Profile} from '#services/tailnet/schema.ts'
+import type {Profile, TailnetUserId} from '#services/tailnet/schema.ts'
 import {Tailnet} from '#services/tailnet/service.ts'
 
 export function isMachine(address: string) {
@@ -48,10 +48,32 @@ export class Identity extends Context.Service<
 			const local = yield* localAuth
 			const admins = yield* adminIds
 			const owners = yield* Tailnet
+			// A tailnet user's first sightings resolve one at a time, so requests that arrive together for it ask GitHub once and are all the account that was bound; another user's never wait for it.
+			const sightings = yield* RcMap.make({lookup: (_id: TailnetUserId) => Semaphore.make(1)})
+			const sighted = Effect.fnUntraced(function* (profile: Profile) {
+				const user = yield* github.login(String.slice(0, -7)(profile.LoginName))
+				const member = yield* people.register({id: UserId.make(`github:${user.id}`), name: user.login}, user.name, true)
+				yield* people.bind(profile.ID, member.id)
+				return member
+			})
 			const tailnet = Effect.fnUntraced(function* (profile: Profile) {
 				if (String.endsWith('@github')(profile.LoginName)) {
-					const user = yield* github.login(String.slice(0, -7)(profile.LoginName))
-					return yield* people.register({id: UserId.make(`github:${user.id}`), name: user.login}, user.name, true)
+					// GitHub is asked by login only the first time, so a login that later changes hands cannot become someone else.
+					return yield* Option.match(yield* people.bound(profile.ID), {
+						onNone: () =>
+							Effect.scoped(
+								Effect.flatMap(RcMap.get(sightings, profile.ID), lock =>
+									Semaphore.withPermit(
+										lock,
+										Effect.flatMap(
+											people.bound(profile.ID),
+											Option.match({onNone: () => sighted(profile), onSome: Effect.succeed})
+										)
+									)
+								)
+							),
+						onSome: Effect.succeed
+					})
 				}
 				return yield* people.register(
 					{id: UserId.make(`tailnet:${profile.LoginName}`), name: profile.DisplayName || profile.LoginName},
