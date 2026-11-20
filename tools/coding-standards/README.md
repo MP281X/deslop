@@ -3,7 +3,7 @@
 This package provides Vite+ lint and TypeScript presets and a `coding-standards` CLI.
 
 ```bash
-vp add -D @deslop/coding-standards@latest @effect/tsgo@latest tsrs@latest oxlint-tsgolint@latest
+vp add -D @deslop/coding-standards@latest @effect/tsgo@latest tsrs@latest
 ```
 
 ```ts
@@ -28,7 +28,7 @@ export default defineConfig({lint: {extends: [lint]}})
 
 This consumer `fix` example prints tactics when lint fails; Deslop's own task prints them before fixing.
 
-The preset leaves type-aware lint and type checking off, so a syntax-only pass stays possible; the two flags turn them on, and `--tsrs-lint` runs them on tsrs instead of Oxlint's tsgolint backend.
+The preset leaves type-aware lint and type checking off, so a syntax-only pass stays possible; the two flags turn them on, and `--tsrs-lint` runs them on the Effect-patched tsrs.
 
 ```jsonc
 // tsconfig.json
