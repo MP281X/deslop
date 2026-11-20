@@ -5,7 +5,8 @@ import {ChildProcessSpawner} from 'effect/process'
 import {AppError, executeProcess} from '@deslop/runtime/server/process'
 import {AuthError} from '@deslop/runtime/shared/auth'
 
-import {Status, Whois} from './schema.ts'
+import {StatusJson, WhoisJson} from './schema.ts'
+import type {Status, Whois} from './schema.ts'
 
 // Only Tailscale saying it knows no such peer refuses a caller; a stopped daemon or an unreadable answer is an outage.
 function unavailable(message: string) {
@@ -33,7 +34,7 @@ export class Tailnet extends Context.Service<
 				() =>
 					pipe(
 						executeProcess('tailscale', ['status', '--json'], {timeout: '10 seconds'}),
-						Effect.flatMap(Schema.decodeUnknownEffect(Schema.fromJsonString(Status))),
+						Effect.flatMap(Schema.decodeUnknownEffect(StatusJson)),
 						Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
 						unavailable('Cannot read the tailnet owner')
 					),
@@ -46,7 +47,7 @@ export class Tailnet extends Context.Service<
 				(address: string) =>
 					pipe(
 						executeProcess('tailscale', ['whois', '--json', address], {timeout: '10 seconds'}),
-						Effect.flatMap(Schema.decodeUnknownEffect(Schema.fromJsonString(Whois))),
+						Effect.flatMap(Schema.decodeUnknownEffect(WhoisJson)),
 						Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
 						unavailable('Cannot identify the tailnet caller')
 					),

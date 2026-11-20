@@ -80,10 +80,9 @@ export class Identity extends Context.Service<
 															if ((found.Self.Tags?.length ?? 0) > 0) {
 																return yield* AuthError.make({message: 'Sign in first'})
 															}
-															// Tailscale ids exceed JS's safe integer range; compare the equally decoded ids, not a rounded id against an exact record key.
 															return yield* pipe(
-																Record.values(found.User),
-																Array.findFirst(profile => profile.ID === found.Self.UserID),
+																found.User,
+																Record.get(found.Self.UserID),
 																Option.match({
 																	onNone: () => Effect.fail(AuthError.make({message: 'Sign in first'})),
 																	onSome: tailnet
