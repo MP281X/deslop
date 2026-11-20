@@ -159,6 +159,43 @@ export function itemOwner(item: InventoryItem) {
 	return AppId.make(`service:${Option.getOrElse(item.scope, Function.constant('system'))}:${serviceUnit(item)}`)
 }
 
+// Who a loopback proxy to `port` reaches: the containers that publish it, else each listener's unit or process, joined; none when nothing listens.
+export function portOwner(items: Snapshot['items'], port: number) {
+	const containers = Array.flatMap(items, item => {
+		if (item.kind !== 'container') return []
+		return pipe(
+			Array.flatten(Option.toArray(item.bindings)),
+			Array.filter(binding => binding.protocol === 'tcp' && binding.port === port && ipv4Reachable(binding.address)),
+			Array.map(() => `container:${item.name}`)
+		)
+	})
+	return pipe(
+		Array.match(containers, {
+			onEmpty: () =>
+				Array.flatMap(items, item => {
+					if (
+						item.kind !== 'port' ||
+						!Option.contains(item.port, port) ||
+						!Option.contains(item.protocol, 'tcp') ||
+						!Option.exists(item.address, ipv4Reachable)
+					) {
+						return []
+					}
+					return [
+						Option.match(item.unit, {
+							onNone: () => `process:${Option.getOrElse(item.process, Function.constant('unknown'))}`,
+							onSome: unit => `${Option.getOrElse(item.scope, Function.constant('system'))}:${unit}`
+						})
+					]
+				}),
+			onNonEmpty: Function.identity
+		}),
+		Array.dedupe,
+		Array.sort(Order.String),
+		Array.match({onEmpty: Option.none, onNonEmpty: owners => Option.some(Array.join(owners, ' + '))})
+	)
+}
+
 function fullName(item: InventoryItem) {
 	if (item.kind === 'port') return Option.getOrElse(item.process, () => item.name)
 	if (item.kind === 'container' && String.startsWith('deslop-')(item.name)) {
@@ -342,7 +379,8 @@ export function workloads(items: readonly InventoryItem[]) {
 						),
 						...exposed
 					],
-					(a: InventoryItem, b: InventoryItem) => Equal.equals(a.url, b.url)
+					(a: InventoryItem, b: InventoryItem) =>
+						Equal.equals(a.url, b.url) && Equal.equals(a.publicAccess, b.publicAccess)
 				)
 			}
 		}),
@@ -685,7 +723,14 @@ export function listApps(snapshot: Snapshot, input: InventoryQuery) {
 			const exposures = pipe(
 				snapshot.items,
 				Array.flatMap(item => {
-					if (item.kind !== 'exposure' || item.worker !== worker || onlyFailing || !important(item)) return []
+					if (
+						item.kind !== 'exposure' ||
+						item.worker !== worker ||
+						(onlyFailing && item.health === 'quiet') ||
+						!important(item)
+					) {
+						return []
+					}
 					return Option.toArray(
 						Option.map(
 							item.url,
@@ -699,6 +744,7 @@ export function listApps(snapshot: Snapshot, input: InventoryQuery) {
 											onTrue: Function.constant('public' as const)
 										})
 									),
+									failure: failureOf(item).failure,
 									id: item.id,
 									name: ExposureName.make(item.name),
 									port: item.port,

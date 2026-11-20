@@ -20,9 +20,9 @@ import {ToolHandlers} from '#tools/handlers.ts'
 
 const layerServices = pipe(
 	Fleet.layer,
-	Layer.provideMerge(
-		Layer.mergeAll(Inventory.layer, Metrics.layer, Layer.unwrap(Effect.map(dataDirectory, Exposures.layer)))
-	),
+	// Exposures read port owners from this worker's inventory.
+	Layer.provideMerge(Layer.unwrap(Effect.map(dataDirectory, Exposures.layer))),
+	Layer.provideMerge(Layer.mergeAll(Inventory.layer, Metrics.layer)),
 	Layer.provide(ToolPath.layer)
 )
 
