@@ -8,10 +8,11 @@ import {AuthError, GitHubId, GitHubIdFromString, UserId, asAuthError} from '@des
 import type {Admin} from '@deslop/runtime/shared/auth'
 
 import {isAdmin, listPeople, personOf} from './lib/utils.ts'
-import {Member} from './schema.ts'
+import {Binding, Member} from './schema.ts'
 import type {AdmitParams, Person} from './schema.ts'
 
 import {Sessions} from '#services/sessions/service.ts'
+import {TailnetUserId} from '#services/tailnet/schema.ts'
 
 // GitHub ids from GITHUB_ADMINS; a local install with none named treats the developer as the admin.
 export const adminIds = Effect.gen(function* () {
@@ -29,6 +30,8 @@ export class People extends Context.Service<
 	People,
 	{
 		readonly find: (id: UserId) => Effect.Effect<Option.Option<Member>, AuthError>
+		readonly bound: (tailnetId: TailnetUserId) => Effect.Effect<Option.Option<Member>, AuthError>
+		readonly bind: (tailnetId: TailnetUserId, id: UserId) => Effect.Effect<void, AuthError>
 		readonly register: (
 			user: {readonly id: UserId; readonly name: string},
 			fullName: Option.Option<string>,
@@ -78,7 +81,12 @@ export class People extends Context.Service<
 					yield* sql`INSERT INTO members_next SELECT id, name, fullName, since, status, 0 FROM members ORDER BY rowid`
 					yield* sql`DROP TABLE members`
 					yield* sql`ALTER TABLE members_next RENAME TO members`
-				})
+				}),
+				// A tailnet user stays the GitHub account it was first resolved to; everyone already here is bound at their next sighting.
+				'0005_bindings': Effect.flatMap(
+					SqlClient.SqlClient,
+					sql => sql`CREATE TABLE tailnet_bindings (tailnetId TEXT PRIMARY KEY, userId TEXT NOT NULL) STRICT`
+				)
 			}),
 			table: 'members_migrations'
 		})
@@ -92,6 +100,7 @@ export class People extends Context.Service<
 				const reactivity = yield* Reactivity.Reactivity
 				const sessions = yield* Sessions
 				const table = sql(Member.table)
+				const bindings = sql(Binding.table)
 				function mutate<A, E, R>(effect: Effect.Effect<A, E, R>) {
 					return pipe(
 						effect,
@@ -120,8 +129,16 @@ export class People extends Context.Service<
 					execute: row =>
 						sql`INSERT INTO ${table} ${sql.insert(row)} ON CONFLICT (id) DO UPDATE SET name = excluded.name, fullName = excluded.fullName, status = excluded.status, tailnet = excluded.tailnet`
 				})
+				const boundRow = SqlSchema.findOneOption({
+					Request: TailnetUserId,
+					Result: Member,
+					execute: tailnetId =>
+						sql`SELECT ${table}.* FROM ${table} JOIN ${bindings} ON ${bindings}.userId = ${table}.id WHERE ${bindings}.tailnetId = ${tailnetId}`
+				})
 				const removeRow = Effect.fnUntraced(function* (id: UserId) {
 					yield* sessions.forgetPerson(id)
+					// The next sighting of their tailnet user resolves it again; one whose lookup was already under way binds what that lookup answers.
+					yield* sql`DELETE FROM ${bindings} WHERE userId = ${id}`
 					yield* sql`DELETE FROM ${table} WHERE id = ${id}`
 				})
 				return People.of({
@@ -152,6 +169,13 @@ export class People extends Context.Service<
 						sql.withTransaction,
 						asAuthError('Cannot answer the access request')
 					),
+					bind: Effect.fn('People.bind')(function* (tailnetId, id) {
+						// Only a person still here is bound, and a first binding is never replaced.
+						yield* sql`INSERT INTO ${bindings} (tailnetId, userId) SELECT ${tailnetId}, id FROM ${table} WHERE id = ${id} ON CONFLICT DO NOTHING`
+					}, asAuthError('Cannot bind the tailnet user')),
+					bound: Effect.fn('People.bound')(function* (tailnetId) {
+						return yield* boundRow(tailnetId)
+					}, asAuthError('Cannot read the tailnet user')),
 					find,
 					list: Effect.fn('People.list')(function* () {
 						return listPeople(yield* all(), admins)

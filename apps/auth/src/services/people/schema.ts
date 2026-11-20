@@ -4,6 +4,8 @@ import {Model} from 'effect/schema'
 
 import {GitHubId, User, UserId} from '@deslop/runtime/shared/auth'
 
+import {TailnetUserId} from '#services/tailnet/schema.ts'
+
 // Admins come from GITHUB_ADMINS; a member is someone the tailnet has seen or a GitHub account an admin allowed; anyone else who signed in from a browser waits for one.
 export type Role = typeof Role.Type
 export const Role = Schema.Literals(['Admin', 'Member', 'Waiting'])
@@ -37,6 +39,11 @@ export class Member extends Model.Class<Member>('Member')({
 	tailnet: Schema.BooleanFromBit
 }) {
 	static readonly table = 'members'
+}
+
+// One row of `tailnet_bindings`: the GitHub account a tailnet user's first sighting resolved, until that person is removed.
+export class Binding extends Model.Class<Binding>('Binding')({tailnetId: TailnetUserId, userId: User.fields.id}) {
+	static readonly table = 'tailnet_bindings'
 }
 
 export type GitHubUser = typeof GitHubUser.Type
