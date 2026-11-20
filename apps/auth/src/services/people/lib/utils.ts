@@ -12,15 +12,21 @@ export function isAdmin(admins: readonly GitHubId[], id: UserId) {
 	return Array.some(admins, admin => `github:${admin}` === id)
 }
 
+// A browser enters only once an admin allowed it; the tailnet, and an app acting for someone, need only a tailnet sighting.
+function isLetIn(member: Member, browser: boolean) {
+	return Option.contains(member.status, 'Allowed') || (!browser && member.tailnet)
+}
+
 export const authorizeMember = Effect.fnUntraced(function* (
 	admins: readonly GitHubId[],
 	id: UserId,
-	row: Option.Option<Member>
+	row: Option.Option<Member>,
+	browser: boolean
 ) {
 	if (isAdmin(admins, id)) {
 		return {admin: true, id, name: Option.match(row, {onNone: () => id, onSome: member => member.name})}
 	}
-	if (!Option.exists(row, member => member.status === 'Allowed')) {
+	if (!Option.exists(row, member => isLetIn(member, browser))) {
 		return yield* AuthError.make({error: 'access_denied', message: 'An admin has not allowed this account yet'})
 	}
 	return yield* Option.match(row, {
@@ -29,10 +35,17 @@ export const authorizeMember = Effect.fnUntraced(function* (
 	})
 })
 
-export function roleOf(admins: readonly GitHubId[], id: UserId, row: Option.Option<Member>) {
+export function roleOf(admins: readonly GitHubId[], id: UserId, row: Option.Option<Member>, browser: boolean) {
 	if (isAdmin(admins, id)) return 'Admin' as const
-	if (Option.exists(row, found => found.status === 'Allowed')) return 'Member' as const
+	if (Option.exists(row, found => isLetIn(found, browser))) return 'Member' as const
 	return 'Waiting' as const
+}
+
+// People lists someone as waiting only while their browser asks, whatever the tailnet lets them do.
+function listedRoleOf(admins: readonly GitHubId[], row: Member) {
+	if (isAdmin(admins, row.id)) return 'Admin' as const
+	if (Option.contains(row.status, 'Waiting')) return 'Waiting' as const
+	return 'Member' as const
 }
 
 export function personOf(admins: readonly GitHubId[], row: Member) {
@@ -40,7 +53,7 @@ export function personOf(admins: readonly GitHubId[], row: Member) {
 		admin: isAdmin(admins, row.id),
 		...Struct.pick(row, ['id', 'name']),
 		fullName: Option.filter(row.fullName, String.isNonEmpty),
-		role: roleOf(admins, row.id, Option.some(row)),
+		role: listedRoleOf(admins, row),
 		since: row.since
 	})
 }

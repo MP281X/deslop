@@ -1,4 +1,4 @@
-import {Boolean, Config, Context, DateTime, Effect, Function, Layer, Option, Schema, String, pipe} from 'effect'
+import {Boolean, Config, Context, DateTime, Effect, Layer, Option, Schema, String, pipe} from 'effect'
 
 import {Reactivity} from 'effect/reactivity'
 import {Migrator, SqlClient, SqlSchema} from 'effect/sql'
@@ -70,6 +70,14 @@ export class People extends Context.Service<
 					yield* sql`INSERT INTO members_next SELECT id, name, fullName, NULLIF(since, 0), status FROM members`
 					yield* sql`DROP TABLE members`
 					yield* sql`ALTER TABLE members_next RENAME TO members`
+				}),
+				// A tailnet sighting stops approving the browser: the browser's status may be none and the sighting is its own column. Every row keeps its status, so whoever enters from a browser still does; no waiting row was seen on the tailnet, which made it Allowed, and an allowed one is marked at its next sighting.
+				'0004_tailnet': Effect.gen(function* () {
+					const sql = yield* SqlClient.SqlClient
+					yield* sql`CREATE TABLE members_next (id TEXT PRIMARY KEY, name TEXT NOT NULL, fullName TEXT, since INTEGER, status TEXT, tailnet INTEGER NOT NULL) STRICT`
+					yield* sql`INSERT INTO members_next SELECT id, name, fullName, since, status, 0 FROM members ORDER BY rowid`
+					yield* sql`DROP TABLE members`
+					yield* sql`ALTER TABLE members_next RENAME TO members`
 				})
 			}),
 			table: 'members_migrations'
@@ -107,6 +115,11 @@ export class People extends Context.Service<
 					Result: Member,
 					execute: () => sql`SELECT * FROM ${table} ORDER BY since DESC, rowid DESC`
 				})
+				const upsert = SqlSchema.void({
+					Request: Member.insert,
+					execute: row =>
+						sql`INSERT INTO ${table} ${sql.insert(row)} ON CONFLICT (id) DO UPDATE SET name = excluded.name, fullName = excluded.fullName, status = excluded.status, tailnet = excluded.tailnet`
+				})
 				const removeRow = Effect.fnUntraced(function* (id: UserId) {
 					yield* sessions.forgetPerson(id)
 					yield* sql`DELETE FROM ${table} WHERE id = ${id}`
@@ -115,17 +128,21 @@ export class People extends Context.Service<
 					admit: Effect.fn('People.admit')(
 						function* (params) {
 							const row = yield* existing(params.id)
-							if (row.status !== 'Waiting' || isAdmin(admins, row.id)) {
+							if (!Option.contains(row.status, 'Waiting') || isAdmin(admins, row.id)) {
 								return yield* AuthError.make({message: 'This account is not asking for access'})
 							}
 							if (params.allow) {
 								yield* sql`UPDATE ${table} SET status = 'Allowed', since = ${DateTime.toEpochMillis(yield* DateTime.now)} WHERE id = ${params.id}`
+							} else if (row.tailnet) {
+								// Declining takes back only what the browser asked for: the tailnet still lets them in.
+								yield* sessions.forgetPerson(params.id)
+								yield* sql`UPDATE ${table} SET status = NULL WHERE id = ${params.id}`
 							} else {
 								yield* removeRow(params.id)
 							}
 							return personOf(
 								admins,
-								yield* Boolean.match(params.allow, {
+								yield* Boolean.match(params.allow || row.tailnet, {
 									onFalse: () => Effect.succeed(row),
 									onTrue: () => existing(params.id)
 								})
@@ -141,26 +158,43 @@ export class People extends Context.Service<
 					}, asAuthError('Cannot read people')),
 					register: Effect.fn('People.register')(
 						function* (user, profileName, tailnet) {
-							const status = Boolean.match(tailnet || isAdmin(admins, user.id), {
-								onFalse: Function.constant('Waiting'),
-								onTrue: Function.constant('Allowed')
-							})
 							// An empty name is stored as none, so it is compared as none: an unchanged person costs no write.
-							const fullName = Option.getOrUndefined(Option.filter(profileName, String.isNonEmpty))
+							const fullName = Option.filter(profileName, String.isNonEmpty)
 							const row = yield* find(user.id)
+							// A GitHub sign-in asks an admin to allow the browser; a tailnet sighting leaves that answer as it is.
+							const status = Boolean.match(
+								isAdmin(admins, user.id) || Option.exists(row, member => Option.contains(member.status, 'Allowed')),
+								{
+									onFalse: () =>
+										Boolean.match(tailnet, {
+											onFalse: () => Option.some('Waiting' as const),
+											onTrue: () => Option.flatMap(row, member => member.status)
+										}),
+									onTrue: () => Option.some('Allowed' as const)
+								}
+							)
+							const seen = tailnet || Option.exists(row, member => member.tailnet)
 							if (
 								Option.exists(
 									row,
 									member =>
 										member.name === user.name &&
-										Option.getOrUndefined(member.fullName) === fullName &&
-										(status === 'Waiting' || member.status === 'Allowed')
+										Option.getOrUndefined(member.fullName) === Option.getOrUndefined(fullName) &&
+										Option.getOrUndefined(member.status) === Option.getOrUndefined(status) &&
+										member.tailnet === seen
 								)
 							) {
 								return yield* Effect.fromOption(row)
 							}
 							yield* mutate(
-								sql`INSERT INTO ${table} (id, name, fullName, since, status) VALUES (${user.id}, ${user.name}, ${fullName}, ${DateTime.toEpochMillis(yield* DateTime.now)}, ${status}) ON CONFLICT (id) DO UPDATE SET name = excluded.name, fullName = excluded.fullName, status = CASE WHEN excluded.status = 'Allowed' THEN 'Allowed' ELSE ${table}.status END`
+								upsert({
+									fullName,
+									id: user.id,
+									name: user.name,
+									since: Option.some(yield* DateTime.now),
+									status,
+									tailnet: seen
+								})
 							)
 							return yield* existing(user.id)
 						},
