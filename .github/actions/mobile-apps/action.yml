@@ -1,0 +1,46 @@
+name: Mobile apps
+description: The iPhone apps, as a JSON array of their folder names under `apps`; fails when a folder name is unsafe or `app` is not one of them.
+
+inputs:
+  app:
+    description: A name, such as a dispatch input, that must be one of the apps; empty to skip the check.
+    default: ''
+
+outputs:
+  apps:
+    description: The names of the folders under `apps` that hold an `app.config.ts`.
+    value: ${{ steps.apps.outputs.apps }}
+
+runs:
+  using: composite
+  steps:
+    # The one place an app name is checked: later steps build paths, artifact names and matrix values from it, and compare `app` as a whole name, never as a path.
+    - name: Discover and check the apps
+      id: apps
+      shell: bash
+      env:
+        APP: ${{ inputs.app }}
+      run: |
+        shopt -s nullglob
+        names=()
+        for config in apps/*/app.config.ts; do
+          name=${config#apps/}
+          name=${name%/app.config.ts}
+          if ! [[ $name =~ ^[a-z][a-z0-9-]*$ ]]; then
+            printf '::error::The app folder %q must be lowercase letters, digits and dashes, starting with a letter\n' "$name"
+            exit 1
+          fi
+          names+=("$name")
+        done
+        if [[ -n $APP ]]; then
+          found=false
+          for name in "${names[@]}"; do
+            if [[ $name == "$APP" ]]; then found=true; fi
+          done
+          if [[ $found == false ]]; then
+            printf '::error::%q is not an app folder under apps/ with an app.config.ts\n' "$APP"
+            exit 1
+          fi
+        fi
+        apps=$(printf '%s\n' "${names[@]}" | jq -Rsc 'split("\n") | map(select(length > 0))')
+        echo "apps=$apps" >> "$GITHUB_OUTPUT"

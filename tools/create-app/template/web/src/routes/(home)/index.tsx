@@ -9,7 +9,7 @@ import {Skeleton} from '@deslop/components-web/ui/skeleton'
 import {nameAtom} from '#lib/client.ts'
 import icon from '#routes/icon.svg'
 
-// Every RPC requires a user: the gate sends a signed-out visitor to Auth, which returns here.
+// Every RPC requires a signed-in admin: the gate sends a signed-out visitor to Auth, which returns here.
 function HomeRoute() {
 	// The loader's read usually arrives with the page; a slower one suspends to this skeleton, which React keeps at least 300ms, so it never blinks.
 	return (

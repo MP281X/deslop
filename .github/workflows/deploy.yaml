@@ -27,20 +27,17 @@ jobs:
       actions: read
       pull-requests: read
     outputs:
-      mobile: ${{ steps.apps.outputs.mobile }}
+      mobile: ${{ steps.apps.outputs.apps }}
       verified: ${{ steps.proof.outputs.verified }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Discover mobile apps
         id: apps
-        run: |
-          shopt -s nullglob
-          apps=(apps/*/app.config.ts)
-          apps=("${apps[@]%/app.config.ts}")
-          apps=("${apps[@]#apps/}")
-          mobile=$(printf '%s\n' "${apps[@]}" | jq -Rsc 'split("\n") | map(select(length > 0))')
-          echo "mobile=$mobile" >> "$GITHUB_OUTPUT"
+        uses: ./.github/actions/mobile-apps
       # GitHub's run record is the proof, not a PR-writable artifact, cache or named check.
+      # A pull request run tests GitHub's merge with its base of that moment, `main` or a stack's lower layer, so it proves this release only when that merge holds this commit's tree.
+      # Its run name starts with that merge commit: once the trees match, the run name came from this commit's own verify.yaml.
+      # A skipped job leaves a run green, so every job must have succeeded, the four named ones included.
       # A missing/failed lookup leaves the output unset and runs Verify normally.
       - name: Is this tree already verified?
         id: proof
@@ -51,24 +48,28 @@ jobs:
           pulls=$(gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/pulls")
           head=$(jq -r --arg repo "$GITHUB_REPOSITORY" --arg sha "$GITHUB_SHA" '
             [.[] | select(.merged_at != null and .merge_commit_sha == $sha
-              and .base.ref == "main" and .base.repo.full_name == $repo and .head.repo.full_name == $repo)]
+              and .base.repo.full_name == $repo and .head.repo.full_name == $repo)]
             | if length == 1 then .[0].head.sha else empty end' <<< "$pulls")
           [[ -n $head ]] || exit 0
 
-          git fetch --no-tags --depth=1 origin "$head"
-          tree=$(git rev-parse 'HEAD^{tree}')
-          [[ $tree == "$(git rev-parse "$head^{tree}")" ]] || exit 0
-
-          runs=$(gh api --paginate --slurp "repos/$GITHUB_REPOSITORY/actions/workflows/verify.yaml/runs?head_sha=$head&event=push&status=success&per_page=100")
-          run=$(jq -r --arg repo "$GITHUB_REPOSITORY" --arg head "$head" '
-            [.[] | .workflow_runs[] | select(.head_sha == $head and .event == "push"
+          tree=$(gh api "repos/$GITHUB_REPOSITORY/git/commits/$GITHUB_SHA" --jq .tree.sha)
+          runs=$(gh api --paginate --slurp "repos/$GITHUB_REPOSITORY/actions/workflows/verify.yaml/runs?head_sha=$head&event=pull_request&status=success&per_page=100")
+          tested=$(jq -r --arg repo "$GITHUB_REPOSITORY" --arg head "$head" '
+            .[] | .workflow_runs[] | select(.head_sha == $head and .event == "pull_request"
               and .status == "completed" and .conclusion == "success"
               and .path == ".github/workflows/verify.yaml"
-              and .repository.full_name == $repo and .head_repository.full_name == $repo)]
-            | first | .id // empty' <<< "$runs")
-          [[ -n $run ]] || exit 0
-          echo "- Tree $tree already passed [Verify]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$run)." >> "$GITHUB_STEP_SUMMARY"
-          echo "verified=true" >> "$GITHUB_OUTPUT"
+              and .repository.full_name == $repo and .head_repository.full_name == $repo
+              and (.display_title | test("^[0-9a-f]{40}( |$)")))
+            | "\(.id) \(.display_title[0:40])"' <<< "$runs")
+          while read -r run merge; do
+            [[ -n $run && $(gh api "repos/$GITHUB_REPOSITORY/git/commits/$merge" --jq .tree.sha) == "$tree" ]] || continue
+            gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run/jobs?per_page=100" | jq -e '
+              [.jobs[] | select(.conclusion == "success") | .name] as $passed
+              | (.jobs | length) == ($passed | length) and (["Build", "Check", "Generated apps", "Test"] - $passed) == []' > /dev/null || continue
+            echo "- Tree $tree already passed [Verify]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$run)." >> "$GITHUB_STEP_SUMMARY"
+            echo "verified=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          done <<< "$tested"
 
   verify:
     name: Verify
@@ -79,6 +80,8 @@ jobs:
   # Servers ship only after every app build ships, so a server never runs ahead of the apps that talk to it.
   publish:
     name: Packages
+    # The environment is limited to `main`: `.github/releasing.md`, Host setup.
+    environment: release
     needs: [plan, verify, app]
     if: ${{ !cancelled() && needs.plan.result == 'success' && (needs.plan.outputs.verified == 'true' || needs.verify.result == 'success') && (needs.app.result == 'success' || needs.app.result == 'skipped') }}
     runs-on: ubuntu-26.04
@@ -86,7 +89,7 @@ jobs:
       contents: read
       id-token: write
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup
         with: {tasks: 'true'}
 
@@ -95,55 +98,92 @@ jobs:
         run: |
           vp run build
 
-      # pnpm applies publishConfig while packing; npm uploads the README metadata that pnpm omits.
-      - name: Publish @deslop/coding-standards
-        working-directory: tools/coding-standards
+      # A package publishes when the tarball npm would receive changes, less its version; pnpm applies publishConfig while packing, npm uploads the README metadata pnpm omits.
+      - name: Publish changed packages
+        env:
+          RELEASE: 0.1.${{ github.run_number }}
         run: |
-          fingerprint=$({ find dist src/lib/css-properties.d.ts tsconfig.json README.md -type f | LC_ALL=C sort | xargs sha256sum; jq -S 'del(.version, .fingerprint)' package.json; } | sha256sum | cut -c1-64)
-          if ! published=$(npm view @deslop/coding-standards fingerprint 2> "$RUNNER_TEMP/view-coding-standards"); then
-            grep -q E404 "$RUNNER_TEMP/view-coding-standards" || { cat "$RUNNER_TEMP/view-coding-standards" >&2; exit 1; }
-            echo "::error::@deslop/coding-standards needs its first publish and trusted-publisher setup; see .github/releasing.md"
-            exit 1
-          elif [ "$published" != "$fingerprint" ]; then
-            npm pkg set "fingerprint=$fingerprint"
-            vp pm version "0.1.${{ github.run_number }}" -- --no-git-tag-version --no-git-checks
-            vp pm pack --pack-destination "$RUNNER_TEMP/package"
-            npm publish --loglevel=warn "$RUNNER_TEMP"/package/*.tgz
-            echo "- @deslop/coding-standards 0.1.${{ github.run_number }}" >> "$GITHUB_STEP_SUMMARY"
-          else
-            echo "- @deslop/coding-standards unchanged" >> "$GITHUB_STEP_SUMMARY"
-          fi
-
-      # An app publishes only when its shipped fingerprint changes; everything is bundled, so its published manifest drops dependencies, scripts and the Expo entry.
-      - name: Publish changed apps
-        run: |
-          shopt -s nullglob
-          apps=(apps/*/package.json)
-          apps=("${apps[@]%/package.json}")
-          apps=("${apps[@]#apps/}")
-          publish() {
-            cd "apps/$1"
-            # find fails on an app without bin/ after listing what exists.
-            fingerprint=$({ { find dist bin README.md -type f 2>/dev/null || true; } | LC_ALL=C sort | xargs sha256sum; jq -S 'del(.version)' package.json; } | sha256sum | cut -c1-64)
-            if ! published=$(npm view "@deslop/$1" fingerprint 2> "$RUNNER_TEMP/view-$1"); then
-              # Only a missing package is a first publish; any other failure, such as the registry being down, fails the app.
-              grep -q E404 "$RUNNER_TEMP/view-$1" || { cat "$RUNNER_TEMP/view-$1" >&2; return 1; }
-              echo "::warning::@deslop/$1 needs its first publish and trusted-publisher setup; see .github/releasing.md"
-              echo "- @deslop/$1 unpublished" > "$RUNNER_TEMP/summary-$1"
-            elif [ "$published" != "$fingerprint" ]; then
-              npm pkg set "version=0.1.${{ github.run_number }}" "fingerprint=$fingerprint"
-              npm pkg delete dependencies devDependencies scripts main
-              npm publish --loglevel=warn
-              echo "- @deslop/$1 0.1.${{ github.run_number }}" > "$RUNNER_TEMP/summary-$1"
-            else
-              echo "- @deslop/$1 unchanged" > "$RUNNER_TEMP/summary-$1"
-            fi
+          shopt -s nullglob inherit_errexit
+          view() {
+            local answer error
+            error=$(mktemp)
+            if answer=$(npm view "$@" --json 2> "$error"); then printf '%s\n' "$answer"; return; fi
+            # Only a missing package or version answers nothing; any other failure, such as the registry being down, fails the package.
+            grep -q E404 "$error" || { cat "$error" >&2; return 1; }
           }
+          pack() {
+            local into
+            into=$(mktemp -d)
+            vp pm pack --pack-destination "$into" > /dev/null
+            printf '%s\n' "$into"/*.tgz
+          }
+          fingerprint() {
+            local unpacked
+            unpacked=$(mktemp -d)
+            tar -xzf "$1" -C "$unpacked"
+            cd "$unpacked/package"
+            { find . -type f ! -path ./package.json -print0 | LC_ALL=C sort -z | xargs -0r sha256sum; jq -S 'del(.version, .fingerprint)' package.json; } | sha256sum | cut -c1-64
+          }
+          # An app bundles everything, so its manifest drops dependencies, scripts and the Expo entry; the standards CLI bundles its version, so it builds again after the bump.
+          publish() {
+            local name tarball fingerprint exact latest current summary
+            summary="$RUNNER_TEMP/summary-${1//\//-}"
+            cd "$1"
+            name=$(jq -r .name package.json)
+            if [[ $2 == app ]]; then npm pkg delete dependencies devDependencies scripts main; fi
+            tarball=$(pack)
+            fingerprint=$(fingerprint "$tarball")
+            # The version is the run's: a retry finds what an earlier attempt published instead of uploading it again.
+            exact=$(view "$name@$RELEASE" fingerprint)
+            if [[ -n $exact ]]; then
+              if [[ $(jq -r . <<< "$exact") != "$fingerprint" ]]; then
+                echo "::error::$name@$RELEASE already holds another build; publish this commit from a new run"
+                return 1
+              fi
+              echo "- $name $RELEASE, accepted in an earlier attempt" > "$summary"
+              return
+            fi
+            latest=$(view "$name" version fingerprint)
+            if [[ -z $latest ]]; then
+              echo "::warning::$name needs its first publish and trusted-publisher setup; see .github/releasing.md"
+              echo "- $name unpublished" > "$summary"
+              return
+            fi
+            current=$(jq -r .version <<< "$latest")
+            if [[ $(jq -r .fingerprint <<< "$latest") == "$fingerprint" ]]; then
+              echo "- $name unchanged" > "$summary"
+              return
+            # npm moves latest to whatever publishes, so a rerun of an older run would roll the servers back.
+            elif ((${current##*.} > ${RELEASE##*.})); then
+              echo "- $name $current is newer than this release and stays" > "$summary"
+              return
+            fi
+            npm pkg set "version=$RELEASE" "fingerprint=$fingerprint"
+            if [[ $2 == tool ]]; then vp run build >&2; fi
+            tarball=$(pack)
+            if ! npm publish --loglevel=warn "$tarball"; then
+              # npm can hold a version it accepted before listing it, and answers a second publish with E409.
+              exact=$(view "$name@$RELEASE" fingerprint)
+              if [[ -n $exact && $(jq -r . <<< "$exact") == "$fingerprint" ]]; then
+                echo "- $name $RELEASE, accepted in an earlier attempt" > "$summary"
+                return
+              fi
+              echo "::error::npm refused $name@$RELEASE; if an earlier attempt published it, rerun once npm view $name@$RELEASE answers"
+              return 1
+            fi
+            echo "- $name $RELEASE" > "$summary"
+          }
+          packages=(tools/coding-standards apps/*/package.json)
+          packages=("${packages[@]%/package.json}")
           pids=()
-          for app in "${apps[@]}"; do publish "$app" & pids+=($!); done
+          for package in "${packages[@]}"; do
+            kind=app
+            if [[ $package == tools/* ]]; then kind=tool; fi
+            publish "$package" "$kind" & pids+=($!)
+          done
           failed=0
           for pid in "${pids[@]}"; do wait "$pid" || failed=1; done
-          for app in "${apps[@]}"; do cat "$RUNNER_TEMP/summary-$app" 2>/dev/null >> "$GITHUB_STEP_SUMMARY" || echo "- @deslop/$app failed" >> "$GITHUB_STEP_SUMMARY"; done
+          for package in "${packages[@]}"; do cat "$RUNNER_TEMP/summary-${package//\//-}" 2>/dev/null >> "$GITHUB_STEP_SUMMARY" || echo "- $package failed" >> "$GITHUB_STEP_SUMMARY"; done
           exit "$failed"
 
   app:
@@ -161,4 +201,8 @@ jobs:
     uses: ./.github/workflows/release-app.yaml
     with:
       app: ${{ matrix.app }}
-    secrets: inherit
+    secrets:
+      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+      ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+      ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+      ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}

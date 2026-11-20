@@ -45,7 +45,7 @@ A refusal or failure skips only its step. A thread owns a worktree through `work
 | pnpm            | When no install runs, `pnpm store prune`.                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | Previews        | For gone worktrees, run Alchemy's `preview:destroy`, remove stopped `preview-*` units and their containers, and stop their surviving Dual `dualos-local-*-wt-<hash>` Postgres and OpenSandbox containers. `docker stop` preserves seed data; Dual's `settle` destroys it. Remove Deploy's `dual-preview.mp281x.xyz` exposure only when no preview answers behind it. Remove leftover `testcontainers-ryuk-*` and finished test runs' unnamed Postgres containers. |
 | Local branches  | In `~/deslop` and `~/dual`, `git branch -D` only for branches no worktree checks out, never the default branch.                                                                                                                                                                                                                                                                                                                                                   |
-| Remote branches | Use the block below only for merged or closed PRs whose head equals the branch tip, whose nonempty commit list is entirely the user's, and whose branch no thread uses. A failed query keeps the branch.                                                                                                                                                                                                                                                          |
+| Remote branches | Use the block below only for merged or closed PRs whose head equals the branch tip, whose nonempty commit list is entirely the user's, and whose branch no worktree of this clone checks out. A failed query keeps the branch.                                                                                                                                                                                                                                    |
 | Mac caches      | Keep active Claude, Node and Vite+ versions; use the Mac block below.                                                                                                                                                                                                                                                                                                                                                                                             |
 
 ```mermaid
@@ -70,7 +70,7 @@ for b in $(git for-each-ref --format='%(refname:lstrip=3)' refs/remotes/origin |
   fi
   case "$s" in MERGED|CLOSED|merged|closed) ;; *) continue ;; esac
   [ "$h" = "$(git rev-parse "origin/$b")" ] && [ "$a" = "$(git config user.email)" ] || continue
-  git worktree list --porcelain | grep -qx "branch refs/heads/$b" || git push -q origin --delete "$b"
+  git worktree list --porcelain | grep -qxF "branch refs/heads/$b" || git push -q origin --delete "$b"
 done
 ```
 
@@ -88,7 +88,7 @@ Every pass:
 - **Disk.** `df -h` and `df -i` per disk mount; `du -xhd1` under the home, `/var/lib` and `/tmp`; `sudo lsof -l +L1 -nP` for deleted-but-open files.
 - **Ports.** `ss -ltnp`: name each listener's unit or container. A container published on `0.0.0.0` other than Minecraft's 25565 is a fault.
 - **Units.** `systemctl --failed` and `systemctl --user --failed` empty.
-- **Agents.** `find ~/.claude/settings.json ~/.claude/agents/pair.md ~/.claude/skills ~/.codex/config.toml ~/.codex/instructions.md ~/.codex/rules/deny.rules ~/.codex/skills/* -maxdepth 0 ! -type l` prints only `~/.codex/skills/.system`; `find -L ~/.claude/skills ~/.codex/skills -maxdepth 1 -type l` prints nothing; `~/deslop` is clean on current `main`.
+- **Agents.** `find ~/.claude/settings.json ~/.claude/agents/pair.md ~/.claude/skills ~/.codex/config.toml ~/.codex/instructions.md ~/.codex/rules/deny.rules ~/.codex/skills/{*,.system} -maxdepth 0 ! -type l` prints only `~/.codex/skills/.system`; `find -L ~/.claude/skills ~/.codex/skills -maxdepth 1 -type l` prints nothing; `~/deslop` is clean on current `main`.
 - **T3.** `t3 --version` equals `activeVersion`; `t3 doctor --base-dir ~/.t3 --dry-run` prints "Nothing to repair"; `t3 connect status` ends "✓ Other devices can reach this machine".
 - **sshd.** `sudo sshd -T` shows `usepam yes`, `passwordauthentication no`, `permitrootlogin no`.
 - **VPN.** `git -C ~/dual ls-remote -q origin HEAD` succeeds; otherwise reconnect by Dual's **VPN**.
@@ -140,6 +140,7 @@ r=~/deslop
 mkdir -p ~/.claude/agents ~/.codex/rules ~/.codex/skills
 ln -sfn $r/.claude/settings.json ~/.claude/settings.json
 ln -sfn $r/.claude/agents/pair.md ~/.claude/agents/pair.md
+[ -L ~/.claude/skills ] || mv ~/.claude/skills ~/.claude/skills.old 2>/dev/null
 ln -sfn $r/.claude/skills ~/.claude/skills
 find ~/.codex/skills -maxdepth 1 -type l -delete
 ln -sfn ~/.claude/skills/* ~/.codex/skills/
@@ -200,7 +201,7 @@ printf '%s\n' '[D-BUS Service]' 'Name=org.freedesktop.secrets' 'Exec=/bin/false'
   > ~/.local/share/dbus-1/services/org.freedesktop.secrets.service
 busctl --user call org.freedesktop.DBus / org.freedesktop.DBus ReloadConfig
 systemctl --user daemon-reload && systemctl --user enable --now secret-service.service
-claude mcp add --transport http --scope user gateway https://gateway.mp281x.xyz/mcp  # or codex; Auth names the worker's tailnet owner, so there is no login
+claude mcp add --transport http --scope user gateway https://gateway.mp281x.xyz/mcp  # Codex declares Gateway in its checked-in config; Auth names the worker's tailnet owner, so there is no login
 ```
 
 ### AWS CLI

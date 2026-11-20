@@ -5,11 +5,13 @@ on:
   workflow_call:
     inputs:
       app: {type: string, required: true}
+    secrets:
+      EXPO_TOKEN: {required: true}
 
 env:
+  APP: ${{ inputs.app }}
   APP_VARIANT: development
   DESLOP_DOMAIN: ${{ vars.DESLOP_DOMAIN }}
-  EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
 
 # bash -eo pipefail: a failed command inside a pipeline or an assignment fails its step.
 defaults:
@@ -25,18 +27,32 @@ jobs:
       artifact: ${{ steps.fingerprint.outputs.artifact }}
       built: ${{ steps.fingerprint.outputs.built }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup
         with: {eas: 'true'}
+      # A build is reused only when this repository's Simulator workflow, unchanged from this commit's, made it on a push; the summary names the commit it came from.
       - name: Find a build for this fingerprint
         id: fingerprint
         working-directory: apps/${{ inputs.app }}
         env:
           GH_TOKEN: ${{ github.token }}
+          # `eas fingerprint:generate` logs in before it computes anything.
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
         run: |
           hash=$(eas fingerprint:generate --platform ios --build-profile simulator --json --non-interactive | jq -r .hash)
-          artifact="${{ inputs.app }}-simulator-$hash"
-          built=$(gh api "repos/$GITHUB_REPOSITORY/actions/artifacts?name=$artifact" --jq '[.artifacts[] | select(.expired | not)] | length > 0')
+          artifact="$APP-simulator-$hash"
+          candidates=$(gh api "repos/$GITHUB_REPOSITORY/actions/artifacts?name=$artifact&per_page=100" --jq '.artifacts[] | select(.expired | not) | "\(.workflow_run.id) \(.workflow_run.head_sha)"')
+          built=false
+          while read -r run commit; do
+            [[ -n $run ]] || continue
+            producer=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run" --jq '[.path, .event, .head_repository.full_name] | join(" ")')
+            [[ $producer == ".github/workflows/simulator.yaml push $GITHUB_REPOSITORY" ]] || continue
+            git cat-file -e "$commit^{commit}" 2> /dev/null || git fetch --no-tags --depth=1 origin "$commit" || continue
+            git -C "$GITHUB_WORKSPACE" diff --quiet "$commit" HEAD -- .github/workflows/simulator.yaml .github/workflows/simulator-app.yaml .github/actions/setup || continue
+            built=true
+            echo "- $APP reuses the Simulator build of $commit from $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$run" >> "$GITHUB_STEP_SUMMARY"
+            break
+          done <<< "$candidates"
           echo "artifact=$artifact" >> "$GITHUB_OUTPUT"
           echo "built=$built" >> "$GITHUB_OUTPUT"
 
@@ -51,14 +67,16 @@ jobs:
       # The Simulator host is Apple silicon; the default universal binary compiles every file twice.
       GYM_XCARGS: ARCHS=arm64
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup
         with: {eas: 'true', ios: 'true'}
       - name: Build the Simulator app
         working-directory: apps/${{ inputs.app }}
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
         run: eas build --local --profile simulator --platform ios --non-interactive --output "$RUNNER_TEMP/simulator.tar.gz"
       - name: Upload the Simulator app
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ${{ needs.fingerprint.outputs.artifact }}
           path: ${{ runner.temp }}/simulator.tar.gz

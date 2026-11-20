@@ -14,10 +14,10 @@ gh stack push                        # later rounds
 gh stack sync --prune                # after a merge below
 ```
 
-GitLab stacks act on the stack selected in this worktree: one commit per diff on its own branch, its first message line the MR title (`Draft: ` opens a draft). Every MR comes from `sync`, which never edits an existing MR. `infer` needs a TTY and an editor; `glab stack create` cannot run in a worktree.
+GitLab stacks act on the stack selected in this worktree: one commit per diff on its own branch, its first message line the MR title (`Draft: ` opens a draft). Every MR comes from `sync`, which never edits an existing MR. `glab stack create` cannot run in a worktree.
 
 ```bash
-script -qec "GLAB_EDITOR='sh -c \"git rev-list --reverse origin/<default>..HEAD > \\\$1\" -' glab stack infer --name <stack> origin/<default>..HEAD" /dev/null
+glab stack infer --all --name <stack> origin/<default>..HEAD
 git add -A && glab stack save -m 'Draft: <title>'    # a new layer; `amend` folds into the checked-out one
 glab stack sync --skip-push --update-base            # before the push, and after a merge below
 glab stack sync                                      # push the stack, open missing MRs
