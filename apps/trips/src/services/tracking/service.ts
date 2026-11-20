@@ -1,7 +1,6 @@
+import type {Cause} from 'effect'
 import {
 	Array,
-	Cause,
-	Config,
 	Context,
 	DateTime,
 	Duration,
@@ -12,7 +11,6 @@ import {
 	Layer,
 	Option,
 	Record,
-	Redacted,
 	Ref,
 	Schedule,
 	Schema,
@@ -23,16 +21,17 @@ import {
 } from 'effect'
 
 import type {HttpClientError} from 'effect/http'
-import {HttpClient, HttpClientRequest, HttpClientResponse} from 'effect/http'
 import {Migrator, SqlClient, SqlSchema} from 'effect/sql'
 
+import {FlightAware} from './lib/flightaware.ts'
+import {ViaggiaTreno} from './lib/viaggiatreno.ts'
 import {migrations} from './migrations.ts'
 
 import type {BookingId} from '#services/bookings/schema.ts'
 import {Booking, BookingsError, Flight, Train, TripNumber} from '#services/bookings/schema.ts'
 import {Bookings} from '#services/bookings/service.ts'
-import {checkEvery, flightTracking, isDue, pickFlight, trainTracking} from '#services/tracking/lib/utils.ts'
-import {FaFlights, Lookups, VtRun, VtStatus} from '#services/tracking/schema.ts'
+import {checkEvery, flightTracking, isDue, pickFlight, sameLookup, trainTracking} from '#services/tracking/lib/utils.ts'
+import {Lookups, VtRun, VtStatus} from '#services/tracking/schema.ts'
 
 // FlightAware's personal plan includes $5 a month, a thousand lookups.
 const MONTHLY_LOOKUPS = 1000
@@ -47,8 +46,8 @@ export class Tracking extends Context.Service<Tracking>()('@deslop/trips/service
 	make: Effect.gen(function* () {
 		const sql = yield* SqlClient.SqlClient
 		const bookings = yield* Bookings
-		const client = yield* HttpClient.HttpClient
-		const key = yield* Config.option(Config.Redacted('AEROAPI_KEY'))
+		const flightAware = yield* FlightAware
+		const trains = yield* ViaggiaTreno
 
 		const findLookups = SqlSchema.findOneOption({
 			Request: Schema.String,
@@ -94,11 +93,11 @@ export class Tracking extends Context.Service<Tracking>()('@deslop/trips/service
 
 		// A flight holds its turn through the request and a six-second gap; trains never acquire it.
 		const flightTurns = yield* Semaphore.make(1)
-		const flight = Effect.fnUntraced(function* (booking: Flight, now: DateTime.Utc) {
+		const lookup = Effect.fnUntraced(function* (booking: Flight, now: DateTime.Utc) {
 			const number = yield* asBookingsError('This flight number is invalid. Add its ticket again.')(
 				Schema.decodeEffect(TripNumber)(booking.number)
 			)
-			const apiKey = yield* Option.match(key, {
+			const flights = yield* Option.match(flightAware.flights, {
 				onNone: () => BookingsError.make({message: 'The server has no FlightAware key.'}),
 				onSome: Effect.succeed
 			})
@@ -106,30 +105,9 @@ export class Tracking extends Context.Service<Tracking>()('@deslop/trips/service
 				return yield* BookingsError.make({message: 'FlightAware is not answering; Trips asks again in a few minutes.'})
 			}
 			yield* spend
-			const answer = yield* pipe(
-				HttpClientRequest.get(
-					`https://aeroapi.flightaware.com/aeroapi/flights/${encodeURIComponent(`${booking.airlineCode}${number}`)}`,
-					{
-						headers: {'x-apikey': Redacted.value(apiKey)},
-						urlParams: {
-							// FlightAware searches at most two days ahead.
-							end: DateTime.formatIso(
-								pipe(
-									booking.departs,
-									DateTime.addDuration(Duration.hours(12)),
-									DateTime.min(DateTime.addDuration(now, Duration.hours(47)))
-								)
-							),
-							ident_type: 'designator',
-							max_pages: '1',
-							start: DateTime.formatIso(DateTime.subtractDuration(booking.departs, Duration.hours(12)))
-						}
-					}
-				),
-				client.execute,
+			return yield* pipe(
+				flights(`${booking.airlineCode}${number}`, booking.departs, now),
 				Effect.ensuring(Effect.sleep('6 seconds')),
-				Effect.flatMap(HttpClientResponse.filterStatusOk),
-				Effect.flatMap(HttpClientResponse.schemaBodyJson(FaFlights)),
 				Effect.timeout('20 seconds'),
 				Effect.tapError(() =>
 					Effect.flatMap(DateTime.now, failedAt =>
@@ -138,32 +116,10 @@ export class Tracking extends Context.Service<Tracking>()('@deslop/trips/service
 				),
 				asBookingsError(`FlightAware did not answer for ${booking.airlineCode} ${booking.number}.`)
 			)
-			return Option.map(pickFlight(answer.flights, booking), found => flightTracking(found, now, booking.live))
 		}, Semaphore.withPermit(flightTurns))
 
 		function viaggiaTreno<S extends Schema.Top>(path: string, schema: S, booking: Train) {
-			return pipe(
-				// ViaggiaTreno answers only over plain HTTP, and its CDN refuses a client without a browser's User-Agent.
-				client.get(`http://www.viaggiatreno.it/infomobilita/resteasy/viaggiatreno/${path}`, {
-					headers: {
-						'user-agent':
-							'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36'
-					}
-				}),
-				Effect.flatMap(HttpClientResponse.filterStatusOk),
-				Effect.flatMap(response => {
-					// No content means the number does not run today.
-					if (response.status === 204) return Effect.succeedNone
-					return Effect.asSome(HttpClientResponse.schemaBodyJson(schema)(response))
-				}),
-				Effect.timeout('15 seconds'),
-				Effect.retry({
-					schedule: Schedule.exponential('1 second'),
-					times: 2,
-					while: error => Cause.isTimeoutError(error) || HttpClient.isTransientError(error)
-				}),
-				asBookingsError(`ViaggiaTreno did not answer for train ${booking.number}.`)
-			)
+			return asBookingsError(`ViaggiaTreno did not answer for train ${booking.number}.`)(trains.get(path, schema))
 		}
 
 		const train = Effect.fnUntraced(function* (booking: Train, now: DateTime.Utc) {
@@ -198,18 +154,27 @@ export class Tracking extends Context.Service<Tracking>()('@deslop/trips/service
 		// A failed or unmatched lookup still counts as an attempt, so the schedule waits before asking again; only a real answer is saved.
 		const attempts = yield* Ref.make(Record.empty<BookingId, DateTime.Utc>())
 
-		const observe = Effect.fnUntraced(function* (booking: Booking, now: DateTime.Utc) {
+		const observe = Effect.fnUntraced(function* (booking: Booking, riders: readonly Flight[], now: DateTime.Utc) {
 			if (Booking.isAnyOf(['stay'])(booking)) return
-			// A booking saved again meanwhile may name another service, so the answer replaces only the booking it was read for.
+			// A booking saved again meanwhile may name another service, so the answer replaces only the booking it was read for; each ticket of the flight keeps its own report.
 			if (Booking.isAnyOf(['flight'])(booking)) {
-				return yield* Option.match(yield* flight(booking, now), {
-					onNone: () => Effect.void,
-					onSome: live =>
-						bookings.replace(
-							booking,
-							Flight.make({...Struct.pick(booking, Struct.keys(Flight.fields)), live: Option.some(live)})
-						)
-				})
+				const answer = yield* lookup(booking, now)
+				return yield* Effect.forEach(
+					[booking, ...riders],
+					item =>
+						Option.match(pickFlight(answer.flights, item), {
+							onNone: () => Effect.void,
+							onSome: found =>
+								bookings.replace(
+									item,
+									Flight.make({
+										...Struct.pick(item, Struct.keys(Flight.fields)),
+										live: Option.some(flightTracking(found, now, item.live))
+									})
+								)
+						}),
+					{concurrency: 1, discard: true}
+				)
 			}
 			return yield* Option.match(yield* train(booking, now), {
 				onNone: () => Effect.void,
@@ -233,18 +198,50 @@ export class Tracking extends Context.Service<Tracking>()('@deslop/trips/service
 				Effect.gen(function* () {
 					const now = yield* DateTime.now
 					const attempted = Record.get(yield* Ref.get(attempts), id)
-					const busy = HashSet.has(yield* Ref.get(running), id)
-					const booking = Option.filter(yield* bookings.find(id), item => !busy && admits(item, now, attempted))
-					if (Option.isSome(booking)) {
-						yield* Ref.update(attempts, Record.set(id, now))
-						yield* Ref.update(running, HashSet.add(id))
-					}
-					return Option.map(booking, item => ({booking: item, now}))
+					const busy = yield* Ref.get(running)
+					const booking = Option.filter(
+						yield* bookings.find(id),
+						item => !HashSet.has(busy, id) && admits(item, now, attempted)
+					)
+					// The other tracked tickets of the flight ride on its lookup, so FlightAware is asked once however many travellers booked it, and their checks fall into step.
+					const riders = yield* pipe(
+						booking,
+						Option.filter(Booking.isAnyOf(['flight'])),
+						Option.match({
+							onNone: () => Effect.succeed(Array.empty<Flight>()),
+							onSome: flight =>
+								Effect.map(
+									bookings.list,
+									Array.filter(
+										(other): other is Flight =>
+											Booking.isAnyOf(['flight'])(other) &&
+											other.id !== flight.id &&
+											!HashSet.has(busy, other.id) &&
+											sameLookup(other, flight) &&
+											Option.isSome(checkEvery(other, now))
+									)
+								)
+						})
+					)
+					const ids = HashSet.fromIterable(Array.map([...Option.toArray(booking), ...riders], item => item.id))
+					yield* Ref.update(
+						attempts,
+						Record.union(
+							Record.fromIterableWith(ids, item => [item, now]),
+							(_, latest) => latest
+						)
+					)
+					yield* Ref.update(running, HashSet.union(ids))
+					return Option.map(booking, item => ({booking: item, ids, now, riders}))
 				})
 			)
 			yield* Option.match(admitted, {
 				onNone: () => Effect.void,
-				onSome: ready => Effect.ensuring(observe(ready.booking, ready.now), Ref.update(running, HashSet.remove(id)))
+				onSome: ready =>
+					Effect.ensuring(
+						observe(ready.booking, ready.riders, ready.now),
+						Ref.update(running, HashSet.difference(ready.ids))
+					)
 			})
 		})
 
@@ -311,3 +308,6 @@ export class Tracking extends Context.Service<Tracking>()('@deslop/trips/service
 
 	static readonly layer = Layer.provide(Layer.effect(this, this.make), this.migrations)
 }
+
+// FlightAware and ViaggiaTreno are the tracking's own internals; tests provide stand-ins to `Tracking.layer` instead.
+export const layerTracking = Layer.provide(Tracking.layer, Layer.merge(FlightAware.layer, ViaggiaTreno.layer))
