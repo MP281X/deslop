@@ -3,24 +3,22 @@ import {Array, Cause, Context, DateTime, Duration, Effect, Layer, Option, Order,
 import {HttpClient, HttpClientRequest, HttpClientResponse} from 'effect/http'
 
 import {Places, stationName} from './places.ts'
-import {stationNamesMatch, instantOf} from './utils.ts'
+import {bySurety, instantOf, segmentOf} from './utils.ts'
+import type {Surety} from './utils.ts'
 
 import {BookedPlace, BookingsError, TransitRuns, TransitTrip, TrainStop} from '#services/bookings/schema.ts'
-import type {ExtractedItem, TransitStop} from '#services/bookings/schema.ts'
+import type {ExtractedItem, Place, TransitStop} from '#services/bookings/schema.ts'
 
-function segmentOf(stops: readonly TransitStop[], from: string, to: string, code: string) {
-	return pipe(
-		stops,
-		Array.findFirstIndex(stop => stop.stopId === code || stationNamesMatch(from, stop.name)),
-		Option.flatMap(first =>
-			pipe(
-				stops,
-				Array.findFirstIndex((stop, index) => index > first && stationNamesMatch(to, stop.name)),
-				Option.map(last => pipe(stops, Array.drop(first), Array.take(last - first + 1)))
-			)
-		)
-	)
+type RunCandidate = Surety & {
+	readonly gap: Duration.Duration
+	readonly run: TransitRuns['stopTimes'][number]
+	readonly stops: readonly TransitStop[]
 }
+
+const surestRun = Order.combine(
+	bySurety,
+	Order.mapInput(Duration.Order, (candidate: RunCandidate) => candidate.gap)
+)
 
 function place(stop: TransitStop) {
 	return BookedPlace.make({
@@ -56,6 +54,13 @@ export class Timetable extends Context.Service<Timetable>()('@deslop/trips/servi
 					Effect.gen(function* () {
 						const station = yield* Effect.fromOption(yield* places.station(item.from))
 						const code = yield* Effect.fromOption(station.code)
+						// Only the ranking's exact stop id needs this lookup; without it the run's stops still rank by name.
+						const destination = yield* Effect.catch(places.station(item.to), cause =>
+							Effect.as(
+								Effect.logWarning('The destination station could not be looked up', cause),
+								Option.none<Place>()
+							)
+						)
 						// A time with an offset needs no zone; a wall time reads in the station's.
 						const at = yield* Option.match(instantOf(item.departure, station.timeZone), {
 							onNone: () => BookingsError.make({message: `The time ${item.departure} could not be read.`}),
@@ -66,7 +71,7 @@ export class Timetable extends Context.Service<Timetable>()('@deslop/trips/servi
 							{n: 1000, stopId: code, time: DateTime.formatIso(DateTime.subtractDuration(at, Duration.hours(3)))},
 							TransitRuns
 						)
-						// The runs of that number nearest the booked time, of which the first that serves both booked stations is the train.
+						// The runs of that number nearest the booked time; of those that serve both booked stations, the one whose stops match surest, then the nearest, is the train.
 						const matches = yield* pipe(
 							runs.stopTimes,
 							Array.filter(
@@ -95,26 +100,38 @@ export class Timetable extends Context.Service<Timetable>()('@deslop/trips/servi
 													Array.flatMap(leg => [leg.from, ...leg.intermediateStops, leg.to]),
 													Array.dedupeAdjacentWith((left, right) => left.stopId === right.stopId)
 												),
-												item.from,
-												item.to,
-												code
+												{code: Option.some(code), name: item.from},
+												{code: Option.flatMap(destination, found => found.code), name: item.to}
 											),
-											segment => ({run, segment})
+											segment => ({
+												gap: Duration.abs(DateTime.distance(run.place.departure, at)),
+												rank: segment.rank,
+												run,
+												stops: segment.stops
+											})
 										)
 									),
 								{concurrency: 1}
 							)
 						)
-						const found = yield* Effect.fromOption(Array.head(Array.getSomes(matches)))
-						const from = yield* Effect.fromOption(Array.head(found.segment))
-						const to = yield* Effect.fromOption(Array.last(found.segment))
+						const found = yield* pipe(
+							matches,
+							Array.getSomes,
+							Array.match({
+								onEmpty: () => Option.none<RunCandidate>(),
+								onNonEmpty: viable => Option.some(Array.min(viable, surestRun))
+							}),
+							Effect.fromOption
+						)
+						const from = yield* Effect.fromOption(Array.head(found.stops))
+						const to = yield* Effect.fromOption(Array.last(found.stops))
 						return {
 							arrives: yield* Effect.fromOption(to.arrival),
 							departs: yield* Effect.fromOption(from.departure),
 							from: place(from),
 							operator: found.run.agencyName,
 							service: found.run.routeShortName,
-							stops: Array.map(found.segment, stop =>
+							stops: Array.map(found.stops, stop =>
 								TrainStop.make({
 									arrives: stop.arrival,
 									code: Option.some(stop.stopId),

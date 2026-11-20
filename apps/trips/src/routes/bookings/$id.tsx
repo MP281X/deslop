@@ -35,7 +35,7 @@ import {StatusDot} from '@deslop/components-mobile/blocks/status-dot'
 import {colors, space, text} from '@deslop/components-mobile/theme'
 import {Empty, EmptyMedia} from '@deslop/components-mobile/ui/empty'
 
-import {nowAtom, refreshAtom, removal, startAtom} from '#lib/bookings.ts'
+import {journeyKey, nowAtom, refreshAtom, removal, startAtom} from '#lib/bookings.ts'
 import {mapsAtom, placeLine, ridesOf, uberAtom} from '#lib/rides.ts'
 import {primary} from '#lib/session.ts'
 import {currentOf, dayAt, problemOf, statusOf, tones} from '#lib/status.ts'
@@ -470,7 +470,7 @@ export function BookingRoute(props: {bookings: BookingList; id: Booking['id']; o
 										systemImage="trash"
 										role="destructive"
 										onPress={() => {
-											remove(props.id)
+											remove(journeyKey(journey))
 											props.onClose()
 										}}
 									/>

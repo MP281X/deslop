@@ -98,6 +98,7 @@ export class Push extends Context.Service<Push>()('@deslop/opm/services/push/ser
 								)
 								return yield* ApnsAnswer.match(answer, {
 									Accepted: () => finish,
+									ChannelGone: () => finish,
 									DeadToken: () => Effect.as(asPushSaveError(forgetDevice(device)), true),
 									Refused: () => finish,
 									Retry: () => Effect.succeed(false),

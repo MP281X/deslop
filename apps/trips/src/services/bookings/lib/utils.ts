@@ -9,6 +9,7 @@ import {
 	Number,
 	Option,
 	Order,
+	Result,
 	String,
 	Struct,
 	pipe
@@ -25,7 +26,8 @@ import type {
 	Tone,
 	TrainPhase,
 	TrainStop,
-	TrainTracking
+	TrainTracking,
+	TransitStop
 } from '#services/bookings/schema.ts'
 
 const OFFSET = /(?:Z|[+-]\d{2}:?\d{2})$/u
@@ -237,8 +239,13 @@ function near(left: DateTime.Utc, right: DateTime.Utc) {
 	return pipe(DateTime.distance(left, right), Duration.abs, Duration.isLessThan(Duration.hours(20)))
 }
 
+// A code as printed, so "abc123 " and "ABC123" are the same one.
+function codeOf(booking: Booking) {
+	return Option.map(booking.confirmation, code => pipe(code, String.trim, String.toUpperCase))
+}
+
 function sameConfirmation(left: Booking, right: Booking) {
-	return Option.exists(left.confirmation, code => Option.contains(right.confirmation, code))
+	return Option.exists(codeOf(left), code => Option.contains(codeOf(right), code))
 }
 
 // A field the newer ticket leaves out keeps what the older one printed.
@@ -246,6 +253,7 @@ function newer<A>(existing: Option.Option<A>, incoming: Option.Option<A>) {
 	return Option.orElse(incoming, () => existing)
 }
 
+// A station's name as words, so an exact name matches whatever its case, accents and punctuation.
 function normalizedStation(name: string) {
 	return pipe(
 		name,
@@ -261,6 +269,49 @@ function sameStation(left: Train['to'], right: Train['from']) {
 	return (
 		Option.exists(left.code, code => Option.contains(right.code, code)) ||
 		normalizedStation(left.name) === normalizedStation(right.name)
+	)
+}
+
+// A booked station: the stop id Transitous gave its name, when it found one, and the name as the ticket prints it.
+export type Wanted = {code: Option.Option<string>; name: string}
+
+// How surely a stop is the booked station: its stop id, then its exact name, then a looser name, under which Milano Rogoredo and Milano Centrale are both Milano.
+function rankOf(stop: TransitStop, wanted: Wanted) {
+	if (Option.contains(wanted.code, stop.stopId)) return Option.some(0)
+	if (normalizedStation(stop.name) === normalizedStation(wanted.name)) return Option.some(1)
+	if (stationNamesMatch(wanted.name, stop.name)) return Option.some(2)
+	return Option.none()
+}
+
+export type Surety = {readonly rank: number}
+type StopCandidate = Surety & {readonly index: number}
+
+export const bySurety = Order.mapInput(Number.Order, (candidate: Surety) => candidate.rank)
+const surestStop = Order.combine(
+	bySurety,
+	Order.mapInput(Number.Order, (candidate: StopCandidate) => candidate.index)
+)
+
+// The surest stop for the station from `after` on, the earliest among equally sure ones.
+function bestStop(stops: readonly TransitStop[], wanted: Wanted, after: number) {
+	const found = Array.filterMap(stops, (stop, index) =>
+		pipe(
+			rankOf(stop, wanted),
+			Option.filter(() => index >= after),
+			Option.match({onNone: () => Result.failVoid, onSome: rank => Result.succeed({index, rank})})
+		)
+	)
+	if (!Array.isReadonlyArrayNonEmpty(found)) return Option.none()
+	return Option.some(Array.min(found, surestStop))
+}
+
+// The stretch of one run between the booked stations, each end at its surest stop, ranked so that a run whose stops match exactly wins over one that matches loosely.
+export function segmentOf(stops: readonly TransitStop[], from: Wanted, to: Wanted) {
+	return Option.flatMap(bestStop(stops, from, 0), first =>
+		Option.map(bestStop(stops, to, first.index + 1), last => ({
+			rank: first.rank + last.rank,
+			stops: pipe(stops, Array.drop(first.index), Array.take(last.index - first.index + 1))
+		}))
 	)
 }
 
@@ -287,6 +338,8 @@ function sameTrain(existing: Train, incoming: Train) {
 }
 
 function sameReservation(existing: Booking, incoming: Booking) {
+	// Two codes that both exist and differ are two travellers, never one booking.
+	if (Option.exists(codeOf(existing), code => Option.exists(codeOf(incoming), other => other !== code))) return false
 	if (Booking.isAnyOf(['flight'])(existing) && Booking.isAnyOf(['flight'])(incoming)) {
 		return sameFlight(existing, incoming)
 	}

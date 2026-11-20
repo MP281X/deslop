@@ -35,6 +35,10 @@ export const BookingSource = Schema.TaggedUnion({
 export type BookingId = typeof BookingId.Type
 export const BookingId = pipe(Schema.String, Schema.check(Schema.isUUID()), Schema.brand('BookingId'))
 
+export type BookingIds = typeof BookingIds.Type
+// The legs of one journey as the phone showed them; a delete removes these and no others.
+export const BookingIds = Schema.NonEmptyArray(BookingId).check(Schema.isMaxLength(50))
+
 // Coordinates and the time zone never come from the ticket.
 export type Place = typeof Place.Type
 export const Place = Schema.Struct({
@@ -94,6 +98,7 @@ export class Flight extends Model.Class<Flight>('Flight')({
 	airlineCode: Schema.String,
 	arrives: Schema.DateTimeUtcFromMillis,
 	boardingAt: Model.FieldOption(Schema.DateTimeUtcFromMillis),
+	// fallow-ignore-next-line code-duplication -- A flight and a train each spell out their own columns; the fields they share are shape, not logic.
 	boardingGroup: Model.FieldOption(Schema.String),
 	confirmation: Model.FieldOption(Schema.String),
 	departs: Schema.DateTimeUtcFromMillis,

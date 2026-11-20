@@ -39,14 +39,17 @@ export function deviceHeaders(
 
 const answerFields = {channel: Schema.Option(Schema.String), reason: Schema.Option(Schema.String), status: Schema.Int}
 export type ApnsAnswer = typeof ApnsAnswer.Type
-// `TooLarge` is the payload's fault, never the token's: no device or channel is retired for it.
+// `TooLarge` is the payload's fault, never the token's: no device or channel is retired for it. `ChannelGone` is Apple saying a broadcast channel no longer exists: nothing more is owed for it, and nothing more is sent to it.
 export const ApnsAnswer = Schema.TaggedUnion({
 	Accepted: answerFields,
+	ChannelGone: answerFields,
 	DeadToken: answerFields,
 	Refused: answerFields,
 	Retry: answerFields,
 	TooLarge: answerFields
 })
+
+export class ApnsError extends Schema.TaggedError<ApnsError>()('ApnsError', {message: Schema.String}) {}
 
 // Apple's notification body limit is 4096 bytes; a larger one is answered without asking Apple.
 export function tooLargeAnswer(bytes: number) {
@@ -64,6 +67,7 @@ export function apnsAnswer(answer: {channel: Option.Option<string>; reason: Opti
 	if (answer.status === 413 || Option.contains(answer.reason, 'PayloadTooLarge')) {
 		return ApnsAnswer.cases.TooLarge.make(answer)
 	}
+	if (Option.contains(answer.reason, 'ChannelNotRegistered')) return ApnsAnswer.cases.ChannelGone.make(answer)
 	// An expired provider token is our signature's fault: the token is renewed and the device kept.
 	if (Option.contains(answer.reason, 'ExpiredProviderToken')) return ApnsAnswer.cases.Retry.make(answer)
 	if (

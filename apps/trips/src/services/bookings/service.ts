@@ -28,8 +28,8 @@ import {Places} from './lib/places.ts'
 import {Timetable} from './lib/timetable.ts'
 import {migrations} from './migrations.ts'
 
-import {byStart, instantOf, journeysOf, upsert} from '#services/bookings/lib/utils.ts'
-import type {Booking, BookingSource, ExtractedItem, LocalTime} from '#services/bookings/schema.ts'
+import {byStart, instantOf, upsert} from '#services/bookings/lib/utils.ts'
+import type {Booking, BookingIds, BookingSource, ExtractedItem, LocalTime} from '#services/bookings/schema.ts'
 import {BookingId, BookingsError, Flight, Stay, Train} from '#services/bookings/schema.ts'
 
 declare module 'effect/reactivity/Reactivity' {
@@ -233,28 +233,16 @@ export class Bookings extends Context.Service<Bookings>()('@deslop/trips/service
 			find: Effect.fn('Bookings.find')((id: BookingId) => asBookingsError(find(id))),
 			list: pipe(listAll, asBookingsError, Effect.withSpan('Bookings.list')),
 			passText,
-			remove: Effect.fn('Bookings.remove')(function* (id: BookingId) {
-				yield* Effect.annotateCurrentSpan('bookingId', id)
+			// Only the legs the phone showed: a journey is inferred, and a ticket shared since may have joined it.
+			remove: Effect.fn('Bookings.remove')(function* (ids: BookingIds) {
+				yield* Effect.annotateCurrentSpan('bookingIds', ids)
 				yield* pipe(
-					Effect.gen(function* () {
-						yield* pipe(
-							journeysOf(yield* listAll),
-							Array.findFirst(legs => Array.some(legs, leg => leg.id === id)),
-							Option.match({
-								onNone: () => Effect.void,
-								onSome: journey =>
-									Effect.forEach(
-										journey,
-										leg =>
-											Effect.all([flights.delete(leg.id), trains.delete(leg.id), stays.delete(leg.id)], {
-												concurrency: 1,
-												discard: true
-											}),
-										{concurrency: 1, discard: true}
-									)
-							})
-						)
-					}),
+					Effect.forEach(
+						ids,
+						id =>
+							Effect.all([flights.delete(id), trains.delete(id), stays.delete(id)], {concurrency: 1, discard: true}),
+						{concurrency: 1, discard: true}
+					),
 					Reactivity.mutation(['bookings']),
 					sql.withTransaction,
 					Effect.mapError(cause =>
