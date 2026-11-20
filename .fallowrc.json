@@ -79,8 +79,6 @@
 	"ignoreDependencies": [
 		// Peer-only: one scheduler resolution keeps app and shared atom hooks on the same registry context.
 		"scheduler",
-		// Vite+ 1.7 dropped it, but `effect-tsgo patch --oxlint` patches it before it patches Oxlint's binding and config types.
-		"oxlint-tsgolint",
 		// The runtime imports these; each app keeps them so autolinking includes their native modules.
 		"expo-secure-store",
 		"expo-updates",

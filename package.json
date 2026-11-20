@@ -14,7 +14,6 @@
 		"@types/react-dom": "latest",
 		"effect": "latest",
 		"fallow": "latest",
-		"oxlint-tsgolint": "latest",
 		"scheduler": "^0.27.0",
 		"tsrs": "latest",
 		"vite": "catalog:",
