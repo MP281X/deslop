@@ -61,6 +61,7 @@ import {
 	Post,
 	Series
 } from '#services/chapters/schema.ts'
+import type {ChapterPushError} from '#services/push/schema.ts'
 import {Push} from '#services/push/service.ts'
 
 // Anonymous search and JSON are refused. Recent-post Atom still answers; a release can appear on either subreddit only.
@@ -125,7 +126,7 @@ function postsOf(feed: string) {
 	)
 }
 
-function asStorageChaptersError(cause: SqlError.SqlError | Schema.SchemaError) {
+function asStorageChaptersError(cause: SqlError.SqlError | Schema.SchemaError | ChapterPushError) {
 	return ChaptersError.make({cause, message: 'The chapter storage failed.'})
 }
 
@@ -347,7 +348,16 @@ export class Chapters extends Context.Service<Chapters>()('@deslop/opm/services/
 				)
 			)
 			yield* pipe(
-				Effect.forEach([...round.fresh, ...round.backfilled], insertChapter, {concurrency: 1, discard: true}),
+				// A chapter still to be announced is for the devices registered as it is saved.
+				Effect.forEach(
+					[...round.fresh, ...round.backfilled],
+					chapter =>
+						Effect.andThen(
+							insertChapter(chapter),
+							Boolean.match(chapter.notified, {onFalse: () => push.takeRecipients(chapter), onTrue: () => Effect.void})
+						),
+					{concurrency: 1, discard: true}
+				),
 				Effect.andThen(
 					Effect.forEach(
 						round.revisions,

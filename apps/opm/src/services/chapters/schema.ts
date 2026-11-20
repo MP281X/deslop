@@ -37,7 +37,7 @@ const serverOnly = Model.FieldOnly(['select', 'insert', 'update'])
 
 // One row of `chapters`: catalogue and provenance. Reading progress lives in its own table.
 export class Chapter extends Model.Class<Chapter>('Chapter')({
-	// Set once every registered iPhone has been told, or when the chapter arrived before anyone could be.
+	// Set once every iPhone registered when the chapter was saved has been told, or when the chapter arrived before anyone could be.
 	notified: serverOnly(Schema.BooleanFromBit),
 	// Extras between two chapters carry a half number, such as 8.5.
 	number: ChapterNumber,
