@@ -1,4 +1,4 @@
-import {useAtom, useAtomSet} from '@effect/atom-react'
+import {useAtom, useAtomMount, useAtomSet} from '@effect/atom-react'
 
 import {String} from 'effect'
 
@@ -11,15 +11,20 @@ import {
 	navigationTitle,
 	padding
 } from '@expo/ui/swift-ui/modifiers'
+import {Atom} from 'effect/reactivity'
 
 import {colors, space} from '@deslop/components-mobile/theme'
+import {unsaved} from '@deslop/runtime/mobile/unsaved'
 
 import {draftAtom, writeAtom} from '#lib/notes.ts'
+
+const unsavedDraftAtom = unsaved(Atom.map(draftAtom, draft => !String.isEmpty(String.trim(draft))))
 
 export function ComposeRoute(props: {onDone: () => void}) {
 	const [draft, setDraft] = useAtom(draftAtom)
 	const write = useAtomSet(writeAtom)
 	const text = useNativeState(draft)
+	useAtomMount(unsavedDraftAtom)
 	return (
 		<Toolbar modifiers={[navigationTitle('New Note'), navigationBarTitleDisplayMode('inline')]}>
 			<TextField
