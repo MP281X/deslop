@@ -1,4 +1,5 @@
-import {Context, DateTime, Duration, Effect, Function, Layer, MutableList, Option, Schema, Stream, pipe} from 'effect'
+import type {DateTime} from 'effect'
+import {Context, Effect, Function, Layer, MutableList, Option, Schema, Stream, pipe} from 'effect'
 
 import {Sse} from 'effect/encoding'
 import {Reactivity} from 'effect/reactivity'
@@ -15,7 +16,7 @@ import {AiCall, AiUsageBreakdown, AiUsageQuery} from './schema.ts'
 import type {AiUsageEntry, SpendSource} from './schema.ts'
 
 import type {AiProvider} from '#services/ai-proxy/schema.ts'
-import {EXPIRY_BATCH, expireCalls, usageWindow} from '#services/usage/lib/utils.ts'
+import {usageWindow} from '#services/usage/lib/utils.ts'
 
 // A direct provider key is its own payer; OpenCode must name one in its response.
 const KEY_PAYERS: Record<AiProvider, Option.Option<SpendSource>> = {
@@ -42,16 +43,6 @@ export class AiMetering extends Context.Service<AiMetering>()(
 				Request: AiCall.insert,
 				execute: row => sql`INSERT INTO ${sql(AiCall.table)} ${sql.insert(row)}`
 			})
-			// Only this owner's rows, through ai_calls_owner_at.
-			const deleteUsageBefore = SqlSchema.findAll({
-				Request: Schema.Struct({at: DateTimeUtcFromFiniteMillis, owner: AiCall.fields.owner}),
-				Result: Schema.Struct({at: Schema.Finite}),
-				execute: request => sql`
-				DELETE FROM ${sql(AiCall.table)} WHERE rowid IN (
-					SELECT rowid FROM ${sql(AiCall.table)} WHERE owner = ${request.owner} AND at < ${request.at} LIMIT ${EXPIRY_BATCH}
-				) RETURNING at
-			`
-			})
 			// One read per report: the totals are summed from these buckets, so the figure and its sparkline always agree.
 			const listBuckets = SqlSchema.findAll({
 				Request: AiUsageQuery,
@@ -76,8 +67,6 @@ export class AiMetering extends Context.Service<AiMetering>()(
 					Reactivity.mutation({aiUsage: [id]}),
 					withReactivity
 				)
-				// After the insert's own commit, so a long delete never holds the write.
-				yield* expireCalls(deleteUsageBefore({at: DateTime.subtractDuration(entry.at, Duration.days(30)), owner: id}))
 			})
 			return {
 				// `accepted`: the provider took the request (2xx), so a direct key's payer is known even if its usage never arrives.

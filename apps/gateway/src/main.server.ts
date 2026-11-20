@@ -15,6 +15,7 @@ import {Connections} from '#services/connections/service.ts'
 import {Gateway} from '#services/gateway/service.ts'
 import {layerUpstream} from '#services/network/service.ts'
 import {Upstreams} from '#services/upstreams/service.ts'
+import {Usage} from '#services/usage/service.ts'
 import {GatewayMcp} from '#tools/handlers.ts'
 
 // Upstream servers and their providers are reached only at public HTTPS addresses. The registry is the memoized one layerMcp serves.
@@ -28,8 +29,11 @@ const layerServices = pipe(
 
 runApp({
 	icon,
-	routes: Layer.provide(
-		Layer.mergeAll(HttpHandlers, AiHttpHandlers, layerRpc({group: RpcContracts, handlers: RpcHandlers}), GatewayMcp),
-		layerServices
+	routes: Layer.mergeAll(
+		Layer.provide(
+			Layer.mergeAll(HttpHandlers, AiHttpHandlers, layerRpc({group: RpcContracts, handlers: RpcHandlers}), GatewayMcp),
+			layerServices
+		),
+		Usage.layer
 	)
 })

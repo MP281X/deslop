@@ -73,7 +73,7 @@ import {
 	failureMessage
 } from '#services/connections/schema.ts'
 import {Upstreams} from '#services/upstreams/service.ts'
-import {EXPIRY_BATCH, expireCalls, usageWindow} from '#services/usage/lib/utils.ts'
+import {usageWindow} from '#services/usage/lib/utils.ts'
 import {UsageRange} from '#services/usage/schema.ts'
 
 declare module 'effect/reactivity/Reactivity' {
@@ -236,16 +236,6 @@ export class Connections extends Context.Service<
 				INSERT INTO ${sql(McpCall.table)} (serverId, at)
 				SELECT id, ${request.at} FROM ${sql(Connection.table)}
 				WHERE id = ${request.serverId} AND generation = ${request.generation}
-			`
-		})
-		// Only this server's rows, through mcp_calls_server_at.
-		const deleteCallsBefore = SqlSchema.findAll({
-			Request: Schema.Struct({at: DateTimeUtcFromFiniteMillis, serverId: McpCall.fields.serverId}),
-			Result: Schema.Struct({at: Schema.Finite}),
-			execute: request => sql`
-				DELETE FROM ${sql(McpCall.table)} WHERE rowid IN (
-					SELECT rowid FROM ${sql(McpCall.table)} WHERE serverId = ${request.serverId} AND at < ${request.at} LIMIT ${EXPIRY_BATCH}
-				) RETURNING at
 			`
 		})
 		// Every server, with its calls summed into the range's buckets.
@@ -673,15 +663,12 @@ export class Connections extends Context.Service<
 			}, asAuthError('Cannot connect this MCP')),
 			called: Effect.fn('Connections.called')(function* (id, generation) {
 				yield* Effect.annotateCurrentSpan('serverId', id)
-				const now = yield* DateTime.now
 				yield* pipe(
-					countCall({at: now, generation, serverId: id}),
+					countCall({at: yield* DateTime.now, generation, serverId: id}),
 					Reactivity.mutation(['connectionCalls']),
 					withReactivity,
 					Effect.catchCause(cause => Effect.logWarning('MCP usage could not be recorded', cause))
 				)
-				// After the insert's own commit, so a long delete never holds the write.
-				yield* expireCalls(deleteCallsBefore({at: DateTime.subtractDuration(now, Duration.days(30)), serverId: id}))
 			}),
 			complete: Effect.fn('Connections.complete')(function* (
 				params: Callback,

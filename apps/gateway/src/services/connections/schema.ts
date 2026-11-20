@@ -140,7 +140,7 @@ export class ConnectionGrant extends Model.Class<ConnectionGrant>('ConnectionGra
 	static readonly table = 'connection_grants'
 }
 
-// One proxied tool call; when its server makes another, the server's calls older than thirty days are deleted.
+// One proxied tool call; the usage sweep deletes it after thirty days.
 export class McpCall extends Model.Class<McpCall>('McpCall')({at: Schema.DateTimeUtcFromMillis, serverId: ServerId}) {
 	static readonly table = 'mcp_calls'
 }
