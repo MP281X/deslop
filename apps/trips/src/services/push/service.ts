@@ -348,7 +348,6 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 			})
 		})
 
-		// judge-ignore no-silent-fallback -- #279 makes permanent APNs refusal terminal: its logged refusal ends this unavailable channel; only Retry keeps it pending.
 		// The end goes first; the retirement is forgotten only after Apple deleted the channel or answered that it never will, so a throttled answer or a restart leaves it for the next pass, and an end Apple accepted is sent again when Trips stops before it saved that it was sent.
 		const retire = Effect.fnUntraced(function* (retirement: Retirement, now: DateTime.Utc) {
 			yield* Option.match(retirement.props, {
@@ -492,7 +491,6 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 		})
 
 		// A device whose token died leaves the list with its first failed alert.
-		// judge-ignore no-silent-fallback -- #279 makes a logged permanent refusal terminal for this device, not success at Apple; Retry alone remains pending.
 		const notify = Effect.fnUntraced(function* (device: Device, alert: Alert, booking: Booking) {
 			const answer = yield* apns.sendToDevice(
 				device,
@@ -725,7 +723,6 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 				'0003_requests': Effect.gen(function* () {
 					yield* (yield* SqlClient.SqlClient)`CREATE TABLE requests (bookingId TEXT PRIMARY KEY, at INTEGER NOT NULL) STRICT, WITHOUT ROWID`
 				}),
-				// judge-ignore no-unrelated-jobs -- One atomic device-delivery migration preserves registered tokens while introducing their receipt table.
 				'0004_device_delivery': Effect.gen(function* () {
 					const sql = yield* SqlClient.SqlClient
 					yield* sql`ALTER TABLE devices RENAME TO old_devices`

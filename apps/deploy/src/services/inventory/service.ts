@@ -240,7 +240,7 @@ export class Inventory extends Context.Service<
 			const worker = yield* Schema.decodeEffect(WorkerId)(hostname())
 			const selfProcess = yield* Schema.decodeEffect(ProcessId)(pid)
 			const processState = yield* Ref.make(Option.none<ReturnType<typeof processReadings>>())
-			// judge-ignore no-silent-fallback -- A refused or timed-out HEAD is a negative protocol probe, not a replacement for a required collector read.
+			// A refused or timed-out HEAD is a negative protocol probe, not a replacement for a required collector read.
 			function head(port: number) {
 				return pipe(
 					http.head(`http://127.0.0.1:${port}/`, {
@@ -482,7 +482,7 @@ export class Inventory extends Context.Service<
 			// Bundle paths identify names for this layer's lifetime, not just one snapshot.
 			const bundleNames = yield* Cache.make({
 				capacity: Infinity,
-				// judge-ignore no-silent-fallback -- missing bundle metadata keeps the agent label or bundle basename, as required by Deploy's Mac policy.
+				// Missing bundle metadata keeps the agent label or bundle basename, as required by Deploy's Mac policy.
 				lookup: Effect.fnUntraced(function* (bundle: string) {
 					// Reading the bundle directly avoids asking for macOS Automation access just to name a row.
 					return yield* pipe(
@@ -512,7 +512,7 @@ export class Inventory extends Context.Service<
 			})
 			// A Mac's Dock apps, user launch agents and listeners, measured together so CPU shares compare like readings.
 			const darwin: Effect.Effect<Machine> = Effect.gen(function* () {
-				// judge-ignore no-silent-fallback -- Product policy keeps unresolved launch agents under their actual label and bundle basename; a failed launchctl listing still fails this source.
+				// Product policy keeps unresolved launch agents under their actual label and bundle basename; a failed launchctl listing still fails this source.
 				const namedAgents = Effect.gen(function* () {
 					return Array.getSomes(
 						yield* Effect.forEach(
@@ -568,7 +568,7 @@ export class Inventory extends Context.Service<
 				)
 				const launchd = {
 					...collected,
-					// judge-ignore no-silent-fallback -- failed agent metadata does not erase independently collected Dock apps; the agents Result is reported as a source error in the snapshot.
+					// Failed agent metadata does not erase independently collected Dock apps; the agents Result is reported as a source error in the snapshot.
 					applications: Result.map(collected.applications, text =>
 						dockApplications(
 							text,
@@ -591,7 +591,6 @@ export class Inventory extends Context.Service<
 					Result.getOrElse(launchd.agents, () => []),
 					Result.getOrElse(launchd.applications, () => [])
 				)
-				// judge-ignore no-impossible-state -- every input is a running Mac application; this constructor emits only the fixed active, running state required by the shared inventory contract.
 				function appItems(found: typeof apps) {
 					return pipe(
 						found,

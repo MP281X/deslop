@@ -609,7 +609,7 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 			yield* tag(userId, note.id, [...input.slides, ...Array.map(frames, still)])
 		}, Effect.scoped)
 
-		// judge-ignore no-silent-fallback -- Sources.resolve only canonicalizes an already usable shared URL; organizeLink performs content extraction separately, so a logged resolution failure may keep the shared URL.
+		// Sources.resolve only canonicalizes an already usable shared URL; organizeLink performs content extraction separately, so a logged resolution failure may keep the shared URL.
 		const resolveLink = Effect.fnUntraced(function* (id: NoteId, link: string) {
 			const url = yield* Effect.catch(sources.resolve(link), error =>
 				Effect.as(Effect.logWarning('The short link was not resolved', error), link)

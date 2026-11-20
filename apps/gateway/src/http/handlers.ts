@@ -14,7 +14,6 @@ import {Gateway} from '#services/gateway/service.ts'
 
 const COOKIE = {httpOnly: true, path: '/', sameSite: 'lax', secure: true} as const
 
-// judge-ignore no-silent-fallback -- a failed OAuth step returns to the servers page, whose row records the issue; a malformed address answers 400, and an Auth outage or refusal 503 or 403 with its message.
 // A step's answer is never cached, and its address is read inside it, so every malformed one gets the same answer.
 function returning<E, R>(step: Effect.Effect<HttpServerResponse.HttpServerResponse, E, R>) {
 	return pipe(

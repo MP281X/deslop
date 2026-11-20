@@ -32,7 +32,6 @@ export const migrations = {
 		yield* sql`DELETE FROM ai_keys WHERE provider IN ('anthropic', 'openrouter')`
 		yield* sql`DELETE FROM ai_usage WHERE provider IN ('anthropic', 'openrouter')`
 	}),
-	// judge-ignore no-unrelated-jobs -- this immutable migration moves keys and usage together to the same single-provider storage contract.
 	'0003_single_opencode': Effect.gen(function* () {
 		const sql = yield* SqlClient.SqlClient
 		yield* sql`CREATE TABLE ai_keys_new (

@@ -99,7 +99,6 @@ export function makeSession() {
 	})
 
 	// A cached account opens the app while the foreground check runs.
-	// judge-ignore no-silent-fallback -- revalidationAtom clears cachedAccountAtom on a refused identity and keeps it on outages, as #547 requires; this selector never supplies a new identity.
 	const accountAtom = Atom.make(get => {
 		const revalidation = get(revalidationAtom)
 		return Option.match(get(cachedAccountAtom), {

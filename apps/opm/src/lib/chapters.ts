@@ -172,7 +172,6 @@ const crashFile = new File(Paths.document, 'crash.txt')
 
 // iOS's crash report shows only React Native rethrowing a fatal JavaScript error, so its stack waits on disk for the next launch.
 const fatalHandler = ErrorUtils.getGlobalHandler()
-// judge-ignore no-unrelated-jobs -- the same fatal error is persisted for the next launch and passed to the original handler; persistence failure must not stop fatal handling.
 ErrorUtils.setGlobalHandler((error, fatal) => {
 	if (fatal === true) {
 		Option.map(

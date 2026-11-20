@@ -486,7 +486,7 @@ function PresenceLayer(input: {
 	})
 }
 
-// judge-ignore no-silent-fallback -- Early input lacks a DOM ref or viewport; presence reports Offline instead of substituting a successful scene.
+// Early input lacks a DOM ref or viewport; presence reports Offline instead of substituting a successful scene.
 function PortfolioRoute() {
 	const viewport = useAtomValue(viewportAtom)
 	const setOwnCursor = useAtomSet(ownCursorAtom)
