@@ -1,5 +1,7 @@
 import {Schema, pipe} from 'effect'
 
+import {Model} from 'effect/schema'
+
 export type WorkflowRunId = typeof WorkflowRunId.Type
 export const WorkflowRunId = pipe(Schema.Int, Schema.brand('WorkflowRunId'))
 
@@ -69,3 +71,15 @@ export const WorkflowRun = Schema.Struct({
 		updated_at: Schema.DateTimeUtcFromString
 	})
 })
+
+// A job whose log the webhook asked for: the delivery that asked, how many attempts already failed, when the next is due and when it was finished or given up on.
+export class LogFetch extends Model.Class<LogFetch>('LogFetch')({
+	attempts: Schema.Int,
+	dueAt: Schema.DateTimeUtcFromMillis,
+	event: Model.JsonFromString(WorkflowJob),
+	finishedAt: Model.FieldOption(Schema.DateTimeUtcFromMillis),
+	job: WorkflowJobId,
+	requestedAt: Schema.DateTimeUtcFromMillis
+}) {
+	static readonly table = 'ci_log_fetches'
+}

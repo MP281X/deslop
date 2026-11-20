@@ -39,14 +39,17 @@ import {TimeFrame, timeFrameDuration} from '@deslop/runtime/shared/time'
 import {migrations} from './migrations.ts'
 
 import {
+	admittedSender,
 	appName,
 	attributesFlat,
 	diagnosis,
 	levelOf,
 	logOf,
+	logTimeOf,
 	overviewOf,
-	sideOf,
 	senderOf,
+	sideOf,
+	skewOf,
 	spansOf,
 	traceTree
 } from '#services/telemetry/lib/utils.ts'
@@ -61,6 +64,7 @@ import type {
 	LogsRequest,
 	MeasureLatencyParams,
 	Operation,
+	Origin,
 	OperationRow,
 	OperationsAnswer,
 	ReadTraceAnswer,
@@ -451,7 +455,12 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 		// Batch upsert the export, then refresh only its traces through indexed boundary, root and failure lookups.
 		const saveExport = SqlSchema.void({
 			Request: Schema.fromJsonString(
-				Schema.Struct({links: Schema.Array(SpanLink), receivedAt: Trace.fields.receivedAt, spans: Schema.Array(Span)})
+				Schema.Struct({
+					identified: Schema.Boolean,
+					links: Schema.Array(SpanLink),
+					receivedAt: Trace.fields.receivedAt,
+					spans: Schema.Array(Span)
+				})
 			),
 			execute: batch =>
 				Effect.gen(function* () {
@@ -473,9 +482,19 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 						GROUP BY arriving.value ->> 'traceId'
 						ON CONFLICT (traceId) DO NOTHING
 					`
-					// Replace retried spans except a late CI start after completion; strip the listed attributes and intern SQL statements.
+					// An identified span replacing an anonymous one makes its trace as new as this export, so retention keeps it.
 					yield* sql`
-						INSERT INTO spans (trace, span, parent, resource, name, kind, start, duration, status, error, exception, statement, attributes)
+						UPDATE traces SET receivedAt = ${batch} ->> 'receivedAt'
+						WHERE ${batch} ->> 'identified' AND id IN (
+							SELECT spans.trace FROM json_each(${batch}, '$.spans') AS arriving
+							JOIN traces AS arrived ON arrived.traceId = unhex(arriving.value ->> 'traceId')
+							JOIN spans ON spans.trace = arrived.id AND spans.span = unhex(arriving.value ->> 'spanId')
+							WHERE NOT spans.identified
+						)
+					`
+					// Replace retried spans except a late CI start after completion, and an identified span by an anonymous export; strip the listed attributes and intern SQL statements.
+					yield* sql`
+						INSERT INTO spans (trace, span, parent, resource, name, kind, start, duration, status, error, exception, statement, attributes, identified)
 						SELECT
 							traces.id, unhex(arriving.value ->> 'spanId'), unhex(arriving.value ->> 'parentSpanId'), resources.id,
 							arriving.value ->> 'name', ${kindOf(arrivingAttributes, sql`arriving.value ->> 'name'`)},
@@ -485,7 +504,8 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 							json_remove(
 								${arrivingAttributes}, '$."db.query.text"', '$."db.system.name"', '$."effect.sql.method"',
 								'$."rpc.system.name"', '$."url.scheme"', '$."server.address"', '$."server.port"', '$."url.path"'
-							)
+							),
+							${batch} ->> 'identified'
 						FROM json_each(${batch}, '$.spans') AS arriving
 						JOIN traces ON traces.traceId = unhex(arriving.value ->> 'traceId')
 						JOIN resources ON ${arrivingSender}
@@ -494,14 +514,16 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 						ON CONFLICT (trace, span) DO UPDATE SET
 							parent = excluded.parent, resource = excluded.resource, name = excluded.name, kind = excluded.kind,
 							start = excluded.start, duration = excluded.duration, status = excluded.status, error = excluded.error,
-							exception = excluded.exception, statement = excluded.statement, attributes = excluded.attributes
+							exception = excluded.exception, statement = excluded.statement, attributes = excluded.attributes,
+							identified = excluded.identified
 						WHERE NOT (excluded.duration IS NULL AND spans.duration IS NOT NULL
 							AND (SELECT runtime FROM resources WHERE id = excluded.resource) = 'ci')
+						AND (excluded.identified OR NOT spans.identified)
 						-- A retry that changes nothing leaves the row and its search entry alone.
 						AND (spans.parent, spans.resource, spans.name, spans.kind, spans.start, spans.duration, spans.status,
-							spans.error, spans.exception, spans.statement, spans.attributes)
+							spans.error, spans.exception, spans.statement, spans.attributes, spans.identified)
 						IS NOT (excluded.parent, excluded.resource, excluded.name, excluded.kind, excluded.start, excluded.duration,
-							excluded.status, excluded.error, excluded.exception, excluded.statement, excluded.attributes)
+							excluded.status, excluded.error, excluded.exception, excluded.statement, excluded.attributes, excluded.identified)
 					`
 					// Indexed boundary and candidate lookups touch only changed traces, never decode their stored spans. A span sent without a parent outranks one whose parent hasn't arrived, so a late real root still names the trace.
 					yield* sql`
@@ -549,11 +571,13 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 						JOIN spans ON spans.trace = traces.id AND spans.span = unhex(late.value ->> 'spanId')
 						WHERE late.value ->> 'duration' IS NULL AND late.value ->> 'runtime' = 'ci' AND spans.duration IS NOT NULL
 					)`
-					// A resent span's links replace the ones it sent before.
+					// A resent span's links replace the ones it sent before, unless the span it names stayed identified.
 					yield* sql`
 						DELETE FROM span_links WHERE (trace, span) IN (
-							SELECT traces.id, unhex(arriving.value ->> 'spanId') FROM json_each(${batch}, '$.spans') AS arriving
+							SELECT traces.id, spans.span FROM json_each(${batch}, '$.spans') AS arriving
 							JOIN traces ON traces.traceId = unhex(arriving.value ->> 'traceId')
+							JOIN spans ON spans.trace = traces.id AND spans.span = unhex(arriving.value ->> 'spanId')
+							WHERE ${batch} ->> 'identified' OR NOT spans.identified
 						) AND (trace, span) NOT IN ${kept}
 					`
 					yield* sql`
@@ -563,30 +587,44 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 							unhex(arriving.value ->> 'linkedSpanId')
 						FROM json_each(${batch}, '$.links') AS arriving
 						JOIN traces ON traces.traceId = unhex(arriving.value ->> 'traceId')
-						WHERE (traces.id, unhex(arriving.value ->> 'spanId')) NOT IN ${kept}
+						JOIN spans ON spans.trace = traces.id AND spans.span = unhex(arriving.value ->> 'spanId')
+						WHERE (${batch} ->> 'identified' OR NOT spans.identified)
+							AND (traces.id, unhex(arriving.value ->> 'spanId')) NOT IN ${kept}
 						ON CONFLICT DO NOTHING
 					`
 				})
 		})
 		const saveLogs = SqlSchema.void({
-			Request: Schema.fromJsonString(Schema.Array(Log)),
+			Request: Schema.fromJsonString(Schema.Struct({identified: Schema.Boolean, logs: Schema.Array(Log)})),
 			execute: batch =>
 				Effect.gen(function* () {
-					yield* saveResources(batch, '$')
+					yield* saveResources(batch, '$.logs')
+					// An identified export takes over the digests an anonymous one stored first, and makes their traces as new as itself.
+					yield* sql`
+						UPDATE traces SET receivedAt = (SELECT min(value ->> 'receivedAt') FROM json_each(${batch}, '$.logs'))
+						WHERE ${batch} ->> 'identified' AND id IN (
+							SELECT trace FROM logs WHERE NOT identified
+							AND id IN (SELECT value ->> 'id' FROM json_each(${batch}, '$.logs'))
+						)
+					`
+					yield* sql`
+						DELETE FROM logs WHERE ${batch} ->> 'identified' AND NOT identified
+						AND id IN (SELECT value ->> 'id' FROM json_each(${batch}, '$.logs'))
+					`
 					// A log starts the trace it names when no span of it has arrived; the logs that name none share one trace for their export, made only when one of them is new.
 					yield* sql`
 						INSERT INTO traces (traceId, resource, name, start, duration, spans, rooted, waits, receivedAt, end)
 						SELECT
 							unhex(arriving.value ->> 'traceId'), min(resources.id), '', min(arriving.value ->> 'time'), 0, 0, 0, 1,
 							min(arriving.value ->> 'receivedAt'), min(arriving.value ->> 'time')
-						FROM json_each(${batch}) AS arriving JOIN resources ON ${arrivingSender}
+						FROM json_each(${batch}, '$.logs') AS arriving JOIN resources ON ${arrivingSender}
 						WHERE arriving.value ->> 'traceId' IS NOT NULL OR NOT EXISTS (SELECT 1 FROM logs WHERE id = arriving.value ->> 'id')
 						GROUP BY arriving.value ->> 'traceId'
 						ON CONFLICT (traceId) DO NOTHING
 					`
 					// A retried export carries the same records, whose digests are already stored. The export's own trace is the newest without an id.
 					yield* sql`
-						INSERT INTO logs (id, trace, span, resource, time, severity, message, attributes)
+						INSERT INTO logs (id, trace, span, resource, time, severity, message, attributes, identified)
 						SELECT
 							arriving.value ->> 'id',
 							coalesce(
@@ -594,8 +632,9 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 								(SELECT max(id) FROM traces WHERE traceId IS NULL)
 							),
 							unhex(arriving.value ->> 'spanId'), resources.id, arriving.value ->> 'time',
-							arriving.value ->> 'severity', arriving.value ->> 'message', arriving.value ->> 'attributes'
-						FROM json_each(${batch}) AS arriving JOIN resources ON ${arrivingSender}
+							arriving.value ->> 'severity', arriving.value ->> 'message', arriving.value ->> 'attributes',
+							${batch} ->> 'identified'
+						FROM json_each(${batch}, '$.logs') AS arriving JOIN resources ON ${arrivingSender}
 						WHERE true
 						ON CONFLICT DO NOTHING
 					`
@@ -791,7 +830,7 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 				})}
 			`
 		})
-		// Each service's latest run: what its senders of that run sent, and when they last did.
+		// Each service's latest run, the one with the newest stored span start or log time (the greater run start settles a tie): what its senders of that run sent, and when they last did.
 		const listRuns = SqlSchema.findAll({
 			Request: Schema.Void,
 			Result: ServiceRun,
@@ -809,7 +848,15 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 						FROM resources
 					),
 					sending AS (SELECT * FROM senders WHERE entries > 0),
-					latest AS (SELECT service, max(coalesce(run, 0)) AS run FROM sending GROUP BY service)
+					heard AS (
+						SELECT
+							service, coalesce(run, 0) AS run,
+							row_number() OVER (
+								PARTITION BY service ORDER BY max(lastEvent) DESC, coalesce(run, 0) DESC
+							) AS place
+						FROM sending GROUP BY service, coalesce(run, 0)
+					),
+					latest AS (SELECT service, run FROM heard WHERE place = 1)
 				SELECT
 					sending.service, sum(sending.entries) AS entries, max(sending.lastEvent) AS lastEvent,
 					max(sending.run) AS run, max(sending.runtime) AS runtime, max(sending.version) AS version
@@ -1000,58 +1047,61 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 				} satisfies TracesAnswer
 			}, asTelemetryError),
 			ingestLogs: Effect.fn('Telemetry.ingestLogs')(
-				function* (payload: LogsRequest) {
+				function* (payload: LogsRequest, origin: Origin) {
 					const receivedAt = yield* DateTime.now
-					const logs = yield* pipe(
+					const items = yield* pipe(
 						payload.resourceLogs,
 						Option.getOrElse(Array.empty<Option.Option.Value<LogsRequest['resourceLogs']>[number]>),
 						Effect.forEach(
 							Effect.fnUntraced(function* (group) {
 								// All logs in the group share one sender, regardless of instrumentation scope.
-								const sender = senderOf(group.resource)
+								const sender = admittedSender(senderOf(group.resource), origin)
 								const resource = yield* Effect.transposeOption(
 									Option.map(group.resource, Schema.encodeEffect(Resource))
 								)
-								return pipe(
+								const records = pipe(
 									group.scopeLogs,
 									Option.getOrElse(() => []),
-									Array.flatMap(scope =>
-										pipe(
-											scope.logRecords,
-											Option.getOrElse(() => []),
-											Array.map(log => ({log, resource, sender}))
-										)
-									)
+									Array.flatMap(scope => Option.getOrElse(scope.logRecords, () => []))
 								)
+								const skew = skewOf(
+									Array.flatMap(records, record => Option.toArray(logTimeOf(record))),
+									receivedAt
+								)
+								return Array.map(records, log => ({log, resource, sender, skew}))
 							}),
 							{concurrency: 1}
 						),
-						Effect.map(Array.flatten),
-						Effect.flatMap(
-							Effect.forEach(
-								Effect.fnUntraced(function* (item) {
-									const log = yield* Schema.encodeEffect(ExportedLog)(item.log)
-									// Retries must deduplicate even if the exporter changes how it writes absent fields.
-									const encoded = yield* Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown))({
-										attributes: log.attributes ?? [],
-										body: log.body ?? {},
-										observedTimeUnixNano: log.observedTimeUnixNano ?? '',
-										resource: Option.getOrElse(item.resource, () => ({})),
-										severityNumber: log.severityNumber,
-										severityText: log.severityText ?? '',
-										spanId: log.spanId ?? '',
-										timeUnixNano: log.timeUnixNano ?? '',
-										traceId: log.traceId ?? ''
-									})
-									return {encoded, item}
-								}),
-								{concurrency: 1}
-							)
+						Effect.map(Array.flatten)
+					)
+					const admitted = Array.getSomes(
+						Array.map(items, item => Option.map(item.sender, sender => ({...item, sender})))
+					)
+					const logs = yield* pipe(
+						admitted,
+						Effect.forEach(
+							Effect.fnUntraced(function* (item) {
+								const log = yield* Schema.encodeEffect(ExportedLog)(item.log)
+								// Retries must deduplicate even if the exporter changes how it writes absent fields.
+								const encoded = yield* Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown))({
+									attributes: log.attributes ?? [],
+									body: log.body ?? {},
+									observedTimeUnixNano: log.observedTimeUnixNano ?? '',
+									resource: Option.getOrElse(item.resource, () => ({})),
+									severityNumber: log.severityNumber,
+									severityText: log.severityText ?? '',
+									spanId: log.spanId ?? '',
+									timeUnixNano: log.timeUnixNano ?? '',
+									traceId: log.traceId ?? ''
+								})
+								return {encoded, item}
+							}),
+							{concurrency: 1}
 						),
-						Effect.flatMap(items =>
+						Effect.flatMap(entries =>
 							Effect.forEach(
 								// A record has no id of its own: its identity is what it carries and how many equal records came before it in its export, so a retried export matches and two equal lines both stay.
-								Array.mapAccum(items, HashMap.empty<string, number>(), (seen, entry) => {
+								Array.mapAccum(entries, HashMap.empty<string, number>(), (seen, entry) => {
 									const occurrence = pipe(seen, HashMap.get(entry.encoded), Option.getOrElse(Function.constant(0)))
 									return [HashMap.set(seen, entry.encoded, occurrence + 1), {...entry, occurrence}] as const
 								})[1],
@@ -1064,28 +1114,31 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 										LogId.make(
 											Array.reduce(bytes.subarray(1, 7), (bytes[0] ?? 0) % 32, (value, byte) => value * 256 + byte)
 										),
-										receivedAt
+										receivedAt,
+										entry.item.skew
 									)
 								}),
 								{concurrency: 1}
 							)
 						)
 					)
-					yield* sql.withTransaction(Effect.andThen(saveLogs(logs), boundSize))
+					yield* sql.withTransaction(Effect.andThen(saveLogs({identified: origin !== 'anonymous', logs}), boundSize))
 					yield* Reactivity.invalidate([
 						'telemetry',
 						...pipe(Array.getSomes(Array.map(logs, log => log.traceId)), Array.dedupe, Array.map(traceKey))
 					])
+					// The records its origin may not write, which OTLP answers as rejected.
+					return items.length - admitted.length
 				},
 				asTelemetryError,
 				withReactivity
 			),
-			// One commit per export, and the pages read again only after it.
+			// One commit per export, and the pages read again only after it; answers how many spans its origin may not write.
 			ingestTraces: Effect.fn('Telemetry.ingestTraces')(
-				function* (payload: TracesRequest) {
+				function* (payload: TracesRequest, origin: Origin) {
 					const receivedAt = yield* DateTime.now
-					const rows = spansOf(payload)
-					yield* saveExport({...rows, receivedAt})
+					const rows = spansOf(payload, origin, receivedAt)
+					yield* saveExport({identified: origin !== 'anonymous', links: rows.links, receivedAt, spans: rows.spans})
 					yield* boundSize
 					// The traces it wrote and those it links into, whose readers now hold a new linked trace.
 					yield* Reactivity.invalidate([
@@ -1096,6 +1149,7 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 							Array.map(traceKey)
 						)
 					])
+					return rows.rejected
 				},
 				sql.withTransaction,
 				asTelemetryError,
