@@ -35,7 +35,6 @@ function Avatar(props: {id: UserId}) {
 }
 
 // Signing out ends the session at Auth for every app; a tailnet device has none, so its menu is the greyed name alone.
-// judge-ignore no-silent-fallback -- SessionGate owns account failures and unmounts its children for them; this menu only presents that admitted account and never invents an identity.
 export function AccountMenu(props: {session: Session}) {
 	const signOut = useAtomSet(props.session.signOut)
 	const account = AsyncResult.value(useAtomValue(props.session.account))

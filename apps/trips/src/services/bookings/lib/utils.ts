@@ -134,7 +134,6 @@ export function departureOf(booking: Flight | Train) {
 	)
 }
 
-// judge-ignore no-contradicted-promise -- Returns the best known arrival, actual or estimated when live data supplies it and otherwise scheduled.
 export function arrivalOf(booking: Flight | Train) {
 	if (Booking.isAnyOf(['train'])(booking)) {
 		return DateTime.addDuration(

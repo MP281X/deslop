@@ -382,7 +382,6 @@ export class Metrics extends Context.Service<Metrics>()('@deslop/deploy/services
 		const pending = yield* Ref.make<readonly Sample[]>(yield* asDeployError(listBuckets(yield* DateTime.now)))
 		const writes = yield* Semaphore.make(1)
 		const collect = pipe(
-			// judge-ignore no-contradicted-promise -- Effect 4's Filter partition returns [passes, failures]: current contains matching buckets and completed contains the rest.
 			Effect.gen(function* () {
 				const time = yield* DateTime.now
 				const old = yield* Ref.get(previous)

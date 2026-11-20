@@ -250,20 +250,16 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 			})
 		)
 		testApi.effect(
-			'requires judge ignores to name a question in the registry',
-			// judge-ignore no-internals-test -- The rule's observable answer is its lint diagnostic at each supplied source line; the fixture calls the public lint command.
+			'treats a comment that only starts like a disable directive as prose',
+			// The rule's observable answer is its lint diagnostic at each supplied source line; the fixture calls the public lint command.
 			Effect.fnUntraced(function* () {
 				const result = yield* lintSource({
-					'ignores.ts': Array.join(
+					'prose.ts': Array.join(
 						[
-							'// judge-ignore unknown-question -- This is not a registered question. // reported',
-							'export function title(value: string) { return value }',
-							'// judge-ignore no-silent-fallback -- Absence is a valid outcome.',
-							'export function label(value: string) { return value }',
-							'// judge-ignore no-silent-fallback // reported',
-							'export function name(value: string) { return value }',
 							'// oxlint-disablement of the old reader is described in the README.',
-							'export function heading(value: string) { return value }'
+							'export function heading(value: string) { return value }',
+							'// eslint-disabled sections are listed in the README.',
+							'export function title(value: string) { return value }'
 						],
 						'\n'
 					)
@@ -893,7 +889,6 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 							'// Then it checks the value.',
 							'/* Explains the next line\n   across two lines */',
 							'// Compares the raw state.',
-							'// judge-ignore no-silent-fallback -- this input keeps its reason',
 							'// oxlint-disable-next-line eqeqeq',
 							'const loose = source == "ready"',
 							'// oxlint-disable-next-line sort-keys -- this input keeps its order',
@@ -3317,7 +3312,7 @@ export type Unknown = 'ready' | unknown`
 							'	if (input.ready) return 2',
 							'	return 3',
 							'}',
-							// The examples of the judge question this rule replaced.
+							// The examples of the question this rule replaced.
 							'export function discount(order: {total: number}) {',
 							'	if (order.total <= 0) return 0',
 							'	const rate = order.total > 100 ? 0.1 : 0.05',
@@ -3370,7 +3365,7 @@ export type Unknown = 'ready' | unknown`
 							'	const local = [span]',
 							'	return Array.some(local, item => item.id === span.serviceId)',
 							'})',
-							// The examples of the judge question this rule replaced.
+							// The examples of the question this rule replaced.
 							'export function attachNative(spans: Span[], services: Service[]) {',
 							'	return spans.map(span => ({...span, service: services.find(service => service.id === span.serviceId)})) // reported',
 							'}',
@@ -3450,7 +3445,7 @@ export type Unknown = 'ready' | unknown`
 					'library-operation'
 				)
 				assert.deepStrictEqual(sums.reported, sums.marked)
-				// The examples of the judge question these rules replaced, and running totals kept in a MutableRef.
+				// The examples of the question these rules replaced, and running totals kept in a MutableRef.
 				const totals = reportedLines(
 					yield* lintSource({
 						'totals.ts': Array.join(

@@ -121,7 +121,7 @@ function Directory() {
 	)
 }
 
-// judge-ignore no-silent-fallback -- the shell renders this page only under an account it has, kept through an outage; this redirect is only a guest or non-admin identity.
+// The shell renders this page only under an account it has, kept through an outage; this redirect is only a guest or non-admin identity.
 function PeopleRoute() {
 	if (
 		!Option.exists(

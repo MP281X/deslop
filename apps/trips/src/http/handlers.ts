@@ -12,7 +12,6 @@ function ticket(made: Effect.Effect<BookingSource, SchemaIssue.Issue>) {
 	return Effect.mapError(made, cause => BookingsError.make({cause, message: 'The ticket is empty or too large.'}))
 }
 
-// judge-ignore no-contradicted-promise -- The share endpoint accepts URLs as text/plain ticket input, not as a separate content type; unsupported content types get 415.
 export const HttpHandlers = HttpRouter.use(router =>
 	Effect.gen(function* () {
 		const bookings = yield* Bookings

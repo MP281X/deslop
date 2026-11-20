@@ -13,7 +13,6 @@ function annotated(body: string, words: readonly string[]) {
 }
 
 // Decide the change without writes so the caller can apply it to the latest note in its transaction.
-// judge-ignore no-silent-fallback -- Notes logs extraction failures before this pure reducer sees their Result; saved content remains usable, and the worker's failure policy records an issue when no saved content exists.
 export function changeNote(note: Note, update: NoteChange) {
 	const fields = Struct.pick(note, Struct.keys(Note.fields))
 	return pipe(
