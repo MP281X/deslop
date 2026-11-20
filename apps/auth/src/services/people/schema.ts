@@ -4,7 +4,9 @@ import {Model} from 'effect/schema'
 
 import {GitHubId, User, UserId} from '@deslop/runtime/shared/auth'
 
-// Admins come from GITHUB_ADMINS; a member is a GitHub account an admin allowed; anyone else who signed in waits for one.
+import {TailnetUserId} from '#services/tailnet/schema.ts'
+
+// Admins come from GITHUB_ADMINS; a member is someone the tailnet has seen or a GitHub account an admin allowed; anyone else who signed in from a browser waits for one.
 export type Role = typeof Role.Type
 export const Role = Schema.Literals(['Admin', 'Member', 'Waiting'])
 
@@ -24,16 +26,24 @@ export const Person = Schema.Struct({...Account.fields, since: Schema.OptionFrom
 export type MemberStatus = typeof MemberStatus.Type
 export const MemberStatus = Schema.Literals(['Waiting', 'Allowed'])
 
-// One row of `members`: a GitHub account that signed in, from its first sign-in until an admin removes or declines it.
+// One row of `members`: a person who signed in or was seen on the tailnet, until an admin removes them or declines the only way they came.
 export class Member extends Model.Class<Member>('Member')({
 	fullName: Model.FieldOption(Schema.String),
 	id: User.fields.id,
 	name: User.fields.name,
-	// When the account first asked for access, then when an admin allowed it.
+	// When the person was first seen or first asked for access, then when an admin allowed their browser.
 	since: Model.FieldOption(Schema.DateTimeUtcFromMillis),
-	status: MemberStatus
+	// A browser's access, which only a GitHub sign-in asks for; none for someone seen only on the tailnet or declined.
+	status: Model.FieldOption(MemberStatus),
+	// The tailnet lets them in from their own devices, and apps acting for them, without an admin.
+	tailnet: Schema.BooleanFromBit
 }) {
 	static readonly table = 'members'
+}
+
+// One row of `tailnet_bindings`: the GitHub account a tailnet user's first sighting resolved, until that person is removed.
+export class Binding extends Model.Class<Binding>('Binding')({tailnetId: TailnetUserId, userId: User.fields.id}) {
+	static readonly table = 'tailnet_bindings'
 }
 
 export type GitHubUser = typeof GitHubUser.Type

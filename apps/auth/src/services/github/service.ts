@@ -1,4 +1,4 @@
-import {Boolean, Cache, Config, Context, Effect, Exit, Function, Layer, Option, Redacted, pipe} from 'effect'
+import {Boolean, Config, Context, Effect, Layer, Option, Redacted, pipe} from 'effect'
 
 import {Digest, SecureRandom} from 'effect/crypto'
 import {HttpClient, HttpClientError, HttpClientRequest, HttpClientResponse, UrlParams} from 'effect/http'
@@ -72,23 +72,6 @@ export class GitHub extends Context.Service<
 					Effect.timeout('10 seconds')
 				)
 			})
-			// GitHub answers 60 anonymous lookups an hour, and every tailnet request names its caller by login.
-			const logins = yield* Cache.makeWith(
-				(login: string) =>
-					Effect.mapError(
-						user(HttpClientRequest.get(`https://api.github.com/users/${encodeURIComponent(login)}`)),
-						cause =>
-							Boolean.match(HttpClientError.isHttpClientError(cause) && cause.response?.status === 404, {
-								onFalse: () =>
-									AuthError.make({cause, error: 'temporarily_unavailable', message: 'GitHub could not be reached'}),
-								onTrue: () => AuthError.make({cause, message: 'GitHub no longer knows this login'})
-							})
-					),
-				{
-					capacity: 64,
-					timeToLive: exit => Exit.match(exit, {onFailure: Function.constant(0), onSuccess: Function.constant('1 day')})
-				}
-			)
 			return GitHub.of({
 				finish: Effect.fn('GitHub.finish')(function* (code: string, pending: PendingSignIn) {
 					const token = yield* pipe(
@@ -112,7 +95,18 @@ export class GitHub extends Context.Service<
 						unavailable('GitHub could not read the account')
 					)
 				}),
-				login: login => Cache.get(logins, login),
+				// Only a tailnet user's first sighting asks, well within the 60 anonymous lookups GitHub answers an hour.
+				login: Effect.fn('GitHub.login')(function* (login: string) {
+					return yield* Effect.mapError(
+						user(HttpClientRequest.get(`https://api.github.com/users/${encodeURIComponent(login)}`)),
+						cause =>
+							Boolean.match(HttpClientError.isHttpClientError(cause) && cause.response?.status === 404, {
+								onFalse: () =>
+									AuthError.make({cause, error: 'temporarily_unavailable', message: 'GitHub could not be reached'}),
+								onTrue: () => AuthError.make({cause, message: 'GitHub no longer knows this login'})
+							})
+					)
+				}),
 				resume,
 				start: Effect.fn('GitHub.start')(function* (flow: SignInParams) {
 					const started = yield* start(flow)
