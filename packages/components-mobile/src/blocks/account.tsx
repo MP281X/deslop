@@ -2,11 +2,12 @@ import {useAtomSet, useAtomValue} from '@effect/atom-react'
 
 import {Function, Option, pipe} from 'effect'
 
-import {Button, Image, Menu, Section} from '@expo/ui/swift-ui'
+import {Button, Image, Menu} from '@expo/ui/swift-ui'
 import {
 	accessibilityLabel,
 	buttonStyle,
 	clipShape,
+	disabled,
 	frame,
 	menuIndicator,
 	menuStyle,
@@ -33,7 +34,7 @@ function Avatar(props: {id: UserId}) {
 	})
 }
 
-// Signing out ends the session at Auth for every app; a tailnet device has none, so its menu only names it.
+// Signing out ends the session at Auth for every app; a tailnet device has none, so its menu is the greyed name alone.
 // judge-ignore no-silent-fallback -- SessionGate owns account failures and unmounts its children for them; this menu only presents that admitted account and never invents an identity.
 export function AccountMenu(props: {session: Session}) {
 	const signOut = useAtomSet(props.session.signOut)
@@ -46,23 +47,25 @@ export function AccountMenu(props: {session: Session}) {
 			})}
 			modifiers={[menuStyle('button'), buttonStyle('plain'), menuIndicator('hidden'), accessibilityLabel('Account')]}
 		>
-			<Section {...Option.match(account, {onNone: () => ({}), onSome: current => ({title: `@${current.name}`})})}>
-				{pipe(
-					account,
-					Option.filter(current => current.signOut),
-					Option.match({
-						onNone: Function.constNull,
-						onSome: () => (
-							<Button
-								label="Sign Out"
-								systemImage="rectangle.portrait.and.arrow.right"
-								role="destructive"
-								onPress={() => signOut()}
-							/>
-						)
-					})
-				)}
-			</Section>
+			{Option.match(account, {
+				onNone: Function.constNull,
+				onSome: current => <Button label={`@${current.name}`} modifiers={[disabled(true)]} />
+			})}
+			{pipe(
+				account,
+				Option.filter(current => current.signOut),
+				Option.match({
+					onNone: Function.constNull,
+					onSome: () => (
+						<Button
+							label="Sign Out"
+							systemImage="rectangle.portrait.and.arrow.right"
+							role="destructive"
+							onPress={() => signOut()}
+						/>
+					)
+				})
+			)}
 		</Menu>
 	)
 }

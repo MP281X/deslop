@@ -6,6 +6,7 @@ import {Atom} from 'effect/reactivity'
 import {checkForUpdateAsync, fetchUpdateAsync, isEnabled, reloadAsync} from 'expo-updates'
 
 import {activationsAtom, awayAtom} from '#mobile/activations.ts'
+import {unsavedAtom} from '#mobile/unsaved.ts'
 
 class UpdateError extends Schema.TaggedError<UpdateError>()('UpdateError', {
 	cause: Schema.Defect(),
@@ -13,7 +14,7 @@ class UpdateError extends Schema.TaggedError<UpdateError>()('UpdateError', {
 }) {}
 
 // A reload looks like a crash to someone switching apps for a moment, so a downloaded update starts on the next launch or on a return after ten minutes away.
-const updateEvents = Machine.events({Returned: {away: Schema.Duration}})
+const updateEvents = Machine.events({Returned: {away: Schema.Duration, unsaved: Schema.Boolean}})
 const updates = AtomMachine.make(
 	Machine.make({
 		branches: {fetched: {downloaded: {target: 'Downloaded'}, idle: {target: 'Idle'}}},
@@ -67,7 +68,9 @@ const updates = AtomMachine.make(
 			Downloaded: {
 				on: {
 					Returned: {
-						guard: transition => Duration.isGreaterThanOrEqualTo(transition.event.away, Duration.minutes(10)),
+						// An update held back by unsaved text waits for the next return that is long enough with nothing unsaved.
+						guard: transition =>
+							!transition.event.unsaved && Duration.isGreaterThanOrEqualTo(transition.event.away, Duration.minutes(10)),
 						target: 'Reloading'
 					}
 				}
@@ -83,5 +86,5 @@ export const updateAtom = Atom.make(get => {
 	get(activationsAtom)
 	if (!isEnabled) return
 	get.mount(updates.ref)
-	get.set(updates.send, updateEvents.Returned({away: get.once(awayAtom)}))
+	get.set(updates.send, updateEvents.Returned({away: get.once(awayAtom), unsaved: get.once(unsavedAtom) > 0}))
 })
