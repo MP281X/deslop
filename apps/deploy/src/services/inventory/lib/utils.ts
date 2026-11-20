@@ -35,6 +35,7 @@ import type {
 	ProcessSummary,
 	RunJobInput,
 	RunRequest,
+	ServiceScope,
 	Snapshot,
 	WorkerId
 } from '#services/inventory/schema.ts'
@@ -82,13 +83,18 @@ export function processOwner(cgroup: string) {
 	)
 }
 
+// A listener 127.0.0.1 reaches: IPv4 loopback or any address, or a dual-stack wildcard (`*`), which a probe still has to answer. An IPv6-only or interface address is out of a loopback proxy's reach.
+export function ipv4Reachable(address: string) {
+	return Option.isSome(String.match(/^(?:127\.0\.0\.1|0\.0\.0\.0|\*):/u)(address))
+}
+
 // A loopback proxy can only reach these TCP listeners, not a tailnet-interface-only socket or UDP.
 function loopbackPort(item: InventoryItem) {
 	return (
 		item.kind === 'port' &&
 		Option.contains(item.protocol, 'tcp') &&
 		Option.exists(item.port, port => port >= 1024) &&
-		Option.exists(item.address, address => Option.isSome(String.match(/^(?:127\.0\.0\.1|0\.0\.0\.0):/u)(address)))
+		Option.exists(item.address, ipv4Reachable)
 	)
 }
 
@@ -181,17 +187,11 @@ function sameSocket(listener: InventoryItem, binding: SocketBinding) {
 		return false
 	}
 	if (Option.contains(listener.address, binding.address)) return true
-	return (
-		Option.exists(listener.address, address =>
-			Option.isSome(String.match(/^(?:127\.0\.0\.1|0\.0\.0\.0):/u)(address))
-		) && Option.isSome(String.match(/^(?:127\.0\.0\.1|0\.0\.0\.0):/u)(binding.address))
-	)
+	return Option.exists(listener.address, ipv4Reachable) && ipv4Reachable(binding.address)
 }
 
 function socket(worker: WorkerId, binding: SocketAddress) {
-	const loopback = Option.exists(binding.address, address =>
-		Option.isSome(String.match(/^(?:127\.0\.0\.1|0\.0\.0\.0):/u)(address))
-	)
+	const loopback = Option.exists(binding.address, ipv4Reachable)
 	return Tuple.make(
 		worker,
 		binding.protocol,
@@ -201,6 +201,11 @@ function socket(worker: WorkerId, binding: SocketAddress) {
 	)
 }
 
+// A service's unit under its manager: a user and a system unit may share a name.
+function unitKey(scope: Option.Option<ServiceScope>, unit: UnitId) {
+	return `${Option.getOrElse(scope, Function.constant('system'))}:${unit}`
+}
+
 export function workloads(items: readonly InventoryItem[]) {
 	const listeners = Array.filter(items, item => item.kind === 'port')
 	const byUnit = pipe(
@@ -208,7 +213,10 @@ export function workloads(items: readonly InventoryItem[]) {
 		Array.groupBy(listener => listener.worker),
 		Record.map(worker =>
 			Array.groupBy(worker, listener =>
-				Option.match(listener.unit, {onNone: Function.constant('none'), onSome: unit => `unit:${unit}`})
+				Option.match(listener.unit, {
+					onNone: Function.constant('none'),
+					onSome: unit => `unit:${unitKey(listener.scope, unit)}`
+				})
 			)
 		)
 	)
@@ -223,9 +231,7 @@ export function workloads(items: readonly InventoryItem[]) {
 		Array.filter(item => item.kind === 'service' || item.kind === 'container'),
 		Array.map(item => {
 			const unit = serviceUnit(item)
-			const attached = Array.filter(byUnit[item.worker]?.[`unit:${unit}`] ?? [], listener =>
-				Option.contains(listener.unit, unit)
-			)
+			const attached = byUnit[item.worker]?.[`unit:${unitKey(item.scope, unit)}`] ?? []
 			const bindings = pipe(
 				item.bindings,
 				Option.getOrElse(Array.empty),
@@ -265,7 +271,7 @@ export function workloads(items: readonly InventoryItem[]) {
 		pipe(
 			grouped,
 			Array.filter(row => row.item.kind === 'service'),
-			Array.map(row => Tuple.make(row.item.worker, serviceUnit(row.item)))
+			Array.map(row => Tuple.make(row.item.worker, unitKey(row.item.scope, serviceUnit(row.item))))
 		)
 	)
 	const represented = HashSet.fromIterable(
@@ -282,7 +288,9 @@ export function workloads(items: readonly InventoryItem[]) {
 	const loose = Array.filter(
 		listeners,
 		listener =>
-			!Option.exists(listener.unit, unit => HashSet.has(services, Tuple.make(listener.worker, unit))) &&
+			!Option.exists(listener.unit, unit =>
+				HashSet.has(services, Tuple.make(listener.worker, unitKey(listener.scope, unit)))
+			) &&
 			(Option.contains(listener.address, 'container') || !HashSet.has(represented, socket(listener.worker, listener)))
 	)
 	const rows = [...grouped, ...Array.map(loose, item => ({item, listeners: [item]}))]
@@ -295,62 +303,50 @@ export function workloads(items: readonly InventoryItem[]) {
 		Array.map((item, index) => ({index, item})),
 		Array.groupBy(entry => `${entry.item.worker}:${Option.getOrElse(entry.item.port, Function.constant(0))}`)
 	)
-	const linked = Array.map(rows, row => {
-		const reachable = Array.dedupe(
-			pipe(
-				row.listeners,
-				Array.filter(listener =>
-					Option.exists(listener.port, port =>
-						sameSocket(listener, {address: `127.0.0.1:${port}`, port, protocol: 'tcp'})
-					)
-				),
-				Array.map(listener => listener.port),
-				Array.getSomes
-			)
-		)
-		const exposed = pipe(
-			Array.flatMap(reachable, port => exposuresBySocket[`${row.item.worker}:${port}`] ?? []),
-			Array.sortWith(entry => entry.index, Order.Number),
-			Array.map(entry => entry.item)
-		)
-		return {
-			...row,
-			exposures: Array.dedupeWith(
-				[
-					...pipe(
-						row.item.links,
-						Option.getOrElse(Array.empty),
-						Array.map(url => ({
-							...row.item,
-							id: ItemId.make(`${row.item.id}:url:${url}`),
-							kind: 'exposure' as const,
-							name: ExposureName.make(row.item.name),
-							owned: Option.some(false),
-							publicAccess: Option.some(true),
-							url: Option.some(url)
-						}))
+	const visible = pipe(
+		rows,
+		Array.map(row => {
+			const reachable = Array.dedupe(
+				pipe(
+					row.listeners,
+					Array.filter(listener =>
+						Option.exists(listener.port, port =>
+							sameSocket(listener, {address: `127.0.0.1:${port}`, port, protocol: 'tcp'})
+						)
 					),
-					...exposed
-				],
-				(a: InventoryItem, b: InventoryItem) => Equal.equals(a.url, b.url)
+					Array.map(listener => listener.port),
+					Array.getSomes
+				)
 			)
-		}
-	})
-	const linkedIds = HashSet.fromIterable(
-		Array.flatMap(linked, row => Array.map(row.exposures, exposure => exposure.id))
-	)
-	const linkedUrls = HashSet.fromIterable(
-		Array.flatMap(linked, row => Array.map(row.exposures, exposure => Tuple.make(exposure.worker, exposure.url)))
-	)
-	const remaining = pipe(
-		exposures,
-		Array.filter(
-			item => !HashSet.has(linkedIds, item.id) && !HashSet.has(linkedUrls, Tuple.make(item.worker, item.url))
-		),
-		Array.map(item => ({exposures: [item], item, listeners: []}))
-	)
-	return pipe(
-		[...linked, ...remaining],
+			const exposed = pipe(
+				Array.flatMap(reachable, port => exposuresBySocket[`${row.item.worker}:${port}`] ?? []),
+				Array.sortWith(entry => entry.index, Order.Number),
+				Array.map(entry => entry.item)
+			)
+			return {
+				...row,
+				exposures: Array.dedupeWith(
+					[
+						...pipe(
+							row.item.links,
+							Option.getOrElse(Array.empty),
+							Array.map(url => ({
+								...row.item,
+								id: ItemId.make(`${row.item.id}:url:${url}`),
+								kind: 'exposure' as const,
+								name: ExposureName.make(row.item.name),
+								owned: Option.some(false),
+								publicAccess: Option.some(true),
+								url: Option.some(url)
+							}))
+						),
+						...exposed
+					],
+					(a: InventoryItem, b: InventoryItem) => Equal.equals(a.url, b.url)
+				)
+			}
+		}),
+		// Only a row the page shows represents its exposures; one linked to a hidden row keeps its own.
 		Array.filter(
 			row =>
 				important(row.item) &&
@@ -358,24 +354,38 @@ export function workloads(items: readonly InventoryItem[]) {
 					(Option.contains(row.item.http, true) &&
 						Option.isSome(row.item.process) &&
 						!Option.contains(row.item.process, 'node')))
-		),
-		Array.map(row => {
-			if (row.item.kind === 'container') return row
-			const candidates = ports(row.listeners)
-			const hasUi = Array.some(candidates, candidate => Option.contains(candidate.ui, true))
-			const exposedPorts = HashSet.fromIterable(Array.getSomes(Array.map(row.exposures, exposure => exposure.port)))
-			return {
-				...row,
-				listeners: Array.filter(
-					candidates,
-					listener =>
-						!hasUi ||
-						Option.contains(listener.ui, true) ||
-						Option.exists(listener.port, port => HashSet.has(exposedPorts, port))
-				)
-			}
-		})
+		)
 	)
+	const linkedIds = HashSet.fromIterable(
+		Array.flatMap(visible, row => Array.map(row.exposures, exposure => exposure.id))
+	)
+	const linkedUrls = HashSet.fromIterable(
+		Array.flatMap(visible, row => Array.map(row.exposures, exposure => Tuple.make(exposure.worker, exposure.url)))
+	)
+	const remaining = pipe(
+		exposures,
+		Array.filter(
+			item => !HashSet.has(linkedIds, item.id) && !HashSet.has(linkedUrls, Tuple.make(item.worker, item.url))
+		),
+		Array.map(item => ({exposures: [item], item, listeners: []})),
+		Array.filter(row => important(row.item))
+	)
+	return Array.map([...visible, ...remaining], row => {
+		if (row.item.kind === 'container') return row
+		const candidates = ports(row.listeners)
+		const hasUi = Array.some(candidates, candidate => Option.contains(candidate.ui, true))
+		const exposedPorts = HashSet.fromIterable(Array.getSomes(Array.map(row.exposures, exposure => exposure.port)))
+		return {
+			...row,
+			listeners: Array.filter(
+				candidates,
+				listener =>
+					!hasUi ||
+					Option.contains(listener.ui, true) ||
+					Option.exists(listener.port, port => HashSet.has(exposedPorts, port))
+			)
+		}
+	})
 }
 
 export type Row = ReturnType<typeof workloads>[number]
@@ -431,7 +441,6 @@ export function reasonLine(item: InventoryItem, now: DateTime.Utc) {
 // A process with everything below it: `memory` and `cpu` cover the subtree; `cpu` stays unknown while no member reports one.
 export type ProcessNode = {
 	children: readonly ProcessNode[]
-	command: Option.Option<readonly string[]>
 	cpu: Option.Option<number>
 	label: ProcessLabel
 	memory: number
@@ -505,7 +514,6 @@ export function processTree(rows: readonly Process[]) {
 		)
 		const self: ProcessNode = {
 			children: [],
-			command: row.command,
 			cpu: row.cpu,
 			label: row.label,
 			memory: row.memory,
@@ -606,24 +614,6 @@ function appOf(row: Row, withProcesses: boolean) {
 	} satisfies ManagedApp
 }
 
-function exposureOf(item: Extract<InventoryItem, {kind: 'exposure'}>) {
-	return Option.map(
-		item.url,
-		url =>
-			({
-				access: pipe(
-					item.publicAccess,
-					Option.contains(true),
-					Boolean.match({onFalse: Function.constant('tailnet' as const), onTrue: Function.constant('public' as const)})
-				),
-				id: item.id,
-				name: ExposureName.make(item.name),
-				port: item.port,
-				url
-			}) satisfies HttpsExposure
-	)
-}
-
 function matches(row: Row, app: string) {
 	const needle = String.toLowerCase(app)
 	return Array.some([workloadName(row.item), row.item.name, ...Option.toArray(row.item.unit)], name =>
@@ -691,11 +681,31 @@ export function listApps(snapshot: Snapshot, input: InventoryQuery) {
 						}) satisfies Job
 				)
 			)
+			// Every exposure the worker owns or opens to the public, whether or not an app row shows it, so remove_exposure can find it by name.
 			const exposures = pipe(
-				own,
-				Array.flatMap(row => {
-					if (row.item.kind !== 'exposure' || onlyFailing) return []
-					return Option.toArray(exposureOf(row.item))
+				snapshot.items,
+				Array.flatMap(item => {
+					if (item.kind !== 'exposure' || item.worker !== worker || onlyFailing || !important(item)) return []
+					return Option.toArray(
+						Option.map(
+							item.url,
+							url =>
+								({
+									access: pipe(
+										item.publicAccess,
+										Option.contains(true),
+										Boolean.match({
+											onFalse: Function.constant('tailnet' as const),
+											onTrue: Function.constant('public' as const)
+										})
+									),
+									id: item.id,
+									name: ExposureName.make(item.name),
+									port: item.port,
+									url
+								}) satisfies HttpsExposure
+						)
+					)
 				}),
 				Array.sort(Order.mapInput(Order.String, (exposure: HttpsExposure) => exposure.url))
 			)

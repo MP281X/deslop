@@ -9,6 +9,7 @@ import {
 	Duration,
 	Context,
 	Effect,
+	Equal,
 	Exit,
 	Fiber,
 	FileSystem,
@@ -29,8 +30,10 @@ import {
 
 import {FetchHttpClient, HttpClient, HttpTraceContext} from 'effect/http'
 import {ChildProcessSpawner} from 'effect/process'
+import {Reactivity} from 'effect/reactivity'
 
 import {executeProcess} from '@deslop/runtime/server/process'
+import type {Admin} from '@deslop/runtime/shared/auth'
 
 import {exitFailure, unitFailures} from './lib/failures.ts'
 import {
@@ -41,7 +44,14 @@ import {
 	macApplications,
 	systemProgram
 } from './lib/launchd.ts'
-import {attachProcesses, launchdProcesses, launchdStarts, processReadings, processes} from './lib/processes.ts'
+import {
+	attachProcesses,
+	launchdExecutables,
+	launchdProcesses,
+	launchdStarts,
+	processReadings,
+	processes
+} from './lib/processes.ts'
 import type {ProcessMeasurement} from './lib/processes.ts'
 import {type Socket, lsofSockets, probeSocket, socketLine, socketProcess, socketUnit} from './lib/sockets.ts'
 
@@ -59,7 +69,7 @@ import {
 	UnitId,
 	WorkerId
 } from '#services/inventory/schema.ts'
-import type {RunRequest, Snapshot} from '#services/inventory/schema.ts'
+import type {RunRequest, ServiceScope, Snapshot} from '#services/inventory/schema.ts'
 
 declare module 'effect/reactivity/Reactivity' {
 	interface Keys {
@@ -67,14 +77,14 @@ declare module 'effect/reactivity/Reactivity' {
 	}
 }
 
-// Each listener with its unit, the app a Node listener's working directory names, and whether it answers HTTP; `unit` and `cwd` read a PID the platform's way.
+// Each listener with its unit, the app a Node listener's working directory names, and whether it answers HTTP; `owner` and `cwd` read a PID the platform's way. A PID whose start time changed while it was read was reused, so its listener keeps none of what was read.
 function portItems(
 	sockets: readonly Socket[],
 	worker: WorkerId,
 	probe: (port: number, identity: string) => Effect.Effect<Option.Option<{http: boolean; ui: boolean}>>,
 	source: {
 		readonly cwd: (pid: ProcessId) => Effect.Effect<Option.Option<string>>
-		readonly unit: (pid: ProcessId) => Effect.Effect<Option.Option<UnitId>>
+		readonly owner: (pid: ProcessId) => Effect.Effect<Option.Option<{scope: ServiceScope; unit: UnitId}>>
 		readonly start: (pid: ProcessId) => Effect.Effect<Option.Option<string>>
 	}
 ) {
@@ -85,17 +95,22 @@ function portItems(
 				Array.dedupeWith((left, right) => left.pid === right.pid),
 				Effect.forEach(
 					Effect.fnUntraced(function* (process) {
-						return [
-							process.pid,
-							{
-								cwd: yield* Boolean.match(String.startsWith('node')(process.name), {
-									onFalse: () => Effect.succeedNone,
-									onTrue: () => source.cwd(process.pid)
-								}),
-								start: yield* source.start(process.pid),
-								unit: yield* source.unit(process.pid)
-							}
-						] as const
+						const start = yield* source.start(process.pid)
+						const read = {
+							cwd: yield* Boolean.match(String.startsWith('node')(process.name), {
+								onFalse: () => Effect.succeedNone,
+								onTrue: () => source.cwd(process.pid)
+							}),
+							owner: yield* source.owner(process.pid),
+							start
+						}
+						if (Option.isNone(start) || !Equal.equals(start, yield* source.start(process.pid))) {
+							return [
+								process.pid,
+								{cwd: Option.none<string>(), owner: Option.none(), start: Option.none<string>()}
+							] as const
+						}
+						return [process.pid, read] as const
 					}),
 					{concurrency: 8}
 				)
@@ -105,7 +120,7 @@ function portItems(
 			sockets,
 			Effect.fnUntraced(function* (socket) {
 				const origin = Option.flatMap(socket.process, process => HashMap.get(metadata, process.pid))
-				const unit = Option.flatMap(origin, process => process.unit)
+				const owner = Option.flatMap(origin, process => process.owner)
 				const process = Option.flatMap(socket.process, match => {
 					if (!String.startsWith('node')(match.name)) return Option.liftPredicate(match.name, String.isNonEmpty)
 					return pipe(
@@ -145,9 +160,10 @@ function portItems(
 							onTrue: Function.constant('udp' as const)
 						})
 					),
+					scope: Option.map(owner, found => found.scope),
 					state: socket.state,
 					ui: Option.some(Option.exists(response, value => value.ui)),
-					unit,
+					unit: Option.map(owner, found => found.unit),
 					url: Option.none(),
 					worker
 				})
@@ -191,7 +207,7 @@ export class Inventory extends Context.Service<
 	{
 		readonly refresh: Effect.Effect<void>
 		readonly ensureFresh: Effect.Effect<void>
-		readonly run: (input: Omit<RunRequest, 'worker'>) => Effect.Effect<void, DeployError>
+		readonly run: (input: Omit<RunRequest, 'worker'>, admin: Admin) => Effect.Effect<void, DeployError>
 		readonly snapshot: Effect.Effect<Snapshot>
 	}
 >()('@deslop/deploy/services/inventory/service/Inventory') {
@@ -200,10 +216,13 @@ export class Inventory extends Context.Service<
 		Effect.gen(function* () {
 			const fs = yield* FileSystem.FileSystem
 			const http = yield* HttpClient.HttpClient
+			const reactivity = yield* Reactivity.Reactivity
+			const layerScope = yield* Effect.scope
 			const spawner = yield* ChildProcessSpawner.ChildProcessSpawner
-			function command(name: string, args: string[]) {
+			// A command that hangs is killed within its source's ten seconds; optional metadata names a shorter wait so a stall drops only itself.
+			function command(name: string, args: string[], timeout: Duration.Input = '10 seconds') {
 				return pipe(
-					executeProcess(name, args),
+					executeProcess(name, args, {timeout}),
 					Effect.mapError(cause =>
 						DeployError.make({cause, message: `Could not run ${name}; inspect the worker's process logs.`})
 					),
@@ -250,12 +269,13 @@ export class Inventory extends Context.Service<
 					Effect.option
 				)
 			}
+			// A process that keeps its PID can still change what it serves, so an answer is asked again after ten minutes.
 			const probes = yield* Cache.makeWith((key: readonly [number, string]) => head(key[0]), {
-				capacity: Infinity,
+				capacity: 1024,
 				timeToLive: exit =>
 					Boolean.match(Exit.isSuccess(exit) && Option.isSome(exit.value), {
 						onFalse: () => Duration.seconds(5),
-						onTrue: () => Duration.infinity
+						onTrue: () => Duration.minutes(10)
 					})
 			})
 			function probe(port: number, identity: string) {
@@ -299,14 +319,18 @@ export class Inventory extends Context.Service<
 				const failures = Option.getOrElse(
 					Option.flatten(
 						yield* pipe(
-							command('systemctl', [
-								...scopeFlags,
-								'show',
-								...failed,
-								'-p',
-								'Id,Result,ExecMainCode,ExecMainStatus,StateChangeTimestamp',
-								'--timestamp=unix'
-							]),
+							command(
+								'systemctl',
+								[
+									...scopeFlags,
+									'show',
+									...failed,
+									'-p',
+									'Id,ActiveState,Result,ExecMainCode,ExecMainStatus,StateChangeTimestamp',
+									'--timestamp=unix'
+								],
+								'3 seconds'
+							),
 							Effect.map(unitFailures),
 							Effect.option,
 							Effect.when(Effect.succeed(Array.isReadonlyArrayNonEmpty(failed)))
@@ -366,7 +390,7 @@ export class Inventory extends Context.Service<
 										),
 										...Array.map(
 											Array.fromIterable(
-												String.matchAll(/((?:[0-9.]+|\[::\])):([0-9]+)->[0-9]+\/(tcp|udp)/gu)(row.Ports)
+												String.matchAll(/((?:[0-9.]+|\[[0-9a-f:]+\])):([0-9]+)->[0-9]+\/(tcp|udp)/giu)(row.Ports)
 											),
 											match => ({
 												address: `${match[1]}:${match[2]}`,
@@ -436,6 +460,10 @@ export class Inventory extends Context.Service<
 								probe,
 								{
 									cwd: processId => Effect.option(fs.readLink(`/proc/${processId}/cwd`)),
+									owner: processId =>
+										Effect.map(Effect.option(fs.readFileString(`/proc/${processId}/cgroup`)), cgroup =>
+											socketUnit(Option.getOrElse(cgroup, Function.constant('')))
+										),
 									start: processId =>
 										Effect.map(
 											Effect.option(fs.readFileString(`/proc/${processId}/stat`)),
@@ -444,10 +472,6 @@ export class Inventory extends Context.Service<
 													pipe(String.slice(at + 2)(stat), String.split(/\s+/u), Array.get(19))
 												)
 											)
-										),
-									unit: processId =>
-										Effect.map(Effect.option(fs.readFileString(`/proc/${processId}/cgroup`)), cgroup =>
-											socketUnit(Option.getOrElse(cgroup, Function.constant('')))
 										)
 								}
 							)
@@ -462,7 +486,7 @@ export class Inventory extends Context.Service<
 				lookup: Effect.fnUntraced(function* (bundle: string) {
 					// Reading the bundle directly avoids asking for macOS Automation access just to name a row.
 					return yield* pipe(
-						command('/usr/bin/plutil', ['-convert', 'json', '-o', '-', `${bundle}/Contents/Info.plist`]),
+						command('/usr/bin/plutil', ['-convert', 'json', '-o', '-', `${bundle}/Contents/Info.plist`], '2 seconds'),
 						Effect.flatMap(
 							Schema.decodeEffect(
 								Schema.fromJsonString(
@@ -496,7 +520,9 @@ export class Inventory extends Context.Service<
 							Effect.fnUntraced(function* (agent) {
 								if (String.startsWith('deslop-')(agent.label)) return Option.some(agent)
 								const program = Option.flatMap(
-									yield* Effect.option(command('launchctl', ['print', `gui/${userInfo().uid}/${agent.label}`])),
+									yield* Effect.option(
+										command('launchctl', ['print', `gui/${userInfo().uid}/${agent.label}`], '2 seconds')
+									),
 									launchProgram
 								)
 								if (Option.exists(program, systemProgram)) return Option.none()
@@ -524,14 +550,16 @@ export class Inventory extends Context.Service<
 									})
 								)
 							}),
-							{concurrency: 4}
+							{concurrency: 8}
 						)
 					)
 				})
 				const collected = yield* Effect.all(
 					{
-						agents: Effect.result(namedAgents),
+						// Every agent's program is read, but the whole listing still answers within its source's ten seconds.
+						agents: Effect.result(Effect.timeout(namedAgents, '8 seconds')),
 						applications: Effect.result(command('/usr/bin/lsappinfo', ['list'])),
+						executables: Effect.result(command('env', ['LC_ALL=C', 'ps', '-axww', '-o', 'pid=,comm='])),
 						table: Effect.result(
 							command('env', ['LC_ALL=C', 'ps', '-axww', '-o', 'pid=,ppid=,rss=,time=,lstart=,args='])
 						)
@@ -589,7 +617,15 @@ export class Inventory extends Context.Service<
 				const records = Result.map(launchd.table, text => {
 					const agents = HashMap.fromIterable(Array.map(apps, app => [app.pid, app.label] as const))
 					return Array.filter(
-						launchdProcesses(text, agents),
+						launchdProcesses(
+							text,
+							agents,
+							pipe(
+								launchd.executables,
+								Result.map(launchdExecutables),
+								Result.getOrElse(HashMap.empty<ProcessId, string>)
+							)
+						),
 						record =>
 							record.process.pid === selfProcess ||
 							!pipe(agents, HashMap.get(selfProcess), Option.contains(record.unit))
@@ -653,26 +689,28 @@ export class Inventory extends Context.Service<
 						),
 						collect(
 							'Listening ports',
-							Effect.flatMap(command('lsof', ['-nP', '+c0', '-iTCP', '-sTCP:LISTEN', '-iUDP', '-F', 'pctPnT']), text =>
+							Effect.flatMap(command('lsof', ['-nP', '+c0', '-iTCP', '-sTCP:LISTEN', '-iUDP', '-F', 'pcftPnT']), text =>
 								portItems(lsofSockets(text), worker, probe, {
 									cwd: Effect.fnUntraced(function* (processId) {
 										return pipe(
-											yield* Effect.option(command('lsof', ['-nP', '-a', '-p', `${processId}`, '-d', 'cwd', '-Fn'])),
+											yield* Effect.option(
+												command('lsof', ['-nP', '-a', '-p', `${processId}`, '-d', 'cwd', '-Fn'], '2 seconds')
+											),
 											Option.getOrElse(Function.constant('')),
 											String.split('\n'),
 											Array.findFirst(String.startsWith('n')),
 											Option.map(String.slice(1))
 										)
 									}),
-									start: processId => Effect.succeed(HashMap.get(starts, processId)),
-									unit: processId =>
+									owner: processId =>
 										Effect.succeed(
 											pipe(
 												owned,
 												Array.findFirst(record => record.process.pid === processId),
-												Option.map(record => record.unit)
+												Option.map(record => ({scope: 'user' as const, unit: record.unit}))
 											)
-										)
+										),
+									start: processId => Effect.succeed(HashMap.get(starts, processId))
 								})
 							)
 						)
@@ -835,8 +873,11 @@ export class Inventory extends Context.Service<
 			return {
 				ensureFresh,
 				refresh,
+				// The caller gets the start's answer at once; the refresh that follows wakes viewers when it lands, so a deadline never waits on it.
 				run: Effect.fn('Inventory.run')(function* (input) {
-					yield* Effect.onExit(start(input), () => refresh)
+					yield* Effect.onExit(start(input), () =>
+						pipe(refresh, Effect.andThen(reactivity.invalidate(['deployInventory'])), Effect.forkIn(layerScope))
+					)
 				}),
 				snapshot: SubscriptionRef.get(snapshot)
 			}

@@ -60,10 +60,7 @@ const apps = Array.map(Record.keys(servers), file => {
 			Array.filter((value): value is Migrations => Layer.isLayer(value))
 		),
 		models: Array.filter(
-			[
-				...exportsOf(schemas, app),
-				...Boolean.match(app === 'trips' || app === 'opm', {onFalse: () => [], onTrue: () => [Device]})
-			],
+			exportsOf(schemas, app),
 			(value): value is Model =>
 				Schema.isSchema(value) && Predicate.hasProperty(value, 'table') && Predicate.isString(value.table)
 		)
@@ -127,7 +124,7 @@ function expectedColumns(model: Model) {
 }
 
 // Every service of the app migrates one database; then each table is compared with its model through SQLite's own description. A full-text index is a virtual table over shadow tables, which SQLite owns.
-const checked = Effect.fnUntraced(function* (migrations: readonly Migrations[], models: readonly Model[]) {
+const checked = Effect.fnUntraced(function* (migrations: readonly Migrations[], owned: readonly Model[]) {
 	const sql = yield* SqlClient.SqlClient
 	yield* Effect.forEach(migrations, Layer.build, {concurrency: 1, discard: true})
 	const tables = yield* sql<{name: string}>`
@@ -135,6 +132,12 @@ const checked = Effect.fnUntraced(function* (migrations: readonly Migrations[], 
 		WHERE schema = 'main' AND type = 'table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '%_migrations'
 		ORDER BY name
 	`
+	// The runtime's shared Device model describes the table of every app whose push migration creates one.
+	const models = pipe(
+		tables,
+		Array.some(table => table.name === Device.table),
+		Boolean.match({onFalse: () => owned, onTrue: () => [...owned, Device]})
+	)
 	assert.deepStrictEqual(
 		Array.map(tables, table => table.name),
 		pipe(

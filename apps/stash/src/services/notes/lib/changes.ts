@@ -7,6 +7,11 @@ import {commentOf, sourceOf} from './utils.ts'
 import {Note, NoteChangeResult} from '#services/notes/schema.ts'
 import type {Capture, FileType, NoteChange} from '#services/notes/schema.ts'
 
+// Words saved after the organization read the note stay visible under its body as the owner's own lines, without paying for another pass.
+function annotated(body: string, words: readonly string[]) {
+	return Array.join([body, ...Array.map(words, line => `> ${line}`)], '\n')
+}
+
 // Decide the change without writes so the caller can apply it to the latest note in its transaction.
 // judge-ignore no-silent-fallback -- Notes logs extraction failures before this pure reducer sees their Result; saved content remains usable, and the worker's failure policy records an issue when no saved content exists.
 export function changeNote(note: Note, update: NoteChange) {
@@ -25,7 +30,13 @@ export function changeNote(note: Note, update: NoteChange) {
 				Array.match({
 					onEmpty: () => NoteChangeResult.cases.Unchanged.make({}),
 					onNonEmpty: words =>
-						NoteChangeResult.cases.Changed.make({note: {...fields, text: `${note.text}\n${Array.join(words, ' ')}`}})
+						NoteChangeResult.cases.Changed.make({
+							note: {
+								...fields,
+								body: Option.map(note.body, body => annotated(body, [Array.join(words, ' ')])),
+								text: `${note.text}\n${Array.join(words, ' ')}`
+							}
+						})
 				})
 			)
 		}),
@@ -82,11 +93,26 @@ export function changeNote(note: Note, update: NoteChange) {
 				}
 			})
 		),
+		Match.tag('issue', change =>
+			NoteChangeResult.cases.Changed.make({note: {...fields, issue: Option.some(change.issue)}})
+		),
 		Match.tag('organize', change =>
 			NoteChangeResult.cases.Changed.make({
 				note: {
 					...fields,
-					body: Option.some(change.organization.body),
+					body: Option.some(
+						annotated(
+							change.organization.body,
+							pipe(
+								Option.liftPredicate(note.text, String.startsWith(change.read)),
+								Option.map(text =>
+									pipe(String.slice(change.read.length)(text), String.split('\n'), Array.map(String.trim))
+								),
+								Option.getOrElse(Array.empty<string>),
+								Array.filter(String.isNonEmpty)
+							)
+						)
+					),
 					issue: Option.none(),
 					screenText: Option.some(change.organization.screenText),
 					status: 'ready' as const,
@@ -98,7 +124,7 @@ export function changeNote(note: Note, update: NoteChange) {
 		),
 		Match.tag('fail', change =>
 			NoteChangeResult.cases.Changed.make({
-				note: {...fields, issue: Option.some(change.message), status: 'failed' as const}
+				note: {...fields, issue: Option.some(change.issue), status: 'failed' as const}
 			})
 		),
 		Match.tag('empty', () =>

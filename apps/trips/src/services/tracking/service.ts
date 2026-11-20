@@ -6,7 +6,9 @@ import {
 	DateTime,
 	Duration,
 	Effect,
+	FiberSet,
 	Function,
+	HashSet,
 	Layer,
 	Option,
 	Record,
@@ -84,6 +86,12 @@ export class Tracking extends Context.Service<Tracking>()('@deslop/trips/service
 			)
 		)
 
+		// After FlightAware fails, every flight waits ten minutes rather than spend the month's lookups on an outage.
+		const flightsPausedUntil = yield* Ref.make(Option.none<DateTime.Utc>())
+		const flightsPaused = Effect.fnUntraced(function* (now: DateTime.Utc) {
+			return Option.exists(yield* Ref.get(flightsPausedUntil), until => DateTime.isLessThan(now, until))
+		})
+
 		// A flight holds its turn through the request and a six-second gap; trains never acquire it.
 		const flightTurns = yield* Semaphore.make(1)
 		const flight = Effect.fnUntraced(function* (booking: Flight, now: DateTime.Utc) {
@@ -94,6 +102,9 @@ export class Tracking extends Context.Service<Tracking>()('@deslop/trips/service
 				onNone: () => BookingsError.make({message: 'The server has no FlightAware key.'}),
 				onSome: Effect.succeed
 			})
+			if (yield* flightsPaused(now)) {
+				return yield* BookingsError.make({message: 'FlightAware is not answering; Trips asks again in a few minutes.'})
+			}
 			yield* spend
 			const answer = yield* pipe(
 				HttpClientRequest.get(
@@ -120,6 +131,11 @@ export class Tracking extends Context.Service<Tracking>()('@deslop/trips/service
 				Effect.flatMap(HttpClientResponse.filterStatusOk),
 				Effect.flatMap(HttpClientResponse.schemaBodyJson(FaFlights)),
 				Effect.timeout('20 seconds'),
+				Effect.tapError(() =>
+					Effect.flatMap(DateTime.now, failedAt =>
+						Ref.set(flightsPausedUntil, Option.some(DateTime.addDuration(failedAt, Duration.minutes(10))))
+					)
+				),
 				asBookingsError(`FlightAware did not answer for ${booking.airlineCode} ${booking.number}.`)
 			)
 			return Option.map(pickFlight(answer.flights, booking), found => flightTracking(found, now, booking.live))
@@ -205,8 +221,9 @@ export class Tracking extends Context.Service<Tracking>()('@deslop/trips/service
 			})
 		})
 
-		// Admission and its attempt timestamp are atomic; flights take turns six seconds apart for FlightAware's ten requests a minute, while trains go on independently.
+		// Admission, its attempt timestamp and the running mark are atomic, so a pull to refresh and a round never ask for one booking twice; flights take turns six seconds apart for FlightAware's ten requests a minute, while trains go on independently.
 		const turns = yield* Semaphore.make(1)
+		const running = yield* Ref.make(HashSet.empty<BookingId>())
 		const check = Effect.fnUntraced(function* (
 			id: BookingId,
 			admits: (booking: Booking, now: DateTime.Utc, attempted: Option.Option<DateTime.Utc>) => boolean
@@ -216,14 +233,22 @@ export class Tracking extends Context.Service<Tracking>()('@deslop/trips/service
 				Effect.gen(function* () {
 					const now = yield* DateTime.now
 					const attempted = Record.get(yield* Ref.get(attempts), id)
-					const booking = Option.filter(yield* bookings.find(id), item => admits(item, now, attempted))
-					if (Option.isSome(booking)) yield* Ref.update(attempts, Record.set(id, now))
+					const busy = HashSet.has(yield* Ref.get(running), id)
+					const booking = Option.filter(yield* bookings.find(id), item => !busy && admits(item, now, attempted))
+					if (Option.isSome(booking)) {
+						yield* Ref.update(attempts, Record.set(id, now))
+						yield* Ref.update(running, HashSet.add(id))
+					}
 					return Option.map(booking, item => ({booking: item, now}))
 				})
 			)
-			yield* Option.match(admitted, {onNone: () => Effect.void, onSome: ready => observe(ready.booking, ready.now)})
+			yield* Option.match(admitted, {
+				onNone: () => Effect.void,
+				onSome: ready => Effect.ensuring(observe(ready.booking, ready.now), Ref.update(running, HashSet.remove(id)))
+			})
 		})
 
+		const checks = yield* FiberSet.make()
 		yield* pipe(
 			Effect.gen(function* () {
 				const now = yield* DateTime.now
@@ -233,17 +258,26 @@ export class Tracking extends Context.Service<Tracking>()('@deslop/trips/service
 					Record.filter((_, id) => Array.some(all, booking => booking.id === id))
 				)
 				const attempted = yield* Ref.get(attempts)
+				const paused = yield* flightsPaused(now)
+				// Each check runs on its own, so a round never waits for the flights queued behind FlightAware's gap and trains keep their pace.
 				yield* pipe(
 					all,
-					Array.filter(booking => isDue(booking, now, Record.get(attempted, booking.id))),
+					Array.filter(
+						booking =>
+							isDue(booking, now, Record.get(attempted, booking.id)) &&
+							!(paused && Booking.isAnyOf(['flight'])(booking))
+					),
 					Effect.forEach(
 						booking =>
-							pipe(
-								check(booking.id, isDue),
-								Effect.withSpan('Tracking.check', {attributes: {bookingId: booking.id}}),
-								Effect.ignore({log: 'Warn', message: `The live status of ${booking.id} was not read`})
+							FiberSet.run(
+								checks,
+								pipe(
+									check(booking.id, isDue),
+									Effect.withSpan('Tracking.check', {attributes: {bookingId: booking.id}}),
+									Effect.ignore({log: 'Warn', message: `The live status of ${booking.id} was not read`})
+								)
 							),
-						{concurrency: 'unbounded', discard: true}
+						{concurrency: 1, discard: true}
 					)
 				)
 			}),

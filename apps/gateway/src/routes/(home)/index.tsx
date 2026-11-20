@@ -7,7 +7,7 @@ import {CatchBoundary, createFileRoute, getRouteApi} from '@tanstack/react-route
 import {useMachineResult} from '@typeonce/effect-machine-react'
 import {AtomMachine} from '@typeonce/effect-machine/reactivity'
 import {AsyncResult, Atom} from 'effect/reactivity'
-import {Suspense, useState} from 'react'
+import {Suspense} from 'react'
 import type {ReactNode} from 'react'
 import {Line, LineChart, YAxis} from 'recharts'
 
@@ -21,8 +21,6 @@ import {preload} from '@deslop/components-web/lib/router'
 import {AppBar, AppBarChoice} from '@deslop/components-web/shell/app-bar'
 import {Page} from '@deslop/components-web/shell/page'
 import {Button} from '@deslop/components-web/ui/button'
-import {ChartContainer} from '@deslop/components-web/ui/chart'
-import type {ChartConfig} from '@deslop/components-web/ui/chart'
 import {Field, FieldError, FieldGroup} from '@deslop/components-web/ui/field'
 import {InputGroup, InputGroupAddon, InputGroupInput} from '@deslop/components-web/ui/input-group'
 import {Table, TableBody, TableCell, TableRow} from '@deslop/components-web/ui/table'
@@ -36,8 +34,9 @@ import {
 	aiUsageAtom,
 	connectAtom,
 	mcpUsageAtom,
-	serversAtom,
-	setKeyAtom
+	openKeyAtom,
+	pastedKeyAtom,
+	serversAtom
 } from '#lib/gateway.ts'
 import {Search} from '#lib/search.ts'
 import {ProviderMark} from '#routes/(home)/-provider-mark.tsx'
@@ -52,7 +51,6 @@ import type {UsageRange} from '#services/usage/schema.ts'
 
 // The list's columns: name, tools, sparkline, total.
 const COLUMNS = 4
-const SPARKLINE = {calls: {color: 'var(--muted-foreground)'}} satisfies ChartConfig
 const PAYER_LABELS: Record<Payer, string> = {balance: 'Zen balance', byok: 'Anthropic key', openai: 'OpenAI key'}
 const PROVIDER_NAMES: Record<AiProvider, string> = {anthropic: 'Anthropic', openai: 'OpenAI', opencode: 'OpenCode'}
 const PROVIDER_PAYERS: Record<AiProvider, Payer> = {anthropic: 'byok', openai: 'openai', opencode: 'balance'}
@@ -69,23 +67,26 @@ function urgency(server: ConnectionItem) {
 }
 const byUrgency = Order.mapInput(Order.Number, urgency)
 
-// A 64×14 line of the period's figures; zeros rest on the baseline.
+// A 64×14 line of the period's figures; zeros rest on the baseline. Its fixed size needs no measuring, so the hidden phone column draws nothing.
 function Sparkline(props: {values: readonly number[]}) {
 	return (
-		<div aria-hidden className="flex h-3.5 w-16">
-			<ChartContainer config={SPARKLINE} className="flex-1">
-				<LineChart data={Array.map(props.values, calls => ({calls}))} margin={{bottom: 1, left: 1, right: 1, top: 1}}>
-					<YAxis hide domain={[0, 'dataMax']} />
-					<Line
-						dataKey="calls"
-						type="linear"
-						stroke="var(--color-calls)"
-						strokeWidth={1.5}
-						dot={false}
-						isAnimationActive={false}
-					/>
-				</LineChart>
-			</ChartContainer>
+		<div aria-hidden className="h-3.5 w-16">
+			<LineChart
+				width={64}
+				height={14}
+				data={Array.map(props.values, calls => ({calls}))}
+				margin={{bottom: 1, left: 1, right: 1, top: 1}}
+			>
+				<YAxis hide domain={[0, 'dataMax']} />
+				<Line
+					dataKey="calls"
+					type="linear"
+					stroke="var(--muted-foreground)"
+					strokeWidth={1.5}
+					dot={false}
+					isAnimationActive={false}
+				/>
+			</LineChart>
 		</div>
 	)
 }
@@ -293,7 +294,7 @@ function KeyRows(props: {period: TimeFrame}) {
 // Each group is read on its own, so one failing reader leaves the other group's rows.
 function List(props: {period: TimeFrame}) {
 	return (
-		<Table role="grid" aria-label="MCP servers and AI keys">
+		<Table aria-label="MCP servers and AI keys">
 			<TableBody>
 				<CatchBoundary getResetKey={Function.constant('keys')} errorComponent={RowReadFailure}>
 					<Suspense fallback={<GroupLoading label="AI keys" rows={3} />}>
@@ -395,17 +396,8 @@ function HomeRoute() {
 	const search: Search = route.useSearch()
 	const navigate = route.useNavigate()
 	const period = Option.getOrElse(search.period, Function.constant('24h' as const))
-	// Open, which opening it is (so each starts with the pasted secret), and the provider it adds.
-	const [keyDialog, setKeyDialog] = useState<{open: boolean; opened: number; secret: string}>({
-		open: false,
-		opened: 0,
-		secret: ''
-	})
-	const resetKey = useAtomSet(setKeyAtom)
-	function addKey(secret: string) {
-		resetKey(Atom.Reset)
-		setKeyDialog(previous => ({open: true, opened: previous.opened + 1, secret}))
-	}
+	const addKey = useAtomSet(openKeyAtom)
+	const pasted = useAtomValue(pastedKeyAtom)
 
 	return (
 		<div className="flex min-h-0 flex-1 flex-col">
@@ -432,16 +424,9 @@ function HomeRoute() {
 				<AddField onKey={addKey} />
 				<List period={period} />
 			</Page>
-			{Option.match(AsyncResult.value(useAtomValue(keysModuleAtom)), {
+			{Option.match(Option.all({module: AsyncResult.value(useAtomValue(keysModuleAtom)), secret: pasted}), {
 				onNone: Function.constNull,
-				onSome: module => (
-					<module.AddKeyDialog
-						key={keyDialog.opened}
-						open={keyDialog.open}
-						initialSecret={keyDialog.secret}
-						onOpenChange={open => setKeyDialog(previous => ({...previous, open}))}
-					/>
-				)
+				onSome: dialog => <dialog.module.AddKeyDialog initialSecret={dialog.secret} />
 			})}
 		</div>
 	)
@@ -453,6 +438,6 @@ export const Route = createFileRoute('/(home)/')({
 
 	component: HomeRoute,
 	loader: load =>
-		preload(load.context, [serversAtom, aiKeyAtom, aiUsageAtom(load.deps.period), mcpUsageAtom(load.deps.period)]),
+		preload(load, [serversAtom, aiKeyAtom, aiUsageAtom(load.deps.period), mcpUsageAtom(load.deps.period)]),
 	validateSearch: Schema.toStandardSchemaV1(Search)
 })

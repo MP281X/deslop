@@ -13,8 +13,10 @@ import {
 	HashMap,
 	Layer,
 	Option,
+	Predicate,
 	Redacted,
 	Ref,
+	Result,
 	Schema,
 	String,
 	Struct,
@@ -27,17 +29,12 @@ import {HttpClient, HttpClientRequest, HttpClientResponse} from 'effect/http'
 import {Jwk, Jws} from 'effect/jose'
 
 import {DEVELOPMENT_BUNDLE_SUFFIX} from '#config/expo.ts'
-import {ApnsAnswer, apnsAnswer} from '#shared/apns.ts'
-import type {ApnsToken} from '#shared/apns.ts'
+import {ApnsAnswer, apnsAnswer, deviceHeaders, tooLargeAnswer} from '#shared/apns.ts'
+import type {ApnsPriority, ApnsPushType, ApnsToken} from '#shared/apns.ts'
 import {DateTimeUtcFromSeconds} from '#shared/time.ts'
 
 type JwtClaims = typeof JwtClaims.Type
 const JwtClaims = Schema.fromJsonString(Schema.Struct({iat: DateTimeUtcFromSeconds, iss: Schema.String}))
-
-type ApnsPushType = typeof ApnsPushType.Type
-const ApnsPushType = Schema.Literals(['alert', 'liveactivity'])
-type ApnsPriority = typeof ApnsPriority.Type
-const ApnsPriority = Schema.Literals([5, 10])
 
 class ApnsError extends Schema.TaggedError<ApnsError>()('ApnsError', {message: Schema.String}) {}
 
@@ -103,7 +100,7 @@ export class Apns extends Context.Service<Apns>()('@deslop/runtime/server/apns',
 			)
 		})
 		// Apple accepts a provider token for an hour and refuses one renewed more than every twenty minutes.
-		const providerToken = yield* pipe(
+		const [providerToken, renewProviderToken] = yield* pipe(
 			Effect.gen(function* () {
 				const now = yield* DateTime.now
 				const found = yield* Effect.fromOption(signer)
@@ -114,18 +111,27 @@ export class Apns extends Context.Service<Apns>()('@deslop/runtime/server/apns',
 				)
 			}),
 			asApnsError('The APNs key could not sign a token.'),
-			Effect.cachedWithTTL(exit =>
+			Effect.cachedInvalidateWithTTL(exit =>
 				Exit.match(exit, {onFailure: Function.constant(0), onSuccess: Function.constant('40 minutes')})
 			)
 		)
+		const oversized = Effect.fnUntraced(function* (request: HttpClientRequest.HttpClientRequest) {
+			if (!Predicate.isTagged(request.body, 'Uint8Array')) return Option.none()
+			const answer = tooLargeAnswer(request.body.contentLength)
+			if (Option.isSome(answer)) {
+				yield* Effect.logWarning(`An APNs payload of ${request.body.contentLength} bytes was not sent`)
+			}
+			return answer
+		})
 		const send = Effect.fnUntraced(function* (request: HttpClientRequest.HttpClientRequest, notification?: string) {
 			const key = notification ?? `${request.method} ${request.url} ${request.headers['apns-channel-id'] ?? ''}`
 			const pending = Option.getOrUndefined(yield* deferred(key))
 			if (pending !== undefined) return pending
+			const tooLarge = Option.getOrUndefined(yield* oversized(request))
+			if (tooLarge !== undefined) return tooLarge
+			const token = Redacted.value(yield* providerToken)
 			const response = yield* pipe(
-				client.execute(
-					HttpClientRequest.setHeader(request, 'authorization', `bearer ${Redacted.value(yield* providerToken)}`)
-				),
+				client.execute(HttpClientRequest.setHeader(request, 'authorization', `bearer ${token}`)),
 				Effect.provideService(HttpClient.TracerDisabledWhen, outgoing => String.includes('/3/device/')(outgoing.url)),
 				Effect.timeout('20 seconds'),
 				asApnsError('APNs did not answer.')
@@ -139,6 +145,10 @@ export class Apns extends Context.Service<Apns>()('@deslop/runtime/server/apns',
 				yield* Effect.logWarning(
 					`APNs refused a push: ${response.status} ${Option.getOrElse(reason, Function.constant(''))}`
 				)
+			}
+			// Concurrent sends that all met the expired token renew it once.
+			if (Option.contains(reason, 'ExpiredProviderToken') && Redacted.value(yield* providerToken) === token) {
+				yield* renewProviderToken
 			}
 			const answer = apnsAnswer({
 				channel: Option.fromNullishOr(response.headers['apns-channel-id']),
@@ -170,30 +180,27 @@ export class Apns extends Context.Service<Apns>()('@deslop/runtime/server/apns',
 			)
 			return yield* pipe(answer.channel, Effect.fromOption, asApnsError(`APNs created no channel: ${answer.status}`))
 		}, withSignature)
+		// Only `Retry` leaves the channel to delete again; Apple's other answers are final.
 		const deleteChannel = Effect.fn('Apns.deleteChannel')(
 			(bundle: string, channel: string) =>
-				Effect.ignore(
-					send(
-						HttpClientRequest.delete(`${hostsOf(bundle).channels}/1/apps/${bundle}/channels`, {
-							headers: {'apns-channel-id': channel}
-						})
-					),
-					{log: 'Warn', message: 'A finished activity channel was not deleted'}
+				send(
+					HttpClientRequest.delete(`${hostsOf(bundle).channels}/1/apps/${bundle}/channels`, {
+						headers: {'apns-channel-id': channel}
+					})
 				),
 			withSignature
 		)
-		function deviceRequest(target: Target, type: ApnsPushType, body: Payload, priority: ApnsPriority) {
+		function deviceRequest(
+			target: Target,
+			type: ApnsPushType,
+			body: Payload,
+			priority: ApnsPriority,
+			collapseId?: string
+		) {
 			return pipe(
 				HttpClientRequest.bodyJson(
 					HttpClientRequest.post(`${hostsOf(target.bundle).devices}/3/device/${Redacted.value(target.token)}`, {
-						headers: {
-							'apns-priority': `${priority}`,
-							'apns-push-type': type,
-							'apns-topic': Boolean.match(type === 'liveactivity', {
-								onFalse: () => target.bundle,
-								onTrue: () => `${target.bundle}.push-type.liveactivity`
-							})
-						}
+						headers: deviceHeaders(target.bundle, type, priority, collapseId)
 					}),
 					body
 				),
@@ -201,8 +208,8 @@ export class Apns extends Context.Service<Apns>()('@deslop/runtime/server/apns',
 			)
 		}
 		const sendToDevice = Effect.fn('Apns.sendToDevice')(
-			(target: Target, type: ApnsPushType, body: Payload, priority: ApnsPriority) =>
-				Effect.flatMap(deviceRequest(target, type, body, priority), request => send(request)),
+			(target: Target, type: ApnsPushType, body: Payload, priority: ApnsPriority, collapseId?: string) =>
+				Effect.flatMap(deviceRequest(target, type, body, priority, collapseId), request => send(request)),
 			withSignature
 		)
 		return {
@@ -238,23 +245,46 @@ export class Apns extends Context.Service<Apns>()('@deslop/runtime/server/apns',
 				const key = `start ${target.bundle} ${Redacted.value(target.token)} ${attributes} ${leg}`
 				const pending = Option.getOrUndefined(yield* deferred(key))
 				if (pending !== undefined) return pending
-				const channel = yield* createChannel(target.bundle)
-				const payload = {
-					...body,
-					aps: {
-						...Struct.omit(body.aps, ['relevance-score', 'timestamp']),
-						'input-push-channel': channel,
-						'relevance-score': body.aps['relevance-score'],
-						timestamp: body.aps['timestamp']
-					}
+				function startRequest(channel: string) {
+					return deviceRequest(
+						target,
+						'liveactivity',
+						{
+							...body,
+							aps: {
+								...Struct.omit(body.aps, ['relevance-score', 'timestamp']),
+								'input-push-channel': channel,
+								'relevance-score': body.aps['relevance-score'],
+								timestamp: body.aps['timestamp']
+							}
+						},
+						10
+					)
 				}
+				// A start too large without its channel id never gets one, so no round creates a channel only to delete it.
+				const tooLarge = Option.getOrUndefined(yield* oversized(yield* startRequest('')))
+				if (tooLarge !== undefined) return tooLarge
+				const channel = yield* createChannel(target.bundle)
 				const answer = yield* pipe(
-					deviceRequest(target, 'liveactivity', payload, 10),
+					startRequest(channel),
 					Effect.flatMap(request => send(request, key)),
-					Effect.onError(() => deleteChannel(target.bundle, channel))
+					Effect.onError(() =>
+						Effect.ignore(deleteChannel(target.bundle, channel), {
+							log: 'Warn',
+							message: 'An unstarted activity channel was not deleted'
+						})
+					)
 				)
-				if (!ApnsAnswer.isAnyOf(['Accepted'])(answer)) yield* deleteChannel(target.bundle, channel)
-				return {...answer, channel: Option.some(channel)}
+				if (ApnsAnswer.isAnyOf(['Accepted'])(answer)) return {...answer, channel: Option.some(channel)}
+				// An unstarted activity still names its channel while Apple has not confirmed deleting it.
+				const deleted = yield* Effect.result(deleteChannel(target.bundle, channel))
+				return {
+					...answer,
+					channel: Option.liftPredicate(
+						channel,
+						() => Result.isFailure(deleted) || ApnsAnswer.isAnyOf(['Retry'])(deleted.success)
+					)
+				}
 			}, withSignature)
 		}
 	})

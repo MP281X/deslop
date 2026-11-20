@@ -52,7 +52,8 @@ import {blockingFailure} from '@deslop/runtime/client/live-stream'
 import {problemSinceAtom} from '@deslop/runtime/client/problem'
 import {dayOf} from '@deslop/runtime/shared/format'
 
-import {chaptersAtom, readAtom} from '#lib/chapters.ts'
+import {chaptersAtom, readAtom, unsavedAtom} from '#lib/chapters.ts'
+import {withUnsaved} from '#lib/reader.ts'
 import {primary, session} from '#lib/session.ts'
 import {ChapterProgress, Cover} from '#modules/native/index.ts'
 import {byNumber, SERIES_NAMES} from '#services/chapters/lib/utils.ts'
@@ -142,10 +143,11 @@ function ChapterRow(props: {chapter: ChapterItem; onOpen: (number: ChapterNumber
 }
 
 function Chapters(props: {onOpen: (number: ChapterNumber, page?: number) => void; searched: string; series: Series}) {
+	const unsaved = useAtomValue(unsavedAtom)
 	return (
 		<Loaded atom={chaptersAtom}>
 			{all => {
-				const chapters = Array.filter(all, chapter => chapter.series === props.series)
+				const chapters = Array.filter(withUnsaved(all, unsaved), chapter => chapter.series === props.series)
 				const needle = String.toLowerCase(String.trim(props.searched))
 				const matches = pipe(
 					chapters,

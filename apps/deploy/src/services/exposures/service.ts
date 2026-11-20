@@ -3,10 +3,12 @@ import {arch, platform} from 'node:process'
 
 import {
 	Array,
+	Boolean,
 	Context,
 	Duration,
 	Effect,
 	FileSystem,
+	Function,
 	Layer,
 	Option,
 	Path,
@@ -25,6 +27,7 @@ import {Migrator, SqlClient, SqlSchema} from 'effect/sql'
 
 import {AppError, ToolPath, executeProcess} from '@deslop/runtime/server/process'
 import {installService} from '@deslop/runtime/server/services'
+import type {Admin} from '@deslop/runtime/shared/auth'
 
 import {migrations} from './migrations.ts'
 
@@ -148,10 +151,25 @@ export class Exposures extends Context.Service<Exposures>()('@deslop/deploy/serv
 			yield* fs.writeFileString(`${configFile}.next`, caddyConfig(rows, path.join(directory, 'caddy')), {mode: 0o600})
 			yield* run(binary, ['validate', '--config', `${configFile}.next`, '--adapter', 'caddyfile'])
 			yield* fs.rename(`${configFile}.next`, configFile)
+			// A reload keeps Caddy's process, so one still running an earlier release's binary restarts onto this one.
+			const running = yield* pipe(
+				run('systemctl', ['--user', 'show', '--property=MainPID', '--value', 'deslop-deploy-caddy.service']),
+				Effect.map(String.trim),
+				Effect.flatMap(pid =>
+					Boolean.match(pid === '0', {onFalse: () => fs.readLink(`/proc/${pid}/exe`), onTrue: () => Effect.succeed('')})
+				),
+				Effect.option
+			)
 			yield* pipe(
-				installService('deploy-caddy', [binary, 'run', '--config', configFile, '--adapter', 'caddyfile'], {
-					restart: false
-				}),
+				installService(
+					'deploy-caddy',
+					[binary, 'run', '--config', configFile, '--adapter', 'caddyfile'],
+					pipe(
+						running,
+						Option.filter(current => current === binary),
+						Option.match({onNone: Function.constUndefined, onSome: () => ({restart: false as const})})
+					)
+				),
 				Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
 				Effect.provideService(FileSystem.FileSystem, fs),
 				Effect.provideService(Path.Path, path)
@@ -175,8 +193,9 @@ export class Exposures extends Context.Service<Exposures>()('@deslop/deploy/serv
 		}
 
 		return {
+			// Each change takes the caller's admin capability, so no route reaches it on a declaration alone.
 			expose: Effect.fn('Exposures.expose')(
-				function* (input: ExposeInput) {
+				function* (input: ExposeInput, _admin: Admin) {
 					yield* Effect.annotateCurrentSpan({exposure: input.name, kind: input.kind, port: input.port, worker})
 					const current = yield* owned
 					if (Array.some(current, row => row.name === input.name)) {
@@ -234,7 +253,7 @@ export class Exposures extends Context.Service<Exposures>()('@deslop/deploy/serv
 				asDeployError
 			),
 			hide: Effect.fn('Exposures.hide')(
-				function* (name: ExposureName) {
+				function* (name: ExposureName, _admin: Admin) {
 					yield* Effect.annotateCurrentSpan({exposure: name, worker})
 					const current = yield* owned
 					const exposure = yield* pipe(

@@ -5,6 +5,7 @@ import {NodeCrypto, NodeHttpClient, NodeRuntime, NodeServices} from '@effect/pla
 import {
 	Array,
 	Boolean,
+	ByteSize,
 	Config,
 	ConfigProvider,
 	Effect,
@@ -27,7 +28,6 @@ import {Command, Flag} from 'effect/cli'
 import type {HttpServerResponse} from 'effect/http'
 import {HttpRouter} from 'effect/http'
 
-import {AiGateway} from '#server/ai.ts'
 import {Auth} from '#server/auth.ts'
 import {
 	serverMiddleware,
@@ -44,7 +44,14 @@ import {layerProbeRouter, probeServer} from '#server/probe.ts'
 import {executeProcess} from '#server/process.ts'
 import {installService, installUpdateService, serviceStatus, uninstallService} from '#server/services.ts'
 import {dataDirectory, layerDataStore} from '#server/store.ts'
-import {activateRelease, updateRelease} from '#server/update.ts'
+import {
+	activateRelease,
+	confirmRelease,
+	runtimeUrl,
+	updateRelease,
+	updaterNpm,
+	withLifecycleLock
+} from '#server/update.ts'
 import type {RpcAuth, RpcAdmin} from '#shared/auth.ts'
 import {Port} from '#shared/schema.ts'
 
@@ -111,7 +118,6 @@ type Provided =
 	| Layer.Success<typeof layerPlatform>
 	| HttpRouter.HttpRouter
 	| Auth
-	| AiGateway
 	| RpcAuth
 	| RpcAdmin
 	| Layer.Success<ReturnType<typeof layerDataStore>>
@@ -138,6 +144,8 @@ export type App<A, E> = {
 		Layer.Success<typeof layerPlatform> | Layer.Success<ReturnType<typeof layerDataStore>>
 	>
 	readonly icon: string
+	// The largest RPC message the socket accepts, 1 MiB unless an app's payloads need more.
+	readonly maxFrameSize?: ByteSize.ByteSize
 	readonly routes: Routes<A, E>
 	readonly middleware?: <A, R>(
 		app: Effect.Effect<HttpServerResponse.HttpServerResponse, A, R>
@@ -148,6 +156,7 @@ export type App<A, E> = {
 }
 
 function server<A, E>(app: App<A, E>, listener = layerNodeHttpServer) {
+	const frames = app.maxFrameSize ?? ByteSize.mebibytes(1)
 	const routes = pipe(
 		Layer.mergeAll(app.routes, layerRoutes, layerIcon(app.icon), layerWeb),
 		Layer.provide(layerProbeRouter),
@@ -161,11 +170,8 @@ function server<A, E>(app: App<A, E>, listener = layerNodeHttpServer) {
 	return pipe(
 		HttpRouter.serve(
 			pipe(
-				Option.match(Option.fromUndefinedOr(app.auth), {
-					onNone: () => Layer.provide(routes, Auth.layer),
-					onSome: auth => Layer.provide(routes, auth)
-				}),
-				Layer.provideMerge(AiGateway.layer),
+				Option.fromUndefinedOr(app.auth),
+				Option.match({onNone: () => Layer.provide(routes, Auth.layer), onSome: auth => Layer.provide(routes, auth)}),
 				Layer.provide(Layer.unwrap(Effect.map(dataDirectory, layerDataStore)))
 			),
 			{disableLogger: true, middleware: serverMiddleware}
@@ -176,7 +182,7 @@ function server<A, E>(app: App<A, E>, listener = layerNodeHttpServer) {
 				Boolean.match(app.telemetry === false, {onFalse: () => layerTelemetry, onTrue: () => Layer.empty})
 			)
 		),
-		Layer.provideMerge(listener),
+		Layer.provideMerge(listener(frames)),
 		Layer.provide(layerPlatform)
 	)
 }
@@ -228,6 +234,9 @@ export function runApp<A, E>(app: App<A, E>) {
 							const path = yield* Path.Path
 							const flags = yield* given
 							yield* configProvider(flags, metadata.config.port)
+							// The timer this installs can only ever succeed with an npm beside this Node and an address to check.
+							yield* updaterNpm
+							const url = yield* runtimeUrl(flags['HOST'] ?? DEFAULT_HOST, flags['PORT'] ?? `${metadata.config.port}`)
 							// The unit runs whatever `current` links to: this package now, the updater's releases later.
 							const entry = path.join(
 								yield* activateRelease(name, yield* fs.realPath(packageRoot)),
@@ -239,19 +248,19 @@ export function runApp<A, E>(app: App<A, E>) {
 							)
 							yield* output(yield* installService(name, [execPath, ...execArgv, entry, ...args]))
 							yield* installUpdateService(name, [execPath, ...execArgv, entry, ...args, 'service', 'update'])
-						})
+							// The first release that answers is the one the first update falls back to.
+							yield* confirmRelease(name, url)
+						}, withLifecycleLock(name))
 					),
 					Command.make('status', {}, () => Effect.flatMap(serviceStatus(name), output)),
-					Command.make('uninstall', {}, () => Effect.flatMap(uninstallService(name), output)),
+					Command.make('uninstall', {}, () => Effect.flatMap(withLifecycleLock(name)(uninstallService(name)), output)),
 					Command.make(
 						'update',
 						{},
 						Effect.fnUntraced(function* () {
 							const flags = yield* given
-							return yield* Effect.flatMap(
-								updateRelease(name, `http://${flags['HOST'] ?? DEFAULT_HOST}:${flags['PORT'] ?? metadata.config.port}`),
-								output
-							)
+							const url = yield* runtimeUrl(flags['HOST'] ?? DEFAULT_HOST, flags['PORT'] ?? `${metadata.config.port}`)
+							return yield* Effect.flatMap(withLifecycleLock(name)(updateRelease(name, url)), output)
 						})
 					)
 				])

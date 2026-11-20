@@ -89,6 +89,13 @@ export const FailureReason = Schema.TaggedUnion({
 	Unknown: {}
 })
 
+// A failed upstream exchange reduced to a fixed reason before any log or span sees it, since an upstream's own text can carry a body or a token. Only a session the server no longer knows, or a refused bearer, proves the request never ran.
+export class UpstreamExchangeError extends Schema.TaggedError<UpstreamExchangeError>()('UpstreamExchangeError', {
+	expired: Schema.Boolean,
+	reason: FailureReason,
+	unauthorized: Schema.Boolean
+}) {}
+
 export function failureMessage(reason: FailureReason) {
 	return FailureReason.match(reason, {
 		HttpStatus: value => `It answered HTTP ${value.code}`,
@@ -133,7 +140,7 @@ export class ConnectionGrant extends Model.Class<ConnectionGrant>('ConnectionGra
 	static readonly table = 'connection_grants'
 }
 
-// One proxied tool call, retained for thirty days.
+// One proxied tool call; when its server makes another, the server's calls older than thirty days are deleted.
 export class McpCall extends Model.Class<McpCall>('McpCall')({at: Schema.DateTimeUtcFromMillis, serverId: ServerId}) {
 	static readonly table = 'mcp_calls'
 }
@@ -141,9 +148,6 @@ export class McpCall extends Model.Class<McpCall>('McpCall')({at: Schema.DateTim
 // A server's row and its status as of the read.
 export type ConnectionState = typeof ConnectionState.Type
 export const ConnectionState = Schema.Struct({...Connection.fields, status: ConnectionStatus})
-
-export type SessionKind = typeof SessionKind.Type
-export const SessionKind = Schema.Literals(['upstream', 'anonymous'])
 
 export type ServerReference = typeof ServerReference.Type
 export const ServerReference = Schema.Struct(Struct.pick(ConnectionState.fields, ['id', 'generation', 'name', 'mode']))

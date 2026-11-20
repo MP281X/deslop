@@ -1,6 +1,7 @@
 import {useAtomValue} from '@effect/atom-react'
 
-import {Array, Boolean, DateTime, Duration, Function, Match, Number, Option, Record, Schema, String, pipe} from 'effect'
+import type {Duration} from 'effect'
+import {Array, Boolean, DateTime, Function, Number, Option, Record, Schema, pipe} from 'effect'
 
 import {ChartLineIcon} from '@phosphor-icons/react'
 import {Area, AreaChart, CartesianGrid, ReferenceLine, XAxis, YAxis} from 'recharts'
@@ -13,7 +14,7 @@ import {Skeleton} from '@deslop/components-web/ui/skeleton'
 import {clockAtom} from '@deslop/runtime/client/clock'
 import {bytesOf, clockOf, dayOf, percentOf} from '@deslop/runtime/shared/format'
 
-import {chartTicks} from '#routes/(home)/-chart.ts'
+import {chartTicks, datedRange} from '#routes/(home)/-chart.ts'
 import {bandFill, chartPoints, focusedBand} from '#routes/(home)/-usage.ts'
 import type {Band, BandFillKind, Usage} from '#routes/(home)/-usage.ts'
 import type {AppId} from '#services/inventory/schema.ts'
@@ -61,23 +62,23 @@ function UsageChart(props: {
 	const focused = props.focus
 	return (
 		<figure className={cn('flex min-h-0', props.className)} aria-label={props.label}>
-			<ChartContainer
-				config={config}
-				className="flex-1"
-				role="img"
-				aria-label={`${props.label} over time; blank time is unrecorded`}
-			>
+			<ChartContainer config={config} className="flex-1">
+				{/* The drawing is one Tab stop, named by its title; arrow keys move the tooltip between its points. */}
 				<AreaChart
+					title={`${props.label} over time; blank time is unrecorded`}
 					data={chartPoints(props.history, props.minutes, props.recorded, props.layers)}
 					margin={{bottom: 0, left: 0, right: 0, top: 0}}
 				>
-					<CartesianGrid horizontal={false} />
+					{/* Grid lines only at the ticks, never at the chart's edges. */}
+					<CartesianGrid horizontal={false} syncWithTicks />
+					{/* Every tick keeps its grid line: the hidden axis would otherwise drop ticks whose unshown labels overlap. */}
 					<XAxis
 						hide
+						interval={0}
 						dataKey="at"
 						type="number"
 						domain={[DateTime.toEpochMillis(window.start), DateTime.toEpochMillis(window.end)]}
-						ticks={Array.map(chartTicks(props.minutes, props.history.time), tick => tick.at)}
+						ticks={Array.map(chartTicks(props.minutes, props.history.time, DateTime.zoneMakeLocal()), tick => tick.at)}
 					/>
 					<YAxis hide allowDataOverflow domain={[0, 100]} />
 					<ReferenceLine y={50} stroke="var(--border)" strokeDasharray="3 3" />
@@ -162,7 +163,7 @@ function TimeAxis(props: {className?: string; minutes: Duration.Duration; now: D
 			className={cn('text-muted-foreground relative h-4 font-mono text-xs tabular-nums', props.className)}
 		>
 			{pipe(
-				chartTicks(props.minutes, props.now),
+				chartTicks(props.minutes, props.now, DateTime.zoneMakeLocal()),
 				Array.filter(tick => tick.label),
 				Array.map(tick => (
 					<span
@@ -180,18 +181,10 @@ function TimeAxis(props: {className?: string; minutes: Duration.Duration; now: D
 						)}
 						style={{'--tick-x': `${tick.x}%`}}
 					>
-						{pipe(
-							Match.value(Duration.toMinutes(props.minutes)),
-							// A minute reads as the minute, then its quarters as seconds, so four labels fit a narrow chart.
-							Match.when(1, () =>
-								Boolean.match(tick.at % 60_000 === 0, {
-									onFalse: () => `:${String.padStart(2, '0')(`${(tick.at % 60_000) / 1000}`)}`,
-									onTrue: () => clockOf(DateTime.makeUnsafe(tick.at))
-								})
-							),
-							Match.when(10_080, () => dayOf(DateTime.makeUnsafe(tick.at), props.now)),
-							Match.orElse(() => clockOf(DateTime.makeUnsafe(tick.at)))
-						)}
+						{Boolean.match(datedRange(props.minutes), {
+							onFalse: () => clockOf(DateTime.makeUnsafe(tick.at)),
+							onTrue: () => dayOf(DateTime.makeUnsafe(tick.at), props.now)
+						})}
 					</span>
 				))
 			)}

@@ -8,7 +8,8 @@ import {DateTimeUtcFromFiniteSeconds} from '@deslop/runtime/shared/time'
 export class NotesError extends Schema.TaggedError<NotesError>()('NotesError', {
 	cause: Schema.optional(Schema.Defect()),
 	message: Schema.String,
-	reason: Schema.optional(Schema.Literals(['Unreachable', 'UnreadablePhoto']))
+	// Invalid, TooLarge and Removed are final answers to a capture, so a sender never queues it again.
+	reason: Schema.optional(Schema.Literals(['Unreachable', 'UnreadablePhoto', 'Invalid', 'TooLarge', 'Removed']))
 }) {}
 
 export type NoteId = typeof NoteId.Type
@@ -20,6 +21,14 @@ export class NoteChangeVersion extends Model.Class<NoteChangeVersion>('NoteChang
 	version: Schema.Int
 }) {
 	static readonly table = 'note_changes'
+}
+
+// A capture id whose note was deleted, or joined another note; a resend of it never brings the note back.
+export class RetiredNote extends Model.Class<RetiredNote>('RetiredNote')({
+	id: NoteId,
+	mergedInto: Model.FieldOption(NoteId)
+}) {
+	static readonly table = 'retired_notes'
 }
 
 export type TagName = typeof TagName.Type
@@ -154,12 +163,15 @@ export type NoteChange = typeof NoteChange.Type
 export const NoteChange = Schema.TaggedUnion({
 	empty: {},
 	extract: {extraction: Schema.Result(Extraction, NotesError)},
-	fail: {message: Schema.String},
+	fail: {issue: Schema.String},
 	image: {image: ImageType},
+	issue: {issue: Schema.String},
+	// `read` is the saved text the organization was written from.
 	organize: {
-		organization: Schema.Struct(Struct.pick(Organization.fields, ['body', 'screenText', 'summary', 'title', 'topics']))
+		organization: Schema.Struct(Struct.pick(Organization.fields, ['body', 'screenText', 'summary', 'title', 'topics'])),
+		read: Schema.String
 	},
-	remove: {},
+	remove: {into: Schema.Option(NoteId)},
 	request: {requester: UserId},
 	resolve: {url: Schema.String},
 	retry: {},

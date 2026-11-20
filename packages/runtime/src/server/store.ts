@@ -1,6 +1,6 @@
 import {SqliteClient} from '@effect/sql-sqlite-node'
 
-import {Config, Duration, Effect, FileSystem, Layer, Option, Path, Schedule, pipe} from 'effect'
+import {Array, Config, Duration, Effect, FileSystem, Layer, Option, Path, Schedule, pipe} from 'effect'
 import type {PlatformError} from 'effect'
 
 import {Reactivity} from 'effect/reactivity'
@@ -49,11 +49,10 @@ const retiredSessions = Layer.effectDiscard(
 	})
 )
 
-// WAL commits need no sync of their own to survive a crash of the app; freed pages return to the disk and the planner's statistics stay current every hour. Incremental vacuum takes effect when the database is created, before any table, or after one VACUUM.
+// WAL commits need no sync of their own to survive a crash of the app; freed pages return to the disk and the planner's statistics stay current every hour.
 const tuned = Layer.effectDiscard(
 	Effect.gen(function* () {
 		const sql = yield* SqlClient.SqlClient
-		yield* sql`PRAGMA auto_vacuum = INCREMENTAL`
 		yield* sql`PRAGMA synchronous = NORMAL`
 		yield* pipe(
 			sql`PRAGMA incremental_vacuum`,
@@ -75,7 +74,21 @@ export function layerDataStore(directory: string) {
 			// SQLite creates its file but not the folder around it, and gives its -wal and -shm files the database's own mode: it holds keys and personal data, so only the user reads it.
 			yield* fs.makeDirectory(directory, {mode: 0o700, recursive: true})
 			yield* fs.writeFile(filename, new Uint8Array(), {flag: 'a', mode: 0o600})
-			// The settings run before the first migration creates a table.
+			// Incremental vacuum is fixed when SQLite writes the first page, and the WAL switch writes it, so a new database takes both on a connection that has not enabled WAL.
+			if ((yield* fs.stat(filename)).size === 0n) {
+				yield* pipe(
+					Effect.gen(function* () {
+						const sql = yield* SqliteClient.make({disableWAL: true, filename})
+						yield* sql`PRAGMA auto_vacuum = INCREMENTAL`
+						yield* sql`PRAGMA journal_mode = WAL`
+						if (!Array.some(yield* sql<{auto_vacuum: number}>`PRAGMA auto_vacuum`, row => row.auto_vacuum === 2)) {
+							return yield* Effect.die(`${filename} was created without incremental vacuum`)
+						}
+					}),
+					Effect.scoped,
+					Effect.provideServiceEffect(Reactivity.Reactivity, Reactivity.make)
+				)
+			}
 			return Layer.provideMerge(
 				retiredSessions,
 				Layer.provideMerge(tuned, Layer.merge(SqliteClient.layer({filename}), Reactivity.layer))

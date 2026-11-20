@@ -103,13 +103,14 @@ const fixture = Effect.fnUntraced(function* (misjudged: string = '') {
 						`import {QUESTIONS} from '${path.join(import.meta.dirname, 'lib/questions.ts')}'`,
 						'const model = LanguageModel.make({',
 						'generateText: options => Effect.gen(function* () {',
+						"console.error('model request received')",
 						"const system = options.prompt.content.find(message => message.role === 'system').content",
 						"const text = options.prompt.content.find(message => message.role === 'user').content[0].text",
 						'const state = yield* Schema.decodeEffect(Schema.fromJsonString(Schema.Record(Schema.String, Schema.String)))(text)',
 						"const questions = yield* Schema.decodeEffect(Schema.fromJsonString(Schema.Record(Schema.String, Schema.Unknown)))(system.slice(system.indexOf('\\n\\n') + 2))",
 						"const code = state['code']",
-						'const yes = Array.some(Record.values(QUESTIONS), question => code === question.yes.example)',
-						'const no = Array.some(Record.values(QUESTIONS), question => code === question.no.example)',
+						'const yes = Array.some(Record.values(QUESTIONS), question => question.yes.example.includes(code))',
+						'const no = Array.some(Record.values(QUESTIONS), question => question.no.example.includes(code))',
 						'const names = Record.keys(questions)',
 						"const answered = code.includes('Partial') ? names.slice(1) : names",
 						'const answers = Record.fromEntries(answered.map(name => {',
@@ -224,7 +225,8 @@ describe('coding-standards judge', () => {
 							'// judge-ignore no-silent-fallback -- no function follows this comment',
 							'export const value = 1'
 						]
-					})
+					}),
+					['--user-asked']
 				)
 				assert.strictEqual(result.exitCode, 1)
 				assert.include(result.output, 'page.tsx:3-10 no-view-state-in-memory Keep the view in the URL')
@@ -239,7 +241,12 @@ describe('coding-standards judge', () => {
 					result.output,
 					'unused.ts:1-1 judge-ignore This comment does not apply to a judged unit; remove it.'
 				)
-				assert.include(result.output, '— 5 findings, 0 could not read, 1 suppressed')
+				// The registry's impossible-state question has no example the judge cuts a unit from, so every run reports it unreadable.
+				assert.include(
+					result.output,
+					'no-impossible-state: the judge selects no unit from its yes example; question not used'
+				)
+				assert.include(result.output, '— 5 findings, 1 could not read, 1 suppressed')
 			}, Effect.scoped)
 		)
 
@@ -296,25 +303,22 @@ describe('coding-standards judge', () => {
 		)
 
 		test.effect(
-			'refuses more than twenty planned calls until the user explicitly asks',
+			'sends no request without --user-asked, and asks the model with it',
 			Effect.fnUntraced(function* () {
 				const f = yield* fixture()
 				const directory = yield* f.checkout({
-					'text.ts': [
-						"import {Array, String} from 'effect'",
-						...Array.flatMap(Array.range(1, 9), index => functionSource(`words${index}`, 'a'))
-					]
+					'text.ts': ["import {Array, String} from 'effect'", ...functionSource('first', 'a')]
 				})
 				const dry = yield* f.run(directory, ['--dry-run'])
 				assert.strictEqual(dry.exitCode, 0)
-				assert.include(dry.output, '9 units in 1 files')
 				assert.include(dry.output, 'nothing was sent')
 				const refused = yield* f.run(directory)
 				assert.strictEqual(refused.exitCode, 1)
-				assert.include(refused.output, 'nothing was sent. More than 20 calls requires --user-asked')
+				assert.include(refused.output, "nothing was sent. A paid run needs the user's explicit ask and --user-asked")
+				assert.strictEqual(Array.length(String.split(refused.output, 'model request received')), 1)
 				const allowed = yield* f.run(directory, ['--user-asked'])
-				assert.strictEqual(allowed.exitCode, 0)
-				assert.include(allowed.output, '— 0 findings, 0 could not read, 0 suppressed')
+				assert.include(allowed.output, '— 0 findings, 1 could not read, 0 suppressed')
+				assert.include(allowed.output, 'model request received')
 			}, Effect.scoped)
 		)
 
@@ -330,12 +334,8 @@ describe('coding-standards judge', () => {
 						...functionSource('second', 'b')
 					]
 				})
-				const cold = yield* f.run(directory)
-				assert.strictEqual(cold.exitCode, 0)
-				assert.include(cold.output, '0 answered from memory')
-				const warm = yield* f.run(directory)
-				assert.strictEqual(warm.exitCode, 0)
-				assert.include(warm.output, '0 calls made, 0 input tokens reported')
+				assert.include((yield* f.run(directory, ['--user-asked'])).output, '0 answered from memory')
+				assert.include((yield* f.run(directory, ['--user-asked'])).output, '0 calls made, 0 input tokens reported')
 				yield* f.write(directory, {
 					'text.ts': [
 						"import {Array, String} from 'effect'",
@@ -343,9 +343,9 @@ describe('coding-standards judge', () => {
 						...functionSource('second', 'c')
 					]
 				})
-				const edited = yield* f.run(directory)
-				assert.strictEqual(edited.exitCode, 0)
+				const edited = yield* f.run(directory, ['--user-asked'])
 				assert.include(edited.output, '1 calls made, 100 input tokens reported')
+				assert.include(edited.output, '— 0 findings, 1 could not read, 0 suppressed')
 			}, Effect.scoped)
 		)
 
@@ -353,10 +353,32 @@ describe('coding-standards judge', () => {
 			'reports a touched file the parser cannot read',
 			Effect.fnUntraced(function* () {
 				const f = yield* fixture()
-				const result = yield* f.run(yield* f.checkout({'text.ts': ['\u0000', ...functionSource('first', 'a')]}))
+				const result = yield* f.run(yield* f.checkout({'text.ts': ['\u0000', ...functionSource('first', 'a')]}), [
+					'--user-asked'
+				])
 				assert.strictEqual(result.exitCode, 1)
 				assert.include(result.output, 'text.ts: the parser cannot read it:')
-				assert.include(result.output, '— 0 findings, 1 could not read, 0 suppressed')
+				assert.include(result.output, '— 0 findings, 2 could not read, 0 suppressed')
+			}, Effect.scoped)
+		)
+
+		test.effect(
+			'refuses a symlink instead of reading what it points to outside the repository',
+			Effect.fnUntraced(function* () {
+				const fs = yield* FileSystem.FileSystem
+				const path = yield* Path.Path
+				const f = yield* fixture()
+				const outside = yield* fs.makeTempDirectoryScoped({prefix: 'coding-standards-outside-'})
+				yield* fs.writeFileString(path.join(outside, 'secret.ts'), Array.join(functionSource('secret', 'a'), '\n'))
+				const directory = yield* f.checkout({})
+				yield* fs.symlink(path.join(outside, 'secret.ts'), path.join(directory, 'linked.ts'))
+				const result = yield* f.run(directory, ['--dry-run'])
+				assert.strictEqual(result.exitCode, 1)
+				assert.include(
+					result.output,
+					'linked.ts: it is a symlink or no regular file; the judge reads only files inside the repository'
+				)
+				assert.include(result.output, '0 units in 1 files')
 			}, Effect.scoped)
 		)
 
@@ -367,13 +389,13 @@ describe('coding-standards judge', () => {
 				const directory = yield* f.checkout({
 					'text.ts': ["import {Array, String} from 'effect'", ...functionSource('Partial', 'a')]
 				})
-				const first = yield* f.run(directory)
+				const first = yield* f.run(directory, ['--user-asked'])
 				assert.strictEqual(first.exitCode, 1)
 				assert.include(
 					first.output,
 					'text.ts:2-8 no-contradicted-promise: Gateway or Haiku gave no answer the judge could read'
 				)
-				const retried = yield* f.run(directory)
+				const retried = yield* f.run(directory, ['--user-asked'])
 				assert.strictEqual(retried.exitCode, 1)
 				assert.include(retried.output, '1 calls made, 0 input tokens reported')
 				assert.include(retried.output, '1 calls with unavailable usage')
@@ -386,14 +408,15 @@ describe('coding-standards judge', () => {
 			Effect.fnUntraced(function* () {
 				const f = yield* fixture('contradicted-promise')
 				const result = yield* f.run(
-					yield* f.checkout({'text.ts': ["import {Array, String} from 'effect'", ...functionSource('first', 'a')]})
+					yield* f.checkout({'text.ts': ["import {Array, String} from 'effect'", ...functionSource('first', 'a')]}),
+					['--user-asked']
 				)
 				assert.strictEqual(result.exitCode, 1)
 				assert.include(
 					result.output,
 					'no-contradicted-promise: self-check did not correctly answer its yes example; question not used'
 				)
-				assert.include(result.output, '— 0 findings, 1 could not read, 0 suppressed')
+				assert.include(result.output, '— 0 findings, 2 could not read, 0 suppressed')
 			}, Effect.scoped)
 		)
 	})

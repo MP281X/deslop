@@ -8,11 +8,13 @@ import {
 	Context,
 	Effect,
 	Function,
+	HashMap,
 	Layer,
 	Match,
 	Option,
 	RcMap,
 	Redacted,
+	Ref,
 	Schema,
 	Semaphore,
 	Stream,
@@ -67,10 +69,11 @@ import {
 	ServerMetadata,
 	Registration,
 	Token,
-	UpstreamError
+	UpstreamError,
+	failureMessage
 } from '#services/connections/schema.ts'
 import {Upstreams} from '#services/upstreams/service.ts'
-import {usageWindow} from '#services/usage/lib/utils.ts'
+import {EXPIRY_BATCH, expireCalls, usageWindow} from '#services/usage/lib/utils.ts'
 import {UsageRange} from '#services/usage/schema.ts'
 
 declare module 'effect/reactivity/Reactivity' {
@@ -130,7 +133,8 @@ export class Connections extends Context.Service<
 			id: ServerId,
 			user: Admin
 		) => Effect.Effect<{state: Option.Option<ConnectionOAuthState>; url: string}, AuthError>
-		readonly called: (id: ServerId) => Effect.Effect<void>
+		// Counted only while the server is the one the call began with.
+		readonly called: (id: ServerId, generation: ConnectionGeneration) => Effect.Effect<void>
 		// `route` is the server id a registered client's callback carries; the metadata document's callback carries none.
 		readonly complete: (params: Callback, route: Option.Option<ServerId>, user: Admin) => Effect.Effect<void, AuthError>
 		readonly definitions: Effect.Effect<ConnectionState[], AuthError>
@@ -227,13 +231,22 @@ export class Connections extends Context.Service<
 			`
 		})
 		const countCall = SqlSchema.void({
-			Request: McpCall.insert,
-			execute: row => sql`INSERT INTO ${sql(McpCall.table)} ${sql.insert(row)}`
+			Request: Schema.Struct({...McpCall.fields, generation: ConnectionGeneration}),
+			execute: request => sql`
+				INSERT INTO ${sql(McpCall.table)} (serverId, at)
+				SELECT id, ${request.at} FROM ${sql(Connection.table)}
+				WHERE id = ${request.serverId} AND generation = ${request.generation}
+			`
 		})
-		const deleteCallsBefore = SqlSchema.void({
+		// Only this server's rows, through mcp_calls_server_at.
+		const deleteCallsBefore = SqlSchema.findAll({
 			Request: Schema.Struct({at: DateTimeUtcFromFiniteMillis, serverId: McpCall.fields.serverId}),
-			execute: request =>
-				sql`DELETE FROM ${sql(McpCall.table)} WHERE serverId = ${request.serverId} AND at < ${request.at}`
+			Result: Schema.Struct({at: Schema.Finite}),
+			execute: request => sql`
+				DELETE FROM ${sql(McpCall.table)} WHERE rowid IN (
+					SELECT rowid FROM ${sql(McpCall.table)} WHERE serverId = ${request.serverId} AND at < ${request.at} LIMIT ${EXPIRY_BATCH}
+				) RETURNING at
+			`
 		})
 		// Every server, with its calls summed into the range's buckets.
 		const listCalls = SqlSchema.findAll({
@@ -263,6 +276,8 @@ export class Connections extends Context.Service<
 			timeToLive: Duration.minutes(10)
 		})
 		const callbacks = yield* Semaphore.make(1)
+		// Each server's newest sign-in: an older one finishing later would overwrite the authorization the admin chose last.
+		const newest = yield* Ref.make(HashMap.empty<ServerId, ConnectionOAuthState>())
 		const nonce = Effect.map(random.randomBytes(32), Base64Url.encode)
 
 		// The server as it is now, if it is still the one a piece of work began with.
@@ -390,8 +405,15 @@ export class Connections extends Context.Service<
 				onTrue: () => Effect.map(auth.user(headers), user => Headers.fromInput({[ON_BEHALF_HEADER]: user.id}))
 			})
 			const available = Effect.fnUntraced(function* () {
-				const found = yield* upstreams.use(Effect.succeed({headers: access, url: initial.url}), client =>
-					Effect.map(client.listTools(), tools => ({info: client.serverInfo, instructions: client.instructions, tools}))
+				const found = yield* upstreams.use(
+					Effect.succeed({headers: access, url: initial.url}),
+					client =>
+						Effect.map(client.listTools(), tools => ({
+							info: client.serverInfo,
+							instructions: client.instructions,
+							tools
+						})),
+					Option.none()
 				)
 				return {
 					...initial,
@@ -495,11 +517,25 @@ export class Connections extends Context.Service<
 				})
 			})
 		})
-		const fail = Effect.fnUntraced(function* (connection: ConnectionState, cause: unknown) {
-			const reason = describe(cause)
-			yield* change(connection.id, connection.generation, () => ({error: Option.some(reason)}))
-			return yield* connectionFailure(connection.name)(cause)
-		})
+		// A connection step that fails or outlasts its limit leaves its reason on the connection.
+		function settle(connection: ConnectionState, limit: Duration.Duration) {
+			return <A, E, R>(step: Effect.Effect<A, E, R>) =>
+				pipe(
+					step,
+					Effect.timeout(limit),
+					// Only the fixed reason reaches the log: a provider's own text can carry a body or a token.
+					Effect.tapError(cause =>
+						Effect.logWarning(`The MCP connection could not be completed: ${failureMessage(describe(cause))}`)
+					),
+					Effect.catch(
+						Effect.fnUntraced(function* (cause) {
+							const reason = describe(cause)
+							yield* change(connection.id, connection.generation, () => ({error: Option.some(reason)}))
+							return yield* connectionFailure(connection.name)(cause)
+						})
+					)
+				)
+		}
 
 		return Connections.of({
 			add: Effect.fn('Connections.add')(
@@ -512,25 +548,36 @@ export class Connections extends Context.Service<
 					const base = ServerId.make(serverName(url) || 'mcp')
 					const taken = yield* asStorageAuthError(findTaken({id: base, url}))
 					if (Array.some(taken, row => row.url === url)) return yield* added
-					const suffix = String.slice(0, 6)(String.toLowerCase(yield* nonce))
+					const suffix = pipe(
+						yield* nonce,
+						String.toLowerCase,
+						String.replaceAll(/[^a-z0-9]/gu, ''),
+						String.slice(0, 6)
+					)
 					const id = pipe(
 						taken,
 						Array.some(row => row.id === base),
-						Boolean.match({onFalse: () => base, onTrue: () => ServerId.make(`${base}_${suffix}`)})
+						Boolean.match({onFalse: () => base, onTrue: () => ServerId.make(`${base}-${suffix}`)})
 					)
-					const connection = yield* discover(
-						{generation: ConnectionGeneration.make(yield* nonce), id, name: String.capitalize(base), url},
-						headers
-					)
-					// Discovery takes seconds, so the URL and id are checked again where the server is saved.
 					yield* pipe(
-						Effect.gen(function* () {
-							if (Array.isReadonlyArrayNonEmpty(yield* findTaken({id, url}))) return yield* added
-							yield* connections.insertVoid(connection)
-						}),
-						Reactivity.mutation(['connections']),
-						sql.withTransaction,
-						withReactivity
+						discover(
+							{generation: ConnectionGeneration.make(yield* nonce), id, name: String.capitalize(base), url},
+							headers
+						),
+						// Discovery takes seconds, so the URL and id are checked again where the server is saved.
+						Effect.flatMap(connection =>
+							pipe(
+								Effect.gen(function* () {
+									if (Array.isReadonlyArrayNonEmpty(yield* findTaken({id, url}))) return yield* added
+									yield* connections.insertVoid(connection)
+								}),
+								Reactivity.mutation(['connections']),
+								sql.withTransaction,
+								withReactivity
+							)
+						),
+						// Until its row is saved nothing else could end the session discovery opened.
+						Effect.onError(() => upstreams.forget(url))
 					)
 					return Struct.pick(yield* get(id), ['error', 'icons', 'id', 'name', 'status', 'tools', 'url'])
 				},
@@ -588,6 +635,7 @@ export class Connections extends Context.Service<
 									})
 								})
 								const stateId = ConnectionOAuthState.make(yield* nonce)
+								yield* Ref.update(newest, HashMap.set(id, stateId))
 								const encodedMetadata = yield* Schema.encodeEffect(ServerMetadata)(metadata)
 								const authorization = yield* Effect.tryPromise({
 									catch: cause => UpstreamError.make({cause}),
@@ -618,27 +666,22 @@ export class Connections extends Context.Service<
 								})
 								return {state: Option.some(stateId), url: authorization.authorizationUrl.href}
 							}),
-							Effect.timeout(Duration.seconds(20)),
-							Effect.tapError(cause => Effect.logWarning('The MCP connection could not be completed', cause)),
-							Effect.catch(cause => fail(connection, cause))
+							settle(connection, Duration.seconds(20))
 						)
 					})
 				})
 			}, asAuthError('Cannot connect this MCP')),
-			// Keep the existing thirty-day retention as a new call arrives.
-			called: Effect.fn('Connections.called')(function* (id) {
+			called: Effect.fn('Connections.called')(function* (id, generation) {
 				yield* Effect.annotateCurrentSpan('serverId', id)
 				const now = yield* DateTime.now
 				yield* pipe(
-					Effect.andThen(
-						countCall({at: now, serverId: id}),
-						deleteCallsBefore({at: DateTime.subtractDuration(now, Duration.days(30)), serverId: id})
-					),
+					countCall({at: now, generation, serverId: id}),
 					Reactivity.mutation(['connectionCalls']),
-					sql.withTransaction,
 					withReactivity,
 					Effect.catchCause(cause => Effect.logWarning('MCP usage could not be recorded', cause))
 				)
+				// After the insert's own commit, so a long delete never holds the write.
+				yield* expireCalls(deleteCallsBefore({at: DateTime.subtractDuration(now, Duration.days(30)), serverId: id}))
 			}),
 			complete: Effect.fn('Connections.complete')(function* (
 				params: Callback,
@@ -659,7 +702,12 @@ export class Connections extends Context.Service<
 					Semaphore.withPermit(callbacks)
 				)
 				const connection = yield* get(flow.id)
-				if (flow.userId !== user.id || flow.generation !== connection.generation || connection.mode !== 'oauth') {
+				if (
+					flow.userId !== user.id ||
+					flow.generation !== connection.generation ||
+					connection.mode !== 'oauth' ||
+					!pipe(yield* Ref.get(newest), HashMap.get(flow.id), Option.contains(params.state))
+				) {
 					return yield* AuthError.make({message: 'The connection expired; connect it again'})
 				}
 				yield* pipe(
@@ -694,23 +742,26 @@ export class Connections extends Context.Service<
 										Option.contains(flow.metadata.authorization_response_iss_parameter_supported, true)
 								})
 						})
-						yield* exchange(
-							connection,
-							{clientId: clientIdOf(flow.client), tokenEndpoint: flow.metadata.token_endpoint},
-							{
-								code,
-								code_verifier: flow.verifier,
-								grant_type: 'authorization_code',
-								redirect_uri: Match.valueTags(flow.client, {
-									Document: () => callback,
-									Registered: () => `${callback}/${connection.id}`
-								})
-							}
+						// Under the server's token lock, so a refresh already in flight cannot land after these new tokens.
+						yield* Semaphore.withPermit(
+							yield* RcMap.get(locks, connection.id),
+							exchange(
+								connection,
+								{clientId: clientIdOf(flow.client), tokenEndpoint: flow.metadata.token_endpoint},
+								{
+									code,
+									code_verifier: flow.verifier,
+									grant_type: 'authorization_code',
+									redirect_uri: Match.valueTags(flow.client, {
+										Document: () => callback,
+										Registered: () => `${callback}/${connection.id}`
+									})
+								}
+							)
 						)
 					}),
-					Effect.timeout(Duration.seconds(30)),
-					Effect.tapError(cause => Effect.logWarning('The MCP connection could not be completed', cause)),
-					Effect.catch(cause => fail(connection, cause))
+					Effect.scoped,
+					settle(connection, Duration.seconds(30))
 				)
 			}, asAuthError('Cannot finish the connection')),
 			definitions,
@@ -811,6 +862,8 @@ export class Connections extends Context.Service<
 							Stream.mapEffect(() => list)
 						)
 					),
+					// A slow reader gets only the newest list.
+					Stream.buffer({capacity: 1, strategy: 'sliding'}),
 					Stream.withSpan('Connections.watch', {attributes: {'rpc.stream': true, userId: user.id}})
 				)
 		})

@@ -19,3 +19,9 @@
 	--color-machine-dev: var(--machine-dev);
 	--color-machine-desktop: var(--machine-desktop);
 }
+
+/* Chrome makes an SVG group focusable once it has focus listeners, and React adds them to every portal target, so the
+   groups a chart portals its layers into would each be a Tab stop inside the chart. */
+[data-slot='chart'] [class^='recharts-zIndex-layer'] {
+	interactivity: inert;
+}

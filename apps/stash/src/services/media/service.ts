@@ -31,6 +31,7 @@ import {ChildProcess, ChildProcessSpawner} from 'effect/process'
 
 import {AiGateway} from '@deslop/runtime/server/ai'
 import {ToolPath} from '@deslop/runtime/server/process'
+import {dataDirectory} from '@deslop/runtime/server/store'
 import type {UserId} from '@deslop/runtime/shared/auth'
 
 import {
@@ -47,6 +48,7 @@ import {
 	MediaError,
 	MediaMetadata,
 	Probe,
+	Refusal,
 	Transcript,
 	TranscriptionResponse
 } from '#services/media/schema.ts'
@@ -118,6 +120,25 @@ const transcriptOf = Effect.fnUntraced(function* (
 	return {kind: 'speech' as const, segments}
 })
 
+// Gateway's refusal carries its instruction, such as to save a key, which the person needs to see.
+function refused(response: HttpClientResponse.HttpClientResponse) {
+	return pipe(
+		response.text,
+		Effect.flatMap(Schema.decodeEffect(Refusal)),
+		Effect.map(refusal => refusal.error.message),
+		Effect.result,
+		Effect.flatMap(instruction =>
+			Effect.fail(
+				MediaError.make({
+					cause: instruction,
+					message: Result.getOrElse(instruction, Function.constant('Gateway refused the transcription.')),
+					reason: 'Refused'
+				})
+			)
+		)
+	)
+}
+
 // When set, every read of a source exits through this proxy, so sites never see the server's address; `{session}` keeps one exit address per request.
 export const sourceProxy = Config.option(Config.String('STASH_PROXY'))
 
@@ -145,6 +166,10 @@ export class Media extends Context.Service<
 			const path = yield* Path.Path
 			const spawner = yield* ChildProcessSpawner.ChildProcessSpawner
 			const locate = yield* ToolPath
+			// The media tools work in the app's own folder, emptied at start, so a run a crash cut short leaves nothing behind.
+			const scratch = path.join(yield* dataDirectory, 'media')
+			yield* fs.remove(scratch, {force: true, recursive: true})
+			yield* fs.makeDirectory(scratch, {mode: 0o700, recursive: true})
 			const run = Effect.fn('Media.command')(function* (command: string, args: string[]) {
 				yield* Effect.annotateCurrentSpan({command, 'command.arguments': args.length})
 				const child = yield* ChildProcess.make(yield* locate(command), args, {
@@ -285,7 +310,7 @@ export class Media extends Context.Service<
 										message: 'Transcription could not be authorized. Check the AI Gateway account.'
 									})
 							)
-							const work = yield* fs.makeTempDirectoryScoped({prefix: 'deslop-speech-'})
+							const work = yield* fs.makeTempDirectoryScoped({directory: scratch, prefix: 'deslop-speech-'})
 							// Two-minute s16 mono chunks stay below 4 MiB of FLAC and 5.34 MiB after base64, inside Gateway's 10 MiB body limit.
 							const extracted = yield* run('ffmpeg', [
 								'-v',
@@ -369,16 +394,37 @@ export class Media extends Context.Service<
 														responseMimeType: 'application/json'
 													}
 												}),
-												Effect.flatMap(speech.authorize(HttpClient.filterStatusOk(http)).execute),
-												Effect.flatMap(HttpClientResponse.schemaBodyJson(TranscriptionResponse)),
-												Effect.timeout('1 minute'),
-												Effect.mapError(cause =>
-													MediaError.make({cause: Redacted.make(cause), message: 'OpenCode Zen transcription failed.'})
+												Effect.flatMap(speech.authorize(http).execute),
+												Effect.flatMap(
+													HttpClientResponse.matchStatus({
+														'2xx': HttpClientResponse.schemaBodyJson(TranscriptionResponse),
+														// Gateway refuses before any provider work, so the remaining chunks would only be refused too.
+														401: refused,
+														402: refused,
+														orElse: response =>
+															Effect.fail(
+																MediaError.make({
+																	cause: Redacted.make(response),
+																	message: `OpenCode Zen answered with status ${response.status}.`
+																})
+															)
+													})
 												),
+												Effect.timeout('1 minute'),
+												Effect.mapError(cause => {
+													if (Schema.is(MediaError)(cause)) return cause
+													return MediaError.make({
+														cause: Redacted.make(cause),
+														message: 'OpenCode Zen transcription failed.'
+													})
+												}),
 												Effect.flatMap(response => transcriptOf(response, duration, index)),
 												Effect.withSpan('Media.transcribeAudio'),
 												Effect.result
 											)
+											if (Result.isFailure(transcript) && transcript.failure.reason === 'Refused') {
+												return yield* transcript.failure
+											}
 											if (Result.isFailure(transcript)) {
 												yield* Effect.logWarning('Audio chunk failed; keeping the other chunks', {
 													chunk: index + 1,
@@ -435,7 +481,7 @@ export class Media extends Context.Service<
 			})
 
 			const fetchCaptions = Effect.fnUntraced(function* (link: string, track: {authored: boolean; language: string}) {
-				const work = yield* fs.makeTempDirectoryScoped({prefix: 'deslop-captions-'})
+				const work = yield* fs.makeTempDirectoryScoped({directory: scratch, prefix: 'deslop-captions-'})
 				const result = yield* fetch([
 					...ytDlpArgs,
 					'--skip-download',
@@ -491,7 +537,7 @@ export class Media extends Context.Service<
 				media: MediaMetadata,
 				video: Option.Option<string>
 			) {
-				const work = yield* fs.makeTempDirectoryScoped({prefix: 'deslop-media-'})
+				const work = yield* fs.makeTempDirectoryScoped({directory: scratch, prefix: 'deslop-media-'})
 				for (const track of captionTracks(media)) {
 					// A broken authored track must not hide a working automatic or alternate-language track.
 					const captioned = yield* pipe(fetchCaptions(link, track), Effect.scoped, Effect.result)
@@ -595,7 +641,7 @@ export class Media extends Context.Service<
 			return Media.of({
 				fileFrames: Effect.fn('Media.fileFrames')(
 					function* (file) {
-						return yield* sample(file, yield* fs.makeTempDirectoryScoped({prefix: 'deslop-media-'}))
+						return yield* sample(file, yield* fs.makeTempDirectoryScoped({directory: scratch, prefix: 'deslop-media-'}))
 					},
 					Effect.scoped,
 					withProcesses
@@ -609,7 +655,7 @@ export class Media extends Context.Service<
 				),
 				frames: Effect.fn('Media.frames')(
 					function* (link) {
-						const work = yield* fs.makeTempDirectoryScoped({prefix: 'deslop-media-'})
+						const work = yield* fs.makeTempDirectoryScoped({directory: scratch, prefix: 'deslop-media-'})
 						const download = yield* fetch([
 							...ytDlpArgs,
 							'-f',

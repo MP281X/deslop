@@ -10,7 +10,7 @@ import {
 	macApplications,
 	systemProgram
 } from './launchd.ts'
-import {attachProcesses, launchdProcesses} from './processes.ts'
+import {attachProcesses, launchdExecutables, launchdProcesses} from './processes.ts'
 import {workloads} from './utils.ts'
 
 import {InventoryItem, ItemId, UnitId, WorkerId} from '#services/inventory/schema.ts'
@@ -58,8 +58,16 @@ it('combines regular Dock applications and running third-party launch agents fro
 	const records = launchdProcesses(
 		`46331     1 111904 126:56.08 Mon Nov  9 09:04:01 2026     /System/Volumes/Preboot/Cryptexes/App/System/Applications/Safari.app/Contents/MacOS/Safari
 77287     1 161696   7:42.47 Sat Nov 14 23:47:48 2026     /Applications/T3 Code (Nightly).app/Contents/MacOS/T3 Code (Nightly)
-77327 77287  87856  11:38.03 Sat Nov 14 23:47:50 2026     /Applications/T3 Code (Nightly).app/Contents/Frameworks/T3 Code (Nightly) Helper.app/Contents/MacOS/T3 Code (Nightly) Helper`,
-		HashMap.fromIterable(Array.map(apps, app => [app.pid, app.label] as const))
+77327 77287  87856  11:38.03 Sat Nov 14 23:47:50 2026     /Applications/T3 Code (Nightly).app/Contents/Frameworks/T3 Code (Nightly) Helper.app/Contents/MacOS/T3 Code (Nightly) Helper --type=renderer`,
+		HashMap.fromIterable(Array.map(apps, app => [app.pid, app.label] as const)),
+		launchdExecutables(
+			'77287 /Applications/T3 Code (Nightly).app/Contents/MacOS/T3 Code (Nightly)\n77327 /Applications/T3 Code (Nightly).app/Contents/Frameworks/T3 Code (Nightly) Helper.app/Contents/MacOS/T3 Code (Nightly) Helper\n'
+		)
+	)
+	// An executable path with spaces names the process whole; without its own listing, as Safari here, the path splits on spaces as ps writes it.
+	assert.deepStrictEqual(
+		Array.map(records, record => record.process.name),
+		['Safari', 'T3 Code (Nightly)', 'T3 Code (Nightly) Helper']
 	)
 	assert.deepStrictEqual(
 		Array.map(records, record => [record.process.pid, Option.getOrThrow(record.owner)]),
@@ -120,7 +128,8 @@ it('gives the Bitwarden app, updater and their descendants one owner, including 
 		`4016 1 100 0:01.00 Sat Nov 14 23:47:48 2026 /Applications/Bitwarden.app/Contents/MacOS/Bitwarden
 22292 1 100 0:01.00 Sat Nov 14 23:47:48 2026 /Applications/Bitwarden.app/Contents/Frameworks/Squirrel.framework/Resources/ShipIt
 22293 22292 100 0:01.00 Sat Nov 14 23:47:48 2026 helper`,
-		HashMap.fromIterable(Array.map(apps, app => [app.pid, app.label] as const))
+		HashMap.fromIterable(Array.map(apps, app => [app.pid, app.label] as const)),
+		HashMap.empty()
 	)
 	assert.deepStrictEqual(
 		Array.map(records, record => Option.getOrThrow(record.owner)),
@@ -160,6 +169,7 @@ it('gives the Bitwarden app, updater and their descendants one owner, including 
 			port: Option.some(65_251),
 			process: Option.some('Bitwarden'),
 			protocol: Option.some('tcp'),
+			scope: Option.some('user'),
 			state: 'listening',
 			unit: Option.some(UnitId.make(bundle)),
 			url: Option.none(),
@@ -194,6 +204,7 @@ it('skips unreadable app identities and keeps running agents without exit metada
 		launchdProcesses(
 			`12 13 100 0:01.00 Sat Nov 14 23:47:48 2026 /usr/bin/first
 13 12 100 0:01.00 Sat Nov 14 23:47:48 2026 /usr/bin/second`,
+			HashMap.empty(),
 			HashMap.empty()
 		)
 	)

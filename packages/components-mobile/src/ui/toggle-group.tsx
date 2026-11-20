@@ -1,7 +1,7 @@
 import {Array, Boolean, Function, Schema} from 'effect'
 
 import {HStack, ScrollView} from '@expo/ui/swift-ui'
-import {fixedSize, foregroundStyle, lineLimit} from '@expo/ui/swift-ui/modifiers'
+import {accessibilityAddTraits, fixedSize, foregroundStyle, lineLimit} from '@expo/ui/swift-ui/modifiers'
 import type {ViewModifier} from '@expo/ui/swift-ui/modifiers'
 import {createContext, useContext} from 'react'
 import type {ReactNode} from 'react'
@@ -73,6 +73,8 @@ export function ToggleGroupItem(props: {
 					onFalse: () => [],
 					onTrue: () => [foregroundStyle(colors.primaryForeground)]
 				}),
+				// The glass and tint show the pressed item; VoiceOver hears it as selected.
+				...Boolean.match(pressed, {onFalse: () => [], onTrue: () => [accessibilityAddTraits(['isSelected'])]}),
 				text.detail,
 				lineLimit(1),
 				fixedSize()

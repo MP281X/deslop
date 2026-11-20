@@ -2,20 +2,15 @@ import {Schema} from 'effect'
 
 import {Rpc, RpcGroup} from 'effect/rpc'
 
-import {AuthError, RpcAuth} from '@deslop/runtime/shared/auth'
+import {RpcAuth} from '@deslop/runtime/shared/auth'
 import {TimeFrame} from '@deslop/runtime/shared/time'
 
 import {Overview, TelemetryError, TraceId, TraceTree} from '#services/telemetry/schema.ts'
 
 export class RpcContracts extends RpcGroup.make(
-	Rpc.make('telemetry.watch', {
-		error: Schema.Union([AuthError, TelemetryError]),
-		payload: TimeFrame,
-		stream: true,
-		success: Overview
-	}),
+	Rpc.make('telemetry.watch', {error: TelemetryError, payload: TimeFrame, stream: true, success: Overview}),
 	Rpc.make('telemetry.trace', {
-		error: Schema.Union([AuthError, TelemetryError]),
+		error: TelemetryError,
 		payload: Schema.Struct({id: TraceId}),
 		stream: true,
 		success: TraceTree

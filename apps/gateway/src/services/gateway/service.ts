@@ -33,11 +33,11 @@ import {MCP_PATH} from '@deslop/runtime/shared/schema'
 
 import {connectionFailure, describe, serverIcons} from '#services/connections/lib/utils.ts'
 import type {ConnectionGeneration, ConnectionState, ServerReference, ServerId} from '#services/connections/schema.ts'
-import {Discovery} from '#services/connections/schema.ts'
+import {Discovery, failureMessage} from '#services/connections/schema.ts'
 import {Connections, gatewayUrl} from '#services/connections/service.ts'
 import {compact, prunedTools} from '#services/gateway/lib/utils.ts'
 import {RemoteTool, RemoteTools, ToolArguments, ToolRequest} from '#services/gateway/schema.ts'
-import {Upstreams, upstreamStatus} from '#services/upstreams/service.ts'
+import {Upstreams} from '#services/upstreams/service.ts'
 
 const discoveryHeaders = Context.Reference<Headers.Headers>('gateway/DiscoveryHeaders', {
 	defaultValue: () => Headers.empty
@@ -86,35 +86,12 @@ export class Gateway extends Context.Service<
 				return `${String.slice(0, 41)(String.replaceAll(/[^a-zA-Z0-9_-]/gu, '_')(fullName))}__encoded_${String.slice(0, 12)(Base64Url.encode(yield* digest.digest(Digest.sha256, new TextEncoder().encode(fullName))))}`
 			})
 			const visible = yield* Ref.make(HashSet.empty<string>())
+			// Each registered name's owner: lists, pruning and calls go by it, never by a name's prefix.
 			const installed = yield* Ref.make<
 				HashMap.HashMap<string, {fingerprint: string; generation: ConnectionGeneration; id: ConnectionState['id']}>
 			>(HashMap.empty())
 			const refreshes = yield* Semaphore.make(1)
 			const scope = yield* Effect.scope
-			// McpServer has no removal: a removed tool stays registered, and the usability check hides it from lists and calls.
-			const remove = Effect.fnUntraced(function* (name: string) {
-				yield* Ref.update(installed, HashMap.remove(name))
-				yield* Ref.update(visible, HashSet.remove(name))
-			})
-			const prune = Effect.gen(function* () {
-				const names = prunedTools(yield* connections.definitions, yield* Ref.get(installed))
-				yield* Effect.forEach(names, remove, {concurrency: 1, discard: true})
-				if (Array.isArrayNonEmpty(names)) yield* registry.notifications['notifications/tools/list_changed']({})
-			})
-			const updateVisible = Effect.fnUntraced(function* (server: ConnectionState, names: HashSet.HashSet<string>) {
-				const changed = yield* Ref.modify(visible, current => {
-					const next = pipe(
-						current,
-						HashSet.filter(name => !String.startsWith(`${server.id}__`)(name)),
-						HashSet.union(names)
-					)
-					return [!Equal.equals(current, next), next]
-				})
-				for (const entry of yield* Ref.get(installed)) {
-					if (entry[1].id === server.id && !HashSet.has(names, entry[0])) yield* remove(entry[0])
-				}
-				if (changed) yield* registry.notifications['notifications/tools/list_changed']({})
-			})
 			const services = yield* Layer.build(
 				// judge-ignore no-silent-fallback -- MCP visibility is an access predicate, not a tool answer: failing to establish authorization denies visibility without replacing any requested tool result.
 				McpServer.visibility(options =>
@@ -149,6 +126,48 @@ export class Gateway extends Context.Service<
 					})
 				).layer
 			)
+			// McpServer has no removal: a removed name keeps a bare descriptor the usability check hides, so its schema and handler are released.
+			const remove = Effect.fnUntraced(function* (name: string) {
+				yield* Ref.update(installed, HashMap.remove(name))
+				yield* Ref.update(visible, HashSet.remove(name))
+				yield* registry.addTool({
+					annotations: Context.empty(),
+					handle: () =>
+						Effect.succeed(
+							McpSchema.CallToolResult.make({content: [{text: 'This tool was removed', type: 'text'}], isError: true})
+						),
+					services,
+					tool: McpSchema.Tool.make({inputSchema: {type: 'object'}, name})
+				})
+			})
+			const prune = Effect.gen(function* () {
+				const names = prunedTools(yield* connections.definitions, yield* Ref.get(installed))
+				yield* Effect.forEach(names, remove, {concurrency: 1, discard: true})
+				if (Array.isArrayNonEmpty(names)) yield* registry.notifications['notifications/tools/list_changed']({})
+			})
+			// A server's tools turn visible together, once its whole list is registered.
+			const updateVisible = Effect.fnUntraced(function* (server: ConnectionState, names: HashSet.HashSet<string>) {
+				const owned = yield* Ref.get(installed)
+				const changed = yield* Ref.modify(visible, current => {
+					const next = pipe(
+						current,
+						HashSet.filter(
+							name =>
+								!pipe(
+									owned,
+									HashMap.get(name),
+									Option.exists(entry => entry.id === server.id)
+								)
+						),
+						HashSet.union(names)
+					)
+					return [!Equal.equals(current, next), next]
+				})
+				for (const entry of yield* Ref.get(installed)) {
+					if (entry[1].id === server.id && !HashSet.has(names, entry[0])) yield* remove(entry[0])
+				}
+				if (changed) yield* registry.notifications['notifications/tools/list_changed']({})
+			})
 			const resolveUpstream = Effect.fnUntraced(function* (server: ServerReference, headers: Headers.Headers) {
 				const current = yield* connections.get(server.id)
 				if (current.generation !== server.generation || current.status !== 'Connected') {
@@ -169,26 +188,24 @@ export class Gateway extends Context.Service<
 					url: current.url
 				}
 			})
-			const withClient = Effect.fnUntraced(function* <A, E>(
+			const withClient = Effect.fnUntraced(function* <A>(
 				server: ServerReference,
 				headers: Headers.Headers,
-				run: Parameters<typeof upstreams.use<A, E>>[1]
+				run: Parameters<typeof upstreams.use<A>>[1]
 			) {
 				// The token the rejected attempt sent, so a refresh replaces exactly that one.
 				const sent = yield* Ref.make(Option.none<string>())
 				const authorize = Effect.tap(resolveUpstream(server, headers), current => Ref.set(sent, current.token))
-				return yield* pipe(
-					upstreams.use(authorize, run),
-					Effect.catchIf(
-						error => server.mode === 'oauth' && upstreamStatus(error) === 401,
-						() =>
-							pipe(
-								Ref.get(sent),
-								Effect.flatMap(token => connections.token(server.id, server.generation, token)),
-								Effect.andThen(upstreams.use(authorize, run))
-							)
+				const renew = Effect.asVoid(
+					Effect.flatMap(Ref.get(sent), token => connections.token(server.id, server.generation, token))
+				)
+				return yield* Effect.mapError(
+					upstreams.use(
+						authorize,
+						run,
+						Option.liftPredicate(renew, () => server.mode === 'oauth')
 					),
-					Effect.mapError(connectionFailure(server.name))
+					connectionFailure(server.name)
 				)
 			})
 			const call = Effect.fn('Gateway.call')(
@@ -202,7 +219,7 @@ export class Gateway extends Context.Service<
 					return yield* withClient(server, request.headers, client =>
 						Effect.tap(client.callTool(tool, args), result =>
 							pipe(
-								connections.called(server.id),
+								connections.called(server.id, server.generation),
 								Effect.ignore({log: 'Warn', message: 'Accepted MCP call could not be counted'}),
 								Effect.andThen(Effect.annotateCurrentSpan({'mcp.is_error': result.isError === true}))
 							)
@@ -260,13 +277,13 @@ export class Gateway extends Context.Service<
 					Effect.fnUntraced(function* (tool) {
 						const name = yield* namespaced(`${server.id}__${tool.name}`)
 						const fingerprint = yield* Schema.encodeEffect(Schema.fromJsonString(RemoteTool))(tool)
-						if (
-							!pipe(
-								yield* Ref.get(installed),
-								HashMap.get(name),
-								Option.exists(entry => entry.fingerprint === `${server.generation}:${fingerprint}`)
-							)
-						) {
+						const existing = HashMap.get(yield* Ref.get(installed), name)
+						// A name another server already owns stays with it: registering it again would send that server's calls here.
+						if (Option.exists(existing, entry => entry.id !== server.id)) {
+							yield* Effect.logWarning(`${server.name} lists a tool whose name another server owns`, {name})
+							return Option.none<string>()
+						}
+						if (!Option.exists(existing, entry => entry.fingerprint === `${server.generation}:${fingerprint}`)) {
 							yield* Ref.update(
 								installed,
 								HashMap.set(name, {
@@ -275,7 +292,6 @@ export class Gateway extends Context.Service<
 									id: server.id
 								})
 							)
-							yield* Ref.update(visible, HashSet.add(name))
 							yield* registry.addTool({
 								annotations: Context.empty(),
 								handle: (input: unknown) => call(reference, compact(tool), input),
@@ -283,11 +299,11 @@ export class Gateway extends Context.Service<
 								tool: McpSchema.Tool.make({...compact(tool), name})
 							})
 						}
-						return name
+						return Option.some(name)
 					}),
 					{concurrency: 1}
 				)
-				yield* updateVisible(server, HashSet.fromIterable(names))
+				yield* updateVisible(server, HashSet.fromIterable(Array.getSomes(names)))
 				yield* connections.report(
 					server.id,
 					server.generation,
@@ -305,7 +321,9 @@ export class Gateway extends Context.Service<
 					const server = yield* connections.get(id)
 					return yield* pipe(
 						discover(server, yield* discoveryHeaders),
-						Effect.tapCause(cause => Effect.logWarning(`${server.name} discovery failed`, cause)),
+						Effect.tapError(error =>
+							Effect.logWarning(`${server.name} discovery failed: ${failureMessage(describe(error))}`)
+						),
 						Effect.tapError(error =>
 							connections.report(server.id, server.generation, Discovery.cases.Failed.make({error: describe(error)}))
 						),
@@ -317,27 +335,41 @@ export class Gateway extends Context.Service<
 				return pipe(RcMap.get(reading, id), Effect.provideService(discoveryHeaders, headers), Effect.scoped)
 			}
 			const discovery = yield* FiberHandle.make<void, never>()
+			// Without a caller, Deslop servers are skipped: they answer only on someone's behalf.
 			// judge-ignore no-silent-fallback -- This scope-owned discovery round updates the existing MCP registry and reports failures on connection rows; it does not return an operation result to callers.
+			const sweep = Effect.fnUntraced(function* (caller: Option.Option<Headers.Headers>) {
+				const headers = Option.getOrElse(caller, () => Headers.empty)
+				yield* pipe(
+					prune,
+					Effect.andThen(connections.definitions),
+					Effect.map(Array.filter(server => Option.isSome(caller) || server.mode !== 'deslop')),
+					Effect.flatMap(definitions =>
+						Effect.forEach(
+							definitions,
+							server =>
+								Effect.ignore(readServer(server.id, headers), {log: 'Warn', message: 'Cannot discover MCP tools'}),
+							{concurrency: 6, discard: true}
+						)
+					),
+					Effect.andThen(prune),
+					// The servers' storage failing leaves the registry as it was until the next read.
+					Effect.catch(cause => Effect.logWarning('The MCP servers could not be read', cause))
+				)
+			})
 			const read = Effect.fnUntraced(function* (headers: Headers.Headers) {
 				yield* Effect.ensuring(
-					pipe(
-						prune,
-						Effect.andThen(connections.definitions),
-						Effect.flatMap(definitions =>
-							Effect.forEach(
-								definitions,
-								server =>
-									Effect.ignore(readServer(server.id, headers), {log: 'Warn', message: 'Cannot discover MCP tools'}),
-								{concurrency: 6, discard: true}
-							)
-						),
-						Effect.andThen(prune),
-						// The servers' storage failing leaves the registry as it was until the next read.
-						Effect.catch(cause => Effect.logWarning('The MCP servers could not be read', cause))
-					),
+					sweep(Option.some(headers)),
 					Effect.flatMap(DateTime.now, now => Ref.set(lastRead, Option.some(now)))
 				)
 			})
+			// Upstreams announce no change Gateway can hear, so their tools are read again every five minutes even while nobody lists them.
+			yield* pipe(
+				refreshes.withPermits(1)(sweep(Option.none())),
+				Effect.withSpan('Gateway.discover'),
+				Effect.delay(Duration.minutes(5)),
+				Effect.forever,
+				Effect.forkIn(scope)
+			)
 			// The caller waits up to 2 seconds; a slow read finishes in the gateway's scope, and its defect never fails the caller.
 			// judge-ignore no-silent-fallback -- The joined fiber is background discovery, not the requested MCP operation; callers use the registry independently, and failures are logged while discovery keeps its scope.
 			const settle = Effect.fnUntraced(function* (fiber: Fiber.Fiber<void>) {
@@ -381,31 +413,34 @@ export class Gateway extends Context.Service<
 				refresh,
 				removed: Effect.withSpan(prune, 'Gateway.removed'),
 				resolve: Effect.fn('Gateway.resolve')(function* (name, headers, authorize) {
-					const found = Array.findFirst(yield* connections.definitions, entry =>
-						String.startsWith(`${entry.id}__`)(name)
+					const definitions = yield* connections.definitions
+					const owner = pipe(
+						yield* Ref.get(installed),
+						HashMap.get(name),
+						Option.filter(entry =>
+							Array.some(
+								definitions,
+								server =>
+									server.id === entry.id && server.generation === entry.generation && server.status === 'Connected'
+							)
+						)
 					)
-					return yield* Option.match(found, {
-						onNone: () => Effect.void,
-						onSome: Effect.fnUntraced(function* (current) {
-							if (
-								current.status === 'Connected' &&
-								HashSet.has(yield* Ref.get(visible), name) &&
-								pipe(
-									yield* Ref.get(installed),
-									HashMap.get(name),
-									Option.exists(entry => entry.generation === current.generation)
-								)
-							) {
-								return
-							}
-							// Registered calls use MCP's own auth check; discovery needs a verified bearer before starting work.
-							if (!(yield* authorize)) return
-							// A saved descriptor is not evidence that the server is still authorized.
-							if (current.status !== 'Connected') {
-								return yield* AuthError.make({message: `${current.name} is not connected; connect it on ${url}`})
-							}
-							yield* readServer(current.id, headers)
+					if (Option.isSome(owner) && HashSet.has(yield* Ref.get(visible), name)) return
+					// An older id may hold an underscore, so every server whose id could begin the name is read, never just the first.
+					const candidates = Array.filter(definitions, server => String.startsWith(`${server.id}__`)(name))
+					if (!Array.isArrayNonEmpty(candidates)) return
+					// Registered calls use MCP's own auth check; discovery needs a verified bearer before starting work.
+					if (!(yield* authorize)) return
+					// A saved descriptor is not evidence that the server is still authorized.
+					const connected = Array.filter(candidates, server => server.status === 'Connected')
+					if (!Array.isArrayNonEmpty(connected)) {
+						return yield* AuthError.make({
+							message: `${Array.headNonEmpty(candidates).name} is not connected; connect it on ${url}`
 						})
+					}
+					yield* Effect.forEach(connected, server => readServer(server.id, headers), {
+						concurrency: 'unbounded',
+						discard: true
 					})
 				})
 			})

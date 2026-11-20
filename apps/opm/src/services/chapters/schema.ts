@@ -1,4 +1,4 @@
-import {Schema, Struct, pipe} from 'effect'
+import {Schema, SchemaTransformation, Struct, pipe} from 'effect'
 
 import {Model} from 'effect/schema'
 
@@ -6,6 +6,13 @@ import {DateTimeUtcFromFiniteMillis, DateTimeUtcFromFiniteSeconds} from '@deslop
 
 export type ChapterNumber = typeof ChapterNumber.Type
 export const ChapterNumber = pipe(Schema.Finite, Schema.brand('ChapterNumber'))
+
+export type ChapterNumberFromString = typeof ChapterNumberFromString.Type
+// A chapter number as a source writes it, digits with an optional decimal part, so "NaN", "Infinity" or "1e12" names no chapter.
+export const ChapterNumberFromString = pipe(
+	Schema.String.check(Schema.isPattern(/^\d+(?:\.\d+)?$/u)),
+	Schema.decodeTo(ChapterNumber, SchemaTransformation.numberFromString)
+)
 
 export type ChapterKey = typeof ChapterKey.Type
 export const ChapterKey = pipe(Schema.String, Schema.brand('ChapterKey'))
@@ -46,6 +53,15 @@ export class Chapter extends Model.Class<Chapter>('Chapter')({
 	static readonly table = 'chapters'
 }
 
+// What discovery compares a source against: a chapter without its pages, so a round does not read every page list.
+export type ChapterState = typeof ChapterState.Type
+export const ChapterState = Chapter.select.mapFields(
+	Struct.pick(['notified', 'number', 'postedAt', 'revisedAt', 'series', 'source'])
+)
+
+// The catalogue as the iPhone sees it, read apart from reading progress so a page turn does not decode every page list again.
+export const CatalogueRow = Chapter.select.mapFields(Struct.pick(['number', 'pages', 'postedAt', 'series', 'title']))
+
 export type ChapterNotification = typeof ChapterNotification.Type
 export const ChapterNotification = Schema.Struct({path: ChapterPath})
 
@@ -78,9 +94,9 @@ export const Post = Schema.Struct({
 	series: Series
 })
 
-// A reader link that answered 404 for its chapter; skipped while the current discovery posts still reference it.
+// A reader link that answered 404 for its chapter, and when; skipped for a while as long as the discovery posts still reference it.
 export type DeadLink = typeof DeadLink.Type
-export const DeadLink = Schema.Struct({key: ChapterKey, link: Schema.String})
+export const DeadLink = Schema.Struct({at: Schema.DateTimeUtc, key: ChapterKey, link: Schema.String})
 
 export class ReadingError extends Schema.TaggedError<ReadingError>()('ReadingError', {
 	cause: Schema.optional(Schema.Defect()),
@@ -105,10 +121,7 @@ export const Position = Schema.Struct({
 // The iPhone's list joins the catalogue with its saved place, without making progress part of a catalogue row.
 export class ReadingChapter extends Model.Class<ReadingChapter>('ReadingChapter')({
 	...Model.fields(Chapter),
-	reading: Model.Field({
-		json: Schema.OptionFromOptionalKey(Position),
-		select: Schema.OptionFromNullOr(Schema.fromJsonString(Position))
-	})
+	reading: Model.Field({json: Schema.OptionFromOptionalKey(Position)})
 }) {}
 
 export type ChapterItem = typeof ReadingChapter.json.Type

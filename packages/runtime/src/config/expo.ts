@@ -5,6 +5,14 @@ import type {ExpoConfig} from 'expo/config'
 
 export const DEVELOPMENT_BUNDLE_SUFFIX = '.dev'
 
+type ThemeColor = {dark: string; light: string}
+type ShareColors = {
+	background: ThemeColor
+	destructive: ThemeColor
+	foreground: ThemeColor
+	mutedForeground: ThemeColor
+}
+
 // EAS sets APP_VARIANT from the build profile; the simulator build gets its own bundle identifier and name.
 export function makeExpoConfig(app: {projectId: string; slug: string}) {
 	// oxlint-disable-next-line eslint/no-restricted-properties -- Expo loads the app config outside any Effect runtime.
@@ -25,6 +33,7 @@ export function makeExpoConfig(app: {projectId: string; slug: string}) {
 				}),
 				onTrue: () => ({bundleIdentifier: `xyz.mp281x.${app.slug}`, name: app.slug, scheme: app.slug})
 			})
+			const keychainGroup = `$(AppIdentifierPrefix)group.${variant.bundleIdentifier}`
 			return {
 				appGroup: `group.${variant.bundleIdentifier}`,
 				config: {
@@ -54,7 +63,23 @@ export function makeExpoConfig(app: {projectId: string; slug: string}) {
 					userInterfaceStyle: 'automatic',
 					version: `0.1.${release}`
 				} satisfies ExpoConfig,
-				domain
+				domain,
+				// What a share extension reads from its app's Info.plist, as apple-targets sets no keys on the extension: the Keychain group both save to, the server and the app's colors to draw with.
+				shareExtension: (colors: ShareColors, primary: ThemeColor) => ({
+					// A Keychain item saved without a group lands in the app's first group, the one the share extension reads.
+					entitlements: {'keychain-access-groups': [keychainGroup]},
+					infoPlist: {
+						DeslopKeychainGroup: keychainGroup,
+						DeslopServer: `https://${app.slug}.${domain}`,
+						DeslopTheme: {
+							background: colors.background,
+							destructive: colors.destructive,
+							foreground: colors.foreground,
+							muted: colors.mutedForeground,
+							primary
+						}
+					}
+				})
 			}
 		})
 	)

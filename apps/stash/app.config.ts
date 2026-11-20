@@ -2,29 +2,14 @@ import {palette} from '@deslop/components-mobile/palette'
 import {makeExpoConfig} from '@deslop/runtime/config/expo'
 
 const app = makeExpoConfig({projectId: 'c9620553-0dc5-4e08-b691-a47fa3cab00e', slug: 'stash'})
+const share = app.shareExtension(palette.colors, palette.hues.amber)
 
 export default {
 	...app.config,
 	ios: {
 		...app.config.ios,
-		entitlements: {
-			'com.apple.security.application-groups': [app.appGroup],
-			// A Keychain item saved without a group lands in the app's first group, the one the share extension reads.
-			'keychain-access-groups': [`$(AppIdentifierPrefix)${app.appGroup}`]
-		},
-		infoPlist: {
-			DeslopKeychainGroup: `$(AppIdentifierPrefix)${app.appGroup}`,
-			// apple-targets sets no Info.plist keys on the extension, so it reads the server from its app's, like the theme.
-			DeslopServer: `https://stash.${app.domain}`,
-			// The share extension draws with these, so its colors are the app's own.
-			DeslopTheme: {
-				background: palette.colors.background,
-				destructive: palette.colors.destructive,
-				foreground: palette.colors.foreground,
-				muted: palette.colors.mutedForeground,
-				primary: palette.hues.amber
-			}
-		}
+		entitlements: {...share.entitlements, 'com.apple.security.application-groups': [app.appGroup]},
+		infoPlist: share.infoPlist
 	},
 	plugins: [...app.config.plugins, '@bacons/apple-targets']
 }

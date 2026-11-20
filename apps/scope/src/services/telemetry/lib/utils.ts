@@ -308,7 +308,12 @@ export function logOf(sender: ReturnType<typeof senderOf>, log: ExportedLog, id:
 		receivedAt,
 		severity: severityOf(log.severityNumber, log.severityText),
 		spanId: Option.map(log.spanId, value => SpanId.make(String.toLowerCase(value))),
-		time: instantOf(log.timeUnixNano),
+		// A record without an event time happened when it was observed, else when its export arrived.
+		time: pipe(
+			Option.filter(log.timeUnixNano, Duration.isPositive),
+			Option.orElse(() => Option.filter(log.observedTimeUnixNano, Duration.isPositive)),
+			Option.match({onNone: () => receivedAt, onSome: instantOf})
+		),
 		traceId: Option.map(log.traceId, value => TraceId.make(String.toLowerCase(value)))
 	} satisfies Log
 }
@@ -386,13 +391,18 @@ function brokeAt<A extends SpanFacts>(spans: readonly A[]) {
 	)
 }
 
-// The span a trace starts from: one whose parent the trace doesn't hold, the earliest if a skewed clock leaves several.
+// The span a trace starts from: one whose parent the trace doesn't hold, one sent without a parent before one whose parent is missing, the earliest if a skewed clock leaves several.
 function traceRoot<A extends SpanFacts>(spans: Array.NonEmptyReadonlyArray<A>) {
 	const ids = HashSet.fromIterable(Array.map(spans, span => span.spanId))
-	return pipe(
+	const candidates = pipe(
 		spans,
 		Array.filter(span => !Option.exists(span.parentSpanId, parent => HashSet.has(ids, parent))),
-		Array.match({onEmpty: () => spans, onNonEmpty: Function.identity}),
+		Array.match({onEmpty: () => spans, onNonEmpty: Function.identity})
+	)
+	return pipe(
+		candidates,
+		Array.filter(span => Option.isNone(span.parentSpanId)),
+		Array.match({onEmpty: () => candidates, onNonEmpty: Function.identity}),
 		Array.min<A>(byStart)
 	)
 }
@@ -439,6 +449,20 @@ function linkedParents(spans: readonly Span[], links: readonly SpanLink[]) {
 	)
 }
 
+// The spans a tree walk has still to visit, first on top.
+type Pending = Option.Option<{readonly depth: number; readonly node: TreeNode; readonly rest: Pending}>
+
+// A span in start order, with the span it hangs under when the trace holds it.
+type TreeNode = {
+	readonly index: number
+	readonly parent: Option.Option<{readonly index: number; readonly span: Span}>
+	readonly span: Span
+}
+
+function pendingOf(steps: readonly {depth: number; node: TreeNode}[], rest: Pending) {
+	return Array.reduceRight(steps, rest, (tail, step) => Option.some({...step, rest: tail}))
+}
+
 // A trace and the traces its links join, as one tree in start order with each span's logs beside it.
 export function traceTree(id: TraceId, spans: readonly Span[], logs: readonly Log[], links: readonly SpanLink[]) {
 	const ordered = Array.sort(spans, byStart)
@@ -475,43 +499,62 @@ export function traceTree(id: TraceId, spans: readonly Span[], logs: readonly Lo
 		Array.groupBy(entry => entry.spanId),
 		Record.map(entries => Array.map(entries, entry => entry.log))
 	)
-	const tree = pipe(
-		Array.flatMap(Option.toArray(timing.start), start =>
-			Array.map(indexed, item => {
-				const ancestors = Array.reverse(
-					Array.unfold({seen: HashSet.make(`${item.span.traceId}:${item.span.spanId}`), span: item.span}, current =>
-						pipe(
-							Option.flatMap(parentOf(current.span), parent => Record.get(byId, parent)),
-							Option.filter(parent => !HashSet.has(current.seen, `${parent.span.traceId}:${parent.span.spanId}`)),
-							Option.map(
-								parent =>
-									[
-										parent,
-										{seen: HashSet.add(current.seen, `${parent.span.traceId}:${parent.span.spanId}`), span: parent.span}
-									] as const
-							)
-						)
-					)
+	const nodes = Array.map(
+		indexed,
+		item =>
+			({
+				...item,
+				parent: pipe(
+					parentOf(item.span),
+					Option.flatMap(parent => Record.get(byId, parent)),
+					Option.filter(parent => parent.index !== item.index)
 				)
-				return {
-					path: [...Array.map(ancestors, parent => parent.index), item.index],
-					value: {
-						...Struct.pick(item.span, Struct.keys(Span.fields)),
-						depth: ancestors.length,
-						durationMs: spanDuration(item.span),
-						logs: pipe(bySpan, Record.get(`${item.span.traceId}:${item.span.spanId}`), Option.getOrElse(Array.empty)),
-						offsetMs: DateTime.distance(start, item.span.start),
-						parentSpanId: pipe(
-							parentOf(item.span),
-							Option.flatMap(parent => Record.get(byId, parent)),
-							Option.map(parent => parent.span.spanId)
-						)
-					}
-				}
-			})
-		),
-		Array.sort(Order.Struct({path: Order.Array(Order.Number)})),
-		Array.map(node => node.value)
+			}) satisfies TreeNode
+	)
+	const children = pipe(
+		nodes,
+		Array.flatMap(node => Option.toArray(Option.map(node.parent, parent => ({child: node, parent: parent.index})))),
+		Array.groupBy(entry => `${entry.parent}`)
+	)
+	// One walk from the roots in start order, each span's children after it; a span whose parents loop through links starts its own branch.
+	const walk = Array.getSomes(
+		Array.unfold<{pending: Pending; seen: HashSet.HashSet<number>}, Option.Option<{depth: number; node: TreeNode}>>(
+			{
+				pending: pendingOf(
+					Array.map([...Array.filter(nodes, node => Option.isNone(node.parent)), ...nodes], node => ({depth: 0, node})),
+					Option.none()
+				),
+				seen: HashSet.empty<number>()
+			},
+			state =>
+				Option.map(state.pending, top => {
+					if (HashSet.has(state.seen, top.node.index)) return [Option.none(), {...state, pending: top.rest}] as const
+					const next = pipe(
+						children,
+						Record.get(`${top.node.index}`),
+						Option.getOrElse(() => []),
+						Array.map(entry => ({depth: top.depth + 1, node: entry.child}))
+					)
+					return [
+						Option.some(top),
+						{pending: pendingOf(next, top.rest), seen: HashSet.add(state.seen, top.node.index)}
+					] as const
+				})
+		)
+	)
+	const tree = Array.flatMap(Option.toArray(timing.start), start =>
+		Array.map(walk, step => ({
+			...Struct.pick(step.node.span, Struct.keys(Span.fields)),
+			depth: step.depth,
+			durationMs: spanDuration(step.node.span),
+			logs: pipe(
+				bySpan,
+				Record.get(`${step.node.span.traceId}:${step.node.span.spanId}`),
+				Option.getOrElse(Array.empty)
+			),
+			offsetMs: DateTime.distance(start, step.node.span.start),
+			parentSpanId: Option.map(step.node.parent, parent => parent.span.spanId)
+		}))
 	)
 	return {
 		durationMs: timing.durationMs,

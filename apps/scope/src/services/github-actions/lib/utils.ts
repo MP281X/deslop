@@ -190,11 +190,16 @@ function severityOf(command: string) {
 	return 9
 }
 
-// Steps run in time order, so a line advances the pointer past every step that had already ended.
-function stepIndexAfter(steps: readonly {end: DateTime.Utc}[], index: number, time: DateTime.Utc): number {
-	const step = steps[index]
-	if (step === undefined || DateTime.isLessThanOrEqualTo(time, step.end)) return index
-	return stepIndexAfter(steps, index + 1, time)
+// A runner time as exact epoch nanoseconds: GitHub writes seven fractional digits, finer than a millisecond.
+function lineNanos(stamp: string, time: DateTime.Utc) {
+	const fraction = pipe(
+		stamp,
+		String.match(/\.(\d{1,9})Z$/u),
+		Option.flatMap(match => Option.fromUndefinedOr(match[1])),
+		Option.getOrElse(Function.constant('')),
+		String.padEnd(9, '0')
+	)
+	return Duration.nanos(BigInt(Math.floor(DateTime.toEpochMillis(time) / 1000)) * 1_000_000_000n + BigInt(fraction))
 }
 
 // The job's log as one log record per line, on the step whose time holds it and the job otherwise, so a trace's steps show their own output.
@@ -205,12 +210,12 @@ export function jobLogs(event: WorkflowJob, log: string) {
 		spanId: stepSpanId(event.workflow_job.id, step.number),
 		start: step.started
 	}))
-	// Log lines and steps both arrive in time order, so one pointer moves through the steps once.
-	const [, lines] = pipe(
+	// A line belongs to the step whose time holds it, the job otherwise; a buffered line written late still finds its step.
+	const lines = pipe(
 		log,
 		String.split('\n'),
-		Array.mapAccum(0, (stepIndex, raw) => {
-			const entry = pipe(
+		Array.map(raw =>
+			pipe(
 				raw,
 				String.replaceAll(ANSI, ''),
 				String.trim,
@@ -222,20 +227,14 @@ export function jobLogs(event: WorkflowJob, log: string) {
 							onNone: () => ({command: '', message}),
 							onSome: command => ({command: command[1] ?? '', message: command[2] ?? ''})
 						}),
+						nanos: lineNanos(match[1] ?? '', date),
 						time: date
 					}))
 				}),
 				Option.filter(
 					line => String.trim(line.message) !== '' && line.command !== 'group' && line.command !== 'endgroup'
-				)
-			)
-			const next = Option.match(entry, {
-				onNone: () => stepIndex,
-				onSome: line => stepIndexAfter(steps, stepIndex, line.time)
-			})
-			return [
-				next,
-				Option.map(entry, line => ({
+				),
+				Option.map(line => ({
 					attributes: Option.none(),
 					body: Option.some({stringValue: line.message}),
 					observedTimeUnixNano: Option.none(),
@@ -243,16 +242,20 @@ export function jobLogs(event: WorkflowJob, log: string) {
 					severityText: Option.none(),
 					spanId: Option.some(
 						pipe(
-							Option.fromUndefinedOr(steps[next]),
-							Option.filter(step => DateTime.isGreaterThanOrEqualTo(line.time, step.start)),
+							steps,
+							Array.findFirst(
+								step =>
+									DateTime.isGreaterThanOrEqualTo(line.time, step.start) &&
+									DateTime.isLessThanOrEqualTo(line.time, step.end)
+							),
 							Option.match({onNone: () => jobSpanId(event.workflow_job.id), onSome: step => step.spanId})
 						)
 					),
-					timeUnixNano: nanos(line.time),
+					timeUnixNano: Option.some(line.nanos),
 					traceId: Option.some(traceId)
 				}))
-			] as const
-		})
+			)
+		)
 	)
 	// A failed job keeps every line; a successful one keeps runner warnings and errors, and each of its own steps' closing lines, counted from the end.
 	const own = pipe(

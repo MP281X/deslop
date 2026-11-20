@@ -1,10 +1,12 @@
-/** @param {import('expo/config').ExpoConfig} config */
+/** @param {import('expo/config').ExpoConfig & {ios: {bundleIdentifier: string}}} config */
 function targetConfig(config) {
 	return {
 		bundleIdentifier: '.share',
 		deploymentTarget: '26.0',
 		displayName: config.slug,
-		frameworks: ['SwiftUI', 'UIKit', 'UniformTypeIdentifiers', 'ImageIO'],
+		// The app saves its session in this group, so a share sends it too.
+		entitlements: {'keychain-access-groups': [`$(AppIdentifierPrefix)group.${config.ios.bundleIdentifier}`]},
+		frameworks: ['SwiftUI', 'UIKit', 'UniformTypeIdentifiers', 'ImageIO', 'Security'],
 		icon: '../../src/routes/icon.png',
 		name: 'TripsShare',
 		type: 'share'

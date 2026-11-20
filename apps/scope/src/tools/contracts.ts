@@ -32,6 +32,10 @@ const TextWindow = Schema.Struct({
 	textOffset: pipe(Schema.Natural, Schema.withDecodingDefaultTypeKey(Effect.succeed(0)))
 })
 
+export type OperationCursor = typeof OperationCursor.Type
+// The last row's place in list_operations' order: failing first, then app, name and side.
+const OperationCursor = Schema.Struct({app: AppName, failed: Schema.Boolean, name: Schema.String, side: Schema.String})
+
 type AttributeWindow = typeof AttributeWindow.Type
 const AttributeWindow = Schema.Struct({
 	attribute: Schema.OptionFromOptionalKey(Schema.String),
@@ -41,18 +45,18 @@ const AttributeWindow = Schema.Struct({
 export const ToolContracts = Toolkit.make(
 	Tool.make('list_operations', {
 		description:
-			'Inspect root operations failure-first with runs and latency; denied sign-ins are not failures. Use a failure or slowest trace id with read_trace, or continue the live list with nextCursor.',
+			'Inspect root operations failure-first with runs and latency; failedTraces counts runs with any failed span, even one the operation handled, and denied sign-ins are not failures. Use a failure or slowest trace id with read_trace, or continue the live list with nextCursor.',
 		failure: TelemetryError,
 		parameters: Schema.Struct({
 			...ListOperationsParams.fields,
-			cursor: Schema.OptionFromOptionalKey(Schema.String),
+			cursor: Schema.OptionFromOptionalKey(OperationCursor),
 			limit: pipe(
 				Schema.Int.check(Schema.isBetween({maximum: 100, minimum: 1})),
 				Schema.withDecodingDefaultTypeKey(Effect.succeed(30))
 			),
 			operation: Schema.OptionFromOptionalKey(Schema.String)
 		}),
-		success: Schema.Struct({...OperationsAnswer.fields, nextCursor: Schema.OptionFromOptionalKey(Schema.String)})
+		success: Schema.Struct({...OperationsAnswer.fields, nextCursor: Schema.OptionFromOptionalKey(OperationCursor)})
 	})
 		.annotate(Tool.Readonly, true)
 		.annotate(Tool.Strict, true),
@@ -67,7 +71,7 @@ export const ToolContracts = Toolkit.make(
 		.annotate(Tool.Strict, true),
 	Tool.make('read_trace', {
 		description:
-			'Read a trace’s spans (at=offset ms, ms=duration), longest first selection in tree order, plus failing ancestors; pass nextOffset to continue. Select section=logs or attributes and optional span id for bounded details; nextTextOffset/nextAttribute continue truncated fields.',
+			'Read a trace’s spans (at=offset ms, ms=duration), longest first selection in tree order, plus failing ancestors; a span from a linked trace names its trace. Pass nextOffset to continue. Select section=logs (one time order, each line naming its span: the cause of a failed step may sit on its job) or attributes and optional span id for bounded details; nextTextOffset/nextAttribute continue truncated fields.',
 		failure: TelemetryError,
 		parameters: Schema.Struct({
 			...ReadTraceParams.fields,
@@ -115,7 +119,7 @@ export const ToolContracts = Toolkit.make(
 		.annotate(Tool.Strict, true),
 	Tool.make('measure_latency', {
 		description:
-			'Measure count, failures and p50/p95/max milliseconds for an exact span name in one rolling window; save this result before a change to compare later. Zero samples is no evidence of success; search_traces locates individual requests.',
+			'Measure count, failedSpans and p50/p95/max milliseconds for an exact span name in one rolling window; failedSpans counts only spans of this name that failed themselves, unlike list_operations failedTraces; save this result before a change to compare later. Zero samples is no evidence of success; search_traces locates individual requests.',
 		failure: TelemetryError,
 		parameters: MeasureLatencyParams,
 		success: LatencyAnswer

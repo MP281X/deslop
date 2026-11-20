@@ -1,12 +1,20 @@
 import {assert, it} from '@effect/vitest'
 
-import {Array, DateTime, Duration, Option, Redacted, Schema, String, Struct} from 'effect'
+import {Array, DateTime, Duration, Function, Option, Redacted, Schema, String, Struct, pipe} from 'effect'
 
 import {ApnsToken, Device} from '@deslop/runtime/shared/apns'
 
 import {journeyProps} from '#services/bookings/lib/utils.ts'
-import {BookedPlace, BookingId, Flight, FlightTracking} from '#services/bookings/schema.ts'
-import {alertsOf, announced, expiredActivities, holds, showPlan, unannouncedDevices} from '#services/push/lib/utils.ts'
+import {BookedPlace, BookingId, Flight, FlightTracking, Train, TrainTracking} from '#services/bookings/schema.ts'
+import {
+	alertsOf,
+	announced,
+	expiredActivities,
+	holds,
+	perDevice,
+	showPlan,
+	unannouncedDevices
+} from '#services/push/lib/utils.ts'
 import {Activity, ChannelId, AlertDelivery, SentAlert} from '#services/push/schema.ts'
 import type {AlertCategory} from '#services/push/schema.ts'
 
@@ -41,7 +49,7 @@ const ACTIVITY = {
 	channel: ChannelId.make('current'),
 	endedAt: Option.none<DateTime.Utc>(),
 	leg: 'departure' as const,
-	props: journeyProps([FLIGHT], [], DEPARTS),
+	props: journeyProps([FLIGHT], [], DEPARTS, Function.constFalse),
 	startedAt: DEPARTS
 }
 
@@ -84,12 +92,12 @@ it('relaunches an ended activity only for a newer explicit start request', () =>
 	const endedAt = DateTime.addDuration(DEPARTS, Duration.minutes(5))
 	const activity = Activity.make({...ACTIVITY, endedAt: Option.some(endedAt)})
 	const window = {end: DateTime.addDuration(DEPARTS, Duration.hours(1)), leg: 'departure' as const, start: DEPARTS}
-	assert.deepStrictEqual(showPlan([Device.make(STARTER)], [activity], Flight.make(FLIGHT), window), [])
+	assert.deepStrictEqual(showPlan([Device.make(STARTER)], [activity], [Flight.make(FLIGHT)], window), [])
 	assert.strictEqual(
 		showPlan(
 			[Device.make(STARTER)],
 			[activity],
-			Flight.make(FLIGHT),
+			[Flight.make(FLIGHT)],
 			window,
 			Option.some(DateTime.addDuration(endedAt, Duration.minutes(1)))
 		)[0]?._tag,
@@ -103,7 +111,7 @@ it('announces a gate change and a fifteen-minute delay once each', () => {
 			...FLIGHT,
 			live: Option.some(
 				Schema.decodeSync(FlightTracking)({
-					checkedAt: 1,
+					checkedAt: DateTime.toEpochMillis(DateTime.subtractDuration(DEPARTS, Duration.hours(1))),
 					departureEstimated: DateTime.toEpochMillis(DateTime.addDuration(DEPARTS, Duration.minutes(20))),
 					departureGate: 'B12',
 					previousGate: 'A3',
@@ -158,7 +166,7 @@ it('refreshes a covering activity or launches a new one per app while an ended l
 			showPlan(
 				[Device.make(STARTER), Device.make({...STARTER, bundle: 'xyz.mp281x.trips.dev'})],
 				[Activity.make(ACTIVITY), ended],
-				FLIGHT,
+				[FLIGHT],
 				window
 			),
 			action => [action._tag, action.target.bundle]
@@ -166,8 +174,14 @@ it('refreshes a covering activity or launches a new one per app while an ended l
 		[['refresh', 'xyz.mp281x.trips']]
 	)
 	assert.deepStrictEqual(
-		Array.map(showPlan([Device.make(STARTER)], [], FLIGHT, window), action => action._tag),
+		Array.map(showPlan([Device.make(STARTER)], [], [FLIGHT], window), action => action._tag),
 		['launch']
+	)
+	const cancelled = Flight.make({...FLIGHT, status: 'cancelled'})
+	assert.deepStrictEqual(showPlan([Device.make(STARTER)], [], [cancelled], window), [])
+	assert.deepStrictEqual(
+		Array.map(showPlan([Device.make(STARTER)], [Activity.make(ACTIVITY)], [cancelled], window), action => action._tag),
+		['refresh']
 	)
 })
 
@@ -181,9 +195,144 @@ it('ends only running activities whose booking or current leg is gone', () => {
 	const ended = Activity.make({...ACTIVITY, channel: ChannelId.make('ended'), endedAt: Option.some(DEPARTS)})
 	assert.deepStrictEqual(
 		Array.map(
-			expiredActivities([Activity.make(ACTIVITY), removed, wrongLeg, ended], [FLIGHT], DEPARTS),
+			expiredActivities([Activity.make(ACTIVITY), removed, wrongLeg, ended], [[FLIGHT]], DEPARTS),
 			activity => activity.channel
 		),
 		['removed', 'wrong-leg']
+	)
+})
+
+it('tells a cancelled flight only that it is cancelled, never its gate or boarding', () => {
+	const now = DateTime.subtractDuration(DEPARTS, Duration.minutes(30))
+	const live = {
+		checkedAt: DateTime.toEpochMillis(now),
+		departureEstimated: DateTime.toEpochMillis(DateTime.addDuration(DEPARTS, Duration.minutes(30))),
+		departureGate: 'A3'
+	}
+	const boarding = {...FLIGHT, boardingAt: Option.some(DateTime.subtractDuration(DEPARTS, Duration.minutes(30)))}
+	assert.deepStrictEqual(
+		[
+			Array.map(
+				alertsOf(
+					Flight.make({
+						...boarding,
+						live: Option.some(Schema.decodeSync(FlightTracking)({...live, state: 'cancelled'}))
+					}),
+					now
+				),
+				alert => alert.category
+			),
+			Array.map(
+				alertsOf(
+					Flight.make({
+						...boarding,
+						live: Option.some(Schema.decodeSync(FlightTracking)({...live, state: 'scheduled'})),
+						status: 'cancelled'
+					}),
+					now
+				),
+				alert => alert.category
+			)
+		],
+		[['cancelled'], ['cancelled']]
+	)
+})
+
+function gateCheckedAt(checkedAt: DateTime.Utc) {
+	return Flight.make({
+		...FLIGHT,
+		live: Option.some(
+			Schema.decodeSync(FlightTracking)({
+				checkedAt: DateTime.toEpochMillis(checkedAt),
+				departureGate: 'A3',
+				state: 'scheduled'
+			})
+		)
+	})
+}
+
+it('announces nothing from live data that stopped updating', () => {
+	const now = DateTime.subtractDuration(DEPARTS, Duration.minutes(30))
+	assert.deepStrictEqual(
+		[
+			Array.map(alertsOf(gateCheckedAt(now), now), alert => alert.category),
+			Array.map(
+				alertsOf(gateCheckedAt(DateTime.subtractDuration(now, Duration.hours(1))), now),
+				alert => alert.category
+			)
+		],
+		[['gate'], []]
+	)
+})
+
+it('words a delay by where the train is', () => {
+	const departs = DateTime.makeUnsafe('2026-11-18T08:00:00Z')
+	function running(state: TrainTracking['state']) {
+		return Train.make({
+			arrives: DateTime.addDuration(departs, Duration.hours(1)),
+			coach: Option.none(),
+			confirmation: Option.none(),
+			departs,
+			from: Schema.decodeSync(BookedPlace)({name: 'Milano', timeZone: 'Europe/Rome'}),
+			id: BookingId.make('1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d'),
+			live: Option.some(
+				Schema.decodeSync(TrainTracking)({
+					checkedAt: DateTime.toEpochMillis(DateTime.addDuration(departs, Duration.minutes(25))),
+					delayMinutes: 30,
+					departureDelay: 0,
+					state
+				})
+			),
+			number: '2',
+			operator: 'Trenitalia',
+			seat: Option.none(),
+			service: 'IC 2',
+			status: 'confirmed',
+			stops: [],
+			to: Schema.decodeSync(BookedPlace)({name: 'Verona', timeZone: 'Europe/Rome'})
+		})
+	}
+	const now = DateTime.addDuration(departs, Duration.minutes(25))
+	assert.deepStrictEqual(
+		Array.map(['scheduled', 'departed'] as const, state =>
+			pipe(
+				alertsOf(running(state), now),
+				Array.filter(alert => alert.category === 'delay'),
+				Array.map(alert => alert.body)
+			)
+		),
+		[['Now leaves Milano at 09:00'], ['Now arrives in Verona at 10:30']]
+	)
+})
+
+function delivery(token: Device['token'], value: string, minutes: number) {
+	return AlertDelivery.make({
+		bookingId: FLIGHT.id,
+		category: 'gate',
+		sentAt: DateTime.addDuration(DEPARTS, Duration.minutes(minutes)),
+		token,
+		value: Option.some(value)
+	})
+}
+
+it('reconciles a gate per phone but a delay once per booking', () => {
+	assert.deepStrictEqual(
+		[
+			perDevice({body: '', category: 'gate', title: '', value: 'A'}),
+			perDevice({body: '', category: 'delay', title: '', value: '15'}),
+			perDevice({body: '', category: 'boarding', title: ''})
+		],
+		[true, false, false]
+	)
+	// Both phones had gate A; the gate moved to B, only phone 1 took it, and it went back to A.
+	const first = Device.make({...STARTER, kind: 'alert'})
+	const second = Device.make({...STARTER, kind: 'alert', token: Redacted.make(ApnsToken.make(String.repeat(32)('b')))})
+	assert.deepStrictEqual(
+		unannouncedDevices(
+			[first, second],
+			[delivery(first.token, 'A', 0), delivery(second.token, 'A', 0), delivery(first.token, 'B', 1)],
+			{body: '', category: 'gate', title: '', value: 'A'}
+		),
+		[first]
 	)
 })

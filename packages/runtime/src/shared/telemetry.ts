@@ -35,7 +35,10 @@ export function layerOtlp(serviceName: string, url: string, runtime: Runtime, ve
 							'client_assertion',
 							'code_verifier',
 							'session',
-							'token'
+							'token',
+							// A pasted MCP server URL can carry its credential in the query.
+							'api_key',
+							'key'
 						])
 					),
 					[OtlpSerialization.layerJson, FetchHttpClient.layer]

@@ -9,19 +9,9 @@ function text(value: Option.Option<string>) {
 	return pipe(value, Option.map(String.trim), Option.filter(String.isNonEmpty))
 }
 
-// The operation that leaves the booked airport closest to the booked time; a codeshare or a schedule change keeps the same one.
-export function pickFlight(flights: FaFlights['flights'], flight: Flight) {
+function nearest(matches: readonly FaFlight[], flight: Flight) {
 	return pipe(
-		Array.filter(
-			flights,
-			candidate =>
-				Option.exists(flight.live, live => Option.contains(live.providerId, candidate.fa_flight_id)) ||
-				pipe(
-					candidate.origin,
-					Option.flatMap(origin => origin.code_iata),
-					Option.exists(code => Option.contains(flight.from.code, code))
-				)
-		),
+		matches,
 		Array.filterMap(candidate =>
 			pipe(
 				candidate.scheduled_out,
@@ -30,18 +20,39 @@ export function pickFlight(flights: FaFlights['flights'], flight: Flight) {
 				Option.match({onNone: () => Result.failVoid, onSome: gap => Result.succeed({candidate, gap})})
 			)
 		),
-		matches => {
-			if (Array.isReadonlyArrayNonEmpty(matches)) {
-				return Option.some(
+		Array.match({
+			onEmpty: () => Option.none<FaFlight>(),
+			onNonEmpty: found =>
+				Option.some(
 					Array.min(
-						matches,
+						found,
 						Order.mapInput(Duration.Order, (match: {gap: Duration.Duration}) => match.gap)
-					)
+					).candidate
 				)
-			}
-			return Option.none()
-		},
-		Option.map(match => match.candidate)
+		})
+	)
+}
+
+// The operation saved before while it is still near the booked time, so a codeshare or a schedule change keeps the same one; else the one that leaves the booked airport closest to the booked time.
+export function pickFlight(flights: FaFlights['flights'], flight: Flight) {
+	return Option.orElse(
+		nearest(
+			Array.filter(flights, candidate =>
+				Option.exists(flight.live, live => Option.contains(live.providerId, candidate.fa_flight_id))
+			),
+			flight
+		),
+		() =>
+			nearest(
+				Array.filter(flights, candidate =>
+					pipe(
+						candidate.origin,
+						Option.flatMap(origin => origin.code_iata),
+						Option.exists(code => Option.contains(flight.from.code, code))
+					)
+				),
+				flight
+			)
 	)
 }
 
@@ -125,11 +136,15 @@ function trainState(from: Option.Option<VtStop>, to: Option.Option<VtStop>) {
 	return 'scheduled'
 }
 
-// The caller selects today's booked run. A full cancellation has no stops; other reports must call at the booked station near its departure time.
+// The caller selects today's run of the number. A report must call at the booked station near its departure time; a full cancellation lists no stops, so it counts only for a train the timetable placed on Trenitalia's own stations, whose numbers ViaggiaTreno names, and otherwise stays unknown.
 export function trainTracking(answer: VtStatus, train: Train, checkedAt: DateTime.Utc) {
-	const cancelled = answer.tipoTreno === 'ST' && answer.provvedimento === 1
 	const from = stopOf(answer.fermate, train.from)
 	const to = stopOf(answer.fermate, train.to)
+	const cancelled =
+		answer.tipoTreno === 'ST' &&
+		answer.provvedimento === 1 &&
+		Array.isReadonlyArrayEmpty(answer.fermate) &&
+		Option.exists(train.from.code, code => Option.isSome(String.match(/it-trenitalia_\d+/u)(code)))
 	if (
 		!cancelled &&
 		!Option.exists(from, stop =>
@@ -262,18 +277,25 @@ export function isDue(booking: Booking, now: DateTime.Utc, attemptedAt: Option.O
 	)
 }
 
-// Live data that missed two of the checks due after it no longer describes the journey, even once tracking stopped; an arrival is final.
+// Live data that missed two of the checks due after it no longer describes the journey, even once tracking stopped; an arrival is final. Checks come at the shorter of the pace when it was read and the pace now, since the pace quickens near departure.
 export function isStale(booking: Booking, now: DateTime.Utc) {
 	if (Booking.isAnyOf(['stay'])(booking)) return false
 	return Option.exists<FlightTracking | TrainTracking>(
 		booking.live,
 		live =>
 			live.state !== 'arrived' &&
-			Option.exists(checkEvery(booking, live.checkedAt), every =>
-				pipe(
-					live.checkedAt,
-					DateTime.distance(now),
-					Duration.isGreaterThan(pipe(every, Duration.times(2), Duration.sum(Duration.minutes(2))))
+			pipe(
+				Array.getSomes([checkEvery(booking, live.checkedAt), checkEvery(booking, now)]),
+				Array.match({
+					onEmpty: () => Option.none<Duration.Duration>(),
+					onNonEmpty: paces => Option.some(Array.min(paces, Duration.Order))
+				}),
+				Option.exists(every =>
+					pipe(
+						live.checkedAt,
+						DateTime.distance(now),
+						Duration.isGreaterThan(pipe(every, Duration.times(2), Duration.sum(Duration.minutes(2))))
+					)
 				)
 			)
 	)

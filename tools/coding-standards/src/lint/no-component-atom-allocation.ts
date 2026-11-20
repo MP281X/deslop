@@ -1,4 +1,4 @@
-import {Option} from 'effect'
+import {Array, Option} from 'effect'
 
 import {defineRule} from 'vite-plus/lint/plugins'
 import type {ESTree} from 'vite-plus/lint/plugins'
@@ -10,17 +10,34 @@ const componentOrHook = matches(/^(?:[A-Z]|use[A-Z])/u)
 // Atom's guards, registry operations and constants; every other member returns a new atom.
 const readsOrWrites = matches(/^(?:is[A-Z]|get|set$|update$|modify$|refresh$|mount$|batch$|toStream)/u)
 
-// The nearest component or hook around a node, which runs on every render.
+// An event handler, or an effect, callback or memo hook's function, runs after or apart from the render that creates it.
+function deferred(node: ESTree.Node) {
+	if (node.parent?.type === 'JSXExpressionContainer') {
+		return (
+			node.parent.parent.type === 'JSXAttribute' &&
+			node.parent.parent.name.type === 'JSXIdentifier' &&
+			matches(/^on[A-Z]/u)(node.parent.parent.name.name)
+		)
+	}
+	return (
+		node.parent?.type === 'CallExpression' &&
+		node.parent.callee.type === 'Identifier' &&
+		Array.contains(['useCallback', 'useEffect', 'useLayoutEffect', 'useMemo'], node.parent.callee.name)
+	)
+}
+
+// The nearest component or hook around a node, which runs on every render, unless a deferred function lies between.
 function renderingFunction(node: ESTree.Node): Option.Option<ESTree.Node> {
 	return Option.flatMap(Option.fromNullishOr(node.parent), parent => {
 		if (
-			(parent.type === 'FunctionDeclaration' ||
-				parent.type === 'FunctionExpression' ||
-				parent.type === 'ArrowFunctionExpression') &&
-			Option.exists(bindingName(parent), componentOrHook)
+			parent.type !== 'FunctionDeclaration' &&
+			parent.type !== 'FunctionExpression' &&
+			parent.type !== 'ArrowFunctionExpression'
 		) {
-			return Option.some(parent)
+			return renderingFunction(parent)
 		}
+		if (Option.exists(bindingName(parent), componentOrHook)) return Option.some(parent)
+		if (deferred(parent)) return Option.none()
 		return renderingFunction(parent)
 	})
 }

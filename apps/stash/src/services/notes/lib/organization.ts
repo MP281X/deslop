@@ -1,4 +1,4 @@
-import {Array, Cause, Context, Effect, Function, Layer, Option, Redacted, Schema, String, pipe} from 'effect'
+import {Array, Boolean, Cause, Context, Effect, Function, Layer, Option, Redacted, Schema, pipe} from 'effect'
 
 import type {HttpClient} from 'effect/http'
 
@@ -7,6 +7,7 @@ import type {UserId} from '@deslop/runtime/shared/auth'
 
 import {normalizeTags} from './tags.ts'
 
+import {fitPictures, fitText} from '#services/notes/lib/utils.ts'
 import type {Note, Picture, TagEntry} from '#services/notes/schema.ts'
 import {NotesError, Organization} from '#services/notes/schema.ts'
 
@@ -77,12 +78,7 @@ Tags group entries across the whole collection, so the same topic must always ge
 
 Reread the title, summary and key points against the source: each number and claim keeps its scope, condition and certainty. Then reread the body line by line and cut every line that repeats another, is noise, or would not change what a developer does or believes.`
 
-// About 50,000 tokens each for the content and the transcript, inside the model's window with the images.
-function bounded(text: string) {
-	if (String.length(text) > 200_000) return `${String.slice(0, 200_000)(text)}\n[cut here]`
-	return text
-}
-
+// A rough token count that never undercounts by much: about four ASCII characters a token, and a token for any other character, which is how Chinese, Japanese and emoji spend them.
 export class Organizer extends Context.Service<
 	Organizer,
 	{
@@ -105,6 +101,7 @@ export class Organizer extends Context.Service<
 							modelContext
 						)
 
+						const text = fitText(input.note.content, Option.getOrElse(input.note.transcript, Function.constant('')))
 						const entry = Array.join(
 							[
 								`Source: ${input.note.source}`,
@@ -128,12 +125,11 @@ export class Organizer extends Context.Service<
 								)}`,
 								`Link title: ${input.note.title}`,
 								`Saved text: ${input.note.text}`,
-								`Link content:\n${bounded(input.note.content)}`,
-								`Video transcript:\n${pipe(
-									input.note.transcript,
-									Option.map(bounded),
-									Option.getOrElse(Function.constant('none'))
-								)}`
+								`Link content:\n${text.content}`,
+								`Video transcript:\n${Boolean.match(Option.isSome(input.note.transcript), {
+									onFalse: Function.constant('none'),
+									onTrue: () => text.transcript
+								})}`
 							],
 							'\n\n'
 						)
@@ -142,7 +138,7 @@ export class Organizer extends Context.Service<
 								{content: INSTRUCTIONS, role: 'system'},
 								{
 									content: [
-										...Array.flatMap(input.images, image => [
+										...Array.flatMap(fitPictures(input.images), image => [
 											{text: `${image.label}:`, type: 'text' as const},
 											{data: image.bytes, mediaType: image.type, type: 'file' as const}
 										]),

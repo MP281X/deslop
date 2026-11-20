@@ -15,7 +15,7 @@ import {addPageTelemetry, layerPageProtocol} from '@deslop/runtime/web/client'
 import {RpcContracts} from '#rpcs/contracts.ts'
 import type {ExposeRequest} from '#services/exposures/schema.ts'
 import type {InventoryItem, ItemId, RunRequest} from '#services/inventory/schema.ts'
-import type {HistoryQuery} from '#services/metrics/schema.ts'
+import type {MetricsWatch} from '#services/metrics/schema.ts'
 
 addPageTelemetry('@deslop/deploy')
 
@@ -59,6 +59,5 @@ export const runAtom = Atom.family((_id: ItemId) =>
 	RpcClient.runtime.fn((input: RunRequest) => Effect.flatMap(RpcClient, client => client('inventory.run', input)))
 )
 
-export const metricsAtom = Atom.family((minutes: HistoryQuery['minutes']) =>
-	liveAtom(RpcClient, 'metrics.watch', {minutes})
-)
+// Keyed by value: a query with the same range and machine is the same stream.
+export const metricsAtom = Atom.family((query: MetricsWatch) => liveAtom(RpcClient, 'metrics.watch', query))

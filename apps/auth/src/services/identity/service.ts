@@ -10,11 +10,11 @@ import {AuthError, DEVELOPER, UserId, asAuthError} from '@deslop/runtime/shared/
 import type {IdentifyRequest} from '@deslop/runtime/shared/auth'
 import type {Account} from '@deslop/runtime/shared/schema'
 
-import {CookieSessions} from '#services/cookie-sessions/service.ts'
 import {GitHub} from '#services/github/service.ts'
 import {authorizeMember, roleOf} from '#services/people/lib/utils.ts'
 import type {SignedAccount} from '#services/people/schema.ts'
 import {People, adminIds} from '#services/people/service.ts'
+import {Sessions} from '#services/sessions/service.ts'
 import type {Profile} from '#services/tailnet/schema.ts'
 import {Tailnet} from '#services/tailnet/service.ts'
 
@@ -43,7 +43,7 @@ export class Identity extends Context.Service<
 		Identity,
 		Effect.gen(function* () {
 			const people = yield* People
-			const sessions = yield* CookieSessions
+			const sessions = yield* Sessions
 			const github = yield* GitHub
 			const local = yield* localAuth
 			const admins = yield* adminIds

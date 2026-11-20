@@ -121,9 +121,14 @@ function Directory() {
 	)
 }
 
-// judge-ignore no-silent-fallback -- useAtomSuspense without includeFailure throws account failures; this redirect is only a successful guest or non-admin identity, under the router's error boundary.
+// judge-ignore no-silent-fallback -- the shell renders this page only under an account it has, kept through an outage; this redirect is only a guest or non-admin identity.
 function PeopleRoute() {
-	if (!Option.exists(useAtomSuspense(accountAtom).value, signed => signed.role === 'Admin')) {
+	if (
+		!Option.exists(
+			Option.flatten(AsyncResult.value(useAtomSuspense(accountAtom, {includeFailure: true}))),
+			signed => signed.role === 'Admin'
+		)
+	) {
 		return <Navigate to="/" search={{}} />
 	}
 	return (
@@ -135,5 +140,5 @@ function PeopleRoute() {
 
 export const Route = createFileRoute('/(home)/people')({
 	component: PeopleRoute,
-	loader: load => preload(load.context, [peopleAtom])
+	loader: load => preload(load, [peopleAtom])
 })

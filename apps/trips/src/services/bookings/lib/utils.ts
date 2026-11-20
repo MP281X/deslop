@@ -19,12 +19,16 @@ import type {
 	BookingList,
 	Chip,
 	FlightPhase,
+	FlightTracking,
 	Leg,
 	LocalTime,
 	Tone,
 	TrainPhase,
-	TrainStop
+	TrainStop,
+	TrainTracking
 } from '#services/bookings/schema.ts'
+
+const OFFSET = /(?:Z|[+-]\d{2}:?\d{2})$/u
 
 const GENERIC = ['bahnhof', 'central', 'centraal', 'centrale', 'gare', 'hauptbahnhof', 'hbf', 'station', 'stazione']
 
@@ -65,17 +69,41 @@ export function stationNamesMatch(left: string, right: string) {
 	)
 }
 
-// A time with an offset or Z stands for itself.
-export function instantOf(time: LocalTime, timeZone: string) {
-	if (Option.isSome(String.match(/(?:Z|[+-]\d{2}:?\d{2})$/u)(time))) {
-		return DateTime.make(time)
+function zonedOf(time: LocalTime, timeZone: Option.Option<string>) {
+	if (Option.isSome(String.match(OFFSET)(time))) {
+		return DateTime.makeZonedFromString(String.replace(/Z$/u, '+00:00')(time))
 	}
 	// The wall-clock parts, read in the place's zone without dropping seconds or fractions.
-	return Option.map(DateTime.makeZoned(time, {adjustForTimeZone: true, timeZone}), DateTime.toUtc)
+	return Option.flatMap(timeZone, zone => DateTime.makeZoned(time, {adjustForTimeZone: true, timeZone: zone}))
+}
+
+// A time with an offset or Z stands for itself; a wall time the place never shows, such as 30 February or 02:30 as summer time begins, reads as nothing rather than as another moment.
+export function instantOf(time: LocalTime, timeZone: Option.Option<string>) {
+	return pipe(
+		zonedOf(time, timeZone),
+		Option.filter(at => {
+			const parts = DateTime.toParts(at)
+			return (
+				`${parts.year}${pipe(
+					[parts.month, parts.day, parts.hour, parts.minute],
+					Array.map(part => String.padStart(2, '0')(`${part}`)),
+					Array.join('')
+				)}` === String.replaceAll(/\D/gu, '')(String.slice(0, 16)(time))
+			)
+		}),
+		Option.map(DateTime.toUtc)
+	)
 }
 
 export function clockAt(time: DateTime.Utc, timeZone: string) {
 	return DateTime.format(time, {hour: '2-digit', hourCycle: 'h23', locale: 'en-GB', minute: '2-digit', timeZone})
+}
+
+// The ticket or the provider says the journey will not run; alerts, the island, the phone and the calendar all read this one answer.
+export function cancelledOf(booking: Booking) {
+	if (booking.status === 'cancelled') return true
+	if (Booking.isAnyOf(['stay'])(booking)) return false
+	return Option.exists<FlightTracking | TrainTracking>(booking.live, live => live.state === 'cancelled')
 }
 
 export function labelled(label: string, value: Option.Option<string>) {
@@ -119,6 +147,28 @@ export function arrivalOf(booking: Flight | Train) {
 	)
 }
 
+// The local date at a place, as midnight UTC of that date, so dates in different zones compare by the calendar.
+function localDate(at: DateTime.Utc, timeZone: string) {
+	const parts = DateTime.toParts(DateTime.makeZonedUnsafe(at, {timeZone}))
+	return DateTime.makeUnsafe({day: parts.day, month: parts.month, year: parts.year})
+}
+
+// The calendar days from one place's local date to another's, as a traveller counts them, whatever the hours between.
+export function daysBetween(from: DateTime.Utc, fromZone: string, to: DateTime.Utc, toZone: string) {
+	return Number.round(Duration.toDays(DateTime.distance(localDate(from, fromZone), localDate(to, toZone))), 0)
+}
+
+// The days a clock lands after or before the day it set out, as boarding passes print it: " +1", " −1" or nothing.
+export function dayMark(days: number) {
+	if (days === 0) return ''
+	if (days > 0) return ` +${days}`
+	return ` −${-days}`
+}
+
+export function arrivalClockOf(booking: Flight | Train) {
+	return `${clockAt(arrivalOf(booking), booking.to.timeZone)}${dayMark(daysBetween(departureOf(booking), booking.from.timeZone, arrivalOf(booking), booking.to.timeZone))}`
+}
+
 export function startOf(booking: Booking) {
 	if (Booking.isAnyOf(['stay'])(booking)) return booking.checkIn
 	return departureOf(booking)
@@ -148,6 +198,25 @@ export function routeOf(booking: Booking) {
 	return `${Option.getOrElse(booking.from.city, () => booking.from.name)} → ${Option.getOrElse(booking.to.city, () => booking.to.name)}`
 }
 
+function wordsOf(texts: readonly Option.Option<string>[]) {
+	return HashSet.fromIterable(
+		Array.flatMap(Array.getSomes(texts), text => Array.filter(stationWords(text), word => word.length >= 3))
+	)
+}
+
+// The stay is where the journey ends only when the place names say so: its city among the destination's words, or the destination's city in its address.
+function staysAt(stay: Stay, journey: Flight | Train) {
+	if (stay.place.timeZone !== journey.to.timeZone) return false
+	const destination = wordsOf([journey.to.city, Option.some(journey.to.name)])
+	const address = wordsOf([stay.place.city, stay.place.address])
+	const city = wordsOf([stay.place.city])
+	const arrivalCity = wordsOf([journey.to.city])
+	return (
+		(HashSet.size(city) > 0 && HashSet.isSubset(city, destination)) ||
+		(HashSet.size(arrivalCity) > 0 && HashSet.isSubset(arrivalCity, address))
+	)
+}
+
 export function stayAfter(bookings: BookingList, journey: Flight | Train) {
 	const arrival = arrivalOf(journey)
 	const stays = Array.filter(
@@ -155,6 +224,7 @@ export function stayAfter(bookings: BookingList, journey: Flight | Train) {
 		(booking): booking is Stay =>
 			Booking.isAnyOf(['stay'])(booking) &&
 			booking.status === 'confirmed' &&
+			staysAt(booking, journey) &&
 			DateTime.isGreaterThan(booking.checkIn, DateTime.subtractDuration(arrival, Duration.hours(12))) &&
 			DateTime.isLessThan(booking.checkIn, DateTime.addDuration(arrival, Duration.hours(36))) &&
 			DateTime.isGreaterThan(booking.checkOut, arrival)
@@ -299,6 +369,10 @@ export function autoStartOf(legs: Array.NonEmptyReadonlyArray<Flight | Train>) {
 	return DateTime.subtractDuration(first.departs, {flight: Duration.hours(3), train: HOUR}[first._tag])
 }
 
+function firstWord(name: string) {
+	return Array.headNonEmpty(String.split(name, ' '))
+}
+
 function sampleStops(stops: readonly TrainStop[], delay: Duration.Duration, now: DateTime.Utc) {
 	if (!Array.isReadonlyArrayNonEmpty(stops)) return []
 	const count = Number.min(stops.length, 7)
@@ -306,8 +380,10 @@ function sampleStops(stops: readonly TrainStop[], delay: Duration.Duration, now:
 		count,
 		Array.makeBy(index => Array.get(stops, Number.round((index * (stops.length - 1)) / Number.max(1, count - 1), 0))),
 		Array.getSomes,
+		// Names shorten to their first word, so Milano Centrale and Milano Rogoredo show once; the widget keys stops by name.
+		Array.dedupeWith((left, right) => firstWord(left.name) === firstWord(right.name)),
 		Array.map(stop => ({
-			name: Array.headNonEmpty(String.split(stop.name, ' ')),
+			name: firstWord(stop.name),
 			passed: pipe(
 				stop.arrives,
 				Option.orElse(() => stop.departs),
@@ -319,6 +395,15 @@ function sampleStops(stops: readonly TrainStop[], delay: Duration.Duration, now:
 
 type ActivityWindow = {end: DateTime.Utc; leg: Leg; start: DateTime.Utc}
 
+function cancelledSeen(leg: Flight | Train) {
+	const live: Option.Option<FlightTracking | TrainTracking> = leg.live
+	return pipe(
+		live,
+		Option.filter(found => found.state === 'cancelled'),
+		Option.map(found => found.checkedAt)
+	)
+}
+
 // A journey longer than ActivityKit's eight hours, delays included, gets a second activity for its arrival.
 function activityWindows(booking: Booking, legs: readonly (Flight | Train)[], requested: Option.Option<DateTime.Utc>) {
 	if (Booking.isAnyOf(['stay'])(booking)) return Array.empty<ActivityWindow>()
@@ -328,9 +413,11 @@ function activityWindows(booking: Booking, legs: readonly (Flight | Train)[], re
 		onSome: at => DateTime.min(at, autoStartOf(legs))
 	})
 	const last = Option.getOrElse(Array.last(legs), () => booking)
-	const end = DateTime.addDuration(
-		arrivalOf(last),
-		{flight: Duration.minutes(45), train: Duration.minutes(10)}[last._tag]
+	// A cancellation the provider reported stays on the island for an hour from when it was read, then the activity ends.
+	const end = Array.reduce(
+		Array.getSomes(Array.map(legs, cancelledSeen)),
+		DateTime.addDuration(arrivalOf(last), {flight: Duration.minutes(45), train: Duration.minutes(10)}[last._tag]),
+		(earliest, seen) => DateTime.min(earliest, DateTime.addDuration(seen, HOUR))
 	)
 	if (pipe(start, DateTime.distance(end), Duration.isLessThanOrEqualTo(ACTIVITY_LIFETIME))) {
 		return [{end, leg: 'departure', start}] satisfies ActivityWindow[]
@@ -411,7 +498,14 @@ function flightHeadline(flight: Flight, phase: FlightPhase) {
 	return 'Cancelled'
 }
 
-function flightDetail(flight: Flight, bookings: BookingList, phase: FlightPhase) {
+// An old answer stays on the island, plain and dated, so it never reads as the current gate or platform.
+function staleNote(live: Option.Option<FlightTracking | TrainTracking>, timeZone: string, stale: boolean) {
+	return Option.flatMap(live, found =>
+		Option.liftPredicate(`Updated ${clockAt(found.checkedAt, timeZone)}`, () => stale)
+	)
+}
+
+function flightDetail(flight: Flight, bookings: BookingList, phase: FlightPhase, stale: boolean) {
 	if (phase === 'landed') {
 		return pipe(
 			stayAfter(bookings, flight),
@@ -430,7 +524,8 @@ function flightDetail(flight: Flight, bookings: BookingList, phase: FlightPhase)
 		labelled(
 			'was',
 			Option.flatMap(flight.live, live => live.previousGate)
-		)
+		),
+		staleNote(flight.live, flight.from.timeZone, stale)
 	])
 }
 
@@ -438,7 +533,7 @@ function chipOf(text: string, tone: Tone) {
 	return {text, tone} satisfies Chip
 }
 
-function flightChip(flight: Flight, phase: FlightPhase) {
+function flightChip(flight: Flight, phase: FlightPhase, stale: boolean) {
 	if (phase === 'landed') {
 		return Option.map(
 			labelled(
@@ -458,7 +553,9 @@ function flightChip(flight: Flight, phase: FlightPhase) {
 				Option.map(terminal => `T${terminal}`)
 			)
 		),
-		Option.map(text => chipOf(text, 'warn'))
+		Option.map(text =>
+			chipOf(text, Boolean.match(stale, {onFalse: Function.constant('warn'), onTrue: Function.constant('plain')}))
+		)
 	)
 }
 
@@ -499,15 +596,15 @@ function countdownOf(target: DateTime.Utc, now: DateTime.Utc, counting: boolean)
 	return Option.liftPredicate(target, at => counting && DateTime.isGreaterThan(at, now))
 }
 
-function flightActivity(flight: Flight, bookings: BookingList, now: DateTime.Utc) {
+function flightActivity(flight: Flight, bookings: BookingList, now: DateTime.Utc, stale: boolean) {
 	const phase = flightPhase(flight, now)
 	const delay = Number.round(Duration.toMinutes(DateTime.distance(flight.departs, departureOf(flight))), 0)
 	return {
 		arrivalNote: Option.getOrElse(flight.to.city, () => flight.to.name),
-		arrivalTime: clockAt(arrivalOf(flight), flight.to.timeZone),
+		arrivalTime: arrivalClockOf(flight),
 		arrivalTone: 'plain',
 		arrives: arrivalOf(flight),
-		chip: flightChip(flight, phase),
+		chip: flightChip(flight, phase, stale),
 		countdown: countdownOf(
 			flightTarget(flight, phase),
 			now,
@@ -517,7 +614,7 @@ function flightActivity(flight: Flight, bookings: BookingList, now: DateTime.Utc
 		departureNote: departureNote(phase, delay),
 		departureTime: clockAt(departureOf(flight), flight.from.timeZone),
 		departureTone: Boolean.match(delay >= 5, {onFalse: Function.constant('plain'), onTrue: Function.constant('warn')}),
-		detail: flightDetail(flight, bookings, phase),
+		detail: flightDetail(flight, bookings, phase, stale),
 		from: Option.getOrElse(flight.from.code, () => flight.from.name),
 		headline: flightHeadline(flight, phase),
 		kind: 'flight',
@@ -587,7 +684,7 @@ function platformTone(train: Train) {
 	return 'plain'
 }
 
-function trainChip(train: Train, phase: TrainPhase) {
+function trainChip(train: Train, phase: TrainPhase, stale: boolean) {
 	if (phase === 'running' || phase === 'arrived') {
 		return Option.map(
 			labelled(
@@ -602,7 +699,7 @@ function trainChip(train: Train, phase: TrainPhase) {
 			'Bin',
 			Option.flatMap(train.live, live => live.departurePlatform)
 		),
-		text => chipOf(text, platformTone(train))
+		text => chipOf(text, Boolean.match(stale, {onFalse: () => platformTone(train), onTrue: Function.constant('plain')}))
 	)
 }
 
@@ -617,7 +714,7 @@ function trainDelayNote(phase: TrainPhase, delay: number) {
 	return Option.some('On time')
 }
 
-function trainActivity(train: Train, now: DateTime.Utc) {
+function trainActivity(train: Train, now: DateTime.Utc, stale: boolean) {
 	const phase = trainPhase(train, now)
 	const delay = Duration.toMinutes(
 		Option.match(train.live, {onNone: () => Duration.zero, onSome: live => live.delayMinutes})
@@ -625,10 +722,10 @@ function trainActivity(train: Train, now: DateTime.Utc) {
 	const tone = trainTone(phase, delay)
 	return {
 		arrivalNote: '',
-		arrivalTime: clockAt(arrivalOf(train), train.to.timeZone),
+		arrivalTime: arrivalClockOf(train),
 		arrivalTone: tone,
 		arrives: arrivalOf(train),
-		chip: trainChip(train, phase),
+		chip: trainChip(train, phase, stale),
 		countdown: countdownOf(
 			Boolean.match(phase === 'running', {onFalse: () => departureOf(train), onTrue: () => arrivalOf(train)}),
 			now,
@@ -641,7 +738,8 @@ function trainActivity(train: Train, now: DateTime.Utc) {
 		detail: line([
 			labelled('Coach', train.coach),
 			labelled('Seat', train.seat),
-			Option.flatMap(train.live, () => trainDelayNote(phase, delay))
+			Option.flatMap(train.live, () => trainDelayNote(phase, delay)),
+			staleNote(train.live, train.from.timeZone, stale)
 		]),
 		from: train.from.name,
 		headline: trainHeadline(train, phase),
@@ -667,9 +765,9 @@ function trainActivity(train: Train, now: DateTime.Utc) {
 	} satisfies ActivityProps
 }
 
-function activityProps(journey: Flight | Train, bookings: BookingList, now: DateTime.Utc) {
-	if (Booking.isAnyOf(['flight'])(journey)) return ActivityProps.make(flightActivity(journey, bookings, now))
-	return ActivityProps.make(trainActivity(journey, now))
+function activityProps(journey: Flight | Train, bookings: BookingList, now: DateTime.Utc, stale: boolean) {
+	if (Booking.isAnyOf(['flight'])(journey)) return ActivityProps.make(flightActivity(journey, bookings, now, stale))
+	return ActivityProps.make(trainActivity(journey, now, stale))
 }
 
 export function urgencyOf(props: ActivityProps) {
@@ -679,6 +777,13 @@ export function urgencyOf(props: ActivityProps) {
 function scheduledStart(booking: Booking) {
 	if (Booking.isAnyOf(['stay'])(booking)) return booking.checkIn
 	return booking.departs
+}
+
+// The change between two trains; a late first train that reaches the station after the next one leaves puts the connection at risk rather than leaving negative minutes.
+export function changeOf(from: Flight | Train, to: Flight | Train) {
+	const minutes = Number.round(Duration.toMinutes(DateTime.distance(arrivalOf(from), departureOf(to))), 0)
+	if (minutes <= 0) return `Connection at risk at ${from.to.name}`
+	return `Change at ${from.to.name} · ${minutes} min`
 }
 
 export function journeysOf(bookings: BookingList) {
@@ -713,10 +818,16 @@ export function journeysOf(bookings: BookingList) {
 	)[0]
 }
 
-function arrived(leg: Flight | Train, now: DateTime.Utc) {
+// Landed counts as arrived on the phone, the island and the server alike.
+export function arrived(leg: Flight | Train, now: DateTime.Utc) {
 	if (DateTime.isGreaterThanOrEqualTo(now, arrivalOf(leg))) return true
 	if (Booking.isAnyOf(['train'])(leg)) return Option.exists(leg.live, live => live.state === 'arrived')
 	return Option.exists(leg.live, live => live.state === 'arrived' || live.state === 'landed')
+}
+
+// One cancelled leg cancels the journey: no new Live Activity starts, however it is asked for.
+export function cancelledJourney(legs: readonly (Flight | Train)[]): boolean {
+	return Array.some(legs, cancelledOf)
 }
 
 export function startable(
@@ -725,7 +836,7 @@ export function startable(
 ): legs is Array.NonEmptyReadonlyArray<Flight | Train> {
 	return (
 		Array.isReadonlyArrayNonEmpty(legs) &&
-		Array.every(legs, leg => leg.status === 'confirmed') &&
+		!cancelledJourney(legs) &&
 		!arrived(Array.lastNonEmpty(legs), now) &&
 		DateTime.isGreaterThanOrEqualTo(now, DateTime.subtractDuration(Array.headNonEmpty(legs).departs, Duration.hours(7)))
 	)
@@ -734,24 +845,18 @@ export function startable(
 export function journeyProps(
 	legs: Array.NonEmptyReadonlyArray<Flight | Train>,
 	bookings: BookingList,
-	now: DateTime.Utc
+	now: DateTime.Utc,
+	stale: (leg: Flight | Train) => boolean
 ) {
 	const [current, index] = pipe(
 		legs,
 		Array.findFirstWithIndex(leg => !arrived(leg, now)),
 		Option.getOrElse(() => [Array.lastNonEmpty(legs), legs.length - 1] as const)
 	)
-	const props = activityProps(current, bookings, now)
+	const props = activityProps(current, bookings, now, stale(current))
 	return pipe(
 		legs,
 		Array.get(index + 1),
-		Option.match({
-			onNone: () => props,
-			onSome: next =>
-				ActivityProps.make({
-					...props,
-					note: `Change at ${current.to.name} · ${Number.round(Duration.toMinutes(DateTime.distance(arrivalOf(current), departureOf(next))), 0)} min`
-				})
-		})
+		Option.match({onNone: () => props, onSome: next => ActivityProps.make({...props, note: changeOf(current, next)})})
 	)
 }

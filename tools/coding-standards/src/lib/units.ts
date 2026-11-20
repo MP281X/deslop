@@ -4,11 +4,15 @@ import type {ImportDeclaration, ImportDeclarationSpecifier} from 'oxc-parser'
 import {parseSync, visitorKeys} from 'oxc-parser'
 
 import {matches} from '#lib/ast.ts'
+import {JUDGE_DIRECTIVE, JUDGE_IGNORE} from '#lib/question.ts'
 import type {Kind} from '#lib/question.ts'
 
 const FUNCTIONS = ['ArrowFunctionExpression', 'FunctionDeclaration', 'FunctionExpression']
 
-const IGNORE = /judge-ignore (\S+) -- (\S.*)$/u
+// The text of a comment line after its `//`.
+function commentValue(line: string) {
+	return String.replace(/^\s*\/\//u, '')(line)
+}
 
 // A unit with only the imports it uses, so an import added for another unit asks nothing again; `names` are the imported bindings it uses, its text opens with the comments right above it, and `ignores` maps each question its `judge-ignore` comments opt out of to the reason given.
 export type Unit = {
@@ -228,7 +232,8 @@ function units(
 	filename: string,
 	source: string,
 	parsed: ReturnType<typeof parseSync>,
-	imported: Record<string, string>
+	imported: Record<string, string>,
+	shortest: number
 ) {
 	const lines = String.split(source, '\n')
 	const starts = Array.scan(lines, 0, (offset, line) => offset + line.length + 1)
@@ -260,7 +265,12 @@ function units(
 			end: lineOf(node.end),
 			ignores: Record.fromEntries(
 				Array.flatMap(above, comment =>
-					Option.toArray(Option.map(String.match(IGNORE)(comment), found => [found[1] ?? '', found[2] ?? ''] as const))
+					Option.toArray(
+						Option.map(
+							String.match(JUDGE_IGNORE)(commentValue(comment)),
+							found => [found[1] ?? '', found[2] ?? ''] as const
+						)
+					)
 				)
 			),
 			imports: pipe(
@@ -273,7 +283,10 @@ function units(
 			line,
 			names,
 			start: line - above.length,
-			text: Array.join([...Array.filter(above, comment => !matches(IGNORE)(comment)), textOf(source, node)], '\n')
+			text: Array.join(
+				[...Array.filter(above, comment => !matches(JUDGE_DIRECTIVE)(commentValue(comment))), textOf(source, node)],
+				'\n'
+			)
 		}
 	}
 	const tests = matches(/\.test\.[cm]?[jt]sx?$/u)(filename)
@@ -343,8 +356,7 @@ function units(
 		const nested = Boolean.match(tests, {onFalse: () => [], onTrue: () => Array.flatMap(childrenOf(node), next)})
 		if (Array.some(nested, found => found.kind === 'test')) return nested
 		if (Array.contains(FUNCTIONS, node.type) && length <= 150) {
-			// A function of a few lines holds too little to judge.
-			if (length < 6) return []
+			if (length < shortest) return []
 			// A method's function starts at its parameters, so the unit is the whole method: its name, `async`, `*`, `static` and accessor kind belong to what it does.
 			const span = pipe(parent, Option.filter(isMethod), Option.getOrElse(Function.constant(node)))
 			return [
@@ -366,7 +378,7 @@ function units(
 	return {
 		unattached: pipe(
 			Array.fromIterable(commentLines),
-			Array.filter(line => matches(IGNORE)(lines[line - 1] ?? '')),
+			Array.filter(line => matches(JUDGE_DIRECTIVE)(commentValue(lines[line - 1] ?? ''))),
 			Array.filter(line => !Array.some(selected, found => line >= found.start && line < found.line)),
 			Array.sort(Order.Number)
 		),
@@ -374,14 +386,23 @@ function units(
 	}
 }
 
-// A file read once: why the parser cannot read it, such as a syntax error or a NUL byte, since its units would be partial; else its import lines and units.
-export function readSource(filename: string, source: string) {
+function parsedUnits(filename: string, source: string, shortest: number) {
 	const parsed = parseSync(filename, source)
 	return Option.match(Array.head(parsed.errors), {
 		onNone: () => {
 			const imported = importsOf(source, parsed.program)
-			return Result.succeed({imports: imported, ...units(filename, source, parsed, imported)})
+			return Result.succeed({imports: imported, ...units(filename, source, parsed, imported, shortest)})
 		},
 		onSome: error => Result.fail(error.message)
 	})
+}
+
+// A file read once: why the parser cannot read it, such as a syntax error or a NUL byte, since its units would be partial; else its import lines and units. A function of a few lines holds too little to judge.
+export function readSource(filename: string, source: string) {
+	return parsedUnits(filename, source, 6)
+}
+
+// A question's example is short on purpose, so only its shape, not its length, has to be one the judge selects.
+export function readExample(filename: string, source: string) {
+	return parsedUnits(filename, source, 1)
 }

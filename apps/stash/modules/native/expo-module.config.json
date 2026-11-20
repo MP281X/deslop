@@ -1,1 +1,4 @@
-{"platforms": ["apple"], "apple": {"modules": ["StashNativeModule"]}}
+{
+	"platforms": ["apple"],
+	"apple": {"modules": ["StashNativeModule"], "appDelegateSubscribers": ["ShareUploadsSubscriber"]}
+}

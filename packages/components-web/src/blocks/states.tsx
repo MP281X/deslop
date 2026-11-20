@@ -44,13 +44,13 @@ function AccessDenied() {
 	)
 }
 
-// A failure names itself on the one button that retries it.
-function FailureRetry(props: {label?: string; reset: () => void}) {
+// A failure names itself on the one button that retries it. The red icon carries the status: destructive text on the destructive variant's own fill falls under 4.5:1 in light mode.
+function FailureRetry(props: {reset: () => void}) {
 	return (
 		<Empty role="alert">
-			<Button variant="destructive" size="sm" onClick={props.reset}>
-				<ArrowClockwiseIcon />
-				{props.label ?? 'Can’t load this view'}
+			<Button variant="outline" size="sm" onClick={props.reset}>
+				<ArrowClockwiseIcon className="text-destructive" />
+				Can’t load this view
 			</Button>
 		</Empty>
 	)

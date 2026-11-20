@@ -6,12 +6,12 @@ import {AuthError, RpcAdmin, RpcAuth} from '@deslop/runtime/shared/auth'
 
 import {ExposeInput, ExposeRequest, HideRequest} from '#services/exposures/schema.ts'
 import {DeployError, ExposureName, RunRequest, Snapshot} from '#services/inventory/schema.ts'
-import {HistoryQuery, MachineHistory} from '#services/metrics/schema.ts'
+import {HistoryQuery, MachineHistory, MetricsWatch} from '#services/metrics/schema.ts'
 
 export class RpcContracts extends RpcGroup.make(
 	Rpc.make('metrics.watch', {
 		error: Schema.Union([AuthError, DeployError]),
-		payload: HistoryQuery,
+		payload: MetricsWatch,
 		stream: true,
 		success: Schema.Array(MachineHistory)
 	}),

@@ -4,6 +4,7 @@ import {Array, Option} from 'effect'
 
 import {availablePorts, processOwner, workloads} from '#services/inventory/lib/utils.ts'
 import {ExposureName, InventoryItem, ItemId, UnitId, WorkerId} from '#services/inventory/schema.ts'
+import type {ServiceScope} from '#services/inventory/schema.ts'
 
 const LISTENER = InventoryItem.make({
 	address: Option.some('127.0.0.1:5173'),
@@ -85,7 +86,12 @@ it('deduplicates endpoints within each worker', () => {
 })
 
 it('offers only unexposed frontends on each worker', () => {
-	const endpoint = {...LISTENER, ui: Option.some(true), unit: Option.some(UnitId.make('app.service'))}
+	const endpoint = {
+		...LISTENER,
+		scope: Option.some('user' as const),
+		ui: Option.some(true),
+		unit: Option.some(UnitId.make('app.service'))
+	}
 	assert.deepStrictEqual(
 		Array.map(
 			availablePorts(
@@ -104,11 +110,18 @@ it('offers only unexposed frontends on each worker', () => {
 
 it('joins a service with its listener and exposure on the same worker', () => {
 	assert.deepStrictEqual(
-		Array.map(workloads([SERVICE, {...LISTENER, unit: Option.some(UnitId.make('app.service'))}, EXPOSURE]), row => [
-			row.item.id,
-			Array.map(row.listeners, listener => listener.id),
-			Array.map(row.exposures, exposure => exposure.id)
-		]),
+		Array.map(
+			workloads([
+				SERVICE,
+				{...LISTENER, scope: Option.some('user' as const), unit: Option.some(UnitId.make('app.service'))},
+				EXPOSURE
+			]),
+			row => [
+				row.item.id,
+				Array.map(row.listeners, listener => listener.id),
+				Array.map(row.exposures, exposure => exposure.id)
+			]
+		),
 		[[SERVICE.id, [LISTENER.id], [EXPOSURE.id]]]
 	)
 })
@@ -142,5 +155,53 @@ it('matches published container routes only to host TCP bindings', () => {
 			row => Array.map(row.exposures, exposure => exposure.id)
 		),
 		[[], [EXPOSURE.id]]
+	)
+})
+
+// A service of one name under a manager.
+function service(name: string, scope: ServiceScope) {
+	return InventoryItem.make({
+		active: true,
+		detail: '',
+		id: ItemId.make(`dev:${scope}:${name}`),
+		kind: 'service',
+		name: UnitId.make(name),
+		scope: Option.some(scope),
+		state: 'active',
+		url: Option.none(),
+		worker: WorkerId.make('dev')
+	})
+}
+
+it('keeps a user and a system unit of one name apart', () => {
+	const user = service('deslop-app.service', 'user')
+	const system = service('deslop-app.service', 'system')
+	assert.deepStrictEqual(
+		Array.map(
+			workloads([
+				user,
+				system,
+				{...LISTENER, scope: Option.some('user' as const), unit: Option.some(UnitId.make('deslop-app.service'))}
+			]),
+			row => [row.item.id, Array.map(row.listeners, item => item.id)]
+		),
+		[
+			[user.id, [LISTENER.id]],
+			[system.id, []]
+		]
+	)
+})
+
+it('lists an owned exposure on its own when the service it reaches is hidden', () => {
+	assert.deepStrictEqual(
+		Array.map(
+			workloads([
+				service('background.service', 'system'),
+				{...LISTENER, scope: Option.some('system' as const), unit: Option.some(UnitId.make('background.service'))},
+				EXPOSURE
+			]),
+			row => row.item.id
+		),
+		[EXPOSURE.id]
 	)
 })

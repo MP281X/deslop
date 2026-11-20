@@ -217,37 +217,28 @@ export function captionTranscript(input: {authored: boolean; vtt: string}) {
 
 const spoken = String.replace(/^\[[^\]]+\] /u, '')
 
-function wordsOf(text: string) {
-	return pipe(text, String.toLowerCase, String.split(/[^\p{L}\p{N}']+/u), Array.filter(String.isNonEmpty))
-}
-
-// Transcription can turn music into looping or invented words, so only a talking pace of 40 words a minute counts as speech.
+// Transcription can turn music into looping words, so a line repeating the one before it or mostly repeating one word is dropped; any speech left is kept however short or sparse, since unspaced languages and quiet talk have few words a minute.
 export function speechOnly(transcript: string) {
-	const lines = pipe(
+	return pipe(
 		String.split(transcript, '\n'),
 		Array.filter(String.isNonEmpty),
 		Array.dedupeAdjacentWith((left, right) => spoken(left) === spoken(right)),
 		Array.filter(line => {
-			const words = wordsOf(spoken(line))
+			const words = pipe(
+				spoken(line),
+				String.toLowerCase,
+				String.split(/[^\p{L}\p{N}']+/u),
+				Array.filter(String.isNonEmpty)
+			)
 			return Array.isReadonlyArrayNonEmpty(words) && Array.dedupe(words).length * 3 > words.length
-		})
-	)
-	const words = Array.flatMap(lines, line => wordsOf(spoken(line)))
-	const seconds = pipe(
-		Array.last(lines),
-		Option.flatMap(String.match(/^\[(\d+):(\d+)\]/u)),
-		Option.map(match => [match[1] ?? '0', match[2] ?? '0'] as const),
-		Option.map(parts =>
-			Array.reduce(Array.getSomes(Array.map(parts, Number.parse)), 0, (total, part) => total * 60 + part)
-		),
-		Option.getOrElse(Function.constant(0))
-	)
-	if (words.length < 8 || words.length * 60 < 40 * Number.max(seconds, 15)) return Option.none()
-	return Option.some(
-		pipe(
-			lines,
-			Array.map(line => `${line}\n`),
-			Array.join('')
+		}),
+		Option.liftPredicate(Array.isReadonlyArrayNonEmpty),
+		Option.map(lines =>
+			pipe(
+				lines,
+				Array.map(line => `${line}\n`),
+				Array.join('')
+			)
 		)
 	)
 }

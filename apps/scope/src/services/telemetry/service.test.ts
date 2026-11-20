@@ -2,12 +2,35 @@ import {NodeCrypto} from '@effect/platform-node'
 import {SqliteClient} from '@effect/sql-sqlite-node'
 import {assert, it} from '@effect/vitest'
 
-import {Array, Boolean, Duration, Effect, Function, Layer, Option, Schema, Stream, String, Struct, pipe} from 'effect'
+import {
+	Array,
+	Boolean,
+	Duration,
+	Effect,
+	Fiber,
+	Function,
+	Layer,
+	Option,
+	Schema,
+	Stream,
+	String,
+	Struct,
+	pipe
+} from 'effect'
 
+import {Digest} from 'effect/crypto'
 import {Reactivity} from 'effect/reactivity'
 import {TestClock} from 'effect/testing'
 
-import {FindTracesParams, TelemetryError, TraceId, TracesRequest} from '#services/telemetry/schema.ts'
+import {
+	FindTracesParams,
+	LogsRequest,
+	MeasureLatencyParams,
+	SearchLogsParams,
+	TelemetryError,
+	TraceId,
+	TracesRequest
+} from '#services/telemetry/schema.ts'
 import {Telemetry} from '#services/telemetry/service.ts'
 
 const TRACES = Schema.decodeSync(TracesRequest)({
@@ -34,6 +57,7 @@ const TRACES = Schema.decodeSync(TracesRequest)({
 
 const ID = TraceId.make('1234567890abcdef1234567890abcdef')
 
+// Each test builds its own database, so no case sees another's rows or clock.
 const telemetryLayer = pipe(
 	Telemetry.layer,
 	Layer.provide(Layer.merge(SqliteClient.layer({filename: ':memory:'}), Reactivity.layer)),
@@ -56,7 +80,7 @@ function ciExport(spans: readonly unknown[]) {
 	})
 }
 
-it.layer(telemetryLayer)(test => {
+it.layer(telemetryLayer)(test =>
 	test.effect(
 		'keeps trace facts current through late roots, replacements, retries and late CI starts',
 		Effect.fnUntraced(function* () {
@@ -79,8 +103,9 @@ it.layer(telemetryLayer)(test => {
 				status: {code: 2},
 				traceId: id
 			}
+			yield* telemetry.ingestTraces(TRACES)
 			yield* telemetry.ingestTraces(yield* ciExport([child]))
-			yield* telemetry.ingestTraces(yield* ciExport([root]))
+			yield* telemetry.ingestTraces(yield* ciExport([{...root, links: [{spanId: '1111111111111111', traceId: ID}]}]))
 			assert.deepStrictEqual(
 				Array.map(
 					(yield* telemetry.findTraces(yield* Schema.decodeEffect(FindTracesParams)({app: 'read-proof'}))).traces,
@@ -102,8 +127,16 @@ it.layer(telemetryLayer)(test => {
 				[['root', 2, 170, Option.some('root')]]
 			)
 			assert.strictEqual(Duration.toMillis((yield* telemetry.trace(id)).durationMs), 170)
+			// The late start named no links, but the completed span it left alone still links to the other trace.
+			assert.deepStrictEqual(
+				Array.map((yield* telemetry.trace(id)).spans, span => span.traceId),
+				[ID, id, id]
+			)
 		})
 	)
+)
+
+it.layer(telemetryLayer)(test =>
 	test.effect(
 		'keeps the newest five successful runs alongside slow runs within the cap',
 		Effect.fnUntraced(function* () {
@@ -146,6 +179,9 @@ it.layer(telemetryLayer)(test => {
 			)
 		})
 	)
+)
+
+it.layer(telemetryLayer)(test =>
 	test.effect(
 		'counts merged app operations with nearest-rank latency and keeps slow traces plus newest failures',
 		Effect.fnUntraced(function* () {
@@ -208,6 +244,9 @@ it.layer(telemetryLayer)(test => {
 			)
 		})
 	)
+)
+
+it.layer(telemetryLayer)(test =>
 	test.effect(
 		'keeps retried spans once, restores interned statements, and searches words',
 		Effect.fnUntraced(function* () {
@@ -218,11 +257,14 @@ it.layer(telemetryLayer)(test => {
 			assert.lengthOf(trace.spans, 1)
 			assert.strictEqual(trace.spans[0]?.attributes['db.query.text'], 'SELECT 42')
 			assert.strictEqual(
-				(yield* telemetry.findTraces(yield* Schema.decodeEffect(FindTracesParams)({text: 'capture'}))).total,
+				(yield* telemetry.findTraces(yield* Schema.decodeEffect(FindTracesParams)({text: 'capture'}))).traces.length,
 				1
 			)
 		})
 	)
+)
+
+it.layer(telemetryLayer)(test =>
 	test.effect(
 		'expires traces thirty days after receipt',
 		Effect.fnUntraced(function* () {
@@ -234,4 +276,144 @@ it.layer(telemetryLayer)(test => {
 			assert.instanceOf(yield* Effect.flip(telemetry.trace(ID)), TelemetryError)
 		})
 	)
-})
+)
+
+function serverExport(service: string, spans: readonly unknown[]) {
+	return Schema.decodeUnknownEffect(TracesRequest)({
+		resourceSpans: [
+			{resource: {attributes: [{key: 'service.name', value: {stringValue: service}}]}, scopeSpans: [{spans}]}
+		]
+	})
+}
+
+// A digest that takes a day, so a log export received first commits after a later trace.
+const slowDigestLayer = pipe(
+	Telemetry.layer,
+	Layer.provide(Layer.merge(SqliteClient.layer({filename: ':memory:'}), Reactivity.layer)),
+	Layer.provide(Layer.mock(Digest.Digest, {digest: () => Effect.as(Effect.sleep('1 day'), new Uint8Array(32))}))
+)
+
+it.layer(slowDigestLayer)(test =>
+	test.effect(
+		'expires by receipt when a trace received later committed first',
+		Effect.fnUntraced(function* () {
+			const telemetry = yield* Telemetry
+			const early = TraceId.make('fffffffffffffffffffffffffffffff2')
+			const logs = yield* Effect.forkChild(
+				telemetry.ingestLogs(
+					yield* Schema.decodeEffect(LogsRequest)({
+						resourceLogs: [
+							{
+								resource: {attributes: [{key: 'service.name', value: {stringValue: 'log-server'}}]},
+								scopeLogs: [{logRecords: [{body: {stringValue: 'early'}, timeUnixNano: '1000000', traceId: early}]}]
+							}
+						]
+					})
+				)
+			)
+			yield* TestClock.adjust('12 hours')
+			yield* telemetry.ingestTraces(TRACES)
+			yield* TestClock.adjust('12 hours')
+			yield* Fiber.join(logs)
+			yield* TestClock.adjust('29 days')
+			yield* TestClock.adjust('1 hour')
+			assert.lengthOf((yield* telemetry.trace(ID)).spans, 1)
+			assert.instanceOf(yield* Effect.flip(telemetry.trace(early)), TelemetryError)
+		})
+	)
+)
+
+it.layer(telemetryLayer)(test =>
+	test.effect(
+		'names a trace by its real root and measures the root, not a skewed child',
+		Effect.fnUntraced(function* () {
+			const telemetry = yield* Telemetry
+			const id = TraceId.make('fffffffffffffffffffffffffffffff3')
+			yield* telemetry.ingestTraces(
+				yield* serverExport('skew-server', [
+					{
+						endTimeUnixNano: '1050000000',
+						name: 'orphan',
+						parentSpanId: '9999999999999999',
+						spanId: '2222222222222222',
+						startTimeUnixNano: '1000000000',
+						traceId: id
+					}
+				])
+			)
+			yield* telemetry.ingestTraces(
+				yield* serverExport('skew-client', [
+					{
+						endTimeUnixNano: '10100000000',
+						name: 'root',
+						spanId: '1111111111111111',
+						startTimeUnixNano: '10000000000',
+						traceId: id
+					}
+				])
+			)
+			assert.deepStrictEqual(
+				Array.map((yield* telemetry.findTraces(yield* Schema.decodeEffect(FindTracesParams)({}))).traces, trace => [
+					trace.operation,
+					Duration.toMillis(trace.ms)
+				]),
+				[['root', 100]]
+			)
+		})
+	)
+)
+
+it.layer(telemetryLayer)(test =>
+	test.effect(
+		'measures a root once a corrected child stops making it a stream',
+		Effect.fnUntraced(function* () {
+			const telemetry = yield* Telemetry
+			const id = TraceId.make('fffffffffffffffffffffffffffffff4')
+			const method = {key: 'rpc.method', value: {stringValue: 'notes.watch'}}
+			const root = {
+				attributes: [method],
+				endTimeUnixNano: '20000000',
+				name: 'notes.watch',
+				spanId: '1111111111111111',
+				startTimeUnixNano: '0',
+				traceId: id
+			}
+			const child = {...root, name: 'child', parentSpanId: '1111111111111111', spanId: '2222222222222222'}
+			yield* telemetry.ingestTraces(
+				yield* serverExport('stream-server', [
+					root,
+					{...child, attributes: [method, {key: 'rpc.stream', value: {boolValue: true}}]}
+				])
+			)
+			const measure = Effect.flatMap(
+				Schema.decodeEffect(MeasureLatencyParams)({name: 'notes.watch'}),
+				telemetry.measureLatency
+			)
+			assert.strictEqual((yield* measure).count, 0)
+			yield* telemetry.ingestTraces(yield* serverExport('stream-server', [child]))
+			assert.strictEqual((yield* measure).count, 1)
+		})
+	)
+)
+
+it.layer(telemetryLayer)(test =>
+	test.effect(
+		'keeps equal log lines of one export apart and a retried export once',
+		Effect.fnUntraced(function* () {
+			const telemetry = yield* Telemetry
+			const logs = yield* Schema.decodeEffect(LogsRequest)({
+				resourceLogs: [
+					{
+						resource: {attributes: [{key: 'service.name', value: {stringValue: 'log-server'}}]},
+						scopeLogs: [
+							{logRecords: Array.makeBy(2, () => ({body: {stringValue: 'identical'}, timeUnixNano: '1000000'}))}
+						]
+					}
+				]
+			})
+			yield* telemetry.ingestLogs(logs)
+			yield* telemetry.ingestLogs(logs)
+			assert.lengthOf((yield* telemetry.searchLogs(yield* Schema.decodeEffect(SearchLogsParams)({}))).logs, 2)
+		})
+	)
+)
