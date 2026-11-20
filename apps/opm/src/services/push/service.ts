@@ -34,15 +34,11 @@ export class Push extends Context.Service<Push>()('@deslop/opm/services/push/ser
 			execute: row =>
 				sql`DELETE FROM devices WHERE token = ${row.token} AND bundle = ${row.bundle} AND kind = ${row.kind}`
 		})
-		// The devices registered when a chapter's announcement first runs are the ones it is for; a later registration gets no backlog.
 		const takeRecipients = SqlSchema.void({
 			Request: ChapterIdentity,
 			execute: chapter => sql`
 				INSERT INTO ${sql(ChapterDelivery.table)} (series, number, token, done)
 				SELECT ${chapter.series}, ${chapter.number}, token, 0 FROM devices
-				WHERE NOT EXISTS (
-					SELECT 1 FROM ${sql(ChapterDelivery.table)} WHERE series = ${chapter.series} AND number = ${chapter.number}
-				)
 			`
 		})
 		// A recipient whose device was forgotten since is skipped.
@@ -62,12 +58,11 @@ export class Push extends Context.Service<Push>()('@deslop/opm/services/push/ser
 			`
 		})
 		return {
-			// Every device hears of a chapter at least once: an alert Apple accepted just before its answer could be recorded is sent again, since recording first would lose the alert to a crash.
+			// Every recipient taken when the chapter was saved hears of it at least once: an alert Apple accepted just before its answer could be recorded is sent again, since recording first would lose the alert to a crash.
 			announce: Effect.fn('Push.announce')(function* (chapter: Chapter) {
 				// New registrations should not receive alerts for chapters announced without a working recipient.
 				if (!apns.enabled) return true
 				const identity = {number: chapter.number, series: chapter.series}
-				yield* asPushSaveError(takeRecipients(identity))
 				const outcomes = yield* Effect.forEach(
 					yield* asPushReadError(listWaiting(identity)),
 					device =>
@@ -114,6 +109,10 @@ export class Push extends Context.Service<Push>()('@deslop/opm/services/push/ser
 			}),
 			register: Effect.fn('Push.register')(function* (device: typeof Device.insert.Type) {
 				yield* asPushSaveError(saveDevice(device))
+			}),
+			// Run in the transaction that saves the chapter, so a phone registered after it gets no backlog.
+			takeRecipients: Effect.fn('Push.takeRecipients')(function* (chapter: ChapterIdentity) {
+				yield* asPushSaveError(takeRecipients(chapter))
 			})
 		}
 	})

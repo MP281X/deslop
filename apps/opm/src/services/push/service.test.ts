@@ -71,18 +71,23 @@ function apple() {
 const recipients = apple()
 it.layer(recipients.layer)(test => {
 	test.effect(
-		'announces a chapter only to the devices registered when its announcement first ran',
+		'announces a chapter only to the devices registered when it was saved',
 		Effect.fnUntraced(function* () {
 			const push = yield* Push
-			MutableRef.set(recipients.answers, {b: ApnsAnswer.cases.Retry.make({...ANSWER, status: 503})})
+			yield* push.takeRecipients(chapter(243))
 			yield* push.register(device('a'))
 			yield* push.register(device('b'))
+			yield* push.takeRecipients(chapter(244))
+			yield* push.register(device('c'))
+			MutableRef.set(recipients.answers, {b: ApnsAnswer.cases.Retry.make({...ANSWER, status: 503})})
 			assert.isFalse(yield* push.announce(chapter(244)))
 			assert.deepStrictEqual(MutableRef.getAndSet(recipients.sent, []), ['a', 'b'])
-			yield* push.register(device('c'))
 			MutableRef.set(recipients.answers, {})
 			assert.isTrue(yield* push.announce(chapter(244)))
 			assert.deepStrictEqual(MutableRef.getAndSet(recipients.sent, []), ['b'])
+			assert.isTrue(yield* push.announce(chapter(243)))
+			assert.deepStrictEqual(MutableRef.getAndSet(recipients.sent, []), [])
+			yield* push.takeRecipients(chapter(245))
 			assert.isTrue(yield* push.announce(chapter(245)))
 			assert.deepStrictEqual(MutableRef.get(recipients.sent), ['a', 'b', 'c'])
 		})
@@ -103,6 +108,7 @@ it.layer(kept.layer)(test => {
 			MutableRef.set(kept.held, {d: hold})
 			yield* push.register(device('a'))
 			yield* push.register(device('d'))
+			yield* push.takeRecipients(chapter(244))
 			const announcing = yield* Effect.forkChild(push.announce(chapter(244)))
 			yield* Deferred.await(hold.asked)
 			// The phone registers the same token for its development build while Apple's answer is on its way.
@@ -111,6 +117,7 @@ it.layer(kept.layer)(test => {
 			assert.isTrue(yield* Fiber.join(announcing))
 			MutableRef.set(kept.answers, {})
 			MutableRef.set(kept.held, {})
+			yield* push.takeRecipients(chapter(245))
 			assert.isTrue(yield* push.announce(chapter(245)))
 			assert.deepStrictEqual(MutableRef.get(kept.sent), ['a', 'd', 'a', 'd'])
 		})
