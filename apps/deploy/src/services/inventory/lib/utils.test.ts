@@ -2,7 +2,7 @@ import {assert, it} from '@effect/vitest'
 
 import {Array, Option} from 'effect'
 
-import {availablePorts, processOwner, workloads} from '#services/inventory/lib/utils.ts'
+import {availablePorts, portOwner, processOwner, workloads} from '#services/inventory/lib/utils.ts'
 import {ExposureName, InventoryItem, ItemId, UnitId, WorkerId} from '#services/inventory/schema.ts'
 import type {ServiceScope} from '#services/inventory/schema.ts'
 
@@ -126,6 +126,31 @@ it('joins a service with its listener and exposure on the same worker', () => {
 	)
 })
 
+// The exposure ids shown on the row of a service with its listener.
+function joined(...exposures: InventoryItem[]) {
+	return Array.map(
+		workloads([
+			SERVICE,
+			{...LISTENER, scope: Option.some('user' as const), unit: Option.some(UnitId.make('app.service'))},
+			...exposures
+		]),
+		row => Array.map(row.exposures, exposure => exposure.id)
+	)
+}
+
+it('shows a public mapping of an owned private address beside the owned exposure', () => {
+	const owned = {...EXPOSURE, publicAccess: Option.some(false)}
+	const observed = {
+		...EXPOSURE,
+		id: ItemId.make('dev:observed'),
+		owned: Option.some(false),
+		publicAccess: Option.some(true),
+		state: 'observed'
+	}
+	assert.deepStrictEqual(joined(owned, observed), [[owned.id, observed.id]])
+	assert.deepStrictEqual(joined(owned, {...observed, publicAccess: Option.some(false)}), [[owned.id]])
+})
+
 it('matches published container routes only to host TCP bindings', () => {
 	const container = InventoryItem.make({
 		active: true,
@@ -204,4 +229,23 @@ it('lists an owned exposure on its own when the service it reaches is hidden', (
 		),
 		[EXPOSURE.id]
 	)
+})
+
+it('names who a loopback proxy to a port reaches: a publishing container first, else each listener', () => {
+	const unit = {...LISTENER, scope: Option.some<ServiceScope>('user'), unit: Option.some(UnitId.make('app.service'))}
+	const container = InventoryItem.make({
+		bindings: Option.some([{address: '0.0.0.0:5173', port: 5173, protocol: 'tcp' as const}]),
+		detail: '',
+		id: ItemId.make('dev:docker:1'),
+		kind: 'container',
+		name: 'grafana',
+		state: 'running',
+		url: Option.none(),
+		worker: WorkerId.make('dev')
+	})
+	assert.deepStrictEqual(portOwner([unit], 5173), Option.some('user:app.service'))
+	assert.deepStrictEqual(portOwner([LISTENER], 5173), Option.some('process:app'))
+	assert.deepStrictEqual(portOwner([unit, container], 5173), Option.some('container:grafana'))
+	assert.deepStrictEqual(portOwner([{...unit, address: Option.some('[::1]:5173')}], 5173), Option.none())
+	assert.deepStrictEqual(portOwner([unit], 5174), Option.none())
 })

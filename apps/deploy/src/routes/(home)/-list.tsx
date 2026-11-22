@@ -47,7 +47,7 @@ export function InventoryContent(props: {children: ReactNode}) {
 	)
 }
 
-// Every port is one chip: an outlined link opens an exposed endpoint, an outlined button opens the Expose dialog, and the rest are plain and inert. No chip is filled, so a selected row's tint never hides one.
+// Every listening port is one chip, and every exposure is one chip of its own, so a public Funnel mapping shows beside the saved private exposure of the same port. An outlined link opens an exposed endpoint, an outlined button opens the Expose dialog, and the rest are plain and inert. No chip is filled, so a selected row's tint never hides one.
 function Endpoints(props: {free: readonly InventoryItem[]; row: Row}) {
 	const expose = useAtomSet(openExposeAtom)
 	const exposedPorts = HashSet.fromIterable(Array.getSomes(Array.map(props.row.exposures, exposure => exposure.port)))
@@ -102,6 +102,7 @@ function Endpoints(props: {free: readonly InventoryItem[]; row: Row}) {
 						/>
 					}
 				>
+					{exposure.health !== 'quiet' && <StatusDot status={exposure.health} label={reasonOf(exposure)} />}
 					{Option.match(exposure.port, {
 						onNone: () => Option.match(exposure.url, {onNone: Function.constant(''), onSome: host}),
 						onSome: port => `${port}`

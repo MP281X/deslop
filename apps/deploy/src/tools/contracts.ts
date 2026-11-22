@@ -82,7 +82,7 @@ export const ToolContracts = Toolkit.make(
 	Tool.make('create_exposure', {
 		dependencies: [CurrentUser],
 		description:
-			'Give a local port the requested HTTPS hostname and ownership name on a configured worker; public exposure requires explicit publicAccess=true consent. Returns the URL, adds no authentication and starts no application; list_apps shows owned exposures.',
+			'Give a listening local port the requested HTTPS hostname and ownership name on a configured worker; public exposure requires explicit publicAccess=true consent. Caddy’s admin port is refused, and a Deslop app’s port is published only under the app’s own name and only when it runs with a domain. Returns the URL, adds no authentication and starts no application; list_apps shows owned exposures.',
 		failure: Schema.Union([AuthError, DeployError]),
 		parameters: Schema.Struct({...ExposeInput.fields, worker: Schema.OptionFromOptionalKey(WorkerId)}),
 		success: Schema.Struct({url: Schema.String})
@@ -92,7 +92,7 @@ export const ToolContracts = Toolkit.make(
 	Tool.make('remove_exposure', {
 		dependencies: [CurrentUser],
 		description:
-			'Remove an HTTPS exposure Deploy owns by name and optional worker from list_apps, not its backend. Externally changed Tailscale mappings are refused; inspect list_apps after an uncertain failure.',
+			'Remove an HTTPS exposure Deploy owns by name and optional worker from list_apps, not its backend. Externally changed Tailscale mappings are refused; an accepted removal is saved first, finishes on its own when this call fails and is never undone.',
 		failure: Schema.Union([AuthError, DeployError]),
 		parameters: Schema.Struct({
 			name: ExposureName.check(Schema.isNonEmpty()),

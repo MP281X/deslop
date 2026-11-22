@@ -5,15 +5,13 @@ import {
 	Array,
 	Boolean,
 	Context,
-	Duration,
 	Effect,
-	FileSystem,
 	Function,
 	Layer,
 	Option,
-	Path,
 	Record,
-	Schedule,
+	Ref,
+	Result,
 	Schema,
 	Semaphore,
 	String,
@@ -21,30 +19,22 @@ import {
 	pipe
 } from 'effect'
 
-import {ChildProcessSpawner} from 'effect/process'
 import type {SqlError} from 'effect/sql'
 import {Migrator, SqlClient, SqlSchema} from 'effect/sql'
 
-import {AppError, ToolPath, executeProcess} from '@deslop/runtime/server/process'
-import {installService} from '@deslop/runtime/server/services'
 import type {Admin} from '@deslop/runtime/shared/auth'
 
+import {ownedConflict, refusal, reservedPort, restoreRefusal} from './lib/policy.ts'
+import {makeReconciler} from './lib/reconciler.ts'
 import {migrations} from './migrations.ts'
 
 import {Exposure} from '#services/exposures/schema.ts'
 import type {ExposeInput} from '#services/exposures/schema.ts'
-import type {ExposureName} from '#services/inventory/schema.ts'
-import {DeployError, InventoryItem, ItemId, Serve, TailnetStatus, WorkerId} from '#services/inventory/schema.ts'
-
-// A stop waits at most ten seconds for open connections such as WebSockets, never forever.
-function caddyConfig(rows: readonly Exposure[], storage: string) {
-	return `{\n\tadmin 127.0.0.1:20219\n\tgrace_period 10s\n\tpersist_config off\n\tstorage file_system {\n\t\troot ${Schema.encodeSync(Schema.fromJsonString(Schema.String))(storage)}\n\t}\n}\n\n${pipe(
-		rows,
-		Array.filter(row => row.kind === 'public'),
-		Array.map(row => `${row.hostname} {\n\tencode\n\treverse_proxy 127.0.0.1:${row.port}\n}\n`),
-		Array.join('\n')
-	)}`
-}
+import {portOwner} from '#services/inventory/lib/utils.ts'
+import type {ExposureName, Serve, Snapshot} from '#services/inventory/schema.ts'
+import {DeployError, InventoryItem, ItemId, WorkerId} from '#services/inventory/schema.ts'
+import {Inventory} from '#services/inventory/service.ts'
+import {Proxies} from '#services/proxies/service.ts'
 
 function ownsMapping(status: Serve, row: Exposure) {
 	return (
@@ -66,6 +56,10 @@ function ownsMapping(status: Serve, row: Exposure) {
 	)
 }
 
+function servesPort(status: Serve, port: number) {
+	return Option.exists(status.TCP, ports => Record.has(ports, `${port}`))
+}
+
 function exposureUrl(row: Exposure) {
 	if (row.kind === 'tailnet') return `https://${row.hostname}:${row.port}`
 	return `https://${row.hostname}`
@@ -83,14 +77,11 @@ function asDeployError<A, E, R>(effect: Effect.Effect<A, E, R>) {
 }
 
 export class Exposures extends Context.Service<Exposures>()('@deslop/deploy/services/exposures/service/Exposures', {
-	// The Caddyfile and Caddy's certificates live in `directory`.
-	make: Effect.fnUntraced(function* (directory: string) {
-		const fs = yield* FileSystem.FileSystem
+	make: Effect.gen(function* () {
 		const sql = yield* SqlClient.SqlClient
-		const spawner = yield* ChildProcessSpawner.ChildProcessSpawner
-		const path = yield* Path.Path
+		const proxies = yield* Proxies
+		const inventory = yield* Inventory
 		const worker = yield* Schema.decodeEffect(WorkerId)(hostname())
-		yield* fs.makeDirectory(directory, {mode: 0o700, recursive: true})
 
 		const listExposures = SqlSchema.findAll({
 			Request: Schema.Void,
@@ -101,114 +92,198 @@ export class Exposures extends Context.Service<Exposures>()('@deslop/deploy/serv
 			Request: Exposure.insert,
 			execute: row => sql`INSERT INTO ${sql(Exposure.table)} ${sql.insert(row)}`
 		})
-		const deleteExposure = SqlSchema.void({
+		const markRemoving = SqlSchema.void({
 			Request: Exposure.fields.name,
-			execute: name => sql`DELETE FROM ${sql(Exposure.table)} WHERE name = ${name}`
+			execute: name => sql`UPDATE ${sql(Exposure.table)} SET state = 'removing' WHERE name = ${name}`
+		})
+		const deleteRemoved = SqlSchema.void({
+			Request: Exposure.fields.name,
+			execute: name => sql`DELETE FROM ${sql(Exposure.table)} WHERE name = ${name} AND state = 'removing'`
+		})
+		const recordOwner = SqlSchema.void({
+			Request: Schema.Struct({name: Exposure.fields.name, owner: Schema.String}),
+			execute: row => sql`UPDATE ${sql(Exposure.table)} SET owner = ${row.owner} WHERE name = ${row.name}`
 		})
 		const owned = asStorageDeployError(listExposures())
 		const lock = yield* Semaphore.make(1)
-		// Unpacked on the first public exposure, not on every start.
-		const caddy = pipe(
-			(yield* ToolPath)('caddy'),
-			Effect.provideService(FileSystem.FileSystem, fs),
-			Effect.provideService(Path.Path, path)
-		)
-		const configFile = path.join(directory, 'Caddyfile')
-		function run(program: string, args: string[]) {
-			return pipe(
-				executeProcess(program, args),
-				Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
-				Effect.timeout(Duration.seconds(30))
-			)
-		}
-		const status = Effect.flatMap(
-			run('tailscale', ['serve', 'status', '--json']),
-			Schema.decodeUnknownEffect(Schema.fromJsonString(Serve))
-		)
-		const checkTailnet = Effect.fnUntraced(function* (input: Exposure) {
-			const current = yield* status
-			if (
-				Option.exists(current.TCP, ports => Record.has(ports, `${input.port}`)) ||
-				Option.exists(current.AllowFunnel, permissions => permissions[`${input.hostname}:${input.port}`] === true)
-			) {
-				return yield* DeployError.make({
-					message: 'This Tailscale port or Funnel permission already exists and is not owned by Deploy'
-				})
-			}
-			const tailnet = yield* Effect.flatMap(
-				run('tailscale', ['status', '--json']),
-				Schema.decodeEffect(Schema.fromJsonString(TailnetStatus))
-			)
-			if (!Option.exists(tailnet.Self, self => String.replace(/\.$/u, '')(self.DNSName) === input.hostname)) {
-				return yield* DeployError.make({
-					message: 'Use this worker’s Tailscale DNS name; Deploy never publishes another worker’s hostname'
-				})
-			}
+		// A pass reads the rows and changes the proxies inside one hold, and a removal is saved inside another, so no pass publishes a row from before its removal was saved.
+		const passLock = yield* Semaphore.make(1)
+		// The public sites Caddy last loaded in this process; none until the first pass loads them, so Caddy restarts onto this release's binary, and none again after a failed load, since what Caddy then holds is unknown.
+		const loaded = yield* Ref.make(Option.none<string>())
+		// Why each exposure is not yet as saved, from the last pass.
+		const problems = yield* Ref.make<Record<ExposureName, string>>({})
+
+		const listener = Effect.fnUntraced(function* (items: Snapshot['items'], port: number) {
+			return {owner: portOwner(items, port), runtime: yield* proxies.runtime(port)}
 		})
-		const caddyApply = Effect.fnUntraced(function* (rows: readonly Exposure[]) {
-			const binary = yield* caddy
-			yield* fs.makeDirectory(path.join(directory, 'caddy'), {mode: 0o700, recursive: true})
-			yield* fs.writeFileString(`${configFile}.next`, caddyConfig(rows, path.join(directory, 'caddy')), {mode: 0o600})
-			yield* run(binary, ['validate', '--config', `${configFile}.next`, '--adapter', 'caddyfile'])
-			yield* fs.rename(`${configFile}.next`, configFile)
-			// A reload keeps Caddy's process, so one still running an earlier release's binary restarts onto this one.
-			const running = yield* pipe(
-				run('systemctl', ['--user', 'show', '--property=MainPID', '--value', 'deslop-deploy-caddy.service']),
-				Effect.map(String.trim),
-				Effect.flatMap(pid =>
-					Boolean.match(pid === '0', {onFalse: () => fs.readLink(`/proc/${pid}/exe`), onTrue: () => Effect.succeed('')})
-				),
-				Effect.option
+
+		// Caddy loads the public rows to publish when they differ from what it last loaded, and again after any failed load; a removal's row goes only after a load that succeeded.
+		const reconcileCaddy = Effect.fnUntraced(function* (
+			rows: readonly {held: Option.Option<string>; publish: boolean; row: Exposure}[]
+		) {
+			const sites = pipe(
+				rows,
+				Array.filter(entry => entry.publish),
+				Array.map(entry => entry.row)
 			)
-			yield* pipe(
-				installService(
-					'deploy-caddy',
-					[binary, 'run', '--config', configFile, '--adapter', 'caddyfile'],
-					pipe(
-						running,
-						Option.filter(current => current === binary),
-						Option.match({onNone: Function.constUndefined, onSome: () => ({restart: false as const})})
+			const key = pipe(
+				sites,
+				Array.map(row => `${row.hostname} ${row.port}`),
+				Array.join('\n')
+			)
+			const failure = yield* pipe(
+				Ref.get(loaded),
+				Effect.map(Option.match({onNone: () => Array.isReadonlyArrayNonEmpty(rows), onSome: last => last !== key})),
+				Effect.flatMap(
+					Boolean.match({
+						onFalse: () => Effect.succeedNone,
+						onTrue: () =>
+							pipe(
+								proxies.apply(sites),
+								Effect.andThen(Ref.set(loaded, Option.some(key))),
+								Effect.tapError(() => Ref.set(loaded, Option.none())),
+								Effect.flip,
+								Effect.option
+							)
+					})
+				)
+			)
+			if (Option.isNone(failure)) {
+				yield* pipe(
+					rows,
+					Array.filter(entry => entry.row.state === 'removing'),
+					Effect.forEach(entry => asStorageDeployError(deleteRemoved(entry.row.name)), {concurrency: 1, discard: true})
+				)
+			}
+			// After a failed load Caddy still holds what it last loaded, so a held row's reason also says its withdrawal has not reached Caddy.
+			return Option.match(failure, {
+				onNone: () => Record.empty<ExposureName, string>(),
+				onSome: cause =>
+					Record.fromIterableWith(
+						rows,
+						entry =>
+							[
+								entry.row.name,
+								Option.match(entry.held, {
+									onNone: () => cause.message,
+									onSome: reason => `${reason}. Caddy has not loaded this yet: ${cause.message}`
+								})
+							] as const
+					)
+			})
+		})
+
+		// Tailscale Serve maps each tailnet row to publish and drops Deploy's own mapping of the rest; a mapping changed outside Deploy is left alone. The status is read right before each row's command and the CLI has no conditional removal, so a change landing during that one command can still be overwritten.
+		const reconcileTailnet = Effect.fnUntraced(function* (
+			rows: readonly {held: Option.Option<string>; publish: boolean; row: Exposure}[]
+		) {
+			if (!Array.isReadonlyArrayNonEmpty(rows)) return Record.empty<ExposureName, string>()
+			const outcomes = yield* Effect.forEach(
+				rows,
+				Effect.fnUntraced(function* (entry) {
+					const current = yield* proxies.serveStatus
+					const present = servesPort(current, entry.row.port)
+					if (entry.publish && present && !ownsMapping(current, entry.row)) {
+						return yield* DeployError.make({
+							message: 'This Tailscale mapping was changed outside Deploy, so Deploy leaves it alone'
+						})
+					}
+					if (entry.publish && !present) {
+						yield* proxies.serve(entry.row.port)
+						if (!ownsMapping(yield* proxies.serveStatus, entry.row)) {
+							return yield* DeployError.make({message: 'Tailscale configured a different hostname or target'})
+						}
+					}
+					if (!entry.publish && present && ownsMapping(current, entry.row)) yield* proxies.unserve(entry.row.port)
+					if (entry.row.state === 'removing') yield* asStorageDeployError(deleteRemoved(entry.row.name))
+				}, Effect.result),
+				{concurrency: 1}
+			)
+			return Record.fromIterableWith(
+				Array.getSomes(
+					Array.zipWith(rows, outcomes, (entry, outcome) =>
+						Option.map(Result.getFailure(outcome), cause => [entry.row.name, cause.message] as const)
 					)
 				),
-				Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
-				Effect.provideService(FileSystem.FileSystem, fs),
-				Effect.provideService(Path.Path, path)
-			)
-			yield* Effect.retry(
-				run(binary, ['reload', '--address', '127.0.0.1:20219', '--config', configFile, '--adapter', 'caddyfile']),
-				{schedule: Schedule.spaced(Duration.millis(200)), times: 10, while: Schema.is(AppError)}
+				Function.identity
 			)
 		})
 
-		const rows = yield* owned
-		if (Array.some(rows, row => row.kind === 'public')) {
+		// Makes the worker match the rows: active rows whose port still belongs to their owner are published, the rest are not, and a removal's row goes once Deploy's own mapping is gone, not once nothing serves the address: a mapping changed outside Deploy is left alone and its row still goes.
+		const reconciler = yield* makeReconciler(
+			Semaphore.withPermit(
+				passLock,
+				Effect.withSpan(
+					Effect.gen(function* () {
+						const rows = yield* owned
+						// Read after the rows, so a row saved just before this pass is judged on what listens once it was saved.
+						yield* inventory.refresh
+						const items = (yield* inventory.snapshot).items
+						const decided = yield* Effect.forEach(
+							rows,
+							Effect.fnUntraced(function* (row) {
+								if (row.state === 'removing') return {held: Option.none<string>(), publish: false, row}
+								// A reserved port is held before any lookup, since the lookup connects to it.
+								const reserved = reservedPort(row.port)
+								if (Option.isSome(reserved)) return {held: reserved, publish: false, row}
+								const found = yield* listener(items, row.port)
+								// A row saved before Deploy recorded owners takes the owner it first finds.
+								yield* Effect.forEach(
+									Option.toArray(Option.filter(found.owner, () => Option.isNone(row.owner))),
+									owner => asStorageDeployError(recordOwner({name: row.name, owner})),
+									{concurrency: 1, discard: true}
+								)
+								const held = restoreRefusal(row, found)
+								return {held, publish: Option.isNone(held), row}
+							}),
+							{concurrency: 'unbounded'}
+						)
+						const found = {
+							...Record.fromIterableWith(
+								Array.getSomes(
+									Array.map(decided, entry => Option.map(entry.held, reason => [entry.row.name, reason] as const))
+								),
+								Function.identity
+							),
+							...(yield* reconcileCaddy(Array.filter(decided, entry => entry.row.kind === 'public'))),
+							...(yield* reconcileTailnet(Array.filter(decided, entry => entry.row.kind === 'tailnet')))
+						}
+						yield* Ref.set(problems, found)
+						if (!Record.isEmptyRecord(found)) {
+							yield* Effect.logWarning('Owned exposures are not yet as saved; Deploy tries again', found)
+						}
+						return found
+					}),
+					'Exposures.reconcile',
+					{attributes: {worker}}
+				)
+			),
+			Record.isEmptyRecord,
+			Record.makeEquivalence(String.Equivalence)
+		)
+		// Pending removals finish and saved exposures return before Deploy serves.
+		yield* Effect.ignore(reconciler.request, {
+			log: 'Warn',
+			message: 'Could not reconcile owned exposures; inspect the Caddy service and the owned exposure records'
+		})
+
+		// Answers once the pass after a change finishes, failing with what kept `name` from its saved state.
+		const settle = Effect.fnUntraced(function* (name: ExposureName, message: string) {
 			yield* pipe(
-				caddyApply(rows),
-				Effect.scoped,
-				Effect.ignore({
-					log: 'Warn',
-					message: 'Could not reconcile owned Caddy configuration; inspect its service and owned exposure records'
+				yield* reconciler.request,
+				Record.get(name),
+				Option.match({
+					onNone: () => Effect.void,
+					onSome: problem => DeployError.make({message: `${message}: ${problem}`})
 				})
 			)
-		}
+		})
 
 		return {
 			// Each change takes the caller's admin capability, so no route reaches it on a declaration alone.
 			expose: Effect.fn('Exposures.expose')(
 				function* (input: ExposeInput, _admin: Admin) {
 					yield* Effect.annotateCurrentSpan({exposure: input.name, kind: input.kind, port: input.port, worker})
-					const current = yield* owned
-					if (Array.some(current, row => row.name === input.name)) {
-						return yield* DeployError.make({message: 'Remove the existing owned exposure before changing it'})
-					}
-					if (
-						Array.some(
-							current,
-							row => row.hostname === input.hostname && (row.kind === 'public' || row.port === input.port)
-						)
-					) {
-						return yield* DeployError.make({message: 'This hostname or port already has an owned exposure'})
-					}
 					if (input.kind === 'public' && !input.publicAccess) {
 						return yield* DeployError.make({message: 'Explicitly confirm public access before publishing a port'})
 					}
@@ -218,92 +293,116 @@ export class Exposures extends Context.Service<Exposures>()('@deslop/deploy/serv
 							message: 'Public exposure needs a Linux x64 worker; expose this port to the tailnet'
 						})
 					}
-					const exposure = Exposure.make(Struct.omit(input, ['publicAccess']))
-					if (exposure.kind === 'tailnet') {
-						yield* checkTailnet(exposure)
+					// A reserved port is refused before any lookup, since the lookup connects to it.
+					yield* Option.match(reservedPort(input.port), {
+						onNone: () => Effect.void,
+						onSome: message => DeployError.make({message})
+					})
+					yield* inventory.refresh
+					const found = yield* listener((yield* inventory.snapshot).items, input.port)
+					yield* Option.match(refusal(input, found), {
+						onNone: () => Effect.void,
+						onSome: message => DeployError.make({message})
+					})
+					// The owner is what a restore compares against, so a port nothing listens on is not published.
+					if (Option.isNone(found.owner)) {
+						return yield* DeployError.make({
+							message: `Nothing listens on 127.0.0.1:${input.port}; start it before publishing it`
+						})
 					}
-					// Ownership is kept before an external process changes, so an interrupted apply stays inspectable and removable.
-					yield* asStorageDeployError(insertExposure(exposure))
-					yield* Effect.mapError(
-						Effect.gen(function* () {
-							if (exposure.kind === 'public') {
-								yield* caddyApply([...current, exposure])
-							} else {
-								yield* run('tailscale', [
-									'serve',
-									'--bg',
-									`--https=${exposure.port}`,
-									`http://127.0.0.1:${exposure.port}`
-								])
-								if (!ownsMapping(yield* status, exposure)) {
-									return yield* DeployError.make({message: 'Tailscale configured a different hostname or target'})
-								}
-							}
-						}),
-						cause =>
-							DeployError.make({
-								cause,
-								message: `The owned exposure was saved, but HTTPS setup did not finish. Inspect it before retrying.`
+					const exposure = Exposure.make({...Struct.omit(input, ['publicAccess']), owner: found.owner, state: 'active'})
+					const current = yield* owned
+					yield* Option.match(ownedConflict(current, exposure), {
+						onNone: () => Effect.void,
+						onSome: message => DeployError.make({message})
+					})
+					if (exposure.kind === 'tailnet') {
+						const status = yield* proxies.serveStatus
+						if (
+							servesPort(status, exposure.port) ||
+							Option.exists(
+								status.AllowFunnel,
+								permissions => permissions[`${exposure.hostname}:${exposure.port}`] === true
+							)
+						) {
+							return yield* DeployError.make({
+								message: 'This Tailscale port or Funnel permission already exists and is not owned by Deploy'
 							})
-					)
+						}
+						if (!Option.contains(yield* proxies.tailnetName, exposure.hostname)) {
+							return yield* DeployError.make({
+								message: 'Use this worker’s Tailscale DNS name; Deploy never publishes another worker’s hostname'
+							})
+						}
+					} else {
+						yield* proxies.validate([
+							...Array.filter(current, row => row.kind === 'public' && row.state === 'active'),
+							exposure
+						])
+					}
+					// Ownership is saved before an external process changes, so an interrupted change stays inspectable and the next pass finishes it.
+					yield* asStorageDeployError(insertExposure(exposure))
+					yield* settle(exposure.name, 'The exposure is saved and Deploy keeps applying it')
 					return exposureUrl(exposure)
 				},
-				Effect.scoped,
 				Semaphore.withPermit(lock),
 				asDeployError
 			),
 			hide: Effect.fn('Exposures.hide')(
 				function* (name: ExposureName, _admin: Admin) {
 					yield* Effect.annotateCurrentSpan({exposure: name, worker})
-					const current = yield* owned
 					const exposure = yield* pipe(
-						current,
+						yield* owned,
 						Array.findFirst(row => row.name === name),
 						Effect.fromOption,
 						Effect.mapError(cause => DeployError.make({cause, message: 'Deploy does not own this exposure'}))
 					)
-					if (exposure.kind === 'tailnet') {
-						const mappings = yield* status
-						if (Option.exists(mappings.TCP, ports => Record.has(ports, `${exposure.port}`))) {
-							if (!ownsMapping(mappings, exposure)) {
-								return yield* DeployError.make({
-									message: 'This mapping was changed outside Deploy; refusing to remove it'
-								})
-							}
-							yield* run('tailscale', ['serve', `--https=${exposure.port}`, 'off'])
+					if (exposure.kind === 'tailnet' && exposure.state === 'active') {
+						// An unreadable status does not stop the removal: the pass checks ownership again before it changes Serve.
+						if (
+							Option.exists(
+								yield* Effect.option(proxies.serveStatus),
+								status => servesPort(status, exposure.port) && !ownsMapping(status, exposure)
+							)
+						) {
+							return yield* DeployError.make({
+								message: 'This mapping was changed outside Deploy; refusing to remove it'
+							})
 						}
-					} else {
-						yield* caddyApply(Array.filter(current, row => row.name !== name))
 					}
-					yield* asStorageDeployError(deleteExposure(name))
+					// The intent is saved before anything external changes, and a saved removal is never published again.
+					yield* Semaphore.withPermit(passLock, asStorageDeployError(markRemoving(name)))
+					yield* settle(name, 'The removal is saved and Deploy finishes it on its own')
 				},
-				Effect.scoped,
 				Semaphore.withPermit(lock),
-				asDeployError,
-				Effect.mapError(cause =>
-					DeployError.make({
-						cause,
-						message: `The ownership record was not removed; the external mapping may have changed.`
-					})
-				)
+				asDeployError
 			),
 			items: pipe(
-				owned,
-				Effect.map(current =>
-					Array.map(current, row =>
-						InventoryItem.make({
+				Effect.all({current: owned, failing: Ref.get(problems)}, {concurrency: 'unbounded'}),
+				Effect.map(read =>
+					Array.map(read.current, row => {
+						const problem = Record.get(read.failing, row.name)
+						return InventoryItem.make({
 							detail: `${row.kind} → 127.0.0.1:${row.port}`,
+							failure: Option.map(problem, reason => ({at: Option.none(), reason})),
+							health: Boolean.match(Option.isSome(problem), {
+								onFalse: Function.constant('quiet' as const),
+								onTrue: Function.constant('warning' as const)
+							}),
 							id: ItemId.make(`${worker}:exposure:${row.name}`),
 							kind: 'exposure',
 							name: row.name,
 							owned: Option.some(true),
 							port: Option.some(row.port),
 							publicAccess: Option.some(row.kind === 'public'),
-							state: 'configured; check backend',
+							state: Boolean.match(row.state === 'removing', {
+								onFalse: Function.constant('configured; check backend'),
+								onTrue: Function.constant('removing')
+							}),
 							url: Option.some(exposureUrl(row)),
 							worker
 						})
-					)
+					})
 				),
 				Effect.withSpan('Exposures.items', {attributes: {worker}})
 			)
@@ -316,5 +415,5 @@ export class Exposures extends Context.Service<Exposures>()('@deslop/deploy/serv
 	)
 
 	static readonly layer = (directory: string) =>
-		Layer.provide(Layer.effect(this, this.make(directory)), this.migrations)
+		pipe(Layer.effect(this, this.make), Layer.provide(Proxies.layer(directory)), Layer.provide(this.migrations))
 }
