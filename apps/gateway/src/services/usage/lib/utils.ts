@@ -33,15 +33,3 @@ export function usageWindow<A, E, R>(
 		)
 	)
 }
-
-// One delete statement removes at most this many rows, so a long-idle owner or server never holds the database for long.
-export const EXPIRY_BATCH = 5000
-
-// Calls are kept thirty days: when an owner or server makes a counted call, its own older calls go, batch after batch. A dormant one's history stays.
-export function expireCalls<E, R>(expire: Effect.Effect<readonly unknown[], E, R>) {
-	return pipe(
-		expire,
-		Effect.repeat({while: rows => rows.length === EXPIRY_BATCH}),
-		Effect.catchCause(cause => Effect.logWarning('Old calls could not be deleted', cause))
-	)
-}
