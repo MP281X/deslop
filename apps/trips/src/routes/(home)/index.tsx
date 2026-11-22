@@ -341,16 +341,16 @@ export function HomeRoute(props: {onOpen: (id: Booking['id']) => void}) {
 	const loaded = useAtomValue(bookingsAtom)
 	useAtomMount(problemSinceAtom(bookingsAtom))
 	return (
-		<ListToolbar
-			title="Trips"
-			session={session}
-			onSearch={setSearched}
-			problem={Option.liftPredicate(
-				<Problem source={bookingsAtom} label="Out of date" onRetry={useAtomRefresh(bookingsAtom)} />,
-				() => AsyncResult.isFailure(loaded) && Option.isNone(blockingFailure(loaded))
-			)}
-		>
-			<PasteSheet clipboard={clipboard}>
+		<PasteSheet clipboard={clipboard}>
+			<ListToolbar
+				title="Trips"
+				session={session}
+				onSearch={setSearched}
+				problem={Option.liftPredicate(
+					<Problem source={bookingsAtom} label="Out of date" onRetry={useAtomRefresh(bookingsAtom)} />,
+					() => AsyncResult.isFailure(loaded) && Option.isNone(blockingFailure(loaded))
+				)}
+			>
 				<Suspense
 					fallback={
 						<ItemGroupSkeleton
@@ -366,7 +366,7 @@ export function HomeRoute(props: {onOpen: (id: Booking['id']) => void}) {
 				>
 					<Bookings onOpen={props.onOpen} searched={searched} />
 				</Suspense>
-			</PasteSheet>
-		</ListToolbar>
+			</ListToolbar>
+		</PasteSheet>
 	)
 }

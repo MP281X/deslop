@@ -164,15 +164,6 @@ settings:
 
 catalogs:
   default:
-    '@typeonce/effect-machine':
-      specifier: 0.46.0
-      version: 0.46.0
-    '@typeonce/effect-machine-react':
-      specifier: 0.46.0
-      version: 0.46.0
-    '@typeonce/oxlint-plugin-effect-machine':
-      specifier: 0.46.0
-      version: 0.46.0
     tsrs:
       specifier: 7.1.0-beta.tsrs3
       version: 7.1.0-beta.tsrs3
@@ -213,10 +204,10 @@ importers:
         version: 4.1.5
       fallow:
         specifier: latest
-        version: 3.45.0
+        version: 3.46.0
       scheduler:
-        specifier: ^0.27.0
-        version: 0.27.0
+        specifier: ^0.28.0
+        version: 0.28.0
       tsrs:
         specifier: 'catalog:'
         version: 7.1.0-beta.tsrs3
@@ -240,7 +231,7 @@ importers:
         version: link:../../packages/runtime
       '@effect/atom-react':
         specifier: latest
-        version: 4.1.5(effect@4.1.5)(react@19.3.1)(scheduler@0.27.0)
+        version: 4.1.5(effect@4.1.5)(react@19.3.1)(scheduler@0.28.0)
       '@effect/platform-node':
         specifier: latest
         version: 4.1.5(effect@4.1.5)(redis@6.3.1)
@@ -270,7 +261,7 @@ importers:
         version: link:../../packages/runtime
       '@effect/atom-react':
         specifier: latest
-        version: 4.1.5(effect@4.1.5)(react@19.3.1)(scheduler@0.27.0)
+        version: 4.1.5(effect@4.1.5)(react@19.3.1)(scheduler@0.28.0)
       '@effect/platform-node':
         specifier: latest
         version: 4.1.5(effect@4.1.5)(redis@6.3.1)
@@ -303,7 +294,7 @@ importers:
         version: link:../../packages/runtime
       '@effect/atom-react':
         specifier: latest
-        version: 4.1.5(effect@4.1.5)(react@19.3.1)(scheduler@0.27.0)
+        version: 4.1.5(effect@4.1.5)(react@19.3.1)(scheduler@0.28.0)
       '@effect/platform-node':
         specifier: latest
         version: 4.1.5(effect@4.1.5)(redis@6.3.1)
@@ -317,11 +308,11 @@ importers:
         specifier: latest
         version: 1.170.46(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
       '@typeonce/effect-machine':
-        specifier: 'catalog:'
-        version: 0.46.0(effect@4.1.5)
+        specifier: latest
+        version: 0.47.1(effect@4.1.5)
       '@typeonce/effect-machine-react':
-        specifier: 'catalog:'
-        version: 0.46.0(@effect/atom-react@4.1.5(effect@4.1.5)(react@19.3.1)(scheduler@0.27.0))(effect@4.1.5)(react@19.3.1)(scheduler@0.27.0)
+        specifier: latest
+        version: 0.47.1(@effect/atom-react@4.1.5(effect@4.1.5)(react@19.3.1)(scheduler@0.28.0))(effect@4.1.5)(react@19.3.1)
       effect:
         specifier: latest
         version: 4.1.5
@@ -355,7 +346,7 @@ importers:
         version: link:../../packages/runtime
       '@effect/atom-react':
         specifier: latest
-        version: 4.1.5(effect@4.1.5)(react@19.3.1)(scheduler@0.27.0)
+        version: 4.1.5(effect@4.1.5)(react@19.3.1)(scheduler@0.28.0)
       '@effect/platform-node':
         specifier: latest
         version: 4.1.5(effect@4.1.5)(redis@6.3.1)
@@ -394,7 +385,7 @@ importers:
         version: link:../../packages/runtime
       '@effect/atom-react':
         specifier: latest
-        version: 4.1.5(effect@4.1.5)(react@19.3.1)(scheduler@0.27.0)
+        version: 4.1.5(effect@4.1.5)(react@19.3.1)(scheduler@0.28.0)
       '@fontsource-variable/geist':
         specifier: latest
         version: 5.3.0
@@ -409,7 +400,7 @@ importers:
         version: 2.1.10(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
       '@tanstack/react-hotkeys':
         specifier: latest
-        version: 0.27.1(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+        version: 0.27.2(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
       '@tanstack/react-router':
         specifier: latest
         version: 1.170.46(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
@@ -433,7 +424,7 @@ importers:
         version: link:../../packages/runtime
       '@effect/atom-react':
         specifier: latest
-        version: 4.1.5(effect@4.1.5)(react@19.3.1)(scheduler@0.27.0)
+        version: 4.1.5(effect@4.1.5)(react@19.3.1)(scheduler@0.28.0)
       '@effect/platform-node':
         specifier: latest
         version: 4.1.5(effect@4.1.5)(redis@6.3.1)
@@ -479,7 +470,7 @@ importers:
         version: link:../../packages/runtime
       '@effect/atom-react':
         specifier: latest
-        version: 4.1.5(effect@4.1.5)(react@19.3.1)(scheduler@0.27.0)
+        version: 4.1.5(effect@4.1.5)(react@19.3.1)(scheduler@0.28.0)
       '@effect/platform-node':
         specifier: latest
         version: 4.1.5(effect@4.1.5)(redis@6.3.1)
@@ -540,7 +531,7 @@ importers:
         version: link:../../packages/runtime
       '@effect/atom-react':
         specifier: latest
-        version: 4.1.5(effect@4.1.5)(react@19.3.1)(scheduler@0.27.0)
+        version: 4.1.5(effect@4.1.5)(react@19.3.1)(scheduler@0.28.0)
       '@effect/platform-node':
         specifier: latest
         version: 4.1.5(effect@4.1.5)(redis@6.3.1)
@@ -548,11 +539,11 @@ importers:
         specifier: ^58.0.29
         version: 58.0.29(@babel/core@7.29.13(supports-color@8.1.1))(expo@58.0.26)(react-dom@19.3.1(react@19.3.1))(react-native@0.88.1(@babel/core@7.29.13(supports-color@8.1.1))(@types/react@19.3.0)(react@19.3.1)(supports-color@8.1.1))(react@19.3.1)
       '@typeonce/effect-machine':
-        specifier: 'catalog:'
-        version: 0.46.0(effect@4.1.5)
+        specifier: latest
+        version: 0.47.1(effect@4.1.5)
       '@typeonce/effect-machine-react':
-        specifier: 'catalog:'
-        version: 0.46.0(@effect/atom-react@4.1.5(effect@4.1.5)(react@19.3.1)(scheduler@0.27.0))(effect@4.1.5)(react@19.3.1)(scheduler@0.27.0)
+        specifier: latest
+        version: 0.47.1(@effect/atom-react@4.1.5(effect@4.1.5)(react@19.3.1)(scheduler@0.28.0))(effect@4.1.5)(react@19.3.1)
       effect:
         specifier: latest
         version: 4.1.5
@@ -594,16 +585,16 @@ importers:
         version: link:../runtime
       '@effect/atom-react':
         specifier: latest
-        version: 4.1.5(effect@4.1.5)(react@19.3.1)(scheduler@0.27.0)
+        version: 4.1.5(effect@4.1.5)(react@19.3.1)(scheduler@0.28.0)
       '@expo/ui':
         specifier: ^58.0.29
         version: 58.0.29(@babel/core@7.29.13(supports-color@8.1.1))(expo@58.0.26)(react-dom@19.3.1(react@19.3.1))(react-native@0.88.1(@babel/core@7.29.13(supports-color@8.1.1))(@types/react@19.3.0)(react@19.3.1)(supports-color@8.1.1))(react@19.3.1)
       '@typeonce/effect-machine':
-        specifier: 'catalog:'
-        version: 0.46.0(effect@4.1.5)
+        specifier: latest
+        version: 0.47.1(effect@4.1.5)
       '@typeonce/effect-machine-react':
-        specifier: 'catalog:'
-        version: 0.46.0(@effect/atom-react@4.1.5(effect@4.1.5)(react@19.3.1)(scheduler@0.27.0))(effect@4.1.5)(react@19.3.1)(scheduler@0.27.0)
+        specifier: latest
+        version: 0.47.1(@effect/atom-react@4.1.5(effect@4.1.5)(react@19.3.1)(scheduler@0.28.0))(effect@4.1.5)(react@19.3.1)
       effect:
         specifier: latest
         version: 4.1.5
@@ -634,7 +625,7 @@ importers:
         version: link:../runtime
       '@effect/atom-react':
         specifier: latest
-        version: 4.1.5(effect@4.1.5)(react@19.3.1)(scheduler@0.27.0)
+        version: 4.1.5(effect@4.1.5)(react@19.3.1)(scheduler@0.28.0)
       '@fontsource-variable/jetbrains-mono':
         specifier: latest
         version: 5.3.0
@@ -718,8 +709,8 @@ importers:
         specifier: latest
         version: 1.169.0(@tanstack/react-router@1.170.46(react-dom@19.3.1(react@19.3.1))(react@19.3.1))(@types/node@26.6.6)(jiti@2.7.0)(supports-color@8.1.1)(terser@5.51.3)
       '@typeonce/effect-machine':
-        specifier: 'catalog:'
-        version: 0.46.0(effect@4.1.5)
+        specifier: latest
+        version: 0.47.1(effect@4.1.5)
       '@vitejs/plugin-react':
         specifier: latest
         version: 6.3.0(@voidzero-dev/vite-plus-core@8.3.8000(@types/node@26.6.6)(jiti@2.7.0)(terser@5.51.3))(babel-plugin-react-compiler@1.0.0)(oxc-transform-react@0.156.0)
@@ -757,8 +748,8 @@ importers:
         specifier: latest
         version: 0.2.5
       '@typeonce/oxlint-plugin-effect-machine':
-        specifier: 'catalog:'
-        version: 0.46.0(oxlint@1.94.0(vite-plus@1.7.0(@types/node@26.6.6)(@vitest/ui@5.1.0)(jiti@2.7.0)(terser@5.51.3)))
+        specifier: latest
+        version: 0.47.1(oxlint@1.94.0(vite-plus@1.7.0(@types/node@26.6.6)(@vitest/ui@5.1.0)(jiti@2.7.0)(terser@5.51.3)))
       effect:
         specifier: latest
         version: 4.1.5
@@ -1497,47 +1488,47 @@ packages:
     resolution: {integrity: sha512-EbxYllZ7/ozONVZd425cm4XnolfW+AmSFT5aP7Jdno6oc3WrYQcHz2CO20z/2rwWwYgztmV2PXvYH+BQ8YFjqg==}
     hasBin: true
 
-  '@fallow-cli/darwin-arm64@3.45.0':
-    resolution: {integrity: sha512-b0bT8vC5ZxfDQqzgKmgbiwigKwV8TK0NEC+P/lfd5EntEE4Iy3fNbKeoA7jz/swb6qm9bwhIgPEcSzxjilBxjw==}
+  '@fallow-cli/darwin-arm64@3.46.0':
+    resolution: {integrity: sha512-wvMkJxWmi5ApWqjoyd7Wm/f0WLGwtxr3VE4dz+E567hYN7RSC17yuzjnVr0PhTEnSgF36a5uw2TuDjACpYicFA==}
     cpu: [arm64]
     os: [darwin]
 
-  '@fallow-cli/darwin-x64@3.45.0':
-    resolution: {integrity: sha512-cGKvlsgGtLvx3YTPJ57lRm4AqxEQnfJkQssIa5iCZ+6i283gsJnlv/HsaO8SE5eeYsIkdrtuQwJ/wrDE5kzysQ==}
+  '@fallow-cli/darwin-x64@3.46.0':
+    resolution: {integrity: sha512-42TT1ZSt0N6wyk6dYtI/aHBuI5DX86ab+v5B6iVvXeQOmwFLrbfaVWieRYtTmaA6Ls+S3om4hiVQ8EHwbzJ1bw==}
     cpu: [x64]
     os: [darwin]
 
-  '@fallow-cli/linux-arm64-gnu@3.45.0':
-    resolution: {integrity: sha512-2ikz1/TDF1emUnEtqSwsHWwLiqCUb3YX3qjki+t/SXMJwbKRmeNFqZaE+JBRL/+IisMNjvwwY4iKkJSpwn8nFQ==}
+  '@fallow-cli/linux-arm64-gnu@3.46.0':
+    resolution: {integrity: sha512-xYZb2EIkKwBddFfgibG6EvHRXGyQlNEjNwYD1OSRTm0v/MNkkvDe2dce31egkt/ocjLzo/ufi4gDe7KmvHSmWg==}
     cpu: [arm64]
     os: [linux]
     libc: [glibc]
 
-  '@fallow-cli/linux-arm64-musl@3.45.0':
-    resolution: {integrity: sha512-Vyzh/4UBj/FQTZqrddpCmbrHmksV+I4JqfL000+YpsOzxgh0I4YMZwDVQGxhDmpvVREWn2OgbdwKJQ/fNw0PyQ==}
+  '@fallow-cli/linux-arm64-musl@3.46.0':
+    resolution: {integrity: sha512-OyVtlDmXV2GQ+g4pRAbaxQ1H9vyxDMmDfoi2wHBn8ZH5dA49kKTfzadJf/04u46+bpeNoNLpKOqZFVbqGZCraA==}
     cpu: [arm64]
     os: [linux]
     libc: [musl]
 
-  '@fallow-cli/linux-x64-gnu@3.45.0':
-    resolution: {integrity: sha512-6zBnK8373ZJmvOaeltveP5rimxO/f35iXKGLXyQBtGmlVuTb/SBLf6c3yuFpTi/UEcyVEkJGwkkCZpGW8SPkLA==}
+  '@fallow-cli/linux-x64-gnu@3.46.0':
+    resolution: {integrity: sha512-AsO67zA3or0bzWIgcR7AiaeplM6HyIek6em9BrL+s2a9SvbSuusjH66MLSIqFqkXk8s2IgsAunZWL9V8Fn9BnQ==}
     cpu: [x64]
     os: [linux]
     libc: [glibc]
 
-  '@fallow-cli/linux-x64-musl@3.45.0':
-    resolution: {integrity: sha512-nBPgIZ8raHvGvyih0k5AOZ3lqIQ4mle1nrdxLCDL9V7q0G+d1Ng++Tp6R+jXAmYvAYqiNbiF44v8Oh5b2dyDHQ==}
+  '@fallow-cli/linux-x64-musl@3.46.0':
+    resolution: {integrity: sha512-NUpeUoGWRBB8Tds1BVNvN9CK24m2z3moONYhAUYAR7QThKMCp4x/y+pUEjKwESkEoHLriU8X2XD7pP6axJf5Tg==}
     cpu: [x64]
     os: [linux]
     libc: [musl]
 
-  '@fallow-cli/win32-arm64-msvc@3.45.0':
-    resolution: {integrity: sha512-3IcYK6TGq4U7NMMS9S6H5PZJ1bx4jOIPBZbRuDU2yKtNQK4oSOtpaBE1J/mtDPhZdtd86wvjEYYI0EjUXzf7fA==}
+  '@fallow-cli/win32-arm64-msvc@3.46.0':
+    resolution: {integrity: sha512-2ltJIwc9fwgqKYYeT/42U0rH6Z1qs87kcuHpY6vHnpZyIjIHsUwpLsEdYzkHb9x2GfbdV8ExRmr98Qo1JvlO9w==}
     cpu: [arm64]
     os: [win32]
 
-  '@fallow-cli/win32-x64-msvc@3.45.0':
-    resolution: {integrity: sha512-kEv7k0ZUy6eJ970iKHZG/4vwazucz2vQ4PhSFe+6HwCGioTpFn/ZBtmHl3koP3ZXens/TNKzhGW65MsEJ6yJfA==}
+  '@fallow-cli/win32-x64-msvc@3.46.0':
+    resolution: {integrity: sha512-ekZqYupm9TZI4odbLwWQEp5phVrouCwvTmZl3Yx6ZTaZCcxi7fVeKwGiQPbP7dwWRV/3AyOoIwqSnL5c0QASvg==}
     cpu: [x64]
     os: [win32]
 
@@ -2180,8 +2171,8 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@oxlint/plugins@1.80.0':
-    resolution: {integrity: sha512-QRgH1XqQEYNHa4f1vvPQ5fAdNdncHGIUG1ZWLlGIZHky3qwCEeAKYitZNbZMtaXtAQAAFFTOwqUfzESvimqZNA==}
+  '@oxlint/plugins@1.90.0':
+    resolution: {integrity: sha512-FT0JJDNbj9oobVWHpAzFckHY/bx1ftPjulBx4UCMXqmDUGqVWOkbKe5bj4zdEL+D5Ud7y/RfioLwSvlHBMjI4w==}
     engines: {node: ^12.22.0 || ^14.17.0 || >=16.0.0}
 
   '@oxlint/plugins@1.94.0':
@@ -2655,12 +2646,12 @@ packages:
     resolution: {integrity: sha512-w1+YvwmTkwt5n8yUqEH3IWZ9DsmorCZW/EQ3KYHnqEgIkOZpH54NvW6/Epq3Dzb8H0ifIeYX8PExvrNLIH5FIA==}
     engines: {node: '>=20.19'}
 
-  '@tanstack/hotkeys@0.33.0':
-    resolution: {integrity: sha512-xZ7A28qJ2YUq+bxhclEquxvM6LpwGMLUK0daiNC2hJ5frXHeGFdyjgG+Onz77ZwQw2XWHK5hLnWhQQ1vCZUkQQ==}
+  '@tanstack/hotkeys@0.33.1':
+    resolution: {integrity: sha512-8lTyzrwAKIQm/8Ml938RXMSDBy/6wsIlavczmjDec4hsXkSPys0SbQ59kYboC6cBOfR2T1jFBQ1P0J3A06szsA==}
     engines: {node: '>=20'}
 
-  '@tanstack/react-hotkeys@0.27.1':
-    resolution: {integrity: sha512-HFs7zakSgaO3FqOPp2HHJpeixKdWL+LLG0l2oMloyY24xbVfsOKD/8YN8QCD4sseujG0/muXVrB8v5io3f0tDw==}
+  '@tanstack/react-hotkeys@0.27.2':
+    resolution: {integrity: sha512-VpnIlDQ1t21G2scxjsvdxsg4hhj9R1gZMjJxEitVS6f4+PAz78fA5W/Q0iBythZH/gBSvqp0Aj2HLRyEvHcm/g==}
     engines: {node: '>=20'}
     peerDependencies:
       react: '>=18.0.0'
@@ -2836,23 +2827,22 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@typeonce/effect-machine-react@0.46.0':
-    resolution: {integrity: sha512-dt2aWKF90kgGI7koorsUbvuPWaOeEM9j5q7tIyixiA84+dHJhveze+q7fV7Bl4+9OvwNei1AaJXuSYSpmzFhHw==}
+  '@typeonce/effect-machine-react@0.47.1':
+    resolution: {integrity: sha512-kst94BFEoWrK3hof6lyVOepqZ9Da3V5P4JwhujSpQqonYSkqOIbl97T1i2Fq40ZI5MlsqQUdW7B1OIXje2O0Ew==}
     engines: {node: '>=20'}
     peerDependencies:
       '@effect/atom-react': ^4.0.0
       effect: ^4.0.0
       react: '>=19.0.0 <20.0.0'
-      scheduler: '>=0.25.0 <0.28.0'
 
-  '@typeonce/effect-machine@0.46.0':
-    resolution: {integrity: sha512-Fsvvzf2htH6XqrROyBlEonneuVvZjlTqdoXlY7cNnttN6gb/jWVZJDGtssehfKiN83NRLqT4Df22/Y9UiuK2vg==}
+  '@typeonce/effect-machine@0.47.1':
+    resolution: {integrity: sha512-j9SiaXGsUU2YSNXxnwRQHFzLAJa8sb3mm2HQwmRWxco4AtbJj6RG/z/nmTK3vCMdTlKuZltnNfxQjW20K+Fpog==}
     engines: {node: '>=20'}
     peerDependencies:
       effect: ^4.0.0
 
-  '@typeonce/oxlint-plugin-effect-machine@0.46.0':
-    resolution: {integrity: sha512-XpMrYGAlVEjKk2E5ZhMXpU0PYsn5ztYex54oZMorvE9C8KzJ9SXVfcMKWb9qx/ujS3ZNlgA6bwnz5ivbuQUbcg==}
+  '@typeonce/oxlint-plugin-effect-machine@0.47.1':
+    resolution: {integrity: sha512-5agbME+Sx9qUS+2vnl7E292GOvV17qq2ngj67H4gYt5zV/rX34DsdaV7O1HCD0vbOKUWakSTAkZs5PdBWBVovw==}
     engines: {node: '>=20.19.0'}
     peerDependencies:
       oxlint: '>=1.80.0 <2'
@@ -4112,8 +4102,8 @@ packages:
   exponential-backoff@3.1.3:
     resolution: {integrity: sha512-ZgEeZXj30q+I0EN+CbSSpIyPaJ5HVQD18Z1m+u1FXbAeT94mr1zw50q4q6jiiC447Nl/YTcIYSAftiGqetwXCA==}
 
-  fallow@3.45.0:
-    resolution: {integrity: sha512-KJnlOBV/a3cDYafnO8/dqStEDARQPiL1R+65JQ2l9u+r9sgyt0JNNbDK0J1zsZWng+7SQvukeanuNhn0LmNa3g==}
+  fallow@3.46.0:
+    resolution: {integrity: sha512-PXCxpJ45u6kcItpK+IDPCNvEdLRGZreFHBmNXcdNA3aaRfJrWq2qLjZLzWJLnSK16xdrrrMFIlsu6BSnxWB8gw==}
     engines: {node: '>=22'}
     hasBin: true
 
@@ -5362,9 +5352,6 @@ packages:
     resolution: {integrity: sha512-42tBVwLWnaQvW5zc4HbZrTuWccECCZfBi92FDuwtqxasH+JbPB3/FOKb1m222K42R4WxuxzzMsTswfzgtSu64Q==}
     engines: {node: '>=11.0.0'}
 
-  scheduler@0.27.0:
-    resolution: {integrity: sha512-eNv+WrVbKu1f3vbYJT/xtiF5syA5HPIMtf9IgY/nKg0sWqzAUEvqY/xm7OcZc/qafLx/iO9FgOmeSAp4v5ti/Q==}
-
   scheduler@0.28.0:
     resolution: {integrity: sha512-juorfCmIkIw8tT+p5BXSm6PJjQF/ycEYmKyzURCIt/RaZIhL+PulbQ9Yu2z1HdOJDdqDTlxA1+xKBmHXJsczAw==}
 
@@ -6554,11 +6541,11 @@ snapshots:
     dependencies:
       effect: 4.1.5
 
-  '@effect/atom-react@4.1.5(effect@4.1.5)(react@19.3.1)(scheduler@0.27.0)':
+  '@effect/atom-react@4.1.5(effect@4.1.5)(react@19.3.1)(scheduler@0.28.0)':
     dependencies:
       effect: 4.1.5
       react: 19.3.1
-      scheduler: 0.27.0
+      scheduler: 0.28.0
 
   '@effect/platform-node-shared@4.1.5(effect@4.1.5)':
     dependencies:
@@ -7002,28 +6989,28 @@ snapshots:
       chalk: 4.1.2
       js-yaml: 4.3.2
 
-  '@fallow-cli/darwin-arm64@3.45.0':
+  '@fallow-cli/darwin-arm64@3.46.0':
     optional: true
 
-  '@fallow-cli/darwin-x64@3.45.0':
+  '@fallow-cli/darwin-x64@3.46.0':
     optional: true
 
-  '@fallow-cli/linux-arm64-gnu@3.45.0':
+  '@fallow-cli/linux-arm64-gnu@3.46.0':
     optional: true
 
-  '@fallow-cli/linux-arm64-musl@3.45.0':
+  '@fallow-cli/linux-arm64-musl@3.46.0':
     optional: true
 
-  '@fallow-cli/linux-x64-gnu@3.45.0':
+  '@fallow-cli/linux-x64-gnu@3.46.0':
     optional: true
 
-  '@fallow-cli/linux-x64-musl@3.45.0':
+  '@fallow-cli/linux-x64-musl@3.46.0':
     optional: true
 
-  '@fallow-cli/win32-arm64-msvc@3.45.0':
+  '@fallow-cli/win32-arm64-msvc@3.46.0':
     optional: true
 
-  '@fallow-cli/win32-x64-msvc@3.45.0':
+  '@fallow-cli/win32-x64-msvc@3.46.0':
     optional: true
 
   '@floating-ui/core@1.8.0':
@@ -7390,7 +7377,7 @@ snapshots:
   '@oxlint/binding-win32-x64-msvc@1.94.0':
     optional: true
 
-  '@oxlint/plugins@1.80.0': {}
+  '@oxlint/plugins@1.90.0': {}
 
   '@oxlint/plugins@1.94.0': {}
 
@@ -7815,11 +7802,11 @@ snapshots:
 
   '@tanstack/history@1.162.5': {}
 
-  '@tanstack/hotkeys@0.33.0': {}
+  '@tanstack/hotkeys@0.33.1': {}
 
-  '@tanstack/react-hotkeys@0.27.1(react-dom@19.3.1(react@19.3.1))(react@19.3.1)':
+  '@tanstack/react-hotkeys@0.27.2(react-dom@19.3.1(react@19.3.1))(react@19.3.1)':
     dependencies:
-      '@tanstack/hotkeys': 0.33.0
+      '@tanstack/hotkeys': 0.33.1
       react: 19.3.1
       react-dom: 19.3.1(react@19.3.1)
 
@@ -7989,21 +7976,20 @@ snapshots:
   '@tsrs/win32-x64@7.1.0-beta.tsrs3':
     optional: true
 
-  '@typeonce/effect-machine-react@0.46.0(@effect/atom-react@4.1.5(effect@4.1.5)(react@19.3.1)(scheduler@0.27.0))(effect@4.1.5)(react@19.3.1)(scheduler@0.27.0)':
+  '@typeonce/effect-machine-react@0.47.1(@effect/atom-react@4.1.5(effect@4.1.5)(react@19.3.1)(scheduler@0.28.0))(effect@4.1.5)(react@19.3.1)':
     dependencies:
-      '@effect/atom-react': 4.1.5(effect@4.1.5)(react@19.3.1)(scheduler@0.27.0)
-      '@typeonce/effect-machine': 0.46.0(effect@4.1.5)
+      '@effect/atom-react': 4.1.5(effect@4.1.5)(react@19.3.1)(scheduler@0.28.0)
+      '@typeonce/effect-machine': 0.47.1(effect@4.1.5)
       effect: 4.1.5
       react: 19.3.1
-      scheduler: 0.27.0
 
-  '@typeonce/effect-machine@0.46.0(effect@4.1.5)':
+  '@typeonce/effect-machine@0.47.1(effect@4.1.5)':
     dependencies:
       effect: 4.1.5
 
-  '@typeonce/oxlint-plugin-effect-machine@0.46.0(oxlint@1.94.0(vite-plus@1.7.0(@types/node@26.6.6)(@vitest/ui@5.1.0)(jiti@2.7.0)(terser@5.51.3)))':
+  '@typeonce/oxlint-plugin-effect-machine@0.47.1(oxlint@1.94.0(vite-plus@1.7.0(@types/node@26.6.6)(@vitest/ui@5.1.0)(jiti@2.7.0)(terser@5.51.3)))':
     dependencies:
-      '@oxlint/plugins': 1.80.0
+      '@oxlint/plugins': 1.90.0
       oxlint: 1.94.0(vite-plus@1.7.0(@types/node@26.6.6)(@vitest/ui@5.1.0)(jiti@2.7.0)(terser@5.51.3))
 
   '@types/aria-query@5.0.4': {}
@@ -9179,18 +9165,18 @@ snapshots:
 
   exponential-backoff@3.1.3: {}
 
-  fallow@3.45.0:
+  fallow@3.46.0:
     dependencies:
       detect-libc: 2.1.2
     optionalDependencies:
-      '@fallow-cli/darwin-arm64': 3.45.0
-      '@fallow-cli/darwin-x64': 3.45.0
-      '@fallow-cli/linux-arm64-gnu': 3.45.0
-      '@fallow-cli/linux-arm64-musl': 3.45.0
-      '@fallow-cli/linux-x64-gnu': 3.45.0
-      '@fallow-cli/linux-x64-musl': 3.45.0
-      '@fallow-cli/win32-arm64-msvc': 3.45.0
-      '@fallow-cli/win32-x64-msvc': 3.45.0
+      '@fallow-cli/darwin-arm64': 3.46.0
+      '@fallow-cli/darwin-x64': 3.46.0
+      '@fallow-cli/linux-arm64-gnu': 3.46.0
+      '@fallow-cli/linux-arm64-musl': 3.46.0
+      '@fallow-cli/linux-x64-gnu': 3.46.0
+      '@fallow-cli/linux-x64-musl': 3.46.0
+      '@fallow-cli/win32-arm64-msvc': 3.46.0
+      '@fallow-cli/win32-x64-msvc': 3.46.0
 
   fast-deep-equal@3.1.3: {}
 
@@ -10636,8 +10622,6 @@ snapshots:
   sandbox-cli-detector@0.2.0: {}
 
   sax@1.6.1: {}
-
-  scheduler@0.27.0: {}
 
   scheduler@0.28.0: {}
 

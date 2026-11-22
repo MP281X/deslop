@@ -206,7 +206,6 @@ export function ChaptersRoute(props: {
 	return (
 		<ListToolbar
 			title={SERIES_NAMES[props.series]}
-			prompt={`Search ${SERIES_NAMES[props.series]}`}
 			session={session}
 			onSearch={setSearched}
 			problem={Option.liftPredicate(

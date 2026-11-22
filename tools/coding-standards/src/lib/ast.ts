@@ -16,9 +16,6 @@ export const TEST_RUNNERS = /^(?:@effect\/vitest|vitest|vite-plus\/test)$/u
 type LengthTest = typeof LengthTest.Type
 const LengthTest = Schema.Literals(['empty', 'nonEmpty'])
 
-export type LogicalOperator = typeof LogicalOperator.Type
-export const LogicalOperator = Schema.Literals(['&&', '||'])
-
 // Names, literals and the openings of calls, arrays and objects run no code, so a getter cannot run before a moved read.
 export function inert(token: Token) {
 	if (Array.contains(['Boolean', 'Identifier', 'Null', 'Numeric', 'String'], token.type)) return true
@@ -183,7 +180,7 @@ export function effectImport(input: {context: Context; fixer: Fixer; name: strin
 	return imports
 }
 
-export function isNamespaceImport(input: {context: Context; node: ESTree.IdentifierReference; source: string}) {
+function isNamespaceImport(input: {context: Context; node: ESTree.IdentifierReference; source: string}) {
 	return Array.some(
 		importsOf(input.context, input.node),
 		binding => binding.specifier.type === 'ImportNamespaceSpecifier' && binding.source === input.source
@@ -480,7 +477,7 @@ export function matches(regExp: RegExp) {
 	return (text: string) => Option.isSome(String.match(regExp)(text))
 }
 
-export const isSchemaOperationName = matches(
+const isSchemaOperationName = matches(
 	/^(?:(?:decode|encode)(?:Unknown)?(?:Effect|Exit|Option|Promise|Result|Sync)|asserts|is)$/u
 )
 

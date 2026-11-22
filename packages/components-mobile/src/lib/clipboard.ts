@@ -107,10 +107,6 @@ class ClipboardOffer extends Context.Service<
 // A copy is offered once: the change count it was answered at stays in the app's file, so a return offers only a newer copy.
 const clipboardEvents = Machine.events({Answered: {save: Schema.Boolean}, Returned: {}})
 const clipboardMachine = Machine.make({
-	branches: {
-		answered: {checking: {target: 'Checking'}, idle: {target: 'Idle'}},
-		inspected: {idle: {target: 'Idle'}, offered: {target: 'Offered'}}
-	},
 	effects: {
 		answer: Effect.fnUntraced(function* (answer: Answer) {
 			return yield* (yield* ClipboardOffer).answer(answer)
@@ -148,24 +144,25 @@ const clipboardMachine = Machine.make({
 			invoke: {
 				input: transition => transition.state,
 				onDone: {
-					branches: 'answered',
+					branches: [{target: 'Checking'}, {target: 'Idle'}],
 					resolve: transition =>
 						Boolean.match(transition.state.returned, {
-							onFalse: () => transition.select.idle(),
-							onTrue: () => transition.select.checking()
+							onFalse: () => transition.select.target('Idle'),
+							onTrue: () => transition.select.target('Checking')
 						})
 				},
 				src: 'answer'
 			},
 			on: {
 				Returned: {
-					data: transition => ({
-						count: transition.state.count,
-						kind: transition.state.kind,
-						returned: true,
-						save: transition.state.save
-					}),
-					update: 'Answering'
+					update: {
+						Answering: transition => ({
+							count: transition.state.count,
+							kind: transition.state.kind,
+							returned: true,
+							save: transition.state.save
+						})
+					}
 				}
 			}
 		},
@@ -173,11 +170,11 @@ const clipboardMachine = Machine.make({
 		Checking: {
 			invoke: {
 				onDone: {
-					branches: 'inspected',
+					branches: [{target: 'Idle'}, {target: 'Offered'}],
 					resolve: transition =>
 						Option.match(transition.output, {
-							onNone: () => transition.select.idle(),
-							onSome: offer => transition.select.offered({data: offer})
+							onNone: () => transition.select.target('Idle'),
+							onSome: offer => transition.select.target('Offered', {data: offer})
 						})
 				},
 				onFailure: {target: 'Idle'},
