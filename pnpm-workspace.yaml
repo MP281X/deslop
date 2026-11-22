@@ -5,6 +5,10 @@ packages:
 
 catalog:
   vite-plus: 1.7.0
+  # effect-machine 0.47 changed how a machine is declared; the machines in runtime and components-mobile are written for 0.46.
+  '@typeonce/effect-machine': 0.46.0
+  '@typeonce/effect-machine-react': 0.46.0
+  '@typeonce/oxlint-plugin-effect-machine': 0.46.0
   # @effect/tsgo 0.73 patches tsrs2 and tsrs3 only; back to latest once it patches tsrs4.
   tsrs: 7.1.0-beta.tsrs3
   vite: npm:@voidzero-dev/vite-plus-core@8.3.8000
