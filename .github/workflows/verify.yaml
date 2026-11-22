@@ -1,11 +1,13 @@
 name: Verify
+# The run record names only the pull request's head; Release reads the merge commit GitHub tested from here.
+run-name: ${{ github.sha }} ${{ github.event.pull_request.title }}
 
-# Every branch push; Release repeats this unless the merged tree already passed.
+# Every pull request, on GitHub's merge with its base rather than the branch alone; Release repeats this unless the merged tree already passed.
 on:
-  push:
-    branches-ignore: [main]
+  pull_request:
   workflow_call:
 
+# For a pull request the ref is its merge ref, so a new push replaces only that pull request's older run.
 concurrency:
   group: verify-${{ github.ref }}
   cancel-in-progress: true
@@ -14,13 +16,12 @@ permissions:
   contents: read
 
 jobs:
+  # Release calls this only for a tree no pull request run verified, so its probe runs before anything ships.
   build:
     name: Build
-    # Release already builds after verification, immediately before publishing.
-    if: github.ref != 'refs/heads/main'
     runs-on: ubuntu-26.04
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup
         with: {tasks: 'true'}
       - name: Build applications
@@ -35,7 +36,7 @@ jobs:
     name: Check
     runs-on: ubuntu-26.04
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup
         with: {tasks: 'true'}
       - name: Shared agent instructions
@@ -43,6 +44,23 @@ jobs:
         run: diff <(sed -n '/^# Work/,$p' .claude/agents/pair.md) <(sed -n '/^# Work/,$p' .codex/instructions.md)
       - name: Format, lint, types and dead code
         run: vp run check
+      # Generators read the manifests of one checkout, so two branches can each take the same next port.
+      - name: One default port per app
+        shell: bash
+        run: |
+          ports=$(jq -r '"\(.config.port | tojson)\t\(input_filename)"' apps/*/package.json)
+          failed=0
+          while IFS=$'\t' read -r port manifest; do
+            if ! [[ $port =~ ^[1-9][0-9]{3,4}$ ]] || ((port < 1024 || port > 65535)); then
+              echo "::error file=$manifest::config.port must be an integer from 1024 to 65535, not $port"
+              failed=1
+            fi
+          done <<< "$ports"
+          for port in $(cut -f1 <<< "$ports" | sort | uniq -d); do
+            echo "::error::Default port $port is taken by $(awk -F'\t' -v port="$port" '$1 == port {print $2}' <<< "$ports" | paste -sd ' ')"
+            failed=1
+          done
+          exit "$failed"
 
   templates:
     name: Generated apps
@@ -52,22 +70,29 @@ jobs:
       DESLOP_DOMAIN: ${{ vars.DESLOP_DOMAIN }}
       CI: 'true'
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup
         with: {tasks: 'true'}
-      - name: Generate web and mobile apps
+      - name: Generate web and mobile apps and a package
         run: |
           vp create app -- --name ciweb
           vp create app -- --name cimobile --kind mobile
+          vp create package -- --name cipackage
           vp install --no-frozen-lockfile
-      - name: Type-check generated apps
+      - name: Type-check generated apps and package
         run: |
           vp exec effect-tsgo tsrs --noEmit --project apps/ciweb/tsconfig.json
           vp exec effect-tsgo tsrs --noEmit --project apps/cimobile/tsconfig.json
+          vp exec effect-tsgo tsrs --noEmit --project packages/cipackage/tsconfig.json
       - name: Build generated web app and mobile server
         run: |
           vp -C apps/ciweb run build
           vp -C apps/cimobile run build
+      # A starter must pass the same authorization check as every real app before it ships.
+      - name: Probe generated server authorization
+        run: |
+          node apps/ciweb/dist/server.js probe
+          node apps/cimobile/dist/server.js probe
       - name: Bundle generated iOS JavaScript
         run: vp -C apps/cimobile exec expo export --platform ios --output-dir dist/ios
 
@@ -75,7 +100,7 @@ jobs:
     name: Test
     runs-on: ubuntu-26.04
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup
         with: {tasks: 'true'}
       - name: Tests

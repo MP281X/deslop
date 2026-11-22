@@ -32,12 +32,12 @@ Two headless Debian workers, a MacBook and an iPhone in one tailnet.
 
 One per worktree: the systemd user unit `preview-<worktree name>`, shared over tailnet HTTPS.
 
-- **Script.** When a capture needs it, start the preview from the worktree root and give its HTTPS URL once it answers. Deslop's is `vp run preview [app]`, by default the first web app the branch changes, else Portfolio; `vp run preview:stop` ends it. Elsewhere, run the project's preview script (read it with `t3_project_read`). An app's own `preview` script or a background task bypasses the unit and dies with the turn. Maintenance removes a gone worktree's unit.
+- **Script.** When a capture needs it, start the preview from the worktree root and give its HTTPS URL once it answers. Deslop's is `vp run preview [app]`, by default the first app with a web page (`index.html`) the branch changes, else Portfolio; an iOS app's server, such as Stash's, starts only by name. It prints the URL only once that URL's `/api/runtime` names the app; it fails at once when another checkout or server holds its port, and with the unit's last log lines when the unit stops or five minutes pass, stopping what it started. `vp run preview:stop` ends it. Elsewhere, run the project's preview script (read it with `t3_project_read`). An app's own `preview` script or a background task bypasses the unit and dies with the turn. Maintenance removes a gone worktree's unit.
 - **Webhooks.** Funnel exposes a whole port: pick a free one of 443, 8443, 10000 and run `sudo tailscale funnel --bg --https=<port> --set-path <path> http://127.0.0.1:<api port><path>`; remove it with `... --set-path <path> off`.
 
 ## Tools
 
-| Question                        | Tool                                                                                                                                        |
-| ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| Runtime state                   | Deploy's `list_apps` or `read_resource_history`, with the full worker name (`dev.mp281x.xyz`); host checks follow the maintenance reference |
-| Runtime error, trace or latency | Scope's `list_operations`, then `search_traces`, then `read_trace` or `measure_latency`                                                     |
+| Question                        | Tool                                                                                                                              |
+| ------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| Runtime state                   | Deploy's `list_apps` or `read_resource_history`, with the short worker name (`dev`); host checks follow the maintenance reference |
+| Runtime error, trace or latency | Scope's `list_operations`, then `search_traces`, then `read_trace` or `measure_latency`                                           |

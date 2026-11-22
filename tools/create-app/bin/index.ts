@@ -12,8 +12,11 @@ import {nameFlag} from '@deslop/create-package/cli'
 
 import packageJson from '#package.json' with {type: 'json'}
 
+type Port = typeof Port.Type
+const Port = Schema.Int.check(Schema.isBetween({maximum: 65_535, minimum: 1024}))
+
 type AppPackage = typeof AppPackage.Type
-const AppPackage = Schema.Struct({config: Schema.Struct({port: Schema.Int})})
+const AppPackage = Schema.Struct({config: Schema.Struct({port: Port})})
 
 const create = Command.make(
 	'create-app',
@@ -36,7 +39,14 @@ const create = Command.make(
 			app =>
 				pipe(
 					fs.readFileString(path.join(apps, app, 'package.json')),
-					Effect.flatMap(Schema.decodeEffect(Schema.fromJsonString(AppPackage))),
+					Effect.flatMap(content =>
+						Effect.mapError(Schema.decodeEffect(Schema.fromJsonString(AppPackage))(content), cause =>
+							CliError.UserError.make({
+								cause,
+								userMessage: `${path.join(apps, app, 'package.json')} needs config.port, an integer from 1024 to 65535.`
+							})
+						)
+					),
 					Effect.map(found => Option.some(found.config.port)),
 					Effect.catchTag('PlatformError', cause => {
 						if (Predicate.isTagged(cause.reason, 'NotFound')) return Effect.succeedNone
@@ -44,6 +54,10 @@ const create = Command.make(
 					})
 				),
 			{concurrency: 'unbounded'}
+		)
+		const port = yield* Effect.mapError(
+			Schema.decodeEffect(Port)(Array.max([5100, ...Array.getSomes(ports)], Number.Order) + 1),
+			cause => CliError.UserError.make({cause, userMessage: 'No default port is left above the highest an app takes.'})
 		)
 		yield* copyTemplate({
 			from: path.join(import.meta.dirname, '../template', input.kind),
@@ -68,7 +82,7 @@ const create = Command.make(
 			},
 			rewrite: flow(
 				String.replaceAll('template-app', input.name),
-				String.replaceAll('"port": 5100', `"port": ${Array.max([5100, ...Array.getSomes(ports)], Number.Order) + 1}`)
+				String.replaceAll('"port": 5100', `"port": ${port}`)
 			),
 			to: root
 		})

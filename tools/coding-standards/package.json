@@ -38,7 +38,7 @@
 		"@effect/ai-anthropic": "latest",
 		"@effect/platform-node": "latest",
 		"@shadcn/lint": "latest",
-		"@typeonce/oxlint-plugin-effect-machine": "latest",
+		"@typeonce/oxlint-plugin-effect-machine": "catalog:",
 		"effect": "latest",
 		"oxc-parser": "latest",
 		"oxlint-plugin-eslint": "latest",

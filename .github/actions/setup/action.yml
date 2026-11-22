@@ -17,7 +17,7 @@ runs:
   steps:
     # No pnpm store cache: downloading the packages beats restoring the store, 15s against 31s on Linux and 35s against 80s on the Mac.
     - name: Install Node, Vite+ and dependencies
-      uses: voidzero-dev/setup-vp@v1.21.2
+      uses: voidzero-dev/setup-vp@68f39c78aaf39be468cabd2afb09c162574c84af # v1.21.2
       with:
         node-version: '26'
         run-install: true
@@ -46,7 +46,7 @@ runs:
     # After the install, which recreates node_modules, each job restores its own newest entries and saves the next once it succeeds, so the key rolls with each run.
     - name: Restore the task cache
       if: inputs.tasks == 'true'
-      uses: actions/cache@v6
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: node_modules/.vite/task-cache
         key: vite-task-${{ runner.os }}-${{ runner.arch }}-${{ github.job }}-${{ github.run_id }}-${{ github.run_attempt }}
@@ -61,7 +61,7 @@ runs:
     # One cache for every app: their pods come from the same lockfile, and the Hermes tarball's mirror often stalls.
     - name: Restore the CocoaPods cache
       if: inputs.ios == 'true'
-      uses: actions/cache@v6
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: |
           ~/Library/Caches/CocoaPods
