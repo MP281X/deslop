@@ -63,7 +63,6 @@ export function makeExpoConfig(app: {projectId: string; slug: string}) {
 					userInterfaceStyle: 'automatic',
 					version: `0.1.${release}`
 				} satisfies ExpoConfig,
-				domain,
 				// What a share extension reads from its app's Info.plist, as apple-targets sets no keys on the extension: the Keychain group both save to, the server and the app's colors to draw with.
 				shareExtension: (colors: ShareColors, primary: ThemeColor) => ({
 					// A Keychain item saved without a group lands in the app's first group, the one the share extension reads.

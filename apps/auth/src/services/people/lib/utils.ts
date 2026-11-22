@@ -26,13 +26,14 @@ export const authorizeMember = Effect.fnUntraced(function* (
 	if (isAdmin(admins, id)) {
 		return {admin: true, id, name: Option.match(row, {onNone: () => id, onSome: member => member.name})}
 	}
-	if (!Option.exists(row, member => isLetIn(member, browser))) {
-		return yield* AuthError.make({error: 'access_denied', message: 'An admin has not allowed this account yet'})
-	}
-	return yield* Option.match(row, {
-		onNone: () => Effect.fail(AuthError.make({error: 'access_denied', message: 'This account was removed'})),
-		onSome: member => Effect.succeed({admin: false, id: member.id, name: member.name})
-	})
+	return yield* pipe(
+		row,
+		Option.filter(member => isLetIn(member, browser)),
+		Option.match({
+			onNone: () => AuthError.make({error: 'access_denied', message: 'An admin has not allowed this account yet'}),
+			onSome: member => Effect.succeed({admin: false, id: member.id, name: member.name})
+		})
+	)
 })
 
 export function roleOf(admins: readonly GitHubId[], id: UserId, row: Option.Option<Member>, browser: boolean) {
