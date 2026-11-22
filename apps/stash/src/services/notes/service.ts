@@ -168,8 +168,12 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 		const ready = yield* Queue.unbounded<void>()
 		// A signal only says when to look for organizing notes, so signals sent while a claim runs wait as one.
 		const signals = yield* Queue.sliding<void>(1)
-		// Claims, starts, stops and removals take turns, so no claim starts a note that is being stopped or deleted.
+		// Claims, starts, stops, removals and a run's writes take turns, so no claim starts a note that is being stopped or deleted.
 		const dispatch = yield* Semaphore.make(1)
+		// What a run writes, to the database or to `unrecorded`, waits for the dispatch permit. A Regenerate or a removal holds it from before its own save until the run has ended, so a run's write lands wholly before that save or not at all; the wait is interruptible, so the stop ends a run waiting there.
+		function runWrite<A, E, R>(write: Effect.Effect<A, E, R>) {
+			return Semaphore.withPermit(dispatch, write)
+		}
 		// The request each run follows from, kept only to link its trace.
 		const requests = MutableHashMap.empty<NoteId, Tracer.Span>()
 		// Notes whose last run ended without its outcome stored, because every write failed. No claim starts them again until the person asks again or the server restarts, so a storage failure costs one run per note per server run, which asks until it has one answer, at most twice when the provider answers with an error; kept in memory, not in a table.
@@ -376,13 +380,14 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 			)
 		}
 
+		// A change a run stores.
 		function change(id: NoteId, update: NoteChange) {
-			return pipe(changeIn(id, update), sql.withTransaction, asNotesError)
+			return pipe(changeIn(id, update), sql.withTransaction, runWrite, asNotesError)
 		}
 
-		// A change that stores a provider's answer or settles the run.
+		// A change that stores a provider's answer or settles the run; each try takes the permit on its own, so the pause before the next does not hold it.
 		function persist(id: NoteId, update: NoteChange) {
-			return pipe(changeIn(id, update), sql.withTransaction, untilStored, asNotesError)
+			return pipe(changeIn(id, update), sql.withTransaction, runWrite, untilStored, asNotesError)
 		}
 
 		// Called in the transaction that leaves the note organizing: once it commits, the person has asked again, the claim looks at once and the run links back to this request.
@@ -454,6 +459,7 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 					})
 				),
 				sql.withTransaction,
+				runWrite,
 				untilStored,
 				asNotesError
 			)
@@ -626,6 +632,7 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 					})
 				),
 				sql.withTransaction,
+				runWrite,
 				asNotesError,
 				Effect.tap(note => Option.match(note, {onNone: () => removeFiles(id), onSome: () => Effect.void}))
 			)
@@ -751,8 +758,9 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 						Boolean.match(Exit.isFailure(exit) && Cause.hasInterruptsOnly(exit.cause), {
 							onFalse: () =>
 								pipe(
-									Effect.interruptible(persist(id, NoteChange.cases.stop.make({}))),
-									Effect.tapError(() => Effect.sync(() => MutableHashSet.add(unrecorded, id))),
+									persist(id, NoteChange.cases.stop.make({})),
+									Effect.tapError(() => runWrite(Effect.sync(() => MutableHashSet.add(unrecorded, id)))),
+									Effect.interruptible,
 									Effect.ignore({log: 'Warn', message: 'A stopped tagging run could not be recorded'})
 								),
 							onTrue: () => Effect.void
@@ -1107,21 +1115,17 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 			}),
 			regenerate: Effect.fn('Notes.regenerate')(function* (userId: UserId, id: NoteId) {
 				yield* savedNote(id)
-				// A restart that fails leaves the run and the answer it waits to store alone. The run stops inside the transaction, after the write took the database's write lock, so its answer cannot land over the new run's state, and no claim starts the note in between. A stopped run's note counts as unrecorded until the commit, which clears that, so a restart whose commit fails is not asked again by a scan: only by the person.
+				// The save and the stop hold the permit every write of the run waits for. A save that fails, at the write lock or at its commit, leaves the run to store its answer; a committed one stops the run before any of its writes, so what the old run still brings is dropped and no claim starts the note before the run has ended. A caller that goes away at the commit cannot part the two: the save and the stop end together.
 				yield* Semaphore.withPermit(
 					dispatch,
-					pipe(
-						changeIn(id, NoteChange.cases.retry.make({requester: userId})),
-						Effect.andThen(
-							Effect.suspend(() => {
-								if (!FiberMap.hasUnsafe(runs, id)) return Effect.void
-								MutableHashSet.add(unrecorded, id)
-								return FiberMap.remove(runs, id)
-							})
-						),
-						Effect.andThen(organizeLater(id)),
-						sql.withTransaction,
-						asNotesError
+					Effect.uninterruptible(
+						pipe(
+							changeIn(id, NoteChange.cases.retry.make({requester: userId})),
+							Effect.andThen(organizeLater(id)),
+							sql.withTransaction,
+							asNotesError,
+							Effect.andThen(FiberMap.remove(runs, id))
+						)
 					)
 				)
 			}, withReactivity),
@@ -1134,8 +1138,12 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 						Semaphore.withPermit(
 							yield* RcMap.get(publications, id),
 							Effect.gen(function* () {
-								// A deletion that fails leaves the run and the answer it waits to store alone.
-								yield* change(id, NoteChange.cases.remove.make({into: Option.none()}))
+								// A deletion that fails leaves the run and the answer it waits to store alone; it holds the permit already, so it does not write as a run does.
+								yield* pipe(
+									changeIn(id, NoteChange.cases.remove.make({into: Option.none()})),
+									sql.withTransaction,
+									asNotesError
+								)
 								MutableHashMap.remove(queued, id)
 								MutableHashMap.remove(requests, id)
 								MutableHashSet.remove(unrecorded, id)

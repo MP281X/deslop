@@ -56,6 +56,16 @@ export const migrations = {
 			)
 			ON CONFLICT DO NOTHING
 		`
+	}),
+	// Recipients are now taken when a chapter is saved. A chapter waiting for its first announcement takes the devices registered now, the ones its announcement would have taken, so it is still announced.
+	'0006_saved_recipients': Effect.gen(function* () {
+		yield* (yield* SqlClient.SqlClient)`
+			INSERT INTO deliveries (series, number, token, done)
+			SELECT chapters.series, chapters.number, devices.token, 0 FROM chapters, devices
+			WHERE chapters.notified = 0 AND NOT EXISTS (
+				SELECT 1 FROM deliveries WHERE deliveries.series = chapters.series AND deliveries.number = chapters.number
+			)
+		`
 	})
 }
 

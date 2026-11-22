@@ -588,11 +588,12 @@ it.layer(NodeServices.layer)(test =>
 
 it.layer(NodeServices.layer)(test =>
 	test.effect(
-		'leaves a note whose Regenerate could not commit to the person, not to the next scan',
+		'keeps the first answer of a note whose Regenerate could not commit, asking the provider once',
 		Effect.fnUntraced(function* () {
 			const directory = yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped()
 			const requests = yield* Ref.make(0)
 			const asked = yield* Deferred.make<void>()
+			const answered = yield* Deferred.make<void>()
 			const user = UserId.make('github:1')
 			return yield* Effect.scoped(
 				Effect.gen(function* () {
@@ -604,8 +605,12 @@ it.layer(NodeServices.layer)(test =>
 								Effect.flatMap(count =>
 									Boolean.match(count === 1, {
 										onFalse: () => Effect.succeed({...ORGANIZATION, title: 'Again'}),
-										// The first run waits for an answer that never comes.
-										onTrue: () => Effect.andThen(Deferred.succeed(asked, undefined), Effect.never)
+										onTrue: () =>
+											pipe(
+												Deferred.succeed(asked, undefined),
+												Effect.andThen(Deferred.await(answered)),
+												Effect.as(ORGANIZATION)
+											)
 									})
 								)
 							)
@@ -623,15 +628,72 @@ it.layer(NodeServices.layer)(test =>
 					)
 					const failure = yield* Effect.flip(notes.regenerate(user, FIRST))
 					yield* other.unsafe('DROP TRIGGER orphan')
-					// The minute scans since would have asked the provider again for the run the restart stopped.
+					// The minute scans since would have asked the provider again had the restart stopped the run.
 					yield* TestClock.adjust('3 minutes')
-					const waiting = [(yield* notes.get(FIRST)).status, yield* Ref.get(requests)]
-					yield* notes.regenerate(user, FIRST)
+					yield* Deferred.succeed(answered, undefined)
 					const final = yield* settledAfterTicks(notes)
 					assert.deepStrictEqual(
-						[failure._tag, waiting, final.status, final.title, yield* Ref.get(requests)],
-						['NotesError', ['organizing', 1], 'ready', 'Again', 2]
+						[failure._tag, final.status, final.title, yield* Ref.get(requests)],
+						['NotesError', 'ready', 'Soup', 1]
 					)
+				})
+			)
+		})
+	)
+)
+
+it.layer(NodeServices.layer)(test =>
+	test.effect(
+		'drops the answer the old run brings after a committed Regenerate and keeps the new run’s',
+		Effect.fnUntraced(function* () {
+			const directory = yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped()
+			const requests = yield* Ref.make(0)
+			const asked = yield* Deferred.make<void>()
+			const answered = yield* Deferred.make<void>()
+			const user = UserId.make('github:1')
+			const other = UserId.make('github:2')
+			return yield* Effect.scoped(
+				Effect.gen(function* () {
+					const context = yield* Layer.build(
+						notesIn(directory, () =>
+							pipe(
+								requests,
+								Ref.updateAndGet(count => count + 1),
+								Effect.flatMap(count =>
+									Boolean.match(count === 1, {
+										onFalse: () => Effect.succeed({...ORGANIZATION, title: 'Again'}),
+										// The first request answers only after the restart committed, and the stop waits for it.
+										onTrue: () =>
+											pipe(
+												Deferred.succeed(asked, undefined),
+												Effect.andThen(Deferred.await(answered)),
+												Effect.uninterruptible,
+												Effect.as(ORGANIZATION)
+											)
+									})
+								)
+							)
+						)
+					)
+					const notes = Context.get(context, Notes)
+					yield* notes.capture(user, {id: FIRST, text: 'Lentils with cumin'})
+					yield* Deferred.await(asked)
+					const watching = yield* Deferred.make<void>()
+					const restarted = yield* pipe(
+						notes.events,
+						Stream.tap(() => Deferred.succeed(watching, undefined)),
+						Stream.mapEffect(() => notes.get(FIRST)),
+						Stream.filter(note => note.requester === other),
+						Stream.runHead,
+						Effect.forkChild
+					)
+					yield* Deferred.await(watching)
+					const regenerating = yield* Effect.forkChild(notes.regenerate(other, FIRST))
+					yield* Fiber.join(restarted)
+					yield* Deferred.succeed(answered, undefined)
+					yield* Fiber.join(regenerating)
+					const final = yield* settledAfterTicks(notes)
+					assert.deepStrictEqual([final.status, final.title, yield* Ref.get(requests)], ['ready', 'Again', 2])
 				})
 			)
 		})
