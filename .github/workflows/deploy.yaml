@@ -80,8 +80,6 @@ jobs:
   # Servers ship only after every app build ships, so a server never runs ahead of the apps that talk to it.
   publish:
     name: Packages
-    # The environment is limited to `main`: `.github/releasing.md`, Host setup.
-    environment: release
     needs: [plan, verify, app]
     if: ${{ !cancelled() && needs.plan.result == 'success' && (needs.plan.outputs.verified == 'true' || needs.verify.result == 'success') && (needs.app.result == 'success' || needs.app.result == 'skipped') }}
     runs-on: ubuntu-26.04

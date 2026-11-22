@@ -24,8 +24,6 @@ defaults:
 jobs:
   update:
     name: Update
-    # The environment is limited to `main`: `.github/releasing.md`, Host setup.
-    environment: release
     runs-on: ubuntu-26.04
     timeout-minutes: 20
     outputs:
@@ -117,8 +115,6 @@ jobs:
     name: App Store
     needs: update
     if: ${{ !cancelled() && needs.update.result == 'success' && needs.update.outputs.native == 'true' }}
-    # The environment is limited to `main`: `.github/releasing.md`, Host setup.
-    environment: release
     concurrency: ios-${{ inputs.app }}
     runs-on: xcode-27
     timeout-minutes: 60

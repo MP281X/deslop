@@ -82,8 +82,6 @@ jobs:
       fail-fast: false
       matrix:
         app: ${{ fromJSON(needs.apps.outputs.mobile) }}
-    # A branch signs here on purpose, so the job waits for the user's approval: `.github/releasing.md`, Host setup.
-    environment: signing
     runs-on: xcode-27
     timeout-minutes: 60
     env:

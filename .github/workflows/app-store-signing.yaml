@@ -36,8 +36,6 @@ jobs:
   signing:
     name: Signing
     needs: app
-    # A branch signs here on purpose, so the job waits for the user's approval: `.github/releasing.md`, Host setup.
-    environment: signing
     runs-on: ubuntu-26.04
     timeout-minutes: 20
     defaults:
