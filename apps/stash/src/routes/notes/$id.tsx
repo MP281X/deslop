@@ -16,13 +16,14 @@ import {
 	VStack
 } from '@expo/ui/swift-ui'
 import {
-	accessibilityAddTraits,
 	accessibilityElement,
 	accessibilityLabel,
 	foregroundStyle,
 	frame,
 	labelStyle,
 	lineSpacing,
+	navigationBarTitleDisplayMode,
+	navigationTitle,
 	padding,
 	redacted,
 	textSelection,
@@ -148,7 +149,6 @@ export function NoteSkeleton() {
 				frame({alignment: 'leading', maxHeight: Infinity, maxWidth: Infinity})
 			]}
 		>
-			<Skeleton modifiers={[frame({height: 28}), frame({maxWidth: 320})]} />
 			<Placeholder />
 		</VStack>
 	)
@@ -262,16 +262,6 @@ function Detail(props: {note: NoteItem; onRetry: () => void; onTag: (tag: TagNam
 					spacing={space[4]}
 					modifiers={[padding({horizontal: space[4]}), frame({alignment: 'leading', maxWidth: Infinity})]}
 				>
-					<Text
-						modifiers={[
-							text.display,
-							accessibilityAddTraits(['isHeader']),
-							foregroundStyle(colors.foreground),
-							textSelection(true)
-						]}
-					>
-						{props.note.title}
-					</Text>
 					{pipe(
 						Match.value(props.note.status),
 						Match.when('organizing', () => <Reading note={props.note} />),
@@ -339,7 +329,7 @@ function NoteScreen(props: {
 				</Empty>
 			),
 			onSome: item => (
-				<Toolbar>
+				<Toolbar modifiers={[navigationTitle(item.title), navigationBarTitleDisplayMode('inline')]}>
 					<Detail note={item} onRetry={() => regenerate(item.id)} onTag={props.onTag} />
 					<Toolbar.Content>
 						<NoteProblem note={item} onRetry={() => regenerate(item.id)} />
