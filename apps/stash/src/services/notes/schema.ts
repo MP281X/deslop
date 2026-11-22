@@ -172,9 +172,9 @@ export const NoteChange = Schema.TaggedUnion({
 		read: Schema.String
 	},
 	remove: {into: Schema.Option(NoteId)},
-	request: {requester: UserId},
 	resolve: {url: Schema.String},
-	retry: {},
+	// Organizing again on behalf of whoever asked, whose keys pay for it.
+	retry: {requester: UserId},
 	share: {capture: Capture},
 	stop: {},
 	video: {content: Schema.Option(Schema.String), transcript: Schema.Option(Schema.String)}

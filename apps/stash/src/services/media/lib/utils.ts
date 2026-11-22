@@ -90,6 +90,33 @@ export function isBlocked(stderr: string) {
 	return Option.isSome(String.match(BLOCKED)(stderr))
 }
 
+// A yt-dlp run reads its proxy from stdin, so no process's arguments hold the proxy's password; the ffmpeg yt-dlp starts gets it through its environment.
+export function ytDlpRun(args: readonly string[], proxy: Option.Option<string>) {
+	return {
+		args: [...Option.match(proxy, {onNone: () => [], onSome: () => ['--config-locations', '-']}), ...args],
+		// The proxy is one quoted word, so no character of it ends the option or starts a comment.
+		stdin: Option.map(proxy, url => `--proxy '${String.replaceAll("'", `'"'"'`)(url)}'\n`)
+	}
+}
+
+// yt-dlp's stderr after it read its proxy from stdin, without the prompt for it and without the proxy's address or either part of its credentials.
+export function withoutProxy(stderr: string, proxy: string) {
+	const credentials = pipe(
+		Option.fromNullishOr(URL.parse(proxy)),
+		Option.match({onNone: () => [], onSome: url => [url.username, url.password]}),
+		Array.flatMap(part => [part, ...Option.toArray(Option.liftThrowable(decodeURIComponent)(part))])
+	)
+	return pipe(
+		[proxy, ...credentials],
+		Array.filter(String.isNonEmpty),
+		// The whole address goes first, so its parts do not split it.
+		Array.sort(Order.flip(Order.mapInput(Order.Number, String.length))),
+		Array.reduce(String.replace(/^Reading options from STDIN.*\n/u, '')(stderr), (text, secret) =>
+			String.replaceAll(secret, '<proxy>')(text)
+		)
+	)
+}
+
 export function clock(seconds: Duration.Duration) {
 	const parts = Duration.parts(seconds)
 	return `${String.padStart(2, '0')(`${(parts.days * 24 + parts.hours) * 60 + parts.minutes}`)}:${String.padStart(2, '0')(`${parts.seconds}`)}`

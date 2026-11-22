@@ -2,7 +2,7 @@ import {assert, it} from '@effect/vitest'
 
 import {Option, Schema} from 'effect'
 
-import {captionTracks, captionTranscript, speechOnly} from '#services/media/lib/utils.ts'
+import {captionTracks, captionTranscript, speechOnly, withoutProxy, ytDlpRun} from '#services/media/lib/utils.ts'
 import {MediaMetadata} from '#services/media/schema.ts'
 
 it('keeps authored alternatives and automatic captions in the original language', () => {
@@ -62,4 +62,23 @@ it('keeps short and unspaced speech and drops a looping line', () => {
 		Option.some('[00:00] 今日は図書館で本を読みました。\n[00:30] 明日も行きます。\n')
 	)
 	assert.deepStrictEqual(speechOnly('[00:00] la la la la la la\n[00:04] la la la la la la\n'), Option.none())
+})
+
+it('hands yt-dlp its proxy only on stdin and keeps every part of it out of what yt-dlp reports', () => {
+	const proxy = "http://user-42:p%40ss'w%23rd@proxy.example:7777"
+	assert.deepStrictEqual(ytDlpRun(['--no-playlist', 'https://example.com/clip'], Option.some(proxy)), {
+		args: ['--config-locations', '-', '--no-playlist', 'https://example.com/clip'],
+		stdin: Option.some(`--proxy 'http://user-42:p%40ss'"'"'w%23rd@proxy.example:7777'\n`)
+	})
+	assert.deepStrictEqual(ytDlpRun(['https://example.com/clip'], Option.none()), {
+		args: ['https://example.com/clip'],
+		stdin: Option.none()
+	})
+	assert.strictEqual(
+		withoutProxy(
+			`Reading options from STDIN - EOF (Ctrl+D) to end:\nERROR: Unable to connect to proxy ${proxy}\nlogin user-42 p@ss'w#rd failed`,
+			proxy
+		),
+		'ERROR: Unable to connect to proxy <proxy>\nlogin <proxy> <proxy> failed'
+	)
 })
