@@ -164,6 +164,9 @@ settings:
 
 catalogs:
   default:
+    tsrs:
+      specifier: 7.1.0-beta.tsrs3
+      version: 7.1.0-beta.tsrs3
     vite-plus:
       specifier: 1.7.0
       version: 1.7.0
@@ -207,7 +210,7 @@ importers:
         specifier: ^0.27.0
         version: 0.27.0
       tsrs:
-        specifier: latest
+        specifier: 'catalog:'
         version: 7.1.0-beta.tsrs3
       vite:
         specifier: npm:@voidzero-dev/vite-plus-core@8.3.8000

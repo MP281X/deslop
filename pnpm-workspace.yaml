@@ -5,6 +5,8 @@ packages:
 
 catalog:
   vite-plus: 1.7.0
+  # @effect/tsgo 0.73 patches tsrs2 and tsrs3 only; back to latest once it patches tsrs4.
+  tsrs: 7.1.0-beta.tsrs3
   vite: npm:@voidzero-dev/vite-plus-core@8.3.8000
 
 overrides:
