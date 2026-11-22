@@ -1,17 +1,4 @@
-import {
-	Context,
-	DateTime,
-	Duration,
-	Effect,
-	Exit,
-	Function,
-	Layer,
-	MutableList,
-	Option,
-	Schema,
-	Stream,
-	pipe
-} from 'effect'
+import {Context, DateTime, Duration, Effect, Function, Layer, MutableList, Option, Schema, Stream, pipe} from 'effect'
 
 import {Sse} from 'effect/encoding'
 import {Reactivity} from 'effect/reactivity'
@@ -23,12 +10,19 @@ import type {UserId} from '@deslop/runtime/shared/auth'
 import {DateTimeUtcFromFiniteMillis} from '@deslop/runtime/shared/time'
 import type {TimeFrame} from '@deslop/runtime/shared/time'
 
-import {readUsage} from './lib/utils.ts'
+import {readUsage, totalsOf} from './lib/utils.ts'
 import {AiCall, AiUsageBreakdown, AiUsageQuery} from './schema.ts'
 import type {AiUsageEntry, SpendSource} from './schema.ts'
 
 import type {AiProvider} from '#services/ai-proxy/schema.ts'
-import {usageWindow} from '#services/usage/lib/utils.ts'
+import {EXPIRY_BATCH, expireCalls, usageWindow} from '#services/usage/lib/utils.ts'
+
+// A direct provider key is its own payer; OpenCode must name one in its response.
+const KEY_PAYERS: Record<AiProvider, Option.Option<SpendSource>> = {
+	anthropic: Option.some('byok'),
+	openai: Option.some('openai'),
+	opencode: Option.none()
+}
 
 // AiProxy's migrations (ai_migrations) own the AI tables.
 
@@ -48,53 +42,55 @@ export class AiMetering extends Context.Service<AiMetering>()(
 				Request: AiCall.insert,
 				execute: row => sql`INSERT INTO ${sql(AiCall.table)} ${sql.insert(row)}`
 			})
-			const deleteUsageBefore = SqlSchema.void({
+			// Only this owner's rows, through ai_calls_owner_at.
+			const deleteUsageBefore = SqlSchema.findAll({
 				Request: Schema.Struct({at: DateTimeUtcFromFiniteMillis, owner: AiCall.fields.owner}),
-				execute: request => sql`DELETE FROM ${sql(AiCall.table)} WHERE owner = ${request.owner} AND at < ${request.at}`
-			})
-			function within(query: typeof AiUsageQuery.Encoded) {
-				return sql`owner = ${query.owner} AND at >= ${query.from} AND at < ${query.to}`
-			}
-			const totalUsage = SqlSchema.findAll({
-				Request: AiUsageQuery,
-				Result: AiUsageBreakdown,
-				execute: query => sql`
-				SELECT spendSource, total(costUsd) AS costUsd, sum(1 - costKnown) AS unknownCostCalls,
-					sum(estimated) AS estimatedCalls
-				FROM ${sql(AiCall.table)} WHERE ${within(query)} GROUP BY spendSource ORDER BY spendSource
+				Result: Schema.Struct({at: Schema.Finite}),
+				execute: request => sql`
+				DELETE FROM ${sql(AiCall.table)} WHERE rowid IN (
+					SELECT rowid FROM ${sql(AiCall.table)} WHERE owner = ${request.owner} AND at < ${request.at} LIMIT ${EXPIRY_BATCH}
+				) RETURNING at
 			`
 			})
+			// One read per report: the totals are summed from these buckets, so the figure and its sparkline always agree.
 			const listBuckets = SqlSchema.findAll({
 				Request: AiUsageQuery,
 				Result: Schema.Struct({at: DateTimeUtcFromFiniteMillis, ...AiUsageBreakdown.fields}),
 				execute: query => sql`
 				SELECT at - at % ${query.size} AS at, spendSource, total(costUsd) AS costUsd,
 					sum(1 - costKnown) AS unknownCostCalls, sum(estimated) AS estimatedCalls
-				FROM ${sql(AiCall.table)} WHERE ${within(query)} GROUP BY 1, spendSource ORDER BY 1, spendSource
+				FROM ${sql(AiCall.table)} WHERE owner = ${query.owner} AND at >= ${query.from} AND at < ${query.to}
+				GROUP BY 1, spendSource ORDER BY 1, spendSource
 			`
 			})
 			const saveUsage = Effect.fnUntraced(function* (id: UserId, entry: AiUsageEntry, spendSource: SpendSource) {
 				yield* pipe(
-					Effect.andThen(
-						addUsage({
-							at: entry.at,
-							costKnown: entry.costSource !== 'unknown',
-							costUsd: Option.getOrElse(entry.costUsd, Function.constant(0)),
-							estimated: entry.estimated,
-							owner: id,
-							spendSource
-						}),
-						deleteUsageBefore({at: DateTime.subtractDuration(entry.at, Duration.days(30)), owner: id})
-					),
+					addUsage({
+						at: entry.at,
+						costKnown: entry.costSource !== 'unknown',
+						costUsd: Option.getOrElse(entry.costUsd, Function.constant(0)),
+						estimated: entry.estimated,
+						owner: id,
+						spendSource
+					}),
 					Reactivity.mutation({aiUsage: [id]}),
-					sql.withTransaction,
 					withReactivity
 				)
+				// After the insert's own commit, so a long delete never holds the write.
+				yield* expireCalls(deleteUsageBefore({at: DateTime.subtractDuration(entry.at, Duration.days(30)), owner: id}))
 			})
 			return {
+				// `accepted`: the provider took the request (2xx), so a direct key's payer is known even if its usage never arrives.
 				observe: Effect.fn('AiMetering.observe')(
-					(id: UserId, provider: AiProvider, model: Option.Option<AiModelId>, at: DateTime.Utc, sse: boolean) =>
+					(
+						id: UserId,
+						provider: AiProvider,
+						model: Option.Option<AiModelId>,
+						at: DateTime.Utc,
+						response: {accepted: boolean; sse: boolean}
+					) =>
 						Effect.sync(() => {
+							const sse = response.sse
 							const state: {current: AiUsageEntry; finalUsage: boolean; pending: string} = {
 								current: {
 									at,
@@ -106,14 +102,15 @@ export class AiMetering extends Context.Service<AiMetering>()(
 									inputTokens: 0,
 									model,
 									outputTokens: 0,
-									spendSource: Option.none()
+									spendSource: Option.filter(KEY_PAYERS[provider], () => response.accepted)
 								},
 								finalUsage: false,
 								pending: ''
 							}
 							const updateUsage = Effect.fnUntraced(function* (text: string) {
-								const read = yield* Effect.catch(Effect.fromResult(readUsage(text, state.current, provider)), error =>
-									Effect.as(Effect.logWarning('AI usage was malformed; keeping previously read usage', error), {
+								// The event's text is the model's output, so the warning carries none of it.
+								const read = yield* Effect.catch(Effect.fromResult(readUsage(text, state.current, provider)), () =>
+									Effect.as(Effect.logWarning('AI usage was malformed; keeping previously read usage'), {
 										entry: state.current,
 										finalUsage: false
 									})
@@ -133,32 +130,26 @@ export class AiMetering extends Context.Service<AiMetering>()(
 								if (error !== undefined) return yield* error
 							})
 							return {
-								save: (exit: Exit.Exit<unknown, unknown>) =>
-									Effect.catchCause(
-										Effect.gen(function* () {
-											if (sse) {
-												yield* Effect.ignore(feed(`${decoder.decode()}\n\n`), {
-													log: 'Warn',
-													message: 'AI usage response could not be read'
-												})
-											} else {
-												yield* updateUsage(state.pending + decoder.decode())
-											}
-											if (Exit.isFailure(exit) && !state.finalUsage) {
-												state.current = {
-													...state.current,
-													costSource: 'unknown',
-													costUsd: Option.none(),
-													estimated: false
-												}
-											}
-											yield* Option.match(state.current.spendSource, {
-												onNone: () => Effect.void,
-												onSome: spendSource => saveUsage(id, state.current, spendSource)
-											})
-										}),
-										error => Effect.logWarning('AI usage could not be saved', error)
-									),
+								save: Effect.catchCause(
+									Effect.gen(function* () {
+										if (sse) {
+											yield* Effect.catchCause(feed(`${decoder.decode()}\n\n`), () =>
+												Effect.logWarning('AI usage response could not be read')
+											)
+										} else {
+											yield* updateUsage(state.pending + decoder.decode())
+										}
+										// A stream that failed, broke off or ended on an in-band error keeps what it read as an incomplete figure.
+										if (!state.finalUsage) {
+											state.current = {...state.current, costSource: 'unknown'}
+										}
+										yield* Option.match(state.current.spendSource, {
+											onNone: () => Effect.void,
+											onSome: spendSource => saveUsage(id, state.current, spendSource)
+										})
+									}),
+									error => Effect.logWarning('AI usage could not be saved', error)
+								),
 								write: (chunk: Uint8Array) =>
 									Effect.catchCause(
 										Effect.gen(function* () {
@@ -166,7 +157,7 @@ export class AiMetering extends Context.Service<AiMetering>()(
 											if (sse) yield* feed(text)
 											else if (state.pending.length <= 10 * 1024 * 1024) state.pending += text
 										}),
-										cause => Effect.logWarning('AI usage response could not be read', cause)
+										() => Effect.logWarning('AI usage response could not be read')
 									)
 							}
 						})
@@ -174,13 +165,11 @@ export class AiMetering extends Context.Service<AiMetering>()(
 				usage: (id: UserId, period: TimeFrame) =>
 					Stream.withSpan(
 						usageWindow(period, {aiUsage: [id]}, range =>
-							Effect.mapError(
-								Effect.all(
-									{series: listBuckets({...range, owner: id}), totals: totalUsage({...range, owner: id})},
-									{concurrency: 1}
-								),
-								cause => AuthError.make({cause, error: 'temporarily_unavailable', message: 'AI usage storage failed'})
-							)
+							Effect.mapBoth(listBuckets({...range, owner: id}), {
+								onFailure: cause =>
+									AuthError.make({cause, error: 'temporarily_unavailable', message: 'AI usage storage failed'}),
+								onSuccess: series => ({series, totals: totalsOf(series)})
+							})
 						),
 						'AiMetering.usage',
 						{attributes: {period, 'rpc.stream': true, userId: id}}

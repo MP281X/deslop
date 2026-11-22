@@ -1,15 +1,58 @@
-import {Array, Boolean, Effect, Function, Option, Order, Predicate, Record, Result, String, Struct, pipe} from 'effect'
+import {
+	Array,
+	Boolean,
+	DateTime,
+	Effect,
+	Function,
+	Number,
+	Option,
+	Order,
+	Predicate,
+	Record,
+	Result,
+	String,
+	Struct,
+	pipe
+} from 'effect'
 
 import {TelemetryError} from '#services/telemetry/schema.ts'
-import type {AppName, IngestionAnswer, LogsAnswer, OperationRow, OperationsAnswer} from '#services/telemetry/schema.ts'
+import type {AppName, IngestionAnswer, LogsAnswer, OperationsAnswer} from '#services/telemetry/schema.ts'
 import {Telemetry} from '#services/telemetry/service.ts'
 import {ToolContracts} from '#tools/contracts.ts'
+import type {OperationCursor} from '#tools/contracts.ts'
+
+// Offsets count UTF-16 units; a window that would split a character takes all of it, and the next window skips the half already given.
+function sliceWhole(text: string, offset: number, limit: number) {
+	const startsInside = pipe(
+		text,
+		String.charCodeAt(offset),
+		Option.exists(Number.between({maximum: 0xdf_ff, minimum: 0xdc_00}))
+	)
+	const endsInside = pipe(
+		text,
+		String.charCodeAt(offset + limit - 1),
+		Option.exists(Number.between({maximum: 0xdb_ff, minimum: 0xd8_00}))
+	)
+	return String.slice(
+		offset + Boolean.match(startsInside, {onFalse: Function.constant(0), onTrue: Function.constant(1)}),
+		offset + limit + Boolean.match(endsInside, {onFalse: Function.constant(0), onTrue: Function.constant(1)})
+	)(text)
+}
 
 function textWindow(text: string, offset: number, limit: number) {
 	return {
 		nextTextOffset: Option.liftPredicate(offset + limit, next => next < text.length),
-		text: String.slice(offset, offset + limit)(text)
+		text: sliceWhole(text, offset, limit)
 	}
+}
+
+// The leading rows whose text fits 64,000 characters, always at least one; past it, a page ends early and its continuation picks up the rest.
+function withinBudget<A>(rows: readonly A[], size: (row: A) => number) {
+	const [, kept] = Array.mapAccum(rows, 0, (used, row, index) => {
+		const total = used + size(row)
+		return [total, Option.liftPredicate(row, () => index === 0 || total <= 64_000)] as const
+	})
+	return Array.getSomes(Array.takeWhile(kept, Option.isSome))
 }
 
 function attributeWindow(
@@ -37,7 +80,7 @@ function attributeWindow(
 			page,
 			Array.map(entry => {
 				if (Predicate.isString(entry[1])) {
-					return [entry[0], String.slice(input.textOffset, input.textOffset + input.textLimit)(entry[1])] as const
+					return [entry[0], sliceWhole(entry[1], input.textOffset, input.textLimit)] as const
 				}
 				return entry
 			}),
@@ -67,6 +110,14 @@ function ingestionResult(
 	}
 }
 
+// Failing operations first, then by app, name and side; a cursor is the last row's place in that order.
+const operationOrder = pipe(
+	Order.mapInput(Order.flip(Order.Boolean), (key: OperationCursor) => key.failed),
+	Order.combine(Order.mapInput(Order.String, (key: OperationCursor) => key.app)),
+	Order.combine(Order.mapInput(Order.String, (key: OperationCursor) => key.name)),
+	Order.combine(Order.mapInput(Order.String, (key: OperationCursor) => key.side))
+)
+
 function operationPage(
 	answer: OperationsAnswer,
 	input: typeof ToolContracts.tools.list_operations.parametersSchema.Type
@@ -76,19 +127,20 @@ function operationPage(
 		Array.flatMap(app =>
 			Array.map(app.operations, operation => ({
 				app: app.app,
-				key: `${pipe(
-					operation.failures,
-					Option.exists(count => count > 0),
-					Boolean.match({onFalse: Function.constant('1'), onTrue: Function.constant('0')})
-				)}\t${app.app}\t${operation.name}\t${Option.getOrElse(operation.side, Function.constant(''))}`,
+				key: {
+					app: app.app,
+					failed: Option.exists(operation.failedTraces, count => count > 0),
+					name: operation.name,
+					side: Option.getOrElse(operation.side, Function.constant(''))
+				} satisfies OperationCursor,
 				operation
 			}))
 		),
-		Array.sort(Order.mapInput(Order.String, (row: {app: AppName; key: string; operation: OperationRow}) => row.key)),
+		Array.sort(Order.mapInput(operationOrder, (row: {app: AppName; key: OperationCursor}) => row.key)),
 		Array.filter(
 			row =>
 				Option.match(input.operation, {onNone: Function.constTrue, onSome: name => row.operation.name === name}) &&
-				Option.match(input.cursor, {onNone: Function.constTrue, onSome: cursor => row.key > cursor})
+				Option.match(input.cursor, {onNone: Function.constTrue, onSome: cursor => operationOrder(row.key, cursor) > 0})
 		)
 	)
 	const page = Array.take(remaining, input.limit)
@@ -156,29 +208,49 @@ function traceResult(
 				onSome: key =>
 					Result.fail(
 						TelemetryError.make({
-							message: `Unknown attribute ${key}; valid attributes: ${Array.join(Record.keys(attrs), ', ')}.`
+							message: pipe(
+								Record.keys(attrs),
+								Array.sort(Order.String),
+								Array.take(20),
+								Array.match({
+									onEmpty: () => `Unknown attribute ${key}; this span has no attributes.`,
+									onNonEmpty: keys =>
+										`Unknown attribute ${key}; omit attribute to page through them all, which start with ${Array.join(keys, ', ')}.`
+								})
+							)
 						})
 					)
 			})
 		)
 	}
 	if (input.section === 'logs') {
-		const all = Boolean.match(Option.isNone(input.span), {
-			onFalse: () => Array.flatMap(spans, span => Option.getOrElse(span.logs, () => [])),
-			onTrue: () => [
-				...Option.getOrElse(answer.logs, () => []),
-				...Array.flatMap(spans, span => Option.getOrElse(span.logs, () => []))
-			]
-		})
-		const logs = pipe(all, Array.drop(input.offset), Array.take(input.logLimit))
+		// One time order across the trace, each line naming its span, so a job's line sits between its steps' lines.
+		const spanLogs = Array.flatMap(spans, span => Option.getOrElse(span.logs, () => []))
+		const all = Array.sort(
+			[
+				...pipe(
+					answer.logs,
+					Option.filter(() => Option.isNone(input.span)),
+					Option.getOrElse(() => [])
+				),
+				...spanLogs
+			],
+			Order.mapInput(DateTime.Order, (log: {at: DateTime.Utc}) => log.at)
+		)
+		const logs = withinBudget(
+			Array.map(pipe(all, Array.drop(input.offset), Array.take(input.logLimit)), log => ({
+				...log,
+				message: textWindow(log.message, input.textOffset, input.textLimit).text,
+				whole: log.message
+			})),
+			log => log.message.length
+		)
 		return Result.succeed({
 			...metadata,
-			logs: Option.some(
-				Array.map(logs, log => ({...log, message: textWindow(log.message, input.textOffset, input.textLimit).text}))
-			),
-			nextOffset: Option.liftPredicate(input.offset + input.logLimit, next => next < all.length),
+			logs: Option.some(Array.map(logs, log => Struct.omit(log, ['whole']))),
+			nextOffset: Option.liftPredicate(input.offset + logs.length, next => next < all.length),
 			nextTextOffset: Option.liftPredicate(input.textOffset + input.textLimit, next =>
-				Array.some(logs, log => log.message.length > next)
+				Array.some(logs, log => log.whole.length > next)
 			),
 			spans: []
 		})
@@ -191,15 +263,14 @@ function traceResult(
 		),
 		spans: Array.map(spans, span => ({
 			...Struct.omit(span, ['attrs', 'logs', 'error']),
-			error: Option.map(span.error, String.slice(input.textOffset, input.textOffset + input.textLimit))
+			error: Option.map(span.error, error => sliceWhole(error, input.textOffset, input.textLimit))
 		}))
 	})
 }
 
 function logPage(answer: LogsAnswer, input: typeof ToolContracts.tools.search_logs.parametersSchema.Type) {
-	return {
-		...answer,
-		logs: Array.map(answer.logs, log => {
+	const logs = withinBudget(
+		Array.map(answer.logs, log => {
 			const message = textWindow(log.message, input.textOffset, input.textLimit)
 			const attrs = attributeWindow(
 				Option.getOrElse(log.attrs, () => ({})),
@@ -213,6 +284,17 @@ function logPage(answer: LogsAnswer, input: typeof ToolContracts.tools.search_lo
 				message: message.text,
 				nextTextOffset: Option.orElse(message.nextTextOffset, () => attrs.nextTextOffset)
 			}
+		}),
+		log =>
+			log.message.length +
+			Number.sumAll(Array.map(Record.values(Option.getOrElse(log.attrs, () => ({}))), value => `${value}`.length))
+	)
+	// A page cut short by the budget continues after its last row, as a full one does.
+	return {
+		logs,
+		nextCursor: Boolean.match(logs.length < answer.logs.length, {
+			onFalse: () => answer.nextCursor,
+			onTrue: () => Option.map(Array.last(logs), log => ({id: log.id, time: log.at}))
 		})
 	}
 }

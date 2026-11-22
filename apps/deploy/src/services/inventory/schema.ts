@@ -74,8 +74,6 @@ export const ProcessLabel = Schema.Struct({
 
 export type Process = typeof Process.Type
 export const Process = Schema.Struct({
-	// Its arguments, the executable first, with anything that looks like a secret masked.
-	command: Schema.OptionFromOptionalKey(Schema.Array(Schema.String)),
 	cpu: Schema.OptionFromOptionalKey(Schema.Finite),
 	label: ProcessLabel,
 	memory: Schema.Finite,
@@ -83,6 +81,10 @@ export const Process = Schema.Struct({
 	parent: ProcessId,
 	pid: ProcessId
 })
+
+export type ServiceScope = typeof ServiceScope.Type
+// Which systemd manager runs a unit; a Mac's launch agents are the user's.
+export const ServiceScope = Schema.Literals(['user', 'system'])
 
 export type InventoryFields = typeof InventoryFields.Type
 export const InventoryFields = Schema.Struct({
@@ -134,10 +136,7 @@ export const InventoryFields = Schema.Struct({
 	publicAccess: pipe(Schema.OptionFromOptionalKey(Schema.Boolean), Schema.withConstructorDefault(Effect.succeedNone)),
 	running: pipe(Schema.Boolean, Schema.withConstructorDefault(Effect.succeed(false))),
 	scheduled: pipe(Schema.OptionFromOptionalKey(Schema.Boolean), Schema.withConstructorDefault(Effect.succeedNone)),
-	scope: pipe(
-		Schema.OptionFromOptionalKey(Schema.Literals(['user', 'system'])),
-		Schema.withConstructorDefault(Effect.succeedNone)
-	),
+	scope: pipe(Schema.OptionFromOptionalKey(ServiceScope), Schema.withConstructorDefault(Effect.succeedNone)),
 	self: pipe(Schema.OptionFromOptionalKey(Schema.Boolean), Schema.withConstructorDefault(Effect.succeedNone)),
 	state: Schema.String,
 	ui: pipe(Schema.OptionFromOptionalKey(Schema.Boolean), Schema.withConstructorDefault(Effect.succeedNone)),
@@ -251,6 +250,12 @@ export const RunJobInput = Schema.Struct({
 	job: JobName.annotate({description: 'A scheduled job name as list_apps shows it.'}),
 	worker: Schema.OptionFromOptionalKey(WorkerId.annotate({description: 'The worker running the job, when several do.'}))
 })
+
+export type InventoryCursor = typeof InventoryCursor.Type
+// Where a list_apps page ended: its worker, section and row, as JSON so no name can collide with a separator. The inventory is live, so rows can come and go between pages.
+export const InventoryCursor = Schema.fromJsonString(
+	Schema.Tuple([WorkerId, Schema.Literals(['apps', 'exposures', 'jobs']), ItemId])
+)
 
 export type InventoryQuery = typeof InventoryQuery.Type
 export const InventoryQuery = Schema.Struct({

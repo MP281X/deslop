@@ -81,16 +81,16 @@ export function keepValueThroughOutages<A, E, R>(
 	)
 }
 
-// Reopens a stream each second after a dropped transport or an authorization outage, never after a refusal, a domain failure or a frame it cannot read.
+// Whether a failure clears up on its own: a dropped or unanswered transport, or an authorization outage; never a refusal, a domain failure or a frame the client cannot read.
+export function isDropped(error: unknown) {
+	if (Schema.is(AuthError)(error)) return error.error === 'temporarily_unavailable'
+	return Schema.is(RpcClientError.RpcClientError)(error) && !Schema.is(RpcClientError.RpcClientDefect)(error.reason)
+}
+
+// Reopens a stream each second after a dropped transport or an authorization outage.
 export function reconnectOnDrop<A, E, R>(stream: Stream.Stream<A, E, R>) {
 	return Stream.retry(stream, $ =>
-		Schedule.while($(Schedule.spaced('1 second')), metadata => {
-			if (Schema.is(AuthError)(metadata.input)) return metadata.input.error === 'temporarily_unavailable'
-			return (
-				Schema.is(RpcClientError.RpcClientError)(metadata.input) &&
-				!Schema.is(RpcClientError.RpcClientDefect)(metadata.input.reason)
-			)
-		})
+		Schedule.while($(Schedule.spaced('1 second')), metadata => isDropped(metadata.input))
 	)
 }
 

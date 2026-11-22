@@ -43,6 +43,19 @@ export const migrations = {
 		yield* sql`UPDATE chapters SET publicationTime = NULLIF(postedAt, 0)`
 		yield* sql`ALTER TABLE chapters DROP COLUMN postedAt`
 		yield* sql`ALTER TABLE chapters RENAME COLUMN publicationTime TO postedAt`
+	}),
+	// A receipt was a finished delivery. A chapter part-way through its announcement keeps the devices it was still waiting on as recipients, so a phone registered later is not one of them.
+	'0005_delivery_recipients': Effect.gen(function* () {
+		const sql = yield* SqlClient.SqlClient
+		yield* sql`ALTER TABLE deliveries ADD COLUMN done INTEGER NOT NULL DEFAULT 1`
+		yield* sql`
+			INSERT INTO deliveries (series, number, token, done)
+			SELECT chapters.series, chapters.number, devices.token, 0 FROM chapters, devices
+			WHERE chapters.notified = 0 AND EXISTS (
+				SELECT 1 FROM deliveries WHERE deliveries.series = chapters.series AND deliveries.number = chapters.number
+			)
+			ON CONFLICT DO NOTHING
+		`
 	})
 }
 

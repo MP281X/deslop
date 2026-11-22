@@ -93,7 +93,6 @@ function AccountMenu() {
 					<loaded.value.DropdownMenuLabel>@{account.value.name}</loaded.value.DropdownMenuLabel>
 				</loaded.value.DropdownMenuGroup>
 				<loaded.value.DropdownMenuSeparator />
-				{/* oxlint-disable-next-line @deslop/coding-standards/no-bare-control -- This menu form submits one action, with no fields to group. */}
 				<form action={`/auth/sign-out?${new URLSearchParams({next: location.href})}`} method="post">
 					<loaded.value.DropdownMenuItem
 						variant="destructive"
@@ -108,21 +107,27 @@ function AccountMenu() {
 	)
 }
 
-// Tabs can arrive after the bar, so each change to them places the chosen one again; one already in view stays put.
+// Tabs, their marks and the bar's controls can arrive after the bar, so each change to the tabs and each resize of them or of the bar's scrolling strip places the chosen one again; one already in view stays put.
 function keepChosenTabInView(sections: HTMLDivElement) {
-	function place() {
+	const strip = sections.parentElement
+	if (Predicate.isNullish(strip)) return
+	function place(scroller: HTMLElement) {
 		const active = sections.querySelector<HTMLElement>('[data-active]')
-		if (Predicate.isNullish(active) || Predicate.isNullish(sections.parentElement)) return
+		if (Predicate.isNullish(active)) return
 		const tab = active.getBoundingClientRect()
-		const bounds = sections.parentElement.getBoundingClientRect()
+		const bounds = scroller.getBoundingClientRect()
 		if (tab.left >= bounds.left - 1 && tab.right <= bounds.right + 1) return
 		active.scrollIntoView({block: 'nearest', inline: 'nearest'})
 	}
-	place()
-	const changes = new MutationObserver(place)
+	const changes = new MutationObserver(() => place(strip))
 	changes.observe(sections, {attributeFilter: ['data-active'], childList: true, subtree: true})
+	// A resize observer reports each element once on observing, which places the tab the first time.
+	const resizes = new ResizeObserver(() => place(strip))
+	resizes.observe(strip)
+	resizes.observe(sections)
 	return () => {
 		changes.disconnect()
+		resizes.disconnect()
 	}
 }
 

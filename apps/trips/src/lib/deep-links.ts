@@ -1,7 +1,11 @@
 import {Effect, Option, Queue, Schema, String, Stream, pipe} from 'effect'
 
 import {Atom} from 'effect/reactivity'
-import {addNotificationResponseReceivedListener, getLastNotificationResponse} from 'expo-notifications'
+import {
+	addNotificationResponseReceivedListener,
+	clearLastNotificationResponse,
+	getLastNotificationResponse
+} from 'expo-notifications'
 import type {NotificationResponse} from 'expo-notifications'
 import {Linking} from 'react-native'
 
@@ -15,13 +19,13 @@ export function linkOf(bookingId: BookingId) {
 	return `${BOOKING_LINK}${bookingId}`
 }
 
+// Only this app's own booking link, the whole of it: another scheme, host or a longer path opens nothing.
 function bookingIn(url?: string | null) {
-	return Option.flatMap(Option.fromNullishOr(url), link =>
-		pipe(
-			String.match(/booking\/([0-9a-f-]{36})/iu)(link),
-			Option.flatMap(match => Option.fromUndefinedOr(match[1])),
-			Option.flatMap(Schema.decodeOption(BookingId))
-		)
+	return pipe(
+		Option.fromNullishOr(url),
+		Option.filter(String.startsWith(BOOKING_LINK)),
+		Option.map(String.slice(BOOKING_LINK.length)),
+		Option.flatMap(Schema.decodeOption(BookingId))
 	)
 }
 
@@ -50,7 +54,12 @@ export const openedAtom = Atom.keepAlive(
 						pipe(
 							url,
 							Option.flatMap(bookingIn),
-							Option.orElse(() => tapped(getLastNotificationResponse()))
+							Option.orElse(() => {
+								// The tap that launched the app opens it once; a later start of this atom must not open it again.
+								const launch = tapped(getLastNotificationResponse())
+								clearLastNotificationResponse()
+								return launch
+							})
 						)
 				)
 			),

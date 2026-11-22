@@ -38,7 +38,7 @@ export function exitFailure(status: number) {
 	return failureReason('exit-code', status, true)
 }
 
-// Why each failed unit stopped and when, by unit, from `systemctl show -p Id,Result,ExecMainCode,ExecMainStatus,StateChangeTimestamp --timestamp=unix`.
+// Why each failed unit stopped and when, by unit, from `systemctl show -p Id,ActiveState,Result,ExecMainCode,ExecMainStatus,StateChangeTimestamp --timestamp=unix`. A unit that recovered between its listing and this read is no longer failed, so it has no reason.
 // judge-ignore no-silent-fallback -- inventory health already records the failed unit independently; absent or malformed exit metadata omits only its optional explanation, never the failing state.
 export function unitFailures(text: string) {
 	return pipe(
@@ -58,7 +58,13 @@ export function unitFailures(text: string) {
 			const id = fields['Id'] ?? ''
 			const result = fields['Result'] ?? ''
 			const status = Number.parse(fields['ExecMainStatus'] ?? '')
-			if (!String.isNonEmpty(id) || !String.isNonEmpty(result) || !String.isNonEmpty(fields['ExecMainCode'] ?? '')) {
+			if (
+				!String.isNonEmpty(id) ||
+				!String.isNonEmpty(fields['ExecMainCode'] ?? '') ||
+				fields['ActiveState'] !== 'failed' ||
+				!String.isNonEmpty(result) ||
+				result === 'success'
+			) {
 				return []
 			}
 			return Option.match(status, {

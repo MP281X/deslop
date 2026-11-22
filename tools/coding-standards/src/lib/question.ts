@@ -7,6 +7,10 @@ export const Kind = Schema.Literals(['code', 'component', 'test'])
 
 export type Side = {cases: Array.NonEmptyReadonlyArray<string>; example: string}
 
+// A `//` comment opening with judge-ignore is a directive; only `judge-ignore <question> -- <reason>` applies, and lint reports the rest.
+export const JUDGE_DIRECTIVE = /^\s*judge-ignore(?:\s|$)/u
+export const JUDGE_IGNORE = /^\s*judge-ignore (\S+) -- (\S.*)$/u
+
 // One narrow yes-or-no question about `code`, asked of every unit of its kind that its `gate` admits: `yes` is the violation, `message` tells the agent the fix, and the judge checks it answers its own examples. A gate reads the unit and its parser-identified composition context and must hold for every unit the answer could be yes for; without one, every unit is asked.
 export type Question = {
 	gate: (unit: Features) => boolean

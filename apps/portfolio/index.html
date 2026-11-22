@@ -13,10 +13,19 @@
 		<link rel="icon" href="/src/routes/icon.svg" />
 		<link rel="apple-touch-icon" href="/apple-touch-icon.png" />
 		<link rel="manifest" href="/manifest.webmanifest" />
-		<!-- Requested with the page, so the reads waiting on them never add a round trip. -->
-		<link rel="preload" href="/api/runtime" as="fetch" crossorigin />
-
-		<title>Portfolio</title>
+		<!-- Requested with the profile, so presence never waits a round trip for it; the printable CV reads none. -->
+		<script>
+			if (location.pathname !== '/cv') {
+				document.head.append(
+					Object.assign(document.createElement('link'), {
+						as: 'fetch',
+						crossOrigin: 'anonymous',
+						href: '/api/runtime',
+						rel: 'preload'
+					})
+				)
+			}
+		</script>
 	</head>
 	<body>
 		<div id="root"></div>

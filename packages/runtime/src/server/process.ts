@@ -2,7 +2,22 @@ import {createZstdDecompress} from 'node:zlib'
 
 import {NodeStream} from '@effect/platform-node'
 
-import {Array, Cache, Context, Effect, Exit, FileSystem, Function, Layer, Path, Schema, Stream, pipe} from 'effect'
+import {
+	Array,
+	ByteSize,
+	Cache,
+	Context,
+	Effect,
+	Exit,
+	FileSystem,
+	Function,
+	Layer,
+	Path,
+	Schema,
+	Stream,
+	pipe
+} from 'effect'
+import type {Duration, PlatformError} from 'effect'
 
 import {ChildProcess} from 'effect/process'
 
@@ -15,16 +30,30 @@ export class AppError extends Schema.TaggedError<AppError>()('AppError', {
 	message: Schema.String
 }) {}
 
-export const executeProcess = Effect.fn('Process.execute')(function* (command: string, args: string[]) {
+// A command that never returns or floods its pipes is killed with its scope; a caller that expects more names its own bounds.
+export const executeProcess = Effect.fn('Process.execute')(function* (
+	command: string,
+	args: string[],
+	options?: {readonly output?: ByteSize.ByteSize; readonly timeout?: Duration.Input}
+) {
 	yield* Effect.annotateCurrentSpan({command, 'command.arguments': args.length})
 	const process = yield* ChildProcess.make(command, args, {stderr: 'pipe', stdout: 'pipe'})
-	const result = yield* Effect.all(
-		{
-			code: process.exitCode,
-			stderr: Stream.mkString(Stream.decodeText(process.stderr)),
-			stdout: Stream.mkString(Stream.decodeText(process.stdout))
-		},
-		{concurrency: 'unbounded'}
+	function text(stream: Stream.Stream<Uint8Array, PlatformError.PlatformError>, name: string) {
+		return pipe(
+			stream,
+			Stream.limitBytes<PlatformError.PlatformError | AppError, never>(options?.output ?? ByteSize.mebibytes(4), () =>
+				Stream.fail(AppError.make({message: `${command} wrote more ${name} than this caller reads`}))
+			),
+			Stream.decodeText,
+			Stream.mkString
+		)
+	}
+	const result = yield* Effect.timeout(
+		Effect.all(
+			{code: process.exitCode, stderr: text(process.stderr, 'stderr'), stdout: text(process.stdout, 'stdout')},
+			{concurrency: 'unbounded'}
+		),
+		options?.timeout ?? '30 seconds'
 	)
 	if (result.code !== 0) {
 		return yield* AppError.make({exitCode: result.code, message: `${command} failed: ${result.stderr}`})

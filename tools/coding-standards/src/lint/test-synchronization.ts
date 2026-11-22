@@ -1,4 +1,4 @@
-import {Array, Boolean, MutableList, Option, Predicate} from 'effect'
+import {Array, Duration, MutableList, Option, Predicate, Schema, String, pipe} from 'effect'
 
 import {defineRule} from 'vite-plus/lint/plugins'
 import type {Context, ESTree} from 'vite-plus/lint/plugins'
@@ -156,6 +156,170 @@ function inside(node: ESTree.Node, ancestor: ESTree.Node): boolean {
 	return inside(node.parent, ancestor)
 }
 
+// The test case or hook a node belongs to, else the file: a TestClock that another case advances never moves this one's time.
+function caseOf(context: Context, node: ESTree.Node): ESTree.Node {
+	if (node.parent === null) return node
+	if (
+		node.parent.type === 'CallExpression' &&
+		Array.some(node.parent.arguments, argument => argument === node) &&
+		(testHook(context, node.parent.callee) || Option.isSome(testChain(context, node.parent.callee)))
+	) {
+		return node.parent
+	}
+	return caseOf(context, node.parent)
+}
+
+function drivesClock(context: Context, node: ESTree.Node) {
+	return containsNode({
+		context,
+		matches: child => isTestClockCall(context, child, 'adjust') || isTestClockCall(context, child, 'setTime'),
+		node,
+		throughFunctions: true
+	})
+}
+
+// A wait or a timeout on the TestClock is the behaviour under test only where its own case advances that clock.
+function undriven(context: Context, node: ESTree.Node) {
+	return !drivesClock(context, caseOf(context, node))
+}
+
+function forksWork(context: Context, node: ESTree.Node) {
+	return containsNode({
+		context,
+		matches: child =>
+			child.type === 'MemberExpression' &&
+			importedMember({context, importedName: 'Effect', node: child}) &&
+			Option.exists(memberName(child), String.startsWith('fork')),
+		node,
+		throughFunctions: false
+	})
+}
+
+// Whether the node runs in its owner's own fiber: no function boundary and no fork between them.
+function runsInPlace(context: Context, node: ESTree.Node, owner: ESTree.Node): boolean {
+	if (node === owner) return true
+	if (node.parent === null || isFunction(node) || (node.type === 'CallExpression' && forksWork(context, node))) {
+		return false
+	}
+	return runsInPlace(context, node.parent, owner)
+}
+
+function ownerOf(node: ESTree.Node): ESTree.Node {
+	if (node.parent === null || isFunction(node)) return node
+	return ownerOf(node.parent)
+}
+
+// Whether a `yield*` suspends on the wait, as in `yield* Effect.sleep(…)`, rather than a call taking it as a value.
+function suspends(context: Context, node: ESTree.Node): boolean {
+	if (node.parent === null) return false
+	if (node.parent.type === 'YieldExpression') return true
+	if (node.parent.type === 'MemberExpression') return node.parent.object === node && suspends(context, node.parent)
+	if (node.parent.type !== 'CallExpression' || forksWork(context, node.parent)) return false
+
+	return (
+		(node.parent.callee === node || isPipe(node.parent) || Option.contains(Array.head(node.parent.arguments), node)) &&
+		suspends(context, node.parent)
+	)
+}
+
+// Whether a fork between the node and its owner runs it in a fiber of its own.
+function forkedUnder(context: Context, node: ESTree.Node, owner: ESTree.Node): boolean {
+	if (node === owner || node.parent === null) return false
+	if (node.type === 'CallExpression' && forksWork(context, node)) return true
+	return forkedUnder(context, node.parent, owner)
+}
+
+// What an argument spells out: a literal's value, or the text of a template without substitutions.
+function spelled(argument: ESTree.Node) {
+	if (argument.type === 'Literal') return Option.some(argument.value)
+	if (argument.type !== 'TemplateLiteral' || Array.isReadonlyArrayNonEmpty(argument.expressions)) return Option.none()
+	return Option.map(Array.head(argument.quasis), quasi => quasi.value.cooked)
+}
+
+// The length a call spells out as its one literal, such as `'1 second'`, `500` milliseconds or `1n` nanosecond; a name or any other expression leaves it unknown.
+function literalLength(call: ESTree.CallExpression) {
+	return pipe(
+		call.arguments,
+		Array.map(spelled),
+		Array.getSomes,
+		Array.map(value =>
+			Schema.decodeUnknownOption(
+				Schema.Union([Schema.DurationFromMillis, Schema.DurationFromNanos, Schema.DurationFromString])
+			)(value)
+		),
+		Array.getSomes,
+		Option.liftPredicate(lengths => lengths.length === 1),
+		Option.flatMap(Array.head)
+	)
+}
+
+// A wait of no length, such as `Effect.sleep(0)`, ends at once, so it never waits for the clock.
+function endsAtOnce(node: ESTree.MemberExpression) {
+	return (
+		node.parent.type === 'CallExpression' &&
+		node.parent.callee === node &&
+		Option.exists(literalLength(node.parent), Duration.isZero)
+	)
+}
+
+// Whether the advance lasts as long as the wait; a length the rule cannot read counts as long enough.
+function coversWait(context: Context, wait: ESTree.MemberExpression, advance: ESTree.Node) {
+	if (
+		advance.type !== 'CallExpression' ||
+		!isTestClockCall(context, advance, 'adjust') ||
+		wait.parent.type !== 'CallExpression' ||
+		wait.parent.callee !== wait
+	) {
+		return true
+	}
+	const waited = literalLength(wait.parent)
+	return !Option.exists(literalLength(advance), length =>
+		Option.exists(waited, other => Duration.isLessThan(length, other))
+	)
+}
+
+// Whether a fiber forked before the wait moves the clock, and with `enough` by as much as the wait lasts.
+function movedBefore(context: Context, wait: ESTree.MemberExpression, enough: boolean) {
+	const owner = ownerOf(wait)
+	return containsNode({
+		context,
+		matches: child =>
+			(isTestClockCall(context, child, 'adjust') || isTestClockCall(context, child, 'setTime')) &&
+			child.range[1] < wait.range[0] &&
+			forkedUnder(context, child, owner) &&
+			(!enough || coversWait(context, wait, child)),
+		node: owner,
+		throughFunctions: true
+	})
+}
+
+// A sleep the test's own fiber waits out never ends when the clock moves only afterwards, or only by less in a fiber forked earlier: a fiber forked earlier has to move it by as much as the sleep lasts.
+function sleepsBeforeAdvancing(context: Context, node: ESTree.Node) {
+	if (
+		node.type !== 'MemberExpression' ||
+		!Array.some(['sleep', 'delay'], propertyName =>
+			importedMember({context, importedName: 'Effect', node, propertyName})
+		)
+	) {
+		return false
+	}
+	const owner = ownerOf(node)
+	return (
+		suspends(context, node) &&
+		!movedBefore(context, node, true) &&
+		(movedBefore(context, node, false) ||
+			containsNode({
+				context,
+				matches: child =>
+					(isTestClockCall(context, child, 'adjust') || isTestClockCall(context, child, 'setTime')) &&
+					child.range[0] > node.range[1] &&
+					(runsInPlace(context, child, owner) || forkedUnder(context, child, owner)),
+				node: owner,
+				throughFunctions: true
+			}))
+	)
+}
+
 function assertionIn(context: Context, node: ESTree.Node, seen: ESTree.Node[] = []): boolean {
 	if (Array.contains(seen, node)) return false
 	return containsNode({
@@ -179,6 +343,7 @@ export const testSynchronization = defineRule({
 	create: context => {
 		if (!isTestFile(context)) return {}
 		const waits = MutableList.make<ESTree.Node>()
+		const timeouts = MutableList.make<ESTree.Node>()
 		const findings = MutableList.make<{message: string; node: ESTree.Node}>()
 		function loop(node: Loop) {
 			if (
@@ -248,13 +413,18 @@ export const testSynchronization = defineRule({
 			MemberExpression: node => {
 				if (isClockWait(context, node)) {
 					if (onRealClock(context, node)) MutableList.append(findings, {message: MESSAGE, node})
-					else MutableList.append(waits, node)
+					else if (!endsAtOnce(node)) MutableList.append(waits, node)
+					return
+				}
+				const timeout = Array.some(['timeout', 'timeoutOption', 'timeoutOrElse'], propertyName =>
+					importedMember({context, importedName: 'Effect', node, propertyName})
+				)
+				if (timeout && !onRealClock(context, node)) {
+					MutableList.append(timeouts, node)
 					return
 				}
 				if (
-					Array.some(['timeout', 'timeoutOption', 'timeoutOrElse'], propertyName =>
-						importedMember({context, importedName: 'Effect', node, propertyName})
-					) ||
+					timeout ||
 					Option.exists(testChain(context, node), chain => Option.contains(Array.last(chain.members), 'flakyTest'))
 				) {
 					MutableList.append(findings, {
@@ -264,27 +434,37 @@ export const testSynchronization = defineRule({
 					})
 				}
 			},
-			'Program:exit': program => {
-				const all = Array.appendAll(
-					MutableList.toArray(findings),
-					Boolean.match(
-						containsNode({
-							context,
-							matches: node => isTestClockCall(context, node, 'adjust') || isTestClockCall(context, node, 'setTime'),
-							node: program,
-							throughFunctions: true
-						}),
-						{
-							onFalse: () =>
-								Array.map(MutableList.toArray(waits), node => ({
-									message:
-										'Advance TestClock for time-dependent logic, or await its Deferred, Latch, Queue or Stream milestone.',
-									node
-								})),
-							onTrue: Array.empty
-						}
+			'Program:exit': () => {
+				const all = [
+					...MutableList.toArray(findings),
+					...pipe(
+						MutableList.toArray(waits),
+						Array.filter(node => undriven(context, node)),
+						Array.map(node => ({
+							message:
+								'Advance TestClock for time-dependent logic, or await its Deferred, Latch, Queue or Stream milestone.',
+							node
+						}))
+					),
+					...pipe(
+						MutableList.toArray(waits),
+						Array.filter(node => !undriven(context, node) && sleepsBeforeAdvancing(context, node)),
+						Array.map(node => ({
+							message:
+								'This wait blocks the fiber that advances TestClock, so the clock never moves: fork the waiting effect with Effect.forkChild before TestClock.adjust, then join it.',
+							node
+						}))
+					),
+					...pipe(
+						MutableList.toArray(timeouts),
+						Array.filter(node => undriven(context, node)),
+						Array.map(node => ({
+							message:
+								'Use the project timeout only; await a milestone or advance TestClock instead of adding hang guards or flaky retries.',
+							node
+						}))
 					)
-				)
+				]
 				for (const finding of all) {
 					if (!Array.some(all, other => other.node !== finding.node && inside(finding.node, other.node))) {
 						context.report(finding)

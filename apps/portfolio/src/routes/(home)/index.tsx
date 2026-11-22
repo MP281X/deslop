@@ -1,23 +1,6 @@
-import {useAtomMount, useAtomSet, useAtomSuspense, useAtomValue} from '@effect/atom-react'
+import {useAtomMount, useAtomSet, useAtomValue} from '@effect/atom-react'
 
-import {
-	Array,
-	Boolean,
-	Effect,
-	Function,
-	HashMap,
-	HashSet,
-	Match,
-	Number,
-	Option,
-	Predicate,
-	Random,
-	Schema,
-	Stream,
-	String,
-	Tuple,
-	pipe
-} from 'effect'
+import {Array, Boolean, Function, Match, Number, Predicate, Schema, String, pipe} from 'effect'
 
 import {
 	ArrowUpRightIcon,
@@ -29,150 +12,26 @@ import {
 	SealCheckIcon
 } from '@phosphor-icons/react'
 import {useHotkeys} from '@tanstack/react-hotkeys'
-import {CatchBoundary, createFileRoute} from '@tanstack/react-router'
-import {SecureRandom} from 'effect/crypto'
-import {KeyValueStore} from 'effect/persistence'
-import {Atom} from 'effect/reactivity'
-import {Suspense, useRef, useState} from 'react'
+import {createFileRoute} from '@tanstack/react-router'
+import {AsyncResult, Atom} from 'effect/reactivity'
+import {useRef, useState} from 'react'
 
 import {cn} from '@deslop/components-web/lib/utils'
 import {Button} from '@deslop/components-web/ui/button'
 import {Dialog, DialogContent, DialogHeader, DialogTitle} from '@deslop/components-web/ui/dialog'
 import {Kbd, KbdGroup} from '@deslop/components-web/ui/kbd'
-import {liveStream, reconnectOnDrop} from '@deslop/runtime/client/live-stream'
 
-import {RpcClient} from '#lib/presence.ts'
+import {ownColorAtom, ownCursorAtom, recolorAtom, sceneAtom, sendCursorAtom} from '#lib/presence.ts'
 import {contacts, education, experience, languages, profile, projects, skills, summary} from '#lib/profile.ts'
-import {hasMeaningfulMove} from '#services/presence/lib/utils.ts'
-import {Color, VisitorId, Visitors} from '#services/presence/schema.ts'
-import type {Scene, Visitor} from '#services/presence/schema.ts'
+import {trailCells} from '#lib/trails.ts'
+import {VisitorId, Visitors} from '#services/presence/schema.ts'
+import type {Visitor} from '#services/presence/schema.ts'
 
 const SECTION_KEYS = ['1', '2', '3', '4', '5', '6'] as const
 const SECTION_NAMES = ['profile', 'skills', 'experience', 'projects', 'education', 'contact'] as const
 
-type TrailedScene = Scene & {trails: Visitors}
-
 type PresenceState = typeof PresenceState.Type
 const PresenceState = Schema.TaggedUnion({Connecting: {}, Offline: {}, Visitors: {visitors: Visitors}})
-
-function randomIndex(length: number) {
-	return Math.floor(Random.Random.defaultValue().nextDoubleUnsafe() * length)
-}
-
-function pickNextCursorColor(currentColor: Color) {
-	const nextPalette = Array.filter(Color.literals, color => color !== currentColor)
-	return nextPalette[randomIndex(Array.length(nextPalette))] ?? Color.literals[0]
-}
-
-const identityAtom = Atom.keepAlive(
-	Atom.kvs({
-		defaultValue: () => {
-			const seed = String.slice(0, 6)(SecureRandom.uuidV4Unsafe())
-			return {id: VisitorId.make(`v-${seed}`), name: `Guest-${String.slice(0, 3)(seed)}`}
-		},
-		key: 'portfolio.identity',
-		mode: 'async',
-		runtime: Atom.runtime(KeyValueStore.layerStorage(() => sessionStorage)),
-		schema: Schema.Struct({id: VisitorId, name: Schema.NonEmptyString})
-	})
-)
-
-// Pointer movement is local; the joined scene supplies the colour shared by tabs of the same identity.
-const ownCursorAtom = Atom.make({
-	color: Color.literals[randomIndex(Array.length(Color.literals))] ?? Color.literals[0],
-	x: 0.5,
-	y: 0.5
-})
-
-const portfolioAtom = Atom.keepAlive(
-	RpcClient.runtime.atom(get =>
-		Stream.unwrap(
-			Effect.map(get.result(identityAtom), identity => {
-				const joined = {color: get.once(ownCursorAtom).color}
-				return pipe(
-					Stream.suspend(() => liveStream(RpcClient, 'presence.join', {...identity, color: joined.color})),
-					Stream.tap(scene =>
-						Effect.sync(() => {
-							pipe(
-								scene.visitors,
-								Array.findFirst(visitor => visitor.id === identity.id),
-								Option.map(visitor => {
-									joined.color = visitor.color
-								})
-							)
-						})
-					),
-					// A dropped socket can rejoin with its trails, but retrying an unreadable scene will not repair it.
-					reconnectOnDrop,
-					Stream.mapAccum<TrailedScene, Scene, TrailedScene>(
-						() => ({bots: [], trails: [], visitors: []}),
-						(scene, update) => {
-							const cursors = Array.appendAll(update.visitors, update.bots)
-							const positions = HashSet.fromIterable(
-								pipe(
-									scene.visitors,
-									Array.appendAll(scene.bots),
-									Array.map(visitor => Tuple.make(visitor.id, visitor.color, visitor.x, visitor.y))
-								)
-							)
-							// The latest 180 positions in the order cursors reached them; a recolour starts a new stretch where the cursor is.
-							const next = {
-								bots: update.bots,
-								trails: pipe(
-									scene.trails,
-									Array.appendAll(
-										Array.filter(
-											cursors,
-											visitor => !HashSet.has(positions, Tuple.make(visitor.id, visitor.color, visitor.x, visitor.y))
-										)
-									),
-									Array.takeRight(180)
-								),
-								visitors: update.visitors
-							}
-							return Tuple.make(next, [next])
-						}
-					)
-				)
-			})
-		)
-	)
-)
-
-// Sends this page's position while the page is open: at most one move per 50 ms, always the latest, and none too small to see.
-const sendCursorAtom = RpcClient.runtime.atom(get =>
-	Effect.gen(function* () {
-		const identity = yield* get.result(identityAtom)
-		return yield* pipe(
-			get.stream(ownCursorAtom, {withoutInitialValue: true}),
-			Stream.changesWith((sent, next) => !hasMeaningfulMove(sent, next)),
-			Stream.buffer({capacity: 1, strategy: 'sliding'}),
-			Stream.throttle({cost: Array.length, duration: '50 millis', units: 1}),
-			Stream.runForEach(cursor =>
-				pipe(
-					RpcClient,
-					Effect.flatMap(client => client('presence.move', {id: identity.id, x: cursor.x, y: cursor.y})),
-					Effect.ignore({log: 'Debug', message: 'The cursor move did not reach the room'})
-				)
-			)
-		)
-	})
-)
-
-const recolorAtom = RpcClient.runtime.fn((_: void, get) =>
-	Effect.ignore(
-		Effect.gen(function* () {
-			const identity = yield* get.result(identityAtom)
-			const visitor = yield* pipe(
-				yield* get.result(portfolioAtom),
-				scene => Array.findFirst(scene.visitors, item => item.id === identity.id),
-				Effect.fromOption
-			)
-			yield* (yield* RpcClient)('presence.recolor', {color: pickNextCursorColor(visitor.color), id: identity.id})
-		}),
-		{log: 'Debug', message: 'The cursor recolor did not reach the room'}
-	)
-)
 
 // The window's size in pixels, following each resize.
 const viewportAtom = Atom.make(get => {
@@ -213,47 +72,14 @@ function SectionBody(input: {children: React.ReactNode; title: string}) {
 }
 
 function TrailGrid(input: {trails: Visitors; viewport: {width: number; height: number}}) {
-	const [, cells] = Array.mapAccum(
-		input.trails,
-		HashMap.empty<VisitorId, {trail: Visitor; col: number; row: number}>(),
-		(previousByVisitor, trail) => {
-			const current = {
-				col: Math.floor((trail.x * input.viewport.width) / 26),
-				row: Math.floor((trail.y * input.viewport.height) / 26),
-				trail
-			}
-			const previous = pipe(
-				previousByVisitor,
-				HashMap.get(trail.id),
-				Option.getOrElse(() => current)
-			)
-
-			const stepCount = Number.max(Math.abs(current.col - previous.col), Math.abs(current.row - previous.row))
-
-			const segment = Array.makeBy(stepCount + 1, step => {
-				const progress = Boolean.match(stepCount === 0, {onFalse: () => step / stepCount, onTrue: Function.constant(1)})
-				const col = Number.round(previous.col + (current.col - previous.col) * progress, 0)
-				const row = Number.round(previous.row + (current.row - previous.row) * progress, 0)
-
-				const color = Boolean.match(progress < 1, {
-					onFalse: () => current.trail.color,
-					onTrue: () => previous.trail.color
-				})
-				return {color, x: col * 26 + 1, y: row * 26 + 1}
-			})
-
-			return [HashMap.set(previousByVisitor, trail.id, current), segment]
-		}
-	)
-
 	return (
 		<svg
 			aria-hidden
 			className="pointer-events-none fixed inset-0 z-1 size-full print:hidden"
 			shapeRendering="crispEdges"
 		>
-			{Array.map(Array.flatten(cells), (cell, index) => (
-				<rect key={index} x={cell.x} y={cell.y} width={24} height={24} fill={cell.color} fillOpacity={0.22} />
+			{Array.map(trailCells(input.trails, input.viewport), cell => (
+				<rect key={cell.key} x={cell.x} y={cell.y} width={24} height={24} fill={cell.fill} fillOpacity={cell.opacity} />
 			))}
 		</svg>
 	)
@@ -318,15 +144,15 @@ function Cursor(input: {cursor: Visitor; own: boolean; viewport: {width: number;
 	)
 }
 
-function OwnCursor(input: {viewport: {width: number; height: number}; color: Option.Option<Color>}) {
-	const cursor = useAtomValue(ownCursorAtom)
+// Drawn whatever presence does, since the page hides the system pointer for it.
+function OwnCursor(input: {viewport: {width: number; height: number}}) {
 	return (
 		<div className="mouse:contents hidden print:hidden">
 			<Cursor
 				own
 				cursor={{
-					...cursor,
-					color: Option.getOrElse(input.color, () => cursor.color),
+					...useAtomValue(ownCursorAtom),
+					color: useAtomValue(ownColorAtom),
 					id: VisitorId.make('own'),
 					name: 'You'
 				}}
@@ -552,19 +378,11 @@ function ShortcutsOverlay(input: {open: boolean; onOpenChange: (open: boolean) =
 }
 
 function VisitorCount(props: {visitors: Visitors}) {
-	const identity = useAtomSuspense(identityAtom).value
-	const cursor = useAtomValue(ownCursorAtom)
 	return (
 		<>
 			<span
 				className="size-1.5 rounded-full bg-(--identity-color)"
-				style={{
-					'--identity-color': pipe(
-						props.visitors,
-						Array.findFirst(visitor => visitor.id === identity.id),
-						Option.match({onNone: () => cursor.color, onSome: visitor => visitor.color})
-					)
-				}}
+				style={{'--identity-color': useAtomValue(ownColorAtom)}}
 			/>
 			<span className="text-foreground tabular-nums">{Array.length(props.visitors)}</span>
 			<span className="text-muted-foreground">
@@ -623,52 +441,52 @@ function PresenceHud(input: {presence: PresenceState; onToggleShortcuts: () => v
 	)
 }
 
-function RealtimeLayer(input: {
+// The room while it answers; before its first scene and through an outage, only the HUD saying so, never a stale room.
+function PresenceLayer(input: {
 	viewport: {width: number; height: number}
 	onToggleShortcuts: () => void
 	shortcutsOpen: boolean
 }) {
-	const portfolio = useAtomSuspense(portfolioAtom)
-	const identity = useAtomSuspense(identityAtom).value
-
-	return (
-		<>
-			<div className="trail-grid pointer-events-none fixed inset-0 z-1 print:hidden" />
-			<TrailGrid trails={portfolio.value.trails} viewport={input.viewport} />
-
-			<OwnCursor
-				viewport={input.viewport}
-				color={pipe(
-					portfolio.value.visitors,
-					Array.findFirst(visitor => visitor.id === identity.id),
-					Option.map(visitor => visitor.color)
-				)}
-			/>
-			<div className="max-sm:hidden print:hidden">
-				<div className="mouse:contents hidden">
-					{pipe(
-						portfolio.value.visitors,
-						Array.appendAll(portfolio.value.bots),
-						Array.map(cursor =>
-							Boolean.match(cursor.id === identity.id, {
-								onFalse: () => <Cursor key={cursor.id} cursor={cursor} own={false} viewport={input.viewport} />,
-								onTrue: Function.constNull
-							})
-						)
-					)}
-				</div>
-			</div>
-
+	function hud(presence: PresenceState) {
+		return (
 			<PresenceHud
-				presence={PresenceState.cases.Visitors.make({visitors: portfolio.value.visitors})}
+				presence={presence}
 				onToggleShortcuts={input.onToggleShortcuts}
 				shortcutsOpen={input.shortcutsOpen}
 			/>
-		</>
-	)
+		)
+	}
+
+	return AsyncResult.match(useAtomValue(sceneAtom), {
+		onFailure: () => hud(PresenceState.cases.Offline.make({})),
+		onInitial: () => hud(PresenceState.cases.Connecting.make({})),
+		onSuccess: scene => (
+			<>
+				<div className="trail-grid pointer-events-none fixed inset-0 z-1 print:hidden" />
+				<TrailGrid trails={scene.value.trails} viewport={input.viewport} />
+
+				<div className="max-sm:hidden print:hidden">
+					<div className="mouse:contents hidden">
+						{pipe(
+							scene.value.visitors,
+							Array.appendAll(scene.value.bots),
+							Array.map(cursor =>
+								Boolean.match(cursor.id === scene.value.own, {
+									onFalse: () => <Cursor key={cursor.id} cursor={cursor} own={false} viewport={input.viewport} />,
+									onTrue: Function.constNull
+								})
+							)
+						)}
+					</div>
+				</div>
+
+				{hud(PresenceState.cases.Visitors.make({visitors: scene.value.visitors}))}
+			</>
+		)
+	})
 }
 
-// judge-ignore no-silent-fallback -- Early input lacks a DOM ref or viewport; the presence boundary reports Offline instead of substituting a successful scene.
+// judge-ignore no-silent-fallback -- Early input lacks a DOM ref or viewport; presence reports Offline instead of substituting a successful scene.
 function PortfolioRoute() {
 	const viewport = useAtomValue(viewportAtom)
 	const setOwnCursor = useAtomSet(ownCursorAtom)
@@ -696,11 +514,10 @@ function PortfolioRoute() {
 		event.currentTarget.style.setProperty('--pointer-x', `${event.clientX}px`)
 		event.currentTarget.style.setProperty('--pointer-y', `${event.clientY}px`)
 		if (viewport.width === 0 || viewport.height === 0) return
-		setOwnCursor(cursor => ({
-			...cursor,
+		setOwnCursor({
 			x: Number.clamp(event.clientX / viewport.width, {maximum: 0.999999, minimum: 0}),
 			y: Number.clamp(event.clientY / viewport.height, {maximum: 0.999999, minimum: 0})
-		}))
+		})
 	}
 
 	useHotkeys([
@@ -730,31 +547,8 @@ function PortfolioRoute() {
 			<EducationSection />
 			<ContactSection />
 
-			<CatchBoundary
-				getResetKey={Function.constant('presence')}
-				errorComponent={() => (
-					<PresenceHud
-						presence={PresenceState.cases.Offline.make({})}
-						onToggleShortcuts={toggleShortcuts}
-						shortcutsOpen={showShortcuts}
-					/>
-				)}
-			>
-				<Suspense
-					fallback={
-						<>
-							<OwnCursor viewport={viewport} color={Option.none()} />
-							<PresenceHud
-								presence={PresenceState.cases.Connecting.make({})}
-								onToggleShortcuts={toggleShortcuts}
-								shortcutsOpen={showShortcuts}
-							/>
-						</>
-					}
-				>
-					<RealtimeLayer viewport={viewport} onToggleShortcuts={toggleShortcuts} shortcutsOpen={showShortcuts} />
-				</Suspense>
-			</CatchBoundary>
+			<OwnCursor viewport={viewport} />
+			<PresenceLayer viewport={viewport} onToggleShortcuts={toggleShortcuts} shortcutsOpen={showShortcuts} />
 
 			<ShortcutsOverlay open={showShortcuts} onOpenChange={setShowShortcuts} />
 		</div>

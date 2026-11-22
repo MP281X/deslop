@@ -20,6 +20,9 @@ public class StashNativeModule: Module {
       }
     }
 
+    // The App Group folder of queued shares and their answers, which the app handles once it opens.
+    Function("sharedUploads") { sharedUploads()?.absoluteString }
+
     ExpoUIView(Logo.self)
   }
 }

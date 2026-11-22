@@ -4,27 +4,32 @@ import {
 	DropdownMenuContent,
 	DropdownMenuGroup,
 	DropdownMenuItem,
+	DropdownMenuLabel,
+	DropdownMenuSeparator,
 	DropdownMenuTrigger
 } from '@deslop/components-web/ui/dropdown-menu'
 
 import type {SignedAccount} from '#services/people/schema.ts'
 
+// The shared app menu's label and sign-out, posting to Auth's own route; a tailnet caller has no session to end, so no sign-out.
 export function AccountMenu(props: {account: SignedAccount}) {
 	return (
 		<DropdownMenu>
 			<DropdownMenuTrigger render={<AccountButton account={props.account} />} />
-			<DropdownMenuContent align="end">
+			<DropdownMenuContent align="end" className="w-56">
 				<DropdownMenuGroup>
-					<DropdownMenuItem disabled>{props.account.name}</DropdownMenuItem>
-					{props.account.signOut && (
-						<>
-							{/* oxlint-disable-next-line @deslop/coding-standards/no-bare-control -- This menu form submits one action, with no fields to group. */}
-							<form action="/sign-out" method="post">
-								<DropdownMenuItem render={<button aria-label="Sign out" type="submit" />}>Sign out</DropdownMenuItem>
-							</form>
-						</>
-					)}
+					<DropdownMenuLabel>@{props.account.name}</DropdownMenuLabel>
 				</DropdownMenuGroup>
+				{props.account.signOut && (
+					<>
+						<DropdownMenuSeparator />
+						<form action="/sign-out" method="post">
+							<DropdownMenuItem variant="destructive" render={<button aria-label="Sign out" type="submit" />}>
+								Sign out
+							</DropdownMenuItem>
+						</form>
+					</>
+				)}
 			</DropdownMenuContent>
 		</DropdownMenu>
 	)

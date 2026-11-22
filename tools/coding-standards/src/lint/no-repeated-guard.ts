@@ -94,17 +94,45 @@ function within(inner: Interval, outer: Interval) {
 	)
 }
 
+// The tests a guard exits on: each side of an `||` exits alone.
+function alternatives(test: ESTree.Expression): ESTree.Expression[] {
+	if (test.type === 'LogicalExpression' && test.operator === '||') {
+		return [...alternatives(test.left), ...alternatives(test.right)]
+	}
+	return [test]
+}
+
+// The compiler narrows a reference's truthiness, a nullish or typeof check and instanceof, and typescript/no-unnecessary-condition reports their repeats.
+function narrowed(test: ESTree.Expression): boolean {
+	if (test.type === 'Identifier' || test.type === 'MemberExpression') return true
+	if (test.type === 'UnaryExpression') return test.operator === '!' && narrowed(test.argument)
+	if (test.type !== 'BinaryExpression') return false
+	return (
+		test.operator === 'instanceof' ||
+		Array.some([test.left, test.right], side => side.type === 'UnaryExpression' && side.operator === 'typeof') ||
+		Array.some(
+			[test.left, test.right],
+			side =>
+				(side.type === 'Literal' && side.value === null) || (side.type === 'Identifier' && side.name === 'undefined')
+		)
+	)
+}
+
 // The nearest earlier guard with the same test, or a comparison admitting every number this one does, unless a statement between them can change what it reads.
 function repeatsGuard(context: Context, body: ESTree.Statement[], index: number) {
 	const statement = body[index]
-	if (statement?.type !== 'IfStatement') return false
+	if (statement?.type !== 'IfStatement' || narrowed(statement.test)) return false
 	const test = context.sourceCode.getText(statement.test)
 	const admitted = intervalOf(context, statement.test)
 	function sameGuard(previous: ESTree.Statement) {
 		return (
 			isGuard(context, previous) &&
-			(context.sourceCode.getText(previous.test) === test ||
-				Option.exists(Option.all([admitted, intervalOf(context, previous.test)]), pair => within(pair[0], pair[1])))
+			Array.some(
+				alternatives(previous.test),
+				exited =>
+					context.sourceCode.getText(exited) === test ||
+					Option.exists(Option.all([admitted, intervalOf(context, exited)]), pair => within(pair[0], pair[1]))
+			)
 		)
 	}
 	return pipe(

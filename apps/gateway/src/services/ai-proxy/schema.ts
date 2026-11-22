@@ -28,3 +28,13 @@ export const AiSetKey = Schema.Struct({secret: Schema.RedactedFromValue(AiKeySec
 
 export type AiKeyItem = typeof AiKeyItem.Type
 export const AiKeyItem = Schema.Struct(Struct.pick(AiKey.fields, ['provider', 'last4', 'lastStatus']))
+
+// A request Gateway answers itself, without reaching the provider.
+export class AiRefusalError extends Schema.TaggedError<AiRefusalError>()('AiRefusalError', {
+	message: Schema.String,
+	status: Schema.Int
+}) {}
+
+// An inference request's body, as both the model policy and the provider read it.
+export type JsonBody = typeof JsonBody.Type
+export const JsonBody = Schema.fromJsonString(Schema.Record(Schema.String, Schema.Unknown))

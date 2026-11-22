@@ -1,4 +1,4 @@
-import {Clock, Context, DateTime, Effect, Function, Layer, Option, Redacted, Schema} from 'effect'
+import {Clock, Context, DateTime, Duration, Effect, Function, Layer, Option, Redacted, Schema} from 'effect'
 
 import type {HttpClient} from 'effect/http'
 
@@ -42,7 +42,8 @@ export class Extractor extends Context.Service<
 							AiGateway.languageModel(userId, {maxTokens: 16_000}),
 							modelContext
 						)
-						const today = `Today: ${DateTime.formatIsoDateUtc(DateTime.makeUnsafe(yield* Clock.currentTimeMillis))}`
+						// The earliest date anywhere, twelve hours behind UTC, so a ticket printed without a year is never pushed a year on for a place where its day has not begun.
+						const today = `Today: ${DateTime.formatIsoDateUtc(DateTime.subtractDuration(DateTime.makeUnsafe(yield* Clock.currentTimeMillis), Duration.hours(12)))}`
 						function content() {
 							if (BookingSource.isAnyOf(['pdf'])(source)) {
 								return [
@@ -67,8 +68,8 @@ export class Extractor extends Context.Service<
 						})
 						return response.value.items
 					},
-					Effect.timeout('3 minutes'),
-					// Retry once unless Gateway reports that AI access is unavailable.
+					Effect.timeout('75 seconds'),
+					// Retry once unless Gateway reports that AI access is unavailable; both tries end within the share extension's four minutes, with time left to place the stations.
 					Effect.retry({times: 1, while: cause => !Schema.is(AiUnavailableError)(cause)}),
 					Effect.mapError(cause =>
 						BookingsError.make({

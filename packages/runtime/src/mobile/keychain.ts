@@ -5,7 +5,7 @@ import {AFTER_FIRST_UNLOCK, deleteItemAsync, getItem, setItem} from 'expo-secure
 import {AuthError, SESSION_COOKIE} from '#shared/auth.ts'
 import {Account} from '#shared/schema.ts'
 
-// The secret of the session Auth issued this device: in Stash the Keychain access group its share extension reads, in every other app the app's own.
+// The secret of the session Auth issued this device: in Stash and Trips the Keychain access group their share extension reads, in every other app the app's own.
 const KEY = 'session'
 const ACCOUNT_KEY = 'account'
 

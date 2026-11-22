@@ -1,9 +1,9 @@
-import {Effect, Schema, pipe} from 'effect'
+import {Effect, pipe} from 'effect'
 
 import {HttpClient, HttpClientResponse} from 'effect/http'
 import type {Headers} from 'effect/http'
 
-import {AuthError} from '#shared/auth.ts'
+import {AuthError, outageUnlessRefused} from '#shared/auth.ts'
 import {ACCOUNT_PATH, Account} from '#shared/schema.ts'
 
 // Both clients distinguish a refusal from an outage, which must keep retrying.
@@ -23,10 +23,6 @@ export function readAccount(origin: string, headers?: Headers.Input) {
 				)
 			})
 		),
-		Effect.timeout('10 seconds'),
-		Effect.mapError(cause => {
-			if (Schema.is(AuthError)(cause)) return cause
-			return AuthError.make({cause, error: 'temporarily_unavailable', message: 'The server could not be reached'})
-		})
+		outageUnlessRefused('The server could not be reached')
 	)
 }

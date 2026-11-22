@@ -54,3 +54,12 @@ it('keeps a spoken transcript', () => {
 		'[00:00] This app fixes MacBook limitations.\n[00:02] Normally you need Command-Q to quit an app.\n[00:06] With quit on close, hit the X and it closes completely.\n'
 	assert.deepStrictEqual(speechOnly(speech), Option.some(speech))
 })
+
+it('keeps short and unspaced speech and drops a looping line', () => {
+	assert.deepStrictEqual(speechOnly('[00:00] Ship it on Friday.\n'), Option.some('[00:00] Ship it on Friday.\n'))
+	assert.deepStrictEqual(
+		speechOnly('[00:00] 今日は図書館で本を読みました。\n[00:30] 明日も行きます。\n'),
+		Option.some('[00:00] 今日は図書館で本を読みました。\n[00:30] 明日も行きます。\n')
+	)
+	assert.deepStrictEqual(speechOnly('[00:00] la la la la la la\n[00:04] la la la la la la\n'), Option.none())
+})

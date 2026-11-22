@@ -1,14 +1,19 @@
 import {assert, it} from '@effect/vitest'
 
-import {Array, DateTime, Duration, Option, Schema, Struct} from 'effect'
+import {Array, DateTime, Duration, Function, Option, Schema, Struct} from 'effect'
 
 import {
 	activeWindow,
+	arrivalClockOf,
 	autoStartOf,
+	changeOf,
+	dayMark,
+	daysBetween,
 	instantOf,
 	journeysOf,
 	journeyProps,
 	startable,
+	stayAfter,
 	upsert
 } from '#services/bookings/lib/utils.ts'
 import {
@@ -17,6 +22,7 @@ import {
 	BookingId,
 	Flight,
 	FlightTracking,
+	Stay,
 	Train,
 	TrainStop,
 	TrainTracking
@@ -59,8 +65,11 @@ it('chains confirmed trains at matching stations within three hours and shows th
 		'2026-11-18T12:00Z'
 	)
 	assert.deepStrictEqual(journeysOf([next, first]), [[first, next]])
-	assert.strictEqual(journeyProps([first, next], [], first.departs).note, 'Change at Venezia Mestre · 14 min')
-	assert.strictEqual(journeyProps([first, next], [], first.arrives).from, next.from.name)
+	assert.strictEqual(
+		journeyProps([first, next], [], first.departs, Function.constFalse).note,
+		'Change at Venezia Mestre · 14 min'
+	)
+	assert.strictEqual(journeyProps([first, next], [], first.arrives, Function.constFalse).from, next.from.name)
 	assert.strictEqual(
 		journeysOf([first, Train.make({...Struct.pick(next, Struct.keys(Train.fields)), status: 'cancelled'})]).length,
 		2
@@ -130,7 +139,8 @@ it('samples at most seven scheduled stops with endpoints and delayed passage', (
 					})
 				],
 				[],
-				now
+				now,
+				Function.constFalse
 			).stops
 		)
 	}
@@ -174,8 +184,138 @@ const FLIGHT = Struct.pick(
 )
 
 it('reads local ticket times in the place zone and explicit offsets as given', () => {
-	assert.deepStrictEqual(instantOf('2026-10-28T16:40', 'Europe/Rome'), Option.some(DEPARTS))
-	assert.deepStrictEqual(instantOf('2026-10-28T17:40+02:00', 'Europe/London'), Option.some(DEPARTS))
+	assert.deepStrictEqual(instantOf('2026-10-28T16:40', Option.some('Europe/Rome')), Option.some(DEPARTS))
+	assert.deepStrictEqual(instantOf('2026-10-28T17:40+02:00', Option.some('Europe/London')), Option.some(DEPARTS))
+	assert.deepStrictEqual(instantOf('2026-10-28T17:40+02:00', Option.none()), Option.some(DEPARTS))
+	assert.deepStrictEqual(instantOf('2026-10-28T15:40Z', Option.none()), Option.some(DEPARTS))
+	assert.deepStrictEqual(instantOf('2026-10-28T16:40', Option.none()), Option.none())
+})
+
+it('reads no moment from a date or clock the place never shows', () => {
+	assert.deepStrictEqual(
+		[
+			instantOf('2026-02-30T12:00', Option.some('Europe/Rome')),
+			instantOf('2026-02-30T12:00+01:00', Option.none()),
+			instantOf('2026-03-29T02:30', Option.some('Europe/Rome')),
+			instantOf('2026-10-28T25:10', Option.some('Europe/Rome'))
+		],
+		[Option.none(), Option.none(), Option.none(), Option.none()]
+	)
+	// The hour repeated as summer time ends reads as its first occurrence.
+	assert.deepStrictEqual(
+		instantOf('2026-10-25T02:30', Option.some('Europe/Rome')),
+		Option.some(DateTime.makeUnsafe('2026-10-25T00:30:00Z'))
+	)
+})
+
+it('counts calendar days between local dates and marks an arrival on another date', () => {
+	assert.deepStrictEqual(
+		[
+			daysBetween(
+				DateTime.makeUnsafe('2026-11-19T14:50:00Z'),
+				'Asia/Tokyo',
+				DateTime.makeUnsafe('2026-11-19T09:50:00Z'),
+				'Pacific/Honolulu'
+			),
+			daysBetween(
+				DateTime.makeUnsafe('2026-11-19T21:30:00Z'),
+				'Europe/Rome',
+				DateTime.makeUnsafe('2026-11-20T08:00:00Z'),
+				'Europe/Rome'
+			)
+		],
+		[-1, 1]
+	)
+	assert.deepStrictEqual([dayMark(0), dayMark(1), dayMark(-1)], ['', ' +1', ' −1'])
+	assert.strictEqual(
+		arrivalClockOf(
+			Flight.make({
+				...FLIGHT,
+				arrives: DateTime.makeUnsafe('2026-10-29T06:30:00Z'),
+				departs: DateTime.makeUnsafe('2026-10-28T21:00:00Z')
+			})
+		),
+		'06:30 +1'
+	)
+})
+
+it('puts a connection at risk when the first train arrives after the next one leaves', () => {
+	const first = train(
+		'11111111-1111-4111-8111-111111111111',
+		'Milano',
+		'Verona',
+		'2026-11-18T08:00Z',
+		'2026-11-18T09:00Z'
+	)
+	const next = train(
+		'22222222-2222-4222-8222-222222222222',
+		'Verona',
+		'Venezia',
+		'2026-11-18T09:20Z',
+		'2026-11-18T10:30Z'
+	)
+	const late = Train.make({
+		...Struct.pick(first, Struct.keys(Train.fields)),
+		live: Option.some(Schema.decodeSync(TrainTracking)({checkedAt: 1, delayMinutes: 30, state: 'departed'}))
+	})
+	assert.deepStrictEqual(
+		[changeOf(first, next), changeOf(late, next)],
+		['Change at Verona · 20 min', 'Connection at risk at Verona']
+	)
+})
+
+function stay(id: string, city: string) {
+	return Stay.make({
+		checkIn: DateTime.makeUnsafe('2026-11-18T10:00Z'),
+		checkOut: DateTime.makeUnsafe('2026-11-19T09:00Z'),
+		confirmation: Option.none(),
+		id: BookingId.make(id),
+		name: `Hotel in ${city}`,
+		place: Schema.decodeSync(BookedPlace)({
+			address: `Via Roma 1, ${city}, Italy`,
+			city,
+			name: `Hotel in ${city}`,
+			timeZone: 'Europe/Rome'
+		}),
+		status: 'confirmed'
+	})
+}
+
+it('offers a stay as the next stop only in the city the journey reaches', () => {
+	const arriving = train(
+		'11111111-1111-4111-8111-111111111111',
+		'Milano Centrale',
+		'Verona Porta Nuova',
+		'2026-11-18T08:00Z',
+		'2026-11-18T09:00Z'
+	)
+	const rome = stay('33333333-3333-4333-8333-333333333333', 'Roma')
+	const verona = stay('44444444-4444-4444-8444-444444444444', 'Verona')
+	assert.deepStrictEqual(
+		[
+			Option.map(stayAfter([rome], arriving), found => found.name),
+			Option.map(stayAfter([rome, verona], arriving), found => found.name)
+		],
+		[Option.none(), Option.some('Hotel in Verona')]
+	)
+})
+
+it('starts no Live Activity for a cancelled journey', () => {
+	const departing = train(
+		'11111111-1111-4111-8111-111111111111',
+		'Milano',
+		'Verona',
+		'2026-11-18T08:00Z',
+		'2026-11-18T09:00Z'
+	)
+	const cancelled = Train.make({
+		...Struct.pick(departing, Struct.keys(Train.fields)),
+		live: Option.some(Schema.decodeSync(TrainTracking)({checkedAt: 1, delayMinutes: 0, state: 'cancelled'}))
+	})
+	assert.deepStrictEqual(
+		[startable([departing], departing.departs), startable([cancelled], departing.departs)],
+		[true, false]
+	)
 })
 
 it('merges tickets for the same leg and retains live data only while its schedule matches', () => {

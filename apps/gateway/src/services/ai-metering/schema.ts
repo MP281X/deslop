@@ -98,6 +98,8 @@ export const Usage = Schema.Struct({
 	model: Schema.OptionFromOptionalKey(AiModelId),
 	modelVersion: Schema.OptionFromOptionalKey(AiModelId),
 	response: Schema.OptionFromOptionalKey(OpenAiResponse),
+	// The event or object kind: Anthropic's usage is final only at `message_stop`, or on a whole `message`.
+	type: Schema.OptionFromOptionalKey(Schema.String),
 	usage: Schema.OptionFromOptionalKey(
 		Schema.OptionFromNullOr(
 			Schema.Struct({

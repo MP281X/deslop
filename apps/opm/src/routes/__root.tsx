@@ -10,7 +10,8 @@ import {Loaded} from '@deslop/components-mobile/blocks/loaded'
 import {SessionGate} from '@deslop/components-mobile/blocks/session-gate'
 import {colors} from '@deslop/components-mobile/theme'
 
-import {chaptersAtom, diagnosticsAtom, openedAtom, pushAtom} from '#lib/chapters.ts'
+import {chaptersAtom, diagnosticsAtom, openedAtom, pushAtom, unsavedAtom} from '#lib/chapters.ts'
+import {withUnsaved} from '#lib/reader.ts'
 import {session} from '#lib/session.ts'
 import {ChaptersRoute} from '#routes/(home)/index.tsx'
 import {ReaderRoute, ReaderSkeleton} from '#routes/chapters/$number.tsx'
@@ -19,9 +20,12 @@ import {ChapterKey, ChapterPath} from '#services/chapters/schema.ts'
 import type {ChapterNumber, Series} from '#services/chapters/schema.ts'
 
 function Destination(props: {number: ChapterNumber; series: Series}) {
+	const unsaved = useAtomValue(unsavedAtom)
 	return (
 		<Loaded atom={chaptersAtom}>
-			{chapters => <ReaderRoute chapters={chapters} number={props.number} series={props.series} />}
+			{chapters => (
+				<ReaderRoute chapters={withUnsaved(chapters, unsaved)} number={props.number} series={props.series} />
+			)}
 		</Loaded>
 	)
 }

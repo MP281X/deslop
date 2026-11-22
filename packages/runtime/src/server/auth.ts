@@ -1,18 +1,4 @@
-import {
-	Brand,
-	Cache,
-	Config,
-	Context,
-	Effect,
-	Exit,
-	Function,
-	Layer,
-	Option,
-	Result,
-	Schedule,
-	Schema,
-	pipe
-} from 'effect'
+import {Brand, Cache, Config, Context, Effect, Exit, Function, Layer, Option, Result, Schema, pipe} from 'effect'
 
 import {
 	Cookies,
@@ -41,7 +27,9 @@ import {
 	SESSION_COOKIE,
 	UserId,
 	asAuthError,
-	failureOptions
+	failureOptions,
+	outageUnlessRefused,
+	recheckUser
 } from '#shared/auth.ts'
 import type {Admin, User} from '#shared/auth.ts'
 import {Account} from '#shared/schema.ts'
@@ -110,20 +98,7 @@ export class Auth extends Context.Service<
 						pipe(
 							effect,
 							Effect.provideService(CurrentUser, found),
-							Effect.raceFirst(
-								pipe(
-									Effect.delay(user(request.headers), '5 minutes'),
-									Effect.retry({
-										schedule: Schedule.spaced('5 seconds'),
-										while: error => error.error === 'temporarily_unavailable'
-									}),
-									Effect.filterOrFail(
-										current => current.id === found.id && current.admin === found.admin && current.name === found.name,
-										() => AuthError.make({error: 'access_denied', message: 'The account changed; reconnect the socket'})
-									),
-									Effect.forever
-								)
-							)
+							Effect.raceFirst(recheckUser(user(request.headers), found))
 						)
 					)
 				)
@@ -156,23 +131,26 @@ export class Auth extends Context.Service<
 					const issuer = yield* Config.String('AUTH_URL')
 					const client = yield* HttpClient.HttpClient
 					const answers = yield* Cache.makeWith(
-						Effect.fnUntraced(function* (body: string) {
-							const response = yield* pipe(
-								HttpClientRequest.post(new URL(IDENTIFY_PATH, issuer).href),
-								HttpClientRequest.bodyText(body, 'application/json'),
-								client.execute,
-								Effect.timeout('10 seconds')
-							)
-							if (response.status === 401 || response.status === 403) {
-								return yield* refusalOf(
-									response.status,
-									Option.getOrElse(yield* Effect.option(response.text), Function.constant('Sign in first'))
+						Effect.fnUntraced(
+							function* (body: string) {
+								const response = yield* pipe(
+									HttpClientRequest.post(new URL(IDENTIFY_PATH, issuer).href),
+									HttpClientRequest.bodyText(body, 'application/json'),
+									client.execute
 								)
-							}
-							return yield* HttpClientResponse.schemaBodyJson(Account)(
-								yield* HttpClientResponse.filterStatusOk(response)
-							)
-						}, asAuthError('The authorization service is temporarily unavailable')),
+								if (response.status === 401 || response.status === 403) {
+									return yield* refusalOf(
+										response.status,
+										Option.getOrElse(yield* Effect.option(response.text), Function.constant('Sign in first'))
+									)
+								}
+								return yield* HttpClientResponse.schemaBodyJson(Account)(
+									yield* HttpClientResponse.filterStatusOk(response)
+								)
+							},
+							// Only Auth's 401 or 403 refuses a caller.
+							outageUnlessRefused('The authorization service is temporarily unavailable')
+						),
 						// A refusal is asked again at once, so a sign-in shows on the next request.
 						{
 							capacity: 1024,

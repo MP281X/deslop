@@ -13,8 +13,8 @@ import {
 } from '@deslop/runtime/shared/auth'
 import {Account} from '@deslop/runtime/shared/schema'
 
-import {parentDomain} from '#services/cookie-sessions/lib/utils.ts'
 import {Identity, isMachine} from '#services/identity/service.ts'
+import {parentDomain} from '#services/sessions/lib/utils.ts'
 import {SignIns, association, loginCookie} from '#services/sign-ins/service.ts'
 
 const COOKIE = {httpOnly: true, path: '/', sameSite: 'lax', secure: true} as const
@@ -71,7 +71,7 @@ export const HttpHandlers = HttpRouter.use(router =>
 					return HttpServerResponse.setCookieUnsafe(
 						HttpServerResponse.redirect(started.url),
 						loginCookie(started.state),
-						started.state,
+						started.sealed,
 						{...COOKIE, maxAge: '10 minutes'}
 					)
 				})

@@ -33,7 +33,7 @@ import {Auth} from '#server/auth.ts'
 import {appName} from '#server/package.ts'
 import {AuthError, UserId} from '#shared/auth.ts'
 import type {RpcAdmin, RpcAuth} from '#shared/auth.ts'
-import {Account} from '#shared/schema.ts'
+import {Account, MCP_PATH} from '#shared/schema.ts'
 
 // Opaque URL checks and minimum-length APNs tokens need explicit, contract-validated examples instead of small arbitrary strings.
 const FIXED_INPUTS: Record<string, unknown> = {
@@ -64,8 +64,16 @@ export class AuthorizationProbe extends Context.Service<
 	}
 >()('@deslop/runtime/server/probe/AuthorizationProbe') {}
 
-// Member APIs admit a person, not an anonymous caller; every unnamed surface must refuse both.
-const publicAccess: readonly {readonly app: string; readonly surface: string; readonly callers: readonly Caller[]}[] = [
+type Access = {
+	readonly app: string
+	readonly callers: readonly Identity[]
+	// Why the probe's fabricated request is refused even for an admitted caller; without a reason, admission is asserted.
+	readonly refusesProbe?: string
+	readonly surface: string
+}
+
+// Member APIs admit a person, not an anonymous caller; every unnamed surface must refuse both. An admin entry names a scratch-safe admin operation the probe runs as admin.
+const publicAccess: readonly Access[] = [
 	...Array.map(
 		[
 			'GET /api/runtime',
@@ -86,11 +94,25 @@ const publicAccess: readonly {readonly app: string; readonly surface: string; re
 		callers: ['member'] as const,
 		surface: `http ${surface}`
 	})),
-	...Array.map(
-		['GET /.well-known/apple-app-site-association', 'GET /sign-in', 'POST /sign-out', 'GET /auth/github/callback'],
-		surface => ({app: 'auth', callers: Caller.literals, surface: `http ${surface}`})
-	),
-	{app: 'auth', callers: Caller.literals, surface: 'rpc people.account'},
+	{app: 'auth', callers: Caller.literals, surface: 'http GET /.well-known/apple-app-site-association'},
+	...Array.map(['GET /sign-in', 'POST /sign-out'], surface => ({
+		app: 'auth',
+		callers: Caller.literals,
+		refusesProbe: "Auth returns only to an HTTPS page under its domain, which the probe's loopback origin is not",
+		surface: `http ${surface}`
+	})),
+	{
+		app: 'auth',
+		callers: Caller.literals,
+		refusesProbe: 'GitHub returns only to a login state Auth issued',
+		surface: 'http GET /auth/github/callback'
+	},
+	{
+		app: 'auth',
+		callers: Caller.literals,
+		refusesProbe: 'Auth names its own caller from real credentials, which fixture identities lack',
+		surface: 'rpc people.account'
+	},
 	{app: 'auth', callers: ['member'], surface: 'rpc sessions.watch'},
 	...Array.map(['list_sessions', 'sign_out_session'], name => ({
 		app: 'auth',
@@ -107,6 +129,8 @@ const publicAccess: readonly {readonly app: string; readonly surface: string; re
 		callers: ['member'] as const,
 		surface: `tool ${name}`
 	})),
+	// A peer's admin removes an exposure it owns; on scratch data there is none, so nothing changes.
+	{app: 'deploy', callers: ['admin'], surface: 'rpc exposures.remove'},
 	...Array.map(['ai-proxy.key', 'ai-proxy.setKey', 'ai-metering.usage'], name => ({
 		app: 'gateway',
 		callers: ['member'] as const,
@@ -129,11 +153,17 @@ const publicAccess: readonly {readonly app: string; readonly surface: string; re
 		callers: Caller.literals,
 		surface: `rpc ${name}`
 	})),
-	...Array.map(['POST /v1/traces', 'POST /v1/logs', 'OPTIONS /v1/*', 'POST /v1/github'], surface => ({
+	...Array.map(['POST /v1/traces', 'POST /v1/logs', 'OPTIONS /v1/*'], surface => ({
 		app: 'scope',
 		callers: Caller.literals,
 		surface: `http ${surface}`
 	})),
+	{
+		app: 'scope',
+		callers: Caller.literals,
+		refusesProbe: "GitHub's webhook needs the shared secret's signature",
+		surface: 'http POST /v1/github'
+	},
 	...Array.map(['telemetry.watch', 'telemetry.trace'], name => ({
 		app: 'scope',
 		callers: ['member'] as const,
@@ -163,11 +193,11 @@ const publicAccess: readonly {readonly app: string; readonly surface: string; re
 	)
 ]
 
-function isPublic(app: string, surface: string, caller: Caller) {
-	return Array.some(
+function accessOf(app: string, surface: string, identity: Identity) {
+	return Array.findFirst(
 		publicAccess,
 		entry =>
-			(entry.app === '*' || entry.app === app) && entry.surface === surface && Array.contains(entry.callers, caller)
+			(entry.app === '*' || entry.app === app) && entry.surface === surface && Array.contains(entry.callers, identity)
 	)
 }
 
@@ -430,10 +460,96 @@ export function probeServer<A, E>(
 					return yield* fail(`${app}: tools/list does not match tool contracts`)
 				}
 			}
+			// Every exception names a surface this app registers, so the inventory changes with its routes.
+			const registered = [
+				...Array.map(routes, route => `http ${route.method} ${route.path}`),
+				...Array.map(rpcs, rpc => `rpc ${rpc.name}`),
+				...Array.map(tools, tool => `tool ${tool.name}`)
+			]
+			yield* pipe(
+				publicAccess,
+				Array.findFirst(entry => entry.app === app && !Array.contains(registered, entry.surface)),
+				Option.match({
+					onNone: () => Effect.void,
+					onSome: entry => fail(`${app}: publicAccess names ${entry.surface}, which this app does not register`)
+				})
+			)
+			// An unnamed surface must refuse the caller; a named one must admit it unless its entry says why the probe's fabricated request is refused.
+			const judge = Effect.fnUntraced(function* (
+				surface: string,
+				identity: Identity,
+				answer: {readonly admitted: boolean; readonly refused: boolean; readonly observed: string}
+			) {
+				const entry = accessOf(app, surface, identity)
+				if (Option.isNone(entry) && !answer.refused) {
+					return yield* fail(`${identity} ${surface}: expected refusal, got ${answer.observed}`)
+				}
+				// A stated reason must still hold, or the entry asserts admission again.
+				if (Option.exists(entry, found => (found.refusesProbe === undefined) === !answer.admitted)) {
+					return yield* fail(
+						`${identity} ${surface}: expected ${Boolean.match(answer.admitted, {onFalse: Function.constant('admission'), onTrue: Function.constant('the refusal its entry explains')})}, got ${answer.observed}`
+					)
+				}
+			})
+			function rpcAnswer(rpc: ProbeRpc, identity: Identity) {
+				return pipe(
+					Effect.gen(function* () {
+						const protocol = yield* Layer.build(
+							pipe(
+								RpcClient.layerProtocolSocket(),
+								Layer.provide(NodeSocket.layerWebSocket(`${String.replace('http:', 'ws:')(origin)}/api/rpc`)),
+								Layer.provide(RpcSerialization.layerSchemaBinary())
+							)
+						)
+						const answer = yield* Effect.result(
+							Effect.provideContext(
+								Effect.gen(function* () {
+									const input = yield* sample(rpc.contract.payloadSchema, `${app} ${rpc.name}`)
+									if (RpcSchema.isStreamSchema(rpc.contract.successSchema)) {
+										const client = yield* RpcClient.make(
+											RpcGroup.make(
+												Rpc.make(rpc.name, {
+													error: rpcFailureCodec(rpc.contract),
+													payload: Schema.toEncoded(rpc.contract.payloadSchema),
+													stream: true,
+													success: Schema.toEncoded(rpc.contract.successSchema.success)
+												})
+											),
+											{flatten: true}
+										)
+										return yield* Stream.runHead(client(rpc.name, input, {headers: {'x-probe-caller': identity}}))
+									}
+									const client = yield* RpcClient.make(
+										RpcGroup.make(
+											Rpc.make(rpc.name, {
+												error: rpcFailureCodec(rpc.contract),
+												payload: Schema.toEncoded(rpc.contract.payloadSchema),
+												success: Schema.toEncoded(rpc.contract.successSchema)
+											})
+										),
+										{flatten: true}
+									)
+									return yield* client(rpc.name, input, {headers: {'x-probe-caller': identity}})
+								}),
+								protocol
+							)
+						)
+						// A domain failure on empty scratch data is admission; an outage is neither admission nor refusal.
+						const authFailure = Option.filter(Result.getFailure(answer), Schema.is(AuthError))
+						yield* judge(`rpc ${rpc.name}`, identity, {
+							admitted: Option.isNone(authFailure),
+							observed: String.slice(0, 500)(Inspectable.toStringUnknown(answer)),
+							refused: Option.exists(authFailure, failure => failure.error !== 'temporarily_unavailable')
+						})
+					}),
+					Effect.scoped,
+					Effect.tapCause(cause => Console.error(`${app} ${identity} RPC ${rpc.name}: ${Cause.pretty(cause)}`)),
+					Effect.timeout('30 seconds')
+				)
+			}
 			for (const caller of Caller.literals) {
 				yield* Effect.forEach(
 					routes,
-					// This authorization assertion accepts expected refusals and declared public responses, not business-operation success.
 					route =>
 						Effect.timeout(
 							Effect.gen(function* () {
@@ -449,9 +565,16 @@ export function probeServer<A, E>(
 								})
 								if (Array.isReadonlyArrayEmpty(methods)) return yield* fail(`Unprobed HTTP method ${route.method}`)
 								for (const method of methods) {
+									// A request comes from the app's own page, so a refusal is authorization's, not the cross-site guard's; MCP refuses pages and answers agents, which send no Origin.
 									const response = yield* pipe(
 										HttpClientRequest.make(method)(`${origin}${path}`, {
-											headers: {'x-probe-caller': caller},
+											headers: {
+												'x-probe-caller': caller,
+												...Boolean.match(route.path === MCP_PATH, {
+													onFalse: () => ({origin: canonical, 'sec-fetch-site': 'same-origin'}),
+													onTrue: () => ({})
+												})
+											},
 											urlParams: {code: 'probe', id: 'probe', state: 'probe'}
 										}),
 										HttpClientRequest.bodyText('{}', 'application/json'),
@@ -465,11 +588,11 @@ export function probeServer<A, E>(
 												Option.liftThrowable(() => new URL(response.headers['location'] ?? '', canonical))(),
 												url => url.origin === canonical && url.pathname === '/auth/sign-in'
 											))
-									if (!isPublic(app, `http ${route.method} ${route.path}`, caller) && !refused) {
-										return yield* fail(
-											`${caller} HTTP ${method} ${route.path}: expected refusal, got ${response.status}`
-										)
-									}
+									yield* judge(`http ${route.method} ${route.path}`, caller, {
+										admitted: !refused,
+										observed: `${method} ${response.status}`,
+										refused
+									})
 									yield* response.text
 								}
 							}),
@@ -477,100 +600,9 @@ export function probeServer<A, E>(
 						),
 					{concurrency: 1, discard: true}
 				)
-				yield* Effect.forEach(
-					rpcs,
-					// Protected RPCs must return AuthError; allowlisted APIs may return domain errors against empty scratch data.
-					rpc =>
-						pipe(
-							app === 'deploy' && rpc.name === 'exposures.remove' && caller === 'member',
-							Boolean.match<readonly Identity[], readonly Identity[]>({
-								onFalse: () => [caller],
-								onTrue: () => [caller, 'admin']
-							}),
-							Effect.forEach(
-								identity =>
-									Effect.timeout(
-										pipe(
-											Effect.gen(function* () {
-												const protocol = yield* Layer.build(
-													pipe(
-														RpcClient.layerProtocolSocket(),
-														Layer.provide(
-															NodeSocket.layerWebSocket(`${String.replace('http:', 'ws:')(origin)}/api/rpc`)
-														),
-														Layer.provide(RpcSerialization.layerSchemaBinary())
-													)
-												)
-												const answer = yield* Effect.result(
-													Effect.provideContext(
-														Effect.gen(function* () {
-															const input = yield* sample(rpc.contract.payloadSchema, `${app} ${rpc.name}`)
-															if (RpcSchema.isStreamSchema(rpc.contract.successSchema)) {
-																const client = yield* RpcClient.make(
-																	RpcGroup.make(
-																		Rpc.make(rpc.name, {
-																			error: rpcFailureCodec(rpc.contract),
-																			payload: Schema.toEncoded(rpc.contract.payloadSchema),
-																			stream: true,
-																			success: Schema.toEncoded(rpc.contract.successSchema.success)
-																		})
-																	),
-																	{flatten: true}
-																)
-																return yield* Stream.runHead(
-																	client(rpc.name, input, {headers: {'x-probe-caller': identity}})
-																)
-															}
-															const client = yield* RpcClient.make(
-																RpcGroup.make(
-																	Rpc.make(rpc.name, {
-																		error: rpcFailureCodec(rpc.contract),
-																		payload: Schema.toEncoded(rpc.contract.payloadSchema),
-																		success: Schema.toEncoded(rpc.contract.successSchema)
-																	})
-																),
-																{flatten: true}
-															)
-															return yield* client(rpc.name, input, {headers: {'x-probe-caller': identity}})
-														}),
-														protocol
-													)
-												)
-												if (identity === 'admin') {
-													if (Result.isFailure(answer) && !Schema.is(ProbeError)(answer.failure)) {
-														return yield* fail('Admin peer command was refused')
-													}
-													yield* Console.log(
-														'PASS deploy admin peer exposures.remove: admitted against empty scratch data'
-													)
-												} else if (
-													!isPublic(app, `rpc ${rpc.name}`, caller) &&
-													!(
-														Result.isFailure(answer) &&
-														Schema.is(AuthError)(answer.failure) &&
-														answer.failure.error !== 'temporarily_unavailable'
-													)
-												) {
-													return yield* fail(
-														`${caller} RPC ${rpc.name}: expected AuthError refusal, got ${String.slice(0, 500)(Inspectable.toStringUnknown(answer))}`
-													)
-												}
-											}),
-											Effect.scoped,
-											Effect.tapCause(cause =>
-												Console.error(`${app} ${identity} RPC ${rpc.name}: ${Cause.pretty(cause)}`)
-											)
-										),
-										'30 seconds'
-									),
-								{concurrency: 1, discard: true}
-							)
-						),
-					{concurrency: 1, discard: true}
-				)
+				yield* Effect.forEach(rpcs, rpc => rpcAnswer(rpc, caller), {concurrency: 1, discard: true})
 				yield* Effect.forEach(
 					tools,
-					// judge-ignore no-silent-fallback -- An HTTP or MCP admin refusal is the expected observation in this negative authorization probe, not a hidden tool failure.
 					tool =>
 						Effect.timeout(
 							Effect.gen(function* () {
@@ -579,8 +611,11 @@ export function probeServer<A, E>(
 									name: tool.name
 								})
 								if (response.status === 401 || response.status === 403) {
-									yield* Console.log(`${app} ${caller} tool ${tool.name}: HTTP ${response.status} refusal`)
-									return
+									return yield* judge(`tool ${tool.name}`, caller, {
+										admitted: false,
+										observed: `HTTP ${response.status}`,
+										refused: true
+									})
 								}
 								if (response.status !== 200) {
 									return yield* fail(
@@ -588,21 +623,30 @@ export function probeServer<A, E>(
 									)
 								}
 								const answer = yield* Schema.decodeEffect(Schema.fromJsonString(ToolResult))(response.text)
-								if (answer.result.isError === true) {
-									yield* Console.log(`${app} ${caller} tool ${tool.name}: error result observed ${response.text}`)
-								}
 								const refused =
 									answer.result.isError === true &&
 									Array.some(answer.result.content, content => String.startsWith('Only an admin')(content.text ?? ''))
-								if (!isPublic(app, `tool ${tool.name}`, caller) && !refused) {
-									return yield* fail(`${caller} tool ${tool.name}: expected admin refusal, got ${response.text}`)
-								}
+								yield* judge(`tool ${tool.name}`, caller, {admitted: !refused, observed: response.text, refused})
 							}),
 							'30 seconds'
 						),
 					{concurrency: 1, discard: true}
 				)
-				yield* Console.log(`PASS ${app} ${caller}: ${routes.length} routes, ${rpcs.length} RPCs, ${tools.length} tools`)
+				yield* Console.log(
+					`PASS ${app} ${caller}: ${routes.length} routes, ${rpcs.length} RPCs and ${tools.length} tools refuse unless named; named ones admit`
+				)
+			}
+			// Admin sentinels run only scratch-safe operations; other admin surfaces are checked by refusing members.
+			const sentinels = Array.filter(rpcs, rpc => Option.isSome(accessOf(app, `rpc ${rpc.name}`, 'admin')))
+			yield* Effect.forEach(sentinels, rpc => rpcAnswer(rpc, 'admin'), {concurrency: 1, discard: true})
+			if (Array.isReadonlyArrayNonEmpty(sentinels)) {
+				yield* Console.log(
+					`PASS ${app} admin: ${pipe(
+						sentinels,
+						Array.map(rpc => rpc.name),
+						Array.join(', ')
+					)} admitted`
+				)
 			}
 		}),
 		Effect.scoped,

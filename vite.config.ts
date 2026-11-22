@@ -1,7 +1,7 @@
-// oxlint-disable-next-line effecttsgo/node-builtin-import -- Vite+ loads this configuration before an Effect runtime; discover native app boundaries synchronously.
-import {globSync} from 'node:fs'
+// oxlint-disable-next-line effecttsgo/node-builtin-import -- Vite+ loads this configuration before an Effect runtime; discover native app boundaries and the test root synchronously.
+import {existsSync, globSync} from 'node:fs'
 
-import {Array, String} from 'effect'
+import {Array, Boolean, String} from 'effect'
 
 import {defineConfig} from 'vite-plus'
 
@@ -300,21 +300,26 @@ export default defineConfig({
 		// Each package's test script replays from the cache while its inputs are unchanged; a stopped preview server exits 130, so it is never cached.
 		cache: true,
 		tasks: {
-			// TSRS_FAST checks each tsconfig's whole program, including files lint ignores; the templates get a syntax-only pass.
-			check: [
-				'vp fmt --list-different',
-				'TSRS_FAST=1 effect-tsgo --tsrs-lint vp lint --type-aware --type-check --ignore-pattern "tools/*/template/**"',
-				'vp lint tools/create-app/template tools/create-package/template --report-unused-disable-directives-severity=off',
-				'vp run fallow'
-			],
+			// TSRS_FAST checks each tsconfig's whole program, including files lint ignores; the templates get a syntax-only pass. Build output is no source, so a build keeps the cached check.
+			check: {
+				cache: {input: [{auto: true}, '!**/dist/**']},
+				command: [
+					'vp fmt --list-different',
+					'TSRS_FAST=1 effect-tsgo --tsrs-lint vp lint --type-aware --type-check --ignore-pattern "tools/*/template/**"',
+					'vp lint tools/create-app/template tools/create-package/template --report-unused-disable-directives-severity=off',
+					'vp run fallow'
+				]
+			},
 			// Fallow judges exports and dependencies across packages, so it reads the whole workspace whichever package it reports on.
 			fallow: {
-				cache: {input: [{auto: true}, '!.fallow/**'], output: []},
+				cache: {input: [{auto: true}, '!.fallow/**', '!**/dist/**'], output: []},
 				command: [
 					'fallow dead-code --format compact --fail-on-issues --quiet',
-					'fallow dead-code --production --format compact --fail-on-issues --quiet',
+					// Production mode drops the test files, so the test zone is empty by design; the run above reports the configuration's own warnings.
+					'RUST_LOG=error fallow dead-code --production --format compact --fail-on-issues --quiet',
 					'fallow dupes --format compact --fail-on-issues --quiet',
-					'fallow health --complexity --format human --quiet'
+					// Fallow lists a tightening override as stale on every function under it, so only findings and live overrides print.
+					`bash -o pipefail -c "fallow health --complexity --format compact --quiet | { grep -Ev '^(vital-signs|cyclomatic-population):|^threshold-override:[0-9]+:[a-z]+:stale:' || true; }"`
 				]
 			},
 			fix: {
@@ -348,8 +353,11 @@ export default defineConfig({
 	test: {
 		// The only limits: test-synchronization keeps tests, hooks and layers from raising their own.
 		hookTimeout: 60_000,
-		// The first glob serves each package's own run; the second a root run of a test that never reads its app's package, which the runtime takes from the current directory.
-		include: ['src/**/*.test.ts', '{apps,packages,tools}/*/src/**/*.test.ts'],
+		// A package run scans only its src, since the task cache tracks the listing Vitest reads and a build beside src would void it; a root run serves a test that never reads its app's package, which the runtime takes from the current directory.
+		...Boolean.match(existsSync('src'), {
+			onFalse: () => ({include: ['{apps,packages,tools}/*/src/**/*.test.ts']}),
+			onTrue: () => ({dir: 'src', include: ['**/*.test.ts']})
+		}),
 		// Only the lint rule suite runs concurrently; eight measured fastest without starving the rest.
 		maxConcurrency: 8,
 		passWithNoTests: true,

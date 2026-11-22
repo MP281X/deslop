@@ -1,4 +1,4 @@
-import {Array, Function, Option, pipe} from 'effect'
+import {Array, Function, Option, String, pipe} from 'effect'
 
 import {Fragment} from 'react'
 
@@ -16,7 +16,7 @@ function ProcessRows(props: {depth: number; nodes: readonly ProcessNode[]}) {
 		<Fragment key={node.pid}>
 			<TableRow aria-level={props.depth + 1}>
 				<RowLead
-					title={pipe(node.command, Option.getOrElse(Array.empty), Array.join(' '))}
+					title={pipe([node.label.name, node.label.detail], Array.filter(String.isNonEmpty), Array.join(' '))}
 					depth={props.depth}
 					mark={<ApplicationIcon name={node.label.name} process={Option.none()} />}
 					detail={node.label.detail}

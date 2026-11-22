@@ -39,7 +39,8 @@ public struct CoverView: ExpoSwiftUI.View {
         while !Task.isCancelled {
           if let loaded = await PageLoader.image(url, size: 240) {
             // Kept even when the row scrolled away, so the next time it shows at once.
-            CoverCache.memory.setObject(loaded, forKey: link as NSString)
+            CoverCache.memory.setObject(
+              loaded, forKey: link as NSString, cost: loaded.cgImage.map { $0.bytesPerRow * $0.height } ?? 0)
             if !Task.isCancelled { image = loaded }
             return
           }
@@ -52,12 +53,12 @@ public struct CoverView: ExpoSwiftUI.View {
   }
 }
 
-// Thumbnails stay in memory; PageLoader already keeps the source image on disk.
+// Thumbnails stay in memory up to their decoded bytes; PageLoader already keeps the source image on disk.
 @MainActor
 enum CoverCache {
   static let memory: NSCache<NSString, UIImage> = {
     let cache = NSCache<NSString, UIImage>()
-    cache.countLimit = 400
+    cache.totalCostLimit = 48 << 20
     return cache
   }()
 }

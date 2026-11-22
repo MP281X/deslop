@@ -83,7 +83,7 @@ export function LoadingRows(props: {label: string; rows: number}) {
 	)
 }
 
-// A row of a table that chooses one (`role="grid"`): the whole row selects by pointer, Enter or Space, and the chosen one reads as the registry's selected row. Only a chosen row is selected; a row that waits for an answer is an ordinary row whose action says so. A control inside the row acts alone.
+// A row of a plain table that chooses one: the whole row selects by pointer, Enter or Space, and is one Tab stop. The chosen one reads as the registry's selected row and, to assistive technology, as the current one; `aria-selected` belongs to a grid, whose arrow-key contract these tables do not offer. A row that waits for an answer is an ordinary row whose action says so. A control inside the row acts alone.
 export function ChoiceRow(props: {children: ReactNode; label: string; onSelect: () => void; selected: boolean}) {
 	function select(event: MouseEvent<HTMLTableRowElement>) {
 		if (event.target instanceof Element && event.target.closest('a, button') !== null) return
@@ -98,7 +98,10 @@ export function ChoiceRow(props: {children: ReactNode; label: string; onSelect: 
 		<TableRow
 			tabIndex={0}
 			aria-label={props.label}
-			aria-selected={props.selected}
+			aria-current={Boolean.match(props.selected, {
+				onFalse: Function.constUndefined,
+				onTrue: Function.constant('true')
+			})}
 			data-state={Boolean.match(props.selected, {
 				onFalse: Function.constUndefined,
 				onTrue: Function.constant('selected')

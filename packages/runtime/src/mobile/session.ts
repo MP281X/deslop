@@ -1,17 +1,17 @@
-import {Effect, Exit, Function, Layer, Option, Predicate, Schema, String, pipe} from 'effect'
+import {Effect, Exit, Function, Layer, MutableRef, Option, Predicate, String, pipe} from 'effect'
 
 import {FetchHttpClient, HttpClient, HttpClientResponse} from 'effect/http'
-import {AsyncResult, Atom} from 'effect/reactivity'
+import {AsyncResult, Atom, AtomRegistry} from 'effect/reactivity'
 import {Socket} from 'effect/socket'
 import {openAuthSessionAsync} from 'expo-web-browser'
 import {Alert} from 'react-native'
 
 import {readAccount} from '#client/account.ts'
-import {layerSocketProtocol} from '#client/protocol.ts'
+import {layerSocketProtocol, writeOutcome} from '#client/protocol.ts'
 import {activationsAtom} from '#mobile/activations.ts'
 import {appConfig} from '#mobile/app.ts'
 import {keychain} from '#mobile/keychain.ts'
-import {AuthError} from '#shared/auth.ts'
+import {AuthError, signedInSecret} from '#shared/auth.ts'
 import type {Account} from '#shared/schema.ts'
 import {RPC_PATH} from '#shared/schema.ts'
 import {layerOtlp} from '#shared/telemetry.ts'
@@ -122,31 +122,46 @@ export function makeSession() {
 		)
 	)
 
-	const signInAtom = sessionRuntime.fn((_: void, get) =>
-		pipe(
+	// One sign-in at a time: iOS shows a single sheet, and a second press must not interrupt the first before its callback reaches the Keychain.
+	const signingIn = MutableRef.make(false)
+	function cannotSignIn(cause: unknown) {
+		return AuthError.make({cause, message: `Cannot sign in to ${name}`})
+	}
+	const signInAtom = sessionRuntime.fn(
+		(_: void) =>
 			Effect.gen(function* () {
-				const result = yield* Effect.tryPromise({
-					catch: cause => AuthError.make({cause, message: 'The sign-in sheet could not open'}),
-					try: () =>
-						openAuthSessionAsync(
-							`${auth}/sign-in?${new URLSearchParams({app: appConfig.slug})}`,
-							`${auth}/signed-in/${appConfig.slug}`,
-							{preferUniversalLinks: true}
+				if (MutableRef.getAndSet(signingIn, true)) return
+				// The registry outlives the press: an ignored second press rebuilds this atom's context, and a refresh through that one does nothing.
+				const registry = yield* AtomRegistry.AtomRegistry
+				yield* pipe(
+					Effect.gen(function* () {
+						const result = yield* Effect.tryPromise({
+							catch: cannotSignIn,
+							try: () =>
+								openAuthSessionAsync(
+									`${auth}/sign-in?${new URLSearchParams({app: appConfig.slug})}`,
+									`${auth}/signed-in/${appConfig.slug}`,
+									{preferUniversalLinks: true}
+								)
+						})
+						// Closing the sheet is a choice, not a failure.
+						if (result.type !== 'success') return
+						// Auth's reason for a failed sign-in is the alert's text.
+						const secret = yield* Effect.catchTag(signedInSecret(result.url), 'SchemaError', cause =>
+							Effect.fail(cannotSignIn(cause))
 						)
-				})
-				// Closing the sheet is a choice, not a failure.
-				if (result.type !== 'success') return
-				yield* keychain.write(
-					yield* Schema.decodeUnknownEffect(Schema.NonEmptyString)(new URL(result.url).searchParams.get('session'))
+						yield* Effect.mapError(keychain.write(secret), cannotSignIn)
+						registry.refresh(revalidationAtom)
+					}),
+					Effect.tapError(error => Effect.sync(() => Alert.alert('Not Signed In', error.message))),
+					Effect.uninterruptible,
+					Effect.ensuring(Effect.sync(() => MutableRef.set(signingIn, false)))
 				)
-				get.refresh(revalidationAtom)
 			}),
-			Effect.mapError(cause => AuthError.make({cause, message: `Cannot sign in to ${name}`})),
-			Effect.tapError(error => Effect.sync(() => Alert.alert('Not Signed In', error.message)))
-		)
+		{concurrent: true}
 	)
 
-	// Ends the session at Auth, which every app shares; an unreachable Auth still signs this app out, and a Keychain that keeps any of it says what stayed.
+	// Ends the session at Auth, which every app shares; an unreachable Auth still signs this app out, and the alert says what stayed: Auth's session or this app's saved copy.
 	const signOutAtom = sessionRuntime.fn((_: void, get) =>
 		Effect.tapError(
 			Effect.gen(function* () {
@@ -177,6 +192,12 @@ export function makeSession() {
 						)
 					})
 				)
+				if (Exit.isFailure(remote)) {
+					Alert.alert(
+						'Signed Out on This iPhone',
+						'Auth did not confirm ending the shared session, so other apps and browsers may still be signed in.'
+					)
+				}
 			}),
 			error => Effect.sync(() => Alert.alert('Sign Out Incomplete', error.message))
 		)
@@ -184,10 +205,10 @@ export function makeSession() {
 
 	return {
 		account: accountAtom,
-		// Even an unchanged cached account must restart sockets that iOS closed in the background.
-		available: (get: Atom.AtomContext) => {
+		// The admitted account's id; even an unchanged one restarts sockets that iOS closed in the background, and data the app keeps belongs to it alone.
+		admitted: (get: Atom.AtomContext) => {
 			get(activationsAtom)
-			return get(availableAccountAtom) !== undefined
+			return Option.fromUndefinedOr(get(availableAccountAtom))
 		},
 		// What a request outside the RPC socket sends for Auth to name the caller.
 		headers: headersEffect,
@@ -199,13 +220,13 @@ export function makeSession() {
 	}
 }
 
-// An action reads its client once, so a reconnect never runs its last write again.
+// An action reads its client once, so a reconnect never runs its last write again, and a write the transport lost says whether it may have taken effect.
 export function provideRuntimeOnce<A, E, R, ER>(
 	get: {result: <B, X>(atom: Atom.Atom<AsyncResult.AsyncResult<B, X>>) => Effect.Effect<B, X>},
 	runtime: Atom.AtomRuntime<R, ER>,
 	effect: Effect.Effect<A, E, R>
 ) {
-	return Effect.flatMap(get.result(runtime), context => Effect.provideContext(effect, context))
+	return Effect.flatMap(get.result(runtime), context => writeOutcome(Effect.provideContext(effect, context)))
 }
 
 export type Session = ReturnType<typeof makeSession>

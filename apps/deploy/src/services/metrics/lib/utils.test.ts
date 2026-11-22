@@ -1,16 +1,32 @@
 import {assert, it} from '@effect/vitest'
 
-import {Array, DateTime, Duration, Option} from 'effect'
+import {Array, Boolean, DateTime, Duration, Option, pipe} from 'effect'
 
-import {AppId} from '#services/inventory/schema.ts'
-import {appCgroup, appShares, cgroupUsage, counters, history, rollup, sample} from '#services/metrics/lib/utils.ts'
+import {AppId, WorkerId} from '#services/inventory/schema.ts'
+import {
+	appCgroup,
+	appShares,
+	cgroupUsage,
+	counters,
+	expired,
+	history,
+	linuxDisks,
+	peerHistory,
+	rollup,
+	sample
+} from '#services/metrics/lib/utils.ts'
 import {CgroupPath} from '#services/metrics/schema.ts'
+import type {Sample} from '#services/metrics/schema.ts'
 
 const POINT = {
 	apps: Option.none(),
+	appsCoverage: Duration.zero,
 	cpu: Option.none<number>(),
+	cpuCoverage: Duration.zero,
+	memoryCoverage: Duration.seconds(1),
 	memoryTotal: 1024,
 	memoryUsed: 768,
+	storageCoverage: Duration.seconds(1),
 	storageUsed: Option.some(750),
 	time: DateTime.makeUnsafe(0)
 }
@@ -26,15 +42,14 @@ it('measures CPU deltas and leaves resets and gaps unmeasured', () => {
 		uptime: Duration.seconds(130)
 	}
 	assert.deepStrictEqual(
-		sample(current, 'MemTotal: 1024 kB\nMemAvailable: 256 kB', Option.none(), Option.some(previous), Option.none())
-			.point.cpu,
+		sample(current, 'MemTotal: 1024 kB\nMemAvailable: 256 kB', [], Option.some(previous), Option.none()).point.cpu,
 		Option.some(50)
 	)
 	assert.deepStrictEqual(
 		sample(
 			{...current, uptime: Duration.seconds(1)},
 			'MemTotal: 1024 kB\nMemAvailable: 256 kB',
-			Option.none(),
+			[],
 			Option.some(previous),
 			Option.none()
 		).point.cpu,
@@ -44,7 +59,7 @@ it('measures CPU deltas and leaves resets and gaps unmeasured', () => {
 		sample(
 			{...current, time: DateTime.makeUnsafe(150_001)},
 			'MemTotal: 1024 kB\nMemAvailable: 256 kB',
-			Option.none(),
+			[],
 			Option.some(previous),
 			Option.none()
 		).point.cpu,
@@ -58,6 +73,7 @@ it('reads each range from plain samples and keeps missing readings unmeasured', 
 		{
 			...POINT,
 			cpu: Option.some(20),
+			cpuCoverage: Duration.seconds(1),
 			since: DateTime.makeUnsafe(61_000),
 			step: Duration.minutes(1),
 			time: DateTime.makeUnsafe(61_000)
@@ -70,19 +86,29 @@ it('reads each range from plain samples and keeps missing readings unmeasured', 
 	assert.isEmpty(history(points, Duration.minutes(1), DateTime.makeUnsafe(180_000)))
 })
 
-it('weights an existing rollup by its duration and counts missing apps as zero', () => {
+it('weights an existing rollup by its coverage and counts missing apps as zero', () => {
 	const stored = [
 		{
 			...POINT,
-			apps: Option.some([{cpu: Option.some(80), id: APP, memory: 1000}]),
+			apps: Option.some([{cpu: Option.some(80), cpuCoverage: Duration.seconds(9), id: APP, memory: 1000}]),
+			appsCoverage: Duration.seconds(9),
 			cpu: Option.some(50),
+			cpuCoverage: Duration.seconds(9),
+			memoryCoverage: Duration.seconds(9),
 			since: DateTime.makeUnsafe(10_000),
 			step: Duration.seconds(10),
 			time: DateTime.makeUnsafe(18_000)
 		}
 	]
 	const rolled = rollup(
-		{...POINT, apps: Option.some([]), cpu: Option.some(10), time: DateTime.makeUnsafe(19_000)},
+		{
+			...POINT,
+			apps: Option.some([]),
+			appsCoverage: Duration.seconds(1),
+			cpu: Option.some(10),
+			cpuCoverage: Duration.seconds(1),
+			time: DateTime.makeUnsafe(19_000)
+		},
 		stored
 	)
 	assert.deepStrictEqual(
@@ -96,13 +122,14 @@ it('weights an existing rollup by its duration and counts missing apps as zero',
 	)
 })
 
-it('weights an already averaged sample by the interval it covers', () => {
+it('weights an already averaged sample by the time it measured, not the time it spans', () => {
 	assert.deepStrictEqual(
 		history(
 			[
 				{
 					...POINT,
 					cpu: Option.some(0),
+					cpuCoverage: Duration.seconds(5),
 					since: DateTime.makeUnsafe(1000),
 					step: Duration.minutes(1),
 					time: DateTime.makeUnsafe(10_000)
@@ -110,6 +137,7 @@ it('weights an already averaged sample by the interval it covers', () => {
 				{
 					...POINT,
 					cpu: Option.some(100),
+					cpuCoverage: Duration.seconds(5),
 					since: DateTime.makeUnsafe(11_000),
 					step: Duration.minutes(1),
 					time: DateTime.makeUnsafe(20_000)
@@ -173,5 +201,134 @@ it('combines CPU deltas of an app across its service and child slice', () => {
 	assert.deepStrictEqual(
 		appShares({...current, time: DateTime.makeUnsafe(100_000)}, Option.some(previous))[0]?.cpu,
 		Option.none()
+	)
+})
+
+it('averages apps over the seconds that measured them, an empty measurement counting as nothing used', () => {
+	const rolled = Array.reduce(Array.range(0, 4), Array.empty<Sample>(), (stored, second) =>
+		rollup(
+			{
+				...POINT,
+				apps: Option.some(
+					Boolean.match(second === 0, {onFalse: () => [], onTrue: () => [{cpu: Option.none(), id: APP, memory: 100}]})
+				),
+				appsCoverage: Duration.seconds(1),
+				time: DateTime.makeUnsafe(second * 1000)
+			},
+			stored
+		)
+	)
+	assert.deepStrictEqual(
+		pipe(
+			Array.head(rolled),
+			Option.flatMap(point => point.apps),
+			Option.map(Array.map(app => app.memory))
+		),
+		Option.some([20])
+	)
+})
+
+function rollApp(readings: readonly {cpu: Option.Option<number>; second: number}[]) {
+	return Array.reduce(readings, Array.empty<Sample>(), (stored, reading) =>
+		rollup(
+			{
+				...POINT,
+				apps: Option.some([{cpu: reading.cpu, id: APP, memory: 100}]),
+				appsCoverage: Duration.seconds(1),
+				time: DateTime.makeUnsafe(reading.second * 1000)
+			},
+			stored
+		)
+	)
+}
+
+function appCpu(rolled: readonly Sample[]) {
+	return pipe(
+		Array.head(rolled),
+		Option.flatMap(point => point.apps),
+		Option.flatMap(Array.head),
+		Option.flatMap(app => app.cpu)
+	)
+}
+
+it('averages an app’s CPU over the time it was read, however long it was running', () => {
+	// An app's first second has no CPU to difference: the next two average 80 and 20, not 60.
+	assert.deepStrictEqual(
+		appCpu(
+			rollApp([
+				{cpu: Option.none(), second: 0},
+				{cpu: Option.some(80), second: 1},
+				{cpu: Option.some(20), second: 2}
+			])
+		),
+		Option.some(50)
+	)
+	// Seconds between the readings went unread: each reading still weighs one second.
+	assert.deepStrictEqual(
+		appCpu(
+			rollApp([
+				{cpu: Option.some(10), second: 0},
+				{cpu: Option.some(20), second: 5},
+				{cpu: Option.some(90), second: 6}
+			])
+		),
+		Option.some(40)
+	)
+})
+
+it('reads a mount point with spaces from df and refuses a row without its numbers', () => {
+	assert.deepStrictEqual(linuxDisks('Mounted on 1B-blocks Used\n/ 2048 1024\n/mnt/Team Café  4096 512\n'), [
+		{mount: '/', total: 2048, used: 1024},
+		{mount: '/mnt/Team Café', total: 4096, used: 512}
+	])
+	assert.throws(() => {
+		linuxDisks('Mounted on 1B-blocks Used\n/mnt/broken -\n')
+	})
+})
+
+it('keeps a buffered point while its range still shows it', () => {
+	const point = {...POINT, since: DateTime.makeUnsafe(0), step: Duration.seconds(10)}
+	assert.isFalse(expired(point, DateTime.makeUnsafe(610_000)))
+	assert.isTrue(expired(point, DateTime.makeUnsafe(610_001)))
+})
+
+it('keeps a peer’s newest points when its clock runs ahead, and marks a failed read stale without dropping its history', () => {
+	const ahead = {
+		...POINT,
+		since: DateTime.makeUnsafe(1_001_000),
+		step: Duration.seconds(10),
+		time: DateTime.makeUnsafe(1_001_000)
+	}
+	const saved = {
+		history: {
+			disks: [],
+			error: Option.none(),
+			load: [],
+			platform: Option.some('linux' as const),
+			samples: [ahead],
+			stale: false,
+			time: DateTime.makeUnsafe(1_006_000),
+			worker: WorkerId.make('desktop')
+		},
+		received: DateTime.makeUnsafe(1_000_000)
+	}
+	const now = DateTime.makeUnsafe(1_000_000)
+	const fresh = peerHistory(
+		Duration.minutes(10),
+		now,
+		WorkerId.make('desktop'),
+		Option.some({error: Option.none(), saved: Option.some(saved)})
+	)
+	assert.strictEqual(fresh.samples.length, 1)
+	assert.isFalse(fresh.stale)
+	const failed = peerHistory(
+		Duration.minutes(10),
+		now,
+		WorkerId.make('desktop'),
+		Option.some({error: Option.some('Worker is unreachable'), saved: Option.some(saved)})
+	)
+	assert.deepStrictEqual(
+		[failed.samples.length, failed.stale, failed.error],
+		[1, true, Option.some('Worker is unreachable')]
 	)
 })

@@ -1,11 +1,11 @@
 import {assert, it} from '@effect/vitest'
 
-import {Array, DateTime, Duration, Option, Schema, Struct} from 'effect'
+import {Array, DateTime, Duration, Function, Option, Schema, Struct} from 'effect'
 
 import {journeyProps} from '#services/bookings/lib/utils.ts'
-import {BookedPlace, BookingId, Flight, Train, TrainTracking} from '#services/bookings/schema.ts'
+import {BookedPlace, BookingId, Flight, ProviderFlightId, Train, TrainTracking} from '#services/bookings/schema.ts'
 import {alertsOf} from '#services/push/lib/utils.ts'
-import {checkEvery, flightTracking, isStale, trainTracking} from '#services/tracking/lib/utils.ts'
+import {checkEvery, flightTracking, isStale, pickFlight, trainTracking} from '#services/tracking/lib/utils.ts'
 import {FaFlight, VtStatus} from '#services/tracking/schema.ts'
 
 const ANSWER = Schema.decodeSync(FaFlight)({
@@ -39,17 +39,26 @@ const train = Struct.pick(
 
 it('carries a provider cancellation with no stops into the island and one cancellation alert', () => {
 	const now = DateTime.makeUnsafe(0)
-	const live = Option.getOrThrow(
-		trainTracking(Schema.decodeSync(VtStatus)({fermate: [], provvedimento: 1, tipoTreno: 'ST'}), Train.make(train), now)
-	)
-	const booking = Train.make({...train, live: Option.some(live)})
+	const trenitalia = Train.make({
+		...train,
+		from: Schema.decodeSync(Train.json.fields.from)({
+			code: 'it-trenitalia_08409:station',
+			name: 'Roma Termini',
+			timeZone: 'Europe/Rome'
+		})
+	})
+	const cancellation = Schema.decodeSync(VtStatus)({fermate: [], provvedimento: 1, tipoTreno: 'ST'})
+	// Another operator's train with the same number cannot be told apart without stops, so its status stays unknown.
+	assert.deepStrictEqual(trainTracking(cancellation, Train.make(train), now), Option.none())
+	const live = Option.getOrThrow(trainTracking(cancellation, trenitalia, now))
+	const booking = Train.make({...Struct.pick(trenitalia, Struct.keys(Train.fields)), live: Option.some(live)})
 	assert.strictEqual(live.state, 'cancelled')
 	assert.deepStrictEqual(checkEvery(booking, now), Option.none())
 	assert.deepStrictEqual(
 		Array.map(alertsOf(booking, now), alert => alert.category),
 		['cancelled']
 	)
-	assert.strictEqual(journeyProps([booking], [], now).tone, 'bad')
+	assert.strictEqual(journeyProps([booking], [], now, Function.constFalse).tone, 'bad')
 })
 
 it('keeps the gate a flight left for the change it shows', () => {
@@ -250,6 +259,54 @@ it('checks a train each minute near departure and calls live data stale after tw
 			),
 			isStale(live(DateTime.makeUnsafe(0), 'other'), now)
 		],
-		[Option.some(Duration.minutes(1)), false]
+		[Option.some(Duration.minutes(1)), true]
+	)
+	// Read at the half-hourly pace 91 minutes out, then missed through the minute-by-minute checks that followed.
+	assert.isTrue(isStale(live(DateTime.subtractDuration(departs, Duration.minutes(91))), now))
+})
+
+it('keeps the flight it identified before while it is still near the booked time', () => {
+	const booked = Flight.make({
+		airline: 'British Airways',
+		airlineCode: 'BA',
+		arrives: DateTime.makeUnsafe('2026-10-28T18:10:00Z'),
+		boardingAt: Option.none(),
+		boardingGroup: Option.none(),
+		confirmation: Option.none(),
+		departs: DateTime.makeUnsafe('2026-10-28T15:40:00Z'),
+		from: Schema.decodeSync(BookedPlace)({code: 'FCO', name: 'Fiumicino', timeZone: 'Europe/Rome'}),
+		id: BookingId.make('7f0c8f8e-0d0a-4a5e-9d8f-5b2a1c3d4e5f'),
+		live: Option.some(
+			flightTracking(
+				{...ANSWER, fa_flight_id: ProviderFlightId.make('previous')},
+				DateTime.makeUnsafe(1),
+				Option.none()
+			)
+		),
+		number: '553',
+		seat: Option.none(),
+		status: 'confirmed',
+		to: Schema.decodeSync(BookedPlace)({code: 'LHR', name: 'Heathrow', timeZone: 'Europe/London'})
+	})
+	const origin = Option.some({code_iata: Option.some('FCO')})
+	const flights = [
+		{...ANSWER, fa_flight_id: ProviderFlightId.make('other'), origin, scheduled_out: Option.some(booked.departs)},
+		{
+			...ANSWER,
+			fa_flight_id: ProviderFlightId.make('previous'),
+			origin,
+			scheduled_out: Option.some(DateTime.addDuration(booked.departs, Duration.minutes(50)))
+		}
+	]
+	assert.deepStrictEqual(
+		Option.map(pickFlight(flights, booked), found => found.fa_flight_id),
+		Option.some(ProviderFlightId.make('previous'))
+	)
+	assert.deepStrictEqual(
+		Option.map(
+			pickFlight(flights, Flight.make({...Struct.pick(booked, Struct.keys(Flight.fields)), live: Option.none()})),
+			found => found.fa_flight_id
+		),
+		Option.some(ProviderFlightId.make('other'))
 	)
 })

@@ -1,0 +1,76 @@
+import {assert, it} from '@effect/vitest'
+
+import {Array, Duration, Option, Schema, pipe} from 'effect'
+
+import {jobLogs} from '#services/github-actions/lib/utils.ts'
+import {WorkflowJob} from '#services/github-actions/schema.ts'
+
+const JOB = Schema.decodeSync(WorkflowJob)({
+	action: 'completed',
+	repository: {full_name: 'MP281X/deslop'},
+	workflow_job: {
+		completed_at: '2026-11-18T10:00:20Z',
+		conclusion: 'failure',
+		created_at: '2026-11-18T09:59:58Z',
+		html_url: 'https://github.com/MP281X/deslop/actions/runs/1/job/2',
+		id: 2,
+		name: 'Check',
+		run_attempt: 1,
+		run_id: 1,
+		runner_name: 'runner',
+		started_at: '2026-11-18T10:00:00Z',
+		steps: [
+			{
+				completed_at: '2026-11-18T10:00:09Z',
+				conclusion: 'failure',
+				name: 'Build',
+				number: 1,
+				started_at: '2026-11-18T10:00:00Z'
+			},
+			{
+				completed_at: '2026-11-18T10:00:19Z',
+				conclusion: 'success',
+				name: 'Test',
+				number: 2,
+				started_at: '2026-11-18T10:00:10Z'
+			}
+		]
+	}
+})
+
+function records(log: string) {
+	return pipe(
+		Option.getOrThrow(jobLogs(JOB, log).resourceLogs),
+		Array.flatMap(group => Option.getOrThrow(group.scopeLogs)),
+		Array.flatMap(scope => Option.getOrThrow(scope.logRecords))
+	)
+}
+
+it('puts a line on the step whose time holds it, even when it was written after a later step', () => {
+	assert.deepStrictEqual(
+		Array.map(
+			records(
+				Array.join(
+					[
+						'2026-11-18T10:00:01.0000000Z compiling',
+						'2026-11-18T10:00:11.0000000Z testing',
+						'2026-11-18T10:00:08.0000000Z ##[error]build failed'
+					],
+					'\n'
+				)
+			),
+			record => Option.getOrThrow(record.spanId)
+		),
+		['3000000000002001', '3000000000002002', '3000000000002001']
+	)
+})
+
+it('keeps the runner time finer than a millisecond', () => {
+	assert.deepStrictEqual(
+		Array.map(
+			records(Array.join(['2026-11-18T10:00:01.0000001Z first', '2026-11-18T10:00:01.0000002Z second'], '\n')),
+			record => Duration.toNanosUnsafe(Option.getOrThrow(record.timeUnixNano)) % 1_000_000n
+		),
+		[100n, 200n]
+	)
+})

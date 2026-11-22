@@ -4,8 +4,8 @@ import {Tool, Toolkit} from 'effect/ai'
 
 import {AuthError, CurrentUser, UserId} from '@deslop/runtime/shared/auth'
 
-import {CookieSession} from '#services/cookie-sessions/schema.ts'
 import {Person} from '#services/people/schema.ts'
+import {CookieSession} from '#services/sessions/schema.ts'
 
 export const ToolContracts = Toolkit.make(
 	Tool.make('list_people', {
@@ -16,7 +16,8 @@ export const ToolContracts = Toolkit.make(
 		success: Schema.Struct({people: Schema.Array(Person)})
 	})
 		.annotate(Tool.Readonly, true)
-		.annotate(Tool.Destructive, false),
+		.annotate(Tool.Destructive, false)
+		.annotate(Tool.Strict, true),
 	Tool.make('remove_person', {
 		dependencies: [CurrentUser],
 		description:
@@ -24,7 +25,9 @@ export const ToolContracts = Toolkit.make(
 		failure: AuthError,
 		parameters: Schema.Struct({id: UserId}),
 		success: Person
-	}).annotate(Tool.Destructive, true),
+	})
+		.annotate(Tool.Destructive, true)
+		.annotate(Tool.Strict, true),
 	Tool.make('list_sessions', {
 		dependencies: [CurrentUser],
 		description: 'List your browser sessions, newest activity first.',
@@ -33,12 +36,15 @@ export const ToolContracts = Toolkit.make(
 		success: Schema.Struct({sessions: Schema.Array(CookieSession)})
 	})
 		.annotate(Tool.Readonly, true)
-		.annotate(Tool.Destructive, false),
+		.annotate(Tool.Destructive, false)
+		.annotate(Tool.Strict, true),
 	Tool.make('sign_out_session', {
 		dependencies: [CurrentUser],
 		description: 'Sign out one of your browser sessions by the id list_sessions returns.',
 		failure: AuthError,
 		parameters: Schema.Struct({id: Schema.String}),
 		success: Schema.Struct({id: Schema.String})
-	}).annotate(Tool.Destructive, true)
+	})
+		.annotate(Tool.Destructive, true)
+		.annotate(Tool.Strict, true)
 )

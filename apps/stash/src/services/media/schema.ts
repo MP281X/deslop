@@ -4,8 +4,14 @@ import {DurationFromSeconds} from '@deslop/runtime/shared/time'
 
 export class MediaError extends Schema.TaggedError<MediaError>()('MediaError', {
 	cause: Schema.optional(Schema.Defect()),
-	message: Schema.String
+	message: Schema.String,
+	// Gateway refused the person's request, such as for a missing key, so every later request would be refused too.
+	reason: Schema.optional(Schema.Literal('Refused'))
 }) {}
+
+// Gateway's refusal, whose message tells the person what to do.
+export type Refusal = typeof Refusal.Type
+export const Refusal = Schema.fromJsonString(Schema.Struct({error: Schema.Struct({message: Schema.String})}))
 
 export type Comment = typeof Comment.Type
 export const Comment = Schema.Struct({

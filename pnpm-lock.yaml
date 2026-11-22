@@ -182,7 +182,6 @@ catalogs:
 
 overrides:
   vite: npm:@voidzero-dev/vite-plus-core@8.3.8000
-  fallow>fallow-type-aware: '-'
   '@bacons/apple-targets>@expo/prebuild-config': ^58.0
 
 packageExtensionsChecksum: sha256-H0sozbqlUTsXIJ3l/dFqqZlABythdQm0Wps+rxuCS88=
@@ -773,7 +772,7 @@ importers:
         specifier: latest
         version: 0.9.23
       vite-plus:
-        specifier: ^1.3
+        specifier: ^1.7
         version: 1.7.0(@types/node@26.6.6)(@vitest/ui@5.1.0)(jiti@2.7.0)(terser@5.51.3)
 
   tools/create-app:

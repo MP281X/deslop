@@ -18,6 +18,7 @@ import {Empty, EmptyMedia} from '@deslop/components-mobile/ui/empty'
 import {Skeleton} from '@deslop/components-mobile/ui/skeleton'
 
 import {readerAtom, unreachableAtom} from '#lib/chapters.ts'
+import {stripOf} from '#lib/reader.ts'
 import {PageStrip} from '#modules/native/index.ts'
 import {byNumber, keyOf} from '#services/chapters/lib/utils.ts'
 import type {ChapterNumber, Series, ChapterList} from '#services/chapters/schema.ts'
@@ -59,7 +60,7 @@ export function ReaderRoute(props: {chapters: ChapterList; number: ChapterNumber
 		})
 	)
 	const [state, turn] = useAtom(readerAtom(reader))
-	const visible = Array.take(following, state.shown)
+	const visible = stripOf(state, following)
 	const gaveUp = AsyncResult.isSuccess(useAtomValue(unreachableAtom(reader)))
 
 	// A notification can open a chapter the copy on the iPhone does not have yet; the server's list brings it, unless it is out of reach.

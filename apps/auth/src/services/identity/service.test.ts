@@ -6,11 +6,11 @@ import {GitHubId, IdentifyRequest, UserId} from '@deslop/runtime/shared/auth'
 
 import {Identity} from './service.ts'
 
-import {CookieSession} from '#services/cookie-sessions/schema.ts'
-import {CookieSessions} from '#services/cookie-sessions/service.ts'
 import {GitHub} from '#services/github/service.ts'
 import {Member} from '#services/people/schema.ts'
 import {People} from '#services/people/service.ts'
+import {CookieSession} from '#services/sessions/schema.ts'
+import {Sessions} from '#services/sessions/service.ts'
 import {Tailnet} from '#services/tailnet/service.ts'
 
 const ID = UserId.make('github:2')
@@ -29,7 +29,7 @@ function layer(tags: string[], status: Member['status']) {
 			})
 		),
 		Layer.provide(
-			Layer.mock(CookieSessions, {
+			Layer.mock(Sessions, {
 				current: secret => {
 					if (secret !== 'valid') return Effect.succeedNone
 					return Effect.succeedSome(

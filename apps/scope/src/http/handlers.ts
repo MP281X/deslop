@@ -42,11 +42,16 @@ const cors = HttpMiddleware.cors({allowedHeaders: ['content-type'], allowedMetho
 type IngestRoute = typeof IngestRoute.Type
 const IngestRoute = Schema.Literals(['/v1/traces', '/v1/logs'])
 
-// OTLP/HTTP JSON: the status codes and `code` values are the protocol's own.
+// OTLP/HTTP JSON, uncompressed: protobuf and gzip are refused as unsupported, not read as broken JSON. The status codes and `code` values are the protocol's own.
 function answer<A, I>(schema: Schema.Codec<A, I>, save: (payload: A) => Effect.Effect<void, TelemetryError>) {
 	return Effect.flatMap(HttpServerRequest.HttpServerRequest, request => {
-		if (!String.startsWith('application/json')(request.headers['content-type'] ?? '')) {
-			return Effect.succeed(HttpServerResponse.empty({status: 415}))
+		if (
+			!String.startsWith('application/json')(request.headers['content-type'] ?? '') ||
+			(request.headers['content-encoding'] ?? 'identity') !== 'identity'
+		) {
+			return Effect.succeed(
+				HttpServerResponse.jsonUnsafe({code: 3, message: 'Scope accepts uncompressed OTLP JSON only'}, {status: 415})
+			)
 		}
 		return pipe(
 			HttpServerRequest.schemaBodyJson(schema),

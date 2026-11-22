@@ -14,8 +14,10 @@ export class ChapterPushError extends Schema.TaggedError<ChapterPushError>()('Pu
 	message: Schema.String
 }) {}
 
+// A device a chapter is announced to, taken from the registered devices when its announcement first runs; done once Apple's answer is final.
 export class ChapterDelivery extends Model.Class<ChapterDelivery>('Delivery')({
 	...ChapterIdentity.fields,
+	done: Schema.BooleanFromBit,
 	token: Model.Sensitive(Schema.RedactedFromValue(ApnsToken))
 }) {
 	static readonly table = 'deliveries'

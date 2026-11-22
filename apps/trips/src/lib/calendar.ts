@@ -1,4 +1,4 @@
-import {Array, DateTime, Duration, Effect, Function, HashSet, Option, String, pipe} from 'effect'
+import {Array, DateTime, Duration, Effect, Function, HashSet, Option, Semaphore, String, pipe} from 'effect'
 
 import {AsyncResult, Atom} from 'effect/reactivity'
 import {
@@ -13,7 +13,7 @@ import type {ExpoCalendar} from 'expo-calendar'
 import {bookingsAtom} from '#lib/bookings.ts'
 import {BOOKING_LINK, linkOf} from '#lib/deep-links.ts'
 import {placeLine} from '#lib/rides.ts'
-import {arrivalOf, departureOf, endOf, labelled, startOf, titleOf} from '#services/bookings/lib/utils.ts'
+import {arrivalOf, cancelledOf, departureOf, endOf, labelled, startOf, titleOf} from '#services/bookings/lib/utils.ts'
 import type {BookingList, Flight, Train} from '#services/bookings/schema.ts'
 import {Booking, BookingsError} from '#services/bookings/schema.ts'
 
@@ -57,24 +57,36 @@ function sameTime(left: DateTime.DateTime.Input, right: DateTime.DateTime.Input)
 	)
 }
 
+function alarmsOf(alarms: readonly {relativeOffset?: number}[]) {
+	return pipe(
+		alarms,
+		Array.map(alarm => `${alarm.relativeOffset}`),
+		Array.join(',')
+	)
+}
+
+// Each booking owns the one event its URL names; a second event with that URL is a duplicate this mirror made, and goes.
 function calendarPlan(
 	all: BookingList,
 	events: Awaited<ReturnType<ExpoCalendar['listEvents']>>,
 	window: {start: DateTime.Utc; end: DateTime.Utc}
 ) {
-	const eventsByUrl = Array.groupBy(events, event => event.url ?? '')
-	const bookings = Array.filter(
+	const planned = pipe(
 		all,
-		booking =>
-			booking.status === 'confirmed' &&
-			DateTime.isGreaterThan(endOf(booking), window.start) &&
-			DateTime.isLessThan(startOf(booking), window.end)
+		Array.filter(
+			booking =>
+				!cancelledOf(booking) &&
+				DateTime.isGreaterThan(endOf(booking), window.start) &&
+				DateTime.isLessThan(startOf(booking), window.end)
+		),
+		Array.map(booking => {
+			const details = {...eventOf(booking), url: linkOf(booking.id)}
+			return {details, event: Array.findFirst(events, event => event.url === details.url)}
+		})
 	)
-	const planned = Array.map(bookings, booking => {
-		const details = {...eventOf(booking), url: linkOf(booking.id)}
-		return {details, event: Array.head(eventsByUrl[details.url] ?? [])}
-	})
-	const kept = HashSet.fromIterable(Array.map(bookings, booking => linkOf(booking.id)))
+	const kept = HashSet.fromIterable(
+		Array.flatMap(planned, entry => Option.toArray(Option.map(entry.event, event => event.id)))
+	)
 	return {
 		create: pipe(
 			planned,
@@ -83,7 +95,7 @@ function calendarPlan(
 		),
 		remove: Array.filter(
 			events,
-			event => event.url !== undefined && String.startsWith(BOOKING_LINK)(event.url) && !HashSet.has(kept, event.url)
+			event => event.url !== undefined && String.startsWith(BOOKING_LINK)(event.url) && !HashSet.has(kept, event.id)
 		),
 		update: Array.flatMap(planned, entry =>
 			pipe(
@@ -95,7 +107,9 @@ function calendarPlan(
 							sameTime(event.endDate, entry.details.endDate) &&
 							event.title === entry.details.title &&
 							event.location === entry.details.location &&
-							event.notes === entry.details.notes
+							event.notes === entry.details.notes &&
+							event.timeZone === entry.details.timeZone &&
+							alarmsOf(event.alarms) === alarmsOf(entry.details.alarms)
 						)
 				),
 				Option.map(event => ({details: entry.details, event})),
@@ -105,31 +119,40 @@ function calendarPlan(
 	}
 }
 
+// One sync at a time, and a native write finishes even when a newer list arrives, so the next sync lists what the last one wrote and never adds an event twice.
+const syncing = Semaphore.makeUnsafe(1)
+
+function native<A>(message: string, write: () => PromiseLike<A>) {
+	return Effect.uninterruptible(
+		Effect.tryPromise({catch: cause => BookingsError.make({cause, message}), try: () => write()})
+	)
+}
+
 // The bookings mirror into one calendar; an event's URL names its booking, so a later sync finds it again.
-export const calendarAtom = Atom.make(get =>
-	Effect.ignore(
-		Effect.gen(function* () {
-			const loaded = get(bookingsAtom)
-			if (!AsyncResult.isSuccess(loaded)) return
-			if (
-				!(yield* Effect.tryPromise({
-					catch: cause => BookingsError.make({cause, message: 'The calendar permission could not be asked.'}),
-					try: () => requestCalendarPermissions()
-				})).granted
-			) {
-				return
-			}
-			const calendar = yield* pipe(
-				yield* Effect.tryPromise({
-					catch: cause => BookingsError.make({cause, message: 'The calendars could not be listed.'}),
-					try: () => getCalendars(EntityTypes.EVENT)
-				}),
-				Array.findFirst(found => found.title === CALENDAR),
-				Option.match({
-					onNone: () =>
-						Effect.tryPromise({
-							catch: cause => BookingsError.make({cause, message: 'The Trips calendar could not be created.'}),
-							try: () => {
+export const calendarAtom = Atom.make(get => {
+	const loaded = get(bookingsAtom)
+	return Effect.ignore(
+		Semaphore.withPermit(
+			syncing,
+			Effect.gen(function* () {
+				if (!AsyncResult.isSuccess(loaded)) return
+				if (
+					!(yield* Effect.tryPromise({
+						catch: cause => BookingsError.make({cause, message: 'The calendar permission could not be asked.'}),
+						try: () => requestCalendarPermissions()
+					})).granted
+				) {
+					return
+				}
+				const calendar = yield* pipe(
+					yield* Effect.tryPromise({
+						catch: cause => BookingsError.make({cause, message: 'The calendars could not be listed.'}),
+						try: () => getCalendars(EntityTypes.EVENT)
+					}),
+					Array.findFirst(found => found.title === CALENDAR),
+					Option.match({
+						onNone: () =>
+							native('The Trips calendar could not be created.', () => {
 								const source = getDefaultCalendarSync().source
 								return createCalendar({
 									color: COLOR,
@@ -142,61 +165,47 @@ export const calendarAtom = Atom.make(get =>
 									}),
 									title: CALENDAR
 								})
+							}),
+						onSome: Effect.fnUntraced(function* (found) {
+							if (String.toLowerCase(found.color ?? '') !== COLOR) {
+								yield* native('The Trips calendar colour could not be set.', () => found.update({color: COLOR}))
 							}
-						}),
-					onSome: Effect.fnUntraced(function* (found) {
-						if (String.toLowerCase(found.color ?? '') !== COLOR) {
-							yield* Effect.tryPromise({
-								catch: cause => BookingsError.make({cause, message: 'The Trips calendar colour could not be set.'}),
-								try: () => found.update({color: COLOR})
-							})
-						}
-						return found
+							return found
+						})
 					})
+				)
+				const now = yield* DateTime.now
+				const window = {
+					end: DateTime.addDuration(now, Duration.days(400)),
+					start: DateTime.subtractDuration(now, Duration.days(1))
+				}
+				const events = yield* Effect.tryPromise({
+					catch: cause => BookingsError.make({cause, message: 'The calendar events could not be listed.'}),
+					try: () => calendar.listEvents(DateTime.toDateUtc(window.start), DateTime.toDateUtc(window.end))
 				})
-			)
-			const now = yield* DateTime.now
-			const window = {
-				end: DateTime.addDuration(now, Duration.days(400)),
-				start: DateTime.subtractDuration(now, Duration.days(1))
-			}
-			const events = yield* Effect.tryPromise({
-				catch: cause => BookingsError.make({cause, message: 'The calendar events could not be listed.'}),
-				try: () => calendar.listEvents(DateTime.toDateUtc(window.start), DateTime.toDateUtc(window.end))
+				const plan = calendarPlan(loaded.value, events, window)
+				yield* Effect.forEach(
+					plan.create,
+					details =>
+						native(`${details.title} could not be added to the calendar.`, () => calendar.createEvent(details)),
+					{concurrency: 1, discard: true}
+				)
+				yield* Effect.forEach(
+					plan.update,
+					item =>
+						native(`${item.details.title} could not be updated in the calendar.`, () =>
+							item.event.update(item.details)
+						),
+					{concurrency: 1, discard: true}
+				)
+				yield* Effect.forEach(
+					// Only events this mirror made: one the person added to the calendar stays.
+					plan.remove,
+					event => native(`${event.title} could not be removed from the calendar.`, () => event.delete()),
+					{concurrency: 1, discard: true}
+				)
 			})
-			const plan = calendarPlan(loaded.value, events, window)
-			yield* Effect.forEach(
-				plan.create,
-				details =>
-					Effect.tryPromise({
-						catch: cause =>
-							BookingsError.make({cause, message: `${details.title} could not be added to the calendar.`}),
-						try: () => calendar.createEvent(details)
-					}),
-				{concurrency: 1, discard: true}
-			)
-			yield* Effect.forEach(
-				plan.update,
-				item =>
-					Effect.tryPromise({
-						catch: cause =>
-							BookingsError.make({cause, message: `${item.details.title} could not be updated in the calendar.`}),
-						try: () => item.event.update(item.details)
-					}),
-				{concurrency: 1, discard: true}
-			)
-			yield* Effect.forEach(
-				// Only events this mirror made: one the person added to the calendar stays.
-				plan.remove,
-				event =>
-					Effect.tryPromise({
-						catch: cause =>
-							BookingsError.make({cause, message: `${event.title} could not be removed from the calendar.`}),
-						try: () => event.delete()
-					}),
-				{concurrency: 1, discard: true}
-			)
-		}),
+		),
 		{log: 'Warn', message: 'The calendar was not synced'}
 	)
-)
+})

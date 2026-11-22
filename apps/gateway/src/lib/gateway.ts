@@ -1,4 +1,4 @@
-import {Effect, Option, Schema} from 'effect'
+import {Effect, Function, Option, Schema, pipe} from 'effect'
 
 import {Machine} from '@typeonce/effect-machine'
 import {AtomMachine} from '@typeonce/effect-machine/reactivity'
@@ -11,6 +11,7 @@ import type {TimeFrame} from '@deslop/runtime/shared/time'
 import {addPageTelemetry, layerPageProtocol} from '@deslop/runtime/web/client'
 
 import {RpcContracts} from '#rpcs/contracts.ts'
+import type {AiSetKey} from '#services/ai-proxy/schema.ts'
 import {ServerUrl} from '#services/connections/schema.ts'
 import type {ServerId} from '#services/connections/schema.ts'
 
@@ -95,4 +96,19 @@ export const aiUsageAtom = Atom.family((period: TimeFrame) => liveAtom(RpcClient
 
 export const mcpUsageAtom = Atom.family((period: TimeFrame) => liveAtom(RpcClient, 'connections.usage', period))
 
-export const setKeyAtom = RpcClient.mutation('ai-proxy.setKey')
+// A key pasted under the bar, held only while its dialog is open: saving or dismissing it drops the plaintext.
+export const pastedKeyAtom = Atom.make(Option.none<string>())
+
+export const setKeyAtom = RpcClient.runtime.fn((input: AiSetKey, get) =>
+	pipe(
+		RpcClient,
+		Effect.flatMap(client => client('ai-proxy.setKey', input)),
+		Effect.tap(() => Effect.sync(() => get.set(pastedKeyAtom, Option.none())))
+	)
+)
+
+// Opens the key dialog on a pasted key, clear of the last attempt's failure.
+export const openKeyAtom = Atom.writable(Function.constUndefined, (context, secret: string) => {
+	context.set(setKeyAtom, Atom.Reset)
+	context.set(pastedKeyAtom, Option.some(secret))
+})
