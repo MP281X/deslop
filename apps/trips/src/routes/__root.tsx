@@ -41,8 +41,7 @@ function Destination(props: {onClose: () => void; value: string}) {
 	)
 }
 
-// judge-ignore no-unrelated-jobs -- This application composition boundary mounts the app-owned notification and calendar lifetimes alongside navigation.
-// judge-ignore no-silent-fallback -- openedAtom logs an initial URL-read failure and keeps listening for later opens; no selected booking is the valid home path, not a replacement booking or a successful read of booking data.
+// `openedAtom` logs an initial URL-read failure and keeps listening for later opens; no selected booking is the valid home path, not a replacement booking or a successful read of booking data.
 function AppRoutes() {
 	useAtomMount(pushAtom)
 	useAtomMount(calendarAtom)

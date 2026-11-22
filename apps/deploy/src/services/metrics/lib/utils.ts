@@ -39,7 +39,6 @@ export function expired(row: Sample, now: DateTime.Utc) {
 
 // One measurement, before it joins a series.
 
-// judge-ignore no-unrelated-jobs -- CPU ticks and boot age are fields of one same-time Counters sample, used together to calculate utilization.
 export function counters(stat: string, uptime: string, time: DateTime.Utc) {
 	const values = Schema.decodeUnknownSync(CpuCounters)(
 		pipe(

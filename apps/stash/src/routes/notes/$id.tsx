@@ -187,7 +187,7 @@ function Reading(props: {note: NoteItem}) {
 	)
 }
 
-// judge-ignore no-silent-fallback -- Detail owns authentication failures and its toolbar's NoteProblem owns body-load failures; this pane only retains the saved body under that shared error presentation.
+// Detail owns authentication failures and its toolbar's NoteProblem owns body-load failures; this pane only retains the saved body under that shared error presentation.
 function FullBody(props: {note: NoteItem}) {
 	const full = useAtomSuspense(noteAtom(props.note), {includeFailure: true})
 	if (Option.exists(AsyncResult.error(full), Schema.is(AuthError))) return undefined

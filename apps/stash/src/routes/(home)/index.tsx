@@ -216,7 +216,7 @@ function FilterMenu(props: {kind: Option.Option<Kind>; onKind: (kind: Option.Opt
 	)
 }
 
-// judge-ignore no-silent-fallback -- HomeRoute shows Search unavailable with retry for outages; denied searches render FailureContent instead of cached notes.
+// HomeRoute shows Search unavailable with retry for outages; denied searches render FailureContent instead of cached notes.
 function Notes(props: {
 	kind: Option.Option<Kind>
 	onOpen: (id: Note['id']) => void

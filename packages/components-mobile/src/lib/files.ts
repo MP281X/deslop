@@ -23,7 +23,6 @@ export function writeAtomically(file: File, text: string) {
 const owners = MutableHashMap.empty<string, UserId>()
 
 // A cold start hydrates from disk, and writes stay off the path that shows the list. The copy belongs to the admitted account: a refusal or a sign-out removes it, and another account never opens on it.
-// judge-ignore no-silent-fallback -- Files outside SQL are disposable by repository policy: a failed cache read emits no list and waits for the authoritative live source, whose failures remain failures; cache writes log failures.
 export function cachedList<S extends Schema.Top, E, R>(
 	get: Atom.AtomContext,
 	session: Session,

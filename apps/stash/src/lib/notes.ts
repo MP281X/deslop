@@ -46,7 +46,6 @@ export const noteAtom = Atom.family((item: NoteItem) =>
 	RpcClient.runtime.atom(Effect.flatMap(RpcClient, client => client('notes.body', {id: item.id})))
 )
 
-// judge-ignore no-silent-fallback -- Source photos are optional; a failed source read is logged and the pager keeps the saved cover. Auth and transport failures remain visible.
 // How many pictures the note's post shows, asked of the server each time the note opens.
 export const mediaAtom = Atom.family((id: NoteId) =>
 	RpcClient.runtime.atom(

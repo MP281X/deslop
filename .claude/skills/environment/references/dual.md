@@ -16,7 +16,6 @@
 - **Accounts.** Writes go only to GitHub `MP281X`, GitLab `matteopaludgnach` and the user's Discord test channel. Saved preview tokens are read-only; write tokens come from `gh auth token` and the `glab` configuration.
 - **Merge requests.** Squash-merged, stacks included; the source branch is deleted on merge.
 - **Preview.** T3's `preview` script runs `bun run preview` and prints its URL; `settle` destroys its data.
-- **Webhooks.** Funnel `/api/webhooks` to the preview port, which proxies `/api` to the API.
 
 ## AWS
 

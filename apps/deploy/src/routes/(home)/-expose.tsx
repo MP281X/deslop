@@ -122,7 +122,7 @@ function Expose(props: {items: readonly InventoryItem[]; port: InventoryItem; po
 	)
 }
 
-// judge-ignore no-silent-fallback -- inventory failures are shown by Home; this dialog renders only when both its transient command target and an inventory value exist.
+// Inventory failures are shown by Home; this dialog renders only when both its transient command target and an inventory value exist.
 export function ExposeDialog() {
 	const [target, setTarget] = useAtom(exposeTargetAtom)
 	return Option.match(Option.all({port: target, snapshot: AsyncResult.value(useAtomValue(inventoryAtom))}), {

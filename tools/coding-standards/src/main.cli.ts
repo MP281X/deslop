@@ -1,14 +1,10 @@
 #!/usr/bin/env node
 
-import {NodeCrypto, NodeHttpClient, NodeRuntime, NodeServices} from '@effect/platform-node'
+import {NodeRuntime, NodeServices} from '@effect/platform-node'
 
 import {Console, Effect, FileSystem, Path, Schema, pipe} from 'effect'
 
-import {Command, Flag} from 'effect/cli'
-
-import {judge, layerCache} from '#judge.ts'
-
-import {haiku} from '#lib/model.ts'
+import {Command} from 'effect/cli'
 
 // Printed before formatting and lint, for the agent fixing the diagnostics.
 const TACTICS = `Fix each diagnostic at the cause its message names:
@@ -21,40 +17,11 @@ const Manifest = Schema.fromJsonString(Schema.Struct({version: Schema.String}))
 
 const command = pipe(
 	Command.make('coding-standards'),
-	Command.withDescription('Lint tactics and semantic judging'),
+	Command.withDescription('Lint tactics'),
 	Command.withSubcommands([
 		Command.withDescription(
 			Command.make('tactics', {}, () => Console.log(TACTICS)),
 			'Print lint tactics for diagnostics autofix leaves'
-		),
-		Command.withDescription(
-			Command.make(
-				'judge',
-				{
-					base: pipe(
-						Flag.String('base'),
-						Flag.withDescription(
-							"The branch the change goes into; by default the pull request's base, else origin's default branch"
-						),
-						Flag.optional
-					),
-					dryRun: pipe(
-						Flag.Boolean('dry-run'),
-						Flag.withDescription('Print what would be asked, with its estimated tokens, and send nothing'),
-						Flag.withDefault(false)
-					),
-					userAsked: pipe(
-						Flag.Boolean('user-asked'),
-						Flag.withDescription(
-							'The user explicitly requested this paid run; without it a run that would send a request fails first'
-						),
-						Flag.withDefault(false)
-					)
-				},
-				// oxlint-disable-next-line effecttsgo/strict-effect-provide -- the judge subcommand is the cache's entry point: only it remembers answers, so only it opens the cache directory.
-				input => Effect.provide(judge(input, haiku), layerCache)
-			),
-			'Ask the functions, components and test cases a change touches the questions no remembered answer covers, and report what breaks one'
 		)
 	])
 )
@@ -69,4 +36,4 @@ const cli = Effect.gen(function* () {
 	return yield* Command.run(command, {version: manifest.version})
 })
 
-NodeRuntime.runMain(Effect.provide(cli, [NodeServices.layer, NodeHttpClient.layerNodeHttp, NodeCrypto.layer]))
+NodeRuntime.runMain(Effect.provide(cli, NodeServices.layer))

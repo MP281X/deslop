@@ -3,7 +3,6 @@ import {Effect} from 'effect'
 import {SqlClient} from 'effect/sql'
 
 export const migrations = {
-	// judge-ignore no-unrelated-jobs -- This immutable historical migration created the original catalogue and registry together; moving Reading's ownership must not rewrite it.
 	'0001_chapters': Effect.gen(function* () {
 		const sql = yield* SqlClient.SqlClient
 		yield* sql`
@@ -28,7 +27,6 @@ export const migrations = {
 		yield* sql`DROP TABLE devices`
 		yield* sql`CREATE TABLE devices (bundle TEXT NOT NULL, token TEXT NOT NULL, PRIMARY KEY (bundle, token)) STRICT, WITHOUT ROWID`
 	}),
-	// judge-ignore no-unrelated-jobs -- One atomic device-delivery migration preserves registered tokens while introducing their receipt table.
 	'0003_device_delivery': Effect.gen(function* () {
 		const sql = yield* SqlClient.SqlClient
 		yield* sql`ALTER TABLE devices RENAME TO old_devices`
