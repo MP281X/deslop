@@ -42,7 +42,7 @@ export const executeProcess = Effect.fn('Process.execute')(function* (
 		return pipe(
 			stream,
 			Stream.limitBytes<PlatformError.PlatformError | AppError, never>(ByteSize.mebibytes(4), () =>
-				Stream.fail(AppError.make({message: `${command} wrote more ${name} than this caller reads`}))
+				Stream.fail(AppError.make({message: `${command} wrote more than 4 MiB of ${name}`}))
 			),
 			Stream.decodeText,
 			Stream.mkString
