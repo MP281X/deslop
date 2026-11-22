@@ -1,7 +1,7 @@
-/* oxlint-disable effecttsgo/global-date, effecttsgo/prefer-effect-array -- The widget runtime serializes only the layout's body, which cannot import Effect; SwiftUI's timers take a Date. */
+/* oxlint-disable effecttsgo/global-date -- The widget runtime serializes only the layout's body, which cannot import Effect; SwiftUI's timers take a Date. */
 import {Schema} from 'effect'
 
-import {Circle, HStack, Image, ProgressView, Rectangle, Spacer, Text, VStack} from '@expo/ui/swift-ui'
+import {HStack, Image, ProgressView, Spacer, Text, VStack} from '@expo/ui/swift-ui'
 import {
 	background,
 	font,
@@ -21,7 +21,7 @@ type EndpointAlignment = typeof EndpointAlignment.Type
 const EndpointAlignment = Schema.Literals(['leading', 'trailing'])
 
 // The widget runtime runs only this body, so the palette and helpers live inside it; the server words every line, and the layout only places them.
-function JourneyLayout(props: typeof ActivityProps.Encoded) {
+function FlightLayout(props: typeof ActivityProps.Encoded) {
 	'widget'
 	const tones = {bad: '#ff5d62', good: '#ffa066', info: '#ffa066', plain: '#fafafa', warn: '#ff9e3b'}
 	const gray = '#9f9fa9'
@@ -79,16 +79,10 @@ function JourneyLayout(props: typeof ActivityProps.Encoded) {
 	}) {
 		return (
 			<VStack alignment={input.alignment} spacing={1}>
-				<Text
-					modifiers={[
-						font({size: {flight: 22, train: 15}[props.kind], weight: 'bold'}),
-						foregroundStyle(tones.plain),
-						lineLimit(1)
-					]}
-				>
+				<Text modifiers={[font({size: 22, weight: 'bold'}), foregroundStyle(tones.plain), lineLimit(1)]}>
 					{input.code}
 				</Text>
-				{/* The ticket's time in the station's or airport's zone, not the iPhone's. */}
+				{/* The ticket's time in the airport's zone, not the iPhone's. */}
 				<Text modifiers={[font({size: 15, weight: 'semibold'}), monospacedDigit(), foregroundStyle(tones[input.tone])]}>
 					{input.time}
 				</Text>
@@ -117,40 +111,6 @@ function JourneyLayout(props: typeof ActivityProps.Encoded) {
 			time: props.arrivalTime,
 			tone: props.arrivalTone
 		})
-	}
-
-	// Evenly spaced stops joined by lines, the passed ones in the accent, with their names beneath.
-	function stopBar() {
-		if (props.stops === undefined || props.stops.length < 2) return undefined
-		return (
-			<VStack spacing={3}>
-				<HStack spacing={0}>
-					{props.stops.map((stop, index) => (
-						<HStack key={stop.name} spacing={0}>
-							{index > 0 && (
-								<Rectangle
-									modifiers={[
-										foregroundStyle((stop.passed && tones.info) || '#3a3a40'),
-										frame({maxHeight: 3, maxWidth: Infinity, minHeight: 3})
-									]}
-								/>
-							)}
-							<Circle
-								modifiers={[foregroundStyle((stop.passed && tones.info) || '#3a3a40'), frame({height: 7, width: 7})]}
-							/>
-						</HStack>
-					))}
-				</HStack>
-				<HStack spacing={0}>
-					{props.stops.map((stop, index) => (
-						<HStack key={stop.name} spacing={0}>
-							{index > 0 && <Spacer />}
-							<Text modifiers={[font({size: 9.5}), foregroundStyle(gray), lineLimit(1)]}>{stop.name}</Text>
-						</HStack>
-					))}
-				</HStack>
-			</VStack>
-		)
 	}
 
 	function status() {
@@ -193,11 +153,10 @@ function JourneyLayout(props: typeof ActivityProps.Encoded) {
 				<HStack alignment="bottom">
 					{departure()}
 					<Spacer />
-					<Image systemName={({flight: 'airplane', train: 'tram.fill'} as const)[props.kind]} color={gray} size={16} />
+					<Image systemName="airplane" color={gray} size={16} />
 					<Spacer />
 					{arrival()}
 				</HStack>
-				{stopBar()}
 				{status()}
 			</VStack>
 		),
@@ -223,4 +182,4 @@ function JourneyLayout(props: typeof ActivityProps.Encoded) {
 }
 
 // Registered at every launch: the activities the server starts by push name this layout, and the app starts none itself.
-createLiveActivity<typeof ActivityProps.Encoded>(ACTIVITY_NAME, JourneyLayout)
+createLiveActivity<typeof ActivityProps.Encoded>(ACTIVITY_NAME, FlightLayout)

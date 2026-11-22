@@ -58,5 +58,8 @@ export const migrations = {
 		yield* sql`ALTER TABLE trains ADD COLUMN service TEXT NOT NULL DEFAULT ''`
 		yield* sql`ALTER TABLE trains ADD COLUMN stops TEXT NOT NULL DEFAULT '[]'`
 		yield* sql`UPDATE trains SET service = number`
+	}),
+	'0003_no_trains': Effect.gen(function* () {
+		yield* (yield* SqlClient.SqlClient)`DROP TABLE trains`
 	})
 }

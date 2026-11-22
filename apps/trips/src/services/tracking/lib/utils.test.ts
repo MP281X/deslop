@@ -1,12 +1,12 @@
 import {assert, it} from '@effect/vitest'
 
-import {Array, DateTime, Duration, Function, Option, Schema, Struct} from 'effect'
+import {Array, DateTime, Duration, Option, Schema, Struct} from 'effect'
 
-import {journeyProps} from '#services/bookings/lib/utils.ts'
-import {BookedPlace, BookingId, Flight, ProviderFlightId, Train, TrainTracking} from '#services/bookings/schema.ts'
+import {activityProps} from '#services/bookings/lib/utils.ts'
+import {BookedPlace, BookingId, Flight, ProviderFlightId} from '#services/bookings/schema.ts'
 import {alertsOf} from '#services/push/lib/utils.ts'
-import {checkEvery, flightTracking, isStale, pickFlight, trainTracking} from '#services/tracking/lib/utils.ts'
-import {FaFlight, VtStatus} from '#services/tracking/schema.ts'
+import {checkEvery, flightTracking, isStale, pickFlight} from '#services/tracking/lib/utils.ts'
+import {FaFlight} from '#services/tracking/schema.ts'
 
 const ANSWER = Schema.decodeSync(FaFlight)({
 	cancelled: false,
@@ -17,48 +17,37 @@ const ANSWER = Schema.decodeSync(FaFlight)({
 	scheduled_out: '2026-10-28T15:40:00Z',
 	terminal_origin: '3'
 })
-const train = Struct.pick(
-	Train.make({
-		arrives: DateTime.makeUnsafe(0),
-		coach: Option.none(),
+function flightAt(departs: DateTime.Utc, live: Flight['live'] = Option.none()) {
+	return Flight.make({
+		airline: 'British Airways',
+		airlineCode: 'BA',
+		arrives: DateTime.addDuration(departs, Duration.hours(2.5)),
+		boardingAt: Option.none(),
+		boardingGroup: Option.none(),
 		confirmation: Option.none(),
-		departs: DateTime.makeUnsafe(0),
-		from: Schema.decodeSync(BookedPlace)({name: 'Roma Termini', timeZone: 'Europe/Rome'}),
-		id: BookingId.make('1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d'),
-		live: Option.none(),
-		number: '9541',
-		operator: 'trenitalia',
+		departs,
+		from: Schema.decodeSync(BookedPlace)({city: 'Rome', code: 'FCO', name: 'Fiumicino', timeZone: 'Europe/Rome'}),
+		id: BookingId.make('7f0c8f8e-0d0a-4a5e-9d8f-5b2a1c3d4e5f'),
+		live,
+		number: '553',
 		seat: Option.none(),
-		service: 'FR 9713',
 		status: 'confirmed',
-		stops: [],
-		to: Schema.decodeSync(BookedPlace)({name: 'Milano Centrale', timeZone: 'Europe/Rome'})
-	}),
-	Struct.keys(Train.fields)
-)
-
-it('carries a provider cancellation with no stops into the island and one cancellation alert', () => {
-	const now = DateTime.makeUnsafe(0)
-	const trenitalia = Train.make({
-		...train,
-		from: Schema.decodeSync(Train.json.fields.from)({
-			code: 'it-trenitalia_08409:station',
-			name: 'Roma Termini',
-			timeZone: 'Europe/Rome'
-		})
+		to: Schema.decodeSync(BookedPlace)({city: 'London', code: 'LHR', name: 'Heathrow', timeZone: 'Europe/London'})
 	})
-	const cancellation = Schema.decodeSync(VtStatus)({fermate: [], provvedimento: 1, tipoTreno: 'ST'})
-	// Another operator's train with the same number cannot be told apart without stops, so its status stays unknown.
-	assert.deepStrictEqual(trainTracking(cancellation, Train.make(train), now), Option.none())
-	const live = Option.getOrThrow(trainTracking(cancellation, trenitalia, now))
-	const booking = Train.make({...Struct.pick(trenitalia, Struct.keys(Train.fields)), live: Option.some(live)})
-	assert.strictEqual(live.state, 'cancelled')
+}
+
+it('carries a provider cancellation into the island and one cancellation alert', () => {
+	const now = DateTime.makeUnsafe(0)
+	const booking = flightAt(
+		DateTime.addDuration(now, Duration.hours(3)),
+		Option.some(flightTracking({...ANSWER, cancelled: true}, now, Option.none()))
+	)
 	assert.deepStrictEqual(checkEvery(booking, now), Option.none())
 	assert.deepStrictEqual(
 		Array.map(alertsOf(booking, now), alert => alert.category),
 		['cancelled']
 	)
-	assert.strictEqual(journeyProps([booking], [], now, Function.constFalse).tone, 'bad')
+	assert.strictEqual(activityProps(booking, [], now, false).tone, 'bad')
 })
 
 it('keeps the gate a flight left for the change it shows', () => {
@@ -87,182 +76,31 @@ it('keeps the gate a flight left for the change it shows', () => {
 	)
 })
 
-it('finds the booked stops by Trenitalia code, else by their printed names', () => {
-	const arrived = trainTracking(
-		Schema.decodeSync(VtStatus)({
-			fermate: [
-				{
-					binarioProgrammatoPartenzaDescrizione: '3',
-					id: 'S08409',
-					partenzaReale: 1,
-					programmata: 0,
-					stazione: 'ROMA TERMINI'
-				},
-				{actualFermataType: 1, binarioEffettivoArrivoDescrizione: '14', id: 'S05046', stazione: 'BOLOGNA C.LE/AV'}
-			],
-			provvedimento: 0,
-			tipoTreno: 'PG'
-		}),
-		Train.make({
-			...train,
-			from: Schema.decodeSync(Train.json.fields.from)({
-				code: 'it-trenitalia_08409:station',
-				name: 'Roma',
-				timeZone: 'Europe/Rome'
-			}),
-			to: Schema.decodeSync(Train.json.fields.to)({name: 'Bologna Centrale', timeZone: 'Europe/Rome'})
-		}),
-		DateTime.makeUnsafe(1)
-	)
-	assert.deepStrictEqual(
-		Option.map(arrived, found => [found.departurePlatform, found.arrivalPlatform, found.state]),
-		Option.some([Option.some('3'), Option.some('14'), 'arrived'])
-	)
-})
-
-it('reads the platform, the delay it left with and the delay it runs with at the booked stop', () => {
-	const waiting = trainTracking(
-		Schema.decodeSync(VtStatus)({
-			fermate: [
-				{
-					binarioEffettivoPartenzaDescrizione: ' 12 ',
-					binarioProgrammatoPartenzaDescrizione: '9',
-					id: 'S08409',
-					programmata: 0,
-					ritardo: 0,
-					stazione: 'ROMA TERMINI'
-				},
-				{id: 'S01700', stazione: 'MILANO CENTRALE'}
-			],
-			provvedimento: 0,
-			ritardo: 6,
-			stazioneUltimoRilevamento: '--',
-			tipoTreno: 'PG'
-		}),
-		train,
-		DateTime.makeUnsafe(1)
-	)
-	assert.deepStrictEqual(
-		Option.map(
-			waiting,
-			found =>
-				[
-					found.state,
-					found.departurePlatform,
-					found.departurePlatformPlanned,
-					found.delayMinutes,
-					found.departureDelay,
-					found.lastSeen
-				] as const
-		),
-		Option.some([
-			'scheduled',
-			Option.some('12'),
-			Option.some('9'),
-			Duration.minutes(6),
-			Option.none<Duration.Duration>(),
-			Option.none<{at: DateTime.Utc; station: string}>()
-		] as const)
-	)
-	const left = trainTracking(
-		Schema.decodeSync(VtStatus)({
-			fermate: [{id: 'S08409', partenzaReale: 1, programmata: 0, ritardo: 3, stazione: 'ROMA TERMINI'}],
-			provvedimento: 0,
-			ritardo: 8,
-			tipoTreno: 'PG'
-		}),
-		train,
-		DateTime.makeUnsafe(2)
-	)
-	assert.deepStrictEqual(
-		Option.map(left, found => [found.state, found.departureDelay, found.delayMinutes]),
-		Option.some(['departed', Option.some(Duration.minutes(3)), Duration.minutes(8)])
-	)
-})
-
-it('checks a train each minute near departure and calls live data stale after two missed checks', () => {
+it('checks a flight more often near departure and calls live data stale after two missed checks', () => {
 	const departs = DateTime.makeUnsafe('2026-10-28T15:40:00Z')
-	const timetable = Train.make({...train, arrives: DateTime.addDuration(departs, Duration.hours(3)), departs})
-	const flight = Flight.make({
-		airline: 'British Airways',
-		airlineCode: 'BA',
-		arrives: DateTime.addDuration(departs, Duration.hours(2.5)),
-		boardingAt: Option.none(),
-		boardingGroup: Option.none(),
-		confirmation: Option.none(),
-		departs,
-		from: Schema.decodeSync(BookedPlace)({city: 'Rome', code: 'FCO', name: 'Fiumicino', timeZone: 'Europe/Rome'}),
-		id: BookingId.make('7f0c8f8e-0d0a-4a5e-9d8f-5b2a1c3d4e5f'),
-		live: Option.none(),
-		number: '553',
-		seat: Option.none(),
-		status: 'confirmed',
-		to: Schema.decodeSync(BookedPlace)({city: 'London', code: 'LHR', name: 'Heathrow', timeZone: 'Europe/London'})
-	})
 	const now = DateTime.subtractDuration(departs, Duration.minutes(30))
-	function live(checkedAt: DateTime.Utc, operator: Train['operator'] = 'trenitalia') {
-		return Train.make({
-			...train,
-			arrives: timetable.arrives,
-			departs: timetable.departs,
-			live: Option.some(
-				Schema.decodeSync(TrainTracking)({
-					checkedAt: DateTime.toEpochMillis(checkedAt),
-					delayMinutes: 0,
-					state: 'scheduled'
-				})
-			),
-			operator
-		})
+	function live(checkedAt: DateTime.Utc, answer: FaFlight = ANSWER) {
+		return flightAt(departs, Option.some(flightTracking(answer, checkedAt, Option.none())))
 	}
 	assert.deepStrictEqual(
 		[
-			checkEvery(timetable, now),
-			checkEvery(timetable, DateTime.subtractDuration(departs, Duration.hours(3))),
-			checkEvery(flight, DateTime.subtractDuration(departs, Duration.hours(3)))
+			checkEvery(flightAt(departs), now),
+			checkEvery(flightAt(departs), DateTime.subtractDuration(departs, Duration.hours(3)))
 		],
-		[Option.some(Duration.minutes(1)), Option.some(Duration.minutes(30)), Option.some(Duration.minutes(20))]
+		[Option.some(Duration.minutes(5)), Option.some(Duration.minutes(20))]
 	)
 	assert.deepStrictEqual(
 		[
 			isStale(live(DateTime.subtractDuration(now, Duration.minutes(2))), now),
-			isStale(live(DateTime.subtractDuration(now, Duration.minutes(5))), now)
+			isStale(live(DateTime.subtractDuration(now, Duration.minutes(15))), now)
 		],
 		[false, true]
 	)
+	const later = DateTime.addDuration(departs, Duration.hours(3))
 	assert.deepStrictEqual(
-		[
-			isStale(live(now), DateTime.addDuration(timetable.arrives, Duration.hours(1))),
-			isStale(
-				Train.make({
-					...train,
-					arrives: timetable.arrives,
-					departs: timetable.departs,
-					live: Option.some(
-						Schema.decodeSync(TrainTracking)({
-							checkedAt: DateTime.toEpochMillis(now),
-							delayMinutes: 0,
-							state: 'arrived'
-						})
-					)
-				}),
-				DateTime.addDuration(timetable.arrives, Duration.hours(1))
-			)
-		],
+		[isStale(live(now), later), isStale(live(now, {...ANSWER, actual_in: Option.some(now)}), later)],
 		[true, false]
 	)
-	assert.deepStrictEqual(
-		[
-			checkEvery(
-				Train.make({...train, arrives: timetable.arrives, departs: timetable.departs, operator: 'other'}),
-				now
-			),
-			isStale(live(DateTime.makeUnsafe(0), 'other'), now)
-		],
-		[Option.some(Duration.minutes(1)), true]
-	)
-	// Read at the half-hourly pace 91 minutes out, then missed through the minute-by-minute checks that followed.
-	assert.isTrue(isStale(live(DateTime.subtractDuration(departs, Duration.minutes(91))), now))
 })
 
 it('keeps the flight it identified before while it is still near the booked time', () => {

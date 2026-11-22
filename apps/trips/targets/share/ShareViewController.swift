@@ -95,7 +95,7 @@ private struct SaveView: View {
     .task { await save() }
   }
 
-  // Trainline shares a journey with a change as one image per train; each is read, sent and released in order, so one
+  // A share can hold one image per ticket; each is read, sent and released in order, so one
   // ticket is in memory at a time and the ones sent before a failure stay saved.
   private func save() async {
     var added = 0

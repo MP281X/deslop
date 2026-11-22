@@ -1,11 +1,11 @@
 import {assert, it} from '@effect/vitest'
 
-import {Array, DateTime, Duration, Function, Option, Redacted, Schema, String, Struct, pipe} from 'effect'
+import {Array, DateTime, Duration, Option, Redacted, Schema, String, Struct, pipe} from 'effect'
 
 import {ApnsToken, Device} from '@deslop/runtime/shared/apns'
 
-import {journeyProps} from '#services/bookings/lib/utils.ts'
-import {BookedPlace, BookingId, Flight, FlightTracking, Train, TrainTracking} from '#services/bookings/schema.ts'
+import {activityProps} from '#services/bookings/lib/utils.ts'
+import {BookedPlace, BookingId, Flight, FlightTracking} from '#services/bookings/schema.ts'
 import {
 	alertsOf,
 	announced,
@@ -49,7 +49,7 @@ const ACTIVITY = {
 	channel: ChannelId.make('current'),
 	endedAt: Option.none<DateTime.Utc>(),
 	leg: 'departure' as const,
-	props: journeyProps([FLIGHT], [], DEPARTS, Function.constFalse),
+	props: activityProps(FLIGHT, [], DEPARTS, false),
 	startedAt: DEPARTS
 }
 
@@ -92,12 +92,12 @@ it('relaunches an ended activity only for a newer explicit start request', () =>
 	const endedAt = DateTime.addDuration(DEPARTS, Duration.minutes(5))
 	const activity = Activity.make({...ACTIVITY, endedAt: Option.some(endedAt)})
 	const window = {end: DateTime.addDuration(DEPARTS, Duration.hours(1)), leg: 'departure' as const, start: DEPARTS}
-	assert.deepStrictEqual(showPlan([Device.make(STARTER)], [activity], [Flight.make(FLIGHT)], window), [])
+	assert.deepStrictEqual(showPlan([Device.make(STARTER)], [activity], Flight.make(FLIGHT), window), [])
 	assert.strictEqual(
 		showPlan(
 			[Device.make(STARTER)],
 			[activity],
-			[Flight.make(FLIGHT)],
+			Flight.make(FLIGHT),
 			window,
 			Option.some(DateTime.addDuration(endedAt, Duration.minutes(1)))
 		)[0]?._tag,
@@ -166,7 +166,7 @@ it('refreshes a covering activity or launches a new one per app while an ended l
 			showPlan(
 				[Device.make(STARTER), Device.make({...STARTER, bundle: 'xyz.mp281x.trips.dev'})],
 				[Activity.make(ACTIVITY), ended],
-				[FLIGHT],
+				FLIGHT,
 				window
 			),
 			action => [action._tag, action.target.bundle]
@@ -174,18 +174,18 @@ it('refreshes a covering activity or launches a new one per app while an ended l
 		[['refresh', 'xyz.mp281x.trips']]
 	)
 	assert.deepStrictEqual(
-		Array.map(showPlan([Device.make(STARTER)], [], [FLIGHT], window), action => action._tag),
+		Array.map(showPlan([Device.make(STARTER)], [], FLIGHT, window), action => action._tag),
 		['launch']
 	)
 	const cancelled = Flight.make({...FLIGHT, status: 'cancelled'})
-	assert.deepStrictEqual(showPlan([Device.make(STARTER)], [], [cancelled], window), [])
+	assert.deepStrictEqual(showPlan([Device.make(STARTER)], [], cancelled, window), [])
 	assert.deepStrictEqual(
-		Array.map(showPlan([Device.make(STARTER)], [Activity.make(ACTIVITY)], [cancelled], window), action => action._tag),
+		Array.map(showPlan([Device.make(STARTER)], [Activity.make(ACTIVITY)], cancelled, window), action => action._tag),
 		['refresh']
 	)
 })
 
-it('ends only running activities whose booking or current leg is gone', () => {
+it('ends only running activities whose booking or window is gone', () => {
 	const removed = Activity.make({
 		...ACTIVITY,
 		bookingId: BookingId.make('aaaaaaaa-0d0a-4a5e-9d8f-5b2a1c3d4e5f'),
@@ -195,7 +195,7 @@ it('ends only running activities whose booking or current leg is gone', () => {
 	const ended = Activity.make({...ACTIVITY, channel: ChannelId.make('ended'), endedAt: Option.some(DEPARTS)})
 	assert.deepStrictEqual(
 		Array.map(
-			expiredActivities([Activity.make(ACTIVITY), removed, wrongLeg, ended], [[FLIGHT]], DEPARTS),
+			expiredActivities([Activity.make(ACTIVITY), removed, wrongLeg, ended], [FLIGHT], DEPARTS),
 			activity => activity.channel
 		),
 		['removed', 'wrong-leg']
@@ -265,34 +265,24 @@ it('announces nothing from live data that stopped updating', () => {
 	)
 })
 
-it('words a delay by where the train is', () => {
+it('words a delay by whether the flight has left', () => {
 	const departs = DateTime.makeUnsafe('2026-11-18T08:00:00Z')
-	function running(state: TrainTracking['state']) {
-		return Train.make({
+	const now = DateTime.addDuration(departs, Duration.minutes(25))
+	function running(state: FlightTracking['state']) {
+		return Flight.make({
+			...FLIGHT,
 			arrives: DateTime.addDuration(departs, Duration.hours(1)),
-			coach: Option.none(),
-			confirmation: Option.none(),
 			departs,
-			from: Schema.decodeSync(BookedPlace)({name: 'Milano', timeZone: 'Europe/Rome'}),
-			id: BookingId.make('1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d'),
 			live: Option.some(
-				Schema.decodeSync(TrainTracking)({
-					checkedAt: DateTime.toEpochMillis(DateTime.addDuration(departs, Duration.minutes(25))),
-					delayMinutes: 30,
-					departureDelay: 0,
+				Schema.decodeSync(FlightTracking)({
+					arrivalEstimated: DateTime.toEpochMillis(DateTime.addDuration(departs, Duration.minutes(90))),
+					checkedAt: DateTime.toEpochMillis(now),
+					departureEstimated: DateTime.toEpochMillis(DateTime.addDuration(departs, Duration.minutes(30))),
 					state
 				})
-			),
-			number: '2',
-			operator: 'Trenitalia',
-			seat: Option.none(),
-			service: 'IC 2',
-			status: 'confirmed',
-			stops: [],
-			to: Schema.decodeSync(BookedPlace)({name: 'Verona', timeZone: 'Europe/Rome'})
+			)
 		})
 	}
-	const now = DateTime.addDuration(departs, Duration.minutes(25))
 	assert.deepStrictEqual(
 		Array.map(['scheduled', 'departed'] as const, state =>
 			pipe(
@@ -301,7 +291,7 @@ it('words a delay by where the train is', () => {
 				Array.map(alert => alert.body)
 			)
 		),
-		[['Now leaves Milano at 09:00'], ['Now arrives in Verona at 10:30']]
+		[['Now departs 09:30'], ['Now lands 09:30']]
 	)
 })
 

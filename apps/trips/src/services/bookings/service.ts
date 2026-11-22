@@ -25,12 +25,11 @@ import {listEvents} from '@deslop/runtime/shared/list'
 import {Extractor} from './lib/extraction.ts'
 import {passText} from './lib/pkpass.ts'
 import {Places} from './lib/places.ts'
-import {Timetable} from './lib/timetable.ts'
 import {migrations} from './migrations.ts'
 
 import {byStart, instantOf, upsert} from '#services/bookings/lib/utils.ts'
-import type {Booking, BookingIds, BookingSource, ExtractedItem, LocalTime} from '#services/bookings/schema.ts'
-import {BookingId, BookingsError, Flight, Stay, Train} from '#services/bookings/schema.ts'
+import type {Booking, BookingSource, ExtractedItem, LocalTime} from '#services/bookings/schema.ts'
+import {BookingId, BookingsError, Flight, Stay} from '#services/bookings/schema.ts'
 
 declare module 'effect/reactivity/Reactivity' {
 	interface Keys {
@@ -61,7 +60,6 @@ export class Bookings extends Context.Service<Bookings>()('@deslop/trips/service
 	make: Effect.gen(function* () {
 		const sql = yield* SqlClient.SqlClient
 		const places = yield* Places
-		const timetable = yield* Timetable
 		const extractor = yield* Extractor
 		const random = yield* SecureRandom.SecureRandom
 		// Writes tell this Reactivity of their commits, so callers need none of their own.
@@ -72,18 +70,12 @@ export class Bookings extends Context.Service<Bookings>()('@deslop/trips/service
 			spanPrefix: 'Flights',
 			tableName: Flight.table
 		})
-		const trains = yield* SqlModel.makeRepository(Train, {idColumn: 'id', spanPrefix: 'Trains', tableName: Train.table})
 		const stays = yield* SqlModel.makeRepository(Stay, {idColumn: 'id', spanPrefix: 'Stays', tableName: Stay.table})
 
 		const listFlights = SqlSchema.findAll({
 			Request: Schema.Void,
 			Result: Flight,
 			execute: () => sql`SELECT * FROM ${sql(Flight.table)}`
-		})
-		const listTrains = SqlSchema.findAll({
-			Request: Schema.Void,
-			Result: Train,
-			execute: () => sql`SELECT * FROM ${sql(Train.table)}`
 		})
 		const listStays = SqlSchema.findAll({
 			Request: Schema.Void,
@@ -92,28 +84,22 @@ export class Bookings extends Context.Service<Bookings>()('@deslop/trips/service
 		})
 
 		// Soonest first, live delays included, as the phone lists them.
-		const listAll = Effect.map(Effect.all([listFlights(), listTrains(), listStays()], {concurrency: 1}), kinds =>
-			Array.sort([...kinds[0], ...kinds[1], ...kinds[2]], byStart)
+		const listAll = Effect.map(Effect.all([listFlights(), listStays()], {concurrency: 1}), kinds =>
+			Array.sort([...kinds[0], ...kinds[1]], byStart)
 		)
 
 		const insert = pipe(
 			Match.type<Booking>(),
 			Match.tag('flight', flights.insertVoid),
-			Match.tag('train', trains.insertVoid),
 			Match.tag('stay', stays.insertVoid),
 			Match.exhaustive
 		)
 
-		// A booking lives in one of three tables; missing from the others is expected, not a failed lookup.
+		// A booking lives in one of two tables; missing from the other is expected, not a failed lookup.
 		const findFlight = SqlSchema.findOneOption({
 			Request: BookingId,
 			Result: Flight,
 			execute: id => sql`SELECT * FROM ${sql(Flight.table)} WHERE id = ${id}`
-		})
-		const findTrain = SqlSchema.findOneOption({
-			Request: BookingId,
-			Result: Train,
-			execute: id => sql`SELECT * FROM ${sql(Train.table)} WHERE id = ${id}`
 		})
 		const findStay = SqlSchema.findOneOption({
 			Request: BookingId,
@@ -123,8 +109,6 @@ export class Bookings extends Context.Service<Bookings>()('@deslop/trips/service
 		const find = Effect.fnUntraced(function* (id: BookingId) {
 			const flight: Option.Option<Booking> = yield* findFlight(id)
 			if (Option.isSome(flight)) return flight
-			const train: Option.Option<Booking> = yield* findTrain(id)
-			if (Option.isSome(train)) return train
 			const stay: Option.Option<Booking> = yield* findStay(id)
 			return stay
 		})
@@ -132,7 +116,6 @@ export class Bookings extends Context.Service<Bookings>()('@deslop/trips/service
 		const update = pipe(
 			Match.type<Booking>(),
 			Match.tag('flight', flights.updateVoid),
-			Match.tag('train', trains.updateVoid),
 			Match.tag('stay', stays.updateVoid),
 			Match.exhaustive
 		)
@@ -167,16 +150,6 @@ export class Bookings extends Context.Service<Bookings>()('@deslop/trips/service
 					number: item.flightNumber,
 					seat: item.seat,
 					to
-				})
-			}
-			if (item.kind === 'train') {
-				return Train.make({
-					...base,
-					...(yield* timetable.resolve(item)),
-					coach: item.coach,
-					live: Option.none(),
-					number: item.trainNumber,
-					seat: item.seat
 				})
 			}
 			const checkIn = yield* at(item.checkIn, item.timeZone)
@@ -233,21 +206,13 @@ export class Bookings extends Context.Service<Bookings>()('@deslop/trips/service
 			find: Effect.fn('Bookings.find')((id: BookingId) => asBookingsError(find(id))),
 			list: pipe(listAll, asBookingsError, Effect.withSpan('Bookings.list')),
 			passText,
-			// Only the legs the phone showed: a journey is inferred, and a ticket shared since may have joined it.
-			remove: Effect.fn('Bookings.remove')(function* (ids: BookingIds) {
-				yield* Effect.annotateCurrentSpan('bookingIds', ids)
+			remove: Effect.fn('Bookings.remove')(function* (id: BookingId) {
+				yield* Effect.annotateCurrentSpan('bookingId', id)
 				yield* pipe(
-					Effect.forEach(
-						ids,
-						id =>
-							Effect.all([flights.delete(id), trains.delete(id), stays.delete(id)], {concurrency: 1, discard: true}),
-						{concurrency: 1, discard: true}
-					),
+					Effect.all([flights.delete(id), stays.delete(id)], {concurrency: 1, discard: true}),
 					Reactivity.mutation(['bookings']),
 					sql.withTransaction,
-					Effect.mapError(cause =>
-						BookingsError.make({cause, message: 'The journey was not deleted. No legs were removed.'})
-					)
+					Effect.mapError(cause => BookingsError.make({cause, message: 'The booking was not deleted.'}))
 				)
 			}, withReactivity),
 			// The newer state replaces the one it was made from, unless the booking changed or left meanwhile.
@@ -305,7 +270,4 @@ export class Bookings extends Context.Service<Bookings>()('@deslop/trips/service
 }
 
 // Place lookups and extraction are the bookings' own internals; tests provide stand-ins to `Bookings.layer` instead.
-export const layerBookings = Layer.provide(
-	Bookings.layer,
-	Layer.mergeAll(Places.layer, Extractor.layer, Layer.provide(Timetable.layer, Places.layer))
-)
+export const layerBookings = Layer.provide(Bookings.layer, Layer.mergeAll(Places.layer, Extractor.layer))

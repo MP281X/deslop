@@ -1,9 +1,9 @@
-import {Array, Boolean, DateTime, Duration, Function, Option, Order, Result, String, pipe} from 'effect'
+import {Array, DateTime, Duration, Function, Option, Order, Result, String, pipe} from 'effect'
 
-import {AIRPORT_LEAD, arrivalOf, departureOf, MINUTE} from '#services/bookings/lib/utils.ts'
+import {AIRPORT_LEAD, arrivalOf, departureOf} from '#services/bookings/lib/utils.ts'
 import {Booking} from '#services/bookings/schema.ts'
-import type {Flight, FlightTracking, Train, TrainTracking} from '#services/bookings/schema.ts'
-import type {FaFlight, FaFlights, StopPlace, VtStatus, VtStop} from '#services/tracking/schema.ts'
+import type {Flight, FlightTracking} from '#services/bookings/schema.ts'
+import type {FaFlight, FaFlights} from '#services/tracking/schema.ts'
 
 function text(value: Option.Option<string>) {
 	return pipe(value, Option.map(String.trim), Option.filter(String.isNonEmpty))
@@ -109,98 +109,6 @@ export function flightTracking(answer: FaFlight, checkedAt: DateTime.Utc, last: 
 	return tracking
 }
 
-// ViaggiaTreno abbreviates: "BOLOGNA C.LE/AV" is the ticket's "Bologna Centrale", "FIRENZE S.M.N." its "Firenze Santa Maria Novella".
-function normalized(name: string) {
-	return pipe(
-		name,
-		String.normalize('NFD'),
-		String.replaceAll(/[̀-ͯ]/gu, ''),
-		String.toUpperCase,
-		String.replaceAll(/\/AV\b/gu, ''),
-		String.replaceAll(/\bC\.LE\b/gu, 'CENTRALE'),
-		String.replaceAll(/\bP\.TA\b/gu, 'PORTA'),
-		String.replaceAll(/\bS\.\s*M\.\s*N\.?/gu, 'SANTA MARIA NOVELLA'),
-		String.replaceAll(/\bS(?:\.|TA)\s+/gu, 'SANTA '),
-		String.replaceAll(/[^A-Z0-9]+/gu, ' '),
-		String.trim
-	)
-}
-
-function stopOf(stops: VtStatus['fermate'], place: StopPlace) {
-	return pipe(
-		place.code,
-		Option.flatMap(String.match(/it-trenitalia_(\d+)/u)),
-		Option.flatMap(match => Array.findFirst(stops, stop => stop.id === `S${match[1] ?? ''}`)),
-		Option.orElse(() => Array.findFirst(stops, stop => normalized(stop.stazione) === normalized(place.name)))
-	)
-}
-
-function left(stop: VtStop) {
-	return Option.isSome(stop.partenzaReale)
-}
-
-function trainState(from: Option.Option<VtStop>, to: Option.Option<VtStop>) {
-	if (Option.exists(to, stop => Option.contains(stop.actualFermataType, 1))) return 'arrived'
-	if (Option.exists(from, left)) return 'departed'
-	return 'scheduled'
-}
-
-// The caller selects today's run of the number. A report must call at the booked station near its departure time; a full cancellation lists no stops, so it counts only for a train the timetable placed on Trenitalia's own stations, whose numbers ViaggiaTreno names, and otherwise stays unknown.
-export function trainTracking(answer: VtStatus, train: Train, checkedAt: DateTime.Utc) {
-	const from = stopOf(answer.fermate, train.from)
-	const to = stopOf(answer.fermate, train.to)
-	const cancelled =
-		answer.tipoTreno === 'ST' &&
-		answer.provvedimento === 1 &&
-		Array.isReadonlyArrayEmpty(answer.fermate) &&
-		Option.exists(train.from.code, code => Option.isSome(String.match(/it-trenitalia_\d+/u)(code)))
-	if (
-		!cancelled &&
-		!Option.exists(from, stop =>
-			Option.exists(stop.programmata, planned =>
-				Duration.isLessThanOrEqualTo(Duration.abs(DateTime.distance(planned, train.departs)), Duration.hours(3))
-			)
-		)
-	) {
-		return Option.none<TrainTracking>()
-	}
-	const tracking: TrainTracking = {
-		arrivalPlatform: Option.flatMap(to, stop =>
-			Option.orElse(text(stop.binarioEffettivoArrivoDescrizione), () => text(stop.binarioProgrammatoArrivoDescrizione))
-		),
-		checkedAt,
-		delayMinutes: pipe(
-			to,
-			Option.filter(stop => Option.contains(stop.actualFermataType, 1)),
-			Option.flatMap(stop => stop.ritardo),
-			Option.orElse(() => answer.ritardo),
-			Option.getOrElse(() => Duration.zero)
-		),
-		departureDelay: pipe(
-			from,
-			Option.filter(left),
-			Option.flatMap(stop => stop.ritardo)
-		),
-		departurePlatform: Option.flatMap(from, stop =>
-			Option.orElse(text(stop.binarioEffettivoPartenzaDescrizione), () =>
-				text(stop.binarioProgrammatoPartenzaDescrizione)
-			)
-		),
-		departurePlatformPlanned: Option.flatMap(from, stop => text(stop.binarioProgrammatoPartenzaDescrizione)),
-		lastSeen: Option.filter(
-			Option.all({at: answer.oraUltimoRilevamento, station: text(answer.stazioneUltimoRilevamento)}),
-			seen => seen.station !== '--'
-		),
-		state: Boolean.match(
-			cancelled ||
-				Option.exists(from, stop => Option.contains(stop.actualFermataType, 3)) ||
-				Option.exists(to, stop => Option.contains(stop.actualFermataType, 3)),
-			{onFalse: () => trainState(from, to), onTrue: Function.constant('cancelled' as const)}
-		)
-	}
-	return Option.some(tracking)
-}
-
 function flightInterval(flight: Flight, now: DateTime.Utc) {
 	const departure = departureOf(flight)
 	const arrival = arrivalOf(flight)
@@ -239,36 +147,15 @@ function flightInterval(flight: Flight, now: DateTime.Utc) {
 	return Option.some(Duration.minutes(5))
 }
 
-// ViaggiaTreno lists only today's runs and assigns platforms in the last hour: poll from six hours ahead, every minute in the last ninety minutes.
-function trainInterval(train: Train, now: DateTime.Utc) {
-	if (
-		train.status === 'cancelled' ||
-		Option.exists(train.live, live => live.state === 'arrived' || live.state === 'cancelled')
-	) {
-		return Option.none<Duration.Duration>()
-	}
-	if (
-		DateTime.isLessThan(now, DateTime.subtractDuration(train.departs, Duration.hours(6))) ||
-		DateTime.isGreaterThan(now, DateTime.addDuration(arrivalOf(train), Duration.minutes(30)))
-	) {
-		return Option.none<Duration.Duration>()
-	}
-	if (DateTime.isLessThan(now, DateTime.subtractDuration(train.departs, Duration.minutes(90)))) {
-		return Option.some(Duration.minutes(30))
-	}
-	return Option.some(MINUTE)
-}
-
 export function checkEvery(booking: Booking, now: DateTime.Utc) {
 	if (Booking.isAnyOf(['stay'])(booking)) return Option.none<Duration.Duration>()
-	if (Booking.isAnyOf(['flight'])(booking)) return flightInterval(booking, now)
-	return trainInterval(booking, now)
+	return flightInterval(booking, now)
 }
 
 // The last attempt counts, answered or not, so a failing provider is asked on the same schedule.
 export function isDue(booking: Booking, now: DateTime.Utc, attemptedAt: Option.Option<DateTime.Utc>) {
 	if (Booking.isAnyOf(['stay'])(booking)) return false
-	const checkedAt = Option.match<FlightTracking | TrainTracking, Option.Option<DateTime.Utc>>(booking.live, {
+	const checkedAt = Option.match<FlightTracking, Option.Option<DateTime.Utc>>(booking.live, {
 		onNone: () => attemptedAt,
 		onSome: live =>
 			Option.some(
@@ -286,10 +173,10 @@ export function isDue(booking: Booking, now: DateTime.Utc, attemptedAt: Option.O
 	)
 }
 
-// Live data that missed two of the checks due after it no longer describes the journey, even once tracking stopped; an arrival is final. Checks come at the shorter of the pace when it was read and the pace now, since the pace quickens near departure.
+// Live data that missed two of the checks due after it no longer describes the flight, even once tracking stopped; an arrival is final. Checks come at the shorter of the pace when it was read and the pace now, since the pace quickens near departure.
 export function isStale(booking: Booking, now: DateTime.Utc) {
 	if (Booking.isAnyOf(['stay'])(booking)) return false
-	return Option.exists<FlightTracking | TrainTracking>(
+	return Option.exists<FlightTracking>(
 		booking.live,
 		live =>
 			live.state !== 'arrived' &&

@@ -1,16 +1,8 @@
-import {Schema, Struct, pipe} from 'effect'
+import {Schema} from 'effect'
 
 import {Model} from 'effect/schema'
 
-import {DateTimeUtcFromFiniteMillis} from '@deslop/runtime/shared/time'
-
-import {DurationFromMinutes, Place, ProviderFlightId} from '#services/bookings/schema.ts'
-
-export type StopPlace = typeof StopPlace.Type
-export const StopPlace = Schema.Struct(Struct.pick(Place.fields, ['code', 'name']))
-
-export type StationId = typeof StationId.Type
-export const StationId = pipe(Schema.String, Schema.brand('StationId'))
+import {ProviderFlightId} from '#services/bookings/schema.ts'
 
 // FlightAware AeroAPI v4 GET /flights/{ident}: times are ISO instants, every operational field is null until known.
 export type FaFlight = typeof FaFlight.Type
@@ -36,41 +28,6 @@ export const FaFlight = Schema.Struct({
 
 export type FaFlights = typeof FaFlights.Type
 export const FaFlights = Schema.Struct({flights: Schema.Array(FaFlight)})
-
-export type VtRun = typeof VtRun.Type
-// ViaggiaTreno's run lookup: today's run of a train number, from its origin station.
-export const VtRun = Schema.Struct({
-	codLocOrig: StationId.check(Schema.isPattern(/^[A-Za-z0-9_-]+$/u)),
-	millisDataPartenza: pipe(
-		Schema.String.check(Schema.isPattern(/^\d+$/u)),
-		Schema.decodeTo(Schema.FiniteFromString),
-		Schema.decodeTo(DateTimeUtcFromFiniteMillis)
-	)
-})
-
-export type VtStop = typeof VtStop.Type
-export const VtStop = Schema.Struct({
-	actualFermataType: Schema.OptionFromOptionalNullOr(Schema.Finite),
-	binarioEffettivoArrivoDescrizione: Schema.OptionFromOptionalNullOr(Schema.String),
-	binarioEffettivoPartenzaDescrizione: Schema.OptionFromOptionalNullOr(Schema.String),
-	binarioProgrammatoArrivoDescrizione: Schema.OptionFromOptionalNullOr(Schema.String),
-	binarioProgrammatoPartenzaDescrizione: Schema.OptionFromOptionalNullOr(Schema.String),
-	id: StationId,
-	partenzaReale: Schema.OptionFromOptionalNullOr(DateTimeUtcFromFiniteMillis),
-	programmata: Schema.OptionFromOptionalNullOr(DateTimeUtcFromFiniteMillis),
-	ritardo: Schema.OptionFromOptionalNullOr(DurationFromMinutes),
-	stazione: Schema.String
-})
-
-export type VtStatus = typeof VtStatus.Type
-export const VtStatus = Schema.Struct({
-	fermate: Schema.Array(VtStop),
-	oraUltimoRilevamento: Schema.OptionFromOptionalNullOr(DateTimeUtcFromFiniteMillis),
-	provvedimento: Schema.Finite,
-	ritardo: Schema.OptionFromOptionalNullOr(DurationFromMinutes),
-	stazioneUltimoRilevamento: Schema.OptionFromOptionalNullOr(Schema.String),
-	tipoTreno: Schema.String
-})
 
 // FlightAware lookups made in a month, so the monthly allowance holds across restarts; only the current month is kept.
 export class Lookups extends Model.Class<Lookups>('Lookups')({calls: Schema.Int, month: Schema.String}) {

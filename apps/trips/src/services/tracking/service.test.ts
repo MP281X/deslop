@@ -21,7 +21,6 @@ import {TestClock} from 'effect/testing'
 import {layerDataStore} from '@deslop/runtime/server/store'
 
 import {FlightAware} from './lib/flightaware.ts'
-import {ViaggiaTreno} from './lib/viaggiatreno.ts'
 
 import {BookedPlace, Booking, BookingId, Flight} from '#services/bookings/schema.ts'
 import {Bookings} from '#services/bookings/service.ts'
@@ -90,7 +89,6 @@ it.layer(NodeServices.layer)(test =>
 							)
 						})
 					),
-					Layer.provide(Layer.mock(ViaggiaTreno, {})),
 					Layer.provide(layerDataStore(yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped()))
 				)
 			)

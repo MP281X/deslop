@@ -40,7 +40,7 @@ function archive(text: string, method: number, name = 'pass.json') {
 it.effect(
 	'reads the Wallet pass JSON from stored and deflated archives and refuses invalid passes',
 	Effect.fnUntraced(function* () {
-		const text = '{"description":"Trainline ticket","boardingPass":{"primaryFields":[{"value":"Milano → Roma"}]}}'
+		const text = '{"description":"Boarding pass","boardingPass":{"primaryFields":[{"value":"Milano → Roma"}]}}'
 		assert.strictEqual(yield* passText(archive(text, 0)), text)
 		assert.strictEqual(yield* passText(archive(text, 8)), text)
 		assert.match((yield* Effect.flip(passText(archive(text, 8, 'manifest.json')))).message, /no pass.json/u)

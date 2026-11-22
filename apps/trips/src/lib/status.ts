@@ -1,4 +1,4 @@
-import {Array, DateTime, Duration, Number, Option, Schema, pipe} from 'effect'
+import {DateTime, Duration, Number, Option, Schema} from 'effect'
 import type {Record} from 'effect'
 
 import {ProblemStatus} from '@deslop/components-mobile/blocks/status-dot'
@@ -6,9 +6,9 @@ import {colors} from '@deslop/components-mobile/theme'
 import {weekdayOf} from '@deslop/runtime/shared/format'
 
 import {primary} from '#lib/session.ts'
-import {arrived, cancelledOf, clockAt, daysBetween, departureOf, endOf, labelled} from '#services/bookings/lib/utils.ts'
+import {cancelledOf, clockAt, daysBetween, departureOf, labelled} from '#services/bookings/lib/utils.ts'
 import {Booking, Tone} from '#services/bookings/schema.ts'
-import type {Flight, FlightTracking, TrainTracking} from '#services/bookings/schema.ts'
+import type {Flight, FlightTracking} from '#services/bookings/schema.ts'
 import {isStale} from '#services/tracking/lib/utils.ts'
 
 // The day where the trip happens, in that place's zone.
@@ -51,13 +51,6 @@ function problemLine(label: string, tone: ProblemTone, where: Option.Option<stri
 	return Status.cases.Problem.make({label, tone, where})
 }
 
-function platformOf(live: TrainTracking) {
-	if (live.state === 'departed' || live.state === 'arrived') {
-		return labelled('Platform', live.arrivalPlatform)
-	}
-	return labelled('Platform', live.departurePlatform)
-}
-
 function gateOf(live: FlightTracking) {
 	return Option.orElse(labelled('Gate', live.departureGate), () => labelled('Terminal', live.departureTerminal))
 }
@@ -81,49 +74,21 @@ function flightStatus(flight: Flight, now: DateTime.Utc) {
 	})
 }
 
-// Where the journey stands, with the gate or platform; old live data says when it was read rather than look current.
+// Where the flight stands, with the gate; old live data says when it was read rather than look current.
 export function statusOf(booking: Booking, now: DateTime.Utc) {
 	if (cancelledOf(booking)) return problemLine('Cancelled', 'bad', Option.none())
 	if (Booking.isAnyOf(['stay'])(booking)) return statusLine('plain', Option.none())
-	if (Booking.isAnyOf(['train'])(booking)) {
-		return Option.match(booking.live, {
-			onNone: () => {
-				// A train's tracking starts around an hour out; silence after that is worth a dot.
-				if (
-					booking.status === 'confirmed' &&
-					DateTime.isGreaterThanOrEqualTo(now, DateTime.subtractDuration(booking.departs, Duration.hours(1))) &&
-					DateTime.isLessThan(now, booking.arrives)
-				) {
-					return problemLine('No live data', 'warn', Option.none())
-				}
-				return statusLine('plain', Option.none())
-			},
-			onSome: live => {
-				if (isStale(booking, now)) {
-					return problemLine(`Updated ${clockAt(live.checkedAt, booking.from.timeZone)}`, 'warn', platformOf(live))
-				}
-				if (live.state === 'arrived') return statusLine('plain', platformOf(live))
-				if (Duration.isGreaterThanOrEqualTo(live.delayMinutes, Duration.minutes(5))) {
-					return problemLine(`+${Duration.toMinutes(live.delayMinutes)} min`, 'warn', platformOf(live))
-				}
-				return statusLine('good', platformOf(live))
-			}
-		})
-	}
 	return flightStatus(booking, now)
 }
 
 // Only a problem gets a dot: a delay, a cancellation, or a live answer that went stale with its age.
 export function problemOf(booking: Booking, status: Status, now: DateTime.Utc) {
 	if (!Booking.isAnyOf(['stay'])(booking) && isStale(booking, now)) {
-		return Option.map<FlightTracking | TrainTracking, {label: string; status: 'warning'; tone: 'warn'}>(
-			booking.live,
-			live => ({
-				label: `${Number.max(0, Math.floor(Duration.toMinutes(DateTime.distance(live.checkedAt, now))))}m`,
-				status: 'warning' as const,
-				tone: 'warn' as const
-			})
-		)
+		return Option.map<FlightTracking, {label: string; status: 'warning'; tone: 'warn'}>(booking.live, live => ({
+			label: `${Number.max(0, Math.floor(Duration.toMinutes(DateTime.distance(live.checkedAt, now))))}m`,
+			status: 'warning' as const,
+			tone: 'warn' as const
+		}))
 	}
 	if (status.tone === 'bad') {
 		return Option.some({label: status.label, status: 'error' as const, tone: 'bad' as const})
@@ -132,16 +97,4 @@ export function problemOf(booking: Booking, status: Status, now: DateTime.Utc) {
 		return Option.some({label: status.label, status: 'warning' as const, tone: 'warn' as const})
 	}
 	return Option.none<Problem>()
-}
-
-// The leg a journey is on: the first not yet arrived, by the same rule as the island, else the last.
-export function currentOf(journey: Array.NonEmptyReadonlyArray<Booking>, now: DateTime.Utc) {
-	return pipe(
-		journey,
-		Array.findFirst(leg => {
-			if (Booking.isAnyOf(['stay'])(leg)) return DateTime.isLessThan(now, endOf(leg))
-			return !arrived(leg, now)
-		}),
-		Option.getOrElse(() => Array.lastNonEmpty(journey))
-	)
 }

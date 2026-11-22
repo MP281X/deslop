@@ -7,7 +7,6 @@ import {
 	activeWindow,
 	arrivalClockOf,
 	arrivalOf,
-	cancelledJourney,
 	cancelledOf,
 	clockAt,
 	departureOf,
@@ -17,7 +16,7 @@ import {
 	titleOf
 } from '#services/bookings/lib/utils.ts'
 import {Booking} from '#services/bookings/schema.ts'
-import type {Flight, Leg, Train} from '#services/bookings/schema.ts'
+import type {Flight, Leg} from '#services/bookings/schema.ts'
 import {ShowAction} from '#services/push/schema.ts'
 import type {Activity, AlertCategory, AlertDelivery, SentAlert, StartRequest} from '#services/push/schema.ts'
 import {isStale} from '#services/tracking/lib/utils.ts'
@@ -33,7 +32,7 @@ export function holds(activity: Activity, window: Span) {
 	})
 }
 
-// A gate, platform or belt is a value each phone must end on, so it is reconciled per device, never skipped for a booking-wide record; the other categories are once per booking.
+// A gate or belt is a value each phone must end on, so it is reconciled per device, never skipped for a booking-wide record; the other categories are once per booking.
 export function perDevice(alert: Alert) {
 	return alert.value !== undefined && alert.category !== 'delay'
 }
@@ -67,19 +66,19 @@ export function unannouncedDevices(devices: readonly Device[], deliveries: reado
 	)
 }
 
-// Per app: refresh the activity that covers the leg, or start one with the app's push-to-start token; an ended one stays ended, and a cancelled journey only shows its cancellation on a running one.
+// Per app: refresh the activity that covers the window, or start one with the app's push-to-start token; an ended one stays ended, and a cancelled flight only shows its cancellation on a running one.
 export function showPlan(
 	devices: readonly Device[],
 	activities: readonly Activity[],
-	legs: Array.NonEmptyReadonlyArray<Flight | Train>,
+	flight: Flight,
 	window: Span & {leg: Leg},
 	requested: Option.Option<DateTime.Utc> = Option.none()
 ) {
-	const starters = Array.filter(devices, device => device.kind === 'start' && !cancelledJourney(legs))
+	const starters = Array.filter(devices, device => device.kind === 'start' && !cancelledOf(flight))
 	const covering = Array.filter(
 		activities,
 		item =>
-			item.bookingId === Array.headNonEmpty(legs).id &&
+			item.bookingId === flight.id &&
 			item.leg === window.leg &&
 			holds(item, window) &&
 			!Option.exists(item.endedAt, ended => Option.exists(requested, at => DateTime.isGreaterThan(at, ended)))
@@ -103,15 +102,15 @@ export function showPlan(
 	)
 }
 
-// Running activities whose leg is no longer in its window, or whose booking is gone; `journeys` is the round's one grouping of the bookings.
+// Running activities whose window has passed, or whose booking is gone.
 export function expiredActivities(
 	activities: readonly Activity[],
-	journeys: readonly Array.NonEmptyReadonlyArray<Booking>[],
+	bookings: readonly Booking[],
 	now: DateTime.Utc,
 	requests: readonly StartRequest[] = []
 ) {
 	const requestsById = Array.groupBy(requests, request => request.bookingId)
-	const byId = Array.groupBy(journeys, legs => legs[0].id)
+	const byId = Array.groupBy(bookings, booking => booking.id)
 	return Array.filter(
 		activities,
 		activity =>
@@ -119,9 +118,8 @@ export function expiredActivities(
 			!Option.exists(Array.head(byId[activity.bookingId] ?? []), found =>
 				Option.exists(
 					activeWindow(
-						found[0],
+						found,
 						now,
-						Array.filter(found, (booking): booking is Flight | Train => !Booking.isAnyOf(['stay'])(booking)),
 						Option.map(Array.head(requestsById[activity.bookingId] ?? []), request => request.at)
 					),
 					window => window.leg === activity.leg
@@ -131,79 +129,20 @@ export function expiredActivities(
 }
 
 // The notification that comes with an activity the server starts; iOS shows none without one.
-export function startAlert(journey: Flight | Train) {
-	if (Booking.isAnyOf(['flight'])(journey)) {
-		return {
-			body: line([
-				Option.some(routeOf(journey)),
-				labelled(
-					'Gate',
-					Option.flatMap(journey.live, live => live.departureGate)
-				)
-			]),
-			title: titleOf(journey)
-		}
-	}
+export function startAlert(flight: Flight) {
 	return {
 		body: line([
-			Option.some(routeOf(journey)),
+			Option.some(routeOf(flight)),
 			labelled(
-				'Platform',
-				Option.flatMap(journey.live, live => live.departurePlatform)
+				'Gate',
+				Option.flatMap(flight.live, live => live.departureGate)
 			)
 		]),
-		title: titleOf(journey)
+		title: titleOf(flight)
 	}
 }
 
 export type Alert = {body: string; title: string; category: AlertCategory; value?: string}
-
-function trainAlerts(train: Train, stale: boolean) {
-	const title = titleOf(train)
-	const departure = clockAt(departureOf(train), train.from.timeZone)
-	if (cancelledOf(train)) {
-		return Array.of<Alert>({
-			body: `${routeOf(train)} at ${clockAt(train.departs, train.from.timeZone)}`,
-			category: 'cancelled',
-			title: `${title} is cancelled`
-		})
-	}
-	// An answer that stopped updating stays on screen, dated, but is never announced as news.
-	const live = Option.filter(train.live, () => !stale)
-	return Array.getSomes([
-		pipe(
-			live,
-			Option.filter(found => found.state === 'scheduled'),
-			Option.flatMap(found => found.departurePlatform),
-			Option.map(
-				platform =>
-					({
-						body: line([Option.some(`${train.from.name} at ${departure}`), labelled('coach', train.coach)]),
-						category: 'platform',
-						title: `${title} · Platform ${platform}`,
-						value: platform
-					}) satisfies Alert
-			)
-		),
-		pipe(
-			live,
-			Option.filter(found => Duration.toMinutes(found.delayMinutes) >= 10),
-			Option.map(
-				found =>
-					({
-						// Once it left, the delay is what it runs with, and only the arrival can still move.
-						body: Boolean.match(found.state === 'scheduled', {
-							onFalse: () => `Now arrives in ${train.to.name} at ${arrivalClockOf(train)}`,
-							onTrue: () => `Now leaves ${train.from.name} at ${departure}`
-						}),
-						category: 'delay',
-						title: `${title} is ${Duration.toMinutes(found.delayMinutes)} min late`,
-						value: `${Number.round(Duration.toMinutes(found.delayMinutes) / 10, 0) * 10}`
-					}) satisfies Alert
-			)
-		)
-	])
-}
 
 function flightAlerts(flight: Flight, now: DateTime.Utc, stale: boolean) {
 	const title = titleOf(flight)
@@ -305,7 +244,7 @@ function flightAlerts(flight: Flight, now: DateTime.Utc, stale: boolean) {
 	])
 }
 
-// The changes worth a notification, each under a key sent once; a delay counts in steps so a drifting estimate stays quiet, and a cancellation is the only news a cancelled journey gets.
+// The changes worth a notification, each under a key sent once; a delay counts in steps so a drifting estimate stays quiet, and a cancellation is the only news a cancelled flight gets.
 export function alertsOf(booking: Booking, now: DateTime.Utc) {
 	if (
 		Booking.isAnyOf(['stay'])(booking) ||
@@ -314,6 +253,5 @@ export function alertsOf(booking: Booking, now: DateTime.Utc) {
 	) {
 		return Array.empty<Alert>()
 	}
-	if (Booking.isAnyOf(['train'])(booking)) return trainAlerts(booking, isStale(booking, now))
 	return flightAlerts(booking, now, isStale(booking, now))
 }
