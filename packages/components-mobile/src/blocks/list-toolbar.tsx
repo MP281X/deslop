@@ -15,7 +15,6 @@ export function ListToolbar(props: {
 	children: ReactNode
 	onSearch: (text: string) => void
 	problem: Option.Option<ReactElement>
-	prompt?: string
 	session: Session
 	title: string
 }) {
@@ -25,7 +24,7 @@ export function ListToolbar(props: {
 			modifiers={[
 				navigationTitle(props.title),
 				navigationBarTitleDisplayMode('inline'),
-				searchable(query, {onChange: props.onSearch, prompt: props.prompt ?? 'Search'}),
+				searchable(query, {onChange: props.onSearch, prompt: 'Search'}),
 				bottomBarSearch
 			]}
 		>
