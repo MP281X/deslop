@@ -23,7 +23,7 @@ env:
   DESLOP_DOMAIN: ${{ vars.DESLOP_DOMAIN }}
 
 jobs:
-  # Before the approval below, so a name that is no app never reaches a reviewer.
+  # A name that is no app stops here, before the signing job builds a path from it.
   app:
     name: App
     runs-on: ubuntu-26.04
