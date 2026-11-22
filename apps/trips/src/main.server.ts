@@ -12,7 +12,7 @@ import {RpcContracts} from '#rpcs/contracts.ts'
 import {RpcHandlers} from '#rpcs/handlers.ts'
 import {layerBookings} from '#services/bookings/service.ts'
 import {Push} from '#services/push/service.ts'
-import {Tracking} from '#services/tracking/service.ts'
+import {layerTracking} from '#services/tracking/service.ts'
 
 runApp({
 	icon,
@@ -20,9 +20,7 @@ runApp({
 	maxFrameSize: ByteSize.mebibytes(5),
 	routes: pipe(
 		Layer.mergeAll(layerRpc({group: RpcContracts, handlers: RpcHandlers}), Layer.provide(HttpHandlers, HttpAuth.layer)),
-		Layer.provide(
-			Layer.mergeAll(Layer.provide(Push.layer, Layer.provide(Apns.layer, layerApnsClient)), Tracking.layer)
-		),
+		Layer.provide(Layer.mergeAll(Layer.provide(Push.layer, Layer.provide(Apns.layer, layerApnsClient)), layerTracking)),
 		Layer.provide(layerBookings),
 		Layer.provide(AiGateway.layer)
 	),
