@@ -251,7 +251,6 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 		)
 		testApi.effect(
 			'treats a comment that only starts like a disable directive as prose',
-			// The rule's observable answer is its lint diagnostic at each supplied source line; the fixture calls the public lint command.
 			Effect.fnUntraced(function* () {
 				const result = yield* lintSource({
 					'prose.ts': Array.join(
@@ -3312,7 +3311,6 @@ export type Unknown = 'ready' | unknown`
 							'	if (input.ready) return 2',
 							'	return 3',
 							'}',
-							// The examples of the question this rule replaced.
 							'export function discount(order: {total: number}) {',
 							'	if (order.total <= 0) return 0',
 							'	const rate = order.total > 100 ? 0.1 : 0.05',
@@ -3365,7 +3363,6 @@ export type Unknown = 'ready' | unknown`
 							'	const local = [span]',
 							'	return Array.some(local, item => item.id === span.serviceId)',
 							'})',
-							// The examples of the question this rule replaced.
 							'export function attachNative(spans: Span[], services: Service[]) {',
 							'	return spans.map(span => ({...span, service: services.find(service => service.id === span.serviceId)})) // reported',
 							'}',
@@ -3445,7 +3442,7 @@ export type Unknown = 'ready' | unknown`
 					'library-operation'
 				)
 				assert.deepStrictEqual(sums.reported, sums.marked)
-				// The examples of the question these rules replaced, and running totals kept in a MutableRef.
+				// Running totals kept in a MutableRef.
 				const totals = reportedLines(
 					yield* lintSource({
 						'totals.ts': Array.join(

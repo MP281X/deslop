@@ -30,18 +30,18 @@ export class AppError extends Schema.TaggedError<AppError>()('AppError', {
 	message: Schema.String
 }) {}
 
-// A command that never returns or floods its pipes is killed with its scope; a caller that expects more names its own bounds.
+// A command that never returns or floods its pipes is killed with its scope; a caller that expects a longer run names its own timeout.
 export const executeProcess = Effect.fn('Process.execute')(function* (
 	command: string,
 	args: string[],
-	options?: {readonly output?: ByteSize.ByteSize; readonly timeout?: Duration.Input}
+	options?: {readonly timeout?: Duration.Input}
 ) {
 	yield* Effect.annotateCurrentSpan({command, 'command.arguments': args.length})
 	const process = yield* ChildProcess.make(command, args, {stderr: 'pipe', stdout: 'pipe'})
 	function text(stream: Stream.Stream<Uint8Array, PlatformError.PlatformError>, name: string) {
 		return pipe(
 			stream,
-			Stream.limitBytes<PlatformError.PlatformError | AppError, never>(options?.output ?? ByteSize.mebibytes(4), () =>
+			Stream.limitBytes<PlatformError.PlatformError | AppError, never>(ByteSize.mebibytes(4), () =>
 				Stream.fail(AppError.make({message: `${command} wrote more ${name} than this caller reads`}))
 			),
 			Stream.decodeText,

@@ -60,7 +60,7 @@ export class Push extends Context.Service<Push>()('@deslop/opm/services/push/ser
 		return {
 			// Every recipient taken when the chapter was saved hears of it at least once: an alert Apple accepted just before its answer could be recorded is sent again, since recording first would lose the alert to a crash.
 			announce: Effect.fn('Push.announce')(function* (chapter: Chapter) {
-				// New registrations should not receive alerts for chapters announced without a working recipient.
+				// A server without an APNs key can send nothing, so its chapters count as announced and are never sent later.
 				if (!apns.enabled) return true
 				const identity = {number: chapter.number, series: chapter.series}
 				const outcomes = yield* Effect.forEach(

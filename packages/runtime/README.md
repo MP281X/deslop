@@ -21,7 +21,7 @@ On macOS, a GUI user must be logged in even when installation runs over SSH: lau
 
 `runApp` takes `maxFrameSize` (a `ByteSize`, default 1 MiB) for an app whose RPC payloads are larger: the socket refuses a bigger message before any schema reads it. An app whose services call `AiGateway` provides `AiGateway.layer` in its own routes, so other servers do not bundle the model client.
 
-`server/process.executeProcess(command, args, options?)` stops a command after 30 seconds and fails one that writes more than 4 MiB to stdout or stderr; `options.timeout` and `options.output` choose other bounds.
+`server/process.executeProcess(command, args, options?)` stops a command after 30 seconds and fails one that writes more than 4 MiB to stdout or stderr; `options.timeout` chooses another time limit.
 
 ## Authorization contracts
 
