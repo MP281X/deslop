@@ -10,7 +10,7 @@ import type {ReactNode} from 'react'
 
 import type {Clipboard} from '#lib/clipboard.ts'
 
-// The one clipboard question every list wraps itself in; the app's labels decide its wording. A system alert asks it over the wrapped screen; a confirmation popover would point away from it.
+// The one clipboard question every list wraps its whole `ListToolbar` in; the app's labels decide its wording. A system alert asks it over the wrapped screen; a confirmation popover would point away from it. Inside the toolbar, a bar item that comes or goes rebuilds the content and dismisses the open question.
 export function PasteSheet(props: {children: ReactNode; clipboard: Clipboard}) {
 	useAtomMount(props.clipboard.returnsAtom)
 	const offer = AsyncResult.getOrElse(

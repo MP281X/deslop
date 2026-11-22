@@ -339,51 +339,51 @@ export function HomeRoute(props: {
 		!AsyncResult.isInitial(notes) &&
 		Option.isNone(blockingFailure(notes))
 	return (
-		<ListToolbar
-			title="Stash"
-			session={session}
-			onSearch={props.onSearch}
-			problem={Boolean.match(saved && (AsyncResult.isFailure(notes) || AsyncResult.isFailure(search)), {
-				onFalse: () => Option.none(),
-				onTrue: () =>
-					Option.some(
-						<Problem
-							source={Boolean.match(AsyncResult.isFailure(notes), {
-								onFalse: () => searchAtom(query),
-								onTrue: () => notesAtom
-							})}
-							label={Boolean.match(AsyncResult.isFailure(notes), {
-								onFalse: Function.constant('Search unavailable'),
-								onTrue: Function.constant('Out of date')
-							})}
-							onRetry={() => {
-								refreshNotes()
-								refreshSearch()
-							}}
-						/>
-					)
-			})}
-			bottomBar={
-				<>
-					<ToolbarItem placement="bottomBar">
-						<NativeButton
-							label="Write"
-							systemImage="square.and.pencil"
-							onPress={props.onCompose}
-							modifiers={[labelStyle('iconOnly')]}
-						/>
-					</ToolbarItem>
-					<ToolbarItem placement="bottomBar">
-						<FilterMenu kind={props.kind} onKind={props.onKind} />
-					</ToolbarItem>
-				</>
-			}
-		>
-			<PasteSheet clipboard={clipboard}>
+		<PasteSheet clipboard={clipboard}>
+			<ListToolbar
+				title="Stash"
+				session={session}
+				onSearch={props.onSearch}
+				problem={Boolean.match(saved && (AsyncResult.isFailure(notes) || AsyncResult.isFailure(search)), {
+					onFalse: () => Option.none(),
+					onTrue: () =>
+						Option.some(
+							<Problem
+								source={Boolean.match(AsyncResult.isFailure(notes), {
+									onFalse: () => searchAtom(query),
+									onTrue: () => notesAtom
+								})}
+								label={Boolean.match(AsyncResult.isFailure(notes), {
+									onFalse: Function.constant('Search unavailable'),
+									onTrue: Function.constant('Out of date')
+								})}
+								onRetry={() => {
+									refreshNotes()
+									refreshSearch()
+								}}
+							/>
+						)
+				})}
+				bottomBar={
+					<>
+						<ToolbarItem placement="bottomBar">
+							<NativeButton
+								label="Write"
+								systemImage="square.and.pencil"
+								onPress={props.onCompose}
+								modifiers={[labelStyle('iconOnly')]}
+							/>
+						</ToolbarItem>
+						<ToolbarItem placement="bottomBar">
+							<FilterMenu kind={props.kind} onKind={props.onKind} />
+						</ToolbarItem>
+					</>
+				}
+			>
 				<Suspense fallback={<ItemGroupSkeleton rows={10} descriptionLines={1} media={<ItemMedia variant="image" />} />}>
 					<Notes kind={props.kind} onOpen={props.onOpen} onTag={props.onTag} tag={props.tag} />
 				</Suspense>
-			</PasteSheet>
-		</ListToolbar>
+			</ListToolbar>
+		</PasteSheet>
 	)
 }
