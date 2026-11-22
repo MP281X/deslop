@@ -17,7 +17,6 @@ class UpdateError extends Schema.TaggedError<UpdateError>()('UpdateError', {
 const updateEvents = Machine.events({Returned: {away: Schema.Duration, unsaved: Schema.Boolean}})
 const updates = AtomMachine.make(
 	Machine.make({
-		branches: {fetched: {downloaded: {target: 'Downloaded'}, idle: {target: 'Idle'}}},
 		effects: {
 			fetch: Effect.tapError(
 				Effect.gen(function* () {
@@ -52,11 +51,11 @@ const updates = AtomMachine.make(
 			Checking: {
 				invoke: {
 					onDone: {
-						branches: 'fetched',
+						branches: [{target: 'Downloaded'}, {target: 'Idle'}],
 						resolve: transition =>
 							Boolean.match(transition.output, {
-								onFalse: () => transition.select.idle(),
-								onTrue: () => transition.select.downloaded()
+								onFalse: () => transition.select.target('Idle'),
+								onTrue: () => transition.select.target('Downloaded')
 							})
 					},
 					onFailure: {target: 'Idle'},

@@ -40,7 +40,7 @@ const Status = Schema.TaggedUnion({
 	Status: {tone: StatusTone, where: Schema.Option(Schema.String)}
 })
 
-type Problem = typeof Problem.Type
+export type Problem = typeof Problem.Type
 const Problem = Schema.Struct({label: Schema.String, status: ProblemStatus, tone: ProblemTone})
 
 function statusLine(tone: StatusTone, where: Option.Option<string>) {
