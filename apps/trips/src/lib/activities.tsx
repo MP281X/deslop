@@ -4,9 +4,12 @@ import {
 	font,
 	foregroundStyle,
 	frame,
+	labelsHidden,
+	layoutPriority,
 	lineLimit,
 	minimumScaleFactor,
 	monospacedDigit,
+	multilineTextAlignment,
 	opacity,
 	padding,
 	progressViewStyle,
@@ -24,6 +27,7 @@ function DayLayout(props: typeof ActivityProps.Encoded) {
 	const tones = {bad: '#ff6467', good: '#fafafa', info: '#fafafa', plain: '#fafafa', warn: '#ff9e3b'}
 	const gray = '#9f9fa9'
 	const plain = '#fafafa'
+	const clear = '#00000000'
 
 	function struck(size: number, text?: string) {
 		if (text === undefined) return undefined
@@ -47,9 +51,10 @@ function DayLayout(props: typeof ActivityProps.Encoded) {
 		return 1
 	}
 
+	// What to do takes its width first, so its label is whole; the timer beside it has the rest.
 	function what(size: number) {
 		return (
-			<VStack alignment="leading" spacing={1}>
+			<VStack alignment="leading" spacing={1} modifiers={[layoutPriority(1)]}>
 				<Text modifiers={[font({size: 13, weight: 'semibold'}), foregroundStyle(gray), lineLimit(1)]}>
 					{props.label}
 				</Text>
@@ -89,7 +94,9 @@ function DayLayout(props: typeof ActivityProps.Encoded) {
 					monospacedDigit(),
 					foregroundStyle(plain),
 					lineLimit(1),
-					frame({alignment: 'trailing', maxWidth: 150})
+					// A timer's text takes all the width it is offered and centres in it: room for "1:04:27", the rest left to the label beside it.
+					multilineTextAlignment('trailing'),
+					frame({alignment: 'trailing', maxWidth: size * 3.7})
 				]}
 			/>
 		)
@@ -106,19 +113,21 @@ function DayLayout(props: typeof ActivityProps.Encoded) {
 		)
 	}
 
-	// Done parts full, the current part filling as its time passes, the parts ahead empty.
+	// Done parts full, the current part filling as its time passes, the parts ahead empty. A timer's progress draws its time under or inside it unless its labels are hidden.
 	function part(index: number) {
 		if (index === props.segment) {
 			return (
 				<ProgressView
 					timerInterval={{lower: new Date(props.segmentSince), upper: new Date(props.segmentUntil)}}
 					countsDown={false}
-					modifiers={[tint(plain), frame({maxWidth: Infinity})]}
+					modifiers={[tint(plain), labelsHidden(), frame({maxWidth: Infinity})]}
 				/>
 			)
 		}
-		if (index < props.segment) return <ProgressView value={1} modifiers={[tint(plain), frame({maxWidth: Infinity})]} />
-		return <ProgressView value={0} modifiers={[tint(plain), frame({maxWidth: Infinity})]} />
+		if (index < props.segment) {
+			return <ProgressView value={1} modifiers={[tint(plain), labelsHidden(), frame({maxWidth: Infinity})]} />
+		}
+		return <ProgressView value={0} modifiers={[tint(plain), labelsHidden(), frame({maxWidth: Infinity})]} />
 	}
 
 	function bar() {
@@ -177,7 +186,14 @@ function DayLayout(props: typeof ActivityProps.Encoded) {
 			return (
 				<ProgressView
 					value={1}
-					modifiers={[progressViewStyle('circular'), tint(tones[props.tone]), frame({height: 22, width: 22})]}
+					modifiers={[
+						progressViewStyle('circular'),
+						tint(tones[props.tone]),
+						labelsHidden(),
+						// A ring on a timer still draws its time inside; only the ring is wanted.
+						foregroundStyle(clear),
+						frame({height: 22, width: 22})
+					]}
 				/>
 			)
 		}
@@ -185,7 +201,14 @@ function DayLayout(props: typeof ActivityProps.Encoded) {
 			<ProgressView
 				timerInterval={{lower: new Date(props.since), upper: new Date(props.deadline)}}
 				countsDown
-				modifiers={[progressViewStyle('circular'), tint(tones[props.tone]), frame({height: 22, width: 22})]}
+				modifiers={[
+					progressViewStyle('circular'),
+					tint(tones[props.tone]),
+					labelsHidden(),
+					// A ring on a timer still draws its time inside; only the ring is wanted.
+					foregroundStyle(clear),
+					frame({height: 22, width: 22})
+				]}
 			/>
 		)
 	}
@@ -217,13 +240,13 @@ function DayLayout(props: typeof ActivityProps.Encoded) {
 		compactLeading: where(),
 		compactTrailing: ring(),
 		expandedBottom: (
-			<VStack alignment="leading" spacing={10} modifiers={[padding({horizontal: 6, top: 4})]}>
+			<VStack alignment="leading" spacing={8} modifiers={[padding({horizontal: 12, top: 2})]}>
 				{bar()}
 				{print()}
 			</VStack>
 		),
-		expandedLeading: <VStack modifiers={[padding({leading: 6})]}>{what(30)}</VStack>,
-		expandedTrailing: <VStack modifiers={[padding({trailing: 6})]}>{when(30)}</VStack>,
+		expandedLeading: <VStack modifiers={[padding({leading: 6})]}>{what(28)}</VStack>,
+		expandedTrailing: <VStack modifiers={[padding({trailing: 6})]}>{when(28)}</VStack>,
 		minimal: ring()
 	}
 }
