@@ -55,6 +55,8 @@ export function ListDetail(props: {
 	// The person's choice from the sidebar button, both columns until they hide the list, kept apart from the one column a stack reports, so the list comes back beside the item once the window is wide again.
 	const [chosen, setChosen] = useState<NavigationSplitViewVisibility>('all')
 	const [stacked, setStacked] = useState<NavigationSplitViewVisibility>('all')
+	// The list hides only beside an opened item: closing it, by Back in a stack, a delete or a saved draft, brings the list back, so a wide window never shows a hidden list beside nothing.
+	if (!props.opened && chosen === 'detailOnly') setChosen('all')
 	const portrait = window.height > window.width
 	const tiled = tiledIn(window)
 	const columns = Boolean.match(tiled, {onFalse: Function.constant(stacked), onTrue: Function.constant(chosen)})
