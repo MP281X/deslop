@@ -29,12 +29,13 @@ export function useListSearch() {
 	return useContext(ListContext).search
 }
 
-// An app's one root on the iPhone Duo: list and opened item side by side when the window is wide, as when unfolded like a book; a stack when it is narrow, folded or turned upright; the item above the list when half open like a laptop. The same views stay mounted through every fold and turn, so a draft, its focus and a reading place survive. `detail` is the opened item, or what the wide window shows beside the list when nothing is opened.
+// An app's one root on the iPhone Duo: list and opened item side by side when the window is wide, as when unfolded like a book; a stack when it is narrow, folded or turned upright; the item above the list when half open like a laptop. The same views stay mounted through every fold and turn, so a draft, its focus and a reading place survive. `detail` is the opened item, or what the wide window shows beside the list when nothing is opened; `onHide` opens that when the person hides the list beside it, so it stays on screen and in front through a fold.
 export function ListDetail(props: {
 	detail: ReactNode
 	list: ReactNode
 	modifiers?: ViewModifier[]
 	onClose: () => void
+	onHide?: () => void
 	opened: boolean
 }) {
 	const window = useWindowDimensions()
@@ -69,6 +70,7 @@ export function ListDetail(props: {
 						onColumnVisibilityChange={visibility => {
 							if (tiled) setChosen(visibility)
 							else setStacked(visibility)
+							if (tiled && visibility === 'detailOnly' && !props.opened) props.onHide?.()
 						}}
 						preferredCompactColumn={Boolean.match(props.opened, {
 							onFalse: Function.constant('sidebar'),
