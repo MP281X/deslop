@@ -25,18 +25,26 @@ const FLIGHT = Struct.pick(
 		airlineCode: 'BA',
 		arrives: DateTime.addDuration(DEPARTS, Duration.hours(2.5)),
 		boardingAt: Option.none(),
-		confirmation: Option.none(),
 		departs: DEPARTS,
 		from: Schema.decodeSync(Place)({code: 'FCO', name: 'Fiumicino', timeZone: 'Europe/Rome'}),
 		id: FlightId.make('7f0c8f8e-0d0a-4a5e-9d8f-5b2a1c3d4e5f'),
 		live: Option.none(),
 		number: '553',
-		status: 'confirmed',
 		to: Schema.decodeSync(Place)({code: 'LHR', name: 'Heathrow', timeZone: 'Europe/London'}),
 		travellers: []
 	}),
 	Struct.keys(Flight.fields)
 )
+// Everyone booked on the flight cancelled their reservation.
+const CANCELLED = [
+	{
+		boardingGroup: Option.none(),
+		confirmation: Option.some('ABC123'),
+		name: Option.none(),
+		seat: Option.none(),
+		status: 'cancelled' as const
+	}
+]
 const STARTER = {
 	bundle: 'xyz.mp281x.trips' as const,
 	kind: 'start' as const,
@@ -176,7 +184,7 @@ it('refreshes a covering activity or launches a new one per app while an ended l
 		Array.map(showPlan([Device.make(STARTER)], [], FLIGHT, window), action => action._tag),
 		['launch']
 	)
-	const cancelled = Flight.make({...FLIGHT, status: 'cancelled'})
+	const cancelled = Flight.make({...FLIGHT, travellers: CANCELLED})
 	assert.deepStrictEqual(showPlan([Device.make(STARTER)], [], cancelled, window), [])
 	assert.deepStrictEqual(
 		Array.map(showPlan([Device.make(STARTER)], [Activity.make(ACTIVITY)], cancelled, window), action => action._tag),
@@ -226,7 +234,7 @@ it('tells a cancelled flight only that it is cancelled, never its gate or boardi
 					Flight.make({
 						...boarding,
 						live: Option.some(Schema.decodeSync(FlightTracking)({...live, state: 'scheduled'})),
-						status: 'cancelled'
+						travellers: CANCELLED
 					}),
 					now
 				),

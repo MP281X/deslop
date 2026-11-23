@@ -34,15 +34,21 @@ function ticket(now: DateTime.Utc, id: FlightId, confirmation: string) {
 		airlineCode: 'BA',
 		arrives: DateTime.addDuration(now, Duration.hours(5.5)),
 		boardingAt: Option.none(),
-		confirmation: Option.some(confirmation),
 		departs: DateTime.addDuration(now, Duration.hours(3)),
 		from: Schema.decodeSync(Place)({code: 'FCO', name: 'Fiumicino', timeZone: 'Europe/Rome'}),
 		id,
 		live: Option.none(),
 		number: '553',
-		status: 'confirmed',
 		to: Schema.decodeSync(Place)({code: 'LHR', name: 'Heathrow', timeZone: 'Europe/London'}),
-		travellers: []
+		travellers: [
+			{
+				boardingGroup: Option.none(),
+				confirmation: Option.some(confirmation),
+				name: Option.none(),
+				seat: Option.none(),
+				status: 'confirmed'
+			}
+		]
 	})
 }
 

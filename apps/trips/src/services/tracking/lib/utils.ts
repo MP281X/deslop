@@ -1,6 +1,6 @@
 import {Array, DateTime, Duration, Function, Option, Order, Result, String, pipe} from 'effect'
 
-import {AIRPORT_LEAD, arrivalOf, departureOf} from '#services/flights/lib/utils.ts'
+import {AIRPORT_LEAD, arrivalOf, cancelledOf, departureOf} from '#services/flights/lib/utils.ts'
 import type {Flight, FlightTracking} from '#services/flights/schema.ts'
 import type {FaFlight, FaFlights} from '#services/tracking/schema.ts'
 
@@ -110,12 +110,7 @@ export function checkEvery(flight: Flight, now: DateTime.Utc) {
 	const arrival = arrivalOf(flight)
 	const state = Option.map(flight.live, live => live.state)
 	// A flight at its gate has nothing left to report.
-	if (
-		flight.status === 'cancelled' ||
-		Option.contains(state, 'cancelled') ||
-		Option.contains(state, 'diverted') ||
-		Option.contains(state, 'arrived')
-	) {
+	if (cancelledOf(flight) || Option.contains(state, 'diverted') || Option.contains(state, 'arrived')) {
 		return Option.none<Duration.Duration>()
 	}
 	// FlightAware answers at most two days ahead.

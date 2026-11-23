@@ -30,6 +30,16 @@ function at(time: LocalTime, timeZone: string) {
 	})
 }
 
+// Everyone the ticket names holds its reservation; a ticket that names nobody holds it under no name, so its cancellation still finds it.
+function travellersOf(item: ExtractedFlight) {
+	const reservation = {confirmation: item.confirmation, status: item.status}
+	return Array.match(item.travellers, {
+		onEmpty: () => [{...reservation, boardingGroup: Option.none(), name: Option.none(), seat: Option.none()}],
+		onNonEmpty: travellers =>
+			Array.map(travellers, traveller => ({...traveller, ...reservation, name: Option.some(traveller.name)}))
+	})
+}
+
 // A ticket read wrong can end before it starts; nothing is saved from it.
 function inOrder(start: DateTime.Utc, end: DateTime.Utc, what: string) {
 	if (DateTime.isLessThan(start, end)) return Effect.void
@@ -92,24 +102,29 @@ export class Flights extends Context.Service<Flights>()('@deslop/trips/services/
 				airlineCode: item.airlineCode,
 				arrives,
 				boardingAt: yield* Effect.transposeOption(Option.map(item.boarding, boarding => at(boarding, from.timeZone))),
-				confirmation: item.confirmation,
 				departs,
 				from,
 				id: FlightId.make(yield* random.uuidV4()),
 				live: Option.none(),
 				number: item.flightNumber,
-				status: item.status,
 				to,
-				travellers: Array.map(item.travellers, traveller => ({...traveller, name: Option.some(traveller.name)}))
+				travellers: travellersOf(item)
 			})
 		})
 
-		// Every segment merges into the flights as they are inside the caller's write transaction, so two saves never lose each other's merge.
+		// Every segment merges into the flights as they are inside the caller's write transaction, so two saves never lose each other's merge; a flight a rebooking left with nobody on it goes.
 		const merge = Effect.fnUntraced(function* (incoming: FlightList) {
 			const current = yield* listAll
 			const stored = Record.fromIterableBy(current, flight => flight.id)
+			const next = upsert(current, incoming)
+			const kept = Record.fromIterableBy(next, flight => flight.id)
+			yield* pipe(
+				current,
+				Array.filter(flight => !Record.has(kept, flight.id)),
+				Effect.forEach(flight => flights.delete(flight.id), {concurrency: 1, discard: true})
+			)
 			yield* Effect.forEach(
-				upsert(current, incoming),
+				next,
 				flight =>
 					pipe(
 						stored,

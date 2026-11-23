@@ -46,6 +46,7 @@ import {dayAt, problemOf, statusOf, tones} from '#lib/status.ts'
 import {
 	arrivalClockOf,
 	arrivalOf,
+	bookedOf,
 	clockAt,
 	departureOf,
 	labelled,
@@ -103,15 +104,22 @@ function FlightFields(props: {flight: Flight}) {
 			<Section title="Booking">
 				<Field label="Airline" value={Option.some(props.flight.airline)} />
 				<Field label="Aircraft" value={Option.flatMap(props.flight.live, report => report.aircraft)} />
-				<Field label="Confirmation" value={props.flight.confirmation} />
 			</Section>
 			{Array.isReadonlyArrayNonEmpty(props.flight.travellers) && (
 				<Section title="Travellers">
-					{Array.map(props.flight.travellers, traveller => (
+					{Array.map(props.flight.travellers, (traveller, index) => (
 						<Field
-							key={`${Option.getOrElse(traveller.name, Function.constant(''))} ${Option.getOrElse(traveller.seat, Function.constant(''))}`}
+							key={index}
 							label={Option.getOrElse(traveller.name, Function.constant('Traveller'))}
-							value={Option.some(line([traveller.seat, labelled('Group', traveller.boardingGroup)]))}
+							tone={toneIf(traveller.status === 'cancelled', 'bad')}
+							value={Option.some(
+								line([
+									Option.liftPredicate('Cancelled', () => traveller.status === 'cancelled'),
+									traveller.seat,
+									labelled('Group', traveller.boardingGroup),
+									traveller.confirmation
+								])
+							)}
 						/>
 					))}
 				</Section>
@@ -327,7 +335,7 @@ export function FlightRoute(props: {
 									</VStack>
 								</Section>
 								<FlightFields flight={flight} />
-								{flight.status === 'confirmed' && <Rides flight={flight} />}
+								{bookedOf(flight) && <Rides flight={flight} />}
 							</Form>
 							<Toolbar.Content>
 								<Close onClose={props.onClose} />

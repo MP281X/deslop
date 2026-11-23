@@ -67,27 +67,27 @@ export const FlightTracking = Schema.Struct({
 	takeoffActual: Schema.OptionFromOptionalKey(DateTimeUtcFromFiniteMillis)
 })
 
-// One person on a flight with their seat and boarding group; a flight saved before Trips read names holds its seat under no name.
+// One person on a flight under their own reservation, with its code and whether it stands; a ticket that names nobody, or a flight saved before Trips read names, holds its reservation under no name.
 export type Traveller = typeof Traveller.Type
 export const Traveller = Schema.Struct({
 	boardingGroup: Schema.OptionFromOptionalKey(Schema.String),
+	confirmation: Schema.OptionFromOptionalKey(Schema.String),
 	name: Schema.OptionFromOptionalKey(Schema.String),
-	seat: Schema.OptionFromOptionalKey(Schema.String)
+	seat: Schema.OptionFromOptionalKey(Schema.String),
+	status: ReservationStatus
 })
 
-// One row of `flights`; places, travellers and the provider's latest report are values of the flight, kept as JSON. Absent is `Option.none()` in code, NULL in the row and a missing key on the wire.
+// One row of `flights`: one service, a flight number on a day, with everyone on it; places, travellers and the provider's latest report are values of the flight, kept as JSON. Absent is `Option.none()` in code, NULL in the row and a missing key on the wire.
 export class Flight extends Model.Class<Flight>('Flight')({
 	airline: Schema.String,
 	airlineCode: Schema.String,
 	arrives: Schema.DateTimeUtcFromMillis,
 	boardingAt: Model.FieldOption(Schema.DateTimeUtcFromMillis),
-	confirmation: Model.FieldOption(Schema.String),
 	departs: Schema.DateTimeUtcFromMillis,
 	from: Model.JsonFromString(Place),
 	id: FlightId,
 	live: Model.FieldOption(Model.JsonFromString(FlightTracking)),
 	number: Schema.String,
-	status: ReservationStatus,
 	to: Model.JsonFromString(Place),
 	travellers: Model.JsonFromString(Schema.Array(Traveller))
 }) {

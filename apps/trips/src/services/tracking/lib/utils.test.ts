@@ -23,13 +23,11 @@ function flightAt(departs: DateTime.Utc, live: Flight['live'] = Option.none()) {
 		airlineCode: 'BA',
 		arrives: DateTime.addDuration(departs, Duration.hours(2.5)),
 		boardingAt: Option.none(),
-		confirmation: Option.none(),
 		departs,
 		from: Schema.decodeSync(Place)({city: 'Rome', code: 'FCO', name: 'Fiumicino', timeZone: 'Europe/Rome'}),
 		id: FlightId.make('7f0c8f8e-0d0a-4a5e-9d8f-5b2a1c3d4e5f'),
 		live,
 		number: '553',
-		status: 'confirmed',
 		to: Schema.decodeSync(Place)({city: 'London', code: 'LHR', name: 'Heathrow', timeZone: 'Europe/London'}),
 		travellers: []
 	})
@@ -108,7 +106,6 @@ it('keeps the flight it identified before while it is still near the booked time
 		airlineCode: 'BA',
 		arrives: DateTime.makeUnsafe('2026-10-28T18:10:00Z'),
 		boardingAt: Option.none(),
-		confirmation: Option.none(),
 		departs: DateTime.makeUnsafe('2026-10-28T15:40:00Z'),
 		from: Schema.decodeSync(Place)({code: 'FCO', name: 'Fiumicino', timeZone: 'Europe/Rome'}),
 		id: FlightId.make('7f0c8f8e-0d0a-4a5e-9d8f-5b2a1c3d4e5f'),
@@ -120,7 +117,6 @@ it('keeps the flight it identified before while it is still near the booked time
 			)
 		),
 		number: '553',
-		status: 'confirmed',
 		to: Schema.decodeSync(Place)({code: 'LHR', name: 'Heathrow', timeZone: 'Europe/London'}),
 		travellers: []
 	})

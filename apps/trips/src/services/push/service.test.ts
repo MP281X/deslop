@@ -44,15 +44,15 @@ function flightAt(now: DateTime.Utc, id: FlightId, seat: Option.Option<string>) 
 		airlineCode: 'BA',
 		arrives: DateTime.addDuration(now, Duration.hours(5)),
 		boardingAt: Option.none(),
-		confirmation: Option.none(),
 		departs: DateTime.addDuration(now, Duration.hours(4)),
 		from: Schema.decodeSync(Place)({code: 'FCO', name: 'Fiumicino', timeZone: 'Europe/Rome'}),
 		id,
 		live: Option.none(),
 		number: '553',
-		status: 'confirmed',
 		to: Schema.decodeSync(Place)({code: 'LHR', name: 'Heathrow', timeZone: 'Europe/London'}),
-		travellers: [{boardingGroup: Option.none(), name: Option.none(), seat}]
+		travellers: [
+			{boardingGroup: Option.none(), confirmation: Option.none(), name: Option.none(), seat, status: 'confirmed'}
+		]
 	})
 }
 const booked = Effect.map(DateTime.now, now => [flightAt(now, ID, Option.none())])

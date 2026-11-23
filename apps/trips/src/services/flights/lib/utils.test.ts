@@ -1,6 +1,6 @@
 import {assert, it} from '@effect/vitest'
 
-import {Array, DateTime, Duration, Option, Schema, Struct} from 'effect'
+import {Array, DateTime, Duration, Function, Option, Schema, Struct} from 'effect'
 
 import {
 	activeWindow,
@@ -8,9 +8,11 @@ import {
 	daysBetween,
 	instantOf,
 	activityProps,
+	cancelledOf,
 	startable,
 	upsert
 } from '#services/flights/lib/utils.ts'
+import type {FlightList, ReservationStatus, Traveller} from '#services/flights/schema.ts'
 import {FlightId, Flight, FlightTracking, Place} from '#services/flights/schema.ts'
 
 const DEPARTS = DateTime.makeUnsafe('2026-10-28T15:40:00Z')
@@ -21,13 +23,11 @@ const FLIGHT = Struct.pick(
 		airlineCode: 'BA',
 		arrives: DateTime.addDuration(DEPARTS, Duration.hours(2.5)),
 		boardingAt: Option.none(),
-		confirmation: Option.none(),
 		departs: DEPARTS,
 		from: Schema.decodeSync(Place)({code: 'FCO', name: 'Fiumicino', timeZone: 'Europe/Rome'}),
 		id: FlightId.make('7f0c8f8e-0d0a-4a5e-9d8f-5b2a1c3d4e5f'),
 		live: Option.none(),
 		number: '553',
-		status: 'confirmed',
 		to: Schema.decodeSync(Place)({code: 'LHR', name: 'Heathrow', timeZone: 'Europe/London'}),
 		travellers: []
 	}),
@@ -116,86 +116,152 @@ it('starts no Live Activity for a cancelled flight', () => {
 	)
 })
 
-function traveller(name: Option.Option<string>, seat: Option.Option<string>) {
-	return {boardingGroup: Option.none(), name, seat}
+function traveller(
+	confirmation: string,
+	name: Option.Option<string>,
+	seat: Option.Option<string>,
+	status: ReservationStatus = 'confirmed'
+) {
+	return {boardingGroup: Option.none(), confirmation: Option.some(confirmation), name, seat, status} satisfies Traveller
+}
+
+// One ticket for BA 553, or another flight on the same route, read under an id of its own as each shared ticket is.
+function ticket(travellers: readonly Traveller[], number = '553', departs = DEPARTS) {
+	return Flight.make({
+		...FLIGHT,
+		departs,
+		id: FlightId.make(`${number}00000-0d0a-4a5e-9d8f-5b2a1c3d4e5f`),
+		number,
+		travellers
+	})
+}
+
+// A cancellation of a whole booking, naming nobody.
+function cancellation(code: string) {
+	return ticket([traveller(code, Option.none(), Option.none(), 'cancelled')])
+}
+
+// Who is on each flight, and whether it reads cancelled.
+function seating(flights: FlightList) {
+	return Array.map(flights, flight => [
+		flight.number,
+		cancelledOf(flight),
+		Array.map(flight.travellers, held => [
+			Option.getOrElse(held.name, Function.constant('')),
+			Option.getOrElse(held.seat, Function.constant('')),
+			Option.getOrElse(held.confirmation, Function.constant('')),
+			held.status
+		])
+	])
 }
 
 it('merges tickets for the same leg and retains live data only while its schedule matches', () => {
 	const tracked = Flight.make({
 		...FLIGHT,
-		confirmation: Option.some('ABC123'),
 		live: Option.some(Schema.decodeSync(FlightTracking)({checkedAt: 1, departureGate: 'B12', state: 'scheduled'})),
-		travellers: [traveller(Option.some('Matteo Rossi'), Option.none())]
+		travellers: [traveller('ABC123', Option.some('Matteo Rossi'), Option.none())]
 	})
-	const again = Flight.make({
-		...FLIGHT,
-		id: FlightId.make('aaaaaaaa-0d0a-4a5e-9d8f-5b2a1c3d4e5f'),
-		travellers: [traveller(Option.some('ROSSI/MATTEO MR'), Option.some('14A'))]
-	})
+	const again = ticket([traveller('abc123 ', Option.some('ROSSI/MATTEO MR'), Option.some('14A'))])
 	assert.deepStrictEqual(
 		Array.map(upsert([tracked], [again]), flight => [
 			flight.id,
-			flight.confirmation,
 			flight.travellers,
 			Option.flatMap(flight.live, live => live.departureGate)
 		]),
-		[
-			[
-				FLIGHT.id,
-				Option.some('ABC123'),
-				[traveller(Option.some('ROSSI/MATTEO MR'), Option.some('14A'))],
-				Option.some('B12')
-			]
-		]
+		[[FLIGHT.id, [traveller('abc123 ', Option.some('ROSSI/MATTEO MR'), Option.some('14A'))], Option.some('B12')]]
 	)
 	assert.deepStrictEqual(
 		Array.map(
-			upsert(
-				[tracked],
-				[
-					Flight.make({
-						...FLIGHT,
-						departs: DateTime.addDuration(DEPARTS, Duration.hours(3)),
-						id: again.id,
-						travellers: again.travellers
-					})
-				]
-			),
+			upsert([tracked], [ticket(again.travellers, '553', DateTime.addDuration(DEPARTS, Duration.hours(3)))]),
 			flight => flight.live
 		),
 		[Option.none()]
 	)
 })
 
-it('adds each traveller a ticket names to the flight, whatever its confirmation code', () => {
-	const held = Flight.make({
-		...FLIGHT,
-		confirmation: Option.some('ABC123'),
-		travellers: [traveller(Option.none(), Option.some('14C'))]
-	})
-	function pass(name: string, seat: string) {
-		return Flight.make({
-			...FLIGHT,
-			confirmation: Option.some('XYZ789'),
-			id: FlightId.make('cccccccc-0d0a-4a5e-9d8f-5b2a1c3d4e5f'),
-			travellers: [traveller(Option.some(name), Option.some(seat))]
-		})
-	}
-	// The flight saved before names were read is whoever sits in 14C.
+it('adds each traveller a ticket names to the flight under their own reservation', () => {
+	// The flight saved before names were read is whoever sits in 14C under its code; a seat changed later stays with its person.
 	assert.deepStrictEqual(
-		Array.map(
-			upsert([held], [pass('Matteo Rossi', '14C'), pass('Anna Bianchi', '14D'), pass('Anna Bianchi', '15A')]),
-			flight => [flight.confirmation, flight.travellers]
+		seating(
+			upsert(
+				[Flight.make({...FLIGHT, travellers: [traveller('ABC123', Option.none(), Option.some('14C'))]})],
+				[
+					ticket([traveller('ABC123', Option.some('Matteo Rossi'), Option.some('014C'))]),
+					ticket([traveller('XYZ789', Option.some('Anna Bianchi'), Option.some('14D'))]),
+					ticket([traveller('XYZ789', Option.some('Anna Bianchi'), Option.some('15A'))])
+				]
+			)
 		),
 		[
 			[
-				Option.some('ABC123'),
+				'553',
+				false,
 				[
-					traveller(Option.some('Matteo Rossi'), Option.some('14C')),
-					traveller(Option.some('Anna Bianchi'), Option.some('15A'))
+					['Matteo Rossi', '014C', 'ABC123', 'confirmed'],
+					['Anna Bianchi', '15A', 'XYZ789', 'confirmed']
 				]
 			]
 		]
+	)
+})
+
+it('cancels only the travellers of the reservation a cancellation names', () => {
+	const both = upsert(
+		[],
+		[
+			ticket([traveller('ONE', Option.some('Alice Hart'), Option.some('11A'))]),
+			ticket([traveller('TWO', Option.some('Bob Stone'), Option.some('11B'))])
+		]
+	)
+	// Bob is rebooked onto BA 543 on the same route, then BA 553's cancellation of his booking arrives.
+	const rebooked = upsert(both, [
+		ticket([traveller('TWO', Option.some('Bob Stone'), Option.some('20C'))], '543'),
+		ticket(
+			[traveller('TWO', Option.some('Bob Stone'), Option.none(), 'cancelled')],
+			'553',
+			DateTime.addDuration(DEPARTS, Duration.minutes(30))
+		)
+	])
+	assert.deepStrictEqual(seating(rebooked), [
+		[
+			'553',
+			false,
+			[
+				['Alice Hart', '11A', 'ONE', 'confirmed'],
+				['Bob Stone', '', 'TWO', 'cancelled']
+			]
+		],
+		['543', false, [['Bob Stone', '20C', 'TWO', 'confirmed']]]
+	])
+	// A cancellation changes no time another traveller's ticket gave.
+	assert.deepStrictEqual(
+		Array.map(rebooked, flight => flight.departs),
+		[DEPARTS, DEPARTS]
+	)
+	// A cancellation that names nobody covers its whole reservation; the flight reads cancelled once nobody is left booked.
+	assert.deepStrictEqual(Array.map(upsert(both, [cancellation('TWO')]), cancelledOf), [false])
+	assert.deepStrictEqual(seating(upsert(both, [cancellation('TWO'), cancellation('ONE')])), [
+		[
+			'553',
+			true,
+			[
+				['Alice Hart', '11A', 'ONE', 'cancelled'],
+				['Bob Stone', '11B', 'TWO', 'cancelled']
+			]
+		]
+	])
+})
+
+it('moves a rebooked reservation to its new flight, keeping the id when nobody else was on the old one', () => {
+	assert.deepStrictEqual(
+		Array.map(
+			upsert(
+				[Flight.make({...FLIGHT, travellers: [traveller('TWO', Option.some('Bob Stone'), Option.some('11B'))]})],
+				[ticket([traveller('TWO', Option.some('Bob Stone'), Option.none())], '543')]
+			),
+			flight => [flight.id, flight.number, flight.travellers]
+		),
+		[[FLIGHT.id, '543', [traveller('TWO', Option.some('Bob Stone'), Option.some('11B'))]]]
 	)
 })
 

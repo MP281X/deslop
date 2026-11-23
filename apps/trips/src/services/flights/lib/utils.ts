@@ -70,9 +70,51 @@ export function clockAt(time: DateTime.Utc, timeZone: string) {
 	return DateTime.format(time, {hour: '2-digit', hourCycle: 'h23', locale: 'en-GB', minute: '2-digit', timeZone})
 }
 
-// The ticket or the provider says the flight will not run; alerts, the island and the phone all read this one answer.
+// A field as printed, so "abc123 " and "ABC123" are the same code and "011A" and "11A" the same seat.
+function printed(value: Option.Option<string>) {
+	return pipe(value, Option.map(String.trim), Option.map(String.toUpperCase), Option.filter(String.isNonEmpty))
+}
+
+function codeOf(traveller: Traveller) {
+	return printed(traveller.confirmation)
+}
+
+function seatOf(traveller: Traveller) {
+	return Option.map(printed(traveller.seat), String.replace(/^0+(?=\d)/u, ''))
+}
+
+// A name as a pass or a booking prints it, so ROSSI/MATTEO MR and Matteo Rossi are one person: its words in any order, without case, accents or titles.
+function nameOf(traveller: Traveller) {
+	return pipe(
+		traveller.name,
+		Option.map(name =>
+			pipe(
+				name,
+				String.normalize('NFD'),
+				String.replaceAll(/[̀-ͯ]/gu, ''),
+				String.toUpperCase,
+				String.split(/[^A-Z]+/u),
+				Array.filter(word => String.isNonEmpty(word) && !Array.contains(TITLES, word)),
+				Array.sort(String.Order),
+				Array.join(' ')
+			)
+		),
+		Option.filter(String.isNonEmpty)
+	)
+}
+
+function isBooked(traveller: Traveller) {
+	return traveller.status === 'confirmed'
+}
+
+// Whether any reservation on the flight still stands, whatever the provider reports.
+export function bookedOf(flight: Flight) {
+	return Array.some(flight.travellers, isBooked)
+}
+
+// Every reservation on the flight was cancelled, or the provider says the service will not run; alerts, the island and the phone all read this one answer.
 export function cancelledOf(flight: Flight) {
-	if (flight.status === 'cancelled') return true
+	if (Array.isReadonlyArrayNonEmpty(flight.travellers) && !bookedOf(flight)) return true
 	return Option.exists<FlightTracking>(flight.live, live => live.state === 'cancelled')
 }
 
@@ -84,10 +126,11 @@ export function line(parts: Option.Option<string>[]) {
 	return Array.join(Array.getSomes(parts), ' · ')
 }
 
-// What the travellers share, such as their seats, each told once: "14C, 14D".
+// What the travellers still booked share, such as their seats, each told once: "14C, 14D".
 export function travellersLine(flight: Flight, field: (traveller: Traveller) => Option.Option<string>) {
 	return pipe(
 		flight.travellers,
+		Array.filter(isBooked),
 		Array.filterMap(traveller =>
 			Option.match(field(traveller), {onNone: () => Result.failVoid, onSome: Result.succeed})
 		),
@@ -146,115 +189,187 @@ export function routeOf(flight: Flight) {
 	return `${Option.getOrElse(flight.from.city, () => flight.from.name)} → ${Option.getOrElse(flight.to.city, () => flight.to.name)}`
 }
 
-// A code as printed, so "abc123 " and "ABC123" are the same one.
-function codeOf(flight: Flight) {
-	return Option.map(flight.confirmation, code => pipe(code, String.trim, String.toUpperCase))
-}
-
 // A field the newer ticket leaves out keeps what the older one printed.
 function newer<A>(existing: Option.Option<A>, incoming: Option.Option<A>) {
 	return Option.orElse(incoming, () => existing)
 }
 
-// The same flight, keyed by origin since BA15 flies two legs a day, or a rebooking under the same confirmation and route.
-function sameFlight(existing: Flight, incoming: Flight) {
-	if (!Equal.equals(existing.from.code, incoming.from.code)) return false
-	return (
-		(existing.airlineCode === incoming.airlineCode &&
-			existing.number === incoming.number &&
-			pipe(
-				DateTime.distance(existing.departs, incoming.departs),
-				Duration.abs,
-				Duration.isLessThan(Duration.hours(20))
-			)) ||
-		(Option.exists(codeOf(existing), code => Option.contains(codeOf(incoming), code)) &&
-			Equal.equals(existing.to.code, incoming.to.code))
+function differ(left: Option.Option<string>, right: Option.Option<string>) {
+	return Option.exists(left, one => Option.exists(right, other => other !== one))
+}
+
+function agree(left: Option.Option<string>, right: Option.Option<string>) {
+	return Option.isSome(left) && Equal.equals(left, right)
+}
+
+type Evidence = {readonly code: boolean; readonly name: boolean; readonly seat: boolean}
+
+type Candidate = {readonly evidence: Evidence; readonly index: number}
+
+// The name counts most, then the reservation, then the seat.
+const bySurety = Order.combineAll([
+	Order.mapInput(Order.Boolean, (candidate: Candidate) => candidate.evidence.name),
+	Order.mapInput(Order.Boolean, (candidate: Candidate) => candidate.evidence.code),
+	Order.mapInput(Order.Boolean, (candidate: Candidate) => candidate.evidence.seat)
+])
+
+// What says a ticket's traveller is one already on the flight: nothing when their names or reservations differ, nor when their seats differ without the same name to say the person moved.
+function evidenceOf(held: Traveller, incoming: Traveller) {
+	const evidence = {
+		code: agree(codeOf(held), codeOf(incoming)),
+		name: agree(nameOf(held), nameOf(incoming)),
+		seat: agree(seatOf(held), seatOf(incoming))
+	} satisfies Evidence
+	return Option.liftPredicate(
+		evidence,
+		() =>
+			!differ(nameOf(held), nameOf(incoming)) &&
+			!differ(codeOf(held), codeOf(incoming)) &&
+			(evidence.name || !differ(seatOf(held), seatOf(incoming)))
 	)
 }
 
-// A name as a pass or a booking prints it, so ROSSI/MATTEO MR and Matteo Rossi are one person: its words in any order, without accents or titles.
-function nameKey(name: string) {
+// The ticket's word on a traveller: its status always, every other field only where it prints one.
+function updated(held: Traveller, incoming: Traveller) {
+	return {
+		boardingGroup: newer(held.boardingGroup, incoming.boardingGroup),
+		confirmation: newer(held.confirmation, incoming.confirmation),
+		name: newer(held.name, incoming.name),
+		seat: newer(held.seat, incoming.seat),
+		status: incoming.status
+	} satisfies Traveller
+}
+
+// A ticket that names nobody and prints no seat speaks for its whole reservation, such as the booking's cancellation.
+function wholeReservation(travellers: readonly Traveller[], incoming: Traveller) {
+	function covers(held: Traveller) {
+		return Option.isSome(evidenceOf(held, incoming))
+	}
 	return pipe(
-		name,
-		String.normalize('NFD'),
-		String.replaceAll(/[\u0300-\u036F]/gu, ''),
-		String.toUpperCase,
-		String.split(/[^A-Z]+/u),
-		Array.filter(word => String.isNonEmpty(word) && !Array.contains(TITLES, word)),
-		Array.sort(String.Order),
-		Array.join(' ')
+		incoming,
+		Option.liftPredicate(found => Option.isNone(found.name) && Option.isNone(found.seat)),
+		Option.filter(() => Array.some(travellers, covers)),
+		Option.map(() =>
+			Array.map(travellers, held =>
+				Boolean.match(covers(held), {onFalse: () => held, onTrue: () => updated(held, incoming)})
+			)
+		)
 	)
 }
 
-// A traveller saved before Trips read names is whoever holds its seat, or anyone while it has none.
-function sameTraveller(existing: Traveller, incoming: Traveller) {
-	return Option.match(Option.all([existing.name, incoming.name]), {
-		onNone: () =>
-			Option.isNone(existing.name) && (Option.isNone(existing.seat) || Equal.equals(existing.seat, incoming.seat)),
-		onSome: names => nameKey(names[0]) === nameKey(names[1])
-	})
-}
-
-// Each ticket adds the travellers it names, so passes shared for other people fill one flight; a traveller already on it takes the newer ticket's seat and group.
-function travellersOf(existing: readonly Traveller[], incoming: readonly Traveller[]) {
-	return Array.mapAccum(incoming, existing, (travellers, traveller) =>
+// Each traveller a ticket names is the surest match already on the flight, so a pass shared again updates the one it names.
+function seat(travellers: readonly Traveller[], incoming: Traveller) {
+	return Option.getOrElse(wholeReservation(travellers, incoming), () =>
 		pipe(
 			travellers,
-			Array.findFirst(held => sameTraveller(held, traveller)),
-			Option.match({
-				onNone: () => [[...travellers, traveller], undefined] as const,
-				onSome: found =>
-					[
-						Array.map(travellers, held =>
-							Boolean.match(held === found, {
-								onFalse: () => held,
-								onTrue: () => ({
-									boardingGroup: newer(held.boardingGroup, traveller.boardingGroup),
-									name: newer(held.name, traveller.name),
-									seat: newer(held.seat, traveller.seat)
-								})
-							})
-						),
-						undefined
-					] as const
+			Array.filterMap((held, index) =>
+				Option.match(evidenceOf(held, incoming), {
+					onNone: () => Result.failVoid,
+					onSome: evidence => Result.succeed({evidence, index})
+				})
+			),
+			Array.match({
+				onEmpty: () => [...travellers, incoming],
+				onNonEmpty: candidates => {
+					const found = Array.max(candidates, bySurety)
+					return Array.map(travellers, (held, index) =>
+						Boolean.match(index === found.index, {onFalse: () => held, onTrue: () => updated(held, incoming)})
+					)
+				}
 			})
 		)
-	)[0]
+	)
 }
 
-// The newer ticket wins field by field, except the confirmation, where the first code saved stays since another traveller's pass prints their own; the id stays, and live data survives only while it describes the same service.
-function combine(existing: Flight, incoming: Flight) {
+// Each ticket adds the travellers it names, so passes shared for other people fill one flight, and updates the ones already on it.
+function travellersOf(existing: readonly Traveller[], incoming: readonly Traveller[]) {
+	return Array.reduce(incoming, existing, seat)
+}
+
+function withTravellers(flight: Flight, travellers: readonly Traveller[]) {
+	return Flight.make({...Struct.pick(flight, Struct.keys(Flight.fields)), travellers})
+}
+
+// The same service: one flight number on one day, keyed by origin since BA15 flies two legs a day.
+function sameService(existing: Flight, incoming: Flight) {
+	return (
+		Equal.equals(existing.from.code, incoming.from.code) &&
+		existing.airlineCode === incoming.airlineCode &&
+		existing.number === incoming.number &&
+		pipe(DateTime.distance(existing.departs, incoming.departs), Duration.abs, Duration.isLessThan(Duration.hours(20)))
+	)
+}
+
+// Whether a traveller holds one of the reservations a ticket confirms.
+function confirmedBy(flight: Flight) {
+	const codes = pipe(
+		flight.travellers,
+		Array.filter(isBooked),
+		Array.filterMap(traveller =>
+			Option.match(codeOf(traveller), {onNone: () => Result.failVoid, onSome: Result.succeed})
+		)
+	)
+	return (traveller: Traveller) => Option.exists(codeOf(traveller), code => Array.contains(codes, code))
+}
+
+// A ticket reads only for its own travellers, so a cancellation changes no time or gate another traveller's ticket gave; the id stays, and live data survives only while it describes the same service.
+function combine(existing: Flight, incoming: Flight, arriving: readonly Traveller[]) {
 	const same =
 		existing.airlineCode === incoming.airlineCode &&
 		existing.number === incoming.number &&
 		pipe(DateTime.distance(incoming.departs, existing.departs), Duration.abs, Duration.isLessThanOrEqualTo(HOUR))
+	const fields = Boolean.match(bookedOf(incoming), {onFalse: () => existing, onTrue: () => incoming})
 	return Flight.make({
-		...Struct.pick(incoming, Struct.keys(Flight.fields)),
-		boardingAt: newer(existing.boardingAt, incoming.boardingAt),
-		confirmation: Option.orElse(existing.confirmation, () => incoming.confirmation),
+		...Struct.pick(fields, Struct.keys(Flight.fields)),
+		boardingAt: newer(existing.boardingAt, fields.boardingAt),
 		id: existing.id,
 		live: Option.filter(existing.live, () => same),
-		travellers: travellersOf(existing.travellers, incoming.travellers)
+		travellers: travellersOf([...existing.travellers, ...arriving], incoming.travellers)
 	})
 }
 
-export function upsert(current: FlightList, incoming: FlightList) {
-	return Array.mapAccum(incoming, current, (flights, flight) =>
-		pipe(
-			flights,
-			Array.findFirst(existing => sameFlight(existing, flight)),
-			Option.match({
-				onNone: () => [[...flights, flight], undefined] as const,
-				onSome: existing => {
-					const merged = combine(existing, flight)
-					return [
-						Array.map(flights, item => Boolean.match(item === existing, {onFalse: () => item, onTrue: () => merged})),
-						undefined
-					] as const
-				}
-			})
+// One ticket's flight joins its service. The reservations it confirms leave any other service of the route, as a rebooking under the same code: that flight goes once nobody is left on it, or becomes the new service itself when it held only them, keeping its id.
+function upsertOne(flights: FlightList, incoming: Flight) {
+	const moving = confirmedBy(incoming)
+	function rebooked(held: Flight) {
+		return (
+			!sameService(held, incoming) &&
+			Equal.equals(held.from.code, incoming.from.code) &&
+			Equal.equals(held.to.code, incoming.to.code) &&
+			Array.some(held.travellers, moving)
 		)
-	)[0]
+	}
+	const target = pipe(
+		flights,
+		Array.findFirst(held => sameService(held, incoming)),
+		Option.orElse(() => Array.findFirst(flights, held => rebooked(held) && Array.every(held.travellers, moving)))
+	)
+	function isTarget(held: Flight) {
+		return Option.contains(target, held)
+	}
+	const arriving = pipe(
+		flights,
+		Array.filter(held => rebooked(held) && !isTarget(held)),
+		Array.flatMap(held => Array.filter(held.travellers, moving))
+	)
+	const merged = Option.match(target, {
+		onNone: () => withTravellers(incoming, travellersOf(arriving, incoming.travellers)),
+		onSome: found => combine(found, incoming, arriving)
+	})
+	const rest = Array.filterMap(flights, held => {
+		if (isTarget(held)) return Result.succeed(merged)
+		if (!rebooked(held)) return Result.succeed(held)
+		return pipe(
+			Array.filter(held.travellers, traveller => !moving(traveller)),
+			Option.liftPredicate(Array.isReadonlyArrayNonEmpty),
+			Option.match({onNone: () => Result.failVoid, onSome: left => Result.succeed(withTravellers(held, left))})
+		)
+	})
+	return Option.match(target, {onNone: () => [...rest, merged], onSome: () => rest})
+}
+
+export function upsert(current: FlightList, incoming: FlightList): FlightList {
+	return Array.reduce(incoming, current, upsertOne)
 }
 
 // A flight's activity opens three hours ahead.
@@ -307,7 +422,7 @@ export function activeWindow(
 
 function flightPhase(flight: Flight, now: DateTime.Utc) {
 	const state = Option.map(flight.live, live => live.state)
-	if (flight.status === 'cancelled' || Option.contains(state, 'cancelled')) return 'cancelled'
+	if (cancelledOf(flight)) return 'cancelled'
 	if (Option.contains(state, 'diverted')) return 'diverted'
 	if (Option.contains(state, 'landed') || Option.contains(state, 'arrived')) return 'landed'
 	if (Option.contains(state, 'departed') || Option.contains(state, 'airborne')) return 'airborne'

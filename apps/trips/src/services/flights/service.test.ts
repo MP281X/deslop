@@ -98,7 +98,7 @@ it.layer(flightsLayer)(test =>
 
 it.layer(flightsLayer)(test =>
 	test.effect(
-		'passes shared for two people fill one flight with both travellers',
+		'passes shared for two people fill one flight with both travellers, each under their own reservation',
 		Effect.fnUntraced(function* () {
 			yield* share([pass('ABC123', 'Matteo Rossi', '14C')])
 			yield* share([pass('XYZ789', 'Anna Bianchi', '14D')])
@@ -108,8 +108,20 @@ it.layer(flightsLayer)(test =>
 					[
 						'1234',
 						[
-							{boardingGroup: Option.none(), name: Option.some('Matteo Rossi'), seat: Option.some('14C')},
-							{boardingGroup: Option.none(), name: Option.some('Anna Bianchi'), seat: Option.some('14D')}
+							{
+								boardingGroup: Option.none(),
+								confirmation: Option.some('ABC123'),
+								name: Option.some('Matteo Rossi'),
+								seat: Option.some('14C'),
+								status: 'confirmed'
+							},
+							{
+								boardingGroup: Option.none(),
+								confirmation: Option.some('XYZ789'),
+								name: Option.some('Anna Bianchi'),
+								seat: Option.some('14D'),
+								status: 'confirmed'
+							}
 						]
 					]
 				]
