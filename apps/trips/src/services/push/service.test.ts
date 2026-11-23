@@ -158,8 +158,8 @@ const running = Effect.fnUntraced(function* (update: ApnsAnswer) {
 type Titled = typeof Titled.Type
 const Titled = Schema.Struct({title: Schema.String})
 
-// Apple accepts everything; the alert title of each activity update, and the token and title of each notification, are kept for the test to read.
-function telling() {
+// Apple accepts everything but a notification to a token in `dead`, which it answers is unregistered; the alert title of each activity update, and the token and title of each notification, are kept for the test to read.
+function telling(dead: readonly string[] = []) {
 	const told = MutableRef.make(Array.empty<string>())
 	const sent = MutableRef.make(Array.empty<readonly [string, string]>())
 	const created = MutableRef.make(0)
@@ -180,7 +180,8 @@ function telling() {
 				Option.map(Schema.decodeUnknownOption(Titled)(body.aps['alert']), alert =>
 					MutableRef.update(sent, Array.append([Redacted.value(target.token), alert.title] as const))
 				)
-				return accepted
+				if (!Array.contains(dead, Redacted.value(target.token))) return accepted
+				return ApnsAnswer.cases.DeadToken.make({...ANSWER, reason: Option.some('Unregistered'), status: 410})
 			}),
 		startActivity: () => Effect.succeed(accepted),
 		startHeld: () => Effect.succeedNone
@@ -333,6 +334,34 @@ it.layer(NodeServices.layer, {excludeTestServices: true})(test => {
 				Effect.flatMap(Push, push => push.register(phone))
 			)
 			assert.deepStrictEqual(MutableRef.get(standIn.sent), [
+				[Redacted.value(phone.token), 'Check in for BA 553'],
+				[Redacted.value(phone.token), 'BA 553 · Fiumicino → Heathrow']
+			])
+		})
+	)
+
+	test.effect(
+		'the check-in reminder and the plan a dead token never took reach the next phone registered',
+		Effect.fnUntraced(function* () {
+			const folder = yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped()
+			const dead = {...STARTER, kind: 'alert' as const, token: Redacted.make(ApnsToken.make(String.repeat(64)('d')))}
+			const phone = {...STARTER, kind: 'alert' as const, phone: PhoneId.make('phone-b')}
+			const standIn = telling([Redacted.value(dead.token)])
+			yield* serve(
+				folder,
+				standIn.layer,
+				bookedAtMidday,
+				Effect.flatMap(Push, push => push.register(dead))
+			)
+			yield* serve(
+				folder,
+				standIn.layer,
+				bookedAtMidday,
+				Effect.flatMap(Push, push => push.register(phone))
+			)
+			// The dead token is forgotten with the first alert it was sent, so the plan goes to no phone in the first run.
+			assert.deepStrictEqual(MutableRef.get(standIn.sent), [
+				[Redacted.value(dead.token), 'Check in for BA 553'],
 				[Redacted.value(phone.token), 'Check in for BA 553'],
 				[Redacted.value(phone.token), 'BA 553 · Fiumicino → Heathrow']
 			])

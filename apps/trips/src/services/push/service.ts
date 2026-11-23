@@ -544,7 +544,7 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 			)
 		})
 
-		// A device whose token died leaves the list with its first failed alert.
+		// A device whose token died leaves the list with its first failed alert, which it never took: `settled` is Apple's last word for the phone, `gone` a token forgotten, `later` an alert to send again.
 		const notify = Effect.fnUntraced(function* (device: Device, alert: Alert, flight: Flight) {
 			const directions = yield* Effect.transposeOption(
 				Option.map(Option.fromUndefinedOr(alert.directions), Schema.encodeEffect(Place))
@@ -571,13 +571,13 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 				})
 			)
 			return yield* ApnsAnswer.match(answer, {
-				Accepted: () => Effect.succeed(true),
-				ChannelGone: () => Effect.succeed(true),
-				DeadToken: () => Effect.as(asPushSaveError(forgetDevice(device)), true),
-				Refused: () => Effect.succeed(true),
-				Retry: () => Effect.succeed(false),
+				Accepted: () => Effect.succeed('settled' as const),
+				ChannelGone: () => Effect.succeed('settled' as const),
+				DeadToken: () => Effect.as(asPushSaveError(forgetDevice(device)), 'gone' as const),
+				Refused: () => Effect.succeed('settled' as const),
+				Retry: () => Effect.succeed('later' as const),
 				// The alert itself can never fit, so it is final for this device, which stays registered.
-				TooLarge: () => Effect.succeed(true)
+				TooLarge: () => Effect.succeed('settled' as const)
 			})
 		})
 
@@ -606,16 +606,19 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 						device =>
 							Effect.catch(
 								Effect.gen(function* () {
-									if (!(yield* notify(device, alert, flight))) return false
-									yield* asPushSaveError(recordDelivery({...row, token: device.token}))
-									return true
+									const outcome = yield* notify(device, alert, flight)
+									if (outcome === 'settled') yield* asPushSaveError(recordDelivery({...row, token: device.token}))
+									return outcome
 								}),
-								cause => Effect.as(Effect.logWarning('An alert was not sent', Cause.fail(cause)), false)
+								cause => Effect.as(Effect.logWarning('An alert was not sent', Cause.fail(cause)), 'later' as const)
 							),
 						{concurrency: 1}
 					)
-					// Only a phone that took it makes it sent, so one registered later in the window still gets it.
-					if (Array.isReadonlyArrayNonEmpty(devices) && Array.every(outcomes, Function.identity)) {
+					// Only a phone still registered that took it makes it sent, so one registered later in the window still gets it, also after the only token died.
+					if (
+						devices.length > Array.countBy(outcomes, outcome => outcome === 'gone') &&
+						!Array.contains(outcomes, 'later')
+					) {
 						yield* asPushSaveError(recordSent([row]))
 					}
 				}),
