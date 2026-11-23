@@ -1,24 +1,19 @@
-import {Array, DateTime, Duration, Effect, Option, Schema, pipe} from 'effect'
+import {Array, DateTime, Effect, Option, Schema, pipe} from 'effect'
 
 import {SqlClient, SqlSchema} from 'effect/sql'
 
+import {serviceOf} from '#services/flights/lib/utils.ts'
 import {LegacyFlight} from '#services/flights/schema.ts'
 
 const PUSH_TABLES = ['activities', 'sent_alerts', 'deliveries', 'requests']
 
-// Rows of one service, matched as a ticket finds its flight, join the first saved.
+// Rows of one service, keyed as a ticket finds its flight, join the first saved.
 function joinedOf(rows: readonly LegacyFlight[]) {
 	const start: {joined: readonly {id: string; into: string}[]; kept: readonly LegacyFlight[]} = {joined: [], kept: []}
 	return Array.reduce(rows, start, (state, row) =>
 		pipe(
 			state.kept,
-			Array.findFirst(
-				kept =>
-					kept.airlineCode === row.airlineCode &&
-					kept.number === row.number &&
-					kept.origin === row.origin &&
-					Math.abs(kept.departs - row.departs) < Duration.toMillis(Duration.hours(20))
-			),
+			Array.findFirst(kept => serviceOf(kept) === serviceOf(row)),
 			Option.match({
 				onNone: () => ({...state, kept: [...state.kept, row]}),
 				onSome: into => ({...state, joined: [...state.joined, {id: row.id, into: into.id}]})
@@ -107,7 +102,12 @@ export const migrations = {
 			Request: Schema.Void,
 			Result: LegacyFlight,
 			execute: () =>
-				sql`SELECT id, airlineCode, number, json_extract("from", '$.code') AS origin, departs FROM flights ORDER BY rowid`
+				sql`
+					SELECT id, airlineCode, number, departs,
+						coalesce(json_extract("from", '$.code'), json_extract("from", '$.name')) AS origin,
+						json_extract("from", '$.timeZone') AS timeZone
+					FROM flights ORDER BY rowid
+				`
 		})()
 		// Push keeps its own tables, made after this on a new database; on an old one they still name the row `bookingId`.
 		const pushed = Array.isReadonlyArrayNonEmpty(

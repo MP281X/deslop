@@ -205,10 +205,11 @@ export const FlightExtraction = Schema.Struct({flights: ExtractedFlights})
 export type LegacyFlight = typeof LegacyFlight.Type
 export const LegacyFlight = Schema.Struct({
 	airlineCode: Schema.String,
-	departs: Schema.Finite,
+	departs: Schema.DateTimeUtcFromMillis,
 	id: Schema.String,
 	number: Schema.String,
-	origin: Schema.NullOr(Schema.String)
+	origin: Schema.String,
+	timeZone: Schema.String
 })
 
 export type Airport = typeof Airport.Type

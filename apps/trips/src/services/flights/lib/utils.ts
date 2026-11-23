@@ -316,14 +316,32 @@ function withTravellers(flight: Flight, travellers: readonly Traveller[]) {
 	return Flight.make({...Struct.pick(flight, Struct.keys(Flight.fields)), travellers})
 }
 
-// The same service: one flight number on one day, keyed by origin since BA15 flies two legs a day.
+// What names one service: a flight number from one airport on one local date there, as the airline prints it, so BA15's two legs a day and BA801 on two evenings stay apart.
+export type Service = {
+	readonly airlineCode: string
+	readonly departs: DateTime.Utc
+	readonly number: string
+	readonly origin: string
+	readonly timeZone: string
+}
+
+// One key per service, read alike when a ticket is saved and when old rows are joined.
+export function serviceOf(service: Service) {
+	return `${service.airlineCode} ${service.number} ${service.origin} ${DateTime.formatIsoDateUtc(localDate(service.departs, service.timeZone))}`
+}
+
+function serviceOfFlight(flight: Flight) {
+	return serviceOf({
+		airlineCode: flight.airlineCode,
+		departs: flight.departs,
+		number: flight.number,
+		origin: Option.getOrElse(flight.from.code, () => flight.from.name),
+		timeZone: flight.from.timeZone
+	})
+}
+
 function sameService(existing: Flight, incoming: Flight) {
-	return (
-		Equal.equals(existing.from.code, incoming.from.code) &&
-		existing.airlineCode === incoming.airlineCode &&
-		existing.number === incoming.number &&
-		pipe(DateTime.distance(existing.departs, incoming.departs), Duration.abs, Duration.isLessThan(Duration.hours(20)))
-	)
+	return serviceOfFlight(existing) === serviceOfFlight(incoming)
 }
 
 // Whether a traveller holds one of the reservations a ticket confirms.

@@ -12,6 +12,7 @@ import {migrations} from './migrations.ts'
 const KEPT = '11111111-0d0a-4a5e-9d8f-5b2a1c3d4e5f'
 const JOINED = '22222222-0d0a-4a5e-9d8f-5b2a1c3d4e5f'
 const OTHER = '33333333-0d0a-4a5e-9d8f-5b2a1c3d4e5f'
+const NEXT_DAY = '44444444-0d0a-4a5e-9d8f-5b2a1c3d4e5f'
 const BUNDLE = 'xyz.mp281x.trips'
 const DEPARTS = Date.parse('2026-11-23T15:30:00Z')
 
@@ -44,7 +45,8 @@ const tickets = Effect.gen(function* () {
 		VALUES
 			(${KEPT}, 'confirmed', 'British Airways', 'BA', '1234', ${place('BGY')}, ${place('STN')}, ${DEPARTS}, ${DEPARTS + 7_200_000}, NULL, 'ONE', '11A'),
 			(${JOINED}, 'confirmed', 'British Airways', 'BA', '1234', ${place('BGY')}, ${place('STN')}, ${DEPARTS + 600_000}, ${DEPARTS + 7_200_000}, ${DEPARTS - 1_800_000}, 'TWO', '11B'),
-			(${OTHER}, 'cancelled', 'British Airways', 'BA', '553', ${place('FCO')}, ${place('LHR')}, ${DEPARTS}, ${DEPARTS + 9_000_000}, NULL, NULL, NULL)
+			(${OTHER}, 'cancelled', 'British Airways', 'BA', '553', ${place('FCO')}, ${place('LHR')}, ${DEPARTS}, ${DEPARTS + 9_000_000}, NULL, NULL, NULL),
+			(${NEXT_DAY}, 'confirmed', 'British Airways', 'BA', '1234', ${place('BGY')}, ${place('STN')}, ${DEPARTS + 68_400_000}, ${DEPARTS + 75_600_000}, NULL, 'ONE', '11A')
 	`
 	yield* sql`CREATE TABLE activities (channel TEXT PRIMARY KEY, bookingId TEXT NOT NULL, leg TEXT NOT NULL, bundle TEXT NOT NULL, startedAt INTEGER NOT NULL, endedAt INTEGER, props TEXT NOT NULL, UNIQUE (bookingId, leg, bundle)) STRICT`
 	yield* sql`CREATE TABLE sent_alerts (bookingId TEXT NOT NULL, category TEXT NOT NULL, value TEXT, sentAt INTEGER NOT NULL) STRICT`
@@ -109,7 +111,15 @@ it.layer(store)(test =>
 							travellers:
 								'[{"confirmation":"ONE","seat":"11A","status":"confirmed"},{"confirmation":"TWO","seat":"11B","status":"confirmed"}]'
 						},
-						{boardingAt: 0, departs: DEPARTS, id: OTHER, number: '553', travellers: '[{"status":"cancelled"}]'}
+						{boardingAt: 0, departs: DEPARTS, id: OTHER, number: '553', travellers: '[{"status":"cancelled"}]'},
+						// The same number nineteen hours later, on the next day, is another service.
+						{
+							boardingAt: 0,
+							departs: DEPARTS + 68_400_000,
+							id: NEXT_DAY,
+							number: '1234',
+							travellers: '[{"confirmation":"ONE","seat":"11A","status":"confirmed"}]'
+						}
 					],
 					[
 						{bookingId: KEPT, channel: 'kept'},

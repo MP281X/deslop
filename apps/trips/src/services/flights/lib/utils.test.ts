@@ -365,6 +365,46 @@ it('updates the traveller a pass names on a flight joined from rows saved before
 	)
 })
 
+it('keeps one flight number on two local dates as two services, however close in hours', () => {
+	// 21:00 on 1 December and 16:00 on 2 December in Rome, nineteen hours apart.
+	const services = upsert(
+		[],
+		[
+			ticket(
+				[traveller('DAY1', Option.some('Ada Byron'), Option.some('3A'))],
+				'801',
+				DateTime.makeUnsafe('2026-12-01T20:00:00Z')
+			)
+		]
+	)
+	assert.deepStrictEqual(
+		seating(
+			upsert(services, [
+				ticket(
+					[traveller('DAY2', Option.some('Ada Byron'), Option.some('3A'))],
+					'801',
+					DateTime.makeUnsafe('2026-12-02T15:00:00Z')
+				)
+			])
+		),
+		[
+			['801', false, [['Ada Byron', '3A', 'DAY1', 'confirmed']]],
+			['801', false, [['Ada Byron', '3A', 'DAY2', 'confirmed']]]
+		]
+	)
+	// The same evening's ticket, printed with another hour, is still that service.
+	assert.lengthOf(
+		upsert(services, [
+			ticket(
+				[traveller('DAY1', Option.some('Ada Byron'), Option.some('3A'))],
+				'801',
+				DateTime.makeUnsafe('2026-12-01T22:30:00Z')
+			)
+		]),
+		1
+	)
+})
+
 it('keeps distinct legs of the same flight number as distinct flights', () => {
 	assert.lengthOf(
 		upsert(
