@@ -40,7 +40,26 @@ function tiledIn(window: {height: number; width: number}) {
 	return window.width >= window.height && window.height > 466
 }
 
-// An app's one root on the iPhone Duo: list and opened item side by side when the window is wide, as when unfolded like a book; a stack when it is narrow, folded or turned upright; the item above the list when half open like a laptop. The same views stay mounted through every fold and turn, so a draft, its focus and a reading place survive. `detail` is the opened item, or what the wide window shows beside the list when nothing is opened; `onHide` opens that when the person hides the list beside it, so it stays on screen and in front through a fold.
+// The item `onHide` opened to keep on screen beside the hidden list, not one the person chose, which closes once the list shows again unless the person chooses it meanwhile.
+function useKept(props: {onClose: () => void; onHide?: () => void; opened: boolean}) {
+	const [kept, setKept] = useState(false)
+	if (!props.opened && kept) setKept(false)
+	return {
+		choose: () => {
+			setKept(false)
+		},
+		hide: () => {
+			if (props.opened) return
+			setKept(true)
+			props.onHide?.()
+		},
+		show: () => {
+			if (kept) props.onClose()
+		}
+	}
+}
+
+// An app's one root on the iPhone Duo: list and opened item side by side when the window is wide, as when unfolded like a book; a stack when it is narrow, folded or turned upright; the item above the list when half open like a laptop. The same views stay mounted through every fold and turn, so a draft, its focus and a reading place survive. `detail` is the opened item, or what the wide window shows beside the list when nothing is opened; `onHide` opens that when the person hides the list beside it, so it stays on screen and in front through a fold, and `onClose` closes it once the list shows again, unless the person chose it meanwhile with `useListShow`.
 export function ListDetail(props: {
 	detail: ReactNode
 	list: ReactNode
@@ -57,6 +76,7 @@ export function ListDetail(props: {
 	const [stacked, setStacked] = useState<NavigationSplitViewVisibility>('all')
 	// The list hides only beside an opened item: closing it, by Back in a stack, a delete or a saved draft, brings the list back, so a wide window never shows a hidden list beside nothing.
 	if (!props.opened && chosen === 'detailOnly') setChosen('all')
+	const kept = useKept(props)
 	const portrait = window.height > window.width
 	const tiled = tiledIn(window)
 	const columns = Boolean.match(tiled, {onFalse: Function.constant(stacked), onTrue: Function.constant(chosen)})
@@ -66,7 +86,14 @@ export function ListDetail(props: {
 			value={{
 				beside: (tiled && columns !== 'detailOnly') || laptop,
 				search: Option.some(useNativeState('')),
-				show: Boolean.match(tiled || laptop, {onFalse: Option.none, onTrue: () => Option.some(() => setChosen('all'))})
+				show: Boolean.match(tiled || laptop, {
+					onFalse: Option.none,
+					onTrue: () =>
+						Option.some(() => {
+							kept.choose()
+							setChosen('all')
+						})
+				})
 			}}
 		>
 			<ArrangementView
@@ -83,10 +110,12 @@ export function ListDetail(props: {
 						columnVisibility={columns}
 						onColumnVisibilityChange={visibility => {
 							// The split view reports a stack's one column while it lays out a new window, before SwiftUI's geometry renders this again, so the report belongs to the window as it is now.
-							const tiledNow = tiledIn(Dimensions.get('window'))
-							if (tiledNow) setChosen(visibility)
-							else setStacked(visibility)
-							if (tiledNow && visibility === 'detailOnly' && !props.opened) props.onHide?.()
+							if (!tiledIn(Dimensions.get('window'))) {
+								setStacked(visibility)
+								return
+							}
+							setChosen(visibility)
+							Boolean.match(visibility === 'detailOnly', {onFalse: kept.show, onTrue: kept.hide})
 						}}
 						preferredCompactColumn={Boolean.match(props.opened, {
 							onFalse: Function.constant('sidebar'),
