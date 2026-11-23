@@ -455,19 +455,17 @@ function within(held: Flight, incoming: Flight) {
 	return pipe(DateTime.distance(held.departs, incoming.departs), Duration.abs, Duration.isLessThan(Duration.days(2)))
 }
 
-// One flight leads into the other: it lands where the other leaves from, before it leaves, as a connection or a return does.
-function chained(first: Flight, second: Flight) {
-	return agree(first.to.code, second.from.code) && DateTime.isLessThanOrEqualTo(first.arrives, second.departs)
-}
-
-// What says a segment replaces another flight within two days, as a schedule change or a missed connection moves a traveller: it leaves from the same airport or lands at the same one. For a traveller one e-ticket identifies, any airport they share will do, unless one flight leads into the other.
+// What says a segment replaces another flight within two days, as a schedule change or a missed connection moves a traveller: it leaves from the same airport or lands at the same one. For a traveller one e-ticket identifies, any airport they share will do while both are in the air at once; otherwise the two are legs of one journey, as a connection or a later rebooked leg before it is, and both stay.
 function replaces(incoming: Flight, held: Flight, identified: boolean) {
 	const crossed = agree(held.from.code, incoming.to.code) || agree(held.to.code, incoming.from.code)
 	return (
 		within(held, incoming) &&
 		(agree(held.from.code, incoming.from.code) ||
 			agree(held.to.code, incoming.to.code) ||
-			(identified && crossed && !chained(held, incoming) && !chained(incoming, held)))
+			(identified &&
+				crossed &&
+				DateTime.isLessThan(held.departs, incoming.arrives) &&
+				DateTime.isLessThan(incoming.departs, held.arrives)))
 	)
 }
 

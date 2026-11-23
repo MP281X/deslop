@@ -560,6 +560,14 @@ it('moves a traveller one e-ticket identifies onto a flight sharing either airpo
 	])
 	// Leaving after he lands is his connection, and the first leg stays.
 	assert.lengthOf(upsert(stansted, [leg([ryan(Option.some('9C'))], '8810', 'STN', 'CDG', 3)]), 2)
+	// A first leg rebooked to the next day leaves the connection it no longer reaches to its own ticket.
+	assert.lengthOf(
+		upsert(
+			[leg([ryan(Option.some('3A'))], '206', 'STN', 'DUB', 3)],
+			[leg([ryan(Option.none())], '777', 'BGY', 'STN', 24, 2)]
+		),
+		2
+	)
 })
 
 it('moves only the traveller a rebooking identifies, and neither of two it could mean', () => {
