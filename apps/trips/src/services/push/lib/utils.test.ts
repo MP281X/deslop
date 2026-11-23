@@ -495,6 +495,27 @@ it('plans the day twelve hours before leaving, moved earlier into 09:00–21:00 
 	)
 })
 
+function planned(flight: Flight, at: string) {
+	return Option.isSome(alertAt(flight, DateTime.makeUnsafe(at), TO_BERGAMO, 'plan'))
+}
+
+it('keeps a missed plan out of the night: at 23:30 it waits for 09:00, and is dropped once leave now is due', () => {
+	// Leaving Bergamo at 14:00 is planned for 21:00 the evening before; leaving at 09:10 for 21:00 too.
+	const afternoon = Flight.make({...RYANAIR, departs: DateTime.makeUnsafe('2026-11-24T16:00:00Z')})
+	const morning = Flight.make({...RYANAIR, departs: DateTime.makeUnsafe('2026-11-24T11:10:00Z')})
+	assert.deepStrictEqual(
+		[
+			planned(afternoon, '2026-11-23T20:00:00Z'),
+			planned(afternoon, '2026-11-23T20:00:59Z'),
+			planned(afternoon, '2026-11-23T22:30:00Z'),
+			planned(afternoon, '2026-11-24T07:59:00Z'),
+			planned(afternoon, '2026-11-24T08:00:00Z'),
+			planned(morning, '2026-11-24T08:00:00Z')
+		],
+		[true, true, false, false, true, false]
+	)
+})
+
 it('says leave now fifteen minutes before the leave time, with directions to the airport', () => {
 	const flight = Flight.make(RYANAIR)
 	assert.deepStrictEqual(

@@ -225,6 +225,13 @@ function planAt(leave: DateTime.Utc, timeZone: string) {
 	return DateTime.toUtc(at)
 }
 
+// Between 09:00 and 21:00 on the airport's clock, through the 21:00 minute itself, where the plan may be moved.
+function awake(now: DateTime.Utc, timeZone: string) {
+	const parts = DateTime.toParts(DateTime.makeZonedUnsafe(now, {timeZone}))
+	const minutes = parts.hour * 60 + parts.minute
+	return minutes >= 9 * 60 && minutes <= 21 * 60
+}
+
 function cityOf(place: Place) {
 	return Option.getOrElse(place.city, () => place.name)
 }
@@ -324,7 +331,10 @@ function departureAlerts(flight: Flight, now: DateTime.Utc, context: AlertContex
 				category: 'plan',
 				title: `${titleOf(flight)} · ${routeOf(flight)}`
 			},
-			() => within(now, planAt(leave, timeZone), leave)
+			// A plan missed in the night, as after a restart, waits for 09:00, and is dropped once leave now is due.
+			() =>
+				within(now, planAt(leave, timeZone), DateTime.subtractDuration(leave, Duration.minutes(15))) &&
+				awake(now, timeZone)
 		),
 		pipe(
 			leaveBy,
