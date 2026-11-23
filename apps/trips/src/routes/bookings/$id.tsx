@@ -97,9 +97,6 @@ function FlightFields(props: {flight: Flight}) {
 			</Section>
 			<Section title={`Arrival · ${props.flight.to.name}`}>
 				<Field label="Arrives" value={Option.some(arrives(props.flight))} />
-				<Field label="Terminal" value={Option.flatMap(props.flight.live, report => report.arrivalTerminal)} />
-				<Field label="Gate" value={Option.flatMap(props.flight.live, report => report.arrivalGate)} />
-				<Field label="Baggage belt" tone="good" value={Option.flatMap(props.flight.live, report => report.belt)} />
 			</Section>
 			<Section title="Booking">
 				<Field label="Airline" value={Option.some(props.flight.airline)} />

@@ -64,9 +64,7 @@ function flightStatus(flight: Flight, now: DateTime.Utc) {
 			if (isStale(flight, now)) {
 				return problemLine(`Updated ${clockAt(live.checkedAt, flight.from.timeZone)}`, 'warn', gateOf(live))
 			}
-			if (live.state === 'arrived' || live.state === 'landed') {
-				return statusLine('good', labelled('Belt', live.belt))
-			}
+			if (live.state === 'arrived' || live.state === 'landed') return statusLine('good', Option.none())
 			if (live.state === 'airborne' || live.state === 'departed') return statusLine('info', Option.none())
 			if (delay >= 15) return problemLine(`+${delay} min`, 'warn', gateOf(live))
 			return statusLine('good', gateOf(live))

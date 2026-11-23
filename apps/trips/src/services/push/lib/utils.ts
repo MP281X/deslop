@@ -32,7 +32,7 @@ export function holds(activity: Activity, window: Span) {
 	})
 }
 
-// A gate or belt is a value each phone must end on, so it is reconciled per device, never skipped for a booking-wide record; the other categories are once per booking.
+// A gate is a value each phone must end on, so it is reconciled per device, never skipped for a booking-wide record; the other categories are once per booking.
 export function perDevice(alert: Alert) {
 	return alert.value !== undefined && alert.category !== 'delay'
 }
@@ -225,19 +225,6 @@ function flightAlerts(flight: Flight, now: DateTime.Utc, stale: boolean) {
 						]),
 						category: 'boarding',
 						title: `${title} boards at ${clockAt(at, flight.from.timeZone)}`
-					}) satisfies Alert
-			)
-		),
-		pipe(
-			live,
-			Option.flatMap(report => report.belt),
-			Option.map(
-				belt =>
-					({
-						body: flight.to.name,
-						category: 'belt',
-						title: `${title} bags on belt ${belt}`,
-						value: belt
 					}) satisfies Alert
 			)
 		)

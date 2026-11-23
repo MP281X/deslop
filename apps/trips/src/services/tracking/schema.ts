@@ -12,17 +12,14 @@ export const FaFlight = Schema.Struct({
 	actual_on: Schema.OptionFromOptionalNullOr(Schema.DateTimeUtcFromString),
 	actual_out: Schema.OptionFromOptionalNullOr(Schema.DateTimeUtcFromString),
 	aircraft_type: Schema.OptionFromOptionalNullOr(Schema.String),
-	baggage_claim: Schema.OptionFromOptionalNullOr(Schema.String),
 	cancelled: Schema.Boolean,
 	diverted: Schema.Boolean,
 	estimated_in: Schema.OptionFromOptionalNullOr(Schema.DateTimeUtcFromString),
 	estimated_out: Schema.OptionFromOptionalNullOr(Schema.DateTimeUtcFromString),
 	fa_flight_id: ProviderFlightId,
-	gate_destination: Schema.OptionFromOptionalNullOr(Schema.String),
 	gate_origin: Schema.OptionFromOptionalNullOr(Schema.String),
 	origin: Schema.OptionFromOptionalNullOr(Schema.Struct({code_iata: Schema.OptionFromOptionalNullOr(Schema.String)})),
 	scheduled_out: Schema.OptionFromOptionalNullOr(Schema.DateTimeUtcFromString),
-	terminal_destination: Schema.OptionFromOptionalNullOr(Schema.String),
 	terminal_origin: Schema.OptionFromOptionalNullOr(Schema.String)
 })
 

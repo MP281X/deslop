@@ -15,7 +15,7 @@ import {
 } from 'effect'
 
 import {ActivityProps, Booking, Flight, Stay} from '#services/bookings/schema.ts'
-import type {BookingList, Chip, FlightPhase, FlightTracking, Leg, LocalTime, Tone} from '#services/bookings/schema.ts'
+import type {BookingList, Chip, FlightPhase, FlightTracking, Leg, LocalTime} from '#services/bookings/schema.ts'
 
 const OFFSET = /(?:Z|[+-]\d{2}:?\d{2})$/u
 
@@ -369,15 +369,7 @@ function flightHeadline(flight: Flight, phase: FlightPhase) {
 	}
 	if (phase === 'boarding') return 'Boarding'
 	if (phase === 'airborne') return 'Lands in'
-	if (phase === 'landed') {
-		return Option.getOrElse(
-			labelled(
-				'Bags on belt',
-				Option.flatMap(flight.live, live => live.belt)
-			),
-			() => `Landed in ${Option.getOrElse(flight.to.city, () => flight.to.name)}`
-		)
-	}
+	if (phase === 'landed') return `Landed in ${Option.getOrElse(flight.to.city, () => flight.to.name)}`
 	if (phase === 'diverted') return 'Diverted'
 	return 'Cancelled'
 }
@@ -394,12 +386,6 @@ function flightDetail(flight: Flight, bookings: BookingList, phase: FlightPhase,
 		return pipe(
 			stayAfter(bookings, flight),
 			Option.map(stay => `Next: ${stay.name}`),
-			Option.orElse(() =>
-				labelled(
-					'Gate',
-					Option.flatMap(flight.live, live => live.arrivalGate)
-				)
-			),
 			Option.getOrElse(Function.constant(''))
 		)
 	}
@@ -413,20 +399,8 @@ function flightDetail(flight: Flight, bookings: BookingList, phase: FlightPhase,
 	])
 }
 
-function chipOf(text: string, tone: Tone) {
-	return {text, tone} satisfies Chip
-}
-
 function flightChip(flight: Flight, phase: FlightPhase, stale: boolean) {
-	if (phase === 'landed') {
-		return Option.map(
-			labelled(
-				'Belt',
-				Option.flatMap(flight.live, live => live.belt)
-			),
-			text => chipOf(text, 'plain')
-		)
-	}
+	if (phase === 'landed') return Option.none<Chip>()
 	return pipe(
 		flight.live,
 		Option.flatMap(live => live.departureGate),
@@ -437,8 +411,12 @@ function flightChip(flight: Flight, phase: FlightPhase, stale: boolean) {
 				Option.map(terminal => `T${terminal}`)
 			)
 		),
-		Option.map(text =>
-			chipOf(text, Boolean.match(stale, {onFalse: Function.constant('warn'), onTrue: Function.constant('plain')}))
+		Option.map(
+			text =>
+				({
+					text,
+					tone: Boolean.match(stale, {onFalse: Function.constant('warn'), onTrue: Function.constant('plain')})
+				}) satisfies Chip
 		)
 	)
 }

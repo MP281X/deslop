@@ -81,9 +81,6 @@ export function flightTracking(answer: FaFlight, checkedAt: DateTime.Utc, last: 
 		aircraft: text(answer.aircraft_type),
 		arrivalActual: answer.actual_in,
 		arrivalEstimated: answer.estimated_in,
-		arrivalGate: text(answer.gate_destination),
-		arrivalTerminal: text(answer.terminal_destination),
-		belt: text(answer.baggage_claim),
 		checkedAt,
 		departureActual: answer.actual_out,
 		departureEstimated: answer.estimated_out,
@@ -113,7 +110,13 @@ function flightInterval(flight: Flight, now: DateTime.Utc) {
 	const departure = departureOf(flight)
 	const arrival = arrivalOf(flight)
 	const state = Option.map(flight.live, live => live.state)
-	if (flight.status === 'cancelled' || Option.contains(state, 'cancelled') || Option.contains(state, 'diverted')) {
+	// A flight at its gate has nothing left to report.
+	if (
+		flight.status === 'cancelled' ||
+		Option.contains(state, 'cancelled') ||
+		Option.contains(state, 'diverted') ||
+		Option.contains(state, 'arrived')
+	) {
 		return Option.none<Duration.Duration>()
 	}
 	// FlightAware answers at most two days ahead.
@@ -122,14 +125,6 @@ function flightInterval(flight: Flight, now: DateTime.Utc) {
 		DateTime.isGreaterThan(now, DateTime.addDuration(arrival, Duration.hours(2)))
 	) {
 		return Option.none<Duration.Duration>()
-	}
-	if (Option.contains(state, 'arrived')) {
-		return Option.liftPredicate(
-			Duration.minutes(5),
-			() =>
-				!Option.exists(flight.live, live => Option.isSome(live.belt)) &&
-				DateTime.isLessThan(now, DateTime.addDuration(arrival, Duration.minutes(45)))
-		)
 	}
 	if (Option.contains(state, 'landed')) return Option.some(Duration.minutes(5))
 	if (Option.contains(state, 'departed') || Option.contains(state, 'airborne')) {

@@ -747,6 +747,12 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 						ON CONFLICT (channel) DO NOTHING
 					`
 					yield* sql`DELETE FROM activities WHERE json_extract(props, '$.kind') = 'train'`
+				}),
+				// Baggage belts left, and a belt's alert records name a category that no longer decodes.
+				'0008_no_belts': Effect.gen(function* () {
+					const sql = yield* SqlClient.SqlClient
+					yield* sql`DELETE FROM sent_alerts WHERE category = 'belt'`
+					yield* sql`DELETE FROM deliveries WHERE category = 'belt'`
 				})
 			}),
 			table: 'push_migrations'
