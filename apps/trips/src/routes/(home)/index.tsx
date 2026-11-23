@@ -25,7 +25,7 @@ import {AsyncResult, Atom} from 'effect/reactivity'
 import {Suspense} from 'react'
 
 import {ItemGroupSkeleton} from '@deslop/components-mobile/blocks/item-group-skeleton'
-import {useListBeside} from '@deslop/components-mobile/blocks/list-detail'
+import {useListBeside, useListTiled} from '@deslop/components-mobile/blocks/list-detail'
 import {ListToolbar} from '@deslop/components-mobile/blocks/list-toolbar'
 import {FailureContent} from '@deslop/components-mobile/blocks/loaded'
 import {Problem} from '@deslop/components-mobile/blocks/problem'
@@ -37,7 +37,7 @@ import {ItemGroup} from '@deslop/components-mobile/ui/item'
 import {blockingFailure} from '@deslop/runtime/client/live-stream'
 import {problemSinceAtom} from '@deslop/runtime/client/problem'
 
-import {changeWords, datesOf, departureTimes, nextHero, pastOf, upcomingOf} from '#lib/day.ts'
+import {boardChangeOf, changeWords, datesOf, departureTimes, nextHero, pastOf, upcomingOf} from '#lib/day.ts'
 import {flightsAtom, clipboard, nowAtom, removal} from '#lib/flights.ts'
 import {HeroView, TimeRow} from '#lib/rows.tsx'
 import type {RowProblem} from '#lib/rows.tsx'
@@ -178,37 +178,45 @@ function PastFlights(props: {
 // Every copy of the list shows Past the same way, so the copy below the board in laptop posture keeps it open when the phone lies flat.
 const pastOpenAtom = Atom.make(false)
 
-// The day in order under its date: the next step large first, each flight a row with its time, and the change between two flights a row of its own; later days, then the flights already flown.
-function Days(props: {flights: readonly Flight[]; onOpen: (id: FlightId) => void}) {
+// The day in order under its date: the next step large first, each flight a row with its time, and the change between two flights a row of its own; later days, then the flights already flown. Below a laptop's board the change it shows has no row.
+function Days(props: {flights: readonly Flight[]; onOpen: (id: FlightId) => void; opened: boolean}) {
 	const [pastOpen, setPastOpen] = useAtom(pastOpenAtom)
 	const now = useAtomValue(nowAtom)
 	const travel = pipe(useAtomValue(travelAtom), AsyncResult.value, Option.getOrElse(Array.empty<TravelTime>))
 	const upcoming = upcomingOf(props.flights, now)
 	// Beside the flight or below its board the next step is already on screen.
 	const beside = useListBeside()
+	const tiled = useListTiled()
 	return (
 		<>
-			{Array.map(datesOf(upcoming), (date, index) => (
-				<Section key={date.date} title={date.date}>
-					{index === 0 &&
-						!beside &&
-						Option.match(nextHero(upcoming, now, travel), {
-							onNone: Function.constNull,
-							onSome: hero => (
-								<VStack modifiers={[listRowSeparator('hidden'), padding({bottom: space[2]})]}>
-									<HeroView hero={hero} size="read" />
-								</VStack>
-							)
-						})}
-					{Array.flatMap(date.rows, row => [
-						...Option.match(row.feeder, {
-							onNone: () => [],
-							onSome: feeder => [<ChangeRow key={`${row.flight.id} change`} feeder={feeder} flight={row.flight} />]
-						}),
-						<FlightRow key={row.flight.id} flight={row.flight} now={now} onOpen={props.onOpen} />
-					])}
-				</Section>
-			))}
+			{Array.map(
+				datesOf(
+					props.flights,
+					now,
+					Option.filter(boardChangeOf(props.flights, now), () => beside && !tiled && !props.opened)
+				),
+				(date, index) => (
+					<Section key={date.date} title={date.date}>
+						{index === 0 &&
+							!beside &&
+							Option.match(nextHero(props.flights, now, travel), {
+								onNone: Function.constNull,
+								onSome: hero => (
+									<VStack modifiers={[listRowSeparator('hidden'), padding({bottom: space[2]})]}>
+										<HeroView hero={hero} size="read" />
+									</VStack>
+								)
+							})}
+						{Array.flatMap(date.rows, row => [
+							...Option.match(row.feeder, {
+								onNone: () => [],
+								onSome: feeder => [<ChangeRow key={`${row.flight.id} change`} feeder={feeder} flight={row.flight} />]
+							}),
+							<FlightRow key={row.flight.id} flight={row.flight} now={now} onOpen={props.onOpen} />
+						])}
+					</Section>
+				)
+			)}
 			{Array.isReadonlyArrayEmpty(upcoming) && (
 				<Section>
 					<Empty>
@@ -229,7 +237,7 @@ function Days(props: {flights: readonly Flight[]; onOpen: (id: FlightId) => void
 	)
 }
 
-function Flights(props: {onOpen: (id: FlightId) => void}) {
+function Flights(props: {onOpen: (id: FlightId) => void; opened: boolean}) {
 	const loaded = useAtomSuspense(flightsAtom, {includeFailure: true})
 	const refresh = useAtomRefresh(flightsAtom)
 	const paste = useAtomSet(clipboard.atom.send)
@@ -262,7 +270,7 @@ function Flights(props: {onOpen: (id: FlightId) => void}) {
 			)}
 			{Array.isReadonlyArrayNonEmpty(flights) && (
 				<ItemGroup modifiers={[tint(primary)]}>
-					<Days flights={flights} onOpen={props.onOpen} />
+					<Days flights={flights} opened={props.opened} onOpen={props.onOpen} />
 				</ItemGroup>
 			)}
 		</VStack>
@@ -270,7 +278,7 @@ function Flights(props: {onOpen: (id: FlightId) => void}) {
 }
 
 // Native navigation and clipboard/account controls do not wait for the flights stream; the bar marks flights that stopped updating. No title: the day is the page.
-export function HomeRoute(props: {onOpen: (id: FlightId) => void}) {
+export function HomeRoute(props: {onOpen: (id: FlightId) => void; opened: boolean}) {
 	const loaded = useAtomValue(flightsAtom)
 	useAtomMount(problemSinceAtom(flightsAtom))
 	return (
@@ -283,7 +291,7 @@ export function HomeRoute(props: {onOpen: (id: FlightId) => void}) {
 			)}
 		>
 			<Suspense fallback={<ItemGroupSkeleton rows={10} descriptionLines={1} />}>
-				<Flights onOpen={props.onOpen} />
+				<Flights opened={props.opened} onOpen={props.onOpen} />
 			</Suspense>
 		</ListToolbar>
 	)

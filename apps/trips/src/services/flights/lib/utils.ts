@@ -700,7 +700,7 @@ function arrived(flight: Flight, now: DateTime.Utc) {
 export type Journey = Array.NonEmptyReadonlyArray<Flight>
 
 // He changes from `feeder` to `flight` when it lands where the flight leaves, booked at most twelve hours before it, and still flies: a cancelled feeder leaves him to reach the flight from home. Alerts, the Live Activity's day and Home all read this one rule.
-export function connects(feeder: Flight, flight: Flight) {
+function connects(feeder: Flight, flight: Flight) {
 	return (
 		feeder.id !== flight.id &&
 		!cancelledOf(feeder) &&

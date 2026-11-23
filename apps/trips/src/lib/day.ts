@@ -7,8 +7,8 @@ import {
 	changeOf,
 	cityOf,
 	clockAt,
-	connects,
 	departureOf,
+	feederOf,
 	HOUR,
 	isStale,
 	journeyOf,
@@ -68,18 +68,17 @@ function dateOf(flight: Flight) {
 // The change between two flights of a day.
 export type Change = {feeder: Flight; next: Flight}
 
-// The flights of each date in order; a flight that leaves from where the one before it lands follows it with the change between them.
-export function datesOf(upcoming: FlightList) {
+// The coming flights of each date in order; a connection follows the change to it, found among every flight saved so it keeps its row across a date and after the flight before it left the list, except the change `shown` already stands above the list.
+export function datesOf(flights: FlightList, now: DateTime.Utc, shown: Option.Option<Change>) {
 	return pipe(
-		upcoming,
+		upcomingOf(flights, now),
 		Array.groupBy(dateOf),
-		Record.collect((date, flights) => ({
+		Record.collect((date, rows) => ({
 			date,
-			rows: Array.map(flights, (flight, index) => ({
-				feeder: pipe(
-					flights,
-					Array.get(index - 1),
-					Option.filter(before => connects(before, flight))
+			rows: Array.map(rows, flight => ({
+				feeder: Option.filter(
+					feederOf(flight, flights),
+					feeder => !Option.exists(shown, change => change.feeder.id === feeder.id && change.next.id === flight.id)
 				),
 				flight
 			}))
@@ -183,13 +182,9 @@ export function changeHero(feeder: Flight, flight: Flight) {
 	} satisfies Hero
 }
 
-// The next step of the day the first coming flight belongs to.
-export function nextHero(upcoming: FlightList, now: DateTime.Utc, travel: readonly TravelTime[]) {
-	return pipe(
-		Array.head(upcoming),
-		Option.flatMap(flight => journeyOf(upcoming, flight)),
-		Option.map(journey => heroOf(journey, stepOf(journey, now, travel), now, travel))
-	)
+// The next step of the day the first coming flight belongs to, the whole day counted, so a connection never asks to leave for its airport.
+export function nextHero(flights: FlightList, now: DateTime.Utc, travel: readonly TravelTime[]) {
+	return Option.map(nextJourney(flights, now), journey => heroOf(journey, stepOf(journey, now, travel), now, travel))
 }
 
 // A time worth striking through: it moved five minutes or more from the one booked.

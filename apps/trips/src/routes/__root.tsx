@@ -73,7 +73,7 @@ function AppRoutes() {
 					opened={Option.isSome(opened)}
 					onClose={() => setOpened(Option.none())}
 					modifiers={[tint(colors.foreground)]}
-					list={<HomeRoute onOpen={open} />}
+					list={<HomeRoute opened={Option.isSome(opened)} onOpen={open} />}
 					detail={
 						<Suspense fallback={<ItemGroupSkeleton rows={10} />}>
 							<Destination target={opened} onClose={() => setOpened(Option.none())} onOpen={open} />
