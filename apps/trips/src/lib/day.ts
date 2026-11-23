@@ -12,11 +12,12 @@ import {
 	HOUR,
 	isStale,
 	journeyOf,
+	legIndexOf,
 	spanLabel,
 	stepOf
 } from '#services/flights/lib/utils.ts'
 import type {Journey, Step} from '#services/flights/lib/utils.ts'
-import type {Flight, FlightList, TravelTime} from '#services/flights/schema.ts'
+import type {Flight, FlightId, FlightList, TravelTime} from '#services/flights/schema.ts'
 import {activityProps} from '#services/push/lib/utils.ts'
 
 // "in 25 min", "in 1h 15m", or "in 3 days" from a day out.
@@ -64,6 +65,9 @@ function dateOf(flight: Flight) {
 	})
 }
 
+// The change between two flights of a day.
+export type Change = {feeder: Flight; next: Flight}
+
 // The flights of each date in order; a flight that leaves from where the one before it lands follows it with the change between them.
 export function datesOf(upcoming: FlightList) {
 	return pipe(
@@ -80,6 +84,43 @@ export function datesOf(upcoming: FlightList) {
 				flight
 			}))
 		}))
+	)
+}
+
+// The day of the next flight not yet an hour past its landing, from every flight saved, so a connection still has the flight before it.
+function nextJourney(flights: FlightList, now: DateTime.Utc) {
+	return pipe(
+		upcomingOf(flights, now),
+		Array.head,
+		Option.flatMap(flight => journeyOf(flights, flight))
+	)
+}
+
+// The flight under way or next, the one the board shows: the flight its day is at, so a landing hands the board to the connection.
+export function boardOf(flights: FlightList, now: DateTime.Utc) {
+	return Option.flatMap(nextJourney(flights, now), journey => Array.get(journey, legIndexOf(journey, now)))
+}
+
+// The change from the board's flight to the next of its day, which a laptop's board shows above the fold.
+export function boardChangeOf(flights: FlightList, now: DateTime.Utc) {
+	return Option.flatMap(nextJourney(flights, now), journey => {
+		const index = legIndexOf(journey, now)
+		return Option.map(
+			Option.all({feeder: Array.get(journey, index), next: Array.get(journey, index + 1)}),
+			found => found satisfies Change
+		)
+	})
+}
+
+// The flight a link opens: that one, or for the Live Activity's day link the flight the day is at.
+export function openedFlight(flights: FlightList, target: {day: boolean; id: FlightId}, now: DateTime.Utc) {
+	if (!target.day) return target.id
+	return pipe(
+		flights,
+		Array.findFirst(flight => flight.id === target.id),
+		Option.flatMap(flight => journeyOf(flights, flight)),
+		Option.flatMap(journey => Array.get(journey, legIndexOf(journey, now))),
+		Option.match({onNone: () => target.id, onSome: flight => flight.id})
 	)
 }
 

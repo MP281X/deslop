@@ -341,7 +341,8 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 			const body = {
 				aps: {
 					alert: startAlert(showing.flight),
-					attributes: {url: `${SCHEMES[target.bundle]}://flight/${Array.headNonEmpty(showing.journey).id}`},
+					// The day's link: the phone opens the flight the day is at when it is tapped, since an activity's attributes never change.
+					attributes: {url: `${SCHEMES[target.bundle]}://day/${Array.headNonEmpty(showing.journey).id}`},
 					'attributes-type': 'LiveActivityAttributes',
 					'content-state': yield* contentState(showing.props),
 					event: 'start',

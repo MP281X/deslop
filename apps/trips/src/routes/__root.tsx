@@ -17,8 +17,10 @@ import {PasteSheet} from '@deslop/components-mobile/blocks/paste-sheet'
 import {SessionGate} from '@deslop/components-mobile/blocks/session-gate'
 import {colors} from '@deslop/components-mobile/theme'
 
+import {openedFlight} from '#lib/day.ts'
 import {openedAtom} from '#lib/deep-links.ts'
-import {boardAtom, flightsAtom, clipboard} from '#lib/flights.ts'
+import type {Target} from '#lib/deep-links.ts'
+import {boardAtom, flightsAtom, clipboard, nowAtom} from '#lib/flights.ts'
 import {pushAtom} from '#lib/notifications.ts'
 import {session} from '#lib/session.ts'
 import {travelPromptAtom} from '#lib/travel.ts'
@@ -26,20 +28,25 @@ import {HomeRoute} from '#routes/(home)/index.tsx'
 import {FlightRoute} from '#routes/flights/$id.tsx'
 import type {FlightId} from '#services/flights/schema.ts'
 
-function Destination(props: {id: Option.Option<FlightId>; onClose: () => void; onOpen: (id: FlightId) => void}) {
+// A day link resolves here, once the flights are loaded, and keeps following the day while it stays open.
+function Destination(props: {onClose: () => void; onOpen: (id: FlightId) => void; target: Option.Option<Target>}) {
 	const live = useAtomValue(flightsAtom)
+	const now = useAtomValue(nowAtom)
 	return (
 		<Loaded atom={flightsAtom}>
-			{flights => (
-				<FlightRoute
-					key={Option.getOrElse(props.id, Function.constant('board'))}
-					flights={flights}
-					id={props.id}
-					offline={AsyncResult.isFailure(live)}
-					onClose={props.onClose}
-					onOpen={props.onOpen}
-				/>
-			)}
+			{flights => {
+				const id = Option.map(props.target, target => openedFlight(flights, target, now))
+				return (
+					<FlightRoute
+						key={Option.getOrElse(id, Function.constant('board'))}
+						flights={flights}
+						id={id}
+						offline={AsyncResult.isFailure(live)}
+						onClose={props.onClose}
+						onOpen={props.onOpen}
+					/>
+				)
+			}}
 		</Loaded>
 	)
 }
@@ -50,7 +57,12 @@ function AppRoutes() {
 	useAtomMount(travelPromptAtom)
 	const launched = useAtomValue(openedAtom)
 	const [opened, setOpened] = useState(() => AsyncResult.value(launched))
-	useAtomSubscribe(openedAtom, tapped => Option.map(AsyncResult.value(tapped), id => setOpened(Option.some(id))))
+	useAtomSubscribe(openedAtom, tapped =>
+		Option.map(AsyncResult.value(tapped), target => setOpened(Option.some(target)))
+	)
+	function open(id: FlightId) {
+		setOpened(Option.some({day: false, id} satisfies Target))
+	}
 	return (
 		<Host style={{flex: 1}}>
 			{/* Over the whole window, so the list's copy below an item in laptop posture asks once. */}
@@ -61,14 +73,10 @@ function AppRoutes() {
 					opened={Option.isSome(opened)}
 					onClose={() => setOpened(Option.none())}
 					modifiers={[tint(colors.foreground)]}
-					list={<HomeRoute onOpen={id => setOpened(Option.some(id))} />}
+					list={<HomeRoute onOpen={open} />}
 					detail={
 						<Suspense fallback={<ItemGroupSkeleton rows={10} />}>
-							<Destination
-								id={opened}
-								onClose={() => setOpened(Option.none())}
-								onOpen={id => setOpened(Option.some(id))}
-							/>
+							<Destination target={opened} onClose={() => setOpened(Option.none())} onOpen={open} />
 						</Suspense>
 					}
 				/>

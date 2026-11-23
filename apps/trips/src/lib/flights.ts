@@ -15,8 +15,9 @@ import {activationsAtom} from '@deslop/runtime/mobile/activations'
 import {provideRuntimeOnce} from '@deslop/runtime/mobile/session'
 import {listReducer} from '@deslop/runtime/shared/list'
 
+import {boardOf} from '#lib/day.ts'
 import {RpcClient, session} from '#lib/session.ts'
-import {arrivalOf, byDeparture, HOUR} from '#services/flights/lib/utils.ts'
+import {byDeparture} from '#services/flights/lib/utils.ts'
 import {FlightId, TicketSource, FlightsError, Flight, IMAGE_BYTES} from '#services/flights/schema.ts'
 
 const flightsFile = new File(Paths.document, 'flights.json')
@@ -137,16 +138,11 @@ export const nowAtom = Atom.make(get => {
 	return DateTime.nowUnsafe()
 })
 
-// The flight under way or next, the one the board shows: the same rule as the list's Now and Upcoming.
-export const boardAtom = Atom.make(get => {
-	const now = get(nowAtom)
-	return pipe(
+// The flight under way or next, the one the board shows.
+export const boardAtom = Atom.make(get =>
+	pipe(
 		get(flightsAtom),
 		AsyncResult.value,
-		Option.flatMap(
-			Array.findFirst(flight =>
-				pipe(arrivalOf(flight), DateTime.addDuration(HOUR), DateTime.isGreaterThanOrEqualTo(now))
-			)
-		)
+		Option.flatMap(flights => boardOf(flights, get(nowAtom)))
 	)
-})
+)

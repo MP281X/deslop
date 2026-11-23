@@ -41,7 +41,7 @@ import {Button} from '@deslop/components-mobile/ui/button'
 import {Empty, EmptyMedia} from '@deslop/components-mobile/ui/empty'
 import {weekdayOf} from '@deslop/runtime/shared/format'
 
-import {changeHero, changeWords, departureTimes, heroOf, movedFrom} from '#lib/day.ts'
+import {boardChangeOf, changeHero, changeWords, departureTimes, heroOf, movedFrom} from '#lib/day.ts'
 import type {Hero} from '#lib/day.ts'
 import {boardAtom, flightsAtom, nowAtom, refreshAtom, removal} from '#lib/flights.ts'
 import {mapsAtom, uberAtom} from '#lib/rides.ts'
@@ -421,23 +421,11 @@ function ChangeBoard(props: {feeder: Flight; next: Flight}) {
 function Board(props: {onOpen: (id: FlightId) => void}) {
 	const tiled = useListTiled()
 	const now = useAtomValue(nowAtom)
-	const travel = pipe(useAtomValue(travelAtom), AsyncResult.value, Option.getOrElse(Array.empty<TravelTime>))
 	const flights = pipe(useAtomValue(flightsAtom), AsyncResult.value, Option.getOrElse(Array.empty<Flight>))
 	return Option.match(useAtomValue(boardAtom), {
 		onNone: Function.constUndefined,
 		onSome: flight => {
-			const change = pipe(
-				journeyOf(flights, flight),
-				Option.filter(() => !tiled),
-				Option.flatMap(journey => {
-					const current = stepOf(journey, now, travel)
-					return pipe(
-						journey,
-						Array.get(current.index + 1),
-						Option.map(next => ({feeder: current.flight, next}))
-					)
-				})
-			)
+			const change = Option.filter(boardChangeOf(flights, now), () => !tiled)
 			return (
 				<Toolbar
 					modifiers={[
