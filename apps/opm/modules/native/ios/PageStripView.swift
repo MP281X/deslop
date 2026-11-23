@@ -514,8 +514,9 @@ final class StripController: NSObject, UIScrollViewDelegate {
     dragged = true
   }
 
+  // A spread turns only once it settles: a turn dragged past halfway and let go back leaves the reader on the page it was.
   func scrollViewDidScroll(_ scrollView: UIScrollView) {
-    track(moved: scrollView.isDragging || scrollView.isDecelerating)
+    track(moved: !spread && (scrollView.isDragging || scrollView.isDecelerating))
     if scrollView.isDragging { onScroll() }
   }
 
