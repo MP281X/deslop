@@ -2,8 +2,20 @@ import {useAtomMount, useAtomRefresh, useAtomSet, useAtomSuspense, useAtomValue}
 
 import {Array, Boolean, DateTime, Duration, Function, Option, Schema, String, pipe} from 'effect'
 
-import {HStack, Image, Overlay, Section, Text, VStack} from '@expo/ui/swift-ui'
-import {accessibilityLabel, fixedSize, font, foregroundStyle, frame, tint} from '@expo/ui/swift-ui/modifiers'
+import {Button as NativeButton, HStack, Image, Overlay, Section, Text, VStack} from '@expo/ui/swift-ui'
+import {
+	accessibilityLabel,
+	accessibilityValue,
+	buttonStyle,
+	contentShape,
+	fixedSize,
+	font,
+	foregroundStyle,
+	frame,
+	imageScale,
+	shapes,
+	tint
+} from '@expo/ui/swift-ui/modifiers'
 import {useMachineResult} from '@typeonce/effect-machine-react'
 import {AtomMachine} from '@typeonce/effect-machine/reactivity'
 import {AsyncResult} from 'effect/reactivity'
@@ -155,17 +167,53 @@ function PastBookings(props: {
 	onOpen: (id: Booking['id']) => void
 }) {
 	if (Array.isReadonlyArrayEmpty(props.bookings)) return undefined
+	// A plain list draws no toggle on a collapsible section, only the sidebar style does, so the header is the toggle.
 	return (
-		<Section title="Past" isExpanded={props.expanded} onIsExpandedChange={props.onExpandedChange}>
-			{Array.map(props.bookings, booking => (
-				<BookingRow
-					key={booking.id}
-					booking={booking}
-					countdown={Countdown.cases.SameDay.make({})}
-					now={props.now}
-					onOpen={props.onOpen}
-				/>
-			))}
+		<Section
+			header={
+				<NativeButton
+					onPress={() => props.onExpandedChange(!props.expanded)}
+					modifiers={[
+						buttonStyle('plain'),
+						accessibilityValue(
+							Boolean.match(props.expanded, {
+								onFalse: Function.constant('Collapsed'),
+								onTrue: Function.constant('Expanded')
+							})
+						)
+					]}
+				>
+					{/* The whole header row answers the tap, not only its words. */}
+					<HStack
+						spacing={space[1]}
+						modifiers={[
+							foregroundStyle(colors.mutedForeground),
+							frame({alignment: 'leading', maxWidth: Infinity}),
+							contentShape(shapes.rectangle())
+						]}
+					>
+						<Text>Past</Text>
+						<Image
+							systemName={Boolean.match(props.expanded, {
+								onFalse: Function.constant('chevron.right'),
+								onTrue: Function.constant('chevron.down')
+							})}
+							modifiers={[imageScale('small')]}
+						/>
+					</HStack>
+				</NativeButton>
+			}
+		>
+			{props.expanded &&
+				Array.map(props.bookings, booking => (
+					<BookingRow
+						key={booking.id}
+						booking={booking}
+						countdown={Countdown.cases.SameDay.make({})}
+						now={props.now}
+						onOpen={props.onOpen}
+					/>
+				))}
 		</Section>
 	)
 }
