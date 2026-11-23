@@ -1,4 +1,4 @@
-import {useAtomMount, useAtomRefresh, useAtomSet, useAtomValue} from '@effect/atom-react'
+import {useAtom, useAtomMount, useAtomRefresh, useAtomSet, useAtomValue} from '@effect/atom-react'
 
 import {Array, Boolean, Function, Number, Option, Order, String, pipe} from 'effect'
 
@@ -28,8 +28,8 @@ import {
 	tag,
 	tint
 } from '@expo/ui/swift-ui/modifiers'
-import {AsyncResult} from 'effect/reactivity'
-import {Suspense, useState} from 'react'
+import {AsyncResult, Atom} from 'effect/reactivity'
+import {Suspense} from 'react'
 
 import {ItemGroupSkeleton} from '@deslop/components-mobile/blocks/item-group-skeleton'
 import {ListToolbar} from '@deslop/components-mobile/blocks/list-toolbar'
@@ -193,6 +193,9 @@ function Chapters(props: {onOpen: (number: ChapterNumber, page?: number) => void
 	)
 }
 
+// The query every copy of the list filters by, as the search field they share shows it, so the copy below the reader in laptop posture filters as the one beside it does.
+const searchedAtom = Atom.make('')
+
 export function ChaptersRoute(props: {
 	onOpen: (number: ChapterNumber, page?: number) => void
 	onSeries: (series: Series) => void
@@ -201,7 +204,7 @@ export function ChaptersRoute(props: {
 	const loaded = useAtomValue(chaptersAtom)
 	useAtomMount(problemSinceAtom(chaptersAtom))
 	const refresh = useAtomRefresh(chaptersAtom)
-	const [searched, setSearched] = useState('')
+	const [searched, setSearched] = useAtom(searchedAtom)
 	// Chapters already on screen stay through an outage; a retryable problem dot in the bar marks that they stopped updating.
 	return (
 		<ListToolbar
