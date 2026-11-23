@@ -31,7 +31,7 @@ import {
 	tint
 } from '@expo/ui/swift-ui/modifiers'
 
-import {useListBeside} from '@deslop/components-mobile/blocks/list-detail'
+import {useListBeside, useListTiled} from '@deslop/components-mobile/blocks/list-detail'
 import {StatusDot} from '@deslop/components-mobile/blocks/status-dot'
 import {barNeverMinimizes} from '@deslop/components-mobile/lib/toolbar'
 import {colors, space, text} from '@deslop/components-mobile/theme'
@@ -320,6 +320,16 @@ function Board(props: {bookings: BookingList}) {
 	)
 }
 
+// Beside the list the split view draws no Back, so the system close takes an opened booking away and brings the board back.
+function Close(props: {onClose: () => void}) {
+	if (!useListTiled()) return undefined
+	return (
+		<ToolbarItem placement="topBarLeading">
+			<Button role="close" onPress={props.onClose} />
+		</ToolbarItem>
+	)
+}
+
 // The opened booking, or with nothing opened the board, shown only while the list is beside it or below it.
 export function BookingRoute(props: {
 	bookings: BookingList
@@ -341,16 +351,21 @@ export function BookingRoute(props: {
 				Option.match({
 					// Only a list the server answered says the booking is gone; a copy kept offline may predate it.
 					onNone: () => (
-						<Empty modifiers={[navigationTitle(''), navigationBarTitleDisplayMode('inline')]}>
-							<EmptyMedia>
-								{Boolean.match(props.offline, {
-									onFalse: () => <Image systemName="trash" modifiers={[accessibilityLabel('Booking Deleted')]} />,
-									onTrue: () => (
-										<Image systemName="icloud.slash" modifiers={[accessibilityLabel('Booking Not Loaded')]} />
-									)
-								})}
-							</EmptyMedia>
-						</Empty>
+						<Toolbar modifiers={[navigationTitle(''), navigationBarTitleDisplayMode('inline')]}>
+							<Empty>
+								<EmptyMedia>
+									{Boolean.match(props.offline, {
+										onFalse: () => <Image systemName="trash" modifiers={[accessibilityLabel('Booking Deleted')]} />,
+										onTrue: () => (
+											<Image systemName="icloud.slash" modifiers={[accessibilityLabel('Booking Not Loaded')]} />
+										)
+									})}
+								</EmptyMedia>
+							</Empty>
+							<Toolbar.Content>
+								<Close onClose={props.onClose} />
+							</Toolbar.Content>
+						</Toolbar>
 					),
 					onSome: booking => (
 						<Toolbar modifiers={[navigationTitle(titleOf(booking)), navigationBarTitleDisplayMode('inline')]}>
@@ -381,6 +396,7 @@ export function BookingRoute(props: {
 								{booking.status === 'confirmed' && <Rides booking={booking} bookings={props.bookings} now={now} />}
 							</Form>
 							<Toolbar.Content>
+								<Close onClose={props.onClose} />
 								<ToolbarItem placement="topBarTrailing">
 									<Menu label="More" systemImage="ellipsis" modifiers={[labelStyle('iconOnly')]}>
 										<Button
