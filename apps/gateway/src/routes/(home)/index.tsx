@@ -138,6 +138,7 @@ function ServerRow(props: {period: UsageRange; report: readonly McpUsageServer[]
 				mark={<ServerIcon server={props.server} />}
 				after={failed && <StatusDot status="error" label={failure} />}
 				detail={new URL(props.server.url).hostname}
+				reason={Boolean.match(failed, {onFalse: Function.constUndefined, onTrue: Function.constant(failure)})}
 			>
 				{props.server.name}
 			</RowLead>
@@ -215,16 +216,14 @@ function ServerRows(props: {period: TimeFrame}) {
 
 // One saved key, in a server row's shape: its payer's figure and range.
 function PayerRow(props: {info: AiKeyItem; period: UsageRange; report: AiUsageReport; source: Payer}) {
+	const refused = Option.exists(props.info.lastStatus, status => status === 401 || status === 403)
 	return (
 		<TableRow aria-label={PAYER_LABELS[props.source]}>
 			<RowLead
 				mark={<ProviderMark provider={props.info.provider} />}
-				after={
-					Option.exists(props.info.lastStatus, status => status === 401 || status === 403) && (
-						<StatusDot status="error" label="Key refused" />
-					)
-				}
+				after={refused && <StatusDot status="error" label="Key refused" />}
 				detail={`••••${props.info.last4}`}
+				reason={Boolean.match(refused, {onFalse: Function.constUndefined, onTrue: Function.constant('Key refused')})}
 			>
 				{PROVIDER_NAMES[props.info.provider]}
 			</RowLead>

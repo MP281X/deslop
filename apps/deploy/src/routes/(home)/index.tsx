@@ -319,6 +319,8 @@ function Panes(props: {
 	selectedRow: Option.Option<Row>
 }) {
 	const selectedOwner = Option.flatMap(props.selectedRow, owner)
+	// From 1512px the list opens wide enough for a long name in full beside its ports.
+	const roomy = useAtomValue(mediaQueryAtom('(width >= 94.5rem)'))
 	return Option.match(props.authFailure, {
 		onNone: () => (
 			<Workspace>
@@ -328,7 +330,7 @@ function Panes(props: {
 						<ResizablePanelGroup className="min-h-0 flex-1" orientation="horizontal">
 							<ResizablePanel
 								className="min-h-0"
-								defaultSize={340}
+								defaultSize={Boolean.match(roomy, {onFalse: Function.constant(340), onTrue: Function.constant(440)})}
 								groupResizeBehavior="preserve-pixel-size"
 								minSize={260}
 								maxSize={480}

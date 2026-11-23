@@ -4,6 +4,7 @@ import type {KeyboardEvent, MouseEvent, ReactNode} from 'react'
 
 import {Skeleton} from '#components/ui/skeleton.tsx'
 import {Table, TableBody, TableCell, TableRow} from '#components/ui/table.tsx'
+import {cn} from '#lib/utils.ts'
 
 // Every row's mark sits in one 24px square, a picture filling it and a 16px glyph centred, so names start at one column; a `label` names what it shows.
 export function RowMark(props: {children: ReactNode; label?: string}) {
@@ -22,7 +23,7 @@ export function RowMark(props: {children: ReactNode; label?: string}) {
 	)
 }
 
-// A list row's first cell, taking the width its figures leave: the mark, the name, its markers and a muted detail on one line, cut short rather than widening the table; the detail gives way before the name. The line is a mark's height with or without one; `depth` indents a tree's row by 12px a level.
+// A list row's first cell, taking the width its figures leave: the mark, the name, its markers and a muted detail on one line, cut short rather than widening the table; the detail gives way before the name. The line is a mark's height with or without one; `depth` indents a tree's row by 12px a level. A `reason` says why the row needs a look where touch has no hover to show it: on touch it takes the detail's place as a second line, in full under the name.
 export function RowLead(props: {
 	after?: ReactNode
 	children: ReactNode
@@ -30,6 +31,7 @@ export function RowLead(props: {
 	detail?: ReactNode
 	mark?: ReactNode
 	markLabel?: string
+	reason?: ReactNode
 	title?: string
 }) {
 	return (
@@ -49,9 +51,26 @@ export function RowLead(props: {
 				<span className="truncate">{props.children}</span>
 				{props.after}
 				{props.detail !== undefined && (
-					<span className="text-muted-foreground grow basis-0 truncate">{props.detail}</span>
+					<span
+						className={cn(
+							'text-muted-foreground in-data-[state=selected]:text-foreground grow basis-0 truncate',
+							props.reason !== undefined && 'pointer-coarse:hidden'
+						)}
+					>
+						{props.detail}
+					</span>
 				)}
 			</span>
+			{props.reason !== undefined && (
+				<span
+					className="text-muted-foreground in-data-[state=selected]:text-foreground hidden w-0 min-w-full ps-(--indent) whitespace-normal pointer-coarse:block"
+					style={{
+						'--indent': `${(props.depth ?? 0) * 0.75 + Boolean.match(props.mark !== undefined, {onFalse: Function.constant(0), onTrue: Function.constant(2)})}rem`
+					}}
+				>
+					{props.reason}
+				</span>
+			)}
 		</TableCell>
 	)
 }

@@ -204,6 +204,7 @@ function AppRow(props: {
 					</>
 				}
 				detail={Boolean.match(failing, {onFalse: Function.constUndefined, onTrue: () => reasonText})}
+				reason={Boolean.match(failing, {onFalse: Function.constUndefined, onTrue: () => reasonText})}
 			>
 				{name}
 			</RowLead>

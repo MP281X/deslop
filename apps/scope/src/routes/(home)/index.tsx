@@ -288,6 +288,10 @@ function TraceListRow(props: {active: boolean; now: DateTime.Utc; onSelect: () =
 					onNone: Function.constNull,
 					onSome: failure => <StatusDot status="error" label={`Failed in ${failure.span}`} />
 				})}
+				reason={Option.match(props.trace.failure, {
+					onNone: Function.constUndefined,
+					onSome: failure => `Failed in ${failure.span}`
+				})}
 			>
 				{traceLabel(props.trace)}
 			</RowLead>
@@ -473,10 +477,10 @@ function TracePane(props: {
 	)
 }
 
-// From 1024px to 1599px: operations and traces beside the waterfall, with the picked details after the spans.
+// From 1024px to 1599px: operations and traces beside the waterfall, with the picked details after the spans; from 1512px the lists take more of the width.
 function NarrowWorkspace(props: WorkspaceProps) {
 	return (
-		<div className="grid-cols-scope grid min-h-0 flex-1">
+		<div className="grid-cols-scope min-[94.5rem]:grid-cols-scope-roomy grid min-h-0 flex-1">
 			<div className="grid min-h-0 grid-rows-2 border-r">
 				<OperationsPane
 					activeKey={props.activeKey}
@@ -505,11 +509,11 @@ function NarrowWorkspace(props: WorkspaceProps) {
 	)
 }
 
-// From 1600px: operations, traces and the waterfall as three resizable columns; details follow the spans.
+// From 1600px: operations, traces and the waterfall as three resizable columns, the operations wide enough for a long name in full; details follow the spans.
 function WideWorkspace(props: WorkspaceProps) {
 	return (
 		<ResizablePanelGroup orientation="horizontal" className="min-h-0 flex-1">
-			<ResizablePanel defaultSize={440} minSize={320} maxSize={560}>
+			<ResizablePanel groupResizeBehavior="preserve-pixel-size" defaultSize={600} minSize={320} maxSize={640}>
 				<OperationsPane
 					activeKey={props.activeKey}
 					onSelect={props.onSelectOperation}
@@ -518,7 +522,7 @@ function WideWorkspace(props: WorkspaceProps) {
 				/>
 			</ResizablePanel>
 			<ResizableHandle />
-			<ResizablePanel defaultSize={320} minSize={240} maxSize={480}>
+			<ResizablePanel groupResizeBehavior="preserve-pixel-size" defaultSize={320} minSize={240} maxSize={480}>
 				<TracesPane
 					active={props.active}
 
