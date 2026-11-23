@@ -653,6 +653,30 @@ it('calls boarding ten minutes before the pass says, moved by the delay, and aga
 		[dueAt(late, Duration.minutes(35), 'boarding'), dueAt(late, Duration.minutes(20), 'boarding')],
 		[false, true]
 	)
+	// Called at 09:50 from the pass alone, then FlightAware reports 50 minutes late: the call at 10:40 says the new time and is a new value, which every phone is owed again.
+	const pass = {...RYANAIR, boardingAt: Option.some(DateTime.makeUnsafe('2026-11-24T09:00:00Z'))}
+	const first = alertAt(Flight.make(pass), DateTime.makeUnsafe('2026-11-24T08:50:00Z'), NO_CONTEXT, 'boarding')
+	const moved = alertAt(
+		liveFor(pass, {
+			checkedAt: DateTime.toEpochMillis(DateTime.makeUnsafe('2026-11-24T09:39:00Z')),
+			departureEstimated: DateTime.toEpochMillis(DateTime.makeUnsafe('2026-11-24T10:20:00Z'))
+		}),
+		DateTime.makeUnsafe('2026-11-24T09:40:00Z'),
+		NO_CONTEXT,
+		'boarding'
+	)
+	assert.deepStrictEqual(
+		[
+			Option.map(first, alert => [alert.title, alert.value]),
+			Option.map(moved, alert => [alert.title, alert.value]),
+			Option.map(moved, alert => [perDevice(alert), announced([sentAlert('boarding', '0')], alert)])
+		],
+		[
+			Option.some(['FR 1234 boards at 10:00', '0']),
+			Option.some(['FR 1234 boards at 10:50', '45']),
+			Option.some([true, false])
+		]
+	)
 })
 
 it("lets a running activity tell its flight's changes, not the plan, to the phones of its app", () => {

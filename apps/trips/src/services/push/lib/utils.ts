@@ -398,7 +398,7 @@ function flightAlerts(flight: Flight, now: DateTime.Utc, stale: boolean, context
 	const delay = delayStep(flight)
 	const live = Option.filter(flight.live, () => !stale)
 	const left = Option.exists(flight.live, report => report.state !== 'scheduled')
-	// Boarding moves with the delay; it never comes before the time the pass printed.
+	// Boarding moves with the delay and never comes before the time the pass printed; it is called again when the delay crosses a step, replacing the earlier call.
 	const boards = Option.map(flight.boardingAt, at =>
 		DateTime.addDuration(at, Duration.minutes(Number.max(0, delay.delay)))
 	)
@@ -484,7 +484,8 @@ function flightAlerts(flight: Flight, now: DateTime.Utc, stale: boolean, context
 								)
 							]),
 							category: 'boarding',
-							title: `${title} boards at ${clockAt(at, flight.from.timeZone)}`
+							title: `${title} boards at ${clockAt(at, flight.from.timeZone)}`,
+							value: `${Number.max(0, delay.step)}`
 						}) satisfies Alert
 				)
 			)

@@ -560,7 +560,12 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 					// The app reads a notification's data from `body`: the flight a tap opens and the airport its actions lead to.
 					body: {flightId: flight.id, ...Option.match(directions, {onNone: () => ({}), onSome: place => ({place})})}
 				},
-				10
+				10,
+				// A gate or boarding time the phone must end on replaces the one it showed before.
+				Boolean.match(perDevice(alert), {
+					onFalse: Function.constUndefined,
+					onTrue: () => `${flight.id}-${alert.category}`
+				})
 			)
 			return yield* ApnsAnswer.match(answer, {
 				Accepted: () => Effect.succeed(true),
