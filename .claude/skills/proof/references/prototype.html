@@ -38,7 +38,7 @@ function view(s, has) {
 <!-- ENGINE -->
 <style>
 body{margin:0}
-#stage{--p-ring:var(--primary);--on:color-mix(in srgb,var(--foreground) 9%,transparent);display:grid;gap:22px;font:12px/1.35 var(--font-sans);color:var(--foreground);user-select:none}
+#stage{--p-ring:var(--primary);--on:color-mix(in srgb,var(--foreground) 9%,transparent);display:grid;gap:22px;font:13px/1.35 var(--font-sans);color:var(--foreground);user-select:none}
 #stage *{box-sizing:border-box}
 button{all:unset;padding:0 8px;line-height:20px;border:1px solid var(--border);border-radius:var(--radius);cursor:pointer;color:var(--muted-foreground)}
 button:hover,[aria-pressed=true]{color:var(--foreground)}[aria-pressed=true]{background:var(--on)}
@@ -61,7 +61,7 @@ button:hover,[aria-pressed=true]{color:var(--foreground)}[aria-pressed=true]{bac
 .zm .p-grid :is(.p-parts,.p-cap,.p-n span){display:none}
 .solo .p-grid{grid-template-columns:1fr}.solo .p-tile{margin:auto;width:100%;cursor:pointer}.solo .p-th{display:none}
 .p-th{display:flex;align-items:center;gap:6px;height:24px;white-space:nowrap}
-.p-id{font:500 12px/16px var(--font-mono);padding:0 5px;border:1px solid var(--input);border-radius:5px}
+.p-id{font:500 13px/16px var(--font-mono);padding:0 5px;border:1px solid var(--input);border-radius:5px}
 .p-parts,.p-n{color:var(--muted-foreground)}.p-n{margin-left:auto}
 .p-cap{position:absolute;left:8px;bottom:8px;z-index:10;padding:2px 8px;border-radius:99px;background:var(--foreground);color:var(--background)}.p-cap:empty{display:none}
 .done .p-n{color:var(--foreground)}
@@ -169,7 +169,7 @@ function fit(sec) {
   for (const t of all(sec)) {
     if (t == sec.view || sec.solo) t.el.style.maxWidth = AW + 2 + 'px';
     t.w = t.fr.clientWidth;
-    t.follow = (!sec.view || t == sec.view) && innerWidth < 600 && t.w / AW < 0.8;
+    t.follow = (!sec.view || t == sec.view) && innerWidth < 600 && t.w / AW < 0.6;
     t.z = t.follow ? 1 : Math.min(1, t.w / AW);
     t.k = Math.min(1 / t.z, 2.2);
     Object.assign(t.cam.style, { width: AW + 'px', height: AH + 'px', left: t.follow ? 0 : (t.w - AW * t.z) / 2 + 'px', scale: t.z });
