@@ -312,6 +312,29 @@ it('moves a rebooked reservation to its new flight, keeping the id when nobody e
 	)
 })
 
+it('updates the traveller a pass names on a flight joined from rows saved before names were read', () => {
+	const joined = Flight.make({
+		...FLIGHT,
+		travellers: [
+			traveller('ONE', Option.none(), Option.some('11A')),
+			traveller('TWO', Option.none(), Option.some('11B'))
+		]
+	})
+	assert.deepStrictEqual(
+		seating(upsert([joined], [ticket([traveller('TWO', Option.some('Bob Stone'), Option.some('11B'))])])),
+		[
+			[
+				'553',
+				false,
+				[
+					['', '11A', 'ONE', 'confirmed'],
+					['Bob Stone', '11B', 'TWO', 'confirmed']
+				]
+			]
+		]
+	)
+})
+
 it('keeps distinct legs of the same flight number as distinct flights', () => {
 	assert.lengthOf(
 		upsert(

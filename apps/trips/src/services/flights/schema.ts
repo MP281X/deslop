@@ -201,6 +201,16 @@ export const ExtractedFlights = Schema.Array(ExtractedFlight)
 export type FlightExtraction = typeof FlightExtraction.Type
 export const FlightExtraction = Schema.Struct({flights: ExtractedFlights})
 
+// What migration 0005 reads of a flight saved when each ticket was a row of its own.
+export type LegacyFlight = typeof LegacyFlight.Type
+export const LegacyFlight = Schema.Struct({
+	airlineCode: Schema.String,
+	departs: Schema.Finite,
+	id: Schema.String,
+	number: Schema.String,
+	origin: Schema.NullOr(Schema.String)
+})
+
 export type Airport = typeof Airport.Type
 export const Airport = Schema.Struct({
 	city: Schema.String,

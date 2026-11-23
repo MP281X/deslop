@@ -157,7 +157,8 @@ export default defineConfig({
 				}
 			},
 			{
-				files: ['**/packages/runtime/src/server/tables.test.ts'],
+				// A migration's test reads the rows it rewrote, including another service's tables, which no service answer shows.
+				files: ['**/packages/runtime/src/server/tables.test.ts', '**/apps/*/src/services/*/migrations.test.ts'],
 				rules: {'@deslop/coding-standards/test-boundaries': ['error', 'inspect-database']}
 			},
 			{
