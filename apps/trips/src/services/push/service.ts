@@ -611,7 +611,10 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 							),
 						{concurrency: 1}
 					)
-					if (Array.every(outcomes, Function.identity)) yield* asPushSaveError(recordSent([row]))
+					// Only a phone that took it makes it sent, so one registered later in the window still gets it.
+					if (Array.isReadonlyArrayNonEmpty(devices) && Array.every(outcomes, Function.identity)) {
+						yield* asPushSaveError(recordSent([row]))
+					}
 				}),
 				{concurrency: 1, discard: true}
 			)

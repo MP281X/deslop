@@ -37,15 +37,21 @@ const STARTER = starter('xyz.mp281x.trips', 'a')
 const DEV_STARTER = starter('xyz.mp281x.trips.dev', 'b')
 const ANSWER = {channel: Option.none(), reason: Option.none(), status: 503}
 
-// A flight two hours out, inside the three hours its Live Activity shows.
-function flightAt(now: DateTime.Utc, id: FlightId, seat: Option.Option<string>) {
+// A flight two hours out unless told otherwise, inside the three hours its Live Activity shows.
+function flightAt(
+	now: DateTime.Utc,
+	id: FlightId,
+	seat: Option.Option<string>,
+	timeZone = 'Europe/Rome',
+	departsIn = Duration.hours(2)
+) {
 	return Flight.make({
 		airline: 'British Airways',
 		airlineCode: 'BA',
-		arrives: DateTime.addDuration(now, Duration.hours(3)),
+		arrives: DateTime.addDuration(now, Duration.sum(departsIn, Duration.hours(1))),
 		boardingAt: Option.none(),
-		departs: DateTime.addDuration(now, Duration.hours(2)),
-		from: Schema.decodeSync(Place)({code: 'FCO', name: 'Fiumicino', timeZone: 'Europe/Rome'}),
+		departs: DateTime.addDuration(now, departsIn),
+		from: Schema.decodeSync(Place)({code: 'FCO', name: 'Fiumicino', timeZone}),
 		id,
 		live: Option.none(),
 		number: '553',
@@ -63,6 +69,12 @@ function flightAt(now: DateTime.Utc, id: FlightId, seat: Option.Option<string>) 
 	})
 }
 const booked = Effect.map(DateTime.now, now => [flightAt(now, ID, Option.none())])
+// The same flight four hours out, before its Live Activity shows, from an airport whose clock reads midday now, so the plan it owes is never held for the morning, whenever the test runs.
+const bookedAtMidday = Effect.map(DateTime.now, now => {
+	const hours = 12 - DateTime.toParts(now).hour
+	const timeZone = Boolean.match(hours < 0, {onFalse: () => `Etc/GMT-${hours}`, onTrue: () => `Etc/GMT+${-hours}`})
+	return [flightAt(now, ID, Option.none(), timeZone, Duration.hours(4))]
+})
 const seated = Effect.map(DateTime.now, now => [flightAt(now, ID, Option.some('12B'))])
 const both = Effect.map(DateTime.now, now => [flightAt(now, ID, Option.none()), flightAt(now, OTHER, Option.none())])
 
@@ -120,6 +132,20 @@ const running = Effect.fnUntraced(function* (update: ApnsAnswer) {
 		startHeld: () => Effect.succeedNone
 	})
 	return {asked, created, layer, updated}
+})
+
+// Apple accepts every alert; each one's title and token is queued for the test to read.
+const alerting = Effect.fnUntraced(function* () {
+	const sent = yield* Queue.unbounded<readonly [string, string]>()
+	const layer = Layer.mock(Apns, {
+		enabled: true,
+		sendToDevice: (target, _type, body) =>
+			Effect.as(
+				Queue.offer(sent, [Redacted.value(target.token), `${(body.aps['alert'] as {title: string}).title}`]),
+				ApnsAnswer.cases.Accepted.make({...ANSWER, status: 200})
+			)
+	})
+	return {layer, sent}
 })
 
 const open = Effect.tap(Deferred.make<void>(), gate => Deferred.succeed(gate, undefined))
@@ -247,6 +273,29 @@ it.layer(NodeServices.layer, {excludeTestServices: true})(test => {
 			// The flight back, its ended activity stays ended; the other flight starts on a channel of its own.
 			yield* serve(folder, kept.layer, both, registered)
 			assert.strictEqual(MutableRef.get(kept.created), 2)
+		})
+	)
+
+	test.effect(
+		'the check-in reminder and the plan due while no phone is registered reach the first phone registered after them',
+		Effect.fnUntraced(function* () {
+			const folder = yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped()
+			const apple = yield* alerting()
+			const phone = {...STARTER, kind: 'alert' as const}
+			// The iPhone registers its Live Activity token first, and the round after it has no phone to tell.
+			yield* serve(folder, apple.layer, bookedAtMidday, registered)
+			assert.deepStrictEqual(yield* Queue.clear(apple.sent), [])
+			// Notifications turned on later, the round after the registration tells what is still owed.
+			yield* serve(
+				folder,
+				apple.layer,
+				bookedAtMidday,
+				Effect.flatMap(Push, push => push.register(phone))
+			)
+			assert.deepStrictEqual(yield* Queue.takeAll(apple.sent), [
+				[Redacted.value(phone.token), 'Check in for BA 553'],
+				[Redacted.value(phone.token), 'BA 553 · Fiumicino → Heathrow']
+			])
 		})
 	)
 
