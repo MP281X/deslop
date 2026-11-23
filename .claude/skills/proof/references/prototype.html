@@ -1,5 +1,5 @@
 <!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><script>
-/* PROTOTYPE DATA. Copy this file to scratch, Read it with limit 36, edit only this script, check the copy
+/* PROTOTYPE DATA. Copy this file to scratch, Read it with limit 37, edit only this script, check the copy
    with html_preview, then html_render it by path. Never read past this script.
    DECISIONS    one section each, numbered in order from FIRST: a Today tile and one tile per variant, lettered a, b, c. Play
                 runs `task` in every tile in sync; a clicked tile opens large and plays alone.
@@ -9,7 +9,8 @@
    path, today  target ids in click order; `|` marks the still the tile rests on, else start. Clicks are counted.
    start        the state every path begins from.
    FIRST        the number of the first decision: the thread's next free number, so its count never restarts.
-   SIZE, PHONE  the app's desktop (16:9) and phone sizes in real px; tiles only scale down. Phone sets #stage.ph.
+   SIZE, PHONE  the app's desktop (16:9) and folded iPhone Duo sizes in real px (a website: 382×640); tiles only
+                scale down. Phone sets #stage.ph.
    THEME        the codebase's shadcn tokens, its :root and .dark declarations; empty strings keep T3's.
    view(s, has) the app's HTML for state s: only the screens the decisions touch, with the app's real labels and data;
                 Today as the current code behaves. The example below is a placeholder to replace whole.
@@ -17,7 +18,7 @@
    Kit          .side .org .nav | main .row .m | .inp .sel .chip .btn .on | .pop .sheet (inline position, width)
                 .scrim > .dlg | .it .f .ft. Use the repository's layout rules, not a page title or toast.
    A path id with no target on screen logs a console error naming the tile and step. */
-const FIRST = 1, SIZE = [800, 450], PHONE = [390, 760];
+const FIRST = 1, SIZE = [800, 450], PHONE = [466, 678];
 const THEME = { light: '', dark: '' };
 const DECISIONS = [
   { name: 'Rename', task: 'Rename Project to Atlas', start: {},
