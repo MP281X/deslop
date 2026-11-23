@@ -1,4 +1,4 @@
-import {useAtomMount, useAtomRefresh, useAtomSet, useAtomSuspense, useAtomValue} from '@effect/atom-react'
+import {useAtom, useAtomMount, useAtomRefresh, useAtomSet, useAtomSuspense, useAtomValue} from '@effect/atom-react'
 
 import {Array, Boolean, DateTime, Duration, Function, Option, Schema, String, pipe} from 'effect'
 
@@ -18,7 +18,7 @@ import {
 } from '@expo/ui/swift-ui/modifiers'
 import {useMachineResult} from '@typeonce/effect-machine-react'
 import {AtomMachine} from '@typeonce/effect-machine/reactivity'
-import {AsyncResult} from 'effect/reactivity'
+import {AsyncResult, Atom} from 'effect/reactivity'
 import {Suspense, useState} from 'react'
 
 import {ItemGroupSkeleton} from '@deslop/components-mobile/blocks/item-group-skeleton'
@@ -218,11 +218,14 @@ function PastBookings(props: {
 	)
 }
 
+// Every copy of the list shows Past the same way, so the copy below the board in laptop posture keeps it open when the phone lies flat.
+const pastOpenAtom = Atom.make(false)
+
 function Bookings(props: {onOpen: (id: Booking['id']) => void; searched: string}) {
 	const loaded = useAtomSuspense(bookingsAtom, {includeFailure: true})
 	const refresh = useAtomRefresh(bookingsAtom)
 	const paste = useAtomSet(clipboard.atom.send)
-	const [pastOpen, setPastOpen] = useState(false)
+	const [pastOpen, setPastOpen] = useAtom(pastOpenAtom)
 
 	const now = useAtomValue(nowAtom)
 	const adding = pipe(
