@@ -707,6 +707,7 @@ function HomeRoute() {
 				})}
 				icon={icon}
 				name="scope"
+				stackTabs
 				controls={
 					<>
 						<StaleMark range={range} trace={selection.activeTrace} />

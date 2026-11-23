@@ -1,6 +1,6 @@
 import {useAtom, useAtomValue} from '@effect/atom-react'
 
-import {Array, Effect, Equal, Function, Option, Predicate, Schema, String, Struct, pipe} from 'effect'
+import {Array, Boolean, Effect, Equal, Function, Option, Predicate, Schema, String, Struct, pipe} from 'effect'
 
 import {ArrowClockwiseIcon, CaretLeftIcon} from '@phosphor-icons/react'
 import {AsyncResult, Atom} from 'effect/reactivity'
@@ -15,6 +15,7 @@ import {Avatar, AvatarFallback, AvatarImage} from '#components/ui/avatar.tsx'
 import {Button} from '#components/ui/button.tsx'
 import {Skeleton} from '#components/ui/skeleton.tsx'
 import {Tabs, TabsList, TabsTrigger} from '#components/ui/tabs.tsx'
+import {mediaQueryAtom} from '#lib/media.ts'
 
 // The menu's floating-ui bundle is the page's heaviest import, so it arrives on intent rather than with the bar.
 const menuModuleAtom = Atom.keepAlive(Atom.fn(() => Effect.promise(() => import('#components/ui/dropdown-menu.tsx'))))
@@ -110,7 +111,7 @@ function AccountMenu() {
 	)
 }
 
-// Tabs, their marks and the bar's controls can arrive after the bar, so each change to the tabs and each resize of them or of the bar's scrolling strip places the chosen one again; one already in view stays put.
+// Tabs, their marks and the bar's controls can arrive after the bar, so each change to the tabs and each resize of them or of the bar's scrolling strip (a rotation, a fold) places the chosen one again; one already in view stays put. Only the strip scrolls, sideways, so the page never moves.
 function keepChosenTabInView(sections: HTMLDivElement) {
 	const strip = sections.parentElement
 	if (Predicate.isNullish(strip)) return
@@ -120,7 +121,12 @@ function keepChosenTabInView(sections: HTMLDivElement) {
 		const tab = active.getBoundingClientRect()
 		const bounds = scroller.getBoundingClientRect()
 		if (tab.left >= bounds.left - 1 && tab.right <= bounds.right + 1) return
-		active.scrollIntoView({block: 'nearest', inline: 'nearest'})
+		scroller.scrollTo({
+			left: Boolean.match(tab.left < bounds.left, {
+				onFalse: () => scroller.scrollLeft + tab.right - bounds.right,
+				onTrue: () => scroller.scrollLeft + tab.left - bounds.left
+			})
+		})
 	}
 	const changes = new MutationObserver(() => place(strip))
 	changes.observe(sections, {attributeFilter: ['data-active'], childList: true, subtree: true})
@@ -203,50 +209,59 @@ export function AppBarChoice<A>(props: {
 	)
 }
 
-// The masthead: mark and name, sections, then the controls that choose what the page shows and the page's few actions. On touch the controls sit far enough apart that each one's 44px tap layer is its own.
+// The masthead: mark and name, sections, then the controls that choose what the page shows and the page's few actions. Below 700px a bar with `stackTabs` gives its sections their own full-width row under it, where a long strip has the width to scroll. On touch the controls sit far enough apart that each one's 44px tap layer is its own.
 export function AppBar(props: {
 	account?: ReactNode
 	controls?: ReactNode
 	heading?: {back: {label: string; onClick: () => void}; title: string}
 	icon: string
 	name: string
+	stackTabs?: boolean
 	tabs?: ReactNode
 }) {
+	const stacked = useAtomValue(mediaQueryAtom('(width < 43.75rem)')) && props.stackTabs === true
+	const sections = props.tabs !== undefined && (
+		<nav
+			aria-label="Sections"
+			className="flex min-w-0 flex-1 scrollbar-none items-center self-stretch overflow-x-auto overflow-y-hidden overscroll-x-contain"
+		>
+			{props.tabs}
+		</nav>
+	)
 	return (
-		<header className="bg-background flex h-12 shrink-0 items-center gap-4 border-b px-4">
-			{Option.match(Option.fromUndefinedOr(props.heading), {
-				onNone: () => (
-					<Button
-						variant="ghost"
-						nativeButton={false}
-						render={<a href="/" aria-label={props.name} />}
-						className="shrink-0"
-					>
-						<img src={props.icon} alt="" className="pixelated size-6" />
-						<span className="font-heading text-sm font-semibold capitalize max-sm:hidden">{props.name}</span>
-					</Button>
-				),
-				onSome: heading => (
-					<div className="flex min-w-0 shrink items-center gap-1">
-						<Button variant="ghost" size="icon-sm" aria-label={heading.back.label} onClick={heading.back.onClick}>
-							<CaretLeftIcon />
+		<header className="bg-background flex shrink-0 flex-col">
+			<div className="flex h-12 items-center gap-4 border-b px-4">
+				{Option.match(Option.fromUndefinedOr(props.heading), {
+					onNone: () => (
+						<Button
+							variant="ghost"
+							nativeButton={false}
+							render={<a href="/" aria-label={props.name} />}
+							className="shrink-0"
+						>
+							<img src={props.icon} alt="" className="pixelated size-6" />
+							<span className="font-heading text-sm font-semibold capitalize max-sm:hidden">{props.name}</span>
 						</Button>
-						<span className="font-heading max-w-48 min-w-0 truncate text-sm">{heading.title}</span>
-					</div>
-				)
-			})}
-			{props.tabs !== undefined && (
-				<nav
-					aria-label="Sections"
-					className="flex min-w-0 flex-1 scrollbar-none items-center self-stretch overflow-x-auto overflow-y-hidden overscroll-x-contain"
-				>
-					{props.tabs}
-				</nav>
-			)}
-			<div className="ml-auto flex shrink-0 items-center gap-2 pointer-coarse:gap-4">
-				{props.controls}
-				{props.account ?? <AccountMenu />}
+					),
+					onSome: heading => (
+						<div className="flex min-w-0 shrink items-center gap-1">
+							<Button variant="ghost" size="icon-sm" aria-label={heading.back.label} onClick={heading.back.onClick}>
+								<CaretLeftIcon />
+							</Button>
+							<span className="font-heading max-w-48 min-w-0 truncate text-sm">{heading.title}</span>
+						</div>
+					)
+				})}
+				{Boolean.match(stacked, {onFalse: () => sections, onTrue: Function.constNull})}
+				<div className="ml-auto flex shrink-0 items-center gap-2 pointer-coarse:gap-4">
+					{props.controls}
+					{props.account ?? <AccountMenu />}
+				</div>
 			</div>
+			{Boolean.match(stacked && props.tabs !== undefined, {
+				onFalse: Function.constNull,
+				onTrue: () => <div className="flex h-12 border-b px-4">{sections}</div>
+			})}
 		</header>
 	)
 }
