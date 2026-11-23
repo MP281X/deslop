@@ -36,7 +36,7 @@ import {AsyncResult} from 'effect/reactivity'
 
 import {useListBeside, useListTiled} from '@deslop/components-mobile/blocks/list-detail'
 import {backHidden, barNeverMinimizes} from '@deslop/components-mobile/lib/toolbar'
-import {colors, space} from '@deslop/components-mobile/theme'
+import {colors, space, text} from '@deslop/components-mobile/theme'
 import {Button} from '@deslop/components-mobile/ui/button'
 import {Empty, EmptyMedia} from '@deslop/components-mobile/ui/empty'
 import {weekdayOf} from '@deslop/runtime/shared/format'
@@ -320,8 +320,14 @@ function useDay(flight: Flight, flights: FlightList) {
 	}
 }
 
-// The next step on top, the way to the airport while he still has to get there, the times still ahead, the change to the next flight, then who flies.
-function FlightPage(props: {flight: Flight; flights: FlightList; onOpen: (id: FlightId) => void; size: HeroSize}) {
+// The next step on top, the way to the airport while he still has to get there, the times still ahead, the change to the next flight, then who flies. On the board the flight's number heads its data, since the bar there has no title.
+function FlightPage(props: {
+	board: boolean
+	flight: Flight
+	flights: FlightList
+	onOpen: (id: FlightId) => void
+	size: HeroSize
+}) {
 	const refresh = useAtomSet(refreshAtom, {mode: 'promiseExit'})
 	const day = useDay(props.flight, props.flights)
 	return (
@@ -340,6 +346,11 @@ function FlightPage(props: {flight: Flight; flights: FlightList; onOpen: (id: Fl
 				spacing={space[4]}
 				modifiers={[listRowSeparator('hidden'), padding({vertical: space[2]})]}
 			>
+				{props.board && (
+					<Text modifiers={[text.data, foregroundStyle(colors.mutedForeground), lineLimit(1)]}>
+						{`${titleOf(props.flight)} · ${routeOf(props.flight)}`}
+					</Text>
+				)}
 				<HeroView hero={day.hero} size={props.size} />
 				{day.toAirport && bookedOf(props.flight) && <Rides flight={props.flight} />}
 			</VStack>
@@ -430,8 +441,8 @@ function Board(props: {onOpen: (id: FlightId) => void}) {
 			return (
 				<Toolbar
 					modifiers={[
-						// The change belongs to no one flight, so its board has no title.
-						navigationTitle(Option.match(change, {onNone: () => titleOf(flight), onSome: Function.constant('')})),
+						// A board has no title in the bar: its flight's number heads its data, and the change belongs to no one flight.
+						navigationTitle(''),
 						navigationBarTitleDisplayMode('inline'),
 						barNeverMinimizes(),
 						...Boolean.match(tiled, {onFalse: () => [backHidden], onTrue: () => []})
@@ -440,6 +451,7 @@ function Board(props: {onOpen: (id: FlightId) => void}) {
 					{Option.match(change, {
 						onNone: () => (
 							<FlightPage
+								board
 								flight={flight}
 								flights={flights}
 								onOpen={props.onOpen}
@@ -451,7 +463,6 @@ function Board(props: {onOpen: (id: FlightId) => void}) {
 						),
 						onSome: found => <ChangeBoard feeder={found.feeder} next={found.next} />
 					})}
-					<Toolbar.Content>{Option.isNone(change) && <Title flight={flight} />}</Toolbar.Content>
 				</Toolbar>
 			)
 		}
@@ -507,7 +518,7 @@ export function FlightRoute(props: {
 					),
 					onSome: flight => (
 						<Toolbar modifiers={[navigationTitle(titleOf(flight)), navigationBarTitleDisplayMode('inline')]}>
-							<FlightPage flight={flight} flights={props.flights} onOpen={props.onOpen} size="read" />
+							<FlightPage board={false} flight={flight} flights={props.flights} onOpen={props.onOpen} size="read" />
 							<Toolbar.Content>
 								<Close onClose={props.onClose} />
 								<Title flight={flight} />
