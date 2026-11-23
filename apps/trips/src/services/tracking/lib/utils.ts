@@ -191,38 +191,23 @@ export function checkEvery(flight: Flight, now: DateTime.Utc) {
 	return Option.some(groundPace(flight, now))
 }
 
-// The last attempt counts, answered or not, so a failing provider is asked on the same schedule.
-export function isDue(flight: Flight, now: DateTime.Utc, attemptedAt: Option.Option<DateTime.Utc>) {
-	const checkedAt = Option.match<FlightTracking, Option.Option<DateTime.Utc>>(flight.live, {
-		onNone: () => attemptedAt,
-		onSome: live =>
-			Option.some(
-				Option.match(attemptedAt, {
-					onNone: () => live.checkedAt,
-					onSome: attempted => DateTime.max(live.checkedAt, attempted)
-				})
-			)
+// Whether `wait` passed since the later of the saved report and the last attempt: an attempt counts answered or not, so a failing provider is asked on the same schedule, and the report counts after a restart, which forgets the attempts.
+function waited(flight: Flight, now: DateTime.Utc, attemptedAt: Option.Option<DateTime.Utc>, wait: Duration.Duration) {
+	return Array.match(Array.getSomes([Option.map(flight.live, live => live.checkedAt), attemptedAt]), {
+		onEmpty: Function.constTrue,
+		onNonEmpty: times =>
+			pipe(Array.max(times, DateTime.Order), DateTime.distance(now), Duration.isGreaterThanOrEqualTo(wait))
 	})
-	return Option.exists(checkEvery(flight, now), every =>
-		Option.match(checkedAt, {
-			onNone: Function.constTrue,
-			onSome: at => pipe(at, DateTime.distance(now), Duration.isGreaterThanOrEqualTo(every))
-		})
-	)
 }
 
-// A pull to refresh asks at most twice as often as the schedule, and never sooner than two minutes after the last attempt, so it cannot drain FlightAware's allowance.
+export function isDue(flight: Flight, now: DateTime.Utc, attemptedAt: Option.Option<DateTime.Utc>) {
+	return Option.exists(checkEvery(flight, now), every => waited(flight, now, attemptedAt, every))
+}
+
+// A pull to refresh asks at most twice as often as the schedule, and never sooner than two minutes after the last check, so it cannot drain FlightAware's allowance.
 export function canRefresh(flight: Flight, now: DateTime.Utc, attemptedAt: Option.Option<DateTime.Utc>) {
 	return Option.exists(checkEvery(flight, now), every =>
-		Option.match(attemptedAt, {
-			onNone: Function.constTrue,
-			onSome: at =>
-				pipe(
-					at,
-					DateTime.distance(now),
-					Duration.isGreaterThanOrEqualTo(pipe(every, Duration.divideUnsafe(2), Duration.max(Duration.minutes(2))))
-				)
-		})
+		waited(flight, now, attemptedAt, pipe(every, Duration.divideUnsafe(2), Duration.max(Duration.minutes(2))))
 	)
 }
 

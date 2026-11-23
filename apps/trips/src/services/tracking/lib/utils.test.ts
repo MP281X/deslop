@@ -172,6 +172,25 @@ it('lets a pull to refresh ask no sooner than two minutes, or half the pace', ()
 	)
 })
 
+it('waits from the saved report after a restart forgot the last attempt, pulled to refresh or not', () => {
+	const departs = DateTime.makeUnsafe('2026-10-28T15:40:00Z')
+	const checkedAt = DateTime.subtractDuration(departs, Duration.minutes(70))
+	const flight = flightAt(departs, Option.some(flightTracking(ANSWER, checkedAt, Option.none())))
+	function after(since: Duration.Duration) {
+		const now = DateTime.addDuration(checkedAt, since)
+		return [isDue(flight, now, Option.none()), canRefresh(flight, now, Option.none())]
+	}
+	// The gate is posted, so the pace is five minutes and a pull may ask every two and a half.
+	assert.deepStrictEqual(
+		[after(Duration.seconds(30)), after(Duration.minutes(2.5)), after(Duration.minutes(5))],
+		[
+			[false, false],
+			[false, true],
+			[true, true]
+		]
+	)
+})
+
 it('calls live data stale after two missed checks, but never an arrival', () => {
 	const departs = DateTime.makeUnsafe('2026-10-28T15:40:00Z')
 	const now = DateTime.subtractDuration(departs, Duration.minutes(30))
