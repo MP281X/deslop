@@ -33,7 +33,7 @@ import {
 
 import {useListBeside, useListTiled} from '@deslop/components-mobile/blocks/list-detail'
 import {StatusDot} from '@deslop/components-mobile/blocks/status-dot'
-import {barNeverMinimizes} from '@deslop/components-mobile/lib/toolbar'
+import {backHidden, barNeverMinimizes} from '@deslop/components-mobile/lib/toolbar'
 import {colors, space, text} from '@deslop/components-mobile/theme'
 import {Empty, EmptyMedia} from '@deslop/components-mobile/ui/empty'
 
@@ -282,9 +282,10 @@ function Heading(props: {booking: Booking; now: DateTime.Utc; size: Size}) {
 	)
 }
 
-// The flight under way or next, read at a glance from a tray table: the same rule as the list's Now and Upcoming.
+// The flight under way or next, read at a glance from a tray table: the same rule as the list's Now and Upcoming. Half open like a laptop it stands above the list, so it has no Back.
 function Board(props: {bookings: BookingList}) {
 	const now = useAtomValue(nowAtom)
+	const tiled = useListTiled()
 	return pipe(
 		props.bookings,
 		Array.findFirst(
@@ -308,6 +309,7 @@ function Board(props: {bookings: BookingList}) {
 						navigationTitle(titleOf(flight)),
 						navigationBarTitleDisplayMode('inline'),
 						barNeverMinimizes(),
+						...Boolean.match(tiled, {onFalse: () => [backHidden], onTrue: () => []}),
 						padding({horizontal: space[6]}),
 						frame({alignment: 'leading', maxHeight: Infinity, maxWidth: Infinity})
 					]}

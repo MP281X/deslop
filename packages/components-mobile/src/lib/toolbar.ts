@@ -14,3 +14,6 @@ export function searchFocused(focused: boolean, onChange: (focused: boolean) => 
 		focused
 	})
 }
+
+// ios/DeslopComponentsModule.swift: no Back on a pushed screen with nowhere to go back to.
+export const backHidden = createModifier('backHidden')

@@ -47,6 +47,9 @@ public class DeslopComponentsModule: Module {
       ViewModifierRegistry.register("seeThrough") { params, appContext, _ in
         try SeeThrough(from: params, appContext: appContext)
       }
+      ViewModifierRegistry.register("backHidden") { params, appContext, _ in
+        try BackHidden(from: params, appContext: appContext)
+      }
     }
   }
 }
@@ -138,5 +141,12 @@ struct BarNeverMinimizes: ViewModifier, Record {
     } else {
       content
     }
+  }
+}
+
+// A pushed screen with nowhere to go back to, such as a board that stands above the list a Back would return to.
+struct BackHidden: ViewModifier, Record {
+  func body(content: Content) -> some View {
+    content.navigationBarBackButtonHidden(true)
   }
 }
