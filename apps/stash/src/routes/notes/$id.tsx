@@ -274,6 +274,10 @@ function NoteContent(props: {note: NoteItem}) {
 const widthAtom = Atom.make(0)
 const heightAtom = Atom.make(0)
 const restingAtom = Atom.make(true)
+// How far the note's top sits below the window's, which the bar above it insets the scrolling by.
+const insetAtom = Atom.make(0)
+// Whether the note's end was on screen where its scrolling last changed phase.
+const endedAtom = Atom.make(false)
 // The frame after a fold, unfold or turn cleared a line from the top, in which the note whose place it is sets the line again. Only a mounted note hears it, so the write never outlives the note's place.
 const restoringAtom = Atom.make(Option.none<{line: string; place: unknown}>())
 
@@ -287,6 +291,8 @@ function useReadingPlace() {
 	const setWidth = useAtomSet(widthAtom)
 	const setHeight = useAtomSet(heightAtom)
 	const setResting = useAtomSet(restingAtom)
+	const setInset = useAtomSet(insetAtom)
+	const setEnded = useAtomSet(endedAtom)
 	function restore() {
 		const line = reading.current
 		if (line === null) return
@@ -301,7 +307,13 @@ function useReadingPlace() {
 		)
 	})
 	useAtomSubscribe(restingAtom, resting => {
-		if (resting) reading.current = place.get()
+		if (!resting) return
+		const top = place.get()
+		// A person who scrolled to the end keeps the end: restoring it as the place scrolls as far as the note goes, so the tags stay on screen however the text rewraps. One who left the cover at the top, as on a note that fits, keeps the cover.
+		reading.current = Boolean.match(registry.get(endedAtom) && top !== 'cover', {
+			onFalse: Function.constant(top),
+			onTrue: Function.constant('end')
+		})
 	})
 	useAtomSubscribe(widthAtom, restore)
 	// The bar shrinking while the person scrolls changes the height too, so only a height change at rest, as unfolding from laptop posture and back, restores the line; a note pushed past its end by a taller window would otherwise stay there once the window is short again.
@@ -310,10 +322,17 @@ function useReadingPlace() {
 	})
 	return [
 		scrollPosition(place, {anchor: 'top'}),
-		onScrollPhaseChange(phase => setResting(phase === 'idle')),
+		onScrollPhaseChange((phase, geometry) => {
+			// The offset counts from under the bar, so scrolled to the end it falls short of the content by the visible height and that inset, less than a point once rounded.
+			setEnded(
+				geometry.contentHeight - geometry.contentOffsetY - registry.get(insetAtom) - geometry.containerHeight < 1
+			)
+			setResting(phase === 'idle')
+		}),
 		onGeometryChange(bounds => {
 			setWidth(bounds.width)
 			setHeight(bounds.height)
+			setInset(bounds.y)
 		})
 	]
 }
