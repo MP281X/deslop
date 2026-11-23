@@ -12,7 +12,6 @@ import {Suspense, useState} from 'react'
 import {ItemGroupSkeleton} from '@deslop/components-mobile/blocks/item-group-skeleton'
 import {ListToolbar} from '@deslop/components-mobile/blocks/list-toolbar'
 import {FailureContent} from '@deslop/components-mobile/blocks/loaded'
-import {PasteSheet} from '@deslop/components-mobile/blocks/paste-sheet'
 import {Problem} from '@deslop/components-mobile/blocks/problem'
 import {RemovableRow} from '@deslop/components-mobile/blocks/removable-row'
 import {StatusDot} from '@deslop/components-mobile/blocks/status-dot'
@@ -317,32 +316,30 @@ export function HomeRoute(props: {onOpen: (id: Booking['id']) => void}) {
 	const loaded = useAtomValue(bookingsAtom)
 	useAtomMount(problemSinceAtom(bookingsAtom))
 	return (
-		<PasteSheet clipboard={clipboard}>
-			<ListToolbar
-				title="Trips"
-				session={session}
-				onSearch={setSearched}
-				problem={Option.liftPredicate(
-					<Problem source={bookingsAtom} label="Out of date" onRetry={useAtomRefresh(bookingsAtom)} />,
-					() => AsyncResult.isFailure(loaded) && Option.isNone(blockingFailure(loaded))
-				)}
+		<ListToolbar
+			title="Trips"
+			session={session}
+			onSearch={setSearched}
+			problem={Option.liftPredicate(
+				<Problem source={bookingsAtom} label="Out of date" onRetry={useAtomRefresh(bookingsAtom)} />,
+				() => AsyncResult.isFailure(loaded) && Option.isNone(blockingFailure(loaded))
+			)}
+		>
+			<Suspense
+				fallback={
+					<ItemGroupSkeleton
+						rows={10}
+						descriptionLines={2}
+						media={
+							<ItemMedia>
+								<Gutter countdown={Countdown.cases.Days.make({days: 2})} />
+							</ItemMedia>
+						}
+					/>
+				}
 			>
-				<Suspense
-					fallback={
-						<ItemGroupSkeleton
-							rows={10}
-							descriptionLines={2}
-							media={
-								<ItemMedia>
-									<Gutter countdown={Countdown.cases.Days.make({days: 2})} />
-								</ItemMedia>
-							}
-						/>
-					}
-				>
-					<Bookings onOpen={props.onOpen} searched={searched} />
-				</Suspense>
-			</ListToolbar>
-		</PasteSheet>
+				<Bookings onOpen={props.onOpen} searched={searched} />
+			</Suspense>
+		</ListToolbar>
 	)
 }

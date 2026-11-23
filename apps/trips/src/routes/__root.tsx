@@ -3,36 +3,38 @@ import '#lib/activities.tsx'
 
 import {useAtomMount, useAtomSubscribe, useAtomValue} from '@effect/atom-react'
 
-import {Array, Option} from 'effect'
+import {Function, Option} from 'effect'
 
-import {Host, NavigationDestination, NavigationStack} from '@expo/ui/swift-ui'
+import {Host} from '@expo/ui/swift-ui'
 import {tint} from '@expo/ui/swift-ui/modifiers'
 import {AsyncResult} from 'effect/reactivity'
 import {Suspense, useState} from 'react'
 
 import {ItemGroupSkeleton} from '@deslop/components-mobile/blocks/item-group-skeleton'
+import {ListDetail} from '@deslop/components-mobile/blocks/list-detail'
 import {Loaded} from '@deslop/components-mobile/blocks/loaded'
+import {PasteSheet} from '@deslop/components-mobile/blocks/paste-sheet'
 import {SessionGate} from '@deslop/components-mobile/blocks/session-gate'
 import {colors} from '@deslop/components-mobile/theme'
 
-import {bookingsAtom} from '#lib/bookings.ts'
+import {bookingsAtom, clipboard} from '#lib/bookings.ts'
 import {calendarAtom} from '#lib/calendar.ts'
 import {openedAtom} from '#lib/deep-links.ts'
 import {pushAtom} from '#lib/notifications.ts'
 import {session} from '#lib/session.ts'
 import {HomeRoute} from '#routes/(home)/index.tsx'
 import {BookingRoute} from '#routes/bookings/$id.tsx'
-import {BookingId} from '#services/bookings/schema.ts'
+import type {BookingId} from '#services/bookings/schema.ts'
 
-function Destination(props: {onClose: () => void; value: string}) {
+function Destination(props: {id: Option.Option<BookingId>; onClose: () => void}) {
 	const live = useAtomValue(bookingsAtom)
 	return (
 		<Loaded atom={bookingsAtom}>
 			{bookings => (
 				<BookingRoute
-					key={props.value}
+					key={Option.getOrElse(props.id, Function.constant('board'))}
 					bookings={bookings}
-					id={BookingId.make(props.value)}
+					id={props.id}
 					offline={AsyncResult.isFailure(live)}
 					onClose={props.onClose}
 				/>
@@ -41,31 +43,30 @@ function Destination(props: {onClose: () => void; value: string}) {
 	)
 }
 
-// `openedAtom` logs an initial URL-read failure and keeps listening for later opens; no selected booking is the valid home path, not a replacement booking or a successful read of booking data.
+// `openedAtom` logs an initial URL-read failure and keeps listening for later opens; no opened booking is the valid home, not a replacement booking or a successful read of booking data.
 function AppRoutes() {
 	useAtomMount(pushAtom)
 	useAtomMount(calendarAtom)
-	const opened = useAtomValue(openedAtom)
-	const [path, setPath] = useState(() =>
-		Option.match(AsyncResult.value(opened), {onNone: () => Array.empty<BookingId>(), onSome: id => [id]})
-	)
-	useAtomSubscribe(openedAtom, tapped => Option.map(AsyncResult.value(tapped), id => setPath([id])))
+	const launched = useAtomValue(openedAtom)
+	const [opened, setOpened] = useState(() => AsyncResult.value(launched))
+	useAtomSubscribe(openedAtom, tapped => Option.map(AsyncResult.value(tapped), id => setOpened(Option.some(id))))
 	return (
 		<Host style={{flex: 1}}>
-			<NavigationStack
-				path={path}
-				onPathChange={values => setPath(Array.map(values, value => BookingId.make(value)))}
-				modifiers={[tint(colors.foreground)]}
-			>
-				<HomeRoute onOpen={id => setPath([id])} />
-				{Array.map(path, value => (
-					<NavigationDestination key={value} value={value}>
+			{/* Over the whole window, so the list's copy below an item in laptop posture asks once. */}
+			<PasteSheet clipboard={clipboard}>
+				<ListDetail
+					board
+					opened={Option.isSome(opened)}
+					onClose={() => setOpened(Option.none())}
+					modifiers={[tint(colors.foreground)]}
+					list={<HomeRoute onOpen={id => setOpened(Option.some(id))} />}
+					detail={
 						<Suspense fallback={<ItemGroupSkeleton rows={10} />}>
-							<Destination value={value} onClose={() => setPath([])} />
+							<Destination id={opened} onClose={() => setOpened(Option.none())} />
 						</Suspense>
-					</NavigationDestination>
-				))}
-			</NavigationStack>
+					}
+				/>
+			</PasteSheet>
 		</Host>
 	)
 }
