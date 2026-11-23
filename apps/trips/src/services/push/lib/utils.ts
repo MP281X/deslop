@@ -13,7 +13,8 @@ import {
 	labelled,
 	line,
 	routeOf,
-	titleOf
+	titleOf,
+	travellersLine
 } from '#services/flights/lib/utils.ts'
 import type {FlightList, Flight, Leg} from '#services/flights/schema.ts'
 import {ShowAction} from '#services/push/schema.ts'
@@ -220,7 +221,10 @@ function flightAlerts(flight: Flight, now: DateTime.Utc, stale: boolean) {
 								),
 								Function.constant('Check the gate')
 							),
-							labelled('group', flight.boardingGroup)
+							labelled(
+								'group',
+								travellersLine(flight, traveller => traveller.boardingGroup)
+							)
 						]),
 						category: 'boarding',
 						title: `${title} boards at ${clockAt(at, flight.from.timeZone)}`

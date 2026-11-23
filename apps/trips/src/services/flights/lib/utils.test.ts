@@ -21,16 +21,15 @@ const FLIGHT = Struct.pick(
 		airlineCode: 'BA',
 		arrives: DateTime.addDuration(DEPARTS, Duration.hours(2.5)),
 		boardingAt: Option.none(),
-		boardingGroup: Option.none(),
 		confirmation: Option.none(),
 		departs: DEPARTS,
 		from: Schema.decodeSync(Place)({code: 'FCO', name: 'Fiumicino', timeZone: 'Europe/Rome'}),
 		id: FlightId.make('7f0c8f8e-0d0a-4a5e-9d8f-5b2a1c3d4e5f'),
 		live: Option.none(),
 		number: '553',
-		seat: Option.none(),
 		status: 'confirmed',
-		to: Schema.decodeSync(Place)({code: 'LHR', name: 'Heathrow', timeZone: 'Europe/London'})
+		to: Schema.decodeSync(Place)({code: 'LHR', name: 'Heathrow', timeZone: 'Europe/London'}),
+		travellers: []
 	}),
 	Struct.keys(Flight.fields)
 )
@@ -117,25 +116,37 @@ it('starts no Live Activity for a cancelled flight', () => {
 	)
 })
 
+function traveller(name: Option.Option<string>, seat: Option.Option<string>) {
+	return {boardingGroup: Option.none(), name, seat}
+}
+
 it('merges tickets for the same leg and retains live data only while its schedule matches', () => {
 	const tracked = Flight.make({
 		...FLIGHT,
 		confirmation: Option.some('ABC123'),
-		live: Option.some(Schema.decodeSync(FlightTracking)({checkedAt: 1, departureGate: 'B12', state: 'scheduled'}))
+		live: Option.some(Schema.decodeSync(FlightTracking)({checkedAt: 1, departureGate: 'B12', state: 'scheduled'})),
+		travellers: [traveller(Option.some('Matteo Rossi'), Option.none())]
 	})
 	const again = Flight.make({
 		...FLIGHT,
 		id: FlightId.make('aaaaaaaa-0d0a-4a5e-9d8f-5b2a1c3d4e5f'),
-		seat: Option.some('14A')
+		travellers: [traveller(Option.some('ROSSI/MATTEO MR'), Option.some('14A'))]
 	})
 	assert.deepStrictEqual(
 		Array.map(upsert([tracked], [again]), flight => [
 			flight.id,
 			flight.confirmation,
-			flight.seat,
+			flight.travellers,
 			Option.flatMap(flight.live, live => live.departureGate)
 		]),
-		[[FLIGHT.id, Option.some('ABC123'), Option.some('14A'), Option.some('B12')]]
+		[
+			[
+				FLIGHT.id,
+				Option.some('ABC123'),
+				[traveller(Option.some('ROSSI/MATTEO MR'), Option.some('14A'))],
+				Option.some('B12')
+			]
+		]
 	)
 	assert.deepStrictEqual(
 		Array.map(
@@ -146,7 +157,7 @@ it('merges tickets for the same leg and retains live data only while its schedul
 						...FLIGHT,
 						departs: DateTime.addDuration(DEPARTS, Duration.hours(3)),
 						id: again.id,
-						seat: again.seat
+						travellers: again.travellers
 					})
 				]
 			),
@@ -156,19 +167,36 @@ it('merges tickets for the same leg and retains live data only while its schedul
 	)
 })
 
-it('keeps tickets with different confirmation codes as separate flights', () => {
-	function other(confirmation: Option.Option<string>) {
-		return Flight.make({...FLIGHT, confirmation, id: FlightId.make('cccccccc-0d0a-4a5e-9d8f-5b2a1c3d4e5f')})
+it('adds each traveller a ticket names to the flight, whatever its confirmation code', () => {
+	const held = Flight.make({
+		...FLIGHT,
+		confirmation: Option.some('ABC123'),
+		travellers: [traveller(Option.none(), Option.some('14C'))]
+	})
+	function pass(name: string, seat: string) {
+		return Flight.make({
+			...FLIGHT,
+			confirmation: Option.some('XYZ789'),
+			id: FlightId.make('cccccccc-0d0a-4a5e-9d8f-5b2a1c3d4e5f'),
+			travellers: [traveller(Option.some(name), Option.some(seat))]
+		})
 	}
-	const held = Flight.make({...FLIGHT, confirmation: Option.some('ABC123')})
+	// The flight saved before names were read is whoever sits in 14C.
 	assert.deepStrictEqual(
 		Array.map(
-			[Option.some('XYZ789'), Option.some(' abc123 '), Option.none()],
-			confirmation => upsert([held], [other(confirmation)]).length
+			upsert([held], [pass('Matteo Rossi', '14C'), pass('Anna Bianchi', '14D'), pass('Anna Bianchi', '15A')]),
+			flight => [flight.confirmation, flight.travellers]
 		),
-		[2, 1, 1]
+		[
+			[
+				Option.some('ABC123'),
+				[
+					traveller(Option.some('Matteo Rossi'), Option.some('14C')),
+					traveller(Option.some('Anna Bianchi'), Option.some('15A'))
+				]
+			]
+		]
 	)
-	assert.lengthOf(upsert([FLIGHT], [other(Option.some('XYZ789'))]), 1)
 })
 
 it('keeps distinct legs of the same flight number as distinct flights', () => {

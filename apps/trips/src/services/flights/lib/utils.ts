@@ -1,9 +1,34 @@
-import {Array, Boolean, DateTime, Duration, Equal, Function, Number, Option, Order, String, Struct, pipe} from 'effect'
+import {
+	Array,
+	Boolean,
+	DateTime,
+	Duration,
+	Equal,
+	Function,
+	Number,
+	Option,
+	Order,
+	Result,
+	String,
+	Struct,
+	pipe
+} from 'effect'
 
 import {ActivityProps, Flight} from '#services/flights/schema.ts'
-import type {FlightList, Chip, FlightPhase, FlightTracking, Leg, LocalTime} from '#services/flights/schema.ts'
+import type {
+	FlightList,
+	Chip,
+	FlightPhase,
+	FlightTracking,
+	Leg,
+	LocalTime,
+	Traveller
+} from '#services/flights/schema.ts'
 
 const OFFSET = /(?:Z|[+-]\d{2}:?\d{2})$/u
+
+// Titles a pass prints after a name, which say nothing about who travels.
+const TITLES = ['MR', 'MRS', 'MS', 'MISS', 'MSTR', 'DR']
 
 export const MINUTE = Duration.minutes(1)
 export const HOUR = Duration.hours(1)
@@ -57,6 +82,19 @@ export function labelled(label: string, value: Option.Option<string>) {
 
 export function line(parts: Option.Option<string>[]) {
 	return Array.join(Array.getSomes(parts), ' · ')
+}
+
+// What the travellers share, such as their seats, each told once: "14C, 14D".
+export function travellersLine(flight: Flight, field: (traveller: Traveller) => Option.Option<string>) {
+	return pipe(
+		flight.travellers,
+		Array.filterMap(traveller =>
+			Option.match(field(traveller), {onNone: () => Result.failVoid, onSome: Result.succeed})
+		),
+		Array.dedupe,
+		Array.join(', '),
+		Option.liftPredicate(String.isNonEmpty)
+	)
 }
 
 export function departureOf(flight: Flight) {
@@ -134,13 +172,57 @@ function sameFlight(existing: Flight, incoming: Flight) {
 	)
 }
 
-function sameReservation(existing: Flight, incoming: Flight) {
-	// Two codes that both exist and differ are two travellers, never one flight.
-	if (Option.exists(codeOf(existing), code => Option.exists(codeOf(incoming), other => other !== code))) return false
-	return sameFlight(existing, incoming)
+// A name as a pass or a booking prints it, so ROSSI/MATTEO MR and Matteo Rossi are one person: its words in any order, without accents or titles.
+function nameKey(name: string) {
+	return pipe(
+		name,
+		String.normalize('NFD'),
+		String.replaceAll(/[\u0300-\u036F]/gu, ''),
+		String.toUpperCase,
+		String.split(/[^A-Z]+/u),
+		Array.filter(word => String.isNonEmpty(word) && !Array.contains(TITLES, word)),
+		Array.sort(String.Order),
+		Array.join(' ')
+	)
 }
 
-// The newer ticket wins field by field; the id stays, and live data survives only while it describes the same service.
+// A traveller saved before Trips read names is whoever holds its seat, or anyone while it has none.
+function sameTraveller(existing: Traveller, incoming: Traveller) {
+	return Option.match(Option.all([existing.name, incoming.name]), {
+		onNone: () =>
+			Option.isNone(existing.name) && (Option.isNone(existing.seat) || Equal.equals(existing.seat, incoming.seat)),
+		onSome: names => nameKey(names[0]) === nameKey(names[1])
+	})
+}
+
+// Each ticket adds the travellers it names, so passes shared for other people fill one flight; a traveller already on it takes the newer ticket's seat and group.
+function travellersOf(existing: readonly Traveller[], incoming: readonly Traveller[]) {
+	return Array.mapAccum(incoming, existing, (travellers, traveller) =>
+		pipe(
+			travellers,
+			Array.findFirst(held => sameTraveller(held, traveller)),
+			Option.match({
+				onNone: () => [[...travellers, traveller], undefined] as const,
+				onSome: found =>
+					[
+						Array.map(travellers, held =>
+							Boolean.match(held === found, {
+								onFalse: () => held,
+								onTrue: () => ({
+									boardingGroup: newer(held.boardingGroup, traveller.boardingGroup),
+									name: newer(held.name, traveller.name),
+									seat: newer(held.seat, traveller.seat)
+								})
+							})
+						),
+						undefined
+					] as const
+			})
+		)
+	)[0]
+}
+
+// The newer ticket wins field by field, except the confirmation, where the first code saved stays since another traveller's pass prints their own; the id stays, and live data survives only while it describes the same service.
 function combine(existing: Flight, incoming: Flight) {
 	const same =
 		existing.airlineCode === incoming.airlineCode &&
@@ -149,11 +231,10 @@ function combine(existing: Flight, incoming: Flight) {
 	return Flight.make({
 		...Struct.pick(incoming, Struct.keys(Flight.fields)),
 		boardingAt: newer(existing.boardingAt, incoming.boardingAt),
-		boardingGroup: newer(existing.boardingGroup, incoming.boardingGroup),
-		confirmation: newer(existing.confirmation, incoming.confirmation),
+		confirmation: Option.orElse(existing.confirmation, () => incoming.confirmation),
 		id: existing.id,
 		live: Option.filter(existing.live, () => same),
-		seat: newer(existing.seat, incoming.seat)
+		travellers: travellersOf(existing.travellers, incoming.travellers)
 	})
 }
 
@@ -161,7 +242,7 @@ export function upsert(current: FlightList, incoming: FlightList) {
 	return Array.mapAccum(incoming, current, (flights, flight) =>
 		pipe(
 			flights,
-			Array.findFirst(existing => sameReservation(existing, flight)),
+			Array.findFirst(existing => sameFlight(existing, flight)),
 			Option.match({
 				onNone: () => [[...flights, flight], undefined] as const,
 				onSome: existing => {
@@ -279,7 +360,10 @@ function staleNote(live: Option.Option<FlightTracking>, timeZone: string, stale:
 function flightDetail(flight: Flight, phase: FlightPhase, stale: boolean) {
 	if (phase === 'landed') return ''
 	return line([
-		labelled('Group', flight.boardingGroup),
+		labelled(
+			'Group',
+			travellersLine(flight, traveller => traveller.boardingGroup)
+		),
 		labelled(
 			'was',
 			Option.flatMap(flight.live, live => live.previousGate)
@@ -359,7 +443,12 @@ export function activityProps(flight: Flight, now: DateTime.Utc, stale: boolean)
 		from: Option.getOrElse(flight.from.code, () => flight.from.name),
 		headline: flightHeadline(flight, phase),
 		label: flightLabel(phase),
-		note: line([labelled('Seat', flight.seat)]),
+		note: line([
+			labelled(
+				'Seat',
+				travellersLine(flight, traveller => traveller.seat)
+			)
+		]),
 		phase,
 		progressFrom: pipe(
 			flight.live,

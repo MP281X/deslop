@@ -23,14 +23,21 @@ function flight(number: string, from: string, to: string, departure: string, con
 		airlineName: 'British Airways',
 		arrival: `${String.slice(0, 11)(departure)}23:00`,
 		boarding: Option.none(),
-		boardingGroup: Option.none(),
 		confirmation: Option.some(confirmation),
 		departure,
 		flightNumber: number,
 		from,
-		seat: Option.none(),
 		status: 'confirmed',
-		to
+		to,
+		travellers: []
+	} satisfies ExtractedFlight
+}
+
+// One person's pass for FR 1234.
+function pass(confirmation: string, name: string, seat: string) {
+	return {
+		...flight('1234', 'BGY', 'STN', '2026-11-23T15:30', confirmation),
+		travellers: [{boardingGroup: Option.none(), name, seat: Option.some(seat)}]
 	} satisfies ExtractedFlight
 }
 
@@ -84,6 +91,28 @@ it.layer(flightsLayer)(test =>
 			assert.deepStrictEqual(
 				Array.map(yield* flights.list, saved => saved.number),
 				['554']
+			)
+		})
+	)
+)
+
+it.layer(flightsLayer)(test =>
+	test.effect(
+		'passes shared for two people fill one flight with both travellers',
+		Effect.fnUntraced(function* () {
+			yield* share([pass('ABC123', 'Matteo Rossi', '14C')])
+			yield* share([pass('XYZ789', 'Anna Bianchi', '14D')])
+			assert.deepStrictEqual(
+				Array.map(yield* Effect.flatMap(Flights, flights => flights.list), saved => [saved.number, saved.travellers]),
+				[
+					[
+						'1234',
+						[
+							{boardingGroup: Option.none(), name: Option.some('Matteo Rossi'), seat: Option.some('14C')},
+							{boardingGroup: Option.none(), name: Option.some('Anna Bianchi'), seat: Option.some('14D')}
+						]
+					]
+				]
 			)
 		})
 	)

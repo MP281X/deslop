@@ -67,22 +67,29 @@ export const FlightTracking = Schema.Struct({
 	takeoffActual: Schema.OptionFromOptionalKey(DateTimeUtcFromFiniteMillis)
 })
 
-// One row of `flights`; places and the provider's latest report are values of the flight, kept as JSON. Absent is `Option.none()` in code, NULL in the row and a missing key on the wire.
+// One person on a flight with their seat and boarding group; a flight saved before Trips read names holds its seat under no name.
+export type Traveller = typeof Traveller.Type
+export const Traveller = Schema.Struct({
+	boardingGroup: Schema.OptionFromOptionalKey(Schema.String),
+	name: Schema.OptionFromOptionalKey(Schema.String),
+	seat: Schema.OptionFromOptionalKey(Schema.String)
+})
+
+// One row of `flights`; places, travellers and the provider's latest report are values of the flight, kept as JSON. Absent is `Option.none()` in code, NULL in the row and a missing key on the wire.
 export class Flight extends Model.Class<Flight>('Flight')({
 	airline: Schema.String,
 	airlineCode: Schema.String,
 	arrives: Schema.DateTimeUtcFromMillis,
 	boardingAt: Model.FieldOption(Schema.DateTimeUtcFromMillis),
-	boardingGroup: Model.FieldOption(Schema.String),
 	confirmation: Model.FieldOption(Schema.String),
 	departs: Schema.DateTimeUtcFromMillis,
 	from: Model.JsonFromString(Place),
 	id: FlightId,
 	live: Model.FieldOption(Model.JsonFromString(FlightTracking)),
 	number: Schema.String,
-	seat: Model.FieldOption(Schema.String),
 	status: ReservationStatus,
-	to: Model.JsonFromString(Place)
+	to: Model.JsonFromString(Place),
+	travellers: Model.JsonFromString(Schema.Array(Traveller))
 }) {
 	static readonly table = 'flights'
 }
@@ -173,21 +180,26 @@ export const ExtractedFlight = Schema.Struct({
 	airlineName: Name,
 	arrival: LocalTime,
 	boarding: Schema.OptionFromOptionalKey(LocalTime),
-	boardingGroup: Schema.OptionFromOptionalKey(Short),
 	confirmation: Schema.OptionFromOptionalKey(Short),
 	departure: LocalTime,
 	flightNumber: TripNumber.annotate({description: 'Digits only, such as 553'}),
 	from: Short.annotate({description: 'IATA airport code'}),
-	seat: Schema.OptionFromOptionalKey(Short),
 	status: ReservationStatus,
-	to: Short.annotate({description: 'IATA airport code'})
+	to: Short.annotate({description: 'IATA airport code'}),
+	travellers: Schema.Array(
+		Schema.Struct({
+			boardingGroup: Schema.OptionFromOptionalKey(Short),
+			name: Name.annotate({description: 'Given names then family name, without titles, such as Matteo Rossi'}),
+			seat: Schema.OptionFromOptionalKey(Short)
+		})
+	).annotate({description: 'Every passenger the text names for this flight'})
 })
 
 export type ExtractedFlights = typeof ExtractedFlights.Type
 export const ExtractedFlights = Schema.Array(ExtractedFlight)
 
 export type FlightExtraction = typeof FlightExtraction.Type
-export const FlightExtraction = Schema.Struct({items: ExtractedFlights})
+export const FlightExtraction = Schema.Struct({flights: ExtractedFlights})
 
 export type Airport = typeof Airport.Type
 export const Airport = Schema.Struct({

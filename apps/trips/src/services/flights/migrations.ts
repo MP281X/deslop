@@ -64,5 +64,17 @@ export const migrations = {
 	}),
 	'0004_no_stays': Effect.gen(function* () {
 		yield* (yield* SqlClient.SqlClient)`DROP TABLE stays`
+	}),
+	// A flight holds everyone travelling on it; its one seat and group become a traveller with no name, and a null field is left out, as the JSON leaves out an absent one.
+	'0005_travellers': Effect.gen(function* () {
+		const sql = yield* SqlClient.SqlClient
+		yield* sql`ALTER TABLE flights ADD COLUMN travellers TEXT NOT NULL DEFAULT '[]'`
+		yield* sql`
+			UPDATE flights
+			SET travellers = json_array(json_patch('{}', json_object('boardingGroup', boardingGroup, 'seat', seat)))
+			WHERE seat IS NOT NULL OR boardingGroup IS NOT NULL
+		`
+		yield* sql`ALTER TABLE flights DROP COLUMN seat`
+		yield* sql`ALTER TABLE flights DROP COLUMN boardingGroup`
 	})
 }

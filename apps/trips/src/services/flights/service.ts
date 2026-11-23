@@ -92,16 +92,15 @@ export class Flights extends Context.Service<Flights>()('@deslop/trips/services/
 				airlineCode: item.airlineCode,
 				arrives,
 				boardingAt: yield* Effect.transposeOption(Option.map(item.boarding, boarding => at(boarding, from.timeZone))),
-				boardingGroup: item.boardingGroup,
 				confirmation: item.confirmation,
 				departs,
 				from,
 				id: FlightId.make(yield* random.uuidV4()),
 				live: Option.none(),
 				number: item.flightNumber,
-				seat: item.seat,
 				status: item.status,
-				to
+				to,
+				travellers: Array.map(item.travellers, traveller => ({...traveller, name: Option.some(traveller.name)}))
 			})
 		})
 

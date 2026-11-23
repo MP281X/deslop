@@ -25,16 +25,15 @@ const FLIGHT = Struct.pick(
 		airlineCode: 'BA',
 		arrives: DateTime.addDuration(DEPARTS, Duration.hours(2.5)),
 		boardingAt: Option.none(),
-		boardingGroup: Option.none(),
 		confirmation: Option.none(),
 		departs: DEPARTS,
 		from: Schema.decodeSync(Place)({code: 'FCO', name: 'Fiumicino', timeZone: 'Europe/Rome'}),
 		id: FlightId.make('7f0c8f8e-0d0a-4a5e-9d8f-5b2a1c3d4e5f'),
 		live: Option.none(),
 		number: '553',
-		seat: Option.none(),
 		status: 'confirmed',
-		to: Schema.decodeSync(Place)({code: 'LHR', name: 'Heathrow', timeZone: 'Europe/London'})
+		to: Schema.decodeSync(Place)({code: 'LHR', name: 'Heathrow', timeZone: 'Europe/London'}),
+		travellers: []
 	}),
 	Struct.keys(Flight.fields)
 )

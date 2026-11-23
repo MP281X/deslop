@@ -43,7 +43,18 @@ import {boardAtom, nowAtom, refreshAtom, removal} from '#lib/flights.ts'
 import {mapsAtom, placeLine, uberAtom} from '#lib/rides.ts'
 import {primary} from '#lib/session.ts'
 import {dayAt, problemOf, statusOf, tones} from '#lib/status.ts'
-import {arrivalClockOf, arrivalOf, clockAt, departureOf, MINUTE, routeOf, titleOf} from '#services/flights/lib/utils.ts'
+import {
+	arrivalClockOf,
+	arrivalOf,
+	clockAt,
+	departureOf,
+	labelled,
+	line,
+	MINUTE,
+	routeOf,
+	titleOf,
+	travellersLine
+} from '#services/flights/lib/utils.ts'
 import type {FlightId, FlightList, Flight, Tone} from '#services/flights/schema.ts'
 
 function colorOf(tone?: Tone) {
@@ -91,10 +102,20 @@ function FlightFields(props: {flight: Flight}) {
 			</Section>
 			<Section title="Booking">
 				<Field label="Airline" value={Option.some(props.flight.airline)} />
-				<Field label="Group" value={props.flight.boardingGroup} />
 				<Field label="Aircraft" value={Option.flatMap(props.flight.live, report => report.aircraft)} />
 				<Field label="Confirmation" value={props.flight.confirmation} />
 			</Section>
+			{Array.isReadonlyArrayNonEmpty(props.flight.travellers) && (
+				<Section title="Travellers">
+					{Array.map(props.flight.travellers, traveller => (
+						<Field
+							key={`${Option.getOrElse(traveller.name, Function.constant(''))} ${Option.getOrElse(traveller.seat, Function.constant(''))}`}
+							label={Option.getOrElse(traveller.name, Function.constant('Traveller'))}
+							value={Option.some(line([traveller.seat, labelled('Group', traveller.boardingGroup)]))}
+						/>
+					))}
+				</Section>
+			)}
 		</>
 	)
 }
@@ -162,7 +183,7 @@ function FlightEssentials(props: {flight: Flight; size: Size}) {
 					)
 				)}
 			/>
-			<Essential label="Seat" size={props.size} value={props.flight.seat} />
+			<Essential label="Seat" size={props.size} value={travellersLine(props.flight, traveller => traveller.seat)} />
 		</HStack>
 	)
 }
