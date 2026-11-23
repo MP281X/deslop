@@ -37,21 +37,39 @@ export function directionsTo(place: Place) {
 
 export const mapsAtom = Atom.fn((place: Place) => alertFailure('No Directions')(directionsTo(place)))
 
-// An Uber to the airport, from the flight or a Leave now notification.
+// Uber's ride request, the same for its app and its website: from where he is to the airport, its brackets escaped so the link parses.
+function rideQuery(place: Place, found: {latitude: number; longitude: number}) {
+	return pipe(
+		[
+			['action', 'setPickup'],
+			['pickup', 'my_location'],
+			['dropoff[latitude]', `${found.latitude}`],
+			['dropoff[longitude]', `${found.longitude}`],
+			['dropoff[nickname]', place.name],
+			['dropoff[formatted_address]', placeLine(place)]
+		] as const,
+		Array.map(field => `${encodeURIComponent(field[0])}=${encodeURIComponent(field[1])}`),
+		Array.join('&')
+	)
+}
+
+function opened(url: string) {
+	return Effect.tryPromise({
+		catch: cause => FlightsError.make({cause, message: 'Uber could not be opened.'}),
+		try: () => Linking.openURL(url)
+	})
+}
+
+// An Uber to the airport, from the flight or a Leave now notification: in the Uber app, or on Uber's website without it. Uber's universal link would send a phone without the app to the App Store instead.
 export function rideTo(place: Place) {
 	return pipe(
 		coordinatesOf(place),
 		Effect.fromOption,
 		Effect.mapError(cause => FlightsError.make({cause, message: 'The place could not be found for Uber.'})),
-		Effect.flatMap(found =>
-			Effect.tryPromise({
-				catch: cause => FlightsError.make({cause, message: 'Uber could not be opened.'}),
-				try: () =>
-					Linking.openURL(
-						`https://m.uber.com/ul/?action=setPickup&pickup=my_location&dropoff[latitude]=${found.latitude}&dropoff[longitude]=${found.longitude}&dropoff[nickname]=${encodeURIComponent(place.name)}&dropoff[formatted_address]=${encodeURIComponent(placeLine(place))}`
-					)
-			})
-		)
+		Effect.flatMap(found => {
+			const query = rideQuery(place, found)
+			return Effect.catchTag(opened(`uber://?${query}`), 'FlightsError', () => opened(`https://m.uber.com/?${query}`))
+		})
 	)
 }
 
