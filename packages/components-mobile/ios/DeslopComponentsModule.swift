@@ -51,7 +51,7 @@ public class DeslopComponentsModule: Module {
   }
 }
 
-// The search field between the bottom bar's buttons, where iOS 26 would otherwise fold it into a button of its own. On the unfolded iPhone Duo, iOS 27 reserves 24 points above the home indicator for the bar, half its 48-point glass, so a list's last row ends behind the bar; the content's safe area grows to the glass, unless the bar stands beside the content, as in a landscape window, or the keyboard reserves more.
+// The search field between the bottom bar's buttons, where iOS 26 would otherwise fold it into a button of its own. On the unfolded iPhone Duo, iOS 27 reserves 24 points above the home indicator for the bar, half its 48-point glass, so a list's last row ends behind the bar; with the keyboard up iOS reserves only the keyboard, while the field rides 8 points above it, all its glass over the content. The content's safe area grows to the glass, unless the bar stands beside the content, as in a landscape window.
 struct BottomBarSearch: ViewModifier, Record {
   @State private var shortfall: CGFloat = 0
 
@@ -63,7 +63,12 @@ struct BottomBarSearch: ViewModifier, Record {
           return
         }
         let reserved = bottom - window.safeAreaInsets.bottom
-        shortfall = reserved > 0 ? max(0, 48 - reserved) : 0
+        shortfall = switch reserved {
+        case ...0: 0
+        case ...48: 48 - reserved
+        // More than the glass is the keyboard's.
+        default: 48 + 8
+        }
       }
       .toolbar {
         ToolbarSpacer(.fixed, placement: .bottomBar)
