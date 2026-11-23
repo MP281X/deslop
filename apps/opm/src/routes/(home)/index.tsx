@@ -1,4 +1,4 @@
-import {useAtom, useAtomMount, useAtomRefresh, useAtomSet, useAtomValue} from '@effect/atom-react'
+import {useAtom, useAtomMount, useAtomRefresh, useAtomSet, useAtomSubscribe, useAtomValue} from '@effect/atom-react'
 
 import {Array, Boolean, Function, Number, Option, Order, String, pipe} from 'effect'
 
@@ -32,7 +32,7 @@ import {AsyncResult, Atom} from 'effect/reactivity'
 import {Suspense} from 'react'
 
 import {ItemGroupSkeleton} from '@deslop/components-mobile/blocks/item-group-skeleton'
-import {useListChoose} from '@deslop/components-mobile/blocks/list-detail'
+import {useListChoose, useListSearch} from '@deslop/components-mobile/blocks/list-detail'
 import {ListToolbar} from '@deslop/components-mobile/blocks/list-toolbar'
 import {Loaded} from '@deslop/components-mobile/blocks/loaded'
 import {Problem} from '@deslop/components-mobile/blocks/problem'
@@ -53,7 +53,7 @@ import {blockingFailure} from '@deslop/runtime/client/live-stream'
 import {problemSinceAtom} from '@deslop/runtime/client/problem'
 import {dayOf} from '@deslop/runtime/shared/format'
 
-import {chaptersAtom, readAtom, unsavedAtom} from '#lib/chapters.ts'
+import {chaptersAtom, openedAtom, readAtom, unsavedAtom} from '#lib/chapters.ts'
 import {withUnsaved} from '#lib/reader.ts'
 import {primary, session} from '#lib/session.ts'
 import {ChapterProgress, Cover} from '#modules/native/index.ts'
@@ -212,6 +212,15 @@ export function ChaptersRoute(props: {
 	useAtomMount(problemSinceAtom(chaptersAtom))
 	const refresh = useAtomRefresh(chaptersAtom)
 	const [searched, setSearched] = useAtom(searchedAtom)
+	const field = useListSearch()
+	// Another series' list starts unfiltered, whether the person picks it or a notification opens one of its chapters.
+	function clearSearch() {
+		setSearched('')
+		Option.match(field, {onNone: Function.constVoid, onSome: text => text.set('')})
+	}
+	useAtomSubscribe(openedAtom, opened => {
+		if (Option.exists(opened, chapter => chapter.series !== props.series)) clearSearch()
+	})
 	// Chapters already on screen stay through an outage; a retryable problem dot in the bar marks that they stopped updating.
 	return (
 		<ListToolbar
@@ -236,7 +245,10 @@ export function ChaptersRoute(props: {
 						<Picker<Series>
 							label="Series"
 							selection={props.series}
-							onSelectionChange={props.onSeries}
+							onSelectionChange={series => {
+								clearSearch()
+								props.onSeries(series)
+							}}
 							modifiers={[pickerStyle('inline')]}
 						>
 							{Array.map(Series.literals, series => (
