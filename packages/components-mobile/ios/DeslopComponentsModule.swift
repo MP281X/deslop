@@ -51,14 +51,25 @@ public class DeslopComponentsModule: Module {
   }
 }
 
-// The search field between the bottom bar's buttons, where iOS 26 would otherwise fold it into a button of its own.
+// The search field between the bottom bar's buttons, where iOS 26 would otherwise fold it into a button of its own. On the unfolded iPhone Duo, iOS 27 reserves 24 points above the home indicator for the bar, half its 48-point glass, so a list's last row ends behind the bar; the content's safe area grows to the glass, unless the bar stands beside the content, as in a landscape window, or the keyboard reserves more.
 struct BottomBarSearch: ViewModifier, Record {
+  @State private var shortfall: CGFloat = 0
+
   func body(content: Content) -> some View {
-    content.toolbar {
-      ToolbarSpacer(.fixed, placement: .bottomBar)
-      DefaultToolbarItem(kind: .search, placement: .bottomBar)
-      ToolbarSpacer(.fixed, placement: .bottomBar)
-    }
+    content
+      .safeAreaPadding(.bottom, shortfall)
+      .onGeometryChange(for: CGFloat.self, of: { $0.safeAreaInsets.bottom }) { bottom in
+        guard let window = UIApplication.shared.connectedScenes.lazy.compactMap({ ($0 as? UIWindowScene)?.keyWindow }).first else {
+          return
+        }
+        let reserved = bottom - window.safeAreaInsets.bottom
+        shortfall = reserved > 0 ? max(0, 48 - reserved) : 0
+      }
+      .toolbar {
+        ToolbarSpacer(.fixed, placement: .bottomBar)
+        DefaultToolbarItem(kind: .search, placement: .bottomBar)
+        ToolbarSpacer(.fixed, placement: .bottomBar)
+      }
   }
 }
 

@@ -1,6 +1,6 @@
 import {createModifier, createModifierWithEventListener} from '@expo/ui/swift-ui/modifiers'
 
-// ios/DeslopComponentsModule.swift: the search field in the middle of the bottom bar, between the toolbar's own items.
+// ios/DeslopComponentsModule.swift: the search field in the middle of the bottom bar, between the toolbar's own items, with the content's end clear of the bar.
 export const bottomBarSearch = createModifier('bottomBarSearch')
 
 // ios/DeslopComponentsModule.swift: the navigation bar stays whole on a screen with nothing to scroll, or while it holds the only way back.
