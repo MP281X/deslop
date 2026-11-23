@@ -142,7 +142,7 @@ export function ridingAlerts(
 
 type ActivityWindow = {end: DateTime.Utc; leg: Leg; start: DateTime.Utc}
 
-// The day's activity, from its start to three quarters of an hour after the last landing, or an hour after a cancellation was read. A day longer than ActivityKit's eight hours is cut at the last takeoff the first activity still covers, and a second activity shows the rest.
+// The day's activity, from its start to three quarters of an hour after the last landing, or an hour after a cancellation was read. A day longer than ActivityKit's eight hours hands over to a second activity at a moment both can cover: the last takeoff then, or else midway, so neither runs out on a late start. Only a day longer than two activities leaves a time with neither.
 function activityWindows(journey: Journey, now: DateTime.Utc, travel: readonly TravelTime[]) {
 	const start = autoStartOf(journey, travel)
 	const landed = DateTime.addDuration(arrivalOf(Array.lastNonEmpty(journey)), Duration.minutes(45))
@@ -155,17 +155,26 @@ function activityWindows(journey: Journey, now: DateTime.Utc, travel: readonly T
 	if (pipe(start, DateTime.distance(end), Duration.isLessThanOrEqualTo(ACTIVITY_LIFETIME))) {
 		return [{end, leg: 'departure', start}] satisfies ActivityWindow[]
 	}
-	const limit = DateTime.addDuration(start, ACTIVITY_LIFETIME)
+	const latest = DateTime.addDuration(start, ACTIVITY_LIFETIME)
+	const earliest = DateTime.subtractDuration(end, ACTIVITY_LIFETIME)
+	if (DateTime.isGreaterThan(earliest, latest)) {
+		return [
+			{end: latest, leg: 'departure', start},
+			{end, leg: 'arrival', start: earliest}
+		] satisfies ActivityWindow[]
+	}
 	const cut = pipe(
 		journey,
 		Array.map(flight => DateTime.addDuration(departureOf(flight), Duration.minutes(45))),
-		Array.filter(at => DateTime.isGreaterThan(at, start) && DateTime.isLessThanOrEqualTo(at, limit)),
+		Array.filter(at => DateTime.between(at, {maximum: latest, minimum: earliest})),
 		Array.last,
-		Option.getOrElse(() => limit)
+		Option.getOrElse(() =>
+			DateTime.addDuration(earliest, pipe(earliest, DateTime.distance(latest), Duration.divideUnsafe(2)))
+		)
 	)
 	return [
 		{end: cut, leg: 'departure', start},
-		{end, leg: 'arrival', start: DateTime.max(cut, DateTime.subtractDuration(end, ACTIVITY_LIFETIME))}
+		{end, leg: 'arrival', start: cut}
 	] satisfies ActivityWindow[]
 }
 

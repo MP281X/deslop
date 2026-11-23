@@ -284,3 +284,27 @@ it('keeps the day on one activity across the landing, cut only while in the air 
 		Option.some(['departure', '2026-11-23T06:15:00.000Z', '2026-11-23T12:20:00.000Z'])
 	)
 })
+
+it('keeps an activity on screen through a long connection, handing over at a moment both activities cover', () => {
+	// 09:00–11:00 to Stansted, then 18:00–20:00 to Dublin: the day runs 06:00–20:45, longer than one activity.
+	const long = Array.make(
+		Flight.make({...FIRST, arrives: at('11:00'), boardingAt: Option.none(), departs: at('09:00')}),
+		Flight.make({...SECOND, arrives: at('20:00'), departs: at('18:00')})
+	)
+	const windows = Array.map(['06:00', '09:45', '11:00', '13:15', '13:22', '13:23', '20:44'], time =>
+		Option.map(activeWindow(long, at(time), []), window => [
+			window.leg,
+			DateTime.formatIso(window.start),
+			DateTime.formatIso(window.end)
+		])
+	)
+	const first = Option.some(['departure', '2026-11-23T06:00:00.000Z', '2026-11-23T13:22:30.000Z'])
+	const second = Option.some(['arrival', '2026-11-23T13:22:30.000Z', '2026-11-23T20:45:00.000Z'])
+	assert.deepStrictEqual(windows, [first, first, first, first, first, second, second])
+	// Every minute of the day has an activity.
+	assert.isTrue(
+		Array.every(Array.range(0, 14 * 60 + 44), minute =>
+			Option.isSome(activeWindow(long, DateTime.addDuration(at('06:00'), Duration.minutes(minute)), []))
+		)
+	)
+})
