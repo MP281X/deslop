@@ -427,10 +427,14 @@ final class StripController: NSObject, UIScrollViewDelegate {
   // Save and restore the same top-edge anchor, including pages shorter than half the screen.
   // Until the strip has scrolled to its start, the top page is not the one being read, so nothing is reported.
   // At the bottom the reader dragged to, even a short final page counts as read; so does the last spread turned to.
-  private func track() {
+  // Only the reader's own scrolling moves the focused page: a fold or a turn lays the strip out at passing sizes on the way,
+  // where the page on screen is not the one being read, until the last layout brings back the focused one.
+  private func track(moved: Bool = false) {
     guard !pageViews.isEmpty, pendingStart == nil, !adjusting else { return }
     let last = pageViews.count - 1
-    let index = spread ? spreadIndex() : dragged && scrollView.contentOffset.y >= bottomOffset - 1 ? last : topIndex()
+    let index =
+      !moved && current >= 0
+      ? current : spread ? spreadIndex() : dragged && scrollView.contentOffset.y >= bottomOffset - 1 ? last : topIndex()
     let shown = max(index - 2, 0)...min(index + 4, last)
     let kept = (index - 6)...(index + 8)
     for position in loaded where !kept.contains(position) {
@@ -483,16 +487,23 @@ final class StripController: NSObject, UIScrollViewDelegate {
   }
 
   func scrollViewDidScroll(_ scrollView: UIScrollView) {
-    track()
+    track(moved: scrollView.isDragging || scrollView.isDecelerating)
     if scrollView.isDragging { onScroll() }
   }
 
   func scrollViewDidEndDragging(_ scrollView: UIScrollView, willDecelerate decelerate: Bool) {
-    if !decelerate { settle() }
+    if decelerate { return }
+    track(moved: true)
+    settle()
   }
 
   func scrollViewDidEndDecelerating(_ scrollView: UIScrollView) {
+    track(moved: true)
     settle()
+  }
+
+  func scrollViewDidScrollToTop(_ scrollView: UIScrollView) {
+    track(moved: true)
   }
 
   private func settle() {
