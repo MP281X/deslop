@@ -73,19 +73,55 @@ it('keeps the gate a flight left for the change it shows', () => {
 	)
 })
 
-it('checks a flight more often near departure and calls live data stale after two missed checks', () => {
+it('checks a flight on a pace that quickens toward departure and stops at landing', () => {
+	const departs = DateTime.makeUnsafe('2026-10-28T15:40:00Z')
+	function paceAt(before: Duration.Duration, live: Option.Option<Partial<FaFlight>> = Option.none()) {
+		const now = DateTime.subtractDuration(departs, before)
+		const flight = flightAt(
+			departs,
+			Option.map(live, answer => flightTracking({...ANSWER, gate_origin: Option.none(), ...answer}, now, Option.none()))
+		)
+		return Option.map(checkEvery(flight, now), Duration.toMinutes)
+	}
+	const gate = Option.some({gate_origin: Option.some('B12')})
+	const airborne = Option.some({actual_off: Option.some(departs), estimated_out: Option.some(departs)})
+	assert.deepStrictEqual(
+		[
+			paceAt(Duration.hours(49)),
+			paceAt(Duration.hours(47)),
+			paceAt(Duration.hours(20)),
+			paceAt(Duration.hours(5)),
+			paceAt(Duration.hours(2)),
+			paceAt(Duration.minutes(80), Option.some({estimated_out: Option.some(departs)})),
+			paceAt(
+				Duration.minutes(40),
+				Option.map(gate, found => ({...found, estimated_out: Option.some(departs)}))
+			),
+			paceAt(Duration.minutes(-60), airborne),
+			paceAt(Duration.minutes(-130), airborne),
+			paceAt(Duration.minutes(-150), Option.some({actual_on: Option.some(departs)}))
+		],
+		[
+			Option.none(),
+			Option.some(360),
+			Option.some(180),
+			Option.some(30),
+			Option.some(10),
+			Option.some(2),
+			Option.some(5),
+			Option.some(15),
+			Option.some(5),
+			Option.none()
+		]
+	)
+})
+
+it('calls live data stale after two missed checks, but never an arrival', () => {
 	const departs = DateTime.makeUnsafe('2026-10-28T15:40:00Z')
 	const now = DateTime.subtractDuration(departs, Duration.minutes(30))
 	function live(checkedAt: DateTime.Utc, answer: FaFlight = ANSWER) {
 		return flightAt(departs, Option.some(flightTracking(answer, checkedAt, Option.none())))
 	}
-	assert.deepStrictEqual(
-		[
-			checkEvery(flightAt(departs), now),
-			checkEvery(flightAt(departs), DateTime.subtractDuration(departs, Duration.hours(3)))
-		],
-		[Option.some(Duration.minutes(5)), Option.some(Duration.minutes(20))]
-	)
 	assert.deepStrictEqual(
 		[
 			isStale(live(DateTime.subtractDuration(now, Duration.minutes(2))), now),

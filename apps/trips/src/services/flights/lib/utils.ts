@@ -33,7 +33,7 @@ const TITLES = ['MR', 'MRS', 'MS', 'MISS', 'MSTR', 'DR']
 export const MINUTE = Duration.minutes(1)
 export const HOUR = Duration.hours(1)
 
-export const AIRPORT_LEAD = Duration.hours(2)
+const AIRPORT_LEAD = Duration.hours(2)
 
 // ActivityKit ends a Live Activity after eight hours; half an hour stays in reserve for delays.
 export const ACTIVITY_LIFETIME = Duration.hours(7.5)

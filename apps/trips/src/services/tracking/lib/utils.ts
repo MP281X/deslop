@@ -1,6 +1,6 @@
 import {Array, DateTime, Duration, Function, Option, Order, Result, String, pipe} from 'effect'
 
-import {AIRPORT_LEAD, arrivalOf, cancelledOf, departureOf} from '#services/flights/lib/utils.ts'
+import {arrivalOf, cancelledOf, departureOf} from '#services/flights/lib/utils.ts'
 import type {Flight, FlightTracking} from '#services/flights/schema.ts'
 import type {FaFlight, FaFlights} from '#services/tracking/schema.ts'
 
@@ -105,35 +105,38 @@ export function flightTracking(answer: FaFlight, checkedAt: DateTime.Utc, last: 
 	return tracking
 }
 
+// The pace of checks by how far the flight is: sparse while little can change, every two minutes from 90 minutes out until the gate is posted, and none once it landed, about seventy lookups a flight against FlightAware's thousand a month.
 export function checkEvery(flight: Flight, now: DateTime.Utc) {
-	const departure = departureOf(flight)
-	const arrival = arrivalOf(flight)
 	const state = Option.map(flight.live, live => live.state)
-	// A flight at its gate has nothing left to report.
-	if (cancelledOf(flight) || Option.contains(state, 'diverted') || Option.contains(state, 'arrived')) {
-		return Option.none<Duration.Duration>()
-	}
-	// FlightAware answers at most two days ahead.
 	if (
-		DateTime.isLessThan(now, DateTime.subtractDuration(flight.departs, Duration.hours(47))) ||
-		DateTime.isGreaterThan(now, DateTime.addDuration(arrival, Duration.hours(2)))
+		cancelledOf(flight) ||
+		Option.contains(state, 'diverted') ||
+		Option.contains(state, 'landed') ||
+		Option.contains(state, 'arrived')
 	) {
 		return Option.none<Duration.Duration>()
 	}
-	if (Option.contains(state, 'landed')) return Option.some(Duration.minutes(5))
-	if (Option.contains(state, 'departed') || Option.contains(state, 'airborne')) {
-		if (DateTime.isGreaterThan(now, DateTime.subtractDuration(arrival, Duration.minutes(45)))) {
+	// FlightAware answers at most two days ahead, and a flight it never reported landing is let go two hours after it was due.
+	if (
+		DateTime.isLessThan(now, DateTime.subtractDuration(flight.departs, Duration.hours(48))) ||
+		DateTime.isGreaterThan(now, DateTime.addDuration(arrivalOf(flight), Duration.hours(2)))
+	) {
+		return Option.none<Duration.Duration>()
+	}
+	if (Option.contains(state, 'airborne')) {
+		if (DateTime.isGreaterThan(now, DateTime.subtractDuration(arrivalOf(flight), Duration.minutes(45)))) {
 			return Option.some(Duration.minutes(5))
 		}
 		return Option.some(Duration.minutes(15))
 	}
-	if (DateTime.isLessThan(now, DateTime.subtractDuration(departure, Duration.hours(6)))) {
-		return Option.some(Duration.hours(3))
-	}
-	if (DateTime.isLessThan(now, DateTime.subtractDuration(departure, AIRPORT_LEAD))) {
-		return Option.some(Duration.minutes(20))
-	}
-	return Option.some(Duration.minutes(5))
+	const left = DateTime.distance(now, departureOf(flight))
+	if (Duration.isGreaterThanOrEqualTo(left, Duration.hours(24))) return Option.some(Duration.hours(6))
+	if (Duration.isGreaterThanOrEqualTo(left, Duration.hours(6))) return Option.some(Duration.hours(3))
+	if (Duration.isGreaterThanOrEqualTo(left, Duration.hours(3))) return Option.some(Duration.minutes(30))
+	if (Duration.isGreaterThanOrEqualTo(left, Duration.minutes(90))) return Option.some(Duration.minutes(10))
+	// Pushed back but not yet off the ground counts as waiting for takeoff.
+	if (Option.exists(flight.live, live => Option.isSome(live.departureGate))) return Option.some(Duration.minutes(5))
+	return Option.some(Duration.minutes(2))
 }
 
 // The last attempt counts, answered or not, so a failing provider is asked on the same schedule.
