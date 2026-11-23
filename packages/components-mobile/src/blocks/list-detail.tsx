@@ -8,11 +8,20 @@ import {createContext, useContext, useState} from 'react'
 import type {ReactNode} from 'react'
 import {useWindowDimensions} from 'react-native'
 
-const ListContext = createContext({beside: false, search: Option.none<ReturnType<typeof useNativeState<string>>>()})
+const ListContext = createContext({
+	beside: false,
+	search: Option.none<ReturnType<typeof useNativeState<string>>>(),
+	show: Option.none<() => void>()
+})
 
-// Whether the list is on screen beside or below the opened item, so a choice made in the item, such as a tag, can leave it open.
+// Whether the list is on screen beside or below the opened item, so the wide window can fill the item's side while nothing is opened.
 export function useListBeside() {
 	return useContext(ListContext).beside
+}
+
+// Puts the list beside or below the opened item, even if the person hid it, so a choice made in the item, such as a tag, shows its result and leaves the item open; none in a stack, where only closing the item shows the list.
+export function useListShow() {
+	return useContext(ListContext).show
 }
 
 // The search text every copy of the list shares, so the copy below an item in laptop posture shows, and clears, the query that filters both; none outside a `ListDetail`.
@@ -40,7 +49,11 @@ export function ListDetail(props: {
 	const laptop = portrait && hinge === 'partiallyOpen' && props.opened
 	return (
 		<ListContext
-			value={{beside: (tiled && columns !== 'detailOnly') || laptop, search: Option.some(useNativeState(''))}}
+			value={{
+				beside: (tiled && columns !== 'detailOnly') || laptop,
+				search: Option.some(useNativeState('')),
+				show: Boolean.match(tiled || laptop, {onFalse: Option.none, onTrue: () => Option.some(() => setChosen('all'))})
+			}}
 		>
 			<ArrangementView
 				modifiers={[

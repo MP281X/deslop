@@ -38,7 +38,7 @@ import {AsyncResult} from 'effect/reactivity'
 import {Suspense} from 'react'
 import {Linking} from 'react-native'
 
-import {useListBeside} from '@deslop/components-mobile/blocks/list-detail'
+import {useListBeside, useListShow} from '@deslop/components-mobile/blocks/list-detail'
 import {FailureContent, Loaded} from '@deslop/components-mobile/blocks/loaded'
 import {Problem} from '@deslop/components-mobile/blocks/problem'
 import {colors, space, text} from '@deslop/components-mobile/theme'
@@ -328,6 +328,7 @@ function NoteScreen(props: {
 	const remove = useAtomSet(removal.removeAtom)
 	const regenerate = useAtomSet(regenerateAtom)
 	const beside = useListBeside()
+	const show = useListShow()
 	if (Option.isNone(props.id) && !beside) return undefined
 	return pipe(
 		props.id,
@@ -355,7 +356,7 @@ function NoteScreen(props: {
 						onRetry={() => regenerate(item.id)}
 						onTag={tag => {
 							props.onTag(tag)
-							if (!beside) props.onClose()
+							Option.match(show, {onNone: props.onClose, onSome: reveal => reveal()})
 						}}
 					/>
 					<Toolbar.Content>
