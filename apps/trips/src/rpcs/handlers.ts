@@ -17,7 +17,6 @@ export const RpcHandlers = RpcContracts.toLayer(
 			'flights.remove': input => flights.remove(input.id),
 			'flights.save': input => Effect.flatMap(CurrentUser, user => flights.save(user.id, input)),
 			'push.register': input => push.register(input),
-			'push.start': input => push.start(input.id),
 			'tracking.refresh': input => tracker.refresh(input.id)
 		})
 	})

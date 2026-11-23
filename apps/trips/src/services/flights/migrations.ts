@@ -5,7 +5,8 @@ import {SqlClient, SqlSchema} from 'effect/sql'
 import {serviceOf} from '#services/flights/lib/utils.ts'
 import {LegacyFlight} from '#services/flights/schema.ts'
 
-const PUSH_TABLES = ['activities', 'sent_alerts', 'deliveries', 'requests']
+// The push tables that name a flight; `requests` is dropped by push's own migrations, so nothing in it moves.
+const PUSH_TABLES = ['activities', 'sent_alerts', 'deliveries']
 
 // Rows of one service, keyed as a ticket finds its flight, join the first saved.
 function joinedOf(rows: readonly LegacyFlight[]) {

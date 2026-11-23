@@ -96,20 +96,15 @@ it('retries the other phone without resending an accepted alert, including an ol
 	)
 })
 
-it('relaunches an ended activity only for a newer explicit start request', () => {
-	const endedAt = DateTime.addDuration(DEPARTS, Duration.minutes(5))
-	const activity = Activity.make({...ACTIVITY, endedAt: Option.some(endedAt)})
-	const window = {end: DateTime.addDuration(DEPARTS, Duration.hours(1)), leg: 'departure' as const, start: DEPARTS}
-	assert.deepStrictEqual(showPlan([Device.make(STARTER)], [activity], Flight.make(FLIGHT), window), [])
-	assert.strictEqual(
+it('starts no activity again for a window whose activity ended', () => {
+	assert.deepStrictEqual(
 		showPlan(
 			[Device.make(STARTER)],
-			[activity],
+			[Activity.make({...ACTIVITY, endedAt: Option.some(DateTime.addDuration(DEPARTS, Duration.minutes(5)))})],
 			Flight.make(FLIGHT),
-			window,
-			Option.some(DateTime.addDuration(endedAt, Duration.minutes(1)))
-		)[0]?._tag,
-		'launch'
+			{end: DateTime.addDuration(DEPARTS, Duration.hours(1)), leg: 'departure', start: DEPARTS}
+		),
+		[]
 	)
 })
 

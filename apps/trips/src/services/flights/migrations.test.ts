@@ -52,7 +52,6 @@ const tickets = Effect.gen(function* () {
 	yield* sql`CREATE TABLE sent_alerts (bookingId TEXT NOT NULL, category TEXT NOT NULL, value TEXT, sentAt INTEGER NOT NULL) STRICT`
 	yield* sql`CREATE UNIQUE INDEX alert_value ON sent_alerts (bookingId, category, value) WHERE value IS NOT NULL`
 	yield* sql`CREATE TABLE deliveries (bookingId TEXT NOT NULL, category TEXT NOT NULL, value TEXT, sentAt INTEGER NOT NULL, token TEXT NOT NULL) STRICT`
-	yield* sql`CREATE TABLE requests (bookingId TEXT PRIMARY KEY, at INTEGER NOT NULL) STRICT, WITHOUT ROWID`
 	yield* sql`CREATE TABLE retirements (channel TEXT PRIMARY KEY, bundle TEXT NOT NULL, props TEXT, retiredAt INTEGER NOT NULL) STRICT, WITHOUT ROWID`
 	yield* sql`
 		INSERT INTO activities (channel, bookingId, leg, bundle, startedAt, props) VALUES
@@ -65,7 +64,6 @@ const tickets = Effect.gen(function* () {
 			(${KEPT}, 'gate', 'B12', 1), (${JOINED}, 'gate', 'B12', 2), (${JOINED}, 'delay', '15', 3)
 	`
 	yield* sql`INSERT INTO deliveries (bookingId, category, value, sentAt, token) VALUES (${JOINED}, 'delay', '15', 3, 'device')`
-	yield* sql`INSERT INTO requests (bookingId, at) VALUES (${JOINED}, 4)`
 })
 
 it.layer(store)(test =>
@@ -82,8 +80,7 @@ it.layer(store)(test =>
 					yield* sql`SELECT channel, bookingId FROM activities ORDER BY channel`,
 					yield* sql`SELECT channel, props FROM retirements`,
 					yield* sql`SELECT bookingId, category, value FROM sent_alerts ORDER BY sentAt`,
-					yield* sql`SELECT bookingId FROM deliveries`,
-					yield* sql`SELECT bookingId, at FROM requests`
+					yield* sql`SELECT bookingId FROM deliveries`
 				],
 				[
 					Array.map(
@@ -130,8 +127,7 @@ it.layer(store)(test =>
 						{bookingId: KEPT, category: 'gate', value: 'B12'},
 						{bookingId: KEPT, category: 'delay', value: '15'}
 					],
-					[{bookingId: KEPT}],
-					[{at: 4, bookingId: KEPT}]
+					[{bookingId: KEPT}]
 				]
 			)
 		})

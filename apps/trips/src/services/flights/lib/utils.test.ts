@@ -9,7 +9,6 @@ import {
 	instantOf,
 	activityProps,
 	cancelledOf,
-	startable,
 	upsert
 } from '#services/flights/lib/utils.ts'
 import type {FlightList, ReservationStatus, Traveller} from '#services/flights/schema.ts'
@@ -95,24 +94,6 @@ it('counts calendar days between local dates and marks an arrival on another dat
 			})
 		),
 		'06:30 +1'
-	)
-})
-
-it('starts no Live Activity for a cancelled flight', () => {
-	const departing = Flight.make({
-		...FLIGHT,
-		arrives: DateTime.makeUnsafe('2026-11-18T09:00Z'),
-		departs: DateTime.makeUnsafe('2026-11-18T08:00Z')
-	})
-	const cancelled = Flight.make({
-		...FLIGHT,
-		arrives: departing.arrives,
-		departs: departing.departs,
-		live: Option.some(Schema.decodeSync(FlightTracking)({checkedAt: 1, state: 'cancelled'}))
-	})
-	assert.deepStrictEqual(
-		[startable(departing, departing.departs), startable(cancelled, departing.departs)],
-		[true, false]
 	)
 })
 

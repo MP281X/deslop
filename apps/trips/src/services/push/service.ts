@@ -27,7 +27,7 @@ import {Migrator, SqlClient, SqlModel, SqlSchema} from 'effect/sql'
 import {Apns} from '@deslop/runtime/server/apns'
 import {ApnsAnswer, Device} from '@deslop/runtime/shared/apns'
 
-import {ACTIVITY_NAME, activeWindow, activityProps, startable, urgencyOf} from '#services/flights/lib/utils.ts'
+import {ACTIVITY_NAME, activeWindow, activityProps, urgencyOf} from '#services/flights/lib/utils.ts'
 import type {ActivityProps, Flight, Leg, FlightsError} from '#services/flights/schema.ts'
 import {FlightId} from '#services/flights/schema.ts'
 import {Flights} from '#services/flights/service.ts'
@@ -50,8 +50,7 @@ import {
 	PushError,
 	Retirement,
 	SentAlert,
-	ShowAction,
-	StartRequest
+	ShowAction
 } from '#services/push/schema.ts'
 import {isStale} from '#services/tracking/lib/utils.ts'
 
@@ -211,16 +210,6 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 				activities: yield* asPushReadError(listActivities()),
 				devices: yield* asPushReadError(listDevices())
 			} satisfies RoundState
-		})
-		const listRequests = SqlSchema.findAll({
-			Request: Schema.Void,
-			Result: StartRequest,
-			execute: () => sql`SELECT * FROM ${sql(StartRequest.table)}`
-		})
-		const recordRequest = SqlSchema.void({
-			Request: StartRequest.insert,
-			execute: row =>
-				sql`INSERT INTO ${sql(StartRequest.table)} ${sql.insert(row)} ON CONFLICT (flightId) DO UPDATE SET at = excluded.at`
 		})
 
 		// A start that Apple did not accept leaves its channel owed to the worker; a rejected or refused token also leaves the device.
@@ -435,7 +424,6 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 			flight: Flight,
 			window: Span & {leg: Leg},
 			now: DateTime.Utc,
-			requested: Option.Option<DateTime.Utc>,
 			state: RoundState
 		) {
 			const showing = {
@@ -467,7 +455,7 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 				Array.map(end => end.bundle)
 			)
 			const outcomes = yield* Effect.forEach(
-				showPlan(state.devices, state.activities, flight, window, requested),
+				showPlan(state.devices, state.activities, flight, window),
 				action => {
 					if (!ShowAction.isAnyOf(['launch'])(action)) return Effect.result(refresh(action.target, showing.props, now))
 					if (Array.contains(held, action.target.bundle)) return Effect.result(Effect.void)
@@ -560,30 +548,26 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 				const now = yield* DateTime.now
 				const all = yield* flights.list
 				const state = yield* roundState
-				const requests = yield* asPushReadError(listRequests())
-				const requestsById = Array.groupBy(requests, request => request.flightId)
 				yield* Effect.forEach(
 					all,
-					flight => {
-						const requested = Option.map(Array.head(requestsById[flight.id] ?? []), request => request.at)
-						return Effect.ignore(
+					flight =>
+						Effect.ignore(
 							Effect.gen(function* () {
 								yield* Effect.ignore(announce(flight, now), {
 									log: 'Warn',
 									message: `The alerts of ${flight.id} were not sent`
 								})
-								yield* Option.match(activeWindow(flight, now, requested), {
+								yield* Option.match(activeWindow(flight, now), {
 									onNone: () => Effect.void,
-									onSome: window => show(flight, window, now, requested, state)
+									onSome: window => show(flight, window, now, state)
 								})
 							}),
 							{log: 'Warn', message: `The Live Activity of ${flight.id} was not updated`}
-						)
-					},
+						),
 					{concurrency: 1, discard: true}
 				)
 				yield* Effect.forEach(
-					expiredActivities(state.activities, all, now, requests),
+					expiredActivities(state.activities, all, now),
 					activity => Effect.ignore(finish(activity, now), {log: 'Warn', message: 'An activity was not ended'}),
 					{concurrency: 1, discard: true}
 				)
@@ -594,7 +578,6 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 						Effect.all(
 							[
 								forgetSentExcept(Array.map(all, flight => flight.id)),
-								sql`DELETE FROM requests WHERE flightId NOT IN ${sql.in(Array.map(all, flight => flight.id))}`,
 								sql`DELETE FROM deliveries WHERE flightId NOT IN ${sql.in(Array.map(all, flight => flight.id))}`
 							],
 							{concurrency: 1, discard: true}
@@ -620,6 +603,7 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 		)
 
 		return {
+			// A round follows each registration, so a phone that registers inside a flight's window gets its Live Activity and the alerts it is owed at once; activities start only this way.
 			register: Effect.fn('Push.register')(function* (device: typeof Device.insert.Type) {
 				yield* pipe(
 					Effect.gen(function* () {
@@ -629,29 +613,8 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 					sql.withTransaction,
 					asPushSaveError
 				)
-			}),
-			start: Effect.fn('Push.start')(function* (id: FlightId) {
-				if (!apns.enabled) return yield* PushError.make({message: 'The server has no Apple push configuration.'})
-				const flight = yield* pipe(
-					yield* asPushError('The flights could not be read.')(flights.list),
-					Array.findFirst(item => item.id === id),
-					Option.match({onNone: () => PushError.make({message: 'This flight is not saved.'}), onSome: Effect.succeed})
-				)
-				const now = yield* DateTime.now
-				if (!startable(flight, now)) return yield* PushError.make({message: 'This flight cannot be started now.'})
-				const window = yield* Option.match(activeWindow(flight, now, Option.some(now)), {
-					onNone: () => PushError.make({message: 'This flight has no Live Activity window.'}),
-					onSome: Effect.succeed
-				})
-				const state = yield* roundState
-				if (Array.isReadonlyArrayEmpty(showPlan(state.devices, state.activities, flight, window, Option.some(now)))) {
-					return yield* PushError.make({message: 'No registered device can start this Live Activity.'})
-				}
-				yield* asPushSaveError(recordRequest({at: now, flightId: flight.id}))
-				yield* asPushError('The Live Activity could not be started.')(
-					show(flight, window, now, Option.some(now), state)
-				)
-			}, Semaphore.withPermit(ticking))
+				yield* tick
+			})
 		}
 	})
 }) {
@@ -754,7 +717,8 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 					yield* sql`ALTER TABLE activities RENAME COLUMN bookingId TO flightId`
 					yield* sql`ALTER TABLE sent_alerts RENAME COLUMN bookingId TO flightId`
 					yield* sql`ALTER TABLE deliveries RENAME COLUMN bookingId TO flightId`
-					yield* sql`ALTER TABLE requests RENAME COLUMN bookingId TO flightId`
+					// Live Activities start only by themselves, so nothing reads when one was asked for.
+					yield* sql`DROP TABLE requests`
 				})
 			}),
 			table: 'push_migrations'

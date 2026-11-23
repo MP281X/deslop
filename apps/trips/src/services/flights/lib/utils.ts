@@ -446,19 +446,12 @@ export function upsert(current: FlightList, incoming: FlightList): FlightList {
 	return Array.reduce(incoming, current, upsertOne(Array.map(incoming, serviceOfFlight)))
 }
 
-// A flight's activity opens three hours ahead.
-function autoStartOf(flight: Flight) {
-	return DateTime.subtractDuration(flight.departs, Duration.hours(3))
-}
-
 type ActivityWindow = {end: DateTime.Utc; leg: Leg; start: DateTime.Utc}
 
 // A flight longer than ActivityKit's eight hours, delays included, gets a second activity for its arrival.
-function activityWindows(flight: Flight, requested: Option.Option<DateTime.Utc>) {
-	const start = Option.match(requested, {
-		onNone: () => autoStartOf(flight),
-		onSome: at => DateTime.min(at, autoStartOf(flight))
-	})
+function activityWindows(flight: Flight) {
+	// A flight's activity opens three hours ahead.
+	const start = DateTime.subtractDuration(flight.departs, Duration.hours(3))
 	// A cancellation the provider reported stays on the island for an hour from when it was read, then the activity ends.
 	const landed = DateTime.addDuration(arrivalOf(flight), Duration.minutes(45))
 	const end = pipe(
@@ -483,13 +476,9 @@ function activityWindows(flight: Flight, requested: Option.Option<DateTime.Utc>)
 	] satisfies ActivityWindow[]
 }
 
-export function activeWindow(
-	flight: Flight,
-	now: DateTime.Utc,
-	requested: Option.Option<DateTime.Utc> = Option.none()
-) {
+export function activeWindow(flight: Flight, now: DateTime.Utc) {
 	return Array.findFirst(
-		activityWindows(flight, requested),
+		activityWindows(flight),
 		window => DateTime.isLessThanOrEqualTo(window.start, now) && DateTime.isLessThan(now, window.end)
 	)
 }
@@ -653,19 +642,4 @@ export function activityProps(flight: Flight, now: DateTime.Utc, stale: boolean)
 
 export function urgencyOf(props: ActivityProps) {
 	return `${props.phase}|${Option.match(props.chip, {onNone: Function.constant(''), onSome: chip => chip.text})}|${Number.round(Duration.toMinutes(props.delay) / 5, 0)}`
-}
-
-// Landed counts as arrived on the phone, the island and the server alike.
-function arrived(flight: Flight, now: DateTime.Utc) {
-	if (DateTime.isGreaterThanOrEqualTo(now, arrivalOf(flight))) return true
-	return Option.exists(flight.live, live => live.state === 'arrived' || live.state === 'landed')
-}
-
-// A cancelled or landed flight starts no Live Activity, however it is asked for.
-export function startable(flight: Flight, now: DateTime.Utc) {
-	return (
-		!cancelledOf(flight) &&
-		!arrived(flight, now) &&
-		DateTime.isGreaterThanOrEqualTo(now, DateTime.subtractDuration(flight.departs, Duration.hours(7)))
-	)
 }

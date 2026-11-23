@@ -18,7 +18,7 @@ import {
 } from '#services/flights/lib/utils.ts'
 import type {FlightList, Flight, Leg} from '#services/flights/schema.ts'
 import {ShowAction} from '#services/push/schema.ts'
-import type {Activity, AlertCategory, AlertDelivery, SentAlert, StartRequest} from '#services/push/schema.ts'
+import type {Activity, AlertCategory, AlertDelivery, SentAlert} from '#services/push/schema.ts'
 import {isStale} from '#services/tracking/lib/utils.ts'
 
 export type Span = {end: DateTime.Utc; start: DateTime.Utc}
@@ -71,17 +71,12 @@ export function showPlan(
 	devices: readonly Device[],
 	activities: readonly Activity[],
 	flight: Flight,
-	window: Span & {leg: Leg},
-	requested: Option.Option<DateTime.Utc> = Option.none()
+	window: Span & {leg: Leg}
 ) {
 	const starters = Array.filter(devices, device => device.kind === 'start' && !cancelledOf(flight))
 	const covering = Array.filter(
 		activities,
-		item =>
-			item.flightId === flight.id &&
-			item.leg === window.leg &&
-			holds(item, window) &&
-			!Option.exists(item.endedAt, ended => Option.exists(requested, at => DateTime.isGreaterThan(at, ended)))
+		item => item.flightId === flight.id && item.leg === window.leg && holds(item, window)
 	)
 	const startersByBundle = Array.groupBy(starters, device => device.bundle)
 	const coveringByBundle = Array.groupBy(covering, item => item.bundle)
@@ -103,27 +98,14 @@ export function showPlan(
 }
 
 // Running activities whose window has passed, or whose flight is gone.
-export function expiredActivities(
-	activities: readonly Activity[],
-	flights: FlightList,
-	now: DateTime.Utc,
-	requests: readonly StartRequest[] = []
-) {
-	const requestsById = Array.groupBy(requests, request => request.flightId)
+export function expiredActivities(activities: readonly Activity[], flights: FlightList, now: DateTime.Utc) {
 	const byId = Array.groupBy(flights, flight => flight.id)
 	return Array.filter(
 		activities,
 		activity =>
 			Option.isNone(activity.endedAt) &&
 			!Option.exists(Array.head(byId[activity.flightId] ?? []), found =>
-				Option.exists(
-					activeWindow(
-						found,
-						now,
-						Option.map(Array.head(requestsById[activity.flightId] ?? []), request => request.at)
-					),
-					window => window.leg === activity.leg
-				)
+				Option.exists(activeWindow(found, now), window => window.leg === activity.leg)
 			)
 	)
 }

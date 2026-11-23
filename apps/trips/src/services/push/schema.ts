@@ -70,13 +70,5 @@ export class AlertDelivery extends Model.Class<AlertDelivery>('Delivery')({
 	static readonly table = 'deliveries'
 }
 
-// When the person last asked to start a flight's Live Activity.
-export class StartRequest extends Model.Class<StartRequest>('StartRequest')({
-	at: Schema.DateTimeUtcFromMillis,
-	flightId: FlightId
-}) {
-	static readonly table = 'requests'
-}
-
 export type ShowAction = typeof ShowAction.Type
 export const ShowAction = Schema.TaggedUnion({launch: {target: Device}, refresh: {target: Activity}})

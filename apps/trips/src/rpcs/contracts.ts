@@ -17,6 +17,5 @@ export class RpcContracts extends RpcGroup.make(
 	Rpc.make('push.register', {
 		error: PushError,
 		payload: Device.insert.mapFields(fields => ({...fields, bundle: PushBundle}))
-	}),
-	Rpc.make('push.start', {error: PushError, payload: Schema.Struct({id: FlightId})})
+	})
 ).middleware(RpcAuth) {}
