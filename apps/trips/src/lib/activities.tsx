@@ -52,7 +52,7 @@ function DayLayout(props: typeof ActivityProps.Encoded) {
 		return 1
 	}
 
-	// What to do takes its width first, its label wrapping where the island is narrow, such as "Lands in London, local time"; the timer beside it has the rest.
+	// What to do takes its width first, its label wrapping where the island is narrow, such as "Gate for FR 206"; the timer beside it has the rest.
 	function what(size: number) {
 		return (
 			<VStack alignment="leading" spacing={1} modifiers={[layoutPriority(1)]}>
@@ -74,7 +74,9 @@ function DayLayout(props: typeof ActivityProps.Encoded) {
 							foregroundStyle(plain),
 							opacity(faint()),
 							lineLimit(1),
-							minimumScaleFactor(0.6)
+							minimumScaleFactor(0.6),
+							// Its height stays whole when the label above wraps, so the island grows rather than shrinking the time.
+							fixedSize({horizontal: false, vertical: true})
 						]}
 					>
 						{props.value}

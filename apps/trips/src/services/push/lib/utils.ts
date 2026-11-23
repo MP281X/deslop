@@ -630,7 +630,7 @@ function homeWords(flight: Flight, leave: boolean, travel: readonly TravelTime[]
 	}
 }
 
-// The gate, or for a connection the gate of the flight he changes to, with the route since it is a new flight.
+// The gate, or for a connection the gate of the flight he changes to, with the route since it is a new flight; its number is in the label then. The seats follow bare, so the line fits beside the departure in the Duo's island.
 function gateWords(flight: Flight, connection: boolean) {
 	const seats = travellersLine(flight, traveller => traveller.seat)
 	return {
@@ -639,10 +639,10 @@ function gateWords(flight: Flight, connection: boolean) {
 		gate: gateOf(flight),
 		label: Boolean.match(connection, {onFalse: Function.constant('Gate'), onTrue: () => `Gate for ${titleOf(flight)}`}),
 		pending: Option.isNone(gateOf(flight)),
-		small: Boolean.match(connection, {
-			onFalse: () => line([Option.some(titleOf(flight)), labelled('Seats', seats)]),
-			onTrue: () => line([Option.some(titleOf(flight)), Option.some(routeOf(flight)), seats])
-		}),
+		small: line([
+			Option.some(Boolean.match(connection, {onFalse: () => titleOf(flight), onTrue: () => routeOf(flight)})),
+			seats
+		]),
 		symbol: 'airplane.departure' as const,
 		until: `Boards ${clockAt(boardsAt(flight), flight.from.timeZone)}`,
 		value: Option.getOrElse(gateOf(flight), Function.constant('Not yet')),
@@ -683,19 +683,20 @@ function taxiWords(flight: Flight) {
 	}
 }
 
+// The landing in the destination's clock; landing in another zone the small print says so in place of the route, since the label fits the Duo's island only on one line.
 function airborneWords(flight: Flight, next: Option.Option<Flight>) {
 	return {
 		...QUIET,
-		label: Boolean.match(otherZone(flight), {
-			onFalse: () => `Lands in ${cityOf(flight.to)}`,
-			onTrue: () => `Lands in ${cityOf(flight.to)}, local time`
-		}),
+		label: `Lands in ${cityOf(flight.to)}`,
 		note: Option.match(next, {
 			onNone: () => `Departed ${clockAt(departureOf(flight), flight.from.timeZone)}`,
 			onSome: found => `${titleOf(found)} at ${clockAt(departureOf(found), found.from.timeZone)}`
 		}),
 		noteTone: 'plain' as const,
-		small: `${titleOf(flight)} · ${routeOf(flight)}`,
+		small: Boolean.match(otherZone(flight), {
+			onFalse: () => `${titleOf(flight)} · ${routeOf(flight)}`,
+			onTrue: () => `${titleOf(flight)} · ${cityOf(flight.to)} time`
+		}),
 		symbol: 'airplane' as const,
 		until: 'Time left',
 		value: arrivalClockOf(flight)

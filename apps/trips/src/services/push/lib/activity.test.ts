@@ -198,7 +198,7 @@ it('hands the day to the connection at landing, its gate not yet posted, and end
 		[
 			{
 				deadline: Option.some('2026-11-23T12:25:00.000Z'),
-				label: 'Lands in London, local time',
+				label: 'Lands in London',
 				phase: 'airborne',
 				since: '2026-11-23T10:31:00.000Z',
 				value: '12:25',
@@ -222,6 +222,14 @@ it('hands the day to the connection at landing, its gate not yet posted, and end
 				was: Option.none()
 			}
 		]
+	)
+	// Each line fits the Duo's island on one line: the time zone and the seats in the small print.
+	assert.deepStrictEqual(
+		[
+			activityProps(day(airborne), stepOf(day(airborne), at('11:40'), TRAVEL), TRAVEL, false).small,
+			activityProps(day(live(LATE)), stepOf(day(live(LATE)), at('09:00'), TRAVEL), TRAVEL, false).small
+		],
+		['FR 1234 · London time', 'FR 1234 · 14C, 14D']
 	)
 	const handed = activityProps(day(landed), stepOf(day(landed), at('12:27'), TRAVEL), TRAVEL, false)
 	assert.deepStrictEqual(
@@ -336,7 +344,7 @@ it('trusts FlightAware over the clock: flying past its estimate, and on the grou
 			step(day(live({state: 'airborne', takeoffActual: DateTime.toEpochMillis(at('09:50'))})), at('11:40'))
 		],
 		[
-			['1234', 'airborne', 'Lands in London, local time', '11:35'],
+			['1234', 'airborne', 'Lands in London', '11:35'],
 			['1234', 'taxiing', 'Left the gate at', '10:35'],
 			['1234', 'boarding', 'Boarding', 'Now'],
 			['206', 'gate', 'Gate for FR 206', 'Not yet']
