@@ -86,6 +86,7 @@ export function ReaderRoute(props: {chapters: ChapterList; number: ChapterNumber
 				onNonEmpty: shown => (
 					<PageStrip
 						pages={Array.flatMap(shown, chapter => chapter.pages)}
+						chapters={Array.map(shown, chapter => chapter.pages.length)}
 						start={Number.clamp(
 							pipe(
 								Array.headNonEmpty(shown).reading,

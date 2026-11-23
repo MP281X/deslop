@@ -5,9 +5,14 @@ import type {ColorValue} from 'react-native'
 // ios/Diagnostics.swift: the MetricKit reports iOS delivered since the last call, as JSON, each returned once.
 export const OpmNative = requireNativeModule<{takeDiagnostics: () => string[]}>('OpmNative')
 
-// ios/PageStripView.swift restores `start` once and extends the same strip when more pages arrive.
+// ios/PageStripView.swift restores `start` once and extends the same strip when more pages arrive; `chapters` counts each chapter's pages, so a spread in a wide window never holds two.
 export const PageStrip = requireNativeView<
-	CommonViewModifierProps & {pages: string[]; onPage: (event: {nativeEvent: {index: number}}) => void; start: number}
+	CommonViewModifierProps & {
+		chapters: number[]
+		pages: string[]
+		onPage: (event: {nativeEvent: {index: number}}) => void
+		start: number
+	}
 >('OpmNative', 'PageStripView')
 
 // ios/CoverView.swift: a page as a thumbnail, sized and rounded by its modifiers.
