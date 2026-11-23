@@ -140,7 +140,23 @@ export const migrations = {
 					`
 					yield* sql`DELETE FROM flights WHERE id = ${pair.id}`
 					if (!pushed) return
-					// Each record moves to the flight it joined unless that flight holds its like already, as an ended activity for the same leg and app.
+					// A record both rows hold keeps the later time either was sent, so an alert the joined row received last still reads as the latest and is not sent again.
+					yield* sql`
+						UPDATE sent_alerts SET sentAt = max(sentAt, coalesce((
+							SELECT max(joined.sentAt) FROM sent_alerts AS joined
+							WHERE joined.bookingId = ${pair.id} AND joined.category = sent_alerts.category AND joined.value IS sent_alerts.value
+						), sentAt))
+						WHERE bookingId = ${pair.into}
+					`
+					yield* sql`
+						UPDATE deliveries SET sentAt = max(sentAt, coalesce((
+							SELECT max(joined.sentAt) FROM deliveries AS joined
+							WHERE joined.bookingId = ${pair.id} AND joined.category = deliveries.category AND joined.value IS deliveries.value
+								AND joined.token = deliveries.token
+						), sentAt))
+						WHERE bookingId = ${pair.into}
+					`
+					// Every other record moves to the flight it joined unless that flight holds its like already, as an ended activity for the same leg and app.
 					yield* Effect.forEach(
 						PUSH_TABLES,
 						table => sql`UPDATE OR IGNORE ${sql(table)} SET bookingId = ${pair.into} WHERE bookingId = ${pair.id}`,
