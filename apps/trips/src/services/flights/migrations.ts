@@ -114,7 +114,15 @@ export const migrations = {
 		const pushed = Array.isReadonlyArrayNonEmpty(
 			yield* sql`SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'activities'`
 		)
-		const now = DateTime.toEpochMillis(yield* DateTime.now)
+		if (pushed) {
+			// A running activity opens a booking link the app no longer reads, and its link cannot change, so it ends: its channel is retired and the next round starts the flight's leg afresh.
+			yield* sql`
+				INSERT INTO retirements (channel, bundle, props, retiredAt)
+				SELECT channel, bundle, props, ${DateTime.toEpochMillis(yield* DateTime.now)} FROM activities WHERE endedAt IS NULL
+				ON CONFLICT (channel) DO NOTHING
+			`
+			yield* sql`DELETE FROM activities WHERE endedAt IS NULL`
+		}
 		yield* Effect.forEach(
 			joinedOf(rows),
 			pair =>
@@ -132,17 +140,12 @@ export const migrations = {
 					`
 					yield* sql`DELETE FROM flights WHERE id = ${pair.id}`
 					if (!pushed) return
-					// Each record moves to the flight it joined unless that flight holds its like already; a running activity left behind, for a leg and app the flight already shows, is retired.
+					// Each record moves to the flight it joined unless that flight holds its like already, as an ended activity for the same leg and app.
 					yield* Effect.forEach(
 						PUSH_TABLES,
 						table => sql`UPDATE OR IGNORE ${sql(table)} SET bookingId = ${pair.into} WHERE bookingId = ${pair.id}`,
 						{concurrency: 1, discard: true}
 					)
-					yield* sql`
-						INSERT INTO retirements (channel, bundle, props, retiredAt)
-						SELECT channel, bundle, props, ${now} FROM activities WHERE bookingId = ${pair.id} AND endedAt IS NULL
-						ON CONFLICT (channel) DO NOTHING
-					`
 					yield* Effect.forEach(PUSH_TABLES, table => sql`DELETE FROM ${sql(table)} WHERE bookingId = ${pair.id}`, {
 						concurrency: 1,
 						discard: true

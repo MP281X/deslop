@@ -54,10 +54,11 @@ const tickets = Effect.gen(function* () {
 	yield* sql`CREATE TABLE deliveries (bookingId TEXT NOT NULL, category TEXT NOT NULL, value TEXT, sentAt INTEGER NOT NULL, token TEXT NOT NULL) STRICT`
 	yield* sql`CREATE TABLE retirements (channel TEXT PRIMARY KEY, bundle TEXT NOT NULL, props TEXT, retiredAt INTEGER NOT NULL) STRICT, WITHOUT ROWID`
 	yield* sql`
-		INSERT INTO activities (channel, bookingId, leg, bundle, startedAt, props) VALUES
-			('kept', ${KEPT}, 'departure', ${BUNDLE}, 1, '{}'),
-			('clash', ${JOINED}, 'departure', ${BUNDLE}, 1, '{}'),
-			('moved', ${JOINED}, 'departure', 'xyz.mp281x.trips.dev', 1, '{}')
+		INSERT INTO activities (channel, bookingId, leg, bundle, startedAt, endedAt, props) VALUES
+			('kept', ${KEPT}, 'departure', ${BUNDLE}, 1, NULL, '{}'),
+			('clash', ${JOINED}, 'departure', ${BUNDLE}, 1, NULL, '{}'),
+			('other', ${OTHER}, 'departure', 'xyz.mp281x.trips.dev', 1, NULL, '{}'),
+			('ended', ${JOINED}, 'arrival', ${BUNDLE}, 1, 2, '{}')
 	`
 	yield* sql`
 		INSERT INTO sent_alerts (bookingId, category, value, sentAt) VALUES
@@ -68,7 +69,7 @@ const tickets = Effect.gen(function* () {
 
 it.layer(store)(test =>
 	test.effect(
-		'joins rows of one service into one flight, each row a traveller under its own reservation, and moves their push records to it',
+		'joins rows of one service into one flight, each row a traveller under its own reservation, moves their push records to it, and retires every running Live Activity',
 		Effect.fnUntraced(function* () {
 			const sql = yield* SqlClient.SqlClient
 			yield* tickets
@@ -78,7 +79,7 @@ it.layer(store)(test =>
 					yield* sql`SELECT name FROM pragma_table_info('flights') ORDER BY cid`,
 					yield* sql`SELECT id, number, departs, coalesce(boardingAt, 0) AS boardingAt, travellers FROM flights ORDER BY rowid`,
 					yield* sql`SELECT channel, bookingId FROM activities ORDER BY channel`,
-					yield* sql`SELECT channel, props FROM retirements`,
+					yield* sql`SELECT channel, props FROM retirements ORDER BY channel`,
 					yield* sql`SELECT bookingId, category, value FROM sent_alerts ORDER BY sentAt`,
 					yield* sql`SELECT bookingId FROM deliveries`
 				],
@@ -118,11 +119,13 @@ it.layer(store)(test =>
 							travellers: '[{"confirmation":"ONE","seat":"11A","status":"confirmed"}]'
 						}
 					],
+					// A running activity opens a booking link, so it ends and the next round starts one that opens the flight.
+					[{bookingId: KEPT, channel: 'ended'}],
 					[
-						{bookingId: KEPT, channel: 'kept'},
-						{bookingId: KEPT, channel: 'moved'}
+						{channel: 'clash', props: '{}'},
+						{channel: 'kept', props: '{}'},
+						{channel: 'other', props: '{}'}
 					],
-					[{channel: 'clash', props: '{}'}],
 					[
 						{bookingId: KEPT, category: 'gate', value: 'B12'},
 						{bookingId: KEPT, category: 'delay', value: '15'}
