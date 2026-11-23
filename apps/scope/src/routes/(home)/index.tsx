@@ -368,26 +368,60 @@ function SpanDetails(props: {focus: Option.Option<TraceTree['spans'][number]>}) 
 	})
 }
 
-// The trace's flame under its pinned time axis, then, when inline, the picked span's details after one hairline.
+// The trace's flame under its pinned time axis.
+function TraceFlame(props: {
+	focus: Option.Option<TraceTree['spans'][number]>
+	onPick: (id: SpanId) => void
+	trace: TraceTree
+}) {
+	return (
+		<>
+			<TimeAxis totalMs={props.trace.durationMs} />
+			<Flame focus={Option.map(props.focus, span => span.spanId)} onPick={props.onPick} trace={props.trace} />
+		</>
+	)
+}
+
+// The flame, then, when inline, the picked span's details after one hairline; from 2560px the details stand in their own column beside the flame instead, each scrolling alone.
 function SpansList(props: {
 	focus: Option.Option<TraceTree['spans'][number]>
 	inlineDetails: boolean
 	onPick: (id: SpanId) => void
 	trace: TraceTree
 }) {
+	const beside = useAtomValue(mediaQueryAtom('(width >= 160rem)'))
 	if (!Array.isReadonlyArrayNonEmpty(props.trace.spans)) {
 		return <EmptyPane icon={<RectangleIcon />} label="No spans" />
 	}
+	const details = Option.filter(props.focus, () => props.inlineDetails)
+	if (beside) {
+		return (
+			<div className="flex min-h-0 flex-1">
+				<ScrollArea className="min-h-0 min-w-0 flex-1">
+					<TraceFlame focus={props.focus} onPick={props.onPick} trace={props.trace} />
+				</ScrollArea>
+				{Option.match(details, {
+					onNone: Function.constNull,
+					onSome: span => (
+						<div className="flex w-160 shrink-0 flex-col border-l">
+							<ScrollArea className="min-h-0 flex-1">
+								<SpanDetail span={span} />
+							</ScrollArea>
+						</div>
+					)
+				})}
+			</div>
+		)
+	}
 	return (
 		<ScrollArea className="min-h-0 flex-1">
-			<TimeAxis totalMs={props.trace.durationMs} />
-			<Flame focus={Option.map(props.focus, span => span.spanId)} onPick={props.onPick} trace={props.trace} />
-			{Boolean.match(props.inlineDetails && Option.isSome(props.focus), {
-				onFalse: Function.constNull,
-				onTrue: () => (
+			<TraceFlame focus={props.focus} onPick={props.onPick} trace={props.trace} />
+			{Option.match(details, {
+				onNone: Function.constNull,
+				onSome: span => (
 					<>
 						<Separator />
-						{Option.match(props.focus, {onNone: Function.constNull, onSome: span => <SpanDetail span={span} />})}
+						<SpanDetail span={span} />
 					</>
 				)
 			})}
