@@ -100,7 +100,7 @@ button:hover,[aria-pressed=true]{color:var(--foreground)}[aria-pressed=true]{bac
 #stage.ph .app{flex-direction:column}
 #stage.ph .side{width:auto;flex-direction:row;align-items:center;border-right:0;border-bottom:1px solid var(--border)}
 #stage.ph .org{margin:0 auto 0 0}
-#stage.ph .p-grid{grid-template-columns:repeat(auto-fill,minmax(160px,1fr))}
+#stage.ph section:not(.solo) .p-grid{grid-template-columns:repeat(auto-fill,minmax(160px,1fr))}
 @media (max-width:599px){.p-parts{display:none}}
 @media (prefers-reduced-motion:reduce){.p-cur{transition:none}.app *{animation:none!important}}
 </style></head><body><div id="stage"></div><script>
