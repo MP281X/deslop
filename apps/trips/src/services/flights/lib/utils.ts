@@ -387,28 +387,156 @@ function sameService(existing: Flight, incoming: Flight) {
 	return serviceOfFlight(existing) === serviceOfFlight(incoming)
 }
 
-// Who a confirmed ticket takes off another service: each traveller it names under the same reservation, or that whole reservation when it names nobody.
-function movedBy(flight: Flight) {
-	const movers = Array.filter(flight.travellers, isBooked)
-	return (held: Traveller) =>
-		Array.some(
-			movers,
-			mover =>
-				agree(codeOf(mover), codeOf(held)) &&
-				(wholeBooking(mover) || agree(nameOf(mover), nameOf(held)) || agree(ticketOf(mover), ticketOf(held)))
+// A traveller a segment would take off another flight, by their place there, and which of the segment's travellers takes them; identified when one e-ticket says they are the same person.
+type Leaver = {readonly identified: boolean; readonly index: number; readonly mover: number}
+
+// A flight and the travellers a segment would take off it.
+type Held = {readonly flight: Flight; readonly leavers: readonly Leaver[]}
+
+function among(leavers: readonly Leaver[]) {
+	return (index: number) => Array.some(leavers, leaver => leaver.index === index)
+}
+
+// Who of a flight's travellers one of a segment's movers takes, given those the segment's earlier movers took already.
+type Taking = {
+	readonly at: number
+	readonly mover: Traveller
+	readonly movers: readonly Traveller[]
+	readonly taken: readonly Leaver[]
+	readonly travellers: readonly Traveller[]
+}
+
+// A segment naming nobody takes everyone still booked under its code; a cancelled traveller stays, as only a ticket naming them reinstates them.
+function wholeLeavers(taking: Taking) {
+	return Array.filterMap(taking.travellers, (held, index) =>
+		Boolean.match(isBooked(held) && agree(codeOf(held), codeOf(taking.mover)) && !among(taking.taken)(index), {
+			onFalse: () => Result.failVoid,
+			onTrue: () => Result.succeed({identified: false, index, mover: taking.at} satisfies Leaver)
+		})
+	)
+}
+
+// Each traveller a segment names takes at most one still booked on a flight, the surest, and none when two are as likely: the same e-ticket, whatever the reservation, or the same reservation and name with no e-ticket that differs. Seats tell nothing, as each flight has its own.
+function namedLeaver(taking: Taking) {
+	return pipe(
+		chosen(
+			Array.filterMap(taking.travellers, (held, index) =>
+				pipe(
+					evidenceBetween(held, taking.mover),
+					Option.liftPredicate(
+						evidence =>
+							evidence.ticket || (evidence.code && evidence.name && !differ(ticketOf(held), ticketOf(taking.mover)))
+					),
+					Option.filter(() => isBooked(held) && !among(taking.taken)(index)),
+					Option.match({onNone: () => Result.failVoid, onSome: evidence => Result.succeed({evidence, index})})
+				)
+			),
+			alikeFrom(taking.movers, taking.mover, taking.at)
+		),
+		Option.map(found => ({identified: found.evidence.ticket, index: found.index, mover: taking.at}) satisfies Leaver),
+		Option.toArray
+	)
+}
+
+function leaversOf(travellers: readonly Traveller[], movers: readonly Traveller[]) {
+	return Array.flatten(
+		Array.mapAccum(movers, Array.empty<Leaver>(), (taken, mover, at) => {
+			const taking = {at, mover, movers, taken, travellers} satisfies Taking
+			const found = Boolean.match(wholeBooking(mover), {
+				onFalse: () => namedLeaver(taking),
+				onTrue: () => wholeLeavers(taking)
+			})
+			return [Array.appendAll(taken, found), found]
+		})[1]
+	)
+}
+
+function within(held: Flight, incoming: Flight) {
+	return pipe(DateTime.distance(held.departs, incoming.departs), Duration.abs, Duration.isLessThan(Duration.days(2)))
+}
+
+// One flight leads into the other: it lands where the other leaves from, before it leaves, as a connection or a return does.
+function chained(first: Flight, second: Flight) {
+	return agree(first.to.code, second.from.code) && DateTime.isLessThanOrEqualTo(first.arrives, second.departs)
+}
+
+// What says a segment replaces another flight within two days, as a schedule change or a missed connection moves a traveller: it leaves from the same airport or lands at the same one. For a traveller one e-ticket identifies, any airport they share will do, unless one flight leads into the other.
+function replaces(incoming: Flight, held: Flight, identified: boolean) {
+	const crossed = agree(held.from.code, incoming.to.code) || agree(held.to.code, incoming.from.code)
+	return (
+		within(held, incoming) &&
+		(agree(held.from.code, incoming.from.code) ||
+			agree(held.to.code, incoming.to.code) ||
+			(identified && crossed && !chained(held, incoming) && !chained(incoming, held)))
+	)
+}
+
+// A ticket speaks for the journey of a traveller it moves only when it holds or replaces every other flight they hold within two days of it, so a pass for one leg never moves them off another leg of the same booking.
+function covers(ticket: FlightList, held: readonly Held[]) {
+	return (mover: number) =>
+		Array.every(held, other =>
+			Array.every(
+				other.leavers,
+				leaver =>
+					leaver.mover !== mover ||
+					!Array.some(ticket, segment => within(other.flight, segment)) ||
+					Array.some(ticket, segment => replaces(segment, other.flight, leaver.identified))
+			)
 		)
 }
 
-// What says a ticket replaces another service: that service is none of the ticket's own segments, and leaves from the same airport or lands at the same one within two days, as a schedule change or a missed connection moves a traveller.
-function replacedBy(services: readonly string[], incoming: Flight) {
-	return (held: Flight) =>
-		!Array.contains(services, serviceOfFlight(held)) &&
-		(agree(held.from.code, incoming.from.code) || agree(held.to.code, incoming.to.code)) &&
-		pipe(DateTime.distance(held.departs, incoming.departs), Duration.abs, Duration.isLessThan(Duration.days(2)))
+// The travellers a segment takes off each flight, by their places there: those it names or its whole reservation, still booked, from the flights it replaces outside the ticket's own.
+function leavingOf(flights: FlightList, ticket: FlightList, incoming: Flight) {
+	const services = Array.map(ticket, serviceOfFlight)
+	const movers = pipe(incoming.travellers, Array.filter(isBooked), Array.dedupeWith(repeated))
+	const held = Array.map(
+		flights,
+		flight =>
+			({
+				flight,
+				leavers: pipe(
+					services,
+					Array.filter(service => service === serviceOfFlight(flight)),
+					Array.match({onEmpty: () => leaversOf(flight.travellers, movers), onNonEmpty: () => []})
+				)
+			}) satisfies Held
+	)
+	const covered = covers(ticket, held)
+	return Array.map(
+		held,
+		other =>
+			({
+				...other,
+				leavers: Array.filter(
+					other.leavers,
+					leaver => covered(leaver.mover) && replaces(incoming, other.flight, leaver.identified)
+				)
+			}) satisfies Held
+	)
+}
+
+// Who arrives from each flight: the travellers leaving it, keeping who they are and their reservation, but not the seat or group of the flight they left.
+function arrivalsOf(leaving: readonly Held[]) {
+	return Array.map(leaving, other =>
+		pipe(
+			other.flight.travellers,
+			Array.filter((_, index) => among(other.leavers)(index)),
+			Array.map(traveller => ({...traveller, boardingGroup: Option.none(), seat: Option.none()}) satisfies Traveller)
+		)
+	)
+}
+
+// Those arriving join one flight at a time, so a traveller leaving two flights a ticket replaces, as a missed connection's, arrives once; the ticket then updates whom it names.
+function seated(
+	existing: readonly Traveller[],
+	arrivals: readonly (readonly Traveller[])[],
+	incoming: readonly Traveller[]
+) {
+	return travellersOf(Array.reduce(arrivals, existing, travellersOf), incoming)
 }
 
 // A ticket reads only for its own travellers, so a cancellation changes no time or gate another traveller's ticket gave; the boarding time and live data survive only while the departure stays within the hour.
-function combine(existing: Flight, incoming: Flight, arriving: readonly Traveller[]) {
+function combine(existing: Flight, incoming: Flight, arrivals: readonly (readonly Traveller[])[]) {
 	const same = pipe(
 		DateTime.distance(incoming.departs, existing.departs),
 		Duration.abs,
@@ -423,36 +551,36 @@ function combine(existing: Flight, incoming: Flight, arriving: readonly Travelle
 		),
 		id: existing.id,
 		live: Option.filter(existing.live, () => same),
-		travellers: travellersOf([...existing.travellers, ...arriving], incoming.travellers)
+		travellers: seated(existing.travellers, arrivals, incoming.travellers)
 	})
 }
 
-// One segment of a ticket joins its service, or becomes a flight of its own with its own id, alerts and Live Activity, unless it holds nobody, as a cancellation of a flight never saved. The travellers it moves leave the services it replaces, without their seats; a flight goes once nobody is left on it.
-function upsertOne(services: readonly string[]) {
+// A flight without the travellers leaving it, or nothing once nobody is left on it.
+function remaining(other: Held) {
+	if (Array.isReadonlyArrayEmpty(other.leavers)) return Result.succeed(other.flight)
+	return pipe(
+		Array.filter(other.flight.travellers, (_, index) => !among(other.leavers)(index)),
+		Option.liftPredicate(Array.isReadonlyArrayNonEmpty),
+		Option.match({onNone: () => Result.failVoid, onSome: left => Result.succeed(withTravellers(other.flight, left))})
+	)
+}
+
+// One segment of a ticket joins its service, or becomes a flight of its own with its own id, alerts and Live Activity, unless it holds nobody, as a cancellation of a flight never saved. The travellers it moves leave the flights it replaces; a flight goes once nobody is left on it.
+function upsertOne(ticket: FlightList) {
 	return (flights: FlightList, incoming: Flight) => {
-		const moving = movedBy(incoming)
-		const replaced = replacedBy(services, incoming)
+		const leaving = leavingOf(flights, ticket, incoming)
+		const arrivals = arrivalsOf(leaving)
 		const target = Array.findFirst(flights, held => sameService(held, incoming))
-		const arriving = pipe(
-			flights,
-			Array.filter(replaced),
-			Array.flatMap(held => Array.filter(held.travellers, moving)),
-			// A traveller moved to another service keeps who they are and their reservation, but not the seat or group of the flight they left.
-			Array.map(traveller => ({...traveller, boardingGroup: Option.none(), seat: Option.none()}) satisfies Traveller)
-		)
 		const merged = Option.match(target, {
-			onNone: () => withTravellers(incoming, travellersOf(arriving, incoming.travellers)),
-			onSome: found => combine(found, incoming, arriving)
+			onNone: () => withTravellers(incoming, seated([], arrivals, incoming.travellers)),
+			onSome: found => combine(found, incoming, arrivals)
 		})
-		const rest = Array.filterMap(flights, held => {
-			if (sameService(held, incoming)) return Result.succeed(merged)
-			if (!replaced(held) || !Array.some(held.travellers, moving)) return Result.succeed(held)
-			return pipe(
-				Array.filter(held.travellers, traveller => !moving(traveller)),
-				Option.liftPredicate(Array.isReadonlyArrayNonEmpty),
-				Option.match({onNone: () => Result.failVoid, onSome: left => Result.succeed(withTravellers(held, left))})
-			)
-		})
+		const rest = Array.filterMap(leaving, other =>
+			Boolean.match(sameService(other.flight, incoming), {
+				onFalse: () => remaining(other),
+				onTrue: () => Result.succeed(merged)
+			})
+		)
 		return Option.match(target, {
 			onNone: () =>
 				Boolean.match(Array.isReadonlyArrayEmpty(merged.travellers), {
@@ -466,7 +594,7 @@ function upsertOne(services: readonly string[]) {
 
 // All segments of one ticket stand together: none replaces another, as an itinerary's two flights on one route never do.
 export function upsert(current: FlightList, incoming: FlightList): FlightList {
-	return Array.reduce(incoming, current, upsertOne(Array.map(incoming, serviceOfFlight)))
+	return Array.reduce(incoming, current, upsertOne(incoming))
 }
 
 type ActivityWindow = {end: DateTime.Utc; leg: Leg; start: DateTime.Utc}

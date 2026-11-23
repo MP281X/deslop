@@ -1,6 +1,6 @@
 import {assert, it} from '@effect/vitest'
 
-import {Array, DateTime, Duration, Function, Option, Schema, Struct} from 'effect'
+import {Array, DateTime, Duration, Function, Option, Schema, String, Struct} from 'effect'
 
 import {
 	activeWindow,
@@ -498,6 +498,107 @@ it('moves only the travellers a rebooking names, and the whole booking only when
 			]
 		]
 	])
+})
+
+// A BA flight between two airports, its hours from DEPARTS, read under an id of its own.
+function leg(travellers: readonly Traveller[], number: string, from: string, to: string, hours: number, length = 1.5) {
+	return Flight.make({
+		...FLIGHT,
+		arrives: DateTime.addDuration(DEPARTS, Duration.hours(hours + length)),
+		departs: DateTime.addDuration(DEPARTS, Duration.hours(hours)),
+		from: Schema.decodeSync(Place)({code: from, name: from, timeZone: 'UTC'}),
+		id: FlightId.make(
+			`${String.padStart(4, '0')(number)}${String.padStart(4, '0')(`${hours}`)}-0d0a-4a5e-9d8f-5b2a1c3d4e5f`
+		),
+		number,
+		to: Schema.decodeSync(Place)({code: to, name: to, timeZone: 'UTC'}),
+		travellers
+	})
+}
+
+// Bob Stone on e-ticket 125 1111111111 under booking RTN.
+function stone(seat: Option.Option<string>) {
+	return {...traveller('RTN', Option.some('Bob Stone'), seat), ticket: Option.some('1251111111111')}
+}
+
+// Bob Stone on the same e-ticket under Ryanair's booking FR1.
+function ryan(seat: Option.Option<string>) {
+	return {...stone(seat), confirmation: Option.some('FR1')}
+}
+
+it('moves nobody off another leg of the booking on a pass for one leg', () => {
+	// BA 450 on the 21st, its return BA 451 that evening, and BA 450 again on the 22nd.
+	const journey = upsert(
+		[],
+		[
+			leg([stone(Option.some('14A'))], '450', 'LHR', 'EDI', 0),
+			leg([stone(Option.none())], '451', 'EDI', 'LHR', 5),
+			leg([stone(Option.none())], '450', 'LHR', 'EDI', 24)
+		]
+	)
+	assert.deepStrictEqual(upsert(journey, [leg([stone(Option.some('14A'))], '450', 'LHR', 'EDI', 0)]), journey)
+	// A confirmation of the whole new journey moves him off the flight it lacks.
+	assert.deepStrictEqual(
+		Array.map(
+			upsert(journey, [
+				leg([stone(Option.none())], '450', 'LHR', 'EDI', 24),
+				leg([stone(Option.none())], '451', 'EDI', 'LHR', 30)
+			]),
+			flight => [flight.number, flight.departs, flight.travellers.length]
+		),
+		[
+			['450', DateTime.addDuration(DEPARTS, Duration.hours(24)), 1],
+			['451', DateTime.addDuration(DEPARTS, Duration.hours(30)), 1]
+		]
+	)
+})
+
+it('moves a traveller one e-ticket identifies onto a flight sharing either airport, unless one leads into the other', () => {
+	const stansted = [leg([ryan(Option.some('3A'))], '1234', 'BGY', 'STN', 0, 2)]
+	assert.deepStrictEqual(seating(upsert(stansted, [leg([ryan(Option.none())], '8810', 'STN', 'CDG', 1)])), [
+		['8810', false, [['Bob Stone', '', 'FR1', 'confirmed']]]
+	])
+	// Leaving after he lands is his connection, and the first leg stays.
+	assert.lengthOf(upsert(stansted, [leg([ryan(Option.some('9C'))], '8810', 'STN', 'CDG', 3)]), 2)
+})
+
+it('moves only the traveller a rebooking identifies, and neither of two it could mean', () => {
+	const twins = upsert(
+		[],
+		[
+			ticket(
+				[kim(Option.some('14A'), Option.some('1250000000001')), kim(Option.some('14B'), Option.some('125-0000000002'))],
+				'410'
+			)
+		]
+	)
+	assert.deepStrictEqual(seating(upsert(twins, [ticket([kim(Option.none(), Option.some('1250000000001'))], '411')])), [
+		['410', false, [['Alex Kim', '14B', 'TWINS', 'confirmed']]],
+		['411', false, [['Alex Kim', '', 'TWINS', 'confirmed']]]
+	])
+	assert.deepStrictEqual(
+		Array.map(upsert(twins, [ticket([kim(Option.none(), Option.none())], '411')]), flight => [
+			flight.number,
+			flight.travellers.length
+		]),
+		[
+			['410', 2],
+			['411', 1]
+		]
+	)
+})
+
+it('reinstates a cancelled traveller only on a ticket naming them', () => {
+	const sam = traveller('KIM1', Option.some('Sam Kim'), Option.some('7B'), 'cancelled')
+	const held = [
+		Flight.make({...FLIGHT, travellers: [traveller('KIM1', Option.some('Jo Kim'), Option.some('7A')), sam]})
+	]
+	const booking = traveller('KIM1', Option.none(), Option.none())
+	assert.deepStrictEqual(seating(upsert(held, [ticket([booking], '554')])), [
+		['553', true, [['Sam Kim', '7B', 'KIM1', 'cancelled']]],
+		['554', false, [['Jo Kim', '', 'KIM1', 'confirmed']]]
+	])
+	assert.deepStrictEqual(upsert(held, [ticket([booking])]), held)
 })
 
 it('keeps every segment of one ticket, even two on one route', () => {
