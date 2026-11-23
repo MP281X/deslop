@@ -30,6 +30,7 @@ import type {FlightId, ProviderFlightId} from '#services/flights/schema.ts'
 import {FlightsError, Flight, TripNumber} from '#services/flights/schema.ts'
 import {Flights} from '#services/flights/service.ts'
 import {
+	canRefresh,
 	checkEvery,
 	flightTracking,
 	inboundOf,
@@ -288,18 +289,10 @@ export class Tracking extends Context.Service<Tracking>()('@deslop/trips/service
 		)
 
 		return {
-			// A pull to refresh asks at once, at most once a minute and only while the flight is tracked, so it cannot drain FlightAware's allowance.
+			// A pull to refresh asks at once, only while the flight is tracked and on a pace tied to its schedule.
 			refresh: Effect.fn('Tracking.refresh')(function* (id: FlightId) {
 				yield* Effect.annotateCurrentSpan('flightId', id)
-				yield* check(
-					id,
-					(flight, now, attempted) =>
-						Option.isSome(checkEvery(flight, now)) &&
-						Option.match(attempted, {
-							onNone: Function.constTrue,
-							onSome: at => pipe(at, DateTime.distance(now), Duration.isGreaterThanOrEqualTo(Duration.minutes(1)))
-						})
-				)
+				yield* check(id, canRefresh)
 			})
 		}
 	})

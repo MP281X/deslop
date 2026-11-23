@@ -3,6 +3,7 @@ import {Config, Context, DateTime, Duration, Effect, Layer, Option, Redacted, pi
 import {HttpClient, HttpClientRequest, HttpClientResponse} from 'effect/http'
 
 import type {ProviderFlightId} from '#services/flights/schema.ts'
+import {HORIZON} from '#services/tracking/lib/utils.ts'
 import {FaFlights} from '#services/tracking/schema.ts'
 
 export class FlightAware extends Context.Service<FlightAware>()('@deslop/trips/services/tracking/lib/flightaware', {
@@ -25,13 +26,9 @@ export class FlightAware extends Context.Service<FlightAware>()('@deslop/trips/s
 			flights: Option.map(apiKey, key =>
 				Effect.fn('FlightAware.flights')(function* (designator: string, departs: DateTime.Utc, now: DateTime.Utc) {
 					return yield* ask(designator, key, {
-						// FlightAware searches at most two days ahead.
+						// Tracking starts inside the same horizon, so the end always reaches past the booked departure.
 						end: DateTime.formatIso(
-							pipe(
-								departs,
-								DateTime.addDuration(Duration.hours(12)),
-								DateTime.min(DateTime.addDuration(now, Duration.hours(47)))
-							)
+							pipe(departs, DateTime.addDuration(Duration.hours(12)), DateTime.min(DateTime.addDuration(now, HORIZON)))
 						),
 						ident_type: 'designator',
 						start: DateTime.formatIso(DateTime.subtractDuration(departs, Duration.hours(12)))

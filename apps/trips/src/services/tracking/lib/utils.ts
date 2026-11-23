@@ -131,7 +131,39 @@ export function flightTracking(
 	return tracking
 }
 
-// The pace of checks by how far the flight is: sparse while little can change, every two minutes from 90 minutes out until the gate is posted, and none once it landed, about seventy lookups a flight against FlightAware's thousand a month.
+// FlightAware searches at most two days ahead, so a lookup asks up to 47 hours on; tracking starts an hour inside that, so the first lookup reaches an hour past the booked departure, which a schedule moved a little later still falls in.
+export const HORIZON = Duration.hours(47)
+const TRACKED = Duration.hours(46)
+
+// In the air every quarter hour, and every five minutes from 45 minutes before the landing to a quarter hour after it.
+function airbornePace(flight: Flight, now: DateTime.Utc) {
+	const lands = arrivalOf(flight)
+	if (
+		DateTime.isGreaterThan(now, DateTime.subtractDuration(lands, Duration.minutes(45))) &&
+		DateTime.isLessThan(now, DateTime.addDuration(lands, Duration.minutes(15)))
+	) {
+		return Duration.minutes(5)
+	}
+	return Duration.minutes(15)
+}
+
+// On the ground the pace quickens at each cutover, inclusive: every two minutes only from 90 minutes out, while the gate is unknown and before the booked departure, then every five.
+function groundPace(flight: Flight, now: DateTime.Utc) {
+	const left = DateTime.distance(now, departureOf(flight))
+	if (Duration.isGreaterThan(left, Duration.hours(24))) return Duration.hours(6)
+	if (Duration.isGreaterThan(left, Duration.hours(6))) return Duration.hours(3)
+	if (Duration.isGreaterThan(left, Duration.hours(3))) return Duration.minutes(30)
+	if (Duration.isGreaterThan(left, Duration.minutes(90))) return Duration.minutes(10)
+	if (
+		DateTime.isLessThan(now, flight.departs) &&
+		!Option.exists(flight.live, live => Option.isSome(live.departureGate))
+	) {
+		return Duration.minutes(2)
+	}
+	return Duration.minutes(5)
+}
+
+// The pace of checks by how far the flight is: sparse while little can change, every two minutes in the last 90 minutes until the gate is posted, and none once it landed; at most about a hundred lookups a flight against FlightAware's thousand a month.
 export function checkEvery(flight: Flight, now: DateTime.Utc) {
 	const state = Option.map(flight.live, live => live.state)
 	if (
@@ -142,27 +174,21 @@ export function checkEvery(flight: Flight, now: DateTime.Utc) {
 	) {
 		return Option.none<Duration.Duration>()
 	}
-	// FlightAware answers at most two days ahead, and a flight it never reported landing is let go two hours after it was due.
+	// A flight it never reported landing is let go two hours after it was due.
 	if (
-		DateTime.isLessThan(now, DateTime.subtractDuration(flight.departs, Duration.hours(48))) ||
+		DateTime.isLessThan(now, DateTime.subtractDuration(flight.departs, TRACKED)) ||
 		DateTime.isGreaterThan(now, DateTime.addDuration(arrivalOf(flight), Duration.hours(2)))
 	) {
 		return Option.none<Duration.Duration>()
 	}
-	if (Option.contains(state, 'airborne')) {
-		if (DateTime.isGreaterThan(now, DateTime.subtractDuration(arrivalOf(flight), Duration.minutes(45)))) {
-			return Option.some(Duration.minutes(5))
-		}
-		return Option.some(Duration.minutes(15))
+	// Half an hour past its departure time with no word of takeoff, a flight is paced as if in the air.
+	if (
+		Option.contains(state, 'airborne') ||
+		DateTime.isGreaterThanOrEqualTo(now, DateTime.addDuration(departureOf(flight), Duration.minutes(30)))
+	) {
+		return Option.some(airbornePace(flight, now))
 	}
-	const left = DateTime.distance(now, departureOf(flight))
-	if (Duration.isGreaterThanOrEqualTo(left, Duration.hours(24))) return Option.some(Duration.hours(6))
-	if (Duration.isGreaterThanOrEqualTo(left, Duration.hours(6))) return Option.some(Duration.hours(3))
-	if (Duration.isGreaterThanOrEqualTo(left, Duration.hours(3))) return Option.some(Duration.minutes(30))
-	if (Duration.isGreaterThanOrEqualTo(left, Duration.minutes(90))) return Option.some(Duration.minutes(10))
-	// Pushed back but not yet off the ground counts as waiting for takeoff.
-	if (Option.exists(flight.live, live => Option.isSome(live.departureGate))) return Option.some(Duration.minutes(5))
-	return Option.some(Duration.minutes(2))
+	return Option.some(groundPace(flight, now))
 }
 
 // The last attempt counts, answered or not, so a failing provider is asked on the same schedule.
@@ -181,6 +207,21 @@ export function isDue(flight: Flight, now: DateTime.Utc, attemptedAt: Option.Opt
 		Option.match(checkedAt, {
 			onNone: Function.constTrue,
 			onSome: at => pipe(at, DateTime.distance(now), Duration.isGreaterThanOrEqualTo(every))
+		})
+	)
+}
+
+// A pull to refresh asks at most twice as often as the schedule, and never sooner than two minutes after the last attempt, so it cannot drain FlightAware's allowance.
+export function canRefresh(flight: Flight, now: DateTime.Utc, attemptedAt: Option.Option<DateTime.Utc>) {
+	return Option.exists(checkEvery(flight, now), every =>
+		Option.match(attemptedAt, {
+			onNone: Function.constTrue,
+			onSome: at =>
+				pipe(
+					at,
+					DateTime.distance(now),
+					Duration.isGreaterThanOrEqualTo(pipe(every, Duration.divideUnsafe(2), Duration.max(Duration.minutes(2))))
+				)
 		})
 	)
 }

@@ -1,11 +1,11 @@
 import {assert, it} from '@effect/vitest'
 
-import {Array, DateTime, Duration, Option, Schema, Struct} from 'effect'
+import {Array, DateTime, Duration, Option, Schema, Struct, pipe} from 'effect'
 
 import {activityProps} from '#services/flights/lib/utils.ts'
 import {FlightId, Flight, Place, ProviderFlightId} from '#services/flights/schema.ts'
 import {alertsOf} from '#services/push/lib/utils.ts'
-import {checkEvery, flightTracking, isStale, pickFlight} from '#services/tracking/lib/utils.ts'
+import {canRefresh, checkEvery, flightTracking, isDue, isStale, pickFlight} from '#services/tracking/lib/utils.ts'
 import {FaFlight} from '#services/tracking/schema.ts'
 
 const ANSWER = Schema.decodeSync(FaFlight)({
@@ -83,22 +83,23 @@ it('checks a flight on a pace that quickens toward departure and stops at landin
 		)
 		return Option.map(checkEvery(flight, now), Duration.toMinutes)
 	}
-	const gate = Option.some({gate_origin: Option.some('B12')})
+	const onTime = Option.some({estimated_out: Option.some(departs)})
+	const gate = Option.some({estimated_out: Option.some(departs), gate_origin: Option.some('B12')})
 	const airborne = Option.some({actual_off: Option.some(departs), estimated_out: Option.some(departs)})
 	assert.deepStrictEqual(
 		[
-			paceAt(Duration.hours(49)),
 			paceAt(Duration.hours(47)),
+			paceAt(Duration.hours(46)),
 			paceAt(Duration.hours(20)),
 			paceAt(Duration.hours(5)),
 			paceAt(Duration.hours(2)),
-			paceAt(Duration.minutes(80), Option.some({estimated_out: Option.some(departs)})),
-			paceAt(
-				Duration.minutes(40),
-				Option.map(gate, found => ({...found, estimated_out: Option.some(departs)}))
-			),
+			paceAt(Duration.minutes(80), onTime),
+			paceAt(Duration.minutes(40), gate),
+			paceAt(Duration.minutes(-10), onTime),
+			paceAt(Duration.minutes(-40), onTime),
 			paceAt(Duration.minutes(-60), airborne),
 			paceAt(Duration.minutes(-130), airborne),
+			paceAt(Duration.minutes(-200), airborne),
 			paceAt(Duration.minutes(-150), Option.some({actual_on: Option.some(departs)}))
 		],
 		[
@@ -109,10 +110,65 @@ it('checks a flight on a pace that quickens toward departure and stops at landin
 			Option.some(10),
 			Option.some(2),
 			Option.some(5),
+			Option.some(5),
+			Option.some(15),
 			Option.some(15),
 			Option.some(5),
+			Option.some(15),
 			Option.none()
 		]
+	)
+})
+
+it('takes the faster pace at each cutover itself', () => {
+	const departs = DateTime.makeUnsafe('2026-10-28T15:40:00Z')
+	const flight = flightAt(departs)
+	assert.deepStrictEqual(
+		Array.map([Duration.hours(24), Duration.hours(6), Duration.hours(3), Duration.minutes(90)], before =>
+			Option.map(checkEvery(flight, DateTime.subtractDuration(departs, before)), Duration.toMinutes)
+		),
+		[Option.some(180), Option.some(30), Option.some(10), Option.some(2)]
+	)
+})
+
+// Every 30-second round from before tracking starts until it stops, with a pull to refresh in every round when `pulling`, for a flight FlightAware never reports.
+function lookupsOver(flight: Flight, pulling: boolean) {
+	const start = DateTime.subtractDuration(flight.departs, Duration.hours(48))
+	return pipe(
+		Array.makeBy(2 * 60 * (48 + 2 + 3), index => DateTime.addDuration(start, Duration.seconds(30 * index))),
+		Array.reduce({attempted: Option.none<DateTime.Utc>(), lookups: 0}, (state, now) => {
+			if (!isDue(flight, now, state.attempted) && !(pulling && canRefresh(flight, now, state.attempted))) return state
+			return {attempted: Option.some(now), lookups: state.lookups + 1}
+		}),
+		state => state.lookups
+	)
+}
+
+it('bounds the lookups of a flight that never reports, pulled to refresh or not', () => {
+	const flight = Flight.make({
+		...Struct.pick(flightAt(DateTime.makeUnsafe('2026-10-28T15:40:00Z')), Struct.keys(Flight.fields)),
+		arrives: DateTime.makeUnsafe('2026-10-28T17:40:00Z')
+	})
+	// 98 lookups on the schedule, 151 when pulled to refresh in every round.
+	assert.deepStrictEqual([lookupsOver(flight, false), lookupsOver(flight, true)], [98, 151])
+})
+
+it('lets a pull to refresh ask no sooner than two minutes, or half the pace', () => {
+	const departs = DateTime.makeUnsafe('2026-10-28T15:40:00Z')
+	const flight = flightAt(departs)
+	function after(before: Duration.Duration, since: Duration.Duration) {
+		const now = DateTime.subtractDuration(departs, before)
+		return canRefresh(flight, now, Option.some(DateTime.subtractDuration(now, since)))
+	}
+	assert.deepStrictEqual(
+		[
+			after(Duration.minutes(30), Duration.minutes(1)),
+			after(Duration.minutes(30), Duration.minutes(2)),
+			after(Duration.hours(20), Duration.minutes(30)),
+			after(Duration.hours(20), Duration.minutes(90)),
+			canRefresh(flight, DateTime.subtractDuration(departs, Duration.hours(47)), Option.none())
+		],
+		[false, true, false, true, false]
 	)
 })
 

@@ -15,7 +15,7 @@ export class RpcContracts extends RpcGroup.make(
 	// The trip from home to each airport, saved once per airport.
 	Rpc.make('travel.list', {error: FlightsError, success: Schema.Array(TravelTime)}),
 	Rpc.make('travel.set', {error: FlightsError, payload: TravelTime}),
-	// Asks the provider now, at most once a minute while the flight is tracked.
+	// Asks the provider now while the flight is tracked, at most twice as often as its schedule.
 	Rpc.make('tracking.refresh', {error: FlightsError, payload: Schema.Struct({id: FlightId})}),
 	Rpc.make('push.register', {
 		error: PushError,
