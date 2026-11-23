@@ -2,11 +2,17 @@ import {Boolean, Function, Option} from 'effect'
 
 import {ArrangementView, NavigationSplitView, NavigationStack, useNativeState} from '@expo/ui/swift-ui'
 import type {NavigationSplitViewVisibility} from '@expo/ui/swift-ui'
-import {arrangementViewStyle, createModifier, onHingeChange, overlayArrangementEdge} from '@expo/ui/swift-ui/modifiers'
+import {
+	arrangementViewStyle,
+	createModifier,
+	onGeometryChange,
+	onHingeChange,
+	overlayArrangementEdge
+} from '@expo/ui/swift-ui/modifiers'
 import type {HingeStatus, ViewModifier} from '@expo/ui/swift-ui/modifiers'
 import {createContext, useContext, useState} from 'react'
 import type {ReactNode} from 'react'
-import {useWindowDimensions} from 'react-native'
+import {Dimensions} from 'react-native'
 
 const ListContext = createContext({
 	beside: false,
@@ -29,6 +35,11 @@ export function useListSearch() {
 	return useContext(ListContext).search
 }
 
+// Columns tile in a landscape window on the inner screen, flat or half open like a book; the outer screen, 466 points across, stacks them in either orientation. The window tells them apart: unfolding reports the hinge open while the window is still the outer screen's.
+function tiledIn(window: {height: number; width: number}) {
+	return window.width >= window.height && window.height > 466
+}
+
 // An app's one root on the iPhone Duo: list and opened item side by side when the window is wide, as when unfolded like a book; a stack when it is narrow, folded or turned upright; the item above the list when half open like a laptop. The same views stay mounted through every fold and turn, so a draft, its focus and a reading place survive. `detail` is the opened item, or what the wide window shows beside the list when nothing is opened; `onHide` opens that when the person hides the list beside it, so it stays on screen and in front through a fold.
 export function ListDetail(props: {
 	detail: ReactNode
@@ -38,14 +49,14 @@ export function ListDetail(props: {
 	onHide?: () => void
 	opened: boolean
 }) {
-	const window = useWindowDimensions()
+	// The window as of SwiftUI's last layout. React Native's window event arrives while the app is still taking the new size, and a render then can leave the whole app at the previous window's size, text running off the screen; SwiftUI reports a new geometry only once the app has it.
+	const [window, setWindow] = useState(() => Dimensions.get('window'))
 	const [hinge, setHinge] = useState<HingeStatus>('closed')
 	// The person's choice from the sidebar button, both columns until they hide the list, kept apart from the one column a stack reports, so the list comes back beside the item once the window is wide again.
 	const [chosen, setChosen] = useState<NavigationSplitViewVisibility>('all')
 	const [stacked, setStacked] = useState<NavigationSplitViewVisibility>('all')
 	const portrait = window.height > window.width
-	// Columns tile in a landscape window on the inner screen, flat or half open like a book; the outer screen, 466 points across, stacks them in either orientation. The window tells them apart: unfolding reports the hinge open while the window is still the outer screen's, and the split view reports a stack's one column only after the window has changed.
-	const tiled = !portrait && window.height > 466
+	const tiled = tiledIn(window)
 	const columns = Boolean.match(tiled, {onFalse: Function.constant(stacked), onTrue: Function.constant(chosen)})
 	const laptop = portrait && hinge === 'partiallyOpen' && props.opened
 	return (
@@ -61,16 +72,19 @@ export function ListDetail(props: {
 					...(props.modifiers ?? []),
 					// Flat, the split view covers the copy of the list; half open upright, the copy stands below it. A book's fold is the split view's own seam.
 					arrangementViewStyle('overlay', {axes: 'vertical'}),
-					onHingeChange((_, context) => setHinge(context.hinge?.status ?? 'closed'))
+					onHingeChange((_, context) => setHinge(context.hinge?.status ?? 'closed')),
+					onGeometryChange(() => setWindow(Dimensions.get('window')))
 				]}
 			>
 				<ArrangementView.Primary>
 					<NavigationSplitView
 						columnVisibility={columns}
 						onColumnVisibilityChange={visibility => {
-							if (tiled) setChosen(visibility)
+							// The split view reports a stack's one column while it lays out a new window, before SwiftUI's geometry renders this again, so the report belongs to the window as it is now.
+							const tiledNow = tiledIn(Dimensions.get('window'))
+							if (tiledNow) setChosen(visibility)
 							else setStacked(visibility)
-							if (tiled && visibility === 'detailOnly' && !props.opened) props.onHide?.()
+							if (tiledNow && visibility === 'detailOnly' && !props.opened) props.onHide?.()
 						}}
 						preferredCompactColumn={Boolean.match(props.opened, {
 							onFalse: Function.constant('sidebar'),
