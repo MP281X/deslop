@@ -145,8 +145,13 @@ export function ListDetail(props: {
 			<ArrangementView
 				modifiers={[
 					...(props.modifiers ?? []),
-					// Flat, the split view covers the copy of the list; half open upright, the copy stands below it. A book's fold is the split view's own seam.
-					arrangementViewStyle('overlay', {axes: 'vertical'}),
+					// Flat, the split view covers the copy of the list; half open upright, the copy stands below it. A book's fold is the split view's own seam. Half open upright with nothing above the list, the arrangement still keeps the lower half for the copy, so it may then lay out only across, along the fold, where it never does.
+					arrangementViewStyle('overlay', {
+						axes: Boolean.match(portrait && !laptop.active, {
+							onFalse: Function.constant('vertical'),
+							onTrue: Function.constant('horizontal')
+						})
+					}),
 					onHingeChange((_, context) => laptop.setHinge(context.hinge?.status ?? 'closed')),
 					onGeometryChange(() => setWindow(Dimensions.get('window')))
 				]}
