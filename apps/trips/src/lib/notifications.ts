@@ -5,6 +5,7 @@ import {
 	addPushTokenListener,
 	getDevicePushTokenAsync,
 	requestPermissionsAsync,
+	setNotificationCategoryAsync,
 	setNotificationHandler
 } from 'expo-notifications'
 import {addPushToStartTokenListener} from 'expo-widgets'
@@ -38,6 +39,15 @@ export const pushAtom = RpcClient.runtime.atom(get =>
 					try: () => requestPermissionsAsync()
 				})
 				if (!permission.granted) return
+				// Leave now offers the way to the airport without opening Trips first.
+				yield* Effect.tryPromise({
+					catch: cause => FlightsError.make({cause, message: 'The Leave now actions could not be set up.'}),
+					try: () =>
+						setNotificationCategoryAsync('leave', [
+							{buttonTitle: 'Directions', identifier: 'directions', options: {opensAppToForeground: true}},
+							{buttonTitle: 'Uber', identifier: 'uber', options: {opensAppToForeground: true}}
+						])
+				})
 				// Subscribe before reading the first token, so a rotation while the app stays open reaches the same registry.
 				yield* registerPushTokens(
 					addPushTokenListener,

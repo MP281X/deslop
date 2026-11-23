@@ -27,9 +27,9 @@ import {Migrator, SqlClient, SqlModel, SqlSchema} from 'effect/sql'
 import {Apns} from '@deslop/runtime/server/apns'
 import {ApnsAnswer, Device} from '@deslop/runtime/shared/apns'
 
-import {ACTIVITY_NAME, activeWindow, activityProps, urgencyOf} from '#services/flights/lib/utils.ts'
+import {ACTIVITY_NAME, activeWindow, activityProps, line, urgencyOf} from '#services/flights/lib/utils.ts'
 import type {ActivityProps, Flight, Leg, FlightsError} from '#services/flights/schema.ts'
-import {FlightId} from '#services/flights/schema.ts'
+import {FlightId, Place} from '#services/flights/schema.ts'
 import {Flights} from '#services/flights/service.ts'
 import {
 	alertsOf,
@@ -37,6 +37,8 @@ import {
 	expiredActivities,
 	holds,
 	perDevice,
+	ridesActivity,
+	ridingAlerts,
 	showPlan,
 	startAlert,
 	unannouncedDevices
@@ -197,6 +199,16 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 				INSERT INTO ${sql(SentAlert.table)} ${sql.insert(rows)}
 				ON CONFLICT DO UPDATE SET sentAt = excluded.sentAt
 			`
+		})
+		const listDeliveries = SqlSchema.findAll({
+			Request: FlightId,
+			Result: AlertDelivery,
+			execute: id => sql`SELECT * FROM ${sql(AlertDelivery.table)} WHERE flightId = ${id} ORDER BY sentAt`
+		})
+		const recordDelivery = SqlSchema.void({
+			Request: AlertDelivery.insert,
+			execute: row =>
+				sql`INSERT INTO ${sql(AlertDelivery.table)} ${sql.insert(row)} ON CONFLICT DO UPDATE SET sentAt = excluded.sentAt`
 		})
 		const forgetSentExcept = SqlSchema.void({
 			Request: Schema.Array(FlightId),
@@ -393,24 +405,61 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 			Effect.forkScoped
 		)
 
-		// A change APNs took or will always refuse is remembered; a throttled one is sent again next round.
-		const refresh = Effect.fnUntraced(function* (activity: Activity, props: ActivityProps, now: DateTime.Utc) {
+		// A change APNs took or will always refuse is remembered; a throttled one is sent again next round. The changes the activity tells as its own alert count as delivered to the phones of its app, so no notification repeats them.
+		const refresh = Effect.fnUntraced(function* (
+			activity: Activity,
+			props: ActivityProps,
+			now: DateTime.Utc,
+			riding: readonly Alert[],
+			devices: readonly Device[]
+		) {
 			if (HashSet.has(yield* Ref.get(lost), activity.channel)) return yield* forget(activity)
 			const shown = yield* contentState(activity.props)
 			const next = yield* contentState(props)
-			if (next.props === shown.props) return
+			if (next.props === shown.props && Array.isReadonlyArrayEmpty(riding)) return
+			const told = Array.match(riding, {
+				onEmpty: () => ({}),
+				onNonEmpty: alerts => ({
+					alert: {
+						body: line([
+							Option.some(Array.headNonEmpty(alerts).body),
+							...Array.map(Array.tailNonEmpty(alerts), alert => Option.some(alert.title))
+						]),
+						sound: 'default',
+						title: Array.headNonEmpty(alerts).title
+					}
+				})
+			})
 			const answer = yield* apns.broadcast(
 				activity.bundle,
 				activity.channel,
-				{'content-state': next, event: 'update', timestamp: DateTime.toEpochSeconds(now)},
-				Boolean.match(urgencyOf(activity.props) === urgencyOf(props), {
+				{'content-state': next, event: 'update', timestamp: DateTime.toEpochSeconds(now), ...told},
+				Boolean.match(urgencyOf(activity.props) === urgencyOf(props) && Array.isReadonlyArrayEmpty(riding), {
 					onFalse: Function.constant(10 as const),
 					onTrue: Function.constant(5 as const)
 				}),
 				now
 			)
+			const phones = Array.filter(devices, device => device.kind === 'alert' && device.bundle === activity.bundle)
+			const deliver = Effect.forEach(
+				riding,
+				alert =>
+					Effect.forEach(
+						phones,
+						device =>
+							recordDelivery({
+								category: alert.category,
+								flightId: activity.flightId,
+								sentAt: now,
+								token: device.token,
+								value: Option.fromUndefinedOr(alert.value)
+							}),
+						{concurrency: 1, discard: true}
+					),
+				{concurrency: 1, discard: true}
+			)
 			yield* ApnsAnswer.match(answer, {
-				Accepted: () => asPushSaveError(activities.updateVoid({...editable(activity), props})),
+				Accepted: () => asPushSaveError(Effect.andThen(activities.updateVoid({...editable(activity), props}), deliver)),
 				ChannelGone: () => forget(activity),
 				DeadToken: () => asPushSaveError(activities.updateVoid({...editable(activity), endedAt: Option.some(now)})),
 				Refused: () => asPushSaveError(activities.updateVoid({...editable(activity), props})),
@@ -424,8 +473,21 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 			flight: Flight,
 			window: Span & {leg: Leg},
 			now: DateTime.Utc,
-			state: RoundState
+			state: RoundState,
+			alerts: readonly Alert[]
 		) {
+			// Receipts are read only when a change could ride on the activity.
+			const receipts = yield* pipe(
+				alerts,
+				Array.some(ridesActivity),
+				Boolean.match({
+					onFalse: () => Effect.succeed({delivered: Array.empty<AlertDelivery>(), sent: Array.empty<SentAlert>()}),
+					onTrue: () =>
+						asPushReadError(
+							Effect.all({delivered: listDeliveries(flight.id), sent: listSent(flight.id)}, {concurrency: 1})
+						)
+				})
+			)
 			const showing = {
 				flight,
 				leg: window.leg,
@@ -457,7 +519,17 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 			const outcomes = yield* Effect.forEach(
 				showPlan(state.devices, state.activities, flight, window),
 				action => {
-					if (!ShowAction.isAnyOf(['launch'])(action)) return Effect.result(refresh(action.target, showing.props, now))
+					if (!ShowAction.isAnyOf(['launch'])(action)) {
+						return Effect.result(
+							refresh(
+								action.target,
+								showing.props,
+								now,
+								ridingAlerts(alerts, receipts.sent, receipts.delivered, state.devices, action.target.bundle),
+								state.devices
+							)
+						)
+					}
 					if (Array.contains(held, action.target.bundle)) return Effect.result(Effect.void)
 					return Effect.result(launch(action.target, showing))
 				},
@@ -471,12 +543,22 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 
 		// A device whose token died leaves the list with its first failed alert.
 		const notify = Effect.fnUntraced(function* (device: Device, alert: Alert, flight: Flight) {
+			const directions = yield* Effect.transposeOption(
+				Option.map(Option.fromUndefinedOr(alert.directions), Schema.encodeEffect(Place))
+			)
 			const answer = yield* apns.sendToDevice(
 				device,
 				'alert',
 				{
-					aps: {alert: {body: alert.body, title: alert.title}, sound: 'default', 'thread-id': flight.id},
-					flightId: flight.id
+					aps: {
+						alert: {body: alert.body, title: alert.title},
+						sound: 'default',
+						'thread-id': flight.id,
+						// The app registers this category's Directions and Uber actions, which lead to the place sent beside it.
+						...Option.match(directions, {onNone: () => ({}), onSome: () => ({category: 'leave'})})
+					},
+					// The app reads a notification's data from `body`: the flight a tap opens and the airport its actions lead to.
+					body: {flightId: flight.id, ...Option.match(directions, {onNone: () => ({}), onSome: place => ({place})})}
 				},
 				10
 			)
@@ -491,19 +573,8 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 			})
 		})
 
-		const listDeliveries = SqlSchema.findAll({
-			Request: FlightId,
-			Result: AlertDelivery,
-			execute: id => sql`SELECT * FROM ${sql(AlertDelivery.table)} WHERE flightId = ${id} ORDER BY sentAt`
-		})
-		const recordDelivery = SqlSchema.void({
-			Request: AlertDelivery.insert,
-			execute: row =>
-				sql`INSERT INTO ${sql(AlertDelivery.table)} ${sql.insert(row)} ON CONFLICT DO UPDATE SET sentAt = excluded.sentAt`
-		})
 		// Only a flight with something to say reads its receipts, through their index on (flightId, sentAt).
-		const announce = Effect.fnUntraced(function* (flight: Flight, now: DateTime.Utc) {
-			const candidates = alertsOf(flight, now)
+		const announce = Effect.fnUntraced(function* (flight: Flight, now: DateTime.Utc, candidates: readonly Alert[]) {
 			if (Array.isReadonlyArrayEmpty(candidates)) return
 			const sent = yield* asPushReadError(listSent(flight.id))
 			const due = Array.filter(candidates, alert => perDevice(alert) || !announced(sent, alert))
@@ -548,22 +619,22 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 				const now = yield* DateTime.now
 				const all = yield* flights.list
 				const state = yield* roundState
+				const context = {flights: all, travel: yield* asPushReadError(flights.travel)}
 				yield* Effect.forEach(
 					all,
-					flight =>
-						Effect.ignore(
-							Effect.gen(function* () {
-								yield* Effect.ignore(announce(flight, now), {
-									log: 'Warn',
-									message: `The alerts of ${flight.id} were not sent`
-								})
-								yield* Option.match(activeWindow(flight, now), {
-									onNone: () => Effect.void,
-									onSome: window => show(flight, window, now, state)
-								})
-							}),
-							{log: 'Warn', message: `The Live Activity of ${flight.id} was not updated`}
-						),
+					Effect.fnUntraced(function* (flight) {
+						const alerts = alertsOf(flight, now, context)
+						// The activity goes first, so a change it tells itself is no notification as well.
+						yield* pipe(
+							activeWindow(flight, now),
+							Option.match({onNone: () => Effect.void, onSome: window => show(flight, window, now, state, alerts)}),
+							Effect.ignore({log: 'Warn', message: `The Live Activity of ${flight.id} was not updated`})
+						)
+						yield* Effect.ignore(announce(flight, now, alerts), {
+							log: 'Warn',
+							message: `The alerts of ${flight.id} were not sent`
+						})
+					}),
 					{concurrency: 1, discard: true}
 				)
 				yield* Effect.forEach(

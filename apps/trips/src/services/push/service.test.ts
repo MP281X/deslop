@@ -137,7 +137,11 @@ const serve = Effect.fnUntraced(function* <A, E>(
 			Push.layer,
 			Layer.provide(apns),
 			Layer.provide(
-				Layer.mock(Flights, {list: Effect.tap(list, () => Deferred.succeed(listed, undefined)), watch: Stream.never})
+				Layer.mock(Flights, {
+					list: Effect.tap(list, () => Deferred.succeed(listed, undefined)),
+					travel: Effect.succeed([]),
+					watch: Stream.never
+				})
 			),
 			Layer.provide(layerDataStore(folder))
 		)

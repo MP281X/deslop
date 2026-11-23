@@ -41,7 +41,7 @@ it('carries a provider cancellation into the island and one cancellation alert',
 	)
 	assert.deepStrictEqual(checkEvery(flight, now), Option.none())
 	assert.deepStrictEqual(
-		Array.map(alertsOf(flight, now), alert => alert.category),
+		Array.map(alertsOf(flight, now, {flights: [], travel: []}), alert => alert.category),
 		['cancelled']
 	)
 	assert.strictEqual(activityProps(flight, now, false).tone, 'bad')

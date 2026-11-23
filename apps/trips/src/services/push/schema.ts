@@ -51,7 +51,18 @@ export class Retirement extends Model.Class<Retirement>('Retirement')({
 
 // One row of `sent_alerts`: an alert sent for a flight, so each is sent once; the latest of a category tells a change back from a repeat.
 export type AlertCategory = typeof AlertCategory.Type
-export const AlertCategory = Schema.Literals(['cancelled', 'diverted', 'boarding', 'gate', 'delay'])
+export const AlertCategory = Schema.Literals([
+	'cancelled',
+	'diverted',
+	'boarding',
+	'gate',
+	'delay',
+	'checkin',
+	'closing',
+	'plan',
+	'leave',
+	'connection'
+])
 
 export class SentAlert extends Model.Class<SentAlert>('SentAlert')({
 	category: AlertCategory,
