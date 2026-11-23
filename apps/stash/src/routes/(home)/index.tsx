@@ -40,7 +40,6 @@ import {Linking} from 'react-native'
 import {ItemGroupSkeleton} from '@deslop/components-mobile/blocks/item-group-skeleton'
 import {ListToolbar} from '@deslop/components-mobile/blocks/list-toolbar'
 import {FailureContent, Loaded} from '@deslop/components-mobile/blocks/loaded'
-import {PasteSheet} from '@deslop/components-mobile/blocks/paste-sheet'
 import {Problem} from '@deslop/components-mobile/blocks/problem'
 import {RemovableRow} from '@deslop/components-mobile/blocks/removable-row'
 import {StatusDot} from '@deslop/components-mobile/blocks/status-dot'
@@ -339,51 +338,49 @@ export function HomeRoute(props: {
 		!AsyncResult.isInitial(notes) &&
 		Option.isNone(blockingFailure(notes))
 	return (
-		<PasteSheet clipboard={clipboard}>
-			<ListToolbar
-				title="Stash"
-				session={session}
-				onSearch={props.onSearch}
-				problem={Boolean.match(saved && (AsyncResult.isFailure(notes) || AsyncResult.isFailure(search)), {
-					onFalse: () => Option.none(),
-					onTrue: () =>
-						Option.some(
-							<Problem
-								source={Boolean.match(AsyncResult.isFailure(notes), {
-									onFalse: () => searchAtom(query),
-									onTrue: () => notesAtom
-								})}
-								label={Boolean.match(AsyncResult.isFailure(notes), {
-									onFalse: Function.constant('Search unavailable'),
-									onTrue: Function.constant('Out of date')
-								})}
-								onRetry={() => {
-									refreshNotes()
-									refreshSearch()
-								}}
-							/>
-						)
-				})}
-				bottomBar={
-					<>
-						<ToolbarItem placement="bottomBar">
-							<NativeButton
-								label="Write"
-								systemImage="square.and.pencil"
-								onPress={props.onCompose}
-								modifiers={[labelStyle('iconOnly')]}
-							/>
-						</ToolbarItem>
-						<ToolbarItem placement="bottomBar">
-							<FilterMenu kind={props.kind} onKind={props.onKind} />
-						</ToolbarItem>
-					</>
-				}
-			>
-				<Suspense fallback={<ItemGroupSkeleton rows={10} descriptionLines={1} media={<ItemMedia variant="image" />} />}>
-					<Notes kind={props.kind} onOpen={props.onOpen} onTag={props.onTag} tag={props.tag} />
-				</Suspense>
-			</ListToolbar>
-		</PasteSheet>
+		<ListToolbar
+			title="Stash"
+			session={session}
+			onSearch={props.onSearch}
+			problem={Boolean.match(saved && (AsyncResult.isFailure(notes) || AsyncResult.isFailure(search)), {
+				onFalse: () => Option.none(),
+				onTrue: () =>
+					Option.some(
+						<Problem
+							source={Boolean.match(AsyncResult.isFailure(notes), {
+								onFalse: () => searchAtom(query),
+								onTrue: () => notesAtom
+							})}
+							label={Boolean.match(AsyncResult.isFailure(notes), {
+								onFalse: Function.constant('Search unavailable'),
+								onTrue: Function.constant('Out of date')
+							})}
+							onRetry={() => {
+								refreshNotes()
+								refreshSearch()
+							}}
+						/>
+					)
+			})}
+			bottomBar={
+				<>
+					<ToolbarItem placement="bottomBar">
+						<NativeButton
+							label="Write"
+							systemImage="square.and.pencil"
+							onPress={props.onCompose}
+							modifiers={[labelStyle('iconOnly')]}
+						/>
+					</ToolbarItem>
+					<ToolbarItem placement="bottomBar">
+						<FilterMenu kind={props.kind} onKind={props.onKind} />
+					</ToolbarItem>
+				</>
+			}
+		>
+			<Suspense fallback={<ItemGroupSkeleton rows={10} descriptionLines={1} media={<ItemMedia variant="image" />} />}>
+				<Notes kind={props.kind} onOpen={props.onOpen} onTag={props.onTag} tag={props.tag} />
+			</Suspense>
+		</ListToolbar>
 	)
 }
