@@ -91,9 +91,11 @@ final class StripScrollView: UIScrollView {
 // of hiding it: a bar at zero alpha takes no touches, and the swipe keeps working.
 final class BarFade: NSObject {
   private weak var navigation: UINavigationController?
+  private weak var content: UIView?
   private var hidden = true
 
   func attach(from view: UIView) {
+    content = view
     var responder: UIResponder? = view
     while let current = responder, !(current is UINavigationController) {
       responder = current.next
@@ -101,12 +103,15 @@ final class BarFade: NSObject {
     guard let found = responder as? UINavigationController else { return }
     if found !== navigation {
       navigation?.interactivePopGestureRecognizer?.removeTarget(self, action: #selector(swiped(_:)))
+      // A fold or a turn moves the reader to another column's stack; the list left behind keeps its bars.
+      fade(1)
       navigation = found
       found.interactivePopGestureRecognizer?.addTarget(self, action: #selector(swiped(_:)))
     }
-    // Pushed, the bar fades out with the transition rather than vanishing as it starts.
+    // Pushed, the bars fade out once the reader is in rather than vanishing as it starts: iOS 27 leaves Back out of a push
+    // that ends with the bar faded.
     if let coordinator = found.transitionCoordinator {
-      coordinator.animate(alongsideTransition: { _ in self.apply() })
+      coordinator.animate(alongsideTransition: nil) { _ in UIView.animate(withDuration: 0.25) { self.apply() } }
     } else {
       apply()
     }
@@ -121,19 +126,28 @@ final class BarFade: NSObject {
   @objc private func swiped(_ gesture: UIGestureRecognizer) {
     guard gesture.state == .began, let coordinator = navigation?.transitionCoordinator else { return }
     coordinator.animate(
-      alongsideTransition: { _ in self.navigation?.navigationBar.alpha = 1 },
+      alongsideTransition: { _ in self.fade(1) },
       completion: { context in if context.isCancelled { self.apply() } })
   }
 
   func detach() {
     guard let navigation else { return }
     navigation.interactivePopGestureRecognizer?.removeTarget(self, action: #selector(swiped(_:)))
-    if navigation.viewControllers.count <= 1 { navigation.navigationBar.alpha = 1 }
+    if navigation.viewControllers.count <= 1 { fade(1) }
     self.navigation = nil
   }
 
   private func apply() {
-    navigation?.navigationBar.alpha = hidden ? 0 : 1
+    fade(hidden ? 0 : 1)
+  }
+
+  // Every bar over the reader, not only the navigation bar: iOS 27 floats Back and the bar's buttons in a view of their own
+  // beside it, which the bar's alpha does not reach.
+  private func fade(_ alpha: CGFloat) {
+    guard let navigation, let content else { return }
+    for view in navigation.view.subviews where !content.isDescendant(of: view) {
+      view.alpha = alpha
+    }
   }
 }
 
