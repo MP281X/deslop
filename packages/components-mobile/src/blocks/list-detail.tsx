@@ -37,12 +37,12 @@ export function useListSearch() {
 	return useContext(ListContext).search
 }
 
-// Whether the list's search field has focus, both ways; only the copy below an item in laptop posture has it.
+// Whether the list's search field has focus, both ways: the split view's copy and the copy below an item in laptop posture each have their own; none outside a `ListDetail`.
 export function useListSearchFocus() {
 	return useContext(ListContext).searchFocus
 }
 
-// Tells the layout the person chose an item from the list: the field searching the copy below an item in laptop posture lets go of the keyboard and keeps its query, so the chosen item shows above the results.
+// Tells the layout the person chose an item from the list: the field searching either copy lets go of the keyboard and keeps its query, so the chosen item shows above the results, or beside them in a book with its end clear of the keyboard.
 export function useListChoose() {
 	return useContext(ListContext).choose
 }
@@ -71,16 +71,27 @@ function useKept(props: {onClose: () => void; onHide?: () => void; opened: boole
 	}
 }
 
-// Half open upright with an item opened, like a laptop, and whether the search field of the list's copy below the item has focus, which leaving the posture ends, so the keyboard leaves with the copy.
+// Half open upright with an item opened, like a laptop, and whether the search field of the list's copy below the item has focus, which leaving the posture ends, so the keyboard leaves with the copy; and whether the split view's copy's field has focus. Choosing an item ends both.
 function useLaptop(props: {opened: boolean; portrait: boolean}) {
 	const [hinge, setHinge] = useState<HingeStatus>('closed')
 	const [searching, setSearching] = useState(false)
+	const [splitSearching, setSplitSearching] = useState(false)
 	const active = props.portrait && hinge === 'partiallyOpen' && props.opened
 	if (!active && searching) setSearching(false)
-	return {active, searching, setHinge, setSearching}
+	return {
+		active,
+		choose: () => {
+			setSearching(false)
+			setSplitSearching(false)
+		},
+		searching,
+		setHinge,
+		setSearching,
+		splitSearch: Option.some({focused: splitSearching, onChange: setSplitSearching})
+	}
 }
 
-// The list's copy below the opened item in laptop posture, the one copy whose search field's focus the layout follows and ends. It stays mounted while an item is opened, under the split view and out of reach in every other posture, so unfolding and half opening again finds the list where the person left it.
+// The list's copy below the opened item in laptop posture, with its own search field's focus, which the layout follows and leaving the posture ends. It stays mounted while an item is opened, under the split view and out of reach in every other posture, so unfolding and half opening again finds the list where the person left it.
 function ListBelow(props: {
 	below: boolean
 	list: ReactNode
@@ -128,10 +139,10 @@ export function ListDetail(props: {
 				beside: (tiled && columns !== 'detailOnly') || laptop.active,
 				choose: () => {
 					kept.choose()
-					laptop.setSearching(false)
+					laptop.choose()
 				},
 				search: Option.some(useNativeState('')),
-				searchFocus: Option.none(),
+				searchFocus: laptop.splitSearch,
 				show: Boolean.match(tiled || laptop.active, {
 					onFalse: Option.none,
 					onTrue: () =>
