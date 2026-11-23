@@ -5,6 +5,7 @@ import {Array, Boolean, Function, Match, Option, Schema, String, pipe} from 'eff
 import {
 	Button as NativeButton,
 	Divider,
+	Group,
 	HStack,
 	Image,
 	Menu,
@@ -13,19 +14,23 @@ import {
 	Text,
 	Toolbar,
 	ToolbarItem,
-	VStack
+	VStack,
+	useNativeState
 } from '@expo/ui/swift-ui'
 import {
 	accessibilityElement,
 	accessibilityLabel,
 	foregroundStyle,
 	frame,
+	id,
 	labelStyle,
 	lineSpacing,
 	navigationBarTitleDisplayMode,
 	navigationTitle,
 	padding,
 	redacted,
+	scrollPosition,
+	scrollTargetLayout,
 	textSelection,
 	tint
 } from '@expo/ui/swift-ui/modifiers'
@@ -33,6 +38,7 @@ import {AsyncResult} from 'effect/reactivity'
 import {Suspense} from 'react'
 import {Linking} from 'react-native'
 
+import {useListBeside} from '@deslop/components-mobile/blocks/list-detail'
 import {FailureContent, Loaded} from '@deslop/components-mobile/blocks/loaded'
 import {Problem} from '@deslop/components-mobile/blocks/problem'
 import {colors, space, text} from '@deslop/components-mobile/theme'
@@ -106,7 +112,7 @@ function Body(props: {text: string}) {
 		<VStack
 			alignment="leading"
 			spacing={space[3]}
-			modifiers={[frame({alignment: 'leading', maxWidth: Infinity}), tint(primary)]}
+			modifiers={[frame({alignment: 'leading', maxWidth: Infinity}), tint(primary), scrollTargetLayout()]}
 		>
 			{pipe(
 				props.text,
@@ -116,7 +122,9 @@ function Body(props: {text: string}) {
 				Array.map(webLinksOnly),
 				Array.map((line, index) => (
 					// oxlint-disable-next-line react/no-array-index-key -- Note lines have no identity beyond their position; editing text replaces that position's contents.
-					<BodyLine key={index} line={line} />
+					<Group key={index} modifiers={[id(`${index}`)]}>
+						<BodyLine line={line} />
+					</Group>
 				))
 			)}
 		</VStack>
@@ -240,6 +248,8 @@ function NoteContent(props: {note: NoteItem}) {
 }
 
 function Detail(props: {note: NoteItem; onRetry: () => void; onTag: (tag: TagName) => void}) {
+	// The line at the top of the screen, which stays there when folding rewraps the text.
+	const place = useNativeState<string | null>(null)
 	const full = useAtomValue(noteAtom(props.note))
 	useAtomMount(problemSinceAtom(noteAtom(props.note)))
 	const reload = useAtomRefresh(noteAtom(props.note))
@@ -250,7 +260,7 @@ function Detail(props: {note: NoteItem; onRetry: () => void; onTag: (tag: TagNam
 	const kept =
 		String.isNonEmpty(props.note.summary) || Option.exists(AsyncResult.value(full), note => Option.isSome(note.body))
 	return (
-		<ScrollView>
+		<ScrollView modifiers={[scrollPosition(place)]}>
 			<VStack
 				alignment="leading"
 				spacing={space[4]}
@@ -308,29 +318,46 @@ function Detail(props: {note: NoteItem; onRetry: () => void; onTag: (tag: TagNam
 	)
 }
 
-// The navigation path names the note by its id.
+// The opened note, or with nothing opened the newest one, shown only while the list is beside it.
 function NoteScreen(props: {
-	id: NoteId
+	id: Option.Option<NoteId>
 	notes: readonly NoteItem[]
 	onClose: () => void
 	onTag: (tag: TagName) => void
 }) {
 	const remove = useAtomSet(removal.removeAtom)
 	const regenerate = useAtomSet(regenerateAtom)
+	const beside = useListBeside()
+	if (Option.isNone(props.id) && !beside) return undefined
 	return pipe(
-		props.notes,
-		Array.findFirst(item => item.id === props.id),
+		props.id,
 		Option.match({
-			onNone: () => (
-				<Empty>
-					<EmptyMedia>
-						<Image systemName="trash" modifiers={[accessibilityLabel('Note Deleted')]} />
-					</EmptyMedia>
-				</Empty>
-			),
+			onNone: () => Array.head(props.notes),
+			onSome: opened => Array.findFirst(props.notes, item => item.id === opened)
+		}),
+		Option.match({
+			onNone: () =>
+				Option.match(props.id, {
+					onNone: Function.constUndefined,
+					onSome: () => (
+						<Empty>
+							<EmptyMedia>
+								<Image systemName="trash" modifiers={[accessibilityLabel('Note Deleted')]} />
+							</EmptyMedia>
+						</Empty>
+					)
+				}),
 			onSome: item => (
 				<Toolbar modifiers={[navigationTitle(item.title), navigationBarTitleDisplayMode('inline')]}>
-					<Detail note={item} onRetry={() => regenerate(item.id)} onTag={props.onTag} />
+					<Detail
+						key={item.id}
+						note={item}
+						onRetry={() => regenerate(item.id)}
+						onTag={tag => {
+							props.onTag(tag)
+							if (!beside) props.onClose()
+						}}
+					/>
 					<Toolbar.Content>
 						<NoteProblem note={item} onRetry={() => regenerate(item.id)} />
 						{Option.match(item.url, {
@@ -378,7 +405,7 @@ function NoteScreen(props: {
 									systemImage="trash"
 									role="destructive"
 									onPress={() => {
-										remove(props.id)
+										remove(item.id)
 										props.onClose()
 									}}
 								/>
@@ -391,7 +418,7 @@ function NoteScreen(props: {
 	)
 }
 
-export function NoteRoute(props: {id: NoteId; onClose: () => void; onTag: (tag: TagName) => void}) {
+export function NoteRoute(props: {id: Option.Option<NoteId>; onClose: () => void; onTag: (tag: TagName) => void}) {
 	return (
 		<Loaded atom={notesAtom}>
 			{notes => <NoteScreen id={props.id} notes={notes} onClose={props.onClose} onTag={props.onTag} />}
