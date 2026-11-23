@@ -1,27 +1,13 @@
-import {
-	Array,
-	Boolean,
-	DateTime,
-	Duration,
-	Equal,
-	Function,
-	Number,
-	Option,
-	Order,
-	Result,
-	String,
-	Struct,
-	pipe
-} from 'effect'
+import {Array, Boolean, DateTime, Duration, Equal, Number, Option, Order, Result, String, Struct, pipe} from 'effect'
 
-import {ActivityProps, Flight} from '#services/flights/schema.ts'
+import {Flight} from '#services/flights/schema.ts'
 import type {
 	FlightList,
-	Chip,
 	FlightPhase,
 	FlightTracking,
-	Leg,
 	LocalTime,
+	Place,
+	Segment,
 	Traveller,
 	TravelTime
 } from '#services/flights/schema.ts'
@@ -617,200 +603,245 @@ export function upsert(current: FlightList, incoming: FlightList): FlightList {
 	return Array.reduce(incoming, current, upsertOne(incoming))
 }
 
-type ActivityWindow = {end: DateTime.Utc; leg: Leg; start: DateTime.Utc}
-
-// A flight longer than ActivityKit's eight hours, delays included, gets a second activity for its arrival.
-function activityWindows(flight: Flight) {
-	// A flight's activity opens three hours ahead.
-	const start = DateTime.subtractDuration(flight.departs, Duration.hours(3))
-	// A cancellation the provider reported stays on the island for an hour from when it was read, then the activity ends.
-	const landed = DateTime.addDuration(arrivalOf(flight), Duration.minutes(45))
-	const end = pipe(
-		flight.live,
-		Option.filter(found => found.state === 'cancelled'),
-		Option.match({
-			onNone: () => landed,
-			onSome: found => pipe(found.checkedAt, DateTime.addDuration(HOUR), DateTime.min(landed))
-		})
-	)
-	if (pipe(start, DateTime.distance(end), Duration.isLessThanOrEqualTo(ACTIVITY_LIFETIME))) {
-		return [{end, leg: 'departure', start}] satisfies ActivityWindow[]
-	}
-	const departed = pipe(
-		departureOf(flight),
-		DateTime.addDuration(Duration.minutes(45)),
-		DateTime.min(DateTime.addDuration(start, ACTIVITY_LIFETIME))
-	)
-	return [
-		{end: departed, leg: 'departure', start},
-		{end, leg: 'arrival', start: DateTime.max(departed, DateTime.subtractDuration(end, ACTIVITY_LIFETIME))}
-	] satisfies ActivityWindow[]
+// Landed counts as arrived on the phone, the island and the server alike.
+function arrived(flight: Flight, now: DateTime.Utc) {
+	if (DateTime.isGreaterThanOrEqualTo(now, arrivalOf(flight))) return true
+	return Option.exists(flight.live, live => live.state === 'arrived' || live.state === 'landed')
 }
 
-export function activeWindow(flight: Flight, now: DateTime.Utc) {
-	return Array.findFirst(
-		activityWindows(flight),
-		window => DateTime.isLessThanOrEqualTo(window.start, now) && DateTime.isLessThan(now, window.end)
-	)
-}
+// A day of flying: each flight leaves from where the one before it lands. One Live Activity follows it, handed from flight to flight at each landing.
+export type Journey = Array.NonEmptyReadonlyArray<Flight>
 
-function flightPhase(flight: Flight, now: DateTime.Utc) {
-	const state = Option.map(flight.live, live => live.state)
-	if (cancelledOf(flight)) return 'cancelled'
-	if (Option.contains(state, 'diverted')) return 'diverted'
-	if (Option.contains(state, 'landed') || Option.contains(state, 'arrived')) return 'landed'
-	if (Option.contains(state, 'departed') || Option.contains(state, 'airborne')) return 'airborne'
-	if (Option.exists(flight.boardingAt, at => DateTime.isGreaterThanOrEqualTo(now, at))) return 'boarding'
-	if (DateTime.isGreaterThanOrEqualTo(now, DateTime.subtractDuration(departureOf(flight), Duration.minutes(45)))) {
-		return 'gate'
-	}
-	if (DateTime.isGreaterThanOrEqualTo(now, airportByOf(flight))) {
-		return 'airport'
-	}
-	return 'leave'
-}
-
-function flightTarget(flight: Flight, phase: FlightPhase) {
-	if (phase === 'leave') return airportByOf(flight)
-	if (phase === 'airport' || phase === 'gate') return Option.getOrElse(flight.boardingAt, () => departureOf(flight))
-	if (phase === 'boarding') return departureOf(flight)
-	return arrivalOf(flight)
-}
-
-function flightHeadline(flight: Flight, phase: FlightPhase) {
-	if (phase === 'leave') return `Leave for ${Option.getOrElse(flight.from.code, () => flight.from.name)}`
-	if (phase === 'airport') {
-		return Option.getOrElse(
-			labelled(
-				'Terminal',
-				Option.flatMap(flight.live, live => live.departureTerminal)
-			),
-			Function.constant('At the airport')
+// He changes from `feeder` to `flight` when it lands where the flight leaves, booked at most twelve hours before it, and still flies: a cancelled feeder leaves him to reach the flight from home. Alerts, the Live Activity's day and Home all read this one rule.
+export function connects(feeder: Flight, flight: Flight) {
+	return (
+		feeder.id !== flight.id &&
+		!cancelledOf(feeder) &&
+		Option.isSome(feeder.to.code) &&
+		Equal.equals(feeder.to.code, flight.from.code) &&
+		pipe(
+			feeder.arrives,
+			DateTime.distance(flight.departs),
+			change =>
+				Duration.isGreaterThan(change, Duration.zero) && Duration.isLessThanOrEqualTo(change, Duration.hours(12))
 		)
-	}
-	if (phase === 'gate') {
-		if (Option.isNone(flight.boardingAt)) return 'Departs in'
-		return 'Boards in'
-	}
-	if (phase === 'boarding') return 'Boarding'
-	if (phase === 'airborne') return 'Lands in'
-	if (phase === 'landed') return `Landed in ${Option.getOrElse(flight.to.city, () => flight.to.name)}`
-	if (phase === 'diverted') return 'Diverted'
-	return 'Cancelled'
-}
-
-// An old answer stays on the island, plain and dated, so it never reads as the current gate.
-function staleNote(live: Option.Option<FlightTracking>, timeZone: string, stale: boolean) {
-	return Option.flatMap(live, found =>
-		Option.liftPredicate(`Updated ${clockAt(found.checkedAt, timeZone)}`, () => stale)
 	)
 }
 
-function flightDetail(flight: Flight, phase: FlightPhase, stale: boolean) {
-	if (phase === 'landed') return ''
-	return line([
-		labelled(
-			'Group',
-			travellersLine(flight, traveller => traveller.boardingGroup)
-		),
-		labelled(
-			'was',
-			Option.flatMap(flight.live, live => live.previousGate)
-		),
-		staleNote(flight.live, flight.from.timeZone, stale)
-	])
-}
-
-function flightChip(flight: Flight, phase: FlightPhase, stale: boolean) {
-	if (phase === 'landed') return Option.none<Chip>()
+// The flight he changes from, the latest that connects to this one. A flight with one is a connection: no trip from home leads to it, and only the change between the two is told.
+export function feederOf(flight: Flight, flights: FlightList) {
 	return pipe(
-		flight.live,
-		Option.flatMap(live => live.departureGate),
-		Option.orElse(() =>
-			pipe(
-				flight.live,
-				Option.flatMap(live => live.departureTerminal),
-				Option.map(terminal => `T${terminal}`)
-			)
-		),
-		Option.map(
-			text =>
-				({
-					text,
-					tone: Boolean.match(stale, {onFalse: Function.constant('warn'), onTrue: Function.constant('plain')})
-				}) satisfies Chip
-		)
+		flights,
+		Array.filter(other => connects(other, flight)),
+		Array.last
 	)
 }
 
-function flightTone(phase: FlightPhase, late: boolean) {
-	if (phase === 'cancelled' || phase === 'diverted') return 'bad'
-	if (phase === 'airborne') return 'info'
-	if (phase === 'leave' || late) return 'warn'
-	return 'good'
-}
-
-function flightLabel(phase: FlightPhase) {
-	if (phase === 'landed') return 'Landed'
-	if (phase === 'diverted') return 'Diverted'
-	if (phase === 'cancelled') return 'Cancelled'
-	return 'Now'
-}
-
-function flightSymbol(phase: FlightPhase) {
-	if (phase === 'leave') return 'car.fill'
-	if (phase === 'landed') return 'airplane.arrival'
-	if (phase === 'cancelled' || phase === 'diverted') return 'exclamationmark.triangle.fill'
-	if (phase === 'airborne') return 'airplane'
-	return 'airplane.departure'
-}
-
-function departureNote(phase: FlightPhase, delay: number) {
-	if (phase === 'airborne' || phase === 'landed') return 'Departed'
-	if (delay >= 5) return `${delay}m late`
-	return 'On time'
-}
-
-export function activityProps(flight: Flight, now: DateTime.Utc, stale: boolean) {
-	const phase = flightPhase(flight, now)
-	const delay = Number.round(Duration.toMinutes(DateTime.distance(flight.departs, departureOf(flight))), 0)
-	return ActivityProps.make({
-		arrivalNote: Option.getOrElse(flight.to.city, () => flight.to.name),
-		arrivalTime: arrivalClockOf(flight),
-		arrivalTone: 'plain',
-		arrives: arrivalOf(flight),
-		chip: flightChip(flight, phase, stale),
-		countdown: Option.liftPredicate(
-			flightTarget(flight, phase),
-			at => phase !== 'landed' && phase !== 'cancelled' && phase !== 'diverted' && DateTime.isGreaterThan(at, now)
-		),
-		delay: Duration.minutes(delay),
-		departureNote: departureNote(phase, delay),
-		departureTime: clockAt(departureOf(flight), flight.from.timeZone),
-		departureTone: Boolean.match(delay >= 5, {onFalse: Function.constant('plain'), onTrue: Function.constant('warn')}),
-		detail: flightDetail(flight, phase, stale),
-		from: Option.getOrElse(flight.from.code, () => flight.from.name),
-		headline: flightHeadline(flight, phase),
-		label: flightLabel(phase),
-		note: line([
-			labelled(
-				'Seat',
-				travellersLine(flight, traveller => traveller.seat)
+// The days in `rest`, soonest first: each takes the flights that leave from where the one before lands.
+function daysIn(rest: readonly Flight[]): Journey[] {
+	return Array.match(rest, {
+		onEmpty: () => [],
+		onNonEmpty: flights => {
+			const [connected, others] = Array.span(Array.tailNonEmpty(flights), (flight, index) =>
+				pipe(
+					flights,
+					Array.get(index),
+					Option.exists(before => connects(before, flight))
+				)
 			)
-		]),
-		phase,
-		progressFrom: pipe(
-			flight.live,
-			Option.flatMap(live => live.takeoffActual),
-			Option.filter(() => phase === 'airborne')
-		),
-		symbol: flightSymbol(phase),
-		title: titleOf(flight),
-		to: Option.getOrElse(flight.to.code, () => flight.to.name),
-		tone: flightTone(phase, delay >= 5)
+			return [Array.prepend(connected, Array.headNonEmpty(flights)), ...daysIn(others)]
+		}
 	})
 }
 
-export function urgencyOf(props: ActivityProps) {
-	return `${props.phase}|${Option.match(props.chip, {onNone: Function.constant(''), onSome: chip => chip.text})}|${Number.round(Duration.toMinutes(props.delay) / 5, 0)}`
+export function journeysOf(flights: FlightList) {
+	return daysIn(Array.sort(flights, byDeparture))
+}
+
+export function journeyOf(flights: FlightList, flight: Flight) {
+	return Array.findFirst(journeysOf(flights), journey => Array.some(journey, item => item.id === flight.id))
+}
+
+// "45 min", or "1h 15m" from an hour.
+function spanLabel(span: Duration.Duration) {
+	const minutes = Number.max(0, Number.round(Duration.toMinutes(span), 0))
+	if (minutes < 60) return `${minutes} min`
+	return `${Math.floor(minutes / 60)}h ${String.padStart(2, '0')(`${Number.remainder(minutes, 60)}`)}m`
+}
+
+// The change from `feeder` to `flight` as it stands now, and as booked; it is tight under an hour or once it shrank by fifteen minutes.
+function changeOf(feeder: Flight, flight: Flight) {
+	const booked = DateTime.distance(feeder.arrives, flight.departs)
+	const now = DateTime.distance(arrivalOf(feeder), departureOf(flight))
+	return {
+		booked,
+		now,
+		tight:
+			Duration.isLessThan(now, HOUR) ||
+			Duration.isLessThanOrEqualTo(now, Duration.subtract(booked, Duration.minutes(15)))
+	}
+}
+
+// The whole minutes a flight leaves after its booked time, as every alert and screen counts them: 14 min 30 s late is 14.
+export function delayOf(flight: Flight) {
+	return Math.floor(Duration.toMinutes(DateTime.distance(flight.departs, departureOf(flight))))
+}
+
+// The whole minutes it lands after its booked time, counted as a departure's are.
+export function landingDelayOf(flight: Flight) {
+	return Math.floor(Duration.toMinutes(DateTime.distance(flight.arrives, arrivalOf(flight))))
+}
+
+// Boarding as the pass prints it, moved by the delay and never earlier; half an hour before departure without a pass.
+export function boardsAt(flight: Flight) {
+	return Option.match(flight.boardingAt, {
+		onNone: () => DateTime.subtractDuration(departureOf(flight), Duration.minutes(30)),
+		onSome: at => DateTime.addDuration(at, Duration.minutes(Number.max(0, delayOf(flight))))
+	})
+}
+
+// The day's activity opens three hours before the first departure, or a quarter of an hour before leaving home when that is earlier.
+export function autoStartOf(journey: Journey, travel: readonly TravelTime[]) {
+	const first = Array.headNonEmpty(journey)
+	const early = DateTime.subtractDuration(first.departs, Duration.hours(3))
+	return pipe(
+		leaveByOf(first, travel),
+		Option.map(at => DateTime.min(early, DateTime.subtractDuration(at, Duration.minutes(15)))),
+		Option.getOrElse(() => early)
+	)
+}
+
+// One step of the day: its flight, its phase, and the time the ring drains from `since` to `deadline`; the bar's current part fills over its own span.
+export type StepAt = {flight: Flight; index: number; phase: FlightPhase; segment: Segment}
+
+export type Step = StepAt & {
+	deadline: Option.Option<DateTime.Utc>
+	segmentSince: DateTime.Utc
+	segmentUntil: DateTime.Utc
+	since: DateTime.Utc
+}
+
+type Span = {since: DateTime.Utc; until: DateTime.Utc}
+
+function step(at: StepAt, since: DateTime.Utc, deadline: Option.Option<DateTime.Utc>, span?: Span) {
+	return {
+		...at,
+		deadline,
+		segmentSince: span?.since ?? since,
+		segmentUntil: span?.until ?? Option.getOrElse(deadline, () => since),
+		since
+	} satisfies Step
+}
+
+function airborne(flight: Flight, now: DateTime.Utc) {
+	return (
+		Option.exists(flight.live, live => live.state === 'departed' || live.state === 'airborne') ||
+		DateTime.isGreaterThanOrEqualTo(now, departureOf(flight))
+	)
+}
+
+// The first flight on the way to its airport: leave by, then airport by, then its gate.
+function firstStep(journey: Journey, now: DateTime.Utc, travel: readonly TravelTime[]) {
+	const flight = Array.headNonEmpty(journey)
+	const start = autoStartOf(journey, travel)
+	const toAirport = {since: start, until: airportByOf(flight)}
+	const leave = leaveByOf(flight, travel)
+	if (Option.exists(leave, by => DateTime.isLessThan(now, by))) {
+		return step({flight, index: 0, phase: 'leave', segment: 0}, start, leave, toAirport)
+	}
+	if (DateTime.isLessThan(now, airportByOf(flight))) {
+		return step(
+			{flight, index: 0, phase: 'airport', segment: 0},
+			Option.getOrElse(leave, () => start),
+			Option.some(airportByOf(flight)),
+			toAirport
+		)
+	}
+	return step({flight, index: 0, phase: 'gate', segment: 1}, airportByOf(flight), Option.some(boardsAt(flight)))
+}
+
+function takeoffOf(flight: Flight) {
+	return pipe(
+		flight.live,
+		Option.flatMap(live => Option.orElse(live.takeoffActual, () => live.departureActual)),
+		Option.getOrElse(() => departureOf(flight))
+	)
+}
+
+// A flight that will not fly, that flew or that is flying; none while it is still on the ground.
+function flownStep(flight: Flight, index: number, now: DateTime.Utc) {
+	const flying = {since: takeoffOf(flight), until: arrivalOf(flight)}
+	if (cancelledOf(flight)) {
+		return Option.some(step({flight, index, phase: 'cancelled', segment: 0}, flight.departs, Option.none()))
+	}
+	if (Option.exists(flight.live, live => live.state === 'diverted')) {
+		return Option.some(step({flight, index, phase: 'diverted', segment: 3}, takeoffOf(flight), Option.none(), flying))
+	}
+	if (arrived(flight, now)) {
+		return Option.some(step({flight, index, phase: 'landed', segment: 3}, arrivalOf(flight), Option.none(), flying))
+	}
+	if (airborne(flight, now)) {
+		return Option.some(
+			step({flight, index, phase: 'airborne', segment: 3}, takeoffOf(flight), Option.some(arrivalOf(flight)))
+		)
+	}
+	return Option.none()
+}
+
+// Where the day stands: the first flight still to land, or the last once all have. At its landing the day goes on to the next flight's gate.
+export function stepOf(journey: Journey, now: DateTime.Utc, travel: readonly TravelTime[]) {
+	const index = pipe(
+		journey,
+		Array.findFirstIndex(flight => cancelledOf(flight) || !arrived(flight, now)),
+		Option.getOrElse(() => journey.length - 1)
+	)
+	const flight = journey[index] ?? Array.headNonEmpty(journey)
+	return Option.getOrElse(flownStep(flight, index, now), () => {
+		if (DateTime.isGreaterThanOrEqualTo(now, boardsAt(flight))) {
+			return step({flight, index, phase: 'boarding', segment: 2}, boardsAt(flight), Option.some(departureOf(flight)))
+		}
+		return pipe(
+			journey,
+			Array.get(index - 1),
+			Option.match({
+				onNone: () => firstStep(journey, now, travel),
+				onSome: feeder =>
+					step({flight, index, phase: 'gate', segment: 1}, arrivalOf(feeder), Option.some(boardsAt(flight)))
+			})
+		)
+	})
+}
+
+export function cityOf(place: Place) {
+	return Option.getOrElse(place.city, () => place.name)
+}
+
+// The change to the next flight while it is tight, in words: "1h 15m to change in London".
+export function changeLine(journey: Journey, index: number) {
+	return pipe(
+		Option.all({feeder: Array.get(journey, index), next: Array.get(journey, index + 1)}),
+		Option.filter(found => changeOf(found.feeder, found.next).tight && !cancelledOf(found.next)),
+		Option.map(found => {
+			const change = changeOf(found.feeder, found.next).now
+			if (Duration.isLessThanOrEqualTo(change, Duration.zero)) {
+				return `${titleOf(found.next)} may leave before ${titleOf(found.feeder)} lands`
+			}
+			return `${spanLabel(change)} to change in ${cityOf(found.feeder.to)}`
+		})
+	)
+}
+
+// A delay of a quarter of an hour or more, with its cause when the plane flying in is as late.
+export function delayLine(flight: Flight) {
+	return pipe(
+		flight.live,
+		Option.flatMap(live => live.inboundDelay),
+		Option.map(Duration.toMinutes),
+		Option.filter(late => late >= 15),
+		Option.match({
+			onNone: () => `${delayOf(flight)} min late`,
+			onSome: late => `${delayOf(flight)} min late: the plane flying in is ${late} min late`
+		}),
+		Option.liftPredicate(() => delayOf(flight) >= 15 && Option.isSome(flight.live))
+	)
 }

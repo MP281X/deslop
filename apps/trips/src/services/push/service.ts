@@ -11,6 +11,7 @@ import {
 	Layer,
 	Option,
 	Queue,
+	Record,
 	Ref,
 	Result,
 	Schedule,
@@ -27,12 +28,15 @@ import {Migrator, SqlClient, SqlModel, SqlSchema} from 'effect/sql'
 import {Apns} from '@deslop/runtime/server/apns'
 import {ApnsAnswer} from '@deslop/runtime/shared/apns'
 
-import {ACTIVITY_NAME, activeWindow, activityProps, line, urgencyOf} from '#services/flights/lib/utils.ts'
-import type {ActivityProps, Flight, Leg, FlightsError} from '#services/flights/schema.ts'
+import {ACTIVITY_NAME, journeysOf, line, stepOf} from '#services/flights/lib/utils.ts'
+import type {Journey} from '#services/flights/lib/utils.ts'
+import type {ActivityProps, Flight, Leg, FlightsError, TravelTime} from '#services/flights/schema.ts'
 import {FlightId, Place} from '#services/flights/schema.ts'
 import {Flights} from '#services/flights/service.ts'
 import {
+	activeWindow,
 	activityPhones,
+	activityProps,
 	alertsOf,
 	announced,
 	expiredActivities,
@@ -42,7 +46,8 @@ import {
 	ridingAlerts,
 	showPlan,
 	startAlert,
-	unannouncedDevices
+	unannouncedDevices,
+	urgencyOf
 } from '#services/push/lib/utils.ts'
 import type {Alert} from '#services/push/lib/utils.ts'
 import {
@@ -58,13 +63,19 @@ import {
 } from '#services/push/schema.ts'
 import {isStale} from '#services/tracking/lib/utils.ts'
 
-const SCHEMES: Record<string, string> = {'xyz.mp281x.trips': 'trips', 'xyz.mp281x.trips.dev': 'trips-dev'}
+const SCHEMES: Record.ReadonlyRecord<string, string> = {
+	'xyz.mp281x.trips': 'trips',
+	'xyz.mp281x.trips.dev': 'trips-dev'
+}
 
 // A channel written down before its start is sent was never retired, so it carries the epoch where a retired one carries the time it was; that tells it from a started channel whose end Apple took, whose activity may be gone.
 const UNSTARTED = DateTime.makeUnsafe(0)
 
 type Span = {end: DateTime.Utc; start: DateTime.Utc}
-type Showing = {flight: Flight; leg: Leg; now: DateTime.Utc; props: ActivityProps; window: Span}
+// The day an activity shows, and the flight it is at.
+type Showing = {flight: Flight; journey: Journey; leg: Leg; now: DateTime.Utc; props: ActivityProps; window: Span}
+// A change the activity tells as its own alert, with the flight it is about.
+type Riding = {alert: Alert; flightId: FlightId}
 type RoundState = {activities: readonly Activity[]; devices: readonly Device[]}
 
 function asPushError(message: string) {
@@ -279,7 +290,7 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 		const startOn = Effect.fnUntraced(function* (
 			target: Device,
 			showing: Showing,
-			body: {aps: Record<string, unknown>}
+			body: {aps: Record.ReadonlyRecord<string, unknown>}
 		) {
 			const channel = ChannelId.make(yield* apns.createChannel(target.bundle))
 			yield* Effect.acquireUseRelease(
@@ -293,7 +304,7 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 						bundle: target.bundle,
 						channel,
 						endedAt: Option.none(),
-						flightId: showing.flight.id,
+						flightId: Array.headNonEmpty(showing.journey).id,
 						leg: showing.leg,
 						phone: target.phone,
 						props: showing.props,
@@ -331,7 +342,7 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 			const body = {
 				aps: {
 					alert: startAlert(showing.flight),
-					attributes: {url: `${SCHEMES[target.bundle]}://flight/${showing.flight.id}`},
+					attributes: {url: `${SCHEMES[target.bundle]}://flight/${Array.headNonEmpty(showing.journey).id}`},
 					'attributes-type': 'LiveActivityAttributes',
 					'content-state': yield* contentState(showing.props),
 					event: 'start',
@@ -413,7 +424,7 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 			activity: Activity,
 			props: ActivityProps,
 			now: DateTime.Utc,
-			riding: readonly Alert[],
+			riding: readonly Riding[],
 			devices: readonly Device[]
 		) {
 			if (HashSet.has(yield* Ref.get(lost), activity.channel)) return yield* forget(activity)
@@ -425,11 +436,11 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 				onNonEmpty: alerts => ({
 					alert: {
 						body: line([
-							Option.some(Array.headNonEmpty(alerts).body),
-							...Array.map(Array.tailNonEmpty(alerts), alert => Option.some(alert.title))
+							Option.some(Array.headNonEmpty(alerts).alert.body),
+							...Array.map(Array.tailNonEmpty(alerts), item => Option.some(item.alert.title))
 						]),
 						sound: 'default',
-						title: Array.headNonEmpty(alerts).title
+						title: Array.headNonEmpty(alerts).alert.title
 					}
 				})
 			})
@@ -446,16 +457,16 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 			const phones = activityPhones(devices, activity)
 			const deliver = Effect.forEach(
 				riding,
-				alert =>
+				item =>
 					Effect.forEach(
 						phones,
 						device =>
 							recordDelivery({
-								category: alert.category,
-								flightId: activity.flightId,
+								category: item.alert.category,
+								flightId: item.flightId,
 								sentAt: now,
 								token: device.token,
-								value: Option.fromUndefinedOr(alert.value)
+								value: Option.fromUndefinedOr(item.alert.value)
 							}),
 						{concurrency: 1, discard: true}
 					),
@@ -472,38 +483,54 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 			})
 		})
 
+		// The changes of each flight of the day its activity tells as its own alert; receipts are read only for a flight with such a change.
+		const ridingOf = Effect.fnUntraced(function* (
+			journey: Journey,
+			alerts: Record.ReadonlyRecord<string, readonly Alert[]>,
+			devices: readonly Device[],
+			activity: Activity
+		) {
+			const each = yield* Effect.forEach(
+				journey,
+				Effect.fnUntraced(function* (flight) {
+					const candidates = alerts[flight.id] ?? []
+					if (!Array.some(candidates, ridesActivity)) return Array.empty<Riding>()
+					const receipts = yield* asPushReadError(
+						Effect.all({delivered: listDeliveries(flight.id), sent: listSent(flight.id)}, {concurrency: 1})
+					)
+					return Array.map(
+						ridingAlerts(candidates, receipts.sent, receipts.delivered, devices, activity),
+						alert => ({alert, flightId: flight.id}) satisfies Riding
+					)
+				}),
+				{concurrency: 1}
+			)
+			return Array.flatten(each)
+		})
+
 		const show = Effect.fnUntraced(function* (
-			flight: Flight,
+			journey: Journey,
 			window: Span & {leg: Leg},
 			now: DateTime.Utc,
 			state: RoundState,
-			alerts: readonly Alert[]
+			context: {alerts: Record.ReadonlyRecord<string, readonly Alert[]>; travel: readonly TravelTime[]}
 		) {
-			// Receipts are read only when a change could ride on the activity.
-			const receipts = yield* pipe(
-				alerts,
-				Array.some(ridesActivity),
-				Boolean.match({
-					onFalse: () => Effect.succeed({delivered: Array.empty<AlertDelivery>(), sent: Array.empty<SentAlert>()}),
-					onTrue: () =>
-						asPushReadError(
-							Effect.all({delivered: listDeliveries(flight.id), sent: listSent(flight.id)}, {concurrency: 1})
-						)
-				})
-			)
+			const current = stepOf(journey, now, context.travel)
 			const showing = {
-				flight,
+				flight: current.flight,
+				journey,
 				leg: window.leg,
 				now,
-				props: activityProps(flight, now, isStale(flight, now)),
+				props: activityProps(journey, current, context.travel, isStale(current.flight, now)),
 				window
 			} satisfies Showing
-			// An activity that cannot cover the window ends, and the leg starts afresh.
+			const id = Array.headNonEmpty(journey).id
+			// An activity that cannot cover the window ends, and the window starts afresh.
 			const ended = yield* pipe(
 				state.activities,
 				Array.filter(
 					activity =>
-						activity.flightId === flight.id &&
+						activity.flightId === id &&
 						activity.leg === window.leg &&
 						Option.isNone(activity.endedAt) &&
 						!holds(activity, window)
@@ -513,23 +540,19 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 					{concurrency: 1}
 				)
 			)
-			// An app's leg starts only once its earlier activity ended, so a start never retires a channel Apple no longer has while its activity waits to be forgotten; an activity that covers the leg is refreshed all the same.
+			// An app's window starts only once its earlier activity ended, so a start never retires a channel Apple no longer has while its activity waits to be forgotten; an activity that covers the window is refreshed all the same.
 			const held = pipe(
 				ended,
 				Array.filter(end => Result.isFailure(end.result)),
 				Array.map(end => end.bundle)
 			)
 			const outcomes = yield* Effect.forEach(
-				showPlan(state.devices, state.activities, flight, window),
+				showPlan(state.devices, state.activities, journey, window),
 				action => {
 					if (!ShowAction.isAnyOf(['launch'])(action)) {
 						return Effect.result(
-							refresh(
-								action.target,
-								showing.props,
-								now,
-								ridingAlerts(alerts, receipts.sent, receipts.delivered, state.devices, action.target),
-								state.devices
+							Effect.flatMap(ridingOf(journey, context.alerts, state.devices, action.target), riding =>
+								refresh(action.target, showing.props, now, riding, state.devices)
 							)
 						)
 					}
@@ -633,26 +656,38 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 				const now = yield* DateTime.now
 				const all = yield* flights.list
 				const state = yield* roundState
-				const context = {flights: all, travel: yield* asPushReadError(flights.travel)}
+				const travel = yield* asPushReadError(flights.travel)
+				const context = {flights: all, travel}
+				const alerts = Record.fromIterableWith(all, flight => [flight.id, alertsOf(flight, now, context)] as const)
+				const journeys = journeysOf(all)
+				// The activities go first, so a change one tells itself is no notification as well.
 				yield* Effect.forEach(
-					all,
-					Effect.fnUntraced(function* (flight) {
-						const alerts = alertsOf(flight, now, context)
-						// The activity goes first, so a change it tells itself is no notification as well.
-						yield* pipe(
-							activeWindow(flight, now),
-							Option.match({onNone: () => Effect.void, onSome: window => show(flight, window, now, state, alerts)}),
-							Effect.ignore({log: 'Warn', message: `The Live Activity of ${flight.id} was not updated`})
-						)
-						yield* Effect.ignore(announce(flight, now, alerts), {
-							log: 'Warn',
-							message: `The alerts of ${flight.id} were not sent`
-						})
-					}),
+					journeys,
+					journey =>
+						pipe(
+							activeWindow(journey, now, travel),
+							Option.match({
+								onNone: () => Effect.void,
+								onSome: window => show(journey, window, now, state, {alerts, travel})
+							}),
+							Effect.ignore({
+								log: 'Warn',
+								message: `The Live Activity of ${Array.headNonEmpty(journey).id} was not updated`
+							})
+						),
 					{concurrency: 1, discard: true}
 				)
 				yield* Effect.forEach(
-					expiredActivities(state.activities, all, now),
+					all,
+					flight =>
+						Effect.ignore(announce(flight, now, alerts[flight.id] ?? []), {
+							log: 'Warn',
+							message: `The alerts of ${flight.id} were not sent`
+						}),
+					{concurrency: 1, discard: true}
+				)
+				yield* Effect.forEach(
+					expiredActivities(state.activities, journeys, now, travel),
 					activity => Effect.ignore(finish(activity, now), {log: 'Warn', message: 'An activity was not ended'}),
 					{concurrency: 1, discard: true}
 				)
@@ -830,6 +865,18 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 							UNIQUE (flightId, leg, bundle)
 						) STRICT
 					`
+				}),
+				// One activity follows the whole day, and the props of a flight's activity no longer decode: each running one becomes a channel that is only deleted, and a retirement still deletes its channel without sending the end.
+				'0011_day_activities': Effect.gen(function* () {
+					const sql = yield* SqlClient.SqlClient
+					const now = DateTime.toEpochMillis(yield* DateTime.now)
+					yield* sql`UPDATE retirements SET props = NULL`
+					yield* sql`
+						INSERT INTO retirements (channel, bundle, props, retiredAt)
+						SELECT channel, bundle, NULL, ${now} FROM activities WHERE endedAt IS NULL
+						ON CONFLICT (channel) DO NOTHING
+					`
+					yield* sql`DELETE FROM activities`
 				})
 			}),
 			table: 'push_migrations'
