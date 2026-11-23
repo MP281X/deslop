@@ -324,7 +324,7 @@ function NoteScreen(props: {
 	kind: Option.Option<Kind>
 	notes: readonly NoteItem[]
 	onClose: () => void
-	onTag: (tag: TagName) => void
+	onTag: (tag: TagName, note: NoteId) => void
 	tag: Option.Option<TagName>
 }) {
 	const remove = useAtomSet(removal.removeAtom)
@@ -358,7 +358,7 @@ function NoteScreen(props: {
 						note={item}
 						onRetry={() => regenerate(item.id)}
 						onTag={tag => {
-							props.onTag(tag)
+							props.onTag(tag, item.id)
 							Option.match(show, {onNone: props.onClose, onSome: reveal => reveal()})
 						}}
 					/>
@@ -426,7 +426,7 @@ export function NoteRoute(props: {
 	id: Option.Option<NoteId>
 	kind: Option.Option<Kind>
 	onClose: () => void
-	onTag: (tag: TagName) => void
+	onTag: (tag: TagName, note: NoteId) => void
 	tag: Option.Option<TagName>
 }) {
 	return (

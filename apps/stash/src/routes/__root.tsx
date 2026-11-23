@@ -71,7 +71,11 @@ function AppRoutes() {
 										id={Option.filter(opened, (id): id is NoteId => id !== 'compose')}
 										kind={kind}
 										onClose={() => setOpened(Option.none())}
-										onTag={name => setTag(Option.some(name))}
+										onTag={(name, note) => {
+											// The note shown with nothing opened becomes the opened one, so the queue's new first doesn't replace it.
+											setTag(Option.some(name))
+											setOpened(Option.some(note))
+										}}
 										tag={tag}
 									/>
 								</Suspense>
