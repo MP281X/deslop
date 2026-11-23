@@ -382,7 +382,7 @@ function flightHeadline(flight: Flight, phase: FlightPhase) {
 	return 'Cancelled'
 }
 
-// An old answer stays on the island, plain and dated, so it never reads as the current gate or platform.
+// An old answer stays on the island, plain and dated, so it never reads as the current gate.
 function staleNote(live: Option.Option<FlightTracking>, timeZone: string, stale: boolean) {
 	return Option.flatMap(live, found =>
 		Option.liftPredicate(`Updated ${clockAt(found.checkedAt, timeZone)}`, () => stale)

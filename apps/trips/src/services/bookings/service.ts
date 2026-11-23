@@ -128,7 +128,7 @@ export class Bookings extends Context.Service<Bookings>()('@deslop/trips/service
 			Stream.withSpan('Bookings.watch', {attributes: {'rpc.stream': true}})
 		)
 
-		// Airports and stations resolve from their datasets, so a time reads in the right zone and a ride has coordinates.
+		// Airports resolve from their dataset, so a time reads in the right zone and a ride has coordinates.
 		const resolve = Effect.fnUntraced(function* (item: ExtractedItem) {
 			const base = {confirmation: item.confirmation, id: BookingId.make(yield* random.uuidV4()), status: item.status}
 			if (item.kind === 'flight') {

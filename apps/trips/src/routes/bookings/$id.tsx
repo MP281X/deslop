@@ -50,7 +50,7 @@ import {
 	titleOf
 } from '#services/bookings/lib/utils.ts'
 import {Booking} from '#services/bookings/schema.ts'
-import type {BookedPlace, BookingList, Flight, Stay, Tone} from '#services/bookings/schema.ts'
+import type {BookingList, Flight, Place, Stay, Tone} from '#services/bookings/schema.ts'
 
 function colorOf(tone?: Tone) {
 	if (tone === undefined || tone === 'plain') return colors.foreground
@@ -211,7 +211,7 @@ function Rides(props: {booking: Booking; bookings: BookingList; now: DateTime.Ut
 	)
 }
 
-function placeCity(place: BookedPlace) {
+function placeCity(place: Place) {
 	return Option.getOrElse(place.city, () => place.name)
 }
 

@@ -14,7 +14,7 @@ import {
 	stayAfter,
 	upsert
 } from '#services/bookings/lib/utils.ts'
-import {BookedPlace, Booking, BookingId, Flight, FlightTracking, Stay} from '#services/bookings/schema.ts'
+import {Booking, BookingId, Flight, FlightTracking, Place, Stay} from '#services/bookings/schema.ts'
 
 const DEPARTS = DateTime.makeUnsafe('2026-10-28T15:40:00Z')
 
@@ -27,13 +27,13 @@ const FLIGHT = Struct.pick(
 		boardingGroup: Option.none(),
 		confirmation: Option.none(),
 		departs: DEPARTS,
-		from: Schema.decodeSync(BookedPlace)({code: 'FCO', name: 'Fiumicino', timeZone: 'Europe/Rome'}),
+		from: Schema.decodeSync(Place)({code: 'FCO', name: 'Fiumicino', timeZone: 'Europe/Rome'}),
 		id: BookingId.make('7f0c8f8e-0d0a-4a5e-9d8f-5b2a1c3d4e5f'),
 		live: Option.none(),
 		number: '553',
 		seat: Option.none(),
 		status: 'confirmed',
-		to: Schema.decodeSync(BookedPlace)({code: 'LHR', name: 'Heathrow', timeZone: 'Europe/London'})
+		to: Schema.decodeSync(Place)({code: 'LHR', name: 'Heathrow', timeZone: 'Europe/London'})
 	}),
 	Struct.keys(Flight.fields)
 )
@@ -109,7 +109,7 @@ function stay(id: string, city: string) {
 		confirmation: Option.none(),
 		id: BookingId.make(id),
 		name: `Hotel in ${city}`,
-		place: Schema.decodeSync(BookedPlace)({
+		place: Schema.decodeSync(Place)({
 			address: `Via Roma 1, ${city}, Italy`,
 			city,
 			name: `Hotel in ${city}`,
@@ -124,12 +124,7 @@ it('offers a stay as the next stop only in the city the flight reaches', () => {
 		...FLIGHT,
 		arrives: DateTime.makeUnsafe('2026-11-18T09:00Z'),
 		departs: DateTime.makeUnsafe('2026-11-18T08:00Z'),
-		to: Schema.decodeSync(BookedPlace)({
-			city: 'Verona',
-			code: 'VRN',
-			name: 'Verona Villafranca',
-			timeZone: 'Europe/Rome'
-		})
+		to: Schema.decodeSync(Place)({city: 'Verona', code: 'VRN', name: 'Verona Villafranca', timeZone: 'Europe/Rome'})
 	})
 	const rome = stay('33333333-3333-4333-8333-333333333333', 'Roma')
 	const verona = stay('44444444-4444-4444-8444-444444444444', 'Verona')

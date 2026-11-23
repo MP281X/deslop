@@ -44,12 +44,8 @@ export const Place = Schema.Struct({
 	latitude: Schema.OptionFromOptionalKey(Schema.Finite),
 	longitude: Schema.OptionFromOptionalKey(Schema.Finite),
 	name: Schema.String,
-	timeZone: Schema.OptionFromOptionalKey(Schema.String)
+	timeZone: Schema.String
 })
-
-// A booked flight always knows its place's zone; only a station lookup may answer one without it.
-export type BookedPlace = typeof BookedPlace.Type
-export const BookedPlace = Schema.Struct({...Place.fields, timeZone: Schema.String})
 
 export type ReservationStatus = typeof ReservationStatus.Type
 // Whether the reservation stands; a cancelled one stays listed so the change is visible.
@@ -97,13 +93,13 @@ export class Flight extends Model.Class<Flight>('Flight')({
 	boardingGroup: Model.FieldOption(Schema.String),
 	confirmation: Model.FieldOption(Schema.String),
 	departs: Schema.DateTimeUtcFromMillis,
-	from: Model.JsonFromString(BookedPlace),
+	from: Model.JsonFromString(Place),
 	id: BookingId,
 	live: Model.FieldOption(Model.JsonFromString(FlightTracking)),
 	number: Schema.String,
 	seat: Model.FieldOption(Schema.String),
 	status: ReservationStatus,
-	to: Model.JsonFromString(BookedPlace)
+	to: Model.JsonFromString(Place)
 }) {
 	static readonly table = 'flights'
 }
@@ -116,7 +112,7 @@ export class Stay extends Model.Class<Stay>('Stay')({
 	confirmation: Model.FieldOption(Schema.String),
 	id: BookingId,
 	name: Schema.String,
-	place: Model.JsonFromString(BookedPlace),
+	place: Model.JsonFromString(Place),
 	status: ReservationStatus
 }) {
 	static readonly table = 'stays'

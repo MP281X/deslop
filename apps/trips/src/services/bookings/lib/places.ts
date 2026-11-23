@@ -17,7 +17,7 @@ import {
 
 import {HttpClient, HttpClientResponse} from 'effect/http'
 
-import type {BookedPlace} from '#services/bookings/schema.ts'
+import type {Place} from '#services/bookings/schema.ts'
 import {Airport, BookingsError, PlaceCode} from '#services/bookings/schema.ts'
 
 function airportIndex(all: Record<string, unknown>) {
@@ -36,7 +36,7 @@ function airportIndex(all: Record<string, unknown>) {
 // Airports come from an open dataset with their zone and coordinates.
 export class Places extends Context.Service<
 	Places,
-	{readonly airport: (code: string) => Effect.Effect<BookedPlace, BookingsError>}
+	{readonly airport: (code: string) => Effect.Effect<Place, BookingsError>}
 >()('@deslop/trips/services/bookings/lib/places') {
 	static readonly layer = Layer.effect(
 		this,
@@ -79,7 +79,7 @@ export class Places extends Context.Service<
 						longitude: Option.some(airport.lon),
 						name: airport.name,
 						timeZone: airport.tz
-					} satisfies BookedPlace
+					} satisfies Place
 				})
 			})
 		})

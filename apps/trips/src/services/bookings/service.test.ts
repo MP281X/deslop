@@ -12,7 +12,7 @@ import {Extractor} from './lib/extraction.ts'
 import {Places} from './lib/places.ts'
 
 import type {ExtractedItem, ExtractedItems} from '#services/bookings/schema.ts'
-import {BookedPlace, Booking, BookingSource, PlaceCode} from '#services/bookings/schema.ts'
+import {Booking, BookingSource, Place, PlaceCode} from '#services/bookings/schema.ts'
 import {Bookings} from '#services/bookings/service.ts'
 
 const USER = UserId.make('github:1')
@@ -45,7 +45,7 @@ const bookingsLayer = pipe(
 		Layer.mock(Places, {
 			airport: code =>
 				Effect.succeed(
-					BookedPlace.make({
+					Place.make({
 						address: Option.none(),
 						city: Option.none(),
 						code: Option.some(PlaceCode.make(code)),

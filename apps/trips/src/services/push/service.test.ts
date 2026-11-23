@@ -24,7 +24,7 @@ import {Apns} from '@deslop/runtime/server/apns'
 import {layerDataStore} from '@deslop/runtime/server/store'
 import {ApnsAnswer, ApnsError, ApnsToken} from '@deslop/runtime/shared/apns'
 
-import {BookedPlace, BookingId, Flight} from '#services/bookings/schema.ts'
+import {BookingId, Flight, Place} from '#services/bookings/schema.ts'
 import {Bookings} from '#services/bookings/service.ts'
 import {Push} from '#services/push/service.ts'
 
@@ -47,13 +47,13 @@ function flightAt(now: DateTime.Utc, id: BookingId, seat: Option.Option<string>)
 		boardingGroup: Option.none(),
 		confirmation: Option.none(),
 		departs: DateTime.addDuration(now, Duration.hours(4)),
-		from: Schema.decodeSync(BookedPlace)({code: 'FCO', name: 'Fiumicino', timeZone: 'Europe/Rome'}),
+		from: Schema.decodeSync(Place)({code: 'FCO', name: 'Fiumicino', timeZone: 'Europe/Rome'}),
 		id,
 		live: Option.none(),
 		number: '553',
 		seat,
 		status: 'confirmed',
-		to: Schema.decodeSync(BookedPlace)({code: 'LHR', name: 'Heathrow', timeZone: 'Europe/London'})
+		to: Schema.decodeSync(Place)({code: 'LHR', name: 'Heathrow', timeZone: 'Europe/London'})
 	})
 }
 const booked = Effect.map(DateTime.now, now => [flightAt(now, ID, Option.none())])

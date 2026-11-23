@@ -5,7 +5,7 @@ import {Array, DateTime, Duration, Option, Redacted, Schema, String, Struct, pip
 import {ApnsToken, Device} from '@deslop/runtime/shared/apns'
 
 import {activityProps} from '#services/bookings/lib/utils.ts'
-import {BookedPlace, BookingId, Flight, FlightTracking} from '#services/bookings/schema.ts'
+import {BookingId, Flight, FlightTracking, Place} from '#services/bookings/schema.ts'
 import {
 	alertsOf,
 	announced,
@@ -28,13 +28,13 @@ const FLIGHT = Struct.pick(
 		boardingGroup: Option.none(),
 		confirmation: Option.none(),
 		departs: DEPARTS,
-		from: Schema.decodeSync(BookedPlace)({code: 'FCO', name: 'Fiumicino', timeZone: 'Europe/Rome'}),
+		from: Schema.decodeSync(Place)({code: 'FCO', name: 'Fiumicino', timeZone: 'Europe/Rome'}),
 		id: BookingId.make('7f0c8f8e-0d0a-4a5e-9d8f-5b2a1c3d4e5f'),
 		live: Option.none(),
 		number: '553',
 		seat: Option.none(),
 		status: 'confirmed',
-		to: Schema.decodeSync(BookedPlace)({code: 'LHR', name: 'Heathrow', timeZone: 'Europe/London'})
+		to: Schema.decodeSync(Place)({code: 'LHR', name: 'Heathrow', timeZone: 'Europe/London'})
 	}),
 	Struct.keys(Flight.fields)
 )
