@@ -10,6 +10,7 @@ import {flightsAtom, nowAtom} from '#lib/flights.ts'
 import {RpcClient} from '#lib/session.ts'
 import {airportByOf, cancelledOf, travelTo} from '#services/flights/lib/utils.ts'
 import type {PlaceCode, TravelMinutes, TravelTime} from '#services/flights/schema.ts'
+import {feederOf} from '#services/push/lib/utils.ts'
 
 // The trips offered for the way to an airport, in minutes.
 export const TRAVEL_CHOICES: readonly TravelMinutes[] = [30, 45, 60, 90, 120, 150, 180]
@@ -39,7 +40,7 @@ export const setTravelAtom = Atom.fn((row: TravelTime, get) =>
 // Airports already asked about since launch, so Not Now waits for the next launch.
 const asked = MutableHashSet.empty<PlaceCode>()
 
-// The first time a coming flight leaves from an airport with no saved trip, a system alert asks for it, since when to leave hangs on it.
+// The first time a coming flight leaves from an airport with no saved trip, a system alert asks for it, since when to leave hangs on it; a flight he connects to is no trip from home.
 export const travelPromptAtom = Atom.make(get => {
 	const now = get(nowAtom)
 	pipe(
@@ -52,6 +53,7 @@ export const travelPromptAtom = Atom.make(get => {
 						code =>
 							!MutableHashSet.has(asked, code) &&
 							!cancelledOf(flight) &&
+							Option.isNone(feederOf(flight, known.flights)) &&
 							DateTime.isLessThan(now, airportByOf(flight)) &&
 							Option.isNone(travelTo(flight, known.travel))
 					),

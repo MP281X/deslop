@@ -10,6 +10,7 @@ import {
 	alertsOf,
 	announced,
 	expiredActivities,
+	feederOf,
 	holds,
 	perDevice,
 	ridingAlerts,
@@ -573,7 +574,53 @@ it('warns of a connection under an hour or shrinking by fifteen minutes', () => 
 	)
 })
 
-it('calls boarding ten minutes before the pass says, moved by the delay', () => {
+it('treats a flight he connects to as no trip from home, and a diverted flight as no time to change', () => {
+	// FR 1234 lands at Stansted at 11:35; FR 206 leaves Stansted at 13:00, and Stansted is an hour from home.
+	const onward = Flight.make({
+		...RYANAIR,
+		arrives: DateTime.makeUnsafe('2026-11-24T14:20:00Z'),
+		boardingAt: Option.some(DateTime.makeUnsafe('2026-11-24T12:30:00Z')),
+		departs: DateTime.makeUnsafe('2026-11-24T13:00:00Z'),
+		from: RYANAIR.to,
+		id: FlightId.make('4d5e6f7a-8b9c-4d0e-9f1a-2b3c4d5e6f7a'),
+		number: '206',
+		to: Schema.decodeSync(Place)({city: 'Dublin', code: 'DUB', name: 'Dublin', timeZone: 'Europe/Dublin'}),
+		travellers: Array.map(RYANAIR.travellers, traveller => ({...traveller, seat: Option.some('14C')}))
+	})
+	const toStansted = [TravelTime.make({airport: PlaceCode.make('STN'), minutes: 60})]
+	const airborne = liveFor(RYANAIR, {
+		arrivalEstimated: DateTime.toEpochMillis(DateTime.makeUnsafe('2026-11-24T12:25:00Z')),
+		state: 'airborne'
+	})
+	const diverted = liveFor(RYANAIR, {
+		arrivalEstimated: DateTime.toEpochMillis(DateTime.makeUnsafe('2026-11-24T12:40:00Z')),
+		state: 'diverted'
+	})
+	function categories(feeder: Flight, at: string) {
+		return Array.map(
+			alertsOf(onward, DateTime.makeUnsafe(at), {flights: [feeder, onward], travel: toStansted}),
+			alert => alert.category
+		)
+	}
+	assert.deepStrictEqual(
+		[
+			feederOf(onward, [airborne, onward]),
+			categories(airborne, '2026-11-23T21:00:00Z'),
+			categories(airborne, '2026-11-24T11:05:00Z'),
+			categories(diverted, '2026-11-24T11:05:00Z'),
+			categories(
+				Flight.make({
+					...RYANAIR,
+					travellers: Array.map(RYANAIR.travellers, traveller => ({...traveller, status: 'cancelled' as const}))
+				}),
+				'2026-11-24T11:05:00Z'
+			)
+		],
+		[Option.some(airborne), ['connection'], ['connection'], [], ['leave']]
+	)
+})
+
+it('calls boarding ten minutes before the pass says, moved by the delay, and again when the delay crosses a step', () => {
 	const late = liveFor(
 		{...RYANAIR, boardingAt: Option.some(DateTime.subtractDuration(RYANAIR.departs, Duration.minutes(30)))},
 		{

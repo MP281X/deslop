@@ -283,9 +283,32 @@ function checkInAlerts(flight: Flight, now: DateTime.Utc) {
 	])
 }
 
-function departureAlerts(flight: Flight, now: DateTime.Utc, travel: readonly TravelTime[]) {
+// The flight he changes from: one that lands where this one leaves, booked within twelve hours before it, the latest such one. A flight with one is a connection: no trip from home leads to it, and only the change between the two is told.
+export function feederOf(flight: Flight, flights: FlightList) {
+	return pipe(
+		flights,
+		Array.filter(
+			other =>
+				other.id !== flight.id &&
+				!cancelledOf(other) &&
+				Option.isSome(other.to.code) &&
+				Equal.equals(other.to.code, flight.from.code) &&
+				pipe(
+					other.arrives,
+					DateTime.distance(flight.departs),
+					change =>
+						Duration.isGreaterThan(change, Duration.zero) && Duration.isLessThanOrEqualTo(change, Duration.hours(12))
+				)
+		),
+		Array.last
+	)
+}
+
+// The plan and leave now are for the trip from home, so a flight he connects to gets neither.
+function departureAlerts(flight: Flight, now: DateTime.Utc, context: AlertContext) {
+	if (Option.isSome(feederOf(flight, context.flights))) return Array.empty<Alert>()
 	const airportBy = airportByOf(flight)
-	const leaveBy = leaveByOf(flight, travel)
+	const leaveBy = leaveByOf(flight, context.travel)
 	const leave = Option.getOrElse(leaveBy, () => airportBy)
 	const timeZone = flight.from.timeZone
 	const city = cityOf(flight.from)
@@ -316,29 +339,15 @@ function departureAlerts(flight: Flight, now: DateTime.Utc, travel: readonly Tra
 	])
 }
 
-// The flight he changes from lands where this one leaves, booked within twelve hours before it; the latest such one.
+// A diverted flight lands elsewhere, so it gives no time to change; one that arrived leaves nothing to warn of.
 function connectionAlert(flight: Flight, now: DateTime.Utc, flights: FlightList) {
 	return pipe(
-		flights,
-		Array.filter(
-			other =>
-				other.id !== flight.id &&
-				!cancelledOf(other) &&
-				Option.isSome(other.to.code) &&
-				Equal.equals(other.to.code, flight.from.code) &&
-				pipe(
-					other.arrives,
-					DateTime.distance(flight.departs),
-					change =>
-						Duration.isGreaterThan(change, Duration.zero) && Duration.isLessThanOrEqualTo(change, Duration.hours(12))
-				)
-		),
-		Array.last,
+		feederOf(flight, flights),
 		Option.filter(
 			feeder =>
 				(Option.isSome(feeder.live) || Option.isSome(flight.live)) &&
 				DateTime.isLessThan(now, departureOf(flight)) &&
-				!Option.exists(feeder.live, live => live.state === 'arrived')
+				!Option.exists(feeder.live, live => live.state === 'arrived' || live.state === 'diverted')
 		),
 		Option.flatMap(feeder => {
 			const change = Number.round(Duration.toMinutes(DateTime.distance(arrivalOf(feeder), departureOf(flight))), 0)
@@ -471,7 +480,7 @@ function flightAlerts(flight: Flight, now: DateTime.Utc, stale: boolean, context
 			)
 		]),
 		...checkInAlerts(flight, now),
-		...departureAlerts(flight, now, context.travel),
+		...departureAlerts(flight, now, context),
 		...Option.toArray(connectionAlert(flight, now, context.flights))
 	]
 }
