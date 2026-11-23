@@ -430,7 +430,8 @@ function Board(props: {onOpen: (id: FlightId) => void}) {
 			return (
 				<Toolbar
 					modifiers={[
-						navigationTitle(titleOf(flight)),
+						// The change belongs to no one flight, so its board has no title.
+						navigationTitle(Option.match(change, {onNone: () => titleOf(flight), onSome: Function.constant('')})),
 						navigationBarTitleDisplayMode('inline'),
 						barNeverMinimizes(),
 						...Boolean.match(tiled, {onFalse: () => [backHidden], onTrue: () => []})
@@ -450,9 +451,7 @@ function Board(props: {onOpen: (id: FlightId) => void}) {
 						),
 						onSome: found => <ChangeBoard feeder={found.feeder} next={found.next} />
 					})}
-					<Toolbar.Content>
-						<Title flight={flight} />
-					</Toolbar.Content>
+					<Toolbar.Content>{Option.isNone(change) && <Title flight={flight} />}</Toolbar.Content>
 				</Toolbar>
 			)
 		}

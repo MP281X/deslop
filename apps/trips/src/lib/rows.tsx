@@ -5,8 +5,10 @@ import {
 	contentShape,
 	font,
 	foregroundStyle,
+	fixedSize,
 	frame,
 	imageScale,
+	layoutPriority,
 	lineLimit,
 	minimumScaleFactor,
 	monospacedDigit,
@@ -30,13 +32,17 @@ const STRUCK = [foregroundStyle(colors.mutedForeground), strikethrough({isActive
 export type RowProblem = typeof RowProblem.Type
 const RowProblem = Schema.Literals(['bad', 'warn'])
 
-// A flight on Home reads large and light; the times of one flight read at body size.
+// A flight on Home reads large and light; the times of one flight read at body size; a quiet row's value is a remark, such as what a change was booked as.
 export type RowSize = typeof RowSize.Type
-const RowSize = Schema.Literals(['big', 'plain'])
+const RowSize = Schema.Literals(['big', 'plain', 'quiet'])
 
 const ROW_SIZES = {
-	big: {label: font({textStyle: 'title3', weight: 'semibold'}), value: font({textStyle: 'title', weight: 'light'})},
-	plain: {label: font({textStyle: 'body'}), value: font({textStyle: 'title3'})}
+	big: {
+		label: font({textStyle: 'title3', weight: 'semibold'}),
+		value: [font({textStyle: 'title', weight: 'light'}), foregroundStyle(colors.foreground)]
+	},
+	plain: {label: font({textStyle: 'body'}), value: [font({textStyle: 'title3'}), foregroundStyle(colors.foreground)]},
+	quiet: {label: font({textStyle: 'body'}), value: [font({textStyle: 'body'}), foregroundStyle(colors.mutedForeground)]}
 } satisfies Record<RowSize, unknown>
 
 // The next step folded and as a book's page, and at a glance above a laptop's fold.
@@ -74,7 +80,7 @@ export function TimeRow(props: {
 			spacing={space[3]}
 			modifiers={[frame({alignment: 'leading', maxWidth: Infinity}), contentShape(shapes.rectangle())]}
 		>
-			<VStack alignment="leading" spacing={0}>
+			<VStack alignment="leading" spacing={0} modifiers={[layoutPriority(1)]}>
 				<HStack spacing={space[2]}>
 					<Dot problem={props.problem} />
 					<Text modifiers={[ROW_SIZES[props.size].label, foregroundStyle(labelColor(props.problem)), lineLimit(1)]}>
@@ -91,18 +97,18 @@ export function TimeRow(props: {
 				})}
 			</VStack>
 			<Spacer />
-			<HStack alignment="firstTextBaseline" spacing={space[2]}>
+			<HStack
+				alignment="firstTextBaseline"
+				spacing={space[2]}
+				modifiers={[fixedSize({horizontal: true, vertical: false})]}
+			>
 				{Option.match(props.was, {
 					onNone: Function.constNull,
 					onSome: was => <Text modifiers={[font({textStyle: 'subheadline'}), monospacedDigit(), ...STRUCK]}>{was}</Text>
 				})}
 				{Option.match(props.value, {
 					onNone: Function.constNull,
-					onSome: value => (
-						<Text modifiers={[ROW_SIZES[props.size].value, monospacedDigit(), foregroundStyle(colors.foreground)]}>
-							{value}
-						</Text>
-					)
+					onSome: value => <Text modifiers={[...ROW_SIZES[props.size].value, monospacedDigit()]}>{value}</Text>
 				})}
 			</HStack>
 			{props.chevron && (
@@ -123,27 +129,29 @@ export function HeroView(props: {hero: Hero; size: HeroSize}) {
 				{props.hero.label}
 			</Text>
 			<HStack alignment="lastTextBaseline" spacing={space[3]}>
-				<HStack alignment="firstTextBaseline" spacing={space[3]}>
+				<HStack spacing={space[3]}>
 					<Dot problem={props.hero.problem} />
-					<Text
-						modifiers={[
-							HERO_SIZES[props.size].value,
-							monospacedDigit(),
-							foregroundStyle(labelColor(props.hero.problem)),
-							// A placeholder, such as a gate not yet posted, is faint.
-							opacity(
-								Boolean.match(props.hero.pending, {onFalse: Function.constant(1), onTrue: Function.constant(0.35)})
-							),
-							lineLimit(1),
-							minimumScaleFactor(0.5)
-						]}
-					>
-						{props.hero.value}
-					</Text>
-					{Option.match(props.hero.was, {
-						onNone: Function.constNull,
-						onSome: was => <Text modifiers={[HERO_SIZES[props.size].was, monospacedDigit(), ...STRUCK]}>{was}</Text>
-					})}
+					<HStack alignment="firstTextBaseline" spacing={space[3]}>
+						<Text
+							modifiers={[
+								HERO_SIZES[props.size].value,
+								monospacedDigit(),
+								foregroundStyle(labelColor(props.hero.problem)),
+								// A placeholder, such as a gate not yet posted, is faint.
+								opacity(
+									Boolean.match(props.hero.pending, {onFalse: Function.constant(1), onTrue: Function.constant(0.35)})
+								),
+								lineLimit(1),
+								minimumScaleFactor(0.5)
+							]}
+						>
+							{props.hero.value}
+						</Text>
+						{Option.match(props.hero.was, {
+							onNone: Function.constNull,
+							onSome: was => <Text modifiers={[HERO_SIZES[props.size].was, monospacedDigit(), ...STRUCK]}>{was}</Text>
+						})}
+					</HStack>
 				</HStack>
 				<Spacer />
 				<Text modifiers={[HERO_SIZES[props.size].label, foregroundStyle(colors.mutedForeground), lineLimit(1)]}>

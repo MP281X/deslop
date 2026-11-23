@@ -25,6 +25,7 @@ import {AsyncResult, Atom} from 'effect/reactivity'
 import {Suspense} from 'react'
 
 import {ItemGroupSkeleton} from '@deslop/components-mobile/blocks/item-group-skeleton'
+import {useListBeside} from '@deslop/components-mobile/blocks/list-detail'
 import {ListToolbar} from '@deslop/components-mobile/blocks/list-toolbar'
 import {FailureContent} from '@deslop/components-mobile/blocks/loaded'
 import {Problem} from '@deslop/components-mobile/blocks/problem'
@@ -63,11 +64,18 @@ function troubleOf(flight: Flight, now: DateTime.Utc) {
 // A flight: its route, its number with where it boards and when it lands, and its departure large, the booked time struck through beside it.
 function FlightRow(props: {flight: Flight; now: DateTime.Utc; onOpen: (id: FlightId) => void}) {
 	const trouble = troubleOf(props.flight, props.now)
+	// Beside the opened flight the row opens nothing new, so it draws no chevron.
+	const beside = useListBeside()
 	return (
-		<RemovableRow id={props.flight.id} removal={removal} onOpen={() => props.onOpen(props.flight.id)}>
+		<RemovableRow
+			id={props.flight.id}
+			removal={removal}
+			onOpen={() => props.onOpen(props.flight.id)}
+			modifiers={[listRowSeparator('visible')]}
+		>
 			{pending => (
 				<TimeRow
-					chevron={!pending}
+					chevron={!pending && !beside}
 					label={routeOf(props.flight)}
 					problem={Option.map(trouble, found => found.problem)}
 					size="big"
@@ -97,7 +105,7 @@ function ChangeRow(props: {feeder: Flight; flight: Flight}) {
 			chevron={false}
 			label={change.label}
 			problem={Option.liftPredicate('warn' as const, () => change.tight)}
-			size="plain"
+			size="quiet"
 			sub={Option.none()}
 			value={change.was}
 			was={Option.none()}
@@ -168,11 +176,14 @@ function Days(props: {flights: readonly Flight[]; onOpen: (id: FlightId) => void
 	const now = useAtomValue(nowAtom)
 	const travel = pipe(useAtomValue(travelAtom), AsyncResult.value, Option.getOrElse(Array.empty<TravelTime>))
 	const upcoming = upcomingOf(props.flights, now)
+	// Beside the flight or below its board the next step is already on screen.
+	const beside = useListBeside()
 	return (
 		<>
 			{Array.map(datesOf(upcoming), (date, index) => (
 				<Section key={date.date} title={date.date}>
 					{index === 0 &&
+						!beside &&
 						Option.match(nextHero(upcoming, now, travel), {
 							onNone: Function.constNull,
 							onSome: hero => (
