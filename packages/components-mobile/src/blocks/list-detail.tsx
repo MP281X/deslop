@@ -7,7 +7,6 @@ import {
 	createModifier,
 	onGeometryChange,
 	onHingeChange,
-	opacity,
 	overlayArrangementEdge
 } from '@expo/ui/swift-ui/modifiers'
 import type {HingeStatus, ViewModifier} from '@expo/ui/swift-ui/modifiers'
@@ -17,8 +16,9 @@ import {Dimensions} from 'react-native'
 
 const ListContext = createContext({
 	beside: false,
+	choose: Function.constVoid,
 	search: Option.none<ReturnType<typeof useNativeState<string>>>(),
-	searchFocus: Option.none<(focused: boolean) => void>(),
+	searchFocus: Option.none<{focused: boolean; onChange: (focused: boolean) => void}>(),
 	show: Option.none<() => void>()
 })
 
@@ -37,9 +37,14 @@ export function useListSearch() {
 	return useContext(ListContext).search
 }
 
-// Tells the layout whether the list's search field has focus; only the copy below an item in laptop posture has it.
+// Whether the list's search field has focus, both ways; only the copy below an item in laptop posture has it.
 export function useListSearchFocus() {
 	return useContext(ListContext).searchFocus
+}
+
+// Tells the layout the person chose an item from the list: the field searching the copy below an item in laptop posture lets go of the keyboard and keeps its query, so the chosen item shows above the results.
+export function useListChoose() {
+	return useContext(ListContext).choose
 }
 
 // Columns tile in a landscape window on the inner screen, flat or half open like a book; the outer screen, 466 points across, stacks them in either orientation. The window tells them apart: unfolding reports the hinge open while the window is still the outer screen's.
@@ -75,10 +80,15 @@ function useLaptop(props: {opened: boolean; portrait: boolean}) {
 	return {active, searching, setHinge, setSearching}
 }
 
-// The list's copy below the opened item in laptop posture, the one copy that tells the layout its search field's focus.
-function ListBelow(props: {list: ReactNode; onSearchFocus: (focused: boolean) => void}) {
+// The list's copy below the opened item in laptop posture, the one copy whose search field's focus the layout follows and ends.
+function ListBelow(props: {list: ReactNode; searching: boolean; onSearchFocus: (focused: boolean) => void}) {
 	return (
-		<ListContext value={{...useContext(ListContext), searchFocus: Option.some(props.onSearchFocus)}}>
+		<ListContext
+			value={{
+				...useContext(ListContext),
+				searchFocus: Option.some({focused: props.searching, onChange: props.onSearchFocus})
+			}}
+		>
 			<NavigationStack>{props.list}</NavigationStack>
 		</ListContext>
 	)
@@ -109,6 +119,10 @@ export function ListDetail(props: {
 		<ListContext
 			value={{
 				beside: (tiled && columns !== 'detailOnly') || laptop.active,
+				choose: () => {
+					kept.choose()
+					laptop.setSearching(false)
+				},
 				search: Option.some(useNativeState('')),
 				searchFocus: Option.none(),
 				show: Boolean.match(tiled || laptop.active, {
@@ -153,8 +167,8 @@ export function ListDetail(props: {
 							// ios/DeslopComponentsModule.swift: a compact width, so the split view stacks its columns in a portrait window.
 							createModifier('stackedColumns', {stacked: portrait}),
 							overlayArrangementEdge('top'),
-							// The keyboard leaves the arrangement the upper half alone, where it lays the copy of the list under the split view, sized to fit above the keyboard; while the copy's field has focus the split view stands clear, so the field and its results show.
-							opacity(Boolean.match(laptop.searching, {onFalse: Function.constant(1), onTrue: Function.constant(0)}))
+							// ios/DeslopComponentsModule.swift: the keyboard leaves the arrangement the upper half alone, where it lays the copy of the list under the split view, sized to fit above the keyboard; while the copy's field has focus the split view stands clear, so the field and its results show and answer.
+							createModifier('seeThrough', {through: laptop.searching})
 						]}
 					>
 						<NavigationSplitView.Sidebar>{props.list}</NavigationSplitView.Sidebar>
@@ -162,7 +176,9 @@ export function ListDetail(props: {
 					</NavigationSplitView>
 				</ArrangementView.Primary>
 				<ArrangementView.Secondary>
-					{laptop.active && <ListBelow list={props.list} onSearchFocus={laptop.setSearching} />}
+					{laptop.active && (
+						<ListBelow list={props.list} searching={laptop.searching} onSearchFocus={laptop.setSearching} />
+					)}
 				</ArrangementView.Secondary>
 			</ArrangementView>
 		</ListContext>

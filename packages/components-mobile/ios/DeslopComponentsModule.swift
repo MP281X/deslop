@@ -41,8 +41,11 @@ public class DeslopComponentsModule: Module {
       ViewModifierRegistry.register("stackedColumns") { params, appContext, _ in
         try StackedColumns(from: params, appContext: appContext)
       }
-      ViewModifierRegistry.register("onSearchFocusChange") { params, appContext, eventDispatcher in
-        try OnSearchFocusChange(from: params, appContext: appContext, eventDispatcher: eventDispatcher)
+      ViewModifierRegistry.register("searchFocused") { params, appContext, eventDispatcher in
+        try SearchFocused(from: params, appContext: appContext, eventDispatcher: eventDispatcher)
+      }
+      ViewModifierRegistry.register("seeThrough") { params, appContext, _ in
+        try SeeThrough(from: params, appContext: appContext)
       }
     }
   }
@@ -59,10 +62,11 @@ struct BottomBarSearch: ViewModifier, Record {
   }
 }
 
-// Whether the field of the `searchable` before it has focus, and so the keyboard: Expo UI's `searchable` reports only the text.
-struct OnSearchFocusChange: ViewModifier, Record {
+// Whether the field of the `searchable` before it has focus, and so the keyboard, both ways: Expo UI's `searchable` reports only the text. Setting `focused` false ends the focus and keeps the query.
+struct SearchFocused: ViewModifier, Record {
+  @Field var focused: Bool = false
   var eventDispatcher: EventDispatcher?
-  @FocusState private var focused: Bool
+  @FocusState private var focus: Bool
 
   init() {}
 
@@ -73,10 +77,25 @@ struct OnSearchFocusChange: ViewModifier, Record {
 
   func body(content: Content) -> some View {
     content
-      .searchFocused($focused)
-      .onChange(of: focused) { _, focused in
-        eventDispatcher?(["onSearchFocusChange": ["focused": focused]])
+      .searchFocused($focus)
+      .onChange(of: focus) { _, focus in
+        eventDispatcher?(["searchFocused": ["focused": focus]])
       }
+      .onChange(of: focused) { _, focused in
+        focus = focused
+      }
+  }
+}
+
+// Invisible and out of reach, to touch and to VoiceOver, while staying mounted, so what lies under it shows and answers. Always applied, so the view keeps its state when `through` changes.
+struct SeeThrough: ViewModifier, Record {
+  @Field var through: Bool = false
+
+  func body(content: Content) -> some View {
+    content
+      .opacity(through ? 0 : 1)
+      .allowsHitTesting(!through)
+      .accessibilityHidden(through)
   }
 }
 

@@ -8,7 +8,7 @@ import type {Session} from '@deslop/runtime/mobile/session'
 
 import {AccountMenu} from '#components/blocks/account.tsx'
 import {useListSearch, useListSearchFocus} from '#components/blocks/list-detail.tsx'
-import {bottomBarSearch, onSearchFocusChange} from '#lib/toolbar.ts'
+import {bottomBarSearch, searchFocused} from '#lib/toolbar.ts'
 
 // A list screen's bar, as every web bar: the small title in the navigation bar, a problem mark leading, the account trailing, and the search field in the bottom bar between the screen's `bottomBar` items; a menu opened from the bottom bar reverses its items unless its order is fixed.
 export function ListToolbar(props: {
@@ -29,7 +29,7 @@ export function ListToolbar(props: {
 				navigationTitle(props.title),
 				navigationBarTitleDisplayMode('inline'),
 				searchable(query, {onChange: props.onSearch, prompt: 'Search'}),
-				...Option.match(focus, {onNone: Array.empty, onSome: report => [onSearchFocusChange(report)]}),
+				...Option.match(focus, {onNone: Array.empty, onSome: field => [searchFocused(field.focused, field.onChange)]}),
 				bottomBarSearch
 			]}
 		>
