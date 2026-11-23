@@ -1,4 +1,4 @@
-import {Array, Effect, Function, Option, String, pipe} from 'effect'
+import {Array, Effect, Function, Option, Schema, String, pipe} from 'effect'
 
 import {Atom} from 'effect/reactivity'
 import {Linking} from 'react-native'
@@ -37,9 +37,9 @@ export function directionsTo(place: Place) {
 
 export const mapsAtom = Atom.fn((place: Place) => alertFailure('No Directions')(directionsTo(place)))
 
-// Uber's ride request, the same for its app and its website: from where he is to the airport, its brackets escaped so the link parses.
-function rideQuery(place: Place, found: {latitude: number; longitude: number}) {
-	return pipe(
+// The Uber app's ride request: from where he is to the airport, its brackets escaped so the link parses.
+function appRide(place: Place, found: {latitude: number; longitude: number}) {
+	return `uber://?${pipe(
 		[
 			['action', 'setPickup'],
 			['pickup', 'my_location'],
@@ -50,8 +50,14 @@ function rideQuery(place: Place, found: {latitude: number; longitude: number}) {
 		] as const,
 		Array.map(field => `${encodeURIComponent(field[0])}=${encodeURIComponent(field[1])}`),
 		Array.join('&')
-	)
+	)}`
 }
+
+type WebDrop = typeof WebDrop.Type
+// Uber's website takes the drop-off as JSON and ignores the app's fields.
+const WebDrop = Schema.fromJsonString(
+	Schema.Struct({addressLine1: Schema.String, latitude: Schema.Finite, longitude: Schema.Finite})
+)
 
 function opened(url: string) {
 	return Effect.tryPromise({
@@ -66,10 +72,21 @@ export function rideTo(place: Place) {
 		coordinatesOf(place),
 		Effect.fromOption,
 		Effect.mapError(cause => FlightsError.make({cause, message: 'The place could not be found for Uber.'})),
-		Effect.flatMap(found => {
-			const query = rideQuery(place, found)
-			return Effect.catchTag(opened(`uber://?${query}`), 'FlightsError', () => opened(`https://m.uber.com/?${query}`))
-		})
+		Effect.flatMap(found =>
+			Effect.catchTag(opened(appRide(place, found)), 'FlightsError', () =>
+				pipe(
+					Schema.encodeEffect(WebDrop)({
+						addressLine1: place.name,
+						latitude: found.latitude,
+						longitude: found.longitude
+					}),
+					Effect.mapError(cause => FlightsError.make({cause, message: 'The place could not be written for Uber.'})),
+					Effect.flatMap(drop =>
+						opened(`https://m.uber.com/looking?${encodeURIComponent('drop[0]')}=${encodeURIComponent(drop)}`)
+					)
+				)
+			)
+		)
 	)
 }
 
