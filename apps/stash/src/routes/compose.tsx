@@ -13,6 +13,7 @@ import {
 } from '@expo/ui/swift-ui/modifiers'
 import {Atom} from 'effect/reactivity'
 
+import {barNeverMinimizes} from '@deslop/components-mobile/lib/toolbar'
 import {colors, space} from '@deslop/components-mobile/theme'
 import {unsaved} from '@deslop/runtime/mobile/unsaved'
 
@@ -26,7 +27,7 @@ export function ComposeRoute(props: {onDone: () => void}) {
 	const text = useNativeState(draft)
 	useAtomMount(unsavedDraftAtom)
 	return (
-		<Toolbar modifiers={[navigationTitle('New Note'), navigationBarTitleDisplayMode('inline')]}>
+		<Toolbar modifiers={[navigationTitle('New Note'), navigationBarTitleDisplayMode('inline'), barNeverMinimizes]}>
 			<TextField
 				text={text}
 				axis="vertical"

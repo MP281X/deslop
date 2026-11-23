@@ -35,6 +35,9 @@ public class DeslopComponentsModule: Module {
       ViewModifierRegistry.register("bottomBarSearch") { params, appContext, _ in
         try BottomBarSearch(from: params, appContext: appContext)
       }
+      ViewModifierRegistry.register("barNeverMinimizes") { params, appContext, _ in
+        try BarNeverMinimizes(from: params, appContext: appContext)
+      }
       ViewModifierRegistry.register("stackedColumns") { params, appContext, _ in
         try StackedColumns(from: params, appContext: appContext)
       }
@@ -62,6 +65,17 @@ struct StackedColumns: ViewModifier, Record {
       if stacked {
         sizeClass = .compact
       }
+    }
+  }
+}
+
+// iOS 27 minimizes the navigation bar while content scrolls down. A screen with nothing to scroll, such as a draft that replaces a note read halfway, would keep the bar minimized, title and buttons gone, with no scroll to bring it back.
+struct BarNeverMinimizes: ViewModifier, Record {
+  func body(content: Content) -> some View {
+    if #available(iOS 27.0, *) {
+      content.toolbarMinimizationBehavior(.never, for: .navigationBar)
+    } else {
+      content
     }
   }
 }
