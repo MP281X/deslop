@@ -34,8 +34,8 @@ export function ListDetail(props: {
 	const [chosen, setChosen] = useState<NavigationSplitViewVisibility>('all')
 	const [stacked, setStacked] = useState<NavigationSplitViewVisibility>('all')
 	const portrait = window.height > window.width
-	// Columns tile in a landscape window on the inner screen, flat or half open like a book; the outer screen stacks them in either orientation. The split view reports a stack's one column after the window has changed, so this is already current then.
-	const tiled = !portrait && hinge !== 'closed'
+	// Columns tile in a landscape window on the inner screen, flat or half open like a book; the outer screen, 466 points across, stacks them in either orientation. The window tells them apart: unfolding reports the hinge open while the window is still the outer screen's, and the split view reports a stack's one column only after the window has changed.
+	const tiled = !portrait && window.height > 466
 	const columns = Boolean.match(tiled, {onFalse: Function.constant(stacked), onTrue: Function.constant(chosen)})
 	const laptop = portrait && hinge === 'partiallyOpen' && props.opened
 	return (
