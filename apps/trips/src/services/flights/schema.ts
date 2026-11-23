@@ -118,13 +118,14 @@ export const FlightsEvent = Schema.Struct({
 export type Tone = typeof Tone.Type
 export const Tone = Schema.Literals(['good', 'warn', 'bad', 'info', 'plain'])
 
-// Where the day stands: on the way to the airport, then at the gate, boarding, in the air, and landed at its end.
+// Where the day stands: on the way to the airport, then at the gate, boarding, away from the gate before takeoff, in the air, and landed at its end.
 export type FlightPhase = typeof FlightPhase.Type
 export const FlightPhase = Schema.Literals([
 	'leave',
 	'airport',
 	'gate',
 	'boarding',
+	'taxiing',
 	'airborne',
 	'landed',
 	'cancelled',

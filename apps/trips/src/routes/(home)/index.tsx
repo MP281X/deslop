@@ -43,9 +43,17 @@ import {HeroView, TimeRow} from '#lib/rows.tsx'
 import type {RowProblem} from '#lib/rows.tsx'
 import {primary, session} from '#lib/session.ts'
 import {travelAtom} from '#lib/travel.ts'
-import {arrivalClockOf, cancelledOf, clockAt, labelled, line, routeOf, titleOf} from '#services/flights/lib/utils.ts'
+import {
+	arrivalClockOf,
+	cancelledOf,
+	clockAt,
+	isStale,
+	labelled,
+	line,
+	routeOf,
+	titleOf
+} from '#services/flights/lib/utils.ts'
 import type {FlightId, Flight, TravelTime} from '#services/flights/schema.ts'
-import {isStale} from '#services/tracking/lib/utils.ts'
 
 type Trouble = {problem: RowProblem; word: string}
 

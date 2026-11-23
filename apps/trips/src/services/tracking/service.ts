@@ -27,12 +27,12 @@ import {Migrator, SqlClient, SqlSchema} from 'effect/sql'
 import {FlightAware} from './lib/flightaware.ts'
 import {migrations} from './migrations.ts'
 
+import {checkEvery} from '#services/flights/lib/utils.ts'
 import type {FlightId, ProviderFlightId} from '#services/flights/schema.ts'
 import {FlightsError, Flight, TripNumber} from '#services/flights/schema.ts'
 import {Flights} from '#services/flights/service.ts'
 import {
 	canRefresh,
-	checkEvery,
 	flightTracking,
 	inboundOf,
 	isDue,

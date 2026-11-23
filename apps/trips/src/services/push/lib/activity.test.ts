@@ -308,3 +308,38 @@ it('keeps an activity on screen through a long connection, handing over at a mom
 		)
 	)
 })
+
+function step(journey: Journey, now: DateTime.Utc) {
+	const current = stepOf(journey, now, TRAVEL)
+	const props = activityProps(journey, current, TRAVEL, false)
+	return [current.flight.number, current.phase, props.label, props.value]
+}
+
+it('trusts FlightAware over the clock: flying past its estimate, and on the ground until takeoff', () => {
+	// Reports read a minute ago, so they are current.
+	function fresh(now: DateTime.Utc, fields: Partial<typeof FlightTracking.Encoded>) {
+		return live({...fields, checkedAt: DateTime.toEpochMillis(DateTime.subtractDuration(now, Duration.minutes(1)))})
+	}
+	const flying = fresh(at('11:40'), {
+		departureActual: DateTime.toEpochMillis(at('09:35')),
+		state: 'airborne',
+		takeoffActual: DateTime.toEpochMillis(at('09:50'))
+	})
+	const pushedBack = fresh(at('09:40'), {departureActual: DateTime.toEpochMillis(at('09:35')), state: 'departed'})
+	const notLeft = fresh(at('11:40'), {})
+	assert.deepStrictEqual(
+		[
+			step(day(flying), at('11:40')),
+			step(day(pushedBack), at('09:40')),
+			step(day(notLeft), at('11:40')),
+			// A report that stopped coming no longer holds the day back: the clock hands it to the connection.
+			step(day(live({state: 'airborne', takeoffActual: DateTime.toEpochMillis(at('09:50'))})), at('11:40'))
+		],
+		[
+			['1234', 'airborne', 'Lands in London, local time', '11:35'],
+			['1234', 'taxiing', 'Left the gate at', '10:35'],
+			['1234', 'boarding', 'Boarding', 'Now'],
+			['206', 'gate', 'Gate for FR 206', 'Not yet']
+		]
+	)
+})

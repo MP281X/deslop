@@ -1,6 +1,6 @@
 import {Array, DateTime, Duration, Function, Number, Option, Order, Result, String, pipe} from 'effect'
 
-import {arrivalOf, cancelledOf, departureOf} from '#services/flights/lib/utils.ts'
+import {checkEvery} from '#services/flights/lib/utils.ts'
 import type {Flight, FlightTracking} from '#services/flights/schema.ts'
 import type {FaFlight, FaFlights} from '#services/tracking/schema.ts'
 
@@ -131,66 +131,6 @@ export function flightTracking(
 	return tracking
 }
 
-// FlightAware searches at most two days ahead, so a lookup asks up to 47 hours on; tracking starts an hour inside that, so the first lookup reaches an hour past the booked departure, which a schedule moved a little later still falls in.
-export const HORIZON = Duration.hours(47)
-const TRACKED = Duration.hours(46)
-
-// In the air every quarter hour, and every five minutes from 45 minutes before the landing to a quarter hour after it.
-function airbornePace(flight: Flight, now: DateTime.Utc) {
-	const lands = arrivalOf(flight)
-	if (
-		DateTime.isGreaterThan(now, DateTime.subtractDuration(lands, Duration.minutes(45))) &&
-		DateTime.isLessThan(now, DateTime.addDuration(lands, Duration.minutes(15)))
-	) {
-		return Duration.minutes(5)
-	}
-	return Duration.minutes(15)
-}
-
-// On the ground the pace quickens at each cutover, inclusive: every two minutes only from 90 minutes out, while the gate is unknown and before the booked departure, then every five.
-function groundPace(flight: Flight, now: DateTime.Utc) {
-	const left = DateTime.distance(now, departureOf(flight))
-	if (Duration.isGreaterThan(left, Duration.hours(24))) return Duration.hours(6)
-	if (Duration.isGreaterThan(left, Duration.hours(6))) return Duration.hours(3)
-	if (Duration.isGreaterThan(left, Duration.hours(3))) return Duration.minutes(30)
-	if (Duration.isGreaterThan(left, Duration.minutes(90))) return Duration.minutes(10)
-	if (
-		DateTime.isLessThan(now, flight.departs) &&
-		!Option.exists(flight.live, live => Option.isSome(live.departureGate))
-	) {
-		return Duration.minutes(2)
-	}
-	return Duration.minutes(5)
-}
-
-// The pace of checks by how far the flight is: sparse while little can change, every two minutes in the last 90 minutes until the gate is posted, and none once it landed; at most about a hundred lookups a flight against FlightAware's thousand a month.
-export function checkEvery(flight: Flight, now: DateTime.Utc) {
-	const state = Option.map(flight.live, live => live.state)
-	if (
-		cancelledOf(flight) ||
-		Option.contains(state, 'diverted') ||
-		Option.contains(state, 'landed') ||
-		Option.contains(state, 'arrived')
-	) {
-		return Option.none<Duration.Duration>()
-	}
-	// A flight it never reported landing is let go two hours after it was due.
-	if (
-		DateTime.isLessThan(now, DateTime.subtractDuration(flight.departs, TRACKED)) ||
-		DateTime.isGreaterThan(now, DateTime.addDuration(arrivalOf(flight), Duration.hours(2)))
-	) {
-		return Option.none<Duration.Duration>()
-	}
-	// Half an hour past its departure time with no word of takeoff, a flight is paced as if in the air.
-	if (
-		Option.contains(state, 'airborne') ||
-		DateTime.isGreaterThanOrEqualTo(now, DateTime.addDuration(departureOf(flight), Duration.minutes(30)))
-	) {
-		return Option.some(airbornePace(flight, now))
-	}
-	return Option.some(groundPace(flight, now))
-}
-
 // Whether `wait` passed since the later of the saved report and the last attempt: an attempt counts answered or not, so a failing provider is asked on the same schedule, and the report counts after a restart, which forgets the attempts.
 function waited(flight: Flight, now: DateTime.Utc, attemptedAt: Option.Option<DateTime.Utc>, wait: Duration.Duration) {
 	return Array.match(Array.getSomes([Option.map(flight.live, live => live.checkedAt), attemptedAt]), {
@@ -208,28 +148,5 @@ export function isDue(flight: Flight, now: DateTime.Utc, attemptedAt: Option.Opt
 export function canRefresh(flight: Flight, now: DateTime.Utc, attemptedAt: Option.Option<DateTime.Utc>) {
 	return Option.exists(checkEvery(flight, now), every =>
 		waited(flight, now, attemptedAt, pipe(every, Duration.divideUnsafe(2), Duration.max(Duration.minutes(2))))
-	)
-}
-
-// Live data that missed two of the checks due after it no longer describes the flight, even once tracking stopped; an arrival is final. Checks come at the shorter of the pace when it was read and the pace now, since the pace quickens near departure.
-export function isStale(flight: Flight, now: DateTime.Utc) {
-	return Option.exists<FlightTracking>(
-		flight.live,
-		live =>
-			live.state !== 'arrived' &&
-			pipe(
-				Array.getSomes([checkEvery(flight, live.checkedAt), checkEvery(flight, now)]),
-				Array.match({
-					onEmpty: () => Option.none<Duration.Duration>(),
-					onNonEmpty: paces => Option.some(Array.min(paces, Duration.Order))
-				}),
-				Option.exists(every =>
-					pipe(
-						live.checkedAt,
-						DateTime.distance(now),
-						Duration.isGreaterThan(pipe(every, Duration.times(2), Duration.sum(Duration.minutes(2))))
-					)
-				)
-			)
 	)
 }

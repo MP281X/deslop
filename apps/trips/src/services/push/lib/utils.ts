@@ -16,27 +16,28 @@ import {
 import {
 	ACTIVITY_LIFETIME,
 	airportByOf,
-	autoStartOf,
-	boardsAt,
-	changeLine,
-	cityOf,
-	feederOf,
-	delayLine,
-	delayOf,
-	landingDelayOf,
-	stepOf,
 	arrivalClockOf,
 	arrivalOf,
+	autoStartOf,
+	boardsAt,
 	cancelledOf,
+	changeLine,
+	cityOf,
 	clockAt,
 	daysBetween,
+	delayLine,
+	delayOf,
 	departureOf,
+	feederOf,
 	HOUR,
 	isBooked,
+	isStale,
 	labelled,
+	landingDelayOf,
 	leaveByOf,
 	line,
 	routeOf,
+	stepOf,
 	titleOf,
 	travellersLine
 } from '#services/flights/lib/utils.ts'
@@ -45,7 +46,6 @@ import {ActivityProps} from '#services/flights/schema.ts'
 import type {FlightList, Flight, Leg, Place, Traveller, TravelTime} from '#services/flights/schema.ts'
 import {ShowAction} from '#services/push/schema.ts'
 import type {Activity, AlertCategory, AlertDelivery, Device, SentAlert} from '#services/push/schema.ts'
-import {isStale} from '#services/tracking/lib/utils.ts'
 
 // Ryanair's free check-in opens 72 hours before departure and closes 2 hours before, per its help centre in November 2026; other airlines get the common 24 hours, closing an hour before.
 const RYANAIR = ['FR', 'RK']
@@ -668,6 +668,21 @@ function boardingWords(flight: Flight) {
 	}
 }
 
+// Away from the gate, waiting to take off: when it left, and when it lands.
+function taxiWords(flight: Flight) {
+	return {
+		...QUIET,
+		label: 'Left the gate at',
+		note: '',
+		noteTone: 'plain' as const,
+		small: line([Option.some(titleOf(flight)), seatsLine(flight)]),
+		symbol: 'airplane.departure' as const,
+		until: 'Lands',
+		untilValue: arrivalClockOf(flight),
+		value: clockAt(departureOf(flight), flight.from.timeZone)
+	}
+}
+
 function airborneWords(flight: Flight, next: Option.Option<Flight>) {
 	return {
 		...QUIET,
@@ -727,6 +742,7 @@ function wordsOf(journey: Journey, current: Step, travel: readonly TravelTime[])
 	}
 	if (current.phase === 'gate') return gateWords(current.flight, current.index > 0)
 	if (current.phase === 'boarding') return boardingWords(current.flight)
+	if (current.phase === 'taxiing') return taxiWords(current.flight)
 	if (current.phase === 'airborne') return airborneWords(current.flight, Array.get(journey, current.index + 1))
 	if (current.phase === 'landed') return landedWords(current.flight)
 	return stoppedWords(current.flight, current.phase === 'cancelled')

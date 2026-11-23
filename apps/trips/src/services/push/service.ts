@@ -28,7 +28,7 @@ import {Migrator, SqlClient, SqlModel, SqlSchema} from 'effect/sql'
 import {Apns} from '@deslop/runtime/server/apns'
 import {ApnsAnswer} from '@deslop/runtime/shared/apns'
 
-import {ACTIVITY_NAME, journeysOf, line, stepOf} from '#services/flights/lib/utils.ts'
+import {ACTIVITY_NAME, isStale, journeysOf, line, stepOf} from '#services/flights/lib/utils.ts'
 import type {Journey} from '#services/flights/lib/utils.ts'
 import type {ActivityProps, Flight, Leg, FlightsError, TravelTime} from '#services/flights/schema.ts'
 import {FlightId, Place} from '#services/flights/schema.ts'
@@ -61,7 +61,6 @@ import {
 	SentAlert,
 	ShowAction
 } from '#services/push/schema.ts'
-import {isStale} from '#services/tracking/lib/utils.ts'
 
 const SCHEMES: Record.ReadonlyRecord<string, string> = {
 	'xyz.mp281x.trips': 'trips',

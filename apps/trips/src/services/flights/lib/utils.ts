@@ -602,10 +602,98 @@ export function upsert(current: FlightList, incoming: FlightList): FlightList {
 	return Array.reduce(incoming, current, upsertOne(incoming))
 }
 
-// Landed counts as arrived on the phone, the island and the server alike.
+// FlightAware searches at most two days ahead, so a lookup asks up to 47 hours on; tracking starts an hour inside that, so the first lookup reaches an hour past the booked departure, which a schedule moved a little later still falls in.
+export const HORIZON = Duration.hours(47)
+const TRACKED = Duration.hours(46)
+
+// In the air every quarter hour, and every five minutes from 45 minutes before the landing to a quarter hour after it.
+function airbornePace(flight: Flight, now: DateTime.Utc) {
+	const lands = arrivalOf(flight)
+	if (
+		DateTime.isGreaterThan(now, DateTime.subtractDuration(lands, Duration.minutes(45))) &&
+		DateTime.isLessThan(now, DateTime.addDuration(lands, Duration.minutes(15)))
+	) {
+		return Duration.minutes(5)
+	}
+	return Duration.minutes(15)
+}
+
+// On the ground the pace quickens at each cutover, inclusive: every two minutes only from 90 minutes out, while the gate is unknown and before the booked departure, then every five.
+function groundPace(flight: Flight, now: DateTime.Utc) {
+	const left = DateTime.distance(now, departureOf(flight))
+	if (Duration.isGreaterThan(left, Duration.hours(24))) return Duration.hours(6)
+	if (Duration.isGreaterThan(left, Duration.hours(6))) return Duration.hours(3)
+	if (Duration.isGreaterThan(left, Duration.hours(3))) return Duration.minutes(30)
+	if (Duration.isGreaterThan(left, Duration.minutes(90))) return Duration.minutes(10)
+	if (
+		DateTime.isLessThan(now, flight.departs) &&
+		!Option.exists(flight.live, live => Option.isSome(live.departureGate))
+	) {
+		return Duration.minutes(2)
+	}
+	return Duration.minutes(5)
+}
+
+// The pace of checks by how far the flight is: sparse while little can change, every two minutes in the last 90 minutes until the gate is posted, and none once it landed; at most about a hundred lookups a flight against FlightAware's thousand a month.
+export function checkEvery(flight: Flight, now: DateTime.Utc) {
+	const state = Option.map(flight.live, live => live.state)
+	if (
+		cancelledOf(flight) ||
+		Option.contains(state, 'diverted') ||
+		Option.contains(state, 'landed') ||
+		Option.contains(state, 'arrived')
+	) {
+		return Option.none<Duration.Duration>()
+	}
+	// A flight it never reported landing is let go two hours after it was due.
+	if (
+		DateTime.isLessThan(now, DateTime.subtractDuration(flight.departs, TRACKED)) ||
+		DateTime.isGreaterThan(now, DateTime.addDuration(arrivalOf(flight), Duration.hours(2)))
+	) {
+		return Option.none<Duration.Duration>()
+	}
+	// Half an hour past its departure time with no word of takeoff, a flight is paced as if in the air.
+	if (
+		Option.contains(state, 'airborne') ||
+		DateTime.isGreaterThanOrEqualTo(now, DateTime.addDuration(departureOf(flight), Duration.minutes(30)))
+	) {
+		return Option.some(airbornePace(flight, now))
+	}
+	return Option.some(groundPace(flight, now))
+}
+
+// Live data that missed two of the checks due after it no longer describes the flight, even once tracking stopped; an arrival is final. Checks come at the shorter of the pace when it was read and the pace now, since the pace quickens near departure.
+export function isStale(flight: Flight, now: DateTime.Utc) {
+	return Option.exists<FlightTracking>(
+		flight.live,
+		live =>
+			live.state !== 'arrived' &&
+			pipe(
+				Array.getSomes([checkEvery(flight, live.checkedAt), checkEvery(flight, now)]),
+				Array.match({
+					onEmpty: () => Option.none<Duration.Duration>(),
+					onNonEmpty: paces => Option.some(Array.min(paces, Duration.Order))
+				}),
+				Option.exists(every =>
+					pipe(
+						live.checkedAt,
+						DateTime.distance(now),
+						Duration.isGreaterThan(pipe(every, Duration.times(2), Duration.sum(Duration.minutes(2))))
+					)
+				)
+			)
+	)
+}
+
+// What FlightAware last said while its reports keep coming; once stale, the clock speaks for it.
+function reported(flight: Flight, now: DateTime.Utc) {
+	return Option.filter(flight.live, () => !isStale(flight, now))
+}
+
+// Landed counts as arrived on the phone, the island and the server alike. A report that still has it flying wins over an estimate that passed.
 function arrived(flight: Flight, now: DateTime.Utc) {
-	if (DateTime.isGreaterThanOrEqualTo(now, arrivalOf(flight))) return true
-	return Option.exists(flight.live, live => live.state === 'arrived' || live.state === 'landed')
+	if (Option.exists(flight.live, live => live.state === 'arrived' || live.state === 'landed')) return true
+	return Option.isNone(reported(flight, now)) && DateTime.isGreaterThanOrEqualTo(now, arrivalOf(flight))
 }
 
 // A day of flying: each flight leaves from where the one before it lands. One Live Activity follows it, handed from flight to flight at each landing.
@@ -732,11 +820,10 @@ function step(at: StepAt, since: DateTime.Utc, deadline: Option.Option<DateTime.
 	} satisfies Step
 }
 
+// Off the ground: FlightAware saw it take off, or without its reports the clock passed the departure. Leaving the gate is not taking off.
 function airborne(flight: Flight, now: DateTime.Utc) {
-	return (
-		Option.exists(flight.live, live => live.state === 'departed' || live.state === 'airborne') ||
-		DateTime.isGreaterThanOrEqualTo(now, departureOf(flight))
-	)
+	if (Option.exists(flight.live, live => live.state === 'airborne')) return true
+	return Option.isNone(reported(flight, now)) && DateTime.isGreaterThanOrEqualTo(now, departureOf(flight))
 }
 
 // The first flight on the way to its airport: leave by, then airport by, then its gate.
@@ -787,15 +874,27 @@ function flownStep(flight: Flight, index: number, now: DateTime.Utc) {
 	return Option.none()
 }
 
-// Where the day stands: the first flight still to land, or the last once all have. At its landing the day goes on to the next flight's gate.
-export function stepOf(journey: Journey, now: DateTime.Utc, travel: readonly TravelTime[]) {
-	const index = pipe(
+// The flight the day is at: the first still to land, or the last once all have. At its landing the day goes on to the next one.
+export function legIndexOf(journey: Journey, now: DateTime.Utc) {
+	return pipe(
 		journey,
 		Array.findFirstIndex(flight => cancelledOf(flight) || !arrived(flight, now)),
 		Option.getOrElse(() => journey.length - 1)
 	)
+}
+
+// Where the day stands at its flight; at a landing the day goes on to the next flight's gate.
+export function stepOf(journey: Journey, now: DateTime.Utc, travel: readonly TravelTime[]) {
+	const index = legIndexOf(journey, now)
 	const flight = journey[index] ?? Array.headNonEmpty(journey)
 	return Option.getOrElse(flownStep(flight, index, now), () => {
+		// Pushed back from the gate and not yet off the ground.
+		if (Option.exists(reported(flight, now), live => live.state === 'departed')) {
+			return step({flight, index, phase: 'taxiing', segment: 2}, departureOf(flight), Option.none(), {
+				since: boardsAt(flight),
+				until: departureOf(flight)
+			})
+		}
 		if (DateTime.isGreaterThanOrEqualTo(now, boardsAt(flight))) {
 			return step({flight, index, phase: 'boarding', segment: 2}, boardsAt(flight), Option.some(departureOf(flight)))
 		}

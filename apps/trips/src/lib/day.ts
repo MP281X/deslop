@@ -10,6 +10,7 @@ import {
 	connects,
 	departureOf,
 	HOUR,
+	isStale,
 	journeyOf,
 	spanLabel,
 	stepOf
@@ -17,7 +18,6 @@ import {
 import type {Journey, Step} from '#services/flights/lib/utils.ts'
 import type {Flight, FlightList, TravelTime} from '#services/flights/schema.ts'
 import {activityProps} from '#services/push/lib/utils.ts'
-import {isStale} from '#services/tracking/lib/utils.ts'
 
 // "in 25 min", "in 1h 15m", or "in 3 days" from a day out.
 function inSpan(span: Duration.Duration) {
