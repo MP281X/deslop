@@ -32,6 +32,7 @@ import {AsyncResult, Atom} from 'effect/reactivity'
 import {Suspense} from 'react'
 
 import {ItemGroupSkeleton} from '@deslop/components-mobile/blocks/item-group-skeleton'
+import {useListChoose} from '@deslop/components-mobile/blocks/list-detail'
 import {ListToolbar} from '@deslop/components-mobile/blocks/list-toolbar'
 import {Loaded} from '@deslop/components-mobile/blocks/loaded'
 import {Problem} from '@deslop/components-mobile/blocks/problem'
@@ -64,10 +65,16 @@ import {Series} from '#services/chapters/schema.ts'
 function ChapterRow(props: {chapter: ChapterItem; onOpen: (number: ChapterNumber) => void}) {
 	const now = useAtomValue(clockAtom('1 minute'))
 	const read = useAtomSet(readAtom)
+	const choose = useListChoose()
 	const done = Option.exists(props.chapter.reading, reading => reading.done)
 	return (
 		<SwipeActions modifiers={itemRow}>
-			<Item onPress={() => props.onOpen(props.chapter.number)}>
+			<Item
+				onPress={() => {
+					choose()
+					props.onOpen(props.chapter.number)
+				}}
+			>
 				<ItemMedia>
 					<Cover
 						url={Option.getOrElse(Array.head(props.chapter.pages), Function.constant(''))}
