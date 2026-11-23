@@ -300,15 +300,45 @@ it('keeps travellers apart whatever script their names are in, and two of the sa
 })
 
 it('moves a rebooked reservation to its new flight, keeping the id when nobody else was on the old one', () => {
+	const bob = {...traveller('TWO', Option.some('Bob Stone'), Option.some('11B')), boardingGroup: Option.some('2')}
+	const boarding = {
+		...FLIGHT,
+		boardingAt: Option.some(DateTime.subtractDuration(DEPARTS, Duration.minutes(40))),
+		live: Option.some(
+			Schema.decodeSync(FlightTracking)({
+				checkedAt: 1,
+				departureGate: 'B12',
+				departureTerminal: '3',
+				state: 'scheduled'
+			})
+		)
+	}
+	// The new ticket prints no boarding time, seat or group, so the new flight has none of the old one's.
+	const unseated = traveller('TWO', Option.some('Bob Stone'), Option.none())
 	assert.deepStrictEqual(
-		Array.map(
+		Array.map(upsert([Flight.make({...boarding, travellers: [bob]})], [ticket([unseated], '543')]), flight => [
+			flight.id,
+			flight.number,
+			flight.boardingAt,
+			flight.live,
+			flight.travellers
+		]),
+		[[FLIGHT.id, '543', Option.none(), Option.none(), [unseated]]]
+	)
+	// Moved off a flight others stay on, he brings no seat either.
+	assert.deepStrictEqual(
+		seating(
 			upsert(
-				[Flight.make({...FLIGHT, travellers: [traveller('TWO', Option.some('Bob Stone'), Option.some('11B'))]})],
-				[ticket([traveller('TWO', Option.some('Bob Stone'), Option.none())], '543')]
-			),
-			flight => [flight.id, flight.number, flight.travellers]
+				[
+					Flight.make({...boarding, travellers: [traveller('ONE', Option.some('Alice Hart'), Option.some('11A')), bob]})
+				],
+				[ticket([unseated], '543')]
+			)
 		),
-		[[FLIGHT.id, '543', [traveller('TWO', Option.some('Bob Stone'), Option.some('11B'))]]]
+		[
+			['553', false, [['Alice Hart', '11A', 'ONE', 'confirmed']]],
+			['543', false, [['Bob Stone', '', 'TWO', 'confirmed']]]
+		]
 	)
 })
 

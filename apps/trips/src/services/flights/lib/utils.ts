@@ -338,19 +338,31 @@ function confirmedBy(flight: Flight) {
 	return (traveller: Traveller) => Option.exists(codeOf(traveller), code => Array.contains(codes, code))
 }
 
-// A ticket reads only for its own travellers, so a cancellation changes no time or gate another traveller's ticket gave; the id stays, and live data survives only while it describes the same service.
+// A traveller moved to another service keeps who they are and their reservation, but not the seat or group of the flight they left.
+function unseated(traveller: Traveller) {
+	return {...traveller, boardingGroup: Option.none(), seat: Option.none()} satisfies Traveller
+}
+
+// A ticket reads only for its own travellers, so a cancellation changes no time or gate another traveller's ticket gave; the id stays, the boarding time and live data survive only while they describe the same service, and a rebooking's old flight lends the new one no seats.
 function combine(existing: Flight, incoming: Flight, arriving: readonly Traveller[]) {
 	const same =
 		existing.airlineCode === incoming.airlineCode &&
 		existing.number === incoming.number &&
 		pipe(DateTime.distance(incoming.departs, existing.departs), Duration.abs, Duration.isLessThanOrEqualTo(HOUR))
 	const fields = Boolean.match(bookedOf(incoming), {onFalse: () => existing, onTrue: () => incoming})
+	const held = Boolean.match(sameService(existing, incoming), {
+		onFalse: () => Array.map(existing.travellers, unseated),
+		onTrue: () => existing.travellers
+	})
 	return Flight.make({
 		...Struct.pick(fields, Struct.keys(Flight.fields)),
-		boardingAt: newer(existing.boardingAt, fields.boardingAt),
+		boardingAt: newer(
+			Option.filter(existing.boardingAt, () => same),
+			fields.boardingAt
+		),
 		id: existing.id,
 		live: Option.filter(existing.live, () => same),
-		travellers: travellersOf([...existing.travellers, ...arriving], incoming.travellers)
+		travellers: travellersOf([...held, ...arriving], incoming.travellers)
 	})
 }
 
@@ -376,7 +388,8 @@ function upsertOne(flights: FlightList, incoming: Flight) {
 	const arriving = pipe(
 		flights,
 		Array.filter(held => rebooked(held) && !isTarget(held)),
-		Array.flatMap(held => Array.filter(held.travellers, moving))
+		Array.flatMap(held => Array.filter(held.travellers, moving)),
+		Array.map(unseated)
 	)
 	const merged = Option.match(target, {
 		onNone: () => withTravellers(incoming, travellersOf(arriving, incoming.travellers)),
