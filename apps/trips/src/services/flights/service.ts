@@ -30,9 +30,9 @@ function at(time: LocalTime, timeZone: string) {
 	})
 }
 
-// Everyone the ticket names holds its reservation; a ticket that names nobody holds it under no name, so its cancellation still finds it.
+// Everyone the ticket names holds its reservation; a ticket that names nobody holds it under no name, so its cancellation still finds it. Only a boarding pass prints when boarding starts, so such a ticket is a pass for each traveller it names.
 function travellersOf(item: ExtractedFlight) {
-	const reservation = {confirmation: item.confirmation, status: item.status}
+	const reservation = {boardingPass: Option.isSome(item.boarding), confirmation: item.confirmation, status: item.status}
 	return Array.match(item.travellers, {
 		onEmpty: () => [
 			{...reservation, boardingGroup: Option.none(), name: Option.none(), seat: Option.none(), ticket: Option.none()}

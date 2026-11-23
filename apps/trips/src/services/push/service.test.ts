@@ -66,6 +66,7 @@ function flightAt(
 		travellers: [
 			{
 				boardingGroup: Option.none(),
+				boardingPass: false,
 				confirmation: Option.none(),
 				name: Option.none(),
 				seat,

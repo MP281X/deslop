@@ -47,6 +47,7 @@ function ticket(now: DateTime.Utc, id: FlightId, confirmation: string) {
 		travellers: [
 			{
 				boardingGroup: Option.none(),
+				boardingPass: false,
 				confirmation: Option.some(confirmation),
 				name: Option.none(),
 				seat: Option.none(),

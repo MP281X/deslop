@@ -25,6 +25,7 @@ import {
 	daysBetween,
 	departureOf,
 	HOUR,
+	isBooked,
 	labelled,
 	leaveByOf,
 	line,
@@ -206,19 +207,20 @@ function checkInOf(flight: Flight) {
 	}
 }
 
-// A traveller holds a boarding pass once a pass gave the flight its boarding time and gave them a seat: only a pass prints when boarding starts, and every pass prints a seat. A flight with no traveller named is one traveller without a pass.
+// Each traveller still booked needs their own boarding pass, so one traveller's pass leaves the others reminded. A flight with no traveller named is one traveller without a pass.
 function withoutPass(flight: Flight) {
 	if (Array.isReadonlyArrayEmpty(flight.travellers)) {
 		return Array.of<Traveller>({
 			boardingGroup: Option.none(),
+			boardingPass: false,
 			confirmation: Option.none(),
 			name: Option.none(),
 			seat: Option.none(),
-			status: 'confirmed'
+			status: 'confirmed',
+			ticket: Option.none()
 		})
 	}
-	if (Option.isNone(flight.boardingAt)) return flight.travellers
-	return Array.filter(flight.travellers, traveller => Option.isNone(traveller.seat))
+	return Array.filter(flight.travellers, traveller => isBooked(traveller) && !traveller.boardingPass)
 }
 
 // The plan comes twelve hours before leaving, moved earlier into 09:00–21:00 on the airport's clock, never later, so it neither wakes him nor comes after he is asleep.

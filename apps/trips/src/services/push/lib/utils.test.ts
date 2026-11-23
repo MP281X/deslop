@@ -4,7 +4,8 @@ import {Array, DateTime, Duration, Option, Redacted, Schema, String, Struct, pip
 
 import {ApnsToken} from '@deslop/runtime/shared/apns'
 
-import {activityProps, MINUTE} from '#services/flights/lib/utils.ts'
+import {activityProps, MINUTE, upsert} from '#services/flights/lib/utils.ts'
+import type {FlightList, Traveller} from '#services/flights/schema.ts'
 import {FlightId, Flight, FlightTracking, Place, PlaceCode, TravelTime} from '#services/flights/schema.ts'
 import {
 	activityPhones,
@@ -45,6 +46,7 @@ const FLIGHT = Struct.pick(
 const CANCELLED = [
 	{
 		boardingGroup: Option.none(),
+		boardingPass: false,
 		confirmation: Option.some('ABC123'),
 		name: Option.none(),
 		seat: Option.none(),
@@ -357,6 +359,7 @@ const RYANAIR = Struct.pick(
 		travellers: [
 			{
 				boardingGroup: Option.none(),
+				boardingPass: false,
 				confirmation: Option.some('ABC123'),
 				name: Option.some('Matteo Rossi'),
 				seat: Option.some('14C'),
@@ -365,6 +368,7 @@ const RYANAIR = Struct.pick(
 			},
 			{
 				boardingGroup: Option.none(),
+				boardingPass: false,
 				confirmation: Option.some('ABC123'),
 				name: Option.some('Anna Bianchi'),
 				seat: Option.none(),
@@ -443,24 +447,79 @@ it('opens check-in 72 h out on Ryanair and 24 h out elsewhere, and reminds 12 h 
 			[false, false]
 		]
 	)
-	// A pass gave the flight its boarding time; Anna still has no seat, so she has no pass, until hers comes.
-	const boarding = {...RYANAIR, boardingAt: Option.some(DateTime.makeUnsafe('2026-11-24T08:50:00Z'))}
+	// Matteo's pass came and Anna's not, so she is reminded, until hers comes.
+	function passes(held: readonly boolean[]) {
+		return Flight.make({
+			...RYANAIR,
+			travellers: Array.map(RYANAIR.travellers, (traveller, index) => ({
+				...traveller,
+				boardingPass: held[index] === true
+			}))
+		})
+	}
 	assert.deepStrictEqual(
 		[
 			Option.map(
-				alertAt(Flight.make(boarding), DateTime.makeUnsafe('2026-11-23T20:00:00Z'), NO_CONTEXT, 'closing'),
+				alertAt(passes([true, false]), DateTime.makeUnsafe('2026-11-23T20:00:00Z'), NO_CONTEXT, 'closing'),
 				alert => alert.body
 			),
-			dueAt(
-				Flight.make({
-					...boarding,
-					travellers: Array.map(boarding.travellers, traveller => ({...traveller, seat: Option.some('14D')}))
-				}),
-				Duration.hours(13),
-				'closing'
-			)
+			dueAt(passes([true, true]), Duration.hours(13), 'closing')
 		],
 		[Option.some('Check-in closes tomorrow at 08:30 · No boarding pass yet for Anna Bianchi'), false]
+	)
+})
+
+// A ticket for FR 1234 naming one traveller, printing when boarding starts only when it is their pass.
+function ticketFor(traveller: Traveller) {
+	return Flight.make({
+		...RYANAIR,
+		boardingAt: Option.liftPredicate(DateTime.makeUnsafe('2026-11-24T08:50:00Z'), () => traveller.boardingPass),
+		id: FlightId.make('4d5e6f7a-8b9c-4d0e-8f1a-2b3c4d5e6f7a'),
+		travellers: [traveller]
+	})
+}
+
+// The check-in reminder the first flight gives the evening before.
+function reminder(flights: FlightList) {
+	return pipe(
+		Array.head(flights),
+		Option.flatMap(flight => alertAt(flight, DateTime.makeUnsafe('2026-11-23T20:00:00Z'), NO_CONTEXT, 'closing')),
+		Option.map(alert => alert.body)
+	)
+}
+
+it("reminds each traveller still booked who has no pass of their own, whoever else's pass came", () => {
+	// Matteo and Anna each booked a seat under their own code.
+	const matteo: Traveller = {
+		boardingGroup: Option.none(),
+		boardingPass: false,
+		confirmation: Option.some('ABC123'),
+		name: Option.some('Matteo Rossi'),
+		seat: Option.some('14C'),
+		status: 'confirmed',
+		ticket: Option.none()
+	}
+	const anna: Traveller = {
+		...matteo,
+		confirmation: Option.some('XYZ789'),
+		name: Option.some('Anna Bianchi'),
+		seat: Option.some('14D')
+	}
+	const seated = Flight.make({...RYANAIR, travellers: [matteo, anna]})
+	const matteoPassed = upsert([seated], [ticketFor({...matteo, boardingPass: true})])
+	assert.deepStrictEqual(
+		[
+			reminder([seated]),
+			reminder(matteoPassed),
+			reminder(upsert(matteoPassed, [ticketFor({...anna, boardingPass: true})])),
+			reminder(upsert(matteoPassed, [ticketFor({...anna, status: 'cancelled'})]))
+		],
+		[
+			Option.some('Check-in closes tomorrow at 08:30 · No boarding pass yet for Matteo Rossi, Anna Bianchi'),
+			Option.some('Check-in closes tomorrow at 08:30 · No boarding pass yet for Anna Bianchi'),
+			Option.none(),
+			Option.none()
+		]
 	)
 })
 
@@ -609,7 +668,11 @@ it('treats a flight he connects to as no trip from home, and a diverted flight a
 		id: FlightId.make('4d5e6f7a-8b9c-4d0e-9f1a-2b3c4d5e6f7a'),
 		number: '206',
 		to: Schema.decodeSync(Place)({city: 'Dublin', code: 'DUB', name: 'Dublin', timeZone: 'Europe/Dublin'}),
-		travellers: Array.map(RYANAIR.travellers, traveller => ({...traveller, seat: Option.some('14C')}))
+		travellers: Array.map(RYANAIR.travellers, traveller => ({
+			...traveller,
+			boardingPass: true,
+			seat: Option.some('14C')
+		}))
 	})
 	const toStansted = [TravelTime.make({airport: PlaceCode.make('STN'), minutes: 60})]
 	const airborne = liveFor(RYANAIR, {

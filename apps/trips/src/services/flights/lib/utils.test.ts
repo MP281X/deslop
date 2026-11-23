@@ -132,6 +132,7 @@ function traveller(
 ) {
 	return {
 		boardingGroup: Option.none(),
+		boardingPass: false,
 		confirmation: Option.some(confirmation),
 		name,
 		seat,
@@ -442,7 +443,11 @@ it('keeps travellers apart whatever script their names are in, and two of the sa
 })
 
 it('moves a rebooked traveller to the new service, a flight of its own that lends nothing of the old one', () => {
-	const bob = {...traveller('TWO', Option.some('Bob Stone'), Option.some('11B')), boardingGroup: Option.some('2')}
+	const bob = {
+		...traveller('TWO', Option.some('Bob Stone'), Option.some('11B')),
+		boardingGroup: Option.some('2'),
+		boardingPass: true
+	}
 	const boarding = {
 		...FLIGHT,
 		boardingAt: Option.some(DateTime.subtractDuration(DEPARTS, Duration.minutes(40))),
@@ -455,7 +460,7 @@ it('moves a rebooked traveller to the new service, a flight of its own that lend
 			})
 		)
 	}
-	// The new ticket prints no boarding time, seat or group, so the new flight has none of the old one's, and its own id keeps the old flight's alerts and Live Activity apart.
+	// The new ticket prints no boarding time, seat or group, so the new flight has none of the old one's, nor its boarding pass, and its own id keeps the old flight's alerts and Live Activity apart.
 	const unseated = traveller('TWO', Option.some('Bob Stone'), Option.none())
 	assert.deepStrictEqual(
 		Array.map(upsert([Flight.make({...boarding, travellers: [bob]})], [ticket([unseated], '543')]), flight => [

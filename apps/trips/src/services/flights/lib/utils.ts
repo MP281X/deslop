@@ -108,7 +108,7 @@ function nameOf(traveller: Traveller) {
 	)
 }
 
-function isBooked(traveller: Traveller) {
+export function isBooked(traveller: Traveller) {
 	return traveller.status === 'confirmed'
 }
 
@@ -273,10 +273,11 @@ function alikeFrom(entries: readonly Traveller[], entry: Traveller, index: numbe
 	)
 }
 
-// The ticket's word on a traveller: its status always, every other field only where it prints one.
+// The ticket's word on a traveller: its status always, every other field only where it prints one, and a boarding pass once any was read.
 function updated(held: Traveller, incoming: Traveller) {
 	return {
 		boardingGroup: newer(held.boardingGroup, incoming.boardingGroup),
+		boardingPass: held.boardingPass || incoming.boardingPass,
 		confirmation: newer(held.confirmation, incoming.confirmation),
 		name: newer(held.name, incoming.name),
 		seat: newer(held.seat, incoming.seat),
@@ -531,13 +532,16 @@ function leavingOf(flights: FlightList, ticket: FlightList, incoming: Flight) {
 	)
 }
 
-// Who arrives from each flight: the travellers leaving it, keeping who they are and their reservation, but not the seat or group of the flight they left.
+// Who arrives from each flight: the travellers leaving it, keeping who they are and their reservation, but not the seat, group or boarding pass of the flight they left.
 function arrivalsOf(leaving: readonly Held[]) {
 	return Array.map(leaving, other =>
 		pipe(
 			other.flight.travellers,
 			Array.filter((_, index) => among(other.leavers)(index)),
-			Array.map(traveller => ({...traveller, boardingGroup: Option.none(), seat: Option.none()}) satisfies Traveller)
+			Array.map(
+				traveller =>
+					({...traveller, boardingGroup: Option.none(), boardingPass: false, seat: Option.none()}) satisfies Traveller
+			)
 		)
 	)
 }

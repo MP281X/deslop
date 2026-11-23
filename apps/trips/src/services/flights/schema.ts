@@ -69,10 +69,11 @@ export const FlightTracking = Schema.Struct({
 	takeoffActual: Schema.OptionFromOptionalKey(DateTimeUtcFromFiniteMillis)
 })
 
-// One person on a flight under their own reservation, with its code and whether it stands; a ticket that names nobody, or a flight saved before Trips read names, holds its reservation under no name. The e-ticket number, when a ticket prints it, tells two people of one name apart.
+// One person on a flight under their own reservation, with its code, whether it stands and whether a boarding pass for them was read; a ticket that names nobody, or a flight saved before Trips read names, holds its reservation under no name. The e-ticket number, when a ticket prints it, tells two people of one name apart.
 export type Traveller = typeof Traveller.Type
 export const Traveller = Schema.Struct({
 	boardingGroup: Schema.OptionFromOptionalKey(Schema.String),
+	boardingPass: Schema.Boolean,
 	confirmation: Schema.OptionFromOptionalKey(Schema.String),
 	name: Schema.OptionFromOptionalKey(Schema.String),
 	seat: Schema.OptionFromOptionalKey(Schema.String),
