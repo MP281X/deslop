@@ -1,4 +1,5 @@
 import {
+	RegistryContext,
 	useAtomMount,
 	useAtomRefresh,
 	useAtomSet,
@@ -44,7 +45,7 @@ import {
 	tint
 } from '@expo/ui/swift-ui/modifiers'
 import {AsyncResult, Atom} from 'effect/reactivity'
-import {Suspense, useRef} from 'react'
+import {Suspense, useContext, useRef} from 'react'
 import {Linking} from 'react-native'
 
 import {useListBeside, useListShow} from '@deslop/components-mobile/blocks/list-detail'
@@ -256,26 +257,47 @@ function NoteContent(props: {note: NoteItem}) {
 	)
 }
 
-// The note's width, which every fold or turn changes, and whether its scrolling has come to rest.
+// The note's size, which every fold, unfold or turn changes, and whether its scrolling has come to rest.
 const widthAtom = Atom.make(0)
+const heightAtom = Atom.make(0)
 const restingAtom = Atom.make(true)
 
-function Detail(props: {note: NoteItem; onRetry: () => void; onTag: (tag: TagName) => void}) {
+// The scroll view's modifiers that keep the line the person left at the top there through every fold, unfold and turn.
+function useReadingPlace() {
 	// The line crossing the top edge of the screen.
 	const place = useNativeState<string | null>(null)
 	// The line the person left at the top when they last stopped scrolling. A fold or turn rewraps the text at the same scroll offset while still reporting that line, so the line is cleared and set again a frame later, which scrolls it back to the top.
 	const reading = useRef<string>(null)
+	const registry = useContext(RegistryContext)
 	const setWidth = useAtomSet(widthAtom)
+	const setHeight = useAtomSet(heightAtom)
 	const setResting = useAtomSet(restingAtom)
-	useAtomSubscribe(restingAtom, resting => {
-		if (resting) reading.current = place.get()
-	})
-	useAtomSubscribe(widthAtom, () => {
+	function restore() {
 		const line = reading.current
 		if (line === null) return
 		place.set(null)
 		requestAnimationFrame(() => place.set(line))
+	}
+	useAtomSubscribe(restingAtom, resting => {
+		if (resting) reading.current = place.get()
 	})
+	useAtomSubscribe(widthAtom, restore)
+	// The bar shrinking while the person scrolls changes the height too, so only a height change at rest, as unfolding from laptop posture and back, restores the line; a note pushed past its end by a taller window would otherwise stay there once the window is short again.
+	useAtomSubscribe(heightAtom, () => {
+		if (registry.get(restingAtom)) restore()
+	})
+	return [
+		scrollPosition(place, {anchor: 'top'}),
+		onScrollPhaseChange(phase => setResting(phase === 'idle')),
+		onGeometryChange(bounds => {
+			setWidth(bounds.width)
+			setHeight(bounds.height)
+		})
+	]
+}
+
+function Detail(props: {note: NoteItem; onRetry: () => void; onTag: (tag: TagName) => void}) {
+	const reading = useReadingPlace()
 	const full = useAtomValue(noteAtom(props.note))
 	useAtomMount(problemSinceAtom(noteAtom(props.note)))
 	const reload = useAtomRefresh(noteAtom(props.note))
@@ -286,13 +308,7 @@ function Detail(props: {note: NoteItem; onRetry: () => void; onTag: (tag: TagNam
 	const kept =
 		String.isNonEmpty(props.note.summary) || Option.exists(AsyncResult.value(full), note => Option.isSome(note.body))
 	return (
-		<ScrollView
-			modifiers={[
-				scrollPosition(place, {anchor: 'top'}),
-				onScrollPhaseChange(phase => setResting(phase === 'idle')),
-				onGeometryChange(bounds => setWidth(bounds.width))
-			]}
-		>
+		<ScrollView modifiers={reading}>
 			<VStack
 				alignment="leading"
 				spacing={space[4]}
