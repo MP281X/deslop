@@ -735,6 +735,18 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 							retiredAt INTEGER NOT NULL
 						) STRICT, WITHOUT ROWID
 					`
+				}),
+				// Trains left, and their props no longer decode: a train's activity becomes a channel that is only deleted, and a train's retirement still deletes its channel without sending the end.
+				'0007_no_trains': Effect.gen(function* () {
+					const sql = yield* SqlClient.SqlClient
+					const now = DateTime.toEpochMillis(yield* DateTime.now)
+					yield* sql`UPDATE retirements SET props = NULL WHERE json_extract(props, '$.kind') = 'train'`
+					yield* sql`
+						INSERT INTO retirements (channel, bundle, props, retiredAt)
+						SELECT channel, bundle, NULL, ${now} FROM activities WHERE json_extract(props, '$.kind') = 'train'
+						ON CONFLICT (channel) DO NOTHING
+					`
+					yield* sql`DELETE FROM activities WHERE json_extract(props, '$.kind') = 'train'`
 				})
 			}),
 			table: 'push_migrations'
