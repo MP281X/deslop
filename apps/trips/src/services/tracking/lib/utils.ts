@@ -1,7 +1,6 @@
 import {Array, DateTime, Duration, Function, Option, Order, Result, String, pipe} from 'effect'
 
 import {AIRPORT_LEAD, arrivalOf, departureOf} from '#services/bookings/lib/utils.ts'
-import {Booking} from '#services/bookings/schema.ts'
 import type {Flight, FlightTracking} from '#services/bookings/schema.ts'
 import type {FaFlight, FaFlights} from '#services/tracking/schema.ts'
 
@@ -106,7 +105,7 @@ export function flightTracking(answer: FaFlight, checkedAt: DateTime.Utc, last: 
 	return tracking
 }
 
-function flightInterval(flight: Flight, now: DateTime.Utc) {
+export function checkEvery(flight: Flight, now: DateTime.Utc) {
 	const departure = departureOf(flight)
 	const arrival = arrivalOf(flight)
 	const state = Option.map(flight.live, live => live.state)
@@ -142,14 +141,8 @@ function flightInterval(flight: Flight, now: DateTime.Utc) {
 	return Option.some(Duration.minutes(5))
 }
 
-export function checkEvery(booking: Booking, now: DateTime.Utc) {
-	if (Booking.isAnyOf(['stay'])(booking)) return Option.none<Duration.Duration>()
-	return flightInterval(booking, now)
-}
-
 // The last attempt counts, answered or not, so a failing provider is asked on the same schedule.
-export function isDue(booking: Booking, now: DateTime.Utc, attemptedAt: Option.Option<DateTime.Utc>) {
-	if (Booking.isAnyOf(['stay'])(booking)) return false
+export function isDue(booking: Flight, now: DateTime.Utc, attemptedAt: Option.Option<DateTime.Utc>) {
 	const checkedAt = Option.match<FlightTracking, Option.Option<DateTime.Utc>>(booking.live, {
 		onNone: () => attemptedAt,
 		onSome: live =>
@@ -169,8 +162,7 @@ export function isDue(booking: Booking, now: DateTime.Utc, attemptedAt: Option.O
 }
 
 // Live data that missed two of the checks due after it no longer describes the flight, even once tracking stopped; an arrival is final. Checks come at the shorter of the pace when it was read and the pace now, since the pace quickens near departure.
-export function isStale(booking: Booking, now: DateTime.Utc) {
-	if (Booking.isAnyOf(['stay'])(booking)) return false
+export function isStale(booking: Flight, now: DateTime.Utc) {
 	return Option.exists<FlightTracking>(
 		booking.live,
 		live =>

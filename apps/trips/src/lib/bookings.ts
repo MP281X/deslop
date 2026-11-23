@@ -16,13 +16,12 @@ import {provideRuntimeOnce} from '@deslop/runtime/mobile/session'
 import {listReducer} from '@deslop/runtime/shared/list'
 
 import {RpcClient, session} from '#lib/session.ts'
-import {byStart, endOf, HOUR} from '#services/bookings/lib/utils.ts'
-import {Booking, BookingId, BookingModel, BookingSource, BookingsError, IMAGE_BYTES} from '#services/bookings/schema.ts'
-import type {Flight} from '#services/bookings/schema.ts'
+import {arrivalOf, byDeparture, HOUR} from '#services/bookings/lib/utils.ts'
+import {BookingId, BookingSource, BookingsError, Flight, IMAGE_BYTES} from '#services/bookings/schema.ts'
 
 const bookingsFile = new File(Paths.document, 'bookings.json')
 
-const apply = listReducer(byStart, booking => booking.id)
+const apply = listReducer(byDeparture, booking => booking.id)
 
 // The copy on the iPhone opens the trip at the gate even without a network.
 export const bookingsAtom = Atom.keepAlive(
@@ -31,8 +30,8 @@ export const bookingsAtom = Atom.keepAlive(
 			get,
 			session,
 			bookingsFile,
-			BookingModel.json,
-			pipe(liveStream(RpcClient, 'bookings.events'), Stream.scan(Array.empty<Booking>, apply), Stream.drop(1)),
+			Flight.json,
+			pipe(liveStream(RpcClient, 'bookings.events'), Stream.scan(Array.empty<Flight>, apply), Stream.drop(1)),
 			reconnectOnDrop
 		)
 	)
@@ -120,7 +119,7 @@ export const removal = makeRemoval({
 })
 
 // Every request gets its first answer within a minute or fails, so the pull spinner always stops.
-export const refreshAtom = Atom.fn((id: Booking['id'], get) =>
+export const refreshAtom = Atom.fn((id: BookingId, get) =>
 	pipe(
 		provideRuntimeOnce(
 			get,
@@ -145,10 +144,8 @@ export const boardAtom = Atom.make(get => {
 		get(bookingsAtom),
 		AsyncResult.value,
 		Option.flatMap(
-			Array.findFirst(
-				(booking): booking is Flight =>
-					Booking.isAnyOf(['flight'])(booking) &&
-					pipe(endOf(booking), DateTime.addDuration(HOUR), DateTime.isGreaterThanOrEqualTo(now))
+			Array.findFirst(booking =>
+				pipe(arrivalOf(booking), DateTime.addDuration(HOUR), DateTime.isGreaterThanOrEqualTo(now))
 			)
 		)
 	)

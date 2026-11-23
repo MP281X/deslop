@@ -28,8 +28,8 @@ import {Apns} from '@deslop/runtime/server/apns'
 import {ApnsAnswer, Device} from '@deslop/runtime/shared/apns'
 
 import {ACTIVITY_NAME, activeWindow, activityProps, startable, urgencyOf} from '#services/bookings/lib/utils.ts'
-import type {ActivityProps, BookingList, Flight, Leg, BookingsError} from '#services/bookings/schema.ts'
-import {Booking, BookingId} from '#services/bookings/schema.ts'
+import type {ActivityProps, Flight, Leg, BookingsError} from '#services/bookings/schema.ts'
+import {BookingId} from '#services/bookings/schema.ts'
 import {Bookings} from '#services/bookings/service.ts'
 import {
 	alertsOf,
@@ -434,7 +434,6 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 		const show = Effect.fnUntraced(function* (
 			flight: Flight,
 			window: Span & {leg: Leg},
-			all: BookingList,
 			now: DateTime.Utc,
 			requested: Option.Option<DateTime.Utc>,
 			state: RoundState
@@ -443,7 +442,7 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 				flight,
 				leg: window.leg,
 				now,
-				props: activityProps(flight, all, now, isStale(flight, now)),
+				props: activityProps(flight, now, isStale(flight, now)),
 				window
 			} satisfies Showing
 			// An activity that cannot cover the window ends, and the leg starts afresh.
@@ -483,7 +482,7 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 		})
 
 		// A device whose token died leaves the list with its first failed alert.
-		const notify = Effect.fnUntraced(function* (device: Device, alert: Alert, booking: Booking) {
+		const notify = Effect.fnUntraced(function* (device: Device, alert: Alert, booking: Flight) {
 			const answer = yield* apns.sendToDevice(
 				device,
 				'alert',
@@ -515,7 +514,7 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 				sql`INSERT INTO ${sql(AlertDelivery.table)} ${sql.insert(row)} ON CONFLICT DO UPDATE SET sentAt = excluded.sentAt`
 		})
 		// Only a booking with something to say reads its receipts, through their index on (bookingId, sentAt).
-		const announce = Effect.fnUntraced(function* (booking: Booking, now: DateTime.Utc) {
+		const announce = Effect.fnUntraced(function* (booking: Flight, now: DateTime.Utc) {
 			const candidates = alertsOf(booking, now)
 			if (Array.isReadonlyArrayEmpty(candidates)) return
 			const sent = yield* asPushReadError(listSent(booking.id))
@@ -573,10 +572,9 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 									log: 'Warn',
 									message: `The alerts of ${booking.id} were not sent`
 								})
-								if (Booking.isAnyOf(['stay'])(booking)) return
 								yield* Option.match(activeWindow(booking, now, requested), {
 									onNone: () => Effect.void,
-									onSome: window => show(booking, window, all, now, requested, state)
+									onSome: window => show(booking, window, now, requested, state)
 								})
 							}),
 							{log: 'Warn', message: `The Live Activity of ${booking.id} was not updated`}
@@ -634,14 +632,10 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 			}),
 			start: Effect.fn('Push.start')(function* (id: BookingId) {
 				if (!apns.enabled) return yield* PushError.make({message: 'The server has no Apple push configuration.'})
-				const all = yield* asPushError('The bookings could not be read.')(bookings.list)
-				const booking = yield* Option.match(
-					pipe(
-						all,
-						Array.findFirst(item => item.id === id),
-						Option.filter(Booking.isAnyOf(['flight']))
-					),
-					{onNone: () => PushError.make({message: 'This booking is not a flight.'}), onSome: Effect.succeed}
+				const booking = yield* pipe(
+					yield* asPushError('The bookings could not be read.')(bookings.list),
+					Array.findFirst(item => item.id === id),
+					Option.match({onNone: () => PushError.make({message: 'This flight is not saved.'}), onSome: Effect.succeed})
 				)
 				const now = yield* DateTime.now
 				if (!startable(booking, now)) return yield* PushError.make({message: 'This flight cannot be started now.'})
@@ -655,7 +649,7 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 				}
 				yield* asPushSaveError(recordRequest({at: now, bookingId: booking.id}))
 				yield* asPushError('The Live Activity could not be started.')(
-					show(booking, window, all, now, Option.some(now), state)
+					show(booking, window, now, Option.some(now), state)
 				)
 			}, Semaphore.withPermit(ticking))
 		}

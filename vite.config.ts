@@ -170,14 +170,7 @@ export default defineConfig({
 							patterns: [
 								...repositoryRestrictedImports.patterns,
 								{
-									group: [
-										'expo-notifications',
-										'expo-notifications/**',
-										'expo-location',
-										'expo-location/**',
-										'expo-widgets',
-										'expo-widgets/**'
-									],
+									group: ['expo-notifications', 'expo-notifications/**', 'expo-widgets', 'expo-widgets/**'],
 									message:
 										'App-only native modules and their helpers belong in their consuming app, not a shared package.'
 								}

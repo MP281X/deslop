@@ -27,7 +27,7 @@ import {FlightAware} from './lib/flightaware.ts'
 import {migrations} from './migrations.ts'
 
 import type {BookingId} from '#services/bookings/schema.ts'
-import {Booking, BookingsError, Flight, TripNumber} from '#services/bookings/schema.ts'
+import {BookingsError, Flight, TripNumber} from '#services/bookings/schema.ts'
 import {Bookings} from '#services/bookings/service.ts'
 import {checkEvery, flightTracking, isDue, pickFlight, sameLookup} from '#services/tracking/lib/utils.ts'
 import {Lookups} from '#services/tracking/schema.ts'
@@ -119,8 +119,7 @@ export class Tracking extends Context.Service<Tracking>()('@deslop/trips/service
 		// A failed or unmatched lookup still counts as an attempt, so the schedule waits before asking again; only a real answer is saved.
 		const attempts = yield* Ref.make(Record.empty<BookingId, DateTime.Utc>())
 
-		const observe = Effect.fnUntraced(function* (booking: Booking, riders: readonly Flight[], now: DateTime.Utc) {
-			if (Booking.isAnyOf(['stay'])(booking)) return
+		const observe = Effect.fnUntraced(function* (booking: Flight, riders: readonly Flight[], now: DateTime.Utc) {
 			// A booking saved again meanwhile may name another service, so the answer replaces only the booking it was read for; each ticket of the flight keeps its own report.
 			const answer = yield* lookup(booking, now)
 			return yield* Effect.forEach(
@@ -146,7 +145,7 @@ export class Tracking extends Context.Service<Tracking>()('@deslop/trips/service
 		const running = yield* Ref.make(HashSet.empty<BookingId>())
 		const check = Effect.fnUntraced(function* (
 			id: BookingId,
-			admits: (booking: Booking, now: DateTime.Utc, attempted: Option.Option<DateTime.Utc>) => boolean
+			admits: (booking: Flight, now: DateTime.Utc, attempted: Option.Option<DateTime.Utc>) => boolean
 		) {
 			const admitted = yield* Semaphore.withPermit(
 				turns,
@@ -159,25 +158,20 @@ export class Tracking extends Context.Service<Tracking>()('@deslop/trips/service
 						item => !HashSet.has(busy, id) && admits(item, now, attempted)
 					)
 					// The other tracked tickets of the flight ride on its lookup, so FlightAware is asked once however many travellers booked it, and their checks fall into step.
-					const riders = yield* pipe(
-						booking,
-						Option.filter(Booking.isAnyOf(['flight'])),
-						Option.match({
-							onNone: () => Effect.succeed(Array.empty<Flight>()),
-							onSome: flight =>
-								Effect.map(
-									bookings.list,
-									Array.filter(
-										(other): other is Flight =>
-											Booking.isAnyOf(['flight'])(other) &&
-											other.id !== flight.id &&
-											!HashSet.has(busy, other.id) &&
-											sameLookup(other, flight) &&
-											Option.isSome(checkEvery(other, now))
-									)
+					const riders = yield* Option.match(booking, {
+						onNone: () => Effect.succeed(Array.empty<Flight>()),
+						onSome: flight =>
+							Effect.map(
+								bookings.list,
+								Array.filter(
+									other =>
+										other.id !== flight.id &&
+										!HashSet.has(busy, other.id) &&
+										sameLookup(other, flight) &&
+										Option.isSome(checkEvery(other, now))
 								)
-						})
-					)
+							)
+					})
 					const ids = HashSet.fromIterable(Array.map([...Option.toArray(booking), ...riders], item => item.id))
 					yield* Ref.update(
 						attempts,
@@ -214,11 +208,7 @@ export class Tracking extends Context.Service<Tracking>()('@deslop/trips/service
 				// Each check runs on its own, so a round never waits for the flights queued behind FlightAware's gap.
 				yield* pipe(
 					all,
-					Array.filter(
-						booking =>
-							isDue(booking, now, Record.get(attempted, booking.id)) &&
-							!(paused && Booking.isAnyOf(['flight'])(booking))
-					),
+					Array.filter(booking => isDue(booking, now, Record.get(attempted, booking.id)) && !paused),
 					Effect.forEach(
 						booking =>
 							FiberSet.run(

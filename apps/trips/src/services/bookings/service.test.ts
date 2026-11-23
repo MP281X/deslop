@@ -12,7 +12,7 @@ import {Extractor} from './lib/extraction.ts'
 import {Places} from './lib/places.ts'
 
 import type {ExtractedItem, ExtractedItems} from '#services/bookings/schema.ts'
-import {Booking, BookingSource, Place, PlaceCode} from '#services/bookings/schema.ts'
+import {BookingSource, Place, PlaceCode} from '#services/bookings/schema.ts'
 import {Bookings} from '#services/bookings/service.ts'
 
 const USER = UserId.make('github:1')
@@ -28,7 +28,6 @@ function flight(number: string, from: string, to: string, departure: string, con
 		departure,
 		flightNumber: number,
 		from,
-		kind: 'flight',
 		seat: Option.none(),
 		status: 'confirmed',
 		to
@@ -46,7 +45,6 @@ const bookingsLayer = pipe(
 			airport: code =>
 				Effect.succeed(
 					Place.make({
-						address: Option.none(),
 						city: Option.none(),
 						code: Option.some(PlaceCode.make(code)),
 						latitude: Option.none(),
@@ -84,11 +82,7 @@ it.layer(bookingsLayer)(test =>
 			yield* share([flight('554', 'LHR', 'FCO', '2026-11-19T20:00', 'TWO')])
 			yield* bookings.remove(Array.headNonEmpty(shown).id)
 			assert.deepStrictEqual(
-				pipe(
-					yield* bookings.list,
-					Array.filter(Booking.isAnyOf(['flight'])),
-					Array.map(booking => booking.number)
-				),
+				Array.map(yield* bookings.list, booking => booking.number),
 				['554']
 			)
 		})

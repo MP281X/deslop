@@ -47,7 +47,7 @@ it('carries a provider cancellation into the island and one cancellation alert',
 		Array.map(alertsOf(booking, now), alert => alert.category),
 		['cancelled']
 	)
-	assert.strictEqual(activityProps(booking, [], now, false).tone, 'bad')
+	assert.strictEqual(activityProps(booking, now, false).tone, 'bad')
 })
 
 it('keeps the gate a flight left for the change it shows', () => {

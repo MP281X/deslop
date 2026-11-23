@@ -22,7 +22,7 @@ import {layerDataStore} from '@deslop/runtime/server/store'
 
 import {FlightAware} from './lib/flightaware.ts'
 
-import {Booking, BookingId, Flight, Place} from '#services/bookings/schema.ts'
+import {BookingId, Flight, Place} from '#services/bookings/schema.ts'
 import {Bookings} from '#services/bookings/service.ts'
 import {FaFlight} from '#services/tracking/schema.ts'
 import {Tracking} from '#services/tracking/service.ts'
@@ -52,7 +52,7 @@ it.layer(NodeServices.layer)(test =>
 		'two tickets of one flight cost one FlightAware lookup and each gets the report',
 		Effect.fnUntraced(function* () {
 			const now = yield* DateTime.now
-			const tickets: Booking[] = [
+			const tickets: Flight[] = [
 				ticket(now, BookingId.make('1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d'), 'ABC123'),
 				ticket(now, BookingId.make('2b3c4d5e-6f7a-4b8c-9d0e-1f2a3b4c5d6e'), 'DEF456')
 			]
@@ -66,7 +66,7 @@ it.layer(NodeServices.layer)(test =>
 			})
 			const lookups = MutableRef.make(0)
 			const asked = yield* Deferred.make<void>()
-			const replaced = yield* Queue.unbounded<Booking>()
+			const replaced = yield* Queue.unbounded<Flight>()
 			// The round that starts with the service finds both tickets due.
 			yield* Layer.build(
 				pipe(
@@ -98,11 +98,7 @@ it.layer(NodeServices.layer)(test =>
 			const reports = yield* Queue.takeBetween(replaced, 2, 2)
 			assert.strictEqual(MutableRef.get(lookups), 1)
 			assert.deepStrictEqual(
-				pipe(
-					reports,
-					Array.filter(Booking.isAnyOf(['flight'])),
-					Array.map(booking => [booking.id, Option.flatMap(booking.live, live => live.departureGate)])
-				),
+				Array.map(reports, booking => [booking.id, Option.flatMap(booking.live, live => live.departureGate)]),
 				Array.map(tickets, booking => [booking.id, Option.some('B12')])
 			)
 		}, Effect.scoped)

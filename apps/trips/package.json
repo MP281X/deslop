@@ -49,7 +49,6 @@
 		"expo-application": "^58.1.2",
 		"expo-clipboard": "^58.0.4",
 		"expo-file-system": "^58.0.14",
-		"expo-location": "^58.0.22",
 		"expo-notifications": "^58.1.9",
 		"expo-secure-store": "^58.0.3",
 		"expo-updates": "^58.0.22",

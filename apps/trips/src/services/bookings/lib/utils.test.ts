@@ -5,15 +5,13 @@ import {Array, DateTime, Duration, Option, Schema, Struct} from 'effect'
 import {
 	activeWindow,
 	arrivalClockOf,
-	dayMark,
 	daysBetween,
 	instantOf,
 	activityProps,
 	startable,
-	stayAfter,
 	upsert
 } from '#services/bookings/lib/utils.ts'
-import {Booking, BookingId, Flight, FlightTracking, Place, Stay} from '#services/bookings/schema.ts'
+import {BookingId, Flight, FlightTracking, Place} from '#services/bookings/schema.ts'
 
 const DEPARTS = DateTime.makeUnsafe('2026-10-28T15:40:00Z')
 
@@ -41,7 +39,7 @@ it('opens a flight three hours ahead', () => {
 	assert.isTrue(Option.isNone(activeWindow(FLIGHT, DateTime.subtractDuration(DEPARTS, Duration.minutes(181)))))
 	assert.isTrue(Option.isSome(activeWindow(FLIGHT, DateTime.subtractDuration(DEPARTS, Duration.hours(3)))))
 	assert.strictEqual(
-		activityProps(FLIGHT, [], DateTime.subtractDuration(DEPARTS, Duration.hours(3)), false).headline,
+		activityProps(FLIGHT, DateTime.subtractDuration(DEPARTS, Duration.hours(3)), false).headline,
 		'Leave for FCO'
 	)
 })
@@ -89,7 +87,6 @@ it('counts calendar days between local dates and marks an arrival on another dat
 		],
 		[-1, 1]
 	)
-	assert.deepStrictEqual([dayMark(0), dayMark(1), dayMark(-1)], ['', ' +1', ' −1'])
 	assert.strictEqual(
 		arrivalClockOf(
 			Flight.make({
@@ -99,41 +96,6 @@ it('counts calendar days between local dates and marks an arrival on another dat
 			})
 		),
 		'06:30 +1'
-	)
-})
-
-function stay(id: string, city: string) {
-	return Stay.make({
-		checkIn: DateTime.makeUnsafe('2026-11-18T10:00Z'),
-		checkOut: DateTime.makeUnsafe('2026-11-19T09:00Z'),
-		confirmation: Option.none(),
-		id: BookingId.make(id),
-		name: `Hotel in ${city}`,
-		place: Schema.decodeSync(Place)({
-			address: `Via Roma 1, ${city}, Italy`,
-			city,
-			name: `Hotel in ${city}`,
-			timeZone: 'Europe/Rome'
-		}),
-		status: 'confirmed'
-	})
-}
-
-it('offers a stay as the next stop only in the city the flight reaches', () => {
-	const arriving = Flight.make({
-		...FLIGHT,
-		arrives: DateTime.makeUnsafe('2026-11-18T09:00Z'),
-		departs: DateTime.makeUnsafe('2026-11-18T08:00Z'),
-		to: Schema.decodeSync(Place)({city: 'Verona', code: 'VRN', name: 'Verona Villafranca', timeZone: 'Europe/Rome'})
-	})
-	const rome = stay('33333333-3333-4333-8333-333333333333', 'Roma')
-	const verona = stay('44444444-4444-4444-8444-444444444444', 'Verona')
-	assert.deepStrictEqual(
-		[
-			Option.map(stayAfter([rome], arriving), found => found.name),
-			Option.map(stayAfter([rome, verona], arriving), found => found.name)
-		],
-		[Option.none(), Option.some('Hotel in Verona')]
 	)
 })
 
@@ -170,8 +132,8 @@ it('merges tickets for the same leg and retains live data only while its schedul
 		Array.map(upsert([tracked], [again]), booking => [
 			booking.id,
 			booking.confirmation,
-			Booking.isAnyOf(['flight'])(booking) && booking.seat,
-			Booking.isAnyOf(['flight'])(booking) && Option.flatMap(booking.live, live => live.departureGate)
+			booking.seat,
+			Option.flatMap(booking.live, live => live.departureGate)
 		]),
 		[[FLIGHT.id, Option.some('ABC123'), Option.some('14A'), Option.some('B12')]]
 	)
@@ -188,7 +150,7 @@ it('merges tickets for the same leg and retains live data only while its schedul
 					})
 				]
 			),
-			booking => Booking.isAnyOf(['flight'])(booking) && booking.live
+			booking => booking.live
 		),
 		[Option.none()]
 	)

@@ -18,8 +18,6 @@ export default {
 		'@bacons/apple-targets',
 		'expo-secure-store',
 		'expo-notifications',
-		// Only Apple's geocoder, for the coordinates of a stay's address; the app never asks where you are.
-		['expo-location', {locationWhenInUsePermission: false}],
 		[
 			'expo-widgets',
 			{

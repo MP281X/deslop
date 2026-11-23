@@ -15,8 +15,7 @@ import {
 	routeOf,
 	titleOf
 } from '#services/bookings/lib/utils.ts'
-import {Booking} from '#services/bookings/schema.ts'
-import type {Flight, Leg} from '#services/bookings/schema.ts'
+import type {BookingList, Flight, Leg} from '#services/bookings/schema.ts'
 import {ShowAction} from '#services/push/schema.ts'
 import type {Activity, AlertCategory, AlertDelivery, SentAlert, StartRequest} from '#services/push/schema.ts'
 import {isStale} from '#services/tracking/lib/utils.ts'
@@ -105,7 +104,7 @@ export function showPlan(
 // Running activities whose window has passed, or whose booking is gone.
 export function expiredActivities(
 	activities: readonly Activity[],
-	bookings: readonly Booking[],
+	bookings: BookingList,
 	now: DateTime.Utc,
 	requests: readonly StartRequest[] = []
 ) {
@@ -232,9 +231,8 @@ function flightAlerts(flight: Flight, now: DateTime.Utc, stale: boolean) {
 }
 
 // The changes worth a notification, each under a key sent once; a delay counts in steps so a drifting estimate stays quiet, and a cancellation is the only news a cancelled flight gets.
-export function alertsOf(booking: Booking, now: DateTime.Utc) {
+export function alertsOf(booking: Flight, now: DateTime.Utc) {
 	if (
-		Booking.isAnyOf(['stay'])(booking) ||
 		DateTime.isGreaterThan(now, DateTime.addDuration(arrivalOf(booking), Duration.hours(1))) ||
 		DateTime.isLessThan(now, DateTime.subtractDuration(booking.departs, Duration.hours(30)))
 	) {

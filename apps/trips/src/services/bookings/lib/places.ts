@@ -72,7 +72,6 @@ export class Places extends Context.Service<
 						Effect.mapError(() => BookingsError.make({message: `Unknown airport code ${code}.`}))
 					)
 					return {
-						address: Option.none(),
 						city: Option.some(airport.city),
 						code: Option.some(airport.iata),
 						latitude: Option.some(airport.lat),

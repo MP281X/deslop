@@ -37,32 +37,20 @@ import {problemSinceAtom} from '@deslop/runtime/client/problem'
 import {bookingsAtom, clipboard, nowAtom, removal} from '#lib/bookings.ts'
 import {primary, session} from '#lib/session.ts'
 import {daysUntil, problemOf, statusOf, tones} from '#lib/status.ts'
-import {clockAt, dayMark, daysBetween, endOf, HOUR, startOf, titleOf} from '#services/bookings/lib/utils.ts'
-import {Booking} from '#services/bookings/schema.ts'
+import {arrivalClockOf, arrivalOf, clockAt, departureOf, HOUR, titleOf} from '#services/bookings/lib/utils.ts'
+import type {BookingId, Flight} from '#services/bookings/schema.ts'
 
-function zoneOf(booking: Booking) {
-	if (Booking.isAnyOf(['stay'])(booking)) return booking.place.timeZone
-	return booking.from.timeZone
-}
-
-function headingOf(booking: Booking) {
-	if (Booking.isAnyOf(['stay'])(booking)) return booking.name
+function headingOf(booking: Flight) {
 	return `${Option.getOrElse(booking.from.city, () => booking.from.name)} to ${Option.getOrElse(booking.to.city, () => booking.to.name)}`
 }
 
-function scheduleOf(booking: Booking) {
-	if (Booking.isAnyOf(['stay'])(booking)) {
-		// Nights are the dates slept over, not the hours: 22:30 to 09:00 the next day is one.
-		const nights = daysBetween(booking.checkIn, booking.place.timeZone, booking.checkOut, booking.place.timeZone)
-		return `${nights} ${Boolean.match(nights === 1, {onFalse: Function.constant('nights'), onTrue: Function.constant('night')})} · check-in ${clockAt(booking.checkIn, booking.place.timeZone)}`
-	}
-	const departs = clockAt(startOf(booking), booking.from.timeZone)
-	const arrives = `${clockAt(endOf(booking), booking.to.timeZone)}${dayMark(daysBetween(startOf(booking), booking.from.timeZone, endOf(booking), booking.to.timeZone))}`
-	return `${titleOf(booking)} · ${Option.getOrElse(booking.from.code, () => booking.from.name)} ${departs} → ${Option.getOrElse(booking.to.code, () => booking.to.name)} ${arrives}`
+function scheduleOf(booking: Flight) {
+	const departs = clockAt(departureOf(booking), booking.from.timeZone)
+	return `${titleOf(booking)} · ${Option.getOrElse(booking.from.code, () => booking.from.name)} ${departs} → ${Option.getOrElse(booking.to.code, () => booking.to.name)} ${arrivalClockOf(booking)}`
 }
 
 // The schedule and the gate it leaves from, each shown once.
-function lineOf(booking: Booking, status: ReturnType<typeof statusOf>) {
+function lineOf(booking: Flight, status: ReturnType<typeof statusOf>) {
 	const where = Option.getOrElse(status.where, Function.constant(''))
 	return pipe([scheduleOf(booking), where], Array.filter(String.isNonEmpty), Array.join(' · '))
 }
@@ -102,10 +90,10 @@ function Gutter(props: {countdown: Countdown}) {
 }
 
 function BookingRow(props: {
-	booking: Booking
+	booking: Flight
 	countdown: Countdown
 	now: DateTime.Utc
-	onOpen: (id: Booking['id']) => void
+	onOpen: (id: BookingId) => void
 }) {
 	const status = statusOf(props.booking, props.now)
 	return (
@@ -151,10 +139,10 @@ function BookingRow(props: {
 
 function PastBookings(props: {
 	expanded: boolean
-	bookings: readonly Booking[]
+	bookings: readonly Flight[]
 	now: DateTime.Utc
 	onExpandedChange: (expanded: boolean) => void
-	onOpen: (id: Booking['id']) => void
+	onOpen: (id: BookingId) => void
 }) {
 	if (Array.isReadonlyArrayEmpty(props.bookings)) return undefined
 	// A plain list draws no toggle on a collapsible section, only the sidebar style does, so the header is the toggle.
@@ -211,7 +199,7 @@ function PastBookings(props: {
 // Every copy of the list shows Past the same way, so the copy below the board in laptop posture keeps it open when the phone lies flat.
 const pastOpenAtom = Atom.make(false)
 
-function Bookings(props: {onOpen: (id: Booking['id']) => void}) {
+function Bookings(props: {onOpen: (id: BookingId) => void}) {
 	const loaded = useAtomSuspense(bookingsAtom, {includeFailure: true})
 	const refresh = useAtomRefresh(bookingsAtom)
 	const paste = useAtomSet(clipboard.atom.send)
@@ -230,22 +218,22 @@ function Bookings(props: {onOpen: (id: Booking['id']) => void}) {
 	const current = Array.filter(
 		bookings,
 		booking =>
-			pipe(startOf(booking), DateTime.subtractDuration(Duration.hours(6)), DateTime.isLessThanOrEqualTo(now)) &&
-			pipe(endOf(booking), DateTime.addDuration(HOUR), DateTime.isGreaterThanOrEqualTo(now))
+			pipe(departureOf(booking), DateTime.subtractDuration(Duration.hours(6)), DateTime.isLessThanOrEqualTo(now)) &&
+			pipe(arrivalOf(booking), DateTime.addDuration(HOUR), DateTime.isGreaterThanOrEqualTo(now))
 	)
 	const ahead = Array.filter(bookings, booking =>
-		pipe(startOf(booking), DateTime.subtractDuration(Duration.hours(6)), DateTime.isGreaterThan(now))
+		pipe(departureOf(booking), DateTime.subtractDuration(Duration.hours(6)), DateTime.isGreaterThan(now))
 	)
 	const past = Array.reverse(
 		Array.filter(
 			bookings,
 			booking =>
-				pipe(endOf(booking), DateTime.addDuration(HOUR), DateTime.isLessThan(now)) &&
-				DateTime.isGreaterThan(endOf(booking), DateTime.subtractDuration(now, Duration.days(30)))
+				pipe(arrivalOf(booking), DateTime.addDuration(HOUR), DateTime.isLessThan(now)) &&
+				DateTime.isGreaterThan(arrivalOf(booking), DateTime.subtractDuration(now, Duration.days(30)))
 		)
 	)
-	function daysOf(booking: Booking) {
-		return daysUntil(startOf(booking), now, zoneOf(booking))
+	function daysOf(booking: Flight) {
+		return daysUntil(departureOf(booking), now, booking.from.timeZone)
 	}
 	// One root: a SwiftUI modifier on several sibling views applies to each, so the dialog and the toolbar would repeat.
 	return (
@@ -337,7 +325,7 @@ function Bookings(props: {onOpen: (id: Booking['id']) => void}) {
 }
 
 // Native navigation and clipboard/account controls do not wait for the bookings stream; the bar marks bookings that stopped updating.
-export function HomeRoute(props: {onOpen: (id: Booking['id']) => void}) {
+export function HomeRoute(props: {onOpen: (id: BookingId) => void}) {
 	const loaded = useAtomValue(bookingsAtom)
 	useAtomMount(problemSinceAtom(bookingsAtom))
 	return (

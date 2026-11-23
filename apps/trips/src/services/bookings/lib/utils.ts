@@ -1,20 +1,6 @@
-import {
-	Array,
-	Boolean,
-	DateTime,
-	Duration,
-	Equal,
-	Function,
-	HashSet,
-	Number,
-	Option,
-	Order,
-	String,
-	Struct,
-	pipe
-} from 'effect'
+import {Array, Boolean, DateTime, Duration, Equal, Function, Number, Option, Order, String, Struct, pipe} from 'effect'
 
-import {ActivityProps, Booking, Flight, Stay} from '#services/bookings/schema.ts'
+import {ActivityProps, Flight} from '#services/bookings/schema.ts'
 import type {BookingList, Chip, FlightPhase, FlightTracking, Leg, LocalTime} from '#services/bookings/schema.ts'
 
 const OFFSET = /(?:Z|[+-]\d{2}:?\d{2})$/u
@@ -60,9 +46,8 @@ export function clockAt(time: DateTime.Utc, timeZone: string) {
 }
 
 // The ticket or the provider says the flight will not run; alerts, the island and the phone all read this one answer.
-export function cancelledOf(booking: Booking) {
+export function cancelledOf(booking: Flight) {
 	if (booking.status === 'cancelled') return true
-	if (Booking.isAnyOf(['stay'])(booking)) return false
 	return Option.exists<FlightTracking>(booking.live, live => live.state === 'cancelled')
 }
 
@@ -102,7 +87,7 @@ export function daysBetween(from: DateTime.Utc, fromZone: string, to: DateTime.U
 }
 
 // The days a clock lands after or before the day it set out, as boarding passes print it: " +1", " −1" or nothing.
-export function dayMark(days: number) {
+function dayMark(days: number) {
 	if (days === 0) return ''
 	if (days > 0) return ` +${days}`
 	return ` −${-days}`
@@ -112,89 +97,20 @@ export function arrivalClockOf(booking: Flight) {
 	return `${clockAt(arrivalOf(booking), booking.to.timeZone)}${dayMark(daysBetween(departureOf(booking), booking.from.timeZone, arrivalOf(booking), booking.to.timeZone))}`
 }
 
-export function startOf(booking: Booking) {
-	if (Booking.isAnyOf(['stay'])(booking)) return booking.checkIn
-	return departureOf(booking)
-}
+// Soonest first, live delays included.
+export const byDeparture = Order.mapInput(DateTime.Order, departureOf)
 
-export function endOf(booking: Booking) {
-	if (Booking.isAnyOf(['stay'])(booking)) return booking.checkOut
-	return arrivalOf(booking)
-}
-
-export const byStart = Order.mapInput(DateTime.Order, startOf)
-
-export function titleOf(booking: Booking) {
-	if (Booking.isAnyOf(['stay'])(booking)) return booking.name
+export function titleOf(booking: Flight) {
 	return `${booking.airlineCode} ${booking.number}`
 }
 
-export function routeOf(booking: Booking) {
-	if (Booking.isAnyOf(['stay'])(booking)) {
-		return pipe(
-			booking.place.city,
-			Option.orElse(() => booking.place.address),
-			Option.getOrElse(() => booking.name)
-		)
-	}
+export function routeOf(booking: Flight) {
 	return `${Option.getOrElse(booking.from.city, () => booking.from.name)} → ${Option.getOrElse(booking.to.city, () => booking.to.name)}`
 }
 
-function wordsOf(texts: readonly Option.Option<string>[]) {
-	return HashSet.fromIterable(
-		Array.flatMap(Array.getSomes(texts), text =>
-			pipe(
-				text,
-				String.normalize('NFD'),
-				String.replaceAll(/[̀-ͯ]/gu, ''),
-				String.toLowerCase,
-				String.split(/[^a-z0-9]+/u),
-				Array.filter(word => word.length >= 3)
-			)
-		)
-	)
-}
-
-// The stay is where the flight ends only when the place names say so: its city among the destination's words, or the destination's city in its address.
-function staysAt(stay: Stay, flight: Flight) {
-	if (stay.place.timeZone !== flight.to.timeZone) return false
-	const destination = wordsOf([flight.to.city, Option.some(flight.to.name)])
-	const address = wordsOf([stay.place.city, stay.place.address])
-	const city = wordsOf([stay.place.city])
-	const arrivalCity = wordsOf([flight.to.city])
-	return (
-		(HashSet.size(city) > 0 && HashSet.isSubset(city, destination)) ||
-		(HashSet.size(arrivalCity) > 0 && HashSet.isSubset(arrivalCity, address))
-	)
-}
-
-export function stayAfter(bookings: BookingList, flight: Flight) {
-	const arrival = arrivalOf(flight)
-	const stays = Array.filter(
-		bookings,
-		(booking): booking is Stay =>
-			Booking.isAnyOf(['stay'])(booking) &&
-			booking.status === 'confirmed' &&
-			staysAt(booking, flight) &&
-			DateTime.isGreaterThan(booking.checkIn, DateTime.subtractDuration(arrival, Duration.hours(12))) &&
-			DateTime.isLessThan(booking.checkIn, DateTime.addDuration(arrival, Duration.hours(36))) &&
-			DateTime.isGreaterThan(booking.checkOut, arrival)
-	)
-	if (Array.isReadonlyArrayNonEmpty(stays)) return Option.some(Array.min(stays, byStart))
-	return Option.none<Stay>()
-}
-
-function near(left: DateTime.Utc, right: DateTime.Utc) {
-	return pipe(DateTime.distance(left, right), Duration.abs, Duration.isLessThan(Duration.hours(20)))
-}
-
 // A code as printed, so "abc123 " and "ABC123" are the same one.
-function codeOf(booking: Booking) {
+function codeOf(booking: Flight) {
 	return Option.map(booking.confirmation, code => pipe(code, String.trim, String.toUpperCase))
-}
-
-function sameConfirmation(left: Booking, right: Booking) {
-	return Option.exists(codeOf(left), code => Option.contains(codeOf(right), code))
 }
 
 // A field the newer ticket leaves out keeps what the older one printed.
@@ -208,57 +124,37 @@ function sameFlight(existing: Flight, incoming: Flight) {
 	return (
 		(existing.airlineCode === incoming.airlineCode &&
 			existing.number === incoming.number &&
-			near(existing.departs, incoming.departs)) ||
-		(sameConfirmation(existing, incoming) && Equal.equals(existing.to.code, incoming.to.code))
+			pipe(
+				DateTime.distance(existing.departs, incoming.departs),
+				Duration.abs,
+				Duration.isLessThan(Duration.hours(20))
+			)) ||
+		(Option.exists(codeOf(existing), code => Option.contains(codeOf(incoming), code)) &&
+			Equal.equals(existing.to.code, incoming.to.code))
 	)
 }
 
-function sameReservation(existing: Booking, incoming: Booking) {
+function sameReservation(existing: Flight, incoming: Flight) {
 	// Two codes that both exist and differ are two travellers, never one booking.
 	if (Option.exists(codeOf(existing), code => Option.exists(codeOf(incoming), other => other !== code))) return false
-	if (Booking.isAnyOf(['flight'])(existing) && Booking.isAnyOf(['flight'])(incoming)) {
-		return sameFlight(existing, incoming)
-	}
-	if (Booking.isAnyOf(['stay'])(existing) && Booking.isAnyOf(['stay'])(incoming)) {
-		return (
-			sameConfirmation(existing, incoming) ||
-			(existing.name === incoming.name && near(existing.checkIn, incoming.checkIn))
-		)
-	}
-	return false
-}
-
-function rideFields(existing: Flight, incoming: Flight) {
-	return {
-		confirmation: newer(existing.confirmation, incoming.confirmation),
-		id: existing.id,
-		seat: newer(existing.seat, incoming.seat)
-	}
+	return sameFlight(existing, incoming)
 }
 
 // The newer ticket wins field by field; the id stays, and live data survives only while it describes the same service.
-function combine(existing: Booking, incoming: Booking) {
-	if (Booking.isAnyOf(['flight'])(existing) && Booking.isAnyOf(['flight'])(incoming)) {
-		const same =
-			existing.airlineCode === incoming.airlineCode &&
-			existing.number === incoming.number &&
-			pipe(DateTime.distance(incoming.departs, existing.departs), Duration.abs, Duration.isLessThanOrEqualTo(HOUR))
-		return Flight.make({
-			...Struct.pick(incoming, Struct.keys(Flight.fields)),
-			...rideFields(existing, incoming),
-			boardingAt: newer(existing.boardingAt, incoming.boardingAt),
-			boardingGroup: newer(existing.boardingGroup, incoming.boardingGroup),
-			live: Option.filter(existing.live, () => same)
-		})
-	}
-	if (Booking.isAnyOf(['stay'])(existing) && Booking.isAnyOf(['stay'])(incoming)) {
-		return Stay.make({
-			...Struct.pick(incoming, Struct.keys(Stay.fields)),
-			confirmation: newer(existing.confirmation, incoming.confirmation),
-			id: existing.id
-		})
-	}
-	return incoming
+function combine(existing: Flight, incoming: Flight) {
+	const same =
+		existing.airlineCode === incoming.airlineCode &&
+		existing.number === incoming.number &&
+		pipe(DateTime.distance(incoming.departs, existing.departs), Duration.abs, Duration.isLessThanOrEqualTo(HOUR))
+	return Flight.make({
+		...Struct.pick(incoming, Struct.keys(Flight.fields)),
+		boardingAt: newer(existing.boardingAt, incoming.boardingAt),
+		boardingGroup: newer(existing.boardingGroup, incoming.boardingGroup),
+		confirmation: newer(existing.confirmation, incoming.confirmation),
+		id: existing.id,
+		live: Option.filter(existing.live, () => same),
+		seat: newer(existing.seat, incoming.seat)
+	})
 }
 
 export function upsert(current: BookingList, incoming: BookingList) {
@@ -288,8 +184,7 @@ function autoStartOf(flight: Flight) {
 type ActivityWindow = {end: DateTime.Utc; leg: Leg; start: DateTime.Utc}
 
 // A flight longer than ActivityKit's eight hours, delays included, gets a second activity for its arrival.
-function activityWindows(booking: Booking, requested: Option.Option<DateTime.Utc>) {
-	if (Booking.isAnyOf(['stay'])(booking)) return Array.empty<ActivityWindow>()
+function activityWindows(booking: Flight, requested: Option.Option<DateTime.Utc>) {
 	const start = Option.match(requested, {
 		onNone: () => autoStartOf(booking),
 		onSome: at => DateTime.min(at, autoStartOf(booking))
@@ -319,7 +214,7 @@ function activityWindows(booking: Booking, requested: Option.Option<DateTime.Utc
 }
 
 export function activeWindow(
-	booking: Booking,
+	booking: Flight,
 	now: DateTime.Utc,
 	requested: Option.Option<DateTime.Utc> = Option.none()
 ) {
@@ -381,14 +276,8 @@ function staleNote(live: Option.Option<FlightTracking>, timeZone: string, stale:
 	)
 }
 
-function flightDetail(flight: Flight, bookings: BookingList, phase: FlightPhase, stale: boolean) {
-	if (phase === 'landed') {
-		return pipe(
-			stayAfter(bookings, flight),
-			Option.map(stay => `Next: ${stay.name}`),
-			Option.getOrElse(Function.constant(''))
-		)
-	}
+function flightDetail(flight: Flight, phase: FlightPhase, stale: boolean) {
+	if (phase === 'landed') return ''
 	return line([
 		labelled('Group', flight.boardingGroup),
 		labelled(
@@ -449,7 +338,7 @@ function departureNote(phase: FlightPhase, delay: number) {
 	return 'On time'
 }
 
-export function activityProps(flight: Flight, bookings: BookingList, now: DateTime.Utc, stale: boolean) {
+export function activityProps(flight: Flight, now: DateTime.Utc, stale: boolean) {
 	const phase = flightPhase(flight, now)
 	const delay = Number.round(Duration.toMinutes(DateTime.distance(flight.departs, departureOf(flight))), 0)
 	return ActivityProps.make({
@@ -466,7 +355,7 @@ export function activityProps(flight: Flight, bookings: BookingList, now: DateTi
 		departureNote: departureNote(phase, delay),
 		departureTime: clockAt(departureOf(flight), flight.from.timeZone),
 		departureTone: Boolean.match(delay >= 5, {onFalse: Function.constant('plain'), onTrue: Function.constant('warn')}),
-		detail: flightDetail(flight, bookings, phase, stale),
+		detail: flightDetail(flight, phase, stale),
 		from: Option.getOrElse(flight.from.code, () => flight.from.name),
 		headline: flightHeadline(flight, phase),
 		label: flightLabel(phase),

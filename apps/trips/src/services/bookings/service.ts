@@ -1,18 +1,4 @@
-import {
-	Array,
-	Boolean,
-	Context,
-	DateTime,
-	Effect,
-	Equal,
-	Layer,
-	Match,
-	Option,
-	Record,
-	Schema,
-	Stream,
-	pipe
-} from 'effect'
+import {Array, Boolean, Context, DateTime, Effect, Equal, Layer, Option, Record, Schema, Stream, pipe} from 'effect'
 
 import {SecureRandom} from 'effect/crypto'
 import {Reactivity} from 'effect/reactivity'
@@ -27,9 +13,9 @@ import {passText} from './lib/pkpass.ts'
 import {Places} from './lib/places.ts'
 import {migrations} from './migrations.ts'
 
-import {byStart, instantOf, upsert} from '#services/bookings/lib/utils.ts'
-import type {Booking, BookingSource, ExtractedItem, LocalTime} from '#services/bookings/schema.ts'
-import {BookingId, BookingsError, Flight, Stay} from '#services/bookings/schema.ts'
+import {byDeparture, instantOf, upsert} from '#services/bookings/lib/utils.ts'
+import type {BookingList, BookingSource, ExtractedItem, LocalTime} from '#services/bookings/schema.ts'
+import {BookingId, BookingsError, Flight} from '#services/bookings/schema.ts'
 
 declare module 'effect/reactivity/Reactivity' {
 	interface Keys {
@@ -70,55 +56,21 @@ export class Bookings extends Context.Service<Bookings>()('@deslop/trips/service
 			spanPrefix: 'Flights',
 			tableName: Flight.table
 		})
-		const stays = yield* SqlModel.makeRepository(Stay, {idColumn: 'id', spanPrefix: 'Stays', tableName: Stay.table})
 
 		const listFlights = SqlSchema.findAll({
 			Request: Schema.Void,
 			Result: Flight,
 			execute: () => sql`SELECT * FROM ${sql(Flight.table)}`
 		})
-		const listStays = SqlSchema.findAll({
-			Request: Schema.Void,
-			Result: Stay,
-			execute: () => sql`SELECT * FROM ${sql(Stay.table)}`
-		})
 
 		// Soonest first, live delays included, as the phone lists them.
-		const listAll = Effect.map(Effect.all([listFlights(), listStays()], {concurrency: 1}), kinds =>
-			Array.sort([...kinds[0], ...kinds[1]], byStart)
-		)
+		const listAll = Effect.map(listFlights(), Array.sort(byDeparture))
 
-		const insert = pipe(
-			Match.type<Booking>(),
-			Match.tag('flight', flights.insertVoid),
-			Match.tag('stay', stays.insertVoid),
-			Match.exhaustive
-		)
-
-		// A booking lives in one of two tables; missing from the other is expected, not a failed lookup.
-		const findFlight = SqlSchema.findOneOption({
+		const find = SqlSchema.findOneOption({
 			Request: BookingId,
 			Result: Flight,
 			execute: id => sql`SELECT * FROM ${sql(Flight.table)} WHERE id = ${id}`
 		})
-		const findStay = SqlSchema.findOneOption({
-			Request: BookingId,
-			Result: Stay,
-			execute: id => sql`SELECT * FROM ${sql(Stay.table)} WHERE id = ${id}`
-		})
-		const find = Effect.fnUntraced(function* (id: BookingId) {
-			const flight: Option.Option<Booking> = yield* findFlight(id)
-			if (Option.isSome(flight)) return flight
-			const stay: Option.Option<Booking> = yield* findStay(id)
-			return stay
-		})
-
-		const update = pipe(
-			Match.type<Booking>(),
-			Match.tag('flight', flights.updateVoid),
-			Match.tag('stay', stays.updateVoid),
-			Match.exhaustive
-		)
 
 		const watch = pipe(
 			sql.reactive(['bookings'], listAll),
@@ -130,50 +82,31 @@ export class Bookings extends Context.Service<Bookings>()('@deslop/trips/service
 
 		// Airports resolve from their dataset, so a time reads in the right zone and a ride has coordinates.
 		const resolve = Effect.fnUntraced(function* (item: ExtractedItem) {
-			const base = {confirmation: item.confirmation, id: BookingId.make(yield* random.uuidV4()), status: item.status}
-			if (item.kind === 'flight') {
-				const from = yield* places.airport(item.from)
-				const to = yield* places.airport(item.to)
-				const departs = yield* at(item.departure, from.timeZone)
-				const arrives = yield* at(item.arrival, to.timeZone)
-				yield* inOrder(departs, arrives, `${item.airlineCode} ${item.flightNumber}`)
-				return Flight.make({
-					...base,
-					airline: item.airlineName,
-					airlineCode: item.airlineCode,
-					arrives,
-					boardingAt: yield* Effect.transposeOption(Option.map(item.boarding, boarding => at(boarding, from.timeZone))),
-					boardingGroup: item.boardingGroup,
-					departs,
-					from,
-					live: Option.none(),
-					number: item.flightNumber,
-					seat: item.seat,
-					to
-				})
-			}
-			const checkIn = yield* at(item.checkIn, item.timeZone)
-			const checkOut = yield* at(item.checkOut, item.timeZone)
-			yield* inOrder(checkIn, checkOut, item.name)
-			return Stay.make({
-				...base,
-				checkIn,
-				checkOut,
-				name: item.name,
-				place: {
-					address: Option.some(item.address),
-					city: Option.some(item.city),
-					code: Option.none(),
-					latitude: Option.none(),
-					longitude: Option.none(),
-					name: item.name,
-					timeZone: item.timeZone
-				}
+			const from = yield* places.airport(item.from)
+			const to = yield* places.airport(item.to)
+			const departs = yield* at(item.departure, from.timeZone)
+			const arrives = yield* at(item.arrival, to.timeZone)
+			yield* inOrder(departs, arrives, `${item.airlineCode} ${item.flightNumber}`)
+			return Flight.make({
+				airline: item.airlineName,
+				airlineCode: item.airlineCode,
+				arrives,
+				boardingAt: yield* Effect.transposeOption(Option.map(item.boarding, boarding => at(boarding, from.timeZone))),
+				boardingGroup: item.boardingGroup,
+				confirmation: item.confirmation,
+				departs,
+				from,
+				id: BookingId.make(yield* random.uuidV4()),
+				live: Option.none(),
+				number: item.flightNumber,
+				seat: item.seat,
+				status: item.status,
+				to
 			})
 		})
 
 		// Every segment merges into the bookings as they are inside the caller's write transaction, so two saves never lose each other's merge.
-		const merge = Effect.fnUntraced(function* (incoming: readonly Booking[]) {
+		const merge = Effect.fnUntraced(function* (incoming: BookingList) {
 			const current = yield* listAll
 			const stored = Record.fromIterableBy(current, booking => booking.id)
 			yield* Effect.forEach(
@@ -183,12 +116,12 @@ export class Bookings extends Context.Service<Bookings>()('@deslop/trips/service
 						stored,
 						Record.get(booking.id),
 						Option.match({
-							onNone: () => insert(booking),
+							onNone: () => flights.insertVoid(booking),
 							onSome: before =>
 								pipe(
 									before,
 									Equal.equals(booking),
-									Boolean.match({onFalse: () => update(booking), onTrue: () => Effect.void})
+									Boolean.match({onFalse: () => flights.updateVoid(booking), onTrue: () => Effect.void})
 								)
 						})
 					),
@@ -209,14 +142,14 @@ export class Bookings extends Context.Service<Bookings>()('@deslop/trips/service
 			remove: Effect.fn('Bookings.remove')(function* (id: BookingId) {
 				yield* Effect.annotateCurrentSpan('bookingId', id)
 				yield* pipe(
-					Effect.all([flights.delete(id), stays.delete(id)], {concurrency: 1, discard: true}),
+					flights.delete(id),
 					Reactivity.mutation(['bookings']),
 					sql.withTransaction,
 					Effect.mapError(cause => BookingsError.make({cause, message: 'The booking was not deleted.'}))
 				)
 			}, withReactivity),
 			// The newer state replaces the one it was made from, unless the booking changed or left meanwhile.
-			replace: Effect.fn('Bookings.replace')(function* (before: Booking, after: Booking) {
+			replace: Effect.fn('Bookings.replace')(function* (before: Flight, after: Flight) {
 				yield* Effect.annotateCurrentSpan('bookingId', before.id)
 				yield* pipe(
 					find(before.id),
@@ -224,7 +157,7 @@ export class Bookings extends Context.Service<Bookings>()('@deslop/trips/service
 						pipe(
 							current,
 							Option.exists(row => Equal.equals(row, before)),
-							Boolean.match({onFalse: () => Effect.void, onTrue: () => update(after)})
+							Boolean.match({onFalse: () => Effect.void, onTrue: () => flights.updateVoid(after)})
 						)
 					),
 					Reactivity.mutation(['bookings']),

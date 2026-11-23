@@ -61,5 +61,8 @@ export const migrations = {
 	}),
 	'0003_no_trains': Effect.gen(function* () {
 		yield* (yield* SqlClient.SqlClient)`DROP TABLE trains`
+	}),
+	'0004_no_stays': Effect.gen(function* () {
+		yield* (yield* SqlClient.SqlClient)`DROP TABLE stays`
 	})
 }

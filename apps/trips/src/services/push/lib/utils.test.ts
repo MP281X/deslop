@@ -49,7 +49,7 @@ const ACTIVITY = {
 	channel: ChannelId.make('current'),
 	endedAt: Option.none<DateTime.Utc>(),
 	leg: 'departure' as const,
-	props: activityProps(FLIGHT, [], DEPARTS, false),
+	props: activityProps(FLIGHT, DEPARTS, false),
 	startedAt: DEPARTS
 }
 

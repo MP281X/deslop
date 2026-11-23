@@ -40,7 +40,7 @@ import {colors, space, text} from '@deslop/components-mobile/theme'
 import {Empty, EmptyMedia} from '@deslop/components-mobile/ui/empty'
 
 import {boardAtom, nowAtom, refreshAtom, removal} from '#lib/bookings.ts'
-import {mapsAtom, placeLine, ridesOf, uberAtom} from '#lib/rides.ts'
+import {mapsAtom, placeLine, uberAtom} from '#lib/rides.ts'
 import {primary} from '#lib/session.ts'
 import {dayAt, problemOf, statusOf, tones} from '#lib/status.ts'
 import {
@@ -52,8 +52,7 @@ import {
 	routeOf,
 	titleOf
 } from '#services/bookings/lib/utils.ts'
-import {Booking} from '#services/bookings/schema.ts'
-import type {BookingList, Flight, Place, Stay, Tone} from '#services/bookings/schema.ts'
+import type {BookingId, BookingList, Flight, Tone} from '#services/bookings/schema.ts'
 
 function colorOf(tone?: Tone) {
 	if (tone === undefined || tone === 'plain') return colors.foreground
@@ -105,15 +104,6 @@ function FlightFields(props: {flight: Flight}) {
 				<Field label="Confirmation" value={props.flight.confirmation} />
 			</Section>
 		</>
-	)
-}
-
-function StayFields(props: {stay: Stay}) {
-	return (
-		<Section title="Stay">
-			<Field label="Address" value={props.stay.place.address} />
-			<Field label="Confirmation" value={props.stay.confirmation} />
-		</Section>
 	)
 }
 
@@ -185,50 +175,17 @@ function FlightEssentials(props: {flight: Flight; size: Size}) {
 	)
 }
 
-function StayEssentials(props: {stay: Stay}) {
-	return (
-		<HStack alignment="top" spacing={space[3]}>
-			<Essential
-				label="Check-in"
-				size="read"
-				value={Option.some(
-					`${dayAt(props.stay.checkIn, props.stay.place.timeZone)} · ${clockAt(props.stay.checkIn, props.stay.place.timeZone)}`
-				)}
-			/>
-			<Essential
-				label="Check-out"
-				size="read"
-				value={Option.some(
-					`${dayAt(props.stay.checkOut, props.stay.place.timeZone)} · ${clockAt(props.stay.checkOut, props.stay.place.timeZone)}`
-				)}
-			/>
-		</HStack>
-	)
-}
-
-function Rides(props: {booking: Booking; bookings: BookingList; now: DateTime.Utc}) {
+// Directions and a ride to the airport the flight leaves from.
+function Rides(props: {flight: Flight}) {
 	const maps = useAtomSet(mapsAtom)
 	const uber = useAtomSet(uberAtom)
 	return (
-		<>
-			{Array.map(ridesOf(props.booking, props.bookings, props.now), ride => (
-				<Section key={ride.label} title={`To ${ride.label}`}>
-					<Text modifiers={[text.caption, foregroundStyle(colors.mutedForeground)]}>{placeLine(ride.place)}</Text>
-					<Button label="Directions in Maps" systemImage="map" onPress={() => maps(ride)} />
-					<Button label="Ride with Uber" systemImage="car" onPress={() => uber(ride)} />
-				</Section>
-			))}
-		</>
+		<Section title={`To ${props.flight.from.name}`}>
+			<Text modifiers={[text.caption, foregroundStyle(colors.mutedForeground)]}>{placeLine(props.flight.from)}</Text>
+			<Button label="Directions in Maps" systemImage="map" onPress={() => maps(props.flight.from)} />
+			<Button label="Ride with Uber" systemImage="car" onPress={() => uber(props.flight.from)} />
+		</Section>
 	)
-}
-
-function placeCity(place: Place) {
-	return Option.getOrElse(place.city, () => place.name)
-}
-
-function routeOfBooking(booking: Booking) {
-	if (Booking.isAnyOf(['stay'])(booking)) return routeOf(booking)
-	return `${placeCity(booking.from)} → ${placeCity(booking.to)}`
 }
 
 const headingFonts = {
@@ -237,11 +194,11 @@ const headingFonts = {
 }
 
 // Where the booking goes, and its problem with a dot.
-function Heading(props: {booking: Booking; now: DateTime.Utc; size: Size}) {
+function Heading(props: {booking: Flight; now: DateTime.Utc; size: Size}) {
 	return (
 		<VStack alignment="leading" spacing={space[2]}>
 			<Text modifiers={[headingFonts[props.size].route, foregroundStyle(colors.foreground)]}>
-				{routeOfBooking(props.booking)}
+				{routeOf(props.booking)}
 			</Text>
 			{Option.match(problemOf(props.booking, statusOf(props.booking, props.now), props.now), {
 				onNone: Function.constUndefined,
@@ -299,7 +256,7 @@ function Close(props: {onClose: () => void}) {
 // The opened booking, or with nothing opened the board, shown only while the window tiles, beside the list or in place of a hidden one, or while the list is below it.
 export function BookingRoute(props: {
 	bookings: BookingList
-	id: Option.Option<Booking['id']>
+	id: Option.Option<BookingId>
 	offline: boolean
 	onClose: () => void
 }) {
@@ -353,13 +310,11 @@ export function BookingRoute(props: {
 									>
 										<Heading booking={booking} now={now} size="read" />
 										<Divider />
-										{Booking.isAnyOf(['flight'])(booking) && <FlightEssentials flight={booking} size="read" />}
-										{Booking.isAnyOf(['stay'])(booking) && <StayEssentials stay={booking} />}
+										<FlightEssentials flight={booking} size="read" />
 									</VStack>
 								</Section>
-								{Booking.isAnyOf(['flight'])(booking) && <FlightFields flight={booking} />}
-								{Booking.isAnyOf(['stay'])(booking) && <StayFields stay={booking} />}
-								{booking.status === 'confirmed' && <Rides booking={booking} bookings={props.bookings} now={now} />}
+								<FlightFields flight={booking} />
+								{booking.status === 'confirmed' && <Rides flight={booking} />}
 							</Form>
 							<Toolbar.Content>
 								<Close onClose={props.onClose} />
