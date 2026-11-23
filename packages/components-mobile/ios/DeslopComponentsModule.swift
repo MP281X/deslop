@@ -35,6 +35,9 @@ public class DeslopComponentsModule: Module {
       ViewModifierRegistry.register("bottomBarSearch") { params, appContext, _ in
         try BottomBarSearch(from: params, appContext: appContext)
       }
+      ViewModifierRegistry.register("stackedColumns") { params, appContext, _ in
+        try StackedColumns(from: params, appContext: appContext)
+      }
     }
   }
 }
@@ -46,6 +49,19 @@ struct BottomBarSearch: ViewModifier, Record {
       ToolbarSpacer(.fixed, placement: .bottomBar)
       DefaultToolbarItem(kind: .search, placement: .bottomBar)
       ToolbarSpacer(.fixed, placement: .bottomBar)
+    }
+  }
+}
+
+// iOS calls the unfolded iPhone Duo regular in either orientation, so a split view would tile its columns in a portrait window too; a compact width stacks them as on the outer screen. Always applied, so a split view keeps its state when `stacked` changes.
+struct StackedColumns: ViewModifier, Record {
+  @Field var stacked: Bool = false
+
+  func body(content: Content) -> some View {
+    content.transformEnvironment(\.horizontalSizeClass) { sizeClass in
+      if stacked {
+        sizeClass = .compact
+      }
     }
   }
 }
