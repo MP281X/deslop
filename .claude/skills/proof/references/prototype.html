@@ -164,12 +164,13 @@ function spot(t, step) {
 }
 
 // Tiles fit their column at real scale or below; on a phone, a tile too small to read plays at full size and follows
-// the cursor, except the row under an open tile.
+// the cursor, except the row under an open tile and an open phone tile, which fits whole.
 function fit(sec) {
+  const ph = stage.classList.contains('ph');
   for (const t of all(sec)) {
     if (t == sec.view || sec.solo) t.el.style.maxWidth = AW + 2 + 'px';
     t.w = t.fr.clientWidth;
-    t.follow = (!sec.view || t == sec.view) && innerWidth < 600 && t.w / AW < 0.6;
+    t.follow = (!sec.view || t == sec.view) && !(ph && (t == sec.view || sec.solo)) && innerWidth < 600 && t.w / AW < 0.8;
     t.z = t.follow ? 1 : Math.min(1, t.w / AW);
     t.k = Math.min(1 / t.z, 2.2);
     Object.assign(t.cam.style, { width: AW + 'px', height: AH + 'px', left: t.follow ? 0 : (t.w - AW * t.z) / 2 + 'px', scale: t.z });

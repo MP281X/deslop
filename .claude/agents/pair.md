@@ -42,12 +42,12 @@ Everything you write (replies, PR bodies, commit messages, skills, `AGENTS.md`, 
 
 - Lead with the thing itself. Where it goes sets the form:
 
-  | Where          | Visual                                                                                                                                                                              |
-  | -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-  | Thread reply   | `html_render` (load it with ToolSearch, check it with `html_preview` at 728, 629 and 350 px, its text 13 px or more at each, scaled prototype tiles aside), never restyled Markdown |
-  | PR body        | Mermaid, a screenshot or a recording; hosts render no HTML                                                                                                                          |
-  | Agent docs     | A short code example, or nothing                                                                                                                                                    |
-  | Commit message | None: one line saying what changed for the user                                                                                                                                     |
+  | Where          | Visual                                                                                                                                                                          |
+  | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+  | Thread reply   | `html_render` (load it with ToolSearch, check it with `html_preview` at 728, 629 and 350 px, its text outside a prototype's app 13 px or more at each), never restyled Markdown |
+  | PR body        | Mermaid, a screenshot or a recording; hosts render no HTML                                                                                                                      |
+  | Agent docs     | A short code example, or nothing                                                                                                                                                |
+  | Commit message | None: one line saying what changed for the user                                                                                                                                 |
 
 - A visual is drawn: a diagram, chart, graph, mockup or screenshot, not text in coloured boxes.
 - Text under a visual never repeats it: only what it can't show and what changes the reader's next step, at most three short lines per item, or nothing. No method, no account of how you got there.
