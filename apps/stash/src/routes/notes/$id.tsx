@@ -74,6 +74,11 @@ const prose = [text.body, lineSpacing(space[1]), foregroundStyle(colors.foregrou
 
 const lede = [text.body, lineSpacing(space[1]), foregroundStyle(colors.mutedForeground), textSelection(true)]
 
+// A place in the note's one column of scroll targets, inset from the edges, with the gap below it to the next place.
+function placed(gap: number) {
+	return [padding({bottom: gap, horizontal: space[4]}), frame({alignment: 'leading', maxWidth: Infinity})]
+}
+
 function BodyLine(props: {line: string}) {
 	return pipe(
 		Match.value(props.line),
@@ -118,35 +123,40 @@ function BodyLine(props: {line: string}) {
 	)
 }
 
+// The body's lines, each a place of the note's column.
 function Body(props: {text: string}) {
-	return (
-		<VStack
-			alignment="leading"
-			spacing={space[3]}
-			modifiers={[frame({alignment: 'leading', maxWidth: Infinity}), tint(primary), scrollTargetLayout()]}
-		>
-			{pipe(
-				props.text,
-				String.split('\n'),
-				Array.map(String.trim),
-				Array.filter(String.isNonEmpty),
-				Array.map(webLinksOnly),
-				Array.map((line, index) => (
-					// oxlint-disable-next-line react/no-array-index-key -- Note lines have no identity beyond their position; editing text replaces that position's contents.
-					<Group key={index} modifiers={[id(`${index}`)]}>
-						<BodyLine line={line} />
-					</Group>
-				))
-			)}
-		</VStack>
+	const lines = pipe(
+		props.text,
+		String.split('\n'),
+		Array.map(String.trim),
+		Array.filter(String.isNonEmpty),
+		Array.map(webLinksOnly)
 	)
+	return Array.map(lines, (line, index) => (
+		<Group
+			key={index}
+			modifiers={[
+				// The last line leaves the wider gap of the column's other places.
+				...placed(
+					Boolean.match(index === lines.length - 1, {
+						onFalse: Function.constant(space[3]),
+						onTrue: Function.constant(space[4])
+					})
+				),
+				tint(primary),
+				id(`${index}`)
+			]}
+		>
+			<BodyLine line={line} />
+		</Group>
+	))
 }
 
 function Placeholder() {
 	return (
 		<VStack
 			alignment="leading"
-			spacing={space[3]}
+			spacing={0}
 			modifiers={[redacted('placeholder'), accessibilityElement('ignore'), accessibilityLabel('Loading the note body')]}
 		>
 			<Body
@@ -164,7 +174,7 @@ export function NoteSkeleton() {
 			alignment="leading"
 			spacing={space[4]}
 			modifiers={[
-				padding({bottom: space[8], horizontal: space[4], top: space[2]}),
+				padding({bottom: space[8], top: space[2]}),
 				frame({alignment: 'leading', maxHeight: Infinity, maxWidth: Infinity})
 			]}
 		>
@@ -180,7 +190,7 @@ function Reading(props: {note: NoteItem}) {
 			alignment="leading"
 			spacing={space[4]}
 			modifiers={[
-				frame({alignment: 'leading', maxWidth: Infinity}),
+				...placed(space[4]),
 				accessibilityElement('ignore'),
 				accessibilityLabel(`Reading this ${subjectOf(props.note)}`)
 			]}
@@ -249,12 +259,14 @@ function NoteProblem(props: {note: NoteItem; onRetry: () => void}) {
 
 function NoteContent(props: {note: NoteItem}) {
 	return (
-		<VStack alignment="leading" spacing={space[4]}>
-			{String.isNonEmpty(props.note.summary) && <Text modifiers={lede}>{props.note.summary}</Text>}
+		<>
+			{String.isNonEmpty(props.note.summary) && (
+				<Text modifiers={[...lede, ...placed(space[4]), id('summary')]}>{props.note.summary}</Text>
+			)}
 			<Suspense fallback={<Placeholder />}>
 				<FullBody note={props.note} />
 			</Suspense>
-		</VStack>
+		</>
 	)
 }
 
@@ -265,9 +277,9 @@ const restingAtom = Atom.make(true)
 // The frame after a fold, unfold or turn cleared a line from the top, in which the note whose place it is sets the line again. Only a mounted note hears it, so the write never outlives the note's place.
 const restoringAtom = Atom.make(Option.none<{line: string; place: unknown}>())
 
-// The scroll view's modifiers that keep the line the person left at the top there through every fold, unfold and turn.
+// The scroll view's modifiers that keep the place the person left at the top there through every fold, unfold and turn.
 function useReadingPlace() {
-	// The line crossing the top edge of the screen.
+	// The place crossing the top edge of the screen: the cover, the summary, a line of the body or what follows it.
 	const place = useNativeState<string | null>(null)
 	// The line the person left at the top when they last stopped scrolling. A fold or turn rewraps the text at the same scroll offset while still reporting that line, so the line is cleared and set again a frame later, which scrolls it back to the top.
 	const reading = useRef<string>(null)
@@ -319,36 +331,42 @@ function Detail(props: {note: NoteItem; onRetry: () => void; onTag: (tag: TagNam
 		String.isNonEmpty(props.note.summary) || Option.exists(AsyncResult.value(full), note => Option.isSome(note.body))
 	return (
 		<ScrollView modifiers={reading}>
+			{/* One column whose every place is a scroll target, so the reading place can be any of them; each place carries the gap below it. */}
 			<VStack
 				alignment="leading"
-				spacing={space[4]}
-				modifiers={[padding({bottom: space[8], top: space[2]}), frame({alignment: 'leading', maxWidth: Infinity})]}
+				spacing={0}
+				modifiers={[
+					padding({bottom: space[8]}),
+					frame({alignment: 'leading', maxWidth: Infinity}),
+					scrollTargetLayout()
+				]}
 			>
-				<Pager note={props.note} />
-				<VStack
-					alignment="leading"
-					spacing={space[4]}
-					modifiers={[padding({horizontal: space[4]}), frame({alignment: 'leading', maxWidth: Infinity})]}
-				>
-					{pipe(
-						Match.value(props.note.status),
-						Match.when('organizing', () => <Reading note={props.note} />),
-						Match.when('failed', () =>
-							Boolean.match(kept, {
-								onFalse: () => (
-									<Empty>
-										<EmptyContent>
-											<Button variant="destructive" size="lg" systemImage="arrow.clockwise" onPress={props.onRetry}>
-												{issue}
-											</Button>
-										</EmptyContent>
-									</Empty>
-								),
-								onTrue: () => <NoteContent note={props.note} />
-							})
-						),
-						Match.orElse(() => <NoteContent note={props.note} />)
-					)}
+				{/* The cover holds the column's top inset, so restoring it shows the very top of the note, pictures or not. */}
+				<VStack modifiers={[padding({top: space[2]}), frame({maxWidth: Infinity}), id('cover')]}>
+					<Group modifiers={[padding({bottom: space[4]})]}>
+						<Pager note={props.note} />
+					</Group>
+				</VStack>
+				{pipe(
+					Match.value(props.note.status),
+					Match.when('organizing', () => <Reading note={props.note} />),
+					Match.when('failed', () =>
+						Boolean.match(kept, {
+							onFalse: () => (
+								<Empty modifiers={placed(space[4])}>
+									<EmptyContent>
+										<Button variant="destructive" size="lg" systemImage="arrow.clockwise" onPress={props.onRetry}>
+											{issue}
+										</Button>
+									</EmptyContent>
+								</Empty>
+							),
+							onTrue: () => <NoteContent note={props.note} />
+						})
+					),
+					Match.orElse(() => <NoteContent note={props.note} />)
+				)}
+				<VStack alignment="leading" spacing={space[4]} modifiers={[...placed(0), id('end')]}>
 					<Divider />
 					<Byline note={props.note} />
 					{!Array.isReadonlyArrayEmpty(props.note.tags) && (
