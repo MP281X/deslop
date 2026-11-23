@@ -131,17 +131,6 @@ export const refreshAtom = Atom.fn((id: Booking['id'], get) =>
 	)
 )
 
-export const startAtom = Atom.fn((id: Booking['id'], get) =>
-	pipe(
-		provideRuntimeOnce(
-			get,
-			RpcClient.runtime,
-			Effect.flatMap(RpcClient, client => client('push.start', {id}))
-		),
-		alertFailure('Not Started')
-	)
-)
-
 // A return reads the time again, as each tick does. Refreshing the clock from a listener of this atom rebuilt it, which added the listener again while the return was still calling them: the app never yielded.
 export const nowAtom = Atom.make(get => {
 	get(activationsAtom)

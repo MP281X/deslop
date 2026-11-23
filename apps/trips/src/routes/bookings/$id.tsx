@@ -39,19 +39,17 @@ import {backHidden, barNeverMinimizes} from '@deslop/components-mobile/lib/toolb
 import {colors, space, text} from '@deslop/components-mobile/theme'
 import {Empty, EmptyMedia} from '@deslop/components-mobile/ui/empty'
 
-import {boardAtom, nowAtom, refreshAtom, removal, startAtom} from '#lib/bookings.ts'
+import {boardAtom, nowAtom, refreshAtom, removal} from '#lib/bookings.ts'
 import {mapsAtom, placeLine, ridesOf, uberAtom} from '#lib/rides.ts'
 import {primary} from '#lib/session.ts'
 import {dayAt, problemOf, statusOf, tones} from '#lib/status.ts'
 import {
 	arrivalClockOf,
 	arrivalOf,
-	autoStartOf,
 	clockAt,
 	departureOf,
 	MINUTE,
 	routeOf,
-	startable,
 	titleOf
 } from '#services/bookings/lib/utils.ts'
 import {Booking} from '#services/bookings/schema.ts'
@@ -236,30 +234,6 @@ function routeOfBooking(booking: Booking) {
 	return `${placeCity(booking.from)} → ${placeCity(booking.to)}`
 }
 
-function Start(props: {flight: Flight; now: DateTime.Utc}) {
-	const start = useAtomSet(startAtom)
-	if (!startable(props.flight, props.now)) return undefined
-	const auto = autoStartOf(props.flight)
-	return (
-		<Section
-			footer={pipe(
-				props.now,
-				DateTime.isLessThan(auto),
-				Boolean.match({
-					onFalse: Function.constUndefined,
-					onTrue: () => (
-						<Text modifiers={[text.caption, foregroundStyle(colors.mutedForeground)]}>
-							{`Starts by itself at ${clockAt(auto, props.flight.from.timeZone)}.`}
-						</Text>
-					)
-				})
-			)}
-		>
-			<Button label="Start Live Activity" systemImage="play.fill" onPress={() => start(props.flight.id)} />
-		</Section>
-	)
-}
-
 const headingFonts = {
 	glance: {problem: font({textStyle: 'title2', weight: 'semibold'}), route: text.display},
 	read: {problem: text.title, route: font({textStyle: 'title2', weight: 'bold'})}
@@ -386,7 +360,6 @@ export function BookingRoute(props: {
 										{Booking.isAnyOf(['stay'])(booking) && <StayEssentials stay={booking} />}
 									</VStack>
 								</Section>
-								{Booking.isAnyOf(['flight'])(booking) && <Start flight={booking} now={now} />}
 								{Booking.isAnyOf(['flight'])(booking) && <FlightFields flight={booking} />}
 								{Booking.isAnyOf(['stay'])(booking) && <StayFields stay={booking} />}
 								{booking.status === 'confirmed' && <Rides booking={booking} bookings={props.bookings} now={now} />}

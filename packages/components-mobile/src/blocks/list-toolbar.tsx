@@ -10,11 +10,11 @@ import {AccountMenu} from '#components/blocks/account.tsx'
 import {useListSearch, useListSearchFocus} from '#components/blocks/list-detail.tsx'
 import {bottomBarSearch, searchFocused} from '#lib/toolbar.ts'
 
-// A list screen's bar, as every web bar: the small title in the navigation bar, a problem mark leading, the account trailing, and the search field in the bottom bar between the screen's `bottomBar` items; a menu opened from the bottom bar reverses its items unless its order is fixed.
+// A list screen's bar, as every web bar: the small title in the navigation bar, a problem mark leading, the account trailing, and for a list that searches the search field in the bottom bar between the screen's `bottomBar` items; a menu opened from the bottom bar reverses its items unless its order is fixed.
 export function ListToolbar(props: {
 	bottomBar?: ReactNode
 	children: ReactNode
-	onSearch: (text: string) => void
+	onSearch?: (text: string) => void
 	problem: Option.Option<ReactElement>
 	session: Session
 	title: string
@@ -28,9 +28,17 @@ export function ListToolbar(props: {
 			modifiers={[
 				navigationTitle(props.title),
 				navigationBarTitleDisplayMode('inline'),
-				searchable(query, {onChange: props.onSearch, prompt: 'Search'}),
-				...Option.match(focus, {onNone: Array.empty, onSome: field => [searchFocused(field.focused, field.onChange)]}),
-				bottomBarSearch
+				...Option.match(Option.fromUndefinedOr(props.onSearch), {
+					onNone: Array.empty,
+					onSome: onSearch => [
+						searchable(query, {onChange: onSearch, prompt: 'Search'}),
+						...Option.match(focus, {
+							onNone: Array.empty,
+							onSome: field => [searchFocused(field.focused, field.onChange)]
+						}),
+						bottomBarSearch
+					]
+				})
 			]}
 		>
 			{props.children}

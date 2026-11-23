@@ -5,7 +5,6 @@ import {Array, DateTime, Duration, Option, Schema, Struct} from 'effect'
 import {
 	activeWindow,
 	arrivalClockOf,
-	autoStartOf,
 	dayMark,
 	daysBetween,
 	instantOf,
@@ -39,7 +38,8 @@ const FLIGHT = Struct.pick(
 )
 
 it('opens a flight three hours ahead', () => {
-	assert.deepStrictEqual(autoStartOf(FLIGHT), DateTime.subtractDuration(DEPARTS, Duration.hours(3)))
+	assert.isTrue(Option.isNone(activeWindow(FLIGHT, DateTime.subtractDuration(DEPARTS, Duration.minutes(181)))))
+	assert.isTrue(Option.isSome(activeWindow(FLIGHT, DateTime.subtractDuration(DEPARTS, Duration.hours(3)))))
 	assert.strictEqual(
 		activityProps(FLIGHT, [], DateTime.subtractDuration(DEPARTS, Duration.hours(3)), false).headline,
 		'Leave for FCO'

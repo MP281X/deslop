@@ -281,7 +281,7 @@ export function upsert(current: BookingList, incoming: BookingList) {
 }
 
 // A flight's activity opens three hours ahead.
-export function autoStartOf(flight: Flight) {
+function autoStartOf(flight: Flight) {
 	return DateTime.subtractDuration(flight.departs, Duration.hours(3))
 }
 

@@ -2,7 +2,7 @@ import {useAtom, useAtomMount, useAtomRefresh, useAtomSet, useAtomSuspense, useA
 
 import {Array, Boolean, DateTime, Duration, Function, Option, Schema, String, pipe} from 'effect'
 
-import {Button as NativeButton, HStack, Image, Overlay, Section, Text, VStack} from '@expo/ui/swift-ui'
+import {Button as NativeButton, HStack, Image, Section, Text, VStack} from '@expo/ui/swift-ui'
 import {
 	accessibilityLabel,
 	accessibilityValue,
@@ -149,16 +149,6 @@ function BookingRow(props: {
 	)
 }
 
-function matchesOf(bookings: readonly Booking[], searched: string) {
-	const needle = String.toLowerCase(String.trim(searched))
-	return Array.filter(
-		bookings,
-		booking =>
-			String.isEmpty(needle) ||
-			String.includes(needle)(String.toLowerCase(`${headingOf(booking)} ${scheduleOf(booking)}`))
-	)
-}
-
 function PastBookings(props: {
 	expanded: boolean
 	bookings: readonly Booking[]
@@ -221,7 +211,7 @@ function PastBookings(props: {
 // Every copy of the list shows Past the same way, so the copy below the board in laptop posture keeps it open when the phone lies flat.
 const pastOpenAtom = Atom.make(false)
 
-function Bookings(props: {onOpen: (id: Booking['id']) => void; searched: string}) {
+function Bookings(props: {onOpen: (id: Booking['id']) => void}) {
 	const loaded = useAtomSuspense(bookingsAtom, {includeFailure: true})
 	const refresh = useAtomRefresh(bookingsAtom)
 	const paste = useAtomSet(clipboard.atom.send)
@@ -237,19 +227,18 @@ function Bookings(props: {onOpen: (id: Booking['id']) => void; searched: string}
 	const blocking = Option.getOrUndefined(blockingFailure(loaded))
 	if (blocking !== undefined) return <FailureContent cause={blocking} onRetry={refresh} />
 	const bookings = AsyncResult.getOrElse(loaded, () => [])
-	const matches = matchesOf(bookings, props.searched)
 	const current = Array.filter(
-		matches,
+		bookings,
 		booking =>
 			pipe(startOf(booking), DateTime.subtractDuration(Duration.hours(6)), DateTime.isLessThanOrEqualTo(now)) &&
 			pipe(endOf(booking), DateTime.addDuration(HOUR), DateTime.isGreaterThanOrEqualTo(now))
 	)
-	const ahead = Array.filter(matches, booking =>
+	const ahead = Array.filter(bookings, booking =>
 		pipe(startOf(booking), DateTime.subtractDuration(Duration.hours(6)), DateTime.isGreaterThan(now))
 	)
 	const past = Array.reverse(
 		Array.filter(
-			matches,
+			bookings,
 			booking =>
 				pipe(endOf(booking), DateTime.addDuration(HOUR), DateTime.isLessThan(now)) &&
 				DateTime.isGreaterThan(endOf(booking), DateTime.subtractDuration(now, Duration.days(30)))
@@ -287,93 +276,74 @@ function Bookings(props: {onOpen: (id: Booking['id']) => void; searched: string}
 				</Empty>
 			)}
 			{Array.isReadonlyArrayNonEmpty(bookings) && (
-				// The no-match state sits over the list, centred on the screen, as SwiftUI's own apps show it.
-				<Overlay>
-					<ItemGroup modifiers={[tint(primary)]}>
-						{Array.isReadonlyArrayNonEmpty(current) && (
-							<Section title="Now">
-								{Array.map(current, booking => (
-									<BookingRow
-										key={booking.id}
-										booking={booking}
-										countdown={Countdown.cases.Now.make({})}
-										now={now}
-										onOpen={props.onOpen}
-									/>
-								))}
-							</Section>
-						)}
-						{Array.isReadonlyArrayNonEmpty(ahead) && (
-							<Section title="Upcoming">
-								{Array.map(ahead, (booking, position) => (
-									<BookingRow
-										key={booking.id}
-										booking={booking}
-										countdown={pipe(
-											ahead,
-											Array.get(position - 1),
-											Option.match({
-												onNone: () => Countdown.cases.Days.make({days: daysOf(booking)}),
-												onSome: before =>
-													Boolean.match(daysOf(before) === daysOf(booking), {
-														onFalse: () => Countdown.cases.Days.make({days: daysOf(booking)}),
-														onTrue: () => Countdown.cases.SameDay.make({})
-													})
-											})
-										)}
-										now={now}
-										onOpen={props.onOpen}
-									/>
-								))}
-							</Section>
-						)}
-						{Array.isReadonlyArrayNonEmpty(matches) &&
-							Array.isReadonlyArrayEmpty(current) &&
-							Array.isReadonlyArrayEmpty(ahead) && (
-								<Section>
-									<Empty>
-										<EmptyMedia>
-											<Image systemName="ticket" modifiers={[accessibilityLabel('Nothing coming up')]} />
-										</EmptyMedia>
-									</Empty>
-								</Section>
-							)}
-						<PastBookings
-							bookings={past}
-							expanded={pastOpen}
-							now={now}
-							onExpandedChange={setPastOpen}
-							onOpen={props.onOpen}
-						/>
-					</ItemGroup>
-					{Array.isReadonlyArrayEmpty(matches) && (
-						<Overlay.Content>
+				<ItemGroup modifiers={[tint(primary)]}>
+					{Array.isReadonlyArrayNonEmpty(current) && (
+						<Section title="Now">
+							{Array.map(current, booking => (
+								<BookingRow
+									key={booking.id}
+									booking={booking}
+									countdown={Countdown.cases.Now.make({})}
+									now={now}
+									onOpen={props.onOpen}
+								/>
+							))}
+						</Section>
+					)}
+					{Array.isReadonlyArrayNonEmpty(ahead) && (
+						<Section title="Upcoming">
+							{Array.map(ahead, (booking, position) => (
+								<BookingRow
+									key={booking.id}
+									booking={booking}
+									countdown={pipe(
+										ahead,
+										Array.get(position - 1),
+										Option.match({
+											onNone: () => Countdown.cases.Days.make({days: daysOf(booking)}),
+											onSome: before =>
+												Boolean.match(daysOf(before) === daysOf(booking), {
+													onFalse: () => Countdown.cases.Days.make({days: daysOf(booking)}),
+													onTrue: () => Countdown.cases.SameDay.make({})
+												})
+										})
+									)}
+									now={now}
+									onOpen={props.onOpen}
+								/>
+							))}
+						</Section>
+					)}
+					{Array.isReadonlyArrayEmpty(current) && Array.isReadonlyArrayEmpty(ahead) && (
+						<Section>
 							<Empty>
 								<EmptyMedia>
-									<Image systemName="magnifyingglass" modifiers={[accessibilityLabel('No bookings match')]} />
+									<Image systemName="ticket" modifiers={[accessibilityLabel('Nothing coming up')]} />
 								</EmptyMedia>
 							</Empty>
-						</Overlay.Content>
+						</Section>
 					)}
-				</Overlay>
+					<PastBookings
+						bookings={past}
+						expanded={pastOpen}
+						now={now}
+						onExpandedChange={setPastOpen}
+						onOpen={props.onOpen}
+					/>
+				</ItemGroup>
 			)}
 		</VStack>
 	)
 }
 
-// The query every copy of the list filters by, as the search field they share shows it, so a search typed below the board in laptop posture still filters once the phone lies flat.
-const searchedAtom = Atom.make('')
-
 // Native navigation and clipboard/account controls do not wait for the bookings stream; the bar marks bookings that stopped updating.
 export function HomeRoute(props: {onOpen: (id: Booking['id']) => void}) {
-	const [searched, setSearched] = useAtom(searchedAtom)
 	const loaded = useAtomValue(bookingsAtom)
 	useAtomMount(problemSinceAtom(bookingsAtom))
 	return (
 		<ListToolbar
 			title="Trips"
 			session={session}
-			onSearch={setSearched}
 			problem={Option.liftPredicate(
 				<Problem source={bookingsAtom} label="Out of date" onRetry={useAtomRefresh(bookingsAtom)} />,
 				() => AsyncResult.isFailure(loaded) && Option.isNone(blockingFailure(loaded))
@@ -392,7 +362,7 @@ export function HomeRoute(props: {onOpen: (id: Booking['id']) => void}) {
 					/>
 				}
 			>
-				<Bookings onOpen={props.onOpen} searched={searched} />
+				<Bookings onOpen={props.onOpen} />
 			</Suspense>
 		</ListToolbar>
 	)
