@@ -22,7 +22,8 @@ import type {
 	FlightTracking,
 	Leg,
 	LocalTime,
-	Traveller
+	Traveller,
+	TravelTime
 } from '#services/flights/schema.ts'
 
 const OFFSET = /(?:Z|[+-]\d{2}:?\d{2})$/u
@@ -32,8 +33,6 @@ const TITLES = ['MR', 'MRS', 'MS', 'MISS', 'MSTR', 'DR']
 
 export const MINUTE = Duration.minutes(1)
 export const HOUR = Duration.hours(1)
-
-const AIRPORT_LEAD = Duration.hours(2)
 
 // ActivityKit ends a Live Activity after eight hours; half an hour stays in reserve for delays.
 export const ACTIVITY_LIFETIME = Duration.hours(7.5)
@@ -152,6 +151,25 @@ export function departureOf(flight: Flight) {
 		Option.flatMap(live => Option.orElse(live.departureActual, () => live.departureEstimated)),
 		Option.getOrElse(() => flight.departs)
 	)
+}
+
+// At the airport an hour before the booked departure; a delay never moves it, since an estimate can come back.
+export function airportByOf(flight: Flight) {
+	return DateTime.subtractDuration(flight.departs, HOUR)
+}
+
+// The trip from home to the airport the flight leaves from, as saved for that airport.
+export function travelTo(flight: Flight, travel: readonly TravelTime[]) {
+	return pipe(
+		travel,
+		Array.findFirst(saved => Option.contains(flight.from.code, saved.airport)),
+		Option.map(saved => Duration.minutes(saved.minutes))
+	)
+}
+
+// When to leave home for the airport, known once the trip there is saved.
+export function leaveByOf(flight: Flight, travel: readonly TravelTime[]) {
+	return Option.map(travelTo(flight, travel), trip => DateTime.subtractDuration(airportByOf(flight), trip))
 }
 
 export function arrivalOf(flight: Flight) {
@@ -642,14 +660,14 @@ function flightPhase(flight: Flight, now: DateTime.Utc) {
 	if (DateTime.isGreaterThanOrEqualTo(now, DateTime.subtractDuration(departureOf(flight), Duration.minutes(45)))) {
 		return 'gate'
 	}
-	if (DateTime.isGreaterThanOrEqualTo(now, DateTime.subtractDuration(departureOf(flight), AIRPORT_LEAD))) {
+	if (DateTime.isGreaterThanOrEqualTo(now, airportByOf(flight))) {
 		return 'airport'
 	}
 	return 'leave'
 }
 
 function flightTarget(flight: Flight, phase: FlightPhase) {
-	if (phase === 'leave') return DateTime.subtractDuration(departureOf(flight), AIRPORT_LEAD)
+	if (phase === 'leave') return airportByOf(flight)
 	if (phase === 'airport' || phase === 'gate') return Option.getOrElse(flight.boardingAt, () => departureOf(flight))
 	if (phase === 'boarding') return departureOf(flight)
 	return arrivalOf(flight)

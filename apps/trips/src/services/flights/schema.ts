@@ -99,6 +99,14 @@ export class Flight extends Model.Class<Flight>('Flight')({
 
 export type FlightList = readonly Flight[]
 
+export type TravelMinutes = typeof TravelMinutes.Type
+export const TravelMinutes = Schema.Int.check(Schema.isBetween({maximum: 720, minimum: 5}))
+
+// One row of `travel_times`: how long the trip from home to an airport takes, saved once for each airport.
+export class TravelTime extends Model.Class<TravelTime>('TravelTime')({airport: PlaceCode, minutes: TravelMinutes}) {
+	static readonly table = 'travel_times'
+}
+
 export type FlightsEvent = typeof FlightsEvent.Type
 export const FlightsEvent = Schema.Struct({
 	removed: Schema.Array(FlightId),

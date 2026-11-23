@@ -187,11 +187,18 @@ const publicAccess: readonly Access[] = [
 		surface: `tool ${name}`
 	})),
 	{app: 'trips', callers: ['member'], surface: 'http POST /share'},
-	...Array.map(['flights.events', 'flights.save', 'flights.remove', 'tracking.refresh', 'push.register'], name => ({
-		app: 'trips',
-		callers: ['member'] as const,
-		surface: `rpc ${name}`
-	}))
+	...Array.map(
+		[
+			'flights.events',
+			'flights.save',
+			'flights.remove',
+			'tracking.refresh',
+			'travel.list',
+			'travel.set',
+			'push.register'
+		],
+		name => ({app: 'trips', callers: ['member'] as const, surface: `rpc ${name}`})
+	)
 ]
 
 function accessOf(app: string, surface: string, identity: Identity) {

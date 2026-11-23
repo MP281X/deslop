@@ -173,5 +173,9 @@ export const migrations = {
 		yield* sql`ALTER TABLE flights DROP COLUMN boardingGroup`
 		yield* sql`ALTER TABLE flights DROP COLUMN confirmation`
 		yield* sql`ALTER TABLE flights DROP COLUMN status`
+	}),
+	// The trip from home to each airport, saved once for the airport, which sets when to leave.
+	'0006_travel_times': Effect.gen(function* () {
+		yield* (yield* SqlClient.SqlClient)`CREATE TABLE travel_times (airport TEXT PRIMARY KEY, minutes INTEGER NOT NULL) STRICT, WITHOUT ROWID`
 	})
 }

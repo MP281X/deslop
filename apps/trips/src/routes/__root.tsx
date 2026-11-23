@@ -21,6 +21,7 @@ import {openedAtom} from '#lib/deep-links.ts'
 import {boardAtom, flightsAtom, clipboard} from '#lib/flights.ts'
 import {pushAtom} from '#lib/notifications.ts'
 import {session} from '#lib/session.ts'
+import {travelPromptAtom} from '#lib/travel.ts'
 import {HomeRoute} from '#routes/(home)/index.tsx'
 import {FlightRoute} from '#routes/flights/$id.tsx'
 import type {FlightId} from '#services/flights/schema.ts'
@@ -45,6 +46,7 @@ function Destination(props: {id: Option.Option<FlightId>; onClose: () => void}) 
 // `openedAtom` logs an initial URL-read failure and keeps listening for later opens; no opened flight is the valid home, not a replacement flight or a successful read of flight data.
 function AppRoutes() {
 	useAtomMount(pushAtom)
+	useAtomMount(travelPromptAtom)
 	const launched = useAtomValue(openedAtom)
 	const [opened, setOpened] = useState(() => AsyncResult.value(launched))
 	useAtomSubscribe(openedAtom, tapped => Option.map(AsyncResult.value(tapped), id => setOpened(Option.some(id))))
