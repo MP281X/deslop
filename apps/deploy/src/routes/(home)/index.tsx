@@ -26,7 +26,7 @@ import {isDenied} from '@deslop/runtime/shared/auth'
 
 import {inventoryAtom, metricsAtom} from '#lib/fleet.ts'
 import {RANGES} from '#routes/(home)/-chart.ts'
-import {ChartBlock, ChartSkeleton, EmptyChart} from '#routes/(home)/-charts.tsx'
+import {ChartBlock, ChartSkeleton, EmptyChart, ReadingStrip, ReadingStripSkeleton} from '#routes/(home)/-charts.tsx'
 import {InventoryContent, ListPane} from '#routes/(home)/-list.tsx'
 import {Processes, Reasons} from '#routes/(home)/-processes.tsx'
 import {failureOf, rowOrder, owner, ranged} from '#routes/(home)/-rows.ts'
@@ -39,7 +39,7 @@ import type {AppId, InventoryItem} from '#services/inventory/schema.ts'
 import {HistoryQuery} from '#services/metrics/schema.ts'
 import type {MachineHistory, Platform} from '#services/metrics/schema.ts'
 
-// A phone shows the list with the machine's chart above it, or one app's processes full-screen.
+// A phone shows the list under one row of the machine's readings, or one app's processes full-screen.
 type Pane = typeof Pane.Type
 const Pane = Schema.Literals(['apps', 'process'])
 
@@ -219,15 +219,13 @@ function DetailPane(props: {
 }) {
 	return (
 		<div className="flex h-full min-h-0 flex-col">
-			<Suspense fallback={<ChartSkeleton isPhone={false} minutes={props.minutes} />}>
+			<Suspense fallback={<ChartSkeleton minutes={props.minutes} />}>
 				<MetricsContent machine={props.machine} minutes={props.minutes}>
 					{Option.match(chartUsageOf(props.usage), {
 						onNone: () => <EmptyChart worker={props.worker} />,
 						onSome: usage => (
 							<ChartBlock
 								usage={usage}
-								isPhone={false}
-
 								labels={props.labels}
 								minutes={props.minutes}
 								selectedOwner={props.selectedOwner}
@@ -243,35 +241,22 @@ function DetailPane(props: {
 	)
 }
 
-// A phone's list view: the three short charts, then the rows edge to edge.
+// A phone's list view: the readings in one row, then the rows edge to edge in the page's one scroller.
 function PhoneList(props: {
 	free: readonly InventoryItem[]
 	machine: Option.Option<WorkerId>
 	usage: Option.Option<Usage>
-	labels: Record<AppId, string>
 	minutes: HistoryQuery['minutes']
 	now: DateTime.Utc
 	onSelect: (row: Row) => void
 	rows: readonly Row[]
 	selectedId: Option.Option<ItemId>
-	selectedOwner: Option.Option<AppId>
 }) {
 	return (
 		<div className="flex min-h-0 flex-1 flex-col">
-			<Suspense fallback={<ChartSkeleton isPhone minutes={props.minutes} />}>
+			<Suspense fallback={<ReadingStripSkeleton />}>
 				<MetricsContent machine={props.machine} minutes={props.minutes}>
-					{Option.match(chartUsageOf(props.usage), {
-						onNone: () => <EmptyChart worker={Option.none()} />,
-						onSome: usage => (
-							<ChartBlock
-								usage={usage}
-								isPhone
-								labels={props.labels}
-								minutes={props.minutes}
-								selectedOwner={props.selectedOwner}
-							/>
-						)
-					})}
+					<ReadingStrip history={Option.map(chartUsageOf(props.usage), usage => usage.history)} />
 				</MetricsContent>
 			</Suspense>
 			<ListPane
@@ -314,7 +299,7 @@ function MissingMachine(props: {machine: WorkerId; workers: readonly WorkerId[]}
 	)
 }
 
-// What the bar opens onto: the two panes on a wide screen, the chart and list on a phone, or the pushed processes.
+// What the bar opens onto: the two panes on a wide screen, the readings and list on a phone, or the pushed processes.
 function Panes(props: {
 	active: Option.Option<WorkerId>
 	authFailure: Option.Option<unknown>
@@ -383,13 +368,11 @@ function Panes(props: {
 									free={props.free}
 									machine={props.machine}
 									usage={props.usage}
-									labels={props.labels}
 									minutes={props.minutes}
 									now={props.now}
 									onSelect={props.onSelect}
 									rows={props.rows}
 									selectedId={Option.map(props.selectedRow, row => row.item.id)}
-									selectedOwner={selectedOwner}
 								/>
 							),
 							onTrue: () => (
@@ -408,7 +391,8 @@ function Panes(props: {
 }
 
 function HomeRoute() {
-	const isPhone = useAtomValue(mediaQueryAtom('(width < 40rem)'))
+	// Below 700px the three charts would be too narrow to read: a phone's list and its row of readings take their place.
+	const isPhone = useAtomValue(mediaQueryAtom('(width < 43.75rem)'))
 	const search = route.useSearch()
 	const navigate = route.useNavigate()
 	function view(next: Partial<Search>) {

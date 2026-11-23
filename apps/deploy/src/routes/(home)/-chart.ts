@@ -1,4 +1,4 @@
-import {Array, DateTime, Duration, pipe} from 'effect'
+import {Array, DateTime, Duration, Option, pipe} from 'effect'
 
 import {TimeFrame, timeFrameDuration} from '@deslop/runtime/shared/time'
 
@@ -49,4 +49,24 @@ export function chartTicks(range: Duration.Duration, now: DateTime.Utc, timeZone
 		}),
 		Array.filter(value => value.at <= DateTime.toEpochMillis(now))
 	)
+}
+
+// Where a label starts: centred on its tick, or inside the axis near an edge.
+function labelLeft(x: number, at: number, size: number) {
+	if (x < 8) return at
+	if (x > 92) return at - size
+	return at - size / 2
+}
+
+// The labels an axis `width` px wide holds without touching, each 7.2px a character (JetBrains Mono's 0.6em at 12px): a label closer than 8px to the last one kept, or past an edge, is left out; nothing is kept before the axis is measured.
+export function spacedTicks(width: number) {
+	return <A extends {text: string; x: number}>(ticks: readonly A[]) =>
+		Array.getSomes(
+			Array.mapAccum(ticks, -Infinity, (right, tick) => {
+				const size = tick.text.length * 7.2
+				const left = labelLeft(tick.x, (tick.x / 100) * width, size)
+				if (left < 0 || left + size > width || left < right + 8) return [right, Option.none<A>()]
+				return [left + size, Option.some(tick)]
+			})[1]
+		)
 }

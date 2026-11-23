@@ -4,8 +4,10 @@ import type {Duration} from 'effect'
 import {Array, Boolean, DateTime, Function, Number, Option, Record, Schema, pipe} from 'effect'
 
 import {ChartLineIcon} from '@phosphor-icons/react'
+import {useState} from 'react'
 import {Area, AreaChart, CartesianGrid, ReferenceLine, XAxis, YAxis} from 'recharts'
 
+import {Sparkline} from '@deslop/components-web/blocks/sparkline'
 import {cn} from '@deslop/components-web/lib/utils'
 import {ChartContainer, ChartTooltip, ChartTooltipContent} from '@deslop/components-web/ui/chart'
 import type {ChartConfig} from '@deslop/components-web/ui/chart'
@@ -14,7 +16,7 @@ import {Skeleton} from '@deslop/components-web/ui/skeleton'
 import {clockAtom} from '@deslop/runtime/client/clock'
 import {bytesOf, clockOf, dayOf, percentOf} from '@deslop/runtime/shared/format'
 
-import {chartTicks, datedRange} from '#routes/(home)/-chart.ts'
+import {chartTicks, datedRange, spacedTicks} from '#routes/(home)/-chart.ts'
 import {bandFill, chartPoints, focusedBand} from '#routes/(home)/-usage.ts'
 import type {Band, BandFillKind, Usage} from '#routes/(home)/-usage.ts'
 import type {AppId} from '#services/inventory/schema.ts'
@@ -62,7 +64,7 @@ function UsageChart(props: {
 	const focused = props.focus
 	return (
 		<figure className={cn('flex min-h-0', props.className)} aria-label={props.label}>
-			<ChartContainer config={config} className="flex-1">
+			<ChartContainer config={config} className="min-w-0 flex-1">
 				{/* The drawing is one Tab stop, named by its title; arrow keys move the tooltip between its points. */}
 				<AreaChart
 					title={`${props.label} over time; blank time is unrecorded`}
@@ -155,16 +157,33 @@ function UsageChart(props: {
 	)
 }
 
-// HTML time labels under a chart, so they keep their shape whatever the chart's scale; clock-aligned ticks match the grid.
+// HTML time labels under a chart, so they keep their shape whatever the chart's scale; clock-aligned ticks match the grid, and a label that would crowd the one before it is left out.
 function TimeAxis(props: {className?: string; minutes: Duration.Duration; now: DateTime.Utc}) {
+	const [width, setWidth] = useState(0)
+	function measureAxis(element: HTMLDivElement) {
+		const observer = new ResizeObserver(() => setWidth(element.getBoundingClientRect().width))
+		observer.observe(element)
+		return () => {
+			observer.disconnect()
+		}
+	}
 	return (
 		<div
+			ref={measureAxis}
 			aria-hidden="true"
 			className={cn('text-muted-foreground relative h-4 font-mono text-xs tabular-nums', props.className)}
 		>
 			{pipe(
 				chartTicks(props.minutes, props.now, DateTime.zoneMakeLocal()),
 				Array.filter(tick => tick.label),
+				Array.map(tick => ({
+					...tick,
+					text: Boolean.match(datedRange(props.minutes), {
+						onFalse: () => clockOf(DateTime.makeUnsafe(tick.at)),
+						onTrue: () => dayOf(DateTime.makeUnsafe(tick.at), props.now)
+					})
+				})),
+				spacedTicks(width),
 				Array.map(tick => (
 					<span
 						key={tick.at}
@@ -181,10 +200,7 @@ function TimeAxis(props: {className?: string; minutes: Duration.Duration; now: D
 						)}
 						style={{'--tick-x': `${tick.x}%`}}
 					>
-						{Boolean.match(datedRange(props.minutes), {
-							onFalse: () => clockOf(DateTime.makeUnsafe(tick.at)),
-							onTrue: () => dayOf(DateTime.makeUnsafe(tick.at), props.now)
-						})}
+						{tick.text}
 					</span>
 				))
 			)}
@@ -195,47 +211,27 @@ function TimeAxis(props: {className?: string; minutes: Duration.Duration; now: D
 // One loading chart title: its static name, with only the server's figure left to load.
 function ChartTitleSkeleton(props: {label: string}) {
 	return (
-		<div className="flex w-full items-center justify-between gap-2 text-xs">
-			<span>{props.label}</span>
-			<Skeleton className="h-4 w-10" />
+		<div className="flex w-full min-w-0 items-center justify-between gap-2 text-xs">
+			<span className="truncate">{props.label}</span>
+			<Skeleton className="h-4 w-10 shrink-0" />
 		</div>
 	)
 }
 
-export function ChartSkeleton(props: {isPhone: boolean; minutes: HistoryQuery['minutes']}) {
+export function ChartSkeleton(props: {minutes: HistoryQuery['minutes']}) {
 	const now = useAtomValue(clockAtom('1 minute'))
 	return (
 		<div aria-busy="true" aria-label="Usage history" role="status" className="flex shrink-0 flex-col border-b">
-			{Boolean.match(props.isPhone, {
-				onFalse: () => (
-					<div className="grid h-8 grid-cols-3 items-center gap-6 border-b px-2">
-						{Array.map(CHART_LABELS, label => (
-							<ChartTitleSkeleton key={label} label={label} />
-						))}
-					</div>
-				),
-				onTrue: Function.constNull
-			})}
-			<div className="grid grid-cols-1 gap-3 px-2 py-3 sm:grid-cols-3 sm:gap-6">
-				{Array.map(CHART_LABELS, (label, index) => (
+			<div className="grid h-8 grid-cols-3 items-center gap-6 border-b px-2">
+				{Array.map(CHART_LABELS, label => (
+					<ChartTitleSkeleton key={label} label={label} />
+				))}
+			</div>
+			<div className="grid grid-cols-3 gap-6 px-2 py-3">
+				{Array.map(CHART_LABELS, label => (
 					<div key={label} className="flex min-w-0 flex-col gap-1">
-						{Boolean.match(props.isPhone, {
-							onFalse: Function.constNull,
-							onTrue: () => (
-								<div className="flex h-8 items-center border-b">
-									<ChartTitleSkeleton label={label} />
-								</div>
-							)
-						})}
-						<Skeleton className="h-16 w-full sm:h-32" />
-						{Boolean.match(props.isPhone, {
-							onFalse: () => <TimeAxis minutes={props.minutes} now={now} />,
-							onTrue: () =>
-								Boolean.match(index === 2, {
-									onFalse: Function.constNull,
-									onTrue: () => <TimeAxis minutes={props.minutes} now={now} />
-								})
-						})}
+						<Skeleton className="h-32 w-full" />
+						<TimeAxis minutes={props.minutes} now={now} />
 					</div>
 				))}
 			</div>
@@ -243,28 +239,19 @@ export function ChartSkeleton(props: {isPhone: boolean; minutes: HistoryQuery['m
 	)
 }
 
+// The figure keeps its width; a column too narrow for both cuts the name.
 function ChartTitle(props: {figure: string; label: string}) {
 	return (
-		<div className="flex w-full items-baseline justify-between gap-2 text-xs">
-			<span>{props.label}</span>
-			<span className="tabular-nums">{props.figure}</span>
+		<div className="flex w-full min-w-0 items-baseline justify-between gap-2 text-xs">
+			<span className="truncate">{props.label}</span>
+			<span className="shrink-0 tabular-nums">{props.figure}</span>
 		</div>
 	)
 }
 
-// The machine's three readings over time: apps stacked on the whole machine's 0–100%, and disk used as one band.
-export function ChartBlock(props: {
-	isPhone: boolean
-	labels: Record<AppId, string>
-	minutes: HistoryQuery['minutes']
-	selectedOwner: Option.Option<AppId>
-	usage: Usage
-}) {
-	const history = props.usage.history
-	const focus = Option.flatMap(props.selectedOwner, selected => focusedBand(props.usage, selected))
-	const latest = Option.getOrUndefined(Array.last(history.samples))
-	const cpu = Option.flatMap(Option.fromUndefinedOr(latest), sample => sample.cpu)
-	const storageUsed = Option.flatMap(Option.fromUndefinedOr(latest), sample => sample.storageUsed)
+// The latest sample's three figures, a dash where it has no reading, and each reading's share of the machine over the range.
+function readingsOf(history: MachineHistory) {
+	const latest = Array.last(history.samples)
 	const total = Number.sumAll(Array.map(history.disks, disk => disk.total))
 	const disk = Array.map(history.samples, sample =>
 		Boolean.match(total > 0, {
@@ -276,6 +263,41 @@ export function ChartBlock(props: {
 				})
 		})
 	)
+	return {
+		cpu: {
+			figure: pipe(
+				latest,
+				Option.flatMap(sample => sample.cpu),
+				Option.match({onNone: Function.constant('—'), onSome: percentOf})
+			),
+			series: Array.map(history.samples, sample => Option.getOrElse(sample.cpu, Function.constant(0)))
+		},
+		disk: {
+			figure: pipe(
+				latest,
+				Option.flatMap(sample => sample.storageUsed),
+				Option.filter(() => total > 0),
+				Option.match({onNone: Function.constant('—'), onSome: used => percentOf(Number.round((used / total) * 100, 0))})
+			),
+			series: disk,
+			total
+		},
+		memory: {
+			figure: Option.match(latest, {onNone: Function.constant('—'), onSome: sample => bytesOf(sample.memoryUsed)}),
+			series: Array.map(history.samples, sample => (sample.memoryUsed / Number.max(1, sample.memoryTotal)) * 100)
+		}
+	}
+}
+
+// The machine's three readings over time: apps stacked on the whole machine's 0–100%, and disk used as one band.
+export function ChartBlock(props: {
+	labels: Record<AppId, string>
+	minutes: HistoryQuery['minutes']
+	selectedOwner: Option.Option<AppId>
+	usage: Usage
+}) {
+	const focus = Option.flatMap(props.selectedOwner, selected => focusedBand(props.usage, selected))
+	const readings = readingsOf(props.usage.history)
 	const charts: readonly {
 		figure: string
 		focus: Option.Option<Band['id']>
@@ -285,10 +307,7 @@ export function ChartBlock(props: {
 		recorded: (sample: Sample) => boolean
 	}[] = [
 		{
-			figure: Boolean.match(latest === undefined, {
-				onFalse: () => bytesOf(latest?.memoryUsed ?? 0),
-				onTrue: Function.constant('—')
-			}),
+			figure: readings.memory.figure,
 			focus,
 			format: bytesOf,
 			label: 'Memory',
@@ -296,7 +315,7 @@ export function ChartBlock(props: {
 			recorded: Function.constTrue
 		},
 		{
-			figure: Option.match(cpu, {onNone: Function.constant('—'), onSome: percentOf}),
+			figure: readings.cpu.figure,
 			focus,
 			format: percentOf,
 			label: 'CPU',
@@ -304,49 +323,29 @@ export function ChartBlock(props: {
 			recorded: sample => Option.isSome(sample.cpu)
 		},
 		{
-			figure: Option.match(storageUsed, {
-				onNone: Function.constant('—'),
-				onSome: used =>
-					Boolean.match(total > 0, {
-						onFalse: Function.constant('—'),
-						onTrue: () => percentOf(Number.round((used / total) * 100, 0))
-					})
-			}),
+			figure: readings.disk.figure,
 			focus: Option.none(),
 			format: percentOf,
 			label: 'Disk',
-			layers: [{id: 'disk', kind: 'disk', opacity: 1, readings: disk, values: disk}],
-			recorded: sample => total > 0 && Option.isSome(sample.storageUsed)
+			layers: [{id: 'disk', kind: 'disk', opacity: 1, readings: readings.disk.series, values: readings.disk.series}],
+			recorded: sample => readings.disk.total > 0 && Option.isSome(sample.storageUsed)
 		}
 	]
 	return (
 		<div className="flex shrink-0 flex-col border-b">
-			{Boolean.match(props.isPhone, {
-				onFalse: () => (
-					<div className="grid h-8 shrink-0 grid-cols-3 items-center gap-6 border-b px-2">
-						{Array.map(charts, chart => (
-							<ChartTitle key={chart.label} figure={chart.figure} label={chart.label} />
-						))}
-					</div>
-				),
-				onTrue: Function.constNull
-			})}
-			<div className="grid grid-cols-1 gap-3 px-2 py-3 sm:grid-cols-3 sm:gap-6">
-				{Array.map(charts, (chart, index) => (
+			<div className="grid h-8 shrink-0 grid-cols-3 items-center gap-6 border-b px-2">
+				{Array.map(charts, chart => (
+					<ChartTitle key={chart.label} figure={chart.figure} label={chart.label} />
+				))}
+			</div>
+			<div className="grid grid-cols-3 gap-6 px-2 py-3">
+				{Array.map(charts, chart => (
 					<div key={chart.label} className="flex min-w-0 flex-col gap-1">
-						{Boolean.match(props.isPhone, {
-							onFalse: Function.constNull,
-							onTrue: () => (
-								<div className="flex h-8 items-center border-b">
-									<ChartTitle figure={chart.figure} label={chart.label} />
-								</div>
-							)
-						})}
 						<UsageChart
-							className="h-16 sm:h-32"
+							className="h-32"
 							focus={chart.focus}
 							format={chart.format}
-							history={history}
+							history={props.usage.history}
 							label={chart.label}
 							layers={chart.layers}
 							minutes={props.minutes}
@@ -356,14 +355,7 @@ export function ChartBlock(props: {
 							}}
 							recorded={chart.recorded}
 						/>
-						{Boolean.match(props.isPhone, {
-							onFalse: () => <TimeAxis minutes={props.minutes} now={history.time} />,
-							onTrue: () =>
-								Boolean.match(index === charts.length - 1, {
-									onFalse: Function.constNull,
-									onTrue: () => <TimeAxis minutes={props.minutes} now={history.time} />
-								})
-						})}
+						<TimeAxis minutes={props.minutes} now={props.usage.history.time} />
 					</div>
 				))}
 			</div>
@@ -371,9 +363,51 @@ export function ChartBlock(props: {
 	)
 }
 
+// A phone's readings in one row above the list: each figure over its line for the range, so the list keeps the screen; the full charts need the width of a wider screen. A machine with no readings shows dashes and no lines.
+export function ReadingStrip(props: {history: Option.Option<MachineHistory>}) {
+	const readings = Option.map(props.history, readingsOf)
+	return (
+		<div aria-label="Usage" role="group" className="grid shrink-0 grid-cols-3 gap-4 border-b p-2">
+			{Array.map(
+				[
+					{key: 'memory', label: 'Memory'},
+					{key: 'cpu', label: 'CPU'},
+					{key: 'disk', label: 'Disk'}
+				] as const,
+				metric => (
+					<div key={metric.key} className="flex min-w-0 flex-col gap-1">
+						<ChartTitle
+							figure={Option.match(readings, {onNone: Function.constant('—'), onSome: all => all[metric.key].figure})}
+							label={metric.label}
+						/>
+						{Option.match(readings, {
+							onNone: () => <div className="h-4" />,
+							onSome: all => <Sparkline className="h-4 w-full" max={100} values={all[metric.key].series} />
+						})}
+					</div>
+				)
+			)}
+		</div>
+	)
+}
+
+// The strip while the readings load, in its own shape.
+export function ReadingStripSkeleton() {
+	return (
+		<div aria-busy="true" aria-label="Usage" role="status" className="grid shrink-0 grid-cols-3 gap-4 border-b p-2">
+			{Array.map(CHART_LABELS, label => (
+				<div key={label} className="flex min-w-0 flex-col gap-1">
+					<ChartTitleSkeleton label={label} />
+					<Skeleton className="h-4 w-full" />
+				</div>
+			))}
+		</div>
+	)
+}
+
 export function EmptyChart(props: {worker: Option.Option<string>}) {
 	return (
-		<div className="flex h-44 shrink-0 items-center justify-center sm:h-64">
+		<div className="flex h-64 shrink-0 items-center justify-center">
 			<Empty role="status">
 				<EmptyHeader>
 					<EmptyMedia variant="icon">
