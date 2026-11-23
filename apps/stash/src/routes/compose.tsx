@@ -3,6 +3,7 @@ import {useAtom, useAtomMount, useAtomSet} from '@effect/atom-react'
 import {String} from 'effect'
 
 import {Button, TextField, Toolbar, ToolbarItem, useNativeState} from '@expo/ui/swift-ui'
+import type {TextFieldRef} from '@expo/ui/swift-ui'
 import {
 	disabled,
 	foregroundStyle,
@@ -12,6 +13,8 @@ import {
 	padding
 } from '@expo/ui/swift-ui/modifiers'
 import {Atom} from 'effect/reactivity'
+import {useRef} from 'react'
+import {useWindowDimensions} from 'react-native'
 
 import {barNeverMinimizes} from '@deslop/components-mobile/lib/toolbar'
 import {colors, space} from '@deslop/components-mobile/theme'
@@ -26,14 +29,27 @@ export function ComposeRoute(props: {onDone: () => void}) {
 	const write = useAtomSet(writeAtom)
 	const text = useNativeState(draft)
 	useAtomMount(unsavedDraftAtom)
+	const field = useRef<TextFieldRef>(null)
+	const window = useWindowDimensions()
+	// The window the field last took focus in. Every fold or turn moves the window and iOS lowers the keyboard; the field, which stays mounted, takes it back with its caret.
+	const focusedIn = useRef(window)
 	return (
 		<Toolbar modifiers={[navigationTitle('New Note'), navigationBarTitleDisplayMode('inline'), barNeverMinimizes]}>
 			<TextField
 				text={text}
 				axis="vertical"
+				ref={field}
 				autoFocus
 				placeholder="Write a note"
 				onTextChange={setDraft}
+				onFocusChange={focused => {
+					if (focused) {
+						focusedIn.current = window
+					} else if (focusedIn.current.width !== window.width || focusedIn.current.height !== window.height) {
+						// oxlint-disable-next-line typescript/no-floating-promises -- Focusing hands the field to iOS; nothing in the app waits on it.
+						field.current?.focus()
+					}
+				}}
 				modifiers={[
 					foregroundStyle(colors.foreground),
 					padding({all: space[4]}),
