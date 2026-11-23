@@ -87,17 +87,26 @@ final class StripScrollView: UIScrollView {
   }
 }
 
-// UIKit drops every touch of the edge swipe back while the navigation bar is hidden, so the reader fades the bar out instead
-// of hiding it: a bar at zero alpha takes no touches, and the swipe keeps working.
+// UIKit drops every touch of the edge swipe back while the navigation bar is hidden, so the reader fades the bars out instead
+// of hiding them; touches pass through a bar with nothing to tap, and the swipe keeps working.
 final class BarFade: NSObject {
   private weak var navigation: UINavigationController?
   private var shown: [NSKeyValueObservation] = []
-  private weak var content: UIView?
+  private weak var content: UIScrollView?
+  // The navigation bar fades out through a mask, never its own alpha: iOS 27 drops Back from a stack that lays out its bar at
+  // zero alpha, as a push, a fold or a turn does, and leaves it out once the bar shows again. Shown, the bar draws without
+  // it. Far larger than any bar, so it covers the bar's background above it as the bar resizes.
+  private let veil = UIView(frame: CGRect(x: -5000, y: -5000, width: 10000, height: 10000))
   // The reader's controller in its stack, whose appearance the bars take while it is on top.
   private weak var reader: UIViewController?
   private var hidden = true
 
-  func attach(from view: UIView) {
+  override init() {
+    super.init()
+    veil.backgroundColor = .black
+  }
+
+  func attach(from view: UIScrollView) {
     content = view
     var responder: UIResponder? = view
     var controller: UIViewController?
@@ -107,38 +116,40 @@ final class BarFade: NSObject {
     }
     guard let found = responder as? UINavigationController else { return }
     // Since iOS 26 a bar has no material of its own, only a blur of what is under it, so over the reader's black pages a title
-    // in the light appearance cannot be read; the reader takes the dark one, which the system bars over it follow.
+    // in the light appearance cannot be read; the reader takes the dark one, which the floating bars over it follow. The
+    // navigation bar takes the appearance of the controller on top only as it shows again after hiding, which the mask never
+    // does, so the reader's own bar appearance makes its title light; UIKit swaps that in and out with the reader.
     if controller !== reader {
       reader?.overrideUserInterfaceStyle = .unspecified
       reader = controller
       controller?.overrideUserInterfaceStyle = .dark
+      if let item = controller?.navigationItem {
+        let appearance = UINavigationBarAppearance(barAppearance: found.navigationBar.standardAppearance)
+        appearance.titleTextAttributes[.foregroundColor] = UIColor.white
+        item.standardAppearance = appearance
+        item.compactAppearance = appearance
+        item.scrollEdgeAppearance = appearance
+        item.compactScrollEdgeAppearance = appearance
+      }
     }
     if found !== navigation {
-      navigation?.interactivePopGestureRecognizer?.removeTarget(self, action: #selector(swiped(_:)))
-      shown = []
-      // A fold or a turn moves the reader to another column's stack; the list left behind keeps its bars.
-      fade(1)
+      release(showing: true)
       navigation = found
       found.interactivePopGestureRecognizer?.addTarget(self, action: #selector(swiped(_:)))
-      // The stack shows its bars again each time it lays them out, which a fold does for a while after the reader is in, as
-      // the status bar moves to the other screen; outside a push or a pop, they fade out again once that pass ends.
-      shown = found.view.subviews.filter { !view.isDescendant(of: $0) }.map {
+      // The stack shows its floating bars again each time it lays them out, which a fold does for a while after the reader is
+      // in, as the status bar moves to the other screen; outside a push or a pop, they fade out again once that pass ends.
+      shown = found.view.subviews.filter { !view.isDescendant(of: $0) && $0 !== found.navigationBar }.map {
         $0.observe(\.alpha) { [weak self] bar, _ in
           guard let self, self.hidden, bar.alpha > 0, self.navigation?.transitionCoordinator == nil else { return }
           DispatchQueue.main.async { [weak self] in self?.apply() }
         }
       }
     }
-    // UIKit adds the reader to a stack halfway through showing it, in a push or in the fold that moves it there, and iOS 27
-    // leaves Back out of a stack that finishes showing it with the bars faded. A fold moves it without an animation, so there
-    // is no transition to wait for: the bars wait for this layout pass to end, then for any transition still running.
-    DispatchQueue.main.async { [weak self] in
-      guard let self, let navigation = self.navigation else { return }
-      if let coordinator = navigation.transitionCoordinator {
-        coordinator.animate(alongsideTransition: nil) { _ in UIView.animate(withDuration: 0.25) { self.apply() } }
-      } else {
-        self.apply()
-      }
+    // Pushed, the bars fade out with the transition rather than vanishing as it starts.
+    if let coordinator = found.transitionCoordinator {
+      coordinator.animate(alongsideTransition: { _ in self.apply() })
+    } else {
+      apply()
     }
   }
 
@@ -159,10 +170,18 @@ final class BarFade: NSObject {
     reader?.overrideUserInterfaceStyle = .unspecified
     reader = nil
     guard let navigation else { return }
+    release(showing: navigation.viewControllers.count <= 1)
+    self.navigation = nil
+  }
+
+  // The stack the reader leaves, for another column's stack in a fold or a turn or for the list when it closes, shows its bars
+  // again; a stack another reader took meanwhile keeps that reader's mask.
+  private func release(showing: Bool) {
+    guard let navigation else { return }
     shown = []
     navigation.interactivePopGestureRecognizer?.removeTarget(self, action: #selector(swiped(_:)))
-    if navigation.viewControllers.count <= 1 { fade(1) }
-    self.navigation = nil
+    if showing { fade(1) }
+    if navigation.navigationBar.mask === veil { navigation.navigationBar.mask = nil }
   }
 
   private func apply() {
@@ -170,12 +189,20 @@ final class BarFade: NSObject {
   }
 
   // Every bar over the reader, not only the navigation bar: iOS 27 floats Back and the bar's buttons in a view of their own
-  // beside it, which the bar's alpha does not reach.
+  // beside it, which the navigation bar's mask does not reach. Hidden, the strip drops the blur iOS 26 draws under its bars.
   private func fade(_ alpha: CGFloat) {
     guard let navigation, let content else { return }
-    for view in navigation.view.subviews where !content.isDescendant(of: view) {
+    for view in navigation.view.subviews where !content.isDescendant(of: view) && view !== navigation.navigationBar {
       view.alpha = alpha
     }
+    if alpha > 0 {
+      veil.alpha = 1
+      navigation.navigationBar.mask = nil
+    } else {
+      UIView.performWithoutAnimation { navigation.navigationBar.mask = veil }
+      veil.alpha = 0
+    }
+    content.topEdgeEffect.isHidden = alpha == 0
   }
 }
 
