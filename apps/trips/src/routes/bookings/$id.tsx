@@ -21,6 +21,8 @@ import {
 	foregroundStyle,
 	frame,
 	labelStyle,
+	lineLimit,
+	minimumScaleFactor,
 	font,
 	navigationBarTitleDisplayMode,
 	navigationTitle,
@@ -124,9 +126,14 @@ function StayFields(props: {stay: Stay}) {
 type Size = typeof Size.Type
 const Size = Schema.Literals(['glance', 'read'])
 
-const valueFonts = {
-	glance: font({design: 'monospaced', textStyle: 'largeTitle', weight: 'semibold'}),
-	read: font({design: 'monospaced', textStyle: 'headline', weight: 'semibold'})
+// At glance size a value shrinks to its column rather than break, as a clock would between its digits on a book's half.
+const valueStyles = {
+	glance: [
+		font({design: 'monospaced', textStyle: 'largeTitle', weight: 'semibold'}),
+		lineLimit(1),
+		minimumScaleFactor(0.5)
+	],
+	read: [font({design: 'monospaced', textStyle: 'headline', weight: 'semibold'})]
 }
 
 function Essential(props: {label: string; size: Size; tone?: Tone; value: Option.Option<string>}) {
@@ -137,7 +144,7 @@ function Essential(props: {label: string; size: Size; tone?: Tone; value: Option
 				<Text modifiers={[text.label, textCase('uppercase'), foregroundStyle(colors.mutedForeground)]}>
 					{props.label}
 				</Text>
-				<Text modifiers={[valueFonts[props.size], foregroundStyle(colorOf(props.tone))]}>{value}</Text>
+				<Text modifiers={[...valueStyles[props.size], foregroundStyle(colorOf(props.tone))]}>{value}</Text>
 			</VStack>
 		)
 	})
