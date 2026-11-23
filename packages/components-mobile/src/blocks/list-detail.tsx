@@ -1,11 +1,10 @@
 import {Boolean, Function} from 'effect'
 
-import {ArrangementView, Group, NavigationSplitView, NavigationStack} from '@expo/ui/swift-ui'
+import {ArrangementView, NavigationSplitView, NavigationStack} from '@expo/ui/swift-ui'
 import type {NavigationSplitViewVisibility} from '@expo/ui/swift-ui'
 import {
 	arrangementViewStyle,
 	createModifier,
-	onGeometryChange,
 	onHingeChange,
 	overlayArrangementEdge
 } from '@expo/ui/swift-ui/modifiers'
@@ -31,15 +30,16 @@ export function ListDetail(props: {
 }) {
 	const window = useWindowDimensions()
 	const [hinge, setHinge] = useState<HingeStatus>('closed')
-	// Both columns from the start, even when the app opens already wide; the sidebar button still hides the list.
-	const [columns, setColumns] = useState<NavigationSplitViewVisibility>('all')
-	// The list's width tells whether the split view put it beside the item, as on the unfolded phone in landscape: at most about half the window there, and in a stack the whole window less the outer screen's sensor inset.
-	const [listWidth, setListWidth] = useState(Infinity)
+	// The person's choice from the sidebar button, both columns until they hide the list, kept apart from the one column a stack reports, so the list comes back beside the item once the window is wide again.
+	const [chosen, setChosen] = useState<NavigationSplitViewVisibility>('all')
+	const [stacked, setStacked] = useState<NavigationSplitViewVisibility>('all')
 	const portrait = window.height > window.width
-	const wide = listWidth < window.width * 0.7
+	// Columns tile in a landscape window on the inner screen, flat or half open like a book; the outer screen stacks them in either orientation. The split view reports a stack's one column after the window has changed, so this is already current then.
+	const tiled = !portrait && hinge !== 'closed'
+	const columns = Boolean.match(tiled, {onFalse: Function.constant(stacked), onTrue: Function.constant(chosen)})
 	const laptop = portrait && hinge === 'partiallyOpen' && props.opened
 	return (
-		<BesideContext value={(wide && columns !== 'detailOnly') || laptop}>
+		<BesideContext value={(tiled && columns !== 'detailOnly') || laptop}>
 			<ArrangementView
 				modifiers={[
 					...(props.modifiers ?? []),
@@ -52,8 +52,8 @@ export function ListDetail(props: {
 					<NavigationSplitView
 						columnVisibility={columns}
 						onColumnVisibilityChange={visibility => {
-							// A stack reports its one column; the list comes back beside the item once the window is wide again.
-							if (wide) setColumns(visibility)
+							if (tiled) setChosen(visibility)
+							else setStacked(visibility)
 						}}
 						preferredCompactColumn={Boolean.match(props.opened, {
 							onFalse: Function.constant('sidebar'),
@@ -69,7 +69,7 @@ export function ListDetail(props: {
 						]}
 					>
 						<NavigationSplitView.Sidebar>
-							<Group modifiers={[onGeometryChange(frame => setListWidth(frame.width))]}>{props.list}</Group>
+							{props.list}
 						</NavigationSplitView.Sidebar>
 						<NavigationSplitView.Detail>{props.detail}</NavigationSplitView.Detail>
 					</NavigationSplitView>
