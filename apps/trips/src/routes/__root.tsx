@@ -17,7 +17,7 @@ import {PasteSheet} from '@deslop/components-mobile/blocks/paste-sheet'
 import {SessionGate} from '@deslop/components-mobile/blocks/session-gate'
 import {colors} from '@deslop/components-mobile/theme'
 
-import {bookingsAtom, clipboard} from '#lib/bookings.ts'
+import {boardAtom, bookingsAtom, clipboard} from '#lib/bookings.ts'
 import {calendarAtom} from '#lib/calendar.ts'
 import {openedAtom} from '#lib/deep-links.ts'
 import {pushAtom} from '#lib/notifications.ts'
@@ -54,8 +54,9 @@ function AppRoutes() {
 		<Host style={{flex: 1}}>
 			{/* Over the whole window, so the list's copy below an item in laptop posture asks once. */}
 			<PasteSheet clipboard={clipboard}>
+				{/* Half open like a laptop, only a flight's board stands above the list. */}
 				<ListDetail
-					board
+					board={Option.isSome(useAtomValue(boardAtom))}
 					opened={Option.isSome(opened)}
 					onClose={() => setOpened(Option.none())}
 					modifiers={[tint(colors.foreground)]}

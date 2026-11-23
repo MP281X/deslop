@@ -37,7 +37,7 @@ import {backHidden, barNeverMinimizes} from '@deslop/components-mobile/lib/toolb
 import {colors, space, text} from '@deslop/components-mobile/theme'
 import {Empty, EmptyMedia} from '@deslop/components-mobile/ui/empty'
 
-import {nowAtom, refreshAtom, removal, startAtom} from '#lib/bookings.ts'
+import {boardAtom, nowAtom, refreshAtom, removal, startAtom} from '#lib/bookings.ts'
 import {mapsAtom, placeLine, ridesOf, uberAtom} from '#lib/rides.ts'
 import {primary} from '#lib/session.ts'
 import {dayAt, problemOf, statusOf, tones} from '#lib/status.ts'
@@ -47,8 +47,6 @@ import {
 	autoStartOf,
 	clockAt,
 	departureOf,
-	endOf,
-	HOUR,
 	MINUTE,
 	routeOf,
 	startable,
@@ -282,44 +280,30 @@ function Heading(props: {booking: Booking; now: DateTime.Utc; size: Size}) {
 	)
 }
 
-// The flight under way or next, read at a glance from a tray table: the same rule as the list's Now and Upcoming. Half open like a laptop it stands above the list, so it has no Back.
-function Board(props: {bookings: BookingList}) {
+// The flight under way or next, read at a glance from a tray table. Half open like a laptop it stands above the list, so it has no Back. With no flight coming up the list's own state says so, and nothing stands beside it.
+function Board() {
 	const now = useAtomValue(nowAtom)
 	const tiled = useListTiled()
-	return pipe(
-		props.bookings,
-		Array.findFirst(
-			(booking): booking is Flight =>
-				Booking.isAnyOf(['flight'])(booking) &&
-				pipe(endOf(booking), DateTime.addDuration(HOUR), DateTime.isGreaterThanOrEqualTo(now))
-		),
-		Option.match({
-			onNone: () => (
-				<Empty modifiers={[navigationTitle(''), navigationBarTitleDisplayMode('inline')]}>
-					<EmptyMedia>
-						<Image systemName="airplane" modifiers={[accessibilityLabel('No flight coming up')]} />
-					</EmptyMedia>
-				</Empty>
-			),
-			onSome: flight => (
-				<VStack
-					alignment="leading"
-					spacing={space[6]}
-					modifiers={[
-						navigationTitle(titleOf(flight)),
-						navigationBarTitleDisplayMode('inline'),
-						barNeverMinimizes(),
-						...Boolean.match(tiled, {onFalse: () => [backHidden], onTrue: () => []}),
-						padding({horizontal: space[6]}),
-						frame({alignment: 'leading', maxHeight: Infinity, maxWidth: Infinity})
-					]}
-				>
-					<Heading booking={flight} now={now} size="glance" />
-					<FlightEssentials flight={flight} size="glance" />
-				</VStack>
-			)
-		})
-	)
+	return Option.match(useAtomValue(boardAtom), {
+		onNone: Function.constUndefined,
+		onSome: flight => (
+			<VStack
+				alignment="leading"
+				spacing={space[6]}
+				modifiers={[
+					navigationTitle(titleOf(flight)),
+					navigationBarTitleDisplayMode('inline'),
+					barNeverMinimizes(),
+					...Boolean.match(tiled, {onFalse: () => [backHidden], onTrue: () => []}),
+					padding({horizontal: space[6]}),
+					frame({alignment: 'leading', maxHeight: Infinity, maxWidth: Infinity})
+				]}
+			>
+				<Heading booking={flight} now={now} size="glance" />
+				<FlightEssentials flight={flight} size="glance" />
+			</VStack>
+		)
+	})
 }
 
 // Beside the list the split view draws no Back, so the system close takes an opened booking away and brings the board back.
@@ -345,7 +329,7 @@ export function BookingRoute(props: {
 	const beside = useListBeside()
 	if (Option.isNone(props.id) && !beside) return undefined
 	return Option.match(props.id, {
-		onNone: () => <Board bookings={props.bookings} />,
+		onNone: () => <Board />,
 		onSome: id =>
 			pipe(
 				props.bookings,
