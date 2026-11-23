@@ -132,11 +132,19 @@ const checked = Effect.fnUntraced(function* (migrations: readonly Migrations[], 
 		WHERE schema = 'main' AND type = 'table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '%_migrations'
 		ORDER BY name
 	`
-	// The runtime's shared Device model describes the table of every app whose push migration creates one.
+	// The runtime's shared Device model describes the table of every app whose push migration creates one, unless the app models it itself.
 	const models = pipe(
 		tables,
 		Array.some(table => table.name === Device.table),
-		Boolean.match({onFalse: () => owned, onTrue: () => [...owned, Device]})
+		Boolean.match({
+			onFalse: () => owned,
+			onTrue: () =>
+				pipe(
+					owned,
+					Array.some(model => model.table === Device.table),
+					Boolean.match({onFalse: () => [...owned, Device], onTrue: () => owned})
+				)
+		})
 	)
 	assert.deepStrictEqual(
 		Array.map(tables, table => table.name),

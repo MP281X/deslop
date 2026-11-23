@@ -17,6 +17,7 @@ import {
 	Schema,
 	Stream,
 	String,
+	Struct,
 	pipe
 } from 'effect'
 
@@ -24,14 +25,20 @@ import {Apns} from '@deslop/runtime/server/apns'
 import {layerDataStore} from '@deslop/runtime/server/store'
 import {ApnsAnswer, ApnsError, ApnsToken} from '@deslop/runtime/shared/apns'
 
-import {FlightId, Flight, Place} from '#services/flights/schema.ts'
+import {FlightId, Flight, FlightTracking, Place} from '#services/flights/schema.ts'
 import {Flights} from '#services/flights/service.ts'
+import {PhoneId} from '#services/push/schema.ts'
 import {Push} from '#services/push/service.ts'
 
 const ID = FlightId.make('1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d')
 const OTHER = FlightId.make('2b3c4d5e-6f7a-4b8c-9d0e-1f2a3b4c5d6e')
 function starter(bundle: string, token: string) {
-	return {bundle, kind: 'start' as const, token: Redacted.make(ApnsToken.make(String.repeat(64)(token)))}
+	return {
+		bundle,
+		kind: 'start' as const,
+		phone: PhoneId.make('phone-a'),
+		token: Redacted.make(ApnsToken.make(String.repeat(64)(token)))
+	}
 }
 const STARTER = starter('xyz.mp281x.trips', 'a')
 const DEV_STARTER = starter('xyz.mp281x.trips.dev', 'b')
@@ -76,6 +83,19 @@ const bookedAtMidday = Effect.map(DateTime.now, now => {
 	return [flightAt(now, ID, Option.none(), timeZone, Duration.hours(4))]
 })
 const seated = Effect.map(DateTime.now, now => [flightAt(now, ID, Option.some('12B'))])
+// The same flight with its gate posted just now.
+const gated = Effect.map(DateTime.now, now => [
+	Flight.make({
+		...Struct.pick(flightAt(now, ID, Option.some('12B')), Struct.keys(Flight.fields)),
+		live: Option.some(
+			Schema.decodeSync(FlightTracking)({
+				checkedAt: DateTime.toEpochMillis(now),
+				departureGate: 'B12',
+				state: 'scheduled'
+			})
+		)
+	})
+])
 const both = Effect.map(DateTime.now, now => [flightAt(now, ID, Option.none()), flightAt(now, OTHER, Option.none())])
 
 type StartOutcome = typeof StartOutcome.Type
@@ -134,19 +154,38 @@ const running = Effect.fnUntraced(function* (update: ApnsAnswer) {
 	return {asked, created, layer, updated}
 })
 
-// Apple accepts every alert; each one's title and token is queued for the test to read.
-const alerting = Effect.fnUntraced(function* () {
-	const sent = yield* Queue.unbounded<readonly [string, string]>()
+type Titled = typeof Titled.Type
+const Titled = Schema.Struct({title: Schema.String})
+
+// Apple accepts everything; the alert title of each activity update, and the token and title of each notification, are kept for the test to read.
+function telling() {
+	const told = MutableRef.make(Array.empty<string>())
+	const sent = MutableRef.make(Array.empty<readonly [string, string]>())
+	const created = MutableRef.make(0)
+	const accepted = ApnsAnswer.cases.Accepted.make({...ANSWER, status: 200})
 	const layer = Layer.mock(Apns, {
+		broadcast: (_bundle, _channel, aps) =>
+			Effect.sync(() => {
+				Option.map(Schema.decodeUnknownOption(Titled)(aps['alert']), alert =>
+					MutableRef.update(told, Array.append(alert.title))
+				)
+				return accepted
+			}),
+		createChannel: () => Effect.sync(() => `c${MutableRef.incrementAndGet(created)}`),
+		deleteChannel: () => Effect.succeed(accepted),
 		enabled: true,
 		sendToDevice: (target, _type, body) =>
-			Effect.as(
-				Queue.offer(sent, [Redacted.value(target.token), `${(body.aps['alert'] as {title: string}).title}`]),
-				ApnsAnswer.cases.Accepted.make({...ANSWER, status: 200})
-			)
+			Effect.sync(() => {
+				Option.map(Schema.decodeUnknownOption(Titled)(body.aps['alert']), alert =>
+					MutableRef.update(sent, Array.append([Redacted.value(target.token), alert.title] as const))
+				)
+				return accepted
+			}),
+		startActivity: () => Effect.succeed(accepted),
+		startHeld: () => Effect.succeedNone
 	})
-	return {layer, sent}
-})
+	return {layer, sent, told}
+}
 
 const open = Effect.tap(Deferred.make<void>(), gate => Deferred.succeed(gate, undefined))
 
@@ -280,22 +319,54 @@ it.layer(NodeServices.layer, {excludeTestServices: true})(test => {
 		'the check-in reminder and the plan due while no phone is registered reach the first phone registered after them',
 		Effect.fnUntraced(function* () {
 			const folder = yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped()
-			const apple = yield* alerting()
+			const standIn = telling()
 			const phone = {...STARTER, kind: 'alert' as const}
 			// The iPhone registers its Live Activity token first, and the round after it has no phone to tell.
-			yield* serve(folder, apple.layer, bookedAtMidday, registered)
-			assert.deepStrictEqual(yield* Queue.clear(apple.sent), [])
+			yield* serve(folder, standIn.layer, bookedAtMidday, registered)
+			assert.deepStrictEqual(MutableRef.get(standIn.sent), [])
 			// Notifications turned on later, the round after the registration tells what is still owed.
 			yield* serve(
 				folder,
-				apple.layer,
+				standIn.layer,
 				bookedAtMidday,
 				Effect.flatMap(Push, push => push.register(phone))
 			)
-			assert.deepStrictEqual(yield* Queue.takeAll(apple.sent), [
+			assert.deepStrictEqual(MutableRef.get(standIn.sent), [
 				[Redacted.value(phone.token), 'Check in for BA 553'],
 				[Redacted.value(phone.token), 'BA 553 · Fiumicino → Heathrow']
 			])
+		})
+	)
+
+	test.effect(
+		'a gate a running Live Activity tells reaches the other iPhone as a notification, and only the other',
+		Effect.fnUntraced(function* () {
+			const folder = yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped()
+			const standIn = telling()
+			const mine = {...STARTER, kind: 'alert' as const, token: Redacted.make(ApnsToken.make(String.repeat(64)('d')))}
+			const other = {
+				...STARTER,
+				kind: 'alert' as const,
+				phone: PhoneId.make('phone-b'),
+				token: Redacted.make(ApnsToken.make(String.repeat(64)('c')))
+			}
+			// Both iPhones register, and the island starts on the first one.
+			yield* serve(
+				folder,
+				standIn.layer,
+				booked,
+				Effect.flatMap(Push, push =>
+					Effect.forEach([mine, other, STARTER], device => push.register(device), {concurrency: 1, discard: true})
+				)
+			)
+			yield* serve(folder, standIn.layer, gated, registered)
+			assert.deepStrictEqual(
+				[
+					MutableRef.get(standIn.told),
+					Array.filter(MutableRef.get(standIn.sent), pair => String.includes('Gate')(pair[1]))
+				],
+				[['BA 553 · Gate B12'], [[Redacted.value(other.token), 'BA 553 · Gate B12']]]
+			)
 		})
 	)
 

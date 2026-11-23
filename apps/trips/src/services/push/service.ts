@@ -25,13 +25,14 @@ import type {SqlError} from 'effect/sql'
 import {Migrator, SqlClient, SqlModel, SqlSchema} from 'effect/sql'
 
 import {Apns} from '@deslop/runtime/server/apns'
-import {ApnsAnswer, Device} from '@deslop/runtime/shared/apns'
+import {ApnsAnswer} from '@deslop/runtime/shared/apns'
 
 import {ACTIVITY_NAME, activeWindow, activityProps, line, urgencyOf} from '#services/flights/lib/utils.ts'
 import type {ActivityProps, Flight, Leg, FlightsError} from '#services/flights/schema.ts'
 import {FlightId, Place} from '#services/flights/schema.ts'
 import {Flights} from '#services/flights/service.ts'
 import {
+	activityPhones,
 	alertsOf,
 	announced,
 	expiredActivities,
@@ -49,6 +50,7 @@ import {
 	ActivityPropsJson,
 	ChannelId,
 	AlertDelivery,
+	Device,
 	PushError,
 	Retirement,
 	SentAlert,
@@ -293,6 +295,7 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 						endedAt: Option.none(),
 						flightId: showing.flight.id,
 						leg: showing.leg,
+						phone: target.phone,
 						props: showing.props,
 						startedAt: showing.now
 					}
@@ -405,7 +408,7 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 			Effect.forkScoped
 		)
 
-		// A change APNs took or will always refuse is remembered; a throttled one is sent again next round. The changes the activity tells as its own alert count as delivered to the phones of its app, so no notification repeats them.
+		// A change APNs took or will always refuse is remembered; a throttled one is sent again next round. The changes the activity tells as its own alert count as delivered to its iPhone, so no notification repeats them there.
 		const refresh = Effect.fnUntraced(function* (
 			activity: Activity,
 			props: ActivityProps,
@@ -440,7 +443,7 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 				}),
 				now
 			)
-			const phones = Array.filter(devices, device => device.kind === 'alert' && device.bundle === activity.bundle)
+			const phones = activityPhones(devices, activity)
 			const deliver = Effect.forEach(
 				riding,
 				alert =>
@@ -525,7 +528,7 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 								action.target,
 								showing.props,
 								now,
-								ridingAlerts(alerts, receipts.sent, receipts.delivered, state.devices, action.target.bundle),
+								ridingAlerts(alerts, receipts.sent, receipts.delivered, state.devices, action.target),
 								state.devices
 							)
 						)
@@ -798,6 +801,32 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 					yield* sql`ALTER TABLE deliveries RENAME COLUMN bookingId TO flightId`
 					// Live Activities start only by themselves, so nothing reads when one was asked for.
 					yield* sql`DROP TABLE requests`
+				}),
+				// A token names the iPhone it belongs to, and an activity the iPhone it runs on. Older tokens never said, so they go, and each app registers both again at its next launch; a running activity is retired, and the next round starts it afresh on a named phone.
+				'0010_phones': Effect.gen(function* () {
+					const sql = yield* SqlClient.SqlClient
+					const now = DateTime.toEpochMillis(yield* DateTime.now)
+					yield* sql`DROP TABLE devices`
+					yield* sql`CREATE TABLE devices (token TEXT PRIMARY KEY, bundle TEXT NOT NULL, kind TEXT NOT NULL, phone TEXT NOT NULL) STRICT, WITHOUT ROWID`
+					yield* sql`
+						INSERT INTO retirements (channel, bundle, props, retiredAt)
+						SELECT channel, bundle, props, ${now} FROM activities WHERE endedAt IS NULL
+						ON CONFLICT (channel) DO NOTHING
+					`
+					yield* sql`DROP TABLE activities`
+					yield* sql`
+						CREATE TABLE activities (
+							channel TEXT PRIMARY KEY,
+							flightId TEXT NOT NULL,
+							leg TEXT NOT NULL,
+							bundle TEXT NOT NULL,
+							phone TEXT NOT NULL,
+							startedAt INTEGER NOT NULL,
+							endedAt INTEGER,
+							props TEXT NOT NULL,
+							UNIQUE (flightId, leg, bundle)
+						) STRICT
+					`
 				})
 			}),
 			table: 'push_migrations'

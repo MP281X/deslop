@@ -2,11 +2,12 @@ import {assert, it} from '@effect/vitest'
 
 import {Array, DateTime, Duration, Option, Redacted, Schema, String, Struct, pipe} from 'effect'
 
-import {ApnsToken, Device} from '@deslop/runtime/shared/apns'
+import {ApnsToken} from '@deslop/runtime/shared/apns'
 
 import {activityProps, MINUTE} from '#services/flights/lib/utils.ts'
 import {FlightId, Flight, FlightTracking, Place, PlaceCode, TravelTime} from '#services/flights/schema.ts'
 import {
+	activityPhones,
 	alertsOf,
 	announced,
 	expiredActivities,
@@ -18,7 +19,7 @@ import {
 	unannouncedDevices
 } from '#services/push/lib/utils.ts'
 import type {Alert, AlertContext} from '#services/push/lib/utils.ts'
-import {Activity, ChannelId, AlertDelivery, SentAlert} from '#services/push/schema.ts'
+import {Activity, ChannelId, AlertDelivery, Device, PhoneId, SentAlert} from '#services/push/schema.ts'
 import type {AlertCategory} from '#services/push/schema.ts'
 
 const NO_CONTEXT: AlertContext = {flights: [], travel: []}
@@ -54,6 +55,7 @@ const CANCELLED = [
 const STARTER = {
 	bundle: 'xyz.mp281x.trips' as const,
 	kind: 'start' as const,
+	phone: PhoneId.make('phone-a'),
 	token: Redacted.make(ApnsToken.make(String.repeat(32)('a')))
 }
 const ACTIVITY = {
@@ -62,6 +64,7 @@ const ACTIVITY = {
 	endedAt: Option.none<DateTime.Utc>(),
 	flightId: FLIGHT.id,
 	leg: 'departure' as const,
+	phone: PhoneId.make('phone-a'),
 	props: activityProps(FLIGHT, DEPARTS, false),
 	startedAt: DEPARTS
 }
@@ -679,8 +682,15 @@ it('calls boarding ten minutes before the pass says, moved by the delay, and aga
 	)
 })
 
-it("lets a running activity tell its flight's changes, not the plan, to the phones of its app", () => {
+it("lets a running activity tell its flight's changes, not the plan, only to the iPhone it runs on", () => {
 	const phone = Device.make({...STARTER, kind: 'alert'})
+	const other = Device.make({
+		...STARTER,
+		kind: 'alert',
+		phone: PhoneId.make('phone-b'),
+		token: Redacted.make(ApnsToken.make(String.repeat(32)('b')))
+	})
+	const activity = Activity.make(ACTIVITY)
 	const gate: Alert = {body: '', category: 'gate', title: '', value: 'A6'}
 	const plan: Alert = {body: '', category: 'plan', title: ''}
 	const told = AlertDelivery.make({
@@ -692,10 +702,12 @@ it("lets a running activity tell its flight's changes, not the plan, to the phon
 	})
 	assert.deepStrictEqual(
 		[
-			ridingAlerts([gate, plan], [], [], [phone], 'xyz.mp281x.trips'),
-			ridingAlerts([gate, plan], [], [], [phone], 'xyz.mp281x.trips.dev'),
-			ridingAlerts([gate], [], [told], [phone], 'xyz.mp281x.trips')
+			ridingAlerts([gate, plan], [], [], [phone, other], activity),
+			ridingAlerts([gate, plan], [], [], [other], activity),
+			ridingAlerts([gate, plan], [], [], [phone], Activity.make({...ACTIVITY, bundle: 'xyz.mp281x.trips.dev'})),
+			ridingAlerts([gate], [], [told], [phone, other], activity),
+			activityPhones([phone, other], activity)
 		],
-		[[gate], [], []]
+		[[gate], [], [], [], [phone]]
 	)
 })

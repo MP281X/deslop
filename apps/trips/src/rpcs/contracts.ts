@@ -2,11 +2,10 @@ import {Schema} from 'effect'
 
 import {Rpc, RpcGroup} from 'effect/rpc'
 
-import {Device} from '@deslop/runtime/shared/apns'
 import {RpcAuth} from '@deslop/runtime/shared/auth'
 
 import {FlightId, TicketSource, FlightsError, FlightsEvent, TravelTime} from '#services/flights/schema.ts'
-import {PushBundle, PushError} from '#services/push/schema.ts'
+import {Device, PushBundle, PushError} from '#services/push/schema.ts'
 
 export class RpcContracts extends RpcGroup.make(
 	Rpc.make('flights.events', {error: FlightsError, stream: true, success: FlightsEvent}),

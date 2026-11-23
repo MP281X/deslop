@@ -14,8 +14,6 @@ import {
 	pipe
 } from 'effect'
 
-import type {Device} from '@deslop/runtime/shared/apns'
-
 import {
 	ACTIVITY_LIFETIME,
 	activeWindow,
@@ -36,7 +34,7 @@ import {
 } from '#services/flights/lib/utils.ts'
 import type {FlightList, Flight, Leg, Place, Traveller, TravelTime} from '#services/flights/schema.ts'
 import {ShowAction} from '#services/push/schema.ts'
-import type {Activity, AlertCategory, AlertDelivery, SentAlert} from '#services/push/schema.ts'
+import type {Activity, AlertCategory, AlertDelivery, Device, SentAlert} from '#services/push/schema.ts'
 import {isStale} from '#services/tracking/lib/utils.ts'
 
 // Ryanair's free check-in opens 72 hours before departure and closes 2 hours before, per its help centre in November 2026; other airlines get the common 24 hours, closing an hour before.
@@ -106,15 +104,23 @@ export function ridesActivity(alert: Alert) {
 	return HashSet.has(ACTIVITY_CATEGORIES, alert.category)
 }
 
-// The changes a running activity of the app tells as its own alert: those a phone of that app still awaits as a notification.
+// The alert tokens of the iPhone and app an activity runs on, the only ones its alerts reach.
+export function activityPhones(devices: readonly Device[], activity: Activity) {
+	return Array.filter(
+		devices,
+		device => device.kind === 'alert' && device.bundle === activity.bundle && device.phone === activity.phone
+	)
+}
+
+// The changes a running activity tells as its own alert: those its iPhone still awaits as a notification. Other phones get them as notifications.
 export function ridingAlerts(
 	alerts: readonly Alert[],
 	sent: readonly SentAlert[],
 	deliveries: readonly AlertDelivery[],
 	devices: readonly Device[],
-	bundle: string
+	activity: Activity
 ) {
-	const phones = Array.filter(devices, device => device.kind === 'alert' && device.bundle === bundle)
+	const phones = activityPhones(devices, activity)
 	return Array.filter(
 		alerts,
 		alert =>

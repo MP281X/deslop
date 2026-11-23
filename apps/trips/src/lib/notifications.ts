@@ -1,6 +1,6 @@
 import {Effect, Option, Redacted, Schema} from 'effect'
 
-import {applicationId} from 'expo-application'
+import {applicationId, getIosIdForVendorAsync} from 'expo-application'
 import {
 	addPushTokenListener,
 	getDevicePushTokenAsync,
@@ -15,9 +15,22 @@ import {ApnsToken} from '@deslop/runtime/shared/apns'
 
 import {RpcClient, session} from '#lib/session.ts'
 import {FlightsError} from '#services/flights/schema.ts'
-import {PushBundle} from '#services/push/schema.ts'
+import {PhoneId, PushBundle} from '#services/push/schema.ts'
 
-const apns = Effect.map(Schema.decodeUnknownEffect(PushBundle)(applicationId), bundle => ({bundle}))
+// The app and the iPhone each token belongs to, so a Live Activity tells its changes only on the phone it runs on.
+const apns = Effect.all(
+	{
+		bundle: Schema.decodeUnknownEffect(PushBundle)(applicationId),
+		phone: Effect.flatMap(
+			Effect.tryPromise({
+				catch: cause => FlightsError.make({cause, message: 'iOS did not name this iPhone.'}),
+				try: () => getIosIdForVendorAsync()
+			}),
+			Schema.decodeUnknownEffect(PhoneId)
+		)
+	},
+	{concurrency: 'unbounded'}
+)
 
 // fallow-ignore-next-line code-duplication -- Each notification app owns its handler so shared components do not autolink notifications into Stash.
 setNotificationHandler({

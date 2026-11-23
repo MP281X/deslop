@@ -2,7 +2,7 @@ import {Schema, pipe} from 'effect'
 
 import {Model} from 'effect/schema'
 
-import {ApnsToken, Device} from '@deslop/runtime/shared/apns'
+import {ApnsToken, Device as ApnsDevice} from '@deslop/runtime/shared/apns'
 
 import {ActivityProps, FlightId, Leg} from '#services/flights/schema.ts'
 
@@ -19,6 +19,15 @@ export type PushBundle = typeof PushBundle.Type
 // The release app, on Apple's production push service, and the Simulator build, on its sandbox; the server pushes to no other app.
 export const PushBundle = Schema.Literals(['xyz.mp281x.trips', 'xyz.mp281x.trips.dev'])
 
+export type PhoneId = typeof PhoneId.Type
+// The iPhone a token belongs to, as iOS names it for this developer's apps: a Live Activity tells its changes only to the phone it runs on.
+export const PhoneId = pipe(Schema.NonEmptyString, Schema.brand('PhoneId'))
+
+// One row of `devices`: an alert or push-to-start token of one iPhone's app.
+export class Device extends Model.Class<Device>('Device')({...Model.fields(ApnsDevice), phone: PhoneId}) {
+	static readonly table = 'devices'
+}
+
 export type ChannelId = typeof ChannelId.Type
 export const ChannelId = pipe(Schema.String, Schema.brand('ChannelId'))
 
@@ -29,6 +38,8 @@ export class Activity extends Model.Class<Activity>('Activity')({
 	endedAt: Model.FieldOption(Schema.DateTimeUtcFromMillis),
 	flightId: FlightId,
 	leg: Leg,
+	// The iPhone it was started on, whose alerts it tells.
+	phone: PhoneId,
 	// What it last showed, so only a change is pushed, and urgently only when its urgency changed.
 	props: Model.JsonFromString(ActivityProps),
 	// ActivityKit's eight hours count from here.
