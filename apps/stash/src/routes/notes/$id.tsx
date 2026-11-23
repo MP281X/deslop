@@ -262,6 +262,8 @@ function NoteContent(props: {note: NoteItem}) {
 const widthAtom = Atom.make(0)
 const heightAtom = Atom.make(0)
 const restingAtom = Atom.make(true)
+// The frame after a fold, unfold or turn cleared a line from the top, in which the note whose place it is sets the line again. Only a mounted note hears it, so the write never outlives the note's place.
+const restoringAtom = Atom.make(Option.none<{line: string; place: unknown}>())
 
 // The scroll view's modifiers that keep the line the person left at the top there through every fold, unfold and turn.
 function useReadingPlace() {
@@ -277,8 +279,15 @@ function useReadingPlace() {
 		const line = reading.current
 		if (line === null) return
 		place.set(null)
-		requestAnimationFrame(() => place.set(line))
+		requestAnimationFrame(() => registry.set(restoringAtom, Option.some({line, place})))
 	}
+	useAtomSubscribe(restoringAtom, restoring => {
+		pipe(
+			restoring,
+			Option.filter(pending => pending.place === place),
+			Option.map(pending => place.set(pending.line))
+		)
+	})
 	useAtomSubscribe(restingAtom, resting => {
 		if (resting) reading.current = place.get()
 	})
