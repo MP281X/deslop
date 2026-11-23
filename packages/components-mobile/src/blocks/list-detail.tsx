@@ -1,23 +1,23 @@
-import {Boolean, Function} from 'effect'
+import {Boolean, Function, Option} from 'effect'
 
-import {ArrangementView, NavigationSplitView, NavigationStack} from '@expo/ui/swift-ui'
+import {ArrangementView, NavigationSplitView, NavigationStack, useNativeState} from '@expo/ui/swift-ui'
 import type {NavigationSplitViewVisibility} from '@expo/ui/swift-ui'
-import {
-	arrangementViewStyle,
-	createModifier,
-	onHingeChange,
-	overlayArrangementEdge
-} from '@expo/ui/swift-ui/modifiers'
+import {arrangementViewStyle, createModifier, onHingeChange, overlayArrangementEdge} from '@expo/ui/swift-ui/modifiers'
 import type {HingeStatus, ViewModifier} from '@expo/ui/swift-ui/modifiers'
 import {createContext, useContext, useState} from 'react'
 import type {ReactNode} from 'react'
 import {useWindowDimensions} from 'react-native'
 
-const BesideContext = createContext(false)
+const ListContext = createContext({beside: false, search: Option.none<ReturnType<typeof useNativeState<string>>>()})
 
 // Whether the list is on screen beside or below the opened item, so a choice made in the item, such as a tag, can leave it open.
 export function useListBeside() {
-	return useContext(BesideContext)
+	return useContext(ListContext).beside
+}
+
+// The search text every copy of the list shares, so the copy below an item in laptop posture shows, and clears, the query that filters both; none outside a `ListDetail`.
+export function useListSearch() {
+	return useContext(ListContext).search
 }
 
 // An app's one root on the iPhone Duo: list and opened item side by side when the window is wide, as when unfolded like a book; a stack when it is narrow, folded or turned upright; the item above the list when half open like a laptop. The same views stay mounted through every fold and turn, so a draft, its focus and a reading place survive. `detail` is the opened item, or what the wide window shows beside the list when nothing is opened.
@@ -39,7 +39,9 @@ export function ListDetail(props: {
 	const columns = Boolean.match(tiled, {onFalse: Function.constant(stacked), onTrue: Function.constant(chosen)})
 	const laptop = portrait && hinge === 'partiallyOpen' && props.opened
 	return (
-		<BesideContext value={(tiled && columns !== 'detailOnly') || laptop}>
+		<ListContext
+			value={{beside: (tiled && columns !== 'detailOnly') || laptop, search: Option.some(useNativeState(''))}}
+		>
 			<ArrangementView
 				modifiers={[
 					...(props.modifiers ?? []),
@@ -68,9 +70,7 @@ export function ListDetail(props: {
 							overlayArrangementEdge('top')
 						]}
 					>
-						<NavigationSplitView.Sidebar>
-							{props.list}
-						</NavigationSplitView.Sidebar>
+						<NavigationSplitView.Sidebar>{props.list}</NavigationSplitView.Sidebar>
 						<NavigationSplitView.Detail>{props.detail}</NavigationSplitView.Detail>
 					</NavigationSplitView>
 				</ArrangementView.Primary>
@@ -78,6 +78,6 @@ export function ListDetail(props: {
 					{laptop && <NavigationStack>{props.list}</NavigationStack>}
 				</ArrangementView.Secondary>
 			</ArrangementView>
-		</BesideContext>
+		</ListContext>
 	)
 }
