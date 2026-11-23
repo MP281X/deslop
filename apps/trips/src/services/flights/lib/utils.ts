@@ -17,7 +17,6 @@ const OFFSET = /(?:Z|[+-]\d{2}:?\d{2})$/u
 // Titles a pass prints after a name, which say nothing about who travels.
 const TITLES = ['MR', 'MRS', 'MS', 'MISS', 'MSTR', 'DR']
 
-export const MINUTE = Duration.minutes(1)
 export const HOUR = Duration.hours(1)
 
 // ActivityKit ends a Live Activity after eight hours; half an hour stays in reserve for delays.
@@ -663,14 +662,14 @@ export function journeyOf(flights: FlightList, flight: Flight) {
 }
 
 // "45 min", or "1h 15m" from an hour.
-function spanLabel(span: Duration.Duration) {
+export function spanLabel(span: Duration.Duration) {
 	const minutes = Number.max(0, Number.round(Duration.toMinutes(span), 0))
 	if (minutes < 60) return `${minutes} min`
 	return `${Math.floor(minutes / 60)}h ${String.padStart(2, '0')(`${Number.remainder(minutes, 60)}`)}m`
 }
 
 // The change from `feeder` to `flight` as it stands now, and as booked; it is tight under an hour or once it shrank by fifteen minutes.
-function changeOf(feeder: Flight, flight: Flight) {
+export function changeOf(feeder: Flight, flight: Flight) {
 	const booked = DateTime.distance(feeder.arrives, flight.departs)
 	const now = DateTime.distance(arrivalOf(feeder), departureOf(flight))
 	return {

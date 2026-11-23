@@ -26,7 +26,7 @@ import {HomeRoute} from '#routes/(home)/index.tsx'
 import {FlightRoute} from '#routes/flights/$id.tsx'
 import type {FlightId} from '#services/flights/schema.ts'
 
-function Destination(props: {id: Option.Option<FlightId>; onClose: () => void}) {
+function Destination(props: {id: Option.Option<FlightId>; onClose: () => void; onOpen: (id: FlightId) => void}) {
 	const live = useAtomValue(flightsAtom)
 	return (
 		<Loaded atom={flightsAtom}>
@@ -37,6 +37,7 @@ function Destination(props: {id: Option.Option<FlightId>; onClose: () => void}) 
 					id={props.id}
 					offline={AsyncResult.isFailure(live)}
 					onClose={props.onClose}
+					onOpen={props.onOpen}
 				/>
 			)}
 		</Loaded>
@@ -54,7 +55,7 @@ function AppRoutes() {
 		<Host style={{flex: 1}}>
 			{/* Over the whole window, so the list's copy below an item in laptop posture asks once. */}
 			<PasteSheet clipboard={clipboard}>
-				{/* Half open like a laptop, only a flight's board stands above the list. */}
+				{/* Half open like a laptop, only a flight's board, or the change between its flights, stands above the list. */}
 				<ListDetail
 					board={Option.isSome(useAtomValue(boardAtom))}
 					opened={Option.isSome(opened)}
@@ -63,7 +64,11 @@ function AppRoutes() {
 					list={<HomeRoute onOpen={id => setOpened(Option.some(id))} />}
 					detail={
 						<Suspense fallback={<ItemGroupSkeleton rows={10} />}>
-							<Destination id={opened} onClose={() => setOpened(Option.none())} />
+							<Destination
+								id={opened}
+								onClose={() => setOpened(Option.none())}
+								onOpen={id => setOpened(Option.some(id))}
+							/>
 						</Suspense>
 					}
 				/>

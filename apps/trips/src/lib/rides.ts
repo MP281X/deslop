@@ -8,7 +8,7 @@ import {alertFailure} from '@deslop/components-mobile/lib/alerts'
 import type {Place} from '#services/flights/schema.ts'
 import {FlightsError} from '#services/flights/schema.ts'
 
-export function placeLine(place: Place) {
+function placeLine(place: Place) {
 	return pipe(
 		[place.name, Option.getOrElse(place.city, Function.constant(''))],
 		Array.filter(String.isNonEmpty),

@@ -1,14 +1,12 @@
 import {useAtomSet, useAtomValue} from '@effect/atom-react'
 
-import {Array, Boolean, DateTime, Duration, Function, Option, Schema, pipe} from 'effect'
+import {Array, Boolean, DateTime, Duration, Function, Option, String, pipe} from 'effect'
 
 import {
-	Button,
-	Divider,
-	Form,
+	Button as NativeButton,
 	HStack,
 	Image,
-	LabeledContent,
+	List,
 	Menu,
 	Picker,
 	Section,
@@ -19,285 +17,445 @@ import {
 } from '@expo/ui/swift-ui'
 import {
 	accessibilityLabel,
+	buttonStyle,
+	font,
 	foregroundStyle,
 	frame,
 	labelStyle,
 	lineLimit,
-	minimumScaleFactor,
-	font,
+	listRowSeparator,
+	listStyle,
 	navigationBarTitleDisplayMode,
 	navigationTitle,
 	padding,
 	refreshable,
 	tag,
-	textCase,
-	textSelection,
 	tint
 } from '@expo/ui/swift-ui/modifiers'
 import {AsyncResult} from 'effect/reactivity'
 
 import {useListBeside, useListTiled} from '@deslop/components-mobile/blocks/list-detail'
-import {StatusDot} from '@deslop/components-mobile/blocks/status-dot'
 import {backHidden, barNeverMinimizes} from '@deslop/components-mobile/lib/toolbar'
-import {colors, space, text} from '@deslop/components-mobile/theme'
+import {colors, space} from '@deslop/components-mobile/theme'
+import {Button} from '@deslop/components-mobile/ui/button'
 import {Empty, EmptyMedia} from '@deslop/components-mobile/ui/empty'
+import {weekdayOf} from '@deslop/runtime/shared/format'
 
-import {boardAtom, nowAtom, refreshAtom, removal} from '#lib/flights.ts'
-import {mapsAtom, placeLine, uberAtom} from '#lib/rides.ts'
+import {changeHero, changeWords, departureTimes, heroOf, movedFrom} from '#lib/day.ts'
+import type {Hero} from '#lib/day.ts'
+import {boardAtom, flightsAtom, nowAtom, refreshAtom, removal} from '#lib/flights.ts'
+import {mapsAtom, uberAtom} from '#lib/rides.ts'
+import {HeroView, TimeRow} from '#lib/rows.tsx'
+import type {HeroSize} from '#lib/rows.tsx'
 import {primary} from '#lib/session.ts'
-import {dayAt, problemOf, statusOf, tones} from '#lib/status.ts'
 import {setTravelAtom, TRAVEL_CHOICES, travelAtom, travelLabel} from '#lib/travel.ts'
 import {
 	airportByOf,
 	arrivalClockOf,
 	arrivalOf,
+	boardsAt,
 	bookedOf,
+	cityOf,
 	clockAt,
 	departureOf,
+	journeyOf,
 	labelled,
-	leaveByOf,
 	line,
-	MINUTE,
 	routeOf,
+	stepOf,
 	titleOf,
-	travellersLine,
 	travelTo
 } from '#services/flights/lib/utils.ts'
-import type {FlightId, FlightList, Flight, Tone, TravelTime} from '#services/flights/schema.ts'
+import type {Journey, Step} from '#services/flights/lib/utils.ts'
+import type {FlightId, FlightList, Flight, TravelTime} from '#services/flights/schema.ts'
 
-function colorOf(tone?: Tone) {
-	if (tone === undefined || tone === 'plain') return colors.foreground
-	return tones[tone]
+// Said large once the flight landed: where, and when.
+function landedHero(flight: Flight) {
+	return {
+		label: 'Landed in',
+		pending: false,
+		problem: Option.none(),
+		right: `at ${arrivalClockOf(flight)}`,
+		value: cityOf(flight.to),
+		was: Option.none()
+	} satisfies Hero
 }
 
-function toneIf(changed: boolean, tone: Tone) {
-	if (changed) return tone
-	return 'plain'
-}
-
-function Field(props: {label: string; tone?: Tone; value: Option.Option<string>}) {
-	return Option.match(props.value, {
-		onNone: Function.constNull,
-		onSome: value => (
-			<LabeledContent label={props.label}>
-				<Text modifiers={[text.data, foregroundStyle(colorOf(props.tone)), textSelection(true)]}>{value}</Text>
-			</LabeledContent>
-		)
-	})
-}
-
-// The arrival with the days it lands after the departure's date, and the scheduled clock when it moved.
-function arrives(flight: Flight) {
-	if (Duration.isLessThan(Duration.abs(DateTime.distance(flight.arrives, arrivalOf(flight))), MINUTE)) {
-		return arrivalClockOf(flight)
-	}
-	return `${arrivalClockOf(flight)} (${clockAt(flight.arrives, flight.to.timeZone)})`
-}
-
-function FlightFields(props: {flight: Flight}) {
+// The way to the airport, while he still has to get there: directions and a ride.
+function Rides(props: {flight: Flight}) {
+	const maps = useAtomSet(mapsAtom)
+	const uber = useAtomSet(uberAtom)
 	return (
-		<>
-			<Section title={`Departure · ${props.flight.from.name}`}>
-				<Field label="Date" value={Option.some(dayAt(props.flight.departs, props.flight.from.timeZone))} />
-				<Field label="Terminal" value={Option.flatMap(props.flight.live, report => report.departureTerminal)} />
-				<Field
-					label="Boarding"
-					value={Option.map(props.flight.boardingAt, at => clockAt(at, props.flight.from.timeZone))}
-				/>
-			</Section>
-			<Section title={`Arrival · ${props.flight.to.name}`}>
-				<Field label="Arrives" value={Option.some(arrives(props.flight))} />
-			</Section>
-			<Section title="Booking">
-				<Field label="Airline" value={Option.some(props.flight.airline)} />
-				<Field label="Aircraft" value={Option.flatMap(props.flight.live, report => report.aircraft)} />
-			</Section>
-			{Array.isReadonlyArrayNonEmpty(props.flight.travellers) && (
-				<Section title="Travellers">
-					{Array.map(props.flight.travellers, (traveller, index) => (
-						<Field
-							key={index}
-							label={Option.getOrElse(traveller.name, Function.constant('Traveller'))}
-							tone={toneIf(traveller.status === 'cancelled', 'bad')}
-							value={Option.some(
-								line([
-									Option.liftPredicate('Cancelled', () => traveller.status === 'cancelled'),
-									traveller.seat,
-									labelled('Group', traveller.boardingGroup),
-									traveller.confirmation
-								])
-							)}
-						/>
-					))}
-				</Section>
-			)}
-		</>
-	)
-}
-
-// A field's value at reading size in the flight, and at glance size on the board.
-type Size = typeof Size.Type
-const Size = Schema.Literals(['glance', 'read'])
-
-// At glance size a value shrinks to its column rather than break, as a clock would between its digits on a book's half.
-const valueStyles = {
-	glance: [
-		font({design: 'monospaced', textStyle: 'largeTitle', weight: 'semibold'}),
-		lineLimit(1),
-		minimumScaleFactor(0.5)
-	],
-	read: [font({design: 'monospaced', textStyle: 'headline', weight: 'semibold'})]
-}
-
-function Essential(props: {label: string; size: Size; tone?: Tone; value: Option.Option<string>}) {
-	return Option.match(props.value, {
-		onNone: Function.constNull,
-		onSome: value => (
-			<VStack alignment="leading" spacing={space[1]} modifiers={[frame({alignment: 'leading', maxWidth: Infinity})]}>
-				<Text modifiers={[text.label, textCase('uppercase'), foregroundStyle(colors.mutedForeground)]}>
-					{props.label}
-				</Text>
-				<Text modifiers={[...valueStyles[props.size], foregroundStyle(colorOf(props.tone))]}>{value}</Text>
-			</VStack>
-		)
-	})
-}
-
-function Departs(props: {flight: Flight; size: Size}) {
-	return (
-		<Essential
-			label="Departs"
-			size={props.size}
-			tone={toneIf(
-				pipe(
-					props.flight.departs,
-					DateTime.distance(departureOf(props.flight)),
-					Duration.isGreaterThanOrEqualTo(Duration.minutes(5))
-				),
-				'warn'
-			)}
-			value={Option.some(clockAt(departureOf(props.flight), props.flight.from.timeZone))}
-		/>
-	)
-}
-
-function FlightEssentials(props: {flight: Flight; size: Size}) {
-	return (
-		<HStack alignment="top" spacing={space[3]}>
-			<Departs flight={props.flight} size={props.size} />
-			<Essential
-				label="Gate"
-				size={props.size}
-				tone={toneIf(
-					Option.exists(props.flight.live, report => Option.isSome(report.previousGate)),
-					'warn'
-				)}
-				value={Option.flatMap(props.flight.live, report =>
-					Option.map(report.departureGate, gate =>
-						Option.match(report.previousGate, {onNone: () => gate, onSome: previous => `${gate} (was ${previous})`})
-					)
-				)}
-			/>
-			<Essential label="Seat" size={props.size} value={travellersLine(props.flight, traveller => traveller.seat)} />
+		<HStack spacing={space[3]} modifiers={[listRowSeparator('hidden')]}>
+			<Button
+				variant="outline"
+				size="lg"
+				systemImage="map"
+				onPress={() => maps(props.flight.from)}
+				modifiers={[frame({maxWidth: Infinity})]}
+			>
+				Directions
+			</Button>
+			<Button
+				variant="outline"
+				size="lg"
+				systemImage="car"
+				onPress={() => uber(props.flight.from)}
+				modifiers={[frame({maxWidth: Infinity})]}
+			>
+				Uber
+			</Button>
 		</HStack>
 	)
 }
 
-// When to leave and be at the airport, the trip there as saved for its airport, and directions and a ride to it.
-function Rides(props: {flight: Flight}) {
-	const maps = useAtomSet(mapsAtom)
-	const uber = useAtomSet(uberAtom)
+// How long the trip to this airport takes, saved once for the airport; when to leave hangs on it.
+function TravelRow(props: {flight: Flight; travel: readonly TravelTime[]}) {
 	const setTravel = useAtomSet(setTravelAtom)
-	const travel = pipe(useAtomValue(travelAtom), AsyncResult.value, Option.getOrElse(Array.empty<TravelTime>))
-	return (
-		<Section title={`To ${props.flight.from.name}`}>
-			<Text modifiers={[text.caption, foregroundStyle(colors.mutedForeground)]}>{placeLine(props.flight.from)}</Text>
-			<Field
-				label="Leave by"
-				value={Option.map(leaveByOf(props.flight, travel), at => clockAt(at, props.flight.from.timeZone))}
+	return Option.match(props.flight.from.code, {
+		onNone: Function.constNull,
+		onSome: airport => (
+			<Picker<number>
+				label={`Trip to ${cityOf(props.flight.from)} airport`}
+				selection={pipe(
+					travelTo(props.flight, props.travel),
+					Option.map(Duration.toMinutes),
+					Option.getOrElse(Function.constant(0))
+				)}
+				onSelectionChange={minutes => {
+					if (minutes > 0) setTravel({airport, minutes})
+				}}
+			>
+				{Option.isNone(travelTo(props.flight, props.travel)) && <Text modifiers={[tag(0)]}>Not Set</Text>}
+				{Array.map(TRAVEL_CHOICES, minutes => (
+					<Text key={minutes} modifiers={[tag(minutes)]}>
+						{travelLabel(minutes)}
+					</Text>
+				))}
+			</Picker>
+		)
+	})
+}
+
+// The plane flying in, while it is the cause of a delay and he has not boarded.
+function inboundRow(flight: Flight, current: Step) {
+	return pipe(
+		flight.live,
+		Option.flatMap(live => live.inboundDelay),
+		Option.map(Duration.toMinutes),
+		Option.filter(
+			late => late >= 15 && (current.phase === 'leave' || current.phase === 'airport' || current.phase === 'gate')
+		),
+		Option.map(late => (
+			<TimeRow
+				key="inbound"
+				chevron={false}
+				label="Plane flying in"
+				problem={Option.some('warn')}
+				size="plain"
+				sub={Option.some(`${late} min late`)}
+				value={Option.none()}
+				was={Option.none()}
 			/>
-			<Field label="Airport by" value={Option.some(clockAt(airportByOf(props.flight), props.flight.from.timeZone))} />
-			{Option.match(props.flight.from.code, {
+		))
+	)
+}
+
+// The day's times still ahead for this flight; a time it passed leaves the list.
+function Times(props: {current: Step; feeder: Option.Option<Flight>; flight: Flight; now: DateTime.Utc}) {
+	const at = props.current.flight.id === props.flight.id
+	const boarded =
+		at && props.current.phase !== 'leave' && props.current.phase !== 'airport' && props.current.phase !== 'gate'
+	const flown = at && (props.current.phase === 'airborne' || props.current.phase === 'landed')
+	const gate = Option.flatMap(props.flight.live, live => live.departureGate)
+	return (
+		<>
+			{at && props.current.phase === 'leave' && (
+				<TimeRow
+					chevron={false}
+					label="Airport by"
+					problem={Option.none()}
+					size="plain"
+					sub={Option.some('an hour before departure')}
+					value={Option.some(clockAt(airportByOf(props.flight), props.flight.from.timeZone))}
+					was={Option.none()}
+				/>
+			)}
+			{at && Option.getOrUndefined(inboundRow(props.flight, props.current))}
+			{Option.match(props.feeder, {
 				onNone: Function.constNull,
-				onSome: airport => (
-					<Picker<number>
-						label="Trip to the airport"
-						selection={pipe(
-							travelTo(props.flight, travel),
-							Option.map(Duration.toMinutes),
-							Option.getOrElse(Function.constant(0))
-						)}
-						onSelectionChange={minutes => {
-							if (minutes > 0) setTravel({airport, minutes})
-						}}
-					>
-						{Option.isNone(travelTo(props.flight, travel)) && <Text modifiers={[tag(0)]}>Not Set</Text>}
-						{Array.map(TRAVEL_CHOICES, minutes => (
-							<Text key={minutes} modifiers={[tag(minutes)]}>
-								{travelLabel(minutes)}
-							</Text>
-						))}
-					</Picker>
+				onSome: feeder => (
+					<TimeRow
+						chevron={false}
+						label={`${titleOf(feeder)} lands`}
+						problem={Option.none()}
+						size="plain"
+						sub={Option.some(feeder.to.name)}
+						value={Option.some(arrivalClockOf(feeder))}
+						was={movedFrom(feeder.arrives, arrivalOf(feeder), feeder.to.timeZone)}
+					/>
 				)
 			})}
-			<Button label="Directions in Maps" systemImage="map" onPress={() => maps(props.flight.from)} />
-			<Button label="Ride with Uber" systemImage="car" onPress={() => uber(props.flight.from)} />
+			{!boarded && (
+				<TimeRow
+					chevron={false}
+					label="Boarding"
+					problem={Option.none()}
+					size="plain"
+					sub={Option.some(
+						Option.match(gate, {onNone: Function.constant('gate not posted'), onSome: found => `gate ${found}`})
+					)}
+					value={Option.some(clockAt(boardsAt(props.flight), props.flight.from.timeZone))}
+					was={Option.flatMap(props.flight.boardingAt, booked =>
+						movedFrom(booked, boardsAt(props.flight), props.flight.from.timeZone)
+					)}
+				/>
+			)}
+			{!flown && (
+				<TimeRow
+					chevron={false}
+					label="Departs"
+					problem={Option.none()}
+					size="plain"
+					sub={Option.some(props.flight.from.name)}
+					{...departureTimes(props.flight)}
+				/>
+			)}
+			<TimeRow
+				chevron={false}
+				label="Lands"
+				problem={Option.none()}
+				size="plain"
+				sub={Option.some(props.flight.to.name)}
+				value={Option.some(arrivalClockOf(props.flight))}
+				was={movedFrom(props.flight.arrives, arrivalOf(props.flight), props.flight.to.timeZone)}
+			/>
+		</>
+	)
+}
+
+// The change to the next flight of the day, which opens it.
+function NextRow(props: {flight: Flight; next: Flight; onOpen: (id: FlightId) => void}) {
+	const change = changeWords(props.flight, props.next)
+	return (
+		<NativeButton onPress={() => props.onOpen(props.next.id)} modifiers={[buttonStyle('plain')]}>
+			<TimeRow
+				chevron
+				label={change.label}
+				problem={Option.liftPredicate('warn' as const, () => change.tight)}
+				size="plain"
+				sub={Option.some(`${titleOf(props.next)} to ${cityOf(props.next.to)}`)}
+				value={Option.some(clockAt(departureOf(props.next), props.next.from.timeZone))}
+				was={Option.none()}
+			/>
+		</NativeButton>
+	)
+}
+
+function Travellers(props: {flight: Flight}) {
+	if (Array.isReadonlyArrayEmpty(props.flight.travellers)) return undefined
+	return (
+		<Section title="Travellers">
+			{Array.map(props.flight.travellers, (traveller, index) => (
+				<TimeRow
+					key={index}
+					chevron={false}
+					label={pipe(
+						traveller.name,
+						Option.map(name => Array.headNonEmpty(String.split(name, ' '))),
+						Option.getOrElse(Function.constant('Traveller'))
+					)}
+					problem={Option.none()}
+					size="plain"
+					sub={Option.liftPredicate(
+						line([
+							Option.liftPredicate('Cancelled', () => traveller.status === 'cancelled'),
+							labelled('Group', traveller.boardingGroup),
+							traveller.confirmation
+						]),
+						String.isNonEmpty
+					)}
+					// A cancelled booking keeps its seat struck through, so who no longer flies reads apart without a warning.
+					value={Option.filter(traveller.seat, () => traveller.status === 'confirmed')}
+					was={Option.filter(traveller.seat, () => traveller.status === 'cancelled')}
+				/>
+			))}
 		</Section>
 	)
 }
 
-const headingFonts = {
-	glance: {problem: font({textStyle: 'title2', weight: 'semibold'}), route: text.display},
-	read: {problem: text.title, route: font({textStyle: 'title2', weight: 'bold'})}
+// The flight's day as it stands for this flight.
+function useDay(flight: Flight, flights: FlightList) {
+	const now = useAtomValue(nowAtom)
+	const travel = pipe(useAtomValue(travelAtom), AsyncResult.value, Option.getOrElse(Array.empty<TravelTime>))
+	const journey = Option.getOrElse(journeyOf(flights, flight), () => Array.of(flight) satisfies Journey)
+	const index = pipe(
+		journey,
+		Array.findFirstIndex(item => item.id === flight.id),
+		Option.getOrElse(Function.constant(0))
+	)
+	const current = stepOf(journey, now, travel)
+	const feeder = pipe(
+		journey,
+		Array.get(index - 1),
+		Option.filter(() => index > current.index)
+	)
+	return {
+		current,
+		feeder,
+		// Its own step while the day is at it, the change to it while it is a connection still ahead, and its landing once it landed.
+		hero: Option.match(feeder, {
+			onNone: () =>
+				Boolean.match(index < current.index, {
+					onFalse: () => heroOf(journey, current, now, travel),
+					onTrue: () => landedHero(flight)
+				}),
+			onSome: found => changeHero(found, flight)
+		}),
+		next: Array.get(journey, index + 1),
+		now,
+		// Directions, a ride and the trip there show while he still has to reach the first airport of the day.
+		toAirport: index === 0 && current.index === 0 && (current.phase === 'leave' || current.phase === 'airport'),
+		travel
+	}
 }
 
-// Where the flight goes, and its problem with a dot.
-function Heading(props: {flight: Flight; now: DateTime.Utc; size: Size}) {
+// The next step on top, the way to the airport while he still has to get there, the times still ahead, the change to the next flight, then who flies.
+function FlightPage(props: {flight: Flight; flights: FlightList; onOpen: (id: FlightId) => void; size: HeroSize}) {
+	const refresh = useAtomSet(refreshAtom, {mode: 'promiseExit'})
+	const day = useDay(props.flight, props.flights)
 	return (
-		<VStack alignment="leading" spacing={space[2]}>
-			<Text modifiers={[headingFonts[props.size].route, foregroundStyle(colors.foreground)]}>
-				{routeOf(props.flight)}
-			</Text>
-			{Option.match(problemOf(props.flight, statusOf(props.flight, props.now), props.now), {
-				onNone: Function.constUndefined,
-				onSome: problem => (
-					<HStack spacing={space[2]}>
-						<StatusDot status={problem.status} />
-						<Text modifiers={[headingFonts[props.size].problem, foregroundStyle(tones[problem.tone])]}>
-							{problem.label}
-						</Text>
-					</HStack>
-				)
+		<List
+			modifiers={[
+				listStyle('plain'),
+				tint(primary),
+				// A failed refresh already alerted, and the exit never rejects, so the pull ends either way.
+				refreshable(async () => {
+					await refresh(props.flight.id)
+				})
+			]}
+		>
+			<VStack
+				alignment="leading"
+				spacing={space[4]}
+				modifiers={[listRowSeparator('hidden'), padding({vertical: space[2]})]}
+			>
+				<HeroView hero={day.hero} size={props.size} />
+				{day.toAirport && bookedOf(props.flight) && <Rides flight={props.flight} />}
+			</VStack>
+			{day.toAirport && <TravelRow flight={props.flight} travel={day.travel} />}
+			<Times current={day.current} feeder={day.feeder} flight={props.flight} now={day.now} />
+			{Option.match(day.next, {
+				onNone: Function.constNull,
+				onSome: next => <NextRow flight={props.flight} next={next} onOpen={props.onOpen} />
 			})}
-		</VStack>
+			<Travellers flight={props.flight} />
+		</List>
 	)
 }
 
-// The flight under way or next, read at a glance from a tray table, its number among its own data rather than as a title. Half open like a laptop it stands above the list, so it has no Back. With no flight coming up the list's own state says so, and nothing stands beside it.
-function Board() {
-	const now = useAtomValue(nowAtom)
+// The flight number with its route and date under it, in the bar.
+function Title(props: {flight: Flight}) {
+	return (
+		<ToolbarItem placement="principal">
+			<VStack spacing={0}>
+				<Text modifiers={[font({textStyle: 'headline'}), lineLimit(1)]}>{titleOf(props.flight)}</Text>
+				<Text modifiers={[font({textStyle: 'caption'}), foregroundStyle(colors.mutedForeground), lineLimit(1)]}>
+					{`${routeOf(props.flight)} · ${weekdayOf(DateTime.makeZonedUnsafe(departureOf(props.flight), {timeZone: props.flight.from.timeZone}))}`}
+				</Text>
+			</VStack>
+		</ToolbarItem>
+	)
+}
+
+// The change between the first two flights still ahead, read at a glance above a laptop's fold: how long, and the three times it hangs on.
+function ChangeBoard(props: {feeder: Flight; next: Flight}) {
+	return (
+		<List modifiers={[listStyle('plain')]}>
+			<VStack modifiers={[listRowSeparator('hidden'), padding({vertical: space[4]})]}>
+				<HeroView hero={changeHero(props.feeder, props.next)} size="glance" />
+			</VStack>
+			<TimeRow
+				chevron={false}
+				label={`${titleOf(props.feeder)} lands`}
+				problem={Option.none()}
+				size="big"
+				sub={Option.none()}
+				value={Option.some(arrivalClockOf(props.feeder))}
+				was={movedFrom(props.feeder.arrives, arrivalOf(props.feeder), props.feeder.to.timeZone)}
+			/>
+			<TimeRow
+				chevron={false}
+				label={`${titleOf(props.next)} boards`}
+				problem={Option.none()}
+				size="big"
+				sub={Option.none()}
+				value={Option.some(clockAt(boardsAt(props.next), props.next.from.timeZone))}
+				was={Option.none()}
+			/>
+			<TimeRow
+				chevron={false}
+				label={`${titleOf(props.next)} departs`}
+				problem={Option.none()}
+				size="big"
+				sub={Option.none()}
+				value={Option.some(clockAt(departureOf(props.next), props.next.from.timeZone))}
+				was={movedFrom(props.next.departs, departureOf(props.next), props.next.from.timeZone)}
+			/>
+		</List>
+	)
+}
+
+// With nothing opened: flat like a book, the flight under way or next beside the day; half open like a laptop, the change between its flights above the fold, or that flight when it has none. Above the fold it has no Back.
+function Board(props: {onOpen: (id: FlightId) => void}) {
 	const tiled = useListTiled()
+	const now = useAtomValue(nowAtom)
+	const travel = pipe(useAtomValue(travelAtom), AsyncResult.value, Option.getOrElse(Array.empty<TravelTime>))
+	const flights = pipe(useAtomValue(flightsAtom), AsyncResult.value, Option.getOrElse(Array.empty<Flight>))
 	return Option.match(useAtomValue(boardAtom), {
 		onNone: Function.constUndefined,
-		onSome: flight => (
-			<VStack
-				alignment="leading"
-				spacing={space[6]}
-				modifiers={[
-					navigationBarTitleDisplayMode('inline'),
-					barNeverMinimizes(),
-					...Boolean.match(tiled, {onFalse: () => [backHidden], onTrue: () => []}),
-					padding({horizontal: space[6]}),
-					frame({alignment: 'leading', maxHeight: Infinity, maxWidth: Infinity})
-				]}
-			>
-				<VStack alignment="leading" spacing={space[2]}>
-					<Text modifiers={[text.data, foregroundStyle(colors.mutedForeground)]}>{titleOf(flight)}</Text>
-					<Heading flight={flight} now={now} size="glance" />
-				</VStack>
-				<FlightEssentials flight={flight} size="glance" />
-			</VStack>
-		)
+		onSome: flight => {
+			const change = pipe(
+				journeyOf(flights, flight),
+				Option.filter(() => !tiled),
+				Option.flatMap(journey => {
+					const current = stepOf(journey, now, travel)
+					return pipe(
+						journey,
+						Array.get(current.index + 1),
+						Option.map(next => ({feeder: current.flight, next}))
+					)
+				})
+			)
+			return (
+				<Toolbar
+					modifiers={[
+						navigationTitle(titleOf(flight)),
+						navigationBarTitleDisplayMode('inline'),
+						barNeverMinimizes(),
+						...Boolean.match(tiled, {onFalse: () => [backHidden], onTrue: () => []})
+					]}
+				>
+					{Option.match(change, {
+						onNone: () => (
+							<FlightPage
+								flight={flight}
+								flights={flights}
+								onOpen={props.onOpen}
+								size={Boolean.match(tiled, {
+									onFalse: Function.constant<HeroSize>('glance'),
+									onTrue: Function.constant<HeroSize>('read')
+								})}
+							/>
+						),
+						onSome: found => <ChangeBoard feeder={found.feeder} next={found.next} />
+					})}
+					<Toolbar.Content>
+						<Title flight={flight} />
+					</Toolbar.Content>
+				</Toolbar>
+			)
+		}
 	})
 }
 
@@ -306,7 +464,7 @@ function Close(props: {onClose: () => void}) {
 	if (!useListTiled()) return undefined
 	return (
 		<ToolbarItem placement="topBarLeading">
-			<Button role="close" onPress={props.onClose} />
+			<NativeButton role="close" onPress={props.onClose} />
 		</ToolbarItem>
 	)
 }
@@ -317,15 +475,14 @@ export function FlightRoute(props: {
 	id: Option.Option<FlightId>
 	offline: boolean
 	onClose: () => void
+	onOpen: (id: FlightId) => void
 }) {
 	const remove = useAtomSet(removal.removeAtom)
-	const refresh = useAtomSet(refreshAtom, {mode: 'promiseExit'})
-	const now = useAtomValue(nowAtom)
 	const beside = useListBeside()
 	const tiled = useListTiled()
 	if (Option.isNone(props.id) && !beside && !tiled) return undefined
 	return Option.match(props.id, {
-		onNone: () => <Board />,
+		onNone: () => <Board onOpen={props.onOpen} />,
 		onSome: id =>
 			pipe(
 				props.flights,
@@ -351,34 +508,13 @@ export function FlightRoute(props: {
 					),
 					onSome: flight => (
 						<Toolbar modifiers={[navigationTitle(titleOf(flight)), navigationBarTitleDisplayMode('inline')]}>
-							<Form
-								modifiers={[
-									tint(primary),
-									// A failed refresh already alerted, and the exit never rejects, so the pull ends either way.
-									refreshable(async () => {
-										await refresh(flight.id)
-									})
-								]}
-							>
-								<Section>
-									<VStack
-										alignment="leading"
-										spacing={space[3]}
-										modifiers={[frame({alignment: 'leading', maxWidth: Infinity})]}
-									>
-										<Heading flight={flight} now={now} size="read" />
-										<Divider />
-										<FlightEssentials flight={flight} size="read" />
-									</VStack>
-								</Section>
-								<FlightFields flight={flight} />
-								{bookedOf(flight) && <Rides flight={flight} />}
-							</Form>
+							<FlightPage flight={flight} flights={props.flights} onOpen={props.onOpen} size="read" />
 							<Toolbar.Content>
 								<Close onClose={props.onClose} />
+								<Title flight={flight} />
 								<ToolbarItem placement="topBarTrailing">
 									<Menu label="More" systemImage="ellipsis" modifiers={[labelStyle('iconOnly')]}>
-										<Button
+										<NativeButton
 											label="Delete"
 											systemImage="trash"
 											role="destructive"

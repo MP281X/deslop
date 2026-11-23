@@ -6,7 +6,7 @@ import {accessibilityHidden, foregroundStyle, frame} from '@expo/ui/swift-ui/mod
 import {colors} from '#components/theme.ts'
 
 export type ProblemStatus = typeof ProblemStatus.Type
-export const ProblemStatus = Schema.Literals(['error', 'warning'])
+const ProblemStatus = Schema.Literals(['error', 'warning'])
 
 // The status dot marks a problem, never healthy state: error in red, warning in amber.
 export function StatusDot(props: {status: ProblemStatus}) {

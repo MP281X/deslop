@@ -4,7 +4,7 @@ import {Array, DateTime, Duration, Option, Redacted, Schema, String, Struct, pip
 
 import {ApnsToken} from '@deslop/runtime/shared/apns'
 
-import {feederOf, MINUTE, stepOf, upsert} from '#services/flights/lib/utils.ts'
+import {feederOf, stepOf, upsert} from '#services/flights/lib/utils.ts'
 import type {FlightList, Traveller} from '#services/flights/schema.ts'
 import {FlightId, Flight, FlightTracking, Place, PlaceCode, TravelTime} from '#services/flights/schema.ts'
 import {
@@ -562,8 +562,9 @@ it("reminds each traveller still booked who has no pass of their own, whoever el
 // The plan of a flight from Bergamo, two hours from home, so he leaves three hours before it departs: whether it is due at a time, and a minute before.
 function planFrom(leave: string, at: string) {
 	const flight = Flight.make({...RYANAIR, departs: DateTime.addDuration(DateTime.makeUnsafe(leave), Duration.hours(3))})
-	return Array.map([DateTime.subtractDuration(DateTime.makeUnsafe(at), MINUTE), DateTime.makeUnsafe(at)], now =>
-		Option.isSome(alertAt(flight, now, TO_BERGAMO, 'plan'))
+	return Array.map(
+		[DateTime.subtractDuration(DateTime.makeUnsafe(at), Duration.minutes(1)), DateTime.makeUnsafe(at)],
+		now => Option.isSome(alertAt(flight, now, TO_BERGAMO, 'plan'))
 	)
 }
 
