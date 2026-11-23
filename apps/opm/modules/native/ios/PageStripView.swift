@@ -91,6 +91,7 @@ final class StripScrollView: UIScrollView {
 // of hiding it: a bar at zero alpha takes no touches, and the swipe keeps working.
 final class BarFade: NSObject {
   private weak var navigation: UINavigationController?
+  private var shown: [NSKeyValueObservation] = []
   private weak var content: UIView?
   private var hidden = true
 
@@ -103,17 +104,30 @@ final class BarFade: NSObject {
     guard let found = responder as? UINavigationController else { return }
     if found !== navigation {
       navigation?.interactivePopGestureRecognizer?.removeTarget(self, action: #selector(swiped(_:)))
+      shown = []
       // A fold or a turn moves the reader to another column's stack; the list left behind keeps its bars.
       fade(1)
       navigation = found
       found.interactivePopGestureRecognizer?.addTarget(self, action: #selector(swiped(_:)))
+      // The stack shows its bars again each time it lays them out, which a fold does for a while after the reader is in, as
+      // the status bar moves to the other screen; outside a push or a pop, they fade out again once that pass ends.
+      shown = found.view.subviews.filter { !view.isDescendant(of: $0) }.map {
+        $0.observe(\.alpha) { [weak self] bar, _ in
+          guard let self, self.hidden, bar.alpha > 0, self.navigation?.transitionCoordinator == nil else { return }
+          DispatchQueue.main.async { [weak self] in self?.apply() }
+        }
+      }
     }
-    // Pushed, the bars fade out once the reader is in rather than vanishing as it starts: iOS 27 leaves Back out of a push
-    // that ends with the bar faded.
-    if let coordinator = found.transitionCoordinator {
-      coordinator.animate(alongsideTransition: nil) { _ in UIView.animate(withDuration: 0.25) { self.apply() } }
-    } else {
-      apply()
+    // UIKit adds the reader to a stack halfway through showing it, in a push or in the fold that moves it there, and iOS 27
+    // leaves Back out of a stack that finishes showing it with the bars faded. A fold moves it without an animation, so there
+    // is no transition to wait for: the bars wait for this layout pass to end, then for any transition still running.
+    DispatchQueue.main.async { [weak self] in
+      guard let self, let navigation = self.navigation else { return }
+      if let coordinator = navigation.transitionCoordinator {
+        coordinator.animate(alongsideTransition: nil) { _ in UIView.animate(withDuration: 0.25) { self.apply() } }
+      } else {
+        self.apply()
+      }
     }
   }
 
@@ -132,6 +146,7 @@ final class BarFade: NSObject {
 
   func detach() {
     guard let navigation else { return }
+    shown = []
     navigation.interactivePopGestureRecognizer?.removeTarget(self, action: #selector(swiped(_:)))
     if navigation.viewControllers.count <= 1 { fade(1) }
     self.navigation = nil
