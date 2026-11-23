@@ -30,8 +30,8 @@ import {ApnsAnswer} from '@deslop/runtime/shared/apns'
 
 import {ACTIVITY_NAME, isStale, journeysOf, line, stepOf} from '#services/flights/lib/utils.ts'
 import type {Journey} from '#services/flights/lib/utils.ts'
-import type {ActivityProps, Flight, Leg, FlightsError, TravelTime} from '#services/flights/schema.ts'
-import {FlightId, Place} from '#services/flights/schema.ts'
+import type {Flight, Leg, FlightsError, TravelTime} from '#services/flights/schema.ts'
+import {ActivityProps, FlightId, Place} from '#services/flights/schema.ts'
 import {Flights} from '#services/flights/service.ts'
 import {
 	activeWindow,
@@ -866,14 +866,39 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 						) STRICT
 					`
 				}),
-				// One activity follows the whole day, and the props of a flight's activity no longer decode: each running one becomes a channel that is only deleted, and a retirement still deletes its channel without sending the end.
+				// One activity follows the whole day, and the props of a flight's activity no longer decode: each running one, and each whose end is still owed, ends on the phone with a last frame in the new shape, and the day's activity starts afresh.
 				'0011_day_activities': Effect.gen(function* () {
 					const sql = yield* SqlClient.SqlClient
-					const now = DateTime.toEpochMillis(yield* DateTime.now)
-					yield* sql`UPDATE retirements SET props = NULL`
+					const now = yield* DateTime.now
+					const ended = yield* Schema.encodeEffect(ActivityPropsJson)(
+						ActivityProps.make({
+							deadline: Option.none(),
+							delay: Duration.zero,
+							gate: Option.none(),
+							label: 'Live Activity',
+							note: '',
+							noteTone: 'plain',
+							noteWas: Option.none(),
+							pending: false,
+							phase: 'landed',
+							problem: Option.none(),
+							segment: 3,
+							segmentSince: now,
+							segmentUntil: now,
+							since: now,
+							small: '',
+							symbol: 'airplane',
+							tone: 'plain',
+							until: '',
+							untilValue: '',
+							value: 'Ended',
+							was: Option.none()
+						})
+					)
+					yield* sql`UPDATE retirements SET props = ${ended} WHERE props IS NOT NULL`
 					yield* sql`
 						INSERT INTO retirements (channel, bundle, props, retiredAt)
-						SELECT channel, bundle, NULL, ${now} FROM activities WHERE endedAt IS NULL
+						SELECT channel, bundle, ${ended}, ${DateTime.toEpochMillis(now)} FROM activities WHERE endedAt IS NULL
 						ON CONFLICT (channel) DO NOTHING
 					`
 					yield* sql`DELETE FROM activities`
