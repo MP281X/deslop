@@ -9,12 +9,12 @@ import {AtomMachine} from '@typeonce/effect-machine/reactivity'
 import {AsyncResult, Atom} from 'effect/reactivity'
 import {Suspense} from 'react'
 import type {ReactNode} from 'react'
-import {Line, LineChart, YAxis} from 'recharts'
 
 import {CopyButton} from '@deslop/components-web/blocks/copy-button'
 import {ImageMark} from '@deslop/components-web/blocks/marks'
 import {StaleProblem} from '@deslop/components-web/blocks/problem'
 import {LoadingRow, RowLead} from '@deslop/components-web/blocks/rows'
+import {Sparkline} from '@deslop/components-web/blocks/sparkline'
 import {Loaded, ReadFailure} from '@deslop/components-web/blocks/states'
 import {StatusDot} from '@deslop/components-web/blocks/status-dot'
 import {preload} from '@deslop/components-web/lib/router'
@@ -67,30 +67,6 @@ function urgency(server: ConnectionItem) {
 }
 const byUrgency = Order.mapInput(Order.Number, urgency)
 
-// A 64×14 line of the period's figures; zeros rest on the baseline. Its fixed size needs no measuring, so the hidden phone column draws nothing.
-function Sparkline(props: {values: readonly number[]}) {
-	return (
-		<div aria-hidden className="h-3.5 w-16">
-			<LineChart
-				width={64}
-				height={14}
-				data={Array.map(props.values, calls => ({calls}))}
-				margin={{bottom: 1, left: 1, right: 1, top: 1}}
-			>
-				<YAxis hide domain={[0, 'dataMax']} />
-				<Line
-					dataKey="calls"
-					type="linear"
-					stroke="var(--muted-foreground)"
-					strokeWidth={1.5}
-					dot={false}
-					isAnimationActive={false}
-				/>
-			</LineChart>
-		</div>
-	)
-}
-
 // The server's first icon that loads, else a server glyph; icons a later discovery finds get their turn. Without a tile behind it, an icon drawn for dark backgrounds goes first.
 function ServerIcon(props: {server: ConnectionItem}) {
 	const host = new URL(props.server.url).hostname
@@ -116,12 +92,12 @@ function ServerIcon(props: {server: ConnectionItem}) {
 	)
 }
 
-// A row's period: its sparkline from the small breakpoint, then its total.
+// A row's period: its sparkline, narrower on a phone, then its total; the row's detail gives way before either.
 function FiguresCells(props: {figure: string; series: readonly number[]}) {
 	return (
 		<>
-			<TableCell className="hidden sm:table-cell">
-				<Sparkline values={props.series} />
+			<TableCell>
+				<Sparkline className="max-sm:w-12" values={props.series} />
 			</TableCell>
 			<TableCell className="text-right">
 				<span className="tabular-nums">{props.figure}</span>
