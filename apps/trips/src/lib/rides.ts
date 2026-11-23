@@ -5,8 +5,8 @@ import {Linking} from 'react-native'
 
 import {alertFailure} from '@deslop/components-mobile/lib/alerts'
 
-import type {Place} from '#services/bookings/schema.ts'
-import {BookingsError} from '#services/bookings/schema.ts'
+import type {Place} from '#services/flights/schema.ts'
+import {FlightsError} from '#services/flights/schema.ts'
 
 export function placeLine(place: Place) {
 	return pipe(
@@ -24,7 +24,7 @@ function coordinatesOf(place: Place) {
 export const mapsAtom = Atom.fn((place: Place) =>
 	pipe(
 		Effect.tryPromise({
-			catch: cause => BookingsError.make({cause, message: 'Maps could not be opened.'}),
+			catch: cause => FlightsError.make({cause, message: 'Maps could not be opened.'}),
 			try: () =>
 				Linking.openURL(
 					Option.match(coordinatesOf(place), {
@@ -41,10 +41,10 @@ export const uberAtom = Atom.fn((place: Place) =>
 	pipe(
 		coordinatesOf(place),
 		Effect.fromOption,
-		Effect.mapError(cause => BookingsError.make({cause, message: 'The place could not be found for Uber.'})),
+		Effect.mapError(cause => FlightsError.make({cause, message: 'The place could not be found for Uber.'})),
 		Effect.flatMap(found =>
 			Effect.tryPromise({
-				catch: cause => BookingsError.make({cause, message: 'Uber could not be opened.'}),
+				catch: cause => FlightsError.make({cause, message: 'Uber could not be opened.'}),
 				try: () =>
 					Linking.openURL(
 						`https://m.uber.com/ul/?action=setPickup&pickup=my_location&dropoff[latitude]=${found.latitude}&dropoff[longitude]=${found.longitude}&dropoff[nickname]=${encodeURIComponent(place.name)}&dropoff[formatted_address]=${encodeURIComponent(placeLine(place))}`

@@ -6,9 +6,9 @@ import {colors} from '@deslop/components-mobile/theme'
 import {weekdayOf} from '@deslop/runtime/shared/format'
 
 import {primary} from '#lib/session.ts'
-import {cancelledOf, clockAt, daysBetween, departureOf, labelled} from '#services/bookings/lib/utils.ts'
-import {Tone} from '#services/bookings/schema.ts'
-import type {Flight, FlightTracking} from '#services/bookings/schema.ts'
+import {cancelledOf, clockAt, daysBetween, departureOf, labelled} from '#services/flights/lib/utils.ts'
+import {Tone} from '#services/flights/schema.ts'
+import type {Flight, FlightTracking} from '#services/flights/schema.ts'
 import {isStale} from '#services/tracking/lib/utils.ts'
 
 // The day where the trip happens, in that place's zone.
@@ -73,15 +73,15 @@ function flightStatus(flight: Flight, now: DateTime.Utc) {
 }
 
 // Where the flight stands, with the gate; old live data says when it was read rather than look current.
-export function statusOf(booking: Flight, now: DateTime.Utc) {
-	if (cancelledOf(booking)) return problemLine('Cancelled', 'bad', Option.none())
-	return flightStatus(booking, now)
+export function statusOf(flight: Flight, now: DateTime.Utc) {
+	if (cancelledOf(flight)) return problemLine('Cancelled', 'bad', Option.none())
+	return flightStatus(flight, now)
 }
 
 // Only a problem gets a dot: a delay, a cancellation, or a live answer that went stale with its age.
-export function problemOf(booking: Flight, status: Status, now: DateTime.Utc) {
-	if (isStale(booking, now)) {
-		return Option.map<FlightTracking, {label: string; status: 'warning'; tone: 'warn'}>(booking.live, live => ({
+export function problemOf(flight: Flight, status: Status, now: DateTime.Utc) {
+	if (isStale(flight, now)) {
+		return Option.map<FlightTracking, {label: string; status: 'warning'; tone: 'warn'}>(flight.live, live => ({
 			label: `${Number.max(0, Math.floor(Duration.toMinutes(DateTime.distance(live.checkedAt, now))))}m`,
 			status: 'warning' as const,
 			tone: 'warn' as const

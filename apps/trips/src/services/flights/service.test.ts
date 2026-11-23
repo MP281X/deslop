@@ -11,9 +11,9 @@ import {UserId} from '@deslop/runtime/shared/auth'
 import {Extractor} from './lib/extraction.ts'
 import {Places} from './lib/places.ts'
 
-import type {ExtractedItem, ExtractedItems} from '#services/bookings/schema.ts'
-import {BookingSource, Place, PlaceCode} from '#services/bookings/schema.ts'
-import {Bookings} from '#services/bookings/service.ts'
+import type {ExtractedFlight, ExtractedFlights} from '#services/flights/schema.ts'
+import {TicketSource, Place, PlaceCode} from '#services/flights/schema.ts'
+import {Flights} from '#services/flights/service.ts'
 
 const USER = UserId.make('github:1')
 
@@ -31,14 +31,14 @@ function flight(number: string, from: string, to: string, departure: string, con
 		seat: Option.none(),
 		status: 'confirmed',
 		to
-	} satisfies ExtractedItem
+	} satisfies ExtractedFlight
 }
 
-const next = MutableRef.make<ExtractedItems>([])
+const next = MutableRef.make<ExtractedFlights>([])
 
 // The test sets what the next shared ticket reads as; each test gets its own scratch database.
-const bookingsLayer = pipe(
-	Bookings.layer,
+const flightsLayer = pipe(
+	Flights.layer,
 	Layer.provide(Layer.mock(Extractor, {read: () => Effect.sync(() => MutableRef.get(next))})),
 	Layer.provide(
 		Layer.mock(Places, {
@@ -65,24 +65,24 @@ const bookingsLayer = pipe(
 	Layer.provide(Layer.merge(NodeServices.layer, SecureRandom.layerWebCrypto))
 )
 
-function share(document: ExtractedItems) {
+function share(document: ExtractedFlights) {
 	MutableRef.set(next, document)
-	return Effect.flatMap(Bookings, bookings => bookings.save(USER, BookingSource.cases.text.make({text: 'ticket'})))
+	return Effect.flatMap(Flights, flights => flights.save(USER, TicketSource.cases.text.make({text: 'ticket'})))
 }
 
-it.layer(bookingsLayer)(test =>
+it.layer(flightsLayer)(test =>
 	test.effect(
-		'a delete removes only the booking it names',
+		'a delete removes only the flight it names',
 		Effect.fnUntraced(function* () {
-			const bookings = yield* Bookings
+			const flights = yield* Flights
 			yield* share([flight('553', 'FCO', 'LHR', '2026-11-19T08:00', 'ONE')])
-			const shown = yield* bookings.list
+			const shown = yield* flights.list
 			if (!Array.isReadonlyArrayNonEmpty(shown)) return assert.fail('The first ticket was not saved.')
 			// Another ticket is shared while the phone still shows the first.
 			yield* share([flight('554', 'LHR', 'FCO', '2026-11-19T20:00', 'TWO')])
-			yield* bookings.remove(Array.headNonEmpty(shown).id)
+			yield* flights.remove(Array.headNonEmpty(shown).id)
 			assert.deepStrictEqual(
-				Array.map(yield* bookings.list, booking => booking.number),
+				Array.map(yield* flights.list, saved => saved.number),
 				['554']
 			)
 		})

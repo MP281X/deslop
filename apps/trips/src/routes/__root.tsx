@@ -17,22 +17,22 @@ import {PasteSheet} from '@deslop/components-mobile/blocks/paste-sheet'
 import {SessionGate} from '@deslop/components-mobile/blocks/session-gate'
 import {colors} from '@deslop/components-mobile/theme'
 
-import {boardAtom, bookingsAtom, clipboard} from '#lib/bookings.ts'
 import {openedAtom} from '#lib/deep-links.ts'
+import {boardAtom, flightsAtom, clipboard} from '#lib/flights.ts'
 import {pushAtom} from '#lib/notifications.ts'
 import {session} from '#lib/session.ts'
 import {HomeRoute} from '#routes/(home)/index.tsx'
-import {BookingRoute} from '#routes/bookings/$id.tsx'
-import type {BookingId} from '#services/bookings/schema.ts'
+import {FlightRoute} from '#routes/flights/$id.tsx'
+import type {FlightId} from '#services/flights/schema.ts'
 
-function Destination(props: {id: Option.Option<BookingId>; onClose: () => void}) {
-	const live = useAtomValue(bookingsAtom)
+function Destination(props: {id: Option.Option<FlightId>; onClose: () => void}) {
+	const live = useAtomValue(flightsAtom)
 	return (
-		<Loaded atom={bookingsAtom}>
-			{bookings => (
-				<BookingRoute
+		<Loaded atom={flightsAtom}>
+			{flights => (
+				<FlightRoute
 					key={Option.getOrElse(props.id, Function.constant('board'))}
-					bookings={bookings}
+					flights={flights}
 					id={props.id}
 					offline={AsyncResult.isFailure(live)}
 					onClose={props.onClose}
@@ -42,7 +42,7 @@ function Destination(props: {id: Option.Option<BookingId>; onClose: () => void})
 	)
 }
 
-// `openedAtom` logs an initial URL-read failure and keeps listening for later opens; no opened booking is the valid home, not a replacement booking or a successful read of booking data.
+// `openedAtom` logs an initial URL-read failure and keeps listening for later opens; no opened flight is the valid home, not a replacement flight or a successful read of flight data.
 function AppRoutes() {
 	useAtomMount(pushAtom)
 	const launched = useAtomValue(openedAtom)

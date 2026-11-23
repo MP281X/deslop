@@ -188,7 +188,7 @@ const publicAccess: readonly Access[] = [
 	})),
 	{app: 'trips', callers: ['member'], surface: 'http POST /share'},
 	...Array.map(
-		['bookings.events', 'bookings.save', 'bookings.remove', 'tracking.refresh', 'push.register', 'push.start'],
+		['flights.events', 'flights.save', 'flights.remove', 'tracking.refresh', 'push.register', 'push.start'],
 		name => ({app: 'trips', callers: ['member'] as const, surface: `rpc ${name}`})
 	)
 ]

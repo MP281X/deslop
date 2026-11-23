@@ -1,7 +1,7 @@
 import {Array, Boolean, DateTime, Duration, Equal, Function, Number, Option, Order, String, Struct, pipe} from 'effect'
 
-import {ActivityProps, Flight} from '#services/bookings/schema.ts'
-import type {BookingList, Chip, FlightPhase, FlightTracking, Leg, LocalTime} from '#services/bookings/schema.ts'
+import {ActivityProps, Flight} from '#services/flights/schema.ts'
+import type {FlightList, Chip, FlightPhase, FlightTracking, Leg, LocalTime} from '#services/flights/schema.ts'
 
 const OFFSET = /(?:Z|[+-]\d{2}:?\d{2})$/u
 
@@ -46,9 +46,9 @@ export function clockAt(time: DateTime.Utc, timeZone: string) {
 }
 
 // The ticket or the provider says the flight will not run; alerts, the island and the phone all read this one answer.
-export function cancelledOf(booking: Flight) {
-	if (booking.status === 'cancelled') return true
-	return Option.exists<FlightTracking>(booking.live, live => live.state === 'cancelled')
+export function cancelledOf(flight: Flight) {
+	if (flight.status === 'cancelled') return true
+	return Option.exists<FlightTracking>(flight.live, live => live.state === 'cancelled')
 }
 
 export function labelled(label: string, value: Option.Option<string>) {
@@ -59,19 +59,19 @@ export function line(parts: Option.Option<string>[]) {
 	return Array.join(Array.getSomes(parts), ' · ')
 }
 
-export function departureOf(booking: Flight) {
+export function departureOf(flight: Flight) {
 	return pipe(
-		booking.live,
+		flight.live,
 		Option.flatMap(live => Option.orElse(live.departureActual, () => live.departureEstimated)),
-		Option.getOrElse(() => booking.departs)
+		Option.getOrElse(() => flight.departs)
 	)
 }
 
-export function arrivalOf(booking: Flight) {
+export function arrivalOf(flight: Flight) {
 	return pipe(
-		booking.live,
+		flight.live,
 		Option.flatMap(live => Option.orElse(live.arrivalActual, () => live.arrivalEstimated)),
-		Option.getOrElse(() => booking.arrives)
+		Option.getOrElse(() => flight.arrives)
 	)
 }
 
@@ -93,24 +93,24 @@ function dayMark(days: number) {
 	return ` −${-days}`
 }
 
-export function arrivalClockOf(booking: Flight) {
-	return `${clockAt(arrivalOf(booking), booking.to.timeZone)}${dayMark(daysBetween(departureOf(booking), booking.from.timeZone, arrivalOf(booking), booking.to.timeZone))}`
+export function arrivalClockOf(flight: Flight) {
+	return `${clockAt(arrivalOf(flight), flight.to.timeZone)}${dayMark(daysBetween(departureOf(flight), flight.from.timeZone, arrivalOf(flight), flight.to.timeZone))}`
 }
 
 // Soonest first, live delays included.
 export const byDeparture = Order.mapInput(DateTime.Order, departureOf)
 
-export function titleOf(booking: Flight) {
-	return `${booking.airlineCode} ${booking.number}`
+export function titleOf(flight: Flight) {
+	return `${flight.airlineCode} ${flight.number}`
 }
 
-export function routeOf(booking: Flight) {
-	return `${Option.getOrElse(booking.from.city, () => booking.from.name)} → ${Option.getOrElse(booking.to.city, () => booking.to.name)}`
+export function routeOf(flight: Flight) {
+	return `${Option.getOrElse(flight.from.city, () => flight.from.name)} → ${Option.getOrElse(flight.to.city, () => flight.to.name)}`
 }
 
 // A code as printed, so "abc123 " and "ABC123" are the same one.
-function codeOf(booking: Flight) {
-	return Option.map(booking.confirmation, code => pipe(code, String.trim, String.toUpperCase))
+function codeOf(flight: Flight) {
+	return Option.map(flight.confirmation, code => pipe(code, String.trim, String.toUpperCase))
 }
 
 // A field the newer ticket leaves out keeps what the older one printed.
@@ -135,7 +135,7 @@ function sameFlight(existing: Flight, incoming: Flight) {
 }
 
 function sameReservation(existing: Flight, incoming: Flight) {
-	// Two codes that both exist and differ are two travellers, never one booking.
+	// Two codes that both exist and differ are two travellers, never one flight.
 	if (Option.exists(codeOf(existing), code => Option.exists(codeOf(incoming), other => other !== code))) return false
 	return sameFlight(existing, incoming)
 }
@@ -157,17 +157,17 @@ function combine(existing: Flight, incoming: Flight) {
 	})
 }
 
-export function upsert(current: BookingList, incoming: BookingList) {
-	return Array.mapAccum(incoming, current, (bookings, booking) =>
+export function upsert(current: FlightList, incoming: FlightList) {
+	return Array.mapAccum(incoming, current, (flights, flight) =>
 		pipe(
-			bookings,
-			Array.findFirst(existing => sameReservation(existing, booking)),
+			flights,
+			Array.findFirst(existing => sameReservation(existing, flight)),
 			Option.match({
-				onNone: () => [[...bookings, booking], undefined] as const,
+				onNone: () => [[...flights, flight], undefined] as const,
 				onSome: existing => {
-					const merged = combine(existing, booking)
+					const merged = combine(existing, flight)
 					return [
-						Array.map(bookings, item => Boolean.match(item === existing, {onFalse: () => item, onTrue: () => merged})),
+						Array.map(flights, item => Boolean.match(item === existing, {onFalse: () => item, onTrue: () => merged})),
 						undefined
 					] as const
 				}
@@ -184,15 +184,15 @@ function autoStartOf(flight: Flight) {
 type ActivityWindow = {end: DateTime.Utc; leg: Leg; start: DateTime.Utc}
 
 // A flight longer than ActivityKit's eight hours, delays included, gets a second activity for its arrival.
-function activityWindows(booking: Flight, requested: Option.Option<DateTime.Utc>) {
+function activityWindows(flight: Flight, requested: Option.Option<DateTime.Utc>) {
 	const start = Option.match(requested, {
-		onNone: () => autoStartOf(booking),
-		onSome: at => DateTime.min(at, autoStartOf(booking))
+		onNone: () => autoStartOf(flight),
+		onSome: at => DateTime.min(at, autoStartOf(flight))
 	})
 	// A cancellation the provider reported stays on the island for an hour from when it was read, then the activity ends.
-	const landed = DateTime.addDuration(arrivalOf(booking), Duration.minutes(45))
+	const landed = DateTime.addDuration(arrivalOf(flight), Duration.minutes(45))
 	const end = pipe(
-		booking.live,
+		flight.live,
 		Option.filter(found => found.state === 'cancelled'),
 		Option.match({
 			onNone: () => landed,
@@ -203,7 +203,7 @@ function activityWindows(booking: Flight, requested: Option.Option<DateTime.Utc>
 		return [{end, leg: 'departure', start}] satisfies ActivityWindow[]
 	}
 	const departed = pipe(
-		departureOf(booking),
+		departureOf(flight),
 		DateTime.addDuration(Duration.minutes(45)),
 		DateTime.min(DateTime.addDuration(start, ACTIVITY_LIFETIME))
 	)
@@ -214,12 +214,12 @@ function activityWindows(booking: Flight, requested: Option.Option<DateTime.Utc>
 }
 
 export function activeWindow(
-	booking: Flight,
+	flight: Flight,
 	now: DateTime.Utc,
 	requested: Option.Option<DateTime.Utc> = Option.none()
 ) {
 	return Array.findFirst(
-		activityWindows(booking, requested),
+		activityWindows(flight, requested),
 		window => DateTime.isLessThanOrEqualTo(window.start, now) && DateTime.isLessThan(now, window.end)
 	)
 }

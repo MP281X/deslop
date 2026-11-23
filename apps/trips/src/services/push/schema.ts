@@ -4,7 +4,7 @@ import {Model} from 'effect/schema'
 
 import {ApnsToken, Device} from '@deslop/runtime/shared/apns'
 
-import {ActivityProps, BookingId, Leg} from '#services/bookings/schema.ts'
+import {ActivityProps, FlightId, Leg} from '#services/flights/schema.ts'
 
 export type ActivityPropsJson = typeof ActivityPropsJson.Type
 // The content-state's props, which expo-widgets reads as a JSON string.
@@ -24,10 +24,10 @@ export const ChannelId = pipe(Schema.String, Schema.brand('ChannelId'))
 
 // One row of `activities`: a Live Activity the server started for one window of a flight on one app, updated and ended through its broadcast channel.
 export class Activity extends Model.Class<Activity>('Activity')({
-	bookingId: BookingId,
 	bundle: Schema.String,
 	channel: ChannelId,
 	endedAt: Model.FieldOption(Schema.DateTimeUtcFromMillis),
+	flightId: FlightId,
 	leg: Leg,
 	// What it last showed, so only a change is pushed, and urgently only when its urgency changed.
 	props: Model.JsonFromString(ActivityProps),
@@ -49,20 +49,20 @@ export class Retirement extends Model.Class<Retirement>('Retirement')({
 	static readonly table = 'retirements'
 }
 
-// One row of `sent_alerts`: an alert sent for a booking, so each is sent once; the latest of a category tells a change back from a repeat.
+// One row of `sent_alerts`: an alert sent for a flight, so each is sent once; the latest of a category tells a change back from a repeat.
 export type AlertCategory = typeof AlertCategory.Type
 export const AlertCategory = Schema.Literals(['cancelled', 'diverted', 'boarding', 'gate', 'delay'])
 
 export class SentAlert extends Model.Class<SentAlert>('SentAlert')({
-	bookingId: BookingId,
 	category: AlertCategory,
+	flightId: FlightId,
 	sentAt: Schema.DateTimeUtcFromMillis,
 	value: Model.FieldOption(Schema.String)
 }) {
 	static readonly table = 'sent_alerts'
 }
 
-// Terminal device answers, including partial rounds; retained until the booking leaves so delay steps never repeat.
+// Terminal device answers, including partial rounds; retained until the flight leaves so delay steps never repeat.
 export class AlertDelivery extends Model.Class<AlertDelivery>('Delivery')({
 	...Model.fields(SentAlert),
 	token: Model.Sensitive(Schema.RedactedFromValue(ApnsToken))
@@ -73,7 +73,7 @@ export class AlertDelivery extends Model.Class<AlertDelivery>('Delivery')({
 // When the person last asked to start a flight's Live Activity.
 export class StartRequest extends Model.Class<StartRequest>('StartRequest')({
 	at: Schema.DateTimeUtcFromMillis,
-	bookingId: BookingId
+	flightId: FlightId
 }) {
 	static readonly table = 'requests'
 }

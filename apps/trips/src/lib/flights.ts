@@ -16,22 +16,22 @@ import {provideRuntimeOnce} from '@deslop/runtime/mobile/session'
 import {listReducer} from '@deslop/runtime/shared/list'
 
 import {RpcClient, session} from '#lib/session.ts'
-import {arrivalOf, byDeparture, HOUR} from '#services/bookings/lib/utils.ts'
-import {BookingId, BookingSource, BookingsError, Flight, IMAGE_BYTES} from '#services/bookings/schema.ts'
+import {arrivalOf, byDeparture, HOUR} from '#services/flights/lib/utils.ts'
+import {FlightId, TicketSource, FlightsError, Flight, IMAGE_BYTES} from '#services/flights/schema.ts'
 
-const bookingsFile = new File(Paths.document, 'bookings.json')
+const flightsFile = new File(Paths.document, 'flights.json')
 
-const apply = listReducer(byDeparture, booking => booking.id)
+const apply = listReducer(byDeparture, flight => flight.id)
 
 // The copy on the iPhone opens the trip at the gate even without a network.
-export const bookingsAtom = Atom.keepAlive(
+export const flightsAtom = Atom.keepAlive(
 	RpcClient.runtime.atom(get =>
 		cachedList(
 			get,
 			session,
-			bookingsFile,
+			flightsFile,
 			Flight.json,
-			pipe(liveStream(RpcClient, 'bookings.events'), Stream.scan(Array.empty<Flight>, apply), Stream.drop(1)),
+			pipe(liveStream(RpcClient, 'flights.events'), Stream.scan(Array.empty<Flight>, apply), Stream.drop(1)),
 			reconnectOnDrop
 		)
 	)
@@ -42,35 +42,35 @@ function copiedScreenshot(count: string) {
 	return Effect.scoped(
 		Effect.flatMap(copiedImage(count, IMAGE_BYTES), file =>
 			Effect.tryPromise({
-				catch: cause => BookingsError.make({cause, message: 'The copied screenshot could not be read.'}),
+				catch: cause => FlightsError.make({cause, message: 'The copied screenshot could not be read.'}),
 				try: () => file.arrayBuffer()
 			})
 		)
 	)
 }
 
-const bookingFromClipboard = Effect.fnUntraced(function* (offer: ClipboardCopy) {
+const ticketFromClipboard = Effect.fnUntraced(function* (offer: ClipboardCopy) {
 	if (offer.kind === 'image') {
-		return BookingSource.cases.image.make({image: new Uint8Array(yield* copiedScreenshot(offer.count))})
+		return TicketSource.cases.image.make({image: new Uint8Array(yield* copiedScreenshot(offer.count))})
 	}
 	const text = pipe(
 		yield* readClipboard(
 			offer.count,
 			Effect.tryPromise({
-				catch: cause => BookingsError.make({cause, message: 'The copied text could not be read.'}),
+				catch: cause => FlightsError.make({cause, message: 'The copied text could not be read.'}),
 				try: () => getStringAsync()
 			})
 		),
 		String.trim,
 		String.slice(0, 60_000)
 	)
-	if (String.isEmpty(text)) return yield* BookingsError.make({message: 'The clipboard no longer holds text.'})
-	return BookingSource.cases.text.make({text})
+	if (String.isEmpty(text)) return yield* FlightsError.make({message: 'The clipboard no longer holds text.'})
+	return TicketSource.cases.text.make({text})
 })
 
 export const clipboard = makeClipboard({
-	// A refused booking or a copy that cannot be read is answered, but a lost connection offers the same copy on the next return.
-	answered: error => Schema.is(BookingsError)(error) || Schema.is(ClipboardError)(error),
+	// A refused flight or a copy that cannot be read is answered, but a lost connection offers the same copy on the next return.
+	answered: error => Schema.is(FlightsError)(error) || Schema.is(ClipboardError)(error),
 	detect: Effect.gen(function* () {
 		if (yield* Effect.promise(() => hasImageAsync())) return Option.some<ClipboardKind>('image')
 		if (yield* Effect.promise(() => hasStringAsync())) return Option.some<ClipboardKind>('text')
@@ -80,17 +80,17 @@ export const clipboard = makeClipboard({
 		confirm: 'Add',
 		notSaved: 'Not Saved',
 		questions: {
-			image: 'Add a booking from the copied screenshot?',
-			link: 'Add a booking from the copied text?',
-			text: 'Add a booking from the copied text?'
+			image: 'Add a flight from the copied screenshot?',
+			link: 'Add a flight from the copied text?',
+			text: 'Add a flight from the copied text?'
 		}
 	},
 	save: Effect.fnUntraced(function* (copy, get) {
-		const source = yield* bookingFromClipboard(copy)
+		const source = yield* ticketFromClipboard(copy)
 		yield* provideRuntimeOnce(
 			get,
 			RpcClient.runtime,
-			Effect.flatMap(RpcClient, client => client('bookings.save', source))
+			Effect.flatMap(RpcClient, client => client('flights.save', source))
 		)
 	})
 })
@@ -98,20 +98,20 @@ export const clipboard = makeClipboard({
 export const removal = makeRemoval({
 	notRemoved: 'Not Deleted',
 	remove: Effect.fnUntraced(function* (key: string, get: Atom.AtomContext) {
-		const id = yield* Effect.mapError(Schema.decodeEffect(BookingId)(key), cause =>
-			BookingsError.make({cause, message: 'The booking to delete could not be read.'})
+		const id = yield* Effect.mapError(Schema.decodeEffect(FlightId)(key), cause =>
+			FlightsError.make({cause, message: 'The flight to delete could not be read.'})
 		)
 		return yield* Effect.mapError(
 			provideRuntimeOnce(
 				get,
 				RpcClient.runtime,
-				Effect.flatMap(RpcClient, client => client('bookings.remove', {id}))
+				Effect.flatMap(RpcClient, client => client('flights.remove', {id}))
 			),
 			cause => {
-				if (Schema.is(BookingsError)(cause)) return cause
-				return BookingsError.make({
+				if (Schema.is(FlightsError)(cause)) return cause
+				return FlightsError.make({
 					cause,
-					message: 'The server did not confirm whether the booking was deleted. Reconnect to check.'
+					message: 'The server did not confirm whether the flight was deleted. Reconnect to check.'
 				})
 			}
 		)
@@ -119,7 +119,7 @@ export const removal = makeRemoval({
 })
 
 // Every request gets its first answer within a minute or fails, so the pull spinner always stops.
-export const refreshAtom = Atom.fn((id: BookingId, get) =>
+export const refreshAtom = Atom.fn((id: FlightId, get) =>
 	pipe(
 		provideRuntimeOnce(
 			get,
@@ -141,11 +141,11 @@ export const nowAtom = Atom.make(get => {
 export const boardAtom = Atom.make(get => {
 	const now = get(nowAtom)
 	return pipe(
-		get(bookingsAtom),
+		get(flightsAtom),
 		AsyncResult.value,
 		Option.flatMap(
-			Array.findFirst(booking =>
-				pipe(arrivalOf(booking), DateTime.addDuration(HOUR), DateTime.isGreaterThanOrEqualTo(now))
+			Array.findFirst(flight =>
+				pipe(arrivalOf(flight), DateTime.addDuration(HOUR), DateTime.isGreaterThanOrEqualTo(now))
 			)
 		)
 	)

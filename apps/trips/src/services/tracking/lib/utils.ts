@@ -1,7 +1,7 @@
 import {Array, DateTime, Duration, Function, Option, Order, Result, String, pipe} from 'effect'
 
-import {AIRPORT_LEAD, arrivalOf, departureOf} from '#services/bookings/lib/utils.ts'
-import type {Flight, FlightTracking} from '#services/bookings/schema.ts'
+import {AIRPORT_LEAD, arrivalOf, departureOf} from '#services/flights/lib/utils.ts'
+import type {Flight, FlightTracking} from '#services/flights/schema.ts'
 import type {FaFlight, FaFlights} from '#services/tracking/schema.ts'
 
 function text(value: Option.Option<string>) {
@@ -142,8 +142,8 @@ export function checkEvery(flight: Flight, now: DateTime.Utc) {
 }
 
 // The last attempt counts, answered or not, so a failing provider is asked on the same schedule.
-export function isDue(booking: Flight, now: DateTime.Utc, attemptedAt: Option.Option<DateTime.Utc>) {
-	const checkedAt = Option.match<FlightTracking, Option.Option<DateTime.Utc>>(booking.live, {
+export function isDue(flight: Flight, now: DateTime.Utc, attemptedAt: Option.Option<DateTime.Utc>) {
+	const checkedAt = Option.match<FlightTracking, Option.Option<DateTime.Utc>>(flight.live, {
 		onNone: () => attemptedAt,
 		onSome: live =>
 			Option.some(
@@ -153,7 +153,7 @@ export function isDue(booking: Flight, now: DateTime.Utc, attemptedAt: Option.Op
 				})
 			)
 	})
-	return Option.exists(checkEvery(booking, now), every =>
+	return Option.exists(checkEvery(flight, now), every =>
 		Option.match(checkedAt, {
 			onNone: Function.constTrue,
 			onSome: at => pipe(at, DateTime.distance(now), Duration.isGreaterThanOrEqualTo(every))
@@ -162,13 +162,13 @@ export function isDue(booking: Flight, now: DateTime.Utc, attemptedAt: Option.Op
 }
 
 // Live data that missed two of the checks due after it no longer describes the flight, even once tracking stopped; an arrival is final. Checks come at the shorter of the pace when it was read and the pace now, since the pace quickens near departure.
-export function isStale(booking: Flight, now: DateTime.Utc) {
+export function isStale(flight: Flight, now: DateTime.Utc) {
 	return Option.exists<FlightTracking>(
-		booking.live,
+		flight.live,
 		live =>
 			live.state !== 'arrived' &&
 			pipe(
-				Array.getSomes([checkEvery(booking, live.checkedAt), checkEvery(booking, now)]),
+				Array.getSomes([checkEvery(flight, live.checkedAt), checkEvery(flight, now)]),
 				Array.match({
 					onEmpty: () => Option.none<Duration.Duration>(),
 					onNonEmpty: paces => Option.some(Array.min(paces, Duration.Order))

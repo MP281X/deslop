@@ -4,8 +4,8 @@ import {Array, DateTime, Duration, Option, Redacted, Schema, String, Struct, pip
 
 import {ApnsToken, Device} from '@deslop/runtime/shared/apns'
 
-import {activityProps} from '#services/bookings/lib/utils.ts'
-import {BookingId, Flight, FlightTracking, Place} from '#services/bookings/schema.ts'
+import {activityProps} from '#services/flights/lib/utils.ts'
+import {FlightId, Flight, FlightTracking, Place} from '#services/flights/schema.ts'
 import {
 	alertsOf,
 	announced,
@@ -29,7 +29,7 @@ const FLIGHT = Struct.pick(
 		confirmation: Option.none(),
 		departs: DEPARTS,
 		from: Schema.decodeSync(Place)({code: 'FCO', name: 'Fiumicino', timeZone: 'Europe/Rome'}),
-		id: BookingId.make('7f0c8f8e-0d0a-4a5e-9d8f-5b2a1c3d4e5f'),
+		id: FlightId.make('7f0c8f8e-0d0a-4a5e-9d8f-5b2a1c3d4e5f'),
 		live: Option.none(),
 		number: '553',
 		seat: Option.none(),
@@ -44,17 +44,17 @@ const STARTER = {
 	token: Redacted.make(ApnsToken.make(String.repeat(32)('a')))
 }
 const ACTIVITY = {
-	bookingId: FLIGHT.id,
 	bundle: 'xyz.mp281x.trips' as const,
 	channel: ChannelId.make('current'),
 	endedAt: Option.none<DateTime.Utc>(),
+	flightId: FLIGHT.id,
 	leg: 'departure' as const,
 	props: activityProps(FLIGHT, DEPARTS, false),
 	startedAt: DEPARTS
 }
 
 function sentAlert(category: AlertCategory, value: string) {
-	return SentAlert.make({bookingId: FLIGHT.id, category, sentAt: DEPARTS, value: Option.some(value)})
+	return SentAlert.make({category, flightId: FLIGHT.id, sentAt: DEPARTS, value: Option.some(value)})
 }
 
 it('retries the other phone without resending an accepted alert, including an older delay step', () => {
@@ -62,8 +62,8 @@ it('retries the other phone without resending an accepted alert, including an ol
 	const second = Device.make({...STARTER, kind: 'alert', token: Redacted.make(ApnsToken.make(String.repeat(32)('b')))})
 	const alert = {body: '', category: 'delay' as const, title: '', value: '15'}
 	const accepted = AlertDelivery.make({
-		bookingId: FLIGHT.id,
 		category: 'delay',
+		flightId: FLIGHT.id,
 		sentAt: DEPARTS,
 		token: first.token,
 		value: Option.some('15')
@@ -185,11 +185,11 @@ it('refreshes a covering activity or launches a new one per app while an ended l
 	)
 })
 
-it('ends only running activities whose booking or window is gone', () => {
+it('ends only running activities whose flight or window is gone', () => {
 	const removed = Activity.make({
 		...ACTIVITY,
-		bookingId: BookingId.make('aaaaaaaa-0d0a-4a5e-9d8f-5b2a1c3d4e5f'),
-		channel: ChannelId.make('removed')
+		channel: ChannelId.make('removed'),
+		flightId: FlightId.make('aaaaaaaa-0d0a-4a5e-9d8f-5b2a1c3d4e5f')
 	})
 	const wrongLeg = Activity.make({...ACTIVITY, channel: ChannelId.make('wrong-leg'), leg: 'arrival'})
 	const ended = Activity.make({...ACTIVITY, channel: ChannelId.make('ended'), endedAt: Option.some(DEPARTS)})
@@ -297,15 +297,15 @@ it('words a delay by whether the flight has left', () => {
 
 function delivery(token: Device['token'], value: string, minutes: number) {
 	return AlertDelivery.make({
-		bookingId: FLIGHT.id,
 		category: 'gate',
+		flightId: FLIGHT.id,
 		sentAt: DateTime.addDuration(DEPARTS, Duration.minutes(minutes)),
 		token,
 		value: Option.some(value)
 	})
 }
 
-it('reconciles a gate per phone but a delay once per booking', () => {
+it('reconciles a gate per phone but a delay once per flight', () => {
 	assert.deepStrictEqual(
 		[
 			perDevice({body: '', category: 'gate', title: '', value: 'A'}),

@@ -2,7 +2,7 @@ import {Schema} from 'effect'
 
 import {Model} from 'effect/schema'
 
-import {ProviderFlightId} from '#services/bookings/schema.ts'
+import {ProviderFlightId} from '#services/flights/schema.ts'
 
 // FlightAware AeroAPI v4 GET /flights/{ident}: times are ISO instants, every operational field is null until known.
 export type FaFlight = typeof FaFlight.Type

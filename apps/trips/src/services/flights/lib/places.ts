@@ -17,8 +17,8 @@ import {
 
 import {HttpClient, HttpClientResponse} from 'effect/http'
 
-import type {Place} from '#services/bookings/schema.ts'
-import {Airport, BookingsError, PlaceCode} from '#services/bookings/schema.ts'
+import type {Place} from '#services/flights/schema.ts'
+import {Airport, FlightsError, PlaceCode} from '#services/flights/schema.ts'
 
 function airportIndex(all: Record<string, unknown>) {
 	return Record.fromEntries(
@@ -36,8 +36,8 @@ function airportIndex(all: Record<string, unknown>) {
 // Airports come from an open dataset with their zone and coordinates.
 export class Places extends Context.Service<
 	Places,
-	{readonly airport: (code: string) => Effect.Effect<Place, BookingsError>}
->()('@deslop/trips/services/bookings/lib/places') {
+	{readonly airport: (code: string) => Effect.Effect<Place, FlightsError>}
+>()('@deslop/trips/services/flights/lib/places') {
 	static readonly layer = Layer.effect(
 		this,
 		Effect.gen(function* () {
@@ -63,13 +63,13 @@ export class Places extends Context.Service<
 			return Places.of({
 				airport: Effect.fn('Places.airport')(function* (code) {
 					const airports = yield* Effect.mapError(index, cause =>
-						BookingsError.make({cause, message: 'The airport list could not be read.'})
+						FlightsError.make({cause, message: 'The airport list could not be read.'})
 					)
 					const airport = yield* pipe(
 						airports,
 						Record.get(PlaceCode.make(String.toUpperCase(String.trim(code)))),
 						Effect.fromOption,
-						Effect.mapError(() => BookingsError.make({message: `Unknown airport code ${code}.`}))
+						Effect.mapError(() => FlightsError.make({message: `Unknown airport code ${code}.`}))
 					)
 					return {
 						city: Option.some(airport.city),

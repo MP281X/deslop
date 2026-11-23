@@ -24,12 +24,12 @@ import {Apns} from '@deslop/runtime/server/apns'
 import {layerDataStore} from '@deslop/runtime/server/store'
 import {ApnsAnswer, ApnsError, ApnsToken} from '@deslop/runtime/shared/apns'
 
-import {BookingId, Flight, Place} from '#services/bookings/schema.ts'
-import {Bookings} from '#services/bookings/service.ts'
+import {FlightId, Flight, Place} from '#services/flights/schema.ts'
+import {Flights} from '#services/flights/service.ts'
 import {Push} from '#services/push/service.ts'
 
-const ID = BookingId.make('1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d')
-const OTHER = BookingId.make('2b3c4d5e-6f7a-4b8c-9d0e-1f2a3b4c5d6e')
+const ID = FlightId.make('1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d')
+const OTHER = FlightId.make('2b3c4d5e-6f7a-4b8c-9d0e-1f2a3b4c5d6e')
 function starter(bundle: string, token: string) {
 	return {bundle, kind: 'start' as const, token: Redacted.make(ApnsToken.make(String.repeat(64)(token)))}
 }
@@ -38,7 +38,7 @@ const DEV_STARTER = starter('xyz.mp281x.trips.dev', 'b')
 const ANSWER = {channel: Option.none(), reason: Option.none(), status: 503}
 
 // A flight four hours out, which only a person's request starts.
-function flightAt(now: DateTime.Utc, id: BookingId, seat: Option.Option<string>) {
+function flightAt(now: DateTime.Utc, id: FlightId, seat: Option.Option<string>) {
 	return Flight.make({
 		airline: 'British Airways',
 		airlineCode: 'BA',
@@ -117,16 +117,16 @@ const running = Effect.fnUntraced(function* (update: ApnsAnswer) {
 	return {asked, created, layer}
 })
 
-// A start of a booking that is not there waits for the round holding the push service, so the round that began with the server has ended when it fails.
+// A start of a flight that is not there waits for the round holding the push service, so the round that began with the server has ended when it fails.
 const afterRound = Effect.flatMap(Push, push => Effect.flip(push.start(OTHER)))
 
 const open = Effect.tap(Deferred.make<void>(), gate => Deferred.succeed(gate, undefined))
 
-// One run of the server on the folder, stopped when `body` ends; its first round has read the bookings before `body` acts, so the round never races a person's request.
+// One run of the server on the folder, stopped when `body` ends; its first round has read the flights before `body` acts, so the round never races a person's request.
 const serve = Effect.fnUntraced(function* <A, E>(
 	folder: string,
 	apns: Layer.Layer<Apns>,
-	list: Bookings['Service']['list'],
+	list: Flights['Service']['list'],
 	body: Effect.Effect<A, E, Push>
 ) {
 	const listed = yield* Deferred.make<void>()
@@ -135,7 +135,7 @@ const serve = Effect.fnUntraced(function* <A, E>(
 			Push.layer,
 			Layer.provide(apns),
 			Layer.provide(
-				Layer.mock(Bookings, {list: Effect.tap(list, () => Deferred.succeed(listed, undefined)), watch: Stream.never})
+				Layer.mock(Flights, {list: Effect.tap(list, () => Deferred.succeed(listed, undefined)), watch: Stream.never})
 			),
 			Layer.provide(layerDataStore(folder))
 		)

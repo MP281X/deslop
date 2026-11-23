@@ -18,22 +18,22 @@ export const PlaceCode = pipe(Schema.String, Schema.brand('PlaceCode'))
 export type ProviderFlightId = typeof ProviderFlightId.Type
 export const ProviderFlightId = pipe(Schema.String, Schema.brand('ProviderFlightId'))
 
-export class BookingsError extends Schema.TaggedError<BookingsError>()('BookingsError', {
+export class FlightsError extends Schema.TaggedError<FlightsError>()('FlightsError', {
 	cause: Schema.optional(Schema.Defect()),
 	message: Schema.String
 }) {}
 
 export const IMAGE_BYTES = 4_000_000
 
-export type BookingSource = typeof BookingSource.Type
-export const BookingSource = Schema.TaggedUnion({
+export type TicketSource = typeof TicketSource.Type
+export const TicketSource = Schema.TaggedUnion({
 	image: {image: Schema.Uint8Array.check(Schema.isMinLength(1), Schema.isMaxLength(IMAGE_BYTES))},
 	pdf: {pdf: Schema.Uint8Array.check(Schema.isMinLength(1), Schema.isMaxLength(IMAGE_BYTES))},
 	text: {text: Schema.NonEmptyString.check(Schema.isMaxLength(60_000))}
 })
 
-export type BookingId = typeof BookingId.Type
-export const BookingId = pipe(Schema.String, Schema.check(Schema.isUUID()), Schema.brand('BookingId'))
+export type FlightId = typeof FlightId.Type
+export const FlightId = pipe(Schema.String, Schema.check(Schema.isUUID()), Schema.brand('FlightId'))
 
 // Coordinates and the time zone never come from the ticket.
 export type Place = typeof Place.Type
@@ -77,7 +77,7 @@ export class Flight extends Model.Class<Flight>('Flight')({
 	confirmation: Model.FieldOption(Schema.String),
 	departs: Schema.DateTimeUtcFromMillis,
 	from: Model.JsonFromString(Place),
-	id: BookingId,
+	id: FlightId,
 	live: Model.FieldOption(Model.JsonFromString(FlightTracking)),
 	number: Schema.String,
 	seat: Model.FieldOption(Schema.String),
@@ -87,11 +87,11 @@ export class Flight extends Model.Class<Flight>('Flight')({
 	static readonly table = 'flights'
 }
 
-export type BookingList = readonly Flight[]
+export type FlightList = readonly Flight[]
 
-export type BookingsEvent = typeof BookingsEvent.Type
-export const BookingsEvent = Schema.Struct({
-	removed: Schema.Array(BookingId),
+export type FlightsEvent = typeof FlightsEvent.Type
+export const FlightsEvent = Schema.Struct({
+	removed: Schema.Array(FlightId),
 	reset: Schema.Boolean,
 	upserted: Schema.Array(Flight.json)
 })
@@ -167,8 +167,8 @@ export const Short = Schema.String.check(Schema.isMaxLength(40))
 export type Name = typeof Name.Type
 export const Name = Schema.String.check(Schema.isMaxLength(120))
 
-export type ExtractedItem = typeof ExtractedItem.Type
-export const ExtractedItem = Schema.Struct({
+export type ExtractedFlight = typeof ExtractedFlight.Type
+export const ExtractedFlight = Schema.Struct({
 	airlineCode: Short.annotate({description: 'IATA airline designator, such as BA or FR'}),
 	airlineName: Name,
 	arrival: LocalTime,
@@ -183,11 +183,11 @@ export const ExtractedItem = Schema.Struct({
 	to: Short.annotate({description: 'IATA airport code'})
 })
 
-export type ExtractedItems = typeof ExtractedItems.Type
-export const ExtractedItems = Schema.Array(ExtractedItem)
+export type ExtractedFlights = typeof ExtractedFlights.Type
+export const ExtractedFlights = Schema.Array(ExtractedFlight)
 
-export type BookingExtraction = typeof BookingExtraction.Type
-export const BookingExtraction = Schema.Struct({items: ExtractedItems})
+export type FlightExtraction = typeof FlightExtraction.Type
+export const FlightExtraction = Schema.Struct({items: ExtractedFlights})
 
 export type Airport = typeof Airport.Type
 export const Airport = Schema.Struct({

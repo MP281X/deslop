@@ -5,8 +5,8 @@ import type {HttpClient} from 'effect/http'
 import {AiGateway, AiUnavailableError, aiFailure} from '@deslop/runtime/server/ai'
 import type {UserId} from '@deslop/runtime/shared/auth'
 
-import type {ExtractedItems} from '#services/bookings/schema.ts'
-import {BookingSource, BookingsError, BookingExtraction} from '#services/bookings/schema.ts'
+import type {ExtractedFlights} from '#services/flights/schema.ts'
+import {TicketSource, FlightsError, FlightExtraction} from '#services/flights/schema.ts'
 
 const INSTRUCTIONS = `You read a booking confirmation or a screenshot of one and list the flights it confirms, for an app that tracks the owner's flights in real time.
 
@@ -27,8 +27,8 @@ Return an empty list when the text confirms no flight. Never invent a value: lea
 
 export class Extractor extends Context.Service<
 	Extractor,
-	{readonly read: (userId: UserId, source: BookingSource) => Effect.Effect<ExtractedItems, BookingsError>}
->()('@deslop/trips/services/bookings/lib/extraction/Extractor') {
+	{readonly read: (userId: UserId, source: TicketSource) => Effect.Effect<ExtractedFlights, FlightsError>}
+>()('@deslop/trips/services/flights/lib/extraction/Extractor') {
 	static readonly layer = Layer.effect(
 		this,
 		Effect.gen(function* () {
@@ -43,13 +43,13 @@ export class Extractor extends Context.Service<
 						// The earliest date anywhere, twelve hours behind UTC, so a ticket printed without a year is never pushed a year on for a place where its day has not begun.
 						const today = `Today: ${DateTime.formatIsoDateUtc(DateTime.subtractDuration(DateTime.makeUnsafe(yield* Clock.currentTimeMillis), Duration.hours(12)))}`
 						function content() {
-							if (BookingSource.isAnyOf(['pdf'])(source)) {
+							if (TicketSource.isAnyOf(['pdf'])(source)) {
 								return [
 									{data: source.pdf, mediaType: 'application/pdf', type: 'file' as const},
 									{text: today, type: 'text' as const}
 								]
 							}
-							if (BookingSource.isAnyOf(['image'])(source)) {
+							if (TicketSource.isAnyOf(['image'])(source)) {
 								return [
 									{data: source.image, mediaType: 'image/jpeg', type: 'file' as const},
 									{text: today, type: 'text' as const}
@@ -62,7 +62,7 @@ export class Extractor extends Context.Service<
 								{content: INSTRUCTIONS, role: 'system'},
 								{content: content(), role: 'user'}
 							],
-							schema: BookingExtraction
+							schema: FlightExtraction
 						})
 						return response.value.items
 					},
@@ -70,9 +70,9 @@ export class Extractor extends Context.Service<
 					// Retry once unless Gateway reports that AI access is unavailable; both tries end within the share extension's four minutes, with time left to place the airports.
 					Effect.retry({times: 1, while: cause => !Schema.is(AiUnavailableError)(cause)}),
 					Effect.mapError(cause =>
-						BookingsError.make({
+						FlightsError.make({
 							cause: Redacted.make(cause),
-							message: Option.getOrElse(aiFailure(cause), Function.constant('The AI could not read the booking.'))
+							message: Option.getOrElse(aiFailure(cause), Function.constant('The AI could not read the ticket.'))
 						})
 					)
 				)

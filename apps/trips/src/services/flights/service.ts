@@ -13,19 +13,19 @@ import {passText} from './lib/pkpass.ts'
 import {Places} from './lib/places.ts'
 import {migrations} from './migrations.ts'
 
-import {byDeparture, instantOf, upsert} from '#services/bookings/lib/utils.ts'
-import type {BookingList, BookingSource, ExtractedItem, LocalTime} from '#services/bookings/schema.ts'
-import {BookingId, BookingsError, Flight} from '#services/bookings/schema.ts'
+import {byDeparture, instantOf, upsert} from '#services/flights/lib/utils.ts'
+import type {FlightList, TicketSource, ExtractedFlight, LocalTime} from '#services/flights/schema.ts'
+import {FlightId, FlightsError, Flight} from '#services/flights/schema.ts'
 
 declare module 'effect/reactivity/Reactivity' {
 	interface Keys {
-		readonly bookings: never
+		readonly flights: never
 	}
 }
 
 function at(time: LocalTime, timeZone: string) {
 	return Option.match(instantOf(time, Option.some(timeZone)), {
-		onNone: () => BookingsError.make({message: `The time ${time} could not be read.`}),
+		onNone: () => FlightsError.make({message: `The time ${time} could not be read.`}),
 		onSome: Effect.succeed
 	})
 }
@@ -33,16 +33,16 @@ function at(time: LocalTime, timeZone: string) {
 // A ticket read wrong can end before it starts; nothing is saved from it.
 function inOrder(start: DateTime.Utc, end: DateTime.Utc, what: string) {
 	if (DateTime.isLessThan(start, end)) return Effect.void
-	return BookingsError.make({message: `${what} ends before it starts; check the ticket's dates and times.`})
+	return FlightsError.make({message: `${what} ends before it starts; check the ticket's dates and times.`})
 }
 
-function asStorageBookingsError(cause: SqlError.SqlError | Schema.SchemaError) {
-	return BookingsError.make({cause, message: 'The trips storage failed.'})
+function asStorageFlightsError(cause: SqlError.SqlError | Schema.SchemaError) {
+	return FlightsError.make({cause, message: 'The trips storage failed.'})
 }
 
-const asBookingsError = Effect.mapError(asStorageBookingsError)
+const asFlightsError = Effect.mapError(asStorageFlightsError)
 
-export class Bookings extends Context.Service<Bookings>()('@deslop/trips/services/bookings/service/Bookings', {
+export class Flights extends Context.Service<Flights>()('@deslop/trips/services/flights/service/Flights', {
 	make: Effect.gen(function* () {
 		const sql = yield* SqlClient.SqlClient
 		const places = yield* Places
@@ -67,21 +67,21 @@ export class Bookings extends Context.Service<Bookings>()('@deslop/trips/service
 		const listAll = Effect.map(listFlights(), Array.sort(byDeparture))
 
 		const find = SqlSchema.findOneOption({
-			Request: BookingId,
+			Request: FlightId,
 			Result: Flight,
 			execute: id => sql`SELECT * FROM ${sql(Flight.table)} WHERE id = ${id}`
 		})
 
 		const watch = pipe(
-			sql.reactive(['bookings'], listAll),
+			sql.reactive(['flights'], listAll),
 			// Only the newest list matters to a reader that falls behind.
 			Stream.buffer({capacity: 1, strategy: 'sliding'}),
-			Stream.mapError(asStorageBookingsError),
-			Stream.withSpan('Bookings.watch', {attributes: {'rpc.stream': true}})
+			Stream.mapError(asStorageFlightsError),
+			Stream.withSpan('Flights.watch', {attributes: {'rpc.stream': true}})
 		)
 
 		// Airports resolve from their dataset, so a time reads in the right zone and a ride has coordinates.
-		const resolve = Effect.fnUntraced(function* (item: ExtractedItem) {
+		const resolve = Effect.fnUntraced(function* (item: ExtractedFlight) {
 			const from = yield* places.airport(item.from)
 			const to = yield* places.airport(item.to)
 			const departs = yield* at(item.departure, from.timeZone)
@@ -96,7 +96,7 @@ export class Bookings extends Context.Service<Bookings>()('@deslop/trips/service
 				confirmation: item.confirmation,
 				departs,
 				from,
-				id: BookingId.make(yield* random.uuidV4()),
+				id: FlightId.make(yield* random.uuidV4()),
 				live: Option.none(),
 				number: item.flightNumber,
 				seat: item.seat,
@@ -105,23 +105,23 @@ export class Bookings extends Context.Service<Bookings>()('@deslop/trips/service
 			})
 		})
 
-		// Every segment merges into the bookings as they are inside the caller's write transaction, so two saves never lose each other's merge.
-		const merge = Effect.fnUntraced(function* (incoming: BookingList) {
+		// Every segment merges into the flights as they are inside the caller's write transaction, so two saves never lose each other's merge.
+		const merge = Effect.fnUntraced(function* (incoming: FlightList) {
 			const current = yield* listAll
-			const stored = Record.fromIterableBy(current, booking => booking.id)
+			const stored = Record.fromIterableBy(current, flight => flight.id)
 			yield* Effect.forEach(
 				upsert(current, incoming),
-				booking =>
+				flight =>
 					pipe(
 						stored,
-						Record.get(booking.id),
+						Record.get(flight.id),
 						Option.match({
-							onNone: () => flights.insertVoid(booking),
+							onNone: () => flights.insertVoid(flight),
 							onSome: before =>
 								pipe(
 									before,
-									Equal.equals(booking),
-									Boolean.match({onFalse: () => flights.updateVoid(booking), onTrue: () => Effect.void})
+									Equal.equals(flight),
+									Boolean.match({onFalse: () => flights.updateVoid(flight), onTrue: () => Effect.void})
 								)
 						})
 					),
@@ -132,25 +132,25 @@ export class Bookings extends Context.Service<Bookings>()('@deslop/trips/service
 		return {
 			// What the phone watches: the whole list first, then only what changed, after each commit.
 			events: Stream.withSpan(
-				listEvents(watch, booking => booking.id),
-				'Bookings.events',
+				listEvents(watch, flight => flight.id),
+				'Flights.events',
 				{attributes: {'rpc.stream': true}}
 			),
-			find: Effect.fn('Bookings.find')((id: BookingId) => asBookingsError(find(id))),
-			list: pipe(listAll, asBookingsError, Effect.withSpan('Bookings.list')),
+			find: Effect.fn('Flights.find')((id: FlightId) => asFlightsError(find(id))),
+			list: pipe(listAll, asFlightsError, Effect.withSpan('Flights.list')),
 			passText,
-			remove: Effect.fn('Bookings.remove')(function* (id: BookingId) {
-				yield* Effect.annotateCurrentSpan('bookingId', id)
+			remove: Effect.fn('Flights.remove')(function* (id: FlightId) {
+				yield* Effect.annotateCurrentSpan('flightId', id)
 				yield* pipe(
 					flights.delete(id),
-					Reactivity.mutation(['bookings']),
+					Reactivity.mutation(['flights']),
 					sql.withTransaction,
-					Effect.mapError(cause => BookingsError.make({cause, message: 'The booking was not deleted.'}))
+					Effect.mapError(cause => FlightsError.make({cause, message: 'The flight was not deleted.'}))
 				)
 			}, withReactivity),
-			// The newer state replaces the one it was made from, unless the booking changed or left meanwhile.
-			replace: Effect.fn('Bookings.replace')(function* (before: Flight, after: Flight) {
-				yield* Effect.annotateCurrentSpan('bookingId', before.id)
+			// The newer state replaces the one it was made from, unless the flight changed or left meanwhile.
+			replace: Effect.fn('Flights.replace')(function* (before: Flight, after: Flight) {
+				yield* Effect.annotateCurrentSpan('flightId', before.id)
 				yield* pipe(
 					find(before.id),
 					Effect.flatMap(current =>
@@ -160,33 +160,33 @@ export class Bookings extends Context.Service<Bookings>()('@deslop/trips/service
 							Boolean.match({onFalse: () => Effect.void, onTrue: () => flights.updateVoid(after)})
 						)
 					),
-					Reactivity.mutation(['bookings']),
+					Reactivity.mutation(['flights']),
 					sql.withTransaction,
-					asBookingsError
+					asFlightsError
 				)
 			}, withReactivity),
-			save: Effect.fn('Bookings.save')(function* (userId: UserId, source: BookingSource) {
+			save: Effect.fn('Flights.save')(function* (userId: UserId, source: TicketSource) {
 				yield* Effect.annotateCurrentSpan('userId', userId)
 				const items = yield* extractor.read(userId, source)
 				if (Array.isReadonlyArrayEmpty(items)) {
-					return yield* BookingsError.make({
-						message: 'No booking found. Copy a confirmation or boarding pass and try again.'
+					return yield* FlightsError.make({
+						message: 'No flight found. Copy a confirmation or boarding pass and try again.'
 					})
 				}
 				// Every segment or none, so a ticket is never half saved; the failure names the place to fix.
 				const resolved = yield* Effect.forEach(items, item => Effect.result(resolve(item)), {concurrency: 1})
 				const issues = Array.getFailures(resolved)
 				if (Array.isReadonlyArrayNonEmpty(issues)) {
-					return yield* BookingsError.make({
+					return yield* FlightsError.make({
 						cause: issues,
 						message: 'Some ticket segments could not be resolved. Check their places and times; no segments were saved.'
 					})
 				}
 				yield* pipe(
 					merge(Array.getSuccesses(resolved)),
-					Reactivity.mutation(['bookings']),
+					Reactivity.mutation(['flights']),
 					sql.withTransaction,
-					asBookingsError
+					asFlightsError
 				)
 			}, withReactivity),
 			// What the push rounds follow: the whole list again after each commit.
@@ -194,7 +194,7 @@ export class Bookings extends Context.Service<Bookings>()('@deslop/trips/service
 		}
 	})
 }) {
-	// The tables this service owns, made and changed at start in one transaction; one statement per `sql` call, since SQLite runs only the first statement of a string.
+	// The tables this service owns, made and changed at start in one transaction, under the migration table's name from when Trips kept other bookings; one statement per `sql` call, since SQLite runs only the first statement of a string.
 	static readonly migrations = Layer.effectDiscard(
 		Migrator.make({})({loader: Migrator.fromRecord(migrations), table: 'bookings_migrations'})
 	)
@@ -202,5 +202,5 @@ export class Bookings extends Context.Service<Bookings>()('@deslop/trips/service
 	static readonly layer = Layer.provide(Layer.effect(this, this.make), this.migrations)
 }
 
-// Place lookups and extraction are the bookings' own internals; tests provide stand-ins to `Bookings.layer` instead.
-export const layerBookings = Layer.provide(Bookings.layer, Layer.mergeAll(Places.layer, Extractor.layer))
+// Place lookups and extraction are the flights' own internals; tests provide stand-ins to `Flights.layer` instead.
+export const layerFlights = Layer.provide(Flights.layer, Layer.mergeAll(Places.layer, Extractor.layer))

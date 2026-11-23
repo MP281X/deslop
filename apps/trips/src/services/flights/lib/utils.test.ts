@@ -10,8 +10,8 @@ import {
 	activityProps,
 	startable,
 	upsert
-} from '#services/bookings/lib/utils.ts'
-import {BookingId, Flight, FlightTracking, Place} from '#services/bookings/schema.ts'
+} from '#services/flights/lib/utils.ts'
+import {FlightId, Flight, FlightTracking, Place} from '#services/flights/schema.ts'
 
 const DEPARTS = DateTime.makeUnsafe('2026-10-28T15:40:00Z')
 
@@ -25,7 +25,7 @@ const FLIGHT = Struct.pick(
 		confirmation: Option.none(),
 		departs: DEPARTS,
 		from: Schema.decodeSync(Place)({code: 'FCO', name: 'Fiumicino', timeZone: 'Europe/Rome'}),
-		id: BookingId.make('7f0c8f8e-0d0a-4a5e-9d8f-5b2a1c3d4e5f'),
+		id: FlightId.make('7f0c8f8e-0d0a-4a5e-9d8f-5b2a1c3d4e5f'),
 		live: Option.none(),
 		number: '553',
 		seat: Option.none(),
@@ -125,15 +125,15 @@ it('merges tickets for the same leg and retains live data only while its schedul
 	})
 	const again = Flight.make({
 		...FLIGHT,
-		id: BookingId.make('aaaaaaaa-0d0a-4a5e-9d8f-5b2a1c3d4e5f'),
+		id: FlightId.make('aaaaaaaa-0d0a-4a5e-9d8f-5b2a1c3d4e5f'),
 		seat: Option.some('14A')
 	})
 	assert.deepStrictEqual(
-		Array.map(upsert([tracked], [again]), booking => [
-			booking.id,
-			booking.confirmation,
-			booking.seat,
-			Option.flatMap(booking.live, live => live.departureGate)
+		Array.map(upsert([tracked], [again]), flight => [
+			flight.id,
+			flight.confirmation,
+			flight.seat,
+			Option.flatMap(flight.live, live => live.departureGate)
 		]),
 		[[FLIGHT.id, Option.some('ABC123'), Option.some('14A'), Option.some('B12')]]
 	)
@@ -150,15 +150,15 @@ it('merges tickets for the same leg and retains live data only while its schedul
 					})
 				]
 			),
-			booking => booking.live
+			flight => flight.live
 		),
 		[Option.none()]
 	)
 })
 
-it('keeps tickets with different confirmation codes as separate bookings', () => {
+it('keeps tickets with different confirmation codes as separate flights', () => {
 	function other(confirmation: Option.Option<string>) {
-		return Flight.make({...FLIGHT, confirmation, id: BookingId.make('cccccccc-0d0a-4a5e-9d8f-5b2a1c3d4e5f')})
+		return Flight.make({...FLIGHT, confirmation, id: FlightId.make('cccccccc-0d0a-4a5e-9d8f-5b2a1c3d4e5f')})
 	}
 	const held = Flight.make({...FLIGHT, confirmation: Option.some('ABC123')})
 	assert.deepStrictEqual(
@@ -171,7 +171,7 @@ it('keeps tickets with different confirmation codes as separate bookings', () =>
 	assert.lengthOf(upsert([FLIGHT], [other(Option.some('XYZ789'))]), 1)
 })
 
-it('keeps distinct legs of the same flight number as distinct bookings', () => {
+it('keeps distinct legs of the same flight number as distinct flights', () => {
 	assert.lengthOf(
 		upsert(
 			[FLIGHT],
@@ -180,7 +180,7 @@ it('keeps distinct legs of the same flight number as distinct bookings', () => {
 					...FLIGHT,
 					departs: DateTime.addDuration(DEPARTS, Duration.hours(15)),
 					from: FLIGHT.to,
-					id: BookingId.make('bbbbbbbb-0d0a-4a5e-9d8f-5b2a1c3d4e5f'),
+					id: FlightId.make('bbbbbbbb-0d0a-4a5e-9d8f-5b2a1c3d4e5f'),
 					to: FLIGHT.from
 				})
 			]

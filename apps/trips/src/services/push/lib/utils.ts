@@ -14,8 +14,8 @@ import {
 	line,
 	routeOf,
 	titleOf
-} from '#services/bookings/lib/utils.ts'
-import type {BookingList, Flight, Leg} from '#services/bookings/schema.ts'
+} from '#services/flights/lib/utils.ts'
+import type {FlightList, Flight, Leg} from '#services/flights/schema.ts'
 import {ShowAction} from '#services/push/schema.ts'
 import type {Activity, AlertCategory, AlertDelivery, SentAlert, StartRequest} from '#services/push/schema.ts'
 import {isStale} from '#services/tracking/lib/utils.ts'
@@ -31,12 +31,12 @@ export function holds(activity: Activity, window: Span) {
 	})
 }
 
-// A gate is a value each phone must end on, so it is reconciled per device, never skipped for a booking-wide record; the other categories are once per booking.
+// A gate is a value each phone must end on, so it is reconciled per device, never skipped for a flight-wide record; the other categories are once per flight.
 export function perDevice(alert: Alert) {
 	return alert.value !== undefined && alert.category !== 'delay'
 }
 
-// `sent` holds the keys sent for the booking, oldest first.
+// `sent` holds the keys sent for the flight, oldest first.
 export function announced(sent: readonly SentAlert[], alert: Alert) {
 	if (alert.value === undefined || alert.category === 'delay') {
 		return Array.some(
@@ -77,7 +77,7 @@ export function showPlan(
 	const covering = Array.filter(
 		activities,
 		item =>
-			item.bookingId === flight.id &&
+			item.flightId === flight.id &&
 			item.leg === window.leg &&
 			holds(item, window) &&
 			!Option.exists(item.endedAt, ended => Option.exists(requested, at => DateTime.isGreaterThan(at, ended)))
@@ -101,25 +101,25 @@ export function showPlan(
 	)
 }
 
-// Running activities whose window has passed, or whose booking is gone.
+// Running activities whose window has passed, or whose flight is gone.
 export function expiredActivities(
 	activities: readonly Activity[],
-	bookings: BookingList,
+	flights: FlightList,
 	now: DateTime.Utc,
 	requests: readonly StartRequest[] = []
 ) {
-	const requestsById = Array.groupBy(requests, request => request.bookingId)
-	const byId = Array.groupBy(bookings, booking => booking.id)
+	const requestsById = Array.groupBy(requests, request => request.flightId)
+	const byId = Array.groupBy(flights, flight => flight.id)
 	return Array.filter(
 		activities,
 		activity =>
 			Option.isNone(activity.endedAt) &&
-			!Option.exists(Array.head(byId[activity.bookingId] ?? []), found =>
+			!Option.exists(Array.head(byId[activity.flightId] ?? []), found =>
 				Option.exists(
 					activeWindow(
 						found,
 						now,
-						Option.map(Array.head(requestsById[activity.bookingId] ?? []), request => request.at)
+						Option.map(Array.head(requestsById[activity.flightId] ?? []), request => request.at)
 					),
 					window => window.leg === activity.leg
 				)
@@ -231,12 +231,12 @@ function flightAlerts(flight: Flight, now: DateTime.Utc, stale: boolean) {
 }
 
 // The changes worth a notification, each under a key sent once; a delay counts in steps so a drifting estimate stays quiet, and a cancellation is the only news a cancelled flight gets.
-export function alertsOf(booking: Flight, now: DateTime.Utc) {
+export function alertsOf(flight: Flight, now: DateTime.Utc) {
 	if (
-		DateTime.isGreaterThan(now, DateTime.addDuration(arrivalOf(booking), Duration.hours(1))) ||
-		DateTime.isLessThan(now, DateTime.subtractDuration(booking.departs, Duration.hours(30)))
+		DateTime.isGreaterThan(now, DateTime.addDuration(arrivalOf(flight), Duration.hours(1))) ||
+		DateTime.isLessThan(now, DateTime.subtractDuration(flight.departs, Duration.hours(30)))
 	) {
 		return Array.empty<Alert>()
 	}
-	return flightAlerts(booking, now, isStale(booking, now))
+	return flightAlerts(flight, now, isStale(flight, now))
 }
