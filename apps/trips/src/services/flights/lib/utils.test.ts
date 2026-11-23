@@ -254,6 +254,32 @@ it('cancels only the travellers of the reservation a cancellation names', () => 
 	])
 })
 
+it('changes nobody for a cancellation naming nobody without a code anyone on the flight holds', () => {
+	const ada = upsert(
+		[],
+		[
+			ticket([traveller('Y2', Option.some('Ada Byron'), Option.some('3A'))]),
+			ticket([{...traveller('', Option.some('Grace Hopper'), Option.some('3B')), confirmation: Option.none()}])
+		]
+	)
+	assert.deepStrictEqual(
+		upsert(ada, [ticket([{...traveller('', Option.none(), Option.none(), 'cancelled'), confirmation: Option.none()}])]),
+		ada
+	)
+	assert.deepStrictEqual(upsert(ada, [cancellation('NONE1')]), ada)
+	// A cancellation that names nobody still covers the booking whose code it gives.
+	assert.deepStrictEqual(seating(upsert(ada, [cancellation('Y2')])), [
+		[
+			'553',
+			false,
+			[
+				['Ada Byron', '3A', 'Y2', 'cancelled'],
+				['Grace Hopper', '3B', '', 'confirmed']
+			]
+		]
+	])
+})
+
 it('keeps travellers apart whatever script their names are in, and two of the same name in two seats', () => {
 	const passengers = upsert(
 		[],

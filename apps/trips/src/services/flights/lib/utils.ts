@@ -253,21 +253,36 @@ function repeated(left: Traveller, right: Traveller) {
 
 type Seating = {readonly claimed: readonly number[]; readonly travellers: readonly Traveller[]}
 
-// A ticket that names nobody and prints no seat speaks for its whole reservation, such as the booking's cancellation.
+// A traveller the ticket names nobody for, who speaks for their whole reservation.
+function wholeBooking(traveller: Traveller) {
+	return Option.isNone(traveller.name) && Option.isNone(traveller.seat)
+}
+
+// A ticket that names nobody and prints no seat speaks for its whole reservation, such as the booking's cancellation, but only for the travellers holding its code. With no code, or one nobody holds, it adds its reservation while that stands, or to a flight nobody is on yet, and otherwise changes nobody.
 function wholeReservation(seating: Seating, incoming: Traveller) {
 	function covers(held: Traveller) {
-		return Option.isSome(evidenceOf(held, incoming))
+		return agree(codeOf(held), codeOf(incoming))
 	}
 	return pipe(
 		incoming,
-		Option.liftPredicate(found => Option.isNone(found.name) && Option.isNone(found.seat)),
-		Option.filter(() => Array.some(seating.travellers, covers)),
-		Option.map(() => ({
-			...seating,
-			travellers: Array.map(seating.travellers, held =>
-				Boolean.match(covers(held), {onFalse: () => held, onTrue: () => updated(held, incoming)})
-			)
-		}))
+		Option.liftPredicate(wholeBooking),
+		Option.map(() => {
+			if (Array.some(seating.travellers, covers)) {
+				return {
+					...seating,
+					travellers: Array.map(seating.travellers, held =>
+						Boolean.match(covers(held), {onFalse: () => held, onTrue: () => updated(held, incoming)})
+					)
+				}
+			}
+			if (
+				Array.isReadonlyArrayNonEmpty(seating.travellers) &&
+				!(isBooked(incoming) && Option.isSome(codeOf(incoming)))
+			) {
+				return seating
+			}
+			return {...seating, travellers: [...seating.travellers, incoming]}
+		})
 	)
 }
 
@@ -342,11 +357,6 @@ function serviceOfFlight(flight: Flight) {
 
 function sameService(existing: Flight, incoming: Flight) {
 	return serviceOfFlight(existing) === serviceOfFlight(incoming)
-}
-
-// A traveller the ticket names nobody for, who speaks for their whole reservation.
-function wholeBooking(traveller: Traveller) {
-	return Option.isNone(traveller.name) && Option.isNone(traveller.seat)
 }
 
 // Who a confirmed ticket takes off another service: each traveller it names under the same reservation, or that whole reservation when it names nobody.
