@@ -256,10 +256,18 @@ function within(now: DateTime.Utc, start: DateTime.Utc, end: DateTime.Utc) {
 	return DateTime.isGreaterThanOrEqualTo(now, start) && DateTime.isLessThan(now, end)
 }
 
-// The whole minutes a flight leaves after its booked time, counted in fifteen-minute steps so a drifting estimate stays quiet; 14:30 late is 14 minutes, under the first step.
-function delayStep(flight: Flight) {
-	const delay = Math.floor(Duration.toMinutes(DateTime.distance(flight.departs, departureOf(flight))))
-	return {delay, step: Math.floor(delay / 15) * 15}
+// The whole minutes a flight leaves after its booked time, or once it left lands after it, since only the landing can still move; counted in fifteen-minute steps so a drifting estimate stays quiet, 14:30 late is 14 minutes, under the first step. A landing's steps are kept apart from the departure's, so each is told once.
+function delayStep(flight: Flight, left: boolean) {
+	const delay = Math.floor(
+		Duration.toMinutes(
+			Boolean.match(left, {
+				onFalse: () => DateTime.distance(flight.departs, departureOf(flight)),
+				onTrue: () => DateTime.distance(flight.arrives, arrivalOf(flight))
+			})
+		)
+	)
+	const step = Math.floor(delay / 15) * 15
+	return {delay, step, value: Boolean.match(left, {onFalse: () => `${step}`, onTrue: () => `lands ${step}`})}
 }
 
 function checkInAlerts(flight: Flight, now: DateTime.Utc) {
@@ -403,9 +411,9 @@ function flightAlerts(flight: Flight, now: DateTime.Utc, stale: boolean, context
 			title: `${title} is cancelled`
 		})
 	}
-	const delay = delayStep(flight)
 	const live = Option.filter(flight.live, () => !stale)
 	const left = Option.exists(flight.live, report => report.state !== 'scheduled')
+	const delay = delayStep(flight, left)
 	// Boarding moves with the delay and never comes before the time the pass printed; it is called again when the delay crosses a step, replacing the earlier call.
 	const boards = Option.map(flight.boardingAt, at =>
 		DateTime.addDuration(at, Duration.minutes(Number.max(0, delay.delay)))
@@ -445,7 +453,7 @@ function flightAlerts(flight: Flight, now: DateTime.Utc, stale: boolean, context
 			),
 			Option.filter(
 				Option.some<Alert>({
-					// Once it left, the delay is history, and only the landing can still move; the plane flying in is named when it is the cause.
+					// Once it left, the departure's delay is history, and only the landing's is told; the plane flying in is named when it is the cause.
 					body: line([
 						Option.some(
 							Boolean.match(left, {
@@ -462,8 +470,11 @@ function flightAlerts(flight: Flight, now: DateTime.Utc, stale: boolean, context
 						)
 					]),
 					category: 'delay',
-					title: `${title} is ${delay.delay} min late`,
-					value: `${delay.step}`
+					title: Boolean.match(left, {
+						onFalse: () => `${title} is ${delay.delay} min late`,
+						onTrue: () => `${title} lands ${delay.delay} min late`
+					}),
+					value: delay.value
 				}),
 				() => delay.delay >= 15 && Option.isSome(live)
 			),

@@ -311,6 +311,42 @@ it('words a delay by whether the flight has left', () => {
 	)
 })
 
+it('measures a flight that left by its landing against the booked one, told apart from the departure steps', () => {
+	const departs = DateTime.makeUnsafe('2026-11-18T08:00:00Z')
+	const now = DateTime.addDuration(departs, Duration.minutes(40))
+	function airborne(leftLate: number, landsLate: number) {
+		return Flight.make({
+			...FLIGHT,
+			arrives: DateTime.addDuration(departs, Duration.hours(1)),
+			departs,
+			live: Option.some(
+				Schema.decodeSync(FlightTracking)({
+					arrivalEstimated: DateTime.toEpochMillis(DateTime.addDuration(departs, Duration.minutes(60 + landsLate))),
+					checkedAt: DateTime.toEpochMillis(now),
+					departureActual: DateTime.toEpochMillis(DateTime.addDuration(departs, Duration.minutes(leftLate))),
+					state: 'airborne'
+				})
+			)
+		})
+	}
+	assert.deepStrictEqual(
+		Array.map([airborne(0, 45), airborne(30, 0), airborne(30, 30)], flight =>
+			pipe(
+				alertsOf(flight, now, NO_CONTEXT),
+				Array.filter(alert => alert.category === 'delay'),
+				Array.map(alert => [alert.value, alert.title, alert.body])
+			)
+		),
+		[
+			[['lands 45', 'BA 553 lands 45 min late', 'Now lands 09:45']],
+			[],
+			[['lands 30', 'BA 553 lands 30 min late', 'Now lands 09:30']]
+		]
+	)
+	// The departure's 30-minute step told on the ground leaves the landing's own 30-minute step owed.
+	assert.isFalse(announced([sentAlert('delay', '30')], {body: '', category: 'delay', title: '', value: 'lands 30'}))
+})
+
 function delivery(token: Device['token'], value: string, minutes: number) {
 	return AlertDelivery.make({
 		category: 'gate',
