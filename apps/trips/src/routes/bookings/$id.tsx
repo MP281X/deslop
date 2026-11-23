@@ -287,7 +287,7 @@ function Heading(props: {booking: Booking; now: DateTime.Utc; size: Size}) {
 	)
 }
 
-// The flight under way or next, read at a glance from a tray table. Half open like a laptop it stands above the list, so it has no Back. With no flight coming up the list's own state says so, and nothing stands beside it.
+// The flight under way or next, read at a glance from a tray table, its number among its own data rather than as a title. Half open like a laptop it stands above the list, so it has no Back. With no flight coming up the list's own state says so, and nothing stands beside it.
 function Board() {
 	const now = useAtomValue(nowAtom)
 	const tiled = useListTiled()
@@ -298,7 +298,6 @@ function Board() {
 				alignment="leading"
 				spacing={space[6]}
 				modifiers={[
-					navigationTitle(titleOf(flight)),
 					navigationBarTitleDisplayMode('inline'),
 					barNeverMinimizes(),
 					...Boolean.match(tiled, {onFalse: () => [backHidden], onTrue: () => []}),
@@ -306,7 +305,10 @@ function Board() {
 					frame({alignment: 'leading', maxHeight: Infinity, maxWidth: Infinity})
 				]}
 			>
-				<Heading booking={flight} now={now} size="glance" />
+				<VStack alignment="leading" spacing={space[2]}>
+					<Text modifiers={[text.data, foregroundStyle(colors.mutedForeground)]}>{titleOf(flight)}</Text>
+					<Heading booking={flight} now={now} size="glance" />
+				</VStack>
 				<FlightEssentials flight={flight} size="glance" />
 			</VStack>
 		)
