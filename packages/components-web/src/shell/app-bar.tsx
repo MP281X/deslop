@@ -203,7 +203,7 @@ export function AppBarChoice<A>(props: {
 	)
 }
 
-// The masthead: mark and name, sections, then the controls that choose what the page shows and the page's few actions.
+// The masthead: mark and name, sections, then the controls that choose what the page shows and the page's few actions. On touch the controls sit far enough apart that each one's 44px tap layer is its own.
 export function AppBar(props: {
 	account?: ReactNode
 	controls?: ReactNode
@@ -238,12 +238,12 @@ export function AppBar(props: {
 			{props.tabs !== undefined && (
 				<nav
 					aria-label="Sections"
-					className="flex min-w-0 flex-1 scrollbar-none items-center overflow-x-auto overflow-y-hidden overscroll-x-contain"
+					className="flex min-w-0 flex-1 scrollbar-none items-center self-stretch overflow-x-auto overflow-y-hidden overscroll-x-contain"
 				>
 					{props.tabs}
 				</nav>
 			)}
-			<div className="ml-auto flex shrink-0 items-center gap-2">
+			<div className="ml-auto flex shrink-0 items-center gap-2 pointer-coarse:gap-4">
 				{props.controls}
 				{props.account ?? <AccountMenu />}
 			</div>
