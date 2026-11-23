@@ -252,6 +252,53 @@ it('cancels only the travellers of the reservation a cancellation names', () => 
 	])
 })
 
+it('keeps travellers apart whatever script their names are in, and two of the same name in two seats', () => {
+	const passengers = upsert(
+		[],
+		[
+			ticket([traveller('ONE', Option.some('王小明'), Option.some('11A'))]),
+			ticket([traveller('ONE', Option.some('김민지'), Option.some('11B'))]),
+			ticket([
+				traveller('TWO', Option.some('Sam Lee'), Option.some('12A')),
+				traveller('TWO', Option.some('Sam Lee'), Option.some('12B')),
+				traveller('TWO', Option.some('Sam Lee'), Option.some('12B'))
+			])
+		]
+	)
+	const expected = [
+		[
+			'553',
+			false,
+			[
+				['王小明', '11A', 'ONE', 'confirmed'],
+				['김민지', '11B', 'ONE', 'confirmed'],
+				['Sam Lee', '12A', 'TWO', 'confirmed'],
+				['Sam Lee', '12B', 'TWO', 'confirmed']
+			]
+		]
+	]
+	assert.deepStrictEqual(seating(passengers), expected)
+	// Each pass shared again finds the person it names, never the other of the same name.
+	assert.deepStrictEqual(
+		seating(
+			upsert(passengers, [
+				ticket([traveller('TWO', Option.some('LEE/SAM MR'), Option.some('12B'))]),
+				ticket([traveller('ONE', Option.some('김민지'), Option.some('11B'))]),
+				ticket([
+					traveller('TWO', Option.some('Sam Lee'), Option.some('12A')),
+					traveller('TWO', Option.some('Sam Lee'), Option.some('12B'))
+				])
+			])
+		),
+		expected
+	)
+	// The whole pass shared again changes nothing.
+	assert.deepStrictEqual(
+		upsert(passengers, [ticket(Array.flatMap(passengers, flight => flight.travellers))]),
+		passengers
+	)
+})
+
 it('moves a rebooked reservation to its new flight, keeping the id when nobody else was on the old one', () => {
 	assert.deepStrictEqual(
 		Array.map(

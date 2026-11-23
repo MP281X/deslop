@@ -102,6 +102,16 @@ it.layer(flightsLayer)(test =>
 		Effect.fnUntraced(function* () {
 			yield* share([pass('ABC123', 'Matteo Rossi', '14C')])
 			yield* share([pass('XYZ789', 'Anna Bianchi', '14D')])
+			// The same pass again, as the reader may list a person twice, changes nothing.
+			yield* share([
+				{
+					...pass('XYZ789', 'Anna Bianchi', '14D'),
+					travellers: [
+						...pass('XYZ789', 'Anna Bianchi', '14D').travellers,
+						...pass('XYZ789', 'Anna Bianchi', '14D').travellers
+					]
+				}
+			])
 			assert.deepStrictEqual(
 				Array.map(yield* Effect.flatMap(Flights, flights => flights.list), saved => [saved.number, saved.travellers]),
 				[

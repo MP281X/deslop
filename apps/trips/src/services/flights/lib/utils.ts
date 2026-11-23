@@ -83,7 +83,7 @@ function seatOf(traveller: Traveller) {
 	return Option.map(printed(traveller.seat), String.replace(/^0+(?=\d)/u, ''))
 }
 
-// A name as a pass or a booking prints it, so ROSSI/MATTEO MR and Matteo Rossi are one person: its words in any order, without case, accents or titles.
+// A name as a pass or a booking prints it, so ROSSI/MATTEO MR and Matteo Rossi are one person: its words in any script and any order, without case, accents or titles.
 function nameOf(traveller: Traveller) {
 	return pipe(
 		traveller.name,
@@ -92,8 +92,9 @@ function nameOf(traveller: Traveller) {
 				name,
 				String.normalize('NFD'),
 				String.replaceAll(/[̀-ͯ]/gu, ''),
+				String.normalize('NFC'),
 				String.toUpperCase,
-				String.split(/[^A-Z]+/u),
+				String.split(/[^\p{L}\p{M}\p{N}]+/u),
 				Array.filter(word => String.isNonEmpty(word) && !Array.contains(TITLES, word)),
 				Array.sort(String.Order),
 				Array.join(' ')
@@ -240,41 +241,61 @@ function updated(held: Traveller, incoming: Traveller) {
 	} satisfies Traveller
 }
 
+// The same person twice in one ticket, as a reader may list them.
+function repeated(left: Traveller, right: Traveller) {
+	return (
+		Equal.equals(nameOf(left), nameOf(right)) &&
+		Equal.equals(codeOf(left), codeOf(right)) &&
+		Equal.equals(seatOf(left), seatOf(right)) &&
+		Equal.equals(left.boardingGroup, right.boardingGroup)
+	)
+}
+
+type Seating = {readonly claimed: readonly number[]; readonly travellers: readonly Traveller[]}
+
 // A ticket that names nobody and prints no seat speaks for its whole reservation, such as the booking's cancellation.
-function wholeReservation(travellers: readonly Traveller[], incoming: Traveller) {
+function wholeReservation(seating: Seating, incoming: Traveller) {
 	function covers(held: Traveller) {
 		return Option.isSome(evidenceOf(held, incoming))
 	}
 	return pipe(
 		incoming,
 		Option.liftPredicate(found => Option.isNone(found.name) && Option.isNone(found.seat)),
-		Option.filter(() => Array.some(travellers, covers)),
-		Option.map(() =>
-			Array.map(travellers, held =>
+		Option.filter(() => Array.some(seating.travellers, covers)),
+		Option.map(() => ({
+			...seating,
+			travellers: Array.map(seating.travellers, held =>
 				Boolean.match(covers(held), {onFalse: () => held, onTrue: () => updated(held, incoming)})
 			)
-		)
+		}))
 	)
 }
 
-// Each traveller a ticket names is the surest match already on the flight, so a pass shared again updates the one it names.
-function seat(travellers: readonly Traveller[], incoming: Traveller) {
-	return Option.getOrElse(wholeReservation(travellers, incoming), () =>
+// Each traveller a ticket names is at most one already on the flight, the surest among those this ticket has not named yet, so two passengers of the same name in two seats stay two, and a pass shared again updates the one it names.
+function seat(seating: Seating, incoming: Traveller) {
+	return Option.getOrElse(wholeReservation(seating, incoming), () =>
 		pipe(
-			travellers,
+			seating.travellers,
 			Array.filterMap((held, index) =>
-				Option.match(evidenceOf(held, incoming), {
-					onNone: () => Result.failVoid,
-					onSome: evidence => Result.succeed({evidence, index})
-				})
+				pipe(
+					evidenceOf(held, incoming),
+					Option.filter(() => !Array.contains(seating.claimed, index)),
+					Option.match({onNone: () => Result.failVoid, onSome: evidence => Result.succeed({evidence, index})})
+				)
 			),
 			Array.match({
-				onEmpty: () => [...travellers, incoming],
+				onEmpty: () => ({
+					claimed: [...seating.claimed, seating.travellers.length],
+					travellers: [...seating.travellers, incoming]
+				}),
 				onNonEmpty: candidates => {
 					const found = Array.max(candidates, bySurety)
-					return Array.map(travellers, (held, index) =>
-						Boolean.match(index === found.index, {onFalse: () => held, onTrue: () => updated(held, incoming)})
-					)
+					return {
+						claimed: [...seating.claimed, found.index],
+						travellers: Array.map(seating.travellers, (held, index) =>
+							Boolean.match(index === found.index, {onFalse: () => held, onTrue: () => updated(held, incoming)})
+						)
+					}
 				}
 			})
 		)
@@ -283,7 +304,12 @@ function seat(travellers: readonly Traveller[], incoming: Traveller) {
 
 // Each ticket adds the travellers it names, so passes shared for other people fill one flight, and updates the ones already on it.
 function travellersOf(existing: readonly Traveller[], incoming: readonly Traveller[]) {
-	return Array.reduce(incoming, existing, seat)
+	return pipe(
+		incoming,
+		Array.dedupeWith(repeated),
+		Array.reduce({claimed: [], travellers: existing} satisfies Seating, seat),
+		seating => seating.travellers
+	)
 }
 
 function withTravellers(flight: Flight, travellers: readonly Traveller[]) {
