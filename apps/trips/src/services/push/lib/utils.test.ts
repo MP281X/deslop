@@ -516,12 +516,22 @@ it('says leave now fifteen minutes before the leave time, with directions to the
 	)
 })
 
-it('tells a delay in fifteen-minute steps, with the inbound plane as its cause', () => {
+it('tells a delay in fifteen-minute steps of whole minutes, with the inbound plane as its cause', () => {
 	assert.deepStrictEqual(
-		[delayAfter(14), delayAfter(15), delayAfter(29), delayAfter(30), delayAfter(50, Option.some(50))],
+		[
+			delayAfter(14),
+			delayAfter(14.5),
+			delayAfter(15),
+			delayAfter(29),
+			delayAfter(29 + 59 / 60),
+			delayAfter(30),
+			delayAfter(50, Option.some(50))
+		],
 		[
 			Option.none(),
+			Option.none(),
 			Option.some(['15', 'FR 1234 is 15 min late', 'Now departs 10:45']),
+			Option.some(['15', 'FR 1234 is 29 min late', 'Now departs 10:59']),
 			Option.some(['15', 'FR 1234 is 29 min late', 'Now departs 10:59']),
 			Option.some(['30', 'FR 1234 is 30 min late', 'Now departs 11:00']),
 			Option.some(['45', 'FR 1234 is 50 min late', 'Now departs 11:20 · inbound plane 50 min late'])

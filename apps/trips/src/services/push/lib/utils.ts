@@ -241,9 +241,9 @@ function within(now: DateTime.Utc, start: DateTime.Utc, end: DateTime.Utc) {
 	return DateTime.isGreaterThanOrEqualTo(now, start) && DateTime.isLessThan(now, end)
 }
 
-// The minutes a flight leaves after its booked time, counted in fifteen-minute steps so a drifting estimate stays quiet.
+// The whole minutes a flight leaves after its booked time, counted in fifteen-minute steps so a drifting estimate stays quiet; 14:30 late is 14 minutes, under the first step.
 function delayStep(flight: Flight) {
-	const delay = Number.round(Duration.toMinutes(DateTime.distance(flight.departs, departureOf(flight))), 0)
+	const delay = Math.floor(Duration.toMinutes(DateTime.distance(flight.departs, departureOf(flight))))
 	return {delay, step: Math.floor(delay / 15) * 15}
 }
 
