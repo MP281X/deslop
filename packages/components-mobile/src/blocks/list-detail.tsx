@@ -7,6 +7,7 @@ import {
 	createModifier,
 	onGeometryChange,
 	onHingeChange,
+	opacity,
 	overlayArrangementEdge
 } from '@expo/ui/swift-ui/modifiers'
 import type {HingeStatus, ViewModifier} from '@expo/ui/swift-ui/modifiers'
@@ -17,6 +18,7 @@ import {Dimensions} from 'react-native'
 const ListContext = createContext({
 	beside: false,
 	search: Option.none<ReturnType<typeof useNativeState<string>>>(),
+	searchFocus: Option.none<(focused: boolean) => void>(),
 	show: Option.none<() => void>()
 })
 
@@ -33,6 +35,11 @@ export function useListShow() {
 // The search text every copy of the list shares, so the copy below an item in laptop posture shows, and clears, the query that filters both; none outside a `ListDetail`.
 export function useListSearch() {
 	return useContext(ListContext).search
+}
+
+// Tells the layout whether the list's search field has focus; only the copy below an item in laptop posture has it.
+export function useListSearchFocus() {
+	return useContext(ListContext).searchFocus
 }
 
 // Columns tile in a landscape window on the inner screen, flat or half open like a book; the outer screen, 466 points across, stacks them in either orientation. The window tells them apart: unfolding reports the hinge open while the window is still the outer screen's.
@@ -59,6 +66,24 @@ function useKept(props: {onClose: () => void; onHide?: () => void; opened: boole
 	}
 }
 
+// Half open upright with an item opened, like a laptop, and whether the search field of the list's copy below the item has focus, which the copy, leaving with the posture, never reports lost.
+function useLaptop(props: {opened: boolean; portrait: boolean}) {
+	const [hinge, setHinge] = useState<HingeStatus>('closed')
+	const [searching, setSearching] = useState(false)
+	const active = props.portrait && hinge === 'partiallyOpen' && props.opened
+	if (!active && searching) setSearching(false)
+	return {active, searching, setHinge, setSearching}
+}
+
+// The list's copy below the opened item in laptop posture, the one copy that tells the layout its search field's focus.
+function ListBelow(props: {list: ReactNode; onSearchFocus: (focused: boolean) => void}) {
+	return (
+		<ListContext value={{...useContext(ListContext), searchFocus: Option.some(props.onSearchFocus)}}>
+			<NavigationStack>{props.list}</NavigationStack>
+		</ListContext>
+	)
+}
+
 // An app's one root on the iPhone Duo: list and opened item side by side when the window is wide, as when unfolded like a book; a stack when it is narrow, folded or turned upright; the item above the list when half open like a laptop. The same views stay mounted through every fold and turn, so a draft, its focus and a reading place survive. `detail` is the opened item, or what the wide window shows beside the list when nothing is opened; `onHide` opens that when the person hides the list beside it, so it stays on screen and in front through a fold, and `onClose` closes it once the list shows again, unless the person chose it meanwhile with `useListShow`.
 export function ListDetail(props: {
 	detail: ReactNode
@@ -70,7 +95,6 @@ export function ListDetail(props: {
 }) {
 	// The window as of SwiftUI's last layout. React Native's window event arrives while the app is still taking the new size, and a render then can leave the whole app at the previous window's size, text running off the screen; SwiftUI reports a new geometry only once the app has it.
 	const [window, setWindow] = useState(() => Dimensions.get('window'))
-	const [hinge, setHinge] = useState<HingeStatus>('closed')
 	// The person's choice from the sidebar button, both columns until they hide the list, kept apart from the one column a stack reports, so the list comes back beside the item once the window is wide again.
 	const [chosen, setChosen] = useState<NavigationSplitViewVisibility>('all')
 	const [stacked, setStacked] = useState<NavigationSplitViewVisibility>('all')
@@ -80,13 +104,14 @@ export function ListDetail(props: {
 	const portrait = window.height > window.width
 	const tiled = tiledIn(window)
 	const columns = Boolean.match(tiled, {onFalse: Function.constant(stacked), onTrue: Function.constant(chosen)})
-	const laptop = portrait && hinge === 'partiallyOpen' && props.opened
+	const laptop = useLaptop({opened: props.opened, portrait})
 	return (
 		<ListContext
 			value={{
-				beside: (tiled && columns !== 'detailOnly') || laptop,
+				beside: (tiled && columns !== 'detailOnly') || laptop.active,
 				search: Option.some(useNativeState('')),
-				show: Boolean.match(tiled || laptop, {
+				searchFocus: Option.none(),
+				show: Boolean.match(tiled || laptop.active, {
 					onFalse: Option.none,
 					onTrue: () =>
 						Option.some(() => {
@@ -101,7 +126,7 @@ export function ListDetail(props: {
 					...(props.modifiers ?? []),
 					// Flat, the split view covers the copy of the list; half open upright, the copy stands below it. A book's fold is the split view's own seam.
 					arrangementViewStyle('overlay', {axes: 'vertical'}),
-					onHingeChange((_, context) => setHinge(context.hinge?.status ?? 'closed')),
+					onHingeChange((_, context) => laptop.setHinge(context.hinge?.status ?? 'closed')),
 					onGeometryChange(() => setWindow(Dimensions.get('window')))
 				]}
 			>
@@ -127,7 +152,9 @@ export function ListDetail(props: {
 						modifiers={[
 							// ios/DeslopComponentsModule.swift: a compact width, so the split view stacks its columns in a portrait window.
 							createModifier('stackedColumns', {stacked: portrait}),
-							overlayArrangementEdge('top')
+							overlayArrangementEdge('top'),
+							// The keyboard leaves the arrangement the upper half alone, where it lays the copy of the list under the split view, sized to fit above the keyboard; while the copy's field has focus the split view stands clear, so the field and its results show.
+							opacity(Boolean.match(laptop.searching, {onFalse: Function.constant(1), onTrue: Function.constant(0)}))
 						]}
 					>
 						<NavigationSplitView.Sidebar>{props.list}</NavigationSplitView.Sidebar>
@@ -135,7 +162,7 @@ export function ListDetail(props: {
 					</NavigationSplitView>
 				</ArrangementView.Primary>
 				<ArrangementView.Secondary>
-					{laptop && <NavigationStack>{props.list}</NavigationStack>}
+					{laptop.active && <ListBelow list={props.list} onSearchFocus={laptop.setSearching} />}
 				</ArrangementView.Secondary>
 			</ArrangementView>
 		</ListContext>

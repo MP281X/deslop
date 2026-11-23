@@ -41,6 +41,9 @@ public class DeslopComponentsModule: Module {
       ViewModifierRegistry.register("stackedColumns") { params, appContext, _ in
         try StackedColumns(from: params, appContext: appContext)
       }
+      ViewModifierRegistry.register("onSearchFocusChange") { params, appContext, eventDispatcher in
+        try OnSearchFocusChange(from: params, appContext: appContext, eventDispatcher: eventDispatcher)
+      }
     }
   }
 }
@@ -53,6 +56,27 @@ struct BottomBarSearch: ViewModifier, Record {
       DefaultToolbarItem(kind: .search, placement: .bottomBar)
       ToolbarSpacer(.fixed, placement: .bottomBar)
     }
+  }
+}
+
+// Whether the field of the `searchable` before it has focus, and so the keyboard: Expo UI's `searchable` reports only the text.
+struct OnSearchFocusChange: ViewModifier, Record {
+  var eventDispatcher: EventDispatcher?
+  @FocusState private var focused: Bool
+
+  init() {}
+
+  init(from params: Dict, appContext: AppContext, eventDispatcher: EventDispatcher) throws {
+    try self = .init(from: params, appContext: appContext)
+    self.eventDispatcher = eventDispatcher
+  }
+
+  func body(content: Content) -> some View {
+    content
+      .searchFocused($focused)
+      .onChange(of: focused) { _, focused in
+        eventDispatcher?(["onSearchFocusChange": ["focused": focused]])
+      }
   }
 }
 
