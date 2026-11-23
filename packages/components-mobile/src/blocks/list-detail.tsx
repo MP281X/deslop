@@ -71,7 +71,7 @@ function useKept(props: {onClose: () => void; onHide?: () => void; opened: boole
 	}
 }
 
-// Half open upright with an item opened, like a laptop, and whether the search field of the list's copy below the item has focus, which the copy, leaving with the posture, never reports lost.
+// Half open upright with an item opened, like a laptop, and whether the search field of the list's copy below the item has focus, which leaving the posture ends, so the keyboard leaves with the copy.
 function useLaptop(props: {opened: boolean; portrait: boolean}) {
 	const [hinge, setHinge] = useState<HingeStatus>('closed')
 	const [searching, setSearching] = useState(false)
@@ -80,8 +80,13 @@ function useLaptop(props: {opened: boolean; portrait: boolean}) {
 	return {active, searching, setHinge, setSearching}
 }
 
-// The list's copy below the opened item in laptop posture, the one copy whose search field's focus the layout follows and ends.
-function ListBelow(props: {list: ReactNode; searching: boolean; onSearchFocus: (focused: boolean) => void}) {
+// The list's copy below the opened item in laptop posture, the one copy whose search field's focus the layout follows and ends. It stays mounted while an item is opened, under the split view and out of reach in every other posture, so unfolding and half opening again finds the list where the person left it.
+function ListBelow(props: {
+	below: boolean
+	list: ReactNode
+	searching: boolean
+	onSearchFocus: (focused: boolean) => void
+}) {
 	return (
 		<ListContext
 			value={{
@@ -89,7 +94,9 @@ function ListBelow(props: {list: ReactNode; searching: boolean; onSearchFocus: (
 				searchFocus: Option.some({focused: props.searching, onChange: props.onSearchFocus})
 			}}
 		>
-			<NavigationStack>{props.list}</NavigationStack>
+			<NavigationStack modifiers={[createModifier('seeThrough', {through: !props.below})]}>
+				{props.list}
+			</NavigationStack>
 		</ListContext>
 	)
 }
@@ -176,8 +183,13 @@ export function ListDetail(props: {
 					</NavigationSplitView>
 				</ArrangementView.Primary>
 				<ArrangementView.Secondary>
-					{laptop.active && (
-						<ListBelow list={props.list} searching={laptop.searching} onSearchFocus={laptop.setSearching} />
+					{props.opened && (
+						<ListBelow
+							below={laptop.active}
+							list={props.list}
+							searching={laptop.searching}
+							onSearchFocus={laptop.setSearching}
+						/>
 					)}
 				</ArrangementView.Secondary>
 			</ArrangementView>
