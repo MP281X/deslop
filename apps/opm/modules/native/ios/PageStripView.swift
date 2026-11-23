@@ -297,8 +297,9 @@ final class StripController: NSObject, UIScrollViewDelegate {
     }
   }
 
-  // Each chapter pairs from its first page, a right page then a left one, as a printed manga reads. A page already as wide as a
-  // spread stands alone, and so does a page before it or at the end of a chapter; pairing goes on after it.
+  // Each chapter's first page, its cover, stands alone; the pages after it pair a right page then a left one, as a printed manga
+  // reads. A page already as wide as a spread stands alone, and so does a page before it or at the end of a chapter; pairing
+  // goes on after it.
   private var pairs: [[Int]] {
     var pairs: [[Int]] = []
     var start = 0
@@ -306,7 +307,7 @@ final class StripController: NSObject, UIScrollViewDelegate {
       let end = min(start + count, pageViews.count)
       var index = start
       while index < end {
-        if index + 1 < end && aspects[index] >= 1 && aspects[index + 1] >= 1 {
+        if index > start && index + 1 < end && aspects[index] >= 1 && aspects[index + 1] >= 1 {
           pairs.append([index, index + 1])
           index += 2
         } else {
