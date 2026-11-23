@@ -1,6 +1,6 @@
 import {useAtomMount, useAtomRefresh, useAtomSet, useAtomValue} from '@effect/atom-react'
 
-import {Array, Boolean, Function, HashSet, Match, Option, Schema, String, pipe} from 'effect'
+import {Array, Boolean, Function, Match, Option, Schema, String, pipe} from 'effect'
 
 import {
 	Button as NativeButton,
@@ -56,7 +56,7 @@ import {clipboard} from '#lib/clipboard.ts'
 import {Byline} from '#lib/components.tsx'
 import {BrandIcon, BrandLogo} from '#lib/icons.tsx'
 import {appOf, brandOf, kindOf, kinds, subjectOf} from '#lib/kinds.ts'
-import {imageAtom, notesAtom, queryAtom, regenerateAtom, removal, searchAtom} from '#lib/notes.ts'
+import {foundAtom, imageAtom, notesAtom, queryAtom, queueOf, regenerateAtom, removal, searchAtom} from '#lib/notes.ts'
 import {primary, session} from '#lib/session.ts'
 import {tagCounts} from '#services/notes/lib/utils.ts'
 import type {Note, NoteItem} from '#services/notes/schema.ts'
@@ -227,20 +227,14 @@ function Notes(props: {
 	const query = String.trim(useAtomValue(queryAtom))
 	const search = useAtomValue(searchAtom(query))
 	const refreshSearch = useAtomRefresh(searchAtom(query))
-	const found = pipe(search, AsyncResult.value, Option.flatten)
+	const found = useAtomValue(foundAtom)
 	return (
 		<Loaded atom={notesAtom}>
 			{all => {
 				if (AsyncResult.isFailure(search) && Option.exists(AsyncResult.error(search), isDenied)) {
 					return <FailureContent cause={search.cause} onRetry={refreshSearch} />
 				}
-				const notes = Array.filter(
-					all,
-					note =>
-						Option.match(found, {onNone: Function.constTrue, onSome: ids => HashSet.has(ids, note.id)}) &&
-						Option.match(props.tag, {onNone: Function.constTrue, onSome: name => Array.contains(note.tags, name)}) &&
-						Option.match(props.kind, {onNone: Function.constTrue, onSome: kind => kindOf(note) === kind})
-				)
+				const notes = queueOf(all, {found, kind: props.kind, tag: props.tag})
 				const tags = Array.map(tagCounts(all), entry => entry.tag)
 				const filtered = String.isNonEmpty(query) || Option.isSome(props.tag) || Option.isSome(props.kind)
 				return (

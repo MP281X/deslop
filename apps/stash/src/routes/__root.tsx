@@ -13,7 +13,7 @@ import {SessionGate} from '@deslop/components-mobile/blocks/session-gate'
 import {colors} from '@deslop/components-mobile/theme'
 
 import {clipboard} from '#lib/clipboard.ts'
-import {notesAtom, queryAtom} from '#lib/notes.ts'
+import {foundAtom, notesAtom, queryAtom, queueOf} from '#lib/notes.ts'
 import {session} from '#lib/session.ts'
 import {sharesAtom} from '#lib/shares.ts'
 import {HomeRoute} from '#routes/(home)/index.tsx'
@@ -32,7 +32,7 @@ function AppRoutes() {
 	const [tag, setTag] = useState(Option.none<TagName>)
 	const [kind, setKind] = useState(Option.none<Kind>)
 	useAtomMount(sharesAtom)
-	// Read only when the queue hides: a root that renders again on every note moves the split view mid-unfold, and the note beside a hidden queue keeps the outer screen's size.
+	// Read only when the queue hides: a root that renders again on every note or search moves the split view mid-unfold, and the note beside a hidden queue keeps the outer screen's size.
 	const registry = useContext(RegistryContext)
 
 	return (
@@ -45,7 +45,7 @@ function AppRoutes() {
 					onHide={() =>
 						pipe(
 							AsyncResult.value(registry.get(notesAtom)),
-							Option.flatMap(Array.head),
+							Option.flatMap(all => Array.head(queueOf(all, {found: registry.get(foundAtom), kind, tag}))),
 							Option.map(note => setOpened(Option.some(note.id)))
 						)
 					}
@@ -69,8 +69,10 @@ function AppRoutes() {
 								<Suspense fallback={<NoteSkeleton />}>
 									<NoteRoute
 										id={Option.filter(opened, (id): id is NoteId => id !== 'compose')}
+										kind={kind}
 										onClose={() => setOpened(Option.none())}
 										onTag={name => setTag(Option.some(name))}
+										tag={tag}
 									/>
 								</Suspense>
 							),

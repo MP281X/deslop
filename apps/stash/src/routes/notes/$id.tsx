@@ -53,10 +53,10 @@ import {Byline} from '#lib/components.tsx'
 import {BrandLogo} from '#lib/icons.tsx'
 import {appOf, brandOf, kinds, subjectOf} from '#lib/kinds.ts'
 import {webLinksOnly} from '#lib/markdown.ts'
-import {noteAtom, notesAtom, regenerateAtom, removal} from '#lib/notes.ts'
+import {foundAtom, noteAtom, notesAtom, queueOf, regenerateAtom, removal} from '#lib/notes.ts'
 import {Pager} from '#lib/pager.tsx'
 import {primary} from '#lib/session.ts'
-import type {NoteId, NoteItem} from '#services/notes/schema.ts'
+import type {Kind, NoteId, NoteItem} from '#services/notes/schema.ts'
 import {TagName} from '#services/notes/schema.ts'
 
 const prose = [text.body, lineSpacing(space[1]), foregroundStyle(colors.foreground), textSelection(true)]
@@ -318,22 +318,25 @@ function Detail(props: {note: NoteItem; onRetry: () => void; onTag: (tag: TagNam
 	)
 }
 
-// The opened note, or with nothing opened the newest one, shown only while the list is beside it.
+// The opened note, which stays when the queue's filter leaves it out, or with nothing opened the queue's first, shown only while the queue is beside it.
 function NoteScreen(props: {
 	id: Option.Option<NoteId>
+	kind: Option.Option<Kind>
 	notes: readonly NoteItem[]
 	onClose: () => void
 	onTag: (tag: TagName) => void
+	tag: Option.Option<TagName>
 }) {
 	const remove = useAtomSet(removal.removeAtom)
 	const regenerate = useAtomSet(regenerateAtom)
+	const found = useAtomValue(foundAtom)
 	const beside = useListBeside()
 	const show = useListShow()
 	if (Option.isNone(props.id) && !beside) return undefined
 	return pipe(
 		props.id,
 		Option.match({
-			onNone: () => Array.head(props.notes),
+			onNone: () => Array.head(queueOf(props.notes, {found, kind: props.kind, tag: props.tag})),
 			onSome: opened => Array.findFirst(props.notes, item => item.id === opened)
 		}),
 		Option.match({
@@ -419,10 +422,25 @@ function NoteScreen(props: {
 	)
 }
 
-export function NoteRoute(props: {id: Option.Option<NoteId>; onClose: () => void; onTag: (tag: TagName) => void}) {
+export function NoteRoute(props: {
+	id: Option.Option<NoteId>
+	kind: Option.Option<Kind>
+	onClose: () => void
+	onTag: (tag: TagName) => void
+	tag: Option.Option<TagName>
+}) {
 	return (
 		<Loaded atom={notesAtom}>
-			{notes => <NoteScreen id={props.id} notes={notes} onClose={props.onClose} onTag={props.onTag} />}
+			{notes => (
+				<NoteScreen
+					id={props.id}
+					kind={props.kind}
+					notes={notes}
+					onClose={props.onClose}
+					onTag={props.onTag}
+					tag={props.tag}
+				/>
+			)}
 		</Loaded>
 	)
 }
