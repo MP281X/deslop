@@ -19,7 +19,7 @@ import {
 import {useMachineResult} from '@typeonce/effect-machine-react'
 import {AtomMachine} from '@typeonce/effect-machine/reactivity'
 import {AsyncResult, Atom} from 'effect/reactivity'
-import {Suspense, useState} from 'react'
+import {Suspense} from 'react'
 
 import {ItemGroupSkeleton} from '@deslop/components-mobile/blocks/item-group-skeleton'
 import {ListToolbar} from '@deslop/components-mobile/blocks/list-toolbar'
@@ -361,9 +361,12 @@ function Bookings(props: {onOpen: (id: Booking['id']) => void; searched: string}
 	)
 }
 
+// The query every copy of the list filters by, as the search field they share shows it, so a search typed below the board in laptop posture still filters once the phone lies flat.
+const searchedAtom = Atom.make('')
+
 // Native navigation and clipboard/account controls do not wait for the bookings stream; the bar marks bookings that stopped updating.
 export function HomeRoute(props: {onOpen: (id: Booking['id']) => void}) {
-	const [searched, setSearched] = useState('')
+	const [searched, setSearched] = useAtom(searchedAtom)
 	const loaded = useAtomValue(bookingsAtom)
 	useAtomMount(problemSinceAtom(bookingsAtom))
 	return (
