@@ -325,7 +325,7 @@ function Close(props: {onClose: () => void}) {
 	)
 }
 
-// The opened booking, or with nothing opened the board, shown only while the list is beside it or below it.
+// The opened booking, or with nothing opened the board, shown only while the window tiles, beside the list or in place of a hidden one, or while the list is below it.
 export function BookingRoute(props: {
 	bookings: BookingList
 	id: Option.Option<Booking['id']>
@@ -336,7 +336,8 @@ export function BookingRoute(props: {
 	const refresh = useAtomSet(refreshAtom, {mode: 'promiseExit'})
 	const now = useAtomValue(nowAtom)
 	const beside = useListBeside()
-	if (Option.isNone(props.id) && !beside) return undefined
+	const tiled = useListTiled()
+	if (Option.isNone(props.id) && !beside && !tiled) return undefined
 	return Option.match(props.id, {
 		onNone: () => <Board />,
 		onSome: id =>

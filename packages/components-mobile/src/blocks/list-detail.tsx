@@ -151,8 +151,8 @@ function useColumns(
 ) {
 	const [chosen, setChosen] = useChosen(props, window.width)
 	const [stacked, setStacked] = useState<NavigationSplitViewVisibility>('all')
-	// The list hides only beside an opened item: closing it, by Back in a stack, a delete or a saved draft, brings the list back, so a wide window never shows a hidden list beside nothing.
-	if (!props.opened && chosen === 'detailOnly') setChosen('all')
+	// The list hides only beside an opened item or a board: closing the item with no board behind it, by Back in a stack, a delete or a saved draft, brings the list back, so a wide window never shows a hidden list beside nothing. Beside a board the choice holds, also through a fold, which makes a new split view that shows it.
+	if (!props.opened && props.board !== true && chosen === 'detailOnly') setChosen('all')
 	const kept = useKept(props)
 	return {
 		choose: kept.choose,
