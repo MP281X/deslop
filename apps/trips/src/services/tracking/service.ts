@@ -3,6 +3,7 @@ import {
 	Array,
 	Context,
 	DateTime,
+	Deferred,
 	Duration,
 	Effect,
 	FiberSet,
@@ -139,35 +140,49 @@ export class Tracking extends Context.Service<Tracking>()('@deslop/trips/service
 			)
 		})
 
-		// How late each inbound plane lands, kept half an hour by its id, so the tickets of a flight and the checks of a delay ask once; a failed read keeps the cause unknown rather than fail the report.
+		// How late each inbound plane lands, kept half an hour by its id, so the tickets of a flight, two flights waiting for the same plane and the checks of a delay ask once; a read in flight is shared, and a failed read keeps the cause unknown rather than fail the report and is asked again next time.
 		const inbounds = yield* Ref.make(
-			Record.empty<ProviderFlightId, {at: DateTime.Utc; late: Option.Option<Duration.Duration>}>()
+			Record.empty<ProviderFlightId, {at: DateTime.Utc; late: Deferred.Deferred<Option.Option<Duration.Duration>>}>()
 		)
 		const inboundLate = Effect.fnUntraced(function* (id: ProviderFlightId, now: DateTime.Utc) {
-			const cached = Record.get(yield* Ref.get(inbounds), id)
-			if (
-				Option.exists(cached, read => pipe(read.at, DateTime.distance(now), Duration.isLessThan(Duration.minutes(30))))
-			) {
-				return Option.flatMap(cached, read => read.late)
-			}
-			return yield* pipe(
-				ask(
-					Option.map(flightAware.operation, operation => operation(id)),
-					now,
-					`the plane flying in as ${id}`
-				),
-				Effect.map(found =>
-					pipe(
-						found.flights,
-						Array.findFirst(candidate => candidate.fa_flight_id === id),
-						Option.flatMap(lateness)
-					)
-				),
-				Effect.tap(read => Ref.update(inbounds, Record.set(id, {at: now, late: read}))),
-				Effect.catch(error =>
-					Effect.as(Effect.logWarning('The plane flying in was not read', error), Option.none<Duration.Duration>())
+			const mine = yield* Deferred.make<Option.Option<Duration.Duration>>()
+			const shared = yield* Ref.modify(inbounds, known =>
+				pipe(
+					known,
+					Record.get(id),
+					Option.filter(read => pipe(read.at, DateTime.distance(now), Duration.isLessThan(Duration.minutes(30)))),
+					Option.match({
+						onNone: () => [Option.none(), Record.set(known, id, {at: now, late: mine})] as const,
+						onSome: read => [Option.some(read.late), known] as const
+					})
 				)
 			)
+			return yield* Option.match(shared, {
+				onNone: () =>
+					pipe(
+						ask(
+							Option.map(flightAware.operation, operation => operation(id)),
+							now,
+							`the plane flying in as ${id}`
+						),
+						Effect.map(found =>
+							pipe(
+								found.flights,
+								Array.findFirst(candidate => candidate.fa_flight_id === id),
+								Option.flatMap(lateness)
+							)
+						),
+						Effect.tapError(() => Ref.update(inbounds, Record.remove(id))),
+						Effect.catch(error =>
+							Effect.as(Effect.logWarning('The plane flying in was not read', error), Option.none<Duration.Duration>())
+						),
+						Effect.tap(late => Deferred.succeed(mine, late)),
+						Effect.onInterrupt(() =>
+							pipe(inbounds, Ref.update(Record.remove(id)), Effect.andThen(Deferred.succeed(mine, Option.none())))
+						)
+					),
+				onSome: Deferred.await
+			})
 		})
 
 		// A failed or unmatched lookup still counts as an attempt, so the schedule waits before asking again; only a real answer is saved.
