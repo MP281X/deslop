@@ -1,6 +1,7 @@
 /* oxlint-disable effecttsgo/global-date -- The widget runtime serializes only the layout's body, which cannot import Effect; SwiftUI's timers take a Date. */
 import {HStack, Image, ProgressView, Spacer, Text, VStack} from '@expo/ui/swift-ui'
 import {
+	fixedSize,
 	font,
 	foregroundStyle,
 	frame,
@@ -51,11 +52,18 @@ function DayLayout(props: typeof ActivityProps.Encoded) {
 		return 1
 	}
 
-	// What to do takes its width first, so its label is whole; the timer beside it has the rest.
+	// What to do takes its width first, its label wrapping where the island is narrow, such as "Lands in London, local time"; the timer beside it has the rest.
 	function what(size: number) {
 		return (
 			<VStack alignment="leading" spacing={1} modifiers={[layoutPriority(1)]}>
-				<Text modifiers={[font({size: 13, weight: 'semibold'}), foregroundStyle(gray), lineLimit(1)]}>
+				<Text
+					modifiers={[
+						font({size: 13, weight: 'semibold'}),
+						foregroundStyle(gray),
+						lineLimit(2),
+						fixedSize({horizontal: false, vertical: true})
+					]}
+				>
 					{props.label}
 				</Text>
 				<HStack alignment="firstTextBaseline" spacing={8}>
@@ -146,15 +154,24 @@ function DayLayout(props: typeof ActivityProps.Encoded) {
 		return gray
 	}
 
+	// The small print wraps rather than cutting the seats or the route; the note beside it, a time, keeps its width.
 	function print() {
 		return (
 			<VStack alignment="leading" spacing={5}>
-				<HStack spacing={10}>
-					<Text modifiers={[font({size: 13, weight: 'medium'}), foregroundStyle(gray), lineLimit(1)]}>
+				<HStack alignment="firstTextBaseline" spacing={10}>
+					<Text
+						modifiers={[
+							font({size: 13, weight: 'medium'}),
+							foregroundStyle(gray),
+							lineLimit(2),
+							fixedSize({horizontal: false, vertical: true}),
+							layoutPriority(1)
+						]}
+					>
 						{props.small}
 					</Text>
 					<Spacer />
-					<HStack spacing={6}>
+					<HStack spacing={6} modifiers={[fixedSize({horizontal: true, vertical: false})]}>
 						<Text
 							modifiers={[
 								font({size: 13, weight: 'medium'}),

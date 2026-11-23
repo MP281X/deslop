@@ -65,7 +65,14 @@ function Dot(props: {problem: Option.Option<RowProblem>}) {
 	})
 }
 
-// A row of the day: what it is with a quieter line under it, and its time on the right with the old time struck through beside it.
+function Was(props: {was: Option.Option<string>}) {
+	return Option.match(props.was, {
+		onNone: Function.constNull,
+		onSome: was => <Text modifiers={[font({textStyle: 'subheadline'}), monospacedDigit(), ...STRUCK]}>{was}</Text>
+	})
+}
+
+// A row of the day: what it is with a quieter line under it, and its time on the right with the old time struck through beside it. A flight on Home keeps the old time under its large one, so its route and landing stay whole on the folded phone, and its small print wraps rather than cuts.
 export function TimeRow(props: {
 	chevron: boolean
 	label: string
@@ -75,6 +82,10 @@ export function TimeRow(props: {
 	value: Option.Option<string>
 	was: Option.Option<string>
 }) {
+	const value = Option.match(props.value, {
+		onNone: Function.constNull,
+		onSome: found => <Text modifiers={[...ROW_SIZES[props.size].value, monospacedDigit()]}>{found}</Text>
+	})
 	return (
 		<HStack
 			spacing={space[3]}
@@ -83,34 +94,38 @@ export function TimeRow(props: {
 			<VStack alignment="leading" spacing={0} modifiers={[layoutPriority(1)]}>
 				<HStack spacing={space[2]}>
 					<Dot problem={props.problem} />
-					<Text modifiers={[ROW_SIZES[props.size].label, foregroundStyle(labelColor(props.problem)), lineLimit(1)]}>
+					<Text modifiers={[ROW_SIZES[props.size].label, foregroundStyle(labelColor(props.problem)), lineLimit(2)]}>
 						{props.label}
 					</Text>
 				</HStack>
 				{Option.match(props.sub, {
 					onNone: Function.constNull,
 					onSome: sub => (
-						<Text modifiers={[font({textStyle: 'subheadline'}), foregroundStyle(colors.mutedForeground), lineLimit(1)]}>
+						<Text modifiers={[font({textStyle: 'subheadline'}), foregroundStyle(colors.mutedForeground), lineLimit(2)]}>
 							{sub}
 						</Text>
 					)
 				})}
 			</VStack>
 			<Spacer />
-			<HStack
-				alignment="firstTextBaseline"
-				spacing={space[2]}
-				modifiers={[fixedSize({horizontal: true, vertical: false})]}
-			>
-				{Option.match(props.was, {
-					onNone: Function.constNull,
-					onSome: was => <Text modifiers={[font({textStyle: 'subheadline'}), monospacedDigit(), ...STRUCK]}>{was}</Text>
-				})}
-				{Option.match(props.value, {
-					onNone: Function.constNull,
-					onSome: value => <Text modifiers={[...ROW_SIZES[props.size].value, monospacedDigit()]}>{value}</Text>
-				})}
-			</HStack>
+			{Boolean.match(props.size === 'big', {
+				onFalse: () => (
+					<HStack
+						alignment="firstTextBaseline"
+						spacing={space[2]}
+						modifiers={[fixedSize({horizontal: true, vertical: false})]}
+					>
+						<Was was={props.was} />
+						{value}
+					</HStack>
+				),
+				onTrue: () => (
+					<VStack alignment="trailing" spacing={0} modifiers={[fixedSize({horizontal: true, vertical: false})]}>
+						{value}
+						<Was was={props.was} />
+					</VStack>
+				)
+			})}
 			{props.chevron && (
 				<Image
 					systemName="chevron.right"
