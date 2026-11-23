@@ -6,10 +6,10 @@ import {cn} from '@deslop/components-web/lib/utils'
 import {Skeleton} from '@deslop/components-web/ui/skeleton'
 import {durationOf} from '@deslop/runtime/shared/format'
 
-import {lanesOf} from '#lib/flame.ts'
+import {hitAreasOf, lanesOf} from '#lib/flame.ts'
 import type {SpanId, TraceTree} from '#services/telemetry/schema.ts'
 
-// The flame's lanes: a 22px bar with 2px between lanes, and a 6px-padded label inside it.
+// The flame's lanes: a 22px bar with 2px between lanes, a 6px-padded label inside it, and a tap area at least 12px wide.
 const FLAME_LANE = 24
 const FLAME_BAR = 22
 const FLAME_LABEL_PADDING = 12
@@ -171,8 +171,9 @@ export function Flame(props: {focus: Option.Option<SpanId>; onPick: (id: SpanId)
 	const rows = Array.map(placed, entry => {
 		const span = entry.span
 		const duration = durationOf(span.durationMs)
-		const left = (Duration.toMillis(span.offsetMs) / total) * width
 		const bar = Number.max((Duration.toMillis(span.durationMs) / total) * width, 2)
+		// A bar's 2px minimum stays inside the graph at the trace's end.
+		const left = Number.max(0, Number.min((Duration.toMillis(span.offsetMs) / total) * width, width - bar))
 		const measured = pipe(labelWidths, Record.get(span.spanId), Option.getOrElse(Function.constant(0)))
 		const inside = span.depth <= 1 && width > 0 && bar >= measured + FLAME_LABEL_PADDING
 		const labelLeft = left + bar + 4
@@ -208,7 +209,7 @@ export function Flame(props: {focus: Option.Option<SpanId>; onPick: (id: SpanId)
 				})
 			),
 			duration,
-			hit: Number.max(bar + Boolean.match(after, {onFalse: Function.constant(0), onTrue: () => measured + 4}), 12),
+			extent: bar + Boolean.match(after, {onFalse: Function.constant(0), onTrue: () => measured + 4}),
 			inside,
 			label: labelOf(span),
 			lane: entry.lane,
@@ -217,6 +218,17 @@ export function Flame(props: {focus: Option.Option<SpanId>; onPick: (id: SpanId)
 			span
 		}
 	})
+	const bars = pipe(
+		rows,
+		Array.zip(
+			hitAreasOf(
+				Array.map(rows, row => ({lane: row.lane, left: row.left, right: row.left + row.extent})),
+				width,
+				12
+			)
+		),
+		Array.map(pair => ({...pair[0], hit: pair[1]}))
+	)
 	function moveFocus(span: TraceTree['spans'][number], key: string) {
 		const siblings = Array.filter(props.trace.spans, other => other.depth === span.depth)
 
@@ -250,16 +262,16 @@ export function Flame(props: {focus: Option.Option<SpanId>; onPick: (id: SpanId)
 				className="relative h-(--flame-height) w-full"
 				style={{'--flame-height': `${lanes * FLAME_LANE - (FLAME_LANE - FLAME_BAR)}px`}}
 			>
-				{Array.map(rows, row => (
+				{Array.map(bars, row => (
 					<div
 						key={`${row.span.traceId}:${row.span.spanId}`}
 						data-flame-bar=""
 						data-span-id={row.span.spanId}
 						className="absolute top-(--flame-top) left-(--flame-left) h-5.5 w-(--flame-width)"
 						style={{
-							'--flame-left': `${row.left}px`,
+							'--flame-left': `${row.hit.left}px`,
 							'--flame-top': `${row.lane * FLAME_LANE}px`,
-							'--flame-width': `${row.hit}px`
+							'--flame-width': `${row.hit.width}px`
 						}}
 					>
 						<span
@@ -269,7 +281,7 @@ export function Flame(props: {focus: Option.Option<SpanId>; onPick: (id: SpanId)
 								onTrue: Function.constant('' as const)
 							})}
 							className={cn(
-								'absolute inset-y-0 left-0 w-(--flame-bar) overflow-hidden',
+								'absolute inset-y-0 left-(--flame-offset) w-(--flame-bar) overflow-hidden',
 								Boolean.match(row.span.status === 'failed', {
 									onFalse: Function.constant('bg-primary'),
 									onTrue: Function.constant('bg-destructive')
@@ -279,7 +291,7 @@ export function Flame(props: {focus: Option.Option<SpanId>; onPick: (id: SpanId)
 									onTrue: Function.constant('outline-foreground -outline-offset-1 outline-1')
 								})
 							)}
-							style={{'--flame-bar': `${row.bar}px`}}
+							style={{'--flame-bar': `${row.bar}px`, '--flame-offset': `${row.left - row.hit.left}px`}}
 						>
 							{Boolean.match(row.inside, {
 								onFalse: Function.constNull,
@@ -296,7 +308,7 @@ export function Flame(props: {focus: Option.Option<SpanId>; onPick: (id: SpanId)
 								<span
 									aria-hidden
 									className="absolute top-1/2 left-(--flame-label) -translate-y-1/2 text-xs whitespace-nowrap"
-									style={{'--flame-label': `${row.bar + 4}px`}}
+									style={{'--flame-label': `${row.left - row.hit.left + row.bar + 4}px`}}
 								>
 									<span className="text-foreground">{row.span.name}</span>
 									<span className="text-muted-foreground">{` · ${row.duration}`}</span>
