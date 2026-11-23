@@ -1,6 +1,6 @@
 import {Boolean, Function, Option} from 'effect'
 
-import {ArrangementView, NavigationSplitView, NavigationStack, useNativeState} from '@expo/ui/swift-ui'
+import {ArrangementView, Group, NavigationSplitView, NavigationStack, useNativeState} from '@expo/ui/swift-ui'
 import type {NavigationSplitViewVisibility} from '@expo/ui/swift-ui'
 import {
 	arrangementViewStyle,
@@ -19,7 +19,8 @@ const ListContext = createContext({
 	choose: Function.constVoid,
 	search: Option.none<ReturnType<typeof useNativeState<string>>>(),
 	searchFocus: Option.none<{focused: boolean; onChange: (focused: boolean) => void}>(),
-	show: Option.none<() => void>()
+	show: Option.none<() => void>(),
+	tiled: false
 })
 
 function columnsFor(props: {alone?: boolean; opened: boolean}) {
@@ -49,6 +50,11 @@ export function useListBeside() {
 // Puts the list beside or below the opened item, even if the person hid it, so a choice made in the item, such as a tag, shows its result and leaves the item open; none in a stack, where only closing the item shows the list.
 export function useListShow() {
 	return useContext(ListContext).show
+}
+
+// Whether list and item tile side by side, where the split view draws no Back on the item, so an item that replaced what stands there with nothing opened, such as a board, offers its own close.
+export function useListTiled() {
+	return useContext(ListContext).tiled
 }
 
 // The search text every copy of the list shares, so the copy below an item in laptop posture shows, and clears, the query that filters both; none outside a `ListDetail`.
@@ -90,12 +96,12 @@ function useKept(props: {onClose: () => void; onHide?: () => void; opened: boole
 	}
 }
 
-// Half open upright with an item opened, like a laptop, and whether the search field of the list's copy below the item has focus, which leaving the posture ends, so the keyboard leaves with the copy; and whether the split view's copy's field has focus. Choosing an item ends both.
-function useLaptop(props: {opened: boolean; portrait: boolean}) {
+// Half open upright with an item opened or a board, like a laptop, and whether the search field of the list's copy below the item has focus, which leaving the posture ends, so the keyboard leaves with the copy; and whether the split view's copy's field has focus. Choosing an item ends both.
+function useLaptop(props: {above: boolean; portrait: boolean}) {
 	const [hinge, setHinge] = useState<HingeStatus>('closed')
 	const [searching, setSearching] = useState(false)
 	const [splitSearching, setSplitSearching] = useState(false)
-	const active = props.portrait && hinge === 'partiallyOpen' && props.opened
+	const active = props.portrait && hinge === 'partiallyOpen' && props.above
 	if (!active && searching) setSearching(false)
 	return {
 		active,
@@ -110,7 +116,7 @@ function useLaptop(props: {opened: boolean; portrait: boolean}) {
 	}
 }
 
-// The list's copy below the opened item in laptop posture, with its own search field's focus, which the layout follows and leaving the posture ends. It stays mounted while an item is opened, under the split view and out of reach in every other posture, so unfolding and half opening again finds the list where the person left it.
+// The list's copy below the opened item in laptop posture, with its own search field's focus, which the layout follows and leaving the posture ends. It stays mounted while an item is opened or a board stands above it, under the split view and out of reach in every other posture, so unfolding and half opening again finds the list where the person left it.
 function ListBelow(props: {
 	below: boolean
 	list: ReactNode
@@ -131,9 +137,48 @@ function ListBelow(props: {
 	)
 }
 
-// An app's one root on the iPhone Duo: list and opened item side by side when the window is wide, as when unfolded like a book; a stack when it is narrow, folded or turned upright; the item above the list when half open like a laptop. The same views stay mounted through every fold and turn, so a draft, its focus and a reading place survive. `detail` is the opened item, or what the wide window shows beside the list when nothing is opened; `onHide` opens that when the person hides the list beside it, so it stays on screen and in front through a fold, and `onClose` closes it once the list shows again, unless the person chose it meanwhile with `useListShow`. An item that opens `alone`, such as a book's spread, takes the whole wide window each time it or another one opens, and the sidebar button brings the list back beside it.
+// The person's choice of columns, kept apart from the one column a stack reports, so the list comes back beside the item once the window is wide again.
+function useColumns(
+	props: {
+		alone?: boolean
+		board?: boolean
+		detail: ReactNode
+		onClose: () => void
+		onHide?: () => void
+		opened: boolean
+	},
+	window: {height: number; width: number}
+) {
+	const [chosen, setChosen] = useChosen(props, window.width)
+	const [stacked, setStacked] = useState<NavigationSplitViewVisibility>('all')
+	// The list hides only beside an opened item: closing it, by Back in a stack, a delete or a saved draft, brings the list back, so a wide window never shows a hidden list beside nothing.
+	if (!props.opened && chosen === 'detailOnly') setChosen('all')
+	const kept = useKept(props)
+	return {
+		choose: kept.choose,
+		// Whether anything could stand beside the hidden list: an opened item, a board or what `onHide` opens. Hiding it beside nothing would leave the window blank, and the split view hides it before reporting, so setting the columns back to both, the value it already holds, would never reach it.
+		hidable: props.opened || props.board === true || props.onHide !== undefined,
+		onChange: (visibility: NavigationSplitViewVisibility) => {
+			// The split view reports a stack's one column while it lays out a new window, before SwiftUI's geometry renders this again, so the report belongs to the window as it is now.
+			if (!tiledIn(Dimensions.get('window'))) {
+				setStacked(visibility)
+				return
+			}
+			setChosen(visibility)
+			Boolean.match(visibility === 'detailOnly', {onFalse: kept.show, onTrue: kept.hide})
+		},
+		show: () => {
+			kept.choose()
+			setChosen('all')
+		},
+		visibility: Boolean.match(tiledIn(window), {onFalse: Function.constant(stacked), onTrue: Function.constant(chosen)})
+	}
+}
+
+// An app's one root on the iPhone Duo: list and opened item side by side when the window is wide, as when unfolded like a book; a stack when it is narrow, folded or turned upright; the item above the list when half open like a laptop. The same views stay mounted through every fold and turn, so a draft, its focus and a reading place survive. `detail` is the opened item, or what the wide window shows beside the list when nothing is opened; with `board`, that also stands above the list when half open. `onHide` opens that when the person hides the list beside it, so it stays on screen and in front through a fold, and `onClose` closes it once the list shows again, unless the person chose it meanwhile with `useListShow`. An item that opens `alone`, such as a book's spread, takes the whole wide window each time it or another one opens, and the sidebar button brings the list back beside it.
 export function ListDetail(props: {
 	alone?: boolean
+	board?: boolean
 	detail: ReactNode
 	list: ReactNode
 	modifiers?: ViewModifier[]
@@ -143,34 +188,24 @@ export function ListDetail(props: {
 }) {
 	// The window as of SwiftUI's last layout. React Native's window event arrives while the app is still taking the new size, and a render then can leave the whole app at the previous window's size, text running off the screen; SwiftUI reports a new geometry only once the app has it.
 	const [window, setWindow] = useState(() => Dimensions.get('window'))
-	// The choice is kept apart from the one column a stack reports, so the list comes back beside the item once the window is wide again.
-	const [chosen, setChosen] = useChosen(props, window.width)
-	const [stacked, setStacked] = useState<NavigationSplitViewVisibility>('all')
-	// The list hides only beside an opened item: closing it, by Back in a stack, a delete or a saved draft, brings the list back, so a wide window never shows a hidden list beside nothing.
-	if (!props.opened && chosen === 'detailOnly') setChosen('all')
-	const kept = useKept(props)
+	const columns = useColumns(props, window)
+	// A back above the list in laptop posture pops to the list's own column, and the split view reads the unchanged wish for the board only when it is made again: a new split view brings the board back, its list hidden under it until the phone lies flat. One made in a stack reports its one column as the person's choice once the window tiles, so a tiled window always makes its own.
+	const [returns, setReturns] = useState(0)
 	const portrait = window.height > window.width
 	const tiled = tiledIn(window)
-	const columns = Boolean.match(tiled, {onFalse: Function.constant(stacked), onTrue: Function.constant(chosen)})
-	const laptop = useLaptop({opened: props.opened, portrait})
+	const laptop = useLaptop({above: props.opened || props.board === true, portrait})
 	return (
 		<ListContext
 			value={{
-				beside: (tiled && columns !== 'detailOnly') || laptop.active,
+				beside: (tiled && columns.visibility !== 'detailOnly') || laptop.active,
 				choose: () => {
-					kept.choose()
+					columns.choose()
 					laptop.choose()
 				},
 				search: Option.some(useNativeState('')),
 				searchFocus: laptop.splitSearch,
-				show: Boolean.match(tiled || laptop.active, {
-					onFalse: Option.none,
-					onTrue: () =>
-						Option.some(() => {
-							kept.choose()
-							setChosen('all')
-						})
-				})
+				show: Boolean.match(tiled || laptop.active, {onFalse: Option.none, onTrue: () => Option.some(columns.show)}),
+				tiled
 			}}
 		>
 			<ArrangementView
@@ -189,22 +224,17 @@ export function ListDetail(props: {
 			>
 				<ArrangementView.Primary>
 					<NavigationSplitView
-						columnVisibility={columns}
-						onColumnVisibilityChange={visibility => {
-							// The split view reports a stack's one column while it lays out a new window, before SwiftUI's geometry renders this again, so the report belongs to the window as it is now.
-							if (!tiledIn(Dimensions.get('window'))) {
-								setStacked(visibility)
-								return
-							}
-							setChosen(visibility)
-							Boolean.match(visibility === 'detailOnly', {onFalse: kept.show, onTrue: kept.hide})
-						}}
-						preferredCompactColumn={Boolean.match(props.opened, {
+						key={Boolean.match(tiled, {onFalse: Function.constant(returns), onTrue: Function.constant(0)})}
+						columnVisibility={columns.visibility}
+						onColumnVisibilityChange={columns.onChange}
+						preferredCompactColumn={Boolean.match(props.opened || laptop.active, {
 							onFalse: Function.constant('sidebar'),
 							onTrue: Function.constant('detail')
 						})}
 						onPreferredCompactColumnChange={column => {
-							if (column === 'sidebar') props.onClose()
+							if (column !== 'sidebar') return
+							props.onClose()
+							if (laptop.active && props.board === true) setReturns(count => count + 1)
 						}}
 						modifiers={[
 							// ios/DeslopComponentsModule.swift: a compact width, so the split view stacks its columns in a portrait window.
@@ -214,12 +244,17 @@ export function ListDetail(props: {
 							createModifier('seeThrough', {through: laptop.searching})
 						]}
 					>
-						<NavigationSplitView.Sidebar>{props.list}</NavigationSplitView.Sidebar>
+						<NavigationSplitView.Sidebar>
+							{/* ios/DeslopComponentsModule.swift: no sidebar button while the list could hide beside nothing. */}
+							<Group modifiers={[createModifier('sidebarToggleHidden', {hidden: !columns.hidable})]}>
+								{props.list}
+							</Group>
+						</NavigationSplitView.Sidebar>
 						<NavigationSplitView.Detail>{props.detail}</NavigationSplitView.Detail>
 					</NavigationSplitView>
 				</ArrangementView.Primary>
 				<ArrangementView.Secondary>
-					{props.opened && (
+					{(props.opened || props.board === true) && (
 						<ListBelow
 							below={laptop.active}
 							list={props.list}
