@@ -1,4 +1,11 @@
-import {useAtomMount, useAtomRefresh, useAtomSet, useAtomSuspense, useAtomValue} from '@effect/atom-react'
+import {
+	useAtomMount,
+	useAtomRefresh,
+	useAtomSet,
+	useAtomSubscribe,
+	useAtomSuspense,
+	useAtomValue
+} from '@effect/atom-react'
 
 import {Array, Boolean, Function, Match, Option, Schema, String, pipe} from 'effect'
 
@@ -27,6 +34,8 @@ import {
 	lineSpacing,
 	navigationBarTitleDisplayMode,
 	navigationTitle,
+	onGeometryChange,
+	onScrollPhaseChange,
 	padding,
 	redacted,
 	scrollPosition,
@@ -34,8 +43,8 @@ import {
 	textSelection,
 	tint
 } from '@expo/ui/swift-ui/modifiers'
-import {AsyncResult} from 'effect/reactivity'
-import {Suspense} from 'react'
+import {AsyncResult, Atom} from 'effect/reactivity'
+import {Suspense, useRef} from 'react'
 import {Linking} from 'react-native'
 
 import {useListBeside, useListShow} from '@deslop/components-mobile/blocks/list-detail'
@@ -247,9 +256,26 @@ function NoteContent(props: {note: NoteItem}) {
 	)
 }
 
+// The note's width, which every fold or turn changes, and whether its scrolling has come to rest.
+const widthAtom = Atom.make(0)
+const restingAtom = Atom.make(true)
+
 function Detail(props: {note: NoteItem; onRetry: () => void; onTag: (tag: TagName) => void}) {
-	// The line at the top of the screen, which stays there when folding rewraps the text.
+	// The line crossing the top edge of the screen.
 	const place = useNativeState<string | null>(null)
+	// The line the person left at the top when they last stopped scrolling. A fold or turn rewraps the text at the same scroll offset while still reporting that line, so the line is cleared and set again a frame later, which scrolls it back to the top.
+	const reading = useRef<string>(null)
+	const setWidth = useAtomSet(widthAtom)
+	const setResting = useAtomSet(restingAtom)
+	useAtomSubscribe(restingAtom, resting => {
+		if (resting) reading.current = place.get()
+	})
+	useAtomSubscribe(widthAtom, () => {
+		const line = reading.current
+		if (line === null) return
+		place.set(null)
+		requestAnimationFrame(() => place.set(line))
+	})
 	const full = useAtomValue(noteAtom(props.note))
 	useAtomMount(problemSinceAtom(noteAtom(props.note)))
 	const reload = useAtomRefresh(noteAtom(props.note))
@@ -260,7 +286,13 @@ function Detail(props: {note: NoteItem; onRetry: () => void; onTag: (tag: TagNam
 	const kept =
 		String.isNonEmpty(props.note.summary) || Option.exists(AsyncResult.value(full), note => Option.isSome(note.body))
 	return (
-		<ScrollView modifiers={[scrollPosition(place)]}>
+		<ScrollView
+			modifiers={[
+				scrollPosition(place, {anchor: 'top'}),
+				onScrollPhaseChange(phase => setResting(phase === 'idle')),
+				onGeometryChange(bounds => setWidth(bounds.width))
+			]}
+		>
 			<VStack
 				alignment="leading"
 				spacing={space[4]}
