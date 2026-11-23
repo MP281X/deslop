@@ -61,6 +61,8 @@ export const FlightTracking = Schema.Struct({
 	departureEstimated: Schema.OptionFromOptionalKey(DateTimeUtcFromFiniteMillis),
 	departureGate: Schema.OptionFromOptionalKey(Schema.String),
 	departureTerminal: Schema.OptionFromOptionalKey(Schema.String),
+	// How late the plane flying in lands, read only while this flight is late, so a delay can name its cause.
+	inboundDelay: Schema.OptionFromOptionalKey(DurationFromMinutes),
 	previousGate: Schema.OptionFromOptionalKey(Schema.String),
 	providerId: Schema.OptionFromOptionalKey(ProviderFlightId),
 	state: Schema.Literals(['scheduled', 'departed', 'airborne', 'landed', 'arrived', 'cancelled', 'diverted']),

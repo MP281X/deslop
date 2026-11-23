@@ -26,10 +26,19 @@ import {Migrator, SqlClient, SqlSchema} from 'effect/sql'
 import {FlightAware} from './lib/flightaware.ts'
 import {migrations} from './migrations.ts'
 
-import type {FlightId} from '#services/flights/schema.ts'
+import type {FlightId, ProviderFlightId} from '#services/flights/schema.ts'
 import {FlightsError, Flight, TripNumber} from '#services/flights/schema.ts'
 import {Flights} from '#services/flights/service.ts'
-import {checkEvery, flightTracking, isDue, pickFlight, sameLookup} from '#services/tracking/lib/utils.ts'
+import {
+	checkEvery,
+	flightTracking,
+	inboundOf,
+	isDue,
+	lateness,
+	pickFlight,
+	sameLookup
+} from '#services/tracking/lib/utils.ts'
+import type {FaFlights} from '#services/tracking/schema.ts'
 import {Lookups} from '#services/tracking/schema.ts'
 
 // FlightAware's personal plan includes $5 a month, a thousand lookups.
@@ -89,13 +98,14 @@ export class Tracking extends Context.Service<Tracking>()('@deslop/trips/service
 			return Option.exists(yield* Ref.get(flightsPausedUntil), until => DateTime.isLessThan(now, until))
 		})
 
-		// A flight holds its turn through the request and a six-second gap.
-		const flightTurns = yield* Semaphore.make(1)
-		const lookup = Effect.fnUntraced(function* (flight: Flight, now: DateTime.Utc) {
-			const number = yield* asFlightsError('This flight number is invalid. Add its ticket again.')(
-				Schema.decodeEffect(TripNumber)(flight.number)
-			)
-			const ask = yield* Option.match(flightAware.flights, {
+		// A request holds its turn through the answer and a six-second gap, for FlightAware's ten requests a minute; every request counts against the month.
+		const turns = yield* Semaphore.make(1)
+		const ask = Effect.fnUntraced(function* <E>(
+			request: Option.Option<Effect.Effect<FaFlights, E>>,
+			now: DateTime.Utc,
+			what: string
+		) {
+			const found = yield* Option.match(request, {
 				onNone: () => FlightsError.make({message: 'The server has no FlightAware key.'}),
 				onSome: Effect.succeed
 			})
@@ -104,7 +114,7 @@ export class Tracking extends Context.Service<Tracking>()('@deslop/trips/service
 			}
 			yield* spend
 			return yield* pipe(
-				ask(`${flight.airlineCode}${number}`, flight.departs, now),
+				found,
 				Effect.ensuring(Effect.sleep('6 seconds')),
 				Effect.timeout('20 seconds'),
 				Effect.tapError(() =>
@@ -112,9 +122,52 @@ export class Tracking extends Context.Service<Tracking>()('@deslop/trips/service
 						Ref.set(flightsPausedUntil, Option.some(DateTime.addDuration(failedAt, Duration.minutes(10))))
 					)
 				),
-				asFlightsError(`FlightAware did not answer for ${flight.airlineCode} ${flight.number}.`)
+				Effect.mapError(cause => FlightsError.make({cause, message: `FlightAware did not answer for ${what}.`}))
 			)
-		}, Semaphore.withPermit(flightTurns))
+		}, Semaphore.withPermit(turns))
+
+		const lookup = Effect.fnUntraced(function* (flight: Flight, now: DateTime.Utc) {
+			const number = yield* asFlightsError('This flight number is invalid. Add its ticket again.')(
+				Schema.decodeEffect(TripNumber)(flight.number)
+			)
+			const designator = `${flight.airlineCode}${number}`
+			return yield* ask(
+				Option.map(flightAware.flights, byDesignator => byDesignator(designator, flight.departs, now)),
+				now,
+				`${flight.airlineCode} ${flight.number}`
+			)
+		})
+
+		// How late each inbound plane lands, kept half an hour by its id, so the tickets of a flight and the checks of a delay ask once; a failed read keeps the cause unknown rather than fail the report.
+		const inbounds = yield* Ref.make(
+			Record.empty<ProviderFlightId, {at: DateTime.Utc; late: Option.Option<Duration.Duration>}>()
+		)
+		const inboundLate = Effect.fnUntraced(function* (id: ProviderFlightId, now: DateTime.Utc) {
+			const cached = Record.get(yield* Ref.get(inbounds), id)
+			if (
+				Option.exists(cached, read => pipe(read.at, DateTime.distance(now), Duration.isLessThan(Duration.minutes(30))))
+			) {
+				return Option.flatMap(cached, read => read.late)
+			}
+			return yield* pipe(
+				ask(
+					Option.map(flightAware.operation, operation => operation(id)),
+					now,
+					`the plane flying in as ${id}`
+				),
+				Effect.map(found =>
+					pipe(
+						found.flights,
+						Array.findFirst(candidate => candidate.fa_flight_id === id),
+						Option.flatMap(lateness)
+					)
+				),
+				Effect.tap(read => Ref.update(inbounds, Record.set(id, {at: now, late: read}))),
+				Effect.catch(error =>
+					Effect.as(Effect.logWarning('The plane flying in was not read', error), Option.none<Duration.Duration>())
+				)
+			)
+		})
 
 		// A failed or unmatched lookup still counts as an attempt, so the schedule waits before asking again; only a real answer is saved.
 		const attempts = yield* Ref.make(Record.empty<FlightId, DateTime.Utc>())
@@ -127,28 +180,33 @@ export class Tracking extends Context.Service<Tracking>()('@deslop/trips/service
 				item =>
 					Option.match(pickFlight(answer.flights, item), {
 						onNone: () => Effect.void,
-						onSome: found =>
-							flights.replace(
+						onSome: Effect.fnUntraced(function* (found) {
+							const late = yield* Option.match(inboundOf(found, item), {
+								onNone: () => Effect.succeedNone,
+								onSome: id => inboundLate(id, now)
+							})
+							yield* flights.replace(
 								item,
 								Flight.make({
 									...Struct.pick(item, Struct.keys(Flight.fields)),
-									live: Option.some(flightTracking(found, now, item.live))
+									live: Option.some(flightTracking(found, now, item.live, late))
 								})
 							)
+						})
 					}),
 				{concurrency: 1, discard: true}
 			)
 		})
 
-		// Admission, its attempt timestamp and the running mark are atomic, so a pull to refresh and a round never ask for one flight twice; flights take turns six seconds apart for FlightAware's ten requests a minute.
-		const turns = yield* Semaphore.make(1)
+		// Admission, its attempt timestamp and the running mark are atomic, so a pull to refresh and a round never ask for one flight twice.
+		const admissions = yield* Semaphore.make(1)
 		const running = yield* Ref.make(HashSet.empty<FlightId>())
 		const check = Effect.fnUntraced(function* (
 			id: FlightId,
 			admits: (flight: Flight, now: DateTime.Utc, attempted: Option.Option<DateTime.Utc>) => boolean
 		) {
 			const admitted = yield* Semaphore.withPermit(
-				turns,
+				admissions,
 				Effect.gen(function* () {
 					const now = yield* DateTime.now
 					const attempted = Record.get(yield* Ref.get(attempts), id)

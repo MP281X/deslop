@@ -55,7 +55,7 @@ function ticket(now: DateTime.Utc, id: FlightId, confirmation: string) {
 
 it.layer(NodeServices.layer)(test =>
 	test.effect(
-		'two tickets of one flight cost one FlightAware lookup and each gets the report',
+		'two tickets of a late flight cost one lookup and one of its inbound plane, and each gets the report with its cause',
 		Effect.fnUntraced(function* () {
 			const now = yield* DateTime.now
 			const tickets: Flight[] = [
@@ -65,13 +65,23 @@ it.layer(NodeServices.layer)(test =>
 			const operation = yield* Schema.decodeEffect(FaFlight)({
 				cancelled: false,
 				diverted: false,
+				estimated_out: DateTime.formatIso(DateTime.addDuration(now, Duration.minutes(230))),
 				fa_flight_id: 'BAW553-1761600000-schedule-0001',
 				gate_origin: 'B12',
+				inbound_fa_flight_id: 'BAW552-1761590000-schedule-0001',
 				origin: {code_iata: 'FCO'},
 				scheduled_out: DateTime.formatIso(DateTime.addDuration(now, Duration.hours(3)))
 			})
+			const inbound = yield* Schema.decodeEffect(FaFlight)({
+				cancelled: false,
+				diverted: false,
+				estimated_in: DateTime.formatIso(DateTime.addDuration(now, Duration.minutes(160))),
+				fa_flight_id: 'BAW552-1761590000-schedule-0001',
+				scheduled_in: DateTime.formatIso(DateTime.addDuration(now, Duration.minutes(110)))
+			})
 			const lookups = MutableRef.make(0)
 			const asked = yield* Deferred.make<void>()
+			const askedInbound = yield* Deferred.make<void>()
 			const replaced = yield* Queue.unbounded<Flight>()
 			// The round that starts with the service finds both tickets due.
 			yield* Layer.build(
@@ -92,20 +102,33 @@ it.layer(NodeServices.layer)(test =>
 									Effect.andThen(Deferred.succeed(asked, undefined)),
 									Effect.as({flights: [operation]})
 								)
+							),
+							operation: Option.some(() =>
+								pipe(
+									Effect.sync(() => MutableRef.increment(lookups)),
+									Effect.andThen(Deferred.succeed(askedInbound, undefined)),
+									Effect.as({flights: [inbound]})
+								)
 							)
 						})
 					),
 					Layer.provide(layerDataStore(yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped()))
 				)
 			)
-			// The first ticket's lookup holds FlightAware's six-second gap before either report is saved.
+			// Each lookup holds FlightAware's six-second gap: the flight's, then its inbound plane's, before either report is saved.
 			yield* Deferred.await(asked)
 			yield* TestClock.adjust('6 seconds')
+			yield* Deferred.await(askedInbound)
+			yield* TestClock.adjust('6 seconds')
 			const reports = yield* Queue.takeBetween(replaced, 2, 2)
-			assert.strictEqual(MutableRef.get(lookups), 1)
+			assert.strictEqual(MutableRef.get(lookups), 2)
 			assert.deepStrictEqual(
-				Array.map(reports, flight => [flight.id, Option.flatMap(flight.live, live => live.departureGate)]),
-				Array.map(tickets, flight => [flight.id, Option.some('B12')])
+				Array.map(reports, flight => [
+					flight.id,
+					Option.flatMap(flight.live, live => live.departureGate),
+					Option.flatMap(flight.live, live => Option.map(live.inboundDelay, Duration.toMinutes))
+				]),
+				Array.map(tickets, flight => [flight.id, Option.some('B12'), Option.some(50)])
 			)
 		}, Effect.scoped)
 	)

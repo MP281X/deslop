@@ -1,4 +1,4 @@
-import {Array, DateTime, Duration, Function, Option, Order, Result, String, pipe} from 'effect'
+import {Array, DateTime, Duration, Function, Number, Option, Order, Result, String, pipe} from 'effect'
 
 import {arrivalOf, cancelledOf, departureOf} from '#services/flights/lib/utils.ts'
 import type {Flight, FlightTracking} from '#services/flights/schema.ts'
@@ -74,7 +74,32 @@ function flightState(answer: FaFlight) {
 	return 'scheduled'
 }
 
-export function flightTracking(answer: FaFlight, checkedAt: DateTime.Utc, last: Option.Option<FlightTracking>) {
+// How late an operation lands against its schedule, to the minute.
+export function lateness(answer: FaFlight) {
+	return Option.map(
+		Option.all({lands: Option.orElse(answer.actual_in, () => answer.estimated_in), scheduled: answer.scheduled_in}),
+		times => Duration.minutes(Number.round(Duration.toMinutes(DateTime.distance(times.scheduled, times.lands)), 0))
+	)
+}
+
+// The plane flying in is asked about only while this flight is still on the ground fifteen minutes or more behind its booked time, since only a delay needs its cause.
+export function inboundOf(answer: FaFlight, flight: Flight) {
+	return Option.filter(
+		answer.inbound_fa_flight_id,
+		() =>
+			flightState(answer) === 'scheduled' &&
+			Option.exists(answer.estimated_out, out =>
+				pipe(flight.departs, DateTime.distance(out), Duration.isGreaterThanOrEqualTo(Duration.minutes(15)))
+			)
+	)
+}
+
+export function flightTracking(
+	answer: FaFlight,
+	checkedAt: DateTime.Utc,
+	last: Option.Option<FlightTracking>,
+	inboundDelay: Option.Option<Duration.Duration> = Option.none()
+) {
 	const gate = text(answer.gate_origin)
 	const tracking: FlightTracking = {
 		aircraft: text(answer.aircraft_type),
@@ -85,6 +110,7 @@ export function flightTracking(answer: FaFlight, checkedAt: DateTime.Utc, last: 
 		departureEstimated: answer.estimated_out,
 		departureGate: gate,
 		departureTerminal: text(answer.terminal_origin),
+		inboundDelay,
 		previousGate: Option.flatMap(gate, current =>
 			pipe(
 				Option.flatMap(last, previous => previous.departureGate),

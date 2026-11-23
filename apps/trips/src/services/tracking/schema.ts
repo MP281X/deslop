@@ -18,7 +18,10 @@ export const FaFlight = Schema.Struct({
 	estimated_out: Schema.OptionFromOptionalNullOr(Schema.DateTimeUtcFromString),
 	fa_flight_id: ProviderFlightId,
 	gate_origin: Schema.OptionFromOptionalNullOr(Schema.String),
+	// The operation that flies the aircraft in, whose lateness explains this one's.
+	inbound_fa_flight_id: Schema.OptionFromOptionalNullOr(ProviderFlightId),
 	origin: Schema.OptionFromOptionalNullOr(Schema.Struct({code_iata: Schema.OptionFromOptionalNullOr(Schema.String)})),
+	scheduled_in: Schema.OptionFromOptionalNullOr(Schema.DateTimeUtcFromString),
 	scheduled_out: Schema.OptionFromOptionalNullOr(Schema.DateTimeUtcFromString),
 	terminal_origin: Schema.OptionFromOptionalNullOr(Schema.String)
 })
