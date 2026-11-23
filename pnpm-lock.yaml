@@ -547,9 +547,6 @@ importers:
       expo-application:
         specifier: ^58.1.2
         version: 58.1.2(expo@58.0.26)
-      expo-calendar:
-        specifier: ^58.0.8
-        version: 58.0.8(expo@58.0.26)(react-native@0.88.1(@babel/core@7.29.13(supports-color@8.1.1))(@types/react@19.3.0)(react@19.3.1)(supports-color@8.1.1))
       expo-clipboard:
         specifier: ^58.0.4
         version: 58.0.4(expo@58.0.26)(react-native@0.88.1(@babel/core@7.29.13(supports-color@8.1.1))(@types/react@19.3.0)(react@19.3.1)(supports-color@8.1.1))(react@19.3.1)
@@ -3881,12 +3878,6 @@ packages:
     peerDependencies:
       expo: '*'
       react: '*'
-      react-native: '*'
-
-  expo-calendar@58.0.8:
-    resolution: {integrity: sha512-Ook/xp9V1m82pmOVNBnszpqoAigtCdRd5LER5isiYkRQxHqKOvXrqGS39Jw+sB3KJdC24FqPU6taJpYGC0qVKg==}
-    peerDependencies:
-      expo: '*'
       react-native: '*'
 
   expo-clipboard@58.0.4:
@@ -8884,11 +8875,6 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
       - typescript
-
-  expo-calendar@58.0.8(expo@58.0.26)(react-native@0.88.1(@babel/core@7.29.13(supports-color@8.1.1))(@types/react@19.3.0)(react@19.3.1)(supports-color@8.1.1)):
-    dependencies:
-      expo: 58.0.26(@babel/core@7.29.13(supports-color@8.1.1))(expo-widgets@58.0.29)(react-dom@19.3.1(react@19.3.1))(react-native@0.88.1(@babel/core@7.29.13(supports-color@8.1.1))(@types/react@19.3.0)(react@19.3.1)(supports-color@8.1.1))(react@19.3.1)(supports-color@8.1.1)
-      react-native: 0.88.1(@babel/core@7.29.13(supports-color@8.1.1))(@types/react@19.3.0)(react@19.3.1)(supports-color@8.1.1)
 
   expo-clipboard@58.0.4(expo@58.0.26)(react-native@0.88.1(@babel/core@7.29.13(supports-color@8.1.1))(@types/react@19.3.0)(react@19.3.1)(supports-color@8.1.1))(react@19.3.1):
     dependencies:

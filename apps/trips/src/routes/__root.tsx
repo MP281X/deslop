@@ -18,7 +18,6 @@ import {SessionGate} from '@deslop/components-mobile/blocks/session-gate'
 import {colors} from '@deslop/components-mobile/theme'
 
 import {boardAtom, bookingsAtom, clipboard} from '#lib/bookings.ts'
-import {calendarAtom} from '#lib/calendar.ts'
 import {openedAtom} from '#lib/deep-links.ts'
 import {pushAtom} from '#lib/notifications.ts'
 import {session} from '#lib/session.ts'
@@ -46,7 +45,6 @@ function Destination(props: {id: Option.Option<BookingId>; onClose: () => void})
 // `openedAtom` logs an initial URL-read failure and keeps listening for later opens; no opened booking is the valid home, not a replacement booking or a successful read of booking data.
 function AppRoutes() {
 	useAtomMount(pushAtom)
-	useAtomMount(calendarAtom)
 	const launched = useAtomValue(openedAtom)
 	const [opened, setOpened] = useState(() => AsyncResult.value(launched))
 	useAtomSubscribe(openedAtom, tapped => Option.map(AsyncResult.value(tapped), id => setOpened(Option.some(id))))

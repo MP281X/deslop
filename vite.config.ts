@@ -173,8 +173,6 @@ export default defineConfig({
 									group: [
 										'expo-notifications',
 										'expo-notifications/**',
-										'expo-calendar',
-										'expo-calendar/**',
 										'expo-location',
 										'expo-location/**',
 										'expo-widgets',

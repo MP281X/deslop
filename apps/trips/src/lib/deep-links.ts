@@ -13,11 +13,7 @@ import {appConfig} from '@deslop/runtime/mobile/app'
 
 import {BookingId, BookingsError} from '#services/bookings/schema.ts'
 
-export const BOOKING_LINK = `${appConfig.extra.scheme}://booking/`
-
-export function linkOf(bookingId: BookingId) {
-	return `${BOOKING_LINK}${bookingId}`
-}
+const BOOKING_LINK = `${appConfig.extra.scheme}://booking/`
 
 // Only this app's own booking link, the whole of it: another scheme, host or a longer path opens nothing.
 function bookingIn(url?: string | null) {

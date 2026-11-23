@@ -59,7 +59,7 @@ export function clockAt(time: DateTime.Utc, timeZone: string) {
 	return DateTime.format(time, {hour: '2-digit', hourCycle: 'h23', locale: 'en-GB', minute: '2-digit', timeZone})
 }
 
-// The ticket or the provider says the flight will not run; alerts, the island, the phone and the calendar all read this one answer.
+// The ticket or the provider says the flight will not run; alerts, the island and the phone all read this one answer.
 export function cancelledOf(booking: Booking) {
 	if (booking.status === 'cancelled') return true
 	if (Booking.isAnyOf(['stay'])(booking)) return false
