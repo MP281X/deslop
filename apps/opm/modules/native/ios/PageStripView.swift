@@ -93,15 +93,26 @@ final class BarFade: NSObject {
   private weak var navigation: UINavigationController?
   private var shown: [NSKeyValueObservation] = []
   private weak var content: UIView?
+  // The reader's controller in its stack, whose appearance the bars take while it is on top.
+  private weak var reader: UIViewController?
   private var hidden = true
 
   func attach(from view: UIView) {
     content = view
     var responder: UIResponder? = view
+    var controller: UIViewController?
     while let current = responder, !(current is UINavigationController) {
+      if let current = current as? UIViewController { controller = current }
       responder = current.next
     }
     guard let found = responder as? UINavigationController else { return }
+    // Since iOS 26 a bar has no material of its own, only a blur of what is under it, so over the reader's black pages a title
+    // in the light appearance cannot be read; the reader takes the dark one, which the system bars over it follow.
+    if controller !== reader {
+      reader?.overrideUserInterfaceStyle = .unspecified
+      reader = controller
+      controller?.overrideUserInterfaceStyle = .dark
+    }
     if found !== navigation {
       navigation?.interactivePopGestureRecognizer?.removeTarget(self, action: #selector(swiped(_:)))
       shown = []
@@ -145,6 +156,8 @@ final class BarFade: NSObject {
   }
 
   func detach() {
+    reader?.overrideUserInterfaceStyle = .unspecified
+    reader = nil
     guard let navigation else { return }
     shown = []
     navigation.interactivePopGestureRecognizer?.removeTarget(self, action: #selector(swiped(_:)))
