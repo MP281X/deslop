@@ -37,7 +37,7 @@ function flight(number: string, from: string, to: string, departure: string, con
 function pass(confirmation: string, name: string, seat: string) {
 	return {
 		...flight('1234', 'BGY', 'STN', '2026-11-23T15:30', confirmation),
-		travellers: [{boardingGroup: Option.none(), name, seat: Option.some(seat)}]
+		travellers: [{boardingGroup: Option.none(), name, seat: Option.some(seat), ticket: Option.none()}]
 	} satisfies ExtractedFlight
 }
 
@@ -102,7 +102,7 @@ it.layer(flightsLayer)(test =>
 		Effect.fnUntraced(function* () {
 			yield* share([pass('ABC123', 'Matteo Rossi', '14C')])
 			yield* share([pass('XYZ789', 'Anna Bianchi', '14D')])
-			// The same pass again, as the reader may list a person twice, changes nothing.
+			// The same pass again, as the reader may list a person in one seat twice, changes nothing.
 			yield* share([
 				{
 					...pass('XYZ789', 'Anna Bianchi', '14D'),
@@ -123,14 +123,16 @@ it.layer(flightsLayer)(test =>
 								confirmation: Option.some('ABC123'),
 								name: Option.some('Matteo Rossi'),
 								seat: Option.some('14C'),
-								status: 'confirmed'
+								status: 'confirmed',
+								ticket: Option.none()
 							},
 							{
 								boardingGroup: Option.none(),
 								confirmation: Option.some('XYZ789'),
 								name: Option.some('Anna Bianchi'),
 								seat: Option.some('14D'),
-								status: 'confirmed'
+								status: 'confirmed',
+								ticket: Option.none()
 							}
 						]
 					]

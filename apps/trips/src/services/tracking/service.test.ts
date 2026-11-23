@@ -46,7 +46,8 @@ function ticket(now: DateTime.Utc, id: FlightId, confirmation: string) {
 				confirmation: Option.some(confirmation),
 				name: Option.none(),
 				seat: Option.none(),
-				status: 'confirmed'
+				status: 'confirmed',
+				ticket: Option.none()
 			}
 		]
 	})

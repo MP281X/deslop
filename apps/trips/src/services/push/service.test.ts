@@ -51,7 +51,14 @@ function flightAt(now: DateTime.Utc, id: FlightId, seat: Option.Option<string>) 
 		number: '553',
 		to: Schema.decodeSync(Place)({code: 'LHR', name: 'Heathrow', timeZone: 'Europe/London'}),
 		travellers: [
-			{boardingGroup: Option.none(), confirmation: Option.none(), name: Option.none(), seat, status: 'confirmed'}
+			{
+				boardingGroup: Option.none(),
+				confirmation: Option.none(),
+				name: Option.none(),
+				seat,
+				status: 'confirmed',
+				ticket: Option.none()
+			}
 		]
 	})
 }

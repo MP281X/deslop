@@ -67,14 +67,15 @@ export const FlightTracking = Schema.Struct({
 	takeoffActual: Schema.OptionFromOptionalKey(DateTimeUtcFromFiniteMillis)
 })
 
-// One person on a flight under their own reservation, with its code and whether it stands; a ticket that names nobody, or a flight saved before Trips read names, holds its reservation under no name.
+// One person on a flight under their own reservation, with its code and whether it stands; a ticket that names nobody, or a flight saved before Trips read names, holds its reservation under no name. The e-ticket number, when a ticket prints it, tells two people of one name apart.
 export type Traveller = typeof Traveller.Type
 export const Traveller = Schema.Struct({
 	boardingGroup: Schema.OptionFromOptionalKey(Schema.String),
 	confirmation: Schema.OptionFromOptionalKey(Schema.String),
 	name: Schema.OptionFromOptionalKey(Schema.String),
 	seat: Schema.OptionFromOptionalKey(Schema.String),
-	status: ReservationStatus
+	status: ReservationStatus,
+	ticket: Schema.OptionFromOptionalKey(Schema.String)
 })
 
 // One row of `flights`: one service, a flight number on a day, with everyone on it; places, travellers and the provider's latest report are values of the flight, kept as JSON. Absent is `Option.none()` in code, NULL in the row and a missing key on the wire.
@@ -190,7 +191,10 @@ export const ExtractedFlight = Schema.Struct({
 		Schema.Struct({
 			boardingGroup: Schema.OptionFromOptionalKey(Short),
 			name: Name.annotate({description: 'Given names then family name, without titles, such as Matteo Rossi'}),
-			seat: Schema.OptionFromOptionalKey(Short)
+			seat: Schema.OptionFromOptionalKey(Short),
+			ticket: Schema.OptionFromOptionalKey(
+				Short.annotate({description: "The passenger's e-ticket number, such as 125 2345678901"})
+			)
 		})
 	).annotate({description: 'Every passenger the text names for this flight'})
 })

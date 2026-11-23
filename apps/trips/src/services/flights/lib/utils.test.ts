@@ -122,7 +122,14 @@ function traveller(
 	seat: Option.Option<string>,
 	status: ReservationStatus = 'confirmed'
 ) {
-	return {boardingGroup: Option.none(), confirmation: Option.some(confirmation), name, seat, status} satisfies Traveller
+	return {
+		boardingGroup: Option.none(),
+		confirmation: Option.some(confirmation),
+		name,
+		seat,
+		status,
+		ticket: Option.none()
+	} satisfies Traveller
 }
 
 // One ticket for BA 553, or another flight on the same route, read under an id of its own as each shared ticket is.
@@ -179,16 +186,26 @@ it('merges tickets for the same leg and retains live data only while its schedul
 	)
 })
 
+// Anna Bianchi on e-ticket 125 2345678901, in a given seat.
+function anna(seat: string) {
+	return {...traveller('XYZ789', Option.some('Anna Bianchi'), Option.some(seat)), ticket: Option.some('125-2345678901')}
+}
+
+// Alex Wu, of whom booking N1 holds two.
+function alex(seat: Option.Option<string>) {
+	return traveller('N1', Option.some('Alex Wu'), seat)
+}
+
 it('adds each traveller a ticket names to the flight under their own reservation', () => {
-	// The flight saved before names were read is whoever sits in 14C under its code; a seat changed later stays with its person.
+	// The flight saved before names were read is whoever sits in 14C under its code; a seat changed later stays with the e-ticket that holds it.
 	assert.deepStrictEqual(
 		seating(
 			upsert(
 				[Flight.make({...FLIGHT, travellers: [traveller('ABC123', Option.none(), Option.some('14C'))]})],
 				[
 					ticket([traveller('ABC123', Option.some('Matteo Rossi'), Option.some('014C'))]),
-					ticket([traveller('XYZ789', Option.some('Anna Bianchi'), Option.some('14D'))]),
-					ticket([traveller('XYZ789', Option.some('Anna Bianchi'), Option.some('15A'))])
+					ticket([anna('14D')]),
+					ticket([{...anna('15A'), ticket: Option.some('1252345678901')}])
 				]
 			)
 		),
@@ -203,6 +220,26 @@ it('adds each traveller a ticket names to the flight under their own reservation
 			]
 		]
 	)
+})
+
+it('keeps two people of one name and code as two, on passes shared apart or one ticket without seats', () => {
+	assert.deepStrictEqual(
+		seating(upsert([], [ticket([alex(Option.some('15A'))]), ticket([alex(Option.some('15B'))])])),
+		[
+			[
+				'553',
+				false,
+				[
+					['Alex Wu', '15A', 'N1', 'confirmed'],
+					['Alex Wu', '15B', 'N1', 'confirmed']
+				]
+			]
+		]
+	)
+	const unseated = upsert([], [ticket([alex(Option.none()), alex(Option.none())])])
+	assert.lengthOf(unseated[0]?.travellers ?? [], 2)
+	// The same ticket shared again still holds two.
+	assert.deepStrictEqual(upsert(unseated, [ticket([alex(Option.none()), alex(Option.none())])]), unseated)
 })
 
 it('cancels only the travellers of the reservation a cancellation names', () => {

@@ -34,7 +34,9 @@ function at(time: LocalTime, timeZone: string) {
 function travellersOf(item: ExtractedFlight) {
 	const reservation = {confirmation: item.confirmation, status: item.status}
 	return Array.match(item.travellers, {
-		onEmpty: () => [{...reservation, boardingGroup: Option.none(), name: Option.none(), seat: Option.none()}],
+		onEmpty: () => [
+			{...reservation, boardingGroup: Option.none(), name: Option.none(), seat: Option.none(), ticket: Option.none()}
+		],
 		onNonEmpty: travellers =>
 			Array.map(travellers, traveller => ({...traveller, ...reservation, name: Option.some(traveller.name)}))
 	})

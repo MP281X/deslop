@@ -42,7 +42,8 @@ const CANCELLED = [
 		confirmation: Option.some('ABC123'),
 		name: Option.none(),
 		seat: Option.none(),
-		status: 'cancelled' as const
+		status: 'cancelled' as const,
+		ticket: Option.none()
 	}
 ]
 const STARTER = {

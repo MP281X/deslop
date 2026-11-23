@@ -83,6 +83,11 @@ function seatOf(traveller: Traveller) {
 	return Option.map(printed(traveller.seat), String.replace(/^0+(?=\d)/u, ''))
 }
 
+// An e-ticket number as its digits, so "125-2345678901" and "1252345678901" are one ticket.
+function ticketOf(traveller: Traveller) {
+	return pipe(printed(traveller.ticket), Option.map(String.replaceAll(/\D/gu, '')), Option.filter(String.isNonEmpty))
+}
+
 // A name as a pass or a booking prints it, so ROSSI/MATTEO MR and Matteo Rossi are one person: its words in any script and any order, without case, accents or titles.
 function nameOf(traveller: Traveller) {
 	return pipe(
@@ -203,30 +208,34 @@ function agree(left: Option.Option<string>, right: Option.Option<string>) {
 	return Option.isSome(left) && Equal.equals(left, right)
 }
 
-type Evidence = {readonly code: boolean; readonly name: boolean; readonly seat: boolean}
+type Evidence = {readonly code: boolean; readonly name: boolean; readonly seat: boolean; readonly ticket: boolean}
 
 type Candidate = {readonly evidence: Evidence; readonly index: number}
 
-// The name counts most, then the reservation, then the seat.
+// The e-ticket counts most, then the name, the reservation and the seat.
 const bySurety = Order.combineAll([
+	Order.mapInput(Order.Boolean, (candidate: Candidate) => candidate.evidence.ticket),
 	Order.mapInput(Order.Boolean, (candidate: Candidate) => candidate.evidence.name),
 	Order.mapInput(Order.Boolean, (candidate: Candidate) => candidate.evidence.code),
 	Order.mapInput(Order.Boolean, (candidate: Candidate) => candidate.evidence.seat)
 ])
 
-// What says a ticket's traveller is one already on the flight: nothing when their names or reservations differ, nor when their seats differ without the same name to say the person moved.
+// What says a ticket's traveller is one already on the flight: the same e-ticket within the reservation, whatever the name or seat; otherwise nothing that differs, so another seat under the same name and code is a second person of that name.
 function evidenceOf(held: Traveller, incoming: Traveller) {
 	const evidence = {
 		code: agree(codeOf(held), codeOf(incoming)),
 		name: agree(nameOf(held), nameOf(incoming)),
-		seat: agree(seatOf(held), seatOf(incoming))
+		seat: agree(seatOf(held), seatOf(incoming)),
+		ticket: agree(ticketOf(held), ticketOf(incoming))
 	} satisfies Evidence
 	return Option.liftPredicate(
 		evidence,
 		() =>
-			!differ(nameOf(held), nameOf(incoming)) &&
 			!differ(codeOf(held), codeOf(incoming)) &&
-			(evidence.name || !differ(seatOf(held), seatOf(incoming)))
+			(evidence.ticket ||
+				(!differ(ticketOf(held), ticketOf(incoming)) &&
+					!differ(nameOf(held), nameOf(incoming)) &&
+					!differ(seatOf(held), seatOf(incoming))))
 	)
 }
 
@@ -237,13 +246,16 @@ function updated(held: Traveller, incoming: Traveller) {
 		confirmation: newer(held.confirmation, incoming.confirmation),
 		name: newer(held.name, incoming.name),
 		seat: newer(held.seat, incoming.seat),
-		status: incoming.status
+		status: incoming.status,
+		ticket: newer(held.ticket, incoming.ticket)
 	} satisfies Traveller
 }
 
-// The same person twice in one ticket, as a reader may list them.
+// The same person twice in one ticket, as a reader may list them: one seat holds one person, while two entries without a seat are the two people the ticket prints.
 function repeated(left: Traveller, right: Traveller) {
 	return (
+		Option.isSome(seatOf(left)) &&
+		Equal.equals(ticketOf(left), ticketOf(right)) &&
 		Equal.equals(nameOf(left), nameOf(right)) &&
 		Equal.equals(codeOf(left), codeOf(right)) &&
 		Equal.equals(seatOf(left), seatOf(right)) &&
@@ -365,7 +377,9 @@ function movedBy(flight: Flight) {
 	return (held: Traveller) =>
 		Array.some(
 			movers,
-			mover => agree(codeOf(mover), codeOf(held)) && (wholeBooking(mover) || agree(nameOf(mover), nameOf(held)))
+			mover =>
+				agree(codeOf(mover), codeOf(held)) &&
+				(wholeBooking(mover) || agree(nameOf(mover), nameOf(held)) || agree(ticketOf(mover), ticketOf(held)))
 		)
 }
 
