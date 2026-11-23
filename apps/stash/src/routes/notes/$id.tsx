@@ -51,6 +51,7 @@ import {Linking} from 'react-native'
 import {useListBeside, useListShow} from '@deslop/components-mobile/blocks/list-detail'
 import {FailureContent, Loaded} from '@deslop/components-mobile/blocks/loaded'
 import {Problem} from '@deslop/components-mobile/blocks/problem'
+import {barNeverMinimizes} from '@deslop/components-mobile/lib/toolbar'
 import {colors, space, text} from '@deslop/components-mobile/theme'
 import {Button} from '@deslop/components-mobile/ui/button'
 import {Empty, EmptyContent, EmptyMedia} from '@deslop/components-mobile/ui/empty'
@@ -400,7 +401,14 @@ function NoteScreen(props: {
 					)
 				}),
 			onSome: item => (
-				<Toolbar modifiers={[navigationTitle(item.title), navigationBarTitleDisplayMode('inline')]}>
+				<Toolbar
+					modifiers={[
+						navigationTitle(item.title),
+						navigationBarTitleDisplayMode('inline'),
+						// Beside the hidden queue, the bar's Show Sidebar is the only way back to it, so scrolling never minimizes it away.
+						barNeverMinimizes(Option.isSome(show) && !beside)
+					]}
+				>
 					<Detail
 						key={item.id}
 						note={item}

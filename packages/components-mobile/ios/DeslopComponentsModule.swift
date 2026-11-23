@@ -112,11 +112,13 @@ struct StackedColumns: ViewModifier, Record {
   }
 }
 
-// iOS 27 minimizes the navigation bar while content scrolls down. A screen with nothing to scroll, such as a draft that replaces a note read halfway, would keep the bar minimized, title and buttons gone, with no scroll to bring it back.
+// iOS 27 minimizes the navigation bar while content scrolls down. A screen with nothing to scroll, such as a draft that replaces a note read halfway, would keep the bar minimized, title and buttons gone, with no scroll to bring it back. Always applied, so the screen keeps its state, such as a reading place, when `never` changes.
 struct BarNeverMinimizes: ViewModifier, Record {
+  @Field var never: Bool = true
+
   func body(content: Content) -> some View {
     if #available(iOS 27.0, *) {
-      content.toolbarMinimizationBehavior(.never, for: .navigationBar)
+      content.toolbarMinimizationBehavior(never ? .never : .automatic, for: .navigationBar)
     } else {
       content
     }

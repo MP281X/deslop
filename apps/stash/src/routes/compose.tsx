@@ -45,7 +45,7 @@ export function ComposeRoute(props: {onDone: () => void}) {
 		else if (keyboard.current.owed) regain()
 	})
 	return (
-		<Toolbar modifiers={[navigationTitle('New Note'), navigationBarTitleDisplayMode('inline'), barNeverMinimizes]}>
+		<Toolbar modifiers={[navigationTitle('New Note'), navigationBarTitleDisplayMode('inline'), barNeverMinimizes()]}>
 			<TextField
 				text={text}
 				axis="vertical"
