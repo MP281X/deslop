@@ -214,14 +214,16 @@ it('cancels only the travellers of the reservation a cancellation names', () => 
 		]
 	)
 	// Bob is rebooked onto BA 543 on the same route, then BA 553's cancellation of his booking arrives.
-	const rebooked = upsert(both, [
-		ticket([traveller('TWO', Option.some('Bob Stone'), Option.some('20C'))], '543'),
-		ticket(
-			[traveller('TWO', Option.some('Bob Stone'), Option.none(), 'cancelled')],
-			'553',
-			DateTime.addDuration(DEPARTS, Duration.minutes(30))
-		)
-	])
+	const rebooked = upsert(
+		upsert(both, [ticket([traveller('TWO', Option.some('Bob Stone'), Option.some('20C'))], '543')]),
+		[
+			ticket(
+				[traveller('TWO', Option.some('Bob Stone'), Option.none(), 'cancelled')],
+				'553',
+				DateTime.addDuration(DEPARTS, Duration.minutes(30))
+			)
+		]
+	)
 	assert.deepStrictEqual(seating(rebooked), [
 		[
 			'553',
@@ -299,7 +301,7 @@ it('keeps travellers apart whatever script their names are in, and two of the sa
 	)
 })
 
-it('moves a rebooked reservation to its new flight, keeping the id when nobody else was on the old one', () => {
+it('moves a rebooked traveller to the new service, a flight of its own that lends nothing of the old one', () => {
 	const bob = {...traveller('TWO', Option.some('Bob Stone'), Option.some('11B')), boardingGroup: Option.some('2')}
 	const boarding = {
 		...FLIGHT,
@@ -313,7 +315,7 @@ it('moves a rebooked reservation to its new flight, keeping the id when nobody e
 			})
 		)
 	}
-	// The new ticket prints no boarding time, seat or group, so the new flight has none of the old one's.
+	// The new ticket prints no boarding time, seat or group, so the new flight has none of the old one's, and its own id keeps the old flight's alerts and Live Activity apart.
 	const unseated = traveller('TWO', Option.some('Bob Stone'), Option.none())
 	assert.deepStrictEqual(
 		Array.map(upsert([Flight.make({...boarding, travellers: [bob]})], [ticket([unseated], '543')]), flight => [
@@ -323,7 +325,7 @@ it('moves a rebooked reservation to its new flight, keeping the id when nobody e
 			flight.live,
 			flight.travellers
 		]),
-		[[FLIGHT.id, '543', Option.none(), Option.none(), [unseated]]]
+		[[ticket([], '543').id, '543', Option.none(), Option.none(), [unseated]]]
 	)
 	// Moved off a flight others stay on, he brings no seat either.
 	assert.deepStrictEqual(
@@ -339,6 +341,76 @@ it('moves a rebooked reservation to its new flight, keeping the id when nobody e
 			['553', false, [['Alice Hart', '11A', 'ONE', 'confirmed']]],
 			['543', false, [['Bob Stone', '', 'TWO', 'confirmed']]]
 		]
+	)
+})
+
+it('moves only the travellers a rebooking names, and the whole booking only when it names nobody', () => {
+	const shared = upsert(
+		[],
+		[
+			ticket([
+				traveller('AB', Option.some('Alice Hart'), Option.some('1A')),
+				traveller('AB', Option.some('Bob Stone'), Option.some('1B'))
+			]),
+			ticket([traveller('C', Option.some('Carol Diaz'), Option.some('1C'))])
+		]
+	)
+	const alice = upsert(shared, [ticket([traveller('AB', Option.some('Alice Hart'), Option.some('4A'))], '554')])
+	const expected = [
+		[
+			'553',
+			false,
+			[
+				['Bob Stone', '1B', 'AB', 'confirmed'],
+				['Carol Diaz', '1C', 'C', 'confirmed']
+			]
+		],
+		['554', false, [['Alice Hart', '4A', 'AB', 'confirmed']]]
+	]
+	assert.deepStrictEqual(seating(alice), expected)
+	// Bob's pass for the flight he is still on moves nobody.
+	assert.deepStrictEqual(
+		seating(upsert(alice, [ticket([traveller('AB', Option.some('Bob Stone'), Option.some('1B'))])])),
+		expected
+	)
+	// A schedule change naming nobody moves the whole booking, and only it.
+	assert.deepStrictEqual(seating(upsert(shared, [ticket([traveller('AB', Option.none(), Option.none())], '554')])), [
+		['553', false, [['Carol Diaz', '1C', 'C', 'confirmed']]],
+		[
+			'554',
+			false,
+			[
+				['Alice Hart', '', 'AB', 'confirmed'],
+				['Bob Stone', '', 'AB', 'confirmed']
+			]
+		]
+	])
+})
+
+it('keeps every segment of one ticket, even two on one route', () => {
+	const multi = [
+		ticket([traveller('MULTI', Option.none(), Option.none())], '901', DateTime.makeUnsafe('2026-12-03T09:00:00Z')),
+		ticket([traveller('MULTI', Option.none(), Option.none())], '902', DateTime.makeUnsafe('2026-12-07T09:00:00Z'))
+	]
+	const saved = upsert([], multi)
+	assert.deepStrictEqual(
+		Array.map(saved, flight => flight.number),
+		['901', '902']
+	)
+	assert.deepStrictEqual(upsert(saved, multi), saved)
+	// A pass for one of them, days from the other, replaces neither.
+	assert.deepStrictEqual(
+		Array.map(
+			upsert(saved, [
+				ticket(
+					[traveller('MULTI', Option.some('Ada Byron'), Option.some('2C'))],
+					'902',
+					DateTime.makeUnsafe('2026-12-07T09:00:00Z')
+				)
+			]),
+			flight => flight.number
+		),
+		['901', '902']
 	)
 })
 
