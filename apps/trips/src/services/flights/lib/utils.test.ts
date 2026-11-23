@@ -242,15 +242,9 @@ it('cancels only the travellers of the reservation a cancellation names', () => 
 			)
 		]
 	)
+	// The flight he left no longer holds him, so its cancellation changes nothing.
 	assert.deepStrictEqual(seating(rebooked), [
-		[
-			'553',
-			false,
-			[
-				['Alice Hart', '11A', 'ONE', 'confirmed'],
-				['Bob Stone', '', 'TWO', 'cancelled']
-			]
-		],
+		['553', false, [['Alice Hart', '11A', 'ONE', 'confirmed']]],
 		['543', false, [['Bob Stone', '20C', 'TWO', 'confirmed']]]
 	])
 	// A cancellation changes no time another traveller's ticket gave.
@@ -296,6 +290,81 @@ it('changes nobody for a cancellation naming nobody without a code anyone on the
 			]
 		]
 	])
+})
+
+it('saves no flight for a cancellation of travellers nobody holds', () => {
+	assert.deepStrictEqual(
+		upsert(
+			[],
+			[ticket([{...traveller('', Option.none(), Option.none(), 'cancelled'), confirmation: Option.none()}], '490')]
+		),
+		[]
+	)
+	assert.deepStrictEqual(
+		upsert([], [ticket([traveller('ZZ9', Option.some('Ada Byron'), Option.none(), 'cancelled')])]),
+		[]
+	)
+	// A flight others are on gains nobody from a cancellation naming someone it never held.
+	const ada = upsert([], [ticket([traveller('Y2', Option.some('Ada Byron'), Option.some('3A'))])])
+	assert.deepStrictEqual(
+		upsert(ada, [ticket([traveller('Q7', Option.some('Grace Hopper'), Option.none(), 'cancelled')])]),
+		ada
+	)
+})
+
+it('finds a traveller by their e-ticket under a new booking code', () => {
+	const recoded = upsert(
+		[],
+		[
+			ticket([anna('14D')]),
+			ticket([{...anna('014D'), confirmation: Option.some('NEW42'), ticket: Option.some('1252345678901')}])
+		]
+	)
+	assert.deepStrictEqual(seating(recoded), [['553', false, [['Anna Bianchi', '014D', 'NEW42', 'confirmed']]]])
+})
+
+// Alex Kim, of whom booking TWINS holds two, each on an e-ticket of their own.
+function kim(
+	seat: Option.Option<string>,
+	ticketNumber: Option.Option<string>,
+	status: ReservationStatus = 'confirmed'
+) {
+	return {...traveller('TWINS', Option.some('Alex Kim'), seat, status), ticket: ticketNumber}
+}
+
+it('changes neither of two travellers of one name when a ticket could mean either', () => {
+	const twins = upsert(
+		[],
+		[
+			ticket([
+				kim(Option.some('14A'), Option.some('1250000000001')),
+				kim(Option.some('14B'), Option.some('125-0000000002'))
+			])
+		]
+	)
+	assert.deepStrictEqual(upsert(twins, [ticket([kim(Option.none(), Option.none(), 'cancelled')])]), twins)
+	// The e-ticket says which one; a cancellation listing both cancels both.
+	assert.deepStrictEqual(
+		seating(upsert(twins, [ticket([kim(Option.none(), Option.some('125 0000000002'), 'cancelled')])])),
+		[
+			[
+				'553',
+				false,
+				[
+					['Alex Kim', '14A', 'TWINS', 'confirmed'],
+					['Alex Kim', '14B', 'TWINS', 'cancelled']
+				]
+			]
+		]
+	)
+	assert.isTrue(
+		Array.every(
+			upsert(twins, [
+				ticket([kim(Option.none(), Option.none(), 'cancelled'), kim(Option.none(), Option.none(), 'cancelled')])
+			]),
+			cancelledOf
+		)
+	)
 })
 
 it('keeps travellers apart whatever script their names are in, and two of the same name in two seats', () => {
@@ -522,16 +591,18 @@ it('keeps one flight number on two local dates as two services, however close in
 })
 
 it('keeps distinct legs of the same flight number as distinct flights', () => {
+	const held = Flight.make({...FLIGHT, travellers: [traveller('ONE', Option.some('Ada Byron'), Option.none())]})
 	assert.lengthOf(
 		upsert(
-			[FLIGHT],
+			[held],
 			[
 				Flight.make({
 					...FLIGHT,
 					departs: DateTime.addDuration(DEPARTS, Duration.hours(15)),
 					from: FLIGHT.to,
 					id: FlightId.make('bbbbbbbb-0d0a-4a5e-9d8f-5b2a1c3d4e5f'),
-					to: FLIGHT.from
+					to: FLIGHT.from,
+					travellers: held.travellers
 				})
 			]
 		),

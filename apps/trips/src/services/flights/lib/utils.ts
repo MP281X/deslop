@@ -220,22 +220,38 @@ const bySurety = Order.combineAll([
 	Order.mapInput(Order.Boolean, (candidate: Candidate) => candidate.evidence.seat)
 ])
 
-// What says a ticket's traveller is one already on the flight: the same e-ticket within the reservation, whatever the name or seat; otherwise nothing that differs, so another seat under the same name and code is a second person of that name.
-function evidenceOf(held: Traveller, incoming: Traveller) {
-	const evidence = {
+function evidenceBetween(held: Traveller, incoming: Traveller) {
+	return {
 		code: agree(codeOf(held), codeOf(incoming)),
 		name: agree(nameOf(held), nameOf(incoming)),
 		seat: agree(seatOf(held), seatOf(incoming)),
 		ticket: agree(ticketOf(held), ticketOf(incoming))
 	} satisfies Evidence
-	return Option.liftPredicate(
-		evidence,
-		() =>
-			!differ(codeOf(held), codeOf(incoming)) &&
-			(evidence.ticket ||
-				(!differ(ticketOf(held), ticketOf(incoming)) &&
-					!differ(nameOf(held), nameOf(incoming)) &&
-					!differ(seatOf(held), seatOf(incoming))))
+}
+
+// The surest candidate, unless others are as sure and the ticket prints fewer people alike than them, when which one it means is unknown and it changes nobody.
+function chosen(candidates: readonly Candidate[], alikeCount: number) {
+	return pipe(
+		Array.match(candidates, {onEmpty: () => [], onNonEmpty: found => [Array.max(found, bySurety)]}),
+		Array.flatMap(surest => Array.filter(candidates, candidate => bySurety(candidate, surest) === 0)),
+		tied => Option.filter(Array.head(tied), () => tied.length <= alikeCount)
+	)
+}
+
+// Two entries of a ticket that nothing tells apart.
+function alike(left: Traveller, right: Traveller) {
+	return (
+		left.status === right.status &&
+		Array.every([ticketOf, nameOf, codeOf, seatOf], field => Equal.equals(field(left), field(right)))
+	)
+}
+
+// How many entries from this one on a ticket prints alike, each of whom may take one of the candidates tied for it.
+function alikeFrom(entries: readonly Traveller[], entry: Traveller, index: number) {
+	return pipe(
+		entries,
+		Array.drop(index),
+		Array.countBy(other => alike(entry, other))
 	)
 }
 
@@ -253,14 +269,7 @@ function updated(held: Traveller, incoming: Traveller) {
 
 // The same person twice in one ticket, as a reader may list them: one seat holds one person, while two entries without a seat are the two people the ticket prints.
 function repeated(left: Traveller, right: Traveller) {
-	return (
-		Option.isSome(seatOf(left)) &&
-		Equal.equals(ticketOf(left), ticketOf(right)) &&
-		Equal.equals(nameOf(left), nameOf(right)) &&
-		Equal.equals(codeOf(left), codeOf(right)) &&
-		Equal.equals(seatOf(left), seatOf(right)) &&
-		Equal.equals(left.boardingGroup, right.boardingGroup)
-	)
+	return Option.isSome(seatOf(left)) && alike(left, right) && Equal.equals(left.boardingGroup, right.boardingGroup)
 }
 
 type Seating = {readonly claimed: readonly number[]; readonly travellers: readonly Traveller[]}
@@ -270,60 +279,69 @@ function wholeBooking(traveller: Traveller) {
 	return Option.isNone(traveller.name) && Option.isNone(traveller.seat)
 }
 
-// A ticket that names nobody and prints no seat speaks for its whole reservation, such as the booking's cancellation, but only for the travellers holding its code. With no code, or one nobody holds, it adds its reservation while that stands, or to a flight nobody is on yet, and otherwise changes nobody.
+// A ticket that names nobody and prints no seat speaks for its whole reservation, such as the booking's cancellation, but only for the travellers holding its code whose reservation still stands, so a cancelled one is reinstated only by a ticket naming them. With no code, or one nobody holds, a reservation that stands joins a flight nobody is on yet, or with its code any flight, and otherwise it changes nobody.
 function wholeReservation(seating: Seating, incoming: Traveller) {
-	function covers(held: Traveller) {
+	function holds(held: Traveller) {
 		return agree(codeOf(held), codeOf(incoming))
 	}
 	return pipe(
 		incoming,
 		Option.liftPredicate(wholeBooking),
 		Option.map(() => {
-			if (Array.some(seating.travellers, covers)) {
+			if (Array.some(seating.travellers, holds)) {
 				return {
 					...seating,
 					travellers: Array.map(seating.travellers, held =>
-						Boolean.match(covers(held), {onFalse: () => held, onTrue: () => updated(held, incoming)})
+						Boolean.match(holds(held) && isBooked(held), {onFalse: () => held, onTrue: () => updated(held, incoming)})
 					)
 				}
 			}
-			if (
-				Array.isReadonlyArrayNonEmpty(seating.travellers) &&
-				!(isBooked(incoming) && Option.isSome(codeOf(incoming)))
-			) {
-				return seating
+			if (isBooked(incoming) && (Array.isReadonlyArrayEmpty(seating.travellers) || Option.isSome(codeOf(incoming)))) {
+				return {...seating, travellers: [...seating.travellers, incoming]}
 			}
-			return {...seating, travellers: [...seating.travellers, incoming]}
+			return seating
 		})
 	)
 }
 
-// Each traveller a ticket names is at most one already on the flight, the surest among those this ticket has not named yet, so two passengers of the same name in two seats stay two, and a pass shared again updates the one it names.
-function seat(seating: Seating, incoming: Traveller) {
+// A traveller the flight does not hold joins it while their reservation stands; a cancellation of someone it never held changes nothing.
+function joined(seating: Seating, incoming: Traveller) {
+	if (!isBooked(incoming)) return seating
+	return {claimed: [...seating.claimed, seating.travellers.length], travellers: [...seating.travellers, incoming]}
+}
+
+// Each traveller a ticket names is at most one already on the flight, the surest among those this ticket has not named yet, so two passengers of the same name in two seats stay two, a pass shared again updates the one it names, and one that could be either of two changes neither. The same e-ticket says it is that traveller, whatever the reservation, name or seat; otherwise nothing may differ, so another seat under the same name and code is a second person of that name.
+function seat(seating: Seating, incoming: Traveller, alikeCount: number) {
 	return Option.getOrElse(wholeReservation(seating, incoming), () =>
 		pipe(
 			seating.travellers,
 			Array.filterMap((held, index) =>
 				pipe(
-					evidenceOf(held, incoming),
+					evidenceBetween(held, incoming),
+					Option.liftPredicate(
+						evidence =>
+							evidence.ticket ||
+							(!differ(codeOf(held), codeOf(incoming)) &&
+								!differ(ticketOf(held), ticketOf(incoming)) &&
+								!differ(nameOf(held), nameOf(incoming)) &&
+								!differ(seatOf(held), seatOf(incoming)))
+					),
 					Option.filter(() => !Array.contains(seating.claimed, index)),
 					Option.match({onNone: () => Result.failVoid, onSome: evidence => Result.succeed({evidence, index})})
 				)
 			),
 			Array.match({
-				onEmpty: () => ({
-					claimed: [...seating.claimed, seating.travellers.length],
-					travellers: [...seating.travellers, incoming]
-				}),
-				onNonEmpty: candidates => {
-					const found = Array.max(candidates, bySurety)
-					return {
-						claimed: [...seating.claimed, found.index],
-						travellers: Array.map(seating.travellers, (held, index) =>
-							Boolean.match(index === found.index, {onFalse: () => held, onTrue: () => updated(held, incoming)})
-						)
-					}
-				}
+				onEmpty: () => joined(seating, incoming),
+				onNonEmpty: candidates =>
+					Option.match(chosen(candidates, alikeCount), {
+						onNone: () => seating,
+						onSome: found => ({
+							claimed: [...seating.claimed, found.index],
+							travellers: Array.map(seating.travellers, (held, index) =>
+								Boolean.match(index === found.index, {onFalse: () => held, onTrue: () => updated(held, incoming)})
+							)
+						})
+					})
 			})
 		)
 	)
@@ -331,12 +349,10 @@ function seat(seating: Seating, incoming: Traveller) {
 
 // Each ticket adds the travellers it names, so passes shared for other people fill one flight, and updates the ones already on it.
 function travellersOf(existing: readonly Traveller[], incoming: readonly Traveller[]) {
-	return pipe(
-		incoming,
-		Array.dedupeWith(repeated),
-		Array.reduce({claimed: [], travellers: existing} satisfies Seating, seat),
-		seating => seating.travellers
-	)
+	const entries = Array.dedupeWith(incoming, repeated)
+	const start: Seating = {claimed: [], travellers: existing}
+	return Array.reduce(entries, start, (seating, entry, index) => seat(seating, entry, alikeFrom(entries, entry, index)))
+		.travellers
 }
 
 function withTravellers(flight: Flight, travellers: readonly Traveller[]) {
@@ -411,7 +427,7 @@ function combine(existing: Flight, incoming: Flight, arriving: readonly Travelle
 	})
 }
 
-// One segment of a ticket joins its service, or becomes a flight of its own with its own id, alerts and Live Activity. The travellers it moves leave the services it replaces, without their seats; a flight goes once nobody is left on it.
+// One segment of a ticket joins its service, or becomes a flight of its own with its own id, alerts and Live Activity, unless it holds nobody, as a cancellation of a flight never saved. The travellers it moves leave the services it replaces, without their seats; a flight goes once nobody is left on it.
 function upsertOne(services: readonly string[]) {
 	return (flights: FlightList, incoming: Flight) => {
 		const moving = movedBy(incoming)
@@ -437,7 +453,14 @@ function upsertOne(services: readonly string[]) {
 				Option.match({onNone: () => Result.failVoid, onSome: left => Result.succeed(withTravellers(held, left))})
 			)
 		})
-		return Option.match(target, {onNone: () => [...rest, merged], onSome: () => rest})
+		return Option.match(target, {
+			onNone: () =>
+				Boolean.match(Array.isReadonlyArrayEmpty(merged.travellers), {
+					onFalse: () => [...rest, merged],
+					onTrue: () => rest
+				}),
+			onSome: () => rest
+		})
 	}
 }
 
