@@ -22,28 +22,34 @@ import {layerDataStore} from '@deslop/runtime/server/store'
 
 import {FlightAware} from './lib/flightaware.ts'
 
-import {Booking, BookingId, Flight, Place} from '#services/bookings/schema.ts'
-import {Bookings} from '#services/bookings/service.ts'
+import {FlightId, Flight, Place} from '#services/flights/schema.ts'
+import {Flights} from '#services/flights/service.ts'
 import {FaFlight} from '#services/tracking/schema.ts'
 import {Tracking} from '#services/tracking/service.ts'
 
 // One traveller's ticket for BA 553, three hours out.
-function ticket(now: DateTime.Utc, id: BookingId, confirmation: string) {
+function ticket(now: DateTime.Utc, id: FlightId, confirmation: string) {
 	return Flight.make({
 		airline: 'British Airways',
 		airlineCode: 'BA',
 		arrives: DateTime.addDuration(now, Duration.hours(5.5)),
 		boardingAt: Option.none(),
-		boardingGroup: Option.none(),
-		confirmation: Option.some(confirmation),
 		departs: DateTime.addDuration(now, Duration.hours(3)),
 		from: Schema.decodeSync(Place)({code: 'FCO', name: 'Fiumicino', timeZone: 'Europe/Rome'}),
 		id,
 		live: Option.none(),
 		number: '553',
-		seat: Option.none(),
-		status: 'confirmed',
-		to: Schema.decodeSync(Place)({code: 'LHR', name: 'Heathrow', timeZone: 'Europe/London'})
+		to: Schema.decodeSync(Place)({code: 'LHR', name: 'Heathrow', timeZone: 'Europe/London'}),
+		travellers: [
+			{
+				boardingGroup: Option.none(),
+				confirmation: Option.some(confirmation),
+				name: Option.none(),
+				seat: Option.none(),
+				status: 'confirmed',
+				ticket: Option.none()
+			}
+		]
 	})
 }
 
@@ -52,9 +58,9 @@ it.layer(NodeServices.layer)(test =>
 		'two tickets of one flight cost one FlightAware lookup and each gets the report',
 		Effect.fnUntraced(function* () {
 			const now = yield* DateTime.now
-			const tickets: Booking[] = [
-				ticket(now, BookingId.make('1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d'), 'ABC123'),
-				ticket(now, BookingId.make('2b3c4d5e-6f7a-4b8c-9d0e-1f2a3b4c5d6e'), 'DEF456')
+			const tickets: Flight[] = [
+				ticket(now, FlightId.make('1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d'), 'ABC123'),
+				ticket(now, FlightId.make('2b3c4d5e-6f7a-4b8c-9d0e-1f2a3b4c5d6e'), 'DEF456')
 			]
 			const operation = yield* Schema.decodeEffect(FaFlight)({
 				cancelled: false,
@@ -66,14 +72,14 @@ it.layer(NodeServices.layer)(test =>
 			})
 			const lookups = MutableRef.make(0)
 			const asked = yield* Deferred.make<void>()
-			const replaced = yield* Queue.unbounded<Booking>()
+			const replaced = yield* Queue.unbounded<Flight>()
 			// The round that starts with the service finds both tickets due.
 			yield* Layer.build(
 				pipe(
 					Tracking.layer,
 					Layer.provide(
-						Layer.mock(Bookings, {
-							find: id => Effect.succeed(Array.findFirst(tickets, booking => booking.id === id)),
+						Layer.mock(Flights, {
+							find: id => Effect.succeed(Array.findFirst(tickets, flight => flight.id === id)),
 							list: Effect.succeed(tickets),
 							replace: (_, after) => Queue.offer(replaced, after)
 						})
@@ -98,12 +104,8 @@ it.layer(NodeServices.layer)(test =>
 			const reports = yield* Queue.takeBetween(replaced, 2, 2)
 			assert.strictEqual(MutableRef.get(lookups), 1)
 			assert.deepStrictEqual(
-				pipe(
-					reports,
-					Array.filter(Booking.isAnyOf(['flight'])),
-					Array.map(booking => [booking.id, Option.flatMap(booking.live, live => live.departureGate)])
-				),
-				Array.map(tickets, booking => [booking.id, Option.some('B12')])
+				Array.map(reports, flight => [flight.id, Option.flatMap(flight.live, live => live.departureGate)]),
+				Array.map(tickets, flight => [flight.id, Option.some('B12')])
 			)
 		}, Effect.scoped)
 	)

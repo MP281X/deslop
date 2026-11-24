@@ -2,8 +2,8 @@ import {assert, it} from '@effect/vitest'
 
 import {Array, DateTime, Duration, Option, Schema, Struct} from 'effect'
 
-import {activityProps} from '#services/bookings/lib/utils.ts'
-import {BookingId, Flight, Place, ProviderFlightId} from '#services/bookings/schema.ts'
+import {activityProps} from '#services/flights/lib/utils.ts'
+import {FlightId, Flight, Place, ProviderFlightId} from '#services/flights/schema.ts'
 import {alertsOf} from '#services/push/lib/utils.ts'
 import {checkEvery, flightTracking, isStale, pickFlight} from '#services/tracking/lib/utils.ts'
 import {FaFlight} from '#services/tracking/schema.ts'
@@ -23,31 +23,28 @@ function flightAt(departs: DateTime.Utc, live: Flight['live'] = Option.none()) {
 		airlineCode: 'BA',
 		arrives: DateTime.addDuration(departs, Duration.hours(2.5)),
 		boardingAt: Option.none(),
-		boardingGroup: Option.none(),
-		confirmation: Option.none(),
 		departs,
 		from: Schema.decodeSync(Place)({city: 'Rome', code: 'FCO', name: 'Fiumicino', timeZone: 'Europe/Rome'}),
-		id: BookingId.make('7f0c8f8e-0d0a-4a5e-9d8f-5b2a1c3d4e5f'),
+		id: FlightId.make('7f0c8f8e-0d0a-4a5e-9d8f-5b2a1c3d4e5f'),
 		live,
 		number: '553',
-		seat: Option.none(),
-		status: 'confirmed',
-		to: Schema.decodeSync(Place)({city: 'London', code: 'LHR', name: 'Heathrow', timeZone: 'Europe/London'})
+		to: Schema.decodeSync(Place)({city: 'London', code: 'LHR', name: 'Heathrow', timeZone: 'Europe/London'}),
+		travellers: []
 	})
 }
 
 it('carries a provider cancellation into the island and one cancellation alert', () => {
 	const now = DateTime.makeUnsafe(0)
-	const booking = flightAt(
+	const flight = flightAt(
 		DateTime.addDuration(now, Duration.hours(3)),
 		Option.some(flightTracking({...ANSWER, cancelled: true}, now, Option.none()))
 	)
-	assert.deepStrictEqual(checkEvery(booking, now), Option.none())
+	assert.deepStrictEqual(checkEvery(flight, now), Option.none())
 	assert.deepStrictEqual(
-		Array.map(alertsOf(booking, now), alert => alert.category),
+		Array.map(alertsOf(flight, now), alert => alert.category),
 		['cancelled']
 	)
-	assert.strictEqual(activityProps(booking, [], now, false).tone, 'bad')
+	assert.strictEqual(activityProps(flight, now, false).tone, 'bad')
 })
 
 it('keeps the gate a flight left for the change it shows', () => {
@@ -109,11 +106,9 @@ it('keeps the flight it identified before while it is still near the booked time
 		airlineCode: 'BA',
 		arrives: DateTime.makeUnsafe('2026-10-28T18:10:00Z'),
 		boardingAt: Option.none(),
-		boardingGroup: Option.none(),
-		confirmation: Option.none(),
 		departs: DateTime.makeUnsafe('2026-10-28T15:40:00Z'),
 		from: Schema.decodeSync(Place)({code: 'FCO', name: 'Fiumicino', timeZone: 'Europe/Rome'}),
-		id: BookingId.make('7f0c8f8e-0d0a-4a5e-9d8f-5b2a1c3d4e5f'),
+		id: FlightId.make('7f0c8f8e-0d0a-4a5e-9d8f-5b2a1c3d4e5f'),
 		live: Option.some(
 			flightTracking(
 				{...ANSWER, fa_flight_id: ProviderFlightId.make('previous')},
@@ -122,9 +117,8 @@ it('keeps the flight it identified before while it is still near the booked time
 			)
 		),
 		number: '553',
-		seat: Option.none(),
-		status: 'confirmed',
-		to: Schema.decodeSync(Place)({code: 'LHR', name: 'Heathrow', timeZone: 'Europe/London'})
+		to: Schema.decodeSync(Place)({code: 'LHR', name: 'Heathrow', timeZone: 'Europe/London'}),
+		travellers: []
 	})
 	const origin = Option.some({code_iata: Option.some('FCO')})
 	const flights = [

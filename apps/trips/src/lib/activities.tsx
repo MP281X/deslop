@@ -14,8 +14,8 @@ import {
 } from '@expo/ui/swift-ui/modifiers'
 import {createLiveActivity} from 'expo-widgets'
 
-import {ACTIVITY_NAME} from '#services/bookings/lib/utils.ts'
-import type {ActivityProps} from '#services/bookings/schema.ts'
+import {ACTIVITY_NAME} from '#services/flights/lib/utils.ts'
+import type {ActivityProps} from '#services/flights/schema.ts'
 
 type EndpointAlignment = typeof EndpointAlignment.Type
 const EndpointAlignment = Schema.Literals(['leading', 'trailing'])

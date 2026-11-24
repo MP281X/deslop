@@ -39,23 +39,24 @@ import {backHidden, barNeverMinimizes} from '@deslop/components-mobile/lib/toolb
 import {colors, space, text} from '@deslop/components-mobile/theme'
 import {Empty, EmptyMedia} from '@deslop/components-mobile/ui/empty'
 
-import {boardAtom, nowAtom, refreshAtom, removal, startAtom} from '#lib/bookings.ts'
-import {mapsAtom, placeLine, ridesOf, uberAtom} from '#lib/rides.ts'
+import {boardAtom, nowAtom, refreshAtom, removal} from '#lib/flights.ts'
+import {mapsAtom, placeLine, uberAtom} from '#lib/rides.ts'
 import {primary} from '#lib/session.ts'
 import {dayAt, problemOf, statusOf, tones} from '#lib/status.ts'
 import {
 	arrivalClockOf,
 	arrivalOf,
-	autoStartOf,
+	bookedOf,
 	clockAt,
 	departureOf,
+	labelled,
+	line,
 	MINUTE,
 	routeOf,
-	startable,
-	titleOf
-} from '#services/bookings/lib/utils.ts'
-import {Booking} from '#services/bookings/schema.ts'
-import type {BookingList, Flight, Place, Stay, Tone} from '#services/bookings/schema.ts'
+	titleOf,
+	travellersLine
+} from '#services/flights/lib/utils.ts'
+import type {FlightId, FlightList, Flight, Tone} from '#services/flights/schema.ts'
 
 function colorOf(tone?: Tone) {
 	if (tone === undefined || tone === 'plain') return colors.foreground
@@ -99,30 +100,35 @@ function FlightFields(props: {flight: Flight}) {
 			</Section>
 			<Section title={`Arrival · ${props.flight.to.name}`}>
 				<Field label="Arrives" value={Option.some(arrives(props.flight))} />
-				<Field label="Terminal" value={Option.flatMap(props.flight.live, report => report.arrivalTerminal)} />
-				<Field label="Gate" value={Option.flatMap(props.flight.live, report => report.arrivalGate)} />
-				<Field label="Baggage belt" tone="good" value={Option.flatMap(props.flight.live, report => report.belt)} />
 			</Section>
 			<Section title="Booking">
 				<Field label="Airline" value={Option.some(props.flight.airline)} />
-				<Field label="Group" value={props.flight.boardingGroup} />
 				<Field label="Aircraft" value={Option.flatMap(props.flight.live, report => report.aircraft)} />
-				<Field label="Confirmation" value={props.flight.confirmation} />
 			</Section>
+			{Array.isReadonlyArrayNonEmpty(props.flight.travellers) && (
+				<Section title="Travellers">
+					{Array.map(props.flight.travellers, (traveller, index) => (
+						<Field
+							key={index}
+							label={Option.getOrElse(traveller.name, Function.constant('Traveller'))}
+							tone={toneIf(traveller.status === 'cancelled', 'bad')}
+							value={Option.some(
+								line([
+									Option.liftPredicate('Cancelled', () => traveller.status === 'cancelled'),
+									traveller.seat,
+									labelled('Group', traveller.boardingGroup),
+									traveller.confirmation
+								])
+							)}
+						/>
+					))}
+				</Section>
+			)}
 		</>
 	)
 }
 
-function StayFields(props: {stay: Stay}) {
-	return (
-		<Section title="Stay">
-			<Field label="Address" value={props.stay.place.address} />
-			<Field label="Confirmation" value={props.stay.confirmation} />
-		</Section>
-	)
-}
-
-// A field's value at reading size in the booking, and at glance size on the board.
+// A field's value at reading size in the flight, and at glance size on the board.
 type Size = typeof Size.Type
 const Size = Schema.Literals(['glance', 'read'])
 
@@ -185,77 +191,20 @@ function FlightEssentials(props: {flight: Flight; size: Size}) {
 					)
 				)}
 			/>
-			<Essential label="Seat" size={props.size} value={props.flight.seat} />
+			<Essential label="Seat" size={props.size} value={travellersLine(props.flight, traveller => traveller.seat)} />
 		</HStack>
 	)
 }
 
-function StayEssentials(props: {stay: Stay}) {
-	return (
-		<HStack alignment="top" spacing={space[3]}>
-			<Essential
-				label="Check-in"
-				size="read"
-				value={Option.some(
-					`${dayAt(props.stay.checkIn, props.stay.place.timeZone)} · ${clockAt(props.stay.checkIn, props.stay.place.timeZone)}`
-				)}
-			/>
-			<Essential
-				label="Check-out"
-				size="read"
-				value={Option.some(
-					`${dayAt(props.stay.checkOut, props.stay.place.timeZone)} · ${clockAt(props.stay.checkOut, props.stay.place.timeZone)}`
-				)}
-			/>
-		</HStack>
-	)
-}
-
-function Rides(props: {booking: Booking; bookings: BookingList; now: DateTime.Utc}) {
+// Directions and a ride to the airport the flight leaves from.
+function Rides(props: {flight: Flight}) {
 	const maps = useAtomSet(mapsAtom)
 	const uber = useAtomSet(uberAtom)
 	return (
-		<>
-			{Array.map(ridesOf(props.booking, props.bookings, props.now), ride => (
-				<Section key={ride.label} title={`To ${ride.label}`}>
-					<Text modifiers={[text.caption, foregroundStyle(colors.mutedForeground)]}>{placeLine(ride.place)}</Text>
-					<Button label="Directions in Maps" systemImage="map" onPress={() => maps(ride)} />
-					<Button label="Ride with Uber" systemImage="car" onPress={() => uber(ride)} />
-				</Section>
-			))}
-		</>
-	)
-}
-
-function placeCity(place: Place) {
-	return Option.getOrElse(place.city, () => place.name)
-}
-
-function routeOfBooking(booking: Booking) {
-	if (Booking.isAnyOf(['stay'])(booking)) return routeOf(booking)
-	return `${placeCity(booking.from)} → ${placeCity(booking.to)}`
-}
-
-function Start(props: {flight: Flight; now: DateTime.Utc}) {
-	const start = useAtomSet(startAtom)
-	if (!startable(props.flight, props.now)) return undefined
-	const auto = autoStartOf(props.flight)
-	return (
-		<Section
-			footer={pipe(
-				props.now,
-				DateTime.isLessThan(auto),
-				Boolean.match({
-					onFalse: Function.constUndefined,
-					onTrue: () => (
-						<Text modifiers={[text.caption, foregroundStyle(colors.mutedForeground)]}>
-							{`Starts by itself at ${clockAt(auto, props.flight.from.timeZone)}.`}
-						</Text>
-					)
-				})
-			)}
-		>
-			<Button label="Start Live Activity" systemImage="play.fill" onPress={() => start(props.flight.id)} />
+		<Section title={`To ${props.flight.from.name}`}>
+			<Text modifiers={[text.caption, foregroundStyle(colors.mutedForeground)]}>{placeLine(props.flight.from)}</Text>
+			<Button label="Directions in Maps" systemImage="map" onPress={() => maps(props.flight.from)} />
+			<Button label="Ride with Uber" systemImage="car" onPress={() => uber(props.flight.from)} />
 		</Section>
 	)
 }
@@ -265,14 +214,14 @@ const headingFonts = {
 	read: {problem: text.title, route: font({textStyle: 'title2', weight: 'bold'})}
 }
 
-// Where the booking goes, and its problem with a dot.
-function Heading(props: {booking: Booking; now: DateTime.Utc; size: Size}) {
+// Where the flight goes, and its problem with a dot.
+function Heading(props: {flight: Flight; now: DateTime.Utc; size: Size}) {
 	return (
 		<VStack alignment="leading" spacing={space[2]}>
 			<Text modifiers={[headingFonts[props.size].route, foregroundStyle(colors.foreground)]}>
-				{routeOfBooking(props.booking)}
+				{routeOf(props.flight)}
 			</Text>
-			{Option.match(problemOf(props.booking, statusOf(props.booking, props.now), props.now), {
+			{Option.match(problemOf(props.flight, statusOf(props.flight, props.now), props.now), {
 				onNone: Function.constUndefined,
 				onSome: problem => (
 					<HStack spacing={space[2]}>
@@ -307,7 +256,7 @@ function Board() {
 			>
 				<VStack alignment="leading" spacing={space[2]}>
 					<Text modifiers={[text.data, foregroundStyle(colors.mutedForeground)]}>{titleOf(flight)}</Text>
-					<Heading booking={flight} now={now} size="glance" />
+					<Heading flight={flight} now={now} size="glance" />
 				</VStack>
 				<FlightEssentials flight={flight} size="glance" />
 			</VStack>
@@ -315,7 +264,7 @@ function Board() {
 	})
 }
 
-// Beside the list the split view draws no Back, so the system close takes an opened booking away and brings the board back.
+// Beside the list the split view draws no Back, so the system close takes an opened flight away and brings the board back.
 function Close(props: {onClose: () => void}) {
 	if (!useListTiled()) return undefined
 	return (
@@ -325,10 +274,10 @@ function Close(props: {onClose: () => void}) {
 	)
 }
 
-// The opened booking, or with nothing opened the board, shown only while the window tiles, beside the list or in place of a hidden one, or while the list is below it.
-export function BookingRoute(props: {
-	bookings: BookingList
-	id: Option.Option<Booking['id']>
+// The opened flight, or with nothing opened the board, shown only while the window tiles, beside the list or in place of a hidden one, or while the list is below it.
+export function FlightRoute(props: {
+	flights: FlightList
+	id: Option.Option<FlightId>
 	offline: boolean
 	onClose: () => void
 }) {
@@ -342,18 +291,18 @@ export function BookingRoute(props: {
 		onNone: () => <Board />,
 		onSome: id =>
 			pipe(
-				props.bookings,
-				Array.findFirst(booking => booking.id === id),
+				props.flights,
+				Array.findFirst(flight => flight.id === id),
 				Option.match({
-					// Only a list the server answered says the booking is gone; a copy kept offline may predate it.
+					// Only a list the server answered says the flight is gone; a copy kept offline may predate it.
 					onNone: () => (
 						<Toolbar modifiers={[navigationTitle(''), navigationBarTitleDisplayMode('inline')]}>
 							<Empty>
 								<EmptyMedia>
 									{Boolean.match(props.offline, {
-										onFalse: () => <Image systemName="trash" modifiers={[accessibilityLabel('Booking Deleted')]} />,
+										onFalse: () => <Image systemName="trash" modifiers={[accessibilityLabel('Flight Deleted')]} />,
 										onTrue: () => (
-											<Image systemName="icloud.slash" modifiers={[accessibilityLabel('Booking Not Loaded')]} />
+											<Image systemName="icloud.slash" modifiers={[accessibilityLabel('Flight Not Loaded')]} />
 										)
 									})}
 								</EmptyMedia>
@@ -363,14 +312,14 @@ export function BookingRoute(props: {
 							</Toolbar.Content>
 						</Toolbar>
 					),
-					onSome: booking => (
-						<Toolbar modifiers={[navigationTitle(titleOf(booking)), navigationBarTitleDisplayMode('inline')]}>
+					onSome: flight => (
+						<Toolbar modifiers={[navigationTitle(titleOf(flight)), navigationBarTitleDisplayMode('inline')]}>
 							<Form
 								modifiers={[
 									tint(primary),
 									// A failed refresh already alerted, and the exit never rejects, so the pull ends either way.
 									refreshable(async () => {
-										await refresh(booking.id)
+										await refresh(flight.id)
 									})
 								]}
 							>
@@ -380,16 +329,13 @@ export function BookingRoute(props: {
 										spacing={space[3]}
 										modifiers={[frame({alignment: 'leading', maxWidth: Infinity})]}
 									>
-										<Heading booking={booking} now={now} size="read" />
+										<Heading flight={flight} now={now} size="read" />
 										<Divider />
-										{Booking.isAnyOf(['flight'])(booking) && <FlightEssentials flight={booking} size="read" />}
-										{Booking.isAnyOf(['stay'])(booking) && <StayEssentials stay={booking} />}
+										<FlightEssentials flight={flight} size="read" />
 									</VStack>
 								</Section>
-								{Booking.isAnyOf(['flight'])(booking) && <Start flight={booking} now={now} />}
-								{Booking.isAnyOf(['flight'])(booking) && <FlightFields flight={booking} />}
-								{Booking.isAnyOf(['stay'])(booking) && <StayFields stay={booking} />}
-								{booking.status === 'confirmed' && <Rides booking={booking} bookings={props.bookings} now={now} />}
+								<FlightFields flight={flight} />
+								{bookedOf(flight) && <Rides flight={flight} />}
 							</Form>
 							<Toolbar.Content>
 								<Close onClose={props.onClose} />
@@ -400,7 +346,7 @@ export function BookingRoute(props: {
 											systemImage="trash"
 											role="destructive"
 											onPress={() => {
-												remove(booking.id)
+												remove(flight.id)
 												props.onClose()
 											}}
 										/>

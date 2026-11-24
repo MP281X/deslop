@@ -547,18 +547,12 @@ importers:
       expo-application:
         specifier: ^58.1.2
         version: 58.1.2(expo@58.0.26)
-      expo-calendar:
-        specifier: ^58.0.8
-        version: 58.0.8(expo@58.0.26)(react-native@0.88.1(@babel/core@7.29.13(supports-color@8.1.1))(@types/react@19.3.0)(react@19.3.1)(supports-color@8.1.1))
       expo-clipboard:
         specifier: ^58.0.4
         version: 58.0.4(expo@58.0.26)(react-native@0.88.1(@babel/core@7.29.13(supports-color@8.1.1))(@types/react@19.3.0)(react@19.3.1)(supports-color@8.1.1))(react@19.3.1)
       expo-file-system:
         specifier: ^58.0.14
         version: 58.0.14(expo@58.0.26)(react-native@0.88.1(@babel/core@7.29.13(supports-color@8.1.1))(@types/react@19.3.0)(react@19.3.1)(supports-color@8.1.1))
-      expo-location:
-        specifier: ^58.0.22
-        version: 58.0.22(expo@58.0.26)(react-native@0.88.1(@babel/core@7.29.13(supports-color@8.1.1))(@types/react@19.3.0)(react@19.3.1)(supports-color@8.1.1))(react@19.3.1)(supports-color@8.1.1)
       expo-notifications:
         specifier: ^58.1.9
         version: 58.1.9(expo@58.0.26)(react-native@0.88.1(@babel/core@7.29.13(supports-color@8.1.1))(@types/react@19.3.0)(react@19.3.1)(supports-color@8.1.1))(react@19.3.1)(supports-color@8.1.1)
@@ -3883,12 +3877,6 @@ packages:
       react: '*'
       react-native: '*'
 
-  expo-calendar@58.0.8:
-    resolution: {integrity: sha512-Ook/xp9V1m82pmOVNBnszpqoAigtCdRd5LER5isiYkRQxHqKOvXrqGS39Jw+sB3KJdC24FqPU6taJpYGC0qVKg==}
-    peerDependencies:
-      expo: '*'
-      react-native: '*'
-
   expo-clipboard@58.0.4:
     resolution: {integrity: sha512-b2eEJMwdWXLTrmrkg/otsmL2OV6s9D90tytSNBsY87UswrWf6JwxcB2OaWegyUWD9XnvtBVNeVK7lej0zZh+5A==}
     peerDependencies:
@@ -3931,17 +3919,6 @@ packages:
     peerDependencies:
       expo: '*'
       react: '*'
-
-  expo-location@58.0.22:
-    resolution: {integrity: sha512-riZCEjY9//enExdweKSMNvjGS2AGCNG7Z8NJa+3GP5In+ZtrPdkbnhPo3JHwhWZE0NE72yv2t+AKPWauen3fkA==}
-    peerDependencies:
-      expo: '*'
-      expo-task-manager: '*'
-      react: '*'
-      react-native: '*'
-    peerDependenciesMeta:
-      expo-task-manager:
-        optional: true
 
   expo-manifests@58.0.1:
     resolution: {integrity: sha512-fVeJJ71Fj8FJgcAUggn6QIsm7CTxsXFgekLl4pEPHgON6fmcxog63FGO0sisQ3F6yUWFR4nn8iJmgBp1Exs7ew==}
@@ -8885,11 +8862,6 @@ snapshots:
       - supports-color
       - typescript
 
-  expo-calendar@58.0.8(expo@58.0.26)(react-native@0.88.1(@babel/core@7.29.13(supports-color@8.1.1))(@types/react@19.3.0)(react@19.3.1)(supports-color@8.1.1)):
-    dependencies:
-      expo: 58.0.26(@babel/core@7.29.13(supports-color@8.1.1))(expo-widgets@58.0.29)(react-dom@19.3.1(react@19.3.1))(react-native@0.88.1(@babel/core@7.29.13(supports-color@8.1.1))(@types/react@19.3.0)(react@19.3.1)(supports-color@8.1.1))(react@19.3.1)(supports-color@8.1.1)
-      react-native: 0.88.1(@babel/core@7.29.13(supports-color@8.1.1))(@types/react@19.3.0)(react@19.3.1)(supports-color@8.1.1)
-
   expo-clipboard@58.0.4(expo@58.0.26)(react-native@0.88.1(@babel/core@7.29.13(supports-color@8.1.1))(@types/react@19.3.0)(react@19.3.1)(supports-color@8.1.1))(react@19.3.1):
     dependencies:
       expo: 58.0.26(@babel/core@7.29.13(supports-color@8.1.1))(expo-widgets@58.0.29)(react-dom@19.3.1(react@19.3.1))(react-native@0.88.1(@babel/core@7.29.13(supports-color@8.1.1))(@types/react@19.3.0)(react@19.3.1)(supports-color@8.1.1))(react@19.3.1)(supports-color@8.1.1)
@@ -8929,16 +8901,6 @@ snapshots:
     dependencies:
       expo: 58.0.26(@babel/core@7.29.13(supports-color@8.1.1))(expo-widgets@58.0.29)(react-dom@19.3.1(react@19.3.1))(react-native@0.88.1(@babel/core@7.29.13(supports-color@8.1.1))(@types/react@19.3.0)(react@19.3.1)(supports-color@8.1.1))(react@19.3.1)(supports-color@8.1.1)
       react: 19.3.1
-
-  expo-location@58.0.22(expo@58.0.26)(react-native@0.88.1(@babel/core@7.29.13(supports-color@8.1.1))(@types/react@19.3.0)(react@19.3.1)(supports-color@8.1.1))(react@19.3.1)(supports-color@8.1.1):
-    dependencies:
-      '@expo/image-utils': 0.12.7(supports-color@8.1.1)
-      expo: 58.0.26(@babel/core@7.29.13(supports-color@8.1.1))(expo-widgets@58.0.29)(react-dom@19.3.1(react@19.3.1))(react-native@0.88.1(@babel/core@7.29.13(supports-color@8.1.1))(@types/react@19.3.0)(react@19.3.1)(supports-color@8.1.1))(react@19.3.1)(supports-color@8.1.1)
-      react: 19.3.1
-      react-native: 0.88.1(@babel/core@7.29.13(supports-color@8.1.1))(@types/react@19.3.0)(react@19.3.1)(supports-color@8.1.1)
-    transitivePeerDependencies:
-      - supports-color
-      - typescript
 
   expo-manifests@58.0.1(expo@58.0.26):
     dependencies:

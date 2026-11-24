@@ -2,7 +2,7 @@ import {useAtom, useAtomMount, useAtomRefresh, useAtomSet, useAtomSuspense, useA
 
 import {Array, Boolean, DateTime, Duration, Function, Option, Schema, String, pipe} from 'effect'
 
-import {Button as NativeButton, HStack, Image, Overlay, Section, Text, VStack} from '@expo/ui/swift-ui'
+import {Button as NativeButton, HStack, Image, Section, Text, VStack} from '@expo/ui/swift-ui'
 import {
 	accessibilityLabel,
 	accessibilityValue,
@@ -34,37 +34,25 @@ import {ItemActions, ItemContent, ItemGroup, ItemMedia, ItemTitle} from '@deslop
 import {blockingFailure} from '@deslop/runtime/client/live-stream'
 import {problemSinceAtom} from '@deslop/runtime/client/problem'
 
-import {bookingsAtom, clipboard, nowAtom, removal} from '#lib/bookings.ts'
+import {flightsAtom, clipboard, nowAtom, removal} from '#lib/flights.ts'
 import {primary, session} from '#lib/session.ts'
 import {daysUntil, problemOf, statusOf, tones} from '#lib/status.ts'
-import {clockAt, dayMark, daysBetween, endOf, HOUR, startOf, titleOf} from '#services/bookings/lib/utils.ts'
-import {Booking} from '#services/bookings/schema.ts'
+import {arrivalClockOf, arrivalOf, clockAt, departureOf, HOUR, titleOf} from '#services/flights/lib/utils.ts'
+import type {FlightId, Flight} from '#services/flights/schema.ts'
 
-function zoneOf(booking: Booking) {
-	if (Booking.isAnyOf(['stay'])(booking)) return booking.place.timeZone
-	return booking.from.timeZone
+function headingOf(flight: Flight) {
+	return `${Option.getOrElse(flight.from.city, () => flight.from.name)} to ${Option.getOrElse(flight.to.city, () => flight.to.name)}`
 }
 
-function headingOf(booking: Booking) {
-	if (Booking.isAnyOf(['stay'])(booking)) return booking.name
-	return `${Option.getOrElse(booking.from.city, () => booking.from.name)} to ${Option.getOrElse(booking.to.city, () => booking.to.name)}`
-}
-
-function scheduleOf(booking: Booking) {
-	if (Booking.isAnyOf(['stay'])(booking)) {
-		// Nights are the dates slept over, not the hours: 22:30 to 09:00 the next day is one.
-		const nights = daysBetween(booking.checkIn, booking.place.timeZone, booking.checkOut, booking.place.timeZone)
-		return `${nights} ${Boolean.match(nights === 1, {onFalse: Function.constant('nights'), onTrue: Function.constant('night')})} · check-in ${clockAt(booking.checkIn, booking.place.timeZone)}`
-	}
-	const departs = clockAt(startOf(booking), booking.from.timeZone)
-	const arrives = `${clockAt(endOf(booking), booking.to.timeZone)}${dayMark(daysBetween(startOf(booking), booking.from.timeZone, endOf(booking), booking.to.timeZone))}`
-	return `${titleOf(booking)} · ${Option.getOrElse(booking.from.code, () => booking.from.name)} ${departs} → ${Option.getOrElse(booking.to.code, () => booking.to.name)} ${arrives}`
+function scheduleOf(flight: Flight) {
+	const departs = clockAt(departureOf(flight), flight.from.timeZone)
+	return `${titleOf(flight)} · ${Option.getOrElse(flight.from.code, () => flight.from.name)} ${departs} → ${Option.getOrElse(flight.to.code, () => flight.to.name)} ${arrivalClockOf(flight)}`
 }
 
 // The schedule and the gate it leaves from, each shown once.
-function lineOf(booking: Booking, status: ReturnType<typeof statusOf>) {
+function lineOf(flight: Flight, status: ReturnType<typeof statusOf>) {
 	const where = Option.getOrElse(status.where, Function.constant(''))
-	return pipe([scheduleOf(booking), where], Array.filter(String.isNonEmpty), Array.join(' · '))
+	return pipe([scheduleOf(flight), where], Array.filter(String.isNonEmpty), Array.join(' · '))
 }
 
 type Countdown = typeof Countdown.Type
@@ -101,15 +89,10 @@ function Gutter(props: {countdown: Countdown}) {
 	)
 }
 
-function BookingRow(props: {
-	booking: Booking
-	countdown: Countdown
-	now: DateTime.Utc
-	onOpen: (id: Booking['id']) => void
-}) {
-	const status = statusOf(props.booking, props.now)
+function FlightRow(props: {flight: Flight; countdown: Countdown; now: DateTime.Utc; onOpen: (id: FlightId) => void}) {
+	const status = statusOf(props.flight, props.now)
 	return (
-		<RemovableRow alignment="top" id={props.booking.id} removal={removal} onOpen={() => props.onOpen(props.booking.id)}>
+		<RemovableRow alignment="top" id={props.flight.id} removal={removal} onOpen={() => props.onOpen(props.flight.id)}>
 			{pending => (
 				<>
 					<ItemMedia>
@@ -122,14 +105,12 @@ function BookingRow(props: {
 								onTrue: () => [foregroundStyle(colors.mutedForeground)]
 							})}
 						>
-							{headingOf(props.booking)}
+							{headingOf(props.flight)}
 						</ItemTitle>
-						<Text modifiers={[text.data, foregroundStyle(colors.mutedForeground)]}>
-							{lineOf(props.booking, status)}
-						</Text>
+						<Text modifiers={[text.data, foregroundStyle(colors.mutedForeground)]}>{lineOf(props.flight, status)}</Text>
 					</ItemContent>
 					{pipe(
-						problemOf(props.booking, status, props.now),
+						problemOf(props.flight, status, props.now),
 						Option.filter(() => !pending),
 						Option.match({
 							onNone: Function.constUndefined,
@@ -149,24 +130,14 @@ function BookingRow(props: {
 	)
 }
 
-function matchesOf(bookings: readonly Booking[], searched: string) {
-	const needle = String.toLowerCase(String.trim(searched))
-	return Array.filter(
-		bookings,
-		booking =>
-			String.isEmpty(needle) ||
-			String.includes(needle)(String.toLowerCase(`${headingOf(booking)} ${scheduleOf(booking)}`))
-	)
-}
-
-function PastBookings(props: {
+function PastFlights(props: {
 	expanded: boolean
-	bookings: readonly Booking[]
+	flights: readonly Flight[]
 	now: DateTime.Utc
 	onExpandedChange: (expanded: boolean) => void
-	onOpen: (id: Booking['id']) => void
+	onOpen: (id: FlightId) => void
 }) {
-	if (Array.isReadonlyArrayEmpty(props.bookings)) return undefined
+	if (Array.isReadonlyArrayEmpty(props.flights)) return undefined
 	// A plain list draws no toggle on a collapsible section, only the sidebar style does, so the header is the toggle.
 	return (
 		<Section
@@ -205,10 +176,10 @@ function PastBookings(props: {
 			}
 		>
 			{props.expanded &&
-				Array.map(props.bookings, booking => (
-					<BookingRow
-						key={booking.id}
-						booking={booking}
+				Array.map(props.flights, flight => (
+					<FlightRow
+						key={flight.id}
+						flight={flight}
 						countdown={Countdown.cases.SameDay.make({})}
 						now={props.now}
 						onOpen={props.onOpen}
@@ -221,9 +192,9 @@ function PastBookings(props: {
 // Every copy of the list shows Past the same way, so the copy below the board in laptop posture keeps it open when the phone lies flat.
 const pastOpenAtom = Atom.make(false)
 
-function Bookings(props: {onOpen: (id: Booking['id']) => void; searched: string}) {
-	const loaded = useAtomSuspense(bookingsAtom, {includeFailure: true})
-	const refresh = useAtomRefresh(bookingsAtom)
+function Flights(props: {onOpen: (id: FlightId) => void}) {
+	const loaded = useAtomSuspense(flightsAtom, {includeFailure: true})
+	const refresh = useAtomRefresh(flightsAtom)
 	const paste = useAtomSet(clipboard.atom.send)
 	const [pastOpen, setPastOpen] = useAtom(pastOpenAtom)
 
@@ -236,27 +207,26 @@ function Bookings(props: {onOpen: (id: Booking['id']) => void; searched: string}
 	)
 	const blocking = Option.getOrUndefined(blockingFailure(loaded))
 	if (blocking !== undefined) return <FailureContent cause={blocking} onRetry={refresh} />
-	const bookings = AsyncResult.getOrElse(loaded, () => [])
-	const matches = matchesOf(bookings, props.searched)
+	const flights = AsyncResult.getOrElse(loaded, () => [])
 	const current = Array.filter(
-		matches,
-		booking =>
-			pipe(startOf(booking), DateTime.subtractDuration(Duration.hours(6)), DateTime.isLessThanOrEqualTo(now)) &&
-			pipe(endOf(booking), DateTime.addDuration(HOUR), DateTime.isGreaterThanOrEqualTo(now))
+		flights,
+		flight =>
+			pipe(departureOf(flight), DateTime.subtractDuration(Duration.hours(6)), DateTime.isLessThanOrEqualTo(now)) &&
+			pipe(arrivalOf(flight), DateTime.addDuration(HOUR), DateTime.isGreaterThanOrEqualTo(now))
 	)
-	const ahead = Array.filter(matches, booking =>
-		pipe(startOf(booking), DateTime.subtractDuration(Duration.hours(6)), DateTime.isGreaterThan(now))
+	const ahead = Array.filter(flights, flight =>
+		pipe(departureOf(flight), DateTime.subtractDuration(Duration.hours(6)), DateTime.isGreaterThan(now))
 	)
 	const past = Array.reverse(
 		Array.filter(
-			matches,
-			booking =>
-				pipe(endOf(booking), DateTime.addDuration(HOUR), DateTime.isLessThan(now)) &&
-				DateTime.isGreaterThan(endOf(booking), DateTime.subtractDuration(now, Duration.days(30)))
+			flights,
+			flight =>
+				pipe(arrivalOf(flight), DateTime.addDuration(HOUR), DateTime.isLessThan(now)) &&
+				DateTime.isGreaterThan(arrivalOf(flight), DateTime.subtractDuration(now, Duration.days(30)))
 		)
 	)
-	function daysOf(booking: Booking) {
-		return daysUntil(startOf(booking), now, zoneOf(booking))
+	function daysOf(flight: Flight) {
+		return daysUntil(departureOf(flight), now, flight.from.timeZone)
 	}
 	// One root: a SwiftUI modifier on several sibling views applies to each, so the dialog and the toolbar would repeat.
 	return (
@@ -272,7 +242,7 @@ function Bookings(props: {onOpen: (id: Booking['id']) => void; searched: string}
 					}
 				/>
 			)}
-			{Array.isReadonlyArrayEmpty(bookings) && !adding && (
+			{Array.isReadonlyArrayEmpty(flights) && !adding && (
 				<Empty>
 					<EmptyContent>
 						<Button
@@ -281,101 +251,82 @@ function Bookings(props: {onOpen: (id: Booking['id']) => void; searched: string}
 							onPress={() => paste(clipboard.events.Returned())}
 							modifiers={[tint(primary)]}
 						>
-							Paste Booking
+							Paste Ticket
 						</Button>
 					</EmptyContent>
 				</Empty>
 			)}
-			{Array.isReadonlyArrayNonEmpty(bookings) && (
-				// The no-match state sits over the list, centred on the screen, as SwiftUI's own apps show it.
-				<Overlay>
-					<ItemGroup modifiers={[tint(primary)]}>
-						{Array.isReadonlyArrayNonEmpty(current) && (
-							<Section title="Now">
-								{Array.map(current, booking => (
-									<BookingRow
-										key={booking.id}
-										booking={booking}
-										countdown={Countdown.cases.Now.make({})}
-										now={now}
-										onOpen={props.onOpen}
-									/>
-								))}
-							</Section>
-						)}
-						{Array.isReadonlyArrayNonEmpty(ahead) && (
-							<Section title="Upcoming">
-								{Array.map(ahead, (booking, position) => (
-									<BookingRow
-										key={booking.id}
-										booking={booking}
-										countdown={pipe(
-											ahead,
-											Array.get(position - 1),
-											Option.match({
-												onNone: () => Countdown.cases.Days.make({days: daysOf(booking)}),
-												onSome: before =>
-													Boolean.match(daysOf(before) === daysOf(booking), {
-														onFalse: () => Countdown.cases.Days.make({days: daysOf(booking)}),
-														onTrue: () => Countdown.cases.SameDay.make({})
-													})
-											})
-										)}
-										now={now}
-										onOpen={props.onOpen}
-									/>
-								))}
-							</Section>
-						)}
-						{Array.isReadonlyArrayNonEmpty(matches) &&
-							Array.isReadonlyArrayEmpty(current) &&
-							Array.isReadonlyArrayEmpty(ahead) && (
-								<Section>
-									<Empty>
-										<EmptyMedia>
-											<Image systemName="ticket" modifiers={[accessibilityLabel('Nothing coming up')]} />
-										</EmptyMedia>
-									</Empty>
-								</Section>
-							)}
-						<PastBookings
-							bookings={past}
-							expanded={pastOpen}
-							now={now}
-							onExpandedChange={setPastOpen}
-							onOpen={props.onOpen}
-						/>
-					</ItemGroup>
-					{Array.isReadonlyArrayEmpty(matches) && (
-						<Overlay.Content>
+			{Array.isReadonlyArrayNonEmpty(flights) && (
+				<ItemGroup modifiers={[tint(primary)]}>
+					{Array.isReadonlyArrayNonEmpty(current) && (
+						<Section title="Now">
+							{Array.map(current, flight => (
+								<FlightRow
+									key={flight.id}
+									flight={flight}
+									countdown={Countdown.cases.Now.make({})}
+									now={now}
+									onOpen={props.onOpen}
+								/>
+							))}
+						</Section>
+					)}
+					{Array.isReadonlyArrayNonEmpty(ahead) && (
+						<Section title="Upcoming">
+							{Array.map(ahead, (flight, position) => (
+								<FlightRow
+									key={flight.id}
+									flight={flight}
+									countdown={pipe(
+										ahead,
+										Array.get(position - 1),
+										Option.match({
+											onNone: () => Countdown.cases.Days.make({days: daysOf(flight)}),
+											onSome: before =>
+												Boolean.match(daysOf(before) === daysOf(flight), {
+													onFalse: () => Countdown.cases.Days.make({days: daysOf(flight)}),
+													onTrue: () => Countdown.cases.SameDay.make({})
+												})
+										})
+									)}
+									now={now}
+									onOpen={props.onOpen}
+								/>
+							))}
+						</Section>
+					)}
+					{Array.isReadonlyArrayEmpty(current) && Array.isReadonlyArrayEmpty(ahead) && (
+						<Section>
 							<Empty>
 								<EmptyMedia>
-									<Image systemName="magnifyingglass" modifiers={[accessibilityLabel('No bookings match')]} />
+									<Image systemName="ticket" modifiers={[accessibilityLabel('Nothing coming up')]} />
 								</EmptyMedia>
 							</Empty>
-						</Overlay.Content>
+						</Section>
 					)}
-				</Overlay>
+					<PastFlights
+						flights={past}
+						expanded={pastOpen}
+						now={now}
+						onExpandedChange={setPastOpen}
+						onOpen={props.onOpen}
+					/>
+				</ItemGroup>
 			)}
 		</VStack>
 	)
 }
 
-// The query every copy of the list filters by, as the search field they share shows it, so a search typed below the board in laptop posture still filters once the phone lies flat.
-const searchedAtom = Atom.make('')
-
-// Native navigation and clipboard/account controls do not wait for the bookings stream; the bar marks bookings that stopped updating.
-export function HomeRoute(props: {onOpen: (id: Booking['id']) => void}) {
-	const [searched, setSearched] = useAtom(searchedAtom)
-	const loaded = useAtomValue(bookingsAtom)
-	useAtomMount(problemSinceAtom(bookingsAtom))
+// Native navigation and clipboard/account controls do not wait for the flights stream; the bar marks flights that stopped updating.
+export function HomeRoute(props: {onOpen: (id: FlightId) => void}) {
+	const loaded = useAtomValue(flightsAtom)
+	useAtomMount(problemSinceAtom(flightsAtom))
 	return (
 		<ListToolbar
 			title="Trips"
 			session={session}
-			onSearch={setSearched}
 			problem={Option.liftPredicate(
-				<Problem source={bookingsAtom} label="Out of date" onRetry={useAtomRefresh(bookingsAtom)} />,
+				<Problem source={flightsAtom} label="Out of date" onRetry={useAtomRefresh(flightsAtom)} />,
 				() => AsyncResult.isFailure(loaded) && Option.isNone(blockingFailure(loaded))
 			)}
 		>
@@ -392,7 +343,7 @@ export function HomeRoute(props: {onOpen: (id: Booking['id']) => void}) {
 					/>
 				}
 			>
-				<Bookings onOpen={props.onOpen} searched={searched} />
+				<Flights onOpen={props.onOpen} />
 			</Suspense>
 		</ListToolbar>
 	)

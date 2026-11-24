@@ -157,7 +157,8 @@ export default defineConfig({
 				}
 			},
 			{
-				files: ['**/packages/runtime/src/server/tables.test.ts'],
+				// A migration's test reads the rows it rewrote, including another service's tables, which no service answer shows.
+				files: ['**/packages/runtime/src/server/tables.test.ts', '**/apps/*/src/services/*/migrations.test.ts'],
 				rules: {'@deslop/coding-standards/test-boundaries': ['error', 'inspect-database']}
 			},
 			{
@@ -170,16 +171,7 @@ export default defineConfig({
 							patterns: [
 								...repositoryRestrictedImports.patterns,
 								{
-									group: [
-										'expo-notifications',
-										'expo-notifications/**',
-										'expo-calendar',
-										'expo-calendar/**',
-										'expo-location',
-										'expo-location/**',
-										'expo-widgets',
-										'expo-widgets/**'
-									],
+									group: ['expo-notifications', 'expo-notifications/**', 'expo-widgets', 'expo-widgets/**'],
 									message:
 										'App-only native modules and their helpers belong in their consuming app, not a shared package.'
 								}

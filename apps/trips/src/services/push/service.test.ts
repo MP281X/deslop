@@ -24,12 +24,12 @@ import {Apns} from '@deslop/runtime/server/apns'
 import {layerDataStore} from '@deslop/runtime/server/store'
 import {ApnsAnswer, ApnsError, ApnsToken} from '@deslop/runtime/shared/apns'
 
-import {BookingId, Flight, Place} from '#services/bookings/schema.ts'
-import {Bookings} from '#services/bookings/service.ts'
+import {FlightId, Flight, Place} from '#services/flights/schema.ts'
+import {Flights} from '#services/flights/service.ts'
 import {Push} from '#services/push/service.ts'
 
-const ID = BookingId.make('1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d')
-const OTHER = BookingId.make('2b3c4d5e-6f7a-4b8c-9d0e-1f2a3b4c5d6e')
+const ID = FlightId.make('1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d')
+const OTHER = FlightId.make('2b3c4d5e-6f7a-4b8c-9d0e-1f2a3b4c5d6e')
 function starter(bundle: string, token: string) {
 	return {bundle, kind: 'start' as const, token: Redacted.make(ApnsToken.make(String.repeat(64)(token)))}
 }
@@ -37,23 +37,29 @@ const STARTER = starter('xyz.mp281x.trips', 'a')
 const DEV_STARTER = starter('xyz.mp281x.trips.dev', 'b')
 const ANSWER = {channel: Option.none(), reason: Option.none(), status: 503}
 
-// A flight four hours out, which only a person's request starts.
-function flightAt(now: DateTime.Utc, id: BookingId, seat: Option.Option<string>) {
+// A flight two hours out, inside the three hours its Live Activity shows.
+function flightAt(now: DateTime.Utc, id: FlightId, seat: Option.Option<string>) {
 	return Flight.make({
 		airline: 'British Airways',
 		airlineCode: 'BA',
-		arrives: DateTime.addDuration(now, Duration.hours(5)),
+		arrives: DateTime.addDuration(now, Duration.hours(3)),
 		boardingAt: Option.none(),
-		boardingGroup: Option.none(),
-		confirmation: Option.none(),
-		departs: DateTime.addDuration(now, Duration.hours(4)),
+		departs: DateTime.addDuration(now, Duration.hours(2)),
 		from: Schema.decodeSync(Place)({code: 'FCO', name: 'Fiumicino', timeZone: 'Europe/Rome'}),
 		id,
 		live: Option.none(),
 		number: '553',
-		seat,
-		status: 'confirmed',
-		to: Schema.decodeSync(Place)({code: 'LHR', name: 'Heathrow', timeZone: 'Europe/London'})
+		to: Schema.decodeSync(Place)({code: 'LHR', name: 'Heathrow', timeZone: 'Europe/London'}),
+		travellers: [
+			{
+				boardingGroup: Option.none(),
+				confirmation: Option.none(),
+				name: Option.none(),
+				seat,
+				status: 'confirmed',
+				ticket: Option.none()
+			}
+		]
 	})
 }
 const booked = Effect.map(DateTime.now, now => [flightAt(now, ID, Option.none())])
@@ -93,18 +99,17 @@ const apple = Effect.fnUntraced(function* (
 	return {asked, created, layer, sent}
 })
 
-// Apple accepts every start and end and keeps every channel its delete is asked for; `update` is what it answers an update.
+// Apple accepts every start and end and keeps every channel its delete is asked for; `update` is what it answers an update, and `updated` is done once it has.
 const running = Effect.fnUntraced(function* (update: ApnsAnswer) {
 	const asked = yield* Queue.unbounded<string>()
 	const created = MutableRef.make(0)
+	const updated = yield* Deferred.make<void>()
 	const layer = Layer.mock(Apns, {
 		broadcast: (_bundle, _channel, aps) =>
-			Effect.succeed(
-				Boolean.match(aps['event'] === 'update', {
-					onFalse: () => ApnsAnswer.cases.Accepted.make({...ANSWER, status: 200}),
-					onTrue: () => update
-				})
-			),
+			Boolean.match(aps['event'] === 'update', {
+				onFalse: () => Effect.succeed(ApnsAnswer.cases.Accepted.make({...ANSWER, status: 200})),
+				onTrue: () => Effect.as(Deferred.succeed(updated, undefined), update)
+			}),
 		createChannel: () => Effect.sync(() => `c${MutableRef.incrementAndGet(created)}`),
 		deleteChannel: Effect.fnUntraced(function* (_bundle: string, channel: string) {
 			yield* Queue.offer(asked, channel)
@@ -114,19 +119,16 @@ const running = Effect.fnUntraced(function* (update: ApnsAnswer) {
 		startActivity: () => Effect.succeed(ApnsAnswer.cases.Accepted.make({...ANSWER, status: 200})),
 		startHeld: () => Effect.succeedNone
 	})
-	return {asked, created, layer}
+	return {asked, created, layer, updated}
 })
-
-// A start of a booking that is not there waits for the round holding the push service, so the round that began with the server has ended when it fails.
-const afterRound = Effect.flatMap(Push, push => Effect.flip(push.start(OTHER)))
 
 const open = Effect.tap(Deferred.make<void>(), gate => Deferred.succeed(gate, undefined))
 
-// One run of the server on the folder, stopped when `body` ends; its first round has read the bookings before `body` acts, so the round never races a person's request.
+// One run of the server on the folder, stopped when `body` ends; its first round has read the flights before `body` acts, and a registration in `body` runs its own round after it.
 const serve = Effect.fnUntraced(function* <A, E>(
 	folder: string,
 	apns: Layer.Layer<Apns>,
-	list: Bookings['Service']['list'],
+	list: Flights['Service']['list'],
 	body: Effect.Effect<A, E, Push>
 ) {
 	const listed = yield* Deferred.make<void>()
@@ -135,7 +137,7 @@ const serve = Effect.fnUntraced(function* <A, E>(
 			Push.layer,
 			Layer.provide(apns),
 			Layer.provide(
-				Layer.mock(Bookings, {list: Effect.tap(list, () => Deferred.succeed(listed, undefined)), watch: Stream.never})
+				Layer.mock(Flights, {list: Effect.tap(list, () => Deferred.succeed(listed, undefined)), watch: Stream.never})
 			),
 			Layer.provide(layerDataStore(folder))
 		)
@@ -144,9 +146,8 @@ const serve = Effect.fnUntraced(function* <A, E>(
 	return yield* Effect.provideContext(body, context)
 }, Effect.scoped)
 
-const startUnaccepted = Effect.flatMap(Push, push =>
-	Effect.andThen(push.register(STARTER), Effect.flip(push.start(ID)))
-)
+// The phone registers, and the round that follows starts the flight's Live Activity on it.
+const registered = Effect.flatMap(Push, push => push.register(STARTER))
 
 // Real time, and real files, so a restart reopens the database the last run wrote.
 it.layer(NodeServices.layer, {excludeTestServices: true})(test => {
@@ -154,7 +155,7 @@ it.layer(NodeServices.layer, {excludeTestServices: true})(test => {
 		'a channel Apple kept for a start it did not accept is deleted after every restart until Apple answers',
 		Effect.fnUntraced(function* () {
 			const folder = yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped()
-			yield* serve(folder, (yield* apple([], yield* open)).layer, booked, startUnaccepted)
+			yield* serve(folder, (yield* apple([], yield* open)).layer, booked, registered)
 			// The flight left while the server was down; the channel Apple kept for it did not.
 			const throttled = yield* apple([], yield* open)
 			assert.strictEqual(yield* serve(folder, throttled.layer, Effect.succeed([]), Queue.take(throttled.asked)), 'c1')
@@ -167,7 +168,7 @@ it.layer(NodeServices.layer, {excludeTestServices: true})(test => {
 		'a channel of a start that failed after Apple created it is deleted after a restart',
 		Effect.fnUntraced(function* () {
 			const folder = yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped()
-			yield* serve(folder, (yield* apple([], yield* open, 'fails')).layer, booked, startUnaccepted)
+			yield* serve(folder, (yield* apple([], yield* open, 'fails')).layer, booked, registered)
 			const answered = yield* apple(['c1'], yield* open)
 			assert.strictEqual(yield* serve(folder, answered.layer, Effect.succeed([]), Queue.take(answered.asked)), 'c1')
 		})
@@ -184,8 +185,7 @@ it.layer(NodeServices.layer, {excludeTestServices: true})(test => {
 				booked,
 				Effect.gen(function* () {
 					const push = yield* Push
-					yield* push.register(STARTER)
-					yield* Effect.forkChild(push.start(ID))
+					yield* Effect.forkChild(push.register(STARTER))
 					yield* Deferred.await(hanging.sent)
 				})
 			)
@@ -203,8 +203,8 @@ it.layer(NodeServices.layer, {excludeTestServices: true})(test => {
 				throttled.layer,
 				booked,
 				Effect.andThen(
-					startUnaccepted,
-					Effect.forEach(Array.range(1, 3), () => startUnaccepted, {concurrency: 1, discard: true})
+					registered,
+					Effect.forEach(Array.range(1, 3), () => registered, {concurrency: 1, discard: true})
 				)
 			)
 			assert.strictEqual(MutableRef.get(throttled.created), 1)
@@ -221,10 +221,10 @@ it.layer(NodeServices.layer, {excludeTestServices: true})(test => {
 				throttled.layer,
 				booked,
 				Effect.gen(function* () {
-					yield* startUnaccepted
+					yield* registered
 					assert.strictEqual(yield* Queue.take(throttled.asked), 'c1')
 					// Another app has its own channel, which the first one's wait does not hold.
-					yield* Effect.andThen((yield* Push).register(DEV_STARTER), Effect.flip((yield* Push).start(ID)))
+					yield* (yield* Push).register(DEV_STARTER)
 					yield* Deferred.succeed(gate, undefined)
 					assert.deepStrictEqual(yield* Queue.takeBetween(throttled.asked, 2, 2), ['c1', 'c2'])
 				})
@@ -233,25 +233,16 @@ it.layer(NodeServices.layer, {excludeTestServices: true})(test => {
 	)
 
 	test.effect(
-		'a channel Apple kept after its ended activity was replaced does not hold the start of another flight',
+		'a channel Apple kept after its ended activity does not hold the start of another flight',
 		Effect.fnUntraced(function* () {
 			const folder = yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped()
 			const kept = yield* running(ApnsAnswer.cases.Accepted.make({...ANSWER, status: 200}))
-			yield* serve(
-				folder,
-				kept.layer,
-				booked,
-				Effect.flatMap(Push, push => Effect.andThen(push.register(STARTER), push.start(ID)))
-			)
+			yield* serve(folder, kept.layer, booked, registered)
 			// The flight left while the server was down, and the end Apple took left its channel to delete.
 			assert.strictEqual(yield* serve(folder, kept.layer, Effect.succeed([]), Queue.take(kept.asked)), 'c1')
-			yield* serve(
-				folder,
-				kept.layer,
-				both,
-				Effect.flatMap(Push, push => Effect.andThen(push.start(ID), push.start(OTHER)))
-			)
-			assert.strictEqual(MutableRef.get(kept.created), 3)
+			// The flight back, its ended activity stays ended; the other flight starts on a channel of its own.
+			yield* serve(folder, kept.layer, both, registered)
+			assert.strictEqual(MutableRef.get(kept.created), 2)
 		})
 	)
 
@@ -260,17 +251,19 @@ it.layer(NodeServices.layer, {excludeTestServices: true})(test => {
 		Effect.fnUntraced(function* () {
 			const folder = yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped()
 			const kept = yield* running(ApnsAnswer.cases.ChannelGone.make({...ANSWER, status: 400}))
+			yield* serve(folder, kept.layer, booked, registered)
+			// The first round of this run shows the new seat on the channel Apple answers is gone, and starts nothing; the round after it starts the leg again.
 			yield* serve(
 				folder,
 				kept.layer,
-				booked,
-				Effect.flatMap(Push, push => Effect.andThen(push.register(STARTER), push.start(ID)))
+				seated,
+				Effect.gen(function* () {
+					yield* Deferred.await(kept.updated)
+					assert.strictEqual(MutableRef.get(kept.created), 1)
+					yield* registered
+					assert.strictEqual(MutableRef.get(kept.created), 2)
+				})
 			)
-			// The first round of this run shows the new seat on the channel Apple answers is gone.
-			yield* serve(folder, kept.layer, seated, afterRound)
-			assert.strictEqual(MutableRef.get(kept.created), 1)
-			yield* serve(folder, kept.layer, seated, afterRound)
-			assert.strictEqual(MutableRef.get(kept.created), 2)
 		})
 	)
 })

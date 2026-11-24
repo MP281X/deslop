@@ -1,103 +1,53 @@
-import {Array, DateTime, Duration, Effect, Function, Option, String, pipe} from 'effect'
+import {Array, Effect, Function, Option, String, pipe} from 'effect'
 
 import {Atom} from 'effect/reactivity'
-import {geocodeAsync} from 'expo-location'
 import {Linking} from 'react-native'
 
 import {alertFailure} from '@deslop/components-mobile/lib/alerts'
 
-import {departureOf, stayAfter} from '#services/bookings/lib/utils.ts'
-import type {BookingList, Place} from '#services/bookings/schema.ts'
-import {Booking, BookingsError} from '#services/bookings/schema.ts'
+import type {Place} from '#services/flights/schema.ts'
+import {FlightsError} from '#services/flights/schema.ts'
 
 export function placeLine(place: Place) {
 	return pipe(
-		[
-			place.name,
-			pipe(
-				place.address,
-				Option.orElse(() => place.city),
-				Option.getOrElse(Function.constant(''))
-			)
-		],
+		[place.name, Option.getOrElse(place.city, Function.constant(''))],
 		Array.filter(String.isNonEmpty),
 		Array.join(', ')
 	)
 }
 
-type Coordinates = {latitude: number; longitude: number}
-
-const coordinatesOf = Effect.fnUntraced(function* (place: Place) {
-	const coordinates = Option.all({latitude: place.latitude, longitude: place.longitude})
-	if (Option.isSome(coordinates)) {
-		return coordinates
-	}
-	return Option.map(
-		Array.head(
-			yield* Effect.tryPromise({
-				catch: cause => BookingsError.make({cause, message: `${place.name} could not be found on the map.`}),
-				try: () => geocodeAsync(placeLine(place))
-			})
-		),
-		match => ({latitude: match.latitude, longitude: match.longitude}) satisfies Coordinates
-	)
-})
-
-export type Ride = {label: string; place: Place}
-
-export function ridesOf(booking: Booking, bookings: BookingList, now: DateTime.Utc) {
-	if (Booking.isAnyOf(['stay'])(booking)) return [{label: booking.name, place: booking.place}] satisfies Ride[]
-	const stay = Option.map(
-		stayAfter(bookings, booking),
-		found => ({label: found.name, place: found.place}) satisfies Ride
-	)
-	return pipe(
-		stay,
-		Option.filter(() =>
-			DateTime.isGreaterThan(now, DateTime.subtractDuration(departureOf(booking), Duration.minutes(30)))
-		),
-		Option.match({
-			onNone: () => [{label: booking.from.name, place: booking.from}, ...Option.toArray(stay)] satisfies Ride[],
-			onSome: next => [next] satisfies Ride[]
-		})
-	)
+// An airport's coordinates come from the airport list the server reads.
+function coordinatesOf(place: Place) {
+	return Option.all({latitude: place.latitude, longitude: place.longitude})
 }
 
-export const mapsAtom = Atom.fn((ride: Ride) =>
+export const mapsAtom = Atom.fn((place: Place) =>
 	pipe(
-		coordinatesOf(ride.place),
-		Effect.flatMap(coordinates =>
-			Effect.tryPromise({
-				catch: cause => BookingsError.make({cause, message: 'Maps could not be opened.'}),
-				try: () =>
-					Linking.openURL(
-						Option.match(coordinates, {
-							onNone: () => `maps://?daddr=${encodeURIComponent(placeLine(ride.place))}`,
-							onSome: found => `maps://?daddr=${found.latitude},${found.longitude}&q=${encodeURIComponent(ride.label)}`
-						})
-					)
-			})
-		),
+		Effect.tryPromise({
+			catch: cause => FlightsError.make({cause, message: 'Maps could not be opened.'}),
+			try: () =>
+				Linking.openURL(
+					Option.match(coordinatesOf(place), {
+						onNone: () => `maps://?daddr=${encodeURIComponent(placeLine(place))}`,
+						onSome: found => `maps://?daddr=${found.latitude},${found.longitude}&q=${encodeURIComponent(place.name)}`
+					})
+				)
+		}),
 		alertFailure('No Directions')
 	)
 )
 
-export const uberAtom = Atom.fn((ride: Ride) =>
+export const uberAtom = Atom.fn((place: Place) =>
 	pipe(
-		coordinatesOf(ride.place),
-		Effect.flatMap(coordinates =>
-			pipe(
-				coordinates,
-				Effect.fromOption,
-				Effect.mapError(cause => BookingsError.make({cause, message: 'The place could not be found for Uber.'}))
-			)
-		),
+		coordinatesOf(place),
+		Effect.fromOption,
+		Effect.mapError(cause => FlightsError.make({cause, message: 'The place could not be found for Uber.'})),
 		Effect.flatMap(found =>
 			Effect.tryPromise({
-				catch: cause => BookingsError.make({cause, message: 'Uber could not be opened.'}),
+				catch: cause => FlightsError.make({cause, message: 'Uber could not be opened.'}),
 				try: () =>
 					Linking.openURL(
-						`https://m.uber.com/ul/?action=setPickup&pickup=my_location&dropoff[latitude]=${found.latitude}&dropoff[longitude]=${found.longitude}&dropoff[nickname]=${encodeURIComponent(ride.label)}&dropoff[formatted_address]=${encodeURIComponent(placeLine(ride.place))}`
+						`https://m.uber.com/ul/?action=setPickup&pickup=my_location&dropoff[latitude]=${found.latitude}&dropoff[longitude]=${found.longitude}&dropoff[nickname]=${encodeURIComponent(place.name)}&dropoff[formatted_address]=${encodeURIComponent(placeLine(place))}`
 					)
 			})
 		),

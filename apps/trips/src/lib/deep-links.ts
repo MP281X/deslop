@@ -11,28 +11,24 @@ import {Linking} from 'react-native'
 
 import {appConfig} from '@deslop/runtime/mobile/app'
 
-import {BookingId, BookingsError} from '#services/bookings/schema.ts'
+import {FlightId, FlightsError} from '#services/flights/schema.ts'
 
-export const BOOKING_LINK = `${appConfig.extra.scheme}://booking/`
+const FLIGHT_LINK = `${appConfig.extra.scheme}://flight/`
 
-export function linkOf(bookingId: BookingId) {
-	return `${BOOKING_LINK}${bookingId}`
-}
-
-// Only this app's own booking link, the whole of it: another scheme, host or a longer path opens nothing.
-function bookingIn(url?: string | null) {
+// Only this app's own flight link, the whole of it: another scheme, host or a longer path opens nothing.
+function flightIn(url?: string | null) {
 	return pipe(
 		Option.fromNullishOr(url),
-		Option.filter(String.startsWith(BOOKING_LINK)),
-		Option.map(String.slice(BOOKING_LINK.length)),
-		Option.flatMap(Schema.decodeOption(BookingId))
+		Option.filter(String.startsWith(FLIGHT_LINK)),
+		Option.map(String.slice(FLIGHT_LINK.length)),
+		Option.flatMap(Schema.decodeOption(FlightId))
 	)
 }
 
 function tapped(response: NotificationResponse | null) {
 	return Option.map(
-		Schema.decodeUnknownOption(Schema.Struct({bookingId: BookingId}))(response?.notification.request.content.data),
-		payload => payload.bookingId
+		Schema.decodeUnknownOption(Schema.Struct({flightId: FlightId}))(response?.notification.request.content.data),
+		payload => payload.flightId
 	)
 }
 
@@ -43,17 +39,17 @@ export const openedAtom = Atom.keepAlive(
 				Effect.map(
 					pipe(
 						Effect.tryPromise({
-							catch: cause => BookingsError.make({cause, message: 'The initial booking link could not be read.'}),
+							catch: cause => FlightsError.make({cause, message: 'The initial flight link could not be read.'}),
 							try: () => Linking.getInitialURL()
 						}),
-						Effect.tapError(error => Effect.logWarning('The initial booking link could not be read', error)),
+						Effect.tapError(error => Effect.logWarning('The initial flight link could not be read', error)),
 						Effect.option
 					),
 					url =>
 						// A notification tapped while the app was closed launches it without a URL.
 						pipe(
 							url,
-							Option.flatMap(bookingIn),
+							Option.flatMap(flightIn),
 							Option.orElse(() => {
 								// The tap that launched the app opens it once; a later start of this atom must not open it again.
 								const launch = tapped(getLastNotificationResponse())
@@ -64,11 +60,11 @@ export const openedAtom = Atom.keepAlive(
 				)
 			),
 			Stream.merge(
-				Stream.callback<Option.Option<BookingId>>(queue =>
+				Stream.callback<Option.Option<FlightId>>(queue =>
 					Effect.gen(function* () {
 						yield* Effect.acquireRelease(
 							Effect.sync(() =>
-								Linking.addEventListener('url', event => Queue.offerUnsafe(queue, bookingIn(event.url)))
+								Linking.addEventListener('url', event => Queue.offerUnsafe(queue, flightIn(event.url)))
 							),
 							subscription => Effect.sync(() => subscription.remove())
 						)

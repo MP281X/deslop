@@ -27,10 +27,10 @@ import {Migrator, SqlClient, SqlModel, SqlSchema} from 'effect/sql'
 import {Apns} from '@deslop/runtime/server/apns'
 import {ApnsAnswer, Device} from '@deslop/runtime/shared/apns'
 
-import {ACTIVITY_NAME, activeWindow, activityProps, startable, urgencyOf} from '#services/bookings/lib/utils.ts'
-import type {ActivityProps, BookingList, Flight, Leg, BookingsError} from '#services/bookings/schema.ts'
-import {Booking, BookingId} from '#services/bookings/schema.ts'
-import {Bookings} from '#services/bookings/service.ts'
+import {ACTIVITY_NAME, activeWindow, activityProps, urgencyOf} from '#services/flights/lib/utils.ts'
+import type {ActivityProps, Flight, Leg, FlightsError} from '#services/flights/schema.ts'
+import {FlightId} from '#services/flights/schema.ts'
+import {Flights} from '#services/flights/service.ts'
 import {
 	alertsOf,
 	announced,
@@ -50,8 +50,7 @@ import {
 	PushError,
 	Retirement,
 	SentAlert,
-	ShowAction,
-	StartRequest
+	ShowAction
 } from '#services/push/schema.ts'
 import {isStale} from '#services/tracking/lib/utils.ts'
 
@@ -70,7 +69,7 @@ function asPushError(message: string) {
 			cause:
 				| SqlError.SqlError
 				| Schema.SchemaError
-				| BookingsError
+				| FlightsError
 				| PushError
 				| Effect.Error<ReturnType<typeof Apns.Service.startActivity>>
 		) => PushError.make({cause, message})
@@ -90,7 +89,7 @@ const contentState = Effect.fnUntraced(function* (props: ActivityProps) {
 export class Push extends Context.Service<Push>()('@deslop/trips/services/push/service/Push', {
 	make: Effect.gen(function* () {
 		const sql = yield* SqlClient.SqlClient
-		const bookings = yield* Bookings
+		const flights = yield* Flights
 		const apns = yield* Apns
 
 		const activities = yield* SqlModel.makeRepository(Activity, {
@@ -113,7 +112,7 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 			Result: Activity,
 			execute: row => sql`
 				SELECT * FROM ${sql(Activity.table)}
-				WHERE bookingId = ${row.bookingId} AND leg = ${row.leg} AND bundle = ${row.bundle} AND endedAt IS NULL
+				WHERE flightId = ${row.flightId} AND leg = ${row.leg} AND bundle = ${row.bundle} AND endedAt IS NULL
 			`
 		})
 		const listRetirements = SqlSchema.findAll({
@@ -188,9 +187,9 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 			`
 		})
 		const listSent = SqlSchema.findAll({
-			Request: BookingId,
+			Request: FlightId,
 			Result: SentAlert,
-			execute: id => sql`SELECT * FROM ${sql(SentAlert.table)} WHERE bookingId = ${id} ORDER BY sentAt`
+			execute: id => sql`SELECT * FROM ${sql(SentAlert.table)} WHERE flightId = ${id} ORDER BY sentAt`
 		})
 		const recordSent = SqlSchema.void({
 			Request: Schema.NonEmptyArray(SentAlert.insert),
@@ -200,8 +199,8 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 			`
 		})
 		const forgetSentExcept = SqlSchema.void({
-			Request: Schema.Array(BookingId),
-			execute: ids => sql`DELETE FROM ${sql(SentAlert.table)} WHERE bookingId NOT IN ${sql.in(ids)}`
+			Request: Schema.Array(FlightId),
+			execute: ids => sql`DELETE FROM ${sql(SentAlert.table)} WHERE flightId NOT IN ${sql.in(ids)}`
 		})
 
 		const asPushReadError = asPushError('The push state could not be read.')
@@ -211,16 +210,6 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 				activities: yield* asPushReadError(listActivities()),
 				devices: yield* asPushReadError(listDevices())
 			} satisfies RoundState
-		})
-		const listRequests = SqlSchema.findAll({
-			Request: Schema.Void,
-			Result: StartRequest,
-			execute: () => sql`SELECT * FROM ${sql(StartRequest.table)}`
-		})
-		const recordRequest = SqlSchema.void({
-			Request: StartRequest.insert,
-			execute: row =>
-				sql`INSERT INTO ${sql(StartRequest.table)} ${sql.insert(row)} ON CONFLICT (bookingId) DO UPDATE SET at = excluded.at`
 		})
 
 		// A start that Apple did not accept leaves its channel owed to the worker; a rejected or refused token also leaves the device.
@@ -240,7 +229,7 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 						PushError.make({cause: refused, message: 'Apple refused the Live Activity start.'})
 					),
 				Retry: retry => PushError.make({cause: retry, message: 'Apple did not accept the Live Activity start.'}),
-				// The booking's words are too long, which no token can fix, so the iPhone stays registered.
+				// The flight's words are too long, which no token can fix, so the iPhone stays registered.
 				TooLarge: tooLarge =>
 					PushError.make({cause: tooLarge, message: 'The Live Activity has too much text to start.'})
 			})
@@ -287,10 +276,10 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 					)
 					yield* settle(yield* apns.startActivity(target, showing.leg, channel, body), target)
 					const row = {
-						bookingId: showing.flight.id,
 						bundle: target.bundle,
 						channel,
 						endedAt: Option.none(),
+						flightId: showing.flight.id,
 						leg: showing.leg,
 						props: showing.props,
 						startedAt: showing.now
@@ -327,7 +316,7 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 			const body = {
 				aps: {
 					alert: startAlert(showing.flight),
-					attributes: {url: `${SCHEMES[target.bundle]}://booking/${showing.flight.id}`},
+					attributes: {url: `${SCHEMES[target.bundle]}://flight/${showing.flight.id}`},
 					'attributes-type': 'LiveActivityAttributes',
 					'content-state': yield* contentState(showing.props),
 					event: 'start',
@@ -434,16 +423,14 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 		const show = Effect.fnUntraced(function* (
 			flight: Flight,
 			window: Span & {leg: Leg},
-			all: BookingList,
 			now: DateTime.Utc,
-			requested: Option.Option<DateTime.Utc>,
 			state: RoundState
 		) {
 			const showing = {
 				flight,
 				leg: window.leg,
 				now,
-				props: activityProps(flight, all, now, isStale(flight, now)),
+				props: activityProps(flight, now, isStale(flight, now)),
 				window
 			} satisfies Showing
 			// An activity that cannot cover the window ends, and the leg starts afresh.
@@ -451,7 +438,7 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 				state.activities,
 				Array.filter(
 					activity =>
-						activity.bookingId === flight.id &&
+						activity.flightId === flight.id &&
 						activity.leg === window.leg &&
 						Option.isNone(activity.endedAt) &&
 						!holds(activity, window)
@@ -468,7 +455,7 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 				Array.map(end => end.bundle)
 			)
 			const outcomes = yield* Effect.forEach(
-				showPlan(state.devices, state.activities, flight, window, requested),
+				showPlan(state.devices, state.activities, flight, window),
 				action => {
 					if (!ShowAction.isAnyOf(['launch'])(action)) return Effect.result(refresh(action.target, showing.props, now))
 					if (Array.contains(held, action.target.bundle)) return Effect.result(Effect.void)
@@ -483,13 +470,13 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 		})
 
 		// A device whose token died leaves the list with its first failed alert.
-		const notify = Effect.fnUntraced(function* (device: Device, alert: Alert, booking: Booking) {
+		const notify = Effect.fnUntraced(function* (device: Device, alert: Alert, flight: Flight) {
 			const answer = yield* apns.sendToDevice(
 				device,
 				'alert',
 				{
-					aps: {alert: {body: alert.body, title: alert.title}, sound: 'default', 'thread-id': booking.id},
-					bookingId: booking.id
+					aps: {alert: {body: alert.body, title: alert.title}, sound: 'default', 'thread-id': flight.id},
+					flightId: flight.id
 				},
 				10
 			)
@@ -505,42 +492,42 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 		})
 
 		const listDeliveries = SqlSchema.findAll({
-			Request: BookingId,
+			Request: FlightId,
 			Result: AlertDelivery,
-			execute: id => sql`SELECT * FROM ${sql(AlertDelivery.table)} WHERE bookingId = ${id} ORDER BY sentAt`
+			execute: id => sql`SELECT * FROM ${sql(AlertDelivery.table)} WHERE flightId = ${id} ORDER BY sentAt`
 		})
 		const recordDelivery = SqlSchema.void({
 			Request: AlertDelivery.insert,
 			execute: row =>
 				sql`INSERT INTO ${sql(AlertDelivery.table)} ${sql.insert(row)} ON CONFLICT DO UPDATE SET sentAt = excluded.sentAt`
 		})
-		// Only a booking with something to say reads its receipts, through their index on (bookingId, sentAt).
-		const announce = Effect.fnUntraced(function* (booking: Booking, now: DateTime.Utc) {
-			const candidates = alertsOf(booking, now)
+		// Only a flight with something to say reads its receipts, through their index on (flightId, sentAt).
+		const announce = Effect.fnUntraced(function* (flight: Flight, now: DateTime.Utc) {
+			const candidates = alertsOf(flight, now)
 			if (Array.isReadonlyArrayEmpty(candidates)) return
-			const sent = yield* asPushReadError(listSent(booking.id))
+			const sent = yield* asPushReadError(listSent(flight.id))
 			const due = Array.filter(candidates, alert => perDevice(alert) || !announced(sent, alert))
 			if (Array.isReadonlyArrayEmpty(due)) return
-			const delivered = yield* asPushReadError(listDeliveries(booking.id))
+			const delivered = yield* asPushReadError(listDeliveries(flight.id))
 			yield* Effect.forEach(
 				due,
 				Effect.fnUntraced(function* (alert) {
 					const devices = Array.filter(yield* asPushReadError(listDevices()), device => device.kind === 'alert')
 					const row = {
-						bookingId: booking.id,
 						category: alert.category,
+						flightId: flight.id,
 						sentAt: now,
 						value: Option.fromUndefinedOr(alert.value)
 					}
 					const pending = unannouncedDevices(devices, delivered, alert)
-					// The booking-wide record of a per-device value is a summary, written once every phone has it.
+					// The flight-wide record of a per-device value is a summary, written once every phone has it.
 					if (perDevice(alert) && Array.isReadonlyArrayEmpty(pending) && announced(sent, alert)) return
 					const outcomes = yield* Effect.forEach(
 						pending,
 						device =>
 							Effect.catch(
 								Effect.gen(function* () {
-									if (!(yield* notify(device, alert, booking))) return false
+									if (!(yield* notify(device, alert, flight))) return false
 									yield* asPushSaveError(recordDelivery({...row, token: device.token}))
 									return true
 								}),
@@ -559,45 +546,39 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 			Effect.gen(function* () {
 				if (!apns.enabled) return
 				const now = yield* DateTime.now
-				const all = yield* bookings.list
+				const all = yield* flights.list
 				const state = yield* roundState
-				const requests = yield* asPushReadError(listRequests())
-				const requestsById = Array.groupBy(requests, request => request.bookingId)
 				yield* Effect.forEach(
 					all,
-					booking => {
-						const requested = Option.map(Array.head(requestsById[booking.id] ?? []), request => request.at)
-						return Effect.ignore(
+					flight =>
+						Effect.ignore(
 							Effect.gen(function* () {
-								yield* Effect.ignore(announce(booking, now), {
+								yield* Effect.ignore(announce(flight, now), {
 									log: 'Warn',
-									message: `The alerts of ${booking.id} were not sent`
+									message: `The alerts of ${flight.id} were not sent`
 								})
-								if (Booking.isAnyOf(['stay'])(booking)) return
-								yield* Option.match(activeWindow(booking, now, requested), {
+								yield* Option.match(activeWindow(flight, now), {
 									onNone: () => Effect.void,
-									onSome: window => show(booking, window, all, now, requested, state)
+									onSome: window => show(flight, window, now, state)
 								})
 							}),
-							{log: 'Warn', message: `The Live Activity of ${booking.id} was not updated`}
-						)
-					},
+							{log: 'Warn', message: `The Live Activity of ${flight.id} was not updated`}
+						),
 					{concurrency: 1, discard: true}
 				)
 				yield* Effect.forEach(
-					expiredActivities(state.activities, all, now, requests),
+					expiredActivities(state.activities, all, now),
 					activity => Effect.ignore(finish(activity, now), {log: 'Warn', message: 'An activity was not ended'}),
 					{concurrency: 1, discard: true}
 				)
-				// Nothing reads an activity two days after it ended, or the alerts of a booking that left.
+				// Nothing reads an activity two days after it ended, or the alerts of a flight that left.
 				yield* pipe(
 					Effect.andThen(
 						forgetEndedBefore(DateTime.subtractDuration(now, Duration.days(2))),
 						Effect.all(
 							[
-								forgetSentExcept(Array.map(all, booking => booking.id)),
-								sql`DELETE FROM requests WHERE bookingId NOT IN ${sql.in(Array.map(all, booking => booking.id))}`,
-								sql`DELETE FROM deliveries WHERE bookingId NOT IN ${sql.in(Array.map(all, booking => booking.id))}`
+								forgetSentExcept(Array.map(all, flight => flight.id)),
+								sql`DELETE FROM deliveries WHERE flightId NOT IN ${sql.in(Array.map(all, flight => flight.id))}`
 							],
 							{concurrency: 1, discard: true}
 						)
@@ -614,14 +595,15 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 		yield* pipe(tick, Effect.repeat(Schedule.spaced('30 seconds')), Effect.forkScoped)
 		yield* Effect.forkScoped(
 			pipe(
-				bookings.watch,
+				flights.watch,
 				Stream.debounce('2 seconds'),
 				Stream.runForEach(() => tick),
-				Effect.ignore({log: 'Warn', message: 'The bookings stopped reaching the push rounds'})
+				Effect.ignore({log: 'Warn', message: 'The flights stopped reaching the push rounds'})
 			)
 		)
 
 		return {
+			// A round follows each registration, so a phone that registers inside a flight's window gets its Live Activity and the alerts it is owed at once; activities start only this way.
 			register: Effect.fn('Push.register')(function* (device: typeof Device.insert.Type) {
 				yield* pipe(
 					Effect.gen(function* () {
@@ -631,33 +613,8 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 					sql.withTransaction,
 					asPushSaveError
 				)
-			}),
-			start: Effect.fn('Push.start')(function* (id: BookingId) {
-				if (!apns.enabled) return yield* PushError.make({message: 'The server has no Apple push configuration.'})
-				const all = yield* asPushError('The bookings could not be read.')(bookings.list)
-				const booking = yield* Option.match(
-					pipe(
-						all,
-						Array.findFirst(item => item.id === id),
-						Option.filter(Booking.isAnyOf(['flight']))
-					),
-					{onNone: () => PushError.make({message: 'This booking is not a flight.'}), onSome: Effect.succeed}
-				)
-				const now = yield* DateTime.now
-				if (!startable(booking, now)) return yield* PushError.make({message: 'This flight cannot be started now.'})
-				const window = yield* Option.match(activeWindow(booking, now, Option.some(now)), {
-					onNone: () => PushError.make({message: 'This flight has no Live Activity window.'}),
-					onSome: Effect.succeed
-				})
-				const state = yield* roundState
-				if (Array.isReadonlyArrayEmpty(showPlan(state.devices, state.activities, booking, window, Option.some(now)))) {
-					return yield* PushError.make({message: 'No registered device can start this Live Activity.'})
-				}
-				yield* asPushSaveError(recordRequest({at: now, bookingId: booking.id}))
-				yield* asPushError('The Live Activity could not be started.')(
-					show(booking, window, all, now, Option.some(now), state)
-				)
-			}, Semaphore.withPermit(ticking))
+				yield* tick
+			})
 		}
 	})
 }) {
@@ -747,6 +704,21 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 						ON CONFLICT (channel) DO NOTHING
 					`
 					yield* sql`DELETE FROM activities WHERE json_extract(props, '$.kind') = 'train'`
+				}),
+				// Baggage belts left, and a belt's alert records name a category that no longer decodes.
+				'0008_no_belts': Effect.gen(function* () {
+					const sql = yield* SqlClient.SqlClient
+					yield* sql`DELETE FROM sent_alerts WHERE category = 'belt'`
+					yield* sql`DELETE FROM deliveries WHERE category = 'belt'`
+				}),
+				// Trips holds only flights, so each table names the flight its rows belong to.
+				'0009_flight_ids': Effect.gen(function* () {
+					const sql = yield* SqlClient.SqlClient
+					yield* sql`ALTER TABLE activities RENAME COLUMN bookingId TO flightId`
+					yield* sql`ALTER TABLE sent_alerts RENAME COLUMN bookingId TO flightId`
+					yield* sql`ALTER TABLE deliveries RENAME COLUMN bookingId TO flightId`
+					// Live Activities start only by themselves, so nothing reads when one was asked for.
+					yield* sql`DROP TABLE requests`
 				})
 			}),
 			table: 'push_migrations'

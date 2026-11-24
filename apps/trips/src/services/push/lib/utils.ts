@@ -13,12 +13,12 @@ import {
 	labelled,
 	line,
 	routeOf,
-	titleOf
-} from '#services/bookings/lib/utils.ts'
-import {Booking} from '#services/bookings/schema.ts'
-import type {Flight, Leg} from '#services/bookings/schema.ts'
+	titleOf,
+	travellersLine
+} from '#services/flights/lib/utils.ts'
+import type {FlightList, Flight, Leg} from '#services/flights/schema.ts'
 import {ShowAction} from '#services/push/schema.ts'
-import type {Activity, AlertCategory, AlertDelivery, SentAlert, StartRequest} from '#services/push/schema.ts'
+import type {Activity, AlertCategory, AlertDelivery, SentAlert} from '#services/push/schema.ts'
 import {isStale} from '#services/tracking/lib/utils.ts'
 
 export type Span = {end: DateTime.Utc; start: DateTime.Utc}
@@ -32,12 +32,12 @@ export function holds(activity: Activity, window: Span) {
 	})
 }
 
-// A gate or belt is a value each phone must end on, so it is reconciled per device, never skipped for a booking-wide record; the other categories are once per booking.
+// A gate is a value each phone must end on, so it is reconciled per device, never skipped for a flight-wide record; the other categories are once per flight.
 export function perDevice(alert: Alert) {
 	return alert.value !== undefined && alert.category !== 'delay'
 }
 
-// `sent` holds the keys sent for the booking, oldest first.
+// `sent` holds the keys sent for the flight, oldest first.
 export function announced(sent: readonly SentAlert[], alert: Alert) {
 	if (alert.value === undefined || alert.category === 'delay') {
 		return Array.some(
@@ -71,17 +71,12 @@ export function showPlan(
 	devices: readonly Device[],
 	activities: readonly Activity[],
 	flight: Flight,
-	window: Span & {leg: Leg},
-	requested: Option.Option<DateTime.Utc> = Option.none()
+	window: Span & {leg: Leg}
 ) {
 	const starters = Array.filter(devices, device => device.kind === 'start' && !cancelledOf(flight))
 	const covering = Array.filter(
 		activities,
-		item =>
-			item.bookingId === flight.id &&
-			item.leg === window.leg &&
-			holds(item, window) &&
-			!Option.exists(item.endedAt, ended => Option.exists(requested, at => DateTime.isGreaterThan(at, ended)))
+		item => item.flightId === flight.id && item.leg === window.leg && holds(item, window)
 	)
 	const startersByBundle = Array.groupBy(starters, device => device.bundle)
 	const coveringByBundle = Array.groupBy(covering, item => item.bundle)
@@ -102,28 +97,15 @@ export function showPlan(
 	)
 }
 
-// Running activities whose window has passed, or whose booking is gone.
-export function expiredActivities(
-	activities: readonly Activity[],
-	bookings: readonly Booking[],
-	now: DateTime.Utc,
-	requests: readonly StartRequest[] = []
-) {
-	const requestsById = Array.groupBy(requests, request => request.bookingId)
-	const byId = Array.groupBy(bookings, booking => booking.id)
+// Running activities whose window has passed, or whose flight is gone.
+export function expiredActivities(activities: readonly Activity[], flights: FlightList, now: DateTime.Utc) {
+	const byId = Array.groupBy(flights, flight => flight.id)
 	return Array.filter(
 		activities,
 		activity =>
 			Option.isNone(activity.endedAt) &&
-			!Option.exists(Array.head(byId[activity.bookingId] ?? []), found =>
-				Option.exists(
-					activeWindow(
-						found,
-						now,
-						Option.map(Array.head(requestsById[activity.bookingId] ?? []), request => request.at)
-					),
-					window => window.leg === activity.leg
-				)
+			!Option.exists(Array.head(byId[activity.flightId] ?? []), found =>
+				Option.exists(activeWindow(found, now), window => window.leg === activity.leg)
 			)
 	)
 }
@@ -221,23 +203,13 @@ function flightAlerts(flight: Flight, now: DateTime.Utc, stale: boolean) {
 								),
 								Function.constant('Check the gate')
 							),
-							labelled('group', flight.boardingGroup)
+							labelled(
+								'group',
+								travellersLine(flight, traveller => traveller.boardingGroup)
+							)
 						]),
 						category: 'boarding',
 						title: `${title} boards at ${clockAt(at, flight.from.timeZone)}`
-					}) satisfies Alert
-			)
-		),
-		pipe(
-			live,
-			Option.flatMap(report => report.belt),
-			Option.map(
-				belt =>
-					({
-						body: flight.to.name,
-						category: 'belt',
-						title: `${title} bags on belt ${belt}`,
-						value: belt
 					}) satisfies Alert
 			)
 		)
@@ -245,13 +217,12 @@ function flightAlerts(flight: Flight, now: DateTime.Utc, stale: boolean) {
 }
 
 // The changes worth a notification, each under a key sent once; a delay counts in steps so a drifting estimate stays quiet, and a cancellation is the only news a cancelled flight gets.
-export function alertsOf(booking: Booking, now: DateTime.Utc) {
+export function alertsOf(flight: Flight, now: DateTime.Utc) {
 	if (
-		Booking.isAnyOf(['stay'])(booking) ||
-		DateTime.isGreaterThan(now, DateTime.addDuration(arrivalOf(booking), Duration.hours(1))) ||
-		DateTime.isLessThan(now, DateTime.subtractDuration(booking.departs, Duration.hours(30)))
+		DateTime.isGreaterThan(now, DateTime.addDuration(arrivalOf(flight), Duration.hours(1))) ||
+		DateTime.isLessThan(now, DateTime.subtractDuration(flight.departs, Duration.hours(30)))
 	) {
 		return Array.empty<Alert>()
 	}
-	return flightAlerts(booking, now, isStale(booking, now))
+	return flightAlerts(flight, now, isStale(flight, now))
 }

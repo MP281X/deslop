@@ -5,16 +5,16 @@ import {HttpIncomingMessage, HttpRouter, HttpServerRequest, HttpServerResponse} 
 
 import {CurrentUser} from '@deslop/runtime/shared/auth'
 
-import {BookingSource, BookingsError, IMAGE_BYTES} from '#services/bookings/schema.ts'
-import {Bookings} from '#services/bookings/service.ts'
+import {TicketSource, FlightsError, IMAGE_BYTES} from '#services/flights/schema.ts'
+import {Flights} from '#services/flights/service.ts'
 
-function ticket(made: Effect.Effect<BookingSource, SchemaIssue.Issue>) {
-	return Effect.mapError(made, cause => BookingsError.make({cause, message: 'The ticket is empty or too large.'}))
+function ticket(made: Effect.Effect<TicketSource, SchemaIssue.Issue>) {
+	return Effect.mapError(made, cause => FlightsError.make({cause, message: 'The ticket is empty or too large.'}))
 }
 
 export const HttpHandlers = HttpRouter.use(router =>
 	Effect.gen(function* () {
-		const bookings = yield* Bookings
+		const flights = yield* Flights
 		yield* router.add(
 			'POST',
 			'/share',
@@ -25,19 +25,19 @@ export const HttpHandlers = HttpRouter.use(router =>
 					return yield* pipe(
 						Match.value(pipe(request.headers['content-type'] ?? '', String.split(';'), parts => String.trim(parts[0]))),
 						Match.when('application/pdf', () =>
-							Option.some((bytes: Uint8Array) => ticket(BookingSource.cases.pdf.makeEffect({pdf: bytes})))
+							Option.some((bytes: Uint8Array) => ticket(TicketSource.cases.pdf.makeEffect({pdf: bytes})))
 						),
 						Match.when('image/jpeg', () =>
-							Option.some((bytes: Uint8Array) => ticket(BookingSource.cases.image.makeEffect({image: bytes})))
+							Option.some((bytes: Uint8Array) => ticket(TicketSource.cases.image.makeEffect({image: bytes})))
 						),
 						Match.when('application/vnd.apple.pkpass', () =>
 							Option.some((bytes: Uint8Array) =>
-								Effect.flatMap(bookings.passText(bytes), text => ticket(BookingSource.cases.text.makeEffect({text})))
+								Effect.flatMap(flights.passText(bytes), text => ticket(TicketSource.cases.text.makeEffect({text})))
 							)
 						),
 						Match.when('text/plain', () =>
 							Option.some((bytes: Uint8Array) =>
-								ticket(BookingSource.cases.text.makeEffect({text: new TextDecoder().decode(bytes)}))
+								ticket(TicketSource.cases.text.makeEffect({text: new TextDecoder().decode(bytes)}))
 							)
 						),
 						Match.orElse(() => Option.none()),
@@ -48,8 +48,8 @@ export const HttpHandlers = HttpRouter.use(router =>
 								),
 							onSome: source =>
 								Effect.gen(function* () {
-									const booking = yield* source(new Uint8Array(yield* request.arrayBuffer))
-									yield* bookings.save((yield* CurrentUser).id, booking)
+									const flight = yield* source(new Uint8Array(yield* request.arrayBuffer))
+									yield* flights.save((yield* CurrentUser).id, flight)
 									return HttpServerResponse.empty({status: 204})
 								})
 						})
@@ -57,7 +57,7 @@ export const HttpHandlers = HttpRouter.use(router =>
 				}),
 				Effect.provideService(HttpIncomingMessage.MaxBodySize, ByteSize.bytes(IMAGE_BYTES)),
 				Effect.catchTags({
-					BookingsError: error => Effect.succeed(HttpServerResponse.text(error.message, {status: 422})),
+					FlightsError: error => Effect.succeed(HttpServerResponse.text(error.message, {status: 422})),
 					HttpServerError: error =>
 						Effect.succeed(
 							pipe(

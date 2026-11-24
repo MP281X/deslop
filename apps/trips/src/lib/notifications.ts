@@ -13,7 +13,7 @@ import {registerPushTokens} from '@deslop/runtime/mobile/push-token'
 import {ApnsToken} from '@deslop/runtime/shared/apns'
 
 import {RpcClient, session} from '#lib/session.ts'
-import {BookingsError} from '#services/bookings/schema.ts'
+import {FlightsError} from '#services/flights/schema.ts'
 import {PushBundle} from '#services/push/schema.ts'
 
 const apns = Effect.map(Schema.decodeUnknownEffect(PushBundle)(applicationId), bundle => ({bundle}))
@@ -34,7 +34,7 @@ export const pushAtom = RpcClient.runtime.atom(get =>
 			const client = yield* RpcClient
 			const alerts = Effect.gen(function* () {
 				const permission = yield* Effect.tryPromise({
-					catch: cause => BookingsError.make({cause, message: 'The notification permission could not be asked.'}),
+					catch: cause => FlightsError.make({cause, message: 'The notification permission could not be asked.'}),
 					try: () => requestPermissionsAsync()
 				})
 				if (!permission.granted) return
@@ -42,7 +42,7 @@ export const pushAtom = RpcClient.runtime.atom(get =>
 				yield* registerPushTokens(
 					addPushTokenListener,
 					Effect.tryPromise({
-						catch: cause => BookingsError.make({cause, message: 'The push token could not be read.'}),
+						catch: cause => FlightsError.make({cause, message: 'The push token could not be read.'}),
 						try: () => getDevicePushTokenAsync()
 					}),
 					token => client('push.register', {...target, kind: 'alert', token: Redacted.make(ApnsToken.make(token))})
