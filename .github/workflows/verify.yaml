@@ -1,11 +1,8 @@
 name: Verify
-# The run record names only the pull request's head; Release reads the merge commit GitHub tested from here.
-run-name: ${{ github.sha }} ${{ github.event.pull_request.title }}
 
-# Every pull request, on GitHub's merge with its base rather than the branch alone; Release repeats this unless the merged tree already passed.
+# Every pull request, on GitHub's merge with its base rather than the branch alone; Release runs the same steps on what it ships.
 on:
   pull_request:
-  workflow_call:
 
 # For a pull request the ref is its merge ref, so a new push replaces only that pull request's older run.
 concurrency:
@@ -13,58 +10,12 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # Release calls this only for a tree no pull request run verified, so its probe runs before anything ships.
-  build:
-    name: Build
+  # One job, one setup: the steps share the install and the task cache.
+  verify:
+    name: Verify
     runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup
         with: {tasks: 'true'}
-      - name: Build applications
-        run: vp run build
-      - name: Probe built server authorization
-        run: |
-          for entry in apps/*/src/main.server.ts; do
-            node "${entry%/src/main.server.ts}/dist/server.js" probe
-          done
-
-  check:
-    name: Check
-    runs-on: ubuntu-26.04
-    steps:
-      - uses: actions/checkout@v7
-      - uses: ./.github/actions/setup
-        with: {tasks: 'true'}
-      - name: Shared agent instructions
-        shell: bash
-        run: diff <(sed -n '/^# Work/,$p' .claude/agents/pair.md) <(sed -n '/^# Work/,$p' .codex/instructions.md)
-      - name: Format, lint, types and dead code
-        run: vp run check
-      # Generators read the manifests of one checkout, so two branches can each take the same next port.
-      - name: One default port per app
-        shell: bash
-        run: |
-          ports=$(jq -r '"\(.config.port | tojson)\t\(input_filename)"' apps/*/package.json)
-          failed=0
-          while IFS=$'\t' read -r port manifest; do
-            if ! [[ $port =~ ^[1-9][0-9]{3,4}$ ]] || ((port < 1024 || port > 65535)); then
-              echo "::error file=$manifest::config.port must be an integer from 1024 to 65535, not $port"
-              failed=1
-            fi
-          done <<< "$ports"
-          for port in $(cut -f1 <<< "$ports" | sort | uniq -d); do
-            echo "::error::Default port $port is taken by $(awk -F'\t' -v port="$port" '$1 == port {print $2}' <<< "$ports" | paste -sd ' ')"
-            failed=1
-          done
-          exit "$failed"
-
-  test:
-    name: Test
-    runs-on: ubuntu-26.04
-    steps:
-      - uses: actions/checkout@v7
-      - uses: ./.github/actions/setup
-        with: {tasks: 'true'}
-      - name: Tests
-        run: vp run test
+      - uses: ./.github/actions/verify

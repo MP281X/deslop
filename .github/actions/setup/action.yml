@@ -25,6 +25,7 @@ runs:
     # With pnpm, 5s where npm took 15s on Linux and 35s on the Mac; from home, outside the workspace, whose strict peer checks would reject the EAS CLI's dependencies.
     # PNPM_HOME stays in this step: pnpm keeps its store under it, so later installs, EAS's included, would miss the store the workspace's install filled.
     # A local build otherwise fetches its plugin, versioned as the CLI's @expo/eas-build-job, with npx on every build, about 25s on the Mac; its terminal sessions need node-pty's install script.
+    # Through git, a local build clones the repository and copies the working tree over the clone, so its archive holds every tracked file twice; EAS_NO_VCS copies the working tree alone.
     - name: Install the EAS CLI
       if: inputs.eas == 'true'
       shell: bash
@@ -39,18 +40,20 @@ runs:
         if [[ $IOS == true ]]; then
           packages+=("eas-cli-local-build-plugin@$(pnpm view "eas-cli@$cli" 'dependencies.@expo/eas-build-job')")
           echo "EAS_LOCAL_BUILD_PLUGIN_PATH=$PNPM_HOME/bin/eas-cli-local-build-plugin" >> "$GITHUB_ENV"
+          echo "EAS_NO_VCS=1" >> "$GITHUB_ENV"
         fi
         pnpm add --global --allow-build=node-pty "${packages[@]}"
         echo "$PNPM_HOME/bin" >> "$GITHUB_PATH"
 
-    # After the install, which recreates node_modules, each job restores its own newest entries and saves the next once it succeeds, so the key rolls with each run.
+    # After the install, which recreates node_modules, a job restores the newest entries it can read and saves the next once it succeeds, so the key rolls with each run.
+    # Verify and Release run the same tasks, so they share one key: a pull request starts from the cache Release saved on main.
     - name: Restore the task cache
       if: inputs.tasks == 'true'
       uses: actions/cache@v6
       with:
         path: node_modules/.vite/task-cache
-        key: vite-task-${{ runner.os }}-${{ runner.arch }}-${{ github.job }}-${{ github.run_id }}-${{ github.run_attempt }}
-        restore-keys: vite-task-${{ runner.os }}-${{ runner.arch }}-${{ github.job }}-
+        key: vite-task-${{ runner.os }}-${{ runner.arch }}-${{ github.run_id }}-${{ github.run_attempt }}
+        restore-keys: vite-task-${{ runner.os }}-${{ runner.arch }}-
 
     # CocoaPods and the Hermes tarball download with curl to files, so stalled transfers retry; this comes after setup-vp, whose installer streams into bash where a retry would append a second script.
     - name: Retry stalled downloads
