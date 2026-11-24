@@ -20,6 +20,8 @@ defaults:
 env:
   APP_VARIANT: production
   DESLOP_DOMAIN: ${{ vars.DESLOP_DOMAIN }}
+  # The App Store build's version and build number, and each published package's version.
+  RELEASE_NUMBER: ${{ github.run_number }}
 
 jobs:
   verify:
@@ -99,12 +101,12 @@ jobs:
               echo "- $name unchanged" >> "$GITHUB_STEP_SUMMARY"
               continue
             fi
-            npm pkg set "version=0.1.$GITHUB_RUN_NUMBER" "fingerprint=$fingerprint"
+            npm pkg set "version=0.1.$RELEASE_NUMBER" "fingerprint=$fingerprint"
             if [[ $package == tools/* ]]; then vp run build; fi
             pack=$(mktemp -d)
             vp pm pack --pack-destination "$pack" > /dev/null
             npm publish --loglevel=warn "$pack"/*.tgz
-            echo "- $name 0.1.$GITHUB_RUN_NUMBER" >> "$GITHUB_STEP_SUMMARY"
+            echo "- $name 0.1.$RELEASE_NUMBER" >> "$GITHUB_STEP_SUMMARY"
           done
 
       # A run holding an unexpired artifact stays: an App Store receipt keeps the next release from uploading its fingerprint again, a Simulator build keeps a Mac from building it again.
@@ -155,7 +157,7 @@ jobs:
           ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
           FINGERPRINT: ${{ matrix.fingerprint }}
         run: |
-          jq -n --arg app "$APP" --arg build "$GITHUB_RUN_NUMBER" --arg fingerprint "$FINGERPRINT" --arg commit "$GITHUB_SHA" \
+          jq -n --arg app "$APP" --arg build "$RELEASE_NUMBER" --arg fingerprint "$FINGERPRINT" --arg commit "$GITHUB_SHA" \
             '{app: $app, version: "0.1.\($build)", build: $build, fingerprint: $fingerprint, commit: $commit}' > "$RUNNER_TEMP/receipt.json"
           mkdir -p "$HOME/.appstoreconnect/private_keys"
           printf '%s\n' "$ASC_KEY_P8" > "$HOME/.appstoreconnect/private_keys/AuthKey_$ASC_KEY_ID.p8"
