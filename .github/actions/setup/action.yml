@@ -1,67 +1,42 @@
 name: Set up
-description: Node, Vite+ and the workspace's dependencies; on request the job's last task cache, the EAS CLI and an iOS build's downloads.
-
-inputs:
-  tasks:
-    description: Restore and save the Vite+ task cache, for jobs that run `vp run`.
-    default: 'false'
-  eas:
-    description: Install the EAS CLI as `eas`.
-    default: 'false'
-  ios:
-    description: Prepare a local iOS build.
-    default: 'false'
+description: Node, Vite+, the workspace's dependencies and the EAS CLI; on a Mac, what a local iOS build downloads.
 
 runs:
   using: composite
   steps:
     # No pnpm store cache: downloading the packages beats restoring the store, 15s against 31s on Linux and 35s against 80s on the Mac.
-    - name: Install Node, Vite+ and dependencies
-      uses: voidzero-dev/setup-vp@v1.22.0
+    - uses: voidzero-dev/setup-vp@v1.22.0
       with:
         node-version: '26'
         run-install: true
 
-    # With pnpm, 5s where npm took 15s on Linux and 35s on the Mac; from home, outside the workspace, whose strict peer checks would reject the EAS CLI's dependencies.
-    # PNPM_HOME stays in this step: pnpm keeps its store under it, so later installs, EAS's included, would miss the store the workspace's install filled.
-    # A local build otherwise fetches its plugin, versioned as the CLI's @expo/eas-build-job, with npx on every build, about 25s on the Mac; its terminal sessions need node-pty's install script.
+    # With pnpm from home, outside the workspace, whose strict peer checks would reject the EAS CLI's dependencies; PNPM_HOME stays in this step, so the workspace's store is untouched.
+    # On a Mac, a local build otherwise fetches its plugin with npx on every build, about 25s, and through git copies every tracked file twice; EAS_NO_VCS copies the working tree alone.
     - name: Install the EAS CLI
-      if: inputs.eas == 'true'
       shell: bash
-      env:
-        IOS: ${{ inputs.ios }}
       run: |
         export PNPM_HOME="$RUNNER_TEMP/pnpm"
         export PATH="$PNPM_HOME/bin:$PATH"
         cd ~
         cli=$(pnpm view eas-cli version)
         packages=("eas-cli@$cli")
-        if [[ $IOS == true ]]; then
+        if [[ $RUNNER_OS == macOS ]]; then
           packages+=("eas-cli-local-build-plugin@$(pnpm view "eas-cli@$cli" 'dependencies.@expo/eas-build-job')")
           echo "EAS_LOCAL_BUILD_PLUGIN_PATH=$PNPM_HOME/bin/eas-cli-local-build-plugin" >> "$GITHUB_ENV"
+          echo "EAS_NO_VCS=1" >> "$GITHUB_ENV"
         fi
         pnpm add --global --allow-build=node-pty "${packages[@]}"
         echo "$PNPM_HOME/bin" >> "$GITHUB_PATH"
 
-    # After the install, which recreates node_modules, each job restores its own newest entries and saves the next once it succeeds, so the key rolls with each run.
-    - name: Restore the task cache
-      if: inputs.tasks == 'true'
-      uses: actions/cache@v6
-      with:
-        path: node_modules/.vite/task-cache
-        key: vite-task-${{ runner.os }}-${{ runner.arch }}-${{ github.job }}-${{ github.run_id }}-${{ github.run_attempt }}
-        restore-keys: vite-task-${{ runner.os }}-${{ runner.arch }}-${{ github.job }}-
-
-    # CocoaPods and the Hermes tarball download with curl to files, so stalled transfers retry; this comes after setup-vp, whose installer streams into bash where a retry would append a second script.
+    # CocoaPods and the Hermes tarball download with curl to files, so stalled transfers retry; after setup-vp, whose installer streams into bash where a retry would append a second script.
     - name: Retry stalled downloads
-      if: inputs.ios == 'true'
+      if: runner.os == 'macOS'
       shell: bash
       run: printf '%s\n' 'retry = 5' 'retry-all-errors' 'connect-timeout = 15' 'speed-limit = 10000' 'speed-time = 30' > ~/.curlrc
 
-    # One cache for every app: their pods come from the same lockfile, and the Hermes tarball's mirror often stalls.
-    # Only main saves it, and every branch can read main's; a copy per branch, about 420 MB each that only its branch could read, took 8 of the repository's 10 GB.
+    # One cache for every app, as their pods come from the same lockfile. Only main saves it: a copy per branch, about 420 MB each, filled the repository's 10 GB.
     - name: Restore and save the CocoaPods cache
-      if: inputs.ios == 'true' && github.ref == 'refs/heads/main'
+      if: runner.os == 'macOS' && github.ref == 'refs/heads/main'
       uses: actions/cache@v6
       with:
         path: |
@@ -70,7 +45,7 @@ runs:
         key: pods-${{ hashFiles('pnpm-lock.yaml') }}
         restore-keys: pods-
     - name: Restore the CocoaPods cache
-      if: inputs.ios == 'true' && github.ref != 'refs/heads/main'
+      if: runner.os == 'macOS' && github.ref != 'refs/heads/main'
       uses: actions/cache/restore@v6
       with:
         path: |

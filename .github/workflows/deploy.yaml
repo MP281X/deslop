@@ -1,11 +1,13 @@
 name: Release
 
-# The file keeps its name: npm trusts `deploy.yaml` to publish @deslop/coding-standards.
+# The file keeps its name: npm trusts `deploy.yaml` to publish the packages.
+# A pull request runs Verify on GitHub's merge with its base; main runs it on what it ships, then releases.
 on:
+  pull_request:
   push:
     branches: [main]
 
-# A newer push replaces the older run; each release ships everything since the last one.
+# A newer push replaces the older run: a pull request's ref is its merge ref, and each release ships everything since the last one.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -15,176 +17,157 @@ defaults:
   run:
     shell: bash
 
+env:
+  APP_VARIANT: production
+  DESLOP_DOMAIN: ${{ vars.DESLOP_DOMAIN }}
+  # The App Store build's version and build number, and each published package's version.
+  RELEASE_NUMBER: ${{ github.run_number }}
+
 jobs:
-  plan:
-    name: Plan
+  verify:
+    name: Verify
     runs-on: ubuntu-26.04
+    timeout-minutes: 40
+    permissions:
+      actions: write
+      contents: read
+      id-token: write
     outputs:
-      mobile: ${{ steps.apps.outputs.apps }}
-      verified: ${{ steps.proof.outputs.verified }}
+      app-store: ${{ steps.native.outputs.apps }}
     steps:
       - uses: actions/checkout@v7
-      - name: Discover mobile apps
-        id: apps
-        uses: ./.github/actions/mobile-apps
-      # GitHub's run record is the proof, not a PR-writable artifact, cache or named check.
-      # A pull request run tests GitHub's merge with its base of that moment, `main` or a stack's lower layer, so it proves this release only when that merge holds this commit's tree.
-      # Its run name starts with that merge commit: once the trees match, the run name came from this commit's own verify.yaml.
-      # A skipped job leaves a run green, so every job must have succeeded, the three named ones included.
-      # A missing/failed lookup leaves the output unset and runs Verify normally.
-      - name: Is this tree already verified?
-        id: proof
+      - uses: ./.github/actions/setup
+      # The key rolls with each run: a job restores the newest entry it can read, so a pull request starts from main's.
+      - uses: actions/cache@v6
+        with:
+          path: node_modules/.vite/task-cache
+          key: vite-task-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: vite-task-
+      - name: Format, lint, types, dead code and repository checks
+        run: vp run check
+      - name: Build
+        run: vp run build
+      - name: Probe each built server's authorization
+        run: for app in auth deploy gateway opm portfolio scope stash trips; do node "apps/$app/dist/server.js" probe; done
+      - name: Test
+        run: vp run test
+
+      # Apple's acceptance leaves a receipt named for the fingerprint that expires after 80 days, ten before TestFlight drops the build; a fingerprint without one builds on a Mac.
+      - name: Find the iPhone apps with a native change
+        id: native
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: |
+          builds=()
+          for app in opm stash trips; do
+            fingerprint=$(cd "apps/$app" && eas fingerprint:generate --platform ios --build-profile production --json --non-interactive | jq -r .hash)
+            artifact="$app-app-store-$fingerprint"
+            held=$(gh api "repos/$GITHUB_REPOSITORY/actions/artifacts?name=$artifact" --jq '[.artifacts[] | select(.expired | not)] | length')
+            if [[ $held == 0 ]]; then
+              builds+=("$(jq -cn --arg app "$app" --arg artifact "$artifact" --arg fingerprint "$fingerprint" '{$app, $artifact, $fingerprint}')")
+              echo "- $app builds $artifact" >> "$GITHUB_STEP_SUMMARY"
+            fi
+          done
+          echo "apps=$(jq -sc . <<< "${builds[*]}")" >> "$GITHUB_OUTPUT"
+
+      # The runtime version is the native fingerprint, so a phone takes an update only on a build with the same native code.
+      # Each export gets its own directory: Expo empties its output first, and `dist` holds the probed server.
+      - name: Publish each iPhone app's EAS Update
+        if: github.event_name == 'push'
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: |
+          message=$(git log -1 --format=%s)
+          for app in opm stash trips; do
+            (cd "apps/$app" && eas update --channel production --environment production --platform ios --non-interactive --input-dir "$RUNNER_TEMP/update-$app" --message="$message")
+          done
+
+      # The fingerprint is the hash of the tarball packed before the version bump, which packs the same bytes each time, so an unchanged package and a retry's published one both skip.
+      # An app bundles everything, so its manifest drops dependencies, scripts and the Expo entry; the standards CLI bundles its version, so it builds again after the bump.
+      - name: Publish changed packages
+        if: github.event_name == 'push'
+        run: |
+          for package in tools/coding-standards apps/{auth,deploy,gateway,opm,portfolio,scope,stash,trips}; do
+            cd "$GITHUB_WORKSPACE/$package"
+            if [[ $package == apps/* ]]; then npm pkg delete dependencies devDependencies scripts main; fi
+            pack=$(mktemp -d)
+            vp pm pack --pack-destination "$pack" > /dev/null
+            fingerprint=$(sha256sum "$pack"/*.tgz | cut -c1-64)
+            name=$(jq -r .name package.json)
+            published=$(npm view "$name" fingerprint)
+            if [[ $published == "$fingerprint" ]]; then
+              echo "- $name unchanged" >> "$GITHUB_STEP_SUMMARY"
+              continue
+            fi
+            npm pkg set "version=0.1.$RELEASE_NUMBER" "fingerprint=$fingerprint"
+            if [[ $package == tools/* ]]; then vp run build; fi
+            pack=$(mktemp -d)
+            vp pm pack --pack-destination "$pack" > /dev/null
+            npm publish --loglevel=warn "$pack"/*.tgz
+            echo "- $name 0.1.$RELEASE_NUMBER" >> "$GITHUB_STEP_SUMMARY"
+          done
+
+      # A run holding an unexpired artifact stays: an App Store receipt keeps the next release from uploading its fingerprint again, a Simulator build keeps a Mac from building it again.
+      # At most 300 runs a release, well inside the job token's 1,000 requests an hour; later releases take the rest.
+      - name: Delete old runs
+        if: github.event_name == 'push'
         continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          pulls=$(gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/pulls")
-          head=$(jq -r --arg sha "$GITHUB_SHA" '
-            [.[] | select(.merged_at != null and .merge_commit_sha == $sha)]
-            | if length == 1 then .[0].head.sha else empty end' <<< "$pulls")
-          [[ -n $head ]] || exit 0
+          cutoff=$(date -u -d '14 days ago' +%Y-%m-%dT%H:%M:%SZ)
+          kept=$(gh api --paginate "repos/$GITHUB_REPOSITORY/actions/artifacts?per_page=100" --jq '.artifacts[] | select(.expired | not) | .workflow_run.id' | sort -u)
+          runs=$(gh api --paginate "repos/$GITHUB_REPOSITORY/actions/runs?created=%3C$cutoff&status=completed&per_page=100" --jq '.workflow_runs[].id' | sort -u)
+          old=$(comm -23 <(printf '%s\n' "$runs") <(printf '%s\n' "$kept") | awk 'NF && n++ < 300')
+          xargs -r -P 8 -I{} gh api --method DELETE "repos/$GITHUB_REPOSITORY/actions/runs/{}" --silent <<< "$old"
+          echo "- Deleted $(grep -c . <<< "$old" || true) workflow runs from before $cutoff" >> "$GITHUB_STEP_SUMMARY"
 
-          tree=$(gh api "repos/$GITHUB_REPOSITORY/git/commits/$GITHUB_SHA" --jq .tree.sha)
-          runs=$(gh api --paginate --slurp "repos/$GITHUB_REPOSITORY/actions/workflows/verify.yaml/runs?head_sha=$head&event=pull_request&status=success&per_page=100")
-          tested=$(jq -r --arg head "$head" '
-            .[] | .workflow_runs[] | select(.head_sha == $head and .event == "pull_request"
-              and .status == "completed" and .conclusion == "success"
-              and .path == ".github/workflows/verify.yaml"
-              and (.display_title | test("^[0-9a-f]{40}( |$)")))
-            | "\(.id) \(.display_title[0:40])"' <<< "$runs")
-          while read -r run merge; do
-            [[ -n $run && $(gh api "repos/$GITHUB_REPOSITORY/git/commits/$merge" --jq .tree.sha) == "$tree" ]] || continue
-            gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run/jobs?per_page=100" | jq -e '
-              [.jobs[] | select(.conclusion == "success") | .name] as $passed
-              | (.jobs | length) == ($passed | length) and (["Build", "Check", "Test"] - $passed) == []' > /dev/null || continue
-            echo "- Tree $tree already passed [Verify]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$run)." >> "$GITHUB_STEP_SUMMARY"
-            echo "verified=true" >> "$GITHUB_OUTPUT"
-            exit 0
-          done <<< "$tested"
-
-  verify:
-    name: Verify
-    needs: plan
-    if: ${{ !cancelled() && needs.plan.outputs.verified != 'true' }}
-    uses: ./.github/workflows/verify.yaml
-
-  # Servers ship only after every app build ships, so a server never runs ahead of the apps that talk to it.
-  publish:
-    name: Packages
-    needs: [plan, verify, app]
-    if: ${{ !cancelled() && needs.plan.result == 'success' && (needs.plan.outputs.verified == 'true' || needs.verify.result == 'success') && (needs.app.result == 'success' || needs.app.result == 'skipped') }}
-    runs-on: ubuntu-26.04
-    permissions:
-      contents: read
-      id-token: write
-    steps:
-      - uses: actions/checkout@v7
-      - uses: ./.github/actions/setup
-        with: {tasks: 'true'}
-
-      # An app's bundle carries no version, so its build replays from the task cache until its code changes.
-      - name: Build every package
-        run: |
-          vp run build
-
-      # A package publishes when the tarball npm would receive changes, less its version; pnpm applies publishConfig while packing, npm uploads the README metadata pnpm omits.
-      - name: Publish changed packages
-        env:
-          RELEASE: 0.1.${{ github.run_number }}
-        run: |
-          shopt -s nullglob inherit_errexit
-          view() {
-            local answer error
-            error=$(mktemp)
-            if answer=$(npm view "$@" --json 2> "$error"); then printf '%s\n' "$answer"; return; fi
-            # Only a missing package or version answers nothing; any other failure, such as the registry being down, fails the package.
-            grep -q E404 "$error" || { cat "$error" >&2; return 1; }
-          }
-          pack() {
-            local into
-            into=$(mktemp -d)
-            vp pm pack --pack-destination "$into" > /dev/null
-            printf '%s\n' "$into"/*.tgz
-          }
-          fingerprint() {
-            local unpacked
-            unpacked=$(mktemp -d)
-            tar -xzf "$1" -C "$unpacked"
-            cd "$unpacked/package"
-            { find . -type f ! -path ./package.json -print0 | LC_ALL=C sort -z | xargs -0r sha256sum; jq -S 'del(.version, .fingerprint)' package.json; } | sha256sum | cut -c1-64
-          }
-          # An app bundles everything, so its manifest drops dependencies, scripts and the Expo entry; the standards CLI bundles its version, so it builds again after the bump.
-          publish() {
-            local name tarball fingerprint exact latest current summary
-            summary="$RUNNER_TEMP/summary-${1//\//-}"
-            cd "$1"
-            name=$(jq -r .name package.json)
-            if [[ $2 == app ]]; then npm pkg delete dependencies devDependencies scripts main; fi
-            tarball=$(pack)
-            fingerprint=$(fingerprint "$tarball")
-            # The version is the run's: a retry finds what an earlier attempt published instead of uploading it again.
-            exact=$(view "$name@$RELEASE" fingerprint)
-            if [[ -n $exact ]]; then
-              if [[ $(jq -r . <<< "$exact") != "$fingerprint" ]]; then
-                echo "::error::$name@$RELEASE already holds another build; publish this commit from a new run"
-                return 1
-              fi
-              echo "- $name $RELEASE, accepted in an earlier attempt" > "$summary"
-              return
-            fi
-            latest=$(view "$name" version fingerprint)
-            if [[ -z $latest ]]; then
-              echo "::warning::$name needs its first publish and trusted-publisher setup; see .github/releasing.md"
-              echo "- $name unpublished" > "$summary"
-              return
-            fi
-            current=$(jq -r .version <<< "$latest")
-            if [[ $(jq -r .fingerprint <<< "$latest") == "$fingerprint" ]]; then
-              echo "- $name unchanged" > "$summary"
-              return
-            # npm moves latest to whatever publishes, so a rerun of an older run would roll the servers back.
-            elif ((${current##*.} > ${RELEASE##*.})); then
-              echo "- $name $current is newer than this release and stays" > "$summary"
-              return
-            fi
-            npm pkg set "version=$RELEASE" "fingerprint=$fingerprint"
-            if [[ $2 == tool ]]; then vp run build >&2; fi
-            tarball=$(pack)
-            if ! npm publish --loglevel=warn "$tarball"; then
-              # npm can hold a version it accepted before listing it, and answers a second publish with E409.
-              exact=$(view "$name@$RELEASE" fingerprint)
-              if [[ -n $exact && $(jq -r . <<< "$exact") == "$fingerprint" ]]; then
-                echo "- $name $RELEASE, accepted in an earlier attempt" > "$summary"
-                return
-              fi
-              echo "::error::npm refused $name@$RELEASE; if an earlier attempt published it, rerun once npm view $name@$RELEASE answers"
-              return 1
-            fi
-            echo "- $name $RELEASE" > "$summary"
-          }
-          packages=(tools/coding-standards apps/*/package.json)
-          packages=("${packages[@]%/package.json}")
-          pids=()
-          for package in "${packages[@]}"; do
-            kind=app
-            if [[ $package == tools/* ]]; then kind=tool; fi
-            publish "$package" "$kind" & pids+=($!)
-          done
-          failed=0
-          for pid in "${pids[@]}"; do wait "$pid" || failed=1; done
-          for package in "${packages[@]}"; do cat "$RUNNER_TEMP/summary-${package//\//-}" 2>/dev/null >> "$GITHUB_STEP_SUMMARY" || echo "- $package failed" >> "$GITHUB_STEP_SUMMARY"; done
-          exit "$failed"
-
-  app:
-    name: App
-    needs: [plan, verify]
-    if: ${{ !cancelled() && needs.plan.result == 'success' && (needs.plan.outputs.verified == 'true' || needs.verify.result == 'success') && needs.plan.outputs.mobile != '[]' }}
-    # One app's failed release leaves the other apps to ship, but holds the servers.
+  app-store:
+    name: App Store ${{ matrix.app }}
+    needs: verify
+    if: github.event_name == 'push' && needs.verify.outputs.app-store != '[]'
+    concurrency: ios-${{ matrix.app }}
+    # One app's failed build leaves the other apps to ship.
     strategy:
       fail-fast: false
       matrix:
-        app: ${{ fromJSON(needs.plan.outputs.mobile) }}
-    uses: ./.github/workflows/release-app.yaml
-    with:
-      app: ${{ matrix.app }}
-    secrets: inherit
+        include: ${{ fromJSON(needs.verify.outputs.app-store) }}
+    runs-on: xcode-27
+    timeout-minutes: 60
+    env:
+      EAS_BUILD_DISABLE_EXPO_DOCTOR_STEP: 1
+    defaults:
+      run:
+        working-directory: apps/${{ matrix.app }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup
+      - name: Build the App Store app
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: eas build --local --profile production --platform ios --non-interactive --output "$RUNNER_TEMP/app.ipa"
+      - name: Upload to the App Store
+        id: upload
+        env:
+          APP: ${{ matrix.app }}
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+          FINGERPRINT: ${{ matrix.fingerprint }}
+        run: |
+          jq -n --arg app "$APP" --arg build "$RELEASE_NUMBER" --arg fingerprint "$FINGERPRINT" --arg commit "$GITHUB_SHA" \
+            '{app: $app, version: "0.1.\($build)", build: $build, fingerprint: $fingerprint, commit: $commit}' > "$RUNNER_TEMP/receipt.json"
+          mkdir -p "$HOME/.appstoreconnect/private_keys"
+          printf '%s\n' "$ASC_KEY_P8" > "$HOME/.appstoreconnect/private_keys/AuthKey_$ASC_KEY_ID.p8"
+          xcrun altool --upload-package "$RUNNER_TEMP/app.ipa" --api-key "$ASC_KEY_ID" --api-issuer "$ASC_ISSUER_ID"
+          echo "- $APP uploaded to TestFlight" >> "$GITHUB_STEP_SUMMARY"
+      # Recorded right after Apple accepts, even when the run is cancelled: the receipt, while it has not expired, is what keeps the next release from uploading this fingerprint again. A run that fails or dies between the two steps, or whose receipt upload fails, leaves none.
+      - name: Record Apple's acceptance
+        if: always() && steps.upload.outcome == 'success'
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ matrix.artifact }}
+          path: ${{ runner.temp }}/receipt.json
+          retention-days: 80
