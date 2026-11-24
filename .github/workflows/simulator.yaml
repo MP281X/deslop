@@ -1,7 +1,6 @@
 name: iPhone builds
 
 # Linux computes the same fingerprints as the Mac, so a Mac starts only for a fingerprint without an artifact.
-# The Simulator build needs no provisioning profile, so Linux also checks that the App Store profiles hold what each app's production config declares.
 on:
   push:
     branches-ignore: [main]
@@ -11,7 +10,6 @@ on:
       - pnpm-lock.yaml
       - .github/workflows/simulator.yaml
       - .github/actions/setup/**
-      - .github/scripts/app-store-profiles.py
 
 env:
   DESLOP_DOMAIN: ${{ vars.DESLOP_DOMAIN }}
@@ -90,41 +88,10 @@ jobs:
           builds=$(jq -sc . "$RUNNER_TEMP"/decided/*.json /dev/null)
           if [[ $builds != '[]' ]]; then echo "simulator=$builds" >> "$GITHUB_OUTPUT"; fi
 
-      - uses: ./.github/actions/app-store-connect
-        if: steps.stack.outputs.top == 'true'
-        with:
-          key-id: ${{ secrets.ASC_KEY_ID }}
-          issuer-id: ${{ secrets.ASC_ISSUER_ID }}
-          key: ${{ secrets.ASC_KEY_P8 }}
-      # What signing would refuse fails here, in seconds, with the signing workflow to run; the Simulator builds go ahead either way.
-      - name: Check App Store profiles against each app's entitlements
-        if: steps.stack.outputs.top == 'true'
-        env:
-          APP_VARIANT: production
-          MOBILE: ${{ steps.mobile.outputs.apps }}
-        run: |
-          shopt -s inherit_errexit nullglob
-          check() {
-            cd "apps/$1"
-            vp exec expo config --type introspect --json > "$RUNNER_TEMP/profiles/$1.json"
-            python3 ../../.github/scripts/app-store-profiles.py check "$RUNNER_TEMP/profiles/$1.json" > "$RUNNER_TEMP/profiles/$1.md"
-          }
-          mkdir "$RUNNER_TEMP/profiles"
-          pids=()
-          for app in $(jq -r '.[]' <<< "$MOBILE"); do
-            check "$app" &
-            pids+=($!)
-          done
-          failed=0
-          for pid in "${pids[@]}"; do wait "$pid" || failed=1; done
-          for summary in "$RUNNER_TEMP"/profiles/*.md; do cat "$summary" >> "$GITHUB_STEP_SUMMARY"; done
-          exit "$failed"
-
   simulator:
     name: Simulator ${{ matrix.app }}
     needs: fingerprint
-    # The fingerprint job's last step only checks signing, so a profile it fails on still leaves the decided builds to run.
-    if: ${{ !cancelled() && needs.fingerprint.outputs.simulator }}
+    if: needs.fingerprint.outputs.simulator
     # One build per name, whatever the branch: every job waiting behind the same build finds its artifact and stops, and a newer push never cancels a build it would make again.
     concurrency:
       group: ${{ matrix.artifact }}

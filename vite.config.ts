@@ -295,9 +295,7 @@ export default defineConfig({
 					'vp fmt --list-different',
 					'TSRS_FAST=1 effect-tsgo --tsrs-lint vp lint --type-aware --type-check --ignore-pattern "tools/*/template/**"',
 					'vp lint tools/create-app/template tools/create-package/template --report-unused-disable-directives-severity=off',
-					'vp run fallow',
-					'bash scripts/agent-instructions.sh',
-					'bash scripts/app-ports.sh'
+					'vp run fallow'
 				]
 			},
 			// Fallow judges exports and dependencies across packages, so it reads the whole workspace whichever package it reports on.

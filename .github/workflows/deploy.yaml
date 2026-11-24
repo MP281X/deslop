@@ -202,22 +202,6 @@ jobs:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup
         with: {eas: 'true', ios: 'true'}
-      - uses: ./.github/actions/app-store-connect
-        with:
-          key-id: ${{ secrets.ASC_KEY_ID }}
-          issuer-id: ${{ secrets.ASC_ISSUER_ID }}
-          key: ${{ secrets.ASC_KEY_P8 }}
-      # App Store signing sets up the record and its TestFlight group; asked before the build, while the token is fresh.
-      - name: Find the App Store app
-        id: app-store
-        run: |
-          bundle=$(vp exec expo config --type public --json | jq -r .ios.bundleIdentifier)
-          app=$(curl --fail-with-body --silent --show-error --globoff --header "Authorization: Bearer $ASC_TOKEN" "https://api.appstoreconnect.apple.com/v1/apps?filter[bundleId]=$bundle" | jq -r --arg bundle "$bundle" '.data[] | select(.attributes.bundleId == $bundle) | .id')
-          if [[ -z $app ]]; then
-            echo "::error::No App Store Connect app has the bundle ID $bundle; set it up with App Store signing (.github/releasing.md), then run: gh run rerun $GITHUB_RUN_ID --failed"
-            exit 1
-          fi
-          echo "id=$app" >> "$GITHUB_OUTPUT"
       - name: Build the App Store app
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
@@ -229,15 +213,14 @@ jobs:
           ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
           ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
           ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
-          APP_STORE_ID: ${{ steps.app-store.outputs.id }}
           FINGERPRINT: ${{ matrix.fingerprint }}
         run: |
-          jq -n --arg app "$APP" --arg id "$APP_STORE_ID" --arg build "$RELEASE_NUMBER" --arg fingerprint "$FINGERPRINT" --arg commit "$GITHUB_SHA" \
-            '{app: $app, appStoreId: $id, version: "0.1.\($build)", build: $build, fingerprint: $fingerprint, commit: $commit}' > "$RUNNER_TEMP/receipt.json"
+          jq -n --arg app "$APP" --arg build "$RELEASE_NUMBER" --arg fingerprint "$FINGERPRINT" --arg commit "$GITHUB_SHA" \
+            '{app: $app, version: "0.1.\($build)", build: $build, fingerprint: $fingerprint, commit: $commit}' > "$RUNNER_TEMP/receipt.json"
           mkdir -p "$HOME/.appstoreconnect/private_keys"
           printf '%s\n' "$ASC_KEY_P8" > "$HOME/.appstoreconnect/private_keys/AuthKey_$ASC_KEY_ID.p8"
           xcrun altool --upload-package "$RUNNER_TEMP/app.ipa" --api-key "$ASC_KEY_ID" --api-issuer "$ASC_ISSUER_ID"
-          echo "- $APP uploaded: https://appstoreconnect.apple.com/apps/$APP_STORE_ID/testflight/ios" >> "$GITHUB_STEP_SUMMARY"
+          echo "- $APP uploaded to TestFlight" >> "$GITHUB_STEP_SUMMARY"
       # Recorded right after Apple accepts, even when the run is cancelled: the receipt, while it has not expired, is what keeps the next release from uploading this fingerprint again. A run that fails or dies between the two steps, or whose receipt upload fails, leaves none.
       - name: Record Apple's acceptance
         if: always() && steps.upload.outcome == 'success'

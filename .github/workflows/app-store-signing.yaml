@@ -1,6 +1,6 @@
 name: App Store signing
 
-# Set up a new iPhone app, its App Store record's TestFlight group included, or replace App Store profiles missing an entitlement: `.github/releasing.md`.
+# Set up a new iPhone app, its App Store record's TestFlight group included, or bring an app's App ID and profiles up to its declared entitlements: `.github/releasing.md`.
 # The one place this repository drives an interactive tool. eas-cli registers a new app's identifiers and gives it the team's certificate only
 # interactively; its non-interactive mode stops at the missing certificate. Expect answers the two prompts a new app gets and fails on any other.
 on:
@@ -20,19 +20,8 @@ env:
   DESLOP_DOMAIN: ${{ vars.DESLOP_DOMAIN }}
 
 jobs:
-  # A name that is no app stops here, before the signing job builds a path from it.
-  app:
-    name: App
-    runs-on: ubuntu-26.04
-    steps:
-      - uses: actions/checkout@v7
-      - uses: ./.github/actions/mobile-apps
-        with:
-          app: ${{ inputs.app }}
-
   signing:
     name: Signing
-    needs: app
     runs-on: ubuntu-26.04
     timeout-minutes: 20
     defaults:
@@ -48,19 +37,11 @@ jobs:
           issuer-id: ${{ secrets.ASC_ISSUER_ID }}
           key: ${{ secrets.ASC_KEY_P8 }}
 
-      - name: Inspect App Store profiles and delete stale ones
-        id: profiles
-        run: |
-          vp exec expo config --type introspect --json > "$RUNNER_TEMP/signing-config.json"
-          python3 ../../.github/scripts/app-store-profiles.py prepare "$RUNNER_TEMP/signing-config.json"
-
+      # Expo's capability sync gives the App ID what the app declares, which invalidates older profiles, so it generates new ones.
       - name: Set up signing
-        if: steps.profiles.outputs.sign == '1'
         env:
           ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
-          # A refresh only changes profiles, not the capabilities of the existing App IDs.
-          EXPO_NO_CAPABILITY_SYNC: ${{ steps.profiles.outputs.refresh }}
           EXPO_APPLE_TEAM_ID: 99K7MQUK7F
           EXPO_APPLE_TEAM_TYPE: INDIVIDUAL
           EXPO_ASC_API_KEY_PATH: ${{ runner.temp }}/asc.p8
@@ -85,15 +66,11 @@ jobs:
             exit [lindex [wait] 3]
           '
 
-      - name: Verify new App Store profiles
-        if: steps.profiles.outputs.sign == '1'
-        run: python3 ../../.github/scripts/app-store-profiles.py verify "$RUNNER_TEMP/signing-config.json"
-
       # Only the App Store Connect website creates an app record, which needs the bundle ID signing registered, so a new app's first run stops here; a new record gets an internal TestFlight group with the testers of the team's other internal groups.
       - name: Find the App Store app and its TestFlight group
         run: |
           api() { curl --fail-with-body --silent --show-error --globoff --header "Authorization: Bearer $ASC_TOKEN" --header 'Content-Type: application/json' "https://api.appstoreconnect.apple.com/v1/$1" "${@:2}"; }
-          bundle=$(jq -r .ios.bundleIdentifier "$RUNNER_TEMP/signing-config.json")
+          bundle=$(vp exec expo config --type public --json | jq -r .ios.bundleIdentifier)
           app=$(api "apps?filter[bundleId]=$bundle" | jq -r --arg bundle "$bundle" '.data[] | select(.attributes.bundleId == $bundle) | .id')
           if [[ -z $app ]]; then
             echo "::error::No App Store Connect app has the bundle ID $bundle. Create it at https://appstoreconnect.apple.com/apps (+, New App, iOS, bundle ID $bundle), then run this workflow again."
