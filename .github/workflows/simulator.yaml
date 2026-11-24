@@ -80,10 +80,10 @@ jobs:
     name: Simulator ${{ matrix.app }}
     needs: fingerprint
     if: needs.fingerprint.outputs.simulator != '[]'
-    # Only an app that needs a build joins its group, so a run with nothing to build never cancels an unfinished one.
+    # One build per name, whatever the branch: every job waiting behind the same build finds its artifact and stops, and a newer push never cancels a build it would make again.
     concurrency:
-      group: simulator-${{ github.ref }}-${{ matrix.app }}
-      cancel-in-progress: true
+      group: ${{ matrix.artifact }}
+      queue: max
     strategy:
       matrix:
         include: ${{ fromJSON(needs.fingerprint.outputs.simulator) }}
@@ -95,13 +95,15 @@ jobs:
       # The Simulator host is Apple silicon; the default universal binary compiles every file twice.
       GYM_XCARGS: ARCHS=arm64
     steps:
-      # Another branch with the same fingerprint may have finished this build since the decision; its build is this one.
+      # A build of the same name may have finished since the decision; it is this one.
       - name: Look for a build made meanwhile
         id: made
         env:
           GH_TOKEN: ${{ github.token }}
           ARTIFACT: ${{ matrix.artifact }}
-        run: echo "count=$(gh api "repos/$GITHUB_REPOSITORY/actions/artifacts?name=$ARTIFACT" --jq '[.artifacts[] | select(.expired | not)] | length')" >> "$GITHUB_OUTPUT"
+        run: |
+          count=$(gh api "repos/$GITHUB_REPOSITORY/actions/artifacts?name=$ARTIFACT" --jq '[.artifacts[] | select(.expired | not)] | length')
+          echo "count=$count" >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@v7
         if: steps.made.outputs.count == 0
       - uses: ./.github/actions/setup
@@ -126,8 +128,8 @@ jobs:
     needs: fingerprint
     if: needs.fingerprint.outputs.signed != '[]'
     concurrency:
-      group: app-store-${{ github.ref }}-${{ matrix.app }}
-      cancel-in-progress: true
+      group: ${{ matrix.artifact }}
+      queue: max
     strategy:
       fail-fast: false
       matrix:
@@ -138,13 +140,15 @@ jobs:
       APP_VARIANT: production
       EAS_BUILD_DISABLE_EXPO_DOCTOR_STEP: 1
     steps:
-      # Another branch with the same fingerprint may have finished this build since the decision; its build is this one.
+      # A build of the same name may have finished since the decision; it is this one.
       - name: Look for a build made meanwhile
         id: made
         env:
           GH_TOKEN: ${{ github.token }}
           ARTIFACT: ${{ matrix.artifact }}
-        run: echo "count=$(gh api "repos/$GITHUB_REPOSITORY/actions/artifacts?name=$ARTIFACT" --jq '[.artifacts[] | select(.expired | not)] | length')" >> "$GITHUB_OUTPUT"
+        run: |
+          count=$(gh api "repos/$GITHUB_REPOSITORY/actions/artifacts?name=$ARTIFACT" --jq '[.artifacts[] | select(.expired | not)] | length')
+          echo "count=$count" >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@v7
         if: steps.made.outputs.count == 0
       - uses: ./.github/actions/setup
