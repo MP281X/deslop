@@ -39,7 +39,12 @@ import {Account, MCP_PATH} from '#shared/schema.ts'
 const FIXED_INPUTS: Record<string, unknown> = {
 	'gateway connections.add': {url: 'https://example.com/mcp'},
 	'opm push.register': {bundle: 'xyz.mp281x.opm.dev', kind: 'alert', token: '00000000000000000000000000000000'},
-	'trips push.register': {bundle: 'xyz.mp281x.trips.dev', kind: 'alert', token: '00000000000000000000000000000000'}
+	'trips push.register': {
+		bundle: 'xyz.mp281x.trips.dev',
+		kind: 'alert',
+		phone: 'probe',
+		token: '00000000000000000000000000000000'
+	}
 }
 
 type Caller = typeof Caller.Type
