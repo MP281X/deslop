@@ -92,7 +92,6 @@ Every pass:
 - **T3.** `t3 --version` equals `activeVersion`; `t3 doctor --base-dir ~/.t3 --dry-run` prints "Nothing to repair"; `t3 connect status` ends "✓ Other devices can reach this machine".
 - **sshd.** `sudo sshd -T` shows `usepam yes`, `passwordauthentication no`, `permitrootlogin no`.
 - **VPN.** `git -C ~/dual ls-remote -q origin HEAD` succeeds; otherwise reconnect by Dual's **VPN**.
-- **GPU.** desktop, after kernel or driver updates: `nvidia-smi` lists the RTX 5070 and `sudo modinfo -F version nvidia` matches it.
 
 ## Setup and repair
 
@@ -111,16 +110,16 @@ stateDiagram-v2
     KeysOnly --> [*] : sshd configuration validates / sudo sshd -t, then sudo systemctl reload ssh
 ```
 
-| State    | Commands                                                                                                                                                                                                                                                                                                                                                                                |
-| -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Base     | Passwordless sudo in `/etc/sudoers.d/99-mp281x-nopasswd` (0440); install `sudo`, `network-manager`, `ufw`; `printf 'D /tmp 1777 root root 7d\n' \| sudo tee /etc/tmpfiles.d/tmp.conf && sudo systemctl mask tmp.mount`                                                                                                                                                                  |
-| Packages | Docker, `gh`, `glab`, `unattended-upgrades`, ripgrep, jq, sqlite3, btop, unzip, the [AWS CLI](#aws-cli); `mp281x` in `docker`; `/etc/docker/daemon.json`: `{"live-restore": true, "ip": "127.0.0.1", "default-network-opts": {"bridge": {"com.docker.network.bridge.host_binding_ipv4": "127.0.0.1"}}}`; desktop: `/etc/apt/apt.conf.d/99force-ipv4` holds `Acquire::ForceIPv4 "true";` |
-| Git      | `rebase.updateRefs`, `rebase.autoSquash`, `rebase.autoStash`, `push.autoSetupRemote`, `fetch.prune`, `rerere.enabled` true; `diff.algorithm histogram`, `merge.conflictStyle zdiff3`, `init.defaultBranch main`; [identity](#git-identity)                                                                                                                                              |
-| Network  | dev: `openvpn3 config-import --config <datapizza.ovpn> --name datapizza --persistent`; the block below; then, over the tailnet, `ufw default deny incoming`, dev allowing TCP 80, 443, 25565 and UDP 443                                                                                                                                                                                |
-| Shell    | `loginctl enable-linger mp281x`; Vite+ with `VP_HOME="$HOME/.vite-plus"`, Claude Code; `~/.bashrc`'s first lines put `$HOME/.local/bin:$HOME/.vite-plus/bin` on `PATH`; `~/.config/pnpm/config.yaml`: `minimumReleaseAgeExclude: ["@deslop/*"]`                                                                                                                                         |
-| T3       | `vp install -g t3@nightly`, `t3 service install`, `t3 connect link --headless`, `t3 connect publish`, `t3 browser setup`, `sudo hostnamectl set-hostname --pretty <name>`                                                                                                                                                                                                               |
-| Accounts | `gh auth login`, `glab auth login --hostname git.datapizza.tech`, `claude auth login`, `codex login --device-auth`, [AWS sign-in](#aws-cli); `gh auth setup-git`, `gh extension install github/gh-stack`; clone both repositories; `t3 project add --title <name> <path>`; [agent links](#agent-configuration-links), [keyring and MCP](#keyring-and-mcp)                               |
-| KeysOnly | `/etc/ssh/sshd_config.d/10-keys-only.conf`: `UsePAM yes`, `PasswordAuthentication no`, `KbdInteractiveAuthentication no`, `PermitRootLogin no`, `X11Forwarding no`                                                                                                                                                                                                                      |
+| State    | Commands                                                                                                                                                                                                                                                                                                                                                  |
+| -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Base     | Passwordless sudo in `/etc/sudoers.d/99-mp281x-nopasswd` (0440); install `sudo`, `network-manager`, `ufw`; `printf 'D /tmp 1777 root root 7d\n' \| sudo tee /etc/tmpfiles.d/tmp.conf && sudo systemctl mask tmp.mount`                                                                                                                                    |
+| Packages | Docker, `gh`, `glab`, `unattended-upgrades`, ripgrep, jq, sqlite3, btop, unzip, the [AWS CLI](#aws-cli); `mp281x` in `docker`; `/etc/docker/daemon.json`: `{"live-restore": true, "ip": "127.0.0.1", "default-network-opts": {"bridge": {"com.docker.network.bridge.host_binding_ipv4": "127.0.0.1"}}}`                                                   |
+| Git      | `rebase.updateRefs`, `rebase.autoSquash`, `rebase.autoStash`, `push.autoSetupRemote`, `fetch.prune`, `rerere.enabled` true; `diff.algorithm histogram`, `merge.conflictStyle zdiff3`, `init.defaultBranch main`; [identity](#git-identity)                                                                                                                |
+| Network  | dev: `openvpn3 config-import --config <datapizza.ovpn> --name datapizza --persistent`; the block below; then, over the tailnet, `ufw default deny incoming`, dev allowing TCP 80, 443, 25565 and UDP 443                                                                                                                                                  |
+| Shell    | `loginctl enable-linger mp281x`; Vite+ with `VP_HOME="$HOME/.vite-plus"`, Claude Code; `~/.bashrc`'s first lines put `$HOME/.local/bin:$HOME/.vite-plus/bin` on `PATH`; `~/.config/pnpm/config.yaml`: `minimumReleaseAgeExclude: ["@deslop/*"]`                                                                                                           |
+| T3       | `vp install -g t3@nightly`, `t3 service install`, `t3 connect link --headless`, `t3 connect publish`, `t3 browser setup`, `sudo hostnamectl set-hostname --pretty <name>`                                                                                                                                                                                 |
+| Accounts | `gh auth login`, `glab auth login --hostname git.datapizza.tech`, `claude auth login`, `codex login --device-auth`, [AWS sign-in](#aws-cli); `gh auth setup-git`, `gh extension install github/gh-stack`; clone both repositories; `t3 project add --title <name> <path>`; [agent links](#agent-configuration-links), [keyring and MCP](#keyring-and-mcp) |
+| KeysOnly | `/etc/ssh/sshd_config.d/10-keys-only.conf`: `UsePAM yes`, `PasswordAuthentication no`, `KbdInteractiveAuthentication no`, `PermitRootLogin no`, `X11Forwarding no`                                                                                                                                                                                        |
 
 ```bash
 curl -fsSL https://pkgs.tailscale.com/stable/debian/trixie.noarmor.gpg | sudo tee /usr/share/keyrings/tailscale-archive-keyring.gpg >/dev/null
@@ -170,21 +169,6 @@ new=$(jq --argjson src "$(sqlite3 -readonly -json ~/.t3/userdata/statev2.sqlite 
 
 Keep each project's `scripts` (`t3_project_update`) equal to `projectSettingsOverrides.<id>.defaultProjectScripts`; never edit `projectScriptOverrides`.
 
-### Desktop GPU
-
-```mermaid
-stateDiagram-v2
-    [*] --> Enrolling : GPU setup needed / run the block below
-    Enrolling --> [*] : reboot / the user enrolls the key at the console, since Secure Boot stays on
-```
-
-```bash
-curl -fsSLo /tmp/cuda-keyring.deb https://developer.download.nvidia.com/compute/cuda/repos/debian13/x86_64/cuda-keyring_1.1-1_all.deb
-sudo dpkg -i /tmp/cuda-keyring.deb && sudo apt-get update
-sudo apt-get install -y --no-install-recommends linux-headers-amd64 "linux-headers-$(uname -r)" nvidia-driver-cuda nvidia-kernel-open-dkms
-sudo mokutil --import /var/lib/dkms/mok.pub  # password via request_secret, file delivery, twice on stdin
-```
-
 ### Mac
 
 `curl -fsSL https://vite.plus | bash`; `~/.zshenv` exports `PATH="$HOME/.local/bin:$HOME/.vite-plus/bin:$PATH"` and `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer`. Xcode: `open "macappstore://apps.apple.com/app/id497799835"`.
@@ -206,7 +190,7 @@ claude mcp add --transport http --scope user gateway https://gateway.mp281x.xyz/
 
 ### AWS CLI
 
-Install and update on both workers; the sign-in is Dual's [AWS](dual.md#aws) session.
+Install and update on each Debian worker; the sign-in is Dual's [AWS](dual.md#aws) session.
 
 ```bash
 d=$(mktemp -d) && curl -fsSLo "$d/aws.zip" https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip

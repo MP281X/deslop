@@ -1,36 +1,19 @@
-// Pass this file's text plus `play(task, [...steps])` to preview_evaluate while the tab records; the proof skill lists the steps.
-async function play(task, steps) {
-	const head = 56
-	const fit = Math.min((innerWidth - 96) / innerWidth, (innerHeight - head - 24) / innerHeight)
-	const frame = {
-		height: innerHeight * fit,
-		left: (innerWidth - innerWidth * fit) / 2,
-		top: head,
-		width: innerWidth * fit
-	}
+// Pass this file's text plus `play([...steps])` to preview_evaluate while the tab records; the proof skill lists the steps.
+async function play(steps) {
+	// Only a cursor is drawn over the page; the page itself is recorded at its real size, unscaled and unframed.
 	document.querySelector('#journey')?.remove()
 	const layer = document.createElement('div')
 	layer.id = 'journey'
+	// A popover sits in the top layer, so the cursor stays above the app's own modal dialogs once raised again.
+	layer.popover = 'manual'
 	layer.style.cssText =
-		'position:fixed;inset:0;z-index:2147483647;pointer-events:none;color:#fafafa;font:14px/1.4 ui-sans-serif,system-ui,sans-serif'
-	layer.innerHTML = `<div style="position:absolute;left:${frame.left}px;top:${frame.top}px;width:${frame.width}px;height:${frame.height}px;border-radius:12px;box-shadow:0 0 0 1px #2a2a2a,0 0 0 100vmax #0c0c0c"></div>
-		<div style="position:absolute;left:${frame.left}px;right:${frame.left}px;top:0;height:${head}px;display:flex;align-items:center;gap:12px"><span style="font-weight:500">${task}</span><span style="margin-left:auto;display:flex;gap:3px">${'<i style="width:18px;height:3px;border-radius:2px;background:#ffffff2e;transition:background .3s"></i>'.repeat(steps.length)}</span></div>
-		<svg width="20" height="29" viewBox="0 0 13 19" style="position:absolute;left:0;top:0;translate:${innerWidth / 2}px ${innerHeight}px;transition:translate .5s cubic-bezier(.4,0,.2,1)"><path d="M1 1v14.2l3.7-3.5 2.5 5.9 2.3-1-2.5-5.8H12z" fill="#111" stroke="#fff" stroke-width="1.2" stroke-linejoin="round"/></svg>
-		<i style="position:absolute;left:-20px;top:-20px;width:40px;height:40px;border-radius:50%;border:2px solid #3b82f6;opacity:0"></i>
-		<div style="position:absolute;left:${frame.left + 14}px;top:${frame.top + frame.height - 44}px;padding:5px 14px;border-radius:999px;background:#18181b;color:#fafafa;outline:1px solid #ffffff38;opacity:0;transition:opacity .25s"></div>
-		<i style="position:absolute;border-radius:6px;outline:2px solid #3b82f6;outline-offset:2px;opacity:0;transition:opacity .2s"></i>`
+		'position:fixed;inset:0;width:auto;height:auto;margin:0;padding:0;border:0;background:none;overflow:visible;z-index:2147483647;pointer-events:none'
+	layer.innerHTML = `<svg width="20" height="29" viewBox="0 0 13 19" style="position:absolute;left:0;top:0;translate:${innerWidth / 2}px ${innerHeight}px;transition:translate .5s cubic-bezier(.4,0,.2,1)"><path d="M1 1v14.2l3.7-3.5 2.5 5.9 2.3-1-2.5-5.8H12z" fill="#f5f5f5" stroke="#0a0a0a" stroke-width="1.2" stroke-linejoin="round"/></svg>`
 	document.documentElement.append(layer)
-	const [, header, cursor, ripple, caption, mark] = layer.children
-	const beats = [...header.lastElementChild.children]
-	const page = document.body.style
-	const saved = page.cssText
-	// The page is scaled once into the frame and stays still; a viewport-sized body keeps fixed dialogs and bars where the app puts them.
-	Object.assign(page, {
-		height: '100vh',
-		overflow: 'auto',
-		transform: `translate(${frame.left}px, ${frame.top}px) scale(${fit})`,
-		transformOrigin: '0 0'
-	})
+	layer.showPopover()
+	const [cursor] = layer.children
+	/** @type {{parts: number[][], place: string, press: number, rect: number[]}[]} */
+	const taps = []
 
 	function sleep(ms) {
 		return new Promise(resolve => {
@@ -111,32 +94,31 @@ async function play(task, steps) {
 		await sleep(200)
 		return find(name, pool, waited + 200)
 	}
+	// A step matches another only by name and kind of place: a field in a dialog is not the same field inline.
+	/** @param {Element} element */
+	function placeOf(element) {
+		const within = element.closest('dialog,[role="dialog"],[role="alertdialog"],[role="menu"],[role="listbox"]')
+		if (!within) return 'page'
+		return `${within.getAttribute('role') || 'dialog'} ${ownLabel(within)}`.trim()
+	}
+	// The row around a target, so the cut doesn't slice through the text beside it.
+	/** @param {Element} element @param {DOMRect} rect */
+	function line(element, rect) {
+		const row = element.parentElement?.getBoundingClientRect()
+		if (!row || row.height > rect.height * 3) return []
+		return [[row.left, row.top, row.right, row.bottom]]
+	}
 	/** @param {Element} element */
 	async function aim(element) {
 		element.scrollIntoView({block: 'nearest', inline: 'nearest'})
 		const rect = element.getBoundingClientRect()
 		const point = {x: rect.left + Math.min(rect.width / 2, 80), y: rect.top + rect.height * 0.6}
+		layer.hidePopover()
+		layer.showPopover()
 		cursor.style.translate = `${point.x}px ${point.y}px`
-		ripple.style.translate = cursor.style.translate
 		await sleep(550)
-		// The highlight is drawn on the overlay: the page's own element is never restyled.
-		Object.assign(mark.style, {
-			height: `${rect.height}px`,
-			left: `${rect.left}px`,
-			opacity: '1',
-			top: `${rect.top}px`,
-			width: `${rect.width}px`
-		})
-		ripple.animate(
-			[
-				{opacity: 1, scale: 0.2},
-				{opacity: 0, scale: 1}
-			],
-			{duration: 450, easing: 'ease-out'}
-		)
-		setTimeout(() => {
-			mark.style.opacity = '0'
-		}, 700)
+		const box = [rect.left, rect.top, rect.right, rect.bottom]
+		taps.push({parts: [box, ...line(element, rect)], place: placeOf(element), press: Date.now(), rect: box})
 		return point
 	}
 	function enabled(element) {
@@ -302,35 +284,53 @@ async function play(task, steps) {
 		return results.join(', ')
 	}
 	/** @param {number} index */
-	async function run(index, outcomes) {
-		if (index === steps.length) return outcomes
+	async function run(index, outcomes, marks) {
+		if (index === steps.length) return {marks, outcomes}
 		const step = Object.assign(
 			{},
 			typeof steps[index] === 'string' && {click: steps[index]},
 			typeof steps[index] === 'object' && steps[index]
 		)
 		const label = captionOf(step)
-		caption.textContent = label
-		caption.style.opacity = '1'
-		beats[index].style.background = '#fafafa'
+		const start = Date.now()
+		taps.splice(0)
 		const result = await act(step).then(
 			ok => ({ok}),
 			error => ({error: error.message})
 		)
-		if (result.error !== undefined) return [...outcomes, `${index + 1} ${label}: failed, ${result.error}`]
+		if (result.error !== undefined) {
+			return {marks, outcomes: [...outcomes, `${index + 1} ${label}: failed, ${result.error}`]}
+		}
 		await sleep(900)
-		return run(index + 1, [...outcomes, `${index + 1} ${label}: ${result.ok}`])
+		const pressed = taps.at(-1)
+		// What the step left open stays in frame when the recording is cut.
+		const open = [
+			...document.querySelectorAll(
+				'dialog[open],[role="dialog"],[role="alertdialog"],[role="menu"],[role="listbox"],:popover-open'
+			)
+		]
+			.filter(element => !layer.contains(element) && shown(element))
+			.map(element => {
+				const rect = element.getBoundingClientRect()
+				return [rect.left, rect.top, rect.right, rect.bottom]
+			})
+		marks.push({
+			end: Date.now(),
+			key: `${label} @ ${pressed?.place ?? 'page'}`,
+			label,
+			parts: [...(pressed?.parts ?? []), ...open],
+			press: pressed?.press,
+			rect: pressed?.rect,
+			start
+		})
+		return run(index + 1, [...outcomes, `${index + 1} ${label}: ${result.ok}`], marks)
 	}
 
 	// The recording starts in the same turn, so the first step waits for it; the last frame stays until it stops.
 	await sleep(400)
-	const from = Date.now()
-	const outcomes = await run(0, [])
-	caption.style.opacity = '0'
-	await sleep(1200)
+	const ran = await run(0, [], [])
 	setTimeout(() => {
 		layer.remove()
-		page.cssText = saved
 	}, 5000)
-	return {from, outcomes}
+	return {marks: ran.marks, outcomes: ran.outcomes, viewport: [innerWidth, innerHeight]}
 }

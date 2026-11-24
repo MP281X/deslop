@@ -1,7 +1,7 @@
 # Pull requests
 
 - **Drafts.** The first push opens a draft. Before ending a turn, unlink PRs the host reports merged or closed.
-- **Stacks.** A stack's layers are planned before the first commit, each needing the one below; never chain existing PRs by changing their bases. One branch per layer, each readable alone, restacked only with the commands below; corrections fold into their own layer before restacking onto the latest default branch.
+- **Stacks.** A stack exists to ease review: split only where a reviewer would otherwise lose the thread, and a layer need not merge on its own. Any PR not based on the default branch is a stack layer made with the commands below, never `gh pr create --base <branch>` or a changed base; add one at any time. Corrections fold into their own layer before restacking onto the latest default branch.
 
 GitHub stacks act on the checked-out branch's stack; GitHub rebases the next layer when the one below merges.
 

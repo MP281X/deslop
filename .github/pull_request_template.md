@@ -2,6 +2,6 @@
 
 <!-- Picture: a Mermaid block of the system before and after. When the change has no such shape, one concrete worked example of the result instead. -->
 
-<!-- Working: one trimmed recording per app the change reaches, each step named inside the frame, each under the claim it proves. -->
+<!-- Working: one Before/After recording per app the change reaches, cut by the proof skill, each under the claim it proves. No screenshots. -->
 
 <!-- Not proven: only what nothing can run before merge, and why; a blocked proof is fixed, not listed. Delete when there is none. -->

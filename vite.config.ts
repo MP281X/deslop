@@ -205,14 +205,16 @@ export default defineConfig({
 				}
 			},
 			{
-				// Skill scripts run inside an app's page through preview_evaluate, with no Effect runtime and no type information.
+				// Skill scripts run inside an app's page through preview_evaluate, or in Node to cut a recording, with no Effect runtime and no type information.
 				files: ['.claude/skills/**/*.js'],
 				rules: {
 					'@deslop/coding-standards/library-operation': 'off',
 					'@deslop/coding-standards/no-native-method-call': 'off',
 					'effecttsgo/async-function': 'off',
 					'effecttsgo/global-date': 'off',
+					'effecttsgo/global-json': 'off',
 					'effecttsgo/global-timers': 'off',
+					'effecttsgo/node-builtin-import': 'off',
 					'effecttsgo/prefer-effect-array': 'off',
 					'effecttsgo/prefer-effect-string': 'off',
 					'eslint/no-restricted-globals': 'off',
