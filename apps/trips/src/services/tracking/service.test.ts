@@ -21,9 +21,8 @@ import {TestClock} from 'effect/testing'
 import {layerDataStore} from '@deslop/runtime/server/store'
 
 import {FlightAware} from './lib/flightaware.ts'
-import {ViaggiaTreno} from './lib/viaggiatreno.ts'
 
-import {BookedPlace, Booking, BookingId, Flight} from '#services/bookings/schema.ts'
+import {Booking, BookingId, Flight, Place} from '#services/bookings/schema.ts'
 import {Bookings} from '#services/bookings/service.ts'
 import {FaFlight} from '#services/tracking/schema.ts'
 import {Tracking} from '#services/tracking/service.ts'
@@ -38,13 +37,13 @@ function ticket(now: DateTime.Utc, id: BookingId, confirmation: string) {
 		boardingGroup: Option.none(),
 		confirmation: Option.some(confirmation),
 		departs: DateTime.addDuration(now, Duration.hours(3)),
-		from: Schema.decodeSync(BookedPlace)({code: 'FCO', name: 'Fiumicino', timeZone: 'Europe/Rome'}),
+		from: Schema.decodeSync(Place)({code: 'FCO', name: 'Fiumicino', timeZone: 'Europe/Rome'}),
 		id,
 		live: Option.none(),
 		number: '553',
 		seat: Option.none(),
 		status: 'confirmed',
-		to: Schema.decodeSync(BookedPlace)({code: 'LHR', name: 'Heathrow', timeZone: 'Europe/London'})
+		to: Schema.decodeSync(Place)({code: 'LHR', name: 'Heathrow', timeZone: 'Europe/London'})
 	})
 }
 
@@ -90,7 +89,6 @@ it.layer(NodeServices.layer)(test =>
 							)
 						})
 					),
-					Layer.provide(Layer.mock(ViaggiaTreno, {})),
 					Layer.provide(layerDataStore(yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped()))
 				)
 			)

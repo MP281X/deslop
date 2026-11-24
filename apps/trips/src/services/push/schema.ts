@@ -22,7 +22,7 @@ export const PushBundle = Schema.Literals(['xyz.mp281x.trips', 'xyz.mp281x.trips
 export type ChannelId = typeof ChannelId.Type
 export const ChannelId = pipe(Schema.String, Schema.brand('ChannelId'))
 
-// One row of `activities`: a Live Activity the server started for one leg of a journey on one app, updated and ended through its broadcast channel.
+// One row of `activities`: a Live Activity the server started for one window of a flight on one app, updated and ended through its broadcast channel.
 export class Activity extends Model.Class<Activity>('Activity')({
 	bookingId: BookingId,
 	bundle: Schema.String,
@@ -51,7 +51,7 @@ export class Retirement extends Model.Class<Retirement>('Retirement')({
 
 // One row of `sent_alerts`: an alert sent for a booking, so each is sent once; the latest of a category tells a change back from a repeat.
 export type AlertCategory = typeof AlertCategory.Type
-export const AlertCategory = Schema.Literals(['cancelled', 'diverted', 'boarding', 'gate', 'platform', 'delay', 'belt'])
+export const AlertCategory = Schema.Literals(['cancelled', 'diverted', 'boarding', 'gate', 'delay', 'belt'])
 
 export class SentAlert extends Model.Class<SentAlert>('SentAlert')({
 	bookingId: BookingId,
@@ -70,7 +70,7 @@ export class AlertDelivery extends Model.Class<AlertDelivery>('Delivery')({
 	static readonly table = 'deliveries'
 }
 
-// When the person last asked to start a journey's Live Activity, keyed by its first leg.
+// When the person last asked to start a flight's Live Activity.
 export class StartRequest extends Model.Class<StartRequest>('StartRequest')({
 	at: Schema.DateTimeUtcFromMillis,
 	bookingId: BookingId

@@ -1,169 +1,22 @@
 import {assert, it} from '@effect/vitest'
 
-import {Array, DateTime, Duration, Function, Option, Schema, Struct} from 'effect'
+import {Array, DateTime, Duration, Option, Schema, Struct} from 'effect'
 
 import {
 	activeWindow,
 	arrivalClockOf,
 	autoStartOf,
-	changeOf,
 	dayMark,
 	daysBetween,
 	instantOf,
-	journeysOf,
-	journeyProps,
-	segmentOf,
+	activityProps,
 	startable,
 	stayAfter,
 	upsert
 } from '#services/bookings/lib/utils.ts'
-import {
-	BookedPlace,
-	Booking,
-	BookingId,
-	Flight,
-	FlightTracking,
-	PlaceCode,
-	Stay,
-	Train,
-	TrainStop,
-	TrainTracking
-} from '#services/bookings/schema.ts'
+import {Booking, BookingId, Flight, FlightTracking, Place, Stay} from '#services/bookings/schema.ts'
 
 const DEPARTS = DateTime.makeUnsafe('2026-10-28T15:40:00Z')
-
-function train(id: string, from: string, to: string, departure: string, arrival: string) {
-	return Train.make({
-		arrives: DateTime.makeUnsafe(arrival),
-		coach: Option.none(),
-		confirmation: Option.none(),
-		departs: DateTime.makeUnsafe(departure),
-		from: Schema.decodeSync(BookedPlace)({name: from, timeZone: 'Europe/Rome'}),
-		id: BookingId.make(id),
-		live: Option.none(),
-		number: '9713',
-		operator: 'TRENITALIA',
-		seat: Option.none(),
-		service: 'FR 9713',
-		status: 'confirmed',
-		stops: [],
-		to: Schema.decodeSync(BookedPlace)({name: to, timeZone: 'Europe/Rome'})
-	})
-}
-
-it('chains confirmed trains at matching stations within three hours and shows the current leg', () => {
-	const first = train(
-		'11111111-1111-4111-8111-111111111111',
-		'Milano',
-		'Venezia Mestre',
-		'2026-11-18T08:00Z',
-		'2026-11-18T10:00Z'
-	)
-	const next = train(
-		'22222222-2222-4222-8222-222222222222',
-		'VENEZIA MESTRE',
-		'Trieste',
-		'2026-11-18T10:14Z',
-		'2026-11-18T12:00Z'
-	)
-	assert.deepStrictEqual(journeysOf([next, first]), [[first, next]])
-	assert.strictEqual(
-		journeyProps([first, next], [], first.departs, Function.constFalse).note,
-		'Change at Venezia Mestre · 14 min'
-	)
-	assert.strictEqual(journeyProps([first, next], [], first.arrives, Function.constFalse).from, next.from.name)
-	assert.strictEqual(
-		journeysOf([first, Train.make({...Struct.pick(next, Struct.keys(Train.fields)), status: 'cancelled'})]).length,
-		2
-	)
-	assert.strictEqual(
-		journeysOf([
-			first,
-			Train.make({
-				...Struct.pick(next, Struct.keys(Train.fields)),
-				departs: DateTime.addDuration(first.arrives, Duration.hours(3))
-			})
-		]).length,
-		1
-	)
-	assert.strictEqual(
-		journeysOf([
-			first,
-			Train.make({
-				...Struct.pick(next, Struct.keys(Train.fields)),
-				departs: DateTime.addDuration(first.arrives, Duration.minutes(181))
-			})
-		]).length,
-		2
-	)
-	assert.strictEqual(
-		journeysOf([
-			first,
-			Train.make({
-				...Struct.pick(next, Struct.keys(Train.fields)),
-				departs: DateTime.subtractDuration(first.arrives, Duration.minutes(1))
-			})
-		]).length,
-		2
-	)
-	assert.strictEqual(startable([first, next], DateTime.subtractDuration(first.departs, Duration.hours(7))), true)
-	assert.strictEqual(startable([first, next], DateTime.subtractDuration(first.departs, Duration.minutes(421))), false)
-	assert.strictEqual(startable([first, next], next.arrives), false)
-	assert.deepStrictEqual(autoStartOf([first, next]), DateTime.subtractDuration(first.departs, Duration.hours(1)))
-	assert.deepStrictEqual(
-		Option.map(activeWindow(first, first.departs, [first, next]), window => window.end),
-		Option.some(DateTime.addDuration(next.arrives, Duration.minutes(10)))
-	)
-})
-
-it('samples at most seven scheduled stops with endpoints and delayed passage', () => {
-	const stops = Array.makeBy(10, index =>
-		Schema.decodeSync(TrainStop)({
-			departs: DateTime.toEpochMillis(DateTime.addDuration(DEPARTS, Duration.minutes(index))),
-			name: `Station${index} Centrale`
-		})
-	)
-	const booking = train(
-		'11111111-1111-4111-8111-111111111111',
-		'Milano',
-		'Roma',
-		DateTime.formatIso(DEPARTS),
-		DateTime.formatIso(DateTime.addDuration(DEPARTS, Duration.hours(1)))
-	)
-	function activityStops(scheduled: readonly TrainStop[], delay: number, now: DateTime.Utc) {
-		return Option.getOrThrow(
-			journeyProps(
-				[
-					Train.make({
-						...Struct.pick(booking, Struct.keys(Train.fields)),
-						live: Option.some(Schema.decodeSync(TrainTracking)({checkedAt: 1, delayMinutes: delay, state: 'departed'})),
-						stops: [...scheduled]
-					})
-				],
-				[],
-				now,
-				Function.constFalse
-			).stops
-		)
-	}
-	assert.deepStrictEqual(
-		Array.map(activityStops(stops, 2, DateTime.addDuration(DEPARTS, Duration.minutes(5))), stop => [
-			stop.name,
-			stop.passed
-		]),
-		[
-			['Station0', true],
-			['Station2', true],
-			['Station3', true],
-			['Station5', false],
-			['Station6', false],
-			['Station8', false],
-			['Station9', false]
-		]
-	)
-	assert.deepStrictEqual(activityStops([], 0, DEPARTS), [])
-	assert.strictEqual(activityStops(Array.take(stops, 3), 0, DEPARTS).length, 3)
-})
 
 const FLIGHT = Struct.pick(
 	Flight.make({
@@ -174,16 +27,24 @@ const FLIGHT = Struct.pick(
 		boardingGroup: Option.none(),
 		confirmation: Option.none(),
 		departs: DEPARTS,
-		from: Schema.decodeSync(BookedPlace)({code: 'FCO', name: 'Fiumicino', timeZone: 'Europe/Rome'}),
+		from: Schema.decodeSync(Place)({code: 'FCO', name: 'Fiumicino', timeZone: 'Europe/Rome'}),
 		id: BookingId.make('7f0c8f8e-0d0a-4a5e-9d8f-5b2a1c3d4e5f'),
 		live: Option.none(),
 		number: '553',
 		seat: Option.none(),
 		status: 'confirmed',
-		to: Schema.decodeSync(BookedPlace)({code: 'LHR', name: 'Heathrow', timeZone: 'Europe/London'})
+		to: Schema.decodeSync(Place)({code: 'LHR', name: 'Heathrow', timeZone: 'Europe/London'})
 	}),
 	Struct.keys(Flight.fields)
 )
+
+it('opens a flight three hours ahead', () => {
+	assert.deepStrictEqual(autoStartOf(FLIGHT), DateTime.subtractDuration(DEPARTS, Duration.hours(3)))
+	assert.strictEqual(
+		activityProps(FLIGHT, [], DateTime.subtractDuration(DEPARTS, Duration.hours(3)), false).headline,
+		'Leave for FCO'
+	)
+})
 
 it('reads local ticket times in the place zone and explicit offsets as given', () => {
 	assert.deepStrictEqual(instantOf('2026-10-28T16:40', Option.some('Europe/Rome')), Option.some(DEPARTS))
@@ -241,31 +102,6 @@ it('counts calendar days between local dates and marks an arrival on another dat
 	)
 })
 
-it('puts a connection at risk when the first train arrives after the next one leaves', () => {
-	const first = train(
-		'11111111-1111-4111-8111-111111111111',
-		'Milano',
-		'Verona',
-		'2026-11-18T08:00Z',
-		'2026-11-18T09:00Z'
-	)
-	const next = train(
-		'22222222-2222-4222-8222-222222222222',
-		'Verona',
-		'Venezia',
-		'2026-11-18T09:20Z',
-		'2026-11-18T10:30Z'
-	)
-	const late = Train.make({
-		...Struct.pick(first, Struct.keys(Train.fields)),
-		live: Option.some(Schema.decodeSync(TrainTracking)({checkedAt: 1, delayMinutes: 30, state: 'departed'}))
-	})
-	assert.deepStrictEqual(
-		[changeOf(first, next), changeOf(late, next)],
-		['Change at Verona · 20 min', 'Connection at risk at Verona']
-	)
-})
-
 function stay(id: string, city: string) {
 	return Stay.make({
 		checkIn: DateTime.makeUnsafe('2026-11-18T10:00Z'),
@@ -273,7 +109,7 @@ function stay(id: string, city: string) {
 		confirmation: Option.none(),
 		id: BookingId.make(id),
 		name: `Hotel in ${city}`,
-		place: Schema.decodeSync(BookedPlace)({
+		place: Schema.decodeSync(Place)({
 			address: `Via Roma 1, ${city}, Italy`,
 			city,
 			name: `Hotel in ${city}`,
@@ -283,14 +119,13 @@ function stay(id: string, city: string) {
 	})
 }
 
-it('offers a stay as the next stop only in the city the journey reaches', () => {
-	const arriving = train(
-		'11111111-1111-4111-8111-111111111111',
-		'Milano Centrale',
-		'Verona Porta Nuova',
-		'2026-11-18T08:00Z',
-		'2026-11-18T09:00Z'
-	)
+it('offers a stay as the next stop only in the city the flight reaches', () => {
+	const arriving = Flight.make({
+		...FLIGHT,
+		arrives: DateTime.makeUnsafe('2026-11-18T09:00Z'),
+		departs: DateTime.makeUnsafe('2026-11-18T08:00Z'),
+		to: Schema.decodeSync(Place)({city: 'Verona', code: 'VRN', name: 'Verona Villafranca', timeZone: 'Europe/Rome'})
+	})
 	const rome = stay('33333333-3333-4333-8333-333333333333', 'Roma')
 	const verona = stay('44444444-4444-4444-8444-444444444444', 'Verona')
 	assert.deepStrictEqual(
@@ -302,20 +137,20 @@ it('offers a stay as the next stop only in the city the journey reaches', () => 
 	)
 })
 
-it('starts no Live Activity for a cancelled journey', () => {
-	const departing = train(
-		'11111111-1111-4111-8111-111111111111',
-		'Milano',
-		'Verona',
-		'2026-11-18T08:00Z',
-		'2026-11-18T09:00Z'
-	)
-	const cancelled = Train.make({
-		...Struct.pick(departing, Struct.keys(Train.fields)),
-		live: Option.some(Schema.decodeSync(TrainTracking)({checkedAt: 1, delayMinutes: 0, state: 'cancelled'}))
+it('starts no Live Activity for a cancelled flight', () => {
+	const departing = Flight.make({
+		...FLIGHT,
+		arrives: DateTime.makeUnsafe('2026-11-18T09:00Z'),
+		departs: DateTime.makeUnsafe('2026-11-18T08:00Z')
+	})
+	const cancelled = Flight.make({
+		...FLIGHT,
+		arrives: departing.arrives,
+		departs: departing.departs,
+		live: Option.some(Schema.decodeSync(FlightTracking)({checkedAt: 1, state: 'cancelled'}))
 	})
 	assert.deepStrictEqual(
-		[startable([departing], departing.departs), startable([cancelled], departing.departs)],
+		[startable(departing, departing.departs), startable(cancelled, departing.departs)],
 		[true, false]
 	)
 })
@@ -403,40 +238,5 @@ it('splits long flights into departure and arrival activity windows', () => {
 	assert.deepStrictEqual(
 		Option.map(activeWindow(FLIGHT, DateTime.addDuration(DEPARTS, Duration.hours(2))), window => window.leg),
 		Option.some('departure')
-	)
-})
-
-function transitStop(stopId: string, name: string) {
-	return {
-		arrival: Option.none(),
-		departure: Option.none(),
-		lat: 0,
-		lon: 0,
-		name,
-		stopId: PlaceCode.make(stopId),
-		tz: 'Europe/Rome'
-	}
-}
-
-const RUN = [
-	transitStop('rm', 'ROMA TERMINI'),
-	transitStop('mr', 'MILANO ROGOREDO'),
-	transitStop('mc', 'MILANO CENTRALE')
-]
-
-function ends(found: ReturnType<typeof segmentOf>) {
-	return Option.map(found, segment => [Array.map(segment.stops, item => item.stopId), segment.rank])
-}
-
-it('ends a train at the exact station even when a looser match comes first', () => {
-	const from = {code: Option.some('rm'), name: 'Roma Termini'}
-	assert.deepStrictEqual(
-		ends(segmentOf(RUN, from, {code: Option.none(), name: 'Milano Centrale'})),
-		Option.some([['rm', 'mr', 'mc'], 1])
-	)
-	// The stop id Transitous named for the printed station wins over a spelling that matches Rogoredo as loosely.
-	assert.deepStrictEqual(
-		ends(segmentOf(RUN, from, {code: Option.some('mc'), name: 'Milano C.le'})),
-		Option.some([['rm', 'mr', 'mc'], 0])
 	)
 })

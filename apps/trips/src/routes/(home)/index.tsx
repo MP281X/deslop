@@ -23,55 +23,37 @@ import {ItemActions, ItemContent, ItemGroup, ItemMedia, ItemTitle} from '@deslop
 import {blockingFailure} from '@deslop/runtime/client/live-stream'
 import {problemSinceAtom} from '@deslop/runtime/client/problem'
 
-import {bookingsAtom, clipboard, journeyKey, nowAtom, removal} from '#lib/bookings.ts'
+import {bookingsAtom, clipboard, nowAtom, removal} from '#lib/bookings.ts'
 import {primary, session} from '#lib/session.ts'
-import {currentOf, daysUntil, problemOf, statusOf, tones} from '#lib/status.ts'
-import {clockAt, dayMark, daysBetween, endOf, HOUR, journeysOf, startOf, titleOf} from '#services/bookings/lib/utils.ts'
+import {daysUntil, problemOf, statusOf, tones} from '#lib/status.ts'
+import {clockAt, dayMark, daysBetween, endOf, HOUR, startOf, titleOf} from '#services/bookings/lib/utils.ts'
 import {Booking} from '#services/bookings/schema.ts'
 
-type Journey = Array.NonEmptyReadonlyArray<Booking>
-
-function startOfJourney(journey: Journey) {
-	return startOf(Array.headNonEmpty(journey))
+function zoneOf(booking: Booking) {
+	if (Booking.isAnyOf(['stay'])(booking)) return booking.place.timeZone
+	return booking.from.timeZone
 }
 
-function endOfJourney(journey: Journey) {
-	return endOf(Array.lastNonEmpty(journey))
+function headingOf(booking: Booking) {
+	if (Booking.isAnyOf(['stay'])(booking)) return booking.name
+	return `${Option.getOrElse(booking.from.city, () => booking.from.name)} to ${Option.getOrElse(booking.to.city, () => booking.to.name)}`
 }
 
-function zoneOf(journey: Journey) {
-	const first = Array.headNonEmpty(journey)
-	if (Booking.isAnyOf(['stay'])(first)) return first.place.timeZone
-	return first.from.timeZone
-}
-
-function headingOf(journey: Journey) {
-	const first = Array.headNonEmpty(journey)
-	if (Booking.isAnyOf(['stay'])(first)) return first.name
-	const last = Option.getOrElse(Array.last(Array.filter(journey, Booking.isAnyOf(['flight', 'train']))), () => first)
-	return `${Option.getOrElse(first.from.city, () => first.from.name)} to ${Option.getOrElse(last.to.city, () => last.to.name)}`
-}
-
-function scheduleOf(journey: Journey) {
-	const first = Array.headNonEmpty(journey)
-	if (Booking.isAnyOf(['stay'])(first)) {
+function scheduleOf(booking: Booking) {
+	if (Booking.isAnyOf(['stay'])(booking)) {
 		// Nights are the dates slept over, not the hours: 22:30 to 09:00 the next day is one.
-		const nights = daysBetween(first.checkIn, first.place.timeZone, first.checkOut, first.place.timeZone)
-		return `${nights} ${Boolean.match(nights === 1, {onFalse: Function.constant('nights'), onTrue: Function.constant('night')})} · check-in ${clockAt(first.checkIn, first.place.timeZone)}`
+		const nights = daysBetween(booking.checkIn, booking.place.timeZone, booking.checkOut, booking.place.timeZone)
+		return `${nights} ${Boolean.match(nights === 1, {onFalse: Function.constant('nights'), onTrue: Function.constant('night')})} · check-in ${clockAt(booking.checkIn, booking.place.timeZone)}`
 	}
-	const last = Option.getOrElse(Array.last(Array.filter(journey, Booking.isAnyOf(['flight', 'train']))), () => first)
-	const departs = clockAt(startOfJourney(journey), first.from.timeZone)
-	const arrives = `${clockAt(endOfJourney(journey), last.to.timeZone)}${dayMark(daysBetween(startOfJourney(journey), first.from.timeZone, endOfJourney(journey), last.to.timeZone))}`
-	if (Booking.isAnyOf(['train'])(first)) {
-		return `${pipe(journey, Array.map(titleOf), Array.join(' · '))} ${departs} → ${arrives}`
-	}
-	return `${titleOf(first)} · ${Option.getOrElse(first.from.code, () => first.from.name)} ${departs} → ${Option.getOrElse(last.to.code, () => last.to.name)} ${arrives}`
+	const departs = clockAt(startOf(booking), booking.from.timeZone)
+	const arrives = `${clockAt(endOf(booking), booking.to.timeZone)}${dayMark(daysBetween(startOf(booking), booking.from.timeZone, endOf(booking), booking.to.timeZone))}`
+	return `${titleOf(booking)} · ${Option.getOrElse(booking.from.code, () => booking.from.name)} ${departs} → ${Option.getOrElse(booking.to.code, () => booking.to.name)} ${arrives}`
 }
 
-// The schedule and the gate or platform it leaves from, each shown once.
-function lineOf(journey: Journey, status: ReturnType<typeof statusOf>) {
+// The schedule and the gate it leaves from, each shown once.
+function lineOf(booking: Booking, status: ReturnType<typeof statusOf>) {
 	const where = Option.getOrElse(status.where, Function.constant(''))
-	return pipe([scheduleOf(journey), where], Array.filter(String.isNonEmpty), Array.join(' · '))
+	return pipe([scheduleOf(booking), where], Array.filter(String.isNonEmpty), Array.join(' · '))
 }
 
 type Countdown = typeof Countdown.Type
@@ -109,19 +91,14 @@ function Gutter(props: {countdown: Countdown}) {
 }
 
 function BookingRow(props: {
-	journey: Journey
+	booking: Booking
 	countdown: Countdown
 	now: DateTime.Utc
 	onOpen: (id: Booking['id']) => void
 }) {
-	const status = statusOf(currentOf(props.journey, props.now), props.now)
+	const status = statusOf(props.booking, props.now)
 	return (
-		<RemovableRow
-			alignment="top"
-			id={journeyKey(props.journey)}
-			removal={removal}
-			onOpen={() => props.onOpen(Array.headNonEmpty(props.journey).id)}
-		>
+		<RemovableRow alignment="top" id={props.booking.id} removal={removal} onOpen={() => props.onOpen(props.booking.id)}>
 			{pending => (
 				<>
 					<ItemMedia>
@@ -134,15 +111,14 @@ function BookingRow(props: {
 								onTrue: () => [foregroundStyle(colors.mutedForeground)]
 							})}
 						>
-							{headingOf(props.journey)}
+							{headingOf(props.booking)}
 						</ItemTitle>
 						<Text modifiers={[text.data, foregroundStyle(colors.mutedForeground)]}>
-							{lineOf(props.journey, status)}
+							{lineOf(props.booking, status)}
 						</Text>
 					</ItemContent>
 					{pipe(
-						props.journey,
-						Array.findFirst(leg => problemOf(leg, statusOf(leg, props.now), props.now)),
+						problemOf(props.booking, status, props.now),
 						Option.filter(() => !pending),
 						Option.match({
 							onNone: Function.constUndefined,
@@ -162,30 +138,30 @@ function BookingRow(props: {
 	)
 }
 
-function matchesOf(journeys: readonly Journey[], searched: string) {
+function matchesOf(bookings: readonly Booking[], searched: string) {
 	const needle = String.toLowerCase(String.trim(searched))
 	return Array.filter(
-		journeys,
-		journey =>
+		bookings,
+		booking =>
 			String.isEmpty(needle) ||
-			String.includes(needle)(String.toLowerCase(`${headingOf(journey)} ${scheduleOf(journey)}`))
+			String.includes(needle)(String.toLowerCase(`${headingOf(booking)} ${scheduleOf(booking)}`))
 	)
 }
 
 function PastBookings(props: {
 	expanded: boolean
-	journeys: readonly Journey[]
+	bookings: readonly Booking[]
 	now: DateTime.Utc
 	onExpandedChange: (expanded: boolean) => void
 	onOpen: (id: Booking['id']) => void
 }) {
-	if (Array.isReadonlyArrayEmpty(props.journeys)) return undefined
+	if (Array.isReadonlyArrayEmpty(props.bookings)) return undefined
 	return (
 		<Section title="Past" isExpanded={props.expanded} onIsExpandedChange={props.onExpandedChange}>
-			{Array.map(props.journeys, journey => (
+			{Array.map(props.bookings, booking => (
 				<BookingRow
-					key={Array.headNonEmpty(journey).id}
-					journey={journey}
+					key={booking.id}
+					booking={booking}
 					countdown={Countdown.cases.SameDay.make({})}
 					now={props.now}
 					onOpen={props.onOpen}
@@ -211,26 +187,26 @@ function Bookings(props: {onOpen: (id: Booking['id']) => void; searched: string}
 	const blocking = Option.getOrUndefined(blockingFailure(loaded))
 	if (blocking !== undefined) return <FailureContent cause={blocking} onRetry={refresh} />
 	const bookings = AsyncResult.getOrElse(loaded, () => [])
-	const matches = matchesOf(journeysOf(bookings), props.searched)
+	const matches = matchesOf(bookings, props.searched)
 	const current = Array.filter(
 		matches,
-		journey =>
-			pipe(startOfJourney(journey), DateTime.subtractDuration(Duration.hours(6)), DateTime.isLessThanOrEqualTo(now)) &&
-			pipe(endOfJourney(journey), DateTime.addDuration(HOUR), DateTime.isGreaterThanOrEqualTo(now))
+		booking =>
+			pipe(startOf(booking), DateTime.subtractDuration(Duration.hours(6)), DateTime.isLessThanOrEqualTo(now)) &&
+			pipe(endOf(booking), DateTime.addDuration(HOUR), DateTime.isGreaterThanOrEqualTo(now))
 	)
-	const ahead = Array.filter(matches, journey =>
-		pipe(startOfJourney(journey), DateTime.subtractDuration(Duration.hours(6)), DateTime.isGreaterThan(now))
+	const ahead = Array.filter(matches, booking =>
+		pipe(startOf(booking), DateTime.subtractDuration(Duration.hours(6)), DateTime.isGreaterThan(now))
 	)
 	const past = Array.reverse(
 		Array.filter(
 			matches,
-			journey =>
-				pipe(endOfJourney(journey), DateTime.addDuration(HOUR), DateTime.isLessThan(now)) &&
-				DateTime.isGreaterThan(endOfJourney(journey), DateTime.subtractDuration(now, Duration.days(30)))
+			booking =>
+				pipe(endOf(booking), DateTime.addDuration(HOUR), DateTime.isLessThan(now)) &&
+				DateTime.isGreaterThan(endOf(booking), DateTime.subtractDuration(now, Duration.days(30)))
 		)
 	)
-	function daysOf(journey: Journey) {
-		return daysUntil(startOfJourney(journey), now, zoneOf(journey))
+	function daysOf(booking: Booking) {
+		return daysUntil(startOf(booking), now, zoneOf(booking))
 	}
 	// One root: a SwiftUI modifier on several sibling views applies to each, so the dialog and the toolbar would repeat.
 	return (
@@ -266,10 +242,10 @@ function Bookings(props: {onOpen: (id: Booking['id']) => void; searched: string}
 					<ItemGroup modifiers={[tint(primary)]}>
 						{Array.isReadonlyArrayNonEmpty(current) && (
 							<Section title="Now">
-								{Array.map(current, journey => (
+								{Array.map(current, booking => (
 									<BookingRow
-										key={Array.headNonEmpty(journey).id}
-										journey={journey}
+										key={booking.id}
+										booking={booking}
 										countdown={Countdown.cases.Now.make({})}
 										now={now}
 										onOpen={props.onOpen}
@@ -279,18 +255,18 @@ function Bookings(props: {onOpen: (id: Booking['id']) => void; searched: string}
 						)}
 						{Array.isReadonlyArrayNonEmpty(ahead) && (
 							<Section title="Upcoming">
-								{Array.map(ahead, (journey, position) => (
+								{Array.map(ahead, (booking, position) => (
 									<BookingRow
-										key={Array.headNonEmpty(journey).id}
-										journey={journey}
+										key={booking.id}
+										booking={booking}
 										countdown={pipe(
 											ahead,
 											Array.get(position - 1),
 											Option.match({
-												onNone: () => Countdown.cases.Days.make({days: daysOf(journey)}),
+												onNone: () => Countdown.cases.Days.make({days: daysOf(booking)}),
 												onSome: before =>
-													Boolean.match(daysOf(before) === daysOf(journey), {
-														onFalse: () => Countdown.cases.Days.make({days: daysOf(journey)}),
+													Boolean.match(daysOf(before) === daysOf(booking), {
+														onFalse: () => Countdown.cases.Days.make({days: daysOf(booking)}),
 														onTrue: () => Countdown.cases.SameDay.make({})
 													})
 											})
@@ -313,7 +289,7 @@ function Bookings(props: {onOpen: (id: Booking['id']) => void; searched: string}
 								</Section>
 							)}
 						<PastBookings
-							journeys={past}
+							bookings={past}
 							expanded={pastOpen}
 							now={now}
 							onExpandedChange={setPastOpen}

@@ -18,7 +18,7 @@ export default {
 		'@bacons/apple-targets',
 		'expo-secure-store',
 		'expo-notifications',
-		['expo-calendar', {calendarPermission: 'Trips keeps your flights, trains and stays in a Trips calendar.'}],
+		['expo-calendar', {calendarPermission: 'Trips keeps your flights and stays in a Trips calendar.'}],
 		// Only Apple's geocoder, for the coordinates of a stay's address; the app never asks where you are.
 		['expo-location', {locationWhenInUsePermission: false}],
 		[

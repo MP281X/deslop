@@ -24,14 +24,13 @@ import type {HttpClientError} from 'effect/http'
 import {Migrator, SqlClient, SqlSchema} from 'effect/sql'
 
 import {FlightAware} from './lib/flightaware.ts'
-import {ViaggiaTreno} from './lib/viaggiatreno.ts'
 import {migrations} from './migrations.ts'
 
 import type {BookingId} from '#services/bookings/schema.ts'
-import {Booking, BookingsError, Flight, Train, TripNumber} from '#services/bookings/schema.ts'
+import {Booking, BookingsError, Flight, TripNumber} from '#services/bookings/schema.ts'
 import {Bookings} from '#services/bookings/service.ts'
-import {checkEvery, flightTracking, isDue, pickFlight, sameLookup, trainTracking} from '#services/tracking/lib/utils.ts'
-import {Lookups, VtRun, VtStatus} from '#services/tracking/schema.ts'
+import {checkEvery, flightTracking, isDue, pickFlight, sameLookup} from '#services/tracking/lib/utils.ts'
+import {Lookups} from '#services/tracking/schema.ts'
 
 // FlightAware's personal plan includes $5 a month, a thousand lookups.
 const MONTHLY_LOOKUPS = 1000
@@ -47,7 +46,6 @@ export class Tracking extends Context.Service<Tracking>()('@deslop/trips/service
 		const sql = yield* SqlClient.SqlClient
 		const bookings = yield* Bookings
 		const flightAware = yield* FlightAware
-		const trains = yield* ViaggiaTreno
 
 		const findLookups = SqlSchema.findOneOption({
 			Request: Schema.String,
@@ -91,7 +89,7 @@ export class Tracking extends Context.Service<Tracking>()('@deslop/trips/service
 			return Option.exists(yield* Ref.get(flightsPausedUntil), until => DateTime.isLessThan(now, until))
 		})
 
-		// A flight holds its turn through the request and a six-second gap; trains never acquire it.
+		// A flight holds its turn through the request and a six-second gap.
 		const flightTurns = yield* Semaphore.make(1)
 		const lookup = Effect.fnUntraced(function* (booking: Flight, now: DateTime.Utc) {
 			const number = yield* asBookingsError('This flight number is invalid. Add its ticket again.')(
@@ -118,75 +116,32 @@ export class Tracking extends Context.Service<Tracking>()('@deslop/trips/service
 			)
 		}, Semaphore.withPermit(flightTurns))
 
-		function viaggiaTreno<S extends Schema.Top>(path: string, schema: S, booking: Train) {
-			return asBookingsError(`ViaggiaTreno did not answer for train ${booking.number}.`)(trains.get(path, schema))
-		}
-
-		const train = Effect.fnUntraced(function* (booking: Train, now: DateTime.Utc) {
-			const number = yield* asBookingsError('This train number is invalid. Add its ticket again.')(
-				Schema.decodeEffect(TripNumber)(booking.number)
-			)
-			// Today's run must be the booked one: it starts at most a day before the booked departure.
-			const run = Option.filter(
-				yield* viaggiaTreno(`cercaNumeroTreno/${number}`, VtRun, booking),
-				found =>
-					DateTime.isLessThanOrEqualTo(found.millisDataPartenza, booking.departs) &&
-					pipe(
-						found.millisDataPartenza,
-						DateTime.distance(booking.departs),
-						Duration.isLessThanOrEqualTo(Duration.days(1))
-					)
-			)
-			return yield* Option.match(run, {
-				onNone: () => Effect.succeedNone,
-				onSome: today =>
-					Effect.map(
-						viaggiaTreno(
-							`andamentoTreno/${today.codLocOrig}/${number}/${DateTime.toEpochMillis(today.millisDataPartenza)}`,
-							VtStatus,
-							booking
-						),
-						Option.flatMap(answer => trainTracking(answer, booking, now))
-					)
-			})
-		})
-
 		// A failed or unmatched lookup still counts as an attempt, so the schedule waits before asking again; only a real answer is saved.
 		const attempts = yield* Ref.make(Record.empty<BookingId, DateTime.Utc>())
 
 		const observe = Effect.fnUntraced(function* (booking: Booking, riders: readonly Flight[], now: DateTime.Utc) {
 			if (Booking.isAnyOf(['stay'])(booking)) return
 			// A booking saved again meanwhile may name another service, so the answer replaces only the booking it was read for; each ticket of the flight keeps its own report.
-			if (Booking.isAnyOf(['flight'])(booking)) {
-				const answer = yield* lookup(booking, now)
-				return yield* Effect.forEach(
-					[booking, ...riders],
-					item =>
-						Option.match(pickFlight(answer.flights, item), {
-							onNone: () => Effect.void,
-							onSome: found =>
-								bookings.replace(
-									item,
-									Flight.make({
-										...Struct.pick(item, Struct.keys(Flight.fields)),
-										live: Option.some(flightTracking(found, now, item.live))
-									})
-								)
-						}),
-					{concurrency: 1, discard: true}
-				)
-			}
-			return yield* Option.match(yield* train(booking, now), {
-				onNone: () => Effect.void,
-				onSome: live =>
-					bookings.replace(
-						booking,
-						Train.make({...Struct.pick(booking, Struct.keys(Train.fields)), live: Option.some(live)})
-					)
-			})
+			const answer = yield* lookup(booking, now)
+			return yield* Effect.forEach(
+				[booking, ...riders],
+				item =>
+					Option.match(pickFlight(answer.flights, item), {
+						onNone: () => Effect.void,
+						onSome: found =>
+							bookings.replace(
+								item,
+								Flight.make({
+									...Struct.pick(item, Struct.keys(Flight.fields)),
+									live: Option.some(flightTracking(found, now, item.live))
+								})
+							)
+					}),
+				{concurrency: 1, discard: true}
+			)
 		})
 
-		// Admission, its attempt timestamp and the running mark are atomic, so a pull to refresh and a round never ask for one booking twice; flights take turns six seconds apart for FlightAware's ten requests a minute, while trains go on independently.
+		// Admission, its attempt timestamp and the running mark are atomic, so a pull to refresh and a round never ask for one booking twice; flights take turns six seconds apart for FlightAware's ten requests a minute.
 		const turns = yield* Semaphore.make(1)
 		const running = yield* Ref.make(HashSet.empty<BookingId>())
 		const check = Effect.fnUntraced(function* (
@@ -256,7 +211,7 @@ export class Tracking extends Context.Service<Tracking>()('@deslop/trips/service
 				)
 				const attempted = yield* Ref.get(attempts)
 				const paused = yield* flightsPaused(now)
-				// Each check runs on its own, so a round never waits for the flights queued behind FlightAware's gap and trains keep their pace.
+				// Each check runs on its own, so a round never waits for the flights queued behind FlightAware's gap.
 				yield* pipe(
 					all,
 					Array.filter(
@@ -285,7 +240,7 @@ export class Tracking extends Context.Service<Tracking>()('@deslop/trips/service
 		)
 
 		return {
-			// A pull to refresh asks at once, at most once a minute and only while the journey is tracked, so it cannot drain FlightAware's allowance.
+			// A pull to refresh asks at once, at most once a minute and only while the flight is tracked, so it cannot drain FlightAware's allowance.
 			refresh: Effect.fn('Tracking.refresh')(function* (id: BookingId) {
 				yield* Effect.annotateCurrentSpan('bookingId', id)
 				yield* check(
@@ -309,5 +264,5 @@ export class Tracking extends Context.Service<Tracking>()('@deslop/trips/service
 	static readonly layer = Layer.provide(Layer.effect(this, this.make), this.migrations)
 }
 
-// FlightAware and ViaggiaTreno are the tracking's own internals; tests provide stand-ins to `Tracking.layer` instead.
-export const layerTracking = Layer.provide(Tracking.layer, Layer.merge(FlightAware.layer, ViaggiaTreno.layer))
+// FlightAware is the tracking's own internal; tests provide stand-ins to `Tracking.layer` instead.
+export const layerTracking = Layer.provide(Tracking.layer, FlightAware.layer)

@@ -18,7 +18,7 @@ import {listReducer} from '@deslop/runtime/shared/list'
 import {RpcClient, session} from '#lib/session.ts'
 import {byStart} from '#services/bookings/lib/utils.ts'
 import type {Booking} from '#services/bookings/schema.ts'
-import {BookingIds, BookingModel, BookingSource, BookingsError, IMAGE_BYTES} from '#services/bookings/schema.ts'
+import {BookingId, BookingModel, BookingSource, BookingsError, IMAGE_BYTES} from '#services/bookings/schema.ts'
 
 const bookingsFile = new File(Paths.document, 'bookings.json')
 
@@ -96,33 +96,23 @@ export const clipboard = makeClipboard({
 	})
 })
 
-// A journey's removal is keyed by the legs it showed, the only ones the server deletes, so a ticket shared during the undo wait stays.
-export function journeyKey(journey: readonly Booking[]) {
-	return pipe(
-		journey,
-		Array.map(leg => leg.id),
-		Array.join(' ')
-	)
-}
-
 export const removal = makeRemoval({
 	notRemoved: 'Not Deleted',
-	// Bookings deletes the legs in one transaction.
 	remove: Effect.fnUntraced(function* (key: string, get: Atom.AtomContext) {
-		const ids = yield* Effect.mapError(Schema.decodeEffect(BookingIds)(String.split(key, ' ')), cause =>
-			BookingsError.make({cause, message: 'The journey to delete could not be read.'})
+		const id = yield* Effect.mapError(Schema.decodeEffect(BookingId)(key), cause =>
+			BookingsError.make({cause, message: 'The booking to delete could not be read.'})
 		)
 		return yield* Effect.mapError(
 			provideRuntimeOnce(
 				get,
 				RpcClient.runtime,
-				Effect.flatMap(RpcClient, client => client('bookings.remove', {ids}))
+				Effect.flatMap(RpcClient, client => client('bookings.remove', {id}))
 			),
 			cause => {
 				if (Schema.is(BookingsError)(cause)) return cause
 				return BookingsError.make({
 					cause,
-					message: 'The server did not confirm whether the journey was deleted. Reconnect to check.'
+					message: 'The server did not confirm whether the booking was deleted. Reconnect to check.'
 				})
 			}
 		)

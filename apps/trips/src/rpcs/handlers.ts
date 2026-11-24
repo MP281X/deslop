@@ -14,7 +14,7 @@ export const RpcHandlers = RpcContracts.toLayer(
 		const tracker = yield* Tracking
 		return RpcContracts.of({
 			'bookings.events': () => bookings.events,
-			'bookings.remove': input => bookings.remove(input.ids),
+			'bookings.remove': input => bookings.remove(input.id),
 			'bookings.save': input => Effect.flatMap(CurrentUser, user => bookings.save(user.id, input)),
 			'push.register': input => push.register(input),
 			'push.start': input => push.start(input.id),

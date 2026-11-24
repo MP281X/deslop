@@ -7,10 +7,10 @@ import {Linking} from 'react-native'
 import {alertFailure} from '@deslop/components-mobile/lib/alerts'
 
 import {departureOf, stayAfter} from '#services/bookings/lib/utils.ts'
-import type {BookedPlace, BookingList, Place} from '#services/bookings/schema.ts'
+import type {BookingList, Place} from '#services/bookings/schema.ts'
 import {Booking, BookingsError} from '#services/bookings/schema.ts'
 
-export function placeLine(place: Place | BookedPlace) {
+export function placeLine(place: Place) {
 	return pipe(
 		[
 			place.name,
@@ -27,7 +27,7 @@ export function placeLine(place: Place | BookedPlace) {
 
 type Coordinates = {latitude: number; longitude: number}
 
-const coordinatesOf = Effect.fnUntraced(function* (place: Place | BookedPlace) {
+const coordinatesOf = Effect.fnUntraced(function* (place: Place) {
 	const coordinates = Option.all({latitude: place.latitude, longitude: place.longitude})
 	if (Option.isSome(coordinates)) {
 		return coordinates
@@ -43,7 +43,7 @@ const coordinatesOf = Effect.fnUntraced(function* (place: Place | BookedPlace) {
 	)
 })
 
-export type Ride = {label: string; place: Place | BookedPlace}
+export type Ride = {label: string; place: Place}
 
 export function ridesOf(booking: Booking, bookings: BookingList, now: DateTime.Utc) {
 	if (Booking.isAnyOf(['stay'])(booking)) return [{label: booking.name, place: booking.place}] satisfies Ride[]

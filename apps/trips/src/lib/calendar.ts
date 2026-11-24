@@ -14,17 +14,18 @@ import {bookingsAtom} from '#lib/bookings.ts'
 import {BOOKING_LINK, linkOf} from '#lib/deep-links.ts'
 import {placeLine} from '#lib/rides.ts'
 import {arrivalOf, cancelledOf, departureOf, endOf, labelled, startOf, titleOf} from '#services/bookings/lib/utils.ts'
-import type {BookingList, Flight, Train} from '#services/bookings/schema.ts'
+import type {BookingList, Flight} from '#services/bookings/schema.ts'
 import {Booking, BookingsError} from '#services/bookings/schema.ts'
 
 const CALENDAR = 'Trips'
 // The calendar takes one hex, so it copies the dark value of the app's orange.
 const COLOR = '#ffa066'
 
-function notesOf(journey: Flight | Train) {
-	const known = [labelled('Confirmation', journey.confirmation), labelled('Seat', journey.seat)]
-	if (Booking.isAnyOf(['flight'])(journey)) return Array.join(Array.getSomes(known), '\n')
-	return Array.join(Array.getSomes([...known, labelled('Coach', journey.coach)]), '\n')
+function notesOf(flight: Flight) {
+	return Array.join(
+		Array.getSomes([labelled('Confirmation', flight.confirmation), labelled('Seat', flight.seat)]),
+		'\n'
+	)
 }
 
 function eventOf(booking: Booking) {
@@ -41,7 +42,7 @@ function eventOf(booking: Booking) {
 	}
 	return {
 		// Calendar's own Time to Leave reads the location; this alert is the fallback when it is off.
-		alarms: [{relativeOffset: {flight: -180, train: -45}[booking._tag]}],
+		alarms: [{relativeOffset: -180}],
 		endDate: DateTime.toDateUtc(arrivalOf(booking)),
 		location: placeLine(booking.from),
 		notes: notesOf(booking),
