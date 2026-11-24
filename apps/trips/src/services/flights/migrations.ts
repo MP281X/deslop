@@ -173,5 +173,24 @@ export const migrations = {
 		yield* sql`ALTER TABLE flights DROP COLUMN boardingGroup`
 		yield* sql`ALTER TABLE flights DROP COLUMN confirmation`
 		yield* sql`ALTER TABLE flights DROP COLUMN status`
+	}),
+	// The trip from home to each airport, saved once for the airport, which sets when to leave.
+	'0006_travel_times': Effect.gen(function* () {
+		yield* (yield* SqlClient.SqlClient)`CREATE TABLE travel_times (airport TEXT PRIMARY KEY, minutes INTEGER NOT NULL) STRICT, WITHOUT ROWID`
+	}),
+	// Each traveller says whether a boarding pass was read for them; one saved before held a pass by the rule Trips used until now, a seat on a flight a pass gave its boarding time.
+	'0007_boarding_passes': Effect.gen(function* () {
+		yield* (yield* SqlClient.SqlClient)`
+			UPDATE flights SET travellers = (
+				SELECT json_group_array(json(value)) FROM (
+					SELECT json_set(
+						item.value,
+						'$.boardingPass',
+						json(iif(flights.boardingAt IS NOT NULL AND json_type(item.value, '$.seat') IS NOT NULL, 'true', 'false'))
+					) AS value
+					FROM json_each(flights.travellers) AS item ORDER BY item.key
+				)
+			)
+		`
 	})
 }

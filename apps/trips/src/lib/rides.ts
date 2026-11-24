@@ -21,24 +21,25 @@ function coordinatesOf(place: Place) {
 	return Option.all({latitude: place.latitude, longitude: place.longitude})
 }
 
-export const mapsAtom = Atom.fn((place: Place) =>
-	pipe(
-		Effect.tryPromise({
-			catch: cause => FlightsError.make({cause, message: 'Maps could not be opened.'}),
-			try: () =>
-				Linking.openURL(
-					Option.match(coordinatesOf(place), {
-						onNone: () => `maps://?daddr=${encodeURIComponent(placeLine(place))}`,
-						onSome: found => `maps://?daddr=${found.latitude},${found.longitude}&q=${encodeURIComponent(place.name)}`
-					})
-				)
-		}),
-		alertFailure('No Directions')
-	)
-)
+// Directions to the airport in Maps, from the flight or a Leave now notification.
+export function directionsTo(place: Place) {
+	return Effect.tryPromise({
+		catch: cause => FlightsError.make({cause, message: 'Maps could not be opened.'}),
+		try: () =>
+			Linking.openURL(
+				Option.match(coordinatesOf(place), {
+					onNone: () => `maps://?daddr=${encodeURIComponent(placeLine(place))}`,
+					onSome: found => `maps://?daddr=${found.latitude},${found.longitude}&q=${encodeURIComponent(place.name)}`
+				})
+			)
+	})
+}
 
-export const uberAtom = Atom.fn((place: Place) =>
-	pipe(
+export const mapsAtom = Atom.fn((place: Place) => alertFailure('No Directions')(directionsTo(place)))
+
+// An Uber to the airport, from the flight or a Leave now notification.
+export function rideTo(place: Place) {
+	return pipe(
 		coordinatesOf(place),
 		Effect.fromOption,
 		Effect.mapError(cause => FlightsError.make({cause, message: 'The place could not be found for Uber.'})),
@@ -50,7 +51,8 @@ export const uberAtom = Atom.fn((place: Place) =>
 						`https://m.uber.com/ul/?action=setPickup&pickup=my_location&dropoff[latitude]=${found.latitude}&dropoff[longitude]=${found.longitude}&dropoff[nickname]=${encodeURIComponent(place.name)}&dropoff[formatted_address]=${encodeURIComponent(placeLine(place))}`
 					)
 			})
-		),
-		alertFailure('No Uber')
+		)
 	)
-)
+}
+
+export const uberAtom = Atom.fn((place: Place) => alertFailure('No Uber')(rideTo(place)))

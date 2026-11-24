@@ -115,16 +115,22 @@ it.layer(store)(test =>
 							id: KEPT,
 							number: '1234',
 							travellers:
-								'[{"confirmation":"ONE","seat":"11A","status":"confirmed"},{"confirmation":"TWO","seat":"11B","status":"confirmed"}]'
+								'[{"confirmation":"ONE","seat":"11A","status":"confirmed","boardingPass":true},{"confirmation":"TWO","seat":"11B","status":"confirmed","boardingPass":true}]'
 						},
-						{boardingAt: 0, departs: DEPARTS, id: OTHER, number: '553', travellers: '[{"status":"cancelled"}]'},
+						{
+							boardingAt: 0,
+							departs: DEPARTS,
+							id: OTHER,
+							number: '553',
+							travellers: '[{"status":"cancelled","boardingPass":false}]'
+						},
 						// The same number nineteen hours later, on the next day, is another service.
 						{
 							boardingAt: 0,
 							departs: DEPARTS + 68_400_000,
 							id: NEXT_DAY,
 							number: '1234',
-							travellers: '[{"confirmation":"ONE","seat":"11A","status":"confirmed"}]'
+							travellers: '[{"confirmation":"ONE","seat":"11A","status":"confirmed","boardingPass":false}]'
 						}
 					],
 					// A running activity opens a booking link, so it ends and the next round starts one that opens the flight.

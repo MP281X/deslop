@@ -1,10 +1,11 @@
 import {Effect, Option, Redacted, Schema} from 'effect'
 
-import {applicationId} from 'expo-application'
+import {applicationId, getIosIdForVendorAsync} from 'expo-application'
 import {
 	addPushTokenListener,
 	getDevicePushTokenAsync,
 	requestPermissionsAsync,
+	setNotificationCategoryAsync,
 	setNotificationHandler
 } from 'expo-notifications'
 import {addPushToStartTokenListener} from 'expo-widgets'
@@ -14,9 +15,22 @@ import {ApnsToken} from '@deslop/runtime/shared/apns'
 
 import {RpcClient, session} from '#lib/session.ts'
 import {FlightsError} from '#services/flights/schema.ts'
-import {PushBundle} from '#services/push/schema.ts'
+import {PhoneId, PushBundle} from '#services/push/schema.ts'
 
-const apns = Effect.map(Schema.decodeUnknownEffect(PushBundle)(applicationId), bundle => ({bundle}))
+// The app and the iPhone each token belongs to, so a Live Activity tells its changes only on the phone it runs on.
+const apns = Effect.all(
+	{
+		bundle: Schema.decodeUnknownEffect(PushBundle)(applicationId),
+		phone: Effect.flatMap(
+			Effect.tryPromise({
+				catch: cause => FlightsError.make({cause, message: 'iOS did not name this iPhone.'}),
+				try: () => getIosIdForVendorAsync()
+			}),
+			Schema.decodeUnknownEffect(PhoneId)
+		)
+	},
+	{concurrency: 'unbounded'}
+)
 
 // fallow-ignore-next-line code-duplication -- Each notification app owns its handler so shared components do not autolink notifications into Stash.
 setNotificationHandler({
@@ -38,6 +52,15 @@ export const pushAtom = RpcClient.runtime.atom(get =>
 					try: () => requestPermissionsAsync()
 				})
 				if (!permission.granted) return
+				// Leave now offers the way to the airport without opening Trips first.
+				yield* Effect.tryPromise({
+					catch: cause => FlightsError.make({cause, message: 'The Leave now actions could not be set up.'}),
+					try: () =>
+						setNotificationCategoryAsync('leave', [
+							{buttonTitle: 'Directions', identifier: 'directions', options: {opensAppToForeground: true}},
+							{buttonTitle: 'Uber', identifier: 'uber', options: {opensAppToForeground: true}}
+						])
+				})
 				// Subscribe before reading the first token, so a rotation while the app stays open reaches the same registry.
 				yield* registerPushTokens(
 					addPushTokenListener,

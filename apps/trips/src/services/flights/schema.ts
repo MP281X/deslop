@@ -61,16 +61,19 @@ export const FlightTracking = Schema.Struct({
 	departureEstimated: Schema.OptionFromOptionalKey(DateTimeUtcFromFiniteMillis),
 	departureGate: Schema.OptionFromOptionalKey(Schema.String),
 	departureTerminal: Schema.OptionFromOptionalKey(Schema.String),
+	// How late the plane flying in lands, read only while this flight is late, so a delay can name its cause.
+	inboundDelay: Schema.OptionFromOptionalKey(DurationFromMinutes),
 	previousGate: Schema.OptionFromOptionalKey(Schema.String),
 	providerId: Schema.OptionFromOptionalKey(ProviderFlightId),
 	state: Schema.Literals(['scheduled', 'departed', 'airborne', 'landed', 'arrived', 'cancelled', 'diverted']),
 	takeoffActual: Schema.OptionFromOptionalKey(DateTimeUtcFromFiniteMillis)
 })
 
-// One person on a flight under their own reservation, with its code and whether it stands; a ticket that names nobody, or a flight saved before Trips read names, holds its reservation under no name. The e-ticket number, when a ticket prints it, tells two people of one name apart.
+// One person on a flight under their own reservation, with its code, whether it stands and whether a boarding pass for them was read; a ticket that names nobody, or a flight saved before Trips read names, holds its reservation under no name. The e-ticket number, when a ticket prints it, tells two people of one name apart.
 export type Traveller = typeof Traveller.Type
 export const Traveller = Schema.Struct({
 	boardingGroup: Schema.OptionFromOptionalKey(Schema.String),
+	boardingPass: Schema.Boolean,
 	confirmation: Schema.OptionFromOptionalKey(Schema.String),
 	name: Schema.OptionFromOptionalKey(Schema.String),
 	seat: Schema.OptionFromOptionalKey(Schema.String),
@@ -96,6 +99,14 @@ export class Flight extends Model.Class<Flight>('Flight')({
 }
 
 export type FlightList = readonly Flight[]
+
+export type TravelMinutes = typeof TravelMinutes.Type
+export const TravelMinutes = Schema.Int.check(Schema.isBetween({maximum: 720, minimum: 5}))
+
+// One row of `travel_times`: how long the trip from home to an airport takes, saved once for each airport.
+export class TravelTime extends Model.Class<TravelTime>('TravelTime')({airport: PlaceCode, minutes: TravelMinutes}) {
+	static readonly table = 'travel_times'
+}
 
 export type FlightsEvent = typeof FlightsEvent.Type
 export const FlightsEvent = Schema.Struct({

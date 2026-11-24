@@ -15,7 +15,7 @@ import {migrations} from './migrations.ts'
 
 import {byDeparture, instantOf, upsert} from '#services/flights/lib/utils.ts'
 import type {FlightList, TicketSource, ExtractedFlight, LocalTime} from '#services/flights/schema.ts'
-import {FlightId, FlightsError, Flight} from '#services/flights/schema.ts'
+import {FlightId, FlightsError, Flight, TravelTime} from '#services/flights/schema.ts'
 
 declare module 'effect/reactivity/Reactivity' {
 	interface Keys {
@@ -30,9 +30,9 @@ function at(time: LocalTime, timeZone: string) {
 	})
 }
 
-// Everyone the ticket names holds its reservation; a ticket that names nobody holds it under no name, so its cancellation still finds it.
+// Everyone the ticket names holds its reservation; a ticket that names nobody holds it under no name, so its cancellation still finds it. Only a boarding pass prints when boarding starts, so such a ticket is a pass for each traveller it names.
 function travellersOf(item: ExtractedFlight) {
-	const reservation = {confirmation: item.confirmation, status: item.status}
+	const reservation = {boardingPass: Option.isSome(item.boarding), confirmation: item.confirmation, status: item.status}
 	return Array.match(item.travellers, {
 		onEmpty: () => [
 			{...reservation, boardingGroup: Option.none(), name: Option.none(), seat: Option.none(), ticket: Option.none()}
@@ -82,6 +82,19 @@ export class Flights extends Context.Service<Flights>()('@deslop/trips/services/
 			Request: FlightId,
 			Result: Flight,
 			execute: id => sql`SELECT * FROM ${sql(Flight.table)} WHERE id = ${id}`
+		})
+
+		const listTravel = SqlSchema.findAll({
+			Request: Schema.Void,
+			Result: TravelTime,
+			execute: () => sql`SELECT * FROM ${sql(TravelTime.table)}`
+		})
+		const saveTravel = SqlSchema.void({
+			Request: TravelTime.insert,
+			execute: row => sql`
+				INSERT INTO ${sql(TravelTime.table)} ${sql.insert(row)}
+				ON CONFLICT (airport) DO UPDATE SET minutes = excluded.minutes
+			`
 		})
 
 		const watch = pipe(
@@ -205,6 +218,14 @@ export class Flights extends Context.Service<Flights>()('@deslop/trips/services/
 					asFlightsError
 				)
 			}, withReactivity),
+			setTravel: Effect.fn('Flights.setTravel')(function* (row: TravelTime) {
+				yield* Effect.annotateCurrentSpan('airport', row.airport)
+				yield* Effect.mapError(saveTravel(row), cause =>
+					FlightsError.make({cause, message: 'The travel time was not saved.'})
+				)
+			}),
+			// The trip from home to each airport, which sets when to leave for a flight from it.
+			travel: pipe(listTravel(), asFlightsError, Effect.withSpan('Flights.travel')),
 			// What the push rounds follow: the whole list again after each commit.
 			watch
 		}

@@ -33,10 +33,11 @@ function flight(number: string, from: string, to: string, departure: string, con
 	} satisfies ExtractedFlight
 }
 
-// One person's pass for FR 1234.
+// One person's pass for FR 1234, which prints when boarding starts.
 function pass(confirmation: string, name: string, seat: string) {
 	return {
 		...flight('1234', 'BGY', 'STN', '2026-11-23T15:30', confirmation),
+		boarding: Option.some('2026-11-23T15:00'),
 		travellers: [{boardingGroup: Option.none(), name, seat: Option.some(seat), ticket: Option.none()}]
 	} satisfies ExtractedFlight
 }
@@ -120,6 +121,7 @@ it.layer(flightsLayer)(test =>
 						[
 							{
 								boardingGroup: Option.none(),
+								boardingPass: true,
 								confirmation: Option.some('ABC123'),
 								name: Option.some('Matteo Rossi'),
 								seat: Option.some('14C'),
@@ -128,6 +130,7 @@ it.layer(flightsLayer)(test =>
 							},
 							{
 								boardingGroup: Option.none(),
+								boardingPass: true,
 								confirmation: Option.some('XYZ789'),
 								name: Option.some('Anna Bianchi'),
 								seat: Option.some('14D'),

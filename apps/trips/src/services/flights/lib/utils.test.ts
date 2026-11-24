@@ -4,15 +4,17 @@ import {Array, DateTime, Duration, Function, Option, Schema, String, Struct} fro
 
 import {
 	activeWindow,
+	airportByOf,
 	arrivalClockOf,
 	daysBetween,
 	instantOf,
 	activityProps,
 	cancelledOf,
+	leaveByOf,
 	upsert
 } from '#services/flights/lib/utils.ts'
 import type {FlightList, ReservationStatus, Traveller} from '#services/flights/schema.ts'
-import {FlightId, Flight, FlightTracking, Place} from '#services/flights/schema.ts'
+import {FlightId, Flight, FlightTracking, Place, PlaceCode, TravelTime} from '#services/flights/schema.ts'
 
 const DEPARTS = DateTime.makeUnsafe('2026-10-28T15:40:00Z')
 
@@ -39,6 +41,31 @@ it('opens a flight three hours ahead', () => {
 	assert.strictEqual(
 		activityProps(FLIGHT, DateTime.subtractDuration(DEPARTS, Duration.hours(3)), false).headline,
 		'Leave for FCO'
+	)
+})
+
+it('wants him at the airport an hour before the booked departure, whatever the delay, and leaving the saved trip earlier', () => {
+	const late = Flight.make({
+		...FLIGHT,
+		live: Option.some(
+			Schema.decodeSync(FlightTracking)({
+				checkedAt: DateTime.toEpochMillis(DEPARTS),
+				departureEstimated: DateTime.toEpochMillis(DateTime.addDuration(DEPARTS, Duration.minutes(50))),
+				state: 'scheduled'
+			})
+		)
+	})
+	const travel = [
+		TravelTime.make({airport: PlaceCode.make('BGY'), minutes: 120}),
+		TravelTime.make({airport: PlaceCode.make('FCO'), minutes: 45})
+	]
+	assert.deepStrictEqual(
+		[airportByOf(late), leaveByOf(late, travel), leaveByOf(late, Array.take(travel, 1))],
+		[
+			DateTime.makeUnsafe('2026-10-28T14:40:00Z'),
+			Option.some(DateTime.makeUnsafe('2026-10-28T13:55:00Z')),
+			Option.none()
+		]
 	)
 })
 
@@ -105,6 +132,7 @@ function traveller(
 ) {
 	return {
 		boardingGroup: Option.none(),
+		boardingPass: false,
 		confirmation: Option.some(confirmation),
 		name,
 		seat,
@@ -415,7 +443,11 @@ it('keeps travellers apart whatever script their names are in, and two of the sa
 })
 
 it('moves a rebooked traveller to the new service, a flight of its own that lends nothing of the old one', () => {
-	const bob = {...traveller('TWO', Option.some('Bob Stone'), Option.some('11B')), boardingGroup: Option.some('2')}
+	const bob = {
+		...traveller('TWO', Option.some('Bob Stone'), Option.some('11B')),
+		boardingGroup: Option.some('2'),
+		boardingPass: true
+	}
 	const boarding = {
 		...FLIGHT,
 		boardingAt: Option.some(DateTime.subtractDuration(DEPARTS, Duration.minutes(40))),
@@ -428,7 +460,7 @@ it('moves a rebooked traveller to the new service, a flight of its own that lend
 			})
 		)
 	}
-	// The new ticket prints no boarding time, seat or group, so the new flight has none of the old one's, and its own id keeps the old flight's alerts and Live Activity apart.
+	// The new ticket prints no boarding time, seat or group, so the new flight has none of the old one's, nor its boarding pass, and its own id keeps the old flight's alerts and Live Activity apart.
 	const unseated = traveller('TWO', Option.some('Bob Stone'), Option.none())
 	assert.deepStrictEqual(
 		Array.map(upsert([Flight.make({...boarding, travellers: [bob]})], [ticket([unseated], '543')]), flight => [

@@ -10,6 +10,7 @@ import {
 	Image,
 	LabeledContent,
 	Menu,
+	Picker,
 	Section,
 	Text,
 	Toolbar,
@@ -28,10 +29,12 @@ import {
 	navigationTitle,
 	padding,
 	refreshable,
+	tag,
 	textCase,
 	textSelection,
 	tint
 } from '@expo/ui/swift-ui/modifiers'
+import {AsyncResult} from 'effect/reactivity'
 
 import {useListBeside, useListTiled} from '@deslop/components-mobile/blocks/list-detail'
 import {StatusDot} from '@deslop/components-mobile/blocks/status-dot'
@@ -43,20 +46,24 @@ import {boardAtom, nowAtom, refreshAtom, removal} from '#lib/flights.ts'
 import {mapsAtom, placeLine, uberAtom} from '#lib/rides.ts'
 import {primary} from '#lib/session.ts'
 import {dayAt, problemOf, statusOf, tones} from '#lib/status.ts'
+import {setTravelAtom, TRAVEL_CHOICES, travelAtom, travelLabel} from '#lib/travel.ts'
 import {
+	airportByOf,
 	arrivalClockOf,
 	arrivalOf,
 	bookedOf,
 	clockAt,
 	departureOf,
 	labelled,
+	leaveByOf,
 	line,
 	MINUTE,
 	routeOf,
 	titleOf,
-	travellersLine
+	travellersLine,
+	travelTo
 } from '#services/flights/lib/utils.ts'
-import type {FlightId, FlightList, Flight, Tone} from '#services/flights/schema.ts'
+import type {FlightId, FlightList, Flight, Tone, TravelTime} from '#services/flights/schema.ts'
 
 function colorOf(tone?: Tone) {
 	if (tone === undefined || tone === 'plain') return colors.foreground
@@ -196,13 +203,43 @@ function FlightEssentials(props: {flight: Flight; size: Size}) {
 	)
 }
 
-// Directions and a ride to the airport the flight leaves from.
+// When to leave and be at the airport, the trip there as saved for its airport, and directions and a ride to it.
 function Rides(props: {flight: Flight}) {
 	const maps = useAtomSet(mapsAtom)
 	const uber = useAtomSet(uberAtom)
+	const setTravel = useAtomSet(setTravelAtom)
+	const travel = pipe(useAtomValue(travelAtom), AsyncResult.value, Option.getOrElse(Array.empty<TravelTime>))
 	return (
 		<Section title={`To ${props.flight.from.name}`}>
 			<Text modifiers={[text.caption, foregroundStyle(colors.mutedForeground)]}>{placeLine(props.flight.from)}</Text>
+			<Field
+				label="Leave by"
+				value={Option.map(leaveByOf(props.flight, travel), at => clockAt(at, props.flight.from.timeZone))}
+			/>
+			<Field label="Airport by" value={Option.some(clockAt(airportByOf(props.flight), props.flight.from.timeZone))} />
+			{Option.match(props.flight.from.code, {
+				onNone: Function.constNull,
+				onSome: airport => (
+					<Picker<number>
+						label="Trip to the airport"
+						selection={pipe(
+							travelTo(props.flight, travel),
+							Option.map(Duration.toMinutes),
+							Option.getOrElse(Function.constant(0))
+						)}
+						onSelectionChange={minutes => {
+							if (minutes > 0) setTravel({airport, minutes})
+						}}
+					>
+						{Option.isNone(travelTo(props.flight, travel)) && <Text modifiers={[tag(0)]}>Not Set</Text>}
+						{Array.map(TRAVEL_CHOICES, minutes => (
+							<Text key={minutes} modifiers={[tag(minutes)]}>
+								{travelLabel(minutes)}
+							</Text>
+						))}
+					</Picker>
+				)
+			})}
 			<Button label="Directions in Maps" systemImage="map" onPress={() => maps(props.flight.from)} />
 			<Button label="Ride with Uber" systemImage="car" onPress={() => uber(props.flight.from)} />
 		</Section>

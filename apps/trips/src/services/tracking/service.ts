@@ -3,6 +3,7 @@ import {
 	Array,
 	Context,
 	DateTime,
+	Deferred,
 	Duration,
 	Effect,
 	FiberSet,
@@ -26,10 +27,20 @@ import {Migrator, SqlClient, SqlSchema} from 'effect/sql'
 import {FlightAware} from './lib/flightaware.ts'
 import {migrations} from './migrations.ts'
 
-import type {FlightId} from '#services/flights/schema.ts'
+import type {FlightId, ProviderFlightId} from '#services/flights/schema.ts'
 import {FlightsError, Flight, TripNumber} from '#services/flights/schema.ts'
 import {Flights} from '#services/flights/service.ts'
-import {checkEvery, flightTracking, isDue, pickFlight, sameLookup} from '#services/tracking/lib/utils.ts'
+import {
+	canRefresh,
+	checkEvery,
+	flightTracking,
+	inboundOf,
+	isDue,
+	lateness,
+	pickFlight,
+	sameLookup
+} from '#services/tracking/lib/utils.ts'
+import type {FaFlights} from '#services/tracking/schema.ts'
 import {Lookups} from '#services/tracking/schema.ts'
 
 // FlightAware's personal plan includes $5 a month, a thousand lookups.
@@ -89,13 +100,14 @@ export class Tracking extends Context.Service<Tracking>()('@deslop/trips/service
 			return Option.exists(yield* Ref.get(flightsPausedUntil), until => DateTime.isLessThan(now, until))
 		})
 
-		// A flight holds its turn through the request and a six-second gap.
-		const flightTurns = yield* Semaphore.make(1)
-		const lookup = Effect.fnUntraced(function* (flight: Flight, now: DateTime.Utc) {
-			const number = yield* asFlightsError('This flight number is invalid. Add its ticket again.')(
-				Schema.decodeEffect(TripNumber)(flight.number)
-			)
-			const ask = yield* Option.match(flightAware.flights, {
+		// A request holds its turn through the answer and a six-second gap, for FlightAware's ten requests a minute; every request counts against the month.
+		const turns = yield* Semaphore.make(1)
+		const ask = Effect.fnUntraced(function* <E>(
+			request: Option.Option<Effect.Effect<FaFlights, E>>,
+			now: DateTime.Utc,
+			what: string
+		) {
+			const found = yield* Option.match(request, {
 				onNone: () => FlightsError.make({message: 'The server has no FlightAware key.'}),
 				onSome: Effect.succeed
 			})
@@ -104,7 +116,7 @@ export class Tracking extends Context.Service<Tracking>()('@deslop/trips/service
 			}
 			yield* spend
 			return yield* pipe(
-				ask(`${flight.airlineCode}${number}`, flight.departs, now),
+				found,
 				Effect.ensuring(Effect.sleep('6 seconds')),
 				Effect.timeout('20 seconds'),
 				Effect.tapError(() =>
@@ -112,9 +124,66 @@ export class Tracking extends Context.Service<Tracking>()('@deslop/trips/service
 						Ref.set(flightsPausedUntil, Option.some(DateTime.addDuration(failedAt, Duration.minutes(10))))
 					)
 				),
-				asFlightsError(`FlightAware did not answer for ${flight.airlineCode} ${flight.number}.`)
+				Effect.mapError(cause => FlightsError.make({cause, message: `FlightAware did not answer for ${what}.`}))
 			)
-		}, Semaphore.withPermit(flightTurns))
+		}, Semaphore.withPermit(turns))
+
+		const lookup = Effect.fnUntraced(function* (flight: Flight, now: DateTime.Utc) {
+			const number = yield* asFlightsError('This flight number is invalid. Add its ticket again.')(
+				Schema.decodeEffect(TripNumber)(flight.number)
+			)
+			const designator = `${flight.airlineCode}${number}`
+			return yield* ask(
+				Option.map(flightAware.flights, byDesignator => byDesignator(designator, flight.departs, now)),
+				now,
+				`${flight.airlineCode} ${flight.number}`
+			)
+		})
+
+		// How late each inbound plane lands, kept half an hour by its id, so the tickets of a flight, two flights waiting for the same plane and the checks of a delay ask once; a read in flight is shared, and a failed read keeps the cause unknown rather than fail the report and is asked again next time.
+		const inbounds = yield* Ref.make(
+			Record.empty<ProviderFlightId, {at: DateTime.Utc; late: Deferred.Deferred<Option.Option<Duration.Duration>>}>()
+		)
+		const inboundLate = Effect.fnUntraced(function* (id: ProviderFlightId, now: DateTime.Utc) {
+			const mine = yield* Deferred.make<Option.Option<Duration.Duration>>()
+			const shared = yield* Ref.modify(inbounds, known =>
+				pipe(
+					known,
+					Record.get(id),
+					Option.filter(read => pipe(read.at, DateTime.distance(now), Duration.isLessThan(Duration.minutes(30)))),
+					Option.match({
+						onNone: () => [Option.none(), Record.set(known, id, {at: now, late: mine})] as const,
+						onSome: read => [Option.some(read.late), known] as const
+					})
+				)
+			)
+			return yield* Option.match(shared, {
+				onNone: () =>
+					pipe(
+						ask(
+							Option.map(flightAware.operation, operation => operation(id)),
+							now,
+							`the plane flying in as ${id}`
+						),
+						Effect.map(found =>
+							pipe(
+								found.flights,
+								Array.findFirst(candidate => candidate.fa_flight_id === id),
+								Option.flatMap(lateness)
+							)
+						),
+						Effect.tapError(() => Ref.update(inbounds, Record.remove(id))),
+						Effect.catch(error =>
+							Effect.as(Effect.logWarning('The plane flying in was not read', error), Option.none<Duration.Duration>())
+						),
+						Effect.tap(late => Deferred.succeed(mine, late)),
+						Effect.onInterrupt(() =>
+							pipe(inbounds, Ref.update(Record.remove(id)), Effect.andThen(Deferred.succeed(mine, Option.none())))
+						)
+					),
+				onSome: Deferred.await
+			})
+		})
 
 		// A failed or unmatched lookup still counts as an attempt, so the schedule waits before asking again; only a real answer is saved.
 		const attempts = yield* Ref.make(Record.empty<FlightId, DateTime.Utc>())
@@ -127,28 +196,33 @@ export class Tracking extends Context.Service<Tracking>()('@deslop/trips/service
 				item =>
 					Option.match(pickFlight(answer.flights, item), {
 						onNone: () => Effect.void,
-						onSome: found =>
-							flights.replace(
+						onSome: Effect.fnUntraced(function* (found) {
+							const late = yield* Option.match(inboundOf(found, item), {
+								onNone: () => Effect.succeedNone,
+								onSome: id => inboundLate(id, now)
+							})
+							yield* flights.replace(
 								item,
 								Flight.make({
 									...Struct.pick(item, Struct.keys(Flight.fields)),
-									live: Option.some(flightTracking(found, now, item.live))
+									live: Option.some(flightTracking(found, now, item.live, late))
 								})
 							)
+						})
 					}),
 				{concurrency: 1, discard: true}
 			)
 		})
 
-		// Admission, its attempt timestamp and the running mark are atomic, so a pull to refresh and a round never ask for one flight twice; flights take turns six seconds apart for FlightAware's ten requests a minute.
-		const turns = yield* Semaphore.make(1)
+		// Admission, its attempt timestamp and the running mark are atomic, so a pull to refresh and a round never ask for one flight twice.
+		const admissions = yield* Semaphore.make(1)
 		const running = yield* Ref.make(HashSet.empty<FlightId>())
 		const check = Effect.fnUntraced(function* (
 			id: FlightId,
 			admits: (flight: Flight, now: DateTime.Utc, attempted: Option.Option<DateTime.Utc>) => boolean
 		) {
 			const admitted = yield* Semaphore.withPermit(
-				turns,
+				admissions,
 				Effect.gen(function* () {
 					const now = yield* DateTime.now
 					const attempted = Record.get(yield* Ref.get(attempts), id)
@@ -230,18 +304,10 @@ export class Tracking extends Context.Service<Tracking>()('@deslop/trips/service
 		)
 
 		return {
-			// A pull to refresh asks at once, at most once a minute and only while the flight is tracked, so it cannot drain FlightAware's allowance.
+			// A pull to refresh asks at once, only while the flight is tracked and on a pace tied to its schedule.
 			refresh: Effect.fn('Tracking.refresh')(function* (id: FlightId) {
 				yield* Effect.annotateCurrentSpan('flightId', id)
-				yield* check(
-					id,
-					(flight, now, attempted) =>
-						Option.isSome(checkEvery(flight, now)) &&
-						Option.match(attempted, {
-							onNone: Function.constTrue,
-							onSome: at => pipe(at, DateTime.distance(now), Duration.isGreaterThanOrEqualTo(Duration.minutes(1)))
-						})
-				)
+				yield* check(id, canRefresh)
 			})
 		}
 	})
