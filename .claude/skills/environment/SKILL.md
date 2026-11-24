@@ -23,7 +23,7 @@ Two headless Debian workers, a MacBook and an iPhone in one tailnet.
 | Reference                                    | For                                                      |
 | -------------------------------------------- | -------------------------------------------------------- |
 | [Deslop](references/deslop.md)               | Production, Stash data, npm, Apple and EAS, tracing      |
-| [Dual](references/dual.md)                   | Accounts, merges, preview, Jira, Google, VPN, tracing    |
+| [Dual](references/dual.md)                   | Accounts, AWS, Jira, Google, VPN, tracing                |
 | [Maintenance](references/maintenance.md)     | Workers, setup, agent links, T3 settings, updates, clean |
 | [Repositories](references/repos.md)          | The packages we use and reference repositories           |
 | [Pull requests](references/pull-requests.md) | Drafts, stacks, GitHub and GitLab stack commands         |
