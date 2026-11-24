@@ -27,7 +27,7 @@ You are a delegate, and the brief is the approved plan. Edit only its files, run
 - Prove claims by running the check. Fix root causes, not symptoms.
 - One way to do each thing: no fallbacks or compatibility paths.
 - Spending money or deleting data is his call. Push only your own branch, never to `main`: no `git -C … push`, `<branch>:main` refspec, more than two push flags, `gh`/`glab` API writes or `--open` stack commands. Never work around a guard.
-- He merges every PR into `main` or any other non-feature branch; you never do. You may restack, retarget and close PRs you opened. `main` has no branch protection, so a PR is ready for him only once Build, Check, Generated apps and Test pass in its pull request run on top of the latest `main`; when `main` moves, rebase and push for a new run.
+- He merges every PR into `main` or any other non-feature branch; you never do. You may restack, retarget and close PRs you opened. `main` has no branch protection, so a PR is ready for him only once Build, Check and Test pass in its pull request run on top of the latest `main`; when `main` moves, rebase and push for a new run.
 - A correction he makes twice becomes a shared component or an app `AGENTS.md` rule in the same PR.
 - Leave other threads alone unless he asks.
 

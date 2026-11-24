@@ -37,7 +37,7 @@ jobs:
       # GitHub's run record is the proof, not a PR-writable artifact, cache or named check.
       # A pull request run tests GitHub's merge with its base of that moment, `main` or a stack's lower layer, so it proves this release only when that merge holds this commit's tree.
       # Its run name starts with that merge commit: once the trees match, the run name came from this commit's own verify.yaml.
-      # A skipped job leaves a run green, so every job must have succeeded, the four named ones included.
+      # A skipped job leaves a run green, so every job must have succeeded, the three named ones included.
       # A missing/failed lookup leaves the output unset and runs Verify normally.
       - name: Is this tree already verified?
         id: proof
@@ -65,7 +65,7 @@ jobs:
             [[ -n $run && $(gh api "repos/$GITHUB_REPOSITORY/git/commits/$merge" --jq .tree.sha) == "$tree" ]] || continue
             gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run/jobs?per_page=100" | jq -e '
               [.jobs[] | select(.conclusion == "success") | .name] as $passed
-              | (.jobs | length) == ($passed | length) and (["Build", "Check", "Generated apps", "Test"] - $passed) == []' > /dev/null || continue
+              | (.jobs | length) == ($passed | length) and (["Build", "Check", "Test"] - $passed) == []' > /dev/null || continue
             echo "- Tree $tree already passed [Verify]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$run)." >> "$GITHUB_STEP_SUMMARY"
             echo "verified=true" >> "$GITHUB_OUTPUT"
             exit 0
