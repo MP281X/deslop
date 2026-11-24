@@ -27,7 +27,7 @@ jobs:
     runs-on: ubuntu-26.04
     timeout-minutes: 40
     permissions:
-      actions: write
+      actions: read
       contents: read
       id-token: write
     outputs:
@@ -75,6 +75,7 @@ jobs:
           echo "apps=$(jq -sc . "$RUNNER_TEMP"/native/*.json /dev/null)" >> "$GITHUB_OUTPUT"
 
       # The runtime version is the native fingerprint, so a phone takes an update only on a build with the same native code; an app with a native change gets its build from the App Store job.
+      # Each export goes to its own directory: Expo empties its output first, and the default `dist` holds the server Verify built and probed.
       - name: Publish every app's EAS Update
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
@@ -83,7 +84,7 @@ jobs:
           message=$(git log -1 --format=%s)
           pids=()
           for app in $(jq -r '.[]' <<< "$MOBILE"); do
-            (cd "apps/$app" && eas update --channel production --environment production --platform ios --non-interactive --message="$message") &
+            (cd "apps/$app" && eas update --channel production --environment production --platform ios --non-interactive --input-dir "$RUNNER_TEMP/update-$app" --message="$message") &
             pids+=($!)
           done
           failed=0
@@ -160,7 +161,15 @@ jobs:
           for package in "${packages[@]}"; do cat "$RUNNER_TEMP/summary-${package//\//-}" 2>/dev/null >> "$GITHUB_STEP_SUMMARY" || echo "- $package failed" >> "$GITHUB_STEP_SUMMARY"; done
           exit "$failed"
 
-      # Run history is read only while fresh; an unexpired App Store receipt is what keeps the next release from uploading its fingerprint again, so its run stays.
+  # Its own job, so a failed deletion never holds the App Store builds. Run history is read only while fresh; an unexpired App Store receipt is what keeps the next release from uploading its fingerprint again, so its run stays.
+  # At most 300 runs a release, well inside the job token's 1,000 requests an hour; GitHub lists at most 1,000, and later releases take the rest.
+  cleanup:
+    name: Delete old runs
+    needs: release
+    runs-on: ubuntu-26.04
+    permissions:
+      actions: write
+    steps:
       - name: Delete workflow runs older than 14 days
         env:
           GH_TOKEN: ${{ github.token }}
@@ -168,7 +177,7 @@ jobs:
           cutoff=$(date -u -d '14 days ago' +%Y-%m-%dT%H:%M:%SZ)
           receipts=$(gh api --paginate "repos/$GITHUB_REPOSITORY/actions/artifacts?per_page=100" --jq '.artifacts[] | select((.expired | not) and (.name | contains("-app-store-"))) | .workflow_run.id' | sort -u)
           runs=$(gh api --paginate "repos/$GITHUB_REPOSITORY/actions/runs?created=%3C$cutoff&status=completed&per_page=100" --jq '.workflow_runs[].id' | sort -u)
-          old=$(comm -23 <(printf '%s\n' "$runs") <(printf '%s\n' "$receipts") | sed '/^$/d')
+          old=$(comm -23 <(printf '%s\n' "$runs") <(printf '%s\n' "$receipts") | awk 'NF && n++ < 300')
           xargs -r -P 8 -I{} gh api --method DELETE "repos/$GITHUB_REPOSITORY/actions/runs/{}" --silent <<< "$old"
           echo "- Deleted $(grep -c . <<< "$old" || true) workflow runs from before $cutoff" >> "$GITHUB_STEP_SUMMARY"
 

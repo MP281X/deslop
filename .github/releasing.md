@@ -3,7 +3,7 @@
 - **History.** `main` is linear: every PR is squash-merged.
 - **Verification.** A PR is verified by its `pull_request` run of Verify, one job that checks, builds and probes every built server, and tests GitHub's merge of the PR with its base at the last push. A PR is ready once that run passed on the merge with the latest `main`; when `main` moves, rebase and push for a new run. A PR with a merge conflict gets no run until it is rebased, and pushing a branch with no PR verifies nothing.
 - **Actions.** Actions use their major tag, such as `actions/cache@v6`, never a commit; `setup-vp`'s `v1` stopped at 1.15, so it names its latest release.
-- **Release.** One Linux job runs Verify's steps on the merged tree, publishes every app's EAS Update, then the changed npm packages, and deletes workflow runs older than 14 days except those holding an unexpired App Store receipt. It starts a Mac only for an app whose native fingerprint has no receipt; packages never wait for it.
+- **Release.** One Linux job runs Verify's steps on the merged tree, publishes every app's EAS Update, then the changed npm packages, and a last job deletes up to 300 workflow runs older than 14 days, except those holding an unexpired App Store receipt. It starts a Mac only for an app whose native fingerprint has no receipt; packages never wait for it.
 
 ## A new app
 
@@ -17,7 +17,7 @@ stateDiagram-v2
     Signing --> Packing : record found, TestFlight group set / build and pack
     Packing --> Publishing : packed command runs / show npm's first-publish and trust URLs
     Publishing --> Draft : user approves both URLs / record the approvals
-    Draft --> [*] : user merges / follow Release until Packages publishes, within npm's two-day trust window
+    Draft --> [*] : user merges / follow Release until its Publish changed packages step publishes, within npm's two-day trust window
 ```
 
 | State   | Input or command                                                                                                                                                                                                                                                                                                                            |
@@ -60,7 +60,7 @@ script -qefc 'npm trust github @deslop/<name> --file deploy.yaml --repo MP281X/d
 
 A trust record expires unless a trusted publish succeeds within two days of `npm trust`, so merge within that window. An expired record can't be used or edited; `npm trust list @deslop/<name>` shows its id, `npm trust revoke @deslop/<name> --id=<id>` removes it, then run the trust command again.
 
-A publishable tool uses `tools/coding-standards`' publish fields and `pack.deps`, starts at `0.1.0` and joins the Packages job; pack it with `vp -C tools/<name> pm pack` for its first publish. Generated libraries are bundled into their consumers, not published.
+A publishable tool uses `tools/coding-standards`' publish fields and `pack.deps`, starts at `0.1.0` and joins Release's Publish changed packages step; pack it with `vp -C tools/<name> pm pack` for its first publish. Generated libraries are bundled into their consumers, not published.
 
 ## Follow a release
 
