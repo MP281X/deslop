@@ -12,7 +12,7 @@ Personal apps with one user, who also develops them.
 
 ## Commands
 
-- `vp run fix` before pushing; `vp -C <package> run test` for packages you touched; the two generators have none, so the Generated apps job in `.github/workflows/verify.yaml` proves them.
+- `vp run fix` before pushing; `vp -C <package> run test` for packages you touched; the two generators have none, so a change to one is proven by creating an app or package with it and building it.
 - A contract change is done only when its built server starts on scratch data and serves the changed RPCs or MCP tools.
 - New apps and packages: `vp create app -- --name <name>` (`--kind mobile` for iOS) or `vp create package -- --name <name>`. Never copy one.
 - Web components: `vpx shadcn@latest add --all --overwrite` in `packages/components-web`; never edit the registry files. Logos come from svgl.

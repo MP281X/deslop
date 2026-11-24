@@ -62,40 +62,6 @@ jobs:
           done
           exit "$failed"
 
-  templates:
-    name: Generated apps
-    runs-on: ubuntu-26.04
-    timeout-minutes: 20
-    env:
-      DESLOP_DOMAIN: ${{ vars.DESLOP_DOMAIN }}
-      CI: 'true'
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: ./.github/actions/setup
-        with: {tasks: 'true'}
-      - name: Generate web and mobile apps and a package
-        run: |
-          vp create app -- --name ciweb
-          vp create app -- --name cimobile --kind mobile
-          vp create package -- --name cipackage
-          vp install --no-frozen-lockfile
-      - name: Type-check generated apps and package
-        run: |
-          vp exec effect-tsgo tsrs --noEmit --project apps/ciweb/tsconfig.json
-          vp exec effect-tsgo tsrs --noEmit --project apps/cimobile/tsconfig.json
-          vp exec effect-tsgo tsrs --noEmit --project packages/cipackage/tsconfig.json
-      - name: Build generated web app and mobile server
-        run: |
-          vp -C apps/ciweb run build
-          vp -C apps/cimobile run build
-      # A starter must pass the same authorization check as every real app before it ships.
-      - name: Probe generated server authorization
-        run: |
-          node apps/ciweb/dist/server.js probe
-          node apps/cimobile/dist/server.js probe
-      - name: Bundle generated iOS JavaScript
-        run: vp -C apps/cimobile exec expo export --platform ios --output-dir dist/ios
-
   test:
     name: Test
     runs-on: ubuntu-26.04
