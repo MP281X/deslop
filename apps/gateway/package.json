@@ -43,8 +43,7 @@
 		"@typeonce/effect-machine-react": "latest",
 		"effect": "latest",
 		"react": "latest",
-		"react-dom": "latest",
-		"recharts": "latest"
+		"react-dom": "latest"
 	},
 	"config": {
 		"port": 5103

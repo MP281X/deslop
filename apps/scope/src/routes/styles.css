@@ -10,6 +10,8 @@
 	box-shadow: inset -1px 0 0 var(--background);
 }
 
+/* From 1512px the operations column widens so a long operation name shows in full. */
 @theme {
 	--grid-template-columns-scope: minmax(26rem, 28rem) minmax(0, 1fr);
+	--grid-template-columns-scope-roomy: minmax(26rem, 36rem) minmax(0, 1fr);
 }

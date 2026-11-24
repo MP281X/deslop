@@ -2,7 +2,7 @@ import {assert, it} from '@effect/vitest'
 
 import {Array, DateTime, Duration} from 'effect'
 
-import {chartTicks} from '#routes/(home)/-chart.ts'
+import {chartTicks, spacedTicks} from '#routes/(home)/-chart.ts'
 
 const ROME = DateTime.zoneMakeNamedUnsafe('Europe/Rome')
 
@@ -29,4 +29,17 @@ it('ticks a week every local midnight, labelling every other day', () => {
 		Array.map(ticks, tick => tick.label),
 		[true, false, true, false, true, false, true]
 	)
+})
+
+it('keeps only the axis labels that fit apart, none before the axis is measured', () => {
+	const ticks = Array.map([25, 50, 75, 99], x => ({text: '06:00', x}))
+	assert.deepStrictEqual(
+		Array.map(spacedTicks(320)(ticks), tick => tick.x),
+		[25, 50, 75, 99]
+	)
+	assert.deepStrictEqual(
+		Array.map(spacedTicks(100)(ticks), tick => tick.x),
+		[25, 75]
+	)
+	assert.deepStrictEqual(spacedTicks(0)(ticks), [])
 })

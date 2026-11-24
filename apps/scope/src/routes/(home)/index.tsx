@@ -288,6 +288,10 @@ function TraceListRow(props: {active: boolean; now: DateTime.Utc; onSelect: () =
 					onNone: Function.constNull,
 					onSome: failure => <StatusDot status="error" label={`Failed in ${failure.span}`} />
 				})}
+				reason={Option.match(props.trace.failure, {
+					onNone: Function.constUndefined,
+					onSome: failure => `Failed in ${failure.span}`
+				})}
 			>
 				{traceLabel(props.trace)}
 			</RowLead>
@@ -364,26 +368,60 @@ function SpanDetails(props: {focus: Option.Option<TraceTree['spans'][number]>}) 
 	})
 }
 
-// The trace's flame under its pinned time axis, then, when inline, the picked span's details after one hairline.
+// The trace's flame under its pinned time axis.
+function TraceFlame(props: {
+	focus: Option.Option<TraceTree['spans'][number]>
+	onPick: (id: SpanId) => void
+	trace: TraceTree
+}) {
+	return (
+		<>
+			<TimeAxis totalMs={props.trace.durationMs} />
+			<Flame focus={Option.map(props.focus, span => span.spanId)} onPick={props.onPick} trace={props.trace} />
+		</>
+	)
+}
+
+// The flame, then, when inline, the picked span's details after one hairline; from 2560px the details stand in their own column beside the flame instead, each scrolling alone.
 function SpansList(props: {
 	focus: Option.Option<TraceTree['spans'][number]>
 	inlineDetails: boolean
 	onPick: (id: SpanId) => void
 	trace: TraceTree
 }) {
+	const beside = useAtomValue(mediaQueryAtom('(width >= 160rem)'))
 	if (!Array.isReadonlyArrayNonEmpty(props.trace.spans)) {
 		return <EmptyPane icon={<RectangleIcon />} label="No spans" />
 	}
+	const details = Option.filter(props.focus, () => props.inlineDetails)
+	if (beside) {
+		return (
+			<div className="flex min-h-0 flex-1">
+				<ScrollArea className="min-h-0 min-w-0 flex-1">
+					<TraceFlame focus={props.focus} onPick={props.onPick} trace={props.trace} />
+				</ScrollArea>
+				{Option.match(details, {
+					onNone: Function.constNull,
+					onSome: span => (
+						<div className="flex w-160 shrink-0 flex-col border-l">
+							<ScrollArea className="min-h-0 flex-1">
+								<SpanDetail span={span} />
+							</ScrollArea>
+						</div>
+					)
+				})}
+			</div>
+		)
+	}
 	return (
 		<ScrollArea className="min-h-0 flex-1">
-			<TimeAxis totalMs={props.trace.durationMs} />
-			<Flame focus={Option.map(props.focus, span => span.spanId)} onPick={props.onPick} trace={props.trace} />
-			{Boolean.match(props.inlineDetails && Option.isSome(props.focus), {
-				onFalse: Function.constNull,
-				onTrue: () => (
+			<TraceFlame focus={props.focus} onPick={props.onPick} trace={props.trace} />
+			{Option.match(details, {
+				onNone: Function.constNull,
+				onSome: span => (
 					<>
 						<Separator />
-						{Option.match(props.focus, {onNone: Function.constNull, onSome: span => <SpanDetail span={span} />})}
+						<SpanDetail span={span} />
 					</>
 				)
 			})}
@@ -473,10 +511,10 @@ function TracePane(props: {
 	)
 }
 
-// From 1024px to 1599px: operations and traces beside the waterfall, with the picked details after the spans.
+// From 1024px to 1599px: operations and traces beside the waterfall, with the picked details after the spans; from 1512px the lists take more of the width.
 function NarrowWorkspace(props: WorkspaceProps) {
 	return (
-		<div className="grid-cols-scope grid min-h-0 flex-1">
+		<div className="grid-cols-scope min-[94.5rem]:grid-cols-scope-roomy grid min-h-0 flex-1">
 			<div className="grid min-h-0 grid-rows-2 border-r">
 				<OperationsPane
 					activeKey={props.activeKey}
@@ -505,11 +543,11 @@ function NarrowWorkspace(props: WorkspaceProps) {
 	)
 }
 
-// From 1600px: operations, traces and the waterfall as three resizable columns; details follow the spans.
+// From 1600px: operations, traces and the waterfall as three resizable columns, the operations wide enough for a long name in full; details follow the spans.
 function WideWorkspace(props: WorkspaceProps) {
 	return (
 		<ResizablePanelGroup orientation="horizontal" className="min-h-0 flex-1">
-			<ResizablePanel defaultSize={440} minSize={320} maxSize={560}>
+			<ResizablePanel groupResizeBehavior="preserve-pixel-size" defaultSize={600} minSize={320} maxSize={640}>
 				<OperationsPane
 					activeKey={props.activeKey}
 					onSelect={props.onSelectOperation}
@@ -518,7 +556,7 @@ function WideWorkspace(props: WorkspaceProps) {
 				/>
 			</ResizablePanel>
 			<ResizableHandle />
-			<ResizablePanel defaultSize={320} minSize={240} maxSize={480}>
+			<ResizablePanel groupResizeBehavior="preserve-pixel-size" defaultSize={320} minSize={240} maxSize={480}>
 				<TracesPane
 					active={props.active}
 
@@ -707,6 +745,7 @@ function HomeRoute() {
 				})}
 				icon={icon}
 				name="scope"
+				stackTabs
 				controls={
 					<>
 						<StaleMark range={range} trace={selection.activeTrace} />

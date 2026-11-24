@@ -199,3 +199,55 @@
 		font-size: 1rem;
 	}
 }
+
+/* A control is drawn at the registry's size on every screen; on touch an invisible layer centred on it takes taps across at least
+   44px, so a 48px bar and a 41px row keep their height. A segmented tab grows only in height, so it never covers its neighbour.
+   In the components layer, a control the screen positions keeps its own position. */
+@layer components {
+	@media (pointer: coarse) {
+		:where(
+			[data-slot='button'],
+			[data-slot='tabs-trigger'],
+			[data-slot='dropdown-menu-trigger'],
+			[data-slot='popover-trigger'],
+			[data-slot='dialog-close'],
+			[data-slot='badge']:is(a, button)
+		) {
+			position: relative;
+		}
+
+		:where(
+			[data-slot='button'],
+			[data-slot='tabs-trigger'],
+			[data-slot='dropdown-menu-trigger'],
+			[data-slot='popover-trigger'],
+			[data-slot='dialog-close'],
+			[data-slot='badge']:is(a, button)
+		)::before {
+			content: '';
+			position: absolute;
+			top: 50%;
+			left: 50%;
+			width: max(100%, 44px);
+			height: max(100%, 44px);
+			translate: -50% -50%;
+		}
+
+		[data-slot='tabs-trigger']::before {
+			width: 100%;
+		}
+	}
+}
+
+/* Outside the layers, so these beat the registry's own utilities on touch. A badge clips its overflow, which would clip its tap
+   layer too; one that acts holds only a short label, so it lets the layer out. A narrow dialog stacks its actions full width,
+   44px apart, so each keeps its own layer. */
+@media (pointer: coarse) {
+	[data-slot='badge']:is(a, button) {
+		overflow: visible;
+	}
+
+	[data-slot='dialog-footer'] {
+		row-gap: 0.75rem;
+	}
+}
