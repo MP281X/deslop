@@ -1,6 +1,6 @@
 import {Array, Boolean, DateTime, Effect, Function, HashSet, Option, Order, Stream, String, pipe} from 'effect'
 
-import {Atom} from 'effect/reactivity'
+import {AsyncResult, Atom} from 'effect/reactivity'
 import {randomUUID} from 'expo-crypto'
 import {Directory, File, Paths} from 'expo-file-system'
 
@@ -12,8 +12,9 @@ import {activationsAtom} from '@deslop/runtime/mobile/activations'
 import {provideRuntimeOnce} from '@deslop/runtime/mobile/session'
 import {listReducer} from '@deslop/runtime/shared/list'
 
+import {kindOf} from '#lib/kinds.ts'
 import {RpcClient, session} from '#lib/session.ts'
-import type {Note} from '#services/notes/schema.ts'
+import type {Kind, Note, TagName} from '#services/notes/schema.ts'
 import {NoteId, NoteItem, NotesError} from '#services/notes/schema.ts'
 
 const listFile = new File(Paths.document, 'list.json')
@@ -75,6 +76,25 @@ export const searchAtom = Atom.family((query: string) =>
 		)
 	})
 )
+
+// The ids the typed search matched; none while nothing is typed or the search has not answered.
+export const foundAtom = Atom.make(get =>
+	pipe(get(searchAtom(String.trim(get(queryAtom)))), AsyncResult.value, Option.flatten)
+)
+
+// The notes the queue shows, so the note beside it with nothing opened is the queue's first.
+export function queueOf(
+	all: readonly NoteItem[],
+	filter: {found: Option.Option<HashSet.HashSet<NoteId>>; kind: Option.Option<Kind>; tag: Option.Option<TagName>}
+) {
+	return Array.filter(
+		all,
+		note =>
+			Option.match(filter.found, {onNone: Function.constTrue, onSome: ids => HashSet.has(ids, note.id)}) &&
+			Option.match(filter.tag, {onNone: Function.constTrue, onSome: name => Array.contains(note.tags, name)}) &&
+			Option.match(filter.kind, {onNone: Function.constTrue, onSome: kind => kindOf(note) === kind})
+	)
+}
 
 const images = new Directory(Paths.cache, 'downloads')
 

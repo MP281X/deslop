@@ -52,7 +52,6 @@ export function makeExpoConfig(app: {projectId: string; slug: string}) {
 						supportsTablet: false
 					},
 					name: variant.name,
-					orientation: 'portrait',
 					owner: 'mp281x.xyz',
 					platforms: ['ios'],
 					plugins: ['expo-web-browser'],

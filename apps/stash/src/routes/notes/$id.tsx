@@ -1,10 +1,19 @@
-import {useAtomMount, useAtomRefresh, useAtomSet, useAtomSuspense, useAtomValue} from '@effect/atom-react'
+import {
+	RegistryContext,
+	useAtomMount,
+	useAtomRefresh,
+	useAtomSet,
+	useAtomSubscribe,
+	useAtomSuspense,
+	useAtomValue
+} from '@effect/atom-react'
 
 import {Array, Boolean, Function, Match, Option, Schema, String, pipe} from 'effect'
 
 import {
 	Button as NativeButton,
 	Divider,
+	Group,
 	HStack,
 	Image,
 	Menu,
@@ -13,28 +22,36 @@ import {
 	Text,
 	Toolbar,
 	ToolbarItem,
-	VStack
+	VStack,
+	useNativeState
 } from '@expo/ui/swift-ui'
 import {
 	accessibilityElement,
 	accessibilityLabel,
 	foregroundStyle,
 	frame,
+	id,
 	labelStyle,
 	lineSpacing,
 	navigationBarTitleDisplayMode,
 	navigationTitle,
+	onGeometryChange,
+	onScrollPhaseChange,
 	padding,
 	redacted,
+	scrollPosition,
+	scrollTargetLayout,
 	textSelection,
 	tint
 } from '@expo/ui/swift-ui/modifiers'
-import {AsyncResult} from 'effect/reactivity'
-import {Suspense} from 'react'
+import {AsyncResult, Atom} from 'effect/reactivity'
+import {Suspense, useContext, useRef} from 'react'
 import {Linking} from 'react-native'
 
+import {useListBeside, useListShow} from '@deslop/components-mobile/blocks/list-detail'
 import {FailureContent, Loaded} from '@deslop/components-mobile/blocks/loaded'
 import {Problem} from '@deslop/components-mobile/blocks/problem'
+import {barNeverMinimizes} from '@deslop/components-mobile/lib/toolbar'
 import {colors, space, text} from '@deslop/components-mobile/theme'
 import {Button} from '@deslop/components-mobile/ui/button'
 import {Empty, EmptyContent, EmptyMedia} from '@deslop/components-mobile/ui/empty'
@@ -47,15 +64,20 @@ import {Byline} from '#lib/components.tsx'
 import {BrandLogo} from '#lib/icons.tsx'
 import {appOf, brandOf, kinds, subjectOf} from '#lib/kinds.ts'
 import {webLinksOnly} from '#lib/markdown.ts'
-import {noteAtom, notesAtom, regenerateAtom, removal} from '#lib/notes.ts'
+import {foundAtom, noteAtom, notesAtom, queueOf, regenerateAtom, removal} from '#lib/notes.ts'
 import {Pager} from '#lib/pager.tsx'
 import {primary} from '#lib/session.ts'
-import type {NoteId, NoteItem} from '#services/notes/schema.ts'
+import type {Kind, NoteId, NoteItem} from '#services/notes/schema.ts'
 import {TagName} from '#services/notes/schema.ts'
 
 const prose = [text.body, lineSpacing(space[1]), foregroundStyle(colors.foreground), textSelection(true)]
 
 const lede = [text.body, lineSpacing(space[1]), foregroundStyle(colors.mutedForeground), textSelection(true)]
+
+// A place in the note's one column of scroll targets, inset from the edges, with the gap below it to the next place.
+function placed(gap: number) {
+	return [padding({bottom: gap, horizontal: space[4]}), frame({alignment: 'leading', maxWidth: Infinity})]
+}
 
 function BodyLine(props: {line: string}) {
 	return pipe(
@@ -101,33 +123,40 @@ function BodyLine(props: {line: string}) {
 	)
 }
 
+// The body's lines, each a place of the note's column.
 function Body(props: {text: string}) {
-	return (
-		<VStack
-			alignment="leading"
-			spacing={space[3]}
-			modifiers={[frame({alignment: 'leading', maxWidth: Infinity}), tint(primary)]}
-		>
-			{pipe(
-				props.text,
-				String.split('\n'),
-				Array.map(String.trim),
-				Array.filter(String.isNonEmpty),
-				Array.map(webLinksOnly),
-				Array.map((line, index) => (
-					// oxlint-disable-next-line react/no-array-index-key -- Note lines have no identity beyond their position; editing text replaces that position's contents.
-					<BodyLine key={index} line={line} />
-				))
-			)}
-		</VStack>
+	const lines = pipe(
+		props.text,
+		String.split('\n'),
+		Array.map(String.trim),
+		Array.filter(String.isNonEmpty),
+		Array.map(webLinksOnly)
 	)
+	return Array.map(lines, (line, index) => (
+		<Group
+			key={index}
+			modifiers={[
+				// The last line leaves the wider gap of the column's other places.
+				...placed(
+					Boolean.match(index === lines.length - 1, {
+						onFalse: Function.constant(space[3]),
+						onTrue: Function.constant(space[4])
+					})
+				),
+				tint(primary),
+				id(`${index}`)
+			]}
+		>
+			<BodyLine line={line} />
+		</Group>
+	))
 }
 
 function Placeholder() {
 	return (
 		<VStack
 			alignment="leading"
-			spacing={space[3]}
+			spacing={0}
 			modifiers={[redacted('placeholder'), accessibilityElement('ignore'), accessibilityLabel('Loading the note body')]}
 		>
 			<Body
@@ -145,7 +174,7 @@ export function NoteSkeleton() {
 			alignment="leading"
 			spacing={space[4]}
 			modifiers={[
-				padding({bottom: space[8], horizontal: space[4], top: space[2]}),
+				padding({bottom: space[8], top: space[2]}),
 				frame({alignment: 'leading', maxHeight: Infinity, maxWidth: Infinity})
 			]}
 		>
@@ -161,7 +190,7 @@ function Reading(props: {note: NoteItem}) {
 			alignment="leading"
 			spacing={space[4]}
 			modifiers={[
-				frame({alignment: 'leading', maxWidth: Infinity}),
+				...placed(space[4]),
 				accessibilityElement('ignore'),
 				accessibilityLabel(`Reading this ${subjectOf(props.note)}`)
 			]}
@@ -230,16 +259,86 @@ function NoteProblem(props: {note: NoteItem; onRetry: () => void}) {
 
 function NoteContent(props: {note: NoteItem}) {
 	return (
-		<VStack alignment="leading" spacing={space[4]}>
-			{String.isNonEmpty(props.note.summary) && <Text modifiers={lede}>{props.note.summary}</Text>}
+		<>
+			{String.isNonEmpty(props.note.summary) && (
+				<Text modifiers={[...lede, ...placed(space[4]), id('summary')]}>{props.note.summary}</Text>
+			)}
 			<Suspense fallback={<Placeholder />}>
 				<FullBody note={props.note} />
 			</Suspense>
-		</VStack>
+		</>
 	)
 }
 
+// The note's size, which every fold, unfold or turn changes, and whether its scrolling has come to rest.
+const widthAtom = Atom.make(0)
+const heightAtom = Atom.make(0)
+const restingAtom = Atom.make(true)
+// How far the note's top sits below the window's, which the bar above it insets the scrolling by.
+const insetAtom = Atom.make(0)
+// Whether the note's end was on screen where its scrolling last changed phase.
+const endedAtom = Atom.make(false)
+// The frame after a fold, unfold or turn cleared a line from the top, in which the note whose place it is sets the line again. Only a mounted note hears it, so the write never outlives the note's place.
+const restoringAtom = Atom.make(Option.none<{line: string; place: unknown}>())
+
+// The scroll view's modifiers that keep the place the person left at the top there through every fold, unfold and turn.
+function useReadingPlace() {
+	// The place crossing the top edge of the screen: the cover, the summary, a line of the body or what follows it.
+	const place = useNativeState<string | null>(null)
+	// The line the person left at the top when they last stopped scrolling. A fold or turn rewraps the text at the same scroll offset while still reporting that line, so the line is cleared and set again a frame later, which scrolls it back to the top.
+	const reading = useRef<string>(null)
+	const registry = useContext(RegistryContext)
+	const setWidth = useAtomSet(widthAtom)
+	const setHeight = useAtomSet(heightAtom)
+	const setResting = useAtomSet(restingAtom)
+	const setInset = useAtomSet(insetAtom)
+	const setEnded = useAtomSet(endedAtom)
+	function restore() {
+		const line = reading.current
+		if (line === null) return
+		place.set(null)
+		requestAnimationFrame(() => registry.set(restoringAtom, Option.some({line, place})))
+	}
+	useAtomSubscribe(restoringAtom, restoring => {
+		pipe(
+			restoring,
+			Option.filter(pending => pending.place === place),
+			Option.map(pending => place.set(pending.line))
+		)
+	})
+	useAtomSubscribe(restingAtom, resting => {
+		if (!resting) return
+		const top = place.get()
+		// A person who scrolled to the end keeps the end: restoring it as the place scrolls as far as the note goes, so the tags stay on screen however the text rewraps. One who left the cover at the top, as on a note that fits, keeps the cover.
+		reading.current = Boolean.match(registry.get(endedAtom) && top !== 'cover', {
+			onFalse: Function.constant(top),
+			onTrue: Function.constant('end')
+		})
+	})
+	useAtomSubscribe(widthAtom, restore)
+	// The bar shrinking while the person scrolls changes the height too, so only a height change at rest, as unfolding from laptop posture and back, restores the line; a note pushed past its end by a taller window would otherwise stay there once the window is short again.
+	useAtomSubscribe(heightAtom, () => {
+		if (registry.get(restingAtom)) restore()
+	})
+	return [
+		scrollPosition(place, {anchor: 'top'}),
+		onScrollPhaseChange((phase, geometry) => {
+			// The offset counts from under the bar, so scrolled to the end it falls short of the content by the visible height and that inset, less than a point once rounded.
+			setEnded(
+				geometry.contentHeight - geometry.contentOffsetY - registry.get(insetAtom) - geometry.containerHeight < 1
+			)
+			setResting(phase === 'idle')
+		}),
+		onGeometryChange(bounds => {
+			setWidth(bounds.width)
+			setHeight(bounds.height)
+			setInset(bounds.y)
+		})
+	]
+}
+
 function Detail(props: {note: NoteItem; onRetry: () => void; onTag: (tag: TagName) => void}) {
+	const reading = useReadingPlace()
 	const full = useAtomValue(noteAtom(props.note))
 	useAtomMount(problemSinceAtom(noteAtom(props.note)))
 	const reload = useAtomRefresh(noteAtom(props.note))
@@ -250,37 +349,43 @@ function Detail(props: {note: NoteItem; onRetry: () => void; onTag: (tag: TagNam
 	const kept =
 		String.isNonEmpty(props.note.summary) || Option.exists(AsyncResult.value(full), note => Option.isSome(note.body))
 	return (
-		<ScrollView>
+		<ScrollView modifiers={reading}>
+			{/* One column whose every place is a scroll target, so the reading place can be any of them; each place carries the gap below it. */}
 			<VStack
 				alignment="leading"
-				spacing={space[4]}
-				modifiers={[padding({bottom: space[8], top: space[2]}), frame({alignment: 'leading', maxWidth: Infinity})]}
+				spacing={0}
+				modifiers={[
+					padding({bottom: space[8]}),
+					frame({alignment: 'leading', maxWidth: Infinity}),
+					scrollTargetLayout()
+				]}
 			>
-				<Pager note={props.note} />
-				<VStack
-					alignment="leading"
-					spacing={space[4]}
-					modifiers={[padding({horizontal: space[4]}), frame({alignment: 'leading', maxWidth: Infinity})]}
-				>
-					{pipe(
-						Match.value(props.note.status),
-						Match.when('organizing', () => <Reading note={props.note} />),
-						Match.when('failed', () =>
-							Boolean.match(kept, {
-								onFalse: () => (
-									<Empty>
-										<EmptyContent>
-											<Button variant="destructive" size="lg" systemImage="arrow.clockwise" onPress={props.onRetry}>
-												{issue}
-											</Button>
-										</EmptyContent>
-									</Empty>
-								),
-								onTrue: () => <NoteContent note={props.note} />
-							})
-						),
-						Match.orElse(() => <NoteContent note={props.note} />)
-					)}
+				{/* The cover holds the column's top inset, so restoring it shows the very top of the note, pictures or not. */}
+				<VStack modifiers={[padding({top: space[2]}), frame({maxWidth: Infinity}), id('cover')]}>
+					<Group modifiers={[padding({bottom: space[4]})]}>
+						<Pager note={props.note} />
+					</Group>
+				</VStack>
+				{pipe(
+					Match.value(props.note.status),
+					Match.when('organizing', () => <Reading note={props.note} />),
+					Match.when('failed', () =>
+						Boolean.match(kept, {
+							onFalse: () => (
+								<Empty modifiers={placed(space[4])}>
+									<EmptyContent>
+										<Button variant="destructive" size="lg" systemImage="arrow.clockwise" onPress={props.onRetry}>
+											{issue}
+										</Button>
+									</EmptyContent>
+								</Empty>
+							),
+							onTrue: () => <NoteContent note={props.note} />
+						})
+					),
+					Match.orElse(() => <NoteContent note={props.note} />)
+				)}
+				<VStack alignment="leading" spacing={space[4]} modifiers={[...placed(0), id('end')]}>
 					<Divider />
 					<Byline note={props.note} />
 					{!Array.isReadonlyArrayEmpty(props.note.tags) && (
@@ -308,29 +413,57 @@ function Detail(props: {note: NoteItem; onRetry: () => void; onTag: (tag: TagNam
 	)
 }
 
-// The navigation path names the note by its id.
+// The opened note, which stays when the queue's filter leaves it out, or with nothing opened the queue's first, shown only while the queue is beside it.
 function NoteScreen(props: {
-	id: NoteId
+	id: Option.Option<NoteId>
+	kind: Option.Option<Kind>
 	notes: readonly NoteItem[]
 	onClose: () => void
-	onTag: (tag: TagName) => void
+	onTag: (tag: TagName, note: NoteId) => void
+	tag: Option.Option<TagName>
 }) {
 	const remove = useAtomSet(removal.removeAtom)
 	const regenerate = useAtomSet(regenerateAtom)
+	const found = useAtomValue(foundAtom)
+	const beside = useListBeside()
+	const show = useListShow()
+	if (Option.isNone(props.id) && !beside) return undefined
 	return pipe(
-		props.notes,
-		Array.findFirst(item => item.id === props.id),
+		props.id,
 		Option.match({
-			onNone: () => (
-				<Empty>
-					<EmptyMedia>
-						<Image systemName="trash" modifiers={[accessibilityLabel('Note Deleted')]} />
-					</EmptyMedia>
-				</Empty>
-			),
+			onNone: () => Array.head(queueOf(props.notes, {found, kind: props.kind, tag: props.tag})),
+			onSome: opened => Array.findFirst(props.notes, item => item.id === opened)
+		}),
+		Option.match({
+			onNone: () =>
+				Option.match(props.id, {
+					onNone: Function.constUndefined,
+					onSome: () => (
+						<Empty>
+							<EmptyMedia>
+								<Image systemName="trash" modifiers={[accessibilityLabel('Note Deleted')]} />
+							</EmptyMedia>
+						</Empty>
+					)
+				}),
 			onSome: item => (
-				<Toolbar modifiers={[navigationTitle(item.title), navigationBarTitleDisplayMode('inline')]}>
-					<Detail note={item} onRetry={() => regenerate(item.id)} onTag={props.onTag} />
+				<Toolbar
+					modifiers={[
+						navigationTitle(item.title),
+						navigationBarTitleDisplayMode('inline'),
+						// Beside the hidden queue, the bar's Show Sidebar is the only way back to it, so scrolling never minimizes it away.
+						barNeverMinimizes(Option.isSome(show) && !beside)
+					]}
+				>
+					<Detail
+						key={item.id}
+						note={item}
+						onRetry={() => regenerate(item.id)}
+						onTag={tag => {
+							props.onTag(tag, item.id)
+							Option.match(show, {onNone: props.onClose, onSome: reveal => reveal()})
+						}}
+					/>
 					<Toolbar.Content>
 						<NoteProblem note={item} onRetry={() => regenerate(item.id)} />
 						{Option.match(item.url, {
@@ -378,7 +511,7 @@ function NoteScreen(props: {
 									systemImage="trash"
 									role="destructive"
 									onPress={() => {
-										remove(props.id)
+										remove(item.id)
 										props.onClose()
 									}}
 								/>
@@ -391,10 +524,25 @@ function NoteScreen(props: {
 	)
 }
 
-export function NoteRoute(props: {id: NoteId; onClose: () => void; onTag: (tag: TagName) => void}) {
+export function NoteRoute(props: {
+	id: Option.Option<NoteId>
+	kind: Option.Option<Kind>
+	onClose: () => void
+	onTag: (tag: TagName, note: NoteId) => void
+	tag: Option.Option<TagName>
+}) {
 	return (
 		<Loaded atom={notesAtom}>
-			{notes => <NoteScreen id={props.id} notes={notes} onClose={props.onClose} onTag={props.onTag} />}
+			{notes => (
+				<NoteScreen
+					id={props.id}
+					kind={props.kind}
+					notes={notes}
+					onClose={props.onClose}
+					onTag={props.onTag}
+					tag={props.tag}
+				/>
+			)}
 		</Loaded>
 	)
 }

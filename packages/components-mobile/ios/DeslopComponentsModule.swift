@@ -35,17 +35,108 @@ public class DeslopComponentsModule: Module {
       ViewModifierRegistry.register("bottomBarSearch") { params, appContext, _ in
         try BottomBarSearch(from: params, appContext: appContext)
       }
+      ViewModifierRegistry.register("barNeverMinimizes") { params, appContext, _ in
+        try BarNeverMinimizes(from: params, appContext: appContext)
+      }
+      ViewModifierRegistry.register("stackedColumns") { params, appContext, _ in
+        try StackedColumns(from: params, appContext: appContext)
+      }
+      ViewModifierRegistry.register("searchFocused") { params, appContext, eventDispatcher in
+        try SearchFocused(from: params, appContext: appContext, eventDispatcher: eventDispatcher)
+      }
+      ViewModifierRegistry.register("seeThrough") { params, appContext, _ in
+        try SeeThrough(from: params, appContext: appContext)
+      }
     }
   }
 }
 
-// The search field between the bottom bar's buttons, where iOS 26 would otherwise fold it into a button of its own.
+// The search field between the bottom bar's buttons, where iOS 26 would otherwise fold it into a button of its own. On the unfolded iPhone Duo, iOS 27 reserves 24 points above the home indicator for the bar, half its 48-point glass, so a list's last row ends behind the bar; with the keyboard up iOS reserves only the keyboard, while the field rides 8 points above it, all its glass over the content. The content's safe area grows to the glass, unless the bar stands beside the content, as in a landscape window.
 struct BottomBarSearch: ViewModifier, Record {
+  @State private var shortfall: CGFloat = 0
+
   func body(content: Content) -> some View {
-    content.toolbar {
-      ToolbarSpacer(.fixed, placement: .bottomBar)
-      DefaultToolbarItem(kind: .search, placement: .bottomBar)
-      ToolbarSpacer(.fixed, placement: .bottomBar)
+    content
+      .safeAreaPadding(.bottom, shortfall)
+      .onGeometryChange(for: CGFloat.self, of: { $0.safeAreaInsets.bottom }) { bottom in
+        guard let window = UIApplication.shared.connectedScenes.lazy.compactMap({ ($0 as? UIWindowScene)?.keyWindow }).first else {
+          return
+        }
+        let reserved = bottom - window.safeAreaInsets.bottom
+        shortfall = switch reserved {
+        case ...0: 0
+        case ...48: 48 - reserved
+        // More than the glass is the keyboard's.
+        default: 48 + 8
+        }
+      }
+      .toolbar {
+        ToolbarSpacer(.fixed, placement: .bottomBar)
+        DefaultToolbarItem(kind: .search, placement: .bottomBar)
+        ToolbarSpacer(.fixed, placement: .bottomBar)
+      }
+  }
+}
+
+// Whether the field of the `searchable` before it has focus, and so the keyboard, both ways: Expo UI's `searchable` reports only the text. Setting `focused` false ends the focus and keeps the query.
+struct SearchFocused: ViewModifier, Record {
+  @Field var focused: Bool = false
+  var eventDispatcher: EventDispatcher?
+  @FocusState private var focus: Bool
+
+  init() {}
+
+  init(from params: Dict, appContext: AppContext, eventDispatcher: EventDispatcher) throws {
+    try self = .init(from: params, appContext: appContext)
+    self.eventDispatcher = eventDispatcher
+  }
+
+  func body(content: Content) -> some View {
+    content
+      .searchFocused($focus)
+      .onChange(of: focus) { _, focus in
+        eventDispatcher?(["searchFocused": ["focused": focus]])
+      }
+      .onChange(of: focused) { _, focused in
+        focus = focused
+      }
+  }
+}
+
+// Invisible and out of reach, to touch and to VoiceOver, while staying mounted, so what lies under it shows and answers. Always applied, so the view keeps its state when `through` changes.
+struct SeeThrough: ViewModifier, Record {
+  @Field var through: Bool = false
+
+  func body(content: Content) -> some View {
+    content
+      .opacity(through ? 0 : 1)
+      .allowsHitTesting(!through)
+      .accessibilityHidden(through)
+  }
+}
+
+// iOS calls the unfolded iPhone Duo regular in either orientation, so a split view would tile its columns in a portrait window too; a compact width stacks them as on the outer screen. Always applied, so a split view keeps its state when `stacked` changes.
+struct StackedColumns: ViewModifier, Record {
+  @Field var stacked: Bool = false
+
+  func body(content: Content) -> some View {
+    content.transformEnvironment(\.horizontalSizeClass) { sizeClass in
+      if stacked {
+        sizeClass = .compact
+      }
+    }
+  }
+}
+
+// iOS 27 minimizes the navigation bar while content scrolls down. A screen with nothing to scroll, such as a draft that replaces a note read halfway, would keep the bar minimized, title and buttons gone, with no scroll to bring it back. Always applied, so the screen keeps its state, such as a reading place, when `never` changes.
+struct BarNeverMinimizes: ViewModifier, Record {
+  @Field var never: Bool = true
+
+  func body(content: Content) -> some View {
+    if #available(iOS 27.0, *) {
+      content.toolbarMinimizationBehavior(never ? .never : .automatic, for: .navigationBar)
+    } else {
+      content
     }
   }
 }

@@ -8,6 +8,7 @@ import type {ViewModifier} from '@expo/ui/swift-ui/modifiers'
 import {MachineState} from '@typeonce/effect-machine-react'
 import type {ReactNode} from 'react'
 
+import {useListChoose} from '#components/blocks/list-detail.tsx'
 import {Button} from '#components/ui/button.tsx'
 import {Item, ItemActions, itemRow} from '#components/ui/item.tsx'
 import type {ItemAlignment} from '#components/ui/item.tsx'
@@ -31,6 +32,7 @@ export function RemovableRow<Id extends string>(props: {
 	const machine = props.removal.machine(props.id)
 	const remove = useAtomSet(props.removal.removeAtom)
 	const send = useAtomSet(machine.send)
+	const choose = useListChoose()
 	return (
 		<>
 			<MachineState machine={machine} path="Idle">
@@ -40,7 +42,10 @@ export function RemovableRow<Id extends string>(props: {
 							<ContextMenu.Trigger>
 								<Item
 									{...Struct.pick(props, ['alignment'])}
-									onPress={props.onOpen}
+									onPress={() => {
+										choose()
+										props.onOpen()
+									}}
 									modifiers={[accessibilityAddTraits(['isButton'])]}
 								>
 									{props.children(false)}
