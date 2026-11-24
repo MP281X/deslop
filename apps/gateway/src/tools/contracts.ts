@@ -7,6 +7,8 @@ import {AuthError, CurrentUser} from '@deslop/runtime/shared/auth'
 import {AiProvider} from '#services/ai-proxy/schema.ts'
 import {ConnectionStatus, FailureReason, ServerId} from '#services/connections/schema.ts'
 
+export const QUESTION_CARD_URI = 'ui://gateway/question'
+
 export const ToolContracts = Toolkit.make(
 	Tool.make('list_mcp_connections', {
 		description:
@@ -52,5 +54,17 @@ export const ToolContracts = Toolkit.make(
 		success: Schema.Struct({provider: AiProvider})
 	})
 		.annotate(Tool.Destructive, true)
+		.annotate(Tool.Strict, true),
+	Tool.make('ask_question', {
+		description:
+			'Use to ask the user one question with a few short answers; shows a card in the thread, and the answer they tap arrives as their next message, so end your turn after calling it.',
+		parameters: Schema.Struct({
+			answers: Schema.Array(Schema.NonEmptyString).check(Schema.isMinLength(2), Schema.isMaxLength(4)),
+			question: Schema.NonEmptyString
+		}),
+		success: Schema.Struct({question: Schema.String})
+	})
+		.annotate(Tool.Meta, {ui: {resourceUri: QUESTION_CARD_URI}})
+		.annotate(Tool.Readonly, true)
 		.annotate(Tool.Strict, true)
 )
