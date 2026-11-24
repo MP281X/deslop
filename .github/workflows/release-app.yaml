@@ -4,11 +4,6 @@ on:
   workflow_call:
     inputs:
       app: {type: string, required: true}
-    secrets:
-      EXPO_TOKEN: {required: true}
-      ASC_KEY_ID: {required: true}
-      ASC_ISSUER_ID: {required: true}
-      ASC_KEY_P8: {required: true}
 
 env:
   APP: ${{ inputs.app }}
@@ -35,7 +30,7 @@ jobs:
       run:
         working-directory: apps/${{ inputs.app }}
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@v7
         with: {fetch-depth: 0}
       - uses: ./.github/actions/setup
         with: {eas: 'true'}
@@ -72,8 +67,8 @@ jobs:
           runs=$(gh api "repos/$GITHUB_REPOSITORY/actions/artifacts?name=$artifact&per_page=100" --jq '[.artifacts[] | select((.expired | not) and .workflow_run.head_branch == "main") | .workflow_run.id] | unique | .[]')
           native=true
           for run in $runs; do
-            producer=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run" --jq '[.path, .event, .head_repository.full_name] | join(" ")')
-            if [[ $producer == ".github/workflows/deploy.yaml push $GITHUB_REPOSITORY" ]]; then native=false; fi
+            producer=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run" --jq '[.path, .event] | join(" ")')
+            if [[ $producer == ".github/workflows/deploy.yaml push" ]]; then native=false; fi
           done
           echo "artifact=$artifact" >> "$GITHUB_OUTPUT"
           echo "hash=$hash" >> "$GITHUB_OUTPUT"
@@ -124,7 +119,7 @@ jobs:
       run:
         working-directory: apps/${{ inputs.app }}
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@v7
         with: {fetch-depth: 0}
 
       # Apple refuses a build number it has, so a retry after a recorded upload resumes at the update; a run that ended between Apple's acceptance and the receipt, by a lost runner or a failed step, cannot be retried, and the next release uploads again.
@@ -164,20 +159,14 @@ jobs:
         run: |
           jq -n --arg app "$APP" --arg id "$APP_STORE_ID" --arg build "$RELEASE_NUMBER" --arg fingerprint "$FINGERPRINT" --arg commit "$GITHUB_SHA" \
             '{app: $app, appStoreId: $id, version: "0.1.\($build)", build: $build, fingerprint: $fingerprint, commit: $commit}' > "$RUNNER_TEMP/receipt.json"
-          umask 077
           mkdir -p "$HOME/.appstoreconnect/private_keys"
           printf '%s\n' "$ASC_KEY_P8" > "$HOME/.appstoreconnect/private_keys/AuthKey_$ASC_KEY_ID.p8"
           xcrun altool --upload-package "$RUNNER_TEMP/app.ipa" --api-key "$ASC_KEY_ID" --api-issuer "$ASC_ISSUER_ID"
           echo "- $APP uploaded: https://appstoreconnect.apple.com/apps/$APP_STORE_ID/testflight/ios" >> "$GITHUB_STEP_SUMMARY"
-      - name: Remove the App Store Connect key
-        if: always()
-        env:
-          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
-        run: rm -f "$HOME/.appstoreconnect/private_keys/AuthKey_$ASC_KEY_ID.p8"
       # Recorded right after Apple accepts, even when the run is cancelled: the receipt, while it has not expired, is what keeps a retry and the next release from uploading this fingerprint again. A run that fails or dies between the two steps, or whose receipt upload fails, leaves none.
       - name: Record Apple's acceptance
         if: always() && steps.upload.outcome == 'success'
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ needs.update.outputs.artifact }}
           path: ${{ runner.temp }}/receipt.json

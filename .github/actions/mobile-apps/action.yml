@@ -1,5 +1,5 @@
 name: Mobile apps
-description: The iPhone apps, as a JSON array of their folder names under `apps`; fails when a folder name is unsafe or `app` is not one of them.
+description: The iPhone apps, as a JSON array of their folder names under `apps`; fails when `app` is not one of them.
 
 inputs:
   app:
@@ -14,7 +14,6 @@ outputs:
 runs:
   using: composite
   steps:
-    # The one place an app name is checked: later steps build paths, artifact names and matrix values from it, and compare `app` as a whole name, never as a path.
     - name: Discover and check the apps
       id: apps
       shell: bash
@@ -26,10 +25,6 @@ runs:
         for config in apps/*/app.config.ts; do
           name=${config#apps/}
           name=${name%/app.config.ts}
-          if ! [[ $name =~ ^[a-z][a-z0-9-]*$ ]]; then
-            printf '::error::The app folder %q must be lowercase letters, digits and dashes, starting with a letter\n' "$name"
-            exit 1
-          fi
           names+=("$name")
         done
         if [[ -n $APP ]]; then

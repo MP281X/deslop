@@ -2,8 +2,8 @@
 
 - **History.** `main` is linear: every PR is squash-merged.
 - **Verification.** A PR is verified by its `pull_request` run of Verify, whose three jobs, Build, Check and Test, test GitHub's merge of the PR with its base at the last push. A PR is ready once that run passed on the merge with the latest `main`; when `main` moves, rebase and push for a new run. A PR with a merge conflict gets no run until it is rebased, and pushing a branch with no PR verifies nothing.
-- **Actions.** Third-party actions are pinned to a commit with their version beside it as a comment; bump one by replacing both.
-- **Release.** Release skips Verify only when a passed run of all four jobs tested exactly the tree that was merged; otherwise it runs all four, the built-server probe included, on the release tree before anything ships.
+- **Actions.** Actions use their major tag, such as `actions/cache@v6`, never a commit; `setup-vp`'s `v1` stopped at 1.15, so it names its latest release.
+- **Release.** Release skips Verify only when a passed run of all three jobs tested exactly the tree that was merged; otherwise it runs all three, the built-server probe included, on the release tree before anything ships.
 
 ## A new app
 
@@ -77,18 +77,15 @@ Public TestFlight and App Store release are separate outward actions.
 
 ## Simulator builds
 
-Every command here and every workflow that loads an app's config reads `DESLOP_DOMAIN`, the repository variable of that name (`.env.example`); export it first. A branch push touching a mobile app or shared packages builds a missing `<app>-simulator-<fingerprint>` artifact. Take a build only from a push run of `simulator.yaml` whose commit has this checkout's Simulator workflows, as the workflow does. The app holds the JavaScript of the commit that built it, so embed the branch's bundle before installing it:
+Every command here and every workflow that loads an app's config reads `DESLOP_DOMAIN`, the repository variable of that name (`.env.example`); export it first. A branch push touching a mobile app or shared packages builds a missing `<app>-simulator-<fingerprint>-<recipe>` artifact, and signs the production build of a production fingerprint that has no `<app>-signed-<fingerprint>-<recipe>` marker yet, without uploading it. The recipe names this checkout's `simulator.yaml` and setup action, so a build is taken only from the same ones. The app holds the JavaScript of the commit that built it, so embed the branch's bundle before installing it:
 
 ```bash
 # Run in apps/stash:
 fingerprint=$(APP_VARIANT=development vpx eas-cli@latest fingerprint:generate --platform ios --build-profile simulator --json --non-interactive | jq -r .hash)
 # Run the remaining commands from the worktree root:
-for candidate in $(gh api "repos/MP281X/deslop/actions/artifacts?name=stash-simulator-$fingerprint" --jq '.artifacts[] | select(.expired | not) | "\(.workflow_run.id):\(.workflow_run.head_sha)"'); do
-  run=${candidate%%:*} commit=${candidate#*:}
-  [[ $(gh api "repos/MP281X/deslop/actions/runs/$run" --jq '.path + " " + .event') == '.github/workflows/simulator.yaml push' ]] && git fetch --no-tags origin "$commit" && git diff --quiet "$commit" HEAD -- .github/workflows/simulator.yaml .github/workflows/simulator-app.yaml .github/actions/setup && break
-  run=
-done
-gh run download "$run" --name stash-simulator-$fingerprint --dir /tmp/stash-sim
+recipe=$(git rev-parse HEAD:.github/workflows/simulator.yaml HEAD:.github/actions/setup | sha256sum | cut -c1-12)
+run=$(gh api "repos/MP281X/deslop/actions/artifacts?name=stash-simulator-$fingerprint-$recipe" --jq '[.artifacts[] | select(.expired | not) | .workflow_run.id] | first // empty')
+gh run download "$run" --name stash-simulator-$fingerprint-$recipe --dir /tmp/stash-sim
 tar -xzf /tmp/stash-sim/simulator.tar.gz -C /tmp/stash-sim
 APP_VARIANT=development vp -C apps/stash exec expo export:embed --platform ios --dev false --bundle-output /tmp/stash-sim/stashdev.app/main.jsbundle --assets-dest /tmp/stash-sim/stashdev.app
 vp -C apps/stash exec expo prebuild --platform ios --no-install --clean

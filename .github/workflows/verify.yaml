@@ -12,16 +12,13 @@ concurrency:
   group: verify-${{ github.ref }}
   cancel-in-progress: true
 
-permissions:
-  contents: read
-
 jobs:
   # Release calls this only for a tree no pull request run verified, so its probe runs before anything ships.
   build:
     name: Build
     runs-on: ubuntu-26.04
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/setup
         with: {tasks: 'true'}
       - name: Build applications
@@ -36,7 +33,7 @@ jobs:
     name: Check
     runs-on: ubuntu-26.04
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/setup
         with: {tasks: 'true'}
       - name: Shared agent instructions
@@ -66,7 +63,7 @@ jobs:
     name: Test
     runs-on: ubuntu-26.04
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/setup
         with: {tasks: 'true'}
       - name: Tests

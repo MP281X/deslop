@@ -1,5 +1,7 @@
-name: Simulator builds
+name: iPhone builds
 
+# Linux computes the same fingerprints as the Mac, so a Mac starts only for a fingerprint without an artifact.
+# The Simulator build needs no provisioning profile, so only a signed App Store build proves a native change ships.
 on:
   push:
     branches-ignore: [main]
@@ -7,12 +9,11 @@ on:
       - apps/**
       - packages/**
       - pnpm-lock.yaml
-      - .github/workflows/simulator*.yaml
+      - .github/workflows/simulator.yaml
       - .github/actions/setup/**
 
-permissions:
-  contents: read
-  actions: read
+env:
+  DESLOP_DOMAIN: ${{ vars.DESLOP_DOMAIN }}
 
 # bash -eo pipefail: a failed command inside a pipeline or an assignment fails its step.
 defaults:
@@ -20,48 +21,156 @@ defaults:
     shell: bash
 
 jobs:
-  apps:
-    name: Discover apps
+  fingerprint:
+    name: Fingerprint
     runs-on: ubuntu-26.04
+    timeout-minutes: 15
+    # A newer push decides for the branch; a run that already decided keeps its builds.
+    concurrency:
+      group: fingerprint-${{ github.ref }}
+      cancel-in-progress: true
     outputs:
-      mobile: ${{ steps.apps.outputs.mobile }}
+      simulator: ${{ steps.fingerprint.outputs.simulator }}
+      signed: ${{ steps.fingerprint.outputs.signed }}
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with: {fetch-depth: 2}
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup
+        with: {eas: 'true'}
       - name: Discover mobile apps
         id: mobile
         uses: ./.github/actions/mobile-apps
-      - name: Discover changed mobile inputs
-        id: apps
+      # Each build is named by its profile's fingerprint and by the workflow and setup action that make it, so an edit to either builds every app again; one already made under that name is reused.
+      # A push that changes nothing native finds every build already made, so no diff decides which apps to look at.
+      - name: Find builds for each fingerprint
+        id: fingerprint
         env:
-          BASE: ${{ github.event.before }}
-          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
           GH_TOKEN: ${{ github.token }}
+          # `eas fingerprint:generate` logs in before it computes anything.
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
           MOBILE: ${{ steps.mobile.outputs.apps }}
         run: |
-          mobile=$MOBILE
-          mapfile -t apps < <(jq -r '.[]' <<< "$MOBILE")
-          paths=("${apps[@]/#/apps/}" packages pnpm-lock.yaml .github/workflows .github/actions/setup)
-          if [[ $BASE =~ ^0+$ ]]; then
-            BASE=$(gh api "repos/$GITHUB_REPOSITORY/compare/$DEFAULT_BRANCH...$GITHUB_SHA" --jq .merge_base_commit.sha)
-          fi
-          git cat-file -e "$BASE^{commit}" 2>/dev/null || git fetch --no-tags --depth=1 origin "$BASE"
-          if git diff --quiet "$BASE" HEAD -- "${paths[@]}"; then mobile='[]'; fi
-          echo "mobile=$mobile" >> "$GITHUB_OUTPUT"
+          shopt -s inherit_errexit nullglob
+          recipe=$(git rev-parse HEAD:.github/workflows/simulator.yaml HEAD:.github/actions/setup | sha256sum | cut -c1-12)
+          decide() {
+            local app=$1 build kind profile variant artifact run
+            for build in simulator:simulator:development signed:production:production; do
+              IFS=: read -r kind profile variant <<< "$build"
+              artifact="$app-$kind-$(cd "apps/$app" && APP_VARIANT=$variant eas fingerprint:generate --platform ios --build-profile "$profile" --json --non-interactive | jq -r .hash)-$recipe"
+              run=$(gh api "repos/$GITHUB_REPOSITORY/actions/artifacts?name=$artifact" --jq '[.artifacts[] | select(.expired | not) | .workflow_run.id] | first // empty')
+              if [[ -n $run ]]; then
+                echo "- $app reuses $artifact from $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$run" >> "$RUNNER_TEMP/decided/$app.md"
+              else
+                jq -cn --arg app "$app" --arg artifact "$artifact" '{$app, $artifact}' > "$RUNNER_TEMP/decided/$app-$kind.json"
+              fi
+            done
+          }
+          mkdir "$RUNNER_TEMP/decided"
+          # The apps decide at once, as each fingerprint takes several seconds; any app failing fails the step.
+          pids=()
+          for app in $(jq -r '.[]' <<< "$MOBILE"); do
+            decide "$app" &
+            pids+=($!)
+          done
+          for pid in "${pids[@]}"; do wait "$pid"; done
+          for summary in "$RUNNER_TEMP"/decided/*.md; do cat "$summary" >> "$GITHUB_STEP_SUMMARY"; done
+          echo "simulator=$(jq -sc . "$RUNNER_TEMP"/decided/*-simulator.json /dev/null)" >> "$GITHUB_OUTPUT"
+          echo "signed=$(jq -sc . "$RUNNER_TEMP"/decided/*-signed.json /dev/null)" >> "$GITHUB_OUTPUT"
 
-  app:
-    name: App
-    needs: apps
-    if: needs.apps.outputs.mobile != '[]'
-    # A skipped web-only run must not cancel an unfinished native artifact.
+  simulator:
+    name: Simulator ${{ matrix.app }}
+    needs: fingerprint
+    if: needs.fingerprint.outputs.simulator != '[]'
+    # One build per name, whatever the branch: every job waiting behind the same build finds its artifact and stops, and a newer push never cancels a build it would make again.
     concurrency:
-      group: simulator-${{ github.ref }}-${{ matrix.app }}
-      cancel-in-progress: true
+      group: ${{ matrix.artifact }}
+      queue: max
     strategy:
       matrix:
-        app: ${{ fromJSON(needs.apps.outputs.mobile) }}
-    uses: ./.github/workflows/simulator-app.yaml
-    with:
-      app: ${{ matrix.app }}
-    secrets:
-      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        include: ${{ fromJSON(needs.fingerprint.outputs.simulator) }}
+    runs-on: xcode-27
+    timeout-minutes: 60
+    env:
+      APP_VARIANT: development
+      EAS_BUILD_DISABLE_EXPO_DOCTOR_STEP: 1
+      # The Simulator host is Apple silicon; the default universal binary compiles every file twice.
+      GYM_XCARGS: ARCHS=arm64
+    steps:
+      # A build of the same name may have finished since the decision; it is this one.
+      - name: Look for a build made meanwhile
+        id: made
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ARTIFACT: ${{ matrix.artifact }}
+        run: |
+          count=$(gh api "repos/$GITHUB_REPOSITORY/actions/artifacts?name=$ARTIFACT" --jq '[.artifacts[] | select(.expired | not)] | length')
+          echo "count=$count" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@v7
+        if: steps.made.outputs.count == 0
+      - uses: ./.github/actions/setup
+        if: steps.made.outputs.count == 0
+        with: {eas: 'true', ios: 'true'}
+      - name: Build the Simulator app
+        if: steps.made.outputs.count == 0
+        working-directory: apps/${{ matrix.app }}
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: eas build --local --profile simulator --platform ios --non-interactive --output "$RUNNER_TEMP/simulator.tar.gz"
+      - name: Upload the Simulator app
+        if: steps.made.outputs.count == 0
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ matrix.artifact }}
+          path: ${{ runner.temp }}/simulator.tar.gz
+          retention-days: 90
+
+  app-store:
+    name: App Store ${{ matrix.app }}
+    needs: fingerprint
+    if: needs.fingerprint.outputs.signed != '[]'
+    concurrency:
+      group: ${{ matrix.artifact }}
+      queue: max
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.fingerprint.outputs.signed) }}
+    runs-on: xcode-27
+    timeout-minutes: 60
+    env:
+      APP_VARIANT: production
+      EAS_BUILD_DISABLE_EXPO_DOCTOR_STEP: 1
+    steps:
+      # A build of the same name may have finished since the decision; it is this one.
+      - name: Look for a build made meanwhile
+        id: made
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ARTIFACT: ${{ matrix.artifact }}
+        run: |
+          count=$(gh api "repos/$GITHUB_REPOSITORY/actions/artifacts?name=$ARTIFACT" --jq '[.artifacts[] | select(.expired | not)] | length')
+          echo "count=$count" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@v7
+        if: steps.made.outputs.count == 0
+      - uses: ./.github/actions/setup
+        if: steps.made.outputs.count == 0
+        with: {eas: 'true', ios: 'true'}
+      # The same signed build Release uploads, with the same provisioning profiles; nothing is uploaded.
+      - name: Build the signed App Store app
+        if: steps.made.outputs.count == 0
+        working-directory: apps/${{ matrix.app }}
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+          # SDK 58 uploads the embedded bundle to EAS Update after every build; only Release's build ships.
+          EAS_UPDATE_UPLOAD_EMBEDDED_BUNDLE: 0
+        run: eas build --local --profile production --platform ios --non-interactive --output "$RUNNER_TEMP/app.ipa"
+      # Only the commit, not the app: the marker tells a later push with this fingerprint and recipe that it already signs.
+      - name: Record the signed build
+        if: steps.made.outputs.count == 0
+        run: echo "$GITHUB_SHA" > "$RUNNER_TEMP/signed"
+      - name: Upload the marker
+        if: steps.made.outputs.count == 0
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ matrix.artifact }}
+          path: ${{ runner.temp }}/signed
+          retention-days: 90
