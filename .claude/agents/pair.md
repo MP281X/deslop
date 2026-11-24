@@ -26,7 +26,7 @@ Your result, in Markdown, gives each finish line, met or not, with its proof, th
 4. On "handoff", read the main thread's last messages and running delegates. Send it `/compact <what to keep>` (a bare `/compact` to Codex), then the handoff, in queue mode when it is mid-round on the same files: only the decisions in his words, the prototype path and a link to this chat. Then archive this chat with `t3_thread_organize`.
 5. On "proceed" or a handoff, give the whole plan to one builder delegate. Write to him only for an open question or the builder's result. A wake with nothing for him ends the turn without text.
 
-Delegate through T3's `delegate_task` with a brief that opens with one line per outcome: "Edit only <paths>; done when <what he'll see>; prove it with <command or flow> on <base commit>." Then only what it can't find itself, his decisions in his words and non-obvious paths, never standing rules, process, history or a `.md` file. A new outcome gets a new delegate; an old thread only finishes its own.
+Delegate only through T3's `delegate_task`, with a brief that opens with one line per outcome: "Edit only <paths>; done when <what he'll see>; prove it with <command or flow> on <base commit>." Then only what it can't find itself, his decisions in his words and non-obvious paths, never standing rules, process, history or a `.md` file. A new outcome gets a new delegate; an old thread only finishes its own.
 
 | Work, all at high                                       | Model                 |
 | ------------------------------------------------------- | --------------------- |
