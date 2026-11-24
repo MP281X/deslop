@@ -4,12 +4,6 @@ name: iPhone builds
 on:
   push:
     branches-ignore: [main]
-    paths:
-      - apps/**
-      - packages/**
-      - pnpm-lock.yaml
-      - .github/workflows/simulator.yaml
-      - .github/actions/setup/**
 
 env:
   DESLOP_DOMAIN: ${{ vars.DESLOP_DOMAIN }}
@@ -31,67 +25,32 @@ jobs:
     outputs:
       simulator: ${{ steps.fingerprint.outputs.simulator }}
     steps:
-      # A stack's top branch holds every lower layer's commits, so only it builds.
-      - name: Is this the top of its stack?
-        id: stack
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          above=$(gh pr list --repo "$GITHUB_REPOSITORY" --base "$GITHUB_REF_NAME" --state open --json url --jq '.[].url')
-          if [[ -n $above ]]; then
-            echo "- $GITHUB_REF_NAME is below $above in a stack; its top branch builds" >> "$GITHUB_STEP_SUMMARY"
-            echo "top=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "top=true" >> "$GITHUB_OUTPUT"
-          fi
       - uses: actions/checkout@v7
-        if: steps.stack.outputs.top == 'true'
       - uses: ./.github/actions/setup
-        if: steps.stack.outputs.top == 'true'
-        with: {eas: 'true'}
-      - name: Discover mobile apps
-        id: mobile
-        if: steps.stack.outputs.top == 'true'
-        uses: ./.github/actions/mobile-apps
-      # Each build is named by its profile's fingerprint and by the workflow and setup action that make it, so an edit to either builds every app again; one already made under that name is reused.
-      # A push that changes nothing native finds every build already made, so no diff decides which apps to look at.
+      # A stack's top branch holds every lower layer's commits, so only it builds. An artifact's name holds a hash of this workflow and the setup action, so an edit to either builds every app again.
       - name: Find builds for each fingerprint
         id: fingerprint
-        if: steps.stack.outputs.top == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
-          # `eas fingerprint:generate` logs in before it computes anything.
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
-          MOBILE: ${{ steps.mobile.outputs.apps }}
         run: |
-          shopt -s inherit_errexit nullglob
-          recipe=$(git rev-parse HEAD:.github/workflows/simulator.yaml HEAD:.github/actions/setup | sha256sum | cut -c1-12)
-          decide() {
-            local app=$1 artifact run
-            artifact="$app-simulator-$(cd "apps/$app" && APP_VARIANT=development eas fingerprint:generate --platform ios --build-profile simulator --json --non-interactive | jq -r .hash)-$recipe"
-            run=$(gh api "repos/$GITHUB_REPOSITORY/actions/artifacts?name=$artifact" --jq '[.artifacts[] | select(.expired | not) | .workflow_run.id] | first // empty')
-            if [[ -n $run ]]; then
-              echo "- $app reuses $artifact from $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$run" >> "$RUNNER_TEMP/decided/$app.md"
-            else
-              jq -cn --arg app "$app" --arg artifact "$artifact" '{$app, $artifact}' > "$RUNNER_TEMP/decided/$app.json"
-            fi
-          }
-          mkdir "$RUNNER_TEMP/decided"
-          # The apps decide at once, as each fingerprint takes several seconds; any app failing fails the step.
-          pids=()
-          for app in $(jq -r '.[]' <<< "$MOBILE"); do
-            decide "$app" &
-            pids+=($!)
-          done
-          for pid in "${pids[@]}"; do wait "$pid"; done
-          for summary in "$RUNNER_TEMP"/decided/*.md; do cat "$summary" >> "$GITHUB_STEP_SUMMARY"; done
-          builds=$(jq -sc . "$RUNNER_TEMP"/decided/*.json /dev/null)
-          if [[ $builds != '[]' ]]; then echo "simulator=$builds" >> "$GITHUB_OUTPUT"; fi
+          builds=()
+          above=$(gh pr list --base "$GITHUB_REF_NAME" --state open --json url --jq '.[].url')
+          if [[ -z $above ]]; then
+            recipe=$(git rev-parse HEAD:.github/workflows/simulator.yaml HEAD:.github/actions/setup | sha256sum | cut -c1-12)
+            for app in opm stash trips; do
+              fingerprint=$(cd "apps/$app" && APP_VARIANT=development eas fingerprint:generate --platform ios --build-profile simulator --json --non-interactive | jq -r .hash)
+              artifact="$app-simulator-$fingerprint-$recipe"
+              held=$(gh api "repos/$GITHUB_REPOSITORY/actions/artifacts?name=$artifact" --jq '[.artifacts[] | select(.expired | not)] | length')
+              if [[ $held == 0 ]]; then builds+=("$(jq -cn --arg app "$app" --arg artifact "$artifact" '{$app, $artifact}')"); fi
+            done
+          fi
+          echo "simulator=$(jq -sc . <<< "${builds[*]}")" >> "$GITHUB_OUTPUT"
 
   simulator:
     name: Simulator ${{ matrix.app }}
     needs: fingerprint
-    if: needs.fingerprint.outputs.simulator
+    if: needs.fingerprint.outputs.simulator != '[]'
     # One build per name, whatever the branch: every job waiting behind the same build finds its artifact and stops, and a newer push never cancels a build it would make again.
     concurrency:
       group: ${{ matrix.artifact }}
@@ -108,30 +67,23 @@ jobs:
       GYM_XCARGS: ARCHS=arm64
       # The bundle step stays though agents replace the bundle: SKIP_BUNDLING also skips expo-updates' embedded manifest, and the app then stops at launch.
     steps:
-      # A build of the same name may have finished since the decision; it is this one.
-      - name: Look for a build made meanwhile
-        id: made
-        env:
-          GH_TOKEN: ${{ github.token }}
-          ARTIFACT: ${{ matrix.artifact }}
-        run: |
-          count=$(gh api "repos/$GITHUB_REPOSITORY/actions/artifacts?name=$ARTIFACT" --jq '[.artifacts[] | select(.expired | not)] | length')
-          echo "count=$count" >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@v7
-        if: steps.made.outputs.count == 0
       - uses: ./.github/actions/setup
-        if: steps.made.outputs.count == 0
-        with: {eas: 'true', ios: 'true'}
+      # A job that waited behind a build of the same name finds its artifact and stops.
       - name: Build the Simulator app
-        if: steps.made.outputs.count == 0
         working-directory: apps/${{ matrix.app }}
         env:
+          GH_TOKEN: ${{ github.token }}
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
-        run: eas build --local --profile simulator --platform ios --non-interactive --output "$RUNNER_TEMP/simulator.tar.gz"
+          ARTIFACT: ${{ matrix.artifact }}
+        run: |
+          held=$(gh api "repos/$GITHUB_REPOSITORY/actions/artifacts?name=$ARTIFACT" --jq '[.artifacts[] | select(.expired | not)] | length')
+          if [[ $held != 0 ]]; then exit 0; fi
+          eas build --local --profile simulator --platform ios --non-interactive --output "$RUNNER_TEMP/simulator.tar.gz"
       - name: Upload the Simulator app
-        if: steps.made.outputs.count == 0
         uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.artifact }}
           path: ${{ runner.temp }}/simulator.tar.gz
           retention-days: 90
+          if-no-files-found: ignore
