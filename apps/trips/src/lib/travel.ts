@@ -8,9 +8,8 @@ import {provideRuntimeOnce} from '@deslop/runtime/mobile/session'
 
 import {flightsAtom, nowAtom} from '#lib/flights.ts'
 import {RpcClient} from '#lib/session.ts'
-import {airportByOf, cancelledOf, travelTo} from '#services/flights/lib/utils.ts'
+import {airportByOf, cancelledOf, feederOf, travelTo} from '#services/flights/lib/utils.ts'
 import type {PlaceCode, TravelMinutes, TravelTime} from '#services/flights/schema.ts'
-import {feederOf} from '#services/push/lib/utils.ts'
 
 // The trips offered for the way to an airport, in minutes.
 export const TRAVEL_CHOICES: readonly TravelMinutes[] = [30, 45, 60, 90, 120, 150, 180]

@@ -4,15 +4,15 @@ import {Array, DateTime, Duration, Option, Redacted, Schema, String, Struct, pip
 
 import {ApnsToken} from '@deslop/runtime/shared/apns'
 
-import {activityProps, MINUTE, upsert} from '#services/flights/lib/utils.ts'
+import {feederOf, stepOf, upsert} from '#services/flights/lib/utils.ts'
 import type {FlightList, Traveller} from '#services/flights/schema.ts'
 import {FlightId, Flight, FlightTracking, Place, PlaceCode, TravelTime} from '#services/flights/schema.ts'
 import {
 	activityPhones,
+	activityProps,
 	alertsOf,
 	announced,
 	expiredActivities,
-	feederOf,
 	holds,
 	perDevice,
 	ridingAlerts,
@@ -67,7 +67,7 @@ const ACTIVITY = {
 	flightId: FLIGHT.id,
 	leg: 'departure' as const,
 	phone: PhoneId.make('phone-a'),
-	props: activityProps(FLIGHT, DEPARTS, false),
+	props: activityProps([FLIGHT], stepOf([FLIGHT], DEPARTS, []), [], false),
 	startedAt: DEPARTS
 }
 
@@ -111,7 +111,7 @@ it('starts no activity again for a window whose activity ended', () => {
 		showPlan(
 			[Device.make(STARTER)],
 			[Activity.make({...ACTIVITY, endedAt: Option.some(DateTime.addDuration(DEPARTS, Duration.minutes(5)))})],
-			Flight.make(FLIGHT),
+			[Flight.make(FLIGHT)],
 			{end: DateTime.addDuration(DEPARTS, Duration.hours(1)), leg: 'departure', start: DEPARTS}
 		),
 		[]
@@ -180,7 +180,7 @@ it('refreshes a covering activity or launches a new one per app while an ended l
 			showPlan(
 				[Device.make(STARTER), Device.make({...STARTER, bundle: 'xyz.mp281x.trips.dev'})],
 				[Activity.make(ACTIVITY), ended],
-				FLIGHT,
+				[FLIGHT],
 				window
 			),
 			action => [action._tag, action.target.bundle]
@@ -188,18 +188,18 @@ it('refreshes a covering activity or launches a new one per app while an ended l
 		[['refresh', 'xyz.mp281x.trips']]
 	)
 	assert.deepStrictEqual(
-		Array.map(showPlan([Device.make(STARTER)], [], FLIGHT, window), action => action._tag),
+		Array.map(showPlan([Device.make(STARTER)], [], [FLIGHT], window), action => action._tag),
 		['launch']
 	)
 	const cancelled = Flight.make({...FLIGHT, travellers: CANCELLED})
-	assert.deepStrictEqual(showPlan([Device.make(STARTER)], [], cancelled, window), [])
+	assert.deepStrictEqual(showPlan([Device.make(STARTER)], [], [cancelled], window), [])
 	assert.deepStrictEqual(
-		Array.map(showPlan([Device.make(STARTER)], [Activity.make(ACTIVITY)], cancelled, window), action => action._tag),
+		Array.map(showPlan([Device.make(STARTER)], [Activity.make(ACTIVITY)], [cancelled], window), action => action._tag),
 		['refresh']
 	)
 })
 
-it('ends only running activities whose flight or window is gone', () => {
+it('ends only running activities whose day or window is gone', () => {
 	const removed = Activity.make({
 		...ACTIVITY,
 		channel: ChannelId.make('removed'),
@@ -209,7 +209,7 @@ it('ends only running activities whose flight or window is gone', () => {
 	const ended = Activity.make({...ACTIVITY, channel: ChannelId.make('ended'), endedAt: Option.some(DEPARTS)})
 	assert.deepStrictEqual(
 		Array.map(
-			expiredActivities([Activity.make(ACTIVITY), removed, wrongLeg, ended], [FLIGHT], DEPARTS),
+			expiredActivities([Activity.make(ACTIVITY), removed, wrongLeg, ended], [[FLIGHT]], DEPARTS, []),
 			activity => activity.channel
 		),
 		['removed', 'wrong-leg']
@@ -562,8 +562,9 @@ it("reminds each traveller still booked who has no pass of their own, whoever el
 // The plan of a flight from Bergamo, two hours from home, so he leaves three hours before it departs: whether it is due at a time, and a minute before.
 function planFrom(leave: string, at: string) {
 	const flight = Flight.make({...RYANAIR, departs: DateTime.addDuration(DateTime.makeUnsafe(leave), Duration.hours(3))})
-	return Array.map([DateTime.subtractDuration(DateTime.makeUnsafe(at), MINUTE), DateTime.makeUnsafe(at)], now =>
-		Option.isSome(alertAt(flight, now, TO_BERGAMO, 'plan'))
+	return Array.map(
+		[DateTime.subtractDuration(DateTime.makeUnsafe(at), Duration.minutes(1)), DateTime.makeUnsafe(at)],
+		now => Option.isSome(alertAt(flight, now, TO_BERGAMO, 'plan'))
 	)
 }
 

@@ -2,10 +2,10 @@ import {assert, it} from '@effect/vitest'
 
 import {Array, DateTime, Duration, Option, Schema, Struct, pipe} from 'effect'
 
-import {activityProps} from '#services/flights/lib/utils.ts'
+import {checkEvery, isStale, stepOf} from '#services/flights/lib/utils.ts'
 import {FlightId, Flight, Place, ProviderFlightId} from '#services/flights/schema.ts'
-import {alertsOf} from '#services/push/lib/utils.ts'
-import {canRefresh, checkEvery, flightTracking, isDue, isStale, pickFlight} from '#services/tracking/lib/utils.ts'
+import {activityProps, alertsOf} from '#services/push/lib/utils.ts'
+import {canRefresh, flightTracking, isDue, pickFlight} from '#services/tracking/lib/utils.ts'
 import {FaFlight} from '#services/tracking/schema.ts'
 
 const ANSWER = Schema.decodeSync(FaFlight)({
@@ -44,7 +44,7 @@ it('carries a provider cancellation into the island and one cancellation alert',
 		Array.map(alertsOf(flight, now, {flights: [], travel: []}), alert => alert.category),
 		['cancelled']
 	)
-	assert.strictEqual(activityProps(flight, now, false).tone, 'bad')
+	assert.strictEqual(activityProps([flight], stepOf([flight], now, []), [], false).tone, 'bad')
 })
 
 it('keeps the gate a flight left for the change it shows', () => {

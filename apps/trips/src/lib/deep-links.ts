@@ -15,14 +15,28 @@ import {directionsTo, rideTo} from '#lib/rides.ts'
 import {FlightId, FlightsError, Place} from '#services/flights/schema.ts'
 
 const FLIGHT_LINK = `${appConfig.extra.scheme}://flight/`
+const DAY_LINK = `${appConfig.extra.scheme}://day/`
 
-// Only this app's own flight link, the whole of it: another scheme, host or a longer path opens nothing.
-function flightIn(url?: string | null) {
+// A flight to open: that one, or with `day` the flight its day is at when it shows, as the Live Activity links it.
+export type Target = {day: boolean; id: FlightId}
+
+function under(prefix: string, url: string) {
 	return pipe(
-		Option.fromNullishOr(url),
-		Option.filter(String.startsWith(FLIGHT_LINK)),
-		Option.map(String.slice(FLIGHT_LINK.length)),
+		Option.some(url),
+		Option.filter(String.startsWith(prefix)),
+		Option.map(String.slice(prefix.length)),
 		Option.flatMap(Schema.decodeOption(FlightId))
+	)
+}
+
+// Only this app's own flight or day link, the whole of it: another scheme, host or a longer path opens nothing.
+function targetIn(url?: string | null) {
+	return Option.flatMap(Option.fromNullishOr(url), found =>
+		pipe(
+			under(FLIGHT_LINK, found),
+			Option.map(id => ({day: false, id}) satisfies Target),
+			Option.orElse(() => Option.map(under(DAY_LINK, found), id => ({day: true, id}) satisfies Target))
+		)
 	)
 }
 
@@ -54,12 +68,12 @@ function act(response: NotificationResponse | null) {
 function tapped(response: NotificationResponse | null) {
 	return Option.map(
 		Schema.decodeUnknownOption(Schema.Struct({flightId: FlightId}))(response?.notification.request.content.data),
-		payload => payload.flightId
+		payload => ({day: false, id: payload.flightId}) satisfies Target
 	)
 }
 
 // What a link or a notification answer asks: the flight to open, and the way to the airport a Leave now action opens.
-type Opened = {act: Effect.Effect<void>; flight: Option.Option<FlightId>}
+type Opened = {act: Effect.Effect<void>; flight: Option.Option<Target>}
 
 function answered(response: NotificationResponse | null) {
 	return {act: act(response), flight: tapped(response)} satisfies Opened
@@ -82,7 +96,7 @@ export const openedAtom = Atom.keepAlive(
 						// A notification answered while the app was closed launches it without a URL.
 						pipe(
 							url,
-							Option.flatMap(flightIn),
+							Option.flatMap(targetIn),
 							Option.match({
 								onNone: () => {
 									// The answer that launched the app counts once; a later start of this atom must not open it again.
@@ -101,7 +115,7 @@ export const openedAtom = Atom.keepAlive(
 						yield* Effect.acquireRelease(
 							Effect.sync(() =>
 								Linking.addEventListener('url', event =>
-									Queue.offerUnsafe(queue, {act: Effect.void, flight: flightIn(event.url)})
+									Queue.offerUnsafe(queue, {act: Effect.void, flight: targetIn(event.url)})
 								)
 							),
 							subscription => Effect.sync(() => subscription.remove())

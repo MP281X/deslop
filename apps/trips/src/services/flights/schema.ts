@@ -118,41 +118,46 @@ export const FlightsEvent = Schema.Struct({
 export type Tone = typeof Tone.Type
 export const Tone = Schema.Literals(['good', 'warn', 'bad', 'info', 'plain'])
 
+// Where the day stands: on the way to the airport, then at the gate, boarding, away from the gate before takeoff, in the air, and landed at its end.
 export type FlightPhase = typeof FlightPhase.Type
 export const FlightPhase = Schema.Literals([
 	'leave',
 	'airport',
 	'gate',
 	'boarding',
+	'taxiing',
 	'airborne',
 	'landed',
 	'cancelled',
 	'diverted'
 ])
 
-export type Chip = typeof Chip.Type
-export const Chip = Schema.Struct({text: Schema.String, tone: Tone})
+// The day's bar: the way to the airport, the gate, boarding and the flight.
+export type Segment = typeof Segment.Type
+export const Segment = Schema.Literals([0, 1, 2, 3])
 
-// What one Live Activity shows, already worded: the widget runtime renders it without logic of its own, and ActivityKit allows 4 KB per update.
+// What the day's one Live Activity shows, already worded: the widget runtime renders it without logic of its own, and ActivityKit allows 4 KB per update. Two fields never move, what to do on the left and the time left on the right, over the bar and one line of small print.
 export type ActivityProps = typeof ActivityProps.Type
 export const ActivityProps = Schema.Struct({
-	arrivalNote: Schema.String,
-	arrivalTime: Schema.String,
-	arrivalTone: Tone,
-	arrives: DateTimeUtcFromFiniteMillis,
-	chip: Schema.OptionFromOptionalKey(Chip),
-	countdown: Schema.OptionFromOptionalKey(DateTimeUtcFromFiniteMillis),
+	// The deadline the ring and the time left count down to, from `since`; none once nothing is left to wait for.
+	deadline: Schema.OptionFromOptionalKey(DateTimeUtcFromFiniteMillis),
 	delay: DurationFromMinutes,
-	departureNote: Schema.String,
-	departureTime: Schema.String,
-	departureTone: Tone,
-	detail: Schema.String,
-	from: Schema.String,
-	headline: Schema.String,
+	// The island's leading slot: the gate, or a symbol while there is none.
+	gate: Schema.OptionFromOptionalKey(Schema.String),
 	label: Schema.String,
 	note: Schema.String,
+	noteTone: Tone,
+	noteWas: Schema.OptionFromOptionalKey(Schema.String),
+	// A placeholder value, such as a gate not yet posted, drawn faint.
+	pending: Schema.Boolean,
 	phase: FlightPhase,
-	progressFrom: Schema.OptionFromOptionalKey(DateTimeUtcFromFiniteMillis),
+	problem: Schema.OptionFromOptionalKey(Schema.String),
+	segment: Segment,
+	// The bar's current part fills from `segmentSince` to `segmentUntil`.
+	segmentSince: DateTimeUtcFromFiniteMillis,
+	segmentUntil: DateTimeUtcFromFiniteMillis,
+	since: DateTimeUtcFromFiniteMillis,
+	small: Schema.String,
 	symbol: Schema.Literals([
 		'airplane',
 		'airplane.arrival',
@@ -160,12 +165,16 @@ export const ActivityProps = Schema.Struct({
 		'car.fill',
 		'exclamationmark.triangle.fill'
 	]),
-	title: Schema.String,
-	to: Schema.String,
-	tone: Tone
+	// The ring turns the warning colour while the small print names a problem.
+	tone: Tone,
+	until: Schema.String,
+	// What `until` shows in place of a countdown once there is no deadline.
+	untilValue: Schema.String,
+	value: Schema.String,
+	was: Schema.OptionFromOptionalKey(Schema.String)
 })
 
-// A flight longer than a Live Activity may live gets one activity for departure and another for arrival.
+// A day longer than a Live Activity may live gets one activity for its start and another for the rest.
 export type Leg = typeof Leg.Type
 export const Leg = Schema.Literals(['departure', 'arrival'])
 

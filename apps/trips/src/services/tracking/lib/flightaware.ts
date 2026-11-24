@@ -2,8 +2,8 @@ import {Config, Context, DateTime, Duration, Effect, Layer, Option, Redacted, pi
 
 import {HttpClient, HttpClientRequest, HttpClientResponse} from 'effect/http'
 
+import {HORIZON} from '#services/flights/lib/utils.ts'
 import type {ProviderFlightId} from '#services/flights/schema.ts'
-import {HORIZON} from '#services/tracking/lib/utils.ts'
 import {FaFlights} from '#services/tracking/schema.ts'
 
 export class FlightAware extends Context.Service<FlightAware>()('@deslop/trips/services/tracking/lib/flightaware', {

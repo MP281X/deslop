@@ -3,12 +3,10 @@ import {assert, it} from '@effect/vitest'
 import {Array, DateTime, Duration, Function, Option, Schema, String, Struct} from 'effect'
 
 import {
-	activeWindow,
 	airportByOf,
 	arrivalClockOf,
 	daysBetween,
 	instantOf,
-	activityProps,
 	cancelledOf,
 	leaveByOf,
 	upsert
@@ -34,15 +32,6 @@ const FLIGHT = Struct.pick(
 	}),
 	Struct.keys(Flight.fields)
 )
-
-it('opens a flight three hours ahead', () => {
-	assert.isTrue(Option.isNone(activeWindow(FLIGHT, DateTime.subtractDuration(DEPARTS, Duration.minutes(181)))))
-	assert.isTrue(Option.isSome(activeWindow(FLIGHT, DateTime.subtractDuration(DEPARTS, Duration.hours(3)))))
-	assert.strictEqual(
-		activityProps(FLIGHT, DateTime.subtractDuration(DEPARTS, Duration.hours(3)), false).headline,
-		'Leave for FCO'
-	)
-})
 
 it('wants him at the airport an hour before the booked departure, whatever the delay, and leaving the saved trip earlier', () => {
 	const late = Flight.make({
@@ -748,19 +737,5 @@ it('keeps distinct legs of the same flight number as distinct flights', () => {
 			]
 		),
 		2
-	)
-})
-
-it('splits long flights into departure and arrival activity windows', () => {
-	const long = Flight.make({...FLIGHT, arrives: DateTime.addDuration(DEPARTS, Duration.hours(11))})
-	assert.deepStrictEqual(
-		Array.map([-1, 2, 10], hours =>
-			Option.map(activeWindow(long, DateTime.addDuration(DEPARTS, Duration.hours(hours))), window => window.leg)
-		),
-		[Option.some('departure'), Option.none(), Option.some('arrival')]
-	)
-	assert.deepStrictEqual(
-		Option.map(activeWindow(FLIGHT, DateTime.addDuration(DEPARTS, Duration.hours(2))), window => window.leg),
-		Option.some('departure')
 	)
 })
