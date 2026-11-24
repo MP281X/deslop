@@ -59,9 +59,19 @@ runs:
       run: printf '%s\n' 'retry = 5' 'retry-all-errors' 'connect-timeout = 15' 'speed-limit = 10000' 'speed-time = 30' > ~/.curlrc
 
     # One cache for every app: their pods come from the same lockfile, and the Hermes tarball's mirror often stalls.
-    - name: Restore the CocoaPods cache
-      if: inputs.ios == 'true'
+    # Only main saves it, and every branch can read main's; a copy per branch, about 420 MB each that only its branch could read, took 8 of the repository's 10 GB.
+    - name: Restore and save the CocoaPods cache
+      if: inputs.ios == 'true' && github.ref == 'refs/heads/main'
       uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: |
+          ~/Library/Caches/CocoaPods
+          ~/Library/Caches/ReactNative
+        key: pods-${{ hashFiles('pnpm-lock.yaml') }}
+        restore-keys: pods-
+    - name: Restore the CocoaPods cache
+      if: inputs.ios == 'true' && github.ref != 'refs/heads/main'
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: |
           ~/Library/Caches/CocoaPods
