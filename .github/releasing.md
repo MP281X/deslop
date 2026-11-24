@@ -77,18 +77,15 @@ Public TestFlight and App Store release are separate outward actions.
 
 ## Simulator builds
 
-Every command here and every workflow that loads an app's config reads `DESLOP_DOMAIN`, the repository variable of that name (`.env.example`); export it first. A branch push touching a mobile app or shared packages builds a missing `<app>-simulator-<fingerprint>` artifact, and signs the production build of a production fingerprint that has no `<app>-signed-<fingerprint>` marker yet, without uploading it. Take a build only from a push run of `simulator.yaml` whose commit has this checkout's `simulator.yaml` and setup action, as the workflow does. The app holds the JavaScript of the commit that built it, so embed the branch's bundle before installing it:
+Every command here and every workflow that loads an app's config reads `DESLOP_DOMAIN`, the repository variable of that name (`.env.example`); export it first. A branch push touching a mobile app or shared packages builds a missing `<app>-simulator-<fingerprint>-<recipe>` artifact, and signs the production build of a production fingerprint that has no `<app>-signed-<fingerprint>-<recipe>` marker yet, without uploading it. The recipe names this checkout's `simulator.yaml` and setup action, so a build is taken only from the same ones. The app holds the JavaScript of the commit that built it, so embed the branch's bundle before installing it:
 
 ```bash
 # Run in apps/stash:
 fingerprint=$(APP_VARIANT=development vpx eas-cli@latest fingerprint:generate --platform ios --build-profile simulator --json --non-interactive | jq -r .hash)
 # Run the remaining commands from the worktree root:
-for candidate in $(gh api "repos/MP281X/deslop/actions/artifacts?name=stash-simulator-$fingerprint" --jq '.artifacts[] | select(.expired | not) | "\(.workflow_run.id):\(.workflow_run.head_sha)"'); do
-  run=${candidate%%:*} commit=${candidate#*:}
-  [[ $(gh api "repos/MP281X/deslop/actions/runs/$run" --jq '.path + " " + .event') == '.github/workflows/simulator.yaml push' ]] && git fetch --no-tags origin "$commit" && git diff --quiet "$commit" HEAD -- .github/workflows/simulator.yaml .github/actions/setup && break
-  run=
-done
-gh run download "$run" --name stash-simulator-$fingerprint --dir /tmp/stash-sim
+recipe=$(git rev-parse HEAD:.github/workflows/simulator.yaml HEAD:.github/actions/setup | sha256sum | cut -c1-12)
+run=$(gh api "repos/MP281X/deslop/actions/artifacts?name=stash-simulator-$fingerprint-$recipe" --jq '[.artifacts[] | select(.expired | not) | .workflow_run.id] | first // empty')
+gh run download "$run" --name stash-simulator-$fingerprint-$recipe --dir /tmp/stash-sim
 tar -xzf /tmp/stash-sim/simulator.tar.gz -C /tmp/stash-sim
 APP_VARIANT=development vp -C apps/stash exec expo export:embed --platform ios --dev false --bundle-output /tmp/stash-sim/stashdev.app/main.jsbundle --assets-dest /tmp/stash-sim/stashdev.app
 vp -C apps/stash exec expo prebuild --platform ios --no-install --clean

@@ -39,7 +39,7 @@ jobs:
       - name: Discover mobile apps
         id: mobile
         uses: ./.github/actions/mobile-apps
-      # A build is reused only when this workflow, unchanged from this commit's, made it on a push; the summary names the commit it came from.
+      # Each build is named by its profile's fingerprint and by the workflow and setup action that make it, so an edit to either builds every app again; one already made under that name is reused.
       # A push that changes nothing native finds every build already made, so no diff decides which apps to look at.
       - name: Find builds for each fingerprint
         id: fingerprint
@@ -49,46 +49,32 @@ jobs:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
           MOBILE: ${{ steps.mobile.outputs.apps }}
         run: |
-          shopt -s inherit_errexit
-          fingerprint() {
-            (cd "apps/$1" && APP_VARIANT=$3 eas fingerprint:generate --platform ios --build-profile "$2" --json --non-interactive | jq -r .hash)
+          shopt -s inherit_errexit nullglob
+          recipe=$(git rev-parse HEAD:.github/workflows/simulator.yaml HEAD:.github/actions/setup | sha256sum | cut -c1-12)
+          decide() {
+            local app=$1 build kind profile variant artifact run
+            for build in simulator:simulator:development signed:production:production; do
+              IFS=: read -r kind profile variant <<< "$build"
+              artifact="$app-$kind-$(cd "apps/$app" && APP_VARIANT=$variant eas fingerprint:generate --platform ios --build-profile "$profile" --json --non-interactive | jq -r .hash)-$recipe"
+              run=$(gh api "repos/$GITHUB_REPOSITORY/actions/artifacts?name=$artifact" --jq '[.artifacts[] | select(.expired | not) | .workflow_run.id] | first // empty')
+              if [[ -n $run ]]; then
+                echo "- $app reuses $artifact from $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$run" >> "$RUNNER_TEMP/decided/$app.md"
+              else
+                jq -cn --arg app "$app" --arg artifact "$artifact" '{$app, $artifact}' > "$RUNNER_TEMP/decided/$app-$kind.json"
+              fi
+            done
           }
-          # Sets `reused` to the run and commit that left this artifact, or to nothing.
-          find_build() {
-            local candidates run commit producer
-            reused=
-            candidates=$(gh api "repos/$GITHUB_REPOSITORY/actions/artifacts?name=$1&per_page=100" --jq '.artifacts[] | select(.expired | not) | "\(.workflow_run.id) \(.workflow_run.head_sha)"')
-            while read -r run commit; do
-              [[ -n $run ]] || continue
-              producer=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run" --jq '[.path, .event] | join(" ")')
-              [[ $producer == ".github/workflows/simulator.yaml push" ]] || continue
-              git cat-file -e "$commit^{commit}" 2> /dev/null || git fetch --no-tags --depth=1 origin "$commit" || continue
-              git diff --quiet "$commit" HEAD -- .github/workflows/simulator.yaml .github/actions/setup || continue
-              reused="$run $commit"
-              return
-            done <<< "$candidates"
-          }
-          : > "$RUNNER_TEMP/simulator"
-          : > "$RUNNER_TEMP/signed"
-          jq -r '.[]' <<< "$MOBILE" > "$RUNNER_TEMP/mobile"
-          while read -r app; do
-            artifact="$app-simulator-$(fingerprint "$app" simulator development)"
-            find_build "$artifact"
-            if [[ -n $reused ]]; then
-              echo "- $app reuses the Simulator build of ${reused#* } from $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/${reused%% *}" >> "$GITHUB_STEP_SUMMARY"
-            else
-              jq -cn --arg app "$app" --arg artifact "$artifact" '{$app, $artifact}' >> "$RUNNER_TEMP/simulator"
-            fi
-            artifact="$app-signed-$(fingerprint "$app" production production)"
-            find_build "$artifact"
-            if [[ -n $reused ]]; then
-              echo "- $app was signed for the App Store at ${reused#* } in $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/${reused%% *}" >> "$GITHUB_STEP_SUMMARY"
-            else
-              jq -cn --arg app "$app" --arg artifact "$artifact" '{$app, $artifact}' >> "$RUNNER_TEMP/signed"
-            fi
-          done < "$RUNNER_TEMP/mobile"
-          echo "simulator=$(jq -sc . "$RUNNER_TEMP/simulator")" >> "$GITHUB_OUTPUT"
-          echo "signed=$(jq -sc . "$RUNNER_TEMP/signed")" >> "$GITHUB_OUTPUT"
+          mkdir "$RUNNER_TEMP/decided"
+          # The apps decide at once, as each fingerprint takes several seconds; any app failing fails the step.
+          pids=()
+          for app in $(jq -r '.[]' <<< "$MOBILE"); do
+            decide "$app" &
+            pids+=($!)
+          done
+          for pid in "${pids[@]}"; do wait "$pid"; done
+          for summary in "$RUNNER_TEMP"/decided/*.md; do cat "$summary" >> "$GITHUB_STEP_SUMMARY"; done
+          echo "simulator=$(jq -sc . "$RUNNER_TEMP"/decided/*-simulator.json /dev/null)" >> "$GITHUB_OUTPUT"
+          echo "signed=$(jq -sc . "$RUNNER_TEMP"/decided/*-signed.json /dev/null)" >> "$GITHUB_OUTPUT"
 
   simulator:
     name: Simulator ${{ matrix.app }}
@@ -109,15 +95,26 @@ jobs:
       # The Simulator host is Apple silicon; the default universal binary compiles every file twice.
       GYM_XCARGS: ARCHS=arm64
     steps:
+      # Another branch with the same fingerprint may have finished this build since the decision; its build is this one.
+      - name: Look for a build made meanwhile
+        id: made
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ARTIFACT: ${{ matrix.artifact }}
+        run: echo "count=$(gh api "repos/$GITHUB_REPOSITORY/actions/artifacts?name=$ARTIFACT" --jq '[.artifacts[] | select(.expired | not)] | length')" >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@v7
+        if: steps.made.outputs.count == 0
       - uses: ./.github/actions/setup
+        if: steps.made.outputs.count == 0
         with: {eas: 'true', ios: 'true'}
       - name: Build the Simulator app
+        if: steps.made.outputs.count == 0
         working-directory: apps/${{ matrix.app }}
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
         run: eas build --local --profile simulator --platform ios --non-interactive --output "$RUNNER_TEMP/simulator.tar.gz"
       - name: Upload the Simulator app
+        if: steps.made.outputs.count == 0
         uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.artifact }}
@@ -141,19 +138,33 @@ jobs:
       APP_VARIANT: production
       EAS_BUILD_DISABLE_EXPO_DOCTOR_STEP: 1
     steps:
+      # Another branch with the same fingerprint may have finished this build since the decision; its build is this one.
+      - name: Look for a build made meanwhile
+        id: made
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ARTIFACT: ${{ matrix.artifact }}
+        run: echo "count=$(gh api "repos/$GITHUB_REPOSITORY/actions/artifacts?name=$ARTIFACT" --jq '[.artifacts[] | select(.expired | not)] | length')" >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@v7
+        if: steps.made.outputs.count == 0
       - uses: ./.github/actions/setup
+        if: steps.made.outputs.count == 0
         with: {eas: 'true', ios: 'true'}
       # The same signed build Release uploads, with the same provisioning profiles; nothing is uploaded.
       - name: Build the signed App Store app
+        if: steps.made.outputs.count == 0
         working-directory: apps/${{ matrix.app }}
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+          # SDK 58 uploads the embedded bundle to EAS Update after every build; only Release's build ships.
+          EAS_UPDATE_UPLOAD_EMBEDDED_BUNDLE: 0
         run: eas build --local --profile production --platform ios --non-interactive --output "$RUNNER_TEMP/app.ipa"
-      # Only the commit, not the app: the marker tells a later push with this fingerprint that it already signs.
+      # Only the commit, not the app: the marker tells a later push with this fingerprint and recipe that it already signs.
       - name: Record the signed build
+        if: steps.made.outputs.count == 0
         run: echo "$GITHUB_SHA" > "$RUNNER_TEMP/signed"
       - name: Upload the marker
+        if: steps.made.outputs.count == 0
         uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.artifact }}
