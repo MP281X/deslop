@@ -12,10 +12,6 @@ on:
       - .github/workflows/simulator.yaml
       - .github/actions/setup/**
 
-permissions:
-  contents: read
-  actions: read
-
 env:
   DESLOP_DOMAIN: ${{ vars.DESLOP_DOMAIN }}
 
@@ -37,13 +33,13 @@ jobs:
       simulator: ${{ steps.fingerprint.outputs.simulator }}
       signed: ${{ steps.fingerprint.outputs.signed }}
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/setup
         with: {eas: 'true'}
       - name: Discover mobile apps
         id: mobile
         uses: ./.github/actions/mobile-apps
-      # A build is reused only when this repository's workflow, unchanged from this commit's, made it on a push; the summary names the commit it came from.
+      # A build is reused only when this workflow, unchanged from this commit's, made it on a push; the summary names the commit it came from.
       # A push that changes nothing native finds every build already made, so no diff decides which apps to look at.
       - name: Find builds for each fingerprint
         id: fingerprint
@@ -64,8 +60,8 @@ jobs:
             candidates=$(gh api "repos/$GITHUB_REPOSITORY/actions/artifacts?name=$1&per_page=100" --jq '.artifacts[] | select(.expired | not) | "\(.workflow_run.id) \(.workflow_run.head_sha)"')
             while read -r run commit; do
               [[ -n $run ]] || continue
-              producer=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run" --jq '[.path, .event, .head_repository.full_name] | join(" ")')
-              [[ $producer == ".github/workflows/simulator.yaml push $GITHUB_REPOSITORY" ]] || continue
+              producer=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run" --jq '[.path, .event] | join(" ")')
+              [[ $producer == ".github/workflows/simulator.yaml push" ]] || continue
               git cat-file -e "$commit^{commit}" 2> /dev/null || git fetch --no-tags --depth=1 origin "$commit" || continue
               git diff --quiet "$commit" HEAD -- .github/workflows/simulator.yaml .github/actions/setup || continue
               reused="$run $commit"
@@ -113,7 +109,7 @@ jobs:
       # The Simulator host is Apple silicon; the default universal binary compiles every file twice.
       GYM_XCARGS: ARCHS=arm64
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/setup
         with: {eas: 'true', ios: 'true'}
       - name: Build the Simulator app
@@ -122,7 +118,7 @@ jobs:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
         run: eas build --local --profile simulator --platform ios --non-interactive --output "$RUNNER_TEMP/simulator.tar.gz"
       - name: Upload the Simulator app
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.artifact }}
           path: ${{ runner.temp }}/simulator.tar.gz
@@ -145,7 +141,7 @@ jobs:
       APP_VARIANT: production
       EAS_BUILD_DISABLE_EXPO_DOCTOR_STEP: 1
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/setup
         with: {eas: 'true', ios: 'true'}
       # The same signed build Release uploads, with the same provisioning profiles; nothing is uploaded.
@@ -158,7 +154,7 @@ jobs:
       - name: Record the signed build
         run: echo "$GITHUB_SHA" > "$RUNNER_TEMP/signed"
       - name: Upload the marker
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.artifact }}
           path: ${{ runner.temp }}/signed

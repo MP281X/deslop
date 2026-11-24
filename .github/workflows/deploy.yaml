@@ -10,9 +10,6 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
-permissions:
-  contents: read
-
 # bash -eo pipefail: a failed command inside a pipeline or an assignment fails its step.
 defaults:
   run:
@@ -22,15 +19,11 @@ jobs:
   plan:
     name: Plan
     runs-on: ubuntu-26.04
-    permissions:
-      contents: read
-      actions: read
-      pull-requests: read
     outputs:
       mobile: ${{ steps.apps.outputs.apps }}
       verified: ${{ steps.proof.outputs.verified }}
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@v7
       - name: Discover mobile apps
         id: apps
         uses: ./.github/actions/mobile-apps
@@ -46,19 +39,17 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           pulls=$(gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/pulls")
-          head=$(jq -r --arg repo "$GITHUB_REPOSITORY" --arg sha "$GITHUB_SHA" '
-            [.[] | select(.merged_at != null and .merge_commit_sha == $sha
-              and .base.repo.full_name == $repo and .head.repo.full_name == $repo)]
+          head=$(jq -r --arg sha "$GITHUB_SHA" '
+            [.[] | select(.merged_at != null and .merge_commit_sha == $sha)]
             | if length == 1 then .[0].head.sha else empty end' <<< "$pulls")
           [[ -n $head ]] || exit 0
 
           tree=$(gh api "repos/$GITHUB_REPOSITORY/git/commits/$GITHUB_SHA" --jq .tree.sha)
           runs=$(gh api --paginate --slurp "repos/$GITHUB_REPOSITORY/actions/workflows/verify.yaml/runs?head_sha=$head&event=pull_request&status=success&per_page=100")
-          tested=$(jq -r --arg repo "$GITHUB_REPOSITORY" --arg head "$head" '
+          tested=$(jq -r --arg head "$head" '
             .[] | .workflow_runs[] | select(.head_sha == $head and .event == "pull_request"
               and .status == "completed" and .conclusion == "success"
               and .path == ".github/workflows/verify.yaml"
-              and .repository.full_name == $repo and .head_repository.full_name == $repo
               and (.display_title | test("^[0-9a-f]{40}( |$)")))
             | "\(.id) \(.display_title[0:40])"' <<< "$runs")
           while read -r run merge; do
@@ -87,7 +78,7 @@ jobs:
       contents: read
       id-token: write
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/setup
         with: {tasks: 'true'}
 
@@ -188,9 +179,6 @@ jobs:
     name: App
     needs: [plan, verify]
     if: ${{ !cancelled() && needs.plan.result == 'success' && (needs.plan.outputs.verified == 'true' || needs.verify.result == 'success') && needs.plan.outputs.mobile != '[]' }}
-    permissions:
-      contents: read
-      actions: read
     # One app's failed release leaves the other apps to ship, but holds the servers.
     strategy:
       fail-fast: false
@@ -199,8 +187,4 @@ jobs:
     uses: ./.github/workflows/release-app.yaml
     with:
       app: ${{ matrix.app }}
-    secrets:
-      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
-      ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
-      ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
-      ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+    secrets: inherit

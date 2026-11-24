@@ -2,8 +2,8 @@
 
 - **History.** `main` is linear: every PR is squash-merged.
 - **Verification.** A PR is verified by its `pull_request` run of Verify, whose three jobs, Build, Check and Test, test GitHub's merge of the PR with its base at the last push. A PR is ready once that run passed on the merge with the latest `main`; when `main` moves, rebase and push for a new run. A PR with a merge conflict gets no run until it is rebased, and pushing a branch with no PR verifies nothing.
-- **Actions.** Third-party actions are pinned to a commit with their version beside it as a comment; bump one by replacing both.
-- **Release.** Release skips Verify only when a passed run of all four jobs tested exactly the tree that was merged; otherwise it runs all four, the built-server probe included, on the release tree before anything ships.
+- **Actions.** Actions use their major tag, such as `actions/cache@v6`, never a commit; `setup-vp`'s `v1` stopped at 1.15, so it names its latest release.
+- **Release.** Release skips Verify only when a passed run of all three jobs tested exactly the tree that was merged; otherwise it runs all three, the built-server probe included, on the release tree before anything ships.
 
 ## A new app
 
