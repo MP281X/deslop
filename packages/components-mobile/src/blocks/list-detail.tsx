@@ -10,7 +10,7 @@ import {
 	overlayArrangementEdge
 } from '@expo/ui/swift-ui/modifiers'
 import type {HingeStatus, ViewModifier} from '@expo/ui/swift-ui/modifiers'
-import {createContext, useContext, useState} from 'react'
+import {createContext, isValidElement, useContext, useState} from 'react'
 import type {ReactNode} from 'react'
 import {Dimensions} from 'react-native'
 
@@ -21,6 +21,25 @@ const ListContext = createContext({
 	searchFocus: Option.none<{focused: boolean; onChange: (focused: boolean) => void}>(),
 	show: Option.none<() => void>()
 })
+
+function columnsFor(props: {alone?: boolean; opened: boolean}) {
+	return Boolean.match(props.opened && props.alone === true, {
+		onFalse: Function.constant<NavigationSplitViewVisibility>('all'),
+		onTrue: Function.constant<NavigationSplitViewVisibility>('detailOnly')
+	})
+}
+
+// The person's choice from the sidebar button, both columns until they hide the list unless the item opens alone. An item opened alone takes the whole window again when it or another one opens, told apart by the detail's key, and after a fold or a turn.
+function useChosen(props: {alone?: boolean; detail: ReactNode; opened: boolean}, width: number) {
+	const [chosen, setChosen] = useState(() => columnsFor(props))
+	const shown = {item: isValidElement(props.detail) && props.detail.key, opened: props.opened, width}
+	const [seen, setSeen] = useState(shown)
+	if (shown.opened !== seen.opened || shown.item !== seen.item || shown.width !== seen.width) {
+		setSeen(shown)
+		if (props.alone === true) setChosen(columnsFor(props))
+	}
+	return [chosen, setChosen] as const
+}
 
 // Whether the list is on screen beside or below the opened item, so the wide window can fill the item's side while nothing is opened.
 export function useListBeside() {
@@ -112,8 +131,9 @@ function ListBelow(props: {
 	)
 }
 
-// An app's one root on the iPhone Duo: list and opened item side by side when the window is wide, as when unfolded like a book; a stack when it is narrow, folded or turned upright; the item above the list when half open like a laptop. The same views stay mounted through every fold and turn, so a draft, its focus and a reading place survive. `detail` is the opened item, or what the wide window shows beside the list when nothing is opened; `onHide` opens that when the person hides the list beside it, so it stays on screen and in front through a fold, and `onClose` closes it once the list shows again, unless the person chose it meanwhile with `useListShow`.
+// An app's one root on the iPhone Duo: list and opened item side by side when the window is wide, as when unfolded like a book; a stack when it is narrow, folded or turned upright; the item above the list when half open like a laptop. The same views stay mounted through every fold and turn, so a draft, its focus and a reading place survive. `detail` is the opened item, or what the wide window shows beside the list when nothing is opened; `onHide` opens that when the person hides the list beside it, so it stays on screen and in front through a fold, and `onClose` closes it once the list shows again, unless the person chose it meanwhile with `useListShow`. An item that opens `alone`, such as a book's spread, takes the whole wide window each time it or another one opens, and the sidebar button brings the list back beside it.
 export function ListDetail(props: {
+	alone?: boolean
 	detail: ReactNode
 	list: ReactNode
 	modifiers?: ViewModifier[]
@@ -123,8 +143,8 @@ export function ListDetail(props: {
 }) {
 	// The window as of SwiftUI's last layout. React Native's window event arrives while the app is still taking the new size, and a render then can leave the whole app at the previous window's size, text running off the screen; SwiftUI reports a new geometry only once the app has it.
 	const [window, setWindow] = useState(() => Dimensions.get('window'))
-	// The person's choice from the sidebar button, both columns until they hide the list, kept apart from the one column a stack reports, so the list comes back beside the item once the window is wide again.
-	const [chosen, setChosen] = useState<NavigationSplitViewVisibility>('all')
+	// The choice is kept apart from the one column a stack reports, so the list comes back beside the item once the window is wide again.
+	const [chosen, setChosen] = useChosen(props, window.width)
 	const [stacked, setStacked] = useState<NavigationSplitViewVisibility>('all')
 	// The list hides only beside an opened item: closing it, by Back in a stack, a delete or a saved draft, brings the list back, so a wide window never shows a hidden list beside nothing.
 	if (!props.opened && chosen === 'detailOnly') setChosen('all')

@@ -1,11 +1,12 @@
 import {useAtomMount, useAtomSubscribe, useAtomValue} from '@effect/atom-react'
 
-import {Array, Function, Option, Schema} from 'effect'
+import {Function, Option} from 'effect'
 
-import {Host, NavigationDestination, NavigationStack} from '@expo/ui/swift-ui'
+import {Host} from '@expo/ui/swift-ui'
 import {tint} from '@expo/ui/swift-ui/modifiers'
 import {Suspense, useState} from 'react'
 
+import {ListDetail} from '@deslop/components-mobile/blocks/list-detail'
 import {Loaded} from '@deslop/components-mobile/blocks/loaded'
 import {SessionGate} from '@deslop/components-mobile/blocks/session-gate'
 import {colors} from '@deslop/components-mobile/theme'
@@ -16,10 +17,9 @@ import {session} from '#lib/session.ts'
 import {ChaptersRoute} from '#routes/(home)/index.tsx'
 import {ReaderRoute, ReaderSkeleton} from '#routes/chapters/$number.tsx'
 import {keyOf} from '#services/chapters/lib/utils.ts'
-import {ChapterKey, ChapterPath} from '#services/chapters/schema.ts'
-import type {ChapterNumber, Series} from '#services/chapters/schema.ts'
+import type {ChapterIdentity, ChapterNumber, Series} from '#services/chapters/schema.ts'
 
-function Destination(props: {number: ChapterNumber; series: Series}) {
+function Reader(props: ChapterIdentity) {
 	const unsaved = useAtomValue(unsavedAtom)
 	return (
 		<Loaded atom={chaptersAtom}>
@@ -33,46 +33,41 @@ function Destination(props: {number: ChapterNumber; series: Series}) {
 function AppRoutes() {
 	useAtomMount(pushAtom)
 	useAtomMount(diagnosticsAtom)
-	const opened = useAtomValue(openedAtom)
+	const tapped = useAtomValue(openedAtom)
+	const [opened, setOpened] = useState(tapped)
 	const [series, setSeries] = useState<Series>(() =>
-		Option.match(opened, {onNone: Function.constant('manga'), onSome: chapter => chapter.series})
+		Option.match(tapped, {onNone: Function.constant('manga'), onSome: chapter => chapter.series})
 	)
-	const [path, setPath] = useState(() =>
-		Option.match(opened, {onNone: () => Array.empty<ChapterKey>(), onSome: chapter => [keyOf(chapter)]})
-	)
-	useAtomSubscribe(openedAtom, tapped =>
-		Option.match(tapped, {
+	useAtomSubscribe(openedAtom, next =>
+		Option.match(next, {
 			onNone: Function.constUndefined,
 			onSome: chapter => {
 				setSeries(chapter.series)
-				setPath([keyOf(chapter)])
+				setOpened(Option.some(chapter))
 			}
 		})
 	)
 	function open(number: ChapterNumber) {
-		setPath([keyOf({number, series})])
+		setOpened(Option.some({number, series}))
 	}
+	// A chapter opens alone, so unfolded its pages spread across both halves.
 	return (
 		<Host style={{flex: 1}}>
-			<NavigationStack
-				path={path}
-				onPathChange={values => setPath(Array.map(values, value => ChapterKey.make(value)))}
+			<ListDetail
+				alone
+				opened={Option.isSome(opened)}
+				onClose={() => setOpened(Option.none())}
 				modifiers={[tint(colors.foreground)]}
-			>
-				<ChaptersRoute key={series} onOpen={open} series={series} onSeries={setSeries} />
-				{Array.map(path, value =>
-					Option.match(Schema.decodeUnknownOption(ChapterPath)(value), {
-						onNone: Function.constUndefined,
-						onSome: target => (
-							<NavigationDestination key={value} value={value}>
-								<Suspense fallback={<ReaderSkeleton number={target[2]} />}>
-									<Destination number={target[2]} series={target[0]} />
-								</Suspense>
-							</NavigationDestination>
-						)
-					})
-				)}
-			</NavigationStack>
+				list={<ChaptersRoute key={series} onOpen={open} series={series} onSeries={setSeries} />}
+				detail={Option.match(opened, {
+					onNone: Function.constUndefined,
+					onSome: chapter => (
+						<Suspense key={keyOf(chapter)} fallback={<ReaderSkeleton number={chapter.number} />}>
+							<Reader number={chapter.number} series={chapter.series} />
+						</Suspense>
+					)
+				})}
+			/>
 		</Host>
 	)
 }

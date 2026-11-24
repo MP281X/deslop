@@ -1,4 +1,4 @@
-import {useAtomMount, useAtomRefresh, useAtomSet, useAtomValue} from '@effect/atom-react'
+import {useAtom, useAtomMount, useAtomRefresh, useAtomSet, useAtomSubscribe, useAtomValue} from '@effect/atom-react'
 
 import {Array, Boolean, Function, Number, Option, Order, String, pipe} from 'effect'
 
@@ -28,10 +28,11 @@ import {
 	tag,
 	tint
 } from '@expo/ui/swift-ui/modifiers'
-import {AsyncResult} from 'effect/reactivity'
-import {Suspense, useState} from 'react'
+import {AsyncResult, Atom} from 'effect/reactivity'
+import {Suspense} from 'react'
 
 import {ItemGroupSkeleton} from '@deslop/components-mobile/blocks/item-group-skeleton'
+import {useListChoose, useListSearch} from '@deslop/components-mobile/blocks/list-detail'
 import {ListToolbar} from '@deslop/components-mobile/blocks/list-toolbar'
 import {Loaded} from '@deslop/components-mobile/blocks/loaded'
 import {Problem} from '@deslop/components-mobile/blocks/problem'
@@ -52,7 +53,7 @@ import {blockingFailure} from '@deslop/runtime/client/live-stream'
 import {problemSinceAtom} from '@deslop/runtime/client/problem'
 import {dayOf} from '@deslop/runtime/shared/format'
 
-import {chaptersAtom, readAtom, unsavedAtom} from '#lib/chapters.ts'
+import {chaptersAtom, openedAtom, readAtom, unsavedAtom} from '#lib/chapters.ts'
 import {withUnsaved} from '#lib/reader.ts'
 import {primary, session} from '#lib/session.ts'
 import {ChapterProgress, Cover} from '#modules/native/index.ts'
@@ -64,10 +65,16 @@ import {Series} from '#services/chapters/schema.ts'
 function ChapterRow(props: {chapter: ChapterItem; onOpen: (number: ChapterNumber) => void}) {
 	const now = useAtomValue(clockAtom('1 minute'))
 	const read = useAtomSet(readAtom)
+	const choose = useListChoose()
 	const done = Option.exists(props.chapter.reading, reading => reading.done)
 	return (
 		<SwipeActions modifiers={itemRow}>
-			<Item onPress={() => props.onOpen(props.chapter.number)}>
+			<Item
+				onPress={() => {
+					choose()
+					props.onOpen(props.chapter.number)
+				}}
+			>
 				<ItemMedia>
 					<Cover
 						url={Option.getOrElse(Array.head(props.chapter.pages), Function.constant(''))}
@@ -193,6 +200,9 @@ function Chapters(props: {onOpen: (number: ChapterNumber, page?: number) => void
 	)
 }
 
+// The query every copy of the list filters by, as the search field they share shows it, so the copy below the reader in laptop posture filters as the one beside it does.
+const searchedAtom = Atom.make('')
+
 export function ChaptersRoute(props: {
 	onOpen: (number: ChapterNumber, page?: number) => void
 	onSeries: (series: Series) => void
@@ -201,7 +211,16 @@ export function ChaptersRoute(props: {
 	const loaded = useAtomValue(chaptersAtom)
 	useAtomMount(problemSinceAtom(chaptersAtom))
 	const refresh = useAtomRefresh(chaptersAtom)
-	const [searched, setSearched] = useState('')
+	const [searched, setSearched] = useAtom(searchedAtom)
+	const field = useListSearch()
+	// Another series' list starts unfiltered, whether the person picks it or a notification opens one of its chapters.
+	function clearSearch() {
+		setSearched('')
+		Option.match(field, {onNone: Function.constVoid, onSome: text => text.set('')})
+	}
+	useAtomSubscribe(openedAtom, opened => {
+		if (Option.exists(opened, chapter => chapter.series !== props.series)) clearSearch()
+	})
 	// Chapters already on screen stay through an outage; a retryable problem dot in the bar marks that they stopped updating.
 	return (
 		<ListToolbar
@@ -226,7 +245,10 @@ export function ChaptersRoute(props: {
 						<Picker<Series>
 							label="Series"
 							selection={props.series}
-							onSelectionChange={props.onSeries}
+							onSelectionChange={series => {
+								clearSearch()
+								props.onSeries(series)
+							}}
 							modifiers={[pickerStyle('inline')]}
 						>
 							{Array.map(Series.literals, series => (
