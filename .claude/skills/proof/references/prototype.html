@@ -1,5 +1,5 @@
 <!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><script>
-/* PROTOTYPE DATA. Copy this file to scratch, Read it with limit 36, edit only this script, check the copy
+/* PROTOTYPE DATA. Copy this file to scratch, Read it with limit 37, edit only this script, check the copy
    with html_preview, then html_render it by path. Never read past this script.
    DECISIONS    one section each, numbered in order from FIRST: a Today tile and one tile per variant, lettered a, b, c. Play
                 runs `task` in every tile in sync; a clicked tile opens large and plays alone.
@@ -9,7 +9,8 @@
    path, today  target ids in click order; `|` marks the still the tile rests on, else start. Clicks are counted.
    start        the state every path begins from.
    FIRST        the number of the first decision: the thread's next free number, so its count never restarts.
-   SIZE, PHONE  the app's desktop (16:9) and phone sizes in real px; tiles only scale down. Phone sets #stage.ph.
+   SIZE, PHONE  the app's desktop (16:9) and folded iPhone Duo sizes in real px (a website: 382×640); tiles only
+                scale down. Phone sets #stage.ph.
    THEME        the codebase's shadcn tokens, its :root and .dark declarations; empty strings keep T3's.
    view(s, has) the app's HTML for state s: only the screens the decisions touch, with the app's real labels and data;
                 Today as the current code behaves. The example below is a placeholder to replace whole.
@@ -17,7 +18,7 @@
    Kit          .side .org .nav | main .row .m | .inp .sel .chip .btn .on | .pop .sheet (inline position, width)
                 .scrim > .dlg | .it .f .ft. Use the repository's layout rules, not a page title or toast.
    A path id with no target on screen logs a console error naming the tile and step. */
-const FIRST = 1, SIZE = [800, 450], PHONE = [390, 760];
+const FIRST = 1, SIZE = [800, 450], PHONE = [466, 678];
 const THEME = { light: '', dark: '' };
 const DECISIONS = [
   { name: 'Rename', task: 'Rename Project to Atlas', start: {},
@@ -37,7 +38,7 @@ function view(s, has) {
 <!-- ENGINE -->
 <style>
 body{margin:0}
-#stage{--p-ring:var(--primary);--on:color-mix(in srgb,var(--foreground) 9%,transparent);display:grid;gap:22px;font:12px/1.35 var(--font-sans);color:var(--foreground);user-select:none}
+#stage{--p-ring:var(--primary);--on:color-mix(in srgb,var(--foreground) 9%,transparent);display:grid;gap:22px;font:13px/1.35 var(--font-sans);color:var(--foreground);user-select:none}
 #stage *{box-sizing:border-box}
 button{all:unset;padding:0 8px;line-height:20px;border:1px solid var(--border);border-radius:var(--radius);cursor:pointer;color:var(--muted-foreground)}
 button:hover,[aria-pressed=true]{color:var(--foreground)}[aria-pressed=true]{background:var(--on)}
@@ -60,7 +61,7 @@ button:hover,[aria-pressed=true]{color:var(--foreground)}[aria-pressed=true]{bac
 .zm .p-grid :is(.p-parts,.p-cap,.p-n span){display:none}
 .solo .p-grid{grid-template-columns:1fr}.solo .p-tile{margin:auto;width:100%;cursor:pointer}.solo .p-th{display:none}
 .p-th{display:flex;align-items:center;gap:6px;height:24px;white-space:nowrap}
-.p-id{font:500 12px/16px var(--font-mono);padding:0 5px;border:1px solid var(--input);border-radius:5px}
+.p-id{font:500 13px/16px var(--font-mono);padding:0 5px;border:1px solid var(--input);border-radius:5px}
 .p-parts,.p-n{color:var(--muted-foreground)}.p-n{margin-left:auto}
 .p-cap{position:absolute;left:8px;bottom:8px;z-index:10;padding:2px 8px;border-radius:99px;background:var(--foreground);color:var(--background)}.p-cap:empty{display:none}
 .done .p-n{color:var(--foreground)}
@@ -99,7 +100,7 @@ button:hover,[aria-pressed=true]{color:var(--foreground)}[aria-pressed=true]{bac
 #stage.ph .app{flex-direction:column}
 #stage.ph .side{width:auto;flex-direction:row;align-items:center;border-right:0;border-bottom:1px solid var(--border)}
 #stage.ph .org{margin:0 auto 0 0}
-#stage.ph .p-grid{grid-template-columns:repeat(auto-fill,minmax(160px,1fr))}
+#stage.ph section:not(.solo) .p-grid{grid-template-columns:repeat(auto-fill,minmax(160px,1fr))}
 @media (max-width:599px){.p-parts{display:none}}
 @media (prefers-reduced-motion:reduce){.p-cur{transition:none}.app *{animation:none!important}}
 </style></head><body><div id="stage"></div><script>
@@ -163,12 +164,13 @@ function spot(t, step) {
 }
 
 // Tiles fit their column at real scale or below; on a phone, a tile too small to read plays at full size and follows
-// the cursor, except the row under an open tile.
+// the cursor, except the row under an open tile and an open phone tile, which fits whole.
 function fit(sec) {
+  const ph = stage.classList.contains('ph');
   for (const t of all(sec)) {
     if (t == sec.view || sec.solo) t.el.style.maxWidth = AW + 2 + 'px';
     t.w = t.fr.clientWidth;
-    t.follow = (!sec.view || t == sec.view) && innerWidth < 600 && t.w / AW < 0.8;
+    t.follow = (!sec.view || t == sec.view) && !(ph && (t == sec.view || sec.solo)) && innerWidth < 600 && t.w / AW < 0.8;
     t.z = t.follow ? 1 : Math.min(1, t.w / AW);
     t.k = Math.min(1 / t.z, 2.2);
     Object.assign(t.cam.style, { width: AW + 'px', height: AH + 'px', left: t.follow ? 0 : (t.w - AW * t.z) / 2 + 'px', scale: t.z });
