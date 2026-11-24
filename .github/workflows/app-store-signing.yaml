@@ -53,6 +53,8 @@ jobs:
             expect {
               -re {\x1b\[1G\? Reuse this distribution certificate\?} { send "\r"; exp_continue }
               -re {\x1b\[1G\? Generate a new Apple Provisioning Profile\?} { send "\r"; exp_continue }
+              # An entitlement change invalidates the profile; reusing it regenerates it in place, as non-interactive mode does.
+              -re {\x1b\[1G\? Provisioning Profile - ID: } { send "\r"; exp_continue }
               -re {\x1b\[1G(?:\x1b\[36m)?\?(?:\x1b\[39m)? ([^\r\n]*)} { puts "\n::error::Unexpected prompt: $expect_out(1,string)"; exit 1 }
               timeout { puts "\n::error::No prompt and no exit in ten minutes"; exit 1 }
               eof
