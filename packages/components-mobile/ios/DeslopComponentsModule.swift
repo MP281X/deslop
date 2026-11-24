@@ -47,6 +47,12 @@ public class DeslopComponentsModule: Module {
       ViewModifierRegistry.register("seeThrough") { params, appContext, _ in
         try SeeThrough(from: params, appContext: appContext)
       }
+      ViewModifierRegistry.register("backHidden") { params, appContext, _ in
+        try BackHidden(from: params, appContext: appContext)
+      }
+      ViewModifierRegistry.register("sidebarToggleHidden") { params, appContext, _ in
+        try SidebarToggleHidden(from: params, appContext: appContext)
+      }
     }
   }
 }
@@ -138,5 +144,21 @@ struct BarNeverMinimizes: ViewModifier, Record {
     } else {
       content
     }
+  }
+}
+
+// A pushed screen with nowhere to go back to, such as a board that stands above the list a Back would return to.
+struct BackHidden: ViewModifier, Record {
+  func body(content: Content) -> some View {
+    content.navigationBarBackButtonHidden(true)
+  }
+}
+
+// A split view's sidebar button, removed while nothing could stand beside the list it would hide. Always applied, so the list keeps its state when `hidden` changes.
+struct SidebarToggleHidden: ViewModifier, Record {
+  @Field var hidden: Bool = false
+
+  func body(content: Content) -> some View {
+    content.toolbar(removing: hidden ? .sidebarToggle : nil)
   }
 }

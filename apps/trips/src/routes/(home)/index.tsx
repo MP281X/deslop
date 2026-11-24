@@ -1,18 +1,29 @@
-import {useAtomMount, useAtomRefresh, useAtomSet, useAtomSuspense, useAtomValue} from '@effect/atom-react'
+import {useAtom, useAtomMount, useAtomRefresh, useAtomSet, useAtomSuspense, useAtomValue} from '@effect/atom-react'
 
 import {Array, Boolean, DateTime, Duration, Function, Option, Schema, String, pipe} from 'effect'
 
-import {HStack, Image, Overlay, Section, Text, VStack} from '@expo/ui/swift-ui'
-import {accessibilityLabel, fixedSize, font, foregroundStyle, frame, tint} from '@expo/ui/swift-ui/modifiers'
+import {Button as NativeButton, HStack, Image, Overlay, Section, Text, VStack} from '@expo/ui/swift-ui'
+import {
+	accessibilityLabel,
+	accessibilityValue,
+	buttonStyle,
+	contentShape,
+	fixedSize,
+	font,
+	foregroundStyle,
+	frame,
+	imageScale,
+	shapes,
+	tint
+} from '@expo/ui/swift-ui/modifiers'
 import {useMachineResult} from '@typeonce/effect-machine-react'
 import {AtomMachine} from '@typeonce/effect-machine/reactivity'
-import {AsyncResult} from 'effect/reactivity'
-import {Suspense, useState} from 'react'
+import {AsyncResult, Atom} from 'effect/reactivity'
+import {Suspense} from 'react'
 
 import {ItemGroupSkeleton} from '@deslop/components-mobile/blocks/item-group-skeleton'
 import {ListToolbar} from '@deslop/components-mobile/blocks/list-toolbar'
 import {FailureContent} from '@deslop/components-mobile/blocks/loaded'
-import {PasteSheet} from '@deslop/components-mobile/blocks/paste-sheet'
 import {Problem} from '@deslop/components-mobile/blocks/problem'
 import {RemovableRow} from '@deslop/components-mobile/blocks/removable-row'
 import {StatusDot} from '@deslop/components-mobile/blocks/status-dot'
@@ -156,26 +167,65 @@ function PastBookings(props: {
 	onOpen: (id: Booking['id']) => void
 }) {
 	if (Array.isReadonlyArrayEmpty(props.bookings)) return undefined
+	// A plain list draws no toggle on a collapsible section, only the sidebar style does, so the header is the toggle.
 	return (
-		<Section title="Past" isExpanded={props.expanded} onIsExpandedChange={props.onExpandedChange}>
-			{Array.map(props.bookings, booking => (
-				<BookingRow
-					key={booking.id}
-					booking={booking}
-					countdown={Countdown.cases.SameDay.make({})}
-					now={props.now}
-					onOpen={props.onOpen}
-				/>
-			))}
+		<Section
+			header={
+				<NativeButton
+					onPress={() => props.onExpandedChange(!props.expanded)}
+					modifiers={[
+						buttonStyle('plain'),
+						accessibilityValue(
+							Boolean.match(props.expanded, {
+								onFalse: Function.constant('Collapsed'),
+								onTrue: Function.constant('Expanded')
+							})
+						)
+					]}
+				>
+					{/* The whole header row answers the tap, not only its words. */}
+					<HStack
+						spacing={space[1]}
+						modifiers={[
+							foregroundStyle(colors.mutedForeground),
+							frame({alignment: 'leading', maxWidth: Infinity}),
+							contentShape(shapes.rectangle())
+						]}
+					>
+						<Text>Past</Text>
+						<Image
+							systemName={Boolean.match(props.expanded, {
+								onFalse: Function.constant('chevron.right'),
+								onTrue: Function.constant('chevron.down')
+							})}
+							modifiers={[imageScale('small')]}
+						/>
+					</HStack>
+				</NativeButton>
+			}
+		>
+			{props.expanded &&
+				Array.map(props.bookings, booking => (
+					<BookingRow
+						key={booking.id}
+						booking={booking}
+						countdown={Countdown.cases.SameDay.make({})}
+						now={props.now}
+						onOpen={props.onOpen}
+					/>
+				))}
 		</Section>
 	)
 }
+
+// Every copy of the list shows Past the same way, so the copy below the board in laptop posture keeps it open when the phone lies flat.
+const pastOpenAtom = Atom.make(false)
 
 function Bookings(props: {onOpen: (id: Booking['id']) => void; searched: string}) {
 	const loaded = useAtomSuspense(bookingsAtom, {includeFailure: true})
 	const refresh = useAtomRefresh(bookingsAtom)
 	const paste = useAtomSet(clipboard.atom.send)
-	const [pastOpen, setPastOpen] = useState(false)
+	const [pastOpen, setPastOpen] = useAtom(pastOpenAtom)
 
 	const now = useAtomValue(nowAtom)
 	const adding = pipe(
@@ -311,38 +361,39 @@ function Bookings(props: {onOpen: (id: Booking['id']) => void; searched: string}
 	)
 }
 
+// The query every copy of the list filters by, as the search field they share shows it, so a search typed below the board in laptop posture still filters once the phone lies flat.
+const searchedAtom = Atom.make('')
+
 // Native navigation and clipboard/account controls do not wait for the bookings stream; the bar marks bookings that stopped updating.
 export function HomeRoute(props: {onOpen: (id: Booking['id']) => void}) {
-	const [searched, setSearched] = useState('')
+	const [searched, setSearched] = useAtom(searchedAtom)
 	const loaded = useAtomValue(bookingsAtom)
 	useAtomMount(problemSinceAtom(bookingsAtom))
 	return (
-		<PasteSheet clipboard={clipboard}>
-			<ListToolbar
-				title="Trips"
-				session={session}
-				onSearch={setSearched}
-				problem={Option.liftPredicate(
-					<Problem source={bookingsAtom} label="Out of date" onRetry={useAtomRefresh(bookingsAtom)} />,
-					() => AsyncResult.isFailure(loaded) && Option.isNone(blockingFailure(loaded))
-				)}
+		<ListToolbar
+			title="Trips"
+			session={session}
+			onSearch={setSearched}
+			problem={Option.liftPredicate(
+				<Problem source={bookingsAtom} label="Out of date" onRetry={useAtomRefresh(bookingsAtom)} />,
+				() => AsyncResult.isFailure(loaded) && Option.isNone(blockingFailure(loaded))
+			)}
+		>
+			<Suspense
+				fallback={
+					<ItemGroupSkeleton
+						rows={10}
+						descriptionLines={2}
+						media={
+							<ItemMedia>
+								<Gutter countdown={Countdown.cases.Days.make({days: 2})} />
+							</ItemMedia>
+						}
+					/>
+				}
 			>
-				<Suspense
-					fallback={
-						<ItemGroupSkeleton
-							rows={10}
-							descriptionLines={2}
-							media={
-								<ItemMedia>
-									<Gutter countdown={Countdown.cases.Days.make({days: 2})} />
-								</ItemMedia>
-							}
-						/>
-					}
-				>
-					<Bookings onOpen={props.onOpen} searched={searched} />
-				</Suspense>
-			</ListToolbar>
-		</PasteSheet>
+				<Bookings onOpen={props.onOpen} searched={searched} />
+			</Suspense>
+		</ListToolbar>
 	)
 }

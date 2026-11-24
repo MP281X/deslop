@@ -1,6 +1,6 @@
 import {Array, DateTime, Effect, Option, Schema, Stream, String, pipe} from 'effect'
 
-import {Atom} from 'effect/reactivity'
+import {AsyncResult, Atom} from 'effect/reactivity'
 import {getStringAsync, hasImageAsync, hasStringAsync} from 'expo-clipboard'
 import {File, Paths} from 'expo-file-system'
 
@@ -16,9 +16,9 @@ import {provideRuntimeOnce} from '@deslop/runtime/mobile/session'
 import {listReducer} from '@deslop/runtime/shared/list'
 
 import {RpcClient, session} from '#lib/session.ts'
-import {byStart} from '#services/bookings/lib/utils.ts'
-import type {Booking} from '#services/bookings/schema.ts'
-import {BookingId, BookingModel, BookingSource, BookingsError, IMAGE_BYTES} from '#services/bookings/schema.ts'
+import {byStart, endOf, HOUR} from '#services/bookings/lib/utils.ts'
+import {Booking, BookingId, BookingModel, BookingSource, BookingsError, IMAGE_BYTES} from '#services/bookings/schema.ts'
+import type {Flight} from '#services/bookings/schema.ts'
 
 const bookingsFile = new File(Paths.document, 'bookings.json')
 
@@ -147,4 +147,20 @@ export const nowAtom = Atom.make(get => {
 	get(activationsAtom)
 	get(clockAtom('1 minute'))
 	return DateTime.nowUnsafe()
+})
+
+// The flight under way or next, the one the board shows: the same rule as the list's Now and Upcoming.
+export const boardAtom = Atom.make(get => {
+	const now = get(nowAtom)
+	return pipe(
+		get(bookingsAtom),
+		AsyncResult.value,
+		Option.flatMap(
+			Array.findFirst(
+				(booking): booking is Flight =>
+					Booking.isAnyOf(['flight'])(booking) &&
+					pipe(endOf(booking), DateTime.addDuration(HOUR), DateTime.isGreaterThanOrEqualTo(now))
+			)
+		)
+	)
 })
