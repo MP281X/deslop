@@ -293,6 +293,7 @@ async function play(steps) {
 		)
 		const label = captionOf(step)
 		const start = Date.now()
+		const focused = placeOf(document.activeElement ?? document.body)
 		taps.splice(0)
 		const result = await act(step).then(
 			ok => ({ok}),
@@ -316,7 +317,7 @@ async function play(steps) {
 			})
 		marks.push({
 			end: Date.now(),
-			key: `${label} @ ${pressed?.place ?? 'page'}`,
+			key: `${label} @ ${pressed?.place ?? focused}`,
 			label,
 			parts: [...(pressed?.parts ?? []), ...open],
 			press: pressed?.press,

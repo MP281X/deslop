@@ -8,7 +8,8 @@ import {join} from 'node:path'
 /** @typedef {{result: {marks: Mark[], outcomes: string[], viewport: number[]}, startedAt: string, video: string}} Recording */
 /** @typedef {{after: Recording, before?: Recording, out: string}} Cut */
 /** @typedef {{name: string, scale: number, steps: Mark[], video: string, viewport: number[]}} Side */
-/** @typedef {{a?: number, b?: number, duration: number, from: number}} Column */
+/** @typedef {[number | undefined, number | undefined, number, number]} Pair */
+/** @typedef {{a?: number, aAt: number, b?: number, bAt: number, duration: number, from: number}} Column */
 
 const FPS = 30
 const PAD = 16
@@ -62,12 +63,12 @@ function load(name, recording) {
 	}
 }
 
-// Steps of b lined up against a's: equal steps are cut, a replaced step shares a column.
-/** @param {number | undefined} b @param {number | undefined} a @returns {[number | undefined, number | undefined]} */
-function slot(b, a) {
-	return [b, a]
+// Steps of b lined up against a's, each column with how far each side has got: equal steps are cut.
+/** @param {number | undefined} b @param {number | undefined} a @param {number} bAt @param {number} aAt @returns {Pair} */
+function slot(b, a, bAt, aAt) {
+	return [b, a, bAt, aAt]
 }
-/** @param {string[]} a @param {string[]} b @returns {[number | undefined, number | undefined][]} */
+/** @param {string[]} a @param {string[]} b @returns {Pair[]} */
 function columns(a, b) {
 	const table = Array.from({length: a.length + 1}, () => new Array(b.length + 1).fill(0))
 	/** @param {number} i @param {number} j @returns {number} */
@@ -94,16 +95,18 @@ function columns(a, b) {
 		if (j >= b.length || (i < a.length && (a[i] === b[j] || common(i, j + 1) < common(i + 1, j)))) return [j, adds]
 		return added(i, j + 1, [...adds, j])
 	}
-	/** @param {number} i @param {number} j @returns {[number | undefined, number | undefined][]} */
+	/** @param {number} i @param {number} j @returns {Pair[]} */
 	function walk(i, j) {
 		if (i >= a.length && j >= b.length) return []
 		if (i < a.length && j < b.length && a[i] === b[j]) return walk(i + 1, j + 1)
 		const [nextI, dels] = dropped(i, j, [])
 		const [nextJ, adds] = added(nextI, j, [])
 		// A step that ties both ways is taken from a, so the walk always moves.
-		if (dels.length + adds.length === 0) return [[i, undefined], ...walk(i + 1, j)]
+		if (dels.length + adds.length === 0) return [slot(i, undefined, i, j), ...walk(i + 1, j)]
 		return [
-			...Array.from({length: Math.max(dels.length, adds.length)}, (_, n) => slot(dels[n], adds[n])),
+			...Array.from({length: Math.max(dels.length, adds.length)}, (_, n) =>
+				slot(dels[n], adds[n], dels[n] ?? nextI, adds[n] ?? nextJ)
+			),
 			...walk(nextI, nextJ)
 		]
 	}
@@ -125,9 +128,9 @@ function length(side, step) {
 const after = load('after', cut.after)
 const before = cut.before && load('before', cut.before)
 const sides = [before, after].filter(side => side !== undefined)
-/** @returns {[number | undefined, number | undefined][]} */
+/** @returns {Pair[]} */
 function align() {
-	if (!before) return after.steps.map((_, j) => slot(undefined, j))
+	if (!before) return after.steps.map((_, j) => slot(undefined, j, 0, j))
 	return columns(
 		before.steps.map(step => step.key),
 		after.steps.map(step => step.key)
@@ -135,13 +138,15 @@ function align() {
 }
 const pairs = align()
 if (pairs.length === 0) throw new Error('Before and After take the same steps: nothing to compare')
-/** @param {Column[]} cols @param {[number | undefined, number | undefined]} pair @returns {Column[]} */
+/** @param {Column[]} cols @param {Pair} pair @returns {Column[]} */
 function append(cols, pair) {
 	return [
 		...cols,
 		{
 			a: pair[1],
+			aAt: pair[3],
 			b: pair[0],
+			bAt: pair[2],
 			duration: Math.max(length(before, pair[0]), length(after, pair[1])),
 			from: cols.reduce((sum, col) => sum + col.duration, 0)
 		}
@@ -156,14 +161,12 @@ function own(side) {
 	if (side === before) return timeline.map(col => col.b)
 	return timeline.map(col => col.a)
 }
-/** @param {Side} side */
-function kept(side) {
-	return own(side).filter(step => step !== undefined)
-}
 // The part of the page a side's kept steps use, in CSS pixels, padded.
 /** @param {Side} side */
 function region(side) {
-	const parts = kept(side).flatMap(step => side.steps[step].parts)
+	const parts = own(side)
+		.filter(step => step !== undefined)
+		.flatMap(step => side.steps[step].parts)
 	if (parts.length === 0) return {b: side.viewport[1], r: side.viewport[0], x: 0, y: 0}
 	return {
 		b: Math.max(...parts.map(part => part[3])) + PAD,
@@ -252,23 +255,23 @@ function shade(dim) {
 const lines = frames.flatMap((frame, s) => {
 	const side = frame.side
 	const steps = own(side)
-	const last = side.steps[kept(side).at(-1) ?? 0].end - 1 / FPS
+	const last = side.steps.at(-1).end - 1 / FPS
 	// A recording has frames only while the page changes, so it is made constant-rate and its last frame held.
 	const source = `[${s}:v]fps=${FPS},tpad=stop_mode=clone:stop_duration=${total},`
 	/** @param {number} time @param {number} duration @param {string} name @param {boolean} dim */
 	function hold(time, duration, name, dim) {
 		return `${source}trim=start=${time},setpts=PTS-STARTPTS,trim=end_frame=1,loop=loop=${Math.round(duration * FPS) - 1}:size=1:start=0,setpts=N/(${FPS}*TB)${shade(dim)}[${name}]`
 	}
-	// A side that waits shows the state before its next kept step, or after its last one, dimmed.
-	/** @param {number} n */
-	function still(n) {
-		const next = steps.slice(n).find(step => step !== undefined)
-		if (next === undefined) return last
-		return side.steps[next].start
+	// A side that waits shows, dimmed, its state before the step it has got to, or its end.
+	/** @param {Column} col */
+	function still(col) {
+		const at = pick(side, col.aAt, col.bAt)
+		if (at >= side.steps.length) return last
+		return side.steps[at].start
 	}
 	const segments = timeline.map((col, n) => {
 		const step = steps[n]
-		if (step === undefined) return hold(still(n), col.duration, `s${s}p${n}`, true)
+		if (step === undefined) return hold(still(col), col.duration, `s${s}p${n}`, true)
 		const mark = side.steps[step]
 		return `${source}trim=start=${mark.start}:end=${mark.end},setpts=PTS-STARTPTS,tpad=stop_mode=clone:stop_duration=${col.duration},trim=duration=${col.duration}[s${s}p${n}]`
 	})

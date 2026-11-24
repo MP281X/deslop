@@ -133,7 +133,7 @@ function align(a, b) {
     while (j < b.length && !(i < a.length && a[i] === b[j]) && (i >= a.length || L[i][j + 1] >= L[i + 1][j])) adds.push(j++);
     if (!dels.length && !adds.length) { if (i < a.length) dels.push(i++); else adds.push(j++); }
     dels.forEach((d, n) => { at[d] = n < adds.length ? { j: adds[n], op: 'add' } : { j: null, op: 'del' }; });
-    ins[dels[0] ?? i].push(...adds.slice(dels.length));
+    ins[i].push(...adds.slice(dels.length));
   }
   return { at, ins };
 }

@@ -16,12 +16,12 @@ description: 'Load before a preview or device tool call, a screenshot or recordi
 Each push rewrites the body from `.github/pull_request_template.md` (GitLab: `.gitlab/merge_request_templates/Default.md`), never appends to it, then reads it back rendered and fixes what fails to render. It describes the change at the head: never rounds, rebases or other PRs. Uploads go through `--attach`, since host API writes are blocked.
 
 ```bash
-gh pr edit <n> --title '<title>' --body-file - --attach './shot.png#<alt>' <<'EOF'  # ![alt](./shot.png) becomes the upload
+gh pr edit <n> --title '<title>' --body-file - <<'EOF'
 <body>
 EOF
 gh pr edit <n> --attach './proof.mp4'    # appends the video URL: move it under its claim, alone in its paragraph
 gh api repos/<owner>/<repo>/pulls/<n> -H 'Accept: application/vnd.github.html+json' --jq .body_html
-glab mr update <n> --description-file - --attach ./shot.png <<'EOF'   # appends the reference: move it under its claim
+glab mr update <n> --description-file - --attach ./proof.mp4 <<'EOF'   # appends the reference: move it under its claim
 <body>
 EOF
 glab api "projects/:id/merge_requests/<n>?render_html=true" | jq -r .description_html
