@@ -139,9 +139,7 @@ jobs:
       EAS_BUILD_DISABLE_EXPO_DOCTOR_STEP: 1
       # The Simulator host is Apple silicon; the default universal binary compiles every file twice.
       GYM_XCARGS: ARCHS=arm64
-      # Agents embed the branch's own bundle before installing, so the build's bundle is never run: EAS skips its eager bundle and Xcode its bundle phase.
-      EAS_BUILD_DISABLE_BUNDLE_JAVASCRIPT_STEP: 1
-      SKIP_BUNDLING: 1
+      # The bundle step stays though agents replace the bundle: SKIP_BUNDLING also skips expo-updates' embedded manifest, and the app then stops at launch.
     steps:
       # A build of the same name may have finished since the decision; it is this one.
       - name: Look for a build made meanwhile

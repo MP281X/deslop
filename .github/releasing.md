@@ -77,7 +77,7 @@ Public TestFlight and App Store release are separate outward actions.
 
 ## Simulator builds
 
-Every command here and every workflow that loads an app's config reads `DESLOP_DOMAIN`, the repository variable of that name (`.env.example`); export it first. A push touching a mobile app or shared packages, on a branch no open PR targets (the top of a stack), builds a missing `<app>-simulator-<fingerprint>-<recipe>` artifact and checks that each app's App Store profiles hold its declared entitlements; a missing one fails with the signing command to run. The recipe names this checkout's `simulator.yaml` and setup action, so a build is taken only from the same ones. The app holds no JavaScript bundle, so embed the branch's before installing it:
+Every command here and every workflow that loads an app's config reads `DESLOP_DOMAIN`, the repository variable of that name (`.env.example`); export it first. A push touching a mobile app or shared packages, on a branch no open PR targets (the top of a stack), builds a missing `<app>-simulator-<fingerprint>-<recipe>` artifact and checks that each app's App Store profiles hold its declared entitlements; a missing one fails with the signing command to run. The recipe names this checkout's `simulator.yaml` and setup action, so a build is taken only from the same ones. The app holds the JavaScript of the commit that built it, so embed the branch's bundle before installing it:
 
 ```bash
 # Run in apps/stash:

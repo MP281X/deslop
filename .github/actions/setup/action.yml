@@ -25,7 +25,7 @@ runs:
     # With pnpm, 5s where npm took 15s on Linux and 35s on the Mac; from home, outside the workspace, whose strict peer checks would reject the EAS CLI's dependencies.
     # PNPM_HOME stays in this step: pnpm keeps its store under it, so later installs, EAS's included, would miss the store the workspace's install filled.
     # A local build otherwise fetches its plugin, versioned as the CLI's @expo/eas-build-job, with npx on every build, about 25s on the Mac; its terminal sessions need node-pty's install script.
-    # Through git, a local build clones the repository and copies the working tree over the clone, so its archive holds every tracked file twice; EAS_NO_VCS copies the working tree alone.
+    # Through git, a local build clones the repository and copies the working tree over the clone, so its archive holds every tracked file twice; EAS_NO_VCS copies the working tree alone, 11–21s against 30s on the Mac.
     - name: Install the EAS CLI
       if: inputs.eas == 'true'
       shell: bash
