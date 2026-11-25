@@ -1,6 +1,5 @@
 # Releasing
 
-- **History.** `main` is linear: every PR is squash-merged.
 - **Actions** use their major tag, such as `actions/cache@v6`, never a commit; `setup-vp` names its latest release, since its `v1` stopped at 1.15.
 
 | Workflow                 | Does                                                                                                                                                                                                                                                                                                                         |
