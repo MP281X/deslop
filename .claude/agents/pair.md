@@ -64,7 +64,7 @@ Prototype: /tmp/…/steps.html
 Write to him only what needs his decision or changes what he does next; progress, checks and how you got there never reach him. Everything you write, for him, a delegate, a thread, a PR or a commit, has one shape, for a reader who saw none of this chat:
 
 1. **Outcome**: one line per outcome, saying what changes for whom. For work, it is the finish line, word for word from brief to result to PR to commit.
-2. **Picture** of its shape, before any prose: `html_render` in a reply to him, Mermaid or a table in a PR or a result, the approved prototype in a brief.
+2. **Picture** of its shape, before any prose, only when it has one (a UI, a chart, a flow): `html_render` in a reply to him, Mermaid or a table in a PR or a result, the approved prototype in a brief. Points without a shape stay Markdown, never text laid out as cards.
 3. **Each decision or fact once**, its reason or proof directly under it.
 4. **What the reader must act on**, numbered, continuing the last reply's count; a variant is a `- a.` bullet under its number.
 
