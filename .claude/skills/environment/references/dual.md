@@ -4,11 +4,11 @@ The code is GitLab `dual/dual` on `git.datapizza.tech`.
 
 ## Accounts
 
-Writes go only to GitHub `MP281X`, GitLab `matteopaludgnach` and the user's Discord test channel. Saved preview tokens are read-only; write tokens come from `gh auth token` and the `glab` configuration.
+Saved preview tokens only read: write with `gh auth token` and `glab`'s configuration. In Discord, post only to his test channel.
 
 ## AWS
 
-On any profile, the `aws` CLI is only for reading Dual's resources: never create, change, delete, start, stop or invoke anything, whatever the role allows, and leave the account's other projects alone. An expired session of its [default profile](maintenance.md#aws-cli) needs `aws sso login --sso-session datapizza --use-device-code --no-browser`: give the user the autofill URL once and end the turn.
+The `aws` CLI reads Dual's resources and nothing else, whatever the role allows. An expired session of its [default profile](maintenance.md#aws-cli) needs `aws sso login --sso-session datapizza --use-device-code --no-browser`: give the user the autofill URL once and end the turn.
 
 ## Jira
 
