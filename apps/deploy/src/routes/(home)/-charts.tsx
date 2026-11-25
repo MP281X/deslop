@@ -405,7 +405,7 @@ export function ReadingStripSkeleton() {
 	)
 }
 
-export function EmptyChart(props: {worker: Option.Option<string>}) {
+export function EmptyChart() {
 	return (
 		<div className="flex h-64 shrink-0 items-center justify-center">
 			<Empty role="status">
@@ -413,12 +413,7 @@ export function EmptyChart(props: {worker: Option.Option<string>}) {
 					<EmptyMedia variant="icon">
 						<ChartLineIcon />
 					</EmptyMedia>
-					<EmptyTitle>
-						{Boolean.match(Option.isNone(props.worker), {
-							onFalse: Function.constant('No readings'),
-							onTrue: Function.constant('No machine')
-						})}
-					</EmptyTitle>
+					<EmptyTitle>No readings</EmptyTitle>
 				</EmptyHeader>
 			</Empty>
 		</div>

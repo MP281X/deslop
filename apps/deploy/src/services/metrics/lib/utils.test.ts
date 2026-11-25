@@ -2,7 +2,7 @@ import {assert, it} from '@effect/vitest'
 
 import {Array, Boolean, DateTime, Duration, Option, pipe} from 'effect'
 
-import {AppId, WorkerId} from '#services/inventory/schema.ts'
+import {AppId} from '#services/inventory/schema.ts'
 import {
 	appCgroup,
 	appShares,
@@ -11,7 +11,6 @@ import {
 	expired,
 	history,
 	linuxDisks,
-	peerHistory,
 	rollup,
 	sample
 } from '#services/metrics/lib/utils.ts'
@@ -290,45 +289,4 @@ it('keeps a buffered point while its range still shows it', () => {
 	const point = {...POINT, since: DateTime.makeUnsafe(0), step: Duration.seconds(10)}
 	assert.isFalse(expired(point, DateTime.makeUnsafe(610_000)))
 	assert.isTrue(expired(point, DateTime.makeUnsafe(610_001)))
-})
-
-it('keeps a peer’s newest points when its clock runs ahead, and marks a failed read stale without dropping its history', () => {
-	const ahead = {
-		...POINT,
-		since: DateTime.makeUnsafe(1_001_000),
-		step: Duration.seconds(10),
-		time: DateTime.makeUnsafe(1_001_000)
-	}
-	const saved = {
-		history: {
-			disks: [],
-			error: Option.none(),
-			load: [],
-			platform: Option.some('linux' as const),
-			samples: [ahead],
-			stale: false,
-			time: DateTime.makeUnsafe(1_006_000),
-			worker: WorkerId.make('desktop')
-		},
-		received: DateTime.makeUnsafe(1_000_000)
-	}
-	const now = DateTime.makeUnsafe(1_000_000)
-	const fresh = peerHistory(
-		Duration.minutes(10),
-		now,
-		WorkerId.make('desktop'),
-		Option.some({error: Option.none(), saved: Option.some(saved)})
-	)
-	assert.strictEqual(fresh.samples.length, 1)
-	assert.isFalse(fresh.stale)
-	const failed = peerHistory(
-		Duration.minutes(10),
-		now,
-		WorkerId.make('desktop'),
-		Option.some({error: Option.some('Worker is unreachable'), saved: Option.some(saved)})
-	)
-	assert.deepStrictEqual(
-		[failed.samples.length, failed.stale, failed.error],
-		[1, true, Option.some('Worker is unreachable')]
-	)
 })

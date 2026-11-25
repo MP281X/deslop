@@ -1,11 +1,11 @@
 import {assert, it} from '@effect/vitest'
 
-import {Array, DateTime, Duration, HashMap, Option, Schema} from 'effect'
+import {Array, DateTime, Duration, Option, Schema} from 'effect'
 
-import {launchdProcesses, processReadings} from './processes.ts'
+import {processReadings} from './processes.ts'
 
 import type {AppId} from '#services/inventory/schema.ts'
-import {Process, ProcessId, UnitId} from '#services/inventory/schema.ts'
+import {Process} from '#services/inventory/schema.ts'
 
 const PREVIOUS = {
 	records: [
@@ -18,7 +18,7 @@ const PREVIOUS = {
 				parent: 1,
 				pid: 42
 			}),
-			start: DateTime.makeUnsafe(100),
+			start: Duration.millis(100),
 			ticks: Duration.millis(10)
 		}
 	],
@@ -47,21 +47,9 @@ it('measures CPU deltas only across readings of the same live process', () => {
 	)
 	assert.deepStrictEqual(
 		processReadings(
-			{...CURRENT, records: Array.map(CURRENT.records, record => ({...record, start: DateTime.makeUnsafe(101)}))},
+			{...CURRENT, records: Array.map(CURRENT.records, record => ({...record, start: Duration.millis(101)}))},
 			baseline
 		).readings[0]?.process.cpu,
 		Option.none()
-	)
-})
-
-it('labels a process without the credential its arguments carry', () => {
-	const [record] = launchdProcesses(
-		'12 1 1024 0:01.01 Wed Nov 18 09:00:00 2026 /usr/bin/curl --header Authorization: Bearer fixture-value-only https://example.invalid',
-		HashMap.make([ProcessId.make(12), UnitId.make('fixture')]),
-		HashMap.empty()
-	)
-	assert.deepStrictEqual(
-		Option.map(Option.fromUndefinedOr(record), found => found.process.label),
-		Option.some({detail: 'example.invalid', name: 'curl'})
 	)
 })

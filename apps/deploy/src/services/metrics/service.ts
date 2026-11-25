@@ -1,6 +1,3 @@
-import {cpus, hostname, loadavg, totalmem} from 'node:os'
-import {platform} from 'node:process'
-
 import {
 	Array,
 	Boolean,
@@ -37,7 +34,7 @@ import {executeProcess} from '@deslop/runtime/server/process'
 import {migrations} from './migrations.ts'
 
 import {processOwner} from '#services/inventory/lib/utils.ts'
-import {DeployError, WorkerId} from '#services/inventory/schema.ts'
+import {DeployError} from '#services/inventory/schema.ts'
 import {
 	SERIES,
 	appCgroup,
@@ -45,16 +42,12 @@ import {
 	cgroupUsage,
 	chartWindow,
 	counters,
-	cpuCounters,
 	expired,
 	history,
 	coverageOf,
 	linuxDisks,
-	reading,
 	rollup,
-	rootVolume,
-	sample,
-	vmStatMemory
+	sample
 } from '#services/metrics/lib/utils.ts'
 import type {AppReading} from '#services/metrics/lib/utils.ts'
 import {
@@ -89,10 +82,6 @@ function sampled<A>(read: () => A) {
 	})
 }
 
-function readDisks(read: () => readonly Disk[]) {
-	return Effect.try({catch: cause => DeployError.make({cause, message: 'The disk sizes are unreadable.'}), try: read})
-}
-
 function sameBucket(row: Sample, time: DateTime.Utc) {
 	const step = Duration.toMillis(row.step)
 	return Math.floor(DateTime.toEpochMillis(row.since) / step) === Math.floor(DateTime.toEpochMillis(time) / step)
@@ -102,9 +91,8 @@ export class Metrics extends Context.Service<Metrics>()('@deslop/deploy/services
 	make: Effect.gen(function* () {
 		const fs = yield* FileSystem.FileSystem
 		const sql = yield* SqlClient.SqlClient
-		const worker = yield* Schema.decodeEffect(WorkerId)(hostname())
 
-		// Each machine point with its app rows as one array; the merge patch drops an unmeasured CPU's null key, and a stored app's CPU counts as measured for the whole point, which its row doesn't record. A point that measured apps without rows has an empty array; one that never measured them, as on a Mac, has none.
+		// Each machine point with its app rows as one array; the merge patch drops an unmeasured CPU's null key, and a stored app's CPU counts as measured for the whole point, which its row doesn't record. A point that measured apps without rows has an empty array; one that never measured them has none.
 		const joinedSamples = sql`SELECT s.*,
 			CASE WHEN COUNT(a.app) = 0 THEN CASE WHEN s.appsCoverage > 0 THEN '[]' END ELSE
 				json_group_array(json_patch('{}', json_object('id', a.app, 'cpu', a.cpu, 'cpuCoverage', CASE WHEN a.cpu IS NULL THEN 0 ELSE s.appsCoverage END, 'memory', a.memory)))
@@ -291,42 +279,38 @@ export class Metrics extends Context.Service<Metrics>()('@deslop/deploy/services
 		})
 		// A disk that never answers is killed after ten seconds and leaves the last disks read; a row df writes that isn't a disk fails only the disks.
 		const refreshStorage = pipe(
-			Boolean.match(platform === 'darwin', {
-				onFalse: () =>
-					Effect.flatMap(
-						executeProcess(
-							'df',
-							[
-								'-B1',
-								'--output=target,size,used',
-								'-x',
-								'tmpfs',
-								'-x',
-								'devtmpfs',
-								'-x',
-								'overlay',
-								'-x',
-								'squashfs',
-								'-x',
-								'efivarfs'
-							],
-							{timeout: '10 seconds'}
-						),
-						text => readDisks(() => linuxDisks(text))
-					),
-				onTrue: () =>
-					Effect.flatMap(executeProcess('df', ['-k', '/'], {timeout: '10 seconds'}), text =>
-						readDisks(() => rootVolume(text))
-					)
-			}),
+			executeProcess(
+				'df',
+				[
+					'-B1',
+					'--output=target,size,used',
+					'-x',
+					'tmpfs',
+					'-x',
+					'devtmpfs',
+					'-x',
+					'overlay',
+					'-x',
+					'squashfs',
+					'-x',
+					'efivarfs'
+				],
+				{timeout: '10 seconds'}
+			),
+			Effect.flatMap(text =>
+				Effect.try({
+					catch: cause => DeployError.make({cause, message: 'The disk sizes are unreadable.'}),
+					try: () => linuxDisks(text)
+				})
+			),
 			Effect.flatMap(disks => Ref.set(storage, disks)),
 			Effect.andThen(report('disks', Option.none())),
-			Effect.withSpan('Metrics.refreshStorage', {attributes: {worker}}),
+			Effect.withSpan('Metrics.refreshStorage'),
 			Effect.tapError(cause => report('disks', Option.some(cause.message))),
 			Effect.ignore({log: 'Warn', message: 'The disk sizes were not read'})
 		)
-		// A Linux sample reads /proc, and each app's cgroup, so the history can split memory and CPU by app; a slow or failed cgroup read only drops the apps.
-		const linux = Effect.fnUntraced(function* (
+		// A sample reads /proc, and each app's cgroup, so the history can split memory and CPU by app; a slow or failed cgroup read only drops the apps.
+		const measure = Effect.fnUntraced(function* (
 			time: DateTime.Utc,
 			disks: readonly Disk[],
 			old: Option.Option<Counters>
@@ -366,30 +350,12 @@ export class Metrics extends Context.Service<Metrics>()('@deslop/deploy/services
 			const value = yield* sampled(() => sample(current, files.memory, disks, old, Option.some(files.load)))
 			return {current, value: {...value, point: {...value.point, apps: shares, appsCoverage: coverageOf(shares)}}}
 		})
-		// A Mac has no cgroups, so its samples carry no apps.
-		const darwin = Effect.fnUntraced(function* (
-			time: DateTime.Utc,
-			disks: readonly Disk[],
-			old: Option.Option<Counters>
-		) {
-			const uptime = Duration.nanos(yield* Clock.monotonicTimeNanos)
-			const current = yield* counted(() => cpuCounters(cpus(), uptime, time))
-			const value = yield* Effect.flatMap(executeProcess('vm_stat', [], {timeout: '2 seconds'}), memory =>
-				sampled(() => reading(current, vmStatMemory(memory, totalmem()), disks, loadavg(), old))
-			)
-			return {current, value}
-		})
 		const pending = yield* Ref.make<readonly Sample[]>(yield* asDeployError(listBuckets(yield* DateTime.now)))
 		const writes = yield* Semaphore.make(1)
 		const collect = pipe(
 			Effect.gen(function* () {
 				const time = yield* DateTime.now
-				const old = yield* Ref.get(previous)
-				const disks = yield* Ref.get(storage)
-				const measurement = yield* Boolean.match(platform === 'darwin', {
-					onFalse: () => linux(time, disks, old),
-					onTrue: () => darwin(time, disks, old)
-				})
+				const measurement = yield* measure(time, yield* Ref.get(storage), yield* Ref.get(previous))
 				yield* Ref.set(previous, Option.some(measurement.current))
 				yield* writes.withPermits(1)(
 					Ref.update(pending, rows => {
@@ -436,7 +402,7 @@ export class Metrics extends Context.Service<Metrics>()('@deslop/deploy/services
 			}),
 			writes.withPermits(1),
 			Effect.andThen(report('save', Option.none())),
-			Effect.withSpan('Metrics.collect', {attributes: {worker}}),
+			Effect.withSpan('Metrics.collect'),
 			Effect.tapError(cause => report('save', Option.some(cause.message))),
 			Effect.ignore({log: 'Error', message: 'Resource history could not be saved'})
 		)
@@ -462,7 +428,7 @@ export class Metrics extends Context.Service<Metrics>()('@deslop/deploy/services
 				Effect.flatMap(deleteExpired),
 				sql.withTransaction,
 				asDeployError,
-				Effect.withSpan('Metrics.prune', {attributes: {worker}})
+				Effect.withSpan('Metrics.prune')
 			)
 		})
 
@@ -483,7 +449,7 @@ export class Metrics extends Context.Service<Metrics>()('@deslop/deploy/services
 
 		return {
 			read: Effect.fn('Metrics.read')(function* (query: HistoryQuery) {
-				yield* Effect.annotateCurrentSpan({minutes: Duration.toMinutes(query.minutes), worker})
+				yield* Effect.annotateCurrentSpan({minutes: Duration.toMinutes(query.minutes)})
 				const time = yield* DateTime.now
 				const step = SERIES[yield* asDeployError(Schema.encodeEffect(HistoryQuery.fields.minutes)(query.minutes))]
 				const samples = yield* writes.withPermits(1)(
@@ -515,19 +481,12 @@ export class Metrics extends Context.Service<Metrics>()('@deslop/deploy/services
 						Option.map(Array.join('; '))
 					),
 					load: now.load,
-					platform: Option.some(
-						Boolean.match(platform === 'darwin', {
-							onFalse: Function.constant('linux' as const),
-							onTrue: Function.constant('darwin' as const)
-						})
-					),
 					samples: history(samples, query.minutes, time),
 					stale: Option.match(Array.last(samples), {
 						onNone: Function.constTrue,
 						onSome: value => pipe(value.time, DateTime.distance(time), Duration.isGreaterThan(Duration.seconds(90)))
 					}),
-					time,
-					worker
+					time
 				} satisfies MachineHistory
 			})
 		}

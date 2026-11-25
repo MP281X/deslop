@@ -20,7 +20,7 @@ import {Field, FieldGroup, FieldLabel} from '@deslop/components-web/ui/field'
 import {Input} from '@deslop/components-web/ui/input'
 import {Tabs, TabsContent, TabsList, TabsTrigger} from '@deslop/components-web/ui/tabs'
 
-import {exposeAtom, exposeTargetAtom, inventoryAtom} from '#lib/fleet.ts'
+import {exposeAtom, exposeTargetAtom, inventoryAtom} from '#lib/machine.ts'
 import {ExposureName} from '#services/inventory/schema.ts'
 import type {InventoryItem} from '#services/inventory/schema.ts'
 
@@ -34,7 +34,7 @@ function Expose(props: {items: readonly InventoryItem[]; port: InventoryItem; po
 	const tailnetHost = Option.getOrElse(
 		pipe(
 			props.items,
-			Array.findFirst(item => Option.contains(item.self, true) && item.worker === props.port.worker),
+			Array.findFirst(item => Option.contains(item.self, true)),
 			Option.flatMap(item => item.hostname)
 		),
 		Function.constant('')
@@ -54,8 +54,7 @@ function Expose(props: {items: readonly InventoryItem[]; port: InventoryItem; po
 						})
 					),
 					port: props.portNumber,
-					publicAccess: kind === 'public',
-					worker: props.port.worker
+					publicAccess: kind === 'public'
 				})
 			}}
 		>

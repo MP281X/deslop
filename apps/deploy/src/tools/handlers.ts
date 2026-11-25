@@ -1,33 +1,14 @@
-import {hostname} from 'node:os'
-
-import {Array, Boolean, Effect, HashSet, Option, Order, String, Struct, pipe} from 'effect'
+import {Array, Effect, HashSet, Option, Order, String, Struct, pipe} from 'effect'
 
 import {requireAdmin} from '@deslop/runtime/server/auth'
 import {CurrentUser} from '@deslop/runtime/shared/auth'
 
-import {Fleet} from '#services/fleet/service.ts'
 import {jobRequest, listApps, ownerNames} from '#services/inventory/lib/utils.ts'
-import {DeployError, WorkerId} from '#services/inventory/schema.ts'
-import type {InventoryCursor, ProcessSummary, WorkerInventory} from '#services/inventory/schema.ts'
+import type {AppList, InventoryCursor, ProcessSummary} from '#services/inventory/schema.ts'
+import {Machine} from '#services/machine/service.ts'
 import {resourceHistory} from '#services/metrics/lib/utils.ts'
+import {Metrics} from '#services/metrics/service.ts'
 import {ToolContracts} from '#tools/contracts.ts'
-
-// A target is checked against the configured workers, so a command never waits on reading the fleet first.
-function checkWorker(workers: readonly WorkerId[], worker: Option.Option<WorkerId>) {
-	return pipe(
-		worker,
-		Option.filter(selected => !Array.contains(workers, selected)),
-		Option.match({
-			onNone: () => Effect.void,
-			onSome: selected =>
-				Effect.fail(
-					DeployError.make({
-						message: `Unknown worker ${selected}; valid workers: ${Array.join(workers, ', ')}. Nothing changed.`
-					})
-				)
-		})
-	)
-}
 
 function processPaths(tree: readonly ProcessSummary[], prefix: string): readonly string[] {
 	return Array.flatMap(tree, (node, index) => [
@@ -70,88 +51,79 @@ function processPage(nodes: readonly ProcessSummary[], offset: number, limit: nu
 	}
 }
 
-const cursorOrder = pipe(
-	Order.mapInput(Order.String, (key: InventoryCursor) => key[0]),
-	Order.combine(Order.mapInput(Order.String, (key: InventoryCursor) => key[1])),
-	Order.combine(Order.mapInput(Order.String, (key: InventoryCursor) => key[2]))
-)
+const cursorOrder: Order.Order<InventoryCursor> = Order.Tuple([Order.String, Order.String])
 
 function inventoryPage(
-	workers: readonly WorkerInventory[],
+	list: AppList,
 	input: {cursor: Option.Option<InventoryCursor>; limit: number; processLimit: number; processOffset: number}
 ) {
 	const remaining = pipe(
-		workers,
-		Array.flatMap(worker => [
-			...Array.map(worker.apps, row => [worker.worker, 'apps', row.id] satisfies InventoryCursor),
+		[
+			...Array.map(list.apps, row => ['apps', row.id] satisfies InventoryCursor),
 			...pipe(
-				worker.jobs,
+				list.jobs,
 				Option.getOrElse(Array.empty),
-				Array.map(row => [worker.worker, 'jobs', row.id] satisfies InventoryCursor)
+				Array.map(row => ['jobs', row.id] satisfies InventoryCursor)
 			),
 			...pipe(
-				worker.exposures,
+				list.exposures,
 				Option.getOrElse(Array.empty),
-				Array.map(row => [worker.worker, 'exposures', row.id] satisfies InventoryCursor)
+				Array.map(row => ['exposures', row.id] satisfies InventoryCursor)
 			)
-		]),
+		],
 		Array.sort(cursorOrder),
 		Array.filter(key => !Option.exists(input.cursor, cursor => Order.isLessThanOrEqualTo(cursorOrder)(key, cursor)))
 	)
 	const page = Array.take(remaining, input.limit)
 	const selected = HashSet.fromIterable(page)
 	return {
+		apps: pipe(
+			list.apps,
+			Array.filter(row => HashSet.has(selected, ['apps', row.id])),
+			Array.map(row =>
+				Option.match(row.processes, {
+					onNone: () => ({...row, nextProcessOffset: Option.none<number>(), processesOmitted: Option.none<number>()}),
+					onSome: processes => {
+						const result = processPage(processes, input.processOffset, input.processLimit)
+						return {...row, ...result, processes: Option.some(result.processes)}
+					}
+				})
+			)
+		),
+		errors: list.errors,
+		exposures: Option.map(list.exposures, exposures =>
+			Array.filter(exposures, row => HashSet.has(selected, ['exposures', row.id]))
+		),
+		jobs: Option.map(list.jobs, jobs => Array.filter(jobs, row => HashSet.has(selected, ['jobs', row.id]))),
 		nextCursor: pipe(
 			page,
 			Array.last,
 			Option.filter(() => remaining.length > input.limit)
-		),
-		workers: Array.map(workers, worker => ({
-			...Struct.pick(worker, ['worker', 'errors']),
-			apps: pipe(
-				worker.apps,
-				Array.filter(row => HashSet.has(selected, [worker.worker, 'apps', row.id])),
-				Array.map(row =>
-					Option.match(row.processes, {
-						onNone: () => ({...row, nextProcessOffset: Option.none<number>(), processesOmitted: Option.none<number>()}),
-						onSome: processes => {
-							const result = processPage(processes, input.processOffset, input.processLimit)
-							return {...row, ...result, processes: Option.some(result.processes)}
-						}
-					})
-				)
-			),
-			exposures: Option.map(worker.exposures, exposures =>
-				Array.filter(exposures, row => HashSet.has(selected, [worker.worker, 'exposures', row.id]))
-			),
-			jobs: Option.map(worker.jobs, jobs =>
-				Array.filter(jobs, row => HashSet.has(selected, [worker.worker, 'jobs', row.id]))
-			)
-		}))
+		)
 	}
 }
 
-function focusedInventory(workers: readonly WorkerInventory[], app: Option.Option<string>) {
+function focusedInventory(list: AppList, app: Option.Option<string>) {
 	return Option.match(app, {
-		onNone: () => workers,
+		onNone: () => list,
 		onSome: queryText => {
 			const query = String.toLowerCase(queryText)
 			function matchingName(row: {readonly name: string}) {
 				return pipe(row.name, String.toLowerCase, String.includes(query))
 			}
-			return Array.map(workers, worker => ({
-				...worker,
+			return {
+				...list,
 				exposures: pipe(
-					worker.exposures,
+					list.exposures,
 					Option.map(rows => Array.filter(rows, matchingName)),
 					Option.orElseSome(() => [])
 				),
 				jobs: pipe(
-					worker.jobs,
+					list.jobs,
 					Option.map(rows => Array.filter(rows, matchingName)),
 					Option.orElseSome(() => [])
 				)
-			}))
+			}
 		}
 	})
 }
@@ -173,60 +145,48 @@ function metricSummary(series: readonly Option.Option<number>[]) {
 }
 
 export const ToolHandlers = ToolContracts.toLayer(
-	Effect.map(Fleet, fleet =>
-		ToolContracts.of({
+	Effect.gen(function* () {
+		const machine = yield* Machine
+		const metrics = yield* Metrics
+		return ToolContracts.of({
 			create_exposure: Effect.fnUntraced(function* (input) {
-				const admin = yield* requireAdmin(yield* CurrentUser, 'Only an admin can create exposures')
-				yield* checkWorker(fleet.workers, input.worker)
 				return {
-					url: yield* fleet.expose(
-						{...input, worker: Option.getOrElse(input.worker, () => WorkerId.make(hostname()))},
-						admin
+					url: yield* machine.expose(
+						input,
+						yield* requireAdmin(yield* CurrentUser, 'Only an admin can create exposures')
 					)
 				}
 			}),
 			list_apps: Effect.fnUntraced(function* (input) {
-				yield* checkWorker(fleet.workers, input.worker)
-				return inventoryPage(focusedInventory(listApps(yield* fleet.snapshot, input), input.app), input)
+				return inventoryPage(focusedInventory(listApps(yield* machine.snapshot, input), input.app), input)
 			}),
 			read_resource_history: Effect.fnUntraced(function* (input) {
-				yield* checkWorker(fleet.workers, input.worker)
 				const value = yield* Effect.all(
-					{
-						machines: Effect.andThen(fleet.metrics({minutes: input.minutes}), fleet.current({minutes: input.minutes})),
-						snapshot: fleet.snapshot
-					},
+					{history: metrics.read({minutes: input.minutes}), snapshot: machine.snapshot},
 					{concurrency: 'unbounded'}
 				)
+				const history = resourceHistory(value.history, input.minutes, ownerNames(value.snapshot))
 				return {
-					workers: Array.map(resourceHistory(value.machines, input, ownerNames(value.snapshot)), worker =>
-						Boolean.match(input.series, {
-							onFalse: () => ({
-								...worker,
-								cpuPct: metricSummary(worker.cpuPct),
-								diskPct: metricSummary(worker.diskPct),
-								memoryPct: metricSummary(worker.memoryPct)
-							}),
-							onTrue: () => worker
-						})
+					...history,
+					cpuPct: metricSummary(history.cpuPct),
+					diskPct: metricSummary(history.diskPct),
+					memoryPct: metricSummary(history.memoryPct),
+					series: pipe(
+						history,
+						Struct.pick(['cpuPct', 'diskPct', 'memoryPct']),
+						Option.liftPredicate(() => input.series)
 					)
 				}
 			}),
 			remove_exposure: Effect.fnUntraced(function* (input) {
-				const admin = yield* requireAdmin(yield* CurrentUser, 'Only an admin can remove exposures')
-				yield* checkWorker(fleet.workers, input.worker)
-				yield* fleet.hide(
-					{name: input.name, worker: Option.getOrElse(input.worker, () => WorkerId.make(hostname()))},
-					admin
-				)
+				yield* machine.hide(input, yield* requireAdmin(yield* CurrentUser, 'Only an admin can remove exposures'))
 				return input
 			}),
 			run_job: Effect.fnUntraced(function* (input) {
 				const admin = yield* requireAdmin(yield* CurrentUser, 'Only an admin can run jobs')
-				yield* checkWorker(fleet.workers, input.worker)
-				yield* fleet.run(yield* jobRequest(yield* fleet.snapshot, input), admin)
+				yield* machine.run(yield* jobRequest(yield* machine.snapshot, input), admin)
 				return {started: true as const}
 			})
 		})
-	)
+	})
 )

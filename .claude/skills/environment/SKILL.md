@@ -9,7 +9,7 @@ description: Load before a command on another worker, starting a preview, openin
 | ------------- | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `ikoula`      | TBD              | The only Debian worker (Ryzen 7 9700X, 64 GB): agents, previews, fix, check, test                                                                |
 | `dev`         | `100.68.201.107` | Being retired: production at `*.mp281x.xyz` until its reset, Deploy's Caddy on 80 and 443, allowed by `/etc/sysctl.d/90-unprivileged-ports.conf` |
-| `macbook-pro` | `100.115.207.60` | The iOS Simulator, on demand; of Deslop, only Deploy, as a worker of dev's; sometimes the control plane                                          |
+| `macbook-pro` | `100.115.207.60` | The iOS Simulator, on demand; sometimes the control plane                                                                                        |
 | `iphone-duo`  | `100.69.97.49`   | The main control plane: T3 on the inner screen, held upright and sometimes rotated                                                               |
 
 - **Names.** Tailnet short names; `<name>.tailnet-8c4c.ts.net` has HTTPS certificates. SSH as `mp281x@ikoula`, `mp281x@dev`, `matteopaludgnach@macbook-pro`.
@@ -35,5 +35,5 @@ Never open a Funnel or another public route for a preview: it puts the whole por
 
 | Question                        | Tool                                                                                    |
 | ------------------------------- | --------------------------------------------------------------------------------------- |
-| Runtime state                   | Deploy's `list_apps` or `read_resource_history`, with the short worker name (`dev`)     |
+| Runtime state                   | Deploy's `list_apps` or `read_resource_history`, about the machine production runs on   |
 | Runtime error, trace or latency | Scope's `list_operations`, then `search_traces`, then `read_trace` or `measure_latency` |

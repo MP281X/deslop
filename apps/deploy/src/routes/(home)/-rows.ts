@@ -1,8 +1,8 @@
 import type {Duration} from 'effect'
 import {Array, Boolean, DateTime, Function, HashSet, Option, Order, String, pipe} from 'effect'
 
-import {itemOwner, type Row, rowUsageOrder, sourceBelongsToWorker} from '#services/inventory/lib/utils.ts'
-import type {AppId, WorkerId} from '#services/inventory/schema.ts'
+import {itemOwner, type Row, rowUsageOrder} from '#services/inventory/lib/utils.ts'
+import type {AppId} from '#services/inventory/schema.ts'
 import {chartWindow} from '#services/metrics/lib/utils.ts'
 import type {MachineHistory} from '#services/metrics/schema.ts'
 
@@ -41,7 +41,7 @@ export function impactGroups(rows: readonly Row[], lowImpact: HashSet.HashSet<Ap
 	return {high: groups.high ?? [], low: groups.low ?? []}
 }
 
-// The rows whose apps the range recorded; a history without app readings, such as a Mac's, keeps them all.
+// The rows whose apps the range recorded; a history without app readings keeps them all.
 export function ranged(rows: readonly Row[], minutes: Duration.Duration, current: Option.Option<MachineHistory>) {
 	return Option.match(current, {
 		onNone: () => rows,
@@ -74,19 +74,6 @@ export function ranged(rows: readonly Row[], minutes: Duration.Duration, current
 			)
 		}
 	})
-}
-
-export function failureOf(
-	worker: WorkerId,
-	inventoryFailure: boolean,
-	sources: readonly {error: Option.Option<string>; name: string}[],
-	history?: MachineHistory
-) {
-	return (
-		inventoryFailure ||
-		history?.stale === true ||
-		Array.some(sources, source => Option.isSome(source.error) && sourceBelongsToWorker(source, worker))
-	)
 }
 
 export function middleEllipsis(value: string) {

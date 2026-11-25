@@ -2,8 +2,6 @@ import {DateTime, Effect, Function, Option, Schema, SchemaGetter, String, Struct
 
 import {DateTimeUtcFromFiniteMillis} from '@deslop/runtime/shared/time'
 
-export type WorkerId = typeof WorkerId.Type
-export const WorkerId = Schema.brand('DeployWorkerId')(Schema.String)
 export type ItemId = typeof ItemId.Type
 export const ItemId = Schema.brand('DeployItemId')(Schema.String)
 export type AppId = typeof AppId.Type
@@ -33,13 +31,6 @@ export const ResidentMemoryFromKiB = pipe(
 		encode: SchemaGetter.transform(value => value / 1024)
 	})
 )
-
-export type CpuTime = typeof CpuTime.Type
-export const CpuTime = Schema.Struct({
-	1: Schema.OptionFromOptional(Schema.FiniteFromString),
-	2: Schema.FiniteFromString,
-	3: Schema.FiniteFromString
-})
 
 export type TextFromEmpty = typeof TextFromEmpty.Type
 // Some collector records require a string key even when there is no value.
@@ -83,7 +74,7 @@ export const Process = Schema.Struct({
 })
 
 export type ServiceScope = typeof ServiceScope.Type
-// Which systemd manager runs a unit; a Mac's launch agents are the user's.
+// Which systemd manager runs a unit.
 export const ServiceScope = Schema.Literals(['user', 'system'])
 
 export type InventoryFields = typeof InventoryFields.Type
@@ -145,8 +136,7 @@ export const InventoryFields = Schema.Struct({
 		Schema.decodeTo(Schema.Option(UnitId)),
 		Schema.withConstructorDefault(Effect.succeedNone)
 	),
-	url: TextFromEmpty,
-	worker: WorkerId
+	url: TextFromEmpty
 })
 
 export type NonPortItem = typeof NonPortItem.Type
@@ -203,15 +193,8 @@ export const Snapshot = Schema.Struct({
 		])
 	),
 	sources: Schema.Array(Schema.Struct({error: TextFromEmpty, name: Schema.String})),
-	time: DateTimeUtcFromFiniteMillis,
-	workers: Schema.Array(WorkerId)
+	time: DateTimeUtcFromFiniteMillis
 })
-
-export type WorkerList = typeof WorkerList.Type
-// `--workers desktop,macbook-pro`: machine names in this tailnet.
-export const WorkerList = Schema.String.check(
-	Schema.isPattern(/^[a-z\d](?:[a-z\d-]*[a-z\d])?(?:,[a-z\d](?:[a-z\d-]*[a-z\d])?)*$/u)
-)
 
 export type Peer = typeof Peer.Type
 export const Peer = Schema.Struct({
@@ -223,10 +206,7 @@ export const Peer = Schema.Struct({
 })
 
 export type TailnetStatus = typeof TailnetStatus.Type
-export const TailnetStatus = Schema.Struct({
-	Peer: Schema.OptionFromOptionalKey(Schema.Record(Schema.String, Peer)),
-	Self: Schema.OptionFromOptionalKey(Peer)
-})
+export const TailnetStatus = Schema.Struct({Self: Schema.OptionFromOptionalKey(Peer)})
 
 export type Serve = typeof Serve.Type
 export const Serve = Schema.Struct({
@@ -243,18 +223,17 @@ export const Serve = Schema.Struct({
 })
 
 export type RunRequest = typeof RunRequest.Type
-export const RunRequest = Schema.Struct({name: UnitId, scope: Schema.Literals(['system', 'user']), worker: WorkerId})
+export const RunRequest = Schema.Struct({name: UnitId, scope: Schema.Literals(['system', 'user'])})
 
 export type RunJobInput = typeof RunJobInput.Type
 export const RunJobInput = Schema.Struct({
-	job: JobName.annotate({description: 'A scheduled job name as list_apps shows it.'}),
-	worker: Schema.OptionFromOptionalKey(WorkerId.annotate({description: 'The worker running the job, when several do.'}))
+	job: JobName.annotate({description: 'A scheduled job name as list_apps shows it.'})
 })
 
 export type InventoryCursor = typeof InventoryCursor.Type
-// Where a list_apps page ended: its worker, section and row, as JSON so no name can collide with a separator. The inventory is live, so rows can come and go between pages.
+// Where a list_apps page ended: its section and row, as JSON so no name can collide with a separator. The inventory is live, so rows can come and go between pages.
 export const InventoryCursor = Schema.fromJsonString(
-	Schema.Tuple([WorkerId, Schema.Literals(['apps', 'exposures', 'jobs']), ItemId])
+	Schema.Tuple([Schema.Literals(['apps', 'exposures', 'jobs']), ItemId])
 )
 
 export type InventoryQuery = typeof InventoryQuery.Type
@@ -262,8 +241,7 @@ export const InventoryQuery = Schema.Struct({
 	app: Schema.OptionFromOptionalKey(
 		Schema.String.annotate({description: "A substring of an app or unit name; returns that app's process tree."})
 	),
-	failing: Schema.OptionFromOptionalKey(Schema.Boolean.annotate({description: 'Only failed or warning items.'})),
-	worker: Schema.OptionFromOptionalKey(WorkerId.annotate({description: 'A configured worker name.'}))
+	failing: Schema.OptionFromOptionalKey(Schema.Boolean.annotate({description: 'Only failed or warning items.'}))
 })
 
 type ProcessSummaryEncoded = {
@@ -315,7 +293,7 @@ export const Job = Schema.Struct({
 export type HttpsExposure = typeof HttpsExposure.Type
 export const HttpsExposure = Schema.Struct({
 	access: Schema.Literals(['tailnet', 'public']),
-	// Why the worker does not yet serve it as saved: a removal still finishing, a failed change Deploy retries, or a port that changed owner.
+	// Why the machine does not yet serve it as saved: a removal still finishing, a failed change Deploy retries, or a port that changed owner.
 	failure: Schema.OptionFromOptionalKey(Schema.String),
 	id: ItemId,
 	name: ExposureName,
@@ -323,17 +301,13 @@ export const HttpsExposure = Schema.Struct({
 	url: Schema.String
 })
 
-export type WorkerInventory = typeof WorkerInventory.Type
-export const WorkerInventory = Schema.Struct({
+export type AppList = typeof AppList.Type
+export const AppList = Schema.Struct({
 	apps: Schema.Array(ManagedApp),
 	errors: Schema.OptionFromOptionalKey(Schema.Array(Schema.String)),
 	exposures: Schema.OptionFromOptionalKey(Schema.Array(HttpsExposure)),
-	jobs: Schema.OptionFromOptionalKey(Schema.Array(Job)),
-	worker: WorkerId
+	jobs: Schema.OptionFromOptionalKey(Schema.Array(Job))
 })
-
-export type WorkerInventories = typeof WorkerInventories.Type
-export const WorkerInventories = Schema.Array(WorkerInventory)
 
 export type Timer = typeof Timer.Type
 // `next` is in epoch microseconds.

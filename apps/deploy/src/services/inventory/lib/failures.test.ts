@@ -2,7 +2,7 @@ import {assert, it} from '@effect/vitest'
 
 import {DateTime, Option, Record} from 'effect'
 
-import {exitFailure, unitFailures} from './failures.ts'
+import {unitFailures} from './failures.ts'
 
 import {UnitId} from '#services/inventory/schema.ts'
 
@@ -18,11 +18,6 @@ it('distinguishes a failed start from a process exit and retains when it failed'
 		Option.getOrThrow(Record.get(failures, UnitId.make('worker.service'))).reason,
 		'Exited with code 137 (SIGKILL)'
 	)
-})
-
-it('explains a signalled launch agent and a numeric exit separately', () => {
-	assert.strictEqual(exitFailure(-11), 'Killed by SIGSEGV')
-	assert.strictEqual(exitFailure(2), 'Exited with code 2')
 })
 
 it('gives no reason for a unit that recovered after it was listed', () => {

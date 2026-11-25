@@ -22,6 +22,7 @@ import {ageOf} from '@deslop/runtime/shared/format'
 
 import {AppId, DeployError, ExposureName, ItemId, JobName, UnitId} from '#services/inventory/schema.ts'
 import type {
+	AppList,
 	InventoryItem,
 	SocketAddress,
 	SocketBinding,
@@ -36,14 +37,8 @@ import type {
 	RunJobInput,
 	RunRequest,
 	ServiceScope,
-	Snapshot,
-	WorkerId
+	Snapshot
 } from '#services/inventory/schema.ts'
-
-// A remote source prefixes its worker and a local one names its own collector, so a bare worker name is that worker's.
-export function sourceBelongsToWorker(source: {readonly name: string}, worker: WorkerId) {
-	return source.name === worker || String.startsWith(`${worker} · `)(source.name)
-}
 
 // The service or container a process or cgroup belongs to: `service:<scope>:<unit>` or `container:<short id>`. Under a user manager, `app-<name>.slice` holds what `<name>.service` started outside its own cgroup, like T3 Code's agents.
 export function processOwner(cgroup: string) {
@@ -134,17 +129,13 @@ function ports(items: readonly InventoryItem[]) {
 		Array.sort(
 			Order.mapInput(
 				Order.String,
-				(item: InventoryItem) =>
-					`${item.worker}:${Option.getOrUndefined(item.port)}:${Option.getOrUndefined(item.address)}`
+				(item: InventoryItem) => `${Option.getOrUndefined(item.port)}:${Option.getOrUndefined(item.address)}`
 			)
 		),
-		Array.dedupeWith(
-			(a, b) => a.worker === b.worker && Option.makeEquivalence<number>((x, y) => x === y)(a.port, b.port)
-		)
+		Array.dedupeWith((a, b) => Option.makeEquivalence<number>((x, y) => x === y)(a.port, b.port))
 	)
 }
 
-// A Mac bundle's identity is separate from its display name; Linux services use their unit name for both.
 function serviceUnit(item: InventoryItem) {
 	if (item.kind === 'service') return Option.getOrElse(item.unit, () => item.name)
 	return UnitId.make(item.name)
@@ -153,7 +144,7 @@ function serviceUnit(item: InventoryItem) {
 export function itemOwner(item: InventoryItem) {
 	if (item.kind === 'container') {
 		return AppId.make(
-			`container:${String.slice(0, 12)(Option.getOrElse(Array.last(String.split(item.id, ':docker:')), Function.constant('')))}`
+			`container:${String.slice(0, 12)(Option.getOrElse(Array.last(String.split(item.id, 'docker:')), Function.constant('')))}`
 		)
 	}
 	return AppId.make(`service:${Option.getOrElse(item.scope, Function.constant('system'))}:${serviceUnit(item)}`)
@@ -227,10 +218,9 @@ function sameSocket(listener: InventoryItem, binding: SocketBinding) {
 	return Option.exists(listener.address, ipv4Reachable) && ipv4Reachable(binding.address)
 }
 
-function socket(worker: WorkerId, binding: SocketAddress) {
+function socket(binding: SocketAddress) {
 	const loopback = Option.exists(binding.address, ipv4Reachable)
 	return Tuple.make(
-		worker,
 		binding.protocol,
 		binding.port,
 		loopback,
@@ -245,30 +235,23 @@ function unitKey(scope: Option.Option<ServiceScope>, unit: UnitId) {
 
 export function workloads(items: readonly InventoryItem[]) {
 	const listeners = Array.filter(items, item => item.kind === 'port')
-	const byUnit = pipe(
-		listeners,
-		Array.groupBy(listener => listener.worker),
-		Record.map(worker =>
-			Array.groupBy(worker, listener =>
-				Option.match(listener.unit, {
-					onNone: Function.constant('none'),
-					onSome: unit => `unit:${unitKey(listener.scope, unit)}`
-				})
-			)
-		)
+	const byUnit = Array.groupBy(listeners, listener =>
+		Option.match(listener.unit, {
+			onNone: Function.constant('none'),
+			onSome: unit => `unit:${unitKey(listener.scope, unit)}`
+		})
 	)
 	const bySocket = HashMap.fromIterable(
 		Array.map(
 			Array.reverse(Array.filter(listeners, listener => !Option.contains(listener.address, 'container'))),
-			listener => [socket(listener.worker, listener), listener] as const
+			listener => [socket(listener), listener] as const
 		)
 	)
 	const grouped = pipe(
 		items,
 		Array.filter(item => item.kind === 'service' || item.kind === 'container'),
 		Array.map(item => {
-			const unit = serviceUnit(item)
-			const attached = byUnit[item.worker]?.[`unit:${unitKey(item.scope, unit)}`] ?? []
+			const attached = byUnit[`unit:${unitKey(item.scope, serviceUnit(item))}`] ?? []
 			const bindings = pipe(
 				item.bindings,
 				Option.getOrElse(Array.empty),
@@ -277,7 +260,7 @@ export function workloads(items: readonly InventoryItem[]) {
 					...pipe(
 						HashMap.get(
 							bySocket,
-							socket(item.worker, {
+							socket({
 								address: Option.some(binding.address),
 								port: Option.some(binding.port),
 								protocol: Option.some(binding.protocol)
@@ -308,7 +291,7 @@ export function workloads(items: readonly InventoryItem[]) {
 		pipe(
 			grouped,
 			Array.filter(row => row.item.kind === 'service'),
-			Array.map(row => Tuple.make(row.item.worker, unitKey(row.item.scope, serviceUnit(row.item))))
+			Array.map(row => unitKey(row.item.scope, serviceUnit(row.item)))
 		)
 	)
 	const represented = HashSet.fromIterable(
@@ -316,19 +299,15 @@ export function workloads(items: readonly InventoryItem[]) {
 			pipe(
 				row.listeners,
 				Array.filter(binding => !Option.contains(binding.address, 'container')),
-				Array.map(binding =>
-					socket(row.item.worker, {address: binding.address, port: binding.port, protocol: binding.protocol})
-				)
+				Array.map(binding => socket({address: binding.address, port: binding.port, protocol: binding.protocol}))
 			)
 		)
 	)
 	const loose = Array.filter(
 		listeners,
 		listener =>
-			!Option.exists(listener.unit, unit =>
-				HashSet.has(services, Tuple.make(listener.worker, unitKey(listener.scope, unit)))
-			) &&
-			(Option.contains(listener.address, 'container') || !HashSet.has(represented, socket(listener.worker, listener)))
+			!Option.exists(listener.unit, unit => HashSet.has(services, unitKey(listener.scope, unit))) &&
+			(Option.contains(listener.address, 'container') || !HashSet.has(represented, socket(listener)))
 	)
 	const rows = [...grouped, ...Array.map(loose, item => ({item, listeners: [item]}))]
 	const exposures = [
@@ -338,7 +317,7 @@ export function workloads(items: readonly InventoryItem[]) {
 	const exposuresBySocket = pipe(
 		exposures,
 		Array.map((item, index) => ({index, item})),
-		Array.groupBy(entry => `${entry.item.worker}:${Option.getOrElse(entry.item.port, Function.constant(0))}`)
+		Array.groupBy(entry => `${Option.getOrElse(entry.item.port, Function.constant(0))}`)
 	)
 	const visible = pipe(
 		rows,
@@ -356,7 +335,7 @@ export function workloads(items: readonly InventoryItem[]) {
 				)
 			)
 			const exposed = pipe(
-				Array.flatMap(reachable, port => exposuresBySocket[`${row.item.worker}:${port}`] ?? []),
+				Array.flatMap(reachable, port => exposuresBySocket[`${port}`] ?? []),
 				Array.sortWith(entry => entry.index, Order.Number),
 				Array.map(entry => entry.item)
 			)
@@ -398,13 +377,11 @@ export function workloads(items: readonly InventoryItem[]) {
 		Array.flatMap(visible, row => Array.map(row.exposures, exposure => exposure.id))
 	)
 	const linkedUrls = HashSet.fromIterable(
-		Array.flatMap(visible, row => Array.map(row.exposures, exposure => Tuple.make(exposure.worker, exposure.url)))
+		Array.flatMap(visible, row => Array.map(row.exposures, exposure => exposure.url))
 	)
 	const remaining = pipe(
 		exposures,
-		Array.filter(
-			item => !HashSet.has(linkedIds, item.id) && !HashSet.has(linkedUrls, Tuple.make(item.worker, item.url))
-		),
+		Array.filter(item => !HashSet.has(linkedIds, item.id) && !HashSet.has(linkedUrls, item.url)),
 		Array.map(item => ({exposures: [item], item, listeners: []})),
 		Array.filter(row => important(row.item))
 	)
@@ -573,31 +550,10 @@ export function processTree(rows: readonly Process[]) {
 	return settle(Array.map(roots, place), appMemory)
 }
 
-function workerNames(snapshot: Snapshot) {
-	return Array.dedupe([...snapshot.workers, ...Array.map(snapshot.items, item => item.worker)])
-}
-
-function errorsOf(
-	sources: readonly {readonly error: Option.Option<string>; readonly name: string}[],
-	workers: readonly WorkerId[],
-	worker: WorkerId
-) {
-	const local = Array.head(workers)
-	return pipe(
+function errorsOf(sources: readonly {readonly error: Option.Option<string>; readonly name: string}[]) {
+	return Array.filterMap(
 		sources,
-		Array.filter(source =>
-			pipe(
-				workers,
-				Array.findFirst(candidate => sourceBelongsToWorker(source, candidate)),
-				Option.orElse(() => local),
-				Option.contains(worker)
-			)
-		),
-		Array.filterMap(
-			Filter.fromPredicateOption(source =>
-				Option.map(source.error, error => `${String.replace(`${worker} · `, '')(source.name)}: ${error}`)
-			)
-		)
+		Filter.fromPredicateOption(source => Option.map(source.error, error => `${source.name}: ${error}`))
 	)
 }
 
@@ -681,134 +637,106 @@ const jobOrder = pipe(
 	Order.combine(Order.mapInput(Option.makeOrder(DateTime.Order), (row: Row) => row.item.next))
 )
 
-// The page's list per worker as compact JSON: its apps and scheduled jobs, the URLs it owns or can reach, and only the failures it would mark.
+// The page's list as compact JSON: its apps and scheduled jobs, the URLs it owns or can reach, and only the failures it would mark.
 export function listApps(snapshot: Snapshot, input: InventoryQuery) {
 	const app = Option.filter(input.app, String.isNonEmpty)
 	const onlyFailing = Option.contains(input.failing, true)
-	return pipe(
-		workerNames(snapshot),
-		Array.filter(worker => !Option.exists(input.worker, selected => selected !== worker)),
-		Array.map(worker => {
-			const own = Array.filter(workloads(snapshot.items), row => row.item.worker === worker)
-			const apps = pipe(
-				Array.filter(
-					own,
-					row =>
-						(row.item.kind === 'service' || row.item.kind === 'container') &&
-						!Option.contains(row.item.scheduled, true) &&
-						!Option.exists(app, query => !matches(row, query)) &&
-						(!onlyFailing || row.item.health !== 'quiet')
-				),
-				Array.sort(appOrder),
-				Array.map(row => appOf(row, Option.isSome(app)))
-			)
-			const jobs = pipe(
-				Array.filter(
-					own,
-					row => Option.contains(row.item.scheduled, true) && (!onlyFailing || row.item.health !== 'quiet')
-				),
-				Array.sort(jobOrder),
-				Array.map(
-					row =>
+	const rows = workloads(snapshot.items)
+	const apps = pipe(
+		Array.filter(
+			rows,
+			row =>
+				(row.item.kind === 'service' || row.item.kind === 'container') &&
+				!Option.contains(row.item.scheduled, true) &&
+				!Option.exists(app, query => !matches(row, query)) &&
+				(!onlyFailing || row.item.health !== 'quiet')
+		),
+		Array.sort(appOrder),
+		Array.map(row => appOf(row, Option.isSome(app)))
+	)
+	const jobs = pipe(
+		Array.filter(
+			rows,
+			row => Option.contains(row.item.scheduled, true) && (!onlyFailing || row.item.health !== 'quiet')
+		),
+		Array.sort(jobOrder),
+		Array.map(
+			row =>
+				({
+					...failureOf(row.item),
+					id: row.item.id,
+					name: JobName.make(workloadName(row.item)),
+					next: row.item.next,
+					running: row.item.running
+				}) satisfies Job
+		)
+	)
+	// Every exposure the machine owns or opens to the public, whether or not an app row shows it, so remove_exposure can find it by name.
+	const exposures = pipe(
+		snapshot.items,
+		Array.flatMap(item => {
+			if (item.kind !== 'exposure' || (onlyFailing && item.health === 'quiet') || !important(item)) return []
+			return Option.toArray(
+				Option.map(
+					item.url,
+					url =>
 						({
-							...failureOf(row.item),
-							id: row.item.id,
-							name: JobName.make(workloadName(row.item)),
-							next: row.item.next,
-							running: row.item.running
-						}) satisfies Job
+							access: pipe(
+								item.publicAccess,
+								Option.contains(true),
+								Boolean.match({
+									onFalse: Function.constant('tailnet' as const),
+									onTrue: Function.constant('public' as const)
+								})
+							),
+							failure: failureOf(item).failure,
+							id: item.id,
+							name: ExposureName.make(item.name),
+							port: item.port,
+							url
+						}) satisfies HttpsExposure
 				)
 			)
-			// Every exposure the worker owns or opens to the public, whether or not an app row shows it, so remove_exposure can find it by name.
-			const exposures = pipe(
-				snapshot.items,
-				Array.flatMap(item => {
-					if (
-						item.kind !== 'exposure' ||
-						item.worker !== worker ||
-						(onlyFailing && item.health === 'quiet') ||
-						!important(item)
-					) {
-						return []
-					}
-					return Option.toArray(
-						Option.map(
-							item.url,
-							url =>
-								({
-									access: pipe(
-										item.publicAccess,
-										Option.contains(true),
-										Boolean.match({
-											onFalse: Function.constant('tailnet' as const),
-											onTrue: Function.constant('public' as const)
-										})
-									),
-									failure: failureOf(item).failure,
-									id: item.id,
-									name: ExposureName.make(item.name),
-									port: item.port,
-									url
-								}) satisfies HttpsExposure
-						)
-					)
-				}),
-				Array.sort(Order.mapInput(Order.String, (exposure: HttpsExposure) => exposure.url))
-			)
-			return {
-				apps,
-				errors: Option.liftPredicate(
-					errorsOf(snapshot.sources, workerNames(snapshot), worker),
-					Array.isReadonlyArrayNonEmpty
-				),
-				exposures: Option.liftPredicate(exposures, Array.isReadonlyArrayNonEmpty),
-				jobs: Option.liftPredicate(jobs, Array.isReadonlyArrayNonEmpty),
-				worker
-			}
-		})
+		}),
+		Array.sort(Order.mapInput(Order.String, (exposure: HttpsExposure) => exposure.url))
 	)
+	return {
+		apps,
+		errors: Option.liftPredicate(errorsOf(snapshot.sources), Array.isReadonlyArrayNonEmpty),
+		exposures: Option.liftPredicate(exposures, Array.isReadonlyArrayNonEmpty),
+		jobs: Option.liftPredicate(jobs, Array.isReadonlyArrayNonEmpty)
+	} satisfies AppList
 }
 
 // Each app's history name, keyed the way its samples are: `service:<scope>:<unit>` or `container:<short id>`, named as the page's rows name it.
 export function ownerNames(snapshot: Snapshot) {
-	const byWorker = Array.groupBy(snapshot.items, item => item.worker)
-	return Record.fromIterableWith(
-		workerNames(snapshot),
-		worker =>
-			[
-				worker,
-				pipe(
-					byWorker[worker] ?? Array.empty<InventoryItem>(),
-					Array.filter(item => item.kind === 'service' || item.kind === 'container'),
-					Record.fromIterableWith((item: InventoryItem) => [itemOwner(item), workloadName(item)] as const)
-				)
-			] as const
+	return pipe(
+		snapshot.items,
+		Array.filter(item => item.kind === 'service' || item.kind === 'container'),
+		Record.fromIterableWith((item: InventoryItem) => [itemOwner(item), workloadName(item)] as const)
 	)
 }
 
 export function requestOf(item: InventoryItem) {
 	return {
 		name: UnitId.make(item.name),
-		scope: Option.getOrElse(item.scope, Function.constant('system' as const)),
-		worker: item.worker
+		scope: Option.getOrElse(item.scope, Function.constant('system' as const))
 	} satisfies RunRequest
 }
 
-// The run request for a scheduled job the page shows, by its name or unit; both workers' jobs need a worker to choose.
-export const jobRequest = Effect.fnUntraced(function* (snapshot: Snapshot, input: RunJobInput) {
-	const matching = Array.filter(
+// The run request for a scheduled job the page shows, by its name or unit.
+export function jobRequest(snapshot: Snapshot, input: RunJobInput) {
+	return pipe(
 		workloads(snapshot.items),
-		row =>
-			Option.contains(row.item.scheduled, true) &&
-			!Option.exists(input.worker, worker => row.item.worker !== worker) &&
-			(workloadName(row.item) === input.job || row.item.name === input.job)
+		Array.findFirst(
+			row =>
+				Option.contains(row.item.scheduled, true) &&
+				(workloadName(row.item) === input.job || row.item.name === input.job)
+		),
+		Option.match({
+			onNone: () =>
+				Effect.fail(DeployError.make({message: `No scheduled job named ${input.job}; list_apps shows the jobs.`})),
+			onSome: row => Effect.succeed(requestOf(row.item))
+		})
 	)
-	if (!Array.isArrayNonEmpty(matching)) {
-		return yield* DeployError.make({message: `No scheduled job named ${input.job}; list_apps shows the jobs.`})
-	}
-	if (matching.length > 1) {
-		return yield* DeployError.make({message: `${input.job} runs on more than one worker; pass its worker.`})
-	}
-
-	return requestOf(Array.headNonEmpty(matching).item)
-})
+}

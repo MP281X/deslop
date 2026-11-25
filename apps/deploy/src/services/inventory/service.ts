@@ -1,6 +1,3 @@
-import {cpus, hostname, userInfo} from 'node:os'
-import {pid, platform} from 'node:process'
-
 import {
 	Array,
 	Boolean,
@@ -20,7 +17,6 @@ import {
 	Option,
 	Record,
 	Ref,
-	Result,
 	Schema,
 	String,
 	SubscriptionRef,
@@ -35,25 +31,9 @@ import {Reactivity} from 'effect/reactivity'
 import {executeProcess} from '@deslop/runtime/server/process'
 import type {Admin} from '@deslop/runtime/shared/auth'
 
-import {exitFailure, unitFailures} from './lib/failures.ts'
-import {
-	applicationBundle,
-	dockApplications,
-	launchAgents,
-	launchProgram,
-	macApplications,
-	systemProgram
-} from './lib/launchd.ts'
-import {
-	attachProcesses,
-	launchdExecutables,
-	launchdProcesses,
-	launchdStarts,
-	processReadings,
-	processes
-} from './lib/processes.ts'
-import type {ProcessMeasurement} from './lib/processes.ts'
-import {type Socket, lsofSockets, probeSocket, socketLine, socketProcess, socketUnit} from './lib/sockets.ts'
+import {unitFailures} from './lib/failures.ts'
+import {attachProcesses, processReadings, processes} from './lib/processes.ts'
+import {type Socket, probeSocket, socketLine, socketProcess, socketUnit} from './lib/sockets.ts'
 
 import {
 	Container,
@@ -61,15 +41,12 @@ import {
 	ExposureName,
 	InventoryItem,
 	ItemId,
-	ProcessId,
 	Serve,
 	TailnetStatus,
 	Timer,
-	Unit,
-	UnitId,
-	WorkerId
+	Unit
 } from '#services/inventory/schema.ts'
-import type {RunRequest, ServiceScope, Snapshot} from '#services/inventory/schema.ts'
+import type {ProcessId, RunRequest, ServiceScope, Snapshot, UnitId} from '#services/inventory/schema.ts'
 
 declare module 'effect/reactivity/Reactivity' {
 	interface Keys {
@@ -77,10 +54,9 @@ declare module 'effect/reactivity/Reactivity' {
 	}
 }
 
-// Each listener with its unit, the app a Node listener's working directory names, and whether it answers HTTP; `owner` and `cwd` read a PID the platform's way. A PID whose start time changed while it was read was reused, so its listener keeps none of what was read.
+// Each listener with its unit, the app a Node listener's working directory names, and whether it answers HTTP. A PID whose start time changed while it was read was reused, so its listener keeps none of what was read.
 function portItems(
 	sockets: readonly Socket[],
-	worker: WorkerId,
 	probe: (port: number, identity: string) => Effect.Effect<Option.Option<{http: boolean; ui: boolean}>>,
 	source: {
 		readonly cwd: (pid: ProcessId) => Effect.Effect<Option.Option<string>>
@@ -149,7 +125,7 @@ function portItems(
 					address: Option.some(socket.address),
 					detail: `${socket.address} · ${Option.getOrElse(process, Function.constant('process unavailable'))}`,
 					http: Option.some(Option.exists(response, value => value.http)),
-					id: ItemId.make(`${worker}:port:${socket.protocol}:${socket.address}`),
+					id: ItemId.make(`port:${socket.protocol}:${socket.address}`),
 					kind: 'port',
 					name: socket.address,
 					port: Option.some(socket.port),
@@ -164,19 +140,12 @@ function portItems(
 					state: socket.state,
 					ui: Option.some(Option.exists(response, value => value.ui)),
 					unit: Option.map(owner, found => found.unit),
-					url: Option.none(),
-					worker
+					url: Option.none()
 				})
 			}),
 			{concurrency: 8}
 		)
 	})
-}
-
-// What a worker's own collectors read: its sources, and its processes for the snapshot to attach by owner.
-type Machine = {
-	readonly processes: Effect.Effect<ProcessMeasurement, DeployError>
-	readonly sources: readonly ReturnType<typeof collect<DeployError, never>>[]
 }
 
 function collect<E extends {readonly message: string}, R>(name: string, effect: Effect.Effect<InventoryItem[], E, R>) {
@@ -207,7 +176,7 @@ export class Inventory extends Context.Service<
 	{
 		readonly refresh: Effect.Effect<void>
 		readonly ensureFresh: Effect.Effect<void>
-		readonly run: (input: Omit<RunRequest, 'worker'>, admin: Admin) => Effect.Effect<void, DeployError>
+		readonly run: (input: RunRequest, admin: Admin) => Effect.Effect<void, DeployError>
 		readonly snapshot: Effect.Effect<Snapshot>
 	}
 >()('@deslop/deploy/services/inventory/service/Inventory') {
@@ -224,7 +193,7 @@ export class Inventory extends Context.Service<
 				return pipe(
 					executeProcess(name, args, {timeout}),
 					Effect.mapError(cause =>
-						DeployError.make({cause, message: `Could not run ${name}; inspect the worker's process logs.`})
+						DeployError.make({cause, message: `Could not run ${name}; inspect Deploy's process logs.`})
 					),
 					Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner)
 				)
@@ -237,8 +206,6 @@ export class Inventory extends Context.Service<
 					Effect.map(rows => Array.getSomes(Array.map(rows, item => Schema.decodeUnknownOption(row)(item))))
 				)
 			}
-			const worker = yield* Schema.decodeEffect(WorkerId)(hostname())
-			const selfProcess = yield* Schema.decodeEffect(ProcessId)(pid)
 			const processState = yield* Ref.make(Option.none<ReturnType<typeof processReadings>>())
 			// A refused or timed-out HEAD is a negative protocol probe, not a replacement for a required collector read.
 			function head(port: number) {
@@ -347,7 +314,7 @@ export class Inventory extends Context.Service<
 							onFalse: Function.constant('quiet' as const),
 							onTrue: Function.constant('error' as const)
 						}),
-						id: ItemId.make(`${worker}:${scope}:${row.unit}`),
+						id: ItemId.make(`${scope}:${row.unit}`),
 						kind: 'service',
 						name: row.unit,
 						next: Option.flatten(HashMap.get(scheduled, row.unit)),
@@ -361,8 +328,7 @@ export class Inventory extends Context.Service<
 							onFalse: () => `${row.active} · ${row.sub}`,
 							onTrue: () => row.sub
 						}),
-						url: Option.none(),
-						worker
+						url: Option.none()
 					})
 				)
 			})
@@ -417,7 +383,7 @@ export class Inventory extends Context.Service<
 									onTrue: Function.constant('error' as const)
 								}
 							),
-							id: ItemId.make(`${worker}:docker:${row.ID}`),
+							id: ItemId.make(`docker:${row.ID}`),
 							kind: 'container',
 							links: Option.some(
 								Array.dedupe(
@@ -434,295 +400,47 @@ export class Inventory extends Context.Service<
 								onFalse: () => row.State,
 								onTrue: Function.constant('unhealthy')
 							}),
-							url: Option.none(),
-							worker
+							url: Option.none()
 						})
 					)
 				)
 			)
-			// A Linux worker's systemd units, containers and listeners, and its processes from /proc, each owned by its cgroup.
-			const linux = Effect.succeed<Machine>({
-				processes: pipe(
-					processes,
-					Effect.provideService(FileSystem.FileSystem, fs),
-					Effect.mapError(cause => DeployError.make({cause, message: 'The worker processes could not be read.'}))
-				),
-				sources: [
-					collect('User services', units(false)),
-					collect('System services', units(true)),
-					collect('Docker', docker),
-					collect(
-						'Listening ports',
-						Effect.flatMap(command('ss', ['-H', '-lntup']), text =>
-							portItems(
-								Array.getSomes(pipe(String.trim(text), String.split('\n'), Array.map(socketLine))),
-								worker,
-								probe,
-								{
-									cwd: processId => Effect.option(fs.readLink(`/proc/${processId}/cwd`)),
-									owner: processId =>
-										Effect.map(Effect.option(fs.readFileString(`/proc/${processId}/cgroup`)), cgroup =>
-											socketUnit(Option.getOrElse(cgroup, Function.constant('')))
-										),
-									start: processId =>
-										Effect.map(
-											Effect.option(fs.readFileString(`/proc/${processId}/stat`)),
-											Option.flatMap(stat =>
-												Option.flatMap(String.lastIndexOf(')')(stat), at =>
-													pipe(String.slice(at + 2)(stat), String.split(/\s+/u), Array.get(19))
-												)
-											)
+			// This machine's processes from /proc, each owned by its cgroup, and its systemd units, containers and listeners.
+			const processTable = pipe(
+				processes,
+				Effect.provideService(FileSystem.FileSystem, fs),
+				Effect.mapError(cause => DeployError.make({cause, message: 'The processes could not be read.'}))
+			)
+			const machineSources = [
+				collect('User services', units(false)),
+				collect('System services', units(true)),
+				collect('Docker', docker),
+				collect(
+					'Listening ports',
+					Effect.flatMap(command('ss', ['-H', '-lntup']), text =>
+						portItems(Array.getSomes(pipe(String.trim(text), String.split('\n'), Array.map(socketLine))), probe, {
+							cwd: processId => Effect.option(fs.readLink(`/proc/${processId}/cwd`)),
+							owner: processId =>
+								Effect.map(Effect.option(fs.readFileString(`/proc/${processId}/cgroup`)), cgroup =>
+									socketUnit(Option.getOrElse(cgroup, Function.constant('')))
+								),
+							start: processId =>
+								Effect.map(
+									Effect.option(fs.readFileString(`/proc/${processId}/stat`)),
+									Option.flatMap(stat =>
+										Option.flatMap(String.lastIndexOf(')')(stat), at =>
+											pipe(String.slice(at + 2)(stat), String.split(/\s+/u), Array.get(19))
 										)
-								}
-							)
-						)
-					)
-				]
-			})
-			// Bundle paths identify names for this layer's lifetime, not just one snapshot.
-			const bundleNames = yield* Cache.make({
-				capacity: Infinity,
-				// Missing bundle metadata keeps the agent label or bundle basename, as required by Deploy's Mac policy.
-				lookup: Effect.fnUntraced(function* (bundle: string) {
-					// Reading the bundle directly avoids asking for macOS Automation access just to name a row.
-					return yield* pipe(
-						command('/usr/bin/plutil', ['-convert', 'json', '-o', '-', `${bundle}/Contents/Info.plist`], '2 seconds'),
-						Effect.flatMap(
-							Schema.decodeEffect(
-								Schema.fromJsonString(
-									Schema.Struct({
-										CFBundleDisplayName: Schema.optionalKey(Schema.Unknown),
-										CFBundleName: Schema.optionalKey(Schema.Unknown)
-									})
-								)
-							)
-						),
-						Effect.map(fields =>
-							pipe(
-								[fields.CFBundleDisplayName, fields.CFBundleName],
-								Array.filter(String.isString),
-								Array.map(String.trim),
-								Array.findFirst(String.isNonEmpty)
-							)
-						),
-						Effect.option,
-						Effect.map(Option.flatten)
-					)
-				})
-			})
-			// A Mac's Dock apps, user launch agents and listeners, measured together so CPU shares compare like readings.
-			const darwin: Effect.Effect<Machine> = Effect.gen(function* () {
-				// Product policy keeps unresolved launch agents under their actual label and bundle basename; a failed launchctl listing still fails this source.
-				const namedAgents = Effect.gen(function* () {
-					return Array.getSomes(
-						yield* Effect.forEach(
-							launchAgents(yield* command('launchctl', ['list'])),
-							Effect.fnUntraced(function* (agent) {
-								if (String.startsWith('deslop-')(agent.label)) return Option.some(agent)
-								const program = Option.flatMap(
-									yield* Effect.option(
-										command('launchctl', ['print', `gui/${userInfo().uid}/${agent.label}`], '2 seconds')
-									),
-									launchProgram
-								)
-								if (Option.exists(program, systemProgram)) return Option.none()
-								return yield* pipe(
-									program,
-									Option.flatMap(applicationBundle),
-									Option.match({
-										onNone: () => Effect.succeedSome(agent),
-										onSome: Effect.fnUntraced(function* (bundle) {
-											const name = yield* Cache.get(bundleNames, bundle)
-											return Option.some({
-												...agent,
-												bundle: Option.some(bundle),
-												name: Option.getOrElse(name, () =>
-													pipe(
-														bundle,
-														String.split('/'),
-														Array.last,
-														Option.getOrElse(Function.constant('')),
-														String.slice(0, -4)
-													)
-												)
-											})
-										})
-									})
-								)
-							}),
-							{concurrency: 8}
-						)
-					)
-				})
-				const collected = yield* Effect.all(
-					{
-						// Every agent's program is read, but the whole listing still answers within its source's ten seconds.
-						agents: Effect.result(Effect.timeout(namedAgents, '8 seconds')),
-						applications: Effect.result(command('/usr/bin/lsappinfo', ['list'])),
-						executables: Effect.result(command('env', ['LC_ALL=C', 'ps', '-axww', '-o', 'pid=,comm='])),
-						table: Effect.result(
-							command('env', ['LC_ALL=C', 'ps', '-axww', '-o', 'pid=,ppid=,rss=,time=,lstart=,args='])
-						)
-					},
-					{concurrency: 'unbounded'}
-				)
-				const launchd = {
-					...collected,
-					// Failed agent metadata does not erase independently collected Dock apps; the agents Result is reported as a source error in the snapshot.
-					applications: Result.map(collected.applications, text =>
-						dockApplications(
-							text,
-							pipe(
-								Result.getOrElse(collected.agents, () => []),
-								Array.map(agent => agent.bundle),
-								Array.getSomes
-							)
-						)
-					)
-				}
-				const time = yield* DateTime.now
-				const total = pipe(
-					cpus(),
-					Array.flatMap(cpu => Record.values(cpu.times)),
-					Number.sumAll,
-					Duration.millis
-				)
-				const apps = macApplications(
-					Result.getOrElse(launchd.agents, () => []),
-					Result.getOrElse(launchd.applications, () => [])
-				)
-				function appItems(found: typeof apps) {
-					return pipe(
-						found,
-						Array.dedupeWith((left, right) => left.label === right.label),
-						Array.map(app =>
-							InventoryItem.make({
-								active: true,
-								detail: app.detail,
-								id: ItemId.make(`${worker}:user:${app.label}`),
-								kind: 'service',
-								name: UnitId.make(app.name),
-								running: true,
-								scope: Option.some('user'),
-								state: 'running',
-								unit: Option.some(app.label),
-								url: Option.none(),
-								worker
-							})
-						)
-					)
-				}
-				// Exclude processes owned by Deploy's launch agent except Deploy itself; other app-owned processes stay.
-				const records = Result.map(launchd.table, text => {
-					const agents = HashMap.fromIterable(Array.map(apps, app => [app.pid, app.label] as const))
-					return Array.filter(
-						launchdProcesses(
-							text,
-							agents,
-							pipe(
-								launchd.executables,
-								Result.map(launchdExecutables),
-								Result.getOrElse(HashMap.empty<ProcessId, string>)
-							)
-						),
-						record =>
-							record.process.pid === selfProcess ||
-							!pipe(agents, HashMap.get(selfProcess), Option.contains(record.unit))
-					)
-				})
-				const owned = Result.getOrElse(records, Array.empty<Result.Result.Success<typeof records>[number]>)
-				const starts = pipe(
-					launchd.table,
-					Result.map(launchdStarts),
-					Result.getOrElse(HashMap.empty<ProcessId, string>)
-				)
-				return {
-					processes: Effect.map(Effect.fromResult(records), found => ({records: found, time, total})),
-					sources: [
-						collect(
-							'Launch agents',
-							Effect.map(Effect.fromResult(launchd.agents), agents => [
-								...appItems(Array.filter(apps, app => app.detail === 'user · launch agent')),
-								...pipe(
-									agents,
-									Array.filter(agent =>
-										Option.match(agent.pid, {
-											onNone: () => Option.exists(agent.status, status => status !== 0),
-											onSome: Function.constFalse
-										})
-									),
-									Array.map(agent =>
-										InventoryItem.make({
-											active: Option.isSome(agent.pid),
-											detail: agent.detail,
-											failure: pipe(
-												agent.status,
-												Option.filter(status => Option.isNone(agent.pid) && status !== 0),
-												Option.map(status => ({at: Option.none(), reason: exitFailure(status)}))
-											),
-											health: Boolean.match(Option.isNone(agent.pid), {
-												onFalse: Function.constant('quiet' as const),
-												onTrue: Function.constant('error' as const)
-											}),
-											id: ItemId.make(`${worker}:user:${agent.label}`),
-											kind: 'service',
-											name: UnitId.make(agent.name),
-											running: Option.isSome(agent.pid),
-											scope: Option.some('user'),
-											state: Option.match(agent.pid, {
-												onNone: Function.constant('failed · failed'),
-												onSome: Function.constant('running')
-											}),
-											url: Option.none(),
-											worker
-										})
 									)
 								)
-							])
-						),
-						collect(
-							'Applications',
-							Effect.map(Effect.fromResult(launchd.applications), () =>
-								appItems(Array.filter(apps, app => app.detail === 'user · application'))
-							)
-						),
-						collect(
-							'Listening ports',
-							Effect.flatMap(command('lsof', ['-nP', '+c0', '-iTCP', '-sTCP:LISTEN', '-iUDP', '-F', 'pcftPnT']), text =>
-								portItems(lsofSockets(text), worker, probe, {
-									cwd: Effect.fnUntraced(function* (processId) {
-										return pipe(
-											yield* Effect.option(
-												command('lsof', ['-nP', '-a', '-p', `${processId}`, '-d', 'cwd', '-Fn'], '2 seconds')
-											),
-											Option.getOrElse(Function.constant('')),
-											String.split('\n'),
-											Array.findFirst(String.startsWith('n')),
-											Option.map(String.slice(1))
-										)
-									}),
-									owner: processId =>
-										Effect.succeed(
-											pipe(
-												owned,
-												Array.findFirst(record => record.process.pid === processId),
-												Option.map(record => ({scope: 'user' as const, unit: record.unit}))
-											)
-										),
-									start: processId => Effect.succeed(HashMap.get(starts, processId))
-								})
-							)
-						)
-					]
-				}
-			})
-			// Only a service a timer starts, so the page can't start arbitrary units; system ones go through the workers' passwordless sudo. A Mac's launch agents are apps, never timer jobs.
+						})
+					)
+				)
+			]
+			// Only a service a timer starts, so the page can't start arbitrary units; system ones go through the machine's passwordless sudo.
 			const start = Effect.fnUntraced(
-				function* (input: Omit<RunRequest, 'worker'>) {
+				function* (input: RunRequest) {
 					yield* Effect.annotateCurrentSpan({job: input.name, scope: input.scope})
-					if (platform === 'darwin') {
-						return yield* DeployError.make({message: `${input.name} is not started by a timer`})
-					}
 					const timers = yield* Effect.flatMap(
 						command('systemctl', [
 							...Boolean.match(input.scope === 'system', {onFalse: () => ['--user'], onTrue: () => []}),
@@ -750,10 +468,9 @@ export class Inventory extends Context.Service<
 			const collectSnapshot = Effect.withSpan(
 				Effect.scoped(
 					Effect.gen(function* () {
-						const machine = yield* Boolean.match(platform === 'darwin', {onFalse: () => linux, onTrue: () => darwin})
 						// The process table is read while the sources' commands run, not after them.
 						const processing = yield* pipe(
-							machine.processes,
+							processTable,
 							Effect.flatMap(current =>
 								Ref.modify(processState, previous => {
 									const next = processReadings(current, previous)
@@ -769,7 +486,7 @@ export class Inventory extends Context.Service<
 						)
 						const sources = yield* Effect.all(
 							[
-								...machine.sources,
+								...machineSources,
 								collect(
 									'Tailnet',
 									pipe(
@@ -780,7 +497,7 @@ export class Inventory extends Context.Service<
 												InventoryItem.make({
 													detail: `${peer.OS} · ${Array.join(peer.TailscaleIPs, ', ')}`,
 													hostname: Option.some(String.replace(/\.$/u, '')(peer.DNSName)),
-													id: ItemId.make(`${worker}:peer:${peer.DNSName}`),
+													id: ItemId.make(`peer:${peer.DNSName}`),
 													kind: 'peer',
 													name: peer.HostName,
 													self: Option.some(true),
@@ -788,8 +505,7 @@ export class Inventory extends Context.Service<
 														onFalse: Function.constant('offline'),
 														onTrue: Function.constant('online')
 													}),
-													url: Option.none(),
-													worker
+													url: Option.none()
 												})
 											)
 										)
@@ -820,7 +536,7 @@ export class Inventory extends Context.Service<
 																onTrue: Function.constant('warning' as const)
 															})
 														),
-														id: ItemId.make(`${worker}:tailscale:${site[0]}:${handler[0]}`),
+														id: ItemId.make(`tailscale:${site[0]}:${handler[0]}`),
 														kind: 'exposure',
 														name: ExposureName.make(`${site[0]}${handler[0]}`),
 														owned: Option.some(false),
@@ -834,8 +550,7 @@ export class Inventory extends Context.Service<
 														),
 														state: 'observed',
 														// A root handler's address is the site's own, as an owned exposure writes it, so a row shows the two as one.
-														url: Option.some(`https://${site[0]}${String.replace(/^\/$/u, '')(handler[0])}`),
-														worker
+														url: Option.some(`https://${site[0]}${String.replace(/^\/$/u, '')(handler[0])}`)
 													})
 												)
 											)
@@ -852,13 +567,11 @@ export class Inventory extends Context.Service<
 								collected.records
 							),
 							sources: [...Array.map(sources, source => source.source), {error: collected.error, name: 'Processes'}],
-							time: yield* DateTime.now,
-							workers: [worker]
+							time: yield* DateTime.now
 						} satisfies Snapshot
 					})
 				),
-				'Inventory.snapshot',
-				{attributes: {worker}}
+				'Inventory.snapshot'
 			)
 			const snapshot = yield* SubscriptionRef.make(yield* collectSnapshot)
 			const [ensureFresh, invalidate] = yield* Effect.cachedInvalidateWithTTL(

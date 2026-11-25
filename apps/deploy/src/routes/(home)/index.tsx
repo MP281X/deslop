@@ -1,10 +1,10 @@
 import {useAtomRefresh, useAtomValue} from '@effect/atom-react'
 
 import type {DateTime} from 'effect'
-import {Array, Boolean, Duration, Function, Option, Record, Schema, String, pipe} from 'effect'
+import {Array, Boolean, Duration, Function, Option, Record, Schema, pipe} from 'effect'
 
-import {AppWindowIcon, HardDrivesIcon, LaptopIcon, MonitorIcon, TerminalWindowIcon} from '@phosphor-icons/react'
-import {CatchBoundary, Link, createFileRoute, getRouteApi} from '@tanstack/react-router'
+import {AppWindowIcon, TerminalWindowIcon} from '@phosphor-icons/react'
+import {CatchBoundary, createFileRoute, getRouteApi} from '@tanstack/react-router'
 import {AsyncResult} from 'effect/reactivity'
 import {Suspense, useDeferredValue} from 'react'
 import type {ReactNode} from 'react'
@@ -12,32 +12,29 @@ import type {ReactNode} from 'react'
 import {StaleProblem} from '@deslop/components-web/blocks/problem'
 import {LoadingRows} from '@deslop/components-web/blocks/rows'
 import {Loaded, ReadFailure} from '@deslop/components-web/blocks/states'
-import {StatusDot} from '@deslop/components-web/blocks/status-dot'
 import {mediaQueryAtom} from '@deslop/components-web/lib/media'
 import {preload} from '@deslop/components-web/lib/router'
-import {AppBarTab, AppBar, AppBarChoice, AppBarTabs} from '@deslop/components-web/shell/app-bar'
+import {AppBar, AppBarChoice} from '@deslop/components-web/shell/app-bar'
 import {Workspace} from '@deslop/components-web/shell/workspace'
-import {Button} from '@deslop/components-web/ui/button'
-import {Empty, EmptyContent, EmptyHeader, EmptyMedia, EmptyTitle} from '@deslop/components-web/ui/empty'
+import {Empty, EmptyHeader, EmptyMedia, EmptyTitle} from '@deslop/components-web/ui/empty'
 import {ResizableHandle, ResizablePanel, ResizablePanelGroup} from '@deslop/components-web/ui/resizable'
 import {ScrollArea} from '@deslop/components-web/ui/scroll-area'
 import {clockAtom} from '@deslop/runtime/client/clock'
 import {isDenied} from '@deslop/runtime/shared/auth'
 
-import {inventoryAtom, metricsAtom} from '#lib/fleet.ts'
+import {inventoryAtom, metricsAtom} from '#lib/machine.ts'
 import {RANGES} from '#routes/(home)/-chart.ts'
 import {ChartBlock, ChartSkeleton, EmptyChart, ReadingStrip, ReadingStripSkeleton} from '#routes/(home)/-charts.tsx'
 import {InventoryContent, ListPane} from '#routes/(home)/-list.tsx'
 import {Processes, Reasons} from '#routes/(home)/-processes.tsx'
-import {failureOf, rowOrder, owner, ranged} from '#routes/(home)/-rows.ts'
+import {rowOrder, owner, ranged} from '#routes/(home)/-rows.ts'
 import {usageOf} from '#routes/(home)/-usage.ts'
 import type {Usage} from '#routes/(home)/-usage.ts'
 import icon from '#routes/icon.svg'
 import {type Row, availablePorts, processTree, workloadName, workloads} from '#services/inventory/lib/utils.ts'
-import {ItemId, WorkerId} from '#services/inventory/schema.ts'
+import {ItemId} from '#services/inventory/schema.ts'
 import type {AppId, InventoryItem} from '#services/inventory/schema.ts'
 import {HistoryQuery} from '#services/metrics/schema.ts'
-import type {MachineHistory, Platform} from '#services/metrics/schema.ts'
 
 // A phone shows the list under one row of the machine's readings, or one app's processes full-screen.
 type Pane = typeof Pane.Type
@@ -46,86 +43,14 @@ const Pane = Schema.Literals(['apps', 'process'])
 type Search = typeof Search.Type
 export const Search = Schema.Struct({
 	app: Schema.OptionFromOptionalKey(ItemId),
-	machine: Schema.OptionFromOptionalKey(WorkerId),
 	pane: Schema.OptionFromOptionalKey(Pane),
 	range: Schema.OptionFromOptionalKey(HistoryQuery.fields.minutes)
 })
 const route = getRouteApi('/(home)/')
 
-// The machines as the bar's section control: its icon in the machine's colour and its name; an unreachable one keeps a dot. One machine needs no control.
-function machineName(worker: WorkerId) {
-	return String.split(worker, '.')[0]
-}
-
-// A machine's apps, in the range already chosen.
-function machineSearch(worker: WorkerId) {
-	return (previous: Partial<Search>) =>
-		Schema.encodeSync(Search)({
-			app: Option.none(),
-			machine: Option.some(worker),
-			pane: Option.some('apps'),
-			range: previous.range ?? Option.none()
-		})
-}
-
-function MachineIcon(props: {worker: WorkerId; platform: Option.Option<Platform>}) {
+function MetricsContent(props: {children: ReactNode; minutes: HistoryQuery['minutes']}) {
 	return (
-		<span
-			aria-hidden="true"
-			className={`inline-flex shrink-0 items-center justify-center ${Boolean.match(
-				machineName(props.worker) === 'desktop',
-				{onFalse: Function.constant('text-machine-dev'), onTrue: Function.constant('text-machine-desktop')}
-			)}`}
-		>
-			{pipe(
-				props.platform,
-				Option.contains<Platform>('darwin'),
-				Boolean.match({
-					onFalse: () =>
-						Boolean.match(machineName(props.worker) === 'desktop', {
-							onFalse: () => <HardDrivesIcon className="size-4" />,
-							onTrue: () => <MonitorIcon className="size-4" />
-						}),
-					onTrue: () => <LaptopIcon className="size-4" />
-				})
-			)}
-		</span>
-	)
-}
-
-function MachineTabs(props: {
-	active: Option.Option<WorkerId>
-	histories: readonly MachineHistory[]
-	inventoryFailure: boolean
-	sources: readonly {error: Option.Option<string>; name: string}[]
-	workers: readonly WorkerId[]
-}) {
-	if (props.workers.length < 2) return null
-	const histories = Record.fromIterableBy(props.histories, machine => machine.worker)
-	return (
-		<AppBarTabs value={Option.getOrElse(props.active, () => props.workers[0] ?? '')}>
-			{Array.map(props.workers, worker => {
-				const failed = failureOf(worker, props.inventoryFailure, props.sources, histories[worker])
-				return (
-					<AppBarTab key={worker} value={worker} render={<Link to="/" search={machineSearch(worker)} />}>
-						<MachineIcon worker={worker} platform={histories[worker]?.platform ?? Option.none()} />
-						<span className="max-w-32 truncate max-sm:sr-only">{machineName(worker)}</span>
-						{/* Only an unreachable machine is marked; one that answers needs no dot. */}
-						{failed && <StatusDot status="off" label="Unavailable" />}
-					</AppBarTab>
-				)
-			})}
-		</AppBarTabs>
-	)
-}
-
-function MetricsContent(props: {
-	children: ReactNode
-	machine: Option.Option<WorkerId>
-	minutes: HistoryQuery['minutes']
-}) {
-	return (
-		<Loaded atom={metricsAtom({minutes: props.minutes, worker: props.machine})}>
+		<Loaded atom={metricsAtom({minutes: props.minutes})}>
 			{() => (
 				<CatchBoundary getResetKey={Function.constant('metrics')} errorComponent={ReadFailure}>
 					{props.children}
@@ -135,13 +60,8 @@ function MetricsContent(props: {
 	)
 }
 
-function DataProblem(props: {machine: Option.Option<WorkerId>; minutes: HistoryQuery['minutes']}) {
-	return (
-		<StaleProblem
-			label="Out of date"
-			readers={[inventoryAtom, metricsAtom({minutes: props.minutes, worker: props.machine})]}
-		/>
-	)
+function DataProblem(props: {minutes: HistoryQuery['minutes']}) {
+	return <StaleProblem label="Out of date" readers={[inventoryAtom, metricsAtom({minutes: props.minutes})]} />
 }
 
 // The opened row scrolls as one, so every reason and the processes under them can be reached; with no processes their symbol takes the room the reasons leave.
@@ -208,21 +128,19 @@ function chartUsageOf(usage: Option.Option<Usage>) {
 // The desktop detail: the three charts, then the chosen processes.
 function DetailPane(props: {
 	app: Option.Option<ItemId>
-	machine: Option.Option<WorkerId>
 	usage: Option.Option<Usage>
 	labels: Record<AppId, string>
 	minutes: HistoryQuery['minutes']
 	pending: boolean
 	row: Option.Option<Row>
 	selectedOwner: Option.Option<AppId>
-	worker: Option.Option<WorkerId>
 }) {
 	return (
 		<div className="flex h-full min-h-0 flex-col">
 			<Suspense fallback={<ChartSkeleton minutes={props.minutes} />}>
-				<MetricsContent machine={props.machine} minutes={props.minutes}>
+				<MetricsContent minutes={props.minutes}>
 					{Option.match(chartUsageOf(props.usage), {
-						onNone: () => <EmptyChart worker={props.worker} />,
+						onNone: () => <EmptyChart />,
 						onSome: usage => (
 							<ChartBlock
 								usage={usage}
@@ -244,7 +162,6 @@ function DetailPane(props: {
 // A phone's list view: the readings in one row, then the rows edge to edge in the page's one scroller.
 function PhoneList(props: {
 	free: readonly InventoryItem[]
-	machine: Option.Option<WorkerId>
 	usage: Option.Option<Usage>
 	minutes: HistoryQuery['minutes']
 	now: DateTime.Utc
@@ -255,7 +172,7 @@ function PhoneList(props: {
 	return (
 		<div className="flex min-h-0 flex-1 flex-col">
 			<Suspense fallback={<ReadingStripSkeleton />}>
-				<MetricsContent machine={props.machine} minutes={props.minutes}>
+				<MetricsContent minutes={props.minutes}>
 					<ReadingStrip history={Option.map(chartUsageOf(props.usage), usage => usage.history)} />
 				</MetricsContent>
 			</Suspense>
@@ -273,41 +190,13 @@ function PhoneList(props: {
 	)
 }
 
-// A link to a machine the fleet no longer has: named as missing, with the way back to one it has.
-function MissingMachine(props: {machine: WorkerId; workers: readonly WorkerId[]}) {
-	return (
-		<Workspace>
-			<Empty role="status">
-				<EmptyHeader>
-					<EmptyMedia variant="icon">
-						<HardDrivesIcon />
-					</EmptyMedia>
-					<EmptyTitle>No machine named {machineName(props.machine)}</EmptyTitle>
-				</EmptyHeader>
-				{Option.match(Array.head(props.workers), {
-					onNone: Function.constNull,
-					onSome: worker => (
-						<EmptyContent>
-							<Button variant="outline" render={<Link to="/" search={machineSearch(worker)} />}>
-								Show {machineName(worker)}
-							</Button>
-						</EmptyContent>
-					)
-				})}
-			</Empty>
-		</Workspace>
-	)
-}
-
 // What the bar opens onto: the two panes on a wide screen, the readings and list on a phone, or the pushed processes.
 function Panes(props: {
-	active: Option.Option<WorkerId>
 	authFailure: Option.Option<unknown>
 	free: readonly InventoryItem[]
 	usage: Option.Option<Usage>
 	isPhone: boolean
 	labels: Record<AppId, string>
-	machine: Option.Option<WorkerId>
 	minutes: HistoryQuery['minutes']
 	now: DateTime.Utc
 	onSelect: (row: Row) => void
@@ -351,14 +240,12 @@ function Panes(props: {
 							<ResizablePanel className="min-h-0">
 								<DetailPane
 									app={props.selectedApp}
-									machine={props.machine}
 									usage={props.usage}
 									labels={props.labels}
 									minutes={props.minutes}
 									pending={props.pending}
 									row={props.selectedRow}
 									selectedOwner={selectedOwner}
-									worker={props.active}
 								/>
 							</ResizablePanel>
 						</ResizablePanelGroup>
@@ -368,7 +255,6 @@ function Panes(props: {
 							onFalse: () => (
 								<PhoneList
 									free={props.free}
-									machine={props.machine}
 									usage={props.usage}
 									minutes={props.minutes}
 									now={props.now}
@@ -405,16 +291,15 @@ function HomeRoute() {
 	const shownMinutes = useDeferredValue(minutes)
 	const pane = Option.getOrElse(search.pane, Function.constant('apps'))
 	const inventory = useAtomValue(inventoryAtom)
-	const metrics = useAtomValue(metricsAtom({minutes: shownMinutes, worker: search.machine}))
+	const metrics = useAtomValue(metricsAtom({minutes: shownMinutes}))
 	const refreshInventory = useAtomRefresh(inventoryAtom)
-	const refreshMetrics = useAtomRefresh(metricsAtom({minutes: shownMinutes, worker: search.machine}))
+	const refreshMetrics = useAtomRefresh(metricsAtom({minutes: shownMinutes}))
 	function retryFailed() {
 		if (AsyncResult.isFailure(inventory)) refreshInventory()
 		if (AsyncResult.isFailure(metrics)) refreshMetrics()
 	}
 	const snapshot = AsyncResult.value(inventory)
-	const shownHistories = AsyncResult.getOrElse(metrics, () => [])
-	const inventoryFailure = AsyncResult.isFailure(inventory)
+	const history = AsyncResult.value(metrics)
 	// A revoked session shows the sign-in even while a cached snapshot remains.
 	const authFailure = pipe(
 		AsyncResult.error(inventory),
@@ -422,20 +307,6 @@ function HomeRoute() {
 		Option.orElse(() => Option.filter(AsyncResult.error(metrics), isDenied))
 	)
 	const inventoryPending = AsyncResult.isInitial(inventory)
-	const workers = Array.dedupe([
-		...pipe(
-			snapshot,
-			Option.map(value => value.workers),
-			Option.getOrElse(() => [])
-		),
-		...Array.map(shownHistories, machine => machine.worker)
-	])
-	const active = Option.orElse(search.machine, () => Array.head(workers))
-	// Once the fleet has answered, a machine it doesn't name is a stale link, not an empty machine.
-	const missing = Option.filter(search.machine, machine => Option.isSome(snapshot) && !Array.contains(workers, machine))
-	const history = Option.flatMap(active, current =>
-		Array.findFirst(shownHistories, machine => machine.worker === current)
-	)
 	// The list and the charts share one derivation per history, which the compiler keeps until the history changes.
 	const usage = Option.map(history, usageOf)
 	const rows = pipe(
@@ -444,23 +315,14 @@ function HomeRoute() {
 		Option.getOrElse(() => [])
 	)
 	const free = availablePorts(rows)
-	const sources = pipe(
-		snapshot,
-		Option.map(value => value.sources),
-		Option.getOrElse(() => [])
-	)
 	const now = useAtomValue(clockAtom('1 second'))
-	const activeRows = Option.match(active, {
-		onNone: () => [],
-		onSome: current => Array.filter(rows, row => row.item.worker === current)
-	})
 	const bandNames = Record.fromEntries(
-		Array.flatMap(activeRows, row =>
+		Array.flatMap(rows, row =>
 			Option.match(owner(row), {onNone: () => [], onSome: id => [[id, workloadName(row.item)] as const]})
 		)
 	) satisfies Record<AppId, string>
-	const sorted = Array.sort(ranged(activeRows, shownMinutes, history), rowOrder)
-	const selectedRow = Option.flatMap(search.app, current => Array.findFirst(activeRows, row => row.item.id === current))
+	const sorted = Array.sort(ranged(rows, shownMinutes, history), rowOrder)
+	const selectedRow = Option.flatMap(search.app, current => Array.findFirst(rows, row => row.item.id === current))
 	function selectRow(row: Row) {
 		view({app: Option.some(row.item.id), pane: Option.some('process')})
 	}
@@ -488,7 +350,7 @@ function HomeRoute() {
 				controls={Boolean.match(pushed, {
 					onFalse: () => (
 						<>
-							<DataProblem machine={search.machine} minutes={minutes} />
+							<DataProblem minutes={minutes} />
 							<AppBarChoice
 								label="Range"
 								value={minutes}
@@ -497,44 +359,25 @@ function HomeRoute() {
 							/>
 						</>
 					),
-					onTrue: () => <DataProblem machine={search.machine} minutes={minutes} />
-				})}
-				tabs={Boolean.match(pushed, {
-					onFalse: () => (
-						<MachineTabs
-							active={active}
-							histories={shownHistories}
-							inventoryFailure={inventoryFailure}
-							sources={sources}
-							workers={workers}
-						/>
-					),
-					onTrue: Function.constUndefined
+					onTrue: () => <DataProblem minutes={minutes} />
 				})}
 			/>
-			{Option.match(missing, {
-				onNone: () => (
-					<Panes
-						active={active}
-						machine={search.machine}
-						authFailure={authFailure}
-						free={free}
-						usage={usage}
-						isPhone={isPhone}
-						labels={bandNames}
-						minutes={shownMinutes}
-						now={now}
-						onSelect={selectRow}
-						pending={inventoryPending}
-						pushed={pushed}
-						retryFailed={retryFailed}
-						rows={sorted}
-						selectedApp={search.app}
-						selectedRow={selectedRow}
-					/>
-				),
-				onSome: machine => <MissingMachine machine={machine} workers={workers} />
-			})}
+			<Panes
+				authFailure={authFailure}
+				free={free}
+				usage={usage}
+				isPhone={isPhone}
+				labels={bandNames}
+				minutes={shownMinutes}
+				now={now}
+				onSelect={selectRow}
+				pending={inventoryPending}
+				pushed={pushed}
+				retryFailed={retryFailed}
+				rows={sorted}
+				selectedApp={search.app}
+				selectedRow={selectedRow}
+			/>
 		</div>
 	)
 }
@@ -542,15 +385,10 @@ function HomeRoute() {
 export const Route = createFileRoute('/(home)/')({
 	// Ahead of the loader: TypeScript types `load.deps` from the keys before it.
 	loaderDeps: location => ({
-		machine: Option.getOrUndefined(location.search.machine),
 		minutes: Duration.toMinutes(Option.getOrElse(location.search.range, () => Duration.minutes(1440)))
 	}),
 
 	component: HomeRoute,
-	loader: load =>
-		preload(load, [
-			inventoryAtom,
-			metricsAtom({minutes: Duration.minutes(load.deps.minutes), worker: Option.fromUndefinedOr(load.deps.machine)})
-		]),
+	loader: load => preload(load, [inventoryAtom, metricsAtom({minutes: Duration.minutes(load.deps.minutes)})]),
 	validateSearch: Schema.toStandardSchemaV1(Search)
 })

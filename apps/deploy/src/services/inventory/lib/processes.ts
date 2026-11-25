@@ -7,9 +7,7 @@ import {
 	Effect,
 	Equal,
 	FileSystem,
-	Function,
 	HashMap,
-	MutableHashSet,
 	Number,
 	Option,
 	Record,
@@ -21,24 +19,16 @@ import {
 import {commandLabel, maskArguments} from './command.ts'
 
 import {itemOwner, processOwner} from '#services/inventory/lib/utils.ts'
-import {
-	AppId,
-	CpuTicks,
-	CpuTime,
-	DeployError,
-	Process,
-	ProcessIdFromString,
-	ResidentMemoryFromKiB
-} from '#services/inventory/schema.ts'
-import type {InventoryItem, UnitId, ProcessId} from '#services/inventory/schema.ts'
+import {CpuTicks, DeployError, Process, ProcessIdFromString, ResidentMemoryFromKiB} from '#services/inventory/schema.ts'
+import type {AppId, InventoryItem} from '#services/inventory/schema.ts'
 
 const PROCESS_INTERVAL = Duration.seconds(2)
 
 export type ProcessReading = {
 	owner: Option.Option<AppId>
 	process: Process
-	// Linux reports time since boot; ps on macOS reports an absolute start instant.
-	start: Duration.Duration | DateTime.Utc
+	// Time since boot.
+	start: Duration.Duration
 	ticks: Duration.Duration
 }
 
@@ -71,11 +61,6 @@ function processStatus(status: string) {
 	}
 }
 
-// What a process was started with, read only to label it, never sent: each argument is masked and their number capped.
-function commandArgs(cmdline: string) {
-	return maskArguments(pipe(cmdline, String.split('\0'), Array.filter(String.isNonEmpty), Array.take(40)))
-}
-
 // Collector input permits vanished or unreadable individual processes to be skipped and optional metadata to be absent; whole-machine reads still fail.
 export const processes = Effect.gen(function* () {
 	const fs = yield* FileSystem.FileSystem
@@ -94,8 +79,10 @@ export const processes = Effect.gen(function* () {
 						const status = yield* fs.readFileString(`/proc/${pid}/status`)
 						const processStat = yield* fs.readFileString(`/proc/${pid}/stat`)
 						const cwd = yield* Effect.option(fs.readLink(`/proc/${pid}/cwd`))
-						// A process whose arguments can't be read still counts, labelled by its name.
-						const command = Option.map(yield* Effect.option(fs.readFileString(`/proc/${pid}/cmdline`)), commandArgs)
+						// A process whose arguments can't be read still counts, labelled by its name. They are read only to label it, never sent: each is masked and their number capped.
+						const command = Option.map(yield* Effect.option(fs.readFileString(`/proc/${pid}/cmdline`)), cmdline =>
+							maskArguments(pipe(cmdline, String.split('\0'), Array.filter(String.isNonEmpty), Array.take(40)))
+						)
 						const fields = String.split(
 							String.slice((yield* Effect.fromOption(String.lastIndexOf(')')(processStat))) + 2)(processStat),
 							/\s+/u
@@ -190,141 +177,6 @@ export function processReadings(
 			Option.map(previous, cached => cached.baseline)
 		)
 	}
-}
-
-// All readable rows from `ps -axww -o pid=,ppid=,rss=,time=,lstart=,args=` in the C locale.
-function launchdRows(text: string) {
-	return Array.getSomes(
-		pipe(
-			text,
-			String.split('\n'),
-			Array.map(line =>
-				Option.flatMap(
-					String.match(/^\s*([0-9]+)\s+([0-9]+)\s+([0-9]+)\s+(\S+)\s+(\S+\s+\S+\s+\S+\s+\S+\s+\S+)\s+(.*)$/u)(line),
-					match =>
-						Option.map(
-							Option.all({
-								memory: Schema.decodeOption(ResidentMemoryFromKiB)(match[3] ?? ''),
-								parent: Schema.decodeOption(ProcessIdFromString)(match[2] ?? ''),
-								pid: Schema.decodeOption(ProcessIdFromString)(match[1] ?? '')
-							}),
-							fields => ({...fields, args: match[6] ?? '', cpu: match[4] ?? '', start: match[5] ?? ''})
-						)
-				)
-			)
-		)
-	)
-}
-
-// Listener identities need all processes, including those outside a Dock app or launch agent.
-export function launchdStarts(text: string) {
-	return HashMap.fromIterable(Array.map(launchdRows(text), row => [row.pid, row.start] as const))
-}
-
-// Each process's executable path from `ps -axww -o pid=,comm=`, whose path is the only field after the PID.
-export function launchdExecutables(text: string) {
-	return HashMap.fromIterable(
-		pipe(
-			text,
-			String.split('\n'),
-			Array.map(line =>
-				Option.flatMap(String.match(/^\s*([0-9]+)\s+(\/.*\S)\s*$/u)(line), match =>
-					Option.map(Schema.decodeOption(ProcessIdFromString)(match[1] ?? ''), pid => [pid, match[2] ?? ''] as const)
-				)
-			),
-			Array.getSomes
-		)
-	)
-}
-
-// A Mac's app-owned processes; agents names each app's PID, executables their paths, and start distinguishes a reused PID.
-export function launchdProcesses(
-	text: string,
-	agents: HashMap.HashMap<ProcessId, UnitId>,
-	executables: HashMap.HashMap<ProcessId, string>
-) {
-	const rows = launchdRows(text)
-	const parents = HashMap.fromIterable(Array.map(rows, row => [row.pid, row.parent] as const))
-	function agent(pid: ProcessId, visited = MutableHashSet.empty<ProcessId>()): Option.Option<UnitId> {
-		if (MutableHashSet.has(visited, pid)) return Option.none()
-		MutableHashSet.add(visited, pid)
-		return pipe(
-			agents,
-			HashMap.get(pid),
-			Option.orElse(() =>
-				pipe(
-					parents,
-					HashMap.get(pid),
-					Option.flatMap(parent => agent(parent, visited))
-				)
-			)
-		)
-	}
-	return Array.getSomes(
-		Array.map(rows, row =>
-			Option.flatMap(agent(row.pid), unit =>
-				Option.map(
-					Option.all({
-						start: DateTime.make(row.start),
-						ticks: pipe(
-							String.match(/^(?:([0-9]+):)?([0-9]+):([0-9]+(?:\.[0-9]+)?)$/u)(row.cpu),
-							Option.flatMap(match =>
-								Schema.decodeOption(CpuTime)({1: match[1], 2: match[2] ?? '', 3: match[3] ?? ''})
-							),
-							Option.map(fields =>
-								pipe(
-									Duration.hours(Option.getOrElse(fields[1], Function.constant(0))),
-									Duration.sum(Duration.minutes(fields[2])),
-									Duration.sum(Duration.seconds(fields[3]))
-								)
-							),
-							Option.filter(Duration.isFinite)
-						)
-					}),
-					times => {
-						// ps joins the arguments with spaces, so an executable path that holds spaces is taken whole from its own listing.
-						const args = String.trim(row.args)
-						const command = commandArgs(
-							pipe(
-								executables,
-								HashMap.get(row.pid),
-								Option.filter(path => String.startsWith(path)(args)),
-								Option.match({
-									onNone: () => pipe(args, String.split(/\s+/u), Array.join('\0')),
-									onSome: path =>
-										pipe(
-											String.slice(path.length)(args),
-											String.trim,
-											String.split(/\s+/u),
-											Array.prepend(path),
-											Array.join('\0')
-										)
-								})
-							)
-						)
-						return {
-							owner: Option.some(AppId.make(`service:user:${unit}`)),
-							process: Process.make({
-								cpu: Option.none(),
-								label: commandLabel(command, Option.none()),
-								memory: row.memory,
-								name: pipe(
-									Array.head(command),
-									Option.flatMap(head => Array.last(String.split(head, '/'))),
-									Option.getOrElse(Function.constant(''))
-								),
-								parent: row.parent,
-								pid: row.pid
-							}),
-							start: times.start,
-							ticks: times.ticks,
-							unit
-						}
-					}
-				)
-			)
-		)
-	)
 }
 
 export function attachProcesses(
