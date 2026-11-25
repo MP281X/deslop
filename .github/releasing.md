@@ -1,12 +1,6 @@
 # Releasing
 
-- **Actions** use their major tag, such as `actions/cache@v6`, never a commit; `setup-vp` names its latest release, since its `v1` stopped at 1.15.
-
-| Workflow                 | Does                                                                                                                                                                                                                                                                                                                         |
-| ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `deploy.yaml` (Release)  | Verify checks, builds, probes each server and tests. On `main` it then publishes each iPhone app's EAS Update and the npm packages whose tarball changed, deletes up to 300 runs older than 14 days that hold no unexpired artifact, and starts a Mac for each iPhone app whose native fingerprint Apple has no receipt for. |
-| `simulator.yaml`         | On a branch push no open PR targets (a stack's top), builds each iPhone app's missing Simulator artifact on a Mac.                                                                                                                                                                                                           |
-| `app-store-signing.yaml` | Dispatched by hand: registers an app's identifiers and profiles with Apple.                                                                                                                                                                                                                                                  |
+Actions use their major tag, such as `actions/cache@v6`, never a commit; `setup-vp` names its latest release, since its `v1` stopped at 1.15.
 
 ## A new app
 
@@ -52,7 +46,7 @@ Public TestFlight and App Store release are separate outward actions.
 
 ## Simulator builds
 
-Export `DESLOP_DOMAIN`, the repository variable (`.env.example`), before these commands and anything that loads an app's config. The artifact name holds a recipe hash of this checkout's `simulator.yaml` and setup action. The app holds the JavaScript of the commit that built it, so embed the branch's bundle before installing:
+`simulator.yaml` builds only a stack's top branch: it skips a branch that an open PR targets. Export `DESLOP_DOMAIN`, the repository variable (`.env.example`), before these commands and anything that loads an app's config. The artifact name holds a recipe hash of this checkout's `simulator.yaml` and setup action. The app holds the JavaScript of the commit that built it, so embed the branch's bundle before installing:
 
 ```bash
 # In apps/stash:
