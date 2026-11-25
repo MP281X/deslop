@@ -44,7 +44,7 @@ Report each state with the run URL; read a failed job with `gh run view <run-id>
 - **Apple.** `altool --upload-package` succeeded and the run holds the `<app>-app-store-<fingerprint>` receipt. Apple refuses a build number twice, so a run that ended after the upload without its receipt can't be retried: the next release uploads that fingerprint again, as it does once a receipt expires after 80 days. Uploaded is not processed: check the app's TestFlight tab.
 - **Update.** A phone takes the `production` EAS Update only on a build with the same fingerprint.
 - **npm.** Each package that the Publish changed packages summary lists with a version answers it to `npm view @deslop/<name> version`.
-- **Worker.** Release's last step had Deploy start every app's update: each app's `/api/runtime` answers 200 with the new version.
+- **Worker.** Release's Install the release job had Deploy start every app's update: each app's `/api/runtime` answers 200 with the new version.
 
 Public TestFlight and App Store release are separate outward actions.
 

@@ -124,9 +124,16 @@ jobs:
           xargs -r -P 8 -I{} gh api --method DELETE "repos/$GITHUB_REPOSITORY/actions/runs/{}" --silent <<< "$old"
           echo "- Deleted $(grep -c . <<< "$old" || true) workflow runs from before $cutoff" >> "$GITHUB_STEP_SUMMARY"
 
-      # Deploy starts every app's update, which installs whatever is newer on npm; its address takes no sign-in, since that is all it can do.
-      - name: Install the release on the server
-        if: github.event_name == 'push'
+  # Deploy starts every app's update, which installs whatever is newer on npm; its address takes no sign-in, since that is all it can do. A job of its own, so a Deploy that can't answer never holds back the App Store builds.
+  install:
+    name: Install the release
+    needs: verify
+    if: github.event_name == 'push'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    permissions: {}
+    steps:
+      - name: Start every app's update
         run: curl --fail-with-body --silent --show-error --retry 3 --retry-all-errors --request POST "https://deploy.$DESLOP_DOMAIN/api/update" | tee -a "$GITHUB_STEP_SUMMARY"
 
   app-store:
