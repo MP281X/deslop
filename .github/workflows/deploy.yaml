@@ -135,14 +135,14 @@ jobs:
     needs: verify
     if: github.event_name == 'push' && needs.verify.outputs.published != ''
     runs-on: ubuntu-26.04
-    timeout-minutes: 15
+    # npm's `latest` can take a few tens of minutes to name a new version.
+    timeout-minutes: 60
     permissions: {}
     env:
       PUBLISHED: ${{ needs.verify.outputs.published }}
     steps:
       # An update reads the URL below once and stops at "is current" while it still names the last release, so Deploy is called only once it names this one for every published app.
       - name: Wait for npm to serve the release
-        timeout-minutes: 10
         run: |
           for app in $PUBLISHED; do
             until [[ $(curl --fail --silent "https://registry.npmjs.org/@deslop%2f$app/latest" | jq -r .version) == "0.1.$RELEASE_NUMBER" ]]; do sleep 10; done
