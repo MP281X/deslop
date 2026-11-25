@@ -1,4 +1,12 @@
-// Pass this file's text plus `play([...steps])` to preview_evaluate while the tab records; the proof skill lists the steps.
+// oxlint-disable-next-line @deslop/coding-standards/no-multiline-comment -- Agents read the step syntax from this header, which the visuals skill points to.
+// Pass this file's text plus `play([...steps])` to preview_evaluate while the tab records. Steps:
+// - 'Name' or {click: 'Name'} clicks the visible element with that accessible name, or a CSS selector (containing #, ., [, : or >).
+// - {type, into} types into a field, which must keep the text; {press} presses a key.
+// - {see} waits for text the step brings, never a timer. A click passes only if the address or a part of the page that was
+// still changes, a key also if focus moves; on a page that changes on its own, such as one with a clock, a step passes only
+// through a `see` in it: {click: 'Rename', see: 'New name', label: 'Open rename'}.
+// - Each step takes a `label` naming the action and field, never typed or private text.
+// A navigation ends the evaluation; the first failed step ends the run.
 async function play(steps) {
 	// Only a cursor is drawn over the page; the page itself is recorded at its real size, unscaled and unframed.
 	document.querySelector('#journey')?.remove()

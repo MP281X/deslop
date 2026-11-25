@@ -101,7 +101,7 @@ export default defineConfig({
 			'**/*.gen.ts',
 			'**/*.icon/**',
 			'packages/components-web/src/ui/**',
-			'.claude/skills/proof/references/prototype.html'
+			'.claude/skills/visuals/references/prototype.html'
 		],
 
 		arrowParens: 'avoid',
