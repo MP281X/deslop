@@ -1,6 +1,6 @@
 # Maintenance
 
-A pass runs Update, then Clean, then Check on dev, and the Mac's steps when it is on, then reports faults, unknown owners, denied steps and an update waiting on the user's restart. Removals go to a Sonnet delegate, since Codex rejects `rm -rf`. A refusal or failure skips only its step.
+A pass runs Update, then Clean, then Check on `worker`, and the Mac's steps when it is on, then reports faults, unknown owners, denied steps and an update waiting on the user's restart. Removals go to a Sonnet delegate, since Codex rejects `rm -rf`. A refusal or failure skips only its step.
 
 - **The user's.** `t3 update`, `t3 doctor --fix`, `t3 service restart` and reboots; never report a pending T3 update.
 - **Never touch** history (T3's databases and logs, `~/.claude/projects`, `~/.codex/sessions`), credentials, production data, running jobs or worktrees of running threads.
@@ -60,7 +60,7 @@ rm -rf ~/Library/Caches/Google/Chrome ~/.cache/codex-runtimes "$HOME/Library/App
 
 ## Setup and repair
 
-### dev
+### Debian machine
 
 From a Debian netinst, in order:
 
@@ -69,7 +69,7 @@ From a Debian netinst, in order:
 3. **Git.** `rebase.updateRefs`, `rebase.autoSquash`, `rebase.autoStash`, `push.autoSetupRemote`, `fetch.prune`, `rerere.enabled` true; `diff.algorithm histogram`, `merge.conflictStyle zdiff3`, `init.defaultBranch main`. Identity by remote, through `includeIf.hasconfig:remote.*.url:` on the https, `git@` and `ssh://` URLs of each host: `MP281X <dev@mp281x.xyz>` for `github.com`, `Matteo Paludgnach <matteopaludgnach@datapizza.tech>` for `git.datapizza.tech`.
 4. **Network.** `openvpn3 config-import --config <datapizza.ovpn> --name datapizza --persistent`. Tailscale from its Debian `trixie` apt repository; `sudo tailscale up --accept-routes --advertise-routes=<git.datapizza.tech's IPv4>/32`; `sudo tailscale set --operator=mp281x`. Then, over the tailnet, `ufw default deny incoming`, allowing TCP 80, 443 and 25565 and UDP 443, for production and Minecraft. `printf 'net.ipv4.ip_unprivileged_port_start = 80\n' | sudo tee /etc/sysctl.d/90-unprivileged-ports.conf && sudo sysctl --system`, so Deploy's Caddy binds 80 and 443 as the user.
 5. **Shell.** `loginctl enable-linger mp281x`; for the apps' `deslop.slice` to keep its first gigabyte, every slice above it carries the same protection: `sudo systemctl set-property <unit> MemoryLow=1G` for `user.slice`, `user-1000.slice` and `user@1000.service`; Vite+ with `VP_HOME="$HOME/.vite-plus"`, Claude Code; `~/.bashrc`'s first lines put `$HOME/.local/bin:$HOME/.vite-plus/bin` on `PATH`; `~/.config/pnpm/config.yaml`: `minimumReleaseAgeExclude: ["@deslop/*"]`.
-6. **T3.** `vp install -g t3@nightly`, `t3 service install`, `t3 connect link --headless`, `t3 connect publish`, `t3 browser setup`, `sudo hostnamectl set-hostname --pretty dev`.
+6. **T3.** `vp install -g t3@nightly`, `t3 service install`, `t3 connect link --headless`, `t3 connect publish`, `t3 browser setup`, `sudo hostnamectl set-hostname --pretty worker`.
 7. **Accounts.** Give the user each sign-in link: `gh auth login`, `glab auth login --hostname git.datapizza.tech`, `claude auth login`, `codex login --device-auth`, [AWS](dual.md#aws). Then `gh auth setup-git`, `gh extension install github/gh-stack`; clone both repositories; `t3 project add --title <name> <path>`; [agent links](#agent-configuration-links); [keyring and MCP](#keyring-and-mcp).
 8. **Keys only**, once a key login from another machine succeeds: `/etc/ssh/sshd_config.d/10-keys-only.conf` with `UsePAM yes`, `PasswordAuthentication no`, `KbdInteractiveAuthentication no`, `PermitRootLogin no`, `X11Forwarding no`; `sudo sshd -t`, then `sudo systemctl reload ssh`.
 
@@ -102,7 +102,7 @@ Keep each project's `scripts` (`t3_project_update`) equal to `projectSettingsOve
 
 ### Keyring and MCP
 
-Gateway needs no login: Auth names dev's tailnet owner.
+Gateway needs no login: Auth names this machine's tailnet owner.
 
 ```bash
 sudo apt-get install -y gnome-keyring libsecret-tools
