@@ -15,7 +15,7 @@ A pass runs Update, then Reconcile, then Check on `worker`, and the Mac's steps 
 - **sysctl.** `/etc/sysctl.d` holds `90-agents.conf`, `90-unprivileged-ports.conf` and Debian's `README.sysctl`.
 - **`/etc`** beyond what packages own and Debian generates (accounts, host keys, locale, fstab, network, apt keys and sources): only the files Setup writes. No backups (`*.old`, dated `ufw` rules, sed's `*e` copies) or leftovers of purged packages.
 - **Ports** (`sudo ss -ltnup`): `sshd` on 22; Deploy's Caddy on TCP 80 and 443, UDP 443 and its admin port on `127.0.0.1`; Deploy's apps on `127.0.0.1:51xx`; T3 on `127.0.0.1:3773` and its Connect `cloudflared`; `tailscaled`; Minecraft on 25565.
-- **Home.** `deslop`, `dual`, `minecraft`; `.deslop` with one folder per app and some apps' `.env`; `.aws`, `.cache`, `.claude`, `.claude.json`, `.codex`, `.config`, `.docker`, `.local`, `.npm`, `.ssh`, `.t3`, `.vite-plus`; `.bashrc`, `.bash_history`, `.bash_logout`, `.profile`; `.gitconfig`, `.gitconfig-github`, `.gitconfig-datapizza`. `/root` holds only Debian's skeleton.
+- **Home.** `deslop`, `dual`, `minecraft`; `.deslop` with one folder per app, some apps' `.env` and `threads-backup`, his archive of old machines' Claude and Codex transcripts; `.aws`, `.cache`, `.claude`, `.claude.json`, `.codex`, `.config`, `.docker`, `.local`, `.npm`, `.ssh`, `.t3`, `.vite-plus`; `.bashrc`, `.bash_history`, `.bash_logout`, `.profile`; `.gitconfig`, `.gitconfig-github`, `.gitconfig-datapizza`. `/root` holds only Debian's skeleton.
 - **Docker.** The `bridge`, `host` and `none` networks; containers, volumes, images and build cache only while their thread's preview, test run or build runs.
 
 ## Update
