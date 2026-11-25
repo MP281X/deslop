@@ -724,19 +724,22 @@ export function requestOf(item: InventoryItem) {
 	} satisfies RunRequest
 }
 
-// The run request for a scheduled job the page shows, by its name or unit.
-export function jobRequest(snapshot: Snapshot, input: RunJobInput) {
-	return pipe(
+// The run request for a scheduled job the page shows, by its name or unit; a user and a system job of one name need a scope to choose.
+export const jobRequest = Effect.fnUntraced(function* (snapshot: Snapshot, input: RunJobInput) {
+	const matching = Array.filter(
 		workloads(snapshot.items),
-		Array.findFirst(
-			row =>
-				Option.contains(row.item.scheduled, true) &&
-				(workloadName(row.item) === input.job || row.item.name === input.job)
-		),
-		Option.match({
-			onNone: () =>
-				Effect.fail(DeployError.make({message: `No scheduled job named ${input.job}; list_apps shows the jobs.`})),
-			onSome: row => Effect.succeed(requestOf(row.item))
-		})
+		row =>
+			Option.contains(row.item.scheduled, true) &&
+			!Option.exists(input.scope, scope => !Option.contains(row.item.scope, scope)) &&
+			(workloadName(row.item) === input.job || row.item.name === input.job)
 	)
-}
+	if (!Array.isArrayNonEmpty(matching)) {
+		return yield* DeployError.make({message: `No scheduled job named ${input.job}; list_apps shows the jobs.`})
+	}
+	if (matching.length > 1) {
+		return yield* DeployError.make({
+			message: `${input.job} names both a user and a system job; pass its scope. Nothing started.`
+		})
+	}
+	return requestOf(Array.headNonEmpty(matching).item)
+})

@@ -98,7 +98,7 @@ export const ToolContracts = Toolkit.make(
 	Tool.make('run_job', {
 		dependencies: [CurrentUser],
 		description:
-			'Start a scheduled job now by name from list_apps. started means accepted, not completed; inspect list_apps or Scope for the outcome.',
+			'Start a scheduled job now by name from list_apps; pass scope when a user and a system job share the name. started means accepted, not completed; inspect list_apps or Scope for the outcome.',
 		failure: Schema.Union([AuthError, DeployError]),
 		parameters: RunJobInput,
 		success: Schema.Struct({started: Schema.Literal(true)})

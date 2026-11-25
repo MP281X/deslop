@@ -227,7 +227,10 @@ export const RunRequest = Schema.Struct({name: UnitId, scope: Schema.Literals(['
 
 export type RunJobInput = typeof RunJobInput.Type
 export const RunJobInput = Schema.Struct({
-	job: JobName.annotate({description: 'A scheduled job name as list_apps shows it.'})
+	job: JobName.annotate({description: 'A scheduled job name as list_apps shows it.'}),
+	scope: Schema.OptionFromOptionalKey(
+		ServiceScope.annotate({description: 'The systemd manager that runs the job, when both have one by this name.'})
+	)
 })
 
 export type InventoryCursor = typeof InventoryCursor.Type

@@ -1,9 +1,9 @@
 import {assert, it} from '@effect/vitest'
 
-import {Array, Option} from 'effect'
+import {Array, DateTime, Effect, Option} from 'effect'
 
-import {availablePorts, portOwner, processOwner, workloads} from '#services/inventory/lib/utils.ts'
-import {ExposureName, InventoryItem, ItemId, UnitId} from '#services/inventory/schema.ts'
+import {availablePorts, jobRequest, portOwner, processOwner, workloads} from '#services/inventory/lib/utils.ts'
+import {DeployError, ExposureName, InventoryItem, ItemId, JobName, UnitId} from '#services/inventory/schema.ts'
 import type {ServiceScope} from '#services/inventory/schema.ts'
 
 const LISTENER = InventoryItem.make({
@@ -227,3 +227,25 @@ it('names who a loopback proxy to a port reaches: a publishing container first, 
 	assert.deepStrictEqual(portOwner([{...unit, address: Option.some('[::1]:5173')}], 5173), Option.none())
 	assert.deepStrictEqual(portOwner([unit], 5174), Option.none())
 })
+
+it.effect(
+	'starts a job a user and a system timer share only once its scope is chosen',
+	Effect.fnUntraced(function* () {
+		const snapshot = {
+			items: Array.map(['user', 'system'] as const, scope => ({
+				...service('deslop-cleanup.service', scope),
+				scheduled: Option.some(true)
+			})),
+			sources: [],
+			time: DateTime.makeUnsafe(0)
+		}
+		assert.instanceOf(
+			yield* Effect.flip(jobRequest(snapshot, {job: JobName.make('cleanup'), scope: Option.none()})),
+			DeployError
+		)
+		assert.deepStrictEqual(yield* jobRequest(snapshot, {job: JobName.make('cleanup'), scope: Option.some('system')}), {
+			name: UnitId.make('deslop-cleanup.service'),
+			scope: 'system'
+		})
+	})
+)
