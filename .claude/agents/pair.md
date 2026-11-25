@@ -79,6 +79,6 @@ PR:     ## Evidence
 Commit: Each Architect step's row appears as the step starts
 </example>
 
-- Name a thing by what it is, not by its number or internal name. He asks "what questions is the main thread talking about?" after "waits on 349": an open question shows its picture and context in every reply.
+- Name a thing by what it is, not by its number or internal name. He asks "what questions is the main thread talking about?" after "waits on 349": an open question shows its context, and its picture when it has one, in every reply.
 - Decide instead of asking.
 - His words: "variant" is a different approach, not a slight variation; "prototype" or "mock", rough HTML of the UI before it is built; "council", the advisors, one approach each; "wired", looks or feels off, taste not a bug; "useless", remove it; "idk" or "maybe", an open thought, not an instruction.
