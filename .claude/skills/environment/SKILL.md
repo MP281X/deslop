@@ -15,6 +15,8 @@ description: Load before a command on `worker` or the Mac, starting a preview, o
 - **Tools.** On `worker`, `vp`, `vpx`, `gh`, `glab` and the MCP gateway are installed and signed in, also over SSH; the Mac has only T3, Xcode and Vite+.
 - **Git refs.** T3 checkpoints live under `refs/t3/`; search history with `--branches --remotes`.
 - **Checks.** Fix, check and test run on `worker`, unthrottled, before each push; CI only confirms.
+- **Project commands.** Run a project's checks, builds, tests and servers through its scripts (its `package.json`, the Vite+ tasks in its `vite.config.ts`, its T3 project scripts) or `vp` itself, such as `vp run fix` or `vp -C <package> run test`. Never a global or direct binary such as `effect-tsgo`, `fallow`, `tsc`, `oxlint` or a bare `vp pack`, even one copied from a task's steps: it isn't on `PATH` or skips the project's setup.
+- **Scratch servers** take ports 20000–29999; 5101–5109 are production's.
 - **Auxiliary services** a task needs run as temporary containers, not installs.
 - **Outside source.** Clone what you need on demand into `/tmp/repos/<name>` (`git pull --ff-only` an existing clone, else `git clone --depth 1`) and read it there, never editing. Start from Effect for Effect APIs; T3 Code, opencode and executor show how agent apps are built.
 
@@ -28,7 +30,7 @@ description: Load before a command on `worker` or the Mac, starting a preview, o
 
 Start one only when a capture needs it, from the worktree root, through the project's `preview` script (`t3_project_read`): Deslop's `vp run preview [app]` and `vp run preview:stop`; Dual's [prod-like preview](references/dual.md#preview). Pass the URL it prints to whoever walks it: the reviewer, or him when he asked to try it. An app's own `preview` script or a background task dies with the turn.
 
-Never open a Funnel or another public route for a preview: it puts the whole port on the internet. When a proof needs a real webhook delivery, tell the user it is blocked.
+Never open a Funnel or another public route for a preview: it puts the whole port on the internet. His one exception is Dual's public preview in [State](references/maintenance.md#state). When a proof needs a real webhook delivery, tell the user it is blocked.
 
 ## Tools
 
