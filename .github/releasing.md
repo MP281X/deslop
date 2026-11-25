@@ -1,7 +1,6 @@
 # Releasing
 
 - **History.** `main` is linear: every PR is squash-merged.
-- **Verification.** A PR is ready once the Verify job of its `pull_request` run of Release passed on GitHub's merge with the latest `main`; when `main` moves, rebase and push for a new run. A PR with a merge conflict gets no run until it is rebased.
 - **Actions.** Actions use their major tag, such as `actions/cache@v6`, never a commit; `setup-vp`'s `v1` stopped at 1.15, so it names its latest release.
 - **Lists.** The workflows name every app by hand; nothing discovers them.
 
