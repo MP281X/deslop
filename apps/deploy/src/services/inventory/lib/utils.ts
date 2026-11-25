@@ -99,7 +99,7 @@ function appPort(item: InventoryItem) {
 		Option.isSome(item.process) &&
 		!Option.exists(item.port, port => Array.contains([5353, 5355], port)) &&
 		!Option.exists(item.process, process =>
-			Option.isSome(String.match(/^(?:ssh|cloudflared|tailscaled|caddy|ControlCenter)$/u)(process))
+			Option.isSome(String.match(/^(?:ssh|cloudflared|tailscaled|caddy)$/u)(process))
 		)
 	)
 }
