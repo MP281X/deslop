@@ -6,7 +6,7 @@
 
 ## Evidence
 
-<!-- the finish lines, ticked, a recording under each -->
+<!-- the finish lines, ticked, each with its proof under it: a recording for what reaches a screen -->
 
 ## Merge danger
 

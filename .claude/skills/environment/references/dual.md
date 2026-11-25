@@ -4,7 +4,7 @@ The code is GitLab `dual/dual` on `git.datapizza.tech`.
 
 ## Accounts
 
-Saved preview tokens only read: write with `gh auth token` and `glab`'s configuration. In Discord, post only to his test channel.
+Write as GitHub `MP281X` and GitLab `matteopaludgnach`. Saved preview tokens only read: write with `gh auth token` and `glab`'s configuration. In Discord, post only to his test channel.
 
 ## AWS
 

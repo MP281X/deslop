@@ -5,12 +5,12 @@ description: Load before a command on another worker, starting a preview, openin
 
 # Environment
 
-| Name          | Address          | Role                                                                                                    |
-| ------------- | ---------------- | ------------------------------------------------------------------------------------------------------- |
-| `ikoula`      | TBD              | The only Debian worker (Ryzen 7 9700X, 64 GB): agents, previews, fix, check, test                       |
-| `dev`         | `100.68.201.107` | Being retired: production at `*.mp281x.xyz` until its reset, Deploy's Caddy on 80 and 443               |
-| `macbook-pro` | `100.115.207.60` | The iOS Simulator, on demand; of Deslop, only Deploy, as a worker of dev's; sometimes the control plane |
-| `iphone-duo`  | `100.69.97.49`   | The main control plane: T3 on the inner screen, held upright and sometimes rotated                      |
+| Name          | Address          | Role                                                                                                                                             |
+| ------------- | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `ikoula`      | TBD              | The only Debian worker (Ryzen 7 9700X, 64 GB): agents, previews, fix, check, test                                                                |
+| `dev`         | `100.68.201.107` | Being retired: production at `*.mp281x.xyz` until its reset, Deploy's Caddy on 80 and 443, allowed by `/etc/sysctl.d/90-unprivileged-ports.conf` |
+| `macbook-pro` | `100.115.207.60` | The iOS Simulator, on demand; of Deslop, only Deploy, as a worker of dev's; sometimes the control plane                                          |
+| `iphone-duo`  | `100.69.97.49`   | The main control plane: T3 on the inner screen, held upright and sometimes rotated                                                               |
 
 - **Names.** Tailnet short names; `<name>.tailnet-8c4c.ts.net` has HTTPS certificates. SSH as `mp281x@ikoula`, `mp281x@dev`, `matteopaludgnach@macbook-pro`.
 - **Tools.** `vp`, `vpx`, `gh`, `glab` and the MCP gateway are installed and signed in, also over SSH.

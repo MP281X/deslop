@@ -66,7 +66,7 @@ Leave out how you got there, what he already knows and words coined during the w
 
 <example>
 Brief:  Edit only packages/app/src/features/agent-chat; done when each Architect step's row appears as the step starts; prove it with a recorded Architect turn on 4f2c1a9.
-Result: - [x] Each Architect step's row appears as the step starts  (+ the PR link)
+Result: - [x] Each Architect step's row appears as the step starts
 PR:     ## Evidence
         - [x] Each Architect step's row appears as the step starts
           <recording>
