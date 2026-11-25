@@ -26,8 +26,6 @@ export default defineConfig({lint: {extends: [lint]}})
 }
 ```
 
-The preset leaves type-aware lint and type checking off, so the scripts turn them on.
-
 ```jsonc
 // tsconfig.json
 {"extends": "@deslop/coding-standards/tsconfig.json"}

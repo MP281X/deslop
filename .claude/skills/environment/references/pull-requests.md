@@ -15,7 +15,7 @@ gh stack push                        # later rounds
 gh stack sync --prune                # after a merge below
 ```
 
-GitLab stacks act on the stack selected in this worktree: one commit per diff on its own branch, its first message line the MR title (`Draft: ` opens a draft). Every MR comes from `sync`, which never edits an existing MR. `glab stack create` cannot run in a worktree.
+GitLab stacks act on the stack selected in this worktree. A commit's first message line is its MR's title (`Draft: ` opens a draft); `sync` never edits an existing MR. `glab stack create` cannot run in a worktree.
 
 ```bash
 glab stack infer --all --name <stack> origin/<default>..HEAD

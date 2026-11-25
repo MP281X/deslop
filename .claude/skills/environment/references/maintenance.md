@@ -1,16 +1,16 @@
 # Maintenance
 
-A pass runs Update, Clean and Check on every powered-on worker at once, then reports faults, unknown owners, denied steps and an update waiting on the user's restart. Removals go to a Sonnet delegate, since Codex rejects `rm -rf`. A refusal or failure skips only its step.
+A pass runs Update, then Clean, then Check on each powered-on worker, the workers in parallel, then reports faults, unknown owners, denied steps and an update waiting on the user's restart. Removals go to a Sonnet delegate, since Codex rejects `rm -rf`. A refusal or failure skips only its step.
 
 - **The user's.** `t3 update`, `t3 doctor --fix`, `t3 service restart` and reboots; never report a pending T3 update.
 - **Never touch** history (T3's databases and logs, `~/.claude/projects`, `~/.codex/sessions`), credentials, production data, running jobs or worktrees of running threads.
 
 ## Update
 
-- **Debian.** `sudo apt-get update`, `upgrade -y`, `autoremove -y`, `clean`; `vp upgrade`; `gh extension upgrade --all`; the [AWS CLI](#aws-cli). glab: when `https://gitlab.com/api/v4/projects/gitlab-org%2Fcli/releases/permalink/latest` names a newer `tag_name`, `sudo dpkg -i` its `glab_<version>_linux_amd64.deb`.
+- **Debian.** `sudo apt-get update`, `upgrade -y`, `autoremove -y`, `clean`; `vp upgrade`; `gh extension upgrade --all`; the [AWS CLI](#aws-cli). glab: when `https://gitlab.com/api/v4/projects/gitlab-org%2Fcli/releases/permalink/latest` names a newer `tag_name`, `sudo dpkg -i` `https://gitlab.com/gitlab-org/cli/-/releases/<tag>/downloads/glab_<version>_linux_amd64.deb`.
 - **Mac.** `vp upgrade`; report a pending macOS update from `softwareupdate -l`.
 - **T3 CLI.** When `t3 --version` differs from `activeVersion` in `~/.t3/runtime/service-state.json`, `vp install -g t3@<activeVersion>`, never newer: T3 updates only from its UI.
-- **Configuration.** `git -C ~/deslop pull --ff-only`. When local changes block it, read `git -C ~/deslop diff -w`: `git -C ~/deslop restore .` only a harness re-indent; a real change goes into a PR.
+- **Configuration.** `git -C ~/deslop pull --ff-only`. When local changes block it, read `git -C ~/deslop diff -w`: `git -C ~/deslop restore .` only a harness re-indent, then pull again; a real change goes into a PR.
 
 ## Clean
 
@@ -23,7 +23,7 @@ A thread owns a worktree through `worktreePath` in `orchestration_v2_projection_
 - **pnpm**, when no install runs: `pnpm store prune`.
 - **Previews** of gone worktrees: Alchemy's `preview:destroy`; stopped `preview-*` units and their containers; `docker stop` (which keeps seed data, unlike Dual's `settle`) their surviving `dualos-local-*-wt-<hash>` Postgres and OpenSandbox containers. Also leftover `testcontainers-ryuk-*` and finished test runs' unnamed Postgres containers.
 - **Local branches** in `~/deslop` and `~/dual`: `git branch -D` only branches no worktree checks out, never the default branch.
-- **Remote branches**, only through this block: it deletes a branch whose merged or closed PR's head is the branch tip, whose commits are all the user's, and which no worktree checks out; a failed query keeps it.
+- **Remote branches**, only through this block: it deletes a branch whose merged or closed PR's head is the branch tip, whose nonempty commit list is all the user's, and which no worktree checks out; a failed query keeps it.
 
 ```bash
 git fetch -q --prune origin
@@ -36,7 +36,7 @@ for b in $(git for-each-ref --format='%(refname:lstrip=3)' refs/remotes/origin |
     s=$(jq -r '.state // empty' <<<"$mr"); h=$(jq -r '.sha // empty' <<<"$mr"); a=$(glab api "projects/:id/merge_requests/$(jq -r .iid <<<"$mr")/commits" | jq -r '[.[].author_email] | unique | join(" ")')
   fi
   case "$s" in MERGED|CLOSED|merged|closed) ;; *) continue ;; esac
-  [ "$h" = "$(git rev-parse "origin/$b")" ] && [ "$a" = "$(git config user.email)" ] || continue
+  [ "$h" = "$(git rev-parse "origin/$b")" ] && [ -n "$a" ] && [ "$a" = "$(git config user.email)" ] || continue
   git worktree list --porcelain | grep -qxF "branch refs/heads/$b" || git push -q origin --delete "$b"
 done
 ```
@@ -118,7 +118,7 @@ Keep each project's `scripts` (`t3_project_update`) equal to `projectSettingsOve
 
 ### Keyring and MCP
 
-Headless CLI sign-ins keep their tokens in a Secret Service; Gateway needs no login, since Auth names the worker's tailnet owner, and Codex declares it in its checked-in config.
+Gateway needs no login: Auth names the worker's tailnet owner.
 
 ```bash
 sudo apt-get install -y gnome-keyring libsecret-tools

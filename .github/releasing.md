@@ -1,14 +1,14 @@
 # Releasing
 
-Actions use their major tag, such as `actions/cache@v6`, never a commit; `setup-vp` names its latest release, since its `v1` stopped at 1.15.
+Actions use their major tag, such as `actions/cache@v6`, never a commit; `setup-vp` names its latest release.
 
 ## A new app
 
 1. Add it by hand to `deploy.yaml`'s probe and Publish changed packages lists; an iPhone app also to Find the iPhone apps with a native change, Publish each iPhone app's EAS Update and `simulator.yaml`.
 2. iPhone, before the first push, in `apps/<name>`: `vpx eas-cli@latest init --non-interactive --account mp281x.xyz`; when it fails to write dynamic config it prints `extra.eas.projectId`: save that as `projectId` in `app.config.ts`. Then `vpx eas-cli@latest channel:create production --non-interactive`.
-3. iPhone: push, then `gh workflow run app-store-signing.yaml --ref <branch> -f app=<name>` and read `gh run view <run-id> --log`. On "Generate a new Apple Distribution Certificate?" the user picks a new team certificate in `vpx eas-cli@latest credentials` in the app directory; add any other prompt to the workflow only if its default is the intended answer; on Apple 403, the user replaces `ASC_KEY_ID`, `ASC_ISSUER_ID` and `ASC_KEY_P8` with an Admin-access key. The same run gives an already signed app's App ID what the app declares, with new profiles.
+3. iPhone: push, then `gh workflow run app-store-signing.yaml --ref <branch> -f app=<name>` and read `gh run view <run-id> --log`. On "Generate a new Apple Distribution Certificate?" the user picks a new team certificate in `vpx eas-cli@latest credentials` in the app directory; add any other prompt to the workflow only if its default is the intended answer; on Apple 403, the user replaces `ASC_KEY_ID`, `ASC_ISSUER_ID` and `ASC_KEY_P8` with an Admin-access key.
 4. iPhone, by the user after signing: at [App Store Connect](https://appstoreconnect.apple.com/apps), **+**, **New App**: iOS, a free name, English (U.S.), bundle `xyz.mp281x.<name>`, SKU `<name>`, full access. Then, in its TestFlight tab, an internal group with access to all builds and the other apps' testers.
-5. First npm publish, from `apps/<name>`, packed as Release does; the subshell restores the manifest either way:
+5. First npm publish, from `apps/<name>`, packed as Release does:
 
 ```bash
 PACK=$(mktemp -d)
@@ -46,7 +46,7 @@ Public TestFlight and App Store release are separate outward actions.
 
 ## Simulator builds
 
-`simulator.yaml` builds only a stack's top branch: it skips a branch that an open PR targets. Export `DESLOP_DOMAIN`, the repository variable (`.env.example`), before these commands and anything that loads an app's config. The artifact name holds a recipe hash of this checkout's `simulator.yaml` and setup action. The app holds the JavaScript of the commit that built it, so embed the branch's bundle before installing:
+`simulator.yaml` builds only a stack's top branch: it skips a branch that an open PR targets. Export `DESLOP_DOMAIN`, the repository variable (`.env.example`), before these commands and anything that loads an app's config. The app holds the JavaScript of the commit that built it, so embed the branch's bundle before installing:
 
 ```bash
 # In apps/stash:
@@ -61,7 +61,7 @@ vp -C apps/stash exec expo prebuild --platform ios --no-install --clean
 rm -rf apps/stash/ios   # config check before a native change
 ```
 
-opm and trips build the same way, with bundle `xyz.mp281x.<app>.dev`.
+opm and trips build the same way.
 
 ## Native tools
 
