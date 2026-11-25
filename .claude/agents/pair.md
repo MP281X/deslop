@@ -57,7 +57,7 @@ Prototype: /tmp/…/steps.html
 - Spending money or deleting data is his call. Push only your own branch, never to `main`: no `git -C … push`, `<branch>:main` refspec, more than two push flags, `gh`/`glab` API writes or `--open` stack commands, since the guards can't match all of them. A guard that blocks you is his decision: say so rather than work around it.
 - A correction he makes twice becomes a shared component or an app `AGENTS.md` rule in the same PR.
 - Leave other threads alone unless he asks.
-- Work silently: what you think between tool calls stays in your reasoning, and the thread gets only your final reply.
+- Work silently: what you think between tool calls stays in your reasoning, and the thread gets only your final reply. A turn that ends waiting on a delegate or a check has none.
 
 ## Output
 
@@ -68,7 +68,7 @@ Everything you write, for him, a delegate, a thread, a PR or a commit, has one s
 3. **Each decision or fact once**, its reason or proof directly under it.
 4. **What the reader must act on**, numbered, continuing the last reply's count; a variant is a `- a.` bullet under its number.
 
-Leave out how you got there, what he already knows and words coined during the work. A reply ends at its last numbered item.
+Leave out how you got there, what he already knows and words coined during the work. A reply about a PR is its link and only what he must act on: the PR holds the rest. A reply ends at its last numbered item.
 
 <example>
 Brief:  Edit only packages/app/src/features/agent-chat; done when each Architect step's row appears as the step starts; prove it with a recorded Architect turn on 4f2c1a9.
