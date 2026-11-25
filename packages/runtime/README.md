@@ -15,19 +15,19 @@ Run `<app> --help` for settings and its README for app-specific setup. Put servi
 
 Install with Node from Vite+: `service install` refuses a Node without npm beside it, which the updater runs. Install, update and uninstall of one app take turns. An update installs into a staging directory, promotes it only once npm installed the whole release, and checks that the restarted service serves the new version; otherwise it restarts the previous release and says whether that one serves again.
 
-On macOS, a GUI user must be logged in even when installation runs over SSH: launch agents start at login, not before it. Uninstall stops a running update and preserves application data.
+On macOS, keep a GUI user logged in even when installation runs over SSH: launch agents start at login, not before it. Uninstall stops a running update and preserves application data.
 
 ## Server entry
 
 `runApp` takes `maxFrameSize` (a `ByteSize`, default 1 MiB) for an app whose RPC payloads are larger: the socket refuses a bigger message before any schema reads it. An app whose services call `AiGateway` provides `AiGateway.layer` in its own routes, so other servers do not bundle the model client.
 
-`server/process.executeProcess(command, args, options?)` stops a command after 30 seconds and fails one that writes more than 4 MiB to stdout or stderr; `options.timeout` chooses another time limit.
+Run commands with `server/process.executeProcess(command, args, options?)`: it stops a command after 30 seconds (`options.timeout` chooses another limit) and fails one that writes more than 4 MiB to stdout or stderr.
 
 ## Authorization contracts
 
-`server/auth.requireAdmin(user, message)` returns a branded `shared/auth.Admin` capability. Admin-only service methods take that value; RPC contracts declare `.middleware(RpcAdmin)` and their handlers read `CurrentAdmin`. MCP and HTTP handlers obtain the capability with `requireAdmin` before calling the service.
+`server/auth.requireAdmin(user, message)` returns a branded `shared/auth.Admin` capability. Make admin-only service methods take that value; declare `.middleware(RpcAdmin)` on admin RPC contracts and read `CurrentAdmin` in their handlers; have MCP and HTTP handlers call `requireAdmin` before calling the service.
 
-Every built app binary has the same authorization check:
+Check any built app's authorization with its `probe`:
 
 ```bash
 node apps/deploy/dist/server.js probe
@@ -43,7 +43,7 @@ A pass proves the runtime's middleware and the inventory agree on those requests
 
 Provide `layerApnsClient` to `Apns.layer` at the server entry; app services keep their own HTTP client and notification policy. `APNS_KEY` accepts PKCS#8 PEM or base64 DER. The registered bundle selects production or sandbox, not the server's environment.
 
-Apps own per-device delivery records and exhaustively handle `shared/apns`'s `ApnsAnswer`: `Accepted`, `Retry`, `DeadToken`, `Refused`, `TooLarge` or `ChannelGone` (Apple no longer has the broadcast channel, so nothing is owed for it). `TooLarge` is a payload over Apple's 4 KB, answered without asking Apple, and for a Live Activity start without creating its channel; it is never a reason to forget a token. `sendToDevice`'s optional last argument is a collapse id: an alert sent again with the same id replaces the first on the phone. An expired provider token is renewed and answered `Retry`. `deleteChannel` returns Apple's answer: only `Retry` leaves the channel to delete again. A Live Activity start is three calls, so the app can write the channel down before the phone hears of it: `startHeld` answers without asking Apple when the start was just told to retry or is too large, `createChannel` makes the channel, and `startActivity(target, leg, channel, body)` sends the start on it. The runtime deletes no channel on its own: whatever the start's answer, the channel is the app's to delete. Its shared `Device` model keeps tokens redacted. `mobile/push-token`'s `registerPushTokens(listener, readerEffect, register)` takes the app's Expo listener, its initial-token reader and the effect that registers a token, and runs while mounted; the runtime must not import `expo-notifications` and autolink it into every app.
+Keep per-device delivery records in the app and handle every `shared/apns` `ApnsAnswer` case. `ChannelGone` means Apple no longer has the broadcast channel, so nothing is owed for it. `TooLarge` is a payload over Apple's 4 KB, answered without asking Apple, and for a Live Activity start without creating its channel; never forget a token because of it. `sendToDevice`'s optional last argument is a collapse id: an alert sent again with the same id replaces the first on the phone. The runtime renews an expired provider token and answers `Retry`. `deleteChannel` returns Apple's answer: delete the channel again only after `Retry`. A Live Activity start is three calls, so the app can write the channel down before the phone hears of it: `startHeld` answers without asking Apple when the start was just told to retry or is too large, `createChannel` makes the channel, and `startActivity(target, leg, channel, body)` sends the start on it. Delete channels from the app: the runtime deletes none on its own, whatever the start's answer. Its shared `Device` model keeps tokens redacted. `mobile/push-token`'s `registerPushTokens(listener, readerEffect, register)` takes the app's Expo listener, its initial-token reader and the effect that registers a token, and runs while mounted; keep `expo-notifications` out of the runtime, which would autolink it into every app.
 
 ## Client clocks
 
