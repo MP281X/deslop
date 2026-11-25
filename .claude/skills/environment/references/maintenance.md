@@ -15,8 +15,9 @@ A pass runs Update, then Reconcile, then Check on `worker`, and the Mac's steps 
 - **sysctl.** `/etc/sysctl.d` holds `90-agents.conf`, `90-unprivileged-ports.conf` and Debian's `README.sysctl`.
 - **`/etc`** beyond what packages own and Debian generates (accounts, host keys, locale, fstab, network, apt keys and sources): only the files Setup writes. No backups (`*.old`, dated `ufw` rules, sed's `*e` copies) or leftovers of purged packages.
 - **Ports** (`sudo ss -ltnup`): `sshd` on 22; Deploy's Caddy on TCP 80 and 443, UDP 443 and its admin port on `127.0.0.1`; Deploy's apps on `127.0.0.1:51xx`; T3 on `127.0.0.1:3773` and its Connect `cloudflared`; `tailscaled`; Minecraft on 25565.
-- **Home.** `deslop`, `dual`, `minecraft`; `.deslop` with one folder per app, some apps' `.env` and `threads-backup`, his archive of old machines' Claude and Codex transcripts; `.aws`, `.cache`, `.claude`, `.claude.json`, `.codex`, `.config`, `.docker`, `.local` (its `bin` holds only the `claude` and `fd` links), `.npm`, `.ssh`, `.t3`, `.vite-plus`; `.bashrc`, `.bash_history`, `.bash_logout`, `.profile`; `.gitconfig`, `.gitconfig-github`, `.gitconfig-datapizza`. `/root` holds only Debian's skeleton.
+- **Home.** `deslop`; `dual`, whose `dev/*` branches hold dev's unpushed work; `minecraft`, whose `data/world` is dev's old world, never selected; dev's Dual work in `dual-rethink`, `dual-preview-seed` and `dual-work`; `.deslop` with one folder per app, some apps' `.env` and `threads-backup`, his archive of old machines' Claude, Codex and OpenCode history; `.aws`, `.cache`, `.claude`, `.claude.json`, `.codex`, `.config`, `.docker`, `.local` (its `bin` holds only the `claude` and `fd` links), `.npm`, `.ssh`, `.t3`, `.vite-plus`; `.bashrc`, `.bash_history`, `.bash_logout`, `.profile`; `.gitconfig`, `.gitconfig-github`, `.gitconfig-datapizza`. `/root` holds only Debian's skeleton.
 - **Docker.** The `bridge`, `host` and `none` networks; containers, volumes, images and build cache only while their thread's preview, test run or build runs.
+- **Dual's public preview**, his one approved exception to [Previews](../SKILL.md#previews), stays running: the detached worktree `~/.t3/worktrees/dual/dual-preview`, its `preview-dual-preview` unit and listeners, its `wt-50116f654203` containers, volumes and network, the `dual-agent-sandbox:preview` and `dual-plugin-worker:preview` images its runs start, its `tailscale serve` port and Deploy's `dual-preview` exposure.
 
 ## Update
 
@@ -37,10 +38,10 @@ A thread owns a worktree through `worktreePath` in `orchestration_v2_projection_
 - **Tool caches**, when unused: `ms-playwright`, `node-gyp`, `puppeteer` and `google-chrome-for-testing-headless` in `~/.cache`, and `~/.npm/_npx`.
 - **Claude versions.** `~/.local/share/claude/versions/<version>` except the one `claude --version` reports.
 - **T3 versions.** Skip while `service-state.json` shows an uncommitted update. Keep `activeVersion`, the launcher named in `~/.config/systemd/user/t3code.service`'s `ExecStart`, and newer versions under `~/.t3/runtime/versions`.
-- **Docker**, when no Docker or Compose build runs: `docker image prune -a -f`, `docker builder prune -a -f`; never `docker system prune`.
+- **Docker**, when no Docker or Compose build runs: `docker image prune -a -f`, only `-f` while Dual's public preview runs, since its sandbox images have no container between runs; `docker builder prune -a -f`; never `docker system prune`.
 - **pnpm**, when no install runs: `pnpm store prune`.
 - **Previews** of gone worktrees: Alchemy's `preview:destroy`; stopped `preview-*` units; `docker rm -f -v` their containers, including Dual's `dualos-local-*-wt-<hash>` Postgres and OpenSandbox ones, whose seed data no other worktree uses. Also leftover `testcontainers-ryuk-*` and finished test runs' unnamed Postgres containers.
-- **Local branches** in `~/deslop` and `~/dual`: `git branch -D` only branches no worktree checks out, never the default branch.
+- **Local branches** in `~/deslop` and `~/dual`: `git branch -D` only branches no worktree checks out, never the default branch or `~/dual`'s `dev/*`.
 - **Remote branches**, only through this block: it deletes a branch whose merged or closed PR's head is the branch tip, whose nonempty commit list is all the user's, and which no worktree checks out; a failed query keeps it.
 
 ```bash
