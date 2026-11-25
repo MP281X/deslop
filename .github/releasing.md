@@ -3,7 +3,7 @@
 Actions use their major tag, such as `actions/cache@v6`, never a commit; `setup-vp` names its latest release, since its `v1` tag stopped at 1.15.
 
 - **npm.** `matteo_paludgnach` approves a first publish's URL.
-- **Apple.** Only GitHub workflows reach Apple, with the App Store Connect API key in repository secrets; nothing signs in to Apple on a worker.
+- **Apple.** Only GitHub workflows reach Apple, with the App Store Connect API key in repository secrets; nothing signs in to Apple on dev or the Mac.
 - **EAS.** Dev's Expo session, `mp281x`, an owner of `mp281x.xyz`, registers new projects; Release uses `EXPO_TOKEN`.
 
 ## A new app
@@ -44,7 +44,7 @@ Report each state with the run URL; read a failed job with `gh run view <run-id>
 - **Apple.** `altool --upload-package` succeeded and the run holds the `<app>-app-store-<fingerprint>` receipt. Apple refuses a build number twice, so a run that ended after the upload without its receipt can't be retried: the next release uploads that fingerprint again, as it does once a receipt expires after 80 days. Uploaded is not processed: check the app's TestFlight tab.
 - **Update.** A phone takes the `production` EAS Update only on a build with the same fingerprint.
 - **npm.** Each package that the Publish changed packages summary lists with a version answers it to `npm view @deslop/<name> version`.
-- **Worker.** Release's Install the release job had Deploy start every app's update: each app's `/api/runtime` answers 200 with the new version.
+- **Production.** Release's Install the release job saw npm serve each published app's version, then had Deploy start every app's update: each app's `/api/runtime` answers 200 with the new version.
 
 Public TestFlight and App Store release are separate outward actions.
 
