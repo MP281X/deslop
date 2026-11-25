@@ -41,6 +41,4 @@ Under the shared compiler's `exactOptionalPropertyTypes`, omit an absent optiona
 
 ## Rules
 
-Give each pattern one owning check, so a site gets one report and one fix: a custom rule defers to a native rule or the Effect compiler where one already owns the pattern, and competing compiler rewrites stay off.
-
-Read rule diagnostics and their published examples for individual patterns. Write custom rules over syntax only: Oxlint's JS plugin API exposes no TypeScript program.
+Read rule diagnostics and their published examples for individual patterns.
