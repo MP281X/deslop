@@ -5,11 +5,11 @@ description: Load before a command on `worker` or the Mac, starting a preview, o
 
 # Environment
 
-| Name          | Address                                | Role                                                                                                        |
-| ------------- | -------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| `worker`      | Tailnet `TBD`, public `109.238.11.220` | The Debian machine (Ryzen 7 9700X, 64 GB): production at `*.mp281x.xyz`, agents, previews, fix, check, test |
-| `macbook-pro` | `100.115.207.60`                       | The iOS Simulator, on demand; sometimes the control plane; no Deploy                                        |
-| `iphone-duo`  | `100.69.97.49`                         | The main control plane: T3 on the inner screen, held upright and sometimes rotated                          |
+| Name          | Address                                   | Role                                                                                                        |
+| ------------- | ----------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| `worker`      | `100.109.254.43`, public `109.238.11.220` | The Debian machine (Ryzen 7 9700X, 64 GB): production at `*.mp281x.xyz`, agents, previews, fix, check, test |
+| `macbook-pro` | `100.115.207.60`                          | The iOS Simulator, on demand; sometimes the control plane; no Deploy                                        |
+| `iphone-duo`  | `100.69.97.49`                            | The main control plane: T3 on the inner screen, held upright and sometimes rotated                          |
 
 - **Names.** Tailnet short names; `<name>.tailnet-8c4c.ts.net` has HTTPS certificates. SSH as `mp281x@worker`, `matteopaludgnach@macbook-pro`.
 - **Tools.** `vp`, `vpx`, `gh`, `glab` and the MCP gateway are installed and signed in, also over SSH.
