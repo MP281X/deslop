@@ -37,35 +37,7 @@ curl -fsS --max-time 5 https://git.datapizza.tech/users/sign_in >/dev/null || {
 
 ## Preview
 
-The Dual project's `preview` script, from the worktree root: Dual's own preview stack, rewritten at each start to production builds without watchers, under the same stack and stage, so `stop` and `settle` stay Dual's. When Dual changes a rewritten line, the check stops it; update the rewrite, never Dual.
-
-```bash
-u=preview-${PWD##*/} h=$(hostname -s).tailnet-8c4c.ts.net a=infra/saas/.alchemy
-# Vite gives `vite preview` the development server's backend proxy only when this flag is off.
-mkdir -p $a && printf '%s\n' 'import config from "../../../packages/app/vite.config.ts";' \
-  'export default env => config({ ...env, isPreview: false });' >$a/app.config.ts
-# build:runtime builds the frame once, so its watcher becomes an idle process.
-sed -e 's|"./local-preview.ts"|"../local-preview.ts"|; s|NODE_ENV: "development"|NODE_ENV: "production"|' \
-  -e 's|command: "vp run build:runtime",|command: "vp run build:runtime \&\& vp run @dual/app#build", shell: true,|' \
-  -e 's|command: "vp run watch:frame",|command: "sleep infinity",|' \
-  -e 's|command: "vp run watch:api:preview",|command: "bun --no-env-file --cwd packages/saas src/dev.ts api",|' \
-  -e 's|command: "vp run watch:worker:preview",|command: "PORT=$DUAL_WORKER_PORT exec bun --no-env-file --cwd packages/saas src/dev.ts preview-worker", shell: true,|' \
-  -e 's|command: "vp run watch:app:preview",|command: "exec vp -C packages/app preview -c ../../infra/saas/.alchemy/app.config.ts --host 127.0.0.1 --port $DUAL_APP_PORT --strictPort", shell: true,|' \
-  infra/saas/local.run.ts >$a/prod.run.ts
-! grep -n 'watch:\|"development"' $a/prod.run.ts || { echo 'Dual changed its preview stack: update this rewrite' >&2; exit 1; }
-sed 's|local\.run\.ts|.alchemy/prod.run.ts|' scripts/preview.sh >$a/prod.sh
-systemctl --user stop $u 2>/dev/null; systemctl --user reset-failed $u 2>/dev/null
-systemd-run --user -G -d -u $u -p KillSignal=SIGINT -p SuccessExitStatus=130 -E PATH="$HOME/.vite-plus/bin:$PATH" -E DUAL_PREVIEW_HOST=$h bash $a/prod.sh dev &&
-  i=$(systemctl --user show -p InvocationID --value $u) &&
-  until p=$(journalctl --user _SYSTEMD_INVOCATION_ID=$i -o cat | grep -oPm1 'Preview ready: \S+:\K[0-9]+'); do
-    systemctl --user is-active -q $u || exit 1; sleep 5
-  done &&
-  sudo tailscale serve --bg --https=$p http://127.0.0.1:$p >/dev/null && d=$((SECONDS + 300)) &&
-  # The URL prints only once it answers, so nobody starts on a 502.
-  until [ "$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 https://$h:$p/)" = 200 ]; do
-    ((SECONDS < d)) || { journalctl --user _SYSTEMD_INVOCATION_ID=$i -o cat -n 20 >&2; exit 1; }; sleep 2
-  done && echo https://$h:$p && echo 'Login: admin@dual.local / preview-password'
-```
+The Dual project's `preview` script rewrites Dual's own preview stack to production builds without watchers, under the same stack and stage, so Dual's `stop` and `settle` still apply. When Dual changes a rewritten line, the script's check stops it: update the rewrite in the project script with `t3_project_update`, never Dual.
 
 ## Tracing
 
