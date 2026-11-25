@@ -4,7 +4,7 @@
 
 - **Production.** On dev the app units use `--domain mp281x.xyz`; Deploy uses `--workers desktop,macbook-pro`, though the desktop is sold and never answers. Deploy's Caddy unit, `deslop-deploy-caddy.service`, owns the exposed hostnames on 80 and 443, which `/etc/sysctl.d/90-unprivileged-ports.conf` lets a user bind.
 - **MacBook.** Runs only Deploy, reached by dev's Deploy; its `~/.deslop/deploy` holds a week of resource history and its tailnet exposures.
-- **Stash.** `deslop-stash.service` serves `https://stash.mp281x.xyz`, the origin of the iPhone app and share sheet, from production data in `~/.deslop/stash`; `vp run preview stash` serves a scratch copy. `STASH_PROXY` is the DataImpulse residential plan "stash", with `__sessid.{session}` after the login.
+- **Stash.** The iPhone app and share sheet always use `https://stash.mp281x.xyz`, which `deslop-stash.service` serves from production data in `~/.deslop/stash`; `vp run preview stash` serves a scratch copy they never reach. `STASH_PROXY` is the DataImpulse residential plan "stash", with `__sessid.{session}` after the login.
 
 ## Accounts
 

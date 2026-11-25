@@ -1,6 +1,6 @@
 # Repositories
 
-Read only the relevant source of the repository whose subject matches, from a read-only shallow clone in `/tmp/repos/<name>` (`git pull --ff-only` when it exists): never edit, commit or push there.
+Read only the relevant source of the repository whose subject matches, in `/tmp/repos/<name>`: `git pull --ff-only` an existing clone first, else `git clone --depth 1`. Never edit, commit or push there.
 
 | Repository                                                                                                                                                    | For                                                 |
 | ------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------- |
