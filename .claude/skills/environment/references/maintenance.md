@@ -7,7 +7,7 @@ A pass runs Update, then Clean, then Check on each powered-on worker, the worker
 
 ## Update
 
-- **Debian.** `sudo apt-get update`, `upgrade -y`, `autoremove -y`, `clean`; `vp upgrade`; `gh extension upgrade --all`; the [AWS CLI](#aws-cli). glab: when `https://gitlab.com/api/v4/projects/gitlab-org%2Fcli/releases/permalink/latest` names a newer `tag_name`, `sudo dpkg -i` `https://gitlab.com/gitlab-org/cli/-/releases/<tag>/downloads/glab_<version>_linux_amd64.deb`.
+- **Debian.** `sudo apt-get update`, `upgrade -y`, `autoremove -y`, `clean`; `vp upgrade`; `gh extension upgrade --all`; the [AWS CLI](#aws-cli). glab: when `https://gitlab.com/api/v4/projects/gitlab-org%2Fcli/releases/permalink/latest` names a newer `tag_name`, download `https://gitlab.com/gitlab-org/cli/-/releases/<tag>/downloads/glab_<version>_linux_amd64.deb` and `sudo dpkg -i` it.
 - **Mac.** `vp upgrade`; report a pending macOS update from `softwareupdate -l`.
 - **T3 CLI.** When `t3 --version` differs from `activeVersion` in `~/.t3/runtime/service-state.json`, `vp install -g t3@<activeVersion>`, never newer: T3 updates only from its UI.
 - **Configuration.** `git -C ~/deslop pull --ff-only`. When local changes block it, read `git -C ~/deslop diff -w`: `git -C ~/deslop restore .` only a harness re-indent, then pull again; a real change goes into a PR.

@@ -1,6 +1,6 @@
 # Releasing
 
-Actions use their major tag, such as `actions/cache@v6`, never a commit; `setup-vp` names its latest release.
+Actions use their major tag, such as `actions/cache@v6`, never a commit; `setup-vp` names its latest release, since its `v1` tag stopped at 1.15.
 
 ## A new app
 
