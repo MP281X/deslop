@@ -5,21 +5,18 @@ description: Load before a command on another worker, starting a preview, openin
 
 # Environment
 
-A headless Debian worker, a MacBook and an iPhone Duo in one tailnet.
-
 | Name          | Address          | Role                                                                               |
 | ------------- | ---------------- | ---------------------------------------------------------------------------------- |
-| `ikoula`      | TBD              | The only worker (Ryzen 7 9700X, 64 GB): agents, previews, fix, check and test      |
+| `ikoula`      | TBD              | The only Debian worker (Ryzen 7 9700X, 64 GB): agents, previews, fix, check, test  |
 | `dev`         | `100.68.201.107` | Being retired: Deslop apps for `*.mp281x.xyz` until its reset                      |
 | `macbook-pro` | `100.115.207.60` | The iOS Simulator and a Deploy worker, on demand; sometimes the control plane      |
 | `iphone-duo`  | `100.69.97.49`   | The main control plane: T3 on the inner screen, held upright and sometimes rotated |
 
-- **Names.** MagicDNS short names; `<name>.tailnet-8c4c.ts.net` has HTTPS certificates. SSH as `mp281x@ikoula`, `mp281x@dev`, `matteopaludgnach@macbook-pro`.
-- **Tools.** `vp` and `vpx` on `PATH`, also over SSH; `gh`, `glab` and the MCP gateway signed in.
-- **Git refs.** T3 checkpoints under `refs/t3/`; search history with `--branches --remotes`.
-- **Checks.** Fix, check and test run on the worker, unthrottled, before each push; CI only confirms. T3 already gives agents a low CPU weight.
-- **Auxiliary services.** Run task-local ones as temporary containers, not installs on the worker.
-- **Agent MCP.** [Keyring and MCP](references/maintenance.md#keyring-and-mcp).
+- **Names.** Tailnet short names; `<name>.tailnet-8c4c.ts.net` has HTTPS certificates. SSH as `mp281x@ikoula`, `mp281x@dev`, `matteopaludgnach@macbook-pro`.
+- **Tools.** `vp`, `vpx`, `gh`, `glab` and the MCP gateway are installed and signed in, also over SSH.
+- **Git refs.** T3 checkpoints live under `refs/t3/`; search history with `--branches --remotes`.
+- **Checks.** Fix, check and test run on the worker, unthrottled, before each push; CI only confirms.
+- **Auxiliary services** a task needs run as temporary containers, not installs.
 
 | Reference                                    | For                                                      |
 | -------------------------------------------- | -------------------------------------------------------- |
@@ -31,14 +28,13 @@ A headless Debian worker, a MacBook and an iPhone Duo in one tailnet.
 
 ## Previews
 
-One per worktree: the systemd user unit `preview-<worktree name>`, shared over tailnet HTTPS.
+Start one only when a capture needs it, from the worktree root, through the project's `preview` script (`t3_project_read`): Deslop's `vp run preview [app]`, which needs the app's name for an iOS app's server such as Stash's, and `vp run preview:stop`; Dual's [prod-like preview](references/dual.md#preview). It runs in the systemd user unit `preview-<worktree name>` and prints its tailnet HTTPS URL once it answers. An app's own `preview` script or a background task dies with the turn.
 
-- **Script.** When a capture needs it, start the preview from the worktree root and give its HTTPS URL once it answers. Deslop's is `vp run preview [app]`, by default the first app with a web page (`index.html`) the branch changes, else Portfolio; an iOS app's server, such as Stash's, starts only by name. It prints the URL only once that URL's `/api/runtime` names the app; it fails at once when another checkout or server holds its port, and with the unit's last log lines when the unit stops or five minutes pass, stopping what it started. `vp run preview:stop` ends it. Elsewhere, run the project's preview script (read it with `t3_project_read`); Dual's is its [prod-like preview](references/dual.md#preview). An app's own `preview` script or a background task bypasses the unit and dies with the turn.
-- **Webhooks.** Never open a Funnel or another public route for a preview, since it puts the whole port on the internet; when a proof needs a real webhook delivery, say that it is blocked.
+Never open a Funnel or another public route for a preview: it puts the whole port on the internet. A proof that needs a real webhook delivery is blocked.
 
 ## Tools
 
-| Question                        | Tool                                                                                                                              |
-| ------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| Runtime state                   | Deploy's `list_apps` or `read_resource_history`, with the short worker name (`dev`); host checks follow the maintenance reference |
-| Runtime error, trace or latency | Scope's `list_operations`, then `search_traces`, then `read_trace` or `measure_latency`                                           |
+| Question                        | Tool                                                                                    |
+| ------------------------------- | --------------------------------------------------------------------------------------- |
+| Runtime state                   | Deploy's `list_apps` or `read_resource_history`, with the short worker name (`dev`)     |
+| Runtime error, trace or latency | Scope's `list_operations`, then `search_traces`, then `read_trace` or `measure_latency` |

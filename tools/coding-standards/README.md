@@ -1,7 +1,5 @@
 # @deslop/coding-standards
 
-This package provides Vite+ lint and TypeScript presets and a `coding-standards` CLI.
-
 ```bash
 vp add -D @deslop/coding-standards@latest vite-plus@latest @effect/tsgo@latest tsrs@latest
 ```
@@ -28,17 +26,13 @@ export default defineConfig({lint: {extends: [lint]}})
 }
 ```
 
-Pass `--type-aware` and `--type-check` to turn on type-aware lint and type checking: the preset leaves them off so a syntax-only pass stays possible. `--tsrs-lint` runs them on the Effect-patched tsrs.
+The preset leaves type-aware lint and type checking off, so the scripts turn them on.
 
 ```jsonc
 // tsconfig.json
 {"extends": "@deslop/coding-standards/tsconfig.json"}
 ```
 
-Add your own ignores and repository-specific selectors alongside the preset's `lint.rules['eslint-js/no-restricted-syntax']`.
+Add ignores and repository-specific selectors to the preset's `lint.rules['eslint-js/no-restricted-syntax']`, not in place of it.
 
 Under the shared compiler's `exactOptionalPropertyTypes`, omit an absent optional property, or pass an `Option` through when absence is part of the value. Use explicit `| undefined` only for third-party contracts that require it.
-
-## Rules
-
-Read rule diagnostics and their published examples for individual patterns.

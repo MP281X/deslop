@@ -2,15 +2,15 @@
 
 - **Drafts.** The first push opens a draft. Before ending a turn, unlink PRs the host reports merged or closed.
 - **Ready.** `main` has no branch protection, so a PR is ready for him only once its flow was walked and Verify passed in its pull request run on the latest `main`. When `main` moves, rebase and push for a new run; a PR with a merge conflict gets no run until it is rebased.
-- **Stacks.** A stack exists to ease review: split only where a reviewer would otherwise lose the thread, and a layer need not merge on its own. Any PR not based on the default branch is a stack layer made with the commands below, never `gh pr create --base <branch>` or a changed base; add one at any time. Corrections fold into their own layer before restacking onto the latest default branch.
+- **Stacks** exist to ease review: split only where a reviewer would otherwise lose the thread; a layer need not merge on its own. Any PR not based on the default branch is a layer made with the commands below, never `gh pr create --base <branch>` or a changed base. Corrections fold into their own layer before restacking onto the latest default branch.
 
-GitHub stacks act on the checked-out branch's stack; GitHub rebases the next layer when the one below merges.
+GitHub stacks act on the checked-out branch's stack and rebase the next layer when the one below merges:
 
 ```bash
 gh stack init <bottom> [<next> …]    # start, or adopt existing branches bottom first
 gh stack add <branch>                # a new layer on top, checked out before its first commit
-gh stack rebase [--upstack]          # before a push, or above an amended layer; --continue or --abort on a conflict
-gh stack submit --auto               # first push: opens each PR as a draft on its parent
+gh stack rebase [--upstack]          # before a push, or above an amended layer
+gh stack submit --auto               # first push: each PR a draft on its parent
 gh stack push                        # later rounds
 gh stack sync --prune                # after a merge below
 ```

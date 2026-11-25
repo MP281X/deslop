@@ -1,19 +1,12 @@
 # Repositories
 
-Read only the relevant source of the repository whose subject matches.
+Read only the relevant source of the repository whose subject matches, from a read-only shallow clone in `/tmp/repos/<name>` (`git pull --ff-only` when it exists): never edit, commit or push there.
 
-## Packages we use
-
-| Repository                                                                    | Source for            |
-| ----------------------------------------------------------------------------- | --------------------- |
-| [Effect-TS/effect](https://github.com/Effect-TS/effect)                       | Effect APIs and atoms |
-| [typeonce-dev/effect-machine](https://github.com/typeonce-dev/effect-machine) | State machines        |
-| [shadcn-ui/ui](https://github.com/shadcn-ui/ui)                               | Shipped components    |
-
-## References for architecture and design
-
-| Repository                                                                                                                                                    | Reference for                                       |
+| Repository                                                                                                                                                    | For                                                 |
 | ------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------- |
+| [Effect-TS/effect](https://github.com/Effect-TS/effect)                                                                                                       | Effect APIs and atoms                               |
+| [typeonce-dev/effect-machine](https://github.com/typeonce-dev/effect-machine)                                                                                 | State machines                                      |
+| [shadcn-ui/ui](https://github.com/shadcn-ui/ui)                                                                                                               | Shipped components                                  |
 | [kitlangton/effect-solutions](https://github.com/kitlangton/effect-solutions)                                                                                 | Effect services                                     |
 | [Effect-TS/skills](https://github.com/Effect-TS/skills)                                                                                                       | Agent knowledge of Effect                           |
 | [pingdotgg/t3code](https://github.com/pingdotgg/t3code)                                                                                                       | Server and client contracts, RPC, MCP, Expo, web UX |
@@ -26,14 +19,3 @@ Read only the relevant source of the repository whose subject matches.
 | [mattpocock/skills](https://github.com/mattpocock/skills)                                                                                                     | Writing for agents                                  |
 | [cursor/plugins](https://github.com/cursor/plugins)                                                                                                           | Skills that augment strong models                   |
 | [anthropics/skills](https://github.com/anthropics/skills)                                                                                                     | Skill evaluation                                    |
-
-## Clones
-
-Read-only, in `/tmp/repos/<repository>`: never edit, commit or push there.
-
-```mermaid
-stateDiagram-v2
-    [*] --> Reading : a repository is needed [/tmp/repos/NAME exists] / git -C /tmp/repos/NAME pull --ff-only
-    [*] --> Reading : a repository is needed [missing] / git clone --depth 1 https://github.com/OWNER/NAME /tmp/repos/NAME
-    Reading --> [*] : relevant source read
-```

@@ -8,24 +8,15 @@ Writes go only to GitHub `MP281X`, GitLab `matteopaludgnach` and the user's Disc
 
 ## AWS
 
-The `aws` CLI is only for Dual's resources, and read-only: never create, change, delete, start, stop or invoke anything, whatever the role allows. Leave the account's other projects alone. Its default profile is the user's SSO role `DualosOperator` on account `datapizzadevprod`, region `eu-south-1`. An expired session needs `aws sso login --sso-session datapizza --use-device-code --no-browser`: give the user the autofill URL once and end the turn.
+The `aws` CLI's [default profile](maintenance.md#aws-cli) is only for Dual's resources, and read-only: never create, change, delete, start, stop or invoke anything, whatever the role allows, and leave the account's other projects alone. An expired session needs `aws sso login --sso-session datapizza --use-device-code --no-browser`: give the user the autofill URL once and end the turn.
 
 ## Jira
 
-Project `DOS`, board 1053, `datapizza.atlassian.net`; the user's account ID `712020:87e4f57e-6b5d-40ab-8dfa-faf159ead71a`.
+Project `DOS`, board 1053, `https://datapizza.atlassian.net/browse/<key>`; the user's account ID is `712020:87e4f57e-6b5d-40ab-8dfa-faf159ead71a`.
 
-- **Tools.** Dual's MCP `execute` (`dualos__execute` through the gateway), which finds its own tools (`atlassian-api.*`), never `acli`. Access is a service account: `currentUser()` and `@me` are not the user, so name the account ID. `To Do` is `status = "To Do"` (`statusCategory` also returns Backlog). A slow or confusing step is a Dual defect for the final reply.
-- **Link.** `https://datapizza.atlassian.net/browse/<key>`.
-
-```mermaid
-stateDiagram-v2
-    [*] --> Ranking : user asks what to work on
-    Ranking --> Proposed : unassigned To Do Epics, Tasks, Stories and Bugs ranked by priority (P1 highest), size and fit with the code
-    Proposed --> Ranking : user steers
-    Proposed --> [*] : user approves / assign each to the user, transition 21 to Doing, the only Jira writes
-    [*] --> Reading : a ticket key in a request, branch or commit, work the user started
-    Reading --> [*] : read it / quote the requirements used
-```
+- **Tools.** Dual's MCP `execute` (`dualos__execute` through the gateway), which finds its own `atlassian-api.*` tools, never `acli`. It signs in as a service account, so `currentUser()` and `@me` are not the user: name the account ID. `To Do` is `status = "To Do"`; `statusCategory` also returns Backlog. A slow or confusing step is a Dual defect for the final reply.
+- **What to work on.** Rank unassigned To Do Epics, Tasks, Stories and Bugs by priority (P1 highest), size and fit with the code, and propose them. Once the user approves, assign each to him and apply transition 21 to Doing: the only Jira writes.
+- **A ticket key** in a request, branch or commit: read it and quote the requirements used.
 
 ## Google
 
@@ -33,14 +24,7 @@ The same `execute` reads, never writes, the user's work calendar and mail, `matt
 
 ## VPN
 
-```mermaid
-stateDiagram-v2
-    [*] --> Probing : the host is needed
-    Probing --> [*] : probe [the sign-in page answers]
-    Probing --> Reconnecting : probe [no answer] / on dev, restart the session below
-    Reconnecting --> AwaitingSignIn : sign-in URL printed / give the user the URL once, end the turn
-    AwaitingSignIn --> Probing : user confirms sign-in
-```
+When `git.datapizza.tech`'s sign-in page stops answering, restart the session on dev; give the user the printed sign-in URL once, end the turn, and probe again once he confirms.
 
 ```bash
 curl -fsS --max-time 5 https://git.datapizza.tech/users/sign_in >/dev/null || {

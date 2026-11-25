@@ -1,62 +1,29 @@
 # Maintenance
 
-A pass runs under the approved maintenance scope; removals go to a Sonnet delegate, since Codex rejects `rm -rf`:
+A pass runs Update, Clean and Check on every powered-on worker at once, then reports faults, unknown owners, denied steps and an update waiting on the user's restart. Removals go to a Sonnet delegate, since Codex rejects `rm -rf`. A refusal or failure skips only its step.
 
-```mermaid
-stateDiagram-v2
-    [*] --> Updating : maintenance approved / run each powered-on worker concurrently
-    Updating --> Cleaning : updates finish / clean unused resources
-    Cleaning --> Checking : cleanup finishes / run Check
-    Checking --> [*] : every worker checked / report faults, unknown owners, denied steps and an update waiting on the user's restart
-```
-
-- **The user's.** `t3 update`, `t3 doctor --fix`, `t3 service restart` and reboots; a pending T3 update is never reported.
+- **The user's.** `t3 update`, `t3 doctor --fix`, `t3 service restart` and reboots; never report a pending T3 update.
 - **Never touch** history (T3's databases and logs, `~/.claude/projects`, `~/.codex/sessions`), credentials, production data, running jobs or worktrees of running threads.
 
 ## Update
 
-| Target          | Action                                                                                                                                                                                                                                                  |
-| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Debian packages | `sudo apt-get update`, `sudo apt-get upgrade -y`, `sudo apt-get autoremove -y`, `sudo apt-get clean`; `vp upgrade`; `gh extension upgrade --all`.                                                                                                       |
-| glab            | When `curl -fsSL https://gitlab.com/api/v4/projects/gitlab-org%2Fcli/releases/permalink/latest` names a newer `tag_name`, download `https://gitlab.com/gitlab-org/cli/-/releases/<tag>/downloads/glab_<version>_linux_amd64.deb` and `sudo dpkg -i` it. |
-| Mac             | `vp upgrade`; label a pending macOS update from `softwareupdate -l`.                                                                                                                                                                                    |
-| AWS CLI         | The [AWS CLI block](#aws-cli).                                                                                                                                                                                                                          |
-| T3 CLI          | When `t3 --version` differs from `activeVersion` in `~/.t3/runtime/service-state.json`, `vp install -g t3@<activeVersion>`; never newer, since T3 updates only from its UI.                                                                             |
-
-```mermaid
-stateDiagram-v2
-    [*] --> Pulling : configuration update / git -C ~/deslop pull --ff-only
-    Pulling --> [*] : pull succeeds
-    Pulling --> Diffing : pull blocked by local changes / git -C ~/deslop diff -w
-    Diffing --> Pulling : diff read [only a harness re-indent] / git -C ~/deslop restore .
-    Diffing --> [*] : diff read [a real change] / it goes into a PR
-```
+- **Debian.** `sudo apt-get update`, `upgrade -y`, `autoremove -y`, `clean`; `vp upgrade`; `gh extension upgrade --all`; the [AWS CLI](#aws-cli). glab: when `https://gitlab.com/api/v4/projects/gitlab-org%2Fcli/releases/permalink/latest` names a newer `tag_name`, `sudo dpkg -i` its `glab_<version>_linux_amd64.deb`.
+- **Mac.** `vp upgrade`; report a pending macOS update from `softwareupdate -l`.
+- **T3 CLI.** When `t3 --version` differs from `activeVersion` in `~/.t3/runtime/service-state.json`, `vp install -g t3@<activeVersion>`, never newer: T3 updates only from its UI.
+- **Configuration.** `git -C ~/deslop pull --ff-only`. When local changes block it, read `git -C ~/deslop diff -w`: `git -C ~/deslop restore .` only a harness re-indent; a real change goes into a PR.
 
 ## Clean
 
-A refusal or failure skips only its step. A thread owns a worktree through `worktreePath` in `orchestration_v2_projection_threads.payload_json`, delegated children through `lineage.rootThreadId`; `settledAt`, `archived_at` or `deleted_at` settles it.
+A thread owns a worktree through `worktreePath` in `orchestration_v2_projection_threads.payload_json`, its delegated children through `lineage.rootThreadId`; `settledAt`, `archived_at` or `deleted_at` settles it. Remove a worktree only when its thread is settled and, re-read right before removal, still settled with no process using it: the project's settle script, `git worktree remove --force --force`, `git worktree prune`.
 
-| Target          | Guard and action                                                                                                                                                                                                                                                                                                                                                       |
-| --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Tool caches     | When unused, `rm -rf ~/.cache/{ms-playwright,node-gyp,puppeteer,google-chrome-for-testing-headless} ~/.npm/_npx`.                                                                                                                                                                                                                                                      |
-| Claude versions | Remove `~/.local/share/claude/versions/<version>` except the one `claude --version` reports.                                                                                                                                                                                                                                                                           |
-| T3 versions     | Skip while `~/.t3/runtime/service-state.json` shows an uncommitted update. Keep `activeVersion`, the launcher named in `~/.config/systemd/user/t3code.service`'s `ExecStart`, and newer versions under `~/.t3/runtime/versions`.                                                                                                                                       |
-| Docker          | When no Docker or Compose build runs, `docker image prune -a -f` and `docker builder prune -a -f`; never `docker system prune`.                                                                                                                                                                                                                                        |
-| pnpm            | When no install runs, `pnpm store prune`.                                                                                                                                                                                                                                                                                                                              |
-| Previews        | For gone worktrees, run Alchemy's `preview:destroy`, remove stopped `preview-*` units and their containers, and stop their surviving Dual `dualos-local-*-wt-<hash>` Postgres and OpenSandbox containers. `docker stop` preserves seed data; Dual's `settle` destroys it. Remove leftover `testcontainers-ryuk-*` and finished test runs' unnamed Postgres containers. |
-| Local branches  | In `~/deslop` and `~/dual`, `git branch -D` only for branches no worktree checks out, never the default branch.                                                                                                                                                                                                                                                        |
-| Remote branches | Use the block below only for merged or closed PRs whose head equals the branch tip, whose nonempty commit list is entirely the user's, and whose branch no worktree of this clone checks out. A failed query keeps the branch.                                                                                                                                         |
-| Mac caches      | Keep active Claude, Node and Vite+ versions; use the Mac block below.                                                                                                                                                                                                                                                                                                  |
-
-```mermaid
-stateDiagram-v2
-    [*] --> Owned : worktree discovered
-    Owned --> Settled : its thread settles
-    Settled --> Owned : ownership re-read right before removal [a live owner, or a process uses it]
-    Settled --> [*] : ownership re-read [still settled, unused] / the settle script, git worktree remove --force --force, git worktree prune
-```
-
-Remote branches:
+- **Tool caches**, when unused: `rm -rf ~/.cache/{ms-playwright,node-gyp,puppeteer,google-chrome-for-testing-headless} ~/.npm/_npx`.
+- **Claude versions.** `~/.local/share/claude/versions/<version>` except the one `claude --version` reports.
+- **T3 versions.** Skip while `service-state.json` shows an uncommitted update. Keep `activeVersion`, the launcher named in `~/.config/systemd/user/t3code.service`'s `ExecStart`, and newer versions under `~/.t3/runtime/versions`.
+- **Docker**, when no Docker or Compose build runs: `docker image prune -a -f`, `docker builder prune -a -f`; never `docker system prune`.
+- **pnpm**, when no install runs: `pnpm store prune`.
+- **Previews** of gone worktrees: Alchemy's `preview:destroy`; stopped `preview-*` units and their containers; `docker stop` (which keeps seed data, unlike Dual's `settle`) their surviving `dualos-local-*-wt-<hash>` Postgres and OpenSandbox containers. Also leftover `testcontainers-ryuk-*` and finished test runs' unnamed Postgres containers.
+- **Local branches** in `~/deslop` and `~/dual`: `git branch -D` only branches no worktree checks out, never the default branch.
+- **Remote branches**, only through this block: it deletes a branch whose merged or closed PR's head is the branch tip, whose commits are all the user's, and which no worktree checks out; a failed query keeps it.
 
 ```bash
 git fetch -q --prune origin
@@ -74,7 +41,7 @@ for b in $(git for-each-ref --format='%(refname:lstrip=3)' refs/remotes/origin |
 done
 ```
 
-Mac caches:
+- **Mac caches**, keeping the active Claude, Node and Vite+ versions:
 
 ```bash
 find ~/Library/Caches -maxdepth 1 -type d \( -iname '*updater*' -o -name '*.ShipIt' -o -name 'com.apple.Safari*' -o -name 'com.t3tools.t3code*' \) -exec rm -r -- {} +
@@ -83,52 +50,28 @@ rm -rf ~/Library/Caches/Google/Chrome ~/.cache/codex-runtimes "$HOME/Library/App
 
 ## Check
 
-Every pass:
-
-- **Disk.** `df -h` and `df -i` per disk mount; `du -xhd1` under the home, `/var/lib` and `/tmp`; `sudo lsof -l +L1 -nP` for deleted-but-open files.
-- **Ports.** `ss -ltnp`: name each listener's unit or container. A container published on `0.0.0.0` other than Minecraft's 25565 is a fault.
-- **Units.** `systemctl --failed` and `systemctl --user --failed` empty.
+- **Disk.** `df -h` and `df -i` per mount; `du -xhd1` under the home, `/var/lib` and `/tmp`; `sudo lsof -l +L1 -nP` for deleted-but-open files.
+- **Ports.** `ss -ltnp`: name each listener's unit or container. A container published on `0.0.0.0`, except Minecraft's 25565, is a fault.
+- **Units.** `systemctl --failed` and `systemctl --user --failed` are empty.
 - **Agents.** `find ~/.claude/settings.json ~/.claude/agents/pair.md ~/.claude/skills ~/.codex/config.toml ~/.codex/instructions.md ~/.codex/rules/deny.rules ~/.codex/skills/{*,.system} -maxdepth 0 ! -type l` prints only `~/.codex/skills/.system`; `find -L ~/.claude/skills ~/.codex/skills -maxdepth 1 -type l` prints nothing; `~/deslop` is clean on current `main`.
 - **T3.** `t3 --version` equals `activeVersion`; `t3 doctor --base-dir ~/.t3 --dry-run` prints "Nothing to repair"; `t3 connect status` ends "✓ Other devices can reach this machine".
 - **sshd.** `sudo sshd -T` shows `usepam yes`, `passwordauthentication no`, `permitrootlogin no`.
-- **VPN.** `git -C ~/dual ls-remote -q origin HEAD` succeeds; otherwise reconnect by Dual's **VPN**.
+- **VPN.** `git -C ~/dual ls-remote -q origin HEAD` succeeds; otherwise Dual's [VPN](dual.md#vpn).
 
 ## Setup and repair
 
 ### Debian worker
 
-```mermaid
-stateDiagram-v2
-    [*] --> Base : Debian netinst
-    Base --> Packages : base configured / install packages
-    Packages --> Git : packages installed / configure Git
-    Git --> Network : Git configured / configure networking
-    Network --> Shell : networking configured / configure the shell
-    Shell --> T3 : shell configured / install T3
-    T3 --> Accounts : T3 installed / show the user each sign-in link
-    Accounts --> KeysOnly : a key login from another machine succeeds / disable password login
-    KeysOnly --> [*] : sshd configuration validates / sudo sshd -t, then sudo systemctl reload ssh
-```
+From a Debian netinst, in order:
 
-| State    | Commands                                                                                                                                                                                                                                                                                                                                                  |
-| -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Base     | Passwordless sudo in `/etc/sudoers.d/99-mp281x-nopasswd` (0440); install `sudo`, `network-manager`, `ufw`; `printf 'D /tmp 1777 root root 7d\n' \| sudo tee /etc/tmpfiles.d/tmp.conf && sudo systemctl mask tmp.mount`                                                                                                                                    |
-| Packages | Docker, `gh`, `glab`, `unattended-upgrades`, ripgrep, jq, sqlite3, btop, unzip, the [AWS CLI](#aws-cli); `mp281x` in `docker`; `/etc/docker/daemon.json`: `{"live-restore": true, "ip": "127.0.0.1", "default-network-opts": {"bridge": {"com.docker.network.bridge.host_binding_ipv4": "127.0.0.1"}}}`                                                   |
-| Git      | `rebase.updateRefs`, `rebase.autoSquash`, `rebase.autoStash`, `push.autoSetupRemote`, `fetch.prune`, `rerere.enabled` true; `diff.algorithm histogram`, `merge.conflictStyle zdiff3`, `init.defaultBranch main`; [identity](#git-identity)                                                                                                                |
-| Network  | dev: `openvpn3 config-import --config <datapizza.ovpn> --name datapizza --persistent`; the block below; then, over the tailnet, `ufw default deny incoming`, dev allowing TCP 80, 443, 25565 and UDP 443                                                                                                                                                  |
-| Shell    | `loginctl enable-linger mp281x`; Vite+ with `VP_HOME="$HOME/.vite-plus"`, Claude Code; `~/.bashrc`'s first lines put `$HOME/.local/bin:$HOME/.vite-plus/bin` on `PATH`; `~/.config/pnpm/config.yaml`: `minimumReleaseAgeExclude: ["@deslop/*"]`                                                                                                           |
-| T3       | `vp install -g t3@nightly`, `t3 service install`, `t3 connect link --headless`, `t3 connect publish`, `t3 browser setup`, `sudo hostnamectl set-hostname --pretty <name>`                                                                                                                                                                                 |
-| Accounts | `gh auth login`, `glab auth login --hostname git.datapizza.tech`, `claude auth login`, `codex login --device-auth`, [AWS sign-in](#aws-cli); `gh auth setup-git`, `gh extension install github/gh-stack`; clone both repositories; `t3 project add --title <name> <path>`; [agent links](#agent-configuration-links), [keyring and MCP](#keyring-and-mcp) |
-| KeysOnly | `/etc/ssh/sshd_config.d/10-keys-only.conf`: `UsePAM yes`, `PasswordAuthentication no`, `KbdInteractiveAuthentication no`, `PermitRootLogin no`, `X11Forwarding no`                                                                                                                                                                                        |
-
-```bash
-curl -fsSL https://pkgs.tailscale.com/stable/debian/trixie.noarmor.gpg | sudo tee /usr/share/keyrings/tailscale-archive-keyring.gpg >/dev/null
-curl -fsSL https://pkgs.tailscale.com/stable/debian/trixie.tailscale-keyring.list | sudo tee /etc/apt/sources.list.d/tailscale.list
-sudo apt-get update && sudo apt-get install -y tailscale
-openvpn3 configs-list 2>/dev/null | grep -q datapizza && R=$(getent ahostsv4 git.datapizza.tech | awk 'NR == 1 {print $1}')/32
-sudo tailscale up --accept-routes --advertise-routes=$R
-sudo tailscale set --operator=mp281x
-```
+1. **Base.** Passwordless sudo in `/etc/sudoers.d/99-mp281x-nopasswd` (0440); `sudo`, `network-manager`, `ufw`; `printf 'D /tmp 1777 root root 7d\n' | sudo tee /etc/tmpfiles.d/tmp.conf && sudo systemctl mask tmp.mount`.
+2. **Packages.** Docker, `gh`, `glab`, `unattended-upgrades`, ripgrep, jq, sqlite3, btop, unzip, the [AWS CLI](#aws-cli); `mp281x` in `docker`; `/etc/docker/daemon.json`: `{"live-restore": true, "ip": "127.0.0.1", "default-network-opts": {"bridge": {"com.docker.network.bridge.host_binding_ipv4": "127.0.0.1"}}}`.
+3. **Git.** `rebase.updateRefs`, `rebase.autoSquash`, `rebase.autoStash`, `push.autoSetupRemote`, `fetch.prune`, `rerere.enabled` true; `diff.algorithm histogram`, `merge.conflictStyle zdiff3`, `init.defaultBranch main`. Identity by remote, through `includeIf.hasconfig:remote.*.url:` on the https, `git@` and `ssh://` URLs of each host: `MP281X <dev@mp281x.xyz>` for `github.com`, `Matteo Paludgnach <matteopaludgnach@datapizza.tech>` for `git.datapizza.tech`.
+4. **Network.** dev only: `openvpn3 config-import --config <datapizza.ovpn> --name datapizza --persistent`. Tailscale from its Debian `trixie` apt repository; `sudo tailscale up --accept-routes`, on dev with `--advertise-routes=<git.datapizza.tech's IPv4>/32`; `sudo tailscale set --operator=mp281x`. Then, over the tailnet, `ufw default deny incoming`, dev allowing TCP 80, 443, 25565 and UDP 443.
+5. **Shell.** `loginctl enable-linger mp281x`; Vite+ with `VP_HOME="$HOME/.vite-plus"`, Claude Code; `~/.bashrc`'s first lines put `$HOME/.local/bin:$HOME/.vite-plus/bin` on `PATH`; `~/.config/pnpm/config.yaml`: `minimumReleaseAgeExclude: ["@deslop/*"]`.
+6. **T3.** `vp install -g t3@nightly`, `t3 service install`, `t3 connect link --headless`, `t3 connect publish`, `t3 browser setup`, `sudo hostnamectl set-hostname --pretty <name>`.
+7. **Accounts.** Give the user each sign-in link: `gh auth login`, `glab auth login --hostname git.datapizza.tech`, `claude auth login`, `codex login --device-auth`, [AWS](dual.md#aws). Then `gh auth setup-git`, `gh extension install github/gh-stack`; clone both repositories; `t3 project add --title <name> <path>`; [agent links](#agent-configuration-links); [keyring and MCP](#keyring-and-mcp).
+8. **Keys only**, once a key login from another machine succeeds: `/etc/ssh/sshd_config.d/10-keys-only.conf` with `UsePAM yes`, `PasswordAuthentication no`, `KbdInteractiveAuthentication no`, `PermitRootLogin no`, `X11Forwarding no`; `sudo sshd -t`, then `sudo systemctl reload ssh`.
 
 ### Agent configuration links
 
@@ -151,7 +94,7 @@ codex execpolicy check --rules ~/.codex/rules/deny.rules true
 
 ### T3 settings
 
-Copy after a change, with `target=mp281x@<other worker>`.
+After a change, copy them with `target=mp281x@<other worker>`:
 
 ```bash
 q="SELECT project_id, workspace_root FROM projection_projects WHERE deleted_at IS NULL"
@@ -175,6 +118,8 @@ Keep each project's `scripts` (`t3_project_update`) equal to `projectSettingsOve
 
 ### Keyring and MCP
 
+Headless CLI sign-ins keep their tokens in a Secret Service; Gateway needs no login, since Auth names the worker's tailnet owner, and Codex declares it in its checked-in config.
+
 ```bash
 sudo apt-get install -y gnome-keyring libsecret-tools
 mkdir -p ~/.config/systemd/user ~/.local/share/dbus-1/services
@@ -185,27 +130,22 @@ printf '%s\n' '[D-BUS Service]' 'Name=org.freedesktop.secrets' 'Exec=/bin/false'
   > ~/.local/share/dbus-1/services/org.freedesktop.secrets.service
 busctl --user call org.freedesktop.DBus / org.freedesktop.DBus ReloadConfig
 systemctl --user daemon-reload && systemctl --user enable --now secret-service.service
-claude mcp add --transport http --scope user gateway https://gateway.mp281x.xyz/mcp  # Codex declares Gateway in its checked-in config; Auth names the worker's tailnet owner, so there is no login
+claude mcp add --transport http --scope user gateway https://gateway.mp281x.xyz/mcp
 ```
 
 ### AWS CLI
 
-Install and update on each Debian worker; the sign-in is Dual's [AWS](dual.md#aws) session.
+AWS CLI v2's Linux x86_64 installer, with `--update` to update. Its sign-in is Dual's [AWS](dual.md#aws) session. `~/.aws/config`:
 
-```bash
-d=$(mktemp -d) && curl -fsSLo "$d/aws.zip" https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip
-unzip -q "$d/aws.zip" -d "$d" && sudo "$d/aws/install" --update && rm -rf "$d"
-mkdir -p ~/.aws && printf '%s\n' '[sso-session datapizza]' 'sso_start_url = https://datapizza.awsapps.com/start' \
-  'sso_region = eu-west-1' 'sso_registration_scopes = sso:account:access' '' '[default]' 'sso_session = datapizza' \
-  'sso_account_id = 736979665822' 'sso_role_name = DualosOperator' 'region = eu-south-1' > ~/.aws/config
-```
+```ini
+[sso-session datapizza]
+sso_start_url = https://datapizza.awsapps.com/start
+sso_region = eu-west-1
+sso_registration_scopes = sso:account:access
 
-### Git identity
-
-```bash
-mkdir -p ~/.config/git
-printf '[user]\n\tname = MP281X\n\temail = dev@mp281x.xyz\n' > ~/.config/git/github.gitconfig
-printf '[user]\n\tname = Matteo Paludgnach\n\temail = matteopaludgnach@datapizza.tech\n' > ~/.config/git/datapizza.gitconfig
-for u in 'https://github.com/**' 'git@github.com:**' 'ssh://git@github.com/**'; do git config --global "includeIf.hasconfig:remote.*.url:$u.path" ~/.config/git/github.gitconfig; done
-for u in 'https://git.datapizza.tech/**' 'git@git.datapizza.tech:**' 'ssh://git@git.datapizza.tech/**'; do git config --global "includeIf.hasconfig:remote.*.url:$u.path" ~/.config/git/datapizza.gitconfig; done
+[default]
+sso_session = datapizza
+sso_account_id = 736979665822
+sso_role_name = DualosOperator
+region = eu-south-1
 ```
