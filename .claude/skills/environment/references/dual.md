@@ -72,10 +72,15 @@ sed -e 's|"./local-preview.ts"|"../local-preview.ts"|; s|NODE_ENV: "development"
 sed 's|local\.run\.ts|.alchemy/prod.run.ts|' scripts/preview.sh >$a/prod.sh
 systemctl --user stop $u 2>/dev/null; systemctl --user reset-failed $u 2>/dev/null
 systemd-run --user -G -d -u $u -p KillSignal=SIGINT -p SuccessExitStatus=130 -E PATH="$HOME/.vite-plus/bin:$PATH" -E DUAL_PREVIEW_HOST=$h bash $a/prod.sh dev &&
-  until p=$(journalctl --user _SYSTEMD_INVOCATION_ID=$(systemctl --user show -p InvocationID --value $u) -o cat | grep -oPm1 'Preview ready: \S+:\K[0-9]+'); do
+  i=$(systemctl --user show -p InvocationID --value $u) &&
+  until p=$(journalctl --user _SYSTEMD_INVOCATION_ID=$i -o cat | grep -oPm1 'Preview ready: \S+:\K[0-9]+'); do
     systemctl --user is-active -q $u || exit 1; sleep 5
   done &&
-  sudo tailscale serve --bg --https=$p http://127.0.0.1:$p >/dev/null && echo https://$h:$p && echo 'Login: admin@dual.local / preview-password'
+  sudo tailscale serve --bg --https=$p http://127.0.0.1:$p >/dev/null && d=$((SECONDS + 300)) &&
+  # The URL prints only once it answers, so nobody starts on a 502.
+  until [ "$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 https://$h:$p/)" = 200 ]; do
+    ((SECONDS < d)) || { journalctl --user _SYSTEMD_INVOCATION_ID=$i -o cat -n 20 >&2; exit 1; }; sleep 2
+  done && echo https://$h:$p && echo 'Login: admin@dual.local / preview-password'
 ```
 
 ## Tracing
