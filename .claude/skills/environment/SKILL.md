@@ -27,7 +27,7 @@ description: Load before a command on another worker, starting a preview, openin
 
 ## Previews
 
-Start one only when a capture needs it, from the worktree root, through the project's `preview` script (`t3_project_read`): Deslop's `vp run preview [app]` and `vp run preview:stop`; Dual's [prod-like preview](references/dual.md#preview). Give the user the URL it prints. An app's own `preview` script or a background task dies with the turn.
+Start one only when a capture needs it, from the worktree root, through the project's `preview` script (`t3_project_read`): Deslop's `vp run preview [app]` and `vp run preview:stop`; Dual's [prod-like preview](references/dual.md#preview). Pass the URL it prints to whoever walks it: the reviewer, or him when he asked to try it. An app's own `preview` script or a background task dies with the turn.
 
 Never open a Funnel or another public route for a preview: it puts the whole port on the internet. When a proof needs a real webhook delivery, tell the user it is blocked.
 
