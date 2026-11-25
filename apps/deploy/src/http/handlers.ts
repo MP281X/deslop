@@ -1,4 +1,4 @@
-import {Array, Cause, Effect} from 'effect'
+import {Array, Effect} from 'effect'
 
 import {HttpRouter, HttpServerResponse} from 'effect/http'
 
@@ -13,7 +13,7 @@ export const HttpHandlers = HttpRouter.use(router =>
 			onFailure: cause =>
 				Effect.as(
 					Effect.logError('The app updates could not be started', cause),
-					HttpServerResponse.text(Cause.pretty(cause), {status: 500})
+					HttpServerResponse.text('The app updates could not be started; read Deploy’s log\n', {status: 500})
 				),
 			onSuccess: units =>
 				Effect.succeed(HttpServerResponse.text(`Started ${Array.join(units, ', ') || 'nothing'}\n`, {status: 202}))
