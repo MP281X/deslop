@@ -215,7 +215,7 @@ const secs = DECISIONS.map((d, di) => {
   // A variant that renders the same frames as Today or another variant shows him nothing to choose between.
   const seen = new Map();
   for (const v of [today, ...vars]) {
-    const frames = v.S.map((s) => view(s, v.has)).join('\n');
+    const frames = v.S.map((s) => view(s, v.has).replace(/<!--[\s\S]*?-->|\s+/g, '')).join('\n');
     if (seen.has(frames)) console.error(`${d.name}: ${v.id} looks the same as ${seen.get(frames)} at every step`);
     else seen.set(frames, v.id);
   }
