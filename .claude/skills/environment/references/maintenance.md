@@ -11,11 +11,11 @@ A pass runs Update, then Reconcile, then Check on `worker`, and the Mac's steps 
 
 - **Packages.** `apt-mark showmanual` lists Debian's required, important and standard packages; `linux-image-amd64`, `grub-efi-amd64`, `shim-signed`, `mdadm`, `lvm2`, `firmware-amd-graphics`, `firmware-realtek` for boot and disks; `openssh-server`, `sudo`, `ufw`, `unattended-upgrades`, `libatomic1`, `curl`, `git`, `ripgrep`, `jq`, `sqlite3`, `btop`, `unzip`; `docker-ce`, `docker-ce-cli`, `containerd.io`, `docker-buildx-plugin`, `docker-compose-plugin`, `gh`, `glab`, `tailscale`, `gnome-keyring`, `libsecret-tools`; Minecraft's `temurin-25-jre`. Apt sources: Debian's, Docker, GitHub CLI, Tailscale, Adoptium.
 - **System units.** The ones these packages enable and Ikoula's `pxe-bootfirst.service`; `tmp.mount` masked. `/etc/systemd/system` holds no other unit, mask or alias, `system.control` only the three `MemoryLow` drop-ins.
-- **User units**, all enabled: Deploy's `deslop-*` units and `deslop.slice`, `t3code.service` with its `limits.conf` drop-in, `secret-service.service`, `minecraft.service` and `minecraft-console.socket`; and the keyring, gcr and gpg sockets their packages enable.
+- **User units** in `~/.config/systemd/user`: Deploy's `deslop-*` units and `deslop.slice`, `t3code.service` with its `limits.conf` drop-in, `secret-service.service`, `minecraft.service` and `minecraft-console.socket`. Enabled besides these: only what installed packages enable (keyring, gcr, gpg, `ssh-agent`).
 - **sysctl.** `/etc/sysctl.d` holds `90-agents.conf`, `90-unprivileged-ports.conf` and Debian's `README.sysctl`.
 - **`/etc`** beyond what packages own and Debian generates (accounts, host keys, locale, fstab, network, apt keys and sources): only the files Setup writes. No backups (`*.old`, dated `ufw` rules, sed's `*e` copies) or leftovers of purged packages.
 - **Ports** (`sudo ss -ltnup`): `sshd` on 22; Deploy's Caddy on TCP 80 and 443, UDP 443 and its admin port on `127.0.0.1`; Deploy's apps on `127.0.0.1:51xx`; T3 on `127.0.0.1:3773` and its Connect `cloudflared`; `tailscaled`; Minecraft on 25565.
-- **Home.** `deslop`, `dual`, `minecraft`; `.deslop` with one folder and `.env` per app; `.aws`, `.cache`, `.claude`, `.claude.json`, `.codex`, `.config`, `.docker`, `.local`, `.npm`, `.ssh`, `.t3`, `.vite-plus`; `.bashrc`, `.bash_history`, `.bash_logout`, `.profile`; `.gitconfig`, `.gitconfig-github`, `.gitconfig-datapizza`. `/root` holds only Debian's skeleton.
+- **Home.** `deslop`, `dual`, `minecraft`; `.deslop` with one folder per app and some apps' `.env`; `.aws`, `.cache`, `.claude`, `.claude.json`, `.codex`, `.config`, `.docker`, `.local`, `.npm`, `.ssh`, `.t3`, `.vite-plus`; `.bashrc`, `.bash_history`, `.bash_logout`, `.profile`; `.gitconfig`, `.gitconfig-github`, `.gitconfig-datapizza`. `/root` holds only Debian's skeleton.
 - **Docker.** The `bridge`, `host` and `none` networks; containers, volumes, images and build cache only while their thread's preview, test run or build runs.
 
 ## Update
@@ -30,7 +30,7 @@ A pass runs Update, then Reconcile, then Check on `worker`, and the Mac's steps 
 Bring `worker` to [State](#state): remove what it doesn't declare, restore what is missing from [Setup and repair](#setup-and-repair). What it doesn't declare but may be someone's data, such as an unknown backup, stays and is reported.
 
 - **Packages.** `sudo apt-mark auto` undeclared manual packages, then `sudo apt-get autoremove --purge -y`; `sudo apt-get purge -y` the ones `dpkg -l` shows as `rc`.
-- **Units.** `systemctl disable --now` and remove undeclared ones, then `daemon-reload`.
+- **Units.** `systemctl [--user] disable --now` and remove undeclared ones, then `daemon-reload`.
 
 A thread owns a worktree through `worktreePath` in `orchestration_v2_projection_threads.payload_json`, its delegated children through `lineage.rootThreadId`; `settledAt`, `archived_at` or `deleted_at` settles it. Remove a worktree only when its thread is settled and, re-read right before removal, still settled with no process using it: the project's settle script, `git worktree remove --force --force`, `git worktree prune`.
 
@@ -74,6 +74,7 @@ rm -r ~/Library/Caches/Google/Chrome ~/.npm ~/.vite-plus/package_manager
 - **Disk.** `df -h` and `df -i` per mount; `du -xhd1` under the home, `/var/lib` and `/tmp`; `sudo lsof -l +L1 -nP` for deleted-but-open files.
 - **Ports.** A container published on `0.0.0.0` is a fault.
 - **Units.** `systemctl --failed` and `systemctl --user --failed` are empty.
+- **Docker.** `docker info` runs without `sudo`; otherwise T3 started before `mp281x` joined `docker`, and the reboot is the user's.
 - **Agents.** `find ~/.claude/settings.json ~/.claude/agents/pair.md ~/.claude/skills ~/.codex/config.toml ~/.codex/instructions.md ~/.codex/rules/deny.rules ~/.codex/skills/{*,.system} -maxdepth 0 ! -type l` prints only `~/.codex/skills/.system`; `find -L ~/.claude/skills ~/.codex/skills -maxdepth 1 -type l` prints nothing; `~/deslop` is clean on current `main`.
 - **T3.** `t3 --version` equals `activeVersion`; `t3 doctor --base-dir ~/.t3 --dry-run` prints "Nothing to repair"; `t3 connect status` ends "✓ Other devices can reach this machine".
 - **sshd.** `sudo sshd -T` shows `usepam yes`, `passwordauthentication no`, `permitrootlogin no`.
