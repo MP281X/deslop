@@ -14,7 +14,7 @@ The `aws` CLI reads Dual's resources and nothing else, whatever the role allows.
 
 Project `DOS`, board 1053, `https://datapizza.atlassian.net/browse/<key>`; the user's account ID is `712020:87e4f57e-6b5d-40ab-8dfa-faf159ead71a`.
 
-- **Tools.** Dual's MCP `execute` (`dualos__execute` through the gateway), which finds its own `atlassian-api.*` tools, never `acli`. It signs in as a service account, so `currentUser()` and `@me` are not the user: name the account ID. `To Do` is `status = "To Do"`; `statusCategory` also returns Backlog. A slow or confusing step is a Dual defect for the final reply.
+- **Tools.** Dual's MCP `execute` (`dualos__execute` through the gateway), which finds its own `atlassian-api.*` tools, never `acli`. It signs in as a service account, so `currentUser()` and `@me` are not the user: name the account ID. `To Do` is `status = "To Do"`; `statusCategory` also returns Backlog. A slow or confusing step is a Dual defect: a numbered item for him to fix.
 - **What to work on.** Rank unassigned To Do Epics, Tasks, Stories and Bugs by priority (P1 highest), size and fit with the code, and propose them. Once the user approves, assign each to him and apply transition 21 to Doing: the only Jira writes.
 - **A ticket key** in a request, branch or commit: read it and quote the requirements used.
 
