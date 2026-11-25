@@ -18,11 +18,11 @@ description: Load before a command on `worker` or the Mac, starting a preview, o
 - **Auxiliary services** a task needs run as temporary containers, not installs.
 - **Outside source.** Clone what you need on demand into `/tmp/repos/<name>` (`git pull --ff-only` an existing clone, else `git clone --depth 1`) and read it there, never editing. Start from Effect for Effect APIs; T3 Code, opencode and executor show how agent apps are built.
 
-| Reference                                    | For                                                      |
-| -------------------------------------------- | -------------------------------------------------------- |
-| [Dual](references/dual.md)                   | Accounts, AWS, Jira, Google, VPN, preview, tracing       |
-| [Maintenance](references/maintenance.md)     | `worker` and the Mac: setup, agent links, updates, clean |
-| [Pull requests](references/pull-requests.md) | Drafts, stacks, GitHub and GitLab stack commands, bodies |
+| Reference                                    | For                                                                  |
+| -------------------------------------------- | -------------------------------------------------------------------- |
+| [Dual](references/dual.md)                   | Accounts, AWS, Jira, Google, VPN, preview, tracing                   |
+| [Maintenance](references/maintenance.md)     | `worker`'s state and the Mac: setup, agent links, updates, reconcile |
+| [Pull requests](references/pull-requests.md) | Drafts, stacks, GitHub and GitLab stack commands, bodies             |
 
 ## Previews
 
