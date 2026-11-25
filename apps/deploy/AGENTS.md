@@ -5,4 +5,3 @@
 - **Expose.** Ask only who can reach the port: Tailnet or Public.
 - **Processes.** Hide process IDs, nameless listeners and routine system services. Leave process environments unread.
 - **History.** Show an authorised empty history as empty, not loading.
-- **Updates.** `POST /api/update` is the one anonymous surface: it only starts the apps' update units, which install what is already on npm.

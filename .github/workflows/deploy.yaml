@@ -34,7 +34,6 @@ jobs:
       id-token: write
     outputs:
       app-store: ${{ steps.native.outputs.apps }}
-      published: ${{ steps.publish.outputs.apps }}
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup
@@ -88,10 +87,8 @@ jobs:
       # The fingerprint is the hash of the tarball packed before the version bump, which packs the same bytes each time, so an unchanged package and a retry's published one both skip.
       # An app bundles everything, so its manifest drops dependencies, scripts and the Expo entry; the standards CLI bundles its version, so it builds again after the bump.
       - name: Publish changed packages
-        id: publish
         if: github.event_name == 'push'
         run: |
-          apps=()
           for package in tools/coding-standards apps/{auth,deploy,gateway,opm,portfolio,scope,stash,trips}; do
             cd "$GITHUB_WORKSPACE/$package"
             if [[ $package == apps/* ]]; then npm pkg delete dependencies devDependencies scripts main; fi
@@ -110,9 +107,7 @@ jobs:
             vp pm pack --pack-destination "$pack" > /dev/null
             npm publish --loglevel=warn "$pack"/*.tgz
             echo "- $name 0.1.$RELEASE_NUMBER" >> "$GITHUB_STEP_SUMMARY"
-            if [[ $package == apps/* ]]; then apps+=("${name#@deslop/}"); fi
           done
-          echo "apps=${apps[*]}" >> "$GITHUB_OUTPUT"
 
       # A run holding an unexpired artifact stays: an App Store receipt keeps the next release from uploading its fingerprint again, a Simulator build keeps a Mac from building it again.
       # At most 300 runs a release, well inside the job token's 1,000 requests an hour; later releases take the rest.
@@ -128,28 +123,6 @@ jobs:
           old=$(comm -23 <(printf '%s\n' "$runs") <(printf '%s\n' "$kept") | awk 'NF && n++ < 300')
           xargs -r -P 8 -I{} gh api --method DELETE "repos/$GITHUB_REPOSITORY/actions/runs/{}" --silent <<< "$old"
           echo "- Deleted $(grep -c . <<< "$old" || true) workflow runs from before $cutoff" >> "$GITHUB_STEP_SUMMARY"
-
-  # Deploy starts every app's update, which installs whatever is newer on npm; its address takes no sign-in, since that is all it can do. A job of its own, so a Deploy that can't answer never holds back the App Store builds.
-  install:
-    name: Install the release
-    needs: verify
-    if: github.event_name == 'push' && needs.verify.outputs.published != ''
-    runs-on: ubuntu-26.04
-    # npm's `latest` can take a few tens of minutes to name a new version.
-    timeout-minutes: 60
-    permissions: {}
-    env:
-      PUBLISHED: ${{ needs.verify.outputs.published }}
-    steps:
-      # An update reads the URL below once and stops at "is current" while it still names the last release, so Deploy is called only once it names this one for every published app.
-      - name: Wait for npm to serve the release
-        run: |
-          for app in $PUBLISHED; do
-            until [[ $(curl --fail --silent "https://registry.npmjs.org/@deslop%2f$app/latest" | jq -r .version) == "0.1.$RELEASE_NUMBER" ]]; do sleep 10; done
-            echo "- npm serves @deslop/$app 0.1.$RELEASE_NUMBER" >> "$GITHUB_STEP_SUMMARY"
-          done
-      - name: Start every app's update
-        run: curl --fail-with-body --silent --show-error --retry 3 --retry-all-errors --request POST "https://deploy.$DESLOP_DOMAIN/api/update" | tee -a "$GITHUB_STEP_SUMMARY"
 
   app-store:
     name: App Store ${{ matrix.app }}

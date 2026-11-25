@@ -134,8 +134,6 @@ const publicAccess: readonly Access[] = [
 		callers: ['member'] as const,
 		surface: `tool ${name}`
 	})),
-	// Release's last step, the one anonymous surface that changes anything: it can only make the apps install what is already on npm. The probe's scratch home has no units to start.
-	{app: 'deploy', callers: Caller.literals, surface: 'http POST /api/update'},
 	...Array.map(['ai-proxy.key', 'ai-proxy.setKey', 'ai-metering.usage'], name => ({
 		app: 'gateway',
 		callers: ['member'] as const,

@@ -7,7 +7,6 @@ import {layerMcp, layerRpc} from '@deslop/runtime/server/http'
 import {ToolPath} from '@deslop/runtime/server/process'
 import {dataDirectory} from '@deslop/runtime/server/store'
 
-import {HttpHandlers} from '#http/handlers.ts'
 import icon from '#routes/icon.svg'
 import {RpcContracts} from '#rpcs/contracts.ts'
 import {RpcHandlers} from '#rpcs/handlers.ts'
@@ -30,7 +29,6 @@ runApp({
 	icon,
 	routes: Layer.provide(
 		Layer.mergeAll(
-			HttpHandlers,
 			layerRpc({group: RpcContracts, handlers: RpcHandlers}),
 			layerMcp({
 				contracts: ToolContracts,

@@ -76,11 +76,11 @@ export const installAgent = Effect.fnUntraced(function* (name: string, command: 
 	return `${label}.plist installed\n`
 })
 
-// A separate agent survives kickstart of the app whose current link it promotes; it checks once at login.
+// A separate agent survives kickstart of the app whose current link it promotes.
 export const installUpdateAgent = Effect.fnUntraced(function* (name: string, command: string[]) {
 	const label = `deslop-${name}-update`
 	const target = `${domain()}/${label}`
-	const file = yield* writeAgent(label, name, command, '<key>RunAtLoad</key><true/>')
+	const file = yield* writeAgent(label, name, command, '<key>StartInterval</key><integer>600</integer>')
 	if (yield* loaded(target)) yield* bootout(file)
 	yield* executeProcess('launchctl', ['bootstrap', domain(), file])
 })
