@@ -724,22 +724,15 @@ export function requestOf(item: InventoryItem) {
 	} satisfies RunRequest
 }
 
-// The run request for a scheduled job the page shows, by its name or unit; a user and a system job of one name need a scope to choose.
+// The run request for a scheduled job the page shows, by its id: names repeat across scopes and units.
 export const jobRequest = Effect.fnUntraced(function* (snapshot: Snapshot, input: RunJobInput) {
-	const matching = Array.filter(
+	return yield* pipe(
 		workloads(snapshot.items),
-		row =>
-			Option.contains(row.item.scheduled, true) &&
-			!Option.exists(input.scope, scope => !Option.contains(row.item.scope, scope)) &&
-			(workloadName(row.item) === input.job || row.item.name === input.job)
-	)
-	if (!Array.isArrayNonEmpty(matching)) {
-		return yield* DeployError.make({message: `No scheduled job named ${input.job}; list_apps shows the jobs.`})
-	}
-	if (matching.length > 1) {
-		return yield* DeployError.make({
-			message: `${input.job} names both a user and a system job; pass its scope. Nothing started.`
+		Array.findFirst(row => Option.contains(row.item.scheduled, true) && row.item.id === input.id),
+		Option.match({
+			onNone: () =>
+				Effect.fail(DeployError.make({message: `No scheduled job has the id ${input.id}; list_apps shows the jobs.`})),
+			onSome: row => Effect.succeed(requestOf(row.item))
 		})
-	}
-	return requestOf(Array.headNonEmpty(matching).item)
+	)
 })

@@ -3,14 +3,14 @@ import {assert, it} from '@effect/vitest'
 import {Array, DateTime, Effect, Option} from 'effect'
 
 import {availablePorts, jobRequest, portOwner, processOwner, workloads} from '#services/inventory/lib/utils.ts'
-import {DeployError, ExposureName, InventoryItem, ItemId, JobName, UnitId} from '#services/inventory/schema.ts'
+import {DeployError, ExposureName, InventoryItem, ItemId, UnitId} from '#services/inventory/schema.ts'
 import type {ServiceScope} from '#services/inventory/schema.ts'
 
 const LISTENER = InventoryItem.make({
 	address: Option.some('127.0.0.1:5173'),
 	detail: '',
 	http: Option.some(true),
-	id: ItemId.make('dev:port:5173'),
+	id: ItemId.make('port:tcp:127.0.0.1:5173'),
 	kind: 'port',
 	name: '127.0.0.1:5173',
 	port: Option.some(5173),
@@ -22,7 +22,7 @@ const LISTENER = InventoryItem.make({
 const SERVICE = InventoryItem.make({
 	active: true,
 	detail: '',
-	id: ItemId.make('dev:service'),
+	id: ItemId.make('user:app.service'),
 	kind: 'service',
 	name: UnitId.make('app.service'),
 	scope: Option.some('user'),
@@ -31,7 +31,7 @@ const SERVICE = InventoryItem.make({
 })
 const EXPOSURE = InventoryItem.make({
 	detail: '',
-	id: ItemId.make('dev:exposure'),
+	id: ItemId.make('tailscale:exposure'),
 	kind: 'exposure',
 	name: ExposureName.make('app'),
 	owned: Option.some(true),
@@ -123,7 +123,7 @@ it('shows a public mapping of an owned private address beside the owned exposure
 	const owned = {...EXPOSURE, publicAccess: Option.some(false)}
 	const observed = {
 		...EXPOSURE,
-		id: ItemId.make('dev:observed'),
+		id: ItemId.make('tailscale:observed'),
 		owned: Option.some(false),
 		publicAccess: Option.some(true),
 		state: 'observed'
@@ -168,7 +168,7 @@ function service(name: string, scope: ServiceScope) {
 	return InventoryItem.make({
 		active: true,
 		detail: '',
-		id: ItemId.make(`dev:${scope}:${name}`),
+		id: ItemId.make(`${scope}:${name}`),
 		kind: 'service',
 		name: UnitId.make(name),
 		scope: Option.some(scope),
@@ -215,7 +215,7 @@ it('names who a loopback proxy to a port reaches: a publishing container first, 
 	const container = InventoryItem.make({
 		bindings: Option.some([{address: '0.0.0.0:5173', port: 5173, protocol: 'tcp' as const}]),
 		detail: '',
-		id: ItemId.make('dev:docker:1'),
+		id: ItemId.make('docker:1'),
 		kind: 'container',
 		name: 'grafana',
 		state: 'running',
@@ -229,7 +229,7 @@ it('names who a loopback proxy to a port reaches: a publishing container first, 
 })
 
 it.effect(
-	'starts a job a user and a system timer share only once its scope is chosen',
+	'starts the one job its id names when a user and a system timer share a name',
 	Effect.fnUntraced(function* () {
 		const snapshot = {
 			items: Array.map(['user', 'system'] as const, scope => ({
@@ -239,13 +239,13 @@ it.effect(
 			sources: [],
 			time: DateTime.makeUnsafe(0)
 		}
-		assert.instanceOf(
-			yield* Effect.flip(jobRequest(snapshot, {job: JobName.make('cleanup'), scope: Option.none()})),
-			DeployError
-		)
-		assert.deepStrictEqual(yield* jobRequest(snapshot, {job: JobName.make('cleanup'), scope: Option.some('system')}), {
+		assert.deepStrictEqual(yield* jobRequest(snapshot, {id: ItemId.make('system:deslop-cleanup.service')}), {
 			name: UnitId.make('deslop-cleanup.service'),
 			scope: 'system'
 		})
+		assert.instanceOf(
+			yield* Effect.flip(jobRequest(snapshot, {id: ItemId.make('deslop-cleanup.service')})),
+			DeployError
+		)
 	})
 )
