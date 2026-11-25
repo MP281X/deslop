@@ -41,11 +41,11 @@ for b in $(git for-each-ref --format='%(refname:lstrip=3)' refs/remotes/origin |
 done
 ```
 
-- **Mac caches**, keeping the active Claude, Node and Vite+ versions:
+- **Mac caches**, and Vite+ and Node versions other than the active ones under `~/.vite-plus`:
 
 ```bash
 find ~/Library/Caches -maxdepth 1 -type d \( -iname '*updater*' -o -name '*.ShipIt' -o -name 'com.apple.Safari*' -o -name 'com.t3tools.t3code*' \) -exec rm -r -- {} +
-rm -rf ~/Library/Caches/Google/Chrome ~/.cache/codex-runtimes "$HOME/Library/Application Support"/t3code*/{Cache,"Code Cache"}
+rm -rf ~/Library/Caches/Google/Chrome ~/.npm "$HOME/Library/Application Support"/t3code*/{Cache,"Code Cache"}
 ```
 
 ## Check
@@ -64,7 +64,7 @@ rm -rf ~/Library/Caches/Google/Chrome ~/.cache/codex-runtimes "$HOME/Library/App
 
 From a Debian netinst, in order:
 
-1. **Base.** Passwordless sudo in `/etc/sudoers.d/99-mp281x-nopasswd` (0440); `sudo`, `network-manager`, `ufw`; `printf 'D /tmp 1777 root root 7d\n' | sudo tee /etc/tmpfiles.d/tmp.conf && sudo systemctl mask tmp.mount`.
+1. **Base.** The `mp281x` user, with the other machines' SSH key and a locked password; passwordless sudo in `/etc/sudoers.d/99-mp281x-nopasswd` (0440); `sudo`, `ufw`, `libatomic1` (Node needs it); purge what the host's image adds but nothing uses (on Ikoula: `nfs-common`, `rpcbind`, `vim`, `wget`, its `AutoconfDownloader` unit and `/root/IkoulaRelease`), keeping `pxe-bootfirst.service`, which Ikoula's panel needs to reinstall or rescue the machine; `printf 'D /tmp 1777 root root 7d\n' | sudo tee /etc/tmpfiles.d/tmp.conf && sudo systemctl mask tmp.mount`.
 2. **Packages.** Docker, `gh`, `glab`, `unattended-upgrades`, ripgrep, jq, sqlite3, btop, unzip, the [AWS CLI](#aws-cli); `mp281x` in `docker`; `/etc/docker/daemon.json`: `{"live-restore": true, "ip": "127.0.0.1", "default-network-opts": {"bridge": {"com.docker.network.bridge.host_binding_ipv4": "127.0.0.1"}}}`.
 3. **Git.** `rebase.updateRefs`, `rebase.autoSquash`, `rebase.autoStash`, `push.autoSetupRemote`, `fetch.prune`, `rerere.enabled` true; `diff.algorithm histogram`, `merge.conflictStyle zdiff3`, `init.defaultBranch main`. Identity by remote, through `includeIf.hasconfig:remote.*.url:` on the https, `git@` and `ssh://` URLs of each host: `MP281X <dev@mp281x.xyz>` for `github.com`, `Matteo Paludgnach <matteopaludgnach@datapizza.tech>` for `git.datapizza.tech`.
 4. **Network.** `openvpn3 config-import --config <datapizza.ovpn> --name datapizza --persistent`. Tailscale from its Debian `trixie` apt repository; `sudo tailscale up --accept-routes --advertise-routes=<git.datapizza.tech's IPv4>/32`; `sudo tailscale set --operator=mp281x`. Then, over the tailnet, `ufw default deny incoming`, allowing TCP 80, 443 and 25565 and UDP 443, for production and Minecraft. `printf 'net.ipv4.ip_unprivileged_port_start = 80\n' | sudo tee /etc/sysctl.d/90-unprivileged-ports.conf && sudo sysctl --system`, so Deploy's Caddy binds 80 and 443 as the user.
@@ -98,7 +98,7 @@ Keep each project's `scripts` (`t3_project_update`) equal to `projectSettingsOve
 
 ### Mac
 
-`curl -fsSL https://vite.plus | bash`; `~/.zshenv` exports `PATH="$HOME/.local/bin:$HOME/.vite-plus/bin:$PATH"` and `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer`. Xcode: `open "macappstore://apps.apple.com/app/id497799835"`.
+Only T3, Xcode and Vite+, whose Node T3's device tools need; no agents or apps. `curl -fsSL https://vite.plus | bash`; `~/.zshenv` exports `PATH="$HOME/.local/bin:$HOME/.vite-plus/bin:$PATH"` and `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer`. Xcode: `open "macappstore://apps.apple.com/app/id497799835"`.
 
 ### Keyring and MCP
 
