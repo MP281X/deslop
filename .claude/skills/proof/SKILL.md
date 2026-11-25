@@ -5,7 +5,7 @@ description: 'Load before a preview or device tool call, an html_render, a proto
 
 # Proof
 
-- **Prototype** UI from a scratch copy of [prototype.html](references/prototype.html): today's screen beside each variant, as its comment says.
+- **Prototype** UI from a scratch copy of [prototype.html](references/prototype.html): today's screen beside each variant, as its comment says. A handoff's copy is that file with the other variants deleted from `DECISIONS`, so it keeps the approved frames as he saw them.
 - **Replies.** Before an `html_render`, check it with `html_preview` at 728, 629 and 350 px; its text outside a prototype's app is 13 px or more at each.
 - **Capture** representative data on the head, after waiting for the state's own text or element (never a timer), captioned with its short commit. A before/after needs its Before captured on the base before the first edit.
 - **States.** Cold open, deep-link reload and a failed first request, the ones the change touches, at `AGENTS.md`'s target sizes; on the iPhone Duo, a fold and an unfold mid-flow that keep the selection.

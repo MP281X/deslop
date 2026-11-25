@@ -2,7 +2,8 @@
 /* PROTOTYPE DATA. Copy to scratch, edit only this script, check with html_preview, html_render by path.
    DECISIONS   one section each, numbered from FIRST. `today` and each variant are paths: target ids in click order,
                one marked * where its still is taken: the tap that tells it apart from the others.
-               At least three variants, each a different approach. The open variant plays beside Today, only the
+               At least three variants, each a different approach; html_preview's console names one that renders
+               the same frames as another. The open variant plays beside Today, only the
                steps where they differ, lined up; the variants sit below as stills to switch.
    variants    letter: {title, parts, path}; title is two or three words for what the frames can't show.
                view() reads parts as has.<word>; Today gets has.today.
@@ -211,6 +212,13 @@ const secs = DECISIONS.map((d, di) => {
   const has = (parts) => Object.fromEntries(split(parts).map((p) => [p, true]));
   const today = { id: 'Today', ...trace(d.today, d.start, { today: true }) };
   const vars = Object.entries(d.variants).map(([id, v]) => ({ id, title: v.title, ...trace(v.path, d.start, has(v.parts)) }));
+  // A variant that renders the same frames as Today or another variant shows him nothing to choose between.
+  const seen = new Map();
+  for (const v of [today, ...vars]) {
+    const frames = v.S.map((s) => view(s, v.has)).join('\n');
+    if (seen.has(frames)) console.error(`${d.name}: ${v.id} looks the same as ${seen.get(frames)} at every step`);
+    else seen.set(frames, v.id);
+  }
   const el = node(`<section><div class="hd"><span class="id">${di + FIRST}</span><span class="nm">${d.name}</span><span class="tk">${d.task}</span><button class="ph">Phone</button></div>
     <div class="ctl"><button class="pp">Play</button><span class="beats"></span></div><div class="grid"></div><div class="grid strip"></div></section>`);
   const sec = { el, today, vars, gen: 0, grid: el.querySelector('.grid'), strip: el.querySelector('.strip'), beats: el.querySelector('.beats'), pp: el.querySelector('.pp') };
