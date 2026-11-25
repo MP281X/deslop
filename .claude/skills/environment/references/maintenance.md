@@ -1,27 +1,45 @@
 # Maintenance
 
-A pass runs Update, then Clean, then Check on `worker`, and the Mac's steps when it is on, then reports faults, unknown owners, denied steps and an update waiting on the user's restart. Removals go to a Sonnet delegate, since Codex rejects `rm -rf`. A refusal or failure skips only its step.
+A pass runs Update, then Reconcile, then Check on `worker`, and the Mac's steps when it is on, then reports faults, what it can't place, denied steps and an update waiting on the user's restart. Remove with `rm -r` or `sudo rm -r`, never `-f`: Codex rejects any forced `rm` without asking. A refusal or failure skips only its step.
 
 - **The user's.** `t3 update`, `t3 doctor --fix`, `t3 service restart` and reboots; never report a pending T3 update.
 - **Never touch** history (T3's databases and logs, `~/.claude/projects`, `~/.codex/sessions`), credentials, production data, running jobs or worktrees of running threads.
+
+## State
+
+`worker` holds only this. What a running thread started (its worktree, preview, containers, listeners, files in `/tmp`) is its own until it settles; `/tmp` empties itself after 7 days.
+
+- **Packages.** `apt-mark showmanual` lists Debian's required, important and standard packages; `linux-image-amd64`, `grub-efi-amd64`, `shim-signed`, `mdadm`, `lvm2`, `firmware-amd-graphics`, `firmware-realtek` for boot and disks; `openssh-server`, `sudo`, `ufw`, `unattended-upgrades`, `libatomic1`, `curl`, `git`, `ripgrep`, `jq`, `sqlite3`, `btop`, `unzip`; `docker-ce`, `docker-ce-cli`, `containerd.io`, `docker-buildx-plugin`, `docker-compose-plugin`, `gh`, `glab`, `tailscale`, `gnome-keyring`, `libsecret-tools`; Minecraft's `temurin-25-jre`. Apt sources: Debian's, Docker, GitHub CLI, Tailscale, Adoptium.
+- **System units.** The ones these packages enable and Ikoula's `pxe-bootfirst.service`; `tmp.mount` masked. `/etc/systemd/system` holds no other unit, mask or alias, `system.control` only the three `MemoryLow` drop-ins.
+- **User units** in `~/.config/systemd/user`: Deploy's `deslop-*` units and `deslop.slice`, `t3code.service` with its `limits.conf` drop-in, `secret-service.service`, `minecraft.service` and `minecraft-console.socket`. Enabled besides these: only what installed packages enable (keyring, gcr, gpg, `ssh-agent`).
+- **sysctl.** `/etc/sysctl.d` holds `90-agents.conf`, `90-unprivileged-ports.conf` and Debian's `README.sysctl`.
+- **`/etc`** beyond what packages own and Debian generates (accounts, host keys, locale, fstab, network, apt keys and sources): only the files Setup writes. No backups (`*.old`, dated `ufw` rules, sed's `*e` copies) or leftovers of purged packages.
+- **Ports** (`sudo ss -ltnup`): `sshd` on 22; Deploy's Caddy on TCP 80 and 443, UDP 443 and its admin port on `127.0.0.1`; Deploy's apps on `127.0.0.1:51xx`; T3 on `127.0.0.1:3773` and its Connect `cloudflared`; `tailscaled`; Minecraft on 25565.
+- **Home.** `deslop`, `dual`, `minecraft`; `.deslop` with one folder per app, some apps' `.env` and `threads-backup`, his archive of old machines' Claude and Codex transcripts; `.aws`, `.cache`, `.claude`, `.claude.json`, `.codex`, `.config`, `.docker`, `.local`, `.npm`, `.ssh`, `.t3`, `.vite-plus`; `.bashrc`, `.bash_history`, `.bash_logout`, `.profile`; `.gitconfig`, `.gitconfig-github`, `.gitconfig-datapizza`. `/root` holds only Debian's skeleton.
+- **Docker.** The `bridge`, `host` and `none` networks; containers, volumes, images and build cache only while their thread's preview, test run or build runs.
 
 ## Update
 
 - **Debian.** `sudo apt-get update`, `upgrade -y`, `autoremove -y`, `clean`; `vp upgrade`; `gh extension upgrade --all`; the [AWS CLI](#aws-cli). glab: when `https://gitlab.com/api/v4/projects/gitlab-org%2Fcli/releases/permalink/latest` names a newer `tag_name`, download `https://gitlab.com/gitlab-org/cli/-/releases/<tag>/downloads/glab_<version>_linux_amd64.deb` and `sudo dpkg -i` it.
 - **Mac.** `vp upgrade`; report a pending macOS update from `softwareupdate -l`.
 - **T3 CLI.** When `t3 --version` differs from `activeVersion` in `~/.t3/runtime/service-state.json`, `vp install -g t3@<activeVersion>`, never newer: T3 updates only from its UI.
-- **Configuration.** `git -C ~/deslop pull --ff-only`. When local changes block it, read `git -C ~/deslop diff -w`: `git -C ~/deslop restore .` only a harness re-indent, then pull again; a real change goes into a PR.
+- **Configuration.** `git -C ~/deslop pull --ff-only`. When local changes block it, read `git -C ~/deslop diff -w`: `git -C ~/deslop restore .` only a harness's re-indent or its own settings (Claude's `theme`, Codex's `[tui]`), then pull again; a real change goes into a PR.
 
-## Clean
+## Reconcile
+
+Bring `worker` to [State](#state): remove what it doesn't declare, restore what is missing from [Setup and repair](#setup-and-repair). What it doesn't declare but may be someone's data, such as an unknown backup, stays and is reported.
+
+- **Packages.** `sudo apt-mark auto` undeclared manual packages, then `sudo apt-get autoremove --purge -y`; `sudo apt-get purge -y` the ones `dpkg -l` shows as `rc`.
+- **Units.** `systemctl [--user] disable --now` and remove undeclared ones, then `daemon-reload`.
 
 A thread owns a worktree through `worktreePath` in `orchestration_v2_projection_threads.payload_json`, its delegated children through `lineage.rootThreadId`; `settledAt`, `archived_at` or `deleted_at` settles it. Remove a worktree only when its thread is settled and, re-read right before removal, still settled with no process using it: the project's settle script, `git worktree remove --force --force`, `git worktree prune`.
 
-- **Tool caches**, when unused: `rm -rf ~/.cache/{ms-playwright,node-gyp,puppeteer,google-chrome-for-testing-headless} ~/.npm/_npx`.
+- **Tool caches**, when unused: `ms-playwright`, `node-gyp`, `puppeteer` and `google-chrome-for-testing-headless` in `~/.cache`, and `~/.npm/_npx`.
 - **Claude versions.** `~/.local/share/claude/versions/<version>` except the one `claude --version` reports.
 - **T3 versions.** Skip while `service-state.json` shows an uncommitted update. Keep `activeVersion`, the launcher named in `~/.config/systemd/user/t3code.service`'s `ExecStart`, and newer versions under `~/.t3/runtime/versions`.
 - **Docker**, when no Docker or Compose build runs: `docker image prune -a -f`, `docker builder prune -a -f`; never `docker system prune`.
 - **pnpm**, when no install runs: `pnpm store prune`.
-- **Previews** of gone worktrees: Alchemy's `preview:destroy`; stopped `preview-*` units and their containers; `docker stop` (which keeps seed data, unlike Dual's `settle`) their surviving `dualos-local-*-wt-<hash>` Postgres and OpenSandbox containers. Also leftover `testcontainers-ryuk-*` and finished test runs' unnamed Postgres containers.
+- **Previews** of gone worktrees: Alchemy's `preview:destroy`; stopped `preview-*` units; `docker rm -f -v` their containers, including Dual's `dualos-local-*-wt-<hash>` Postgres and OpenSandbox ones, whose seed data no other worktree uses. Also leftover `testcontainers-ryuk-*` and finished test runs' unnamed Postgres containers.
 - **Local branches** in `~/deslop` and `~/dual`: `git branch -D` only branches no worktree checks out, never the default branch.
 - **Remote branches**, only through this block: it deletes a branch whose merged or closed PR's head is the branch tip, whose nonempty commit list is all the user's, and which no worktree checks out; a failed query keeps it.
 
@@ -48,14 +66,15 @@ find ~/Library/Caches -maxdepth 1 -type d \( -iname '*updater*' -o -name '*.Ship
 find "$HOME/Library/Application Support" -maxdepth 2 -path '*/t3code*/*' \( -name Cache -o -name 'Code Cache' \) -exec rm -r -- {} +
 find ~/.vite-plus -maxdepth 1 -name '[0-9]*' ! -name "$(readlink ~/.vite-plus/current)" -exec rm -r -- {} +
 find ~/.vite-plus/js_runtime/node -mindepth 1 -maxdepth 1 ! -name "$(node --version | cut -c2-)*" ! -name index_cache.json -exec rm -r -- {} +
-rm -rf ~/Library/Caches/Google/Chrome ~/.npm ~/.vite-plus/package_manager
+rm -r ~/Library/Caches/Google/Chrome ~/.npm ~/.vite-plus/package_manager
 ```
 
 ## Check
 
 - **Disk.** `df -h` and `df -i` per mount; `du -xhd1` under the home, `/var/lib` and `/tmp`; `sudo lsof -l +L1 -nP` for deleted-but-open files.
-- **Ports.** `ss -ltnp`: name each listener's unit or container. A container published on `0.0.0.0`, except Minecraft's 25565, is a fault.
+- **Ports.** A container published on `0.0.0.0` is a fault.
 - **Units.** `systemctl --failed` and `systemctl --user --failed` are empty.
+- **Docker.** `docker info` runs without `sudo`; otherwise T3 started before `mp281x` joined `docker`, and the reboot is the user's.
 - **Agents.** `find ~/.claude/settings.json ~/.claude/agents/pair.md ~/.claude/skills ~/.codex/config.toml ~/.codex/instructions.md ~/.codex/rules/deny.rules ~/.codex/skills/{*,.system} -maxdepth 0 ! -type l` prints only `~/.codex/skills/.system`; `find -L ~/.claude/skills ~/.codex/skills -maxdepth 1 -type l` prints nothing; `~/deslop` is clean on current `main`.
 - **T3.** `t3 --version` equals `activeVersion`; `t3 doctor --base-dir ~/.t3 --dry-run` prints "Nothing to repair"; `t3 connect status` ends "✓ Other devices can reach this machine".
 - **sshd.** `sudo sshd -T` shows `usepam yes`, `passwordauthentication no`, `permitrootlogin no`.
