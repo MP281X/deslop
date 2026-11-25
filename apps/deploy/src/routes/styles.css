@@ -3,21 +3,6 @@
 
 :root {
 	--primary: var(--blue);
-	/* Each machine's identity, used by its icon in the bar. */
-	--machine-dev: oklch(from #2c718b l c h);
-	--machine-desktop: oklch(from #98601f l c h);
-}
-
-@media screen and (prefers-color-scheme: dark) {
-	:root {
-		--machine-dev: oklch(from #7fb4ca l c h);
-		--machine-desktop: oklch(from #dca561 l c h);
-	}
-}
-
-@theme inline {
-	--color-machine-dev: var(--machine-dev);
-	--color-machine-desktop: var(--machine-desktop);
 }
 
 /* Chrome makes an SVG group focusable once it has focus listeners, and React adds them to every portal target, so the

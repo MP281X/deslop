@@ -4,12 +4,10 @@ import {Model} from 'effect/schema'
 
 import {DateTimeUtcFromFiniteMillis, DurationFromFiniteMillis, DurationFromSeconds} from '@deslop/runtime/shared/time'
 
-import {AppId, TextFromEmpty, WorkerId} from '#services/inventory/schema.ts'
+import {AppId, TextFromEmpty} from '#services/inventory/schema.ts'
 
 export type BandId = typeof BandId.Type
 export const BandId = Schema.Union([AppId, Schema.Literals(['other', 'system'])])
-export type CpuState = typeof CpuState.Type
-export const CpuState = Schema.Literals(['idle', 'irq', 'nice', 'sys', 'user'])
 
 export type CpuCounters = typeof CpuCounters.Type
 export const CpuCounters = Schema.TupleWithRest(
@@ -46,16 +44,6 @@ export const HistoryQuery = Schema.Struct({
 	)
 })
 
-export type HistoryToolInput = typeof HistoryToolInput.Type
-export const HistoryToolInput = Schema.Struct({
-	...HistoryQuery.fields,
-	worker: Schema.OptionFromOptionalKey(WorkerId.annotate({description: 'A configured worker name.'}))
-})
-
-export type MetricsWatch = typeof MetricsWatch.Type
-// A page's range and the machine it charts; with none, the first in the fleet's order.
-export const MetricsWatch = Schema.Struct({...HistoryQuery.fields, worker: Schema.OptionFromOptionalKey(WorkerId)})
-
 export type MetricSeries = typeof MetricSeries.Type
 export const MetricSeries = Schema.Array(Schema.OptionFromNullOr(Schema.Finite))
 
@@ -76,8 +64,8 @@ export const MachineNow = Schema.Struct({
 	memoryTotalGiB: Schema.Finite
 })
 
-export type WorkerHistory = typeof WorkerHistory.Type
-export const WorkerHistory = Schema.Struct({
+export type ResourceHistory = typeof ResourceHistory.Type
+export const ResourceHistory = Schema.Struct({
 	apps: Schema.Array(AppUsage),
 	cpuPct: MetricSeries,
 	diskPct: MetricSeries,
@@ -86,12 +74,8 @@ export const WorkerHistory = Schema.Struct({
 	memoryPct: MetricSeries,
 	now: Schema.OptionFromOptionalKey(MachineNow),
 	stale: Schema.OptionFromOptionalKey(Schema.Literal(true)),
-	stepSeconds: DurationFromSeconds,
-	worker: WorkerId
+	stepSeconds: DurationFromSeconds
 })
-
-export type ResourceHistory = typeof ResourceHistory.Type
-export const ResourceHistory = Schema.Array(WorkerHistory)
 
 export type Counters = typeof Counters.Type
 export const Counters = Schema.Struct({
@@ -117,7 +101,7 @@ export const AppMeasurement = Schema.Struct({
 export type AppSample = typeof AppSample.Type
 export const AppSample = Schema.Struct({...AppMeasurement.fields, cpuCoverage: Coverage})
 
-// One point of a worker's history in the series of one spacing: its readings from `since` to `time`, each averaged over the time it was measured.
+// One point of the machine's history in the series of one spacing: its readings from `since` to `time`, each averaged over the time it was measured.
 export class MachineSample extends Model.Class<MachineSample>('MachineSample')({
 	// Apps measured with none above the cutoff are an empty list, not an unread one.
 	appsCoverage: Coverage,
@@ -147,7 +131,7 @@ export class AppHistory extends Model.Class<AppHistory>('AppHistory')({
 	static readonly table = 'app_samples'
 }
 
-// The chart's machine point with its app rows joined back in; a Mac has no app rows.
+// The chart's machine point with its app rows joined back in.
 export class Sample extends Model.Class<Sample>('Sample')({
 	...MachineSample.fields,
 	apps: Model.FieldOption(Model.JsonFromString(Schema.Array(AppSample)))
@@ -163,31 +147,17 @@ export const Point = Schema.Struct({
 export type Disk = typeof Disk.Type
 export const Disk = Schema.Struct({mount: Schema.String, total: Schema.Finite, used: Schema.Finite})
 
-export type Platform = typeof Platform.Type
-export const Platform = Schema.Literals(['linux', 'darwin'])
-
 export type MachineHistory = typeof MachineHistory.Type
 export const MachineHistory = Schema.Struct({
 	// The newest reading's disks and load averages, which no chart draws over time.
 	disks: Schema.Array(Disk),
 	error: TextFromEmpty,
 	load: Schema.Array(Schema.Finite),
-	platform: Schema.OptionFromOptionalKey(Platform),
 	samples: Schema.Array(Sample.json),
 	stale: Schema.Boolean,
-	time: DateTimeUtcFromFiniteMillis,
-	worker: WorkerId
+	time: DateTimeUtcFromFiniteMillis
 })
 
 export type MetricSource = typeof MetricSource.Type
-// What a worker's history reads or writes, each failing on its own.
+// What the history reads or writes, each failing on its own.
 export const MetricSource = Schema.Literals(['apps', 'disks', 'sample', 'save'])
-
-export type VmStatPages = typeof VmStatPages.Type
-// The `vm_stat` counters used memory needs; one missing fails the sample instead of reading as zero memory.
-export const VmStatPages = Schema.Struct({
-	'Anonymous pages': Schema.FiniteFromString,
-	'Pages occupied by compressor': Schema.FiniteFromString,
-	'Pages purgeable': Schema.FiniteFromString,
-	'Pages wired down': Schema.FiniteFromString
-})

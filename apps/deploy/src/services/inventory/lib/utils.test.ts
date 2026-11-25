@@ -1,46 +1,43 @@
 import {assert, it} from '@effect/vitest'
 
-import {Array, Option} from 'effect'
+import {Array, DateTime, Effect, Option} from 'effect'
 
-import {availablePorts, portOwner, processOwner, workloads} from '#services/inventory/lib/utils.ts'
-import {ExposureName, InventoryItem, ItemId, UnitId, WorkerId} from '#services/inventory/schema.ts'
+import {availablePorts, jobRequest, portOwner, processOwner, workloads} from '#services/inventory/lib/utils.ts'
+import {DeployError, ExposureName, InventoryItem, ItemId, UnitId} from '#services/inventory/schema.ts'
 import type {ServiceScope} from '#services/inventory/schema.ts'
 
 const LISTENER = InventoryItem.make({
 	address: Option.some('127.0.0.1:5173'),
 	detail: '',
 	http: Option.some(true),
-	id: ItemId.make('dev:port:5173'),
+	id: ItemId.make('port:tcp:127.0.0.1:5173'),
 	kind: 'port',
 	name: '127.0.0.1:5173',
 	port: Option.some(5173),
 	process: Option.some('app'),
 	protocol: Option.some('tcp'),
 	state: 'LISTEN',
-	url: Option.none(),
-	worker: WorkerId.make('dev')
+	url: Option.none()
 })
 const SERVICE = InventoryItem.make({
 	active: true,
 	detail: '',
-	id: ItemId.make('dev:service'),
+	id: ItemId.make('user:app.service'),
 	kind: 'service',
 	name: UnitId.make('app.service'),
 	scope: Option.some('user'),
 	state: 'active',
-	url: Option.none(),
-	worker: WorkerId.make('dev')
+	url: Option.none()
 })
 const EXPOSURE = InventoryItem.make({
 	detail: '',
-	id: ItemId.make('dev:exposure'),
+	id: ItemId.make('tailscale:exposure'),
 	kind: 'exposure',
 	name: ExposureName.make('app'),
 	owned: Option.some(true),
 	port: Option.some(5173),
 	state: 'active',
-	url: Option.some('https://dev.tailnet.ts.net:5173/'),
-	worker: WorkerId.make('dev')
+	url: Option.some('https://dev.tailnet.ts.net:5173/')
 })
 
 it('attributes nested agent slices to their owning service', () => {
@@ -69,46 +66,30 @@ it('offers only usable local HTTP listeners for publication', () => {
 	)
 })
 
-it('deduplicates endpoints within each worker', () => {
-	assert.sameMembers(
-		Array.map(
-			availablePorts(
-				workloads([
-					LISTENER,
-					{...LISTENER, address: Option.some('0.0.0.0:5173'), id: ItemId.make('duplicate')},
-					{...LISTENER, id: ItemId.make('remote'), worker: WorkerId.make('desktop')}
-				])
-			),
-			item => item.worker
+it('deduplicates endpoints', () => {
+	assert.lengthOf(
+		availablePorts(
+			workloads([LISTENER, {...LISTENER, address: Option.some('0.0.0.0:5173'), id: ItemId.make('duplicate')}])
 		),
-		['dev', 'desktop']
+		1
 	)
 })
 
-it('offers only unexposed frontends on each worker', () => {
+it('offers only unexposed frontends', () => {
 	const endpoint = {
 		...LISTENER,
 		scope: Option.some('user' as const),
 		ui: Option.some(true),
 		unit: Option.some(UnitId.make('app.service'))
 	}
+	assert.isEmpty(availablePorts(workloads([SERVICE, endpoint, EXPOSURE])))
 	assert.deepStrictEqual(
-		Array.map(
-			availablePorts(
-				workloads([
-					SERVICE,
-					endpoint,
-					EXPOSURE,
-					{...endpoint, id: ItemId.make('remote'), worker: WorkerId.make('desktop')}
-				])
-			),
-			item => item.worker
-		),
-		['desktop']
+		Array.map(availablePorts(workloads([SERVICE, endpoint])), item => item.id),
+		[endpoint.id]
 	)
 })
 
-it('joins a service with its listener and exposure on the same worker', () => {
+it('joins a service with its listener and exposure', () => {
 	assert.deepStrictEqual(
 		Array.map(
 			workloads([
@@ -142,7 +123,7 @@ it('shows a public mapping of an owned private address beside the owned exposure
 	const owned = {...EXPOSURE, publicAccess: Option.some(false)}
 	const observed = {
 		...EXPOSURE,
-		id: ItemId.make('dev:observed'),
+		id: ItemId.make('tailscale:observed'),
 		owned: Option.some(false),
 		publicAccess: Option.some(true),
 		state: 'observed'
@@ -160,8 +141,7 @@ it('matches published container routes only to host TCP bindings', () => {
 		kind: 'container',
 		name: 'web',
 		state: 'running',
-		url: Option.none(),
-		worker: WorkerId.make('dev')
+		url: Option.none()
 	})
 	assert.deepStrictEqual(
 		Array.map(workloads([container, LISTENER, EXPOSURE]), row => [
@@ -188,13 +168,12 @@ function service(name: string, scope: ServiceScope) {
 	return InventoryItem.make({
 		active: true,
 		detail: '',
-		id: ItemId.make(`dev:${scope}:${name}`),
+		id: ItemId.make(`${scope}:${name}`),
 		kind: 'service',
 		name: UnitId.make(name),
 		scope: Option.some(scope),
 		state: 'active',
-		url: Option.none(),
-		worker: WorkerId.make('dev')
+		url: Option.none()
 	})
 }
 
@@ -236,12 +215,11 @@ it('names who a loopback proxy to a port reaches: a publishing container first, 
 	const container = InventoryItem.make({
 		bindings: Option.some([{address: '0.0.0.0:5173', port: 5173, protocol: 'tcp' as const}]),
 		detail: '',
-		id: ItemId.make('dev:docker:1'),
+		id: ItemId.make('docker:1'),
 		kind: 'container',
 		name: 'grafana',
 		state: 'running',
-		url: Option.none(),
-		worker: WorkerId.make('dev')
+		url: Option.none()
 	})
 	assert.deepStrictEqual(portOwner([unit], 5173), Option.some('user:app.service'))
 	assert.deepStrictEqual(portOwner([LISTENER], 5173), Option.some('process:app'))
@@ -249,3 +227,25 @@ it('names who a loopback proxy to a port reaches: a publishing container first, 
 	assert.deepStrictEqual(portOwner([{...unit, address: Option.some('[::1]:5173')}], 5173), Option.none())
 	assert.deepStrictEqual(portOwner([unit], 5174), Option.none())
 })
+
+it.effect(
+	'starts the one job its id names when a user and a system timer share a name',
+	Effect.fnUntraced(function* () {
+		const snapshot = {
+			items: Array.map(['user', 'system'] as const, scope => ({
+				...service('deslop-cleanup.service', scope),
+				scheduled: Option.some(true)
+			})),
+			sources: [],
+			time: DateTime.makeUnsafe(0)
+		}
+		assert.deepStrictEqual(yield* jobRequest(snapshot, {id: ItemId.make('system:deslop-cleanup.service')}), {
+			name: UnitId.make('deslop-cleanup.service'),
+			scope: 'system'
+		})
+		assert.instanceOf(
+			yield* Effect.flip(jobRequest(snapshot, {id: ItemId.make('deslop-cleanup.service')})),
+			DeployError
+		)
+	})
+)

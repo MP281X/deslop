@@ -29,7 +29,7 @@ import {Exposures} from './service.ts'
 
 import type {Exposure} from '#services/exposures/schema.ts'
 import type {Serve} from '#services/inventory/schema.ts'
-import {DeployError, ExposureName, InventoryItem, ItemId, UnitId, WorkerId} from '#services/inventory/schema.ts'
+import {DeployError, ExposureName, InventoryItem, ItemId, UnitId} from '#services/inventory/schema.ts'
 import {Inventory} from '#services/inventory/service.ts'
 import {Proxies} from '#services/proxies/service.ts'
 
@@ -53,8 +53,7 @@ function listening(unit: string, port = 5173) {
 		scope: Option.some('user'),
 		state: 'LISTEN',
 		unit: Option.some(UnitId.make(unit)),
-		url: Option.none(),
-		worker: WorkerId.make('test')
+		url: Option.none()
 	})
 }
 
@@ -125,8 +124,7 @@ const worker = Effect.fnUntraced(function* () {
 					listening('second.service', 5174)
 				],
 				sources: [],
-				time,
-				workers: []
+				time
 			}))
 		})
 	)

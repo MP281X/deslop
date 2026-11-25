@@ -1,17 +1,16 @@
 import {Array, DateTime, Duration, Function, Number, Option, Order, Record, Schema, String, Struct, pipe} from 'effect'
 
 import {DeployError} from '#services/inventory/schema.ts'
-import type {AppId, WorkerId} from '#services/inventory/schema.ts'
-import {CpuCounters, HistoryMinutes, LoadAverages, VmStatPages} from '#services/metrics/schema.ts'
+import type {AppId} from '#services/inventory/schema.ts'
+import {CpuCounters, HistoryMinutes, LoadAverages} from '#services/metrics/schema.ts'
 import type {
 	AppSample,
 	AppUsage,
 	CgroupPath,
 	Counters,
 	BandId,
-	CpuState,
 	Disk,
-	HistoryToolInput,
+	HistoryQuery,
 	MachineHistory,
 	Sample,
 	Point
@@ -88,79 +87,21 @@ function cpuUsage(
 	})
 }
 
-// A Mac's counters from `os.cpus()`, in milliseconds summed over its cores, with the supplied monotonic uptime duration and sample time, since a Mac's uptime has only whole seconds.
-export function cpuCounters(
-	cpus: readonly {times: Record<CpuState, number>}[],
-	uptime: Duration.Duration,
-	time: DateTime.Utc
-) {
-	return {
-		cpuIdle: Duration.millis(Number.sumAll(Array.map(cpus, cpu => cpu.times.idle))),
-		cpuTotal: Duration.millis(Number.sumAll(Array.map(cpus, cpu => Number.sumAll(Record.values(cpu.times))))),
-		time,
-		uptime
-	}
-}
-
-// What Activity Monitor calls used memory, from `vm_stat`: app memory (anonymous less purgeable), wired, and what the compressor occupies.
-export function vmStatMemory(text: string, total: number) {
-	const pages = Record.fromEntries(
-		Array.getSomes(
-			pipe(
-				text,
-				String.split('\n'),
-				Array.map(line =>
-					Option.map(
-						String.match(/^"?([^":]+)"?:\s+([0-9]+)\.$/u)(String.trim(line)),
-						match => [match[1] ?? '', match[2] ?? ''] as const
-					)
-				)
-			)
-		)
-	)
-	const page = Schema.decodeUnknownSync(Schema.FiniteFromString)(
-		pipe(String.match(/page size of ([0-9]+) bytes/u)(text), Option.flatMap(Array.get(1)), Option.getOrUndefined)
-	)
-	const counts = Schema.decodeUnknownSync(VmStatPages)(pages)
-	return {
-		total,
-		used: Number.clamp(
-			(counts['Anonymous pages'] -
-				counts['Pages purgeable'] +
-				counts['Pages wired down'] +
-				counts['Pages occupied by compressor']) *
-				page,
-			{maximum: total, minimum: 0}
-		)
-	}
-}
-
-// Nonempty rows after df's header.
-function diskRows(output: string) {
-	return pipe(output, String.trim, String.split('\n'), Array.drop(1), Array.filter(String.isNonEmpty))
-}
-
-// A Mac's startup volume from `df -k /`: APFS reports only the system volume's own use, so the container's use is size less available.
-export function rootVolume(text: string) {
-	return Array.map(diskRows(text), line => {
-		const fields = String.split(String.trim(line), /\s+/u)
-		const size = Schema.decodeUnknownSync(Schema.FiniteFromString)(fields[1]) * 1024
-		return {mount: '/', total: size, used: size - Schema.decodeUnknownSync(Schema.FiniteFromString)(fields[3]) * 1024}
-	}) satisfies Disk[]
-}
-
-// Linux disks from `df -B1 --output=target,size,used`: the two numbers end the row, so a mount point may hold spaces; a row without them fails the whole reading.
+// Disks from `df -B1 --output=target,size,used`, each nonempty row after its header: the two numbers end the row, so a mount point may hold spaces; a row without them fails the whole reading.
 export function linuxDisks(text: string) {
-	return Array.map(diskRows(text), line => {
-		const fields = Option.getOrThrowWith(String.match(/^\s*(.+?)\s+([0-9]+)\s+([0-9]+)\s*$/u)(line), () =>
-			DeployError.make({message: `df wrote a row without a size and use: ${line}`})
-		)
-		return {
-			mount: fields[1] ?? '',
-			total: Schema.decodeUnknownSync(Schema.FiniteFromString)(fields[2]),
-			used: Schema.decodeUnknownSync(Schema.FiniteFromString)(fields[3])
+	return Array.map(
+		pipe(text, String.trim, String.split('\n'), Array.drop(1), Array.filter(String.isNonEmpty)),
+		line => {
+			const fields = Option.getOrThrowWith(String.match(/^\s*(.+?)\s+([0-9]+)\s+([0-9]+)\s*$/u)(line), () =>
+				DeployError.make({message: `df wrote a row without a size and use: ${line}`})
+			)
+			return {
+				mount: fields[1] ?? '',
+				total: Schema.decodeUnknownSync(Schema.FiniteFromString)(fields[2]),
+				used: Schema.decodeUnknownSync(Schema.FiniteFromString)(fields[3])
+			}
 		}
-	}) satisfies Disk[]
+	) satisfies Disk[]
 }
 
 // One reading covers its second, or none when it was not read.
@@ -168,14 +109,23 @@ export function coverageOf(value: Option.Option<unknown>) {
 	return Option.match(value, {onNone: () => Duration.zero, onSome: () => Duration.seconds(1)})
 }
 
-// A measurement from the machine's readings: memory in bytes, the disks it measures and up to three load averages.
-export function reading(
+// A measurement from `/proc/meminfo`, the last disks read and `/proc/loadavg`: memory in bytes, the disks it measures and up to three load averages.
+export function sample(
 	current: Counters,
-	memory: {total: number; used: number},
+	memory: string,
 	disks: readonly Disk[],
-	load: readonly number[],
-	previous: Option.Option<Counters>
+	previous: Option.Option<Counters>,
+	load: Option.Option<string>
 ) {
+	const values = pipe(
+		String.trim(memory),
+		String.split('\n'),
+		Record.fromIterableWith(line => {
+			const fields = String.split(line, /\s+/u)
+			return [fields[0], Schema.decodeSync(Schema.FiniteFromString)(fields[1] ?? '') * 1024] as const
+		})
+	)
+	const memoryTotal = Schema.decodeUnknownSync(Schema.Finite)(values['MemTotal:'])
 	const baseline = Option.filter(previous, old => Duration.isLessThan(old.uptime, current.uptime))
 	const cpu = cpuUsage(
 		{idle: current.cpuIdle, total: current.cpuTotal},
@@ -192,41 +142,15 @@ export function reading(
 		cpu,
 		cpuCoverage: coverageOf(cpu),
 		memoryCoverage: Duration.seconds(1),
-		memoryTotal: memory.total,
-		memoryUsed: memory.used,
+		memoryTotal,
+		memoryUsed: memoryTotal - Schema.decodeUnknownSync(Schema.Finite)(values['MemAvailable:']),
 		storageCoverage: coverageOf(storageUsed),
 		storageUsed,
 		time: current.time
 	}
-	return {disks, load, point}
-}
-
-// A Linux sample from `/proc/meminfo`, the last disks read and `/proc/loadavg`.
-export function sample(
-	current: Counters,
-	memory: string,
-	disks: readonly Disk[],
-	previous: Option.Option<Counters>,
-	load: Option.Option<string>
-) {
-	const values = pipe(
-		String.trim(memory),
-		String.split('\n'),
-		Record.fromIterableWith(line => {
-			const fields = String.split(line, /\s+/u)
-			return [fields[0], Schema.decodeSync(Schema.FiniteFromString)(fields[1] ?? '') * 1024] as const
-		})
-	)
-	return reading(
-		current,
-		{
-			total: Schema.decodeUnknownSync(Schema.Finite)(values['MemTotal:']),
-			used:
-				Schema.decodeUnknownSync(Schema.Finite)(values['MemTotal:']) -
-				Schema.decodeUnknownSync(Schema.Finite)(values['MemAvailable:'])
-		},
+	return {
 		disks,
-		Schema.decodeSync(LoadAverages)(
+		load: Schema.decodeSync(LoadAverages)(
 			pipe(
 				Option.getOrElse(load, Function.constant('')),
 				String.trim,
@@ -235,8 +159,8 @@ export function sample(
 				Array.take(3)
 			)
 		),
-		previous
-	)
+		point
+	}
 }
 
 // A range's slot width: every range draws 60 slots.
@@ -405,46 +329,6 @@ export function history(samples: readonly Sample[], minutes: Duration.Duration, 
 	)
 }
 
-// A peer's last answer and the error of its latest read, if that failed.
-export type PeerHistory = {
-	error: Option.Option<string>
-	saved: Option.Option<{history: MachineHistory; received: DateTime.Utc}>
-}
-
-// A peer's history as the page draws it now: its last answer windowed in the peer's own clock, moved on by how long ago the answer arrived, so a clock ahead or behind this one keeps its newest points. It is stale once that answer is older than 90 seconds or the latest read failed.
-export function peerHistory(
-	minutes: Duration.Duration,
-	now: DateTime.Utc,
-	worker: WorkerId,
-	peer: Option.Option<PeerHistory>
-) {
-	const saved = Option.flatMap(peer, current => current.saved)
-	const time = Option.match(saved, {
-		onNone: () => now,
-		onSome: last => DateTime.addDuration(last.history.time, DateTime.distance(last.received, now))
-	})
-	return {
-		disks: Option.match(saved, {onNone: () => [], onSome: last => last.history.disks}),
-		error: Option.match(peer, {
-			onNone: () => Option.some('Waiting for worker'),
-			onSome: current => Option.orElse(current.error, () => Option.flatMap(current.saved, last => last.history.error))
-		}),
-		load: Option.match(saved, {onNone: () => [], onSome: last => last.history.load}),
-		platform: Option.flatMap(saved, last => last.history.platform),
-		samples: history(Option.match(saved, {onNone: () => [], onSome: last => last.history.samples}), minutes, time),
-		stale:
-			Option.exists(peer, current => Option.isSome(current.error)) ||
-			Option.match(saved, {
-				onNone: Function.constTrue,
-				onSome: last =>
-					last.history.stale ||
-					pipe(last.received, DateTime.distance(now), Duration.isGreaterThan(Duration.seconds(90)))
-			}),
-		time,
-		worker
-	} satisfies MachineHistory
-}
-
 // A band's label: the page's name for the app when it has a row, else the unit or container the id names.
 export function bandName(id: BandId, labels: Record<AppId, string>) {
 	if (id === 'other') return 'Low impact'
@@ -608,7 +492,12 @@ function appsOf(labels: Record<AppId, string>, latest: Sample) {
 	]
 }
 
-function workerHistory(machine: MachineHistory, minutes: Duration.Duration, labels: Record<AppId, string>) {
+// Memory, CPU and disk as 60 aligned points with the current figures and the heaviest apps, in as few tokens as the page's charts need.
+export function resourceHistory(
+	machine: MachineHistory,
+	minutes: HistoryQuery['minutes'],
+	labels: Record<AppId, string>
+) {
 	const latest = Array.last(machine.samples)
 	const storageTotal = diskTotal(machine)
 	return {
@@ -629,20 +518,6 @@ function workerHistory(machine: MachineHistory, minutes: Duration.Duration, labe
 			memoryTotalGiB: Number.round(point.memoryTotal / 1024 ** 3, 1)
 		})),
 		stale: Option.liftPredicate(true as const, () => machine.stale),
-		stepSeconds: resolution(minutes),
-		worker: machine.worker
+		stepSeconds: resolution(minutes)
 	}
-}
-
-// Memory, CPU and disk as 60 aligned points per worker with the current figures and the heaviest apps, in as few tokens as the page's charts need.
-export function resourceHistory(
-	machines: readonly MachineHistory[],
-	input: HistoryToolInput,
-	names: Record<string, Record<AppId, string>>
-) {
-	return pipe(
-		machines,
-		Array.filter(machine => !Option.exists(input.worker, worker => machine.worker !== worker)),
-		Array.map(machine => workerHistory(machine, input.minutes, names[machine.worker] ?? {}))
-	)
 }

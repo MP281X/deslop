@@ -24,7 +24,7 @@ The same `execute` reads, never writes, the user's work calendar and mail, `matt
 
 ## VPN
 
-When `git.datapizza.tech`'s sign-in page stops answering, restart the session on dev; give the user the printed sign-in URL once, end the turn, and probe again once he confirms.
+When `git.datapizza.tech`'s sign-in page stops answering, restart the session on `worker`; give the user the printed sign-in URL once, end the turn, and probe again once he confirms.
 
 ```bash
 curl -fsS --max-time 5 https://git.datapizza.tech/users/sign_in >/dev/null || {

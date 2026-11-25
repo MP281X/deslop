@@ -124,7 +124,7 @@ const publicAccess: readonly Access[] = [
 		callers: ['member'] as const,
 		surface: `tool ${name}`
 	})),
-	...Array.map(['metrics.watch', 'metrics.history', 'inventory.watch', 'inventory.snapshot'], name => ({
+	...Array.map(['metrics.watch', 'inventory.watch'], name => ({
 		app: 'deploy',
 		callers: ['member'] as const,
 		surface: `rpc ${name}`
@@ -134,8 +134,6 @@ const publicAccess: readonly Access[] = [
 		callers: ['member'] as const,
 		surface: `tool ${name}`
 	})),
-	// A peer's admin removes an exposure it owns; on scratch data there is none, so nothing changes.
-	{app: 'deploy', callers: ['admin'], surface: 'rpc exposures.remove'},
 	...Array.map(['ai-proxy.key', 'ai-proxy.setKey', 'ai-metering.usage'], name => ({
 		app: 'gateway',
 		callers: ['member'] as const,

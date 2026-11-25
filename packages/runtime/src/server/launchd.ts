@@ -80,7 +80,7 @@ export const installAgent = Effect.fnUntraced(function* (name: string, command: 
 export const installUpdateAgent = Effect.fnUntraced(function* (name: string, command: string[]) {
 	const label = `deslop-${name}-update`
 	const target = `${domain()}/${label}`
-	const file = yield* writeAgent(label, name, command, '<key>StartInterval</key><integer>900</integer>')
+	const file = yield* writeAgent(label, name, command, '<key>StartInterval</key><integer>600</integer>')
 	if (yield* loaded(target)) yield* bootout(file)
 	yield* executeProcess('launchctl', ['bootstrap', domain(), file])
 })

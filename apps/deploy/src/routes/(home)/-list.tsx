@@ -21,7 +21,7 @@ import {Table, TableBody, TableCell} from '@deslop/components-web/ui/table'
 import {clockAtom} from '@deslop/runtime/client/clock'
 import {dueOf, timerOf} from '@deslop/runtime/shared/format'
 
-import {inventoryAtom, openExposeAtom, runAtom} from '#lib/fleet.ts'
+import {inventoryAtom, openExposeAtom, runAtom} from '#lib/machine.ts'
 import {ApplicationIcon} from '#routes/(home)/-marks.tsx'
 import {host, impactGroups, middleEllipsis} from '#routes/(home)/-rows.ts'
 import {

@@ -1,6 +1,3 @@
-import {hostname} from 'node:os'
-import {arch, platform} from 'node:process'
-
 import {
 	Array,
 	Boolean,
@@ -32,7 +29,7 @@ import {Exposure} from '#services/exposures/schema.ts'
 import type {ExposeInput} from '#services/exposures/schema.ts'
 import {portOwner} from '#services/inventory/lib/utils.ts'
 import type {ExposureName, Serve, Snapshot} from '#services/inventory/schema.ts'
-import {DeployError, InventoryItem, ItemId, WorkerId} from '#services/inventory/schema.ts'
+import {DeployError, InventoryItem, ItemId} from '#services/inventory/schema.ts'
 import {Inventory} from '#services/inventory/service.ts'
 import {Proxies} from '#services/proxies/service.ts'
 
@@ -81,7 +78,6 @@ export class Exposures extends Context.Service<Exposures>()('@deslop/deploy/serv
 		const sql = yield* SqlClient.SqlClient
 		const proxies = yield* Proxies
 		const inventory = yield* Inventory
-		const worker = yield* Schema.decodeEffect(WorkerId)(hostname())
 
 		const listExposures = SqlSchema.findAll({
 			Request: Schema.Void,
@@ -209,7 +205,7 @@ export class Exposures extends Context.Service<Exposures>()('@deslop/deploy/serv
 			)
 		})
 
-		// Makes the worker match the rows: active rows whose port still belongs to their owner are published, the rest are not, and a removal's row goes once Deploy's own mapping is gone, not once nothing serves the address: a mapping changed outside Deploy is left alone and its row still goes.
+		// Makes the machine match the rows: active rows whose port still belongs to their owner are published, the rest are not, and a removal's row goes once Deploy's own mapping is gone, not once nothing serves the address: a mapping changed outside Deploy is left alone and its row still goes.
 		const reconciler = yield* makeReconciler(
 			Semaphore.withPermit(
 				passLock,
@@ -254,8 +250,7 @@ export class Exposures extends Context.Service<Exposures>()('@deslop/deploy/serv
 						}
 						return found
 					}),
-					'Exposures.reconcile',
-					{attributes: {worker}}
+					'Exposures.reconcile'
 				)
 			),
 			Record.isEmptyRecord,
@@ -283,15 +278,9 @@ export class Exposures extends Context.Service<Exposures>()('@deslop/deploy/serv
 			// Each change takes the caller's admin capability, so no route reaches it on a declaration alone.
 			expose: Effect.fn('Exposures.expose')(
 				function* (input: ExposeInput, _admin: Admin) {
-					yield* Effect.annotateCurrentSpan({exposure: input.name, kind: input.kind, port: input.port, worker})
+					yield* Effect.annotateCurrentSpan({exposure: input.name, kind: input.kind, port: input.port})
 					if (input.kind === 'public' && !input.publicAccess) {
 						return yield* DeployError.make({message: 'Explicitly confirm public access before publishing a port'})
-					}
-					// Public exposure runs the bundled Caddy, a Linux x64 build.
-					if (input.kind === 'public' && (platform !== 'linux' || arch !== 'x64')) {
-						return yield* DeployError.make({
-							message: 'Public exposure needs a Linux x64 worker; expose this port to the tailnet'
-						})
 					}
 					// A reserved port is refused before any lookup, since the lookup connects to it.
 					yield* Option.match(reservedPort(input.port), {
@@ -331,7 +320,7 @@ export class Exposures extends Context.Service<Exposures>()('@deslop/deploy/serv
 						}
 						if (!Option.contains(yield* proxies.tailnetName, exposure.hostname)) {
 							return yield* DeployError.make({
-								message: 'Use this worker’s Tailscale DNS name; Deploy never publishes another worker’s hostname'
+								message: 'Use this machine’s Tailscale DNS name; Deploy never publishes another machine’s hostname'
 							})
 						}
 					} else {
@@ -350,7 +339,7 @@ export class Exposures extends Context.Service<Exposures>()('@deslop/deploy/serv
 			),
 			hide: Effect.fn('Exposures.hide')(
 				function* (name: ExposureName, _admin: Admin) {
-					yield* Effect.annotateCurrentSpan({exposure: name, worker})
+					yield* Effect.annotateCurrentSpan({exposure: name})
 					const exposure = yield* pipe(
 						yield* owned,
 						Array.findFirst(row => row.name === name),
@@ -389,7 +378,7 @@ export class Exposures extends Context.Service<Exposures>()('@deslop/deploy/serv
 								onFalse: Function.constant('quiet' as const),
 								onTrue: Function.constant('warning' as const)
 							}),
-							id: ItemId.make(`${worker}:exposure:${row.name}`),
+							id: ItemId.make(`exposure:${row.name}`),
 							kind: 'exposure',
 							name: row.name,
 							owned: Option.some(true),
@@ -399,12 +388,11 @@ export class Exposures extends Context.Service<Exposures>()('@deslop/deploy/serv
 								onFalse: Function.constant('configured; check backend'),
 								onTrue: Function.constant('removing')
 							}),
-							url: Option.some(exposureUrl(row)),
-							worker
+							url: Option.some(exposureUrl(row))
 						})
 					})
 				),
-				Effect.withSpan('Exposures.items', {attributes: {worker}})
+				Effect.withSpan('Exposures.items')
 			)
 		}
 	})

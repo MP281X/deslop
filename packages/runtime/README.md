@@ -4,6 +4,7 @@ Every app installs with `npm install --global @deslop/<app>` and runs as `<app> 
 
 - **Secrets** go in `~/.deslop/<app>.env`, never in flags.
 - **Node** comes from Vite+: the updater runs the npm beside it.
+- **Priority.** On Linux the apps share `deslop.slice`: ten times an agent's CPU share under contention, and their first gigabyte spared from reclaim once the machine's slices above it carry the same protection.
 - **macOS.** Keep a GUI user logged in, even when installing over SSH: launch agents start only at login.
 
 ## Server

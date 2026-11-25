@@ -1,3 +1,3 @@
 # Deploy
 
-Run Deploy on Linux x64 or macOS arm64. Public exposure needs the bundled Linux x64 Caddy.
+Run Deploy on the Linux x64 machine it shows; public exposure uses the bundled Caddy.

@@ -14,11 +14,9 @@
 		"bin"
 	],
 	"os": [
-		"darwin",
 		"linux"
 	],
 	"cpu": [
-		"arm64",
 		"x64"
 	],
 	"type": "module",
