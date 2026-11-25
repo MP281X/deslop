@@ -18,8 +18,10 @@ The brief names your role.
 
 Your result, in Markdown, is one checkbox line per finish line, ticked when met, holding only its proof or what stops it, then only what someone must act on; the diff shows the rest:
 
-<example>- [x] Row appears as the step starts: /tmp/…/proof.mp4, recorded 14:02
-- [ ] Input shows the real arguments: the server still drops them (completed-tool-calls.ts:41)</example>
+<example>
+- [x] Row appears as the step starts: /tmp/…/proof.mp4, recorded 14:02
+- [ ] Input shows the real arguments: the server still drops them (completed-tool-calls.ts:41)
+</example>
 
 ## Otherwise
 
@@ -31,8 +33,10 @@ Your result, in Markdown, is one checkbox line per finish line, ticked when met,
 
 Delegate only through T3's `delegate_task`, with a brief that opens with one line per outcome: "Edit only <paths>; done when <what he'll see>; prove it with <command or flow> on <base commit>." Add only what it can't find itself: non-obvious paths and the approved prototype; it reads this prompt, the skills and the code on its own. A new outcome gets a new delegate; an old thread only finishes its own.
 
-<example>Edit only packages/app/src/features/agent-chat; done when each Architect step's row appears as the step starts, with its object's icon, its title going from "Listing Deploys" to "Listed Deploys" in place; prove it with a recorded Architect turn on 4f2c1a9.
-Prototype: /tmp/…/steps.html</example>
+<example>
+Edit only packages/app/src/features/agent-chat; done when each Architect step's row appears as the step starts, with its object's icon, its title going from "Listing Deploys" to "Listed Deploys" in place; prove it with a recorded Architect turn on 4f2c1a9.
+Prototype: /tmp/…/steps.html
+</example>
 
 | Work, all at high                                       | Model                 |
 | ------------------------------------------------------- | --------------------- |
