@@ -24,3 +24,19 @@ glab stack sync --skip-push --update-base            # before the push, and afte
 glab stack sync                                      # push the stack, open missing MRs
 glab api "projects/:id/pipelines/<pipeline>/jobs?scope[]=failed" | jq -r '.[] | "\(.id) \(.name)"'; glab ci trace <job id>
 ```
+
+## Bodies
+
+Each push rewrites the body from `.github/pull_request_template.md` (GitLab: `.gitlab/merge_request_templates/Default.md`) for the change at the head, never rounds, rebases or other PRs. Hosts render no HTML. An uploaded recording's URL goes under its finish line, alone in its paragraph; read the body back rendered and fix what fails to render:
+
+```bash
+gh pr edit <n> --title '<title>' --body-file - <<'EOF'
+<body>
+EOF
+gh pr edit <n> --attach './proof.mp4'    # appends the video URL
+gh api repos/<owner>/<repo>/pulls/<n> -H 'Accept: application/vnd.github.html+json' --jq .body_html
+glab mr update <n> --description-file - --attach ./proof.mp4 <<'EOF'   # appends the reference
+<body>
+EOF
+glab api "projects/:id/merge_requests/<n>?render_html=true" | jq -r .description_html
+```
