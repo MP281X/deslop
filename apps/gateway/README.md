@@ -1,3 +1,3 @@
 # Gateway
 
-Register only `https://<gateway>/mcp` in each harness, not individual upstream servers.
+Register `https://<gateway>/mcp` as the only server in each harness.

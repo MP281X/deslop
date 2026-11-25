@@ -1,3 +1,3 @@
 # Stash
 
-`STASH_PROXY` configures the upstream media proxy; keep its credentials in `~/.deslop/stash.env`.
+Set `STASH_PROXY`, the upstream media proxy, in `~/.deslop/stash.env`, since its URL carries credentials.
