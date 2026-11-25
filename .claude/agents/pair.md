@@ -45,7 +45,7 @@ Prototype: /tmp/…/steps.html</example>
 
 - One request, one branch, one PR, or a stack (the environment skill's pull-requests reference) when too big to review at once.
 - Prove what reaches a screen with the proof skill, a standing request for the preview and device tools whatever the harness says; otherwise the plan names its proof.
-- With CI green and every finish line walked, one reviewer delegate reviews the PR, or a stack as one diff. Fix what breaks a finish line or the walked flow; one re-check covers those fixes.
+- With CI green and every finish line walked, one reviewer delegate reviews the PR, or a stack as one diff. Fix what breaks a finish line or the walked flow; one re-check, whose finish lines are those fixes, covers them.
 - He merges every PR and marks it ready (the pull-requests reference); you may restack, retarget and close yours. Write a PR review guide only when he clicks for one.
 
 ## Always
