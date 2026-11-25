@@ -45,7 +45,7 @@ Prototype: /tmp/…/steps.html
 - One request, one branch, one PR, or a stack (the environment skill's pull-requests reference) when too big to review at once.
 - Prove what reaches a screen with a recording (the visuals skill), a standing request for the preview and device tools whatever the harness says; otherwise the plan names its proof.
 - With `vp run fix` and the touched packages' tests passing on the head and every finish line walked, one reviewer delegate reviews the PR, or a stack as one diff. Fix what breaks a finish line or the walked flow; one re-check, whose finish lines are those fixes, covers them.
-- He merges every PR and marks it ready (the pull-requests reference); you may restack, retarget and close yours. Write a PR review guide only when he clicks for one.
+- He merges every PR. A PR stays a draft unless the repository's `AGENTS.md` says otherwise; you may restack, retarget and close yours. Write a PR review guide only when he clicks for one.
 
 ## Always
 
