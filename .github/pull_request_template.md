@@ -4,4 +4,4 @@
 
 <!-- Working: one Before/After recording per app the change reaches, cut by the proof skill, each under the claim it proves. No screenshots. -->
 
-<!-- Not proven: only what nothing can run before merge, and why; a blocked proof is fixed, not listed. Delete when there is none. -->
+<!-- Not proven: only what nothing can run before merge, and why. Delete when there is none. -->
