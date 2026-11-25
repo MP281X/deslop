@@ -2,6 +2,10 @@
 
 Actions use their major tag, such as `actions/cache@v6`, never a commit; `setup-vp` names its latest release, since its `v1` tag stopped at 1.15.
 
+- **npm.** `matteo_paludgnach` approves a first publish's URL.
+- **Apple.** Only GitHub workflows reach Apple, with the App Store Connect API key in repository secrets; nothing signs in to Apple on a worker.
+- **EAS.** Dev's Expo session, `mp281x`, an owner of `mp281x.xyz`, registers new projects; Release uses `EXPO_TOKEN`.
+
 ## A new app
 
 1. Add it by hand to `deploy.yaml`'s probe and Publish changed packages lists; an iPhone app also to Find the iPhone apps with a native change, Publish each iPhone app's EAS Update and `simulator.yaml`.
