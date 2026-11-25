@@ -12,7 +12,7 @@ description: Load before a command on `worker` or the Mac, starting a preview, o
 | `iphone-duo`  | `100.69.97.49`                            | The main control plane: T3 on the inner screen, held upright and sometimes rotated                          |
 
 - **Names.** Tailnet short names; `<name>.tailnet-8c4c.ts.net` has HTTPS certificates. SSH as `mp281x@worker`, `matteopaludgnach@macbook-pro`.
-- **Tools.** `vp`, `vpx`, `gh`, `glab` and the MCP gateway are installed and signed in, also over SSH.
+- **Tools.** On `worker`, `vp`, `vpx`, `gh`, `glab` and the MCP gateway are installed and signed in, also over SSH; the Mac has only T3, Xcode and Vite+.
 - **Git refs.** T3 checkpoints live under `refs/t3/`; search history with `--branches --remotes`.
 - **Checks.** Fix, check and test run on `worker`, unthrottled, before each push; CI only confirms.
 - **Auxiliary services** a task needs run as temporary containers, not installs.
