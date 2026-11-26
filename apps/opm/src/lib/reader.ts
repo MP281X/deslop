@@ -1,4 +1,4 @@
-import {Array, Boolean, HashMap, HashSet, Option, pipe} from 'effect'
+import {Array, Boolean, Function, HashMap, HashSet, Number, Option, pipe} from 'effect'
 
 import {keyOf} from '#services/chapters/lib/utils.ts'
 import type {ChapterKey, ChapterList, ChapterNumber, Position, ReadingPosition} from '#services/chapters/schema.ts'
@@ -81,5 +81,34 @@ export function withUnsaved(chapters: ChapterList, unsaved: HashMap.HashMap<Chap
 			HashMap.get(keyOf(chapter)),
 			Option.match({onNone: () => chapter, onSome: reading => ({...chapter, reading: Option.some(reading)})})
 		)
+	)
+}
+
+// A cover or a wide page stands alone. Every other turn pairs the right page with the following left page.
+export function turnsOf(chapters: ChapterList, spread: boolean, wide: HashSet.HashSet<string>) {
+	const [, groups] = Array.mapAccum(chapters, 0, (offset, chapter) => {
+		const [, turns] = Array.mapAccum(chapter.pages, false, (paired, right, page) => {
+			const index = offset + page
+			if (paired) return [false, Array.empty<number>()]
+			const left = chapter.pages[page + 1]
+			if (spread && page > 0 && left !== undefined && !HashSet.has(wide, right) && !HashSet.has(wide, left)) {
+				return [true, [index, index + 1]]
+			}
+			return [false, [index]]
+		})
+		return [offset + chapter.pages.length, Array.filter(turns, Array.isArrayNonEmpty)]
+	})
+	return Array.flatten(groups)
+}
+
+export function savedPage(chapter?: ChapterList[number]) {
+	if (chapter === undefined) return 0
+	return Number.min(
+		pipe(
+			chapter.reading,
+			Option.filter(position => !position.done),
+			Option.match({onNone: Function.constant(0), onSome: position => position.page})
+		),
+		Number.max(0, chapter.pages.length - 1)
 	)
 }

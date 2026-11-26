@@ -7,7 +7,7 @@ import {openAuthSessionAsync} from 'expo-web-browser'
 import {Alert} from 'react-native'
 
 import {readAccount} from '#client/account.ts'
-import {layerSocketProtocol, writeOutcome} from '#client/protocol.ts'
+import {layerSocketProtocol} from '#client/protocol.ts'
 import {activationsAtom} from '#mobile/activations.ts'
 import {appConfig} from '#mobile/app.ts'
 import {keychain} from '#mobile/keychain.ts'
@@ -217,15 +217,6 @@ export function makeSession() {
 		signIn: signInAtom,
 		signOut: signOutAtom
 	}
-}
-
-// An action reads its client once, so a reconnect never runs its last write again, and a write the transport lost says whether it may have taken effect.
-export function provideRuntimeOnce<A, E, R, ER>(
-	get: {result: <B, X>(atom: Atom.Atom<AsyncResult.AsyncResult<B, X>>) => Effect.Effect<B, X>},
-	runtime: Atom.AtomRuntime<R, ER>,
-	effect: Effect.Effect<A, E, R>
-) {
-	return Effect.flatMap(get.result(runtime), context => writeOutcome(Effect.provideContext(effect, context)))
 }
 
 export type Session = ReturnType<typeof makeSession>

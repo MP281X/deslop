@@ -3,7 +3,7 @@ import {assert, it} from '@effect/vitest'
 import {Array, HashMap, HashSet, Option} from 'effect'
 
 import type {ReaderState} from '#lib/reader.ts'
-import {stripOf, turnPage, withUnsaved} from '#lib/reader.ts'
+import {stripOf, turnPage, turnsOf, withUnsaved} from '#lib/reader.ts'
 import {keyOf} from '#services/chapters/lib/utils.ts'
 import {ChapterNumber} from '#services/chapters/schema.ts'
 import type {ChapterItem} from '#services/chapters/schema.ts'
@@ -29,7 +29,7 @@ it('keeps the strip a reader opened while its pages are revised or a gap fills b
 	const first = turn(OPENED, [item(240, 3), item(241, 2), item(242, 2)], 1)
 	const revised = [item(240, 3, 'b'), item(240.5, 1), item(241, 2), item(242, 2)]
 	assert.deepStrictEqual(stripOf(first.next, revised), [item(240, 3), item(241, 2)])
-	// Page 4 of the strip is the second page of 241, as the native strip reported it, not a page of 240.5.
+	// Page 4 of the strip is the second page of 241, as the strip reported it, not a page of 240.5.
 	const second = turn(first.next, revised, 4)
 	assert.deepStrictEqual(second.saves, [
 		{done: true, number: ChapterNumber.make(240), page: 2, series: 'manga'},
@@ -44,4 +44,18 @@ it('shows a place the server has not taken over its own, leaving other chapters 
 	assert.strictEqual(shown[0], chapters[0])
 	assert.deepStrictEqual(shown[1]?.reading, Option.some({done: false, page: 1}))
 	assert.strictEqual(withUnsaved(chapters, HashMap.empty()), chapters)
+})
+
+it('pairs only portrait interior pages within each chapter and finds the same page when it folds', () => {
+	const first = item(240, 6)
+	const second = item(241, 3)
+	const wide = HashSet.make('https://example.com/240/a/4.png')
+	const chapters = [first, second]
+	const spread = turnsOf(chapters, true, wide)
+	assert.deepStrictEqual(spread, [[0], [1, 2], [3], [4], [5], [6], [7, 8]])
+	assert.deepStrictEqual(Option.getOrThrow(Array.findFirst(spread, pair => Array.contains(pair, 2))), [1, 2])
+	assert.deepStrictEqual(
+		Option.getOrThrow(Array.findFirst(turnsOf(chapters, false, wide), pair => Array.contains(pair, 2))),
+		[2]
+	)
 })

@@ -18,9 +18,8 @@ defaults:
     shell: bash
 
 env:
-  APP_VARIANT: production
   DESLOP_DOMAIN: ${{ vars.DESLOP_DOMAIN }}
-  # The App Store build's version and build number, and each published package's version.
+  # Each published package's version.
   RELEASE_NUMBER: ${{ github.run_number }}
 
 jobs:
@@ -32,11 +31,12 @@ jobs:
       actions: write
       contents: read
       id-token: write
-    outputs:
-      app-store: ${{ steps.native.outputs.apps }}
     steps:
       - uses: actions/checkout@v7
-      - uses: ./.github/actions/setup
+      - uses: voidzero-dev/setup-vp@v1.22.0
+        with:
+          node-version: '26'
+          run-install: true
       # The key rolls with each run: a job restores the newest entry it can read, so a pull request starts from main's.
       - uses: actions/cache@v6
         with:
@@ -52,40 +52,8 @@ jobs:
       - name: Test
         run: vp run test
 
-      # Apple's acceptance leaves a receipt named for the fingerprint that expires after 80 days, ten before TestFlight drops the build; a fingerprint without one builds on a Mac.
-      - name: Find the iPhone apps with a native change
-        id: native
-        if: github.event_name == 'push'
-        env:
-          GH_TOKEN: ${{ github.token }}
-          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
-        run: |
-          builds=()
-          for app in opm; do
-            fingerprint=$(cd "apps/$app" && eas fingerprint:generate --platform ios --build-profile production --json --non-interactive | jq -r .hash)
-            artifact="$app-app-store-$fingerprint"
-            held=$(gh api "repos/$GITHUB_REPOSITORY/actions/artifacts?name=$artifact" --jq '[.artifacts[] | select(.expired | not)] | length')
-            if [[ $held == 0 ]]; then
-              builds+=("$(jq -cn --arg app "$app" --arg artifact "$artifact" --arg fingerprint "$fingerprint" '{$app, $artifact, $fingerprint}')")
-              echo "- $app builds $artifact" >> "$GITHUB_STEP_SUMMARY"
-            fi
-          done
-          echo "apps=$(jq -sc . <<< "${builds[*]}")" >> "$GITHUB_OUTPUT"
-
-      # The runtime version is the native fingerprint, so a phone takes an update only on a build with the same native code.
-      # Each export gets its own directory: Expo empties its output first, and `dist` holds the probed server.
-      - name: Publish each iPhone app's EAS Update
-        if: github.event_name == 'push'
-        env:
-          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
-        run: |
-          message=$(git log -1 --format=%s)
-          for app in opm; do
-            (cd "apps/$app" && eas update --channel production --environment production --platform ios --non-interactive --input-dir "$RUNNER_TEMP/update-$app" --message="$message")
-          done
-
       # The fingerprint is the hash of the tarball packed before the version bump, which packs the same bytes each time, so an unchanged package and a retry's published one both skip.
-      # An app bundles everything, so its manifest drops dependencies, scripts and the Expo entry; the standards CLI bundles its version, so it builds again after the bump.
+      # An app bundles everything, so its manifest drops dependencies, scripts and its source entry; the standards CLI bundles its version, so it builds again after the bump.
       - name: Publish changed packages
         if: github.event_name == 'push'
         run: |
@@ -123,51 +91,3 @@ jobs:
           old=$(comm -23 <(printf '%s\n' "$runs") <(printf '%s\n' "$kept") | awk 'NF && n++ < 300')
           xargs -r -P 8 -I{} gh api --method DELETE "repos/$GITHUB_REPOSITORY/actions/runs/{}" --silent <<< "$old"
           echo "- Deleted $(grep -c . <<< "$old" || true) workflow runs from before $cutoff" >> "$GITHUB_STEP_SUMMARY"
-
-  app-store:
-    name: App Store ${{ matrix.app }}
-    needs: verify
-    if: github.event_name == 'push' && needs.verify.outputs.app-store != '[]'
-    concurrency: ios-${{ matrix.app }}
-    # One app's failed build leaves the other apps to ship.
-    strategy:
-      fail-fast: false
-      matrix:
-        include: ${{ fromJSON(needs.verify.outputs.app-store) }}
-    runs-on: xcode-27
-    timeout-minutes: 60
-    env:
-      EAS_BUILD_DISABLE_EXPO_DOCTOR_STEP: 1
-    defaults:
-      run:
-        working-directory: apps/${{ matrix.app }}
-    steps:
-      - uses: actions/checkout@v7
-      - uses: ./.github/actions/setup
-      - name: Build the App Store app
-        env:
-          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
-        run: eas build --local --profile production --platform ios --non-interactive --output "$RUNNER_TEMP/app.ipa"
-      - name: Upload to the App Store
-        id: upload
-        env:
-          APP: ${{ matrix.app }}
-          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
-          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
-          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
-          FINGERPRINT: ${{ matrix.fingerprint }}
-        run: |
-          jq -n --arg app "$APP" --arg build "$RELEASE_NUMBER" --arg fingerprint "$FINGERPRINT" --arg commit "$GITHUB_SHA" \
-            '{app: $app, version: "0.1.\($build)", build: $build, fingerprint: $fingerprint, commit: $commit}' > "$RUNNER_TEMP/receipt.json"
-          mkdir -p "$HOME/.appstoreconnect/private_keys"
-          printf '%s\n' "$ASC_KEY_P8" > "$HOME/.appstoreconnect/private_keys/AuthKey_$ASC_KEY_ID.p8"
-          xcrun altool --upload-package "$RUNNER_TEMP/app.ipa" --api-key "$ASC_KEY_ID" --api-issuer "$ASC_ISSUER_ID"
-          echo "- $APP uploaded to TestFlight" >> "$GITHUB_STEP_SUMMARY"
-      # Recorded right after Apple accepts, even when the run is cancelled: the receipt, while it has not expired, is what keeps the next release from uploading this fingerprint again. A run that fails or dies between the two steps, or whose receipt upload fails, leaves none.
-      - name: Record Apple's acceptance
-        if: always() && steps.upload.outcome == 'success'
-        uses: actions/upload-artifact@v7
-        with:
-          name: ${{ matrix.artifact }}
-          path: ${{ runner.temp }}/receipt.json
-          retention-days: 80
