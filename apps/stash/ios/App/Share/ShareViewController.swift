@@ -133,7 +133,7 @@ private struct SaveView: View {
         phase = .failed("A note holds at most 20,000 characters.")
         return
       }
-      await finish(try await upload.text(shared.text))
+      await finish(try await upload.text(shared.text, activity: shared.hasLink))
     } catch {
       phase = .failed(error.localizedDescription)
     }
@@ -167,9 +167,26 @@ private struct Upload {
     store.folder.appendingPathComponent(name)
   }
 
-  func text(_ text: String) async throws -> Outcome {
+  private struct Capture: Encodable {
+    struct Activity: Encodable {
+      let bundle: String
+      let token: String
+    }
+
+    let id: String
+    let text: String
+    let activity: Activity?
+  }
+
+  func text(_ text: String, activity: Bool) async throws -> Outcome {
     let id = UUID().uuidString.lowercased()
-    let payload = try JSONEncoder().encode(["id": id, "text": text])
+    let target: Capture.Activity?
+    if activity, let bundle = Theme.app?.bundleIdentifier, let token = store.pushToStartToken {
+      target = Capture.Activity(bundle: bundle, token: token)
+    } else {
+      target = nil
+    }
+    let payload = try JSONEncoder().encode(Capture(id: id, text: text, activity: target))
     return try await deliver(payload, named: "\(id).json", to: "api/capture", type: "application/json", id: id)
   }
 

@@ -1,0 +1,259 @@
+.shell-actions > button svg {
+	fill: none;
+	stroke: currentColor;
+	stroke-linecap: round;
+	stroke-linejoin: round;
+	stroke-width: 2;
+}
+
+.stash-action {
+	padding-inline: 14px;
+	font-size: 13px;
+	font-weight: 560;
+}
+
+.stash-queue {
+	padding: 0 10px;
+}
+
+.stash-reading {
+	container-type: inline-size;
+	padding: 12px 16px;
+}
+
+.stash-note-row {
+	grid-template-columns: 36px minmax(0, 1fr) auto;
+	gap: 9px;
+	padding-inline: 9px;
+}
+
+.stash-thumb {
+	width: 36px;
+	height: 36px;
+	object-fit: cover;
+	border-radius: 6px;
+	background: var(--color-muted);
+}
+
+.stash-row-lines {
+	display: grid;
+	min-width: 0;
+	line-height: 1.25;
+}
+
+.stash-row-lines .axis-title {
+	font-size: 14px;
+}
+
+.stash-row-lines .axis-muted,
+.stash-note-row .axis-value {
+	font-size: 12px;
+}
+
+.stash-reader {
+	max-width: 760px;
+	margin-inline: auto;
+	overflow-wrap: anywhere;
+	font-size: 15px;
+	line-height: 1.45;
+}
+
+.stash-gallery {
+	display: flex;
+	margin-bottom: 10px;
+	overflow: auto hidden;
+	scrollbar-width: none;
+	scroll-snap-type: x mandatory;
+	overscroll-behavior-inline: contain;
+}
+
+.stash-cover {
+	width: 100%;
+	height: clamp(114px, 33cqw, 168px);
+	flex: 0 0 100%;
+	object-fit: cover;
+	scroll-snap-align: start;
+	background: var(--color-muted);
+}
+
+.stash-reader h1 {
+	font-size: 24px;
+	font-weight: 680;
+	letter-spacing: -0.02em;
+	line-height: 1.15;
+}
+
+.stash-byline {
+	margin-top: 3px;
+	color: var(--color-muted-foreground);
+	font-size: 12px;
+}
+
+.stash-summary,
+.stash-prose,
+.stash-plaintext,
+.stash-problem,
+.stash-tags {
+	margin-top: 12px;
+}
+
+.stash-reader h2 {
+	margin-block: 16px 4px;
+	font-size: 17px;
+	font-weight: 620;
+}
+
+.stash-prose :is(p, ol, ul, blockquote):not(:last-child) {
+	margin-bottom: 10px;
+}
+
+.stash-prose :is(ol, ul) {
+	padding-inline-start: 20px;
+}
+
+.stash-prose ul {
+	list-style-type: disc;
+}
+
+.stash-prose ol {
+	list-style-type: decimal;
+}
+
+.stash-prose blockquote {
+	padding-inline-start: 12px;
+	color: var(--color-muted-foreground);
+}
+
+.stash-prose a,
+.stash-inline-action {
+	text-decoration: underline;
+	text-underline-offset: 0.2em;
+}
+
+.stash-plaintext {
+	white-space: pre-line;
+}
+
+.stash-problem {
+	color: var(--color-muted-foreground);
+	font-size: 13px;
+}
+
+.stash-inline-action {
+	margin-inline-start: 8px;
+}
+
+.stash-tags {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+}
+
+.stash-tags button {
+	border-radius: 999px;
+	padding: 5px 10px;
+	background: var(--color-muted);
+	font-size: 12px;
+}
+
+.stash-tags [aria-pressed='true'] {
+	outline: 1px solid var(--color-muted-foreground);
+}
+
+.stash-compose textarea {
+	display: block;
+	inline-size: min(19rem, calc(var(--panel-width) - 2 * var(--shell-control-size)));
+	min-block-size: 8rem;
+	resize: vertical;
+}
+
+.stash-compose-actions {
+	display: flex;
+	justify-content: flex-end;
+	gap: 4px;
+	margin-block-start: 4px;
+}
+
+.stash-gate {
+	display: grid;
+	min-height: 100dvh;
+	place-items: center;
+}
+
+.stash-notice {
+	display: grid;
+	justify-items: center;
+	gap: 12px;
+	margin: 20px 16px;
+	color: var(--color-muted-foreground);
+	font-size: 14px;
+	text-align: center;
+}
+
+.glass-panel .glass-panel-body {
+	display: grid;
+	gap: 4px;
+}
+
+.glass-panel :is(button, a, select, .axis-muted) {
+	display: block;
+	inline-size: 100%;
+	block-size: auto;
+	min-block-size: 36px;
+	border-radius: 8px;
+	padding: 6px 8px;
+	text-align: start;
+}
+
+.glass-panel :is(button, a, select):hover {
+	background: rgb(255 255 255 / 9%);
+}
+
+.glass-panel .stash-compose-actions button {
+	inline-size: auto;
+}
+
+.stash-report {
+	position: fixed;
+	z-index: 3;
+	inset: auto 16px calc(58px + env(safe-area-inset-bottom));
+	display: flex;
+	align-items: flex-start;
+	gap: 12px;
+	max-width: 44rem;
+	margin-inline: auto;
+	border-radius: 16px;
+	padding: 12px;
+	background: var(--color-muted);
+	font-size: 14px;
+	box-shadow: 0 4px 24px #0009;
+}
+
+.stash-report p {
+	flex: 1;
+	white-space: pre-line;
+}
+
+@media (vertical-viewport-segments: 2) {
+	.stash {
+		grid-template-rows: env(viewport-segment-height 0 0) minmax(0, 1fr);
+	}
+
+	.stash[data-show] > .fold-list {
+		display: block;
+		grid-row: 2;
+	}
+
+	.stash[data-show] > .fold-detail {
+		display: block;
+		grid-row: 1;
+	}
+
+	.stash[data-list-hidden] {
+		grid-template-rows: minmax(0, 1fr);
+	}
+
+	.stash[data-list-hidden] > .fold-list {
+		display: none;
+	}
+}

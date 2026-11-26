@@ -16,10 +16,9 @@
 	"type": "module",
 	"sideEffects": false,
 	"imports": {
-		"#lib/*": "./src/lib/*",
-		"#routes/*": "./src/routes/*",
-		"#rpcs/*": "./src/rpcs/*",
-		"#services/*": "./src/services/*"
+		"#contracts": "./src/contracts.ts",
+		"#server/*": "./src/server/*",
+		"#web/*": "./src/web/*"
 	},
 	"publishConfig": {
 		"access": "public"

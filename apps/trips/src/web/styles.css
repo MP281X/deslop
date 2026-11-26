@@ -1,0 +1,189 @@
+@import '@deslop/ui/theme.css';
+
+.trips {
+	font-size: 0.95rem;
+}
+
+.trips-pane,
+.trips-pass {
+	display: flex;
+	flex-direction: column;
+}
+
+.trips-pane {
+	min-height: 100%;
+	padding-inline: 10px;
+}
+
+.trips-pass {
+	flex: 1;
+}
+
+.trips-sidebar-wide {
+	display: none;
+}
+
+@media (min-width: 640px),
+	(horizontal-viewport-segments: 2),
+	(device-posture: folded) and (vertical-viewport-segments: 2) {
+	.trips-sidebar-wide {
+		display: block;
+	}
+	.trips-sidebar-compact {
+		display: none;
+	}
+}
+
+@media (device-posture: folded) and (vertical-viewport-segments: 2) {
+	.trips[data-show] {
+		grid-template-rows:
+			minmax(0, env(viewport-segment-height 0 0))
+			calc(env(viewport-segment-top 0 1) - env(viewport-segment-bottom 0 0))
+			minmax(0, 1fr);
+	}
+
+	.trips[data-show] > .fold-detail {
+		display: block;
+		grid-row: 1;
+	}
+
+	.trips[data-show] > .fold-list {
+		display: block;
+		grid-row: 3;
+	}
+
+	.trips[data-show] .trips-half {
+		display: block;
+		padding: 16px var(--pane-padding);
+	}
+
+	.trips[data-show] .trips-pass[data-half-step] {
+		display: none;
+	}
+}
+
+.trips-half {
+	display: none;
+}
+
+.trips-board {
+	padding: 14px var(--pane-padding) 4px;
+}
+
+.trips-route {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+	align-items: center;
+	gap: 14px;
+	margin-block: 20px;
+	font-size: 2.3rem;
+	font-weight: 670;
+	line-height: 1.05;
+}
+
+.trips-route > div:last-child {
+	text-align: end;
+}
+
+.trips-route .axis-muted {
+	display: block;
+	margin-block-start: 6px;
+	font-weight: 450;
+}
+
+.trips-ticket {
+	display: grid;
+	grid-template-columns: repeat(3, minmax(0, 1fr));
+	gap: 14px 10px;
+	padding-block-end: 12px;
+}
+
+.trips-ticket .axis-value {
+	display: inline;
+	text-align: start;
+	overflow-wrap: anywhere;
+}
+
+.trips-ticket s {
+	display: block;
+	margin: 0;
+}
+
+.trips-next [data-pending],
+.trips s {
+	color: var(--color-muted-foreground);
+}
+
+.trips s {
+	margin-inline-end: 0.4rem;
+	font-size: 0.85em;
+}
+
+.trips-control {
+	display: inline-grid;
+	min-height: 42px;
+	padding-inline: 14px;
+	place-items: center;
+	border-radius: 999px;
+	white-space: nowrap;
+	font-weight: 550;
+}
+
+.trips-stale {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding-inline: var(--pane-padding, 16px);
+}
+
+.trips-travel-times {
+	display: grid;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.trips-travel-times button[aria-pressed='true'] {
+	background: var(--color-muted);
+}
+
+.trips-airport-links {
+	display: flex;
+}
+
+.trips-notice {
+	padding: 16px;
+}
+
+.trips-notice .glass {
+	margin-block-start: 8px;
+}
+
+.trips-booking {
+	display: grid;
+	gap: 12px;
+	inline-size: 20rem;
+	max-inline-size: 100%;
+}
+
+.trips-booking textarea {
+	display: block;
+	width: 100%;
+	margin-block-start: 8px;
+	padding: 10px;
+	border-radius: 12px;
+	background: var(--color-background);
+}
+
+.trips-file {
+	display: grid;
+	gap: 4px;
+}
+
+.trips-booking-actions {
+	display: flex;
+	justify-self: end;
+}
+
+.trips-file input {
+	inline-size: 100%;
+	min-inline-size: 0;
+}

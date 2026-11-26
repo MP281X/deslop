@@ -5,6 +5,7 @@
 		"**/*.css"
 	],
 	"exports": {
+		"./app-shell": "./src/app-shell.ts",
 		"./control": "./src/control.ts",
 		"./glass": "./src/glass.ts",
 		"./native": "./src/native.ts",

@@ -1,0 +1,53 @@
+import {Array, type HashMap, HashSet, Option, Predicate, Record, Struct, Tuple, pipe} from 'effect'
+
+import type {ConnectionState, ServerIdentity} from '#server/connections/schema.ts'
+import type {RemoteTool} from '#server/gateway/schema.ts'
+
+export function prunedTools(
+	definitions: readonly ConnectionState[],
+	installed: HashMap.HashMap<string, ServerIdentity>
+) {
+	const connected = HashSet.fromIterable(
+		pipe(
+			definitions,
+			Array.filter(server => server.status !== 'Not connected'),
+			Array.map(server => Tuple.make(server.id, server.generation))
+		)
+	)
+	return pipe(
+		Array.fromIterable(installed),
+		Array.filter(entry => !HashSet.has(connected, Tuple.make(entry[1].id, entry[1].generation))),
+		Array.map(entry => entry[0])
+	)
+}
+
+// Bounds that only restate a JSON number's range tell an agent nothing.
+function quiet(property: Readonly<Record<string, unknown>> | boolean) {
+	if (Predicate.isBoolean(property)) return property
+	return Record.filter(
+		property,
+		(value, key) =>
+			!(
+				(key === 'maximum' || key === 'minimum') &&
+				Predicate.isNumber(value) &&
+				Math.abs(value) >= 9_007_199_254_740_991
+			)
+	)
+}
+
+export function compact(tool: RemoteTool) {
+	return Struct.evolve(tool, {
+		inputSchema: inputSchema => ({
+			...pipe(
+				inputSchema,
+				Struct.omit(['properties']),
+				Record.filter((value, key) => !(key === 'additionalProperties' && value === true) && key !== '$schema')
+			),
+			type: 'object' as const,
+			...Option.match(inputSchema.properties, {
+				onNone: () => ({}),
+				onSome: properties => ({properties: Record.map(properties, quiet)})
+			})
+		})
+	})
+}

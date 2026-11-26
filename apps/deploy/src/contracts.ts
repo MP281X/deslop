@@ -1,0 +1,798 @@
+import {
+	Array,
+	Boolean,
+	Duration,
+	Effect,
+	Equal,
+	Filter,
+	Function,
+	HashMap,
+	HashSet,
+	MutableHashSet,
+	Number,
+	Option,
+	Order,
+	Record,
+	Schema,
+	SchemaGetter,
+	SchemaParser,
+	String,
+	Struct,
+	Tuple,
+	pipe
+} from 'effect'
+
+import {Rpc, RpcGroup} from 'effect/rpc'
+import {Model} from 'effect/schema'
+
+import {AuthError, RpcAdmin, RpcAuth} from '@deslop/runtime/shared/auth'
+import {DateTimeUtcFromFiniteMillis, DurationFromFiniteMillis} from '@deslop/runtime/shared/time'
+
+export type ItemId = typeof ItemId.Type
+export const ItemId = Schema.brand('DeployItemId')(Schema.String)
+export type AppId = typeof AppId.Type
+export const AppId = Schema.brand('DeployAppId')(Schema.String)
+export type UnitId = typeof UnitId.Type
+export const UnitId = Schema.brand('DeployUnitId')(Schema.String)
+export type ProcessId = typeof ProcessId.Type
+export const ProcessId = Schema.brand('DeployProcessId')(Schema.Int)
+export type ExposureName = typeof ExposureName.Type
+export const ExposureName = Schema.brand('DeployExposureName')(Schema.String)
+
+type TextFromEmpty = typeof TextFromEmpty.Type
+// Some collector records require a string key even when there is no value.
+const TextFromEmpty = pipe(
+	Schema.String,
+	Schema.decodeTo(Schema.Option(Schema.String), {
+		decode: SchemaGetter.transform(value => Option.liftPredicate(value, String.isNonEmpty)),
+		encode: SchemaGetter.transform(value => Option.getOrElse(value, Function.constant('')))
+	})
+)
+
+type OptionalTextFromEmpty = typeof OptionalTextFromEmpty.Type
+const OptionalTextFromEmpty = pipe(
+	Schema.OptionFromOptionalKey(Schema.String),
+	Schema.decodeTo(Schema.Option(Schema.String), {
+		decode: SchemaGetter.transform(value => Option.filter(value, String.isNonEmpty)),
+		encode: SchemaGetter.transform(Function.identity)
+	})
+)
+
+export class DeployError extends Schema.TaggedError<DeployError>()('DeployError', {
+	cause: Schema.optional(Schema.Defect()),
+	message: Schema.String
+}) {}
+
+export type ProcessLabel = typeof ProcessLabel.Type
+export const ProcessLabel = Schema.Struct({
+	// What the process is, readable: its program or app name and the few arguments that say which one.
+	detail: Schema.String,
+	name: Schema.String
+})
+
+export type Process = typeof Process.Type
+export const Process = Schema.Struct({
+	cpu: Schema.OptionFromOptionalKey(Schema.Finite),
+	label: ProcessLabel,
+	memory: Schema.Finite,
+	name: Schema.String,
+	parent: ProcessId,
+	pid: ProcessId
+})
+
+export type ServiceScope = typeof ServiceScope.Type
+// Which systemd manager runs a unit.
+export const ServiceScope = Schema.Literals(['user', 'system'])
+
+type InventoryFields = typeof InventoryFields.Type
+const InventoryFields = Schema.Struct({
+	active: pipe(Schema.Boolean, Schema.withConstructorDefault(Effect.succeed(false))),
+	address: pipe(Schema.OptionFromOptionalKey(Schema.String), Schema.withConstructorDefault(Effect.succeedNone)),
+	bindings: pipe(
+		Schema.OptionFromOptionalKey(
+			Schema.Array(Schema.Struct({address: Schema.String, port: Schema.Int, protocol: Schema.Literals(['tcp', 'udp'])}))
+		),
+		Schema.withConstructorDefault(Effect.succeedNone)
+	),
+	detail: Schema.String,
+	// Why a failed service stopped, and when, in epoch milliseconds.
+	failure: pipe(
+		Schema.OptionFromOptionalKey(
+			Schema.Struct({at: Schema.OptionFromOptionalKey(DateTimeUtcFromFiniteMillis), reason: Schema.String})
+		),
+		Schema.withConstructorDefault(Effect.succeedNone)
+	),
+	health: pipe(
+		Schema.Literals(['quiet', 'warning', 'error']),
+		Schema.withConstructorDefault(Effect.succeed('quiet' as const))
+	),
+	hostname: pipe(Schema.OptionFromOptionalKey(Schema.String), Schema.withConstructorDefault(Effect.succeedNone)),
+	http: pipe(Schema.OptionFromOptionalKey(Schema.Boolean), Schema.withConstructorDefault(Effect.succeedNone)),
+	id: ItemId,
+	kind: Schema.Literals(['service', 'container', 'port', 'exposure', 'peer']),
+	links: pipe(
+		Schema.OptionFromOptionalKey(Schema.Array(Schema.String)),
+		Schema.withConstructorDefault(Effect.succeedNone)
+	),
+	name: Schema.String,
+	// When its timer next starts a scheduled service, in epoch milliseconds.
+	next: pipe(
+		Schema.OptionFromOptionalKey(DateTimeUtcFromFiniteMillis),
+		Schema.withConstructorDefault(Effect.succeedNone)
+	),
+	owned: pipe(Schema.OptionFromOptionalKey(Schema.Boolean), Schema.withConstructorDefault(Effect.succeedNone)),
+	port: pipe(Schema.OptionFromOptionalKey(Schema.Int), Schema.withConstructorDefault(Effect.succeedNone)),
+	process: pipe(OptionalTextFromEmpty, Schema.withConstructorDefault(Effect.succeedNone)),
+	processes: pipe(
+		Schema.OptionFromOptionalKey(Schema.Array(Process)),
+		Schema.withConstructorDefault(Effect.succeedNone)
+	),
+	protocol: pipe(
+		Schema.OptionFromOptionalKey(Schema.Literals(['tcp', 'udp'])),
+		Schema.withConstructorDefault(Effect.succeedNone)
+	),
+	publicAccess: pipe(Schema.OptionFromOptionalKey(Schema.Boolean), Schema.withConstructorDefault(Effect.succeedNone)),
+	running: pipe(Schema.Boolean, Schema.withConstructorDefault(Effect.succeed(false))),
+	scheduled: pipe(Schema.OptionFromOptionalKey(Schema.Boolean), Schema.withConstructorDefault(Effect.succeedNone)),
+	scope: pipe(Schema.OptionFromOptionalKey(ServiceScope), Schema.withConstructorDefault(Effect.succeedNone)),
+	self: pipe(Schema.OptionFromOptionalKey(Schema.Boolean), Schema.withConstructorDefault(Effect.succeedNone)),
+	state: Schema.String,
+	ui: pipe(Schema.OptionFromOptionalKey(Schema.Boolean), Schema.withConstructorDefault(Effect.succeedNone)),
+	unit: pipe(
+		OptionalTextFromEmpty,
+		Schema.decodeTo(Schema.Option(UnitId)),
+		Schema.withConstructorDefault(Effect.succeedNone)
+	),
+	url: TextFromEmpty
+})
+
+type NonPortItem = typeof NonPortItem.Type
+const NonPortItem = Schema.Union([
+	InventoryFields.mapFields(fields => ({...fields, kind: Schema.Literal('service'), name: UnitId})),
+	InventoryFields.mapFields(fields => ({...fields, kind: Schema.Literal('exposure'), name: ExposureName})),
+	InventoryFields.mapFields(fields => ({...fields, kind: Schema.Literals(['container', 'peer'])}))
+])
+
+// Socket collectors always emit the process text, including an empty string when unavailable.
+const PortItem = InventoryFields.mapFields(fields => ({
+	...fields,
+	kind: Schema.Literal('port'),
+	process: pipe(
+		Schema.OptionFromOptionalKey(TextFromEmpty),
+		Schema.decodeTo(Schema.Option(Schema.String), {
+			decode: SchemaGetter.transform(Option.flatten),
+			encode: SchemaGetter.transform(Option.some)
+		}),
+		Schema.withConstructorDefault(Effect.succeedNone)
+	)
+}))
+
+export type InventoryItem = typeof InventoryItem.Type
+export const InventoryItem = Schema.Union([...NonPortItem.members, PortItem])
+
+type SocketBinding = Option.Option.Value<InventoryItem['bindings']>[number]
+type SocketAddress = typeof SocketAddress.Type
+const SocketAddress = InventoryFields.mapFields(Struct.pick(['address', 'port', 'protocol']))
+
+export type Snapshot = typeof Snapshot.Type
+export const Snapshot = Schema.Struct({
+	// Unlike synthesized view listeners, the collectors always send a port's unit key, even when empty.
+	items: Schema.Array(
+		Schema.Union([
+			...NonPortItem.members,
+			PortItem.mapFields(fields => ({
+				...fields,
+				unit: pipe(
+					Schema.OptionFromOptionalKey(pipe(TextFromEmpty, Schema.decodeTo(Schema.Option(UnitId)))),
+					Schema.decodeTo(Schema.Option(Schema.toType(UnitId)), {
+						decode: SchemaGetter.transform(Option.flatten),
+						encode: SchemaGetter.transform(Option.some)
+					}),
+					Schema.withConstructorDefault(Effect.succeedNone)
+				)
+			}))
+		])
+	),
+	sources: Schema.Array(Schema.Struct({error: TextFromEmpty, name: Schema.String})),
+	time: DateTimeUtcFromFiniteMillis
+})
+
+export type RunRequest = typeof RunRequest.Type
+export const RunRequest = Schema.Struct({name: UnitId, scope: ServiceScope})
+
+export type AppRequest = typeof AppRequest.Type
+export const AppRequest = Schema.Struct({id: AppId})
+
+export type BandId = typeof BandId.Type
+export const BandId = Schema.Union([AppId, Schema.Literals(['other', 'system'])])
+
+export type HistoryMinutes = typeof HistoryMinutes.Type
+export const HistoryMinutes = Schema.Literals([10, 60, 1440, 10_080, 43_200])
+
+export type HistoryQuery = typeof HistoryQuery.Type
+// The shared time frames, encoded in minutes for the URL and metrics queries.
+export const HistoryQuery = Schema.Struct({
+	minutes: pipe(
+		HistoryMinutes,
+		Schema.decodeTo(Schema.Duration, {
+			decode: SchemaGetter.transform(Duration.minutes),
+			encode: SchemaGetter.transformEffect(range =>
+				pipe(range, Duration.toMinutes, SchemaParser.decodeUnknownEffect(HistoryMinutes))
+			)
+		})
+	)
+})
+
+type Coverage = typeof Coverage.Type
+// How long a point's readings of one kind were measured, in milliseconds: one second per reading, so time between `since` and `time` that went unread doesn't weigh in its average.
+const Coverage = pipe(Schema.Int, Schema.decodeTo(DurationFromFiniteMillis))
+
+// One app's measurement; its first has no CPU to difference.
+export type AppMeasurement = typeof AppMeasurement.Type
+export const AppMeasurement = Schema.Struct({
+	cpu: Schema.OptionFromOptionalKey(Schema.Finite),
+	id: AppId,
+	memory: Schema.Finite
+})
+
+// An app in a point: how long its CPU was measured within the point's apps coverage, which its own average weighs by.
+export type AppSample = typeof AppSample.Type
+export const AppSample = Schema.Struct({...AppMeasurement.fields, cpuCoverage: Coverage})
+
+// One point of the machine's history in the series of one spacing: its readings from `since` to `time`, each averaged over the time it was measured.
+export class MachineSample extends Model.Class<MachineSample>('MachineSample')({
+	// Apps measured with none above the cutoff are an empty list, not an unread one.
+	appsCoverage: Coverage,
+	cpu: Model.FieldOption(Schema.Finite),
+	cpuCoverage: Coverage,
+	memoryCoverage: Coverage,
+	memoryTotal: Schema.Finite,
+	memoryUsed: Schema.Finite,
+	since: pipe(Schema.Int, Schema.decodeTo(DateTimeUtcFromFiniteMillis)),
+	// The series' spacing in milliseconds: each range reads the one whose 60 slots hold a few points each.
+	step: pipe(Schema.Int, Schema.decodeTo(DurationFromFiniteMillis)),
+	// The machine's used space in bytes, summed over its mounted disks.
+	storageCoverage: Coverage,
+	storageUsed: Model.FieldOption(Schema.Finite),
+	time: pipe(Schema.Int, Schema.decodeTo(DateTimeUtcFromFiniteMillis))
+}) {
+	static readonly table = 'samples'
+}
+
+// The chart's machine point with its app rows joined back in.
+export class Sample extends Model.Class<Sample>('Sample')({
+	...MachineSample.fields,
+	apps: Model.FieldOption(Model.JsonFromString(Schema.Array(AppSample)))
+}) {}
+
+export type Disk = typeof Disk.Type
+export const Disk = Schema.Struct({mount: Schema.String, total: Schema.Finite, used: Schema.Finite})
+
+export type MachineHistory = typeof MachineHistory.Type
+export const MachineHistory = Schema.Struct({
+	// The newest reading's disks and load averages, which no chart draws over time.
+	disks: Schema.Array(Disk),
+	error: TextFromEmpty,
+	load: Schema.Array(Schema.Finite),
+	samples: Schema.Array(Sample.json),
+	stale: Schema.Boolean,
+	time: DateTimeUtcFromFiniteMillis
+})
+
+const processUsageFields = Struct.pick(Process.fields, ['cpu', 'memory'])
+
+export type AppHour = typeof AppHour.Type
+export const AppHour = Schema.Struct({
+	processes: Schema.Array(
+		Schema.Struct({
+			key: Schema.String,
+			label: ProcessLabel,
+			samples: Schema.Array(Schema.Struct({...processUsageFields, time: DateTimeUtcFromFiniteMillis}))
+		})
+	),
+	restarts: Schema.Array(DateTimeUtcFromFiniteMillis),
+	time: DateTimeUtcFromFiniteMillis
+})
+
+// Public exposure needs explicit consent, which is checked and not kept.
+export type ExposeInput = typeof ExposeInput.Type
+export const ExposeInput = Schema.Struct({
+	hostname: Schema.String.check(
+		Schema.isMaxLength(253),
+		Schema.isPattern(/^(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)*[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/u)
+	),
+	kind: Schema.Literals(['tailnet', 'public']),
+	name: ExposureName.check(Schema.isNonEmpty(), Schema.isMaxLength(260)),
+	port: Schema.Int.check(Schema.isBetween({maximum: 65_535, minimum: 1024})),
+	publicAccess: Schema.Boolean
+})
+
+export const MetricsRpcs = RpcGroup.make(
+	Rpc.make('metrics.watch', {
+		error: Schema.Union([AuthError, DeployError]),
+		payload: HistoryQuery,
+		stream: true,
+		success: MachineHistory
+	}),
+	Rpc.make('metrics.app', {
+		error: Schema.Union([AuthError, DeployError]),
+		payload: AppRequest,
+		stream: true,
+		success: AppHour
+	})
+)
+
+export const InventoryRpcs = RpcGroup.make(
+	Rpc.make('inventory.watch', {error: Schema.Union([AuthError, DeployError]), stream: true, success: Snapshot}),
+	Rpc.make('inventory.logs', {
+		error: Schema.Union([AuthError, DeployError]),
+		payload: AppRequest,
+		success: Schema.String
+	}).middleware(RpcAdmin),
+	Rpc.make('inventory.restart', {error: Schema.Union([AuthError, DeployError]), payload: AppRequest}).middleware(
+		RpcAdmin
+	),
+	Rpc.make('inventory.stop', {error: Schema.Union([AuthError, DeployError]), payload: AppRequest}).middleware(RpcAdmin),
+	Rpc.make('inventory.run', {error: Schema.Union([AuthError, DeployError]), payload: RunRequest}).middleware(RpcAdmin)
+)
+
+export const ExposuresRpcs = RpcGroup.make(
+	Rpc.make('exposures.expose', {
+		error: Schema.Union([AuthError, DeployError]),
+		payload: ExposeInput,
+		success: Schema.String
+	}).middleware(RpcAdmin)
+)
+
+export const RpcContracts = MetricsRpcs.merge(InventoryRpcs, ExposuresRpcs).middleware(RpcAuth)
+
+// A listener 127.0.0.1 reaches: IPv4 loopback or any address, or a dual-stack wildcard (`*`), which a probe still has to answer. An IPv6-only or interface address is out of a loopback proxy's reach.
+export function ipv4Reachable(address: string) {
+	return Option.isSome(String.match(/^(?:127\.0\.0\.1|0\.0\.0\.0|\*):/u)(address))
+}
+
+// A loopback proxy can only reach these TCP listeners, not a tailnet-interface-only socket or UDP.
+function loopbackPort(item: InventoryItem) {
+	return (
+		item.kind === 'port' &&
+		Option.contains(item.protocol, 'tcp') &&
+		Option.exists(item.port, port => port >= 1024) &&
+		Option.exists(item.address, ipv4Reachable)
+	)
+}
+
+function appPort(item: InventoryItem) {
+	return (
+		loopbackPort(item) &&
+		Option.isSome(item.process) &&
+		!Option.exists(item.port, port => Array.contains([5353, 5355], port)) &&
+		!Option.exists(item.process, process =>
+			Option.isSome(String.match(/^(?:ssh|cloudflared|tailscaled|caddy)$/u)(process))
+		)
+	)
+}
+
+export function important(item: InventoryItem) {
+	if (item.health === 'error') return true
+	if (item.kind === 'exposure') return Option.contains(item.owned, true) || Option.contains(item.publicAccess, true)
+	if (item.kind === 'container') {
+		return item.active
+	}
+	if (item.kind === 'port') return appPort(item)
+	if (item.kind !== 'service') return false
+	if (Option.isSome(String.match(/^(?:deslop-|preview-|t3code)/u)(item.name))) return true
+	return (
+		Option.contains(item.scope, 'user') &&
+		item.active &&
+		Option.isNone(
+			String.match(/^(?:dbus|dirmngr|gpg-|keyboxd|gcr-|gnome-|secret-service|ssh-agent|openvpn3-)/u)(item.name)
+		)
+	)
+}
+
+function httpPorts(items: readonly InventoryItem[]) {
+	return pipe(
+		items,
+		Array.filter(item => appPort(item) && Option.contains(item.http, true)),
+		Array.sort(
+			Order.mapInput(
+				Order.String,
+				(item: InventoryItem) => `${Option.getOrUndefined(item.port)}:${Option.getOrUndefined(item.address)}`
+			)
+		),
+		Array.dedupeWith((a, b) => Option.makeEquivalence<number>((x, y) => x === y)(a.port, b.port))
+	)
+}
+
+function serviceUnit(item: InventoryItem) {
+	if (item.kind === 'service') return Option.getOrElse(item.unit, () => item.name)
+	return UnitId.make(item.name)
+}
+
+export function itemOwner(item: InventoryItem) {
+	if (item.kind === 'container') {
+		return AppId.make(
+			`container:${String.slice(0, 12)(Option.getOrElse(Array.last(String.split(item.id, 'docker:')), Function.constant('')))}`
+		)
+	}
+	return AppId.make(`service:${Option.getOrElse(item.scope, Function.constant('system'))}:${serviceUnit(item)}`)
+}
+
+function fullName(item: InventoryItem) {
+	if (item.kind === 'port') return Option.getOrElse(item.process, () => item.name)
+	if (item.kind === 'container' && String.startsWith('deslop-')(item.name)) {
+		return String.replace(/-[0-9]+$/u, '')(String.slice(7)(item.name))
+	}
+	if (String.startsWith('preview-')(item.name)) {
+		return Option.match(String.match(/@deslop\/([a-z0-9-]+)/u)(item.detail), {
+			onNone: () => `Preview ${String.replace(/\.service$/u, '')(String.slice(8)(item.name))}`,
+			onSome: app => `${app[1]} preview`
+		})
+	}
+	return String.replaceAll(/^deslop-|\.service$/gu, '')(item.name)
+}
+
+export function workloadName(item: InventoryItem) {
+	return pipe(
+		fullName(item),
+		String.replaceAll(/\b([a-f0-9]{7})[a-f0-9]+\b/giu, '$1'),
+		String.replaceAll(/\b(?=[a-z0-9]{10,}\b)(?=[a-z0-9]*[0-9])([a-z0-9]{7})[a-z0-9]+\b/giu, '$1')
+	)
+}
+
+function sameSocket(listener: InventoryItem, binding: SocketBinding) {
+	if (Option.contains(listener.address, 'container') || binding.address === 'container') return false
+	if (!Option.contains(listener.port, binding.port) || !Option.contains(listener.protocol, binding.protocol)) {
+		return false
+	}
+	if (Option.contains(listener.address, binding.address)) return true
+	return Option.exists(listener.address, ipv4Reachable) && ipv4Reachable(binding.address)
+}
+
+function socket(binding: SocketAddress) {
+	const loopback = Option.exists(binding.address, ipv4Reachable)
+	return Tuple.make(
+		binding.protocol,
+		binding.port,
+		loopback,
+		Boolean.match(loopback, {onFalse: () => binding.address, onTrue: () => Option.some('')})
+	)
+}
+
+// A service's unit under its manager: a user and a system unit may share a name.
+function unitKey(scope: Option.Option<ServiceScope>, unit: UnitId) {
+	return `${Option.getOrElse(scope, Function.constant('system'))}:${unit}`
+}
+
+export function workloads(items: readonly InventoryItem[]) {
+	const listeners = Array.filter(items, item => item.kind === 'port')
+	const byUnit = Array.groupBy(listeners, listener =>
+		Option.match(listener.unit, {
+			onNone: Function.constant('none'),
+			onSome: unit => `unit:${unitKey(listener.scope, unit)}`
+		})
+	)
+	const bySocket = HashMap.fromIterable(
+		Array.map(
+			Array.reverse(Array.filter(listeners, listener => !Option.contains(listener.address, 'container'))),
+			listener => [socket(listener), listener] as const
+		)
+	)
+	const grouped = pipe(
+		items,
+		Array.filter(item => item.kind === 'service' || item.kind === 'container'),
+		Array.map(item => {
+			const attached = byUnit[`unit:${unitKey(item.scope, serviceUnit(item))}`] ?? []
+			const bindings = pipe(
+				item.bindings,
+				Option.getOrElse(Array.empty),
+				Array.map(binding => ({
+					...item,
+					...pipe(
+						HashMap.get(
+							bySocket,
+							socket({
+								address: Option.some(binding.address),
+								port: Option.some(binding.port),
+								protocol: Option.some(binding.protocol)
+							})
+						),
+						Option.filter(() => binding.address !== 'container'),
+						Option.getOrElse(() => ({}))
+					),
+					address: Option.some(binding.address),
+					bindings: Option.some([]),
+					id: ItemId.make(`${item.id}:port:${binding.address}`),
+					kind: 'port' as const,
+					port: Option.some(binding.port),
+					process: Option.some(item.name),
+					protocol: Option.some(binding.protocol),
+					unit: pipe(
+						item,
+						Option.liftPredicate(owner => owner.kind === 'service'),
+						Option.map(serviceUnit)
+					),
+					url: Option.none<string>()
+				}))
+			)
+			return {item, listeners: [...attached, ...bindings]}
+		})
+	)
+	const services = HashSet.fromIterable(
+		pipe(
+			grouped,
+			Array.filter(row => row.item.kind === 'service'),
+			Array.map(row => unitKey(row.item.scope, serviceUnit(row.item)))
+		)
+	)
+	const represented = HashSet.fromIterable(
+		Array.flatMap(grouped, row =>
+			pipe(
+				row.listeners,
+				Array.filter(binding => !Option.contains(binding.address, 'container')),
+				Array.map(binding => socket({address: binding.address, port: binding.port, protocol: binding.protocol}))
+			)
+		)
+	)
+	const loose = Array.filter(
+		listeners,
+		listener =>
+			!Option.exists(listener.unit, unit => HashSet.has(services, unitKey(listener.scope, unit))) &&
+			(Option.contains(listener.address, 'container') || !HashSet.has(represented, socket(listener)))
+	)
+	const rows = [...grouped, ...Array.map(loose, item => ({item, listeners: [item]}))]
+	const exposures = [
+		...Array.filter(items, item => item.kind === 'exposure' && Option.contains(item.owned, true)),
+		...Array.filter(items, item => item.kind === 'exposure' && !Option.contains(item.owned, true))
+	]
+	const exposuresBySocket = pipe(
+		exposures,
+		Array.map((item, index) => ({index, item})),
+		Array.groupBy(entry => `${Option.getOrElse(entry.item.port, Function.constant(0))}`)
+	)
+	const visible = pipe(
+		rows,
+		Array.map(row => {
+			const reachable = Array.dedupe(
+				pipe(
+					row.listeners,
+					Array.filter(listener =>
+						Option.exists(listener.port, port =>
+							sameSocket(listener, {address: `127.0.0.1:${port}`, port, protocol: 'tcp'})
+						)
+					),
+					Array.map(listener => listener.port),
+					Array.getSomes
+				)
+			)
+			const exposed = pipe(
+				Array.flatMap(reachable, port => exposuresBySocket[`${port}`] ?? []),
+				Array.sortWith(entry => entry.index, Order.Number),
+				Array.map(entry => entry.item)
+			)
+			return {
+				...row,
+				exposures: Array.dedupeWith(
+					[
+						...pipe(
+							row.item.links,
+							Option.getOrElse(Array.empty),
+							Array.map(url => ({
+								...row.item,
+								id: ItemId.make(`${row.item.id}:url:${url}`),
+								kind: 'exposure' as const,
+								name: ExposureName.make(row.item.name),
+								owned: Option.some(false),
+								publicAccess: Option.some(true),
+								url: Option.some(url)
+							}))
+						),
+						...exposed
+					],
+					(a: InventoryItem, b: InventoryItem) =>
+						Equal.equals(a.url, b.url) && Equal.equals(a.publicAccess, b.publicAccess)
+				)
+			}
+		}),
+		// Only a row the page shows represents its exposures; one linked to a hidden row keeps its own.
+		Array.filter(
+			row =>
+				important(row.item) &&
+				(row.item.kind !== 'port' ||
+					(Option.contains(row.item.http, true) &&
+						Option.isSome(row.item.process) &&
+						!Option.contains(row.item.process, 'node')))
+		)
+	)
+	const linkedIds = HashSet.fromIterable(
+		Array.flatMap(visible, row => Array.map(row.exposures, exposure => exposure.id))
+	)
+	const linkedUrls = HashSet.fromIterable(
+		Array.flatMap(visible, row => Array.map(row.exposures, exposure => exposure.url))
+	)
+	const remaining = pipe(
+		exposures,
+		Array.filter(item => !HashSet.has(linkedIds, item.id) && !HashSet.has(linkedUrls, item.url)),
+		Array.map(item => ({exposures: [item], item, listeners: []})),
+		Array.filter(row => important(row.item))
+	)
+	return Array.map([...visible, ...remaining], row => {
+		if (row.item.kind === 'container') return row
+		const candidates = httpPorts(row.listeners)
+		const hasUi = Array.some(candidates, candidate => Option.contains(candidate.ui, true))
+		const exposedPorts = HashSet.fromIterable(Array.getSomes(Array.map(row.exposures, exposure => exposure.port)))
+		return {
+			...row,
+			listeners: Array.filter(
+				candidates,
+				listener =>
+					!hasUi ||
+					Option.contains(listener.ui, true) ||
+					Option.exists(listener.port, port => HashSet.has(exposedPorts, port))
+			)
+		}
+	})
+}
+
+export type Row = ReturnType<typeof workloads>[number]
+
+// A process with everything below it: `memory` and `cpu` cover the subtree; `cpu` stays unknown while no member reports one.
+export type ProcessNode = {
+	children: readonly ProcessNode[]
+	cpu: Option.Option<number>
+	label: ProcessLabel
+	memory: number
+	pid: ProcessId
+	small: boolean
+}
+
+function usage(nodes: readonly ProcessNode[]) {
+	return {
+		cpu: pipe(
+			nodes,
+			Array.map(node => node.cpu),
+			Array.getSomes,
+			Array.match({onEmpty: () => Option.none(), onNonEmpty: values => Option.some(Number.sumAll(values))})
+		),
+		memory: Number.sumAll(Array.map(nodes, node => node.memory))
+	}
+}
+
+const byUsage = pipe(
+	Order.flip(Order.Number),
+	Order.mapInput((node: ProcessNode) => node.memory),
+	Order.combine(Order.mapInput(Option.makeOrder(Order.flip(Order.Number)), (node: ProcessNode) => node.cpu))
+)
+
+// Children heaviest first; below 2% of the app's memory and half a percent of the machine's CPU a process barely moves the usage, so it reads muted.
+function settle(children: readonly ProcessNode[], appMemory: number) {
+	return pipe(
+		children,
+		Array.sort(byUsage),
+		Array.map(node => ({...node, small: node.memory < appMemory * 0.02 && !Option.exists(node.cpu, cpu => cpu >= 0.5)}))
+	)
+}
+
+function sameLabel(first: ProcessLabel, second: ProcessLabel) {
+	return first.name === second.name && first.detail === second.detail
+}
+
+// A child that says the same thing as its parent is the same row: hide it, keep its descendants, and leave its usage in the parent's total.
+function absorb(label: ProcessLabel, children: readonly ProcessNode[]): readonly ProcessNode[] {
+	const [matching, other] = Array.partition(
+		children,
+		Filter.fromPredicate(child => sameLabel(child.label, label))
+	)
+	if (Array.isArrayEmpty(matching)) return children
+	return [
+		...other,
+		...absorb(
+			label,
+			Array.flatMap(matching, child => child.children)
+		)
+	]
+}
+
+function fold(node: ProcessNode): ProcessNode {
+	return {...node, children: absorb(node.label, Array.map(node.children, fold))}
+}
+
+// The app's processes as a tree: a child with its parent's label folds into it, and each process appears once.
+export function processTree(rows: readonly Process[]) {
+	const pids = MutableHashSet.fromIterable(Array.map(rows, row => row.pid))
+	const children = Array.groupBy(rows, row => String.String(row.parent))
+	const visited = MutableHashSet.empty<ProcessId>()
+	function build(row: Process): ProcessNode {
+		MutableHashSet.add(visited, row.pid)
+		const below = pipe(
+			Record.get(children, `${row.pid}`),
+			Option.getOrElse(Array.empty<Process>),
+			Array.filter(child => !MutableHashSet.has(visited, child.pid)),
+			Array.map(build)
+		)
+		const self: ProcessNode = {
+			children: [],
+			cpu: row.cpu,
+			label: row.label,
+			memory: row.memory,
+			pid: row.pid,
+			small: false
+		}
+		return {...self, ...usage([self, ...below]), children: below}
+	}
+	const roots = pipe(
+		Array.filter(rows, row => !MutableHashSet.has(pids, row.parent)),
+		// A malformed source whose parents form a cycle has no root, so its first process starts the tree.
+		Array.match({onEmpty: () => Array.take(rows, 1), onNonEmpty: Function.identity}),
+		Array.map(node => fold(build(node)))
+	)
+	const appMemory = usage(roots).memory
+	function place(node: ProcessNode): ProcessNode {
+		return {...node, children: settle(Array.map(node.children, place), appMemory)}
+	}
+	return settle(Array.map(roots, place), appMemory)
+}
+
+// A process keeps its track when its wrapper or PID changes.
+function tracks(nodes: readonly ProcessNode[]): {key: string; node: ProcessNode}[] {
+	return Array.flatMap(nodes, node => [
+		{key: `${node.label.name.length}:${node.label.name}${node.label.detail.length}:${node.label.detail}`, node},
+		...tracks(node.children)
+	])
+}
+
+// Indistinguishable processes share a track rather than being numbered by changing PIDs.
+export function processTrackUsage(nodes: readonly ProcessNode[]) {
+	return pipe(
+		tracks(nodes),
+		Array.groupBy(track => track.key),
+		Record.values,
+		Array.map(group => ({
+			key: group[0].key,
+			label: group[0].node.label,
+			...usage(Array.map(group, track => track.node))
+		}))
+	)
+}
+
+export function healthRank(row: Row) {
+	if (row.item.health === 'error') return 0
+	if (row.item.health === 'warning') return 1
+	return 2
+}
+
+export const rowUsageOrder = Order.mapInput(Order.flip(Order.Number), (row: Row) =>
+	pipe(
+		Option.getOrElse(row.item.processes, Array.empty),
+		Array.map(process => process.memory),
+		Number.sumAll
+	)
+)
+
+export function requestOf(item: InventoryItem) {
+	return {
+		name: UnitId.make(item.name),
+		scope: Option.getOrElse(item.scope, Function.constant('system' as const))
+	} satisfies RunRequest
+}
+
+export function availablePorts(rows: readonly Row[]) {
+	return httpPorts(
+		Array.flatMap(rows, row =>
+			pipe(
+				row.listeners,
+				Array.filter(
+					listener =>
+						Option.exists(listener.port, port => port >= 1024) &&
+						(!Array.some(row.listeners, candidate => Option.contains(candidate.ui, true)) ||
+							Option.contains(listener.ui, true)) &&
+						!Option.exists(row.item.links, Array.isReadonlyArrayNonEmpty) &&
+						!Array.some(row.exposures, exposure =>
+							Option.makeEquivalence<number>((x, y) => x === y)(exposure.port, listener.port)
+						)
+				),
+				Array.map(listener => ({...listener, process: Option.some(workloadName(row.item))}))
+			)
+		)
+	)
+}

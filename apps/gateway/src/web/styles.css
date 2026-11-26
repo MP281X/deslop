@@ -1,0 +1,131 @@
+@import '@deslop/ui/theme.css';
+
+.gateway {
+	min-height: 100dvh;
+	font-size: 14px;
+	line-height: 1.35;
+}
+
+.gateway-content {
+	flex: 1;
+	min-inline-size: 0;
+	min-block-size: 0;
+	overflow: auto;
+}
+
+.gateway-toolbar {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 6px 8px;
+	padding: 6px 12px;
+}
+
+.gateway-add {
+	min-width: 0;
+}
+
+.gateway-add .glass {
+	max-width: 100%;
+}
+
+.gateway-add input {
+	anchor-name: --gateway-paste;
+	width: min(252px, 100%);
+	min-height: 44px;
+	padding-inline: 12px;
+	border-radius: inherit;
+}
+
+.gateway-add input::placeholder {
+	color: var(--color-muted-foreground);
+}
+
+.gateway-menu-trigger img {
+	width: 24px;
+	height: 24px;
+	image-rendering: pixelated;
+}
+
+#gateway-menu .glass-panel-body,
+#gateway-key-panel form {
+	display: grid;
+	gap: 8px;
+}
+
+.gateway-range {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 12px;
+}
+
+.gateway-action {
+	min-height: 44px;
+	padding-inline: 12px;
+	border-radius: 999px;
+	background: rgb(255 255 255 / 8%);
+}
+
+.gateway-lead,
+.gateway-figures {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	min-width: 0;
+}
+
+.gateway-mark {
+	flex: none;
+	width: 16px;
+	height: 16px;
+	object-fit: contain;
+}
+
+.gateway-trace {
+	width: clamp(42px, 12vw, 104px);
+	height: 18px;
+	color: var(--color-muted-foreground);
+}
+
+.gateway-notice {
+	margin-inline: 16px;
+	padding-block: 6px;
+	color: var(--color-muted-foreground);
+}
+
+.gateway-notice button {
+	margin-inline-start: 8px;
+}
+
+.gateway-toolbar .gateway-notice {
+	flex-basis: 100%;
+	margin-inline: 4px;
+}
+
+/* Enter opens the editor from the paste input, without a separate submit button. */
+#gateway-key-panel {
+	position-anchor: --gateway-paste;
+	position-area: block-end span-inline-end;
+	inline-size: min(350px, var(--panel-width));
+}
+
+#gateway-key-panel input {
+	min-height: 44px;
+	padding-inline: 12px;
+	border-radius: 12px;
+	background: var(--color-background);
+}
+
+.gateway-key-actions {
+	display: flex;
+	flex-wrap: wrap;
+	justify-content: flex-end;
+	gap: 8px;
+}
+
+.gateway-menu-trigger .axis-dot {
+	position: absolute;
+	inset: 4px 4px auto auto;
+	margin: 0;
+}

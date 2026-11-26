@@ -27,8 +27,8 @@ export const noUnexplainedDisable = defineRule({
 			examples: {
 				accepted: [
 					{
-						'sample.tsx': `// oxlint-disable-next-line eslint/eqeqeq -- This external contract deliberately groups both missing forms.
-export function isMissing(value: unknown) { return value == null }`
+						'sample.ts': `// oxlint-disable-next-line eslint/eqeqeq -- The external contract treats number and string identifiers alike.
+export function isAdmin(id: number | string) { return id == 1 }`
 					}
 				]
 			}

@@ -5,7 +5,7 @@ export function serverPack(heapMiB: number) {
 		banner: `#!/usr/bin/env -S node --max-old-space-size=${heapMiB} --report-on-fatalerror`,
 		clean: false,
 		deps: {alwaysBundle: [/./u], onlyBundle: false},
-		entry: ['src/main.server.ts'],
+		entry: ['src/server/main.ts'],
 		format: 'esm',
 		// The icon a server serves at /icon, as its SVG markup.
 		loader: {'.svg': 'text'},

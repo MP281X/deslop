@@ -34,6 +34,72 @@ body {
 }
 
 @layer components {
+	.app-shell {
+		--shell-gap: 6px;
+		--shell-control-size: 44px;
+		--shell-inset-left: env(safe-area-inset-left, 0px);
+		--shell-inset-right: env(safe-area-inset-right, 0px);
+		--shell-content-left: var(--shell-inset-left);
+		display: flex;
+		flex-direction: column;
+		height: 100dvh;
+		padding: env(safe-area-inset-top, 0px) var(--shell-inset-right) env(safe-area-inset-bottom, 0px)
+			var(--shell-inset-left);
+	}
+	.shell-controls {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		flex: none;
+		gap: var(--shell-gap);
+		padding: var(--shell-gap);
+	}
+	.shell-controls button {
+		display: grid;
+		place-items: center;
+		inline-size: var(--shell-control-size);
+		block-size: var(--shell-control-size);
+		border-radius: 999px;
+		cursor: pointer;
+	}
+	.shell-controls svg {
+		inline-size: 16px;
+		block-size: 16px;
+	}
+	.app-shell > .fold {
+		flex: 1;
+		min-width: 0;
+		min-height: 0;
+		height: auto;
+		padding: 0;
+	}
+	.app-shell > .fold > :is(.fold-list, .fold-detail) {
+		padding-inline: 0;
+	}
+	@media (max-width: 64rem) and (max-height: 44rem) {
+		.app-shell {
+			/* When the system insets the left edge more, put the rail on that edge. */
+			--shell-rail-left: max(0, sign(var(--shell-inset-left) - var(--shell-inset-right)));
+			--shell-content-left: calc(
+				var(--shell-inset-left) + var(--shell-rail-left) * (var(--shell-control-size) + 2 * var(--shell-gap))
+			);
+			flex-direction: row;
+		}
+		.shell-controls {
+			order: calc(1 - 2 * var(--shell-rail-left));
+			flex-direction: column;
+			justify-content: flex-start;
+			overflow-y: auto;
+			scrollbar-width: none;
+		}
+		.shell-controls > .glass {
+			flex: none;
+		}
+		.shell-controls .shell-actions {
+			flex-direction: column;
+		}
+	}
+
 	.fold {
 		--pane-padding: 16px;
 		display: grid;
@@ -79,7 +145,7 @@ body {
 	@media (horizontal-viewport-segments: 2) {
 		.fold {
 			grid-template-columns:
-				env(viewport-segment-width 0 0)
+				max(0px, calc(env(viewport-segment-width 0 0) - var(--shell-content-left, 0px)))
 				calc(env(viewport-segment-left 1 0) - env(viewport-segment-right 0 0))
 				minmax(0, 1fr);
 		}
@@ -162,6 +228,53 @@ body {
 	border-radius: inherit;
 	width: 100%;
 	height: 100%;
+}
+
+.glass-panel {
+	--panel-gap: 6px;
+	--panel-width: min(
+		24rem,
+		calc(100dvi - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px) - 2 * var(--panel-gap))
+	);
+	position: fixed;
+	position-area: block-end span-inline-start;
+	position-try-fallbacks:
+		flip-inline,
+		flip-block,
+		flip-block flip-inline;
+	position-visibility: anchors-visible;
+	inset: auto;
+	margin: var(--panel-gap);
+	inline-size: max-content;
+	max-inline-size: var(--panel-width);
+	max-block-size: 60dvh;
+	border-radius: 18px;
+	background-color: rgb(20 20 20 / 86%);
+	color: var(--color-foreground);
+	overflow: clip;
+	animation: none;
+	transition: none;
+}
+
+.glass-panel:not(:popover-open) {
+	display: none;
+}
+
+.glass-panel-body {
+	min-inline-size: 0;
+	max-block-size: inherit;
+	overflow: auto;
+	overscroll-behavior: contain;
+	padding: 12px;
+}
+
+@media (max-width: 64rem) and (max-height: 44rem) {
+	.app-shell .glass-panel {
+		position-area: inline-start;
+		position-try-order: most-inline-size;
+		position-try-fallbacks: flip-inline;
+		max-inline-size: calc(var(--panel-width) - var(--shell-control-size) - 2 * var(--shell-gap));
+	}
 }
 
 [data-slot='button'] {

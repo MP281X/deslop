@@ -1,0 +1,866 @@
+import {
+	Array,
+	Boolean,
+	Cache,
+	DateTime,
+	Duration,
+	Config,
+	Context,
+	Effect,
+	Function,
+	HashMap,
+	Layer,
+	Match,
+	Option,
+	RcMap,
+	Redacted,
+	Ref,
+	Schema,
+	Semaphore,
+	Stream,
+	String,
+	Struct,
+	pipe
+} from 'effect'
+
+import {
+	discoverAuthorizationServerMetadata,
+	discoverOAuthServerInfo,
+	extractWWWAuthenticateParams,
+	startAuthorization,
+	validateAuthorizationResponseIssuer
+} from '@modelcontextprotocol/client'
+import {SecureRandom} from 'effect/crypto'
+import {Base64Url} from 'effect/encoding'
+import {FetchHttpClient, Headers, HttpClient, HttpClientError, HttpClientRequest, HttpClientResponse} from 'effect/http'
+import {Reactivity} from 'effect/reactivity'
+import {Migrator, SqlClient, SqlModel, SqlSchema} from 'effect/sql'
+
+import {Auth} from '@deslop/runtime/server/auth'
+import type {Admin, UserId} from '@deslop/runtime/shared/auth'
+import {AuthError, ON_BEHALF_HEADER} from '@deslop/runtime/shared/auth'
+import {DateTimeUtcFromFiniteMillis} from '@deslop/runtime/shared/time'
+import type {TimeFrame} from '@deslop/runtime/shared/time'
+
+import {McpUsageServer, ServerId, UsageRange, failureMessage} from '#contracts'
+import type {ConnectionItem, McpUsageReport, ServerUrl} from '#contracts'
+
+import {migrations} from './migrations.ts'
+
+import {connectionFailure, describe} from '#server/connections/failure.ts'
+import {clientMetadata, serverIcons, serverName} from '#server/connections/metadata.ts'
+import type {
+	Callback,
+	Discovery,
+	TokenExchange,
+	ConnectionAddress,
+	ConnectionIssuer,
+	ConnectionTarget
+} from '#server/connections/schema.ts'
+import {
+	Connection,
+	McpCall,
+	ConnectionGrant,
+	ConnectionState,
+	ConnectionGeneration,
+	ConnectionOAuthState,
+	OAuthClient,
+	ServerMetadata,
+	Registration,
+	Token,
+	UpstreamError
+} from '#server/connections/schema.ts'
+import {Upstreams} from '#server/upstreams/service.ts'
+import {usageWindow} from '#server/usage/window.ts'
+
+declare module 'effect/reactivity/Reactivity' {
+	interface Keys {
+		readonly connections: never
+		readonly connectionCalls: never
+	}
+}
+
+export const gatewayUrl = Config.String('APP_URL')
+
+// A provider sign-in in progress, for ten minutes and in memory: a restart asks to connect again.
+type Pending = {
+	client: OAuthClient
+	generation: ConnectionGeneration
+	id: ServerId
+	metadata: ServerMetadata
+	userId: UserId
+	verifier: string
+}
+
+const asStorageAuthError = Effect.mapError(connectionFailure('MCP storage failed'))
+
+// The server's columns an update writes, to change only some of them.
+function editable(connection: Connection) {
+	return Struct.pick(connection, Struct.keys(Connection.update.fields))
+}
+
+const removedServer = AuthError.make({message: 'This MCP was removed. Add it again on the MCP page.'})
+
+// A provider that registers clients gets one per connection, with that server's own callback; otherwise it must name itself in its answers.
+function connectable(metadata: ServerMetadata) {
+	if (
+		Option.isSome(metadata.registration_endpoint) ||
+		(Option.contains(metadata.client_id_metadata_document_supported, true) &&
+			Option.contains(metadata.authorization_response_iss_parameter_supported, true))
+	) {
+		return Effect.void
+	}
+	return Effect.fail(
+		AuthError.make({
+			message:
+				'This provider neither registers clients nor names itself in its answers, so the gateway cannot connect to it safely.'
+		})
+	)
+}
+
+export class Connections extends Context.Service<
+	Connections,
+	{
+		readonly add: (url: ServerUrl, user: Admin, headers: Headers.Headers) => Effect.Effect<ConnectionItem, AuthError>
+		readonly begin: (
+			id: ServerId,
+			user: Admin
+		) => Effect.Effect<{state: Option.Option<ConnectionOAuthState>; url: string}, AuthError>
+		// Counted only while the server is the one the call began with.
+		readonly called: (id: ServerId, generation: ConnectionGeneration) => Effect.Effect<void>
+		// `route` is the server id a registered client's callback carries; the metadata document's callback carries none.
+		readonly complete: (params: Callback, route: Option.Option<ServerId>, user: Admin) => Effect.Effect<void, AuthError>
+		readonly definitions: Effect.Effect<ConnectionState[], AuthError>
+		readonly get: (id: ServerId) => Effect.Effect<ConnectionState, AuthError>
+		readonly remove: (id: ServerId, user: Admin) => Effect.Effect<void, AuthError>
+		readonly report: (id: ServerId, generation: ConnectionGeneration, outcome: Discovery) => Effect.Effect<void>
+		readonly token: (
+			id: ServerId,
+			generation: ConnectionGeneration,
+			rejectedToken: Option.Option<string>
+		) => Effect.Effect<string, AuthError>
+		// Each proxied call, summed into the period's buckets by server, in a window that reopens at each bucket boundary.
+		readonly usage: (
+			period: TimeFrame,
+			admin: Admin
+		) => Stream.Stream<{range: UsageRange; report: McpUsageReport}, AuthError>
+		readonly watch: (user: Admin) => Stream.Stream<ConnectionItem[], AuthError>
+	}
+>()('@deslop/gateway/server/connections/service/Connections') {
+	static readonly make = Effect.gen(function* () {
+		const sql = yield* SqlClient.SqlClient
+		// Writes tell this Reactivity of their commits, so callers need none of their own.
+		const reactivity = yield* Reactivity.Reactivity
+		const withReactivity = Effect.provideService(Reactivity.Reactivity, reactivity)
+		const origin = yield* gatewayUrl
+		const callback = `${origin}/oauth/callback`
+		const clientInfo = clientMetadata(origin)
+		const auth = yield* Auth
+		const upstreams = yield* Upstreams
+		const parent = pipe(String.split(new URL(origin).hostname, '.'), Array.drop(1), Array.join('.'))
+		// Only HTTPS subdomains of Gateway's parent domain receive the caller's identity.
+		function deslop(url: string) {
+			const target = new URL(url)
+			return target.protocol === 'https:' && String.isNonEmpty(parent) && String.endsWith(`.${parent}`)(target.hostname)
+		}
+		function clientIdOf(client: OAuthClient) {
+			return Match.valueTags(client, {Document: () => clientInfo.client_id, Registered: found => found.clientId})
+		}
+
+		const connections = yield* SqlModel.makeRepository(Connection, {
+			idColumn: 'id',
+			spanPrefix: 'Connections',
+			tableName: Connection.table
+		})
+		// Each server's row with its status as of `now`.
+		function states(now: typeof DateTimeUtcFromFiniteMillis.Encoded) {
+			return sql`
+				SELECT ${sql(Connection.table)}.*, CASE
+					WHEN mode <> 'oauth' THEN 'Connected'
+					WHEN serverId IS NULL THEN 'Not connected'
+					WHEN expiresAt <= ${now} AND refreshToken IS NULL THEN 'Expired'
+					ELSE 'Connected'
+				END AS status
+				FROM ${sql(Connection.table)} LEFT JOIN ${sql(ConnectionGrant.table)} ON serverId = id
+			`
+		}
+		// In the order they were added.
+		const listStates = SqlSchema.findAll({
+			Request: DateTimeUtcFromFiniteMillis,
+			Result: ConnectionState,
+			execute: now => sql`${states(now)} ORDER BY ${sql(Connection.table)}.rowid`
+		})
+		const findState = SqlSchema.findOneOption({
+			Request: Schema.Struct({id: Connection.fields.id, now: DateTimeUtcFromFiniteMillis}),
+			Result: ConnectionState,
+			execute: request => sql`${states(request.now)} WHERE id = ${request.id}`
+		})
+		const findTaken = SqlSchema.findAll({
+			Request: Schema.Struct(Struct.pick(Connection.fields, ['id', 'url'])),
+			Result: Schema.Struct(Struct.pick(Connection.fields, ['id', 'url'])),
+			execute: request =>
+				sql`SELECT id, url FROM ${sql(Connection.table)} WHERE id = ${request.id} OR url = ${request.url}`
+		})
+		const deleteConnection = SqlSchema.findAll({
+			Request: Connection.fields.id,
+			Result: Schema.Struct(Struct.pick(Connection.fields, ['id'])),
+			execute: id => sql`DELETE FROM ${sql(Connection.table)} WHERE id = ${id} RETURNING id`
+		})
+		const findGrant = SqlSchema.findOneOption({
+			Request: ConnectionGrant.fields.serverId,
+			Result: ConnectionGrant,
+			execute: id => sql`SELECT * FROM ${sql(ConnectionGrant.table)} WHERE serverId = ${id}`
+		})
+		const saveGrant = SqlSchema.void({
+			Request: ConnectionGrant.insert,
+			execute: row => sql`INSERT OR REPLACE INTO ${sql(ConnectionGrant.table)} ${sql.insert(row)}`
+		})
+		// A grant whose refresh token the provider refused shows Expired until it is connected again; a token another call already renewed is left alone.
+		const endGrant = SqlSchema.void({
+			Request: Schema.Struct({refreshToken: Schema.String, serverId: ConnectionGrant.fields.serverId}),
+			execute: request => sql`
+				UPDATE ${sql(ConnectionGrant.table)} SET expiresAt = 0, refreshToken = NULL
+				WHERE serverId = ${request.serverId} AND refreshToken = ${request.refreshToken}
+			`
+		})
+		const countCall = SqlSchema.void({
+			Request: Schema.Struct({...McpCall.fields, generation: ConnectionGeneration}),
+			execute: request => sql`
+				INSERT INTO ${sql(McpCall.table)} (serverId, at)
+				SELECT id, ${request.at} FROM ${sql(Connection.table)}
+				WHERE id = ${request.serverId} AND generation = ${request.generation}
+			`
+		})
+		// Every server, with its calls summed into the range's buckets.
+		const listCalls = SqlSchema.findAll({
+			Request: UsageRange,
+			Result: Schema.Struct({...McpUsageServer.fields, series: Schema.fromJsonString(McpUsageServer.fields.series)}),
+			execute: range => sql`
+				SELECT id, (
+					SELECT json_group_array(json_object('at', at, 'calls', calls)) FROM (
+						SELECT at - at % ${range.size} AS at, count(*) AS calls FROM ${sql(McpCall.table)}
+						WHERE serverId = ${sql(Connection.table)}.id AND at >= ${range.from} AND at < ${range.to}
+						GROUP BY 1 ORDER BY 1
+					)
+				) AS series
+				FROM ${sql(Connection.table)}
+				ORDER BY rowid
+			`
+		})
+
+		// Each server's token is read and refreshed one call at a time, so concurrent calls never spend its refresh token twice.
+		const locks = yield* RcMap.make({lookup: (_id: ServerId) => Semaphore.make(1)})
+		const http = HttpClient.filterStatusOk(yield* HttpClient.HttpClient)
+		const fetch = yield* FetchHttpClient.Fetch
+		const random = yield* SecureRandom.SecureRandom
+		const pending = yield* Cache.make<ConnectionOAuthState, Pending, AuthError>({
+			capacity: 64,
+			lookup: () => Effect.fail(AuthError.make({message: 'The connection expired; connect it again'})),
+			timeToLive: Duration.minutes(10)
+		})
+		const callbacks = yield* Semaphore.make(1)
+		// Each server's newest sign-in: an older one finishing later would overwrite the authorization the admin chose last.
+		const newest = yield* Ref.make(HashMap.empty<ServerId, ConnectionOAuthState>())
+		const nonce = Effect.map(random.randomBytes(32), Base64Url.encode)
+
+		// The server as it is now, if it is still the one a piece of work began with.
+		function current(id: ServerId, generation: ConnectionGeneration) {
+			return pipe(
+				connections.findById(id),
+				Effect.catchNoSuchElement,
+				Effect.map(Option.filter(found => found.generation === generation))
+			)
+		}
+		// The server is read again inside the write, so one removed or replaced meanwhile is left alone.
+		function change(
+			id: ServerId,
+			generation: ConnectionGeneration,
+			patch: (connection: Connection) => Partial<typeof Connection.update.Type>
+		) {
+			return pipe(
+				current(id, generation),
+				Effect.flatMap(
+					Option.match({
+						onNone: () => Effect.void,
+						onSome: found => {
+							const before = editable(found)
+							const after = {...before, ...patch(found)}
+							if (Schema.toEquivalence(Connection.update)(before, after)) return Effect.void
+							return Reactivity.mutation(connections.updateVoid(after), ['connections'])
+						}
+					})
+				),
+				sql.withTransaction,
+				withReactivity,
+				asStorageAuthError
+			)
+		}
+		// New tokens land with the client they were issued to, and clear the server's last failure.
+		function authorize(generation: ConnectionGeneration, grant: typeof ConnectionGrant.insert.Type) {
+			return pipe(
+				current(grant.serverId, generation),
+				Effect.flatMap(
+					Option.match({
+						onNone: () => Effect.void,
+						onSome: found =>
+							Effect.andThen(saveGrant(grant), connections.updateVoid({...editable(found), error: Option.none()}))
+					})
+				),
+				Reactivity.mutation(['connections']),
+				sql.withTransaction,
+				withReactivity,
+				asStorageAuthError
+			)
+		}
+		const get = Effect.fn('Connections.get')(function* (id: ServerId) {
+			return yield* pipe(
+				findState({id, now: yield* DateTime.now}),
+				asStorageAuthError,
+				Effect.flatMap(Option.match({onNone: () => Effect.fail(removedServer), onSome: Effect.succeed}))
+			)
+		})
+		const definitions = pipe(
+			DateTime.now,
+			Effect.flatMap(now => asStorageAuthError(listStates(now))),
+			Effect.withSpan('Connections.definitions')
+		)
+		const list = Effect.map(
+			definitions,
+			Array.map(row => Struct.pick(row, ['error', 'icons', 'id', 'name', 'status', 'tools', 'url']))
+		)
+
+		const exchange = Effect.fnUntraced(function* (
+			connection: ConnectionAddress,
+			issued: ConnectionIssuer,
+			params: TokenExchange
+		) {
+			// The refresh token this exchange spends, if it renews a grant.
+			const spent = pipe(
+				Match.value(params),
+				Match.when({grant_type: 'refresh_token'}, request => Option.some(request.refresh_token)),
+				Match.orElse(() => Option.none())
+			)
+			const token = yield* pipe(
+				HttpClientRequest.post(issued.tokenEndpoint),
+				HttpClientRequest.bodyUrlParams({...params, client_id: issued.clientId, resource: connection.url}),
+				http.execute,
+				Effect.flatMap(HttpClientResponse.schemaBodyJson(Token)),
+				Effect.tapErrorTag('HttpClientError', cause => {
+					// Only 400 and 401 reject the grant itself; a rate limit or a timeout leaves it to the next try.
+					if (
+						!(cause.reason instanceof HttpClientError.StatusCodeError) ||
+						!Array.contains([400, 401], cause.reason.response.status)
+					) {
+						return Effect.void
+					}
+					return Option.match(spent, {
+						onNone: () => Effect.void,
+						onSome: refreshToken =>
+							pipe(
+								endGrant({refreshToken, serverId: connection.id}),
+								Reactivity.mutation(['connections']),
+								withReactivity,
+								asStorageAuthError
+							)
+					})
+				}),
+				Effect.timeout(Duration.seconds(20))
+			)
+			yield* authorize(connection.generation, {
+				accessToken: token.access_token,
+				clientId: issued.clientId,
+				expiresAt: DateTime.addDuration(
+					yield* DateTime.now,
+					Option.getOrElse(token.expires_in, () => Duration.hours(1))
+				),
+				// A refresh answer may leave the refresh token out, which keeps the one it spent.
+				refreshToken: Option.orElse(token.refresh_token, () => Option.map(spent, Redacted.make)),
+				serverId: connection.id,
+				tokenEndpoint: issued.tokenEndpoint
+			})
+			return Redacted.value(token.access_token)
+		})
+
+		const discover = Effect.fnUntraced(function* (initial: ConnectionTarget, headers: Headers.Headers) {
+			const own = deslop(initial.url)
+			const access = yield* Boolean.match(own, {
+				onFalse: () => Effect.succeed(Headers.empty),
+				onTrue: () => Effect.map(auth.user(headers), user => Headers.fromInput({[ON_BEHALF_HEADER]: user.id}))
+			})
+			const available = Effect.fnUntraced(function* () {
+				const found = yield* upstreams.use(
+					Effect.succeed({headers: access, url: initial.url}),
+					client =>
+						Effect.map(client.listTools(), tools => ({
+							info: client.serverInfo,
+							instructions: client.instructions,
+							tools
+						})),
+					Option.none()
+				)
+				return {
+					...initial,
+					error: Option.none(),
+					icons: serverIcons(found.info),
+					instructions: found.instructions,
+					issuer: Option.none(),
+					mode: Boolean.match(own, {
+						onFalse: Function.constant('public' as const),
+						onTrue: Function.constant('deslop' as const)
+					}),
+					name: pipe(
+						Option.map(found.info, server => server.name),
+						Option.map(String.trim),
+						Option.filter(String.isNonEmpty),
+						Option.getOrElse(() => initial.name)
+					),
+					scope: Option.none(),
+					tools: Array.length(found.tools)
+				} satisfies typeof Connection.insert.Type
+			})
+			if (own) return yield* available()
+			const probe = yield* Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown))({
+				id: 1,
+				jsonrpc: '2.0',
+				method: 'tools/list',
+				params: {}
+			})
+			const response = yield* Effect.tryPromise({
+				catch: cause => UpstreamError.make({cause}),
+				try: signal =>
+					fetch(initial.url, {
+						body: probe,
+						headers: {
+							accept: 'application/json, text/event-stream',
+							'content-type': 'application/json',
+							'mcp-protocol-version': '2025-06-18'
+						},
+						method: 'POST',
+						signal
+					})
+			})
+			const challenge = extractWWWAuthenticateParams(response)
+			yield* Option.match(Option.fromNullishOr(response.body), {
+				onNone: () => Effect.void,
+				onSome: Effect.fnUntraced(function* (body) {
+					yield* Effect.tryPromise({catch: cause => UpstreamError.make({cause}), try: () => body.cancel()})
+				})
+			})
+			// OAuth discovery must follow the server's advertised challenge and metadata.
+			const discovery = yield* Effect.tryPromise({
+				catch: cause => UpstreamError.make({cause}),
+				try: signal =>
+					discoverOAuthServerInfo(initial.url, {
+						fetchFn: (target, init) =>
+							fetch(target, {
+								...init,
+								signal: AbortSignal.any([signal, ...Option.toArray(Option.fromNullishOr(init?.signal))])
+							}),
+						...Option.match(Option.fromUndefinedOr(challenge.resourceMetadataUrl), {
+							onNone: () => ({}),
+							onSome: resourceMetadataUrl => ({resourceMetadataUrl})
+						})
+					})
+			})
+			const resourceMetadata = Option.fromUndefinedOr(discovery.resourceMetadata)
+			const authorizationMetadata = Option.fromUndefinedOr(discovery.authorizationServerMetadata)
+			if (Option.exists(resourceMetadata, metadata => metadata.resource !== initial.url)) {
+				return yield* AuthError.make({message: 'The MCP metadata names a different resource URL.'})
+			}
+			return yield* Option.match(authorizationMetadata, {
+				onNone: available,
+				onSome: Effect.fnUntraced(function* (serverMetadata) {
+					const metadata = yield* Schema.decodeUnknownEffect(ServerMetadata)(serverMetadata)
+					yield* connectable(metadata)
+					return {
+						...initial,
+						error: Option.none(),
+						icons: [],
+						instructions: Option.none(),
+						issuer: Option.some(metadata.issuer),
+						mode: 'oauth',
+						name: pipe(
+							resourceMetadata,
+							Option.flatMap(found => Option.fromUndefinedOr(found.resource_name)),
+							Option.map(String.trim),
+							Option.filter(String.isNonEmpty),
+							Option.getOrElse(() => initial.name)
+						),
+						scope: Option.some(
+							challenge.scope ??
+								pipe(
+									resourceMetadata,
+									Option.flatMap(found => Option.fromUndefinedOr(found.scopes_supported)),
+									Option.getOrElse(() => []),
+									Array.join(' ')
+								)
+						),
+						tools: 0
+					} satisfies typeof Connection.insert.Type
+				})
+			})
+		})
+		// A connection step that fails or outlasts its limit leaves its reason on the connection.
+		function settle(connection: ConnectionState, limit: Duration.Duration) {
+			return <A, E, R>(step: Effect.Effect<A, E, R>) =>
+				pipe(
+					step,
+					Effect.timeout(limit),
+					// Only the fixed reason reaches the log: a provider's own text can carry a body or a token.
+					Effect.tapError(cause =>
+						Effect.logWarning(`The MCP connection could not be completed: ${failureMessage(describe(cause))}`)
+					),
+					Effect.catch(
+						Effect.fnUntraced(function* (cause) {
+							const reason = describe(cause)
+							yield* change(connection.id, connection.generation, () => ({error: Option.some(reason)}))
+							return yield* connectionFailure(connection.name)(cause)
+						})
+					)
+				)
+		}
+
+		return Connections.of({
+			add: Effect.fn('Connections.add')(
+				function* (input: ServerUrl, _user: Admin, headers: Headers.Headers) {
+					const url = new URL(input).href
+					if (new URL(url).origin === origin) {
+						return yield* AuthError.make({message: 'The gateway cannot connect to itself'})
+					}
+					const added = AuthError.make({message: 'This MCP has already been added.'})
+					const base = ServerId.make(serverName(url) || 'mcp')
+					const taken = yield* asStorageAuthError(findTaken({id: base, url}))
+					if (Array.some(taken, row => row.url === url)) return yield* added
+					const suffix = pipe(
+						yield* nonce,
+						String.toLowerCase,
+						String.replaceAll(/[^a-z0-9]/gu, ''),
+						String.slice(0, 6)
+					)
+					const id = pipe(
+						taken,
+						Array.some(row => row.id === base),
+						Boolean.match({onFalse: () => base, onTrue: () => ServerId.make(`${base}-${suffix}`)})
+					)
+					yield* pipe(
+						discover(
+							{generation: ConnectionGeneration.make(yield* nonce), id, name: String.capitalize(base), url},
+							headers
+						),
+						// Discovery takes seconds, so the URL and id are checked again where the server is saved.
+						Effect.flatMap(connection =>
+							pipe(
+								Effect.gen(function* () {
+									if (Array.isReadonlyArrayNonEmpty(yield* findTaken({id, url}))) return yield* added
+									yield* connections.insertVoid(connection)
+								}),
+								Reactivity.mutation(['connections']),
+								sql.withTransaction,
+								withReactivity
+							)
+						),
+						// Until its row is saved nothing else could end the session discovery opened.
+						Effect.onError(() => upstreams.forget(url))
+					)
+					return Struct.pick(yield* get(id), ['error', 'icons', 'id', 'name', 'status', 'tools', 'url'])
+				},
+				Effect.scoped,
+				Effect.timeout(Duration.seconds(20)),
+				Effect.mapError(
+					connectionFailure('Cannot add this MCP. Check its public HTTPS URL and OAuth discovery support')
+				)
+			),
+			begin: Effect.fn('Connections.begin')(
+				function* (id: ServerId, user: Admin) {
+					const connection = yield* get(id)
+					return yield* Option.match(Option.all({issuer: connection.issuer, scope: connection.scope}), {
+						onNone: Effect.fnUntraced(function* () {
+							yield* change(id, connection.generation, () => ({error: Option.none()}))
+							return {state: Option.none<ConnectionOAuthState>(), url: '/'}
+						}),
+						onSome: Effect.fnUntraced(function* (oauth) {
+							return yield* pipe(
+								Effect.gen(function* () {
+									// Check the provider's current capabilities before authorization.
+									const metadata = yield* Schema.decodeUnknownEffect(ServerMetadata)(
+										yield* Effect.tryPromise({
+											catch: cause => UpstreamError.make({cause}),
+											try: signal =>
+												discoverAuthorizationServerMetadata(oauth.issuer, {
+													fetchFn: (target, init) =>
+														fetch(target, {
+															...init,
+															signal: AbortSignal.any([signal, ...Option.toArray(Option.fromNullishOr(init?.signal))])
+														})
+												})
+										})
+									)
+									if (
+										!Option.exists(metadata.code_challenge_methods_supported, methods =>
+											Array.contains(methods, 'S256')
+										)
+									) {
+										return yield* AuthError.make({
+											message: 'The provider must advertise S256 PKCE and safe authorization endpoints.'
+										})
+									}
+									// Each connection registers anew, so a client registered for an earlier callback is never reused; the server keeps its grant until the new client has tokens.
+									const registered = yield* Option.match(metadata.registration_endpoint, {
+										onNone: Effect.fnUntraced(function* () {
+											yield* connectable(metadata)
+											return OAuthClient.cases.Document.make({})
+										}),
+										onSome: Effect.fnUntraced(function* (endpoint) {
+											return yield* pipe(
+												HttpClientRequest.bodyJson(HttpClientRequest.post(endpoint), {
+													...Struct.omit(clientInfo, ['client_id']),
+													redirect_uris: [`${callback}/${id}`]
+												}),
+												Effect.flatMap(request => http.execute(request)),
+												Effect.flatMap(HttpClientResponse.schemaBodyJson(Registration)),
+												Effect.map(found => OAuthClient.cases.Registered.make({clientId: found.client_id}))
+											)
+										})
+									})
+									const stateId = ConnectionOAuthState.make(yield* nonce)
+									yield* Ref.update(newest, HashMap.set(id, stateId))
+									const encodedMetadata = yield* Schema.encodeEffect(ServerMetadata)(metadata)
+									const authorization = yield* Effect.tryPromise({
+										catch: cause => UpstreamError.make({cause}),
+										try: () =>
+											startAuthorization(metadata.issuer, {
+												clientInformation: {client_id: clientIdOf(registered)},
+												metadata: {
+													...encodedMetadata,
+													code_challenge_methods_supported: [
+														...(encodedMetadata.code_challenge_methods_supported ?? [])
+													],
+													response_types_supported: [...(encodedMetadata.response_types_supported ?? [])]
+												},
+												redirectUrl: Match.valueTags(registered, {
+													Document: () => callback,
+													Registered: () => `${callback}/${id}`
+												}),
+												resource: connection.url,
+												scope: oauth.scope,
+												state: stateId
+											})
+									})
+									yield* Cache.set(pending, stateId, {
+										client: registered,
+										generation: connection.generation,
+										id,
+										metadata,
+										userId: user.id,
+										verifier: authorization.codeVerifier
+									})
+									return {state: Option.some(stateId), url: authorization.authorizationUrl.href}
+								}),
+								settle(connection, Duration.seconds(20))
+							)
+						})
+					})
+				},
+				Effect.mapError(connectionFailure('Cannot connect this MCP'))
+			),
+			called: Effect.fn('Connections.called')(function* (id, generation) {
+				yield* Effect.annotateCurrentSpan('serverId', id)
+				yield* pipe(
+					countCall({at: yield* DateTime.now, generation, serverId: id}),
+					Reactivity.mutation(['connectionCalls']),
+					withReactivity,
+					Effect.catchCause(cause => Effect.logWarning('MCP usage could not be recorded', cause))
+				)
+			}),
+			complete: Effect.fn('Connections.complete')(
+				function* (params: Callback, route: Option.Option<ServerId>, user: Admin) {
+					// The flow is taken once, whatever the provider answered.
+					const flow = yield* pipe(
+						Cache.getOption(pending, params.state),
+						Effect.tap(() => Cache.invalidate(pending, params.state)),
+						Effect.flatMap(
+							Option.match({
+								onNone: () => AuthError.make({message: 'The connection expired; connect it again'}),
+								onSome: Effect.succeed
+							})
+						),
+						Effect.uninterruptible,
+						Semaphore.withPermit(callbacks)
+					)
+					const connection = yield* get(flow.id)
+					if (
+						flow.userId !== user.id ||
+						flow.generation !== connection.generation ||
+						connection.mode !== 'oauth' ||
+						!pipe(yield* Ref.get(newest), HashMap.get(flow.id), Option.contains(params.state))
+					) {
+						return yield* AuthError.make({message: 'The connection expired; connect it again'})
+					}
+					yield* pipe(
+						Effect.gen(function* () {
+							const code = yield* pipe(
+								params.code,
+								Option.filter(() => Option.isNone(params.error)),
+								Option.match({
+									onNone: () =>
+										AuthError.make({
+											message: `The provider declined the connection (${Option.getOrElse(params.error, Function.constant('no code'))})`
+										}),
+									onSome: Effect.succeed
+								})
+							)
+							// RFC 9700 §4.4.2: the answer must come from this server's authorization server, by its own callback or its issuer.
+							const fromIssuer = Match.valueTags(flow.client, {
+								Document: () => Option.isNone(route),
+								Registered: () => Option.contains(route, connection.id)
+							})
+							if (!fromIssuer) {
+								return yield* AuthError.make({message: 'The answer came from another authorization server'})
+							}
+							yield* Effect.try({
+								catch: cause => AuthError.make({cause, message: 'The answer came from another authorization server'}),
+								try: () =>
+									validateAuthorizationResponseIssuer({
+										expectedIssuer: flow.metadata.issuer,
+										iss: Option.getOrUndefined(params.iss),
+										issParameterSupported:
+											OAuthClient.isAnyOf(['Document'])(flow.client) ||
+											Option.contains(flow.metadata.authorization_response_iss_parameter_supported, true)
+									})
+							})
+							// Under the server's token lock, so a refresh already in flight cannot land after these new tokens.
+							yield* Semaphore.withPermit(
+								yield* RcMap.get(locks, connection.id),
+								exchange(
+									connection,
+									{clientId: clientIdOf(flow.client), tokenEndpoint: flow.metadata.token_endpoint},
+									{
+										code,
+										code_verifier: flow.verifier,
+										grant_type: 'authorization_code',
+										redirect_uri: Match.valueTags(flow.client, {
+											Document: () => callback,
+											Registered: () => `${callback}/${connection.id}`
+										})
+									}
+								)
+							)
+						}),
+						Effect.scoped,
+						settle(connection, Duration.seconds(30))
+					)
+				},
+				Effect.mapError(connectionFailure('Cannot finish the connection'))
+			),
+			definitions,
+			get,
+			// The server's grant and calls go with it.
+			remove: Effect.fn('Connections.remove')(function* (id: ServerId) {
+				const connection = yield* get(id)
+				const removed = yield* pipe(
+					deleteConnection(id),
+					Reactivity.mutation(['connections', 'connectionCalls']),
+					withReactivity,
+					Effect.mapError(connectionFailure('Cannot change this MCP connection'))
+				)
+				if (Array.isReadonlyArrayEmpty(removed)) return yield* removedServer
+				yield* upstreams.forget(connection.url)
+			}),
+			report: Effect.fn('Connections.report')(function* (id, generation, outcome) {
+				yield* Effect.annotateCurrentSpan({outcome: outcome._tag, serverId: id})
+				yield* Effect.ignore(
+					change(id, generation, () =>
+						Match.valueTags(outcome, {
+							Discovered: discovered => ({
+								error: Option.none(),
+								icons: discovered.icons,
+								instructions: discovered.instructions,
+								tools: Array.length(discovered.tools)
+							}),
+							Failed: failure => ({error: Option.some(failure.error)})
+						})
+					),
+					{log: 'Warn', message: 'Cannot save the MCP discovery outcome'}
+				)
+			}),
+			token: Effect.fn('Connections.token')(
+				function* (id: ServerId, generation: ConnectionGeneration, rejectedToken: Option.Option<string>) {
+					// The grant is read under its server's lock, so a call that waited sees the token the one before it saved.
+					return yield* Semaphore.withPermit(
+						yield* RcMap.get(locks, id),
+						Effect.timeout(
+							Effect.gen(function* () {
+								const connection = yield* get(id)
+								if (connection.generation !== generation) {
+									return yield* AuthError.make({message: 'This MCP connection was replaced.'})
+								}
+								const now = yield* DateTime.now
+								return yield* Option.match(yield* asStorageAuthError(findGrant(id)), {
+									onNone: () => Effect.fail(AuthError.make({message: `Connect ${connection.name} on ${origin}`})),
+									onSome: grant => {
+										// A token that can be refreshed is renewed 30 seconds early; one that cannot is used to its end.
+										const margin = Option.match(grant.refreshToken, {
+											onNone: () => Duration.zero,
+											onSome: () => Duration.seconds(30)
+										})
+										const access = Redacted.value(grant.accessToken)
+										if (
+											!Option.contains(rejectedToken, access) &&
+											DateTime.isGreaterThan(grant.expiresAt, DateTime.addDuration(now, margin))
+										) {
+											return Effect.succeed(access)
+										}
+										return Option.match(grant.refreshToken, {
+											onNone: () =>
+												Effect.fail(
+													AuthError.make({message: `Reconnect ${connection.name}; its authorization expired`})
+												),
+											onSome: refresh =>
+												exchange(connection, grant, {
+													grant_type: 'refresh_token',
+													refresh_token: Redacted.value(refresh)
+												})
+										})
+									}
+								})
+							}),
+							Duration.seconds(20)
+						)
+					)
+				},
+				Effect.scoped,
+				Effect.mapError(connectionFailure('Cannot refresh this MCP; reconnect it from the MCP page'))
+			),
+			usage: period =>
+				pipe(
+					usageWindow(period, ['connectionCalls'], range =>
+						Effect.mapError(listCalls(range), connectionFailure('MCP storage failed'))
+					),
+					Stream.provideService(Reactivity.Reactivity, reactivity),
+					Stream.withSpan('Connections.usage', {attributes: {period, 'rpc.stream': true}})
+				),
+			// The list is read again after each change and once a minute, so an expired provider shows as expired.
+			watch: user =>
+				pipe(
+					sql.reactive(['connections'], list),
+					Stream.merge(
+						pipe(
+							Stream.tick(Duration.minutes(1)),
+							Stream.drop(1),
+							Stream.mapEffect(() => list)
+						)
+					),
+					// A slow reader gets only the newest list.
+					Stream.buffer({capacity: 1, strategy: 'sliding'}),
+					Stream.withSpan('Connections.watch', {attributes: {'rpc.stream': true, userId: user.id}})
+				)
+		})
+	})
+
+	// The tables this service owns, made and changed at start in one transaction; one statement per `sql` call, since SQLite runs only the first statement of a string.
+	static readonly migrations = Layer.effectDiscard(
+		Migrator.make({})({loader: Migrator.fromRecord(migrations), table: 'connections_migrations'})
+	)
+
+	static readonly layer = Layer.provide(Layer.effect(Connections, Connections.make), Connections.migrations)
+}

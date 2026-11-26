@@ -6,7 +6,7 @@ Personal apps with one user, who also develops them.
 - **Data.** Tables change only through a new numbered migration in their service, run on a copy of production with row counts compared. Data outside SQL is disposable.
 - **Access.** Only Auth identifies callers, by tailnet device or GitHub sign-in. Apps have no sign-in of their own.
 - **Dependencies.** New ones are the user's pick. Stay on `latest` except the pins in manifests. No patches or forks.
-- **Proof.** A blocked proof, such as a missing tool or a failing signed build, is a fault to fix, not a "Not proven" line.
+- **Proof.** Build and prove UI in the browser at the iPhone Duo sizes below, including UI bundled by Capacitor. Use the iOS Simulator only for share extensions, push, Live Activities, the Dynamic Island and widgets. A blocked proof, such as a missing tool or a failing signed build, is a fault to fix, not a "Not proven" line.
 - **Not wanted.** An AI wrapper package; a stdio bridge, container or OpenTelemetry Collector (apps send telemetry straight to Scope); MCP tools for apps agents don't need (Trips, OPM, Portfolio).
 - **Pull requests.** Once its review and re-checks pass and Verify passes on its head, rebased on the latest `main`, mark the PR ready.
 - **Tests.** Only our own logic, with Effect layer stand-ins. No UI, request or regression tests.

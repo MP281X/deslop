@@ -16,10 +16,9 @@
 	"type": "module",
 	"sideEffects": false,
 	"imports": {
-		"#lib/*": "./src/lib/*",
-		"#routes/*": "./src/routes/*",
-		"#rpcs/*": "./src/rpcs/*",
-		"#services/*": "./src/services/*"
+		"#server/*": "./src/server/*",
+		"#web/*": "./src/web/*",
+		"#contracts": "./src/contracts.ts"
 	},
 	"publishConfig": {
 		"access": "public"
@@ -30,7 +29,6 @@
 	},
 	"dependencies": {
 		"@capacitor/core": "latest",
-		"@capacitor/push-notifications": "latest",
 		"@deslop/runtime": "workspace:*",
 		"@deslop/ui": "workspace:*",
 		"@effect/ui": "https://pkg.pr.new/Effect-TS/ui/@effect/ui@87a704bef41b40de8fa7bced97cae5d69c4233a0",

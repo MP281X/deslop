@@ -1,4 +1,4 @@
-import {Array, Record} from 'effect'
+import {Array, Record, pipe} from 'effect'
 
 import {recommended} from '@typeonce/oxlint-plugin-effect-machine/recommended'
 import type {OxlintConfig} from 'vite-plus/lint'
@@ -10,15 +10,10 @@ import {effectCallForm} from '#lint/effect-call-form.ts'
 import {libraryOperation} from '#lint/library-operation.ts'
 import {nameByKind} from '#lint/name-by-kind.ts'
 import {noAccumulatingCopy} from '#lint/no-accumulating-copy.ts'
-import {noBareControl} from '#lint/no-bare-control.ts'
 import {noBarrelModule} from '#lint/no-barrel-module.ts'
 import {noCollectingLoop} from '#lint/no-collecting-loop.ts'
-import {noCompilerOptOut} from '#lint/no-compiler-opt-out.ts'
-import {noComponentAtomAllocation} from '#lint/no-component-atom-allocation.ts'
 import {noDestructuredParameter} from '#lint/no-destructured-parameter.ts'
-import {noFakeRefState} from '#lint/no-fake-ref-state.ts'
 import {noFloatingDerivedType} from '#lint/no-floating-derived-type.ts'
-import {noHandlerOnLabel} from '#lint/no-handler-on-label.ts'
 import {noMultilineComment} from '#lint/no-multiline-comment.ts'
 import {noNativeMethodCall} from '#lint/no-native-method-call.ts'
 import {noPassThroughName} from '#lint/no-pass-through-name.ts'
@@ -32,39 +27,22 @@ import {noStoredSchemaOperation} from '#lint/no-stored-schema-operation.ts'
 import {noUnexplainedDisable} from '#lint/no-unexplained-disable.ts'
 import {noUnvalidatedJsonDecode} from '#lint/no-unvalidated-json-decode.ts'
 import {noWallClock} from '#lint/no-wall-clock.ts'
-import {classLiterals, primitiveClasses} from '#lint/primitive-classes.ts'
 import {recoverNamedFailures} from '#lint/recover-named-failures.ts'
 import {retryPolicy} from '#lint/retry-policy.ts'
 import {schemaTypePair} from '#lint/schema-type-pair.ts'
 import {serviceMethodSpan} from '#lint/service-method-span.ts'
 import {serviceSchemaFile} from '#lint/service-schema-file.ts'
-import {swiftuiThemeValues} from '#lint/swiftui-theme-values.ts'
 import {testAssertions} from '#lint/test-assertions.ts'
 import {testBoundaries} from '#lint/test-boundaries.ts'
 import {testRegistration} from '#lint/test-registration.ts'
 import {testSynchronization} from '#lint/test-synchronization.ts'
 
-const REACT_LEGACY_APIS = [
-	'Component',
-	'PureComponent',
-	'createRef',
-	'forwardRef',
-	'memo',
-	'useCallback',
-	'useEffect',
-	'useLayoutEffect',
-	'useMemo',
-	'useReducer',
-	'useSyncExternalStore'
-]
-const REACT_LEGACY_MESSAGE =
-	'Use React 19 function components with refs as props; React Compiler owns memoization, atoms own effects, subscriptions and state machines, and ref callbacks own DOM listeners.'
 const MAP_MESSAGE =
 	'Use HashMap, or MutableHashMap for local mutation; for identity keys, wrap objects the code owns in Equal.byReferenceUnsafe, which marks them reference-compared globally.'
 const NUMBER_CHECK_MESSAGE =
 	'Model a missing number with Option and validate one with Schema.Finite; Number.parse reads one from text.'
 const RUN_MESSAGE =
-	'Run the entry point with NodeRuntime.runMain, and Effects in React through atoms. A Promise that an external contract demands takes Effect.runPromise once, with an inline disable that names the contract.'
+	'Run the entry point with NodeRuntime.runMain, and Effects in views through Effect UI. A Promise that an external contract demands takes Effect.runPromise once, with an inline disable that names the contract.'
 const RUNNERS = [
 	'runCallback',
 	'runCallbackWith',
@@ -85,11 +63,6 @@ const SET_MESSAGE =
 const RESTRICTED_PROPERTIES = [
 	{message: 'Use standalone pipe.', property: 'pipe'},
 	{message: 'Name the log level: Effect.logInfo, logWarning, logError or logDebug.', object: 'Effect', property: 'log'},
-	...Array.map(['useSearch', 'useParams', 'useNavigate', 'useLoaderData', 'useRouteContext'], property => ({
-		message: 'Use getRouteApi(path) and its typed route hooks.',
-		object: 'Route',
-		property
-	})),
 	// The Effect compiler's preferEffectRecord diagnostic owns keys, values, entries, fromEntries, hasOwn and hasOwnProperty.
 	{
 		allowProperties: ['entries', 'fromEntries', 'hasOwn', 'keys', 'values'],
@@ -102,7 +75,6 @@ const RESTRICTED_PROPERTIES = [
 	{message: 'Use Option.getOrUndefined; undefined marks an absent value.', object: 'Option', property: 'getOrNull'},
 	{message: 'Use Number.min.', object: 'Math', property: 'min'},
 	{message: 'Use Number.round.', object: 'Math', property: 'round'},
-	...Array.map(REACT_LEGACY_APIS, property => ({message: REACT_LEGACY_MESSAGE, object: 'React', property})),
 	{message: 'Use Schema.Struct.', object: 'Schema', property: 'Class'},
 	{message: 'Use a branded schema.', object: 'Schema', property: 'Opaque'},
 	{message: 'Use Schema.Struct.', object: 'Schema', property: 'TaggedClass'},
@@ -126,6 +98,7 @@ const RESTRICTED_PROPERTIES = [
 		],
 		property => ({message: `Use the bare ${property} global.`, object: 'window', property})
 	),
+	// Effect detects the global calls, but the DOM Window methods resolve to different symbols.
 	...Array.map(['setInterval', 'setTimeout'], property => ({
 		message: 'Use Effect.sleep or Schedule.',
 		object: 'window',
@@ -135,6 +108,18 @@ const RESTRICTED_PROPERTIES = [
 	{message: 'Use Clock.', object: 'window', property: 'performance'}
 ]
 
+// Match Tailwind class arguments, without including the fluent builder or its later children.
+function classLiterals(pattern: string) {
+	return pipe(
+		['Literal[value=/', 'TemplateElement[value.raw=/'],
+		Array.flatMap(value => [
+			`CallExpression[callee.property.name="class"] > ${value}${pattern}/].arguments`,
+			`CallExpression[callee.property.name="class"] > .arguments ${value}${pattern}/]`
+		]),
+		Array.join(', ')
+	)
+}
+
 // Checks of Deslop's own choices, which only Deslop's conventions can serve.
 
 const RULES = {
@@ -143,15 +128,10 @@ const RULES = {
 	'library-operation': libraryOperation,
 	'name-by-kind': nameByKind,
 	'no-accumulating-copy': noAccumulatingCopy,
-	'no-bare-control': noBareControl,
 	'no-barrel-module': noBarrelModule,
 	'no-collecting-loop': noCollectingLoop,
-	'no-compiler-opt-out': noCompilerOptOut,
-	'no-component-atom-allocation': noComponentAtomAllocation,
 	'no-destructured-parameter': noDestructuredParameter,
-	'no-fake-ref-state': noFakeRefState,
 	'no-floating-derived-type': noFloatingDerivedType,
-	'no-handler-on-label': noHandlerOnLabel,
 	'no-multiline-comment': noMultilineComment,
 	'no-native-method-call': noNativeMethodCall,
 	'no-pass-through-name': noPassThroughName,
@@ -170,24 +150,18 @@ const RULES = {
 	'schema-type-pair': schemaTypePair,
 	'service-method-span': serviceMethodSpan,
 	'service-schema-file': serviceSchemaFile,
-	'swiftui-theme-values': swiftuiThemeValues,
 	'test-assertions': testAssertions,
 	'test-boundaries': testBoundaries,
 	'test-registration': testRegistration,
 	'test-synchronization': testSynchronization
 }
 
-// The type keeps the export declarable under isolated declarations, which can't infer the spread entries.
-export const restrictedImports: {
+const restrictedImports: {
 	paths: {importNames?: string[]; message: string; name: string}[]
 	patterns: {group: string[]; message: string}[]
 } = {
-	paths: [
-		{importNames: ['default', ...REACT_LEGACY_APIS], message: REACT_LEGACY_MESSAGE, name: 'react'},
-		{importNames: RUNNERS, message: RUN_MESSAGE, name: 'effect/Effect'}
-	],
+	paths: [{importNames: RUNNERS, message: RUN_MESSAGE, name: 'effect/Effect'}],
 	patterns: [
-		// A package's exports map closes whatever `lib/` it does not export; shadcn's `lib/` holds public helpers.
 		{group: ['@*/*/src', '@*/*/src/**'], message: 'Use public package exports.'},
 		// A service folder's public face is its schema, service and lib/utils; its own files reach the rest with `./`.
 		{
@@ -220,14 +194,12 @@ export const lint: OxlintConfig & {
 		{name: '@deslop/coding-standards', specifier: import.meta.url},
 		{name: 'effect-machine', specifier: import.meta.resolve('@typeonce/oxlint-plugin-effect-machine')},
 		{name: 'eslint-js', specifier: import.meta.resolve('oxlint-plugin-eslint')},
-		{name: 'react-doctor', specifier: import.meta.resolve('oxlint-plugin-react-doctor')},
-		{name: 'shadcn', specifier: import.meta.resolve('@shadcn/lint')},
 		{name: 'vite-plus', specifier: import.meta.resolve('vite-plus/oxlint-plugin')}
 	],
 	options: {denyWarnings: true, reportUnusedDisableDirectives: 'deny', typeAware: false, typeCheck: false},
 	overrides: [
 		{
-			excludeFiles: ['**/*.test.ts', '**/*.test.tsx'],
+			excludeFiles: ['**/*.test.ts'],
 			files: ['**/*'],
 			rules: {
 				'eslint/no-restricted-properties': [
@@ -246,32 +218,16 @@ export const lint: OxlintConfig & {
 				]
 			}
 		},
-		{files: ['**/*.config.ts', '**/app.plugin.js'], rules: {'import/no-default-export': 'off'}},
-		// Expo resolves a config plugin only from the package's app.plugin.js, which re-exports the plugin.
-		{files: ['**/app.plugin.js'], rules: {'@deslop/coding-standards/no-barrel-module': 'off'}},
-		{files: ['**/components/ui/**'], rules: {'shadcn/no-restyle': 'off', 'shadcn/require-static-classes': 'off'}},
 		{
-			files: ['**/components/ui/**', '**/packages/ui/**'],
+			files: ['**/packages/ui/**'],
 			rules: {
-				'@deslop/coding-standards/no-bare-control': 'off',
 				'@deslop/coding-standards/no-destructured-parameter': 'off',
-				'@deslop/coding-standards/no-renamed-import': 'off',
-				'jsx-a11y/click-events-have-key-events': 'off',
-				'jsx-a11y/label-has-associated-control': 'off'
+				'@deslop/coding-standards/no-renamed-import': 'off'
 			}
 		},
-		{files: ['**/*.ts'], rules: {'react/rules-of-hooks': 'off'}},
-		{
-			files: ['**/*.tsx'],
-			rules: {
-				'effecttsgo/async-function': 'off',
-				'eslint/require-await': 'error',
-				'typescript/strict-void-return': 'off',
-				'unicorn/no-null': 'off'
-			}
-		}
+		{files: ['**/*.config.ts'], rules: {'import/no-default-export': 'off'}}
 	],
-	plugins: ['effecttsgo', 'eslint', 'typescript', 'oxc', 'import', 'jsx-a11y', 'node', 'react', 'unicorn', 'vitest'],
+	plugins: ['effecttsgo', 'eslint', 'typescript', 'oxc', 'import', 'node', 'unicorn', 'vitest'],
 	rules: {
 		...Record.mapEntries(RULES, (_, name) => [`@deslop/coding-standards/${name}`, 'error' as const]),
 
@@ -295,6 +251,10 @@ export const lint: OxlintConfig & {
 			},
 			{message: 'Use const and Effect collection combinators.', selector: 'VariableDeclaration[kind="let"]'},
 			{message: 'Use Match.', selector: 'SwitchStatement'},
+			{
+				message: 'Use a flat theme token such as bg-card or bg-muted.',
+				selector: classLiterals('(^|[ :])bg-(linear|radial|conic|gradient)(-|$| )|gradient\\(')
+			},
 			{
 				// A module augmentation is the one place an interface belongs: TypeScript merges declarations only into interfaces.
 				message: 'Declare a type, not an interface.',
@@ -353,6 +313,8 @@ export const lint: OxlintConfig & {
 		'effecttsgo/try-catch-in-effect-gen': 'error',
 
 		'effecttsgo/async-function': 'error',
+		'effecttsgo/global-console': 'error',
+		'effecttsgo/global-console-in-effect': 'error',
 		'effecttsgo/global-date': 'error',
 		'effecttsgo/global-date-in-effect': 'error',
 		'effecttsgo/global-fetch': 'error',
@@ -498,7 +460,6 @@ export const lint: OxlintConfig & {
 				globals: [
 					{message: 'Use import.meta.dirname.', name: '__dirname'},
 					{message: 'Use import.meta.filename.', name: '__filename'},
-					{message: 'Use Effect logging or Console from effect.', name: 'console'},
 					{message: 'Interrupt an Effect fiber or close its Scope.', name: 'clearTimeout'},
 					{message: 'Interrupt an Effect fiber or close its Scope.', name: 'clearInterval'},
 					{message: 'Schedule work with Effect and Scope.', name: 'setImmediate'},
@@ -604,42 +565,6 @@ export const lint: OxlintConfig & {
 		'import/no-self-import': 'error',
 		'import/no-unassigned-import': ['error', {allow: ['**/*.css']}],
 
-		'jsx-a11y/alt-text': 'error',
-		'jsx-a11y/anchor-ambiguous-text': 'error',
-		'jsx-a11y/anchor-has-content': 'error',
-		'jsx-a11y/anchor-is-valid': 'error',
-		'jsx-a11y/aria-activedescendant-has-tabindex': 'error',
-		'jsx-a11y/aria-props': 'error',
-		'jsx-a11y/aria-proptypes': 'error',
-		'jsx-a11y/aria-role': ['error', {ignoreNonDOM: true}],
-		'jsx-a11y/aria-unsupported-elements': 'error',
-		'jsx-a11y/autocomplete-valid': 'error',
-		'jsx-a11y/click-events-have-key-events': 'error',
-		'jsx-a11y/control-has-associated-label': 'error',
-		'jsx-a11y/heading-has-content': 'error',
-		'jsx-a11y/html-has-lang': 'error',
-		'jsx-a11y/iframe-has-title': 'error',
-		'jsx-a11y/img-redundant-alt': 'error',
-		'jsx-a11y/interactive-supports-focus': 'error',
-		'jsx-a11y/label-has-associated-control': 'error',
-		'jsx-a11y/lang': 'error',
-		'jsx-a11y/media-has-caption': 'error',
-		'jsx-a11y/mouse-events-have-key-events': 'error',
-		'jsx-a11y/no-access-key': 'error',
-		'jsx-a11y/no-aria-hidden-on-focusable': 'error',
-		'jsx-a11y/no-autofocus': ['error', {ignoreNonDOM: true}],
-		'jsx-a11y/no-distracting-elements': 'error',
-		'jsx-a11y/no-interactive-element-to-noninteractive-role': 'error',
-		'jsx-a11y/no-noninteractive-element-interactions': 'error',
-		'jsx-a11y/no-noninteractive-element-to-interactive-role': 'error',
-		'jsx-a11y/no-noninteractive-tabindex': ['error', {roles: ['tabpanel', 'region']}],
-		'jsx-a11y/no-redundant-roles': 'error',
-		'jsx-a11y/no-static-element-interactions': 'error',
-		'jsx-a11y/role-has-required-aria-props': 'error',
-		'jsx-a11y/role-supports-aria-props': 'error',
-		'jsx-a11y/scope': 'error',
-		'jsx-a11y/tabindex-no-positive': 'error',
-
 		...recommended,
 
 		'node/no-path-concat': 'error',
@@ -661,120 +586,6 @@ export const lint: OxlintConfig & {
 		'oxc/number-arg-out-of-range': 'error',
 		'oxc/only-used-in-recursion': 'error',
 		'oxc/uninvoked-array-callback': 'error',
-
-		'react/button-has-type': 'error',
-		'react/capitalized-calls': 'error',
-		'react/checked-requires-onchange-or-readonly': 'error',
-		'react/error-boundaries': 'error',
-		'react/exhaustive-deps': 'error',
-		'react/globals': 'error',
-		'react/hook-use-state': 'error',
-		'react/hooks': 'error',
-		'react/iframe-missing-sandbox': 'error',
-		'react/immutability': 'error',
-		'react/incompatible-library': 'error',
-		'react/invariant': 'error',
-		'react/jsx-boolean-value': ['error', 'never'],
-		'react/jsx-curly-brace-presence': ['error', {children: 'never', propElementValues: 'always', props: 'never'}],
-		'react/jsx-fragments': ['error', 'syntax'],
-		'react/jsx-key': ['error', {checkFragmentShorthand: true, checkKeyMustBeforeSpread: true}],
-		'react/jsx-no-comment-textnodes': 'error',
-		'react/jsx-no-script-url': 'error',
-		'react/jsx-no-target-blank': [
-			'error',
-			{allowReferrer: false, enforceDynamicLinks: 'always', forms: true, links: true, warnOnSpreadAttributes: true}
-		],
-		'react/jsx-no-useless-fragment': 'error',
-		'react/jsx-pascal-case': [
-			'error',
-			{allowAllCaps: false, allowLeadingUnderscore: false, allowNamespace: false, ignore: []}
-		],
-		'react/jsx-props-no-spread-multi': 'error',
-		'react/no-array-index-key': 'error',
-		'react/no-children-prop': 'error',
-		'react/no-clone-element': 'error',
-		'react/no-danger': 'error',
-		'react/no-danger-with-children': 'error',
-		'react/no-namespace': 'error',
-		'react/no-object-type-as-default-prop': 'error',
-		'react/no-react-children': 'error',
-		'react/no-this-in-sfc': 'error',
-		'react/no-unescaped-entities': 'error',
-		'react/no-unknown-property': ['error', {ignore: [], requireDataLowercase: true}],
-		'react/purity': 'error',
-		'react/refs': 'error',
-		'react/rule-suppression': 'error',
-		'react/rules-of-hooks': 'error',
-		'react/self-closing-comp': 'error',
-		'react/set-state-in-effect': 'error',
-		'react/set-state-in-render': 'error',
-		'react/static-components': 'error',
-		'react/style-prop-object': 'error',
-		'react/syntax': 'error',
-		'react/todo': 'error',
-		'react/unsupported-syntax': 'error',
-		'react/void-dom-elements-no-children': 'error',
-
-		'react-doctor/design-no-redundant-padding-axes': 'error',
-		'react-doctor/design-no-redundant-size-axes': 'error',
-		'react-doctor/effect-listener-cleanup-mismatch': 'error',
-		'react-doctor/effect-needs-cleanup': 'error',
-		'react-doctor/html-no-nested-interactive': 'error',
-		'react-doctor/loading-action-preserves-trigger': 'error',
-		'react-doctor/no-adjust-state-on-prop-change': 'error',
-		'react-doctor/no-aria-invalid-without-description': 'error',
-		'react-doctor/no-call-component-as-function': 'error',
-		'react-doctor/no-controlled-input-value-without-state-update': 'error',
-		'react-doctor/no-create-context-in-render': 'error',
-		'react-doctor/no-create-object-url-without-revoke': 'error',
-		'react-doctor/no-default-props': 'error',
-		'react-doctor/no-derived-state': 'error',
-		'react-doctor/no-derived-useState': 'error',
-		'react-doctor/no-effect-event-in-deps': 'error',
-		'react-doctor/no-effect-wrapper-discards-callback-cleanup-return': 'error',
-		'react-doctor/no-enter-submit-without-ime-composition-guard': 'error',
-		'react-doctor/no-event-handler': 'error',
-		'react-doctor/no-flush-sync': 'error',
-		'react-doctor/no-global-css-variable-animation': 'error',
-		'react-doctor/no-gray-on-colored-background': 'error',
-		'react-doctor/no-impure-state-updater': 'error',
-		'react-doctor/no-inline-bounce-easing': 'error',
-		'react-doctor/no-inline-exhaustive-style': 'error',
-		'react-doctor/no-jsx-element-type': 'error',
-		'react-doctor/no-large-animated-blur': 'error',
-		'react-doctor/no-layout-property-animation': 'error',
-		'react-doctor/no-layout-transition-inline': 'error',
-		'react-doctor/no-many-boolean-props': 'error',
-		'react-doctor/no-mutable-in-deps': 'error',
-		'react-doctor/no-mutating-reducer-state': 'error',
-		'react-doctor/no-nested-card-surface': 'error',
-		'react-doctor/no-outline-none': 'error',
-		'react-doctor/no-placeholder-only-field': 'error',
-		'react-doctor/no-prop-callback-in-effect': 'error',
-		'react-doctor/no-prop-callback-in-render': 'error',
-		'react-doctor/no-prop-types': 'error',
-		'react-doctor/no-random-key': 'error',
-		'react-doctor/no-reduced-motion-content-removal': 'error',
-		'react-doctor/no-render-in-render': 'error',
-		'react-doctor/no-self-updating-effect': 'error',
-		'react-doctor/no-stale-timer-ref': 'error',
-		'react-doctor/no-transition-all': 'error',
-		'react-doctor/no-uncontrolled-input': 'error',
-		'react-doctor/no-ungated-tailwind-animation': 'error',
-		'react-doctor/prefer-use-effect-event': 'error',
-		'react-doctor/rendering-conditional-render': 'error',
-		'react-doctor/rerender-functional-setstate': 'error',
-		'react-doctor/rerender-lazy-ref-init': 'error',
-		'react-doctor/rerender-lazy-state-init': 'error',
-		'react-doctor/shadcn-dialog-content-requires-title': 'error',
-		'react-doctor/shadcn-icon-button-requires-label': 'error',
-
-		'shadcn/no-arbitrary-values': 'error',
-		'shadcn/no-inline-styles': 'error',
-		'shadcn/no-raw-colors': 'error',
-		'shadcn/no-restyle': ['error', primitiveClasses],
-		'shadcn/no-unknown-classes': 'error',
-		'shadcn/require-static-classes': 'error',
 
 		'typescript/adjacent-overload-signatures': 'error',
 		'typescript/ban-ts-comment': [
@@ -835,17 +646,7 @@ export const lint: OxlintConfig & {
 		'typescript/no-confusing-void-expression': ['error', {ignoreVoidReturningFunctions: true}],
 		'typescript/no-deprecated': 'error',
 		'typescript/no-duplicate-type-constituents': 'error',
-		// `navigate` is TanStack Router's: a navigation settles its own failures in the route's error boundary, and its promise only says the loaders finished. tsrs matches it by name only.
-		'typescript/no-floating-promises': [
-			'error',
-			{
-				allowForKnownSafeCalls: [
-					{from: 'file', name: 'navigate'},
-					// Opening an external link hands control to the OS; its completion is not app state and has no in-app recovery.
-					{from: 'package', name: 'openURL', package: 'react-native'}
-				]
-			}
-		],
+		'typescript/no-floating-promises': 'error',
 		'typescript/no-for-in-array': 'error',
 		'typescript/no-generated-empty-object-type': 'error',
 		'typescript/no-misused-promises': 'error',
@@ -956,11 +757,6 @@ export const lint: OxlintConfig & {
 		'vitest/warn-todo': 'error',
 
 		'vite-plus/prefer-vite-plus-imports': 'error'
-	},
-	settings: {
-		'jsx-a11y': {components: {Button: 'button', Input: 'input', Label: 'label', Textarea: 'textarea'}},
-		react: {version: '19.0'},
-		shadcn: {ui: ['@deslop/components-web/ui', '@dual/ui/components']}
 	}
 }
 

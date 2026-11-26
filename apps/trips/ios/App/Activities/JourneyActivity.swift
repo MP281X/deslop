@@ -13,15 +13,38 @@ struct JourneyActivity: Widget {
             }
         } dynamicIsland: { context in
             let journey = Journey(context.state)
+            let island = journey?.island
             return DynamicIsland {
                 DynamicIslandExpandedRegion(.leading) {
-                    journey?.what(28).padding(.leading, 6)
+                    if island == nil {
+                        journey?.what(28).padding(.leading, 6)
+                    }
                 }
                 DynamicIslandExpandedRegion(.trailing) {
-                    journey?.when(28).padding(.trailing, 6)
+                    if island == nil {
+                        journey?.when(28).padding(.trailing, 6)
+                    }
                 }
                 DynamicIslandExpandedRegion(.bottom) {
-                    if let journey {
+                    if let island {
+                        VStack(alignment: .leading, spacing: 3) {
+                            Label(island.title, systemImage: "airplane")
+                                .font(.system(size: 14, weight: .bold))
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.8)
+                            if let detail = island.detail {
+                                Text(detail).foregroundStyle(.secondary)
+                            }
+                            if !island.footer.isEmpty {
+                                Text(island.footer)
+                            }
+                        }
+                        .font(.system(size: 12, weight: .medium))
+                        .monospacedDigit()
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 4)
+                    } else if let journey {
                         VStack(alignment: .leading, spacing: 8) {
                             journey.bar
                             journey.details
@@ -31,9 +54,25 @@ struct JourneyActivity: Widget {
                     }
                 }
             } compactLeading: {
-                journey?.location
+                if island != nil {
+                    Image(systemName: "airplane")
+                        .font(.system(size: 14, weight: .semibold))
+                        .accessibilityLabel("Trips")
+                } else {
+                    journey?.location
+                }
             } compactTrailing: {
-                journey?.ring
+                if let island {
+                    Text(island.value)
+                        .font(.system(size: 14, weight: .bold))
+                        .monospacedDigit()
+                        .foregroundStyle(island.warning ? Journey.warning : Color.white)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.6)
+                        .accessibilityLabel(island.title)
+                } else {
+                    journey?.ring
+                }
             } minimal: {
                 journey?.ring
             }
@@ -43,6 +82,7 @@ struct JourneyActivity: Widget {
 }
 
 private struct Journey {
+    static let warning = Color(red: 1, green: 158 / 255, blue: 59 / 255)
     static let background = Color(red: 9 / 255, green: 9 / 255, blue: 11 / 255)
     private let plain = Color(red: 250 / 255, green: 250 / 255, blue: 250 / 255)
     private let gray = Color(red: 159 / 255, green: 159 / 255, blue: 169 / 255)
@@ -57,6 +97,8 @@ private struct Journey {
         guard let props = try? decoder.decode(Props.self, from: Data(json.utf8)) else { return nil }
         self.props = props
     }
+
+    var island: Island? { props.island }
 
     var banner: some View {
         VStack(alignment: .leading, spacing: 11) {
@@ -212,7 +254,7 @@ private struct Journey {
     private func tint(_ tone: Tone) -> Color {
         switch tone {
         case .bad: Color(red: 1, green: 100 / 255, blue: 103 / 255)
-        case .warn: Color(red: 1, green: 158 / 255, blue: 59 / 255)
+        case .warn: Self.warning
         case .good, .info, .plain: plain
         }
     }
@@ -221,7 +263,16 @@ private struct Journey {
         case bad, good, info, plain, warn
     }
 
+    struct Island: Decodable {
+        let title: String
+        let detail: String?
+        let footer: String
+        let value: String
+        let warning: Bool
+    }
+
     private struct Props: Decodable {
+        let island: Island?
         let deadline: Date?
         let gate: String?
         let label: String

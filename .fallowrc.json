@@ -11,34 +11,18 @@
 			{"name": "tooling", "patterns": ["tools/**", "vite.config.ts", "apps/*/vite.config.ts"]},
 			// Build configuration the server also reads; it imports no zone, so it carries nothing across.
 			{"name": "config", "patterns": ["packages/runtime/src/config/**", "packages/ui/src/vite.ts"]},
-			{
-				"name": "shared",
-				"patterns": [
-					"apps/*/src/services/*/{schema.ts,lib/utils.ts,lib/page.ts}",
-					"apps/*/src/{rpcs,tools}/contracts.ts",
-					"apps/portfolio/src/lib/portfolio.ts",
-					"packages/*/src/shared/**"
-				]
-			},
+			{"name": "shared", "patterns": ["apps/*/src/*.ts", "packages/*/src/shared/**"]},
 			{
 				"name": "client",
-				"patterns": [
-					"apps/*/index.html",
-					"apps/*/src/main.client.ts",
-					"apps/*/src/routes/**",
-					"apps/*/src/lib/*.ts",
-					"apps/portfolio/src/lib/profile.ts",
-					"packages/ui/src/**",
-					"packages/*/src/{client,web}/**"
-				]
+				"patterns": ["apps/*/index.html", "apps/*/src/web/**", "packages/ui/src/**", "packages/*/src/{client,web}/**"]
 			},
 			// Server layers point one way: the entry composes transports, transports call services, services build on shared code.
-			{"name": "entry", "patterns": ["apps/*/src/main.server.ts"]},
-			{"name": "transport", "patterns": ["apps/*/src/{http,rpcs,tools}/handlers.ts"]},
+			{"name": "entry", "patterns": ["apps/*/src/server/main.ts"]},
+			{"name": "transport", "patterns": ["apps/*/src/server/*/{http,rpcs,tools}.ts"]},
 			{
 				"name": "server",
-				// First match wins: schemas and pure helpers above stay shared; implementations default to server-only.
-				"patterns": ["apps/*/src/services/**", "packages/*/src/server/**"]
+				// First match wins: contracts above stay shared; implementations default to server-only.
+				"patterns": ["apps/*/src/server/**", "packages/*/src/server/**"]
 			}
 		],
 		"rules": [
@@ -59,11 +43,15 @@
 		"coverage": {"requireAllFiles": true}
 	},
 	// Extract shared logic at this size; mark imports, schema fields and modifier/prop lists inline as shape-only clones.
-	"duplicates": {"minTokens": 50, "minLines": 5, "ignore": ["apps/*/src/services/*/migrations.ts"]},
+	"duplicates": {"minTokens": 50, "minLines": 5, "ignore": ["apps/*/src/server/*/migrations.ts"]},
 	"health": {
 		"maxCognitive": 14,
 		"thresholdOverrides": [
-			{"files": ["**/handlers.ts"], "maxCognitive": 8, "reason": "Transport handlers delegate decisions to services."}
+			{
+				"files": ["apps/*/src/server/*/{http,rpcs,tools}.ts"],
+				"maxCognitive": 8,
+				"reason": "Transport handlers delegate decisions to services."
+			}
 		],
 		// No production coverage exists: estimated CRAP must not masquerade as measured risk.
 		"maxCrap": 0
@@ -72,11 +60,13 @@
 		// Capacitor CLI copies this platform's native project; it has no JS clients.
 		"@capacitor/ios"
 	],
+	// Each app names its own contract groups; the same name in two apps is two separate APIs.
+	"ignoreExports": [{"file": "apps/*/src/contracts.ts", "exports": ["RpcContracts", "PushRpcs"]}],
 	"ignorePatterns": ["**/*.gen.ts", "tools/*/template/**"],
 	"overrides": [
 		{
 			// Schemas and their types are exported in pairs by policy
-			"files": ["apps/*/src/services/*/schema.ts", "packages/runtime/src/shared/schema.ts"],
+			"files": ["apps/*/src/server/*/schema.ts", "apps/*/src/contracts.ts", "packages/runtime/src/shared/schema.ts"],
 			"rules": {"unused-exports": "off", "unused-types": "off"}
 		},
 		{

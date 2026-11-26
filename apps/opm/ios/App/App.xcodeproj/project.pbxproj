@@ -17,14 +17,41 @@
 		9582B6832FE993A70072D4E8 /* SceneDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9582B6822FE993A50072D4E8 /* SceneDelegate.swift */; };
 		24FA9132404F468384D121F6 /* BridgeViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = E605CDAC2CB14667A7D0EFBF /* BridgeViewController.swift */; };
 		D92BDCE01CA74BD9ADBAED21 /* DeslopNative.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7B6393E264B04562AC67463E /* DeslopNative.swift */; };
+		D52000000000000000000009 /* ChapterActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = D52000000000000000000005 /* ChapterActivityAttributes.swift */; };
+		D52000000000000000000044 /* OpmActivities.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = D52000000000000000000043 /* OpmActivities.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		D52000000000000000000046 /* ChapterActivity.swift in Sources */ = {isa = PBXBuildFile; fileRef = D52000000000000000000040 /* ChapterActivity.swift */; };
+		D52000000000000000000049 /* ChapterActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = D52000000000000000000005 /* ChapterActivityAttributes.swift */; };
+		D52000000000000000000001 /* OpmNativePlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = D52000000000000000000002 /* OpmNativePlugin.swift */; };
 /* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		D5200000000000000000004F /* PBXContainerItemProxy */ = {isa = PBXContainerItemProxy; containerPortal = 504EC2FC1FED79650016851F /* Project object */; proxyType = 1; remoteGlobalIDString = D5200000000000000000004B; remoteInfo = OpmActivities; };
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXTargetDependency section */
+		D52000000000000000000050 /* PBXTargetDependency */ = {isa = PBXTargetDependency; target = D5200000000000000000004B /* OpmActivities */; targetProxy = D5200000000000000000004F /* PBXContainerItemProxy */; };
+/* End PBXTargetDependency section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		D5200000000000000000000A /* Embed App Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				D52000000000000000000044 /* OpmActivities.appex in Embed App Extensions */,
+			);
+			name = "Embed App Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
 		2FAD9762203C412B000D30F8 /* config.xml */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = config.xml; sourceTree = "<group>"; };
 		50379B222058CBB4000EE86E /* capacitor.config.json */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.json; path = capacitor.config.json; sourceTree = "<group>"; };
 		504EC3041FED79650016851F /* App.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = App.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		504EC3071FED79650016851F /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
-		504EC30E1FED79650016851F /* app.icon */ = {isa = PBXFileReference; lastKnownFileType = folder.iconcomposer.icon; name = app.icon; path = ../../src/routes/app.icon; sourceTree = SOURCE_ROOT; };
+		504EC30E1FED79650016851F /* app.icon */ = {isa = PBXFileReference; lastKnownFileType = folder.iconcomposer.icon; name = app.icon; path = ../../src/web/app.icon; sourceTree = SOURCE_ROOT; };
 		504EC3111FED79650016851F /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; name = Base; path = Base.lproj/LaunchScreen.storyboard; sourceTree = "<group>"; };
 		504EC3131FED79650016851F /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		50B271D01FEDC1A000F3C39B /* public */ = {isa = PBXFileReference; lastKnownFileType = folder; path = public; sourceTree = "<group>"; };
@@ -33,6 +60,11 @@
 		65995DCFC035461AB1AC1B5E /* App.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = App.entitlements; sourceTree = "<group>"; };
 		E605CDAC2CB14667A7D0EFBF /* BridgeViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BridgeViewController.swift; sourceTree = "<group>"; };
 		7B6393E264B04562AC67463E /* DeslopNative.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = DeslopNative.swift; path = ../../../../packages/ui/native/DeslopNative.swift; sourceTree = SOURCE_ROOT; };
+		D52000000000000000000005 /* ChapterActivityAttributes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ChapterActivityAttributes.swift; path = Shared/ChapterActivityAttributes.swift; sourceTree = SOURCE_ROOT; };
+		D52000000000000000000040 /* ChapterActivity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChapterActivity.swift; sourceTree = "<group>"; };
+		D52000000000000000000041 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		D52000000000000000000043 /* OpmActivities.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = OpmActivities.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		D52000000000000000000002 /* OpmNativePlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpmNativePlugin.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -51,6 +83,7 @@
 			isa = PBXGroup;
 			children = (
 				958DCC722DB07C7200EA8C5F /* Config.xcconfig */,
+				D5200000000000000000004A /* Activities */,
 				504EC3061FED79650016851F /* App */,
 				504EC3051FED79650016851F /* Products */,
 			);
@@ -59,6 +92,7 @@
 		504EC3051FED79650016851F /* Products */ = {
 			isa = PBXGroup;
 			children = (
+				D52000000000000000000043 /* OpmActivities.appex */,
 				504EC3041FED79650016851F /* App.app */,
 			);
 			name = Products;
@@ -69,6 +103,8 @@
 			children = (
 				9582B6822FE993A50072D4E8 /* SceneDelegate.swift */,
 				50379B222058CBB4000EE86E /* capacitor.config.json */,
+				D52000000000000000000002 /* OpmNativePlugin.swift */,
+				D52000000000000000000005 /* ChapterActivityAttributes.swift */,
 				504EC3071FED79650016851F /* AppDelegate.swift */,
 				E605CDAC2CB14667A7D0EFBF /* BridgeViewController.swift */,
 				7B6393E264B04562AC67463E /* DeslopNative.swift */,
@@ -82,6 +118,15 @@
 			path = App;
 			sourceTree = "<group>";
 		};
+		D5200000000000000000004A /* Activities */ = {
+			isa = PBXGroup;
+			children = (
+				D52000000000000000000040 /* ChapterActivity.swift */,
+				D52000000000000000000041 /* Info.plist */,
+			);
+			path = Activities;
+			sourceTree = "<group>";
+		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
@@ -91,11 +136,13 @@
 			buildPhases = (
 				504EC3001FED79650016851F /* Sources */,
 				504EC3011FED79650016851F /* Frameworks */,
+				D5200000000000000000000A /* Embed App Extensions */,
 				504EC3021FED79650016851F /* Resources */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				D52000000000000000000050 /* OpmActivities */,
 			);
 			name = App;
 			packageProductDependencies = (
@@ -104,6 +151,22 @@
 			productName = App;
 			productReference = 504EC3041FED79650016851F /* App.app */;
 			productType = "com.apple.product-type.application";
+		};
+		D5200000000000000000004B /* OpmActivities */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = D5200000000000000000004C /* Build configuration list for PBXNativeTarget "OpmActivities" */;
+			buildPhases = (
+				D52000000000000000000045 /* Sources */,
+				D52000000000000000000047 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = OpmActivities;
+			productName = OpmActivities;
+			productReference = D52000000000000000000043 /* OpmActivities.appex */;
+			productType = "com.apple.product-type.app-extension";
 		};
 /* End PBXNativeTarget section */
 
@@ -142,6 +205,7 @@
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
+				D5200000000000000000004B /* OpmActivities */,
 				504EC3031FED79650016851F /* App */,
 			);
 		};
@@ -160,6 +224,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		D52000000000000000000047 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
@@ -167,10 +238,21 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				D52000000000000000000001 /* OpmNativePlugin.swift in Sources */,
+				D52000000000000000000009 /* ChapterActivityAttributes.swift in Sources */,
 				504EC3081FED79650016851F /* AppDelegate.swift in Sources */,
 				9582B6832FE993A70072D4E8 /* SceneDelegate.swift in Sources */,
 				24FA9132404F468384D121F6 /* BridgeViewController.swift in Sources */,
 				D92BDCE01CA74BD9ADBAED21 /* DeslopNative.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		D52000000000000000000045 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				D52000000000000000000046 /* ChapterActivity.swift in Sources */,
+				D52000000000000000000049 /* ChapterActivityAttributes.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -192,6 +274,8 @@
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = 958DCC722DB07C7200EA8C5F /* Config.xcconfig */;
 			buildSettings = {
+				DESLOP_BUNDLE_ID = xyz.mp281x.opm.dev;
+				OPM_URL_SCHEME = opm-dev;
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				CLANG_ANALYZER_NONNULL = YES;
 				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
@@ -250,6 +334,8 @@
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = 958DCC722DB07C7200EA8C5F /* Config.xcconfig */;
 			buildSettings = {
+				DESLOP_BUNDLE_ID = xyz.mp281x.opm;
+				OPM_URL_SCHEME = opm;
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				CLANG_ANALYZER_NONNULL = YES;
 				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
@@ -313,7 +399,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 0.1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = xyz.mp281x.opm.dev;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(DESLOP_BUNDLE_ID)";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
 				SWIFT_VERSION = 5.0;
@@ -335,11 +421,45 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 0.1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = xyz.mp281x.opm;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(DESLOP_BUNDLE_ID)";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "";
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Release;
+		};
+		D5200000000000000000004D /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_STYLE = Automatic;
+				INFOPLIST_FILE = Activities/Info.plist;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(DESLOP_BUNDLE_ID).activities";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+				MARKETING_VERSION = 0.1.0;
+				CURRENT_PROJECT_VERSION = 1;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				LD_RUNPATH_SEARCH_PATHS = ("$(inherited)", "@executable_path/Frameworks", "@executable_path/../../Frameworks");
+			};
+			name = Debug;
+		};
+		D5200000000000000000004E /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_STYLE = Automatic;
+				INFOPLIST_FILE = Activities/Info.plist;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(DESLOP_BUNDLE_ID).activities";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+				MARKETING_VERSION = 0.1.0;
+				CURRENT_PROJECT_VERSION = 1;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				LD_RUNPATH_SEARCH_PATHS = ("$(inherited)", "@executable_path/Frameworks", "@executable_path/../../Frameworks");
 			};
 			name = Release;
 		};
@@ -360,6 +480,15 @@
 			buildConfigurations = (
 				504EC3171FED79650016851F /* Debug */,
 				504EC3181FED79650016851F /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		D5200000000000000000004C /* Build configuration list for PBXNativeTarget "OpmActivities" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				D5200000000000000000004D /* Debug */,
+				D5200000000000000000004E /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
