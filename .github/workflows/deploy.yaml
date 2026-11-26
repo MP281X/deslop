@@ -19,7 +19,8 @@ defaults:
 
 env:
   DESLOP_DOMAIN: ${{ vars.DESLOP_DOMAIN }}
-  # Each published package's version.
+  APPLE_TEAM_ID: 99K7MQUK7F
+  # The App Store build's version and build number, and each published package's version.
   RELEASE_NUMBER: ${{ github.run_number }}
 
 jobs:
@@ -31,6 +32,8 @@ jobs:
       actions: write
       contents: read
       id-token: write
+    outputs:
+      app-store: ${{ steps.native.outputs.apps }}
     steps:
       - uses: actions/checkout@v7
       - uses: voidzero-dev/setup-vp@v1.22.0
@@ -51,6 +54,27 @@ jobs:
         run: for app in auth deploy gateway opm portfolio scope stash trips; do node "apps/$app/dist/server.js" probe; done
       - name: Test
         run: vp run test
+
+      # Apple's acceptance leaves a receipt named for the fingerprint that expires after 80 days, ten before TestFlight drops the build; a fingerprint without one builds on a Mac.
+      - name: Find iPhone builds without a TestFlight receipt
+        id: native
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          builds=()
+          for app in opm stash trips; do
+            inputs=$(git ls-tree -r HEAD -- "apps/$app/ios" "apps/$app/capacitor.config.json" "apps/$app/src/routes/app.icon" "apps/$app/package.json" packages/ui/native package.json pnpm-lock.yaml pnpm-workspace.yaml)
+            web=$(cd "apps/$app/dist/client" && find . -type f -print0 | LC_ALL=C sort -z | xargs -0 sha256sum)
+            fingerprint=$(printf '%s\n' "$inputs" "$web" "$DESLOP_DOMAIN" "$APPLE_TEAM_ID" | sha256sum | cut -c1-64)
+            artifact="$app-app-store-$fingerprint"
+            held=$(gh api "repos/$GITHUB_REPOSITORY/actions/artifacts?name=$artifact" --jq '[.artifacts[] | select(.expired | not)] | length')
+            if [[ $held == 0 ]]; then
+              builds+=("$(jq -cn --arg app "$app" --arg artifact "$artifact" --arg fingerprint "$fingerprint" '{$app, $artifact, $fingerprint}')")
+              echo "- $app builds $artifact" >> "$GITHUB_STEP_SUMMARY"
+            fi
+          done
+          echo "apps=$(jq -sc . <<< "${builds[*]}")" >> "$GITHUB_OUTPUT"
 
       # The fingerprint is the hash of the tarball packed before the version bump, which packs the same bytes each time, so an unchanged package and a retry's published one both skip.
       # An app bundles everything, so its manifest drops dependencies, scripts and its source entry; the standards CLI bundles its version, so it builds again after the bump.
@@ -91,3 +115,77 @@ jobs:
           old=$(comm -23 <(printf '%s\n' "$runs") <(printf '%s\n' "$kept") | awk 'NF && n++ < 300')
           xargs -r -P 8 -I{} gh api --method DELETE "repos/$GITHUB_REPOSITORY/actions/runs/{}" --silent <<< "$old"
           echo "- Deleted $(grep -c . <<< "$old" || true) workflow runs from before $cutoff" >> "$GITHUB_STEP_SUMMARY"
+
+  app-store:
+    name: App Store ${{ matrix.app }}
+    needs: verify
+    if: github.event_name == 'push' && needs.verify.outputs.app-store != '[]'
+    concurrency: ios-${{ matrix.app }}
+    # One app's failed build leaves the other apps to ship.
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.verify.outputs.app-store) }}
+    runs-on: xcode-27
+    timeout-minutes: 60
+    defaults:
+      run:
+        working-directory: apps/${{ matrix.app }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: voidzero-dev/setup-vp@v1.22.0
+        with:
+          node-version: '26'
+          run-install: true
+      - name: Build the App Store app
+        run: |
+          vp run build
+          vp exec cap sync ios
+
+          # The API key authenticates the upload, not signing. Never let Xcode create or change signing assets.
+          identities=$(security find-identity -v -p codesigning)
+          if [[ $identities != *"Apple Distribution:"* ]]; then
+            echo "::error::The runner needs an existing Apple Distribution identity with its private key and matching provisioning profiles for the app and its extensions."
+            exit 1
+          fi
+          xcodebuild -project ios/App/App.xcodeproj -scheme App -configuration Release -destination 'generic/platform=iOS' \
+            -archivePath "$RUNNER_TEMP/App.xcarchive" "DEVELOPMENT_TEAM=$APPLE_TEAM_ID" "DESLOP_DOMAIN=$DESLOP_DOMAIN" \
+            "MARKETING_VERSION=0.1.$RELEASE_NUMBER" "CURRENT_PROJECT_VERSION=$RELEASE_NUMBER" archive
+
+          cat > "$RUNNER_TEMP/export.plist" <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "https://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key><string>app-store-connect</string>
+            <key>destination</key><string>export</string>
+            <key>teamID</key><string>$APPLE_TEAM_ID</string>
+            <key>manageAppVersionAndBuildNumber</key><false/>
+          </dict>
+          </plist>
+          EOF
+          xcodebuild -exportArchive -archivePath "$RUNNER_TEMP/App.xcarchive" \
+            -exportOptionsPlist "$RUNNER_TEMP/export.plist" -exportPath "$RUNNER_TEMP/export"
+      - name: Upload to the App Store
+        id: upload
+        env:
+          APP: ${{ matrix.app }}
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+          FINGERPRINT: ${{ matrix.fingerprint }}
+        run: |
+          jq -n --arg app "$APP" --arg build "$RELEASE_NUMBER" --arg fingerprint "$FINGERPRINT" --arg commit "$GITHUB_SHA" \
+            '{app: $app, version: "0.1.\($build)", build: $build, fingerprint: $fingerprint, commit: $commit}' > "$RUNNER_TEMP/receipt.json"
+          mkdir -p "$HOME/.appstoreconnect/private_keys"
+          printf '%s\n' "$ASC_KEY_P8" > "$HOME/.appstoreconnect/private_keys/AuthKey_$ASC_KEY_ID.p8"
+          xcrun altool --upload-package "$RUNNER_TEMP/export/App.ipa" --api-key "$ASC_KEY_ID" --api-issuer "$ASC_ISSUER_ID"
+          echo "- $APP uploaded to TestFlight" >> "$GITHUB_STEP_SUMMARY"
+      # Recorded right after Apple accepts, even when the run is cancelled: the receipt, while it has not expired, is what keeps the next release from uploading this fingerprint again. A run that fails or dies between the two steps, or whose receipt upload fails, leaves none.
+      - name: Record Apple's acceptance
+        if: always() && steps.upload.outcome == 'success'
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ matrix.artifact }}
+          path: ${{ runner.temp }}/receipt.json
+          retention-days: 80
