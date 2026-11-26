@@ -16,8 +16,7 @@ const create = Command.make(
 	Effect.fnUntraced(function* (input) {
 		const path = yield* Path.Path
 		yield* copyTemplate({
-			from: path.join(import.meta.dirname, '../template'),
-			prepare: () => Effect.void,
+			from: [path.join(import.meta.dirname, '../template')],
 			rewrite: content =>
 				pipe(
 					content,

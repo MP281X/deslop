@@ -17,7 +17,6 @@
 	"sideEffects": false,
 	"imports": {
 		"#lib/*": "./src/lib/*",
-		"#routeTree.gen.ts": "./src/routeTree.gen.ts",
 		"#routes/*": "./src/routes/*",
 		"#rpcs/*": "./src/rpcs/*",
 		"#services/*": "./src/services/*"
@@ -30,12 +29,10 @@
 		"test": "vp test --config ../../vite.config.ts"
 	},
 	"devDependencies": {
-		"@deslop/components-web": "workspace:*",
 		"@deslop/runtime": "workspace:*",
-		"@tanstack/react-router": "latest",
-		"effect": "latest",
-		"react": "latest",
-		"react-dom": "latest"
+		"@deslop/ui": "workspace:*",
+		"@effect/ui": "https://pkg.pr.new/Effect-TS/ui/@effect/ui@87a704bef41b40de8fa7bced97cae5d69c4233a0",
+		"effect": "latest"
 	},
 	"config": {
 		"port": 5100
