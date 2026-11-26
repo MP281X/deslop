@@ -1,6 +1,0 @@
-{
-	"extends": "@deslop/coding-standards/tsconfig.json",
-	"compilerOptions": {
-		"paths": {"#lib": ["./src/lib"], "#lib/*": ["./src/lib/*"], "#components": ["./src"], "#components/*": ["./src/*"]}
-	}
-}
