@@ -1,4 +1,4 @@
-import {Effect, Option, Schema, Stream, pipe} from 'effect'
+import {Effect, Option, Stream, pipe} from 'effect'
 
 import {Atom, AtomRpc} from 'effect/reactivity'
 
@@ -11,11 +11,6 @@ import {RpcContracts} from '#rpcs/contracts.ts'
 import type {SignedAccount} from '#services/people/schema.ts'
 import {returnTarget} from '#services/sessions/lib/utils.ts'
 
-export type Search = typeof Search.Type
-export const Search = Schema.Struct({
-	error: Schema.OptionFromOptionalKey(Schema.String),
-	next: Schema.OptionFromOptionalKey(Schema.String)
-})
 addPageTelemetry('@deslop/auth')
 class RpcClient extends AtomRpc.Service<RpcClient>()('@deslop/auth/lib/auth/RpcClient', {
 	group: RpcContracts.middleware(RpcStream),
@@ -48,8 +43,9 @@ export const accountAtom = Atom.keepAlive(
 		)
 	)
 )
-export const peopleAtom = Atom.keepAlive(liveAtom(RpcClient, 'people.watch'))
-export const sessionsAtom = Atom.keepAlive(liveAtom(RpcClient, 'sessions.watch'))
+// A changed caller starts fresh reads; cached rows never carry across accounts.
+export const peopleAtom = Atom.family((_viewer: UserId) => liveAtom(RpcClient, 'people.watch'))
+export const sessionsAtom = Atom.family((_owner: UserId) => liveAtom(RpcClient, 'sessions.watch'))
 export const admitAtom = Atom.family((id: UserId) =>
 	RpcClient.runtime.fn((allow: boolean) => Effect.flatMap(RpcClient, client => client('people.admit', {allow, id})))
 )
