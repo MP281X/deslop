@@ -35,6 +35,18 @@ curl -fsS --max-time 5 https://git.datapizza.tech/users/sign_in >/dev/null || {
 }
 ```
 
+## Commands
+
+Dual's own command for each step agents bypassed:
+
+| Step               | Command                                                                    | Never                                           |
+| ------------------ | -------------------------------------------------------------------------- | ----------------------------------------------- |
+| Build the server   | `vp -C packages/server run build`                                          | bare `vp pack` or `tsrs`                        |
+| App types          | `vp -C packages/server run codegen`; `vp run check:policies` checks them   | `bun packages/server/scripts/dual-app-types.ts` |
+| Preview            | T3's saved `preview`, `stop` and `settle` scripts (`t3_project_read`)      | `.alchemy/prod.sh`                              |
+| Chromium for tests | `bunx playwright install --with-deps --only-shell chromium`                | another install                                 |
+| Before every push  | Verify, then the web/core browser acceptance, both from Dual's `AGENTS.md` | skipping the acceptance                         |
+
 ## Preview
 
 The Dual project's `preview` script rewrites Dual's own preview stack to production builds without watchers, under the same stack and stage, so Dual's `stop` and `settle` still apply. When Dual changes a rewritten line, the script's check stops it: update the rewrite in the project script with `t3_project_update`, never Dual. His public preview starts with `DUAL_PREVIEW_ORIGIN=https://dual-preview.mp281x.xyz`, the origin sign-in accepts, and Deploy's `dual-preview` exposure points at the port it prints.

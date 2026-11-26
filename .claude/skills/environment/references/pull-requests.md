@@ -1,7 +1,6 @@
 # Pull requests
 
-- **Drafts.** The first push opens a draft. Before ending a turn, unlink PRs the host reports merged or closed.
-- **Ready.** `main` has no branch protection, so a PR is ready for him only once its flow was walked and Verify passed in its pull request run on the latest `main`. When `main` moves, rebase and push for a new run; a PR with a merge conflict gets no run until it is rebased.
+- **Unlink** PRs the host reports merged or closed before ending a turn.
 - **Stacks** exist to ease review: split only where a reviewer would otherwise lose the thread; a layer need not merge on its own. Any PR not based on the default branch is a layer made with the commands below, never `gh pr create --base <branch>` or a changed base. Corrections fold into their own layer before restacking onto the latest default branch.
 
 GitHub stacks act on the checked-out branch's stack and rebase the next layer when the one below merges:
@@ -27,7 +26,7 @@ glab api "projects/:id/pipelines/<pipeline>/jobs?scope[]=failed" | jq -r '.[] | 
 
 ## Bodies
 
-Each push rewrites the body from `.github/pull_request_template.md` (GitLab: `.gitlab/merge_request_templates/Default.md`) for the change at the head, never rounds, rebases or other PRs. Hosts render no HTML. An uploaded recording's URL goes under its finish line, alone in its paragraph; read the body back rendered and fix what fails to render. Set the title and body with `pull_request_update`; upload a recording with the host's CLI:
+Each push rewrites the body from `.github/pull_request_template.md` (GitLab: `.gitlab/merge_request_templates/Default.md`) for the change at the head, never rounds, rebases or other PRs. Hosts render no HTML but `<details>`, which keeps Decisions and Evidence collapsed so the body opens on its outcome and picture. An uploaded recording's URL goes under its finish line's one-line caption, alone in its paragraph; read the body back rendered and fix what fails to render. Set the title and body with `pull_request_update`; upload a recording with the host's CLI:
 
 ```bash
 gh pr edit <n> --attach './proof.mp4'    # appends the video URL

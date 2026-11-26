@@ -1,314 +1,103 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><script>
-/* PROTOTYPE DATA. Copy to scratch, edit only this script, check with html_preview, html_render by path.
-   DECISIONS   one section each, numbered from FIRST. `today` and each variant are paths: target ids in click order,
-               one marked * where its still is taken: the tap that tells it apart from the others.
-               At least three variants, each a different approach; html_preview's console names one that renders
-               the same frames as another. The open variant plays beside Today, only the
-               steps where they differ, lined up; the variants sit below as stills to switch.
-   variants    letter: {title, parts, path}; title is two or three words for what the frames can't show.
-               view() reads parts as has.<word>; Today gets has.today.
-   view(s,has) the app's HTML for state s, with the app's real labels and data. k(id, patch, html, class, typed)
-               is a click target; an icon-only target names itself with aria-label. Kit as before. */
-const FIRST = 6, SIZE = [800, 450], PHONE = [466, 678];
-const DECISIONS = [
-  { name: 'Rename', task: 'Rename Project to Atlas', start: {},
-    today: 'row menu settings *name save',
-    variants: { a: { title: 'Edits in place', parts: 'inline', path: 'row *title save' },
-                b: { title: 'Then edits in place', parts: 'menu', path: 'row menu *rename save' },
-                c: { title: 'From the menu', parts: 'menu dialog', path: 'row menu rename dname *dsave' } } }
-];
-function view(s, has) {
-  const name = s.name || 'Project', done = { name: 'Atlas', edit: 0, dlg: 0, ren: 0, menu: 0 };
-  const side = `<div class=side><span class=org><b>A</b>Acme</span><span class="nav on">Projects</span><span class=nav>Members</span></div>`;
-  if (!s.open) return `${side}<main>${k('row', { open: 1 }, `<span>${name}</span><span class=m>eu-west</span>`, 'row')}<div class=row><span>Billing</span><span class=m>us-east</span></div><div class=row><span>Website</span><span class=m>eu-west</span></div></main>`;
-  const title = s.edit ? k('save', done, name, 'inp', 'Atlas') : has.inline ? k('title', { edit: 1 }, name) : name;
-  const menu = has.inline ? '' : k('menu', { menu: 1 }, '<span aria-label="Menu">⋯</span>', 'chip');
-  const item = has.menu ? k('rename', has.dialog ? { menu: 0, ren: 1 } : { menu: 0, edit: 1 }, 'Rename', 'it') : k('settings', { menu: 0, dlg: 1 }, 'Settings', 'it');
-  const pop = s.menu ? `<div class=pop style="right:16px;top:40px;width:140px">${item}<span class=it>Archive</span></div>` : '';
-  const dlg = s.dlg ? `<div class=scrim><div class=dlg><div class=f><span class=m>Name</span>${k('name', { draft: 1 }, s.draft ? 'Atlas' : name, 'inp', 'Atlas')}</div><div class=f><span class=m>Region</span><span class=sel>eu-west</span></div><div class=ft>${k('save', done, 'Save', 'btn')}</div></div></div>` : '';
-  const ren = s.ren ? `<div class=scrim><div class=dlg><div class=f><span class=m>Rename project</span>${k('dname', { draft: 1 }, s.draft ? 'Atlas' : name, 'inp', 'Atlas')}</div><div class=ft><span class=m>Cancel</span>${k('dsave', done, 'Rename', 'btn')}</div></div></div>` : '';
-  return `${side}<main><div class=row>${title}${menu}</div><div class=row><span class=m>Owner</span>You</div><div class=row><span class=m>Region</span>eu-west</div>${pop}</main>${dlg}${ren}`;
-}
+<!doctype html><html><head><meta charset="utf-8"><script>
+/* PROTOTYPE. DECISIONS, numbered from FIRST, each {name, versions, view, formats, start, paths}:
+   versions   {a: 'two or three words', …}; Today is implied.
+   view(s,v,w) HTML of version v in state s at screen width w, with the app's real labels and data.
+   formats    F's keys, the first shown first; default 'openR'.
+   start      every version's first state; default {}.
+   paths      {Today: 'id id', a: 'id'}, the taps in order: a journey that opens on its end. Without paths, live with Reset.
+   Kit        k(id, patch, html, cls) a tap target merging patch into s · row(title, muted, end, cls, id, patch) · bar(html)
+              classes: m muted · sp spacer · split panes · btn · ghost · cb box · on · pop menu · dot · chg what a version changes */
+const FIRST = 1;
+const DECISIONS = [{
+  name: 'Restart a failing app', formats: 'openR folded', versions: { a: 'Restart on the row', b: 'Restart in the detail' },
+  paths: { Today: 'row dots menu', a: 'inline', b: 'row restart' },
+  view(s, v, w) {
+    const stash = s.done ? row('stash', 'Running · just now', '', 'chg')
+      : row('<span class=dot></span>stash', 'Restarted 3 times', v == 'a' ? k('inline', { done: 1 }, '↻ Restart', 'ghost') : '', '', 'row', { open: 1 });
+    const list = bar('Apps') + stash + row('auth', ':5101') + row('scope', ':5106');
+    const detail = bar(`stash<span class=sp></span>${v == 'b' ? k('restart', { done: 1 }, 'Restart', 'btn') : k('dots', { menu: 1 }, '⋯', 'ghost')}`)
+      + (s.menu && !s.done ? `<div class=pop>${k('menu', { done: 1 }, 'Restart')}</div>` : '') + row('CPU', '', '7.2%');
+    return w >= 640 ? `<div class=split><div>${list}</div><div>${s.open ? detail : ''}</div></div>` : s.open && !s.done ? detail : list;
+  },
+}];
 </script>
 <!-- ENGINE -->
 <style>
-body{margin:0}
-#stage{--add:var(--success);display:grid;gap:22px;font:13px/1.35 var(--font-sans);color:var(--foreground);user-select:none}
-#stage *{box-sizing:border-box}
-button{all:unset;padding:0 10px;line-height:28px;border:1px solid var(--border);border-radius:var(--radius);cursor:pointer;color:var(--muted-foreground);font-size:13px}
-button:hover,[aria-pressed=true]{color:var(--foreground)}[aria-pressed=true]{background:color-mix(in srgb,var(--foreground) 9%,transparent)}
-section{display:grid;gap:6px}
-.hd{display:flex;align-items:center;gap:8px;padding-right:48px}
-.id{font:500 13px/18px var(--font-mono);padding:0 5px;border:1px solid var(--input);border-radius:5px}
-.nm{font-weight:600;font-size:14px}.tk{color:var(--muted-foreground);flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.ctl{display:flex;align-items:center;gap:6px}
-.beats{display:flex;flex:1;gap:3px;min-width:0}
-.beats i{flex:1;height:28px;display:grid;align-items:center;cursor:pointer}
-.beats span{height:4px;border-radius:2px;background:color-mix(in srgb,var(--foreground) 18%,transparent)}
-.beats .past span{background:var(--foreground)}.beats .now span{background:var(--primary)}
-.grid{display:grid;grid-template-columns:repeat(var(--cols,2),minmax(0,1fr));gap:8px;align-items:start}.strip{margin-top:10px}.strip:empty{display:none}
-.tile.sel .fr{border-color:var(--primary);box-shadow:0 0 0 1px var(--primary)}.strip .tile:not(.today){cursor:pointer}
-.tile{min-width:0;display:grid;gap:4px}
-.th{display:flex;align-items:center;gap:6px;min-width:0}
-.cap{min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.cap.add{color:var(--add)}.cap.m{color:var(--muted-foreground)}
-.fr{position:relative;overflow:hidden;border:1px solid var(--border);border-radius:var(--radius)}
-.tile.hold .fr{opacity:.5}
-.cam{position:absolute;left:0;top:0;transform-origin:0 0}
-.cur{position:absolute;left:0;top:0;width:13px;height:19px;transform-origin:0 0;scale:var(--k);z-index:9;pointer-events:none;transition:translate .46s cubic-bezier(.4,0,.2,1)}
-.still .cur{transition:none}
-.meas{visibility:hidden;left:-99999px!important;right:auto!important}
-.app{position:absolute;inset:0;display:flex;overflow:hidden;font:13px/1.4 var(--font-sans);background:var(--background);color:var(--foreground);
-
-  .side{background:var(--sidebar,var(--background));width:132px;flex:none;padding:8px;border-right:1px solid var(--border);display:flex;flex-direction:column;gap:1px}
-  .org{display:flex;gap:6px;align-items:center;padding:4px 6px;margin-bottom:6px;font-weight:500}
-  .org b{width:18px;height:18px;border-radius:4px;display:grid;place-items:center;font-size:10px;background:var(--foreground);color:var(--background)}
-  .nav{padding:4px 8px;border-radius:6px;color:var(--muted-foreground)}
-  main{position:relative;flex:1;min-width:0;padding:12px 16px}
-  .row{display:flex;justify-content:space-between;align-items:center;gap:8px;min-height:34px;padding:5px 4px;border-bottom:1px solid var(--border)}
-  .m{color:var(--muted-foreground)}
-  .sel,.inp{border:1px solid var(--input);border-radius:6px;padding:3px 8px}
-  .chip{border:1px solid var(--input);border-radius:99px;padding:1px 8px;font-size:11px;font-weight:400}
-  .btn{padding:4px 12px;border-radius:6px;background:var(--primary);color:var(--primary-foreground)}
-  .on{background:var(--on);color:var(--foreground)}
-  .pop,.dlg,.sheet{background:var(--popover);color:var(--popover-foreground);border:1px solid var(--input)}
-  .pop{position:absolute;z-index:4;padding:4px;border-radius:var(--radius);animation:p-pop .2s ease-out}
-  .sheet{position:absolute;z-index:4;top:0;right:0;bottom:0;padding:12px;border-width:0 0 0 1px;animation:p-slide .28s cubic-bezier(.2,.8,.2,1)}
-  .scrim{position:absolute;inset:0;z-index:3;display:grid;place-items:center;background:color-mix(in srgb,var(--background) 65%,transparent);animation:p-fade .2s}
-  .dlg{width:280px;padding:14px;border-radius:var(--radius);animation:p-pop .2s ease-out}
-  .it{display:flex;justify-content:space-between;gap:8px;padding:4px 8px;border-radius:6px}
-  .f{display:grid;gap:4px;margin-bottom:10px}
-  .ft{display:flex;justify-content:flex-end;gap:10px}
-  .ring{outline:calc(2px*var(--k)) solid var(--p-ring);outline-offset:calc(1px*var(--k))}
-  .ring[data-y]::after{content:'';display:inline-block;width:1px;height:1em;margin-left:1px;vertical-align:-2px;background:currentColor}
-  [data-still]{animation:none}
-}
-
-#stage .app .ring{outline:2px solid var(--primary);outline-offset:1px;border-radius:4px}
-#stage .app .ring.add{outline-color:var(--add)}
-#stage .app .new{box-shadow:inset 0 -2px 0 var(--add)}
-@keyframes p-pop{from{opacity:0;scale:.96}}@keyframes p-slide{from{translate:100% 0}}@keyframes p-fade{from{opacity:0}}
-#stage.ph .app{flex-direction:column}
-#stage.ph .side{width:auto;flex-direction:row;align-items:center;border-right:0;border-bottom:1px solid var(--border)}
-#stage.ph .org{margin:0 auto 0 0}
-
-
-</style></head><body><div id="stage"></div><script>
-let [AW, AH] = SIZE;
-const BEAT = 1300, PRESS = 520, MINW = 280, MINH = 140, PAD = 14, SHOWN = '.pop,.dlg,.sheet';
-const CURSOR = '<svg class="cur" viewBox="0 0 13 19"><path d="M1 1v14.2l3.7-3.5 2.5 5.9 2.3-1-2.5-5.8H12z" fill="var(--foreground)" stroke="var(--background)" stroke-width="1.2" stroke-linejoin="round"/></svg>';
-const node = (h) => { const t = document.createElement('template'); t.innerHTML = h.trim(); return t.content.firstChild; };
-const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;');
-const split = (s) => s.trim().split(/\s+/).filter((x) => x && x != '|');
-function k(id, patch, html, cls = '', typed) {
-  return `<span class="${cls}"${id ? ` data-t="${id}" data-p="${esc(JSON.stringify(patch || {}))}"${typed ? ` data-y="${esc(typed)}"` : ''}` : ''}>${html}</span>`;
-}
-const box = document.createElement('div');
-function trace(path, start, has) {
-  const S = [start], T = [];
-  let mark = 0;
-  for (const tok of split(path)) {
-    const id = tok.replace('*', '');
-    if (id != tok) mark = T.length;
-    box.innerHTML = view(S.at(-1), has);
-    const e = box.querySelector(`[data-t="${id}"]`);
-    if (!e) { console.error(`no target "${id}" after ${T.length} steps`); break; }
-    const y = e.dataset.y;
-    const label = y ? `Type “${y}”` : (e.querySelector('[aria-label]')?.ariaLabel || e.ariaLabel || [...e.childNodes].map((n) => n.textContent.trim()).find((x) => x.length > 1) || e.textContent.trim()).slice(0, 28);
-    // Two steps are the same only on the same target with the same label: typing into another field is a change.
-    T.push({ id, typed: y, label, key: `${id} ${label}` });
-    S.push({ ...S.at(-1), ...JSON.parse(e.dataset.p) });
-  }
-  return { S, T, has, mark };
-}
-// Steps of b lined up against a: equal steps share a column, a step b takes instead of one of a's shares that
-// column, and whatever is left over gets a column of its own.
-function align(a, b) {
-  const L = Array.from({ length: a.length + 1 }, () => Array(b.length + 1).fill(0));
-  for (let i = a.length - 1; i >= 0; i--) for (let j = b.length - 1; j >= 0; j--) L[i][j] = a[i] === b[j] ? L[i + 1][j + 1] + 1 : Math.max(L[i + 1][j], L[i][j + 1]);
-  const at = Array(a.length).fill(null), ins = Array.from({ length: a.length + 1 }, () => []);
-  let i = 0, j = 0;
-  while (i < a.length || j < b.length) {
-    if (i < a.length && j < b.length && a[i] === b[j]) { at[i] = { j, op: 'same' }; i++; j++; continue; }
-    const dels = [], adds = [];
-    while (i < a.length && !(j < b.length && a[i] === b[j]) && (j >= b.length || L[i + 1][j] >= L[i][j + 1])) dels.push(i++);
-    while (j < b.length && !(i < a.length && a[i] === b[j]) && (i >= a.length || L[i][j + 1] >= L[i + 1][j])) adds.push(j++);
-    if (!dels.length && !adds.length) { if (i < a.length) dels.push(i++); else adds.push(j++); }
-    dels.forEach((d, n) => { at[d] = n < adds.length ? { j: adds[n], op: 'add' } : { j: null, op: 'del' }; });
-    ins[i].push(...adds.slice(dels.length));
-  }
-  return { at, ins };
-}
-// Today and one variant on one timeline: per column, the step each takes, or where it waits. A step both take
-// alike shows no difference, so its column is skipped and the next one starts past it.
-function pair(today, t) {
-  const al = align(today.T.map((s) => s.key), t.T.map((s) => s.key)), cols = [];
-  for (let i = 0; i <= today.T.length; i++) {
-    for (const j of al.ins[i]) cols.push([null, { j, op: 'add' }]);
-    if (i < today.T.length) cols.push([{ j: i, op: 'same' }, al.at[i]]);
-  }
-  return [today, t].map((v, vi) => {
-    let done = 0;
-    const at = cols.map((c) => { const st = c[vi]; if (st && st.j != null) { done = st.j + 1; return { i: st.j, act: true, op: st.op }; } return { i: done, act: false }; })
-      .filter((_, n) => cols[n][1]?.op != 'same');
-    at.push({ i: v.T.length, act: false, end: true });
-    return at;
-  });
-}
-// A version cut to the steps from its first to its last difference with the other.
-function trim(a, b) {
-  const la = a.T.map((s) => s.key), lb = b.T.map((s) => s.key);
-  let P = 0; while (P < la.length && P < lb.length && la[P] == lb[P]) P++;
-  let E = 0; while (E < la.length - P && E < lb.length - P && la.at(-1 - E) == lb.at(-1 - E)) E++;
-  const cut = (v, l) => ({ ...v, S: v.S.slice(P, v.S.length - E), T: v.T.slice(P, l.length - E) });
-  return [cut(a, la), cut(b, lb)];
-}
-const stage = document.getElementById('stage');
-const meas = node('<div class="app meas"></div>');
-stage.append(meas);
-// The part of the app that matters for these states: their taps and any open menu, dialog or sheet.
-function region(t, states) {
-  const r = { x: AW, y: AH, r: 0, b: 0 };
-  Object.assign(meas.style, { width: AW + 'px', height: AH + 'px' });
-  for (const [i, ids] of states) {
-    meas.innerHTML = view(t.S[i], t.has);
-    const o = meas.getBoundingClientRect();
-    for (const e of [...ids.map((id) => meas.querySelector(`[data-t="${id}"]`)), ...meas.querySelectorAll(SHOWN)]) {
-      if (!e) { if (!a.act) v.cur.style.display = a.end ? 'none' : ''; continue; }
-      const q = e.getBoundingClientRect();
-      r.x = Math.min(r.x, q.left - o.left); r.y = Math.min(r.y, q.top - o.top); r.r = Math.max(r.r, q.right - o.left); r.b = Math.max(r.b, q.bottom - o.top);
-    }
-  }
-  return r;
-}
-const grow = (a, len, want, max) => { const n = Math.min(max, Math.max(len, want)); return [Math.max(0, Math.min(max - n, a - (n - len) / 2)), n]; };
-// Tiles in a row share a width, and a height that fits every region in `fits`; each shows its region at the
-// largest scale that fits, up to 1. A phone always shows its full width.
-function crop(r, w) {
-  const [cx, cw] = grow(r.x - PAD, r.r - r.x + 2 * PAD, AH > AW ? AW : MINW, AW), z = Math.min(1, w / cw);
-  return { cx, cw, z, h: Math.min(AH, Math.max(MINH, r.b - r.y + 2 * PAD)) * z };
-}
-function frame(views, w, fits = views.map((v) => v.r)) {
-  const H = Math.round(Math.max(...fits.map((r) => crop(r, w).h)));
-  for (const v of views) {
-    ({ cx: v.cx, cw: v.cw, z: v.z } = crop(v.r, w));
-    [v.cx, v.cw] = grow(v.cx, v.cw, w / v.z, AW);
-    [v.cy, v.ch] = grow(v.r.y - PAD, v.r.b - v.r.y + 2 * PAD, H / v.z, AH);
-    v.fr.style.height = H + 2 + 'px';
-    Object.assign(v.cam.style, { width: AW + 'px', height: AH + 'px', scale: v.z, translate: `${(w - v.cw * v.z) / 2 - v.cx * v.z}px ${-v.cy * v.z}px` });
-    v.cam.style.setProperty('--k', Math.min(1 / v.z, 2.2));
-    v.app.style.cssText = `width:${AW}px;height:${AH}px`;
-  }
-}
-function mountView(t, label) {
-  const root = node(`<div class="tile"><div class="th"><span class="id">${label}</span><span class="cap"></span></div><div class="fr"><div class="cam"><div class="app"></div>${CURSOR}</div></div></div>`);
-  return { t, root, fr: root.querySelector('.fr'), cam: root.querySelector('.cam'), app: root.querySelector('.app'), cap: root.querySelector('.cap'), cur: root.querySelector('.cur') };
-}
-function paint(v, i, still) {
-  const open = new Set([...v.app.querySelectorAll(SHOWN + ',.scrim')].map((e) => e.className));
-  v.app.innerHTML = view(v.t.S[Math.min(i, v.t.S.length - 1)], v.t.has);
-  for (const e of v.app.querySelectorAll(SHOWN + ',.scrim')) if (still || open.has(e.className)) e.dataset.still = '';
-}
-const secs = DECISIONS.map((d, di) => {
-  const has = (parts) => Object.fromEntries(split(parts).map((p) => [p, true]));
-  const today = { id: 'Today', ...trace(d.today, d.start, { today: true }) };
-  const vars = Object.entries(d.variants).map(([id, v]) => ({ id, title: v.title, ...trace(v.path, d.start, has(v.parts)) }));
-  // A variant that renders the same frames as Today or another variant shows him nothing to choose between.
-  const seen = new Map();
-  for (const v of [today, ...vars]) {
-    const frames = v.S.map((s) => view(s, v.has).replace(/<!--[\s\S]*?-->/g, '').replace(/>\s+</g, '><').replace(/\s+/g, ' ').trim()).join('\n');
-    if (seen.has(frames)) console.error(`${d.name}: ${v.id} looks the same as ${seen.get(frames)} at every step`);
-    else seen.set(frames, v.id);
-  }
-  const el = node(`<section><div class="hd"><span class="id">${di + FIRST}</span><span class="nm">${d.name}</span><span class="tk">${d.task}</span><button class="ph">Phone</button></div>
-    <div class="ctl"><button class="pp">Play</button><span class="beats"></span></div><div class="grid"></div><div class="grid strip"></div></section>`);
-  const sec = { el, today, vars, gen: 0, grid: el.querySelector('.grid'), strip: el.querySelector('.strip'), beats: el.querySelector('.beats'), pp: el.querySelector('.pp') };
-  el.addEventListener('click', (e) => {
-    const bi = e.target.closest('.beats i'), tile = e.target.closest('.tile');
-    if (e.target.classList.contains('ph')) return togglePhone();
-    if (e.target == sec.pp) return sec.playing ? stop(sec) : play(sec);
-    if (bi) { stop(sec); sec.c = [...sec.beats.children].indexOf(bi); return show(sec, true); }
-    if (tile?.closest('.strip') && !tile.classList.contains('today')) return open(sec, sec.stills.find((v) => v.root == tile).t);
-  });
-  stage.append(el);
-  prepare(sec); open(sec, vars[0]);
-  return sec;
-});
-// Each variant's pair with Today, framed so switching keeps Today's crop and the pair's height. And the stills,
-// each at its marked tap, green on a variant.
-function prepare(sec) {
-  const span = (v, at) => region(v, at.map((x) => [x.i, [v.T[x.i]?.id].filter(Boolean)]));
-  sec.pairs = new Map(sec.vars.map((t) => { const [a, b] = trim(sec.today, t), ats = pair(a, b); return [t, { a, b, ats, ra: span(a, ats[0]), rb: span(b, ats[1]) }]; }));
-  const ps = [...sec.pairs.values()];
-  sec.todayR = { x: Math.min(...ps.map((p) => p.ra.x)), y: Math.min(...ps.map((p) => p.ra.y)), r: Math.max(...ps.map((p) => p.ra.r)), b: Math.max(...ps.map((p) => p.ra.b)) };
-  sec.fits = [sec.todayR, ...ps.map((p) => p.rb)];
-  sec.stills = [sec.today, ...sec.vars].map((t, n) => ({ ...mountView(t, t.id), key: t.mark, add: n > 0, r: region(t, [[t.mark, [t.T[t.mark]?.id]]]) }));
-  sec.stills[0].root.classList.add('today');
-}
-// The open variant beside Today, playing only the steps where they differ.
-function open(sec, t) {
-  const { a, b, ats, rb } = sec.pairs.get(t);
-  sec.open = t;
-  sec.views = [[a, sec.todayR], [b, rb]].map(([v, r], vi) => ({ ...mountView(v, vi ? t.id : 'Today'), at: ats[vi], r }));
-  sec.beats.innerHTML = '<i><span></span></i>'.repeat(ats[0].length);
-  sec.c = 0; stop(sec); layout(sec);
-}
-function layout(sec) {
-  const W = sec.el.clientWidth, w = (n) => (W - 8 * (n - 1)) / n, n = sec.stills.length;
-  sec.grid.replaceChildren(...sec.views.map((v) => v.root));
-  frame(sec.views, w(2), sec.fits);
-  show(sec, true);
-  sec.strip.style.setProperty('--cols', n);
-  sec.strip.replaceChildren(...sec.stills.map((v) => v.root));
-  frame(sec.stills, w(n));
-  for (const v of sec.stills) {
-    v.root.classList.toggle('sel', v.t == sec.open);
-    v.cap.className = 'cap m'; v.cap.textContent = v.t.title || '';
-    paint(v, v.key, true);
-    v.cur.style.display = 'none';
-    v.app.querySelector(`[data-t="${v.t.T[v.key]?.id}"]`)?.classList.add('ring', ...(v.add ? ['add'] : []));
-  }
-}
-function at(v, e) { let x = 0, y = 0; for (let n = e; n && n != v.app; n = n.offsetParent) { x += n.offsetLeft; y += n.offsetTop; } return `${x + Math.min(e.offsetWidth / 2, 60)}px ${y + e.offsetHeight * 0.6}px`; }
-// Column c of the pair: a version that acts glides its cursor to the tap and presses it; one that waits dims.
-function show(sec, instant) {
-  const g = ++sec.gen, last = sec.views[0].at.length - 1;
-  sec.el.classList.toggle('still', !!instant);
-  for (const v of sec.views) {
-    const a = v.at[Math.min(sec.c, last)], step = a.act ? v.t.T[a.i] : null, isNew = a.act && a.op == 'add';
-    if (v.drawn !== a.i) { paint(v, a.i, v.drawn == null); v.drawn = a.i; }
-    v.root.classList.toggle('hold', !a.act && !a.end);
-    v.cap.className = 'cap' + (isNew ? ' add' : a.act ? '' : ' m');
-    v.cap.textContent = a.act ? step.label : a.end ? 'Done' : 'waits';
-    const e = step && v.app.querySelector(`[data-t="${step.id}"]`);
-    if (!e) { if (!a.act) v.cur.style.display = a.end ? 'none' : ''; continue; }
-    v.cur.style.display = ''; v.cur.style.translate = at(v, e);
-    const press = () => {
-      if (g != sec.gen) return;
-      e.classList.add('ring'); if (isNew) e.classList.add('add');
-      v.cur.animate([{ scale: 'calc(var(--k) * .8)' }, { scale: 'var(--k)' }], 240);
-      if (step.typed) [...step.typed].forEach((_, j) => setTimeout(() => g == sec.gen && (e.textContent = step.typed.slice(0, j + 1)), 70 + j * 90));
-    };
-    instant ? press() : setTimeout(press, PRESS);
-  }
-  [...sec.beats.children].forEach((e, j) => { e.classList.toggle('past', j < sec.c); e.classList.toggle('now', j == sec.c); });
-}
-function later(sec, ms, fn) { const g = sec.gen; setTimeout(() => g == sec.gen && fn(), ms); }
-function play(sec) {
-  const last = sec.views[0].at.length - 1;
-  sec.playing = true; sec.pp.textContent = 'Pause';
-  if (sec.c >= last) sec.c = 0;
-  const step = () => {
-    show(sec);
-    if (sec.c >= last) { sec.playing = false; sec.pp.textContent = 'Replay'; return; }
-    later(sec, BEAT, () => { sec.c++; step(); });
-  };
-  step();
-}
-function stop(sec) { sec.playing = false; sec.gen++; sec.pp.textContent = 'Play'; }
-function togglePhone() {
-  [AW, AH] = stage.classList.toggle('ph') ? PHONE : SIZE;
-  for (const b of stage.querySelectorAll('.ph')) b.ariaPressed = stage.classList.contains('ph');
-  for (const s of secs) { prepare(s); open(s, s.open); }
-}
-addEventListener('resize', () => secs.forEach((s) => { stop(s); for (const v of s.views) v.drawn = null; layout(s); }));
+:where(:root){color-scheme:dark;background:var(--background);--background:#0a0a0a;--foreground:#f5f5f5;--popover:#111;--primary:#346bf1;--primary-foreground:#fff;--muted-foreground:#818181;--destructive:#fb414a;--success:#10b981;--border:#191919;--input:#1e1e1e;--font-sans:system-ui,sans-serif;--font-mono:ui-monospace,monospace}
+body{margin:0;font:13px/1.4 var(--font-sans);color:var(--foreground)}*{box-sizing:border-box}
+.hd{display:flex;align-items:center;gap:8px;margin:0 44px 8px 0;white-space:nowrap}.hd~.hd{margin-right:0}
+.no{font:500 13px var(--font-mono);color:var(--muted-foreground)}.nm{font-weight:600;overflow:hidden;text-overflow:ellipsis}
+.seg{display:flex;border:1px solid var(--border);border-radius:6px;overflow:hidden}.seg span,.bt{padding:2px 8px;color:var(--muted-foreground);cursor:pointer;font-size:13px;display:flex;gap:5px;align-items:center}
+.seg .on{color:var(--foreground);background:color-mix(in srgb,var(--foreground) 10%,transparent)}.bt{border:1px solid var(--border);border-radius:6px;margin-left:auto}
+.dev{border:1px solid currentColor;border-radius:2px}.beats{display:flex;flex:1;gap:3px}.beats i{flex:1;height:20px;display:grid;align-items:center;cursor:pointer}
+.beats i:after{content:'';height:4px;border-radius:2px;background:color-mix(in srgb,var(--foreground) 18%,transparent)}.beats .past:after{background:color-mix(in srgb,var(--foreground) 55%,transparent)}.beats .now:after{background:var(--primary)}
+.row{display:grid;gap:8px;justify-content:center;margin-bottom:12px}.v{display:grid;gap:4px;align-content:start}.vh{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.vh b{font:500 13px var(--font-mono);padding:0 4px;border:1px solid var(--input);border-radius:4px;margin-right:5px}
+.pv{cursor:pointer}.pv .vh{font-weight:500}.pv.on .fr{border-color:var(--primary);box-shadow:0 0 0 1px var(--primary)}
+.fr{position:relative;overflow:hidden;border:1px solid var(--border);border-radius:8px}.sc{position:absolute;transform-origin:0 0;transition:transform .5s cubic-bezier(.4,0,.2,1)}
+.cur{position:absolute;width:15px;z-index:9;pointer-events:none;transition:translate .55s cubic-bezier(.4,0,.2,1);display:none}
+.app{background:var(--background);color:var(--foreground);font-size:13px;line-height:1.45;height:100%}
+.app .r{display:flex;gap:10px;align-items:center;padding:6px 12px;border-bottom:1px solid var(--border);min-height:46px;white-space:nowrap}.app .t{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis}
+.app .m{color:var(--muted-foreground)}.app .n{color:var(--muted-foreground);text-align:right}.app .tb{display:flex;align-items:center;gap:6px;padding:0 12px;height:38px;border-bottom:1px solid var(--border);font-weight:600}.app .sp{flex:1}
+.app .split{display:flex;height:100%}.app .split>div{flex:1;min-width:0;position:relative}.app .split>div+div{border-left:1px solid var(--border)}
+.app .btn{padding:1px 9px;border-radius:6px;background:var(--primary);color:var(--primary-foreground)}.app .ghost{padding:1px 7px;border:1px solid var(--input);border-radius:6px;color:var(--muted-foreground)}
+.app .cb{width:16px;height:16px;border:1px solid var(--input);border-radius:4px;display:grid;place-items:center;font-size:11px}.app .cb.on{background:var(--primary);color:var(--primary-foreground)}
+.app .pop{position:absolute;right:10px;top:34px;width:120px;padding:4px 8px;border:1px solid var(--input);border-radius:6px;background:var(--popover);z-index:2}
+.app .dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--destructive);margin-right:6px}.app .chg{background:color-mix(in srgb,var(--success) 12%,transparent)}
+.app [data-t]{cursor:pointer}.app .ring{outline:2px solid var(--primary);outline-offset:-2px;border-radius:5px}
+::view-transition-group(*){animation-duration:.35s}
+</style></head><body><div id="out"></div><script>
+// Formats: label, width, height, two halves.
+const F={folded:['Folded',466,678],foldedR:['Folded ⟳',678,466],open:['Open',669,951,1],openR:['Open ⟳',951,669,1],d1512:['1512',1512,982],d1920:['1920',1920,1080],d3440:['3440',3440,1440]};
+const CUR='<svg class=cur viewBox="0 0 13 19"><path d="M1 1v14.2l3.7-3.5 2.5 5.9 2.3-1-2.5-5.8H12z" fill="#fff" stroke="#000"/></svg>';
+const k=(id,patch,html='',cls='')=>`<span class="${cls}" data-t="${id}" data-p='${JSON.stringify(patch)}'>${html}</span>`;
+const row=(t,m='',n='',cls='',id,patch)=>{const h=`<div class=t>${t}${m&&`<div class=m>${m}</div>`}</div>${n&&`<div class=n>${n}</div>`}`;return id?k(id,patch,h,`r ${cls}`):`<div class="r ${cls}">${h}</div>`},bar=html=>`<div class=tb>${html}</div>`;
+const $=(q,r=document)=>r.querySelector(q),$$=(q,r=document)=>[...r.querySelectorAll(q)],wait=ms=>new Promise(r=>setTimeout(r,ms));
+// ?v=12b,13a keeps only those versions beside Today, and only their decisions.
+const PICK=new URLSearchParams(location.search).get('v')?.split(',');
+const D=DECISIONS.map(({formats='openR',start={},...d},i)=>({...d,formats,start,no:FIRST+i,V:['Today',...Object.keys(d.versions).filter(v=>!PICK||PICK.includes(FIRST+i+v))],fm:formats.split(' ')[0]})).filter(d=>d.V.length>1);
+// A journey's states: each tap merges its target's patch into the state before it.
+function trace(d,v){const S=[d.start],w=F[d.fm][1],box=document.createElement('div');
+  for(const id of (d.paths?.[v]||'').split(' ').filter(Boolean)){box.innerHTML=d.view(S.at(-1),v,w);const t=$(`[data-t="${id}"]`,box);if(!t){console.error(`${d.no} ${v}: no "${id}"`);break}S.push({...S.at(-1),...JSON.parse(t.dataset.p)})}
+  return S}
+function reset(d){d.S=Object.fromEntries(d.V.map(v=>[v,trace(d,v)]));d.beats=Math.max(...d.V.map(v=>d.S[v].length));const B=new URLSearchParams(location.search).get('beat');d.c=B==null?d.beats-1:Math.min(+B,d.beats-1);d.L=Object.fromEntries(d.V.map(v=>[v,d.S[v][Math.min(d.c,d.S[v].length-1)]]));d.sel??=d.V}
+const next=(d,v)=>(d.paths?.[v]||'').split(' ')[d.c];
+function draw(){const W=$('#out').clientWidth;
+  $('#out').innerHTML=D.map(d=>{const [,w,h]=F[d.fm],n=d.sel.length,lab=v=>`${v=='Today'?'':`<b>${v}</b>`}${v=='Today'?'Today':d.versions[v]}`;
+    // One height for every format and choice, so nothing below moves.
+    const H=Math.min(...d.formats.split(' ').map(f=>F[f][2]*(W-8)/2/F[f][1])),s=Math.min((W-8*(n-1))/n/w,H/h),pw=(W-16)/3;
+    const fm=d.formats.includes(' ')?`<span class=seg>${d.formats.split(' ').map(f=>{const [l,fw,fh,two]=F[f];return `<span class="${f==d.fm?'on':''}" data-f="${d.no} ${f}"><span class=dev style="width:${fw>fh?18:12}px;height:${fw>fh?13:17}px;${two?(fw>fh?'background:linear-gradient(90deg,#0000 47%,currentColor 0 53%,#0000 0)':'background:linear-gradient(#0000 47%,currentColor 0 53%,#0000 0)'):''}"></span>${l}</span>`}).join('')}</span>`:'';
+    const tl=d.paths?`<span class=beats>${Array.from({length:d.beats},(_,i)=>`<i data-c="${d.no} ${i}" class="${i<d.c?'past':i==d.c?'now':''}"></i>`).join('')}</span><span class=bt data-r="${d.no}">Replay</span>`:`<span class=bt data-x="${d.no}">Reset</span>`;
+    const fr=(v,cls,fw,fh,sc)=>`<div class="fr app" data-v="${d.no} ${v} ${cls}" style="width:${fw}px;height:${fh}px"><div class=sc style="width:${w}px;height:${h}px;transform:scale(${sc})"></div>${cls=='big'?CUR:''}</div>`;
+    return `<div class=hd><span class=no>${d.no}</span><span class=nm>${d.name}</span>${fm}${tl}</div>
+      <div class=row style="height:${H+28}px;grid-template-columns:repeat(${n},${w*s}px)">${d.sel.map(v=>`<div class=v><div class=vh>${lab(v)}</div>${fr(v,'big',w*s,h*s,s)}</div>`).join('')}</div>
+      <div class=row style="grid-template-columns:repeat(3,${pw}px)">${d.V.map(v=>`<div class="v pv${d.sel.includes(v)?' on':''}" data-s="${d.no} ${v}"><div class=vh>${lab(v)}</div>${fr(v,'small',pw,120,1)}</div>`).join('')}</div>`}).join('');
+  D.forEach(d=>fill(d,0))}
+// Frames get their version's state; morphing parts keep their names; small frames cut to the rows that matter.
+function fill(d,anim){const w=F[d.fm][1];
+  for(const f of $$(`[data-v^="${d.no} "]`)){const [,v,cls]=f.dataset.v.split(' ');$('.sc',f).innerHTML=d.view(d.L[v],v,w);$$('[data-t],.pop,.chg',f).forEach((e,i)=>e.style.viewTransitionName=`${cls}${d.no}${v}${e.dataset.t||i}`)}
+  let R=null;const add=e=>{e=e.closest('.pop,.r,.tb')||e;let x=0,y=0;for(let n=e;n&&!n.classList.contains('sc');n=n.offsetParent){x+=n.offsetLeft;y+=n.offsetTop}
+    R=R?[Math.min(R[0],x),Math.min(R[1],y),Math.max(R[2],x+e.offsetWidth),Math.max(R[3],y+e.offsetHeight)]:[x,y,x+e.offsetWidth,y+e.offsetHeight]};
+  for(const f of $$(`[data-v$=" small"][data-v^="${d.no} "]`)){const v=f.dataset.v.split(' ')[1];$$('.chg,.pop',f).forEach(add);const t=next(d,v);t&&$$(`[data-t="${t}"]`,f).forEach(add)}
+  if(!R)$$(`[data-v$=" small"][data-v^="${d.no} "] .tb`).forEach(add);
+  for(const f of $$(`[data-v$=" small"][data-v^="${d.no} "]`)){const sc=$('.sc',f),[bw,bh,h]=[f.clientWidth,f.clientHeight,F[d.fm][2]];let s=Math.min(bw/w,bh/h),x=0,y=0;
+    if(R){s=Math.min(1,bw/(R[2]-R[0]+20),bh/(R[3]-R[1]+20));x=Math.min(0,Math.max(bw-w*s,bw/2-(R[0]+R[2])/2*s));y=Math.min(0,Math.max(bh-h*s,bh/2-(R[1]+R[3])/2*s))}
+    sc.style.transition=anim?'':'none';sc.style.transform=`translate(${x}px,${y}px) scale(${s})`}
+  $$(`[data-c^="${d.no} "]`).forEach((e,i)=>e.className=i<d.c?'past':i==d.c?'now':'')}
+// The cursor glides to a big frame's next tap.
+function aim(d,v,still){const f=$(`[data-v="${d.no} ${v} big"]`);if(!f)return;const c=$('.cur',f),t=next(d,v)&&$(`[data-t="${next(d,v)}"]`,f);if(!t){c.style.display='none';return}
+  const r=t.getBoundingClientRect(),q=f.getBoundingClientRect();if(c.style.display!='block'){c.style.transition='none';c.style.translate=`${q.width/2}px ${q.height}px`;c.style.display='block';c.offsetWidth}
+  c.style.transition=still?'none':'';c.style.translate=`${r.left-q.left+Math.min(r.width/2,40)}px ${r.top-q.top+r.height*.6}px`;return [c,t]}
+let RUN=0;
+async function replay(d){const run=++RUN;d.c=0;d.V.forEach(v=>d.L[v]=d.S[v][0]);fill(d,1);await wait(300);
+  for(;d.c<d.beats-1;){const hit=d.sel.map(v=>aim(d,v)).filter(Boolean);await wait(650);if(run!=RUN)return;
+    hit.forEach(([c,t])=>{c.animate([{scale:.8},{scale:1}],220);t.classList.add('ring')});await wait(250);
+    d.c++;d.V.forEach(v=>d.L[v]=d.S[v][Math.min(d.c,d.S[v].length-1)]);await (document.startViewTransition?document.startViewTransition(()=>fill(d,1)).finished:fill(d,1));if(run!=RUN)return;await wait(400)}
+  d.sel.forEach(v=>aim(d,v))}
+document.body.onclick=e=>{const t=e.target.closest('[data-t],[data-f],[data-c],[data-r],[data-x],[data-s]');if(!t)return;const a=(t.dataset.f||t.dataset.c||t.dataset.r||t.dataset.x||t.dataset.s||'').split(' '),d=D.find(d=>d.no==+a[0]);
+  if(t.dataset.t){const [no,v]=t.closest('[data-v]').dataset.v.split(' '),dd=D.find(d=>d.no==+no);dd.L[v]={...dd.L[v],...JSON.parse(t.dataset.p)};return fill(dd,1)}
+  RUN++;if(t.dataset.f){d.fm=a[1];reset(d)}else if(t.dataset.x)reset(d);else if(t.dataset.r)return replay(d);
+  else if(t.dataset.c){d.c=+a[1];d.V.forEach(v=>d.L[v]=d.S[v][Math.min(d.c,d.S[v].length-1)]);fill(d,1);return d.sel.forEach(v=>aim(d,v,1))}
+  else if(t.dataset.s){const on=d.sel.includes(a[1]);if(on&&d.sel.length==1)return;d.sel=d.V.filter(v=>v==a[1]?!on:d.sel.includes(v))}
+  draw()};
+D.forEach(reset);draw();addEventListener('resize',draw);
 </script></body></html>
