@@ -1,3 +1,3 @@
-import {webConfig} from '@deslop/runtime/config/vite'
+import {webConfig} from '@deslop/ui/vite'
 
 export default webConfig(1024)
