@@ -67,7 +67,7 @@ jobs:
             inputs=$(git ls-tree -r HEAD -- "apps/$app/ios" "apps/$app/capacitor.config.json" "apps/$app/src/web/app.icon" "apps/$app/package.json" packages/ui/native package.json pnpm-lock.yaml pnpm-workspace.yaml)
             web=$(cd "apps/$app/dist/client" && find . -type f -print0 | LC_ALL=C sort -z | xargs -0 sha256sum)
             fingerprint=$(printf '%s\n' "$inputs" "$web" "$DESLOP_DOMAIN" "$APPLE_TEAM_ID" | sha256sum | cut -c1-64)
-            artifact="$app-app-store-$fingerprint"
+            artifact="$app-testflight-$fingerprint"
             held=$(gh api "repos/$GITHUB_REPOSITORY/actions/artifacts?name=$artifact" --jq '[.artifacts[] | select(.expired | not)] | length')
             if [[ $held == 0 ]]; then
               builds+=("$(jq -cn --arg app "$app" --arg artifact "$artifact" --arg fingerprint "$fingerprint" '{$app, $artifact, $fingerprint}')")
@@ -130,6 +130,7 @@ jobs:
     timeout-minutes: 60
     defaults:
       run:
+        shell: bash
         working-directory: apps/${{ matrix.app }}
     steps:
       - uses: actions/checkout@v7
@@ -166,8 +167,10 @@ jobs:
             fi
           }
 
-          sign_with_xcode -project ios/App/App.xcodeproj -scheme App -configuration Release -destination 'generic/platform=iOS' \
+          # Ad hoc signing preserves entitlements without a device profile. Export applies the App Store signature.
+          xcodebuild -project ios/App/App.xcodeproj -scheme App -configuration Release -destination 'generic/platform=iOS' \
             -archivePath "$RUNNER_TEMP/App.xcarchive" "DEVELOPMENT_TEAM=$APPLE_TEAM_ID" "DESLOP_DOMAIN=$DESLOP_DOMAIN" \
+            CODE_SIGN_IDENTITY=- AD_HOC_CODE_SIGNING_ALLOWED=YES \
             "MARKETING_VERSION=0.1.$RELEASE_NUMBER" "CURRENT_PROJECT_VERSION=$RELEASE_NUMBER" archive
 
           cat > "$RUNNER_TEMP/export.plist" <<EOF
@@ -183,10 +186,10 @@ jobs:
           </dict>
           </plist>
           EOF
-          jq -n --arg app "$APP" --arg build "$RELEASE_NUMBER" --arg fingerprint "$FINGERPRINT" --arg commit "$GITHUB_SHA" \
-            '{app: $app, version: "0.1.\($build)", build: $build, fingerprint: $fingerprint, commit: $commit}' > "$RUNNER_TEMP/receipt.json"
           sign_with_xcode -exportArchive -archivePath "$RUNNER_TEMP/App.xcarchive" \
             -exportOptionsPlist "$RUNNER_TEMP/export.plist" -exportPath "$RUNNER_TEMP/export"
+          jq -n --arg app "$APP" --arg build "$RELEASE_NUMBER" --arg fingerprint "$FINGERPRINT" --arg commit "$GITHUB_SHA" \
+            '{app: $app, version: "0.1.\($build)", build: $build, fingerprint: $fingerprint, commit: $commit}' > "$RUNNER_TEMP/receipt.json"
           echo "- $APP uploaded to TestFlight" >> "$GITHUB_STEP_SUMMARY"
       # Recorded right after Apple accepts, even when the run is cancelled: the receipt, while it has not expired, is what keeps the next release from uploading this fingerprint again. A run that fails or dies between the two steps, or whose receipt upload fails, leaves none.
       - name: Record Apple's acceptance
@@ -195,4 +198,5 @@ jobs:
         with:
           name: ${{ matrix.artifact }}
           path: ${{ runner.temp }}/receipt.json
+          if-no-files-found: error
           retention-days: 80

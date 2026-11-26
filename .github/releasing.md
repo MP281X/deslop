@@ -3,7 +3,7 @@
 Actions use their major tag, such as `actions/cache@v6`, never a commit; `setup-vp` names its latest release, since its `v1` tag stopped at 1.15.
 
 - **npm.** `matteo_paludgnach` approves a first publish's URL.
-- **Apple.** Release uses the App Store Connect team API key in `ASC_KEY_ID`, `ASC_ISSUER_ID` and `ASC_KEY_P8`. Xcode manages provisioning for the app and its extensions, [cloud signs them for distribution](https://developer.apple.com/videos/play/wwdc2021/10204/) and uploads to TestFlight. The key needs the Admin role; if Apple denies signing access, the user checks the role and replaces the secrets if needed. No local distribution certificate or Apple sign-in.
+- **Apple.** Release archives the app and its extensions with ad hoc signatures, then uses the App Store Connect team API key in `ASC_KEY_ID`, `ASC_ISSUER_ID` and `ASC_KEY_P8` to have Xcode provision, [cloud sign](https://developer.apple.com/videos/play/wwdc2021/10204/) and upload them at export. The key needs the Admin role; if Apple denies signing access, the user checks the role and replaces the secrets if needed. No registered device, local distribution certificate or Apple sign-in.
 
 ## A new app
 
@@ -38,8 +38,8 @@ A publishable tool uses `tools/coding-standards`' publish fields and `pack.deps`
 
 Report each state with the run URL; read a failed job with `gh run view <run-id> --job <job-id> --log`. Push a `testflight/<name>` branch to verify and upload changed iPhone builds before merging, without publishing npm packages.
 
-- **Apple.** Sign and upload to TestFlight succeeded and the run holds the `<app>-app-store-<fingerprint>` receipt. Apple refuses a build number twice, so a run that ended after the upload without its receipt can't be retried: the next release uploads that fingerprint again, as it does once a receipt expires after 80 days. Uploaded is not processed: check the app's TestFlight tab.
-- **npm.** Each package that the Publish changed packages summary lists with a version answers it to `npm view @deslop/<name> version`.
+- **Apple.** Sign and upload to TestFlight succeeded and the run holds the `<app>-testflight-<fingerprint>` receipt. Apple refuses a build number twice, so a run that ended after the upload without its receipt can't be retried: the next release uploads that fingerprint again, as it does once a receipt expires after 80 days. Uploaded is not processed: check the app's TestFlight tab.
+- **npm.** Each package that the Publish changed packages summary lists with a version answers it to `npm view @deslop/<name> version`; the public registry can take several minutes to serve a new version.
 - **Production.** Each app's update timer installed the release: its `/api/runtime` answers 200 with the new version.
 
 Public TestFlight and App Store release are separate outward actions.
