@@ -10,8 +10,6 @@
 		"./server/*": "./src/server/*.ts",
 		"./client/*": "./src/client/*.ts",
 		"./web/*": "./src/web/*.ts",
-		"./mobile/*": "./src/mobile/*.ts",
-		"./config/fingerprint": "./src/config/fingerprint.js",
 		"./config/*": "./src/config/*.ts"
 	},
 	"scripts": {
@@ -22,14 +20,5 @@
 		"@effect/platform-node": "latest",
 		"@effect/sql-sqlite-node": "latest",
 		"effect": "latest"
-	},
-	"devDependencies": {
-		"@typeonce/effect-machine": "latest",
-		"expo": "^58.0.26",
-		"expo-constants": "^58.0.16",
-		"expo-secure-store": "^58.0.3",
-		"expo-updates": "^58.0.22",
-		"expo-web-browser": "^58.1.0",
-		"react-native": "0.88.1"
 	}
 }
