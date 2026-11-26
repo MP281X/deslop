@@ -1,10 +1,11 @@
-import {Boolean, Function, Option} from 'effect'
+import {Boolean, Function, Number, Option} from 'effect'
 
 import {ArrangementView, Group, NavigationSplitView, NavigationStack, useNativeState} from '@expo/ui/swift-ui'
 import type {NavigationSplitViewVisibility} from '@expo/ui/swift-ui'
 import {
 	arrangementViewStyle,
 	createModifier,
+	navigationSplitViewStyle,
 	onGeometryChange,
 	onHingeChange,
 	overlayArrangementEdge
@@ -72,9 +73,17 @@ export function useListChoose() {
 	return useContext(ListContext).choose
 }
 
-// Columns tile in a landscape window on the inner screen, flat or half open like a book; the outer screen, 466 points across, stacks them in either orientation. The window tells them apart: unfolding reports the hinge open while the window is still the outer screen's.
-function tiledIn(window: {height: number; width: number}) {
-	return window.width >= window.height && window.height > 466
+// Columns tile on the inner screen in either orientation, flat or half open like a book; the outer screen, 466 points across, stacks them in either orientation, and so does the inner screen half open like a laptop, where the item stands above the list instead. The window tells the screens apart: unfolding reports the hinge open while the window is still the outer screen's.
+function tiledIn(window: {height: number; width: number}, hinge: HingeStatus) {
+	return Number.min(window.width, window.height) > 466 && !(window.height > window.width && hinge === 'partiallyOpen')
+}
+
+// The list's column: about a third of an upright window, as Mail's mailboxes stand beside a message, and in a landscape window up to the fold, the only divider.
+function listWidth(window: {height: number; width: number}) {
+	return Boolean.match(window.height > window.width, {
+		onFalse: () => Number.round(window.width / 2, 0),
+		onTrue: Function.constant(270)
+	})
 }
 
 // The item `onHide` opened to keep on screen beside the hidden list, not one the person chose, which closes once the list shows again unless the person chooses it meanwhile.
@@ -109,6 +118,7 @@ function useLaptop(props: {above: boolean; portrait: boolean}) {
 			setSearching(false)
 			setSplitSearching(false)
 		},
+		hinge,
 		searching,
 		setHinge,
 		setSearching,
@@ -147,7 +157,8 @@ function useColumns(
 		onHide?: () => void
 		opened: boolean
 	},
-	window: {height: number; width: number}
+	window: {height: number; width: number},
+	hinge: HingeStatus
 ) {
 	const [chosen, setChosen] = useChosen(props, window.width)
 	const [stacked, setStacked] = useState<NavigationSplitViewVisibility>('all')
@@ -160,7 +171,7 @@ function useColumns(
 		hidable: props.opened || props.board === true || props.onHide !== undefined,
 		onChange: (visibility: NavigationSplitViewVisibility) => {
 			// The split view reports a stack's one column while it lays out a new window, before SwiftUI's geometry renders this again, so the report belongs to the window as it is now.
-			if (!tiledIn(Dimensions.get('window'))) {
+			if (!tiledIn(Dimensions.get('window'), hinge)) {
 				setStacked(visibility)
 				return
 			}
@@ -171,11 +182,14 @@ function useColumns(
 			kept.choose()
 			setChosen('all')
 		},
-		visibility: Boolean.match(tiledIn(window), {onFalse: Function.constant(stacked), onTrue: Function.constant(chosen)})
+		visibility: Boolean.match(tiledIn(window, hinge), {
+			onFalse: Function.constant(stacked),
+			onTrue: Function.constant(chosen)
+		})
 	}
 }
 
-// An app's one root on the iPhone Duo: list and opened item side by side when the window is wide, as when unfolded like a book; a stack when it is narrow, folded or turned upright; the item above the list when half open like a laptop. The same views stay mounted through every fold and turn, so a draft, its focus and a reading place survive. `detail` is the opened item, or what the wide window shows beside the list when nothing is opened; with `board`, that also stands above the list when half open. `onHide` opens that when the person hides the list beside it, so it stays on screen and in front through a fold, and `onClose` closes it once the list shows again, unless the person chose it meanwhile with `useListShow`. An item that opens `alone`, such as a book's spread, takes the whole wide window each time it or another one opens, and the sidebar button brings the list back beside it.
+// An app's one root on the iPhone Duo: list and opened item side by side on the inner screen, upright or like a book, as Mail's mailboxes stand beside a message; a stack on the outer screen; the item above the list when half open like a laptop. The same views stay mounted through every fold and turn, so a draft, its focus and a reading place survive. `detail` is the opened item, or what the wide window shows beside the list when nothing is opened; with `board`, that also stands above the list when half open. `onHide` opens that when the person hides the list beside it, so it stays on screen and in front through a fold, and `onClose` closes it once the list shows again, unless the person chose it meanwhile with `useListShow`. An item that opens `alone`, such as a book's spread, takes the whole wide window each time it or another one opens, and the sidebar button brings the list back beside it.
 export function ListDetail(props: {
 	alone?: boolean
 	board?: boolean
@@ -188,12 +202,12 @@ export function ListDetail(props: {
 }) {
 	// The window as of SwiftUI's last layout. React Native's window event arrives while the app is still taking the new size, and a render then can leave the whole app at the previous window's size, text running off the screen; SwiftUI reports a new geometry only once the app has it.
 	const [window, setWindow] = useState(() => Dimensions.get('window'))
-	const columns = useColumns(props, window)
+	const portrait = window.height > window.width
+	const laptop = useLaptop({above: props.opened || props.board === true, portrait})
+	const columns = useColumns(props, window, laptop.hinge)
 	// A back above the list in laptop posture pops to the list's own column, and the split view reads the unchanged wish for the board only when it is made again: a new split view brings the board back, its list hidden under it until the phone lies flat. One made in a stack reports its one column as the person's choice once the window tiles, so a tiled window always makes its own.
 	const [returns, setReturns] = useState(0)
-	const portrait = window.height > window.width
-	const tiled = tiledIn(window)
-	const laptop = useLaptop({above: props.opened || props.board === true, portrait})
+	const tiled = tiledIn(window, laptop.hinge)
 	return (
 		<ListContext
 			value={{
@@ -237,8 +251,12 @@ export function ListDetail(props: {
 							if (laptop.active && props.board === true) setReturns(count => count + 1)
 						}}
 						modifiers={[
-							// ios/DeslopComponentsModule.swift: a compact width, so the split view stacks its columns in a portrait window.
-							createModifier('stackedColumns', {stacked: portrait}),
+							// ios/DeslopComponentsModule.swift: a compact width, so the split view stacks its columns wherever they do not tile.
+							createModifier('stackedColumns', {stacked: !tiled}),
+							// Beside the item, not over it: an upright window would otherwise float the list over a dimmed item.
+							navigationSplitViewStyle('balanced'),
+							// ios/DeslopComponentsModule.swift: the list's width beside the item.
+							createModifier('listColumn', {width: listWidth(window)}),
 							overlayArrangementEdge('top'),
 							// ios/DeslopComponentsModule.swift: the keyboard leaves the arrangement the upper half alone, where it lays the copy of the list under the split view, sized to fit above the keyboard; while the copy's field has focus the split view stands clear, so the field and its results show and answer.
 							createModifier('seeThrough', {through: laptop.searching})

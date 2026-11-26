@@ -41,6 +41,9 @@ public class DeslopComponentsModule: Module {
       ViewModifierRegistry.register("stackedColumns") { params, appContext, _ in
         try StackedColumns(from: params, appContext: appContext)
       }
+      ViewModifierRegistry.register("listColumn") { params, appContext, _ in
+        try ListColumn(from: params, appContext: appContext)
+      }
       ViewModifierRegistry.register("searchFocused") { params, appContext, eventDispatcher in
         try SearchFocused(from: params, appContext: appContext, eventDispatcher: eventDispatcher)
       }
@@ -121,7 +124,7 @@ struct SeeThrough: ViewModifier, Record {
   }
 }
 
-// iOS calls the unfolded iPhone Duo regular in either orientation, so a split view would tile its columns in a portrait window too; a compact width stacks them as on the outer screen. Always applied, so a split view keeps its state when `stacked` changes.
+// iOS calls the unfolded iPhone Duo regular in either orientation, so a split view tiles its columns half open like a laptop too, where the item stands above the list instead; a compact width stacks them as on the outer screen. Always applied, so a split view keeps its state when `stacked` changes.
 struct StackedColumns: ViewModifier, Record {
   @Field var stacked: Bool = false
 
@@ -160,5 +163,116 @@ struct SidebarToggleHidden: ViewModifier, Record {
 
   func body(content: Content) -> some View {
     content.toolbar(removing: hidden ? .sidebarToggle : nil)
+  }
+}
+
+// The list's column, `width` points beside the item, on the split view it is applied to. SwiftUI takes a column's width only from the column's own root view, which Expo UI wraps; an iPad's limits keep the list at 320 points, and its minimum for the item leaves an upright window too narrow to tile, so the list would float over the item. The split view first lays out before any view can reach it, and floating the list there reports it hidden, so it stays compact, its columns stacked, until it is set. Always applied, so the split view keeps its state when `width` changes.
+struct ListColumn: ViewModifier, Record {
+  @Field var width: Double = 320
+
+  func body(content: Content) -> some View {
+    content.modifier(SplitColumnSet(width: CGFloat(width)))
+  }
+}
+
+struct SplitColumnSet: ViewModifier {
+  let width: CGFloat
+  @State private var configured = false
+
+  func body(content: Content) -> some View {
+    content
+      .transformEnvironment(\.horizontalSizeClass) { sizeClass in
+        if !configured {
+          sizeClass = .compact
+        }
+      }
+      .background(SplitColumn(width: width, onConfigured: { configured = true }).accessibilityHidden(true))
+  }
+}
+
+struct SplitColumn: UIViewRepresentable {
+  let width: CGFloat
+  let onConfigured: () -> Void
+
+  func makeUIView(context: Context) -> SplitColumnView {
+    SplitColumnView()
+  }
+
+  func updateUIView(_ view: SplitColumnView, context: Context) {
+    view.width = width
+    view.onConfigured = onConfigured
+    view.apply()
+  }
+}
+
+// Sets the split view beside it, and again each time SwiftUI puts back its own column widths, which it does whenever it updates the split view.
+final class SplitColumnView: UIView {
+  // The narrowest item beside the list, a folded phone's width.
+  private static let item: CGFloat = 320
+  var width: CGFloat = 320
+  var onConfigured: () -> Void = {}
+  private weak var split: UISplitViewController?
+  private var observations: [NSKeyValueObservation] = []
+  private var applying = false
+
+  override init(frame: CGRect) {
+    super.init(frame: frame)
+    isUserInteractionEnabled = false
+  }
+
+  required init?(coder: NSCoder) {
+    nil
+  }
+
+  override func didMoveToWindow() {
+    super.didMoveToWindow()
+    attach()
+  }
+
+  override func layoutSubviews() {
+    super.layoutSubviews()
+    if split == nil { attach() }
+  }
+
+  // The nearest split view under its ancestors, the one whose view answers to it, which SwiftUI may add after this.
+  private func attach() {
+    let found = sequence(first: self as UIView, next: { $0.superview }).lazy.compactMap(Self.split(in:)).first
+    if found !== split {
+      split = found
+      observations = found.map { split in
+        [
+          split.observe(\.preferredPrimaryColumnWidth) { [weak self] _, _ in self?.apply() },
+          split.observe(\.minimumPrimaryColumnWidth) { [weak self] _, _ in self?.apply() },
+          split.observe(\.maximumPrimaryColumnWidth) { [weak self] _, _ in self?.apply() },
+          split.observe(\.minimumSecondaryColumnWidth) { [weak self] _, _ in self?.apply() },
+          split.observe(\.preferredSplitBehavior) { [weak self] _, _ in self?.apply() }
+        ]
+      } ?? []
+    }
+    apply()
+    // After this update, since SwiftUI's state may not change during one.
+    if split != nil {
+      DispatchQueue.main.async { [onConfigured] in onConfigured() }
+    }
+  }
+
+  private static func split(in view: UIView) -> UISplitViewController? {
+    (view.next as? UISplitViewController) ?? view.subviews.lazy.compactMap(split(in:)).first
+  }
+
+  func apply() {
+    guard let split, !applying else { return }
+    let sized = [split.minimumPrimaryColumnWidth, split.maximumPrimaryColumnWidth, split.preferredPrimaryColumnWidth] == [width, width, width]
+    guard split.preferredSplitBehavior != .tile || !sized || split.minimumSecondaryColumnWidth != Self.item else { return }
+    applying = true
+    defer { applying = false }
+    split.preferredSplitBehavior = .tile
+    split.minimumSecondaryColumnWidth = Self.item
+    split.minimumPrimaryColumnWidth = width
+    split.maximumPrimaryColumnWidth = width
+    split.preferredPrimaryColumnWidth = width
+    // The split view decides again whether its columns fit side by side only when asked for a display mode.
+    let mode = split.preferredDisplayMode
+    split.preferredDisplayMode = mode
   }
 }
