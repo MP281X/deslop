@@ -1,35 +1,27 @@
 import {useAtomMount, useAtomRefresh, useAtomSet, useAtomValue} from '@effect/atom-react'
 
-import {Array, Boolean, Function, Match, Option, Schema, String, pipe} from 'effect'
+import {Array, Boolean, DateTime, Duration, Function, Match, Option, Schema, String, pipe} from 'effect'
 
 import {
 	Button as NativeButton,
 	Divider,
-	HStack,
 	Image,
 	Label,
 	Menu,
 	Overlay,
 	Picker,
-	Text,
 	Toggle,
 	ToolbarItem,
 	VStack
 } from '@expo/ui/swift-ui'
 import {
-	accessibilityElement,
-	accessibilityHidden,
 	accessibilityLabel,
-	aspectRatio,
-	foregroundStyle,
 	frame,
 	labelStyle,
-	lineLimit,
 	listRowInsets,
 	listRowSeparator,
 	menuOrder,
 	pickerStyle,
-	resizable,
 	tag,
 	tint
 } from '@expo/ui/swift-ui/modifiers'
@@ -42,83 +34,69 @@ import {ListToolbar} from '@deslop/components-mobile/blocks/list-toolbar'
 import {FailureContent, Loaded} from '@deslop/components-mobile/blocks/loaded'
 import {Problem} from '@deslop/components-mobile/blocks/problem'
 import {RemovableRow} from '@deslop/components-mobile/blocks/removable-row'
-import {StatusDot} from '@deslop/components-mobile/blocks/status-dot'
-import {colors, space, text} from '@deslop/components-mobile/theme'
+import {Row} from '@deslop/components-mobile/blocks/row'
+import type {RowProblem} from '@deslop/components-mobile/blocks/row'
+import {space} from '@deslop/components-mobile/theme'
 import {Button} from '@deslop/components-mobile/ui/button'
 import {Empty, EmptyContent, EmptyMedia} from '@deslop/components-mobile/ui/empty'
-import {ItemContent, ItemGroup, ItemMedia, ItemTitle} from '@deslop/components-mobile/ui/item'
+import {ItemGroup} from '@deslop/components-mobile/ui/item'
 import {ToggleGroup, ToggleGroupItem} from '@deslop/components-mobile/ui/toggle-group'
+import {clockAtom} from '@deslop/runtime/client/clock'
 import {blockingFailure} from '@deslop/runtime/client/live-stream'
 import {problemSinceAtom} from '@deslop/runtime/client/problem'
 import {isDenied} from '@deslop/runtime/shared/auth'
+import {ageOf, dayOf} from '@deslop/runtime/shared/format'
 
 import {clipboard} from '#lib/clipboard.ts'
-import {Byline} from '#lib/components.tsx'
-import {BrandIcon, BrandLogo} from '#lib/icons.tsx'
-import {appOf, brandOf, kindOf, kinds, subjectOf} from '#lib/kinds.ts'
-import {foundAtom, imageAtom, notesAtom, queryAtom, queueOf, regenerateAtom, removal, searchAtom} from '#lib/notes.ts'
+import {BrandIcon} from '#lib/icons.tsx'
+import {appOf, brandOf, kindOf, kinds, siteOf, subjectOf} from '#lib/kinds.ts'
+import {foundAtom, notesAtom, queryAtom, queueOf, regenerateAtom, removal, searchAtom} from '#lib/notes.ts'
 import {primary, session} from '#lib/session.ts'
 import {tagCounts} from '#services/notes/lib/utils.ts'
 import type {Note, NoteItem} from '#services/notes/schema.ts'
 import {BrandedKind, Kind, TagName} from '#services/notes/schema.ts'
 
-// The summary waits in the note, so the list scans fast.
-function Lines(props: {muted?: boolean; note: NoteItem}) {
-	return (
-		<ItemContent>
-			<ItemTitle
-				modifiers={Boolean.match(props.muted === true, {
-					onFalse: () => [],
-					onTrue: () => [foregroundStyle(colors.mutedForeground)]
-				})}
-			>
-				{props.note.title}
-			</ItemTitle>
-			{pipe(
-				Match.value(props.note.status),
-				Match.when('organizing', () => (
-					<HStack
-						spacing={space[1]}
-						modifiers={[accessibilityElement('combine'), foregroundStyle(colors.mutedForeground)]}
-					>
-						<Image systemName="sparkles" modifiers={[text.caption, accessibilityHidden(true)]} />
-						<Text modifiers={[text.detail, lineLimit(1)]}>{`Reading this ${subjectOf(props.note)}`}</Text>
-					</HStack>
-				)),
-				Match.when('failed', () => (
-					<HStack spacing={space[2]} modifiers={[accessibilityElement('combine')]}>
-						<StatusDot status="error" />
-						<Text modifiers={[text.detail, foregroundStyle(colors.mutedForeground), lineLimit(1)]}>
-							{`Couldn’t read this ${subjectOf(props.note)}`}
-						</Text>
-					</HStack>
-				)),
-				Match.orElse(() => <Byline note={props.note} />)
-			)}
-		</ItemContent>
-	)
+// When the note was saved: hours ago within the day, then its date.
+function savedOf(note: NoteItem, now: DateTime.Utc) {
+	if (pipe(note.createdAt, DateTime.distance(now), Duration.isLessThan(Duration.days(1)))) {
+		return ageOf(note.createdAt, now)
+	}
+	return dayOf(note.createdAt, now)
 }
 
-// Mounted only once the server has kept the preview, so the download never runs before the file exists.
-function Thumbnail(props: {id: Note['id']}) {
-	const image = useAtomValue(imageAtom(props.id))
-	if (!AsyncResult.isSuccess(image)) return undefined
-	return <Image uiImage={image.value} modifiers={[resizable(), aspectRatio({contentMode: 'fill'})]} />
-}
-
-function NoteMedia(props: {note: NoteItem}) {
-	const kind = kindOf(props.note)
+// The source and the summary on the muted line, or what the note is waiting on; a failed note's reason takes that line with its dot.
+function NoteLines(props: {muted: boolean; note: NoteItem}) {
+	const now = useAtomValue(clockAtom('1 minute'))
 	return (
-		<ItemMedia variant="image" modifiers={[accessibilityHidden(true)]}>
-			{pipe(
-				Match.value(kind),
-				Match.when(Schema.is(BrandedKind), brand => <BrandLogo brand={kinds[brand].logo} size={24} />),
-				Match.orElse(other => (
-					<Image systemName={kinds[other].symbol} size={24} modifiers={[foregroundStyle(colors.mutedForeground)]} />
-				))
+		<Row
+			title={props.note.title}
+			muted={props.muted}
+			line={Option.some(
+				pipe(
+					Match.value(props.note.status),
+					Match.when('organizing', () => `Reading this ${subjectOf(props.note)}`),
+					Match.orElse(() =>
+						pipe(
+							[
+								pipe(
+									props.note.author,
+									Option.orElse(() => siteOf(props.note)),
+									Option.getOrElse(() => kinds[kindOf(props.note)].label)
+								),
+								props.note.summary
+							],
+							Array.filter(String.isNonEmpty),
+							Array.join(' · ')
+						)
+					)
+				)
 			)}
-			{Option.isSome(props.note.image) && <Thumbnail id={props.note.id} />}
-		</ItemMedia>
+			problem={Option.liftPredicate<RowProblem>(
+				{reason: `Couldn’t read this ${subjectOf(props.note)}`, status: 'error'},
+				() => props.note.status === 'failed'
+			)}
+			trailing={Option.some(savedOf(props.note, now))}
+		/>
 	)
 }
 
@@ -127,6 +105,7 @@ function NoteRow(props: {note: NoteItem; onOpen: (id: Note['id']) => void; onReg
 		<RemovableRow
 			id={props.note.id}
 			removal={removal}
+			size="xs"
 			modifiers={[tag(props.note.id)]}
 			onOpen={() => props.onOpen(props.note.id)}
 			menu={
@@ -160,12 +139,7 @@ function NoteRow(props: {note: NoteItem; onOpen: (id: Note['id']) => void; onReg
 				</>
 			}
 		>
-			{pending => (
-				<>
-					<NoteMedia note={props.note} />
-					<Lines muted={pending} note={props.note} />
-				</>
-			)}
+			{pending => <NoteLines muted={pending} note={props.note} />}
 		</RemovableRow>
 	)
 }
@@ -372,7 +346,7 @@ export function HomeRoute(props: {
 				</>
 			}
 		>
-			<Suspense fallback={<ItemGroupSkeleton rows={10} descriptionLines={1} media={<ItemMedia variant="image" />} />}>
+			<Suspense fallback={<ItemGroupSkeleton rows={10} descriptionLines={1} />}>
 				<Notes kind={props.kind} onOpen={props.onOpen} onTag={props.onTag} tag={props.tag} />
 			</Suspense>
 		</ListToolbar>
