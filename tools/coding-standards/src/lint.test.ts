@@ -71,6 +71,49 @@ const lintSource = Effect.fnUntraced(function* (
 			`import {lint} from '${path.join(root, 'tools/coding-standards/src/lint.ts')}'\nexport default {lint}\n`
 		)
 		yield* fs.writeFileString(path.join(directory, 'package.json'), '{"type":"module"}')
+		// Keep the preset's example imports distinct without depending on component implementations.
+		const modules = {
+			'@deslop/components-web/ui/avatar': `import type {ComponentProps, ComponentType} from 'react'
+export declare const Avatar: ComponentType<ComponentProps<'span'>>
+export declare const AvatarFallback: typeof Avatar
+export declare const AvatarImage: ComponentType<ComponentProps<'img'>>`,
+			'@deslop/components-web/ui/badge': `import type {ComponentProps, ComponentType} from 'react'
+export declare const Badge: ComponentType<ComponentProps<'span'>>`,
+			'@deslop/components-web/ui/button': `import type {ComponentProps, ComponentType, ReactElement} from 'react'
+export declare const Button: ComponentType<ComponentProps<'button'> & {render?: ReactElement; size?: 'lg'}>`,
+			'@deslop/components-web/ui/field': `import type {ComponentProps, ComponentType} from 'react'
+export declare const Field: ComponentType<ComponentProps<'div'>>
+export declare const FieldGroup: typeof Field
+export declare const FieldLabel: ComponentType<ComponentProps<'label'>>`,
+			'@deslop/components-web/ui/input': `import type {ComponentProps, ComponentType} from 'react'
+export declare const Input: ComponentType<ComponentProps<'input'>>`,
+			'@deslop/components-web/ui/tabs': `import type {ComponentProps, ComponentType} from 'react'
+export declare const Tabs: ComponentType<ComponentProps<'div'> & {defaultValue?: string}>
+export declare const TabsList: ComponentType<ComponentProps<'div'>>
+export declare const TabsTrigger: ComponentType<ComponentProps<'button'> & {value: string}>
+export declare const TabsContent: ComponentType<ComponentProps<'div'> & {value: string}>`,
+			'@effect/atom-react': `import type {Atom} from 'effect/reactivity'
+export declare function useAtomValue<A>(atom: Atom.Atom<A>): A`,
+			'@expo/ui/swift-ui': `import type {ComponentType, ReactNode} from 'react'
+import type {Modifier} from '@expo/ui/swift-ui/modifiers'
+export declare const Button: ComponentType<{label: string; onPress: () => void}>
+export declare const Text: ComponentType<{children?: ReactNode; modifiers?: readonly Modifier[]}>`,
+			'@expo/ui/swift-ui/modifiers': `declare const modifier: unique symbol
+export type Modifier = {readonly [modifier]: true}
+export declare function font(options: {size: number}): Modifier
+export declare function padding(insets: {all?: number; horizontal?: number}): Modifier`
+		}
+		const paths = Record.map(modules, (_, name) => [`./fixtures/${name}.d.ts`] as const)
+		yield* Effect.forEach(
+			Record.toEntries(modules),
+			Effect.fnUntraced(function* (entry) {
+				const [name, source] = entry
+				const file = path.join(directory, paths[name][0])
+				yield* fs.makeDirectory(path.dirname(file), {recursive: true})
+				yield* fs.writeFileString(file, source)
+			}),
+			{concurrency: 'unbounded', discard: true}
+		)
 		yield* fs.writeFileString(
 			path.join(directory, 'tsconfig.json'),
 			yield* Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown))({
@@ -82,13 +125,7 @@ const lintSource = Effect.fnUntraced(function* (
 					noEmit: true,
 					noUnusedLocals: true,
 					noUnusedParameters: true,
-					paths: {
-						'@deslop/components-web/ui/*': [path.join(root, 'packages/components-web/src/ui/*')],
-						'@effect/atom-react': [
-							path.join(root, 'packages/components-web/node_modules/@effect/atom-react/dist/index.d.ts')
-						],
-						'@expo/ui/*': [path.join(root, 'packages/components-mobile/node_modules/@expo/ui/*')]
-					},
+					paths,
 					skipLibCheck: true,
 					strict: true,
 					target: 'ESNext'
