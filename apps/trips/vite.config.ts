@@ -1,5 +1,5 @@
 import {defineConfig} from 'vite-plus'
 
-import {serverPack} from '@deslop/runtime/config/vite'
+import {webConfig} from '@deslop/ui/vite'
 
-export default defineConfig({pack: serverPack(512)})
+export default defineConfig(webConfig(512))

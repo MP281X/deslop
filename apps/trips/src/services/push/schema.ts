@@ -7,7 +7,7 @@ import {ApnsToken, Device as ApnsDevice} from '@deslop/runtime/shared/apns'
 import {ActivityProps, FlightId, Leg} from '#services/flights/schema.ts'
 
 export type ActivityPropsJson = typeof ActivityPropsJson.Type
-// The content-state's props, which expo-widgets reads as a JSON string.
+// The content-state's props, which ActivityKit carries as a JSON string.
 export const ActivityPropsJson = Schema.fromJsonString(ActivityProps)
 
 export class PushError extends Schema.TaggedError<PushError>()('PushError', {
