@@ -1,15 +1,11 @@
 // oxlint-disable-next-line effecttsgo/node-builtin-import -- Vite+ loads this configuration before an Effect runtime; discover native app boundaries and the test root synchronously.
-import {existsSync, globSync} from 'node:fs'
+import {existsSync} from 'node:fs'
 
-import {Array, Boolean, String} from 'effect'
+import {Array, Boolean} from 'effect'
 
 import {defineConfig} from 'vite-plus'
 
-import {lint, restrictedImports} from './tools/coding-standards/src/lint.ts'
-
-// The registry keeps every primitive as a file; this repository's restricted imports own the excluded primitives and their wrapped libraries.
-const BANNED_PRIMITIVES = ['alert-dialog', 'carousel', 'command', 'context-menu', 'drawer', 'spinner', 'toast']
-const SPINNER_ICONS = ['CircleNotch', 'Spinner', 'SpinnerBall', 'SpinnerGap']
+import {lint} from './tools/coding-standards/src/lint.ts'
 
 // Each worktree previews in its own systemd user unit, which outlives the agent's turn, on a port derived from its path and shared over tailnet HTTPS.
 const PREVIEW_UNIT = Array.join(
@@ -31,10 +27,10 @@ const PREVIEW = Array.join(
 	[
 		PREVIEW_UNIT,
 		'a=$1 t=${PREVIEW_DEADLINE:-300}',
-		// Without an app argument, the first app with a web page this branch changes, else Portfolio; an iOS app's server has no page, so it previews only by name.
+		// Without an app argument, the first app with a web page this branch changes, else Portfolio.
 		'[ -n "$a" ] || a=$({ git diff --name-only origin/main...HEAD; git status --porcelain --no-renames | cut -c4-; } 2>/dev/null | grep -oP "^apps/\\K[^/]+" | sort -u | while read -r x; do [ -f "apps/$x/index.html" ] && echo "$x"; done | awk NR==1)',
 		'a=${a:-portfolio}',
-		'[[ $a =~ ^[a-z][a-z0-9-]*$ && -f apps/$a/src/main.server.ts ]] || fail "Not an app: $a"',
+		'[[ $a =~ ^[a-z][a-z0-9-]*$ && -f apps/$a/src/server/main.ts && -f apps/$a/src/web/main.ts ]] || fail "Not an app: $a"',
 		// Tailscale's own listeners on the tailnet addresses carry the serve entry, not an app.
 		'listeners() { ss -Hltnp "sport = :$p" | grep -v %tailscale0; }',
 		'ours() { local l x; l=$(listeners) && while read -r x; do [[ $x =~ pid=([0-9]+) && $(cat /proc/${BASH_REMATCH[1]}/cgroup 2>/dev/null) == */$u.service ]] || return 1; done <<<"$l"; }',
@@ -64,30 +60,6 @@ const PREVIEW = Array.join(
 	'\n'
 )
 
-const repositoryRestrictedImports = {
-	paths: [
-		...restrictedImports.paths,
-		{
-			importNames: Array.flatMap(SPINNER_ICONS, icon => [icon, `${icon}Icon`]),
-			message: 'Pending actions have no spinners; keep their state in the action itself.',
-			name: '@phosphor-icons/react'
-		}
-	],
-	patterns: [
-		...restrictedImports.patterns,
-		{
-			group: [
-				...Array.flatMap(BANNED_PRIMITIVES, name => [`**/ui/${name}`, `**/ui/${name}.tsx`]),
-				'cmdk',
-				'cmdk/**',
-				'embla-carousel*',
-				'embla-carousel*/**'
-			],
-			message: 'These primitives and their wrapped libraries are excluded by the repository restricted-imports policy.'
-		}
-	]
-}
-
 export default defineConfig({
 	create: {
 		templates: [
@@ -97,12 +69,7 @@ export default defineConfig({
 	},
 	fmt: {
 		// Icon Composer writes and reads its own JSON layout; the prototype stays dense because agents read it into context.
-		ignorePatterns: [
-			'**/*.gen.ts',
-			'**/*.icon/**',
-			'packages/components-web/src/ui/**',
-			'.claude/skills/visuals/references/prototype.html'
-		],
+		ignorePatterns: ['**/*.gen.ts', '**/*.icon/**', '.claude/skills/visuals/references/prototype.html'],
 
 		arrowParens: 'avoid',
 		bracketSpacing: false,
@@ -113,8 +80,6 @@ export default defineConfig({
 		sortPackageJson: {sortScripts: true},
 		trailingComma: 'none',
 		useTabs: true,
-
-		sortTailwindcss: {functions: ['cn']},
 
 		sortImports: {
 			customGroups: [
@@ -147,7 +112,7 @@ export default defineConfig({
 	lint: {
 		env: {browser: true, builtin: true, node: true},
 		extends: [lint],
-		ignorePatterns: ['**/*.gen.ts', 'packages/components-web/src/ui/**'],
+		ignorePatterns: ['**/*.gen.ts'],
 		overrides: [
 			{
 				files: ['**/tools/coding-standards/src/lint.test.ts'],
@@ -158,51 +123,8 @@ export default defineConfig({
 			},
 			{
 				// A migration's test reads the rows it rewrote, including another service's tables, which no service answer shows.
-				files: ['**/packages/runtime/src/server/tables.test.ts', '**/apps/*/src/services/*/migrations.test.ts'],
+				files: ['**/packages/runtime/src/server/tables.test.ts', '**/apps/*/src/server/*/migrations.test.ts'],
 				rules: {'@deslop/coding-standards/test-boundaries': ['error', 'inspect-database']}
-			},
-			{
-				files: ['packages/**'],
-				rules: {
-					'eslint/no-restricted-imports': [
-						'error',
-						{
-							...repositoryRestrictedImports,
-							patterns: [
-								...repositoryRestrictedImports.patterns,
-								{
-									group: ['expo-notifications', 'expo-notifications/**', 'expo-widgets', 'expo-widgets/**'],
-									message:
-										'App-only native modules and their helpers belong in their consuming app, not a shared package.'
-								}
-							]
-						}
-					]
-				}
-			},
-			{
-				files: ['packages/runtime/src/config/expo.ts'],
-				rules: {
-					'eslint/no-restricted-imports': [
-						'error',
-						{
-							...repositoryRestrictedImports,
-							patterns: [
-								...repositoryRestrictedImports.patterns,
-								{
-									group: [
-										'expo/config-plugins',
-										'expo/config-plugins/**',
-										'@expo/config-plugins',
-										'@expo/config-plugins/**'
-									],
-									message:
-										"This file's text is not part of the native fingerprint; plugins and mods live in their own module."
-								}
-							]
-						}
-					]
-				}
 			},
 			{
 				// Skill scripts run inside an app's page through preview_evaluate, or in Node to cut a recording, with no Effect runtime and no type information.
@@ -211,6 +133,7 @@ export default defineConfig({
 					'@deslop/coding-standards/library-operation': 'off',
 					'@deslop/coding-standards/no-native-method-call': 'off',
 					'effecttsgo/async-function': 'off',
+					'effecttsgo/global-console': 'off',
 					'effecttsgo/global-date': 'off',
 					'effecttsgo/global-json': 'off',
 					'effecttsgo/global-timers': 'off',
@@ -228,56 +151,11 @@ export default defineConfig({
 					'typescript/strict-boolean-expressions': 'off',
 					'unicorn/consistent-function-scoping': 'off'
 				}
-			},
-			{
-				// React Native styles are objects with no Tailwind classes to check.
-				files: [
-					...Array.map(Array.fromIterable(globSync('apps/*/app.config.ts', {cwd: import.meta.dirname})), file =>
-						String.replace('/app.config.ts', '/**')(file)
-					),
-					'packages/components-mobile/**',
-					'tools/create-app/template/mobile/**'
-				],
-				rules: {'shadcn/no-inline-styles': 'off'}
-			},
-			{
-				// shadcn's utils alias in components.json: the registry imports the `cn` package, and this path re-exports it for the package's own code.
-				files: ['packages/components-web/src/lib/utils.ts'],
-				rules: {
-					'@deslop/coding-standards/no-barrel-module': 'off',
-					'@deslop/coding-standards/service-schema-file': 'off'
-				}
-			},
-			{
-				// Portfolio is exempt from the Design rules: its links and buttons are its own artwork.
-				files: ['apps/portfolio/**'],
-				rules: {'@deslop/coding-standards/no-bare-control': 'off'}
-			},
-			{
-				// The web template is no workspace package, so its stylesheet cannot resolve the theme's own utilities.
-				files: ['tools/create-app/template/web/**'],
-				rules: {'shadcn/no-unknown-classes': 'off'}
 			}
 		],
 		rules: {
-			'eslint/no-restricted-imports': ['error', repositoryRestrictedImports],
 			'eslint-js/no-restricted-syntax': [
 				...lint.rules['eslint-js/no-restricted-syntax'],
-				{
-					message: 'Use a flat theme token such as bg-card or bg-muted.',
-					selector:
-						'Literal[value=/(^|[ :])bg-(linear|radial|conic|gradient)(-|$| )|gradient\\(/], TemplateElement[value.raw=/(^|[ :])bg-(linear|radial|conic|gradient)(-|$| )|gradient\\(/]'
-				},
-				{
-					message: 'Draw Phosphor icons light at 20px and above.',
-					selector:
-						'JSXOpeningElement[name.name=/Icon$/]:has(JSXAttribute[name.name="className"][value.value=/(^| )size-([5-9]|[1-9][0-9]+)( |$)/]):not(:has(JSXAttribute[name.name="weight"][value.value="light"]))'
-				},
-				{
-					message: 'Draw Phosphor icons regular at 16px and below.',
-					selector:
-						'JSXOpeningElement[name.name=/Icon$/]:has(JSXAttribute[name.name="className"][value.value=/(^| )size-[0-4]( |$)/]) > JSXAttribute[name.name="weight"][value.value="light"]'
-				},
 				{
 					message: "Name an RPC '<service folder>.<verb>', as in 'metrics.history'.",
 					selector:

@@ -10,7 +10,6 @@
 		"@effect/tsgo": "latest",
 		"@effect/vitest": "latest",
 		"@types/node": "latest",
-		"@types/react": "latest",
 		"effect": "latest",
 		"fallow": "latest",
 		"tsrs": "catalog:",

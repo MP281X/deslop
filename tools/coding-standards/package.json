@@ -11,7 +11,6 @@
 	},
 	"files": [
 		"dist",
-		"src/lib/css-properties.d.ts",
 		"tsconfig.json"
 	],
 	"type": "module",
@@ -20,7 +19,6 @@
 	},
 	"exports": {
 		".": "./dist/lint.js",
-		"./css-properties": "./src/lib/css-properties.d.ts",
 		"./tsconfig.json": "./tsconfig.json"
 	},
 	"publishConfig": {
@@ -35,11 +33,9 @@
 	},
 	"dependencies": {
 		"@effect/platform-node": "latest",
-		"@shadcn/lint": "latest",
 		"@typeonce/oxlint-plugin-effect-machine": "latest",
 		"effect": "latest",
-		"oxlint-plugin-eslint": "latest",
-		"oxlint-plugin-react-doctor": "latest"
+		"oxlint-plugin-eslint": "latest"
 	},
 	"peerDependencies": {
 		"@effect/tsgo": ">=0.70",

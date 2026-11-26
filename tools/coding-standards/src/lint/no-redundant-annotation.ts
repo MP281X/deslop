@@ -3,15 +3,7 @@ import {Array, Equivalence, Function, Option, Predicate, String, pipe} from 'eff
 import {defineRule} from 'vite-plus/lint/plugins'
 import type {Context, ESTree, Reference, Variable} from 'vite-plus/lint/plugins'
 
-import {
-	bindingName,
-	effectImport,
-	importedMember,
-	isImportBinding,
-	isReactUseState,
-	matches,
-	variableFromScope
-} from '#lib/ast.ts'
+import {bindingName, effectImport, importedMember, matches, variableFromScope} from '#lib/ast.ts'
 
 // Not boolean: without its annotation, `return part.type === 'text'` is inferred as a type predicate that narrows callers.
 const KEYWORD_TYPES = ['TSBigIntKeyword', 'TSNumberKeyword', 'TSStringKeyword']
@@ -161,38 +153,8 @@ export const noRedundantAnnotation = defineRule({
 					return
 				}
 				if (
-					node.callee.type === 'Identifier' &&
-					isImportBinding({context, importedName: 'useRef', node: node.callee, source: 'react'}) &&
-					argument.value === null &&
-					type.type === 'TSUnionType'
-				) {
-					pipe(
-						type.types,
-						Array.findFirst(member => member.type === 'TSNullKeyword'),
-						Option.match({
-							onNone: Function.constUndefined,
-							onSome: member =>
-								context.report({
-									fix: fixer => {
-										const before = context.sourceCode.getTokenBefore(member)
-										const after = context.sourceCode.getTokenAfter(member)
-										if (before?.value === '|') return fixer.removeRange([before.range[0], member.range[1]])
-										if (after?.value === '|') return fixer.removeRange([member.range[0], after.range[1]])
-										return []
-									},
-									message: 'Remove null from the useRef type; its initializer already supplies it.',
-									node: member
-								})
-						})
-					)
-					return
-				}
-				if (
-					!(
-						isReactUseState({context, node}) ||
-						Array.some(['MutableRef', 'Ref', 'SubscriptionRef'], importedName =>
-							importedMember({context, importedName, node: node.callee, propertyName: 'make'})
-						)
+					!Array.some(['MutableRef', 'Ref', 'SubscriptionRef'], importedName =>
+						importedMember({context, importedName, node: node.callee, propertyName: 'make'})
 					)
 				) {
 					return
@@ -256,10 +218,6 @@ export const noRedundantAnnotation = defineRule({
 					{
 						'sample.ts':
 							'function doubleOf(value: number): number { return value * 2 }\nexport const doubled = [doubleOf(2), doubleOf(3)]'
-					},
-					{
-						'sample.tsx': `import {useRef, useState} from 'react'
-export function Editor() { const [title, setTitle] = useState<string>(''); return <div ref={useRef<HTMLDivElement | null>(null)} onFocus={() => setTitle('Focused')}>{title}</div> }`
 					},
 					{'sample.ts': `export const ids: string[] = []`}
 				]

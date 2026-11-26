@@ -17,11 +17,6 @@ import {
 	variableFromScope
 } from '#lib/ast.ts'
 
-const REJECTING_APIS = [
-	{methods: ['deleteItemAsync'], source: 'expo-secure-store'},
-	{methods: ['setBadgeCountAsync', 'requestPermissionsAsync', 'getExpoPushTokenAsync'], source: 'expo-notifications'}
-]
-
 function constructedFields(node?: ESTree.Expression | null) {
 	if (node?.type !== 'CallExpression' && node?.type !== 'NewExpression') return Option.none()
 	const constructs =
@@ -268,46 +263,6 @@ function logged(context: Context, node: ESTree.Node) {
 	})
 }
 
-function rejection(context: Context, node: ESTree.Node) {
-	return containsNode({
-		context,
-		matches: child => {
-			if (child.type !== 'CallExpression') return false
-			if (child.callee.type === 'Identifier') {
-				return Array.some(REJECTING_APIS, api =>
-					Array.some(
-						api.methods,
-						importedName =>
-							child.callee.type === 'Identifier' &&
-							isImportBinding({context, importedName, node: child.callee, source: api.source})
-					)
-				)
-			}
-			if (child.callee.type !== 'MemberExpression') return false
-			if (child.callee.object.type === 'Identifier') {
-				return Array.some(
-					REJECTING_APIS,
-					api =>
-						child.callee.type === 'MemberExpression' &&
-						child.callee.object.type === 'Identifier' &&
-						isImportBinding({context, node: child.callee.object, source: api.source}) &&
-						Option.exists(memberName(child.callee), name => Array.contains(api.methods, name))
-				)
-			}
-			return (
-				Option.contains(memberName(child.callee), 'downloadAsync') &&
-				child.callee.object.type === 'CallExpression' &&
-				child.callee.object.callee.type === 'MemberExpression' &&
-				Option.contains(memberName(child.callee.object.callee), 'fromModule') &&
-				child.callee.object.callee.object.type === 'Identifier' &&
-				isImportBinding({context, importedName: 'Asset', node: child.callee.object.callee.object, source: 'expo-asset'})
-			)
-		},
-		node,
-		throughFunctions: false
-	})
-}
-
 function messageTest(context: Context, node: ESTree.Node) {
 	return containsNode({
 		context,
@@ -342,27 +297,6 @@ function loggedRecovery(context: Context, node: ESTree.CallExpression) {
 	)
 }
 
-function checkPromise(context: Context, node: ESTree.CallExpression) {
-	const callback = node.arguments[0]
-	if (callback === undefined) return
-	const resolved = resolveBinding(context, callback)
-	if (
-		resolved.type !== 'ArrowFunctionExpression' &&
-		resolved.type !== 'FunctionExpression' &&
-		resolved.type !== 'FunctionDeclaration'
-	) {
-		return
-	}
-	const returned = returnedExpression(resolved)
-	if (Predicate.isNotNullish(returned) && rejection(context, returned)) {
-		context.report({
-			message:
-				'Wrap rejecting I/O in Effect.tryPromise({try, catch}); keep the original failure as the typed error’s cause.',
-			node
-		})
-	}
-}
-
 export const recoverNamedFailures = defineRule({
 	create: context => ({
 		CallExpression: node => {
@@ -374,10 +308,6 @@ export const recoverNamedFailures = defineRule({
 						'Recover with Effect.catchTag for a named failure, use Effect.option for absence, or log the failure before recovering; do not turn every failure into an ordinary result.',
 					node
 				})
-				return
-			}
-			if (Option.contains(name, 'promise')) {
-				checkPromise(context, node)
 				return
 			}
 			if (Option.exists(name, method => method === 'catchIf' || method === 'retry') && messageTest(context, node)) {

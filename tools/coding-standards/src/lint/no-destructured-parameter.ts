@@ -3,7 +3,7 @@ import {Array, Equivalence, Option} from 'effect'
 import {defineRule} from 'vite-plus/lint/plugins'
 import type {Context, ESTree} from 'vite-plus/lint/plugins'
 
-import {bindingName, matches, variableFromScope} from '#lib/ast.ts'
+import {variableFromScope} from '#lib/ast.ts'
 
 function namedTuple(input: {context: Context; node: ESTree.TSType; seen: ESTree.TSType[]}): boolean {
 	if (Array.containsWith(Equivalence.strictEqual<ESTree.TSType>())(input.seen, input.node)) return false
@@ -36,55 +36,21 @@ function namedTuple(input: {context: Context; node: ESTree.TSType; seen: ESTree.
 	)
 }
 
-function componentName(node: ESTree.Function | ESTree.ArrowFunctionExpression) {
-	if (node.type !== 'ArrowFunctionExpression' && node.id !== null) return Option.some(node.id.name)
-	return bindingName(node)
-}
-
-function component(node: ESTree.Function | ESTree.ArrowFunctionExpression) {
-	if (!Option.exists(componentName(node), matches(/^[A-Z]/u)) || node.params.length !== 1 || node.body === null) {
-		return false
-	}
-	if (node.body.type === 'JSXElement' || node.body.type === 'JSXFragment') return true
-	return (
-		node.body.type === 'BlockStatement' &&
-		Array.some(
-			node.body.body,
-			statement =>
-				statement.type === 'ReturnStatement' &&
-				(statement.argument?.type === 'JSXElement' || statement.argument?.type === 'JSXFragment')
-		)
-	)
-}
-
-function isPattern(input: {
-	context: Context
-	node: ESTree.ParamPattern | ESTree.BindingPattern
-	component: boolean
-}): boolean {
+function isPattern(input: {context: Context; node: ESTree.ParamPattern | ESTree.BindingPattern}): boolean {
 	if (input.node.type === 'AssignmentPattern') return isPattern({...input, node: input.node.left})
 	if (input.node.type === 'ArrayPattern') {
 		return !Option.exists(Option.fromNullishOr(input.node.typeAnnotation), annotation =>
 			namedTuple({context: input.context, node: annotation.typeAnnotation, seen: []})
 		)
 	}
-	if (input.node.type !== 'ObjectPattern') return false
-	const named = Array.filter(input.node.properties, property => property.type === 'Property')
-	return !(
-		input.component &&
-		named.length === 1 &&
-		named[0]?.key.type === 'Identifier' &&
-		named[0].key.name === 'ref' &&
-		Array.some(input.node.properties, property => property.type === 'RestElement')
-	)
+
+	return input.node.type === 'ObjectPattern'
 }
 
 export const noDestructuredParameter = defineRule({
 	create: context => {
 		function reportParameters(node: ESTree.Function | ESTree.ArrowFunctionExpression) {
-			for (const parameter of Array.filter(node.params, candidate =>
-				isPattern({component: component(node), context, node: candidate})
-			)) {
+			for (const parameter of Array.filter(node.params, candidate => isPattern({context, node: candidate}))) {
 				context.report({
 					message: 'Take the value whole and read its fields instead of destructuring it.',
 					node: parameter
@@ -94,7 +60,7 @@ export const noDestructuredParameter = defineRule({
 		function reportLoopVariable(node: ESTree.ForOfStatement | ESTree.ForInStatement) {
 			if (
 				node.left.type === 'VariableDeclaration' &&
-				Array.some(node.left.declarations, declarator => isPattern({component: false, context, node: declarator.id}))
+				Array.some(node.left.declarations, declarator => isPattern({context, node: declarator.id}))
 			) {
 				context.report({
 					message: 'Take the value whole and read its fields instead of destructuring it.',
@@ -108,7 +74,6 @@ export const noDestructuredParameter = defineRule({
 			ForOfStatement: reportLoopVariable,
 			FunctionDeclaration: reportParameters,
 			FunctionExpression: reportParameters,
-			// Array patterns stay: react/hook-use-state requires the useState tuple, and useAtom's has the same shape.
 			VariableDeclarator: node => {
 				if (
 					node.id.type !== 'ObjectPattern' ||

@@ -180,13 +180,6 @@ export function effectImport(input: {context: Context; fixer: Fixer; name: strin
 	return imports
 }
 
-function isNamespaceImport(input: {context: Context; node: ESTree.IdentifierReference; source: string}) {
-	return Array.some(
-		importsOf(input.context, input.node),
-		binding => binding.specifier.type === 'ImportNamespaceSpecifier' && binding.source === input.source
-	)
-}
-
 export function typeWrapped(node: ESTree.Node) {
 	if (
 		node.type === 'TSAsExpression' ||
@@ -551,18 +544,6 @@ export function isSchemaDefinition(input: {context: Context; node: ESTree.Expres
 			name => !isSchemaOperationName(name) && !isDerivedSchemaName(name) && !isFilterSchemaName(name)
 		)
 	})
-}
-
-export function isReactUseState(input: {context: Context; node: ESTree.CallExpression}) {
-	if (input.node.callee.type === 'Identifier') {
-		return isImportBinding({context: input.context, importedName: 'useState', node: input.node.callee, source: 'react'})
-	}
-	return (
-		input.node.callee.type === 'MemberExpression' &&
-		Option.contains(memberName(input.node.callee), 'useState') &&
-		input.node.callee.object.type === 'Identifier' &&
-		isNamespaceImport({context: input.context, node: input.node.callee.object, source: 'react'})
-	)
 }
 
 export function statementDeclaration(statement: ESTree.Statement | ESTree.ModuleDeclaration) {
