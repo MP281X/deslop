@@ -8,7 +8,7 @@ Personal apps with one user, who also develops them.
 - **Dependencies.** New ones are the user's pick. Stay on `latest` except the pins in manifests. No patches or forks.
 - **Proof.** A blocked proof, such as a missing tool or a failing signed build, is a fault to fix, not a "Not proven" line.
 - **Not wanted.** An AI wrapper package; a stdio bridge, container or OpenTelemetry Collector (apps send telemetry straight to Scope); MCP tools for apps agents don't need (Trips, OPM, Portfolio).
-- **Pull requests.** Once its review and re-checks pass and Verify passes on its head, rebased on the latest `main`, mark the PR ready; he merges it.
+- **Pull requests.** Once its review and re-checks pass and Verify passes on its head, rebased on the latest `main`, mark the PR ready.
 - **Tests.** Only our own logic, with Effect layer stand-ins. No UI, request or regression tests.
 
 ## Commands
