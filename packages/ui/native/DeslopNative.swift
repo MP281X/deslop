@@ -6,6 +6,13 @@ import UIKit
 import WebKit
 
 @MainActor
+func deslopNavigation(_ controller: CAPBridgeViewController) -> UINavigationController {
+    let navigation = UINavigationController(rootViewController: controller)
+    navigation.setNavigationBarHidden(true, animated: false)
+    return navigation
+}
+
+@MainActor
 @objc(DeslopNativePlugin)
 final class DeslopNativePlugin: CAPPlugin, CAPBridgedPlugin, ASWebAuthenticationPresentationContextProviding {
     nonisolated let identifier = "DeslopNativePlugin"
@@ -15,6 +22,7 @@ final class DeslopNativePlugin: CAPPlugin, CAPBridgedPlugin, ASWebAuthentication
         CAPPluginMethod(name: "account", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "signIn", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "signOut", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "setToolbar", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "openSocket", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "sendSocket", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "closeSocket", returnType: CAPPluginReturnPromise)
@@ -35,7 +43,12 @@ final class DeslopNativePlugin: CAPPlugin, CAPBridgedPlugin, ASWebAuthentication
             guard let local = bridge?.config.localURL, let url = navigationAction.request.url else { return NSNumber(value: true) }
             let bundled = url.scheme == local.scheme && url.host == local.host && url.port == local.port
                 && url.user == nil && url.password == nil
-            if bundled { return nil }
+            if bundled {
+                if navigationAction.targetFrame?.isMainFrame == true {
+                    bridge?.viewController?.navigationController?.setNavigationBarHidden(true, animated: false)
+                }
+                return nil
+            }
             if navigationAction.targetFrame?.isMainFrame == false || url.scheme == local.scheme { return NSNumber(value: true) }
             return nil
         }
@@ -61,6 +74,44 @@ final class DeslopNativePlugin: CAPPlugin, CAPBridgedPlugin, ASWebAuthentication
             } catch {
                 call.reject(error.localizedDescription)
             }
+        }
+    }
+
+    @objc nonisolated func setToolbar(_ call: CAPPluginCall) {
+        Task { @MainActor [weak self] in
+            guard let controller = self?.bridge?.viewController, let navigation = controller.navigationController,
+                  let items = call.getArray("items", JSObject.self)
+            else {
+                call.reject("The app toolbar is unavailable.")
+                return
+            }
+            var leading: [UIBarButtonItem] = []
+            var trailing: [UIBarButtonItem] = []
+            for item in items {
+                guard let title = item["title"] as? String, let symbol = item["symbol"] as? String,
+                      let image = UIImage(systemName: symbol)
+                else { continue }
+                let action = UIAction(title: title, image: image) { [weak self] _ in
+                    self?.notifyListeners("toolbarAction", data: ["title": title])
+                }
+                let button = UIBarButtonItem(primaryAction: action)
+                button.tintColor = .label
+                button.isEnabled = item["disabled"] as? Bool != true
+                button.isSelected = item["selected"] as? Bool == true
+                if item["leading"] as? Bool == true {
+                    leading.append(button)
+                } else {
+                    trailing.append(button)
+                }
+            }
+            controller.navigationItem.leadingItemGroups = leading.isEmpty ? [] : [
+                UIBarButtonItemGroup(barButtonItems: leading, representativeItem: nil)
+            ]
+            controller.navigationItem.trailingItemGroups = trailing.isEmpty ? [] : [
+                UIBarButtonItemGroup(barButtonItems: trailing, representativeItem: nil)
+            ]
+            navigation.setNavigationBarHidden(leading.isEmpty && trailing.isEmpty, animated: false)
+            call.resolve()
         }
     }
 

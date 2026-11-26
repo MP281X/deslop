@@ -8,7 +8,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         guard let windowScene = scene as? UIWindowScene else { return }
 
         window = UIWindow(windowScene: windowScene)
-        window?.rootViewController = BridgeViewController()
+        window?.rootViewController = deslopNavigation(BridgeViewController())
         window?.makeKeyAndVisible()
         openChapter(connectionOptions.urlContexts)
 
@@ -28,6 +28,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         guard let url = contexts.first(where: {
             ($0.url.scheme == "opm" || $0.url.scheme == "opm-dev") && $0.url.host == "chapter"
         })?.url else { return }
-        (window?.rootViewController as? BridgeViewController)?.openChapter(url)
+        let navigation = window?.rootViewController as? UINavigationController
+        (navigation?.topViewController as? BridgeViewController)?.openChapter(url)
     }
 }

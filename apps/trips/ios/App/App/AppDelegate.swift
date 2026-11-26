@@ -18,7 +18,7 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     func scene(_ scene: UIScene, willConnectTo session: UISceneSession, options connectionOptions: UIScene.ConnectionOptions) {
         guard let windowScene = scene as? UIWindowScene else { return }
         let window = UIWindow(windowScene: windowScene)
-        window.rootViewController = TripsViewController()
+        window.rootViewController = deslopNavigation(TripsViewController())
         self.window = window
         window.makeKeyAndVisible()
         SceneDelegateProxy.shared.scene(scene, willConnectTo: session, options: connectionOptions)

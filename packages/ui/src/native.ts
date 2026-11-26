@@ -1,4 +1,18 @@
-import {Cause, Deferred, Effect, Latch, Layer, MutableRef, Option, Predicate, Queue, Schema, pipe} from 'effect'
+import {
+	Cause,
+	Deferred,
+	Effect,
+	Equal,
+	Latch,
+	Layer,
+	MutableRef,
+	Option,
+	Predicate,
+	Queue,
+	Schema,
+	Stream,
+	pipe
+} from 'effect'
 
 import {registerPlugin} from '@capacitor/core'
 import type {PluginListenerHandle} from '@capacitor/core'
@@ -21,13 +35,30 @@ type SocketEvent = {
 	readonly message?: string
 }
 
+export type ToolbarItem = {
+	readonly disabled: boolean
+	readonly leading: boolean
+	readonly selected: boolean
+	readonly symbol: string
+	readonly title: string
+}
+
+class ToolbarError extends Schema.TaggedError<ToolbarError>()('ToolbarError', {
+	cause: Schema.Defect(),
+	message: Schema.String
+}) {}
+
 /* oxlint-disable typescript/no-restricted-types -- Capacitor's bridge returns Promises. */
 const native = registerPlugin<{
 	config: () => Promise<{bundle: string; server: string}>
 	account: () => Promise<{status: number; body: string}>
 	signIn: () => Promise<{signedIn: boolean}>
 	signOut: () => Promise<{status: number}>
-	addListener: (eventName: 'socket', listener: (event: SocketEvent) => void) => Promise<PluginListenerHandle>
+	addListener: {
+		(eventName: 'socket', listener: (event: SocketEvent) => void): Promise<PluginListenerHandle>
+		(eventName: 'toolbarAction', listener: (event: {title: string}) => void): Promise<PluginListenerHandle>
+	}
+	setToolbar: (options: {items: readonly ToolbarItem[]}) => Promise<void>
 	openSocket: (options: {id: string}) => Promise<void>
 	sendSocket: (options: {id: string; data: string}) => Promise<void>
 	closeSocket: (options: {id: string; code?: number}) => Promise<void>
@@ -43,7 +74,40 @@ function authCall<A>(message: string, call: () => Promise<A>) {
 function socketCall<A>(reason: (cause: unknown) => Socket.SocketError, call: () => Promise<A>) {
 	return Effect.tryPromise({catch: reason, try: call})
 }
+function toolbarCall<A>(message: string, call: () => Promise<A>) {
+	return Effect.tryPromise({catch: cause => ToolbarError.make({cause, message}), try: call})
+}
 /* oxlint-enable typescript/no-restricted-types */
+
+function setToolbar(items: readonly ToolbarItem[]) {
+	return toolbarCall('Could not update the native toolbar', () => native.setToolbar({items}))
+}
+
+export function nativeToolbar(items: Stream.Stream<readonly ToolbarItem[]>, onAction: (title: string) => void) {
+	return pipe(
+		Effect.acquireRelease(
+			toolbarCall('Could not listen for native toolbar actions', () =>
+				native.addListener('toolbarAction', event => onAction(event.title))
+			),
+			listener =>
+				pipe(
+					setToolbar([]),
+					Effect.ensuring(
+						Effect.ignore(
+							toolbarCall('Could not stop listening for native toolbar actions', () => listener.remove()),
+							{log: 'Warn'}
+						)
+					),
+					Effect.ignore({log: 'Warn'})
+				)
+		),
+		Effect.as(
+			pipe(items, Stream.changesWith<readonly ToolbarItem[]>(Equal.equals), Stream.tap(setToolbar), Stream.drain)
+		),
+		Stream.unwrap,
+		Stream.catch(error => Stream.drain(Stream.fromEffect(Effect.logWarning(error))))
+	)
+}
 
 const nativeConfig = authCall('This app has no server configured', () => native.config())
 export const nativeServer = Effect.map(nativeConfig, config => config.server)

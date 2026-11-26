@@ -11,7 +11,7 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     let window = UIWindow(windowScene: windowScene)
     let controller = StashViewController()
     controller.pendingNote = connectionOptions.urlContexts.lazy.compactMap { self.noteID($0.url) }.first
-    window.rootViewController = controller
+    window.rootViewController = deslopNavigation(controller)
     window.makeKeyAndVisible()
     self.window = window
     SceneDelegateProxy.shared.scene(scene, willConnectTo: session, options: connectionOptions)
@@ -20,7 +20,8 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
   func scene(_ scene: UIScene, openURLContexts URLContexts: Set<UIOpenURLContext>) {
     for context in URLContexts {
       if let id = noteID(context.url) {
-        (window?.rootViewController as? StashViewController)?.openNote(id)
+        let navigation = window?.rootViewController as? UINavigationController
+        (navigation?.topViewController as? StashViewController)?.openNote(id)
       }
     }
     SceneDelegateProxy.shared.scene(scene, openURLContexts: URLContexts)
