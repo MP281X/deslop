@@ -1,148 +1,79 @@
-import {Array, DateTime, Effect, Option, Schema, Stream, String, pipe} from 'effect'
+import {Array, Effect, Option, Schema, Stream, pipe} from 'effect'
 
+import type {AtomRegistry} from 'effect/reactivity'
 import {AsyncResult, Atom} from 'effect/reactivity'
-import {getStringAsync, hasImageAsync, hasStringAsync} from 'expo-clipboard'
-import {File, Paths} from 'expo-file-system'
 
-import {alertFailure} from '@deslop/components-mobile/lib/alerts'
-import {ClipboardError, copiedImage, makeClipboard, readClipboard} from '@deslop/components-mobile/lib/clipboard'
-import type {ClipboardCopy, ClipboardKind} from '@deslop/components-mobile/lib/clipboard'
-import {cachedList} from '@deslop/components-mobile/lib/files'
-import {makeRemoval} from '@deslop/components-mobile/lib/removal'
-import {clockAtom} from '@deslop/runtime/client/clock'
-import {liveStream, reconnectOnDrop} from '@deslop/runtime/client/live-stream'
-import {activationsAtom} from '@deslop/runtime/mobile/activations'
-import {provideRuntimeOnce} from '@deslop/runtime/mobile/session'
+import {isDeniedCause, keepValueThroughOutages, liveStream, reconnectOnDrop} from '@deslop/runtime/client/live-stream'
+import {UserId} from '@deslop/runtime/shared/auth'
 import {listReducer} from '@deslop/runtime/shared/list'
 
-import {boardOf} from '#lib/day.ts'
-import {RpcClient, session} from '#lib/session.ts'
+import {accountAtom, FLIGHTS_KEY, native, RpcClient} from '#lib/session.ts'
 import {byDeparture} from '#services/flights/lib/utils.ts'
-import {FlightId, TicketSource, FlightsError, Flight, IMAGE_BYTES} from '#services/flights/schema.ts'
-
-const flightsFile = new File(Paths.document, 'flights.json')
+import {Flight, FlightsError, TravelTime} from '#services/flights/schema.ts'
 
 const apply = listReducer(byDeparture, flight => flight.id)
-
-// The copy on the iPhone opens the trip at the gate even without a network.
-export const flightsAtom = Atom.keepAlive(
-	RpcClient.runtime.atom(get =>
-		cachedList(
-			get,
-			session,
-			flightsFile,
-			Flight.json,
-			pipe(liveStream(RpcClient, 'flights.events'), Stream.scan(Array.empty<Flight>, apply), Stream.drop(1)),
-			reconnectOnDrop
-		)
-	)
+type Cached = typeof Cached.Type
+const Cached = Schema.fromJsonString(Schema.Struct({account: UserId, flights: Schema.Array(Flight.json)}))
+export const ownerAtom = Atom.map(accountAtom, result =>
+	Option.getOrUndefined(Option.map(AsyncResult.value(result), account => account.id))
 )
 
-// The image is read and sized natively into a temporary JPEG, refused there when it is over the ticket limit, and its bytes are read only once it fits.
-function copiedScreenshot(count: string) {
-	return Effect.scoped(
-		Effect.flatMap(copiedImage(count, IMAGE_BYTES), file =>
-			Effect.tryPromise({
-				catch: cause => FlightsError.make({cause, message: 'The copied screenshot could not be read.'}),
-				try: () => file.arrayBuffer()
-			})
+const flightsByOwnerAtoms = Atom.family((account: UserId) =>
+	RpcClient.runtime.atom(get => {
+		const live = pipe(liveStream(RpcClient, 'flights.events'), Stream.scan(Array.empty<Flight>, apply), Stream.drop(1))
+		const store = Stream.tap(live, flights =>
+			pipe(
+				Schema.encodeEffect(Cached)({account, flights}),
+				Effect.flatMap(copy =>
+					Effect.try({
+						catch: cause => FlightsError.make({cause, message: 'The offline board could not be written.'}),
+						try: () => localStorage.setItem(FLIGHTS_KEY, copy)
+					})
+				),
+				Effect.ignore({log: 'Warn', message: 'The offline board could not be saved'})
+			)
 		)
-	)
-}
-
-const ticketFromClipboard = Effect.fnUntraced(function* (offer: ClipboardCopy) {
-	if (offer.kind === 'image') {
-		return TicketSource.cases.image.make({image: new Uint8Array(yield* copiedScreenshot(offer.count))})
-	}
-	const text = pipe(
-		yield* readClipboard(
-			offer.count,
-			Effect.tryPromise({
-				catch: cause => FlightsError.make({cause, message: 'The copied text could not be read.'}),
-				try: () => getStringAsync()
-			})
-		),
-		String.trim,
-		String.slice(0, 60_000)
-	)
-	if (String.isEmpty(text)) return yield* FlightsError.make({message: 'The clipboard no longer holds text.'})
-	return TicketSource.cases.text.make({text})
-})
-
-export const clipboard = makeClipboard({
-	// A refused flight or a copy that cannot be read is answered, but a lost connection offers the same copy on the next return.
-	answered: error => Schema.is(FlightsError)(error) || Schema.is(ClipboardError)(error),
-	detect: Effect.gen(function* () {
-		if (yield* Effect.promise(() => hasImageAsync())) return Option.some<ClipboardKind>('image')
-		if (yield* Effect.promise(() => hasStringAsync())) return Option.some<ClipboardKind>('text')
-		return Option.none<ClipboardKind>()
-	}),
-	labels: {
-		confirm: 'Add',
-		notSaved: 'Not Saved',
-		questions: {
-			image: 'Add a flight from the copied screenshot?',
-			link: 'Add a flight from the copied text?',
-			text: 'Add a flight from the copied text?'
-		}
-	},
-	save: Effect.fnUntraced(function* (copy, get) {
-		const source = yield* ticketFromClipboard(copy)
-		yield* provideRuntimeOnce(
-			get,
-			RpcClient.runtime,
-			Effect.flatMap(RpcClient, client => client('flights.save', source))
+		const hydrate = Stream.suspend(() =>
+			pipe(
+				Option.fromNullishOr(localStorage.getItem(FLIGHTS_KEY)),
+				Option.flatMap(Schema.decodeOption(Cached)),
+				Option.filter(copy => copy.account === account),
+				Option.map(copy => copy.flights),
+				Option.toArray,
+				Stream.fromIterable
+			)
 		)
-	})
-})
-
-export const removal = makeRemoval({
-	notRemoved: 'Not Deleted',
-	remove: Effect.fnUntraced(function* (key: string, get: Atom.AtomContext) {
-		const id = yield* Effect.mapError(Schema.decodeEffect(FlightId)(key), cause =>
-			FlightsError.make({cause, message: 'The flight to delete could not be read.'})
-		)
-		return yield* Effect.mapError(
-			provideRuntimeOnce(
+		if (!native) return keepValueThroughOutages(get, live, reconnectOnDrop)
+		return Stream.concat(
+			hydrate,
+			keepValueThroughOutages(
 				get,
-				RpcClient.runtime,
-				Effect.flatMap(RpcClient, client => client('flights.remove', {id}))
-			),
-			cause => {
-				if (Schema.is(FlightsError)(cause)) return cause
-				return FlightsError.make({
-					cause,
-					message: 'The server did not confirm whether the flight was deleted. Reconnect to check.'
-				})
-			}
+				Stream.tapCause(store, cause =>
+					Effect.sync(() => {
+						if (isDeniedCause(cause)) localStorage.removeItem(FLIGHTS_KEY)
+					})
+				),
+				reconnectOnDrop
+			)
 		)
 	})
-})
-
-// Every request gets its first answer within a minute or fails, so the pull spinner always stops.
-export const refreshAtom = Atom.fn((id: FlightId, get) =>
-	pipe(
-		provideRuntimeOnce(
-			get,
-			RpcClient.runtime,
-			Effect.flatMap(RpcClient, client => client('tracking.refresh', {id}))
-		),
-		alertFailure('Not Refreshed')
-	)
 )
 
-// A return reads the time again, as each tick does. Refreshing the clock from a listener of this atom rebuilt it, which added the listener again while the return was still calling them: the app never yielded.
-export const nowAtom = Atom.make(get => {
-	get(activationsAtom)
-	get(clockAtom('1 minute'))
-	return DateTime.nowUnsafe()
+export const flightsAtom = Atom.make(get => {
+	const account = get(ownerAtom)
+	if (account === undefined) return AsyncResult.initial<readonly Flight[], unknown>()
+	return get(flightsByOwnerAtoms(account))
 })
 
-// The flight under way or next, the one the board shows.
-export const boardAtom = Atom.make(get =>
-	pipe(
-		get(flightsAtom),
-		AsyncResult.value,
-		Option.flatMap(flights => boardOf(flights, get(nowAtom)))
-	)
-)
+export const travelAtom = RpcClient.runtime.atom(get => {
+	if (get(ownerAtom) === undefined) return Effect.never
+	return Effect.flatMap(RpcClient, call => call('travel.list', undefined))
+})
+
+type TravelList = typeof TravelList.Type
+export const TravelList = Schema.Array(TravelTime)
+
+export function refreshFlights(registry: AtomRegistry.AtomRegistry) {
+	const account = registry.get(ownerAtom)
+	if (account !== undefined) registry.refresh(flightsByOwnerAtoms(account))
+}

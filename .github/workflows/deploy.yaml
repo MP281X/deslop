@@ -61,7 +61,7 @@ jobs:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
         run: |
           builds=()
-          for app in opm stash trips; do
+          for app in opm stash; do
             fingerprint=$(cd "apps/$app" && eas fingerprint:generate --platform ios --build-profile production --json --non-interactive | jq -r .hash)
             artifact="$app-app-store-$fingerprint"
             held=$(gh api "repos/$GITHUB_REPOSITORY/actions/artifacts?name=$artifact" --jq '[.artifacts[] | select(.expired | not)] | length')
@@ -80,7 +80,7 @@ jobs:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
         run: |
           message=$(git log -1 --format=%s)
-          for app in opm stash trips; do
+          for app in opm stash; do
             (cd "apps/$app" && eas update --channel production --environment production --platform ios --non-interactive --input-dir "$RUNNER_TEMP/update-$app" --message="$message")
           done
 

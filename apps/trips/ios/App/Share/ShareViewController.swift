@@ -1,4 +1,5 @@
 import ImageIO
+import Security
 import SwiftUI
 import UIKit
 import UniformTypeIdentifiers
@@ -26,26 +27,12 @@ private enum Phase: Equatable {
 
 private enum Theme {
   static let app = Bundle(url: Bundle.main.bundleURL.deletingLastPathComponent().deletingLastPathComponent())
-  static let background = color("background")
-  static let foreground = color("foreground")
-  static let muted = color("muted")
-  static let primary = color("primary")
-  static let destructive = color("destructive")
-  static let logo = app?.url(forResource: "assets/src/routes/icon", withExtension: "png").flatMap {
-    UIImage(contentsOfFile: $0.path)
-  }
-
-  private static func color(_ name: String) -> Color {
-    guard let palette = app?.object(forInfoDictionaryKey: "DeslopTheme") as? [String: [String: String]] else {
-      fatalError("The app's Info.plist has no DeslopTheme")
-    }
-    return Color(uiColor: UIColor { traits in
-      let hex = palette[name]?[traits.userInterfaceStyle == .dark ? "dark" : "light"]
-      guard let hex, let value = Int(hex.dropFirst(), radix: 16) else { fatalError("DeslopTheme has no \(name)") }
-      return UIColor(red: CGFloat((value >> 16) & 0xff) / 255,
-        green: CGFloat((value >> 8) & 0xff) / 255, blue: CGFloat(value & 0xff) / 255, alpha: 1)
-    })
-  }
+  static let background = Color(red: 9 / 255, green: 9 / 255, blue: 11 / 255)
+  static let foreground = Color(red: 250 / 255, green: 250 / 255, blue: 250 / 255)
+  static let muted = Color(red: 159 / 255, green: 159 / 255, blue: 169 / 255)
+  static let primary = Color(red: 1, green: 160 / 255, blue: 102 / 255)
+  static let destructive = Color(red: 1, green: 100 / 255, blue: 103 / 255)
+  static let logo = UIImage(named: "icon")
 }
 
 private struct SaveView: View {
@@ -142,10 +129,10 @@ private struct SaveView: View {
   // Auth names the caller from the session cookie the app saved in the Keychain; a device on the tailnet has none and needs none.
   private func authorize(_ request: inout URLRequest) {
     request.httpShouldHandleCookies = false
-    guard let group = Theme.app?.object(forInfoDictionaryKey: "DeslopKeychainGroup") as? String else { return }
+    guard request.url?.scheme == "https", let group = Theme.app?.object(forInfoDictionaryKey: "DeslopKeychainGroup") as? String else { return }
     let query: [String: Any] = [
       kSecClass as String: kSecClassGenericPassword,
-      kSecAttrService as String: "app:no-auth", kSecAttrGeneric as String: Data("session".utf8),
+      kSecAttrService as String: "Deslop",
       kSecAttrAccount as String: Data("session".utf8), kSecAttrAccessGroup as String: group,
       kSecReturnData as String: true, kSecMatchLimit as String: kSecMatchLimitOne,
     ]

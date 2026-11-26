@@ -1,0 +1,8 @@
+{
+	"appId": "xyz.mp281x.trips",
+	"appName": "trips",
+	"webDir": "dist/client",
+	"backgroundColor": "#000000",
+	"experimental": {"ios": {"spm": {"swiftToolsVersion": "6.2"}}},
+	"plugins": {"PushNotifications": {"presentationOptions": ["sound", "banner", "list"]}}
+}

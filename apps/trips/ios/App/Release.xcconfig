@@ -1,0 +1,6 @@
+#include "Config.xcconfig"
+CAPACITOR_DEBUG = false
+DESLOP_SUFFIX =
+DESLOP_DISPLAY_NAME = trips
+DESLOP_SCHEME = trips
+DESLOP_APS_ENVIRONMENT = production

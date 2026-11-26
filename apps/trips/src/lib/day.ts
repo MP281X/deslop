@@ -1,9 +1,18 @@
-import {Array, Boolean, DateTime, Duration, Function, HashSet, Number, Option, Record, String, pipe} from 'effect'
+import {
+	Array,
+	Boolean,
+	DateTime,
+	Duration,
+	Function,
+	HashSet,
+	Number,
+	Option,
+	Record,
+	Schema,
+	String,
+	pipe
+} from 'effect'
 
-import type {RowProblem as ListProblem} from '@deslop/components-mobile/blocks/row'
-import type {ProblemStatus} from '@deslop/components-mobile/blocks/status-dot'
-
-import type {RowProblem} from '#lib/rows.tsx'
 import {
 	arrivalClockOf,
 	arrivalOf,
@@ -32,6 +41,12 @@ import {activityProps} from '#services/push/lib/utils.ts'
 
 const HERO_PROBLEMS = {error: 'bad', warning: 'warn'} satisfies Record.ReadonlyRecord<ProblemStatus, RowProblem>
 
+export type RowProblem = typeof RowProblem.Type
+const RowProblem = Schema.Literals(['bad', 'warn'])
+export type ProblemStatus = typeof ProblemStatus.Type
+const ProblemStatus = Schema.Literals(['error', 'warning'])
+export type ListProblem = {reason: string; status: ProblemStatus}
+
 // "in 25 min", "in 1h 15m", or "in 3 days" from a day out.
 function inSpan(span: Duration.Duration) {
 	const hours = Duration.toHours(span)
@@ -44,7 +59,7 @@ function inSpan(span: Duration.Duration) {
 }
 
 // Flights not yet an hour past their landing, soonest first.
-export function upcomingOf(flights: FlightList, now: DateTime.Utc) {
+function upcomingOf(flights: FlightList, now: DateTime.Utc) {
 	return pipe(
 		flights,
 		Array.filter(flight => pipe(arrivalOf(flight), DateTime.addDuration(HOUR), DateTime.isGreaterThanOrEqualTo(now))),
@@ -228,7 +243,7 @@ function inboundOf(flight: Flight, now: DateTime.Utc) {
 }
 
 // A step of a trip as a row: what happens and when, its muted line as stored, and the flight it opens. At the gate its `gate` and `brief` lead above a laptop's fold, where the line is the same without the gate.
-export type TripStep = {
+type TripStep = {
 	at: DateTime.Utc
 	brief: Option.Option<string>
 	date: string

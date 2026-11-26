@@ -12,7 +12,6 @@ const DATE_KINDS = {
 	day: {day: 'numeric', month: 'short'},
 	dayWithYear: {day: 'numeric', month: 'short', year: 'numeric'},
 	month: {month: 'short', year: 'numeric'},
-	weekday: {day: 'numeric', month: 'short', weekday: 'short'},
 	year: {year: 'numeric'}
 } satisfies Record<string, Intl.DateTimeFormatOptions>
 const dateFormats = MutableHashMap.empty<string, Intl.DateTimeFormat>()
@@ -20,7 +19,7 @@ const dateFormats = MutableHashMap.empty<string, Intl.DateTimeFormat>()
 export type ClockUnit = typeof ClockUnit.Type
 const ClockUnit = Schema.Literals(['millisecond', 'minute', 'second'])
 type DateKind = typeof DateKind.Type
-const DateKind = Schema.Union([ClockUnit, Schema.Literals(['day', 'dayWithYear', 'month', 'weekday', 'year'])])
+const DateKind = Schema.Union([ClockUnit, Schema.Literals(['day', 'dayWithYear', 'month', 'year'])])
 
 const count = new Intl.NumberFormat(NUMBERS, {maximumFractionDigits: 0})
 const compactCount = new Intl.NumberFormat(NUMBERS, {maximumFractionDigits: 1, notation: 'compact'})
@@ -87,11 +86,6 @@ export function dayOf(at: DateTime.DateTime, now: DateTime.DateTime) {
 		return inZone(at, 'day')
 	}
 	return inZone(at, 'dayWithYear')
-}
-
-// A day with its weekday, for plans: "Fri 21 Nov".
-export function weekdayOf(at: DateTime.DateTime) {
-	return inZone(at, 'weekday')
 }
 
 // A month: "Nov 2026".

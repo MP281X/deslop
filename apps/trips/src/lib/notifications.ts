@@ -1,94 +1,112 @@
-import {Effect, Option, Redacted, Schema} from 'effect'
+import {Cause, Effect, Queue, Redacted, Schema, Stream, pipe} from 'effect'
 
-import {applicationId, getIosIdForVendorAsync} from 'expo-application'
-import {
-	addPushTokenListener,
-	getDevicePushTokenAsync,
-	requestPermissionsAsync,
-	setNotificationCategoryAsync,
-	setNotificationHandler
-} from 'expo-notifications'
-import {addPushToStartTokenListener} from 'expo-widgets'
+import {registerPlugin} from '@capacitor/core'
+import type {PluginListenerHandle} from '@capacitor/core'
+import {PushNotifications} from '@capacitor/push-notifications'
 
-import {registerPushTokens} from '@deslop/runtime/mobile/push-token'
+import {registerPushToken} from '@deslop/runtime/client/push'
+import type {Device as ApnsDevice} from '@deslop/runtime/shared/apns'
 import {ApnsToken} from '@deslop/runtime/shared/apns'
 
-import {RpcClient, session} from '#lib/session.ts'
+import {ownerAtom} from '#lib/flights.ts'
+import {native, RpcClient} from '#lib/session.ts'
 import {FlightsError} from '#services/flights/schema.ts'
 import {PhoneId, PushBundle} from '#services/push/schema.ts'
 
-// The app and the iPhone each token belongs to, so a Live Activity tells its changes only on the phone it runs on.
-const apns = Effect.all(
-	{
-		bundle: Schema.decodeUnknownEffect(PushBundle)(applicationId),
-		phone: Effect.flatMap(
-			Effect.tryPromise({
-				catch: cause => FlightsError.make({cause, message: 'iOS did not name this iPhone.'}),
-				try: () => getIosIdForVendorAsync()
-			}),
-			Schema.decodeUnknownEffect(PhoneId)
+// oxlint-disable-next-line typescript/no-restricted-types -- Capacitor's bridge methods return promises.
+export type NativeResult<A> = Promise<A>
+
+type TripsNativePlugin = {
+	addListener: (
+		event: 'activityToken',
+		listener: (event: {value: string}) => void
+	) => NativeResult<PluginListenerHandle>
+	device: () => NativeResult<unknown>
+	prepareNotifications: () => NativeResult<void>
+	watchActivityToken: () => NativeResult<void>
+}
+
+const TripsNative = registerPlugin<TripsNativePlugin>('TripsNative')
+type Device = typeof Device.Type
+const Device = Schema.Struct({bundle: PushBundle, phone: PhoneId})
+
+export function nativeCall<A>(read: () => NativeResult<A>, message: string) {
+	return Effect.tryPromise({catch: cause => FlightsError.make({cause, message}), try: read})
+}
+
+export function listener(acquire: () => NativeResult<PluginListenerHandle>) {
+	return Effect.acquireRelease(nativeCall(acquire, 'iOS could not listen for Trips updates.'), subscription =>
+		Effect.ignore(
+			nativeCall(() => subscription.remove(), 'iOS could not stop listening for Trips updates.'),
+			{log: 'Warn'}
 		)
-	},
-	{concurrency: 'unbounded'}
-)
-
-// fallow-ignore-next-line code-duplication -- Each notification app owns its handler so shared components do not autolink notifications into Stash.
-setNotificationHandler({
-	handleNotification: () =>
-		// oxlint-disable-next-line eslint/no-restricted-globals -- expo-notifications' handler contract takes a Promise.
-		Promise.resolve({shouldPlaySound: true, shouldSetBadge: false, shouldShowBanner: true, shouldShowList: true})
-})
-
-// Asked on the first launch: gate changes and delays reach the iPhone through these, and the server starts the island with the push-to-start token. The two registrations run apart, so an unanswered permission prompt never holds back the island's token.
-export const pushAtom = RpcClient.runtime.atom(get =>
-	Effect.ignore(
-		Effect.gen(function* () {
-			if (Option.isNone(session.admitted(get))) return
-			const target = yield* apns
-			const client = yield* RpcClient
-			const alerts = Effect.gen(function* () {
-				const permission = yield* Effect.tryPromise({
-					catch: cause => FlightsError.make({cause, message: 'The notification permission could not be asked.'}),
-					try: () => requestPermissionsAsync()
-				})
-				if (!permission.granted) return
-				// Leave now offers the way to the airport without opening Trips first.
-				yield* Effect.tryPromise({
-					catch: cause => FlightsError.make({cause, message: 'The Leave now actions could not be set up.'}),
-					try: () =>
-						setNotificationCategoryAsync('leave', [
-							{buttonTitle: 'Directions', identifier: 'directions', options: {opensAppToForeground: true}},
-							{buttonTitle: 'Uber', identifier: 'uber', options: {opensAppToForeground: true}}
-						])
-				})
-				// Subscribe before reading the first token, so a rotation while the app stays open reaches the same registry.
-				yield* registerPushTokens(
-					addPushTokenListener,
-					Effect.tryPromise({
-						catch: cause => FlightsError.make({cause, message: 'The push token could not be read.'}),
-						try: () => getDevicePushTokenAsync()
-					}),
-					token => client('push.register', {...target, kind: 'alert', token: Redacted.make(ApnsToken.make(token))})
-				)
-			})
-			// iOS hands out the push-to-start token and its rotations to the listener whenever it likes, for as long as the app runs; there is nothing to read first.
-			const nothingToRead: Effect.Effect<{data: string}> = Effect.never
-			const starts = registerPushTokens(
-				listener =>
-					addPushToStartTokenListener(event => {
-						listener({data: event.activityPushToStartToken})
-					}),
-				nothingToRead,
-				token => client('push.register', {...target, kind: 'start', token: Redacted.make(ApnsToken.make(token))})
-			)
-			yield* Effect.all(
-				[
-					Effect.ignore(alerts, {log: 'Warn', message: 'Notifications are not set up on this iPhone'}),
-					Effect.ignore(starts, {log: 'Warn', message: 'Live Activities are not set up on this iPhone'})
-				],
-				{concurrency: 'unbounded', discard: true}
-			)
-		}),
-		{log: 'Warn', message: 'Notifications are not set up on this iPhone'}
 	)
+}
+
+const alerts = Stream.callback<string, FlightsError>(queue =>
+	Effect.gen(function* () {
+		const permission = yield* nativeCall(
+			() => PushNotifications.requestPermissions(),
+			'Notifications could not be requested.'
+		)
+		if (permission.receive !== 'granted') {
+			yield* Queue.end(queue)
+			return
+		}
+		yield* nativeCall(() => TripsNative.prepareNotifications(), 'The Leave now actions could not be set up.')
+		yield* listener(() =>
+			PushNotifications.addListener('registration', token => {
+				Queue.offerUnsafe(queue, token.value)
+			})
+		)
+		yield* listener(() =>
+			PushNotifications.addListener('registrationError', error => {
+				Queue.failCauseUnsafe(queue, Cause.fail(FlightsError.make({message: error.error})))
+			})
+		)
+		yield* nativeCall(() => PushNotifications.register(), 'The iPhone could not register for push.')
+	})
 )
+
+const starts = Stream.callback<string, FlightsError>(queue =>
+	Effect.gen(function* () {
+		yield* listener(() =>
+			TripsNative.addListener('activityToken', token => {
+				Queue.offerUnsafe(queue, token.value)
+			})
+		)
+		yield* nativeCall(() => TripsNative.watchActivityToken(), 'The iPhone could not watch its Live Activity token.')
+	})
+)
+
+export const pushAtom = RpcClient.runtime.atom(get => {
+	if (!native || get(ownerAtom) === undefined) return Effect.void
+	return Effect.ignore(
+		Effect.gen(function* () {
+			const target = yield* Effect.flatMap(
+				nativeCall(() => TripsNative.device(), 'iOS did not name this iPhone.'),
+				Schema.decodeUnknownEffect(Device)
+			)
+			const call = yield* RpcClient
+			function tokens(source: typeof alerts, kind: ApnsDevice['kind']) {
+				return pipe(
+					source,
+					Stream.changes,
+					Stream.switchMap(value =>
+						pipe(
+							Effect.flatMap(Schema.decodeEffect(ApnsToken)(value), token =>
+								call('push.register', {...target, kind, token: Redacted.make(token)})
+							),
+							registerPushToken,
+							Stream.fromEffectDrain
+						)
+					),
+					Stream.runDrain,
+					Effect.ignore({log: 'Warn', message: `The ${kind} token could not be read`})
+				)
+			}
+			yield* Effect.all([tokens(alerts, 'alert'), tokens(starts, 'start')], {concurrency: 'unbounded', discard: true})
+		}),
+		{log: 'Warn', message: 'Trips could not register this iPhone'}
+	)
+})
