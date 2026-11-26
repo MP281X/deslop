@@ -15,7 +15,6 @@
 	],
 	"type": "module",
 	"sideEffects": false,
-	"main": "src/main.client.tsx",
 	"imports": {
 		"#lib/*": "./src/lib/*",
 		"#routes/*": "./src/routes/*",
@@ -26,24 +25,19 @@
 		"access": "public"
 	},
 	"scripts": {
-		"build": "vp pack",
-		"preview": "vp run build && node --env-file-if-exists=.env ./dist/server.js",
+		"ios:add": "vp run build && cap add ios --packagemanager SPM && sh bin/ios-init.sh",
+		"ios:sync": "vp run build && cap sync ios",
+		"preview": "vp run build && NODE_ENV=development node --env-file-if-exists=.env ./dist/server.js",
 		"test": "vp test --config ../../vite.config.ts"
 	},
-	"dependencies": {
-		"expo": "^58.0.26",
-		"react": "latest",
-		"react-native": "0.88.1"
-	},
 	"devDependencies": {
-		"@deslop/components-mobile": "workspace:*",
+		"@capacitor/cli": "latest",
+		"@capacitor/core": "latest",
+		"@capacitor/ios": "latest",
 		"@deslop/runtime": "workspace:*",
-		"@effect/atom-react": "latest",
-		"@expo/ui": "^58.0.29",
-		"effect": "latest",
-		"expo-secure-store": "^58.0.3",
-		"expo-updates": "^58.0.22",
-		"expo-web-browser": "^58.1.0"
+		"@deslop/ui": "workspace:*",
+		"@effect/ui": "https://pkg.pr.new/Effect-TS/ui/@effect/ui@87a704bef41b40de8fa7bced97cae5d69c4233a0",
+		"effect": "latest"
 	},
 	"config": {
 		"port": 5100

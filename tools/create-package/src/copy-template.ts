@@ -2,9 +2,8 @@ import {Console, Effect, FileSystem, Path} from 'effect'
 
 import {CliError} from 'effect/cli'
 
-export const copyTemplate = Effect.fnUntraced(function* <E, R>(input: {
-	from: string
-	prepare: (directory: string) => Effect.Effect<void, E, R>
+export const copyTemplate = Effect.fnUntraced(function* (input: {
+	from: readonly string[]
 	rewrite: (content: string) => string
 	to: string
 }) {
@@ -20,20 +19,21 @@ export const copyTemplate = Effect.fnUntraced(function* <E, R>(input: {
 				path.basename(input.to)
 			)
 			yield* fs.makeDirectory(root)
-			yield* Effect.forEach(
-				yield* fs.readDirectory(input.from, {recursive: true}),
-				entry =>
-					Effect.gen(function* () {
-						const from = path.join(input.from, entry)
-						const to = path.join(root, entry)
-						if ((yield* fs.stat(from)).type === 'Directory') return
-						yield* fs.makeDirectory(path.dirname(to), {recursive: true})
-						if (path.extname(entry) === '.png') return yield* fs.copyFile(from, to)
-						yield* fs.writeFileString(to, input.rewrite(yield* fs.readFileString(from)))
-					}),
-				{concurrency: 'unbounded'}
-			)
-			yield* input.prepare(root)
+			for (const directory of input.from) {
+				yield* Effect.forEach(
+					yield* fs.readDirectory(directory, {recursive: true}),
+					entry =>
+						Effect.gen(function* () {
+							const from = path.join(directory, entry)
+							const to = path.join(root, entry)
+							if ((yield* fs.stat(from)).type === 'Directory') return
+							yield* fs.makeDirectory(path.dirname(to), {recursive: true})
+							if (path.extname(entry) === '.png') return yield* fs.copyFile(from, to)
+							yield* fs.writeFileString(to, input.rewrite(yield* fs.readFileString(from)))
+						}),
+					{concurrency: 'unbounded'}
+				)
+			}
 			yield* fs.rename(root, input.to)
 		})
 	)

@@ -1,2 +1,1 @@
-@import '@deslop/components-web/theme.css';
-@source '../../../../packages/components-web/src/**/*.tsx';
+@import '@deslop/ui/theme.css';

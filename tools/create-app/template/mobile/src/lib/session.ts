@@ -1,15 +1,27 @@
-import {AtomRpc} from 'effect/reactivity'
+import {Boolean, Effect} from 'effect'
 
-import {makeSession} from '@deslop/runtime/mobile/session'
-import {RpcStream} from '@deslop/runtime/shared/rpc'
+import {Capacitor} from '@capacitor/core'
+import {Atom} from 'effect/reactivity'
 
-import {RpcContracts} from '#rpcs/contracts.ts'
+import {signInUrl} from '@deslop/runtime/shared/auth'
+import {accountAtom, addPageTelemetry, layerPageProtocol} from '@deslop/runtime/web/client'
+import {layerNativeProtocol, nativeAccount, nativeSignIn} from '@deslop/ui/native'
 
-export const session = makeSession()
-
-class RpcClient extends AtomRpc.Service<RpcClient>()('@deslop/template-app/lib/session/RpcClient', {
-	group: RpcContracts.middleware(RpcStream),
-	protocol: session.protocol
-}) {}
-
-export const nameAtom = RpcClient.query('app.name', undefined)
+export const session = Boolean.match(Capacitor.isNativePlatform(), {
+	onFalse: () => {
+		addPageTelemetry('@deslop/template-app')
+		return {
+			account: accountAtom,
+			protocol: layerPageProtocol,
+			signIn: Effect.sync(() => {
+				location.replace(signInUrl(location.href))
+				return false
+			})
+		}
+	},
+	onTrue: () => ({
+		account: Atom.make(nativeAccount),
+		protocol: layerNativeProtocol,
+		signIn: Effect.map(nativeSignIn, result => result.signedIn)
+	})
+})

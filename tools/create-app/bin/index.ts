@@ -4,7 +4,6 @@ import {NodeRuntime, NodeServices} from '@effect/platform-node'
 
 import {Array, Effect, FileSystem, Number, Option, Path, Predicate, Schema, String, flow, pipe} from 'effect'
 
-import {Generator, getConfig} from '@tanstack/router-generator'
 import {CliError, Command, Flag} from 'effect/cli'
 
 import {copyTemplate} from '@deslop/create-package'
@@ -23,7 +22,7 @@ const create = Command.make(
 	{
 		kind: pipe(
 			Flag.Literals('kind', ['web', 'mobile']),
-			Flag.withDescription('A web app, or an iOS app with an Expo client'),
+			Flag.withDescription('A web app, or a web app packaged for iOS with Capacitor'),
 			Flag.withDefault('web')
 		),
 		name: nameFlag('Unscoped application name')
@@ -59,28 +58,13 @@ const create = Command.make(
 			Schema.decodeEffect(Port)(Array.max([5100, ...Array.getSomes(ports)], Number.Order) + 1),
 			cause => CliError.UserError.make({cause, userMessage: 'No default port is left above the highest an app takes.'})
 		)
+		const template = path.join(import.meta.dirname, '../template')
+		const web = path.join(template, 'web')
 		yield* copyTemplate({
-			from: path.join(import.meta.dirname, '../template', input.kind),
-			prepare: directory => {
-				if (input.kind === 'mobile') return Effect.void
-				return Effect.tryPromise({
-					catch: cause =>
-						CliError.UserError.make({cause, userMessage: 'Route generation failed; the app was not created'}),
-					try: () =>
-						new Generator({
-							config: getConfig(
-								{
-									autoCodeSplitting: true,
-									target: 'react',
-									tmpDir: path.join(directory, 'node_modules/.cache/tanstack')
-								},
-								directory
-							),
-							root: directory
-						}).run()
-				})
-			},
+			from: {mobile: [web, path.join(template, 'mobile')], web: [web]}[input.kind],
 			rewrite: flow(
+				// Capacitor rejects hyphens and segments starting with digits.
+				String.replaceAll('templateBundleSlug', String.replaceAll('-', '.x')(input.name)),
 				String.replaceAll('template-app', input.name),
 				String.replaceAll('"port": 5100', `"port": ${port}`)
 			),
