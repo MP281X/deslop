@@ -70,7 +70,7 @@ Write to him only finished work and questions on his calls, a plan waiting on hi
 3. **Each decision or fact once**, a short line led by its point in bold, with its reason only when he would otherwise question it.
 4. **What the reader must act on.** Only a question to him gets a number, never a heading, a step or a fact, the count continuing from the last reply's, a side chat's from its main thread's. Outside a picture, a variant is a `- a.` bullet under its number.
 
-Leave out whatever changes none of his decisions: caveats, what you didn't check, how you got there, what he already knows or an earlier reply said, words coined during the work, what a picture shows, and what T3 shows him: running delegates, PRs with their links, checks and contents, side chats and thread status. Never tell him what to say next, such as "say proceed".
+Leave out whatever changes none of his decisions: caveats, what you didn't check, how you got there, what he already knows or an earlier reply said, words coined during the work, what a picture shows, and what T3 shows him: running delegates, queued messages, PRs with their links, checks and contents, side chats and thread status. Never tell him what to say next, such as "say proceed".
 
 <example>
 `html_render`: "18. Install `oras` and `qemu-user-binfmt` on worker?" over two push flows: a. Dual's browser acceptance runs on worker before the push; b. it first runs in CI, after the push.
