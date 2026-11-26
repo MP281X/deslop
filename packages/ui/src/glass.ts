@@ -1,7 +1,8 @@
 import {Mount} from '@effect/ui'
+import type {View} from '@effect/ui'
 import type {Html} from '@effect/ui/html'
 
-import {Effect, Stream} from 'effect'
+import {Effect, Function, Number, Option, Stream, String, pipe} from 'effect'
 
 import {Button} from './control.ts'
 
@@ -15,13 +16,13 @@ const FRAGMENT = `#version 300 es
 precision highp float;
 uniform vec2 resolution;
 uniform float scale;
+uniform float corner;
 out vec4 color;
 void main() {
   vec2 p = (gl_FragCoord.xy - resolution * .5) / scale;
   vec2 halfSize = resolution * .5 / scale;
-  float radius = min(halfSize.x, halfSize.y);
-  float axis = halfSize.x - radius;
-  vec2 q = p - vec2(clamp(p.x, -axis, axis), 0.);
+  float radius = min(min(halfSize.x, halfSize.y), corner);
+  vec2 q = p - clamp(p, -halfSize + radius, halfSize - radius);
   float r = length(q);
   float depth = radius - r;
   float coverage = smoothstep(0., 1., depth);
@@ -29,7 +30,7 @@ void main() {
   float bevel = exp(-depth / 2.2);
   float sheen = max(dot(normal, normalize(vec2(-.35, 1.))), 0.);
   vec3 refracted = refract(vec3(0., 0., -1.), normalize(vec3(normal * bevel, 1.)), .68);
-  float ambient = clamp(.5 + .74 * (p.y / (2. * radius) - refracted.y), 0., 1.);
+  float ambient = clamp(.5 + .74 * (p.y / (2. * halfSize.y) - refracted.y), 0., 1.);
   float reflection = bevel * (.10 + .40 * sheen);
   float opacity = coverage * (.018 + .115 * ambient + reflection);
   color = vec4(vec3((.79 + .13 * ambient) * opacity), opacity);
@@ -58,14 +59,25 @@ function drawLens(canvas: HTMLCanvasElement) {
 	gl.useProgram(program)
 	const resolution = gl.getUniformLocation(program, 'resolution')
 	const scale = gl.getUniformLocation(program, 'scale')
+	const corner = gl.getUniformLocation(program, 'corner')
 	const surface = canvas
 	const observer = new ResizeObserver(() => {
+		if (canvas.clientWidth === 0 || canvas.clientHeight === 0) return
 		const density: number = window.devicePixelRatio
 		surface.width = Math.ceil(canvas.clientWidth * density)
 		surface.height = Math.ceil(canvas.clientHeight * density)
 		gl.viewport(0, 0, canvas.width, canvas.height)
 		gl.uniform2f(resolution, canvas.width, canvas.height)
 		gl.uniform1f(scale, density)
+		gl.uniform1f(
+			corner,
+			pipe(
+				getComputedStyle(canvas).borderTopLeftRadius,
+				String.replace('px', ''),
+				Number.parse,
+				Option.getOrElse(Function.constant(0))
+			)
+		)
 		gl.drawArrays(gl.TRIANGLES, 0, 3)
 	})
 	observer.observe(canvas)
@@ -87,8 +99,18 @@ const Lens = Mount.makeStream('Lens', {args: {}}, (canvas: HTMLCanvasElement) =>
 	)
 )
 
-export function Glass<M>(h: Html.H<M>) {
-	return h.div.class('glass').children(h.canvas.class('glass-lens').attr('aria-hidden', 'true').onMount(Lens({})))
+export function Glass<M>(h: Html.H<M>, className?: string) {
+	return h.div
+		.class('glass', className)
+		.children(h.canvas.class('glass-lens').attr('aria-hidden', 'true').onMount(Lens({})))
+}
+
+// Set the invoker's popovertarget to id so the browser owns both dismissal and the anchor.
+export function GlassPanel<M>(h: Html.H<M>, id: string, label: string, children: View.Input<M>) {
+	return Glass(h, 'glass-panel')
+		.id(id)
+		.attrs({'aria-label': label, popover: 'auto', role: 'group'})
+		.children(h.div.class('glass-panel-body').children(children))
 }
 
 export function SidebarControl<M>(h: Html.H<M>, open: boolean, message: M, className?: string) {

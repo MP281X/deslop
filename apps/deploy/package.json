@@ -22,11 +22,9 @@
 	"type": "module",
 	"sideEffects": false,
 	"imports": {
-		"#lib/*": "./src/lib/*",
-		"#routes/*": "./src/routes/*",
-		"#rpcs/*": "./src/rpcs/*",
-		"#services/*": "./src/services/*",
-		"#tools/*": "./src/tools/*"
+		"#server/*": "./src/server/*",
+		"#web/*": "./src/web/*",
+		"#contracts": "./src/contracts.ts"
 	},
 	"publishConfig": {
 		"access": "public"

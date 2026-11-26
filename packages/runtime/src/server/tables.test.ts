@@ -31,11 +31,12 @@ type ColumnInfo = typeof ColumnInfo.Type
 const ColumnInfo = Schema.Struct({name: Schema.String, notnull: Schema.BooleanFromBit, type: Schema.String})
 
 // Every service whose class carries its `migrations`, and every model that names its `table`, by app: one app is one database.
-const servers = import.meta.glob('../../../../apps/*/src/main.server.ts')
-const services = import.meta.glob<Record<string, unknown>>('../../../../apps/*/src/services/*/service.ts', {
-	eager: true
-})
-const schemas = import.meta.glob<Record<string, unknown>>('../../../../apps/*/src/services/*/schema.ts', {eager: true})
+const servers = import.meta.glob('../../../../apps/*/src/server/main.ts')
+const services = import.meta.glob<Record<string, unknown>>('../../../../apps/*/src/server/*/service.ts', {eager: true})
+const schemas = import.meta.glob<Record<string, unknown>>(
+	['../../../../apps/*/src/contracts.ts', '../../../../apps/*/src/server/*/schema.ts'],
+	{eager: true}
+)
 
 function appOf(file: string) {
 	return Option.getOrThrow(pipe(file, String.split('/'), Array.get(5)))

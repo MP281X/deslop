@@ -1,0 +1,221 @@
+@import '@deslop/ui/theme.css';
+
+.scope {
+	--pane-padding: 12px;
+	--scope-number: 56px;
+	font-size: 14px;
+}
+
+.scope .fold {
+	--pane-padding: 12px;
+}
+
+.scope .scope-list {
+	padding: 0 var(--pane-padding) 12px;
+}
+
+.scope-operation {
+	--pane-padding: 10px;
+	min-height: 46px;
+}
+
+.scope-operation > .axis-value,
+.scope-trace-summary > .axis-value {
+	font-size: 0.85rem;
+	white-space: nowrap;
+}
+
+.scope-chip {
+	display: inline-flex;
+	min-height: 36px;
+	align-items: center;
+	gap: 5px;
+	padding-inline: 10px;
+	border-radius: 999px;
+	font-size: 0.8rem;
+}
+
+.scope-chevron {
+	width: 0.375em;
+	height: 0.375em;
+	flex: none;
+	margin-block-start: -0.1875em;
+	border: solid currentColor;
+	border-width: 0 1px 1px 0;
+	color: var(--color-muted-foreground);
+	transform: rotate(45deg);
+}
+
+#scope-ranges .glass-panel-body {
+	min-inline-size: 8rem;
+}
+
+.scope-filter-row {
+	min-height: 40px;
+}
+
+.scope-trace-choice {
+	display: inline-flex;
+	max-width: 100%;
+	align-items: center;
+	gap: 6px;
+	text-align: start;
+}
+
+.scope-detail {
+	padding-block: 6px 12px;
+}
+
+.scope-page-failure {
+	padding: calc(env(safe-area-inset-top) + 12px) env(safe-area-inset-right) 12px env(safe-area-inset-left);
+}
+
+.scope-state {
+	padding: 8px var(--pane-padding);
+}
+
+.scope-trace-summary {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) auto;
+	align-items: center;
+	gap: 8px;
+	padding: 0 var(--pane-padding) 6px;
+}
+
+.scope-waterfall {
+	max-height: 60dvh;
+	overflow: auto;
+	overscroll-behavior: contain;
+	scrollbar-width: none;
+}
+
+.scope-waterfall-grid {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) minmax(0, 1.45fr) var(--scope-number);
+	align-items: center;
+	column-gap: 8px;
+	padding-inline: var(--pane-padding);
+}
+
+.scope-axis {
+	position: sticky;
+	inset-block-start: 0;
+	z-index: 1;
+	min-height: 24px;
+	background: var(--color-background);
+	color: var(--color-muted-foreground);
+	font-size: 0.625rem;
+}
+
+.scope-timeline {
+	position: relative;
+	grid-column: 2;
+}
+
+.scope-tick {
+	position: absolute;
+	inset-block-end: -4px;
+	translate: -50%;
+	white-space: nowrap;
+}
+
+.scope-tick::after {
+	display: block;
+	width: 1px;
+	height: 3px;
+	margin-inline: auto;
+	background: currentColor;
+	content: '';
+}
+
+.scope-span {
+	min-height: 40px;
+}
+
+.scope-span-name {
+	overflow: hidden;
+	font-size: 0.85rem;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.scope-span > .axis-value {
+	font-size: 0.8rem;
+}
+
+.scope-track {
+	height: 4px;
+}
+
+.scope-bar {
+	position: absolute;
+	inset-block: 0;
+	inset-inline-start: min(var(--span-start), calc(100% - 2px));
+	width: max(2px, var(--span-width));
+	background: var(--color-muted-foreground);
+}
+
+.scope-bar-failed {
+	background: var(--color-destructive);
+}
+
+.scope-diagnostics {
+	min-width: 0;
+	padding: 12px var(--pane-padding);
+}
+
+.scope-diagnostic-message {
+	margin-block-end: 8px;
+}
+
+.scope-diagnostic-message :is(.axis-title, .axis-muted),
+.scope-field :is(dt, dd) {
+	overflow: visible;
+	overflow-wrap: anywhere;
+	white-space: pre-wrap;
+}
+
+.scope-field {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) minmax(0, 1.35fr);
+	gap: 10px;
+	padding-block: 2px;
+}
+
+.scope-field dd {
+	text-align: end;
+}
+
+.scope-logs {
+	margin-block-start: 12px;
+}
+
+.scope-log {
+	display: grid;
+	grid-template-columns: max-content minmax(0, 1fr);
+	gap: 10px;
+	padding-block: 3px;
+}
+
+.scope-log pre {
+	overflow-wrap: anywhere;
+	white-space: pre-wrap;
+}
+
+@media (min-width: 1100px) {
+	.scope-waterfall-grid {
+		grid-template-columns: minmax(0, 0.55fr) minmax(0, 1.45fr) var(--scope-number);
+	}
+}
+
+@media (min-width: 2560px) {
+	.scope-trace-content {
+		display: grid;
+		grid-template-columns: minmax(0, 1fr) minmax(400px, 34%);
+	}
+	.scope-waterfall,
+	.scope-diagnostics {
+		max-height: calc(100dvh - 105px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+		overflow: auto;
+	}
+}

@@ -44,7 +44,7 @@ sed -i '' \
 ' \
 	-e '/Begin PBXFileReference section/a\
 		D35000000000000000000002 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ../../../../packages/ui/native/DeslopNative.swift; sourceTree = SOURCE_ROOT; };\
-		D35000000000000000000004 = {isa = PBXFileReference; lastKnownFileType = folder.iconcomposer.icon; path = ../../src/routes/app.icon; sourceTree = SOURCE_ROOT; };
+		D35000000000000000000004 = {isa = PBXFileReference; lastKnownFileType = folder.iconcomposer.icon; path = ../../src/web/app.icon; sourceTree = SOURCE_ROOT; };
 ' \
 	-e 's/^\([[:space:]]*\)\(.*AppDelegate.swift in Sources \*\/,$\)/\1D35000000000000000000001,\
 \1\2/' \

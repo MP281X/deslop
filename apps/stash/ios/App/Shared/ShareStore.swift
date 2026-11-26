@@ -72,6 +72,11 @@ struct ShareStore: Sendable {
     server = try StashServer(app: app)
   }
 
+  var pushToStartToken: String? {
+    get { UserDefaults(suiteName: group)?.string(forKey: "stash.pushToStart") }
+    nonmutating set { UserDefaults(suiteName: group)?.set(newValue, forKey: "stash.pushToStart") }
+  }
+
   func request(_ path: String, type: String) -> URLRequest {
     server.request(path, method: "POST", type: type)
   }

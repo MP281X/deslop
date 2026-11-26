@@ -6,12 +6,12 @@
 		<meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
 		<meta name="theme-color" content="#0d0c0c" media="(prefers-color-scheme: dark)" />
 		<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-		<link rel="icon" href="/src/routes/icon.svg" />
+		<link rel="icon" href="/src/web/icon.svg" />
 		<link rel="apple-touch-icon" href="/apple-touch-icon.png" />
 		<link rel="manifest" href="/manifest.webmanifest" />
 		<!-- Requested with the profile, so presence never waits a round trip for it; the printable CV reads none. -->
 		<script>
-			if (!/^\/cv\/?$/iu.test(location.pathname)) {
+			if (!/^\/cv\/?$/u.test(location.pathname)) {
 				document.head.append(
 					Object.assign(document.createElement('link'), {
 						as: 'fetch',
@@ -25,6 +25,6 @@
 	</head>
 	<body>
 		<div id="root" class="portfolio-shell"></div>
-		<script type="module" src="/src/main.client.ts"></script>
+		<script type="module" src="/src/web/main.ts"></script>
 	</body>
 </html>

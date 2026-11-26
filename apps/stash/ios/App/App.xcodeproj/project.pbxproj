@@ -23,6 +23,10 @@
 		B584CA65000000000000000A /* ShareViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = B584CA65000000000000000B /* ShareViewController.swift */; };
 		B584CA65000000000000000C /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = B584CA65000000000000000D /* Assets.xcassets */; };
 		B584CA65000000000000000E /* StashShare.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = B584CA65000000000000000F /* StashShare.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		B584CA650000000000000052 /* SaveActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = B584CA650000000000000051 /* SaveActivityAttributes.swift */; };
+		B584CA650000000000000044 /* StashActivities.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = B584CA650000000000000043 /* StashActivities.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		B584CA650000000000000046 /* SaveActivity.swift in Sources */ = {isa = PBXBuildFile; fileRef = B584CA650000000000000040 /* SaveActivity.swift */; };
+		B584CA650000000000000049 /* SaveActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = B584CA650000000000000051 /* SaveActivityAttributes.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -33,6 +37,7 @@
 			remoteGlobalIDString = B584CA650000000000000011;
 			remoteInfo = StashShare;
 		};
+		B584CA65000000000000004F /* PBXContainerItemProxy */ = {isa = PBXContainerItemProxy; containerPortal = 504EC2FC1FED79650016851F /* Project object */; proxyType = 1; remoteGlobalIDString = B584CA65000000000000004B; remoteInfo = StashActivities; };
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -43,6 +48,7 @@
 			dstSubfolderSpec = 13;
 			files = (
 				B584CA65000000000000000E /* StashShare.appex in Embed App Extensions */,
+				B584CA650000000000000044 /* StashActivities.appex in Embed App Extensions */,
 			);
 			name = "Embed App Extensions";
 			runOnlyForDeploymentPostprocessing = 0;
@@ -70,6 +76,10 @@
 		B584CA650000000000000013 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		B584CA650000000000000014 /* App.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = App.entitlements; sourceTree = "<group>"; };
 		B584CA650000000000000015 /* Share.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Share.entitlements; sourceTree = "<group>"; };
+		B584CA650000000000000051 /* SaveActivityAttributes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SaveActivityAttributes.swift; sourceTree = "<group>"; };
+		B584CA650000000000000040 /* SaveActivity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SaveActivity.swift; sourceTree = "<group>"; };
+		B584CA650000000000000041 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		B584CA650000000000000043 /* StashActivities.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = StashActivities.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -98,6 +108,7 @@
 				504EC3061FED79650016851F /* App */,
 				B584CA650000000000000017 /* Share */,
 				B584CA650000000000000018 /* Shared */,
+				B584CA65000000000000004A /* Activities */,
 				504EC3051FED79650016851F /* Products */,
 			);
 			sourceTree = "<group>";
@@ -106,6 +117,7 @@
 			isa = PBXGroup;
 			children = (
 				B584CA65000000000000000F /* StashShare.appex */,
+				B584CA650000000000000043 /* StashActivities.appex */,
 				504EC3041FED79650016851F /* App.app */,
 			);
 			name = Products;
@@ -145,8 +157,18 @@
 			isa = PBXGroup;
 			children = (
 				B584CA650000000000000008 /* ShareStore.swift */,
+				B584CA650000000000000051 /* SaveActivityAttributes.swift */,
 			);
 			path = Shared;
+			sourceTree = "<group>";
+		};
+		B584CA65000000000000004A /* Activities */ = {
+			isa = PBXGroup;
+			children = (
+				B584CA650000000000000040 /* SaveActivity.swift */,
+				B584CA650000000000000041 /* Info.plist */,
+			);
+			path = Activities;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -165,6 +187,7 @@
 			);
 			dependencies = (
 				B584CA650000000000000019 /* PBXTargetDependency */,
+				B584CA650000000000000050 /* PBXTargetDependency */,
 			);
 			name = App;
 			packageProductDependencies = (
@@ -189,6 +212,22 @@
 			name = StashShare;
 			productName = StashShare;
 			productReference = B584CA65000000000000000F /* StashShare.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
+		B584CA65000000000000004B /* StashActivities */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = B584CA65000000000000004C /* Build configuration list for PBXNativeTarget "StashActivities" */;
+			buildPhases = (
+				B584CA650000000000000045 /* Sources */,
+				B584CA650000000000000047 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = StashActivities;
+			productName = StashActivities;
+			productReference = B584CA650000000000000043 /* StashActivities.appex */;
 			productType = "com.apple.product-type.app-extension";
 		};
 /* End PBXNativeTarget section */
@@ -224,6 +263,7 @@
 			projectRoot = "";
 			targets = (
 				B584CA650000000000000011 /* StashShare */,
+				B584CA65000000000000004B /* StashActivities */,
 				504EC3031FED79650016851F /* App */,
 			);
 		};
@@ -251,6 +291,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		B584CA650000000000000047 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
@@ -262,6 +309,7 @@
 				B584CA650000000000000003 /* StashNativePlugin.swift in Sources */,
 				B584CA650000000000000005 /* DeslopNative.swift in Sources */,
 				B584CA650000000000000007 /* ShareStore.swift in Sources */,
+				B584CA650000000000000052 /* SaveActivityAttributes.swift in Sources */,
 				9582B6832FE993A70072D4E8 /* SceneDelegate.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -275,6 +323,15 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		B584CA650000000000000045 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				B584CA650000000000000046 /* SaveActivity.swift in Sources */,
+				B584CA650000000000000049 /* SaveActivityAttributes.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -283,6 +340,7 @@
 			target = B584CA650000000000000011 /* StashShare */;
 			targetProxy = B584CA650000000000000010 /* PBXContainerItemProxy */;
 		};
+		B584CA650000000000000050 /* PBXTargetDependency */ = {isa = PBXTargetDependency; target = B584CA65000000000000004B /* StashActivities */; targetProxy = B584CA65000000000000004F /* PBXContainerItemProxy */; };
 /* End PBXTargetDependency section */
 
 /* Begin PBXVariantGroup section */
@@ -338,6 +396,7 @@
 				DEVELOPMENT_TEAM = 99K7MQUK7F;
 				MARKETING_VERSION = 0.1.0;
 				STASH_BUNDLE_IDENTIFIER = xyz.mp281x.stash.dev;
+				STASH_APS_ENVIRONMENT = development;
 				STASH_DISPLAY_NAME = "stash dev";
 				STASH_GROUP = "group.$(STASH_BUNDLE_IDENTIFIER)";
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -406,6 +465,7 @@
 				DEVELOPMENT_TEAM = 99K7MQUK7F;
 				MARKETING_VERSION = 0.1.0;
 				STASH_BUNDLE_IDENTIFIER = xyz.mp281x.stash;
+				STASH_APS_ENVIRONMENT = production;
 				STASH_DISPLAY_NAME = "stash";
 				STASH_GROUP = "group.$(STASH_BUNDLE_IDENTIFIER)";
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -509,6 +569,36 @@
 			};
 			name = Release;
 		};
+		B584CA65000000000000004D /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_STYLE = Automatic;
+				INFOPLIST_FILE = Activities/Info.plist;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(STASH_BUNDLE_IDENTIFIER).activities";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				LD_RUNPATH_SEARCH_PATHS = ("$(inherited)", "@executable_path/Frameworks", "@executable_path/../../Frameworks");
+			};
+			name = Debug;
+		};
+		B584CA65000000000000004E /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_STYLE = Automatic;
+				INFOPLIST_FILE = Activities/Info.plist;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(STASH_BUNDLE_IDENTIFIER).activities";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				LD_RUNPATH_SEARCH_PATHS = ("$(inherited)", "@executable_path/Frameworks", "@executable_path/../../Frameworks");
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -535,6 +625,15 @@
 			buildConfigurations = (
 				B584CA65000000000000001D /* Debug */,
 				B584CA65000000000000001E /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		B584CA65000000000000004C /* Build configuration list for PBXNativeTarget "StashActivities" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				B584CA65000000000000004D /* Debug */,
+				B584CA65000000000000004E /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

@@ -1,0 +1,90 @@
+@import '@deslop/ui/theme.css';
+
+.auth {
+	--pane-padding: 10px;
+}
+
+.auth-list,
+.auth-detail {
+	padding: 8px;
+}
+
+.auth .axis-row {
+	min-height: 44px;
+	font-size: 0.875rem;
+}
+
+.auth .axis-muted {
+	font-size: 0.75rem;
+}
+
+.auth .axis-value {
+	white-space: nowrap;
+}
+
+.auth-row-name {
+	display: grid;
+	min-width: 0;
+	line-height: 1.3;
+}
+
+.auth-person {
+	cursor: pointer;
+}
+
+.auth-action img {
+	width: 16px;
+	height: 16px;
+}
+
+.auth-action {
+	display: inline-flex;
+	align-items: center;
+	gap: 8px;
+	min-height: 34px;
+	padding-inline: 12px;
+	border-radius: inherit;
+	font-size: 0.875rem;
+	white-space: nowrap;
+	cursor: pointer;
+}
+
+.axis-muted.auth-status,
+.auth-status .axis-muted {
+	white-space: normal;
+}
+
+.auth-screen {
+	min-height: 100dvh;
+	display: grid;
+	align-content: center;
+	justify-items: center;
+	padding: max(16px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right))
+		max(16px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+}
+
+.auth-center {
+	display: grid;
+	justify-items: center;
+	gap: 12px;
+	max-width: 100%;
+	text-align: center;
+}
+
+.shell-actions svg {
+	fill: none;
+	stroke: currentColor;
+	stroke-width: 2;
+	stroke-linecap: round;
+	stroke-linejoin: round;
+}
+
+.shell-controls > .shell-actions:only-child {
+	margin-inline-start: auto;
+}
+
+.auth-waiting {
+	flex: 1;
+	min-height: 0;
+	padding: 16px;
+}
