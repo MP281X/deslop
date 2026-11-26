@@ -3,7 +3,6 @@ import {Array, Boolean, DateTime, Duration, Function, HashMap, Number, Option, p
 import {usdOf} from '@deslop/runtime/shared/format'
 
 import type {AiUsageBreakdown, AiUsageReport, SpendSource} from '#services/ai-metering/schema.ts'
-import type {McpUsageServer, ServerId} from '#services/connections/schema.ts'
 import type {UsageRange} from '#services/usage/schema.ts'
 
 // `~` marks a figure that is estimated or missing a call's cost.
@@ -45,16 +44,5 @@ export function aiCost(report: AiUsageReport, source: SpendSource) {
 			onNone: () => costOf({costUsd: 0, estimatedCalls: 0, spendSource: source, unknownCostCalls: 0}),
 			onSome: costOf
 		})
-	)
-}
-export function serverSeries(report: readonly McpUsageServer[], id: ServerId, range: UsageRange) {
-	return seriesOf(range, at =>
-		pipe(
-			report,
-			Array.findFirst(row => row.id === id),
-			Option.flatMap(row => Array.findFirst(row.series, bucket => DateTime.Equivalence(bucket.at, at))),
-			Option.map(bucket => bucket.calls),
-			Option.getOrElse(Function.constant(0))
-		)
 	)
 }
