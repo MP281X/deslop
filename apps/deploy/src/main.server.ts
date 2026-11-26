@@ -21,7 +21,7 @@ const layerServices = pipe(
 	Machine.layer,
 	// Exposures read port owners from the inventory.
 	Layer.provideMerge(Layer.unwrap(Effect.map(dataDirectory, Exposures.layer))),
-	Layer.provideMerge(Layer.mergeAll(Inventory.layer, Metrics.layer)),
+	Layer.provideMerge(Layer.provideMerge(Metrics.layer, Inventory.layer)),
 	Layer.provide(ToolPath.layer)
 )
 

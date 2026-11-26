@@ -438,19 +438,12 @@ export function reasonOf(item: InventoryItem) {
 	return Option.match(item.failure, {onNone: () => item.detail, onSome: stop => stop.reason})
 }
 
-export function failureAge(item: InventoryItem, now: DateTime.Utc) {
+export function reasonLine(item: InventoryItem, now: DateTime.Utc) {
 	return pipe(
 		item.failure,
 		Option.flatMap(stop => stop.at),
-		Option.map(at => ageOf(at, now))
+		Option.match({onNone: () => reasonOf(item), onSome: at => `${reasonOf(item)} · ${ageOf(at, now)}`})
 	)
-}
-
-export function reasonLine(item: InventoryItem, now: DateTime.Utc) {
-	return Option.match(failureAge(item, now), {
-		onNone: () => reasonOf(item),
-		onSome: age => `${reasonOf(item)} · ${age}`
-	})
 }
 
 // A process with everything below it: `memory` and `cpu` cover the subtree; `cpu` stays unknown while no member reports one.
@@ -548,6 +541,48 @@ export function processTree(rows: readonly Process[]) {
 		return {...node, children: settle(Array.map(node.children, place), appMemory)}
 	}
 	return settle(Array.map(roots, place), appMemory)
+}
+
+// A process keeps its track when its wrapper or PID changes.
+function tracks(nodes: readonly ProcessNode[]): {key: string; node: ProcessNode}[] {
+	return Array.flatMap(nodes, node => [
+		{key: `${node.label.name.length}:${node.label.name}${node.label.detail.length}:${node.label.detail}`, node},
+		...tracks(node.children)
+	])
+}
+
+// Indistinguishable processes share a track rather than being numbered by changing PIDs.
+export function processTrackUsage(nodes: readonly ProcessNode[]) {
+	return pipe(
+		tracks(nodes),
+		Array.groupBy(track => track.key),
+		Record.values,
+		Array.map(group => ({
+			key: group[0].key,
+			label: group[0].node.label,
+			...usage(Array.map(group, track => track.node))
+		}))
+	)
+}
+
+export function attachProcesses(
+	items: readonly InventoryItem[],
+	records: readonly {owner: Option.Option<AppId>; process: Process}[]
+) {
+	const owners = Array.groupBy(
+		Array.getSomes(Array.map(records, record => Option.map(record.owner, owner => ({owner, process: record.process})))),
+		record => record.owner
+	)
+	return Array.map(items, item => ({
+		...item,
+		processes: Option.some(
+			pipe(
+				item.kind === 'service' || item.kind === 'container',
+				Boolean.match({onFalse: () => [], onTrue: () => owners[itemOwner(item)] ?? []}),
+				Array.map(record => record.process)
+			)
+		)
+	}))
 }
 
 function errorsOf(sources: readonly {readonly error: Option.Option<string>; readonly name: string}[]) {

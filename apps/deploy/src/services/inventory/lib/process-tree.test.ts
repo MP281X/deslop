@@ -1,8 +1,8 @@
 import {assert, it} from '@effect/vitest'
 
-import {Array, Option, Order, Schema} from 'effect'
+import {Array, Option, Order, Schema, pipe} from 'effect'
 
-import {type ProcessNode, processTree} from '#services/inventory/lib/utils.ts'
+import {type ProcessNode, processTrackUsage, processTree} from '#services/inventory/lib/utils.ts'
 import {Process} from '#services/inventory/schema.ts'
 
 function label(name: string, detail = '') {
@@ -87,4 +87,26 @@ it('keeps unknown CPU unknown and terminates cyclic source relationships', () =>
 	assert.lengthOf(tree, 1)
 	assert.deepStrictEqual(tree[0]?.cpu, Option.none())
 	assert.strictEqual(tree[0]?.memory, 3)
+})
+
+function reads(parent: number) {
+	return Schema.decodeSync(Schema.Array(Process))([
+		{label: label('server'), memory: 5, name: 'server', parent: 0, pid: parent},
+		{label: label('worker'), memory: 3, name: 'worker', parent, pid: parent + 1},
+		{label: label('worker'), memory: 2, name: 'worker', parent, pid: parent + 2}
+	])
+}
+
+it('tracks process roles across a restart without inventing identities for matching siblings', () => {
+	const before = pipe(reads(1), processTree, processTrackUsage)
+	assert.deepStrictEqual(pipe(reads(44), processTree, processTrackUsage), before)
+	assert.lengthOf(before, 2)
+	assert.deepStrictEqual(
+		pipe(
+			before,
+			Array.findFirst(track => track.label.name === 'worker'),
+			Option.map(track => track.memory)
+		),
+		Option.some(5)
+	)
 })

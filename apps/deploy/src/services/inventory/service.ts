@@ -1,3 +1,5 @@
+import {userInfo} from 'node:os'
+
 import {
 	Array,
 	Boolean,
@@ -12,6 +14,7 @@ import {
 	FileSystem,
 	Function,
 	HashMap,
+	HashSet,
 	Layer,
 	Number,
 	Option,
@@ -31,11 +34,14 @@ import {Reactivity} from 'effect/reactivity'
 import {executeProcess} from '@deslop/runtime/server/process'
 import type {Admin} from '@deslop/runtime/shared/auth'
 
+import {appUnit, appUnitName, ownedProcess, ownedUnits, restartTimes} from './lib/apps.ts'
 import {unitFailures} from './lib/failures.ts'
-import {attachProcesses, processReadings, processes} from './lib/processes.ts'
+import {processReadings, processes} from './lib/processes.ts'
 import {type Socket, probeSocket, socketLine, socketProcess, socketUnit} from './lib/sockets.ts'
+import {attachProcesses, processOwner} from './lib/utils.ts'
 
 import {
+	APP_LIFECYCLE_MESSAGES,
 	Container,
 	DeployError,
 	ExposureName,
@@ -46,7 +52,17 @@ import {
 	Timer,
 	Unit
 } from '#services/inventory/schema.ts'
-import type {ProcessId, RunRequest, ServiceScope, Snapshot, UnitId} from '#services/inventory/schema.ts'
+import type {
+	AppAction,
+	AppId,
+	AppRequest,
+	Process,
+	ProcessId,
+	RunRequest,
+	ServiceScope,
+	Snapshot,
+	UnitId
+} from '#services/inventory/schema.ts'
 
 declare module 'effect/reactivity/Reactivity' {
 	interface Keys {
@@ -174,10 +190,18 @@ function containerRows(listing: string) {
 export class Inventory extends Context.Service<
 	Inventory,
 	{
+		readonly appProcesses: Effect.Effect<
+			{readonly readings: readonly {app: AppId; process: Process}[]; readonly time: DateTime.Utc},
+			DeployError
+		>
 		readonly refresh: Effect.Effect<void>
 		readonly ensureFresh: Effect.Effect<void>
+		readonly logs: (input: AppRequest, admin: Admin) => Effect.Effect<string, DeployError>
+		readonly restart: (input: AppRequest, admin: Admin) => Effect.Effect<void, DeployError>
+		readonly restarts: (input: AppRequest, time: DateTime.Utc) => Effect.Effect<readonly DateTime.Utc[], DeployError>
 		readonly run: (input: RunRequest, admin: Admin) => Effect.Effect<void, DeployError>
 		readonly snapshot: Effect.Effect<Snapshot>
+		readonly stop: (input: AppRequest, admin: Admin) => Effect.Effect<void, DeployError>
 	}
 >()('@deslop/deploy/services/inventory/service/Inventory') {
 	static readonly layer = Layer.effect(
@@ -207,6 +231,27 @@ export class Inventory extends Context.Service<
 				)
 			}
 			const processState = yield* Ref.make(Option.none<ReturnType<typeof processReadings>>())
+			const uid = userInfo().uid
+			function appDetails(names: readonly UnitId[]) {
+				return Effect.map(
+					command(
+						'systemctl',
+						['--user', 'show', '--all', '--property=Id,LoadState,Slice,TriggeredBy,Type', '--', ...names],
+						'3 seconds'
+					),
+					ownedUnits
+				)
+			}
+			const requireOwnedUnit = Effect.fnUntraced(function* (input: AppRequest) {
+				const denied = DeployError.make({message: `${input.id} is not an owned app`})
+				const name = yield* pipe(
+					appUnit(input.id),
+					Effect.fromOption,
+					Effect.mapError(() => denied)
+				)
+				if (!HashSet.has(yield* appDetails([name]), name)) return yield* denied
+				return name
+			})
 			// A refused or timed-out HEAD is a negative protocol probe, not a replacement for a required collector read.
 			function head(port: number) {
 				return pipe(
@@ -282,6 +327,21 @@ export class Inventory extends Context.Service<
 					Array.filter(row => row.active === 'failed'),
 					Array.map(row => row.unit)
 				)
+				const owned = yield* Array.match(
+					pipe(
+						listed.rows,
+						Array.map(row => row.unit),
+						Array.filter(name => !system && appUnitName(name) && !HashMap.has(scheduled, name))
+					),
+					{
+						onEmpty: () => Effect.succeed(HashSet.empty<UnitId>()),
+						onNonEmpty: Effect.fnUntraced(function* (names) {
+							return yield* Effect.catch(appDetails(names), cause =>
+								Effect.as(Effect.logWarning('App ownership could not be read', cause), HashSet.empty<UnitId>())
+							)
+						})
+					}
+				)
 				// Optional failure diagnostics accompany the listed description and failed state; an unreadable reason leaves the diagnostic absent.
 				const failures = Option.getOrElse(
 					Option.flatten(
@@ -318,6 +378,7 @@ export class Inventory extends Context.Service<
 						kind: 'service',
 						name: row.unit,
 						next: Option.flatten(HashMap.get(scheduled, row.unit)),
+						owned: Option.liftPredicate(true, () => HashSet.has(owned, row.unit)),
 						running:
 							row.active === 'activating' ||
 							row.active === 'deactivating' ||
@@ -407,10 +468,30 @@ export class Inventory extends Context.Service<
 			)
 			// This machine's processes from /proc, each owned by its cgroup, and its systemd units, containers and listeners.
 			const processTable = pipe(
-				processes,
+				processes(processOwner),
 				Effect.provideService(FileSystem.FileSystem, fs),
 				Effect.mapError(cause => DeployError.make({cause, message: 'The processes could not be read.'}))
 			)
+			const previousAppProcesses = yield* Ref.make(Option.none<ReturnType<typeof processReadings>>())
+			// The metrics sampler only labels managed apps' processes and doesn't refresh the inventory.
+			const appProcesses = Effect.gen(function* () {
+				const current = yield* pipe(
+					processes(cgroup => ownedProcess(uid, cgroup)),
+					Effect.provideService(FileSystem.FileSystem, fs),
+					Effect.timeout(Duration.seconds(3)),
+					Effect.mapError(cause => DeployError.make({cause, message: 'The app processes could not be read.'}))
+				)
+				const next = yield* Ref.modify(previousAppProcesses, previous => {
+					const reading = processReadings(current, previous)
+					return [reading, Option.some(reading)]
+				})
+				return {
+					readings: Array.flatMap(next.readings, reading =>
+						Option.toArray(Option.map(reading.owner, app => ({app, process: reading.process})))
+					),
+					time: current.time
+				}
+			})
 			const machineSources = [
 				collect('User services', units(false)),
 				collect('System services', units(true)),
@@ -583,16 +664,53 @@ export class Inventory extends Context.Service<
 				Duration.seconds(5)
 			)
 			const refresh = Effect.andThen(invalidate, ensureFresh)
+			function wakeInventory<A>(effect: Effect.Effect<A, DeployError>) {
+				return Effect.onExit(effect, () =>
+					pipe(refresh, Effect.andThen(reactivity.invalidate(['deployInventory'])), Effect.forkIn(layerScope))
+				)
+			}
+			function changeApp(action: AppAction, input: AppRequest) {
+				return Effect.flatMap(requireOwnedUnit(input), name =>
+					wakeInventory(Effect.asVoid(command('systemctl', ['--user', action, '--no-block', '--', name])))
+				)
+			}
 			return {
+				appProcesses,
 				ensureFresh,
-				refresh,
-				// The caller gets the start's answer at once; the refresh that follows wakes viewers when it lands, so a deadline never waits on it.
-				run: Effect.fn('Inventory.run')(function* (input) {
-					yield* Effect.onExit(start(input), () =>
-						pipe(refresh, Effect.andThen(reactivity.invalidate(['deployInventory'])), Effect.forkIn(layerScope))
-					)
+				logs: Effect.fn('Inventory.logs')(function* (input) {
+					return yield* command('journalctl', [
+						'--quiet',
+						'--no-pager',
+						'--output=short-iso',
+						'--lines=200',
+						`--user-unit=${yield* requireOwnedUnit(input)}`
+					])
 				}),
-				snapshot: SubscriptionRef.get(snapshot)
+				refresh,
+				restart: Effect.fn('Inventory.restart')(input => changeApp('restart', input)),
+				restarts: Effect.fn('Inventory.restarts')(function* (input, time) {
+					return yield* Option.match(appUnit(input.id), {
+						onNone: () => Effect.succeed(Array.empty<DateTime.Utc>()),
+						onSome: Effect.fnUntraced(function* (name) {
+							const text = yield* command('journalctl', [
+								'--quiet',
+								'--no-pager',
+								'--output=json',
+								'--output-fields=MESSAGE_ID,USER_INVOCATION_ID',
+								'--lines=512',
+								`USER_UNIT=${name}`,
+								`_UID=${uid}`,
+								'_SYSTEMD_USER_UNIT=init.scope',
+								...Array.map(APP_LIFECYCLE_MESSAGES, id => `MESSAGE_ID=${id}`)
+							])
+							return restartTimes(text, DateTime.subtractDuration(time, Duration.hours(1)), time)
+						})
+					})
+				}),
+				// The caller gets the start's answer at once; the refresh that follows wakes viewers when it lands, so a deadline never waits on it.
+				run: Effect.fn('Inventory.run')(input => wakeInventory(start(input))),
+				snapshot: SubscriptionRef.get(snapshot),
+				stop: Effect.fn('Inventory.stop')(input => changeApp('stop', input))
 			}
 		})
 	)

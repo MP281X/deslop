@@ -1,12 +1,577 @@
-@import '@deslop/components-web/theme.css';
-@source '../../../../packages/components-web/src/**/*.tsx';
+@import '@deslop/ui/theme.css';
 
-:root {
-	--primary: var(--blue);
+.deploy {
+	--deploy-chart-grid: rgb(255 255 255 / 10%);
+	--deploy-ruler: #737377;
+	--deploy-trail: 4.55rem;
+	--deploy-detail-padding: clamp(14px, 2.7vw, 24px);
 }
 
-/* Chrome makes an SVG group focusable once it has focus listeners, and React adds them to every portal target, so the
-   groups a chart portals its layers into would each be a Tab stop inside the chart. */
-[data-slot='chart'] [class^='recharts-zIndex-layer'] {
-	interactivity: inert;
+.deploy .axis-row {
+	min-height: 48px;
+	font-size: 0.875rem;
+}
+
+.deploy .axis-title {
+	font-size: 0.875rem;
+	font-weight: 420;
+}
+
+.deploy .axis-muted {
+	font-size: 0.75rem;
+}
+
+.deploy .axis-value {
+	font-size: 0.875rem;
+	font-weight: 550;
+	white-space: nowrap;
+}
+
+.deploy .deploy-strong {
+	font-weight: 700;
+}
+
+.deploy :where(.fold-list, .fold-detail),
+.deploy-dialog {
+	touch-action: pan-x pan-y;
+}
+
+.deploy :where(button, a) {
+	touch-action: manipulation;
+}
+
+.deploy-name,
+.deploy-figures {
+	display: grid;
+	min-width: 0;
+	line-height: 1.25;
+}
+
+.deploy-dot {
+	display: inline-block;
+	width: 6px;
+	height: 6px;
+	margin-inline-end: 5px;
+	border-radius: 50%;
+	background: var(--color-destructive);
+	vertical-align: 2px;
+}
+
+.deploy-dot[data-status='warning'] {
+	background: #ff9f0a;
+}
+
+.deploy-figures small {
+	color: var(--color-muted-foreground);
+	font-size: 0.75rem;
+	font-weight: 400;
+}
+
+.deploy-figures span small {
+	font-size: 0.65em;
+}
+
+.deploy-list-body {
+	display: flex;
+	flex-direction: column;
+	min-height: 100%;
+	padding: 6px;
+}
+
+.deploy-list-ruler,
+.deploy-list-row > button {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) minmax(5.35rem, 42%) var(--deploy-trail);
+	gap: 6px;
+	align-items: center;
+	padding-inline: 14px 12px;
+}
+
+.deploy-list-ruler {
+	position: sticky;
+	z-index: 2;
+	top: 0;
+	height: 42px;
+	padding-block: 5px 3px;
+	grid-template-rows: 1fr;
+	background: var(--color-background);
+}
+
+.deploy-list-ruler .deploy-ruler {
+	grid-column: 2;
+	align-self: end;
+}
+
+.deploy .deploy-list-row {
+	display: block;
+	padding: 0;
+}
+
+.deploy-list-row > button {
+	width: 100%;
+	min-height: 48px;
+	border-radius: inherit;
+	text-align: start;
+}
+
+.deploy-list-row .deploy-dot,
+.deploy-detail-lead .deploy-dot {
+	position: absolute;
+	margin-inline-start: -11px;
+	margin-block-start: 6px;
+}
+
+.deploy-list-trace {
+	position: relative;
+	height: 27px;
+}
+
+.deploy-machine-row {
+	margin-block-start: auto;
+}
+
+.deploy-side {
+	display: flex;
+	align-items: center;
+	justify-content: flex-start;
+}
+
+.deploy-list-ruler .deploy-side {
+	margin-inline-start: -10px;
+}
+
+.deploy-side button {
+	display: grid;
+	place-items: center;
+	width: 34px;
+	height: 34px;
+	border-radius: 50%;
+	cursor: pointer;
+}
+
+.deploy-side svg {
+	width: 15px;
+	height: 15px;
+}
+
+.deploy-side-phone,
+.deploy-side-wide,
+.deploy-list-ruler .deploy-side {
+	display: none;
+}
+
+.deploy[data-show='detail'] .deploy-side-phone,
+.deploy[data-list-hidden] .deploy-side-phone {
+	display: flex;
+}
+
+@media (min-width: 640px), (horizontal-viewport-segments: 2) {
+	.deploy-list-ruler .deploy-side,
+	.deploy[data-list-hidden] .deploy-side-wide {
+		display: flex;
+	}
+
+	.deploy:is([data-show], [data-list-hidden]) .deploy-side-phone {
+		display: none;
+	}
+}
+
+@media (max-width: 639px) {
+	.deploy[data-list-hidden=''] > .fold-list {
+		display: none;
+	}
+
+	.deploy .fold-list {
+		padding-inline-end: env(safe-area-inset-right);
+	}
+
+	.deploy .fold-detail {
+		padding-inline-start: env(safe-area-inset-left);
+	}
+}
+
+.deploy-detail-shell {
+	display: flex;
+	min-height: 100%;
+	flex-direction: column;
+}
+
+.deploy-detail-scroll {
+	flex: 1;
+	padding-inline: var(--deploy-detail-padding);
+}
+
+.deploy .deploy-detail-lead {
+	display: flex;
+	gap: 12px;
+	min-height: 46px;
+	padding: 5px 0 4px;
+}
+
+.deploy-detail-lead .deploy-side {
+	margin-inline-start: -8px;
+}
+
+.deploy-detail-lead .deploy-name {
+	flex: 1;
+}
+
+.deploy-detail-lead .deploy-figures {
+	margin-inline-start: auto;
+}
+
+.deploy-axis {
+	padding-inline-end: var(--deploy-trail);
+}
+
+.deploy-ruler {
+	position: relative;
+	height: 1.45rem;
+	color: var(--deploy-ruler);
+	font: 0.56rem var(--font-mono);
+}
+
+.deploy-ruler span,
+.deploy-cpu-scale span {
+	position: absolute;
+	inset-inline-start: var(--at);
+	transform: translateX(-50%);
+}
+
+.deploy-ruler span:first-child {
+	transform: none;
+}
+
+.deploy-ruler span:nth-child(5) {
+	transform: translateX(-100%);
+}
+
+.deploy-ruler svg {
+	position: absolute;
+	inset-inline-start: 0;
+	inset-block-end: 0;
+	width: 100%;
+	height: 8px;
+	fill: none;
+	stroke: currentColor;
+}
+
+.deploy-ruler-detail {
+	margin-block: 3px 5px;
+}
+
+.deploy-axis-body {
+	position: relative;
+}
+
+.deploy-large-trace {
+	position: relative;
+	height: 93px;
+	background-image: linear-gradient(to bottom, var(--deploy-chart-grid) 1px, transparent 1px);
+	background-size: 100% 25%;
+}
+
+.deploy-trace {
+	display: block;
+	width: 100%;
+	height: 100%;
+	border-block-end: 1px solid var(--deploy-chart-grid);
+	background-image: linear-gradient(to right, var(--deploy-chart-grid) 1px, transparent 1px);
+	background-size: 25% 100%;
+	border-inline-end: 1px solid var(--deploy-chart-grid);
+	overflow: hidden;
+}
+
+.deploy-trace .deploy-area {
+	fill: rgb(255 255 255 / 17%);
+}
+
+.deploy-trace .deploy-trace-line {
+	fill: none;
+	stroke: rgb(255 255 255 / 60%);
+	stroke-width: 0.75px;
+}
+
+.deploy-trace-main .deploy-trace-line {
+	stroke: var(--color-foreground);
+	stroke-width: 1.1px;
+}
+
+.deploy-cpu-scale {
+	position: absolute;
+	inset-inline-start: 100%;
+	inset-block: 0;
+	width: var(--deploy-trail);
+	border-inline-start: 3px solid transparent;
+	color: var(--deploy-ruler);
+	font: 0.55rem var(--font-mono);
+	background-image:
+		linear-gradient(to bottom, var(--deploy-ruler) 1px, transparent 1px),
+		linear-gradient(to bottom, var(--deploy-chart-grid) 1px, transparent 1px);
+	background-size:
+		4px 25%,
+		2px 5%;
+	background-repeat: repeat-y;
+}
+
+.deploy-cpu-scale span {
+	inset-block-start: var(--at);
+	inset-inline: auto 0;
+	transform: translateY(-50%);
+}
+
+.deploy .deploy-process {
+	position: relative;
+	display: flex;
+	flex-direction: column;
+	align-items: stretch;
+	justify-content: space-between;
+	min-height: 48px;
+	gap: 2px;
+	padding: 5px 0 0;
+}
+
+.deploy-process .deploy-figures {
+	position: absolute;
+	top: 5px;
+	left: 100%;
+	width: var(--deploy-trail);
+}
+
+.deploy-process .deploy-trace {
+	flex: none;
+	height: 13px;
+}
+
+.deploy-restarts {
+	position: absolute;
+	inset: 0;
+	pointer-events: none;
+}
+
+.deploy-restarts span {
+	position: absolute;
+	inset-inline-start: var(--at);
+	inset-block: 0;
+	width: 1px;
+	background: var(--color-destructive);
+}
+
+.deploy-restarts-dots span::before {
+	position: absolute;
+	top: -4px;
+	left: -2px;
+	width: 5px;
+	height: 5px;
+	border-radius: 50%;
+	background: inherit;
+	content: '';
+}
+
+.deploy-facts {
+	display: grid;
+	align-items: start;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+	gap: 0 14px;
+	margin-block: 12px 8px;
+	padding-inline-end: var(--deploy-trail);
+	font-size: 0.75rem;
+}
+
+.deploy-fact {
+	display: flex;
+	align-items: baseline;
+	justify-content: space-between;
+	min-height: 17px;
+	gap: 4px;
+}
+
+.deploy-fact dt {
+	flex: none;
+	max-width: 100%;
+}
+
+.deploy-fact dd {
+	min-width: 0;
+	text-align: end;
+	overflow-wrap: anywhere;
+}
+
+.deploy-fact::before {
+	content: '';
+	order: 1;
+	flex: 1 1 auto;
+	min-width: 2px;
+	border-bottom: 1px dotted #3a3a3e;
+}
+
+.deploy-fact dd {
+	order: 2;
+}
+
+.deploy-issue {
+	color: var(--color-destructive);
+}
+
+.deploy-endpoints {
+	display: flex;
+	flex-flow: row wrap;
+	justify-content: flex-end;
+	gap: 0 5px;
+}
+
+.deploy-endpoints a,
+.deploy-endpoints button {
+	text-decoration: underline;
+	text-underline-offset: 0.12em;
+}
+
+.deploy .deploy-job {
+	padding-inline: 14px 12px;
+}
+
+.deploy-detail-scroll .deploy-job {
+	padding-inline: 0;
+}
+
+.deploy-job button {
+	min-width: 30px;
+	min-height: 30px;
+	cursor: pointer;
+}
+
+.deploy-job .deploy-name > :is(button, a) {
+	display: grid;
+	min-width: 0;
+	text-align: start;
+}
+
+.deploy-job-tail {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+}
+
+.deploy-job svg {
+	display: inline-block;
+	width: 15px;
+	height: 15px;
+}
+
+.deploy-actions {
+	position: sticky;
+	bottom: 0;
+	display: flex;
+	justify-content: center;
+	z-index: 2;
+	padding: 8px 0 10px;
+	pointer-events: none;
+}
+
+.deploy-actions > * {
+	pointer-events: auto;
+}
+
+.deploy-actions button {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: 6px;
+	width: max-content;
+	min-height: 40px;
+	padding-inline: 12px;
+	border-radius: 999px;
+	font-size: 0.875rem;
+	cursor: pointer;
+}
+
+.deploy-actions svg {
+	width: 14px;
+	height: 14px;
+}
+
+.deploy-actions button:last-child svg {
+	fill: currentColor;
+}
+
+.deploy-notice {
+	padding: 6px var(--deploy-detail-padding, 16px);
+	color: var(--color-muted-foreground);
+	font-size: 0.75rem;
+}
+
+.deploy-large-trace .deploy-notice {
+	position: absolute;
+	top: 0;
+	left: 0;
+	max-width: 100%;
+	background: var(--color-background);
+}
+
+.deploy-notice button {
+	text-decoration: underline;
+}
+
+.deploy-dialog {
+	inset: 0;
+	width: min(calc(100% - 32px), 36rem);
+	max-height: min(80dvh, 100% - 32px);
+	margin: auto;
+	padding: 16px;
+	border: 1px solid rgb(255 255 255 / 15%);
+	border-radius: 18px;
+	background: #151517;
+	color: var(--color-foreground);
+	overflow: auto;
+}
+
+.deploy-dialog,
+.deploy-dialog::backdrop {
+	animation: none;
+	transition: none;
+}
+
+.deploy-dialog::backdrop {
+	background: rgb(0 0 0 / 55%);
+}
+
+.deploy-dialog pre {
+	overflow-wrap: anywhere;
+	white-space: pre-wrap;
+	font: 0.75rem var(--font-mono);
+}
+
+.deploy-dialog p,
+.deploy-dialog pre,
+.deploy-dialog form {
+	margin-block-start: 8px;
+}
+
+.deploy-dialog-actions,
+.deploy-expose-kinds {
+	display: flex;
+	gap: 8px;
+	margin-block-start: 8px;
+}
+
+.deploy-dialog-actions {
+	justify-content: flex-end;
+}
+
+.deploy-dialog button,
+.deploy-dialog input {
+	min-height: 38px;
+	padding-inline: 10px;
+	border: 1px solid rgb(255 255 255 / 21%);
+	border-radius: 9px;
+}
+
+.deploy-dialog button[aria-pressed='true'] {
+	background: #313134;
+}
+
+.deploy-dialog input {
+	display: block;
+	width: 100%;
+	margin-block-start: 4px;
 }

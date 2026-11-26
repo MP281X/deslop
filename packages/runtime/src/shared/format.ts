@@ -1,4 +1,4 @@
-import {DateTime, Duration, MutableHashMap, Number, Option, Schema, String, pipe} from 'effect'
+import {DateTime, Duration, MutableHashMap, Number, Option, Schema, pipe} from 'effect'
 
 // One English form for what a person reads on the web and the iPhone: dates day first on a 24-hour clock ("21 Oct", "15:28"), numbers grouped ("1,234", "$1.23").
 const NUMBERS = 'en'
@@ -65,13 +65,6 @@ export function ageOf(since: DateTime.DateTime, now: DateTime.DateTime) {
 	return `${Math.floor(minutes / 1440)}d`
 }
 
-// How long until, in the same units: "now" within the first minute, then "in 5m", "in 3h", "in 2d".
-export function dueOf(at: DateTime.DateTime, now: DateTime.DateTime) {
-	const left = ageOf(now, at)
-	if (left === 'now') return left
-	return `in ${left}`
-}
-
 // A measured span: "120 ms", "1.5 s", "42 s", "3 min", "1.2 h". Each bound sits where rounding would reach the next unit, so 59.6 s reads 1 min, not 60 s.
 export function durationOf(duration: Duration.Duration) {
 	const ms = Duration.toMillis(duration)
@@ -80,12 +73,6 @@ export function durationOf(duration: Duration.Duration) {
 	if (ms < 59_500) return `${Number.round(ms / 1000, 0)} s`
 	if (ms < 3_570_000) return `${Number.round(ms / 60_000, 0)} min`
 	return `${Number.round(ms / 3_600_000, 1)} h`
-}
-
-// A running or remaining time on a timer face, as m:ss.
-export function timerOf(duration: Duration.Duration) {
-	const seconds = Number.max(0, Math.floor(Duration.toSeconds(duration)))
-	return `${Math.floor(seconds / 60)}:${String.padStart(2, '0')(`${seconds % 60}`)}`
 }
 
 // The time of day: "15:28", or to the second or millisecond where a trace needs it.
