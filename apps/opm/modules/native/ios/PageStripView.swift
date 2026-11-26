@@ -29,8 +29,8 @@ public struct PageStripView: ExpoSwiftUI.View {
       onTap: { barsHidden.toggle() },
       onScroll: { barsHidden = true }
     )
-    // Under the bars but beside the list, which floats over the reader's leading edge when it comes back.
-    .ignoresSafeArea(edges: .vertical)
+    // Edge to edge, under the bars and the Dynamic Island, which may cover a page's corner.
+    .ignoresSafeArea()
     .background(Color.black)
     .statusBarHidden(barsHidden)
     .persistentSystemOverlays(barsHidden ? .hidden : .automatic)
@@ -206,9 +206,9 @@ final class BarFade: NSObject {
   }
 }
 
-// A strip of pages scrolled top to bottom, or in a window wide like an open book, right-to-left spreads turned one at a time.
+// Pages turned right to left one at a time, each filling the window, or in a window wide like an open book, two-page spreads.
 final class StripController: NSObject, UIScrollViewDelegate {
-  // Black shows through between pages, as a thin line where one ends.
+  // Black shows through between a spread's pages, as a thin line where one ends.
   private static let gap: CGFloat = 1
 
   let scrollView = StripScrollView()
@@ -225,10 +225,9 @@ final class StripController: NSObject, UIScrollViewDelegate {
   private var prefetches: [Int: Task<Void, Never>] = [:]
   private var current = -1
   private var laidOutSize: CGSize = .zero
-  private var adjusting = false
-  // Until the reader drags, the strip sits where it was restored, which may be the bottom without the last page being read.
+  // Until the reader drags, the chapter sits where it was restored, which may be its last turn without the last page being read.
   private var dragged = false
-  // The spreads, rightmost first, each one page or a right and a left page; empty while the pages read as a strip.
+  // The turns, rightmost first, each one page or a spread's right and left page.
   private var spreads: [[Int]] = []
   private var spread = false
   private var laidOutGutter: CGFloat = 0
@@ -244,8 +243,9 @@ final class StripController: NSObject, UIScrollViewDelegate {
     scrollView.backgroundColor = .black
     scrollView.contentInsetAdjustmentBehavior = .never
     scrollView.showsHorizontalScrollIndicator = false
-    // A strip shorter than the screen still takes a drag, which reads its last page and adds the next chapter.
-    scrollView.alwaysBounceVertical = true
+    scrollView.isPagingEnabled = true
+    // A chapter of one turn still takes a drag, which reads its last page and adds the next chapter.
+    scrollView.alwaysBounceHorizontal = true
     scrollView.onLayout = { [weak self] in self?.fit() }
     scrollView.onWindow = { [weak self] in
       if let self {
@@ -263,7 +263,7 @@ final class StripController: NSObject, UIScrollViewDelegate {
     #endif
   }
 
-  // Appending pages extends the strip in place; anything else starts over at `start`.
+  // Appending pages extends the chapter in place; anything else starts over at `start`.
   func show(chapters: [Int], pages: [String], start: Int) {
     self.chapters = chapters
     if pages == self.pages { return }
@@ -274,7 +274,7 @@ final class StripController: NSObject, UIScrollViewDelegate {
       layout()
       return
     }
-    // The old pages stop their downloads, so a strip that starts over does not decode images nobody sees.
+    // The old pages stop their downloads, so a chapter that starts over does not decode images nobody sees.
     stop()
     pageViews.forEach { $0.removeFromSuperview() }
     pageViews = []
@@ -299,7 +299,7 @@ final class StripController: NSObject, UIScrollViewDelegate {
   }
 
   // Spreads only where two pages stand at a readable size side by side: the unfolded phone's landscape window, with the reader
-  // across both halves. Folded, upright, half open like a laptop or beside the chapter list, the pages read as a strip.
+  // across both halves. Folded, upright, half open like a laptop or beside the chapter list, each page turns alone.
   private var fitsSpreads: Bool {
     guard let window = scrollView.window else { return false }
     let size = scrollView.bounds.size
@@ -307,23 +307,16 @@ final class StripController: NSObject, UIScrollViewDelegate {
       && size.width > size.height
   }
 
-  // The window's safe area, not the view's, so the strip starts below the Dynamic Island whether or not the bars show; a
-  // spread fits its pages inside it instead.
-  private var inset: UIEdgeInsets {
-    let insets = scrollView.window?.safeAreaInsets ?? .zero
-    return spread ? .zero : UIEdgeInsets(top: insets.top, left: 0, bottom: insets.bottom, right: 0)
-  }
-
   private func fit() {
-    if fitsSpreads != spread || scrollView.contentInset != inset || scrollView.bounds.size != laidOutSize
-      || pendingStart != nil || (spread && gutter().lowerBound != laidOutGutter)
+    if fitsSpreads != spread || scrollView.bounds.size != laidOutSize || pendingStart != nil
+      || (spread && gutter().lowerBound != laidOutGutter)
     {
       layout()
     }
   }
 
-  // A fold or a turn keeps the focused page: folding brings the strip to it, unfolding opens the spread holding it.
-  private func layout(report: Bool = true) {
+  // A fold or a turn keeps the focused page: folding turns to it, unfolding opens the spread holding it.
+  private func layout() {
     let fits = fitsSpreads
     guard scrollView.bounds.width > 0 else { return }
     if (fits != spread || scrollView.bounds.width != laidOutSize.width) && pendingStart == nil && current >= 0 {
@@ -334,42 +327,17 @@ final class StripController: NSObject, UIScrollViewDelegate {
       spreads = []
       settled = true
       dragged = false
-      scrollView.isPagingEnabled = fits
-      scrollView.alwaysBounceVertical = !fits
-      scrollView.alwaysBounceHorizontal = fits
       scrollView.contentOffset = .zero
     }
-    scrollView.contentInset = inset
-    if spread {
-      layoutSpreads()
-    } else {
-      layoutStrip()
-    }
-    if report { track() }
-  }
-
-  private func layoutStrip() {
-    let width = scrollView.bounds.width
-    laidOutSize = scrollView.bounds.size
-    var y: CGFloat = 0
-    for (index, view) in pageViews.enumerated() {
-      let height = (width * aspects[index]).rounded()
-      view.frame = CGRect(x: 0, y: y, width: width, height: height)
-      y += height + Self.gap
-    }
-    scrollView.contentSize = CGSize(width: width, height: max(y - Self.gap, 0))
-    // The start waits for the window, whose safe area sets the inset it scrolls past.
-    if let start = pendingStart, start < pageViews.count, scrollView.window != nil {
-      pendingStart = nil
-      let top = scrollView.contentInset.top
-      scrollView.contentOffset = CGPoint(x: 0, y: min(pageViews[start].frame.minY - top, bottomOffset))
-    }
+    layoutSpreads()
+    track()
   }
 
   // Each chapter's first page, its cover, stands alone; the pages after it pair a right page then a left one, as a printed manga
   // reads. A page already as wide as a spread stands alone, and so does a page before it or at the end of a chapter; pairing
   // goes on after it.
   private var pairs: [[Int]] {
+    if !spread { return pageViews.indices.map { [$0] } }
     var pairs: [[Int]] = []
     var start = 0
     for count in chapters + [pageViews.count] where start < pageViews.count {
@@ -400,23 +368,23 @@ final class StripController: NSObject, UIScrollViewDelegate {
     }
     let gutter = gutter()
     let anchor = pendingStart ?? max(current, 0)
-    let insets = scrollView.window?.safeAreaInsets ?? .zero
-    let top = insets.top
-    let height = size.height - insets.top - insets.bottom
+    // The whole window's height, the Dynamic Island over a corner of the page rather than a band of black under it.
+    let height = size.height
     for (position, pair) in next.enumerated() {
       let origin = CGFloat(next.count - 1 - position) * size.width
-      if pair.count == 1 && aspects[pair[0]] < 1 {
+      // A page alone fills the window, centred, as wide or as tall as it fits.
+      if !spread || (pair.count == 1 && aspects[pair[0]] < 1) {
         let width = min(size.width, height / aspects[pair[0]])
-        place(pair[0], x: origin + (size.width - width) / 2, width: width, top: top, height: height)
+        place(pair[0], x: origin + (size.width - width) / 2, width: width, height: height)
         continue
       }
       // Both pages of a spread stand the same height, as in a printed book, however much room each side of the crease has.
       let tall = pair.count == 2 ? (gutter.lowerBound * aspects[pair[1]]) : height
       let pageHeight = min(height, (size.width - gutter.upperBound) * aspects[pair[0]], tall)
-      place(pair[0], x: origin + gutter.upperBound, width: pageHeight / aspects[pair[0]], top: top, height: height)
+      place(pair[0], x: origin + gutter.upperBound, width: pageHeight / aspects[pair[0]], height: height)
       if pair.count == 2 {
         let left = pageHeight / aspects[pair[1]]
-        place(pair[1], x: origin + gutter.lowerBound - left, width: left, top: top, height: height)
+        place(pair[1], x: origin + gutter.lowerBound - left, width: left, height: height)
       }
     }
     scrollView.contentSize = CGSize(width: CGFloat(next.count) * size.width, height: size.height)
@@ -430,13 +398,13 @@ final class StripController: NSObject, UIScrollViewDelegate {
     scrollView.contentOffset = CGPoint(x: CGFloat(next.count - 1 - position) * size.width, y: 0)
   }
 
-  private func place(_ index: Int, x: CGFloat, width: CGFloat, top: CGFloat, height: CGFloat) {
+  private func place(_ index: Int, x: CGFloat, width: CGFloat, height: CGFloat) {
     let pageHeight = (width * aspects[index]).rounded()
-    pageViews[index].frame = CGRect(x: x, y: top + ((height - pageHeight) / 2).rounded(), width: width, height: pageHeight)
+    pageViews[index].frame = CGRect(x: x, y: ((height - pageHeight) / 2).rounded(), width: width, height: pageHeight)
   }
 
   // Where the two pages of a spread meet, across the screen: the crease's reserved band when the phone is bent like a book,
-  // otherwise the thin line between strip pages at the window's middle.
+  // otherwise a thin line at the window's middle.
   private func gutter() -> ClosedRange<CGFloat> {
     let bounds = scrollView.bounds
     #if canImport(UIKit, _version: 9127.0.85)
@@ -452,44 +420,21 @@ final class StripController: NSObject, UIScrollViewDelegate {
     return crease - Self.gap / 2...crease + Self.gap / 2
   }
 
-  private var bottomOffset: CGFloat {
-    max(
-      scrollView.contentSize.height - scrollView.bounds.height + scrollView.contentInset.bottom,
-      -scrollView.contentInset.top)
-  }
-
-  // A page above the screen that grows or shrinks moves the offset with it, so what is on screen stays put.
+  // A page's shape arriving lays the turns out again: a wide page can end a spread's pairing.
   private func resize(_ index: Int, to aspect: CGFloat) {
     guard index < aspects.count, abs(aspects[index] - aspect) > 0.001 else { return }
-    if spread {
-      aspects[index] = aspect
-      layout()
-      return
-    }
-    let width = laidOutSize.width
-    let above = pageViews[index].frame.maxY <= scrollView.contentOffset.y + scrollView.contentInset.top
-    let delta = (width * aspect).rounded() - (width * aspects[index]).rounded()
-    adjusting = true
     aspects[index] = aspect
-    layout(report: false)
-    if above {
-      scrollView.contentOffset.y += delta
-    }
-    adjusting = false
-    track()
+    layout()
   }
 
-  // Save and restore the same top-edge anchor, including pages shorter than half the screen.
-  // Until the strip has scrolled to its start, the top page is not the one being read, so nothing is reported.
-  // At the bottom the reader dragged to, even a short final page counts as read; so does the last spread turned to.
-  // Only the reader's own scrolling moves the focused page: a fold or a turn lays the strip out at passing sizes on the way,
-  // where the page on screen is not the one being read, until the last layout brings back the focused one.
+  // Until the chapter has turned to its start, the turn on screen is not the one being read, so nothing is reported. The last
+  // turn the reader dragged to counts its last page as read.
+  // Only the reader's own turning moves the focused page: a fold or a turn lays the pages out at passing sizes on the way,
+  // where the turn on screen is not the one being read, until the last layout brings back the focused one.
   private func track(moved: Bool = false) {
-    guard !pageViews.isEmpty, pendingStart == nil, !adjusting else { return }
+    guard !pageViews.isEmpty, pendingStart == nil else { return }
     let last = pageViews.count - 1
-    let index =
-      !moved && current >= 0
-      ? current : spread ? spreadIndex() : dragged && scrollView.contentOffset.y >= bottomOffset - 1 ? last : topIndex()
+    let index = !moved && current >= 0 ? current : spreadIndex()
     let shown = max(index - 2, 0)...min(index + 4, last)
     let kept = (index - 6)...(index + 8)
     for position in loaded where !kept.contains(position) {
@@ -516,7 +461,7 @@ final class StripController: NSObject, UIScrollViewDelegate {
     }
   }
 
-  // The spread on screen's right page; a page the strip focused stays the focus while its spread is open.
+  // The turn on screen's right page; a page focused alone stays the focus while its spread is open.
   private func spreadIndex() -> Int {
     guard !spreads.isEmpty, laidOutSize.width > 0 else { return max(current, 0) }
     let turned = Int((scrollView.contentOffset.x / laidOutSize.width).rounded())
@@ -525,25 +470,13 @@ final class StripController: NSObject, UIScrollViewDelegate {
     return spreads[position].contains(current) ? current : spreads[position][0]
   }
 
-  // The first page whose bottom is below the top of the screen; pages are laid out in order, so halving finds it.
-  private func topIndex() -> Int {
-    let top = scrollView.contentOffset.y + scrollView.contentInset.top + 1
-    var low = 0
-    var high = pageViews.count - 1
-    while low < high {
-      let middle = (low + high) / 2
-      if pageViews[middle].frame.maxY > top { high = middle } else { low = middle + 1 }
-    }
-    return low
-  }
-
   func scrollViewWillBeginDragging(_ scrollView: UIScrollView) {
     dragged = true
   }
 
-  // A spread turns only once it settles: a turn dragged past halfway and let go back leaves the reader on the page it was.
+  // A page turns only once it settles: a turn dragged past halfway and let go back leaves the reader on the page it was.
   func scrollViewDidScroll(_ scrollView: UIScrollView) {
-    track(moved: !spread && (scrollView.isDragging || scrollView.isDecelerating))
+    track()
     if scrollView.isDragging { onScroll() }
   }
 
@@ -556,10 +489,6 @@ final class StripController: NSObject, UIScrollViewDelegate {
   func scrollViewDidEndDecelerating(_ scrollView: UIScrollView) {
     track(moved: true)
     settle()
-  }
-
-  func scrollViewDidScrollToTop(_ scrollView: UIScrollView) {
-    track(moved: true)
   }
 
   private func settle() {
