@@ -52,7 +52,9 @@ const CUR='<svg class=cur viewBox="0 0 13 19"><path d="M1 1v14.2l3.7-3.5 2.5 5.9
 const k=(id,patch,html='',cls='')=>`<span class="${cls}" data-t="${id}" data-p='${JSON.stringify(patch)}'>${html}</span>`;
 const row=(t,m='',n='',cls='',id,patch)=>{const h=`<div class=t>${t}${m&&`<div class=m>${m}</div>`}</div>${n&&`<div class=n>${n}</div>`}`;return id?k(id,patch,h,`r ${cls}`):`<div class="r ${cls}">${h}</div>`},bar=html=>`<div class=tb>${html}</div>`;
 const $=(q,r=document)=>r.querySelector(q),$$=(q,r=document)=>[...r.querySelectorAll(q)],wait=ms=>new Promise(r=>setTimeout(r,ms));
-const D=DECISIONS.map(({formats='openR',start={},...d},i)=>({...d,formats,start,no:FIRST+i,V:['Today',...Object.keys(d.versions)],fm:formats.split(' ')[0]}));
+// ?v=12b,13a keeps only those versions beside Today, and only their decisions.
+const PICK=new URLSearchParams(location.search).get('v')?.split(',');
+const D=DECISIONS.map(({formats='openR',start={},...d},i)=>({...d,formats,start,no:FIRST+i,V:['Today',...Object.keys(d.versions).filter(v=>!PICK||PICK.includes(FIRST+i+v))],fm:formats.split(' ')[0]})).filter(d=>d.V.length>1);
 // A journey's states: each tap merges its target's patch into the state before it.
 function trace(d,v){const S=[d.start],w=F[d.fm][1],box=document.createElement('div');
   for(const id of (d.paths?.[v]||'').split(' ').filter(Boolean)){box.innerHTML=d.view(S.at(-1),v,w);const t=$(`[data-t="${id}"]`,box);if(!t){console.error(`${d.no} ${v}: no "${id}"`);break}S.push({...S.at(-1),...JSON.parse(t.dataset.p)})}
