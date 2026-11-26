@@ -23,6 +23,9 @@ Personal apps with one user, who also develops them.
 
 - `palette.ts` mirrors `theme.css`.
 - Hue only for identity and status. Never label healthy states. Dots mark problems.
+- One row everywhere: a title, one muted line, numbers or time at the trailing edge; a problem's dot goes before the title and its reason on the muted line.
+- The list stands beside the opened item, and Mail's sidebar button collapses it. The fold is the only divider.
+- The inner screen's extra room shows more fields and more items, never bigger things.
 - No page titles, panel headers, web search fields, hotkeys, custom animations, web delete buttons, delete confirmations, custom iOS bar or banners that move the page.
 - Targets: 3440×1440, 1920×1080, 1512×982 and the iPhone Duo folded (466×678), open (669×951), both rotated, and half-open; its Safari is 382 px wide folded.
 - Artwork stays unchanged. Pixel art uses `crispEdges` and integer scaling.

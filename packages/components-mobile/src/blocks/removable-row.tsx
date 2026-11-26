@@ -11,7 +11,7 @@ import type {ReactNode} from 'react'
 import {useListChoose} from '#components/blocks/list-detail.tsx'
 import {Button} from '#components/ui/button.tsx'
 import {Item, ItemActions, itemRow} from '#components/ui/item.tsx'
-import type {ItemAlignment} from '#components/ui/item.tsx'
+import type {ItemAlignment, ItemSize} from '#components/ui/item.tsx'
 import type {Removal} from '#lib/removal.ts'
 
 // The destructive role is the whole style: red in a menu and as a swipe action.
@@ -28,6 +28,7 @@ export function RemovableRow<Id extends string>(props: {
 	modifiers?: ViewModifier[]
 	onOpen: () => void
 	removal: Removal<Id>
+	size?: ItemSize
 }) {
 	const machine = props.removal.machine(props.id)
 	const remove = useAtomSet(props.removal.removeAtom)
@@ -41,7 +42,7 @@ export function RemovableRow<Id extends string>(props: {
 						<ContextMenu>
 							<ContextMenu.Trigger>
 								<Item
-									{...Struct.pick(props, ['alignment'])}
+									{...Struct.pick(props, ['alignment', 'size'])}
 									onPress={() => {
 										choose()
 										props.onOpen()
@@ -64,7 +65,7 @@ export function RemovableRow<Id extends string>(props: {
 			</MachineState>
 			<MachineState machine={machine} path="Pending">
 				{() => (
-					<Item {...Struct.pick(props, ['alignment'])} modifiers={itemRow}>
+					<Item {...Struct.pick(props, ['alignment', 'size'])} modifiers={itemRow}>
 						{props.children(true)}
 						<ItemActions>
 							<Button
