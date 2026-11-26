@@ -99,6 +99,10 @@
 	],
 	"ignorePatterns": ["**/*.gen.ts", "tools/*/template/**"],
 	"ignoreExports": [
+		// The mobile generator still calls these; templates are excluded from the workspace graph.
+		{"exports": ["makeExpoConfig"], "file": "packages/runtime/src/config/expo.ts"},
+		{"exports": ["makeMetroConfig"], "file": "packages/runtime/src/config/metro.ts"},
+		{"exports": ["makeSession"], "file": "packages/runtime/src/mobile/session.ts"},
 		{"exports": ["default"], "file": "apps/*/app.config.ts"},
 		{"exports": ["*"], "file": "apps/*/fingerprint.config.js"},
 		{"exports": ["module.exports"], "file": "apps/*/targets/*/expo-target.config.js"},

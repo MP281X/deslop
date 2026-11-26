@@ -1,0 +1,228 @@
+@import '@deslop/ui/theme.css';
+
+.opm {
+	height: 100dvh;
+	font-size: 0.875rem;
+}
+
+.opm-library {
+	position: relative;
+	height: 100%;
+	overflow: auto;
+	padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+	scrollbar-width: none;
+}
+
+.opm-tools,
+.opm-reader-top {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	padding: 12px 14px 4px;
+}
+
+.opm-side {
+	display: grid;
+	width: 36px;
+	height: 36px;
+	place-items: center;
+	border-radius: 50%;
+}
+
+.opm-side svg {
+	width: 17px;
+	height: 17px;
+}
+
+.opm-chapters {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr);
+	padding: 0 14px 12px;
+}
+
+.opm .opm-row {
+	grid-template-columns: 36px minmax(0, 1fr) auto;
+	gap: 9px;
+	padding-inline: 10px;
+}
+
+.opm-row[data-read='true'] .opm-row-copy,
+.opm-row[data-read='true'] .opm-cover {
+	opacity: 0.6;
+}
+
+.opm-row-copy {
+	display: grid;
+	line-height: 1.25;
+}
+
+.opm-row .axis-value {
+	white-space: nowrap;
+	font-size: 0.75rem;
+}
+
+.opm-cover,
+.opm-cover img {
+	width: 36px;
+	height: 36px;
+	border-radius: 4px;
+}
+
+.opm-cover {
+	display: block;
+	overflow: hidden;
+	background: var(--color-muted);
+}
+
+.opm-cover img {
+	object-fit: cover;
+	object-position: center top;
+}
+
+@media (min-width: 640px) and (orientation: portrait), (min-width: 700px) and (orientation: landscape) {
+	.opm-chapters {
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+	}
+}
+
+@media (horizontal-viewport-segments: 2) {
+	.opm-chapters {
+		grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+		column-gap: calc(env(viewport-segment-left 1 0) - env(viewport-segment-right 0 0));
+	}
+}
+
+.opm-menu {
+	position: absolute;
+	z-index: 1;
+	inset: calc(env(safe-area-inset-top) + 50px) auto auto calc(env(safe-area-inset-left) + 14px);
+	display: grid;
+	min-width: 144px;
+	padding: 4px;
+	border: 1px solid rgb(255 255 255 / 18%);
+	border-radius: 14px;
+	background: var(--color-muted);
+}
+
+.opm-menu button {
+	width: 100%;
+	padding: 7px 10px;
+	border-radius: 9px;
+	text-align: start;
+}
+
+.opm-menu button[aria-pressed='true'] {
+	background: rgb(255 255 255 / 10%);
+}
+
+.opm-notice {
+	position: absolute;
+	inset: 50% 12px auto;
+	display: grid;
+	justify-items: center;
+	gap: 8px;
+	color: var(--color-muted-foreground);
+	text-align: center;
+}
+
+.opm-notice :is(a, button) {
+	padding: 6px 14px;
+	border: 1px solid rgb(255 255 255 / 18%);
+	border-radius: 999px;
+	color: var(--color-foreground);
+}
+
+.opm-reader {
+	position: relative;
+	height: 100%;
+	overflow: hidden;
+	touch-action: none;
+	user-select: none;
+}
+
+.opm-reader-top {
+	position: absolute;
+	z-index: 1;
+	inset-block-start: env(safe-area-inset-top);
+	inset-inline-start: env(safe-area-inset-left);
+}
+
+.opm-paper {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+	grid-template-rows: minmax(0, 1fr);
+	height: 100%;
+}
+
+@media (horizontal-viewport-segments: 2) {
+	.opm-paper {
+		grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+		column-gap: calc(env(viewport-segment-left 1 0) - env(viewport-segment-right 0 0));
+	}
+}
+
+.opm-leaf {
+	position: relative;
+	display: grid;
+	grid-row: 1;
+	min-width: 0;
+	min-height: 0;
+	place-items: center;
+}
+
+.opm-leaf[hidden] {
+	display: none;
+}
+
+.opm-leaf[data-side='single'] {
+	grid-column: 1 / -1;
+}
+
+.opm-leaf[data-side='left'] {
+	grid-column: 1;
+}
+
+.opm-leaf[data-side='right'] {
+	grid-column: 2;
+}
+
+.opm-leaf img {
+	width: 100%;
+	height: 100%;
+	object-fit: contain;
+}
+
+.opm-leaf[data-side='left'] img {
+	object-position: right center;
+}
+
+.opm-leaf[data-side='right'] img {
+	object-position: left center;
+}
+
+.opm-retry-page {
+	padding: 10px;
+}
+
+.opm-turn {
+	position: absolute;
+	inset-block-end: max(12px, env(safe-area-inset-bottom));
+	padding: 8px 12px;
+	border-radius: 999px;
+	background: var(--color-muted);
+	opacity: 0;
+	pointer-events: none;
+}
+
+.opm-turn:focus-visible {
+	opacity: 1;
+	pointer-events: auto;
+}
+
+.opm-prev {
+	inset-inline-end: max(14px, env(safe-area-inset-right));
+}
+
+.opm-next {
+	inset-inline-start: max(14px, env(safe-area-inset-left));
+}
