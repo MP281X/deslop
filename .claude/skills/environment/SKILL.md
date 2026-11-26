@@ -14,8 +14,8 @@ description: Load before a command on `worker` or the Mac, starting a preview, o
 - **Names.** Tailnet short names; `<name>.tailnet-8c4c.ts.net` has HTTPS certificates. SSH as `mp281x@worker`, `matteopaludgnach@macbook-pro`.
 - **Tools.** On `worker`, `vp`, `vpx`, `gh`, `glab` and the MCP gateway are installed and signed in, also over SSH; the Mac has only T3, Xcode and Vite+.
 - **Git refs.** T3 checkpoints live under `refs/t3/`; search history with `--branches --remotes`.
-- **Checks.** Fix, check and test run on `worker`, unthrottled, before each push; CI only confirms.
-- **Project commands.** Run a project's checks, builds, tests and servers through its scripts (its `package.json`, the Vite+ tasks in its `vite.config.ts`, its T3 project scripts) or `vp` itself, such as `vp run fix` or `vp -C <package> run test`. Never a global or direct binary such as `effect-tsgo`, `fallow`, `tsc`, `oxlint` or a bare `vp pack`, even one copied from a task's steps: it isn't on `PATH` or skips the project's setup.
+- **Checks.** The root `vp run fix`, `vp run check` and `vp run test` run on `worker` on every PR of a stack before each push, never package-level: Vite+'s cache skips untouched packages, and CI only confirms.
+- **Project commands.** Run a project's checks, builds, tests and servers through its scripts (its `package.json`, the Vite+ tasks in its `vite.config.ts`, its T3 project scripts) or `vp` itself, such as `vp run check`. Never a global or direct binary such as `effect-tsgo`, `fallow`, `tsc`, `oxlint` or a bare `vp pack`, even one copied from a task's steps: it isn't on `PATH` or skips the project's setup.
 - **Scratch servers** take ports 20000–29999; 5101–5109 are production's.
 - **Auxiliary services** a task needs run as temporary containers, not installs.
 - **Outside source.** Clone what you need on demand into `/tmp/repos/<name>` (`git pull --ff-only` an existing clone, else `git clone --depth 1`) and read it there, never editing. Start from Effect for Effect APIs; T3 Code, opencode and executor show how agent apps are built.

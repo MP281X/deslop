@@ -27,7 +27,7 @@ glab api "projects/:id/pipelines/<pipeline>/jobs?scope[]=failed" | jq -r '.[] | 
 
 ## Bodies
 
-Each push rewrites the body from `.github/pull_request_template.md` (GitLab: `.gitlab/merge_request_templates/Default.md`) for the change at the head, never rounds, rebases or other PRs. Hosts render no HTML. An uploaded recording's URL goes under its finish line, alone in its paragraph; read the body back rendered and fix what fails to render. Set the title and body with `pull_request_update`; upload a recording with the host's CLI:
+Each push rewrites the body from `.github/pull_request_template.md` (GitLab: `.gitlab/merge_request_templates/Default.md`) for the change at the head, never rounds, rebases or other PRs. Hosts render no HTML. An uploaded recording's URL goes under its finish line's one-line caption, alone in its paragraph; read the body back rendered and fix what fails to render. Set the title and body with `pull_request_update`; upload a recording with the host's CLI:
 
 ```bash
 gh pr edit <n> --attach './proof.mp4'    # appends the video URL

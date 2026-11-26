@@ -4,9 +4,11 @@
 
 ## Decisions
 
+<!-- only what he would question, one line each -->
+
 ## Evidence
 
-<!-- the finish lines, ticked, each with its proof under it: a recording for what reaches a screen -->
+<!-- each finish line, ticked, one short line; under it its proof: for what reaches a screen, a recording under its one-line caption, never a screenshot -->
 
 ## Merge danger
 
