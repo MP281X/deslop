@@ -1,7 +1,8 @@
-import {Array, Boolean, Function, Option} from 'effect'
+import {Array, Boolean, Function, Option, Schema} from 'effect'
 
 import type {KeyboardEvent, MouseEvent, ReactNode} from 'react'
 
+import {StatusDot} from '#components/blocks/status-dot.tsx'
 import {Skeleton} from '#components/ui/skeleton.tsx'
 import {Table, TableBody, TableCell, TableRow} from '#components/ui/table.tsx'
 import {cn} from '#lib/utils.ts'
@@ -69,6 +70,35 @@ export function RowLead(props: {
 					}}
 				>
 					{props.reason}
+				</span>
+			)}
+		</TableCell>
+	)
+}
+
+export type RowProblemStatus = typeof RowProblemStatus.Type
+const RowProblemStatus = Schema.Literals(['error', 'warning'])
+
+// The lead cell of the row every list app shares: a title on one line, and one muted line under it unless the row has none. Something wrong puts a dot before the title and its reason in the muted line's place. The figures or the time follow in the row's own cells at the trailing edge.
+export function RowLines(props: {
+	children: ReactNode
+	line?: ReactNode
+	problem?: {reason: string; status: RowProblemStatus}
+	title?: string
+}) {
+	const line = Option.match(Option.fromUndefinedOr(props.problem), {
+		onNone: () => props.line,
+		onSome: problem => problem.reason
+	})
+	return (
+		<TableCell className="w-full">
+			<span className="flex w-0 min-w-full items-center gap-1.5" title={props.title}>
+				{props.problem !== undefined && <StatusDot status={props.problem.status} label={props.problem.reason} />}
+				<span className="truncate font-medium">{props.children}</span>
+			</span>
+			{line !== undefined && (
+				<span className="text-muted-foreground in-data-[state=selected]:text-foreground block w-0 min-w-full truncate text-xs">
+					{line}
 				</span>
 			)}
 		</TableCell>

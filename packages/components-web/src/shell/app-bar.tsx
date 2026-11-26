@@ -2,7 +2,7 @@ import {useAtom, useAtomValue} from '@effect/atom-react'
 
 import {Array, Boolean, Effect, Equal, Function, Option, Predicate, Schema, String, Struct, pipe} from 'effect'
 
-import {ArrowClockwiseIcon, CaretLeftIcon} from '@phosphor-icons/react'
+import {ArrowClockwiseIcon, CaretLeftIcon, SidebarSimpleIcon} from '@phosphor-icons/react'
 import {AsyncResult, Atom} from 'effect/reactivity'
 import {useState} from 'react'
 import type {ComponentProps, KeyboardEvent, ReactElement, ReactNode} from 'react'
@@ -209,13 +209,14 @@ export function AppBarChoice<A>(props: {
 	)
 }
 
-// The masthead: mark and name, sections, then the controls that choose what the page shows and the page's few actions. Below 700px a bar with `stackTabs` gives its sections their own full-width row under it, where a long strip has the width to scroll. On touch the controls sit far enough apart that each one's 44px tap layer is its own.
+// The masthead: the sidebar button when the page has a list to fold away, mark and name, sections, then the controls that choose what the page shows and the page's few actions. Below 700px a bar with `stackTabs` gives its sections their own full-width row under it, where a long strip has the width to scroll. On touch the controls sit far enough apart that each one's 44px tap layer is its own.
 export function AppBar(props: {
 	account?: ReactNode
 	controls?: ReactNode
 	heading?: {back: {label: string; onClick: () => void}; title: string}
 	icon: string
 	name: string
+	sidebar?: {hidden: boolean; onToggle: () => void}
 	stackTabs?: boolean
 	tabs?: ReactNode
 }) {
@@ -233,15 +234,23 @@ export function AppBar(props: {
 			<div className="flex h-12 items-center gap-4 border-b px-4">
 				{Option.match(Option.fromUndefinedOr(props.heading), {
 					onNone: () => (
-						<Button
-							variant="ghost"
-							nativeButton={false}
-							render={<a href="/" aria-label={props.name} />}
-							className="shrink-0"
-						>
-							<img src={props.icon} alt="" className="pixelated size-6" />
-							<span className="font-heading text-sm font-semibold capitalize max-sm:hidden">{props.name}</span>
-						</Button>
+						<div className="flex shrink-0 items-center gap-1">
+							{props.sidebar !== undefined && (
+								<Button
+									variant="ghost"
+									size="icon-sm"
+									aria-label="Sidebar"
+									aria-pressed={!props.sidebar.hidden}
+									onClick={props.sidebar.onToggle}
+								>
+									<SidebarSimpleIcon />
+								</Button>
+							)}
+							<Button variant="ghost" nativeButton={false} render={<a href="/" aria-label={props.name} />}>
+								<img src={props.icon} alt="" className="pixelated size-6" />
+								<span className="font-heading text-sm font-semibold capitalize max-sm:hidden">{props.name}</span>
+							</Button>
+						</div>
 					),
 					onSome: heading => (
 						<div className="flex min-w-0 shrink items-center gap-1">

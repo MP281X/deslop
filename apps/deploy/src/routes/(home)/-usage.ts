@@ -146,9 +146,22 @@ function bandsOf(history: MachineHistory, apps: ReturnType<typeof appReadings>) 
 	] satisfies Band[]
 }
 
-// One history's derived usage, computed once and shared by the list and the charts: the stacked bands, the apps they fold into the low-impact band (which the list's divider uses too), and every app the range recorded.
+// One app's row figures: its CPU over the history for the sparkline, and its latest sample's CPU and memory in bytes, none where that sample lacks the app.
+export type AppFigures = {cpu: readonly number[]; cpuNow: Option.Option<number>; memoryNow: Option.Option<number>}
+
+function figuresOf(history: MachineHistory, readings: readonly Reading[]) {
+	const latest = Array.findFirst(readings, reading => reading.index === history.samples.length - 1)
+	return {
+		cpu: series(history, readings, 'cpu'),
+		cpuNow: Option.map(latest, reading => reading.cpu),
+		memoryNow: Option.map(latest, reading => reading.memoryBytes)
+	} satisfies AppFigures
+}
+
+// One history's derived usage, computed once and shared by the list and the charts: the stacked bands, the apps they fold into the low-impact band (which the list's divider uses too), every app the range recorded, and each one's row figures.
 export type Usage = {
 	bands: Band[]
+	figures: Record<AppId, AppFigures>
 	history: MachineHistory
 	lowImpact: HashSet.HashSet<AppId>
 	recorded: HashSet.HashSet<AppId>
@@ -158,6 +171,7 @@ export function usageOf(history: MachineHistory) {
 	const apps = appReadings(history)
 	return {
 		bands: bandsOf(history, apps),
+		figures: Record.map(apps, readings => figuresOf(history, readings)),
 		history,
 		lowImpact: HashSet.fromIterable(
 			pipe(
