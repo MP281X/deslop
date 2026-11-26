@@ -1,0 +1,26 @@
+{
+	"name": "@deslop/ui",
+	"type": "module",
+	"sideEffects": [
+		"**/*.css"
+	],
+	"exports": {
+		"./control": "./src/control.ts",
+		"./glass": "./src/glass.ts",
+		"./native": "./src/native.ts",
+		"./state": "./src/state.ts",
+		"./theme.css": "./src/theme.css",
+		"./vite": "./src/vite.ts"
+	},
+	"dependencies": {
+		"@capacitor/core": "latest",
+		"@deslop/runtime": "workspace:*",
+		"@effect/ui": "https://pkg.pr.new/Effect-TS/ui/@effect/ui@87a704bef41b40de8fa7bced97cae5d69c4233a0",
+		"@fontsource-variable/geist": "latest",
+		"@fontsource-variable/geist-mono": "latest",
+		"@tailwindcss/vite": "latest",
+		"@ui-sdk/core": "latest",
+		"effect": "latest",
+		"tailwindcss": "latest"
+	}
+}
