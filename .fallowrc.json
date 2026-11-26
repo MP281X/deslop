@@ -2,7 +2,13 @@
 	"$schema": "./node_modules/fallow/schema.json",
 	"entry": ["**/main.*", "apps/*/fingerprint.config.js", "apps/*/targets/*/expo-target.config.js"],
 	"includeEntryExports": true,
-	"publicPackages": ["@deslop/coding-standards"],
+	"publicPackages": [
+		"@deslop/coding-standards",
+		"@deslop/components-mobile",
+		"@deslop/components-web",
+		"@deslop/runtime",
+		"@deslop/ui"
+	],
 	"failOnParseError": true,
 	"boundaries": {
 		"zones": [
@@ -19,7 +25,7 @@
 				]
 			},
 			// Build configuration the server also reads; it imports no zone, so it carries nothing across.
-			{"name": "config", "patterns": ["packages/runtime/src/config/**"]},
+			{"name": "config", "patterns": ["packages/runtime/src/config/**", "packages/ui/src/vite.ts"]},
 			{
 				"name": "shared",
 				"patterns": [
@@ -33,13 +39,14 @@
 				"name": "client",
 				"patterns": [
 					"apps/*/index.html",
-					"apps/*/src/main.client.tsx",
+					"apps/*/src/main.client.{ts,tsx}",
 					"apps/*/src/routes/**",
 					"apps/*/src/lib/*.ts",
 					"apps/*/src/lib/*.tsx",
 					"apps/portfolio/src/lib/profile.ts",
 					"apps/*/modules/native/index.ts",
 					"packages/components-*/src/**",
+					"packages/ui/src/**",
 					"packages/*/src/{client,web,mobile}/**"
 				]
 			},
@@ -86,7 +93,9 @@
 		// The runtime imports these; each app keeps them so autolinking includes their native modules.
 		"expo-secure-store",
 		"expo-updates",
-		"expo-web-browser"
+		"expo-web-browser",
+		// Capacitor CLI copies this platform's native project; it has no JS clients.
+		"@capacitor/ios"
 	],
 	"ignorePatterns": ["**/*.gen.ts", "tools/*/template/**"],
 	"ignoreExports": [
