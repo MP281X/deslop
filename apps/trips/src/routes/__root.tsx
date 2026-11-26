@@ -67,13 +67,13 @@ function AppRoutes() {
 		<Host style={{flex: 1}}>
 			{/* Over the whole window, so the list's copy below an item in laptop posture asks once. */}
 			<PasteSheet clipboard={clipboard}>
-				{/* Half open like a laptop, only a flight's board, or the change between its flights, stands above the list. */}
+				{/* Half open like a laptop, only a flight's board, or the next step of its trip, stands above the list. */}
 				<ListDetail
 					board={Option.isSome(useAtomValue(boardAtom))}
 					opened={Option.isSome(opened)}
 					onClose={() => setOpened(Option.none())}
 					modifiers={[tint(colors.foreground)]}
-					list={<HomeRoute opened={Option.isSome(opened)} onOpen={open} />}
+					list={<HomeRoute onOpen={open} />}
 					detail={
 						<Suspense fallback={<ItemGroupSkeleton rows={10} />}>
 							<Destination target={opened} onClose={() => setOpened(Option.none())} onOpen={open} />
