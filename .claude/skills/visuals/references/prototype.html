@@ -57,7 +57,7 @@ const D=DECISIONS.map(({formats='openR',start={},...d},i)=>({...d,formats,start,
 function trace(d,v){const S=[d.start],w=F[d.fm][1],box=document.createElement('div');
   for(const id of (d.paths?.[v]||'').split(' ').filter(Boolean)){box.innerHTML=d.view(S.at(-1),v,w);const t=$(`[data-t="${id}"]`,box);if(!t){console.error(`${d.no} ${v}: no "${id}"`);break}S.push({...S.at(-1),...JSON.parse(t.dataset.p)})}
   return S}
-function reset(d){d.S=Object.fromEntries(d.V.map(v=>[v,trace(d,v)]));d.beats=Math.max(...d.V.map(v=>d.S[v].length));d.c=d.beats-1;d.L=Object.fromEntries(d.V.map(v=>[v,d.S[v].at(-1)]));d.sel??=d.V}
+function reset(d){d.S=Object.fromEntries(d.V.map(v=>[v,trace(d,v)]));d.beats=Math.max(...d.V.map(v=>d.S[v].length));const B=new URLSearchParams(location.search).get('beat');d.c=B==null?d.beats-1:Math.min(+B,d.beats-1);d.L=Object.fromEntries(d.V.map(v=>[v,d.S[v][Math.min(d.c,d.S[v].length-1)]]));d.sel??=d.V}
 const next=(d,v)=>(d.paths?.[v]||'').split(' ')[d.c];
 function draw(){const W=$('#out').clientWidth;
   $('#out').innerHTML=D.map(d=>{const [,w,h]=F[d.fm],n=d.sel.length,lab=v=>`${v=='Today'?'':`<b>${v}</b>`}${v=='Today'?'Today':d.versions[v]}`;

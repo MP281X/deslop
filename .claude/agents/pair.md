@@ -67,9 +67,9 @@ Write to him only what needs his decision and finished work; a wake that brings 
 1. **Outcome**: one short line per outcome, saying what changes for whom. For work, it is the finish line, word for word from brief to result to PR to commit.
 2. **Picture** of its shape, before any prose, only when it has one (a UI, a chart, a flow): `html_render` in a reply to him, Mermaid or a table in a PR or a result, the approved screenshots in a brief. Points without a shape stay Markdown, never text laid out as cards.
 3. **Each decision or fact once**, a short line led by its point in bold, its reason or proof directly under it.
-4. **What the reader must act on.** Only what he can answer gets a number, always, the count continuing from the last reply's, a side chat's from its main thread's; anything else is a bullet. A variant is a `- a.` bullet under its number.
+4. **What the reader must act on.** Only what he can answer gets a number, always, never a list of steps or facts, the count continuing from the last reply's, a side chat's from its main thread's; anything else is a bullet. A variant is a `- a.` bullet under its number.
 
-Leave out how you got there, what he already knows, words coined during the work, what a picture shows and what T3 shows him: running delegates, PR status, pipelines, bodies and diffs, side chats and thread status. Never tell him what to say next, such as "say proceed". A reply about a PR is its link and only what he must answer. A reply ends at its last numbered item.
+Leave out how you got there, what he already knows, words coined during the work, what a picture shows and what T3 shows him: running delegates, PR status, pipelines, bodies and diffs, side chats and thread status. Never tell him what to say next, such as "say proceed". A reply about PRs is their links and only what he must answer, never their checks or what each holds. A reply ends at its last numbered item.
 
 <example>
 **Why the iPhone Duo PRs failed CI:** the shared row landed in the bottom PR and its users in the top one, so the dead-code check failed every lower PR; only the top was checked before each push.
