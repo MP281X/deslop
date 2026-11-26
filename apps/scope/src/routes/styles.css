@@ -1,17 +1,317 @@
-@import '@deslop/components-web/theme.css';
-@source '../../../../packages/components-web/src/**/*.tsx';
+@import '@deslop/ui/theme.css';
 
-:root {
-	--primary: var(--cyan);
+.scope {
+	--pane-padding: 12px;
+	--scope-control-size: 36px;
+	--scope-top: calc(var(--scope-control-size) + 16px);
+	--scope-bottom: 56px;
+	--scope-number: 56px;
+	font-size: 14px;
 }
 
-/* A bar keeps 1px of the page at its right edge, so touching bars stay distinguishable without moving; a 2px tick keeps both. */
-[data-flame-fill] {
-	box-shadow: inset -1px 0 0 var(--background);
+.scope > .fold {
+	--pane-padding: 12px;
 }
 
-/* From 1512px the operations column widens so a long operation name shows in full. */
-@theme {
-	--grid-template-columns-scope: minmax(26rem, 28rem) minmax(0, 1fr);
-	--grid-template-columns-scope-roomy: minmax(26rem, 36rem) minmax(0, 1fr);
+.scope-tools {
+	position: fixed;
+	z-index: 2;
+	inset-block-start: calc(env(safe-area-inset-top) + 8px);
+	inset-inline-start: calc(env(safe-area-inset-left) + 10px);
+	display: flex;
+	gap: 6px;
+}
+
+.scope-sidebar {
+	display: grid;
+	width: var(--scope-control-size);
+	height: var(--scope-control-size);
+	place-items: center;
+	border-radius: inherit;
+}
+
+.scope-sidebar-icon {
+	position: relative;
+	display: inline-block;
+	width: 15px;
+	height: 12px;
+	border: 1px solid currentColor;
+	border-radius: 3px;
+}
+
+.scope-sidebar-icon::before {
+	position: absolute;
+	inset: 0 auto 0 4px;
+	border-inline-start: 1px solid currentColor;
+	content: '';
+}
+
+.scope-list {
+	position: relative;
+	overflow: hidden;
+}
+
+.scope-operations {
+	height: 100%;
+	overflow: auto;
+	padding: var(--scope-top) var(--pane-padding) var(--scope-bottom);
+	scrollbar-width: none;
+}
+
+.scope-operation {
+	--pane-padding: 10px;
+	min-height: 46px;
+}
+
+.scope-operation > .axis-value,
+.scope-trace-summary > .axis-value {
+	font-size: 0.85rem;
+	white-space: nowrap;
+}
+
+.scope-filters {
+	position: absolute;
+	inset: auto 0 8px;
+	display: grid;
+	justify-items: center;
+	padding-inline: var(--pane-padding);
+	pointer-events: none;
+}
+
+.scope-filter-glass {
+	max-width: 100%;
+	pointer-events: auto;
+}
+
+.scope-chip {
+	display: inline-flex;
+	min-width: 0;
+	min-height: var(--scope-control-size);
+	align-items: center;
+	gap: 5px;
+	padding-inline: 10px;
+	border-radius: 999px;
+	font-size: 0.8rem;
+}
+
+.scope-chevron {
+	width: 0.375em;
+	height: 0.375em;
+	flex: none;
+	margin-block-start: -0.1875em;
+	border: solid currentColor;
+	border-width: 0 1px 1px 0;
+	color: var(--color-muted-foreground);
+	transform: rotate(45deg);
+}
+
+.scope-popover {
+	position: fixed;
+	z-index: 3;
+	width: min(320px, calc(100vw - 24px));
+	max-height: min(55dvh, 380px);
+	overflow: auto;
+	padding: 6px;
+	border: 1px solid #333;
+	border-radius: 18px;
+	background: var(--color-background);
+	color: var(--color-foreground);
+	box-shadow: 0 8px 30px #0008;
+}
+
+.scope-filter-popover {
+	inset: auto 0 calc(env(safe-area-inset-bottom) + 50px);
+	margin: 0 auto;
+}
+
+.scope-filter-row {
+	min-height: 40px;
+	pointer-events: auto;
+}
+
+.scope-trace-choice {
+	display: inline-flex;
+	max-width: 100%;
+	align-items: center;
+	gap: 6px;
+	text-align: start;
+}
+
+.scope-trace-popover {
+	inset: calc(env(safe-area-inset-top) + var(--scope-top) + 42px) 12px auto auto;
+	margin: 0;
+}
+
+.scope-detail {
+	padding: var(--scope-top) calc(var(--pane-padding) + env(safe-area-inset-right)) 12px
+		calc(var(--pane-padding) + env(safe-area-inset-left));
+}
+
+@media (min-width: 640px) and (not (vertical-viewport-segments: 2)), (horizontal-viewport-segments: 2) {
+	.scope-detail {
+		padding-block-start: 14px;
+		padding-inline-start: var(--pane-padding);
+	}
+	.scope-trace-popover {
+		inset-block-start: calc(env(safe-area-inset-top) + 54px);
+	}
+}
+
+.scope > .fold[data-list-hidden='true'] > .scope-detail {
+	padding-block-start: var(--scope-top);
+	padding-inline-start: calc(var(--pane-padding) + env(safe-area-inset-left));
+}
+
+.scope-page-failure {
+	padding: calc(env(safe-area-inset-top) + 12px) env(safe-area-inset-right) 12px env(safe-area-inset-left);
+}
+
+.scope-state {
+	padding: 8px var(--pane-padding);
+}
+
+.scope-trace-summary {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) auto;
+	align-items: center;
+	gap: 8px;
+	padding: 0 var(--pane-padding) 6px;
+}
+
+.scope-waterfall {
+	max-height: 60dvh;
+	overflow: auto;
+	overscroll-behavior: contain;
+	scrollbar-width: none;
+}
+
+.scope-waterfall-grid {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) minmax(0, 1.45fr) var(--scope-number);
+	align-items: center;
+	column-gap: 8px;
+	padding-inline: var(--pane-padding);
+}
+
+.scope-axis {
+	position: sticky;
+	inset-block-start: 0;
+	z-index: 1;
+	min-height: 24px;
+	background: var(--color-background);
+	color: var(--color-muted-foreground);
+	font-size: 0.625rem;
+}
+
+.scope-timeline {
+	position: relative;
+	grid-column: 2;
+}
+
+.scope-tick {
+	position: absolute;
+	inset-block-end: -4px;
+	translate: -50%;
+	white-space: nowrap;
+}
+
+.scope-tick::after {
+	display: block;
+	width: 1px;
+	height: 3px;
+	margin-inline: auto;
+	background: currentColor;
+	content: '';
+}
+
+.scope-span {
+	min-height: 40px;
+}
+
+.scope-span-name {
+	overflow: hidden;
+	font-size: 0.85rem;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.scope-span > .axis-value {
+	font-size: 0.8rem;
+}
+
+.scope-track {
+	height: 4px;
+}
+
+.scope-bar {
+	position: absolute;
+	inset-block: 0;
+	inset-inline-start: min(var(--span-start), calc(100% - 2px));
+	width: max(2px, var(--span-width));
+	background: var(--color-muted-foreground);
+}
+
+.scope-bar-failed {
+	background: var(--color-destructive);
+}
+
+.scope-diagnostics {
+	min-width: 0;
+	padding: 12px var(--pane-padding);
+}
+
+.scope-diagnostic-message {
+	margin-block-end: 8px;
+}
+
+.scope-diagnostic-message :is(.axis-title, .axis-muted),
+.scope-field :is(dt, dd) {
+	overflow: visible;
+	overflow-wrap: anywhere;
+	white-space: pre-wrap;
+}
+
+.scope-field {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) minmax(0, 1.35fr);
+	gap: 10px;
+	padding-block: 2px;
+}
+
+.scope-field dd {
+	text-align: end;
+}
+
+.scope-logs {
+	margin-block-start: 12px;
+}
+
+.scope-log {
+	display: grid;
+	grid-template-columns: max-content minmax(0, 1fr);
+	gap: 10px;
+	padding-block: 3px;
+}
+
+.scope-log pre {
+	overflow-wrap: anywhere;
+	white-space: pre-wrap;
+}
+
+@media (min-width: 1100px) {
+	.scope-waterfall-grid {
+		grid-template-columns: minmax(0, 0.55fr) minmax(0, 1.45fr) var(--scope-number);
+	}
+}
+
+@media (min-width: 2560px) {
+	.scope-trace-content {
+		display: grid;
+		grid-template-columns: minmax(0, 1fr) minmax(400px, 34%);
+	}
+	.scope-waterfall,
+	.scope-diagnostics {
+		max-height: calc(100dvh - 105px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+		overflow: auto;
+	}
 }

@@ -1,17 +1,4 @@
-import {
-	Array,
-	Boolean,
-	DateTime,
-	Formatter,
-	Function,
-	Option,
-	Order,
-	Predicate,
-	Record,
-	Schema,
-	String,
-	pipe
-} from 'effect'
+import {Array, Boolean, DateTime, Formatter, Option, Order, Predicate, Record, Schema, String, pipe} from 'effect'
 
 import {Atom, AtomRpc} from 'effect/reactivity'
 
@@ -24,9 +11,6 @@ import {layerPageProtocol} from '@deslop/runtime/web/client'
 import {RpcContracts} from '#rpcs/contracts.ts'
 import {AppName, Operation, SpanId, TraceId} from '#services/telemetry/schema.ts'
 import type {OperationTrace, Overview, TraceTree} from '#services/telemetry/schema.ts'
-
-// The pane Back returns to; from Traces it is the operations, which the URL leaves unnamed.
-const UP: Record<string, Pane> = {Span: 'Trace', Trace: 'Traces'}
 
 // The HTTP attributes a failed span's error line already reads, so its details do not repeat them.
 const HTTP_ATTRIBUTES = [
@@ -50,8 +34,12 @@ class RpcClient extends AtomRpc.Service<RpcClient>()('@deslop/scope/lib/telemetr
 	protocol: layerPageProtocol
 }) {}
 
-export type OperationKey = typeof OperationKey.Type
-const OperationKey = Schema.Struct({app: AppName, name: Operation.fields.name, runtime: Operation.fields.runtime})
+type OperationKey = typeof OperationKey.Type
+export const OperationKey = Schema.Struct({
+	app: AppName,
+	name: Operation.fields.name,
+	runtime: Operation.fields.runtime
+})
 type Selection = typeof Selection.Type
 const Selection = Schema.Struct({
 	operation: OperationKey,
@@ -60,7 +48,6 @@ const Selection = Schema.Struct({
 })
 export type NavigationEvent = typeof NavigationEvent.Type
 export const NavigationEvent = Schema.TaggedUnion({
-	Back: {},
 	Operation: {operation: OperationKey},
 	Range: {keepTrace: Schema.Boolean, range: TimeFrame},
 	Source: {app: AppName},
@@ -80,14 +67,11 @@ export const Search = Schema.Struct({
 	trace: Schema.OptionFromOptionalKey(TraceId)
 })
 
-export function navigationOf(search: Search) {
-	return {
-		path: Option.getOrElse(search.pane, Function.constant('Operations' as const)),
-		selection: Option.map(
-			Option.all({app: search.source, name: search.operation, runtime: search.side}),
-			operation => ({operation, spanId: search.span, traceId: search.trace}) satisfies Selection
-		)
-	}
+function selectionIn(search: Search) {
+	return Option.map(
+		Option.all({app: search.source, name: search.operation, runtime: search.side}),
+		operation => ({operation, spanId: search.span, traceId: search.trace}) satisfies Selection
+	)
 }
 
 // The URL a selection produces in the given pane; a pick keeps the pane it was made in and the page's time frame.
@@ -140,14 +124,11 @@ export function nextSearch(search: Search, event: NavigationEvent) {
 			Option.some('Span')
 		)
 	}
-	if (NavigationEvent.isAnyOf(['Range'])(event)) {
-		const kept = Boolean.match(event.keepTrace, {
-			onFalse: () => ({...search, span: Option.none(), trace: Option.none()}),
-			onTrue: () => search
-		})
-		return {...kept, range: Option.some(event.range)} satisfies Search
-	}
-	return {...search, pane: Option.flatMap(search.pane, current => Record.get(UP, current))} satisfies Search
+	const kept = Boolean.match(event.keepTrace, {
+		onFalse: () => ({...search, span: Option.none(), trace: Option.none()}),
+		onTrue: () => search
+	})
+	return {...kept, range: Option.some(event.range)} satisfies Search
 }
 
 // The app a plain open lands on: the one whose newest failed trace is newest, else the first tab.
@@ -259,8 +240,8 @@ export function focusOf(trace: TraceTree, pickedSpan: Option.Option<SpanId>) {
 }
 
 // A quiet frame is not a missing trace: retain explicit URL ids for the detail reader; defaults apply only without a trace id.
-export function selectionOf(overview: Option.Option<Overview>, search: Search, mobile: boolean) {
-	const selection = navigationOf(search).selection
+export function selectionOf(overview: Option.Option<Overview>, search: Search) {
+	const selection = selectionIn(search)
 	const requested = Option.flatMap(selection, selected => selected.traceId)
 	const source = pipe(
 		search.source,
@@ -276,7 +257,7 @@ export function selectionOf(overview: Option.Option<Overview>, search: Search, m
 		Option.flatMap(key => Option.flatMap(overview, current => findOperation(current, key))),
 		Option.filter(active => Option.contains(source, active.app.name)),
 		Option.orElse(() =>
-			Boolean.match(mobile || Option.isSome(requested), {
+			Boolean.match(Option.isSome(requested), {
 				onFalse: () =>
 					Option.flatMap(overview, current =>
 						Option.map(Array.head(operationsOf(current, source)), row => ({app: row.app, operation: row.operation}))
@@ -296,16 +277,16 @@ export function selectionOf(overview: Option.Option<Overview>, search: Search, m
 			)
 		)
 	)
+	const listed = Option.flatMap(activeOperation, active =>
+		Option.match(requested, {
+			onNone: () => Array.head(active.operation.traces),
+			onSome: id => Array.findFirst(active.operation.traces, trace => trace.id === id)
+		})
+	)
 	const activeTrace = pipe(
 		requested,
-		Option.map(id =>
-			pipe(
-				activeOperation,
-				Option.flatMap(active => Array.findFirst(active.operation.traces, trace => trace.id === id)),
-				Option.getOrElse(() => ({id}))
-			)
-		),
-		Option.orElse(() => Option.flatMap(activeOperation, active => Array.head(active.operation.traces)))
+		Option.orElse(() => Option.map(listed, trace => trace.id)),
+		Option.map(id => ({id, summary: listed}))
 	)
 	const pickedSpan = pipe(
 		selection,
