@@ -1,29 +1,14 @@
 {
 	"$schema": "./node_modules/fallow/schema.json",
-	"entry": ["**/main.*", "apps/*/fingerprint.config.js", "apps/*/targets/*/expo-target.config.js"],
+	"entry": ["**/main.*"],
 	"includeEntryExports": true,
-	"publicPackages": [
-		"@deslop/coding-standards",
-		"@deslop/components-mobile",
-		"@deslop/components-web",
-		"@deslop/runtime",
-		"@deslop/ui"
-	],
+	"publicPackages": ["@deslop/coding-standards"],
 	"failOnParseError": true,
 	"boundaries": {
 		"zones": [
 			// Tests and tooling may read any zone, and no shipped zone may read them, so neither bridges client and server.
 			{"name": "test", "patterns": ["**/*.test.ts"]},
-			{
-				"name": "tooling",
-				"patterns": [
-					"tools/**",
-					"vite.config.ts",
-					"apps/*/{app,metro,vite}.config.ts",
-					"apps/*/fingerprint.config.js",
-					"apps/*/targets/**"
-				]
-			},
+			{"name": "tooling", "patterns": ["tools/**", "vite.config.ts", "apps/*/vite.config.ts"]},
 			// Build configuration the server also reads; it imports no zone, so it carries nothing across.
 			{"name": "config", "patterns": ["packages/runtime/src/config/**", "packages/ui/src/vite.ts"]},
 			{
@@ -39,15 +24,12 @@
 				"name": "client",
 				"patterns": [
 					"apps/*/index.html",
-					"apps/*/src/main.client.{ts,tsx}",
+					"apps/*/src/main.client.ts",
 					"apps/*/src/routes/**",
 					"apps/*/src/lib/*.ts",
-					"apps/*/src/lib/*.tsx",
 					"apps/portfolio/src/lib/profile.ts",
-					"apps/*/modules/native/index.ts",
-					"packages/components-*/src/**",
 					"packages/ui/src/**",
-					"packages/*/src/{client,web,mobile}/**"
+					"packages/*/src/{client,web}/**"
 				]
 			},
 			// Server layers point one way: the entry composes transports, transports call services, services build on shared code.
@@ -84,36 +66,14 @@
 			{"files": ["**/handlers.ts"], "maxCognitive": 8, "reason": "Transport handlers delegate decisions to services."}
 		],
 		// No production coverage exists: estimated CRAP must not masquerade as measured risk.
-		"maxCrap": 0,
-		"ignore": ["packages/components-web/src/ui/**"]
+		"maxCrap": 0
 	},
 	"ignoreDependencies": [
-		// Peer-only: one scheduler resolution keeps app and shared atom hooks on the same registry context.
-		"scheduler",
-		// The runtime imports these; each app keeps them so autolinking includes their native modules.
-		"expo-secure-store",
-		"expo-updates",
-		"expo-web-browser",
 		// Capacitor CLI copies this platform's native project; it has no JS clients.
 		"@capacitor/ios"
 	],
 	"ignorePatterns": ["**/*.gen.ts", "tools/*/template/**"],
-	"ignoreExports": [
-		// The mobile generator still calls these; templates are excluded from the workspace graph.
-		{"exports": ["makeExpoConfig"], "file": "packages/runtime/src/config/expo.ts"},
-		{"exports": ["makeMetroConfig"], "file": "packages/runtime/src/config/metro.ts"},
-		{"exports": ["makeSession"], "file": "packages/runtime/src/mobile/session.ts"},
-		{"exports": ["default"], "file": "apps/*/app.config.ts"},
-		{"exports": ["*"], "file": "apps/*/fingerprint.config.js"},
-		{"exports": ["module.exports"], "file": "apps/*/targets/*/expo-target.config.js"},
-		{"exports": ["*"], "file": "packages/components-web/src/ui/**/*.{ts,tsx}"}
-	],
 	"overrides": [
-		{
-			// The migration removes these packages after their last app moves. Keep intermediate review layers independent.
-			"files": ["packages/components-{web,mobile}/src/**"],
-			"rules": {"unused-exports": "off", "unused-files": "off", "unused-types": "off"}
-		},
 		{
 			// Schemas and their types are exported in pairs by policy
 			"files": ["apps/*/src/services/*/schema.ts", "packages/runtime/src/shared/schema.ts"],
@@ -123,11 +83,6 @@
 			// A shared codec's type is exported beside it even where callers read only the value.
 			"files": ["packages/runtime/src/shared/{auth,time}.ts"],
 			"rules": {"unused-types": "off"}
-		},
-		{
-			// shadcn's CLI owns these files and their exported prop types.
-			"files": ["packages/components-web/src/ui/**"],
-			"rules": {"private-type-leaks": "off"}
 		}
 	],
 	"rules": {

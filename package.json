@@ -13,7 +13,6 @@
 		"@types/react": "latest",
 		"effect": "latest",
 		"fallow": "latest",
-		"scheduler": "^0.28.0",
 		"tsrs": "catalog:",
 		"vite": "catalog:",
 		"vite-plus": "catalog:",

@@ -27,7 +27,6 @@ import {Base64} from 'effect/encoding'
 import {HttpClient, HttpClientRequest, HttpClientResponse} from 'effect/http'
 import {Jwk, Jws} from 'effect/jose'
 
-import {DEVELOPMENT_BUNDLE_SUFFIX} from '#config/expo.ts'
 import {ApnsAnswer, ApnsError, apnsAnswer, deviceHeaders, tooLargeAnswer} from '#shared/apns.ts'
 import type {ApnsPriority, ApnsPushType, ApnsToken} from '#shared/apns.ts'
 import {DateTimeUtcFromSeconds} from '#shared/time.ts'
@@ -39,7 +38,7 @@ type Target = {bundle: string; token: Redacted.Redacted<ApnsToken>}
 type Payload = {aps: Record<string, unknown>; [key: string]: unknown}
 
 function hostsOf(bundle: string) {
-	if (String.endsWith(DEVELOPMENT_BUNDLE_SUFFIX)(bundle)) {
+	if (String.endsWith('.dev')(bundle)) {
 		return {
 			channels: 'https://api-manage-broadcast.sandbox.push.apple.com:2195',
 			devices: 'https://api.sandbox.push.apple.com'

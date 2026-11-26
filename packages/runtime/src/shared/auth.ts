@@ -20,13 +20,6 @@ export class AuthError extends Schema.TaggedError<AuthError>()('AuthError', {
 export type UserId = typeof UserId.Type
 export const UserId = pipe(Schema.NonEmptyString, Schema.brand('UserId'))
 
-export function avatarUrlOf(id: UserId) {
-	return Option.map(
-		String.match(/^github:([1-9]\d*)$/u)(id),
-		() => `https://avatars.githubusercontent.com/u/${String.slice('github:'.length)(id)}?s=96`
-	)
-}
-
 export type GitHubId = typeof GitHubId.Type
 export const GitHubId = pipe(Schema.Int, Schema.brand('GitHubId'))
 
@@ -84,14 +77,6 @@ export const DEVELOPER = {admin: true, id: UserId.make('github:0'), name: 'dev'}
 export function signInUrl(next: string) {
 	return `${new URL(next).origin}/auth/sign-in?${new URLSearchParams({next})}`
 }
-
-// Auth hands an iOS app the new session's secret, or tells it why the sign-in failed.
-export const signedInSecret = Effect.fnUntraced(function* (url: string) {
-	const params = new URL(url).searchParams
-	const error = params.get('error')
-	if (error !== null) return yield* AuthError.make({message: error})
-	return yield* Schema.decodeUnknownEffect(Schema.NonEmptyString)(params.get('session'))
-})
 
 export function needsSignIn(error: unknown) {
 	return Schema.is(AuthError)(error) && error.error === undefined

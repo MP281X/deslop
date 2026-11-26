@@ -24,8 +24,7 @@ Check a built app's authorization with `node apps/<app>/dist/server.js probe`: i
 - Provide `layerApnsClient` to `Apns.layer` at the server entry; app services keep their own HTTP client, notification policy and per-device delivery records.
 - Handle every `ApnsAnswer`. `ChannelGone`: nothing is owed for that channel. `TooLarge` (over Apple's 4 KB, never sent): never forget a token for it. Delete a channel again only after `deleteChannel` answers `Retry` or fails without an answer.
 - A Live Activity start is three calls, so the app writes the channel down before the phone hears of it: `startHeld` (a start just told to retry or too large), `createChannel`, `startActivity(target, leg, channel, body)`. The app deletes channels; the runtime never does.
-- `mobile/push-token`'s `registerPushTokens` takes the app's Expo listener and initial-token reader; keep `expo-notifications` out of the runtime, which would autolink it into every app.
 
 ## Client clocks
 
-Read time through `client/clock`'s `clockAtom(every)`, and pass that value to `shared/format`'s `ageOf` and `dayOf`. Mount `client/problem`'s `problemSinceAtom(reader)` with the reader, not only inside its conditional error indicator.
+Read time through `client/clock`'s `clockAtom(every)`, and pass that value to `shared/format`'s `ageOf` and `dayOf`.
