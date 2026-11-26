@@ -1,73 +1,114 @@
-import {Boolean, Effect, Function, Option, Predicate, String} from 'effect'
+import {Array, Effect, Option, Predicate, String, pipe} from 'effect'
 
-import {getStringAsync, hasImageAsync} from 'expo-clipboard'
-import {randomUUID} from 'expo-crypto'
+import {SecureRandom} from 'effect/crypto'
+import {HttpBody} from 'effect/http'
+import type {HttpClient} from 'effect/http'
+import type {AtomRegistry} from 'effect/reactivity'
 
-import {copiedImage, makeClipboard, readClipboard} from '@deslop/components-mobile/lib/clipboard'
-import type {ClipboardKind} from '@deslop/components-mobile/lib/clipboard'
-import {provideRuntimeOnce} from '@deslop/runtime/mobile/session'
-
+import {StashNative, atDevice} from '#lib/native.ts'
 import {capture} from '#lib/notes.ts'
-import {RpcClient, session} from '#lib/session.ts'
-import {native} from '#modules/native/index.ts'
+import {installed} from '#lib/session.ts'
 import {captureUrl} from '#services/notes/lib/utils.ts'
-import {NotesError} from '#services/notes/schema.ts'
+import {NoteId, NotesError} from '#services/notes/schema.ts'
 
-// The upload runs inside the copied file's scope, and an interruption cancels it before the file is removed.
-const saveImage = Effect.fnUntraced(function* (count: string) {
-	const file = yield* copiedImage(count, 20_000_000)
-	const headers = yield* session.headers
-	const response = yield* Effect.tryPromise({
-		catch: cause => NotesError.make({cause, message: 'The image could not be sent.'}),
-		try: signal =>
-			file.upload(new URL(`/api/files/${randomUUID()}`, session.server).href, {
-				headers: {...headers, 'content-type': 'image/jpeg'},
-				httpMethod: 'POST',
-				signal
-			})
-	})
-	if (response.status >= 300) {
-		return yield* NotesError.make({message: `The server refused the image with status ${response.status}.`})
+const linkFrom = Effect.fnUntraced(function* (copy: string) {
+	const text = String.trim(copy)
+	if (Predicate.isNotUndefined(captureUrl(text))) return text
+	if (
+		Option.isSome(String.match(/^[^\s/]+\.[^\s/]+(?:\/\S*)?$/u)(text)) &&
+		Predicate.isNotUndefined(captureUrl(`https://${text}`))
+	) {
+		return `https://${text}`
 	}
-}, Effect.scoped)
-
-const saveLink = Effect.fnUntraced(function* (count: string) {
-	const text = String.trim(
-		yield* readClipboard(
-			count,
-			Effect.tryPromise({
-				catch: cause => NotesError.make({cause, message: 'The clipboard could not be read.'}),
-				try: () => getStringAsync()
-			})
-		)
-	)
-	// iOS detects a bare domain such as example.com/page as a link too.
-	const link = Boolean.match(Predicate.isUndefined(captureUrl(text)) && !String.includes(' ')(text), {
-		onFalse: () => text,
-		onTrue: () => `https://${text}`
-	})
-	if (Predicate.isUndefined(captureUrl(link))) {
-		return yield* NotesError.make({message: 'The copied text holds no link.'})
-	}
-	yield* capture(link)
+	return yield* NotesError.make({message: 'The copied text holds no link.'})
 })
 
-export const clipboard = makeClipboard({
-	// A copy that failed to save is never offered again.
-	answered: Function.constTrue,
-	detect: Effect.gen(function* () {
-		if (yield* Effect.promise(() => hasImageAsync())) return Option.some<ClipboardKind>('image')
-		if (yield* Effect.promise(() => native.hasLink())) return Option.some<ClipboardKind>('link')
-		return Option.none<ClipboardKind>()
-	}),
-	labels: {
-		confirm: 'Save',
-		notSaved: 'Not Saved',
-		questions: {image: 'Save the copied image?', link: 'Save the copied link?', text: 'Save the copied link?'}
-	},
-	save: (copy, get) =>
-		Boolean.match(copy.kind === 'image', {
-			onFalse: () => provideRuntimeOnce(get, RpcClient.runtime, saveLink(copy.count)),
-			onTrue: () => provideRuntimeOnce(get, session.runtime, saveImage(copy.count))
+const jpeg = Effect.fnUntraced(function* (image: Blob) {
+	const bitmap = yield* Effect.acquireRelease(
+		atDevice('The copied image could not be read.', () => createImageBitmap(image)),
+		value => Effect.sync(() => value.close())
+	)
+	const canvas = document.createElement('canvas')
+	canvas.width = bitmap.width
+	canvas.height = bitmap.height
+	const ctx = canvas.getContext('2d', {alpha: false})
+	if (ctx === null) return yield* NotesError.make({message: 'The copied image could not be read.'})
+	ctx.fillStyle = '#fff'
+	ctx.fillRect(0, 0, canvas.width, canvas.height)
+	ctx.drawImage(bitmap, 0, 0)
+	return yield* Effect.callback<Blob, NotesError>(resume => {
+		canvas.toBlob(
+			blob => {
+				if (blob === null) resume(Effect.fail(NotesError.make({message: 'The copied image could not be read.'})))
+				else resume(Effect.succeed(blob))
+			},
+			'image/jpeg',
+			0.9
+		)
+	})
+}, Effect.scoped)
+
+const sendImage = Effect.fnUntraced(function* (client: HttpClient.HttpClient, image: Blob) {
+	const jpegImage = yield* jpeg(image)
+	if (jpegImage.size > 20_000_000) {
+		return yield* NotesError.make({message: 'The copied image is larger than 20 MB.'})
+	}
+	const buffer = yield* atDevice('The copied image could not be read.', () => jpegImage.arrayBuffer())
+	const response = yield* client.post(`/api/files/${NoteId.make(SecureRandom.uuidV4Unsafe())}`, {
+		body: HttpBody.uint8Array(new Uint8Array(buffer), 'image/jpeg')
+	})
+	if (response.status >= 300) {
+		return yield* NotesError.make({message: (yield* response.text) || 'The copied image could not be saved.'})
+	}
+})
+
+export const paste = Effect.fnUntraced(function* (registry: AtomRegistry.AtomRegistry, client: HttpClient.HttpClient) {
+	if (installed) {
+		const copy = yield* atDevice('The clipboard could not be read.', () => StashNative.paste())
+		yield* Option.match(Option.fromUndefinedOr(copy.image), {
+			onNone: Effect.fnUntraced(function* () {
+				yield* capture(registry, yield* linkFrom(copy.text ?? ''))
+			}),
+			onSome: Effect.fnUntraced(function* (encoded) {
+				yield* atDevice('The copied image could not be saved.', () =>
+					StashNative.saveImage({data: encoded, id: NoteId.make(SecureRandom.uuidV4Unsafe())})
+				)
+			})
 		})
+		return
+	}
+	const items = yield* atDevice('The clipboard could not be read.', () => navigator.clipboard.read())
+	yield* pipe(
+		items,
+		Array.findFirst(item =>
+			pipe(
+				item.types,
+				Array.findFirst(String.startsWith('image/')),
+				Option.map(type => ({item, type}))
+			)
+		),
+		Option.match({
+			onNone: () =>
+				pipe(
+					items,
+					Array.findFirst(item => Array.contains(item.types, 'text/plain')),
+					Option.match({
+						onNone: () => Effect.fail(NotesError.make({message: 'Copy a link or image first.'})),
+						onSome: Effect.fnUntraced(function* (item) {
+							const blob = yield* atDevice('The copied link could not be read.', () => item.getType('text/plain'))
+							yield* capture(
+								registry,
+								yield* linkFrom(yield* atDevice('The copied link could not be read.', () => blob.text()))
+							)
+						})
+					})
+				),
+			onSome: Effect.fnUntraced(function* (pair) {
+				yield* sendImage(
+					client,
+					yield* atDevice('The copied image could not be read.', () => pair.item.getType(pair.type))
+				)
+			})
+		})
+	)
 })

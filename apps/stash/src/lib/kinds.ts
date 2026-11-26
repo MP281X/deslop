@@ -1,21 +1,18 @@
-import type {Record} from 'effect'
-import {Option, Schema, String, pipe} from 'effect'
+import {Option, String, pipe} from 'effect'
 
-import {brands} from '#lib/icons.tsx'
 import {isYouTube} from '#services/notes/lib/utils.ts'
 import type {Kind, NoteItem} from '#services/notes/schema.ts'
-import {BrandedKind} from '#services/notes/schema.ts'
 
 export const kinds = {
-	file: {label: 'Photos and Videos', symbol: 'photo'},
-	note: {label: 'Notes', symbol: 'text.alignleft'},
-	tiktok: {label: 'TikTok', logo: brands.tiktok},
-	web: {label: 'Web', symbol: 'globe'},
-	x: {label: 'X', logo: brands.x},
-	youtube: {label: 'YouTube', logo: brands.youtube}
-} as const satisfies Record<Kind, unknown>
+	file: 'Photos and Videos',
+	note: 'Notes',
+	tiktok: 'TikTok',
+	web: 'Web',
+	x: 'X',
+	youtube: 'YouTube'
+} as const satisfies Record<Kind, string>
 
-export function kindOf(note: NoteItem) {
+export function kindOf(note: NoteItem): Kind {
 	if (Option.isSome(note.file)) return 'file'
 	if (note.source === 'TikTok') return 'tiktok'
 	if (note.source === 'X') return 'x'
@@ -24,25 +21,24 @@ export function kindOf(note: NoteItem) {
 	return 'web'
 }
 
-export function siteOf(note: NoteItem) {
+export function sourceLabelOf(note: NoteItem) {
+	const kind = kindOf(note)
 	return pipe(
-		note.url,
-		Option.filter(() => kindOf(note) === 'web'),
-		Option.flatMap(url => Option.liftThrowable(() => new URL(url).hostname)()),
-		Option.map(String.replace(/^www\./u, ''))
+		note.author,
+		Option.orElse(() =>
+			pipe(
+				note.url,
+				Option.filter(() => kind === 'web'),
+				Option.map(url => String.replace(/^www\./u, '')(new URL(url).hostname))
+			)
+		),
+		Option.getOrElse(() => kinds[kind])
 	)
 }
 
 export function subjectOf(note: NoteItem) {
 	if (Option.contains(note.file, 'image/jpeg')) return 'photo'
 	if (Option.isSome(note.file)) return 'video'
+	if (note.source === 'Note') return 'note'
 	return 'link'
-}
-
-export function brandOf(note: NoteItem) {
-	return Option.liftPredicate(kindOf(note), Schema.is(BrandedKind))
-}
-
-export function appOf(note: NoteItem) {
-	return Option.map(brandOf(note), brand => kinds[brand].label)
 }

@@ -24,7 +24,7 @@ function refusal(error: NotesError) {
 	)
 }
 
-// The Swift share extension cannot speak the RPC protocol, and SwiftUI images load from a downloaded file.
+// The Swift share extension sends captures over HTTP.
 export const HttpHandlers = HttpRouter.use(router =>
 	Effect.gen(function* () {
 		const notes = yield* Notes
