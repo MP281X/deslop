@@ -14,7 +14,7 @@ import {colors} from '@deslop/components-mobile/theme'
 import {chaptersAtom, diagnosticsAtom, openedAtom, pushAtom, unsavedAtom} from '#lib/chapters.ts'
 import {withUnsaved} from '#lib/reader.ts'
 import {session} from '#lib/session.ts'
-import {ChaptersRoute} from '#routes/(home)/index.tsx'
+import {ChaptersColumn, ChaptersRoute} from '#routes/(home)/index.tsx'
 import {ReaderRoute, ReaderSkeleton} from '#routes/chapters/$number.tsx'
 import {keyOf} from '#services/chapters/lib/utils.ts'
 import type {ChapterIdentity, ChapterNumber, Series} from '#services/chapters/schema.ts'
@@ -58,9 +58,17 @@ function AppRoutes() {
 				opened={Option.isSome(opened)}
 				onClose={() => setOpened(Option.none())}
 				modifiers={[tint(colors.foreground)]}
-				list={<ChaptersRoute key={series} onOpen={open} series={series} onSeries={setSeries} />}
+				list={
+					<ChaptersRoute
+						key={series}
+						onOpen={open}
+						opened={Option.isSome(opened)}
+						series={series}
+						onSeries={setSeries}
+					/>
+				}
 				detail={Option.match(opened, {
-					onNone: Function.constUndefined,
+					onNone: () => <ChaptersColumn key={series} onOpen={open} series={series} />,
 					onSome: chapter => (
 						<Suspense key={keyOf(chapter)} fallback={<ReaderSkeleton number={chapter.number} />}>
 							<Reader number={chapter.number} series={chapter.series} />
