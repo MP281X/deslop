@@ -1,45 +1,28 @@
 import {assert, it} from '@effect/vitest'
 
-import {Array, DateTime, Duration} from 'effect'
+import {DateTime, Option} from 'effect'
 
-import {chartTicks, spacedTicks} from '#routes/(home)/-chart.ts'
+import {axisPosition, restartPositions, tracePaths} from '#routes/(home)/-chart.ts'
 
-const ROME = DateTime.zoneMakeNamedUnsafe('Europe/Rome')
+function time(minute: number) {
+	return DateTime.makeUnsafe(minute * 60_000)
+}
+const now = time(60)
 
-it('ticks a month weekly at local midnight across a daylight-saving change, up to its end', () => {
-	const now = DateTime.makeUnsafe('2026-11-05T12:00:00Z')
-	const ticks = chartTicks(Duration.days(30), now, ROME)
-	assert.deepStrictEqual(
-		Array.map(ticks, tick => DateTime.formatIsoZoned(DateTime.makeZonedUnsafe(tick.at, {timeZone: ROME}))),
+it('aligns timestamps and restarts to the same trailing hour', () => {
+	assert.strictEqual(axisPosition(time(15), now), 25)
+	assert.deepStrictEqual(restartPositions([time(-1), time(15), time(60), time(61)], now), [25, 100])
+})
+
+it('clips a point at the left of the hour and leaves unread intervals blank', () => {
+	const paths = tracePaths(
 		[
-			'2026-10-13T00:00:00.000+02:00[Europe/Rome]',
-			'2026-10-20T00:00:00.000+02:00[Europe/Rome]',
-			'2026-10-27T00:00:00.000+01:00[Europe/Rome]',
-			'2026-11-03T00:00:00.000+01:00[Europe/Rome]'
-		]
+			{from: time(-15), time: time(15), value: Option.some(20)},
+			{from: time(15), time: time(30), value: Option.none()},
+			{from: time(30), time: time(45), value: Option.some(0)},
+			{from: time(45), time: time(60), value: Option.some(50)}
+		],
+		now
 	)
-	assert.isTrue(Array.every(ticks, tick => tick.label))
-})
-
-it('ticks a week every local midnight, labelling every other day', () => {
-	const now = DateTime.makeUnsafe('2026-11-05T12:00:00Z')
-	const ticks = chartTicks(Duration.days(7), now, ROME)
-	assert.strictEqual(ticks.length, 7)
-	assert.deepStrictEqual(
-		Array.map(ticks, tick => tick.label),
-		[true, false, true, false, true, false, true]
-	)
-})
-
-it('keeps only the axis labels that fit apart, none before the axis is measured', () => {
-	const ticks = Array.map([25, 50, 75, 99], x => ({text: '06:00', x}))
-	assert.deepStrictEqual(
-		Array.map(spacedTicks(320)(ticks), tick => tick.x),
-		[25, 50, 75, 99]
-	)
-	assert.deepStrictEqual(
-		Array.map(spacedTicks(100)(ticks), tick => tick.x),
-		[25, 75]
-	)
-	assert.deepStrictEqual(spacedTicks(0)(ticks), [])
+	assert.strictEqual(paths.line, 'M0 80H25M50 100H75V50H100')
 })

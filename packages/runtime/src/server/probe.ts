@@ -124,7 +124,7 @@ const publicAccess: readonly Access[] = [
 		callers: ['member'] as const,
 		surface: `tool ${name}`
 	})),
-	...Array.map(['metrics.watch', 'inventory.watch'], name => ({
+	...Array.map(['metrics.watch', 'metrics.app', 'inventory.watch'], name => ({
 		app: 'deploy',
 		callers: ['member'] as const,
 		surface: `rpc ${name}`

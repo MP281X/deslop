@@ -1,4 +1,4 @@
-import {Cache, Duration, Effect, Record, Schedule, Scope, Stream, pipe} from 'effect'
+import {Boolean, Cache, DateTime, Duration, Effect, Record, Schedule, Scope, Stream, pipe} from 'effect'
 
 import {Reactivity} from 'effect/reactivity'
 
@@ -46,7 +46,15 @@ export const RpcHandlers = RpcContracts.toLayer(
 				return yield* pipe(
 					Stream.fromEffectSchedule(
 						metrics.read({minutes}),
-						Schedule.spaced(Duration.min(resolution(minutes), Duration.seconds(30)))
+						pipe(
+							minutes,
+							Duration.equals(Duration.hours(1)),
+							Boolean.match({
+								onFalse: () => Duration.min(resolution(minutes), Duration.seconds(30)),
+								onTrue: () => Duration.seconds(5)
+							}),
+							Schedule.spaced
+						)
 					),
 					Stream.share({capacity: 1, replay: 1, strategy: 'sliding'}),
 					Effect.provideService(Scope.Scope, scope)
@@ -56,8 +64,23 @@ export const RpcHandlers = RpcContracts.toLayer(
 		return RpcContracts.of({
 			'exposures.expose': input => Effect.flatMap(CurrentAdmin, admin => machine.expose(input, admin)),
 			'exposures.hide': input => Effect.flatMap(CurrentAdmin, admin => machine.hide(input, admin)),
+			'inventory.logs': input => Effect.flatMap(CurrentAdmin, admin => inventory.logs(input, admin)),
+			'inventory.restart': input => Effect.flatMap(CurrentAdmin, admin => inventory.restart(input, admin)),
 			'inventory.run': input => Effect.flatMap(CurrentAdmin, admin => machine.run(input, admin)),
+			'inventory.stop': input => Effect.flatMap(CurrentAdmin, admin => inventory.stop(input, admin)),
 			'inventory.watch': () => view,
+			'metrics.app': input =>
+				Stream.fromEffectSchedule(
+					Effect.gen(function* () {
+						const time = yield* DateTime.now
+						const hour = yield* Effect.all(
+							{processes: metrics.processHistory(input, time), restarts: inventory.restarts(input, time)},
+							{concurrency: 'unbounded'}
+						)
+						return {...hour, time}
+					}),
+					Schedule.spaced(Duration.seconds(5))
+				),
 			'metrics.watch': query => Stream.unwrap(Cache.get(histories, query.minutes))
 		})
 	})

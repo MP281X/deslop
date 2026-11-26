@@ -1,21 +1,15 @@
-import {Effect, Function, Option, Stream, pipe} from 'effect'
+import {Effect, Option, Schema} from 'effect'
 
-import {Atom, AtomRpc} from 'effect/reactivity'
+import {Atom, AtomRegistry, AtomRpc} from 'effect/reactivity'
 
-import {
-	isDeniedCause,
-	keepValueThroughOutages,
-	liveAtom,
-	liveStream,
-	reconnectOnDrop
-} from '@deslop/runtime/client/live-stream'
+import {liveAtom} from '@deslop/runtime/client/live-stream'
 import {RpcStream} from '@deslop/runtime/shared/rpc'
 import {addPageTelemetry, layerPageProtocol} from '@deslop/runtime/web/client'
 
+import {HOUR} from '#routes/(home)/-chart.ts'
 import {RpcContracts} from '#rpcs/contracts.ts'
-import type {ExposeInput} from '#services/exposures/schema.ts'
-import type {InventoryItem, ItemId, RunRequest} from '#services/inventory/schema.ts'
-import type {HistoryQuery} from '#services/metrics/schema.ts'
+import {ExposeInput} from '#services/exposures/schema.ts'
+import {AppId, RunRequest} from '#services/inventory/schema.ts'
 
 addPageTelemetry('@deslop/deploy')
 
@@ -24,40 +18,32 @@ class RpcClient extends AtomRpc.Service<RpcClient>()('@deslop/deploy/lib/machine
 	protocol: layerPageProtocol
 }) {}
 
-export const exposeTargetAtom = Atom.make(Option.none<InventoryItem>())
+export const inventoryAtom = liveAtom(RpcClient, 'inventory.watch')
+export const metricsAtom = liveAtom(RpcClient, 'metrics.watch', {minutes: HOUR})
+export const appHistoryAtom = Atom.family((id: AppId) => liveAtom(RpcClient, 'metrics.app', {id}))
 
-export const inventoryAtom = Atom.keepAlive(
-	RpcClient.runtime.atom(get =>
-		keepValueThroughOutages(
-			get,
-			Stream.tapCause(liveStream(RpcClient, 'inventory.watch'), cause =>
-				Effect.sync(() => {
-					if (isDeniedCause(cause)) get.set(exposeTargetAtom, Option.none())
-				})
-			),
-			reconnectOnDrop
-		)
-	)
-)
-
-export const exposeAtom = RpcClient.runtime.fn((input: ExposeInput, get) =>
-	pipe(
-		RpcClient,
-		Effect.flatMap(client => client('exposures.expose', input)),
-		Effect.tap(() => Effect.sync(() => get.set(exposeTargetAtom, Option.none())))
-	)
-)
-
-// Opens the Expose dialog on a port, clear of the last attempt's failure.
-export const openExposeAtom = Atom.writable(Function.constUndefined, (context, port: InventoryItem) => {
-	context.set(exposeAtom, Atom.Reset)
-	context.set(exposeTargetAtom, Option.some(port))
+export type Operation = typeof Operation.Type
+export const Operation = Schema.TaggedUnion({
+	Expose: {input: ExposeInput},
+	Logs: {id: AppId},
+	Restart: {id: AppId},
+	Run: {request: RunRequest},
+	Stop: {id: AppId}
 })
 
-// Starts a timer's job now; keyed by the job's row, so its failure shows there.
-export const runAtom = Atom.family((_id: ItemId) =>
-	RpcClient.runtime.fn((input: RunRequest) => Effect.flatMap(RpcClient, client => client('inventory.run', input)))
+const operationAtom = RpcClient.runtime.fn((operation: Operation) =>
+	Effect.flatMap(RpcClient, call =>
+		Operation.match(operation, {
+			Expose: input => Effect.as(call('exposures.expose', input.input), Option.none<string>()),
+			Logs: input => Effect.asSome(call('inventory.logs', {id: input.id})),
+			Restart: input => Effect.as(call('inventory.restart', {id: input.id}), Option.none<string>()),
+			Run: input => Effect.as(call('inventory.run', input.request), Option.none<string>()),
+			Stop: input => Effect.as(call('inventory.stop', {id: input.id}), Option.none<string>())
+		})
+	)
 )
 
-// Keyed by value: a query with the same range is the same stream.
-export const metricsAtom = Atom.family((query: HistoryQuery) => liveAtom(RpcClient, 'metrics.watch', query))
+export const execute = Effect.fnUntraced(function* (registry: AtomRegistry.AtomRegistry, operation: Operation) {
+	registry.set(operationAtom, operation)
+	return yield* AtomRegistry.getResult(registry, operationAtom, {suspendOnWaiting: true})
+})

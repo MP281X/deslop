@@ -33,8 +33,10 @@ import {executeProcess} from '@deslop/runtime/server/process'
 
 import {migrations} from './migrations.ts'
 
-import {processOwner} from '#services/inventory/lib/utils.ts'
+import {processOwner, processTrackUsage, processTree} from '#services/inventory/lib/utils.ts'
 import {DeployError} from '#services/inventory/schema.ts'
+import type {AppRequest} from '#services/inventory/schema.ts'
+import {Inventory} from '#services/inventory/service.ts'
 import {
 	SERIES,
 	appCgroup,
@@ -57,9 +59,10 @@ import {
 	HistoryMinutes,
 	HistoryQuery,
 	MachineSample,
+	ProcessSample,
 	Sample
 } from '#services/metrics/schema.ts'
-import type {AppSample, Disk, MachineHistory, MetricSource} from '#services/metrics/schema.ts'
+import type {AppHour, AppSample, Disk, MachineHistory, MetricSource} from '#services/metrics/schema.ts'
 
 const CGROUP = '/sys/fs/cgroup'
 
@@ -89,6 +92,7 @@ function sameBucket(row: Sample, time: DateTime.Utc) {
 
 export class Metrics extends Context.Service<Metrics>()('@deslop/deploy/services/metrics/service/Metrics', {
 	make: Effect.gen(function* () {
+		const inventory = yield* Inventory
 		const fs = yield* FileSystem.FileSystem
 		const sql = yield* SqlClient.SqlClient
 
@@ -155,6 +159,47 @@ export class Metrics extends Context.Service<Metrics>()('@deslop/deploy/services
 			execute: query =>
 				sql`${joinedSamples} WHERE s.step = ${query.step} AND s.since > ${query.after} GROUP BY s.step, s.since ORDER BY s.since`
 		})
+		const listProcessSamples = SqlSchema.findAll({
+			Request: Schema.Struct({
+				after: ProcessSample.fields.time,
+				app: ProcessSample.fields.app,
+				now: ProcessSample.fields.time
+			}),
+			Result: ProcessSample,
+			execute: query =>
+				sql`SELECT * FROM ${sql(ProcessSample.table)} WHERE app = ${query.app} AND time > ${query.after} AND time <= ${query.now} ORDER BY time`
+		})
+		const saveProcessSamples = SqlSchema.void({
+			Request: Schema.NonEmptyArray(ProcessSample.insert),
+			execute: rows => sql`INSERT OR REPLACE INTO ${sql(ProcessSample.table)} ${sql.insert(rows)}`
+		})
+		const deleteProcessSamples = SqlSchema.void({
+			Request: ProcessSample.fields.time,
+			execute: before => sql`DELETE FROM ${sql(ProcessSample.table)} WHERE time <= ${before}`
+		})
+		const collectProcesses = pipe(
+			Effect.gen(function* () {
+				const current = yield* inventory.appProcesses
+				const rows = pipe(
+					current.readings,
+					Array.groupBy(reading => reading.app),
+					Record.values,
+					Array.map(group => ({
+						app: group[0].app,
+						processes: pipe(
+							group,
+							Array.map(reading => reading.process),
+							processTree,
+							processTrackUsage
+						),
+						time: current.time
+					}))
+				)
+				if (Array.isReadonlyArrayNonEmpty(rows)) yield* asDeployError(saveProcessSamples(rows))
+			}),
+			Effect.withSpan('Metrics.collectProcesses'),
+			Effect.ignore({log: 'Warn', message: 'Process history could not be sampled'})
+		)
 		// Each series keeps its range, and a bucket goes once all of it has aged out.
 		const deleteExpired = SqlSchema.void({
 			Request: Sample.fields.time,
@@ -423,9 +468,10 @@ export class Metrics extends Context.Service<Metrics>()('@deslop/deploy/services
 			if (current.monotonic - since.monotonic < Duration.toMillis(Duration.minutes(10))) {
 				return yield* Effect.logDebug('The wall clock moved recently; history is kept until it holds')
 			}
+			const now = yield* DateTime.now
 			yield* pipe(
-				DateTime.now,
-				Effect.flatMap(deleteExpired),
+				deleteExpired(now),
+				Effect.andThen(deleteProcessSamples(DateTime.subtractDuration(now, Duration.hours(1)))),
 				sql.withTransaction,
 				asDeployError,
 				Effect.withSpan('Metrics.prune')
@@ -438,6 +484,7 @@ export class Metrics extends Context.Service<Metrics>()('@deslop/deploy/services
 		yield* Effect.addFinalizer(() => flush)
 		yield* pipe(collect, Effect.schedule(Schedule.fixed(Duration.seconds(1))), Effect.forkScoped)
 		yield* pipe(flush, Effect.schedule(Schedule.fixed(Duration.seconds(10))), Effect.forkScoped)
+		yield* pipe(collectProcesses, Effect.repeat(Schedule.spaced(Duration.seconds(5))), Effect.forkScoped)
 		yield* pipe(refreshStorage, Effect.repeat(Schedule.spaced(Duration.seconds(30))), Effect.forkScoped)
 		// Expired points go every minute.
 		yield* pipe(
@@ -448,6 +495,22 @@ export class Metrics extends Context.Service<Metrics>()('@deslop/deploy/services
 		)
 
 		return {
+			processHistory: Effect.fn('Metrics.processHistory')(function* (input: AppRequest, time: DateTime.Utc) {
+				const rows = yield* asDeployError(
+					listProcessSamples({after: DateTime.subtractDuration(time, Duration.hours(1)), app: input.id, now: time})
+				)
+				return pipe(
+					rows,
+					Array.flatMap(row => Array.map(row.processes, process => ({...process, time: row.time}))),
+					Array.groupBy(process => process.key),
+					Record.values,
+					Array.map(group => ({
+						key: group[0].key,
+						label: group[0].label,
+						samples: Array.map(group, point => Struct.pick(point, ['cpu', 'memory', 'time']))
+					}))
+				) satisfies AppHour['processes']
+			}),
 			read: Effect.fn('Metrics.read')(function* (query: HistoryQuery) {
 				yield* Effect.annotateCurrentSpan({minutes: Duration.toMinutes(query.minutes)})
 				const time = yield* DateTime.now

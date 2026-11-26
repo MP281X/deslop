@@ -1,7 +1,6 @@
 import {
 	Array,
 	Filter,
-	Boolean,
 	DateTime,
 	Duration,
 	Effect,
@@ -18,9 +17,8 @@ import {
 
 import {commandLabel, maskArguments} from './command.ts'
 
-import {itemOwner, processOwner} from '#services/inventory/lib/utils.ts'
 import {CpuTicks, DeployError, Process, ProcessIdFromString, ResidentMemoryFromKiB} from '#services/inventory/schema.ts'
-import type {AppId, InventoryItem} from '#services/inventory/schema.ts'
+import type {AppId} from '#services/inventory/schema.ts'
 
 const PROCESS_INTERVAL = Duration.seconds(2)
 
@@ -62,7 +60,7 @@ function processStatus(status: string) {
 }
 
 // Collector input permits vanished or unreadable individual processes to be skipped and optional metadata to be absent; whole-machine reads still fail.
-export const processes = Effect.gen(function* () {
+export const processes = Effect.fnUntraced(function* (ownerOf: (cgroup: string) => Option.Option<AppId>) {
 	const fs = yield* FileSystem.FileSystem
 	const stat = yield* fs.readFileString('/proc/stat')
 	const counts = yield* Schema.decodeEffect(CpuTicks)(
@@ -76,6 +74,7 @@ export const processes = Effect.gen(function* () {
 			pid =>
 				Effect.option(
 					Effect.gen(function* () {
+						const owner = yield* Effect.fromOption(ownerOf(yield* fs.readFileString(`/proc/${pid}/cgroup`)))
 						const status = yield* fs.readFileString(`/proc/${pid}/status`)
 						const processStat = yield* fs.readFileString(`/proc/${pid}/stat`)
 						const cwd = yield* Effect.option(fs.readLink(`/proc/${pid}/cwd`))
@@ -92,7 +91,7 @@ export const processes = Effect.gen(function* () {
 							try: () => processStatus(status)
 						})
 						return {
-							owner: processOwner(yield* fs.readFileString(`/proc/${pid}/cgroup`)),
+							owner: Option.some(owner),
 							process: Process.make({
 								...parsed,
 								cpu: Option.none(),
@@ -177,24 +176,4 @@ export function processReadings(
 			Option.map(previous, cached => cached.baseline)
 		)
 	}
-}
-
-export function attachProcesses(
-	items: readonly InventoryItem[],
-	records: readonly {owner: Option.Option<AppId>; process: Process}[]
-) {
-	const owners = Array.groupBy(
-		Array.getSomes(Array.map(records, record => Option.map(record.owner, owner => ({owner, process: record.process})))),
-		record => record.owner
-	)
-	return Array.map(items, item => ({
-		...item,
-		processes: Option.some(
-			pipe(
-				item.kind === 'service' || item.kind === 'container',
-				Boolean.match({onFalse: () => [], onTrue: () => owners[itemOwner(item)] ?? []}),
-				Array.map(record => record.process)
-			)
-		)
-	}))
 }

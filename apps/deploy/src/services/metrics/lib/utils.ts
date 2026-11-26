@@ -330,7 +330,7 @@ export function history(samples: readonly Sample[], minutes: Duration.Duration, 
 }
 
 // A band's label: the page's name for the app when it has a row, else the unit or container the id names.
-export function bandName(id: BandId, labels: Record<AppId, string>) {
+function bandName(id: BandId, labels: Record<AppId, string>) {
 	if (id === 'other') return 'Low impact'
 	if (id === 'system') return 'System'
 	return pipe(

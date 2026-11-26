@@ -4,7 +4,7 @@ import {Model} from 'effect/schema'
 
 import {DateTimeUtcFromFiniteMillis, DurationFromFiniteMillis, DurationFromSeconds} from '@deslop/runtime/shared/time'
 
-import {AppId, TextFromEmpty} from '#services/inventory/schema.ts'
+import {AppId, Process, ProcessLabel, TextFromEmpty} from '#services/inventory/schema.ts'
 
 export type BandId = typeof BandId.Type
 export const BandId = Schema.Union([AppId, Schema.Literals(['other', 'system'])])
@@ -155,6 +155,31 @@ export const MachineHistory = Schema.Struct({
 	load: Schema.Array(Schema.Finite),
 	samples: Schema.Array(Sample.json),
 	stale: Schema.Boolean,
+	time: DateTimeUtcFromFiniteMillis
+})
+
+const processUsageFields = Struct.pick(Process.fields, ['cpu', 'memory'])
+
+export class ProcessSample extends Model.Class<ProcessSample>('ProcessSample')({
+	app: AppId,
+	processes: Model.JsonFromString(
+		Schema.Array(Schema.Struct({...processUsageFields, key: Schema.String, label: ProcessLabel}))
+	),
+	time: MachineSample.fields.time
+}) {
+	static readonly table = 'process_samples'
+}
+
+export type AppHour = typeof AppHour.Type
+export const AppHour = Schema.Struct({
+	processes: Schema.Array(
+		Schema.Struct({
+			key: Schema.String,
+			label: ProcessLabel,
+			samples: Schema.Array(Schema.Struct({...processUsageFields, time: DateTimeUtcFromFiniteMillis}))
+		})
+	),
+	restarts: Schema.Array(DateTimeUtcFromFiniteMillis),
 	time: DateTimeUtcFromFiniteMillis
 })
 

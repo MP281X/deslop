@@ -59,5 +59,17 @@ export const migrations = {
 					WHEN EXISTS (SELECT 1 FROM app_samples a WHERE a.step = samples.step AND a.since = samples.since)
 					THEN time - since + 1000 ELSE 0 END
 		`
+	}),
+	'0004_process_samples': Effect.gen(function* () {
+		const sql = yield* SqlClient.SqlClient
+		yield* sql`
+			CREATE TABLE process_samples (
+				app TEXT NOT NULL,
+				time INTEGER NOT NULL,
+				processes TEXT NOT NULL,
+				PRIMARY KEY (app, time)
+			) STRICT, WITHOUT ROWID
+		`
+		yield* sql`CREATE INDEX process_samples_time ON process_samples (time)`
 	})
 }

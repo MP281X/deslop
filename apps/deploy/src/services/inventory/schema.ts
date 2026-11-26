@@ -2,6 +2,12 @@ import {DateTime, Effect, Function, Option, Schema, SchemaGetter, String, Struct
 
 import {DateTimeUtcFromFiniteMillis} from '@deslop/runtime/shared/time'
 
+export const APP_LIFECYCLE_MESSAGES = [
+	'39f53479d3a045ac8e11786248231fbf',
+	'9d1aaa27d60140bd96365438aad20286',
+	'5eb034946b58470ab5a336b33729d08b'
+] as const
+
 export type ItemId = typeof ItemId.Type
 export const ItemId = Schema.brand('DeployItemId')(Schema.String)
 export type AppId = typeof AppId.Type
@@ -224,6 +230,22 @@ export const Serve = Schema.Struct({
 
 export type RunRequest = typeof RunRequest.Type
 export const RunRequest = Schema.Struct({name: UnitId, scope: Schema.Literals(['system', 'user'])})
+
+export type AppAction = typeof AppAction.Type
+export const AppAction = Schema.Literals(['restart', 'stop'])
+
+export type AppLifecycleEvent = typeof AppLifecycleEvent.Type
+export const AppLifecycleEvent = Schema.fromJsonString(
+	Schema.Struct({
+		__REALTIME_TIMESTAMP: Schema.FiniteFromString,
+		_BOOT_ID: Schema.NonEmptyString,
+		MESSAGE_ID: Schema.Literals(APP_LIFECYCLE_MESSAGES),
+		USER_INVOCATION_ID: Schema.optional(Schema.String)
+	})
+)
+
+export type AppRequest = typeof AppRequest.Type
+export const AppRequest = Schema.Struct({id: AppId})
 
 export type RunJobInput = typeof RunJobInput.Type
 export const RunJobInput = Schema.Struct({
