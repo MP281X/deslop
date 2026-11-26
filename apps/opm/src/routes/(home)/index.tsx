@@ -1,4 +1,4 @@
-import {useAtom, useAtomMount, useAtomRefresh, useAtomSet, useAtomSubscribe, useAtomValue} from '@effect/atom-react'
+import {useAtomMount, useAtomRefresh, useAtomSet, useAtomSubscribe, useAtomValue} from '@effect/atom-react'
 
 import {Array, Boolean, Function, Number, Option, Order, String, pipe} from 'effect'
 
@@ -18,8 +18,6 @@ import {
 	accessibilityHidden,
 	accessibilityLabel,
 	clipShape,
-	font,
-	foregroundStyle,
 	frame,
 	labelStyle,
 	menuOrder,
@@ -32,22 +30,13 @@ import {AsyncResult, Atom} from 'effect/reactivity'
 import {Suspense} from 'react'
 
 import {ItemGroupSkeleton} from '@deslop/components-mobile/blocks/item-group-skeleton'
-import {useListChoose, useListSearch} from '@deslop/components-mobile/blocks/list-detail'
+import {useListChoose, useListSearch, useListTiled} from '@deslop/components-mobile/blocks/list-detail'
 import {ListToolbar} from '@deslop/components-mobile/blocks/list-toolbar'
 import {Loaded} from '@deslop/components-mobile/blocks/loaded'
 import {Problem} from '@deslop/components-mobile/blocks/problem'
-import {colors, radius} from '@deslop/components-mobile/theme'
+import {Row} from '@deslop/components-mobile/blocks/row'
 import {Empty, EmptyMedia} from '@deslop/components-mobile/ui/empty'
-import {
-	Item,
-	ItemActions,
-	ItemContent,
-	ItemDescription,
-	ItemGroup,
-	ItemMedia,
-	ItemTitle,
-	itemRow
-} from '@deslop/components-mobile/ui/item'
+import {Item, ItemGroup, ItemMedia, itemRow} from '@deslop/components-mobile/ui/item'
 import {clockAtom} from '@deslop/runtime/client/clock'
 import {blockingFailure} from '@deslop/runtime/client/live-stream'
 import {problemSinceAtom} from '@deslop/runtime/client/problem'
@@ -56,10 +45,13 @@ import {dayOf} from '@deslop/runtime/shared/format'
 import {chaptersAtom, openedAtom, readAtom, unsavedAtom} from '#lib/chapters.ts'
 import {withUnsaved} from '#lib/reader.ts'
 import {primary, session} from '#lib/session.ts'
-import {ChapterProgress, Cover} from '#modules/native/index.ts'
+import {Cover} from '#modules/native/index.ts'
 import {byNumber, SERIES_NAMES} from '#services/chapters/lib/utils.ts'
 import type {ChapterNumber, ChapterItem} from '#services/chapters/schema.ts'
 import {Series} from '#services/chapters/schema.ts'
+
+// The query every copy of the list filters by, as the search field they share shows it, so the copy below the reader in laptop posture filters as the one beside it does.
+const searchedAtom = Atom.make('')
 
 // Every prop keeps its identity while the chapter is unchanged, so a page turn in the reader re-renders one row.
 function ChapterRow(props: {chapter: ChapterItem; onOpen: (number: ChapterNumber) => void}) {
@@ -70,59 +62,49 @@ function ChapterRow(props: {chapter: ChapterItem; onOpen: (number: ChapterNumber
 	return (
 		<SwipeActions modifiers={itemRow}>
 			<Item
+				size="xs"
 				onPress={() => {
 					choose()
 					props.onOpen(props.chapter.number)
 				}}
 			>
-				<ItemMedia>
-					<Cover
-						url={Option.getOrElse(Array.head(props.chapter.pages), Function.constant(''))}
-						modifiers={[
-							frame({height: 68, width: 48}),
-							clipShape('roundedRectangle', radius),
-							opacity(Boolean.match(done, {onFalse: Function.constant(1), onTrue: Function.constant(0.45)})),
-							accessibilityHidden(true)
-						]}
-					/>
-				</ItemMedia>
-				{/* Unread is bold, read recedes; the chapter number still leads the list. */}
-				<ItemContent>
-					<ItemTitle
-						modifiers={Boolean.match(done, {
-							onFalse: () => [font({textStyle: 'body', weight: 'bold'})],
-							onTrue: () => [font({textStyle: 'body'}), foregroundStyle(colors.mutedForeground)]
-						})}
-					>{`Chapter ${props.chapter.number}`}</ItemTitle>
-					<ItemDescription>
-						{pipe(
+				{/* A read chapter recedes; one left part-way shows the page it is on, the rest their length. */}
+				<Row
+					cover={
+						<Cover
+							url={Option.getOrElse(Array.head(props.chapter.pages), Function.constant(''))}
+							modifiers={[
+								frame({height: 40, width: 28}),
+								clipShape('roundedRectangle', 4),
+								opacity(Boolean.match(done, {onFalse: Function.constant(1), onTrue: Function.constant(0.45)})),
+								accessibilityHidden(true)
+							]}
+						/>
+					}
+					title={`Chapter ${props.chapter.number}`}
+					muted={done}
+					line={Option.some(
+						pipe(
 							[
 								props.chapter.title,
 								Option.match(props.chapter.postedAt, {onNone: Function.constant(''), onSome: at => dayOf(at, now)})
 							],
 							Array.filter(String.isNonEmpty),
 							Array.join(' · ')
-						)}
-					</ItemDescription>
-				</ItemContent>
-				{/* Weight already says unread or read, so progress shows only for a chapter left part-way; the pages before the one on screen are read. */}
-				{pipe(
-					props.chapter.reading,
-					Option.filter(reading => !reading.done && reading.page > 0),
-					Option.match({
-						onNone: Function.constNull,
-						onSome: reading => (
-							<ItemActions>
-								<ChapterProgress
-									fraction={reading.page / Number.max(props.chapter.pages.length, 1)}
-									accent={primary}
-									read={colors.foreground}
-									modifiers={[frame({height: 14, width: 14})]}
-								/>
-							</ItemActions>
 						)
-					})
-				)}
+					)}
+					problem={Option.none()}
+					trailing={Option.some(
+						pipe(
+							props.chapter.reading,
+							Option.filter(reading => !reading.done && reading.page > 0),
+							Option.match({
+								onNone: () => `${props.chapter.pages.length} p`,
+								onSome: reading => `${reading.page + 1}/${props.chapter.pages.length}`
+							})
+						)
+					)}
+				/>
 			</Item>
 			<SwipeActions.Actions edge="leading">
 				<Button
@@ -149,23 +131,53 @@ function ChapterRow(props: {chapter: ChapterItem; onOpen: (number: ChapterNumber
 	)
 }
 
-function Chapters(props: {onOpen: (number: ChapterNumber, page?: number) => void; searched: string; series: Series}) {
+// The series' chapters the search matches, newest first, and how many the series has.
+function useMatches(series: Series) {
 	const unsaved = useAtomValue(unsavedAtom)
+	const searched = useAtomValue(searchedAtom)
+	return (all: readonly ChapterItem[]) => {
+		const chapters = Array.filter(withUnsaved(all, unsaved), chapter => chapter.series === series)
+		const needle = String.toLowerCase(String.trim(searched))
+		return {
+			chapters,
+			matches: pipe(
+				chapters,
+				Array.sort(Order.flip(byNumber)),
+				Array.filter(
+					chapter =>
+						String.startsWith(needle)(`${chapter.number}`) || String.includes(needle)(String.toLowerCase(chapter.title))
+				)
+			)
+		}
+	}
+}
+
+// Where the newer half of the matches ends, when the older half stands in its own column beside them.
+function halfOf(matches: readonly ChapterItem[]) {
+	return Math.ceil(matches.length / 2)
+}
+
+function ChapterRows(props: {chapters: readonly ChapterItem[]; onOpen: (number: ChapterNumber) => void}) {
+	return (
+		<ItemGroup>
+			<Section>
+				{Array.map(props.chapters, chapter => (
+					<ChapterRow key={chapter.number} chapter={chapter} onOpen={props.onOpen} />
+				))}
+			</Section>
+		</ItemGroup>
+	)
+}
+
+// With nothing opened beside it, the list keeps the newer half and `ChaptersColumn` shows the older half across the fold.
+function Chapters(props: {onOpen: (number: ChapterNumber, page?: number) => void; opened: boolean; series: Series}) {
+	const matchesOf = useMatches(props.series)
+	const halved = useListTiled() && !props.opened
 	return (
 		<Loaded atom={chaptersAtom}>
 			{all => {
-				const chapters = Array.filter(withUnsaved(all, unsaved), chapter => chapter.series === props.series)
-				const needle = String.toLowerCase(String.trim(props.searched))
-				const matches = pipe(
-					chapters,
-					Array.sort(Order.flip(byNumber)),
-					Array.filter(
-						chapter =>
-							String.startsWith(needle)(`${chapter.number}`) ||
-							String.includes(needle)(String.toLowerCase(chapter.title))
-					)
-				)
-				if (Array.isReadonlyArrayEmpty(chapters)) {
+				const found = matchesOf(all)
+				if (Array.isReadonlyArrayEmpty(found.chapters)) {
 					return (
 						<Empty>
 							<EmptyMedia>
@@ -177,14 +189,14 @@ function Chapters(props: {onOpen: (number: ChapterNumber, page?: number) => void
 				return (
 					// The no-match state sits over the list, centred on the screen, as SwiftUI's own apps show it.
 					<Overlay>
-						<ItemGroup>
-							<Section>
-								{Array.map(matches, chapter => (
-									<ChapterRow key={chapter.number} chapter={chapter} onOpen={props.onOpen} />
-								))}
-							</Section>
-						</ItemGroup>
-						{Array.isReadonlyArrayEmpty(matches) && (
+						<ChapterRows
+							chapters={Boolean.match(halved, {
+								onFalse: () => found.matches,
+								onTrue: () => Array.take(found.matches, halfOf(found.matches))
+							})}
+							onOpen={props.onOpen}
+						/>
+						{Array.isReadonlyArrayEmpty(found.matches) && (
 							<Overlay.Content>
 								<Empty>
 									<EmptyMedia>
@@ -200,18 +212,29 @@ function Chapters(props: {onOpen: (number: ChapterNumber, page?: number) => void
 	)
 }
 
-// The query every copy of the list filters by, as the search field they share shows it, so the copy below the reader in laptop posture filters as the one beside it does.
-const searchedAtom = Atom.make('')
+// The older half of the list's matches, beside the list while nothing is opened, so the inner screen shows two columns of chapters either side of the fold.
+export function ChaptersColumn(props: {onOpen: (number: ChapterNumber) => void; series: Series}) {
+	const matchesOf = useMatches(props.series)
+	return (
+		<Loaded atom={chaptersAtom}>
+			{all => {
+				const found = matchesOf(all)
+				return <ChapterRows chapters={Array.drop(found.matches, halfOf(found.matches))} onOpen={props.onOpen} />
+			}}
+		</Loaded>
+	)
+}
 
 export function ChaptersRoute(props: {
 	onOpen: (number: ChapterNumber, page?: number) => void
+	opened: boolean
 	onSeries: (series: Series) => void
 	series: Series
 }) {
 	const loaded = useAtomValue(chaptersAtom)
 	useAtomMount(problemSinceAtom(chaptersAtom))
 	const refresh = useAtomRefresh(chaptersAtom)
-	const [searched, setSearched] = useAtom(searchedAtom)
+	const setSearched = useAtomSet(searchedAtom)
 	const field = useListSearch()
 	// Another series' list starts unfiltered, whether the person picks it or a notification opens one of its chapters.
 	function clearSearch() {
@@ -265,15 +288,16 @@ export function ChaptersRoute(props: {
 				fallback={
 					<ItemGroupSkeleton
 						rows={10}
+						descriptionLines={1}
 						media={
 							<ItemMedia>
-								<Rectangle modifiers={[frame({height: 68, width: 48}), clipShape('roundedRectangle', radius)]} />
+								<Rectangle modifiers={[frame({height: 40, width: 28}), clipShape('roundedRectangle', 4)]} />
 							</ItemMedia>
 						}
 					/>
 				}
 			>
-				<Chapters onOpen={props.onOpen} searched={searched} series={props.series} />
+				<Chapters onOpen={props.onOpen} opened={props.opened} series={props.series} />
 			</Suspense>
 		</ListToolbar>
 	)

@@ -15,6 +15,5 @@ public class OpmNativeModule: Module {
 
     ExpoUIView(PageStripView.self)
     ExpoUIView(CoverView.self)
-    ExpoUIView(ChapterProgressView.self)
   }
 }
