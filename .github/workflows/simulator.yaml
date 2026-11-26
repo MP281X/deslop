@@ -38,7 +38,7 @@ jobs:
           above=$(gh pr list --base "$GITHUB_REF_NAME" --state open --json url --jq '.[].url')
           if [[ -z $above ]]; then
             recipe=$(git rev-parse HEAD:.github/workflows/simulator.yaml HEAD:.github/actions/setup | sha256sum | cut -c1-12)
-            for app in opm stash; do
+            for app in opm; do
               fingerprint=$(cd "apps/$app" && APP_VARIANT=development eas fingerprint:generate --platform ios --build-profile simulator --json --non-interactive | jq -r .hash)
               artifact="$app-simulator-$fingerprint-$recipe"
               held=$(gh api "repos/$GITHUB_REPOSITORY/actions/artifacts?name=$artifact" --jq '[.artifacts[] | select(.expired | not)] | length')

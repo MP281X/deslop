@@ -1,0 +1,356 @@
+.stash {
+	--stash-gutter: 16px;
+	--stash-top: 44px;
+	--stash-bottom: 60px;
+}
+
+.stash > .fold-list,
+.stash > .fold-detail {
+	position: relative;
+	overflow: hidden;
+}
+
+.stash-top,
+.stash-detail-top {
+	position: absolute;
+	z-index: 2;
+	inset: 8px var(--stash-gutter) auto;
+	display: flex;
+	justify-content: space-between;
+	pointer-events: none;
+}
+
+.stash-top > *,
+.stash-detail-top > *,
+.stash-bottom > * {
+	pointer-events: auto;
+}
+
+.stash-detail-top {
+	justify-content: flex-start;
+}
+
+.stash-bottom {
+	position: absolute;
+	z-index: 2;
+	inset: auto 0 10px;
+	display: flex;
+	justify-content: center;
+	pointer-events: none;
+}
+
+.stash-action,
+.stash-icon {
+	display: inline-grid;
+	min-width: 36px;
+	min-height: 36px;
+	place-items: center;
+	border-radius: 999px;
+}
+
+.stash-icon {
+	font-size: 20px;
+	line-height: 1;
+}
+
+.stash-sidebar-mark {
+	display: block;
+	width: 14px;
+	height: 11px;
+	border: 1.5px solid currentColor;
+	border-radius: 2px;
+	background: linear-gradient(to right, transparent 31%, currentColor 31% 43%, transparent 43%);
+}
+
+.stash-action {
+	padding-inline: 14px;
+	font-size: 13px;
+	font-weight: 560;
+}
+
+.stash-scroll {
+	height: 100%;
+	overflow: auto;
+	overscroll-behavior: contain;
+	scrollbar-width: none;
+	padding-bottom: var(--stash-bottom);
+}
+
+.stash-queue {
+	margin-inline-start: env(safe-area-inset-left);
+	padding: var(--stash-top) 10px var(--stash-bottom);
+}
+
+.stash-reading {
+	container-type: inline-size;
+	padding: calc(var(--stash-top) + 6px) var(--stash-gutter) var(--stash-bottom);
+	margin-inline-end: env(safe-area-inset-right);
+}
+
+.stash-note-row {
+	grid-template-columns: 36px minmax(0, 1fr) auto;
+	gap: 9px;
+	padding-inline: 9px;
+}
+
+.stash-thumb {
+	width: 36px;
+	height: 36px;
+	object-fit: cover;
+	border-radius: 6px;
+	background: var(--color-muted);
+}
+
+.stash-row-lines {
+	display: grid;
+	min-width: 0;
+	line-height: 1.25;
+}
+
+.stash-row-lines .axis-title {
+	font-size: 14px;
+}
+
+.stash-row-lines .axis-muted,
+.stash-note-row .axis-value {
+	font-size: 12px;
+}
+
+.stash-reader {
+	max-width: 760px;
+	margin-inline: auto;
+	overflow-wrap: anywhere;
+	font-size: 15px;
+	line-height: 1.45;
+}
+
+.stash-gallery {
+	display: flex;
+	margin-bottom: 10px;
+	overflow: auto hidden;
+	scrollbar-width: none;
+	scroll-snap-type: x mandatory;
+	overscroll-behavior-inline: contain;
+}
+
+.stash-cover {
+	width: 100%;
+	height: clamp(114px, 33cqw, 168px);
+	flex: 0 0 100%;
+	object-fit: cover;
+	scroll-snap-align: start;
+	background: var(--color-muted);
+}
+
+.stash-reader h1 {
+	font-size: 24px;
+	font-weight: 680;
+	letter-spacing: -0.02em;
+	line-height: 1.15;
+}
+
+.stash-byline {
+	margin-top: 3px;
+	color: var(--color-muted-foreground);
+	font-size: 12px;
+}
+
+.stash-summary,
+.stash-prose,
+.stash-plaintext,
+.stash-problem,
+.stash-tags {
+	margin-top: 12px;
+}
+
+.stash-reader h2 {
+	margin-block: 16px 4px;
+	font-size: 17px;
+	font-weight: 620;
+}
+
+.stash-prose :is(p, ol, ul, blockquote):not(:last-child) {
+	margin-bottom: 10px;
+}
+
+.stash-prose :is(ol, ul) {
+	padding-inline-start: 20px;
+}
+
+.stash-prose ul {
+	list-style-type: disc;
+}
+
+.stash-prose ol {
+	list-style-type: decimal;
+}
+
+.stash-prose blockquote {
+	padding-inline-start: 12px;
+	color: var(--color-muted-foreground);
+}
+
+.stash-prose a,
+.stash-inline-action {
+	text-decoration: underline;
+	text-underline-offset: 0.2em;
+}
+
+.stash-plaintext {
+	white-space: pre-line;
+}
+
+.stash-problem {
+	color: var(--color-muted-foreground);
+	font-size: 13px;
+}
+
+.stash-inline-action {
+	margin-inline-start: 8px;
+}
+
+.stash-tags {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+}
+
+.stash-tags button {
+	border-radius: 999px;
+	padding: 5px 10px;
+	background: var(--color-muted);
+	font-size: 12px;
+}
+
+.stash-tags [aria-pressed='true'] {
+	outline: 1px solid var(--color-muted-foreground);
+}
+
+.stash-compose {
+	height: 100%;
+	padding: calc(var(--stash-top) + 6px) var(--stash-gutter) var(--stash-bottom);
+}
+
+.stash-compose textarea {
+	width: 100%;
+	height: 100%;
+	resize: none;
+	outline: none;
+}
+
+.stash-gate {
+	display: grid;
+	min-height: 100dvh;
+	place-items: center;
+}
+
+.stash-notice {
+	display: grid;
+	justify-items: center;
+	gap: 12px;
+	margin: 20px var(--stash-gutter, 16px);
+	color: var(--color-muted-foreground);
+	font-size: 14px;
+	text-align: center;
+}
+
+.stash-more {
+	position: relative;
+}
+
+.stash-menu {
+	position: absolute;
+	display: grid;
+	gap: 4px;
+	min-width: 164px;
+	padding: 6px;
+	background: #161616;
+	border: 1px solid #343434;
+	border-radius: 16px;
+	box-shadow: 0 4px 24px #0009;
+	font-size: 14px;
+}
+
+.stash-menu :is(button, a, select, span) {
+	display: block;
+	min-height: 32px;
+	width: 100%;
+	border-radius: 8px;
+	padding: 6px 8px;
+	text-align: start;
+}
+
+.stash-menu :is(button, a, select):hover {
+	background: #292929;
+}
+
+.stash-queue-menu {
+	inset: calc(100% + 8px) 0 auto auto;
+}
+
+.stash-note-menu {
+	inset: auto 0 calc(100% + 8px) auto;
+}
+
+.stash-report {
+	position: fixed;
+	z-index: 3;
+	inset: auto 16px calc(58px + env(safe-area-inset-bottom));
+	display: flex;
+	align-items: flex-start;
+	gap: 12px;
+	max-width: 44rem;
+	margin-inline: auto;
+	border-radius: 16px;
+	padding: 12px;
+	background: var(--color-muted);
+	font-size: 14px;
+	box-shadow: 0 4px 24px #0009;
+}
+
+.stash-report p {
+	flex: 1;
+	white-space: pre-line;
+}
+
+@media (min-width: 640px) and (not (vertical-viewport-segments: 2)) {
+	.stash:not([data-list-hidden]) .stash-detail-top {
+		display: none;
+	}
+
+	.stash:not([data-list-hidden]) :is(.stash-reading, .stash-compose) {
+		padding-top: 16px;
+	}
+}
+
+@media (vertical-viewport-segments: 2) {
+	.stash {
+		grid-template-rows: env(viewport-segment-height 0 0) minmax(0, 1fr);
+	}
+
+	.stash[data-show] > .fold-list {
+		display: block;
+		grid-row: 2;
+	}
+
+	.stash[data-show] > .fold-detail {
+		display: block;
+		grid-row: 1;
+	}
+
+	.stash:not([data-list-hidden]) .stash-detail-top {
+		display: none;
+	}
+
+	.stash:not([data-list-hidden]) :is(.stash-reading, .stash-compose) {
+		padding-top: 16px;
+	}
+
+	.stash[data-list-hidden] {
+		grid-template-rows: minmax(0, 1fr);
+	}
+
+	.stash[data-list-hidden] > .fold-list {
+		display: none;
+	}
+}

@@ -1,16 +1,20 @@
-import {AtomRpc} from 'effect/reactivity'
+import {Boolean} from 'effect'
 
-import {hues} from '@deslop/components-mobile/theme'
-import {makeSession} from '@deslop/runtime/mobile/session'
+import {Capacitor} from '@capacitor/core'
+import {Atom, AtomRpc} from 'effect/reactivity'
+
 import {RpcStream} from '@deslop/runtime/shared/rpc'
+import {accountAtom, addPageTelemetry, layerPageProtocol} from '@deslop/runtime/web/client'
+import {layerNativeProtocol, nativeAccount} from '@deslop/ui/native'
 
 import {RpcContracts} from '#rpcs/contracts.ts'
 
-export const primary = hues.amber
+export const installed = Capacitor.isNativePlatform()
+export const account = Boolean.match(installed, {onFalse: () => accountAtom, onTrue: () => Atom.make(nativeAccount)})
 
-export const session = makeSession()
+if (!installed) addPageTelemetry('@deslop/stash')
 
 export class RpcClient extends AtomRpc.Service<RpcClient>()('@deslop/stash/lib/session/RpcClient', {
 	group: RpcContracts.middleware(RpcStream),
-	protocol: session.protocol
+	protocol: Boolean.match(installed, {onFalse: () => layerPageProtocol, onTrue: () => layerNativeProtocol})
 }) {}
