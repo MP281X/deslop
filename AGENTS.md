@@ -8,12 +8,12 @@ Personal apps with one user, who also develops them.
 - **Dependencies.** New ones are the user's pick. Stay on `latest` except the pins in manifests. No patches or forks.
 - **Proof.** A blocked proof, such as a missing tool or a failing signed build, is a fault to fix, not a "Not proven" line.
 - **Not wanted.** An AI wrapper package; a stdio bridge, container or OpenTelemetry Collector (apps send telemetry straight to Scope); MCP tools for apps agents don't need (Trips, OPM, Portfolio).
-- **Pull requests.** Once its review and re-check pass and Verify passes on its head, mark the PR ready; he merges it.
+- **Pull requests.** Once its review and re-checks pass and Verify passes on its head, rebased on the latest `main`, mark the PR ready; he merges it.
 - **Tests.** Only our own logic, with Effect layer stand-ins. No UI, request or regression tests.
 
 ## Commands
 
-- `vp run fix`, `vp run check` and `vp run test` from the root, on every PR of a stack; the two generators have no tests, so a change to one is proven by creating an app or package with it and building it.
+- Checks: `vp run fix`, `vp run check` and `vp run test`; the two generators have no tests, so a change to one is proven by creating an app or package with it and building it.
 - A contract change is done only when its built server starts on scratch data and serves the changed RPCs or MCP tools.
 - New apps and packages: `vp create app -- --name <name>` (`--kind mobile` for iOS) or `vp create package -- --name <name>`. Never copy one.
 - Web components: `vpx shadcn@latest add --all --overwrite` in `packages/components-web`; leave the registry files as generated, since the next `--overwrite` replaces them. Logos come from svgl.

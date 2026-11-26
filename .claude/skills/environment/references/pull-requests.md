@@ -1,7 +1,6 @@
 # Pull requests
 
-- **Drafts.** The first push opens a draft. Before ending a turn, unlink PRs the host reports merged or closed.
-- **Ready.** `main` has no branch protection, so a PR is ready for him only once its flow was walked and Verify passed in its pull request run on the latest `main`. When `main` moves, rebase and push for a new run; a PR with a merge conflict gets no run until it is rebased.
+- **Unlink** PRs the host reports merged or closed before ending a turn.
 - **Stacks** exist to ease review: split only where a reviewer would otherwise lose the thread; a layer need not merge on its own. Any PR not based on the default branch is a layer made with the commands below, never `gh pr create --base <branch>` or a changed base. Corrections fold into their own layer before restacking onto the latest default branch.
 
 GitHub stacks act on the checked-out branch's stack and rebase the next layer when the one below merges:
