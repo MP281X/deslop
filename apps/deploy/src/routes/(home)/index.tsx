@@ -6,13 +6,14 @@ import {Array, Boolean, Duration, Function, Option, Record, Schema, pipe} from '
 import {AppWindowIcon, TerminalWindowIcon} from '@phosphor-icons/react'
 import {CatchBoundary, createFileRoute, getRouteApi} from '@tanstack/react-router'
 import {AsyncResult} from 'effect/reactivity'
-import {Suspense, useDeferredValue} from 'react'
+import {Suspense, useDeferredValue, useState} from 'react'
 import type {ReactNode} from 'react'
 
 import {StaleProblem} from '@deslop/components-web/blocks/problem'
 import {LoadingRows} from '@deslop/components-web/blocks/rows'
 import {Loaded, ReadFailure} from '@deslop/components-web/blocks/states'
 import {mediaQueryAtom} from '@deslop/components-web/lib/media'
+import {foldedAtom, FOLD_COLUMNS} from '@deslop/components-web/lib/posture'
 import {preload} from '@deslop/components-web/lib/router'
 import {AppBar, AppBarChoice} from '@deslop/components-web/shell/app-bar'
 import {Workspace} from '@deslop/components-web/shell/workspace'
@@ -35,6 +36,25 @@ import {type Row, availablePorts, processTree, workloadName, workloads} from '#s
 import {ItemId} from '#services/inventory/schema.ts'
 import type {AppId, InventoryItem} from '#services/inventory/schema.ts'
 import {HistoryQuery} from '#services/metrics/schema.ts'
+
+// The list's width in each layout.
+const LIST_SIZES = {half: '50%', narrow: 270, phone: '100%', roomy: 440, wide: 340} as const satisfies Record<
+	Layout,
+	number | string
+>
+
+// How much room the apps and the detail share: a phone stacks them; from 640px they stand side by side, the list 270px wide until 900px, then half the width up to 1000px, then 340px, and 440px from 1512px.
+type Layout = typeof Layout.Type
+const Layout = Schema.Literals(['phone', 'narrow', 'half', 'wide', 'roomy'])
+function layoutOf(widths: {narrow: boolean; phone: boolean; roomy: boolean; wide: boolean}) {
+	if (widths.phone) return 'phone' as const
+	if (widths.narrow) return 'narrow' as const
+	if (!widths.wide) return 'half' as const
+	return Boolean.match(widths.roomy, {
+		onFalse: Function.constant('wide' as const),
+		onTrue: Function.constant('roomy' as const)
+	})
+}
 
 // A phone shows the list under one row of the machine's readings, or one app's processes full-screen.
 type Pane = typeof Pane.Type
@@ -133,7 +153,6 @@ function DetailPane(props: {
 	minutes: HistoryQuery['minutes']
 	pending: boolean
 	row: Option.Option<Row>
-	selectedOwner: Option.Option<AppId>
 }) {
 	return (
 		<div className="flex h-full min-h-0 flex-col">
@@ -146,7 +165,7 @@ function DetailPane(props: {
 								usage={usage}
 								labels={props.labels}
 								minutes={props.minutes}
-								selectedOwner={props.selectedOwner}
+								selectedOwner={Option.flatMap(props.row, owner)}
 							/>
 						)
 					})}
@@ -180,23 +199,60 @@ function PhoneList(props: {
 				className="min-h-0 flex-1"
 				compact
 				free={props.free}
-				lowImpact={Option.map(props.usage, usage => usage.lowImpact)}
 				now={props.now}
 				onSelect={props.onSelect}
 				rows={props.rows}
 				selectedId={props.selectedId}
+				spark={false}
+				usage={props.usage}
 			/>
 		</div>
 	)
 }
 
-// What the bar opens onto: the two panes on a wide screen, the readings and list on a phone, or the pushed processes.
+// The apps and the detail side by side, or the detail alone once the list is folded away: half open like a book they are the two halves of the screen, otherwise the list is as wide as its layout gives and the handle moves it.
+function SplitPanes(props: {detail: ReactNode; folded: boolean; layout: Layout; list: ReactNode; listHidden: boolean}) {
+	if (props.listHidden) return props.detail
+	if (props.folded) {
+		return (
+			<div className="grid min-h-0 flex-1 grid-cols-(--fold-columns)" style={{'--fold-columns': FOLD_COLUMNS}}>
+				<div className="min-h-0 min-w-0 border-r">{props.list}</div>
+				<div className="col-start-3 min-h-0">{props.detail}</div>
+			</div>
+		)
+	}
+	return (
+		<ResizablePanelGroup key={props.layout} className="min-h-0 flex-1" orientation="horizontal">
+			<ResizablePanel
+				className="min-h-0"
+				defaultSize={LIST_SIZES[props.layout]}
+				groupResizeBehavior="preserve-pixel-size"
+				minSize={Boolean.match(props.layout === 'narrow', {
+					onFalse: Function.constant(260),
+					onTrue: Function.constant(200)
+				})}
+				maxSize={480}
+			>
+				{props.list}
+			</ResizablePanel>
+			<ResizableHandle />
+			{/* Room for CPU, Memory and Disk side by side, however far the handle moves the list. */}
+			<ResizablePanel className="min-h-0" minSize={320}>
+				{props.detail}
+			</ResizablePanel>
+		</ResizablePanelGroup>
+	)
+}
+
+// What the bar opens onto: the apps beside the detail, the detail alone with the list folded away, the readings and list on a phone, or the pushed processes.
 function Panes(props: {
 	authFailure: Option.Option<unknown>
 	free: readonly InventoryItem[]
 	usage: Option.Option<Usage>
-	isPhone: boolean
+	folded: boolean
 	labels: Record<AppId, string>
+	layout: Layout
+	listHidden: boolean
 	minutes: HistoryQuery['minutes']
 	now: DateTime.Utc
 	onSelect: (row: Row) => void
@@ -207,37 +263,14 @@ function Panes(props: {
 	selectedApp: Option.Option<ItemId>
 	selectedRow: Option.Option<Row>
 }) {
-	const selectedOwner = Option.flatMap(props.selectedRow, owner)
-	// From 1512px the list opens wide enough for a long name in full beside its ports.
-	const roomy = useAtomValue(mediaQueryAtom('(width >= 94.5rem)'))
 	return Option.match(props.authFailure, {
 		onNone: () => (
 			<Workspace>
 				<h1 className="sr-only">Deploy</h1>
-				{Boolean.match(props.isPhone, {
+				{Boolean.match(props.layout === 'phone', {
 					onFalse: () => (
-						<ResizablePanelGroup className="min-h-0 flex-1" orientation="horizontal">
-							<ResizablePanel
-								className="min-h-0"
-								defaultSize={Boolean.match(roomy, {onFalse: Function.constant(340), onTrue: Function.constant(440)})}
-								groupResizeBehavior="preserve-pixel-size"
-								minSize={260}
-								maxSize={480}
-							>
-								<ListPane
-									className="h-full min-w-0"
-									compact={false}
-									free={props.free}
-									lowImpact={Option.map(props.usage, usage => usage.lowImpact)}
-
-									now={props.now}
-									onSelect={props.onSelect}
-									rows={props.rows}
-									selectedId={Option.map(props.selectedRow, row => row.item.id)}
-								/>
-							</ResizablePanel>
-							<ResizableHandle />
-							<ResizablePanel className="min-h-0">
+						<SplitPanes
+							detail={
 								<DetailPane
 									app={props.selectedApp}
 									usage={props.usage}
@@ -245,10 +278,26 @@ function Panes(props: {
 									minutes={props.minutes}
 									pending={props.pending}
 									row={props.selectedRow}
-									selectedOwner={selectedOwner}
 								/>
-							</ResizablePanel>
-						</ResizablePanelGroup>
+							}
+							folded={props.folded}
+							layout={props.layout}
+							// The list's sparkline needs 340px; only the 270px list beside the detail goes without, and half the screen at the fold is wide enough.
+							list={
+								<ListPane
+									className="h-full min-w-0"
+									compact={false}
+									free={props.free}
+									now={props.now}
+									onSelect={props.onSelect}
+									rows={props.rows}
+									selectedId={Option.map(props.selectedRow, row => row.item.id)}
+									spark={props.layout !== 'narrow' || props.folded}
+									usage={props.usage}
+								/>
+							}
+							listHidden={props.listHidden}
+						/>
 					),
 					onTrue: () =>
 						Boolean.match(props.pushed, {
@@ -279,8 +328,16 @@ function Panes(props: {
 }
 
 function HomeRoute() {
-	// Below 700px the three charts would be too narrow to read: a phone's list and its row of readings take their place.
-	const isPhone = useAtomValue(mediaQueryAtom('(width < 43.75rem)'))
+	// Below 640px the list and the three charts would each be too narrow to read: a phone's list and its row of readings take their place.
+	const layout = layoutOf({
+		narrow: useAtomValue(mediaQueryAtom('(width < 56.25rem)')),
+		phone: useAtomValue(mediaQueryAtom('(width < 40rem)')),
+		roomy: useAtomValue(mediaQueryAtom('(width >= 94.5rem)')),
+		wide: useAtomValue(mediaQueryAtom('(width >= 62.5rem)'))
+	})
+	const isPhone = layout === 'phone'
+	const folded = useAtomValue(foldedAtom)
+	const [listHidden, setListHidden] = useState(false)
 	const search = route.useSearch()
 	const navigate = route.useNavigate()
 	function view(next: Partial<Search>) {
@@ -347,6 +404,10 @@ function HomeRoute() {
 				})}
 				icon={icon}
 				name="deploy"
+				{...Boolean.match(isPhone, {
+					onFalse: () => ({sidebar: {hidden: listHidden, onToggle: () => setListHidden(hidden => !hidden)}}),
+					onTrue: () => ({})
+				})}
 				controls={Boolean.match(pushed, {
 					onFalse: () => (
 						<>
@@ -366,8 +427,10 @@ function HomeRoute() {
 				authFailure={authFailure}
 				free={free}
 				usage={usage}
-				isPhone={isPhone}
+				folded={folded}
 				labels={bandNames}
+				layout={layout}
+				listHidden={listHidden}
 				minutes={shownMinutes}
 				now={now}
 				onSelect={selectRow}

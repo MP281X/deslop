@@ -426,7 +426,7 @@ export function availablePorts(rows: ReturnType<typeof workloads>) {
 	)
 }
 
-export function status(item: InventoryItem) {
+function status(item: InventoryItem) {
 	if (item.kind === 'port') return 'listening'
 	if (item.kind === 'exposure' && Option.contains(item.owned, true)) return 'configured'
 	if (item.kind === 'exposure' && Option.contains(item.publicAccess, true)) return 'public permission'

@@ -18,11 +18,11 @@ import type {ReactElement, ReactNode} from 'react'
 
 import {AppMark} from '@deslop/components-web/blocks/marks'
 import {StaleProblem} from '@deslop/components-web/blocks/problem'
-import {ChoiceRow, LoadingRows, RowLead} from '@deslop/components-web/blocks/rows'
+import {ChoiceRow, LoadingRows, RowLines, RowMark} from '@deslop/components-web/blocks/rows'
 import {Loaded, ReadFailure} from '@deslop/components-web/blocks/states'
-import {StatusDot} from '@deslop/components-web/blocks/status-dot'
 import {appMarks} from '@deslop/components-web/lib/apps'
 import {mediaQueryAtom} from '@deslop/components-web/lib/media'
+import {FOLD_COLUMNS, foldedAtom} from '@deslop/components-web/lib/posture'
 import {preload} from '@deslop/components-web/lib/router'
 import {cn} from '@deslop/components-web/lib/utils'
 import {AppBarTab, AppBar, AppBarChoice, AppBarTabs, AppBarTabsSkeleton} from '@deslop/components-web/shell/app-bar'
@@ -154,7 +154,7 @@ function EmptyPane(props: {icon: ReactElement; label: string}) {
 	)
 }
 
-// One operation: its side's glyph, its name and a dot when it failed, then its errors when it has any, runs and typical duration in their own columns; its label names the side when two rows share the name.
+// One operation: its side's glyph and name, then, when it failed, a dot and how many runs on the muted line; runs and typical duration in their own columns; its label names the side when two rows share the name.
 function OperationRow(props: {active: boolean; duplicate: boolean; onSelect: () => void; operation: Operation}) {
 	const side = SIDES[props.operation.runtime]
 	return (
@@ -175,27 +175,18 @@ function OperationRow(props: {active: boolean; duplicate: boolean; onSelect: () 
 			)}
 			onSelect={props.onSelect}
 		>
-			<RowLead
+			<TableCell>
+				<RowMark>{KINDS[props.operation.runtime]}</RowMark>
+			</TableCell>
+			<RowLines
 				title={props.operation.name}
-				mark={KINDS[props.operation.runtime]}
-				after={
-					props.operation.failures > 0 && (
-						<StatusDot status="error" label={`${countOf(props.operation.failures)} failed`} />
-					)
-				}
+				{...Boolean.match(props.operation.failures > 0, {
+					onFalse: () => ({}),
+					onTrue: () => ({problem: {reason: `${countOf(props.operation.failures)} failed`, status: 'error' as const}})
+				})}
 			>
 				{props.operation.name}
-			</RowLead>
-			<TableCell className="text-right">
-				{props.operation.failures > 0 && (
-					<span
-						className="text-destructive in-data-[state=selected]:text-foreground tabular-nums"
-						title={`${countOf(props.operation.failures)} failed`}
-					>
-						{countOf(props.operation.failures)}
-					</span>
-				)}
-			</TableCell>
+			</RowLines>
 			<TableCell className="text-right">
 				<span
 					className="text-muted-foreground in-data-[state=selected]:text-foreground tabular-nums"
@@ -266,7 +257,7 @@ function OperationsPane(props: {
 	)
 }
 
-// One trace of the operation: its short id with its failure dot right after, its age and its duration; the row selects it.
+// One trace of the operation: its short id, then, when it failed, a dot and where on the muted line; its age and its duration; the row selects it.
 function TraceListRow(props: {active: boolean; now: DateTime.Utc; onSelect: () => void; trace: OperationTrace}) {
 	return (
 		<ChoiceRow
@@ -282,19 +273,15 @@ function TraceListRow(props: {active: boolean; now: DateTime.Utc; onSelect: () =
 			)}
 			onSelect={props.onSelect}
 		>
-			<RowLead
+			<RowLines
 				title={props.trace.id}
-				after={Option.match(props.trace.failure, {
-					onNone: Function.constNull,
-					onSome: failure => <StatusDot status="error" label={`Failed in ${failure.span}`} />
-				})}
-				reason={Option.match(props.trace.failure, {
-					onNone: Function.constUndefined,
-					onSome: failure => `Failed in ${failure.span}`
+				{...Option.match(props.trace.failure, {
+					onNone: () => ({}),
+					onSome: failure => ({problem: {reason: `Failed in ${failure.span}`, status: 'error' as const}})
 				})}
 			>
 				{traceLabel(props.trace)}
-			</RowLead>
+			</RowLines>
 			<TableCell className="text-right">
 				<span
 					className="text-muted-foreground in-data-[state=selected]:text-foreground tabular-nums"
@@ -511,10 +498,16 @@ function TracePane(props: {
 	)
 }
 
-// From 1024px to 1599px: operations and traces beside the waterfall, with the picked details after the spans; from 1512px the lists take more of the width.
-function NarrowWorkspace(props: WorkspaceProps) {
+// From 900px to 1599px: operations and traces beside the waterfall, with the picked details after the spans; from 1512px the lists take more of the width. Half open like a book, the two columns are the two halves of the screen.
+function NarrowWorkspace(props: WorkspaceProps & {folded: boolean}) {
 	return (
-		<div className="grid-cols-scope min-[94.5rem]:grid-cols-scope-roomy grid min-h-0 flex-1">
+		<div
+			className={Boolean.match(props.folded, {
+				onFalse: Function.constant('grid-cols-scope min-[94.5rem]:grid-cols-scope-roomy grid min-h-0 flex-1'),
+				onTrue: Function.constant('grid-cols-(--fold-columns) grid min-h-0 flex-1')
+			})}
+			style={{'--fold-columns': FOLD_COLUMNS}}
+		>
 			<div className="grid min-h-0 grid-rows-2 border-r">
 				<OperationsPane
 					activeKey={props.activeKey}
@@ -525,7 +518,6 @@ function NarrowWorkspace(props: WorkspaceProps) {
 				/>
 				<TracesPane
 					active={props.active}
-
 					now={props.now}
 					onSelect={props.onSelectTrace}
 					range={props.range}
@@ -533,6 +525,7 @@ function NarrowWorkspace(props: WorkspaceProps) {
 				/>
 			</div>
 			<TracePane
+				{...Boolean.match(props.folded, {onFalse: () => ({}), onTrue: () => ({className: 'col-start-3'})})}
 				inlineDetails
 				onPickSpan={props.onPickSpan}
 				pickedSpan={props.pickedSpan}
@@ -629,9 +622,11 @@ function renderPage(children: ReactNode) {
 }
 
 function HomeRoute() {
-	// Below desktop width, the same selection navigates one screen at a time; from 1600px all panes stand together.
-	const isMobile = useAtomValue(mediaQueryAtom('(width < 64rem)'))
+	// Below 900px, the same selection navigates one screen at a time; from 1600px all panes stand together.
+	const isMobile = useAtomValue(mediaQueryAtom('(width < 56.25rem)'))
 	const isWide = useAtomValue(mediaQueryAtom('(width >= 100rem)'))
+	const folded = useAtomValue(foldedAtom)
+	const [listHidden, setListHidden] = useState(false)
 	const search = route.useSearch()
 	const navigate = route.useNavigate()
 	const range = Option.getOrElse(search.range, Function.constant('24h' as const))
@@ -706,9 +701,23 @@ function HomeRoute() {
 	}
 	const workspace = Boolean.match(isMobile, {
 		onFalse: () =>
-			Boolean.match(isWide, {
-				onFalse: () => <NarrowWorkspace {...workspaceProps} />,
-				onTrue: () => <WideWorkspace {...workspaceProps} />
+			Boolean.match(listHidden, {
+				onFalse: () =>
+					Boolean.match(isWide && !folded, {
+						onFalse: () => <NarrowWorkspace {...workspaceProps} folded={folded} />,
+						onTrue: () => <WideWorkspace {...workspaceProps} />
+					}),
+				// The lists folded away: the open trace takes the whole width.
+				onTrue: () => (
+					<TracePane
+						className="flex-1"
+						inlineDetails
+						onPickSpan={selectSpan}
+						pickedSpan={selection.pickedSpan}
+						range={range}
+						trace={selection.activeTrace}
+					/>
+				)
 			}),
 		onTrue: () => <MobileWorkspace {...workspaceProps} pane={pane} />
 	})
@@ -745,6 +754,10 @@ function HomeRoute() {
 				})}
 				icon={icon}
 				name="scope"
+				{...Boolean.match(isMobile, {
+					onFalse: () => ({sidebar: {hidden: listHidden, onToggle: () => setListHidden(hidden => !hidden)}}),
+					onTrue: () => ({})
+				})}
 				stackTabs
 				controls={
 					<>
