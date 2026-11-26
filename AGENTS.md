@@ -32,4 +32,4 @@ Personal apps with one user, who also develops them.
 
 ## Agent instructions
 
-Write only what an agent would otherwise get wrong. Replay a prompt or skill change on a real past message before merging.
+Write only what an agent would otherwise get wrong. Give agents the fewest steps and moving parts that do the job: each extra one can fail or break what he relies on, as a worktree per delegate kept a PR's changes out of his file tree. Replay a prompt or skill change on a real past message before merging.
