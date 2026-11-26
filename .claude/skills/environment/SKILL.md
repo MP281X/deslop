@@ -29,6 +29,8 @@ description: Load before a command on `worker` or the Mac, starting a preview, o
 
 Start one only when a capture needs it, from the worktree root, through the project's `preview` script (`t3_project_read`): Deslop's `vp run preview [app]` and `vp run preview:stop`; Dual's [prod-like preview](references/dual.md#preview). Pass the URL it prints to whoever walks it: the reviewer, or him when he asked to try it. An app's own `preview` script or a background task dies with the turn.
 
+Build and walk Deslop UI in the browser preview at the iPhone Duo sizes in `AGENTS.md`, including UI bundled by Capacitor. On the Mac, use the iOS Simulator only for share extensions, push, Live Activities, the Dynamic Island and widgets.
+
 Never open a Funnel or another public route for a preview: it puts the whole port on the internet. His one exception is Dual's public preview in [State](references/maintenance.md#state). When a proof needs a real webhook delivery, tell the user it is blocked.
 
 ## Tools
