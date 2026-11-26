@@ -16,12 +16,13 @@ Personal apps with one user, who also develops them.
 - Checks: `vp run fix`, `vp run check` and `vp run test`; the two generators have no tests, so a change to one is proven by creating an app or package with it and building it.
 - A contract change is done only when its built server starts on scratch data and serves the changed RPCs or MCP tools.
 - New apps and packages: `vp create app -- --name <name>` (`--kind mobile` for iOS) or `vp create package -- --name <name>`. Never copy one.
-- Web components: `vpx shadcn@latest add --all --overwrite` in `packages/components-web`; leave the registry files as generated, since the next `--overwrite` replaces them. Logos come from svgl.
+- Apps use Effect UI, pinned to a `pkg.pr.new` commit, and Effect RPC over SQL. Tailwind styles the shared UI SDK adapter by its `data-slot` and state attributes. Logos come from svgl.
+- Install web apps from Safari with a safe-area viewport and no zoom. The iPhone apps bundle the same web build with Capacitor, never a remote page or an over-the-air update; use Swift for share extensions and WidgetKit, and Capacitor's official push plugin.
 - After adding or removing a skill, rerun the agent links in the maintenance reference.
 
 ## Design
 
-- `palette.ts` mirrors `theme.css`.
+- One axis: black only, Geist with tabular figures for numbers, Geist Mono for scales. Draw Liquid Glass in WebGL2 on controls only. Portfolio keeps its own design.
 - Hue only for identity and status. Never label healthy states. Dots mark problems.
 - One row everywhere: a title, one muted line, numbers or time at the trailing edge; a problem's dot goes before the title and its reason on the muted line.
 - The list stands beside the opened item, and Mail's sidebar button collapses it. The fold is the only divider.
