@@ -1,6 +1,6 @@
 <!doctype html><html><head><meta charset="utf-8"><script>
 /* PROTOTYPE. DECISIONS, numbered from FIRST, each {name, versions, view, formats, start, paths}:
-   versions   {a: 'two or three words', …}; Today is implied.
+   versions   {a, b, c: 'two or three words'}: three different approaches; Today is implied, shown only in the overview row.
    view(s,v,w) HTML of version v in state s at screen width w, with the app's real labels and data.
    formats    F's keys, the first shown first; default 'openR'.
    start      every version's first state; default {}.
@@ -32,7 +32,9 @@ body{margin:0;font:13px/1.4 var(--font-sans);color:var(--foreground)}*{box-sizin
 .dev{border:1px solid currentColor;border-radius:2px}.beats{display:flex;flex:1;gap:3px}.beats i{flex:1;height:20px;display:grid;align-items:center;cursor:pointer}
 .beats i:after{content:'';height:4px;border-radius:2px;background:color-mix(in srgb,var(--foreground) 18%,transparent)}.beats .past:after{background:color-mix(in srgb,var(--foreground) 55%,transparent)}.beats .now:after{background:var(--primary)}
 .row{display:grid;gap:8px;justify-content:center;margin-bottom:12px}.v{display:grid;gap:4px;align-content:start}.vh{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.vh b{font:500 13px var(--font-mono);padding:0 4px;border:1px solid var(--input);border-radius:4px;margin-right:5px}
-.pv{cursor:pointer}.pv .vh{font-weight:500}.pv.on .fr{border-color:var(--primary);box-shadow:0 0 0 1px var(--primary)}
+.pv .vh{font-weight:500}
+.dec{padding:22px 0 6px}.dec+.dec{border-top:2px solid color-mix(in srgb,var(--foreground) 25%,transparent);margin-top:18px}
+.dec>.hd .no{font:600 15px var(--font-mono);color:var(--background);background:var(--foreground);padding:1px 8px;border-radius:6px}.dec>.hd .nm{font-size:16px}
 .fr{position:relative;overflow:hidden;border:1px solid var(--border);border-radius:8px}.sc{position:absolute;transform-origin:0 0;transition:transform .5s cubic-bezier(.4,0,.2,1)}
 .cur{position:absolute;width:15px;z-index:9;pointer-events:none;transition:translate .55s cubic-bezier(.4,0,.2,1);display:none}
 .app{background:var(--background);color:var(--foreground);font-size:13px;line-height:1.45;height:100%}
@@ -59,18 +61,18 @@ const D=DECISIONS.map(({formats='openR',start={},...d},i)=>({...d,formats,start,
 function trace(d,v){const S=[d.start],w=F[d.fm][1],box=document.createElement('div');
   for(const id of (d.paths?.[v]||'').split(' ').filter(Boolean)){box.innerHTML=d.view(S.at(-1),v,w);const t=$(`[data-t="${id}"]`,box);if(!t){console.error(`${d.no} ${v}: no "${id}"`);break}S.push({...S.at(-1),...JSON.parse(t.dataset.p)})}
   return S}
-function reset(d){d.S=Object.fromEntries(d.V.map(v=>[v,trace(d,v)]));d.beats=Math.max(...d.V.map(v=>d.S[v].length));const B=new URLSearchParams(location.search).get('beat');d.c=B==null?d.beats-1:Math.min(+B,d.beats-1);d.L=Object.fromEntries(d.V.map(v=>[v,d.S[v][Math.min(d.c,d.S[v].length-1)]]));d.sel??=d.V}
+function reset(d){d.S=Object.fromEntries(d.V.map(v=>[v,trace(d,v)]));d.beats=Math.max(...d.V.map(v=>d.S[v].length));const B=new URLSearchParams(location.search).get('beat');d.c=B==null?d.beats-1:Math.min(+B,d.beats-1);d.L=Object.fromEntries(d.V.map(v=>[v,d.S[v][Math.min(d.c,d.S[v].length-1)]]));d.sel??=d.V.filter(v=>v!='Today')}
 const next=(d,v)=>(d.paths?.[v]||'').split(' ')[d.c];
 function draw(){const W=$('#out').clientWidth;
   $('#out').innerHTML=D.map(d=>{const [,w,h]=F[d.fm],n=d.sel.length,lab=v=>`${v=='Today'?'':`<b>${v}</b>`}${v=='Today'?'Today':d.versions[v]}`;
     // One height for every format and choice, so nothing below moves.
-    const H=Math.min(...d.formats.split(' ').map(f=>F[f][2]*(W-8)/2/F[f][1])),s=Math.min((W-8*(n-1))/n/w,H/h),pw=(W-16)/3;
+    const H=Math.min(...d.formats.split(' ').map(f=>F[f][2]*(W-8)/2/F[f][1])),s=Math.min((W-8*(n-1))/n/w,H/h),pw=(W-8*(d.V.length-1))/d.V.length;
     const fm=d.formats.includes(' ')?`<span class=seg>${d.formats.split(' ').map(f=>{const [l,fw,fh,two]=F[f];return `<span class="${f==d.fm?'on':''}" data-f="${d.no} ${f}"><span class=dev style="width:${fw>fh?18:12}px;height:${fw>fh?13:17}px;${two?(fw>fh?'background:linear-gradient(90deg,#0000 47%,currentColor 0 53%,#0000 0)':'background:linear-gradient(#0000 47%,currentColor 0 53%,#0000 0)'):''}"></span>${l}</span>`}).join('')}</span>`:'';
     const tl=d.paths?`<span class=beats>${Array.from({length:d.beats},(_,i)=>`<i data-c="${d.no} ${i}" class="${i<d.c?'past':i==d.c?'now':''}"></i>`).join('')}</span><span class=bt data-r="${d.no}">Replay</span>`:`<span class=bt data-x="${d.no}">Reset</span>`;
     const fr=(v,cls,fw,fh,sc)=>`<div class="fr app" data-v="${d.no} ${v} ${cls}" style="width:${fw}px;height:${fh}px"><div class=sc style="width:${w}px;height:${h}px;transform:scale(${sc})"></div>${cls=='big'?CUR:''}</div>`;
-    return `<div class=hd><span class=no>${d.no}</span><span class=nm>${d.name}</span>${fm}${tl}</div>
+    return `<section class=dec><div class=hd><span class=no>${d.no}</span><span class=nm>${d.name}</span>${fm}${tl}</div>
       <div class=row style="height:${H+28}px;grid-template-columns:repeat(${n},${w*s}px)">${d.sel.map(v=>`<div class=v><div class=vh>${lab(v)}</div>${fr(v,'big',w*s,h*s,s)}</div>`).join('')}</div>
-      <div class=row style="grid-template-columns:repeat(3,${pw}px)">${d.V.map(v=>`<div class="v pv${d.sel.includes(v)?' on':''}" data-s="${d.no} ${v}"><div class=vh>${lab(v)}</div>${fr(v,'small',pw,120,1)}</div>`).join('')}</div>`}).join('');
+      <div class=row style="grid-template-columns:repeat(${d.V.length},${pw}px)">${d.V.map(v=>`<div class="v pv" inert><div class=vh>${lab(v)}</div>${fr(v,'small',pw,120,1)}</div>`).join('')}</div></section>`}).join('');
   D.forEach(d=>fill(d,0))}
 // Frames get their version's state; morphing parts keep their names; small frames cut to the rows that matter.
 function fill(d,anim){const w=F[d.fm][1];
@@ -93,11 +95,10 @@ async function replay(d){const run=++RUN;d.c=0;d.V.forEach(v=>d.L[v]=d.S[v][0]);
     hit.forEach(([c,t])=>{c.animate([{scale:.8},{scale:1}],220);t.classList.add('ring')});await wait(250);
     d.c++;d.V.forEach(v=>d.L[v]=d.S[v][Math.min(d.c,d.S[v].length-1)]);await (document.startViewTransition?document.startViewTransition(()=>fill(d,1)).finished:fill(d,1));if(run!=RUN)return;await wait(400)}
   d.sel.forEach(v=>aim(d,v))}
-document.body.onclick=e=>{const t=e.target.closest('[data-t],[data-f],[data-c],[data-r],[data-x],[data-s]');if(!t)return;const a=(t.dataset.f||t.dataset.c||t.dataset.r||t.dataset.x||t.dataset.s||'').split(' '),d=D.find(d=>d.no==+a[0]);
+document.body.onclick=e=>{const t=e.target.closest('[data-t],[data-f],[data-c],[data-r],[data-x]');if(!t)return;const a=(t.dataset.f||t.dataset.c||t.dataset.r||t.dataset.x||'').split(' '),d=D.find(d=>d.no==+a[0]);
   if(t.dataset.t){const [no,v]=t.closest('[data-v]').dataset.v.split(' '),dd=D.find(d=>d.no==+no);dd.L[v]={...dd.L[v],...JSON.parse(t.dataset.p)};return fill(dd,1)}
   RUN++;if(t.dataset.f){d.fm=a[1];reset(d)}else if(t.dataset.x)reset(d);else if(t.dataset.r)return replay(d);
   else if(t.dataset.c){d.c=+a[1];d.V.forEach(v=>d.L[v]=d.S[v][Math.min(d.c,d.S[v].length-1)]);fill(d,1);return d.sel.forEach(v=>aim(d,v,1))}
-  else if(t.dataset.s){const on=d.sel.includes(a[1]);if(on&&d.sel.length==1)return;d.sel=d.V.filter(v=>v==a[1]?!on:d.sel.includes(v))}
   draw()};
 D.forEach(reset);draw();addEventListener('resize',draw);
 </script></body></html>
