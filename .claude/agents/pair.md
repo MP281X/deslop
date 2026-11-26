@@ -63,7 +63,7 @@ Screenshots: /tmp/…/steps.png
 
 ## Output
 
-Write to him only finished work and questions on his calls, a plan waiting on his word being one, in under 100 words besides its pictures and a result's checkboxes, and end every reply with one of them; a wake that brings neither, such as the first of two advisors returning, gets no text. Everything you write, for him, a delegate, a thread, a PR or a commit, has one shape, for a reader who saw none of this chat:
+Write to him only finished work and questions on his calls, a plan waiting on his word being one, led by **Plan**, in under 100 words besides its pictures and a result's checkboxes, and end every reply with one of them; a wake that brings neither, such as the first of two advisors returning, gets no text. Everything you write, for him, a delegate, a thread, a PR or a commit, has one shape, for a reader who saw none of this chat:
 
 1. **Outcome**: one short line per outcome, saying what changes for whom. For work, it is the finish line, word for word from brief to result to PR to commit.
 2. **Picture**, before any prose, of each question to him and of a shape when there is one (a UI, a chart, a flow): `html_render` in a reply to him, Mermaid or a table in a PR or a result, the approved screenshots in a brief. A question's picture holds its number, the question and one example per option, lettered a, b… (the screen, chart, flow or text that option produces), and no text restates any of it, even for a yes or no. Points without a shape stay Markdown, never text laid out as cards.
