@@ -1,11 +1,11 @@
 name: Release
 
 # The file keeps its name: npm trusts `deploy.yaml` to publish the packages.
-# A pull request runs Verify on GitHub's merge with its base; main runs it on what it ships, then releases.
+# Pull requests verify the merge result. main releases everything; testflight/* branches only upload iPhone builds.
 on:
   pull_request:
   push:
-    branches: [main]
+    branches: [main, 'testflight/**']
 
 # A newer push replaces the older run: a pull request's ref is its merge ref, and each release ships everything since the last one.
 concurrency:
@@ -64,7 +64,7 @@ jobs:
         run: |
           builds=()
           for app in opm stash trips; do
-            inputs=$(git ls-tree -r HEAD -- "apps/$app/ios" "apps/$app/capacitor.config.json" "apps/$app/src/routes/app.icon" "apps/$app/package.json" packages/ui/native package.json pnpm-lock.yaml pnpm-workspace.yaml)
+            inputs=$(git ls-tree -r HEAD -- "apps/$app/ios" "apps/$app/capacitor.config.json" "apps/$app/src/web/app.icon" "apps/$app/package.json" packages/ui/native package.json pnpm-lock.yaml pnpm-workspace.yaml)
             web=$(cd "apps/$app/dist/client" && find . -type f -print0 | LC_ALL=C sort -z | xargs -0 sha256sum)
             fingerprint=$(printf '%s\n' "$inputs" "$web" "$DESLOP_DOMAIN" "$APPLE_TEAM_ID" | sha256sum | cut -c1-64)
             artifact="$app-app-store-$fingerprint"
@@ -79,7 +79,7 @@ jobs:
       # The fingerprint is the hash of the tarball packed before the version bump, which packs the same bytes each time, so an unchanged package and a retry's published one both skip.
       # An app bundles everything, so its manifest drops dependencies, scripts and its source entry; the standards CLI bundles its version, so it builds again after the bump.
       - name: Publish changed packages
-        if: github.event_name == 'push'
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         run: |
           for package in tools/coding-standards apps/{auth,deploy,gateway,opm,portfolio,scope,stash,trips}; do
             cd "$GITHUB_WORKSPACE/$package"
@@ -104,7 +104,7 @@ jobs:
       # A run holding an unexpired artifact stays: an App Store receipt keeps the next release from uploading its fingerprint again, a Simulator build keeps a Mac from building it again.
       # At most 300 runs a release, well inside the job token's 1,000 requests an hour; later releases take the rest.
       - name: Delete old runs
-        if: github.event_name == 'push'
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
@@ -137,18 +137,36 @@ jobs:
         with:
           node-version: '26'
           run-install: true
-      - name: Build the App Store app
+      - name: Bundle the iPhone app
         run: |
           vp run build
           vp exec cap sync ios
+      - name: Sign and upload to TestFlight
+        id: upload
+        env:
+          APP: ${{ matrix.app }}
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+          FINGERPRINT: ${{ matrix.fingerprint }}
+        run: |
+          key="$RUNNER_TEMP/AuthKey_$ASC_KEY_ID.p8"
+          trap 'rm -f "$key"' EXIT
+          (umask 077; printf '%s\n' "$ASC_KEY_P8" > "$key")
+          unset ASC_KEY_P8
 
-          # The API key authenticates the upload, not signing. Never let Xcode create or change signing assets.
-          identities=$(security find-identity -v -p codesigning)
-          if [[ $identities != *"Apple Distribution:"* ]]; then
-            echo "::error::The runner needs an existing Apple Distribution identity with its private key and matching provisioning profiles for the app and its extensions."
-            exit 1
-          fi
-          xcodebuild -project ios/App/App.xcodeproj -scheme App -configuration Release -destination 'generic/platform=iOS' \
+          sign_with_xcode() {
+            if ! xcodebuild "$@" -allowProvisioningUpdates \
+              -authenticationKeyPath "$key" -authenticationKeyID "$ASC_KEY_ID" -authenticationKeyIssuerID "$ASC_ISSUER_ID" \
+              2>&1 | tee "$RUNNER_TEMP/xcodebuild.log"; then
+              if grep -Eiq '(^|[^[:alnum:]])403([^[:alnum:]]|$)|cloud signing permission|access to cloud-managed distribution certificates' "$RUNNER_TEMP/xcodebuild.log"; then
+                echo "::error::Apple denied signing access. The App Store Connect team API key (ASC_KEY_ID, ASC_ISSUER_ID, ASC_KEY_P8) must have the Admin role for cloud signing."
+              fi
+              return 1
+            fi
+          }
+
+          sign_with_xcode -project ios/App/App.xcodeproj -scheme App -configuration Release -destination 'generic/platform=iOS' \
             -archivePath "$RUNNER_TEMP/App.xcarchive" "DEVELOPMENT_TEAM=$APPLE_TEAM_ID" "DESLOP_DOMAIN=$DESLOP_DOMAIN" \
             "MARKETING_VERSION=0.1.$RELEASE_NUMBER" "CURRENT_PROJECT_VERSION=$RELEASE_NUMBER" archive
 
@@ -158,28 +176,17 @@ jobs:
           <plist version="1.0">
           <dict>
             <key>method</key><string>app-store-connect</string>
-            <key>destination</key><string>export</string>
+            <key>destination</key><string>upload</string>
+            <key>signingStyle</key><string>automatic</string>
             <key>teamID</key><string>$APPLE_TEAM_ID</string>
             <key>manageAppVersionAndBuildNumber</key><false/>
           </dict>
           </plist>
           EOF
-          xcodebuild -exportArchive -archivePath "$RUNNER_TEMP/App.xcarchive" \
-            -exportOptionsPlist "$RUNNER_TEMP/export.plist" -exportPath "$RUNNER_TEMP/export"
-      - name: Upload to the App Store
-        id: upload
-        env:
-          APP: ${{ matrix.app }}
-          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
-          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
-          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
-          FINGERPRINT: ${{ matrix.fingerprint }}
-        run: |
           jq -n --arg app "$APP" --arg build "$RELEASE_NUMBER" --arg fingerprint "$FINGERPRINT" --arg commit "$GITHUB_SHA" \
             '{app: $app, version: "0.1.\($build)", build: $build, fingerprint: $fingerprint, commit: $commit}' > "$RUNNER_TEMP/receipt.json"
-          mkdir -p "$HOME/.appstoreconnect/private_keys"
-          printf '%s\n' "$ASC_KEY_P8" > "$HOME/.appstoreconnect/private_keys/AuthKey_$ASC_KEY_ID.p8"
-          xcrun altool --upload-package "$RUNNER_TEMP/export/App.ipa" --api-key "$ASC_KEY_ID" --api-issuer "$ASC_ISSUER_ID"
+          sign_with_xcode -exportArchive -archivePath "$RUNNER_TEMP/App.xcarchive" \
+            -exportOptionsPlist "$RUNNER_TEMP/export.plist" -exportPath "$RUNNER_TEMP/export"
           echo "- $APP uploaded to TestFlight" >> "$GITHUB_STEP_SUMMARY"
       # Recorded right after Apple accepts, even when the run is cancelled: the receipt, while it has not expired, is what keeps the next release from uploading this fingerprint again. A run that fails or dies between the two steps, or whose receipt upload fails, leaves none.
       - name: Record Apple's acceptance
