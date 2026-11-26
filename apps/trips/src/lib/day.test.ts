@@ -1,10 +1,10 @@
 import {assert, it} from '@effect/vitest'
 
-import {Array, DateTime, Option, Schema, Struct} from 'effect'
+import {Array, DateTime, Duration, Function, Option, Schema, Struct, pipe} from 'effect'
 
-import {boardChangeOf, boardOf, datesOf, nextHero, openedFlight} from '#lib/day.ts'
-import type {Change} from '#lib/day.ts'
+import {boardOf, datesOf, nextBoardOf, nextHero, openedFlight, tripOf} from '#lib/day.ts'
 import {FlightId, Flight, Place, PlaceCode, TravelTime} from '#services/flights/schema.ts'
+import type {FlightTracking} from '#services/flights/schema.ts'
 
 const BERGAMO = Schema.decodeSync(Place)({city: 'Bergamo', code: 'BGY', name: 'Milan Bergamo', timeZone: 'Europe/Rome'})
 const STANSTED = Schema.decodeSync(Place)({
@@ -74,7 +74,7 @@ it('keeps the change row of a connection across a date, from the whole day', () 
 	const overnight = flight('33333333', '1', NEWARK, STANSTED, DateTime.makeUnsafe('2026-11-22T23:00:00Z'), at('06:00'))
 	const onward = flight('44444444', '2', STANSTED, DUBLIN, at('07:30'), at('08:59'))
 	function rows(now: DateTime.Utc) {
-		return Array.map(datesOf([overnight, onward], now, Option.none()), date => [
+		return Array.map(datesOf([overnight, onward], now, []), date => [
 			date.date,
 			Array.map(date.rows, row => Option.map(row.feeder, feeder => feeder.number))
 		])
@@ -87,24 +87,100 @@ it('keeps the change row of a connection across a date, from the whole day', () 
 	assert.deepStrictEqual(rows(at('07:01')), [['Monday 23 November', [Option.some('1')]]])
 })
 
-// Whether each row of the day at 10:00 follows a change row.
-function feeders(shown: Option.Option<Change>) {
-	return Array.flatMap(datesOf(DAY, at('10:00'), shown), date => Array.map(date.rows, row => Option.isSome(row.feeder)))
+function tracking(fields: Partial<FlightTracking>) {
+	return Option.some<FlightTracking>({
+		aircraft: Option.none(),
+		arrivalActual: Option.none(),
+		arrivalEstimated: Option.none(),
+		checkedAt: at('09:00'),
+		departureActual: Option.none(),
+		departureEstimated: Option.none(),
+		departureGate: Option.none(),
+		departureTerminal: Option.none(),
+		inboundDelay: Option.none(),
+		previousGate: Option.none(),
+		providerId: Option.none(),
+		state: 'scheduled',
+		takeoffActual: Option.none(),
+		...fields
+	})
 }
 
-it("leaves out the change a laptop's board shows above the list", () => {
-	const change = boardChangeOf(DAY, at('10:00'))
+const PASSENGER = {
+	boardingGroup: Option.some('3'),
+	boardingPass: true,
+	confirmation: Option.none<string>(),
+	name: Option.none<string>(),
+	seat: Option.some('14C'),
+	status: 'confirmed' as const,
+	ticket: Option.none<string>()
+}
+
+// The day with what the gates, seats and aircraft say, and the second flight's plane flying in late.
+const FIRST_AT_GATE = {
+	...FIRST,
+	boardingAt: Option.some(at('08:30')),
+	live: tracking({
+		aircraft: Option.some('A320neo'),
+		departureGate: Option.some('E38'),
+		departureTerminal: Option.some('3')
+	}),
+	travellers: [PASSENGER]
+}
+const SECOND_LATE = {
+	...SECOND,
+	live: tracking({departureTerminal: Option.some('5'), inboundDelay: Option.some(Duration.minutes(20))})
+}
+const TRIP = [FIRST_AT_GATE, SECOND_LATE]
+
+it('lists the trip as its steps, each with the muted line as stored and its time at the trailing edge', () => {
 	assert.deepStrictEqual(
-		Option.map(change, found => [found.feeder.number, found.next.number]),
-		Option.some(['1234', '206'])
-	)
-	assert.deepStrictEqual(
-		[feeders(Option.none()), feeders(change)],
+		Array.flatMap(tripOf(TRIP, at('08:00')).dates, date =>
+			Array.map(date.steps, step => [
+				step.title,
+				pipe(
+					step.problem,
+					Option.map(problem => problem.reason),
+					Option.orElse(() => step.line),
+					Option.getOrElse(Function.constant(''))
+				),
+				step.time,
+				Option.map(step.problem, problem => problem.status)
+			])
+		),
 		[
-			[false, true],
-			[false, false]
+			['FR 1234 boards', 'Terminal 3 · gate E38 · seat 14C · group 3', '09:30', Option.none()],
+			['FR 1234 departs Bergamo', 'A320neo', '10:00', Option.none()],
+			['Lands in London', 'Terminal 5 · 7h 00m to change', '11:00', Option.none()],
+			['FR 206 boards', 'Terminal 5', '17:30', Option.none()],
+			['FR 206 departs London', 'Plane flying in 20 min late', '18:00', Option.some('warning')],
+			['Lands in Dublin', '', '20:00', Option.none()]
 		]
 	)
-	// Once the day is at its last flight there is no change left to show.
-	assert.isTrue(Option.isNone(boardChangeOf(DAY, at('11:05'))))
+})
+
+it("leaves a flight's steps once it landed an hour ago, and the flights of the trip out of the later dates", () => {
+	const trip = tripOf(TRIP, at('12:30'))
+	assert.deepStrictEqual(
+		Array.flatMap(trip.dates, date => Array.map(date.steps, step => step.flight.number)),
+		['206', '206', '206']
+	)
+	assert.deepStrictEqual(
+		Array.map(datesOf(TRIP, at('12:30'), trip.flights), date => date.rows.length),
+		[]
+	)
+})
+
+it('leads a laptop with the next step of a trip with a change to come, the gate beside its time', () => {
+	assert.deepStrictEqual(
+		Option.map(nextBoardOf(TRIP, at('08:00')), found => [
+			found.hero.label,
+			found.hero.value,
+			found.hero.right,
+			Option.getOrElse(found.line, Function.constant(''))
+		]),
+		Option.some(['FR 1234 boards', 'E38 · 09:30', 'in 30 min', 'Terminal 3 · seat 14C · group 3'])
+	)
+	// Once the day is at its last flight there is no change left, so its board stays as the flight's.
+	assert.isTrue(Option.isNone(nextBoardOf(TRIP, at('11:05'))))
 })

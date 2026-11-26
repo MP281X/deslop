@@ -32,19 +32,6 @@ const STRUCK = [foregroundStyle(colors.mutedForeground), strikethrough({isActive
 export type RowProblem = typeof RowProblem.Type
 const RowProblem = Schema.Literals(['bad', 'warn'])
 
-// A flight on Home reads large and light; the times of one flight read at body size; a quiet row's value is a remark, such as what a change was booked as.
-export type RowSize = typeof RowSize.Type
-const RowSize = Schema.Literals(['big', 'plain', 'quiet'])
-
-const ROW_SIZES = {
-	big: {
-		label: font({textStyle: 'title3', weight: 'semibold'}),
-		value: [font({textStyle: 'title', weight: 'light'}), foregroundStyle(colors.foreground)]
-	},
-	plain: {label: font({textStyle: 'body'}), value: [font({textStyle: 'title3'}), foregroundStyle(colors.foreground)]},
-	quiet: {label: font({textStyle: 'body'}), value: [font({textStyle: 'body'}), foregroundStyle(colors.mutedForeground)]}
-} satisfies Record<RowSize, unknown>
-
 // The next step folded and as a book's page, and at a glance above a laptop's fold.
 export type HeroSize = typeof HeroSize.Type
 const HeroSize = Schema.Literals(['glance', 'read'])
@@ -72,20 +59,15 @@ function Was(props: {was: Option.Option<string>}) {
 	})
 }
 
-// A row of the day: what it is with a quieter line under it, and its time on the right with the old time struck through beside it. A flight on Home keeps the old time under its large one, so its route and landing stay whole on the folded phone, and its small print wraps rather than cuts.
+// A time of one flight: what it is with a quieter line under it, and its time on the right with the old time struck through beside it.
 export function TimeRow(props: {
 	chevron: boolean
 	label: string
 	problem: Option.Option<RowProblem>
-	size: RowSize
 	sub: Option.Option<string>
 	value: Option.Option<string>
 	was: Option.Option<string>
 }) {
-	const value = Option.match(props.value, {
-		onNone: Function.constNull,
-		onSome: found => <Text modifiers={[...ROW_SIZES[props.size].value, monospacedDigit()]}>{found}</Text>
-	})
 	return (
 		<HStack
 			spacing={space[3]}
@@ -94,7 +76,7 @@ export function TimeRow(props: {
 			<VStack alignment="leading" spacing={0} modifiers={[layoutPriority(1)]}>
 				<HStack spacing={space[2]}>
 					<Dot problem={props.problem} />
-					<Text modifiers={[ROW_SIZES[props.size].label, foregroundStyle(labelColor(props.problem)), lineLimit(2)]}>
+					<Text modifiers={[font({textStyle: 'body'}), foregroundStyle(labelColor(props.problem)), lineLimit(2)]}>
 						{props.label}
 					</Text>
 				</HStack>
@@ -108,24 +90,21 @@ export function TimeRow(props: {
 				})}
 			</VStack>
 			<Spacer />
-			{Boolean.match(props.size === 'big', {
-				onFalse: () => (
-					<HStack
-						alignment="firstTextBaseline"
-						spacing={space[2]}
-						modifiers={[fixedSize({horizontal: true, vertical: false})]}
-					>
-						<Was was={props.was} />
-						{value}
-					</HStack>
-				),
-				onTrue: () => (
-					<VStack alignment="trailing" spacing={0} modifiers={[fixedSize({horizontal: true, vertical: false})]}>
-						{value}
-						<Was was={props.was} />
-					</VStack>
-				)
-			})}
+			<HStack
+				alignment="firstTextBaseline"
+				spacing={space[2]}
+				modifiers={[fixedSize({horizontal: true, vertical: false})]}
+			>
+				<Was was={props.was} />
+				{Option.match(props.value, {
+					onNone: Function.constNull,
+					onSome: found => (
+						<Text modifiers={[font({textStyle: 'title3'}), foregroundStyle(colors.foreground), monospacedDigit()]}>
+							{found}
+						</Text>
+					)
+				})}
+			</HStack>
 			{props.chevron && (
 				<Image
 					systemName="chevron.right"

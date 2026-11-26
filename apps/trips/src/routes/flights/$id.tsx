@@ -41,8 +41,8 @@ import {Button} from '@deslop/components-mobile/ui/button'
 import {Empty, EmptyMedia} from '@deslop/components-mobile/ui/empty'
 import {weekdayOf} from '@deslop/runtime/shared/format'
 
-import {boardChangeOf, changeHero, changeWords, departureTimes, heroOf, movedFrom} from '#lib/day.ts'
-import type {Hero} from '#lib/day.ts'
+import {changeHero, changeWords, departureTimes, heroOf, movedFrom, nextBoardOf} from '#lib/day.ts'
+import type {Hero, NextBoard} from '#lib/day.ts'
 import {boardAtom, flightsAtom, nowAtom, refreshAtom, removal} from '#lib/flights.ts'
 import {mapsAtom, uberAtom} from '#lib/rides.ts'
 import {HeroView, TimeRow} from '#lib/rows.tsx'
@@ -152,7 +152,6 @@ function inboundRow(flight: Flight, current: Step) {
 				chevron={false}
 				label="Plane flying in"
 				problem={Option.some('warn')}
-				size="plain"
 				sub={Option.some(`${late} min late`)}
 				value={Option.none()}
 				was={Option.none()}
@@ -175,7 +174,6 @@ function Times(props: {current: Step; feeder: Option.Option<Flight>; flight: Fli
 					chevron={false}
 					label="Airport by"
 					problem={Option.none()}
-					size="plain"
 					sub={Option.some('an hour before departure')}
 					value={Option.some(clockAt(airportByOf(props.flight), props.flight.from.timeZone))}
 					was={Option.none()}
@@ -189,7 +187,6 @@ function Times(props: {current: Step; feeder: Option.Option<Flight>; flight: Fli
 						chevron={false}
 						label={`${titleOf(feeder)} lands`}
 						problem={Option.none()}
-						size="plain"
 						sub={Option.some(feeder.to.name)}
 						value={Option.some(arrivalClockOf(feeder))}
 						was={movedFrom(feeder.arrives, arrivalOf(feeder), feeder.to.timeZone)}
@@ -201,7 +198,6 @@ function Times(props: {current: Step; feeder: Option.Option<Flight>; flight: Fli
 					chevron={false}
 					label="Boarding"
 					problem={Option.none()}
-					size="plain"
 					sub={Option.some(
 						Option.match(gate, {onNone: Function.constant('gate not posted'), onSome: found => `gate ${found}`})
 					)}
@@ -216,7 +212,6 @@ function Times(props: {current: Step; feeder: Option.Option<Flight>; flight: Fli
 					chevron={false}
 					label="Departs"
 					problem={Option.none()}
-					size="plain"
 					sub={Option.some(props.flight.from.name)}
 					{...departureTimes(props.flight)}
 				/>
@@ -225,7 +220,6 @@ function Times(props: {current: Step; feeder: Option.Option<Flight>; flight: Fli
 				chevron={false}
 				label="Lands"
 				problem={Option.none()}
-				size="plain"
 				sub={Option.some(props.flight.to.name)}
 				value={Option.some(arrivalClockOf(props.flight))}
 				was={movedFrom(props.flight.arrives, arrivalOf(props.flight), props.flight.to.timeZone)}
@@ -243,7 +237,6 @@ function NextRow(props: {flight: Flight; next: Flight; onOpen: (id: FlightId) =>
 				chevron
 				label={change.label}
 				problem={Option.liftPredicate('warn' as const, () => change.tight)}
-				size="plain"
 				sub={Option.some(`${titleOf(props.next)} to ${cityOf(props.next.to)}`)}
 				value={Option.some(clockAt(departureOf(props.next), props.next.from.timeZone))}
 				was={Option.none()}
@@ -266,7 +259,6 @@ function Travellers(props: {flight: Flight}) {
 						Option.getOrElse(Function.constant('Traveller'))
 					)}
 					problem={Option.none()}
-					size="plain"
 					sub={Option.liftPredicate(
 						line([
 							Option.liftPredicate('Cancelled', () => traveller.status === 'cancelled'),
@@ -379,45 +371,28 @@ function Title(props: {flight: Flight}) {
 	)
 }
 
-// The change between the first two flights still ahead, read at a glance above a laptop's fold: how long, and the three times it hangs on.
-function ChangeBoard(props: {feeder: Flight; next: Flight}) {
+// The next step of a trip with a change to come, read at a glance above a laptop's fold: what it is, its time with the gate, and its small print. The steps stand in the list below.
+function NextBoardView(props: {board: NextBoard}) {
 	return (
 		<List modifiers={[listStyle('plain')]}>
-			<VStack modifiers={[listRowSeparator('hidden'), padding({vertical: space[4]})]}>
-				<HeroView hero={changeHero(props.feeder, props.next)} size="glance" />
+			<VStack
+				alignment="leading"
+				spacing={space[1]}
+				modifiers={[listRowSeparator('hidden'), padding({vertical: space[4]})]}
+			>
+				<HeroView hero={props.board.hero} size="glance" />
+				{Option.match(props.board.line, {
+					onNone: Function.constNull,
+					onSome: found => (
+						<Text modifiers={[text.detail, foregroundStyle(colors.mutedForeground), lineLimit(1)]}>{found}</Text>
+					)
+				})}
 			</VStack>
-			<TimeRow
-				chevron={false}
-				label={`${titleOf(props.feeder)} lands`}
-				problem={Option.none()}
-				size="big"
-				sub={Option.none()}
-				value={Option.some(arrivalClockOf(props.feeder))}
-				was={movedFrom(props.feeder.arrives, arrivalOf(props.feeder), props.feeder.to.timeZone)}
-			/>
-			<TimeRow
-				chevron={false}
-				label={`${titleOf(props.next)} boards`}
-				problem={Option.none()}
-				size="big"
-				sub={Option.none()}
-				value={Option.some(clockAt(boardsAt(props.next), props.next.from.timeZone))}
-				was={Option.none()}
-			/>
-			<TimeRow
-				chevron={false}
-				label={`${titleOf(props.next)} departs`}
-				problem={Option.none()}
-				size="big"
-				sub={Option.none()}
-				value={Option.some(clockAt(departureOf(props.next), props.next.from.timeZone))}
-				was={movedFrom(props.next.departs, departureOf(props.next), props.next.from.timeZone)}
-			/>
 		</List>
 	)
 }
 
-// With nothing opened: flat like a book, the flight under way or next beside the day; half open like a laptop, the change between its flights above the fold, or that flight when it has none. Above the fold it has no Back.
+// With nothing opened: flat like a book, the flight under way or next beside the day; half open like a laptop, the next step of a trip with a change to come above the fold, or the flight under way or next when it has none. Above the fold it has no Back.
 function Board(props: {onOpen: (id: FlightId) => void}) {
 	const tiled = useListTiled()
 	const now = useAtomValue(nowAtom)
@@ -425,7 +400,7 @@ function Board(props: {onOpen: (id: FlightId) => void}) {
 	return Option.match(useAtomValue(boardAtom), {
 		onNone: Function.constUndefined,
 		onSome: flight => {
-			const change = Option.filter(boardChangeOf(flights, now), () => !tiled)
+			const next = Option.filter(nextBoardOf(flights, now), () => !tiled)
 			return (
 				<Toolbar
 					modifiers={[
@@ -436,7 +411,7 @@ function Board(props: {onOpen: (id: FlightId) => void}) {
 						...Boolean.match(tiled, {onFalse: () => [backHidden], onTrue: () => []})
 					]}
 				>
-					{Option.match(change, {
+					{Option.match(next, {
 						onNone: () => (
 							<FlightPage
 								board
@@ -449,7 +424,7 @@ function Board(props: {onOpen: (id: FlightId) => void}) {
 								})}
 							/>
 						),
-						onSome: found => <ChangeBoard feeder={found.feeder} next={found.next} />
+						onSome: found => <NextBoardView board={found} />
 					})}
 				</Toolbar>
 			)
