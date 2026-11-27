@@ -225,7 +225,17 @@ export const lint: OxlintConfig & {
 				'@deslop/coding-standards/no-renamed-import': 'off'
 			}
 		},
-		{files: ['**/*.config.ts'], rules: {'import/no-default-export': 'off'}}
+		{files: ['**/*.config.ts'], rules: {'import/no-default-export': 'off'}},
+		// Effect UI native skips React Native's renderer, so iPhone code starts its timers and XHR itself.
+		{
+			files: ['**/src/iphone/**', '**/packages/design/src/native/**'],
+			rules: {
+				'import/no-unassigned-import': [
+					'error',
+					{allow: ['react-native/Libraries/Core/setUpTimers', 'react-native/Libraries/Core/setUpXHR']}
+				]
+			}
+		}
 	],
 	plugins: ['effecttsgo', 'eslint', 'typescript', 'oxc', 'import', 'node', 'unicorn', 'vitest'],
 	rules: {
@@ -563,11 +573,7 @@ export const lint: OxlintConfig & {
 		'import/no-namespace': 'error',
 		'import/no-relative-parent-imports': 'error',
 		'import/no-self-import': 'error',
-		// Effect UI native skips React Native's renderer, so iPhone apps start its timers and XHR themselves.
-		'import/no-unassigned-import': [
-			'error',
-			{allow: ['**/*.css', 'react-native/Libraries/Core/setUpTimers', 'react-native/Libraries/Core/setUpXHR']}
-		],
+		'import/no-unassigned-import': ['error', {allow: ['**/*.css']}],
 
 		...recommended,
 
