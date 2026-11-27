@@ -4,7 +4,7 @@ import {NodeRuntime, NodeServices} from '@effect/platform-node'
 
 import {Array, Effect, FileSystem, Number, Option, Path, Predicate, Schema, String, flow, pipe} from 'effect'
 
-import {CliError, Command, Flag} from 'effect/cli'
+import {CliError, Command} from 'effect/cli'
 
 import {copyTemplate} from '@deslop/create-package'
 import {nameFlag} from '@deslop/create-package/cli'
@@ -19,14 +19,7 @@ const AppPackage = Schema.Struct({config: Schema.Struct({port: Port})})
 
 const create = Command.make(
 	'create-app',
-	{
-		kind: pipe(
-			Flag.Literals('kind', ['web', 'mobile']),
-			Flag.withDescription('A web app, or a web app packaged for iOS with Capacitor'),
-			Flag.withDefault('web')
-		),
-		name: nameFlag('Unscoped application name')
-	},
+	{name: nameFlag('Unscoped application name')},
 	Effect.fnUntraced(function* (input) {
 		const fs = yield* FileSystem.FileSystem
 		const path = yield* Path.Path
@@ -58,12 +51,10 @@ const create = Command.make(
 			Schema.decodeEffect(Port)(Array.max([5100, ...Array.getSomes(ports)], Number.Order) + 1),
 			cause => CliError.UserError.make({cause, userMessage: 'No default port is left above the highest an app takes.'})
 		)
-		const template = path.join(import.meta.dirname, '../template')
-		const web = path.join(template, 'web')
 		yield* copyTemplate({
-			from: {mobile: [web, path.join(template, 'mobile')], web: [web]}[input.kind],
+			from: [path.join(import.meta.dirname, '../template')],
 			rewrite: flow(
-				// Capacitor rejects hyphens and segments starting with digits.
+				// Bundle identifier segments start with a letter.
 				String.replaceAll('templateBundleSlug', String.replaceAll('-', '.x')(input.name)),
 				String.replaceAll('template-app', input.name),
 				String.replaceAll('"port": 5100', `"port": ${port}`)

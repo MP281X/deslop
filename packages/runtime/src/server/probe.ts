@@ -29,6 +29,7 @@ import type {Toolkit} from 'effect/ai'
 import {HttpClient, HttpClientRequest, HttpClientResponse, HttpMethod, HttpRouter, HttpServer} from 'effect/http'
 import {Rpc, RpcClient, RpcGroup, RpcSchema, RpcSerialization} from 'effect/rpc'
 
+import {IPHONE_UPDATE_PATH} from '#config/iphone.ts'
 import {Auth} from '#server/auth.ts'
 import {appName} from '#server/package.ts'
 import {AuthError, UserId} from '#shared/auth.ts'
@@ -94,6 +95,8 @@ const publicAccess: readonly Access[] = [
 		surface => ({app: '*', callers: Caller.literals, surface: `http ${surface}`})
 	),
 	{app: '*', callers: ['member'], surface: 'http GET /api/account'},
+	{app: '*', callers: ['member'], surface: `http GET ${IPHONE_UPDATE_PATH}`},
+	{app: '*', callers: ['member'], surface: `http GET ${IPHONE_UPDATE_PATH}/assets/:hash`},
 	...Array.map(['POST /mcp', 'GET /mcp', 'DELETE /mcp', 'PUT /mcp', 'PATCH /mcp', 'OPTIONS /mcp'], surface => ({
 		app: '*',
 		callers: ['member'] as const,

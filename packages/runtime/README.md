@@ -13,6 +13,12 @@ Every app installs with `npm install --global @deslop/<app>` and runs as `<app> 
 - Run commands with `server/process.executeProcess`.
 - An app whose RPC payloads exceed 1 MiB passes `runApp` a larger `maxFrameSize`.
 
+## iPhone updates
+
+- In the Expo app config, spread `iphoneUpdates(appUrl)` from `config/iphone`. Install `expo-updates` in the app; it downloads on launch and uses the download on the next launch. There is no Expo account or service.
+- In the app build, run `expo export --platform ios --output-dir dist/iphone`, then pass the JSON output of `expo-updates runtimeversion:resolve --platform ios` and `expo config --type public --json` to `config/iphone-export.writeIPhoneExport`. Run the resolver with the same native project and config as the Xcode build; it must resolve that build's fingerprint.
+- Ship `dist/iphone` in the same package as `dist/server.js`. The server offers that update only to clients on its fingerprint, through Auth like any other native request.
+
 ## Authorization
 
 `server/auth.requireAdmin(user, message)` returns a branded `shared/auth.Admin`. Admin-only service methods take that value; admin RPC contracts declare `.middleware(RpcAdmin)` and their handlers read `CurrentAdmin`; MCP and HTTP handlers call `requireAdmin` before the service.
