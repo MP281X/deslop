@@ -1,0 +1,38 @@
+.deploy-startup {
+	position: fixed;
+	inset: 52px 0 0;
+	display: grid;
+	grid-template-columns: 1fr 1fr;
+	background: #000;
+}
+.deploy-initial-list {
+	border-inline-end: 1px solid #292929;
+	margin: 8px;
+	background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 250 54' preserveAspectRatio='none' fill='%23202020'%3E%3Crect x='12' y='14' width='28' height='26' rx='4'/%3E%3Crect x='52' y='13' width='82' height='12' rx='4'/%3E%3Crect x='52' y='31' width='115' height='10' rx='4'/%3E%3Crect x='193' y='24' width='45' height='10' rx='4'/%3E%3C/svg%3E")
+		0 0 / 100% 54px repeat-y;
+}
+.deploy-initial-detail {
+	margin: 20px;
+	background:
+		linear-gradient(#202020 0 0) left 0 top 6px / 38% 20px,
+		linear-gradient(#202020 0 0) left 0 top 36px / 65% 14px,
+		linear-gradient(#202020 0 0) left 0 top 66px / 92% 96px;
+	background-repeat: no-repeat;
+}
+@media (width >= 1000px) {
+	.deploy-startup {
+		grid-template-columns: 380px 1fr;
+	}
+}
+@media (width < 640px), (640px <= width < 800px) and (height < 600px) {
+	.deploy-startup {
+		grid-template-columns: 1fr;
+	}
+	.deploy-startup:not([data-detail]) .deploy-initial-detail,
+	.deploy-startup[data-detail] .deploy-initial-list {
+		display: none;
+	}
+}
+#root:not(:empty) + .deploy-startup {
+	display: none;
+}

@@ -1,0 +1,52 @@
+.auth-startup {
+	--lines: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='156' height='54' fill='%23202020'%3E%3Crect y='13' width='28' height='28' rx='14'/%3E%3Crect x='40' y='13' width='112' height='12' rx='4'/%3E%3Crect x='40' y='31' width='72' height='10' rx='4'/%3E%3C/svg%3E");
+	position: fixed;
+	inset: 0;
+	display: grid;
+	grid-template-columns: 1fr;
+	padding: 52px 8px 8px;
+}
+
+.auth-skeleton-list {
+	height: 162px;
+	background: var(--lines) left 12px top / 156px 54px repeat-y;
+}
+
+.auth-skeleton-detail {
+	margin: 12px;
+}
+
+.auth-startup[data-person] .auth-skeleton-detail .auth-skeleton-list {
+	height: 54px;
+}
+
+.auth-startup:not([data-detail]) .auth-skeleton-detail,
+.auth-startup[data-detail] > .auth-skeleton-list {
+	display: none;
+}
+
+@media (min-width: 800px), (min-width: 640px) and (min-height: 600px) {
+	.auth-startup {
+		grid-template-columns: 1fr 1fr;
+	}
+
+	.auth-startup > :is(.auth-skeleton-list, .auth-skeleton-detail) {
+		display: block;
+	}
+}
+
+@media (min-width: 640px) and (min-height: 600px) and (orientation: portrait) {
+	.auth-startup {
+		grid-template-columns: 270px 1fr;
+	}
+}
+
+@media (min-width: 1000px) and (orientation: landscape) {
+	.auth-startup {
+		grid-template-columns: 380px 1fr;
+	}
+}
+
+#root:not(:empty) + .auth-startup {
+	display: none;
+}

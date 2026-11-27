@@ -1,13 +1,13 @@
 import {Array, Record, String, pipe} from 'effect'
 
+import tailwindcss from '@tailwindcss/vite'
 import {defineConfig} from 'vite-plus'
 
-import {webConfig} from '@deslop/ui/vite'
+import {serverPack} from '@deslop/runtime/config/vite'
 
-import {contacts, experience, profile, projects, summary} from '#web/profile/content.ts'
+import {ProfileScreen} from '#screens/portfolio.ts'
 
-const config = webConfig(512)
-const name = `${profile.firstName} ${profile.lastName}`
+const {contacts, cvPath, experience, name, profile, projects, summary} = ProfileScreen
 const description = `${profile.title}. ${summary}`
 
 function escaped(text: string) {
@@ -26,9 +26,16 @@ function link(target: {href: string; value: string}) {
 
 // Link previews and readers that run no script read the HTML alone: it names the person on both routes and carries the profile as plain text, which the app replaces once it runs.
 export default defineConfig({
-	...config,
+	build: {
+		chunkSizeWarningLimit: 750,
+		modulePreload: {polyfill: false},
+		outDir: 'dist/client',
+		rolldownOptions: {output: {codeSplitting: {groups: [{name: 'effect', test: /node_modules[\\/]effect[\\/]/u}]}}},
+		target: 'esnext'
+	},
+	pack: serverPack(512),
 	plugins: [
-		...config.plugins,
+		tailwindcss({optimize: true}),
 		{
 			name: 'portfolio-document',
 			transformIndexHtml: () => [
@@ -55,7 +62,7 @@ export default defineConfig({
 							),
 							'</ul><h2>Contact</h2><ul>',
 							...Array.map(Record.values(contacts), contact => `<li>${escaped(contact.label)}: ${link(contact)}</li>`),
-							`<li>${link({href: '/cv', value: 'CV'})}</li></ul>`,
+							`<li>${link({href: cvPath, value: 'CV'})}</li></ul>`,
 							// Italian law asks a VAT holder's website to show the number on its home page.
 							`<p>VAT ${escaped(profile.vat)}</p>`
 						],

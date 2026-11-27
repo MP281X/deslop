@@ -1,0 +1,1 @@
+../../modules/stash-native/ios/ShareStore.swift

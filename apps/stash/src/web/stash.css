@@ -1,0 +1,235 @@
+:root {
+	background: #000;
+	color-scheme: dark;
+}
+
+body {
+	margin: 0;
+}
+
+#root {
+	height: 100dvh;
+}
+
+.stash-workspace {
+	height: 100%;
+}
+
+.stash-reader {
+	margin-inline: auto;
+	max-width: 66ch;
+	width: 100%;
+}
+
+.stash-reader h1 {
+	margin: 0;
+}
+
+.stash-meta,
+.stash-meta span,
+.stash-status {
+	align-items: center;
+	display: flex;
+	gap: 8px;
+}
+
+.stash-meta {
+	color: #a1a1a1;
+	font-size: 13px;
+	font-variant-numeric: tabular-nums;
+	justify-content: space-between;
+	margin-block: 8px 18px;
+}
+
+.stash-source-logo {
+	height: 14px;
+	object-fit: contain;
+	width: 14px;
+}
+
+.stash-gallery {
+	display: flex;
+	overflow-x: auto;
+	scroll-snap-type: x mandatory;
+}
+
+.stash-gallery > div {
+	align-items: center;
+	display: flex;
+	flex: 0 0 100%;
+	justify-content: center;
+	min-width: 0;
+	scroll-snap-align: start;
+}
+
+.stash-gallery img {
+	display: block;
+	height: min(52dvh, 360px);
+	object-fit: contain;
+	width: 100%;
+}
+
+.stash-summary {
+	color: #a1a1a1;
+	line-height: 1.5;
+	margin-block: 16px;
+}
+
+.stash-tags {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+}
+
+.stash-queue-tags {
+	flex-wrap: nowrap;
+	overflow-x: auto;
+	padding: 4px 12px 10px;
+}
+
+.stash-tags button,
+.stash-button {
+	background: #202020;
+	border: 0;
+	border-radius: 8px;
+	color: #f4f4f4;
+	cursor: pointer;
+	font: inherit;
+	min-height: 36px;
+	padding-inline: 12px;
+	white-space: nowrap;
+}
+
+.stash-tags button {
+	border-radius: 18px;
+	font-size: 13px;
+	min-height: 30px;
+}
+
+.stash-tags button[aria-pressed='true'] {
+	background: #f4f4f4;
+	color: #000;
+}
+
+.stash-tags small {
+	margin-inline-start: 6px;
+	font-variant-numeric: tabular-nums;
+}
+
+.stash-button:disabled {
+	cursor: default;
+	opacity: 0.45;
+}
+
+.stash-button:active:not(:disabled),
+.stash-tags button:active {
+	filter: brightness(1.35);
+}
+
+.stash-prose,
+.stash-plaintext {
+	line-height: 1.55;
+	overflow-wrap: anywhere;
+}
+
+.stash-plaintext {
+	white-space: pre-wrap;
+}
+
+.stash-prose h2 {
+	font-size: 17px;
+	margin-block: 1.4em 0.5em;
+}
+
+.stash-prose ul,
+.stash-prose ol {
+	padding-inline-start: 1.35em;
+}
+
+.stash-prose pre {
+	overflow: auto;
+}
+
+.stash-prose a,
+.stash-gate a {
+	color: #f4f4f4;
+	text-underline-offset: 0.18em;
+}
+
+.stash-notice {
+	align-items: center;
+	display: flex;
+	gap: 10px;
+	margin-inline: 12px;
+}
+
+.stash-error-dot {
+	background: #ff453a;
+	border-radius: 50%;
+	flex: 0 0 6px;
+	height: 6px;
+}
+
+.stash-related {
+	margin-block-start: 28px;
+}
+
+.stash-draft {
+	background: #151515;
+	border: 0;
+	box-sizing: border-box;
+	color: #f4f4f4;
+	font: inherit;
+	line-height: 1.5;
+	min-height: 9em;
+	outline: none;
+	resize: none;
+	width: 100%;
+}
+
+.stash-gate {
+	align-content: center;
+	justify-items: center;
+	height: 100%;
+	padding-inline: 20px;
+}
+
+.stash-report {
+	background: #202020;
+	border-radius: 10px;
+	bottom: 16px;
+	color: #f4f4f4;
+	font-family: -apple-system, system-ui, 'Geist Variable', sans-serif;
+	inset-inline: 16px;
+	margin-inline: auto;
+	max-width: 32rem;
+	padding: 14px;
+	position: fixed;
+	z-index: 1;
+}
+
+.stash-report p {
+	margin: 0 0 8px;
+}
+
+.stash-body-skeleton {
+	display: grid;
+	gap: 12px;
+	margin-block: 12px;
+}
+
+.stash-body-skeleton > div {
+	background: #202020;
+	border-radius: 4px;
+	height: 12px;
+	width: 86%;
+}
+
+.stash-body-skeleton > :first-child {
+	height: 19px;
+	width: 60%;
+}
+
+.stash-body-skeleton > :last-child {
+	width: 69%;
+}

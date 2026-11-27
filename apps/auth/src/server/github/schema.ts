@@ -8,7 +8,7 @@ export type GitHubClientId = typeof GitHubClientId.Type
 export const GitHubClientId = pipe(Schema.String, Schema.brand('GitHubClientId'))
 export type AppSignIn = typeof AppSignIn.Type
 export const AppSignIn = Schema.Struct({
-	app: Schema.Literals(['auth', 'deploy', 'gateway', 'opm', 'scope', 'stash', 'trips'])
+	app: Schema.Literals(['auth', 'deploy', 'gateway', 'opm', 'portfolio', 'scope', 'stash', 'trips'])
 })
 export type SignInParams = typeof SignInParams.Type
 export const SignInParams = Schema.Struct({app: Schema.OptionFromOptionalKey(AppSignIn), next: Schema.NonEmptyString})

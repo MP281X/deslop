@@ -15,32 +15,47 @@
 	],
 	"type": "module",
 	"sideEffects": false,
+	"main": "src/iphone/main.ts",
 	"imports": {
 		"#contracts": "./src/contracts.ts",
 		"#journey": "./src/journey.ts",
 		"#server/*": "./src/server/*",
-		"#web/*": "./src/web/*"
+		"#web/*": "./src/web/*",
+		"#iphone/*": "./src/iphone/*",
+		"#screens/*": "./src/screens/*"
 	},
 	"publishConfig": {
 		"access": "public"
 	},
 	"scripts": {
-		"preview": "vp run build && node --env-file-if-exists=.env ./dist/server.js",
+		"build": "vp run build:server && vp run build:iphone",
+		"build:iphone": "node bin/iphone.ts",
+		"build:server": "vp build && vp pack",
+		"iphone:prepare": "node bin/iphone.ts prepare",
+		"preview": "vp run build:server && NODE_ENV=development node --env-file-if-exists=.env ./dist/server.js",
 		"test": "vp test --config ../../vite.config.ts"
 	},
-	"dependencies": {
-		"@capacitor/app": "latest",
-		"@capacitor/core": "latest",
-		"@capacitor/ios": "latest",
-		"@capacitor/push-notifications": "latest"
-	},
 	"devDependencies": {
-		"@capacitor/cli": "latest",
+		"@bacons/apple-targets": "latest",
+		"@deslop/design": "workspace:*",
 		"@deslop/runtime": "workspace:*",
-		"@deslop/ui": "workspace:*",
 		"@effect/platform-node": "latest",
-		"@effect/ui": "https://pkg.pr.new/Effect-TS/ui/@effect/ui@7bff56b3b81c57bf1038d358835e92833814a6b0",
-		"effect": "latest"
+		"@effect/ui": "https://pkg.pr.new/Effect-TS/ui/@effect/ui@9eb76e60e47293cb0be63c12322a6bccd9e31add",
+		"@effect/ui-kit": "https://pkg.pr.new/Effect-TS/ui/@effect/ui-kit@9eb76e60e47293cb0be63c12322a6bccd9e31add",
+		"@effect/ui-native": "https://pkg.pr.new/Effect-TS/ui/@effect/ui-native@9eb76e60e47293cb0be63c12322a6bccd9e31add",
+		"effect": "latest",
+		"expo": "latest",
+		"expo-file-system": "latest",
+		"expo-notifications": "latest",
+		"expo-secure-store": "latest",
+		"expo-system-ui": "latest",
+		"expo-updates": "latest",
+		"expo-web-browser": "latest",
+		"react": "latest",
+		"react-native": "latest",
+		"react-native-safe-area-context": "latest",
+		"react-native-screens": "latest",
+		"vite": "catalog:"
 	},
 	"config": {
 		"port": 5109

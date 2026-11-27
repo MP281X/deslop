@@ -9,11 +9,13 @@ import {AsyncResult, AtomRegistry} from 'effect/reactivity'
 import {Color, MoveVisitor, Scene, VisitorId, Visitors} from '#contracts'
 import type {Visitor} from '#contracts'
 
-import {ReadingSections, SectionName, sectionTargets} from '#web/home/sections.ts'
+import {ProfileScreen, SectionName} from '#screens/portfolio.ts'
+import {ReadingSections, sectionTargets} from '#web/home/sections.ts'
 import {ownColorAtom, ownCursorAtom, recolorAtom, sceneAtom, sendCursorAtom} from '#web/presence/client.ts'
 import {trailCells} from '#web/presence/trails.ts'
-import {profile} from '#web/profile/content.ts'
 import {Icon} from '#web/profile/icons.ts'
+
+const {name, profile} = ProfileScreen
 
 type Viewport = typeof Viewport.Type
 const Viewport = Schema.Struct({height: Schema.Finite, width: Schema.Finite})
@@ -186,7 +188,7 @@ function ShortcutsOverlay(h: H) {
 }
 
 // Italian law asks a VAT holder's website to show the number on its home page.
-const LEGAL_LINE = `© 2026 ${profile.firstName} ${profile.lastName} · VAT ${profile.vat}`
+const LEGAL_LINE = `© 2026 ${name} · VAT ${profile.vat}`
 const LEGAL_LINE_NARROW = `© 2026 · VAT ${profile.vat}`
 
 function PresenceText(h: H, model: Model) {

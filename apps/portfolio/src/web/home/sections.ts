@@ -1,14 +1,13 @@
 import type {View} from '@effect/ui'
 import {Html} from '@effect/ui/html'
 
-import {Array, Boolean, Function, Predicate, Schema, String, pipe} from 'effect'
+import {Array, Boolean, Function, Predicate, String, pipe} from 'effect'
 
-import {contacts, education, experience, languages, profile, projects, skills, summary} from '#web/profile/content.ts'
+import {ProfileScreen, SectionName} from '#screens/portfolio.ts'
 import {Icon} from '#web/profile/icons.ts'
-import {PortfolioRoute} from '#web/routes.ts'
 
 type SectionName = typeof SectionName.Type
-export const SectionName = Schema.Literals(['profile', 'skills', 'experience', 'projects', 'education', 'contact'])
+const {contactRows, education, experience, languages, name, profile, projects, skills, summary} = ProfileScreen
 export const sectionTargets = {
 	contact: Html.ref('contact', 'section'),
 	education: Html.ref('education', 'section'),
@@ -43,9 +42,7 @@ function ProfileSection<M>(h: Html.H<M>) {
 		Panel(
 			h,
 			'mt-6 flex w-full max-w-3xl flex-col gap-3 px-4 py-6 sm:mt-14 sm:px-6',
-			h.h1
-				.class('text-foreground text-4xl font-semibold tracking-tight sm:text-5xl')
-				.children(`${profile.firstName} ${profile.lastName}`),
+			h.h1.class('text-foreground text-4xl font-semibold tracking-tight sm:text-5xl').children(name),
 			h.p.class('text-primary font-mono text-sm').children(profile.title),
 			h.p.class('text-foreground/90 text-base').children(summary),
 			h.p.class('text-muted-foreground font-mono text-xs').children(profile.location)
@@ -190,37 +187,28 @@ function EducationSection<M>(h: Html.H<M>) {
 }
 
 function ContactSection<M>(h: Html.H<M>) {
-	const cv = PortfolioRoute.print(PortfolioRoute.Cv())
 	return Section(
 		h,
 		'contact',
 		SectionBody(
 			h,
 			'contact',
-			Array.map(
-				[
-					{...contacts.email, icon: 'envelope'},
-					{...contacts.pec, icon: 'sealCheck'},
-					{...contacts.phone, icon: 'phone'},
-					{...contacts.github, icon: 'github'},
-					{href: cv, icon: 'fileText', label: 'CV', value: `${profile.portfolio}${cv}`}
-				] as const,
-				item =>
-					h.a
-						.key(item.label)
-						.attrs({
-							href: item.href,
-							...Boolean.match(String.startsWith('/')(item.href), {
-								onFalse: () => ({rel: 'noopener noreferrer', target: '_blank'}),
-								onTrue: Function.constant({})
-							})
+			Array.map(contactRows, item =>
+				h.a
+					.key(item.label)
+					.attrs({
+						href: item.href,
+						...Boolean.match(String.startsWith('/')(item.href), {
+							onFalse: () => ({rel: 'noopener noreferrer', target: '_blank'}),
+							onTrue: Function.constant({})
 						})
-						.class('hover:text-primary flex h-7 items-center gap-2 text-sm')
-						.children(
-							Icon(h, item.icon, 'text-primary size-4 shrink-0'),
-							h.span.class('text-muted-foreground').children(item.label),
-							h.span.class('ml-auto text-right font-mono text-xs break-all').children(item.value)
-						)
+					})
+					.class('hover:text-primary flex h-7 items-center gap-2 text-sm')
+					.children(
+						Icon(h, item.icon, 'text-primary size-4 shrink-0'),
+						h.span.class('text-muted-foreground').children(item.label),
+						h.span.class('ml-auto text-right font-mono text-xs break-all').children(item.value)
+					)
 			)
 		),
 		'pb-20'
