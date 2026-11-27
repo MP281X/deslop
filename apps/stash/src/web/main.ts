@@ -1,6 +1,5 @@
 import './notes/styles.css'
 
-import '@deslop/ui/theme.css'
 import {startApp} from '@deslop/ui/startup'
 
 import {Stash} from '#web/notes/stash.ts'

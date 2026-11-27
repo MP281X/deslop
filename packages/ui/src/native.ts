@@ -1,4 +1,5 @@
 import {
+	Boolean,
 	Cause,
 	Deferred,
 	Effect,
@@ -14,13 +15,15 @@ import {
 	pipe
 } from 'effect'
 
-import {registerPlugin} from '@capacitor/core'
+import {Capacitor, registerPlugin} from '@capacitor/core'
 import type {PluginListenerHandle} from '@capacitor/core'
+import {Atom} from 'effect/reactivity'
 import {Socket} from 'effect/socket'
 
 import {layerSocketProtocol} from '@deslop/runtime/client/protocol'
 import {AuthError, outageUnlessRefused} from '@deslop/runtime/shared/auth'
 import {Account} from '@deslop/runtime/shared/schema'
+import {accountAtom as pageAccount, layerPageProtocol} from '@deslop/runtime/web/client'
 
 const SOCKET_IDS = MutableRef.make(0)
 
@@ -272,4 +275,31 @@ const nativeSocket = Layer.effect(
 	})
 )
 
-export const layerNativeProtocol = layerSocketProtocol(nativeSocket)
+const layerNativeProtocol = layerSocketProtocol(nativeSocket)
+
+export const isNative = Capacitor.isNativePlatform()
+export const sessionAccount = Boolean.match(isNative, {
+	onFalse: () => pageAccount,
+	onTrue: () => Atom.make(nativeAccount)
+})
+export const sessionProtocol = Boolean.match(isNative, {
+	onFalse: () => layerPageProtocol,
+	onTrue: () => layerNativeProtocol
+})
+
+export function listenNative<E>(
+	attach: () => PromiseLike<PluginListenerHandle>,
+	failure: (cause: unknown) => E,
+	releaseFailure = failure
+) {
+	return Effect.acquireRelease(Effect.tryPromise({catch: failure, try: attach}), listener =>
+		Effect.ignore(Effect.tryPromise({catch: releaseFailure, try: () => listener.remove()}), {log: 'Warn'})
+	)
+}
+
+export function registerTokens<E, E2, R, R2>(
+	tokens: Stream.Stream<string, E, R>,
+	register: (token: string) => Effect.Effect<void, E2, R2>
+) {
+	return Stream.switchMap(Stream.changes(tokens), token => Stream.fromEffectDrain(register(token)))
+}

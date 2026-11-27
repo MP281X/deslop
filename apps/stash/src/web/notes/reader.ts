@@ -10,6 +10,7 @@ import {isDeniedCause} from '@deslop/runtime/client/live-stream'
 import {Loading, Notice, Placeholder} from '@deslop/ui/axis'
 import {Button} from '@deslop/ui/control'
 import {Glass} from '@deslop/ui/glass'
+import {isNative} from '@deslop/ui/native'
 
 import {ImageType} from '#contracts'
 import type {NoteItem} from '#contracts'
@@ -21,7 +22,6 @@ import type {Model} from '#web/notes/model.ts'
 import {StashNative, atDevice} from '#web/notes/native.ts'
 import {pagesOf} from '#web/notes/pages.ts'
 import type {Page} from '#web/notes/pages.ts'
-import {installed} from '#web/notes/session.ts'
 
 type H = Html.H<Message>
 
@@ -45,7 +45,7 @@ const LoadPicture = Mount.make('Stash/LoadPicture', {args: {path: Schema.String}
 
 export function picture(h: Html.H<Message>, path: string, css: string) {
 	const image = h.img.key(path).class(css).attr('alt', '')
-	if (installed) return image.onMount(LoadPicture({path}))
+	if (isNative) return image.onMount(LoadPicture({path}))
 	return image.attrs({loading: 'lazy', src: path})
 }
 

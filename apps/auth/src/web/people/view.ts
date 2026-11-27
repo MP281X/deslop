@@ -16,10 +16,10 @@ function nameOf(person: Account) {
 }
 
 function lineOf(person: Account) {
-	const handle = Option.isSome(person.fullName) && `@${person.name}`
-	if (person.role === 'Waiting') return rowLine(['Waiting for approval', handle])
+	const username = Option.isSome(person.fullName) && `@${person.name}`
+	if (person.role === 'Waiting') return rowLine(['Waiting for approval', username])
 	return rowLine([
-		handle,
+		username,
 		Boolean.match(String.startsWith('github:')(person.id), {
 			onFalse: Function.constant('Tailnet'),
 			onTrue: Function.constant('GitHub')

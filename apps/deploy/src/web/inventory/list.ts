@@ -8,7 +8,7 @@ import {Glass} from '@deslop/ui/glass'
 import {SymbolIcon} from '@deslop/ui/symbol'
 
 import {workloadName} from '#contracts'
-import type {Row, InventoryItem, ItemId, Snapshot, AppHour, MachineHistory} from '#contracts'
+import type {InventoryItem, ItemId, MachineHistory, Row, Snapshot} from '#contracts'
 
 import {runJob} from '#web/inventory/actions.ts'
 import type {Reading} from '#web/inventory/chart.ts'
@@ -54,37 +54,36 @@ export function Url(h: H, item: InventoryItem) {
 }
 
 export function Job(h: H, row: Row, admin: boolean, pending: boolean, current: boolean, status?: string) {
-	const item = row.item
-	const name = workloadName(item)
+	const name = workloadName(row.item)
 	const line =
 		status ??
-		Boolean.match(item.running, {
+		Boolean.match(row.item.running, {
 			onFalse: Function.constant('Job · next run'),
 			onTrue: Function.constant('Job · running')
 		})
 	return h.div
-		.key(item.id)
+		.key(row.item.id)
 		.class('deploy-job')
 		.children(
 			AxisRow(h, {
-				className: Boolean.match(item.health === 'warning', {
+				className: Boolean.match(row.item.health === 'warning', {
 					onFalse: Function.constant(''),
 					onTrue: Function.constant('deploy-warning')
 				}),
 				current,
-				id: item.id,
+				id: row.item.id,
 				line,
-				open: Message.Select({id: item.id}),
-				problem: item.health !== 'quiet',
+				open: Message.Select({id: row.item.id}),
+				problem: row.item.health !== 'quiet',
 				title: name,
-				value: shown(item.next, at => clockOf(at))
+				value: shown(row.item.next, at => clockOf(at))
 			}).attr('aria-label', `Open ${name}`),
 			admin &&
 				Glass(h).children(
-					Button(h, {disabled: item.running || pending})
+					Button(h, {disabled: row.item.running || pending})
 						.class('deploy-icon-control')
 						.attr('aria-label', `Run ${name} now`)
-						.on('click', runJob(item))
+						.on('click', runJob(row.item))
 						.children(SymbolIcon(h, 'play.fill'))
 				)
 		)
@@ -121,17 +120,12 @@ export function MachineFigures(history?: MachineHistory) {
 	}
 }
 
-export type Focused = {
-	id: ItemId
-	line: string | undefined
-	restart: string | undefined
-	restarts: readonly DateTime.Utc[]
-}
+export type Focused = {id: ItemId; line?: string; restart?: string; restarts: readonly DateTime.Utc[]}
 
-type ListProps = {
+export type ListProps = {
 	admin: boolean
-	focused: Focused | undefined
-	history: MachineHistory | undefined
+	focused?: Focused
+	history?: MachineHistory
 	loading: boolean
 	now: DateTime.Utc
 	pending: boolean
@@ -142,16 +136,20 @@ type ListProps = {
 }
 
 function rowFallback(row: Row) {
-	const port = pipe(
+	return pipe(
 		row.listeners,
 		Array.findFirst(listener => Option.isSome(listener.port)),
-		Option.flatMap(listener => listener.port)
+		Option.flatMap(listener => listener.port),
+		Option.match({
+			onNone: () => {
+				const count = Option.getOrElse(row.item.processes, Array.empty).length
+				if (count === 1) return '1 process'
+				if (count > 1) return `${count} processes`
+				return undefined
+			},
+			onSome: port => `:${port}`
+		})
 	)
-	if (Option.isSome(port)) return `:${port.value}`
-	const count = Option.getOrElse(row.item.processes, Array.empty).length
-	if (count === 1) return '1 process'
-	if (count > 1) return `${count} processes`
-	return undefined
 }
 
 function rowValue(

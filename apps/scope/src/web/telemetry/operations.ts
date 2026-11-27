@@ -8,15 +8,15 @@ import {AsyncResult, AtomRegistry} from 'effect/reactivity'
 import {blockingFailure, needsSignInCause} from '@deslop/runtime/client/live-stream'
 import {ActionShell} from '@deslop/ui/app-shell'
 import {PressFeedback} from '@deslop/ui/control'
-import {Split, singlePane, watchPanes} from '@deslop/ui/split'
-import {observe} from '@deslop/ui/state'
+import {Split, panelUpdates, singlePane, watchPanes} from '@deslop/ui/split'
+import {ReadFailure, observe} from '@deslop/ui/state'
+import {historyBack, usedHistoryMotion} from '@deslop/ui/viewport'
 
 import {rangeStart} from '#contracts'
 import type {SpanId, TraceId} from '#contracts'
 
 import {ScopeRoute} from '#web/routes.ts'
-import {ReadFailure} from '#web/telemetry/axis.ts'
-import {hasParentBehind, parentSearch, usedHistoryMotion} from '#web/telemetry/history.ts'
+import {hasParentBehind, parentSearch} from '#web/telemetry/history.ts'
 import {
 	Message,
 	Model,
@@ -39,9 +39,13 @@ function openedSearch(model: Model) {
 	return shownSearch(model.route.search, selectionFor(model), Option.isSome(AsyncResult.value(model.overview)))
 }
 
-function navigate($: Step, search: Search, history: 'push' | 'replace' = 'replace') {
-	if (ScopeRoute.print({...$.model.route, search}) === ScopeRoute.print($.model.route))
-		{return $.evolve({panel: undefined})}
+type NavigationMode = typeof NavigationMode.Type
+const NavigationMode = Schema.Literals(['push', 'replace'])
+
+function navigate($: Step, search: Search, history: NavigationMode = 'replace') {
+	if (ScopeRoute.print({...$.model.route, search}) === ScopeRoute.print($.model.route)) {
+		return $.evolve({panel: undefined})
+	}
 	return $.run(Command.asNoop(Router.patchSearch(ScopeRoute, $.model.route, search, {history})))
 }
 
@@ -62,8 +66,9 @@ function selectTrace($: Step, trace: TraceId, span: Option.Option<SpanId>) {
 }
 
 function completeRead<A>(change: Step, result: AsyncResult.AsyncResult<A, unknown>) {
-	if (AsyncResult.isFailure(result) && needsSignInCause(result.cause))
-		{return change.run(Command.asNoop(SignIn.make({})))}
+	if (AsyncResult.isFailure(result) && needsSignInCause(result.cause)) {
+		return change.run(Command.asNoop(SignIn.make({})))
+	}
 	return change
 }
 
@@ -129,18 +134,7 @@ export const Scope = pipe(
 					message.result
 				)
 			},
-			Panel: ($, message) => {
-				if ($.model.panel === message.panel) return $.evolve({panel: undefined})
-				return $.evolve({panel: message.panel})
-			},
-			PanelClosed: ($, message) => {
-				if ($.model.panel !== message.panel) return $.model
-				return $.evolve({panel: undefined})
-			},
-			Posture: ($, message) => {
-				if ($.model.narrow === message.narrow) return $.model
-				return $.evolve({narrow: message.narrow, panel: undefined}).viewTransition(['axis-layout'])
-			},
+			...panelUpdates<Model, Message>(),
 			Range: ($, message) => {
 				const cutoff = rangeStart(message.range, $.model.now)
 				const current = openedSearch($.model)
@@ -161,12 +155,10 @@ export const Scope = pipe(
 			Retry: $ =>
 				$.run(Command.asNoop(Retry.make({range: rangeOf($.model.route.search), trace: pickedTraceOf($.model)}))),
 			Route: ($, message) => {
-				const previous = $.model.route.search
-				const search = message.route.search
-				const level = levelOf(search)
-				const priorLevel = levelOf(previous)
+				const level = levelOf(message.route.search)
+				const priorLevel = levelOf($.model.route.search)
 				const next = $.evolve({
-					overview: Boolean.match(rangeOf(previous) === rangeOf(search), {
+					overview: Boolean.match(rangeOf($.model.route.search) === rangeOf(message.route.search), {
 						onFalse: () => AsyncResult.initial(),
 						onTrue: () => $.model.overview
 					}),
@@ -183,21 +175,20 @@ export const Scope = pipe(
 				return next
 			},
 			Sidebar: $ => {
-				const search = $.model.route.search
 				if (!$.model.narrow) {
 					return $.evolve({panel: undefined, sidebarHidden: !$.model.sidebarHidden}).viewTransition(['axis-layout'])
 				}
-				if (showOf(search) === 'list') {
+				if (showOf($.model.route.search) === 'list') {
 					const operation = Option.getOrUndefined(selectionFor($.model).activeKey)
 					if (operation === undefined) return $.model
 					return navigate(
 						$,
-						select(search, {operation, spanId: Option.none(), traceId: Option.none()}, 'Traces'),
+						select($.model.route.search, {operation, spanId: Option.none(), traceId: Option.none()}, 'Traces'),
 						'push'
 					)
 				}
-				const parent = parentSearch(search)
-				if (hasParentBehind($.model, parent)) return $.run(Command.asNoop(Router.Back.make({})))
+				const parent = parentSearch($.model.route.search)
+				if (hasParentBehind($.model, parent)) return $.run(historyBack)
 				return navigate($, parent)
 			},
 			Source: ($, message) => navigate($, sourceSearch(openedSearch($.model), message.app)),
@@ -217,7 +208,7 @@ export const Scope = pipe(
 			const show = showOf(model.route.search)
 			const failure = Option.getOrUndefined(blockingFailure(model.overview))
 			const frame = h.main.class('scope axis-controls').onMount(PressFeedback({}))
-			if (failure !== undefined) return frame.children(ReadFailure(h, failure, Message.Retry()))
+			if (failure !== undefined) return frame.children(ReadFailure(h, failure, 'Couldn’t load', Message.Retry()))
 			return frame.children(
 				ActionShell(h, {
 					...ScopeControls(h, model, selection),

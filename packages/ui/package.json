@@ -10,11 +10,13 @@
 		"./control": "./src/control.ts",
 		"./glass": "./src/glass.ts",
 		"./native": "./src/native.ts",
+		"./session": "./src/session.ts",
 		"./split": "./src/split.ts",
 		"./startup": "./src/startup.ts",
 		"./state": "./src/state.ts",
 		"./symbol": "./src/symbol.ts",
 		"./theme.css": "./src/theme.css",
+		"./viewport": "./src/viewport.ts",
 		"./vite": "./src/vite.ts"
 	},
 	"dependencies": {

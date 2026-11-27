@@ -4,8 +4,6 @@ import type {Html} from '@effect/ui/html'
 
 import {Effect, Function, Number, Option, Stream, String, pipe} from 'effect'
 
-import {Button} from './control.ts'
-
 const VERTEX = `#version 300 es
 void main() {
   vec2 p = vec2(float((gl_VertexID << 1) & 2), float(gl_VertexID & 2));
@@ -110,27 +108,4 @@ export function GlassPanel<M>(h: Html.H<M>, id: string, label: string, children:
 		.id(id)
 		.attrs({'aria-label': label, popover: 'auto', role: 'group'})
 		.children(h.div.class('glass-panel-body').children(children))
-}
-
-export function SidebarControl<M>(h: Html.H<M>, open: boolean, message: M, className?: string) {
-	return Glass(h).children(
-		Button(h, {pressed: open})
-			.class(className)
-			.attr('aria-label', 'Sidebar')
-			.on('click', () => message)
-			.children(
-				h
-					.el('svg')
-					.attrs({
-						'aria-hidden': 'true',
-						fill: 'none',
-						stroke: 'currentColor',
-						'stroke-width': '2',
-						viewBox: '0 0 24 24'
-					})
-					.children(
-						h.el('path').attr('d', 'M4 4h16a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1Zm5 0v16')
-					)
-			)
-	)
 }

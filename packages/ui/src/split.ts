@@ -1,4 +1,4 @@
-import type {View} from '@effect/ui'
+import type {Component, View} from '@effect/ui'
 import {HtmlSubscription} from '@effect/ui/html'
 import type {Html} from '@effect/ui/html'
 
@@ -50,4 +50,21 @@ export function Split<M>(
 				.attr('aria-label', options.detail.label)
 				.children(options.detail.content)
 		)
+}
+
+export function panelUpdates<Model extends {panel: unknown; narrow: boolean}, Message>() {
+	return {
+		Panel: ($: Component.Step<Model, Message, never>, message: {panel: NonNullable<Model['panel']>}) => {
+			if ($.model.panel === message.panel) return $.set({...$.model, panel: undefined})
+			return $.set({...$.model, panel: message.panel})
+		},
+		PanelClosed: ($: Component.Step<Model, Message, never>, message: {panel: NonNullable<Model['panel']>}) => {
+			if ($.model.panel !== message.panel) return $.model
+			return $.set({...$.model, panel: undefined})
+		},
+		Posture: ($: Component.Step<Model, Message, never>, message: {narrow: boolean}) => {
+			if ($.model.narrow === message.narrow) return $.model
+			return $.set({...$.model, narrow: message.narrow, panel: undefined}).viewTransition(['axis-layout'])
+		}
+	}
 }

@@ -1,7 +1,6 @@
-import {Mount} from '@effect/ui'
 import type {Html} from '@effect/ui/html'
 
-import {Array, Boolean, Effect, Function, Option, Redacted, Schema, Stream, String} from 'effect'
+import {Array, Boolean, Function, Option, Redacted, Schema, String} from 'effect'
 
 import {AsyncResult} from 'effect/reactivity'
 
@@ -10,17 +9,18 @@ import {TimeFrame} from '@deslop/runtime/shared/time'
 import type {ShellAction} from '@deslop/ui/app-shell'
 import {Button} from '@deslop/ui/control'
 import {Glass, GlassPanel} from '@deslop/ui/glass'
+import {WebSignOut} from '@deslop/ui/session'
 import {SymbolIcon} from '@deslop/ui/symbol'
+import {FitSheet} from '@deslop/ui/viewport'
 
 import {AiKeySecret, KEY_MESSAGE, keyProvider} from '#contracts'
 
 import {Action, Execute, Message} from '#web/home/model.ts'
 import type {Model} from '#web/home/model.ts'
 import {credentialAction} from '#web/home/rows.ts'
-import {WebSignOut} from '#web/home/ui.ts'
 import {periodOf} from '#web/routes.ts'
 
-type H = Html.H<Message>
+export type H = Html.H<Message>
 
 function when(flag: boolean, value: string) {
 	if (flag) return value
@@ -90,7 +90,7 @@ export function OptionsMenu(h: H, model: Model) {
 					SymbolIcon(h, 'arrow.clockwise')
 				),
 		account !== undefined && h.p.class('axis-muted gateway-menu-caption').children(`@${account.name}`),
-		account?.signOut === true && WebSignOut(h, location.href)
+		account?.signOut === true && WebSignOut(h, {icon: true})
 	])
 		.attr('role', 'menu')
 		.popover('auto', model.panel === 'options')
@@ -138,33 +138,6 @@ export function PasteField(h: H, model: Model) {
 	)
 }
 
-const FitKeySheet = Mount.makeStream('Gateway/FitKeySheet', {args: {}}, (sheet: HTMLDialogElement) =>
-	Stream.unwrap(
-		Effect.as(
-			Effect.acquireRelease(
-				Effect.sync(() => {
-					const viewport = window.visualViewport
-					if (viewport === null) return
-					function fit() {
-						if (viewport === null) return
-						sheet.style.setProperty('--gateway-sheet-bottom', `${viewport.offsetTop + viewport.height}px`)
-						sheet.style.setProperty('--gateway-sheet-height', `${viewport.height}px`)
-					}
-					fit()
-					viewport.addEventListener('resize', fit)
-					viewport.addEventListener('scroll', fit)
-					return () => {
-						viewport.removeEventListener('resize', fit)
-						viewport.removeEventListener('scroll', fit)
-					}
-				}),
-				release => Effect.sync(() => release?.())
-			),
-			Stream.never
-		)
-	)
-)
-
 export function KeyDialog(h: H, dialog: NonNullable<Model['dialog']>, model: Model) {
 	const secret = Redacted.value(dialog.secret)
 	const value = String.trim(secret)
@@ -178,7 +151,7 @@ export function KeyDialog(h: H, dialog: NonNullable<Model['dialog']>, model: Mod
 		.class('gateway-key-sheet')
 		.attr('aria-labelledby', 'gateway-key-label')
 		.modal(true)
-		.onMount(FitKeySheet({}))
+		.onMount(FitSheet({}))
 		.on('cancel', Message.CancelKey(), {preventDefault: true})
 		.children(
 			h.form
@@ -222,7 +195,7 @@ export function KeyDialog(h: H, dialog: NonNullable<Model['dialog']>, model: Mod
 								.class('gateway-action')
 								.children(
 									Boolean.match(saving, {
-										onFalse: () => credentialAction(provider, keys),
+										onFalse: () => credentialAction(keys, provider),
 										onTrue: Function.constant('Saving…')
 									})
 								)

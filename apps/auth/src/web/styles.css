@@ -1,5 +1,3 @@
-@import '@deslop/ui/theme.css';
-
 .auth .fold > :is(.fold-list, .fold-detail) {
 	padding: 6px 8px;
 }

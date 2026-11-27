@@ -7,15 +7,16 @@ import {AsyncResult} from 'effect/reactivity'
 
 import {ageOf, clockOf, compactCountOf, countOf, durationOf} from '@deslop/runtime/shared/format'
 import {TimeFrame} from '@deslop/runtime/shared/time'
-import type {ShellAction, ShellMenuItem} from '@deslop/ui/app-shell'
-import {Loading, Notice, Row} from '@deslop/ui/axis'
+import {CheckedChoice} from '@deslop/ui/app-shell'
+import type {ShellAction} from '@deslop/ui/app-shell'
+import {Loading, Notice, Row, RowContent} from '@deslop/ui/axis'
 import {Button} from '@deslop/ui/control'
 import {Glass, GlassPanel} from '@deslop/ui/glass'
+import {ReadFailure, ReadState} from '@deslop/ui/state'
 import {SymbolIcon} from '@deslop/ui/symbol'
 
 import type {OperationTrace, Overview, Runtime, TraceTree} from '#contracts'
 
-import {ReadState, RowContent} from '#web/telemetry/axis.ts'
 import {Message, rangeOf, showOf, traceReadOf} from '#web/telemetry/model.ts'
 import type {Model, selectionFor} from '#web/telemetry/model.ts'
 import {focusOf, operationsOf, traceLabel} from '#web/telemetry/selection.ts'
@@ -24,17 +25,8 @@ import {Waterfall} from '#web/telemetry/waterfall.ts'
 
 const SIDES: Record<Runtime, string> = {ci: 'CI', mobile: 'iOS', server: 'Server', unknown: '', web: 'Web'}
 
-type H = Html.H<Message>
-type Selection = ReturnType<typeof selectionFor>
+export type H = Html.H<Message>
 type Panel = NonNullable<Model['panel']>
-
-function checkedChoice(h: H, item: ShellMenuItem<Message>) {
-	return Button(h)
-		.key(item.id)
-		.attrs({'aria-checked': `${item.checked === true}`, role: 'menuitemradio'})
-		.on('click', item.message)
-		.children(item.title, item.checked === true && SymbolIcon(h, 'checkmark'))
-}
 
 function menu(h: H, model: Model, panel: Panel, label: string, items: View.Input<Message>) {
 	return GlassPanel(h, `scope-${panel}`, label, items)
@@ -50,7 +42,7 @@ function isStale<A>(result: AsyncResult.AsyncResult<A, unknown>) {
 	return AsyncResult.isFailure(result) && Option.isSome(result.previousSuccess)
 }
 
-export function ScopeControls(h: H, model: Model, selection: Selection) {
+export function ScopeControls(h: H, model: Model, selection: ReturnType<typeof selectionFor>) {
 	const source = Option.orElse(selection.source, () => model.route.search.source)
 	const app = Option.match(source, {onNone: Function.constant('Apps'), onSome: name => `App: ${name}`})
 	const sources = Array.map(model.knownSources, name => ({
@@ -66,8 +58,7 @@ export function ScopeControls(h: H, model: Model, selection: Selection) {
 		message: Message.Range({range: frame}),
 		title: frame
 	}))
-	const back = model.narrow && showOf(model.route.search) === 'detail'
-	const sidebar = Boolean.match(back, {
+	const sidebar = Boolean.match(model.narrow && showOf(model.route.search) === 'detail', {
 		onFalse: () =>
 			({
 				disabled: model.narrow && Option.isNone(selection.activeKey),
@@ -117,21 +108,21 @@ export function ScopeControls(h: H, model: Model, selection: Selection) {
 				model,
 				'sources',
 				'Apps',
-				Array.map(sources, item => checkedChoice(h, item))
+				Array.map(sources, item => CheckedChoice(h, item))
 			),
 			menu(
 				h,
 				model,
 				'ranges',
 				'Ranges',
-				Array.map(ranges, item => checkedChoice(h, item))
+				Array.map(ranges, item => CheckedChoice(h, item))
 			)
 		],
 		sidebar
 	}
 }
 
-function operationRows(h: H, model: Model, selection: Selection, overview: Overview) {
+function operationRows(h: H, model: Model, selection: ReturnType<typeof selectionFor>, overview: Overview) {
 	const rows = operationsOf(overview, selection.source)
 	if (Array.isReadonlyArrayEmpty(rows)) return Notice(h, 'No operations')
 	const names = Array.groupBy(rows, row => row.operation.name)
@@ -155,7 +146,11 @@ function operationRows(h: H, model: Model, selection: Selection, overview: Overv
 			)
 		)
 		const duration = durationOf(row.operation.p50Ms)
-		const duplicate = pipe(names, Record.get(row.operation.name), Option.exists(items => items.length > 1))
+		const duplicate = pipe(
+			names,
+			Record.get(row.operation.name),
+			Option.exists(items => items.length > 1)
+		)
 		const count = compactCountOf(row.operation.count)
 		const runs = Boolean.match(failed, {
 			onFalse: () => count,
@@ -182,15 +177,14 @@ function operationRows(h: H, model: Model, selection: Selection, overview: Overv
 	})
 }
 
-export function ListPane(h: H, model: Model, selection: Selection) {
+export function ListPane(h: H, model: Model, selection: ReturnType<typeof selectionFor>) {
 	return h.div
 		.class('scope-list')
 		.children(
-			ReadState(h, model.overview, {
-				label: 'Loading operations',
-				ready: overview => operationRows(h, model, selection, overview),
-				retry: Message.Retry(),
-				skeleton: h.div.class('scope-skeleton-list').attr('aria-hidden', 'true')
+			ReadState(model.overview, {
+				failed: cause => ReadFailure(h, cause, 'Couldn’t load', Message.Retry()),
+				loading: () => Loading(h, 'Loading operations', h.div.class('scope-skeleton-list').attr('aria-hidden', 'true')),
+				ready: overview => operationRows(h, model, selection, overview)
 			})
 		)
 }
@@ -213,7 +207,7 @@ function traceRow(h: H, model: Model, trace: OperationTrace, checked: boolean) {
 		)
 }
 
-function traceChoice(h: H, model: Model, selection: Selection, title: string) {
+function traceChoice(h: H, model: Model, selection: ReturnType<typeof selectionFor>, title: string) {
 	const traces = Option.match(selection.activeOperation, {onNone: () => [], onSome: active => active.operation.traces})
 	if (Array.isReadonlyArrayEmpty(traces)) return h.div.class('scope-trace-label axis-title').children(title)
 	return h.div.class('min-w-0').children(
@@ -241,7 +235,7 @@ function traceChoice(h: H, model: Model, selection: Selection, title: string) {
 	)
 }
 
-function traceContent(h: H, trace: TraceTree, selection: Selection) {
+function traceContent(h: H, trace: TraceTree, selection: ReturnType<typeof selectionFor>) {
 	if (Array.isReadonlyArrayEmpty(trace.spans)) return Notice(h, 'No spans')
 	const focus = focusOf(trace, selection.pickedSpan)
 	return h.div.class('scope-trace-content').children(
@@ -258,20 +252,25 @@ function traceContent(h: H, trace: TraceTree, selection: Selection) {
 	)
 }
 
-function traceView(h: H, model: Model, selection: Selection) {
+function traceView(h: H, model: Model, selection: ReturnType<typeof selectionFor>) {
 	const active = Option.getOrUndefined(selection.activeTrace)
 	const skeleton = h.div.class('scope-skeleton-trace').attr('aria-hidden', 'true')
 	if (active === undefined) {
 		if (AsyncResult.isInitial(model.overview)) return Loading(h, 'Loading trace', skeleton)
 		return Notice(h, 'Select an operation')
 	}
-	
-	return ReadState(h, (traceReadOf(model)), {
-		label: 'Loading trace',
+
+	return ReadState(traceReadOf(model), {
+		failed: cause => ReadFailure(h, cause, 'Couldn’t load', Message.Retry()),
+		loading: () => Loading(h, 'Loading trace', skeleton),
 		ready: trace => {
 			const root = Array.findFirst(trace.spans, span => span.depth === 0)
 			const started = Option.getOrUndefined(
-				pipe(active.summary, Option.map(summary => summary.start), Option.orElse(() => Option.map(root, span => span.start)))
+				pipe(
+					active.summary,
+					Option.map(summary => summary.start),
+					Option.orElse(() => Option.map(root, span => span.start))
+				)
 			)
 			const title = pipe(
 				active.summary,
@@ -289,12 +288,10 @@ function traceView(h: H, model: Model, selection: Selection) {
 					),
 				traceContent(h, trace, selection)
 			]
-		},
-		retry: Message.Retry(),
-		skeleton
+		}
 	})
 }
 
-export function DetailPane(h: H, model: Model, selection: Selection) {
+export function DetailPane(h: H, model: Model, selection: ReturnType<typeof selectionFor>) {
 	return h.div.class('scope-detail').children(traceView(h, model, selection))
 }

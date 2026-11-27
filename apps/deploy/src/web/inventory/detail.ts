@@ -3,22 +3,21 @@ import type {View} from '@effect/ui'
 import {Array, Boolean, DateTime, Function, HashSet, MutableHashSet, Number, Option, Record, String, pipe} from 'effect'
 
 import {bytesOf, clockOf, durationOf, percentOf} from '@deslop/runtime/shared/format'
-import {Placeholder} from '@deslop/ui/axis'
+import {Placeholder, RowLabel} from '@deslop/ui/axis'
 import {Button} from '@deslop/ui/control'
 import {Glass} from '@deslop/ui/glass'
 
 import {processTrackUsage, processTree, workloadName} from '#contracts'
-import type {Row, InventoryItem, Snapshot, AppHour, MachineHistory} from '#contracts'
+import type {AppHour, InventoryItem, MachineHistory, Row, Snapshot} from '#contracts'
 
-import {RowLabel} from '#web/inventory/axis.ts'
 import type {Reading} from '#web/inventory/chart.ts'
 import {Figures, Job, MachineFigures, MachineName, Mark, Url} from '#web/inventory/list.ts'
 import {LoadingReadings} from '#web/inventory/loading.ts'
 import {Message} from '#web/inventory/model.ts'
 import type {H} from '#web/inventory/model.ts'
 import {appFigures, appReadings, machineReadings} from '#web/inventory/readings.ts'
-import {shown, reasonOf, statusLine} from '#web/inventory/rows.ts'
-import {CpuScale, processReadings, Restarts, Ruler, Trace} from '#web/inventory/traces.ts'
+import {reasonOf, shown, statusLine} from '#web/inventory/rows.ts'
+import {CpuScale, Restarts, Ruler, Trace, processReadings} from '#web/inventory/traces.ts'
 
 export type Child = View.Input<Message>
 
@@ -95,21 +94,20 @@ function Processes(h: H, item: InventoryItem, now: DateTime.Utc, history?: AppHo
 				.key(track.key)
 				.class('axis-row deploy-process')
 				.children(
-					RowLabel(
-						h,
-						Boolean.match(node, {
-							onFalse: () => track.label.name,
-							onTrue: () => `${track.label.name} ${track.label.detail}`
-						}),
-						pipe(
+					RowLabel(h, {
+						line: pipe(
 							[
 								Boolean.match(node, {onFalse: () => track.label.detail, onTrue: Function.constant('')}),
 								Option.match(track.memory, {onNone: Function.constant(''), onSome: bytesOf})
 							],
 							Array.filter(String.isNonEmpty),
 							Array.join(' · ')
-						)
-					),
+						),
+						title: Boolean.match(node, {
+							onFalse: () => track.label.name,
+							onTrue: () => `${track.label.name} ${track.label.detail}`
+						})
+					}),
 					Figures(h, track.cpu),
 					Trace(h, processReadings(track.samples), now)
 				)
@@ -150,14 +148,14 @@ function endpointsOf(h: H, row: Row, free: readonly InventoryItem[], admin: bool
 
 export type DetailProps = {
 	admin: boolean
-	app: AppHour | undefined
+	app?: AppHour
 	free: readonly InventoryItem[]
-	history: MachineHistory | undefined
-	line: string | undefined
+	history?: MachineHistory
+	line?: string
 	loading: boolean
 	now: DateTime.Utc
 	pending: boolean
-	restart: string | undefined
+	restart?: string
 	row: Row
 	rows: readonly Row[]
 	status: Child
@@ -170,7 +168,7 @@ function UsageFacts(
 	readings: readonly Reading[],
 	restarts: readonly DateTime.Utc[],
 	memory: Option.Option<number>,
-	restart: string | undefined
+	restart?: string
 ) {
 	const lastRestart = Array.last(restarts)
 	const scheduled = Option.contains(item.scheduled, true)
@@ -241,7 +239,6 @@ export function Detail(h: H, props: DetailProps) {
 	const charted = !scheduled && (item.kind === 'service' || item.kind === 'container')
 	const readings = Boolean.match(charted, {onFalse: Array.empty, onTrue: () => appReadings(item, props.history)})
 	const restarts = props.app?.restarts ?? []
-	const restart = props.restart
 	const jobs = Array.filter(
 		props.rows,
 		candidate =>
@@ -256,7 +253,10 @@ export function Detail(h: H, props: DetailProps) {
 			h.div
 				.class('axis-row deploy-detail-lead')
 				.children(
-					RowLabel(h, [Mark(h, item.health, restart !== undefined), workloadName(item)], props.line),
+					RowLabel(h, {
+						line: props.line,
+						title: [Mark(h, item.health, props.restart !== undefined), workloadName(item)]
+					}),
 					!scheduled && usageFigures(h, props.loading, figures)
 				),
 			!charted && props.status,
@@ -268,7 +268,7 @@ export function Detail(h: H, props: DetailProps) {
 			h.dl
 				.class('deploy-facts')
 				.children(
-					!props.loading && UsageFacts(h, item, props.now, readings, restarts, figures.memory, restart),
+					!props.loading && UsageFacts(h, item, props.now, readings, restarts, figures.memory, props.restart),
 					EndpointFacts(h, props)
 				),
 			Array.map(jobs, job => Job(h, job, props.admin, props.pending, false, statusLine(job, props.now)))

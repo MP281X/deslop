@@ -131,12 +131,16 @@
 	border-radius: 999px;
 }
 
-.axis-row-lead,
 .gateway-figures {
 	display: flex;
 	align-items: center;
 	gap: 8px;
 	min-inline-size: 0;
+}
+
+.axis-row:has(.gateway-mark) {
+	grid-template-columns: auto minmax(0, 1fr) auto;
+	column-gap: 8px;
 }
 
 .gateway-mark {
@@ -152,14 +156,18 @@
 	color: var(--color-muted-foreground);
 }
 
-.gateway-figures > div {
+.gateway-figures > span > .axis-muted {
+	display: block;
+}
+
+.gateway-figures > span {
 	min-inline-size: 72px;
 }
 
 .gateway-key-sheet {
-	inset: auto 0 max(0px, calc(100dvh - var(--gateway-sheet-bottom, 100dvh)));
+	inset: auto 0 max(0px, calc(100dvh - var(--sheet-viewport-top, 0px) - var(--sheet-viewport-height, 100dvh)));
 	inline-size: min(100%, 420px);
-	max-block-size: var(--gateway-sheet-height, 100dvh);
+	max-block-size: var(--sheet-viewport-height, 100dvh);
 	margin-inline: auto;
 	border-radius: 28px 28px 0 0;
 	background: #1c1c1e;

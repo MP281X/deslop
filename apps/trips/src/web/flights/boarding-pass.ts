@@ -1,10 +1,10 @@
 import type {Html} from '@effect/ui/html'
 
+import {Array, Boolean, Duration, Function, Number, Option, String, pipe} from 'effect'
 import type {DateTime} from 'effect'
-import {Array, Duration, Function, Number, Option, String, pipe} from 'effect'
 
 import type {ShellMenuGroup} from '@deslop/ui/app-shell'
-import {Loading, Row} from '@deslop/ui/axis'
+import {Loading, Row, RowContent} from '@deslop/ui/axis'
 import {Button} from '@deslop/ui/control'
 import {GlassPanel} from '@deslop/ui/glass'
 import {SymbolIcon} from '@deslop/ui/symbol'
@@ -29,8 +29,6 @@ import {
 	travellersLine
 } from '#journey'
 import type {Journey} from '#journey'
-
-import {RowContent} from './axis.ts'
 
 import {directionsTo, rideTo} from '#web/flights/directions.ts'
 import {changeHero, changeWords, departureTimes, heroOf, movedFrom, troubleOf} from '#web/flights/itinerary.ts'
@@ -121,15 +119,17 @@ function Connection(h: Html.H<Message>, from: Flight, to: Flight) {
 	return Row(h, {
 		current: false,
 		id: to.id,
-		line: change.tight
-			? line([Option.some(change.label), change.was])
-			: line([
+		line: Boolean.match(change.tight, {
+			onFalse: () =>
+				line([
 					labelled(
 						'Gate',
 						Option.flatMap(to.live, live => live.departureGate)
 					),
 					Option.some('connection')
 				]),
+			onTrue: () => line([Option.some(change.label), change.was])
+		}),
 		open: Message.Select({id: to.id}),
 		problem: change.tight,
 		title: `Then ${titleOf(to)} to ${cityOf(to.to)}`,
@@ -156,7 +156,9 @@ function Travellers(h: Html.H<Message>, flight: Flight) {
 						problem: traveller.status === 'cancelled',
 						title: Option.getOrElse(traveller.name, Function.constant('Traveller')),
 						value: Option.getOrUndefined(
-							Option.map(traveller.seat, seat => (traveller.status === 'cancelled' ? h.s.children(seat) : seat))
+							Option.map(traveller.seat, seat =>
+								Boolean.match(traveller.status === 'cancelled', {onFalse: () => seat, onTrue: () => h.s.children(seat)})
+							)
 						)
 					})
 				)
@@ -201,25 +203,28 @@ export function dayAt(flight: Flight, flights: FlightList, now: DateTime.Utc, tr
 
 export function AirportOptions(flight: Flight, travel: readonly TravelTime[], pending: boolean) {
 	const saved = Option.map(travelTo(flight, travel), Duration.toMinutes)
-	const groups = Array.empty<ShellMenuGroup<Message>>()
-	Option.map(flight.from.code, airport =>
-		groups.push({
-			items: pipe(
-				Array.dedupe([...TRAVEL_CHOICES, ...Option.toArray(saved)]),
-				Array.sort(Number.Order),
-				Array.map(minutes => ({
-					checked: Option.contains(saved, minutes),
-					disabled: pending,
-					id: `airport-${minutes}`,
-					message: Message.TripTime({row: TravelTime.make({airport, minutes})}),
-					title: travelLabel(minutes)
-				}))
-			),
-			title: `Time to ${cityOf(flight.from)} airport`
-		})
+	const groups = Option.toArray(
+		Option.map(
+			flight.from.code,
+			airport =>
+				({
+					items: pipe(
+						Array.dedupe([...TRAVEL_CHOICES, ...Option.toArray(saved)]),
+						Array.sort(Number.Order),
+						Array.map(minutes => ({
+							checked: Option.contains(saved, minutes),
+							disabled: pending,
+							id: `airport-${minutes}`,
+							message: Message.TripTime({row: TravelTime.make({airport, minutes})}),
+							title: travelLabel(minutes)
+						}))
+					),
+					title: `Time to ${cityOf(flight.from)} airport`
+				}) satisfies ShellMenuGroup<Message>
+		)
 	)
 	if (bookedOf(flight)) {
-		groups.push({
+		return Array.append(groups, {
 			items: [
 				{id: 'directions', message: Message.OpenUrl({url: directionsTo(flight.from)}), title: 'Directions'},
 				...Option.toArray(
@@ -247,8 +252,13 @@ export function AirportMenu(h: Html.H<Message>, groups: readonly ShellMenuGroup<
 						Button(h, {disabled: item.disabled ?? false})
 							.key(item.id)
 							.attrs({
-								'aria-checked': item.checked === undefined ? undefined : `${item.checked}`,
-								role: item.checked === undefined ? 'menuitem' : 'menuitemradio'
+								'aria-checked': Option.getOrUndefined(
+									Option.map(Option.fromUndefinedOr(item.checked), checked => `${checked}`)
+								),
+								role: Boolean.match(item.checked === undefined, {
+									onFalse: Function.constant('menuitemradio'),
+									onTrue: Function.constant('menuitem')
+								})
 							})
 							.on('click', item.message)
 							.children(item.title, item.checked === true && SymbolIcon(h, 'checkmark'))
@@ -258,7 +268,10 @@ export function AirportMenu(h: Html.H<Message>, groups: readonly ShellMenuGroup<
 	)
 		.attrs({role: 'menu', style: 'position-anchor: --axis-action-airport'})
 		.popover('auto', open)
-		.on('toggle', event => (event.open ? undefined : Message.Airport({open: false})))
+		.on('toggle', event => {
+			if (!event.open) return Message.Airport({open: false})
+			return undefined
+		})
 }
 
 export function Board(
@@ -303,7 +316,7 @@ export function Board(
 				h.div.class('axis-row').children(RowContent(h, {line: reason, problem: true, title: 'Inbound flight'}))
 			)
 		),
-		Travellers(h, flight)
+		...Travellers(h, flight)
 	]
 }
 

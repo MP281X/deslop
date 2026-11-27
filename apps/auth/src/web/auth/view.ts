@@ -13,7 +13,9 @@ import {Loading, Notice} from '@deslop/ui/axis'
 import {PressFeedback} from '@deslop/ui/control'
 import {Glass} from '@deslop/ui/glass'
 import {Split, singlePane, watchPanes} from '@deslop/ui/split'
+import type {Pane} from '@deslop/ui/split'
 import {observe} from '@deslop/ui/state'
+import {hasHistoryBehind, historyBack, usedHistoryMotion} from '@deslop/ui/viewport'
 
 import type {Account, SignedAccount} from '#contracts'
 
@@ -33,12 +35,17 @@ import {
 } from '#web/auth/model.ts'
 import type {H} from '#web/auth/model.ts'
 import {DetailSkeleton, ListSkeleton, ReadPane, ReadProblem} from '#web/auth/reading.ts'
-import {hasListBehind, routePane, usedHistoryMotion} from '#web/auth/viewport.ts'
 import {PeopleMenu, peopleMenu} from '#web/people/menu.ts'
 import {People, PersonDetail} from '#web/people/view.ts'
 import {AuthRoute} from '#web/routes.ts'
 import {Sessions} from '#web/sessions/view.ts'
 import {SignIn} from '#web/sign-ins/controls.ts'
+
+function routePane(route: Extract<typeof AuthRoute.Type, {_tag: 'Home'}>) {
+	if (route.search.pane !== undefined) return route.search.pane
+	if (route.search.person !== undefined) return 'detail'
+	return 'list'
+}
 
 const isHome = AuthRoute.isAnyOf(['Home'])
 
@@ -48,11 +55,22 @@ function paneOf(model: Model) {
 	return routePane(model.route)
 }
 
-function sidebar(model: Model, listOpen: boolean): ShellAction<Message> {
+function sidebar(model: Model, listOpen: boolean) {
 	if (model.narrow && paneOf(model) === 'detail') {
-		return {id: 'sidebar', message: Message.TogglePeople(), symbol: 'chevron.left', title: 'Back'}
+		return {
+			id: 'sidebar',
+			message: Message.TogglePeople(),
+			symbol: 'chevron.left',
+			title: 'Back'
+		} satisfies ShellAction<Message>
 	}
-	return {id: 'sidebar', message: Message.TogglePeople(), pressed: listOpen, symbol: 'sidebar.left', title: 'Sidebar'}
+	return {
+		id: 'sidebar',
+		message: Message.TogglePeople(),
+		pressed: listOpen,
+		symbol: 'sidebar.left',
+		title: 'Sidebar'
+	} satisfies ShellAction<Message>
 }
 
 function detailActions(model: Model, viewer: SignedAccount, person?: Account) {
@@ -91,25 +109,17 @@ function AccountLoading(h: H, model: Model, selected?: string) {
 	})
 }
 
-function Workspace(h: H, model: Model) {
-	const route = model.route
-	if (!isHome(route)) {
-		return h.div
-			.class('auth-screen')
-			.children(
-				Glass(h).children(h.a.class('auth-action').attrs({'data-pressable': '', href: '/'}).children('Back to Auth'))
-			)
-	}
-	const viewer = signed(model.account)
-	if (viewer === undefined) {
-		if (AsyncResult.isInitial(model.account)) return AccountLoading(h, model, route.search.person)
-		const guest = Option.exists(readValue(model.account), Option.isNone)
-		return h.div
-			.class('auth-screen')
-			.children(guest && SignIn(h, route.search.error), ReadProblem(h, model.account, 'account'))
-	}
-	const signOutProblem = model.signOut === 'failed' && Notice(h, 'Couldn’t sign out', Message.EndSession())
-	if (viewer.role === 'Waiting') {
+function SignOutProblem(h: H, model: Model) {
+	return model.signOut === 'failed' && Notice(h, 'Couldn’t sign out', Message.EndSession())
+}
+
+function AccessScreen(
+	h: H,
+	model: Model,
+	search: Extract<Model['route'], {_tag: 'Home'}>['search'],
+	viewer?: SignedAccount
+) {
+	if (viewer !== undefined) {
 		return ActionShell(h, {
 			actions: Boolean.match(viewer.signOut, {
 				onFalse: () => [],
@@ -118,11 +128,20 @@ function Workspace(h: H, model: Model) {
 			content: h.section
 				.class('auth-screen auth-waiting')
 				.attr('aria-label', 'Sign-ins')
-				.children(Notice(h, 'Waiting for an admin'), signOutProblem, ReadProblem(h, model.account, 'account'))
+				.children(Notice(h, 'Waiting for an admin'), SignOutProblem(h, model), ReadProblem(h, model.account, 'account'))
 		})
 	}
+	if (AsyncResult.isInitial(model.account)) return AccountLoading(h, model, search.person)
+	return h.div
+		.class('auth-screen')
+		.children(
+			Option.exists(readValue(model.account), Option.isNone) && SignIn(h, search.error),
+			ReadProblem(h, model.account, 'account')
+		)
+}
+
+function Directory(h: H, model: Model, viewer: SignedAccount, selected: Account['id']) {
 	const admin = viewer.role === 'Admin'
-	const selected = route.search.person ?? viewer.id
 	const person = Boolean.match(!admin || selected === viewer.id, {
 		onFalse: () =>
 			Option.getOrUndefined(
@@ -130,7 +149,7 @@ function Workspace(h: H, model: Model) {
 			),
 		onTrue: () => viewer
 	})
-	const show = Boolean.match(admin, {onFalse: Function.constant('detail'), onTrue: () => paneOf(model)})
+	const show = Boolean.match(admin, {onFalse: Function.constant<Pane>('detail'), onTrue: () => paneOf(model)})
 	const listHidden = !admin || model.listHidden
 	const listOpen = !listHidden && (!model.narrow || show === 'list')
 	const detailOpen = !model.narrow || show === 'detail'
@@ -147,8 +166,8 @@ function Workspace(h: H, model: Model) {
 			detail: {
 				content: h.div.children(
 					Detail(h, model, viewer, listOpen, person),
-					signOutProblem,
-					(!model.narrow || show === 'detail') && ReadProblem(h, model.account, 'account')
+					SignOutProblem(h, model),
+					detailOpen && ReadProblem(h, model.account, 'account')
 				),
 				key: selected,
 				label: 'Selected person and sessions'
@@ -178,6 +197,19 @@ function Workspace(h: H, model: Model) {
 		overlays: listOpen && PeopleMenu(h, model, menu),
 		...(admin && {sidebar: sidebar(model, listOpen)})
 	})
+}
+
+function Workspace(h: H, model: Model) {
+	if (!isHome(model.route)) {
+		return h.div
+			.class('auth-screen')
+			.children(
+				Glass(h).children(h.a.class('auth-action').attrs({'data-pressable': '', href: '/'}).children('Back to Auth'))
+			)
+	}
+	const viewer = signed(model.account)
+	if (viewer === undefined || viewer.role === 'Waiting') return AccessScreen(h, model, model.route.search, viewer)
+	return Directory(h, model, viewer, model.route.search.person ?? viewer.id)
 }
 
 function View(h: H, model: Model) {
@@ -277,7 +309,7 @@ export const Auth = Component.provide(
 			},
 			Clock: ($, message) => $.evolve({now: message.now}),
 			EndSession: $ => {
-				if (!signed($.model.account)?.signOut || $.model.signOut === 'pending') return $.model
+				if (signed($.model.account)?.signOut !== true || $.model.signOut === 'pending') return $.model
 				return $.evolve({signOut: 'pending'}).run(SignOut.make({}))
 			},
 			FilterPeople: ($, message) => $.evolve({peopleMenuOpen: false, waitingOnly: message.waitingOnly}),
@@ -296,10 +328,9 @@ export const Auth = Component.provide(
 			Retry: ($, message) =>
 				$.run(Command.asNoop(Refresh.make({reader: message.reader, viewer: signed($.model.account)?.id}))),
 			Route: ($, message) => {
-				const before = $.model
 				const after = {
-					...before,
-					listHidden: isHome(message.route) && routePane(message.route) === 'detail' && before.listHidden,
+					...$.model,
+					listHidden: isHome(message.route) && routePane(message.route) === 'detail' && $.model.listHidden,
 					peopleMenuOpen: false,
 					route: message.route
 				}
@@ -307,11 +338,11 @@ export const Auth = Component.provide(
 				if (usedHistoryMotion()) return next
 				const pane = paneOf(after)
 				if (after.narrow) {
-					if (pane === paneOf(before)) return next
+					if (pane === paneOf($.model)) return next
 					if (pane === 'detail') return next.viewTransition(['axis-open'])
 					return next.viewTransition(['axis-back'])
 				}
-				if (isHome(before.route) && isHome(after.route) && before.route.search.person !== after.route.search.person) {
+				if (isHome($.model.route) && isHome(after.route) && $.model.route.search.person !== after.route.search.person) {
 					return next.viewTransition(['axis-layout'])
 				}
 				return next
@@ -353,7 +384,15 @@ export const Auth = Component.provide(
 					if (routePane($.model.route) === 'list') {
 						return $.evolve({listHidden: false}).viewTransition(['axis-back'])
 					}
-					if (hasListBehind()) return $.run(Command.asNoop(Router.Back.make({})))
+					if (
+						hasHistoryBehind(previous => {
+							if (previous.pathname !== '/') return false
+							const pane = previous.searchParams.get('pane')
+							return pane === 'list' || (pane === null && !previous.searchParams.has('person'))
+						})
+					) {
+						return $.run(historyBack)
+					}
 					return $.run(Command.asNoop(Router.patchSearch(AuthRoute, $.model.route, {pane: 'list', person: undefined})))
 				}
 				return $.run(Command.asNoop(Router.patchSearch(AuthRoute, $.model.route, {pane: 'detail'}, {history: 'push'})))

@@ -1,17 +1,16 @@
 import {Effect, Option, Queue, Redacted, Schema, Stream, String, pipe} from 'effect'
 
-import type {PluginListenerHandle} from '@capacitor/core'
 import {registerPlugin} from '@capacitor/core'
+import type {PluginListenerHandle} from '@capacitor/core'
 import {AtomRegistry} from 'effect/reactivity'
 
 import {registerPushToken} from '@deslop/runtime/client/push'
 import {ApnsToken} from '@deslop/runtime/shared/apns'
-import {nativeBundle} from '@deslop/ui/native'
+import {listenNative, nativeBundle, registerTokens} from '@deslop/ui/native'
 
-import type {ChapterIdentity} from '#contracts'
 import {ChapterBundle, ChapterNumberFromString, ChapterPushError, Series} from '#contracts'
+import type {ChapterIdentity} from '#contracts'
 
-import {listenNative, registerTokens} from '#web/platform.ts'
 import {RpcClient} from '#web/session.ts'
 
 type OpmNativeEvents = {chapterStartToken: {value: string}; chapterOpened: {url: string}}

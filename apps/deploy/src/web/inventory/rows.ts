@@ -34,7 +34,7 @@ export function reasonOf(item: InventoryItem) {
 	return Option.match(item.failure, {onNone: () => item.detail, onSome: stop => stop.reason})
 }
 
-export function reasonLine(item: InventoryItem, now: DateTime.Utc) {
+function reasonLine(item: InventoryItem, now: DateTime.Utc) {
 	return pipe(
 		item.failure,
 		Option.flatMap(stop => stop.at),

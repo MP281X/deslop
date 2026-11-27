@@ -13,25 +13,23 @@ import type {ShellAction} from '@deslop/ui/app-shell'
 import {Notice} from '@deslop/ui/axis'
 import {PressFeedback} from '@deslop/ui/control'
 import {Split, singlePane, watchPanes} from '@deslop/ui/split'
-import type {Pane} from '@deslop/ui/split'
-import {observe} from '@deslop/ui/state'
+import {ReadState, observe} from '@deslop/ui/state'
+import {hasHistoryBehind, historyBack, usedHistoryMotion} from '@deslop/ui/viewport'
 
 import {availablePorts, itemOwner, workloads} from '#contracts'
 import type {MachineHistory, Row, Snapshot} from '#contracts'
 
 import {AppActions} from '#web/inventory/actions.ts'
-import {ReadState} from '#web/inventory/axis.ts'
 import {Operation, appHistoryAtom, inventoryAtom, metricsAtom} from '#web/inventory/client.ts'
 import {Detail, MachineDetail} from '#web/inventory/detail.ts'
 import {Dialog} from '#web/inventory/dialog.ts'
-import type {Focused} from '#web/inventory/list.ts'
 import {List} from '#web/inventory/list.ts'
+import type {Focused} from '#web/inventory/list.ts'
 import {LoadingApps, LoadingReadings} from '#web/inventory/loading.ts'
 import {DialogState, Execute, MACHINE, Message, Model, Refresh, SignIn, signInRequested} from '#web/inventory/model.ts'
 import type {H} from '#web/inventory/model.ts'
 import {rowOrder, statusLine} from '#web/inventory/rows.ts'
 import {RestartReason} from '#web/inventory/traces.ts'
-import {hasListBehind, usedHistoryMotion} from '#web/inventory/viewport.ts'
 import {DeployRoute} from '#web/routes.ts'
 
 function selected(rows: readonly Row[], route: Model['route'], defaultApp: Model['defaultApp']) {
@@ -64,10 +62,11 @@ function moveTo(inventory: Model['inventory'], route: Model['route'], current: M
 	)
 	return {
 		...current,
-		appHistory: pipe(current.effectiveApp, Equal.equals(effectiveApp), Boolean.match({
-			onFalse: () => AsyncResult.initial(),
-			onTrue: () => current.appHistory
-		})),
+		appHistory: pipe(
+			current.effectiveApp,
+			Equal.equals(effectiveApp),
+			Boolean.match({onFalse: () => AsyncResult.initial(), onTrue: () => current.appHistory})
+		),
 		defaultApp,
 		effectiveApp,
 		inventory,
@@ -75,7 +74,7 @@ function moveTo(inventory: Model['inventory'], route: Model['route'], current: M
 	}
 }
 
-function showOf(route: Model['route']): Pane {
+function showOf(route: Model['route']) {
 	if (!DeployRoute.isAnyOf(['Home'])(route)) return 'list'
 	if (route.search.pane === 'apps' || route.search.app === undefined) return 'list'
 	return 'detail'
@@ -86,9 +85,14 @@ function appOf(route: Model['route']) {
 	return undefined
 }
 
-function sidebar(model: Model): ShellAction<Message> {
+function sidebar(model: Model) {
 	if (model.narrow && showOf(model.route) === 'detail') {
-		return {id: 'sidebar', message: Message.Sidebar(), symbol: 'chevron.left', title: 'Back'}
+		return {
+			id: 'sidebar',
+			message: Message.Sidebar(),
+			symbol: 'chevron.left',
+			title: 'Back'
+		} satisfies ShellAction<Message>
 	}
 	return {
 		disabled: model.narrow && appOf(model.route) === undefined && Option.isNone(model.defaultApp),
@@ -97,7 +101,7 @@ function sidebar(model: Model): ShellAction<Message> {
 		pressed: model.narrow || !model.listHidden,
 		symbol: 'sidebar.left',
 		title: 'Sidebar'
-	}
+	} satisfies ShellAction<Message>
 }
 
 function historyStatus(h: H, model: Model, snapshot: Snapshot) {
@@ -115,8 +119,9 @@ function historyStatus(h: H, model: Model, snapshot: Snapshot) {
 		...Option.toArray(history?.error ?? Option.none())
 	]
 	if (Array.isArrayNonEmpty(problems)) return Notice(h, Array.join(problems, ' · '))
-	if (history !== undefined && Array.isReadonlyArrayEmpty(history.samples))
-		{return Notice(h, 'No history in the last hour')}
+	if (history !== undefined && Array.isReadonlyArrayEmpty(history.samples)) {
+		return Notice(h, 'No history in the last hour')
+	}
 	return undefined
 }
 
@@ -125,10 +130,10 @@ function details(
 	model: Model,
 	snapshot: Snapshot,
 	rows: readonly Row[],
-	row: Row | undefined,
-	metrics: MachineHistory | undefined,
-	focused: Focused | undefined,
-	pending: boolean
+	pending: boolean,
+	row?: Row,
+	metrics?: MachineHistory,
+	focused?: Focused
 ) {
 	const id = appOf(model.route)
 	const loadingHistory = AsyncResult.isInitial(model.metrics)
@@ -138,16 +143,17 @@ function details(
 		if (id !== undefined) return Notice(h, 'App not found')
 		return undefined
 	}
+	const app = Option.getOrUndefined(AsyncResult.value(model.appHistory))
 	return Detail(h, {
 		admin: model.admin,
-		app: Option.getOrUndefined(AsyncResult.value(model.appHistory)),
+		...(app !== undefined && {app}),
 		free: availablePorts(rows),
-		history: metrics,
-		line: focused?.line,
+		...(metrics !== undefined && {history: metrics}),
+		...(focused?.line !== undefined && {line: focused.line}),
 		loading: loadingHistory || (Option.isSome(model.effectiveApp) && AsyncResult.isInitial(model.appHistory)),
 		now: model.now,
 		pending,
-		restart: focused?.restart,
+		...(focused?.restart !== undefined && {restart: focused.restart}),
 		row,
 		rows,
 		status
@@ -156,8 +162,7 @@ function details(
 
 function Workspace(h: H, model: Model) {
 	const main = h.main.class('deploy axis-controls').onMount(PressFeedback({}))
-	const route = model.route
-	if (!DeployRoute.isAnyOf(['Home'])(route)) {
+	if (!DeployRoute.isAnyOf(['Home'])(model.route)) {
 		return main.children(h.a.attr('href', '/').children('Back to Deploy'))
 	}
 	const reads: readonly AsyncResult.AsyncResult<unknown, unknown>[] = [model.inventory, model.metrics, model.appHistory]
@@ -165,16 +170,16 @@ function Workspace(h: H, model: Model) {
 		if (Array.some(reads, signInRequested)) return main.children(Notice(h, 'Signing in…'))
 		return main.children(Notice(h, 'Access denied'))
 	}
-	const show = showOf(route)
+	const show = showOf(model.route)
 	const snapshot = AsyncResult.value(model.inventory)
 	const rows = pipe(
 		snapshot,
 		Option.map(value => Array.sort(workloads(value.items), rowOrder)),
 		Option.getOrElse(Array.empty<Row>)
 	)
-	const selection = selected(rows, route, model.defaultApp)
-	const row = Option.getOrUndefined(selection)
-	const focusId = route.search.app ?? row?.item.id
+	const selection = selected(rows, model.route, model.defaultApp)
+	const selectedRow = Option.getOrUndefined(selection)
+	const focusId = model.route.search.app ?? selectedRow?.item.id
 	const pending = h.isRunning(Execute)
 	const collapsed = !model.narrow && model.listHidden
 	const history = Option.getOrUndefined(AsyncResult.value(model.metrics))
@@ -185,10 +190,14 @@ function Workspace(h: H, model: Model) {
 	)
 	const restart = RestartReason(restarts, model.now)
 	const focused = Option.getOrUndefined(
-		Option.map(selection, row => ({id: row.item.id, line: statusLine(row, model.now, restart), restart, restarts}))
+		Option.map(selection, row => {
+			const line = statusLine(row, model.now, restart)
+			return {id: row.item.id, ...(line !== undefined && {line}), ...(restart !== undefined && {restart}), restarts}
+		})
 	)
-	const retry = Message.Retry()
-	const unavailable = 'Couldn’t load apps'
+	function failed() {
+		return Notice(h, 'Couldn’t load apps', Message.Retry())
+	}
 	return main.children(
 		ActionShell(h, {
 			actions: pipe(
@@ -199,22 +208,23 @@ function Workspace(h: H, model: Model) {
 			),
 			content: Split(h, {
 				detail: {
-					content: ReadState(h, model.inventory, {
-						content: value => details(h, model, value, rows, row, history, focused, pending),
-						loading: h.div.class('deploy-startup-detail').children(LoadingReadings(h)),
-						retry,
-						unavailable
+					content: ReadState(model.inventory, {
+						failed,
+						loading: () => h.div.class('deploy-startup-detail').children(LoadingReadings(h)),
+						ready: value => details(h, model, value, rows, pending, selectedRow, history, focused)
 					}),
 					key: focusId ?? 'detail',
 					label: 'App detail'
 				},
 				list: {
-					content: ReadState(h, model.inventory, {
-						content: (value, stale) =>
+					content: ReadState(model.inventory, {
+						failed,
+						loading: () => LoadingApps(h),
+						ready: (value, stale) =>
 							List(h, {
 								admin: model.admin,
-								focused,
-								history,
+								...(focused !== undefined && {focused}),
+								...(history !== undefined && {history}),
 								loading: AsyncResult.isInitial(model.metrics),
 								now: model.now,
 								pending,
@@ -222,10 +232,7 @@ function Workspace(h: H, model: Model) {
 								selected: Option.filter(Option.fromUndefinedOr(focusId), () => !model.narrow && !collapsed),
 								snapshot: value,
 								stale
-							}),
-						loading: LoadingApps(h),
-						retry,
-						unavailable
+							})
 					}),
 					label: 'Apps'
 				},
@@ -234,7 +241,7 @@ function Workspace(h: H, model: Model) {
 				show
 			}),
 			overlays: Option.getOrUndefined(
-				Option.map(model.dialog, dialog => Dialog(h, dialog, Option.getOrUndefined(snapshot), pending))
+				Option.map(model.dialog, dialog => Dialog(h, dialog, pending, Option.getOrUndefined(snapshot)))
 			),
 			sidebar: sidebar(model)
 		})
@@ -244,6 +251,34 @@ function Workspace(h: H, model: Model) {
 function completeRead(next: Component.Step<Model, Message, never>, result: AsyncResult.AsyncResult<unknown, unknown>) {
 	if (signInRequested(result)) return next.run(Command.asNoop(SignIn.make({})))
 	return next
+}
+
+function settleOperation(
+	$: Component.Step<Model, Message, never>,
+	operation: Operation,
+	outcome: Result.Result<Option.Option<string>, string>
+) {
+	const next = $.evolve({executing: false})
+	const dialog = Option.getOrUndefined($.model.dialog)
+	if (Operation.isAnyOf(['Logs'])(operation)) {
+		if (dialog === undefined || !DialogState.isAnyOf(['Logs'])(dialog) || dialog.id !== operation.id) return next
+		return next.evolve({
+			dialog: Option.some({
+				...dialog,
+				result: Result.match(outcome, {
+					onFailure: error => Option.some(Result.fail(error)),
+					onSuccess: Option.map(Result.succeed)
+				})
+			})
+		})
+	}
+	return Result.match(outcome, {
+		onFailure: error => next.evolve({dialog: Option.some(DialogState.cases.Failure.make({text: error}))}),
+		onSuccess: () => {
+			if (dialog === undefined) return next
+			return next.evolve({dialog: Option.none()}).viewTransition(['axis-sheet-close'])
+		}
+	})
 }
 
 const DeployDef = Html.component({
@@ -310,63 +345,46 @@ export const Deploy = pipe(
 			Clock: ($, message) => $.evolve({now: message.now}),
 			ClosedDialog: $ => {
 				const dialog = Option.getOrUndefined($.model.dialog)
-				if (dialog === undefined || ($.model.executing && dialog._tag === 'Expose')) return $.model
+				if (dialog === undefined || ($.model.executing && DialogState.isAnyOf(['Expose'])(dialog))) return $.model
 				return $.evolve({dialog: Option.none()}).viewTransition(['axis-sheet-close'])
 			},
-			ExposureKind: ($, {kind}) =>
+			ExposureKind: ($, message) =>
 				$.evolve({
 					dialog: Option.map($.model.dialog, dialog => {
-						if (dialog._tag === 'Expose') return {...dialog, choosing: false, kind}
+						if (DialogState.isAnyOf(['Expose'])(dialog)) return {...dialog, choosing: false, kind: message.kind}
 						return dialog
 					})
 				}),
-			ExposureMenu: ($, {open}) =>
+			ExposureMenu: ($, message) =>
 				$.evolve({
 					dialog: Option.map($.model.dialog, dialog => {
-						if (dialog._tag === 'Expose') return {...dialog, choosing: open}
+						if (DialogState.isAnyOf(['Expose'])(dialog)) return {...dialog, choosing: message.open}
 						return dialog
 					})
 				}),
-			Inventory: ($, {result}) => completeRead($.set(moveTo(result, $.model.route, $.model)), result),
-			Metrics: ($, {result}) => completeRead($.evolve({metrics: result}), result),
-			OpenedExposure: ($, {port}) => {
+			Inventory: ($, message) => completeRead($.set(moveTo(message.result, $.model.route, $.model)), message.result),
+			Metrics: ($, message) => completeRead($.evolve({metrics: message.result}), message.result),
+			OpenedExposure: ($, message) => {
 				if (!$.model.admin || $.model.executing) return $.model
 				return $.evolve({
-					dialog: Option.some(DialogState.cases.Expose.make({choosing: false, kind: 'tailnet', port}))
+					dialog: Option.some(DialogState.cases.Expose.make({choosing: false, kind: 'tailnet', port: message.port}))
 				}).viewTransition(['axis-sheet-open'])
 			},
-			OpenedLogs: ($, {id, name}) => {
+			OpenedLogs: ($, message) => {
 				if (!$.model.admin || $.model.executing) return $.model
 				return $.evolve({
-					dialog: Option.some(DialogState.cases.Logs.make({id, name, result: Option.none()})),
+					dialog: Option.some(DialogState.cases.Logs.make({id: message.id, name: message.name, result: Option.none()})),
 					executing: true
 				})
 					.viewTransition(['axis-sheet-open'])
-					.run(Execute.make({operation: Operation.cases.Logs.make({id})}))
+					.run(Execute.make({operation: Operation.cases.Logs.make({id: message.id})}))
 			},
 			Operation: ($, message) => {
 				if (!$.model.admin || $.model.executing) return $.model
 				return $.evolve({executing: true}).run(Execute.make({operation: message.operation}))
 			},
-			OperationDone: ($, message) => {
-				const next = $.evolve({executing: false})
-				const dialog = Option.getOrUndefined($.model.dialog)
-				if (message.operation._tag === 'Logs') {
-					if (dialog?._tag !== 'Logs' || dialog.id !== message.operation.id) return next
-					return next.evolve({dialog: Option.some({...dialog, result: Option.map(message.text, Result.succeed)})})
-				}
-				if (dialog === undefined) return next
-				return next.evolve({dialog: Option.none()}).viewTransition(['axis-sheet-close'])
-			},
-			OperationFailed: ($, message) => {
-				const next = $.evolve({executing: false})
-				const dialog = Option.getOrUndefined($.model.dialog)
-				if (message.operation._tag === 'Logs') {
-					if (dialog?._tag !== 'Logs' || dialog.id !== message.operation.id) return next
-					return next.evolve({dialog: Option.some({...dialog, result: Option.some(Result.fail(message.error))})})
-				}
-				return next.evolve({dialog: Option.some(DialogState.cases.Failure.make({text: message.error}))})
-			},
+			OperationDone: ($, message) => settleOperation($, message.operation, Result.succeed(message.text)),
+			OperationFailed: ($, message) => settleOperation($, message.operation, Result.fail(message.error)),
 			Posture: ($, message) => {
 				if ($.model.narrow === message.narrow) return $.model
 				return $.evolve({narrow: message.narrow}).viewTransition(['axis-layout'])
@@ -385,28 +403,36 @@ export const Deploy = pipe(
 				if (!$.model.narrow && (changedItem || changedPane)) return next.viewTransition(['axis-layout'])
 				return next
 			},
-			Select: ($, {id}) => {
-				const route = $.model.route
-				if (!DeployRoute.isAnyOf(['Home'])(route)) return $.model
-				const history = Boolean.match(showOf(route) === 'list', {
+			Select: ($, message) => {
+				if (!DeployRoute.isAnyOf(['Home'])($.model.route)) return $.model
+				const history = Boolean.match(showOf($.model.route) === 'list', {
 					onFalse: Function.constant('replace' as const),
 					onTrue: Function.constant('push' as const)
 				})
 				return $.evolve({listHidden: false}).run(
-					Command.asNoop(Router.patchSearch(DeployRoute, route, {app: id, pane: 'process'}, {history}))
+					Command.asNoop(Router.patchSearch(DeployRoute, $.model.route, {app: message.id, pane: 'process'}, {history}))
 				)
 			},
 			Sidebar: $ => {
-				const {route, narrow, listHidden, defaultApp} = $.model
-				if (!DeployRoute.isAnyOf(['Home'])(route)) return $.model
-				if (!narrow) return $.evolve({listHidden: !listHidden}).viewTransition(['axis-layout'])
-				if (showOf(route) === 'detail') {
-					if (hasListBehind()) return $.run(Command.asNoop(Router.Back.make({})))
-					return $.run(Command.asNoop(Router.patchSearch(DeployRoute, route, {pane: 'apps'})))
+				if (!DeployRoute.isAnyOf(['Home'])($.model.route)) return $.model
+				if (!$.model.narrow) return $.evolve({listHidden: !$.model.listHidden}).viewTransition(['axis-layout'])
+				if (showOf($.model.route) === 'detail') {
+					if (
+						hasHistoryBehind(previous => {
+							if (previous.pathname !== '/') return false
+							const pane = previous.searchParams.get('pane')
+							return pane === 'apps' || (pane === null && !previous.searchParams.has('app'))
+						})
+					) {
+						return $.run(historyBack)
+					}
+					return $.run(Command.asNoop(Router.patchSearch(DeployRoute, $.model.route, {pane: 'apps'})))
 				}
-				const app = route.search.app ?? Option.getOrUndefined(defaultApp)
+				const app = $.model.route.search.app ?? Option.getOrUndefined($.model.defaultApp)
 				if (app === undefined) return $.model
-				return $.run(Command.asNoop(Router.patchSearch(DeployRoute, route, {app, pane: 'process'}, {history: 'push'})))
+				return $.run(
+					Command.asNoop(Router.patchSearch(DeployRoute, $.model.route, {app, pane: 'process'}, {history: 'push'}))
+				)
 			}
 		},
 		view: Workspace

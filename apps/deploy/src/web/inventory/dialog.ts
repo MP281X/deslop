@@ -1,10 +1,9 @@
-import type {View} from '@effect/ui'
-
 import {Array, Boolean, Function, Option, Result, String, pipe} from 'effect'
 
 import {Button} from '@deslop/ui/control'
 import {Glass, GlassPanel} from '@deslop/ui/glass'
 import {SymbolIcon} from '@deslop/ui/symbol'
+import {FitSheet} from '@deslop/ui/viewport'
 
 import {ExposeInput, ExposureName} from '#contracts'
 import type {Snapshot} from '#contracts'
@@ -13,7 +12,6 @@ import {Operation} from '#web/inventory/client.ts'
 import {DialogState, Message} from '#web/inventory/model.ts'
 import type {H} from '#web/inventory/model.ts'
 import {machineHost} from '#web/inventory/rows.ts'
-import {FitSheet} from '#web/inventory/viewport.ts'
 
 type Expose = typeof DialogState.cases.Expose.Type
 
@@ -122,9 +120,9 @@ function ExposeForm(h: H, dialog: Expose, snapshot: Snapshot, pending: boolean, 
 	)
 }
 
-export function Dialog(h: H, dialog: DialogState, snapshot: Snapshot | undefined, pending: boolean) {
+export function Dialog(h: H, dialog: DialogState, pending: boolean, snapshot?: Snapshot) {
 	const title = h.div.id('deploy-dialog-title').class('axis-title')
-	const content: {body: View.Input<Message>; name: string} | undefined = DialogState.match(dialog, {
+	const content = DialogState.match(dialog, {
 		Expose: exposure => {
 			const port = Option.getOrUndefined(exposure.port.port)
 			if (snapshot === undefined || port === undefined) return undefined
@@ -160,7 +158,7 @@ export function Dialog(h: H, dialog: DialogState, snapshot: Snapshot | undefined
 	if (content === undefined) return undefined
 	return h.dialog
 		.key(dialog._tag)
-		.class('deploy-dialog', dialog._tag === 'Logs' && 'deploy-logs')
+		.class('deploy-dialog', DialogState.isAnyOf(['Logs'])(dialog) && 'deploy-logs')
 		.attr('aria-labelledby', 'deploy-dialog-title')
 		.modal(true)
 		.onMount(FitSheet({}))
@@ -168,7 +166,7 @@ export function Dialog(h: H, dialog: DialogState, snapshot: Snapshot | undefined
 		.children(
 			h.div
 				.class('deploy-dialog-heading')
-				.children(title.children(content.name), closeButton(h, dialog._tag === 'Expose' && pending)),
+				.children(title.children(content.name), closeButton(h, DialogState.isAnyOf(['Expose'])(dialog) && pending)),
 			h.div.class('deploy-dialog-body').children(content.body)
 		)
 }

@@ -22,8 +22,8 @@ import {Button} from '@deslop/ui/control'
 import {Glass} from '@deslop/ui/glass'
 import {SymbolIcon} from '@deslop/ui/symbol'
 
-import type {ChapterIdentity, ChapterList} from '#contracts'
 import {byChapterNumber} from '#contracts'
+import type {ChapterIdentity, ChapterList} from '#contracts'
 
 import {Message} from '#web/chapters/model.ts'
 import type {Model} from '#web/chapters/model.ts'
@@ -163,9 +163,10 @@ export function Reading(
 		.onMount(Motion({}))
 		.children(
 			turn < 0 &&
-				(waiting
-					? Loading(h, 'Loading chapter', Placeholder(h, 'opm-page-placeholder'))
-					: Notice(h, 'Chapter unavailable')),
+				Boolean.match(waiting, {
+					onFalse: () => Notice(h, 'Chapter unavailable'),
+					onTrue: () => Loading(h, 'Loading chapter', Placeholder(h, 'opm-page-placeholder'))
+				}),
 			h.div.class('opm-paper').children(
 				Array.map(stripes, index => {
 					const src = reading?.pages[index]

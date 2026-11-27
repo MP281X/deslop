@@ -9,14 +9,17 @@ import {AsyncResult, AtomRegistry} from 'effect/reactivity'
 import {clockAtom} from '@deslop/runtime/client/clock'
 import {isDeniedCause, needsSignInCause} from '@deslop/runtime/client/live-stream'
 import {ageOf, dayOf} from '@deslop/runtime/shared/format'
-import {ActionShell} from '@deslop/ui/app-shell'
+import {ActionShell, CheckedChoice} from '@deslop/ui/app-shell'
 import type {ShellAction, ShellMenuGroup, ShellMenuItem} from '@deslop/ui/app-shell'
 import {Loading, Notice, Row} from '@deslop/ui/axis'
 import {Button, PressFeedback} from '@deslop/ui/control'
 import {Glass, GlassPanel} from '@deslop/ui/glass'
-import {Split, singlePane, watchPanes} from '@deslop/ui/split'
-import {observe} from '@deslop/ui/state'
+import {isNative, sessionAccount} from '@deslop/ui/native'
+import {WebSignOut} from '@deslop/ui/session'
+import {Split, panelUpdates, singlePane, watchPanes} from '@deslop/ui/split'
+import {ReadState, observe} from '@deslop/ui/state'
 import {SymbolIcon} from '@deslop/ui/symbol'
+import {FitSheet, hasHistoryBehind, historyBack, usedHistoryMotion} from '@deslop/ui/viewport'
 
 import {Kind} from '#contracts'
 import type {NoteItem} from '#contracts'
@@ -36,8 +39,6 @@ import {
 } from '#web/notes/model.ts'
 import {mediaAtom, noteAtom, notesAtom} from '#web/notes/notes.ts'
 import {coverOf, isWebLink, issueOf, picture, reader} from '#web/notes/reader.ts'
-import {account, installed} from '#web/notes/session.ts'
-import {FitComposer, hasListBehind, usedHistoryMotion} from '#web/notes/viewport.ts'
 import {StashRoute} from '#web/routes.ts'
 
 const COMPOSE_PANEL = 'stash-compose-note'
@@ -72,17 +73,6 @@ function noteRow(h: H, note: NoteItem, state: Model) {
 		title: note.title,
 		value: savedOf(note, state.now)
 	})
-}
-
-function signOutButton(h: H, pending: boolean) {
-	if (installed) {
-		return Button(h, {disabled: pending})
-			.on('click', Message.Run({action: Action.cases.SignOut.make({})}))
-			.children('Sign out')
-	}
-	return h.form
-		.attrs({action: `/auth/sign-out?${new URLSearchParams({next: location.href})}`, method: 'post'})
-		.children(Button(h, {type: 'submit'}).children('Sign out'))
 }
 
 function queueGroups(state: Model) {
@@ -128,7 +118,7 @@ function queueGroups(state: Model) {
 function queueOptions(state: Model) {
 	const groups: readonly ShellMenuGroup<Message>[] = queueGroups(state)
 	const signedIn = Option.getOrUndefined(AsyncResult.value(state.account))
-	if (!installed || signedIn?.signOut !== true) return groups
+	if (!isNative || signedIn?.signOut !== true) return groups
 	return [
 		...groups,
 		{
@@ -145,14 +135,6 @@ function queueOptions(state: Model) {
 	] satisfies readonly ShellMenuGroup<Message>[]
 }
 
-function checkedChoice(h: H, item: ShellMenuItem<Message>) {
-	return Button(h, {disabled: item.disabled ?? false})
-		.key(item.id)
-		.attrs({'aria-checked': `${item.checked === true}`, role: 'menuitemradio'})
-		.on('click', item.message)
-		.children(item.title, item.checked === true && SymbolIcon(h, 'checkmark'))
-}
-
 function queueMenu(h: H, state: Model) {
 	const signedIn = Option.getOrUndefined(AsyncResult.value(state.account))
 	return GlassPanel(h, 'stash-queue-options', 'Queue options', [
@@ -162,10 +144,10 @@ function queueMenu(h: H, state: Model) {
 				.attrs({'aria-label': group.title, role: 'group'})
 				.children(
 					h.span.class('stash-menu-label').children(group.title),
-					...Array.map(group.items, item => checkedChoice(h, item))
+					...Array.map(group.items, item => CheckedChoice(h, item))
 				)
 		),
-		signedIn?.signOut === true && signOutButton(h, state.pending)
+		signedIn?.signOut === true && WebSignOut(h)
 	])
 		.attr('role', 'menu')
 		.popover('auto', state.panel === 'queue')
@@ -176,19 +158,22 @@ function queueMenu(h: H, state: Model) {
 }
 
 function notesContent(h: H, state: Model) {
-	if (AsyncResult.isInitial(state.notes)) {
-		return Loading(h, 'Loading saved notes', h.div.class('stash-skeleton-list').attr('aria-hidden', 'true'))
-	}
-	const notes = visibleNotes(state)
-	if (Array.isReadonlyArrayEmpty(notes)) {
-		if (AsyncResult.isFailure(state.notes)) return [Notice(h, 'Couldn’t load notes', Message.Retry())]
-		if (state.kind !== undefined || state.tag !== undefined) return [Notice(h, 'No notes match')]
-		return [Notice(h, 'No saved notes')]
-	}
-	return [
-		...Array.map(notes, note => noteRow(h, note, state)),
-		AsyncResult.isFailure(state.notes) && Notice(h, 'Notes may be out of date', Message.Retry())
-	]
+	return ReadState(state.notes, {
+		failed: () => Notice(h, 'Couldn’t load notes', Message.Retry()),
+		loading: () => Loading(h, 'Loading saved notes', h.div.class('stash-skeleton-list').attr('aria-hidden', 'true')),
+		ready: (_, stale) =>
+			Array.match(visibleNotes(state), {
+				onEmpty: () => {
+					if (stale) return Notice(h, 'Couldn’t load notes', Message.Retry())
+					if (state.kind !== undefined || state.tag !== undefined) return Notice(h, 'No notes match')
+					return Notice(h, 'No saved notes')
+				},
+				onNonEmpty: notes => [
+					...Array.map(notes, note => noteRow(h, note, state)),
+					stale && Notice(h, 'Notes may be out of date', Message.Retry())
+				]
+			})
+	})
 }
 
 function noteOptions(state: Model, note: NoteItem) {
@@ -241,7 +226,7 @@ function Compose(h: H, state: Model) {
 		.class('stash-sheet')
 		.attr('aria-labelledby', COMPOSE_PANEL)
 		.modal(state.composing)
-		.onMount(FitComposer({}))
+		.onMount(FitSheet({}))
 		.on('cancel', Message.Compose({open: false}))
 		.children(
 			h.form
@@ -271,15 +256,18 @@ function Compose(h: H, state: Model) {
 }
 
 function detailContent(h: H, state: Model) {
-	if (AsyncResult.isInitial(state.notes)) {
-		return Loading(h, 'Loading note', h.div.class('stash-skeleton-note').attr('aria-hidden', 'true'))
-	}
-	if (state.selected !== undefined) return reader(h, state, state.selected, savedOf(state.selected, state.now))
-	if (AsyncResult.isFailure(state.notes)) return Notice(h, 'Couldn’t load the note', Message.Retry())
-	if (StashRoute.isAnyOf(['Home'])(state.route) && state.route.search.note !== undefined) {
-		return Notice(h, 'Note not found')
-	}
-	return undefined
+	return ReadState(state.notes, {
+		failed: () => Notice(h, 'Couldn’t load the note', Message.Retry()),
+		loading: () => Loading(h, 'Loading note', h.div.class('stash-skeleton-note').attr('aria-hidden', 'true')),
+		ready: (_, stale) => {
+			if (state.selected !== undefined) return reader(h, state, state.selected, savedOf(state.selected, state.now))
+			if (stale) return Notice(h, 'Couldn’t load the note', Message.Retry())
+			if (StashRoute.isAnyOf(['Home'])(state.route) && state.route.search.note !== undefined) {
+				return Notice(h, 'Note not found')
+			}
+			return undefined
+		}
+	})
 }
 
 function access(h: H, result: AsyncResult.AsyncResult<unknown, unknown>) {
@@ -415,9 +403,9 @@ function workspace(h: H, state: Model) {
 							show: showOf(state)
 						}),
 						overlays: [
-							!installed && queueMenu(h, state),
+							!isNative && queueMenu(h, state),
 							Compose(h, state),
-							!installed && note !== undefined && noteMenu(h, state, note)
+							!isNative && note !== undefined && noteMenu(h, state, note)
 						],
 						sidebar: sidebar(state)
 					}),
@@ -468,7 +456,7 @@ export const Stash = pipe(
 				selected: undefined,
 				tag: undefined
 			}
-			if (installed) return context.set(state).run(Wake.make({refresh: false}))
+			if (isNative) return context.set(state).run(Wake.make({refresh: false}))
 			return state
 		},
 		subscriptions: context => {
@@ -483,13 +471,13 @@ export const Stash = pipe(
 				Router.subscription(StashRoute, context.model.route, route => Message.Route({route})),
 				Subscription.make(
 					'account',
-					observe(account, result => Message.Account({result}))
+					observe(sessionAccount, result => Message.Account({result}))
 				),
 				Subscription.make(
 					'clock',
 					observe(clockAtom('1 minute'), now => Message.Clock({now}))
 				),
-				installed &&
+				isNative &&
 					Subscription.make(
 						'activation',
 						pipe(
@@ -581,18 +569,7 @@ export const Stash = pipe(
 					)
 				)
 			},
-			Panel: ($, message) => {
-				if ($.model.panel === message.panel) return $.evolve({panel: undefined})
-				return $.evolve({panel: message.panel})
-			},
-			PanelClosed: ($, message) => {
-				if ($.model.panel !== message.panel) return $.model
-				return $.evolve({panel: undefined})
-			},
-			Posture: ($, message) => {
-				if ($.model.narrow === message.narrow) return $.model
-				return $.evolve({narrow: message.narrow, panel: undefined}).viewTransition(['axis-layout'])
-			},
+			...panelUpdates<Model, Message>(),
 			Problem: ($, message) => $.evolve({problem: message.text}),
 			Retry: $ => $.run(Command.asNoop(Refresh.make({item: $.model.selected}))),
 			Route: ($, message) => {
@@ -624,7 +601,7 @@ export const Stash = pipe(
 			Settled: ($, message) => {
 				const next = $.evolve({pending: false, problem: message.problem})
 				if (message.problem !== undefined) return next
-				if (Action.isAnyOf(['SignIn'])(message.action) && installed) return next.run(Wake.make({refresh: false}))
+				if (Action.isAnyOf(['SignIn'])(message.action) && isNative) return next.run(Wake.make({refresh: false}))
 				if (!Action.isAnyOf(['Capture'])(message.action)) return next
 				const close = next.evolve({composing: false}).viewTransition(['axis-sheet-close'])
 				if ($.model.draft !== message.action.text) return close
@@ -633,7 +610,15 @@ export const Stash = pipe(
 			Sidebar: $ => {
 				if (!StashRoute.isAnyOf(['Home'])($.model.route)) return $.model
 				if ($.model.narrow && showOf($.model) === 'detail') {
-					if (hasListBehind()) return $.run(Command.asNoop(Router.Back.make({})))
+					if (
+						hasHistoryBehind(previous => {
+							if (previous.pathname !== '/') return false
+							const pane = previous.searchParams.get('pane')
+							return pane === 'list' || (pane === null && !previous.searchParams.has('note'))
+						})
+					) {
+						return $.run(historyBack)
+					}
 					return $.run(Command.asNoop(Router.patchSearch(StashRoute, $.model.route, {pane: 'list'})))
 				}
 				const hide = sidebarOpen($.model)

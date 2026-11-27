@@ -7,12 +7,12 @@ import {Array, Layer, Option, Redacted, Result, Schema, pipe} from 'effect'
 import {Url} from 'effect/http'
 import {AsyncResult, AtomRegistry} from 'effect/reactivity'
 
-import {needsSignInCause} from '@deslop/runtime/client/live-stream'
+import {blockingFailure, needsSignInCause} from '@deslop/runtime/client/live-stream'
 import {accountAtom} from '@deslop/runtime/web/client'
 import {ActionShell} from '@deslop/ui/app-shell'
-import {Notice} from '@deslop/ui/axis'
+import {Loading, Notice} from '@deslop/ui/axis'
 import {PressFeedback} from '@deslop/ui/control'
-import {observe} from '@deslop/ui/state'
+import {ReadCombined, ReadFailure, observe} from '@deslop/ui/state'
 
 import {AiKeySecret} from '#contracts'
 
@@ -20,7 +20,6 @@ import {aiKeyAtom, aiUsageAtom, mcpUsageAtom, serversAtom} from '#web/home/clien
 import {Action, Copy, Execute, Message, Model, Refresh, SignIn} from '#web/home/model.ts'
 import {KeyRows, ServerRows} from '#web/home/rows.ts'
 import {KeyDialog, OptionsMenu, PasteField, RangeMenu, gatewayActions} from '#web/home/toolbar.ts'
-import {ReadState} from '#web/home/ui.ts'
 import {GatewayRoute, periodOf} from '#web/routes.ts'
 
 type H = Html.H<Message>
@@ -41,15 +40,18 @@ function ReadPair<A, B>(
 	body: (value: readonly A[], report: B) => View.Input<Message>
 ) {
 	const value = AsyncResult.value(source)
-	const empty = Option.exists(value, Array.isReadonlyArrayEmpty)
-	return ReadState(h, {
-		content: empty
-			? Option.some(undefined)
-			: Option.map(Option.all({report: AsyncResult.value(usage), value}), ready => body(ready.value, ready.report)),
-		label,
-		loading: h.div.class('gateway-skeleton', skeleton).attr('aria-hidden', 'true'),
-		reads: empty ? [source] : [source, usage],
-		retry: Message.Retry()
+	if (Option.exists(value, Array.isReadonlyArrayEmpty)) {
+		return Option.getOrUndefined(
+			Option.map(blockingFailure(source), cause => ReadFailure(h, cause, `Couldn’t load ${label}`, Message.Retry()))
+		)
+	}
+	return ReadCombined({
+		failed: cause => ReadFailure(h, cause, `Couldn’t load ${label}`, Message.Retry()),
+		failure: Option.orElse(blockingFailure(source), () => blockingFailure(usage)),
+		loading: () =>
+			Loading(h, `Loading ${label}`, h.div.class('gateway-skeleton', skeleton).attr('aria-hidden', 'true')),
+		ready: read => body(read.items, read.report),
+		value: Option.all({items: value, report: AsyncResult.value(usage)})
 	})
 }
 
@@ -90,14 +92,14 @@ function view(h: H, model: Model) {
 		)
 }
 
-function readUpdate<K extends 'aiUsage' | 'keys' | 'mcpUsage' | 'servers'>(
-	$: Component.Step<Model, Message, never>,
-	key: K,
-	result: Model[K]
-) {
+type ReadKey = typeof ReadKey.Type
+const ReadKey = Schema.Literals(['aiUsage', 'keys', 'mcpUsage', 'servers'])
+
+function readUpdate<K extends ReadKey>($: Component.Step<Model, Message, never>, key: K, result: Model[K]) {
 	const next = $.set({...$.model, [key]: result})
-	if ($.model.signingIn || !AsyncResult.isFailure<unknown, unknown>(result) || !needsSignInCause(result.cause))
-		{return next}
+	if ($.model.signingIn || !AsyncResult.isFailure<unknown, unknown>(result) || !needsSignInCause(result.cause)) {
+		return next
+	}
 	return next.evolve({signingIn: true}).run(Command.asNoop(SignIn.make({})))
 }
 
@@ -157,8 +159,9 @@ export const Gateway = pipe(
 				return $.evolve({busy: false, fieldError: message.error})
 			},
 			ActionFinished: ($, message) => {
-				if (message.action === 'SaveKey')
-					{return $.evolve({busy: false, dialog: undefined}).viewTransition(['axis-sheet-close'])}
+				if (message.action === 'SaveKey') {
+					return $.evolve({busy: false, dialog: undefined}).viewTransition(['axis-sheet-close'])
+				}
 				return $.evolve({busy: false, fieldVersion: $.model.fieldVersion + 1})
 			},
 			AiUsage: ($, message) => {

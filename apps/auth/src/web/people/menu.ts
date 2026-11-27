@@ -1,9 +1,8 @@
 import {Array} from 'effect'
 
+import {CheckedChoice} from '@deslop/ui/app-shell'
 import type {ShellAction, ShellMenuItem} from '@deslop/ui/app-shell'
-import {Button} from '@deslop/ui/control'
 import {GlassPanel} from '@deslop/ui/glass'
-import {SymbolIcon} from '@deslop/ui/symbol'
 
 import {Message} from '#web/auth/model.ts'
 import type {H, Model} from '#web/auth/model.ts'
@@ -32,13 +31,7 @@ export function PeopleMenu(h: H, state: Model, action: ReturnType<typeof peopleM
 		h,
 		'auth-people-options',
 		action.title,
-		Array.map(action.menu[0].items, item =>
-			Button(h)
-				.key(item.id)
-				.attrs({'aria-checked': `${item.checked}`, role: 'menuitemradio'})
-				.on('click', item.message)
-				.children(item.title, item.checked && SymbolIcon(h, 'checkmark'))
-		)
+		Array.map(action.menu[0].items, item => CheckedChoice(h, item))
 	)
 		.attr('role', 'menu')
 		.popover('auto', state.peopleMenuOpen)

@@ -4,35 +4,43 @@ import type {Html} from '@effect/ui/html'
 import {Button} from './control.ts'
 import {Glass} from './glass.ts'
 
+export type RowLabelProps<M> = {line?: View.Input<M>; problem?: boolean; title: View.Input<M>}
+
+export type RowSlots<M> = RowLabelProps<M> & {leading?: View.Content<M>; value?: View.Input<M>}
+
+export function RowLabel<M>(h: Html.H<M>, options: RowLabelProps<NoInfer<M>>) {
+	return h.span
+		.class('axis-lines')
+		.children(
+			h.span
+				.class('axis-title')
+				.children(options.problem === true && h.span.class('axis-dot').attr('aria-hidden', 'true'), options.title),
+			h.span.class('axis-muted').children(options.line)
+		)
+}
+
+export function RowContent<M>(h: Html.H<M>, options: RowSlots<NoInfer<M>>) {
+	return [options.leading, RowLabel(h, options), h.span.class('axis-value').children(options.value)]
+}
+
+export function RowPlaceholder<M>(h: Html.H<M>, options: RowSlots<NoInfer<M>> & {className?: string; id: string}) {
+	return h.div
+		.key(options.id)
+		.class('axis-row axis-item', options.className)
+		.attr('aria-hidden', 'true')
+		.children(RowContent(h, options))
+}
+
 export function Row<M>(
 	h: Html.H<M>,
-	options: {
-		className?: string
-		current: boolean
-		id: string
-		leading?: View.Input<M>
-		line: View.Input<M>
-		open: M
-		problem?: boolean
-		title: View.Input<M>
-		value: View.Input<M>
-	}
+	options: RowSlots<NoInfer<M>> & {className?: string; current: boolean; id: string; open: M}
 ) {
 	return Button(h)
 		.key(options.id)
 		.class('axis-row axis-item', options.className)
 		.attr('aria-current', `${options.current}`)
 		.on('click', () => options.open)
-		.children(
-			options.leading,
-			h.span
-				.class('axis-lines')
-				.children(
-					h.span.class('axis-title').children(options.problem === true && h.span.class('axis-dot'), options.title),
-					h.span.class('axis-muted').children(options.line)
-				),
-			h.span.class('axis-value').children(options.value)
-		)
+		.children(RowContent(h, options))
 }
 
 export function Notice<M>(h: Html.H<M>, text: string, action?: M, label = 'Retry') {

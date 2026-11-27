@@ -5,11 +5,12 @@ import {HttpBody} from 'effect/http'
 import type {HttpClient} from 'effect/http'
 import type {AtomRegistry} from 'effect/reactivity'
 
+import {isNative} from '@deslop/ui/native'
+
 import {NoteId, NotesError, captureUrl} from '#contracts'
 
 import {StashNative, atDevice} from '#web/notes/native.ts'
 import {capture} from '#web/notes/notes.ts'
-import {installed} from '#web/notes/session.ts'
 
 const linkFrom = Effect.fnUntraced(function* (copy: string) {
 	const text = String.trim(copy)
@@ -64,7 +65,7 @@ const sendImage = Effect.fnUntraced(function* (client: HttpClient.HttpClient, im
 })
 
 export const paste = Effect.fnUntraced(function* (registry: AtomRegistry.AtomRegistry, client: HttpClient.HttpClient) {
-	if (installed) {
+	if (isNative) {
 		const copy = yield* atDevice('The clipboard could not be read.', () => StashNative.paste())
 		yield* Option.match(Option.fromUndefinedOr(copy.image), {
 			onNone: Effect.fnUntraced(function* () {

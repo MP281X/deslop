@@ -1,3 +1,5 @@
+@import '@deslop/ui/theme.css';
+
 .auth-skeleton-list,
 .auth-skeleton-detail {
 	--auth-skeleton-lines: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 60' preserveAspectRatio='none' fill='%23191919'%3E%3Crect y='17' width='76' height='10' rx='2'/%3E%3Crect y='34' width='48' height='9' rx='2'/%3E%3C/svg%3E");
@@ -5,10 +7,9 @@
 }
 
 .auth-skeleton-list {
-	block-size: min(480px, 100dvh);
-	background:
-		var(--auth-skeleton-lines) left 16px top / min(180px, 50%) 60px repeat-y,
-		var(--auth-skeleton-value) right 16px top / 36px 60px repeat-y;
+	--skeleton-height: min(480px, 100dvh);
+	--skeleton-lines: var(--auth-skeleton-lines) left 16px top / min(180px, 50%) 60px repeat-y;
+	--skeleton-value: var(--auth-skeleton-value) right 16px top / 36px 60px repeat-y;
 }
 
 .auth-skeleton-detail {
@@ -18,37 +19,15 @@
 }
 
 .auth-skeleton-detail .auth-skeleton-list {
-	block-size: 120px;
+	--skeleton-height: 120px;
 }
 
 .auth-startup {
-	position: fixed;
-	inset: env(safe-area-inset-top, 0px) calc(56px + env(safe-area-inset-right, 0px)) env(safe-area-inset-bottom, 0px)
-		env(safe-area-inset-left, 0px);
-	display: grid;
-	grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-	gap: 16px;
-	padding: 6px 8px;
-	overflow: clip;
+	--startup-gap: 16px;
+	--startup-padding: 6px 8px;
+	--startup-wide-columns: minmax(330px, 35%) minmax(0, 1fr);
 }
 
-#root:not(:empty) + .auth-startup,
 .auth-startup[data-person] .auth-skeleton-detail .auth-skeleton-list {
 	display: none;
-}
-
-@media (min-width: 1100px) {
-	.auth-startup {
-		grid-template-columns: minmax(330px, 35%) minmax(0, 1fr);
-	}
-}
-
-@media (width < 640px) and (not (horizontal-viewport-segments: 2)) and (not (vertical-viewport-segments: 2)) {
-	.auth-startup {
-		grid-template-columns: minmax(0, 1fr);
-	}
-	.auth-startup:not([data-detail]) > .auth-skeleton-detail,
-	.auth-startup[data-detail] > .auth-skeleton-list {
-		display: none;
-	}
 }

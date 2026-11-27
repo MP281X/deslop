@@ -5,13 +5,14 @@ import type {PluginListenerHandle} from '@capacitor/core'
 import {PushNotifications} from '@capacitor/push-notifications'
 
 import {registerPushToken} from '@deslop/runtime/client/push'
-import type {Device as ApnsDevice} from '@deslop/runtime/shared/apns'
 import {ApnsToken} from '@deslop/runtime/shared/apns'
+import type {Device as ApnsDevice} from '@deslop/runtime/shared/apns'
+import {isNative, listenNative, registerTokens} from '@deslop/ui/native'
 
 import {FlightsError, PhoneId, PushBundle} from '#contracts'
 
 import {ownerAtom} from '#web/flights/data.ts'
-import {native, RpcClient} from '#web/flights/session.ts'
+import {RpcClient} from '#web/flights/session.ts'
 
 // oxlint-disable-next-line typescript/no-restricted-types -- Capacitor's bridge methods return promises.
 export type NativeResult<A> = Promise<A>
@@ -35,11 +36,10 @@ export function nativeCall<A>(read: () => NativeResult<A>, message: string) {
 }
 
 export function listener(acquire: () => NativeResult<PluginListenerHandle>) {
-	return Effect.acquireRelease(nativeCall(acquire, 'iOS could not listen for Trips updates.'), subscription =>
-		Effect.ignore(
-			nativeCall(() => subscription.remove(), 'iOS could not stop listening for Trips updates.'),
-			{log: 'Warn'}
-		)
+	return listenNative(
+		acquire,
+		cause => FlightsError.make({cause, message: 'iOS could not listen for Trips updates.'}),
+		cause => FlightsError.make({cause, message: 'iOS could not stop listening for Trips updates.'})
 	)
 }
 
@@ -80,7 +80,7 @@ const starts = Stream.callback<string, FlightsError>(queue =>
 )
 
 export const pushAtom = RpcClient.runtime.atom(get => {
-	if (!native || get(ownerAtom) === undefined) return Effect.void
+	if (!isNative || get(ownerAtom) === undefined) return Effect.void
 	return Effect.ignore(
 		Effect.gen(function* () {
 			const target = yield* Effect.flatMap(
@@ -90,15 +90,11 @@ export const pushAtom = RpcClient.runtime.atom(get => {
 			const call = yield* RpcClient
 			function tokens(source: typeof alerts, kind: ApnsDevice['kind']) {
 				return pipe(
-					source,
-					Stream.changes,
-					Stream.switchMap(value =>
-						pipe(
+					registerTokens(source, value =>
+						registerPushToken(
 							Effect.flatMap(Schema.decodeEffect(ApnsToken)(value), token =>
 								call('push.register', {...target, kind, token: Redacted.make(token)})
-							),
-							registerPushToken,
-							Stream.fromEffectDrain
+							)
 						)
 					),
 					Stream.runDrain,

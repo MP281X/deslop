@@ -3,11 +3,12 @@ import {Boolean, Effect, Function, MutableRef, Option, Queue, Schema, Stream, St
 import {App} from '@capacitor/app'
 import {PushNotifications} from '@capacitor/push-notifications'
 
+import {isNative} from '@deslop/ui/native'
+
 import {FlightId, Place} from '#contracts'
 
 import {directionsTo, rideTo} from '#web/flights/directions.ts'
 import {listener, nativeCall} from '#web/flights/notifications.ts'
-import {native} from '#web/flights/session.ts'
 
 type Target = typeof Target.Type
 const Target = Schema.Struct({day: Schema.Boolean, id: FlightId})
@@ -66,7 +67,7 @@ const nativeOpens = Stream.callback<Target>(queue =>
 	)
 )
 
-export const opened = Boolean.match(native, {
+export const opened = Boolean.match(isNative, {
 	onFalse: Function.constant(Stream.empty),
 	onTrue: Function.constant(nativeOpens)
 })

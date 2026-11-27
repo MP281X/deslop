@@ -11,8 +11,8 @@ import {DateTimeUtcFromFiniteMillis} from '@deslop/runtime/shared/time'
 
 import {Flight, FlightId, FlightsError, IMAGE_BYTES, TicketSource, TravelTime} from '#contracts'
 
-import {ownerAtom, refreshFlights, travelAtom, TravelList} from '#web/flights/data.ts'
-import {refreshAccount, resetAccount, RpcClient, signIn, signOut} from '#web/flights/session.ts'
+import {TravelList, ownerAtom, refreshFlights, travelAtom} from '#web/flights/data.ts'
+import {RpcClient, refreshAccount, resetAccount, signIn, signOut} from '#web/flights/session.ts'
 import {TripsRoute} from '#web/routes.ts'
 
 const AccountRead = AsyncResult.Schema({error: Schema.Unknown, success: Account})
@@ -83,7 +83,7 @@ export class Reload extends Command.Service<Reload>()('Trips/Reload', {
 	)
 }
 
-export function failed(cause: Cause.Cause<unknown>) {
+function failed(cause: Cause.Cause<unknown>) {
 	const reason = Cause.squash(cause)
 	if (Predicate.hasProperty(reason, 'message') && Predicate.isString(reason.message)) return reason.message
 	return Cause.pretty(cause)
@@ -193,22 +193,22 @@ export class Run extends Command.Service<Run>()('Trips/Run', {args: {action: Act
 		Effect.gen(function* () {
 			const registry = yield* AtomRegistry.AtomRegistry
 			const exclusive = yield* Semaphore.make(1)
-			return ({action}) =>
+			return request =>
 				pipe(
-					Action.match(action, {
-						File: ({file}) => save(registry, ticketFromFile(file)),
-						Session: ({logout}) => session(registry, logout),
-						Text: ({text}) =>
+					Action.match(request.action, {
+						File: input => save(registry, ticketFromFile(input.file)),
+						Session: input => session(registry, input.logout),
+						Text: input =>
 							save(
 								registry,
-								Effect.mapError(TicketSource.cases.text.makeEffect({text: String.trim(text)}), cause =>
+								Effect.mapError(TicketSource.cases.text.makeEffect({text: String.trim(input.text)}), cause =>
 									FlightsError.make({cause, message: 'Paste booking text or a link, up to 60,000 characters.'})
 								)
 							),
-						TripTime: ({row}) =>
+						TripTime: input =>
 							write(
 								registry,
-								Effect.flatMap(RpcClient, call => call('travel.set', row)),
+								Effect.flatMap(RpcClient, call => call('travel.set', input.row)),
 								true
 							)
 					}),

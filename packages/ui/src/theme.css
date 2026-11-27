@@ -33,6 +33,58 @@ body {
 	font-size: max(16px, 1em);
 }
 
+/* The HTML paints the same skeleton rows before the app mounts and while its first read is pending. */
+[class$='-skeleton-list'] {
+	block-size: var(--skeleton-height, 100dvh);
+	background: var(--skeleton-leading, none), var(--skeleton-lines), var(--skeleton-value);
+}
+
+#root + [aria-busy='true']:where(:has(> [class$='-skeleton-list'])) {
+	position: fixed;
+	inset: env(safe-area-inset-top, 0px) calc(56px + env(safe-area-inset-right, 0px)) env(safe-area-inset-bottom, 0px)
+		env(safe-area-inset-left, 0px);
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+	gap: var(--startup-gap, 0);
+	padding: var(--startup-padding, 0);
+	overflow: clip;
+	background: #000;
+}
+
+#root:not(:empty) + [aria-busy='true']:where(:has(> [class$='-skeleton-list'])) {
+	display: none;
+}
+
+@media (width >= 1100px) {
+	#root + [aria-busy='true']:where(:has(> [class$='-skeleton-list'])) {
+		grid-template-columns: var(--startup-wide-columns, minmax(0, 1fr) minmax(0, 1fr));
+	}
+}
+
+@media (width < 640px) and (not (horizontal-viewport-segments: 2)) and (not (vertical-viewport-segments: 2)) {
+	#root + [aria-busy='true']:where(:has(> [class$='-skeleton-list'])) {
+		grid-template-columns: minmax(0, 1fr);
+	}
+
+	#root
+		+ [aria-busy='true']:where(:has(> [class$='-skeleton-list'])):not([data-detail])
+		> :not([class$='-skeleton-list']),
+	#root + [aria-busy='true'][data-detail] > [class$='-skeleton-list'] {
+		display: none;
+	}
+}
+
+@media (vertical-viewport-segments: 2) {
+	#root + :is(.scope-startup, .trips-startup) {
+		grid-template-columns: minmax(0, 1fr);
+		grid-template-rows: env(viewport-segment-height 0 0) minmax(0, 1fr);
+	}
+
+	#root + :is(.scope-startup, .trips-startup) > [class$='-skeleton-list'] {
+		grid-row: 2;
+	}
+}
+
 @layer components {
 	.app-shell {
 		--shell-gap: 6px;

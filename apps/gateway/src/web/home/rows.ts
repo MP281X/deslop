@@ -3,6 +3,7 @@ import type {Html} from '@effect/ui/html'
 import {Array, Boolean, Function, HashMap, Number, Option, Order, Result, pipe} from 'effect'
 
 import {countOf} from '@deslop/runtime/shared/format'
+import {RowContent} from '@deslop/ui/axis'
 import {Button} from '@deslop/ui/control'
 import {Glass} from '@deslop/ui/glass'
 
@@ -13,7 +14,6 @@ import anthropic from '#web/home/marks/anthropic.svg'
 import openai from '#web/home/marks/openai.svg'
 import opencode from '#web/home/marks/opencode.svg'
 import {Action, Message} from '#web/home/model.ts'
-import {RowContent} from '#web/home/ui.ts'
 import {aiCost, aiSeries} from '#web/home/usage.ts'
 
 const PROVIDER_ORDER: readonly AiProvider[] = ['opencode', 'anthropic', 'openai']
@@ -25,7 +25,7 @@ const PROVIDERS = {
 
 type H = Html.H<Message>
 
-export function credentialAction(provider: AiProvider | undefined, keys: readonly AiKeyItem[]) {
+export function credentialAction(keys: readonly AiKeyItem[], provider?: AiProvider) {
 	if (provider === undefined) return 'Save key'
 	const action = pipe(
 		keys,
@@ -88,14 +88,17 @@ export function KeyRows(h: Html.H<Message>, keys: readonly AiKeyItem[], usage: A
 					.children(
 						RowContent(h, {
 							leading: h.img.class('gateway-mark').attrs({alt: '', src: style.mark}),
-							line: problem === undefined ? masked : `${problem} · ${masked}`,
+							line: Boolean.match(problem === undefined, {
+								onFalse: () => `${problem} · ${masked}`,
+								onTrue: () => masked
+							}),
 							problem: problem !== undefined,
 							title: style.name,
-							value: h.div
+							value: h.span
 								.class('gateway-figures')
 								.children(
 									Sparkline(h, aiSeries(usage.report, style.payer, usage.range)),
-									h.div.children(aiCost(usage.report, style.payer), h.div.class('axis-muted').children(style.label))
+									h.span.children(aiCost(usage.report, style.payer), h.span.class('axis-muted').children(style.label))
 								)
 						})
 					)

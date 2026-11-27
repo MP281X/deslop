@@ -8,7 +8,7 @@ import {AsyncResult, AtomRegistry} from 'effect/reactivity'
 import {signInUrl} from '@deslop/runtime/shared/auth'
 import {Account} from '@deslop/runtime/shared/schema'
 import {DateTimeUtcFromFiniteMillis} from '@deslop/runtime/shared/time'
-import {nativeSignIn, nativeSignOut} from '@deslop/ui/native'
+import {isNative, nativeSignIn, nativeSignOut, sessionAccount} from '@deslop/ui/native'
 import {refreshFailed} from '@deslop/ui/state'
 
 import {Kind, Note, NoteId, NoteItem, NotesError, TagName} from '#contracts'
@@ -17,7 +17,6 @@ import {paste} from '#web/notes/clipboard.ts'
 import {kindOf} from '#web/notes/kinds.ts'
 import {StashNative, atDevice} from '#web/notes/native.ts'
 import {capture, mediaAtom, noteAtom, notesAtom, regenerate} from '#web/notes/notes.ts'
-import {account, installed} from '#web/notes/session.ts'
 import {StashRoute} from '#web/routes.ts'
 
 const DRAFT_KEY = 'stash.draft'
@@ -126,7 +125,7 @@ export const StoreDraft = Command.make('Stash/StoreDraft', {args: {text: Schema.
 )
 
 function share(text: string) {
-	if (installed) return atDevice('The share sheet could not open.', () => StashNative.share({text}))
+	if (isNative) return atDevice('The share sheet could not open.', () => StashNative.share({text}))
 	if (Predicate.hasProperty(navigator, 'share')) {
 		return Effect.catchIf(
 			Effect.tryPromise({
@@ -142,13 +141,13 @@ function share(text: string) {
 
 function refreshAccount(registry: AtomRegistry.AtomRegistry) {
 	return Effect.sync(() => {
-		registry.refresh(account)
+		registry.refresh(sessionAccount)
 		if (AsyncResult.isFailure(registry.get(notesAtom))) registry.refresh(notesAtom)
 	})
 }
 
 function signIn(registry: AtomRegistry.AtomRegistry) {
-	if (!installed) return Effect.sync(() => location.assign(signInUrl(location.href)))
+	if (!isNative) return Effect.sync(() => location.assign(signInUrl(location.href)))
 	return Effect.flatMap(nativeSignIn, signedIn => {
 		if (signedIn) return refreshAccount(registry)
 		return Effect.void
@@ -197,7 +196,7 @@ export class Refresh extends Command.Service<Refresh>()('Stash/Refresh', {
 		AtomRegistry.AtomRegistry.useSync(
 			registry => input =>
 				Effect.sync(() => {
-					registry.refresh(account)
+					registry.refresh(sessionAccount)
 					refreshFailed(registry, notesAtom)
 					if (Predicate.isNotUndefined(input.item)) {
 						refreshFailed(registry, noteAtom(input.item))
@@ -214,9 +213,11 @@ export class Wake extends Command.Service<Wake>()('Stash/Wake', {args: {refresh:
 		AtomRegistry.AtomRegistry.useSync(
 			registry => input =>
 				Effect.gen(function* () {
-					if (input.refresh) registry.refresh(account)
+					if (input.refresh) registry.refresh(sessionAccount)
 					if (
-						Option.isNone(yield* Effect.option(AtomRegistry.getResult(registry, account, {suspendOnWaiting: true})))
+						Option.isNone(
+							yield* Effect.option(AtomRegistry.getResult(registry, sessionAccount, {suspendOnWaiting: true}))
+						)
 					) {
 						return Message.Awake()
 					}
