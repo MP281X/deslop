@@ -1,7 +1,7 @@
-import {Component, UiSchema} from '@effect/ui'
+import {Component, Subscription, UiSchema} from '@effect/ui'
 import type {Mount, View} from '@effect/ui'
 
-import {Array, Boolean, Function, Option, Predicate, Schema} from 'effect'
+import {Array, Boolean, Function, Option, Predicate, Schema, Stream} from 'effect'
 
 export type RowData = typeof RowData.Type
 const RowData = Schema.Struct({
@@ -40,7 +40,7 @@ type Layout = typeof Layout.Type
 const Layout = Schema.Struct({
 	height: Schema.Finite,
 	listHidden: Schema.Boolean,
-	sheetOpen: Schema.Boolean,
+	sheetFor: Schema.UndefinedOr(Schema.String),
 	width: Schema.Finite
 })
 
@@ -58,9 +58,10 @@ export const ListModel = Component.define({
 	message: LayoutMessage,
 	model: Layout,
 	name: 'DesignListDetail',
-	props: Schema.Struct({id: Schema.UndefinedOr(Schema.String), loading: Schema.Boolean, rows: Schema.Array(RowData)})
+	props: Schema.Struct({id: Schema.UndefinedOr(Schema.String), loading: Schema.Boolean, rows: Schema.Array(RowData)}),
+	restore: model => ({...model, sheetFor: undefined})
 }).make({
-	init: () => ({height: 0, listHidden: false, sheetOpen: false, width: 0}),
+	init: () => ({height: 0, listHidden: false, sheetFor: undefined, width: 0}),
 	parts: (p, model) => {
 		const note = Array.findFirst(p.props.rows, row => row.id === p.props.id)
 		const wide = isWide(model)
@@ -99,7 +100,7 @@ export const ListModel = Component.define({
 				if (p.props.loading) return Array.makeBy(3, renderSkeleton)
 				return Array.map(p.props.rows, renderRow)
 			},
-			sheetOpen: model.sheetOpen,
+			sheetOpen: opened && model.sheetFor === p.props.id,
 			splitWidth: splitWidth(model),
 			toggleList: p.part((el, event: string) => el.on(event, LayoutMessage.ToggledList())),
 			toolbar: p.part((el, event: string) =>
@@ -115,9 +116,14 @@ export const ListModel = Component.define({
 			wide
 		}
 	},
+	subscriptions: $ => [
+		$.model.sheetFor !== undefined &&
+			$.model.sheetFor !== $.props.id &&
+			Subscription.make('DismissSheetOnSelection', Stream.succeed(LayoutMessage.DismissedSheet()))
+	],
 	update: {
-		DismissedSheet: $ => $.evolve({sheetOpen: false}),
-		RequestedSheet: $ => $.evolve({sheetOpen: true}),
+		DismissedSheet: $ => $.evolve({sheetFor: undefined}),
+		RequestedSheet: $ => $.evolve({sheetFor: $.props.id}),
 		Resized: ($, size) => {
 			if ($.model.width === size.width && $.model.height === size.height) return $.model
 			const next = $.evolve(size)
