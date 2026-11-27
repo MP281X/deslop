@@ -10,13 +10,13 @@ import type {Html} from '@effect/ui/html'
 import {Array, Function, Option, Record} from 'effect'
 
 import {ListModel, RowModel} from '../shared/model.ts'
-import type {ListParts, RowData} from '../shared/model.ts'
+import type {ListParts, RowData, Selection} from '../shared/model.ts'
 import {fold, ink, styles, status} from '../shared/styles.ts'
 import type {SheetData} from '../shared/styles.ts'
 
-import {WatchLayout} from './history.ts'
+import {WatchLayout} from './layout.ts'
 
-export type {RowData} from '../shared/model.ts'
+export type {RowData, Selection} from '../shared/model.ts'
 
 const font = '-apple-system, system-ui, "Geist Variable", sans-serif'
 
@@ -117,7 +117,7 @@ function Sheet<M>(h: Html.H<M>, parts: ListParts, sheet: SheetData) {
 		)
 }
 
-function Chrome<M>(h: Html.H<M>, parts: ListParts, sheet: SheetData) {
+function Chrome<M>(h: Html.H<M>, parts: ListParts, sheet: SheetData, back: Selection['back']) {
 	return h.div
 		.style({display: 'flex', alignItems: 'center', gap: '8px', minHeight: '52px', padding: '0 12px'})
 		.children(
@@ -134,14 +134,10 @@ function Chrome<M>(h: Html.H<M>, parts: ListParts, sheet: SheetData) {
 					.children(Icon(h, 'sidebar')),
 			!parts.wide &&
 				parts.opened &&
-				Button(h)
+				back(Button(h), 'click')
 					.class('design-control')
 					.attrs({'aria-label': 'Back'})
 					.style(control)
-					.on('click', () => {
-						history.back()
-						return undefined
-					})
 					.children(Icon(h, 'back')),
 			h.span.style({flex: '1'}),
 			parts.opened &&
@@ -154,15 +150,27 @@ function Chrome<M>(h: Html.H<M>, parts: ListParts, sheet: SheetData) {
 		)
 }
 
+function Skeleton<M>(h: Html.H<M>, width: string, height: string) {
+	return h.div.attr('aria-hidden', 'true').style({width, height, backgroundColor: '#202020', borderRadius: '4px'})
+}
+
 export function ListDetail<M, R>(
 	h: Html.H<M>,
-	options: {rows: readonly RowData[]; detail: (row: RowData) => View.Input<M, R>; sheet: SheetData}
+	options: {
+		rows: readonly RowData[]
+		selection: Selection
+		loading?: boolean
+		detail: (row: RowData) => View.Input<M, R>
+		sheet: SheetData
+	}
 ) {
 	return ListModel(h, {
-		props: {rows: options.rows},
-		view: parts =>
-			parts
-				.watch(h.main, WatchLayout({id: Option.map(parts.note, row => row.id).pipe(Option.getOrUndefined)}))
+		props: {id: options.selection.id, rows: options.rows},
+		view: parts => {
+			const pendingDetail = options.loading === true && options.selection.id !== undefined
+			const opened = parts.opened || pendingDetail
+			return parts
+				.watch(h.main, WatchLayout({}))
 				.style({
 					...web(styles.frame),
 					flexDirection: 'column',
@@ -173,7 +181,7 @@ export function ListDetail<M, R>(
 					overflow: 'hidden'
 				})
 				.children(
-					Chrome(h, parts, options.sheet),
+					Chrome(h, parts, options.sheet, options.selection.back),
 					h.div
 						.class('design-panes')
 						.style(web(styles.panes))
@@ -185,40 +193,56 @@ export function ListDetail<M, R>(
 									...web(styles.rows),
 									overflowY: 'auto',
 									boxSizing: 'border-box',
-									display: parts.listHidden || (!parts.wide && parts.opened) ? 'none' : 'block',
+									display: parts.listHidden || (!parts.wide && opened) ? 'none' : 'block',
 									flex: parts.wide ? `0 0 ${parts.splitWidth}px` : '1',
 									borderInlineEnd: parts.wide ? `1px solid ${fold}` : undefined
 								})
 								.children(
-									Array.map(options.rows, row =>
-										Row(
-											h,
-											row,
-											parts
-												.select(Button(h), 'click', row.id)
-												.attr(
-													'aria-current',
-													parts.wide && !parts.listHidden && Option.exists(parts.note, open => open.id === row.id)
-														? 'true'
-														: undefined
+									options.loading === true
+										? Array.makeBy(3, index =>
+												h.div
+													.key(index)
+													.style({
+														...web(styles.row),
+														alignItems: 'flex-start',
+														justifyContent: 'center',
+														flexDirection: 'column',
+														gap: '6px'
+													})
+													.children(Skeleton(h, '36%', '12px'), Skeleton(h, '52%', '10px'))
+											)
+										: Array.map(options.rows, row =>
+												Row(
+													h,
+													row,
+													options.selection
+														.select(Button(h), 'click', row.id)
+														.attr(
+															'aria-current',
+															parts.wide && !parts.listHidden && Option.exists(parts.note, open => open.id === row.id)
+																? 'true'
+																: undefined
+														)
 												)
-										)
-									)
+											)
 								),
-							(parts.wide || parts.opened) &&
+							(parts.wide || opened) &&
 								h.section
 									.class('design-detail')
 									.attr('aria-label', 'Detail')
 									.style({...web(styles.pane), overflowY: 'auto'})
 									.children(
-										Option.match(parts.note, {
-											onNone: Function.constUndefined,
-											onSome: row => h.div.key(row.id).style(web(styles.detail)).children(options.detail(row))
-										})
+										pendingDetail
+											? h.div.style(web(styles.detail)).children(Skeleton(h, '46%', '20px'), Skeleton(h, '72%', '14px'))
+											: Option.match(parts.note, {
+													onNone: Function.constUndefined,
+													onSome: row => h.div.key(row.id).style(web(styles.detail)).children(options.detail(row))
+												})
 									)
 						),
-					parts.sheetOpen && Sheet(h, parts, options.sheet)
+					parts.opened && parts.sheetOpen && Sheet(h, parts, options.sheet)
 				)
+		}
 	})
 }
 

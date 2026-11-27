@@ -50,16 +50,18 @@
 	}
 }
 
-:is(:active-view-transition-type(design-detail-in), :active-view-transition-type(design-detail-out)) .design-detail {
-	view-transition-name: design-detail;
-}
+@media (width < 640px), (640px <= width < 800px) and (height < 600px) {
+	:is(:active-view-transition-type(design-detail-in), :active-view-transition-type(design-detail-out)) .design-detail {
+		view-transition-name: design-detail;
+	}
 
-:active-view-transition-type(design-detail-in) ::view-transition-new(design-detail) {
-	animation: 220ms ease-out both design-enter;
-}
+	:active-view-transition-type(design-detail-in) ::view-transition-new(design-detail) {
+		animation: 220ms ease-out both design-enter;
+	}
 
-:active-view-transition-type(design-detail-out) ::view-transition-old(design-detail) {
-	animation: 220ms ease-out both design-leave;
+	:active-view-transition-type(design-detail-out) ::view-transition-old(design-detail) {
+		animation: 220ms ease-out both design-leave;
+	}
 }
 
 @keyframes design-enter {

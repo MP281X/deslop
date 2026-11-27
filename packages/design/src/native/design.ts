@@ -5,14 +5,14 @@ import 'react-native/Libraries/Core/setUpTimers'
 import {Native} from '@effect/ui-native'
 import {Pressable} from '@effect/ui-native/kit'
 
-import {Array, Function, Option} from 'effect'
+import {Array, Option} from 'effect'
 
 import {ListModel, RowModel} from '../shared/model.ts'
-import type {ListParts, RowData} from '../shared/model.ts'
+import type {ListParts, RowData, Selection} from '../shared/model.ts'
 import {black, fold, selected, status, styles} from '../shared/styles.ts'
 import type {SheetData} from '../shared/styles.ts'
 
-export type {RowData} from '../shared/model.ts'
+export type {RowData, Selection} from '../shared/model.ts'
 
 function native<Tag extends string>(tag: Tag, viewName: string) {
 	return Native.defineView(() => new Native.ViewElement<never, never, Record<string, unknown>, Tag>(tag), {viewName})
@@ -39,14 +39,14 @@ const pressedStyle = {backgroundColor: '#2b2b2b'}
 // while the open screen's list still meets the fold.
 const systemColumnWidth = 76
 
-function Row<M>(h: Native.H<M>, data: RowData, parts: ListParts) {
+function Row<M>(h: Native.H<M>, data: RowData, parts: ListParts, select: Selection['select']) {
 	const active = parts.wide && !parts.listHidden && Option.exists(parts.note, open => open.id === data.id)
 	return RowModel(h, {
 		key: data.id,
 		props: data,
 		view: row =>
 			Pressable(h, {
-				element: parts.select(parts.select(h.view, 'accessibilityTap', data.id), 'press', data.id),
+				element: select(select(h.view, 'accessibilityTap', data.id), 'press', data.id),
 				props: {pressedStyle}
 			})
 				.prop('accessible', true)
@@ -139,9 +139,19 @@ function header(parts: ListParts, sheet: SheetData, detail: boolean) {
 	)
 }
 
+function Skeleton<M>(h: Native.H<M>, width: Native.ViewStyle['width'], height: number) {
+	return h.view.style({width, height, backgroundColor: '#202020', borderRadius: 4})
+}
+
 export function ListDetail<M, R>(
 	h: Native.H<M>,
-	options: {rows: readonly RowData[]; detail: (row: RowData) => Native.NoTextInput<M, R>; sheet: SheetData}
+	options: {
+		rows: readonly RowData[]
+		selection: Selection
+		loading?: boolean
+		detail: (row: RowData) => Native.NoTextInput<M, R>
+		sheet: SheetData
+	}
 ) {
 	function detail(row: RowData, wide: boolean) {
 		return h.scroll
@@ -152,10 +162,17 @@ export function ListDetail<M, R>(
 			.children(options.detail(row))
 	}
 
+	function detailSkeleton(wide: boolean) {
+		return h.view
+			.style({...styles.detail, flex: 1, paddingTop: wide ? 44 : 20})
+			.children(Skeleton(h, '46%', 20), Skeleton(h, '72%', 14))
+	}
+
 	return ListModel(h, {
-		props: {rows: options.rows},
-		view: parts =>
-			parts.layout(h.view.style(styles.frame), 'layout').children(
+		props: {id: options.selection.id, rows: options.rows},
+		view: parts => {
+			const pendingDetail = options.loading === true && options.selection.id !== undefined
+			return parts.layout(h.view.style(styles.frame), 'layout').children(
 				Stack.style(styles.frame)
 					.prop('nativeContainerBackgroundColor', black)
 					.children(
@@ -185,10 +202,25 @@ export function ListDetail<M, R>(
 														: {...styles.rows, paddingRight: systemColumnWidth}
 												)
 												.prop('contentInsetAdjustmentBehavior', 'never')
-												.children(Array.map(options.rows, row => Row(h, row, parts))),
+												.children(
+													options.loading === true
+														? Array.makeBy(3, index =>
+																h.view
+																	.key(index)
+																	.style({
+																		...styles.row,
+																		alignItems: 'flex-start',
+																		justifyContent: 'center',
+																		flexDirection: 'column',
+																		gap: 6
+																	})
+																	.children(Skeleton(h, '36%', 12), Skeleton(h, '52%', 10))
+															)
+														: Array.map(options.rows, row => Row(h, row, parts, options.selection.select))
+												),
 											parts.wide &&
 												Option.match(parts.note, {
-													onNone: () => h.view.style(styles.pane),
+													onNone: () => (pendingDetail ? detailSkeleton(true) : h.view.style(styles.pane)),
 													onSome: row => detail(row, true)
 												})
 										)
@@ -196,24 +228,24 @@ export function ListDetail<M, R>(
 								header(parts, options.sheet, false)
 							),
 						!parts.wide &&
-							Option.match(parts.note, {
-								onNone: Function.constUndefined,
-								onSome: row =>
-									parts
-										.dismissDetail(
-											Screen.key('detail').style(screenStyle).prop('activityState', 2).prop('screenId', 'detail'),
-											'dismissed'
-										)
+							(parts.opened || pendingDetail) &&
+							options.selection
+								.back(
+									Screen.key('detail').style(screenStyle).prop('activityState', 2).prop('screenId', 'detail'),
+									'dismissed'
+								)
+								.children(
+									SafeArea.style(styles.frame)
+										.prop('edges', {top: 'additive', left: 'additive', right: 'additive', bottom: 'additive'})
 										.children(
-											SafeArea.style(styles.frame)
-												.prop('edges', {top: 'additive', left: 'additive', right: 'additive', bottom: 'additive'})
-												.children(detail(row, false)),
-											header(parts, options.sheet, true)
-										)
-							}),
-						parts.sheetOpen && Sheet(h, parts, options.sheet)
+											Option.match(parts.note, {onNone: () => detailSkeleton(false), onSome: row => detail(row, false)})
+										),
+									header(parts, options.sheet, true)
+								),
+						parts.opened && parts.sheetOpen && Sheet(h, parts, options.sheet)
 					)
 			)
+		}
 	})
 }
 

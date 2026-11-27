@@ -1,7 +1,7 @@
 import {Component, UiSchema} from '@effect/ui'
 import type {View} from '@effect/ui'
 
-import {Array, Predicate, Schema} from 'effect'
+import {Array, Option, Predicate, Schema} from 'effect'
 
 const RowData = Schema.Struct({
 	id: Schema.String,
@@ -30,18 +30,14 @@ export const RowModel = Component.define({
 })
 
 const LayoutMessage = UiSchema.TaggedEnum({
-	Chose: {id: Schema.String},
-	Closed: {},
 	ToggledList: {},
 	Resized: {width: Schema.Number, height: Schema.Number},
-	Restored: {id: Schema.UndefinedOr(Schema.String)},
 	RequestedSheet: {},
 	DismissedSheet: {}
 })
 type LayoutMessage = typeof LayoutMessage.Type
 
 const Layout = Schema.Struct({
-	id: Schema.UndefinedOr(Schema.String),
 	width: Schema.Number,
 	height: Schema.Number,
 	listHidden: Schema.Boolean,
@@ -60,39 +56,25 @@ function splitWidth({width, height}: Layout) {
 
 export const ListModel = Component.define({
 	name: 'DesignListDetail',
-	props: Schema.Struct({rows: Schema.Array(RowData)}),
+	props: Schema.Struct({id: Schema.UndefinedOr(Schema.String), rows: Schema.Array(RowData)}),
 	model: Layout,
 	message: LayoutMessage
 }).make({
-	init: () => ({id: undefined, width: 0, height: 0, listHidden: false, sheetOpen: false}),
+	init: () => ({width: 0, height: 0, listHidden: false, sheetOpen: false}),
 	update: {
-		Chose: ($, {id}) => {
-			if ($.model.id === id) return $.model
-			return $.evolve({id}).viewTransition(isWide($.model) ? [] : ['design-detail-in'])
-		},
-		Closed: $ => {
-			if (isWide($.model)) return $.model
-			return $.evolve({id: undefined, listHidden: false, sheetOpen: false}).viewTransition(['design-detail-out'])
-		},
 		ToggledList: $ => $.evolve({listHidden: !$.model.listHidden}).viewTransition(['design-layout']),
 		Resized: ($, size) => {
 			if ($.model.width === size.width && $.model.height === size.height) return $.model
 			const next = $.evolve(size)
 			return isWide($.model) === isWide(size) ? next : next.viewTransition(['design-layout'])
 		},
-		Restored: ($, {id}) => {
-			if ($.model.id === id) return $.model
-			return $.evolve({id, listHidden: false, sheetOpen: false}).viewTransition(
-				isWide($.model) ? [] : [id === undefined ? 'design-detail-out' : 'design-detail-in']
-			)
-		},
 		RequestedSheet: $ => $.evolve({sheetOpen: true}),
 		DismissedSheet: $ => $.evolve({sheetOpen: false})
 	},
 	parts: (p, model) => {
-		const note = Array.findFirst(p.props.rows, row => row.id === model.id)
+		const note = Array.findFirst(p.props.rows, row => row.id === p.props.id)
 		const wide = isWide(model)
-		const opened = Array.some(p.props.rows, row => row.id === model.id)
+		const opened = Option.isSome(note)
 		return {
 			note,
 			wide,
@@ -100,8 +82,6 @@ export const ListModel = Component.define({
 			splitWidth: splitWidth(model),
 			listHidden: wide && opened && model.listHidden,
 			sheetOpen: model.sheetOpen,
-			select: p.part((el, event: string, id: string) => el.on(event, LayoutMessage.Chose({id}))),
-			dismissDetail: p.part((el, event: string) => el.on(event, LayoutMessage.Closed())),
 			dismissSheet: p.part((el, event: string) =>
 				el.on(event, LayoutMessage.DismissedSheet(), event === 'cancel' ? {preventDefault: true} : undefined)
 			),
@@ -132,4 +112,8 @@ export const ListModel = Component.define({
 
 export type ListParts = Component.Headless.Parts<typeof ListModel>
 export const resized = LayoutMessage.Resized
-export const restored = LayoutMessage.Restored
+export type Selection = {
+	id: string | undefined
+	select: View.Part<string, [event: string, id: string]>
+	back: View.Part<string, [event: string]>
+}

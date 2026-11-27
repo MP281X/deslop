@@ -63,7 +63,7 @@ const PREVIEW = Array.join(
 export default defineConfig({
 	create: {
 		templates: [
-			{description: 'Create a full-stack Deslop application', name: 'app', template: './tools/create-app'},
+			{description: 'Create a Deslop server with web and iPhone clients', name: 'app', template: './tools/create-app'},
 			{description: 'Create a standard Deslop package', name: 'package', template: './tools/create-package'}
 		]
 	},
