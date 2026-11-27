@@ -5,13 +5,13 @@ import {iphoneUpdates} from '@deslop/runtime/config/iphone'
 import {appOrigin, scheme} from './src/iphone/origin.ts'
 
 export default {
-	name: 'template-app',
-	slug: 'template-app',
-	scheme,
-	platforms: ['ios'],
-	orientation: 'default',
-	userInterfaceStyle: 'dark',
+	icon: './src/iphone/app.icon',
 	ios: {bundleIdentifier: 'xyz.mp281x.templateBundleSlug', supportsTablet: true},
-		icon: './src/iphone/app.icon',
+	name: 'template-app',
+	orientation: 'default',
+	platforms: ['ios'],
+	scheme,
+	slug: 'template-app',
+	userInterfaceStyle: 'dark',
 	...iphoneUpdates(appOrigin)
 } satisfies ExpoConfig

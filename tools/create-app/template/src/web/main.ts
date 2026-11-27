@@ -1,7 +1,7 @@
 import {Router} from '@effect/ui'
 import {BrowserHost, BrowserRouter, Html} from '@effect/ui/html'
 
-import {Effect, Layer, Predicate, Schema, pipe} from 'effect'
+import {Effect, Function, Layer, Predicate, Schema, pipe} from 'effect'
 
 import {FetchHttpClient} from 'effect/http'
 
@@ -14,35 +14,33 @@ import {ItemsScreen, layerItems, layerViewer, sheet} from '#screens/items.ts'
 import {AppRoute} from '#screens/routes.ts'
 
 const App = Html.component({
-	name: 'App',
-	props: Schema.Struct({route: AppRoute}),
+	message: Schema.Never,
 	model: Schema.Null,
-	message: Schema.Never
+	name: 'App',
+	props: Schema.Struct({route: AppRoute})
 }).make({
-	init: () => null,
-	update: () => null,
+	init: Function.constNull,
+	update: Function.constNull,
 	view: h =>
 		ItemsScreen(h, {
 			props: h.props,
-			view: ({items, body, loading, problem, retry, retryable, selection, signIn}) =>
-				problem === undefined
-					? ListDetail(h, {
-							rows: items,
-							loading,
-							selection,
-							sheet,
-							detail: row => DetailText(h, row.title, body, row.line)
-						})
-					: h.main
-							.style({padding: '20px'})
-							.children(
-								h.p.attr('role', 'status').children(problem),
-								signIn
-									? h.a.attr('href', signInUrl(location.href)).children('Continue with GitHub')
-									: retryable
-										? retry(h.button, 'click').children('Retry')
-										: h.a.attr('href', AppRoute.print(AppRoute.List({}))).children('Back to list')
-							)
+			view: screen => {
+				if (screen.problem === undefined) {
+					return ListDetail(h, {
+						detail: row => DetailText(h, row.title, screen.body, row.line),
+						loading: screen.loading,
+						rows: screen.items,
+						selection: screen.selection,
+						sheet
+					})
+				}
+				function action() {
+					if (screen.signIn) return h.a.attr('href', signInUrl(location.href)).children('Continue with GitHub')
+					if (screen.retryable) return screen.retry(h.button, 'click').children('Retry')
+					return h.a.attr('href', AppRoute.print(AppRoute.List({}))).children('Back to list')
+				}
+				return h.main.style({padding: '20px'}).children(h.p.attr('role', 'status').children(screen.problem), action())
+			}
 		})
 })
 

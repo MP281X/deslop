@@ -563,7 +563,11 @@ export const lint: OxlintConfig & {
 		'import/no-namespace': 'error',
 		'import/no-relative-parent-imports': 'error',
 		'import/no-self-import': 'error',
-		'import/no-unassigned-import': ['error', {allow: ['**/*.css']}],
+		// Effect UI native skips React Native's renderer, so iPhone apps start its timers and XHR themselves.
+		'import/no-unassigned-import': [
+			'error',
+			{allow: ['**/*.css', 'react-native/Libraries/Core/setUpTimers', 'react-native/Libraries/Core/setUpXHR']}
+		],
 
 		...recommended,
 

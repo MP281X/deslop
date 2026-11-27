@@ -1,62 +1,70 @@
-// fallow-ignore-file unused-export unused-type -- New design entry point; apps keep their existing renderer until migration.
-// The Fabric app starts without React Native's JS environment; Pressable uses its microtask queue.
+// Pressable uses the microtask queue from React Native's bootstrap.
 import 'react-native/Libraries/Core/setUpTimers'
 
 import {Native} from '@effect/ui-native'
 import {Pressable} from '@effect/ui-native/kit'
 
-import {Array, Option} from 'effect'
+import {Array, Boolean, Function, Option} from 'effect'
 
-import {ListModel, RowModel} from '../shared/model.ts'
-import type {ListParts, RowData, Selection} from '../shared/model.ts'
-import {black, fold, selected, status, styles} from '../shared/styles.ts'
-import type {SheetData} from '../shared/styles.ts'
+import {ListModel, RowModel, listProps} from '#src/shared/model.ts'
+import type {ListOptions, ListParts, RowData, Selection} from '#src/shared/model.ts'
+import {black, fold, selected, status, styles} from '#src/shared/styles.ts'
+import type {SheetData} from '#src/shared/styles.ts'
 
-export type {RowData, Selection} from '../shared/model.ts'
+const FIGURES = ['tabular-nums'] as const
+const PRESSED_STYLE = {backgroundColor: '#2b2b2b'}
+// The Duo system column overlays Fabric.
+const SYSTEM_COLUMN_WIDTH = 76
+const SCREEN_STYLE = {
+	backgroundColor: black,
+	bottom: 0,
+	left: 0,
+	position: 'absolute',
+	right: 0,
+	top: 0
+} as const satisfies Native.ViewStyle
+
+type NativeView<Tag extends string> = <M>() => Native.ViewElement<M, never, Record<string, unknown>, Tag>
 
 function native<Tag extends string>(tag: Tag, viewName: string) {
-	return Native.defineView(() => new Native.ViewElement<never, never, Record<string, unknown>, Tag>(tag), {viewName})
+	// The registered builder has no handlers until a component adds its own.
+	const view: NativeView<Tag> = Function.constant(
+		Native.defineView(() => new Native.ViewElement<never, never, Record<string, unknown>, Tag>(tag), {viewName})
+	)
+	return view
 }
 
-// These are the linked Fabric views from react-native-screens and react-native-safe-area-context;
-// importing their React components would bring React into the application's JS bundle.
+// Use the linked Fabric views without importing their React components.
 const Stack = native('designStack', 'RNSScreenStack')
 const Screen = native('designScreen', 'RNSScreen')
 const Header = native('designHeader', 'RNSScreenStackHeaderConfig')
 const SafeArea = native('designSafeArea', 'RNCSafeAreaView')
 
-const screenStyle = {
-	position: 'absolute',
-	top: 0,
-	bottom: 0,
-	left: 0,
-	right: 0,
-	backgroundColor: black
-} as const satisfies Native.ViewStyle
-const figures = ['tabular-nums'] as const
-const pressedStyle = {backgroundColor: '#2b2b2b'}
-// The system column overlays Fabric on Duo. Keep content out of its way,
-// while the open screen's list still meets the fold.
-const systemColumnWidth = 76
-
-function Row<M>(h: Native.H<M>, data: RowData, parts: ListParts, select: Selection['select']) {
-	const active = parts.wide && !parts.listHidden && Option.exists(parts.note, open => open.id === data.id)
+function Row<M>(h: Native.H<M>, item: RowData, parts: ListParts, select: Selection['select']) {
+	const active = parts.wide && !parts.listHidden && Option.exists(parts.note, open => open.id === item.id)
 	return RowModel(h, {
-		key: data.id,
-		props: data,
-		view: row =>
-			Pressable(h, {
-				element: select(select(h.view, 'accessibilityTap', data.id), 'press', data.id),
-				props: {pressedStyle}
+		key: item.id,
+		props: item,
+		view: row => {
+			const trailing = Boolean.match(row.trailing === undefined, {
+				onFalse: () => `, ${row.trailing}`,
+				onTrue: Function.constant('')
+			})
+			return Pressable(h, {
+				element: select(select(h.view, 'accessibilityTap', item.id), 'press', item.id),
+				props: {pressedStyle: PRESSED_STYLE}
 			})
 				.prop('accessible', true)
 				.prop('accessibilityRole', 'button')
 				.prop('accessibilityState', {selected: active})
-				.prop(
-					'accessibilityLabel',
-					row.title + ', ' + row.line + (row.trailing === undefined ? '' : ', ' + row.trailing)
-				)
-				.style({...styles.row, backgroundColor: active ? selected : black})
+				.prop('accessibilityLabel', `${row.title}, ${row.line}${trailing}`)
+				.style({
+					...styles.row,
+					backgroundColor: Boolean.match(active, {
+						onFalse: Function.constant(black),
+						onTrue: Function.constant(selected)
+					})
+				})
 				.children(
 					h.view
 						.style(styles.lead)
@@ -69,16 +77,18 @@ function Row<M>(h: Native.H<M>, data: RowData, parts: ListParts, select: Selecti
 								),
 							h.text.style(styles.line).prop('numberOfLines', 1).children(row.line)
 						),
-					row.trailing !== undefined && h.text.style({...styles.line, fontVariant: figures}).children(row.trailing)
+					row.trailing !== undefined && h.text.style({...styles.line, fontVariant: FIGURES}).children(row.trailing)
 				)
+		}
 	})
 }
 
 function Sheet<M>(h: Native.H<M>, parts: ListParts, options: SheetData) {
 	return parts
 		.dismissSheet(
-			Screen.key('sheet')
-				.style({...screenStyle, backgroundColor: styles.sheet.backgroundColor})
+			Screen<M>()
+				.key('sheet')
+				.style({...SCREEN_STYLE, backgroundColor: styles.sheet.backgroundColor})
 				.prop('activityState', 2)
 				.prop('screenId', 'sheet')
 				.prop('stackPresentation', 'formSheet')
@@ -93,7 +103,7 @@ function Sheet<M>(h: Native.H<M>, parts: ListParts, options: SheetData) {
 				h.view.style(styles.sheetActions).children(
 					Pressable(h, {
 						element: parts.dismissSheet(parts.dismissSheet(h.view, 'accessibilityTap'), 'press'),
-						props: {pressedStyle}
+						props: {pressedStyle: PRESSED_STYLE}
 					})
 						.style(styles.control)
 						.prop('accessible', true)
@@ -102,13 +112,14 @@ function Sheet<M>(h: Native.H<M>, parts: ListParts, options: SheetData) {
 						.children(h.text.style(styles.body).children(options.action))
 				)
 			),
-			Header.prop('hidden', true)
+			Header<M>().prop('hidden', true)
 		)
 }
 
-function header(parts: ListParts, sheet: SheetData, detail: boolean) {
+function header<M>(parts: ListParts, sheet: SheetData, detail: boolean) {
 	return parts.toolbar(
-		Header.prop('title', '')
+		Header<M>()
+			.prop('title', '')
 			.prop('hideShadow', true)
 			.prop('translucent', false)
 			.prop('backgroundColor', black)
@@ -118,134 +129,142 @@ function header(parts: ListParts, sheet: SheetData, detail: boolean) {
 			.prop('hidden', !detail && !parts.wide)
 			.prop(
 				'headerLeftBarButtonItems',
-				parts.wide && parts.opened
-					? [
-							{
-								index: 0,
-								sfSymbolName: 'sidebar.left',
-								buttonId: 'sidebar',
-								accessibilityLabel: parts.listHidden ? 'Show list' : 'Hide list'
-							}
-						]
-					: []
+				Boolean.match(parts.wide && parts.opened, {
+					onFalse: Array.empty,
+					onTrue: () => [
+						{accessibilityLabel: parts.listAction, buttonId: 'sidebar', index: 0, sfSymbolName: 'sidebar.left'}
+					]
+				})
 			)
 			.prop(
 				'headerRightBarButtonItems',
-				parts.opened
-					? [{index: 0, sfSymbolName: 'arrow.clockwise', buttonId: 'sheet', accessibilityLabel: sheet.title}]
-					: []
+				Boolean.match(parts.opened, {
+					onFalse: Array.empty,
+					onTrue: () => [
+						{accessibilityLabel: sheet.title, buttonId: 'sheet', index: 0, sfSymbolName: 'arrow.clockwise'}
+					]
+				})
 			),
 		'pressHeaderBarButtonItem'
 	)
 }
 
 function Skeleton<M>(h: Native.H<M>, width: Native.ViewStyle['width'], height: number) {
-	return h.view.style({width, height, backgroundColor: '#202020', borderRadius: 4})
+	return h.view.style({backgroundColor: '#202020', borderRadius: 4, height, width})
+}
+
+function screen<M>(id: string) {
+	return Screen<M>().key(id).style(SCREEN_STYLE).prop('activityState', 2).prop('screenId', id)
+}
+
+function listArea<M>() {
+	return SafeArea<M>()
+		.style(styles.frame)
+		.prop('edges', {bottom: 'additive', left: 'additive', right: 'additive', top: 'additive'})
+}
+
+function detailTop(wide: boolean) {
+	if (wide) return 44
+	return 20
+}
+
+function listStyle(parts: ListParts) {
+	if (!parts.wide) return styles.pane
+	return {
+		borderRightColor: fold,
+		borderRightWidth: 1,
+		display: Boolean.match(parts.listHidden, {
+			onFalse: Function.constant('flex' as const),
+			onTrue: Function.constant('none' as const)
+		}),
+		width: parts.splitWidth
+	} satisfies Native.ViewStyle
+}
+
+function RowSkeleton<M>(h: Native.H<M>, index: number) {
+	return h.view
+		.key(`${index}`)
+		.style({...styles.row, alignItems: 'flex-start', flexDirection: 'column', gap: 6, justifyContent: 'center'})
+		.children(Skeleton(h, '36%', 12), Skeleton(h, '52%', 10))
 }
 
 export function ListDetail<M, R>(
 	h: Native.H<M>,
-	options: {
-		rows: readonly RowData[]
-		selection: Selection
-		loading?: boolean
-		detail: (row: RowData) => Native.NoTextInput<M, R>
-		sheet: SheetData
-	}
+	options: ListOptions & {detail: (row: RowData) => Native.NoTextInput<M, R>; sheet: SheetData}
 ) {
 	function detail(row: RowData, wide: boolean) {
 		return h.scroll
 			.key(row.id)
 			.style(styles.pane)
-			.contentContainerStyle({...styles.detail, paddingRight: systemColumnWidth, paddingTop: wide ? 44 : 20})
+			.contentContainerStyle({...styles.detail, paddingRight: SYSTEM_COLUMN_WIDTH, paddingTop: detailTop(wide)})
 			.prop('contentInsetAdjustmentBehavior', 'never')
 			.children(options.detail(row))
 	}
 
 	function detailSkeleton(wide: boolean) {
 		return h.view
-			.style({...styles.detail, flex: 1, paddingTop: wide ? 44 : 20})
+			.style({...styles.detail, flex: 1, paddingTop: detailTop(wide)})
 			.children(Skeleton(h, '46%', 20), Skeleton(h, '72%', 14))
 	}
 
+	function list(parts: ListParts) {
+		return h.scroll
+			.style(listStyle(parts))
+			.contentContainerStyle(
+				Boolean.match(parts.wide, {
+					onFalse: () => ({...styles.rows, paddingRight: SYSTEM_COLUMN_WIDTH}),
+					onTrue: () => ({...styles.rows, paddingTop: 32})
+				})
+			)
+			.prop('contentInsetAdjustmentBehavior', 'never')
+			.children(
+				parts.rows(
+					row => Row(h, row, parts, options.selection.select),
+					index => RowSkeleton(h, index)
+				)
+			)
+	}
+
 	return ListModel(h, {
-		props: {id: options.selection.id, rows: options.rows},
-		view: parts => {
-			const pendingDetail = options.loading === true && options.selection.id !== undefined
-			return parts.layout(h.view.style(styles.frame), 'layout').children(
-				Stack.style(styles.frame)
+		props: listProps(options),
+		view: parts =>
+			parts.layout(h.view.style(styles.frame), 'layout').children(
+				Stack<M>()
+					.style(styles.frame)
 					.prop('nativeContainerBackgroundColor', black)
 					.children(
-						Screen.key('list')
-							.style(screenStyle)
-							.prop('activityState', 2)
-							.prop('screenId', 'list')
-							.children(
-								SafeArea.style(styles.frame)
-									.prop('edges', {top: 'additive', left: 'additive', right: 'additive', bottom: 'additive'})
+						screen<M>('list').children(
+							listArea<M>().children(
+								h.view
+									.style(styles.panes)
 									.children(
-										h.view.style(styles.panes).children(
-											h.scroll
-												.style(
-													parts.wide
-														? {
-																width: parts.splitWidth,
-																display: parts.listHidden ? 'none' : 'flex',
-																borderRightColor: fold,
-																borderRightWidth: 1
-															}
-														: styles.pane
-												)
-												.contentContainerStyle(
-													parts.wide
-														? {...styles.rows, paddingTop: 32}
-														: {...styles.rows, paddingRight: systemColumnWidth}
-												)
-												.prop('contentInsetAdjustmentBehavior', 'never')
-												.children(
-													options.loading === true
-														? Array.makeBy(3, index =>
-																h.view
-																	.key(index)
-																	.style({
-																		...styles.row,
-																		alignItems: 'flex-start',
-																		justifyContent: 'center',
-																		flexDirection: 'column',
-																		gap: 6
-																	})
-																	.children(Skeleton(h, '36%', 12), Skeleton(h, '52%', 10))
-															)
-														: Array.map(options.rows, row => Row(h, row, parts, options.selection.select))
-												),
-											parts.wide &&
-												Option.match(parts.note, {
-													onNone: () => (pendingDetail ? detailSkeleton(true) : h.view.style(styles.pane)),
-													onSome: row => detail(row, true)
-												})
-										)
-									),
-								header(parts, options.sheet, false)
+										list(parts),
+										parts.wide &&
+											Option.match(parts.note, {
+												onNone: () =>
+													Boolean.match(parts.pendingDetail, {
+														onFalse: () => h.view.style(styles.pane),
+														onTrue: () => detailSkeleton(true)
+													}),
+												onSome: row => detail(row, true)
+											})
+									)
 							),
+							header<M>(parts, options.sheet, false)
+						),
 						!parts.wide &&
-							(parts.opened || pendingDetail) &&
+							(parts.opened || parts.pendingDetail) &&
 							options.selection
-								.back(
-									Screen.key('detail').style(screenStyle).prop('activityState', 2).prop('screenId', 'detail'),
-									'dismissed'
-								)
+								.back(screen<M>('detail'), 'dismissed')
 								.children(
-									SafeArea.style(styles.frame)
-										.prop('edges', {top: 'additive', left: 'additive', right: 'additive', bottom: 'additive'})
-										.children(
-											Option.match(parts.note, {onNone: () => detailSkeleton(false), onSome: row => detail(row, false)})
-										),
-									header(parts, options.sheet, true)
+									listArea<M>().children(
+										Option.match(parts.note, {onNone: () => detailSkeleton(false), onSome: row => detail(row, false)})
+									),
+									header<M>(parts, options.sheet, true)
 								),
 						parts.opened && parts.sheetOpen && Sheet(h, parts, options.sheet)
 					)
 			)
-		}
 	})
 }
 
@@ -253,6 +272,6 @@ export function DetailText<M>(h: Native.H<M>, title: string, body: string, figur
 	return [
 		h.text.style(styles.heading).prop('accessibilityRole', 'header').children(title),
 		h.text.style(styles.body).children(body),
-		h.text.style({...styles.line, fontFamily: 'ui-monospace', fontVariant: figures}).children(figure)
+		h.text.style({...styles.line, fontFamily: 'ui-monospace', fontVariant: FIGURES}).children(figure)
 	]
 }

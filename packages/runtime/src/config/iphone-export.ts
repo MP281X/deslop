@@ -1,12 +1,13 @@
 // oxlint-disable-next-line effecttsgo/node-builtin-import -- Expo identifies bundled assets by MD5, which Web Crypto does not provide.
 import {createHash, randomUUID} from 'node:crypto'
 
-import {DateTime, Effect, FileSystem, Option, Path, Schema} from 'effect'
+import {DateTime, Effect, FileSystem, Function, Option, Path, Schema} from 'effect'
 
 import {Mime} from 'effect/http'
 
 export const IPHONE_EXPORT_DIRECTORY = 'dist/iphone'
 
+type Asset = typeof Asset.Type
 const Asset = Schema.Struct({
 	contentType: Schema.String,
 	fileExtension: Schema.String,
@@ -15,6 +16,7 @@ const Asset = Schema.Struct({
 	path: Schema.String
 })
 
+export type IPhoneExport = typeof IPhoneExport.Type
 export const IPhoneExport = Schema.fromJsonString(
 	Schema.Struct({
 		assets: Schema.Array(Asset),
@@ -26,6 +28,7 @@ export const IPhoneExport = Schema.fromJsonString(
 	})
 )
 
+type ExpoExport = typeof ExpoExport.Type
 const ExpoExport = Schema.fromJsonString(
 	Schema.Struct({
 		fileMetadata: Schema.Struct({
@@ -37,6 +40,7 @@ const ExpoExport = Schema.fromJsonString(
 	})
 )
 
+type RuntimeVersion = typeof RuntimeVersion.Type
 const RuntimeVersion = Schema.fromJsonString(
 	Schema.Struct({runtimeVersion: Schema.String.check(Schema.isPattern(/^[a-f0-9]{40}$/u))})
 )
@@ -45,13 +49,11 @@ const RuntimeVersion = Schema.fromJsonString(
 export const writeIPhoneExport = Effect.fnUntraced(function* (resolvedRuntime: string, publicConfig: string) {
 	const fs = yield* FileSystem.FileSystem
 	const path = yield* Path.Path
-	const {runtimeVersion} = yield* Schema.decodeEffect(RuntimeVersion)(resolvedRuntime)
+	const runtime = yield* Schema.decodeEffect(RuntimeVersion)(resolvedRuntime)
 	const expoClient = yield* Schema.decodeEffect(Schema.fromJsonString(Schema.Record(Schema.String, Schema.Unknown)))(
 		publicConfig
 	)
-	const {
-		fileMetadata: {ios}
-	} = yield* Schema.decodeEffect(ExpoExport)(
+	const exported = yield* Schema.decodeEffect(ExpoExport)(
 		yield* fs.readFileString(path.join(IPHONE_EXPORT_DIRECTORY, 'metadata.json'))
 	)
 
@@ -67,14 +69,21 @@ export const writeIPhoneExport = Effect.fnUntraced(function* (resolvedRuntime: s
 	})
 
 	const manifest = {
-		assets: yield* Effect.forEach(ios.assets, entry =>
-			asset(entry.path, entry.ext, Option.getOrElse(Mime.getType(entry.ext), () => 'application/octet-stream'))
+		assets: yield* Effect.forEach(
+			exported.fileMetadata.ios.assets,
+			entry =>
+				asset(
+					entry.path,
+					entry.ext,
+					Option.getOrElse(Mime.getType(entry.ext), Function.constant('application/octet-stream'))
+				),
+			{concurrency: 1}
 		),
 		createdAt: DateTime.formatIso(yield* DateTime.now),
 		extra: {expoClient},
 		id: randomUUID(),
-		launchAsset: yield* asset(ios.bundle, 'bundle', 'application/javascript'),
-		runtimeVersion
+		launchAsset: yield* asset(exported.fileMetadata.ios.bundle, 'bundle', 'application/javascript'),
+		runtimeVersion: runtime.runtimeVersion
 	}
 	yield* fs.writeFileString(
 		path.join(IPHONE_EXPORT_DIRECTORY, 'update.json'),

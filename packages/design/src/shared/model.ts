@@ -1,91 +1,107 @@
 import {Component, UiSchema} from '@effect/ui'
-import type {View} from '@effect/ui'
+import type {Mount, View} from '@effect/ui'
 
-import {Array, Option, Predicate, Schema} from 'effect'
-
-const RowData = Schema.Struct({
-	id: Schema.String,
-	title: Schema.String,
-	line: Schema.String,
-	trailing: Schema.optional(Schema.String),
-	problem: Schema.optional(Schema.Struct({status: Schema.Literals(['error', 'warning']), reason: Schema.String}))
-})
+import {Array, Boolean, Function, Option, Predicate, Schema} from 'effect'
 
 export type RowData = typeof RowData.Type
+const RowData = Schema.Struct({
+	id: Schema.String,
+	line: Schema.String,
+	problem: Schema.optional(Schema.Struct({reason: Schema.String, status: Schema.Literals(['error', 'warning'])})),
+	title: Schema.String,
+	trailing: Schema.optional(Schema.String)
+})
 
 export const RowModel = Component.define({
-	name: 'DesignRow',
-	props: RowData,
+	message: Schema.Never,
 	model: Schema.Null,
-	message: Schema.Never
+	name: 'DesignRow',
+	props: RowData
 }).make({
-	init: () => null,
-	update: () => null,
+	init: Function.constNull,
 	parts: p => ({
-		title: p.props.title,
 		line: p.props.problem?.reason ?? p.props.line,
-		trailing: p.props.trailing,
-		status: p.props.problem?.status
-	})
+		status: p.props.problem?.status,
+		title: p.props.title,
+		trailing: p.props.trailing
+	}),
+	update: Function.constNull
 })
 
 const LayoutMessage = UiSchema.TaggedEnum({
-	ToggledList: {},
-	Resized: {width: Schema.Number, height: Schema.Number},
+	DismissedSheet: {},
 	RequestedSheet: {},
-	DismissedSheet: {}
+	Resized: {height: Schema.Finite, width: Schema.Finite},
+	ToggledList: {}
 })
 type LayoutMessage = typeof LayoutMessage.Type
 
-const Layout = Schema.Struct({
-	width: Schema.Number,
-	height: Schema.Number,
-	listHidden: Schema.Boolean,
-	sheetOpen: Schema.Boolean
-})
 type Layout = typeof Layout.Type
+const Layout = Schema.Struct({
+	height: Schema.Finite,
+	listHidden: Schema.Boolean,
+	sheetOpen: Schema.Boolean,
+	width: Schema.Finite
+})
 
-export function isWide({width, height}: {width: number; height: number}) {
-	return width >= 640 && (width >= 800 || height >= 600)
+function isWide(size: {width: number; height: number}) {
+	return size.width >= 640 && (size.width >= 800 || size.height >= 600)
 }
 
-function splitWidth({width, height}: Layout) {
-	if (width < height) return 270
-	return width < 1000 ? width / 2 : 380
+function splitWidth(layout: Layout) {
+	if (layout.width < layout.height) return 270
+	if (layout.width < 1000) return layout.width / 2
+	return 380
 }
 
 export const ListModel = Component.define({
-	name: 'DesignListDetail',
-	props: Schema.Struct({id: Schema.UndefinedOr(Schema.String), rows: Schema.Array(RowData)}),
+	message: LayoutMessage,
 	model: Layout,
-	message: LayoutMessage
+	name: 'DesignListDetail',
+	props: Schema.Struct({id: Schema.UndefinedOr(Schema.String), loading: Schema.Boolean, rows: Schema.Array(RowData)})
 }).make({
-	init: () => ({width: 0, height: 0, listHidden: false, sheetOpen: false}),
-	update: {
-		ToggledList: $ => $.evolve({listHidden: !$.model.listHidden}).viewTransition(['design-layout']),
-		Resized: ($, size) => {
-			if ($.model.width === size.width && $.model.height === size.height) return $.model
-			const next = $.evolve(size)
-			return isWide($.model) === isWide(size) ? next : next.viewTransition(['design-layout'])
-		},
-		RequestedSheet: $ => $.evolve({sheetOpen: true}),
-		DismissedSheet: $ => $.evolve({sheetOpen: false})
-	},
+	init: () => ({height: 0, listHidden: false, sheetOpen: false, width: 0}),
 	parts: (p, model) => {
 		const note = Array.findFirst(p.props.rows, row => row.id === p.props.id)
 		const wide = isWide(model)
 		const opened = Option.isSome(note)
 		return {
-			note,
-			wide,
-			opened,
-			splitWidth: splitWidth(model),
-			listHidden: wide && opened && model.listHidden,
-			sheetOpen: model.sheetOpen,
 			dismissSheet: p.part((el, event: string) =>
-				el.on(event, LayoutMessage.DismissedSheet(), event === 'cancel' ? {preventDefault: true} : undefined)
+				el.on(
+					event,
+					LayoutMessage.DismissedSheet(),
+					Boolean.match(event === 'cancel', {
+						onFalse: Function.constUndefined,
+						onTrue: () => ({preventDefault: true as const})
+					})
+				)
 			),
+			layout: p.part((el, event: string) =>
+				el.on(event, value => {
+					if (!Predicate.hasProperty(value, 'layout')) return undefined
+					if (!Predicate.hasProperty(value.layout, 'width') || !Predicate.hasProperty(value.layout, 'height')) {
+						return undefined
+					}
+					if (!Predicate.isNumber(value.layout.width) || !Predicate.isNumber(value.layout.height)) return undefined
+					return LayoutMessage.Resized({height: value.layout.height, width: value.layout.width})
+				})
+			),
+			listAction: Boolean.match(wide && opened && model.listHidden, {
+				onFalse: Function.constant('Hide list'),
+				onTrue: Function.constant('Show list')
+			}),
+			listHidden: wide && opened && model.listHidden,
+			note,
 			openSheet: p.part((el, event: string) => el.on(event, LayoutMessage.RequestedSheet())),
+			opened,
+			pendingDetail: p.props.loading && p.props.id !== undefined,
+			rows<R, S>(renderRow: (row: RowData) => R, renderSkeleton: (index: number) => S) {
+				if (p.props.loading) return Array.makeBy(3, renderSkeleton)
+				return Array.map(p.props.rows, renderRow)
+			},
+			sheetOpen: model.sheetOpen,
+			splitWidth: splitWidth(model),
+			toggleList: p.part((el, event: string) => el.on(event, LayoutMessage.ToggledList())),
 			toolbar: p.part((el, event: string) =>
 				el.on(event, value => {
 					if (!Predicate.hasProperty(value, 'buttonId')) return undefined
@@ -95,25 +111,33 @@ export const ListModel = Component.define({
 					return undefined
 				})
 			),
-			toggleList: p.part((el, event: string) => el.on(event, LayoutMessage.ToggledList())),
-			layout: p.part((el, event: string) =>
-				el.on(event, value => {
-					if (!Predicate.hasProperty(value, 'layout')) return undefined
-					const size = value.layout
-					if (!Predicate.hasProperty(size, 'width') || !Predicate.hasProperty(size, 'height')) return undefined
-					if (!Predicate.isNumber(size.width) || !Predicate.isNumber(size.height)) return undefined
-					return LayoutMessage.Resized({width: size.width, height: size.height})
-				})
-			),
-			watch: p.part((el, mount: View.Mount<LayoutMessage>) => el.onMount(mount))
+			watch: p.part((el, mount: Mount.Issued<LayoutMessage, never, unknown, never>) => el.onMount(mount)),
+			wide
 		}
+	},
+	update: {
+		DismissedSheet: $ => $.evolve({sheetOpen: false}),
+		RequestedSheet: $ => $.evolve({sheetOpen: true}),
+		Resized: ($, size) => {
+			if ($.model.width === size.width && $.model.height === size.height) return $.model
+			const next = $.evolve(size)
+			if (isWide($.model) === isWide(size)) return next
+			return next.viewTransition(['design-layout'])
+		},
+		ToggledList: $ => $.evolve({listHidden: !$.model.listHidden}).viewTransition(['design-layout'])
 	}
 })
 
 export type ListParts = Component.Headless.Parts<typeof ListModel>
 export const resized = LayoutMessage.Resized
 export type Selection = {
-	id: string | undefined
+	id: Parameters<typeof ListModel>[1]['props']['id']
 	select: View.Part<string, [event: string, id: string]>
 	back: View.Part<string, [event: string]>
+}
+
+export type ListOptions = {loading?: boolean; rows: readonly RowData[]; selection: Selection}
+
+export function listProps(options: ListOptions) {
+	return {id: options.selection.id, loading: options.loading === true, rows: options.rows}
 }

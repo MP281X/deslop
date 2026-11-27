@@ -1,4 +1,4 @@
-import {Array, Effect, FileSystem, Option, Path, Result, Schema, String} from 'effect'
+import {Array, Effect, FileSystem, Option, Path, Result, Schema, String, Struct, pipe} from 'effect'
 
 import {HttpRouter, HttpServerRequest, HttpServerResponse} from 'effect/http'
 
@@ -18,24 +18,23 @@ export const registerIPhoneUpdates = Effect.fnUntraced(function* (
 	const directory = path.join(packageRoot, IPHONE_EXPORT_DIRECTORY)
 	const manifestFile = path.join(directory, 'update.json')
 	if (!(yield* fs.exists(manifestFile))) return
-	const {assets, launchAsset, ...manifest} = yield* Schema.decodeEffect(IPhoneExport)(
-		yield* fs.readFileString(manifestFile)
-	)
+	const manifest = yield* Schema.decodeEffect(IPhoneExport)(yield* fs.readFileString(manifestFile))
 	const assetsPath = `${IPHONE_UPDATE_PATH}/assets`
 	const headers = {'cache-control': 'no-store', 'expo-protocol-version': '1', 'expo-sfv-version': '0'}
 
 	// The downloader is a native caller like any other: Auth can identify its tailnet device without a sign-in.
-	const authorized = <E, R>(
+	function authorized<E, R>(
 		serve: (request: HttpServerRequest.HttpServerRequest) => Effect.Effect<HttpServerResponse.HttpServerResponse, E, R>
-	) =>
-		Effect.gen(function* () {
+	) {
+		return Effect.gen(function* () {
 			const request = yield* HttpServerRequest.HttpServerRequest
 			const account = yield* Effect.result(auth.account(request.headers))
 			if (Result.isFailure(account)) return HttpServerResponse.empty(failureOptions(account.failure, 401))
 			return yield* serve(request)
 		})
+	}
 
-	function manifestAsset(asset: typeof launchAsset) {
+	function manifestAsset(asset: IPhoneExport['launchAsset']) {
 		return {
 			contentType: asset.contentType,
 			fileExtension: asset.fileExtension,
@@ -45,39 +44,50 @@ export const registerIPhoneUpdates = Effect.fnUntraced(function* (
 		}
 	}
 	const response = HttpServerResponse.jsonUnsafe(
-		{...manifest, assets: Array.map(assets, manifestAsset), launchAsset: manifestAsset(launchAsset), metadata: {}},
+		{
+			...Struct.omit(manifest, ['assets', 'launchAsset']),
+			assets: Array.map(manifest.assets, manifestAsset),
+			launchAsset: manifestAsset(manifest.launchAsset),
+			metadata: {}
+		},
 		{contentType: 'application/expo+json', headers}
 	)
 	yield* router.add(
 		'GET',
 		IPHONE_UPDATE_PATH,
 		authorized(request => {
-			const requestHeaders = request.headers
-			if (requestHeaders['expo-protocol-version'] !== '1' || requestHeaders['expo-platform'] !== 'ios') {
+			if (request.headers['expo-protocol-version'] !== '1' || request.headers['expo-platform'] !== 'ios') {
 				return Effect.succeed(HttpServerResponse.empty({headers, status: 400}))
 			}
-			return Effect.succeed(
-				requestHeaders['expo-runtime-version'] !== manifest.runtimeVersion ||
-					String.toLowerCase(requestHeaders['expo-current-update-id'] ?? '') === manifest.id
-					? HttpServerResponse.empty({headers, status: 204})
-					: response
-			)
+			if (
+				request.headers['expo-runtime-version'] !== manifest.runtimeVersion ||
+				String.toLowerCase(request.headers['expo-current-update-id'] ?? '') === manifest.id
+			) {
+				return Effect.succeed(HttpServerResponse.empty({headers, status: 204}))
+			}
+			return Effect.succeed(response)
 		})
 	)
 
-	const exported = Array.prepend(assets, launchAsset)
+	const exported = Array.prepend(manifest.assets, manifest.launchAsset)
 	yield* router.add(
 		'GET',
 		`${assetsPath}/:hash`,
-		authorized(() =>
-			Effect.gen(function* () {
-				const {hash} = yield* HttpRouter.params
-				const asset = Array.findFirst(exported, entry => entry.hash === hash)
-				if (Option.isNone(asset)) return HttpServerResponse.empty({status: 404})
-				return yield* HttpServerResponse.file(path.join(directory, asset.value.path), {
-					contentType: asset.value.contentType,
-					headers: {'cache-control': 'private, max-age=31536000, immutable'}
-				})
+		authorized(
+			Effect.fnUntraced(function* () {
+				const params = yield* HttpRouter.params
+				return yield* pipe(
+					exported,
+					Array.findFirst(entry => entry.hash === params['hash']),
+					Option.match({
+						onNone: () => Effect.succeed(HttpServerResponse.empty({status: 404})),
+						onSome: asset =>
+							HttpServerResponse.file(path.join(directory, asset.path), {
+								contentType: asset.contentType,
+								headers: {'cache-control': 'private, max-age=31536000, immutable'}
+							})
+					})
+				)
 			})
 		)
 	)

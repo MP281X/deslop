@@ -5,7 +5,12 @@
 		"**/*.css",
 		"./src/native/design.ts"
 	],
+	"imports": {
+		"#gallery/*": "./gallery/*",
+		"#src/*": "./src/*"
+	},
 	"exports": {
+		"./model": "./src/shared/model.ts",
 		"./web": "./src/web/design.ts",
 		"./native": "./src/native/design.ts"
 	},

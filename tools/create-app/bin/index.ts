@@ -51,9 +51,8 @@ const create = Command.make(
 			Schema.decodeEffect(Port)(Array.max([5100, ...Array.getSomes(ports)], Number.Order) + 1),
 			cause => CliError.UserError.make({cause, userMessage: 'No default port is left above the highest an app takes.'})
 		)
-		const template = path.join(import.meta.dirname, '../template')
 		yield* copyTemplate({
-			from: [template],
+			from: [path.join(import.meta.dirname, '../template')],
 			rewrite: flow(
 				// Bundle identifier segments start with a letter.
 				String.replaceAll('templateBundleSlug', String.replaceAll('-', '.x')(input.name)),

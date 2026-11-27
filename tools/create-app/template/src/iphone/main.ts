@@ -3,7 +3,7 @@ import 'react-native/Libraries/Core/setUpXHR'
 import {Router} from '@effect/ui'
 import {Native, NativeApp} from '@effect/ui-native'
 
-import {Layer, Schema, String} from 'effect'
+import {Function, Layer, Schema, String, pipe} from 'effect'
 
 import {Socket} from 'effect/socket'
 
@@ -17,36 +17,35 @@ import {ItemsScreen, layerItems, layerViewer, sheet} from '#screens/items.ts'
 import {AppRoute} from '#screens/routes.ts'
 
 const App = Native.component({
-	name: 'App',
-	props: Schema.Struct({route: AppRoute}),
+	message: Schema.Never,
 	model: Schema.Null,
-	message: Schema.Never
+	name: 'App',
+	props: Schema.Struct({route: AppRoute})
 }).make({
-	init: () => null,
-	update: () => null,
+	init: Function.constNull,
+	update: Function.constNull,
 	view: h =>
 		ItemsScreen(h, {
 			props: h.props,
-			view: ({items, body, loading, problem, retry, retryable, selection}) =>
-				problem === undefined
-					? ListDetail(h, {
-							rows: items,
-							loading,
-							selection,
-							sheet,
-							detail: row => DetailText(h, row.title, body, row.line)
-						})
-					: h.view
-							.style({flex: 1, justifyContent: 'center', backgroundColor: '#000', padding: 20})
-							.children(
-								h.text.style({color: '#f4f4f4'}).children(problem),
-								retryable
-									? retry(h.text, 'press').style({color: '#f4f4f4', paddingVertical: 12}).children('Retry')
-									: selection
-											.back(h.text, 'press')
-											.style({color: '#f4f4f4', paddingVertical: 12})
-											.children('Back to list')
-							)
+			view: screen => {
+				if (screen.problem === undefined) {
+					return ListDetail(h, {
+						detail: row => DetailText(h, row.title, screen.body, row.line),
+						loading: screen.loading,
+						rows: screen.items,
+						selection: screen.selection,
+						sheet
+					})
+				}
+				function action() {
+					const text = h.text.style({color: '#f4f4f4', paddingVertical: 12})
+					if (screen.retryable) return screen.retry(text, 'press').children('Retry')
+					return screen.selection.back(text, 'press').children('Back to list')
+				}
+				return h.view
+					.style({backgroundColor: '#000', flex: 1, justifyContent: 'center', padding: 20})
+					.children(h.text.style({color: '#f4f4f4'}).children(screen.problem), action())
+			}
 		})
 })
 
@@ -56,7 +55,8 @@ const protocol = layerSocketProtocol(
 )
 
 NativeApp.register(
-	NativeApp.mount(App, Router.props(AppRoute)).pipe(
+	pipe(
+		NativeApp.mount(App, Router.props(AppRoute)),
 		Layer.provide(layerIPhoneRouter),
 		Layer.provide(Layer.merge(layerViewer(appOrigin), Layer.provide(layerItems, protocol)))
 	)

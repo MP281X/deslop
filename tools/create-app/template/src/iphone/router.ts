@@ -1,14 +1,13 @@
 import {Router} from '@effect/ui'
 
-import {Effect, Layer, Option, String} from 'effect'
+import {Boolean, Effect, Function, Layer, Option, String, pipe} from 'effect'
 
 import Linking from 'react-native/Libraries/Linking/Linking'
 
 import {appOrigin, scheme} from '#iphone/origin.ts'
 import {AppRoute} from '#screens/routes.ts'
 
-function pathOf(url: string | null) {
-	if (url === null) return Option.none()
+function pathOf(url: string) {
 	for (const prefix of [`${scheme}://`, appOrigin]) {
 		const path = String.replace(prefix, '')(url)
 		if (String.startsWith(prefix)(url) && String.startsWith('/')(path)) return Option.some(path)
@@ -22,12 +21,23 @@ const FollowLinks = Layer.effectDiscard(
 		const router = yield* Router.Router
 		yield* Effect.acquireRelease(
 			Effect.sync(() =>
-				Linking.addEventListener('url', ({url}) => {
-					const route = Option.flatMap(pathOf(url), AppRoute.parse)
-					if (Option.isNone(route)) return
-					// oxlint-disable-next-line eslint/no-restricted-properties -- This device event enters the mounted router from outside Effect.
-					Effect.runFork(
-						router.location().route._tag === 'Item' ? router.replace(route.value) : router.push(route.value)
+				Linking.addEventListener('url', event => {
+					pipe(
+						Option.fromNullishOr(event.url),
+						Option.flatMap(pathOf),
+						Option.flatMap(AppRoute.parse),
+						Option.match({
+							onNone: Function.constVoid,
+							onSome: route => {
+								// oxlint-disable-next-line eslint/no-restricted-properties -- This device event enters the mounted router from outside Effect.
+								Effect.runFork(
+									Boolean.match(AppRoute.isAnyOf(['Item'])(router.location().route), {
+										onFalse: () => router.push(route),
+										onTrue: () => router.replace(route)
+									})
+								)
+							}
+						})
 					)
 				})
 			),
@@ -40,6 +50,12 @@ export const layerIPhoneRouter = Layer.unwrap(
 	Effect.map(
 		Effect.promise(() => Linking.getInitialURL()),
 		url =>
-			Layer.provideMerge(FollowLinks, Router.memory({routes: AppRoute, url: Option.getOrElse(pathOf(url), () => '/')}))
+			Layer.provideMerge(
+				FollowLinks,
+				Router.memory({
+					routes: AppRoute,
+					url: pipe(Option.fromNullishOr(url), Option.flatMap(pathOf), Option.getOrElse(Function.constant('/')))
+				})
+			)
 	)
 )
