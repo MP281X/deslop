@@ -14,7 +14,7 @@ export default {
 		bundleIdentifier: variant.bundle,
 		deploymentTarget: '26.0',
 		icon: './src/iphone/app.icon',
-		infoPlist: {NSSupportsLiveActivities: true},
+		infoPlist: {ITSAppUsesNonExemptEncryption: false, NSSupportsLiveActivities: true},
 		supportsTablet: false
 	},
 	name: 'OPM',

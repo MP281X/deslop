@@ -20,7 +20,12 @@ export default {
 			'keychain-access-groups': [keychain]
 		},
 		icon: './src/iphone/app.icon',
-		infoPlist: {DeslopKeychainGroup: keychain, DeslopServer: appOrigin, NSSupportsLiveActivities: true},
+		infoPlist: {
+			DeslopKeychainGroup: keychain,
+			DeslopServer: appOrigin,
+			ITSAppUsesNonExemptEncryption: false,
+			NSSupportsLiveActivities: true
+		},
 		supportsTablet: true
 	},
 	name: 'Stash',
