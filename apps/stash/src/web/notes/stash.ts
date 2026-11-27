@@ -428,25 +428,30 @@ const StashDef = Html.component({
 
 export const Stash = pipe(
 	StashDef.make({
-		init: context => ({
-			account: AsyncResult.initial(),
-			body: AsyncResult.initial(),
-			composing: false,
-			draft: readDraft(),
-			kind: undefined,
-			listHidden: false,
-			media: AsyncResult.initial(),
-			narrow: singlePane(),
-			notes: AsyncResult.initial(),
-			now: DateTime.nowUnsafe(),
-			panel: undefined,
-			pending: false,
-			problem: undefined,
-			revision: 0,
-			route: context.props.route,
-			selected: undefined,
-			tag: undefined
-		}),
+		init: context => {
+			const state: Model = {
+				account: AsyncResult.initial(),
+				body: AsyncResult.initial(),
+				composing: false,
+				draft: readDraft(),
+				foreground: true,
+				kind: undefined,
+				listHidden: false,
+				media: AsyncResult.initial(),
+				narrow: singlePane(),
+				notes: AsyncResult.initial(),
+				now: DateTime.nowUnsafe(),
+				panel: undefined,
+				pending: false,
+				problem: undefined,
+				revision: 0,
+				route: context.props.route,
+				selected: undefined,
+				tag: undefined
+			}
+			if (isNative) return context.set(state).run(Wake.make({refresh: false}))
+			return state
+		},
 		subscriptions: context => {
 			const admitted =
 				Option.isSome(AsyncResult.value(context.model.account)) &&
@@ -465,11 +470,7 @@ export const Stash = pipe(
 					'clock',
 					observe(clockAtom('1 minute'), now => Message.Clock({now}))
 				),
-				isNative &&
-					HtmlSubscription.onVisibility(visible => {
-						if (visible) return Message.Activate()
-						return undefined
-					}),
+				isNative && HtmlSubscription.onVisibility(visible => Message.Visibility({visible})),
 				admitted &&
 					Subscription.make(
 						'notes',
@@ -496,7 +497,6 @@ export const Stash = pipe(
 				}
 				return $.evolve({account: message.result})
 			},
-			Activate: $ => $.run(Wake.make({refresh: true})),
 			Awake: $ => $.model,
 			Body: ($, message) => {
 				if (
@@ -619,6 +619,12 @@ export const Stash = pipe(
 					)
 				}
 				return $.evolve({listHidden: hide, panel: undefined}).viewTransition(['axis-layout'])
+			},
+			// Its first value is the state at start, which init's Wake already covers.
+			Visibility: ($, message) => {
+				const next = $.evolve({foreground: message.visible})
+				if (!message.visible || $.model.foreground) return next
+				return next.run(Wake.make({refresh: true}))
 			}
 		},
 		view: workspace
