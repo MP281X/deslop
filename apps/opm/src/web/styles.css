@@ -1,33 +1,10 @@
 @import '@deslop/ui/theme.css';
 
-.opm {
-	position: relative;
-	height: 100dvh;
-	overflow: hidden;
-	font-size: 0.875rem;
-}
-
-.opm-library {
-	flex: 1;
-	min-width: 0;
-	min-height: 0;
-	overflow: auto;
-	scrollbar-width: none;
-}
-
-.opm .shell-controls {
-	position: relative;
-	z-index: 1;
-	pointer-events: none;
-}
-
-.opm .shell-controls button {
-	pointer-events: auto;
+.opm .fold-list {
+	scrollbar-width: auto;
 }
 
 .opm-chapters {
-	display: grid;
-	grid-template-columns: minmax(0, 1fr);
 	padding: 0 14px 12px;
 }
 
@@ -37,14 +14,8 @@
 	padding-inline: 10px;
 }
 
-.opm-row[data-read='true'] .opm-row-copy,
-.opm-row[data-read='true'] .opm-cover {
+.opm-row-read :is(.axis-lines, .opm-cover) {
 	opacity: 0.6;
-}
-
-.opm-row-copy {
-	display: grid;
-	line-height: 1.25;
 }
 
 .opm-row .axis-value {
@@ -70,58 +41,83 @@
 	object-position: center top;
 }
 
-@media (min-width: 640px) and (orientation: portrait), (min-width: 700px) and (orientation: landscape) {
-	.opm-chapters {
-		grid-template-columns: repeat(2, minmax(0, 1fr));
-	}
+.opm-row[aria-hidden] .axis-lines {
+	gap: 5px;
 }
 
-@media (horizontal-viewport-segments: 2) {
-	.opm-chapters {
-		grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-		column-gap: calc(env(viewport-segment-left 1 0) - env(viewport-segment-right 0 0));
-	}
+.opm-title-placeholder {
+	inline-size: 5.5rem;
+	block-size: 17px;
 }
 
-.opm-menu {
-	display: grid;
-	min-inline-size: 9rem;
+.opm-line-placeholder {
+	inline-size: 7rem;
+	block-size: 15px;
 }
 
-.opm-menu button {
+.opm-date-placeholder {
+	inline-size: 3rem;
+	block-size: 12px;
+}
+
+#opm-series {
+	position-anchor: --axis-action-series;
+	position-area: inline-start span-block-end;
+	position-try-fallbacks: flip-inline, flip-block;
+	min-inline-size: min(10rem, var(--panel-width));
+}
+
+#opm-series button {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 12px;
 	width: 100%;
-	padding: 7px 10px;
+	min-height: 44px;
+	padding-inline: 10px;
 	border-radius: 9px;
 	text-align: start;
 }
 
-.opm-menu button[aria-pressed='true'] {
-	background: rgb(255 255 255 / 10%);
+#opm-series .sf-symbol {
+	inline-size: 15px;
+	block-size: 15px;
 }
 
-.opm-notice {
-	position: absolute;
-	inset: 50% 12px auto;
+.opm-gate {
 	display: grid;
-	justify-items: center;
-	gap: 8px;
-	color: var(--color-muted-foreground);
-	text-align: center;
+	min-height: 100dvh;
+	place-items: center;
 }
 
-.opm-notice :is(a, button) {
-	padding: 6px 14px;
-	border: 1px solid rgb(255 255 255 / 18%);
-	border-radius: 999px;
-	color: var(--color-foreground);
+.opm-gate a {
+	display: grid;
+	place-items: center;
+	min-height: 44px;
+	padding-inline: 14px;
 }
 
 .opm-reader {
-	flex: 1;
-	min-width: 0;
-	min-height: 0;
+	position: relative;
+	display: grid;
+	place-items: center;
+	height: 100%;
+	overflow: hidden;
 	touch-action: none;
 	user-select: none;
+}
+
+.opm-page-placeholder {
+	inline-size: min(100%, 66dvh);
+	block-size: 100%;
+	border-radius: 4px;
+}
+
+.opm-reader > [aria-busy] {
+	position: absolute;
+	inset: 0;
+	display: grid;
+	justify-items: center;
 }
 
 .opm-paper {
@@ -130,11 +126,11 @@
 	display: grid;
 	grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
 	grid-template-rows: minmax(0, 1fr);
+	pointer-events: none;
 }
 
 @media (horizontal-viewport-segments: 2) {
 	.opm-paper {
-		grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
 		column-gap: calc(env(viewport-segment-left 1 0) - env(viewport-segment-right 0 0));
 	}
 }
@@ -165,6 +161,8 @@
 }
 
 .opm-leaf img {
+	position: absolute;
+	inset: 0;
 	width: 100%;
 	height: 100%;
 	object-fit: contain;
@@ -178,14 +176,10 @@
 	object-position: left center;
 }
 
-.opm-retry-page {
-	padding: 10px;
-}
-
-.opm .shell-actions:has(.opm-turn):not(:focus-within) {
-	opacity: 0;
-}
-
-.opm .shell-actions:not(:focus-within) .opm-turn {
-	pointer-events: none;
+.opm-retry-page button {
+	display: grid;
+	place-items: center;
+	width: 44px;
+	height: 44px;
+	pointer-events: auto;
 }

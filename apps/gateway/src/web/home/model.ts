@@ -27,21 +27,23 @@ const AiUsageRead = AsyncResult.Schema({error: Schema.Unknown, success: AiUsageW
 const McpUsageRead = AsyncResult.Schema({error: Schema.Unknown, success: McpUsageWindow})
 type ActionKind = typeof ActionKind.Type
 const ActionKind = Schema.Literals(['AddServer', 'Connect', 'SaveKey'])
+type Panel = typeof Panel.Type
+const Panel = Schema.Literals(['range', 'options'])
 
 export type Model = typeof Model.Type
 export const Model = Schema.Struct({
 	account: AccountRead,
 	aiUsage: AiUsageRead,
+	busy: Schema.Boolean,
 	dialog: Schema.UndefinedOr(Schema.Struct({error: Schema.UndefinedOr(Schema.String), secret: Entry})),
 	fieldError: Schema.UndefinedOr(Schema.String),
 	fieldVersion: Schema.Int,
 	keys: KeysRead,
 	mcpUsage: McpUsageRead,
 	menuFeedback: Schema.UndefinedOr(Schema.String),
-	pending: Schema.UndefinedOr(ActionKind),
+	panel: Schema.UndefinedOr(Panel),
 	route: GatewayRoute,
 	servers: ServersRead,
-	sidebarOpen: Schema.Boolean,
 	signingIn: Schema.Boolean
 })
 
@@ -57,13 +59,14 @@ export const Message = UiSchema.TaggedEnum({
 	EditedKey: {secret: Entry},
 	Keys: {result: KeysRead},
 	McpUsage: {period: TimeFrame, result: McpUsageRead},
+	Panel: {panel: Panel},
+	PanelClosed: {panel: Panel},
 	Perform: {action: Action},
 	Period: {period: TimeFrame},
 	Retry: {},
 	Route: {route: GatewayRoute},
 	Servers: {result: ServersRead},
-	SubmitField: {entry: Entry},
-	ToggleSidebar: {}
+	SubmitField: {entry: Entry}
 })
 export type Message = typeof Message.Type
 

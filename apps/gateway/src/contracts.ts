@@ -1,4 +1,4 @@
-import {Function, Option, Result, Schema, pipe} from 'effect'
+import {Function, Option, Result, Schema, String, pipe} from 'effect'
 
 import {Url} from 'effect/http'
 import {Rpc, RpcGroup} from 'effect/rpc'
@@ -14,6 +14,12 @@ export type AiKeySecret = typeof AiKeySecret.Type
 export const AiKeySecret = Schema.String.check(
 	Schema.isPattern(/^(?:oc_sk_|sk-)[A-Za-z0-9_-]+$/u, {message: KEY_MESSAGE})
 )
+
+export function keyProvider(secret: AiKeySecret): AiProvider {
+	if (String.startsWith('oc_sk_')(secret)) return 'opencode'
+	if (String.startsWith('sk-ant-')(secret)) return 'anthropic'
+	return 'openai'
+}
 
 export type AiSetKey = typeof AiSetKey.Type
 export const AiSetKey = Schema.Struct({secret: Schema.RedactedFromValue(AiKeySecret)})
@@ -71,7 +77,7 @@ export function failureMessage(reason: FailureReason) {
 		Refused: Function.constant('The connection was refused'),
 		Timeout: Function.constant('It did not answer in time'),
 		Unauthorized: Function.constant('Authorization was refused'),
-		Unavailable: Function.constant('The connection is unavailable'),
+		Unavailable: Function.constant('Connection unavailable'),
 		Unknown: Function.constant('It failed for an unknown reason')
 	})
 }

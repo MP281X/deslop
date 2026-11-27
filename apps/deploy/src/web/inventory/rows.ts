@@ -41,3 +41,15 @@ export function reasonLine(item: InventoryItem, now: DateTime.Utc) {
 		Option.match({onNone: () => reasonOf(item), onSome: at => `${reasonOf(item)} · ${ageOf(at, now)}`})
 	)
 }
+
+export function statusLine(row: Row, now: DateTime.Utc, restart?: string) {
+	if (row.item.health !== 'quiet') return reasonLine(row.item, now)
+	if (restart !== undefined) return restart
+	return pipe(
+		row.exposures,
+		Array.findFirst(site => Option.isSome(site.url)),
+		Option.flatMap(site => site.url),
+		Option.map(host),
+		Option.getOrUndefined
+	)
+}

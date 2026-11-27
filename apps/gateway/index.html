@@ -16,10 +16,15 @@
 		<link rel="preload" href="/api/runtime" as="fetch" crossorigin />
 		<link rel="preload" href="/api/account" as="fetch" crossorigin />
 
+		<link rel="stylesheet" href="/src/web/skeleton.css" />
 		<title>Gateway</title>
 	</head>
 	<body>
 		<div id="root"></div>
+		<div class="gateway-startup" aria-label="Loading Gateway" role="status" aria-busy="true">
+			<div class="gateway-skeleton gateway-skeleton-keys" aria-hidden="true"></div>
+			<div class="gateway-skeleton gateway-skeleton-servers" aria-hidden="true"></div>
+		</div>
 		<script type="module" src="/src/web/main.ts"></script>
 	</body>
 </html>

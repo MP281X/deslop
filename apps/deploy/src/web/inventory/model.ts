@@ -5,7 +5,8 @@ import {Cause, Effect, Function, Option, Predicate, Schema, String} from 'effect
 
 import {AsyncResult, AtomRegistry} from 'effect/reactivity'
 
-import {needsSignIn, signInUrl} from '@deslop/runtime/shared/auth'
+import {needsSignInCause} from '@deslop/runtime/client/live-stream'
+import {signInUrl} from '@deslop/runtime/shared/auth'
 import {DateTimeUtcFromFiniteMillis} from '@deslop/runtime/shared/time'
 import {refreshFailed} from '@deslop/ui/state'
 
@@ -22,11 +23,10 @@ const AppRead = AsyncResult.Schema({error: Schema.Unknown, success: AppHour})
 
 export type DialogState = typeof DialogState.Type
 export const DialogState = Schema.TaggedUnion({
-	Expose: {kind: ExposeInput.fields.kind, port: InventoryItem},
-	Failure: {text: Schema.String}
+	Expose: {choosing: Schema.Boolean, kind: ExposeInput.fields.kind, port: InventoryItem},
+	Failure: {text: Schema.String},
+	Logs: {id: AppId, name: Schema.String, result: Schema.Option(Schema.Result(Schema.String, Schema.String))}
 })
-
-export const NARROW = '(width < 640px) and (not (horizontal-viewport-segments: 2))'
 
 export type Model = typeof Model.Type
 export const Model = Schema.Struct({
@@ -35,13 +35,13 @@ export const Model = Schema.Struct({
 	defaultApp: Schema.Option(ItemId),
 	dialog: Schema.Option(DialogState),
 	effectiveApp: Schema.Option(AppId),
+	// The reducer serializes host actions; the view reads the command itself.
+	executing: Schema.Boolean,
 	inventory: InventoryRead,
 	listHidden: Schema.Boolean,
-	logs: Schema.Option(Schema.Result(Schema.String, Schema.String)),
 	metrics: MetricsRead,
 	narrow: Schema.Boolean,
 	now: DateTimeUtcFromFiniteMillis,
-	pending: Schema.Boolean,
 	route: DeployRoute
 })
 
@@ -52,10 +52,11 @@ export const Message = UiSchema.TaggedEnum({
 	Clock: {now: DateTimeUtcFromFiniteMillis},
 	ClosedDialog: {},
 	ExposureKind: {kind: ExposeInput.fields.kind},
+	ExposureMenu: {open: Schema.Boolean},
 	Inventory: {result: InventoryRead},
 	Metrics: {result: MetricsRead},
 	OpenedExposure: {port: InventoryItem},
-	OpenedLogs: {id: AppId},
+	OpenedLogs: {id: AppId, name: Schema.String},
 	Operation: {operation: Operation},
 	OperationDone: {operation: Operation, text: Schema.Option(Schema.String)},
 	OperationFailed: {error: Schema.String, operation: Operation},
@@ -63,7 +64,7 @@ export const Message = UiSchema.TaggedEnum({
 	Retry: {},
 	Route: {route: DeployRoute},
 	Select: {id: ItemId},
-	ToggleList: {id: Schema.Option(ItemId)}
+	Sidebar: {}
 })
 export type H = Html.H<Message>
 
@@ -120,5 +121,5 @@ export const SignIn = Command.make('Deploy/SignIn', {args: {}}, () =>
 )
 
 export function signInRequested(result: AsyncResult.AsyncResult<unknown, unknown>) {
-	return AsyncResult.isFailure(result) && needsSignIn(Cause.squash(result.cause))
+	return AsyncResult.isFailure(result) && needsSignInCause(result.cause)
 }

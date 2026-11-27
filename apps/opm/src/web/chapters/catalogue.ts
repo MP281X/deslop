@@ -2,7 +2,6 @@ import {Array, Effect, HashMap, Option, Order, Semaphore, Stream, pipe} from 'ef
 
 import {AsyncResult, Atom} from 'effect/reactivity'
 
-import {keepValueThroughOutages, reconnectOnDrop} from '@deslop/runtime/client/live-stream'
 import {writeOutcome} from '@deslop/runtime/client/protocol'
 import type {UserId} from '@deslop/runtime/shared/auth'
 import {listReducer} from '@deslop/runtime/shared/list'
@@ -10,19 +9,18 @@ import {listReducer} from '@deslop/runtime/shared/list'
 import {byChapterNumber, keyOf} from '#contracts'
 import type {ChapterKey, Position, ReadingChapter, ReadingPosition} from '#contracts'
 
-import {RpcClient, accountAtom} from '#web/session.ts'
+import {liveList} from '#web/live-list.ts'
+import {accountAtom} from '#web/platform.ts'
+import {RpcClient} from '#web/session.ts'
 
 const reduceChapters = listReducer<ReadingChapter, ChapterKey>(Order.flip(byChapterNumber), keyOf)
 
 export const chaptersAtom = RpcClient.runtime.atom(get =>
-	keepValueThroughOutages(
+	liveList(
 		get,
-		pipe(
-			Stream.unwrap(Effect.map(RpcClient, client => client('chapters.events', undefined))),
-			Stream.scan(Array.empty<ReadingChapter>, (chapters, event) => reduceChapters(chapters, {...event, removed: []})),
-			Stream.drop(1)
-		),
-		reconnectOnDrop
+		Stream.unwrap(Effect.map(RpcClient, client => client('chapters.events', undefined))),
+		Array.empty<ReadingChapter>,
+		(chapters, event) => reduceChapters(chapters, {...event, removed: []})
 	)
 )
 

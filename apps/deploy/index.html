@@ -11,10 +11,21 @@
 		<link rel="preload" href="/api/runtime" as="fetch" crossorigin />
 		<link rel="preload" href="/api/account" as="fetch" crossorigin />
 
+		<link rel="stylesheet" href="/src/web/inventory/skeleton.css" />
 		<title>Deploy</title>
 	</head>
 	<body>
 		<div id="root"></div>
+		<div class="deploy-startup" aria-label="Loading Deploy" role="status" aria-busy="true">
+			<div class="deploy-list-skeleton" aria-hidden="true"></div>
+			<div class="deploy-startup-detail" aria-hidden="true"><div class="deploy-reading-skeleton"></div></div>
+		</div>
+		<script>
+			const search = new URLSearchParams(location.search)
+			document
+				.querySelector('.deploy-startup')
+				.toggleAttribute('data-detail', search.has('app') && search.get('pane') !== 'apps')
+		</script>
 		<script type="module" src="/src/web/main.ts"></script>
 	</body>
 </html>

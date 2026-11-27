@@ -21,8 +21,9 @@ import {
 } from '#contracts'
 
 import {chaptersAtom, readingWritesAtom} from '#web/chapters/catalogue.ts'
+import {accountAtom, native} from '#web/platform.ts'
 import {OpmRoute} from '#web/routes.ts'
-import {RpcClient, accountAtom, native} from '#web/session.ts'
+import {RpcClient} from '#web/session.ts'
 
 const CatalogueRead = AsyncResult.Schema({error: Schema.Unknown, success: Schema.Array(ReadingChapter)})
 const AccountRead = AsyncResult.Schema({error: Schema.Unknown, success: Account})
@@ -44,7 +45,9 @@ export const Model = Schema.Struct({
 	busy: Schema.Boolean,
 	catalogue: CatalogueRead,
 	failed: Schema.HashSet(Schema.String),
+	listHidden: Schema.Boolean,
 	menu: Schema.Boolean,
+	narrow: Schema.Boolean,
 	now: DateTimeUtcFromFiniteMillis,
 	reader: Schema.UndefinedOr(Reader),
 	route: OpmRoute,
@@ -60,16 +63,18 @@ export const Message = UiSchema.TaggedEnum({
 	Catalogue: {catalogue: CatalogueRead},
 	Clock: {now: DateTimeUtcFromFiniteMillis},
 	Close: {},
+	CloseMenu: {},
 	Expired: {chapter: ChapterIdentity},
 	Image: {failed: Schema.Boolean, src: Schema.String, wide: Schema.Boolean},
 	Menu: {},
-	MenuChanged: {open: Schema.Boolean},
 	Move: {step: Schema.Literals([-1, 1])},
 	Open: {chapter: ChapterIdentity},
+	Posture: {narrow: Schema.Boolean},
 	Retry: {},
 	RetryPage: {src: Schema.String},
 	Route: {route: OpmRoute},
 	Series: {series: Series},
+	Sidebar: {},
 	SignIn: {},
 	SignOut: {},
 	Spread: {spread: Schema.Boolean},

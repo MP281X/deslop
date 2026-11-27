@@ -1,71 +1,46 @@
-import {Command, Router, Subscription} from '@effect/ui'
-import {Html} from '@effect/ui/html'
+import {Command, Component, Router, Subscription} from '@effect/ui'
+import {Html, HtmlSubscription} from '@effect/ui/html'
 
-import {Array, Boolean, Cause, DateTime, Effect, Function, HashMap, HashSet, Option, Schema, Stream, pipe} from 'effect'
+import {Array, Boolean, DateTime, Effect, Function, HashMap, HashSet, Layer, Option, Schema, Stream, pipe} from 'effect'
 
-import {AsyncResult} from 'effect/reactivity'
+import {AsyncResult, AtomRegistry} from 'effect/reactivity'
 
 import {clockAtom} from '@deslop/runtime/client/clock'
-import {blockingFailure} from '@deslop/runtime/client/live-stream'
-import {isDenied, needsSignIn, signInUrl} from '@deslop/runtime/shared/auth'
+import {isDeniedCause, needsSignInCause} from '@deslop/runtime/client/live-stream'
+import {signInUrl} from '@deslop/runtime/shared/auth'
 import {dayOf} from '@deslop/runtime/shared/format'
-import {AppShell} from '@deslop/ui/app-shell'
-import {Button} from '@deslop/ui/control'
-import {GlassPanel, SidebarControl} from '@deslop/ui/glass'
+import {ActionShell} from '@deslop/ui/app-shell'
+import type {ShellAction} from '@deslop/ui/app-shell'
+import {Loading, Notice, Placeholder, Row} from '@deslop/ui/axis'
+import {Button, PressFeedback} from '@deslop/ui/control'
+import {Glass, GlassPanel} from '@deslop/ui/glass'
+import {Split, singlePane, watchPanes} from '@deslop/ui/split'
 import {observe} from '@deslop/ui/state'
+import {SymbolIcon} from '@deslop/ui/symbol'
 
 import {SERIES_NAMES, keyOf, Series} from '#contracts'
 import type {ReadingChapter, ChapterList} from '#contracts'
 
+import {RowPlaceholder, readProblem, signOutForm} from '#web/axis.ts'
 import {chaptersAtom, unsavedAtom} from '#web/chapters/catalogue.ts'
-import {Message, Model, Refresh, Save, SetBars, SignIn, SignOut} from '#web/chapters/model.ts'
+import {Message, Model, OpmCommands, Refresh, Save, SetBars, SignIn, SignOut} from '#web/chapters/model.ts'
 import type {Reader} from '#web/chapters/model.ts'
 import {chapterOpens, registerPush} from '#web/chapters/push.ts'
-import {PageControls, Reading, chapterView} from '#web/chapters/reader.ts'
+import {Reading, chapterView, pageActions} from '#web/chapters/reader.ts'
 import {savedPage, turnPage, withUnsaved} from '#web/chapters/reading.ts'
-import {OpmRoute, libraryOf, targetOf} from '#web/routes.ts'
-import {accountAtom, native} from '#web/session.ts'
+import {accountAtom, native} from '#web/platform.ts'
+import {OpmRoute, hasListBehind, libraryOf, targetOf, usedHistoryMotion} from '#web/routes.ts'
 
-const LIBRARY_MENU = 'opm-library-menu'
-const SPREAD_MEDIA = matchMedia('(horizontal-viewport-segments: 2), (min-width: 700px) and (orientation: landscape)')
+const SERIES_MENU = 'opm-series'
+const SPREAD_QUERY = '(horizontal-viewport-segments: 2), (min-width: 700px) and (orientation: landscape)'
 
 type H = Html.H<Message>
-
-type NoticeAction = typeof NoticeAction.Type
-const NoticeAction = Schema.Literals(['Retry', 'Sign in'])
-
-const ToggleLibraryMenu = Command.make('Opm/ToggleLibraryMenu', {args: {}}, () =>
-	Effect.sync(() => {
-		const source = document.querySelector<HTMLButtonElement>('.opm-menu-toggle')
-		if (source === null) return
-		document.getElementById(LIBRARY_MENU)?.togglePopover({source})
-	})
-)
 
 function chaptersOf(model: Model) {
 	return Option.match(AsyncResult.value(model.catalogue), {
 		onNone: () => Array.empty<ReadingChapter>(),
 		onSome: all => withUnsaved(all, model.unsaved)
 	})
-}
-
-function statusAction(h: H, action?: NoticeAction) {
-	if (action === 'Retry') {
-		return Button(h, {})
-			.on('click', () => Message.Retry())
-			.children(action)
-	}
-	if (action !== 'Sign in') return undefined
-	if (native) {
-		return Button(h, {})
-			.on('click', () => Message.SignIn())
-			.children(action)
-	}
-	return h.a.attr('href', signInUrl(location.href)).children(action)
-}
-
-function notice(h: H, text: string, action?: NoticeAction) {
-	return h.div.class('opm-notice').attr('role', 'status').children(h.p.children(text), statusAction(h, action))
 }
 
 function progressOf(chapter: ReadingChapter) {
@@ -79,159 +54,183 @@ function progressOf(chapter: ReadingChapter) {
 	)
 }
 
-function row(h: H, chapter: ReadingChapter, now: DateTime.Utc) {
+function row(h: H, chapter: ReadingChapter, model: Model) {
 	const src = chapter.pages[0]
-	return Button(h, {})
-		.key(keyOf(chapter))
-		.class('axis-row opm-row')
-		.attr(
-			'data-read',
-			Option.getOrUndefined(
-				pipe(
-					chapter.reading,
-					Option.filter(reading => reading.done),
-					Option.map(Function.constant('true'))
-				)
-			)
-		)
-		.on('click', () => Message.Open({chapter: {number: chapter.number, series: chapter.series}}))
-		.children(
-			h.span
-				.class('opm-cover')
-				.attr('aria-hidden', 'true')
-				.children(src !== undefined && h.img.attrs({alt: '', loading: 'lazy', referrerpolicy: 'no-referrer', src})),
-			h.span
-				.class('opm-row-copy')
-				.children(
-					h.span.class('axis-title').children(`Chapter ${chapter.number}`),
-					h.span.class('axis-muted').children(progressOf(chapter))
-				),
-			h.span.class('axis-value').children(
-				Option.match(chapter.postedAt, {
-					onNone: Function.constant(''),
-					onSome: at => {
-						if (DateTime.toDate(at).toDateString() === DateTime.toDate(now).toDateString()) return 'Today'
-						return dayOf(at, now)
-					}
-				})
-			)
-		)
-}
-
-function signOutControl(h: H, busy: boolean) {
-	if (native) {
-		return Button(h, {disabled: busy})
-			.attrs({popovertarget: LIBRARY_MENU, popovertargetaction: 'hide'})
-			.on('click', () => Message.SignOut())
-			.children('Sign out')
-	}
-	return h.form
-		.attrs({action: '/auth/sign-out', method: 'post'})
-		.children(Button(h, {type: 'submit'}).children('Sign out'))
-}
-
-function library(h: H, model: Model, chapters: ChapterList) {
-	const series = libraryOf(model.route).search.series ?? 'manga'
-	const rows = Array.filter(chapters, chapter => chapter.series === series)
-	return h.section
-		.class('opm-library')
-		.attrs({
-			'aria-label': SERIES_NAMES[series],
-			hidden: Boolean.match(model.reader === undefined, {
-				onFalse: Function.constant(''),
-				onTrue: Function.constUndefined
-			})
+	const id = keyOf(chapter)
+	const current = Option.getOrUndefined(model.reader?.inView ?? Option.none()) ?? targetOf(model.route)?.number
+	return Row(h, {
+		className: pipe(chapter.reading, Option.exists(reading => reading.done), Boolean.match({onFalse: Function.constant('opm-row'), onTrue: Function.constant('opm-row opm-row-read')})),
+		current: !model.narrow && !model.listHidden && chapter.number === current,
+		id,
+		leading: h.span
+			.class('opm-cover')
+			.attr('aria-hidden', 'true')
+			.children(src !== undefined && h.img.attrs({alt: '', loading: 'lazy', referrerpolicy: 'no-referrer', src})),
+		line: progressOf(chapter),
+		open: Message.Open({chapter: {number: chapter.number, series: chapter.series}}),
+		title: `Chapter ${chapter.number}`,
+		value: Option.match(chapter.postedAt, {
+			onNone: Function.constant(''),
+			onSome: at => {
+				if (DateTime.toDate(at).toDateString() === DateTime.toDate(model.now).toDateString()) return 'Today'
+				return dayOf(at, model.now)
+			}
 		})
-		.children(
-			model.reader === undefined &&
-				GlassPanel(h, LIBRARY_MENU, 'Library', [
-					h.div.class('opm-menu').children(
-						Array.map(Series.literals, choice =>
-							Button(h, {pressed: choice === series})
-								.key(choice)
-								.attrs({popovertarget: LIBRARY_MENU, popovertargetaction: 'hide'})
-								.on('click', () => Message.Series({series: choice}))
-								.children(SERIES_NAMES[choice])
-						),
-						Option.exists(AsyncResult.value(model.account), account => account.signOut) && signOutControl(h, model.busy)
-					)
-				]).on('toggle', event => Message.MenuChanged({open: event.newState === 'open'})),
-			Array.match(rows, {
-				onEmpty: () =>
-					notice(
-						h,
-						Boolean.match(AsyncResult.isInitial(model.catalogue), {
-							onFalse: Function.constant('No chapters'),
-							onTrue: Function.constant('Loading chapters…')
-						})
-					),
-				onNonEmpty: available =>
-					h.div.class('opm-chapters').children(Array.map(available, chapter => row(h, chapter, model.now)))
+	})
+}
+
+function seriesChoices(series: Series) {
+	return Array.map(Series.literals, choice => ({
+		checked: choice === series,
+		id: choice,
+		message: Message.Series({series: choice}),
+		title: SERIES_NAMES[choice]
+	}))
+}
+
+function seriesMenu(h: H, model: Model, series: Series) {
+	return GlassPanel(h, SERIES_MENU, 'Series', [
+		...Array.map(seriesChoices(series), item =>
+			Button(h)
+				.key(item.id)
+				.attrs({'aria-checked': `${item.checked}`, role: 'menuitemradio'})
+				.on('click', item.message)
+				.children(item.title, item.checked && SymbolIcon(h, 'checkmark'))
+		),
+		Option.exists(AsyncResult.value(model.account), account => account.signOut) && signOutForm(h, location.href)
+	])
+		.attr('role', 'menu')
+		.popover('auto', model.menu)
+		.on('toggle', event => {
+			if (!event.open) return Message.CloseMenu()
+			return undefined
+		})
+}
+
+function actions(model: Model, series: Series, reading: ReturnType<typeof chapterView>) {
+	const controls: readonly (ShellAction<Message> | false)[] = [
+		{
+			id: 'series',
+			menu: [{items: seriesChoices(series), title: ''}],
+			message: Message.Menu(),
+			symbol: 'books.vertical',
+			title: 'Series'
+		},
+		...pageActions(reading),
+		model.reader !== undefined &&
+			!model.narrow && {
+				id: 'sidebar',
+				message: Message.Sidebar(),
+				pressed: !model.listHidden,
+				symbol: 'sidebar.left',
+				title: 'Sidebar'
+			},
+		AsyncResult.isFailure(model.catalogue) && {
+			id: 'retry',
+			message: Message.Retry(),
+			symbol: 'exclamationmark.circle',
+			title: 'Out of date. Retry'
+		},
+		native &&
+			Option.exists(AsyncResult.value(model.account), account => account.signOut) && {
+				disabled: model.busy,
+				id: 'sign-out',
+				message: Message.SignOut(),
+				symbol: 'rectangle.portrait.and.arrow.right',
+				title: 'Sign out'
+			}
+	]
+	return Array.filter(controls, action => action !== false)
+}
+
+function listSkeleton(h: H) {
+	return Loading(
+		h,
+		'Loading chapters',
+		Array.makeBy(18, index =>
+			RowPlaceholder(h, {
+				className: 'opm-row',
+				id: `chapter-placeholder-${index}`,
+				leading: Placeholder(h, 'opm-cover'),
+				line: Placeholder(h, 'opm-line-placeholder'),
+				title: Placeholder(h, 'opm-title-placeholder'),
+				value: Placeholder(h, 'opm-date-placeholder')
 			})
+		)
+	)
+}
+
+function library(h: H, model: Model, chapters: ChapterList, series: Series, waiting: boolean) {
+	const rows = Array.filter(chapters, chapter => chapter.series === series)
+	return h.div
+		.class('opm-chapters')
+		.children(
+			waiting
+				? listSkeleton(h)
+				: Array.match(rows, {
+						onEmpty: () => Notice(h, 'No chapters'),
+						onNonEmpty: available => Array.map(available, chapter => row(h, chapter, model))
+					})
 		)
 }
 
-function accessStatus(busy: boolean, signIn: boolean) {
-	if (busy) return 'Signing in…'
-	if (signIn) return 'Sign in to read chapters'
-	return 'Access denied'
+function access(h: H, model: Model) {
+	const problem = readProblem(model.account, model.catalogue)
+	if (Option.isNone(problem)) return undefined
+	if (needsSignInCause(problem.value)) {
+		if (model.busy) return Notice(h, 'Signing in…')
+		const text = model.authProblem ?? 'Sign in to read chapters'
+		if (native) return Notice(h, text, Message.SignIn(), 'Sign in')
+		return h.div
+			.class('axis-notice')
+			.attr('role', 'status')
+			.children(
+				h.p.children(text),
+				Glass(h).children(h.a.attrs({'data-pressable': '', href: signInUrl(location.href)}).children('Sign in'))
+			)
+	}
+	if (isDeniedCause(problem.value)) return Notice(h, 'Access denied')
+	return Notice(h, 'Couldn’t load chapters', Message.Retry())
+}
+
+function workspace(h: H, model: Model) {
+	const gate = access(h, model)
+	if (gate !== undefined) return h.div.class('opm-gate').children(gate)
+	const series = libraryOf(model.route).search.series ?? 'manga'
+	const target = targetOf(model.route)
+	const admitted = Option.isSome(AsyncResult.value(model.account))
+	const waiting = !admitted || AsyncResult.isInitial(model.catalogue)
+	const chapters = chaptersOf(model)
+	const reading = target === undefined || !admitted ? undefined : chapterView(model, target, chapters)
+	return ActionShell(h, {
+		actions: actions(model, series, reading),
+		content: Split(h, {
+			detail: {
+				content: target !== undefined && Reading(h, model, target, reading, waiting || model.reader?.expired === false),
+				key: target === undefined ? 'reader' : keyOf(target),
+				label: 'Reader'
+			},
+			list: {content: library(h, model, chapters, series, waiting), label: SERIES_NAMES[series]},
+			listHidden: model.listHidden,
+			narrow: model.narrow,
+			show: target === undefined ? 'list' : 'detail'
+		}),
+		overlays: !native && seriesMenu(h, model, series),
+		sidebar:
+			target === undefined ? undefined : {id: 'back', message: Message.Close(), symbol: 'chevron.left', title: 'Back'}
+	})
 }
 
 function view(h: H, model: Model) {
-	const problem = blockingFailure(model.catalogue)
-	const accountError = Option.getOrUndefined(AsyncResult.error(model.account))
-	const denial = Boolean.match(isDenied(accountError), {
-		onFalse: () => Option.getOrUndefined(Option.map(problem, Cause.squash)),
-		onTrue: () => accountError
-	})
-	if (isDenied(denial)) {
-		const signIn = needsSignIn(denial)
-		return h.main
-			.class('opm')
-			.children(
-				notice(
-					h,
-					model.authProblem ?? accessStatus(model.busy, signIn),
-					Boolean.match(signIn && !model.busy, {onFalse: Function.constUndefined, onTrue: Function.constant('Sign in')})
-				)
-			)
-	}
-	if (Option.isSome(problem) || (accountError !== undefined && Option.isNone(AsyncResult.value(model.catalogue)))) {
-		return h.main.class('opm').children(notice(h, 'Couldn’t load chapters', 'Retry'))
-	}
-	if (Option.isNone(AsyncResult.value(model.account))) {
-		return h.main.class('opm').children(notice(h, 'Loading chapters…'))
-	}
-	if (OpmRoute.isAnyOf(['NotFound'])(model.route)) {
-		return h.main.class('opm').children(h.a.class('opm-notice').attr('href', '/').children('Back to chapters'))
-	}
-	const chapters = chaptersOf(model)
-	const target = targetOf(model.route)
-	if (target === undefined) {
-		return h.main.class('opm').children(
-			AppShell(h, {
-				actions: Boolean.match(AsyncResult.isFailure(model.catalogue), {
-					onFalse: Function.constUndefined,
-					onTrue: () =>
-						Button(h, {})
-							.attrs({'aria-label': 'Out of date. Retry', title: 'Out of date'})
-							.on('click', () => Message.Retry())
-							.children(h.span.class('axis-dot'))
-				}),
-				content: library(h, model, chapters),
-				sidebar: SidebarControl(h, model.menu, Message.Menu(), 'opm-menu-toggle')
-			})
-		)
-	}
-	const reading = chapterView(model, target, chapters)
 	return h.main
-		.class('opm')
+		.class('opm axis-controls')
+		.onMount(PressFeedback({}))
 		.children(
-			AppShell(h, {
-				actions: PageControls(h, reading),
-				content: [library(h, model, chapters), Reading(h, model, target, reading, model.reader?.expired === false)],
-				sidebar: SidebarControl(h, false, Message.Close())
-			})
+			OpmRoute.isAnyOf(['NotFound'])(model.route)
+				? h.div
+						.class('opm-gate')
+						.children(Glass(h).children(h.a.attrs({'data-pressable': '', href: '/'}).children('Back to chapters')))
+				: workspace(h, model)
 		)
 }
 
@@ -264,161 +263,181 @@ const OpmDef = Html.component({
 	restore: false
 })
 
-export const Opm = OpmDef.make({
-	init: $ => {
-		const target = targetOf($.props.route)
-		const state = $.set({
-			account: AsyncResult.initial(),
-			authProblem: undefined,
-			busy: false,
-			catalogue: AsyncResult.initial(),
-			failed: HashSet.empty(),
-			menu: false,
-			now: DateTime.nowUnsafe(),
-			reader: Boolean.match(target === undefined, {onFalse: openedReader, onTrue: Function.constUndefined}),
-			route: $.props.route,
-			spread: SPREAD_MEDIA.matches,
-			unsaved: HashMap.empty(),
-			wide: HashSet.empty()
-		})
-		if (target === undefined) return state
-		return state.run(Command.asNoop(SetBars.make({visible: false})))
-	},
-	subscriptions: state => {
-		const target = targetOf(state.model.route)
-		const signedIn = Option.getOrUndefined(AsyncResult.value(state.model.account))
-		return [
-			Router.subscription(OpmRoute, state.model.route, route => Message.Route({route})),
-			Subscription.make(
-				'account',
-				observe(accountAtom, account => Message.Account({account}))
-			),
-			Subscription.make(
-				'catalogue',
-				observe(chaptersAtom, catalogue => Message.Catalogue({catalogue}))
-			),
-			Subscription.make(
-				'unsaved',
-				observe(unsavedAtom, unsaved => Message.Unsaved({unsaved}))
-			),
-			Subscription.make(
-				'clock',
-				observe(clockAtom('1 minute'), now => Message.Clock({now}))
-			),
-			Subscription.make(
-				'posture',
-				Stream.map(Stream.fromEventListener<MediaQueryListEvent>(SPREAD_MEDIA, 'change'), event =>
-					Message.Spread({spread: event.matches})
-				)
-			),
-			native &&
+export const Opm = pipe(
+	OpmDef.make({
+		init: $ => {
+			const target = targetOf($.props.route)
+			const state = $.set({
+				account: AsyncResult.initial(),
+				authProblem: undefined,
+				busy: false,
+				catalogue: AsyncResult.initial(),
+				failed: HashSet.empty(),
+				listHidden: false,
+				menu: false,
+				narrow: singlePane(),
+				now: DateTime.nowUnsafe(),
+				reader: Boolean.match(target === undefined, {onFalse: openedReader, onTrue: Function.constUndefined}),
+				route: $.props.route,
+				spread: matchMedia(SPREAD_QUERY).matches,
+				unsaved: HashMap.empty(),
+				wide: HashSet.empty()
+			})
+			if (target === undefined) return state
+			return state.run(Command.asNoop(SetBars.make({visible: false})))
+		},
+		subscriptions: state => {
+			const target = targetOf(state.model.route)
+			const signedIn = Option.getOrUndefined(AsyncResult.value(state.model.account))
+			return [
+				Router.subscription(OpmRoute, state.model.route, route => Message.Route({route})),
 				Subscription.make(
-					'activity-links',
-					Stream.map(chapterOpens, chapter => Message.Open({chapter}))
+					'account',
+					observe(accountAtom, account => Message.Account({account}))
 				),
-			native && signedIn !== undefined && Subscription.make('push-registration', signedIn.id, () => registerPush),
-			target !== undefined &&
-				state.model.reader !== undefined &&
-				state.model.reader.page === undefined &&
-				!state.model.reader.expired &&
-				Subscription.make('unknown-chapter', keyOf(target), () =>
-					Stream.fromEffect(Effect.as(Effect.sleep('10 seconds'), Message.Expired({chapter: target})))
-				)
-		]
-	},
-	update: {
-		Account: ($, next) => $.evolve({account: next.account}),
-		AuthDone: ($, next) => $.evolve({authProblem: next.problem, busy: false}),
-		Catalogue: ($, next) => $.set(opened({...$.model, catalogue: next.catalogue})),
-		Clock: ($, next) => $.evolve({now: next.now}),
-		Close: $ => $.run(Command.asNoop(Router.patchSearch(OpmRoute, libraryOf($.model.route), {chapter: undefined}))),
-		Expired: ($, next) => {
-			const target = targetOf($.model.route)
-			if ($.model.reader === undefined || target === undefined || keyOf(next.chapter) !== keyOf(target)) return $.model
-			return $.evolve({reader: {...$.model.reader, expired: true}})
-		},
-		Image: ($, next) =>
-			$.evolve({
-				failed: Boolean.match(next.failed, {
-					onFalse: () => HashSet.remove($.model.failed, next.src),
-					onTrue: () => HashSet.add($.model.failed, next.src)
-				}),
-				wide: Boolean.match(next.wide, {
-					onFalse: () => HashSet.remove($.model.wide, next.src),
-					onTrue: () => HashSet.add($.model.wide, next.src)
-				})
-			}),
-		Menu: $ => $.run(Command.asNoop(ToggleLibraryMenu.make({}))),
-		MenuChanged: ($, next) => $.evolve({menu: next.open}),
-		Move: ($, next) => {
-			const target = targetOf($.model.route)
-			if (target === undefined || $.model.reader === undefined) return $.model
-			const reading = chapterView($.model, target, chaptersOf($.model))
-			if (reading === undefined) return $.model
-			const position = reading.turn + next.step
-			const turn = reading.turns[position]
-			if (turn === undefined) return $.model
-			// The left page of a final spread counts as read.
-			const page = Option.getOrUndefined(
-				Boolean.match(position === reading.turns.length - 1, {
-					onFalse: () => Array.head(turn),
-					onTrue: () => Array.last(turn)
-				})
-			)
-			if (page === undefined) return $.model
-			const turned = Option.getOrUndefined(
-				turnPage($.model.reader, {following: reading.following, index: page, opened: target.number})
-			)
-			if (turned === undefined) return $.model
-			return $.evolve({reader: {...$.model.reader, ...turned.next, bars: false, page}}).run(
-				Command.asNoop(Save.make({updates: turned.saves})),
-				Command.asNoop(SetBars.make({visible: false}))
-			)
-		},
-		Open: ($, next) =>
-			$.run(
-				Command.asNoop(
-					Router.patchSearch(
-						OpmRoute,
-						libraryOf($.model.route),
-						{chapter: next.chapter.number, series: next.chapter.series},
-						{
-							history: Boolean.match(targetOf($.model.route) === undefined, {
-								onFalse: Function.constant('replace'),
-								onTrue: Function.constant('push')
-							})
-						}
+				Subscription.make(
+					'catalogue',
+					observe(chaptersAtom, catalogue => Message.Catalogue({catalogue}))
+				),
+				Subscription.make(
+					'unsaved',
+					observe(unsavedAtom, unsaved => Message.Unsaved({unsaved}))
+				),
+				Subscription.make(
+					'clock',
+					observe(clockAtom('1 minute'), now => Message.Clock({now}))
+				),
+				...watchPanes(() => Message.Posture({narrow: singlePane()})),
+				HtmlSubscription.onMediaQuery(SPREAD_QUERY, spread => Message.Spread({spread})),
+				native &&
+					Subscription.make(
+						'activity-links',
+						Stream.map(chapterOpens, chapter => Message.Open({chapter}))
+					),
+				native && signedIn !== undefined && Subscription.make('push-registration', signedIn.id, () => registerPush),
+				target !== undefined &&
+					state.model.reader !== undefined &&
+					state.model.reader.page === undefined &&
+					!state.model.reader.expired &&
+					Subscription.make('unknown-chapter', keyOf(target), () =>
+						Stream.fromEffect(Effect.as(Effect.sleep('10 seconds'), Message.Expired({chapter: target})))
 					)
-				)
-			),
-		Retry: $ => $.run(Command.asNoop(Refresh.make({}))),
-		RetryPage: ($, next) => $.evolve({failed: HashSet.remove($.model.failed, next.src)}),
-		Route: ($, next) => {
-			const previous = targetOf($.model.route)
-			const target = targetOf(next.route)
-			if (previous !== undefined && target !== undefined && keyOf(previous) === keyOf(target)) {
-				return $.evolve({route: next.route})
-			}
-			const reader = Boolean.match(target === undefined, {onFalse: openedReader, onTrue: Function.constUndefined})
-			return $.set(opened({...$.model, menu: false, reader, route: next.route})).run(
-				Command.asNoop(SetBars.make({visible: reader === undefined}))
-			)
+			]
 		},
-		Series: ($, next) =>
-			$.evolve({menu: false}).run(
-				Command.asNoop(
-					Router.patchSearch(OpmRoute, libraryOf($.model.route), {chapter: undefined, series: next.series})
+		update: {
+			Account: ($, next) => $.evolve({account: next.account}),
+			AuthDone: ($, next) => $.evolve({authProblem: next.problem, busy: false}),
+			Catalogue: ($, next) => $.set(opened({...$.model, catalogue: next.catalogue})),
+			Clock: ($, next) => $.evolve({now: next.now}),
+			Close: $ => {
+				if (hasListBehind()) return $.run(Command.asNoop(Router.Back.make({})))
+				return $.run(Command.asNoop(Router.patchSearch(OpmRoute, libraryOf($.model.route), {chapter: undefined})))
+			},
+			CloseMenu: $ => $.evolve({menu: false}),
+			Expired: ($, next) => {
+				const target = targetOf($.model.route)
+				if ($.model.reader === undefined || target === undefined || keyOf(next.chapter) !== keyOf(target))
+					{return $.model}
+				return $.evolve({reader: {...$.model.reader, expired: true}})
+			},
+			Image: ($, next) =>
+				$.evolve({
+					failed: Boolean.match(next.failed, {
+						onFalse: () => HashSet.remove($.model.failed, next.src),
+						onTrue: () => HashSet.add($.model.failed, next.src)
+					}),
+					wide: Boolean.match(next.wide, {
+						onFalse: () => HashSet.remove($.model.wide, next.src),
+						onTrue: () => HashSet.add($.model.wide, next.src)
+					})
+				}),
+			Menu: $ => $.evolve({menu: !$.model.menu}),
+			Move: ($, next) => {
+				const target = targetOf($.model.route)
+				if (target === undefined || $.model.reader === undefined) return $.model
+				const reading = chapterView($.model, target, chaptersOf($.model))
+				if (reading === undefined) return $.model
+				const position = reading.turn + next.step
+				const turn = reading.turns[position]
+				if (turn === undefined) return $.model
+				// The left page of a final spread counts as read.
+				const page = Option.getOrUndefined(
+					Boolean.match(position === reading.turns.length - 1, {
+						onFalse: () => Array.head(turn),
+						onTrue: () => Array.last(turn)
+					})
 				)
-			),
-		SignIn: $ => $.evolve({authProblem: undefined, busy: true}).run(SignIn.make({})),
-		SignOut: $ => $.evolve({authProblem: undefined, busy: true, menu: false}).run(SignOut.make({})),
-		Spread: ($, next) => $.evolve({spread: next.spread}),
-		ToggleBars: $ => {
-			if ($.model.reader === undefined) return $.model
-			const visible = !$.model.reader.bars
-			return $.evolve({reader: {...$.model.reader, bars: visible}}).run(Command.asNoop(SetBars.make({visible})))
+				if (page === undefined) return $.model
+				const turned = Option.getOrUndefined(
+					turnPage($.model.reader, {following: reading.following, index: page, opened: target.number})
+				)
+				if (turned === undefined) return $.model
+				return $.evolve({reader: {...$.model.reader, ...turned.next, bars: false, page}}).run(
+					Command.asNoop(Save.make({updates: turned.saves})),
+					Command.asNoop(SetBars.make({visible: false}))
+				)
+			},
+			Open: ($, next) =>
+				$.run(
+					Command.asNoop(
+						Router.patchSearch(
+							OpmRoute,
+							libraryOf($.model.route),
+							{chapter: next.chapter.number, series: next.chapter.series},
+							{
+								history: Boolean.match(targetOf($.model.route) === undefined, {
+									onFalse: Function.constant('replace'),
+									onTrue: Function.constant('push')
+								})
+							}
+						)
+					)
+				),
+			Posture: ($, next) => {
+				if ($.model.narrow === next.narrow) return $.model
+				return $.evolve({menu: false, narrow: next.narrow}).viewTransition(['axis-layout'])
+			},
+			Retry: $ => $.run(Command.asNoop(Refresh.make({}))),
+			RetryPage: ($, next) => $.evolve({failed: HashSet.remove($.model.failed, next.src)}),
+			Route: ($, next) => {
+				const previous = targetOf($.model.route)
+				const target = targetOf(next.route)
+				if (previous?.number === target?.number && previous?.series === target?.series) {
+					return $.evolve({menu: false, route: next.route})
+				}
+				const reader = Boolean.match(target === undefined, {onFalse: openedReader, onTrue: Function.constUndefined})
+				const result = $.set(
+					opened({
+						...$.model,
+						listHidden: target !== undefined && $.model.listHidden,
+						menu: false,
+						reader,
+						route: next.route
+					})
+				).run(Command.asNoop(SetBars.make({visible: reader === undefined})))
+				if (usedHistoryMotion()) return result
+				if (!$.model.narrow) return result.viewTransition(['axis-layout'])
+				if (target === undefined) return result.viewTransition(['axis-back'])
+				return result.viewTransition(['axis-open'])
+			},
+			Series: ($, next) => {
+				const route = libraryOf($.model.route)
+				const state = $.evolve({menu: false})
+				if (next.series === (route.search.series ?? 'manga')) return state
+				return state.run(Command.asNoop(Router.patchSearch(OpmRoute, route, {chapter: undefined, series: next.series})))
+			},
+			Sidebar: $ => $.evolve({listHidden: !$.model.listHidden, menu: false}).viewTransition(['axis-layout']),
+			SignIn: $ => $.evolve({authProblem: undefined, busy: true}).run(SignIn.make({})),
+			SignOut: $ => $.evolve({authProblem: undefined, busy: true, menu: false}).run(SignOut.make({})),
+			Spread: ($, next) => $.evolve({spread: next.spread}),
+			ToggleBars: $ => {
+				if ($.model.reader === undefined) return $.model
+				const visible = !$.model.reader.bars
+				return $.evolve({reader: {...$.model.reader, bars: visible}}).run(Command.asNoop(SetBars.make({visible})))
+			},
+			Unsaved: ($, next) => $.set(opened({...$.model, unsaved: next.unsaved}))
 		},
-		Unsaved: ($, next) => $.set(opened({...$.model, unsaved: next.unsaved}))
-	},
-	view
-})
+		view
+	}),
+	Component.provide(Layer.provideMerge(OpmCommands, AtomRegistry.layer))
+)

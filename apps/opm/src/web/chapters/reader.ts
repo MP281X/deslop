@@ -16,7 +16,11 @@ import {
 	pipe
 } from 'effect'
 
+import type {ShellAction} from '@deslop/ui/app-shell'
+import {Loading, Notice, Placeholder} from '@deslop/ui/axis'
 import {Button} from '@deslop/ui/control'
+import {Glass} from '@deslop/ui/glass'
+import {SymbolIcon} from '@deslop/ui/symbol'
 
 import type {ChapterIdentity, ChapterList} from '#contracts'
 import {byChapterNumber} from '#contracts'
@@ -37,7 +41,7 @@ export function chapterView(model: Model, target: ChapterIdentity, chapters: Cha
 	if (Array.isReadonlyArrayEmpty(model.reader.strip) && following[0]?.number !== target.number) return undefined
 	const shown = stripOf(model.reader, following)
 	const pages = Array.flatMap(shown, chapter => chapter.pages)
-	const turns = turnsOf(shown, model.spread, model.wide)
+	const turns = turnsOf(shown, model.spread && (model.narrow || model.listHidden), model.wide)
 	const page = model.reader.page ?? savedPage(shown[0])
 	const turn = pipe(
 		turns,
@@ -119,19 +123,20 @@ const Shape = Mount.makeStream('Opm/PageShape', {args: {src: Schema.String}}, (n
 	)
 )
 
-function sideOf(model: Model, src: string, active: readonly number[], index: number) {
-	if (!model.spread || HashSet.has(model.wide, src)) return 'single'
+function sideOf(active: readonly number[], index: number) {
+	if (active.length < 2) return 'single'
 	if (index === active[1]) return 'left'
 	return 'right'
 }
 
 function pageImage(h: H, failed: boolean, src: string, index: number) {
 	if (failed) {
-		return Button(h, {})
-			.class('opm-retry-page')
-			.attr('aria-label', 'Reload page')
-			.on('click', () => Message.RetryPage({src}))
-			.children('↻')
+		return Glass(h, 'opm-retry-page').children(
+			Button(h)
+				.attr('aria-label', 'Reload page')
+				.on('click', Message.RetryPage({src}))
+				.children(SymbolIcon(h, 'arrow.clockwise'))
+		)
 	}
 	return h.img
 		.attrs({alt: `Page ${index + 1}`, draggable: 'false', referrerpolicy: 'no-referrer', src})
@@ -158,15 +163,9 @@ export function Reading(
 		.onMount(Motion({}))
 		.children(
 			turn < 0 &&
-				h.p
-					.class('opm-notice')
-					.attr('role', 'status')
-					.children(
-						Boolean.match(waiting, {
-							onFalse: Function.constant('Chapter unavailable'),
-							onTrue: Function.constant('Loading chapter…')
-						})
-					),
+				(waiting
+					? Loading(h, 'Loading chapter', Placeholder(h, 'opm-page-placeholder'))
+					: Notice(h, 'Chapter unavailable')),
 			h.div.class('opm-paper').children(
 				Array.map(stripes, index => {
 					const src = reading?.pages[index]
@@ -174,7 +173,7 @@ export function Reading(
 					return h.div
 						.key(`${index}`)
 						.class('opm-leaf')
-						.attr('data-side', sideOf(model, src, active, index))
+						.attr('data-side', sideOf(active, index))
 						.attr(
 							'hidden',
 							pipe(
@@ -189,20 +188,22 @@ export function Reading(
 		)
 }
 
-export function PageControls(h: Html.H<Message>, reading: ReturnType<typeof chapterView>) {
-	if (reading === undefined || reading.turn < 0 || reading.turns.length < 2) return undefined
-	return [
-		reading.turn < reading.turns.length - 1 &&
-			Button(h, {})
-				.class('opm-turn')
-				.attr('aria-label', 'Next page')
-				.on('click', () => Message.Move({step: 1}))
-				.children(h.span.attr('aria-hidden', 'true').children('←')),
-		reading.turn > 0 &&
-			Button(h, {})
-				.class('opm-turn')
-				.attr('aria-label', 'Previous page')
-				.on('click', () => Message.Move({step: -1}))
-				.children(h.span.attr('aria-hidden', 'true').children('→'))
-	]
+export function pageActions(reading: ReturnType<typeof chapterView>): readonly ShellAction<Message>[] {
+	if (reading === undefined || reading.turn < 0) return []
+	const next: ShellAction<Message> = {
+		id: 'next-page',
+		message: Message.Move({step: 1}),
+		symbol: 'chevron.left',
+		title: 'Next page'
+	}
+	const previous: ShellAction<Message> = {
+		id: 'previous-page',
+		message: Message.Move({step: -1}),
+		symbol: 'chevron.right',
+		title: 'Previous page'
+	}
+	return Array.filter(
+		[reading.turn < reading.turns.length - 1 && next, reading.turn > 0 && previous],
+		(action): action is ShellAction<Message> => action !== false
+	)
 }

@@ -19,45 +19,24 @@
 	flex: 1;
 }
 
-.trips-sidebar-wide {
-	display: none;
-}
-
-@media (min-width: 640px),
-	(horizontal-viewport-segments: 2),
-	(device-posture: folded) and (vertical-viewport-segments: 2) {
-	.trips-sidebar-wide {
-		display: block;
-	}
-	.trips-sidebar-compact {
-		display: none;
-	}
-}
-
 @media (device-posture: folded) and (vertical-viewport-segments: 2) {
-	.trips[data-show] {
+	.trips .axis-split[data-layout='split']:not([data-list-hidden]) {
 		grid-template-rows:
 			minmax(0, env(viewport-segment-height 0 0))
 			calc(env(viewport-segment-top 0 1) - env(viewport-segment-bottom 0 0))
 			minmax(0, 1fr);
 	}
 
-	.trips[data-show] > .fold-detail {
-		display: block;
-		grid-row: 1;
-	}
-
-	.trips[data-show] > .fold-list {
-		display: block;
+	.trips .axis-split[data-layout='split']:not([data-list-hidden]) > .fold-list {
 		grid-row: 3;
 	}
 
-	.trips[data-show] .trips-half {
+	.trips .trips-half {
 		display: block;
 		padding: 16px var(--pane-padding);
 	}
 
-	.trips[data-show] .trips-pass[data-half-step] {
+	.trips .trips-pass[data-half-step] {
 		display: none;
 	}
 }
@@ -120,70 +99,157 @@
 }
 
 .trips-control {
-	display: inline-grid;
-	min-height: 42px;
+	display: inline-flex;
+	align-items: center;
+	gap: 8px;
+	min-height: 44px;
 	padding-inline: 14px;
-	place-items: center;
 	border-radius: 999px;
 	white-space: nowrap;
 	font-weight: 550;
 }
 
-.trips-stale {
+.trips [role='menu'] .glass-panel-body > [role='group'] {
+	display: grid;
+}
+
+.trips [role='menu'] button {
 	display: flex;
 	align-items: center;
-	gap: 8px;
-	padding-inline: var(--pane-padding, 16px);
+	justify-content: space-between;
+	min-block-size: 42px;
+	min-inline-size: 12rem;
+	padding-inline: 10px;
+	border-radius: 10px;
+	text-align: start;
 }
 
-.trips-travel-times {
-	display: grid;
-	grid-template-columns: repeat(2, minmax(0, 1fr));
+.trips [role='menu'] .sf-symbol {
+	inline-size: 16px;
+	block-size: 16px;
 }
 
-.trips-travel-times button[aria-pressed='true'] {
-	background: var(--color-muted);
+.trips-menu-label {
+	padding: 4px 10px;
+	color: var(--color-muted-foreground);
+	font-size: 0.8rem;
 }
 
-.trips-airport-links {
-	display: flex;
+.trips-sheet {
+	position: fixed;
+	inset: auto calc(var(--shell-inset-right) + var(--shell-rail-width)) auto var(--shell-inset-left);
+	inset-block-start: calc(
+		var(--sheet-viewport-top, 0px) + var(--sheet-viewport-height, 100dvh) - var(--booking-height)
+	);
+	--booking-height: min(28rem, calc(var(--sheet-viewport-height, 100dvh) - max(32px, env(safe-area-inset-top))));
+	inline-size: min(32rem, 100% - var(--shell-rail-width) - var(--shell-inset-left) - var(--shell-inset-right));
+	block-size: var(--booking-height);
+	max-inline-size: none;
+	max-block-size: none;
+	margin: 0 auto;
+	border-radius: 28px 28px 0 0;
+	background: #1c1c1e;
+	color: var(--color-foreground);
 }
 
-.trips-notice {
-	padding: 16px;
+.trips-sheet[open] {
+	view-transition-name: axis-sheet;
 }
 
-.trips-notice .glass {
-	margin-block-start: 8px;
+.trips-sheet::backdrop {
+	background: rgb(0 0 0 / 56%);
 }
 
 .trips-booking {
-	display: grid;
+	display: flex;
+	flex-direction: column;
 	gap: 12px;
-	inline-size: 20rem;
-	max-inline-size: 100%;
-}
-
-.trips-booking textarea {
-	display: block;
-	width: 100%;
-	margin-block-start: 8px;
-	padding: 10px;
-	border-radius: 12px;
-	background: var(--color-background);
-}
-
-.trips-file {
-	display: grid;
-	gap: 4px;
+	block-size: 100%;
+	padding: 16px 16px max(16px, env(safe-area-inset-bottom));
+	overflow: auto;
 }
 
 .trips-booking-actions {
-	display: flex;
-	justify-self: end;
+	display: grid;
+	grid-template-columns: 44px 1fr 44px;
+	place-items: center;
+	gap: 8px;
+	font-weight: 640;
 }
 
-.trips-file input {
+.trips-booking-actions button {
+	display: grid;
+	place-items: center;
+	inline-size: 44px;
+	block-size: 44px;
+	border-radius: 999px;
+}
+
+.trips-booking textarea {
+	flex: 1;
+	min-block-size: 44px;
+	padding: 10px;
+	border-radius: 12px;
+	background: var(--color-background);
+	font-size: max(16px, 1em);
+	resize: none;
+}
+
+.trips-file {
+	align-self: start;
+}
+
+.trips-file-control {
+	position: relative;
+	cursor: pointer;
+}
+
+.trips-file-control input {
+	position: absolute;
+	inset: 0;
 	inline-size: 100%;
-	min-inline-size: 0;
+	block-size: 100%;
+	opacity: 0;
+	cursor: inherit;
+}
+
+.trips-file-control input::file-selector-button {
+	cursor: inherit;
+}
+
+.trips-file-control:has(:focus-visible) {
+	outline: 2px solid;
+	outline-offset: 2px;
+}
+
+.trips-file-control[aria-disabled='true'] {
+	cursor: default;
+	opacity: 0.6;
+}
+
+.trips-report {
+	position: fixed;
+	inset: auto 64px 16px 16px;
+	width: fit-content;
+	padding: 10px 16px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.trips-sheet {
+		opacity: 0;
+		transition:
+			opacity 85ms ease-out,
+			display 85ms allow-discrete,
+			overlay 85ms allow-discrete;
+	}
+
+	.trips-sheet[open] {
+		opacity: 1;
+	}
+
+	@starting-style {
+		.trips-sheet[open] {
+			opacity: 0;
+		}
+	}
 }

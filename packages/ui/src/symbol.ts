@@ -4,9 +4,9 @@ import {Record, Schema} from 'effect'
 
 // Monochrome SF Symbols rasterized at 4× from AppKit system images.
 const sources = {
+	airplane: new URL('./symbols/airplane.png', import.meta.url).href,
 	'airplane.arrival': new URL('./symbols/airplane.arrival.png', import.meta.url).href,
 	'airplane.departure': new URL('./symbols/airplane.departure.png', import.meta.url).href,
-	airplane: new URL('./symbols/airplane.png', import.meta.url).href,
 	'arrow.clockwise': new URL('./symbols/arrow.clockwise.png', import.meta.url).href,
 	'arrow.counterclockwise': new URL('./symbols/arrow.counterclockwise.png', import.meta.url).href,
 	'arrow.triangle.2.circlepath': new URL('./symbols/arrow.triangle.2.circlepath.png', import.meta.url).href,
@@ -30,8 +30,8 @@ const sources = {
 	'doc.on.clipboard': new URL('./symbols/doc.on.clipboard.png', import.meta.url).href,
 	'doc.text': new URL('./symbols/doc.text.png', import.meta.url).href,
 	'document.on.clipboard': new URL('./symbols/document.on.clipboard.png', import.meta.url).href,
-	'ellipsis.circle': new URL('./symbols/ellipsis.circle.png', import.meta.url).href,
 	ellipsis: new URL('./symbols/ellipsis.png', import.meta.url).href,
+	'ellipsis.circle': new URL('./symbols/ellipsis.circle.png', import.meta.url).href,
 	'exclamationmark.circle': new URL('./symbols/exclamationmark.circle.png', import.meta.url).href,
 	'exclamationmark.triangle': new URL('./symbols/exclamationmark.triangle.png', import.meta.url).href,
 	externaldrive: new URL('./symbols/externaldrive.png', import.meta.url).href,
@@ -46,8 +46,8 @@ const sources = {
 	laptopcomputer: new URL('./symbols/laptopcomputer.png', import.meta.url).href,
 	'line.3.horizontal.decrease': new URL('./symbols/line.3.horizontal.decrease.png', import.meta.url).href,
 	link: new URL('./symbols/link.png', import.meta.url).href,
-	'list.bullet.indent': new URL('./symbols/list.bullet.indent.png', import.meta.url).href,
 	'list.bullet': new URL('./symbols/list.bullet.png', import.meta.url).href,
+	'list.bullet.indent': new URL('./symbols/list.bullet.indent.png', import.meta.url).href,
 	location: new URL('./symbols/location.png', import.meta.url).href,
 	lock: new URL('./symbols/lock.png', import.meta.url).href,
 	magnifyingglass: new URL('./symbols/magnifyingglass.png', import.meta.url).href,

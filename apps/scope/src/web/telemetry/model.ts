@@ -6,6 +6,8 @@ import {AsyncResult, AtomRegistry} from 'effect/reactivity'
 
 import {signInUrl} from '@deslop/runtime/shared/auth'
 import {DateTimeUtcFromFiniteMillis, TimeFrame} from '@deslop/runtime/shared/time'
+import {singlePane} from '@deslop/ui/split'
+import type {Pane} from '@deslop/ui/split'
 
 import {AppName, Overview, SpanId, TraceId, TraceTree} from '#contracts'
 
@@ -16,6 +18,9 @@ import type {Search} from '#web/telemetry/selection.ts'
 const OverviewRead = AsyncResult.Schema({error: Schema.Unknown, success: Overview})
 const TraceRead = AsyncResult.Schema({error: Schema.Unknown, success: TraceTree})
 
+type Panel = typeof Panel.Type
+const Panel = Schema.Literals(['sources', 'ranges', 'traces'])
+
 export type Model = typeof Model.Type
 export const Model = Schema.Struct({
 	knownSources: Schema.Array(AppName),
@@ -23,8 +28,8 @@ export const Model = Schema.Struct({
 	now: DateTimeUtcFromFiniteMillis,
 	opened: Schema.Option(AppName),
 	overview: OverviewRead,
+	panel: Schema.UndefinedOr(Panel),
 	route: ScopeRoute,
-	show: Schema.Literals(['list', 'detail']),
 	sidebarHidden: Schema.Boolean,
 	trace: Schema.optionalKey(Schema.Struct({id: TraceId, result: TraceRead}))
 })
@@ -34,6 +39,8 @@ export const Message = UiSchema.TaggedEnum({
 	Clock: {now: DateTimeUtcFromFiniteMillis},
 	Operation: {operation: OperationKey},
 	Overview: {range: TimeFrame, result: OverviewRead},
+	Panel: {panel: Panel},
+	PanelClosed: {panel: Panel},
 	Posture: {narrow: Schema.Boolean},
 	Range: {range: TimeFrame},
 	Retry: {},
@@ -44,8 +51,6 @@ export const Message = UiSchema.TaggedEnum({
 	Trace: {id: TraceId},
 	TraceRead: {id: TraceId, result: TraceRead}
 })
-
-export const NARROW = '(width < 640px) or ((vertical-viewport-segments: 2) and (not (horizontal-viewport-segments: 2)))'
 
 export function rangeOf(search: Search) {
 	return Option.getOrElse(search.range, Function.constant('24h' as const))
@@ -68,20 +73,26 @@ export function traceReadOf(model: Model) {
 	return AsyncResult.initial()
 }
 
-export function showOf(search: Search): Model['show'] {
-	if (Option.isSome(search.pane) || Option.isSome(search.operation) || Option.isSome(search.trace)) return 'detail'
-	return 'list'
+export function levelOf(search: Search) {
+	if (Option.isSome(search.span)) return 2
+	if (Option.isSome(search.pane) || Option.isSome(search.operation) || Option.isSome(search.trace)) return 1
+	return 0
+}
+
+export function showOf(search: Search): Pane {
+	if (levelOf(search) === 0) return 'list'
+	return 'detail'
 }
 
 export function initialModel(route: Model['route']): Model {
 	return {
 		knownSources: [],
-		narrow: matchMedia(NARROW).matches,
+		narrow: singlePane(),
 		now: DateTime.nowUnsafe(),
 		opened: Option.none(),
 		overview: AsyncResult.initial(),
+		panel: undefined,
 		route,
-		show: showOf(route.search),
 		sidebarHidden: false
 	}
 }

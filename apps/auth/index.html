@@ -15,10 +15,26 @@
 		<!-- Requested with the page, so the reads waiting on them never add a round trip. -->
 		<link rel="preload" href="/api/runtime" as="fetch" crossorigin />
 
+		<link rel="stylesheet" href="/src/web/skeleton.css" />
 		<title>Auth</title>
 	</head>
 	<body>
 		<div id="root"></div>
+		<div class="auth-startup" aria-label="Loading Auth" role="status" aria-busy="true">
+			<div class="auth-skeleton-list" aria-hidden="true"></div>
+			<div class="auth-skeleton-detail" aria-hidden="true">
+				<div class="auth-skeleton-list"></div>
+			</div>
+		</div>
+		<script>
+			const search = new URLSearchParams(location.search)
+			const startup = document.querySelector('.auth-startup')
+			startup.toggleAttribute(
+				'data-detail',
+				search.get('pane') === 'detail' || (!search.has('pane') && search.has('person'))
+			)
+			startup.toggleAttribute('data-person', search.has('person'))
+		</script>
 		<script type="module" src="/src/web/main.ts"></script>
 	</body>
 </html>

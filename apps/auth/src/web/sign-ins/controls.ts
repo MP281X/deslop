@@ -18,7 +18,7 @@ export function SignIn(h: H, error?: string) {
 			),
 			error !== undefined &&
 				h.p
-					.class('axis-muted auth-status')
+					.class('axis-muted text-wrap')
 					.attr('role', 'alert')
 					.children(h.span.class('axis-dot').attr('aria-hidden', 'true'), error)
 		)

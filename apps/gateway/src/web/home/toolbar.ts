@@ -1,92 +1,107 @@
+import {Mount} from '@effect/ui'
 import type {Html} from '@effect/ui/html'
 
-import {Array, Boolean, Function, Option, Redacted, Schema, String} from 'effect'
+import {Array, Boolean, Effect, Function, Option, Redacted, Schema, Stream, String} from 'effect'
 
 import {AsyncResult} from 'effect/reactivity'
 
 import {blockingFailure} from '@deslop/runtime/client/live-stream'
 import {TimeFrame} from '@deslop/runtime/shared/time'
+import type {ShellAction} from '@deslop/ui/app-shell'
 import {Button} from '@deslop/ui/control'
 import {Glass, GlassPanel} from '@deslop/ui/glass'
+import {SymbolIcon} from '@deslop/ui/symbol'
 
-import {AiKeySecret, KEY_MESSAGE} from '#contracts'
+import {AiKeySecret, KEY_MESSAGE, keyProvider} from '#contracts'
 
-import {Action, Message} from '#web/home/model.ts'
+import {Action, Execute, Message} from '#web/home/model.ts'
 import type {Model} from '#web/home/model.ts'
 import {credentialAction} from '#web/home/rows.ts'
-import icon from '#web/icon.svg'
+import {WebSignOut} from '#web/home/ui.ts'
 import {periodOf} from '#web/routes.ts'
+
+type H = Html.H<Message>
 
 function when(flag: boolean, value: string) {
 	if (flag) return value
 	return undefined
 }
 
-export function GatewayMenu(h: Html.H<Message>, model: Model) {
-	const stale = Array.some(
+function isStale(model: Model) {
+	return Array.some(
 		[model.keys, model.aiUsage, model.servers, model.mcpUsage],
 		(result: AsyncResult.AsyncResult<unknown, unknown>) =>
 			AsyncResult.isFailure(result) && Option.isNone(blockingFailure(result))
 	)
-	const account = AsyncResult.match(model.account, {
-		onFailure: Function.constUndefined,
-		onInitial: Function.constUndefined,
-		onSuccess: result => result.value
-	})
-	const period = periodOf(model.route)
-	return {
-		panel: GlassPanel(h, 'gateway-menu', 'Gateway controls', [
-			h.label.class('gateway-range').children(
-				'Range',
-				h.select
-					.class('gateway-action')
-					.key(period)
-					.on('change', event => {
-						if (Schema.is(TimeFrame)(event.value)) return Message.Period({period: event.value})
-						return undefined
-					})
-					.children(
-						Array.map(TimeFrame.literals, value =>
-							h.option
-								.key(value)
-								.attrs({selected: when(value === period, ''), value})
-								.children(value)
-						)
-					)
-			),
-			Button(h)
-				.class('gateway-action')
-				.on('click', () => Message.Copy())
-				.children('Copy MCP URL'),
-			model.menuFeedback !== undefined &&
-				h.span.class('axis-muted').attr('role', 'status').children(model.menuFeedback),
-			stale &&
-				Button(h)
-					.class('gateway-action')
-					.on('click', () => Message.Retry())
-					.attr('aria-label', 'Out of date. Try again')
-					.children(h.span.class('axis-dot').attr('aria-hidden', 'true'), 'Out of date'),
-			account !== undefined && h.div.class('axis-muted').children(`@${account.name}`),
-			account?.signOut === true &&
-				h.form
-					.attrs({action: `/auth/sign-out?${new URLSearchParams({next: location.href})}`, method: 'post'})
-					.children(Button(h, {type: 'submit'}).class('gateway-action').children('Sign out'))
-		]),
-		trigger: Button(h)
-			.class('gateway-menu-trigger')
-			.attrs({
-				'aria-label': Boolean.match(stale, {
-					onFalse: Function.constant('Gateway controls'),
-					onTrue: Function.constant('Gateway controls. Out of date')
-				}),
-				popovertarget: 'gateway-menu'
-			})
-			.children(h.img.attrs({alt: '', src: icon}), stale && h.span.class('axis-dot').attr('aria-hidden', 'true'))
-	}
 }
 
-export function PasteField(h: Html.H<Message>, model: Model) {
-	const busy = model.pending !== undefined
+export function gatewayActions(model: Model): readonly ShellAction<Message>[] {
+	return [
+		{id: 'range', message: Message.Panel({panel: 'range'}), symbol: 'clock', title: `Range: ${periodOf(model.route)}`},
+		{
+			id: 'options',
+			message: Message.Panel({panel: 'options'}),
+			symbol: Boolean.match(isStale(model), {
+				onFalse: Function.constant('ellipsis'),
+				onTrue: Function.constant('exclamationmark.circle')
+			}),
+			title: 'Gateway controls'
+		}
+	]
+}
+
+export function RangeMenu(h: H, model: Model) {
+	const period = periodOf(model.route)
+	return GlassPanel(
+		h,
+		'gateway-range',
+		'Range',
+		Array.map(TimeFrame.literals, value =>
+			Button(h)
+				.key(value)
+				.attrs({'aria-checked': `${value === period}`, role: 'menuitemradio'})
+				.on('click', Message.Period({period: value}))
+				.children(value, value === period && SymbolIcon(h, 'checkmark'))
+		)
+	)
+		.attr('role', 'menu')
+		.popover('auto', model.panel === 'range')
+		.on('toggle', event => {
+			if (!event.open) return Message.PanelClosed({panel: 'range'})
+			return undefined
+		})
+}
+
+export function OptionsMenu(h: H, model: Model) {
+	const account = Option.getOrUndefined(AsyncResult.value(model.account))
+	return GlassPanel(h, 'gateway-options', 'Gateway controls', [
+		Button(h)
+			.attr('role', 'menuitem')
+			.on('click', Message.Copy())
+			.children('Copy MCP URL', SymbolIcon(h, 'doc.on.clipboard')),
+		model.menuFeedback !== undefined &&
+			h.p.class('axis-muted gateway-menu-caption').attr('role', 'status').children(model.menuFeedback),
+		isStale(model) &&
+			Button(h)
+				.attrs({'aria-label': 'Out of date. Try again', role: 'menuitem'})
+				.on('click', Message.Retry())
+				.children(
+					h.span.children(h.span.class('axis-dot').attr('aria-hidden', 'true'), 'Out of date'),
+					SymbolIcon(h, 'arrow.clockwise')
+				),
+		account !== undefined && h.p.class('axis-muted gateway-menu-caption').children(`@${account.name}`),
+		account?.signOut === true && WebSignOut(h, location.href)
+	])
+		.attr('role', 'menu')
+		.popover('auto', model.panel === 'options')
+		.on('toggle', event => {
+			if (!event.open) return Message.PanelClosed({panel: 'options'})
+			return undefined
+		})
+}
+
+export function PasteField(h: H, model: Model) {
+	const busy = h.isRunning(Execute)
 	return h.header.class('gateway-toolbar').children(
 		h.form
 			.class('gateway-add')
@@ -116,71 +131,103 @@ export function PasteField(h: Html.H<Message>, model: Model) {
 							if (model.fieldError !== undefined) return Message.ClearFieldError()
 							return undefined
 						})
-				)
-			),
-		model.fieldError !== undefined &&
-			h.p.id('gateway-add-error').class('gateway-notice').attr('role', 'alert').children(model.fieldError)
+				),
+				model.fieldError !== undefined &&
+					Glass(h).id('gateway-add-error').attr('role', 'alert').children(h.p.children(model.fieldError))
+			)
 	)
 }
 
-export function KeyDialog(h: Html.H<Message>, dialog: NonNullable<Model['dialog']>, model: Model) {
+const FitKeySheet = Mount.makeStream('Gateway/FitKeySheet', {args: {}}, (sheet: HTMLDialogElement) =>
+	Stream.unwrap(
+		Effect.as(
+			Effect.acquireRelease(
+				Effect.sync(() => {
+					const viewport = window.visualViewport
+					if (viewport === null) return
+					function fit() {
+						if (viewport === null) return
+						sheet.style.setProperty('--gateway-sheet-bottom', `${viewport.offsetTop + viewport.height}px`)
+						sheet.style.setProperty('--gateway-sheet-height', `${viewport.height}px`)
+					}
+					fit()
+					viewport.addEventListener('resize', fit)
+					viewport.addEventListener('scroll', fit)
+					return () => {
+						viewport.removeEventListener('resize', fit)
+						viewport.removeEventListener('scroll', fit)
+					}
+				}),
+				release => Effect.sync(() => release?.())
+			),
+			Stream.never
+		)
+	)
+)
+
+export function KeyDialog(h: H, dialog: NonNullable<Model['dialog']>, model: Model) {
 	const secret = Redacted.value(dialog.secret)
 	const value = String.trim(secret)
 	const valid = Schema.is(AiKeySecret)(value)
 	const invalid = value !== '' && !valid
-	const saving = model.pending === 'SaveKey'
+	const saving = h.isRunning(Execute)
 	const error = when(invalid, KEY_MESSAGE) ?? dialog.error
 	const keys = Option.getOrElse(AsyncResult.value(model.keys), () => [])
-	return GlassPanel(
-		h,
-		'gateway-key-panel',
-		'AI key',
-		h.form
-			.on('submit', event => {
-				const entry = String.trim(event.fields['secret'] ?? '')
-				if (saving || !Schema.is(AiKeySecret)(entry)) return undefined
-				return Message.Perform({action: Action.cases.SaveKey.make({input: {secret: Redacted.make(entry)}})})
-			})
-			.children(
-				h.strong.children('AI key'),
-				h.label.class('axis-muted').attr('for', 'gateway-key').children('OpenCode, Anthropic or OpenAI key'),
-				h.input
-					.id('gateway-key')
-					.attrs({
-						'aria-describedby': when(error !== undefined, 'gateway-key-error'),
-						'aria-invalid': when(invalid, 'true'),
-						autocapitalize: 'none',
-						autocomplete: 'off',
-						autofocus: '',
-						disabled: when(saving, ''),
-						name: 'secret',
-						required: '',
-						spellcheck: 'false',
-						type: 'password'
-					})
-					.value(secret)
-					.on('input', event => Message.EditedKey({secret: Redacted.make(event.value)})),
-				error !== undefined && h.p.id('gateway-key-error').attr('role', 'alert').children(error),
-				h.div.class('gateway-key-actions').children(
-					Button(h, {disabled: saving})
-						.class('gateway-action')
-						.on('click', () => Message.CancelKey())
-						.children('Cancel'),
-					Button(h, {disabled: saving || !valid, type: 'submit'})
-						.class('gateway-action')
-						.children(
-							Boolean.match(saving, {
-								onFalse: () => credentialAction(value, valid, keys),
-								onTrue: Function.constant('Saving…')
+	const provider = Boolean.match(valid, {onFalse: Function.constUndefined, onTrue: () => keyProvider(value)})
+	return h.dialog
+		.class('gateway-key-sheet')
+		.attr('aria-labelledby', 'gateway-key-label')
+		.modal(true)
+		.onMount(FitKeySheet({}))
+		.on('cancel', Message.CancelKey(), {preventDefault: true})
+		.children(
+			h.form
+				.on('submit', event => {
+					const entry = String.trim(event.fields['secret'] ?? '')
+					if (saving || !Schema.is(AiKeySecret)(entry)) return undefined
+					return Message.Perform({action: Action.cases.SaveKey.make({input: {secret: Redacted.make(entry)}})})
+				})
+				.children(
+					h.label.id('gateway-key-label').attr('for', 'gateway-key').children('OpenCode, Anthropic or OpenAI key'),
+					Glass(h).children(
+						h.input
+							.id('gateway-key')
+							.attrs({
+								'aria-describedby': when(error !== undefined, 'gateway-key-error'),
+								'aria-invalid': when(invalid, 'true'),
+								autocapitalize: 'none',
+								autocomplete: 'off',
+								autofocus: '',
+								disabled: when(saving, ''),
+								enterkeyhint: 'go',
+								name: 'secret',
+								required: '',
+								spellcheck: 'false',
+								type: 'password'
 							})
+							.value(secret)
+							.on('input', event => Message.EditedKey({secret: Redacted.make(event.value)}))
+					),
+					error !== undefined && h.p.id('gateway-key-error').attr('role', 'alert').children(error),
+					h.div.class('gateway-key-actions').children(
+						Glass(h).children(
+							Button(h, {disabled: saving})
+								.class('gateway-action')
+								.attr('aria-label', 'Cancel')
+								.on('click', Message.CancelKey())
+								.children(SymbolIcon(h, 'xmark'))
+						),
+						Glass(h).children(
+							Button(h, {disabled: saving || !valid, type: 'submit'})
+								.class('gateway-action')
+								.children(
+									Boolean.match(saving, {
+										onFalse: () => credentialAction(provider, keys),
+										onTrue: Function.constant('Saving…')
+									})
+								)
 						)
+					)
 				)
-			)
-	)
-		.popover('auto', true)
-		.attr('role', 'dialog')
-		.on('toggle', event => {
-			if (event.newState === 'closed') return Message.CancelKey()
-			return undefined
-		})
+		)
 }

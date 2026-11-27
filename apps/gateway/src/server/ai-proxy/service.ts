@@ -38,7 +38,7 @@ import {AiModelId} from '@deslop/runtime/shared/ai'
 import {AuthError, failureOptions} from '@deslop/runtime/shared/auth'
 import type {UserId} from '@deslop/runtime/shared/auth'
 
-import {AiKeyItem, AiProvider} from '#contracts'
+import {AiKeyItem, AiProvider, keyProvider} from '#contracts'
 import type {AiSetKey} from '#contracts'
 
 import {migrations} from './migrations.ts'
@@ -339,13 +339,7 @@ export class AiProxy extends Context.Service<AiProxy>()('@deslop/gateway/server/
 						last4: String.slice(-4)(Redacted.value(input.secret)),
 						lastStatus: Option.none(),
 						owner: id,
-						provider: pipe(
-							Redacted.value(input.secret),
-							Match.value,
-							Match.when(String.startsWith('sk-ant-'), Function.constant('anthropic' as const)),
-							Match.when(String.startsWith('sk-'), Function.constant('openai' as const)),
-							Match.orElse(Function.constant('opencode' as const))
-						),
+						provider: keyProvider(Redacted.value(input.secret)),
 						secret: input.secret
 					}),
 					Reactivity.mutation({aiKeys: [id]}),
