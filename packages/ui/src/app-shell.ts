@@ -7,7 +7,6 @@ import {Array, Boolean, Function, Option, Queue, Schema, Stream, pipe} from 'eff
 import {Capacitor} from '@capacitor/core'
 
 import {Button} from './control.ts'
-import {Glass} from './glass.ts'
 import {ToolbarItem, nativeToolbar} from './native.ts'
 import {SymbolIcon} from './symbol.ts'
 import type {SymbolName} from './symbol.ts'
@@ -60,6 +59,7 @@ function ShellButton<M>(h: Html.H<M>, action: ShellAction<M>) {
 		onSome: pressed => Button(h, {disabled, pressed})
 	})
 		.key(action.id)
+		.class('axis-control')
 		.attrs({
 			'aria-haspopup': Boolean.match(action.menu !== undefined, {
 				onFalse: Function.constUndefined,
@@ -97,9 +97,9 @@ export function ActionShell<M>(
 					h.div
 						.class('shell-controls')
 						.children(
-							sidebar !== undefined && Glass(h).children(ShellButton(h, sidebar)),
+							sidebar !== undefined && ShellButton(h, sidebar),
 							Array.isReadonlyArrayNonEmpty(actions) &&
-								Glass(h, 'shell-actions').children(Array.map(actions, action => ShellButton(h, action)))
+								h.div.class('shell-actions').children(Array.map(actions, action => ShellButton(h, action)))
 						),
 				onTrue: () => {
 					const items = Array.map(controls, action =>

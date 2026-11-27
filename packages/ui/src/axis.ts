@@ -2,13 +2,12 @@ import type {View} from '@effect/ui'
 import type {Html} from '@effect/ui/html'
 
 import {Button} from './control.ts'
-import {Glass} from './glass.ts'
 
 export type RowLabelProps<M> = {line?: View.Input<M>; problem?: boolean; title: View.Input<M>}
 
 export type RowSlots<M> = RowLabelProps<M> & {leading?: View.Content<M>; value?: View.Input<M>}
 
-export function RowLabel<M>(h: Html.H<M>, options: RowLabelProps<NoInfer<M>>) {
+function RowLabel<M>(h: Html.H<M>, options: RowLabelProps<NoInfer<M>>) {
 	return h.span
 		.class('axis-lines')
 		.children(
@@ -42,11 +41,10 @@ export function Notice<M>(h: Html.H<M>, text: string, action?: M, label = 'Retry
 		.children(
 			h.p.children(text),
 			action !== undefined &&
-				Glass(h).children(
-					Button(h)
-						.on('click', () => action)
-						.children(label)
-				)
+				Button(h)
+					.class('axis-control')
+					.on('click', () => action)
+					.children(label)
 		)
 }
 

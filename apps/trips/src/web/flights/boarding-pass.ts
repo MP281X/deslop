@@ -5,8 +5,7 @@ import type {DateTime} from 'effect'
 
 import type {ShellMenuGroup} from '@deslop/ui/app-shell'
 import {Loading, Row, RowContent} from '@deslop/ui/axis'
-import {Button} from '@deslop/ui/control'
-import {GlassPanel} from '@deslop/ui/glass'
+import {Button, PopoverPanel} from '@deslop/ui/control'
 import {SymbolIcon} from '@deslop/ui/symbol'
 
 import {TravelTime} from '#contracts'
@@ -238,7 +237,7 @@ export function AirportOptions(flight: Flight, travel: readonly TravelTime[], pe
 }
 
 export function AirportMenu(h: Html.H<Message>, groups: readonly ShellMenuGroup<Message>[], open: boolean) {
-	return GlassPanel(
+	return PopoverPanel(
 		h,
 		'trips-airport',
 		'Airport travel',

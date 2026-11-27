@@ -22,7 +22,7 @@ export const rowOrder = pipe(
 )
 
 export function host(url: string) {
-	return pipe(url, String.replace(/^https:\/\//u, ''), String.split('/'))[0]
+	return pipe(url, String.replace(/^https?:\/\//u, ''), String.split('/'))[0]
 }
 
 export function shown<A>(value: Option.Option<A>, format: (value: A) => string) {
@@ -45,11 +45,25 @@ function reasonLine(item: InventoryItem, now: DateTime.Utc) {
 export function statusLine(row: Row, now: DateTime.Utc, restart?: string) {
 	if (row.item.health !== 'quiet') return reasonLine(row.item, now)
 	if (restart !== undefined) return restart
-	return pipe(
-		row.exposures,
-		Array.findFirst(site => Option.isSome(site.url)),
-		Option.flatMap(site => site.url),
-		Option.map(host),
-		Option.getOrUndefined
+	return undefined
+}
+
+export function addressOf(row: Row) {
+	const url = pipe(
+		[row.item, ...row.exposures],
+		Array.findFirst(item => Option.isSome(item.url)),
+		Option.flatMap(item => item.url)
+	)
+	const port = pipe(
+		[row.item, ...row.listeners],
+		Array.findFirst(item => Option.isSome(item.port)),
+		Option.flatMap(item => item.port)
+	)
+	return Option.getOrUndefined(
+		pipe(
+			url,
+			Option.map(host),
+			Option.orElse(() => Option.map(port, value => `:${value}`))
+		)
 	)
 }

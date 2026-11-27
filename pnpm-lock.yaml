@@ -186,13 +186,13 @@ importers:
         version: 0.73.7
       '@effect/vitest':
         specifier: latest
-        version: 4.1.6(effect@4.1.6)(vitest@5.1.1)
+        version: 4.1.7(effect@4.1.7)(vitest@5.1.1)
       '@types/node':
         specifier: latest
         version: 26.6.11
       effect:
         specifier: latest
-        version: 4.1.6
+        version: 4.1.7
       fallow:
         specifier: latest
         version: 3.49.0
@@ -228,13 +228,13 @@ importers:
         version: link:../../packages/ui
       '@effect/platform-node':
         specifier: latest
-        version: 4.1.6(effect@4.1.6)(redis@6.4.0)
+        version: 4.1.7(effect@4.1.7)(redis@6.4.0)
       '@effect/ui':
         specifier: https://pkg.pr.new/Effect-TS/ui/@effect/ui@7bff56b3b81c57bf1038d358835e92833814a6b0
-        version: https://pkg.pr.new/Effect-TS/ui/@effect/ui@7bff56b3b81c57bf1038d358835e92833814a6b0(effect@4.1.6)
+        version: https://pkg.pr.new/Effect-TS/ui/@effect/ui@7bff56b3b81c57bf1038d358835e92833814a6b0(effect@4.1.7)
       effect:
         specifier: latest
-        version: 4.1.6
+        version: 4.1.7
 
   apps/deploy:
     devDependencies:
@@ -255,13 +255,13 @@ importers:
         version: link:../../packages/ui
       '@effect/platform-node':
         specifier: latest
-        version: 4.1.6(effect@4.1.6)(redis@6.4.0)
+        version: 4.1.7(effect@4.1.7)(redis@6.4.0)
       '@effect/ui':
         specifier: https://pkg.pr.new/Effect-TS/ui/@effect/ui@7bff56b3b81c57bf1038d358835e92833814a6b0
-        version: https://pkg.pr.new/Effect-TS/ui/@effect/ui@7bff56b3b81c57bf1038d358835e92833814a6b0(effect@4.1.6)
+        version: https://pkg.pr.new/Effect-TS/ui/@effect/ui@7bff56b3b81c57bf1038d358835e92833814a6b0(effect@4.1.7)
       effect:
         specifier: latest
-        version: 4.1.6
+        version: 4.1.7
 
   apps/gateway:
     devDependencies:
@@ -282,16 +282,16 @@ importers:
         version: link:../../packages/ui
       '@effect/platform-node':
         specifier: latest
-        version: 4.1.6(effect@4.1.6)(redis@6.4.0)
+        version: 4.1.7(effect@4.1.7)(redis@6.4.0)
       '@effect/ui':
         specifier: https://pkg.pr.new/Effect-TS/ui/@effect/ui@7bff56b3b81c57bf1038d358835e92833814a6b0
-        version: https://pkg.pr.new/Effect-TS/ui/@effect/ui@7bff56b3b81c57bf1038d358835e92833814a6b0(effect@4.1.6)
+        version: https://pkg.pr.new/Effect-TS/ui/@effect/ui@7bff56b3b81c57bf1038d358835e92833814a6b0(effect@4.1.7)
       '@modelcontextprotocol/client':
         specifier: latest
         version: 2.4.0
       effect:
         specifier: latest
-        version: 4.1.6
+        version: 4.1.7
 
   apps/opm:
     dependencies:
@@ -306,10 +306,10 @@ importers:
         version: link:../../packages/ui
       '@effect/ui':
         specifier: https://pkg.pr.new/Effect-TS/ui/@effect/ui@7bff56b3b81c57bf1038d358835e92833814a6b0
-        version: https://pkg.pr.new/Effect-TS/ui/@effect/ui@7bff56b3b81c57bf1038d358835e92833814a6b0(effect@4.1.6)
+        version: https://pkg.pr.new/Effect-TS/ui/@effect/ui@7bff56b3b81c57bf1038d358835e92833814a6b0(effect@4.1.7)
       effect:
         specifier: latest
-        version: 4.1.6
+        version: 4.1.7
     devDependencies:
       '@capacitor/cli':
         specifier: latest
@@ -319,7 +319,7 @@ importers:
         version: 8.6.3(@capacitor/core@8.6.3)
       '@effect/platform-node':
         specifier: latest
-        version: 4.1.6(effect@4.1.6)(redis@6.4.0)
+        version: 4.1.7(effect@4.1.7)(redis@6.4.0)
 
   apps/portfolio:
     devDependencies:
@@ -331,7 +331,7 @@ importers:
         version: link:../../packages/ui
       '@effect/ui':
         specifier: https://pkg.pr.new/Effect-TS/ui/@effect/ui@7bff56b3b81c57bf1038d358835e92833814a6b0
-        version: https://pkg.pr.new/Effect-TS/ui/@effect/ui@7bff56b3b81c57bf1038d358835e92833814a6b0(effect@4.1.6)
+        version: https://pkg.pr.new/Effect-TS/ui/@effect/ui@7bff56b3b81c57bf1038d358835e92833814a6b0(effect@4.1.7)
       '@fontsource-variable/geist':
         specifier: latest
         version: 5.3.0
@@ -343,7 +343,7 @@ importers:
         version: 5.3.0
       effect:
         specifier: latest
-        version: 4.1.6
+        version: 4.1.7
       tailwindcss:
         specifier: latest
         version: 4.3.5
@@ -367,16 +367,16 @@ importers:
         version: link:../../packages/ui
       '@effect/platform-node':
         specifier: latest
-        version: 4.1.6(effect@4.1.6)(redis@6.4.0)
+        version: 4.1.7(effect@4.1.7)(redis@6.4.0)
       '@effect/sql-sqlite-node':
         specifier: latest
-        version: 4.1.6(effect@4.1.6)
+        version: 4.1.7(effect@4.1.7)
       '@effect/ui':
         specifier: https://pkg.pr.new/Effect-TS/ui/@effect/ui@7bff56b3b81c57bf1038d358835e92833814a6b0
-        version: https://pkg.pr.new/Effect-TS/ui/@effect/ui@7bff56b3b81c57bf1038d358835e92833814a6b0(effect@4.1.6)
+        version: https://pkg.pr.new/Effect-TS/ui/@effect/ui@7bff56b3b81c57bf1038d358835e92833814a6b0(effect@4.1.7)
       effect:
         specifier: latest
-        version: 4.1.6
+        version: 4.1.7
 
   apps/stash:
     devDependencies:
@@ -397,13 +397,13 @@ importers:
         version: link:../../packages/ui
       '@effect/platform-node':
         specifier: latest
-        version: 4.1.6(effect@4.1.6)(redis@6.4.0)
+        version: 4.1.7(effect@4.1.7)(redis@6.4.0)
       '@effect/sql-sqlite-node':
         specifier: latest
-        version: 4.1.6(effect@4.1.6)
+        version: 4.1.7(effect@4.1.7)
       '@effect/ui':
         specifier: https://pkg.pr.new/Effect-TS/ui/@effect/ui@7bff56b3b81c57bf1038d358835e92833814a6b0
-        version: https://pkg.pr.new/Effect-TS/ui/@effect/ui@7bff56b3b81c57bf1038d358835e92833814a6b0(effect@4.1.6)
+        version: https://pkg.pr.new/Effect-TS/ui/@effect/ui@7bff56b3b81c57bf1038d358835e92833814a6b0(effect@4.1.7)
       cheerio:
         specifier: latest
         version: 1.2.0
@@ -412,7 +412,7 @@ importers:
         version: 6.0.1
       effect:
         specifier: latest
-        version: 4.1.6
+        version: 4.1.7
 
   apps/trips:
     dependencies:
@@ -440,28 +440,28 @@ importers:
         version: link:../../packages/ui
       '@effect/platform-node':
         specifier: latest
-        version: 4.1.6(effect@4.1.6)(redis@6.4.0)
+        version: 4.1.7(effect@4.1.7)(redis@6.4.0)
       '@effect/ui':
         specifier: https://pkg.pr.new/Effect-TS/ui/@effect/ui@7bff56b3b81c57bf1038d358835e92833814a6b0
-        version: https://pkg.pr.new/Effect-TS/ui/@effect/ui@7bff56b3b81c57bf1038d358835e92833814a6b0(effect@4.1.6)
+        version: https://pkg.pr.new/Effect-TS/ui/@effect/ui@7bff56b3b81c57bf1038d358835e92833814a6b0(effect@4.1.7)
       effect:
         specifier: latest
-        version: 4.1.6
+        version: 4.1.7
 
   packages/runtime:
     dependencies:
       '@effect/ai-anthropic':
         specifier: latest
-        version: 4.1.6(effect@4.1.6)
+        version: 4.1.7(effect@4.1.7)
       '@effect/platform-node':
         specifier: latest
-        version: 4.1.6(effect@4.1.6)(redis@6.4.0)
+        version: 4.1.7(effect@4.1.7)(redis@6.4.0)
       '@effect/sql-sqlite-node':
         specifier: latest
-        version: 4.1.6(effect@4.1.6)
+        version: 4.1.7(effect@4.1.7)
       effect:
         specifier: latest
-        version: 4.1.6
+        version: 4.1.7
 
   packages/ui:
     dependencies:
@@ -473,13 +473,7 @@ importers:
         version: link:../runtime
       '@effect/ui':
         specifier: https://pkg.pr.new/Effect-TS/ui/@effect/ui@7bff56b3b81c57bf1038d358835e92833814a6b0
-        version: https://pkg.pr.new/Effect-TS/ui/@effect/ui@7bff56b3b81c57bf1038d358835e92833814a6b0(effect@4.1.6)
-      '@fontsource-variable/geist':
-        specifier: latest
-        version: 5.3.0
-      '@fontsource-variable/geist-mono':
-        specifier: latest
-        version: 5.3.0
+        version: https://pkg.pr.new/Effect-TS/ui/@effect/ui@7bff56b3b81c57bf1038d358835e92833814a6b0(effect@4.1.7)
       '@tailwindcss/vite':
         specifier: latest
         version: 4.3.5(@voidzero-dev/vite-plus-core@8.3.8001(@types/node@26.6.11)(jiti@2.7.0)(terser@5.51.4))
@@ -488,7 +482,7 @@ importers:
         version: 0.1.0-beta.17
       effect:
         specifier: latest
-        version: 4.1.6
+        version: 4.1.7
       tailwindcss:
         specifier: latest
         version: 4.3.5
@@ -497,7 +491,7 @@ importers:
     dependencies:
       '@effect/platform-node':
         specifier: latest
-        version: 4.1.6(effect@4.1.6)(redis@6.4.0)
+        version: 4.1.7(effect@4.1.7)(redis@6.4.0)
       '@effect/tsgo':
         specifier: '>=0.70'
         version: 0.73.7
@@ -506,7 +500,7 @@ importers:
         version: 0.47.1(oxlint@1.94.0(vite-plus@1.8.0(@types/node@26.6.11)(@vitest/ui@5.1.1)(jiti@2.7.0)(terser@5.51.4)))
       effect:
         specifier: latest
-        version: 4.1.6
+        version: 4.1.7
       oxlint-plugin-eslint:
         specifier: latest
         version: 1.95.0
@@ -521,19 +515,19 @@ importers:
         version: link:../create-package
       '@effect/platform-node':
         specifier: latest
-        version: 4.1.6(effect@4.1.6)(redis@6.4.0)
+        version: 4.1.7(effect@4.1.7)(redis@6.4.0)
       effect:
         specifier: latest
-        version: 4.1.6
+        version: 4.1.7
 
   tools/create-package:
     dependencies:
       '@effect/platform-node':
         specifier: latest
-        version: 4.1.6(effect@4.1.6)(redis@6.4.0)
+        version: 4.1.7(effect@4.1.7)(redis@6.4.0)
       effect:
         specifier: latest
-        version: 4.1.6
+        version: 4.1.7
 
 packages:
 
@@ -575,28 +569,28 @@ packages:
     peerDependencies:
       '@capacitor/core': '>=8.0.0'
 
-  '@effect/ai-anthropic@4.1.6':
-    resolution: {integrity: sha512-hYccGaacJhol7C3d4jk/9QoBMgJEXBOHk8OmOonkFA9aA1/6sgWMM2oC0Zy8c4V4rhqrbsKnJap3lGxKC2n90A==}
+  '@effect/ai-anthropic@4.1.7':
+    resolution: {integrity: sha512-odUQu7hztoh0vY0towxMI9nX9VroJUQf0nKtHVdXPMFatctr2k4mF2D0kyBhXKh3RoV0fpSDK2bwFUYJjFYVyQ==}
     peerDependencies:
-      effect: ^4.1.6
+      effect: ^4.1.7
 
-  '@effect/platform-node-shared@4.1.6':
-    resolution: {integrity: sha512-RWKHX5TEZet2KC/NlBu5prBkZT30m6h8YTSWfJM0wIw0BNMkfEzCuH6N5HOw8mUudclWp5z1XTzsZ7xg0h+6Qw==}
+  '@effect/platform-node-shared@4.1.7':
+    resolution: {integrity: sha512-EDnlB5zL6EW0ahVAeQAUtpuMHc/0yruMLKBsX3nC4Zn3PuG4McWv2A6Rvdk2OUSFM/OFTCclt3sKWNCvk3pEUw==}
     engines: {node: '>=22.19.0'}
     peerDependencies:
-      effect: ^4.1.6
+      effect: ^4.1.7
 
-  '@effect/platform-node@4.1.6':
-    resolution: {integrity: sha512-DNHzWIRARCCoK6Ez5MOqJ6H81e5FbQecH8GY41ftJGqATENUOVOLkT1iNgxBt6zPi36iF1EpraBen+MjKUqHpw==}
+  '@effect/platform-node@4.1.7':
+    resolution: {integrity: sha512-+hWmfkd5QtfeDKdCnyf+Vs/XK6lnNCfwXWMXWb6YOAyhAQC6qBvHNR5Tx6Lkk8l33eL8xAalHexXF64jL8ABiQ==}
     engines: {node: '>=22.19.0'}
     peerDependencies:
-      effect: ^4.1.6
+      effect: ^4.1.7
       redis: '>=5.1.0 <7.0.0'
 
-  '@effect/sql-sqlite-node@4.1.6':
-    resolution: {integrity: sha512-HS64cfwY5x5A+xMuePZiEkadCBGw6BYZkEfblU1JOnOBndxRrPdcmaEDGk1MHd5i0d7GqhxrPsbdTTZON08Y2Q==}
+  '@effect/sql-sqlite-node@4.1.7':
+    resolution: {integrity: sha512-xefsa1OXteTe4zJBFt0ze0B0lE7kHq6OYtyqqgACv8CzwEhuGw/0HDLrms3FbEr2ZDJn8t+HGtUQAjO5dvfcpA==}
     peerDependencies:
-      effect: ^4.1.6
+      effect: ^4.1.7
 
   '@effect/tsgo-darwin-arm64@0.73.7':
     resolution: {integrity: sha512-LtQMNY+PO1NSDKW4849z+QyqT6iAAedYYAJtw4FCyUex7KST5uyiBcGBJspZMoPc8c7Nplyl1BQH6fnq9v4svw==}
@@ -643,10 +637,10 @@ packages:
     peerDependencies:
       effect: ^4.1.4
 
-  '@effect/vitest@4.1.6':
-    resolution: {integrity: sha512-Knb13gPhDbtOuNUnPXE/Sl+UvrKFHRATwU2vy+DGQCpjK1yI3oy1feQo1g2X8ZdOdc63sJB7HJXCMNsDy8xYvg==}
+  '@effect/vitest@4.1.7':
+    resolution: {integrity: sha512-4Rj7db3Zol7HtCkuQ2KZ26KrbIWIKAS2rpvH5s3drB1sMZh93nSaK6zXZ6EOtMtWl2CM/flz7tJ8ADaMCRHUWw==}
     peerDependencies:
-      effect: ^4.1.6
+      effect: ^4.1.7
       vitest: '>=5.0.0 <6.0.0'
 
   '@fallow-cli/darwin-arm64@3.49.0':
@@ -1641,8 +1635,8 @@ packages:
   domutils@3.2.2:
     resolution: {integrity: sha512-6kZKyUajlDuqlHKVX1w7gyslj9MPIXzIFiz/rGu35uC1wMi+kMhQwGhl4lt9unC9Vb9INnY9Z3/ZA3+FhASLaw==}
 
-  effect@4.1.6:
-    resolution: {integrity: sha512-P3CxMsdcSCle/7/FnPILd9GJkNqGtduKam2LX9Xsb8LoOjmeQ9Kmsuh16JwtIthaxLyiTCOzUUt+PZsXIohl+A==}
+  effect@4.1.7:
+    resolution: {integrity: sha512-8QUe2XO3auHF5r7+bfIDWxyXlLA0sso4Sia1QYP+vrYA7qb3sq1u2eJmhyXGmKc8yZ+TY2SNxPozeMdyKmWing==}
 
   elementtree@0.1.7:
     resolution: {integrity: sha512-wkgGT6kugeQk/P6VZ/f4T+4HB41BVgNBq5CDIZVbQ02nvTVqAiVTbskxxu3eA/X96lMlfYOwnLQpN2v5E1zDEg==}
@@ -2359,32 +2353,32 @@ snapshots:
     dependencies:
       '@capacitor/core': 8.6.3
 
-  '@effect/ai-anthropic@4.1.6(effect@4.1.6)':
+  '@effect/ai-anthropic@4.1.7(effect@4.1.7)':
     dependencies:
-      effect: 4.1.6
+      effect: 4.1.7
 
-  '@effect/platform-node-shared@4.1.6(effect@4.1.6)':
+  '@effect/platform-node-shared@4.1.7(effect@4.1.7)':
     dependencies:
       '@types/ws': 8.18.2
-      effect: 4.1.6
+      effect: 4.1.7
       ws: 8.23.0
     transitivePeerDependencies:
       - bufferutil
       - utf-8-validate
 
-  '@effect/platform-node@4.1.6(effect@4.1.6)(redis@6.4.0)':
+  '@effect/platform-node@4.1.7(effect@4.1.7)(redis@6.4.0)':
     dependencies:
-      '@effect/platform-node-shared': 4.1.6(effect@4.1.6)
-      effect: 4.1.6
+      '@effect/platform-node-shared': 4.1.7(effect@4.1.7)
+      effect: 4.1.7
       redis: 6.4.0
       undici: 8.13.1
     transitivePeerDependencies:
       - bufferutil
       - utf-8-validate
 
-  '@effect/sql-sqlite-node@4.1.6(effect@4.1.6)':
+  '@effect/sql-sqlite-node@4.1.7(effect@4.1.7)':
     dependencies:
-      effect: 4.1.6
+      effect: 4.1.7
 
   '@effect/tsgo-darwin-arm64@0.73.7':
     optional: true
@@ -2417,13 +2411,13 @@ snapshots:
       '@effect/tsgo-win32-arm64': 0.73.7
       '@effect/tsgo-win32-x64': 0.73.7
 
-  '@effect/ui@https://pkg.pr.new/Effect-TS/ui/@effect/ui@7bff56b3b81c57bf1038d358835e92833814a6b0(effect@4.1.6)':
+  '@effect/ui@https://pkg.pr.new/Effect-TS/ui/@effect/ui@7bff56b3b81c57bf1038d358835e92833814a6b0(effect@4.1.7)':
     dependencies:
-      effect: 4.1.6
+      effect: 4.1.7
 
-  '@effect/vitest@4.1.6(effect@4.1.6)(vitest@5.1.1)':
+  '@effect/vitest@4.1.7(effect@4.1.7)(vitest@5.1.1)':
     dependencies:
-      effect: 4.1.6
+      effect: 4.1.7
       vitest: 5.1.1(@types/node@26.6.11)(@vitest/browser-preview@5.1.1)(@vitest/ui@5.1.1)(@voidzero-dev/vite-plus-core@8.3.8001(@types/node@26.6.11)(jiti@2.7.0)(terser@5.51.4))
 
   '@fallow-cli/darwin-arm64@3.49.0':
@@ -3155,7 +3149,7 @@ snapshots:
       domelementtype: 2.3.0
       domhandler: 5.0.3
 
-  effect@4.1.6: {}
+  effect@4.1.7: {}
 
   elementtree@0.1.7:
     dependencies:

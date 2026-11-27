@@ -17,12 +17,12 @@ Personal apps with one user, who also develops them.
 - A contract change is done only when its built server starts on scratch data and serves the changed RPCs or MCP tools.
 - New apps and packages: `vp create app -- --name <name>` (`--kind mobile` for iOS) or `vp create package -- --name <name>`. Never copy one.
 - Apps use Effect UI, pinned to a `pkg.pr.new` commit, and Effect RPC over SQL. Tailwind styles the shared UI SDK adapter by its `data-slot` and state attributes. Logos come from svgl.
-- Install web apps from Safari with a safe-area viewport and no zoom. The iPhone apps bundle the same web build with Capacitor, never a remote page or an over-the-air update; use Swift for share extensions and WidgetKit, and Capacitor's official push plugin.
+- Safari web apps are for the PC; on the iPhone Duo, use the iPhone apps. The iPhone apps bundle the same web build with Capacitor, never a remote page or an over-the-air update; use Swift for share extensions and WidgetKit, and Capacitor's official push plugin.
 - After adding or removing a skill, rerun the agent links in the maintenance reference.
 
 ## Design
 
-- One axis: black only, Geist with tabular figures for numbers, Geist Mono for scales. Draw tinted Liquid Glass in WebGL2 on controls only: blur hides the content, with a bright bottom rim and a softer top rim. Use the same SF Symbols on the web and in the iPhone toolbar. Portfolio keeps its own design.
+- One axis: black only, the system font (SF Pro) with tabular figures for numbers, SF Mono for scales. iOS draws the iPhone apps' toolbar buttons; web controls are plain and solid, with no imitation glass. Use the same SF Symbols on the web and in the iPhone toolbar. Portfolio keeps its own design.
 - Hue only for identity and status. Never label healthy states. Dots mark problems.
 - One row everywhere: a title, one muted line, numbers or time at the trailing edge; a problem's dot goes before the title and its reason on the muted line.
 - The list stands beside the opened item, and Mail's sidebar button collapses it. The fold is the only divider.

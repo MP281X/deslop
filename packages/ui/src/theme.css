@@ -1,10 +1,8 @@
 @import 'tailwindcss';
-@import '@fontsource-variable/geist';
-@import '@fontsource-variable/geist-mono';
 
 @theme {
-	--font-sans: 'Geist Variable', sans-serif;
-	--font-mono: 'Geist Mono Variable', monospace;
+	--font-sans: -apple-system, system-ui, sans-serif;
+	--font-mono: ui-monospace, monospace;
 	--color-background: #000;
 	--color-foreground: #f6f6f7;
 	--color-muted: #191919;
@@ -41,7 +39,7 @@ body {
 
 #root + [aria-busy='true']:where(:has(> [class$='-skeleton-list'])) {
 	position: fixed;
-	inset: env(safe-area-inset-top, 0px) calc(56px + env(safe-area-inset-right, 0px)) env(safe-area-inset-bottom, 0px)
+	inset: calc(56px + env(safe-area-inset-top, 0px)) env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px)
 		env(safe-area-inset-left, 0px);
 	display: grid;
 	grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
@@ -91,7 +89,6 @@ body {
 		--shell-control-size: 44px;
 		--shell-inset-left: env(safe-area-inset-left, 0px);
 		--shell-inset-right: env(safe-area-inset-right, 0px);
-		--shell-content-left: var(--shell-inset-left);
 		display: flex;
 		flex-direction: column;
 		height: 100dvh;
@@ -101,22 +98,21 @@ body {
 	.shell-controls {
 		display: flex;
 		align-items: center;
-		justify-content: space-between;
 		flex: none;
 		gap: var(--shell-gap);
 		padding: var(--shell-gap);
+	}
+	.shell-actions {
+		display: flex;
+		gap: var(--shell-gap);
+		margin-inline-start: auto;
 	}
 	.shell-controls button {
 		display: grid;
 		place-items: center;
 		inline-size: var(--shell-control-size);
 		block-size: var(--shell-control-size);
-		border-radius: 999px;
 		cursor: pointer;
-	}
-	.shell-controls svg {
-		inline-size: 16px;
-		block-size: 16px;
 	}
 	.app-shell > .fold {
 		flex: 1;
@@ -128,30 +124,6 @@ body {
 	.app-shell > .fold > :is(.fold-list, .fold-detail) {
 		padding-inline: 0;
 	}
-	@media (max-width: 64rem) and (max-height: 44rem) {
-		.app-shell {
-			/* When the system insets the left edge more, put the rail on that edge. */
-			--shell-rail-left: max(0, sign(var(--shell-inset-left) - var(--shell-inset-right)));
-			--shell-content-left: calc(
-				var(--shell-inset-left) + var(--shell-rail-left) * (var(--shell-control-size) + 2 * var(--shell-gap))
-			);
-			flex-direction: row;
-		}
-		.shell-controls {
-			order: calc(1 - 2 * var(--shell-rail-left));
-			flex-direction: column;
-			justify-content: flex-start;
-			overflow-y: auto;
-			scrollbar-width: none;
-		}
-		.shell-controls > .glass {
-			flex: none;
-		}
-		.shell-controls .shell-actions {
-			flex-direction: column;
-		}
-	}
-
 	.fold {
 		--pane-padding: 16px;
 		display: grid;
@@ -197,7 +169,7 @@ body {
 	@media (horizontal-viewport-segments: 2) {
 		.fold {
 			grid-template-columns:
-				max(0px, calc(env(viewport-segment-width 0 0) - var(--shell-content-left, 0px)))
+				max(0px, calc(env(viewport-segment-width 0 0) - var(--shell-inset-left, 0px)))
 				calc(env(viewport-segment-left 1 0) - env(viewport-segment-right 0 0))
 				minmax(0, 1fr);
 		}
@@ -261,27 +233,12 @@ body {
 	}
 }
 
-.glass {
-	position: relative;
-	isolation: isolate;
-	display: inline-flex;
-	align-items: center;
+.axis-control {
 	border-radius: 999px;
-	backdrop-filter: blur(36px) saturate(0.65);
-	box-shadow: 0 1px 0 rgb(0 0 0 / 22%);
+	background-color: var(--color-muted);
 }
 
-.glass-lens {
-	position: absolute;
-	inset: 0;
-	z-index: -1;
-	pointer-events: none;
-	border-radius: inherit;
-	width: 100%;
-	height: 100%;
-}
-
-.glass-panel {
+.axis-popover {
 	--panel-gap: 6px;
 	--panel-width: min(
 		24rem,
@@ -300,32 +257,23 @@ body {
 	max-inline-size: var(--panel-width);
 	max-block-size: 60dvh;
 	border-radius: 18px;
-	background-color: rgb(0 0 0 / 72%);
+	background-color: var(--color-muted);
 	color: var(--color-foreground);
 	overflow: clip;
 	animation: none;
 	transition: none;
 }
 
-.glass-panel:not(:popover-open) {
+.axis-popover:not(:popover-open) {
 	display: none;
 }
 
-.glass-panel-body {
+.axis-popover-body {
 	min-inline-size: 0;
 	max-block-size: inherit;
 	overflow: auto;
 	overscroll-behavior: contain;
 	padding: 12px;
-}
-
-@media (max-width: 64rem) and (max-height: 44rem) {
-	.app-shell .glass-panel {
-		position-area: inline-start;
-		position-try-order: most-inline-size;
-		position-try-fallbacks: flip-inline;
-		max-inline-size: calc(var(--panel-width) - var(--shell-control-size) - 2 * var(--shell-gap));
-	}
 }
 
 [data-slot='button'] {
@@ -361,7 +309,7 @@ body {
 @media (horizontal-viewport-segments: 2) {
 	.axis-split[data-layout='split']:not([data-list-hidden]) {
 		grid-template-columns:
-			max(0px, calc(env(viewport-segment-width 0 0) - var(--shell-content-left, 0px)))
+			max(0px, calc(env(viewport-segment-width 0 0) - var(--shell-inset-left, 0px)))
 			calc(env(viewport-segment-left 1 0) - env(viewport-segment-right 0 0))
 			minmax(0, 1fr);
 	}
@@ -549,26 +497,8 @@ body {
 	mask: var(--symbol) center / contain no-repeat;
 	pointer-events: none;
 }
-.action-shell {
-	--shell-rail-width: calc(var(--shell-control-size) + 2 * var(--shell-gap));
-	--shell-content-left: var(--shell-inset-left);
-	flex-direction: row;
-}
-.action-shell:not([data-native]) .shell-controls {
-	order: 1;
-	flex-direction: column;
-	justify-content: flex-start;
-	overflow-y: auto;
-	scrollbar-width: none;
-}
-.action-shell .shell-controls > .glass {
-	flex: none;
-}
-.action-shell .shell-actions {
-	flex-direction: column;
-}
 .action-shell[data-native] {
-	--shell-rail-width: 0px;
+	flex-direction: row;
 }
 
 :where(.axis-controls button, .axis-controls [data-pressable]) {

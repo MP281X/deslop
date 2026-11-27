@@ -1,23 +1,17 @@
 import type {Html} from '@effect/ui/html'
 
-import {Array, Boolean, DateTime, Function, String, pipe} from 'effect'
-import type {Option} from 'effect'
+import type {DateTime} from 'effect'
+import {Array, String} from 'effect'
 
 import {axisPosition, restartPositions, tracePaths} from '#web/inventory/chart.ts'
 import type {Reading} from '#web/inventory/chart.ts'
 
-const LABELS = ['−60', '−45', '−30', '−15', 'now']
-const LEVELS = [100, 75, 50, 25]
+const LABELS = ['−60m', '−45m', '−30m', '−15m', 'Now']
+const LEVELS = [100, 75, 50, 25, 0]
 
-function tickHeight(index: number) {
-	if (index % 15 === 0) return 0
-	if (index % 5 === 0) return 5
-	return 8
-}
-
-export function Ruler<M>(h: Html.H<M>, detail = false) {
+export function Ruler<M>(h: Html.H<M>) {
 	return h.div
-		.class('deploy-ruler', detail && 'deploy-ruler-detail')
+		.class('deploy-scale deploy-ruler')
 		.attr('aria-hidden', 'true')
 		.children(
 			Array.map(LABELS, (label, index) =>
@@ -25,36 +19,15 @@ export function Ruler<M>(h: Html.H<M>, detail = false) {
 					.key(label)
 					.style({'--at': `${index * 25}%`})
 					.children(label)
-			),
-			h
-				.el('svg')
-				.attrs({preserveAspectRatio: 'none', viewBox: '0 0 60 12'})
-				.children(
-					h.el('path').attrs({
-						d: pipe(
-							61,
-							Array.makeBy(index => `M${index} 12V${tickHeight(index)}`),
-							Array.join('')
-						),
-						'vector-effect': 'non-scaling-stroke'
-					})
-				)
+			)
 		)
 }
 
-export function Trace<M>(h: Html.H<M>, readings: readonly Reading[], now: DateTime.Utc, detail = false) {
+export function Trace<M>(h: Html.H<M>, readings: readonly Reading[], now: DateTime.Utc) {
 	const paths = tracePaths(readings, now)
 	return h
 		.el('svg')
-		.attrs({
-			'aria-hidden': 'true',
-			class: Boolean.match(detail, {
-				onFalse: Function.constant('deploy-trace'),
-				onTrue: Function.constant('deploy-trace deploy-trace-main')
-			}),
-			preserveAspectRatio: 'none',
-			viewBox: '0 0 100 100'
-		})
+		.attrs({'aria-hidden': 'true', class: 'deploy-trace', preserveAspectRatio: 'none', viewBox: '0 0 100 100'})
 		.children(
 			h.el('path').attrs({class: 'deploy-area', d: paths.area}),
 			h.el('path').attrs({class: 'deploy-trace-line', d: paths.line, 'vector-effect': 'non-scaling-stroke'})
@@ -63,21 +36,21 @@ export function Trace<M>(h: Html.H<M>, readings: readonly Reading[], now: DateTi
 
 export function CpuScale<M>(h: Html.H<M>) {
 	return h.div
-		.class('deploy-cpu-scale')
+		.class('deploy-scale deploy-cpu-scale')
 		.attr('aria-hidden', 'true')
 		.children(
 			Array.map(LEVELS, (level, index) =>
 				h.span
 					.key(String.String(level))
 					.style({'--at': `${index * 25}%`})
-					.children(String.String(level))
+					.children(`${level}%`)
 			)
 		)
 }
 
-export function Restarts<M>(h: Html.H<M>, restarts: readonly DateTime.Utc[], now: DateTime.Utc, dots = false) {
+export function Restarts<M>(h: Html.H<M>, restarts: readonly DateTime.Utc[], now: DateTime.Utc) {
 	return h.div
-		.class('deploy-restarts', dots && 'deploy-restarts-dots')
+		.class('deploy-restarts')
 		.attr('aria-hidden', 'true')
 		.children(
 			Array.map(restartPositions(restarts, now), (at, index) =>
@@ -91,21 +64,4 @@ export function RestartReason(restarts: readonly DateTime.Utc[], now: DateTime.U
 	if (Array.isArrayEmpty(recent)) return undefined
 	if (recent.length === 1) return 'Restarted once in 10 min'
 	return `Restarted ${recent.length} times in 10 min`
-}
-
-export type ProcessPoint = {time: DateTime.Utc; cpu: Option.Option<number>}
-
-export function processReadings(samples: readonly ProcessPoint[]) {
-	return Array.map(samples, (sample, index) => {
-		const at = DateTime.toEpochMillis(sample.time)
-		const since = Boolean.match(index === 0, {
-			onFalse: () => DateTime.toEpochMillis(samples[index - 1]?.time ?? sample.time),
-			onTrue: () => at - 5000
-		})
-		return {
-			from: DateTime.makeUnsafe(Boolean.match(at - since <= 8000, {onFalse: () => at - 5000, onTrue: () => since})),
-			time: sample.time,
-			value: sample.cpu
-		} satisfies Reading
-	})
 }

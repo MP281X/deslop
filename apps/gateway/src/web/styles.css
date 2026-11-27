@@ -22,18 +22,11 @@
 	padding: 6px 12px;
 }
 
-.gateway-add,
-.gateway-add .glass {
-	min-inline-size: 0;
-	max-inline-size: 100%;
-}
-
 .gateway-add input,
 .gateway-key-sheet input {
 	min-block-size: 44px;
 	min-inline-size: 0;
 	padding-inline: 12px;
-	border-radius: inherit;
 	font-size: 16px;
 }
 
@@ -61,10 +54,10 @@
 	z-index: 1;
 	inset-block-start: calc(100% + 4px);
 	inset-inline-start: 0;
-	inline-size: min(22rem, calc(100dvi - var(--shell-rail-width) - 24px));
+	inline-size: min(22rem, calc(100dvi - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px) - 24px));
 	padding: 8px 12px;
 	border-radius: 12px;
-	background: rgb(0 0 0 / 72%);
+	background: var(--color-muted);
 	pointer-events: none;
 }
 
@@ -76,11 +69,8 @@
 	position-anchor: --axis-action-options;
 }
 
-.gateway .glass-panel[role='menu'] {
-	position-area: inline-start span-block-end;
-	position-try-fallbacks: flip-block;
+.gateway .axis-popover[role='menu'] {
 	min-inline-size: min(11rem, var(--panel-width));
-	max-inline-size: calc(100dvi - var(--shell-rail-width) - 12px);
 	opacity: 0;
 	transition:
 		opacity 150ms ease-out,
@@ -88,21 +78,21 @@
 		overlay 150ms allow-discrete;
 }
 
-.gateway .glass-panel[role='menu']:popover-open {
+.gateway .axis-popover[role='menu']:popover-open {
 	opacity: 1;
 }
 
 @starting-style {
-	.gateway .glass-panel[role='menu']:popover-open {
+	.gateway .axis-popover[role='menu']:popover-open {
 		opacity: 0;
 	}
 }
 
-.gateway .glass-panel[role='menu'] .glass-panel-body {
+.gateway .axis-popover[role='menu'] .axis-popover-body {
 	inline-size: 100%;
 }
 
-.gateway .glass-panel[role='menu'] button {
+.gateway .axis-popover[role='menu'] button {
 	display: flex;
 	align-items: center;
 	justify-content: space-between;
@@ -118,7 +108,7 @@
 	padding: 4px 9px;
 }
 
-.gateway .glass-panel .sf-symbol {
+.gateway .axis-popover .sf-symbol {
 	flex: none;
 	inline-size: 18px;
 	block-size: 18px;
@@ -130,7 +120,6 @@
 	min-block-size: 44px;
 	min-inline-size: 44px;
 	padding-inline: 12px;
-	border-radius: 999px;
 }
 
 .gateway-figures {
@@ -211,7 +200,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-	.gateway .glass-panel[role='menu'] {
+	.gateway .axis-popover[role='menu'] {
 		transition-duration: 85ms;
 	}
 }

@@ -47,8 +47,6 @@
 
 #opm-series {
 	position-anchor: --axis-action-series;
-	position-area: inline-start span-block-end;
-	position-try-fallbacks: flip-inline, flip-block;
 	min-inline-size: min(10rem, var(--panel-width));
 }
 
@@ -75,10 +73,11 @@
 	place-items: center;
 }
 
-.opm-gate a {
+.opm-gate a,
+.opm .axis-notice a {
 	display: grid;
 	place-items: center;
-	min-height: 44px;
+	min-block-size: 44px;
 	padding-inline: 14px;
 }
 
@@ -155,7 +154,7 @@
 	object-position: left center;
 }
 
-.opm-retry-page button {
+.opm-retry-page {
 	display: grid;
 	place-items: center;
 	width: 44px;

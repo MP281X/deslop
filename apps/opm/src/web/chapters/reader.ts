@@ -6,7 +6,6 @@ import {Array, Boolean, Effect, Function, HashSet, Number, Option, Queue, Schema
 import type {ShellAction} from '@deslop/ui/app-shell'
 import {Loading, Notice, Placeholder} from '@deslop/ui/axis'
 import {Button} from '@deslop/ui/control'
-import {Glass} from '@deslop/ui/glass'
 import {SymbolIcon} from '@deslop/ui/symbol'
 
 import {byChapterNumber} from '#contracts'
@@ -73,8 +72,9 @@ function sideOf(active: readonly number[], index: number) {
 
 function pageImage(h: H, failed: boolean, src: string, index: number) {
 	if (failed) {
-		return Glass(h, 'opm-retry-page').children(
+		return (
 			Button(h)
+				.class('axis-control opm-retry-page')
 				.attr('aria-label', 'Reload page')
 				// Effect UI stops at the nearest handler; leave this press with the button.
 				.on('pointerdown', Function.constUndefined)

@@ -16,7 +16,6 @@
 	gap: 8px;
 	min-block-size: 44px;
 	padding-inline: 14px;
-	border-radius: inherit;
 	font-size: 0.875rem;
 	cursor: pointer;
 }
@@ -57,11 +56,6 @@
 
 #auth-people-options {
 	position-anchor: --axis-action-people;
-	position-area: inline-start span-block-end;
-	position-try-fallbacks:
-		flip-inline,
-		flip-block,
-		flip-block flip-inline;
 	min-inline-size: min(14rem, var(--panel-width));
 }
 

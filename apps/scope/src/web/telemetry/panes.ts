@@ -12,8 +12,7 @@ import {TimeFrame} from '@deslop/runtime/shared/time'
 import {CheckedChoice} from '@deslop/ui/app-shell'
 import type {ShellAction} from '@deslop/ui/app-shell'
 import {Loading, Notice, Row, RowContent} from '@deslop/ui/axis'
-import {Button} from '@deslop/ui/control'
-import {Glass, GlassPanel} from '@deslop/ui/glass'
+import {Button, PopoverPanel} from '@deslop/ui/control'
 import {isNative} from '@deslop/ui/native'
 import {ReadFailure, ReadState} from '@deslop/ui/state'
 import {SymbolIcon} from '@deslop/ui/symbol'
@@ -32,7 +31,7 @@ export type H = Html.H<Message>
 type Panel = NonNullable<Model['panel']>
 
 function menu(h: H, model: Model, panel: Panel, label: string, items: View.Input<Message>) {
-	return GlassPanel(h, `scope-${panel}`, label, items)
+	return PopoverPanel(h, `scope-${panel}`, label, items)
 		.attr('role', 'menu')
 		.popover('auto', model.panel === panel)
 		.on('toggle', event => {
@@ -248,13 +247,11 @@ function traceChoice(h: H, model: Model, selection: ReturnType<typeof selectionF
 	const traces = tracesOf(selection)
 	if (isNative || Array.isReadonlyArrayEmpty(traces)) return h.div.class('scope-trace-label axis-title').children(title)
 	return h.div.class('min-w-0').children(
-		Glass(h, 'scope-trace-control').children(
-			Button(h)
-				.class('scope-trace-choice')
-				.attrs({'aria-expanded': `${model.panel === 'traces'}`, 'aria-haspopup': 'menu'})
-				.on('click', Message.Panel({panel: 'traces'}))
-				.children(h.span.children(title), SymbolIcon(h, 'chevron.down'))
-		),
+		Button(h)
+			.class('axis-control scope-trace-choice')
+			.attrs({'aria-expanded': `${model.panel === 'traces'}`, 'aria-haspopup': 'menu'})
+			.on('click', Message.Panel({panel: 'traces'}))
+			.children(h.span.children(title), SymbolIcon(h, 'chevron.down')),
 		menu(
 			h,
 			model,

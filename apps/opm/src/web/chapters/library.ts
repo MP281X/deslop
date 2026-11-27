@@ -13,8 +13,7 @@ import {dayOf} from '@deslop/runtime/shared/format'
 import {ActionShell, CheckedChoice} from '@deslop/ui/app-shell'
 import type {ShellAction} from '@deslop/ui/app-shell'
 import {Loading, Notice, Row} from '@deslop/ui/axis'
-import {PressFeedback} from '@deslop/ui/control'
-import {Glass, GlassPanel} from '@deslop/ui/glass'
+import {PopoverPanel, PressFeedback} from '@deslop/ui/control'
 import {isNative, sessionAccount} from '@deslop/ui/native'
 import {WebSignOut} from '@deslop/ui/session'
 import {Split, singlePane, watchPanes} from '@deslop/ui/split'
@@ -93,7 +92,7 @@ function seriesChoices(series: Series) {
 }
 
 function seriesMenu(h: H, model: Model, series: Series) {
-	return GlassPanel(h, 'opm-series', 'Series', [
+	return PopoverPanel(h, 'opm-series', 'Series', [
 		...Array.map(seriesChoices(series), item => CheckedChoice(h, item)),
 		Option.exists(AsyncResult.value(model.account), account => account.signOut) && WebSignOut(h)
 	])
@@ -156,7 +155,10 @@ function access(h: H, model: Model, cause: Cause.Cause<unknown>) {
 			.attr('role', 'status')
 			.children(
 				h.p.children(text),
-				Glass(h).children(h.a.attrs({'data-pressable': '', href: signInUrl(location.href)}).children('Sign in'))
+				h.a
+					.class('axis-control')
+					.attrs({'data-pressable': '', href: signInUrl(location.href)})
+					.children('Sign in')
 			)
 	}
 	if (isDeniedCause(cause)) return Notice(h, 'Access denied')
@@ -243,7 +245,7 @@ function view(h: H, model: Model) {
 				onTrue: () =>
 					h.div
 						.class('opm-gate')
-						.children(Glass(h).children(h.a.attrs({'data-pressable': '', href: '/'}).children('Back to chapters')))
+						.children(h.a.class('axis-control').attrs({'data-pressable': '', href: '/'}).children('Back to chapters'))
 			})
 		)
 }

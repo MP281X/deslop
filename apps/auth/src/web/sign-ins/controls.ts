@@ -3,7 +3,6 @@ import {Boolean, Function} from 'effect'
 import {ActionShell} from '@deslop/ui/app-shell'
 import {Notice} from '@deslop/ui/axis'
 import {Button} from '@deslop/ui/control'
-import {Glass} from '@deslop/ui/glass'
 
 import {Message} from '#web/auth/model.ts'
 import type {H, Model} from '#web/auth/model.ts'
@@ -46,12 +45,10 @@ export function SignIn(h: H, error?: string) {
 		.class('auth-center')
 		.attr('aria-label', 'Sign in')
 		.children(
-			Glass(h).children(
-				Button(h)
-					.class('auth-action')
-					.on('click', () => Message.StartSignIn())
-					.children(h.img.attr('src', github).attr('alt', ''), 'Continue with GitHub')
-			),
+			Button(h)
+				.class('axis-control auth-action')
+				.on('click', () => Message.StartSignIn())
+				.children(h.img.attr('src', github).attr('alt', ''), 'Continue with GitHub'),
 			error !== undefined &&
 				h.p
 					.class('axis-muted text-wrap')

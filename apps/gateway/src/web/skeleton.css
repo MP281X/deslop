@@ -21,14 +21,13 @@
 	position: fixed;
 	inset: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px)
 		env(safe-area-inset-left, 0px);
-	padding-block-start: 56px;
-	padding-inline-end: 56px;
+	padding-block-start: 112px;
 	background: #000;
 	overflow: clip;
 }
 
 .gateway-startup[data-native] {
-	padding-inline-end: 0;
+	padding-block-start: 56px;
 }
 
 .gateway-startup[data-native]::after {
@@ -38,22 +37,28 @@
 .gateway-startup::before,
 .gateway-startup::after {
 	position: absolute;
-	inset-block-start: 6px;
 	border-radius: 999px;
 	background: #191919;
 	content: '';
 }
 
 .gateway-startup::before {
+	inset-block-start: 62px;
 	inset-inline-start: 12px;
-	inline-size: min(265px, calc(100% - 80px));
+	inline-size: min(265px, calc(100% - 24px));
 	block-size: 44px;
 }
 
+.gateway-startup[data-native]::before {
+	inset-block-start: 6px;
+}
+
 .gateway-startup::after {
+	inset-block-start: 6px;
 	inset-inline-end: 6px;
 	inline-size: 44px;
-	block-size: 88px;
+	block-size: 44px;
+	box-shadow: -50px 0 #191919;
 }
 
 #root:has(.gateway) + .gateway-startup {

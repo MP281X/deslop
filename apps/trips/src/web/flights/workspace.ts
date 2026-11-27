@@ -28,7 +28,6 @@ import {ActionShell} from '@deslop/ui/app-shell'
 import type {ShellAction} from '@deslop/ui/app-shell'
 import {Loading, Notice, Row, RowContent} from '@deslop/ui/axis'
 import {Button, PressFeedback} from '@deslop/ui/control'
-import {Glass} from '@deslop/ui/glass'
 import {isNative} from '@deslop/ui/native'
 import {WebSignOut, submitWebSignOut} from '@deslop/ui/session'
 import {Sheet} from '@deslop/ui/sheet'
@@ -149,40 +148,37 @@ function Paste(h: H, model: Model) {
 	if (!model.pasteOpen) return undefined
 	const pending = h.isRunning(Run)
 	return Sheet(h, {
-		action: Glass(h).children(
-			Button(h, {disabled: pending || String.isEmpty(String.trim(model.pastedText)), type: 'submit'})
-				.attr(
-					'aria-label',
-					Boolean.match(pending, {onFalse: Function.constant('Add booking'), onTrue: Function.constant('Adding…')})
-				)
-				.children(SymbolIcon(h, 'checkmark'))
-		),
+		action: Button(h, {disabled: pending || String.isEmpty(String.trim(model.pastedText)), type: 'submit'})
+			.class('axis-control')
+			.attr(
+				'aria-label',
+				Boolean.match(pending, {onFalse: Function.constant('Add booking'), onTrue: Function.constant('Adding…')})
+			)
+			.children(SymbolIcon(h, 'checkmark')),
 		body: [
 			h.textarea
 				.attrs({'aria-label': 'Paste booking text or link', placeholder: 'Paste booking text or link'})
 				.value(model.pastedText)
 				.on('input', event => Message.PasteText({text: event.value})),
 			model.error !== undefined && h.p.attr('role', 'alert').children(model.error),
-			Glass(h, 'trips-file').children(
-				h.label
-					.class('trips-control trips-file-control')
-					.attrs({'aria-disabled': `${pending}`, 'data-pressable': ''})
-					.children(
-						SymbolIcon(h, 'paperclip'),
-						'Choose an image or PDF',
-						h.input
-							.attrs({
-								accept: 'image/*,application/pdf',
-								'aria-label': 'Choose an image or PDF',
-								disabled: Option.getOrUndefined(Option.liftPredicate('', () => pending)),
-								type: 'file'
-							})
-							.value('')
-							.on('change', event =>
-								Option.getOrUndefined(Option.map(Array.head(event.files), file => Message.PasteFile({file})))
-							)
-					)
-			)
+			h.label
+				.class('axis-control trips-control trips-file-control')
+				.attrs({'aria-disabled': `${pending}`, 'data-pressable': ''})
+				.children(
+					SymbolIcon(h, 'paperclip'),
+					'Choose an image or PDF',
+					h.input
+						.attrs({
+							accept: 'image/*,application/pdf',
+							'aria-label': 'Choose an image or PDF',
+							disabled: Option.getOrUndefined(Option.liftPredicate('', () => pending)),
+							type: 'file'
+						})
+						.value('')
+						.on('change', event =>
+							Option.getOrUndefined(Option.map(Array.head(event.files), file => Message.PasteFile({file})))
+						)
+				)
 		],
 		className: 'trips-sheet',
 		close: Message.PasteVisibility({open: false}),
@@ -374,7 +370,7 @@ function Shell(h: H, model: Model, options: ShellState) {
 			!isNative && signOut && WebSignOut(h, {toolbar: true}),
 			!model.pasteOpen &&
 				model.error !== undefined &&
-				Glass(h, 'trips-report').attr('role', 'alert').children(model.error)
+				h.p.class('trips-report').attr('role', 'alert').children(model.error)
 		],
 		sidebar
 	})
@@ -407,7 +403,7 @@ function Workspace(h: H, model: Model) {
 	const main = h.main.class('trips axis-controls').onMount(PressFeedback({}))
 	if (TripsRoute.isAnyOf(['NotFound'])(model.route)) {
 		return main.children(
-			Glass(h).children(h.a.class('trips-control').attrs({'data-pressable': '', href: '/'}).children('Back to Trips'))
+			h.a.class('axis-control trips-control').attrs({'data-pressable': '', href: '/'}).children('Back to Trips')
 		)
 	}
 	return main.children(
