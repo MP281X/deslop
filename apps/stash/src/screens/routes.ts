@@ -1,6 +1,8 @@
-import {Command, Route, Router} from '@effect/ui'
+import {Command, Route} from '@effect/ui'
 
-import {Effect, Schema} from 'effect'
+import {Schema} from 'effect'
+
+import {backOrHome} from '@deslop/design/navigation'
 
 import {NoteId} from '#contracts'
 
@@ -20,14 +22,5 @@ export function showsDetail(route: StashRoute) {
 }
 
 export class BackToQueue extends Command.Service<BackToQueue>()('Stash/BackToQueue', {args: {}}) {
-	static readonly layer = this.toLayer(
-		Effect.map(
-			Router.Router,
-			router => () =>
-				Effect.suspend(() => {
-					if (router.location().action === 'initial') return router.replace(StashRoute.Home({search: {}}))
-					return router.back
-				})
-		)
-	)
+	static readonly layer = this.toLayer(backOrHome(StashRoute.Home({search: {}})))
 }

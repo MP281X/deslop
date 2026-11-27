@@ -15,8 +15,6 @@ import {ownColorAtom, ownCursorAtom, recolorAtom, sceneAtom, sendCursorAtom} fro
 import {trailCells} from '#web/presence/trails.ts'
 import {Icon} from '#web/profile/icons.ts'
 
-const {name, profile} = ProfileScreen
-
 type Viewport = typeof Viewport.Type
 const Viewport = Schema.Struct({height: Schema.Finite, width: Schema.Finite})
 const SceneRead = AsyncResult.Schema({
@@ -188,8 +186,8 @@ function ShortcutsOverlay(h: H) {
 }
 
 // Italian law asks a VAT holder's website to show the number on its home page.
-const LEGAL_LINE = `© 2026 ${name} · VAT ${profile.vat}`
-const LEGAL_LINE_NARROW = `© 2026 · VAT ${profile.vat}`
+const LEGAL_LINE = `© 2026 ${ProfileScreen.name} · VAT ${ProfileScreen.profile.vat}`
+const LEGAL_LINE_NARROW = `© 2026 · VAT ${ProfileScreen.profile.vat}`
 
 function PresenceText(h: H, model: Model) {
 	if (!AsyncResult.isSuccess(model.scene)) {

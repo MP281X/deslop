@@ -11,7 +11,7 @@ import {webLinksOnly} from '#screens/markdown.ts'
 import {pagesOf} from '#screens/pages.ts'
 
 export function savedOf(note: NoteItem, now: DateTime.Utc) {
-	if (pipe(DateTime.distance(note.createdAt, now), Duration.isLessThan(Duration.days(1)))) {
+	if (pipe(note.createdAt, DateTime.distance(now), Duration.isLessThan(Duration.days(1)))) {
 		return ageOf(note.createdAt, now)
 	}
 	return dayOf(note.createdAt, now)
@@ -22,11 +22,10 @@ export function issueOf(note: NoteItem) {
 }
 
 export function rowOf(note: NoteItem, now: DateTime.Utc) {
-	const line = pipe([sourceLabelOf(note), note.summary], Array.filter(String.isNonEmpty), Array.join(' · '))
 	return {
 		id: note.id,
 		line: Boolean.match(note.status === 'organizing', {
-			onFalse: Function.constant(line),
+			onFalse: () => pipe([sourceLabelOf(note), note.summary], Array.filter(String.isNonEmpty), Array.join(' · ')),
 			onTrue: () => `Reading this ${subjectOf(note)}`
 		}),
 		...Boolean.match(note.status === 'failed', {

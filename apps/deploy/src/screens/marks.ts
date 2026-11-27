@@ -30,8 +30,8 @@ const brands = [
 
 export function artworkOf(item: InventoryItem) {
 	const name = workloadName(item)
-	const key = Array.headNonEmpty(String.split(name, /[ -]/u))
-	const app = appMarks[key]
+
+	const app = appMarks[Array.headNonEmpty(String.split(name, /[ -]/u))]
 	if (app !== undefined) return {pixel: true, source: app}
 	const process = pipe(
 		item.processes,
@@ -45,6 +45,13 @@ export function artworkOf(item: InventoryItem) {
 				).name
 		})
 	)
-	const brand = Array.findFirst(brands, candidate => candidate.pattern.test(`${name} ${process}`))
-	return {pixel: false, source: Option.getOrUndefined(Option.map(brand, entry => entry.source))}
+	return {
+		pixel: false,
+		source: pipe(
+			brands,
+			Array.findFirst(candidate => candidate.pattern.test(`${name} ${process}`)),
+			Option.map(entry => entry.source),
+			Option.getOrUndefined
+		)
+	}
 }

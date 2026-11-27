@@ -9,9 +9,11 @@ import {layerIPhoneRouter} from '#iphone/router.ts'
 import {Cv, Message, Profile} from '#iphone/view.ts'
 import {PortfolioRoute} from '#screens/routes.ts'
 
-const OpenLink = Command.make('Portfolio/OpenLink', {args: {url: Schema.String}}, ({url}) =>
+class OpenLinkError extends Schema.TaggedError<OpenLinkError>()('OpenLinkError', {cause: Schema.Unknown}) {}
+
+const OpenLink = Command.make('Portfolio/OpenLink', {args: {url: Schema.String}}, input =>
 	Effect.ignore(
-		Effect.tryPromise(() => Linking.openURL(url)),
+		Effect.tryPromise({catch: cause => OpenLinkError.make({cause}), try: () => Linking.openURL(input.url)}),
 		{log: 'Warn', message: 'Could not open the link'}
 	)
 )
@@ -25,8 +27,8 @@ const Portfolio = Native.component({
 	init: $ => $.props.route,
 	subscriptions: $ => [Router.subscription(PortfolioRoute, $.model, route => Message.Routed({route}))],
 	update: {
-		Routed: (_, {route}) => route,
-		OpenedLink: ($, {url}) => $.run(Command.asNoop(OpenLink.make({url}))),
+		OpenedLink: ($, message) => $.run(Command.asNoop(OpenLink.make({url: message.url}))),
+		Routed: (_, message) => message.route,
 		ShowCv: $ => $.run(Command.asNoop(Router.replace(PortfolioRoute, PortfolioRoute.Cv()))),
 		ShowProfile: $ => $.run(Command.asNoop(Router.replace(PortfolioRoute, PortfolioRoute.Home())))
 	},

@@ -14,49 +14,36 @@ const Image = Native.defineView(
 	{viewName: 'RCTImageView'}
 )
 
-const load = Command.make('Stash/LoadPicture', {args: {path: Schema.String}, success: Schema.String}, ({path}) =>
+const PictureMessage = UiSchema.TaggedEnum({Loaded: {uri: Schema.String}, Retry: {}})
+const load = Command.make('Stash/LoadPicture', {args: {path: Schema.String}}, request =>
 	pipe(
-		atDevice('Picture unavailable', () => StashNative.image(path)),
+		atDevice('Picture unavailable', () => StashNative.image(request.path)),
 		Effect.map(result => {
 			if (!Schema.is(ImageType)(result.type)) return ''
 			return `data:${result.type};base64,${result.data}`
 		}),
-		Effect.catchTag('NotesError', () => Effect.succeed(''))
+		Effect.catchTag('NotesError', () => Effect.succeed('')),
+		Effect.map(uri => PictureMessage.Loaded({uri}))
 	)
 )
 
-const PictureMessage = UiSchema.TaggedEnum({Loaded: {uri: Schema.String}, Retry: {}})
 const Picture = Native.component({
 	message: PictureMessage,
 	model: Schema.UndefinedOr(Schema.String),
 	name: 'StashPicture',
 	props: Schema.Struct({label: Schema.String, path: Schema.String, width: Schema.Finite})
 }).make({
-	init: $ =>
-		$.set(undefined).run(
-			pipe(
-				load.make({path: $.props.path}),
-				Command.map(uri => PictureMessage.Loaded({uri}))
-			)
-		),
-	update: {
-		Loaded: ($, {uri}) => $.set(uri),
-		Retry: $ =>
-			$.set(undefined).run(
-				pipe(
-					load.make({path: $.props.path}),
-					Command.map(uri => PictureMessage.Loaded({uri}))
-				)
-			)
-	},
+	init: $ => $.set(undefined).run(load.make({path: $.props.path})),
+	update: {Loaded: ($, input) => $.set(input.uri), Retry: $ => $.set(undefined).run(load.make({path: $.props.path}))},
 	view: (h, uri) => {
 		const style = {height: 304, width: h.props.width}
 		if (uri === undefined) return h.view.style({...style, backgroundColor: '#181818'})
-		if (uri === '')
+		if (uri === '') {
 			return h.text
 				.style({...styles.line, ...style})
 				.on('press', PictureMessage.Retry())
 				.children('Picture unavailable. Tap to retry.')
+		}
 		return Image.style(style)
 			.prop('accessibilityLabel', h.props.label)
 			.prop('accessible', true)
@@ -74,23 +61,27 @@ export const Gallery = Native.component({
 }).make({
 	init: () => ({page: 0, width: 0}),
 	update: {
-		Measured: ($, {width}) => {
-			if ($.model.width === width) return $.model
-			return $.evolve({page: 0, width})
+		Measured: ($, input) => {
+			if ($.model.width === input.width) return $.model
+			return $.evolve({page: 0, width: input.width})
 		},
-		Scrolled: ($, {x}) => {
-			const page = Number.clamp(Number.round(x / $.model.width, 0), {maximum: $.props.paths.length - 1, minimum: 0})
+		Scrolled: ($, input) => {
+			const page = pipe(
+				input.x / $.model.width,
+				Number.round(0),
+				Number.clamp({maximum: $.props.paths.length - 1, minimum: 0})
+			)
 			if (page === $.model.page) return $.model
 			return $.evolve({page})
 		}
 	},
-	view: (h, {page, width}) =>
+	view: (h, model) =>
 		h.view
 			.on('layout', event => Message.Measured({width: event.layout.width}))
 			.children(
-				width > 0 &&
+				model.width > 0 &&
 					h.scroll
-						.key(`${width}`)
+						.key(`${model.width}`)
 						.style({height: 304})
 						.prop('horizontal', true)
 						.prop('pagingEnabled', true)
@@ -98,16 +89,18 @@ export const Gallery = Native.component({
 						.on('scroll', event => Message.Scrolled({x: event.x}))
 						.children(
 							Array.map(h.props.paths, (path, index) => {
-								if (index < page - 1 || index > page + 1) return h.view.key(path).style({height: 304, width})
+								if (index < model.page - 1 || index > model.page + 1) {
+									return h.view.key(path).style({height: 304, width: model.width})
+								}
 								return Picture(h, {
 									key: path,
-									props: {label: `Picture ${index + 1} of ${h.props.paths.length}`, path, width}
+									props: {label: `Picture ${index + 1} of ${h.props.paths.length}`, path, width: model.width}
 								})
 							})
 						),
 				h.props.paths.length > 1 &&
 					h.text
 						.style({...styles.line, alignSelf: 'center', fontVariant: ['tabular-nums']})
-						.children(`${page + 1} / ${h.props.paths.length}`)
+						.children(`${model.page + 1} / ${h.props.paths.length}`)
 			)
 })

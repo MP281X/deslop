@@ -1,8 +1,9 @@
-import {Context, Layer, Stream, pipe} from 'effect'
+import {Context, Layer, Stream} from 'effect'
 
-import {Atom, AtomRegistry, AtomRpc} from 'effect/reactivity'
+import {Atom, AtomRpc} from 'effect/reactivity'
 import type {AsyncResult} from 'effect/reactivity'
 
+import {observe as observeAtom} from '@deslop/runtime/client/atom'
 import {liveAtom} from '@deslop/runtime/client/live-stream'
 import type {layerSocketProtocol} from '@deslop/runtime/client/protocol'
 import type {AuthError} from '@deslop/runtime/shared/auth'
@@ -16,28 +17,30 @@ function reads(
 	protocol: ReturnType<typeof layerSocketProtocol>,
 	account: Atom.Atom<AsyncResult.AsyncResult<Account, AuthError>>
 ) {
-	const credentials = Atom.make(0)
+	const credentialsAtom = Atom.make(0)
 	class Client extends AtomRpc.Service<Client>()('Gateway/Rpc', {
 		group: GatewayRpcs.middleware(RpcStream),
 		protocol: get => {
-			get(credentials)
+			get(credentialsAtom)
 			return Layer.fresh(protocol)
 		}
 	}) {}
 
 	return {
 		account,
-		credentials,
-		runtime: Client.runtime,
-		client: Client,
-		keys: liveAtom(Client, 'ai-proxy.key'),
-		servers: liveAtom(Client, 'connections.watch'),
 		aiUsage: Atom.family((period: TimeFrame) => liveAtom(Client, 'ai-metering.usage', period)),
-		mcpUsage: Atom.family((period: TimeFrame) => liveAtom(Client, 'connections.usage', period))
+		client: Client,
+		credentialsAtom,
+		keys: liveAtom(Client, 'ai-proxy.key'),
+		mcpUsage: Atom.family((period: TimeFrame) => liveAtom(Client, 'connections.usage', period)),
+		runtime: Client.runtime,
+		servers: liveAtom(Client, 'connections.watch')
 	}
 }
 
-export class GatewayReads extends Context.Service<GatewayReads, ReturnType<typeof reads>>()('Gateway/Reads') {
+export class GatewayReads extends Context.Service<GatewayReads, ReturnType<typeof reads>>()(
+	'@deslop/gateway/screens/reads/GatewayReads'
+) {
 	static layer(
 		protocol: ReturnType<typeof layerSocketProtocol>,
 		account: Atom.Atom<AsyncResult.AsyncResult<Account, AuthError>>
@@ -46,14 +49,6 @@ export class GatewayReads extends Context.Service<GatewayReads, ReturnType<typeo
 	}
 }
 
-export function observe<A, M>(pick: (reads: ReturnType<typeof reads>) => Atom.Atom<A>, read: (value: A) => M) {
-	return Stream.unwrap(
-		GatewayReads.useSync(reads =>
-			Stream.unwrap(
-				AtomRegistry.AtomRegistry.useSync(registry =>
-					pipe(registry, AtomRegistry.toStream(pick(reads)), Stream.map(read))
-				)
-			)
-		)
-	)
+export function observe<A, M>(pick: (source: ReturnType<typeof reads>) => Atom.Atom<A>, read: (value: A) => M) {
+	return Stream.unwrap(GatewayReads.useSync(source => observeAtom(pick(source), read)))
 }

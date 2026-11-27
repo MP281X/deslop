@@ -1,4 +1,4 @@
-import {Array, Boolean, DateTime, Function, HashSet, Number, Option, String, pipe} from 'effect'
+import {Array, Boolean, DateTime, Function, HashMap, HashSet, Number, Option, String, pipe} from 'effect'
 
 import {clockOf, countOf, durationOf, percentOf} from '@deslop/runtime/shared/format'
 
@@ -11,10 +11,14 @@ import {appFigures, appReadings, machineReadings} from '#screens/readings.ts'
 import {Operation} from '#screens/reads.ts'
 import {addressOf, host, machineHost, reasonOf, shown, statusLine} from '#screens/rows.ts'
 
-const memoryOf = (bytes: number) => `${countOf(bytes / 1024 ** 2)} MiB`
+function memoryOf(bytes: number) {
+	return `${countOf(bytes / 1024 ** 2)} MiB`
+}
 
 const decimal = new Intl.NumberFormat('en', {maximumFractionDigits: 1})
-const gib = (bytes: number) => decimal.format(bytes / 1024 ** 3)
+function gib(bytes: number) {
+	return decimal.format(bytes / 1024 ** 3)
+}
 
 function machineName(snapshot: Snapshot) {
 	return Option.match(machineHost(snapshot), {
@@ -42,11 +46,14 @@ export function machineDetail(snapshot: Snapshot, history?: MachineHistory) {
 	const disks = history?.disks ?? []
 	const used = Number.sumAll(Array.map(disks, disk => disk.used))
 	const total = Number.sumAll(Array.map(disks, disk => disk.total))
-	const cpu = latest?.cpu ?? Option.none()
+
 	return {
-		cpu: shown(cpu, percentOf),
+		cpu: shown(latest?.cpu ?? Option.none(), percentOf),
 		disk: Boolean.match(total > 0, {onFalse: Function.constant('—'), onTrue: () => `${gib(used)} / ${gib(total)} GiB`}),
-		memory: latest === undefined ? '—' : `${gib(latest.memoryUsed)} / ${gib(latest.memoryTotal)} GiB`,
+		memory: Option.match(Option.fromUndefinedOr(latest), {
+			onNone: Function.constant('—'),
+			onSome: sample => `${gib(sample.memoryUsed)} / ${gib(sample.memoryTotal)} GiB`
+		}),
 		name: machineName(snapshot),
 		peak: statistics(readings),
 		readings
@@ -82,15 +89,23 @@ function processes(item: InventoryItem, now: DateTime.Utc, history?: AppHour) {
 	const max = Array.reduce(tracks, 0, (value, track) => Number.max(value, track.memory))
 	return Array.map(tracks, track => ({
 		key: track.key,
-		label: Array.join(Array.filter([track.label.name, track.label.detail], String.isNonEmpty), ' '),
-		line: track.lastSeen === undefined ? undefined : `Last measured at ${track.lastSeen}`,
-		proportion: max > 0 ? (100 * track.memory) / max : 0,
+		label: pipe([track.label.name, track.label.detail], Array.filter(String.isNonEmpty), Array.join(' ')),
+		line: Boolean.match(track.lastSeen === undefined, {
+			onFalse: () => `Last measured at ${track.lastSeen}`,
+			onTrue: Function.constUndefined
+		}),
+		proportion: Boolean.match(max > 0, {onFalse: Function.constant(0), onTrue: () => (100 * track.memory) / max}),
 		value: memoryOf(track.memory)
 	}))
 }
 
+function endpointStatus(item: InventoryItem) {
+	if (item.health === 'quiet') return undefined
+	return item.health
+}
+
 function endpointsOf(row: Row, rows: readonly Row[]) {
-	const free = availablePorts(rows)
+	const free = HashMap.fromIterable(Array.map(availablePorts(rows), item => [item.id, item] as const))
 	const ports = pipe(
 		row.listeners,
 		Array.filter(listener => Option.isSome(listener.port) && !Option.contains(listener.address, 'container')),
@@ -100,15 +115,19 @@ function endpointsOf(row: Row, rows: readonly Row[]) {
 		Array.map(listener => ({
 			id: listener.id,
 			label: shown(listener.port, port => `:${port}`),
-			target: Array.findFirst(free, item => item.id === listener.id)
+			target: HashMap.get(free, listener.id)
 		}))
 	)
 	return {
 		exposures: Array.map(row.exposures, site => ({
 			id: site.id,
-			label: Option.getOrElse(Option.map(site.url, host), () => shown(site.port, port => `:${port}`)),
-			line: site.health === 'quiet' ? undefined : reasonOf(site),
-			status: site.health === 'quiet' ? undefined : site.health,
+			label: pipe(
+				site.url,
+				Option.map(host),
+				Option.getOrElse(() => shown(site.port, port => `:${port}`))
+			),
+			line: Boolean.match(site.health === 'quiet', {onFalse: () => reasonOf(site), onTrue: Function.constUndefined}),
+			status: endpointStatus(site),
 			url: Option.getOrUndefined(site.url)
 		})),
 		ports
@@ -121,26 +140,31 @@ function jobLine(item: InventoryItem) {
 }
 
 export function listItem(row: Row, now: DateTime.Utc, restart?: string, history?: MachineHistory, latest?: Sample) {
-	const item = row.item
-	const job = Option.contains(item.scheduled, true)
-	const charted = !job && (item.kind === 'service' || item.kind === 'container')
-	const figures = appFigures(item, latest)
+	const job = Option.contains(row.item.scheduled, true)
+	const charted = !job && (row.item.kind === 'service' || row.item.kind === 'container')
+	const figures = appFigures(row.item, latest)
 	const reason = statusLine(row, now, restart)
-	const status = item.health === 'warning' && restart === undefined ? ('warning' as const) : ('error' as const)
+	const status = Boolean.match(row.item.health === 'warning' && restart === undefined, {
+		onFalse: Function.constant('error' as const),
+		onTrue: Function.constant('warning' as const)
+	})
 	const address = addressOf(row) ?? ''
-	const line =
-		item.kind === 'container' ? Array.join(Array.filter([address, 'Container'], String.isNonEmpty), ' · ') : address
+	const line = Boolean.match(row.item.kind === 'container', {
+		onFalse: Function.constant(address),
+		onTrue: () => pipe([address, 'Container'], Array.filter(String.isNonEmpty), Array.join(' · '))
+	})
 	return {
-		id: item.id,
-		item,
+		id: row.item.id,
+		item: row.item,
 		job,
-		line: job ? jobLine(item) : line,
+		line: Boolean.match(job, {onFalse: Function.constant(line), onTrue: () => jobLine(row.item)}),
 		...(reason !== undefined && {problem: {reason, status}}),
-		readings: charted ? appReadings(item, history) : [],
-		title: workloadName(item),
-		trailing: job
-			? shown(item.next, at => clockOf(at))
-			: `${shown(figures.cpu, percentOf)}   ${shown(figures.memory, memoryOf)}`
+		readings: Boolean.match(charted, {onFalse: () => [], onTrue: () => appReadings(row.item, history)}),
+		title: workloadName(row.item),
+		trailing: Boolean.match(job, {
+			onFalse: () => `${shown(figures.cpu, percentOf)}   ${shown(figures.memory, memoryOf)}`,
+			onTrue: () => shown(row.item.next, at => clockOf(at))
+		})
 	}
 }
 
@@ -150,9 +174,10 @@ export function runJob(item: InventoryItem) {
 
 export function loadAverages(history?: MachineHistory) {
 	if (Array.isReadonlyArrayEmpty(history?.load ?? [])) return undefined
-	return Array.join(
-		Array.map(history?.load ?? [], value => value.toFixed(2)),
-		' / '
+	return pipe(
+		history?.load ?? [],
+		Array.map(value => value.toFixed(2)),
+		Array.join(' / ')
 	)
 }
 
@@ -164,9 +189,12 @@ export function appDetail(row: Row, rows: readonly Row[], now: DateTime.Utc, his
 	const figures = appFigures(item, Option.getOrUndefined(Array.last(history?.samples ?? [])))
 	const restarts = app?.restarts ?? []
 	const restart = restartReason(restarts, now)
-	const line = statusLine(row, now, restart)
-	const address = addressOf(row)
-	const subtitle = Array.join(Array.filter([line ?? '', address ?? ''], String.isNonEmpty), ' · ')
+
+	const subtitle = pipe(
+		[statusLine(row, now, restart) ?? '', addressOf(row) ?? ''],
+		Array.filter(String.isNonEmpty),
+		Array.join(' · ')
+	)
 	const jobs = Array.filter(
 		rows,
 		candidate =>
@@ -176,36 +204,51 @@ export function appDetail(row: Row, rows: readonly Row[], now: DateTime.Utc, his
 	)
 	const endpoints = endpointsOf(row, rows)
 	const facts = [
-		...(Array.isReadonlyArrayNonEmpty(restarts)
-			? [{label: 'Restarts', value: restart ?? `${restarts.length} in 1 h`}]
-			: []),
+		...Boolean.match(Array.isReadonlyArrayNonEmpty(restarts), {
+			onFalse: () => [],
+			onTrue: () => [{label: 'Restarts', value: restart ?? `${restarts.length} in 1 h`}]
+		}),
 		...pipe(
 			Array.last(restarts),
 			Option.filter(() => item.running),
 			Option.map(at => ({label: 'Uptime', value: durationOf(DateTime.distance(at, now))})),
 			Option.toArray
 		),
-		...(Array.isReadonlyArrayNonEmpty(readings) && !scheduled
-			? [{label: 'Peak, mean', value: statistics(readings)}]
-			: []),
-		...(scheduled ? [{label: 'Next run', value: shown(item.next, at => clockOf(at))}] : []),
-		...(item.kind === 'service' ? [{label: 'Unit', value: item.name}] : []),
-		...(!Array.isArrayNonEmpty(endpoints.ports) && Option.isSome(item.port)
-			? [{label: 'Port', value: String.String(item.port.value)}]
-			: []),
-		...(Array.isReadonlyArrayNonEmpty(row.exposures)
-			? [
-					{
-						label: 'Exposure',
-						value: pipe(
-							row.exposures,
-							Array.map(site => (Option.contains(site.publicAccess, true) ? 'public' : 'tailnet')),
-							Array.dedupe,
-							Array.join(' · ')
-						)
-					}
-				]
-			: [])
+		...Boolean.match(Array.isReadonlyArrayNonEmpty(readings) && !scheduled, {
+			onFalse: () => [],
+			onTrue: () => [{label: 'Peak, mean', value: statistics(readings)}]
+		}),
+		...Boolean.match(scheduled, {
+			onFalse: () => [],
+			onTrue: () => [{label: 'Next run', value: shown(item.next, at => clockOf(at))}]
+		}),
+		...Boolean.match(item.kind === 'service', {onFalse: () => [], onTrue: () => [{label: 'Unit', value: item.name}]}),
+		...pipe(
+			item.port,
+			Option.filter(() => Array.isArrayEmpty(endpoints.ports)),
+			Option.map(port => ({label: 'Port', value: String.String(port)})),
+			Option.toArray
+		),
+		...Boolean.match(Array.isReadonlyArrayNonEmpty(row.exposures), {
+			onFalse: () => [],
+			onTrue: () => [
+				{
+					label: 'Exposure',
+					value: pipe(
+						row.exposures,
+						Array.map(site =>
+							pipe(
+								site.publicAccess,
+								Option.contains(true),
+								Boolean.match({onFalse: Function.constant('tailnet'), onTrue: Function.constant('public')})
+							)
+						),
+						Array.dedupe,
+						Array.join(' · ')
+					)
+				}
+			]
+		})
 	]
 	return {
 		...endpoints,
@@ -215,16 +258,18 @@ export function appDetail(row: Row, rows: readonly Row[], now: DateTime.Utc, his
 		jobs: Array.map(jobs, job => listItem(job, now)),
 		memory: shown(figures.memory, memoryOf),
 		name: workloadName(item),
-		processes: charted ? processes(item, now, app) : [],
+		processes: Boolean.match(charted, {onFalse: () => [], onTrue: () => processes(item, now, app)}),
 		readings,
 		restarts,
 		scheduled,
-		status:
-			item.health === 'warning' && restart === undefined
-				? ('warning' as const)
-				: item.health === 'error' || restart !== undefined
-					? ('error' as const)
-					: undefined,
+		status: Boolean.match(item.health === 'warning' && restart === undefined, {
+			onFalse: () =>
+				Boolean.match(item.health === 'error' || restart !== undefined, {
+					onFalse: Function.constUndefined,
+					onTrue: Function.constant('error' as const)
+				}),
+			onTrue: Function.constant('warning' as const)
+		}),
 		subtitle
 	}
 }

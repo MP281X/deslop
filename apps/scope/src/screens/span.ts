@@ -74,12 +74,19 @@ export function spanDetail(span: TraceSpan) {
 			const url = httpUrl(attribute.value)
 			if (url !== undefined) return {id: 'attribute:url.full', label: 'URL', url: url.href, value: urlLabel(url)}
 		}
-		return {id: `attribute:${attribute.key}`, label: attribute.key, value: attribute.value, url: undefined}
+		return {id: `attribute:${attribute.key}`, label: attribute.key, url: undefined, value: attribute.value}
 	})
-	const source = appName(span.service)
-	const line = `${source} · at ${durationOf(span.offsetMs)}`
+	const line = `${appName(span.service)} · at ${durationOf(span.offsetMs)}`
 
 	return {
+		failure,
+		fields,
+		logs: Array.map(span.logs, log => ({
+			failed: log.severity >= 17,
+			id: `${log.id}`,
+			text: log.message,
+			time: clockOf(log.time, 'millisecond')
+		})),
 		row: {
 			id: 'span',
 			line,
@@ -89,15 +96,7 @@ export function spanDetail(span: TraceSpan) {
 			}),
 			title: span.name,
 			trailing: durationOf(span.durationMs)
-		},
-		failure,
-		fields,
-		logs: Array.map(span.logs, log => ({
-			id: `${log.id}`,
-			failed: log.severity >= 17,
-			text: log.message,
-			time: clockOf(log.time, 'millisecond')
-		}))
+		}
 	}
 }
 

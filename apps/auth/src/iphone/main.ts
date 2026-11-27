@@ -5,24 +5,25 @@ import {Router} from '@effect/ui'
 import {Native, NativeApp} from '@effect/ui-native'
 import {Pressable} from '@effect/ui-native/kit'
 
-import {Array, Effect, Function, Layer, Schema, pipe} from 'effect'
+import {Array, Boolean, Effect, Function, Layer, pipe} from 'effect'
 
 import {AtomRegistry} from 'effect/reactivity'
 
-import type {Selection} from '@deslop/design/model'
+import type {PaneLeaf} from '@deslop/design/model'
 import {Layout, ListDetail, Row, styles} from '@deslop/design/native'
 import {layerSocketProtocol} from '@deslop/runtime/client/protocol'
 
 import {layerIPhoneRouter} from '#iphone/router.ts'
-import {layerIPhoneSocket, signIn, signOut} from '#iphone/session.ts'
+import {session, signOut} from '#iphone/session.ts'
 import {Directory} from '#screens/directory.ts'
 import type {Entry, Screen} from '#screens/directory.ts'
 import {marks} from '#screens/marks.ts'
 import {Admit, RecoverSignIn, Refresh, SignOut, StartSignIn} from '#screens/model.ts'
 import {AuthReads} from '#screens/reads.ts'
 import {AuthRoute} from '#screens/routes.ts'
-import {AVATAR} from '#screens/rows.ts'
-import type {Mark} from '#screens/rows.ts'
+import {AVATAR, Mark} from '#screens/rows.ts'
+import {accessOptions, authApp, directoryOptions, renderEntry, rowOptions} from '#screens/view.ts'
+import type {RowSelection} from '#screens/view.ts'
 
 const Image: <M>() => Native.ViewElement<M, never, Record<string, unknown>, 'authImage'> = Function.constant(
 	Native.defineView(() => new Native.ViewElement<never, never, Record<string, unknown>, 'authImage'>('authImage'), {
@@ -32,13 +33,16 @@ const Image: <M>() => Native.ViewElement<M, never, Record<string, unknown>, 'aut
 
 function MarkImage<M>(uri: string, size: number, avatar = false) {
 	return Image<M>()
-		.style({flexShrink: 0, height: size, width: size, ...(avatar && {position: 'absolute', top: 0, left: 0})})
-		.prop('resizeMode', avatar ? 'cover' : 'contain')
-		.prop('source', [{uri, width: size, height: size, scale: 1}])
+		.style({flexShrink: 0, height: size, width: size, ...(avatar && {left: 0, position: 'absolute', top: 0})})
+		.prop(
+			'resizeMode',
+			Boolean.match(avatar, {onFalse: Function.constant('contain'), onTrue: Function.constant('cover')})
+		)
+		.prop('source', [{height: size, scale: 1, uri, width: size}])
 }
 
 function Cover<M>(h: Native.H<M>, mark: Mark) {
-	if (mark.kind === 'device') return MarkImage<M>(marks[mark.device], 20)
+	if (Mark.isAnyOf(['Device'])(mark)) return MarkImage<M>(marks[mark.device], 20)
 	return h.view
 		.style(AVATAR)
 		.children(
@@ -55,7 +59,12 @@ function Button<M>(
 	disabled = false
 ) {
 	return Pressable(h, {element, props: {disabled, pressedStyle: {backgroundColor: '#2b2b2b'}}})
-		.style({...styles.control, flexDirection: 'row', gap: 8, opacity: disabled ? 0.5 : 1})
+		.style({
+			...styles.control,
+			flexDirection: 'row',
+			gap: 8,
+			opacity: Boolean.match(disabled, {onFalse: Function.constant(1), onTrue: Function.constant(0.5)})
+		})
 		.prop('accessible', true)
 		.prop('accessibilityRole', 'button')
 		.prop('accessibilityState', {disabled})
@@ -76,41 +85,30 @@ function Skeleton<M>(h: Native.H<M>, id: string) {
 		)
 }
 
-function EntryView<M>(
-	h: Native.H<M>,
-	entry: Entry,
-	retry: Screen['retry'],
-	activeId?: string,
-	select?: Selection['select']
-) {
-	if (entry.kind === 'skeleton') return Skeleton(h, entry.id)
-	if (entry.kind === 'row') {
-		const {mark, ...item} = entry.row
-		return Row(h, {active: activeId === item.id, cover: Cover(h, mark), item, ...(select !== undefined && {select})})
-	}
-	return h.view
-		.key(entry.text)
-		.style({alignItems: 'flex-start', gap: 8, paddingHorizontal: 12, paddingVertical: 8})
-		.children(
-			h.text.style(styles.line).children(entry.text),
-			entry.reader !== undefined &&
-				Button(h, retry(retry(h.view, 'press', entry.reader), 'accessibilityTap', entry.reader), 'Retry')
-		)
+function EntryView<M>(h: Native.H<M>, entry: Entry, retry: Screen['retry'], selection?: RowSelection) {
+	return renderEntry(entry, {
+		notice: notice =>
+			h.view
+				.key(notice.text)
+				.style({alignItems: 'flex-start', gap: 8, paddingHorizontal: 12, paddingVertical: 8})
+				.children(
+					h.text.style(styles.line).children(notice.text),
+					notice.retry !== undefined &&
+						// fallow-ignore-next-line code-duplication -- Web and iPhone pass the same screen parts; only each host's elements differ.
+						Button(h, retry(retry(h.view, 'press', notice.retry), 'accessibilityTap', notice.retry), 'Retry')
+				),
+		row: row => Row<M, never>(h, rowOptions(row, Cover(h, row.mark), selection)),
+		skeleton: id => Skeleton(h, id)
+	})
 }
 
+// fallow-ignore-next-line code-duplication -- Web and iPhone pass the same screen parts; only each host's elements differ.
 function Workspace<M>(h: Native.H<M>, screen: Screen) {
 	if (screen.kind === 'directory') {
-		return ListDetail(h, {
-			defaultId: screen.defaultId,
-			detail: Array.map(screen.detail, entry => EntryView(h, entry, screen.retry)),
-			detailToolbar: screen.detailToolbar,
-			list: (active, wide) => [
-				...Array.map(screen.people, entry => EntryView(h, entry, screen.retry, active, screen.selection.select)),
-				...(wide ? [] : Array.map(screen.accountNotes, entry => EntryView(h, entry, screen.retry)))
-			],
-			selection: screen.selection,
-			toolbar: screen.toolbar
-		})
+		return ListDetail<M, never>(
+			h,
+			directoryOptions(screen, (entry, retry, selection) => EntryView(h, entry, retry, selection))
+		)
 	}
 	if (screen.kind === 'sessions') {
 		return ListDetail(h, {
@@ -126,32 +124,21 @@ function Workspace<M>(h: Native.H<M>, screen: Screen) {
 			content: center.children(Button(h, screen.back(screen.back(h.view, 'press'), 'accessibilityTap'), 'Back to Auth'))
 		})
 	}
-	return Layout(h, {
-		content: center.children(
-			screen.state === 'waiting' && h.text.style(styles.line).children('Waiting for an admin'),
-			screen.state === 'sign-in' &&
-				Button(
-					h,
-					screen.signIn(screen.signIn(h.view, 'press'), 'accessibilityTap'),
-					'Continue with GitHub',
-					true,
-					screen.signingIn
-				),
-			screen.error !== undefined && h.text.style(styles.line).children(screen.error),
-			...Array.map(screen.entries, entry => EntryView(h, entry, screen.retry))
-		),
-		toolbar: screen.toolbar.actions.length > 0 ? screen.toolbar : undefined
-	})
+	return Layout(
+		h,
+		accessOptions<PaneLeaf<Native.NoTextInput<M>>, Native.NoTextInput<M>>(screen, {
+			content: children => center.children(children),
+			entry: (entry, retry) => EntryView(h, entry, retry),
+			error: text => h.text.style(styles.line).children(text),
+			signIn: (part, label, disabled) =>
+				Button(h, part(part(h.view, 'press'), 'accessibilityTap'), label, true, disabled),
+			waiting: text => h.text.style(styles.line).children(text)
+		})
+	)
 }
 
-const App = Native.component({
-	message: Schema.Never,
-	model: Schema.Null,
-	name: 'Auth',
-	props: Schema.Struct({route: AuthRoute})
-}).make({
-	init: Function.constNull,
-	update: Function.constNull,
+const App = Native.component(authApp.definition).make({
+	...authApp.lifecycle,
 	view: h => Directory(h, {native: true, route: h.props.route}, screen => Workspace(h, screen))
 })
 
@@ -166,15 +153,15 @@ NativeApp.register(
 					RecoverSignIn.toLayer(Effect.map(Refresh, refresh => () => refresh({reader: 'account'}))),
 					Refresh.layer
 				),
-				StartSignIn.toLayer(() => signIn),
-				SignOut.toLayer(() => Effect.asVoid(signOut)),
+				StartSignIn.toLayer(() => session.signIn),
+				SignOut.toLayer(() => signOut),
 				Router.Back.layer
 			)
 		),
 		Layer.provide(
 			Layer.mergeAll(
 				AtomRegistry.layer,
-				AuthReads.layer(layerSocketProtocol(layerIPhoneSocket), Function.constVoid),
+				AuthReads.layer(layerSocketProtocol(session.layerIPhoneSocket), Function.constVoid),
 				layerIPhoneRouter
 			)
 		)

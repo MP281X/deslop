@@ -9,8 +9,10 @@
 		"./shared/*": "./src/shared/*.ts",
 		"./server/*": "./src/server/*.ts",
 		"./client/*": "./src/client/*.ts",
+		"./iphone/*": "./src/iphone/*.ts",
 		"./web/*": "./src/web/*.ts",
-		"./config/*": "./src/config/*.ts"
+		"./config/*": "./src/config/*.ts",
+		"./tooling/*": "./src/tooling/*.ts"
 	},
 	"scripts": {
 		"test": "vp test --config ../../vite.config.ts"

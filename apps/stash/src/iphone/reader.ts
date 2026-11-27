@@ -16,8 +16,8 @@ type Content = Exclude<Native.NoTextInput<StashMessage>, readonly unknown[]>
 type Inline = Native.TextElement<StashMessage, never, Native.TextEvents, 'text'> | string
 
 function inline(h: H, nodes: readonly Markdown.Inline[]): readonly Inline[] {
-	return Array.map(nodes, node =>
-		Match.valueTags(node, {
+	return Array.map(nodes, item =>
+		Match.valueTags(item, {
 			Emphasis: node => h.text.style({fontStyle: 'italic'}).children(inline(h, node.content)),
 			HardBreak: Function.constant('\n'),
 			Image: node => node.alt,
@@ -35,34 +35,6 @@ function inline(h: H, nodes: readonly Markdown.Inline[]): readonly Inline[] {
 			Text: node => node.value
 		})
 	)
-}
-
-function nested(h: H, content: readonly Markdown.Block[], key: string) {
-	return h.view.key(key).style({gap: 8, paddingLeft: 12}).children(blocks(h, content))
-}
-
-function list(h: H, node: Markdown.List, key: string) {
-	return h.view
-		.key(key)
-		.style({gap: 8})
-		.children(
-			Array.map(node.items, (item, position) =>
-				h.view
-					.key(`${position}`)
-					.style({flexDirection: 'row', gap: 8})
-					.children(
-						h.text
-							.style(styles.line)
-							.children(
-								Boolean.match(node.isOrdered, {
-									onFalse: Function.constant('•'),
-									onTrue: () => `${Option.getOrElse(node.startNumber, Function.constant(1)) + position}.`
-								})
-							),
-						h.view.style({flex: 1, gap: 6}).children(blocks(h, item.blocks))
-					)
-			)
-		)
 }
 
 function table(h: H, node: Markdown.Table, key: string) {
@@ -94,10 +66,37 @@ function table(h: H, node: Markdown.Table, key: string) {
 }
 
 function blocks(h: H, nodes: readonly Markdown.Block[]): readonly Content[] {
-	return Array.map(nodes, (node, index) => {
+	function nested(content: readonly Markdown.Block[], key: string) {
+		return h.view.key(key).style({gap: 8, paddingLeft: 12}).children(blocks(h, content))
+	}
+
+	function list(node: Markdown.List, key: string) {
+		return h.view
+			.key(key)
+			.style({gap: 8})
+			.children(
+				Array.map(node.items, (item, position) =>
+					h.view
+						.key(`${position}`)
+						.style({flexDirection: 'row', gap: 8})
+						.children(
+							h.text
+								.style(styles.line)
+								.children(
+									Boolean.match(node.isOrdered, {
+										onFalse: Function.constant('•'),
+										onTrue: () => `${Option.getOrElse(node.startNumber, Function.constant(1)) + position}.`
+									})
+								),
+							h.view.style({flex: 1, gap: 6}).children(blocks(h, item.blocks))
+						)
+				)
+			)
+	}
+	return Array.map(nodes, (item, index) => {
 		const key = `${index}`
-		return Match.valueTags(node, {
-			Blockquote: node => nested(h, node.blocks, key),
+		return Match.valueTags(item, {
+			Blockquote: node => nested(node.blocks, key),
 			CodeBlock: node =>
 				h.text
 					.key(key)
@@ -105,8 +104,8 @@ function blocks(h: H, nodes: readonly Markdown.Block[]): readonly Content[] {
 					.prop('selectable', true)
 					.children(node.value),
 			Heading: node => h.text.key(key).style(styles.heading).children(inline(h, node.content)),
-			Island: node => nested(h, node.blocks, key),
-			List: node => list(h, node, key),
+			Island: node => nested(node.blocks, key),
+			List: node => list(node, key),
 			Paragraph: node => h.text.key(key).style(styles.body).prop('selectable', true).children(inline(h, node.content)),
 			Table: node => table(h, node, key),
 			ThematicBreak: () => h.view.key(key).style({height: 8})
@@ -121,7 +120,7 @@ function body(h: H, raw: string) {
 	})
 }
 
-export function Skeleton(h: H) {
+export function Skeleton(h: Native.H<StashMessage>) {
 	return h.view
 		.prop('accessibilityLabel', 'Loading note')
 		.style({gap: 12})
@@ -142,7 +141,7 @@ function problem(h: H, text: string, failed: boolean, retryable = false) {
 		)
 }
 
-export function ReaderView(h: H, screen: StashScreen, note: Reader) {
+export function ReaderView(h: Native.H<StashMessage>, screen: StashScreen, note: Reader) {
 	if (note.denied) return h.text.style(styles.line).children('Access denied')
 	return h.view
 		.key(note.id)
@@ -166,8 +165,11 @@ export function ReaderView(h: H, screen: StashScreen, note: Reader) {
 				h.view
 					.style({flexDirection: 'row', flexWrap: 'wrap', gap: 6})
 					.children(
-						Array.map(note.tags, ({count, tag}) =>
-							Button(h, `${tag}  ${count}`, screen.filter(tag), {compact: true, selected: screen.tag === tag}).key(tag)
+						Array.map(note.tags, entry =>
+							Button(h, `${entry.tag}  ${entry.count}`, screen.filter(entry.tag), {
+								compact: true,
+								selected: screen.tag === entry.tag
+							}).key(entry.tag)
 						)
 					),
 			note.body !== undefined && body(h, note.body),
@@ -177,7 +179,9 @@ export function ReaderView(h: H, screen: StashScreen, note: Reader) {
 				Array.isReadonlyArrayNonEmpty(note.related) &&
 				h.view.style({marginTop: 12}).children(
 					h.text.style(styles.line).children('Related notes'),
-					Array.map(note.related, item => Row(h, {active: false, item, select: screen.selection.select}))
+					Array.map(note.related, item =>
+						Row<StashMessage, never>(h, {active: false, item, select: screen.selection.select})
+					)
 				)
 		)
 }

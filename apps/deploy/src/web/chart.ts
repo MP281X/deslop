@@ -1,14 +1,10 @@
 import type {Html} from '@effect/ui/html'
 
-import {Array, Option, String} from 'effect'
+import {Array, Option, String, Boolean} from 'effect'
 import type {DateTime} from 'effect'
 
 import {historyTrace, levels, ruler, tracePaths} from '#screens/chart.ts'
 import type {Reading} from '#screens/chart.ts'
-
-export function Sparkline<M>(h: Html.H<M>, readings: readonly Reading[], now: DateTime.Utc) {
-	return h.span.class('deploy-spark').children(Trace(h, readings, now))
-}
 
 function Trace<M>(h: Html.H<M>, readings: readonly Reading[], now: DateTime.Utc) {
 	const paths = tracePaths(readings, now)
@@ -21,6 +17,10 @@ function Trace<M>(h: Html.H<M>, readings: readonly Reading[], now: DateTime.Utc)
 		)
 }
 
+export function Sparkline<M>(h: Html.H<M>, readings: readonly Reading[], now: DateTime.Utc) {
+	return h.span.class('deploy-spark').children(Trace(h, readings, now))
+}
+
 export function History<M>(
 	h: Html.H<M>,
 	readings: readonly Reading[],
@@ -30,9 +30,9 @@ export function History<M>(
 	const trace = historyTrace(readings, restarts, now)
 	return h.figure.class('deploy-history').children(
 		h.figcaption.class('deploy-caption').children('CPU · Past hour'),
-		trace.point === undefined && Array.isArrayEmpty(trace.restarts)
-			? h.p.class('deploy-caption').children('No CPU readings in the last hour')
-			: h.div.class('deploy-axis').children(
+		Boolean.match(trace.point === undefined && Array.isArrayEmpty(trace.restarts), {
+			onFalse: () =>
+				h.div.class('deploy-axis').children(
 					h.div.class('deploy-grid').children(
 						Trace(h, readings, now),
 						h.div
@@ -62,6 +62,8 @@ export function History<M>(
 						.class('deploy-ruler')
 						.attr('aria-hidden', 'true')
 						.children(Array.map(ruler, label => h.span.key(label).children(label)))
-				)
+				),
+			onTrue: () => h.p.class('deploy-caption').children('No CPU readings in the last hour')
+		})
 	)
 }

@@ -1,6 +1,6 @@
 import type {Native} from '@effect/ui-native'
 
-import {Array, Number, String} from 'effect'
+import {Array, Number, String, Boolean, Function} from 'effect'
 import type {DateTime} from 'effect'
 
 import {fold, ink, status, styles} from '@deslop/design/native'
@@ -8,46 +8,46 @@ import {fold, ink, status, styles} from '@deslop/design/native'
 import {historyTrace, levels, ruler, traceSegments} from '#screens/chart.ts'
 import type {Reading} from '#screens/chart.ts'
 
-const position = 'absolute'
+const POSITION = 'absolute'
 const muted = styles.line.color
 const scale = {...styles.line, fontFamily: 'ui-monospace', fontSize: 10}
 
 function Trace<M>(h: Native.H<M>, readings: readonly Reading[], now: DateTime.Utc, spark = false) {
 	const points = traceSegments(readings, now)
-	const color = spark ? muted : ink
+	const color = Boolean.match(spark, {onFalse: Function.constant(ink), onTrue: Function.constant(muted)})
 	return Array.map(points, (point, i) => {
 		const previous = points[i - 1]
 		const left = `${point.left}%` as const
 		return h.view
 			.key(String.String(i))
-			.style({position, inset: 0})
+			.style({inset: 0, position: POSITION})
 			.children(
 				!spark &&
 					h.view.style({
-						position,
-						left,
-						top: `${point.y}%`,
+						backgroundColor: '#ffffff0f',
 						bottom: 0,
-						width: `${point.right - point.left}%`,
-						backgroundColor: '#ffffff0f'
+						left,
+						position: POSITION,
+						top: `${point.y}%`,
+						width: `${point.right - point.left}%`
 					}),
 				h.view.style({
-					position,
-					left,
-					top: `${point.y}%`,
-					width: `${point.right - point.left}%`,
+					backgroundColor: color,
 					height: 1,
-					backgroundColor: color
+					left,
+					position: POSITION,
+					top: `${point.y}%`,
+					width: `${point.right - point.left}%`
 				}),
 				previous !== undefined &&
 					previous.right === point.left &&
 					h.view.style({
-						position,
-						left,
-						width: 1,
 						backgroundColor: color,
+						height: `${Number.max(previous.y, point.y) - Number.min(previous.y, point.y)}%`,
+						left,
+						position: POSITION,
 						top: `${Number.min(previous.y, point.y)}%`,
-						height: `${Number.max(previous.y, point.y) - Number.min(previous.y, point.y)}%`
+						width: 1
 					})
 			)
 	})
@@ -55,7 +55,7 @@ function Trace<M>(h: Native.H<M>, readings: readonly Reading[], now: DateTime.Ut
 
 export function Sparkline<M>(h: Native.H<M>, readings: readonly Reading[], now: DateTime.Utc) {
 	return h.view
-		.style({width: 36, height: 18, flexShrink: 0, overflow: 'hidden'})
+		.style({flexShrink: 0, height: 18, overflow: 'hidden', width: 36})
 		.children(Trace(h, readings, now, true))
 }
 
@@ -68,25 +68,39 @@ export function History<M>(
 	const trace = historyTrace(readings, restarts, now)
 	return h.view.style({gap: 8, marginVertical: 4}).children(
 		h.text.style(styles.line).children('CPU · Past hour'),
-		trace.point === undefined && Array.isArrayEmpty(trace.restarts)
-			? h.text.style(styles.line).children('No CPU readings in the last hour')
-			: h.view.style({paddingRight: 32}).children(
+		Boolean.match(trace.point === undefined && Array.isArrayEmpty(trace.restarts), {
+			onFalse: () =>
+				h.view.style({paddingRight: 32}).children(
 					h.view.style({height: 96}).children(
 						Array.map(levels, (level, index) =>
 							h.view
 								.key(String.String(level))
-								.style({position, inset: 0})
+								.style({inset: 0, position: POSITION})
 								.children(
-									h.view.style({position, left: 0, right: 0, top: `${index * 25}%`, height: 1, backgroundColor: fold}),
-									h.view.style({position, top: 0, bottom: 0, left: `${index * 25}%`, width: 1, backgroundColor: fold}),
+									h.view.style({
+										backgroundColor: fold,
+										height: 1,
+										left: 0,
+										position: POSITION,
+										right: 0,
+										top: `${index * 25}%`
+									}),
+									h.view.style({
+										backgroundColor: fold,
+										bottom: 0,
+										left: `${index * 25}%`,
+										position: POSITION,
+										top: 0,
+										width: 1
+									}),
 									h.text
 										.style({
 											...scale,
-											position,
 											left: '100%',
 											marginLeft: 4,
-											top: `${index * 25}%`,
 											marginTop: -9,
+											position: POSITION,
+											top: `${index * 25}%`,
 											width: 30
 										})
 										.children(`${level}%`)
@@ -96,24 +110,26 @@ export function History<M>(
 						Array.map(trace.restarts, (at, index) =>
 							h.view
 								.key(`restart-${index}`)
-								.style({position, left: `${at}%`, top: 0, bottom: 0, width: 1, backgroundColor: status.error})
+								.style({backgroundColor: status.error, bottom: 0, left: `${at}%`, position: POSITION, top: 0, width: 1})
 						),
 						trace.point !== undefined &&
 							h.view.style({
-								position,
 								backgroundColor: ink,
 								borderRadius: 3,
-								width: 5,
 								height: 5,
 								left: `${trace.point.left}%`,
-								top: `${trace.point.top}%`,
+								marginLeft: -2,
 								marginTop: -2,
-								marginLeft: -2
+								position: POSITION,
+								top: `${trace.point.top}%`,
+								width: 5
 							})
 					),
 					h.view
 						.style({flexDirection: 'row', justifyContent: 'space-between', marginTop: 8})
 						.children(Array.map(ruler, label => h.text.key(label).style(scale).children(label)))
-				)
+				),
+			onTrue: () => h.text.style(styles.line).children('No CPU readings in the last hour')
+		})
 	)
 }

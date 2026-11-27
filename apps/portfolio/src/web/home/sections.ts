@@ -3,11 +3,10 @@ import {Html} from '@effect/ui/html'
 
 import {Array, Boolean, Function, Predicate, String, pipe} from 'effect'
 
-import {ProfileScreen, SectionName} from '#screens/portfolio.ts'
+import type {SectionName} from '#screens/portfolio.ts'
+import {ProfileScreen} from '#screens/portfolio.ts'
 import {Icon} from '#web/profile/icons.ts'
 
-type SectionName = typeof SectionName.Type
-const {contactRows, education, experience, languages, name, profile, projects, skills, summary} = ProfileScreen
 export const sectionTargets = {
 	contact: Html.ref('contact', 'section'),
 	education: Html.ref('education', 'section'),
@@ -42,10 +41,10 @@ function ProfileSection<M>(h: Html.H<M>) {
 		Panel(
 			h,
 			'mt-6 flex w-full max-w-3xl flex-col gap-3 px-4 py-6 sm:mt-14 sm:px-6',
-			h.h1.class('text-foreground text-4xl font-semibold tracking-tight sm:text-5xl').children(name),
-			h.p.class('text-primary font-mono text-sm').children(profile.title),
-			h.p.class('text-foreground/90 text-base').children(summary),
-			h.p.class('text-muted-foreground font-mono text-xs').children(profile.location)
+			h.h1.class('text-foreground text-4xl font-semibold tracking-tight sm:text-5xl').children(ProfileScreen.name),
+			h.p.class('text-primary font-mono text-sm').children(ProfileScreen.profile.title),
+			h.p.class('text-foreground/90 text-base').children(ProfileScreen.summary),
+			h.p.class('text-muted-foreground font-mono text-xs').children(ProfileScreen.profile.location)
 		)
 	)
 }
@@ -57,7 +56,7 @@ function SkillsSection<M>(h: Html.H<M>) {
 		SectionBody(
 			h,
 			'skills',
-			Array.map(skills, skill =>
+			Array.map(ProfileScreen.skills, skill =>
 				h.div
 					.key(skill.area)
 					.class('flex flex-col gap-1 py-3 sm:flex-row sm:gap-6')
@@ -109,7 +108,7 @@ function ExperienceSection<M>(h: Html.H<M>) {
 		SectionBody(
 			h,
 			'experience',
-			Array.map(experience, job =>
+			Array.map(ProfileScreen.experience, job =>
 				h.div
 					.key(job.company)
 					.class('flex flex-col gap-2 py-3')
@@ -153,7 +152,7 @@ function EducationSection<M>(h: Html.H<M>) {
 		h,
 		'education',
 		SectionBody(h, 'education and languages', [
-			...Array.map(education, entry =>
+			...Array.map(ProfileScreen.education, entry =>
 				h.div
 					.key(entry.school)
 					.class('flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 py-3')
@@ -172,7 +171,7 @@ function EducationSection<M>(h: Html.H<M>) {
 			h.div
 				.class('flex flex-wrap gap-x-6 gap-y-1 py-3')
 				.children(
-					Array.map(languages, lang =>
+					Array.map(ProfileScreen.languages, lang =>
 						h.span
 							.key(lang.language)
 							.class('text-sm')
@@ -193,7 +192,7 @@ function ContactSection<M>(h: Html.H<M>) {
 		SectionBody(
 			h,
 			'contact',
-			Array.map(contactRows, item =>
+			Array.map(ProfileScreen.contactRows, item =>
 				h.a
 					.key(item.label)
 					.attrs({
@@ -226,7 +225,7 @@ export function ReadingSections<M>(h: Html.H<M>) {
 			SectionBody(
 				h,
 				'projects',
-				Array.map(projects, project => ProjectRow(h, project))
+				Array.map(ProfileScreen.projects, project => ProjectRow(h, project))
 			)
 		),
 		EducationSection(h),

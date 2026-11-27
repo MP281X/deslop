@@ -6,7 +6,6 @@ import {Array, Effect, Function, Schema} from 'effect'
 
 import {CvScreen} from '#screens/portfolio.ts'
 import {Icon} from '#web/profile/icons.ts'
-const {contacts, education, experience, languages, profile, projects, skills, summary, website} = CvScreen
 
 type H = Html.H<'Print'>
 
@@ -92,8 +91,10 @@ function Header(h: H) {
 			h.h1
 				.class('tracking-name text-2xl leading-none font-extrabold uppercase')
 				.children(
-					`${profile.firstName} `,
-					h.span.class('text-foreground/55 tracking-label mt-0.5 block text-xl font-medium').children(profile.lastName)
+					`${CvScreen.profile.firstName} `,
+					h.span
+						.class('text-foreground/55 tracking-label mt-0.5 block text-xl font-medium')
+						.children(CvScreen.profile.lastName)
 				),
 			h.div
 				.class('flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between sm:gap-6')
@@ -103,24 +104,27 @@ function Header(h: H) {
 						.children(
 							h.p
 								.class('text-label tracking-label flex items-center gap-2 whitespace-nowrap uppercase')
-								.children(h.span.attr('aria-hidden', 'true').class('border-foreground size-2 border-4'), profile.title),
-							h.p.class('font-document text-document').children(summary)
+								.children(
+									h.span.attr('aria-hidden', 'true').class('border-foreground size-2 border-4'),
+									CvScreen.profile.title
+								),
+							h.p.class('font-document text-document').children(CvScreen.summary)
 						),
 					h.address
 						.class('text-foreground/70 text-label whitespace-nowrap not-italic sm:text-right')
 						.children(
-							`${profile.location} · `,
-							Link(h, contacts.phone),
+							`${CvScreen.profile.location} · `,
+							Link(h, CvScreen.contacts.phone),
 							h.br,
-							Link(h, contacts.email),
+							Link(h, CvScreen.contacts.email),
 							' · ',
-							Link(h, contacts.github),
+							Link(h, CvScreen.contacts.github),
 							h.br,
 							'PEC ',
-							Link(h, contacts.pec),
+							Link(h, CvScreen.contacts.pec),
 							h.br,
-							Link(h, website),
-							` · VAT ${profile.vat}`
+							Link(h, CvScreen.website),
+							` · VAT ${CvScreen.profile.vat}`
 						)
 				)
 		)
@@ -160,7 +164,7 @@ export const Cv = Html.component({message: Schema.Literal('Print'), model: Schem
 							h,
 							'Technical Skills',
 							h.dl.class('flex flex-col gap-0.5').children(
-								Array.map(skills, skill =>
+								Array.map(CvScreen.skills, skill =>
 									h.div
 										.key(skill.area)
 										.class('flex')
@@ -176,7 +180,7 @@ export const Cv = Html.component({message: Schema.Literal('Print'), model: Schem
 							'Work Experience',
 							h.div
 								.class('flex flex-col gap-1.5')
-								.children(Array.map(experience, job => Entry(h, {...job, body: Bullets(h, job.highlights)})))
+								.children(Array.map(CvScreen.experience, job => Entry(h, {...job, body: Bullets(h, job.highlights)})))
 						),
 						CvSection(
 							h,
@@ -184,15 +188,17 @@ export const Cv = Html.component({message: Schema.Literal('Print'), model: Schem
 							h.div
 								.class('flex flex-col gap-1.5')
 								.children(
-									Array.map(projects, project => Entry(h, {...project, body: h.p.children(project.description)}))
+									Array.map(CvScreen.projects, project =>
+										Entry(h, {...project, body: h.p.children(project.description)})
+									)
 								)
 						),
 						h.section.class('flex flex-col gap-1').children(
 							h.h2
 								.class('text-foreground text-label tracking-label font-mono font-bold uppercase')
 								.children('Education & Languages'),
-							Array.map(education, entry => Entry(h, entry)),
-							h.p.children(h.strong.class('font-semibold').children('Languages:'), ' ', languages)
+							Array.map(CvScreen.education, entry => Entry(h, entry)),
+							h.p.children(h.strong.class('font-semibold').children('Languages:'), ' ', CvScreen.languages)
 						)
 					)
 			)

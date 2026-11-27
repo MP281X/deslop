@@ -1,12 +1,11 @@
 import {Array, DateTime, Effect, Option, Order, Stream, String, pipe} from 'effect'
-import type {Layer} from 'effect'
 
 import {SecureRandom} from 'effect/crypto'
 import {Atom, AtomRegistry, AtomRpc} from 'effect/reactivity'
-import type {RpcClient as Client} from 'effect/rpc'
 
 import {keepValueThroughOutages, reconnectOnDrop} from '@deslop/runtime/client/live-stream'
 import {writeOutcome} from '@deslop/runtime/client/protocol'
+import type {layerSocketProtocol} from '@deslop/runtime/client/protocol'
 import {listReducer} from '@deslop/runtime/shared/list'
 import {RpcStream} from '@deslop/runtime/shared/rpc'
 
@@ -20,13 +19,13 @@ const newestFirst = pipe(
 )
 const apply = listReducer(newestFirst, (note: NoteItem) => note.id)
 
-export function makeReads(protocol: Layer.Layer<Client.Protocol | RpcStream>) {
+export function makeReads(protocol: ReturnType<typeof layerSocketProtocol>) {
 	class Rpc extends AtomRpc.Service<Rpc>()('@deslop/stash/RpcClient', {
 		group: RpcContracts.middleware(RpcStream),
 		protocol
 	}) {}
 
-	const notes = Rpc.runtime.atom(get =>
+	const notesAtom = Rpc.runtime.atom(get =>
 		keepValueThroughOutages(
 			get,
 			pipe(
@@ -39,29 +38,30 @@ export function makeReads(protocol: Layer.Layer<Client.Protocol | RpcStream>) {
 	)
 
 	// The stream replaces an item when it changes; the new item reads its body again.
-	const body = Atom.family((item: NoteItem) =>
+	const bodyAtoms = Atom.family((item: NoteItem) =>
 		Rpc.runtime.atom(Effect.flatMap(Rpc, call => call('notes.body', {id: item.id})))
 	)
-	const media = Atom.family((item: NoteItem) =>
+	const mediaAtoms = Atom.family((item: NoteItem) =>
 		Rpc.runtime.atom(Effect.flatMap(Rpc, call => call('notes.media', {id: item.id})))
 	)
 
 	function write<A, E>(registry: AtomRegistry.AtomRegistry, effect: Effect.Effect<A, E, Rpc>) {
 		return pipe(
-			AtomRegistry.getResult(registry, Rpc.runtime),
+			registry,
+			AtomRegistry.getResult(Rpc.runtime),
 			Effect.flatMap(context => writeOutcome(Effect.provideContext(effect, context)))
 		)
 	}
 
 	return {
-		body,
+		bodyAtoms,
 		capture: (registry: AtomRegistry.AtomRegistry, text: string) =>
 			write(
 				registry,
 				Effect.flatMap(Rpc, call => call('notes.capture', {id: NoteId.make(SecureRandom.uuidV4Unsafe()), text}))
 			),
-		media,
-		notes,
+		mediaAtoms,
+		notesAtom,
 		reconnect(registry: AtomRegistry.AtomRegistry) {
 			registry.refresh(Rpc.runtime)
 		},

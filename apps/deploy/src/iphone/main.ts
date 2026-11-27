@@ -3,7 +3,7 @@ import 'react-native/Libraries/Core/setUpXHR'
 import {Router} from '@effect/ui'
 import {Native, NativeApp} from '@effect/ui-native'
 
-import {Effect, Function, Layer, Schema, pipe} from 'effect'
+import {Effect, Layer, pipe} from 'effect'
 
 import {FetchHttpClient} from 'effect/http'
 import {Atom, AtomRegistry} from 'effect/reactivity'
@@ -11,39 +11,36 @@ import Linking from 'react-native/Libraries/Linking/Linking'
 
 import {layerSocketProtocol} from '@deslop/runtime/client/protocol'
 
+import {DeployError} from '#contracts'
+
 import {layerIPhoneRouter} from '#iphone/router.ts'
-import {layerIPhoneSignIn, layerIPhoneSocket, readIPhoneAccount} from '#iphone/session.ts'
+import {layerIPhoneSignIn, readIPhoneAccount, session} from '#iphone/session.ts'
 import {Workspace} from '#iphone/view.ts'
-import {DeployView} from '#screens/deploy.ts'
+import {DeployApp} from '#screens/deploy.ts'
 import {DeployReads, Execute, OpenEndpoint, Refresh} from '#screens/reads.ts'
 import {DeployRoute} from '#screens/routes.ts'
 
-const App = Native.component({
-	message: Schema.Never,
-	model: Schema.Null,
-	name: 'App',
-	props: Schema.Struct({route: DeployRoute})
-}).make({
-	init: Function.constNull,
-	update: Function.constNull,
-	view: h => DeployView(h, {...h.props, autoSignIn: false}, screen => Workspace(h, screen))
-})
+const App = DeployApp(Native.vocabulary, false, Workspace)
 
-const account = Atom.runtime(FetchHttpClient.layer).atom(readIPhoneAccount)
-const reads = Layer.merge(DeployReads.layer(layerSocketProtocol(layerIPhoneSocket), account), AtomRegistry.layer)
-const openEndpoint = OpenEndpoint.toLayer(
-	() =>
-		({url}) =>
-			Effect.ignore(
-				Effect.tryPromise(() => Linking.openURL(url)),
-				{log: 'Warn', message: 'Could not open the URL'}
-			)
+const accountAtom = Atom.runtime(FetchHttpClient.layer).atom(readIPhoneAccount)
+const reads = Layer.merge(
+	DeployReads.layer(layerSocketProtocol(session.layerIPhoneSocket), accountAtom),
+	AtomRegistry.layer
+)
+const openEndpoint = OpenEndpoint.toLayer(request =>
+	Effect.ignore(
+		Effect.tryPromise({
+			catch: cause => DeployError.make({cause, message: 'Could not open the URL'}),
+			try: () => Linking.openURL(request.url)
+		}),
+		{log: 'Warn', message: 'Could not open the URL'}
+	)
 )
 
 NativeApp.register(
 	pipe(
 		NativeApp.mount(App, Router.props(DeployRoute)),
-		Layer.provide(Layer.provideMerge(Layer.merge(Execute.layer, Refresh.layer), reads)),
+		Layer.provide(pipe(Execute.layer, Layer.merge(Refresh.layer), Layer.provideMerge(reads))),
 		Layer.provide(layerIPhoneRouter),
 		Layer.provide(Layer.merge(layerIPhoneSignIn, openEndpoint))
 	)

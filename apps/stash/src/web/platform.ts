@@ -1,10 +1,13 @@
-import {Effect, Predicate, Stream} from 'effect'
+import {Effect, Predicate, Stream, pipe} from 'effect'
+
+import {FetchHttpClient, HttpClient} from 'effect/http'
 
 import {AuthError, signInUrl} from '@deslop/runtime/shared/auth'
 import {accountAtom, layerPageProtocol} from '@deslop/runtime/web/client'
 
 import {NotesError} from '#contracts'
 
+import type {Platform} from '#screens/notes.ts'
 import {makeReads} from '#screens/reads.ts'
 import {paste} from '#web/clipboard.ts'
 
@@ -26,11 +29,13 @@ function share(text: string) {
 }
 
 const signOut = Effect.gen(function* () {
-	const response = yield* Effect.tryPromise({
-		catch: cause => AuthError.make({cause, message: 'Auth could not confirm sign-out'}),
-		try: () => fetch('/auth/sign-out', {method: 'POST', redirect: 'manual'})
-	})
-	if (response.type !== 'opaqueredirect') return yield* AuthError.make({message: 'Auth could not confirm sign-out'})
+	const response = yield* pipe(
+		HttpClient.post('/auth/sign-out'),
+		Effect.provideService(FetchHttpClient.RequestInit, {redirect: 'manual'}),
+		Effect.mapError(cause => AuthError.make({cause, message: 'Auth could not confirm sign-out'}))
+	)
+	// Fetch exposes a manual redirect as an opaque response with status 0.
+	if (response.status !== 0) return yield* AuthError.make({message: 'Auth could not confirm sign-out'})
 	location.reload()
 })
 
@@ -51,7 +56,9 @@ export const platform = {
 		return false
 	}),
 	signOut,
-	writeDraft: text => localStorage.setItem('stash.draft', text)
-}
+	writeDraft: text => {
+		localStorage.setItem('stash.draft', text)
+	}
+} satisfies Platform<HttpClient.HttpClient>
 
 export const reads = makeReads(layerPageProtocol)

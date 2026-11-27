@@ -1,9 +1,11 @@
 import {Command} from '@effect/ui'
 
-import {Context, Effect, Function, Layer, Option, Predicate, Schema, Stream, String, pipe} from 'effect'
+import {Context, Effect, Function, Layer, Option, Predicate, Schema, Stream, String} from 'effect'
 
-import {AsyncResult, Atom, AtomRegistry, AtomRpc} from 'effect/reactivity'
+import type {AsyncResult} from 'effect/reactivity'
+import {Atom, AtomRegistry, AtomRpc} from 'effect/reactivity'
 
+import {observe, refreshFailed} from '@deslop/runtime/client/atom'
 import {liveAtom} from '@deslop/runtime/client/live-stream'
 import type {layerSocketProtocol} from '@deslop/runtime/client/protocol'
 import {AuthError} from '@deslop/runtime/shared/auth'
@@ -14,6 +16,8 @@ import {AppId, ExposeInput, RpcContracts, RunRequest} from '#contracts'
 
 import {HOUR} from '#screens/chart.ts'
 
+export {observe}
+
 export type Operation = typeof Operation.Type
 export const Operation = Schema.TaggedUnion({
 	Expose: {input: ExposeInput},
@@ -23,29 +27,23 @@ export const Operation = Schema.TaggedUnion({
 	Stop: {id: AppId}
 })
 
-export function observe<A, M>(atom: Atom.Atom<A>, read: (value: A) => M) {
-	return Stream.unwrap(
-		AtomRegistry.AtomRegistry.useSync(registry => pipe(registry, AtomRegistry.toStream(atom), Stream.map(read)))
-	)
-}
-
-function reads(
+function makeReads(
 	protocol: ReturnType<typeof layerSocketProtocol>,
 	account: Atom.Atom<AsyncResult.AsyncResult<Account, AuthError>>
 ) {
-	const credentials = Atom.make(0)
+	const credentialsAtom = Atom.make(0)
 	class Client extends AtomRpc.Service<Client>()('Deploy/Rpc', {
 		group: RpcContracts.middleware(RpcStream),
 		protocol: get => {
-			get(credentials)
+			get(credentialsAtom)
 			return Layer.fresh(protocol)
 		}
 	}) {}
 
-	const inventory = liveAtom(Client, 'inventory.watch')
-	const metrics = liveAtom(Client, 'metrics.watch', {minutes: HOUR})
-	const app = Atom.family((id: AppId) => liveAtom(Client, 'metrics.app', {id}))
-	const operation = Client.runtime.fn((request: Operation) =>
+	const inventoryAtom = liveAtom(Client, 'inventory.watch')
+	const metricsAtom = liveAtom(Client, 'metrics.watch', {minutes: HOUR})
+	const appAtoms = Atom.family((id: AppId) => liveAtom(Client, 'metrics.app', {id}))
+	const operationAtom = Client.runtime.fn((request: Operation) =>
 		Effect.flatMap(Client, call =>
 			Operation.match(request, {
 				Expose: input => Effect.as(call('exposures.expose', input.input), Option.none<string>()),
@@ -56,15 +54,24 @@ function reads(
 			})
 		)
 	)
-	return {account, app, credentials, inventory, metrics, operation}
+	return {
+		account,
+		app: appAtoms,
+		credentials: credentialsAtom,
+		inventory: inventoryAtom,
+		metrics: metricsAtom,
+		operation: operationAtom
+	}
 }
 
-export class DeployReads extends Context.Service<DeployReads, ReturnType<typeof reads>>()('Deploy/Reads') {
+export class DeployReads extends Context.Service<DeployReads, ReturnType<typeof makeReads>>()(
+	'@deslop/deploy/screens/reads/DeployReads'
+) {
 	static layer(
 		protocol: ReturnType<typeof layerSocketProtocol>,
 		account: Atom.Atom<AsyncResult.AsyncResult<Account, AuthError>>
 	) {
-		return Layer.succeed(this, reads(protocol, account))
+		return Layer.succeed(this, makeReads(protocol, account))
 	}
 }
 
@@ -75,13 +82,13 @@ export class Execute extends Command.Service<Execute>()('Deploy/Execute', {
 }) {
 	static readonly layer = this.toLayer(
 		Effect.gen(function* () {
-			const {operation} = yield* DeployReads
+			const reads = yield* DeployReads
 			const registry = yield* AtomRegistry.AtomRegistry
 			return request =>
 				Effect.mapError(
 					Effect.suspend(() => {
-						registry.set(operation, request.operation)
-						return AtomRegistry.getResult(registry, operation, {suspendOnWaiting: true})
+						registry.set(reads.operation, request.operation)
+						return AtomRegistry.getResult(registry, reads.operation, {suspendOnWaiting: true})
 					}),
 					error => {
 						if (Predicate.isError(error)) return error.message
@@ -90,10 +97,6 @@ export class Execute extends Command.Service<Execute>()('Deploy/Execute', {
 				)
 		})
 	)
-}
-
-function refreshFailed<A, E>(registry: AtomRegistry.AtomRegistry, atom: Atom.Atom<AsyncResult.AsyncResult<A, E>>) {
-	if (AsyncResult.isFailure(registry.get(atom))) registry.refresh(atom)
 }
 
 export class Refresh extends Command.Service<Refresh>()('Deploy/Refresh', {
@@ -125,7 +128,7 @@ export class Authenticate extends Command.Service<Authenticate>()('Deploy/Authen
 	success: Schema.Boolean
 }) {}
 
-export function readDeploy<A, M>(pick: (reads: ReturnType<typeof reads>) => Atom.Atom<A>, read: (value: A) => M) {
+export function readDeploy<A, M>(pick: (reads: ReturnType<typeof makeReads>) => Atom.Atom<A>, read: (value: A) => M) {
 	return Stream.unwrap(DeployReads.useSync(reads => observe(pick(reads), read)))
 }
 

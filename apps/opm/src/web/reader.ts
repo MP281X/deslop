@@ -47,13 +47,13 @@ function pageImage(h: Html.H<Message>, page: Screen['pages'][number]) {
 		.onMount(Shape({src: page.src}))
 }
 
-export function Reader(h: Html.H<Message>, reader: NonNullable<Screen['reader']>, pages: Screen['pages']) {
+export function WebReader(h: Html.H<Message>, reader: NonNullable<Screen['reader']>, pages: Screen['pages']) {
 	function pending() {
 		if (reader.ready) return undefined
 		if (!reader.waiting) return h.p.style(webStyle(styles.line)).attr('role', 'status').children('Chapter unavailable')
 		return h.div
 			.class('opm-page-placeholder')
-			.attrs({'aria-label': 'Loading chapter', 'aria-busy': 'true', role: 'status'})
+			.attrs({'aria-busy': 'true', 'aria-label': 'Loading chapter', role: 'status'})
 	}
 	return h.section
 		.key(reader.id)

@@ -46,6 +46,7 @@
 		"effect": "latest",
 		"expo": "latest",
 		"expo-file-system": "latest",
+		"expo-image-manipulator": "latest",
 		"expo-notifications": "latest",
 		"expo-secure-store": "latest",
 		"expo-system-ui": "latest",

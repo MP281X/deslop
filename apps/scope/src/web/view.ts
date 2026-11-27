@@ -1,33 +1,18 @@
 import {Mount} from '@effect/ui'
 import type {Html} from '@effect/ui/html'
 
-import {Array, Boolean, Effect, Function, Option, Queue, Stream} from 'effect'
+import {Array, Boolean, Function, Match, Option, pipe} from 'effect'
 
-import {ListDetail, Row, selected, status, styles, webStyle} from '@deslop/design/web'
+import {ListDetail, Row, selected, status, styles, WatchLayout, webStyle} from '@deslop/design/web'
 
 import {Message} from '#screens/model.ts'
+import {scopeLayout} from '#screens/scope.ts'
 import type {Screen} from '#screens/scope.ts'
 import type {SpanDetail} from '#screens/span.ts'
 import {BAR, LANE, SKELETON_BARS} from '#screens/waterfall.ts'
 
 type H<M> = Html.H<M>
 type Detail = Extract<Screen['detail'], {state: 'ready'}>
-
-const WatchWidth = Mount.makeStream('Scope/ChartWidth', {args: {}}, (node: unknown) =>
-	Stream.callback<ReturnType<typeof Message.Resize>>(out =>
-		Effect.acquireRelease(
-			Effect.sync(() => {
-				if (!(node instanceof HTMLElement)) throw new TypeError('The waterfall needs an HTML element')
-				const observer = new ResizeObserver(() => {
-					Queue.offerUnsafe(out, Message.Resize({width: node.getBoundingClientRect().width}))
-				})
-				observer.observe(node)
-				return observer
-			}),
-			observer => Effect.sync(() => observer.disconnect())
-		)
-	)
-)
 
 function Problem<M>(h: H<M>, screen: Screen, problem: NonNullable<Screen['problem']>) {
 	return h.div
@@ -53,9 +38,12 @@ function Waterfall<M>(h: H<M>, screen: Screen, chart: Detail['chart']) {
 				)
 			),
 		screen
-			.watch(h.div, WatchWidth({}))
+			.watch(
+				h.div,
+				Mount.map(WatchLayout({}), size => Message.Resize({width: size.width}))
+			)
 			.class('scope-lanes')
-			.attrs({role: 'group', 'aria-label': 'Spans'})
+			.attrs({'aria-label': 'Spans', role: 'group'})
 			.style({height: `${chart.height}px`})
 			.children(
 				Array.map(chart.bars, bar =>
@@ -64,13 +52,13 @@ function Waterfall<M>(h: H<M>, screen: Screen, chart: Detail['chart']) {
 						.key(`${bar.span.traceId}:${bar.span.spanId}`)
 						.class('scope-mark')
 						.attrs({
-							type: 'button',
 							'aria-current': Boolean.match(bar.selected, {
 								onFalse: Function.constUndefined,
 								onTrue: Function.constant('true')
 							}),
 							'aria-label': bar.description,
-							title: bar.description
+							title: bar.description,
+							type: 'button'
 						})
 						.style({left: `${bar.hit.left}px`, top: `${bar.lane * LANE}px`, width: `${bar.hit.width}px`})
 						.children(
@@ -103,7 +91,7 @@ function Diagnostics<M>(h: H<M>, span: SpanDetail) {
 		.class('scope-diagnostics')
 		.attr('aria-label', 'Span details')
 		.children(
-			Row(h, {active: false, item: span.row}),
+			Row<M, never>(h, {active: false, item: span.row}),
 			Option.getOrUndefined(
 				Option.map(span.failure, error =>
 					h.div
@@ -152,7 +140,7 @@ function Diagnostics<M>(h: H<M>, span: SpanDetail) {
 function Skeleton<M>(h: H<M>) {
 	return h.div
 		.class('scope-trace-skeleton')
-		.attrs({'aria-label': 'Loading trace', 'aria-busy': 'true', role: 'status'})
+		.attrs({'aria-busy': 'true', 'aria-label': 'Loading trace', role: 'status'})
 		.children(
 			h.span.style({width: '32%'}),
 			h.div
@@ -162,7 +150,7 @@ function Skeleton<M>(h: H<M>) {
 					Array.map(SKELETON_BARS, bar =>
 						h.span
 							.key(`${bar.top}:${bar.left}`)
-							.style({...bar, top: `${bar.top}px`, position: 'absolute', height: `${BAR}px`})
+							.style({...bar, height: `${BAR}px`, position: 'absolute', top: `${bar.top}px`})
 					)
 				),
 			h.span.style({width: '48%'}),
@@ -171,49 +159,45 @@ function Skeleton<M>(h: H<M>) {
 }
 
 function detail<M>(h: H<M>, screen: Screen) {
-	const trace = screen.detail
-	switch (trace.state) {
-		case 'loading':
-			return Skeleton(h)
-		case 'problem':
-			return Problem(h, screen, trace.problem)
-		case 'empty':
-			return h.p.class('scope-notice').children(trace.text)
-		case 'ready':
-			return h.div
-				.class('scope-trace')
-				.children(
-					h.div
-						.attr('title', Option.getOrUndefined(trace.started))
-						.children(
-							Row(h, {
-								active: false,
-								item: {id: 'trace-summary', title: trace.title, line: trace.age, trailing: trace.duration}
-							})
-						),
-					Boolean.match(Array.isReadonlyArrayEmpty(trace.chart.bars), {
-						onTrue: () => h.p.class('scope-notice').children('No spans'),
-						onFalse: () =>
-							h.div
-								.class('scope-trace-body')
-								.children(
-									Waterfall(h, screen, trace.chart),
-									Option.getOrUndefined(Option.map(trace.span, span => Diagnostics(h, span)))
-								)
-					})
-				)
-	}
+	return pipe(
+		screen.detail,
+		Match.value,
+		Match.discriminatorsExhaustive('state')({
+			empty: trace => h.p.class('scope-notice').children(trace.text),
+			loading: () => Skeleton(h),
+			problem: trace => Problem(h, screen, trace.problem),
+			ready: trace =>
+				h.div
+					.class('scope-trace')
+					.children(
+						h.div
+							.attr('title', Option.getOrUndefined(trace.started))
+							.children(
+								Row<M, never>(h, {
+									active: false,
+									item: {id: 'trace-summary', line: trace.age, title: trace.title, trailing: trace.duration}
+								})
+							),
+						Boolean.match(Array.isReadonlyArrayEmpty(trace.chart.bars), {
+							onFalse: () =>
+								h.div
+									.class('scope-trace-body')
+									.children(
+										Waterfall(h, screen, trace.chart),
+										Option.getOrUndefined(Option.map(trace.span, span => Diagnostics(h, span)))
+									),
+							onTrue: () => h.p.class('scope-notice').children('No spans')
+						})
+					)
+		})
+	)
 }
 
-export function Workspace<M>(h: H<M>, screen: Screen) {
+export function Workspace<M>(h: Html.H<M>, screen: Screen) {
 	const empty = h.p.class('scope-notice').children('No operations')
-	return ListDetail(h, {
-		defaultId: screen.defaultId,
-		detail: Boolean.match(screen.problem === undefined, {
-			onFalse: Function.constUndefined,
-			onTrue: () => detail(h, screen)
-		}),
-		detailToolbar: screen.detailToolbar,
+	return ListDetail<M, never>(h, {
+		// fallow-ignore-next-line code-duplication -- Web and iPhone pass the same screen parts; only each host's elements differ.
+		...scopeLayout(screen, () => detail(h, screen)),
 		empty,
 		list: (activeId, wide) => {
 			if (screen.problem !== undefined) return Problem(h, screen, screen.problem)
@@ -224,7 +208,9 @@ export function Workspace<M>(h: H<M>, screen: Screen) {
 						'title',
 						Boolean.match(row.item.problem === undefined, {onFalse: () => row.hint, onTrue: () => row.item.title})
 					)
-					.children(Row(h, {active: row.item.id === activeId, item: row.item, select: screen.selection.select}))
+					.children(
+						Row<M, never>(h, {active: row.item.id === activeId, item: row.item, select: screen.selection.select})
+					)
 			)
 			if (Array.isReadonlyArrayEmpty(operations)) return empty
 			const split = wide && Array.isReadonlyArrayNonEmpty(screen.traces)
@@ -237,7 +223,7 @@ export function Workspace<M>(h: H<M>, screen: Screen) {
 								.key(item.id)
 								.attr('title', item.problem?.reason)
 								.children(
-									Row(h, {
+									Row<M, never>(h, {
 										active: activeId !== undefined && item.id === screen.activeTrace,
 										item,
 										select: screen.selection.select
@@ -246,9 +232,6 @@ export function Workspace<M>(h: H<M>, screen: Screen) {
 						)
 					)
 			)
-		},
-		loading: screen.loading,
-		selection: screen.selection,
-		toolbar: screen.toolbar
+		}
 	})
 }

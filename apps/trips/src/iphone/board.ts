@@ -1,31 +1,18 @@
 import type {Native} from '@effect/ui-native'
-import {Pressable} from '@effect/ui-native/kit'
 
-import {Array, Option} from 'effect'
+import {Array, Boolean, Function, Option} from 'effect'
 
-import {Row, status, styles} from '@deslop/design/native'
+import type {PaneLeaf} from '@deslop/design/model'
+import {Row, status, nativeControls, styles} from '@deslop/design/native'
 
-import {PAST} from '#screens/board.ts'
+import {PAST, boardingSections, flightRowOptions, heroStatus, itineraryContent} from '#screens/board.ts'
 import type {BoardingPass, FlightRow, Itinerary} from '#screens/board.ts'
 import type {Hero} from '#screens/itinerary.ts'
 import type {ScreenParts} from '#screens/trips.ts'
 
 const FIGURES = ['tabular-nums'] as const
 
-export function control<M>(
-	h: Native.H<M>,
-	element: Native.ViewElement<M, never, Native.ViewEvents, 'view'>,
-	label: string,
-	disabled = false
-) {
-	return Pressable(h, {element, props: {disabled, pressedStyle: {backgroundColor: '#2b2b2b'}}})
-		.style({...styles.control, opacity: disabled ? 0.55 : 1})
-		.prop('accessibilityRole', 'button')
-		.prop('accessibilityState', {disabled})
-		.prop('accessible', true)
-		.children(h.text.style(styles.body).children(label))
-}
-
+export const control = nativeControls({disabledOpacity: 0.55}).Button
 function date<M>(h: Native.H<M>, title: string) {
 	return h.text
 		.style({...styles.line, fontWeight: '600', paddingBottom: 4, paddingHorizontal: 12, paddingTop: 12})
@@ -33,7 +20,7 @@ function date<M>(h: Native.H<M>, title: string) {
 }
 
 function figure<M>(h: Native.H<M>, hero: Hero, note?: string, inset = 0) {
-	const problem = Option.getOrUndefined(hero.problem)
+	const problem = heroStatus(hero)
 	const was = Option.getOrUndefined(hero.was)
 	return h.view
 		.style({paddingBottom: 20, paddingHorizontal: inset, paddingTop: 12})
@@ -41,8 +28,7 @@ function figure<M>(h: Native.H<M>, hero: Hero, note?: string, inset = 0) {
 			h.view
 				.style(styles.titleLine)
 				.children(
-					problem !== undefined &&
-						h.view.style({...styles.dot, backgroundColor: status[problem === 'bad' ? 'error' : 'warning']}),
+					problem !== undefined && h.view.style({...styles.dot, backgroundColor: status[problem]}),
 					h.text.style(styles.line).children(hero.label)
 				),
 			h.view
@@ -54,7 +40,7 @@ function figure<M>(h: Native.H<M>, hero: Hero, note?: string, inset = 0) {
 							fontSize: 34,
 							fontVariant: FIGURES,
 							lineHeight: 40,
-							opacity: hero.pending ? 0.55 : 1
+							opacity: Boolean.match(hero.pending, {onFalse: Function.constant(1), onTrue: Function.constant(0.55)})
 						})
 						.children(hero.value),
 					was !== undefined &&
@@ -66,64 +52,59 @@ function figure<M>(h: Native.H<M>, hero: Hero, note?: string, inset = 0) {
 }
 
 function flightRow<M>(h: Native.H<M>, row: FlightRow, parts: ScreenParts, activeId?: string) {
-	const target = row.target
-	return Row(h, {
-		active: target !== undefined && target === activeId,
-		item: row.item,
-		...(target !== undefined && {select: (el, event) => parts.selection.select(el, event, target)}),
-		trailing:
-			row.was === undefined
-				? undefined
-				: h.view
-						.style({flexDirection: 'row', gap: 6})
-						.children(
-							h.text
-								.style({...styles.line, fontVariant: FIGURES, textDecorationLine: 'line-through'})
-								.children(row.was),
-							h.text.style({...styles.line, fontVariant: FIGURES}).children(row.item.trailing)
-						)
-	})
+	return Row<M, never>(
+		h,
+		flightRowOptions(row, parts.selection.select, activeId, (was, current) =>
+			h.view
+				.style({flexDirection: 'row', gap: 6})
+				.children(
+					h.text.style({...styles.line, fontVariant: FIGURES, textDecorationLine: 'line-through'}).children(was),
+					h.text.style({...styles.line, fontVariant: FIGURES}).children(current)
+				)
+		)
+	)
 }
 
 export function itineraryRows<M>(
 	h: Native.H<M>,
 	parts: ScreenParts,
 	list: Itinerary,
-	activeId: string | undefined,
-	wide: boolean
+	wide: boolean,
+	activeId?: string
 ) {
 	return h.view.children(
-		Array.isReadonlyArrayEmpty(list.compact) &&
-			h.view
-				.style({alignItems: 'flex-start', gap: 8, padding: 16})
-				.children(
-					h.text.style(styles.body).children('No upcoming flights'),
-					control(h, parts.paste(parts.paste(h.view, 'press'), 'accessibilityTap'), 'Paste booking')
-				),
-		Array.map(wide ? list.timeline : list.compact, (group, index) =>
-			h.view.key(group.date).children(
-				date(h, group.date),
-				!wide && index === 0 && list.hero !== undefined && figure(h, list.hero, undefined, 12),
-				Array.map(group.rows, row => flightRow(h, row, parts, activeId))
-			)
-		),
-		list.airport !== undefined && flightRow(h, list.airport, parts),
-		list.past !== undefined &&
-			Row(h, {active: false, item: list.past.item, select: (el, event) => parts.selection.select(el, event, PAST)}),
-		Array.map(list.pastRows, row => flightRow(h, row, parts, activeId))
+		...itineraryContent<PaneLeaf<Native.NoTextInput<M>>>(list, wide, activeId, {
+			empty: () =>
+				h.view
+					.style({alignItems: 'flex-start', gap: 8, padding: 16})
+					.children(
+						h.text.style(styles.body).children('No upcoming flights'),
+						control(h, parts.paste(parts.paste(h.view, 'press'), 'accessibilityTap'), 'Paste booking')
+					),
+			group: (title, hero, rows) =>
+				h.view.key(title).children(date(h, title), hero !== undefined && figure(h, hero, undefined, 12), rows),
+			past: row =>
+				Row<M, never>(h, {
+					active: false,
+					item: row.item,
+					select: (el, event) => parts.selection.select(el, event, PAST)
+				}),
+			row: (row, id) => flightRow(h, row, parts, id)
+		})
 	)
 }
 
 export function board<M>(h: Native.H<M>, details: BoardingPass, parts: ScreenParts) {
 	return h.view.children(
+		// fallow-ignore-next-line code-duplication -- Web and iPhone pass the same screen parts; only each host's elements differ.
 		h.text.style({...styles.line, fontFamily: 'ui-monospace', fontVariant: FIGURES}).children(details.context),
 		figure(h, details.hero, details.note),
-		h.view.style({marginHorizontal: -12}).children(Array.map(details.rows, row => flightRow(h, row, parts))),
-		Array.isReadonlyArrayNonEmpty(details.travellers) &&
-			h.view.style({marginHorizontal: -12}).children(
-				date(h, 'Travellers'),
-				Array.map(details.travellers, row => flightRow(h, row, parts))
-			)
+		...boardingSections(
+			details,
+			row => flightRow(h, row, parts),
+			rows => h.view.style({marginHorizontal: -12}).children(rows),
+			(title, rows) => h.view.style({marginHorizontal: -12}).children(date(h, title), rows)
+		)
 	)
 }
 

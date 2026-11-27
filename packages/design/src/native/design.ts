@@ -1,24 +1,32 @@
 // Pressable uses the microtask queue from React Native's bootstrap.
 import 'react-native/Libraries/Core/setUpTimers'
 
+import type {View} from '@effect/ui'
 import {Native} from '@effect/ui-native'
 import {Pressable} from '@effect/ui-native/kit'
 
-import {Array, Boolean, Function, Option, Predicate} from 'effect'
+import {Array, Boolean, Function, Option, Predicate, pipe} from 'effect'
 
-import {ListModel, RowModel, listToolbar, paneChildren, sidebarId} from '#src/shared/model.ts'
+import {
+	ListModel,
+	RowModel,
+	detailState,
+	listChildren,
+	listToolbar,
+	paneChildren,
+	sidebarId
+} from '#src/shared/model.ts'
 import type {
 	LayoutOptions,
 	ListOptions,
 	ListParts,
+	PaneLeaf,
 	RowOptions,
 	SheetOptions,
 	ToolbarAction,
 	ToolbarOptions
 } from '#src/shared/model.ts'
-import {black, fold, selected, status, styles} from '#src/shared/styles.ts'
-
-export {black, fold, ink, selected, status, styles} from '#src/shared/styles.ts'
+import {black, fold, ink, selected, status, styles} from '#src/shared/styles.ts'
 
 const FIGURES = ['tabular-nums'] as const
 const PRESSED_STYLE = {backgroundColor: '#2b2b2b'}
@@ -32,6 +40,8 @@ const SCREEN_STYLE = {
 	right: 0,
 	top: 0
 } as const satisfies Native.ViewStyle
+
+export {black, fold, ink, selected, status, styles}
 
 type NativeView<Tag extends string> = <M>() => Native.ViewElement<M, never, Record<string, unknown>, Tag>
 
@@ -50,38 +60,37 @@ const Header = native('designHeader', 'RNSScreenStackHeaderConfig')
 const SafeArea = native('designSafeArea', 'RNCSafeAreaView')
 
 export function Row<M, R>(h: Native.H<M>, options: RowOptions<Native.NoTextInput<M, R>>) {
-	const {active, item, select} = options
 	const title = {
 		...styles.title,
 		color: Boolean.match(options.muted === true, {
-			onTrue: Function.constant(styles.line.color),
-			onFalse: Function.constant(styles.title.color)
+			onFalse: Function.constant(styles.title.color),
+			onTrue: Function.constant(styles.line.color)
 		})
 	}
 	return RowModel(h, {
-		key: item.id,
-		props: item,
+		key: options.item.id,
+		props: options.item,
 		view: row => {
 			const trailing = Boolean.match(row.trailing === undefined, {
 				onFalse: () => `, ${row.trailing}`,
 				onTrue: Function.constant('')
 			})
-			const element = Option.match(Option.fromUndefinedOr(select), {
+			const element = Option.match(Option.fromUndefinedOr(options.select), {
 				onNone: () => h.view,
 				onSome: pick =>
 					Pressable(h, {
-						element: pick(pick(h.view, 'accessibilityTap', item.id), 'press', item.id),
+						element: pick(pick(h.view, 'accessibilityTap', options.item.id), 'press', options.item.id),
 						props: {pressedStyle: PRESSED_STYLE}
 					})
 						.prop('accessible', true)
 						.prop('accessibilityRole', 'button')
-						.prop('accessibilityState', {selected: active})
+						.prop('accessibilityState', {selected: options.active})
 						.prop('accessibilityLabel', `${row.title}, ${row.line}${trailing}`)
 			})
 			return element
 				.style({
 					...styles.row,
-					backgroundColor: Boolean.match(active, {
+					backgroundColor: Boolean.match(options.active, {
 						onFalse: Function.constant(black),
 						onTrue: Function.constant(selected)
 					})
@@ -106,44 +115,6 @@ export function Row<M, R>(h: Native.H<M>, options: RowOptions<Native.NoTextInput
 	})
 }
 
-export function Sheet<M, R>(h: Native.H<M>, options: SheetOptions<Native.NoTextInput<M, R>>) {
-	if (!options.open) return undefined
-	const sheet = Screen<M>()
-		.key('sheet')
-		.style({...SCREEN_STYLE, backgroundColor: styles.sheet.backgroundColor})
-		.prop('activityState', 2)
-		.prop('screenId', 'sheet')
-		.prop('stackPresentation', 'formSheet')
-		.prop('sheetAllowedDetents', [options.height ?? 0.4])
-		.prop('sheetGrabberVisible', options.pending !== true)
-		.prop('gestureEnabled', options.pending !== true)
-	const body = h.view
-		.style({
-			...styles.sheet,
-			flex: 1,
-			paddingTop: Boolean.match(options.toolbar === undefined, {
-				onTrue: Function.constant(24),
-				onFalse: Function.constant(80)
-			})
-		})
-		.prop('accessibilityLabel', options.label)
-		.children(
-			h.scroll.style(styles.pane).prop('automaticallyAdjustKeyboardInsets', true).children(options.body),
-			options.actions !== undefined && h.view.style(styles.sheetActions).children(options.actions)
-		)
-	const element = Boolean.match(options.pending === true, {
-		onTrue: () => sheet,
-		onFalse: () => options.dismiss(sheet, 'dismissed')
-	})
-	if (options.toolbar === undefined) return element.children(body)
-	return element.children(
-		Stack<M>()
-			.style(styles.frame)
-			.prop('nativeContainerBackgroundColor', styles.sheet.backgroundColor)
-			.children(screen<M>('sheet-content').children(body, header<M>(options.toolbar, true)))
-	)
-}
-
 function nativeAction(action: ToolbarAction, index: number) {
 	const button = {
 		accessibilityLabel: action.label,
@@ -155,22 +126,22 @@ function nativeAction(action: ToolbarAction, index: number) {
 	return {
 		...button,
 		menu: {
-			title: '',
 			items: Array.map(action.menu, entry => ({
 				disabled: entry.disabled,
 				menuId: entry.id,
 				sfSymbolName: entry.symbol,
 				state: Boolean.match(entry.checked === true, {
-					onTrue: Function.constant('on'),
-					onFalse: Function.constant('off')
+					onFalse: Function.constant('off'),
+					onTrue: Function.constant('on')
 				}),
 				title: entry.label
-			}))
+			})),
+			title: ''
 		}
 	}
 }
 
-function header<M>(toolbar: ToolbarOptions | undefined, visible: boolean) {
+function header<M>(visible: boolean, toolbar?: ToolbarOptions) {
 	const bar = Header<M>()
 		.prop('title', '')
 		.prop('hideShadow', true)
@@ -187,34 +158,35 @@ function header<M>(toolbar: ToolbarOptions | undefined, visible: boolean) {
 			'pressHeaderBarButtonItem',
 			value => {
 				if (!Predicate.hasProperty(value, 'buttonId')) return undefined
-				return Option.map(
-					Array.findFirst(
-						toolbar.actions,
-						item => item.id === value.buttonId && item.menu === undefined && item.disabled !== true
-					),
-					item => item.id
-				).pipe(Option.getOrUndefined)
+				return pipe(
+					toolbar.actions,
+					Array.findFirst(item => item.id === value.buttonId && item.menu === undefined && item.disabled !== true),
+					Option.map(item => item.id),
+					Option.getOrUndefined
+				)
 			}
 		),
 		'pressHeaderBarButtonMenuItem',
 		value => {
 			if (!Predicate.hasProperty(value, 'menuId')) return undefined
-			const items = Array.flatMap(toolbar.actions, action => action.menu ?? [])
-			return Option.map(
-				Array.findFirst(items, item => item.id === value.menuId && item.disabled !== true),
-				item => item.id
-			).pipe(Option.getOrUndefined)
+			return pipe(
+				toolbar.actions,
+				Array.flatMap(action => action.menu ?? []),
+				Array.findFirst(item => item.id === value.menuId && item.disabled !== true),
+				Option.map(item => item.id),
+				Option.getOrUndefined
+			)
 		}
 	)
 }
 
 export function Toolbar<M>(_h: Native.H<M>, toolbar: ToolbarOptions) {
-	return header<M>(toolbar, true)
+	return header<M>(true, toolbar)
 }
 
-function chrome<M>(parts: ListParts, toolbar: ToolbarOptions | undefined, detail: boolean) {
+function chrome<M>(parts: ListParts, detail: boolean, toolbar?: ToolbarOptions) {
 	return parts.toolbar(
-		header<M>(toolbar, detail || parts.wide || (toolbar?.actions.length ?? 0) > 0).prop(
+		header<M>(detail || parts.wide || Array.isReadonlyArrayNonEmpty(toolbar?.actions ?? []), toolbar).prop(
 			'headerLeftBarButtonItems',
 			Boolean.match(parts.showSidebar, {
 				onFalse: Array.empty,
@@ -233,6 +205,44 @@ function Skeleton<M>(h: Native.H<M>, width: Native.ViewStyle['width'], height: n
 
 function screen<M>(id: string) {
 	return Screen<M>().key(id).style(SCREEN_STYLE).prop('activityState', 2).prop('screenId', id)
+}
+
+function Sheet<M, R>(h: Native.H<M>, options: SheetOptions<Native.NoTextInput<M, R>>) {
+	if (!options.open) return undefined
+	const sheet = Screen<M>()
+		.key('sheet')
+		.style({...SCREEN_STYLE, backgroundColor: styles.sheet.backgroundColor})
+		.prop('activityState', 2)
+		.prop('screenId', 'sheet')
+		.prop('stackPresentation', 'formSheet')
+		.prop('sheetAllowedDetents', [options.height ?? 0.4])
+		.prop('sheetGrabberVisible', options.pending !== true)
+		.prop('gestureEnabled', options.pending !== true)
+	const body = h.view
+		.style({
+			...styles.sheet,
+			flex: 1,
+			paddingTop: Boolean.match(options.toolbar === undefined, {
+				onFalse: Function.constant(80),
+				onTrue: Function.constant(24)
+			})
+		})
+		.prop('accessibilityLabel', options.label)
+		.children(
+			h.scroll.style(styles.pane).prop('automaticallyAdjustKeyboardInsets', true).children(options.body),
+			options.actions !== undefined && h.view.style(styles.sheetActions).children(options.actions)
+		)
+	const element = Boolean.match(options.pending === true, {
+		onFalse: () => options.dismiss(sheet, 'dismissed'),
+		onTrue: () => sheet
+	})
+	if (options.toolbar === undefined) return element.children(body)
+	return element.children(
+		Stack<M>()
+			.style(styles.frame)
+			.prop('nativeContainerBackgroundColor', styles.sheet.backgroundColor)
+			.children(screen<M>('sheet-content').children(body, header<M>(true, options.toolbar)))
+	)
 }
 
 function listArea<M>() {
@@ -274,51 +284,51 @@ export function Layout<M, R>(
 		.style(styles.frame)
 		.prop('nativeContainerBackgroundColor', black)
 		.children(
-			screen<M>('layout').children(options.content, header<M>(options.toolbar, options.toolbar !== undefined)),
+			screen<M>('layout').children(options.content, header<M>(options.toolbar !== undefined, options.toolbar)),
 			options.sheet !== undefined && Sheet(h, options.sheet)
 		)
 }
 
 export function ListDetail<M, R>(h: Native.H<M>, options: ListOptions<Native.NoTextInput<M, R>>) {
-	const id = options.selection.id
-	const pending = options.loading === true && id !== undefined && options.detail === undefined
-	const hasDetail = options.detail !== undefined || pending
-	const opened = id !== undefined && hasDetail
+	const detailLayout = detailState(options)
 
 	function detail(wide: boolean) {
 		return h.scroll
-			.key(id ?? 'board')
+			.key(detailLayout.props.id ?? 'board')
 			.style(styles.pane)
 			.contentContainerStyle({...styles.detail, paddingRight: SYSTEM_COLUMN_WIDTH, paddingTop: detailTop(wide)})
 			.prop('contentInsetAdjustmentBehavior', 'never')
 			.children(
-				Boolean.match(pending, {
-					onTrue: () => [Skeleton(h, '46%', 20), Skeleton(h, '72%', 14)],
-					onFalse: () => paneChildren(options.detail)
+				Boolean.match(detailLayout.pending, {
+					onFalse: () => paneChildren(options.detail),
+					onTrue: () => [Skeleton(h, '46%', 20), Skeleton(h, '72%', 14)]
 				})
 			)
 	}
 
 	function list(parts: ListParts) {
+		const children = listChildren<PaneLeaf<Native.NoTextInput<M, R>>, Native.NoTextInput<M, R>>(options, parts, index =>
+			RowSkeleton(h, index)
+		)
 		return h.scroll
 			.style(listStyle(parts))
 			.contentContainerStyle({
 				...styles.rows,
-				paddingRight: parts.wide ? styles.rows.padding : SYSTEM_COLUMN_WIDTH,
-				paddingTop: parts.wide ? 32 : styles.rows.padding
+				paddingRight: Boolean.match(parts.wide, {
+					onFalse: Function.constant(SYSTEM_COLUMN_WIDTH),
+					onTrue: Function.constant(styles.rows.padding)
+				}),
+				paddingTop: Boolean.match(parts.wide, {
+					onFalse: Function.constant(styles.rows.padding),
+					onTrue: Function.constant(32)
+				})
 			})
 			.prop('contentInsetAdjustmentBehavior', 'never')
-			.children(
-				options.header,
-				Boolean.match(options.loading === true, {
-					onFalse: () => paneChildren(options.list?.(parts.activeId, parts.wide) ?? options.empty),
-					onTrue: () => Array.makeBy(3, index => RowSkeleton(h, index))
-				})
-			)
+			.children(...children)
 	}
 
 	return ListModel(h, {
-		props: {defaultId: options.defaultId, hasDetail, id},
+		props: detailLayout.props,
 		view: parts =>
 			parts.layout(h.view.style(styles.frame), 'layout').children(
 				Stack<M>()
@@ -326,16 +336,18 @@ export function ListDetail<M, R>(h: Native.H<M>, options: ListOptions<Native.NoT
 					.prop('nativeContainerBackgroundColor', black)
 					.children(
 						screen<M>('list').children(
-							listArea<M>().children(h.view.style(styles.panes).children(list(parts), parts.showSidebar && detail(true))),
-							chrome<M>(parts, listToolbar(options.toolbar, options.detailToolbar, parts.showSidebar, false), false)
+							listArea<M>().children(
+								h.view.style(styles.panes).children(list(parts), parts.showSidebar && detail(true))
+							),
+							chrome<M>(parts, false, listToolbar(options.toolbar, options.detailToolbar, parts.showSidebar, false))
 						),
 						!parts.wide &&
-							opened &&
+							detailLayout.opened &&
 							options.selection
 								.back(screen<M>('detail'), 'dismissed')
 								.children(
 									listArea<M>().children(detail(false)),
-									chrome<M>(parts, listToolbar(options.toolbar, options.detailToolbar, false, true), true)
+									chrome<M>(parts, true, listToolbar(options.toolbar, options.detailToolbar, false, true))
 								),
 						options.sheet !== undefined && Sheet(h, options.sheet)
 					)
@@ -349,4 +361,37 @@ export function DetailText<M>(h: Native.H<M>, title: string, body: string, figur
 		h.text.style(styles.body).children(body),
 		h.text.style({...styles.line, fontFamily: 'ui-monospace', fontVariant: FIGURES}).children(figure)
 	]
+}
+
+export function nativeControls(
+	options: {useRole?: boolean; disabledOpacity?: number; noticeStyle?: Pick<Native.ViewStyle, 'gap'>} = {}
+) {
+	function Button<M>(
+		h: Native.H<M>,
+		element: Native.ViewElement<M, never, Native.ViewEvents, 'view'>,
+		label: string,
+		disabled = false
+	) {
+		const button = Pressable(h, {element, props: {disabled, pressedStyle: PRESSED_STYLE}})
+			.style({
+				...styles.control,
+				opacity: Boolean.match(disabled, {onFalse: Function.constant(1), onTrue: () => options.disabledOpacity ?? 0.45})
+			})
+			.prop('accessibilityState', {disabled})
+			.prop('accessible', true)
+			.children(h.text.style(styles.body).children(label))
+		if (options.useRole === true) return button.prop('role', 'button')
+		return button.prop('accessibilityRole', 'button')
+	}
+
+	function Notice<M>(h: Native.H<M>, text: string, retry?: View.Part<string, [event: string]>) {
+		return h.view
+			.style({alignItems: 'flex-start', ...options.noticeStyle, paddingHorizontal: 12, paddingVertical: 8})
+			.children(
+				h.text.style(styles.line).children(text),
+				retry !== undefined && Button(h, retry(retry(h.view, 'press'), 'accessibilityTap'), 'Retry')
+			)
+	}
+
+	return {Button, Notice}
 }

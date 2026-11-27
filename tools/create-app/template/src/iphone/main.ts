@@ -11,7 +11,7 @@ import {layerSocketProtocol} from '@deslop/runtime/client/protocol'
 import {AuthError} from '@deslop/runtime/shared/auth'
 
 import {layerIPhoneRouter} from '#iphone/router.ts'
-import {IPhoneSignIn, layerIPhoneSocket, readIPhoneAccount} from '#iphone/session.ts'
+import {IPhoneSignIn, readIPhoneAccount, session} from '#iphone/session.ts'
 import {Items, ItemsView, RefreshViewer, layerViewer, readItems} from '#screens/items.ts'
 import {AppRoute, CloseItem} from '#screens/routes.ts'
 
@@ -85,7 +85,7 @@ const App = Native.component({
 		})
 })
 
-const protocol = layerSocketProtocol(layerIPhoneSocket)
+const protocol = layerSocketProtocol(session.layerIPhoneSocket)
 const layerNativeItems = Items.toLayer(() =>
 	pipe(
 		readItems,

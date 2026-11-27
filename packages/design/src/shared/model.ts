@@ -3,6 +3,8 @@ import type {Mount, View} from '@effect/ui'
 
 import {Array, Boolean, Function, Predicate, Schema} from 'effect'
 
+export const sidebarId = 'design-sidebar'
+
 export type RowData = typeof RowData.Type
 const RowData = Schema.Struct({
 	id: Schema.String,
@@ -103,11 +105,12 @@ export const ListModel = Component.define({
 	}
 })
 
-export const sidebarId = 'design-sidebar'
 export type ListParts = Component.Headless.Parts<typeof ListModel>
 export const resized = LayoutMessage.Resized
+// A part can explicitly supply an absent value to either host.
+export type Absent = Schema.Undefined['Type']
 export type Selection = {
-	id: string | undefined
+	id: string | Absent
 	select: View.Part<string, [event: string, id: string]>
 	back: View.Part<string, [event: string]>
 }
@@ -116,9 +119,9 @@ export type RowOptions<Content> = {
 	item: RowData
 	active: boolean
 	cover?: Content
-	muted?: boolean | undefined
+	muted?: boolean | Absent
 	select?: Selection['select']
-	trailing?: Content | undefined
+	trailing?: Content | Absent
 }
 
 export type SheetOptions<Content> = {
@@ -127,40 +130,36 @@ export type SheetOptions<Content> = {
 	dismiss: Selection['back']
 	body: Content
 	actions?: Content
-	height?: number | undefined
-	pending?: boolean | undefined
-	toolbar?: ToolbarOptions | undefined
+	height?: number | Absent
+	pending?: boolean | Absent
+	toolbar?: ToolbarOptions | Absent
 }
 
-export type LayoutOptions<Content> = {toolbar?: ToolbarOptions | undefined; sheet?: SheetOptions<Content> | undefined}
+export type LayoutOptions<Content> = {toolbar?: ToolbarOptions | Absent; sheet?: SheetOptions<Content> | Absent}
 
-type PaneContent<Leaf> = Leaf | ReadonlyArray<PaneContent<Leaf>>
-type PaneLeaf<Content> = Exclude<Content, readonly unknown[]>
-
-function isPaneArray<Leaf>(content: PaneContent<Leaf>): content is readonly PaneContent<Leaf>[] {
-	return Array.isArray(content)
-}
+export type PaneContent<Leaf> = Leaf | readonly PaneContent<Leaf>[]
+export type PaneLeaf<Content> = Exclude<Content, readonly unknown[]>
 
 // Effect UI builders flatten one level; app pane slots may compose several lists.
-export function paneChildren<Leaf>(content: PaneContent<Leaf> | undefined): readonly Leaf[] {
+export function paneChildren<Leaf>(content?: PaneContent<Leaf>): readonly Leaf[] {
 	if (content === undefined) return []
-	if (isPaneArray(content)) return Array.flatMap(content, paneChildren<Leaf>)
+	if (Array.isArray<PaneContent<Leaf>>(content)) return Array.flatMap(content, paneChildren<Leaf>)
 	return [content]
 }
 
 export type ListOptions<Content> = LayoutOptions<Content> & {
-	defaultId?: string | undefined
-	detailToolbar?: readonly ToolbarAction[] | undefined
+	defaultId?: string | Absent
+	detailToolbar?: readonly ToolbarAction[] | Absent
 	selection: Selection
 	loading?: boolean
 	header?: Content
 	empty?: Content
-	list?: ((activeId: string | undefined, wide: boolean) => PaneContent<PaneLeaf<Content>>) | undefined
+	list?: ((activeId: Selection['id'], wide: boolean) => PaneContent<PaneLeaf<Content>>) | Absent
 	detail?: PaneContent<PaneLeaf<Content>>
 }
 
 export type SymbolName = typeof SymbolName.Type
-export const SymbolName = Schema.Literals([
+const SymbolName = Schema.Literals([
 	'airplane.arrival',
 	'airplane.departure',
 	'airplane',
@@ -197,23 +196,27 @@ export const SymbolName = Schema.Literals([
 export type ToolbarMenuItem = {
 	id: string
 	label: string
-	checked?: boolean | undefined
-	disabled?: boolean | undefined
-	symbol?: SymbolName | undefined
+	checked?: boolean | Absent
+	disabled?: boolean | Absent
+	symbol?: SymbolName | Absent
 }
 
-type ToolbarButton = {id: string; label: string; symbol: SymbolName; disabled?: boolean | undefined}
-
-export type ToolbarAction = ToolbarButton & {menu?: readonly ToolbarMenuItem[]}
+export type ToolbarAction = {
+	id: string
+	label: string
+	symbol: SymbolName
+	disabled?: boolean | Absent
+	menu?: readonly ToolbarMenuItem[]
+}
 
 export type ToolbarOptions = {
 	actions: readonly ToolbarAction[]
-	choose: View.Part<string, [event: string, id: (payload: unknown) => string | undefined]>
+	choose: View.Part<string, [event: string, id: (payload: unknown) => Selection['id']]>
 }
 
 export function listToolbar(
-	list: ToolbarOptions | undefined,
-	detail: readonly ToolbarAction[] | undefined,
+	list: ToolbarOptions | Absent,
+	detail: readonly ToolbarAction[] | Absent,
 	wide: boolean,
 	opened: boolean
 ) {
@@ -221,4 +224,55 @@ export function listToolbar(
 	if (wide) return {...list, actions: [...list.actions, ...(detail ?? [])]}
 	if (opened) return {...list, actions: detail ?? []}
 	return list
+}
+
+export function chooseToolbar<M>(message: (input: {id: string}) => M) {
+	return (el: View.ContainerBuilder<M>, event: string, identify: Parameters<ToolbarOptions['choose']>[2]) =>
+		el.on(event, payload => {
+			const id = identify(payload)
+			if (id === undefined) return undefined
+			return message({id})
+		})
+}
+
+export function detailState(options: {
+	selection: Selection
+	defaultId?: string | Absent
+	loading?: boolean
+	detail?: unknown
+}) {
+	const pending = options.loading === true && options.selection.id !== undefined && options.detail === undefined
+	const hasDetail = options.detail !== undefined || pending
+	return {
+		opened: options.selection.id !== undefined && hasDetail,
+		pending,
+		props: {defaultId: options.defaultId, hasDetail, id: options.selection.id}
+	}
+}
+
+export function defineSelection<const Name extends string, Message, Encoded>(
+	name: Name,
+	message: Schema.Codec<Message, Encoded>
+) {
+	return Component.define({
+		events: message,
+		message,
+		model: Schema.Void,
+		name,
+		props: Schema.Struct({id: Schema.UndefinedOr(Schema.String)})
+	})
+}
+
+export function listChildren<Leaf, Header>(
+	options: {
+		header?: Header
+		loading?: boolean
+		list?: ((activeId: Selection['id'], wide: boolean) => PaneContent<Leaf>) | Absent
+		empty?: PaneContent<Leaf>
+	},
+	parts: ListParts,
+	skeleton: (index: number) => Leaf
+) {
+	if (options.loading === true) return [options.header, Array.makeBy(3, skeleton)] as const
+	return [options.header, paneChildren(options.list?.(parts.activeId, parts.wide) ?? options.empty)] as const
 }

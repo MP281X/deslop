@@ -1,9 +1,10 @@
 import {Command} from '@effect/ui'
 
-import {Context, Effect, Layer, Option, Schema, Stream, pipe} from 'effect'
+import {Context, Effect, Layer, Option, Schema, Stream} from 'effect'
 
-import {AsyncResult, Atom, AtomRegistry, AtomRpc} from 'effect/reactivity'
+import {Atom, AtomRegistry, AtomRpc} from 'effect/reactivity'
 
+import {observe as observeAtom, refreshFailed} from '@deslop/runtime/client/atom'
 import {clockAtom} from '@deslop/runtime/client/clock'
 import {liveAtom} from '@deslop/runtime/client/live-stream'
 import type {layerSocketProtocol} from '@deslop/runtime/client/protocol'
@@ -14,43 +15,33 @@ import {TimeFrame} from '@deslop/runtime/shared/time'
 import {TelemetryRpc, TraceId} from '#contracts'
 
 function reads(protocol: ReturnType<typeof layerSocketProtocol>) {
-	const credentials = Atom.make(0)
+	const credentialsAtom = Atom.make(0)
 	class Client extends AtomRpc.Service<Client>()('Scope/Rpc', {
 		group: TelemetryRpc.middleware(RpcStream),
 		protocol: get => {
-			get(credentials)
+			get(credentialsAtom)
 			return Layer.fresh(protocol)
 		}
 	}) {}
 
 	return {
-		credentials,
+		credentialsAtom,
 		now: clockAtom('30 seconds'),
 		overview: Atom.family((range: TimeFrame) => liveAtom(Client, 'telemetry.watch', range)),
 		trace: Atom.family((id: TraceId) => liveAtom(Client, 'telemetry.trace', {id}))
 	}
 }
 
-export class ScopeReads extends Context.Service<ScopeReads, ReturnType<typeof reads>>()('Scope/Reads') {
+export class ScopeReads extends Context.Service<ScopeReads, ReturnType<typeof reads>>()(
+	'@deslop/scope/screens/reads/ScopeReads'
+) {
 	static layer(protocol: ReturnType<typeof layerSocketProtocol>) {
 		return Layer.succeed(this, reads(protocol))
 	}
 }
 
 export function observe<A, M>(pick: (source: ReturnType<typeof reads>) => Atom.Atom<A>, read: (value: A) => M) {
-	return Stream.unwrap(
-		ScopeReads.useSync(source =>
-			Stream.unwrap(
-				AtomRegistry.AtomRegistry.useSync(registry =>
-					pipe(registry, AtomRegistry.toStream(pick(source)), Stream.map(read))
-				)
-			)
-		)
-	)
-}
-
-function refreshFailed<A, E>(registry: AtomRegistry.AtomRegistry, atom: Atom.Atom<AsyncResult.AsyncResult<A, E>>) {
-	if (AsyncResult.isFailure(registry.get(atom))) registry.refresh(atom)
+	return Stream.unwrap(ScopeReads.useSync(source => observeAtom(pick(source), read)))
 }
 
 export class Retry extends Command.Service<Retry>()('Scope/Retry', {
@@ -63,7 +54,7 @@ export class Retry extends Command.Service<Retry>()('Scope/Retry', {
 			return args =>
 				Effect.sync(() => {
 					if (args.newSession) {
-						registry.update(source.credentials, version => version + 1)
+						registry.update(source.credentialsAtom, version => version + 1)
 						return
 					}
 					refreshFailed(registry, source.overview(args.range))

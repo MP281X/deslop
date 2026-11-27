@@ -1,11 +1,9 @@
 import {Command, UiSchema} from '@effect/ui'
 
 import {Cause, DateTime, Effect, Layer, Option, Predicate, Schema, Semaphore, String, pipe} from 'effect'
-import type {Context} from 'effect'
 
 import {AsyncResult, AtomRegistry} from 'effect/reactivity'
 
-import {writeOutcome} from '@deslop/runtime/client/protocol'
 import type {AuthError} from '@deslop/runtime/shared/auth'
 import {Account} from '@deslop/runtime/shared/schema'
 import {DateTimeUtcFromFiniteMillis} from '@deslop/runtime/shared/time'
@@ -82,7 +80,7 @@ export const Action = UiSchema.TaggedEnum({
 export type Actions = {
 	readonly openUrl: (url: string) => Effect.Effect<void, FlightsError>
 	readonly signIn: Effect.Effect<boolean, AuthError>
-	readonly signOut: (registry: AtomRegistry.AtomRegistry) => Effect.Effect<string | undefined, AuthError>
+	readonly signOut: (registry: AtomRegistry.AtomRegistry) => Effect.Effect<Model['error'], AuthError>
 	readonly ticket: (file: unknown) => Effect.Effect<Option.Option<TicketSource>, FlightsError>
 }
 
@@ -103,87 +101,73 @@ export class OpenUrl extends Command.Service<OpenUrl>()('Trips/OpenUrl', {
 
 export class Run extends Command.Service<Run>()('Trips/Run', {args: {action: Action}, success: Message}) {}
 
-export function layerCommands(data: TripsData, options: Actions) {
-	function write<E, R>(
-		registry: AtomRegistry.AtomRegistry,
-		run: Effect.Effect<void, E, R>,
-		contextOf: Effect.Effect<Context.Context<R>, unknown>,
-		refreshTravel = false
-	) {
+export function layerCommands(board: TripsData, options: Actions) {
+	function write<E>(registry: AtomRegistry.AtomRegistry, run: Effect.Effect<void, E>, refreshTravel = false) {
 		return Effect.matchCause(
 			Effect.gen(function* () {
-				if (registry.get(data.owner) === undefined) {
+				if (registry.get(board.ownerAtom) === undefined) {
 					return yield* FlightsError.make({message: 'Sign in to save a booking.'})
 				}
-				const context = yield* contextOf
-				yield* writeOutcome(Effect.provideContext(run, context))
-				if (refreshTravel) registry.refresh(data.travel)
+				yield* run
+				if (refreshTravel) registry.refresh(board.travelAtom)
 			}),
 			{onFailure: cause => Message.WriteFailed({error: failed(cause)}), onSuccess: () => Message.WriteSaved()}
 		)
 	}
 
-	const layerRun = Run.toLayer(
-		Effect.gen(function* () {
-			const registry = yield* AtomRegistry.AtomRegistry
-			const exclusive = yield* Semaphore.make(1)
-			const context = AtomRegistry.getResult(registry, data.runtime, {suspendOnWaiting: true})
-			function save(source: Effect.Effect<Option.Option<TicketSource>, FlightsError>) {
-				return Effect.matchEffect(source, {
-					onFailure: error => Effect.succeed(Message.WriteFailed({error: error.message})),
-					onSuccess: ticket =>
-						Option.match(ticket, {
-							onNone: () => Effect.succeed(Message.Ignored()),
-							onSome: value => write(registry, data.save(value), context)
-						})
-				})
-			}
-
-			function session(logout: boolean) {
-				return Effect.matchCause(
-					Effect.gen(function* () {
-						if (logout) return yield* options.signOut(registry)
-						if (yield* options.signIn) data.refresh(registry, true)
-						return undefined
-					}),
-					{
-						onFailure: cause => Message.SessionChanged({message: failed(cause)}),
-						onSuccess: message => Message.SessionChanged({message})
-					}
-				)
-			}
-			return ({action}) =>
-				pipe(
-					Action.match(action, {
-						File: input => save(options.ticket(input.file)),
-						Session: input => session(input.logout),
-						Text: input =>
-							save(
-								pipe(
-									TicketSource.cases.text.makeEffect({text: String.trim(input.text)}),
-									Effect.map(Option.some),
-									Effect.mapError(cause =>
-										FlightsError.make({cause, message: 'Paste booking text or a link, up to 60,000 characters.'})
-									)
-								)
-							),
-						TripTime: input => write(registry, data.setTravel(input.row), context, true)
-					}),
-					exclusive.withPermitsIfAvailable(1),
-					Effect.map(Option.getOrElse(() => Message.Ignored()))
-				)
-		})
-	)
 	return Layer.mergeAll(
-		layerRun,
-		OpenUrl.toLayer(
-			() =>
-				({url}) =>
-					options.openUrl(url)
+		Run.toLayer(
+			Effect.gen(function* () {
+				const registry = yield* AtomRegistry.AtomRegistry
+				const exclusive = yield* Semaphore.make(1)
+				function save(source: Effect.Effect<Option.Option<TicketSource>, FlightsError>) {
+					return Effect.matchEffect(source, {
+						onFailure: error => Effect.succeed(Message.WriteFailed({error: error.message})),
+						onSuccess: ticket =>
+							Option.match(ticket, {
+								onNone: () => Effect.succeed<Message>(Message.Ignored()),
+								onSome: value => write(registry, board.save(registry, value))
+							})
+					})
+				}
+
+				function session(logout: boolean) {
+					return Effect.matchCause(
+						Effect.gen(function* () {
+							if (logout) return yield* options.signOut(registry)
+							if (yield* options.signIn) board.refresh(registry, true)
+							return undefined
+						}),
+						{
+							onFailure: cause => Message.SessionChanged({message: failed(cause)}),
+							onSuccess: message => Message.SessionChanged({message})
+						}
+					)
+				}
+				return request =>
+					pipe(
+						Action.match(request.action, {
+							File: input => save(options.ticket(input.file)),
+							Session: input => session(input.logout),
+							Text: input =>
+								save(
+									Effect.mapBoth(TicketSource.cases.text.makeEffect({text: String.trim(input.text)}), {
+										onFailure: cause =>
+											FlightsError.make({cause, message: 'Paste booking text or a link, up to 60,000 characters.'}),
+										onSuccess: Option.some
+									})
+								),
+							TripTime: input => write(registry, board.setTravel(registry, input.row), true)
+						}),
+						exclusive.withPermitsIfAvailable(1),
+						Effect.map(Option.getOrElse<Message>(Message.Ignored))
+					)
+			})
 		),
+		OpenUrl.toLayer(request => options.openUrl(request.url)),
 		Reload.toLayer(
 			AtomRegistry.AtomRegistry.useSync(
-				registry => request => Effect.sync(() => data.refresh(registry, request.accountOnly === true))
+				registry => request => Effect.sync(() => board.refresh(registry, request.accountOnly === true))
 			)
 		)
 	)

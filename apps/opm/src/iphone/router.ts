@@ -1,67 +1,64 @@
 import {Router} from '@effect/ui'
 
-import {Boolean, Effect, Function, Layer, Option, Schema, String, pipe} from 'effect'
+import {Boolean, Effect, Function, Layer, Option, Schema, pipe} from 'effect'
 
 import Linking from 'react-native/Libraries/Linking/Linking'
 
+import {followIPhoneLinks, iphonePath} from '@deslop/design/native/router'
+
 import {ChapterNumberFromString, Series} from '#contracts'
 
-import {appOrigin, scheme} from '#iphone/origin.ts'
+import {appOrigin, variant} from '#iphone/origin.ts'
 import {readChapterActivity} from '#iphone/push.ts'
 import {OpmRoute, targetOf} from '#screens/routes.ts'
 
-const ChapterActivityLink = Schema.TemplateLiteralParser([scheme, '://chapter/', Series, '/', ChapterNumberFromString])
+type ChapterActivityLink = typeof ChapterActivityLink.Type
+const ChapterActivityLink = Schema.TemplateLiteralParser([
+	variant.scheme,
+	'://chapter/',
+	Series,
+	'/',
+	ChapterNumberFromString
+])
 
 function linkOf(url: string) {
-	const activity = Schema.decodeUnknownOption(ChapterActivityLink)(url)
-	if (Option.isSome(activity)) {
-		const [, , series, , chapter] = activity.value
-		return Option.some({activity: url, route: OpmRoute.Library({params: {}, search: {chapter, series}})})
-	}
-	for (const prefix of [`${scheme}://`, appOrigin]) {
-		if (!String.startsWith(prefix)(url)) continue
-		const path = String.slice(prefix.length)(url)
-		if (String.startsWith('/')(path)) {
-			return Option.map(OpmRoute.parse(path), route => ({activity: undefined, route}))
-		}
-	}
-	return Option.none()
-}
-
-function readActivity(link: {activity: string | undefined}) {
-	if (link.activity === undefined) return Effect.void
-	return readChapterActivity(link.activity)
-}
-
-const FollowLinks = Layer.effectDiscard(
-	Effect.gen(function* () {
-		const router = yield* Router.Router
-		yield* Effect.acquireRelease(
-			Effect.sync(() =>
-				Linking.addEventListener('url', event => {
-					Option.map(linkOf(event.url), link => {
-						// oxlint-disable-next-line eslint/no-restricted-properties -- The iPhone hands warm links to the mounted router here.
-						Effect.runFork(
-							pipe(
-								Boolean.match(
-									!Option.exists(OpmRoute.parse(router.location().url), route => targetOf(route) !== undefined),
-									{onFalse: () => router.replace(link.route), onTrue: () => router.push(link.route)}
-								),
-								Effect.tap(() => readActivity(link))
-							)
-						)
-					})
-				})
-			),
-			subscription => Effect.sync(() => subscription.remove())
+	return pipe(
+		Schema.decodeUnknownOption(ChapterActivityLink)(url),
+		Option.map(parts => ({
+			activity: Option.some(url),
+			route: OpmRoute.Library({params: {}, search: {chapter: parts[4], series: parts[2]}})
+		})),
+		Option.orElse(() =>
+			pipe(
+				iphonePath(appOrigin, variant.scheme, url),
+				Option.flatMap(OpmRoute.parse),
+				Option.map(route => ({activity: Option.none<string>(), route}))
+			)
 		)
-	})
+	)
+}
+
+function readActivity(link: {activity: Option.Option<string>}) {
+	return Option.match(link.activity, {onNone: Function.constant(Effect.void), onSome: readChapterActivity})
+}
+
+const FollowLinks = followIPhoneLinks((router, url) =>
+	Option.map(linkOf(url), link =>
+		pipe(
+			!Option.exists(OpmRoute.parse(router.location().url), route => targetOf(route) !== undefined),
+			Boolean.match({
+				onFalse: () => router.replace(link.route),
+				// oxlint-disable-next-line @deslop/coding-standards/no-native-method-call -- This is Effect UI Router navigation.
+				onTrue: () => router.push(link.route)
+			}),
+			Effect.tap(() => readActivity(link))
+		)
+	)
 )
 
 export const layerIPhoneRouter = Layer.unwrap(
 	Effect.gen(function* () {
-		const url = yield* Effect.promise(() => Linking.getInitialURL())
-		const initial = pipe(Option.fromNullishOr(url), Option.flatMap(linkOf))
+		const initial = Option.flatMap(Option.fromNullishOr(yield* Effect.promise(() => Linking.getInitialURL())), linkOf)
 		yield* Option.match(initial, {onNone: () => Effect.void, onSome: readActivity})
 		return Layer.provideMerge(
 			FollowLinks,

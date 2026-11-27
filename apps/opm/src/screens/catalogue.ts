@@ -17,9 +17,7 @@ import type {ChapterBundle, ChapterKey, Position, ReadingChapter, ReadingPositio
 
 const reduceChapters = listReducer<ReadingChapter, ChapterKey>(Order.flip(byChapterNumber), keyOf)
 
-interface OpmRpc {
-	readonly OpmRpc: unique symbol
-}
+type OpmRpc = {readonly OpmRpc: unique symbol}
 
 export function catalogue(
 	protocol: ReturnType<typeof layerSocketProtocol>,
@@ -94,12 +92,11 @@ export function catalogue(
 	function registerToken(value: string, bundle: ChapterBundle) {
 		return Effect.gen(function* () {
 			const token = yield* Schema.decodeEffect(ApnsToken)(String.toLowerCase(value))
-			const registry = yield* AtomRegistry.AtomRegistry
-			const context = yield* AtomRegistry.getResult(registry, RpcClient.runtime)
+			const context = yield* AtomRegistry.getResult(yield* AtomRegistry.AtomRegistry, RpcClient.runtime)
 			yield* registerPushToken(
-				pipe(
+				Effect.provideContext(
 					RpcClient.use(client => client('push.register', {bundle, kind: 'start', token: Redacted.make(token)})),
-					Effect.provideContext(context)
+					context
 				)
 			)
 		})

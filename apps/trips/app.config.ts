@@ -6,11 +6,11 @@ import {
 	appOrigin,
 	authOrigin,
 	bundle,
-	development,
 	keychainGroup,
 	scheme,
 	sessionKey,
-	sessionService
+	sessionService,
+	tripsVariant
 } from './src/iphone/origin.ts'
 
 export default {
@@ -19,11 +19,11 @@ export default {
 		associatedDomains: [`webcredentials:${new URL(authOrigin).hostname}`],
 		bundleIdentifier: bundle,
 		deploymentTarget: '26.0',
-		icon: './src/iphone/app.icon',
 		entitlements: {
-			'aps-environment': development ? 'development' : 'production',
+			'aps-environment': tripsVariant('production', 'development'),
 			'keychain-access-groups': [keychainGroup]
 		},
+		icon: './src/iphone/app.icon',
 		infoPlist: {
 			DeslopKeychainGroup: keychainGroup,
 			DeslopServer: appOrigin,
@@ -36,7 +36,7 @@ export default {
 		supportsTablet: false,
 		usesBroadcastPushNotifications: true
 	},
-	name: development ? 'trips dev' : 'trips',
+	name: tripsVariant('trips', 'trips dev'),
 	orientation: 'default',
 	platforms: ['ios'],
 	plugins: ['expo-secure-store', 'expo-notifications', '@bacons/apple-targets'],

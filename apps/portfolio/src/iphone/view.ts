@@ -4,11 +4,19 @@ import {Pressable} from '@effect/ui-native/kit'
 
 import {Array, Boolean, Function, Match, Predicate, Schema, pipe} from 'effect'
 
+import type {ToolbarOptions} from '@deslop/design/model'
 import {Layout} from '@deslop/design/native'
 
 import {appOrigin} from '#iphone/origin.ts'
 import {CvScreen, ProfileScreen} from '#screens/portfolio.ts'
 import {PortfolioRoute} from '#screens/routes.ts'
+
+const PAPER = '#0d0c0c'
+const INK = '#e3e1db'
+const MUTED = '#a19e96'
+const CORAL = '#fd7357'
+const BORDER = '#262523'
+const MONO = 'Menlo'
 
 export const Message = UiSchema.TaggedEnum({
 	OpenedLink: {url: Schema.String},
@@ -20,10 +28,10 @@ export const Message = UiSchema.TaggedEnum({
 type H = Native.H<typeof Message.Type>
 type Body = Native.NoTextInput<typeof Message.Type>
 
-const CvActions = Component.define({events: Message, message: Message, model: Schema.Null, name: 'CvActions'}).make({
-	init: Function.constNull,
+const CvActions = Component.define({events: Message, message: Message, model: Schema.Void, name: 'CvActions'}).make({
+	init: Function.constUndefined,
 	parts: p => ({
-		choose: p.part((el, event: string, identify: (payload: unknown) => string | undefined) =>
+		choose: p.part((el, event: string, identify: Parameters<ToolbarOptions['choose']>[2]) =>
 			el.on(event, payload =>
 				pipe(
 					Match.value(identify(payload)),
@@ -34,28 +42,21 @@ const CvActions = Component.define({events: Message, message: Message, model: Sc
 			)
 		)
 	}),
-	update: ($, message) => $.set(null).emit(message)
+	update: ($, message) => $.set(undefined).emit(message)
 })
 
-const paper = '#0d0c0c'
-const ink = '#e3e1db'
-const muted = '#a19e96'
-const coral = '#fd7357'
-const border = '#262523'
-const mono = 'Menlo'
-
 const styles = {
-	body: {color: ink, fontSize: 14, lineHeight: 21},
-	card: {backgroundColor: paper, borderColor: border, borderWidth: 1, padding: 16},
-	cvBody: {color: ink, fontSize: 14, lineHeight: 20},
-	cvHeading: {color: ink, fontFamily: mono, fontSize: 13, fontWeight: '700', letterSpacing: 1.8},
-	meta: {color: muted, fontFamily: mono, fontSize: 12, lineHeight: 18},
+	body: {color: INK, fontSize: 14, lineHeight: 21},
+	card: {backgroundColor: PAPER, borderColor: BORDER, borderWidth: 1, padding: 16},
+	cvBody: {color: INK, fontSize: 14, lineHeight: 20},
+	cvHeading: {color: INK, fontFamily: MONO, fontSize: 13, fontWeight: '700', letterSpacing: 1.8},
+	meta: {color: MUTED, fontFamily: MONO, fontSize: 12, lineHeight: 18},
 	row: {gap: 4, paddingVertical: 10},
-	title: {color: ink, fontSize: 15, fontWeight: '600'}
+	title: {color: INK, fontSize: 15, fontWeight: '600'}
 } as const satisfies Readonly<Record<string, Native.TextStyle>>
 
 function Link(h: H, label: string, message: typeof Message.Type, body: Body) {
-	return Pressable(h, {onPress: message, props: {pressedStyle: {backgroundColor: border}}})
+	return Pressable(h, {onPress: message, props: {pressedStyle: {backgroundColor: BORDER}}})
 		.on('accessibilityTap', message)
 		.prop('accessible', true)
 		.prop('accessibilityRole', 'link')
@@ -75,7 +76,7 @@ function BulletList(h: H, items: readonly string[]) {
 				.key(item)
 				.style({alignItems: 'flex-start', flexDirection: 'row', gap: 8})
 				.children(
-					h.view.style({backgroundColor: muted, height: 4, marginTop: 8, width: 4}),
+					h.view.style({backgroundColor: MUTED, height: 4, marginTop: 8, width: 4}),
 					h.text.style({...styles.body, flex: 1}).children(item)
 				)
 		)
@@ -86,23 +87,22 @@ function Column(h: H, id: string, ...body: Body[]) {
 	return h.scroll
 		.key(id)
 		.prop('contentInsetAdjustmentBehavior', 'automatic')
-		.style({backgroundColor: paper, flex: 1})
+		.style({backgroundColor: PAPER, flex: 1})
 		.contentContainerStyle({paddingBottom: 32, paddingLeft: 16, paddingRight: 76, paddingTop: 20})
 		.children(h.view.style({alignSelf: 'center', gap: 20, maxWidth: 768, width: '100%'}).children(...body))
 }
 
 function ProfileHeading(h: H) {
-	const {name, profile, summary} = ProfileScreen
 	return h.view
 		.style({...styles.card, gap: 12, marginTop: 16, paddingVertical: 24})
 		.children(
 			h.text
 				.prop('accessibilityRole', 'header')
-				.style({color: ink, fontSize: 36, fontWeight: '600', letterSpacing: -1.2, lineHeight: 40})
-				.children(name),
-			h.text.style({...styles.meta, color: coral, fontSize: 13}).children(profile.title),
-			h.text.style({...styles.body, fontSize: 16, lineHeight: 24}).children(summary),
-			h.text.style(styles.meta).children(profile.location)
+				.style({color: INK, fontSize: 36, fontWeight: '600', letterSpacing: -1.2, lineHeight: 40})
+				.children(ProfileScreen.name),
+			h.text.style({...styles.meta, color: CORAL, fontSize: 13}).children(ProfileScreen.profile.title),
+			h.text.style({...styles.body, fontSize: 16, lineHeight: 24}).children(ProfileScreen.summary),
+			h.text.style(styles.meta).children(ProfileScreen.profile.location)
 		)
 }
 
@@ -128,11 +128,11 @@ function ProfileExperience(h: H) {
 				.children(
 					h.text.style(styles.title).children(job.company),
 					h.text
-						.style({...styles.body, color: muted})
-						.children(Array.join(Array.filter([job.role, job.note], Predicate.isNotUndefined), ' · ')),
+						.style({...styles.body, color: MUTED})
+						.children(pipe([job.role, job.note], Array.filter(Predicate.isNotUndefined), Array.join(' · '))),
 					h.text
 						.style(styles.meta)
-						.children(Array.join(Array.filter([job.period, job.location], Predicate.isNotUndefined), ' · ')),
+						.children(pipe([job.period, job.location], Array.filter(Predicate.isNotUndefined), Array.join(' · '))),
 					BulletList(h, job.highlights)
 				)
 		)
@@ -158,9 +158,9 @@ function ProfileProjects(h: H) {
 									.style({flex: 1})
 									.children(
 										h.text.style(styles.title).children(project.name),
-										h.text.style({...styles.body, color: muted}).children(project.role)
+										h.text.style({...styles.body, color: MUTED}).children(project.role)
 									),
-								h.text.style({...styles.title, color: coral}).children('↗')
+								h.text.style({...styles.title, color: CORAL}).children('↗')
 							)
 					),
 					h.text.style(styles.body).children(project.description),
@@ -210,8 +210,8 @@ function ProfileContacts(h: H) {
 						h.view
 							.style({alignItems: 'center', flexDirection: 'row', gap: 12, justifyContent: 'space-between'})
 							.children(
-								h.text.style({...styles.body, color: muted}).children(item.label),
-								h.text.style({...styles.meta, color: coral, flexShrink: 1, textAlign: 'right'}).children(item.value)
+								h.text.style({...styles.body, color: MUTED}).children(item.label),
+								h.text.style({...styles.meta, color: CORAL, flexShrink: 1, textAlign: 'right'}).children(item.value)
 							)
 					)
 				)
@@ -219,7 +219,7 @@ function ProfileContacts(h: H) {
 	)
 }
 
-export function Profile(h: H) {
+export function Profile(h: Native.H<typeof Message.Type>) {
 	return Layout(h, {
 		content: Column(
 			h,
@@ -257,27 +257,26 @@ function CvGrid(h: H) {
 }
 
 function CvHeading(h: H) {
-	const {contacts, profile, summary, website} = CvScreen
-	return h.view.style({borderBottomColor: ink, borderBottomWidth: 2, gap: 12, paddingBottom: 12}).children(
+	return h.view.style({borderBottomColor: INK, borderBottomWidth: 2, gap: 12, paddingBottom: 12}).children(
 		CvGrid(h),
 		h.text
 			.prop('accessibilityRole', 'header')
 			.style({...styles.cvHeading, fontSize: 26, letterSpacing: 3, textTransform: 'uppercase'})
-			.children(profile.firstName),
+			.children(CvScreen.profile.firstName),
 		h.text
-			.style({...styles.cvHeading, color: muted, fontSize: 20, textTransform: 'uppercase'})
-			.children(profile.lastName),
-		h.text.style({...styles.cvHeading, textTransform: 'uppercase'}).children(profile.title),
-		h.text.style(styles.cvBody).children(summary),
-		h.view.style({flexDirection: 'row', flexWrap: 'wrap', columnGap: 14}).children(
-			h.text.style({...styles.meta, alignSelf: 'center'}).children(profile.location),
+			.style({...styles.cvHeading, color: MUTED, fontSize: 20, textTransform: 'uppercase'})
+			.children(CvScreen.profile.lastName),
+		h.text.style({...styles.cvHeading, textTransform: 'uppercase'}).children(CvScreen.profile.title),
+		h.text.style(styles.cvBody).children(CvScreen.summary),
+		h.view.style({columnGap: 14, flexDirection: 'row', flexWrap: 'wrap'}).children(
+			h.text.style({...styles.meta, alignSelf: 'center'}).children(CvScreen.profile.location),
 			Array.map(
 				[
-					contacts.phone,
-					contacts.email,
-					contacts.github,
-					{...contacts.pec, value: `PEC ${contacts.pec.value}`},
-					website
+					CvScreen.contacts.phone,
+					CvScreen.contacts.email,
+					CvScreen.contacts.github,
+					{...CvScreen.contacts.pec, value: `PEC ${CvScreen.contacts.pec.value}`},
+					CvScreen.website
 				],
 				link =>
 					h.view
@@ -286,7 +285,7 @@ function CvHeading(h: H) {
 							Link(h, link.value, Message.OpenedLink({url: link.href}), h.text.style(styles.meta).children(link.value))
 						)
 			),
-			h.text.style({...styles.meta, alignSelf: 'center'}).children(`VAT ${profile.vat}`)
+			h.text.style({...styles.meta, alignSelf: 'center'}).children(`VAT ${CvScreen.profile.vat}`)
 		)
 	)
 }
@@ -306,17 +305,17 @@ function CvEntry(h: H, input: {aside: string; details: readonly string[]; title:
 				.style(styles.cvBody)
 				.children(
 					h.text.style({fontWeight: '600'}).children(input.title),
-					h.text.style({color: muted}).children(` · ${Array.join(input.details, ' · ')}`)
+					h.text.style({color: MUTED}).children(` · ${Array.join(input.details, ' · ')}`)
 				),
 			h.text.style(styles.meta).children(input.aside),
 			body
 		)
 }
 
-export function Cv(h: H) {
+export function Cv(h: Native.H<typeof Message.Type>) {
 	return CvActions(h, {
 		onEmit: message => message,
-		view: ({choose}) =>
+		view: actions =>
 			Layout(h, {
 				content: Column(
 					h,
@@ -354,7 +353,7 @@ export function Cv(h: H) {
 						{id: 'home', label: 'Portfolio', symbol: 'chevron.left'},
 						{id: 'print', label: 'Open printable CV', symbol: 'doc.text'}
 					],
-					choose
+					choose: actions.choose
 				}
 			})
 	})

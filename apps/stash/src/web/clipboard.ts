@@ -1,7 +1,7 @@
 import {Array, Effect, Option, String, pipe} from 'effect'
 
 import {SecureRandom} from 'effect/crypto'
-import {FetchHttpClient, HttpBody, HttpClient} from 'effect/http'
+import {HttpBody, HttpClient} from 'effect/http'
 
 import {NoteId, NotesError} from '#contracts'
 
@@ -52,11 +52,10 @@ const sendImage = Effect.fnUntraced(function* (image: Blob) {
 	}
 })
 
-export const paste = pipe(
+export const paste = Effect.catchTag(
 	Effect.gen(function* () {
-		const items = yield* atDevice('The clipboard could not be read.', () => navigator.clipboard.read())
 		const photo = pipe(
-			items,
+			yield* atDevice('The clipboard could not be read.', () => navigator.clipboard.read()),
 			Array.findFirst(item =>
 				pipe(
 					item.types,
@@ -67,16 +66,13 @@ export const paste = pipe(
 			Option.getOrUndefined
 		)
 		if (photo !== undefined) {
-			const image = yield* atDevice('The copied image could not be read.', () => photo.item.getType(photo.type))
-			yield* sendImage(image)
-			return undefined
+			yield* sendImage(yield* atDevice('The copied image could not be read.', () => photo.item.getType(photo.type)))
+			return Option.none<string>()
 		}
-		const copy = yield* atDevice('The copied link could not be read.', () => navigator.clipboard.readText())
-		return yield* copiedLink(copy)
+		return Option.some(
+			yield* copiedLink(yield* atDevice('The copied link could not be read.', () => navigator.clipboard.readText()))
+		)
 	}),
-	Effect.catchTag('HttpClientError', cause =>
-		NotesError.make({cause, message: 'The copied image could not be saved.'})
-	),
-	// oxlint-disable-next-line effecttsgo/strict-effect-provide -- Browser clipboard upload uses the page transport.
-	Effect.provide(FetchHttpClient.layer)
+	'HttpClientError',
+	cause => NotesError.make({cause, message: 'The copied image could not be saved.'})
 )

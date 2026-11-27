@@ -1,4 +1,4 @@
-import {Array, Option, String, pipe} from 'effect'
+import {Array, Boolean, Function, Option, Schema, String, pipe} from 'effect'
 import type {DateTime} from 'effect'
 
 import type {RowData} from '@deslop/design/model'
@@ -8,44 +8,60 @@ import type {Account, ListedSession, Person} from '#contracts'
 
 import {browserOf, deviceOf} from '#screens/browser.ts'
 
-export type Mark =
-	| {kind: 'avatar'; initial: string; url: string | undefined}
-	| {kind: 'device'; device: 'apple' | 'android' | 'windows' | 'linux' | 'browser'}
+export type Mark = typeof Mark.Type
+export const Mark = Schema.TaggedUnion({
+	Avatar: {initial: Schema.String, url: Schema.optional(Schema.String)},
+	Device: {device: Schema.Literals(['apple', 'android', 'windows', 'linux', 'browser'])}
+})
 
-export type AuthRow = RowData & {mark: Mark}
+export type AuthRow = {item: RowData; mark: Mark}
 
 function lineOf(parts: readonly unknown[]) {
 	return pipe(parts, Array.filter(String.isString), Array.join(' · '))
 }
 
-export function personRow(person: Account, membership?: Person, now?: DateTime.Utc): AuthRow {
+export function personRow(person: Account, membership?: Person, now?: DateTime.Utc) {
 	const username = Option.isSome(person.fullName) && `@${person.name}`
-	const id = Option.getOrUndefined(String.match(/^github:([1-9]\d*)$/u)(person.id))
 	const waiting = person.role === 'Waiting'
-	return {
-		id: person.id,
-		line: lineOf([
-			username,
-			String.startsWith('github:')(person.id) ? 'GitHub' : 'Tailnet',
-			person.role === 'Admin' && 'admin'
-		]),
-		mark: {
-			kind: 'avatar',
-			initial: String.toUpperCase(String.slice(0, 1)(person.name)),
-			url: id === undefined ? undefined : `https://avatars.githubusercontent.com/u/${id[1]}?s=96`
-		},
-		problem: waiting ? {reason: lineOf(['Waiting for approval', username]), status: 'warning'} : undefined,
-		title: Option.getOrElse(person.fullName, () => person.name),
-		trailing:
-			membership === undefined
-				? undefined
-				: Option.getOrUndefined(
-						Option.map(membership.since, since => (waiting && now !== undefined ? ageOf(since, now) : monthOf(since)))
-					)
+	function trailing() {
+		if (membership === undefined) return undefined
+		return Option.getOrUndefined(
+			Option.map(membership.since, since => {
+				if (waiting && now !== undefined) return ageOf(since, now)
+				return monthOf(since)
+			})
+		)
 	}
+	return {
+		item: {
+			id: person.id,
+			line: lineOf([
+				username,
+				Boolean.match(String.startsWith('github:')(person.id), {
+					onFalse: Function.constant('Tailnet'),
+					onTrue: Function.constant('GitHub')
+				}),
+				person.role === 'Admin' && 'admin'
+			]),
+			problem: Boolean.match(waiting, {
+				onFalse: Function.constUndefined,
+				onTrue: () => ({reason: lineOf(['Waiting for approval', username]), status: 'warning' as const})
+			}),
+			title: Option.getOrElse(person.fullName, () => person.name),
+			trailing: trailing()
+		},
+		mark: Mark.cases.Avatar.make({
+			initial: String.toUpperCase(String.slice(0, 1)(person.name)),
+			url: pipe(
+				String.match(/^github:([1-9]\d*)$/u)(person.id),
+				Option.map(id => `https://avatars.githubusercontent.com/u/${id[1]}?s=96`),
+				Option.getOrUndefined
+			)
+		})
+	} satisfies AuthRow
 }
 
-export function sessionRow(session: ListedSession, now: DateTime.Utc): AuthRow {
+export function sessionRow(session: ListedSession, now: DateTime.Utc) {
 	const device = Option.getOrUndefined(deviceOf(session.browser))
 	function logo() {
 		if (device === undefined) return 'browser'
@@ -55,12 +71,14 @@ export function sessionRow(session: ListedSession, now: DateTime.Utc): AuthRow {
 		return 'apple'
 	}
 	return {
-		id: session.id,
-		line: lineOf([Option.getOrUndefined(session.address), session.current && 'This device']),
-		mark: {kind: 'device', device: logo()},
-		title: lineOf([browserOf(session.browser), device]),
-		trailing: ageOf(session.lastSeenAt, now)
-	}
+		item: {
+			id: session.id,
+			line: lineOf([Option.getOrUndefined(session.address), session.current && 'This device']),
+			title: lineOf([browserOf(session.browser), device]),
+			trailing: ageOf(session.lastSeenAt, now)
+		},
+		mark: Mark.cases.Device.make({device: logo()})
+	} satisfies AuthRow
 }
 
 export const AVATAR = {

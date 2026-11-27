@@ -1,32 +1,34 @@
 import {Router} from '@effect/ui'
+import type {View} from '@effect/ui'
 import {BrowserHost, BrowserRouter, Html} from '@effect/ui/html'
 
-import {Array, Effect, Function, Layer, Option, Predicate, Schema, pipe} from 'effect'
+import {Array, Boolean, Effect, Function, Layer, Option, Predicate, pipe} from 'effect'
 
 import {FetchHttpClient, HttpClient, HttpClientResponse} from 'effect/http'
 import {AtomRegistry} from 'effect/reactivity'
 
-import type {Selection} from '@deslop/design/model'
+import type {PaneLeaf} from '@deslop/design/model'
 import {Layout, ListDetail, Row, styles, webStyle} from '@deslop/design/web'
 import {AuthError, signInUrl} from '@deslop/runtime/shared/auth'
 import {addPageTelemetry, layerPageProtocol} from '@deslop/runtime/web/client'
 
 import {returnTarget} from '#contracts'
 
-import {Directory} from '#screens/directory.ts'
+import {Directory, visibleToolbar} from '#screens/directory.ts'
 import type {Entry, Screen} from '#screens/directory.ts'
 import {marks} from '#screens/marks.ts'
 import {Admit, RecoverSignIn, Refresh, SignOut, StartSignIn} from '#screens/model.ts'
 import {AuthReads} from '#screens/reads.ts'
 import {AuthRoute} from '#screens/routes.ts'
-import {AVATAR} from '#screens/rows.ts'
-import type {Mark} from '#screens/rows.ts'
+import {AVATAR, Mark} from '#screens/rows.ts'
+import {accessOptions, authApp, directoryOptions, renderEntry, rowOptions} from '#screens/view.ts'
+import type {RowSelection} from '#screens/view.ts'
 
+const MARK_STYLE = {flexShrink: '0', height: '20px', objectFit: 'contain', width: '20px'}
 const control = {...webStyle(styles.control), border: '0', color: styles.title.color, cursor: 'pointer', gap: '8px'}
-const markStyle = {flexShrink: '0', height: '20px', objectFit: 'contain', width: '20px'}
 
 function Cover<M>(h: Html.H<M>, mark: Mark) {
-	if (mark.kind === 'device') return h.img.style(markStyle).attrs({alt: '', src: marks[mark.device]})
+	if (Mark.isAnyOf(['Device'])(mark)) return h.img.style(MARK_STYLE).attrs({alt: '', src: marks[mark.device]})
 	return h.span
 		.attr('aria-hidden', 'true')
 		.style({...webStyle(AVATAR), ...webStyle(styles.title)})
@@ -54,44 +56,33 @@ function Skeleton<M>(h: Html.H<M>, id: string) {
 		)
 }
 
-function EntryView<M>(
-	h: Html.H<M>,
-	entry: Entry,
-	retry: Screen['retry'],
-	activeId?: string,
-	select?: Selection['select']
-) {
-	if (entry.kind === 'skeleton') return Skeleton(h, entry.id)
-	if (entry.kind === 'row') {
-		const {mark, ...item} = entry.row
-		return Row(h, {active: item.id === activeId, cover: Cover(h, mark), item, ...(select !== undefined && {select})})
-	}
-	return h.div
-		.key(entry.text)
-		.attr('role', 'status')
-		.style({...webStyle(styles.line), padding: '8px 12px'})
-		.children(
-			entry.text,
-			entry.reader !== undefined &&
-				retry(h.button.class('design-control').attr('type', 'button'), 'click', entry.reader)
-					.style({...control, marginTop: '8px'})
-					.children('Retry')
-		)
+function EntryView<M>(h: Html.H<M>, entry: Entry, retry: Screen['retry'], selection?: RowSelection) {
+	return renderEntry(entry, {
+		notice: notice =>
+			h.div
+				.key(notice.text)
+				.attr('role', 'status')
+				.style({...webStyle(styles.line), padding: '8px 12px'})
+				.children(
+					notice.text,
+					notice.retry !== undefined &&
+						retry(h.button.class('design-control').attr('type', 'button'), 'click', notice.retry)
+							.style({...control, marginTop: '8px'})
+							// fallow-ignore-next-line code-duplication -- Web and iPhone pass the same screen parts; only each host's elements differ.
+							.children('Retry')
+				),
+		row: row => Row<M, never>(h, rowOptions(row, Cover(h, row.mark), selection)),
+		skeleton: id => Skeleton(h, id)
+	})
 }
 
+// fallow-ignore-next-line code-duplication -- Web and iPhone pass the same screen parts; only each host's elements differ.
 function Workspace<M>(h: Html.H<M>, screen: Screen) {
 	if (screen.kind === 'directory') {
-		return ListDetail(h, {
-			defaultId: screen.defaultId,
-			detail: Array.map(screen.detail, entry => EntryView(h, entry, screen.retry)),
-			detailToolbar: screen.detailToolbar,
-			list: (active, wide) => [
-				...Array.map(screen.people, entry => EntryView(h, entry, screen.retry, active, screen.selection.select)),
-				...(wide ? [] : Array.map(screen.accountNotes, entry => EntryView(h, entry, screen.retry)))
-			],
-			selection: screen.selection,
-			toolbar: screen.toolbar
-		})
+		return ListDetail<M, never>(
+			h,
+			directoryOptions(screen, (entry, retry, selection) => EntryView(h, entry, retry, selection))
+		)
 	}
 	if (screen.kind === 'sessions') {
 		return Layout(h, {
@@ -99,7 +90,7 @@ function Workspace<M>(h: Html.H<M>, screen: Screen) {
 				.attr('aria-label', 'Browser sessions')
 				.style({...webStyle(styles.rows), overflowY: 'auto'})
 				.children(Array.map(screen.detail, entry => EntryView(h, entry, screen.retry))),
-			toolbar: screen.toolbar.actions.length > 0 ? screen.toolbar : undefined
+			toolbar: visibleToolbar(screen.toolbar)
 		})
 	}
 	const center = {
@@ -118,31 +109,24 @@ function Workspace<M>(h: Html.H<M>, screen: Screen) {
 				.children(screen.back(h.button.class('design-control'), 'click').style(control).children('Back to Auth'))
 		})
 	}
-	return Layout(h, {
-		content: h.section.style(center).children(
-			screen.state === 'waiting' &&
-				h.p.attr('role', 'status').style(webStyle(styles.line)).children('Waiting for an admin'),
-			screen.state === 'sign-in' &&
-				screen
-					.signIn(h.button.class('design-control'), 'click')
-					.attr('disabled', screen.signingIn ? '' : undefined)
+	return Layout(
+		h,
+		accessOptions<PaneLeaf<View.Input<M>>, View.Input<M>>(screen, {
+			content: children => h.section.style(center).children(children),
+			entry: (entry, retry) => EntryView(h, entry, retry),
+			error: text => h.p.attr('role', 'alert').style(webStyle(styles.line)).children(text),
+			signIn: (part, label, disabled) =>
+				part(h.button.class('design-control'), 'click')
+					.attr('disabled', Boolean.match(disabled, {onFalse: Function.constUndefined, onTrue: Function.constant('')}))
 					.style(control)
-					.children(h.img.style(markStyle).attrs({alt: '', src: marks.github}), 'Continue with GitHub'),
-			screen.error !== undefined && h.p.attr('role', 'alert').style(webStyle(styles.line)).children(screen.error),
-			...Array.map(screen.entries, entry => EntryView(h, entry, screen.retry))
-		),
-		toolbar: screen.toolbar.actions.length > 0 ? screen.toolbar : undefined
-	})
+					.children(h.img.style(MARK_STYLE).attrs({alt: '', src: marks.github}), label),
+			waiting: text => h.p.attr('role', 'status').style(webStyle(styles.line)).children(text)
+		})
+	)
 }
 
-const App = Html.component({
-	message: Schema.Never,
-	model: Schema.Null,
-	name: 'Auth',
-	props: Schema.Struct({route: AuthRoute})
-}).make({
-	init: Function.constNull,
-	update: Function.constNull,
+const App = Html.component(authApp.definition).make({
+	...authApp.lifecycle,
 	view: h => Directory(h, {native: false, route: h.props.route}, screen => Workspace(h, screen))
 })
 

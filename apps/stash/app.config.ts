@@ -4,15 +4,15 @@ import {iphoneUpdates} from '@deslop/runtime/config/iphone'
 
 import {appOrigin, authOrigin, scheme} from './src/iphone/origin.ts'
 
-const bundleIdentifier = 'xyz.mp281x.stash'
-const group = `group.${bundleIdentifier}`
+const BUNDLE_IDENTIFIER = 'xyz.mp281x.stash'
+const group = `group.${BUNDLE_IDENTIFIER}`
 const keychain = `$(AppIdentifierPrefix)${group}`
 
 export default {
 	ios: {
 		appleTeamId: '99K7MQUK7F',
 		associatedDomains: [`webcredentials:${new URL(authOrigin).hostname}`],
-		bundleIdentifier,
+		bundleIdentifier: BUNDLE_IDENTIFIER,
 		deploymentTarget: '26.0',
 		entitlements: {
 			'aps-environment': 'production',

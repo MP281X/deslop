@@ -1,12 +1,26 @@
 import {Command, Component, Router, Subscription} from '@effect/ui'
 import type {View} from '@effect/ui'
 
-import {Array, DateTime, Duration, Effect, Layer, Number, Option, Schema, Stream, String, pipe} from 'effect'
+import type {Stream} from 'effect'
+import {
+	Array,
+	Boolean,
+	DateTime,
+	Duration,
+	Function,
+	Layer,
+	Number,
+	Option,
+	Predicate,
+	Schema,
+	String,
+	pipe
+} from 'effect'
 
 import {AsyncResult, AtomRegistry} from 'effect/reactivity'
-import type {Atom} from 'effect/reactivity'
 
-import type {ToolbarAction, ToolbarMenuItem} from '@deslop/design/model'
+import type {ToolbarAction, ToolbarMenuItem, ToolbarOptions} from '@deslop/design/model'
+import {observe} from '@deslop/runtime/client/atom'
 import {clockAtom} from '@deslop/runtime/client/clock'
 import {blockingFailure, isDeniedCause, needsSignInCause} from '@deslop/runtime/client/live-stream'
 import {isDenied} from '@deslop/runtime/shared/auth'
@@ -24,10 +38,8 @@ import type {Actions} from '#screens/model.ts'
 import {CloseFlight, TripsRoute, flightRoute} from '#screens/routes.ts'
 import {TRAVEL_CHOICES, travelLabel} from '#screens/travel.ts'
 
-function observe<A>(atom: Atom.Atom<A>, read: (value: A) => Message) {
-	return Stream.unwrap(
-		AtomRegistry.AtomRegistry.useSync(registry => Stream.map(AtomRegistry.toStream(registry, atom), read))
-	)
+function ownerOf(account: Model['account']) {
+	return Option.getOrUndefined(Option.map(AsyncResult.value(account), user => user.id))
 }
 
 function targetOf(route: TripsRoute) {
@@ -35,10 +47,19 @@ function targetOf(route: TripsRoute) {
 	return {day: TripsRoute.isAnyOf(['Day'])(route), id: route.params.id}
 }
 
-type MenuItem = ToolbarMenuItem & {onPress: Message}
-type ToolbarItem = ToolbarAction & ({onPress: Message} | {menu: readonly MenuItem[]})
+function navigateTo(from: TripsRoute, to: TripsRoute) {
+	if (targetOf(from) === undefined) return Command.asNoop(Router.push(TripsRoute, to))
+	return Command.asNoop(Router.replace(TripsRoute, to))
+}
 
-function airportMenu(flight: Flight, travel: readonly TravelTime[], pending: boolean): readonly MenuItem[] {
+type MenuItem = ToolbarMenuItem & {onPress: Message}
+type ToolbarItem = {action: ToolbarAction; messages: readonly {id: string; onPress: Message}[]}
+
+function toolbarButton(action: ToolbarAction, onPress: Message) {
+	return {action, messages: [{id: action.id, onPress}]} satisfies ToolbarItem
+}
+
+function airportMenu(flight: Flight, travel: readonly TravelTime[], pending: boolean) {
 	const saved = Option.map(travelTo(flight, travel), Duration.toMinutes)
 	const times = pipe(
 		flight.from.code,
@@ -64,12 +85,15 @@ function airportMenu(flight: Flight, travel: readonly TravelTime[], pending: boo
 		...Option.toArray(
 			Option.map(rideTo(flight.from), url => ({id: 'ride', label: 'Ride', onPress: Message.OpenUrl({url})}))
 		)
-	]
+	] satisfies readonly MenuItem[]
 }
 
-type Options = Actions & {readonly deviceEvents?: Stream.Stream<Message>; readonly clipboard?: Stream.Stream<Message>}
+export type TripsOptions = Actions & {
+	readonly deviceEvents?: Stream.Stream<Message>
+	readonly clipboard?: Stream.Stream<Message>
+}
 
-export function makeTrips(data: TripsData, options: Options) {
+export function makeTrips(boardReads: TripsData, options: TripsOptions) {
 	const Trips = Component.define({
 		message: Message,
 		model: Model,
@@ -84,67 +108,90 @@ export function makeTrips(data: TripsData, options: Options) {
 			const flights = Option.getOrUndefined(AsyncResult.value(model.flights))
 			const travel = Option.getOrElse(AsyncResult.value(model.travel), Array.empty<TravelTime>)
 			const target = targetOf(model.route)
-			const id = flights === undefined || target === undefined ? target?.id : openedFlight(flights, target, model.now)
-			const flight =
-				flights === undefined
-					? undefined
-					: Option.getOrUndefined(
-							id === undefined ? boardOf(flights, model.now) : Array.findFirst(flights, item => item.id === id)
-						)
+			function resolvedId() {
+				if (flights === undefined || target === undefined) return target?.id
+				return openedFlight(flights, target, model.now)
+			}
+			const id = resolvedId()
+			function findFlight() {
+				if (flights === undefined) return undefined
+				if (id === undefined) return Option.getOrUndefined(boardOf(flights, model.now))
+				return Option.getOrUndefined(Array.findFirst(flights, item => item.id === id))
+			}
+			const flight = findFlight()
 			const problem = Option.getOrUndefined(Option.orElse(account, () => flightFailure))
 			const signIn = problem !== undefined && needsSignInCause(problem)
 			const missing = target !== undefined && flights !== undefined && flight === undefined
 			const notFound = TripsRoute.isAnyOf(['NotFound'])(model.route)
 			const loaded = problem === undefined && flights !== undefined && !notFound
 			const stale = loaded && AsyncResult.isFailure(model.flights)
-			const pane = TripsRoute.isAnyOf(['NotFound'])(model.route) ? undefined : model.route.search.pane
+			function selectedId() {
+				if (TripsRoute.isAnyOf(['NotFound'])(model.route)) return id
+				if (model.route.search.pane === 'list') return undefined
+				if (id !== undefined) return id
+				if (model.route.search.pane === 'detail') return flight?.id ?? 'board'
+				return undefined
+			}
 			const selection = {
 				back: p.part((el, event: string) => el.on(event, Message.Back())),
-				id: pane === 'list' ? undefined : (id ?? (pane === 'detail' ? (flight?.id ?? 'board') : undefined)),
+				id: selectedId(),
 				select: p.part((el, event: string, rowId: string) =>
 					el.on(
 						event,
-						rowId === PAST
-							? Message.TogglePast()
-							: Option.getOrElse(
-									Option.map(Schema.decodeUnknownOption(FlightId)(rowId), found => Message.Select({id: found})),
-									Message.Ignored
-								)
+						Boolean.match(rowId === PAST, {
+							onFalse: () =>
+								pipe(
+									Schema.decodeOption(FlightId)(rowId),
+									Option.map(found => Message.Select({id: found})),
+									Option.getOrElse(Message.Ignored)
+								),
+							onTrue: Message.TogglePast
+						})
 					)
 				)
 			}
-			const toolbar: ToolbarItem[] = []
-			const detailToolbar: ToolbarItem[] = []
-			if (loaded) {
-				toolbar.push({
-					disabled: pending,
-					id: 'paste',
-					label: 'Paste booking',
-					onPress: Message.PasteVisibility({open: true}),
-					symbol: 'document.on.clipboard'
-				})
-				if (flight !== undefined && dayAt(flight, flights, model.now, travel).toAirport) {
-					const menu = airportMenu(flight, travel, pending)
-					if (Array.isReadonlyArrayNonEmpty(menu))
-						detailToolbar.push({id: 'airport', label: 'Airport travel', menu, symbol: 'location'})
-				}
-				if (Option.exists(AsyncResult.value(model.account), user => user.signOut)) {
-					toolbar.push({
-						disabled: pending,
-						id: 'sign-out',
-						label: 'Sign out',
-						onPress: Message.SignOut(),
-						symbol: 'rectangle.portrait.and.arrow.right'
-					})
-				}
+			const toolbar = Array.getSomes([
+				Option.liftPredicate(
+					toolbarButton(
+						{disabled: pending, id: 'paste', label: 'Paste booking', symbol: 'document.on.clipboard'},
+						Message.PasteVisibility({open: true})
+					),
+					() => loaded
+				),
+				Option.liftPredicate(
+					toolbarButton(
+						{disabled: pending, id: 'sign-out', label: 'Sign out', symbol: 'rectangle.portrait.and.arrow.right'},
+						Message.SignOut()
+					),
+					() => loaded && Option.exists(AsyncResult.value(model.account), user => user.signOut)
+				),
+				Option.liftPredicate(
+					toolbarButton({id: 'retry', label: 'Out of date. Retry', symbol: 'exclamationmark.circle'}, Message.Retry()),
+					() => stale
+				)
+			])
+			function airport() {
+				if (!loaded || flight === undefined || !dayAt(flight, flights, model.now, travel).toAirport) return []
+				const menu = airportMenu(flight, travel, pending)
+				if (Array.isReadonlyArrayEmpty(menu)) return []
+				return [
+					{
+						action: {
+							id: 'airport',
+							label: 'Airport travel',
+							menu: Array.map(menu, item => ({
+								...(Predicate.hasProperty(item, 'checked') && {checked: item.checked}),
+								...(Predicate.hasProperty(item, 'disabled') && {disabled: item.disabled}),
+								id: item.id,
+								label: item.label
+							})),
+							symbol: 'location'
+						},
+						messages: menu
+					} satisfies ToolbarItem
+				]
 			}
-			if (stale)
-				toolbar.push({
-					id: 'retry',
-					label: 'Out of date. Retry',
-					onPress: Message.Retry(),
-					symbol: 'exclamationmark.circle'
-				})
+			const detailToolbar = airport()
 			function notice() {
 				if (notFound) return 'Page not found'
 				if (problem === undefined) return undefined
@@ -154,22 +201,34 @@ export function makeTrips(data: TripsData, options: Options) {
 				return 'Couldn’t load flights'
 			}
 
-			function descriptors(actions: readonly ToolbarItem[]): readonly ToolbarAction[] {
-				return Array.map(actions, action => {
-					if ('onPress' in action) {
-						const {onPress: _, ...item} = action
-						return item
-					}
-					return {...action, menu: Array.map(action.menu, ({onPress: _, ...item}) => item)}
-				})
+			function readBoard() {
+				if (!loaded || flight === undefined) return undefined
+				return boardingPass(flight, flights, model.now, travel)
+			}
+			function readHalfStep() {
+				if (!loaded || target !== undefined) return undefined
+				return Option.getOrUndefined(nextBoardOf(flights, model.now))
+			}
+			function readItinerary() {
+				if (!loaded) return undefined
+				return itinerary(flights, model.now, travel, model.pastOpen)
 			}
 
 			return {
-				back: selection.back,
-				board: loaded && flight !== undefined ? boardingPass(flight, flights, model.now, travel) : undefined,
+				board: readBoard(),
 				cancel: p.part((el, event: string) =>
-					el.on(event, Message.PasteVisibility({open: false}), event === 'cancel' ? {preventDefault: true} : undefined)
+					el.on(
+						event,
+						Message.PasteVisibility({open: false}),
+						Boolean.match(event === 'cancel', {
+							onFalse: Function.constUndefined,
+							onTrue: () => ({preventDefault: true as const})
+						})
+					)
 				),
+				choose: p.part((el, event: string) => el.on(event, Message.PasteFile({file: undefined}))),
+				defaultId: flight?.id,
+				detailToolbar: Array.map(detailToolbar, item => item.action),
 				error: model.error,
 				file: p.part((el, event: string, fileOf: (value: unknown) => unknown) =>
 					el.on(event, value => {
@@ -179,45 +238,43 @@ export function makeTrips(data: TripsData, options: Options) {
 						return Message.PasteFile({file})
 					})
 				),
-				choose: p.part((el, event: string) => el.on(event, Message.PasteFile({file: null}))),
-				itinerary: loaded ? itinerary(flights, model.now, travel, model.pastOpen) : undefined,
-				halfStep: loaded && target === undefined ? Option.getOrUndefined(nextBoardOf(flights, model.now)) : undefined,
+				halfStep: readHalfStep(),
+				itinerary: readItinerary(),
 				loading: problem === undefined && flights === undefined && !notFound,
 				missing,
 				notice: notice(),
+				past: p.part((el, event: string) =>
+					el.attr('aria-expanded', `${model.pastOpen}`).on(event, Message.TogglePast())
+				),
 				paste: p.part((el, event: string) => el.on(event, Message.PasteVisibility({open: true}))),
 				pasteOpen: model.pasteOpen,
 				pastedText: model.pastedText,
 				pending,
-				retry: p.part((el, event: string) => el.on(event, signIn ? Message.SignIn() : Message.Retry())),
+				retry: p.part((el, event: string) =>
+					el.on(event, Boolean.match(signIn, {onFalse: Message.Retry, onTrue: Message.SignIn}))
+				),
 				selection,
 				signIn,
 				stale,
 				submit: p.part((el, event: string) => el.on(event, Message.PasteSubmit(), {preventDefault: true})),
 				submitDisabled: pending || String.isEmpty(String.trim(model.pastedText)),
-				text: p.part((el, event: string, textOf: (value: unknown) => string | undefined) =>
+				text: p.part((el, event: string) =>
 					el.on(event, value => {
-						const text = textOf(value)
-						if (text === undefined) return undefined
-						return Message.PasteText({text})
+						if (!Predicate.hasProperty(value, 'value') || !Predicate.isString(value.value)) return undefined
+						return Message.PasteText({text: value.value})
 					})
 				),
-				defaultId: flight?.id,
-				detailToolbar: descriptors(detailToolbar),
 				toolbar: {
-					actions: descriptors(toolbar),
-					choose: p.part((el, event: string, idOf: (payload: unknown) => string | undefined) =>
+					actions: Array.map(toolbar, item => item.action),
+					choose: p.part((el, event: string, idOf: Parameters<ToolbarOptions['choose']>[2]) =>
 						el.on(event, payload => {
-							const id = idOf(payload)
-							const actions = Array.flatMap<ToolbarItem, {id: string; onPress: Message}>(
+							const actionId = idOf(payload)
+							return pipe(
 								[...toolbar, ...detailToolbar],
-								action => ('onPress' in action ? [action] : action.menu)
-							)
-							return Option.getOrUndefined(
-								Option.map(
-									Array.findFirst(actions, item => item.id === id),
-									item => item.onPress
-								)
+								Array.flatMap(item => item.messages),
+								Array.findFirst(item => item.id === actionId),
+								Option.map(item => item.onPress),
+								Option.getOrUndefined
 							)
 						})
 					)
@@ -225,18 +282,23 @@ export function makeTrips(data: TripsData, options: Options) {
 			}
 		},
 		subscriptions: $ => {
-			const account = Option.getOrUndefined(Option.map(AsyncResult.value($.model.account), user => user.id))
+			const account = ownerOf($.model.account)
 			return [
 				Router.subscription(TripsRoute, $.model.route, route => Message.Route({route})),
 				Subscription.make(
 					'account',
-					observe(data.account, result => Message.Account({result}))
+					observe(boardReads.accountAtom, result => Message.Account({result}))
 				),
 				account !== undefined &&
-					Subscription.make('flights', account, () => observe(data.flights, result => Message.Flights({result}))),
+					Subscription.make('flights', account, () =>
+						observe(boardReads.flightsAtom, result => Message.Flights({result}))
+					),
 				account !== undefined &&
-					Subscription.make('travel', account, () => observe(data.travel, result => Message.Travel({result}))),
-				account !== undefined && Subscription.make('push', account, () => observe(data.push, Message.Ignored)),
+					Subscription.make('travel', account, () =>
+						observe(boardReads.travelAtom, result => Message.Travel({result}))
+					),
+				account !== undefined &&
+					Subscription.make('push', account, () => observe(boardReads.pushAtom, () => Message.Ignored())),
 				Subscription.make(
 					'clock',
 					observe(clockAtom('1 minute'), now => Message.Clock({now}))
@@ -247,9 +309,9 @@ export function makeTrips(data: TripsData, options: Options) {
 		},
 		update: {
 			Account: ($, message) => {
-				const before = Option.getOrUndefined(Option.map(AsyncResult.value($.model.account), user => user.id))
-				const after = Option.getOrUndefined(Option.map(AsyncResult.value(message.result), user => user.id))
-				if (before === after) return $.evolve({account: message.result})
+				if (ownerOf($.model.account) === ownerOf(message.result)) {
+					return $.evolve({account: message.result})
+				}
 				return $.evolve({
 					account: message.result,
 					flights: AsyncResult.initial(),
@@ -261,11 +323,10 @@ export function makeTrips(data: TripsData, options: Options) {
 			Back: $ => $.run(Command.asNoop(CloseFlight.make({}))),
 			Clock: ($, message) => $.evolve({now: message.now}),
 			Flights: ($, message) => {
-				const next = $.evolve({flights: message.result})
 				if (Option.exists(AsyncResult.error(message.result), isDenied)) {
-					return next.run(Command.asNoop(Reload.make({accountOnly: true})))
+					return $.evolve({flights: message.result}).run(Command.asNoop(Reload.make({accountOnly: true})))
 				}
-				return next
+				return $.evolve({flights: message.result})
 			},
 			Ignored: $ => $.model,
 			OpenUrl: ($, message) =>
@@ -275,10 +336,7 @@ export function makeTrips(data: TripsData, options: Options) {
 						Command.match({onFailure: error => Message.WriteFailed({error: error.message}), onSuccess: Message.Ignored})
 					)
 				),
-			Opened: ($, message) => {
-				const navigate = targetOf($.model.route) === undefined ? Router.push : Router.replace
-				return $.run(Command.asNoop(navigate(TripsRoute, message.route)))
-			},
+			Opened: ($, message) => $.run(navigateTo($.model.route, message.route)),
 			PasteFile: ($, message) => {
 				if (!$.model.pasteOpen) return $.model
 				return $.evolve({error: undefined}).run(Run.make({action: Action.File({file: message.file})}))
@@ -301,10 +359,7 @@ export function makeTrips(data: TripsData, options: Options) {
 				if (previous !== undefined && current === undefined) return next.viewTransition(['design-detail-out'])
 				return next
 			},
-			Select: ($, message) => {
-				const navigate = targetOf($.model.route) === undefined ? Router.push : Router.replace
-				return $.run(Command.asNoop(navigate(TripsRoute, flightRoute(message.id))))
-			},
+			Select: ($, message) => $.run(navigateTo($.model.route, flightRoute(message.id))),
 			SessionChanged: ($, message) => $.evolve({error: message.message}),
 			SignIn: $ => $.evolve({error: undefined}).run(Run.make({action: Action.Session({logout: false})})),
 			SignOut: $ => $.evolve({error: undefined}).run(Run.make({action: Action.Session({logout: true})})),
@@ -325,7 +380,7 @@ export function makeTrips(data: TripsData, options: Options) {
 	) {
 		return Trips(h, {props, view: display})
 	}
-	return {layer: Layer.provideMerge(layerCommands(data, options), AtomRegistry.layer), view}
+	return {layer: Layer.provideMerge(layerCommands(boardReads, options), AtomRegistry.layer), view}
 }
 
 export type ScreenParts = Parameters<Parameters<ReturnType<typeof makeTrips>['view']>[2]>[0]

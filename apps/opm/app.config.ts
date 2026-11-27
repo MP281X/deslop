@@ -4,14 +4,14 @@ import type {ExpoConfig} from 'expo/config'
 
 import {iphoneUpdates} from '@deslop/runtime/config/iphone'
 
-import {appOrigin, authOrigin, bundle, development, scheme} from './src/iphone/origin.ts'
+import {appOrigin, authOrigin, development, variant} from './src/iphone/origin.ts'
 
 export default {
 	experiments: {inlineModules: {watchedDirectories: ['src/iphone/native']}},
 	ios: {
 		appleTeamId: '99K7MQUK7F',
 		associatedDomains: [`webcredentials:${new URL(authOrigin).hostname}`],
-		bundleIdentifier: bundle,
+		bundleIdentifier: variant.bundle,
 		deploymentTarget: '26.0',
 		icon: './src/iphone/app.icon',
 		infoPlist: {NSSupportsLiveActivities: true},
@@ -32,7 +32,7 @@ export default {
 		],
 		'@bacons/apple-targets'
 	],
-	scheme,
+	scheme: variant.scheme,
 	slug: 'opm',
 	userInterfaceStyle: 'dark',
 	...iphoneUpdates(appOrigin)

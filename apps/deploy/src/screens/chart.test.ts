@@ -2,7 +2,7 @@ import {assert, it} from '@effect/vitest'
 
 import {DateTime, Option} from 'effect'
 
-import {axisPosition, restartPositions, tracePaths} from '#screens/chart.ts'
+import {axisPosition, historyTrace, tracePaths} from '#screens/chart.ts'
 
 function time(minute: number) {
 	return DateTime.makeUnsafe(minute * 60_000)
@@ -11,7 +11,7 @@ const now = time(60)
 
 it('aligns timestamps and restarts to the same trailing hour', () => {
 	assert.strictEqual(axisPosition(time(15), now), 25)
-	assert.deepStrictEqual(restartPositions([time(-1), time(15), time(60), time(61)], now), [25, 100])
+	assert.deepStrictEqual(historyTrace([], [time(-1), time(15), time(60), time(61)], now).restarts, [25, 100])
 })
 
 it('clips a point at the left of the hour and leaves unread intervals blank', () => {

@@ -16,7 +16,7 @@ Every app installs with `npm install --global @deslop/<app>` and runs as `<app> 
 ## iPhone updates
 
 - In the Expo app config, spread `iphoneUpdates(appUrl)` from `config/iphone`. Install `expo-updates` in the app; it downloads on launch and uses the download on the next launch. There is no Expo account or service.
-- In the app build, run `expo export --platform ios --output-dir dist/iphone`, then pass the JSON output of `expo-updates runtimeversion:resolve --platform ios` and `expo config --type public --json` to `config/iphone-export.writeIPhoneExport`. Run the resolver with the same native project and config as the Xcode build; it must resolve that build's fingerprint.
+- Call `runIPhoneBuild()` from `tooling/iphone` in the app's `bin/iphone.ts`. It prepares the iOS project with `prepare`; otherwise it exports the bundle and records its resolved runtime version. Use the same native project and config as the Xcode build so the fingerprints match.
 - Ship `dist/iphone` in the same package as `dist/server.js`. The server offers that update only to clients on its fingerprint, through Auth like any other native request.
 
 ## Authorization

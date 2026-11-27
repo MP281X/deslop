@@ -1,10 +1,10 @@
-import {Array, Predicate, Schema, String} from 'effect'
+import {Array, Predicate, Schema, String, pipe} from 'effect'
 
 import {PortfolioRoute} from '#screens/routes.ts'
 
 // The single source for the home page and the CV, cut to what fits one printed A4 page.
 
-const profile = {
+const PROFILE = {
 	firstName: 'Matteo',
 	lastName: 'Paludgnach',
 	location: 'Moimacco (UD), Italy',
@@ -13,16 +13,16 @@ const profile = {
 	vat: 'IT03224930309'
 }
 
-const contacts = {
+const CONTACTS = {
 	email: {href: 'mailto:matteo@mp281x.xyz', label: 'Email', value: 'matteo@mp281x.xyz'},
 	github: {href: 'https://github.com/MP281X', label: 'GitHub', value: 'github.com/MP281X'},
 	pec: {href: 'mailto:matteo.paludgnach@pec.it', label: 'PEC', value: 'matteo.paludgnach@pec.it'},
 	phone: {href: 'tel:+393518853376', label: 'Phone', value: '+39 351 885 3376'}
 }
 
-const summary = 'Building AI agents and web apps end to end with Effect and React.'
+const SUMMARY = 'Building AI agents and web apps end to end with Effect and React.'
 
-const skills = [
+const SKILLS = [
 	{
 		area: 'Frontend',
 		icon: 'monitor',
@@ -37,7 +37,7 @@ const skills = [
 	}
 ] as const
 
-const projects = [
+const PROJECTS = [
 	{
 		description:
 			'A template monorepo built for coding agents: generators, shared patterns, lint rules and skills keep the Effect web and iOS apps they write consistent and high quality.',
@@ -55,7 +55,7 @@ const projects = [
 	}
 ]
 
-const experience = [
+const EXPERIENCE = [
 	{
 		company: 'Datapizza',
 		highlights: [
@@ -113,70 +113,72 @@ const experience = [
 	}
 ]
 
-const education = [
+const EDUCATION = [
 	{degree: 'Cloud Developer Diploma', grade: '95/100', period: '2022 – 2024', school: 'ITS Alto Adriatico'}
 ]
 
-const languages = [
+const LANGUAGES = [
 	{language: 'Italian', level: 'Native'},
 	{language: 'English', level: 'C1'},
 	{language: 'Spanish', level: 'Basic'}
 ]
 
+export type SectionName = typeof SectionName.Type
 export const SectionName = Schema.Literals(['profile', 'skills', 'experience', 'projects', 'education', 'contact'])
 
-const name = `${profile.firstName} ${profile.lastName}`
+const name = `${PROFILE.firstName} ${PROFILE.lastName}`
 const homePath = PortfolioRoute.print(PortfolioRoute.Home())
 const cvPath = PortfolioRoute.print(PortfolioRoute.Cv())
-const website = {href: `https://${profile.portfolio}`, value: profile.portfolio}
+const website = {href: `https://${PROFILE.portfolio}`, value: PROFILE.portfolio}
 
 export const ProfileScreen = {
-	contacts,
 	contactRows: [
-		{...contacts.email, icon: 'envelope'},
-		{...contacts.pec, icon: 'sealCheck'},
-		{...contacts.phone, icon: 'phone'},
-		{...contacts.github, icon: 'github'},
-		{href: cvPath, icon: 'fileText', label: 'CV', value: `${profile.portfolio}${cvPath}`}
+		{...CONTACTS.email, icon: 'envelope'},
+		{...CONTACTS.pec, icon: 'sealCheck'},
+		{...CONTACTS.phone, icon: 'phone'},
+		{...CONTACTS.github, icon: 'github'},
+		{href: cvPath, icon: 'fileText', label: 'CV', value: `${PROFILE.portfolio}${cvPath}`}
 	],
+	contacts: CONTACTS,
 	cvPath,
-	education,
-	experience,
-	languages,
+	education: EDUCATION,
+	experience: EXPERIENCE,
+	languages: LANGUAGES,
 	name,
-	profile,
-	projects,
-	skills,
-	summary
+	profile: PROFILE,
+	projects: PROJECTS,
+	skills: SKILLS,
+	summary: SUMMARY
 } as const
 
 export const CvScreen = {
-	contacts,
-	education: Array.map(education, entry => ({
+	contacts: CONTACTS,
+	education: Array.map(EDUCATION, entry => ({
 		aside: entry.period,
 		details: Array.filter([entry.school, entry.grade], Predicate.isNotUndefined),
 		title: entry.degree
 	})),
-	experience: Array.map(experience, job => ({
+	experience: Array.map(EXPERIENCE, job => ({
 		aside: job.period,
 		details: Array.filter([job.role, job.note, job.location], Predicate.isNotUndefined),
 		highlights: job.highlights,
 		title: job.company
 	})),
 	homePath,
-	languages: Array.join(
-		Array.map(languages, entry => `${entry.language} (${entry.level})`),
-		' · '
+	languages: pipe(
+		LANGUAGES,
+		Array.map(entry => `${entry.language} (${entry.level})`),
+		Array.join(' · ')
 	),
-	profile,
-	projects: Array.map(projects, project => ({
+	profile: PROFILE,
+	projects: Array.map(PROJECTS, project => ({
 		aside: String.replace('https://', '')(project.href),
 		description: project.description,
 		details: [project.role],
 		title: project.name
 	})),
-	skills,
-	summary,
+	skills: SKILLS,
+	summary: SUMMARY,
 	title: `${name} CV`,
 	website
 }

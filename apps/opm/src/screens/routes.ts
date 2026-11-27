@@ -27,10 +27,10 @@ export class CloseChapter extends Command.Service<CloseChapter>()('Opm/Close', {
 	args: {back: Schema.Boolean, route: OpmRoute}
 }) {
 	static readonly layer = this.toLayer(
-		Effect.map(Router.Router, router => ({back, route}) => {
-			if (OpmRoute.isAnyOf(['NotFound'])(route)) return Effect.asVoid(router.replace(libraryOf(route)))
-			if (back) return Effect.asVoid(router.back)
-			return Effect.asVoid(router.patchSearch(route, {chapter: undefined}, {scroll: false}))
+		Effect.map(Router.Router, router => request => {
+			if (OpmRoute.isAnyOf(['NotFound'])(request.route)) return Effect.asVoid(router.replace(libraryOf(request.route)))
+			if (request.back) return Effect.asVoid(router.back)
+			return Effect.asVoid(router.patchSearch(request.route, {chapter: undefined}, {scroll: false}))
 		})
 	)
 }

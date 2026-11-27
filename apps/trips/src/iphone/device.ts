@@ -1,4 +1,5 @@
-import {Effect, Function, Option, Queue, Schema, Stream, String, pipe} from 'effect'
+import type {Cause} from 'effect'
+import {Effect, Function, Option, Predicate, Queue, Schema, Stream, String, pipe} from 'effect'
 
 import {requireNativeModule} from 'expo'
 import {
@@ -8,8 +9,7 @@ import {
 	getDevicePushTokenAsync,
 	getLastNotificationResponse,
 	requestPermissionsAsync,
-	setNotificationCategoryAsync,
-	setNotificationHandler
+	setNotificationCategoryAsync
 } from 'expo-notifications'
 import type {NotificationResponse} from 'expo-notifications'
 import AppState from 'react-native/Libraries/AppState/AppState'
@@ -40,20 +40,9 @@ function listen(attach: () => {remove: () => void}) {
 	return Effect.acquireRelease(Effect.sync(attach), subscription => Effect.sync(() => subscription.remove()))
 }
 
-setNotificationHandler({
-	// oxlint-disable-next-line eslint/require-await -- Expo awaits the synchronous foreground presentation decision.
-	handleNotification: async () => ({
-		shouldPlaySound: true,
-		shouldSetBadge: false,
-		shouldShowBanner: true,
-		shouldShowList: true
-	})
-})
-
 const alerts = Stream.callback<string, FlightsError>(queue =>
 	Effect.gen(function* () {
-		const permission = yield* nativeCall(() => requestPermissionsAsync(), 'Notifications could not be requested.')
-		if (!permission.granted) {
+		if (!(yield* nativeCall(() => requestPermissionsAsync(), 'Notifications could not be requested.')).granted) {
 			yield* Queue.end(queue)
 			return
 		}
@@ -67,11 +56,11 @@ const alerts = Stream.callback<string, FlightsError>(queue =>
 		)
 		yield* listen(() =>
 			addPushTokenListener(token => {
-				if (token.type === 'ios') Queue.offerUnsafe(queue, token.data)
+				if (token.type === 'ios' && Predicate.isString(token.data)) Queue.offerUnsafe(queue, token.data)
 			})
 		)
 		const token = yield* nativeCall(() => getDevicePushTokenAsync(), 'The iPhone could not register for push.')
-		if (token.type === 'ios') yield* Queue.offer(queue, token.data)
+		if (token.type === 'ios' && Predicate.isString(token.data)) yield* Queue.offer(queue, token.data)
 	})
 )
 
@@ -100,7 +89,8 @@ function routeIn(url: string) {
 	const app = `${scheme}://`
 	if (String.startsWith(app)(url)) {
 		const path = String.slice(app.length)(url)
-		return TripsRoute.parse(String.startsWith('/')(path) ? path : `/${path}`)
+		if (String.startsWith('/')(path)) return TripsRoute.parse(path)
+		return TripsRoute.parse(`/${path}`)
 	}
 	if (!String.startsWith(`${appOrigin}/`)(url)) return Option.none<TripsRoute>()
 	return TripsRoute.parse(String.slice(appOrigin.length)(url))
@@ -117,8 +107,25 @@ export const initialPath = Effect.map(
 		)
 )
 
+type Notification = typeof Notification.Type
 // Expo exposes the APNs userInfo.body dictionary as content.data.
 const Notification = Schema.Struct({flightId: FlightId, place: Schema.optionalKey(Place)})
+
+function respond(queue: Queue.Enqueue<Message, Cause.Done>, response: NotificationResponse) {
+	const item = Option.getOrUndefined(
+		Schema.decodeUnknownOption(Notification)(response.notification.request.content.data)
+	)
+	if (item === undefined) return
+	clearLastNotificationResponse()
+	Queue.offerUnsafe(queue, Message.Opened({route: flightRoute(item.flightId)}))
+	if (item.place === undefined) return
+	if (response.actionIdentifier === 'directions') {
+		Queue.offerUnsafe(queue, Message.OpenUrl({url: directionsTo(item.place)}))
+	}
+	if (response.actionIdentifier === 'uber') {
+		Option.map(rideTo(item.place), url => Queue.offerUnsafe(queue, Message.OpenUrl({url})))
+	}
+}
 
 export const deviceEvents = Stream.callback<Message>(queue =>
 	Effect.gen(function* () {
@@ -128,27 +135,13 @@ export const deviceEvents = Stream.callback<Message>(queue =>
 			})
 		)
 		yield* listen(() =>
-			Linking.addEventListener('url', ({url}) => {
-				Option.map(routeIn(url), route => Queue.offerUnsafe(queue, Message.Opened({route})))
+			Linking.addEventListener('url', event => {
+				Option.map(routeIn(event.url), route => Queue.offerUnsafe(queue, Message.Opened({route})))
 			})
 		)
-		function responded(response: NotificationResponse) {
-			const item = Option.getOrUndefined(
-				Schema.decodeUnknownOption(Notification)(response.notification.request.content.data)
-			)
-			if (item === undefined) return
-			clearLastNotificationResponse()
-			Queue.offerUnsafe(queue, Message.Opened({route: flightRoute(item.flightId)}))
-			if (item.place === undefined) return
-			if (response.actionIdentifier === 'directions') {
-				Queue.offerUnsafe(queue, Message.OpenUrl({url: directionsTo(item.place)}))
-			}
-			if (response.actionIdentifier === 'uber') {
-				Option.map(rideTo(item.place), url => Queue.offerUnsafe(queue, Message.OpenUrl({url})))
-			}
-		}
-		yield* listen(() => addNotificationResponseReceivedListener(responded))
+
+		yield* listen(() => addNotificationResponseReceivedListener(response => respond(queue, response)))
 		const initial = getLastNotificationResponse()
-		if (initial !== null) responded(initial)
+		if (initial !== null) respond(queue, initial)
 	})
 )

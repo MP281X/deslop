@@ -5,7 +5,7 @@ import {Array, Boolean, DateTime, Equal, Function, Option, Predicate, Result, Sc
 
 import {AsyncResult} from 'effect/reactivity'
 
-import type {ToolbarAction} from '@deslop/design/model'
+import type {ToolbarAction, ToolbarOptions} from '@deslop/design/model'
 import {clockAtom} from '@deslop/runtime/client/clock'
 import {blockingFailure, isDeniedCause, needsSignInCause} from '@deslop/runtime/client/live-stream'
 import {DateTimeUtcFromFiniteMillis} from '@deslop/runtime/shared/time'
@@ -22,6 +22,7 @@ import {
 	workloadName,
 	workloads
 } from '#contracts'
+import type {Row} from '#contracts'
 
 import {appDetail, listItem, loadAverages, machineDetail, ownerOf, restartReason, runJob} from '#screens/detail.ts'
 import {Authenticate, Execute, OpenEndpoint, Operation, Refresh, observe, readDeploy} from '#screens/reads.ts'
@@ -34,13 +35,13 @@ const InventoryRead = AsyncResult.Schema({error: Schema.Unknown, success: Snapsh
 const MetricsRead = AsyncResult.Schema({error: Schema.Unknown, success: MachineHistory})
 const AppRead = AsyncResult.Schema({error: Schema.Unknown, success: AppHour})
 
+type Dialog = typeof Dialog.Type
 const Dialog = Schema.TaggedUnion({
 	Expose: {hostname: Schema.String, kind: ExposeInput.fields.kind, port: InventoryItem},
 	Failure: {text: Schema.String},
 	Logs: {id: AppId, name: Schema.String, result: Schema.Option(Schema.Result(Schema.String, Schema.String))}
 })
-type Dialog = typeof Dialog.Type
-
+type Model = typeof Model.Type
 const Model = Schema.Struct({
 	admin: Schema.Boolean,
 	appHistory: AppRead,
@@ -56,8 +57,6 @@ const Model = Schema.Struct({
 	redirected: Schema.Boolean,
 	route: DeployRoute
 })
-type Model = typeof Model.Type
-
 const Message = UiSchema.TaggedEnum({
 	Account: {admin: Schema.Boolean},
 	AppHistory: {id: AppId, result: AppRead},
@@ -70,8 +69,8 @@ const Message = UiSchema.TaggedEnum({
 	Inventory: {result: InventoryRead},
 	Metrics: {result: MetricsRead},
 	OpenedExposure: {port: InventoryItem},
-	OpenedUrl: {url: Schema.String},
 	OpenedLogs: {id: AppId, name: Schema.String},
+	OpenedUrl: {url: Schema.String},
 	Operation: {operation: Operation},
 	OperationDone: {operation: Operation, text: Schema.Option(Schema.String)},
 	OperationFailed: {error: Schema.String, operation: Operation},
@@ -88,7 +87,7 @@ function rowsOf(inventory: Model['inventory']) {
 	return pipe(
 		AsyncResult.value(inventory),
 		Option.map(snapshot => Array.sort(workloads(snapshot.items), rowOrder)),
-		Option.getOrElse(Array.empty)
+		Option.getOrElse(Array.empty<Row>)
 	)
 }
 
@@ -109,7 +108,11 @@ function moveTo(inventory: Model['inventory'], route: DeployRoute, current: Mode
 	)
 	return {
 		...current,
-		appHistory: Equal.equals(current.effectiveApp, effectiveApp) ? current.appHistory : AsyncResult.initial(),
+		appHistory: pipe(
+			current.effectiveApp,
+			Equal.equals(effectiveApp),
+			Boolean.match({onFalse: () => AsyncResult.initial(), onTrue: () => current.appHistory})
+		),
 		defaultApp,
 		effectiveApp,
 		inventory,
@@ -217,7 +220,12 @@ function exposureInput(model: Model, dialog: typeof Dialog.cases.Expose.Type) {
 	return {
 		hostname,
 		kind: dialog.kind,
-		name: ExposureName.make(publicAccess ? `public:${hostname}` : `tailnet:${shown(dialog.port.port, String.String)}`),
+		name: ExposureName.make(
+			Boolean.match(publicAccess, {
+				onFalse: () => `tailnet:${shown(dialog.port.port, String.String)}`,
+				onTrue: () => `public:${hostname}`
+			})
+		),
 		port: Option.getOrElse(dialog.port.port, Function.constant(0)),
 		publicAccess
 	}
@@ -227,22 +235,26 @@ function dialogOf(model: Model) {
 	return Option.getOrUndefined(
 		Option.map(model.dialog, dialog => {
 			const pending = model.executing && Dialog.isAnyOf(['Expose'])(dialog)
-			const toolbar: readonly ToolbarAction[] = [
-				...(Dialog.isAnyOf(['Expose'])(dialog)
-					? [
-							{
+			const actions: readonly ToolbarAction[] = [
+				...pipe(
+					dialog,
+					Option.liftPredicate(Dialog.isAnyOf(['Expose'])),
+					Option.map(
+						expose =>
+							({
 								disabled: pending,
 								id: 'reach',
 								label: 'Who can reach the port',
-								symbol: 'chevron.down' as const,
 								menu: Array.map(ExposeInput.fields.kind.literals, kind => ({
-									checked: dialog.kind === kind,
+									checked: expose.kind === kind,
 									id: kind,
 									label: String.capitalize(kind)
-								}))
-							}
-						]
-					: []),
+								})),
+								symbol: 'chevron.down'
+							}) satisfies ToolbarAction
+					),
+					Option.toArray
+				),
 				{disabled: pending, id: 'close', label: 'Close', symbol: 'xmark'}
 			]
 			return Dialog.match(dialog, {
@@ -255,11 +267,14 @@ function dialogOf(model: Model) {
 						label: `Expose ${Option.getOrElse(expose.port.process, () => expose.port.name)}`,
 						pending,
 						subtitle: `Port ${input.port} · ${String.capitalize(expose.kind)}`,
-						text: input.hostname === '' ? 'No tailnet address' : `https://${input.hostname}:${input.port}`,
-						toolbar
+						text: Boolean.match(input.hostname === '', {
+							onFalse: () => `https://${input.hostname}:${input.port}`,
+							onTrue: Function.constant('No tailnet address')
+						}),
+						toolbar: actions
 					}
 				},
-				Failure: failure => ({...failure, label: 'Couldn’t complete the action', pending, toolbar}),
+				Failure: failure => ({...failure, label: 'Couldn’t complete the action', pending, toolbar: actions}),
 				Logs: logs => ({
 					...logs,
 					label: `${logs.name} logs`,
@@ -269,40 +284,49 @@ function dialogOf(model: Model) {
 						onSome: result =>
 							Result.match(result, {
 								onFailure: Function.identity,
-								onSuccess: text => (String.isNonEmpty(String.trim(text)) ? text : 'No logs')
+								onSuccess: text =>
+									Boolean.match(String.isNonEmpty(String.trim(text)), {
+										onFalse: Function.constant('No logs'),
+										onTrue: Function.constant(text)
+									})
 							})
 					}),
-					toolbar
+					toolbar: actions
 				})
 			})
 		})
 	)
 }
 
-function toolbar(item: InventoryItem | undefined, admin: boolean, pending: boolean): readonly ToolbarAction[] {
+function toolbar(admin: boolean, pending: boolean, item?: InventoryItem) {
 	if (!admin || item === undefined) return []
 	if (Option.contains(item.scheduled, true)) {
-		return [{disabled: pending || item.running, id: 'run', label: 'Run now', symbol: 'play.fill'}]
+		return [
+			{disabled: pending || item.running, id: 'run', label: 'Run now', symbol: 'play.fill'}
+		] satisfies readonly ToolbarAction[]
 	}
 	if (Option.isNone(ownerOf(item))) return []
 	return [
 		{disabled: pending, id: 'restart', label: 'Restart', symbol: 'arrow.clockwise'},
 		{disabled: pending, id: 'logs', label: 'Logs', symbol: 'doc.text'},
 		{disabled: pending || !(item.active || item.running), id: 'stop', label: 'Stop', symbol: 'stop.fill'}
-	]
+	] satisfies readonly ToolbarAction[]
 }
 
-function actionOf(item: InventoryItem | undefined, action: string | undefined) {
+function actionOf(action?: string, item?: InventoryItem) {
 	if (action === 'close') return Message.ClosedDialog()
 	if (action === 'tailnet' || action === 'public') return Message.ExposureKind({kind: action})
 	if (item === undefined) return undefined
 	if (action === 'run') return Message.Operation({operation: runJob(item)})
-	const id = ownerOf(item)
-	if (Option.isNone(id)) return undefined
-	if (action === 'logs') return Message.OpenedLogs({id: id.value, name: workloadName(item)})
-	if (action === 'restart') return Message.Operation({operation: Operation.cases.Restart.make({id: id.value})})
-	if (action === 'stop') return Message.Operation({operation: Operation.cases.Stop.make({id: id.value})})
-	return undefined
+	return Option.match(ownerOf(item), {
+		onNone: Function.constUndefined,
+		onSome: id => {
+			if (action === 'logs') return Message.OpenedLogs({id, name: workloadName(item)})
+			if (action === 'restart') return Message.Operation({operation: Operation.cases.Restart.make({id})})
+			if (action === 'stop') return Message.Operation({operation: Operation.cases.Stop.make({id})})
+			return undefined
+		}
+	})
 }
 
 function screenOf(model: Model) {
@@ -314,31 +338,52 @@ function screenOf(model: Model) {
 	const explicitId = appOf(model.route)
 	const id = explicitId ?? Option.getOrUndefined(model.defaultApp)
 	const row = Option.getOrUndefined(Array.findFirst(rows, candidate => candidate.item.id === id))
-	const machine = snapshot === undefined ? undefined : machineDetail(snapshot, history)
+	const machine = Option.getOrUndefined(
+		Option.map(Option.fromUndefinedOr(snapshot), value => machineDetail(value, history))
+	)
 	const loading = AsyncResult.isInitial(model.inventory)
 	const historyLoading = AsyncResult.isInitial(model.metrics)
 	const appLoading = Option.isSome(model.effectiveApp) && AsyncResult.isInitial(model.appHistory)
 	const restart = restartReason(app?.restarts ?? [], model.now)
 	const list = Array.map(rows, entry =>
-		listItem(entry, model.now, entry.item.id === row?.item.id ? restart : undefined, history, latest)
+		listItem(
+			entry,
+			model.now,
+			Boolean.match(entry.item.id === row?.item.id, {
+				onFalse: Function.constUndefined,
+				onTrue: Function.constant(restart)
+			}),
+			history,
+			latest
+		)
 	)
-	const detail = row === undefined ? undefined : appDetail(row, rows, model.now, history, app)
+	const detail = Option.getOrUndefined(
+		Option.map(Option.fromUndefinedOr(row), value => appDetail(value, rows, model.now, history, app))
+	)
 	const inventoryFailed = Option.isSome(blockingFailure(model.inventory))
 	return {
+		actions: toolbar(model.admin, model.executing, row?.item),
 		admin: model.admin,
-		actions: toolbar(row?.item, model.admin, model.executing),
 		detail,
 		dialog: dialogOf(model),
 		historyLoading: historyLoading || appLoading,
-		historyStatus: snapshot === undefined ? undefined : historyStatus(model, snapshot),
+		historyStatus: pipe(
+			snapshot,
+			Option.fromUndefinedOr,
+			Option.flatMap(value => Option.fromUndefinedOr(historyStatus(model, value))),
+			Option.getOrUndefined
+		),
 		id,
 		inventoryFailed,
 		list,
-		listStatus: inventoryFailed
-			? 'Couldn’t load apps'
-			: AsyncResult.isFailure(model.inventory)
-				? 'Apps may be out of date'
-				: undefined,
+		listStatus: Boolean.match(inventoryFailed, {
+			onFalse: () =>
+				Boolean.match(AsyncResult.isFailure(model.inventory), {
+					onFalse: Function.constUndefined,
+					onTrue: Function.constant('Apps may be out of date')
+				}),
+			onTrue: Function.constant('Couldn’t load apps')
+		}),
 		load: loadAverages(history),
 		loading,
 		machine,
@@ -373,6 +418,47 @@ const Screen = Component.define({
 		redirected: false,
 		route: $.props.route
 	}),
+	parts: (p, model) => {
+		const screen = screenOf(model)
+		return {
+			...screen,
+			authenticate: p.part((el, event: string) => el.on(event, Message.SignIn())),
+			choose: p.part((el, event: string, id: Parameters<ToolbarOptions['choose']>[2]) =>
+				el.on(event, value => actionOf(id(value), screen.row?.item))
+			),
+			dismiss: p.part((el, event: string) => el.on(event, Message.ClosedDialog())),
+			expose: p.part((el, event: string, port: InventoryItem) => el.on(event, Message.OpenedExposure({port}))),
+			hostname: p.part((el, event: string) =>
+				el.on(event, value => {
+					if (Predicate.hasProperty(value, 'value') && Predicate.isString(value.value)) {
+						return Message.Hostname({value: value.value})
+					}
+					return undefined
+				})
+			),
+			openUrl: p.part((el, event: string, url: string) => el.on(event, Message.OpenedUrl({url}))),
+			retry: p.part((el, event: string) => el.on(event, Message.Retry())),
+			run: p.part((el, event: string, item: InventoryItem) =>
+				el.on(event, Message.Operation({operation: runJob(item)}))
+			),
+			selection: {
+				back: p.part((el, event: string) => el.on(event, Message.Back())),
+				id: Boolean.match(isDetail(model.route), {onFalse: Function.constUndefined, onTrue: () => appOf(model.route)}),
+				select: p.part((el, event: string, id: string) => el.on(event, Message.Select({id: ItemId.make(id)})))
+			},
+			signingIn: p.isRunning(Authenticate),
+			submit: p.part((el, event: string) =>
+				el.on(
+					event,
+					Message.Expose(),
+					Boolean.match(event === 'submit', {
+						onFalse: Function.constUndefined,
+						onTrue: () => ({preventDefault: 'always' as const})
+					})
+				)
+			)
+		}
+	},
 	subscriptions: $ => [
 		Router.subscription(DeployRoute, $.model.route, route => Message.Route({route})),
 		DeployRoute.isAnyOf(['Home'])($.model.route) &&
@@ -435,23 +521,26 @@ const Screen = Component.define({
 		},
 		Expose: $ => {
 			const dialog = Option.getOrUndefined($.model.dialog)
-			if (!$.model.admin || $.model.executing || dialog === undefined || !Dialog.isAnyOf(['Expose'])(dialog))
+			if (!$.model.admin || $.model.executing || dialog === undefined || !Dialog.isAnyOf(['Expose'])(dialog)) {
 				return $.model
+			}
 			const input = exposureInput($.model, dialog)
 			if (!Schema.is(ExposeInput)(input)) return $.model
 			return $.evolve({executing: true}).run(execute(Operation.cases.Expose.make({input})))
 		},
 		ExposureKind: ($, message) =>
 			$.evolve({
-				dialog: Option.map($.model.dialog, dialog =>
-					Dialog.isAnyOf(['Expose'])(dialog) ? {...dialog, kind: message.kind} : dialog
-				)
+				dialog: Option.map($.model.dialog, dialog => {
+					if (Dialog.isAnyOf(['Expose'])(dialog)) return {...dialog, kind: message.kind}
+					return dialog
+				})
 			}),
 		Hostname: ($, message) =>
 			$.evolve({
-				dialog: Option.map($.model.dialog, dialog =>
-					Dialog.isAnyOf(['Expose'])(dialog) ? {...dialog, hostname: message.value} : dialog
-				)
+				dialog: Option.map($.model.dialog, dialog => {
+					if (Dialog.isAnyOf(['Expose'])(dialog)) return {...dialog, hostname: message.value}
+					return dialog
+				})
 			}),
 		Inventory: ($, message) =>
 			completeRead($.set(moveTo(message.result, $.model.route, $.model)), message.result, $.props.autoSignIn),
@@ -498,7 +587,12 @@ const Screen = Component.define({
 						DeployRoute,
 						$.model.route,
 						{app: message.id, pane: 'process'},
-						{history: opened ? 'replace' : 'push'}
+						{
+							history: Boolean.match(opened, {
+								onFalse: Function.constant('push' as const),
+								onTrue: Function.constant('replace' as const)
+							})
+						}
 					)
 				)
 			)
@@ -509,48 +603,24 @@ const Screen = Component.define({
 			if (!message.signedIn) return $.model
 			return $.run(Command.asNoop(Refresh.make({authenticated: true, id: $.model.effectiveApp})))
 		}
-	},
-	parts: (p, model) => {
-		const screen = screenOf(model)
-		return {
-			...screen,
-			authenticate: p.part((el, event: string) => el.on(event, Message.SignIn())),
-			choose: p.part((el, event: string, id: (payload: unknown) => string | undefined) =>
-				el.on(event, value => actionOf(screen.row?.item, id(value)))
-			),
-			dismiss: p.part((el, event: string) => el.on(event, Message.ClosedDialog())),
-			expose: p.part((el, event: string, port: InventoryItem) => el.on(event, Message.OpenedExposure({port}))),
-			hostname: p.part((el, event: string) =>
-				el.on(event, value => {
-					if (Predicate.hasProperty(value, 'value') && Predicate.isString(value.value))
-						return Message.Hostname({value: value.value})
-					return undefined
-				})
-			),
-			openUrl: p.part((el, event: string, url: string) => el.on(event, Message.OpenedUrl({url}))),
-			retry: p.part((el, event: string) => el.on(event, Message.Retry())),
-			run: p.part((el, event: string, item: InventoryItem) =>
-				el.on(event, Message.Operation({operation: runJob(item)}))
-			),
-			selection: {
-				back: p.part((el, event: string) => el.on(event, Message.Back())),
-				id: isDetail(model.route) ? appOf(model.route) : undefined,
-				select: p.part((el, event: string, id: string) => el.on(event, Message.Select({id: ItemId.make(id)})))
-			},
-			signingIn: p.isRunning(Authenticate),
-			submit: p.part((el, event: string) =>
-				el.on(event, Message.Expose(), event === 'submit' ? {preventDefault: 'always'} : undefined)
-			)
-		}
 	}
 })
 
 export type DeployScreen = Component.Headless.Parts<typeof Screen>
 
-export function DeployView<M, R>(
-	h: View.HelperBase<M, unknown>,
-	props: {readonly autoSignIn: boolean; readonly route: DeployRoute},
-	view: (screen: DeployScreen) => View.Content<M, R>
+export function DeployApp<V extends View.Elements, R>(
+	elements: View.Vocabulary<V>,
+	autoSignIn: boolean,
+	view: (h: View.WithTags<never, unknown, V>, screen: DeployScreen) => View.Content<never, R>
 ) {
-	return Screen(h, {props, view})
+	return Component.withElements(elements)({
+		message: Schema.Never,
+		model: Schema.Null,
+		name: 'App',
+		props: Schema.Struct({route: DeployRoute})
+	}).make({
+		init: Function.constNull,
+		update: Function.constNull,
+		view: h => Screen(h, {props: {...h.props, autoSignIn}, view: screen => view(h, screen)})
+	})
 }

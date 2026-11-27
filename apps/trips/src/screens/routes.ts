@@ -1,6 +1,8 @@
-import {Command, Route, Router} from '@effect/ui'
+import {Command, Route} from '@effect/ui'
 
-import {Effect, Schema} from 'effect'
+import {Schema} from 'effect'
+
+import {backOrHome} from '@deslop/design/navigation'
 
 import {FlightId} from '#contracts'
 
@@ -13,18 +15,11 @@ export const TripsRoute = Route.union({
 	NotFound: Route.make('/*')
 })
 
-export const home = TripsRoute.Home({search: {}})
-export const flightRoute = (id: FlightId) => TripsRoute.Flight({params: {id}, search: {}})
+const home = TripsRoute.Home({search: {}})
+export function flightRoute(id: FlightId) {
+	return TripsRoute.Flight({params: {id}, search: {}})
+}
 
 export class CloseFlight extends Command.Service<CloseFlight>()('Trips/CloseFlight', {args: {}}) {
-	static readonly layer = this.toLayer(
-		Effect.map(
-			Router.Router,
-			router => () =>
-				Effect.suspend(() => {
-					if (router.location().action === 'initial') return router.replace(home)
-					return router.back
-				})
-		)
-	)
+	static readonly layer = this.toLayer(backOrHome(home))
 }

@@ -36,7 +36,6 @@
 	"devDependencies": {
 		"@deslop/design": "workspace:*",
 		"@deslop/runtime": "workspace:*",
-		"@effect/platform-node": "latest",
 		"@effect/ui": "https://pkg.pr.new/Effect-TS/ui/@effect/ui@9eb76e60e47293cb0be63c12322a6bccd9e31add",
 		"@effect/ui-native": "https://pkg.pr.new/Effect-TS/ui/@effect/ui-native@9eb76e60e47293cb0be63c12322a6bccd9e31add",
 		"@fontsource-variable/geist": "latest",

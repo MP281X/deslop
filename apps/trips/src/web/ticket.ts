@@ -1,6 +1,6 @@
 import {HtmlFiles} from '@effect/ui/html'
 
-import {Effect, Number, Option, Predicate, pipe} from 'effect'
+import {Effect, Number, Predicate, pipe} from 'effect'
 
 import {FlightsError, IMAGE_BYTES, TicketSource} from '#contracts'
 
@@ -55,5 +55,5 @@ const ticketFromFile = Effect.fnUntraced(function* (file: File) {
 
 export function readTicket(file: unknown) {
 	if (!(file instanceof File)) return Effect.fail(FlightsError.make({message: 'Choose an image or PDF.'}))
-	return Effect.map(ticketFromFile(file), Option.some)
+	return Effect.asSome(ticketFromFile(file))
 }

@@ -1,7 +1,7 @@
 import {Array, Boolean, DateTime, Formatter, Option, Order, Predicate, Record, Schema, String, pipe} from 'effect'
 
 import {AppName, Operation, Runtime} from '#contracts'
-import type {OperationTrace, Overview, SpanId, TraceId, TraceTree} from '#contracts'
+import type {OperationTrace, Overview, SpanId, TraceTree} from '#contracts'
 
 import type {ScopeRoute} from '#screens/routes.ts'
 
@@ -21,7 +21,7 @@ const Wrapped = Schema.Record(Schema.String, Schema.Json)
 
 export type OperationKey = typeof OperationKey.Type
 export const OperationKey = Schema.Struct({app: AppName, name: Operation.fields.name, runtime: Runtime})
-export type Search = (typeof ScopeRoute.Type)['search']
+export type Search = ScopeRoute['search']
 export type Selection = {operation: OperationKey; spanId: Search['span']; traceId: Search['trace']}
 
 function selectionIn(search: Search) {

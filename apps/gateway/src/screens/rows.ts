@@ -64,9 +64,9 @@ export function keyRows(keys: readonly AiKeyItem[], usage: AiUsageWindow): reado
 			HashMap.get(provider),
 			Result.fromOption(Function.constVoid),
 			Result.map(key => {
-				const {label, name, payer, prefix} = PROVIDERS[provider]
+				const providerDetails = PROVIDERS[provider]
 				const refused = Option.exists(key.lastStatus, status => status === 401 || status === 403)
-				const masked = `${prefix}…${key.last4}`
+				const masked = `${providerDetails.prefix}…${key.last4}`
 				return {
 					item: {
 						id: `key:${provider}`,
@@ -75,12 +75,12 @@ export function keyRows(keys: readonly AiKeyItem[], usage: AiUsageWindow): reado
 							onFalse: Function.constUndefined,
 							onTrue: () => ({reason: `Key refused · ${masked}`, status: 'error' as const})
 						}),
-						title: name
+						title: providerDetails.name
 					},
-					label,
+					label: providerDetails.label,
 					provider,
-					value: aiCost(usage.report, payer),
-					values: aiSeries(usage.report, payer, usage.range)
+					value: aiCost(usage.report, providerDetails.payer),
+					values: aiSeries(usage.report, providerDetails.payer, usage.range)
 				}
 			})
 		)
@@ -109,7 +109,7 @@ function callsLabel(calls: number) {
 	return `${countOf(calls)} ${unit}`
 }
 
-export type ServerRow = {readonly item: RowData; readonly id: ServerId; readonly action: string | undefined}
+export type ServerRow = {readonly item: RowData; readonly id: ServerId; readonly action?: string}
 
 export function serverRows(servers: readonly ConnectionItem[], usage: McpUsageReport): readonly ServerRow[] {
 	const callsByServer = HashMap.fromIterable(
@@ -122,17 +122,17 @@ export function serverRows(servers: readonly ConnectionItem[], usage: McpUsageRe
 			const problem = serverProblem(server)
 			if (problem !== undefined) {
 				return {
+					action: Boolean.match(server.status === 'Connected', {
+						onFalse: Function.constant('Connect'),
+						onTrue: Function.constant('Reconnect')
+					}),
 					id: server.id,
 					item: {
 						id: `server:${server.id}`,
 						line: new URL(server.url).hostname,
 						problem: {reason: problem, status: 'error' as const},
 						title: server.name
-					},
-					action: Boolean.match(server.status === 'Connected', {
-						onFalse: Function.constant('Connect'),
-						onTrue: Function.constant('Reconnect')
-					})
+					}
 				}
 			}
 			return {
@@ -142,8 +142,7 @@ export function serverRows(servers: readonly ConnectionItem[], usage: McpUsageRe
 					line: new URL(server.url).hostname,
 					title: server.name,
 					trailing: callsLabel(pipe(callsByServer, HashMap.get(server.id), Option.getOrElse(Function.constant(0))))
-				},
-				action: undefined
+				}
 			}
 		})
 	)

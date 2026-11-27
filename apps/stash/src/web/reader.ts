@@ -6,6 +6,8 @@ import {Array, Result, String} from 'effect'
 
 import {Row, styles, webStyle} from '@deslop/design/web'
 
+import type {TagName} from '#contracts'
+
 import {isWebLink, parseBody} from '#screens/note.ts'
 import type {Reader, StashMessage, StashScreen} from '#screens/notes.ts'
 import {retry} from '#screens/notes.ts'
@@ -40,14 +42,21 @@ function sourceIcon(h: H, note: Reader) {
 	return h.img.class('stash-source-logo').attrs({alt: '', src: logos[note.kind]})
 }
 
-export function Skeleton(h: H) {
+export function TagButton(h: Html.H<StashMessage>, screen: StashScreen, tag: TagName, count?: number) {
+	return Button(h, {onPress: screen.filter(tag)})
+		.key(tag)
+		.attr('aria-pressed', `${screen.tag === tag}`)
+		.children(tag, count !== undefined && h.small.children(`${count}`))
+}
+
+export function Skeleton(h: Html.H<StashMessage>) {
 	return h.div
 		.class('stash-body-skeleton')
 		.attrs({'aria-label': 'Loading note', role: 'status'})
 		.children(h.div, h.div, h.div, h.div)
 }
 
-export function ReaderView(h: H, screen: StashScreen, note: Reader) {
+export function ReaderView(h: Html.H<StashMessage>, screen: StashScreen, note: Reader) {
 	if (note.denied) return h.p.style(webStyle(styles.line)).children('Access denied')
 	return h.article.class('stash-reader').children(
 		h.h1.style(webStyle(styles.heading)).children(note.title),
@@ -75,14 +84,7 @@ export function ReaderView(h: H, screen: StashScreen, note: Reader) {
 			h.div
 				.class('stash-tags')
 				.attr('aria-label', 'Note tags')
-				.children(
-					Array.map(note.tags, ({tag, count}) =>
-						Button(h, {onPress: screen.filter(tag)})
-							.key(tag)
-							.attr('aria-pressed', `${screen.tag === tag}`)
-							.children(tag, h.small.children(`${count}`))
-					)
-				),
+				.children(Array.map(note.tags, entry => TagButton(h, screen, entry.tag, entry.count))),
 		note.body !== undefined && body(h, note.body),
 		note.loading && Skeleton(h),
 		note.retry !== undefined &&
@@ -100,7 +102,9 @@ export function ReaderView(h: H, screen: StashScreen, note: Reader) {
 				.attr('aria-label', 'Related notes')
 				.children(
 					h.p.style(webStyle(styles.line)).children('Related notes'),
-					Array.map(note.related, item => Row(h, {active: false, item, select: screen.selection.select}))
+					Array.map(note.related, item =>
+						Row<StashMessage, never>(h, {active: false, item, select: screen.selection.select})
+					)
 				)
 	)
 }

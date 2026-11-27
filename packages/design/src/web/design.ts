@@ -6,23 +6,22 @@ import type {View} from '@effect/ui'
 import {Button} from '@effect/ui-kit'
 import type {Html} from '@effect/ui/html'
 
-import {Array, Boolean, Function, Option, Predicate, Record} from 'effect'
+import {Array, Boolean, Function, Option, Predicate, Record, pipe} from 'effect'
 
 import {WatchLayout} from './layout.ts'
 
-import {ListModel, RowModel, listToolbar, paneChildren} from '#src/shared/model.ts'
+import {ListModel, RowModel, detailState, listChildren, listToolbar, paneChildren} from '#src/shared/model.ts'
 import type {
 	LayoutOptions,
 	ListOptions,
 	ListParts,
+	PaneLeaf,
 	RowOptions,
 	SheetOptions,
-	SymbolName as Symbol,
+	SymbolName,
 	ToolbarOptions
 } from '#src/shared/model.ts'
-import {fold, ink, styles, status} from '#src/shared/styles.ts'
-
-export {black, fold, ink, selected, status, styles} from '#src/shared/styles.ts'
+import {fold, ink, selected, status, styles} from '#src/shared/styles.ts'
 
 const FONT = '-apple-system, system-ui, "Geist Variable", sans-serif'
 
@@ -31,7 +30,9 @@ const UNITLESS = ['aspectRatio', 'flex', 'flexGrow', 'flexShrink', 'fontWeight',
 const TRUNCATE: Html.Style = {minWidth: '0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'}
 const FIGURES: Html.Style = {fontVariantNumeric: 'tabular-nums'}
 
-type LayoutStyle = Record.ReadonlyRecord<string, string | number>
+export {WatchLayout, ink, selected, status, styles}
+
+export type LayoutStyle = Record.ReadonlyRecord<string, string | number>
 
 export function webStyle(style: LayoutStyle) {
 	return Record.map(style, (value, key) => {
@@ -44,9 +45,9 @@ export function webStyle(style: LayoutStyle) {
 const control = {...webStyle(styles.control), border: '0', color: ink, cursor: 'pointer', fontFamily: FONT}
 
 const images = {
+	airplane: new URL('./symbols/airplane.png', import.meta.url).href,
 	'airplane.arrival': new URL('./symbols/airplane.arrival.png', import.meta.url).href,
 	'airplane.departure': new URL('./symbols/airplane.departure.png', import.meta.url).href,
-	airplane: new URL('./symbols/airplane.png', import.meta.url).href,
 	'arrow.clockwise': new URL('./symbols/arrow.clockwise.png', import.meta.url).href,
 	'books.vertical': new URL('./symbols/books.vertical.png', import.meta.url).href,
 	checkmark: new URL('./symbols/checkmark.png', import.meta.url).href,
@@ -76,9 +77,9 @@ const images = {
 	'stop.fill': new URL('./symbols/stop.fill.png', import.meta.url).href,
 	ticket: new URL('./symbols/ticket.png', import.meta.url).href,
 	xmark: new URL('./symbols/xmark.png', import.meta.url).href
-} satisfies Record.ReadonlyRecord<Symbol, string>
+} satisfies Record.ReadonlyRecord<SymbolName, string>
 
-function Icon<M>(h: Html.H<M>, name: Symbol) {
+function Icon<M>(h: Html.H<M>, name: SymbolName) {
 	return h.span
 		.attrs({'aria-hidden': 'true'})
 		.style({
@@ -91,27 +92,26 @@ function Icon<M>(h: Html.H<M>, name: Symbol) {
 }
 
 export function Row<M, R>(h: Html.H<M>, options: RowOptions<View.Input<M, R>>) {
-	const {item} = options
 	const element = Option.match(Option.fromUndefinedOr(options.select), {
 		onNone: () => h.div,
-		onSome: select => select(Button(h), 'click', item.id)
+		onSome: select => select(Button(h), 'click', options.item.id)
 	})
 	const title = {
 		...webStyle(styles.title),
 		...TRUNCATE,
 		color: Boolean.match(options.muted === true, {
-			onTrue: Function.constant(styles.line.color),
-			onFalse: Function.constant(ink)
+			onFalse: Function.constant(ink),
+			onTrue: Function.constant(styles.line.color)
 		})
 	}
 	return RowModel(h, {
-		key: item.id,
-		props: item,
+		key: options.item.id,
+		props: options.item,
 		view: row =>
 			element
 				.attr(
 					'aria-current',
-					Boolean.match(options.active, {onTrue: Function.constant('true'), onFalse: Function.constUndefined})
+					Boolean.match(options.active, {onFalse: Function.constUndefined, onTrue: Function.constant('true')})
 				)
 				.attr(
 					'data-interactive',
@@ -152,40 +152,7 @@ export function Row<M, R>(h: Html.H<M>, options: RowOptions<View.Input<M, R>>) {
 	})
 }
 
-export function Sheet<M, R>(h: Html.H<M>, options: SheetOptions<View.Input<M, R>>) {
-	if (!options.open) return undefined
-	const dialog = h.dialog.modal(true).on('cancel', Function.constUndefined, {preventDefault: 'always'})
-	const element = Boolean.match(options.pending === true, {
-		onTrue: () => dialog,
-		onFalse: () => options.dismiss(dialog, 'cancel')
-	})
-	return element
-		.class('design-sheet')
-		.attr('aria-label', options.label)
-		.style({
-			...webStyle(styles.sheet),
-			border: '0',
-			borderRadius: '20px 20px 0 0',
-			boxSizing: 'border-box',
-			colorScheme: 'dark',
-			fontFamily: FONT,
-			height: Option.map(Option.fromUndefinedOr(options.height), fraction => `${fraction * 100}dvh`).pipe(
-				Option.getOrUndefined
-			),
-			inset: 'auto 0 0',
-			margin: '0 auto',
-			maxHeight: '100dvh',
-			paddingBottom: 'max(20px, env(safe-area-inset-bottom))',
-			width: 'min(100%, 540px)'
-		})
-		.children(
-			options.toolbar !== undefined && toolbarView(h, options.toolbar, undefined, 'sheet'),
-			h.div.style({minHeight: '0', overflowY: 'auto', flex: '1'}).children(options.body),
-			options.actions !== undefined && h.div.style(webStyle(styles.sheetActions)).children(options.actions)
-		)
-}
-
-function toolbarView<M, R>(h: Html.H<M>, toolbar?: ToolbarOptions, leading?: View.Input<M, R>, scope = 'screen') {
+function toolbarView<M>(h: Html.H<M>, toolbar?: ToolbarOptions, leading?: View.Input<M>, scope = 'screen') {
 	return h.div
 		.style({alignItems: 'center', display: 'flex', gap: '8px', minHeight: '52px', padding: '0 12px'})
 		.children(
@@ -222,7 +189,9 @@ function toolbarView<M, R>(h: Html.H<M>, toolbar?: ToolbarOptions, leading?: Vie
 											.key(item.id)
 											.class('design-menu-item')
 											.attrs({
-												'aria-pressed': Option.map(Option.fromUndefinedOr(item.checked), checked => `${checked}`).pipe(
+												'aria-pressed': pipe(
+													Option.fromUndefinedOr(item.checked),
+													Option.map(checked => `${checked}`),
 													Option.getOrUndefined
 												),
 												popovertarget: id,
@@ -230,11 +199,11 @@ function toolbarView<M, R>(h: Html.H<M>, toolbar?: ToolbarOptions, leading?: Vie
 											})
 											.style({
 												...control,
-												justifyContent: 'flex-start',
-												gap: '8px',
 												backgroundColor: 'transparent',
-												width: '100%',
-												textAlign: 'start'
+												gap: '8px',
+												justifyContent: 'flex-start',
+												textAlign: 'start',
+												width: '100%'
 											})
 											.children(
 												item.symbol !== undefined && Icon(h, item.symbol),
@@ -248,6 +217,41 @@ function toolbarView<M, R>(h: Html.H<M>, toolbar?: ToolbarOptions, leading?: Vie
 							)
 					)
 				})
+		)
+}
+
+function Sheet<M, R>(h: Html.H<M>, options: SheetOptions<View.Input<M, R>>) {
+	if (!options.open) return undefined
+	const dialog = h.dialog.modal(true).on('cancel', Function.constUndefined, {preventDefault: 'always'})
+	const element = Boolean.match(options.pending === true, {
+		onFalse: () => options.dismiss(dialog, 'cancel'),
+		onTrue: () => dialog
+	})
+	return element
+		.class('design-sheet')
+		.attr('aria-label', options.label)
+		.style({
+			...webStyle(styles.sheet),
+			border: '0',
+			borderRadius: '20px 20px 0 0',
+			boxSizing: 'border-box',
+			colorScheme: 'dark',
+			fontFamily: FONT,
+			height: pipe(
+				Option.fromUndefinedOr(options.height),
+				Option.map(fraction => `${fraction * 100}dvh`),
+				Option.getOrUndefined
+			),
+			inset: 'auto 0 0',
+			margin: '0 auto',
+			maxHeight: '100dvh',
+			paddingBottom: 'max(20px, env(safe-area-inset-bottom))',
+			width: 'min(100%, 540px)'
+		})
+		.children(
+			options.toolbar !== undefined && toolbarView(h, options.toolbar, undefined, 'sheet'),
+			h.div.style({flex: '1', minHeight: '0', overflowY: 'auto'}).children(options.body),
+			options.actions !== undefined && h.div.style(webStyle(styles.sheetActions)).children(options.actions)
 		)
 }
 
@@ -291,7 +295,7 @@ export function Layout<M, R>(h: Html.H<M>, options: LayoutOptions<View.Input<M, 
 	return frame(h).children(
 		options.toolbar !== undefined && Toolbar(h, options.toolbar),
 		options.content,
-		options.sheet !== undefined && Sheet(h, options.sheet)
+		options.sheet !== undefined && Sheet<M, R>(h, options.sheet)
 	)
 }
 
@@ -313,12 +317,12 @@ function RowSkeleton<M>(h: Html.H<M>, index: number) {
 }
 
 export function ListDetail<M, R>(h: Html.H<M>, options: ListOptions<View.Input<M, R>>) {
-	const id = options.selection.id
-	const pending = options.loading === true && id !== undefined && options.detail === undefined
-	const hasDetail = options.detail !== undefined || pending
-	const opened = id !== undefined && hasDetail
+	const detailLayout = detailState(options)
 
 	function list(parts: ListParts) {
+		const children = listChildren<PaneLeaf<View.Input<M, R>>, View.Input<M, R>>(options, parts, index =>
+			RowSkeleton(h, index)
+		)
 		return h.section
 			.attr('aria-label', 'List')
 			.style({
@@ -326,50 +330,47 @@ export function ListDetail<M, R>(h: Html.H<M>, options: ListOptions<View.Input<M
 				...webStyle(styles.rows),
 				borderInlineEnd: parts.showSidebar && `1px solid ${fold}`,
 				boxSizing: 'border-box',
-				display: Boolean.match(parts.listHidden || (!parts.wide && opened), {
-					onTrue: Function.constant('none'),
-					onFalse: Function.constant('block')
+				display: Boolean.match(parts.listHidden || (!parts.wide && detailLayout.opened), {
+					onFalse: Function.constant('block'),
+					onTrue: Function.constant('none')
 				}),
-				flex: Boolean.match(parts.showSidebar, {onTrue: () => `0 0 ${parts.splitWidth}px`, onFalse: Function.constant('1')}),
+				flex: Boolean.match(parts.showSidebar, {
+					onFalse: Function.constant('1'),
+					onTrue: () => `0 0 ${parts.splitWidth}px`
+				}),
 				overflowY: 'auto'
 			})
-			.children(
-				options.header,
-				Boolean.match(options.loading === true, {
-					onFalse: () => paneChildren(options.list?.(parts.activeId, parts.wide) ?? options.empty),
-					onTrue: () => Array.makeBy(3, index => RowSkeleton(h, index))
-				})
-			)
+			.children(...children)
 	}
 
 	return ListModel(h, {
-		props: {defaultId: options.defaultId, hasDetail, id},
+		props: detailLayout.props,
 		view: parts =>
 			parts.watch(frame(h), WatchLayout({})).children(
-				chrome(h, parts, options, opened),
+				chrome(h, parts, options, detailLayout.opened),
 				h.div
 					.class('design-panes')
 					.style(webStyle(styles.panes))
 					.children(
 						list(parts),
-						(parts.showSidebar || opened) &&
+						(parts.showSidebar || detailLayout.opened) &&
 							h.section
 								.class('design-detail')
 								.attr('aria-label', 'Detail')
 								.style({...webStyle(styles.pane), overflowY: 'auto'})
 								.children(
 									h.div
-										.key(id ?? 'board')
+										.key(detailLayout.props.id ?? 'board')
 										.style(webStyle(styles.detail))
 										.children(
-											Boolean.match(pending, {
-												onTrue: () => [Skeleton(h, '46%', '20px'), Skeleton(h, '72%', '14px')],
-												onFalse: () => paneChildren(options.detail)
+											Boolean.match(detailLayout.pending, {
+												onFalse: () => paneChildren(options.detail),
+												onTrue: () => [Skeleton(h, '46%', '20px'), Skeleton(h, '72%', '14px')]
 											})
 										)
 								)
 					),
-				options.sheet !== undefined && Sheet(h, options.sheet)
+				options.sheet !== undefined && Sheet<M, R>(h, options.sheet)
 			)
 	})
 }

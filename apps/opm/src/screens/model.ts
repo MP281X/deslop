@@ -18,8 +18,8 @@ const Press = {pointerId: Schema.Int, x: Schema.Finite, y: Schema.Finite}
 export type Step = typeof Step.Type
 const Step = Schema.Literals([-1, 1])
 
-export type Reader = typeof Reader.Type
-const Reader = Schema.Struct({
+type ReadingState = typeof ReadingState.Type
+const ReadingState = Schema.Struct({
 	bars: Schema.Boolean,
 	expired: Schema.Boolean,
 	finished: Schema.HashSet(ChapterNumber),
@@ -36,15 +36,16 @@ export const Model = Schema.Struct({
 	busy: Schema.Boolean,
 	canBack: Schema.Boolean,
 	catalogue: CatalogueRead,
+	covers: Schema.HashSet(Schema.String),
 	failed: Schema.HashSet(Schema.String),
 	height: Schema.Finite,
 	listHidden: Schema.Boolean,
 	now: DateTimeUtcFromFiniteMillis,
-	reader: Schema.UndefinedOr(Reader),
+	reader: Schema.UndefinedOr(ReadingState),
 	route: OpmRoute,
+	shapes: Schema.HashMap(Schema.String, Schema.Finite),
 	unsaved: Schema.HashMap(ChapterKey, Position),
-	width: Schema.Finite,
-	shapes: Schema.HashMap(Schema.String, Schema.Finite)
+	width: Schema.Finite
 })
 
 export type Message = typeof Message.Type
@@ -54,6 +55,7 @@ export const Message = UiSchema.TaggedEnum({
 	Catalogue: {catalogue: CatalogueRead},
 	Clock: {now: DateTimeUtcFromFiniteMillis},
 	Close: {},
+	CoverSettled: {src: Schema.String},
 	Expired: {chapter: ChapterIdentity},
 	Gesture: {dx: Schema.Finite, dy: Schema.Finite},
 	Image: {aspect: Schema.Finite, src: Schema.String},

@@ -1,11 +1,12 @@
 import {Array, Effect, Option, Redacted, Schema, Stream, pipe} from 'effect'
 
-import {AsyncResult, Atom, AtomRpc} from 'effect/reactivity'
-import type {AtomRegistry} from 'effect/reactivity'
+import {AsyncResult, Atom, AtomRegistry, AtomRpc} from 'effect/reactivity'
 
 import {isDeniedCause, keepValueThroughOutages, reconnectOnDrop} from '@deslop/runtime/client/live-stream'
+import {writeOutcome} from '@deslop/runtime/client/protocol'
 import {registerPushToken} from '@deslop/runtime/client/push'
 import {ApnsToken} from '@deslop/runtime/shared/apns'
+import type {Device} from '@deslop/runtime/shared/apns'
 import {UserId} from '@deslop/runtime/shared/auth'
 import type {AuthError} from '@deslop/runtime/shared/auth'
 import {listReducer} from '@deslop/runtime/shared/list'
@@ -27,10 +28,11 @@ export type BoardCache = {
 	readonly write: (text: string) => Effect.Effect<void>
 }
 
+export type PushPhone = typeof PushPhone.Type
 export const PushPhone = Schema.Struct({bundle: PushBundle, phone: PhoneId})
 export type PushSource = {
 	readonly alerts: Stream.Stream<string, FlightsError>
-	readonly device: Effect.Effect<typeof PushPhone.Type, FlightsError | Schema.SchemaError>
+	readonly device: Effect.Effect<PushPhone, FlightsError | Schema.SchemaError>
 	readonly starts: Stream.Stream<string, FlightsError>
 }
 
@@ -48,10 +50,10 @@ export function tripsData(options: DataOptions) {
 		protocol: options.protocol
 	}) {}
 
-	const owner = Atom.map(options.account, result =>
+	const ownerAtom = Atom.map(options.account, result =>
 		Option.getOrUndefined(Option.map(AsyncResult.value(result), user => user.id))
 	)
-	const byOwner = Atom.family((account: UserId) =>
+	const flightsByOwnerAtoms = Atom.family((account: UserId) =>
 		Client.runtime.atom(get => {
 			const live = pipe(
 				Client.use(call => Effect.succeed(call('flights.events', undefined))),
@@ -61,22 +63,21 @@ export function tripsData(options: DataOptions) {
 			)
 			const cache = options.cache
 			if (cache === undefined) return keepValueThroughOutages(get, live, reconnectOnDrop)
-			const saved = pipe(
-				cache.read,
-				Effect.map(text =>
-					pipe(
-						text,
-						Option.flatMap(Schema.decodeOption(Cached)),
-						Option.filter(copy => copy.account === account),
-						Option.map(copy => copy.flights),
-						Option.toArray
-					)
-				),
-				Stream.fromEffect,
-				Stream.flattenIterable
-			)
 			return Stream.concat(
-				saved,
+				pipe(
+					cache.read,
+					Effect.map(text =>
+						pipe(
+							text,
+							Option.flatMap(Schema.decodeOption(Cached)),
+							Option.filter(copy => copy.account === account),
+							Option.map(copy => copy.flights),
+							Option.toArray
+						)
+					),
+					Stream.fromEffect,
+					Stream.flattenIterable
+				),
 				keepValueThroughOutages(
 					get,
 					pipe(
@@ -98,33 +99,30 @@ export function tripsData(options: DataOptions) {
 			)
 		})
 	)
-	const flights = Atom.make(get => {
-		const account = get(owner)
+	const flightsAtom = Atom.make(get => {
+		const account = get(ownerAtom)
 		if (account === undefined) return AsyncResult.initial<readonly Flight[], unknown>()
-		return get(byOwner(account))
+		return get(flightsByOwnerAtoms(account))
 	})
-	const travel = Client.runtime.atom(get => {
-		if (get(owner) === undefined) return Effect.never
+	const travelAtom = Client.runtime.atom(get => {
+		if (get(ownerAtom) === undefined) return Effect.never
 		return Client.use(call => call('travel.list', undefined))
 	})
-	const push = Client.runtime.atom(get => {
+	const pushAtom = Client.runtime.atom(get => {
 		const source = options.push
-		if (source === undefined || get(owner) === undefined) return Effect.void
+		if (source === undefined || get(ownerAtom) === undefined) return Effect.void
 		return Effect.ignore(
 			Effect.gen(function* () {
 				const phone = yield* source.device
 				const call = yield* Client
-				function register(stream: PushSource['alerts'], kind: 'alert' | 'start') {
+				function register(stream: PushSource['alerts'], kind: Device['kind']) {
 					return pipe(
 						stream,
 						Stream.changes,
 						Stream.switchMap(value =>
 							Stream.fromEffectDrain(
-								pipe(
-									Schema.decodeEffect(ApnsToken)(value),
-									Effect.flatMap(token =>
-										registerPushToken(call('push.register', {...phone, kind, token: Redacted.make(token)}))
-									)
+								Effect.flatMap(Schema.decodeEffect(ApnsToken)(value), token =>
+									registerPushToken(call('push.register', {...phone, kind, token: Redacted.make(token)}))
 								)
 							)
 						),
@@ -143,20 +141,34 @@ export function tripsData(options: DataOptions) {
 	function refresh(registry: AtomRegistry.AtomRegistry, accountOnly: boolean) {
 		options.refreshAccount(registry)
 		if (accountOnly) return
-		const account = registry.get(owner)
-		if (account !== undefined) registry.refresh(byOwner(account))
-		registry.refresh(travel)
+		const account = registry.get(ownerAtom)
+		if (account !== undefined) registry.refresh(flightsByOwnerAtoms(account))
+		registry.refresh(travelAtom)
+	}
+	function write<E>(registry: AtomRegistry.AtomRegistry, effect: Effect.Effect<void, E, Client>) {
+		return pipe(
+			registry,
+			AtomRegistry.getResult(Client.runtime, {suspendOnWaiting: true}),
+			Effect.flatMap(context => writeOutcome(Effect.provideContext(effect, context)))
+		)
 	}
 	return {
-		account: options.account,
-		flights,
-		owner,
-		push,
+		accountAtom: options.account,
+		flightsAtom,
+		ownerAtom,
+		pushAtom,
 		refresh,
-		runtime: Client.runtime,
-		save: (ticket: TicketSource) => Client.use(call => call('flights.save', ticket)),
-		setTravel: (row: TravelTime) => Client.use(call => call('travel.set', row)),
-		travel
+		save: (registry: AtomRegistry.AtomRegistry, ticket: TicketSource) =>
+			write(
+				registry,
+				Client.use(call => call('flights.save', ticket))
+			),
+		setTravel: (registry: AtomRegistry.AtomRegistry, row: TravelTime) =>
+			write(
+				registry,
+				Client.use(call => call('travel.set', row))
+			),
+		travelAtom
 	}
 }
 

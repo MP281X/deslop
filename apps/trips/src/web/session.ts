@@ -1,4 +1,4 @@
-import {Effect, Queue, Stream} from 'effect'
+import {Effect, Predicate, Queue, Stream} from 'effect'
 
 import {signInUrl} from '@deslop/runtime/shared/auth'
 import {accountAtom, layerPageProtocol} from '@deslop/runtime/web/client'
@@ -11,7 +11,7 @@ import {readTicket} from '#web/ticket.ts'
 const clipboard = Stream.callback<Message>(queue => {
 	function paste(event: ClipboardEvent) {
 		const file = event.clipboardData?.files.item(0)
-		if (file === null || file === undefined) return
+		if (Predicate.isNullish(file)) return
 		event.preventDefault()
 		Queue.offerUnsafe(queue, Message.PasteFile({file}))
 	}
@@ -21,13 +21,13 @@ const clipboard = Stream.callback<Message>(queue => {
 	)
 })
 
-const data = tripsData({
+const boardReads = tripsData({
 	account: accountAtom,
 	protocol: layerPageProtocol,
 	refreshAccount: registry => registry.refresh(accountAtom)
 })
 
-export const {view: TripsView, layer: layerTrips} = makeTrips(data, {
+export const tripsScreen = makeTrips(boardReads, {
 	clipboard,
 	openUrl: url => Effect.sync(() => location.assign(url)),
 	signIn: Effect.sync(() => {

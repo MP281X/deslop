@@ -1,10 +1,11 @@
 import type {Native} from '@effect/ui-native'
 import {Pressable} from '@effect/ui-native/kit'
 
-import {Array, Boolean, Function, Option} from 'effect'
+import {Array, Boolean, Function, Match, Option, pipe} from 'effect'
 
 import {ListDetail, Row, black, ink, selected, status, styles} from '@deslop/design/native'
 
+import {scopeLayout} from '#screens/scope.ts'
 import type {Screen} from '#screens/scope.ts'
 import type {SpanDetail} from '#screens/span.ts'
 import {BAR, LANE, SCALE, SKELETON_BARS} from '#screens/waterfall.ts'
@@ -74,7 +75,10 @@ function Waterfall<M>(h: Native.H<M>, screen: Screen, chart: Detail['chart']) {
 										onTrue: Function.constant(status.error)
 									}),
 									borderColor: ink,
-									borderWidth: Boolean.match(bar.selected, {onFalse: () => 0, onTrue: () => 1}),
+									borderWidth: Boolean.match(bar.selected, {
+										onFalse: Function.constant(0),
+										onTrue: Function.constant(1)
+									}),
 									height: BAR,
 									justifyContent: 'center',
 									left: bar.left - bar.hit.left,
@@ -116,7 +120,7 @@ function Waterfall<M>(h: Native.H<M>, screen: Screen, chart: Detail['chart']) {
 
 function Diagnostics<M>(h: Native.H<M>, screen: Screen, span: SpanDetail) {
 	return h.view.style({gap: 8, marginTop: 8}).children(
-		Row(h, {active: false, item: span.row}),
+		Row<M, never>(h, {active: false, item: span.row}),
 		Option.getOrUndefined(
 			Option.map(span.failure, error =>
 				h.view
@@ -200,43 +204,39 @@ function Skeleton<M>(h: Native.H<M>) {
 }
 
 function Detail<M>(h: Native.H<M>, screen: Screen) {
-	const trace = screen.detail
-	switch (trace.state) {
-		case 'loading':
-			return Skeleton(h)
-		case 'problem':
-			return Problem(h, screen, trace.problem)
-		case 'empty':
-			return h.text.style(styles.line).children(trace.text)
-		case 'ready':
-			return h.view.children(
-				Row(h, {
-					active: false,
-					item: {id: 'trace-summary', title: trace.title, line: trace.age, trailing: trace.duration}
-				}),
-				Boolean.match(Array.isReadonlyArrayEmpty(trace.chart.bars), {
-					onFalse: () => Waterfall(h, screen, trace.chart),
-					onTrue: () => h.text.style(styles.line).children('No spans')
-				}),
-				Option.getOrUndefined(Option.map(trace.span, span => Diagnostics(h, screen, span)))
-			)
-	}
+	return pipe(
+		screen.detail,
+		Match.value,
+		Match.discriminatorsExhaustive('state')({
+			empty: trace => h.text.style(styles.line).children(trace.text),
+			loading: () => Skeleton(h),
+			problem: trace => Problem(h, screen, trace.problem),
+			ready: trace =>
+				h.view.children(
+					Row<M, never>(h, {
+						active: false,
+						item: {id: 'trace-summary', line: trace.age, title: trace.title, trailing: trace.duration}
+					}),
+					Boolean.match(Array.isReadonlyArrayEmpty(trace.chart.bars), {
+						onFalse: () => Waterfall(h, screen, trace.chart),
+						onTrue: () => h.text.style(styles.line).children('No spans')
+					}),
+					Option.getOrUndefined(Option.map(trace.span, span => Diagnostics(h, screen, span)))
+				)
+		})
+	)
 }
 
 export function Workspace<M>(h: Native.H<M>, screen: Screen) {
 	const empty = h.text.style({...styles.line, padding: 12}).children('No operations')
-	return ListDetail(h, {
-		defaultId: screen.defaultId,
-		detail: Boolean.match(screen.problem === undefined, {
-			onFalse: Function.constUndefined,
-			onTrue: () => Detail(h, screen)
-		}),
-		detailToolbar: screen.detailToolbar,
+	return ListDetail<M, never>(h, {
+		// fallow-ignore-next-line code-duplication -- Web and iPhone pass the same screen parts; only each host's elements differ.
+		...scopeLayout(screen, () => Detail(h, screen)),
 		empty,
 		list: (activeId, wide) => {
 			if (screen.problem !== undefined) return Problem(h, screen, screen.problem)
-			const operations = Array.map(screen.operations, ({item}) =>
-				Row(h, {active: item.id === activeId, item, select: screen.selection.select})
+			const operations = Array.map(screen.operations, row =>
+				Row<M, never>(h, {active: row.item.id === activeId, item: row.item, select: screen.selection.select})
 			)
 			if (Array.isReadonlyArrayEmpty(operations)) return empty
 			if (!wide || Array.isReadonlyArrayEmpty(screen.traces)) return operations
@@ -246,7 +246,7 @@ export function Workspace<M>(h: Native.H<M>, screen: Screen) {
 					.style({marginTop: 12})
 					.children(
 						Array.map(screen.traces, item =>
-							Row(h, {
+							Row<M, never>(h, {
 								active: activeId !== undefined && item.id === screen.activeTrace,
 								item,
 								select: screen.selection.select
@@ -254,9 +254,6 @@ export function Workspace<M>(h: Native.H<M>, screen: Screen) {
 						)
 					)
 			]
-		},
-		loading: screen.loading,
-		selection: screen.selection,
-		toolbar: screen.toolbar
+		}
 	})
 }

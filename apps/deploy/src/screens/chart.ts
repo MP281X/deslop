@@ -10,7 +10,7 @@ export function axisPosition(at: DateTime.Utc, now: DateTime.Utc) {
 	return (1 - (DateTime.toEpochMillis(now) - DateTime.toEpochMillis(at)) / HOUR_MS) * 100
 }
 
-export function restartPositions(restarts: readonly DateTime.Utc[], now: DateTime.Utc) {
+function restartPositions(restarts: readonly DateTime.Utc[], now: DateTime.Utc) {
 	return pipe(
 		restarts,
 		Array.map(at => axisPosition(at, now)),
@@ -38,20 +38,20 @@ export function traceSegments(readings: readonly Reading[], now: DateTime.Utc) {
 }
 
 export function tracePaths(readings: readonly Reading[], now: DateTime.Utc) {
-	const paths = Array.reduce(
-		traceSegments(readings, now),
-		{area: '', lastRight: -1, line: ''},
-		(last, {left, right, y}) => {
-			if (left === last.lastRight) {
-				return {area: `${last.area}V${y}H${right}`, lastRight: right, line: `${last.line}V${y}H${right}`}
-			}
+	const paths = Array.reduce(traceSegments(readings, now), {area: '', lastRight: -1, line: ''}, (last, point) => {
+		if (point.left === last.lastRight) {
 			return {
-				area: `${closeArea(last.area)}M${left} 100V${y}H${right}`,
-				lastRight: right,
-				line: `${last.line}M${left} ${y}H${right}`
+				area: `${last.area}V${point.y}H${point.right}`,
+				lastRight: point.right,
+				line: `${last.line}V${point.y}H${point.right}`
 			}
 		}
-	)
+		return {
+			area: `${closeArea(last.area)}M${point.left} 100V${point.y}H${point.right}`,
+			lastRight: point.right,
+			line: `${last.line}M${point.left} ${point.y}H${point.right}`
+		}
+	})
 	return {area: closeArea(paths.area), line: paths.line}
 }
 

@@ -16,4 +16,4 @@ function appVariant() {
 	return {bundle: 'xyz.mp281x.opm', scheme: 'opm'} as const
 }
 
-export const {bundle, scheme} = appVariant()
+export const variant = appVariant()

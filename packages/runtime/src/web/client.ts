@@ -8,6 +8,7 @@ import {layerWebTelemetry} from './telemetry.ts'
 
 import {readAccount} from '#client/account.ts'
 import {layerSocketProtocol} from '#client/protocol.ts'
+import {signInUrl} from '#shared/auth.ts'
 import {RPC_PATH} from '#shared/schema.ts'
 
 // Without an issuer the account is the developer, who cannot sign out.
@@ -24,3 +25,8 @@ export const layerPageProtocol = layerSocketProtocol(
 export function addPageTelemetry(applicationName: string) {
 	Atom.runtime.addGlobalLayer(Layer.provide(layerWebTelemetry(applicationName), FetchHttpClient.layer))
 }
+
+export const pageSignIn = Effect.sync(() => {
+	location.replace(signInUrl(location.href))
+	return false
+})

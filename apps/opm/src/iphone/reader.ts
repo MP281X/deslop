@@ -1,7 +1,7 @@
 import {Native} from '@effect/ui-native'
 import {Pan, Pressable} from '@effect/ui-native/kit'
 
-import {Array, Boolean, Function, Number, Option, Schema} from 'effect'
+import {Array, Boolean, Function, Number, Option, Schema, pipe} from 'effect'
 
 import {styles} from '@deslop/design/native'
 
@@ -9,12 +9,15 @@ import type {Screen} from '#screens/library.ts'
 import {Message} from '#screens/model.ts'
 import {pageAspect} from '#screens/reading.ts'
 
+const ALIGNMENT = {left: 'flex-end', right: 'flex-start', single: 'center'} as const
+
 const NativeImage = Native.defineView(
 	() => new Native.ViewElement<Message, never, Record<string, unknown>, 'opmImage'>('opmImage'),
 	{viewName: 'RCTImageView'}
 )
 
-const Dimensions = Schema.Struct({source: Schema.Struct({width: Schema.Number, height: Schema.Number})})
+type Dimensions = typeof Dimensions.Type
+const Dimensions = Schema.Struct({source: Schema.Struct({height: Schema.Finite, width: Schema.Finite})})
 
 export function image(src: string) {
 	return NativeImage.prop('source', [{uri: src}]).prop('pointerEvents', 'none')
@@ -30,7 +33,6 @@ export function control(h: Native.H<Message>, label: string, onPress: Message) {
 		.children(h.text.style(styles.body).children(label))
 }
 
-const alignment = {left: 'flex-end', right: 'flex-start', single: 'center'} as const
 const edge = Boolean.match({onFalse: Function.constant(0), onTrue: Function.constant('50%' as const)})
 
 function pageImage(h: Native.H<Message>, page: Screen['pages'][number], width: number, height: number) {
@@ -39,16 +41,18 @@ function pageImage(h: Native.H<Message>, page: Screen['pages'][number], width: n
 		.prop('accessible', page.visible)
 		.prop('accessibilityLabel', `Page ${page.index + 1}`)
 		.prop('resizeMode', 'contain')
-		.style({width, height})
+		.style({height, width})
 		.on('error', Message.Image({aspect: 0, src: page.src}))
 		.on('load', value =>
-			Option.map(Schema.decodeUnknownOption(Dimensions)(value), size =>
-				Message.Image({aspect: pageAspect(size.source.width, size.source.height), src: page.src})
-			).pipe(Option.getOrUndefined)
+			pipe(
+				Schema.decodeUnknownOption(Dimensions)(value),
+				Option.map(size => Message.Image({aspect: pageAspect(size.source.width, size.source.height), src: page.src})),
+				Option.getOrUndefined
+			)
 		)
 }
 
-export function Reader(h: Native.H<Message>, screen: Screen, reader: NonNullable<Screen['reader']>) {
+export function IPhoneReader(h: Native.H<Message>, screen: Screen, reader: NonNullable<Screen['reader']>) {
 	const active = Array.filter(screen.pages, page => page.visible)
 	const spread = active.length === 2
 	const available = Boolean.match(screen.wide && !screen.listHidden, {
@@ -72,7 +76,7 @@ export function Reader(h: Native.H<Message>, screen: Screen, reader: NonNullable
 			.prop('accessibilityLabel', 'Loading chapter')
 	}
 
-	return Pan(h, {
+	return Pan<Message, Native.ViewElement<Message, never, Native.ViewEvents, 'view'>>(h, {
 		element: Pressable(h, {onPress: tap}),
 		onEnd: gesture => Message.Gesture({dx: gesture.dx, dy: gesture.dy}),
 		props: {axis: 'x', threshold: 8}
@@ -91,7 +95,7 @@ export function Reader(h: Native.H<Message>, screen: Screen, reader: NonNullable
 				return h.view
 					.key(`${page.index}`)
 					.style({
-						alignItems: alignment[page.side],
+						alignItems: ALIGNMENT[page.side],
 						bottom: 0,
 						justifyContent: 'center',
 						left: edge(page.side === 'right'),

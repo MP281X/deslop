@@ -6,6 +6,7 @@ declare module 'react-native/Libraries/Linking/Linking' {
 }
 
 declare module 'react-native/Libraries/Core/setUpXHR'
+declare module 'react-native/Libraries/Core/setUpTimers'
 
 declare module 'react-native/Libraries/WebSocket/WebSocket' {
 	import type {Socket} from 'effect/socket'

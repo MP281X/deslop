@@ -16,8 +16,8 @@ import {AuthRoute} from '#screens/routes.ts'
 const AccountRead = AsyncResult.Schema({error: Schema.Unknown, success: Schema.Option(SignedAccount)})
 const PeopleRead = AsyncResult.Schema({error: Schema.Unknown, success: Schema.Array(Person)})
 const SessionsRead = AsyncResult.Schema({error: Schema.Unknown, success: Schema.Array(ListedSession)})
-const Reader = Schema.Literals(['account', 'people', 'sessions'])
 export type Reader = typeof Reader.Type
+export const Reader = Schema.Literals(['account', 'people', 'sessions'])
 
 export type Model = typeof Model.Type
 export const Model = Schema.Struct({
@@ -75,15 +75,15 @@ export class Admit extends Command.Service<Admit>()('Auth/Admit', {
 }) {
 	static readonly layer = this.toLayer(
 		Effect.gen(function* () {
-			const {admit} = yield* AuthReads
+			const reads = yield* AuthReads
 			const registry = yield* AtomRegistry.AtomRegistry
 			return args => {
-				const operation = admit(args.id)
+				const operationAtom = reads.admitAtoms(args.id)
 				return pipe(
 					Effect.gen(function* () {
-						yield* Atom.mount(operation)
-						yield* Atom.set(operation, args.allow)
-						return yield* Effect.matchCause(Atom.getResult(operation, {suspendOnWaiting: true}), {
+						yield* Atom.mount(operationAtom)
+						yield* Atom.set(operationAtom, args.allow)
+						return yield* Effect.matchCause(Atom.getResult(operationAtom, {suspendOnWaiting: true}), {
 							onFailure: cause => Message.Admission({error: admissionError(cause), id: args.id, viewer: args.viewer}),
 							onSuccess: () => Message.Admission({id: args.id, viewer: args.viewer})
 						})
@@ -105,13 +105,17 @@ export class Refresh extends Command.Service<Refresh>()('Auth/Refresh', {
 			const registry = yield* AtomRegistry.AtomRegistry
 			return args =>
 				Effect.sync(() => {
-					if (args.sessionChanged === true) registry.update(reads.credentials, version => version + 1)
+					if (args.sessionChanged === true) registry.update(reads.credentialsAtom, version => version + 1)
 					if (args.reader === 'account') {
-						registry.refresh(reads.account)
+						registry.refresh(reads.accountAtom)
 						return
 					}
 					if (args.viewer === undefined) return
-					registry.refresh(args.reader === 'people' ? reads.people(args.viewer) : reads.sessions(args.viewer))
+					if (args.reader === 'people') {
+						registry.refresh(reads.peopleAtoms(args.viewer))
+						return
+					}
+					registry.refresh(reads.sessionAtoms(args.viewer))
 				})
 		})
 	)

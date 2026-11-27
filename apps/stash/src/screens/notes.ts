@@ -5,10 +5,12 @@ import {
 	Array,
 	Boolean,
 	Cause,
+	Context,
 	DateTime,
 	Effect,
 	Equal,
 	Function,
+	Layer,
 	Option,
 	Predicate,
 	Schema,
@@ -21,13 +23,16 @@ import {AsyncResult, AtomRegistry} from 'effect/reactivity'
 import type {Atom} from 'effect/reactivity'
 
 import type {Selection, ToolbarAction, ToolbarOptions} from '@deslop/design/model'
+import {chooseToolbar, defineSelection} from '@deslop/design/model'
+import {observe, refreshFailed} from '@deslop/runtime/client/atom'
 import {clockAtom} from '@deslop/runtime/client/clock'
 import {blockingFailure, isDeniedCause, needsSignInCause} from '@deslop/runtime/client/live-stream'
 import {AuthError} from '@deslop/runtime/shared/auth'
 import {Account} from '@deslop/runtime/shared/schema'
 import {DateTimeUtcFromFiniteMillis} from '@deslop/runtime/shared/time'
 
-import {Kind, Note, NoteId, NoteItem, NotesError, TagName} from '#contracts'
+import type {NotesError} from '#contracts'
+import {Kind, Note, NoteId, NoteItem, TagName} from '#contracts'
 
 import {kindOf, kinds, sourceLabelOf, subjectOf, tagCounts} from '#screens/kinds.ts'
 import {isWebLink, issueOf, pathsOf, rowOf, savedOf} from '#screens/note.ts'
@@ -39,6 +44,7 @@ const ReadNotes = AsyncResult.Schema({error: Schema.Unknown, success: Schema.Arr
 const ReadBody = AsyncResult.Schema({error: Schema.Unknown, success: Schema.Struct({body: Note.json.fields.body})})
 const ReadMedia = AsyncResult.Schema({error: Schema.Unknown, success: Schema.Finite})
 
+type Model = typeof Model.Type
 const Model = Schema.Struct({
 	account: ReadAccount,
 	body: ReadBody,
@@ -55,8 +61,8 @@ const Model = Schema.Struct({
 	selected: Schema.UndefinedOr(NoteItem.json),
 	tag: Schema.UndefinedOr(TagName)
 })
-type Model = typeof Model.Type
 
+type Action = typeof Action.Type
 const Action = Schema.TaggedUnion({
 	Capture: {text: Schema.String},
 	OpenLink: {url: Schema.String},
@@ -90,28 +96,18 @@ const Message = UiSchema.TaggedEnum({
 })
 export type StashMessage = typeof Message.Type
 
-type Platform = {
+export type Platform<R = never> = {
 	account: Atom.Atom<AsyncResult.AsyncResult<Account, AuthError>>
 	activation: Stream.Stream<void>
 	narrow: () => boolean
 	openLink: (url: string) => Effect.Effect<void, NotesError>
-	paste: Effect.Effect<string | undefined, NotesError>
+	paste: Effect.Effect<Option.Option<string>, NotesError, R>
 	readDraft: () => string
 	settleShares: Effect.Effect<readonly string[], NotesError>
 	share: (text: string) => Effect.Effect<void, NotesError>
 	signIn: Effect.Effect<boolean, AuthError>
-	signOut: Effect.Effect<void, AuthError>
+	signOut: Effect.Effect<void, AuthError, R>
 	writeDraft: (text: string) => void
-}
-
-function observe<A, M>(atom: Atom.Atom<A>, read: (value: A) => M) {
-	return Stream.unwrap(
-		AtomRegistry.AtomRegistry.useSync(registry => pipe(registry, AtomRegistry.toStream(atom), Stream.map(read)))
-	)
-}
-
-function refreshFailed<A, E>(registry: AtomRegistry.AtomRegistry, atom: Atom.Atom<AsyncResult.AsyncResult<A, E>>) {
-	if (AsyncResult.isFailure(registry.get(atom))) registry.refresh(atom)
 }
 
 function allNotes(state: Model) {
@@ -127,7 +123,7 @@ function visibleNotes(state: Model) {
 	)
 }
 
-function select(model: Model): Model {
+function select(model: Model) {
 	const selected = Option.getOrUndefined(
 		StashRoute.match(model.route, {
 			Home: route => {
@@ -150,18 +146,18 @@ function problemText(cause: Cause.Cause<unknown>) {
 }
 
 function gate(state: Model) {
-	const failure = pipe(
+	return pipe(
 		blockingFailure(state.account),
-		Option.orElse(() => Option.filter(blockingFailure(state.notes), isDeniedCause))
+		Option.orElse(() => Option.filter(blockingFailure(state.notes), isDeniedCause)),
+		Option.match({
+			onNone: Function.constUndefined,
+			onSome: cause => {
+				if (needsSignInCause(cause)) return {message: 'Sign in to Stash', signIn: true}
+				if (isDeniedCause(cause)) return {message: 'Access denied', signIn: false}
+				return {message: 'Couldn’t connect to Stash', signIn: false}
+			}
+		})
 	)
-	return Option.match(failure, {
-		onNone: Function.constUndefined,
-		onSome: cause => {
-			if (needsSignInCause(cause)) return {message: 'Sign in to Stash', signIn: true}
-			if (isDeniedCause(cause)) return {message: 'Access denied', signIn: false}
-			return {message: 'Couldn’t connect to Stash', signIn: false}
-		}
-	})
 }
 
 function readerRetry(state: Model) {
@@ -216,7 +212,7 @@ function queueNote(state: Model) {
 	return 'No saved notes'
 }
 
-function detailActions(state: Model): readonly ToolbarAction[] {
+function detailActions(state: Model) {
 	if (state.selected === undefined) return []
 	return [
 		{disabled: state.pending, id: 'share', label: 'Share', symbol: 'square.and.arrow.up'},
@@ -225,16 +221,20 @@ function detailActions(state: Model): readonly ToolbarAction[] {
 			label: 'Note options',
 			menu: [
 				...Array.fromOption(
-					Option.map(Option.filter(state.selected.url, isWebLink), () => ({id: 'open-link', label: 'Open link'}))
+					pipe(
+						state.selected.url,
+						Option.filter(isWebLink),
+						Option.map(() => ({id: 'open-link', label: 'Open link'}))
+					)
 				),
 				{disabled: state.pending, id: 'regenerate', label: 'Regenerate'}
 			],
 			symbol: 'ellipsis'
 		}
-	]
+	] satisfies readonly ToolbarAction[]
 }
 
-function queueActions(state: Model): readonly ToolbarAction[] {
+function queueActions(state: Model) {
 	return [
 		{disabled: state.pending, id: 'paste', label: 'Paste link', symbol: 'doc.on.clipboard'},
 		{id: 'compose', label: 'New note', symbol: 'square.and.pencil'},
@@ -242,13 +242,13 @@ function queueActions(state: Model): readonly ToolbarAction[] {
 			id: 'queue-options',
 			label: 'Queue options',
 			menu: [
-				{id: 'source-all', label: 'All sources', checked: state.kind === undefined},
-				...Array.map(Kind.literals, kind => ({id: `source-${kind}`, label: kinds[kind], checked: state.kind === kind})),
-				{id: 'all-tags', label: 'All tags', checked: state.tag === undefined},
-				...Array.map(tagCounts(allNotes(state)), ({tag}) => ({
-					id: `tag-${tag}`,
-					label: tag,
-					checked: state.tag === tag
+				{checked: state.kind === undefined, id: 'source-all', label: 'All sources'},
+				...Array.map(Kind.literals, kind => ({checked: state.kind === kind, id: `source-${kind}`, label: kinds[kind]})),
+				{checked: state.tag === undefined, id: 'all-tags', label: 'All tags'},
+				...Array.map(tagCounts(allNotes(state)), entry => ({
+					checked: state.tag === entry.tag,
+					id: `tag-${entry.tag}`,
+					label: entry.tag
 				})),
 				...Array.fromOption(
 					pipe(
@@ -260,39 +260,19 @@ function queueActions(state: Model): readonly ToolbarAction[] {
 			],
 			symbol: 'line.3.horizontal.decrease'
 		}
-	]
-}
-
-function selectedAction(state: Model, id: string) {
-	if (id === 'compose') return Message.Compose({open: true})
-	if (id === 'compose-cancel') return dismissCompose
-	if (id === 'compose-save' && !saveDisabled(state)) return saveDraft(state)
-	if (id === 'paste') return Message.Run({action: Action.cases.Paste.make({})})
-	if (id === 'sign-out') return Message.Run({action: Action.cases.SignOut.make({})})
-	if (id === 'source-all') return Message.FilterKind({kind: undefined})
-	if (id === 'all-tags') return Message.FilterTag({tag: undefined})
-	const kind = String.slice('source-'.length)(id)
-	if (String.startsWith('source-')(id) && Schema.is(Kind)(kind)) return Message.FilterKind({kind})
-	const tag = String.slice('tag-'.length)(id)
-	if (String.startsWith('tag-')(id) && Schema.is(TagName)(tag)) return Message.FilterTag({tag})
-
-	const note = state.selected
-	if (note === undefined) return undefined
-	if (id === 'regenerate') return Message.Run({action: Action.cases.Regenerate.make({id: note.id})})
-	if (id === 'share') {
-		const text = Option.getOrUndefined(note.url) ?? (note.summary || note.title)
-		return Message.Run({action: Action.cases.Share.make({text})})
-	}
-	if (id === 'open-link') return Option.map(Option.filter(note.url, isWebLink), openLink).pipe(Option.getOrUndefined)
-	return undefined
+	] satisfies readonly ToolbarAction[]
 }
 
 export const dismissCompose = Message.Compose({open: false})
 export const dismissProblem = Message.DismissProblem()
 export const retry = Message.Retry()
 export const signIn = Message.Run({action: Action.cases.SignIn.make({})})
-export const editDraft = (text: string) => Message.Draft({text})
-export const openLink = (url: string) => Message.Run({action: Action.cases.OpenLink.make({url})})
+export function editDraft(text: string) {
+	return Message.Draft({text})
+}
+export function openLink(url: string) {
+	return Message.Run({action: Action.cases.OpenLink.make({url})})
+}
 
 type SelectionParts = Selection & {choose: ToolbarOptions['choose']; dismiss: Selection['back']}
 
@@ -304,13 +284,47 @@ function saveDraft(state: Model) {
 	return Message.Run({action: Action.cases.Capture.make({text: state.draft})})
 }
 
+function filterAction(id: string) {
+	if (id === 'source-all') return Message.FilterKind({kind: undefined})
+	if (id === 'all-tags') return Message.FilterTag({tag: undefined})
+	const kind = String.slice('source-'.length)(id)
+	if (String.startsWith('source-')(id) && Schema.is(Kind)(kind)) return Message.FilterKind({kind})
+	const tag = String.slice('tag-'.length)(id)
+	if (String.startsWith('tag-')(id) && Schema.is(TagName)(tag)) return Message.FilterTag({tag})
+	return undefined
+}
+
+function readerAction(note: NoteItem, id: string) {
+	if (id === 'regenerate') return Message.Run({action: Action.cases.Regenerate.make({id: note.id})})
+	if (id === 'share') {
+		return Message.Run({
+			action: Action.cases.Share.make({text: Option.getOrUndefined(note.url) ?? (note.summary || note.title)})
+		})
+	}
+	if (id === 'open-link') {
+		return pipe(note.url, Option.filter(isWebLink), Option.map(openLink), Option.getOrUndefined)
+	}
+	return undefined
+}
+
+function selectedAction(state: Model, id: string) {
+	if (id === 'compose') return Message.Compose({open: true})
+	if (id === 'compose-cancel') return dismissCompose
+	if (id === 'compose-save' && !saveDisabled(state)) return saveDraft(state)
+	if (id === 'paste') return Message.Run({action: Action.cases.Paste.make({})})
+	if (id === 'sign-out') return Message.Run({action: Action.cases.SignOut.make({})})
+	const filter = filterAction(id)
+	if (filter !== undefined) return filter
+	if (state.selected === undefined) return undefined
+	return readerAction(state.selected, id)
+}
+
 function screenOf(state: Model, selection: SelectionParts) {
 	const detail = reader(state)
 	const opened = showsDetail(state.route)
 	const id = StashRoute.match(state.route, {Home: route => route.search.note, NotFound: Function.constUndefined})
 	return {
 		access: gate(state),
-		composing: state.composing,
 		composeToolbar: {
 			actions: [
 				{disabled: state.pending, id: 'compose-cancel', label: 'Cancel', symbol: 'xmark'},
@@ -318,15 +332,17 @@ function screenOf(state: Model, selection: SelectionParts) {
 			],
 			choose: selection.choose
 		} satisfies ToolbarOptions,
+		composing: state.composing,
 		detail,
+		detailFailed: Option.isSome(blockingFailure(state.notes)),
 		detailLoading: AsyncResult.isInitial(state.notes),
 		detailMissing: id !== undefined && detail === undefined && AsyncResult.isSuccess(state.notes),
-		detailFailed: Option.isSome(blockingFailure(state.notes)),
 		dismiss: selection.dismiss,
 		draft: state.draft,
-		filter: (tag: TagName | undefined) =>
+		filter: (tag?: TagName) =>
 			Message.FilterTag({
-				tag: Option.fromUndefinedOr(tag).pipe(
+				tag: pipe(
+					Option.fromUndefinedOr(tag),
 					Option.filter(value => value !== state.tag),
 					Option.getOrUndefined
 				)
@@ -347,8 +363,8 @@ function screenOf(state: Model, selection: SelectionParts) {
 			...selection,
 			id: Boolean.match(opened, {onFalse: Function.constUndefined, onTrue: () => id ?? 'note'})
 		},
-		tags: tagCounts(allNotes(state)),
 		tag: state.tag,
+		tags: tagCounts(allNotes(state)),
 		toolbar: {detail: detailActions(state), queue: {actions: queueActions(state), choose: selection.choose}}
 	}
 }
@@ -356,23 +372,11 @@ function screenOf(state: Model, selection: SelectionParts) {
 export type StashScreen = ReturnType<typeof screenOf>
 export type Reader = NonNullable<StashScreen['detail']>
 
-const Select = Component.define({
-	events: Message,
-	message: Message,
-	model: Schema.Null,
-	name: 'StashSelection',
-	props: Schema.Struct({id: Schema.UndefinedOr(Schema.String)})
-}).make({
-	init: Function.constNull,
+const Select = defineSelection('StashSelection', Message).make({
+	init: Function.constUndefined,
 	parts: p => ({
 		back: p.part((el, event: string) => el.on(event, Message.Back())),
-		choose: p.part((el, event: string, identify: (payload: unknown) => string | undefined) =>
-			el.on(event, payload => {
-				const id = identify(payload)
-				if (id === undefined) return undefined
-				return Message.Choose({id})
-			})
-		),
+		choose: p.part(chooseToolbar<typeof Message.Type>(Message.Choose)),
 		dismiss: p.part((el, event: string) =>
 			el.on(
 				event,
@@ -391,236 +395,259 @@ const Select = Component.define({
 			})
 		)
 	}),
-	update: ($, message) => $.set(null).emit(message)
+	update: ($, message) => $.set(undefined).emit(message)
 })
 
-export function makeStash<V extends View.Elements, R>(
+class RunAction extends Command.Service<RunAction>()('Stash/Run', {args: {action: Action}, success: Message}) {}
+
+class Refresh extends Command.Service<Refresh>()('Stash/Retry', {args: {item: Schema.UndefinedOr(NoteItem.json)}}) {}
+
+class Wake extends Command.Service<Wake>()('Stash/Wake', {args: {refresh: Schema.Boolean}, success: Message}) {}
+
+export function makeStash<V extends View.Elements, IO>(
 	elements: View.Vocabulary<V>,
-	platform: Platform,
+	platform: Platform<IO>,
 	reads: ReturnType<typeof makeReads>,
-	render: (h: View.WithTags<StashMessage, unknown, V>, screen: StashScreen) => View.Content<StashMessage, R>
+	render: (h: View.WithTags<StashMessage, unknown, V>, screen: StashScreen) => View.Content<StashMessage>
 ) {
-	const StoreDraft = Command.make('Stash/StoreDraft', {args: {text: Schema.String}}, ({text}) =>
-		Effect.sync(() => platform.writeDraft(text))
+	const StoreDraft = Command.make('Stash/StoreDraft', {args: {text: Schema.String}}, request =>
+		Effect.sync(() => platform.writeDraft(request.text))
 	)
 
-	const RunAction = Command.make('Stash/Run', {args: {action: Action}, success: Message}, ({action}) =>
-		AtomRegistry.AtomRegistry.use(registry =>
-			Effect.matchCause(
-				Action.match(action, {
-					Capture: input => Effect.asVoid(reads.capture(registry, String.trim(input.text))),
-					OpenLink: input => platform.openLink(input.url),
-					Paste: () =>
-						Effect.flatMap(platform.paste, text => {
-							if (text === undefined) return Effect.void
-							return Effect.asVoid(reads.capture(registry, text))
-						}),
-					Regenerate: input => reads.regenerate(registry, input.id),
-					Share: input => platform.share(input.text),
-					SignIn: () =>
-						Effect.flatMap(platform.signIn, signedIn => {
-							if (!signedIn) return Effect.void
-							return Effect.sync(() => {
-								reads.reconnect(registry)
-								registry.refresh(platform.account)
-							})
-						}),
-					SignOut: () =>
-						Effect.andThen(
-							platform.signOut,
-							Effect.sync(() => {
-								reads.reconnect(registry)
-								registry.refresh(platform.account)
-							})
-						)
-				}),
-				{
-					onFailure: cause => Message.Settled({action, problem: problemText(cause)}),
-					onSuccess: () => Message.Settled({action, problem: undefined})
-				}
-			)
-		)
-	)
-
-	const Refresh = Command.make('Stash/Retry', {args: {item: Schema.UndefinedOr(NoteItem.json)}}, ({item}) =>
-		AtomRegistry.AtomRegistry.useSync(registry => {
-			registry.refresh(platform.account)
-			refreshFailed(registry, reads.notes)
-			if (item !== undefined) {
-				refreshFailed(registry, reads.body(item))
-				refreshFailed(registry, reads.media(item))
+	const layerRun = RunAction.toLayer(
+		Effect.map(Effect.context<AtomRegistry.AtomRegistry | IO>(), context => {
+			const registry = Context.get(context, AtomRegistry.AtomRegistry)
+			function authChanged() {
+				return Effect.sync(() => {
+					reads.reconnect(registry)
+					registry.refresh(platform.account)
+				})
 			}
+			return request =>
+				pipe(
+					Action.match(request.action, {
+						Capture: input => Effect.asVoid(reads.capture(registry, String.trim(input.text))),
+						OpenLink: input => platform.openLink(input.url),
+						Paste: () =>
+							Effect.flatMap(
+								platform.paste,
+								Option.match({onNone: () => Effect.void, onSome: text => Effect.asVoid(reads.capture(registry, text))})
+							),
+						Regenerate: input => reads.regenerate(registry, input.id),
+						Share: input => platform.share(input.text),
+						SignIn: () =>
+							Effect.flatMap(platform.signIn, signedIn => {
+								if (!signedIn) return Effect.void
+								return authChanged()
+							}),
+						SignOut: () => Effect.andThen(platform.signOut, authChanged())
+					}),
+					Effect.matchCause({
+						onFailure: cause => Message.Settled({action: request.action, problem: problemText(cause)}),
+						onSuccess: () => Message.Settled({action: request.action, problem: undefined})
+					}),
+					Effect.provideContext(context)
+				)
 		})
 	)
 
-	const Wake = Command.make('Stash/Wake', {args: {refresh: Schema.Boolean}, success: Message}, ({refresh}) =>
-		AtomRegistry.AtomRegistry.use(registry =>
-			Effect.gen(function* () {
-				if (refresh) registry.refresh(platform.account)
-				const account = yield* Effect.option(
-					AtomRegistry.getResult(registry, platform.account, {suspendOnWaiting: true})
-				)
-				if (Option.isNone(account)) return Message.Problem({text: undefined})
-				return yield* Effect.match(platform.settleShares, {
-					onFailure: error => Message.Problem({text: error.message}),
-					onSuccess: rejections =>
-						Message.Problem({
-							text: Boolean.match(Array.isArrayNonEmpty(rejections), {
-								onFalse: Function.constUndefined,
-								onTrue: () => Array.join(rejections, '\n')
-							})
-						})
+	const layerRefresh = Refresh.toLayer(
+		AtomRegistry.AtomRegistry.useSync(
+			registry => request =>
+				Effect.sync(() => {
+					registry.refresh(platform.account)
+					refreshFailed(registry, reads.notesAtom)
+					if (request.item !== undefined) {
+						refreshFailed(registry, reads.bodyAtoms(request.item))
+						refreshFailed(registry, reads.mediaAtoms(request.item))
+					}
 				})
-			})
 		)
 	)
 
-	return Component.withElements(elements)({
-		message: Message,
-		model: Model,
-		name: 'Stash',
-		props: Schema.Struct({route: StashRoute})
-	}).make({
-		init: $ => ({
-			account: AsyncResult.initial(),
-			body: AsyncResult.initial(),
-			composing: false,
-			draft: platform.readDraft(),
-			kind: undefined,
-			media: AsyncResult.initial(),
-			notes: AsyncResult.initial(),
-			now: DateTime.nowUnsafe(),
-			pending: false,
-			problem: undefined,
-			revision: 0,
-			route: $.props.route,
-			selected: undefined,
-			tag: undefined
-		}),
-		subscriptions: $ => {
-			const state = $.model
-			const admitted =
-				Option.isSome(AsyncResult.value(state.account)) &&
-				!(AsyncResult.isFailure(state.account) && isDeniedCause(state.account.cause))
-			const item = Option.fromUndefinedOr(state.selected).pipe(
-				Option.filter(() => admitted),
-				Option.getOrUndefined
-			)
-			return [
-				Router.subscription(StashRoute, state.route, route => Message.Route({route})),
-				Subscription.make(
-					'account',
-					observe(platform.account, result => Message.Account({result}))
-				),
-				Subscription.make(
-					'clock',
-					observe(clockAtom('1 minute'), now => Message.Clock({now}))
-				),
-				Subscription.make(
-					'activation',
-					Stream.map(platform.activation, () => Message.Wake())
-				),
-				admitted &&
-					Subscription.make(
-						'notes',
-						observe(reads.notes, result => Message.Notes({result}))
-					),
-				item !== undefined &&
-					Subscription.make('body', [item.id, state.revision], () =>
-						observe(reads.body(item), result => Message.Body({id: item.id, result}))
-					),
-				item !== undefined &&
-					Subscription.make('media', [item.id, state.revision], () =>
-						observe(reads.media(item), result => Message.Media({id: item.id, result}))
+	const layerWake = Wake.toLayer(
+		AtomRegistry.AtomRegistry.useSync(
+			registry => request =>
+				Effect.gen(function* () {
+					if (request.refresh) registry.refresh(platform.account)
+					const account = yield* Effect.option(
+						AtomRegistry.getResult(registry, platform.account, {suspendOnWaiting: true})
 					)
-			]
-		},
-		update: {
-			Account: ($, {result}) => {
-				if (AsyncResult.isFailure(result) && isDeniedCause(result.cause)) {
-					return $.evolve({
-						account: result,
-						body: AsyncResult.initial(),
-						media: AsyncResult.initial(),
-						notes: AsyncResult.initial(),
-						selected: undefined
+					if (Option.isNone(account)) return Message.Problem({text: undefined})
+					return yield* Effect.match(platform.settleShares, {
+						onFailure: error => Message.Problem({text: error.message}),
+						onSuccess: rejections =>
+							Message.Problem({
+								text: pipe(
+									Option.liftPredicate(rejections, Array.isReadonlyArrayNonEmpty),
+									Option.map(Array.join('\n')),
+									Option.getOrUndefined
+								)
+							})
 					})
-				}
-				return $.evolve({account: result})
-			},
-			Back: $ => $.run(Command.asNoop(BackToQueue.make({}))),
-			Body: ($, {id, result}) => {
-				if ($.model.selected?.id !== id || (AsyncResult.isInitial(result) && !AsyncResult.isInitial($.model.body)))
-					return $.model
-				if (AsyncResult.isFailure(result) && !isDeniedCause(result.cause)) {
-					return $.evolve({body: AsyncResult.failureWithPrevious(result.cause, {previous: Option.some($.model.body)})})
-				}
-				return $.evolve({body: result})
-			},
-			Choose: ($, {id}) => {
-				const message = selectedAction($.model, id)
-				if (message === undefined) return $.model
-				if (Message.isAnyOf(['Compose'])(message)) return $.evolve({composing: message.open})
-				if (Message.isAnyOf(['FilterKind'])(message)) return $.set(select({...$.model, kind: message.kind}))
-				if (Message.isAnyOf(['FilterTag'])(message)) return $.set(select({...$.model, tag: message.tag}))
-				if (!Message.isAnyOf(['Run'])(message) || $.model.pending) return $.model
-				return $.evolve({pending: true, problem: undefined}).run(RunAction.make({action: message.action}))
-			},
-			Clock: ($, {now}) => $.evolve({now}),
-			Compose: ($, {open}) => $.evolve({composing: open}),
-			DismissProblem: $ => $.evolve({problem: undefined}),
-			Draft: ($, {text}) => $.evolve({draft: text}).run(Command.asNoop(StoreDraft.make({text}))),
-			FilterKind: ($, {kind}) => $.set(select({...$.model, kind})),
-			FilterTag: ($, {tag}) => {
-				const next = $.set(select({...$.model, tag}))
-				if (showsDetail($.model.route) && platform.narrow()) return next.run(Command.asNoop(BackToQueue.make({})))
-				return next
-			},
-			Media: ($, {id, result}) => {
-				if ($.model.selected?.id !== id) return $.model
-				return $.evolve({media: result})
-			},
-			Notes: ($, {result}) => $.set(select({...$.model, notes: result})),
-			Open: ($, {id}) => {
-				const route = StashRoute.Home({search: {note: id, pane: 'detail'}})
-				const navigate = Boolean.match(showsDetail($.model.route), {
-					onFalse: () => Router.push(StashRoute, route),
-					onTrue: () => Router.replace(StashRoute, route)
 				})
-				return $.evolve({composing: false}).run(Command.asNoop(navigate))
+		)
+	)
+
+	return pipe(
+		Component.withElements(elements)({
+			message: Message,
+			model: Model,
+			name: 'Stash',
+			props: Schema.Struct({route: StashRoute})
+		}).make({
+			init: $ => ({
+				account: AsyncResult.initial(),
+				body: AsyncResult.initial(),
+				composing: false,
+				draft: platform.readDraft(),
+				kind: undefined,
+				media: AsyncResult.initial(),
+				notes: AsyncResult.initial(),
+				now: DateTime.nowUnsafe(),
+				pending: false,
+				problem: undefined,
+				revision: 0,
+				route: $.props.route,
+				selected: undefined,
+				tag: undefined
+			}),
+			subscriptions: $ => {
+				const admitted =
+					Option.isSome(AsyncResult.value($.model.account)) &&
+					!(AsyncResult.isFailure($.model.account) && isDeniedCause($.model.account.cause))
+				const item = pipe(
+					Option.fromUndefinedOr($.model.selected),
+					Option.filter(() => admitted),
+					Option.getOrUndefined
+				)
+				return [
+					Router.subscription(StashRoute, $.model.route, route => Message.Route({route})),
+					Subscription.make(
+						'account',
+						observe(platform.account, result => Message.Account({result}))
+					),
+					Subscription.make(
+						'clock',
+						observe(clockAtom('1 minute'), now => Message.Clock({now}))
+					),
+					Subscription.make(
+						'activation',
+						Stream.map(platform.activation, () => Message.Wake())
+					),
+					admitted &&
+						Subscription.make(
+							'notes',
+							observe(reads.notesAtom, result => Message.Notes({result}))
+						),
+					item !== undefined &&
+						Subscription.make('body', [item.id, $.model.revision], () =>
+							observe(reads.bodyAtoms(item), result => Message.Body({id: item.id, result}))
+						),
+					item !== undefined &&
+						Subscription.make('media', [item.id, $.model.revision], () =>
+							observe(reads.mediaAtoms(item), result => Message.Media({id: item.id, result}))
+						)
+				]
 			},
-			Problem: ($, {text}) => {
-				if (text === undefined) return $.model
-				return $.evolve({problem: text})
+			update: {
+				Account: ($, input) => {
+					if (AsyncResult.isFailure(input.result) && isDeniedCause(input.result.cause)) {
+						return $.evolve({
+							account: input.result,
+							body: AsyncResult.initial(),
+							media: AsyncResult.initial(),
+							notes: AsyncResult.initial(),
+							selected: undefined
+						})
+					}
+					return $.evolve({account: input.result})
+				},
+				Back: $ => $.run(Command.asNoop(BackToQueue.make({}))),
+				Body: ($, input) => {
+					if (
+						$.model.selected?.id !== input.id ||
+						(AsyncResult.isInitial(input.result) && !AsyncResult.isInitial($.model.body))
+					) {
+						return $.model
+					}
+					if (AsyncResult.isFailure(input.result) && !isDeniedCause(input.result.cause)) {
+						return $.evolve({
+							body: AsyncResult.failureWithPrevious(input.result.cause, {previous: Option.some($.model.body)})
+						})
+					}
+					return $.evolve({body: input.result})
+				},
+				Choose: ($, input) => {
+					const message = selectedAction($.model, input.id)
+					if (message === undefined) return $.model
+					if (Message.isAnyOf(['Compose'])(message)) return $.evolve({composing: message.open})
+					if (Message.isAnyOf(['FilterKind'])(message)) return $.set(select({...$.model, kind: message.kind}))
+					if (Message.isAnyOf(['FilterTag'])(message)) return $.set(select({...$.model, tag: message.tag}))
+					if (!Message.isAnyOf(['Run'])(message) || $.model.pending) return $.model
+					return $.evolve({pending: true, problem: undefined}).run(RunAction.make({action: message.action}))
+				},
+				Clock: ($, input) => $.evolve({now: input.now}),
+				Compose: ($, input) => $.evolve({composing: input.open}),
+				DismissProblem: $ => $.evolve({problem: undefined}),
+				Draft: ($, input) => $.evolve({draft: input.text}).run(Command.asNoop(StoreDraft.make({text: input.text}))),
+				FilterKind: ($, input) => $.set(select({...$.model, kind: input.kind})),
+				FilterTag: ($, input) => {
+					const next = $.set(select({...$.model, tag: input.tag}))
+					if (showsDetail($.model.route) && platform.narrow()) return next.run(Command.asNoop(BackToQueue.make({})))
+					return next
+				},
+				Media: ($, input) => {
+					if ($.model.selected?.id !== input.id) return $.model
+					return $.evolve({media: input.result})
+				},
+				Notes: ($, input) => $.set(select({...$.model, notes: input.result})),
+				Open: ($, input) => {
+					const route = StashRoute.Home({search: {note: input.id, pane: 'detail'}})
+					const navigate = Boolean.match(showsDetail($.model.route), {
+						onFalse: () => Router.push(StashRoute, route),
+						onTrue: () => Router.replace(StashRoute, route)
+					})
+					return $.evolve({composing: false}).run(Command.asNoop(navigate))
+				},
+				Problem: ($, input) => {
+					if (input.text === undefined) return $.model
+					return $.evolve({problem: input.text})
+				},
+				Retry: $ => $.run(Command.asNoop(Refresh.make({item: $.model.selected}))),
+				Route: ($, input) => {
+					const next = $.set(select({...$.model, route: input.route}))
+					if (showsDetail(input.route) && !showsDetail($.model.route)) return next.viewTransition(['design-detail-in'])
+					if (!showsDetail(input.route) && showsDetail($.model.route)) return next.viewTransition(['design-detail-out'])
+					return next.viewTransition(['design-layout'])
+				},
+				Run: ($, input) => {
+					if (
+						$.model.pending ||
+						(Action.isAnyOf(['Capture'])(input.action) && String.isEmpty(String.trim(input.action.text)))
+					) {
+						return $.model
+					}
+					return $.evolve({pending: true, problem: undefined}).run(RunAction.make({action: input.action}))
+				},
+				Settled: ($, input) => {
+					const next = $.evolve({pending: false, problem: input.problem})
+					if (input.problem !== undefined) return next
+					if (Action.isAnyOf(['SignIn'])(input.action)) return next.run(Wake.make({refresh: false}))
+					if (!Action.isAnyOf(['Capture'])(input.action)) return next
+					const close = next.evolve({composing: false})
+					if ($.model.draft !== input.action.text) return close
+					return close.evolve({draft: ''}).run(Command.asNoop(StoreDraft.make({text: ''})))
+				},
+				Wake: $ => $.run(Wake.make({refresh: true}))
 			},
-			Retry: $ => $.run(Command.asNoop(Refresh.make({item: $.model.selected}))),
-			Route: ($, {route}) => {
-				const next = $.set(select({...$.model, route}))
-				if (showsDetail(route) && !showsDetail($.model.route)) return next.viewTransition(['design-detail-in'])
-				if (!showsDetail(route) && showsDetail($.model.route)) return next.viewTransition(['design-detail-out'])
-				return next.viewTransition(['design-layout'])
-			},
-			Run: ($, {action}) => {
-				if ($.model.pending || (Action.isAnyOf(['Capture'])(action) && String.isEmpty(String.trim(action.text))))
-					return $.model
-				return $.evolve({pending: true, problem: undefined}).run(RunAction.make({action}))
-			},
-			Settled: ($, {action, problem}) => {
-				const next = $.evolve({pending: false, problem})
-				if (problem !== undefined) return next
-				if (Action.isAnyOf(['SignIn'])(action)) return next.run(Wake.make({refresh: false}))
-				if (!Action.isAnyOf(['Capture'])(action)) return next
-				const close = next.evolve({composing: false})
-				if ($.model.draft !== action.text) return close
-				return close.evolve({draft: ''}).run(Command.asNoop(StoreDraft.make({text: ''})))
-			},
-			Wake: $ => $.run(Wake.make({refresh: true}))
-		},
-		view: (h, model) =>
-			Select(h, {
-				props: {id: model.selected?.id},
-				onEmit: message => message,
-				view: selection => render(h, screenOf(model, selection))
-			})
-	})
+			view: (h, model) =>
+				Select(h, {
+					onEmit: message => message,
+					props: {id: model.selected?.id},
+					view: selection => render(h, screenOf(model, selection))
+				})
+		}),
+		Component.provide(Layer.mergeAll(layerRun, layerRefresh, layerWake))
+	)
 }

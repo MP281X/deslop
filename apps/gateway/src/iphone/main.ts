@@ -3,7 +3,7 @@ import 'react-native/Libraries/Core/setUpXHR'
 import {Router} from '@effect/ui'
 import {Native, NativeApp} from '@effect/ui-native'
 
-import {Effect, Function, Layer, Schema, pipe} from 'effect'
+import {Boolean, Effect, Function, Layer, Schema, pipe} from 'effect'
 
 import {FetchHttpClient} from 'effect/http'
 import {Atom, AtomRegistry} from 'effect/reactivity'
@@ -15,7 +15,7 @@ import {AuthError} from '@deslop/runtime/shared/auth'
 
 import {appOrigin} from '#iphone/origin.ts'
 import {layerIPhoneRouter} from '#iphone/router.ts'
-import {layerIPhoneSocket, readIPhoneAccount, signInIPhone, signOutIPhone} from '#iphone/session.ts'
+import {readIPhoneAccount, session, signOutIPhone} from '#iphone/session.ts'
 import {Workspace} from '#iphone/view.ts'
 import {Platform, layerActions} from '#screens/actions.ts'
 import {GatewayView} from '#screens/gateway.ts'
@@ -35,7 +35,10 @@ const App = Native.component({
 
 const platform = Layer.succeed(Platform, {
 	authenticate: signOut =>
-		signOut ? signOutIPhone : Effect.map(signInIPhone, changed => ({changed, problem: undefined})),
+		Boolean.match(signOut, {
+			onFalse: () => Effect.map(session.signIn, changed => ({changed, problem: undefined})),
+			onTrue: Function.constant(signOutIPhone)
+		}),
 	copy: Effect.try({
 		catch: cause => AuthError.make({cause, message: 'Couldn’t copy MCP URL'}),
 		try: () => Clipboard.setString(`${appOrigin}/mcp`)
@@ -49,8 +52,8 @@ const platform = Layer.succeed(Platform, {
 		)
 })
 
-const account = Atom.runtime(FetchHttpClient.layer).atom(readIPhoneAccount)
-const reads = GatewayReads.layer(layerSocketProtocol(layerIPhoneSocket), account)
+const accountAtom = Atom.runtime(FetchHttpClient.layer).atom(readIPhoneAccount)
+const reads = GatewayReads.layer(layerSocketProtocol(session.layerIPhoneSocket), accountAtom)
 
 NativeApp.register(
 	pipe(

@@ -14,10 +14,11 @@ export const StashNative = requireNativeModule<{
 	saveImage: (id: NoteId, data: string) => Promise<void>
 	settleShares: () => Promise<readonly string[]>
 	writeDraft: (text: string) => void
-	writeSession: (secret: string | null) => void
+	writeSession: (secret?: string) => void
 }>('StashNative')
 
 export function atDevice<A>(message: string, call: () => Promise<A>) {
-	return Effect.tryPromise({catch: cause => NotesError.make({cause, message}), try: call})
+	// Effect passes a signal; Expo's native functions check the exact argument count.
+	return Effect.tryPromise({catch: cause => NotesError.make({cause, message}), try: () => call()})
 }
 // oxlint-enable typescript/no-restricted-types

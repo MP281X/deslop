@@ -1,6 +1,6 @@
-import {Array, DateTime, Duration, Function, Option, pipe} from 'effect'
+import {Array, Boolean, DateTime, Duration, Function, Option, pipe} from 'effect'
 
-import type {RowData} from '@deslop/design/model'
+import type {RowData, RowOptions, Selection} from '@deslop/design/model'
 
 import type {Flight, FlightId, FlightList, TravelTime} from '#contracts'
 import {
@@ -33,24 +33,20 @@ import {
 	tripOf,
 	troubleOf
 } from '#screens/itinerary.ts'
-import type {Hero, ListProblem} from '#screens/itinerary.ts'
+import type {Hero} from '#screens/itinerary.ts'
 import {travelLabel} from '#screens/travel.ts'
 
-export type FlightRow = {
-	readonly item: RowData
-	readonly target: FlightId | undefined
-	readonly was: string | undefined
-}
+export type FlightRow = ReturnType<typeof row>
 
 function row(
 	id: string,
 	title: string,
 	muted: string,
 	value?: string,
-	options?: {problem?: ListProblem | undefined; target?: FlightId | undefined; was?: string | undefined}
-): FlightRow {
+	options?: {problem?: RowData['problem']; target?: FlightId; was?: RowData['trailing']}
+) {
 	return {
-		item: {id, line: muted, problem: options?.problem, title, trailing: value},
+		item: {id, line: muted, problem: options?.problem, title, trailing: value} satisfies RowData,
 		target: options?.target,
 		was: options?.was
 	}
@@ -74,7 +70,7 @@ function bookedRow(flight: Flight, now: DateTime.Utc) {
 				'gate',
 				Option.flatMap(flight.live, live => live.departureGate)
 			),
-			Option.some(date === today ? `lands ${arrivalClockOf(flight)}` : date)
+			Option.some(Boolean.match(date === today, {onFalse: () => date, onTrue: () => `lands ${arrivalClockOf(flight)}`}))
 		]),
 		Option.getOrUndefined(times.value),
 		{problem: Option.getOrUndefined(troubleOf(flight, now)), target: flight.id, was: Option.getOrUndefined(times.was)}
@@ -83,10 +79,47 @@ function bookedRow(flight: Flight, now: DateTime.Utc) {
 
 function changeRow(feeder: Flight, flight: Flight) {
 	const change = changeWords(feeder, flight)
-	const reason = Option.getOrUndefined(change.was)
+
 	return row(`${flight.id}-change`, change.label, '', undefined, {
-		problem: reason === undefined ? undefined : {reason, status: 'warning'}
+		problem: Option.getOrUndefined(Option.map(change.was, reason => ({reason, status: 'warning' as const})))
 	})
+}
+
+function airportByRow(flight: Flight) {
+	return row(
+		'airport-by',
+		'At the airport by',
+		'An hour before departure',
+		clockAt(airportByOf(flight), flight.from.timeZone)
+	)
+}
+
+export function dayAt(flight: Flight, flights: FlightList, now: DateTime.Utc, travel: readonly TravelTime[]) {
+	const journey = Option.getOrElse(journeyOf(flights, flight), () => [flight] as const)
+	const index = pipe(
+		journey,
+		Array.findFirstIndex(item => item.id === flight.id),
+		Option.getOrElse(Function.constant(0))
+	)
+	const current = stepOf(journey, now, travel)
+	const feeder = Option.getOrUndefined(Array.get(journey, index - 1))
+	function nextStep() {
+		if (feeder !== undefined && index > current.index) return changeHero(feeder, flight)
+		if (index >= current.index) return heroOf(journey, current, now, travel)
+		return {
+			label: 'Landed in',
+			pending: false,
+			problem: Option.none(),
+			right: `at ${arrivalClockOf(flight)}`,
+			value: cityOf(flight.to),
+			was: Option.none()
+		} satisfies Hero
+	}
+	return {
+		hero: nextStep(),
+		next: Option.getOrUndefined(Array.get(journey, index + 1)),
+		toAirport: index === 0 && current.index === 0 && (current.phase === 'leave' || current.phase === 'airport')
+	}
 }
 
 export type Itinerary = ReturnType<typeof itinerary>
@@ -98,9 +131,9 @@ export function itinerary(flights: FlightList, now: DateTime.Utc, travel: readon
 	function dates(omit: FlightList) {
 		return Array.map(datesOf(flights, now, omit), group => ({
 			date: group.date,
-			rows: Array.flatMap(group.rows, ({feeder, flight}) => [
-				...Option.toArray(Option.map(feeder, from => changeRow(from, flight))),
-				bookedRow(flight, now)
+			rows: Array.flatMap(group.rows, groupRow => [
+				...Option.toArray(Option.map(groupRow.feeder, from => changeRow(from, groupRow.flight))),
+				bookedRow(groupRow.flight, now)
 			])
 		}))
 	}
@@ -118,57 +151,105 @@ export function itinerary(flights: FlightList, now: DateTime.Utc, travel: readon
 		})),
 		...dates(trip.flights)
 	]
-	const first = Option.getOrUndefined(Array.head(trip.flights))
 	return {
-		airport: first !== undefined && dayAt(first, flights, now, travel).toAirport ? airportByRow(first) : undefined,
+		airport: Option.getOrUndefined(
+			pipe(
+				Array.head(trip.flights),
+				Option.filter(flight => dayAt(flight, flights, now, travel).toAirport),
+				Option.map(airportByRow)
+			)
+		),
 		compact,
 		hero: Option.getOrUndefined(nextHero(flights, now, travel)),
-		past: Array.isReadonlyArrayEmpty(past)
-			? undefined
-			: row(PAST, 'Past flights', past.length === 1 ? '1 flight' : `${past.length} flights`),
+		past: Boolean.match(Array.isReadonlyArrayEmpty(past), {
+			onFalse: () =>
+				row(
+					PAST,
+					'Past flights',
+					Boolean.match(past.length === 1, {
+						onFalse: () => `${past.length} flights`,
+						onTrue: Function.constant('1 flight')
+					})
+				),
+			onTrue: Function.constUndefined
+		}),
 		pastOpen,
-		pastRows: pastOpen ? Array.map(past, flight => bookedRow(flight, now)) : [],
+		pastRows: Boolean.match(pastOpen, {
+			onFalse: Array.empty<FlightRow>,
+			onTrue: () => Array.map(past, flight => bookedRow(flight, now))
+		}),
 		timeline
 	}
 }
 
-function airportByRow(flight: Flight) {
-	return row(
-		'airport-by',
-		'At the airport by',
-		'An hour before departure',
-		clockAt(airportByOf(flight), flight.from.timeZone)
-	)
-}
-
-export function dayAt(flight: Flight, flights: FlightList, now: DateTime.Utc, travel: readonly TravelTime[]) {
-	const journey = Option.getOrElse(journeyOf(flights, flight), () => [flight] as const)
-	const index = Option.getOrElse(
-		Array.findFirstIndex(journey, item => item.id === flight.id),
-		Function.constant(0)
-	)
-	const current = stepOf(journey, now, travel)
-	const feeder = Option.getOrUndefined(Array.get(journey, index - 1))
-	function nextStep(): Hero {
-		if (feeder !== undefined && index > current.index) return changeHero(feeder, flight)
-		if (index >= current.index) return heroOf(journey, current, now, travel)
-		return {
-			label: 'Landed in',
-			pending: false,
-			problem: Option.none(),
-			right: `at ${arrivalClockOf(flight)}`,
-			value: cityOf(flight.to),
-			was: Option.none()
-		}
-	}
-	return {
-		hero: nextStep(),
-		next: Option.getOrUndefined(Array.get(journey, index + 1)),
-		toAirport: index === 0 && current.index === 0 && (current.phase === 'leave' || current.phase === 'airport')
-	}
-}
-
 export type BoardingPass = ReturnType<typeof boardingPass>
+
+export function flightRowOptions<Content>(
+	flight: FlightRow,
+	select: Selection['select'],
+	activeId: Selection['id'],
+	time: (was: string, current?: string) => Content
+) {
+	const target = flight.target
+	return {
+		active: target !== undefined && target === activeId,
+		item: flight.item,
+		...(target !== undefined && {select: (el, event) => select(el, event, target)}),
+		trailing: Option.getOrUndefined(
+			Option.map(Option.fromUndefinedOr(flight.was), previous => time(previous, flight.item.trailing))
+		)
+	} satisfies RowOptions<Content>
+}
+
+export function itineraryContent<Content>(
+	list: Itinerary,
+	wide: boolean,
+	activeId: Selection['id'],
+	draw: {
+		row: (item: FlightRow, activeId?: string) => Content
+		group: (date: string, hero: Itinerary['hero'], rows: readonly Content[]) => Content
+		empty: () => Content
+		past: (item: FlightRow) => Content
+	}
+) {
+	const groups = Boolean.match(wide, {onFalse: () => list.compact, onTrue: () => list.timeline})
+	return [
+		Array.isReadonlyArrayEmpty(list.compact) && draw.empty(),
+		Array.map(groups, (group, index) =>
+			draw.group(
+				group.date,
+				Boolean.match(!wide && index === 0, {onFalse: Function.constUndefined, onTrue: () => list.hero}),
+				Array.map(group.rows, item => draw.row(item, activeId))
+			)
+		),
+		list.airport !== undefined && draw.row(list.airport),
+		list.past !== undefined && draw.past(list.past),
+		Array.map(list.pastRows, item => draw.row(item, activeId))
+	] as const
+}
+
+export function boardingSections<Content, Section>(
+	pass: BoardingPass,
+	renderRow: (item: FlightRow) => Content,
+	information: (rows: readonly Content[]) => Section,
+	travellers: (title: string, rows: readonly Content[]) => Section
+) {
+	return [
+		information(Array.map(pass.rows, renderRow)),
+		Array.isReadonlyArrayNonEmpty(pass.travellers) && travellers('Travellers', Array.map(pass.travellers, renderRow))
+	] as const
+}
+
+export function heroStatus(hero: Hero) {
+	return Option.getOrUndefined(
+		Option.map(hero.problem, problem =>
+			Boolean.match(problem === 'bad', {
+				onFalse: Function.constant('warning' as const),
+				onTrue: Function.constant('error' as const)
+			})
+		)
+	)
+}
 
 export function boardingPass(flight: Flight, flights: FlightList, now: DateTime.Utc, travel: readonly TravelTime[]) {
 	const day = dayAt(flight, flights, now, travel)
@@ -198,7 +279,6 @@ export function boardingPass(flight: Flight, flights: FlightList, now: DateTime.
 	)
 	const problem = troubleOf(flight, now)
 	const times = departureTimes(flight)
-	const next = day.next
 	const travellers = Array.flatMap(flight.travellers, (traveller, index) => {
 		const detail = line([labelled('Group', traveller.boardingGroup), traveller.confirmation])
 		if (
@@ -216,13 +296,13 @@ export function boardingPass(flight: Flight, flights: FlightList, now: DateTime.
 				detail,
 				Option.getOrUndefined(traveller.seat),
 				{
-					problem:
-						traveller.status === 'cancelled'
-							? {
-									reason: line([Option.some('Cancelled'), Option.liftPredicate(detail, text => text !== '')]),
-									status: 'error'
-								}
-							: undefined
+					problem: Boolean.match(traveller.status === 'cancelled', {
+						onFalse: Function.constUndefined,
+						onTrue: () => ({
+							reason: line([Option.some('Cancelled'), Option.liftPredicate(detail, text => text !== '')]),
+							status: 'error' as const
+						})
+					})
 				}
 			)
 		]
@@ -261,11 +341,14 @@ export function boardingPass(flight: Flight, flights: FlightList, now: DateTime.
 				)
 			]),
 			...Array.getSomes([
-				Option.map(Option.fromUndefinedOr(next), to => {
+				Option.map(Option.fromUndefinedOr(day.next), to => {
 					const change = changeWords(flight, to)
 					const target = `${titleOf(to)} to ${cityOf(to.to)}`
 					return row('connection', change.label, target, clockAt(departureOf(to), to.from.timeZone), {
-						problem: change.tight ? {reason: line([Option.some(target), change.was]), status: 'warning'} : undefined,
+						problem: Boolean.match(change.tight, {
+							onFalse: Function.constUndefined,
+							onTrue: () => ({reason: line([Option.some(target), change.was]), status: 'warning' as const})
+						}),
 						target: to.id
 					})
 				})
