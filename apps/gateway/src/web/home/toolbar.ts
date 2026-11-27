@@ -6,7 +6,8 @@ import {AsyncResult} from 'effect/reactivity'
 
 import {blockingFailure} from '@deslop/runtime/client/live-stream'
 import {TimeFrame} from '@deslop/runtime/shared/time'
-import type {ShellAction} from '@deslop/ui/app-shell'
+import {CheckedChoice} from '@deslop/ui/app-shell'
+import type {ShellAction, ShellMenuItem} from '@deslop/ui/app-shell'
 import {Button} from '@deslop/ui/control'
 import {Glass, GlassPanel} from '@deslop/ui/glass'
 import {WebSignOut} from '@deslop/ui/session'
@@ -35,13 +36,37 @@ function isStale(model: Model) {
 	)
 }
 
+function rangesOf(model: Model) {
+	const period = periodOf(model.route)
+	return Array.map(TimeFrame.literals, value => ({
+		checked: value === period,
+		id: `range-${value}`,
+		message: Message.Period({period: value}),
+		title: value
+	}))
+}
+
 export function gatewayActions(model: Model): readonly ShellAction<Message>[] {
+	const account = Option.getOrUndefined(AsyncResult.value(model.account))
+	const stale = isStale(model)
+	const options: readonly ShellMenuItem<Message>[] = [
+		{id: 'copy', message: Message.Copy(), title: model.menuFeedback ?? 'Copy MCP URL'},
+		...Array.filter([{id: 'retry', message: Message.Retry(), title: 'Out of date · Retry'}], () => stale),
+		...Array.filter([{id: 'sign-out', message: Message.SignOut(), title: 'Sign out'}], () => account?.signOut === true)
+	]
 	return [
-		{id: 'range', message: Message.Panel({panel: 'range'}), symbol: 'clock', title: `Range: ${periodOf(model.route)}`},
+		{
+			id: 'range',
+			menu: [{items: rangesOf(model), title: ''}],
+			message: Message.Panel({panel: 'range'}),
+			symbol: 'clock',
+			title: `Range: ${periodOf(model.route)}`
+		},
 		{
 			id: 'options',
+			menu: [{items: options, title: ''}],
 			message: Message.Panel({panel: 'options'}),
-			symbol: Boolean.match(isStale(model), {
+			symbol: Boolean.match(stale, {
 				onFalse: Function.constant('ellipsis'),
 				onTrue: Function.constant('exclamationmark.circle')
 			}),
@@ -51,18 +76,11 @@ export function gatewayActions(model: Model): readonly ShellAction<Message>[] {
 }
 
 export function RangeMenu(h: H, model: Model) {
-	const period = periodOf(model.route)
 	return GlassPanel(
 		h,
 		'gateway-range',
 		'Range',
-		Array.map(TimeFrame.literals, value =>
-			Button(h)
-				.key(value)
-				.attrs({'aria-checked': `${value === period}`, role: 'menuitemradio'})
-				.on('click', Message.Period({period: value}))
-				.children(value, value === period && SymbolIcon(h, 'checkmark'))
-		)
+		Array.map(rangesOf(model), item => CheckedChoice(h, item))
 	)
 		.attr('role', 'menu')
 		.popover('auto', model.panel === 'range')

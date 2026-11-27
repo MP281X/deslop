@@ -4,7 +4,7 @@ import {Atom, AtomRpc} from 'effect/reactivity'
 
 import {liveAtom} from '@deslop/runtime/client/live-stream'
 import {RpcStream} from '@deslop/runtime/shared/rpc'
-import {layerPageProtocol} from '@deslop/runtime/web/client'
+import {sessionProtocol} from '@deslop/ui/native'
 
 import {RpcContracts, ExposeInput, AppId, RunRequest} from '#contracts'
 
@@ -12,7 +12,7 @@ import {HOUR} from '#web/inventory/chart.ts'
 
 class RpcClient extends AtomRpc.Service<RpcClient>()('@deslop/deploy/web/inventory/client/RpcClient', {
 	group: RpcContracts.middleware(RpcStream),
-	protocol: layerPageProtocol
+	protocol: sessionProtocol
 }) {}
 
 export const inventoryAtom = liveAtom(RpcClient, 'inventory.watch')

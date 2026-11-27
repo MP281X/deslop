@@ -12,7 +12,7 @@ import {signInUrl} from '@deslop/runtime/shared/auth'
 import {dayOf} from '@deslop/runtime/shared/format'
 import {ActionShell, CheckedChoice} from '@deslop/ui/app-shell'
 import type {ShellAction} from '@deslop/ui/app-shell'
-import {Loading, Notice, Placeholder, Row, RowPlaceholder} from '@deslop/ui/axis'
+import {Loading, Notice, Row} from '@deslop/ui/axis'
 import {PressFeedback} from '@deslop/ui/control'
 import {Glass, GlassPanel} from '@deslop/ui/glass'
 import {isNative, sessionAccount} from '@deslop/ui/native'
@@ -146,23 +146,6 @@ function actions(model: Model, series: Series, reading: ReturnType<typeof chapte
 	)
 }
 
-function listSkeleton(h: H) {
-	return Loading(
-		h,
-		'Loading chapters',
-		Array.makeBy(18, index =>
-			RowPlaceholder(h, {
-				className: 'opm-row',
-				id: `chapter-placeholder-${index}`,
-				leading: Placeholder(h, 'opm-cover'),
-				line: Placeholder(h, 'opm-line-placeholder'),
-				title: Placeholder(h, 'opm-title-placeholder'),
-				value: Placeholder(h, 'opm-date-placeholder')
-			})
-		)
-	)
-}
-
 function access(h: H, model: Model, cause: Cause.Cause<unknown>) {
 	if (needsSignInCause(cause)) {
 		if (model.busy) return Notice(h, 'Signing in…')
@@ -216,10 +199,11 @@ function shell(h: H, model: Model, waiting: boolean) {
 									onNonEmpty: available => Array.map(available, chapter => row(h, chapter, model))
 								})
 							),
-						onTrue: () => listSkeleton(h)
+						onTrue: () => Loading(h, 'Loading chapters', h.div.class('opm-skeleton-list').attr('aria-hidden', 'true'))
 					})
 				),
-				label: SERIES_NAMES[series]
+				label: SERIES_NAMES[series],
+				position: {key: series, ready: !waiting}
 			},
 			listHidden: model.listHidden,
 			narrow: model.narrow,

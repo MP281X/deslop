@@ -23,14 +23,6 @@ export function RowContent<M>(h: Html.H<M>, options: RowSlots<NoInfer<M>>) {
 	return [options.leading, RowLabel(h, options), h.span.class('axis-value').children(options.value)]
 }
 
-export function RowPlaceholder<M>(h: Html.H<M>, options: RowSlots<NoInfer<M>> & {className?: string; id: string}) {
-	return h.div
-		.key(options.id)
-		.class('axis-row axis-item', options.className)
-		.attr('aria-hidden', 'true')
-		.children(RowContent(h, options))
-}
-
 export function Row<M>(
 	h: Html.H<M>,
 	options: RowSlots<NoInfer<M>> & {className?: string; current: boolean; id: string; open: M}

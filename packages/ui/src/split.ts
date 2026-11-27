@@ -4,6 +4,8 @@ import type {Html} from '@effect/ui/html'
 
 import {Boolean, Function, Schema} from 'effect'
 
+import {ListPosition} from './list-position.ts'
+
 const COMPACT_WIDTH = '(width < 640px)'
 const SPLIT_SEGMENTS = '(horizontal-viewport-segments: 2), (vertical-viewport-segments: 2)'
 
@@ -25,10 +27,20 @@ export function Split<M>(
 		show: Pane
 		narrow: boolean
 		listHidden: boolean
-		list: {label: string; content: View.Input<M>}
+		list: {label: string; content: View.Input<M>; position?: {key: string; ready: boolean}}
 		detail: {label: string; content: View.Input<M>; key: string}
 	}
 ) {
+	const list = h.section.class('fold-list').attr('aria-label', options.list.label).children(options.list.content)
+	function listPane() {
+		if (options.list.position === undefined) return list
+		return list.onMount(
+			ListPosition({
+				active: options.list.position.ready && !options.listHidden && (!options.narrow || options.show === 'list'),
+				key: options.list.position.key
+			})
+		)
+	}
 	return h.div
 		.class('fold axis-split')
 		.attrs({
@@ -43,7 +55,7 @@ export function Split<M>(
 			'data-show': options.show
 		})
 		.children(
-			h.section.class('fold-list').attr('aria-label', options.list.label).children(options.list.content),
+			listPane(),
 			h.section
 				.key(options.detail.key)
 				.class('fold-detail')

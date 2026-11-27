@@ -1,13 +1,14 @@
 import {Command, UiSchema} from '@effect/ui'
 import type {Html} from '@effect/ui/html'
 
-import {Cause, Effect, Function, Option, Predicate, Schema, String} from 'effect'
+import {Cause, Effect, Function, Option, Predicate, Schema, String, pipe} from 'effect'
 
 import {AsyncResult, AtomRegistry} from 'effect/reactivity'
 
 import {needsSignInCause} from '@deslop/runtime/client/live-stream'
 import {signInUrl} from '@deslop/runtime/shared/auth'
 import {DateTimeUtcFromFiniteMillis} from '@deslop/runtime/shared/time'
+import {nativeSignIn, sessionAccount} from '@deslop/ui/native'
 import {refreshFailed} from '@deslop/ui/state'
 
 import {AppId, ExposeInput, InventoryItem, ItemId, Snapshot, AppHour, MachineHistory} from '#contracts'
@@ -64,7 +65,8 @@ export const Message = UiSchema.TaggedEnum({
 	Retry: {},
 	Route: {route: DeployRoute},
 	Select: {id: ItemId},
-	Sidebar: {}
+	Sidebar: {},
+	SignIn: {}
 })
 export type H = Html.H<Message>
 
@@ -96,7 +98,26 @@ export class Execute extends Command.Service<Execute>()('Deploy/Execute', {
 	)
 }
 
+function refreshReads(registry: AtomRegistry.AtomRegistry, id: Option.Option<AppId>) {
+	refreshFailed(registry, inventoryAtom)
+	refreshFailed(registry, metricsAtom)
+	Option.match(id, {onNone: Function.constVoid, onSome: app => refreshFailed(registry, appHistoryAtom(app))})
+}
+
 export class Refresh extends Command.Service<Refresh>()('Deploy/Refresh', {
+	args: {id: Schema.Option(AppId)},
+	success: Schema.Void
+}) {
+	static readonly layer = this.toLayer(
+		Effect.map(AtomRegistry.AtomRegistry, registry => request => Effect.sync(() => refreshReads(registry, request.id)))
+	)
+}
+
+export const RedirectToAuth = Command.make('Deploy/RedirectToAuth', {args: {}}, () =>
+	Effect.sync(() => location.replace(signInUrl(location.href)))
+)
+
+export class SignIn extends Command.Service<SignIn>()('Deploy/SignIn', {
 	args: {id: Schema.Option(AppId)},
 	success: Schema.Void
 }) {
@@ -104,21 +125,20 @@ export class Refresh extends Command.Service<Refresh>()('Deploy/Refresh', {
 		Effect.map(
 			AtomRegistry.AtomRegistry,
 			registry => request =>
-				Effect.sync(() => {
-					refreshFailed(registry, inventoryAtom)
-					refreshFailed(registry, metricsAtom)
-					Option.match(request.id, {
-						onNone: Function.constVoid,
-						onSome: id => refreshFailed(registry, appHistoryAtom(id))
-					})
-				})
+				pipe(
+					nativeSignIn,
+					Effect.flatMap(signedIn => {
+						if (!signedIn) return Effect.void
+						return Effect.sync(() => {
+							registry.refresh(sessionAccount)
+							refreshReads(registry, request.id)
+						})
+					}),
+					Effect.ignore({log: 'Warn'})
+				)
 		)
 	)
 }
-
-export const SignIn = Command.make('Deploy/SignIn', {args: {}}, () =>
-	Effect.sync(() => location.replace(signInUrl(location.href)))
-)
 
 export function signInRequested(result: AsyncResult.AsyncResult<unknown, unknown>) {
 	return AsyncResult.isFailure(result) && needsSignInCause(result.cause)

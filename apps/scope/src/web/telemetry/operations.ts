@@ -8,8 +8,9 @@ import {AsyncResult, AtomRegistry} from 'effect/reactivity'
 import {blockingFailure, needsSignInCause} from '@deslop/runtime/client/live-stream'
 import {ActionShell} from '@deslop/ui/app-shell'
 import {PressFeedback} from '@deslop/ui/control'
+import {isNative} from '@deslop/ui/native'
 import {Split, panelUpdates, singlePane, watchPanes} from '@deslop/ui/split'
-import {ReadFailure, observe} from '@deslop/ui/state'
+import {observe} from '@deslop/ui/state'
 import {historyBack, usedHistoryMotion} from '@deslop/ui/viewport'
 
 import {rangeStart} from '#contracts'
@@ -22,6 +23,7 @@ import {
 	Model,
 	Retry,
 	SignIn,
+	SignInWeb,
 	initialModel,
 	levelOf,
 	pickedTraceOf,
@@ -29,7 +31,7 @@ import {
 	selectionFor,
 	showOf
 } from '#web/telemetry/model.ts'
-import {DetailPane, ListPane, ScopeControls} from '#web/telemetry/panes.ts'
+import {DetailPane, ListPane, ScopeControls, ScopeFailure} from '#web/telemetry/panes.ts'
 import {nowAtom, overviewAtom, select, shownSearch, sourceSearch, traceAtom} from '#web/telemetry/selection.ts'
 import type {Search} from '#web/telemetry/selection.ts'
 
@@ -52,22 +54,30 @@ function navigate($: Step, search: Search, history: NavigationMode = 'replace') 
 function selectTrace($: Step, trace: TraceId, span: Option.Option<SpanId>) {
 	const operation = Option.getOrUndefined(selectionFor($.model).activeKey)
 	if (operation === undefined) return $.evolve({panel: undefined})
-	const spanOpen = Option.isSome(span)
-	const deeper = spanOpen && levelOf($.model.route.search) < 2
-	const pane = Boolean.match(spanOpen, {
+	const pane = Boolean.match(Option.isSome(span), {
 		onFalse: Function.constant('Trace' as const),
 		onTrue: Function.constant('Span' as const)
 	})
-	return navigate(
-		$,
-		select($.model.route.search, {operation, spanId: span, traceId: Option.some(trace)}, pane),
-		Boolean.match(deeper, {onFalse: Function.constant('replace'), onTrue: Function.constant('push')})
+	const search = select($.model.route.search, {operation, spanId: span, traceId: Option.some(trace)}, pane)
+	if (levelOf(search) > levelOf($.model.route.search)) return navigate($, search, 'push')
+	return navigate($, search)
+}
+
+function back($: Step) {
+	const parent = parentSearch($.model.route.search)
+	if (hasParentBehind($.model, parent)) return $.run(historyBack)
+	return navigate($, parent)
+}
+
+function retry($: Step, newSession: boolean) {
+	return $.run(
+		Command.asNoop(Retry.make({newSession, range: rangeOf($.model.route.search), trace: pickedTraceOf($.model)}))
 	)
 }
 
 function completeRead<A>(change: Step, result: AsyncResult.AsyncResult<A, unknown>) {
-	if (AsyncResult.isFailure(result) && needsSignInCause(result.cause)) {
-		return change.run(Command.asNoop(SignIn.make({})))
+	if (!isNative && AsyncResult.isFailure(result) && needsSignInCause(result.cause)) {
+		return change.run(Command.asNoop(SignInWeb.make({})))
 	}
 	return change
 }
@@ -101,6 +111,7 @@ export const Scope = pipe(
 			]
 		},
 		update: {
+			Back: back,
 			Clock: ($, message) => $.evolve({now: message.now}),
 			Operation: ($, message) =>
 				navigate(
@@ -152,8 +163,7 @@ export const Scope = pipe(
 					trace: Option.none()
 				})
 			},
-			Retry: $ =>
-				$.run(Command.asNoop(Retry.make({range: rangeOf($.model.route.search), trace: pickedTraceOf($.model)}))),
+			Retry: $ => retry($, false),
 			Route: ($, message) => {
 				const level = levelOf(message.route.search)
 				const priorLevel = levelOf($.model.route.search)
@@ -187,9 +197,13 @@ export const Scope = pipe(
 						'push'
 					)
 				}
-				const parent = parentSearch($.model.route.search)
-				if (hasParentBehind($.model, parent)) return $.run(historyBack)
-				return navigate($, parent)
+				return back($)
+			},
+			SignIn: $ => $.evolve({signInProblem: undefined}).run(SignIn.make({})),
+			SignInDone: ($, message) => {
+				const next = $.evolve({signInProblem: message.problem})
+				if (message.signedIn) return retry(next, true)
+				return next
 			},
 			Source: ($, message) => navigate($, sourceSearch(openedSearch($.model), message.app)),
 			Span: ($, message) => {
@@ -206,22 +220,36 @@ export const Scope = pipe(
 		view: (h, model) => {
 			const selection = selectionFor(model)
 			const show = showOf(model.route.search)
-			const failure = Option.getOrUndefined(blockingFailure(model.overview))
+			const failure = blockingFailure(model.overview)
 			const frame = h.main.class('scope axis-controls').onMount(PressFeedback({}))
-			if (failure !== undefined) return frame.children(ReadFailure(h, failure, 'Couldn’t load', Message.Retry()))
+			if (!isNative) {
+				const cause = Option.getOrUndefined(failure)
+				if (cause !== undefined) return frame.children(ScopeFailure(h, model, cause))
+			}
 			return frame.children(
 				ActionShell(h, {
 					...ScopeControls(h, model, selection),
-					content: Split(h, {
-						detail: {
-							content: DetailPane(h, model, selection),
-							key: Option.getOrElse(pickedTraceOf(model), Function.constant('trace')),
-							label: 'Trace'
-						},
-						list: {content: ListPane(h, model, selection), label: 'Operations'},
-						listHidden: !model.narrow && model.sidebarHidden,
-						narrow: model.narrow,
-						show
+					content: Option.match(failure, {
+						onNone: () =>
+							Split(h, {
+								detail: {
+									content: DetailPane(h, model, selection),
+									key: Option.getOrElse(pickedTraceOf(model), Function.constant('trace')),
+									label: 'Trace'
+								},
+								list: {
+									content: ListPane(h, model, selection),
+									label: 'Operations',
+									position: {
+										key: `${Option.getOrUndefined(model.route.search.source) ?? ''}:${Option.getOrUndefined(model.route.search.range) ?? ''}`,
+										ready: Option.isSome(AsyncResult.value(model.overview))
+									}
+								},
+								listHidden: !model.narrow && model.sidebarHidden,
+								narrow: model.narrow,
+								show
+							}),
+						onSome: cause => ScopeFailure(h, model, cause)
 					})
 				})
 			)

@@ -1,5 +1,6 @@
 import {Option} from 'effect'
 
+import {isNative} from '@deslop/ui/native'
 import {hasHistoryBehind} from '@deslop/ui/viewport'
 
 import {ScopeRoute} from '#web/routes.ts'
@@ -8,7 +9,10 @@ import type {Model} from '#web/telemetry/model.ts'
 import type {Search} from '#web/telemetry/selection.ts'
 
 export function parentSearch(search: Search): Search {
-	if (levelOf(search) === 2) return {...search, pane: Option.some('Trace'), span: Option.none()}
+	if (Option.isSome(search.span)) return {...search, pane: Option.some('Trace'), span: Option.none()}
+	if (isNative && Option.contains(search.pane, 'Trace')) {
+		return {...search, pane: Option.some('Traces'), trace: Option.none()}
+	}
 	return {
 		...search,
 		operation: Option.none(),
@@ -32,7 +36,9 @@ export function hasParentBehind(model: Model, parent: Search) {
 					Option.exists(
 						previous.activeKey,
 						key => Option.contains(parent.operation, key.name) && Option.contains(parent.side, key.runtime)
-					) && Option.exists(previous.activeTrace, trace => Option.contains(parent.trace, trace.id))
+					) &&
+					(Option.isNone(parent.trace) ||
+						Option.exists(previous.activeTrace, trace => Option.contains(parent.trace, trace.id)))
 				)
 			})
 	)

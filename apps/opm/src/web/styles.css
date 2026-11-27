@@ -1,4 +1,4 @@
-@import '@deslop/ui/theme.css';
+@import './skeleton.css';
 
 .opm .fold-list {
 	scrollbar-width: auto;
@@ -6,6 +6,10 @@
 
 .opm-chapters {
 	padding: 0 14px 12px;
+}
+
+.opm-chapters .opm-skeleton-list {
+	margin-inline: 10px;
 }
 
 .opm .opm-row {
@@ -39,25 +43,6 @@
 .opm-cover img {
 	object-fit: cover;
 	object-position: center top;
-}
-
-.opm-row[aria-hidden] .axis-lines {
-	gap: 5px;
-}
-
-.opm-title-placeholder {
-	inline-size: 5.5rem;
-	block-size: 17px;
-}
-
-.opm-line-placeholder {
-	inline-size: 7rem;
-	block-size: 15px;
-}
-
-.opm-date-placeholder {
-	inline-size: 3rem;
-	block-size: 12px;
 }
 
 #opm-series {
@@ -105,12 +90,6 @@
 	overflow: hidden;
 	touch-action: none;
 	user-select: none;
-}
-
-.opm-page-placeholder {
-	inline-size: min(100%, 66dvh);
-	block-size: 100%;
-	border-radius: 4px;
 }
 
 .opm-reader > [aria-busy] {

@@ -12,6 +12,7 @@ import type {ShellAction} from '@deslop/ui/app-shell'
 import {Loading, Notice} from '@deslop/ui/axis'
 import {PressFeedback} from '@deslop/ui/control'
 import {Glass} from '@deslop/ui/glass'
+import {isNative} from '@deslop/ui/native'
 import {Split, singlePane, watchPanes} from '@deslop/ui/split'
 import type {Pane} from '@deslop/ui/split'
 import {observe} from '@deslop/ui/state'
@@ -28,6 +29,7 @@ import {
 	RedirectToSignIn,
 	Refresh,
 	SignOut,
+	StartNativeSignIn,
 	StartSignIn,
 	readValue,
 	signInRequested,
@@ -39,7 +41,7 @@ import {PeopleMenu, peopleMenu} from '#web/people/menu.ts'
 import {People, PersonDetail} from '#web/people/view.ts'
 import {AuthRoute} from '#web/routes.ts'
 import {Sessions} from '#web/sessions/view.ts'
-import {SignIn} from '#web/sign-ins/controls.ts'
+import {NativeSignIn, SignIn} from '#web/sign-ins/controls.ts'
 
 function routePane(route: Extract<typeof AuthRoute.Type, {_tag: 'Home'}>) {
 	if (route.search.pane !== undefined) return route.search.pane
@@ -132,12 +134,11 @@ function AccessScreen(
 		})
 	}
 	if (AsyncResult.isInitial(model.account)) return AccountLoading(h, model, search.person)
+	const canSignIn = Option.exists(readValue(model.account), Option.isNone)
+	if (isNative) return NativeSignIn(h, model, canSignIn)
 	return h.div
 		.class('auth-screen')
-		.children(
-			Option.exists(readValue(model.account), Option.isNone) && SignIn(h, search.error),
-			ReadProblem(h, model.account, 'account')
-		)
+		.children(canSignIn && SignIn(h, search.error), ReadProblem(h, model.account, 'account'))
 }
 
 function Directory(h: H, model: Model, viewer: SignedAccount, selected: Account['id']) {
@@ -194,7 +195,7 @@ function Directory(h: H, model: Model, viewer: SignedAccount, selected: Account[
 			narrow: model.narrow,
 			show
 		}),
-		overlays: listOpen && PeopleMenu(h, model, menu),
+		overlays: !isNative && listOpen && PeopleMenu(h, model, menu),
 		...(admin && {sidebar: sidebar(model, listOpen)})
 	})
 }
@@ -214,6 +215,11 @@ function Workspace(h: H, model: Model) {
 
 function View(h: H, model: Model) {
 	return h.main.class('auth axis-controls').onMount(PressFeedback({})).children(Workspace(h, model))
+}
+
+function recoverSignIn() {
+	if (isNative) return Command.asNoop(Refresh.make({reader: 'account'}))
+	return Command.asNoop(RedirectToSignIn.make({}))
 }
 
 const AuthDef = Html.component({message: Message, model: Model, name: 'Auth', props: Schema.Struct({route: AuthRoute})})
@@ -281,6 +287,7 @@ export const Auth = Component.provide(
 						onFalse: () => AsyncResult.initial(),
 						onTrue: () => $.model.sessions
 					}),
+					signIn: undefined,
 					signOut: undefined,
 					waitingOnly: false
 				})
@@ -317,7 +324,7 @@ export const Auth = Component.provide(
 				const account = signed($.model.account)
 				if (account?.id !== message.viewer || account.role !== 'Admin') return $.model
 				const next = $.evolve({people: message.result})
-				if (signInRequested(message.result)) return next.run(Command.asNoop(RedirectToSignIn.make({})))
+				if (signInRequested(message.result)) return next.run(recoverSignIn())
 				return next
 			},
 			PeopleMenu: ($, message) => $.evolve({peopleMenuOpen: message.open}),
@@ -361,18 +368,27 @@ export const Auth = Component.provide(
 				const account = signed($.model.account)
 				if (account?.id !== message.viewer || account.role === 'Waiting') return $.model
 				const next = $.evolve({sessions: message.result})
-				if (signInRequested(message.result)) return next.run(Command.asNoop(RedirectToSignIn.make({})))
+				if (signInRequested(message.result)) return next.run(recoverSignIn())
 				return next
 			},
-			SignOutSettled: ($, message) =>
-				$.evolve({
-					signOut: Boolean.match(message.failed, {
-						onFalse: Function.constUndefined,
-						onTrue: Function.constant('failed' as const)
-					})
-				}),
+			SignInSettled: ($, message) => {
+				if (message.failed) return $.evolve({signIn: 'failed'})
+				const next = $.evolve({signIn: undefined})
+				if (message.signedIn) return next.run(Command.asNoop(Refresh.make({reader: 'account', sessionChanged: true})))
+				return next
+			},
+			SignOutSettled: ($, message) => {
+				if (message.failed) return $.evolve({signOut: 'failed'})
+				const next = $.evolve({signOut: undefined})
+				if (isNative) return next.run(Command.asNoop(Refresh.make({reader: 'account', sessionChanged: true})))
+				return next
+			},
 			StartSignIn: $ => {
 				if (!isHome($.model.route)) return $.model
+				if (isNative) {
+					if ($.model.signIn === 'pending') return $.model
+					return $.evolve({signIn: 'pending'}).run(StartNativeSignIn.make({}))
+				}
 				return $.run(Command.asNoop(StartSignIn.make({next: $.model.route.search.next})))
 			},
 			TogglePeople: $ => {

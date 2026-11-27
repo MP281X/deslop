@@ -1,5 +1,9 @@
 @import '@deslop/ui/theme.css';
 
+#root + .scope-startup[data-native] {
+	inset-inline-end: env(safe-area-inset-right, 0px);
+}
+
 .scope-skeleton-list {
 	margin-inline: 14px;
 	--skeleton-lines: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 60' preserveAspectRatio='none' fill='%23191919'%3E%3Crect y='15' width='72' height='11' rx='2'/%3E%3Crect y='34' width='56' height='9' rx='2'/%3E%3C/svg%3E")

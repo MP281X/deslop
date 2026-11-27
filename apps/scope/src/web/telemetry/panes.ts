@@ -2,9 +2,11 @@ import type {View} from '@effect/ui'
 import type {Html} from '@effect/ui/html'
 
 import {Array, Boolean, Function, Option, Record, String, pipe} from 'effect'
+import type {Cause} from 'effect'
 
 import {AsyncResult} from 'effect/reactivity'
 
+import {needsSignInCause} from '@deslop/runtime/client/live-stream'
 import {ageOf, clockOf, compactCountOf, countOf, durationOf} from '@deslop/runtime/shared/format'
 import {TimeFrame} from '@deslop/runtime/shared/time'
 import {CheckedChoice} from '@deslop/ui/app-shell'
@@ -12,6 +14,7 @@ import type {ShellAction} from '@deslop/ui/app-shell'
 import {Loading, Notice, Row, RowContent} from '@deslop/ui/axis'
 import {Button} from '@deslop/ui/control'
 import {Glass, GlassPanel} from '@deslop/ui/glass'
+import {isNative} from '@deslop/ui/native'
 import {ReadFailure, ReadState} from '@deslop/ui/state'
 import {SymbolIcon} from '@deslop/ui/symbol'
 
@@ -42,6 +45,38 @@ function isStale<A>(result: AsyncResult.AsyncResult<A, unknown>) {
 	return AsyncResult.isFailure(result) && Option.isSome(result.previousSuccess)
 }
 
+function tracesOf(selection: ReturnType<typeof selectionFor>) {
+	return Option.match(selection.activeOperation, {onNone: () => [], onSome: active => active.operation.traces})
+}
+
+function backAction() {
+	return {id: 'back', message: Message.Back(), symbol: 'chevron.left', title: 'Back'} satisfies ShellAction<Message>
+}
+
+function nativeDetailActions(model: Model, selection: ReturnType<typeof selectionFor>) {
+	if (!isNative || showOf(model.route.search) === 'list') return []
+	const actions = Boolean.match(model.narrow, {onFalse: () => [backAction()], onTrue: () => []})
+	const traces = tracesOf(selection)
+	if (Option.isSome(model.route.search.span) || Array.isReadonlyArrayEmpty(traces)) return actions
+	return Array.append(actions, {
+		id: 'traces',
+		menu: [
+			{
+				items: Array.map(traces, trace => ({
+					checked: Option.exists(selection.activeTrace, active => active.id === trace.id),
+					id: `trace-${trace.id}`,
+					message: Message.Trace({id: trace.id}),
+					title: traceLabel(trace)
+				})),
+				title: ''
+			}
+		],
+		message: Message.Panel({panel: 'traces'}),
+		symbol: 'chevron.down',
+		title: 'Traces'
+	} satisfies ShellAction<Message>)
+}
+
 export function ScopeControls(h: H, model: Model, selection: ReturnType<typeof selectionFor>) {
 	const source = Option.orElse(selection.source, () => model.route.search.source)
 	const app = Option.match(source, {onNone: Function.constant('Apps'), onSome: name => `App: ${name}`})
@@ -68,16 +103,11 @@ export function ScopeControls(h: H, model: Model, selection: ReturnType<typeof s
 				symbol: 'sidebar.left',
 				title: 'Sidebar'
 			}) satisfies ShellAction<Message>,
-		onTrue: () =>
-			({
-				id: 'sidebar',
-				message: Message.Sidebar(),
-				symbol: 'chevron.left',
-				title: 'Back'
-			}) satisfies ShellAction<Message>
+		onTrue: backAction
 	})
 	const stale = isStale(model.overview) || isStale(traceReadOf(model))
 	const actions: readonly ShellAction<Message>[] = [
+		...nativeDetailActions(model, selection),
 		{
 			disabled: Array.isReadonlyArrayEmpty(sources),
 			id: 'sources',
@@ -102,7 +132,7 @@ export function ScopeControls(h: H, model: Model, selection: ReturnType<typeof s
 	]
 	return {
 		actions,
-		overlays: [
+		overlays: !isNative && [
 			menu(
 				h,
 				model,
@@ -120,6 +150,13 @@ export function ScopeControls(h: H, model: Model, selection: ReturnType<typeof s
 		],
 		sidebar
 	}
+}
+
+export function ScopeFailure(h: H, model: Model, cause: Cause.Cause<unknown>) {
+	if (isNative && needsSignInCause(cause)) {
+		return Notice(h, model.signInProblem ?? 'Sign in to Scope', Message.SignIn(), 'Sign in')
+	}
+	return ReadFailure(h, cause, 'Couldn’t load', Message.Retry())
 }
 
 function operationRows(h: H, model: Model, selection: ReturnType<typeof selectionFor>, overview: Overview) {
@@ -182,7 +219,7 @@ export function ListPane(h: H, model: Model, selection: ReturnType<typeof select
 		.class('scope-list')
 		.children(
 			ReadState(model.overview, {
-				failed: cause => ReadFailure(h, cause, 'Couldn’t load', Message.Retry()),
+				failed: cause => ScopeFailure(h, model, cause),
 				loading: () => Loading(h, 'Loading operations', h.div.class('scope-skeleton-list').attr('aria-hidden', 'true')),
 				ready: overview => operationRows(h, model, selection, overview)
 			})
@@ -208,8 +245,8 @@ function traceRow(h: H, model: Model, trace: OperationTrace, checked: boolean) {
 }
 
 function traceChoice(h: H, model: Model, selection: ReturnType<typeof selectionFor>, title: string) {
-	const traces = Option.match(selection.activeOperation, {onNone: () => [], onSome: active => active.operation.traces})
-	if (Array.isReadonlyArrayEmpty(traces)) return h.div.class('scope-trace-label axis-title').children(title)
+	const traces = tracesOf(selection)
+	if (isNative || Array.isReadonlyArrayEmpty(traces)) return h.div.class('scope-trace-label axis-title').children(title)
 	return h.div.class('min-w-0').children(
 		Glass(h, 'scope-trace-control').children(
 			Button(h)
@@ -261,7 +298,7 @@ function traceView(h: H, model: Model, selection: ReturnType<typeof selectionFor
 	}
 
 	return ReadState(traceReadOf(model), {
-		failed: cause => ReadFailure(h, cause, 'Couldn’t load', Message.Retry()),
+		failed: cause => ScopeFailure(h, model, cause),
 		loading: () => Loading(h, 'Loading trace', skeleton),
 		ready: trace => {
 			const root = Array.findFirst(trace.spans, span => span.depth === 0)

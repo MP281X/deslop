@@ -20,12 +20,12 @@
 		</div>
 		<script>
 			const search = new URLSearchParams(location.search)
-			document
-				.querySelector('.scope-startup')
-				.toggleAttribute(
-					'data-detail',
-					search.has('pane') || search.has('operation') || search.has('trace') || search.has('span')
-				)
+			const startup = document.querySelector('.scope-startup')
+			startup.toggleAttribute('data-native', location.protocol === 'capacitor:')
+			startup.toggleAttribute(
+				'data-detail',
+				search.has('pane') || search.has('operation') || search.has('trace') || search.has('span')
+			)
 		</script>
 		<script type="module" src="/src/web/main.ts"></script>
 	</body>

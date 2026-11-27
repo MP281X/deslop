@@ -6,13 +6,15 @@ import {AsyncResult, AtomRegistry} from 'effect/reactivity'
 
 import {signInUrl} from '@deslop/runtime/shared/auth'
 import {DateTimeUtcFromFiniteMillis, TimeFrame} from '@deslop/runtime/shared/time'
+import {isNative, nativeSignIn} from '@deslop/ui/native'
 import {singlePane} from '@deslop/ui/split'
 import type {Pane} from '@deslop/ui/split'
+import {refreshFailed} from '@deslop/ui/state'
 
 import {AppName, Overview, SpanId, TraceId, TraceTree} from '#contracts'
 
 import {ScopeRoute} from '#web/routes.ts'
-import {OperationKey, overviewAtom, selectionOf, traceAtom} from '#web/telemetry/selection.ts'
+import {OperationKey, RpcClient, overviewAtom, selectionOf, traceAtom} from '#web/telemetry/selection.ts'
 import type {Search} from '#web/telemetry/selection.ts'
 
 const OverviewRead = AsyncResult.Schema({error: Schema.Unknown, success: Overview})
@@ -31,11 +33,13 @@ export const Model = Schema.Struct({
 	panel: Schema.UndefinedOr(Panel),
 	route: ScopeRoute,
 	sidebarHidden: Schema.Boolean,
+	signInProblem: Schema.UndefinedOr(Schema.String),
 	trace: Schema.optionalKey(Schema.Struct({id: TraceId, result: TraceRead}))
 })
 
 export type Message = typeof Message.Type
 export const Message = UiSchema.TaggedEnum({
+	Back: {},
 	Clock: {now: DateTimeUtcFromFiniteMillis},
 	Operation: {operation: OperationKey},
 	Overview: {range: TimeFrame, result: OverviewRead},
@@ -46,6 +50,8 @@ export const Message = UiSchema.TaggedEnum({
 	Retry: {},
 	Route: {route: ScopeRoute},
 	Sidebar: {},
+	SignIn: {},
+	SignInDone: {problem: Schema.UndefinedOr(Schema.String), signedIn: Schema.Boolean},
 	Source: {app: AppName},
 	Span: {id: SpanId},
 	Trace: {id: TraceId},
@@ -74,7 +80,9 @@ export function traceReadOf(model: Model) {
 }
 
 export function levelOf(search: Search) {
+	if (isNative && Option.isSome(search.span)) return 3
 	if (Option.isSome(search.span)) return 2
+	if (isNative && Option.contains(search.pane, 'Trace')) return 2
 	if (Option.isSome(search.pane) || Option.isSome(search.operation) || Option.isSome(search.trace)) return 1
 	return 0
 }
@@ -93,31 +101,35 @@ export function initialModel(route: Model['route']): Model {
 		overview: AsyncResult.initial(),
 		panel: undefined,
 		route,
-		sidebarHidden: false
+		sidebarHidden: false,
+		signInProblem: undefined
 	}
 }
 
 export class Retry extends Command.Service<Retry>()('Scope/Retry', {
-	args: {range: TimeFrame, trace: Schema.Option(TraceId)},
+	args: {newSession: Schema.Boolean, range: TimeFrame, trace: Schema.Option(TraceId)},
 	success: Schema.Void
 }) {
 	static readonly layer = this.toLayer(
-		Effect.map(AtomRegistry.AtomRegistry, registry => args => {
-			const overview = overviewAtom(args.range)
-			return Effect.sync(() => {
-				if (AsyncResult.isFailure(registry.get(overview))) registry.refresh(overview)
-				Option.match(args.trace, {
-					onNone: Function.constVoid,
-					onSome: id => {
-						const atom = traceAtom(id)
-						if (AsyncResult.isFailure(registry.get(atom))) registry.refresh(atom)
-					}
+		Effect.map(
+			AtomRegistry.AtomRegistry,
+			registry => args =>
+				Effect.sync(() => {
+					if (args.newSession) registry.refresh(RpcClient.runtime)
+					refreshFailed(registry, overviewAtom(args.range))
+					Option.map(args.trace, id => refreshFailed(registry, traceAtom(id)))
 				})
-			})
-		})
+		)
 	)
 }
 
-export const SignIn = Command.make('Scope/SignIn', {args: {}}, () =>
+export const SignInWeb = Command.make('Scope/SignInWeb', {args: {}}, () =>
 	Effect.sync(() => location.replace(signInUrl(location.href)))
+)
+
+export const SignIn = Command.make('Scope/SignIn', {args: {}}, () =>
+	Effect.match(nativeSignIn, {
+		onFailure: error => Message.SignInDone({problem: error.message, signedIn: false}),
+		onSuccess: signedIn => Message.SignInDone({problem: undefined, signedIn})
+	})
 )

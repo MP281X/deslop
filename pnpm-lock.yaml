@@ -211,6 +211,15 @@ importers:
 
   apps/auth:
     devDependencies:
+      '@capacitor/cli':
+        specifier: latest
+        version: 8.6.3(supports-color@8.1.1)
+      '@capacitor/core':
+        specifier: latest
+        version: 8.6.3
+      '@capacitor/ios':
+        specifier: latest
+        version: 8.6.3(@capacitor/core@8.6.3)
       '@deslop/runtime':
         specifier: workspace:*
         version: link:../../packages/runtime
@@ -229,6 +238,15 @@ importers:
 
   apps/deploy:
     devDependencies:
+      '@capacitor/cli':
+        specifier: latest
+        version: 8.6.3(supports-color@8.1.1)
+      '@capacitor/core':
+        specifier: latest
+        version: 8.6.3
+      '@capacitor/ios':
+        specifier: latest
+        version: 8.6.3(@capacitor/core@8.6.3)
       '@deslop/runtime':
         specifier: workspace:*
         version: link:../../packages/runtime
@@ -247,6 +265,15 @@ importers:
 
   apps/gateway:
     devDependencies:
+      '@capacitor/cli':
+        specifier: latest
+        version: 8.6.3(supports-color@8.1.1)
+      '@capacitor/core':
+        specifier: latest
+        version: 8.6.3
+      '@capacitor/ios':
+        specifier: latest
+        version: 8.6.3(@capacitor/core@8.6.3)
       '@deslop/runtime':
         specifier: workspace:*
         version: link:../../packages/runtime
@@ -323,6 +350,15 @@ importers:
 
   apps/scope:
     devDependencies:
+      '@capacitor/cli':
+        specifier: latest
+        version: 8.6.3(supports-color@8.1.1)
+      '@capacitor/core':
+        specifier: latest
+        version: 8.6.3
+      '@capacitor/ios':
+        specifier: latest
+        version: 8.6.3(@capacitor/core@8.6.3)
       '@deslop/runtime':
         specifier: workspace:*
         version: link:../../packages/runtime

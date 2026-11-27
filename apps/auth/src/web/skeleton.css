@@ -31,3 +31,7 @@
 .auth-startup[data-person] .auth-skeleton-detail .auth-skeleton-list {
 	display: none;
 }
+
+#root + .auth-startup[data-native] {
+	inset-inline-end: env(safe-area-inset-right, 0px);
+}

@@ -6,7 +6,7 @@ import {clockAtom} from '@deslop/runtime/client/clock'
 import {liveAtom} from '@deslop/runtime/client/live-stream'
 import {RpcStream} from '@deslop/runtime/shared/rpc'
 import type {TimeFrame} from '@deslop/runtime/shared/time'
-import {layerPageProtocol} from '@deslop/runtime/web/client'
+import {sessionProtocol} from '@deslop/ui/native'
 
 import {AppName, Operation, Runtime, TelemetryRpc} from '#contracts'
 import type {OperationTrace, Overview, SpanId, TraceId, TraceTree} from '#contracts'
@@ -27,9 +27,9 @@ const HTTP_ATTRIBUTES = [
 type Wrapped = typeof Wrapped.Type
 const Wrapped = Schema.Record(Schema.String, Schema.Json)
 
-class RpcClient extends AtomRpc.Service<RpcClient>()('@deslop/scope/web/telemetry/RpcClient', {
+export class RpcClient extends AtomRpc.Service<RpcClient>()('@deslop/scope/web/telemetry/RpcClient', {
 	group: TelemetryRpc.middleware(RpcStream),
-	protocol: layerPageProtocol
+	protocol: sessionProtocol
 }) {}
 
 export type OperationKey = typeof OperationKey.Type

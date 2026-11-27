@@ -31,11 +31,12 @@ import {Button, PressFeedback} from '@deslop/ui/control'
 import {Glass} from '@deslop/ui/glass'
 import {isNative} from '@deslop/ui/native'
 import {WebSignOut, submitWebSignOut} from '@deslop/ui/session'
+import {Sheet} from '@deslop/ui/sheet'
 import {Split, singlePane, watchPanes} from '@deslop/ui/split'
 import type {Pane} from '@deslop/ui/split'
 import {ReadState, observe} from '@deslop/ui/state'
 import {SymbolIcon} from '@deslop/ui/symbol'
-import {FitSheet, hasHistoryBehind, historyBack, usedHistoryMotion} from '@deslop/ui/viewport'
+import {hasHistoryBehind, historyBack, usedHistoryMotion} from '@deslop/ui/viewport'
 
 import type {Flight, FlightId, FlightList, TravelTime} from '#contracts'
 import {arrivalClockOf, bookedOf, departureOf, labelled, line, routeOf, titleOf} from '#journey'
@@ -145,72 +146,52 @@ function List(h: H, model: Model, flights: FlightList, travel: readonly TravelTi
 }
 
 function Paste(h: H, model: Model) {
+	if (!model.pasteOpen) return undefined
 	const pending = h.isRunning(Run)
-	return h.dialog
-		.class('trips-sheet')
-		.attr('aria-labelledby', 'booking-title')
-		.modal(model.pasteOpen)
-		.onMount(FitSheet({}))
-		.on(
-			'cancel',
-			() => {
-				if (!pending) return Message.PasteVisibility({open: false})
-				return undefined
-			},
-			{preventDefault: true}
-		)
-		.children(
-			h.form
-				.class('trips-booking')
-				.on('submit', Message.PasteSubmit(), {preventDefault: true})
-				.children(
-					h.div.class('trips-booking-actions').children(
-						Glass(h).children(
-							Button(h, {disabled: pending})
-								.attrs({'aria-label': 'Cancel', autofocus: ''})
-								.on('click', Message.PasteVisibility({open: false}))
-								.children(SymbolIcon(h, 'xmark'))
-						),
-						h.h2.id('booking-title').children('Paste booking'),
-						Glass(h).children(
-							Button(h, {disabled: pending || String.isEmpty(String.trim(model.pastedText)), type: 'submit'})
-								.attr(
-									'aria-label',
-									Boolean.match(pending, {
-										onFalse: Function.constant('Add booking'),
-										onTrue: Function.constant('Adding…')
-									})
-								)
-								.children(SymbolIcon(h, 'checkmark'))
-						)
-					),
-					h.textarea
-						.attrs({'aria-label': 'Paste booking text or link', placeholder: 'Paste booking text or link'})
-						.value(model.pastedText)
-						.on('input', event => Message.PasteText({text: event.value})),
-					model.error !== undefined && h.p.attr('role', 'alert').children(model.error),
-					Glass(h, 'trips-file').children(
-						h.label
-							.class('trips-control trips-file-control')
-							.attrs({'aria-disabled': `${pending}`, 'data-pressable': ''})
-							.children(
-								SymbolIcon(h, 'paperclip'),
-								'Choose an image or PDF',
-								h.input
-									.attrs({
-										accept: 'image/*,application/pdf',
-										'aria-label': 'Choose an image or PDF',
-										disabled: Option.getOrUndefined(Option.liftPredicate('', () => pending)),
-										type: 'file'
-									})
-									.value('')
-									.on('change', event =>
-										Option.getOrUndefined(Option.map(Array.head(event.files), file => Message.PasteFile({file})))
-									)
+	return Sheet(h, {
+		action: Glass(h).children(
+			Button(h, {disabled: pending || String.isEmpty(String.trim(model.pastedText)), type: 'submit'})
+				.attr(
+					'aria-label',
+					Boolean.match(pending, {onFalse: Function.constant('Add booking'), onTrue: Function.constant('Adding…')})
+				)
+				.children(SymbolIcon(h, 'checkmark'))
+		),
+		body: [
+			h.textarea
+				.attrs({'aria-label': 'Paste booking text or link', placeholder: 'Paste booking text or link'})
+				.value(model.pastedText)
+				.on('input', event => Message.PasteText({text: event.value})),
+			model.error !== undefined && h.p.attr('role', 'alert').children(model.error),
+			Glass(h, 'trips-file').children(
+				h.label
+					.class('trips-control trips-file-control')
+					.attrs({'aria-disabled': `${pending}`, 'data-pressable': ''})
+					.children(
+						SymbolIcon(h, 'paperclip'),
+						'Choose an image or PDF',
+						h.input
+							.attrs({
+								accept: 'image/*,application/pdf',
+								'aria-label': 'Choose an image or PDF',
+								disabled: Option.getOrUndefined(Option.liftPredicate('', () => pending)),
+								type: 'file'
+							})
+							.value('')
+							.on('change', event =>
+								Option.getOrUndefined(Option.map(Array.head(event.files), file => Message.PasteFile({file})))
 							)
 					)
-				)
-		)
+			)
+		],
+		className: 'trips-sheet',
+		close: Message.PasteVisibility({open: false}),
+		closeDisabled: pending,
+		closeLabel: 'Cancel',
+		submit: Message.PasteSubmit(),
+		title: 'Paste booking',
+		titleId: 'booking-title'
+	})
 }
 
 function ListSkeleton(h: H) {
@@ -378,7 +359,11 @@ function Shell(h: H, model: Model, options: ShellState) {
 				key: Option.getOrUndefined(Option.map(target, link => link.id)) ?? options.flight?.id ?? 'board',
 				label: 'Boarding pass'
 			},
-			list: {content: h.div.class('trips-pane').children(ListPane(h, model, options, travel)), label: 'Flights'},
+			list: {
+				content: h.div.class('trips-pane').children(ListPane(h, model, options, travel)),
+				label: 'Flights',
+				position: {key: 'flights', ready: options.flights !== undefined}
+			},
 			listHidden: !model.narrow && hasDetail && model.listHidden,
 			narrow: model.narrow,
 			show

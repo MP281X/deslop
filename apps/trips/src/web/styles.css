@@ -134,56 +134,13 @@
 }
 
 .trips-sheet {
-	position: fixed;
-	inset: auto calc(var(--shell-inset-right) + var(--shell-rail-width)) auto var(--shell-inset-left);
-	inset-block-start: calc(
-		var(--sheet-viewport-top, 0px) + var(--sheet-viewport-height, 100dvh) - var(--booking-height)
-	);
-	--booking-height: min(28rem, calc(var(--sheet-viewport-height, 100dvh) - max(32px, env(safe-area-inset-top))));
-	inline-size: min(32rem, 100% - var(--shell-rail-width) - var(--shell-inset-left) - var(--shell-inset-right));
-	block-size: var(--booking-height);
-	max-inline-size: none;
-	max-block-size: none;
-	margin: 0 auto;
-	border-radius: 28px 28px 0 0;
-	background: #1c1c1e;
-	color: var(--color-foreground);
+	--sheet-height: 28rem;
+	--sheet-inset-left: var(--shell-inset-left);
+	--sheet-inset-right: var(--shell-inset-right);
+	--sheet-width: min(32rem, 100% - var(--shell-rail-width) - var(--shell-inset-left) - var(--shell-inset-right));
 }
 
-.trips-sheet[open] {
-	view-transition-name: axis-sheet;
-}
-
-.trips-sheet::backdrop {
-	background: rgb(0 0 0 / 56%);
-}
-
-.trips-booking {
-	display: flex;
-	flex-direction: column;
-	gap: 12px;
-	block-size: 100%;
-	padding: 16px 16px max(16px, env(safe-area-inset-bottom));
-	overflow: auto;
-}
-
-.trips-booking-actions {
-	display: grid;
-	grid-template-columns: 44px 1fr 44px;
-	place-items: center;
-	gap: 8px;
-	font-weight: 640;
-}
-
-.trips-booking-actions button {
-	display: grid;
-	place-items: center;
-	inline-size: 44px;
-	block-size: 44px;
-	border-radius: 999px;
-}
-
-.trips-booking textarea {
+.trips-sheet textarea {
 	flex: 1;
 	min-block-size: 44px;
 	padding: 10px;

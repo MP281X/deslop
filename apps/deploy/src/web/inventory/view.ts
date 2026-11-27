@@ -7,11 +7,11 @@ import {AsyncResult, AtomRegistry} from 'effect/reactivity'
 
 import {clockAtom} from '@deslop/runtime/client/clock'
 import {blockingFailure, isDeniedCause} from '@deslop/runtime/client/live-stream'
-import {accountAtom} from '@deslop/runtime/web/client'
 import {ActionShell} from '@deslop/ui/app-shell'
 import type {ShellAction} from '@deslop/ui/app-shell'
 import {Notice} from '@deslop/ui/axis'
 import {PressFeedback} from '@deslop/ui/control'
+import {isNative, sessionAccount} from '@deslop/ui/native'
 import {Split, singlePane, watchPanes} from '@deslop/ui/split'
 import {ReadState, observe} from '@deslop/ui/state'
 import {hasHistoryBehind, historyBack, usedHistoryMotion} from '@deslop/ui/viewport'
@@ -22,11 +22,21 @@ import type {MachineHistory, Row, Snapshot} from '#contracts'
 import {AppActions} from '#web/inventory/actions.ts'
 import {Operation, appHistoryAtom, inventoryAtom, metricsAtom} from '#web/inventory/client.ts'
 import {Detail, MachineDetail} from '#web/inventory/detail.ts'
-import {Dialog} from '#web/inventory/dialog.ts'
+import {Dialog, DialogActions} from '#web/inventory/dialog.ts'
 import {List} from '#web/inventory/list.ts'
 import type {Focused} from '#web/inventory/list.ts'
 import {LoadingApps, LoadingReadings} from '#web/inventory/loading.ts'
-import {DialogState, Execute, MACHINE, Message, Model, Refresh, SignIn, signInRequested} from '#web/inventory/model.ts'
+import {
+	DialogState,
+	Execute,
+	MACHINE,
+	Message,
+	Model,
+	RedirectToAuth,
+	Refresh,
+	SignIn,
+	signInRequested
+} from '#web/inventory/model.ts'
 import type {H} from '#web/inventory/model.ts'
 import {rowOrder, statusLine} from '#web/inventory/rows.ts'
 import {RestartReason} from '#web/inventory/traces.ts'
@@ -160,16 +170,34 @@ function details(
 	})
 }
 
+function accessNotice(h: H, model: Model) {
+	const reads: readonly AsyncResult.AsyncResult<unknown, unknown>[] = [model.inventory, model.metrics, model.appHistory]
+	if (Array.some(reads, signInRequested)) {
+		if (!isNative || h.isRunning(SignIn)) return Notice(h, 'Signing in…')
+		return Notice(h, 'Sign in to Deploy', Message.SignIn(), 'Sign in')
+	}
+	if (Array.some(reads, result => AsyncResult.isFailure(result) && isDeniedCause(result.cause))) {
+		return Notice(h, 'Access denied')
+	}
+	return undefined
+}
+
+function toolbar(model: Model, pending: boolean, row?: Row) {
+	const dialog = Option.getOrUndefined(model.dialog)
+	if (isNative && dialog !== undefined) return {actions: DialogActions(dialog, pending)}
+	const canAct = model.admin && (!model.narrow || showOf(model.route) === 'detail')
+	const toggle = sidebar(model)
+	if (!canAct || row === undefined) return {actions: [], sidebar: toggle}
+	return {actions: AppActions(row.item, pending), sidebar: toggle}
+}
+
 function Workspace(h: H, model: Model) {
 	const main = h.main.class('deploy axis-controls').onMount(PressFeedback({}))
 	if (!DeployRoute.isAnyOf(['Home'])(model.route)) {
 		return main.children(h.a.attr('href', '/').children('Back to Deploy'))
 	}
-	const reads: readonly AsyncResult.AsyncResult<unknown, unknown>[] = [model.inventory, model.metrics, model.appHistory]
-	if (Array.some(reads, result => AsyncResult.isFailure(result) && isDeniedCause(result.cause))) {
-		if (Array.some(reads, signInRequested)) return main.children(Notice(h, 'Signing in…'))
-		return main.children(Notice(h, 'Access denied'))
-	}
+	const status = accessNotice(h, model)
+	if (status !== undefined) return main.children(status)
 	const show = showOf(model.route)
 	const snapshot = AsyncResult.value(model.inventory)
 	const rows = pipe(
@@ -200,12 +228,7 @@ function Workspace(h: H, model: Model) {
 	}
 	return main.children(
 		ActionShell(h, {
-			actions: pipe(
-				selection,
-				Option.filter(() => model.admin && (!model.narrow || show === 'detail')),
-				Option.map(row => AppActions(row.item, pending)),
-				Option.getOrElse(Array.empty<ShellAction<Message>>)
-			),
+			...toolbar(model, pending, selectedRow),
 			content: Split(h, {
 				detail: {
 					content: ReadState(model.inventory, {
@@ -234,7 +257,8 @@ function Workspace(h: H, model: Model) {
 								stale
 							})
 					}),
-					label: 'Apps'
+					label: 'Apps',
+					position: {key: 'apps', ready: Option.isSome(snapshot)}
 				},
 				listHidden: collapsed,
 				narrow: model.narrow,
@@ -242,14 +266,13 @@ function Workspace(h: H, model: Model) {
 			}),
 			overlays: Option.getOrUndefined(
 				Option.map(model.dialog, dialog => Dialog(h, dialog, pending, Option.getOrUndefined(snapshot)))
-			),
-			sidebar: sidebar(model)
+			)
 		})
 	)
 }
 
 function completeRead(next: Component.Step<Model, Message, never>, result: AsyncResult.AsyncResult<unknown, unknown>) {
-	if (signInRequested(result)) return next.run(Command.asNoop(SignIn.make({})))
+	if (!isNative && signInRequested(result)) return next.run(Command.asNoop(RedirectToAuth.make({})))
 	return next
 }
 
@@ -320,7 +343,7 @@ export const Deploy = pipe(
 			DeployRoute.isAnyOf(['Home'])($.model.route) &&
 				Subscription.make(
 					'account',
-					observe(accountAtom, result =>
+					observe(sessionAccount, result =>
 						Message.Account({admin: Option.exists(AsyncResult.value(result), account => account.admin)})
 					)
 				),
@@ -433,9 +456,10 @@ export const Deploy = pipe(
 				return $.run(
 					Command.asNoop(Router.patchSearch(DeployRoute, $.model.route, {app, pane: 'process'}, {history: 'push'}))
 				)
-			}
+			},
+			SignIn: $ => $.run(Command.asNoop(SignIn.make({id: $.model.effectiveApp})))
 		},
 		view: Workspace
 	}),
-	Component.provide(pipe(Execute.layer, Layer.merge(Refresh.layer), Layer.provideMerge(AtomRegistry.layer)))
+	Component.provide(Layer.provideMerge(Layer.mergeAll(Execute.layer, Refresh.layer, SignIn.layer), AtomRegistry.layer))
 )

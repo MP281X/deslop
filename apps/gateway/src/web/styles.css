@@ -39,10 +39,12 @@
 
 .gateway-add {
 	position: relative;
+	display: grid;
+	inline-size: min(265px, 100%);
 }
 
 .gateway-add input {
-	inline-size: min(265px, 100%);
+	inline-size: 100%;
 }
 
 .gateway-add input::placeholder {
@@ -172,6 +174,11 @@
 	border-radius: 28px 28px 0 0;
 	background: #1c1c1e;
 	color: var(--color-foreground);
+}
+
+.action-shell[data-native] .gateway-key-sheet {
+	inset-inline: var(--shell-inset-left) var(--shell-inset-right);
+	max-inline-size: calc(100% - var(--shell-inset-left) - var(--shell-inset-right));
 }
 
 .gateway-key-sheet[open] {

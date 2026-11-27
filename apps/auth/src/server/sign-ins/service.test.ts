@@ -71,7 +71,7 @@ const layer = pipe(
 )
 
 it.layer(layer)(test => {
-	test.effect.each(['opm', 'stash', 'trips'] as const)(
+	test.effect.each(AppSignIn.fields.app.literals)(
 		'hands %s only to Auth HTTPS, never a browser cookie, and a refusal or cancel there too',
 		Effect.fnUntraced(function* (app) {
 			const signIns = yield* SignIns

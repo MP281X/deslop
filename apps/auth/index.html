@@ -29,6 +29,7 @@
 		<script>
 			const search = new URLSearchParams(location.search)
 			const startup = document.querySelector('.auth-startup')
+			startup.toggleAttribute('data-native', location.protocol === 'capacitor:')
 			startup.toggleAttribute(
 				'data-detail',
 				search.get('pane') === 'detail' || (!search.has('pane') && search.has('person'))

@@ -16,10 +16,11 @@ import {Button, PressFeedback} from '@deslop/ui/control'
 import {Glass, GlassPanel} from '@deslop/ui/glass'
 import {isNative, sessionAccount} from '@deslop/ui/native'
 import {WebSignOut} from '@deslop/ui/session'
+import {Sheet} from '@deslop/ui/sheet'
 import {Split, panelUpdates, singlePane, watchPanes} from '@deslop/ui/split'
 import {ReadState, observe} from '@deslop/ui/state'
 import {SymbolIcon} from '@deslop/ui/symbol'
-import {FitSheet, hasHistoryBehind, historyBack, usedHistoryMotion} from '@deslop/ui/viewport'
+import {hasHistoryBehind, historyBack, usedHistoryMotion} from '@deslop/ui/viewport'
 
 import {Kind} from '#contracts'
 import type {NoteItem} from '#contracts'
@@ -40,8 +41,6 @@ import {
 import {mediaAtom, noteAtom, notesAtom} from '#web/notes/notes.ts'
 import {coverOf, isWebLink, issueOf, picture, reader} from '#web/notes/reader.ts'
 import {StashRoute} from '#web/routes.ts'
-
-const COMPOSE_PANEL = 'stash-compose-note'
 
 type H = Html.H<Message>
 
@@ -222,37 +221,23 @@ function noteMenu(h: H, state: Model, note: NoteItem) {
 }
 
 function Compose(h: H, state: Model) {
-	return h.dialog
-		.class('stash-sheet')
-		.attr('aria-labelledby', COMPOSE_PANEL)
-		.modal(state.composing)
-		.onMount(FitSheet({}))
-		.on('cancel', Message.Compose({open: false}))
-		.children(
-			h.form
-				.class('stash-compose')
-				.on('submit', Message.Run({action: Action.cases.Capture.make({text: state.draft})}), {preventDefault: true})
-				.children(
-					h.div.class('stash-compose-actions').children(
-						Glass(h).children(
-							Button(h)
-								.attr('aria-label', 'Close')
-								.on('click', Message.Compose({open: false}))
-								.children(SymbolIcon(h, 'xmark'))
-						),
-						h.h2.id(COMPOSE_PANEL).children('New note'),
-						Glass(h).children(
-							Button(h, {disabled: state.pending || String.isEmpty(String.trim(state.draft)), type: 'submit'})
-								.attr('aria-label', 'Save')
-								.children(SymbolIcon(h, 'checkmark'))
-						)
-					),
-					h.textarea
-						.attrs({'aria-label': 'Write a note', maxlength: '20000', placeholder: 'Write a note'})
-						.value(state.draft)
-						.on('input', event => Message.Draft({text: event.value}))
-				)
-		)
+	if (!state.composing) return undefined
+	return Sheet(h, {
+		action: Glass(h).children(
+			Button(h, {disabled: state.pending || String.isEmpty(String.trim(state.draft)), type: 'submit'})
+				.attr('aria-label', 'Save')
+				.children(SymbolIcon(h, 'checkmark'))
+		),
+		body: h.textarea
+			.attrs({'aria-label': 'Write a note', maxlength: '20000', placeholder: 'Write a note'})
+			.value(state.draft)
+			.on('input', event => Message.Draft({text: event.value})),
+		className: 'stash-sheet',
+		close: Message.Compose({open: false}),
+		submit: Message.Run({action: Action.cases.Capture.make({text: state.draft})}),
+		title: 'New note',
+		titleId: 'stash-compose-note'
+	})
 }
 
 function detailContent(h: H, state: Model) {
@@ -397,7 +382,14 @@ function workspace(h: H, state: Model) {
 								key: state.selected?.id ?? 'detail',
 								label: 'Reader'
 							},
-							list: {content: h.div.class('stash-queue').children(notesContent(h, state)), label: 'Saved notes'},
+							list: {
+								content: h.div.class('stash-queue').children(notesContent(h, state)),
+								label: 'Saved notes',
+								position: {
+									key: `${state.kind ?? ''}:${state.tag ?? ''}`,
+									ready: Option.isSome(AsyncResult.value(state.notes))
+								}
+							},
 							listHidden: state.listHidden,
 							narrow: state.narrow,
 							show: showOf(state)

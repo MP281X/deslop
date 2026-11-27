@@ -8,16 +8,16 @@ import {Url} from 'effect/http'
 import {AsyncResult, AtomRegistry} from 'effect/reactivity'
 
 import {blockingFailure, needsSignInCause} from '@deslop/runtime/client/live-stream'
-import {accountAtom} from '@deslop/runtime/web/client'
 import {ActionShell} from '@deslop/ui/app-shell'
 import {Loading, Notice} from '@deslop/ui/axis'
 import {PressFeedback} from '@deslop/ui/control'
+import {isNative, sessionAccount} from '@deslop/ui/native'
 import {ReadCombined, ReadFailure, observe} from '@deslop/ui/state'
 
 import {AiKeySecret} from '#contracts'
 
 import {aiKeyAtom, aiUsageAtom, mcpUsageAtom, serversAtom} from '#web/home/client.ts'
-import {Action, Copy, Execute, Message, Model, Refresh, SignIn} from '#web/home/model.ts'
+import {Action, Copy, Execute, Message, Model, Refresh, SignIn, SignInWeb, SignOut} from '#web/home/model.ts'
 import {KeyRows, ServerRows} from '#web/home/rows.ts'
 import {KeyDialog, OptionsMenu, PasteField, RangeMenu, gatewayActions} from '#web/home/toolbar.ts'
 import {GatewayRoute, periodOf} from '#web/routes.ts'
@@ -55,37 +55,50 @@ function ReadPair<A, B>(
 	})
 }
 
-function view(h: H, model: Model) {
-	if (!GatewayRoute.isAnyOf(['Home'])(model.route)) {
-		return h.main.class('gateway').children(h.a.class('gateway-back').attr('href', '/').children('Back to Gateway'))
+function needsSignIn(model: Model) {
+	return Array.some(
+		[model.account, model.keys, model.servers],
+		(result: AsyncResult.AsyncResult<unknown, unknown>) =>
+			AsyncResult.isFailure(result) && needsSignInCause(result.cause)
+	)
+}
+
+function GatewayReads(h: H, model: Model) {
+	if (isNative && needsSignIn(model)) {
+		return Notice(h, model.signInProblem ?? 'Sign in to Gateway', Message.SignIn(), 'Sign in')
 	}
-	const busy = h.isRunning(Execute)
 	const empty =
 		AsyncResult.isSuccess(model.keys) &&
 		Array.isReadonlyArrayEmpty(model.keys.value) &&
 		AsyncResult.isSuccess(model.servers) &&
 		Array.isReadonlyArrayEmpty(model.servers.value)
+	return [
+		h.div.attrs({'aria-label': 'AI keys and MCP servers', role: 'list'}).children(
+			ReadPair(h, 'AI keys', 'gateway-skeleton-keys', model.keys, model.aiUsage, (keys, usage) =>
+				KeyRows(h, keys, usage)
+			),
+			ReadPair(h, 'MCP servers', 'gateway-skeleton-servers', model.servers, model.mcpUsage, (servers, usage) =>
+				ServerRows(h, servers, usage.report, h.isRunning(Execute))
+			)
+		),
+		empty && Notice(h, 'No keys or MCP servers yet')
+	]
+}
+
+function view(h: H, model: Model) {
+	if (!GatewayRoute.isAnyOf(['Home'])(model.route)) {
+		return h.main.class('gateway').children(h.a.class('gateway-back').attr('href', '/').children('Back to Gateway'))
+	}
 	return h.div
 		.class('gateway axis-controls')
 		.onMount(PressFeedback({}))
 		.children(
 			ActionShell(h, {
 				actions: gatewayActions(model),
-				content: h.main.class('gateway-content').children(
-					PasteField(h, model),
-					h.div.attrs({'aria-label': 'AI keys and MCP servers', role: 'list'}).children(
-						ReadPair(h, 'AI keys', 'gateway-skeleton-keys', model.keys, model.aiUsage, (keys, usage) =>
-							KeyRows(h, keys, usage)
-						),
-						ReadPair(h, 'MCP servers', 'gateway-skeleton-servers', model.servers, model.mcpUsage, (servers, usage) =>
-							ServerRows(h, servers, usage.report, busy)
-						)
-					),
-					empty && Notice(h, 'No keys or MCP servers yet')
-				),
+				content: h.main.class('gateway-content').children(PasteField(h, model), GatewayReads(h, model)),
 				overlays: [
-					RangeMenu(h, model),
-					OptionsMenu(h, model),
+					!isNative && RangeMenu(h, model),
+					!isNative && OptionsMenu(h, model),
 					model.dialog !== undefined && KeyDialog(h, model.dialog, model)
 				]
 			})
@@ -97,10 +110,15 @@ const ReadKey = Schema.Literals(['aiUsage', 'keys', 'mcpUsage', 'servers'])
 
 function readUpdate<K extends ReadKey>($: Component.Step<Model, Message, never>, key: K, result: Model[K]) {
 	const next = $.set({...$.model, [key]: result})
-	if ($.model.signingIn || !AsyncResult.isFailure<unknown, unknown>(result) || !needsSignInCause(result.cause)) {
+	if (
+		isNative ||
+		$.model.signingIn ||
+		!AsyncResult.isFailure<unknown, unknown>(result) ||
+		!needsSignInCause(result.cause)
+	) {
 		return next
 	}
-	return next.evolve({signingIn: true}).run(Command.asNoop(SignIn.make({})))
+	return next.evolve({signingIn: true}).run(Command.asNoop(SignInWeb.make({})))
 }
 
 export const Gateway = pipe(
@@ -118,6 +136,7 @@ export const Gateway = pipe(
 			panel: undefined,
 			route: initial.props.route,
 			servers: AsyncResult.initial(),
+			signInProblem: undefined,
 			signingIn: false
 		}),
 		subscriptions: state => {
@@ -128,7 +147,7 @@ export const Gateway = pipe(
 				home &&
 					Subscription.make(
 						'account',
-						observe(accountAtom, result => Message.Account({result}))
+						observe(sessionAccount, result => Message.Account({result}))
 					),
 				home &&
 					Subscription.make(
@@ -162,11 +181,17 @@ export const Gateway = pipe(
 				if (message.action === 'SaveKey') {
 					return $.evolve({busy: false, dialog: undefined}).viewTransition(['axis-sheet-close'])
 				}
+				if (message.action === 'Connect') return $.evolve({busy: false})
 				return $.evolve({busy: false, fieldVersion: $.model.fieldVersion + 1})
 			},
 			AiUsage: ($, message) => {
 				if (message.period !== periodOf($.model.route)) return $.model
 				return readUpdate($, 'aiUsage', message.result)
+			},
+			AuthDone: ($, message) => {
+				const next = $.evolve({signInProblem: message.problem, signingIn: false})
+				if (!message.sessionChanged) return next
+				return next.run(Command.asNoop(Refresh.make({newSession: true, period: periodOf($.model.route)})))
 			},
 			CancelKey: $ => {
 				if ($.model.busy) return $.model
@@ -204,7 +229,7 @@ export const Gateway = pipe(
 					Command.asNoop(Router.patchSearch(GatewayRoute, $.model.route, {period: message.period}, {history: 'push'}))
 				)
 			},
-			Retry: $ => $.run(Command.asNoop(Refresh.make({period: periodOf($.model.route)}))),
+			Retry: $ => $.run(Command.asNoop(Refresh.make({newSession: false, period: periodOf($.model.route)}))),
 			Route: ($, message) => {
 				if (periodOf(message.route) === periodOf($.model.route)) return $.evolve({route: message.route})
 				return $.evolve({
@@ -214,6 +239,11 @@ export const Gateway = pipe(
 				}).viewTransition(['axis-layout'])
 			},
 			Servers: ($, message) => readUpdate($, 'servers', message.result),
+			SignIn: $ => {
+				if ($.model.signingIn) return $.model
+				return $.evolve({signInProblem: undefined, signingIn: true}).run(SignIn.make({}))
+			},
+			SignOut: $ => $.run(SignOut.make({})),
 			SubmitField: ($, message) => {
 				if ($.model.busy) return $.model
 				const value = Redacted.value(message.entry)

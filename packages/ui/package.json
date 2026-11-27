@@ -11,6 +11,7 @@
 		"./glass": "./src/glass.ts",
 		"./native": "./src/native.ts",
 		"./session": "./src/session.ts",
+		"./sheet": "./src/sheet.ts",
 		"./split": "./src/split.ts",
 		"./startup": "./src/startup.ts",
 		"./state": "./src/state.ts",

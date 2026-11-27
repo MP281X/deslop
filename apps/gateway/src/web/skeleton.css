@@ -27,6 +27,14 @@
 	overflow: clip;
 }
 
+.gateway-startup[data-native] {
+	padding-inline-end: 0;
+}
+
+.gateway-startup[data-native]::after {
+	display: none;
+}
+
 .gateway-startup::before,
 .gateway-startup::after {
 	position: absolute;

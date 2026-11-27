@@ -386,6 +386,80 @@ body {
 :root:active-view-transition-type(axis-layout) .axis-split > .fold-list {
 	view-transition-name: axis-list;
 }
+.axis-sheet {
+	--sheet-viewport-height: 100dvh;
+	--sheet-viewport-top: 0px;
+	--sheet-top-gap: max(32px, env(safe-area-inset-top, 0px));
+	position: fixed;
+	inset: auto var(--sheet-inset-right, 0px) calc(100dvh - var(--sheet-viewport-height) - var(--sheet-viewport-top))
+		var(--sheet-inset-left, 0px);
+	inline-size: var(--sheet-width, 100%);
+	block-size: var(--sheet-height, auto);
+	max-inline-size: 100%;
+	max-block-size: min(var(--sheet-max-height, 100dvh), var(--sheet-viewport-height) - var(--sheet-top-gap));
+	margin: 0 auto;
+	border-radius: 28px 28px 0 0;
+	background: #1c1c1e;
+	color: var(--color-foreground);
+	overflow: clip;
+}
+
+.axis-sheet[open] {
+	view-transition-name: axis-sheet;
+}
+
+.axis-sheet::backdrop {
+	background: rgb(0 0 0 / 56%);
+}
+
+.axis-sheet::before {
+	position: absolute;
+	inset-block-start: 9px;
+	inset-inline-start: 50%;
+	inline-size: 36px;
+	block-size: 5px;
+	border-radius: 999px;
+	background: #515153;
+	content: '';
+	translate: -50%;
+}
+
+.axis-sheet-content {
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+	block-size: 100%;
+	max-block-size: inherit;
+	padding: 22px 16px max(16px, env(safe-area-inset-bottom));
+}
+
+.axis-sheet-heading {
+	display: grid;
+	grid-template-columns: 44px minmax(0, 1fr) 44px;
+	align-items: center;
+	gap: 8px;
+	font-weight: 640;
+	text-align: center;
+}
+
+.axis-sheet-heading button {
+	display: grid;
+	place-items: center;
+	inline-size: 44px;
+	block-size: 44px;
+	border-radius: 999px;
+}
+
+.axis-sheet-body {
+	display: flex;
+	flex: 1 1 auto;
+	flex-direction: column;
+	gap: 12px;
+	min-block-size: 0;
+	overflow: auto;
+	overscroll-behavior: contain;
+}
+
 :root:is(
 	:active-view-transition-type(axis-open),
 	:active-view-transition-type(axis-back),
@@ -519,6 +593,17 @@ body {
 }
 
 @media (prefers-reduced-motion: reduce) {
+	::view-transition-group(axis-sheet) {
+		animation-duration: 85ms;
+	}
+	:root:active-view-transition-type(axis-sheet-open)::view-transition-new(axis-sheet),
+	:root:active-view-transition-type(axis-sheet-close)::view-transition-old(axis-sheet) {
+		animation: 85ms ease-out axis-fade both;
+	}
+	:root:active-view-transition-type(axis-sheet-close)::view-transition-old(axis-sheet) {
+		animation-direction: reverse;
+	}
+
 	.axis-split[data-layout='single'][data-show='list'] > .fold-list,
 	.axis-split[data-layout='single'][data-show='detail'] > .fold-detail {
 		animation: axis-fade 85ms ease-out both;
