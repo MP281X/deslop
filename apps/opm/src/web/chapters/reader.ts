@@ -1,20 +1,7 @@
 import {Mount} from '@effect/ui'
 import type {Html} from '@effect/ui/html'
 
-import {
-	Array,
-	Boolean,
-	Effect,
-	Function,
-	HashSet,
-	MutableRef,
-	Number,
-	Option,
-	Queue,
-	Schema,
-	Stream,
-	pipe
-} from 'effect'
+import {Array, Boolean, Effect, Function, HashSet, Number, Option, Queue, Schema, Stream, pipe} from 'effect'
 
 import type {ShellAction} from '@deslop/ui/app-shell'
 import {Loading, Notice, Placeholder} from '@deslop/ui/axis'
@@ -50,51 +37,6 @@ export function chapterView(model: Model, target: ChapterIdentity, chapters: Cha
 	)
 	return {following, pages, shown, turn, turns}
 }
-
-const Motion = Mount.makeStream('Opm/Motion', {args: {}}, (node: HTMLElement) =>
-	Stream.callback<Message>(queue =>
-		Effect.acquireRelease(
-			Effect.sync(() => {
-				const pressed = MutableRef.make(Option.none<{id: number; x: number; y: number}>())
-				function down(event: PointerEvent) {
-					if (event.button !== 0 || !event.isPrimary) return
-					if (event.target instanceof Element && event.target.closest('button') !== null) return
-					MutableRef.set(pressed, Option.some({id: event.pointerId, x: event.clientX, y: event.clientY}))
-					node.setPointerCapture(event.pointerId)
-				}
-				function up(event: PointerEvent) {
-					const start = Option.getOrUndefined(MutableRef.get(pressed))
-					if (start?.id !== event.pointerId) return
-					const dx = event.clientX - start.x
-					const dy = event.clientY - start.y
-					MutableRef.set(pressed, Option.none())
-					if (Math.abs(dx) >= 36 && Math.abs(dx) > Math.abs(dy)) {
-						Queue.offerUnsafe(
-							queue,
-							Message.Move({
-								step: Boolean.match(dx > 0, {onFalse: Function.constant(-1), onTrue: Function.constant(1)})
-							})
-						)
-					} else if (Math.abs(dx) < 8 && Math.abs(dy) < 8) {
-						Queue.offerUnsafe(queue, Message.ToggleBars())
-					}
-				}
-				function cancel() {
-					MutableRef.set(pressed, Option.none())
-				}
-				node.addEventListener('pointerdown', down)
-				node.addEventListener('pointerup', up)
-				node.addEventListener('pointercancel', cancel)
-				return () => {
-					node.removeEventListener('pointerdown', down)
-					node.removeEventListener('pointerup', up)
-					node.removeEventListener('pointercancel', cancel)
-				}
-			}),
-			remove => Effect.sync(remove)
-		)
-	)
-)
 
 const Shape = Mount.makeStream('Opm/PageShape', {args: {src: Schema.String}}, (node: HTMLImageElement, page) =>
 	Stream.callback<Message>(queue =>
@@ -134,6 +76,8 @@ function pageImage(h: H, failed: boolean, src: string, index: number) {
 		return Glass(h, 'opm-retry-page').children(
 			Button(h)
 				.attr('aria-label', 'Reload page')
+				// Effect UI stops at the nearest handler; leave this press with the button.
+				.on('pointerdown', Function.constUndefined)
 				.on('click', Message.RetryPage({src}))
 				.children(SymbolIcon(h, 'arrow.clockwise'))
 		)
@@ -160,7 +104,16 @@ export function Reading(
 		.class('opm-reader')
 		.key(`${target.series}:${target.number}`)
 		.attr('aria-label', `Chapter ${chapter}`)
-		.onMount(Motion({}))
+		.on(
+			'pointerdown',
+			press => {
+				if (press.button !== 0) return undefined
+				return Message.PointerDown({pointerId: press.pointerId, x: press.x, y: press.y})
+			},
+			{capturePointer: true}
+		)
+		.on('pointerup', release => Message.PointerUp({pointerId: release.pointerId, x: release.x, y: release.y}))
+		.on('pointercancel', cancel => Message.PointerCancel({pointerId: cancel.pointerId}))
 		.children(
 			turn < 0 &&
 				Boolean.match(waiting, {

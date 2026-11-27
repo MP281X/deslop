@@ -26,7 +26,7 @@ import type {ReadingChapter} from '#contracts'
 
 import {chaptersAtom, unsavedAtom} from '#web/chapters/catalogue.ts'
 import {Message, Model, OpmCommands, Refresh, Save, SetBars, SignIn, SignOut} from '#web/chapters/model.ts'
-import type {Reader} from '#web/chapters/model.ts'
+import type {Reader, Step} from '#web/chapters/model.ts'
 import {chapterOpens, registerPush} from '#web/chapters/push.ts'
 import {Reading, chapterView, pageActions} from '#web/chapters/reader.ts'
 import {savedPage, turnPage, withUnsaved} from '#web/chapters/reading.ts'
@@ -255,6 +255,7 @@ function openedReader() {
 		finished: HashSet.empty(),
 		inView: Option.none(),
 		page: undefined,
+		press: undefined,
 		strip: []
 	} satisfies Reader
 }
@@ -267,6 +268,32 @@ function opened(model: Model) {
 	const reading = chapterView(model, target, chaptersOf(model))
 	if (reading === undefined) return model
 	return {...model, reader: {...model.reader, page: savedPage(reading.shown[0]), strip: reading.shown}}
+}
+
+function movePage($: Component.Step<Model, Message, never>, step: Step) {
+	const target = targetOf($.model.route)
+	if (target === undefined || $.model.reader === undefined) return $
+	const reading = chapterView($.model, target, chaptersOf($.model))
+	if (reading === undefined) return $
+	const position = reading.turn + step
+	const turn = reading.turns[position]
+	if (turn === undefined) return $
+	// The left page of a final spread counts as read.
+	const page = Option.getOrUndefined(
+		Boolean.match(position === reading.turns.length - 1, {
+			onFalse: () => Array.head(turn),
+			onTrue: () => Array.last(turn)
+		})
+	)
+	if (page === undefined) return $
+	const turned = Option.getOrUndefined(
+		turnPage($.model.reader, {following: reading.following, index: page, opened: target.number})
+	)
+	if (turned === undefined) return $
+	return $.evolve({reader: {...$.model.reader, ...turned.next, bars: false, page}}).run(
+		Command.asNoop(Save.make({updates: turned.saves})),
+		Command.asNoop(SetBars.make({visible: false}))
+	)
 }
 
 const OpmDef = Html.component({
@@ -369,31 +396,7 @@ export const Opm = pipe(
 					})
 				}),
 			Menu: $ => $.evolve({menu: !$.model.menu}),
-			Move: ($, next) => {
-				const target = targetOf($.model.route)
-				if (target === undefined || $.model.reader === undefined) return $.model
-				const reading = chapterView($.model, target, chaptersOf($.model))
-				if (reading === undefined) return $.model
-				const position = reading.turn + next.step
-				const turn = reading.turns[position]
-				if (turn === undefined) return $.model
-				// The left page of a final spread counts as read.
-				const page = Option.getOrUndefined(
-					Boolean.match(position === reading.turns.length - 1, {
-						onFalse: () => Array.head(turn),
-						onTrue: () => Array.last(turn)
-					})
-				)
-				if (page === undefined) return $.model
-				const turned = Option.getOrUndefined(
-					turnPage($.model.reader, {following: reading.following, index: page, opened: target.number})
-				)
-				if (turned === undefined) return $.model
-				return $.evolve({reader: {...$.model.reader, ...turned.next, bars: false, page}}).run(
-					Command.asNoop(Save.make({updates: turned.saves})),
-					Command.asNoop(SetBars.make({visible: false}))
-				)
-			},
+			Move: ($, next) => movePage($, next.step),
 			Open: ($, next) =>
 				$.run(
 					Command.asNoop(
@@ -410,6 +413,31 @@ export const Opm = pipe(
 						)
 					)
 				),
+			PointerCancel: ($, cancel) => {
+				if ($.model.reader?.press?.pointerId !== cancel.pointerId) return $.model
+				return $.evolve({reader: {...$.model.reader, press: undefined}})
+			},
+			PointerDown: ($, press) => {
+				if ($.model.reader === undefined || $.model.reader.press !== undefined) return $.model
+				return $.evolve({reader: {...$.model.reader, press: {pointerId: press.pointerId, x: press.x, y: press.y}}})
+			},
+			PointerUp: ($, release) => {
+				if ($.model.reader?.press?.pointerId !== release.pointerId) return $.model
+				const dx = release.x - $.model.reader.press.x
+				const dy = release.y - $.model.reader.press.y
+				const released = {...$.model.reader, press: undefined}
+				if (Math.abs(dx) >= 36 && Math.abs(dx) > Math.abs(dy)) {
+					return movePage(
+						$.evolve({reader: released}),
+						Boolean.match(dx > 0, {onFalse: Function.constant(-1), onTrue: Function.constant(1)})
+					)
+				}
+				if (Math.abs(dx) < 8 && Math.abs(dy) < 8) {
+					const visible = !released.bars
+					return $.evolve({reader: {...released, bars: visible}}).run(Command.asNoop(SetBars.make({visible})))
+				}
+				return $.evolve({reader: released})
+			},
 			Posture: ($, next) => {
 				if ($.model.narrow === next.narrow) return $.model
 				return $.evolve({menu: false, narrow: next.narrow}).viewTransition(['axis-layout'])
@@ -447,11 +475,6 @@ export const Opm = pipe(
 			SignIn: $ => $.evolve({authProblem: undefined, busy: true}).run(SignIn.make({})),
 			SignOut: $ => $.evolve({authProblem: undefined, busy: true, menu: false}).run(SignOut.make({})),
 			Spread: ($, next) => $.evolve({spread: next.spread}),
-			ToggleBars: $ => {
-				if ($.model.reader === undefined) return $.model
-				const visible = !$.model.reader.bars
-				return $.evolve({reader: {...$.model.reader, bars: visible}}).run(Command.asNoop(SetBars.make({visible})))
-			},
 			Unsaved: ($, next) => $.set(opened({...$.model, unsaved: next.unsaved}))
 		},
 		view

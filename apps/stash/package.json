@@ -41,7 +41,7 @@
 		"@deslop/ui": "workspace:*",
 		"@effect/platform-node": "latest",
 		"@effect/sql-sqlite-node": "latest",
-		"@effect/ui": "https://pkg.pr.new/Effect-TS/ui/@effect/ui@87a704bef41b40de8fa7bced97cae5d69c4233a0",
+		"@effect/ui": "https://pkg.pr.new/Effect-TS/ui/@effect/ui@7bff56b3b81c57bf1038d358835e92833814a6b0",
 		"cheerio": "latest",
 		"domhandler": "latest",
 		"effect": "latest"

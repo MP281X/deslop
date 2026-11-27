@@ -35,6 +35,7 @@ export const Model = Schema.Struct({
 	body: ReadBody,
 	composing: Schema.Boolean,
 	draft: Schema.String,
+	foreground: Schema.Boolean,
 	kind: Schema.UndefinedOr(Kind),
 	listHidden: Schema.Boolean,
 	media: ReadMedia,
@@ -63,7 +64,6 @@ export const Action = Schema.TaggedUnion({
 export type Message = typeof Message.Type
 export const Message = UiSchema.TaggedEnum({
 	Account: {result: ReadAccount},
-	Activate: {},
 	Awake: {},
 	Body: {id: NoteId, result: ReadBody},
 	Clock: {now: DateTimeUtcFromFiniteMillis},
@@ -83,7 +83,8 @@ export const Message = UiSchema.TaggedEnum({
 	Route: {route: StashRoute},
 	Run: {action: Action},
 	Settled: {action: Action, problem: Schema.UndefinedOr(Schema.String)},
-	Sidebar: {}
+	Sidebar: {},
+	Visibility: {visible: Schema.Boolean}
 })
 
 export function visibleNotes(model: Model) {

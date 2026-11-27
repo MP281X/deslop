@@ -26,6 +26,10 @@ import {RpcClient} from '#web/session.ts'
 
 const CatalogueRead = AsyncResult.Schema({error: Schema.Unknown, success: Schema.Array(ReadingChapter)})
 const AccountRead = AsyncResult.Schema({error: Schema.Unknown, success: Account})
+const ReaderPress = {pointerId: Schema.Int, x: Schema.Finite, y: Schema.Finite}
+
+export type Step = typeof Step.Type
+const Step = Schema.Literals([-1, 1])
 
 export type Reader = typeof Reader.Type
 const Reader = Schema.Struct({
@@ -34,6 +38,7 @@ const Reader = Schema.Struct({
 	finished: Schema.HashSet(ChapterNumber),
 	inView: Schema.Option(ChapterNumber),
 	page: Schema.UndefinedOr(Schema.Natural),
+	press: Schema.UndefinedOr(Schema.Struct(ReaderPress)),
 	strip: Schema.Array(ReadingChapter)
 })
 
@@ -66,8 +71,11 @@ export const Message = UiSchema.TaggedEnum({
 	Expired: {chapter: ChapterIdentity},
 	Image: {failed: Schema.Boolean, src: Schema.String, wide: Schema.Boolean},
 	Menu: {},
-	Move: {step: Schema.Literals([-1, 1])},
+	Move: {step: Step},
 	Open: {chapter: ChapterIdentity},
+	PointerCancel: {pointerId: ReaderPress.pointerId},
+	PointerDown: ReaderPress,
+	PointerUp: ReaderPress,
 	Posture: {narrow: Schema.Boolean},
 	Retry: {},
 	RetryPage: {src: Schema.String},
@@ -77,7 +85,6 @@ export const Message = UiSchema.TaggedEnum({
 	SignIn: {},
 	SignOut: {},
 	Spread: {spread: Schema.Boolean},
-	ToggleBars: {},
 	Unsaved: {unsaved: Model.fields.unsaved}
 })
 

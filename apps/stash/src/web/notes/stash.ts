@@ -1,7 +1,7 @@
 import {Command, Component, Router, Subscription} from '@effect/ui'
-import {Html} from '@effect/ui/html'
+import {Html, HtmlSubscription} from '@effect/ui/html'
 
-import {Array, Boolean, DateTime, Duration, Function, Layer, Option, Schema, Stream, String, pipe} from 'effect'
+import {Array, Boolean, DateTime, Duration, Function, Layer, Option, Schema, String, pipe} from 'effect'
 
 import {FetchHttpClient} from 'effect/http'
 import {AsyncResult, AtomRegistry} from 'effect/reactivity'
@@ -434,6 +434,7 @@ export const Stash = pipe(
 				body: AsyncResult.initial(),
 				composing: false,
 				draft: readDraft(),
+				foreground: true,
 				kind: undefined,
 				listHidden: false,
 				media: AsyncResult.initial(),
@@ -469,15 +470,7 @@ export const Stash = pipe(
 					'clock',
 					observe(clockAtom('1 minute'), now => Message.Clock({now}))
 				),
-				isNative &&
-					Subscription.make(
-						'activation',
-						pipe(
-							Stream.fromEventListener(document, 'visibilitychange'),
-							Stream.filter(() => document.visibilityState === 'visible'),
-							Stream.map(() => Message.Activate())
-						)
-					),
+				isNative && HtmlSubscription.onVisibility(visible => Message.Visibility({visible})),
 				admitted &&
 					Subscription.make(
 						'notes',
@@ -504,7 +497,6 @@ export const Stash = pipe(
 				}
 				return $.evolve({account: message.result})
 			},
-			Activate: $ => $.run(Wake.make({refresh: true})),
 			Awake: $ => $.model,
 			Body: ($, message) => {
 				if (
@@ -627,6 +619,12 @@ export const Stash = pipe(
 					)
 				}
 				return $.evolve({listHidden: hide, panel: undefined}).viewTransition(['axis-layout'])
+			},
+			// Its first value is the state at start, which init's Wake already covers.
+			Visibility: ($, message) => {
+				const next = $.evolve({foreground: message.visible})
+				if (!message.visible || $.model.foreground) return next
+				return next.run(Wake.make({refresh: true}))
 			}
 		},
 		view: workspace
