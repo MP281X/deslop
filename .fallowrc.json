@@ -1,6 +1,6 @@
 {
 	"$schema": "./node_modules/fallow/schema.json",
-	"entry": ["**/main.*", "apps/*/fingerprint.config.js", "apps/*/targets/*/expo-target.config.js"],
+	"entry": ["**/main.*"],
 	"includeEntryExports": true,
 	"publicPackages": ["@deslop/coding-standards"],
 	"failOnParseError": true,
@@ -8,48 +8,21 @@
 		"zones": [
 			// Tests and tooling may read any zone, and no shipped zone may read them, so neither bridges client and server.
 			{"name": "test", "patterns": ["**/*.test.ts"]},
-			{
-				"name": "tooling",
-				"patterns": [
-					"tools/**",
-					"vite.config.ts",
-					"apps/*/{app,metro,vite}.config.ts",
-					"apps/*/fingerprint.config.js",
-					"apps/*/targets/**"
-				]
-			},
+			{"name": "tooling", "patterns": ["tools/**", "vite.config.ts", "apps/*/vite.config.ts"]},
 			// Build configuration the server also reads; it imports no zone, so it carries nothing across.
-			{"name": "config", "patterns": ["packages/runtime/src/config/**"]},
-			{
-				"name": "shared",
-				"patterns": [
-					"apps/*/src/services/*/{schema.ts,lib/utils.ts,lib/page.ts}",
-					"apps/*/src/{rpcs,tools}/contracts.ts",
-					"apps/portfolio/src/lib/portfolio.ts",
-					"packages/*/src/shared/**"
-				]
-			},
+			{"name": "config", "patterns": ["packages/runtime/src/config/**", "packages/ui/src/vite.ts"]},
+			{"name": "shared", "patterns": ["apps/*/src/*.ts", "packages/*/src/shared/**"]},
 			{
 				"name": "client",
-				"patterns": [
-					"apps/*/index.html",
-					"apps/*/src/main.client.tsx",
-					"apps/*/src/routes/**",
-					"apps/*/src/lib/*.ts",
-					"apps/*/src/lib/*.tsx",
-					"apps/portfolio/src/lib/profile.ts",
-					"apps/*/modules/native/index.ts",
-					"packages/components-*/src/**",
-					"packages/*/src/{client,web,mobile}/**"
-				]
+				"patterns": ["apps/*/index.html", "apps/*/src/web/**", "packages/ui/src/**", "packages/*/src/{client,web}/**"]
 			},
 			// Server layers point one way: the entry composes transports, transports call services, services build on shared code.
-			{"name": "entry", "patterns": ["apps/*/src/main.server.ts"]},
-			{"name": "transport", "patterns": ["apps/*/src/{http,rpcs,tools}/handlers.ts"]},
+			{"name": "entry", "patterns": ["apps/*/src/server/main.ts"]},
+			{"name": "transport", "patterns": ["apps/*/src/server/*/{http,rpcs,tools}.ts"]},
 			{
 				"name": "server",
-				// First match wins: schemas and pure helpers above stay shared; implementations default to server-only.
-				"patterns": ["apps/*/src/services/**", "packages/*/src/server/**"]
+				// First match wins: contracts above stay shared; implementations default to server-only.
+				"patterns": ["apps/*/src/server/**", "packages/*/src/server/**"]
 			}
 		],
 		"rules": [
@@ -70,46 +43,36 @@
 		"coverage": {"requireAllFiles": true}
 	},
 	// Extract shared logic at this size; mark imports, schema fields and modifier/prop lists inline as shape-only clones.
-	"duplicates": {"minTokens": 50, "minLines": 5, "ignore": ["apps/*/src/services/*/migrations.ts"]},
+	"duplicates": {"minTokens": 50, "minLines": 5, "ignore": ["apps/*/src/server/*/migrations.ts"]},
 	"health": {
 		"maxCognitive": 14,
 		"thresholdOverrides": [
-			{"files": ["**/handlers.ts"], "maxCognitive": 8, "reason": "Transport handlers delegate decisions to services."}
+			{
+				"files": ["apps/*/src/server/*/{http,rpcs,tools}.ts"],
+				"maxCognitive": 8,
+				"reason": "Transport handlers delegate decisions to services."
+			}
 		],
 		// No production coverage exists: estimated CRAP must not masquerade as measured risk.
-		"maxCrap": 0,
-		"ignore": ["packages/components-web/src/ui/**"]
+		"maxCrap": 0
 	},
 	"ignoreDependencies": [
-		// Peer-only: one scheduler resolution keeps app and shared atom hooks on the same registry context.
-		"scheduler",
-		// The runtime imports these; each app keeps them so autolinking includes their native modules.
-		"expo-secure-store",
-		"expo-updates",
-		"expo-web-browser"
+		// Capacitor CLI copies this platform's native project; it has no JS clients.
+		"@capacitor/ios"
 	],
+	// Each app names its own contract groups; the same name in two apps is two separate APIs.
+	"ignoreExports": [{"file": "apps/*/src/contracts.ts", "exports": ["RpcContracts", "PushRpcs"]}],
 	"ignorePatterns": ["**/*.gen.ts", "tools/*/template/**"],
-	"ignoreExports": [
-		{"exports": ["default"], "file": "apps/*/app.config.ts"},
-		{"exports": ["*"], "file": "apps/*/fingerprint.config.js"},
-		{"exports": ["module.exports"], "file": "apps/*/targets/*/expo-target.config.js"},
-		{"exports": ["*"], "file": "packages/components-web/src/ui/**/*.{ts,tsx}"}
-	],
 	"overrides": [
 		{
 			// Schemas and their types are exported in pairs by policy
-			"files": ["apps/*/src/services/*/schema.ts", "packages/runtime/src/shared/schema.ts"],
+			"files": ["apps/*/src/server/*/schema.ts", "apps/*/src/contracts.ts", "packages/runtime/src/shared/schema.ts"],
 			"rules": {"unused-exports": "off", "unused-types": "off"}
 		},
 		{
 			// A shared codec's type is exported beside it even where callers read only the value.
 			"files": ["packages/runtime/src/shared/{auth,time}.ts"],
 			"rules": {"unused-types": "off"}
-		},
-		{
-			// shadcn's CLI owns these files and their exported prop types.
-			"files": ["packages/components-web/src/ui/**"],
-			"rules": {"private-type-leaks": "off"}
 		}
 	],
 	"rules": {

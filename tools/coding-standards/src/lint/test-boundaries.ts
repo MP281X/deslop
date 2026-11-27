@@ -12,10 +12,9 @@ const RUNNER = /^(?:@effect\/vitest|vitest|@vitest\/[^/]+|vite-plus\/test)(?:\/|
 function outside(source: string, names: string[]) {
 	return (
 		matches(
-			/^(?:react(?:-dom|-test-renderer)?(?:\/|$)|@testing-library\/|jsdom$|happy-dom$|@vitest\/|vitest(?:\/|$)|vite-plus\/test(?:\/|$)|(?:node:)?(?:fs|http|https|net|child_process|sqlite|dgram|dns|tls|http2|worker_threads|vm)(?:\/|$)|@modelcontextprotocol\/|@effect\/rpc|effect\/(?:rpc|ai\/Mcp|Tracer|unstable\/http|unstable\/rpc))/u
+			/^(?:@effect\/ui(?:\/|$)|@testing-library\/|jsdom$|happy-dom$|@vitest\/|vitest(?:\/|$)|vite-plus\/test(?:\/|$)|(?:node:)?(?:fs|http|https|net|child_process|sqlite|dgram|dns|tls|http2|worker_threads|vm)(?:\/|$)|@modelcontextprotocol\/|@effect\/rpc|effect\/(?:rpc|ai\/Mcp|Tracer|unstable\/http|unstable\/rpc))/u
 		)(source) ||
-		matches(/(?:^|\/)(?:handlers|contracts|page|registry)\.[cm]?[jt]sx?$/u)(source) ||
-		matches(/\.tsx$/u)(source) ||
+		matches(/(?:^|\/)(?:handlers|contracts|page|registry|view)\.[cm]?[jt]sx?$/u)(source) ||
 		(source === 'effect/http' && Array.some(names, name => name !== 'Headers')) ||
 		(matches(/^effect\/http\//u)(source) && source !== 'effect/http/Headers') ||
 		(source === '@effect/vitest' && Array.some(names, name => Array.contains(['expect', 'vi', 'vitest'], name))) ||
@@ -38,18 +37,11 @@ function globalNamed(node: ESTree.Expression | ESTree.Super, name: string) {
 	)
 }
 
-function networkCall(node: ESTree.CallExpression) {
-	return (
-		globalNamed(node.callee, 'fetch') ||
-		(node.callee.type === 'MemberExpression' && globalNamed(node.callee.object, 'Response'))
-	)
-}
-
 export const testBoundaries = defineRule({
 	create: context => ({
 		CallExpression: node => {
 			if (!isTestFile(context)) return
-			if (networkCall(node)) {
+			if (node.callee.type === 'MemberExpression' && globalNamed(node.callee.object, 'Response')) {
 				context.report({message: MESSAGE, node})
 				return
 			}
@@ -110,9 +102,6 @@ export const testBoundaries = defineRule({
 			) {
 				context.report({message: MESSAGE, node})
 			}
-		},
-		JSXElement: node => {
-			if (isTestFile(context)) context.report({message: MESSAGE, node})
 		},
 		NewExpression: node => {
 			if (

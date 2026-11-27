@@ -1,0 +1,231 @@
+@import 'tailwindcss';
+@import '@fontsource-variable/geist';
+@import '@fontsource-variable/geist-mono';
+@import '@fontsource-variable/ibm-plex-sans';
+
+/* A mouse that hovers draws the live cursor; touch and pens keep the system one. */
+@custom-variant mouse (@media (hover: hover) and (pointer: fine));
+
+:root {
+	--primary: var(--coral);
+
+	--background: #ffffff;
+	--foreground: #0a0a0a;
+	--muted: #f5f4f1;
+	--muted-foreground: #64625d;
+	--border: #e6e4de;
+	--input: #d8d6cf;
+	--popover: #ffffff;
+	--coral: oklch(from #bd4630 l c h);
+	--ring: oklch(0.705 0.015 285.286);
+}
+
+@media screen and (prefers-color-scheme: dark) {
+	:root {
+		--background: #0d0c0c;
+		--foreground: #e3e1db;
+		--muted: #242323;
+		--muted-foreground: #a19e96;
+		--border: #262523;
+		--input: #2c2a27;
+		--popover: #141313;
+		--ring: oklch(0.552 0.016 285.938);
+		--coral: oklch(from #fd7357 l c h);
+	}
+}
+
+@theme inline {
+	--color-background: var(--background);
+	--color-foreground: var(--foreground);
+	--color-muted: var(--muted);
+	--color-muted-foreground: var(--muted-foreground);
+	--color-border: var(--border);
+	--color-primary: var(--primary);
+	--spacing-safe-top: env(safe-area-inset-top);
+	--spacing-safe-right: env(safe-area-inset-right);
+	--spacing-safe-bottom: env(safe-area-inset-bottom);
+	--spacing-safe-left: env(safe-area-inset-left);
+}
+
+@layer base {
+	html {
+		@apply bg-background text-foreground font-sans;
+		overscroll-behavior: none;
+		touch-action: pan-x pan-y;
+		-webkit-text-size-adjust: 100%;
+	}
+
+	* {
+		outline-color: color-mix(in oklab, var(--ring) 50%, transparent);
+	}
+}
+
+.portfolio-shell:not(:empty) {
+	display: flex;
+	height: 100dvh;
+	flex-direction: column;
+	overflow: clip;
+	padding: env(safe-area-inset-top) env(safe-area-inset-right) 0 env(safe-area-inset-left);
+}
+
+/* Safari can leave the status bar's height unused when installed to the Home Screen. */
+@media screen and (display-mode: standalone) {
+	.portfolio-shell:not(:empty) {
+		height: 100lvh;
+	}
+}
+
+/* The CV reads in a proportional face; the app's monospace stays for its labels, dates and header. */
+@theme {
+	--font-sans: 'Geist Variable', ui-sans-serif, system-ui, sans-serif;
+	--font-mono: 'Geist Mono Variable', ui-monospace, monospace;
+	--font-document: 'IBM Plex Sans Variable', ui-sans-serif, system-ui, sans-serif;
+	--text-document: 0.75rem;
+	--text-document--line-height: 1.45;
+	--text-label: 0.65625rem;
+	--text-label--line-height: 1.5;
+	--tracking-label: 0.18em;
+	--tracking-name: 0.14em;
+	/* A printed CV spreads its sections down the page, so the bottom margin matches the top and sides. Chrome resolves vh
+	   to the printed page area. */
+	--spacing-printed-page: 100vh;
+}
+
+/* WebKit, the only engine with this font keyword, prints each CSS pixel at 0.8pt instead of 0.75pt, so its A4 page
+   holds only about 260 CSS millimetres; it keeps the height measured there. */
+@supports (font: -apple-system-body) {
+	:root {
+		--spacing-printed-page: 256mm;
+	}
+}
+
+@layer components {
+	.portfolio-button {
+		@apply inline-flex shrink-0 items-center justify-center border border-transparent bg-clip-padding text-xs font-medium whitespace-nowrap select-none;
+	}
+
+	.portfolio-button:focus-visible {
+		border-color: var(--ring);
+		outline: 1px solid color-mix(in oklab, var(--ring) 50%, transparent);
+	}
+
+	.portfolio-ghost:is(:hover, [aria-expanded='true']),
+	.cv-print:hover {
+		background-color: var(--muted);
+	}
+
+	.cv-print {
+		position: relative;
+		border-color: var(--border);
+		background-color: var(--background);
+	}
+
+	@media (pointer: coarse) {
+		.cv-print::before {
+			position: absolute;
+			inset: -4px;
+			content: '';
+		}
+	}
+
+	@media screen and (prefers-color-scheme: dark) {
+		.cv-print {
+			border-color: var(--input);
+			background-color: color-mix(in oklab, var(--input) 30%, transparent);
+		}
+
+		.cv-print:hover {
+			background-color: color-mix(in oklab, var(--input) 50%, transparent);
+		}
+	}
+}
+
+.portfolio-shortcuts {
+	position: fixed;
+	inset: 0;
+	display: grid;
+	width: min(24rem, 100% - 2rem);
+	height: fit-content;
+	gap: 1rem;
+	margin: auto;
+	padding: 1rem;
+	background: var(--popover);
+	color: var(--foreground);
+	box-shadow: 0 0 0 1px color-mix(in oklab, var(--foreground) 10%, transparent);
+	cursor: auto;
+}
+
+.portfolio-shortcuts::backdrop {
+	background: rgb(0 0 0 / 10%);
+	backdrop-filter: blur(4px);
+}
+
+/* The reading column is colour haze: two-thirds paper over the grid, frosted hard so the trails behind it turn into soft light. */
+.panel-frosted {
+	background-color: color-mix(in srgb, var(--background) 66%, transparent);
+	-webkit-backdrop-filter: blur(28px) saturate(2.2);
+	backdrop-filter: blur(28px) saturate(2.2);
+}
+
+/* Over links the browser's own pointer would return beside the drawn cursor. */
+@media (hover: hover) and (pointer: fine) {
+	.portfolio-page :is(a, button):not(.portfolio-shortcuts *) {
+		cursor: none;
+	}
+}
+
+/* The 26px grid behind the home page's trails, drawn under the element's content, which must be positioned. */
+@utility trail-grid {
+	isolation: isolate;
+
+	&::before {
+		content: '';
+		position: absolute;
+		inset: 0;
+		z-index: -1;
+		opacity: 3%;
+		background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='26' height='26'%3E%3Cpath d='M.5 0v26M0 .5h26' stroke='black'/%3E%3C/svg%3E")
+			0 0 / 26px 26px;
+	}
+
+	@media screen and (prefers-color-scheme: dark) {
+		&::before {
+			background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='26' height='26'%3E%3Cpath d='M.5 0v26M0 .5h26' stroke='white'/%3E%3C/svg%3E");
+		}
+	}
+}
+
+/* The CV's width, up to 48rem, snapped to whole 26px grid cells plus 1px so the closing line on the right shows. */
+@utility trail-grid-width {
+	width: calc(round(down, min(100%, 48rem) - 1px, 26px) + 1px);
+}
+
+@page {
+	size: A4;
+	margin: 10mm;
+}
+
+/* A dark-mode browser still prints the CV as a light document: the screen tokens never reach paper. The printed CV flows
+   onto as many sheets as it needs, out of the app's full-height shell. */
+@media print {
+	:root {
+		color-scheme: light;
+	}
+
+	.portfolio-shell:not(:empty) {
+		display: block;
+		height: auto;
+		overflow: visible;
+		padding: 0;
+	}
+
+	.portfolio-shortcuts {
+		display: none;
+	}
+
+	.panel-frosted {
+		background-color: var(--background);
+		-webkit-backdrop-filter: none;
+		backdrop-filter: none;
+	}
+}

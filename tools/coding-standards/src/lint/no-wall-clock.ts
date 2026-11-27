@@ -3,7 +3,7 @@ import {Array, Option, String} from 'effect'
 import {defineRule} from 'vite-plus/lint/plugins'
 import type {Context, ESTree} from 'vite-plus/lint/plugins'
 
-import {importedMember, isFunction, isTestFile, matches, memberName, onRealClock, variableOf} from '#lib/ast.ts'
+import {importedMember, isFunction, isTestFile, memberName, onRealClock, variableOf} from '#lib/ast.ts'
 
 const MESSAGE =
 	'This test reads the real time, so its result depends on when and how fast it runs: use a fixed instant with TestClock.setTime, and Clock or DateTime under it.effect.'
@@ -67,21 +67,6 @@ function insideEffect(context: Context, node: ESTree.Node): boolean {
 	return insideEffect(context, node.parent)
 }
 
-function insideRender(context: Context, node: ESTree.Node): boolean {
-	if (node.type === 'JSXAttribute' && node.name.type === 'JSXIdentifier' && String.startsWith('on')(node.name.name)) {
-		return false
-	}
-	if (isFunction(node)) {
-		if (effectCallback(context, node)) return false
-		if (node.type === 'FunctionDeclaration') return node.id !== null && matches(/^[A-Z]/u)(node.id.name)
-		if (node.parent?.type === 'VariableDeclarator' && node.parent.id.type === 'Identifier') {
-			return matches(/^[A-Z]/u)(node.parent.id.name)
-		}
-	}
-	if (node.parent === null) return false
-	return insideRender(context, node.parent)
-}
-
 export const noWallClock = defineRule({
 	create: context => {
 		const testFile = isTestFile(context)
@@ -102,14 +87,6 @@ export const noWallClock = defineRule({
 			},
 			MemberExpression: node => {
 				if (testFile && readsRealTime(context, node)) context.report({message: MESSAGE, node})
-				if (
-					!testFile &&
-					String.endsWith('.tsx')(context.filename) &&
-					importedMember({context, importedName: 'DateTime', node, propertyName: 'nowUnsafe'}) &&
-					insideRender(context, node)
-				) {
-					context.report({message: 'Render from clockAtom(every), not a wall-clock read.', node})
-				}
 			}
 		}
 	},
@@ -120,10 +97,6 @@ export const noWallClock = defineRule({
 					{
 						'sample.ts': `import {Clock} from 'effect'
 export const now = Clock.currentTimeMillis`
-					},
-					{
-						'sample.tsx': `import {DateTime} from 'effect'
-export function Time(props: {now: DateTime.Utc}) { return <span>{DateTime.toEpochMillis(props.now)}</span> }`
 					}
 				]
 			}

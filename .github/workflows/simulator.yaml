@@ -1,12 +1,13 @@
 name: iPhone builds
 
-# Linux computes the same fingerprints as the Mac, so a Mac starts only for a fingerprint without an artifact.
+# Linux fingerprints the build inputs, so a Mac starts only for a fingerprint without an artifact.
 on:
   push:
     branches-ignore: [main]
 
 env:
   DESLOP_DOMAIN: ${{ vars.DESLOP_DOMAIN }}
+  APPLE_TEAM_ID: 99K7MQUK7F
 
 # bash -eo pipefail: a failed command inside a pipeline or an assignment fails its step.
 defaults:
@@ -26,20 +27,19 @@ jobs:
       simulator: ${{ steps.fingerprint.outputs.simulator }}
     steps:
       - uses: actions/checkout@v7
-      - uses: ./.github/actions/setup
-      # A stack's top branch holds every lower layer's commits, so only it builds. An artifact's name holds a hash of this workflow and the setup action, so an edit to either builds every app again.
+      # A stack's top branch holds every lower layer's commits, so only it builds. The recipe hash also changes when the workflow changes how it builds.
       - name: Find builds for each fingerprint
         id: fingerprint
         env:
           GH_TOKEN: ${{ github.token }}
-          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
         run: |
           builds=()
           above=$(gh pr list --base "$GITHUB_REF_NAME" --state open --json url --jq '.[].url')
           if [[ -z $above ]]; then
-            recipe=$(git rev-parse HEAD:.github/workflows/simulator.yaml HEAD:.github/actions/setup | sha256sum | cut -c1-12)
-            for app in opm stash trips; do
-              fingerprint=$(cd "apps/$app" && APP_VARIANT=development eas fingerprint:generate --platform ios --build-profile simulator --json --non-interactive | jq -r .hash)
+            recipe=$(git rev-parse HEAD:.github/workflows/simulator.yaml | sha256sum | cut -c1-12)
+            for app in auth deploy gateway opm scope stash trips; do
+              inputs=$(git rev-parse "HEAD:apps/$app" HEAD:packages HEAD:package.json HEAD:pnpm-lock.yaml HEAD:pnpm-workspace.yaml HEAD:vite.config.ts)
+              fingerprint=$(printf '%s\n' "$inputs" "$DESLOP_DOMAIN" | sha256sum | cut -c1-64)
               artifact="$app-simulator-$fingerprint-$recipe"
               held=$(gh api "repos/$GITHUB_REPOSITORY/actions/artifacts?name=$artifact" --jq '[.artifacts[] | select(.expired | not)] | length')
               if [[ $held == 0 ]]; then builds+=("$(jq -cn --arg app "$app" --arg artifact "$artifact" '{$app, $artifact}')"); fi
@@ -60,30 +60,42 @@ jobs:
         include: ${{ fromJSON(needs.fingerprint.outputs.simulator) }}
     runs-on: xcode-27
     timeout-minutes: 60
-    env:
-      APP_VARIANT: development
-      EAS_BUILD_DISABLE_EXPO_DOCTOR_STEP: 1
-      # The Simulator host is Apple silicon; the default universal binary compiles every file twice.
-      GYM_XCARGS: ARCHS=arm64
-      # The bundle step stays though agents replace the bundle: SKIP_BUNDLING also skips expo-updates' embedded manifest, and the app then stops at launch.
     steps:
-      - uses: actions/checkout@v7
-      - uses: ./.github/actions/setup
       # A job that waited behind a build of the same name finds its artifact and stops.
-      - name: Build the Simulator app
-        working-directory: apps/${{ matrix.app }}
+      - name: Find the Simulator build
+        id: artifact
         env:
           GH_TOKEN: ${{ github.token }}
-          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
           ARTIFACT: ${{ matrix.artifact }}
         run: |
-          held=$(gh api "repos/$GITHUB_REPOSITORY/actions/artifacts?name=$ARTIFACT" --jq '[.artifacts[] | select(.expired | not)] | length')
-          if [[ $held != 0 ]]; then exit 0; fi
-          eas build --local --profile simulator --platform ios --non-interactive --output "$RUNNER_TEMP/simulator.tar.gz"
+          needed=$(gh api "repos/$GITHUB_REPOSITORY/actions/artifacts?name=$ARTIFACT" --jq '[.artifacts[] | select(.expired | not)] | length == 0')
+          echo "needed=$needed" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@v7
+        if: steps.artifact.outputs.needed == 'true'
+      - uses: voidzero-dev/setup-vp@v1.22.0
+        if: steps.artifact.outputs.needed == 'true'
+        with:
+          node-version: '26'
+          run-install: true
+      - name: Build the Simulator app
+        if: steps.artifact.outputs.needed == 'true'
+        working-directory: apps/${{ matrix.app }}
+        env:
+          APP: ${{ matrix.app }}
+        run: |
+          vp run build
+          vp exec cap sync ios
+          # Keep ad hoc signing for the embedded extensions and build only for the Apple silicon host.
+          xcodebuild -project ios/App/App.xcodeproj -scheme App -configuration Debug -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath "$RUNNER_TEMP/derived" ARCHS=arm64 CODE_SIGN_IDENTITY=- \
+            "DEVELOPMENT_TEAM=$APPLE_TEAM_ID" "DESLOP_DOMAIN=$DESLOP_DOMAIN" build
+          mv "$RUNNER_TEMP/derived/Build/Products/Debug-iphonesimulator/App.app" "$RUNNER_TEMP/${APP}dev.app"
+          tar -czf "$RUNNER_TEMP/simulator.tar.gz" -C "$RUNNER_TEMP" "${APP}dev.app"
       - name: Upload the Simulator app
+        if: steps.artifact.outputs.needed == 'true'
         uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.artifact }}
           path: ${{ runner.temp }}/simulator.tar.gz
           retention-days: 90
-          if-no-files-found: ignore
+          if-no-files-found: error

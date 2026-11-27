@@ -38,7 +38,7 @@ import {Account, MCP_PATH} from '#shared/schema.ts'
 // Opaque URL checks and minimum-length APNs tokens need explicit, contract-validated examples instead of small arbitrary strings.
 const FIXED_INPUTS: Record<string, unknown> = {
 	'gateway connections.add': {url: 'https://example.com/mcp'},
-	'opm push.register': {bundle: 'xyz.mp281x.opm.dev', kind: 'alert', token: '00000000000000000000000000000000'},
+	'opm push.register': {bundle: 'xyz.mp281x.opm.dev', kind: 'start', token: '00000000000000000000000000000000'},
 	'trips push.register': {
 		bundle: 'xyz.mp281x.trips.dev',
 		kind: 'alert',
@@ -124,7 +124,7 @@ const publicAccess: readonly Access[] = [
 		callers: ['member'] as const,
 		surface: `tool ${name}`
 	})),
-	...Array.map(['metrics.watch', 'inventory.watch'], name => ({
+	...Array.map(['metrics.watch', 'metrics.app', 'inventory.watch'], name => ({
 		app: 'deploy',
 		callers: ['member'] as const,
 		surface: `rpc ${name}`
@@ -177,13 +177,20 @@ const publicAccess: readonly Access[] = [
 		name => ({app: 'scope', callers: ['member'] as const, surface: `tool ${name}`})
 	),
 	...Array.map(
-		['POST /api/capture', 'POST /api/files/:id', 'GET /api/images/:id', 'GET /api/notes/:id/media/:index'],
+		[
+			'POST /api/capture',
+			'POST /api/capture/:id/activity',
+			'POST /api/files/:id',
+			'GET /api/images/:id',
+			'GET /api/notes/:id/media/:index'
+		],
 		surface => ({app: 'stash', callers: ['member'] as const, surface: `http ${surface}`})
 	),
-	...Array.map(
-		['notes.events', 'notes.body', 'notes.media', 'notes.search', 'notes.capture', 'notes.regenerate', 'notes.remove'],
-		name => ({app: 'stash', callers: ['member'] as const, surface: `rpc ${name}`})
-	),
+	...Array.map(['notes.events', 'notes.body', 'notes.media', 'notes.capture', 'notes.regenerate'], name => ({
+		app: 'stash',
+		callers: ['member'] as const,
+		surface: `rpc ${name}`
+	})),
 	...Array.map(['search_notes', 'read_note', 'save_note', 'remove_note'], name => ({
 		app: 'stash',
 		callers: ['member'] as const,

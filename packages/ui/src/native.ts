@@ -1,0 +1,305 @@
+import {
+	Boolean,
+	Cause,
+	Deferred,
+	Effect,
+	Equal,
+	Latch,
+	Layer,
+	MutableRef,
+	Option,
+	Predicate,
+	Queue,
+	Schema,
+	Stream,
+	pipe
+} from 'effect'
+
+import {Capacitor, registerPlugin} from '@capacitor/core'
+import type {PluginListenerHandle} from '@capacitor/core'
+import {Atom} from 'effect/reactivity'
+import {Socket} from 'effect/socket'
+
+import {layerSocketProtocol} from '@deslop/runtime/client/protocol'
+import {AuthError, outageUnlessRefused} from '@deslop/runtime/shared/auth'
+import {Account} from '@deslop/runtime/shared/schema'
+import {accountAtom as pageAccount, layerPageProtocol} from '@deslop/runtime/web/client'
+
+const SOCKET_IDS = MutableRef.make(0)
+
+type SocketEventType = typeof SocketEventType.Type
+const SocketEventType = Schema.Literals(['open', 'message', 'close', 'error'])
+
+type SocketEvent = {
+	readonly id: string
+	readonly type: SocketEventType
+	readonly data?: string
+	readonly code?: number
+	readonly message?: string
+}
+
+type ToolbarMenuItem = typeof ToolbarMenuItem.Type
+const ToolbarMenuItem = Schema.Struct({
+	checked: Schema.optional(Schema.Boolean),
+	disabled: Schema.optional(Schema.Boolean),
+	id: Schema.String,
+	title: Schema.String
+})
+
+type ToolbarMenuGroup = typeof ToolbarMenuGroup.Type
+const ToolbarMenuGroup = Schema.Struct({items: Schema.Array(ToolbarMenuItem), title: Schema.String})
+
+export type ToolbarItem = typeof ToolbarItem.Type
+export const ToolbarItem = Schema.Struct({
+	disabled: Schema.Boolean,
+	id: Schema.String,
+	leading: Schema.Boolean,
+	menu: Schema.optional(Schema.Array(ToolbarMenuGroup)),
+	selected: Schema.Boolean,
+	symbol: Schema.String,
+	title: Schema.String
+})
+
+class ToolbarError extends Schema.TaggedError<ToolbarError>()('ToolbarError', {
+	cause: Schema.Defect(),
+	message: Schema.String
+}) {}
+
+/* oxlint-disable typescript/no-restricted-types -- Capacitor's bridge returns Promises. */
+const native = registerPlugin<{
+	config: () => Promise<{bundle: string; server: string}>
+	account: () => Promise<{status: number; body: string}>
+	signIn: () => Promise<{signedIn: boolean}>
+	signOut: () => Promise<{status: number}>
+	addListener: {
+		(eventName: 'socket', listener: (event: SocketEvent) => void): Promise<PluginListenerHandle>
+		(eventName: 'toolbarAction', listener: (event: {id: string}) => void): Promise<PluginListenerHandle>
+	}
+	setToolbar: (options: {items: readonly ToolbarItem[]}) => Promise<void>
+	openSocket: (options: {id: string}) => Promise<void>
+	sendSocket: (options: {id: string; data: string}) => Promise<void>
+	closeSocket: (options: {id: string; code?: number}) => Promise<void>
+}>('DeslopNative')
+
+function authCall<A>(message: string, call: () => Promise<A>) {
+	return Effect.tryPromise({
+		catch: cause => AuthError.make({cause, error: 'temporarily_unavailable', message}),
+		try: call
+	})
+}
+
+function socketCall<A>(reason: (cause: unknown) => Socket.SocketError, call: () => Promise<A>) {
+	return Effect.tryPromise({catch: reason, try: call})
+}
+function toolbarCall<A>(message: string, call: () => Promise<A>) {
+	return Effect.tryPromise({catch: cause => ToolbarError.make({cause, message}), try: call})
+}
+/* oxlint-enable typescript/no-restricted-types */
+
+function setToolbar(items: readonly ToolbarItem[]) {
+	return toolbarCall('Could not update the native toolbar', () => native.setToolbar({items}))
+}
+
+export function nativeToolbar(items: Stream.Stream<readonly ToolbarItem[]>, onAction: (id: string) => void) {
+	return pipe(
+		Effect.acquireRelease(
+			toolbarCall('Could not listen for native toolbar actions', () =>
+				native.addListener('toolbarAction', event => onAction(event.id))
+			),
+			listener =>
+				pipe(
+					setToolbar([]),
+					Effect.ensuring(
+						Effect.ignore(
+							toolbarCall('Could not stop listening for native toolbar actions', () => listener.remove()),
+							{log: 'Warn'}
+						)
+					),
+					Effect.ignore({log: 'Warn'})
+				)
+		),
+		Effect.as(
+			pipe(items, Stream.changesWith<readonly ToolbarItem[]>(Equal.equals), Stream.tap(setToolbar), Stream.drain)
+		),
+		Stream.unwrap,
+		Stream.catch(error => Stream.drain(Stream.fromEffect(Effect.logWarning(error))))
+	)
+}
+
+const nativeConfig = authCall('This app has no server configured', () => native.config())
+export const nativeServer = Effect.map(nativeConfig, config => config.server)
+export const nativeBundle = Effect.map(nativeConfig, config => config.bundle)
+export const nativeSignIn = Effect.map(
+	authCall('Could not open Auth sign-in', () => native.signIn()),
+	x => x.signedIn
+)
+export const nativeSignOut = Effect.map(
+	authCall('Sign-out was incomplete', () => native.signOut()),
+	x => x.status
+)
+
+export const nativeAccount = outageUnlessRefused('The server could not be reached')(
+	Effect.gen(function* () {
+		const response = yield* authCall('Could not read the account', () => native.account())
+		if (response.status === 401) return yield* AuthError.make({message: 'Sign in first'})
+		if (response.status === 403) {
+			return yield* AuthError.make({error: 'access_denied', message: 'This account is refused'})
+		}
+		if (response.status !== 200) {
+			return yield* AuthError.make({error: 'temporarily_unavailable', message: 'The server could not be reached'})
+		}
+		return yield* Schema.decodeEffect(Schema.fromJsonString(Account))(response.body)
+	})
+)
+
+function openFailure(cause: unknown) {
+	return Socket.SocketError.make({reason: Socket.SocketOpenError.make({cause, kind: 'Unknown'})})
+}
+function readFailure(cause: unknown) {
+	return Socket.SocketError.make({reason: Socket.SocketReadError.make({cause})})
+}
+function writeFailure(cause: unknown) {
+	return Socket.SocketError.make({reason: Socket.SocketWriteError.make({cause})})
+}
+
+function serialize(frame: Uint8Array | string) {
+	if (Predicate.isString(frame)) return new TextEncoder().encode(frame)
+	return frame
+}
+
+function receive(
+	event: SocketEvent,
+	ready: Deferred.Deferred<void, Socket.SocketError>,
+	frames: Queue.Enqueue<Uint8Array, Socket.SocketError>
+) {
+	if (event.type === 'open') {
+		Deferred.doneUnsafe(ready, Effect.void)
+		return
+	}
+	if (event.type === 'message') {
+		if (
+			Option.exists(Schema.decodeUnknownOption(Schema.Uint8ArrayFromBase64)(event.data), frame =>
+				Queue.offerUnsafe(frames, frame)
+			)
+		) {
+			return
+		}
+	}
+	if (event.type === 'close') {
+		const closed = Socket.SocketError.make({reason: Socket.SocketCloseError.make({code: event.code ?? 1006})})
+		Deferred.doneUnsafe(ready, Effect.fail(openFailure(closed)))
+		Queue.failCauseUnsafe(frames, Cause.fail(closed))
+		return
+	}
+	const failure = readFailure(event.message ?? 'The native socket could not deliver a frame')
+	Deferred.doneUnsafe(ready, Effect.fail(openFailure(failure)))
+	Queue.failCauseUnsafe(frames, Cause.fail(failure))
+}
+
+// Native I/O keeps the Keychain cookie out of the web view without changing Effect RPC framing.
+const nativeSocket = Layer.effect(
+	Socket.Socket,
+	Effect.sync(() => {
+		const open = Latch.makeUnsafe(false)
+		const current = MutableRef.make(Option.none<string>())
+		const reader = Effect.gen(function* () {
+			const id = yield* Effect.sync(() => `rpc-${MutableRef.getAndIncrement(SOCKET_IDS)}`)
+			const ready = yield* Deferred.make<void, Socket.SocketError>()
+			const frames = yield* Queue.dropping<Uint8Array, Socket.SocketError>(256)
+			yield* Effect.acquireRelease(
+				socketCall(openFailure, () =>
+					native.addListener('socket', event => {
+						if (event.id === id) receive(event, ready, frames)
+					})
+				),
+				listener =>
+					pipe(
+						socketCall(readFailure, () => native.closeSocket({id})),
+						Effect.ignore({log: 'Warn'}),
+						Effect.ensuring(
+							Effect.andThen(
+								Effect.sync(() => {
+									if (!Option.exists(MutableRef.get(current), active => active === id)) return
+									MutableRef.set(current, Option.none())
+									open.closeUnsafe()
+								}),
+								Effect.ignore(
+									socketCall(readFailure, () => listener.remove()),
+									{log: 'Warn'}
+								)
+							)
+						)
+					)
+			)
+			yield* socketCall(openFailure, () => native.openSocket({id}))
+			yield* Effect.timeoutOrElse(Deferred.await(ready), {
+				duration: '10 seconds',
+				orElse: () =>
+					Effect.fail(
+						Socket.SocketError.make({
+							reason: Socket.SocketOpenError.make({cause: 'The native socket did not open', kind: 'Timeout'})
+						})
+					)
+			})
+			MutableRef.set(current, Option.some(id))
+			open.openUnsafe()
+			return {pull: Queue.takeAll(frames), upgrade: Socket.SocketUpgradeError.unsupported}
+		})
+		function write(chunk: Uint8Array | string | Socket.CloseEvent) {
+			return open.whenOpen(
+				Effect.suspend(() =>
+					Option.match(MutableRef.get(current), {
+						onNone: () => Effect.fail(writeFailure('The native socket closed')),
+						onSome: id => {
+							if (Socket.isCloseEvent(chunk)) {
+								return socketCall(writeFailure, () => native.closeSocket({code: chunk.code, id}))
+							}
+							return pipe(
+								Schema.encodeEffect(Schema.Uint8ArrayFromBase64)(serialize(chunk)),
+								// oxlint-disable-next-line @deslop/coding-standards/recover-named-failures -- SocketError stores the original cause in its typed reason.
+								Effect.mapError(cause => Socket.SocketError.make({reason: Socket.SocketWriteError.make({cause})})),
+								Effect.flatMap(frame => socketCall(writeFailure, () => native.sendSocket({data: frame, id})))
+							)
+						}
+					})
+				)
+			)
+		}
+		return Socket.make({
+			reader,
+			writer: Effect.succeed({
+				write,
+				writeAll: chunks => Effect.forEach(chunks, write, {concurrency: 1, discard: true})
+			})
+		})
+	})
+)
+
+const layerNativeProtocol = layerSocketProtocol(nativeSocket)
+
+export const isNative = Capacitor.isNativePlatform()
+export const sessionAccount = Boolean.match(isNative, {
+	onFalse: () => pageAccount,
+	onTrue: () => Atom.make(nativeAccount)
+})
+export const sessionProtocol = Boolean.match(isNative, {
+	onFalse: () => layerPageProtocol,
+	onTrue: () => layerNativeProtocol
+})
+
+export function listenNative<E>(
+	attach: () => PromiseLike<PluginListenerHandle>,
+	failure: (cause: unknown) => E,
+	releaseFailure = failure
+) {
+	return Effect.acquireRelease(Effect.tryPromise({catch: failure, try: attach}), listener =>
+		Effect.ignore(Effect.tryPromise({catch: releaseFailure, try: () => listener.remove()}), {log: 'Warn'})
+	)
+}
+
+export function registerTokens<E, E2, R, R2>(
+	tokens: Stream.Stream<string, E, R>,
+	register: (token: string) => Effect.Effect<void, E2, R2>
+) {
+	return Stream.switchMap(Stream.changes(tokens), token => Stream.fromEffectDrain(register(token)))
+}

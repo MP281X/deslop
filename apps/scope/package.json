@@ -16,32 +16,28 @@
 	"type": "module",
 	"sideEffects": false,
 	"imports": {
-		"#http/*": "./src/http/*",
-		"#lib/*": "./src/lib/*",
-		"#routeTree.gen.ts": "./src/routeTree.gen.ts",
-		"#routes/*": "./src/routes/*",
-		"#rpcs/*": "./src/rpcs/*",
-		"#services/*": "./src/services/*",
-		"#tools/*": "./src/tools/*"
+		"#server/*": "./src/server/*",
+		"#web/*": "./src/web/*",
+		"#contracts": "./src/contracts.ts"
 	},
 	"publishConfig": {
 		"access": "public"
 	},
 	"scripts": {
+		"ios:sync": "vp run build && cap sync ios",
 		"preview": "vp run build && NODE_ENV=development node --env-file-if-exists=.env ./dist/server.js",
 		"test": "vp test --config ../../vite.config.ts"
 	},
 	"devDependencies": {
-		"@deslop/components-web": "workspace:*",
+		"@capacitor/cli": "latest",
+		"@capacitor/core": "latest",
+		"@capacitor/ios": "latest",
 		"@deslop/runtime": "workspace:*",
-		"@effect/atom-react": "latest",
+		"@deslop/ui": "workspace:*",
 		"@effect/platform-node": "latest",
 		"@effect/sql-sqlite-node": "latest",
-		"@phosphor-icons/react": "latest",
-		"@tanstack/react-router": "latest",
-		"effect": "latest",
-		"react": "latest",
-		"react-dom": "latest"
+		"@effect/ui": "https://pkg.pr.new/Effect-TS/ui/@effect/ui@87a704bef41b40de8fa7bced97cae5d69c4233a0",
+		"effect": "latest"
 	},
 	"config": {
 		"port": 5106

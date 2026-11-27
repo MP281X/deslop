@@ -2,25 +2,30 @@
 <html lang="en">
 	<head>
 		<meta charset="UTF-8" />
-		<meta
-			name="viewport"
-			content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content"
-		/>
-		<meta name="color-scheme" content="light dark" />
-		<meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
-		<meta name="theme-color" content="#0d0c0c" media="(prefers-color-scheme: dark)" />
+		<meta name="theme-color" content="#000000" />
 		<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-		<link rel="icon" href="/src/routes/icon.svg" />
-		<link rel="apple-touch-icon" href="/apple-touch-icon.png" />
 		<link rel="manifest" href="/manifest.webmanifest" />
+		<link rel="icon" href="/src/web/icon.svg" />
+		<link rel="apple-touch-icon" href="/apple-touch-icon.png" />
 		<!-- Requested with the page, so the reads waiting on them never add a round trip. -->
 		<link rel="preload" href="/api/runtime" as="fetch" crossorigin />
 		<link rel="preload" href="/api/account" as="fetch" crossorigin />
 
+		<link rel="stylesheet" href="/src/web/inventory/skeleton.css" />
 		<title>Deploy</title>
 	</head>
 	<body>
 		<div id="root"></div>
-		<script type="module" src="/src/main.client.tsx"></script>
+		<div class="deploy-startup" aria-label="Loading Deploy" role="status" aria-busy="true">
+			<div class="deploy-list-skeleton" aria-hidden="true"></div>
+			<div class="deploy-startup-detail" aria-hidden="true"><div class="deploy-reading-skeleton"></div></div>
+		</div>
+		<script>
+			const search = new URLSearchParams(location.search)
+			document
+				.querySelector('.deploy-startup')
+				.toggleAttribute('data-detail', search.has('app') && search.get('pane') !== 'apps')
+		</script>
+		<script type="module" src="/src/web/main.ts"></script>
 	</body>
 </html>

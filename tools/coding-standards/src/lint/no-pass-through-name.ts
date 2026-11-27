@@ -4,6 +4,7 @@ import {defineRule} from 'vite-plus/lint/plugins'
 import type {Context, ESTree} from 'vite-plus/lint/plugins'
 
 import {
+	bindingName,
 	boundReads,
 	childNodes,
 	composedSteps,
@@ -367,16 +368,10 @@ function singleUseLayerPart(input: {context: Context; node: ESTree.VariableDecla
 	})
 }
 
-// A capitalized function is a React component: its name is the hook boundary and the DevTools label.
-function isComponent(node: ESTree.Function | ESTree.ArrowFunctionExpression) {
-	if (node.type === 'FunctionDeclaration') {
-		return Option.exists(Option.fromNullishOr(node.id), id => matches(/^[A-Z]/u)(id.name))
-	}
-	return (
-		node.parent.type === 'VariableDeclarator' &&
-		node.parent.id.type === 'Identifier' &&
-		matches(/^[A-Z]/u)(node.parent.id.name)
-	)
+// Named views own their landmarks and interactions even when only one screen uses them.
+function isView(node: ESTree.Function | ESTree.ArrowFunctionExpression) {
+	const builder = node.params[0]
+	return builder?.type === 'Identifier' && builder.name === 'h' && Option.exists(bindingName(node), matches(/^[A-Z]/u))
 }
 
 // `catch: cause => cause` is preserve-error-cause's and any-unknown-in-error-context's finding, not an indirection.
@@ -398,7 +393,7 @@ function reportsIndirection(input: {context: Context; node: ESTree.Function | ES
 			(input.node.type === 'FunctionExpression' &&
 				input.node.parent.type === 'MethodDefinition' &&
 				input.node.parent.override !== true)) &&
-			!isComponent(input.node) &&
+			!isView(input.node) &&
 			!isCatchHandler(input.node) &&
 			(exactForwardingFunction(input) || singleUseThunk(input) || singleUseFunction(input)))
 	)
@@ -443,60 +438,6 @@ function booleanBranch(input: {context: Context; node: ESTree.CallExpression}) {
 			)
 		)
 	)
-}
-
-function componentIndirection(context: Context, node: ESTree.Function | ESTree.ArrowFunctionExpression) {
-	const returned = returnedExpression(node)
-	if (
-		isComponent(node) &&
-		returned?.type === 'JSXElement' &&
-		returned.openingElement.name.type === 'JSXIdentifier' &&
-		matches(/^[A-Z]/u)(returned.openingElement.name.name) &&
-		!matches(/components-mobile[/\\]src[/\\]ui[/\\]/u)(context.filename)
-	) {
-		const parameter = node.params[0]
-		const name = Option.getOrUndefined(unexportedBindingName(node))
-		if (name === undefined || !Option.exists(readsOf({context, name, node}), reads => reads.length === 1)) return
-		function forwardedProp(value: ESTree.Node, property: string) {
-			return (
-				value.type === 'MemberExpression' &&
-				!value.computed &&
-				value.property.type === 'Identifier' &&
-				value.property.name === property &&
-				value.object.type === 'Identifier' &&
-				parameter?.type === 'Identifier' &&
-				value.object.name === parameter.name
-			)
-		}
-		if (parameter?.type !== 'Identifier' || parameter.typeAnnotation?.typeAnnotation.type !== 'TSTypeLiteral') return
-		const props = parameter.typeAnnotation.typeAnnotation.members
-		if (
-			props.length === returned.openingElement.attributes.length &&
-			Array.every(
-				returned.openingElement.attributes,
-				attribute =>
-					attribute.type === 'JSXAttribute' &&
-					attribute.name.type === 'JSXIdentifier' &&
-					Array.some(
-						props,
-						prop =>
-							prop.type === 'TSPropertySignature' &&
-							prop.key.type === 'Identifier' &&
-							prop.key.name === attribute.name.name
-					) &&
-					attribute.value?.type === 'JSXExpressionContainer' &&
-					forwardedProp(attribute.value.expression, attribute.name.name)
-			) &&
-			Array.every(
-				returned.children,
-				child =>
-					(child.type === 'JSXText' && String.trim(child.value) === '') ||
-					(child.type === 'JSXExpressionContainer' && forwardedProp(child.expression, 'children'))
-			)
-		) {
-			context.report({message: 'Render the underlying component directly; this component only forwards props.', node})
-		}
-	}
 }
 
 function constantName(node: ESTree.Node) {
@@ -661,10 +602,7 @@ function bindingCandidate(context: Context, node: ESTree.VariableDeclarator) {
 	}
 	return (
 		!redundantConstAlias({context, node}) &&
-		!Array.contains(
-			['ArrowFunctionExpression', 'FunctionExpression', 'JSXElement', 'JSXFragment'],
-			unwrapped(node.init).type
-		) &&
+		!Array.contains(['ArrowFunctionExpression', 'FunctionExpression'], unwrapped(node.init).type) &&
 		!(node.init.type === 'CallExpression' && isSchemaOperationCall({context, node: node.init})) &&
 		!(node.init.type === 'MemberExpression' && Option.isSome(rootName(node.init))) &&
 		!(node.init.type === 'Literal' && !Predicate.hasProperty(node.init, 'regex')) &&
@@ -725,19 +663,11 @@ export function discardedBindingName(context: Context, node: ESTree.Node, execut
 		redundantConstAlias({context, node}) ||
 		singleUseLiteral({context, node}) ||
 		singleUseLayerPart({context, node}) ||
-		Array.contains(['JSXElement', 'JSXFragment'], unwrapped(node.init).type) ||
 		Option.isSome(inlinePlan(context, node, executed))
 	)
 }
 
 function checkBinding(context: Context, node: ESTree.VariableDeclarator, executed: ESTree.Node[]) {
-	if (node.init !== null && Array.contains(['JSXElement', 'JSXFragment'], unwrapped(node.init).type)) {
-		context.report({
-			message: 'Write the element where it renders, or make it a component when several places render it.',
-			node
-		})
-		return
-	}
 	Option.map(inlinePlan(context, node, executed), found =>
 		context.report({
 			fix: fixer => {
@@ -787,7 +717,6 @@ export const noPassThroughName = defineRule({
 					return
 				}
 			}
-			componentIndirection(context, node)
 			if (reportsIndirection({context, node})) {
 				context.report({message: indirectionMessage({context, node}), node})
 			}
@@ -922,7 +851,6 @@ export const signed = Function.constant(-1)
 export function patterns() { return Array.makeBy(2, () => /a/gu) }`
 					},
 					{'sample.ts': 'export function doubleOf(value: number) { return value * 2 }'},
-					{'sample.tsx': 'export function Title(props: {title: string}) { return <span>{props.title}</span> }'},
 					{
 						'sample.ts': `import {Function, Option} from 'effect'
 export function defaults(value: Option.Option<boolean>) { return [Option.getOrElse(value, Function.constFalse), Option.getOrElse(value, Function.constTrue), Option.getOrElse(value, Function.constNull), Option.getOrElse(value, Function.constUndefined), Option.getOrElse(value, Function.constant('')), Option.getOrElse(value, Function.constant(0))] }`

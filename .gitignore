@@ -13,10 +13,13 @@
 # packages
 **/node_modules
 
-# expo: EAS generates the native projects on each build
-**/.expo
-apps/*/ios
-apps/*/android
+# Capacitor's copied web assets and generated build support stay out of the project.
+apps/*/ios/App/App/public/
+apps/*/ios/App/App/capacitor.config.json
+apps/*/ios/App/App/config.xml
+apps/*/ios/App/build/
+apps/*/ios/capacitor-cordova-ios-plugins/
+**/xcuserdata/
 
 # tools
 .fallow

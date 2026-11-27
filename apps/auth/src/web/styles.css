@@ -1,0 +1,84 @@
+.auth .fold > :is(.fold-list, .fold-detail) {
+	padding: 6px 8px;
+}
+
+.auth .axis-value {
+	white-space: nowrap;
+}
+
+.auth .shell-controls:empty {
+	display: none;
+}
+
+.auth-action {
+	display: inline-flex;
+	align-items: center;
+	gap: 8px;
+	min-block-size: 44px;
+	padding-inline: 14px;
+	border-radius: inherit;
+	font-size: 0.875rem;
+	cursor: pointer;
+}
+
+.auth-action img {
+	inline-size: 16px;
+	block-size: 16px;
+}
+
+.auth-screen {
+	min-height: 100dvh;
+	display: grid;
+	align-content: center;
+	justify-items: center;
+	padding: max(16px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right))
+		max(16px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+}
+
+.auth-center {
+	display: grid;
+	justify-items: center;
+	gap: 12px;
+	max-width: 100%;
+	text-align: center;
+}
+
+.auth-waiting {
+	flex: 1;
+	min-height: 0;
+}
+
+.auth-read-problem {
+	position: sticky;
+	inset-block-end: 0;
+	display: flow-root;
+	background: var(--color-background);
+}
+
+#auth-people-options {
+	position-anchor: --axis-action-people;
+	position-area: inline-start span-block-end;
+	position-try-fallbacks:
+		flip-inline,
+		flip-block,
+		flip-block flip-inline;
+	min-inline-size: min(14rem, var(--panel-width));
+}
+
+#auth-people-options button {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+	inline-size: 100%;
+	min-block-size: 44px;
+	border-radius: 8px;
+	padding: 6px 9px;
+	text-align: start;
+}
+
+#auth-people-options .sf-symbol {
+	flex: none;
+	inline-size: 18px;
+	block-size: 18px;
+}

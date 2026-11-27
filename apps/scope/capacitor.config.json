@@ -1,0 +1,7 @@
+{
+	"appId": "xyz.mp281x.scope",
+	"appName": "Scope",
+	"backgroundColor": "#000000",
+	"experimental": {"ios": {"spm": {"swiftToolsVersion": "6.2"}}},
+	"webDir": "dist/client"
+}

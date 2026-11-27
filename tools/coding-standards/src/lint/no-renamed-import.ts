@@ -3,9 +3,7 @@ import {Array, Option, pipe} from 'effect'
 import {defineRule} from 'vite-plus/lint/plugins'
 import type {Context, ESTree, Fixer, Reference} from 'vite-plus/lint/plugins'
 
-import {boundVariable, matches, variableFromScope} from '#lib/ast.ts'
-
-const isExpoModule = matches(/^(?:expo-|@expo\/ui)/u)
+import {boundVariable, variableFromScope} from '#lib/ast.ts'
 
 function exportedName(node: ESTree.ModuleExportName) {
 	if (node.type === 'Literal') return node.value
@@ -57,8 +55,6 @@ export const noRenamedImport = defineRule({
 		},
 		ImportSpecifier: node => {
 			const imported = exportedName(node.imported)
-			// Expo exports generic verbs, and SwiftUI components share names with ports (`Button`); the named import gives them their domain without a namespace.
-			if (node.parent.type === 'ImportDeclaration' && isExpoModule(node.parent.source.value)) return
 			if (imported === node.local.name || (imported === 'it' && node.local.name === 'test')) return
 			if (Option.isSome(boundVariable({name: imported, scope: context.sourceCode.getScope(node)}))) return
 			context.report({
@@ -83,10 +79,6 @@ export function contexts(context: LintContext, services: Context.Context<never>)
 					{
 						'sample.ts': `import {Function, Option} from 'effect'
 export function selectedTitle(title: Option.Option<string>) { return Option.getOrElse(title, Function.constNull) }`
-					},
-					{
-						'sample.tsx': `import {Button as NativeButton} from '@expo/ui/swift-ui'
-export function Delete(props: {onPress: () => void}) { return <NativeButton label="Delete" onPress={props.onPress} /> }`
 					}
 				],
 				fixes: [

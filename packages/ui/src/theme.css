@@ -1,0 +1,633 @@
+@import 'tailwindcss';
+@import '@fontsource-variable/geist';
+@import '@fontsource-variable/geist-mono';
+
+@theme {
+	--font-sans: 'Geist Variable', sans-serif;
+	--font-mono: 'Geist Mono Variable', monospace;
+	--color-background: #000;
+	--color-foreground: #f6f6f7;
+	--color-muted: #191919;
+	--color-muted-foreground: #a4a4ac;
+	--color-destructive: #ff453a;
+}
+
+:root {
+	color-scheme: dark;
+	background: var(--color-background);
+	color: var(--color-foreground);
+	font-family: var(--font-sans);
+	font-variant-numeric: tabular-nums;
+	-webkit-text-size-adjust: 100%;
+	touch-action: pan-x pan-y;
+}
+
+html,
+body {
+	min-height: 100%;
+	margin: 0;
+	overscroll-behavior: none;
+}
+
+:where(input, select, textarea) {
+	font-size: max(16px, 1em);
+}
+
+/* The HTML paints the same skeleton rows before the app mounts and while its first read is pending. */
+[class$='-skeleton-list'] {
+	block-size: var(--skeleton-height, 100dvh);
+	background: var(--skeleton-leading, none), var(--skeleton-lines), var(--skeleton-value);
+}
+
+#root + [aria-busy='true']:where(:has(> [class$='-skeleton-list'])) {
+	position: fixed;
+	inset: env(safe-area-inset-top, 0px) calc(56px + env(safe-area-inset-right, 0px)) env(safe-area-inset-bottom, 0px)
+		env(safe-area-inset-left, 0px);
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+	gap: var(--startup-gap, 0);
+	padding: var(--startup-padding, 0);
+	overflow: clip;
+	background: #000;
+}
+
+#root:not(:empty) + [aria-busy='true']:where(:has(> [class$='-skeleton-list'])) {
+	display: none;
+}
+
+@media (width >= 1100px) {
+	#root + [aria-busy='true']:where(:has(> [class$='-skeleton-list'])) {
+		grid-template-columns: var(--startup-wide-columns, minmax(0, 1fr) minmax(0, 1fr));
+	}
+}
+
+@media (width < 640px) and (not (horizontal-viewport-segments: 2)) and (not (vertical-viewport-segments: 2)) {
+	#root + [aria-busy='true']:where(:has(> [class$='-skeleton-list'])) {
+		grid-template-columns: minmax(0, 1fr);
+	}
+
+	#root
+		+ [aria-busy='true']:where(:has(> [class$='-skeleton-list'])):not([data-detail])
+		> :not([class$='-skeleton-list']),
+	#root + [aria-busy='true'][data-detail] > [class$='-skeleton-list'] {
+		display: none;
+	}
+}
+
+@media (vertical-viewport-segments: 2) {
+	#root + :is(.scope-startup, .trips-startup) {
+		grid-template-columns: minmax(0, 1fr);
+		grid-template-rows: env(viewport-segment-height 0 0) minmax(0, 1fr);
+	}
+
+	#root + :is(.scope-startup, .trips-startup) > [class$='-skeleton-list'] {
+		grid-row: 2;
+	}
+}
+
+@layer components {
+	.app-shell {
+		--shell-gap: 6px;
+		--shell-control-size: 44px;
+		--shell-inset-left: env(safe-area-inset-left, 0px);
+		--shell-inset-right: env(safe-area-inset-right, 0px);
+		--shell-content-left: var(--shell-inset-left);
+		display: flex;
+		flex-direction: column;
+		height: 100dvh;
+		padding: env(safe-area-inset-top, 0px) var(--shell-inset-right) env(safe-area-inset-bottom, 0px)
+			var(--shell-inset-left);
+	}
+	.shell-controls {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		flex: none;
+		gap: var(--shell-gap);
+		padding: var(--shell-gap);
+	}
+	.shell-controls button {
+		display: grid;
+		place-items: center;
+		inline-size: var(--shell-control-size);
+		block-size: var(--shell-control-size);
+		border-radius: 999px;
+		cursor: pointer;
+	}
+	.shell-controls svg {
+		inline-size: 16px;
+		block-size: 16px;
+	}
+	.app-shell > .fold {
+		flex: 1;
+		min-width: 0;
+		min-height: 0;
+		height: auto;
+		padding: 0;
+	}
+	.app-shell > .fold > :is(.fold-list, .fold-detail) {
+		padding-inline: 0;
+	}
+	@media (max-width: 64rem) and (max-height: 44rem) {
+		.app-shell {
+			/* When the system insets the left edge more, put the rail on that edge. */
+			--shell-rail-left: max(0, sign(var(--shell-inset-left) - var(--shell-inset-right)));
+			--shell-content-left: calc(
+				var(--shell-inset-left) + var(--shell-rail-left) * (var(--shell-control-size) + 2 * var(--shell-gap))
+			);
+			flex-direction: row;
+		}
+		.shell-controls {
+			order: calc(1 - 2 * var(--shell-rail-left));
+			flex-direction: column;
+			justify-content: flex-start;
+			overflow-y: auto;
+			scrollbar-width: none;
+		}
+		.shell-controls > .glass {
+			flex: none;
+		}
+		.shell-controls .shell-actions {
+			flex-direction: column;
+		}
+	}
+
+	.fold {
+		--pane-padding: 16px;
+		display: grid;
+		grid-template-columns: minmax(0, 1fr);
+		height: 100dvh;
+		padding-block: env(safe-area-inset-top) env(safe-area-inset-bottom);
+	}
+	.fold-list,
+	.fold-detail {
+		min-width: 0;
+		min-height: 0;
+		overflow: auto;
+		overscroll-behavior: contain;
+		scrollbar-width: none;
+	}
+	.fold-list {
+		padding-inline-start: env(safe-area-inset-left);
+	}
+	.fold-detail {
+		padding-inline-end: env(safe-area-inset-right);
+	}
+	.fold[data-show='list'] > .fold-detail,
+	.fold[data-show='detail'] > .fold-list {
+		display: none;
+	}
+	@media (min-width: 640px) {
+		.fold {
+			grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+		}
+		.fold[data-show] > .fold-list,
+		.fold[data-show] > .fold-detail {
+			display: block;
+		}
+		.fold-detail {
+			border-inline-start: 1px solid #171717;
+		}
+	}
+	@media (min-width: 1100px) {
+		.fold {
+			grid-template-columns: minmax(330px, 35%) minmax(0, 1fr);
+		}
+	}
+	@media (horizontal-viewport-segments: 2) {
+		.fold {
+			grid-template-columns:
+				max(0px, calc(env(viewport-segment-width 0 0) - var(--shell-content-left, 0px)))
+				calc(env(viewport-segment-left 1 0) - env(viewport-segment-right 0 0))
+				minmax(0, 1fr);
+		}
+		.fold[data-show] > .fold-list,
+		.fold[data-show] > .fold-detail {
+			display: block;
+		}
+		.fold-detail {
+			grid-column: 3;
+		}
+	}
+	.fold[data-list-hidden]:not([data-list-hidden='false']) {
+		grid-template-columns: minmax(0, 1fr);
+	}
+	.fold[data-list-hidden]:not([data-list-hidden='false']) > .fold-list {
+		display: none;
+	}
+	.fold[data-list-hidden]:not([data-list-hidden='false']) > .fold-detail {
+		display: block;
+		grid-column: 1;
+		border: 0;
+	}
+	.axis-row {
+		display: grid;
+		grid-template-columns: minmax(0, 1fr) auto;
+		align-items: center;
+		gap: 2px 12px;
+		min-height: 52px;
+		width: 100%;
+		padding: 7px var(--pane-padding, 16px);
+		border-radius: 15px;
+		text-align: start;
+	}
+	.axis-row:is([aria-current='true'], [aria-selected='true'], [data-selected]:not([data-selected='false'])) {
+		background: var(--color-muted);
+	}
+	.axis-title,
+	.axis-muted {
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+	.axis-title {
+		font-weight: 570;
+	}
+	.axis-muted {
+		color: var(--color-muted-foreground);
+		font-size: 0.85rem;
+	}
+	.axis-value {
+		text-align: end;
+	}
+	.axis-dot {
+		display: inline-block;
+		width: 6px;
+		height: 6px;
+		margin-inline-end: 6px;
+		border-radius: 50%;
+		background: var(--color-destructive);
+		vertical-align: 2px;
+	}
+}
+
+.glass {
+	position: relative;
+	isolation: isolate;
+	display: inline-flex;
+	align-items: center;
+	border-radius: 999px;
+	backdrop-filter: blur(36px) saturate(0.65);
+	box-shadow: 0 1px 0 rgb(0 0 0 / 22%);
+}
+
+.glass-lens {
+	position: absolute;
+	inset: 0;
+	z-index: -1;
+	pointer-events: none;
+	border-radius: inherit;
+	width: 100%;
+	height: 100%;
+}
+
+.glass-panel {
+	--panel-gap: 6px;
+	--panel-width: min(
+		24rem,
+		calc(100dvi - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px) - 2 * var(--panel-gap))
+	);
+	position: fixed;
+	position-area: block-end span-inline-start;
+	position-try-fallbacks:
+		flip-inline,
+		flip-block,
+		flip-block flip-inline;
+	position-visibility: anchors-visible;
+	inset: auto;
+	margin: var(--panel-gap);
+	inline-size: max-content;
+	max-inline-size: var(--panel-width);
+	max-block-size: 60dvh;
+	border-radius: 18px;
+	background-color: rgb(0 0 0 / 72%);
+	color: var(--color-foreground);
+	overflow: clip;
+	animation: none;
+	transition: none;
+}
+
+.glass-panel:not(:popover-open) {
+	display: none;
+}
+
+.glass-panel-body {
+	min-inline-size: 0;
+	max-block-size: inherit;
+	overflow: auto;
+	overscroll-behavior: contain;
+	padding: 12px;
+}
+
+@media (max-width: 64rem) and (max-height: 44rem) {
+	.app-shell .glass-panel {
+		position-area: inline-start;
+		position-try-order: most-inline-size;
+		position-try-fallbacks: flip-inline;
+		max-inline-size: calc(var(--panel-width) - var(--shell-control-size) - 2 * var(--shell-gap));
+	}
+}
+
+[data-slot='button'] {
+	@apply touch-manipulation focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2;
+}
+
+[data-slot='button'][data-disabled],
+[data-slot='button'][data-pending] {
+	@apply opacity-60;
+}
+
+.axis-split {
+	grid-template-columns: minmax(0, 1fr);
+}
+.axis-split[data-layout='single'][data-show='list'] > .fold-detail,
+.axis-split[data-layout='single'][data-show='detail'] > .fold-list {
+	display: none;
+}
+.axis-split[data-layout='split']:not([data-list-hidden]) > :is(.fold-list, .fold-detail) {
+	display: block;
+}
+.axis-split[data-layout='split']:not([data-list-hidden]) {
+	grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+}
+.axis-split[data-layout='single'] > .fold-detail {
+	border: 0;
+}
+@media (min-width: 1100px) {
+	.axis-split[data-layout='split']:not([data-list-hidden]) {
+		grid-template-columns: minmax(330px, 35%) minmax(0, 1fr);
+	}
+}
+@media (horizontal-viewport-segments: 2) {
+	.axis-split[data-layout='split']:not([data-list-hidden]) {
+		grid-template-columns:
+			max(0px, calc(env(viewport-segment-width 0 0) - var(--shell-content-left, 0px)))
+			calc(env(viewport-segment-left 1 0) - env(viewport-segment-right 0 0))
+			minmax(0, 1fr);
+	}
+}
+@media (vertical-viewport-segments: 2) {
+	.axis-split[data-layout='split']:not([data-list-hidden]) {
+		grid-template-columns: minmax(0, 1fr);
+		grid-template-rows: env(viewport-segment-height 0 0) minmax(0, 1fr);
+	}
+	.axis-split[data-layout='split']:not([data-list-hidden]) > .fold-list {
+		grid-row: 2;
+	}
+	.axis-split[data-layout='split']:not([data-list-hidden]) > .fold-detail {
+		grid-row: 1;
+		border: 0;
+	}
+}
+.axis-split > .fold-detail {
+	background: var(--color-background);
+	view-transition-name: axis-detail;
+}
+:root:active-view-transition-type(axis-layout) .axis-split > .fold-list {
+	view-transition-name: axis-list;
+}
+.axis-sheet {
+	--sheet-viewport-height: 100dvh;
+	--sheet-viewport-top: 0px;
+	--sheet-top-gap: max(32px, env(safe-area-inset-top, 0px));
+	position: fixed;
+	inset: auto var(--sheet-inset-right, 0px) calc(100dvh - var(--sheet-viewport-height) - var(--sheet-viewport-top))
+		var(--sheet-inset-left, 0px);
+	inline-size: var(--sheet-width, 100%);
+	block-size: var(--sheet-height, auto);
+	max-inline-size: 100%;
+	max-block-size: min(var(--sheet-max-height, 100dvh), var(--sheet-viewport-height) - var(--sheet-top-gap));
+	margin: 0 auto;
+	border-radius: 28px 28px 0 0;
+	background: #1c1c1e;
+	color: var(--color-foreground);
+	overflow: clip;
+}
+
+.axis-sheet[open] {
+	view-transition-name: axis-sheet;
+}
+
+.axis-sheet::backdrop {
+	background: rgb(0 0 0 / 56%);
+}
+
+.axis-sheet::before {
+	position: absolute;
+	inset-block-start: 9px;
+	inset-inline-start: 50%;
+	inline-size: 36px;
+	block-size: 5px;
+	border-radius: 999px;
+	background: #515153;
+	content: '';
+	translate: -50%;
+}
+
+.axis-sheet-content {
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+	block-size: 100%;
+	max-block-size: inherit;
+	padding: 22px 16px max(16px, env(safe-area-inset-bottom));
+}
+
+.axis-sheet-heading {
+	display: grid;
+	grid-template-columns: 44px minmax(0, 1fr) 44px;
+	align-items: center;
+	gap: 8px;
+	font-weight: 640;
+	text-align: center;
+}
+
+.axis-sheet-heading button {
+	display: grid;
+	place-items: center;
+	inline-size: 44px;
+	block-size: 44px;
+	border-radius: 999px;
+}
+
+.axis-sheet-body {
+	display: flex;
+	flex: 1 1 auto;
+	flex-direction: column;
+	gap: 12px;
+	min-block-size: 0;
+	overflow: auto;
+	overscroll-behavior: contain;
+}
+
+:root:is(
+	:active-view-transition-type(axis-open),
+	:active-view-transition-type(axis-back),
+	:active-view-transition-type(axis-layout),
+	:active-view-transition-type(axis-sheet-open),
+	:active-view-transition-type(axis-sheet-close)
+) {
+	view-transition-name: none;
+}
+::view-transition-group(axis-detail),
+::view-transition-group(axis-list),
+::view-transition-group(axis-sheet) {
+	animation-duration: 260ms;
+}
+:root:active-view-transition-type(axis-open)::view-transition-new(axis-detail),
+:root:active-view-transition-type(axis-sheet-open)::view-transition-new(axis-sheet) {
+	animation: 300ms cubic-bezier(0.22, 0.72, 0.25, 1) axis-enter both;
+}
+:root:active-view-transition-type(axis-back)::view-transition-old(axis-detail),
+:root:active-view-transition-type(axis-sheet-close)::view-transition-old(axis-sheet) {
+	animation: 240ms cubic-bezier(0.45, 0, 0.65, 0.28) axis-exit both;
+}
+:root:is(
+		:active-view-transition-type(axis-open),
+		:active-view-transition-type(axis-back)
+	)::view-transition-group(axis-detail) {
+	--axis-motion: 100% 0;
+}
+:root:active-view-transition-type(axis-open)::view-transition-group(axis-detail) {
+	animation-duration: 300ms;
+}
+::view-transition-group(axis-sheet) {
+	--axis-motion: 0 100%;
+	animation-duration: 300ms;
+}
+@keyframes axis-enter {
+	from {
+		translate: var(--axis-motion);
+	}
+}
+@keyframes axis-exit {
+	to {
+		translate: var(--axis-motion);
+	}
+}
+
+.axis-item {
+	min-height: 60px;
+}
+.axis-lines {
+	display: grid;
+	min-width: 0;
+	line-height: 1.25;
+}
+.axis-item .axis-title {
+	font-size: 17px;
+}
+.axis-item .axis-muted {
+	font-size: 15px;
+}
+.axis-notice {
+	display: grid;
+	justify-items: center;
+	gap: 12px;
+	margin: 20px 16px;
+	color: var(--color-muted-foreground);
+	font-size: 14px;
+	text-align: center;
+}
+.axis-notice button {
+	min-block-size: 44px;
+	min-inline-size: 44px;
+	padding-inline: 14px;
+}
+.axis-placeholder {
+	display: block;
+	max-inline-size: 100%;
+	border-radius: 999px;
+	background: var(--color-muted);
+}
+
+.sf-symbol {
+	display: block;
+	inline-size: 24px;
+	block-size: 24px;
+	background: currentColor;
+	mask: var(--symbol) center / contain no-repeat;
+	pointer-events: none;
+}
+.action-shell {
+	--shell-rail-width: calc(var(--shell-control-size) + 2 * var(--shell-gap));
+	--shell-content-left: var(--shell-inset-left);
+	flex-direction: row;
+}
+.action-shell:not([data-native]) .shell-controls {
+	order: 1;
+	flex-direction: column;
+	justify-content: flex-start;
+	overflow-y: auto;
+	scrollbar-width: none;
+}
+.action-shell .shell-controls > .glass {
+	flex: none;
+}
+.action-shell .shell-actions {
+	flex-direction: column;
+}
+.action-shell[data-native] {
+	--shell-rail-width: 0px;
+}
+
+:where(.axis-controls button, .axis-controls [data-pressable]) {
+	-webkit-tap-highlight-color: transparent;
+	-webkit-touch-callout: none;
+	user-select: none;
+	touch-action: manipulation;
+}
+
+.axis-controls [data-touch-pressed] {
+	background-color: rgb(255 255 255 / 15%);
+}
+
+.axis-split > :is(.fold-list, .fold-detail) {
+	scrollbar-width: auto;
+	overscroll-behavior-y: contain;
+}
+
+:root:active-view-transition-type(axis-layout)::view-transition-group(axis-detail),
+:root:active-view-transition-type(axis-layout)::view-transition-group(axis-list) {
+	animation-duration: 200ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	::view-transition-group(axis-sheet) {
+		animation-duration: 85ms;
+	}
+	:root:active-view-transition-type(axis-sheet-open)::view-transition-new(axis-sheet),
+	:root:active-view-transition-type(axis-sheet-close)::view-transition-old(axis-sheet) {
+		animation: 85ms ease-out axis-fade both;
+	}
+	:root:active-view-transition-type(axis-sheet-close)::view-transition-old(axis-sheet) {
+		animation-direction: reverse;
+	}
+
+	.axis-split[data-layout='single'][data-show='list'] > .fold-list,
+	.axis-split[data-layout='single'][data-show='detail'] > .fold-detail {
+		animation: axis-fade 85ms ease-out both;
+	}
+	.axis-split[data-layout='split'] > :is(.fold-list, .fold-detail) {
+		animation: axis-layout-fade 85ms ease-out both;
+	}
+	.axis-split[data-layout='split'][data-list-hidden] > .fold-detail {
+		animation-name: axis-fade;
+	}
+}
+@keyframes axis-fade {
+	from {
+		opacity: 0;
+	}
+}
+@keyframes axis-layout-fade {
+	from {
+		opacity: 0;
+	}
+}
+
+@media (hover: hover) and (pointer: fine) {
+	.axis-controls :is(button, [data-pressable]):active:not(:disabled) {
+		background-color: rgb(255 255 255 / 15%);
+	}
+}

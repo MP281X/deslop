@@ -2,9 +2,9 @@ import {Array, Record, String, pipe} from 'effect'
 
 import {defineConfig} from 'vite-plus'
 
-import {webConfig} from '@deslop/runtime/config/vite'
+import {webConfig} from '@deslop/ui/vite'
 
-import {contacts, experience, profile, projects, summary} from './src/lib/profile.ts'
+import {contacts, experience, profile, projects, summary} from '#web/profile/content.ts'
 
 const config = webConfig(512)
 const name = `${profile.firstName} ${profile.lastName}`

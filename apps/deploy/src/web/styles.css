@@ -1,0 +1,443 @@
+@import '@deslop/ui/theme.css';
+
+.deploy {
+	--deploy-chart-grid: rgb(255 255 255 / 10%);
+	--deploy-ruler: #a4a4ac;
+	--deploy-trail: 4.5rem;
+	--deploy-detail-padding: clamp(14px, 2.7vw, 24px);
+}
+
+.deploy-figures {
+	display: grid;
+	min-width: 0;
+	line-height: 1.25;
+	white-space: nowrap;
+}
+
+.deploy-warning .axis-dot,
+.deploy-dot[data-status='warning'] {
+	background: #ff9f0a;
+}
+
+.deploy-figures small {
+	color: var(--color-muted-foreground);
+	font-size: 0.75rem;
+	font-weight: 400;
+}
+
+.deploy-figures span small {
+	font-size: 0.65em;
+}
+
+.deploy-list-body {
+	display: flex;
+	flex-direction: column;
+	min-height: 100%;
+	padding: 6px;
+	container-type: inline-size;
+}
+
+.deploy-list-ruler,
+.deploy-list-row {
+	--deploy-row-chart: clamp(64px, 27cqw, 160px);
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) var(--deploy-row-chart) minmax(0, var(--deploy-trail));
+	align-items: center;
+	gap: 8px;
+	padding-inline: 8px;
+}
+
+.deploy-list-ruler {
+	position: sticky;
+	z-index: 2;
+	top: 0;
+	height: 36px;
+	padding-block: 5px 3px;
+	background: var(--color-background);
+}
+
+.deploy-list-ruler .deploy-ruler {
+	grid-column: 2;
+	align-self: end;
+}
+
+.deploy-list-row > .axis-value {
+	display: contents;
+}
+
+@container (width < 420px) {
+	.deploy-list-ruler,
+	.deploy-list-row {
+		--deploy-row-chart: 64px;
+	}
+
+	.deploy-list-ruler .deploy-ruler span:nth-child(even) {
+		display: none;
+	}
+}
+
+.deploy-list-trace {
+	position: relative;
+	height: 27px;
+}
+
+.deploy-machine-row {
+	margin-block-start: auto;
+}
+
+.deploy-detail-scroll {
+	padding-inline: var(--deploy-detail-padding);
+}
+
+.deploy .deploy-detail-lead {
+	display: flex;
+	gap: 12px;
+	min-height: 60px;
+	padding: 5px 0 4px;
+}
+
+.deploy-detail-lead .axis-lines {
+	flex: 1;
+}
+
+.deploy-detail-lead :is(.deploy-figures, .deploy-value-placeholder) {
+	margin-inline-start: auto;
+}
+
+.deploy-axis {
+	--deploy-trail: 3.25rem;
+	padding-inline-end: var(--deploy-trail);
+}
+
+.deploy-ruler {
+	position: relative;
+	height: 1.45rem;
+	color: var(--deploy-ruler);
+	font: 11px var(--font-mono);
+}
+
+.deploy-ruler span,
+.deploy-cpu-scale span {
+	position: absolute;
+	inset-inline-start: var(--at);
+	transform: translateX(-50%);
+}
+
+.deploy-ruler span:first-child {
+	transform: none;
+}
+
+.deploy-ruler span:nth-child(5) {
+	transform: translateX(-100%);
+}
+
+.deploy-ruler svg {
+	position: absolute;
+	inset-inline-start: 0;
+	inset-block-end: 0;
+	width: 100%;
+	height: 8px;
+	fill: none;
+	stroke: currentColor;
+}
+
+.deploy-ruler-detail {
+	margin-block: 3px 5px;
+}
+
+.deploy-axis-body {
+	position: relative;
+}
+
+.deploy-large-trace {
+	position: relative;
+	height: 93px;
+}
+
+.deploy-large-trace:has(.deploy-trace) {
+	background-image: linear-gradient(to bottom, var(--deploy-chart-grid) 1px, transparent 1px);
+	background-size: 100% 25%;
+}
+
+.deploy-large-trace .axis-notice {
+	position: absolute;
+	inset-block-start: 0;
+	inset-inline-start: 0;
+	z-index: 1;
+	justify-items: start;
+	gap: 4px;
+	margin: 0;
+	padding: 4px;
+	background: var(--color-background);
+	text-align: start;
+}
+
+.deploy-trace {
+	display: block;
+	width: 100%;
+	height: 100%;
+	border-block-end: 1px solid var(--deploy-chart-grid);
+	background-image: linear-gradient(to right, var(--deploy-chart-grid) 1px, transparent 1px);
+	background-size: 25% 100%;
+	border-inline-end: 1px solid var(--deploy-chart-grid);
+	overflow: hidden;
+}
+
+.deploy-trace .deploy-area {
+	fill: rgb(255 255 255 / 17%);
+}
+
+.deploy-trace .deploy-trace-line {
+	fill: none;
+	stroke: rgb(255 255 255 / 60%);
+	stroke-width: 0.75px;
+}
+
+.deploy-trace-main .deploy-trace-line {
+	stroke: var(--color-foreground);
+	stroke-width: 1.1px;
+}
+
+.deploy-cpu-scale {
+	position: absolute;
+	inset-inline-start: 100%;
+	inset-block: 0;
+	width: var(--deploy-trail);
+	border-inline-start: 3px solid transparent;
+	color: var(--deploy-ruler);
+	font: 11px var(--font-mono);
+	background-image:
+		linear-gradient(to bottom, var(--deploy-ruler) 1px, transparent 1px),
+		linear-gradient(to bottom, var(--deploy-chart-grid) 1px, transparent 1px);
+	background-size:
+		4px 25%,
+		2px 5%;
+	background-repeat: repeat-y;
+}
+
+.deploy-cpu-scale span {
+	inset-block-start: var(--at);
+	inset-inline: auto 0;
+	transform: translateY(-50%);
+}
+
+.deploy .deploy-process {
+	position: relative;
+	display: flex;
+	flex-direction: column;
+	align-items: stretch;
+	justify-content: space-between;
+	min-height: 48px;
+	gap: 2px;
+	padding: 5px 0 0;
+}
+
+.deploy-process .deploy-figures {
+	position: absolute;
+	top: 5px;
+	left: 100%;
+	width: var(--deploy-trail);
+}
+
+.deploy-process .deploy-trace {
+	flex: none;
+	height: 13px;
+}
+
+.deploy-restarts {
+	position: absolute;
+	inset: 0;
+	pointer-events: none;
+}
+
+.deploy-restarts span {
+	position: absolute;
+	inset-inline-start: var(--at);
+	inset-block: 0;
+	width: 1px;
+	background: var(--color-destructive);
+}
+
+.deploy-restarts-dots span::before {
+	position: absolute;
+	top: -4px;
+	left: -2px;
+	width: 5px;
+	height: 5px;
+	border-radius: 50%;
+	background: inherit;
+	content: '';
+}
+
+.deploy-facts {
+	display: grid;
+	align-items: start;
+	grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr));
+	gap: 0 14px;
+	margin-block: 12px 8px;
+	font-size: 0.75rem;
+}
+
+.deploy-fact {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	min-height: 17px;
+	gap: 4px;
+}
+
+.deploy-fact dt {
+	flex: none;
+	max-width: 100%;
+}
+
+.deploy-fact dd {
+	min-width: 0;
+	text-align: end;
+	overflow-wrap: anywhere;
+}
+
+.deploy-fact::before {
+	content: '';
+	order: 1;
+	flex: 1 1 auto;
+	min-width: 2px;
+	border-bottom: 1px dotted #3a3a3e;
+}
+
+.deploy-fact dd {
+	order: 2;
+}
+
+.deploy-issue {
+	color: var(--color-destructive);
+}
+
+.deploy-endpoints {
+	display: flex;
+	flex-flow: row wrap;
+	align-items: center;
+	justify-content: flex-end;
+	gap: 0 5px;
+}
+
+.deploy-endpoints a {
+	text-decoration: underline;
+	text-underline-offset: 0.12em;
+}
+
+.deploy-job {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) auto;
+	gap: 8px;
+	align-items: center;
+	padding-inline-end: 12px;
+}
+
+.deploy-job > .axis-item:only-child {
+	grid-column: 1 / -1;
+}
+
+.deploy-detail-scroll .deploy-job {
+	padding-inline-end: 0;
+}
+
+.deploy-text-control,
+.deploy-port-control,
+.deploy-icon-control {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: 8px;
+	min-block-size: 44px;
+	min-inline-size: 44px;
+	border-radius: inherit;
+}
+
+.deploy-text-control,
+.deploy-port-control {
+	padding-inline: 12px;
+}
+
+.deploy-icon-control .sf-symbol,
+.deploy-text-control .sf-symbol {
+	inline-size: 16px;
+	block-size: 16px;
+}
+
+.deploy-trace-placeholder {
+	block-size: 24px;
+	border-radius: 5px;
+}
+
+.deploy-value-placeholder {
+	justify-self: end;
+	inline-size: 34px;
+	block-size: 18px;
+}
+
+.deploy-dialog {
+	--sheet-width: min(100%, 44rem);
+	--sheet-max-height: 78dvh;
+	border: 1px solid #292929;
+	border-block-end: 0;
+	border-radius: 20px 20px 0 0;
+	background: var(--color-background);
+}
+
+.deploy-logs {
+	--sheet-height: 72dvh;
+}
+
+.deploy-dialog .axis-sheet-heading {
+	grid-template-columns: minmax(0, 1fr) auto;
+	text-align: start;
+}
+
+.deploy-dialog .axis-sheet-close {
+	order: 1;
+}
+
+.deploy-logs pre {
+	overflow-wrap: anywhere;
+	white-space: pre-wrap;
+	font: 0.75rem / 1.5 var(--font-mono);
+}
+
+.deploy-dialog p,
+.deploy-dialog form,
+.deploy-expose-kind {
+	margin-block-start: 8px;
+}
+
+.deploy-expose-kind > .glass {
+	anchor-name: --deploy-exposure-trigger;
+}
+
+#deploy-exposure-kind {
+	position-anchor: --deploy-exposure-trigger;
+	position-area: block-start span-inline-end;
+}
+
+#deploy-exposure-kind button {
+	display: flex;
+	justify-content: space-between;
+	inline-size: 100%;
+	gap: 24px;
+}
+
+.deploy-dialog-actions {
+	display: flex;
+	justify-content: flex-end;
+	margin-block-start: 8px;
+}
+
+.deploy-dialog input {
+	display: block;
+	inline-size: 100%;
+	min-block-size: 44px;
+	margin-block-start: 4px;
+	padding-inline: 10px;
+	border: 1px solid #414141;
+	border-radius: 9px;
+}

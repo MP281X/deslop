@@ -1,0 +1,164 @@
+@import './skeleton.css';
+
+.opm .fold-list {
+	scrollbar-width: auto;
+}
+
+.opm-chapters {
+	padding: 0 14px 12px;
+}
+
+.opm-chapters .opm-skeleton-list {
+	margin-inline: 10px;
+}
+
+.opm .opm-row {
+	grid-template-columns: 36px minmax(0, 1fr) auto;
+	gap: 9px;
+	padding-inline: 10px;
+}
+
+.opm-row-read :is(.axis-lines, .opm-cover) {
+	opacity: 0.6;
+}
+
+.opm-row .axis-value {
+	white-space: nowrap;
+	font-size: 0.75rem;
+}
+
+.opm-cover,
+.opm-cover img {
+	width: 36px;
+	height: 36px;
+	border-radius: 4px;
+}
+
+.opm-cover {
+	display: block;
+	overflow: hidden;
+	background: var(--color-muted);
+}
+
+.opm-cover img {
+	object-fit: cover;
+	object-position: center top;
+}
+
+#opm-series {
+	position-anchor: --axis-action-series;
+	position-area: inline-start span-block-end;
+	position-try-fallbacks: flip-inline, flip-block;
+	min-inline-size: min(10rem, var(--panel-width));
+}
+
+#opm-series button {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 12px;
+	width: 100%;
+	min-height: 44px;
+	padding-inline: 10px;
+	border-radius: 9px;
+	text-align: start;
+}
+
+#opm-series .sf-symbol {
+	inline-size: 15px;
+	block-size: 15px;
+}
+
+.opm-gate {
+	display: grid;
+	min-height: 100dvh;
+	place-items: center;
+}
+
+.opm-gate a {
+	display: grid;
+	place-items: center;
+	min-height: 44px;
+	padding-inline: 14px;
+}
+
+.opm-reader {
+	position: relative;
+	display: grid;
+	place-items: center;
+	height: 100%;
+	overflow: hidden;
+	touch-action: none;
+	user-select: none;
+}
+
+.opm-reader > [aria-busy] {
+	position: absolute;
+	inset: 0;
+	display: grid;
+	justify-items: center;
+}
+
+.opm-paper {
+	position: absolute;
+	inset: 0;
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+	grid-template-rows: minmax(0, 1fr);
+	pointer-events: none;
+}
+
+@media (horizontal-viewport-segments: 2) {
+	.opm-paper {
+		column-gap: calc(env(viewport-segment-left 1 0) - env(viewport-segment-right 0 0));
+	}
+}
+
+.opm-leaf {
+	position: relative;
+	display: grid;
+	grid-row: 1;
+	min-width: 0;
+	min-height: 0;
+	place-items: center;
+}
+
+.opm-leaf[hidden] {
+	display: none;
+}
+
+.opm-leaf[data-side='single'] {
+	grid-column: 1 / -1;
+}
+
+.opm-leaf[data-side='left'] {
+	grid-column: 1;
+}
+
+.opm-leaf[data-side='right'] {
+	grid-column: 2;
+}
+
+.opm-leaf img {
+	position: absolute;
+	inset: 0;
+	width: 100%;
+	height: 100%;
+	object-fit: contain;
+}
+
+.opm-leaf[data-side='left'] img {
+	object-position: right center;
+}
+
+.opm-leaf[data-side='right'] img {
+	object-position: left center;
+}
+
+.opm-retry-page button {
+	display: grid;
+	place-items: center;
+	width: 44px;
+	height: 44px;
+	pointer-events: auto;
+}

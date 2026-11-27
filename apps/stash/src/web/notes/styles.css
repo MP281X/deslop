@@ -1,0 +1,282 @@
+.stash-action {
+	display: inline-grid;
+	place-items: center;
+	min-block-size: 44px;
+	min-inline-size: 44px;
+	padding-inline: 14px;
+	font-size: 13px;
+	font-weight: 560;
+}
+
+.stash-queue {
+	padding: 0 10px;
+}
+
+.stash-reading {
+	container-type: inline-size;
+	padding: 12px 16px;
+}
+
+.stash-note-row {
+	grid-template-columns: 36px minmax(0, 1fr) auto;
+	gap: 9px;
+	padding-inline: 9px;
+}
+
+.stash-thumb {
+	width: 36px;
+	height: 36px;
+	object-fit: cover;
+	border-radius: 6px;
+	background: var(--color-muted);
+}
+
+.stash-note-row .axis-value {
+	font-size: 13px;
+}
+
+.stash-reader {
+	max-width: 760px;
+	margin-inline: auto;
+	overflow-wrap: anywhere;
+	font-size: 15px;
+	line-height: 1.45;
+}
+
+.stash-gallery {
+	display: flex;
+	margin-bottom: 10px;
+	overflow: auto hidden;
+	scrollbar-width: none;
+	scroll-snap-type: x mandatory;
+	overscroll-behavior-inline: contain;
+}
+
+.stash-cover {
+	width: 100%;
+	height: clamp(114px, 33cqw, 168px);
+	flex: 0 0 100%;
+	object-fit: cover;
+	scroll-snap-align: start;
+	background: var(--color-muted);
+}
+
+.stash-reader h1 {
+	font-size: 24px;
+	font-weight: 680;
+	letter-spacing: -0.02em;
+	line-height: 1.15;
+}
+
+.stash-byline {
+	margin-top: 3px;
+	color: var(--color-muted-foreground);
+	font-size: 12px;
+}
+
+.stash-summary,
+.stash-prose,
+.stash-plaintext,
+.stash-problem,
+.stash-tags {
+	margin-top: 12px;
+}
+
+.stash-reader h2 {
+	margin-block: 16px 4px;
+	font-size: 17px;
+	font-weight: 620;
+}
+
+.stash-prose :is(p, ol, ul, blockquote):not(:last-child) {
+	margin-bottom: 10px;
+}
+
+.stash-prose :is(ol, ul) {
+	padding-inline-start: 20px;
+}
+
+.stash-prose ul {
+	list-style-type: disc;
+}
+
+.stash-prose ol {
+	list-style-type: decimal;
+}
+
+.stash-prose blockquote {
+	padding-inline-start: 12px;
+	color: var(--color-muted-foreground);
+}
+
+.stash-prose a,
+.stash-inline-action {
+	margin-inline-start: 8px;
+}
+
+.stash-tags {
+	flex-wrap: wrap;
+	margin-top: 12px;
+}
+
+.stash-tags button {
+	min-block-size: 44px;
+	min-inline-size: 44px;
+	border-radius: 999px;
+	padding-inline: 12px;
+	font-size: 13px;
+}
+
+.stash-tags [aria-pressed='true'] {
+	background: rgb(255 255 255 / 10%);
+}
+
+.stash-sheet {
+	--sheet-height: var(--sheet-viewport-height);
+	--sheet-inset-left: var(--shell-inset-left);
+	--sheet-inset-right: calc(var(--shell-inset-right) + var(--shell-rail-width));
+	--sheet-width: auto;
+}
+
+.stash-sheet textarea {
+	font-size: max(16px, 1em);
+	overscroll-behavior: contain;
+	flex: 1;
+	min-block-size: 44px;
+	resize: none;
+}
+
+.stash-sheet textarea:focus-visible {
+	outline: 1px solid #515153;
+	outline-offset: -1px;
+	border-radius: 4px;
+}
+
+.stash-gate {
+	display: grid;
+	min-height: 100dvh;
+	place-items: center;
+}
+
+#stash-queue-options {
+	position-anchor: --axis-action-queue;
+}
+
+#stash-note-options {
+	position-anchor: --axis-action-note;
+}
+
+.action-shell .glass-panel[role='menu'] {
+	position-area: inline-start span-block-end;
+	position-try-fallbacks:
+		flip-inline,
+		flip-block,
+		flip-block flip-inline;
+	min-inline-size: min(14rem, var(--panel-width));
+	max-inline-size: min(24rem, calc(100dvi - var(--shell-rail-width) - 2 * var(--panel-gap)));
+	transition:
+		opacity 150ms ease-out,
+		display 150ms allow-discrete,
+		overlay 150ms allow-discrete;
+	opacity: 0;
+}
+
+.action-shell .glass-panel[role='menu']:popover-open {
+	opacity: 1;
+}
+
+@starting-style {
+	.action-shell .glass-panel[role='menu']:popover-open {
+		opacity: 0;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.action-shell .glass-panel[role='menu'] {
+		transition-duration: 85ms;
+	}
+}
+
+.stash-menu-label {
+	display: block;
+	padding: 7px 9px 3px;
+	color: var(--color-muted-foreground);
+	font-size: 13px;
+}
+
+.glass-panel :is(button, .stash-menu-link) {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+	inline-size: 100%;
+	min-block-size: 44px;
+	border-radius: 8px;
+	padding: 6px 9px;
+	text-align: start;
+}
+
+.glass-panel .sf-symbol {
+	flex: none;
+	inline-size: 18px;
+	block-size: 18px;
+}
+
+@media (hover: hover) and (pointer: fine) {
+	.glass-panel :is(button, .stash-menu-link):hover {
+		background: rgb(255 255 255 / 9%);
+	}
+}
+
+.stash-report {
+	position: fixed;
+	z-index: 3;
+	inset: auto 16px calc(58px + env(safe-area-inset-bottom));
+	display: flex;
+	align-items: flex-start;
+	gap: 12px;
+	max-width: 44rem;
+	margin-inline: auto;
+	border-radius: 16px;
+	padding: 12px;
+	background: rgb(0 0 0 / 72%);
+	font-size: 14px;
+}
+
+.stash-report p {
+	flex: 1;
+	white-space: pre-line;
+}
+
+.stash-body-placeholder {
+	margin-top: 12px;
+	height: 12px;
+	width: 88%;
+	box-shadow:
+		0 22px var(--color-muted),
+		0 44px var(--color-muted);
+	margin-bottom: 56px;
+}
+
+html:has(.axis-split),
+body:has(.axis-split) {
+	overflow: clip;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.stash-sheet {
+		opacity: 0;
+		transition:
+			opacity 85ms ease-out,
+			display 85ms allow-discrete,
+			overlay 85ms allow-discrete;
+	}
+	.stash-sheet[open] {
+		opacity: 1;
+	}
+	@starting-style {
+		.stash-sheet[open] {
+			opacity: 0;
+		}
+	}
+}

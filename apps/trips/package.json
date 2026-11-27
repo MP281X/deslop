@@ -15,45 +15,32 @@
 	],
 	"type": "module",
 	"sideEffects": false,
-	"main": "src/main.client.tsx",
 	"imports": {
-		"#http/*": "./src/http/*",
-		"#lib/*": "./src/lib/*",
-		"#routes/*": "./src/routes/*",
-		"#rpcs/*": "./src/rpcs/*",
-		"#services/*": "./src/services/*"
+		"#contracts": "./src/contracts.ts",
+		"#journey": "./src/journey.ts",
+		"#server/*": "./src/server/*",
+		"#web/*": "./src/web/*"
 	},
 	"publishConfig": {
 		"access": "public"
 	},
 	"scripts": {
-		"build": "vp pack",
 		"preview": "vp run build && node --env-file-if-exists=.env ./dist/server.js",
 		"test": "vp test --config ../../vite.config.ts"
 	},
 	"dependencies": {
-		"expo": "^58.0.26",
-		"react": "latest",
-		"react-native": "0.88.1"
+		"@capacitor/app": "latest",
+		"@capacitor/core": "latest",
+		"@capacitor/ios": "latest",
+		"@capacitor/push-notifications": "latest"
 	},
 	"devDependencies": {
-		"@bacons/apple-targets": "latest",
-		"@deslop/components-mobile": "workspace:*",
+		"@capacitor/cli": "latest",
 		"@deslop/runtime": "workspace:*",
-		"@effect/atom-react": "latest",
+		"@deslop/ui": "workspace:*",
 		"@effect/platform-node": "latest",
-		"@expo/ui": "^58.0.29",
-		"@typeonce/effect-machine": "latest",
-		"@typeonce/effect-machine-react": "latest",
-		"effect": "latest",
-		"expo-application": "^58.1.2",
-		"expo-clipboard": "^58.0.4",
-		"expo-file-system": "^58.0.14",
-		"expo-notifications": "^58.1.9",
-		"expo-secure-store": "^58.0.3",
-		"expo-updates": "^58.0.22",
-		"expo-web-browser": "^58.1.0",
-		"expo-widgets": "^58.0.29"
+		"@effect/ui": "https://pkg.pr.new/Effect-TS/ui/@effect/ui@87a704bef41b40de8fa7bced97cae5d69c4233a0",
+		"effect": "latest"
 	},
 	"config": {
 		"port": 5109

@@ -1,0 +1,61 @@
+.gateway-skeleton {
+	--skeleton-lead: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='115' height='60' fill='%23191919'%3E%3Crect y='19' width='105' height='11' rx='3'/%3E%3Crect y='35' width='79' height='8' rx='3'/%3E%3C/svg%3E");
+	margin-inline: 16px;
+	background:
+		var(--skeleton-lead) top left / 115px 60px repeat-y,
+		var(--skeleton-value) top right / auto 60px repeat-y;
+}
+
+.gateway-skeleton-keys {
+	min-block-size: 180px;
+	--skeleton-lead: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='139' height='60' fill='%23191919'%3E%3Crect y='22' width='16' height='16' rx='4'/%3E%3Crect x='24' y='19' width='105' height='11' rx='3'/%3E%3Crect x='24' y='35' width='79' height='8' rx='3'/%3E%3C/svg%3E");
+	--skeleton-value: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='127' height='60' fill='%23191919'%3E%3Crect y='28' width='53' height='4' rx='2'/%3E%3Crect x='84' y='19' width='43' height='11' rx='3'/%3E%3Crect x='64' y='35' width='63' height='8' rx='3'/%3E%3C/svg%3E");
+}
+
+.gateway-skeleton-servers {
+	min-block-size: 120px;
+	--skeleton-value: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='54' height='60' fill='%23191919'%3E%3Crect y='25' width='54' height='10' rx='3'/%3E%3C/svg%3E");
+}
+
+.gateway-startup {
+	position: fixed;
+	inset: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px)
+		env(safe-area-inset-left, 0px);
+	padding-block-start: 56px;
+	padding-inline-end: 56px;
+	background: #000;
+	overflow: clip;
+}
+
+.gateway-startup[data-native] {
+	padding-inline-end: 0;
+}
+
+.gateway-startup[data-native]::after {
+	display: none;
+}
+
+.gateway-startup::before,
+.gateway-startup::after {
+	position: absolute;
+	inset-block-start: 6px;
+	border-radius: 999px;
+	background: #191919;
+	content: '';
+}
+
+.gateway-startup::before {
+	inset-inline-start: 12px;
+	inline-size: min(265px, calc(100% - 80px));
+	block-size: 44px;
+}
+
+.gateway-startup::after {
+	inset-inline-end: 6px;
+	inline-size: 44px;
+	block-size: 88px;
+}
+
+#root:has(.gateway) + .gateway-startup {
+	display: none;
+}

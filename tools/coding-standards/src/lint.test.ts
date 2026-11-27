@@ -76,19 +76,11 @@ const lintSource = Effect.fnUntraced(function* (
 			yield* Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown))({
 				compilerOptions: {
 					allowImportingTsExtensions: true,
-					jsx: 'react-jsx',
 					module: 'ESNext',
 					moduleResolution: 'Bundler',
 					noEmit: true,
 					noUnusedLocals: true,
 					noUnusedParameters: true,
-					paths: {
-						'@deslop/components-web/ui/*': [path.join(root, 'packages/components-web/src/ui/*')],
-						'@effect/atom-react': [
-							path.join(root, 'packages/components-web/node_modules/@effect/atom-react/dist/index.d.ts')
-						],
-						'@expo/ui/*': [path.join(root, 'packages/components-mobile/node_modules/@expo/ui/*')]
-					},
 					skipLibCheck: true,
 					strict: true,
 					target: 'ESNext'
@@ -494,10 +486,9 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 			'reports single-use forwarding but keeps reused functions and literal partials',
 			Effect.fnUntraced(function* () {
 				const result = yield* lintSource({
-					'wrappers.tsx': Array.join(
+					'wrappers.ts': Array.join(
 						[
 							"import {Effect, Number} from 'effect'",
-							'declare const Widget: (props: {title: string; size: string}) => React.ReactNode',
 							'type Original = {id: string}',
 							'export type Alias = Original',
 							'function rounded(value: number) { return Number.round(value, 1) }',
@@ -507,21 +498,14 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 							'const read = Effect.fnUntraced(function* (id: string) { return yield* Effect.succeed(id) })',
 							'export const task = read("a")',
 							'const traced = Effect.fn("Task.read")(function* (id: string) { return yield* Effect.succeed(id) })',
-							'export const namedTask = traced("b")',
-							'export function AppBarTab(props: {title: string}) { return <Widget title={props.title} size="sm" /> }',
-							'function MenuFailure(props: {title: string}) { return <Widget title={props.title} size="sm" /> }',
-							'export const menus = <><MenuFailure title="a" /><MenuFailure title="b" /></>',
-							'function Forward(props: {title: string; size: string}) { return <Widget title={props.title} size={props.size} /> }',
-							'export const forwarded = <Forward title="a" size="sm" />',
-							'export function Label(props: {title: string}) { return <span>{props.title}</span> }',
-							'export function Computed(props: {title: string}) { return <Widget title={`${props.title}!`} size="sm" /> }'
+							'export const namedTask = traced("b")'
 						],
 						'\n'
 					)
 				})
 				assert.lengthOf(
 					Array.filter(customCodes(result.stdout), code => code === '@deslop/coding-standards(no-pass-through-name)'),
-					6
+					3
 				)
 			})
 		)
@@ -784,11 +768,9 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 			'reports every project-specific invalid state',
 			Effect.fnUntraced(function* () {
 				const result = yield* lintSource({
-					'invalid.tsx': Array.join(
+					'invalid.ts': Array.join(
 						[
 							"import {Array, Context, Effect, Layer, Option as Maybe, Schema, SchemaGetter, SchemaTransformation, identity, pipe} from 'effect'",
-							"import * as React from 'react'",
-							"import {useRef, useState} from 'react'",
 							'',
 							'declare const input: unknown',
 							'declare const source: string',
@@ -829,8 +811,6 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 							'declare const ClockLive: {layer: Layer.Layer<Clock>}',
 							'const clockService = ClockLive.layer',
 							'const clockLayers = Layer.mergeAll(Layer.effect(Clock, makeClock), clockService)',
-							'const ref = useRef<HTMLElement | null>(null)',
-							'const namespaceRef = React.useRef<HTMLElement | null>(null)',
 							'const decoded = Schema.decodeUnknownOption(Schema.fromJsonString(Schema.Unknown))(source)',
 							'function forward(value: string) { return consume(value) }',
 							'function ready() { return source.length > 0 }',
@@ -842,8 +822,6 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 							'const callbacks = {consume: (value: string) => consume(value)}',
 							'const alias = source',
 							'export const legacyAlias = consume',
-							'function Fallback() { return <div className="missing" /> }',
-							'const fallbacks = Array.map([input], Fallback)',
 							'const notFound = () => Array.empty<string>()',
 							'const emptyNames = () => "none"',
 							'declare const maybe: Maybe.Option<string>',
@@ -859,10 +837,6 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 							'const asyncConstant = async () => "ready"',
 							'const recipients = Array.isArray(input) ? input : [input]',
 							'const wrapped = !Array.isArray(input) ? [input] : input',
-							'const [fake] = useState(() => ({current: null}))',
-							'const state = useState(0)',
-							'const [fakeNamespace] = React.useState(() => ({current: null}))',
-							'const stateNamespace = React.useState(0)',
 							'function isText(value: unknown): value is string { return typeof value === "string" }',
 							'const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value)',
 							'const label = "ready"',
@@ -893,7 +867,7 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 							'// oxlint-disable-next-line sort-keys -- this input keeps its order',
 							'const unsortedKeys = {b: 1, a: 2}',
 							'// @effect-diagnostics-next-line floatingEffect:off',
-							'export {AssertString, Clock, clockLayers, Codecs, NonEmpty, PipedNonEmpty, PipedTrimmed, absent, Fallback, IsString, Maybe, MissingDecode, MissingEncode, MissingFluent, MissingTransform, MissingType, Tree, alias, assigned, asyncConstant, callbacks, decode, decoded, decoders, empties, failing, failingFn, fake, fakeNamespace, fallbacks, forward, greet, handlers, input, isRecord, isText, makeBox, labelled, logName, loose, kind, mappedValues, measured, keyed, lazy, described, namesA, namesB, namespaceRef, noValues, present, slotLength, slotPair, notFound, operations, ready, recipients, ref, run, stateNamespace, succeed, unsortedKeys, unwrapped, withHead, wrapped}'
+							'export {AssertString, Clock, clockLayers, Codecs, NonEmpty, PipedNonEmpty, PipedTrimmed, absent, IsString, Maybe, MissingDecode, MissingEncode, MissingFluent, MissingTransform, MissingType, Tree, alias, assigned, asyncConstant, callbacks, decode, decoded, decoders, empties, failing, failingFn, forward, greet, handlers, input, isRecord, isText, makeBox, labelled, logName, loose, kind, mappedValues, measured, keyed, lazy, described, namesA, namesB, noValues, present, slotLength, slotPair, notFound, operations, ready, recipients, run, succeed, unsortedKeys, unwrapped, withHead, wrapped}'
 						],
 						'\n'
 					)
@@ -913,10 +887,8 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 							'@deslop/coding-standards(effect-call-form)',
 							'@deslop/coding-standards(library-operation)',
 							'@deslop/coding-standards(library-operation)',
-							'@deslop/coding-standards(no-fake-ref-state)',
 							'@deslop/coding-standards(name-by-kind)',
 							'@deslop/coding-standards(name-by-kind)',
-							'@deslop/coding-standards(no-fake-ref-state)',
 							'@deslop/coding-standards(library-operation)',
 							'@deslop/coding-standards(library-operation)',
 							'@deslop/coding-standards(no-multiline-comment)',
@@ -925,7 +897,6 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 							'@deslop/coding-standards(library-operation)',
 							'@deslop/coding-standards(library-operation)',
 							'@deslop/coding-standards(library-operation)',
-							'@deslop/coding-standards(no-redundant-annotation)',
 							'@deslop/coding-standards(no-redundant-annotation)',
 							'@deslop/coding-standards(no-redundant-annotation)',
 							'@deslop/coding-standards(no-redundant-annotation)',
@@ -1142,10 +1113,9 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 			'allows valid schemas and semantic owners',
 			Effect.fnUntraced(function* () {
 				const result = yield* lintSource({
-					'valid.tsx': Array.join(
+					'valid.ts': Array.join(
 						[
 							"import {Array, Context, Effect, Layer, Result, Schema, SchemaGetter, SchemaTransformation, identity, pipe} from 'effect'",
-							"import {useState} from 'react'",
 							"import * as EffectArray from 'effect/Array'",
 							"import {String} from 'effect/Schema'",
 							'',
@@ -1230,7 +1200,6 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 							'export const status: string = currentPhase()',
 							'export function transition(value: typeof status) { return value.length }',
 							'export const transitioned = transition("done")',
-							'export function useCounter() { const [state, setState] = useState(() => ({current: 0, previous: 0})); return {increment: () => { setState(value => ({current: value.current + 1, previous: value.current})) }, state} }',
 							'function depth(value: number): number { if (value <= 0) return 0; return depth(value - 1) + 1 }',
 							'function even(value: number): boolean { if (value === 0) return true; return odd(value - 1) }',
 							'function odd(value: number): boolean { if (value === 0) return false; return even(value - 1) }',
@@ -1262,7 +1231,6 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 							'const hasWindow = typeof window !== "undefined"',
 							'function unavailable() { return Effect.die("unused") }',
 							'const stubs = {load: unavailable, save: unavailable}',
-							'function HomeLayout() { return <div /> }',
 							'const route = {component: HomeLayout}',
 							'declare function createRoute(options: {validateSearch: (value: unknown) => User}): void',
 							'createRoute({validateSearch: Schema.decodeUnknownSync(User)})',
@@ -1315,10 +1283,9 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 			'leaves rewrites that would change behavior alone',
 			Effect.fnUntraced(function* () {
 				const result = yield* lintSource({
-					'behavior.tsx': Array.join(
+					'behavior.ts': Array.join(
 						[
 							"import {Array, Effect, MutableRef, pipe} from 'effect'",
-							"import type {Ref} from 'react'",
 							"import {owner} from './owner.ts'",
 							'',
 							'function cell() { return MutableRef.make(0) }',
@@ -1330,9 +1297,8 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 							'export function parseOwned(value: string) { return owner.parse(value) }',
 							'const operations = {normalize: Array.reverse}',
 							'const recovered = Effect.gen(function* () { return yield* Effect.option(Effect.fail("missing")) })',
-							'function Field({ref, ...props}: {ref?: Ref<HTMLInputElement>; label: string}) { return <span ref={ref} aria-label={props.label} /> }',
 							'export const primitiveFailure = Effect.gen(function* () { return yield* Effect.fail("missing") })',
-							'export {Field, cells, operations, recovered}'
+							'export {cells, operations, recovered}'
 						],
 						'\n'
 					),
@@ -1568,7 +1534,7 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 		)
 
 		testApi.effect(
-			'reports discarded failures and React Query outside their owners',
+			'reports discarded failures outside their owners',
 			Effect.fnUntraced(function* () {
 				const result = yield* lintSource({
 					'controls.test.ts': Array.join(
@@ -1580,9 +1546,8 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 						],
 						'\n'
 					),
-					'controls.tsx': Array.join(
+					'controls.ts': Array.join(
 						[
-							"import {useQuery} from '@tanstack/react-query'",
 							"import {Effect} from 'effect'",
 							'',
 							'declare const load: Effect.Effect<number, string>',
@@ -1593,8 +1558,7 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 							"export const logged = Effect.ignore(load, {log: 'Warn', message: 'The preview was not kept'})",
 							"export const curried = Effect.ignore({'log': 'Warn'})(load)",
 							'export const unset = Effect.ignore(load, {log: undefined})',
-							"export const overridden = Effect.ignore(load, {log: 'Warn', ...{log: false}})",
-							'export {useQuery}'
+							"export const overridden = Effect.ignore(load, {log: 'Warn', ...{log: false}})"
 						],
 						'\n'
 					)
@@ -1603,174 +1567,6 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 					'@deslop/coding-standards(effect-call-form)',
 					...Array.replicate('@deslop/coding-standards(recover-named-failures)', 6)
 				])
-			})
-		)
-
-		testApi.effect(
-			'keeps shadcn components as shipped, allowing only placement classes',
-			Effect.fnUntraced(function* () {
-				const result = yield* lintSource({
-					'primitives.tsx': Array.join(
-						[
-							"import {Button} from '@deslop/components-web/ui/button'",
-							"import {Badge} from '@deslop/components-web/ui/badge'",
-							"import {Skeleton} from '@deslop/components-web/ui/skeleton'",
-							"import {PopoverContent} from '@deslop/components-web/ui/popover'",
-							"import {TableCell} from '@deslop/components-web/ui/table'",
-							"import {Card} from '#components/ui/card.tsx'",
-							"import {cn} from '#lib/utils.ts'",
-							"import {Widget} from 'some-lib'",
-							'',
-							'export function Painted() { return <Button className="mt-2 w-full hover:bg-muted sm:!px-2 data-[state=open]:text-red-500">Save</Button> } // reported',
-							'export function Placed() { return <Button className="mt-2 w-full min-w-0 flex-1 shrink-0 self-center col-span-2 min-h-0">Save</Button> }',
-							'export function Widened() { return <Button className="w-40">Save</Button> } // reported',
-							'export function Borrowed() { return <Button className="w-(--column)">Save</Button> } // reported',
-							'export function Pulled() { return <Button className="-mt-1">Save</Button> } // pulled',
-							'export function Reached() { return <div className="[&>svg]:size-4 *:shrink-0"><Button>Save</Button></div> } // pulled',
-							'export function Popup() { return <PopoverContent className="w-72">Body</PopoverContent> }',
-							'export function Drawn() { return <div className="left-(--x) w-(--width)" /> }',
-							'export function Layered() { return <Button className="relative z-10 pointer-events-auto">Save</Button> } // reported',
-							'export function Sized() { return <Button className="h-9">Save</Button> } // reported',
-							'export function Phoned() { return <Button className="max-sm:h-11">Save</Button> } // reported',
-							'export function Skin() { return <Skeleton className="h-3 w-24 shrink-0" /> }',
-							'export function Chip() { return <Badge className="size-4">New</Badge> } // reported',
-							'export function Column() { return <TableCell className="hidden text-right sm:table-cell">1</TableCell> }',
-							'export function Tinted() { return <TableCell className="text-muted-foreground">1</TableCell> } // reported',
-							'export function Parent() { return <div className="relative z-10"><Button>Save</Button></div> }',
-							"export function Combined() { return <Card className={cn('mt-2', 'bg-red-500')}>Body</Card> } // reported",
-							'export function Templated() { return <Card className={`mt-2 text-lg`}>Body</Card> } // reported',
-							'export function Passed({className}: {className: string}) { return <Card className={className}>Body</Card> }',
-							'export function Foreign() { return <Widget className="bg-red-500" /> }'
-						],
-						'\n'
-					)
-				})
-				assert.deepStrictEqual(
-					pipe(
-						result.stdout.diagnostics,
-						Array.filter(diagnostic => diagnostic.code === 'shadcn(no-restyle)'),
-						Array.map(diagnostic => diagnostic.labels[0]?.span.line ?? 0),
-						Array.dedupe,
-						Array.sort(Order.Number)
-					),
-					pipe(
-						String.split(result.sources[0] ?? '', '\n'),
-						Array.map((line, index) => ({line, number: index + 1})),
-						Array.filter(entry => String.includes('// reported')(entry.line)),
-						Array.map(entry => entry.number)
-					)
-				)
-				// A negative margin or an arbitrary variant moves or styles a box from outside it, on any element.
-				assert.deepStrictEqual(
-					pipe(
-						result.stdout.diagnostics,
-						Array.filter(diagnostic => diagnostic.code === 'eslint-js(no-restricted-syntax)'),
-						Array.map(diagnostic => diagnostic.labels[0]?.span.line ?? 0),
-						Array.dedupe,
-						Array.sort(Order.Number)
-					),
-					pipe(
-						String.split(result.sources[0] ?? '', '\n'),
-						Array.map((line, index) => ({line, number: index + 1})),
-						Array.filter(entry => String.includes('// pulled')(entry.line)),
-						Array.map(entry => entry.number)
-					)
-				)
-			})
-		)
-
-		testApi.effect(
-			'leaves buttons, links and fields to their primitives, whose render prop takes the raw element',
-			Effect.fnUntraced(function* () {
-				const result = yield* lintSource({
-					'controls.tsx': Array.join(
-						[
-							"import {Button} from '@deslop/components-web/ui/button'",
-							"import {Item} from '@deslop/components-web/ui/item'",
-							"import {NativeSelect} from '@deslop/components-web/ui/native-select'",
-							"import {Avatar, AvatarFallback, AvatarImage} from '@deslop/components-web/ui/avatar'",
-							"import {Field, FieldGroup, FieldLabel} from '@deslop/components-web/ui/field'",
-							"import {Input} from '@deslop/components-web/ui/input'",
-							'',
-							'export function Bare() { return <button type="button" aria-label="Save" /> } // reported',
-							'export function Link() { return <a href="/docs" aria-label="Docs" /> } // reported',
-							'export function Typed() { return <input aria-label="Name" /> } // reported',
-							'export function Pick() { return <select aria-label="Kind" /> } // reported',
-							'export function Notes() { return <textarea aria-label="Notes" /> } // reported',
-							'export function Inside() { return <Item render={<div><button type="button" aria-label="Open" /></div>} /> } // reported',
-							'export function Docs() { return <Button variant="link" nativeButton={false} render={<a href="/docs" aria-label="Docs" />}>Docs</Button> }',
-							'export function Row(props: {open: () => void}) { return <Item size="sm" render={<button type="button" aria-label="Open" onClick={props.open} />} /> }',
-							'export function Lazy() { return <Item render={props => <button type="button" aria-label="Open" {...props} />} /> }',
-							'export function Kind() { return <NativeSelect aria-label="Kind" /> }',
-							'export function Mark(props: {fail: () => void}) { return <img src="/icon" alt="" onError={props.fail} /> } // reported',
-							'export function Face() { return <Avatar><AvatarImage src="/icon" alt="" /><AvatarFallback>A</AvatarFallback></Avatar> }',
-							'export function Loose() { return <form><Input aria-label="Name" /></form> } // reported',
-							'export function Name() { return <form><FieldGroup><Field><FieldLabel htmlFor="name">Name</FieldLabel><Input id="name" /></Field></FieldGroup></form> }',
-							'export function Named() { return <form aria-label="<FieldGroup>"><Input aria-label="Name" /></form> } // reported',
-							'export function SignOut() { return <form action="/sign-out" method="post"><Button type="submit">Sign out</Button></form> }'
-						],
-						'\n'
-					)
-				})
-				const bare = reportedLines(result, 'no-bare-control')
-				assert.deepStrictEqual(bare.reported, bare.marked)
-				// Every form its messages recommend passes the whole preset: nothing else is reported.
-				assert.deepStrictEqual(
-					pipe(
-						result.stdout.diagnostics,
-						Array.filter(diagnostic => !String.startsWith('typescript(')(diagnostic.code)),
-						Array.map(diagnostic => diagnostic.labels[0]?.span.line ?? 0),
-						Array.dedupe,
-						Array.sort(Order.Number)
-					),
-					bare.marked
-				)
-			})
-		)
-
-		testApi.effect(
-			'keeps a click handler off badges and tabs',
-			Effect.fnUntraced(function* () {
-				const result = yield* lintSource({
-					'labels.tsx': Array.join(
-						[
-							"import {Function} from 'effect'",
-							"import {Badge} from '@deslop/components-web/ui/badge'",
-							"import {Button} from '@deslop/components-web/ui/button'",
-							"import {Tabs, TabsList, TabsTrigger} from '@deslop/components-web/ui/tabs'",
-							'',
-							'export function Pressed() { return <Badge variant="outline" onClick={Function.constUndefined}>New</Badge> } // reported',
-							'export function Tab() { return <Tabs value="a"><TabsList><TabsTrigger value="a" onClick={Function.constUndefined}>A</TabsTrigger></TabsList></Tabs> } // reported',
-							'export function Label() { return <Badge variant="outline">New</Badge> }',
-							'export function Action() { return <Button onClick={Function.constUndefined}>Save</Button> }',
-							'export function Picker(props: {pick: (value: string) => void}) { return <Tabs value="a" onValueChange={props.pick}><TabsList><TabsTrigger value="a">A</TabsTrigger></TabsList></Tabs> }',
-							'export function Spread(props: {onClick: () => void}) { return <Badge variant="outline" {...props}>New</Badge> } // reported'
-						],
-						'\n'
-					)
-				})
-				const labels = reportedLines(result, 'no-handler-on-label')
-				assert.deepStrictEqual(labels.reported, labels.marked)
-				const local = reportedLines(
-					yield* lintSource({
-						'badge.tsx':
-							'export function Badge(props: {children: string; onClick: () => void}) { return <button type="button" onClick={props.onClick}>{props.children}</button> }',
-						'labels.tsx':
-							"import {Badge} from './badge.tsx'\nexport function Run(props: {run: () => void}) { return <Badge onClick={props.run}>Run</Badge> }"
-					}),
-					'no-handler-on-label'
-				)
-				assert.deepStrictEqual(local.reported, [])
-				assert.deepStrictEqual(
-					pipe(
-						result.stdout.diagnostics,
-						Array.filter(diagnostic => !String.startsWith('typescript(')(diagnostic.code)),
-						Array.map(diagnostic => diagnostic.labels[0]?.span.line ?? 0),
-						Array.dedupe,
-						Array.sort(Order.Number)
-					),
-					labels.marked
-				)
 			})
 		)
 
@@ -1911,40 +1707,11 @@ export function decode(input: unknown) { return Schema.decodeUnknownOption(State
 		)
 
 		testApi.effect(
-			'reports Phosphor weights outside the size band',
-			Effect.fnUntraced(function* () {
-				const result = yield* lintSource(
-					{
-						'icons.tsx': Array.join(
-							[
-								"import {GearIcon, TrashIcon} from '@phosphor-icons/react'",
-								'',
-								'export function Large() { return <GearIcon className="size-6" /> }',
-								'export function LargeRegular() { return <GearIcon className="size-5" weight="regular" /> }',
-								'export function Small() { return <TrashIcon className="size-4" weight="light" /> }',
-								'export function Plain() { return <TrashIcon className="size-4" /> }'
-							],
-							'\n'
-						)
-					},
-					['--fix']
-				)
-				assert.strictEqual(
-					Array.countBy(result.stdout.diagnostics, diagnostic =>
-						String.includes('Draw Phosphor icons')(diagnostic.message)
-					),
-					3
-				)
-			})
-		)
-
-		testApi.effect(
-			'keeps labeled tuples and component refs without opening object bypasses',
+			'keeps labeled tuples without opening object bypasses',
 			Effect.fnUntraced(function* () {
 				const result = yield* lintSource({
-					'parameters.tsx': Array.join(
+					'parameters.ts': Array.join(
 						[
-							"import type {Ref} from 'react'",
 							'export type Named = [label: string, count: number]',
 							'export type Alias = Named',
 							'export function labeled([label, count]: [label: string, count: number]) { return `${label}:${count}` }',
@@ -1952,8 +1719,6 @@ export function decode(input: unknown) { return Schema.decodeUnknownOption(State
 							'export function positional([first]: string[]) { return first }',
 							'export function byRef({ref, ...rest}: {ref: string; name: string}) { return `${ref}:${rest.name}` }',
 							'export function Pretend({ref, ...rest}: {ref: string; name: string}) { return `${ref}:${rest.name}` }',
-							'export function Field({ref, ...rest}: {ref?: Ref<HTMLInputElement>; name: string}) { return <input ref={ref} aria-label={rest.name} /> }',
-							'export const FieldArrow = ({ref, ...rest}: {ref?: Ref<HTMLInputElement>; name: string}) => <input ref={ref} aria-label={rest.name} />',
 							'for (const {ref, ...rest} of [{ref: "x", name: "y"}]) console.info(ref, rest.name)',
 							'export function local(input: {name: string}) { const {name} = input; return name }'
 						],
@@ -1966,7 +1731,7 @@ export function decode(input: unknown) { return Schema.decodeUnknownOption(State
 						Array.filter(diagnostic => diagnostic.code === '@deslop/coding-standards(no-destructured-parameter)'),
 						Array.map(diagnostic => diagnostic.labels[0]?.span.line)
 					),
-					[7, 8, 9, 12, 13]
+					[5, 6, 7, 8, 9]
 				)
 			})
 		)
@@ -2217,26 +1982,18 @@ export function decode(input: unknown) { return Schema.decodeUnknownOption(State
 		)
 
 		testApi.effect(
-			'fixes state types, nullable ref types, nullish checks, typeof, compiler opt-outs and schema types without changing behavior',
+			'fixes state types, nullish checks, typeof and schema types without changing behavior',
 			Effect.fnUntraced(function* () {
 				const fixed = yield* lintSource(
 					{
-						'fixes.tsx': Array.join(
+						'fixes.ts': Array.join(
 							[
 								"import {MutableRef, Predicate, Schema, SubscriptionRef} from 'effect'",
-								"import {useRef, useState} from 'react'",
 								'declare const loose: string | null | undefined',
 								'declare const flag: boolean',
 								"export const text = MutableRef.make<string>('')",
 								'export const enabled = SubscriptionRef.make<boolean>(false)',
-								'export function Frame() {',
-								"	'use no memo'",
-								'	const both = useRef<(() => void) | null | string>(null)',
-								'	const handler = useRef<null | (() => void)>(null)',
-								'	const element = useRef<HTMLDivElement | null>(null)',
-								'	const [size] = useState<number>(1)',
-								'	return <div ref={element} data-size={size} data-handler={handler} data-both={both} />',
-								'}',
+
 								"// The user's record.",
 								'export const User = Schema.Struct({name: Schema.String})',
 								'const Local = Schema.Struct({id: Schema.String})',
@@ -2272,19 +2029,11 @@ export function decode(input: unknown) { return Schema.decodeUnknownOption(State
 						[
 							"import {MutableRef, Predicate, Schema, SubscriptionRef} from 'effect'",
 							'',
-							"import {useRef, useState} from 'react'",
-							'',
 							'declare const loose: string | null | undefined',
 							'declare const flag: boolean',
 							"export const text = MutableRef.make('')",
 							'export const enabled = SubscriptionRef.make(false)',
-							'export function Frame() {',
-							'	const both = useRef<(() => void) | string>(null)',
-							'	const handler = useRef<() => void>(null)',
-							'	const element = useRef<HTMLDivElement>(null)',
-							'	const [size] = useState(1)',
-							'	return <div ref={element} data-size={size} data-handler={handler} data-both={both} />',
-							'}',
+
 							'export type User = typeof User.Type',
 							"// The user's record.",
 							'export const User = Schema.Struct({name: Schema.String})',
@@ -2329,7 +2078,7 @@ export function decode(input: unknown) { return Schema.decodeUnknownOption(State
 					)
 				])
 				const relinted = yield* lintSource({
-					'fixes.tsx': fixed.sources[0] ?? '',
+					'fixes.ts': fixed.sources[0] ?? '',
 					'guard.ts': fixed.sources[1] ?? '',
 					'nullish.ts': fixed.sources[2] ?? ''
 				})
@@ -2378,10 +2127,10 @@ export function decode(input: unknown) { return Schema.decodeUnknownOption(State
 		)
 
 		testApi.effect(
-			'names and places module constants, keeps elements and derived types out of variables, and keeps aliases TypeScript narrows',
+			'names and places module constants, keeps derived types out of variables, and keeps aliases TypeScript narrows',
 			Effect.fnUntraced(function* () {
 				const result = yield* lintSource({
-					'values.tsx': Array.join(
+					'values.ts': Array.join(
 						[
 							"import {Array, Schema} from 'effect'",
 							'',
@@ -2399,9 +2148,6 @@ export function decode(input: unknown) { return Schema.decodeUnknownOption(State
 							'const TRAILING = "late"',
 							'type Loaded = Awaited<ReturnType<typeof load>>',
 							'export type Exported = Awaited<ReturnType<typeof load>>',
-							'const icon = <span />',
-							'export function Icon() { return <div>{icon}{icon}</div> }',
-							'export function Badge() { const body = <b />; return <div>{body}</div> }',
 							'export function show(value: Loaded) { return [value, value] }',
 							'export const counted = consume(LIMIT, LIMIT, once, maxSize, maxSize, TRAILING, TRAILING, PRIMITIVES.button)',
 							'export function narrowed(holder: {image?: string}) { const image = holder.image; if (image === undefined) return 0; return Array.map(items, () => image.length) }',
@@ -2423,8 +2169,6 @@ export function decode(input: unknown) { return Schema.decodeUnknownOption(State
 					'@deslop/coding-standards(name-by-kind)',
 					'@deslop/coding-standards(name-by-kind)',
 					'@deslop/coding-standards(no-floating-derived-type)',
-					'@deslop/coding-standards(no-pass-through-name)',
-					'@deslop/coding-standards(no-pass-through-name)',
 					'@deslop/coding-standards(no-pass-through-name)',
 					'@deslop/coding-standards(no-property-alias)',
 					'@deslop/coding-standards(no-property-alias)'
@@ -2624,12 +2368,10 @@ export type Unknown = 'ready' | unknown`
 							'function compile(Schema: {decode: (value: string) => string}) {',
 							'  return Schema.decode("ok")',
 							'}',
-							'function useRef<T>() { return undefined as T | undefined }',
-							'const ref = useRef<string | null>()',
 							'function pipe(value: string, suffix: string) { return value + suffix }',
 							'const handlers = {size: (value: string) => pipe(value, "!")}',
 							'export const nested = pipe(pipe(pipe(pipe("value", "!"), "!"), "!"), "!")',
-							'export {compile, handlers, ref}'
+							'export {compile, handlers}'
 						],
 						'\n'
 					)
@@ -2644,24 +2386,17 @@ export type Unknown = 'ready' | unknown`
 				const invalidSource = [
 					"import {MutableRef, Ref, SubscriptionRef} from 'effect'",
 					'',
-					"import * as React from 'react'",
-					"import {useState} from 'react'",
 					'',
 					"export const text = MutableRef.make<string>('')",
 					'export const count = Ref.make<number>(0)',
 					'export const enabled = SubscriptionRef.make<boolean>(false)',
-					"export const [label] = useState<string>('ready')",
-					'export const [size] = useState<number>(1)',
-					'export const [visible] = React.useState<boolean>(true)',
 					"export const mismatched = MutableRef.make<number>('')",
 					"export const extraArgument = MutableRef.make<string>('', '')",
 					"export const extraType = MutableRef.make<string, number>('')",
-					'export const [missingArgument] = useState<string>()',
 					'export const widened = MutableRef.make<string | undefined>(undefined)',
 					'export const nullable = SubscriptionRef.make<string | null>(null)',
-					'export const [optional] = React.useState<string | undefined>(undefined)',
-					'export function shadowed(MutableRef: {make: <T>(value: T) => T}, Ref: {make: <T>(value: T) => T}, SubscriptionRef: {make: <T>(value: T) => T}, useState: <T>(value: T) => T, React: {useState: <T>(value: T) => T}) {',
-					'  return [MutableRef.make<string>(""), Ref.make<number>(0), SubscriptionRef.make<boolean>(false), useState<string>(""), React.useState<boolean>(true)]',
+					'export function shadowed(MutableRef: {make: <T>(value: T) => T}, Ref: {make: <T>(value: T) => T}, SubscriptionRef: {make: <T>(value: T) => T}) {',
+					'  return [MutableRef.make<string>(""), Ref.make<number>(0), SubscriptionRef.make<boolean>(false)]',
 					'}'
 				]
 				const invalid = yield* lintSource({'state-invalid.ts': Array.join(invalidSource, '\n')})
@@ -2675,19 +2410,15 @@ export type Unknown = 'ready' | unknown`
 					[
 						"export const text = MutableRef.make<string>('')",
 						'export const count = Ref.make<number>(0)',
-						'export const enabled = SubscriptionRef.make<boolean>(false)',
-						"export const [label] = useState<string>('ready')",
-						'export const [size] = useState<number>(1)',
-						'export const [visible] = React.useState<boolean>(true)'
+						'export const enabled = SubscriptionRef.make<boolean>(false)'
 					]
 				)
 				const valid = yield* lintSource({
 					'state-valid.ts': Array.join(
 						[
-							"import {Function, MutableRef, Ref, Schema} from 'effect'",
+							"import {MutableRef, Ref, Schema} from 'effect'",
 							"import * as EffectModules from 'effect'",
 							'',
-							"import {useState} from 'react'",
 							'',
 							"export const inferred = MutableRef.make('')",
 							"export const restricted = MutableRef.make<'idle'>('idle')",
@@ -2698,8 +2429,6 @@ export type Unknown = 'ready' | unknown`
 							'export const items = Ref.make<string[]>([])',
 							"export const namespace = EffectModules.MutableRef.make<string>('')",
 							'export const unsafe = Ref.makeUnsafe<number>(0)',
-							'export const [literal] = useState<true>(true)',
-							"export const [lazy] = useState<string>(Function.constant(''))",
 							'MutableRef.set(inferred, "changed")'
 						],
 						'\n'
@@ -2711,19 +2440,17 @@ export type Unknown = 'ready' | unknown`
 		)
 
 		testApi.effect(
-			'reports dropped causes, empty recoveries, render-time atoms, barrels and gradients',
+			'reports dropped causes, empty recoveries and barrels',
 			Effect.fnUntraced(function* () {
 				const result = yield* lintSource({
 					'barrel.ts': "export {Effect} from 'effect'\nexport * from 'effect/Option'",
-					'effects.tsx': Array.join(
+					'effects.ts': Array.join(
 						[
 							"import {Array, Effect, Schema} from 'effect'",
-							"import {Atom} from 'effect/reactivity'",
 							'',
 							'declare function load(id: number): Effect.Effect<number>',
 							'declare function download(): Promise<string>',
 							'class Failed extends Schema.TaggedError<Failed>()("Failed", {cause: Schema.optional(Schema.Defect()), message: Schema.String}) {}',
-							'const countAtom = Atom.make(0)',
 							'export const dropped = Effect.mapError(load(1), failure => Failed.make({message: "Cannot load"}))',
 							'export const tried = Effect.tryPromise({catch: failure => Failed.make({message: "Cannot download"}), try: download})',
 							'export const kept = Effect.mapError(load(1), cause => Failed.make({cause, message: "Cannot load"}))',
@@ -2736,24 +2463,13 @@ export type Unknown = 'ready' | unknown`
 							'export const silenced = Effect.catch(load(1), () => Effect.void)',
 							'export const blanked = Effect.catch(load(1), () => Effect.succeed(""))',
 							'export const optional = Effect.option(load(1))',
-							'export const zero = Effect.orElseSucceed(load(1), () => 0)',
-							'export function Counter() { const local = Atom.make(0); return <span>{countAtom.label}{local.label}</span> }',
-							'export function Check(props: {value: unknown}) { return <span>{String(Atom.isAtom(props.value))}</span> }',
-							'export function Start(props: {start: (atom: Atom.Atom<number>) => void}) { return <span onClick={() => props.start(Atom.make(0))}>Start</span> }',
-							'export function Frozen() { "use no memo"; return <div /> }',
-							'export const faded = "bg-linear-to-b from-muted to-background"',
-							'export const painted = "bg-[radial-gradient(circle,var(--muted),transparent)]"'
+							'export const zero = Effect.orElseSucceed(load(1), () => 0)'
 						],
 						'\n'
 					),
 					'reexports.ts': "export {Option} from 'effect'"
 				})
-				const rules = [
-					'no-barrel-module',
-					'no-compiler-opt-out',
-					'no-component-atom-allocation',
-					'recover-named-failures'
-				]
+				const rules = ['no-barrel-module', 'recover-named-failures']
 				assert.deepStrictEqual(
 					Array.filter(customCodes(result.stdout), code =>
 						Array.some(rules, rule => code === `@deslop/coding-standards(${rule})`)
@@ -2763,8 +2479,6 @@ export type Unknown = 'ready' | unknown`
 							'no-barrel-module',
 							'no-barrel-module',
 							'no-barrel-module',
-							'no-compiler-opt-out',
-							'no-component-atom-allocation',
 							...Array.replicate('recover-named-failures', 10)
 						],
 						rule => `@deslop/coding-standards(${rule})`
@@ -2774,23 +2488,14 @@ export type Unknown = 'ready' | unknown`
 		)
 
 		testApi.effect(
-			'keeps fallible I/O in the error channel and recovery independent of display wording',
+			'keeps recovery independent of display wording',
 			Effect.fnUntraced(function* () {
 				const source = [
 					"import {Effect} from 'effect'",
-					"import * as SecureStore from 'expo-secure-store'",
-					"import * as Notifications from 'expo-notifications'",
-					"import {Asset} from 'expo-asset'",
 					'',
 					'declare const work: Effect.Effect<void, {message: string; reason: string}>',
 					'declare const native: {hasLink: () => Promise<boolean>}',
-					'export const deleted = Effect.promise(() => SecureStore.deleteItemAsync("session"))',
-					'export const badge = Effect.promise(() => Notifications.setBadgeCountAsync(0))',
-					'export const permissions = Effect.promise(() => Notifications.requestPermissionsAsync())',
-					'export const asset = Effect.promise(() => Asset.fromModule(1).downloadAsync())',
-					'export const typed = Effect.tryPromise(() => SecureStore.deleteItemAsync("session"))',
 					'export const infallible = Effect.promise(() => native.hasLink())',
-					'export function shadowed(SecureStore: {deleteItemAsync: () => Promise<void>}) { return Effect.promise(() => SecureStore.deleteItemAsync()) }',
 					'export const retry = Effect.retry(work, {while: failure => failure.message === "offline"})',
 					'export const catchMessage = Effect.catchIf(work, failure => failure.message !== "offline", () => Effect.void)',
 					'export const retryReason = Effect.retry(work, {while: failure => failure.reason === "Offline"})',
@@ -2818,7 +2523,7 @@ export type Unknown = 'ready' | unknown`
 						Array.sort(String.Order)
 					),
 					pipe(
-						[7, 8, 9, 10, 14, 15],
+						[5, 6],
 						Array.map(index => source[index] ?? ''),
 						Array.sort(String.Order)
 					)
@@ -2869,9 +2574,6 @@ export type Unknown = 'ready' | unknown`
 				const source = [
 					"import {Array, Effect, Redacted, Schema, pipe} from 'effect'",
 					"import {HttpClientRequest, HttpClientResponse, HttpIncomingMessage, HttpServerRequest} from 'effect/http'",
-					"import * as Notifications from 'expo-notifications'",
-					"import {getExpoPushTokenAsync, setBadgeCountAsync} from 'expo-notifications'",
-					"import {deleteItemAsync} from 'expo-secure-store'",
 					'',
 					'declare const work: Effect.Effect<number[], Error>',
 					'declare const source: string',
@@ -2909,25 +2611,10 @@ export type Unknown = 'ready' | unknown`
 					'export const goodStaged = Schema.decodeUnknownSync(Schema.String)(Schema.decodeUnknownSync(Json)(source))',
 					'export const goodSyncPiped = pipe(Schema.decodeUnknownSync(Json)(source),Schema.decodeUnknownSync(Schema.String))',
 					'export const goodEffectStaged = pipe(HttpClientResponse.schemaBodyJson(Schema.Unknown)(response), Effect.flatMap(Schema.decodeUnknownEffect(Schema.String)))',
-					'const token = () => Notifications.getExpoPushTokenAsync()',
-					'function remove() { return Notifications.setBadgeCountAsync(0) }',
-					'export const badToken = Effect.promise(token)',
-					'export const badNamedPromise = Effect.promise(remove)',
-					'export const badInlineToken = Effect.promise(() => Notifications.getExpoPushTokenAsync())',
-					'export const badNamedToken = Effect.promise(() => getExpoPushTokenAsync())',
-					'export const badNamedBadge = Effect.promise(() => setBadgeCountAsync(0))',
-					'export const badNamedDelete = Effect.promise(() => deleteItemAsync("session"))',
-					'export const goodNamedTyped = Effect.tryPromise(() => getExpoPushTokenAsync())',
-					'export function goodShadowedPromise(getExpoPushTokenAsync: () => Promise<string>) { return Effect.promise(() => getExpoPushTokenAsync()) }',
 					'export const goodTyped = Effect.tryPromise(token)',
 					'export const goodNative = Effect.promise(() => native.hasLink())',
 					'export function badParameter(fallback: () => number[]) { return Effect.orElseSucceed(work, fallback) }',
 					'export function goodShadow(HttpClientResponse: {schemaBodyJson: (schema: unknown) => unknown}) { return HttpClientResponse.schemaBodyJson(Schema.Unknown) }',
-					'let mutable = token',
-					'export const goodUnknownBinding = Effect.promise(mutable)',
-					'function reassigned() { return Notifications.setBadgeCountAsync(0) }',
-					'reassigned = () => Promise.resolve(true)',
-					'export const goodReassigned = Effect.promise(reassigned)',
 					'const cycleA = cycleB',
 					'const cycleB = cycleA',
 					'export const badUnknownCycle = Effect.orElseSucceed(work, cycleA)'
@@ -2957,52 +2644,6 @@ export type Unknown = 'ready' | unknown`
 						Array.sort(String.Order)
 					)
 				)
-			})
-		)
-
-		testApi.effect(
-			'keeps SwiftUI modifiers on the theme’s spacing, type and colours',
-			Effect.fnUntraced(function* () {
-				const result = yield* lintSource({
-					'screen.tsx': Array.join(
-						[
-							"import {VStack} from '@expo/ui/swift-ui'",
-							"import {font, foregroundStyle, frame, lineSpacing, listRowInsets, padding, strokeBorder, tint} from '@expo/ui/swift-ui/modifiers'",
-							'',
-							'declare const space: Record<number, number>',
-							'declare const colors: {foreground: string}',
-							'export const padded = [padding({all: 16})] // reported',
-							'export const sized = [font({size: 15})] // reported',
-							"export const painted = [foregroundStyle('#4385be')] // reported",
-							"export const tinted = [tint('#fff')] // reported",
-							'export const inset = [listRowInsets({leading: 20})] // reported',
-							'export const leading = [lineSpacing(4)] // reported',
-							"export const ringed = [strokeBorder({content: '#fff', shape: 'circle'})] // reported",
-							'export const spaced = [listRowInsets({leading: space[4]}), lineSpacing(space[1])]',
-							"export const themed = [padding({all: space[4]}), frame({height: 64}), font({textStyle: 'body'}), foregroundStyle(colors.foreground)]",
-							'export function Spaced() { return <VStack spacing={12} /> } // reported',
-							'export function Tight() { return <VStack spacing={0} /> }',
-							'export function Widget() { "widget"; return <VStack spacing={12} modifiers={[padding({all: 16}), font({size: 15})]} /> }',
-							'export const widget = () => { "widget"; function nested() { return padding({all: 16}) }; return <VStack spacing={12} modifiers={[nested()]} /> }',
-							'const GAP = 17',
-							'export function Named() { return <VStack spacing={GAP} modifiers={[padding({all: GAP})]} /> } // reported'
-						],
-						'\n'
-					),
-					// A local helper that shares a modifier's name is not one.
-					'shared.tsx': Array.join(
-						[
-							"import {Text} from '@expo/ui/swift-ui'",
-							'function padding(input: {digits: number}) { return String(input.digits) }',
-							'export function Digits() { return <Text>{padding({digits: 2})}</Text> }'
-						],
-						'\n'
-					),
-					// Without @expo/ui, a padding call is someone else's.
-					'utils.ts': Array.join(['declare function padding(input: {all: number}): void', 'padding({all: 16})'], '\n')
-				})
-				const lines = reportedLines(result, 'swiftui-theme-values')
-				assert.deepStrictEqual(lines.reported, lines.marked)
 			})
 		)
 
@@ -3924,28 +3565,6 @@ export type Unknown = 'ready' | unknown`
 		)
 
 		testApi.effect(
-			'no-wall-clock reports render reads and callback references, not fixed dates',
-			Effect.fnUntraced(function* () {
-				const result = yield* lintSource({
-					'clock.tsx': Array.join(
-						[
-							"import {DateTime, Option} from 'effect'",
-							'export function Time() { return <span>{DateTime.toEpochMillis(DateTime.nowUnsafe())}</span> } // reported',
-							'export function Default() { return Option.getOrElse(Option.none(), DateTime.nowUnsafe) } // reported',
-							"export function Fixed() { return DateTime.makeUnsafe('2026-01-01') }",
-							'export function Button() { return <button onClick={() => DateTime.nowUnsafe()}>Time</button> }',
-							'export function RefButton() { return <button onClick={DateTime.nowUnsafe}>Time</button> }',
-							'export function Custom(DateTime: {nowUnsafe: () => string}) { return DateTime.nowUnsafe() }'
-						],
-						'\n'
-					)
-				})
-				const lines = reportedLines(result, 'no-wall-clock')
-				assert.deepStrictEqual(lines.reported, lines.marked)
-			})
-		)
-
-		testApi.effect(
 			'no-wall-clock reports real time read in tests, not the TestClock or fixed instants',
 			Effect.fnUntraced(function* () {
 				const result = yield* lintSource({
@@ -4091,7 +3710,7 @@ export type Unknown = 'ready' | unknown`
 					'boundaries.test.ts': Array.join(
 						[
 							"import {assert, it} from '@effect/vitest'",
-							"import {renderToStaticMarkup} from 'react-dom/server' // reported",
+							"import {View} from '@effect/ui' // reported",
 							"import {HttpClient} from 'effect/http' // reported",
 							"import {RpcServer} from 'effect/rpc' // reported",
 							"import {SqlClient} from 'effect/sql' // reported",
@@ -4101,7 +3720,7 @@ export type Unknown = 'ready' | unknown`
 							"import {createServer} from 'node:http' // reported",
 							"import {ChildProcess} from 'effect/process' // reported",
 							"import {handlers} from './handlers.ts' // reported",
-							"import {view} from './view.tsx' // reported",
+							"import {view} from './view.ts' // reported",
 							"import * as V from '@effect/vitest' // reported",
 							"import {NodeHttpClient, NodeHttpServer} from '@effect/platform-node' // reported",
 							"import {'NodeHttpClient' as literalClient} from '@effect/platform-node' // reported",
@@ -4118,11 +3737,10 @@ export type Unknown = 'ready' | unknown`
 							"export const source = fs.readFileString('src/service.ts') // reported",
 							"export const request = new Request('https://example.com') // reported",
 							"export const response = new Response('ok') // reported",
-							"export const fetched = globalThis.fetch('https://example.com') // reported",
 							'export const json = Response.json({answer: 42}) // reported',
 							"export const deferred = import('./service.ts') // reported",
 							"it('computes the charge', () => assert.strictEqual(handlers.charge(2), 4))",
-							'export {Atom, AtomRegistry, ChildProcess, HttpClient, McpServer, RpcServer, SqlClient, Tracer, createServer, renderToStaticMarkup, vi, view}'
+							'export {Atom, AtomRegistry, ChildProcess, HttpClient, McpServer, RpcServer, SqlClient, Tracer, createServer, View, vi, view}'
 						],
 						'\n'
 					)
@@ -4215,7 +3833,7 @@ export type Unknown = 'ready' | unknown`
 							"export const models = import.meta.glob('src/schema.ts')",
 							'declare const fs: {readFileString: (path: string) => string}',
 							"export const source = fs.readFileString('src/service.ts') // reported",
-							"export const request = globalThis.fetch('https://example.com') // reported",
+							"export const request = new Request('https://example.com') // reported",
 							'export const reply = Response.json({}) // reported',
 							'export {SqlClient}'
 						],
@@ -4227,7 +3845,7 @@ export type Unknown = 'ready' | unknown`
 						[
 							'declare const fs: {readFileString: (path: string) => string}',
 							"export const source = fs.readFileString('src/service.ts')",
-							"export const request = globalThis.fetch('https://example.com') // reported",
+							"export const request = new Request('https://example.com') // reported",
 							'export const reply = Response.json({}) // reported',
 							"export const modules = import.meta.glob('src/*.ts') // reported"
 						],

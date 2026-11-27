@@ -50,10 +50,6 @@ export function isPublicIp(ip: NetAddress.IpAddress) {
 	)
 }
 
-export function isIpAddress(address: string) {
-	return Result.isSuccess(NetAddress.ipFromString(address))
-}
-
 // An address the internet routes to, with an IPv4-mapped IPv6 address read as that IPv4 address.
 export function isPublicAddress(address: string) {
 	return Option.exists(Result.getSuccess(NetAddress.ipFromString(address)), ip => {
