@@ -6,8 +6,6 @@ export const selected = '#222'
 export const fold = '#292929'
 export const status = {error: '#ff453a', warning: '#ffd60a'}
 
-export type SheetData = {title: string; body: string; action: string}
-
 export const styles = {
 	body: {color: ink, fontSize: 15, lineHeight: 22},
 	control: {

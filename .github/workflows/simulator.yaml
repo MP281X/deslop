@@ -6,7 +6,6 @@ on:
     branches-ignore: [main]
 
 env:
-  DESLOP_DOMAIN: ${{ vars.DESLOP_DOMAIN }}
   APPLE_TEAM_ID: 99K7MQUK7F
 
 # bash -eo pipefail: a failed command inside a pipeline or an assignment fails its step.
@@ -27,6 +26,10 @@ jobs:
       simulator: ${{ steps.fingerprint.outputs.simulator }}
     steps:
       - uses: actions/checkout@v7
+      - uses: voidzero-dev/setup-vp@v1.22.0
+        with:
+          node-version: '26'
+          run-install: true
       # A stack's top branch holds every lower layer's commits, so only it builds. The recipe hash also changes when the workflow changes how it builds.
       - name: Find builds for each fingerprint
         id: fingerprint
@@ -37,9 +40,11 @@ jobs:
           above=$(gh pr list --base "$GITHUB_REF_NAME" --state open --json url --jq '.[].url')
           if [[ -z $above ]]; then
             recipe=$(git rev-parse HEAD:.github/workflows/simulator.yaml | sha256sum | cut -c1-12)
-            for app in auth deploy gateway opm scope stash trips; do
-              inputs=$(git rev-parse "HEAD:apps/$app" HEAD:packages HEAD:package.json HEAD:pnpm-lock.yaml HEAD:pnpm-workspace.yaml HEAD:vite.config.ts)
-              fingerprint=$(printf '%s\n' "$inputs" "$DESLOP_DOMAIN" | sha256sum | cut -c1-64)
+            for app in auth deploy gateway opm portfolio scope stash trips; do
+              native=$(cd "apps/$app" && vp exec expo-updates runtimeversion:resolve --platform ios | jq -er .runtimeVersion)
+              # Simulator builds embed the branch's JavaScript as well as its native runtime.
+              bundle=$(git rev-parse "HEAD:apps/$app" HEAD:packages HEAD:package.json HEAD:pnpm-lock.yaml HEAD:pnpm-workspace.yaml HEAD:vite.config.ts)
+              fingerprint=$(printf '%s\n' "$native" "$bundle" | sha256sum | cut -c1-64)
               artifact="$app-simulator-$fingerprint-$recipe"
               held=$(gh api "repos/$GITHUB_REPOSITORY/actions/artifacts?name=$artifact" --jq '[.artifacts[] | select(.expired | not)] | length')
               if [[ $held == 0 ]]; then builds+=("$(jq -cn --arg app "$app" --arg artifact "$artifact" '{$app, $artifact}')"); fi
@@ -83,13 +88,16 @@ jobs:
         env:
           APP: ${{ matrix.app }}
         run: |
-          vp run build
-          vp exec cap sync ios
+          vp run iphone:prepare
+          (cd ios && pod install)
+          workspaces=(ios/*.xcworkspace)
+          workspace=${workspaces[0]}
+          scheme=$(basename "$workspace" .xcworkspace)
           # Keep ad hoc signing for the embedded extensions and build only for the Apple silicon host.
-          xcodebuild -project ios/App/App.xcodeproj -scheme App -configuration Debug -destination 'generic/platform=iOS Simulator' \
+          xcodebuild -workspace "$workspace" -scheme "$scheme" -configuration Release -destination 'generic/platform=iOS Simulator' \
             -derivedDataPath "$RUNNER_TEMP/derived" ARCHS=arm64 CODE_SIGN_IDENTITY=- \
-            "DEVELOPMENT_TEAM=$APPLE_TEAM_ID" "DESLOP_DOMAIN=$DESLOP_DOMAIN" build
-          mv "$RUNNER_TEMP/derived/Build/Products/Debug-iphonesimulator/App.app" "$RUNNER_TEMP/${APP}dev.app"
+            "DEVELOPMENT_TEAM=$APPLE_TEAM_ID" build
+          mv "$RUNNER_TEMP/derived/Build/Products/Release-iphonesimulator/"*.app "$RUNNER_TEMP/${APP}dev.app"
           tar -czf "$RUNNER_TEMP/simulator.tar.gz" -C "$RUNNER_TEMP" "${APP}dev.app"
       - name: Upload the Simulator app
         if: steps.artifact.outputs.needed == 'true'

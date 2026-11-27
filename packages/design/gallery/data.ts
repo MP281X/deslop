@@ -22,12 +22,6 @@ export const rows: readonly RowData[] = [
 	{id: 'notes', line: 'worker · 23449', title: 'Notes', trailing: '12:54'}
 ]
 
-export const sheet = {
-	action: 'Done',
-	body: 'Run this in the service’s working directory to restart the process.',
-	title: 'Restart command'
-}
-
 export function detailBody(row: RowData) {
 	return row.problem?.reason ?? row.line
 }

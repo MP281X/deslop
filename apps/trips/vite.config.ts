@@ -1,5 +1,14 @@
-import {defineConfig} from 'vite-plus'
+import type {UserConfig} from 'vite-plus'
 
-import {webConfig} from '@deslop/ui/vite'
+import {serverPack} from '@deslop/runtime/config/vite'
 
-export default defineConfig(webConfig(512))
+export default {
+	build: {
+		chunkSizeWarningLimit: 750,
+		modulePreload: {polyfill: false},
+		outDir: 'dist/client',
+		rolldownOptions: {output: {codeSplitting: {groups: [{name: 'effect', test: /node_modules[\\/]effect[\\/]/u}]}}},
+		target: 'esnext'
+	},
+	pack: serverPack(512)
+} satisfies UserConfig

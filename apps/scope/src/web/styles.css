@@ -1,249 +1,236 @@
-.scope {
-	--pane-padding: 12px;
-	--scope-number: 56px;
-	font-size: 14px;
+.scope-notice {
+	color: #a1a1a1;
+	padding: 12px;
 }
 
-.scope-list {
-	padding: 0 8px 12px;
+.scope-notice p {
+	margin: 0 0 8px;
 }
 
-.scope-operation {
-	--pane-padding: 10px;
-}
-
-.scope-operation > .axis-value,
-.scope-trace-summary > .axis-value {
-	font-size: 0.85rem;
-	white-space: nowrap;
-}
-
-#scope-sources {
-	position-anchor: --axis-action-sources;
-}
-
-#scope-ranges {
-	position-anchor: --axis-action-ranges;
-}
-
-#scope-traces {
-	position-anchor: --scope-trace-picker;
-	position-area: block-end span-inline-end;
-	position-try-fallbacks:
-		flip-inline,
-		flip-block,
-		flip-block flip-inline;
-}
-
-.scope .axis-popover-body {
-	min-inline-size: 8rem;
-	padding: 6px;
-}
-
-.scope .axis-popover button {
-	display: flex;
-	width: 100%;
-	min-height: 44px;
-	align-items: center;
-	justify-content: space-between;
-	gap: 10px;
-	padding: 7px 10px;
-	border-radius: 12px;
-	text-align: start;
-}
-
-.scope .axis-popover .scope-trace-option {
-	display: grid;
-	grid-template-columns: minmax(0, 1fr) auto 15px;
-}
-
-.scope-trace-option :is(.axis-title, .axis-muted) {
-	white-space: normal;
-	overflow-wrap: anywhere;
-}
-
-.scope-trace-option .axis-value {
-	white-space: nowrap;
-}
-
-.scope :is(.axis-popover, .scope-trace-choice) .sf-symbol {
-	inline-size: 15px;
-	block-size: 15px;
-	flex: none;
-}
-
-.scope-detail {
-	container-type: inline-size;
-	padding-block: 6px 12px;
-}
-
-.scope-trace-summary {
-	display: grid;
-	grid-template-columns: minmax(0, max-content) minmax(0, 1fr) auto;
-	align-items: center;
-	gap: 10px;
-	padding: 0 var(--pane-padding) 6px;
-}
-
-.scope-trace-choice,
-.scope-trace-label {
-	display: flex;
-	min-block-size: 44px;
-	max-inline-size: 100%;
-	align-items: center;
-	gap: 8px;
+.scope-control {
+	min-height: 40px;
 	padding-inline: 12px;
-	font-weight: 570;
-	text-align: start;
+	border: 0;
+	border-radius: 8px;
+	background: #202020;
+	color: inherit;
+	font: inherit;
+	cursor: pointer;
 }
 
-.scope-trace-choice {
-	anchor-name: --scope-trace-picker;
+.scope-list-split {
+	display: grid;
+	gap: 8px;
+	grid-template-rows: repeat(2, minmax(0, 1fr));
+	height: calc(100dvh - 68px);
 }
 
-.scope-trace-choice > span:first-child {
-	overflow-wrap: anywhere;
+.scope-list-split > div {
+	overflow-y: auto;
+	overscroll-behavior-y: contain;
+}
+
+.scope-trace {
+	min-width: 0;
 }
 
 .scope-waterfall {
 	max-height: 60dvh;
 	overflow: auto;
 	overscroll-behavior: contain;
-	scrollbar-width: auto;
 }
 
-.scope-waterfall-grid {
-	display: grid;
-	grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr) var(--scope-number);
-	align-items: center;
-	column-gap: 8px;
-	padding-inline: var(--pane-padding);
+.scope-axis,
+.scope-lanes {
+	position: relative;
+	margin-inline: 8px;
 }
 
 .scope-axis {
 	position: sticky;
-	inset-block-start: 0;
+	top: 0;
 	z-index: 1;
-	min-height: 24px;
-	background: var(--color-background);
-	color: var(--color-muted-foreground);
-	font-family: var(--font-mono);
-	font-size: 0.625rem;
+	height: 25px;
+	background: #000;
+	color: #a1a1a1;
+	font:
+		12px 'SF Mono',
+		'Geist Mono',
+		monospace;
 }
 
-.scope-timeline {
-	position: relative;
-	grid-column: 2;
-}
-
-.scope-tick {
+.scope-axis span {
 	position: absolute;
-	inset-block-end: -4px;
-	translate: -50%;
+	top: 4px;
+	transform: translateX(-50%);
 	white-space: nowrap;
 }
 
-.scope-tick::after {
-	display: block;
-	width: 1px;
-	height: 3px;
-	margin-inline: auto;
-	background: currentColor;
-	content: '';
+.scope-axis span:first-child {
+	transform: none;
 }
 
-.scope-span {
-	min-height: 40px;
+.scope-axis span:last-child {
+	transform: translateX(-100%);
 }
 
-.scope-span-name {
-	font-size: 0.85rem;
-	overflow-wrap: anywhere;
+.scope-waterfall {
+	container-type: inline-size;
 }
 
-.scope-span > .axis-value {
-	font-size: 0.8rem;
+@container (width < 280px) {
+	.scope-axis span:nth-child(even) {
+		display: none;
+	}
 }
 
-.scope-track {
-	height: 4px;
+.scope-mark,
+.scope-bar,
+.scope-after {
+	position: absolute;
+}
+
+.scope-mark {
+	box-sizing: border-box;
+	height: 22px;
+	padding: 0;
+	border: 0;
+	border-radius: 0;
+	background: transparent;
+	color: #f4f4f4;
+	font:
+		12px 'SF Mono',
+		'Geist Mono',
+		monospace;
+	text-align: start;
+	touch-action: pan-y;
+	cursor: pointer;
+}
+
+.scope-mark:focus-visible {
+	z-index: 1;
+	outline: 1px solid #f4f4f4;
 }
 
 .scope-bar {
-	position: absolute;
 	inset-block: 0;
-	inset-inline-start: min(var(--span-start), calc(100% - 2px));
-	width: max(2px, var(--span-width));
-	background: var(--color-muted-foreground);
+	display: flex;
+	align-items: center;
+	overflow: hidden;
+	white-space: nowrap;
 }
 
-.scope-bar-failed {
-	background: var(--color-destructive);
+.scope-mark[aria-current='true'] .scope-bar {
+	outline: 1px solid #f4f4f4;
+	outline-offset: -1px;
+}
+
+.scope-mark:active .scope-bar {
+	filter: brightness(1.45);
+}
+
+.scope-bar span {
+	padding-inline: 6px;
+}
+
+.scope-bar-failed span {
+	color: #000;
+}
+
+.scope-after {
+	top: 4px;
+	white-space: nowrap;
 }
 
 .scope-diagnostics {
 	min-width: 0;
-	padding: 12px var(--pane-padding);
+	padding-block-start: 8px;
 }
 
-.scope-diagnostic-message {
-	margin-block-end: 8px;
+.scope-diagnostics :is(p, dl, dd, ol, pre) {
+	margin: 0;
 }
 
-.scope-diagnostic-message :is(.axis-title, .axis-muted),
-.scope-field :is(dt, dd) {
-	overflow: visible;
+.scope-diagnostics :is(ol, dl, .scope-failure) {
+	padding: 8px 12px;
+}
+
+.scope-diagnostics :is(dd, pre, p) {
 	overflow-wrap: anywhere;
 	white-space: pre-wrap;
 }
 
-.scope-field {
+.scope-diagnostics ol {
+	list-style-type: none;
+}
+
+.scope-diagnostics a {
+	color: inherit;
+}
+
+.scope-failure {
+	color: #ff453a;
+}
+
+.scope-field,
+.scope-log {
 	display: grid;
-	grid-template-columns: minmax(0, 1fr) minmax(0, 1.35fr);
-	gap: 10px;
+	gap: 12px;
 	padding-block: 2px;
+	font-size: 13px;
+}
+
+.scope-field {
+	grid-template-columns: minmax(0, 1fr) minmax(0, 1.35fr);
+}
+
+.scope-field dt,
+.scope-log time {
+	color: #a1a1a1;
+	overflow-wrap: anywhere;
 }
 
 .scope-field dd {
 	text-align: end;
 }
 
-.scope-logs {
-	margin-block-start: 12px;
-}
-
 .scope-log {
-	display: grid;
 	grid-template-columns: max-content minmax(0, 1fr);
+}
+
+.scope-log :is(time, pre) {
+	font:
+		12px 'SF Mono',
+		'Geist Mono',
+		monospace;
+}
+
+.scope-trace-skeleton {
+	display: grid;
 	gap: 10px;
-	padding-block: 3px;
 }
 
-.scope-log pre {
-	overflow-wrap: anywhere;
-	white-space: pre-wrap;
+.scope-trace-skeleton span {
+	display: block;
+	height: 12px;
+	margin-inline: 8px;
+	border-radius: 3px;
+	background: #202020;
 }
 
-@container (width < 480px) {
-	.scope-tick:nth-child(even) {
-		visibility: hidden;
-	}
+.scope-trace-skeleton .scope-lanes span {
+	margin: 0;
 }
 
-@container (width >= 740px) {
-	.scope-waterfall-grid {
-		grid-template-columns: minmax(0, 1fr) minmax(0, 1.45fr) var(--scope-number);
-	}
-}
-
-@media (min-width: 2560px) {
-	.scope-trace-content {
+@media (width >= 2560px) {
+	.scope-trace-body {
 		display: grid;
 		grid-template-columns: minmax(0, 1fr) minmax(400px, 34%);
 	}
+
 	.scope-waterfall,
 	.scope-diagnostics {
-		max-height: calc(100dvh - 105px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+		max-height: calc(100dvh - 160px);
 		overflow: auto;
 	}
 }

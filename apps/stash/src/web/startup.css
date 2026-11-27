@@ -1,0 +1,52 @@
+:root {
+	background: #000;
+}
+
+#root:not(:empty) + .stash-startup {
+	display: none;
+}
+
+.stash-startup {
+	display: flex;
+	inset: 52px 0 0;
+	overflow: hidden;
+	position: fixed;
+}
+
+.stash-startup-queue,
+.stash-startup-note {
+	box-sizing: border-box;
+	flex: 1;
+	padding: 20px;
+}
+
+.stash-startup-queue {
+	background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 54' preserveAspectRatio='none' fill='%23202020'%3E%3Crect width='48' y='11' height='12' rx='2'/%3E%3Crect width='70' y='29' height='10' rx='2'/%3E%3C/svg%3E")
+		20px 8px / calc(100% - 40px) 54px repeat-y;
+}
+
+.stash-startup-note::before {
+	background: #202020;
+	border-radius: 4px;
+	box-shadow:
+		0 31px #202020,
+		0 55px #202020,
+		0 79px #202020;
+	content: '';
+	display: block;
+	height: 14px;
+	width: 62%;
+}
+
+@media (min-width: 1000px) {
+	.stash-startup-queue {
+		flex: 0 0 380px;
+	}
+}
+
+@media (width < 640px), (640px <= width < 800px) and (height < 600px) {
+	:root:not([data-stash-note]) .stash-startup-note,
+	[data-stash-note] .stash-startup-queue {
+		display: none;
+	}
+}

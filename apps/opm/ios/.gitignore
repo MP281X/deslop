@@ -1,7 +1,0 @@
-App/build
-App/App/public
-App/App/capacitor.config.json
-App/App/config.xml
-capacitor-cordova-ios-plugins
-DerivedData
-xcuserdata

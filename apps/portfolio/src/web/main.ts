@@ -4,7 +4,7 @@ import {BrowserHost} from '@effect/ui/html'
 
 import {Effect, Layer, Option, Predicate} from 'effect'
 
-import {PortfolioRoute} from '#web/routes.ts'
+import {PortfolioRoute} from '#screens/routes.ts'
 
 const page = Effect.gen(function* () {
 	const root = document.getElementById('root')

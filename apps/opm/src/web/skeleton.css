@@ -1,27 +1,56 @@
-@import '@deslop/ui/theme.css';
-
 .opm-skeleton-list {
-	margin-inline: 24px;
-	--skeleton-leading: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='36' height='60'%3E%3Crect y='12' width='36' height='36' rx='4' fill='%23191919'/%3E%3C/svg%3E")
-		left top / 36px 60px repeat-y;
-	--skeleton-lines: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='112' height='60' fill='%23191919'%3E%3Crect y='11' width='88' height='17' rx='4'/%3E%3Crect y='33' width='112' height='15' rx='4'/%3E%3C/svg%3E")
-		left 45px top / 112px 60px repeat-y;
-	--skeleton-value: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='48' height='60'%3E%3Crect y='24' width='48' height='12' rx='4' fill='%23191919'/%3E%3C/svg%3E")
-		right top / 48px 60px repeat-y;
+	min-height: min(82dvh, 540px);
+	margin-inline: 12px;
+	background:
+		url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='28' height='54'%3E%3Crect y='7' width='28' height='40' rx='4' fill='%23202020'/%3E%3C/svg%3E")
+			left top / 28px 54px repeat-y,
+		url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='112' height='54' fill='%23202020'%3E%3Crect y='12' width='82' height='12' rx='4'/%3E%3Crect y='31' width='112' height='10' rx='4'/%3E%3C/svg%3E")
+			left 40px top / 112px 54px repeat-y,
+		url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='28' height='54'%3E%3Crect y='22' width='28' height='10' rx='4' fill='%23202020'/%3E%3C/svg%3E")
+			right top / 28px 54px repeat-y;
 }
 
 .opm-page-placeholder {
-	inline-size: min(100%, 66dvh);
-	block-size: 100%;
-	border-radius: 4px;
-	background: var(--color-muted);
+	width: min(100%, 70dvh);
+	height: 100%;
+	background: #202020;
+}
+
+.opm-startup {
+	display: grid;
+	height: 100dvh;
+	grid-auto-columns: minmax(0, 1fr);
+	grid-auto-flow: column;
+	overflow: hidden;
+}
+
+#root:empty {
+	height: 0 !important;
+}
+
+#root:not(:empty) + .opm-startup,
+.opm-startup:not([data-detail]) > .opm-page-placeholder,
+.opm-startup[data-detail] > .opm-skeleton-list,
+.opm-startup .opm-skeleton-list + .opm-skeleton-list {
+	display: none;
+}
+
+.opm-startup > .opm-skeleton-list {
+	margin: 60px 20px 0;
 }
 
 .opm-startup > .opm-page-placeholder {
 	justify-self: center;
-	block-size: 100dvh;
 }
 
-.opm-startup:not([data-detail]) > .opm-page-placeholder {
-	display: none;
+@media (width >= 700px) and (orientation: landscape) {
+	.opm-startup:not([data-detail]) .opm-skeleton-list + .opm-skeleton-list {
+		display: block;
+	}
+}
+
+@media (width >= 800px), (width >= 640px) and (height >= 600px) {
+	.opm-startup[data-detail] > .opm-skeleton-list:first-child {
+		display: block;
+	}
 }

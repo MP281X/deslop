@@ -1,6 +1,6 @@
 {
 	"$schema": "./node_modules/fallow/schema.json",
-	"entry": ["**/main.*"],
+	"entry": ["**/main.*", "apps/*/fingerprint.config.js", "apps/*/targets/*/expo-target.config.js"],
 	"includeEntryExports": true,
 	"publicPackages": ["@deslop/coding-standards"],
 	"failOnParseError": true,
@@ -10,10 +10,18 @@
 			{"name": "test", "patterns": ["**/*.test.ts"]},
 			{
 				"name": "tooling",
-				"patterns": ["tools/**", "vite.config.ts", "apps/*/{app,metro,vite}.config.ts", "apps/*/bin/iphone.ts"]
+				"patterns": [
+					"tools/**",
+					"packages/{design,runtime}/src/tooling/**",
+					"vite.config.ts",
+					"apps/*/{app,metro,vite}.config.ts",
+					"apps/*/fingerprint.config.js",
+					"apps/*/targets/*/expo-target.config.js",
+					"apps/*/bin/iphone.ts"
+				]
 			},
 			// Build configuration the server also reads; it imports no zone, so it carries nothing across.
-			{"name": "config", "patterns": ["packages/runtime/src/config/**", "packages/ui/src/vite.ts"]},
+			{"name": "config", "patterns": ["packages/runtime/src/config/**"]},
 			{"name": "shared", "patterns": ["apps/*/src/*.ts", "packages/*/src/shared/**"]},
 			{
 				"name": "client",
@@ -22,7 +30,7 @@
 					"apps/*/src/{iphone,screens,web}/**",
 					"packages/design/gallery/**",
 					"packages/design/src/native/**",
-					"packages/ui/src/**",
+					"packages/runtime/src/iphone/**",
 					"packages/*/src/{client,web}/**"
 				]
 			},
@@ -67,18 +75,18 @@
 		"maxCrap": 0
 	},
 	"ignoreDependencies": [
-		// Capacitor CLI copies this platform's native project; it has no JS clients.
-		"@capacitor/ios",
 		// Expo reads these in native linking and app configuration, not through a JS import.
-		"expo-system-ui",
-		"expo-updates"
+		"expo-system-ui"
 	],
 	"ignoreExports": [
 		// Each app names its own contract groups; the same name in two apps is two separate APIs.
 		{"file": "apps/*/src/contracts.ts", "exports": ["RpcContracts", "PushRpcs"]},
 		// The separately linted app template calls these when configuring and building its iPhone app.
 		{"file": "packages/runtime/src/config/iphone.ts", "exports": ["iphoneUpdates"]},
-		{"file": "packages/runtime/src/config/iphone-export.ts", "exports": ["writeIPhoneExport"]}
+		{"file": "packages/runtime/src/config/iphone-export.ts", "exports": ["writeIPhoneExport"]},
+		// Expo's fingerprint and apple-targets load these configurations by file name, not through an import.
+		{"file": "apps/*/fingerprint.config.js", "exports": ["*"]},
+		{"file": "apps/*/targets/*/expo-target.config.js", "exports": ["*"]}
 	],
 	"ignorePatterns": ["**/*.gen.ts", "tools/*/template/**"],
 	"overrides": [

@@ -2,6 +2,11 @@
 <html lang="en">
 	<head>
 		<meta charset="UTF-8" />
+		<meta
+			name="viewport"
+			content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content"
+		/>
+		<meta name="color-scheme" content="dark" />
 		<meta name="theme-color" content="#000000" />
 		<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 		<link rel="manifest" href="/manifest.webmanifest" />
@@ -18,7 +23,12 @@
 		</div>
 		<script>
 			const pane = new URLSearchParams(location.search).get('pane')
-			document.querySelector('.trips-startup').toggleAttribute('data-detail', pane !== 'list')
+			document
+				.querySelector('.trips-startup')
+				.toggleAttribute(
+					'data-detail',
+					pane === 'detail' || (pane !== 'list' && /^\/(day|flight)\//.test(location.pathname))
+				)
 		</script>
 		<script type="module" src="/src/web/main.ts"></script>
 	</body>

@@ -63,10 +63,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           builds=()
-          for app in auth deploy gateway opm scope stash trips; do
-            inputs=$(git ls-tree -r HEAD -- "apps/$app/ios" "apps/$app/capacitor.config.json" "apps/$app/src/web/app.icon" "apps/$app/package.json" packages/ui/native package.json pnpm-lock.yaml pnpm-workspace.yaml)
-            web=$(cd "apps/$app/dist/client" && find . -type f -print0 | LC_ALL=C sort -z | xargs -0 sha256sum)
-            fingerprint=$(printf '%s\n' "$inputs" "$web" "$DESLOP_DOMAIN" "$APPLE_TEAM_ID" | sha256sum | cut -c1-64)
+          for app in auth deploy gateway opm portfolio scope stash trips; do
+            fingerprint=$(jq -er .runtimeVersion "apps/$app/dist/iphone/update.json")
             artifact="$app-testflight-$fingerprint"
             held=$(gh api "repos/$GITHUB_REPOSITORY/actions/artifacts?name=$artifact" --jq '[.artifacts[] | select(.expired | not)] | length')
             if [[ $held == 0 ]]; then
@@ -138,10 +136,10 @@ jobs:
         with:
           node-version: '26'
           run-install: true
-      - name: Bundle the iPhone app
+      - name: Prepare the iPhone app
         run: |
-          vp run build
-          vp exec cap sync ios
+          vp run iphone:prepare
+          (cd ios && pod install)
       - name: Sign and upload to TestFlight
         id: upload
         env:
@@ -167,11 +165,19 @@ jobs:
             fi
           }
 
+          workspaces=(ios/*.xcworkspace)
+          workspace=${workspaces[0]}
+          scheme=$(basename "$workspace" .xcworkspace)
           # Ad hoc signing preserves entitlements without a device profile. Export applies the App Store signature.
-          xcodebuild -project ios/App/App.xcodeproj -scheme App -configuration Release -destination 'generic/platform=iOS' \
-            -archivePath "$RUNNER_TEMP/App.xcarchive" "DEVELOPMENT_TEAM=$APPLE_TEAM_ID" "DESLOP_DOMAIN=$DESLOP_DOMAIN" \
+          xcodebuild -workspace "$workspace" -scheme "$scheme" -configuration Release -destination 'generic/platform=iOS' \
+            -archivePath "$RUNNER_TEMP/App.xcarchive" "DEVELOPMENT_TEAM=$APPLE_TEAM_ID" \
             CODE_SIGN_IDENTITY=- AD_HOC_CODE_SIGNING_ALLOWED=YES \
             "MARKETING_VERSION=0.1.$RELEASE_NUMBER" "CURRENT_PROJECT_VERSION=$RELEASE_NUMBER" archive
+          fingerprint=$(cat "$RUNNER_TEMP/App.xcarchive"/Products/Applications/*.app/EXUpdates.bundle/fingerprint)
+          if [[ $fingerprint != "$FINGERPRINT" ]]; then
+            echo "::error::The iPhone archive's runtime version ($fingerprint) differs from the server's ($FINGERPRINT)."
+            exit 1
+          fi
 
           cat > "$RUNNER_TEMP/export.plist" <<EOF
           <?xml version="1.0" encoding="UTF-8"?>

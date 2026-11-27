@@ -22,12 +22,12 @@
 	<body>
 		<div id="root"></div>
 		<div class="gateway-startup" aria-label="Loading Gateway" role="status" aria-busy="true">
-			<div class="gateway-skeleton gateway-skeleton-keys" aria-hidden="true"></div>
-			<div class="gateway-skeleton gateway-skeleton-servers" aria-hidden="true"></div>
+			<div class="gateway-placeholder gateway-placeholder-key" aria-hidden="true"></div>
+			<div class="gateway-placeholder gateway-placeholder-key" aria-hidden="true"></div>
+			<div class="gateway-placeholder gateway-placeholder-key" aria-hidden="true"></div>
+			<div class="gateway-placeholder" aria-hidden="true"></div>
+			<div class="gateway-placeholder" aria-hidden="true"></div>
 		</div>
-		<script>
-			document.querySelector('.gateway-startup').toggleAttribute('data-native', location.protocol === 'capacitor:')
-		</script>
 		<script type="module" src="/src/web/main.ts"></script>
 	</body>
 </html>

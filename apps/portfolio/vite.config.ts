@@ -1,14 +1,13 @@
 import {Array, Record, String, pipe} from 'effect'
 
+import tailwindcss from '@tailwindcss/vite'
 import {defineConfig} from 'vite-plus'
 
-import {webConfig} from '@deslop/ui/vite'
+import {serverPack} from '@deslop/runtime/config/vite'
 
-import {contacts, experience, profile, projects, summary} from '#web/profile/content.ts'
+import {ProfileScreen} from '#screens/portfolio.ts'
 
-const config = webConfig(512)
-const name = `${profile.firstName} ${profile.lastName}`
-const description = `${profile.title}. ${summary}`
+const description = `${ProfileScreen.profile.title}. ${ProfileScreen.summary}`
 
 function escaped(text: string) {
 	return pipe(
@@ -26,38 +25,55 @@ function link(target: {href: string; value: string}) {
 
 // Link previews and readers that run no script read the HTML alone: it names the person on both routes and carries the profile as plain text, which the app replaces once it runs.
 export default defineConfig({
-	...config,
+	build: {
+		chunkSizeWarningLimit: 750,
+		modulePreload: {polyfill: false},
+		outDir: 'dist/client',
+		rolldownOptions: {output: {codeSplitting: {groups: [{name: 'effect', test: /node_modules[\\/]effect[\\/]/u}]}}},
+		target: 'esnext'
+	},
+	pack: serverPack(512),
 	plugins: [
-		...config.plugins,
+		tailwindcss({optimize: true}),
 		{
 			name: 'portfolio-document',
 			transformIndexHtml: () => [
-				{children: escaped(`${name} – ${profile.title}`), injectTo: 'head', tag: 'title'},
-				{attrs: {content: name, name: 'author'}, injectTo: 'head', tag: 'meta'},
+				{children: escaped(`${ProfileScreen.name} – ${ProfileScreen.profile.title}`), injectTo: 'head', tag: 'title'},
+				{attrs: {content: ProfileScreen.name, name: 'author'}, injectTo: 'head', tag: 'meta'},
 				{attrs: {content: description, name: 'description'}, injectTo: 'head', tag: 'meta'},
 				{attrs: {content: 'profile', property: 'og:type'}, injectTo: 'head', tag: 'meta'},
-				{attrs: {content: name, property: 'og:title'}, injectTo: 'head', tag: 'meta'},
+				{attrs: {content: ProfileScreen.name, property: 'og:title'}, injectTo: 'head', tag: 'meta'},
 				{attrs: {content: description, property: 'og:description'}, injectTo: 'head', tag: 'meta'},
-				{attrs: {content: `https://${profile.portfolio}/`, property: 'og:url'}, injectTo: 'head', tag: 'meta'},
+				{
+					attrs: {content: `https://${ProfileScreen.profile.portfolio}/`, property: 'og:url'},
+					injectTo: 'head',
+					tag: 'meta'
+				},
 				{
 					children: Array.join(
 						[
-							`<h1>${escaped(name)}</h1>`,
+							`<h1>${escaped(ProfileScreen.name)}</h1>`,
 							`<p>${escaped(description)}</p>`,
-							`<p>${escaped(profile.location)}</p>`,
+							`<p>${escaped(ProfileScreen.profile.location)}</p>`,
 							'<h2>Experience</h2><ul>',
-							...Array.map(experience, job => `<li>${escaped(`${job.role}, ${job.company} (${job.period})`)}</li>`),
+							...Array.map(
+								ProfileScreen.experience,
+								job => `<li>${escaped(`${job.role}, ${job.company} (${job.period})`)}</li>`
+							),
 							'</ul><h2>Projects</h2><ul>',
 							...Array.map(
-								projects,
+								ProfileScreen.projects,
 								project =>
 									`<li>${link({href: project.href, value: project.name})}: ${escaped(project.description)}</li>`
 							),
 							'</ul><h2>Contact</h2><ul>',
-							...Array.map(Record.values(contacts), contact => `<li>${escaped(contact.label)}: ${link(contact)}</li>`),
-							`<li>${link({href: '/cv', value: 'CV'})}</li></ul>`,
+							...Array.map(
+								Record.values(ProfileScreen.contacts),
+								contact => `<li>${escaped(contact.label)}: ${link(contact)}</li>`
+							),
+							`<li>${link({href: ProfileScreen.cvPath, value: 'CV'})}</li></ul>`,
 							// Italian law asks a VAT holder's website to show the number on its home page.
-							`<p>VAT ${escaped(profile.vat)}</p>`
+							`<p>VAT ${escaped(ProfileScreen.profile.vat)}</p>`
 						],
 						''
 					),

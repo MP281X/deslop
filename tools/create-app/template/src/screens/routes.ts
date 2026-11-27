@@ -1,6 +1,8 @@
-import {Command, Route, Router} from '@effect/ui'
+import {Command, Route} from '@effect/ui'
 
-import {Effect, Schema} from 'effect'
+import {Schema} from 'effect'
+
+import {backOrHome} from '@deslop/design/navigation'
 
 export type AppRoute = typeof AppRoute.Type
 export const AppRoute = Route.union({
@@ -10,14 +12,5 @@ export const AppRoute = Route.union({
 })
 
 export class CloseItem extends Command.Service<CloseItem>()('Items/Close', {args: {}}) {
-	static readonly layer = this.toLayer(
-		Effect.map(
-			Router.Router,
-			router => () =>
-				Effect.suspend(() => {
-					if (router.location().action === 'initial') return router.replace(AppRoute.List({}))
-					return router.back
-				})
-		)
-	)
+	static readonly layer = this.toLayer(backOrHome(AppRoute.List({})))
 }

@@ -2,11 +2,10 @@ import {Command, Head} from '@effect/ui'
 import type {View} from '@effect/ui'
 import {Html} from '@effect/ui/html'
 
-import {Array, Effect, Function, Predicate, Schema, String, pipe} from 'effect'
+import {Array, Effect, Function, Schema} from 'effect'
 
-import {contacts, education, experience, languages, profile, projects, skills, summary} from '#web/profile/content.ts'
+import {CvScreen} from '#screens/portfolio.ts'
 import {Icon} from '#web/profile/icons.ts'
-import {PortfolioRoute} from '#web/routes.ts'
 
 type H = Html.H<'Print'>
 
@@ -92,8 +91,10 @@ function Header(h: H) {
 			h.h1
 				.class('tracking-name text-2xl leading-none font-extrabold uppercase')
 				.children(
-					`${profile.firstName} `,
-					h.span.class('text-foreground/55 tracking-label mt-0.5 block text-xl font-medium').children(profile.lastName)
+					`${CvScreen.profile.firstName} `,
+					h.span
+						.class('text-foreground/55 tracking-label mt-0.5 block text-xl font-medium')
+						.children(CvScreen.profile.lastName)
 				),
 			h.div
 				.class('flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between sm:gap-6')
@@ -103,31 +104,34 @@ function Header(h: H) {
 						.children(
 							h.p
 								.class('text-label tracking-label flex items-center gap-2 whitespace-nowrap uppercase')
-								.children(h.span.attr('aria-hidden', 'true').class('border-foreground size-2 border-4'), profile.title),
-							h.p.class('font-document text-document').children(summary)
+								.children(
+									h.span.attr('aria-hidden', 'true').class('border-foreground size-2 border-4'),
+									CvScreen.profile.title
+								),
+							h.p.class('font-document text-document').children(CvScreen.summary)
 						),
 					h.address
 						.class('text-foreground/70 text-label whitespace-nowrap not-italic sm:text-right')
 						.children(
-							`${profile.location} · `,
-							Link(h, contacts.phone),
+							`${CvScreen.profile.location} · `,
+							Link(h, CvScreen.contacts.phone),
 							h.br,
-							Link(h, contacts.email),
+							Link(h, CvScreen.contacts.email),
 							' · ',
-							Link(h, contacts.github),
+							Link(h, CvScreen.contacts.github),
 							h.br,
 							'PEC ',
-							Link(h, contacts.pec),
+							Link(h, CvScreen.contacts.pec),
 							h.br,
-							Link(h, {href: `https://${profile.portfolio}`, value: profile.portfolio}),
-							` · VAT ${profile.vat}`
+							Link(h, CvScreen.website),
+							` · VAT ${CvScreen.profile.vat}`
 						)
 				)
 		)
 }
 
 export const Cv = Html.component({message: Schema.Literal('Print'), model: Schema.Void, name: 'PortfolioCV'}).make({
-	head: () => [Head.title(`${profile.firstName} ${profile.lastName} CV`)],
+	head: () => [Head.title(CvScreen.title)],
 	init: Function.constUndefined,
 	update: $ => $.run(Command.asNoop(Print.make({}))),
 	view: h =>
@@ -137,7 +141,7 @@ export const Cv = Html.component({message: Schema.Literal('Print'), model: Schem
 			)
 			.children(
 				h.a
-					.attr('href', PortfolioRoute.print(PortfolioRoute.Home()))
+					.attr('href', CvScreen.homePath)
 					.class(
 						'text-muted-foreground hover:text-foreground mt-safe-top ml-safe-left fixed top-3 left-3 z-20 inline-flex h-11 items-center gap-1.5 font-mono text-xs sm:h-9 print:hidden'
 					)
@@ -160,7 +164,7 @@ export const Cv = Html.component({message: Schema.Literal('Print'), model: Schem
 							h,
 							'Technical Skills',
 							h.dl.class('flex flex-col gap-0.5').children(
-								Array.map(skills, skill =>
+								Array.map(CvScreen.skills, skill =>
 									h.div
 										.key(skill.area)
 										.class('flex')
@@ -176,16 +180,7 @@ export const Cv = Html.component({message: Schema.Literal('Print'), model: Schem
 							'Work Experience',
 							h.div
 								.class('flex flex-col gap-1.5')
-								.children(
-									Array.map(experience, job =>
-										Entry(h, {
-											aside: job.period,
-											body: Bullets(h, job.highlights),
-											details: Array.filter([job.role, job.note, job.location], Predicate.isNotUndefined),
-											title: job.company
-										})
-									)
-								)
+								.children(Array.map(CvScreen.experience, job => Entry(h, {...job, body: Bullets(h, job.highlights)})))
 						),
 						CvSection(
 							h,
@@ -193,13 +188,8 @@ export const Cv = Html.component({message: Schema.Literal('Print'), model: Schem
 							h.div
 								.class('flex flex-col gap-1.5')
 								.children(
-									Array.map(projects, project =>
-										Entry(h, {
-											aside: String.replace('https://', '')(project.href),
-											body: h.p.children(project.description),
-											details: [project.role],
-											title: project.name
-										})
+									Array.map(CvScreen.projects, project =>
+										Entry(h, {...project, body: h.p.children(project.description)})
 									)
 								)
 						),
@@ -207,22 +197,8 @@ export const Cv = Html.component({message: Schema.Literal('Print'), model: Schem
 							h.h2
 								.class('text-foreground text-label tracking-label font-mono font-bold uppercase')
 								.children('Education & Languages'),
-							Array.map(education, entry =>
-								Entry(h, {
-									aside: entry.period,
-									details: Array.filter([entry.school, entry.grade], Predicate.isNotUndefined),
-									title: entry.degree
-								})
-							),
-							h.p.children(
-								h.strong.class('font-semibold').children('Languages:'),
-								' ',
-								pipe(
-									languages,
-									Array.map(entry => `${entry.language} (${entry.level})`),
-									Array.join(' · ')
-								)
-							)
+							Array.map(CvScreen.education, entry => Entry(h, entry)),
+							h.p.children(h.strong.class('font-semibold').children('Languages:'), ' ', CvScreen.languages)
 						)
 					)
 			)

@@ -1,0 +1,1 @@
+../../modules/stash-native/ios/SaveActivityAttributes.swift

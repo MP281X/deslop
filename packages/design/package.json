@@ -11,8 +11,12 @@
 	},
 	"exports": {
 		"./model": "./src/shared/model.ts",
+		"./navigation": "./src/shared/navigation.ts",
 		"./web": "./src/web/design.ts",
-		"./native": "./src/native/design.ts"
+		"./web/page": "./src/web/page.ts",
+		"./native": "./src/native/design.ts",
+		"./native/*": "./src/native/*.ts",
+		"./metro": "./src/tooling/metro.ts"
 	},
 	"scripts": {
 		"build": "vp build gallery",
