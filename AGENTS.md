@@ -22,7 +22,7 @@ Personal apps with one user, who also develops them.
 
 ## Design
 
-- One axis: black only, the system font (SF Pro) with tabular figures for numbers, SF Mono for scales. iOS draws the iPhone apps' buttons, menus and sheets; web controls are plain and solid, with no imitation glass. Use the same SF Symbols on the web and in the iPhone toolbar. Portfolio keeps its own design.
+- One axis: black only, the system font (SF Pro) with tabular figures for numbers, SF Mono for scales. iOS draws the iPhone apps' toolbar buttons; web controls are plain and solid, with no imitation glass. Use the same SF Symbols on the web and in the iPhone toolbar. Portfolio keeps its own design.
 - Hue only for identity and status. Never label healthy states. Dots mark problems.
 - One row everywhere: a title, one muted line, numbers or time at the trailing edge; a problem's dot goes before the title and its reason on the muted line.
 - The list stands beside the opened item, and Mail's sidebar button collapses it. The fold is the only divider.
