@@ -23,6 +23,7 @@ import {RpcSerialization, RpcServer} from 'effect/rpc'
 import type {Rpc, RpcGroup} from 'effect/rpc'
 
 import {Auth, HttpAuth, clientAddress, localAuth} from '#server/auth.ts'
+import {registerIPhoneUpdates} from '#server/iphone-update.ts'
 import {McpStream, layerStructuredTools} from '#server/mcp.ts'
 import {appName, packageMetadata} from '#server/package.ts'
 import {recordRpcContracts, recordToolContracts} from '#server/probe.ts'
@@ -104,6 +105,7 @@ export const layerRoutes = HttpRouter.use(router =>
 		const traces = yield* Config.option(Config.String('OTEL_URL'))
 		const canonical = yield* Config.String('APP_URL')
 		const metadata = yield* Effect.cached(packageMetadata)
+		yield* registerIPhoneUpdates(router, auth, canonical)
 		yield* router.add(
 			'GET',
 			RUNTIME_PATH,
