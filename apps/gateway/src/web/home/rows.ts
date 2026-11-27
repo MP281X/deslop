@@ -1,9 +1,11 @@
 import type {Html} from '@effect/ui/html'
 
-import {Array, Boolean, Function, HashMap, Match, Number, Option, Order, Result, String, pipe} from 'effect'
+import {Array, Boolean, Function, HashMap, Number, Option, Order, Result, pipe} from 'effect'
 
 import {countOf} from '@deslop/runtime/shared/format'
+import {RowContent} from '@deslop/ui/axis'
 import {Button} from '@deslop/ui/control'
+import {Glass} from '@deslop/ui/glass'
 
 import {failureMessage} from '#contracts'
 import type {AiKeyItem, AiProvider, AiUsageWindow, ConnectionItem, McpUsageReport, SpendSource} from '#contracts'
@@ -23,41 +25,14 @@ const PROVIDERS = {
 
 type H = Html.H<Message>
 
-export function credentialAction(secret: string, valid: boolean, keys: readonly AiKeyItem[]) {
-	if (!valid) return 'Save key'
-	const provider = pipe(
-		secret,
-		Match.value,
-		Match.when(String.startsWith('oc_sk_'), Function.constant('opencode' as const)),
-		Match.when(String.startsWith('sk-ant-'), Function.constant('anthropic' as const)),
-		Match.orElse(Function.constant('openai' as const))
-	)
+export function credentialAction(keys: readonly AiKeyItem[], provider?: AiProvider) {
+	if (provider === undefined) return 'Save key'
 	const action = pipe(
 		keys,
 		Array.some(key => key.provider === provider),
 		Boolean.match({onFalse: Function.constant('Save'), onTrue: Function.constant('Replace')})
 	)
 	return `${action} ${PROVIDERS[provider].name} key`
-}
-
-function Lead(h: H, title: string, muted: string, problem?: string, mark?: string) {
-	return h.div.class('gateway-lead').children(
-		mark !== undefined && h.img.class('gateway-mark').attrs({alt: '', src: mark}),
-		h.div.class('min-w-0').children(
-			h.div
-				.class('axis-title')
-				.children(problem !== undefined && h.span.class('axis-dot').attr('aria-hidden', 'true'), title),
-			h.div
-				.class('axis-muted')
-				.attr('title', problem)
-				.children(
-					Option.match(Option.fromUndefinedOr(problem), {
-						onNone: Function.constant(muted),
-						onSome: reason => `${reason} · ${muted}`
-					})
-				)
-		)
-	)
 }
 
 function Sparkline(h: H, values: readonly number[]) {
@@ -105,20 +80,27 @@ export function KeyRows(h: Html.H<Message>, keys: readonly AiKeyItem[], usage: A
 					Option.as('Key refused'),
 					Option.getOrUndefined
 				)
+				const masked = `${style.prefix}…${key.last4}`
 				return h.div
-					.class('axis-row')
+					.class('axis-row axis-item')
 					.key(provider)
 					.attr('role', 'listitem')
 					.children(
-						Lead(h, style.name, `${style.prefix}…${key.last4}`, problem, style.mark),
-						h.div
-							.class('gateway-figures')
-							.children(
-								Sparkline(h, aiSeries(usage.report, style.payer, usage.range)),
-								h.div
-									.class('axis-value')
-									.children(aiCost(usage.report, style.payer), h.div.class('axis-muted').children(style.label))
-							)
+						RowContent(h, {
+							leading: h.img.class('gateway-mark').attrs({alt: '', src: style.mark}),
+							line: Boolean.match(problem === undefined, {
+								onFalse: () => `${problem} · ${masked}`,
+								onTrue: () => masked
+							}),
+							problem: problem !== undefined,
+							title: style.name,
+							value: h.span
+								.class('gateway-figures')
+								.children(
+									Sparkline(h, aiSeries(usage.report, style.payer, usage.range)),
+									h.span.children(aiCost(usage.report, style.payer), h.span.class('axis-muted').children(style.label))
+								)
+						})
 					)
 			})
 		)
@@ -142,9 +124,9 @@ function urgency(server: ConnectionItem) {
 	return 2
 }
 
-function Calls(h: H, calls: number) {
+function callsLabel(calls: number) {
 	const unit = Boolean.match(calls === 1, {onFalse: Function.constant('calls'), onTrue: Function.constant('call')})
-	return h.span.class('axis-value').children(`${countOf(calls)} ${unit}`)
+	return `${countOf(calls)} ${unit}`
 }
 
 function ConnectionAction(h: H, server: ConnectionItem, busy: boolean) {
@@ -152,11 +134,13 @@ function ConnectionAction(h: H, server: ConnectionItem, busy: boolean) {
 		onFalse: Function.constant('Connect'),
 		onTrue: Function.constant('Reconnect')
 	})
-	return Button(h, {disabled: busy})
-		.class('gateway-action')
-		.attr('aria-label', `${action} ${server.name}`)
-		.on('click', Message.Perform({action: Action.cases.Connect.make({id: server.id})}))
-		.children(action)
+	return Glass(h).children(
+		Button(h, {disabled: busy})
+			.class('gateway-action')
+			.attr('aria-label', `${action} ${server.name}`)
+			.on('click', Message.Perform({action: Action.cases.Connect.make({id: server.id})}))
+			.children(action)
+	)
 }
 
 export function ServerRows(
@@ -185,14 +169,19 @@ export function ServerRows(
 		Array.map(server => {
 			const problem = serverProblem(server)
 			return h.div
-				.class('axis-row')
+				.class('axis-row axis-item')
 				.key(server.id)
 				.attr('role', 'listitem')
 				.children(
-					Lead(h, server.name, new URL(server.url).hostname, problem),
-					Boolean.match(problem === undefined, {
-						onFalse: () => ConnectionAction(h, server, busy),
-						onTrue: () => Calls(h, pipe(callsByServer, HashMap.get(server.id), Option.getOrElse(Function.constant(0))))
+					RowContent(h, {
+						line: problem ?? new URL(server.url).hostname,
+						problem: problem !== undefined,
+						title: server.name,
+						value: Boolean.match(problem === undefined, {
+							onFalse: () => ConnectionAction(h, server, busy),
+							onTrue: () =>
+								callsLabel(pipe(callsByServer, HashMap.get(server.id), Option.getOrElse(Function.constant(0))))
+						})
 					})
 				)
 		})

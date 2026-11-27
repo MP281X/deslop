@@ -7,7 +7,10 @@ import {Array, Boolean, Effect, Function, Option, Result, Schema, String, pipe} 
 import {AsyncResult} from 'effect/reactivity'
 
 import {isDeniedCause} from '@deslop/runtime/client/live-stream'
+import {Loading, Notice, Placeholder} from '@deslop/ui/axis'
 import {Button} from '@deslop/ui/control'
+import {Glass} from '@deslop/ui/glass'
+import {isNative} from '@deslop/ui/native'
 
 import {ImageType} from '#contracts'
 import type {NoteItem} from '#contracts'
@@ -19,7 +22,6 @@ import type {Model} from '#web/notes/model.ts'
 import {StashNative, atDevice} from '#web/notes/native.ts'
 import {pagesOf} from '#web/notes/pages.ts'
 import type {Page} from '#web/notes/pages.ts'
-import {installed} from '#web/notes/session.ts'
 
 type H = Html.H<Message>
 
@@ -43,7 +45,7 @@ const LoadPicture = Mount.make('Stash/LoadPicture', {args: {path: Schema.String}
 
 export function picture(h: Html.H<Message>, path: string, css: string) {
 	const image = h.img.key(path).class(css).attr('alt', '')
-	if (installed) return image.onMount(LoadPicture({path}))
+	if (isNative) return image.onMount(LoadPicture({path}))
 	return image.attrs({loading: 'lazy', src: path})
 }
 
@@ -99,7 +101,7 @@ function denied(result: AsyncResult.AsyncResult<unknown, unknown>) {
 
 export function reader(h: Html.H<Message>, state: Model, note: NoteItem, date: string) {
 	if (denied(state.body) || denied(state.media)) {
-		return h.p.class('stash-notice').attr('role', 'status').children('Access denied')
+		return Notice(h, 'Access denied')
 	}
 	const body = pipe(
 		AsyncResult.value(state.body),
@@ -130,13 +132,15 @@ export function reader(h: Html.H<Message>, state: Model, note: NoteItem, date: s
 						onFalse: Function.constant('Pictures unavailable'),
 						onTrue: Function.constant('Note body unavailable')
 					}),
-					Button(h).class('stash-inline-action').on('click', Message.Retry()).children('Retry')
+					Glass(h, 'stash-inline-action').children(
+						Button(h).class('stash-action').on('click', Message.Retry()).children('Retry')
+					)
 				),
 		AsyncResult.isInitial(state.body) &&
 			note.status === 'ready' &&
-			h.p.class('stash-byline').attr('role', 'status').children('Loading note…'),
+			Loading(h, 'Loading note', Placeholder(h, 'stash-body-placeholder')),
 		Array.isReadonlyArrayNonEmpty(note.tags) &&
-			h.div.class('stash-tags').children(
+			Glass(h, 'stash-tags').children(
 				Array.map(note.tags, tag =>
 					Button(h, {pressed: tag === state.tag})
 						.key(tag)

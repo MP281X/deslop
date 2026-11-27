@@ -37,6 +37,15 @@ PLIST
 	-c 'Add :ITSAppUsesNonExemptEncryption bool false' \
 	"$app/Info.plist"
 
+cat > ios/App/Config.xcconfig <<'XCCONFIG'
+DESLOP_DOMAIN = mp281x.xyz
+DESLOP_SLUG = template-app
+DESLOP_SERVER = https:/$()/$(DESLOP_SLUG).$(DESLOP_DOMAIN)
+DESLOP_AUTH_HOST = auth.$(DESLOP_DOMAIN)
+DESLOP_AUTH = https:/$()/$(DESLOP_AUTH_HOST)
+XCCONFIG
+printf '\n#include "App/Config.xcconfig"\n' >> ios/debug.xcconfig
+
 sed -i '' \
 	-e '/Begin PBXBuildFile section/a\
 		D35000000000000000000001 = {isa = PBXBuildFile; fileRef = D35000000000000000000002; };\
@@ -44,8 +53,17 @@ sed -i '' \
 ' \
 	-e '/Begin PBXFileReference section/a\
 		D35000000000000000000002 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ../../../../packages/ui/native/DeslopNative.swift; sourceTree = SOURCE_ROOT; };\
-		D35000000000000000000004 = {isa = PBXFileReference; lastKnownFileType = folder.iconcomposer.icon; path = ../../src/web/app.icon; sourceTree = SOURCE_ROOT; };
+		D35000000000000000000004 = {isa = PBXFileReference; lastKnownFileType = folder.iconcomposer.icon; path = ../../src/web/app.icon; sourceTree = SOURCE_ROOT; };\
+		D35000000000000000000005 /* Config.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Config.xcconfig; sourceTree = SOURCE_ROOT; };
 ' \
+	-e '/debug\.xcconfig \*\/,$/a\
+				D35000000000000000000005 /* Config.xcconfig */,
+' \
+	-e '/504EC3151FED79650016851F \/\* Release \*\/ = {/ {' \
+	-e 'n' \
+	-e 'a\
+			baseConfigurationReference = D35000000000000000000005 /* Config.xcconfig */;
+' -e '}' \
 	-e 's/^\([[:space:]]*\)\(.*AppDelegate.swift in Sources \*\/,$\)/\1D35000000000000000000001,\
 \1\2/' \
 	-e 's/^\([[:space:]]*\)\(.*Assets.xcassets in Resources \*\/,$\)/\1D35000000000000000000003,\
@@ -54,9 +72,6 @@ sed -i '' \
 	-e 's/ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;/ASSETCATALOG_COMPILER_APPICON_NAME = app;/' \
 	-e '/ASSETCATALOG_COMPILER_APPICON_NAME/a\
 				CODE_SIGN_ENTITLEMENTS = App/App.entitlements;\
-				DESLOP_AUTH = "https://$(DESLOP_AUTH_HOST)";\
-				DESLOP_AUTH_HOST = "auth.mp281x.xyz";\
-				DESLOP_KEYCHAIN_GROUP = "$(DEVELOPMENT_TEAM).group.$(PRODUCT_BUNDLE_IDENTIFIER)";\
-				DESLOP_SERVER = "https://template-app.mp281x.xyz";
+				DESLOP_KEYCHAIN_GROUP = "$(DEVELOPMENT_TEAM).group.$(PRODUCT_BUNDLE_IDENTIFIER)";
 ' \
 	"$project"

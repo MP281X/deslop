@@ -43,6 +43,7 @@ private final class StashViewController: CAPBridgeViewController {
   override func capacitorDidLoad() {
     bridge?.registerPluginInstance(DeslopNativePlugin())
     bridge?.registerPluginInstance(StashNativePlugin())
+    webView?.allowsBackForwardNavigationGestures = true
   }
 
   override func viewDidLoad() {

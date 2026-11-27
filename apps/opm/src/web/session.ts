@@ -1,21 +1,14 @@
-import {Boolean} from 'effect'
-
-import {Capacitor} from '@capacitor/core'
-import {Atom, AtomRpc} from 'effect/reactivity'
+import {AtomRpc} from 'effect/reactivity'
 
 import {RpcStream} from '@deslop/runtime/shared/rpc'
-import {accountAtom as webAccount, addPageTelemetry, layerPageProtocol} from '@deslop/runtime/web/client'
-import {layerNativeProtocol, nativeAccount} from '@deslop/ui/native'
+import {addPageTelemetry} from '@deslop/runtime/web/client'
+import {isNative, sessionProtocol} from '@deslop/ui/native'
 
 import {RpcContracts} from '#contracts'
 
-export const native = Capacitor.isNativePlatform()
-
-if (!native) addPageTelemetry('@deslop/opm')
-
-export const accountAtom = Boolean.match(native, {onFalse: () => webAccount, onTrue: () => Atom.make(nativeAccount)})
+if (!isNative) addPageTelemetry('@deslop/opm')
 
 export class RpcClient extends AtomRpc.Service<RpcClient>()('@deslop/opm/web/RpcClient', {
 	group: RpcContracts.middleware(RpcStream),
-	protocol: Boolean.match(native, {onFalse: () => layerPageProtocol, onTrue: () => layerNativeProtocol})
+	protocol: sessionProtocol
 }) {}

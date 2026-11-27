@@ -1,10 +1,13 @@
 import type {Html} from '@effect/ui/html'
 
+import {Array, Boolean, Duration, Function, Number, Option, String, pipe} from 'effect'
 import type {DateTime} from 'effect'
-import {Array, Duration, Function, Number, Option, String, pipe} from 'effect'
 
+import type {ShellMenuGroup} from '@deslop/ui/app-shell'
+import {Loading, Row, RowContent} from '@deslop/ui/axis'
 import {Button} from '@deslop/ui/control'
 import {GlassPanel} from '@deslop/ui/glass'
+import {SymbolIcon} from '@deslop/ui/symbol'
 
 import {TravelTime} from '#contracts'
 import type {Flight, FlightList, Place} from '#contracts'
@@ -37,27 +40,8 @@ function Time(h: Html.H<Message>, value?: string, was?: string) {
 	return h.span.class('axis-value').children(was !== undefined && h.s.children(was), value)
 }
 
-export function Row(
-	h: Html.H<Message>,
-	row: {
-		line?: string
-		problem?: Option.Option<string>
-		title: string
-		value?: Option.Option<string>
-		was?: Option.Option<string>
-	}
-) {
-	return [
-		h.div
-			.class('trips-copy')
-			.children(
-				h.div
-					.class('axis-title')
-					.children(Option.isSome(row.problem ?? Option.none()) && h.span.class('axis-dot'), row.title),
-				h.div.class('axis-muted').children(Option.getOrUndefined(row.problem ?? Option.none()) ?? row.line)
-			),
-		Time(h, Option.getOrUndefined(row.value ?? Option.none()), Option.getOrUndefined(row.was ?? Option.none()))
-	]
+export function BoardSkeleton(h: Html.H<Message>) {
+	return Loading(h, 'Loading boarding pass', h.div.class('trips-skeleton-board').attr('aria-hidden', 'true'))
 }
 
 export function NextStep(h: Html.H<Message>, hero: Hero, sub?: string) {
@@ -132,24 +116,25 @@ function Ticket(h: Html.H<Message>, flight: Flight) {
 
 function Connection(h: Html.H<Message>, from: Flight, to: Flight) {
 	const change = changeWords(from, to)
-	return h.a
-		.class('axis-row')
-		.attr('href', `/flight/${to.id}`)
-		.on('click', () => Message.Select({id: to.id}), {preventDefault: true})
-		.children(
-			Row(h, {
-				line: line([
+	return Row(h, {
+		current: false,
+		id: to.id,
+		line: Boolean.match(change.tight, {
+			onFalse: () =>
+				line([
 					labelled(
 						'Gate',
 						Option.flatMap(to.live, live => live.departureGate)
 					),
 					Option.some('connection')
 				]),
-				problem: Option.liftPredicate(line([Option.some(change.label), change.was]), () => change.tight),
-				title: `Then ${titleOf(to)} to ${cityOf(to.to)}`,
-				value: Option.some(clockAt(departureOf(to), to.from.timeZone))
-			})
-		)
+			onTrue: () => line([Option.some(change.label), change.was])
+		}),
+		open: Message.Select({id: to.id}),
+		problem: change.tight,
+		title: `Then ${titleOf(to)} to ${cityOf(to.to)}`,
+		value: clockAt(departureOf(to), to.from.timeZone)
+	})
 }
 
 function Travellers(h: Html.H<Message>, flight: Flight) {
@@ -166,11 +151,15 @@ function Travellers(h: Html.H<Message>, flight: Flight) {
 				.key(`${index}`)
 				.class('axis-row')
 				.children(
-					Row(h, {
+					RowContent(h, {
 						line: detail,
+						problem: traveller.status === 'cancelled',
 						title: Option.getOrElse(traveller.name, Function.constant('Traveller')),
-						value: Option.filter(traveller.seat, () => traveller.status === 'confirmed'),
-						was: Option.filter(traveller.seat, () => traveller.status === 'cancelled')
+						value: Option.getOrUndefined(
+							Option.map(traveller.seat, seat =>
+								Boolean.match(traveller.status === 'cancelled', {onFalse: () => seat, onTrue: () => h.s.children(seat)})
+							)
+						)
 					})
 				)
 		]
@@ -212,37 +201,77 @@ export function dayAt(flight: Flight, flights: FlightList, now: DateTime.Utc, tr
 	}
 }
 
-export function AirportActions(h: Html.H<Message>, flight: Flight, travel: readonly TravelTime[], pending: boolean) {
+export function AirportOptions(flight: Flight, travel: readonly TravelTime[], pending: boolean) {
 	const saved = Option.map(travelTo(flight, travel), Duration.toMinutes)
-	return GlassPanel(h, 'trips-airport', `Time to ${cityOf(flight.from)} airport`, [
-		Option.getOrUndefined(
-			Option.map(flight.from.code, airport =>
-				h.div.class('trips-travel-times').children(
-					pipe(
+	const groups = Option.toArray(
+		Option.map(
+			flight.from.code,
+			airport =>
+				({
+					items: pipe(
 						Array.dedupe([...TRAVEL_CHOICES, ...Option.toArray(saved)]),
 						Array.sort(Number.Order),
-						Array.map(minutes =>
-							Button(h, {disabled: pending, pressed: Option.contains(saved, minutes)})
-								.key(`${minutes}`)
-								.class('trips-control')
-								.attrs({popovertarget: 'trips-airport', popovertargetaction: 'hide'})
-								.on('click', () => Message.TripTime({row: TravelTime.make({airport, minutes})}))
-								.children(travelLabel(minutes))
-						)
-					)
+						Array.map(minutes => ({
+							checked: Option.contains(saved, minutes),
+							disabled: pending,
+							id: `airport-${minutes}`,
+							message: Message.TripTime({row: TravelTime.make({airport, minutes})}),
+							title: travelLabel(minutes)
+						}))
+					),
+					title: `Time to ${cityOf(flight.from)} airport`
+				}) satisfies ShellMenuGroup<Message>
+		)
+	)
+	if (bookedOf(flight)) {
+		return Array.append(groups, {
+			items: [
+				{id: 'directions', message: Message.OpenUrl({url: directionsTo(flight.from)}), title: 'Directions'},
+				...Option.toArray(
+					Option.map(rideTo(flight.from), url => ({id: 'ride', message: Message.OpenUrl({url}), title: 'Ride'}))
 				)
-			)
-		),
-		bookedOf(flight) &&
+			],
+			title: ''
+		})
+	}
+	return groups
+}
+
+export function AirportMenu(h: Html.H<Message>, groups: readonly ShellMenuGroup<Message>[], open: boolean) {
+	return GlassPanel(
+		h,
+		'trips-airport',
+		'Airport travel',
+		Array.map(groups, group =>
 			h.div
-				.class('trips-airport-links')
+				.key(group.title)
+				.attrs({'aria-label': group.title || undefined, role: 'group'})
 				.children(
-					h.a.class('trips-control').attr('href', directionsTo(flight.from)).children('Directions'),
-					Option.getOrUndefined(
-						Option.map(rideTo(flight.from), url => h.a.class('trips-control').attr('href', url).children('Ride'))
+					group.title !== '' && h.span.class('trips-menu-label').children(group.title),
+					Array.map(group.items, item =>
+						Button(h, {disabled: item.disabled ?? false})
+							.key(item.id)
+							.attrs({
+								'aria-checked': Option.getOrUndefined(
+									Option.map(Option.fromUndefinedOr(item.checked), checked => `${checked}`)
+								),
+								role: Boolean.match(item.checked === undefined, {
+									onFalse: Function.constant('menuitemradio'),
+									onTrue: Function.constant('menuitem')
+								})
+							})
+							.on('click', item.message)
+							.children(item.title, item.checked === true && SymbolIcon(h, 'checkmark'))
 					)
 				)
-	])
+		)
+	)
+		.attrs({role: 'menu', style: 'position-anchor: --axis-action-airport'})
+		.popover('auto', open)
+		.on('toggle', event => {
+			if (!event.open) return Message.Airport({open: false})
+			return undefined
+		})
 }
 
 export function Board(
@@ -279,15 +308,15 @@ export function Board(
 		Option.getOrUndefined(Option.map(day.next, next => Connection(h, flight, next))),
 		Option.getOrUndefined(
 			Option.map(trouble, issue =>
-				h.div.class('axis-row').children(Row(h, {problem: Option.some(issue.reason), title: titleOf(flight)}))
+				h.div.class('axis-row').children(RowContent(h, {line: issue.reason, problem: true, title: titleOf(flight)}))
 			)
 		),
 		Option.getOrUndefined(
 			Option.map(late, reason =>
-				h.div.class('axis-row').children(Row(h, {problem: Option.some(reason), title: 'Inbound flight'}))
+				h.div.class('axis-row').children(RowContent(h, {line: reason, problem: true, title: 'Inbound flight'}))
 			)
 		),
-		Travellers(h, flight)
+		...Travellers(h, flight)
 	]
 }
 
@@ -295,10 +324,10 @@ export function AirportBy(h: Html.H<Message>, flight: Flight) {
 	return h.div
 		.class('axis-row')
 		.children(
-			Row(h, {
+			RowContent(h, {
 				line: 'An hour before departure',
 				title: 'At the airport by',
-				value: Option.some(clockAt(airportByOf(flight), flight.from.timeZone))
+				value: clockAt(airportByOf(flight), flight.from.timeZone)
 			})
 		)
 }

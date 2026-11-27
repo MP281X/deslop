@@ -8,6 +8,7 @@ import type {NoteId} from '#contracts'
 /* oxlint-disable typescript/no-restricted-types -- Capacitor's bridge returns Promises. */
 export const StashNative = registerPlugin<{
 	image: (options: {path: string}) => Promise<{data: string; type: string}>
+	openLink: (options: {url: string}) => Promise<void>
 	paste: () => Promise<{image?: string; text?: string}>
 	saveImage: (options: {data: string; id: NoteId}) => Promise<void>
 	settleShares: () => Promise<{rejections: string[]}>

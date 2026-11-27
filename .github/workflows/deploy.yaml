@@ -63,7 +63,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           builds=()
-          for app in opm stash trips; do
+          for app in auth deploy gateway opm scope stash trips; do
             inputs=$(git ls-tree -r HEAD -- "apps/$app/ios" "apps/$app/capacitor.config.json" "apps/$app/src/web/app.icon" "apps/$app/package.json" packages/ui/native package.json pnpm-lock.yaml pnpm-workspace.yaml)
             web=$(cd "apps/$app/dist/client" && find . -type f -print0 | LC_ALL=C sort -z | xargs -0 sha256sum)
             fingerprint=$(printf '%s\n' "$inputs" "$web" "$DESLOP_DOMAIN" "$APPLE_TEAM_ID" | sha256sum | cut -c1-64)

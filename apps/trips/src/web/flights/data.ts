@@ -1,16 +1,18 @@
 import {Array, Effect, Option, Schema, Stream, pipe} from 'effect'
 
-import type {AtomRegistry} from 'effect/reactivity'
 import {AsyncResult, Atom} from 'effect/reactivity'
+import type {AtomRegistry} from 'effect/reactivity'
 
 import {isDeniedCause, keepValueThroughOutages, reconnectOnDrop} from '@deslop/runtime/client/live-stream'
 import {UserId} from '@deslop/runtime/shared/auth'
 import {listReducer} from '@deslop/runtime/shared/list'
+import {isNative} from '@deslop/ui/native'
+import {foldLiveList} from '@deslop/ui/state'
 
 import {Flight, FlightsError, TravelTime} from '#contracts'
 import {byDeparture} from '#journey'
 
-import {accountAtom, FLIGHTS_KEY, native, RpcClient} from '#web/flights/session.ts'
+import {FLIGHTS_KEY, RpcClient, accountAtom} from '#web/flights/session.ts'
 
 const apply = listReducer(byDeparture, flight => flight.id)
 type Cached = typeof Cached.Type
@@ -21,10 +23,10 @@ export const ownerAtom = Atom.map(accountAtom, result =>
 
 const flightsByOwnerAtoms = Atom.family((account: UserId) =>
 	RpcClient.runtime.atom(get => {
-		const live = pipe(
+		const live = foldLiveList(
 			Stream.unwrap(Effect.map(RpcClient, call => call('flights.events', undefined))),
-			Stream.scan(Array.empty<Flight>, apply),
-			Stream.drop(1)
+			Array.empty<Flight>,
+			apply
 		)
 		const store = Stream.tap(live, flights =>
 			pipe(
@@ -48,7 +50,7 @@ const flightsByOwnerAtoms = Atom.family((account: UserId) =>
 				Stream.fromIterable
 			)
 		)
-		if (!native) return keepValueThroughOutages(get, live, reconnectOnDrop)
+		if (!isNative) return keepValueThroughOutages(get, live, reconnectOnDrop)
 		return Stream.concat(
 			hydrate,
 			keepValueThroughOutages(

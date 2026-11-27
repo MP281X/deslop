@@ -1,17 +1,19 @@
 import {Command, UiSchema} from '@effect/ui'
 
-import {Effect, Function, Redacted, Schema, pipe} from 'effect'
+import {Boolean, Effect, Function, Redacted, Schema, pipe} from 'effect'
 
 import {AsyncResult, Atom, AtomRegistry} from 'effect/reactivity'
 
 import {AuthError, signInUrl} from '@deslop/runtime/shared/auth'
 import {Account} from '@deslop/runtime/shared/schema'
 import {TimeFrame} from '@deslop/runtime/shared/time'
+import {isNative, nativeSignIn, nativeSignOut, sessionAccount} from '@deslop/ui/native'
 import {refreshFailed} from '@deslop/ui/state'
 
 import {AiKeyItem, AiSetKey, AiUsageWindow, ConnectionItem, McpUsageWindow, ServerId, ServerUrl} from '#contracts'
 
 import {RpcClient, aiKeyAtom, aiUsageAtom, mcpUsageAtom, serversAtom} from '#web/home/client.ts'
+import {copyMcpUrl, gatewayOrigin} from '#web/home/platform.ts'
 import {GatewayRoute} from '#web/routes.ts'
 
 type Entry = typeof Entry.Type
@@ -27,29 +29,33 @@ const AiUsageRead = AsyncResult.Schema({error: Schema.Unknown, success: AiUsageW
 const McpUsageRead = AsyncResult.Schema({error: Schema.Unknown, success: McpUsageWindow})
 type ActionKind = typeof ActionKind.Type
 const ActionKind = Schema.Literals(['AddServer', 'Connect', 'SaveKey'])
+type Panel = typeof Panel.Type
+const Panel = Schema.Literals(['range', 'options'])
 
 export type Model = typeof Model.Type
 export const Model = Schema.Struct({
 	account: AccountRead,
 	aiUsage: AiUsageRead,
+	busy: Schema.Boolean,
 	dialog: Schema.UndefinedOr(Schema.Struct({error: Schema.UndefinedOr(Schema.String), secret: Entry})),
 	fieldError: Schema.UndefinedOr(Schema.String),
 	fieldVersion: Schema.Int,
 	keys: KeysRead,
 	mcpUsage: McpUsageRead,
 	menuFeedback: Schema.UndefinedOr(Schema.String),
-	pending: Schema.UndefinedOr(ActionKind),
+	panel: Schema.UndefinedOr(Panel),
 	route: GatewayRoute,
 	servers: ServersRead,
-	sidebarOpen: Schema.Boolean,
+	signInProblem: Schema.UndefinedOr(Schema.String),
 	signingIn: Schema.Boolean
 })
 
 export const Message = UiSchema.TaggedEnum({
 	Account: {result: AccountRead},
 	ActionFailed: {action: ActionKind, error: Schema.String},
-	ActionFinished: {action: Schema.Literals(['AddServer', 'SaveKey'])},
+	ActionFinished: {action: ActionKind},
 	AiUsage: {period: TimeFrame, result: AiUsageRead},
+	AuthDone: {problem: Schema.UndefinedOr(Schema.String), sessionChanged: Schema.Boolean},
 	CancelKey: {},
 	ClearFieldError: {},
 	Copy: {},
@@ -57,23 +63,26 @@ export const Message = UiSchema.TaggedEnum({
 	EditedKey: {secret: Entry},
 	Keys: {result: KeysRead},
 	McpUsage: {period: TimeFrame, result: McpUsageRead},
+	Panel: {panel: Panel},
+	PanelClosed: {panel: Panel},
 	Perform: {action: Action},
 	Period: {period: TimeFrame},
 	Retry: {},
 	Route: {route: GatewayRoute},
 	Servers: {result: ServersRead},
-	SubmitField: {entry: Entry},
-	ToggleSidebar: {}
+	SignIn: {},
+	SignOut: {},
+	SubmitField: {entry: Entry}
 })
 export type Message = typeof Message.Type
 
-function leaving(id: ServerId) {
-	return Effect.andThen(
-		Effect.sync(() => location.assign(`/oauth/connect?${new URLSearchParams({id})}`)),
-		// Authorization has started; keep the action pending until the document leaves.
-		Effect.never
-	)
-}
+const leaving = Effect.fnUntraced(function* (id: ServerId, action: ActionKind) {
+	const origin = yield* gatewayOrigin
+	yield* Effect.sync(() => location.assign(`${origin}/oauth/connect?${new URLSearchParams({id})}`))
+	if (isNative) return Message.ActionFinished({action})
+	// Authorization has started; keep the action pending until the document leaves.
+	return yield* Effect.never
+})
 
 const addServer = Effect.fnUntraced(function* (entry: Entry) {
 	const url = yield* Effect.mapError(Schema.decodeEffect(ServerUrl)(Redacted.value(entry)), cause =>
@@ -83,14 +92,14 @@ const addServer = Effect.fnUntraced(function* (entry: Entry) {
 		})
 	)
 	const server = yield* Effect.flatMap(RpcClient, call => call('connections.add', {url}))
-	if (server.status !== 'Connected') return yield* leaving(server.id)
+	if (server.status !== 'Connected') return yield* leaving(server.id, 'AddServer')
 	return Message.ActionFinished({action: 'AddServer'})
 })
 
 const actionAtom = RpcClient.runtime.fn((action: Action) =>
 	Action.match(action, {
 		AddServer: request => addServer(request.url),
-		Connect: request => leaving(request.id),
+		Connect: request => leaving(request.id, 'Connect'),
 		SaveKey: Effect.fnUntraced(function* (request) {
 			yield* (yield* RpcClient)('ai-proxy.setKey', request.input)
 			return Message.ActionFinished({action: 'SaveKey'})
@@ -117,7 +126,7 @@ export class Execute extends Command.Service<Execute>()('Gateway/Execute', {args
 }
 
 export class Refresh extends Command.Service<Refresh>()('Gateway/Refresh', {
-	args: {period: TimeFrame},
+	args: {newSession: Schema.Boolean, period: TimeFrame},
 	success: Schema.Void
 }) {
 	static readonly layer = this.toLayer(
@@ -125,6 +134,10 @@ export class Refresh extends Command.Service<Refresh>()('Gateway/Refresh', {
 			AtomRegistry.AtomRegistry,
 			registry => request =>
 				Effect.sync(() => {
+					if (request.newSession) {
+						registry.refresh(sessionAccount)
+						registry.refresh(RpcClient.runtime)
+					}
 					refreshFailed(registry, aiKeyAtom)
 					refreshFailed(registry, aiUsageAtom(request.period))
 					refreshFailed(registry, serversAtom)
@@ -134,16 +147,38 @@ export class Refresh extends Command.Service<Refresh>()('Gateway/Refresh', {
 	)
 }
 
-export const SignIn = Command.make('Gateway/SignIn', {args: {}}, () =>
+export const SignInWeb = Command.make('Gateway/SignInWeb', {args: {}}, () =>
 	Effect.sync(() => location.replace(signInUrl(location.href)))
 )
 
+export const SignIn = Command.make('Gateway/SignIn', {args: {}}, () =>
+	Effect.match(nativeSignIn, {
+		onFailure: error => Message.AuthDone({problem: error.message, sessionChanged: false}),
+		onSuccess: sessionChanged => Message.AuthDone({problem: undefined, sessionChanged})
+	})
+)
+
+export const SignOut = Command.make('Gateway/SignOut', {args: {}}, () =>
+	Effect.match(nativeSignOut, {
+		onFailure: error => Message.AuthDone({problem: error.message, sessionChanged: false}),
+		onSuccess: status =>
+			Message.AuthDone({
+				problem: Boolean.match(status >= 200 && status < 400, {
+					onFalse: Function.constant('Auth did not confirm ending the shared session.'),
+					onTrue: Function.constUndefined
+				}),
+				sessionChanged: true
+			})
+	})
+)
+
 export const Copy = Command.make('Gateway/Copy', {args: {}}, () =>
-	Effect.match(
-		Effect.tryPromise({
-			catch: Function.constant('Couldn’t copy MCP URL'),
-			try: () => navigator.clipboard.writeText(`${location.origin}/mcp`)
-		}),
-		{onFailure: text => Message.CopyFeedback({text}), onSuccess: () => Message.CopyFeedback({text: 'MCP URL copied'})}
+	pipe(
+		gatewayOrigin,
+		Effect.flatMap(origin => Effect.tryPromise({catch: Function.constVoid, try: () => copyMcpUrl(origin)})),
+		Effect.match({
+			onFailure: () => Message.CopyFeedback({text: 'Couldn’t copy MCP URL'}),
+			onSuccess: () => Message.CopyFeedback({text: 'MCP URL copied'})
+		})
 	)
 )

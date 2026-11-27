@@ -1,57 +1,29 @@
-@import '@deslop/ui/theme.css';
-
-.auth {
-	--pane-padding: 10px;
-}
-
-.auth-list,
-.auth-detail {
-	padding: 8px;
-}
-
-.auth .axis-row {
-	min-height: 44px;
-	font-size: 0.875rem;
-}
-
-.auth .axis-muted {
-	font-size: 0.75rem;
+.auth .fold > :is(.fold-list, .fold-detail) {
+	padding: 6px 8px;
 }
 
 .auth .axis-value {
 	white-space: nowrap;
 }
 
-.auth-row-name {
-	display: grid;
-	min-width: 0;
-	line-height: 1.3;
-}
-
-.auth-person {
-	cursor: pointer;
-}
-
-.auth-action img {
-	width: 16px;
-	height: 16px;
+.auth .shell-controls:empty {
+	display: none;
 }
 
 .auth-action {
 	display: inline-flex;
 	align-items: center;
 	gap: 8px;
-	min-height: 34px;
-	padding-inline: 12px;
+	min-block-size: 44px;
+	padding-inline: 14px;
 	border-radius: inherit;
 	font-size: 0.875rem;
-	white-space: nowrap;
 	cursor: pointer;
 }
 
-.axis-muted.auth-status,
-.auth-status .axis-muted {
-	white-space: normal;
+.auth-action img {
+	inline-size: 16px;
+	block-size: 16px;
 }
 
 .auth-screen {
@@ -71,20 +43,42 @@
 	text-align: center;
 }
 
-.shell-actions svg {
-	fill: none;
-	stroke: currentColor;
-	stroke-width: 2;
-	stroke-linecap: round;
-	stroke-linejoin: round;
-}
-
-.shell-controls > .shell-actions:only-child {
-	margin-inline-start: auto;
-}
-
 .auth-waiting {
 	flex: 1;
 	min-height: 0;
-	padding: 16px;
+}
+
+.auth-read-problem {
+	position: sticky;
+	inset-block-end: 0;
+	display: flow-root;
+	background: var(--color-background);
+}
+
+#auth-people-options {
+	position-anchor: --axis-action-people;
+	position-area: inline-start span-block-end;
+	position-try-fallbacks:
+		flip-inline,
+		flip-block,
+		flip-block flip-inline;
+	min-inline-size: min(14rem, var(--panel-width));
+}
+
+#auth-people-options button {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+	inline-size: 100%;
+	min-block-size: 44px;
+	border-radius: 8px;
+	padding: 6px 9px;
+	text-align: start;
+}
+
+#auth-people-options .sf-symbol {
+	flex: none;
+	inline-size: 18px;
+	block-size: 18px;
 }

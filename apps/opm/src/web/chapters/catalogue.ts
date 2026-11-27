@@ -2,27 +2,25 @@ import {Array, Effect, HashMap, Option, Order, Semaphore, Stream, pipe} from 'ef
 
 import {AsyncResult, Atom} from 'effect/reactivity'
 
-import {keepValueThroughOutages, reconnectOnDrop} from '@deslop/runtime/client/live-stream'
 import {writeOutcome} from '@deslop/runtime/client/protocol'
 import type {UserId} from '@deslop/runtime/shared/auth'
 import {listReducer} from '@deslop/runtime/shared/list'
+import {sessionAccount} from '@deslop/ui/native'
+import {liveList} from '@deslop/ui/state'
 
 import {byChapterNumber, keyOf} from '#contracts'
 import type {ChapterKey, Position, ReadingChapter, ReadingPosition} from '#contracts'
 
-import {RpcClient, accountAtom} from '#web/session.ts'
+import {RpcClient} from '#web/session.ts'
 
 const reduceChapters = listReducer<ReadingChapter, ChapterKey>(Order.flip(byChapterNumber), keyOf)
 
 export const chaptersAtom = RpcClient.runtime.atom(get =>
-	keepValueThroughOutages(
+	liveList(
 		get,
-		pipe(
-			Stream.unwrap(Effect.map(RpcClient, client => client('chapters.events', undefined))),
-			Stream.scan(Array.empty<ReadingChapter>, (chapters, event) => reduceChapters(chapters, {...event, removed: []})),
-			Stream.drop(1)
-		),
-		reconnectOnDrop
+		Stream.unwrap(Effect.map(RpcClient, client => client('chapters.events', undefined))),
+		Array.empty<ReadingChapter>,
+		(chapters, event) => reduceChapters(chapters, {...event, removed: []})
 	)
 )
 
@@ -32,7 +30,7 @@ const placesByAccountAtoms = Atom.family((_account: UserId) =>
 )
 
 export const unsavedAtom = Atom.make(get =>
-	Option.match(AsyncResult.value(get(accountAtom)), {
+	Option.match(AsyncResult.value(get(sessionAccount)), {
 		onNone: () => HashMap.empty<ChapterKey, Position>(),
 		onSome: account => get(placesByAccountAtoms(account.id))
 	})
@@ -44,7 +42,7 @@ export const readingWritesAtom = Atom.keepAlive(
 	Atom.fn(
 		(updates: readonly (typeof ReadingPosition.json.Type)[], get) =>
 			Effect.gen(function* () {
-				const places = Option.map(AsyncResult.value(get(accountAtom)), account => placesByAccountAtoms(account.id))
+				const places = Option.map(AsyncResult.value(get(sessionAccount)), account => placesByAccountAtoms(account.id))
 				function keep(
 					update: (current: HashMap.HashMap<ChapterKey, Position>) => HashMap.HashMap<ChapterKey, Position>
 				) {

@@ -2,10 +2,9 @@ import {Route} from '@effect/ui'
 
 import {Schema} from 'effect'
 
-import {NoteId} from '#contracts'
+import {Pane} from '@deslop/ui/split'
 
-export type Pane = typeof Pane.Type
-const Pane = Schema.Literals(['list', 'detail'])
+import {NoteId} from '#contracts'
 
 export const StashRoute = Route.union({
 	Home: Route.make('/', {search: {note: Schema.optional(NoteId), pane: Schema.optional(Pane)}}),

@@ -1,24 +1,21 @@
 import {Boolean, Effect, Function, Layer, Option, Schema, pipe} from 'effect'
 
-import {Capacitor} from '@capacitor/core'
-import type {AtomRegistry} from 'effect/reactivity'
 import {AsyncResult, Atom, AtomRpc} from 'effect/reactivity'
+import type {AtomRegistry} from 'effect/reactivity'
 
 import {isDenied, signInUrl} from '@deslop/runtime/shared/auth'
 import {RpcStream} from '@deslop/runtime/shared/rpc'
 import {Account} from '@deslop/runtime/shared/schema'
 import {layerOtlp} from '@deslop/runtime/shared/telemetry'
-import {accountAtom as pageAccount, addPageTelemetry, layerPageProtocol} from '@deslop/runtime/web/client'
-import {layerNativeProtocol, nativeAccount, nativeServer, nativeSignIn, nativeSignOut} from '@deslop/ui/native'
+import {accountAtom as pageAccount, addPageTelemetry} from '@deslop/runtime/web/client'
+import {isNative, nativeAccount, nativeServer, nativeSignIn, nativeSignOut, sessionProtocol} from '@deslop/ui/native'
 
 import {TripsRpcs} from '#contracts'
 
 const ACCOUNT_KEY = 'trips.account'
 export const FLIGHTS_KEY = 'trips.flights'
 
-export const native = Capacitor.isNativePlatform()
-
-if (native) {
+if (isNative) {
 	Atom.runtime.addGlobalLayer(
 		Layer.unwrap(
 			Effect.match(nativeServer, {
@@ -39,7 +36,7 @@ type LocalAccount = typeof LocalAccount.Type
 const LocalAccount = Schema.fromJsonString(Account)
 const cachedAccountAtom = Atom.keepAlive(
 	Atom.make(
-		Boolean.match(native, {
+		Boolean.match(isNative, {
 			onFalse: () => Option.none<Account>(),
 			onTrue: () =>
 				Option.flatMap(Option.fromNullishOr(localStorage.getItem(ACCOUNT_KEY)), Schema.decodeOption(LocalAccount))
@@ -93,16 +90,16 @@ const mobileAccountAtom = Atom.make(get => {
 	})
 })
 
-export const accountAtom = Boolean.match(native, {
+export const accountAtom = Boolean.match(isNative, {
 	onFalse: Function.constant(pageAccount),
 	onTrue: Function.constant(mobileAccountAtom)
 })
-export const refreshAccount = Boolean.match(native, {
+export const refreshAccount = Boolean.match(isNative, {
 	onFalse: Function.constant(pageAccount),
 	onTrue: Function.constant(checkedAccountAtom)
 })
 
-export const signIn = Boolean.match(native, {
+export const signIn = Boolean.match(isNative, {
 	onFalse: () =>
 		Effect.sync(() => {
 			location.replace(signInUrl(location.href))
@@ -120,8 +117,5 @@ export function resetAccount(registry: AtomRegistry.AtomRegistry) {
 
 export class RpcClient extends AtomRpc.Service<RpcClient>()('@deslop/trips/web/flights/session/RpcClient', {
 	group: TripsRpcs.middleware(RpcStream),
-	protocol: Boolean.match(native, {
-		onFalse: Function.constant(layerPageProtocol),
-		onTrue: Function.constant(layerNativeProtocol)
-	})
+	protocol: sessionProtocol
 }) {}

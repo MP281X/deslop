@@ -57,7 +57,7 @@ gh run download "$run" --name stash-simulator-$fingerprint-$recipe --dir /tmp/st
 tar -xzf /tmp/stash-sim/simulator.tar.gz -C /tmp/stash-sim
 ```
 
-opm and trips build the same way.
+The other iPhone apps build the same way.
 
 ## Native tools
 

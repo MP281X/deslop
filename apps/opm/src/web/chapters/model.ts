@@ -7,7 +7,7 @@ import {AsyncResult, AtomRegistry} from 'effect/reactivity'
 
 import {Account} from '@deslop/runtime/shared/schema'
 import {DateTimeUtcFromFiniteMillis} from '@deslop/runtime/shared/time'
-import {nativeSignIn, nativeSignOut} from '@deslop/ui/native'
+import {isNative, nativeSignIn, nativeSignOut, sessionAccount} from '@deslop/ui/native'
 
 import {
 	ChapterIdentity,
@@ -22,7 +22,7 @@ import {
 
 import {chaptersAtom, readingWritesAtom} from '#web/chapters/catalogue.ts'
 import {OpmRoute} from '#web/routes.ts'
-import {RpcClient, accountAtom, native} from '#web/session.ts'
+import {RpcClient} from '#web/session.ts'
 
 const CatalogueRead = AsyncResult.Schema({error: Schema.Unknown, success: Schema.Array(ReadingChapter)})
 const AccountRead = AsyncResult.Schema({error: Schema.Unknown, success: Account})
@@ -44,7 +44,9 @@ export const Model = Schema.Struct({
 	busy: Schema.Boolean,
 	catalogue: CatalogueRead,
 	failed: Schema.HashSet(Schema.String),
+	listHidden: Schema.Boolean,
 	menu: Schema.Boolean,
+	narrow: Schema.Boolean,
 	now: DateTimeUtcFromFiniteMillis,
 	reader: Schema.UndefinedOr(Reader),
 	route: OpmRoute,
@@ -60,16 +62,18 @@ export const Message = UiSchema.TaggedEnum({
 	Catalogue: {catalogue: CatalogueRead},
 	Clock: {now: DateTimeUtcFromFiniteMillis},
 	Close: {},
+	CloseMenu: {},
 	Expired: {chapter: ChapterIdentity},
 	Image: {failed: Schema.Boolean, src: Schema.String, wide: Schema.Boolean},
 	Menu: {},
-	MenuChanged: {open: Schema.Boolean},
 	Move: {step: Schema.Literals([-1, 1])},
 	Open: {chapter: ChapterIdentity},
+	Posture: {narrow: Schema.Boolean},
 	Retry: {},
 	RetryPage: {src: Schema.String},
 	Route: {route: OpmRoute},
 	Series: {series: Series},
+	Sidebar: {},
 	SignIn: {},
 	SignOut: {},
 	Spread: {spread: Schema.Boolean},
@@ -91,7 +95,7 @@ export class Save extends Command.Service<Save>()('Opm/Save', {
 
 function refresh(registry: AtomRegistry.AtomRegistry) {
 	return Effect.sync(() => {
-		registry.refresh(accountAtom)
+		registry.refresh(sessionAccount)
 		registry.refresh(chaptersAtom)
 	})
 }
@@ -152,7 +156,7 @@ export class SignOut extends Command.Service<SignOut>()('Opm/SignOut', {args: {}
 export const OpmCommands = Layer.mergeAll(Save.layer, Refresh.layer, SignIn.layer, SignOut.layer)
 
 export const SetBars = Command.make('Opm/SetBars', {args: {visible: Schema.Boolean}}, request => {
-	if (!native) return Effect.void
+	if (!isNative) return Effect.void
 	return Effect.ignore(
 		Effect.tryPromise({
 			catch: cause => ChaptersError.make({cause, message: 'The system bars could not be changed.'}),

@@ -1,43 +1,48 @@
 import {Command, Component, Router, Subscription} from '@effect/ui'
-import {Html, HtmlSubscription} from '@effect/ui/html'
+import {Html} from '@effect/ui/html'
 
 import {Array, Boolean, DateTime, Equal, Function, Layer, Option, Result, Schema, pipe} from 'effect'
 
 import {AsyncResult, AtomRegistry} from 'effect/reactivity'
 
 import {clockAtom} from '@deslop/runtime/client/clock'
-import {isDenied} from '@deslop/runtime/shared/auth'
-import {accountAtom} from '@deslop/runtime/web/client'
-import {AppShell} from '@deslop/ui/app-shell'
-import {Button} from '@deslop/ui/control'
-import {SidebarControl} from '@deslop/ui/glass'
-import {observe} from '@deslop/ui/state'
+import {blockingFailure, isDeniedCause} from '@deslop/runtime/client/live-stream'
+import {ActionShell} from '@deslop/ui/app-shell'
+import type {ShellAction} from '@deslop/ui/app-shell'
+import {Notice} from '@deslop/ui/axis'
+import {PressFeedback} from '@deslop/ui/control'
+import {isNative, sessionAccount} from '@deslop/ui/native'
+import {Split, singlePane, watchPanes} from '@deslop/ui/split'
+import {ReadState, observe} from '@deslop/ui/state'
+import {hasHistoryBehind, historyBack, usedHistoryMotion} from '@deslop/ui/viewport'
 
 import {availablePorts, itemOwner, workloads} from '#contracts'
-import type {Row} from '#contracts'
+import type {MachineHistory, Row, Snapshot} from '#contracts'
 
 import {AppActions} from '#web/inventory/actions.ts'
 import {Operation, appHistoryAtom, inventoryAtom, metricsAtom} from '#web/inventory/client.ts'
 import {Detail, MachineDetail} from '#web/inventory/detail.ts'
-import {Dialog} from '#web/inventory/dialog.ts'
+import {Dialog, DialogActions} from '#web/inventory/dialog.ts'
 import {List} from '#web/inventory/list.ts'
+import type {Focused} from '#web/inventory/list.ts'
+import {LoadingApps, LoadingReadings} from '#web/inventory/loading.ts'
 import {
 	DialogState,
 	Execute,
 	MACHINE,
 	Message,
 	Model,
-	NARROW,
+	RedirectToAuth,
 	Refresh,
 	SignIn,
 	signInRequested
 } from '#web/inventory/model.ts'
-import {rowOrder} from '#web/inventory/rows.ts'
+import type {H} from '#web/inventory/model.ts'
+import {rowOrder, statusLine} from '#web/inventory/rows.ts'
+import {RestartReason} from '#web/inventory/traces.ts'
 import {DeployRoute} from '#web/routes.ts'
 
-type H = Html.H<Message>
-
-function selected(rows: ReturnType<typeof workloads>, route: Model['route'], defaultApp: Model['defaultApp']) {
+function selected(rows: readonly Row[], route: Model['route'], defaultApp: Model['defaultApp']) {
 	if (!DeployRoute.isAnyOf(['Home'])(route)) return Option.none()
 	return pipe(
 		Option.fromUndefinedOr(route.search.app),
@@ -79,156 +84,223 @@ function moveTo(inventory: Model['inventory'], route: Model['route'], current: M
 	}
 }
 
-function Notice(h: H, text: string, retry = false) {
-	return h.div
-		.class('deploy-notice')
-		.attr('role', 'status')
-		.children(
-			h.p.children(text),
-			retry &&
-				Button(h, {})
-					.on('click', () => Message.Retry())
-					.children('Retry')
-		)
+function showOf(route: Model['route']) {
+	if (!DeployRoute.isAnyOf(['Home'])(route)) return 'list'
+	if (route.search.pane === 'apps' || route.search.app === undefined) return 'list'
+	return 'detail'
 }
 
-function historyStatus(h: H, model: Model, problems: readonly string[]) {
-	const history = Option.getOrUndefined(AsyncResult.value(model.metrics))
-	if (
-		AsyncResult.isFailure(model.inventory) ||
-		AsyncResult.isFailure(model.metrics) ||
-		AsyncResult.isFailure(model.appHistory)
-	) {
-		if (history === undefined) return Notice(h, 'Couldn’t load history', true)
-		return Notice(h, 'Out of date', true)
-	}
-	if (Array.isReadonlyArrayNonEmpty(problems)) return Notice(h, Array.join(problems, ' · '))
-	if (AsyncResult.isInitial(model.metrics)) return Notice(h, 'Loading history…')
-	if (history === undefined) return undefined
-	if (Array.isReadonlyArrayEmpty(history.samples)) return Notice(h, 'No history in the last hour')
-	if (history.stale) return Notice(h, 'History is out of date')
+function appOf(route: Model['route']) {
+	if (DeployRoute.isAnyOf(['Home'])(route)) return route.search.app
 	return undefined
 }
 
-function Workspace(h: H, model: Model) {
-	if (!DeployRoute.isAnyOf(['Home'])(model.route)) {
-		return h.main.class('deploy-notice').children(h.a.attr('href', '/').children('Back to Deploy'))
+function sidebar(model: Model) {
+	if (model.narrow && showOf(model.route) === 'detail') {
+		return {
+			id: 'sidebar',
+			message: Message.Sidebar(),
+			symbol: 'chevron.left',
+			title: 'Back'
+		} satisfies ShellAction<Message>
 	}
-	const readers: readonly AsyncResult.AsyncResult<unknown, unknown>[] = [
-		model.inventory,
-		model.metrics,
-		model.appHistory
-	]
-	if (Array.some(readers, result => Option.exists(AsyncResult.error(result), isDenied))) {
-		if (Array.some(readers, signInRequested)) return Notice(h, 'Signing in…')
-		return Notice(h, 'Access denied')
+	return {
+		disabled: model.narrow && appOf(model.route) === undefined && Option.isNone(model.defaultApp),
+		id: 'sidebar',
+		message: Message.Sidebar(),
+		pressed: model.narrow || !model.listHidden,
+		symbol: 'sidebar.left',
+		title: 'Sidebar'
+	} satisfies ShellAction<Message>
+}
+
+function historyStatus(h: H, model: Model, snapshot: Snapshot) {
+	const history = Option.getOrUndefined(AsyncResult.value(model.metrics))
+	if (Option.isSome(blockingFailure(model.metrics)) || Option.isSome(blockingFailure(model.appHistory))) {
+		return Notice(h, 'Couldn’t load history', Message.Retry())
 	}
-	const snapshot = Option.getOrUndefined(AsyncResult.value(model.inventory))
-	if (snapshot === undefined) {
-		if (AsyncResult.isInitial(model.inventory)) return Notice(h, 'Loading apps…')
-		return Notice(h, 'Couldn’t load apps', true)
+	if (AsyncResult.isFailure(model.metrics) || AsyncResult.isFailure(model.appHistory) || history?.stale === true) {
+		return Notice(h, 'History may be out of date', Message.Retry())
 	}
-	const history = AsyncResult.value(model.metrics)
-	const app = AsyncResult.value(model.appHistory)
-	const rows = Array.sort(workloads(snapshot.items), rowOrder)
-	const selectedRow = selected(rows, model.route, model.defaultApp)
-	const machine = model.route.search.app === MACHINE
-	const implicitApp = model.route.search.app === undefined
-	const isList = model.route.search.pane === 'apps' || implicitApp
-	const id = Boolean.match(machine, {
-		onFalse: () => Option.map(selectedRow, row => row.item.id),
-		onTrue: () => Option.some(MACHINE)
-	})
-	const status = historyStatus(h, model, [
+	const problems = [
 		...Array.flatMap(snapshot.sources, source =>
 			Option.toArray(Option.map(source.error, reason => `${source.name}: ${reason}`))
 		),
-		...Option.toArray(Option.flatMap(history, frame => frame.error))
-	])
-	const listOpen = Boolean.match(model.narrow, {onFalse: () => !model.listHidden, onTrue: () => isList})
-	const actions = Option.getOrUndefined(
-		pipe(
-			selectedRow,
-			Option.filter(() => model.admin && !(model.narrow && isList)),
-			Option.map(row => AppActions(h, row.item, model.pending, model.logs))
-		)
-	)
-	const detail = Boolean.match(machine, {
-		onFalse: () =>
-			Option.match(selectedRow, {
-				onNone: () =>
-					h.div
-						.class('axis-row deploy-detail-lead')
-						.children(
-							h.span.children(
-								Boolean.match(implicitApp, {
-									onFalse: Function.constant('App not found'),
-									onTrue: Function.constant('No apps')
-								})
-							)
-						),
-				onSome: row =>
-					Detail(h, {
-						admin: model.admin,
-						...pipe(
-							app,
-							Option.map(frame => ({app: frame})),
-							Option.getOrElse(Function.constant({}))
-						),
-						free: availablePorts(rows),
-						...pipe(
-							history,
-							Option.map(frame => ({history: frame})),
-							Option.getOrElse(Function.constant({}))
-						),
-						now: model.now,
-						pending: model.pending,
-						row,
-						rows,
-						status
-					})
-			}),
-		onTrue: () => MachineDetail(h, model.now, snapshot, status, Option.getOrUndefined(history))
+		...Option.toArray(history?.error ?? Option.none())
+	]
+	if (Array.isArrayNonEmpty(problems)) return Notice(h, Array.join(problems, ' · '))
+	if (history !== undefined && Array.isReadonlyArrayEmpty(history.samples)) {
+		return Notice(h, 'No history in the last hour')
+	}
+	return undefined
+}
+
+function details(
+	h: H,
+	model: Model,
+	snapshot: Snapshot,
+	rows: readonly Row[],
+	pending: boolean,
+	row?: Row,
+	metrics?: MachineHistory,
+	focused?: Focused
+) {
+	const id = appOf(model.route)
+	const loadingHistory = AsyncResult.isInitial(model.metrics)
+	const status = historyStatus(h, model, snapshot)
+	if (id === MACHINE) return MachineDetail(h, model.now, snapshot, status, loadingHistory, metrics)
+	if (row === undefined) {
+		if (id !== undefined) return Notice(h, 'App not found')
+		return undefined
+	}
+	const app = Option.getOrUndefined(AsyncResult.value(model.appHistory))
+	return Detail(h, {
+		admin: model.admin,
+		...(app !== undefined && {app}),
+		free: availablePorts(rows),
+		...(metrics !== undefined && {history: metrics}),
+		...(focused?.line !== undefined && {line: focused.line}),
+		loading: loadingHistory || (Option.isSome(model.effectiveApp) && AsyncResult.isInitial(model.appHistory)),
+		now: model.now,
+		pending,
+		...(focused?.restart !== undefined && {restart: focused.restart}),
+		row,
+		rows,
+		status
 	})
-	return AppShell(h, {
-		actions,
-		content: h.main
-			.class('deploy fold')
-			.attrs({
-				'data-list-hidden': Boolean.match(!model.narrow && model.listHidden, {
-					onFalse: Function.constUndefined,
-					onTrue: Function.constant('')
-				}),
-				'data-show': Boolean.match(isList, {onFalse: Function.constant('detail'), onTrue: Function.constant('list')})
+}
+
+function accessNotice(h: H, model: Model) {
+	const reads: readonly AsyncResult.AsyncResult<unknown, unknown>[] = [model.inventory, model.metrics, model.appHistory]
+	if (Array.some(reads, signInRequested)) {
+		if (!isNative || h.isRunning(SignIn)) return Notice(h, 'Signing in…')
+		return Notice(h, 'Sign in to Deploy', Message.SignIn(), 'Sign in')
+	}
+	if (Array.some(reads, result => AsyncResult.isFailure(result) && isDeniedCause(result.cause))) {
+		return Notice(h, 'Access denied')
+	}
+	return undefined
+}
+
+function toolbar(model: Model, pending: boolean, row?: Row) {
+	const dialog = Option.getOrUndefined(model.dialog)
+	if (isNative && dialog !== undefined) return {actions: DialogActions(dialog, pending)}
+	const canAct = model.admin && (!model.narrow || showOf(model.route) === 'detail')
+	const toggle = sidebar(model)
+	if (!canAct || row === undefined) return {actions: [], sidebar: toggle}
+	return {actions: AppActions(row.item, pending), sidebar: toggle}
+}
+
+function Workspace(h: H, model: Model) {
+	const main = h.main.class('deploy axis-controls').onMount(PressFeedback({}))
+	if (!DeployRoute.isAnyOf(['Home'])(model.route)) {
+		return main.children(h.a.attr('href', '/').children('Back to Deploy'))
+	}
+	const status = accessNotice(h, model)
+	if (status !== undefined) return main.children(status)
+	const show = showOf(model.route)
+	const snapshot = AsyncResult.value(model.inventory)
+	const rows = pipe(
+		snapshot,
+		Option.map(value => Array.sort(workloads(value.items), rowOrder)),
+		Option.getOrElse(Array.empty<Row>)
+	)
+	const selection = selected(rows, model.route, model.defaultApp)
+	const selectedRow = Option.getOrUndefined(selection)
+	const focusId = model.route.search.app ?? selectedRow?.item.id
+	const pending = h.isRunning(Execute)
+	const collapsed = !model.narrow && model.listHidden
+	const history = Option.getOrUndefined(AsyncResult.value(model.metrics))
+	const restarts = pipe(
+		AsyncResult.value(model.appHistory),
+		Option.map(app => app.restarts),
+		Option.getOrElse(Array.empty<DateTime.Utc>)
+	)
+	const restart = RestartReason(restarts, model.now)
+	const focused = Option.getOrUndefined(
+		Option.map(selection, row => {
+			const line = statusLine(row, model.now, restart)
+			return {id: row.item.id, ...(line !== undefined && {line}), ...(restart !== undefined && {restart}), restarts}
+		})
+	)
+	function failed() {
+		return Notice(h, 'Couldn’t load apps', Message.Retry())
+	}
+	return main.children(
+		ActionShell(h, {
+			...toolbar(model, pending, selectedRow),
+			content: Split(h, {
+				detail: {
+					content: ReadState(model.inventory, {
+						failed,
+						loading: () => h.div.class('deploy-startup-detail').children(LoadingReadings(h)),
+						ready: value => details(h, model, value, rows, pending, selectedRow, history, focused)
+					}),
+					key: focusId ?? 'detail',
+					label: 'App detail'
+				},
+				list: {
+					content: ReadState(model.inventory, {
+						failed,
+						loading: () => LoadingApps(h),
+						ready: (value, stale) =>
+							List(h, {
+								admin: model.admin,
+								...(focused !== undefined && {focused}),
+								...(history !== undefined && {history}),
+								loading: AsyncResult.isInitial(model.metrics),
+								now: model.now,
+								pending,
+								rows,
+								selected: Option.filter(Option.fromUndefinedOr(focusId), () => !model.narrow && !collapsed),
+								snapshot: value,
+								stale
+							})
+					}),
+					label: 'Apps',
+					position: {key: 'apps', ready: Option.isSome(snapshot)}
+				},
+				listHidden: collapsed,
+				narrow: model.narrow,
+				show
+			}),
+			overlays: Option.getOrUndefined(
+				Option.map(model.dialog, dialog => Dialog(h, dialog, pending, Option.getOrUndefined(snapshot)))
+			)
+		})
+	)
+}
+
+function completeRead(next: Component.Step<Model, Message, never>, result: AsyncResult.AsyncResult<unknown, unknown>) {
+	if (!isNative && signInRequested(result)) return next.run(Command.asNoop(RedirectToAuth.make({})))
+	return next
+}
+
+function settleOperation(
+	$: Component.Step<Model, Message, never>,
+	operation: Operation,
+	outcome: Result.Result<Option.Option<string>, string>
+) {
+	const next = $.evolve({executing: false})
+	const dialog = Option.getOrUndefined($.model.dialog)
+	if (Operation.isAnyOf(['Logs'])(operation)) {
+		if (dialog === undefined || !DialogState.isAnyOf(['Logs'])(dialog) || dialog.id !== operation.id) return next
+		return next.evolve({
+			dialog: Option.some({
+				...dialog,
+				result: Result.match(outcome, {
+					onFailure: error => Option.some(Result.fail(error)),
+					onSuccess: Option.map(Result.succeed)
+				})
 			})
-			.children(
-				h.section
-					.class('fold-list')
-					.attr('aria-label', 'Apps')
-					.children(
-						List(h, {
-							admin: model.admin,
-							...pipe(
-								history,
-								Option.map(frame => ({history: frame})),
-								Option.getOrElse(Function.constant({}))
-							),
-							now: model.now,
-							pending: model.pending,
-							...pipe(
-								app,
-								Option.map(frame => ({processes: frame})),
-								Option.getOrElse(Function.constant({}))
-							),
-							rows,
-							selected: id,
-							snapshot
-						})
-					),
-				h.section.class('fold-detail').attr('aria-label', 'App detail').children(detail),
-				Option.getOrUndefined(Option.map(model.dialog, dialog => Dialog(h, dialog, snapshot, model.pending)))
-			),
-		sidebar: SidebarControl(h, listOpen, Message.ToggleList({id}))
+		})
+	}
+	return Result.match(outcome, {
+		onFailure: error => next.evolve({dialog: Option.some(DialogState.cases.Failure.make({text: error}))}),
+		onSuccess: () => {
+			if (dialog === undefined) return next
+			return next.evolve({dialog: Option.none()}).viewTransition(['axis-sheet-close'])
+		}
 	})
 }
 
@@ -247,18 +319,17 @@ export const Deploy = pipe(
 			defaultApp: Option.none(),
 			dialog: Option.none(),
 			effectiveApp: Option.none(),
+			executing: false,
 			inventory: AsyncResult.initial(),
 			listHidden: false,
-			logs: Option.none(),
 			metrics: AsyncResult.initial(),
-			narrow: matchMedia(NARROW).matches,
+			narrow: singlePane(),
 			now: DateTime.nowUnsafe(),
-			pending: false,
 			route: $.props.route
 		}),
 		subscriptions: $ => [
 			Router.subscription(DeployRoute, $.model.route, route => Message.Route({route})),
-			HtmlSubscription.onMediaQuery(NARROW, narrow => Message.Posture({narrow})),
+			...watchPanes(() => Message.Posture({narrow: singlePane()})),
 			DeployRoute.isAnyOf(['Home'])($.model.route) &&
 				Subscription.make(
 					'inventory',
@@ -272,7 +343,7 @@ export const Deploy = pipe(
 			DeployRoute.isAnyOf(['Home'])($.model.route) &&
 				Subscription.make(
 					'account',
-					observe(accountAtom, result =>
+					observe(sessionAccount, result =>
 						Message.Account({admin: Option.exists(AsyncResult.value(result), account => account.admin)})
 					)
 				),
@@ -292,91 +363,103 @@ export const Deploy = pipe(
 			Account: ($, message) => $.evolve({admin: message.admin}),
 			AppHistory: ($, message) => {
 				if (!Option.contains($.model.effectiveApp, message.id)) return $.model
-				const next = $.evolve({appHistory: message.result})
-				if (signInRequested(message.result)) return next.run(Command.asNoop(SignIn.make({})))
-				return next
+				return completeRead($.evolve({appHistory: message.result}), message.result)
 			},
 			Clock: ($, message) => $.evolve({now: message.now}),
 			ClosedDialog: $ => {
-				if ($.model.pending && Option.exists($.model.dialog, DialogState.isAnyOf(['Expose']))) return $.model
-				return $.evolve({dialog: Option.none()})
+				const dialog = Option.getOrUndefined($.model.dialog)
+				if (dialog === undefined || ($.model.executing && DialogState.isAnyOf(['Expose'])(dialog))) return $.model
+				return $.evolve({dialog: Option.none()}).viewTransition(['axis-sheet-close'])
 			},
 			ExposureKind: ($, message) =>
 				$.evolve({
-					dialog: Option.map($.model.dialog, current => {
-						if (DialogState.isAnyOf(['Expose'])(current)) {
-							return DialogState.cases.Expose.make({kind: message.kind, port: current.port})
-						}
-						return current
+					dialog: Option.map($.model.dialog, dialog => {
+						if (DialogState.isAnyOf(['Expose'])(dialog)) return {...dialog, choosing: false, kind: message.kind}
+						return dialog
 					})
 				}),
-			Inventory: ($, message) => {
-				const next = $.set(moveTo(message.result, $.model.route, $.model))
-				if (signInRequested(message.result)) return next.run(Command.asNoop(SignIn.make({})))
-				return next
-			},
-			Metrics: ($, message) => {
-				const next = $.evolve({metrics: message.result})
-				if (signInRequested(message.result)) return next.run(Command.asNoop(SignIn.make({})))
-				return next
-			},
+			ExposureMenu: ($, message) =>
+				$.evolve({
+					dialog: Option.map($.model.dialog, dialog => {
+						if (DialogState.isAnyOf(['Expose'])(dialog)) return {...dialog, choosing: message.open}
+						return dialog
+					})
+				}),
+			Inventory: ($, message) => completeRead($.set(moveTo(message.result, $.model.route, $.model)), message.result),
+			Metrics: ($, message) => completeRead($.evolve({metrics: message.result}), message.result),
 			OpenedExposure: ($, message) => {
-				if (!$.model.admin || $.model.pending) return $.model
-				return $.evolve({dialog: Option.some(DialogState.cases.Expose.make({kind: 'tailnet', port: message.port}))})
+				if (!$.model.admin || $.model.executing) return $.model
+				return $.evolve({
+					dialog: Option.some(DialogState.cases.Expose.make({choosing: false, kind: 'tailnet', port: message.port}))
+				}).viewTransition(['axis-sheet-open'])
 			},
 			OpenedLogs: ($, message) => {
-				if (!$.model.admin || $.model.pending) return $.model
-				return $.evolve({logs: Option.none(), pending: true}).run(
-					Execute.make({operation: Operation.cases.Logs.make({id: message.id})})
-				)
+				if (!$.model.admin || $.model.executing) return $.model
+				return $.evolve({
+					dialog: Option.some(DialogState.cases.Logs.make({id: message.id, name: message.name, result: Option.none()})),
+					executing: true
+				})
+					.viewTransition(['axis-sheet-open'])
+					.run(Execute.make({operation: Operation.cases.Logs.make({id: message.id})}))
 			},
 			Operation: ($, message) => {
-				if (!$.model.admin || $.model.pending) return $.model
-				return $.evolve({pending: true}).run(Execute.make({operation: message.operation}))
+				if (!$.model.admin || $.model.executing) return $.model
+				return $.evolve({executing: true}).run(Execute.make({operation: message.operation}))
 			},
-			OperationDone: ($, message) => {
-				if (Operation.isAnyOf(['Logs'])(message.operation)) {
-					return $.evolve({logs: Option.map(message.text, Result.succeed), pending: false})
-				}
-				return $.evolve({dialog: Option.none(), pending: false})
+			OperationDone: ($, message) => settleOperation($, message.operation, Result.succeed(message.text)),
+			OperationFailed: ($, message) => settleOperation($, message.operation, Result.fail(message.error)),
+			Posture: ($, message) => {
+				if ($.model.narrow === message.narrow) return $.model
+				return $.evolve({narrow: message.narrow}).viewTransition(['axis-layout'])
 			},
-			OperationFailed: ($, message) => {
-				if (Operation.isAnyOf(['Logs'])(message.operation)) {
-					return $.evolve({logs: Option.some(Result.fail(message.error)), pending: false})
-				}
-				return $.evolve({dialog: Option.some(DialogState.cases.Failure.make({text: message.error})), pending: false})
-			},
-			Posture: ($, message) => $.evolve({narrow: message.narrow}),
 			Retry: $ => $.run(Command.asNoop(Refresh.make({id: $.model.effectiveApp}))),
-			Route: ($, message) => $.set({...moveTo($.model.inventory, message.route, $.model), dialog: Option.none()}),
+			Route: ($, message) => {
+				const next = $.set({...moveTo($.model.inventory, message.route, $.model), dialog: Option.none()})
+				if (usedHistoryMotion()) return next
+				const show = showOf(message.route)
+				const changedPane = showOf($.model.route) !== show
+				const changedItem = appOf($.model.route) !== appOf(message.route)
+				if ($.model.narrow && changedPane) {
+					if (show === 'detail') return next.viewTransition(['axis-open'])
+					return next.viewTransition(['axis-back'])
+				}
+				if (!$.model.narrow && (changedItem || changedPane)) return next.viewTransition(['axis-layout'])
+				return next
+			},
 			Select: ($, message) => {
 				if (!DeployRoute.isAnyOf(['Home'])($.model.route)) return $.model
-				return $.run(
-					Command.asNoop(
-						Router.patchSearch(DeployRoute, $.model.route, {app: message.id, pane: 'process'}, {history: 'push'})
-					)
+				const history = Boolean.match(showOf($.model.route) === 'list', {
+					onFalse: Function.constant('replace' as const),
+					onTrue: Function.constant('push' as const)
+				})
+				return $.evolve({listHidden: false}).run(
+					Command.asNoop(Router.patchSearch(DeployRoute, $.model.route, {app: message.id, pane: 'process'}, {history}))
 				)
 			},
-			ToggleList: ($, message) => {
-				if (!$.model.narrow) return $.evolve({listHidden: !$.model.listHidden})
+			Sidebar: $ => {
 				if (!DeployRoute.isAnyOf(['Home'])($.model.route)) return $.model
-				const pane = Boolean.match($.model.route.search.pane === 'apps' || $.model.route.search.app === undefined, {
-					onFalse: Function.constant('apps' as const),
-					onTrue: Function.constant('process' as const)
-				})
+				if (!$.model.narrow) return $.evolve({listHidden: !$.model.listHidden}).viewTransition(['axis-layout'])
+				if (showOf($.model.route) === 'detail') {
+					if (
+						hasHistoryBehind(previous => {
+							if (previous.pathname !== '/') return false
+							const pane = previous.searchParams.get('pane')
+							return pane === 'apps' || (pane === null && !previous.searchParams.has('app'))
+						})
+					) {
+						return $.run(historyBack)
+					}
+					return $.run(Command.asNoop(Router.patchSearch(DeployRoute, $.model.route, {pane: 'apps'})))
+				}
+				const app = $.model.route.search.app ?? Option.getOrUndefined($.model.defaultApp)
+				if (app === undefined) return $.model
 				return $.run(
-					Command.asNoop(
-						Router.patchSearch(
-							DeployRoute,
-							$.model.route,
-							{app: Option.getOrUndefined(message.id), pane},
-							{history: 'push'}
-						)
-					)
+					Command.asNoop(Router.patchSearch(DeployRoute, $.model.route, {app, pane: 'process'}, {history: 'push'}))
 				)
-			}
+			},
+			SignIn: $ => $.run(Command.asNoop(SignIn.make({id: $.model.effectiveApp})))
 		},
 		view: Workspace
 	}),
-	Component.provide(pipe(Execute.layer, Layer.merge(Refresh.layer), Layer.provideMerge(AtomRegistry.layer)))
+	Component.provide(Layer.provideMerge(Layer.mergeAll(Execute.layer, Refresh.layer, SignIn.layer), AtomRegistry.layer))
 )

@@ -1,19 +1,26 @@
+import type {View} from '@effect/ui'
 import type {Html} from '@effect/ui/html'
 
-import {Array, Boolean, Cause, Function, Option, Record, pipe} from 'effect'
+import {Array, Boolean, Function, Option, Record, String, pipe} from 'effect'
+import type {Cause} from 'effect'
 
 import {AsyncResult} from 'effect/reactivity'
 
-import {blockingFailure} from '@deslop/runtime/client/live-stream'
-import {isDenied} from '@deslop/runtime/shared/auth'
+import {needsSignInCause} from '@deslop/runtime/client/live-stream'
 import {ageOf, clockOf, compactCountOf, countOf, durationOf} from '@deslop/runtime/shared/format'
 import {TimeFrame} from '@deslop/runtime/shared/time'
+import {CheckedChoice} from '@deslop/ui/app-shell'
+import type {ShellAction} from '@deslop/ui/app-shell'
+import {Loading, Notice, Row, RowContent} from '@deslop/ui/axis'
 import {Button} from '@deslop/ui/control'
-import {GlassPanel, SidebarControl} from '@deslop/ui/glass'
+import {Glass, GlassPanel} from '@deslop/ui/glass'
+import {isNative} from '@deslop/ui/native'
+import {ReadFailure, ReadState} from '@deslop/ui/state'
+import {SymbolIcon} from '@deslop/ui/symbol'
 
 import type {OperationTrace, Overview, Runtime, TraceTree} from '#contracts'
 
-import {Message, rangeOf, traceReadOf} from '#web/telemetry/model.ts'
+import {Message, rangeOf, showOf, traceReadOf} from '#web/telemetry/model.ts'
 import type {Model, selectionFor} from '#web/telemetry/model.ts'
 import {focusOf, operationsOf, traceLabel} from '#web/telemetry/selection.ts'
 import {SpanDetail} from '#web/telemetry/span.ts'
@@ -21,103 +28,150 @@ import {Waterfall} from '#web/telemetry/waterfall.ts'
 
 const SIDES: Record<Runtime, string> = {ci: 'CI', mobile: 'iOS', server: 'Server', unknown: '', web: 'Web'}
 
-function state(h: Html.H<Message>, text: string, busy = false) {
-	return h.p.class('scope-state axis-muted').attr('role', 'status').attr('aria-busy', `${busy}`).children(text)
-}
+export type H = Html.H<Message>
+type Panel = NonNullable<Model['panel']>
 
-export function ReadFailure(h: Html.H<Message>, cause: Cause.Cause<unknown>) {
-	if (isDenied(Cause.squash(cause))) return state(h, 'Access denied')
-	return h.div
-		.class('scope-state')
-		.attr('role', 'alert')
-		.children(
-			Button(h)
-				.class('scope-chip')
-				.on('click', Message.Retry())
-				.children(h.span.class('axis-dot').attr('aria-hidden', 'true'), 'Couldn’t load · Retry')
-		)
-}
-
-function filterIcon(h: Html.H<Message>, path: string) {
-	return h
-		.el('svg')
-		.attrs({'aria-hidden': 'true', fill: 'none', stroke: 'currentColor', 'stroke-width': '1.6', viewBox: '0 0 24 24'})
-		.children(h.el('path').attr('d', path))
+function menu(h: H, model: Model, panel: Panel, label: string, items: View.Input<Message>) {
+	return GlassPanel(h, `scope-${panel}`, label, items)
+		.attr('role', 'menu')
+		.popover('auto', model.panel === panel)
+		.on('toggle', event => {
+			if (!event.open) return Message.PanelClosed({panel})
+			return undefined
+		})
 }
 
 function isStale<A>(result: AsyncResult.AsyncResult<A, unknown>) {
 	return AsyncResult.isFailure(result) && Option.isSome(result.previousSuccess)
 }
 
-export function ScopeControls(h: Html.H<Message>, model: Model, selection: ReturnType<typeof selectionFor>) {
+function tracesOf(selection: ReturnType<typeof selectionFor>) {
+	return Option.match(selection.activeOperation, {onNone: () => [], onSome: active => active.operation.traces})
+}
+
+function backAction() {
+	return {id: 'back', message: Message.Back(), symbol: 'chevron.left', title: 'Back'} satisfies ShellAction<Message>
+}
+
+function nativeDetailActions(model: Model, selection: ReturnType<typeof selectionFor>) {
+	if (!isNative || showOf(model.route.search) === 'list') return []
+	const actions = Boolean.match(model.narrow, {onFalse: () => [backAction()], onTrue: () => []})
+	const traces = tracesOf(selection)
+	if (Option.isSome(model.route.search.span) || Array.isReadonlyArrayEmpty(traces)) return actions
+	return Array.append(actions, {
+		id: 'traces',
+		menu: [
+			{
+				items: Array.map(traces, trace => ({
+					checked: Option.exists(selection.activeTrace, active => active.id === trace.id),
+					id: `trace-${trace.id}`,
+					message: Message.Trace({id: trace.id}),
+					title: traceLabel(trace)
+				})),
+				title: ''
+			}
+		],
+		message: Message.Panel({panel: 'traces'}),
+		symbol: 'chevron.down',
+		title: 'Traces'
+	} satisfies ShellAction<Message>)
+}
+
+export function ScopeControls(h: H, model: Model, selection: ReturnType<typeof selectionFor>) {
 	const source = Option.orElse(selection.source, () => model.route.search.source)
 	const app = Option.match(source, {onNone: Function.constant('Apps'), onSome: name => `App: ${name}`})
+	const sources = Array.map(model.knownSources, name => ({
+		checked: Option.contains(source, name),
+		id: `source-${name}`,
+		message: Message.Source({app: name}),
+		title: name
+	}))
 	const range = rangeOf(model.route.search)
-	const expanded = Boolean.match(model.narrow, {
-		onFalse: () => !model.sidebarHidden,
-		onTrue: () => model.show === 'list'
+	const ranges = Array.map(TimeFrame.literals, frame => ({
+		checked: range === frame,
+		id: `range-${frame}`,
+		message: Message.Range({range: frame}),
+		title: frame
+	}))
+	const sidebar = Boolean.match(model.narrow && showOf(model.route.search) === 'detail', {
+		onFalse: () =>
+			({
+				disabled: model.narrow && Option.isNone(selection.activeKey),
+				id: 'sidebar',
+				message: Message.Sidebar(),
+				pressed: !model.sidebarHidden || model.narrow,
+				symbol: 'sidebar.left',
+				title: 'Sidebar'
+			}) satisfies ShellAction<Message>,
+		onTrue: backAction
 	})
 	const stale = isStale(model.overview) || isStale(traceReadOf(model))
+	const actions: readonly ShellAction<Message>[] = [
+		...nativeDetailActions(model, selection),
+		{
+			disabled: Array.isReadonlyArrayEmpty(sources),
+			id: 'sources',
+			menu: [{items: sources, title: ''}],
+			message: Message.Panel({panel: 'sources'}),
+			symbol: 'square.stack',
+			title: app
+		},
+		{
+			id: 'ranges',
+			menu: [{items: ranges, title: ''}],
+			message: Message.Panel({panel: 'ranges'}),
+			symbol: 'clock',
+			title: `Range: ${range}`
+		},
+		...Array.filter(
+			[
+				{id: 'retry', message: Message.Retry(), symbol: 'exclamationmark.circle', title: 'Out of date · Retry'}
+			] as const,
+			() => stale
+		)
+	]
 	return {
-		actions: [
-			Button(h, {disabled: Array.isReadonlyArrayEmpty(model.knownSources)})
-				.attrs({'aria-label': app, popovertarget: 'scope-sources', title: app})
-				.children(filterIcon(h, 'M4 4h6v6H4z M14 4h6v6h-6z M4 14h6v6H4z M14 14h6v6h-6z')),
-			Button(h)
-				.attrs({'aria-label': `Range: ${range}`, popovertarget: 'scope-ranges', title: `Range: ${range}`})
-				.children(filterIcon(h, 'M12 8v4l3 2 M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z')),
-			stale &&
-				Button(h)
-					.attrs({'aria-label': 'Out of date · Retry', title: 'Out of date · Retry'})
-					.on('click', Message.Retry())
-					.children(h.span.class('axis-dot m-0').attr('aria-hidden', 'true'))
-		],
-		panels: [
-			GlassPanel(
+		actions,
+		overlays: !isNative && [
+			menu(
 				h,
-				'scope-sources',
+				model,
+				'sources',
 				'Apps',
-				Array.map(model.knownSources, name =>
-					Button(h)
-						.key(name)
-						.class('axis-row scope-filter-row')
-						.attrs({
-							'aria-current': `${Option.contains(source, name)}`,
-							popovertarget: 'scope-sources',
-							popovertargetaction: 'hide'
-						})
-						.on('click', Message.Source({app: name}))
-						.children(h.span.class('axis-title').children(name))
-				)
+				Array.map(sources, item => CheckedChoice(h, item))
 			),
-			GlassPanel(
+			menu(
 				h,
-				'scope-ranges',
+				model,
+				'ranges',
 				'Ranges',
-				Array.map(TimeFrame.literals, frame =>
-					Button(h)
-						.key(frame)
-						.class('axis-row scope-filter-row')
-						.attrs({'aria-current': `${range === frame}`, popovertarget: 'scope-ranges', popovertargetaction: 'hide'})
-						.on('click', Message.Range({range: frame}))
-						.children(h.span.class('axis-title').children(frame))
-				)
+				Array.map(ranges, item => CheckedChoice(h, item))
 			)
 		],
-		sidebar: SidebarControl(h, expanded, Message.Sidebar())
+		sidebar
 	}
 }
 
-function operationRows(h: Html.H<Message>, selection: ReturnType<typeof selectionFor>, overview: Overview) {
+export function ScopeFailure(h: H, model: Model, cause: Cause.Cause<unknown>) {
+	if (isNative && needsSignInCause(cause)) {
+		return Notice(h, model.signInProblem ?? 'Sign in to Scope', Message.SignIn(), 'Sign in')
+	}
+	return ReadFailure(h, cause, 'Couldn’t load', Message.Retry())
+}
+
+function operationRows(h: H, model: Model, selection: ReturnType<typeof selectionFor>, overview: Overview) {
 	const rows = operationsOf(overview, selection.source)
-	if (Array.isReadonlyArrayEmpty(rows)) return state(h, 'No operations')
+	if (Array.isReadonlyArrayEmpty(rows)) return Notice(h, 'No operations')
 	const names = Array.groupBy(rows, row => row.operation.name)
 	return Array.map(rows, row => {
 		const key = {app: row.app.name, name: row.operation.name, runtime: row.operation.runtime}
-		const active = Option.exists(
-			selection.activeKey,
-			current => current.app === key.app && current.name === key.name && current.runtime === key.runtime
-		)
+		const active =
+			!model.narrow &&
+			!model.sidebarHidden &&
+			Option.exists(
+				selection.activeKey,
+				current => current.app === key.app && current.name === key.name && current.runtime === key.runtime
+			)
 		const failed = row.operation.failures > 0
 		const side = SIDES[row.operation.runtime]
 		const reason = pipe(
@@ -144,76 +198,67 @@ function operationRows(h: Html.H<Message>, selection: ReturnType<typeof selectio
 			onTrue: () => `${row.operation.name}, ${side}`
 		})
 		const summary = `${countOf(row.operation.failures)} failed of ${countOf(row.operation.count)} · ${duration} typical`
-		return Button(h)
-			.key(`${key.app}:${key.runtime}:${key.name}`)
-			.class('axis-row scope-operation')
-			.attr('aria-current', `${active}`)
-			.attr('aria-label', `${name} · ${summary}`)
-			.attr('title', Boolean.match(failed, {onFalse: () => row.operation.name, onTrue: () => reason}))
-			.on('click', Message.Operation({operation: key}))
-			.children(
-				h.span
-					.class('min-w-0')
-					.children(
-						h.span
-							.class('axis-title block')
-							.children(failed && h.span.class('axis-dot').attr('aria-hidden', 'true'), row.operation.name),
-						h.span.class('axis-muted block').children(reason)
-					),
-				h.span.class('axis-value').attr('title', summary).children(`${runs} · ${duration}`)
-			)
+		return Row(h, {
+			className: 'scope-operation',
+			current: active,
+			id: `${key.app}:${key.runtime}:${key.name}`,
+			line: reason,
+			open: Message.Operation({operation: key}),
+			problem: failed,
+			title: row.operation.name,
+			value: `${runs} · ${duration}`
+		}).attrs({
+			'aria-label': `${name} · ${summary}`,
+			title: Boolean.match(failed, {onFalse: () => row.operation.name, onTrue: () => reason})
+		})
 	})
 }
 
-export function ListPane(h: Html.H<Message>, model: Model, selection: ReturnType<typeof selectionFor>) {
-	return h.section
-		.class('fold-list scope-list')
-		.attr('aria-label', 'Operations')
+export function ListPane(h: H, model: Model, selection: ReturnType<typeof selectionFor>) {
+	return h.div
+		.class('scope-list')
 		.children(
-			Option.match(AsyncResult.value(model.overview), {
-				onNone: () => state(h, 'Loading operations…', true),
-				onSome: overview => operationRows(h, selection, overview)
+			ReadState(model.overview, {
+				failed: cause => ScopeFailure(h, model, cause),
+				loading: () => Loading(h, 'Loading operations', h.div.class('scope-skeleton-list').attr('aria-hidden', 'true')),
+				ready: overview => operationRows(h, model, selection, overview)
 			})
 		)
 }
 
-function traceRow(h: Html.H<Message>, model: Model, trace: OperationTrace, active: boolean) {
-	const reason = Option.getOrUndefined(Option.map(trace.failure, failure => `Failed in ${failure.span}`))
-	const title = traceLabel(trace)
-	const age = ageOf(trace.start, model.now)
+function traceRow(h: H, model: Model, trace: OperationTrace, checked: boolean) {
+	const reason = Option.map(trace.failure, failure => `Failed in ${failure.span}`)
 	return Button(h)
 		.key(trace.id)
-		.class('axis-row')
-		.attr('aria-current', `${active}`)
-		.attr('title', reason ?? clockOf(trace.start, 'second'))
-		.attr('popovertarget', 'scope-traces')
-		.attr('popovertargetaction', 'hide')
+		.class('axis-row axis-item scope-trace-option')
+		.attrs({'aria-checked': `${checked}`, role: 'menuitemradio'})
 		.on('click', Message.Trace({id: trace.id}))
 		.children(
-			h.span
-				.class('min-w-0')
-				.children(
-					h.span
-						.class('axis-title block')
-						.children(Option.isSome(trace.failure) && h.span.class('axis-dot').attr('aria-hidden', 'true'), title),
-					h.span.class('axis-muted block').children(reason ?? clockOf(trace.start, 'second'))
-				),
-			h.span.class('axis-value').children(`${age} · ${durationOf(trace.duration)}`)
+			RowContent(h, {
+				line: Option.getOrElse(reason, () => clockOf(trace.start, 'second')),
+				problem: Option.isSome(reason),
+				title: traceLabel(trace),
+				value: `${ageOf(trace.start, model.now)} · ${durationOf(trace.duration)}`
+			}),
+			checked && SymbolIcon(h, 'checkmark')
 		)
 }
 
-function TraceChoice(h: Html.H<Message>, model: Model, selection: ReturnType<typeof selectionFor>, title: string) {
-	const traces = Option.match(selection.activeOperation, {onNone: () => [], onSome: active => active.operation.traces})
-	if (Array.isReadonlyArrayEmpty(traces)) return h.div.class('axis-title').children(title)
+function traceChoice(h: H, model: Model, selection: ReturnType<typeof selectionFor>, title: string) {
+	const traces = tracesOf(selection)
+	if (isNative || Array.isReadonlyArrayEmpty(traces)) return h.div.class('scope-trace-label axis-title').children(title)
 	return h.div.class('min-w-0').children(
-		Button(h)
-			.class('scope-trace-choice axis-title')
-			.attr('popovertarget', 'scope-traces')
-			.attr('aria-label', `Choose trace for ${title}`)
-			.children(h.span.class('truncate').children(title), h.span.class('scope-chevron').attr('aria-hidden', 'true')),
-		GlassPanel(
+		Glass(h, 'scope-trace-control').children(
+			Button(h)
+				.class('scope-trace-choice')
+				.attrs({'aria-expanded': `${model.panel === 'traces'}`, 'aria-haspopup': 'menu'})
+				.on('click', Message.Panel({panel: 'traces'}))
+				.children(h.span.children(title), SymbolIcon(h, 'chevron.down'))
+		),
+		menu(
 			h,
-			'scope-traces',
+			model,
+			'traces',
 			'Traces',
 			Array.map(traces, trace =>
 				traceRow(
@@ -227,8 +272,8 @@ function TraceChoice(h: Html.H<Message>, model: Model, selection: ReturnType<typ
 	)
 }
 
-function TraceContent(h: Html.H<Message>, trace: TraceTree, selection: ReturnType<typeof selectionFor>) {
-	if (Array.isReadonlyArrayEmpty(trace.spans)) return state(h, 'No spans')
+function traceContent(h: H, trace: TraceTree, selection: ReturnType<typeof selectionFor>) {
+	if (Array.isReadonlyArrayEmpty(trace.spans)) return Notice(h, 'No spans')
 	const focus = focusOf(trace, selection.pickedSpan)
 	return h.div.class('scope-trace-content').children(
 		Waterfall(
@@ -236,63 +281,54 @@ function TraceContent(h: Html.H<Message>, trace: TraceTree, selection: ReturnTyp
 			trace,
 			Option.map(focus, span => span.spanId)
 		),
-		Option.match(focus, {onNone: Function.constUndefined, onSome: span => SpanDetail(h, span)})
+		pipe(
+			focus,
+			Option.map(span => SpanDetail(h, span)),
+			Option.getOrUndefined
+		)
 	)
 }
 
-function TraceView(h: Html.H<Message>, model: Model, selection: ReturnType<typeof selectionFor>) {
-	if (Option.isNone(selection.activeTrace)) {
-		if (AsyncResult.isInitial(model.overview)) return state(h, 'Loading trace…', true)
-		return state(h, 'Select an operation')
+function traceView(h: H, model: Model, selection: ReturnType<typeof selectionFor>) {
+	const active = Option.getOrUndefined(selection.activeTrace)
+	const skeleton = h.div.class('scope-skeleton-trace').attr('aria-hidden', 'true')
+	if (active === undefined) {
+		if (AsyncResult.isInitial(model.overview)) return Loading(h, 'Loading trace', skeleton)
+		return Notice(h, 'Select an operation')
 	}
-	const read = traceReadOf(model)
-	const trace = AsyncResult.value(read)
-	const listed = Option.flatMap(selection.activeTrace, current => current.summary)
-	const root = Option.flatMap(trace, current => Array.findFirst(current.spans, span => span.depth === 0))
-	const started = pipe(
-		listed,
-		Option.map(current => current.start),
-		Option.orElse(() => Option.map(root, span => span.start)),
-		Option.getOrUndefined
-	)
-	const duration = pipe(
-		trace,
-		Option.map(current => current.durationMs),
-		Option.orElse(() => Option.map(listed, current => current.duration)),
-		Option.getOrUndefined
-	)
-	const title = pipe(
-		selection.activeKey,
-		Option.map(key => key.name),
-		Option.getOrElse(Function.constant('Trace'))
-	)
-	return [
-		h.div
-			.class('scope-trace-summary')
-			.children(
+
+	return ReadState(traceReadOf(model), {
+		failed: cause => ScopeFailure(h, model, cause),
+		loading: () => Loading(h, 'Loading trace', skeleton),
+		ready: trace => {
+			const root = Array.findFirst(trace.spans, span => span.depth === 0)
+			const started = Option.getOrUndefined(
+				pipe(
+					active.summary,
+					Option.map(summary => summary.start),
+					Option.orElse(() => Option.map(root, span => span.start))
+				)
+			)
+			const title = pipe(
+				active.summary,
+				Option.map(traceLabel),
+				Option.getOrElse(() => String.slice(0, 8)(active.id))
+			)
+			return [
 				h.div
-					.class('min-w-0')
+					.class('scope-trace-summary')
 					.children(
-						TraceChoice(h, model, selection, title),
+						traceChoice(h, model, selection, title),
 						started !== undefined &&
-							h.p.class('axis-muted').attr('title', clockOf(started, 'second')).children(ageOf(started, model.now))
+							h.p.class('axis-muted').attr('title', clockOf(started, 'second')).children(ageOf(started, model.now)),
+						h.span.class('axis-value').children(durationOf(trace.durationMs))
 					),
-				duration !== undefined && h.span.class('axis-value').children(durationOf(duration))
-			),
-		Option.match(blockingFailure(read), {
-			onNone: () =>
-				Option.match(trace, {
-					onNone: () => state(h, 'Loading trace…', true),
-					onSome: current => TraceContent(h, current, selection)
-				}),
-			onSome: cause => ReadFailure(h, cause)
-		})
-	]
+				traceContent(h, trace, selection)
+			]
+		}
+	})
 }
 
-export function DetailPane(h: Html.H<Message>, model: Model, selection: ReturnType<typeof selectionFor>) {
-	return h.section
-		.class('fold-detail scope-detail')
-		.attr('aria-label', 'Trace')
-		.children(TraceView(h, model, selection))
+export function DetailPane(h: H, model: Model, selection: ReturnType<typeof selectionFor>) {
+	return h.div.class('scope-detail').children(traceView(h, model, selection))
 }

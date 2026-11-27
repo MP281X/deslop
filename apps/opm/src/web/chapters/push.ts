@@ -1,15 +1,15 @@
 import {Effect, Option, Queue, Redacted, Schema, Stream, String, pipe} from 'effect'
 
-import type {PluginListenerHandle} from '@capacitor/core'
 import {registerPlugin} from '@capacitor/core'
+import type {PluginListenerHandle} from '@capacitor/core'
 import {AtomRegistry} from 'effect/reactivity'
 
 import {registerPushToken} from '@deslop/runtime/client/push'
 import {ApnsToken} from '@deslop/runtime/shared/apns'
-import {nativeBundle} from '@deslop/ui/native'
+import {listenNative, nativeBundle, registerTokens} from '@deslop/ui/native'
 
-import type {ChapterIdentity} from '#contracts'
 import {ChapterBundle, ChapterNumberFromString, ChapterPushError, Series} from '#contracts'
+import type {ChapterIdentity} from '#contracts'
 
 import {RpcClient} from '#web/session.ts'
 
@@ -33,14 +33,7 @@ const ActivityLink = Schema.TemplateLiteralParser([
 ])
 
 function listen(message: string, call: () => PromiseLike<PluginListenerHandle>) {
-	return Effect.acquireRelease(
-		Effect.tryPromise({catch: cause => ChapterPushError.make({cause, message}), try: call}),
-		listener =>
-			Effect.ignore(
-				Effect.tryPromise({catch: cause => ChapterPushError.make({cause, message}), try: () => listener.remove()}),
-				{log: 'Warn', message: 'Could not stop listening for chapter announcements'}
-			)
-	)
+	return listenNative(call, cause => ChapterPushError.make({cause, message}))
 }
 
 export const chapterOpens = Stream.catch(
@@ -56,38 +49,34 @@ export const chapterOpens = Stream.catch(
 	cause => Stream.fromEffectDrain(Effect.logWarning('Could not open the chapter from the Live Activity', cause))
 )
 
-export const registerPush = pipe(
-	Stream.callback<string, ChapterPushError>(queue =>
-		Effect.gen(function* () {
-			yield* listen('The push-to-start token could not be observed.', () =>
-				native.addListener('chapterStartToken', token => {
-					Queue.offerUnsafe(queue, token.value)
-				})
-			)
-			yield* Effect.tryPromise({
-				catch: cause => ChapterPushError.make({cause, message: 'The push-to-start token could not be read.'}),
-				try: () => native.watchChapterStarts()
-			})
-		})
-	),
-	Stream.changes,
-	Stream.switchMap(value =>
-		Stream.fromEffectDrain(
-			Effect.gen(function* () {
-				const token = yield* Schema.decodeEffect(ApnsToken)(String.toLowerCase(value))
-				const bundle = yield* Schema.decodeUnknownEffect(ChapterBundle)(yield* nativeBundle)
-				const context = yield* AtomRegistry.getResult(yield* AtomRegistry.AtomRegistry, RpcClient.runtime)
-				yield* registerPushToken(
-					pipe(
-						RpcClient,
-						Effect.flatMap(client => client('push.register', {bundle, kind: 'start', token: Redacted.make(token)})),
-						Effect.provideContext(context)
-					)
-				)
+const tokens = Stream.callback<string, ChapterPushError>(queue =>
+	Effect.gen(function* () {
+		yield* listen('The push-to-start token could not be observed.', () =>
+			native.addListener('chapterStartToken', token => {
+				Queue.offerUnsafe(queue, token.value)
 			})
 		)
+		yield* Effect.tryPromise({
+			catch: cause => ChapterPushError.make({cause, message: 'The push-to-start token could not be read.'}),
+			try: () => native.watchChapterStarts()
+		})
+	})
+)
+
+export const registerPush = Stream.catch(
+	registerTokens(tokens, value =>
+		Effect.gen(function* () {
+			const token = yield* Schema.decodeEffect(ApnsToken)(String.toLowerCase(value))
+			const bundle = yield* Schema.decodeUnknownEffect(ChapterBundle)(yield* nativeBundle)
+			const context = yield* AtomRegistry.getResult(yield* AtomRegistry.AtomRegistry, RpcClient.runtime)
+			yield* registerPushToken(
+				pipe(
+					RpcClient,
+					Effect.flatMap(client => client('push.register', {bundle, kind: 'start', token: Redacted.make(token)})),
+					Effect.provideContext(context)
+				)
+			)
+		})
 	),
-	Stream.catch(cause =>
-		Stream.fromEffectDrain(Effect.logWarning('Live Activities could not be set up on this iPhone', cause))
-	)
+	cause => Stream.fromEffectDrain(Effect.logWarning('Live Activities could not be set up on this iPhone', cause))
 )

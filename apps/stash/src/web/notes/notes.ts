@@ -3,9 +3,9 @@ import {Array, DateTime, Effect, Order, Stream, pipe} from 'effect'
 import {SecureRandom} from 'effect/crypto'
 import {Atom, AtomRegistry} from 'effect/reactivity'
 
-import {keepValueThroughOutages, reconnectOnDrop} from '@deslop/runtime/client/live-stream'
 import {writeOutcome} from '@deslop/runtime/client/protocol'
 import {listReducer} from '@deslop/runtime/shared/list'
+import {liveList} from '@deslop/ui/state'
 
 import {NoteId} from '#contracts'
 import type {NoteItem} from '#contracts'
@@ -20,14 +20,11 @@ const newestFirst = pipe(
 const apply = listReducer(newestFirst, note => note.id)
 
 export const notesAtom = RpcClient.runtime.atom(get =>
-	keepValueThroughOutages(
+	liveList(
 		get,
-		pipe(
-			Stream.unwrap(Effect.map(RpcClient, call => call('notes.events', undefined))),
-			Stream.scan(Array.empty<NoteItem>, apply),
-			Stream.drop(1)
-		),
-		reconnectOnDrop
+		Stream.unwrap(Effect.map(RpcClient, call => call('notes.events', undefined))),
+		Array.empty<NoteItem>,
+		apply
 	)
 )
 

@@ -4,7 +4,6 @@ import {Html} from '@effect/ui/html'
 import {
 	Array,
 	Boolean,
-	Cause,
 	DateTime,
 	Effect,
 	Function,
@@ -17,21 +16,40 @@ import {
 	String,
 	pipe
 } from 'effect'
+import type {Cause} from 'effect'
 
 import {App} from '@capacitor/app'
 import {AsyncResult, AtomRegistry} from 'effect/reactivity'
 
 import {clockAtom} from '@deslop/runtime/client/clock'
-import {blockingFailure, needsSignInCause} from '@deslop/runtime/client/live-stream'
+import {isDeniedCause, needsSignInCause} from '@deslop/runtime/client/live-stream'
 import {isDenied} from '@deslop/runtime/shared/auth'
-import {AppShell} from '@deslop/ui/app-shell'
-import {Button} from '@deslop/ui/control'
-import {Glass, GlassPanel, SidebarControl} from '@deslop/ui/glass'
+import {ActionShell} from '@deslop/ui/app-shell'
+import type {ShellAction} from '@deslop/ui/app-shell'
+import {Loading, Notice, Row, RowContent} from '@deslop/ui/axis'
+import {Button, PressFeedback} from '@deslop/ui/control'
+import {Glass} from '@deslop/ui/glass'
+import {isNative} from '@deslop/ui/native'
+import {WebSignOut, submitWebSignOut} from '@deslop/ui/session'
+import {Sheet} from '@deslop/ui/sheet'
+import {Split, singlePane, watchPanes} from '@deslop/ui/split'
+import type {Pane} from '@deslop/ui/split'
+import {ReadState, observe} from '@deslop/ui/state'
+import {SymbolIcon} from '@deslop/ui/symbol'
+import {hasHistoryBehind, historyBack, usedHistoryMotion} from '@deslop/ui/viewport'
 
 import type {Flight, FlightId, FlightList, TravelTime} from '#contracts'
 import {arrivalClockOf, bookedOf, departureOf, labelled, line, routeOf, titleOf} from '#journey'
 
-import {AirportActions, AirportBy, Board, dayAt, NextStep, Row} from '#web/flights/boarding-pass.ts'
+import {
+	AirportMenu,
+	AirportBy,
+	AirportOptions,
+	Board,
+	BoardSkeleton,
+	dayAt,
+	NextStep
+} from '#web/flights/boarding-pass.ts'
 import {flightsAtom, travelAtom} from '#web/flights/data.ts'
 import {opened} from '#web/flights/deep-links.ts'
 import {
@@ -45,9 +63,9 @@ import {
 	tripOf,
 	troubleOf
 } from '#web/flights/itinerary.ts'
-import {Auth, Message, Model, Reload, SaveFile, SaveText, SetTripTime, failed} from '#web/flights/model.ts'
+import {Action, Message, Model, Reload, Run} from '#web/flights/model.ts'
 import {listener, pushAtom} from '#web/flights/notifications.ts'
-import {accountAtom, native} from '#web/flights/session.ts'
+import {accountAtom} from '#web/flights/session.ts'
 import {TripsRoute} from '#web/routes.ts'
 
 type H = Html.H<Message>
@@ -61,35 +79,27 @@ function FlightRow(h: H, flight: Flight, now: Model['now'], selected?: FlightId)
 		timeZone: flight.from.timeZone
 	})
 	const today = DateTime.format(now, {day: 'numeric', locale: 'en-GB', month: 'short', timeZone: flight.from.timeZone})
-	return h.a
-		.key(flight.id)
-		.class('axis-row')
-		.attrs({
-			'aria-current': Option.getOrUndefined(Option.liftPredicate('true', () => selected === flight.id)),
-			href: `/flight/${flight.id}`
-		})
-		.on('click', () => Message.Select({id: flight.id}), {preventDefault: true})
-		.children(
-			Row(h, {
-				line: line([
-					Option.some(titleOf(flight)),
-					labelled(
-						'Gate',
-						Option.flatMap(flight.live, live => live.departureGate)
-					),
-					Option.some(
-						Boolean.match(date === today, {
-							onFalse: Function.constant(date),
-							onTrue: () => `Lands ${arrivalClockOf(flight)}`
-						})
-					)
-				]),
-				problem: Option.map(troubleOf(flight, now), problem => problem.reason),
-				title: routeOf(flight),
-				value: times.value,
-				was: times.was
-			})
-		)
+	const problem = Option.map(troubleOf(flight, now), issue => issue.reason)
+	return Row(h, {
+		current: selected === flight.id,
+		id: flight.id,
+		line: Option.getOrElse(problem, () =>
+			line([
+				Option.some(titleOf(flight)),
+				labelled(
+					'Gate',
+					Option.flatMap(flight.live, live => live.departureGate)
+				),
+				Option.some(
+					Boolean.match(date === today, {onFalse: () => date, onTrue: () => `Lands ${arrivalClockOf(flight)}`})
+				)
+			])
+		),
+		open: Message.Select({id: flight.id}),
+		problem: Option.isSome(problem),
+		title: routeOf(flight),
+		value: [Option.getOrUndefined(Option.map(times.was, was => h.s.children(was))), Option.getOrUndefined(times.value)]
+	})
 }
 
 function List(h: H, model: Model, flights: FlightList, travel: readonly TravelTime[], selected?: FlightId) {
@@ -100,7 +110,8 @@ function List(h: H, model: Model, flights: FlightList, travel: readonly TravelTi
 	]
 	const past = pastOf(flights, model.now)
 	return [
-		Array.isArrayEmpty(upcoming) && h.p.class('trips-notice').children('No upcoming flights'),
+		Array.isArrayEmpty(upcoming) &&
+			Notice(h, 'No upcoming flights', Message.PasteVisibility({open: true}), 'Paste booking'),
 		...Array.map(upcoming, flight => FlightRow(h, flight, model.now, selected)),
 		...pipe(
 			Array.head(upcoming),
@@ -111,9 +122,7 @@ function List(h: H, model: Model, flights: FlightList, travel: readonly TravelTi
 						nextHero(flights, model.now, travel),
 						Option.filter(hero => hero.label === 'Leave by'),
 						Option.map(hero =>
-							h.div
-								.class('axis-row')
-								.children(Row(h, {line: hero.right, title: 'Leave', value: Option.some(hero.value)}))
+							h.div.class('axis-row').children(RowContent(h, {line: hero.right, title: 'Leave', value: hero.value}))
 						),
 						Option.getOrUndefined
 					),
@@ -126,8 +135,8 @@ function List(h: H, model: Model, flights: FlightList, travel: readonly TravelTi
 			Button(h)
 				.class('axis-row')
 				.attr('aria-expanded', `${model.pastOpen}`)
-				.on('click', () => Message.TogglePast())
-				.children(Row(h, {title: 'Past flights', value: Option.some(`${past.length}`)})),
+				.on('click', Message.TogglePast())
+				.children(RowContent(h, {title: 'Past flights', value: `${past.length}`})),
 		...pipe(
 			past,
 			Array.filter(() => model.pastOpen),
@@ -136,237 +145,296 @@ function List(h: H, model: Model, flights: FlightList, travel: readonly TravelTi
 	]
 }
 
-function Action(h: H, label: string, message: Message, disabled = false) {
-	return Button(h, {disabled})
-		.class('trips-control')
-		.on('click', () => message)
-		.children(label)
-}
-
-function Notice(h: H, title: string, action?: ReturnType<typeof Action>, error?: string) {
-	return h.div
-		.class('trips-notice')
-		.attr('role', 'status')
-		.children(
-			h.p.children(title),
-			error !== undefined && h.p.class('axis-muted').children(error),
-			action !== undefined && Glass(h).children(action)
-		)
-}
-
 function Paste(h: H, model: Model) {
-	return GlassPanel(
-		h,
-		'trips-booking',
-		'Paste booking',
-		h.form
-			.class('trips-booking')
-			.on('submit', () => Message.PasteSubmit(), {preventDefault: true})
-			.children(
-				h.label.children(
-					'Paste booking text or link',
-					h.textarea
-						.attrs({disabled: Option.getOrUndefined(Option.liftPredicate('', () => model.pending)), rows: '4'})
-						.value(model.pastedText)
-						.on('input', event => Message.PasteText({text: event.value}))
-				),
-				h.label.class('trips-file').children(
-					'Or choose an image or PDF',
-					h.input
-						.key(
-							Boolean.match(model.pasteOpen, {onFalse: Function.constant('closed'), onTrue: Function.constant('open')})
-						)
-						.attrs({
-							accept: 'image/*,application/pdf',
-							disabled: Option.getOrUndefined(Option.liftPredicate('', () => model.pending)),
-							type: 'file'
-						})
-						.value('')
-						.on('change', event =>
-							Option.getOrUndefined(Option.map(Array.head(event.files), file => Message.PasteFile({file})))
-						)
-				),
-				model.error !== undefined && h.p.attr('role', 'alert').children(model.error),
-				h.div.class('trips-booking-actions').children(
-					Action(h, 'Cancel', Message.PasteVisibility({open: false}), model.pending),
-					Button(h, {disabled: model.pending || String.isEmpty(String.trim(model.pastedText)), type: 'submit'})
-						.class('trips-control')
-						.children(
-							Boolean.match(model.pending, {onFalse: Function.constant('Add'), onTrue: Function.constant('Adding…')})
-						)
+	if (!model.pasteOpen) return undefined
+	const pending = h.isRunning(Run)
+	return Sheet(h, {
+		action: Glass(h).children(
+			Button(h, {disabled: pending || String.isEmpty(String.trim(model.pastedText)), type: 'submit'})
+				.attr(
+					'aria-label',
+					Boolean.match(pending, {onFalse: Function.constant('Add booking'), onTrue: Function.constant('Adding…')})
 				)
+				.children(SymbolIcon(h, 'checkmark'))
+		),
+		body: [
+			h.textarea
+				.attrs({'aria-label': 'Paste booking text or link', placeholder: 'Paste booking text or link'})
+				.value(model.pastedText)
+				.on('input', event => Message.PasteText({text: event.value})),
+			model.error !== undefined && h.p.attr('role', 'alert').children(model.error),
+			Glass(h, 'trips-file').children(
+				h.label
+					.class('trips-control trips-file-control')
+					.attrs({'aria-disabled': `${pending}`, 'data-pressable': ''})
+					.children(
+						SymbolIcon(h, 'paperclip'),
+						'Choose an image or PDF',
+						h.input
+							.attrs({
+								accept: 'image/*,application/pdf',
+								'aria-label': 'Choose an image or PDF',
+								disabled: Option.getOrUndefined(Option.liftPredicate('', () => pending)),
+								type: 'file'
+							})
+							.value('')
+							.on('change', event =>
+								Option.getOrUndefined(Option.map(Array.head(event.files), file => Message.PasteFile({file})))
+							)
+					)
 			)
+		],
+		className: 'trips-sheet',
+		close: Message.PasteVisibility({open: false}),
+		closeDisabled: pending,
+		closeLabel: 'Cancel',
+		submit: Message.PasteSubmit(),
+		title: 'Paste booking',
+		titleId: 'booking-title'
+	})
+}
+
+function ListSkeleton(h: H) {
+	return Loading(h, 'Loading flights', h.div.class('trips-skeleton-list').attr('aria-hidden', 'true'))
+}
+
+function showOf(route: Model['route']) {
+	if (TripsRoute.isAnyOf(['NotFound'])(route)) return 'detail'
+	return route.search.pane ?? 'detail'
+}
+
+function targetOf(route: Model['route']) {
+	return pipe(
+		route,
+		Option.liftPredicate(TripsRoute.isAnyOf(['Day', 'Flight'])),
+		Option.map(link => ({day: TripsRoute.isAnyOf(['Day'])(link), id: link.params.id}))
 	)
-		.popover('auto', model.pasteOpen)
-		.on('toggle', event => Message.PasteVisibility({open: event.open}))
 }
 
-function Itinerary(h: H, model: Model, flights: FlightList, travel: readonly TravelTime[], selected?: FlightId) {
-	return h.section
-		.class('fold-list')
-		.attr('aria-label', 'Flights')
-		.children(h.div.class('trips-pane').children(...List(h, model, flights, travel, selected)))
-}
+type ShellState = {flight?: Flight; flights?: FlightList; stale?: boolean; notice?: ReturnType<typeof Notice<Message>>}
 
-function BoardingPass(
+function BoardPane(
 	h: H,
 	model: Model,
-	flights: FlightList,
-	travel: readonly TravelTime[],
-	view: {flight: Option.Option<Flight>; opened: boolean; posture: ReturnType<typeof nextBoardOf>}
+	board: ShellState,
+	show: Pane,
+	targeted: boolean,
+	travel: readonly TravelTime[]
 ) {
-	const stale = AsyncResult.isFailure(model.flights)
-	return h.section
-		.class('fold-detail')
-		.attr('aria-label', 'Boarding pass')
-		.children(
-			h.div.class('trips-pane').children(
-				stale &&
-					h.div
-						.class('trips-stale')
-						.children(h.span.class('axis-dot'), 'Out of date', Action(h, 'Retry', Message.Retry())),
-				Option.getOrUndefined(
-					Option.map(view.posture, posture =>
-						h.div.class('trips-half').children(NextStep(h, posture.hero, Option.getOrUndefined(posture.line)))
-					)
-				),
-				Option.match(view.flight, {
-					onNone: () => {
-						if (!view.opened) return h.p.class('trips-notice').children('No upcoming flights')
-						if (stale) return h.p.class('trips-notice').children('Flight not loaded')
-						return h.p.class('trips-notice').children('Flight not found')
-					},
-					onSome: found =>
-						h.div
-							.class('trips-pass')
-							.attr('data-half-step', Option.getOrUndefined(Option.as(view.posture, '')))
-							.children(...Board(h, found, flights, model.now, travel))
-				}),
-				!model.pasteOpen &&
-					model.error !== undefined &&
-					h.p.class('trips-notice').attr('role', 'alert').children(model.error)
+	if (board.notice !== undefined) return show === 'detail' && model.narrow && board.notice
+	if (board.flights === undefined) return BoardSkeleton(h)
+	if (board.flight === undefined) {
+		return (
+			targeted &&
+			Notice(
+				h,
+				Boolean.match(board.stale === true, {
+					onFalse: Function.constant('Flight not found'),
+					onTrue: Function.constant('Flight not loaded')
+				})
 			)
 		)
+	}
+	const posture = pipe(
+		board.flights,
+		Option.liftPredicate(() => !targeted),
+		Option.flatMap(flights => nextBoardOf(flights, model.now))
+	)
+	return [
+		Option.getOrUndefined(
+			Option.map(posture, step =>
+				h.div.class('trips-half').children(NextStep(h, step.hero, Option.getOrUndefined(step.line)))
+			)
+		),
+		h.div
+			.class('trips-pass')
+			.attr('data-half-step', Option.getOrUndefined(Option.as(posture, '')))
+			.children(Board(h, board.flight, board.flights, model.now, travel))
+	]
 }
 
-function AccountFailureNotice(h: H, model: Model) {
-	if (!AsyncResult.isFailure(model.account) || Option.isSome(AsyncResult.value(model.account))) return undefined
-	if (needsSignInCause(model.account.cause)) {
+function ListPane(h: H, model: Model, board: ShellState, travel: readonly TravelTime[]) {
+	if (board.notice !== undefined) return board.notice
+	if (board.flights === undefined) return ListSkeleton(h)
+	return List(
+		h,
+		model,
+		board.flights,
+		travel,
+		Boolean.match(!model.narrow && !model.listHidden, {
+			onFalse: Function.constUndefined,
+			onTrue: () => board.flight?.id
+		})
+	)
+}
+
+function sheetAirport(h: H, model: Model, board: ShellState, show: Pane, travel: readonly TravelTime[]) {
+	if (board.flight === undefined || board.flights === undefined) return undefined
+	if (!Option.isSome(board.flight.from.code) && !bookedOf(board.flight)) return undefined
+	if (model.narrow && show === 'list') return undefined
+	if (!dayAt(board.flight, board.flights, model.now, travel).toAirport) return undefined
+	return AirportOptions(board.flight, travel, h.isRunning(Run))
+}
+
+function FlightActions(
+	h: H,
+	model: Model,
+	board: ShellState,
+	signOut: boolean,
+	airport?: ReturnType<typeof AirportOptions>
+) {
+	const pending = h.isRunning(Run)
+	return Array.filter(
+		[
+			board.flights !== undefined &&
+				({
+					disabled: pending,
+					id: 'paste',
+					message: Message.PasteVisibility({open: true}),
+					symbol: 'document.on.clipboard',
+					title: 'Paste booking'
+				} satisfies ShellAction<Message>),
+			airport !== undefined &&
+				({
+					id: 'airport',
+					menu: airport,
+					message: Message.Airport({open: !model.airportOpen}),
+					symbol: 'location',
+					title: 'Airport travel'
+				} satisfies ShellAction<Message>),
+			board.flights !== undefined &&
+				signOut &&
+				({
+					disabled: pending,
+					id: 'sign-out',
+					message: Message.SignOut(),
+					symbol: 'rectangle.portrait.and.arrow.right',
+					title: 'Sign out'
+				} satisfies ShellAction<Message>),
+			board.stale === true &&
+				({
+					id: 'retry',
+					message: Message.Retry(),
+					symbol: 'exclamationmark.circle',
+					title: 'Out of date. Retry'
+				} satisfies ShellAction<Message>)
+		],
+		action => action !== false
+	)
+}
+
+function Shell(h: H, model: Model, options: ShellState) {
+	const target = targetOf(model.route)
+	const show = Boolean.match(Option.isNone(target) && options.flights !== undefined && options.flight === undefined, {
+		onFalse: () => showOf(model.route),
+		onTrue: Function.constant<Pane>('list')
+	})
+	const travel = Option.getOrElse(AsyncResult.value(model.travel), Array.empty<TravelTime>)
+	const hasDetail = options.flight !== undefined || Option.isSome(target)
+	const airport = sheetAirport(h, model, options, show, travel)
+	const signOut = Option.exists(AsyncResult.value(model.account), account => account.signOut)
+	const sidebar = Boolean.match(model.narrow && show === 'detail', {
+		onFalse: () =>
+			({
+				disabled: !hasDetail,
+				id: 'sidebar',
+				message: Message.Sidebar(),
+				pressed: !model.listHidden,
+				symbol: 'sidebar.left',
+				title: 'Sidebar'
+			}) satisfies ShellAction<Message>,
+		onTrue: () =>
+			({
+				id: 'sidebar',
+				message: Message.Sidebar(),
+				symbol: 'chevron.left',
+				title: 'Back'
+			}) satisfies ShellAction<Message>
+	})
+	return ActionShell(h, {
+		actions: FlightActions(h, model, options, signOut, airport),
+		content: Split(h, {
+			detail: {
+				content: h.div.class('trips-pane').children(BoardPane(h, model, options, show, Option.isSome(target), travel)),
+				key: Option.getOrUndefined(Option.map(target, link => link.id)) ?? options.flight?.id ?? 'board',
+				label: 'Boarding pass'
+			},
+			list: {
+				content: h.div.class('trips-pane').children(ListPane(h, model, options, travel)),
+				label: 'Flights',
+				position: {key: 'flights', ready: options.flights !== undefined}
+			},
+			listHidden: !model.narrow && hasDetail && model.listHidden,
+			narrow: model.narrow,
+			show
+		}),
+		overlays: [
+			options.flights !== undefined && Paste(h, model),
+			!isNative && airport !== undefined && AirportMenu(h, airport, model.airportOpen),
+			!isNative && signOut && WebSignOut(h, {toolbar: true}),
+			!model.pasteOpen &&
+				model.error !== undefined &&
+				Glass(h, 'trips-report').attr('role', 'alert').children(model.error)
+		],
+		sidebar
+	})
+}
+
+function accountFailure(h: H, cause: Cause.Cause<unknown>) {
+	if (needsSignInCause(cause)) {
 		return Notice(
 			h,
 			'Sign in with Auth',
-			Action(
-				h,
-				Boolean.match(model.pending, {
-					onFalse: Function.constant('Sign in'),
-					onTrue: Function.constant('Opening Auth…')
-				}),
-				Message.SignIn(),
-				model.pending
-			),
-			model.error
+			Message.SignIn(),
+			Boolean.match(h.isRunning(Run), {
+				onFalse: Function.constant('Sign in'),
+				onTrue: Function.constant('Opening Auth…')
+			})
 		)
 	}
-	if (isDenied(Cause.squash(model.account.cause))) {
-		return Notice(h, 'Access denied', Action(h, 'Retry', Message.Retry()))
-	}
-	return Notice(h, 'Couldn’t load Trips', Action(h, 'Retry', Message.Retry()))
-}
 
-function ActionIcon(h: H, path: string) {
-	return h
-		.el('svg')
-		.attrs({'aria-hidden': 'true', fill: 'none', stroke: 'currentColor', 'stroke-width': '1.5', viewBox: '0 0 24 24'})
-		.children(h.el('path').attr('d', path))
-}
-
-function SignOut(h: H, model: Model) {
-	if (!Option.exists(AsyncResult.value(model.account), account => account.signOut)) return undefined
-	const icon = ActionIcon(h, 'M10 5H4v14h6m-1-7h12m-5-5 5 5-5 5')
-	if (native) {
-		return Button(h, {disabled: model.pending})
-			.attr('aria-label', 'Sign out')
-			.on('click', () => Message.SignOut())
-			.children(icon)
-	}
-	return h.form
-		.attrs({action: '/auth/sign-out', method: 'post'})
-		.children(Button(h, {type: 'submit'}).attr('aria-label', 'Sign out').children(icon))
+	return Notice(
+		h,
+		Boolean.match(isDeniedCause(cause), {
+			onFalse: Function.constant('Couldn’t load Trips'),
+			onTrue: Function.constant('Access denied')
+		}),
+		Message.Retry()
+	)
 }
 
 function Workspace(h: H, model: Model) {
-	const accountFailure = AccountFailureNotice(h, model)
-	if (accountFailure !== undefined) return accountFailure
-	if (Option.isNone(AsyncResult.value(model.account))) return Notice(h, 'Loading Trips…')
-	const blocking = Option.getOrUndefined(blockingFailure(model.flights))
-	if (blocking !== undefined) {
-		return Notice(h, 'Couldn’t load flights', Action(h, 'Retry', Message.Retry()), failed(blocking))
-	}
-	const flights = Option.getOrUndefined(AsyncResult.value(model.flights))
-	if (flights === undefined) return Notice(h, 'Loading flights…')
+	const main = h.main.class('trips axis-controls').onMount(PressFeedback({}))
 	if (TripsRoute.isAnyOf(['NotFound'])(model.route)) {
-		return h.div
-			.class('trips-notice')
-			.children(h.p.children('Flight not found'), h.a.attr('href', '/').children('Back to Trips'))
+		return main.children(
+			Glass(h).children(h.a.class('trips-control').attrs({'data-pressable': '', href: '/'}).children('Back to Trips'))
+		)
 	}
-	const travel = Option.getOrElse(AsyncResult.value(model.travel), Array.empty<TravelTime>)
-	const board = boardOf(flights, model.now)
-	const target = TripsRoute.match(model.route, {
-		Day: route => Option.some({day: true, id: route.params.id}),
-		Flight: route => Option.some({day: false, id: route.params.id}),
-		Home: () => Option.none(),
-		NotFound: () => Option.none()
-	})
-	const selected = Option.match(target, {
-		onNone: () => Option.map(board, flight => flight.id),
-		onSome: link => Option.some(openedFlight(flights, link, model.now))
-	})
-	const flight = Option.flatMap(selected, id => Array.findFirst(flights, item => item.id === id))
-	const hasDetail = Option.isSome(flight) || Option.isSome(target)
-	const hideList = hasDetail && model.listHidden
-	const showList = !hasDetail || model.showList
-	const airport = Option.filter(
-		flight,
-		found => (Option.isSome(found.from.code) || bookedOf(found)) && dayAt(found, flights, model.now, travel).toAirport
+	return main.children(
+		ReadState(model.account, {
+			failed: cause => Shell(h, model, {notice: accountFailure(h, cause)}),
+			loading: () => Shell(h, model, {}),
+			ready: () =>
+				ReadState(model.flights, {
+					failed: () => Shell(h, model, {notice: Notice(h, 'Couldn’t load flights', Message.Retry())}),
+					loading: () => Shell(h, model, {}),
+					ready: (flights, stale) => {
+						const flight = Option.getOrUndefined(
+							Option.match(targetOf(model.route), {
+								onNone: () => boardOf(flights, model.now),
+								onSome: link => Array.findFirst(flights, item => item.id === openedFlight(flights, link, model.now))
+							})
+						)
+						return Shell(h, model, {flights, stale, ...(flight !== undefined && {flight})})
+					}
+				})
+		})
 	)
-	return AppShell(h, {
-		actions: [
-			Button(h, {disabled: model.pending})
-				.attrs({'aria-label': 'Paste booking', popovertarget: 'trips-booking'})
-				.children(ActionIcon(h, 'M9 5H5v16h14V5h-4m-6-2h6v4H9zM9 14h6m-3-3v6')),
-			Option.isSome(airport) &&
-				Button(h, {disabled: model.pending})
-					.attrs({'aria-label': 'Airport travel', popovertarget: 'trips-airport'})
-					.children(ActionIcon(h, 'm3 11 18-8-8 18-3-7z')),
-			SignOut(h, model)
-		],
-		content: h.main
-			.class('fold trips')
-			.attrs({
-				'data-list-hidden': Option.getOrUndefined(Option.liftPredicate('', () => hideList)),
-				'data-show': Boolean.match(showList, {onFalse: Function.constant('detail'), onTrue: Function.constant('list')})
-			})
-			.children(
-				Itinerary(h, model, flights, travel, Option.getOrUndefined(selected)),
-				BoardingPass(h, model, flights, travel, {
-					flight,
-					opened: Option.isSome(target),
-					posture: Option.filter(nextBoardOf(flights, model.now), () => Option.isNone(target))
-				}),
-				Paste(h, model),
-				Option.getOrUndefined(Option.map(airport, found => AirportActions(h, found, travel, model.pending)))
-			),
-		sidebar: h.div
-			.class('trips-sidebar')
-			.children(
-				hasDetail &&
-					h.div
-						.class('trips-sidebar-compact')
-						.children(SidebarControl(h, showList && !hideList, Message.ShowList({list: !showList || hideList}))),
-				hasDetail && h.div.class('trips-sidebar-wide').children(SidebarControl(h, !hideList, Message.ToggleList()))
-			)
-	})
 }
+
+const OpenUrl = Command.make('Trips/OpenUrl', {args: {url: Schema.String}}, request =>
+	Effect.sync(() => location.assign(request.url))
+)
 
 const Def = Html.component({message: Message, model: Model, name: 'Trips', props: Schema.Struct({route: TripsRoute})})
 
@@ -398,71 +466,36 @@ export const Trips = pipe(
 	Def.make({
 		init: input => ({
 			account: AsyncResult.initial(),
+			airportOpen: false,
 			error: undefined,
 			flights: AsyncResult.initial(),
 			listHidden: false,
+			narrow: singlePane(),
 			now: DateTime.nowUnsafe(),
 			pastOpen: false,
 			pasteOpen: false,
 			pastedText: '',
-			pending: false,
 			route: input.props.route,
-			showList: false,
 			travel: AsyncResult.initial()
 		}),
 		subscriptions: input => {
 			const account = Option.getOrUndefined(Option.map(AsyncResult.value(input.model.account), user => user.id))
 			return [
+				...watchPanes(() => Message.Posture({narrow: singlePane()})),
 				Router.subscription(TripsRoute, input.model.route, route => Message.Route({route})),
 				Subscription.make(
 					'account',
-					Stream.unwrap(
-						AtomRegistry.AtomRegistry.useSync(registry =>
-							pipe(
-								registry,
-								AtomRegistry.toStream(accountAtom),
-								Stream.map(result => Message.Account({result}))
-							)
-						)
-					)
+					observe(accountAtom, result => Message.Account({result}))
 				),
 				account !== undefined &&
-					Subscription.make('flights', account, () =>
-						Stream.unwrap(
-							AtomRegistry.AtomRegistry.useSync(registry =>
-								pipe(
-									registry,
-									AtomRegistry.toStream(flightsAtom),
-									Stream.map(result => Message.Flights({result}))
-								)
-							)
-						)
-					),
+					Subscription.make('flights', account, () => observe(flightsAtom, result => Message.Flights({result}))),
 				account !== undefined &&
-					Subscription.make('travel', account, () =>
-						Stream.unwrap(
-							AtomRegistry.AtomRegistry.useSync(registry =>
-								pipe(
-									registry,
-									AtomRegistry.toStream(travelAtom),
-									Stream.map(result => Message.Travel({result}))
-								)
-							)
-						)
-					),
+					Subscription.make('travel', account, () => observe(travelAtom, result => Message.Travel({result}))),
 				Subscription.make(
 					'clock',
-					Stream.unwrap(
-						AtomRegistry.AtomRegistry.useSync(registry =>
-							pipe(
-								registry,
-								AtomRegistry.toStream(clockAtom('1 minute')),
-								Stream.map(now => Message.Clock({now}))
-							)
-						)
-					)
+					observe(clockAtom('1 minute'), now => Message.Clock({now}))
 				),
-				native &&
+				isNative &&
 					Subscription.make(
 						'push',
 						pipe(
@@ -471,8 +504,8 @@ export const Trips = pipe(
 							Stream.unwrap
 						)
 					),
-				native && Subscription.make('opened', Stream.map(opened, Message.Opened)),
-				native && Subscription.make('foreground', foreground),
+				isNative && Subscription.make('opened', Stream.map(opened, Message.Opened)),
+				isNative && Subscription.make('foreground', foreground),
 				input.model.pasteOpen && Subscription.make('pastedImage', pastedImage)
 			]
 		},
@@ -483,12 +516,14 @@ export const Trips = pipe(
 				if (Option.getOrUndefined(before) === Option.getOrUndefined(after)) return $.evolve({account: update.result})
 				return $.evolve({
 					account: update.result,
+					airportOpen: false,
 					flights: AsyncResult.initial(),
 					pasteOpen: false,
 					pastedText: '',
 					travel: AsyncResult.initial()
 				})
 			},
+			Airport: ($, update) => $.evolve({airportOpen: update.open}),
 			Clock: ($, update) => $.evolve({now: update.now}),
 			Flights: ($, update) => {
 				const next = $.evolve({flights: update.result})
@@ -497,64 +532,87 @@ export const Trips = pipe(
 				}
 				return next
 			},
+			Ignored: $ => $.model,
+			OpenUrl: ($, update) => $.evolve({airportOpen: false}).run(Command.asNoop(OpenUrl.make({url: update.url}))),
 			Opened: ($, update) =>
-				$.evolve({showList: false}).run(
+				$.run(
 					Command.asNoop(
 						Router.push(
 							TripsRoute,
 							Boolean.match(update.day, {
-								onFalse: () => TripsRoute.Flight({params: {id: update.id}}),
-								onTrue: () => TripsRoute.Day({params: {id: update.id}})
+								onFalse: () => TripsRoute.Flight({params: {id: update.id}, search: {}}),
+								onTrue: () => TripsRoute.Day({params: {id: update.id}, search: {}})
 							})
 						)
 					)
 				),
 			PasteFile: ($, update) => {
-				if ($.model.pending) return $.model
-				return $.evolve({error: undefined, pending: true}).run(SaveFile.make({file: update.file}))
+				if (!$.model.pasteOpen) return $.model
+				return $.evolve({error: undefined}).run(Run.make({action: Action.File({file: update.file})}))
 			},
 			PasteSubmit: $ => {
-				if ($.model.pending || String.isEmpty(String.trim($.model.pastedText))) return $.model
-				return $.evolve({error: undefined, pending: true}).run(SaveText.make({text: $.model.pastedText}))
+				if (String.isEmpty(String.trim($.model.pastedText))) return $.model
+				return $.evolve({error: undefined}).run(Run.make({action: Action.Text({text: $.model.pastedText})}))
 			},
 			PasteText: ($, update) => $.evolve({pastedText: update.text}),
 			PasteVisibility: ($, update) => {
 				if (update.open === $.model.pasteOpen) return $.model
-				if (update.open) return $.evolve({error: undefined, pasteOpen: true})
-				return $.evolve({error: undefined, pasteOpen: false, pastedText: ''})
+				if (update.open) {
+					return $.evolve({airportOpen: false, error: undefined, pasteOpen: true}).viewTransition(['axis-sheet-open'])
+				}
+				return $.evolve({error: undefined, pasteOpen: false, pastedText: ''}).viewTransition(['axis-sheet-close'])
+			},
+			Posture: ($, update) => {
+				if (update.narrow === $.model.narrow) return $.model
+				return $.evolve({airportOpen: false, narrow: update.narrow}).viewTransition(['axis-layout'])
 			},
 			Retry: $ => $.evolve({error: undefined, now: DateTime.nowUnsafe()}).run(Command.asNoop(Reload.make({}))),
-			Route: ($, update) => $.evolve({route: update.route, showList: false}),
+			Route: ($, update) => {
+				const from = showOf($.model.route)
+				const to = showOf(update.route)
+				const next = $.evolve({airportOpen: false, route: update.route})
+				if (usedHistoryMotion()) return next
+				if (!$.model.narrow) return next.viewTransition(['axis-layout'])
+				if (from === to) return next
+				if (to === 'detail') return next.viewTransition(['axis-open'])
+				return next.viewTransition(['axis-back'])
+			},
 			Select: ($, update) =>
-				$.evolve({showList: false}).run(
-					Command.asNoop(Router.push(TripsRoute, TripsRoute.Flight({params: {id: update.id}})))
+				$.evolve({listHidden: false}).run(
+					Command.asNoop(Router.push(TripsRoute, TripsRoute.Flight({params: {id: update.id}, search: {}})))
 				),
-			SessionChanged: ($, update) => $.evolve({error: update.message, pending: false}),
-			ShowList: ($, update) => $.evolve({listHidden: false, showList: update.list}),
-			SignIn: $ => {
-				if ($.model.pending) return $.model
-				return $.evolve({error: undefined, pending: true}).run(Auth.make({logout: false}))
+			SessionChanged: ($, update) => $.evolve({error: update.message}),
+			Sidebar: $ => {
+				if (!$.model.narrow) {
+					return $.evolve({airportOpen: false, listHidden: !$.model.listHidden}).viewTransition(['axis-layout'])
+				}
+				if (TripsRoute.isAnyOf(['NotFound'])($.model.route)) return $.model
+				if (showOf($.model.route) === 'list') {
+					return $.run(
+						Command.asNoop(Router.patchSearch(TripsRoute, $.model.route, {pane: 'detail'}, {history: 'push'}))
+					)
+				}
+				if (hasHistoryBehind(previous => previous.searchParams.get('pane') === 'list')) return $.run(historyBack)
+				return $.run(
+					Command.asNoop(Router.patchSearch(TripsRoute, $.model.route, {pane: 'list'}, {history: 'replace'}))
+				)
 			},
+			SignIn: $ => $.evolve({error: undefined}).run(Run.make({action: Action.Session({logout: false})})),
 			SignOut: $ => {
-				if ($.model.pending) return $.model
-				return $.evolve({error: undefined, pending: true}).run(Auth.make({logout: true}))
+				if (!isNative) return $.run(submitWebSignOut)
+				return $.evolve({error: undefined}).run(Run.make({action: Action.Session({logout: true})}))
 			},
-			ToggleList: $ => $.evolve({listHidden: !$.model.listHidden}),
 			TogglePast: $ => $.evolve({pastOpen: !$.model.pastOpen}),
 			Travel: ($, update) => $.evolve({travel: update.result}),
-			TripTime: ($, update) => {
-				if ($.model.pending) return $.model
-				return $.evolve({error: undefined, pending: true}).run(SetTripTime.make({row: update.row}))
-			},
-			WriteFailed: ($, update) => $.evolve({error: update.error, pending: false}),
-			WriteSaved: $ => $.evolve({error: undefined, pasteOpen: false, pastedText: '', pending: false})
+			TripTime: ($, update) =>
+				$.evolve({airportOpen: false, error: undefined}).run(Run.make({action: Action.TripTime({row: update.row})})),
+			WriteFailed: ($, update) => $.evolve({error: update.error}),
+			WriteSaved: $ => {
+				if (!$.model.pasteOpen) return $.model
+				return $.evolve({error: undefined, pasteOpen: false, pastedText: ''}).viewTransition(['axis-sheet-close'])
+			}
 		},
 		view: Workspace
 	}),
-	Component.provide(
-		Layer.provideMerge(
-			Layer.mergeAll(Auth.layer, Reload.layer, SaveFile.layer, SaveText.layer, SetTripTime.layer),
-			AtomRegistry.layer
-		)
-	)
+	Component.provide(Layer.provideMerge(Layer.mergeAll(Reload.layer, Run.layer), AtomRegistry.layer))
 )

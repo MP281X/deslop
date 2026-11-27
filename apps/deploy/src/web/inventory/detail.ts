@@ -3,18 +3,21 @@ import type {View} from '@effect/ui'
 import {Array, Boolean, DateTime, Function, HashSet, MutableHashSet, Number, Option, Record, String, pipe} from 'effect'
 
 import {bytesOf, clockOf, durationOf, percentOf} from '@deslop/runtime/shared/format'
+import {Placeholder, RowLabel} from '@deslop/ui/axis'
 import {Button} from '@deslop/ui/control'
+import {Glass} from '@deslop/ui/glass'
 
 import {processTrackUsage, processTree, workloadName} from '#contracts'
-import type {Row, InventoryItem, Snapshot, AppHour, MachineHistory} from '#contracts'
+import type {AppHour, InventoryItem, MachineHistory, Row, Snapshot} from '#contracts'
 
 import type {Reading} from '#web/inventory/chart.ts'
 import {Figures, Job, MachineFigures, MachineName, Mark, Url} from '#web/inventory/list.ts'
+import {LoadingReadings} from '#web/inventory/loading.ts'
 import {Message} from '#web/inventory/model.ts'
 import type {H} from '#web/inventory/model.ts'
 import {appFigures, appReadings, machineReadings} from '#web/inventory/readings.ts'
-import {host, shown, reasonLine, reasonOf} from '#web/inventory/rows.ts'
-import {CpuScale, processReadings, Restarts, RestartReason, Ruler, Trace} from '#web/inventory/traces.ts'
+import {reasonOf, shown, statusLine} from '#web/inventory/rows.ts'
+import {CpuScale, Restarts, Ruler, Trace, processReadings} from '#web/inventory/traces.ts'
 
 export type Child = View.Input<Message>
 
@@ -46,7 +49,15 @@ function Axes(
 			h.div
 				.class('deploy-axis-body')
 				.children(
-					h.div.class('deploy-large-trace').children(Trace(h, readings, now, true), CpuScale(h), status),
+					h.div
+						.class('deploy-large-trace')
+						.children(
+							Array.some(readings, reading => Option.isSome(reading.value)) && [
+								Trace(h, readings, now, true),
+								CpuScale(h)
+							],
+							status
+						),
 					children,
 					Restarts(h, restarts, now, true)
 				)
@@ -83,30 +94,20 @@ function Processes(h: H, item: InventoryItem, now: DateTime.Utc, history?: AppHo
 				.key(track.key)
 				.class('axis-row deploy-process')
 				.children(
-					h.div
-						.class('deploy-name')
-						.children(
-							h.span
-								.class('axis-title', Option.exists(track.cpu, cpu => cpu >= 5) && 'deploy-strong')
-								.children(
-									Boolean.match(node, {
-										onFalse: () => track.label.name,
-										onTrue: () => `${track.label.name} ${track.label.detail}`
-									})
-								),
-							h.span
-								.class('axis-muted')
-								.children(
-									pipe(
-										[
-											Boolean.match(node, {onFalse: () => track.label.detail, onTrue: Function.constant('')}),
-											Option.match(track.memory, {onNone: Function.constant(''), onSome: bytesOf})
-										],
-										Array.filter(String.isNonEmpty),
-										Array.join(' · ')
-									)
-								)
+					RowLabel(h, {
+						line: pipe(
+							[
+								Boolean.match(node, {onFalse: () => track.label.detail, onTrue: Function.constant('')}),
+								Option.match(track.memory, {onNone: Function.constant(''), onSome: bytesOf})
+							],
+							Array.filter(String.isNonEmpty),
+							Array.join(' · ')
 						),
+						title: Boolean.match(node, {
+							onFalse: () => track.label.name,
+							onTrue: () => `${track.label.name} ${track.label.detail}`
+						})
+					}),
 					Figures(h, track.cpu),
 					Trace(h, processReadings(track.samples), now)
 				)
@@ -114,7 +115,7 @@ function Processes(h: H, item: InventoryItem, now: DateTime.Utc, history?: AppHo
 	)
 }
 
-function endpointsOf(h: H, row: Row, free: readonly InventoryItem[], admin: boolean) {
+function endpointsOf(h: H, row: Row, free: readonly InventoryItem[], admin: boolean, pending: boolean) {
 	const exposures = Array.map(row.exposures, site =>
 		h.span.key(site.id).children(Mark(h, site.health), Url(h, site), site.health !== 'quiet' && ` · ${reasonOf(site)}`)
 	)
@@ -129,11 +130,15 @@ function endpointsOf(h: H, row: Row, free: readonly InventoryItem[], admin: bool
 		const target = byId[listener.id]
 		if (admin && target !== undefined) {
 			return [
-				Button(h, {})
+				Glass(h)
 					.key(listener.id)
-					.attr('aria-label', `Expose ${workloadName(row.item)} :${port}`)
-					.on('click', () => Message.OpenedExposure({port: target}))
-					.children(`:${port}`)
+					.children(
+						Button(h, {disabled: pending})
+							.class('deploy-port-control')
+							.attr('aria-label', `Expose ${workloadName(row.item)} :${port}`)
+							.on('click', Message.OpenedExposure({port: target}))
+							.children(`:${port}`)
+					)
 			]
 		}
 		return [h.span.key(listener.id).children(`:${port}`)]
@@ -146,23 +151,14 @@ export type DetailProps = {
 	app?: AppHour
 	free: readonly InventoryItem[]
 	history?: MachineHistory
+	line?: string
+	loading: boolean
 	now: DateTime.Utc
 	pending: boolean
+	restart?: string
 	row: Row
 	rows: readonly Row[]
 	status: Child
-}
-
-function detailLine(row: Row, now: DateTime.Utc, restart?: string) {
-	if (row.item.health !== 'quiet') return reasonLine(row.item, now)
-	if (restart !== undefined) return restart
-	return pipe(
-		row.exposures,
-		Array.flatMap(site => Option.toArray(site.url)),
-		Array.head,
-		Option.map(host),
-		Option.getOrUndefined
-	)
 }
 
 function UsageFacts(
@@ -193,7 +189,7 @@ function UsageFacts(
 
 function EndpointFacts(h: H, props: DetailProps) {
 	const row: Row = props.row
-	const endpoints = endpointsOf(h, row, props.free, props.admin)
+	const endpoints = endpointsOf(h, row, props.free, props.admin, props.pending)
 	return h.div.children(
 		row.item.kind === 'service' && Fact(h, 'Unit', row.item.name),
 		Array.isArrayNonEmpty(endpoints.exposures) &&
@@ -231,6 +227,11 @@ function EndpointFacts(h: H, props: DetailProps) {
 	)
 }
 
+function usageFigures(h: H, loading: boolean, figures: ReturnType<typeof appFigures>) {
+	if (loading) return Placeholder(h, 'deploy-value-placeholder')
+	return Figures(h, figures.cpu, figures.memory)
+}
+
 export function Detail(h: H, props: DetailProps) {
 	const item: InventoryItem = props.row.item
 	const scheduled = Option.contains(item.scheduled, true)
@@ -238,7 +239,6 @@ export function Detail(h: H, props: DetailProps) {
 	const charted = !scheduled && (item.kind === 'service' || item.kind === 'container')
 	const readings = Boolean.match(charted, {onFalse: Array.empty, onTrue: () => appReadings(item, props.history)})
 	const restarts = props.app?.restarts ?? []
-	const restart = RestartReason(restarts, props.now)
 	const jobs = Array.filter(
 		props.rows,
 		candidate =>
@@ -253,25 +253,36 @@ export function Detail(h: H, props: DetailProps) {
 			h.div
 				.class('axis-row deploy-detail-lead')
 				.children(
-					h.div
-						.class('deploy-name')
-						.children(
-							h.span
-								.class('axis-title deploy-strong')
-								.children(Mark(h, item.health, restart !== undefined), workloadName(item)),
-							h.span.class('axis-muted').children(detailLine(props.row, props.now, restart))
-						),
-					!scheduled && Figures(h, figures.cpu, figures.memory)
+					RowLabel(h, {
+						line: props.line,
+						title: [Mark(h, item.health, props.restart !== undefined), workloadName(item)]
+					}),
+					!scheduled && usageFigures(h, props.loading, figures)
 				),
-			charted && Axes(h, props.now, readings, Processes(h, item, props.now, props.app), restarts, props.status),
+			!charted && props.status,
+			charted &&
+				Boolean.match(props.loading, {
+					onFalse: () => Axes(h, props.now, readings, Processes(h, item, props.now, props.app), restarts, props.status),
+					onTrue: () => LoadingReadings(h)
+				}),
 			h.dl
 				.class('deploy-facts')
-				.children(UsageFacts(h, item, props.now, readings, restarts, figures.memory, restart), EndpointFacts(h, props)),
-			Array.map(jobs, job => Job(h, job, props.admin, props.pending, props.now))
+				.children(
+					!props.loading && UsageFacts(h, item, props.now, readings, restarts, figures.memory, props.restart),
+					EndpointFacts(h, props)
+				),
+			Array.map(jobs, job => Job(h, job, props.admin, props.pending, false, statusLine(job, props.now)))
 		)
 }
 
-export function MachineDetail(h: H, now: DateTime.Utc, snapshot: Snapshot, status: Child, history?: MachineHistory) {
+export function MachineDetail(
+	h: H,
+	now: DateTime.Utc,
+	snapshot: Snapshot,
+	status: Child,
+	loading: boolean,
+	history?: MachineHistory
+) {
 	const figures = MachineFigures(history)
 	const readings = machineReadings(history)
 	return h.div.class('deploy-detail-scroll').children(
@@ -279,26 +290,28 @@ export function MachineDetail(h: H, now: DateTime.Utc, snapshot: Snapshot, statu
 			.class('axis-row deploy-detail-lead')
 			.children(
 				h.span.class('axis-title deploy-strong').children(MachineName(snapshot)),
-				Figures(h, figures.cpu, figures.memory)
+				usageFigures(h, loading, figures)
 			),
-		Axes(h, now, readings, undefined, [], status),
-		h.dl.class('deploy-facts').children(
-			h.div.children(
-				Fact(h, 'Peak, mean', statistics(readings)),
-				Fact(h, 'Memory', shown(figures.memoryTotal, bytesOf))
-			),
-			h.div.children(
-				Fact(h, 'Disk used', shown(figures.disk, percentOf)),
-				Fact(
-					h,
-					'Load',
-					pipe(
-						history?.load ?? [],
-						Array.map(value => value.toFixed(2)),
-						Array.join(' · ')
+		loading && LoadingReadings(h),
+		!loading && Axes(h, now, readings, undefined, [], status),
+		!loading &&
+			h.dl.class('deploy-facts').children(
+				h.div.children(
+					Fact(h, 'Peak, mean', statistics(readings)),
+					Fact(h, 'Memory', shown(figures.memoryTotal, bytesOf))
+				),
+				h.div.children(
+					Fact(h, 'Disk used', shown(figures.disk, percentOf)),
+					Fact(
+						h,
+						'Load',
+						pipe(
+							history?.load ?? [],
+							Array.map(value => value.toFixed(2)),
+							Array.join(' · ')
+						)
 					)
 				)
 			)
-		)
 	)
 }

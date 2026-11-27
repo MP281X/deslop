@@ -7,7 +7,9 @@ export const GitHubOAuthState = pipe(Schema.NonEmptyString, Schema.brand('OAuthS
 export type GitHubClientId = typeof GitHubClientId.Type
 export const GitHubClientId = pipe(Schema.String, Schema.brand('GitHubClientId'))
 export type AppSignIn = typeof AppSignIn.Type
-export const AppSignIn = Schema.Struct({app: Schema.Literals(['opm', 'stash', 'trips'])})
+export const AppSignIn = Schema.Struct({
+	app: Schema.Literals(['auth', 'deploy', 'gateway', 'opm', 'scope', 'stash', 'trips'])
+})
 export type SignInParams = typeof SignInParams.Type
 export const SignInParams = Schema.Struct({app: Schema.OptionFromOptionalKey(AppSignIn), next: Schema.NonEmptyString})
 // A started sign-in, sealed into its browser's login cookie until GitHub returns.

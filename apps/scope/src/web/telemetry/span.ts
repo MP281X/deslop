@@ -24,6 +24,17 @@ const STATUS: Record<string, string> = {
 	504: 'Gateway Timeout'
 }
 
+function urlLabel(url: URL) {
+	return `${url.host}${url.pathname}`
+}
+
+function httpUrl(value: string) {
+	if (!URL.canParse(value)) return undefined
+	const url = new URL(value)
+	if (url.protocol === 'http:' || url.protocol === 'https:') return url
+	return undefined
+}
+
 function errorOf(message: string, denied: boolean) {
 	return pipe(
 		message,
@@ -33,14 +44,23 @@ function errorOf(message: string, denied: boolean) {
 				message,
 				title: Boolean.match(denied, {onFalse: Function.constant('Error'), onTrue: Function.constant('Denied')})
 			}),
-			onSome: parts => ({
-				message: `${parts[2]} ${String.replace(/^https?:\/\//u, '')(parts[3] ?? '')} · ${parts[1]}`,
-				title: pipe(
-					STATUS,
-					Record.get(parts[1] ?? ''),
-					Option.getOrElse(() => `HTTP ${parts[1]}`)
+			onSome: parts => {
+				const address = parts[3] ?? ''
+				const label = pipe(
+					httpUrl(address),
+					Option.fromUndefinedOr,
+					Option.map(urlLabel),
+					Option.getOrElse(() => address)
 				)
-			})
+				return {
+					message: `${parts[2]} ${label} · ${parts[1]}`,
+					title: pipe(
+						STATUS,
+						Record.get(parts[1] ?? ''),
+						Option.getOrElse(() => `HTTP ${parts[1]}`)
+					)
+				}
+			}
 		})
 	)
 }
@@ -86,8 +106,9 @@ export function SpanDetail<M>(h: Html.H<M>, span: TraceSpan) {
 			h.dl.children(
 				field(h, 'source', 'Source', appName(span.service)),
 				Array.map(attributesOf(span), attribute => {
-					if (attribute.key === 'url.full' && String.startsWith('https://')(attribute.value)) {
-						return field(h, 'attribute:url.full', attribute.key, attribute.value, attribute.value)
+					if (attribute.key === 'url.full') {
+						const url = httpUrl(attribute.value)
+						if (url !== undefined) return field(h, 'attribute:url.full', 'URL', urlLabel(url), url.href)
 					}
 					return field(h, `attribute:${attribute.key}`, attribute.key, attribute.value)
 				})

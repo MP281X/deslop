@@ -1,4 +1,5 @@
 import {
+	Boolean,
 	Cause,
 	Deferred,
 	Effect,
@@ -14,13 +15,15 @@ import {
 	pipe
 } from 'effect'
 
-import {registerPlugin} from '@capacitor/core'
+import {Capacitor, registerPlugin} from '@capacitor/core'
 import type {PluginListenerHandle} from '@capacitor/core'
+import {Atom} from 'effect/reactivity'
 import {Socket} from 'effect/socket'
 
 import {layerSocketProtocol} from '@deslop/runtime/client/protocol'
 import {AuthError, outageUnlessRefused} from '@deslop/runtime/shared/auth'
 import {Account} from '@deslop/runtime/shared/schema'
+import {accountAtom as pageAccount, layerPageProtocol} from '@deslop/runtime/web/client'
 
 const SOCKET_IDS = MutableRef.make(0)
 
@@ -35,13 +38,27 @@ type SocketEvent = {
 	readonly message?: string
 }
 
-export type ToolbarItem = {
-	readonly disabled: boolean
-	readonly leading: boolean
-	readonly selected: boolean
-	readonly symbol: string
-	readonly title: string
-}
+type ToolbarMenuItem = typeof ToolbarMenuItem.Type
+const ToolbarMenuItem = Schema.Struct({
+	checked: Schema.optional(Schema.Boolean),
+	disabled: Schema.optional(Schema.Boolean),
+	id: Schema.String,
+	title: Schema.String
+})
+
+type ToolbarMenuGroup = typeof ToolbarMenuGroup.Type
+const ToolbarMenuGroup = Schema.Struct({items: Schema.Array(ToolbarMenuItem), title: Schema.String})
+
+export type ToolbarItem = typeof ToolbarItem.Type
+export const ToolbarItem = Schema.Struct({
+	disabled: Schema.Boolean,
+	id: Schema.String,
+	leading: Schema.Boolean,
+	menu: Schema.optional(Schema.Array(ToolbarMenuGroup)),
+	selected: Schema.Boolean,
+	symbol: Schema.String,
+	title: Schema.String
+})
 
 class ToolbarError extends Schema.TaggedError<ToolbarError>()('ToolbarError', {
 	cause: Schema.Defect(),
@@ -56,7 +73,7 @@ const native = registerPlugin<{
 	signOut: () => Promise<{status: number}>
 	addListener: {
 		(eventName: 'socket', listener: (event: SocketEvent) => void): Promise<PluginListenerHandle>
-		(eventName: 'toolbarAction', listener: (event: {title: string}) => void): Promise<PluginListenerHandle>
+		(eventName: 'toolbarAction', listener: (event: {id: string}) => void): Promise<PluginListenerHandle>
 	}
 	setToolbar: (options: {items: readonly ToolbarItem[]}) => Promise<void>
 	openSocket: (options: {id: string}) => Promise<void>
@@ -83,11 +100,11 @@ function setToolbar(items: readonly ToolbarItem[]) {
 	return toolbarCall('Could not update the native toolbar', () => native.setToolbar({items}))
 }
 
-export function nativeToolbar(items: Stream.Stream<readonly ToolbarItem[]>, onAction: (title: string) => void) {
+export function nativeToolbar(items: Stream.Stream<readonly ToolbarItem[]>, onAction: (id: string) => void) {
 	return pipe(
 		Effect.acquireRelease(
 			toolbarCall('Could not listen for native toolbar actions', () =>
-				native.addListener('toolbarAction', event => onAction(event.title))
+				native.addListener('toolbarAction', event => onAction(event.id))
 			),
 			listener =>
 				pipe(
@@ -258,4 +275,31 @@ const nativeSocket = Layer.effect(
 	})
 )
 
-export const layerNativeProtocol = layerSocketProtocol(nativeSocket)
+const layerNativeProtocol = layerSocketProtocol(nativeSocket)
+
+export const isNative = Capacitor.isNativePlatform()
+export const sessionAccount = Boolean.match(isNative, {
+	onFalse: () => pageAccount,
+	onTrue: () => Atom.make(nativeAccount)
+})
+export const sessionProtocol = Boolean.match(isNative, {
+	onFalse: () => layerPageProtocol,
+	onTrue: () => layerNativeProtocol
+})
+
+export function listenNative<E>(
+	attach: () => PromiseLike<PluginListenerHandle>,
+	failure: (cause: unknown) => E,
+	releaseFailure = failure
+) {
+	return Effect.acquireRelease(Effect.tryPromise({catch: failure, try: attach}), listener =>
+		Effect.ignore(Effect.tryPromise({catch: releaseFailure, try: () => listener.remove()}), {log: 'Warn'})
+	)
+}
+
+export function registerTokens<E, E2, R, R2>(
+	tokens: Stream.Stream<string, E, R>,
+	register: (token: string) => Effect.Effect<void, E2, R2>
+) {
+	return Stream.switchMap(Stream.changes(tokens), token => Stream.fromEffectDrain(register(token)))
+}

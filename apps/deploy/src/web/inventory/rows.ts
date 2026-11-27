@@ -34,10 +34,22 @@ export function reasonOf(item: InventoryItem) {
 	return Option.match(item.failure, {onNone: () => item.detail, onSome: stop => stop.reason})
 }
 
-export function reasonLine(item: InventoryItem, now: DateTime.Utc) {
+function reasonLine(item: InventoryItem, now: DateTime.Utc) {
 	return pipe(
 		item.failure,
 		Option.flatMap(stop => stop.at),
 		Option.match({onNone: () => reasonOf(item), onSome: at => `${reasonOf(item)} · ${ageOf(at, now)}`})
+	)
+}
+
+export function statusLine(row: Row, now: DateTime.Utc, restart?: string) {
+	if (row.item.health !== 'quiet') return reasonLine(row.item, now)
+	if (restart !== undefined) return restart
+	return pipe(
+		row.exposures,
+		Array.findFirst(site => Option.isSome(site.url)),
+		Option.flatMap(site => site.url),
+		Option.map(host),
+		Option.getOrUndefined
 	)
 }

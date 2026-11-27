@@ -30,10 +30,14 @@
 		"access": "public"
 	},
 	"scripts": {
+		"ios:sync": "vp run build && cap sync ios",
 		"preview": "vp run build && NODE_ENV=development node --env-file-if-exists=.env ./dist/server.js",
 		"test": "vp test --config ../../vite.config.ts"
 	},
 	"devDependencies": {
+		"@capacitor/cli": "latest",
+		"@capacitor/core": "latest",
+		"@capacitor/ios": "latest",
 		"@deslop/runtime": "workspace:*",
 		"@deslop/ui": "workspace:*",
 		"@effect/platform-node": "latest",

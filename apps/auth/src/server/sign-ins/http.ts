@@ -7,6 +7,7 @@ import {SESSION_COOKIE} from '@deslop/runtime/shared/auth'
 
 import {parentDomain} from '#contracts'
 
+import {AppSignIn} from '#server/github/schema.ts'
 import {authResponse} from '#server/http.ts'
 import {SignIns, loginCookie} from '#server/sign-ins/service.ts'
 
@@ -14,7 +15,7 @@ const COOKIE = {httpOnly: true, path: '/', sameSite: 'lax', secure: true} as con
 
 const association = {
 	webcredentials: {
-		apps: Array.flatMap(['opm', 'stash', 'trips'], slug =>
+		apps: Array.flatMap(AppSignIn.fields.app.literals, slug =>
 			Array.map(['', '.dev'], suffix => `99K7MQUK7F.xyz.mp281x.${slug}${suffix}`)
 		)
 	}

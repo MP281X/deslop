@@ -1,7 +1,6 @@
 @import '@deslop/ui/theme.css';
 
 .gateway {
-	min-height: 100dvh;
 	font-size: 14px;
 	line-height: 1.35;
 }
@@ -11,68 +10,139 @@
 	min-inline-size: 0;
 	min-block-size: 0;
 	overflow: auto;
+	overscroll-behavior: contain;
+}
+
+:root:active-view-transition-type(axis-layout) .gateway-content {
+	view-transition-name: axis-list;
 }
 
 .gateway-toolbar {
 	display: flex;
-	flex-wrap: wrap;
-	align-items: center;
-	gap: 6px 8px;
 	padding: 6px 12px;
 }
 
-.gateway-add {
-	min-width: 0;
+.gateway-add,
+.gateway-add .glass {
+	min-inline-size: 0;
+	max-inline-size: 100%;
 }
 
-.gateway-add .glass {
-	max-width: 100%;
+.gateway-add input,
+.gateway-key-sheet input {
+	min-block-size: 44px;
+	min-inline-size: 0;
+	padding-inline: 12px;
+	border-radius: inherit;
+	font-size: 16px;
+}
+
+.gateway-add {
+	position: relative;
+	display: grid;
+	inline-size: min(265px, 100%);
 }
 
 .gateway-add input {
-	anchor-name: --gateway-paste;
-	width: min(252px, 100%);
-	min-height: 44px;
-	padding-inline: 12px;
-	border-radius: inherit;
+	inline-size: 100%;
 }
 
 .gateway-add input::placeholder {
 	color: var(--color-muted-foreground);
 }
 
-.gateway-menu-trigger img {
-	width: 24px;
-	height: 24px;
-	image-rendering: pixelated;
+.gateway-add input[aria-invalid='true'] {
+	outline: 1px solid var(--color-destructive);
+	outline-offset: -1px;
 }
 
-#gateway-menu .glass-panel-body,
-#gateway-key-panel form {
-	display: grid;
-	gap: 8px;
+#gateway-add-error {
+	position: absolute;
+	z-index: 1;
+	inset-block-start: calc(100% + 4px);
+	inset-inline-start: 0;
+	inline-size: min(22rem, calc(100dvi - var(--shell-rail-width) - 24px));
+	padding: 8px 12px;
+	border-radius: 12px;
+	background: rgb(0 0 0 / 72%);
+	pointer-events: none;
 }
 
-.gateway-range {
+#gateway-range {
+	position-anchor: --axis-action-range;
+}
+
+#gateway-options {
+	position-anchor: --axis-action-options;
+}
+
+.gateway .glass-panel[role='menu'] {
+	position-area: inline-start span-block-end;
+	position-try-fallbacks: flip-block;
+	min-inline-size: min(11rem, var(--panel-width));
+	max-inline-size: calc(100dvi - var(--shell-rail-width) - 12px);
+	opacity: 0;
+	transition:
+		opacity 150ms ease-out,
+		display 150ms allow-discrete,
+		overlay 150ms allow-discrete;
+}
+
+.gateway .glass-panel[role='menu']:popover-open {
+	opacity: 1;
+}
+
+@starting-style {
+	.gateway .glass-panel[role='menu']:popover-open {
+		opacity: 0;
+	}
+}
+
+.gateway .glass-panel[role='menu'] .glass-panel-body {
+	inline-size: 100%;
+}
+
+.gateway .glass-panel[role='menu'] button {
 	display: flex;
 	align-items: center;
 	justify-content: space-between;
-	gap: 12px;
+	gap: 8px;
+	inline-size: 100%;
+	min-block-size: 44px;
+	padding: 6px 9px;
+	border-radius: 8px;
+	text-align: start;
+}
+
+.gateway-menu-caption {
+	padding: 4px 9px;
+}
+
+.gateway .glass-panel .sf-symbol {
+	flex: none;
+	inline-size: 18px;
+	block-size: 18px;
 }
 
 .gateway-action {
-	min-height: 44px;
+	display: grid;
+	place-items: center;
+	min-block-size: 44px;
+	min-inline-size: 44px;
 	padding-inline: 12px;
 	border-radius: 999px;
-	background: rgb(255 255 255 / 8%);
 }
 
-.gateway-lead,
 .gateway-figures {
 	display: flex;
 	align-items: center;
 	gap: 8px;
-	min-width: 0;
+	min-inline-size: 0;
+}
+
+.axis-row:has(.gateway-mark) {
+	grid-template-columns: auto minmax(0, 1fr) auto;
+	column-gap: 8px;
 }
 
 .gateway-mark {
@@ -83,49 +153,65 @@
 }
 
 .gateway-trace {
-	width: clamp(42px, 12vw, 104px);
+	width: 50px;
 	height: 18px;
 	color: var(--color-muted-foreground);
 }
 
-.gateway-notice {
-	margin-inline: 16px;
-	padding-block: 6px;
-	color: var(--color-muted-foreground);
+.gateway-figures > span > .axis-muted {
+	display: block;
 }
 
-.gateway-notice button {
-	margin-inline-start: 8px;
+.gateway-figures > span {
+	min-inline-size: 72px;
 }
 
-.gateway-toolbar .gateway-notice {
-	flex-basis: 100%;
-	margin-inline: 4px;
+.gateway-key-sheet {
+	inset: auto 0 max(0px, calc(100dvh - var(--sheet-viewport-top, 0px) - var(--sheet-viewport-height, 100dvh)));
+	inline-size: min(100%, 420px);
+	max-block-size: var(--sheet-viewport-height, 100dvh);
+	margin-inline: auto;
+	border-radius: 28px 28px 0 0;
+	background: #1c1c1e;
+	color: var(--color-foreground);
 }
 
-/* Enter opens the editor from the paste input, without a separate submit button. */
-#gateway-key-panel {
-	position-anchor: --gateway-paste;
-	position-area: block-end span-inline-end;
-	inline-size: min(350px, var(--panel-width));
+.action-shell[data-native] .gateway-key-sheet {
+	inset-inline: var(--shell-inset-left) var(--shell-inset-right);
+	max-inline-size: calc(100% - var(--shell-inset-left) - var(--shell-inset-right));
 }
 
-#gateway-key-panel input {
-	min-height: 44px;
-	padding-inline: 12px;
-	border-radius: 12px;
-	background: var(--color-background);
+.gateway-key-sheet[open] {
+	view-transition-name: axis-sheet;
+}
+
+.gateway-key-sheet::backdrop {
+	background: rgb(0 0 0 / 56%);
+}
+
+.gateway-key-sheet form {
+	display: grid;
+	gap: 12px;
+	padding: 16px 16px max(16px, env(safe-area-inset-bottom));
+}
+
+.gateway-key-sheet input {
+	inline-size: 100%;
 }
 
 .gateway-key-actions {
 	display: flex;
-	flex-wrap: wrap;
-	justify-content: flex-end;
+	justify-content: space-between;
 	gap: 8px;
 }
 
-.gateway-menu-trigger .axis-dot {
-	position: absolute;
-	inset: 4px 4px auto auto;
-	margin: 0;
+.gateway-back {
+	display: inline-block;
+	padding: 16px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.gateway .glass-panel[role='menu'] {
+		transition-duration: 85ms;
+	}
 }

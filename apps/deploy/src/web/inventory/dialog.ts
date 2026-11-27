@@ -1,6 +1,12 @@
-import {Array, Boolean, Function, Option, String, pipe} from 'effect'
+import {Array, Boolean, Function, Option, Result, String, pipe} from 'effect'
 
+import {CheckedChoice} from '@deslop/ui/app-shell'
+import type {ShellAction} from '@deslop/ui/app-shell'
 import {Button} from '@deslop/ui/control'
+import {Glass, GlassPanel} from '@deslop/ui/glass'
+import {isNative} from '@deslop/ui/native'
+import {Sheet} from '@deslop/ui/sheet'
+import {SymbolIcon} from '@deslop/ui/symbol'
 
 import {ExposeInput, ExposureName} from '#contracts'
 import type {Snapshot} from '#contracts'
@@ -12,10 +18,60 @@ import {machineHost} from '#web/inventory/rows.ts'
 
 type Expose = typeof DialogState.cases.Expose.Type
 
-function closeButton(h: H, label: string, disabled?: boolean) {
-	return Button(h, {disabled: disabled ?? false})
-		.on('click', () => Message.ClosedDialog())
-		.children(label)
+function exposureChoices(dialog: Expose, pending: boolean) {
+	return Array.map(ExposeInput.fields.kind.literals, kind => ({
+		checked: kind === dialog.kind,
+		disabled: pending,
+		id: kind,
+		message: Message.ExposureKind({kind}),
+		title: String.capitalize(kind)
+	}))
+}
+
+export function DialogActions(dialog: DialogState, pending: boolean): readonly ShellAction<Message>[] {
+	const close: ShellAction<Message> = {
+		disabled: pending && DialogState.isAnyOf(['Expose'])(dialog),
+		id: 'close',
+		message: Message.ClosedDialog(),
+		symbol: 'xmark',
+		title: 'Close'
+	}
+	if (!DialogState.isAnyOf(['Expose'])(dialog)) return [close]
+	return [
+		{
+			disabled: pending,
+			id: 'exposure-kind',
+			menu: [{items: exposureChoices(dialog, pending), title: ''}],
+			message: Message.ExposureMenu({open: true}),
+			symbol: 'chevron.down',
+			title: 'Who can reach the port'
+		},
+		close
+	]
+}
+
+function ExposureMenu(h: H, dialog: Expose, pending: boolean) {
+	return h.div.class('deploy-expose-kind').children(
+		Glass(h).children(
+			Button(h, {disabled: pending})
+				.class('deploy-text-control')
+				.attrs({'aria-expanded': `${dialog.choosing}`, 'aria-haspopup': 'menu', 'aria-label': 'Who can reach the port'})
+				.on('click', Message.ExposureMenu({open: !dialog.choosing}))
+				.children(String.capitalize(dialog.kind), SymbolIcon(h, 'chevron.down'))
+		),
+		GlassPanel(
+			h,
+			'deploy-exposure-kind',
+			'Who can reach the port',
+			Array.map(exposureChoices(dialog, pending), item => CheckedChoice(h, item).class('deploy-text-control'))
+		)
+			.attr('role', 'menu')
+			.popover('auto', dialog.choosing)
+			.on('toggle', event => {
+				if (!event.open) return Message.ExposureMenu({open: false})
+				return undefined
+			})
+	)
 }
 
 function ExposeForm(h: H, dialog: Expose, snapshot: Snapshot, pending: boolean, port: number) {
@@ -23,14 +79,7 @@ function ExposeForm(h: H, dialog: Expose, snapshot: Snapshot, pending: boolean, 
 	const tailnetHost = Option.getOrElse(machineHost(snapshot), Function.constant(''))
 	return h.div.children(
 		h.p.class('axis-muted').children(`Port ${port}`),
-		h.div.class('deploy-expose-kinds').children(
-			Array.map(ExposeInput.fields.kind.literals, kind =>
-				Button(h, {disabled: pending, pressed: kind === dialog.kind})
-					.key(kind)
-					.on('click', () => Message.ExposureKind({kind}))
-					.children(String.capitalize(kind))
-			)
-		),
+		!isNative && ExposureMenu(h, dialog, pending),
 		h.form
 			.on('submit', event => {
 				const hostname = Boolean.match(publicAccess, {
@@ -76,39 +125,65 @@ function ExposeForm(h: H, dialog: Expose, snapshot: Snapshot, pending: boolean, 
 								.disabled(pending)
 						)
 				}),
-				h.div
-					.class('deploy-dialog-actions')
-					.children(
-						closeButton(h, 'Cancel', pending),
-						Button(h, {disabled: pending || (!publicAccess && tailnetHost === ''), type: 'submit'}).children(
-							Boolean.match(pending, {onFalse: Function.constant('Expose'), onTrue: Function.constant('Exposing…')})
-						)
+				h.div.class('deploy-dialog-actions').children(
+					Glass(h).children(
+						Button(h, {disabled: pending || (!publicAccess && tailnetHost === ''), type: 'submit'})
+							.class('deploy-text-control')
+							.children(
+								Boolean.match(pending, {onFalse: Function.constant('Expose'), onTrue: Function.constant('Exposing…')})
+							)
 					)
+				)
 			)
 	)
 }
 
-export function Dialog(h: H, dialog: DialogState, snapshot: Snapshot, pending: boolean) {
-	const title = h.strong.id('deploy-dialog-title')
-	return h.dialog
-		.class('deploy-dialog')
-		.modal(true)
-		.on('cancel', () => Message.ClosedDialog())
-		.attr('aria-labelledby', 'deploy-dialog-title')
-		.children(
-			DialogState.match(dialog, {
-				Expose: exposure =>
-					Option.getOrUndefined(
-						Option.map(exposure.port.port, port => [
-							title.children(Option.getOrElse(exposure.port.process, () => exposure.port.name)),
-							ExposeForm(h, exposure, snapshot, pending, port)
-						])
-					),
-				Failure: failure => [
-					title.children('Couldn’t complete the action'),
-					h.p.attr('role', 'alert').children(failure.text),
-					closeButton(h, 'Close')
-				]
-			})
-		)
+export function Dialog(h: H, dialog: DialogState, pending: boolean, snapshot?: Snapshot) {
+	const content = DialogState.match(dialog, {
+		Expose: exposure => {
+			const port = Option.getOrUndefined(exposure.port.port)
+			if (snapshot === undefined || port === undefined) return undefined
+			return {
+				body: ExposeForm(h, exposure, snapshot, pending, port),
+				name: Option.getOrElse(exposure.port.process, () => exposure.port.name)
+			}
+		},
+		Failure: failure => ({
+			body: h.p.attr('role', 'alert').children(failure.text),
+			name: 'Couldn’t complete the action'
+		}),
+		Logs: logs => ({
+			body: Option.match(logs.result, {
+				onNone: () => h.p.attr('role', 'status').children('Loading logs…'),
+				onSome: result =>
+					Result.match(result, {
+						onFailure: error => h.p.attr('role', 'alert').children(error),
+						onSuccess: text =>
+							h.pre
+								.attr('tabindex', '0')
+								.children(
+									Boolean.match(String.isEmpty(String.trim(text)), {
+										onFalse: () => text,
+										onTrue: Function.constant('No logs')
+									})
+								)
+					})
+			}),
+			name: `${logs.name} logs`
+		})
+	})
+	if (content === undefined) return undefined
+	return Sheet(h, {
+		body: content.body,
+		className: Boolean.match(DialogState.isAnyOf(['Logs'])(dialog), {
+			onFalse: Function.constant('deploy-dialog'),
+			onTrue: Function.constant('deploy-dialog deploy-logs')
+		}),
+		close: Message.ClosedDialog(),
+		closeDisabled: DialogState.isAnyOf(['Expose'])(dialog) && pending,
+		closeHidden: isNative,
+		key: dialog._tag,
+		title: content.name,
+		titleId: 'deploy-dialog-title'
+	})
 }

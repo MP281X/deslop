@@ -2,8 +2,8 @@ import {Route} from '@effect/ui'
 
 import {Schema} from 'effect'
 
-import type {ChapterIdentity} from '#contracts'
 import {ChapterNumberFromString, Series} from '#contracts'
+import type {ChapterIdentity} from '#contracts'
 
 export const OpmRoute = Route.union({
 	Library: Route.make('/', {

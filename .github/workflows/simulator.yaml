@@ -37,7 +37,7 @@ jobs:
           above=$(gh pr list --base "$GITHUB_REF_NAME" --state open --json url --jq '.[].url')
           if [[ -z $above ]]; then
             recipe=$(git rev-parse HEAD:.github/workflows/simulator.yaml | sha256sum | cut -c1-12)
-            for app in opm stash trips; do
+            for app in auth deploy gateway opm scope stash trips; do
               inputs=$(git rev-parse "HEAD:apps/$app" HEAD:packages HEAD:package.json HEAD:pnpm-lock.yaml HEAD:pnpm-workspace.yaml HEAD:vite.config.ts)
               fingerprint=$(printf '%s\n' "$inputs" "$DESLOP_DOMAIN" | sha256sum | cut -c1-64)
               artifact="$app-simulator-$fingerprint-$recipe"
