@@ -6,7 +6,7 @@
 	<string>$(STASH_APS_ENVIRONMENT)</string>
 	<key>com.apple.developer.associated-domains</key>
 	<array>
-		<string>webcredentials:auth.mp281x.xyz</string>
+		<string>webcredentials:$(DESLOP_AUTH_HOST)</string>
 	</array>
 	<key>com.apple.security.application-groups</key>
 	<array>

@@ -66,6 +66,7 @@
 		50B271D01FEDC1A000F3C39B /* public */ = {isa = PBXFileReference; lastKnownFileType = folder; path = public; sourceTree = "<group>"; };
 		9582B6822FE993A50072D4E8 /* SceneDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SceneDelegate.swift; sourceTree = "<group>"; };
 		958DCC722DB07C7200EA8C5F /* debug.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; name = debug.xcconfig; path = ../debug.xcconfig; sourceTree = SOURCE_ROOT; };
+		D35000000000000000000005 /* Config.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Config.xcconfig; sourceTree = SOURCE_ROOT; };
 		B584CA650000000000000002 /* AppIcon.icon */ = {isa = PBXFileReference; lastKnownFileType = folder.iconcomposer.icon; path = AppIcon.icon; sourceTree = "<group>"; };
 		B584CA650000000000000004 /* StashNativePlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StashNativePlugin.swift; sourceTree = "<group>"; };
 		B584CA650000000000000006 /* DeslopNative.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = DeslopNative.swift; path = ../../../../packages/ui/native/DeslopNative.swift; sourceTree = SOURCE_ROOT; };
@@ -105,6 +106,7 @@
 			isa = PBXGroup;
 			children = (
 				958DCC722DB07C7200EA8C5F /* debug.xcconfig */,
+				D35000000000000000000005 /* Config.xcconfig */,
 				504EC3061FED79650016851F /* App */,
 				B584CA650000000000000017 /* Share */,
 				B584CA650000000000000018 /* Shared */,
@@ -389,10 +391,7 @@
 				COPY_PHASE_STRIP = NO;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				CURRENT_PROJECT_VERSION = 1;
-				DESLOP_AUTH = "https://auth.mp281x.xyz";
 				DESLOP_KEYCHAIN_GROUP = "$(DEVELOPMENT_TEAM).$(STASH_GROUP)";
-				DESLOP_SERVER = "https://stash.mp281x.xyz";
-				DESLOP_SLUG = stash;
 				DEVELOPMENT_TEAM = 99K7MQUK7F;
 				MARKETING_VERSION = 0.1.0;
 				STASH_BUNDLE_IDENTIFIER = xyz.mp281x.stash.dev;
@@ -426,6 +425,7 @@
 		};
 		504EC3151FED79650016851F /* Release */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = D35000000000000000000005 /* Config.xcconfig */;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				CLANG_ANALYZER_NONNULL = YES;
@@ -458,10 +458,7 @@
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				ENABLE_NS_ASSERTIONS = NO;
 				CURRENT_PROJECT_VERSION = 1;
-				DESLOP_AUTH = "https://auth.mp281x.xyz";
 				DESLOP_KEYCHAIN_GROUP = "$(DEVELOPMENT_TEAM).$(STASH_GROUP)";
-				DESLOP_SERVER = "https://stash.mp281x.xyz";
-				DESLOP_SLUG = stash;
 				DEVELOPMENT_TEAM = 99K7MQUK7F;
 				MARKETING_VERSION = 0.1.0;
 				STASH_BUNDLE_IDENTIFIER = xyz.mp281x.stash;

@@ -30,6 +30,7 @@
 		50B271D01FEDC1A000F3C39B /* public */ = {isa = PBXFileReference; lastKnownFileType = folder; path = public; sourceTree = "<group>"; };
 		9582B6822FE993A50072D4E8 /* SceneDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SceneDelegate.swift; sourceTree = "<group>"; };
 		958DCC722DB07C7200EA8C5F /* debug.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; name = debug.xcconfig; path = ../debug.xcconfig; sourceTree = SOURCE_ROOT; };
+		D35000000000000000000005 /* Config.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Config.xcconfig; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -48,6 +49,7 @@
 			isa = PBXGroup;
 			children = (
 				958DCC722DB07C7200EA8C5F /* debug.xcconfig */,
+				D35000000000000000000005 /* Config.xcconfig */,
 				504EC3061FED79650016851F /* App */,
 				504EC3051FED79650016851F /* Products */,
 			);
@@ -235,6 +237,7 @@
 		};
 		504EC3151FED79650016851F /* Release */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = D35000000000000000000005 /* Config.xcconfig */;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				CLANG_ANALYZER_NONNULL = YES;
@@ -290,11 +293,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = app;
 				CODE_SIGN_ENTITLEMENTS = App/App.entitlements;
-				DESLOP_AUTH = "https://$(DESLOP_AUTH_HOST)";
-				DESLOP_AUTH_HOST = "auth.$(DESLOP_DOMAIN)";
-				DESLOP_DOMAIN = mp281x.xyz;
 				DESLOP_KEYCHAIN_GROUP = "$(DEVELOPMENT_TEAM).group.$(PRODUCT_BUNDLE_IDENTIFIER)";
-				DESLOP_SERVER = "https://gateway.$(DESLOP_DOMAIN)";
 				CODE_SIGN_STYLE = Automatic;
 				DEVELOPMENT_TEAM = 99K7MQUK7F;
 				CURRENT_PROJECT_VERSION = 1;
@@ -319,11 +318,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = app;
 				CODE_SIGN_ENTITLEMENTS = App/App.entitlements;
-				DESLOP_AUTH = "https://$(DESLOP_AUTH_HOST)";
-				DESLOP_AUTH_HOST = "auth.$(DESLOP_DOMAIN)";
-				DESLOP_DOMAIN = mp281x.xyz;
 				DESLOP_KEYCHAIN_GROUP = "$(DEVELOPMENT_TEAM).group.$(PRODUCT_BUNDLE_IDENTIFIER)";
-				DESLOP_SERVER = "https://gateway.$(DESLOP_DOMAIN)";
 				CODE_SIGN_STYLE = Automatic;
 				DEVELOPMENT_TEAM = 99K7MQUK7F;
 				CURRENT_PROJECT_VERSION = 1;
