@@ -31,7 +31,7 @@ Start one only when a capture needs it, from the worktree root, through the proj
 
 Build and walk Deslop UI in the browser preview at the iPhone Duo sizes in `AGENTS.md`, including UI bundled by Capacitor. On the Mac, use the iOS Simulator only for share extensions, push, Live Activities, the Dynamic Island and widgets.
 
-Never open a Funnel or another public route for a preview: it puts the whole port on the internet. His one exception is Dual's public preview in [State](references/maintenance.md#state). When a proof needs a real webhook delivery, tell the user it is blocked.
+Never open a Funnel or another public route for a preview: it puts the whole port on the internet. His one exception is Dual's public preview in [State](references/maintenance.md#state).
 
 ## Tools
 
