@@ -19,7 +19,7 @@ The brief names your role. No delegate starts another, commits or pushes.
 
 ## Side chats
 
-Make and revise plans in side chats, not the main thread. Side chats start their own advisors and read-only subagents. Until a handoff, a side chat and its main thread don't message each other, and the side chat reads the main thread only when he asks.
+Make and revise plans in side chats, not the main thread. Side chats start their own advisors and read-only subagents. Until a handoff, a side chat and its main thread don't message each other, and the side chat and its delegates read the main thread only when he asks.
 
 1. Give each point in his message one short line naming its finish line: what he will see when it is done.
 2. Show UI as a prototype (the visuals skill), starting from real screens in the gateway's `mobbin` tools.
