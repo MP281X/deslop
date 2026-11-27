@@ -22,12 +22,15 @@ Personal apps with one user, who also develops them.
 
 ## Design
 
-- One axis: black only, Geist with tabular figures for numbers, Geist Mono for scales. Draw Liquid Glass in WebGL2 on controls only. Portfolio keeps its own design.
+- One axis: black only, Geist with tabular figures for numbers, Geist Mono for scales. Draw tinted Liquid Glass in WebGL2 on controls only: blur hides the content, with a bright bottom rim and a softer top rim. Use the same SF Symbols on the web and in the iPhone toolbar. Portfolio keeps its own design.
 - Hue only for identity and status. Never label healthy states. Dots mark problems.
 - One row everywhere: a title, one muted line, numbers or time at the trailing edge; a problem's dot goes before the title and its reason on the muted line.
 - The list stands beside the opened item, and Mail's sidebar button collapses it. The fold is the only divider.
 - The inner screen's extra room shows more fields and more items, never bigger things.
-- No page titles, panel headers, web search fields, hotkeys, custom animations, web delete buttons, delete confirmations, custom iOS bar or banners that move the page.
+- No page titles, panel headers, web search fields, hotkeys, web delete buttons, delete confirmations, custom iOS bar or banners that move the page.
+- Loading shows skeletons shaped like the real rows and detail, including on cold opens and deep links. Use view transitions for iOS motion: one-pane detail slides from the trailing edge, sheets rise from below, and split changes cross-fade.
+- Rows and controls respond on touch-down and release when scrolling starts. Keep selection only while its detail is beside it, and return through history to the same list position. Each pane scrolls independently with the system indicator.
+- Menus open from their controls and check the current choice. Use UIKit menus in bundled apps. Keep sheet actions above the keyboard and turn spatial transitions into a short fade with Reduce Motion.
 - Targets: 3440×1440, 1920×1080, 1512×982 and the iPhone Duo folded (466×678), open (669×951), both rotated, and half-open; its Safari is 382 px wide folded.
 - Artwork stays unchanged. Pixel art uses `crispEdges` and integer scaling.
 

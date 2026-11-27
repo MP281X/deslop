@@ -25,15 +25,14 @@ void main() {
   vec2 q = p - clamp(p, -halfSize + radius, halfSize - radius);
   float r = length(q);
   float depth = radius - r;
-  float coverage = smoothstep(0., 1., depth);
+  float coverage = smoothstep(-.25, .75, depth);
   vec2 normal = q / max(r, 1.);
-  float bevel = exp(-depth / 2.2);
-  float sheen = max(dot(normal, normalize(vec2(-.35, 1.))), 0.);
-  vec3 refracted = refract(vec3(0., 0., -1.), normalize(vec3(normal * bevel, 1.)), .68);
-  float ambient = clamp(.5 + .74 * (p.y / (2. * halfSize.y) - refracted.y), 0., 1.);
-  float reflection = bevel * (.10 + .40 * sheen);
-  float opacity = coverage * (.018 + .115 * ambient + reflection);
-  color = vec4(vec3((.79 + .13 * ambient) * opacity), opacity);
+  float lower = clamp((.38 - p.y / halfSize.y) * 1.8, 0., 1.);
+  float fill = mix(.105, .166, lower * lower * lower);
+  float rim = 1. - smoothstep(1., 2.15, depth);
+  float edge = max(normal.y, 0.) * .14 + max(-normal.y, 0.) * .204;
+  float opacity = coverage * (fill + rim * edge);
+  color = vec4(vec3(opacity), opacity);
 }`
 
 function compile(gl: WebGL2RenderingContext, type: number, source: string) {

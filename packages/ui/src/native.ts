@@ -35,13 +35,27 @@ type SocketEvent = {
 	readonly message?: string
 }
 
-export type ToolbarItem = {
-	readonly disabled: boolean
-	readonly leading: boolean
-	readonly selected: boolean
-	readonly symbol: string
-	readonly title: string
-}
+type ToolbarMenuItem = typeof ToolbarMenuItem.Type
+const ToolbarMenuItem = Schema.Struct({
+	checked: Schema.optional(Schema.Boolean),
+	disabled: Schema.optional(Schema.Boolean),
+	id: Schema.String,
+	title: Schema.String
+})
+
+type ToolbarMenuGroup = typeof ToolbarMenuGroup.Type
+const ToolbarMenuGroup = Schema.Struct({items: Schema.Array(ToolbarMenuItem), title: Schema.String})
+
+export type ToolbarItem = typeof ToolbarItem.Type
+export const ToolbarItem = Schema.Struct({
+	disabled: Schema.Boolean,
+	id: Schema.String,
+	leading: Schema.Boolean,
+	menu: Schema.optional(Schema.Array(ToolbarMenuGroup)),
+	selected: Schema.Boolean,
+	symbol: Schema.String,
+	title: Schema.String
+})
 
 class ToolbarError extends Schema.TaggedError<ToolbarError>()('ToolbarError', {
 	cause: Schema.Defect(),
@@ -56,7 +70,7 @@ const native = registerPlugin<{
 	signOut: () => Promise<{status: number}>
 	addListener: {
 		(eventName: 'socket', listener: (event: SocketEvent) => void): Promise<PluginListenerHandle>
-		(eventName: 'toolbarAction', listener: (event: {title: string}) => void): Promise<PluginListenerHandle>
+		(eventName: 'toolbarAction', listener: (event: {id: string}) => void): Promise<PluginListenerHandle>
 	}
 	setToolbar: (options: {items: readonly ToolbarItem[]}) => Promise<void>
 	openSocket: (options: {id: string}) => Promise<void>
@@ -83,11 +97,11 @@ function setToolbar(items: readonly ToolbarItem[]) {
 	return toolbarCall('Could not update the native toolbar', () => native.setToolbar({items}))
 }
 
-export function nativeToolbar(items: Stream.Stream<readonly ToolbarItem[]>, onAction: (title: string) => void) {
+export function nativeToolbar(items: Stream.Stream<readonly ToolbarItem[]>, onAction: (id: string) => void) {
 	return pipe(
 		Effect.acquireRelease(
 			toolbarCall('Could not listen for native toolbar actions', () =>
-				native.addListener('toolbarAction', event => onAction(event.title))
+				native.addListener('toolbarAction', event => onAction(event.id))
 			),
 			listener =>
 				pipe(

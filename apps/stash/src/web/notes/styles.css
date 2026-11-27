@@ -1,12 +1,8 @@
-.shell-actions > button svg {
-	fill: none;
-	stroke: currentColor;
-	stroke-linecap: round;
-	stroke-linejoin: round;
-	stroke-width: 2;
-}
-
 .stash-action {
+	display: inline-grid;
+	place-items: center;
+	min-block-size: 44px;
+	min-inline-size: 44px;
 	padding-inline: 14px;
 	font-size: 13px;
 	font-weight: 560;
@@ -35,19 +31,8 @@
 	background: var(--color-muted);
 }
 
-.stash-row-lines {
-	display: grid;
-	min-width: 0;
-	line-height: 1.25;
-}
-
-.stash-row-lines .axis-title {
-	font-size: 14px;
-}
-
-.stash-row-lines .axis-muted,
 .stash-note-row .axis-value {
-	font-size: 12px;
+	font-size: 13px;
 }
 
 .stash-reader {
@@ -126,52 +111,97 @@
 
 .stash-prose a,
 .stash-inline-action {
-	text-decoration: underline;
-	text-underline-offset: 0.2em;
-}
-
-.stash-plaintext {
-	white-space: pre-line;
-}
-
-.stash-problem {
-	color: var(--color-muted-foreground);
-	font-size: 13px;
-}
-
-.stash-inline-action {
 	margin-inline-start: 8px;
 }
 
 .stash-tags {
-	display: flex;
 	flex-wrap: wrap;
-	gap: 6px;
+	margin-top: 12px;
 }
 
 .stash-tags button {
+	min-block-size: 44px;
+	min-inline-size: 44px;
 	border-radius: 999px;
-	padding: 5px 10px;
-	background: var(--color-muted);
-	font-size: 12px;
+	padding-inline: 12px;
+	font-size: 13px;
 }
 
 .stash-tags [aria-pressed='true'] {
-	outline: 1px solid var(--color-muted-foreground);
+	background: rgb(255 255 255 / 10%);
+}
+
+.stash-sheet {
+	position: fixed;
+	inset: calc(var(--sheet-viewport-top, 0px) + max(32px, env(safe-area-inset-top, 0px))) var(--shell-inset-right) auto
+		var(--shell-inset-left);
+	inline-size: auto;
+	max-inline-size: none;
+	block-size: calc(var(--sheet-viewport-height, 100dvh) - max(32px, env(safe-area-inset-top, 0px)));
+	max-block-size: 100dvh;
+	margin: 0 var(--shell-rail-width) 0 0;
+	border-radius: 28px 28px 0 0;
+	background: #1c1c1e;
+	color: var(--color-foreground);
+	overflow: clip;
+}
+
+.stash-sheet[open] {
+	view-transition-name: axis-sheet;
+}
+
+.stash-sheet::backdrop {
+	background: rgb(0 0 0 / 56%);
+}
+
+.stash-compose {
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+	block-size: 100%;
+	padding: 22px 16px max(16px, env(safe-area-inset-bottom));
+}
+
+.stash-compose::before {
+	position: absolute;
+	inset-block-start: 9px;
+	inset-inline-start: 50%;
+	inline-size: 36px;
+	block-size: 5px;
+	border-radius: 999px;
+	background: #515153;
+	content: '';
+	translate: -50%;
 }
 
 .stash-compose textarea {
-	display: block;
-	inline-size: min(19rem, calc(var(--panel-width) - 2 * var(--shell-control-size)));
-	min-block-size: 8rem;
-	resize: vertical;
+	font-size: max(16px, 1em);
+	overscroll-behavior: contain;
+	flex: 1;
+	min-block-size: 44px;
+	resize: none;
+}
+
+.stash-compose textarea:focus-visible {
+	outline: 1px solid #515153;
+	outline-offset: 4px;
+	border-radius: 4px;
 }
 
 .stash-compose-actions {
-	display: flex;
-	justify-content: flex-end;
-	gap: 4px;
-	margin-block-start: 4px;
+	display: grid;
+	grid-template-columns: 44px 1fr 44px;
+	place-items: center;
+	text-align: center;
+	font-weight: 640;
+}
+
+.stash-compose-actions button {
+	display: grid;
+	place-items: center;
+	inline-size: 44px;
+	block-size: 44px;
+	border-radius: 999px;
 }
 
 .stash-gate {
@@ -180,37 +210,74 @@
 	place-items: center;
 }
 
-.stash-notice {
-	display: grid;
-	justify-items: center;
-	gap: 12px;
-	margin: 20px 16px;
-	color: var(--color-muted-foreground);
-	font-size: 14px;
-	text-align: center;
+#stash-queue-options {
+	position-anchor: --axis-action-queue;
 }
 
-.glass-panel .glass-panel-body {
-	display: grid;
-	gap: 4px;
+#stash-note-options {
+	position-anchor: --axis-action-note;
 }
 
-.glass-panel :is(button, a, select, .axis-muted) {
+.action-shell .glass-panel[role='menu'] {
+	position-area: inline-start span-block-end;
+	position-try-fallbacks:
+		flip-inline,
+		flip-block,
+		flip-block flip-inline;
+	min-inline-size: min(14rem, var(--panel-width));
+	max-inline-size: min(24rem, calc(100dvi - var(--shell-rail-width) - 2 * var(--panel-gap)));
+	transition:
+		opacity 150ms ease-out,
+		display 150ms allow-discrete,
+		overlay 150ms allow-discrete;
+	opacity: 0;
+}
+
+.action-shell .glass-panel[role='menu']:popover-open {
+	opacity: 1;
+}
+
+@starting-style {
+	.action-shell .glass-panel[role='menu']:popover-open {
+		opacity: 0;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.action-shell .glass-panel[role='menu'] {
+		transition-duration: 85ms;
+	}
+}
+
+.stash-menu-label {
 	display: block;
+	padding: 7px 9px 3px;
+	color: var(--color-muted-foreground);
+	font-size: 13px;
+}
+
+.glass-panel :is(button, .stash-menu-link) {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
 	inline-size: 100%;
-	block-size: auto;
-	min-block-size: 36px;
+	min-block-size: 44px;
 	border-radius: 8px;
-	padding: 6px 8px;
+	padding: 6px 9px;
 	text-align: start;
 }
 
-.glass-panel :is(button, a, select):hover {
-	background: rgb(255 255 255 / 9%);
+.glass-panel .sf-symbol {
+	flex: none;
+	inline-size: 18px;
+	block-size: 18px;
 }
 
-.glass-panel .stash-compose-actions button {
-	inline-size: auto;
+@media (hover: hover) and (pointer: fine) {
+	.glass-panel :is(button, .stash-menu-link):hover {
+		background: rgb(255 255 255 / 9%);
+	}
 }
 
 .stash-report {
@@ -224,9 +291,8 @@
 	margin-inline: auto;
 	border-radius: 16px;
 	padding: 12px;
-	background: var(--color-muted);
+	background: rgb(0 0 0 / 72%);
 	font-size: 14px;
-	box-shadow: 0 4px 24px #0009;
 }
 
 .stash-report p {
@@ -234,26 +300,35 @@
 	white-space: pre-line;
 }
 
-@media (vertical-viewport-segments: 2) {
-	.stash {
-		grid-template-rows: env(viewport-segment-height 0 0) minmax(0, 1fr);
-	}
+.stash-body-placeholder {
+	margin-top: 12px;
+	height: 12px;
+	width: 88%;
+	box-shadow:
+		0 22px var(--color-muted),
+		0 44px var(--color-muted);
+	margin-bottom: 56px;
+}
 
-	.stash[data-show] > .fold-list {
-		display: block;
-		grid-row: 2;
-	}
+html:has(.axis-split),
+body:has(.axis-split) {
+	overflow: clip;
+}
 
-	.stash[data-show] > .fold-detail {
-		display: block;
-		grid-row: 1;
+@media (prefers-reduced-motion: reduce) {
+	.stash-sheet {
+		opacity: 0;
+		transition:
+			opacity 85ms ease-out,
+			display 85ms allow-discrete,
+			overlay 85ms allow-discrete;
 	}
-
-	.stash[data-list-hidden] {
-		grid-template-rows: minmax(0, 1fr);
+	.stash-sheet[open] {
+		opacity: 1;
 	}
-
-	.stash[data-list-hidden] > .fold-list {
-		display: none;
+	@starting-style {
+		.stash-sheet[open] {
+			opacity: 0;
+		}
 	}
 }

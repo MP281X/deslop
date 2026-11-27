@@ -7,10 +7,21 @@
 		<link rel="icon" href="/src/web/assets/icon.svg" />
 		<link rel="manifest" href="/manifest.webmanifest" />
 		<link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+		<link rel="stylesheet" href="/src/web/notes/skeleton.css" />
 		<title>Stash</title>
 	</head>
 	<body>
 		<div id="root"></div>
+		<div class="stash-startup" aria-label="Loading Stash" role="status" aria-busy="true">
+			<div class="stash-skeleton-list" aria-hidden="true"></div>
+			<div class="stash-skeleton-note" aria-hidden="true"></div>
+		</div>
+		<script>
+			const search = new URLSearchParams(location.search)
+			document
+				.querySelector('.stash-startup')
+				.toggleAttribute('data-detail', search.get('pane') === 'detail' || (!search.has('pane') && search.has('note')))
+		</script>
 		<script type="module" src="/src/web/main.ts"></script>
 	</body>
 </html>

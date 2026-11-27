@@ -10,6 +10,7 @@ final class StashNativePlugin: CAPPlugin, CAPBridgedPlugin {
     CAPPluginMethod(name: "settleShares", returnType: CAPPluginReturnPromise),
     CAPPluginMethod(name: "image", returnType: CAPPluginReturnPromise),
     CAPPluginMethod(name: "saveImage", returnType: CAPPluginReturnPromise),
+    CAPPluginMethod(name: "openLink", returnType: CAPPluginReturnPromise),
     CAPPluginMethod(name: "paste", returnType: CAPPluginReturnPromise),
     CAPPluginMethod(name: "share", returnType: CAPPluginReturnPromise),
   ]
@@ -53,6 +54,16 @@ final class StashNativePlugin: CAPPlugin, CAPBridgedPlugin {
     }
   }
 
+  @objc func openLink(_ call: CAPPluginCall) {
+    guard let value = call.getString("url"), let url = URL(string: value),
+          url.scheme == "https" || url.scheme == "http"
+    else { return call.reject("A web link is required.") }
+    Task { @MainActor in
+      if await UIApplication.shared.open(url) { call.resolve() }
+      else { call.reject("The link could not be opened.") }
+    }
+  }
+
   @objc func paste(_ call: CAPPluginCall) {
     Task { @MainActor in
       let board = UIPasteboard.general
@@ -65,7 +76,7 @@ final class StashNativePlugin: CAPPlugin, CAPBridgedPlugin {
       } else if let text = board.url?.absoluteString ?? board.string {
         call.resolve(["text": text])
       } else {
-        call.resolve()
+        call.resolve(["text": ""])
       }
     }
   }

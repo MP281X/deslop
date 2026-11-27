@@ -13,6 +13,7 @@ import {installed} from '#web/notes/session.ts'
 
 const linkFrom = Effect.fnUntraced(function* (copy: string) {
 	const text = String.trim(copy)
+	if (String.isEmpty(text)) return yield* NotesError.make({message: 'Copy a link or image first.'})
 	if (Predicate.isNotUndefined(captureUrl(text))) return text
 	if (
 		Option.isSome(String.match(/^[^\s/]+\.[^\s/]+(?:\/\S*)?$/u)(text)) &&

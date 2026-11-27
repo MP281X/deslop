@@ -6,10 +6,14 @@
 	],
 	"exports": {
 		"./app-shell": "./src/app-shell.ts",
+		"./axis": "./src/axis.ts",
 		"./control": "./src/control.ts",
 		"./glass": "./src/glass.ts",
 		"./native": "./src/native.ts",
+		"./split": "./src/split.ts",
+		"./startup": "./src/startup.ts",
 		"./state": "./src/state.ts",
+		"./symbol": "./src/symbol.ts",
 		"./theme.css": "./src/theme.css",
 		"./vite": "./src/vite.ts"
 	},

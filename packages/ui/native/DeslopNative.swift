@@ -88,13 +88,24 @@ final class DeslopNativePlugin: CAPPlugin, CAPBridgedPlugin, ASWebAuthentication
             var leading: [UIBarButtonItem] = []
             var trailing: [UIBarButtonItem] = []
             for item in items {
-                guard let title = item["title"] as? String, let symbol = item["symbol"] as? String,
+                guard let id = item["id"] as? String, let title = item["title"] as? String,
+                      let symbol = item["symbol"] as? String,
                       let image = UIImage(systemName: symbol)
                 else { continue }
-                let action = UIAction(title: title, image: image) { [weak self] _ in
-                    self?.notifyListeners("toolbarAction", data: ["title": title])
+                let button: UIBarButtonItem
+                if let groups = item["menu"] as? [JSObject] {
+                    let children: [UIMenuElement] = groups.compactMap { group in
+                        guard let label = group["title"] as? String, let leaves = group["items"] as? [JSObject] else { return nil }
+                        let actions = leaves.compactMap { self?.menuAction($0) }
+                        return UIMenu(title: label, options: label.isEmpty ? .displayInline : [], children: actions)
+                    }
+                    button = UIBarButtonItem(title: title, image: image, menu: UIMenu(children: children))
+                } else {
+                    let action = UIAction(title: title, image: image) { [weak self] _ in
+                        self?.notifyListeners("toolbarAction", data: ["id": id])
+                    }
+                    button = UIBarButtonItem(primaryAction: action)
                 }
-                let button = UIBarButtonItem(primaryAction: action)
                 button.tintColor = .label
                 button.isEnabled = item["disabled"] as? Bool != true
                 button.isSelected = item["selected"] as? Bool == true
@@ -112,6 +123,15 @@ final class DeslopNativePlugin: CAPPlugin, CAPBridgedPlugin, ASWebAuthentication
             ]
             navigation.setNavigationBarHidden(leading.isEmpty && trailing.isEmpty, animated: false)
             call.resolve()
+        }
+    }
+
+    private func menuAction(_ item: JSObject) -> UIAction? {
+        guard let id = item["id"] as? String, let title = item["title"] as? String else { return nil }
+        return UIAction(title: title,
+                        attributes: item["disabled"] as? Bool == true ? .disabled : [],
+                        state: item["checked"] as? Bool == true ? .on : .off) { [weak self] _ in
+            self?.notifyListeners("toolbarAction", data: ["id": id])
         }
     }
 

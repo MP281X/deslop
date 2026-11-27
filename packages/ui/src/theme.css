@@ -215,9 +215,8 @@ body {
 	display: inline-flex;
 	align-items: center;
 	border-radius: 999px;
-	background: rgb(255 255 255 / 7%);
-	backdrop-filter: blur(14px);
-	box-shadow: inset 0 0 0 1px rgb(255 255 255 / 21%);
+	backdrop-filter: blur(36px) saturate(0.65);
+	box-shadow: 0 1px 0 rgb(0 0 0 / 22%);
 }
 
 .glass-lens {
@@ -249,7 +248,7 @@ body {
 	max-inline-size: var(--panel-width);
 	max-block-size: 60dvh;
 	border-radius: 18px;
-	background-color: rgb(20 20 20 / 86%);
+	background-color: rgb(0 0 0 / 72%);
 	color: var(--color-foreground);
 	overflow: clip;
 	animation: none;
@@ -284,4 +283,214 @@ body {
 [data-slot='button'][data-disabled],
 [data-slot='button'][data-pending] {
 	@apply opacity-60;
+}
+
+.axis-split {
+	grid-template-columns: minmax(0, 1fr);
+}
+.axis-split[data-layout='single'][data-show='list'] > .fold-detail,
+.axis-split[data-layout='single'][data-show='detail'] > .fold-list {
+	display: none;
+}
+.axis-split[data-layout='split']:not([data-list-hidden]) > :is(.fold-list, .fold-detail) {
+	display: block;
+}
+.axis-split[data-layout='split']:not([data-list-hidden]) {
+	grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+}
+.axis-split[data-layout='single'] > .fold-detail {
+	border: 0;
+}
+@media (min-width: 1100px) {
+	.axis-split[data-layout='split']:not([data-list-hidden]) {
+		grid-template-columns: minmax(330px, 35%) minmax(0, 1fr);
+	}
+}
+@media (horizontal-viewport-segments: 2) {
+	.axis-split[data-layout='split']:not([data-list-hidden]) {
+		grid-template-columns:
+			max(0px, calc(env(viewport-segment-width 0 0) - var(--shell-content-left, 0px)))
+			calc(env(viewport-segment-left 1 0) - env(viewport-segment-right 0 0))
+			minmax(0, 1fr);
+	}
+}
+@media (vertical-viewport-segments: 2) {
+	.axis-split[data-layout='split']:not([data-list-hidden]) {
+		grid-template-columns: minmax(0, 1fr);
+		grid-template-rows: env(viewport-segment-height 0 0) minmax(0, 1fr);
+	}
+	.axis-split[data-layout='split']:not([data-list-hidden]) > .fold-list {
+		grid-row: 2;
+	}
+	.axis-split[data-layout='split']:not([data-list-hidden]) > .fold-detail {
+		grid-row: 1;
+		border: 0;
+	}
+}
+.axis-split > .fold-detail {
+	background: var(--color-background);
+	view-transition-name: axis-detail;
+}
+:root:active-view-transition-type(axis-layout) .axis-split > .fold-list {
+	view-transition-name: axis-list;
+}
+:root:is(
+	:active-view-transition-type(axis-open),
+	:active-view-transition-type(axis-back),
+	:active-view-transition-type(axis-layout),
+	:active-view-transition-type(axis-sheet-open),
+	:active-view-transition-type(axis-sheet-close)
+) {
+	view-transition-name: none;
+}
+::view-transition-group(axis-detail),
+::view-transition-group(axis-list),
+::view-transition-group(axis-sheet) {
+	animation-duration: 260ms;
+}
+:root:active-view-transition-type(axis-open)::view-transition-new(axis-detail),
+:root:active-view-transition-type(axis-sheet-open)::view-transition-new(axis-sheet) {
+	animation: 300ms cubic-bezier(0.22, 0.72, 0.25, 1) axis-enter both;
+}
+:root:active-view-transition-type(axis-back)::view-transition-old(axis-detail),
+:root:active-view-transition-type(axis-sheet-close)::view-transition-old(axis-sheet) {
+	animation: 240ms cubic-bezier(0.45, 0, 0.65, 0.28) axis-exit both;
+}
+:root:is(
+		:active-view-transition-type(axis-open),
+		:active-view-transition-type(axis-back)
+	)::view-transition-group(axis-detail) {
+	--axis-motion: 100% 0;
+}
+:root:active-view-transition-type(axis-open)::view-transition-group(axis-detail) {
+	animation-duration: 300ms;
+}
+::view-transition-group(axis-sheet) {
+	--axis-motion: 0 100%;
+	animation-duration: 300ms;
+}
+@keyframes axis-enter {
+	from {
+		translate: var(--axis-motion);
+	}
+}
+@keyframes axis-exit {
+	to {
+		translate: var(--axis-motion);
+	}
+}
+
+.axis-item {
+	min-height: 60px;
+}
+.axis-lines {
+	display: grid;
+	min-width: 0;
+	line-height: 1.25;
+}
+.axis-item .axis-title {
+	font-size: 17px;
+}
+.axis-item .axis-muted {
+	font-size: 15px;
+}
+.axis-notice {
+	display: grid;
+	justify-items: center;
+	gap: 12px;
+	margin: 20px 16px;
+	color: var(--color-muted-foreground);
+	font-size: 14px;
+	text-align: center;
+}
+.axis-notice button {
+	min-block-size: 44px;
+	min-inline-size: 44px;
+	padding-inline: 14px;
+}
+.axis-placeholder {
+	display: block;
+	max-inline-size: 100%;
+	border-radius: 999px;
+	background: var(--color-muted);
+}
+
+.sf-symbol {
+	display: block;
+	inline-size: 24px;
+	block-size: 24px;
+	background: currentColor;
+	mask: var(--symbol) center / contain no-repeat;
+	pointer-events: none;
+}
+.action-shell {
+	--shell-rail-width: calc(var(--shell-control-size) + 2 * var(--shell-gap));
+	--shell-content-left: var(--shell-inset-left);
+	flex-direction: row;
+}
+.action-shell:not([data-native]) .shell-controls {
+	order: 1;
+	flex-direction: column;
+	justify-content: flex-start;
+	overflow-y: auto;
+	scrollbar-width: none;
+}
+.action-shell .shell-controls > .glass {
+	flex: none;
+}
+.action-shell .shell-actions {
+	flex-direction: column;
+}
+.action-shell[data-native] {
+	--shell-rail-width: 0px;
+}
+
+:where(.axis-controls button, .axis-controls [data-pressable]) {
+	-webkit-tap-highlight-color: transparent;
+	-webkit-touch-callout: none;
+	user-select: none;
+	touch-action: manipulation;
+}
+
+.axis-controls [data-touch-pressed] {
+	background-color: rgb(255 255 255 / 15%);
+}
+
+.axis-split > :is(.fold-list, .fold-detail) {
+	scrollbar-width: auto;
+	overscroll-behavior-y: contain;
+}
+
+:root:active-view-transition-type(axis-layout)::view-transition-group(axis-detail),
+:root:active-view-transition-type(axis-layout)::view-transition-group(axis-list) {
+	animation-duration: 200ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.axis-split[data-layout='single'][data-show='list'] > .fold-list,
+	.axis-split[data-layout='single'][data-show='detail'] > .fold-detail {
+		animation: axis-fade 85ms ease-out both;
+	}
+	.axis-split[data-layout='split'] > :is(.fold-list, .fold-detail) {
+		animation: axis-layout-fade 85ms ease-out both;
+	}
+	.axis-split[data-layout='split'][data-list-hidden] > .fold-detail {
+		animation-name: axis-fade;
+	}
+}
+@keyframes axis-fade {
+	from {
+		opacity: 0;
+	}
+}
+@keyframes axis-layout-fade {
+	from {
+		opacity: 0;
+	}
+}
+
+@media (hover: hover) and (pointer: fine) {
+	.axis-controls :is(button, [data-pressable]):active:not(:disabled) {
+		background-color: rgb(255 255 255 / 15%);
+	}
 }

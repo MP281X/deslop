@@ -27,6 +27,9 @@ const ReadNotes = AsyncResult.Schema({error: Schema.Unknown, success: Schema.Arr
 const ReadBody = AsyncResult.Schema({error: Schema.Unknown, success: Schema.Struct({body: Note.json.fields.body})})
 const ReadMedia = AsyncResult.Schema({error: Schema.Unknown, success: Schema.Finite})
 
+type Panel = typeof Panel.Type
+const Panel = Schema.Literals(['queue', 'note'])
+
 export type Model = typeof Model.Type
 export const Model = Schema.Struct({
 	account: ReadAccount,
@@ -39,6 +42,7 @@ export const Model = Schema.Struct({
 	narrow: Schema.Boolean,
 	notes: ReadNotes,
 	now: DateTimeUtcFromFiniteMillis,
+	panel: Schema.UndefinedOr(Panel),
 	pending: Schema.Boolean,
 	problem: Schema.UndefinedOr(Schema.String),
 	revision: Schema.Int,
@@ -50,6 +54,7 @@ export const Model = Schema.Struct({
 type Action = typeof Action.Type
 export const Action = Schema.TaggedUnion({
 	Capture: {text: Schema.String},
+	OpenLink: {url: Schema.String},
 	Paste: {},
 	Regenerate: {id: NoteId},
 	Share: {text: Schema.String},
@@ -71,6 +76,8 @@ export const Message = UiSchema.TaggedEnum({
 	Media: {id: NoteId, result: ReadMedia},
 	Notes: {result: ReadNotes},
 	Open: {id: NoteId},
+	Panel: {panel: Panel},
+	PanelClosed: {panel: Panel},
 	Posture: {narrow: Schema.Boolean},
 	Problem: {text: Schema.String},
 	Retry: {},
@@ -159,6 +166,8 @@ export class RunAction extends Command.Service<RunAction>()('Stash/RunAction', {
 				Effect.matchCause(
 					Action.match(input.action, {
 						Capture: action => Effect.asVoid(capture(context.registry, String.trim(action.text))),
+						OpenLink: action =>
+							atDevice('The link could not be opened.', () => StashNative.openLink({url: action.url})),
 						Paste: () => paste(context.registry, context.client),
 						Regenerate: action => regenerate(context.registry, action.id),
 						Share: action => share(action.text),

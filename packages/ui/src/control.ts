@@ -56,3 +56,47 @@ export function Button<M>(h: Html.H<M>, options: {disabled?: boolean; pressed?: 
 		.attr('aria-pressed', Option.getOrUndefined(Option.map(Option.fromUndefinedOr(options.pressed), x => `${x}`)))
 		.onMount(BindButton({disabled: options.disabled ?? false, type}))
 }
+
+export const PressFeedback = Mount.makeStream('PressFeedback', {args: {}}, (root: HTMLElement) =>
+	Stream.unwrap(
+		Effect.as(
+			Effect.acquireRelease(
+				Effect.sync(() => {
+					const touch = MutableRef.make(Option.none<{node: Element; pointer: number; x: number; y: number}>())
+					function clear() {
+						Option.getOrUndefined(MutableRef.get(touch))?.node.removeAttribute('data-touch-pressed')
+						MutableRef.set(touch, Option.none())
+					}
+					function start(event: PointerEvent) {
+						if (event.pointerType !== 'touch' || !event.isPrimary || !(event.target instanceof Element)) return
+						const node = event.target.closest('button, [data-pressable]')
+						if (node === null || node.matches(':disabled, [aria-disabled="true"]')) return
+						clear()
+						node.setAttribute('data-touch-pressed', '')
+						MutableRef.set(touch, Option.some({node, pointer: event.pointerId, x: event.clientX, y: event.clientY}))
+					}
+					function move(event: PointerEvent) {
+						const press = Option.getOrUndefined(MutableRef.get(touch))
+						if (press === undefined || event.pointerId !== press.pointer) return
+						if (Math.hypot(event.clientX - press.x, event.clientY - press.y) > 8) clear()
+					}
+					root.addEventListener('pointerdown', start)
+					root.addEventListener('pointermove', move)
+					root.addEventListener('pointerup', clear)
+					root.addEventListener('pointercancel', clear)
+					root.addEventListener('scroll', clear, true)
+					return () => {
+						clear()
+						root.removeEventListener('pointerdown', start)
+						root.removeEventListener('pointermove', move)
+						root.removeEventListener('pointerup', clear)
+						root.removeEventListener('pointercancel', clear)
+						root.removeEventListener('scroll', clear, true)
+					}
+				}),
+				release => Effect.sync(release)
+			),
+			Stream.never
+		)
+	)
+)
