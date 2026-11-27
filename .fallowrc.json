@@ -13,7 +13,7 @@
 				"patterns": ["tools/**", "vite.config.ts", "apps/*/{app,metro,vite}.config.ts", "apps/*/bin/iphone.ts"]
 			},
 			// Build configuration the server also reads; it imports no zone, so it carries nothing across.
-			{"name": "config", "patterns": ["packages/runtime/src/config/**", "packages/ui/src/vite.ts"]},
+			{"name": "config", "patterns": ["packages/runtime/src/config/**"]},
 			{"name": "shared", "patterns": ["apps/*/src/*.ts", "packages/*/src/shared/**"]},
 			{
 				"name": "client",
@@ -22,7 +22,6 @@
 					"apps/*/src/{iphone,screens,web}/**",
 					"packages/design/gallery/**",
 					"packages/design/src/native/**",
-					"packages/ui/src/**",
 					"packages/*/src/{client,web}/**"
 				]
 			},
@@ -67,8 +66,6 @@
 		"maxCrap": 0
 	},
 	"ignoreDependencies": [
-		// Capacitor CLI copies this platform's native project; it has no JS clients.
-		"@capacitor/ios",
 		// Expo reads these in native linking and app configuration, not through a JS import.
 		"expo-system-ui",
 		"expo-updates"

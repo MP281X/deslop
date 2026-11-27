@@ -713,30 +713,6 @@ importers:
         specifier: latest
         version: 4.1.7
 
-  packages/ui:
-    dependencies:
-      '@capacitor/core':
-        specifier: latest
-        version: 8.6.3
-      '@deslop/runtime':
-        specifier: workspace:*
-        version: link:../runtime
-      '@effect/ui':
-        specifier: https://pkg.pr.new/Effect-TS/ui/@effect/ui@7bff56b3b81c57bf1038d358835e92833814a6b0
-        version: https://pkg.pr.new/Effect-TS/ui/@effect/ui@7bff56b3b81c57bf1038d358835e92833814a6b0(effect@4.1.7)
-      '@tailwindcss/vite':
-        specifier: latest
-        version: 4.3.5(@voidzero-dev/vite-plus-core@8.3.8001(@types/node@26.6.11)(jiti@2.7.0)(terser@5.51.4))
-      '@ui-sdk/core':
-        specifier: latest
-        version: 0.1.0-beta.17
-      effect:
-        specifier: latest
-        version: 4.1.7
-      tailwindcss:
-        specifier: latest
-        version: 4.3.5
-
   tools/coding-standards:
     dependencies:
       '@effect/platform-node':
@@ -1157,9 +1133,6 @@ packages:
   '@blazediff/core@1.10.0':
     resolution: {integrity: sha512-AOQff0zgR7cGsZL+4E7hVkmujoPUpm0J9xzWGWZj5wCjd3gmxESXAPfKyuzs93VdpQNFhHlBhfOjrcZ+XTERtQ==}
 
-  '@capacitor/core@8.6.3':
-    resolution: {integrity: sha512-WJ/DM2OTriEED5sI4jUyJU0NL3QJ/YenS2+SepW/nghMA5ixFJhm8NqGWdqDYYg+eRtJkjD8PcXtIxy4zTP0PA==}
-
   '@effect/ai-anthropic@4.1.7':
     resolution: {integrity: sha512-odUQu7hztoh0vY0towxMI9nX9VroJUQf0nKtHVdXPMFatctr2k4mF2D0kyBhXKh3RoV0fpSDK2bwFUYJjFYVyQ==}
     peerDependencies:
@@ -1240,12 +1213,6 @@ packages:
     peerDependenciesMeta:
       vite:
         optional: true
-
-  '@effect/ui@https://pkg.pr.new/Effect-TS/ui/@effect/ui@7bff56b3b81c57bf1038d358835e92833814a6b0':
-    resolution: {integrity: sha512-uYecYnIGC/Q15cl914C6Zbr1FOT1ahCjy625xwQyDODgNdq/yPEdxr6UuhkaYp83zWsiL4rVJsz8nFHziOCBDw==, tarball: https://pkg.pr.new/Effect-TS/ui/@effect/ui@7bff56b3b81c57bf1038d358835e92833814a6b0}
-    version: 0.0.0
-    peerDependencies:
-      effect: ^4.1.4
 
   '@effect/ui@https://pkg.pr.new/Effect-TS/ui/@effect/ui@9eb76e60e47293cb0be63c12322a6bccd9e31add':
     resolution: {integrity: sha512-b0RsW02XDOdvCfglyl3oGB1wfFpiLc/ANQa+zmKe8qS0z7Z1rTdxsa3fVZfTAlgkdxsyc0jtijYOHC1Mgh5JFQ==, tarball: https://pkg.pr.new/Effect-TS/ui/@effect/ui@9eb76e60e47293cb0be63c12322a6bccd9e31add}
@@ -2202,9 +2169,6 @@ packages:
 
   '@types/yargs@17.0.35':
     resolution: {integrity: sha512-qUHkeCyQFxMXg79wQfTtfndEC+N9ZZg76HJftDJp+qH2tV7Gj4OJi7l+PiWwJ+pWtW8GwSmqsDj/oymhrTWXjg==}
-
-  '@ui-sdk/core@0.1.0-beta.17':
-    resolution: {integrity: sha512-wBWNqT0Qf1sE6fqD1XuBnSGBFcY6+cek1z7rKl/r4j2bsv2or9i7z44PLy0J9hmflm3IJ5MLW0P4ur2H9BCIvg==}
 
   '@ungap/structured-clone@1.4.0':
     resolution: {integrity: sha512-1mEZtMKPM09vDmQt5y7YvmN2+DFTP7Tg0EWXdic8/C6VRnpb33e4ghisCIE3WZjsE2N8mf+QV1Zqh7ZFYLWInQ==}
@@ -4089,9 +4053,6 @@ packages:
     resolution: {integrity: sha512-sf4i37nQ2LBx4m3wB74y+ubopq6W/dIzXg0FDGjsYnZHVa1Da8FH853wlL2gtUhg+xJXjfk3kUZS3BRoQeoQBQ==}
     engines: {node: '>=6'}
 
-  tslib@2.9.1:
-    resolution: {integrity: sha512-a4Ux9VKuIMHsOS7ENbEq6hK2ZGYIT27Rtl0E4eD9KqwxhKiQeMZE/9xb3IdYwWaSOyIBQLExhQgXDTYoiCxnWA==}
-
   tsrs@7.1.0-beta.tsrs4:
     resolution: {integrity: sha512-tPeUolNTUDJFk1Fc660PyFGUK/epGbuQVoo+2GnCIWkNDWp8i1DMI5n2X8pxxevi/3zbO8UvIKjWgE4T7OOCeA==}
     engines: {node: '>=16.20.0'}
@@ -4822,10 +4783,6 @@ snapshots:
 
   '@blazediff/core@1.10.0': {}
 
-  '@capacitor/core@8.6.3':
-    dependencies:
-      tslib: 2.9.1
-
   '@effect/ai-anthropic@4.1.7(effect@4.1.7)':
     dependencies:
       effect: 4.1.7
@@ -4896,10 +4853,6 @@ snapshots:
       react-native: 0.88.1(@babel/core@7.29.13(supports-color@8.1.1))(react@19.3.1)(supports-color@8.1.1)
     optionalDependencies:
       vite: '@voidzero-dev/vite-plus-core@8.3.8001(@types/node@26.6.11)(jiti@2.7.0)(terser@5.51.4)'
-
-  '@effect/ui@https://pkg.pr.new/Effect-TS/ui/@effect/ui@7bff56b3b81c57bf1038d358835e92833814a6b0(effect@4.1.7)':
-    dependencies:
-      effect: 4.1.7
 
   '@effect/ui@https://pkg.pr.new/Effect-TS/ui/@effect/ui@9eb76e60e47293cb0be63c12322a6bccd9e31add(effect@4.1.7)':
     dependencies:
@@ -5859,8 +5812,6 @@ snapshots:
   '@types/yargs@17.0.35':
     dependencies:
       '@types/yargs-parser': 21.0.3
-
-  '@ui-sdk/core@0.1.0-beta.17': {}
 
   '@ungap/structured-clone@1.4.0': {}
 
@@ -7870,8 +7821,6 @@ snapshots:
   toqr@0.1.1: {}
 
   totalist@3.0.1: {}
-
-  tslib@2.9.1: {}
 
   tsrs@7.1.0-beta.tsrs4:
     optionalDependencies:

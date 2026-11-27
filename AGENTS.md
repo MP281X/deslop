@@ -17,12 +17,12 @@ Personal apps with one user, who also develops them.
 - A contract change is done only when its built server starts on scratch data and serves the changed RPCs or MCP tools.
 - New apps and packages: `vp create app -- --name <name>` or `vp create package -- --name <name>`. Never copy one.
 - Every app has a web app and an iPhone app, and Effect RPC over SQL. Each screen's model, messages and queries are written once and drawn by `@deslop/design/web` and `@deslop/design/native` (Effect UI with Effect UI kit, and Effect UI native without React), pinned to one `pkg.pr.new` commit and styled with the design package's style objects. Logos come from svgl.
-- Web apps install from Safari for the PC; on the iPhone Duo, use the iPhone apps. They build with Expo's local tools, never EAS, and update from their own server through `expo-updates`; only a native change goes through TestFlight. Use Swift only for share extensions and WidgetKit.
+- Web apps install from Safari for the PC; on the iPhone Duo, use the iPhone apps. They build with Expo's local tools, never EAS, and update from their own server through `expo-updates`; only a native change goes through TestFlight. Use Swift only for share extensions and WidgetKit, as `@bacons/apple-targets` targets, plus the smallest Expo module JavaScript needs to reach them; push goes through `expo-notifications`.
 - After adding or removing a skill, rerun the agent links in the maintenance reference.
 
 ## Design
 
-- One axis: black only, the system font (SF Pro, then Geist on the web) with tabular figures for numbers, SF Mono (then Geist Mono) for scales. iOS draws the iPhone apps' toolbar buttons; web controls are plain and solid, with no imitation glass. Use the same SF Symbols on the web and in the iPhone toolbar. Portfolio keeps its own design.
+- One axis: black only, the system font (SF Pro, then Geist on the web) with tabular figures for numbers, SF Mono (then Geist Mono) for scales. iOS draws the iPhone apps' toolbar buttons; web controls are plain and solid, with no imitation glass. Use the same SF Symbols on the web and in the iPhone toolbar. Portfolio keeps its own design, with Tailwind on its web page.
 - Hue only for identity and status. Never label healthy states. Dots mark problems.
 - One row everywhere: a title, one muted line, numbers or time at the trailing edge; a problem's dot goes before the title and its reason on the muted line.
 - The list stands beside the opened item, and Mail's sidebar button collapses it. The fold is the only divider.

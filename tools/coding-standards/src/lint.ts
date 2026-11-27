@@ -218,13 +218,6 @@ export const lint: OxlintConfig & {
 				]
 			}
 		},
-		{
-			files: ['**/packages/ui/**'],
-			rules: {
-				'@deslop/coding-standards/no-destructured-parameter': 'off',
-				'@deslop/coding-standards/no-renamed-import': 'off'
-			}
-		},
 		{files: ['**/*.config.ts'], rules: {'import/no-default-export': 'off'}},
 		// Effect UI native skips React Native's renderer, so iPhone code starts its timers and XHR itself.
 		{
