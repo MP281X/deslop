@@ -2,8 +2,7 @@ import {Array, Boolean, Function, Option, Result, String, pipe} from 'effect'
 
 import {CheckedChoice} from '@deslop/ui/app-shell'
 import type {ShellAction} from '@deslop/ui/app-shell'
-import {Button} from '@deslop/ui/control'
-import {Glass, GlassPanel} from '@deslop/ui/glass'
+import {Button, PopoverPanel} from '@deslop/ui/control'
 import {isNative} from '@deslop/ui/native'
 import {Sheet} from '@deslop/ui/sheet'
 import {SymbolIcon} from '@deslop/ui/symbol'
@@ -52,14 +51,12 @@ export function DialogActions(dialog: DialogState, pending: boolean): readonly S
 
 function ExposureMenu(h: H, dialog: Expose, pending: boolean) {
 	return h.div.class('deploy-expose-kind').children(
-		Glass(h).children(
-			Button(h, {disabled: pending})
-				.class('deploy-text-control')
-				.attrs({'aria-expanded': `${dialog.choosing}`, 'aria-haspopup': 'menu', 'aria-label': 'Who can reach the port'})
-				.on('click', Message.ExposureMenu({open: !dialog.choosing}))
-				.children(String.capitalize(dialog.kind), SymbolIcon(h, 'chevron.down'))
-		),
-		GlassPanel(
+		Button(h, {disabled: pending})
+			.class('axis-control deploy-text-control')
+			.attrs({'aria-expanded': `${dialog.choosing}`, 'aria-haspopup': 'menu', 'aria-label': 'Who can reach the port'})
+			.on('click', Message.ExposureMenu({open: !dialog.choosing}))
+			.children(String.capitalize(dialog.kind), SymbolIcon(h, 'chevron.down')),
+		PopoverPanel(
 			h,
 			'deploy-exposure-kind',
 			'Who can reach the port',
@@ -126,13 +123,11 @@ function ExposeForm(h: H, dialog: Expose, snapshot: Snapshot, pending: boolean, 
 						)
 				}),
 				h.div.class('deploy-dialog-actions').children(
-					Glass(h).children(
-						Button(h, {disabled: pending || (!publicAccess && tailnetHost === ''), type: 'submit'})
-							.class('deploy-text-control')
-							.children(
-								Boolean.match(pending, {onFalse: Function.constant('Expose'), onTrue: Function.constant('Exposing…')})
-							)
-					)
+					Button(h, {disabled: pending || (!publicAccess && tailnetHost === ''), type: 'submit'})
+						.class('axis-control deploy-text-control')
+						.children(
+							Boolean.match(pending, {onFalse: Function.constant('Expose'), onTrue: Function.constant('Exposing…')})
+						)
 				)
 			)
 	)

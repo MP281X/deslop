@@ -1,17 +1,72 @@
 @import '@deslop/ui/theme.css';
 
 .deploy {
-	--deploy-chart-grid: rgb(255 255 255 / 10%);
-	--deploy-ruler: #a4a4ac;
-	--deploy-trail: 4.5rem;
-	--deploy-detail-padding: clamp(14px, 2.7vw, 24px);
+	@apply tabular-nums;
+	--deploy-chart-grid: #303030;
+	--deploy-ruler: #939393;
+	--deploy-caption: #a3a3a3;
 }
 
-.deploy-figures {
-	display: grid;
-	min-width: 0;
-	line-height: 1.25;
-	white-space: nowrap;
+.deploy-list-body,
+.deploy-detail-scroll {
+	@apply px-5 pt-[21px] pb-6;
+}
+
+.deploy-card {
+	@apply rounded-[20px] px-4 py-3.5;
+	background: linear-gradient(152deg, #151515, #0b0b0b 74%);
+	box-shadow: inset 0 0 0 1px #ffffff10;
+}
+
+.deploy-machine {
+	@apply grid w-full grid-cols-2 items-end gap-x-4 gap-y-[11px] text-start;
+}
+
+button.deploy-machine {
+	@apply cursor-pointer;
+}
+
+.deploy-list-body > .deploy-machine {
+	@apply mb-3.5;
+}
+
+.deploy-machine[aria-current='true'] {
+	box-shadow: inset 0 0 0 1px #ffffff36;
+}
+
+.deploy .deploy-list-row,
+.deploy .deploy-job .axis-item {
+	@apply min-h-[50px] rounded-[10px] px-2 py-1.5;
+}
+
+.deploy .deploy-list-row {
+	@apply grid-cols-[minmax(0,1fr)_minmax(20px,50px)_72px] gap-x-[7px];
+}
+
+.deploy-list-row > .axis-value {
+	display: contents;
+}
+
+.deploy .axis-item .axis-title {
+	@apply text-[15px] font-semibold;
+}
+
+.deploy .axis-item .axis-muted {
+	@apply mt-0.5 text-[12px];
+}
+
+.deploy .axis-item[aria-current='true'] {
+	background: #161616;
+}
+
+@media (hover: hover) {
+	.deploy :is(.axis-item, button.deploy-machine):active {
+		background: #262626;
+	}
+}
+
+.deploy :is(.axis-item, button.deploy-machine)[data-touch-pressed] {
+	background: #262626;
 }
 
 .deploy-warning .axis-dot,
@@ -19,106 +74,172 @@
 	background: #ff9f0a;
 }
 
-.deploy-figures small {
-	color: var(--color-muted-foreground);
-	font-size: 0.75rem;
-	font-weight: 400;
+.deploy-caption,
+.deploy .axis-item .axis-muted {
+	color: var(--deploy-caption);
 }
 
-.deploy-figures span small {
-	font-size: 0.65em;
+.deploy-caption {
+	@apply text-[12px];
 }
 
-.deploy-list-body {
-	display: flex;
-	flex-direction: column;
-	min-height: 100%;
-	padding: 6px;
-	container-type: inline-size;
+.deploy-numeral,
+.deploy-reading {
+	@apply font-semibold tracking-tight;
 }
 
-.deploy-list-ruler,
-.deploy-list-row {
-	--deploy-row-chart: clamp(64px, 27cqw, 160px);
-	display: grid;
-	grid-template-columns: minmax(0, 1fr) var(--deploy-row-chart) minmax(0, var(--deploy-trail));
-	align-items: center;
-	gap: 8px;
-	padding-inline: 8px;
+.deploy-hero {
+	@apply text-[40px] leading-none whitespace-nowrap;
 }
 
-.deploy-list-ruler {
-	position: sticky;
-	z-index: 2;
-	top: 0;
-	height: 36px;
-	padding-block: 5px 3px;
-	background: var(--color-background);
+.deploy-numeral small {
+	@apply text-[.44em];
 }
 
-.deploy-list-ruler .deploy-ruler {
-	grid-column: 2;
-	align-self: end;
+.deploy-hero > .deploy-caption {
+	@apply font-medium tracking-normal;
 }
 
-.deploy-list-row > .axis-value {
-	display: contents;
+.deploy-sparkline {
+	@apply h-[47px] min-w-0;
+	background:
+		repeating-linear-gradient(to right, #303030 0 2px, transparent 2px 5px) left bottom / 100% 1px,
+		repeating-linear-gradient(to right, #303030 0 2px, transparent 2px 5px) left center / 100% 1px;
+	background-repeat: no-repeat;
 }
 
-@container (width < 420px) {
-	.deploy-list-ruler,
-	.deploy-list-row {
-		--deploy-row-chart: 64px;
-	}
-
-	.deploy-list-ruler .deploy-ruler span:nth-child(even) {
-		display: none;
-	}
+.deploy-reading {
+	@apply text-end text-[17px] whitespace-nowrap;
 }
 
-.deploy-list-trace {
-	position: relative;
-	height: 27px;
+.deploy-reading small {
+	@apply text-[11px] font-medium tracking-normal;
+	color: var(--deploy-caption);
 }
 
-.deploy-machine-row {
-	margin-block-start: auto;
+.deploy-usage-bar {
+	@apply block h-1 overflow-hidden rounded-full bg-[#262626];
 }
 
-.deploy-detail-scroll {
-	padding-inline: var(--deploy-detail-padding);
+.deploy-usage-bar > span {
+	@apply block h-full rounded-full;
+	background: linear-gradient(90deg, #545454, #c0c0c0);
 }
 
-.deploy .deploy-detail-lead {
-	display: flex;
-	gap: 12px;
-	min-height: 60px;
-	padding: 5px 0 4px;
+.deploy-machine .deploy-usage-bar {
+	@apply mt-1.5;
 }
 
-.deploy-detail-lead .axis-lines {
-	flex: 1;
+.deploy-bar-placeholder {
+	@apply h-1 w-full;
 }
 
-.deploy-detail-lead :is(.deploy-figures, .deploy-value-placeholder) {
-	margin-inline-start: auto;
+.deploy-value-placeholder {
+	@apply h-4 w-14 justify-self-end;
+}
+
+.deploy-hero-placeholder {
+	@apply h-10 w-20;
+}
+
+.deploy-detail-name {
+	@apply text-[26px] leading-[1.08] font-bold tracking-tight break-words;
+}
+
+.deploy-detail-name > .axis-dot {
+	vertical-align: 0.24em;
+}
+
+.deploy-detail-address {
+	@apply mt-2.5 text-[14px] text-[#c0c0c0];
+	overflow-wrap: anywhere;
+}
+
+.deploy-metrics {
+	@apply mt-5 mb-[17px] flex flex-wrap items-end gap-x-[26px] gap-y-3;
+}
+
+.deploy-processes {
+	@apply mb-[17px] grid gap-2;
+}
+
+.deploy-process {
+	@apply grid grid-cols-[minmax(68px,26%)_minmax(0,1fr)_minmax(60px,auto)] items-center gap-[9px] text-[13px];
+	color: var(--deploy-caption);
+}
+
+.deploy-process .deploy-reading {
+	color: var(--color-foreground);
+}
+
+.deploy-process .deploy-usage-bar {
+	@apply h-[7px];
+}
+
+.deploy-history {
+	@apply mt-4;
+}
+
+.deploy-chart-value {
+	@apply text-[27px] leading-none;
+}
+
+.deploy-scale {
+	color: var(--deploy-ruler);
+	font: 11px/1.15 var(--font-mono);
 }
 
 .deploy-axis {
-	--deploy-trail: 3.25rem;
-	padding-inline-end: var(--deploy-trail);
+	--deploy-scale-width: 34px;
+	@apply mt-5;
+	padding-inline-end: var(--deploy-scale-width);
+}
+
+.deploy-large-trace {
+	@apply relative h-[88px];
+	border-block-end: 1px solid var(--deploy-chart-grid);
+	border-inline-end: 1px solid var(--deploy-chart-grid);
+	background-image:
+		linear-gradient(to bottom, var(--deploy-chart-grid) 1px, transparent 1px),
+		linear-gradient(to right, var(--deploy-chart-grid) 1px, transparent 1px);
+	background-size:
+		100% 25%,
+		25% 100%;
+}
+
+.deploy-trace {
+	@apply block size-full overflow-hidden;
+}
+
+.deploy-trace-line {
+	fill: none;
+	stroke: #dedede;
+	stroke-width: 1.5px;
+	stroke-linejoin: round;
+}
+
+.deploy-sparkline .deploy-trace-line {
+	stroke-width: 1.25px;
+}
+
+.deploy-area {
+	fill: rgb(255 255 255 / 7%);
+}
+
+.deploy-sparkline .deploy-area {
+	fill: none;
 }
 
 .deploy-ruler {
-	position: relative;
-	height: 1.45rem;
-	color: var(--deploy-ruler);
-	font: 11px var(--font-mono);
+	@apply relative mt-2 h-5;
 }
 
 .deploy-ruler span,
 .deploy-cpu-scale span {
-	position: absolute;
+	@apply absolute whitespace-nowrap;
+}
+
+.deploy-ruler span {
 	inset-inline-start: var(--at);
 	transform: translateX(-50%);
 }
@@ -127,146 +248,34 @@
 	transform: none;
 }
 
-.deploy-ruler span:nth-child(5) {
-	transform: translateX(-100%);
-}
-
-.deploy-ruler svg {
-	position: absolute;
-	inset-inline-start: 0;
-	inset-block-end: 0;
-	width: 100%;
-	height: 8px;
-	fill: none;
-	stroke: currentColor;
-}
-
-.deploy-ruler-detail {
-	margin-block: 3px 5px;
-}
-
-.deploy-axis-body {
-	position: relative;
-}
-
-.deploy-large-trace {
-	position: relative;
-	height: 93px;
-}
-
-.deploy-large-trace:has(.deploy-trace) {
-	background-image: linear-gradient(to bottom, var(--deploy-chart-grid) 1px, transparent 1px);
-	background-size: 100% 25%;
-}
-
-.deploy-large-trace .axis-notice {
-	position: absolute;
-	inset-block-start: 0;
-	inset-inline-start: 0;
-	z-index: 1;
-	justify-items: start;
-	gap: 4px;
-	margin: 0;
-	padding: 4px;
-	background: var(--color-background);
-	text-align: start;
-}
-
-.deploy-trace {
-	display: block;
-	width: 100%;
-	height: 100%;
-	border-block-end: 1px solid var(--deploy-chart-grid);
-	background-image: linear-gradient(to right, var(--deploy-chart-grid) 1px, transparent 1px);
-	background-size: 25% 100%;
-	border-inline-end: 1px solid var(--deploy-chart-grid);
-	overflow: hidden;
-}
-
-.deploy-trace .deploy-area {
-	fill: rgb(255 255 255 / 17%);
-}
-
-.deploy-trace .deploy-trace-line {
-	fill: none;
-	stroke: rgb(255 255 255 / 60%);
-	stroke-width: 0.75px;
-}
-
-.deploy-trace-main .deploy-trace-line {
-	stroke: var(--color-foreground);
-	stroke-width: 1.1px;
+.deploy-ruler span:last-child {
+	@apply rounded bg-[#303030] px-0.5 py-1 text-[#f4f4f4];
+	transform: translate(-100%, -4px);
 }
 
 .deploy-cpu-scale {
-	position: absolute;
-	inset-inline-start: 100%;
-	inset-block: 0;
-	width: var(--deploy-trail);
-	border-inline-start: 3px solid transparent;
-	color: var(--deploy-ruler);
-	font: 11px var(--font-mono);
-	background-image:
-		linear-gradient(to bottom, var(--deploy-ruler) 1px, transparent 1px),
-		linear-gradient(to bottom, var(--deploy-chart-grid) 1px, transparent 1px);
-	background-size:
-		4px 25%,
-		2px 5%;
-	background-repeat: repeat-y;
+	@apply absolute inset-y-0 start-full;
+	width: var(--deploy-scale-width);
 }
 
 .deploy-cpu-scale span {
+	@apply start-1.5 text-[8px];
 	inset-block-start: var(--at);
-	inset-inline: auto 0;
 	transform: translateY(-50%);
 }
 
-.deploy .deploy-process {
-	position: relative;
-	display: flex;
-	flex-direction: column;
-	align-items: stretch;
-	justify-content: space-between;
-	min-height: 48px;
-	gap: 2px;
-	padding: 5px 0 0;
-}
-
-.deploy-process .deploy-figures {
-	position: absolute;
-	top: 5px;
-	left: 100%;
-	width: var(--deploy-trail);
-}
-
-.deploy-process .deploy-trace {
-	flex: none;
-	height: 13px;
-}
-
 .deploy-restarts {
-	position: absolute;
-	inset: 0;
-	pointer-events: none;
+	@apply pointer-events-none absolute inset-0;
 }
 
 .deploy-restarts span {
-	position: absolute;
+	@apply absolute inset-y-0 w-px bg-destructive;
 	inset-inline-start: var(--at);
-	inset-block: 0;
-	width: 1px;
-	background: var(--color-destructive);
 }
 
-.deploy-restarts-dots span::before {
-	position: absolute;
-	top: -4px;
-	left: -2px;
-	width: 5px;
-	height: 5px;
-	border-radius: 50%;
-	background: inherit;
-	content: '';
+.deploy-last-point {
+	@apply pointer-events-none absolute size-1.5 rounded-full border border-[#171717] bg-white;
+	transform: translate(-50%, -50%);
 }
 
 .deploy-facts {
@@ -331,15 +340,10 @@
 	grid-template-columns: minmax(0, 1fr) auto;
 	gap: 8px;
 	align-items: center;
-	padding-inline-end: 12px;
 }
 
 .deploy-job > .axis-item:only-child {
 	grid-column: 1 / -1;
-}
-
-.deploy-detail-scroll .deploy-job {
-	padding-inline-end: 0;
 }
 
 .deploy-text-control,
@@ -363,17 +367,6 @@
 .deploy-text-control .sf-symbol {
 	inline-size: 16px;
 	block-size: 16px;
-}
-
-.deploy-trace-placeholder {
-	block-size: 24px;
-	border-radius: 5px;
-}
-
-.deploy-value-placeholder {
-	justify-self: end;
-	inline-size: 34px;
-	block-size: 18px;
 }
 
 .deploy-dialog {
@@ -410,7 +403,7 @@
 	margin-block-start: 8px;
 }
 
-.deploy-expose-kind > .glass {
+.deploy-expose-kind > button {
 	anchor-name: --deploy-exposure-trigger;
 }
 

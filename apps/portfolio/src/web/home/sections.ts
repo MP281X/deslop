@@ -23,10 +23,10 @@ function Panel<M>(h: Html.H<M>, className: string, ...body: View.Input<M>[]) {
 	return h.div.class('panel-frosted border-border border select-text', className).children(...body)
 }
 
-function Section<M>(h: Html.H<M>, name: SectionName, body: View.Input<M>, className?: string) {
+function Section<M>(h: Html.H<M>, name: SectionName, body: View.Input<M>, bottomPadding = 'pb-4 sm:pb-6') {
 	return h.section
 		.ref(sectionTargets[name])
-		.class('relative z-10 flex flex-col items-center overflow-hidden px-3 py-4 sm:px-6 sm:py-6', className)
+		.class('relative z-10 flex flex-col items-center overflow-hidden px-3 pt-4 sm:px-6 sm:pt-6', bottomPadding)
 		.children(body)
 }
 

@@ -25,7 +25,7 @@ import {Detail, MachineDetail} from '#web/inventory/detail.ts'
 import {Dialog, DialogActions} from '#web/inventory/dialog.ts'
 import {List} from '#web/inventory/list.ts'
 import type {Focused} from '#web/inventory/list.ts'
-import {LoadingApps, LoadingReadings} from '#web/inventory/loading.ts'
+import {LoadingApps, LoadingDetail} from '#web/inventory/loading.ts'
 import {
 	DialogState,
 	Execute,
@@ -166,6 +166,7 @@ function details(
 		...(focused?.restart !== undefined && {restart: focused.restart}),
 		row,
 		rows,
+		snapshot,
 		status
 	})
 }
@@ -211,16 +212,19 @@ function Workspace(h: H, model: Model) {
 	const pending = h.isRunning(Execute)
 	const collapsed = !model.narrow && model.listHidden
 	const history = Option.getOrUndefined(AsyncResult.value(model.metrics))
-	const restarts = pipe(
-		AsyncResult.value(model.appHistory),
-		Option.map(app => app.restarts),
-		Option.getOrElse(Array.empty<DateTime.Utc>)
+
+	const restart = RestartReason(
+		pipe(
+			AsyncResult.value(model.appHistory),
+			Option.map(app => app.restarts),
+			Option.getOrElse(Array.empty<DateTime.Utc>)
+		),
+		model.now
 	)
-	const restart = RestartReason(restarts, model.now)
 	const focused = Option.getOrUndefined(
 		Option.map(selection, row => {
 			const line = statusLine(row, model.now, restart)
-			return {id: row.item.id, ...(line !== undefined && {line}), ...(restart !== undefined && {restart}), restarts}
+			return {id: row.item.id, ...(line !== undefined && {line}), ...(restart !== undefined && {restart})}
 		})
 	)
 	function failed() {
@@ -233,7 +237,7 @@ function Workspace(h: H, model: Model) {
 				detail: {
 					content: ReadState(model.inventory, {
 						failed,
-						loading: () => h.div.class('deploy-startup-detail').children(LoadingReadings(h)),
+						loading: () => LoadingDetail(h),
 						ready: value => details(h, model, value, rows, pending, selectedRow, history, focused)
 					}),
 					key: focusId ?? 'detail',

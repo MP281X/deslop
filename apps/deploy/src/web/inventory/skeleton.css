@@ -1,49 +1,48 @@
-/* The startup and live reads use the same silhouettes. */
+/* Keep the same silhouette before startup and while the live reads are pending. */
 .deploy-list-skeleton {
 	min-block-size: 100dvh;
-	margin: 36px 14px 0;
+	margin: 21px 20px 0;
 	background:
-		url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='64' height='60' fill='%23191919'%3E%3Crect y='17' width='64' height='25' rx='4'/%3E%3C/svg%3E")
-			right 80px top / 64px 60px repeat-y,
-		url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='36' height='60' fill='%23191919'%3E%3Crect x='5' y='18' width='31' height='10' rx='4'/%3E%3Crect y='33' width='36' height='8' rx='4'/%3E%3C/svg%3E")
-			right top / 36px 60px repeat-y,
-		url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 180' preserveAspectRatio='none' fill='%23191919'%3E%3Crect y='18' width='90' height='12' rx='4'/%3E%3Crect y='35' width='44' height='9' rx='4'/%3E%3Crect y='78' width='70' height='12' rx='4'/%3E%3Crect y='95' width='37' height='9' rx='4'/%3E%3Crect y='138' width='106' height='12' rx='4'/%3E%3Crect y='155' width='58' height='9' rx='4'/%3E%3C/svg%3E")
-			left top / calc(100% - 154px) 180px repeat-y;
+		url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 290 168' preserveAspectRatio='none' fill='%23252525'%3E%3Crect width='290' height='168' rx='20' fill='%23141414'/%3E%3Crect x='16' y='17' width='48' height='14' rx='4'/%3E%3Crect x='16' y='59' width='56' height='31' rx='5'/%3E%3Crect x='154' y='67' width='120' height='23' rx='4'/%3E%3Cpath d='M16 111h33v9H16z M16 127h73v12H16z M16 150h120v4H16z M154 111h26v9h-26z M154 127h95v12h-95z M154 150h120v4h-120z'/%3E%3C/svg%3E")
+			center top / 100% 168px no-repeat,
+		url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='126' height='50' fill='%23191919'%3E%3Crect y='23' width='50' height='4' rx='2'/%3E%3Crect x='64' y='18' width='62' height='14' rx='4'/%3E%3C/svg%3E")
+			right 8px top 182px / 126px 50px repeat-y,
+		url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 150' preserveAspectRatio='none' fill='%23191919'%3E%3Crect y='11' width='90' height='13' rx='4'/%3E%3Crect y='31' width='54' height='9' rx='4'/%3E%3Crect y='61' width='60' height='13' rx='4'/%3E%3Crect y='81' width='105' height='9' rx='4'/%3E%3Crect y='111' width='106' height='13' rx='4'/%3E%3Crect y='131' width='58' height='9' rx='4'/%3E%3C/svg%3E")
+			left 8px top 182px / calc(100% - 152px) 150px repeat-y;
 }
 
 .deploy-reading-skeleton {
-	min-block-size: 152px;
-	margin: 6px 0 16px;
-	border-radius: 5px;
+	block-size: 222px;
+	margin-block: 16px;
+	border-radius: 20px;
 	background:
-		linear-gradient(#191919 0 0) left 9px / 65% 8px,
-		linear-gradient(#191919 0 0) left 27px / calc(100% - 52px) 93px,
-		linear-gradient(#191919 0 0) right 27px / 22px 9px,
-		linear-gradient(#191919 0 0) right 51px / 17px 9px,
-		linear-gradient(#191919 0 0) right 75px / 17px 9px,
-		linear-gradient(#191919 0 0) left 136px / 28% 10px,
-		linear-gradient(#191919 0 0) right 52px top 136px / 20% 10px;
+		linear-gradient(#252525 0 0) left 16px top 19px / 96px 10px,
+		linear-gradient(#252525 0 0) left 16px top 48px / 36px 24px,
+		linear-gradient(#252525 0 0) left 16px top 92px / calc(100% - 66px) 88px,
+		linear-gradient(#252525 0 0) left 16px top 193px / calc(100% - 66px) 8px #141414;
 	background-repeat: no-repeat;
 }
 
 .deploy-startup-detail {
-	padding-inline: clamp(14px, 2.7vw, 24px);
+	padding: 21px 20px 24px;
 }
 
 .deploy-startup-detail::before {
 	display: block;
-	block-size: 60px;
+	block-size: 110px;
 	content: '';
 	background:
-		linear-gradient(#191919 0 0) left 17px / 35% 12px,
-		linear-gradient(#191919 0 0) left 34px / 22% 9px,
-		linear-gradient(#191919 0 0) right 20px / 40px 20px;
+		linear-gradient(#191919 0 0) left top 4px / 45% 23px,
+		linear-gradient(#191919 0 0) left top 46px / 64px 38px,
+		linear-gradient(#191919 0 0) left 100px top 46px / 112px 38px,
+		linear-gradient(#191919 0 0) left top 95px / 42px 10px,
+		linear-gradient(#191919 0 0) left 100px top 95px / 64px 10px;
 	background-repeat: no-repeat;
 }
 
 .deploy-startup {
 	position: fixed;
-	inset: env(safe-area-inset-top, 0px) calc(56px + env(safe-area-inset-right, 0px)) env(safe-area-inset-bottom, 0px)
+	inset: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px)
 		env(safe-area-inset-left, 0px);
 	display: grid;
 	grid-template-columns: repeat(2, minmax(0, 1fr));

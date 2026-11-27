@@ -2,7 +2,7 @@ import {Array} from 'effect'
 
 import {CheckedChoice} from '@deslop/ui/app-shell'
 import type {ShellAction, ShellMenuItem} from '@deslop/ui/app-shell'
-import {GlassPanel} from '@deslop/ui/glass'
+import {PopoverPanel} from '@deslop/ui/control'
 
 import {Message} from '#web/auth/model.ts'
 import type {H, Model} from '#web/auth/model.ts'
@@ -27,7 +27,7 @@ export function peopleMenu(state: Model) {
 }
 
 export function PeopleMenu(h: H, state: Model, action: ReturnType<typeof peopleMenu>) {
-	return GlassPanel(
+	return PopoverPanel(
 		h,
 		'auth-people-options',
 		action.title,

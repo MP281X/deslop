@@ -102,15 +102,6 @@ export function compactCountOf(value: number) {
 	return compactCount.format(value)
 }
 
-// A size to one decimal in its largest binary unit: "151.3 MiB", "10.7 GiB".
-export function bytesOf(value: number) {
-	if (value >= 1024 ** 4) return `${fraction.format(value / 1024 ** 4)} TiB`
-	if (value >= 1024 ** 3) return `${fraction.format(value / 1024 ** 3)} GiB`
-	if (value >= 1024 ** 2) return `${fraction.format(value / 1024 ** 2)} MiB`
-	if (value >= 1024) return `${fraction.format(value / 1024)} KiB`
-	return `${fraction.format(value)} B`
-}
-
 export function percentOf(value: number) {
 	return `${fraction.format(value)}%`
 }

@@ -5,7 +5,6 @@ import {Array, Boolean, Function, HashMap, Number, Option, Order, Result, pipe} 
 import {countOf} from '@deslop/runtime/shared/format'
 import {RowContent} from '@deslop/ui/axis'
 import {Button} from '@deslop/ui/control'
-import {Glass} from '@deslop/ui/glass'
 
 import {failureMessage} from '#contracts'
 import type {AiKeyItem, AiProvider, AiUsageWindow, ConnectionItem, McpUsageReport, SpendSource} from '#contracts'
@@ -134,13 +133,11 @@ function ConnectionAction(h: H, server: ConnectionItem, busy: boolean) {
 		onFalse: Function.constant('Connect'),
 		onTrue: Function.constant('Reconnect')
 	})
-	return Glass(h).children(
-		Button(h, {disabled: busy})
-			.class('gateway-action')
-			.attr('aria-label', `${action} ${server.name}`)
-			.on('click', Message.Perform({action: Action.cases.Connect.make({id: server.id})}))
-			.children(action)
-	)
+	return Button(h, {disabled: busy})
+		.class('axis-control gateway-action')
+		.attr('aria-label', `${action} ${server.name}`)
+		.on('click', Message.Perform({action: Action.cases.Connect.make({id: server.id})}))
+		.children(action)
 }
 
 export function ServerRows(

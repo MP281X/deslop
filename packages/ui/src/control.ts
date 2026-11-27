@@ -1,4 +1,5 @@
 import {Mount} from '@effect/ui'
+import type {View} from '@effect/ui'
 import type {Html} from '@effect/ui/html'
 
 import {Effect, MutableRef, Option, Schema, Stream, pipe} from 'effect'
@@ -55,6 +56,14 @@ export function Button<M>(h: Html.H<M>, options: {disabled?: boolean; pressed?: 
 		.attr('type', type)
 		.attr('aria-pressed', Option.getOrUndefined(Option.map(Option.fromUndefinedOr(options.pressed), x => `${x}`)))
 		.onMount(BindButton({disabled: options.disabled ?? false, type}))
+}
+
+export function PopoverPanel<M>(h: Html.H<M>, id: string, label: string, children: View.Input<M>) {
+	return h.div
+		.class('axis-popover')
+		.id(id)
+		.attrs({'aria-label': label, popover: 'auto', role: 'group'})
+		.children(h.div.class('axis-popover-body').children(children))
 }
 
 export const PressFeedback = Mount.makeStream('PressFeedback', {args: {}}, (root: HTMLElement) =>

@@ -4,7 +4,6 @@ import type {Html} from '@effect/ui/html'
 import {Boolean, Function} from 'effect'
 
 import {Button} from './control.ts'
-import {Glass} from './glass.ts'
 import {SymbolIcon} from './symbol.ts'
 import {FitSheet} from './viewport.ts'
 
@@ -27,12 +26,11 @@ export function Sheet<M>(
 	const content = [
 		h.div.class('axis-sheet-heading').children(
 			options.closeHidden !== true &&
-				Glass(h, 'axis-sheet-close').children(
-					Button(h, {disabled: options.closeDisabled ?? false})
-						.attr('aria-label', options.closeLabel ?? 'Close')
-						.on('click', options.close)
-						.children(SymbolIcon(h, 'xmark'))
-				),
+				Button(h, {disabled: options.closeDisabled ?? false})
+					.class('axis-control axis-sheet-close')
+					.attr('aria-label', options.closeLabel ?? 'Close')
+					.on('click', options.close)
+					.children(SymbolIcon(h, 'xmark')),
 			h.h2
 				.id(options.titleId)
 				.attrs(

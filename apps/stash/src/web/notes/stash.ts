@@ -1,19 +1,17 @@
 import {Command, Component, Router, Subscription} from '@effect/ui'
 import {Html, HtmlSubscription} from '@effect/ui/html'
 
-import {Array, Boolean, DateTime, Duration, Function, Layer, Option, Schema, String, pipe} from 'effect'
+import {Array, Boolean, DateTime, Function, Layer, Option, Schema, String, pipe} from 'effect'
 
 import {FetchHttpClient} from 'effect/http'
 import {AsyncResult, AtomRegistry} from 'effect/reactivity'
 
 import {clockAtom} from '@deslop/runtime/client/clock'
 import {isDeniedCause, needsSignInCause} from '@deslop/runtime/client/live-stream'
-import {ageOf, dayOf} from '@deslop/runtime/shared/format'
 import {ActionShell, CheckedChoice} from '@deslop/ui/app-shell'
 import type {ShellAction, ShellMenuGroup, ShellMenuItem} from '@deslop/ui/app-shell'
-import {Loading, Notice, Row} from '@deslop/ui/axis'
-import {Button, PressFeedback} from '@deslop/ui/control'
-import {Glass, GlassPanel} from '@deslop/ui/glass'
+import {Loading, Notice} from '@deslop/ui/axis'
+import {Button, PopoverPanel, PressFeedback} from '@deslop/ui/control'
 import {isNative, sessionAccount} from '@deslop/ui/native'
 import {WebSignOut} from '@deslop/ui/session'
 import {Sheet} from '@deslop/ui/sheet'
@@ -25,7 +23,7 @@ import {hasHistoryBehind, historyBack, usedHistoryMotion} from '@deslop/ui/viewp
 import {Kind} from '#contracts'
 import type {NoteItem} from '#contracts'
 
-import {kinds, sourceLabelOf, subjectOf, tagCounts} from '#web/notes/kinds.ts'
+import {kinds, tagCounts} from '#web/notes/kinds.ts'
 import {
 	Action,
 	Message,
@@ -39,40 +37,11 @@ import {
 	visibleNotes
 } from '#web/notes/model.ts'
 import {mediaAtom, noteAtom, notesAtom} from '#web/notes/notes.ts'
-import {coverOf, isWebLink, issueOf, picture, reader} from '#web/notes/reader.ts'
+import {noteRow, queueView, savedOf} from '#web/notes/queue.ts'
+import {coverOf, isWebLink, picture, reader} from '#web/notes/reader.ts'
 import {StashRoute} from '#web/routes.ts'
 
 type H = Html.H<Message>
-
-function savedOf(note: NoteItem, now: DateTime.Utc) {
-	if (pipe(note.createdAt, DateTime.distance(now), Duration.isLessThan(Duration.days(1)))) {
-		return ageOf(note.createdAt, now)
-	}
-	return dayOf(note.createdAt, now)
-}
-
-function lineOf(note: NoteItem) {
-	if (note.status === 'failed') return issueOf(note)
-	if (note.status === 'organizing') return `Reading this ${subjectOf(note)}`
-	return pipe([sourceLabelOf(note), note.summary], Array.filter(String.isNonEmpty), Array.join(' · '))
-}
-
-function noteRow(h: H, note: NoteItem, state: Model) {
-	return Row(h, {
-		className: 'stash-note-row',
-		current: !state.narrow && !state.listHidden && state.selected?.id === note.id,
-		id: note.id,
-		leading: Option.match(note.image, {
-			onNone: () => h.span.class('stash-thumb'),
-			onSome: () => picture(h, coverOf(note), 'stash-thumb')
-		}),
-		line: lineOf(note),
-		open: Message.Open({id: note.id}),
-		problem: note.status === 'failed',
-		title: note.title,
-		value: savedOf(note, state.now)
-	})
-}
 
 function queueGroups(state: Model) {
 	const tags = pipe(AsyncResult.value(state.notes), Option.getOrElse(Array.empty<NoteItem>), tagCounts)
@@ -136,7 +105,7 @@ function queueOptions(state: Model) {
 
 function queueMenu(h: H, state: Model) {
 	const signedIn = Option.getOrUndefined(AsyncResult.value(state.account))
-	return GlassPanel(h, 'stash-queue-options', 'Queue options', [
+	return PopoverPanel(h, 'stash-queue-options', 'Queue options', [
 		...Array.map(queueGroups(state), group =>
 			h.div
 				.key(group.title)
@@ -168,7 +137,14 @@ function notesContent(h: H, state: Model) {
 					return Notice(h, 'No saved notes')
 				},
 				onNonEmpty: notes => [
-					...Array.map(notes, note => noteRow(h, note, state)),
+					...queueView(h, notes, state.now, note =>
+						noteRow(
+							h,
+							note,
+							() => picture(h, coverOf(note), 'stash-thumb'),
+							!state.narrow && !state.listHidden && state.selected?.id === note.id
+						)
+					),
 					stale && Notice(h, 'Notes may be out of date', Message.Retry())
 				]
 			})
@@ -199,7 +175,7 @@ function noteOptions(state: Model, note: NoteItem) {
 
 function noteMenu(h: H, state: Model, note: NoteItem) {
 	const url = Option.getOrUndefined(note.url)
-	return GlassPanel(h, 'stash-note-options', 'Note options', [
+	return PopoverPanel(h, 'stash-note-options', 'Note options', [
 		url !== undefined &&
 			isWebLink(url) &&
 			h.a
@@ -223,11 +199,10 @@ function noteMenu(h: H, state: Model, note: NoteItem) {
 function Compose(h: H, state: Model) {
 	if (!state.composing) return undefined
 	return Sheet(h, {
-		action: Glass(h).children(
-			Button(h, {disabled: state.pending || String.isEmpty(String.trim(state.draft)), type: 'submit'})
-				.attr('aria-label', 'Save')
-				.children(SymbolIcon(h, 'checkmark'))
-		),
+		action: Button(h, {disabled: state.pending || String.isEmpty(String.trim(state.draft)), type: 'submit'})
+			.class('axis-control stash-action')
+			.attr('aria-label', 'Save')
+			.children(SymbolIcon(h, 'checkmark')),
 		body: h.textarea
 			.attrs({'aria-label': 'Write a note', maxlength: '20000', placeholder: 'Write a note'})
 			.value(state.draft)
@@ -363,7 +338,7 @@ function workspace(h: H, state: Model) {
 			.class('stash-gate axis-controls')
 			.onMount(PressFeedback({}))
 			.children(
-				Glass(h).children(h.a.class('stash-action').attrs({'data-pressable': '', href: '/'}).children('Back to Stash'))
+				h.a.class('axis-control stash-action').attrs({'data-pressable': '', href: '/'}).children('Back to Stash')
 			)
 	}
 	const gate = accessGate(h, state)
@@ -404,11 +379,12 @@ function workspace(h: H, state: Model) {
 				onTrue: () => h.div.class('stash-gate').children(gate)
 			}),
 			state.problem !== undefined &&
-				Glass(h, 'stash-report')
+				h.div
+					.class('stash-report')
 					.attr('role', 'alert')
 					.children(
 						h.p.children(state.problem),
-						Button(h).class('stash-action').on('click', Message.DismissProblem()).children('Dismiss')
+						Button(h).class('axis-control stash-action').on('click', Message.DismissProblem()).children('Dismiss')
 					)
 		)
 }

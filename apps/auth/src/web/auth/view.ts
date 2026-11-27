@@ -11,7 +11,6 @@ import {ActionShell} from '@deslop/ui/app-shell'
 import type {ShellAction} from '@deslop/ui/app-shell'
 import {Loading, Notice} from '@deslop/ui/axis'
 import {PressFeedback} from '@deslop/ui/control'
-import {Glass} from '@deslop/ui/glass'
 import {isNative} from '@deslop/ui/native'
 import {Split, singlePane, watchPanes} from '@deslop/ui/split'
 import type {Pane} from '@deslop/ui/split'
@@ -204,9 +203,7 @@ function Workspace(h: H, model: Model) {
 	if (!isHome(model.route)) {
 		return h.div
 			.class('auth-screen')
-			.children(
-				Glass(h).children(h.a.class('auth-action').attrs({'data-pressable': '', href: '/'}).children('Back to Auth'))
-			)
+			.children(h.a.class('axis-control auth-action').attrs({'data-pressable': '', href: '/'}).children('Back to Auth'))
 	}
 	const viewer = signed(model.account)
 	if (viewer === undefined || viewer.role === 'Waiting') return AccessScreen(h, model, model.route.search, viewer)

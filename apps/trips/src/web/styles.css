@@ -102,12 +102,11 @@
 	gap: 8px;
 	min-height: 44px;
 	padding-inline: 14px;
-	border-radius: 999px;
 	white-space: nowrap;
 	font-weight: 550;
 }
 
-.trips [role='menu'] .glass-panel-body > [role='group'] {
+.trips [role='menu'] .axis-popover-body > [role='group'] {
 	display: grid;
 }
 
@@ -137,7 +136,7 @@
 	--sheet-height: 28rem;
 	--sheet-inset-left: var(--shell-inset-left);
 	--sheet-inset-right: var(--shell-inset-right);
-	--sheet-width: min(32rem, 100% - var(--shell-rail-width) - var(--shell-inset-left) - var(--shell-inset-right));
+	--sheet-width: min(32rem, 100% - var(--shell-inset-left) - var(--shell-inset-right));
 }
 
 .trips-sheet textarea {
@@ -150,12 +149,9 @@
 	resize: none;
 }
 
-.trips-file {
-	align-self: start;
-}
-
 .trips-file-control {
 	position: relative;
+	align-self: start;
 	cursor: pointer;
 }
 
@@ -184,9 +180,11 @@
 
 .trips-report {
 	position: fixed;
-	inset: auto 64px 16px 16px;
+	inset: auto 16px 16px;
 	width: fit-content;
 	padding: 10px 16px;
+	border-radius: 12px;
+	background: var(--color-muted);
 }
 
 @media (prefers-reduced-motion: reduce) {

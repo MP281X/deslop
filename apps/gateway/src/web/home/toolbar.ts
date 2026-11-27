@@ -8,8 +8,7 @@ import {blockingFailure} from '@deslop/runtime/client/live-stream'
 import {TimeFrame} from '@deslop/runtime/shared/time'
 import {CheckedChoice} from '@deslop/ui/app-shell'
 import type {ShellAction, ShellMenuItem} from '@deslop/ui/app-shell'
-import {Button} from '@deslop/ui/control'
-import {Glass, GlassPanel} from '@deslop/ui/glass'
+import {Button, PopoverPanel} from '@deslop/ui/control'
 import {WebSignOut} from '@deslop/ui/session'
 import {SymbolIcon} from '@deslop/ui/symbol'
 import {FitSheet} from '@deslop/ui/viewport'
@@ -76,7 +75,7 @@ export function gatewayActions(model: Model): readonly ShellAction<Message>[] {
 }
 
 export function RangeMenu(h: H, model: Model) {
-	return GlassPanel(
+	return PopoverPanel(
 		h,
 		'gateway-range',
 		'Range',
@@ -92,7 +91,7 @@ export function RangeMenu(h: H, model: Model) {
 
 export function OptionsMenu(h: H, model: Model) {
 	const account = Option.getOrUndefined(AsyncResult.value(model.account))
-	return GlassPanel(h, 'gateway-options', 'Gateway controls', [
+	return PopoverPanel(h, 'gateway-options', 'Gateway controls', [
 		Button(h)
 			.attr('role', 'menuitem')
 			.on('click', Message.Copy())
@@ -129,29 +128,27 @@ export function PasteField(h: H, model: Model) {
 				return Message.SubmitField({entry: Redacted.make(entry)})
 			})
 			.children(
-				Glass(h).children(
-					h.input
-						.key(model.fieldVersion.toString())
-						.attrs({
-							'aria-describedby': when(model.fieldError !== undefined, 'gateway-add-error'),
-							'aria-invalid': when(model.fieldError !== undefined, 'true'),
-							'aria-label': 'MCP server URL or provider key',
-							autocapitalize: 'none',
-							autocomplete: 'off',
-							disabled: when(busy, ''),
-							enterkeyhint: 'go',
-							name: 'entry',
-							placeholder: 'Paste a key or a server URL',
-							spellcheck: 'false',
-							type: 'text'
-						})
-						.on('input', () => {
-							if (model.fieldError !== undefined) return Message.ClearFieldError()
-							return undefined
-						})
-				),
-				model.fieldError !== undefined &&
-					Glass(h).id('gateway-add-error').attr('role', 'alert').children(h.p.children(model.fieldError))
+				h.input
+					.class('axis-control')
+					.key(model.fieldVersion.toString())
+					.attrs({
+						'aria-describedby': when(model.fieldError !== undefined, 'gateway-add-error'),
+						'aria-invalid': when(model.fieldError !== undefined, 'true'),
+						'aria-label': 'MCP server URL or provider key',
+						autocapitalize: 'none',
+						autocomplete: 'off',
+						disabled: when(busy, ''),
+						enterkeyhint: 'go',
+						name: 'entry',
+						placeholder: 'Paste a key or a server URL',
+						spellcheck: 'false',
+						type: 'text'
+					})
+					.on('input', () => {
+						if (model.fieldError !== undefined) return Message.ClearFieldError()
+						return undefined
+					}),
+				model.fieldError !== undefined && h.p.id('gateway-add-error').attr('role', 'alert').children(model.fieldError)
 			)
 	)
 }
@@ -180,44 +177,39 @@ export function KeyDialog(h: H, dialog: NonNullable<Model['dialog']>, model: Mod
 				})
 				.children(
 					h.label.id('gateway-key-label').attr('for', 'gateway-key').children('OpenCode, Anthropic or OpenAI key'),
-					Glass(h).children(
-						h.input
-							.id('gateway-key')
-							.attrs({
-								'aria-describedby': when(error !== undefined, 'gateway-key-error'),
-								'aria-invalid': when(invalid, 'true'),
-								autocapitalize: 'none',
-								autocomplete: 'off',
-								autofocus: '',
-								disabled: when(saving, ''),
-								enterkeyhint: 'go',
-								name: 'secret',
-								required: '',
-								spellcheck: 'false',
-								type: 'password'
-							})
-							.value(secret)
-							.on('input', event => Message.EditedKey({secret: Redacted.make(event.value)}))
-					),
+					h.input
+						.class('axis-control')
+						.id('gateway-key')
+						.attrs({
+							'aria-describedby': when(error !== undefined, 'gateway-key-error'),
+							'aria-invalid': when(invalid, 'true'),
+							autocapitalize: 'none',
+							autocomplete: 'off',
+							autofocus: '',
+							disabled: when(saving, ''),
+							enterkeyhint: 'go',
+							name: 'secret',
+							required: '',
+							spellcheck: 'false',
+							type: 'password'
+						})
+						.value(secret)
+						.on('input', event => Message.EditedKey({secret: Redacted.make(event.value)})),
 					error !== undefined && h.p.id('gateway-key-error').attr('role', 'alert').children(error),
 					h.div.class('gateway-key-actions').children(
-						Glass(h).children(
-							Button(h, {disabled: saving})
-								.class('gateway-action')
-								.attr('aria-label', 'Cancel')
-								.on('click', Message.CancelKey())
-								.children(SymbolIcon(h, 'xmark'))
-						),
-						Glass(h).children(
-							Button(h, {disabled: saving || !valid, type: 'submit'})
-								.class('gateway-action')
-								.children(
-									Boolean.match(saving, {
-										onFalse: () => credentialAction(keys, provider),
-										onTrue: Function.constant('Saving…')
-									})
-								)
-						)
+						Button(h, {disabled: saving})
+							.class('axis-control gateway-action')
+							.attr('aria-label', 'Cancel')
+							.on('click', Message.CancelKey())
+							.children(SymbolIcon(h, 'xmark')),
+						Button(h, {disabled: saving || !valid, type: 'submit'})
+							.class('axis-control gateway-action')
+							.children(
+								Boolean.match(saving, {
+									onFalse: () => credentialAction(keys, provider),
+									onTrue: Function.constant('Saving…')
+								})
+							)
 					)
 				)
 		)
