@@ -1,7 +1,7 @@
 import {Command, Component, Router, Subscription} from '@effect/ui'
-import {Html} from '@effect/ui/html'
+import {Html, HtmlSubscription} from '@effect/ui/html'
 
-import {Array, Boolean, DateTime, Duration, Function, Layer, Option, Schema, Stream, String, pipe} from 'effect'
+import {Array, Boolean, DateTime, Duration, Function, Layer, Option, Schema, String, pipe} from 'effect'
 
 import {FetchHttpClient} from 'effect/http'
 import {AsyncResult, AtomRegistry} from 'effect/reactivity'
@@ -428,29 +428,25 @@ const StashDef = Html.component({
 
 export const Stash = pipe(
 	StashDef.make({
-		init: context => {
-			const state: Model = {
-				account: AsyncResult.initial(),
-				body: AsyncResult.initial(),
-				composing: false,
-				draft: readDraft(),
-				kind: undefined,
-				listHidden: false,
-				media: AsyncResult.initial(),
-				narrow: singlePane(),
-				notes: AsyncResult.initial(),
-				now: DateTime.nowUnsafe(),
-				panel: undefined,
-				pending: false,
-				problem: undefined,
-				revision: 0,
-				route: context.props.route,
-				selected: undefined,
-				tag: undefined
-			}
-			if (isNative) return context.set(state).run(Wake.make({refresh: false}))
-			return state
-		},
+		init: context => ({
+			account: AsyncResult.initial(),
+			body: AsyncResult.initial(),
+			composing: false,
+			draft: readDraft(),
+			kind: undefined,
+			listHidden: false,
+			media: AsyncResult.initial(),
+			narrow: singlePane(),
+			notes: AsyncResult.initial(),
+			now: DateTime.nowUnsafe(),
+			panel: undefined,
+			pending: false,
+			problem: undefined,
+			revision: 0,
+			route: context.props.route,
+			selected: undefined,
+			tag: undefined
+		}),
 		subscriptions: context => {
 			const admitted =
 				Option.isSome(AsyncResult.value(context.model.account)) &&
@@ -470,14 +466,10 @@ export const Stash = pipe(
 					observe(clockAtom('1 minute'), now => Message.Clock({now}))
 				),
 				isNative &&
-					Subscription.make(
-						'activation',
-						pipe(
-							Stream.fromEventListener(document, 'visibilitychange'),
-							Stream.filter(() => document.visibilityState === 'visible'),
-							Stream.map(() => Message.Activate())
-						)
-					),
+					HtmlSubscription.onVisibility(visible => {
+						if (visible) return Message.Activate()
+						return undefined
+					}),
 				admitted &&
 					Subscription.make(
 						'notes',

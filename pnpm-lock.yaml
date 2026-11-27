@@ -230,8 +230,8 @@ importers:
         specifier: latest
         version: 4.1.6(effect@4.1.6)(redis@6.4.0)
       '@effect/ui':
-        specifier: https://pkg.pr.new/Effect-TS/ui/@effect/ui@87a704bef41b40de8fa7bced97cae5d69c4233a0
-        version: https://pkg.pr.new/Effect-TS/ui/@effect/ui@87a704bef41b40de8fa7bced97cae5d69c4233a0(effect@4.1.6)
+        specifier: https://pkg.pr.new/Effect-TS/ui/@effect/ui@7bff56b3b81c57bf1038d358835e92833814a6b0
+        version: https://pkg.pr.new/Effect-TS/ui/@effect/ui@7bff56b3b81c57bf1038d358835e92833814a6b0(effect@4.1.6)
       effect:
         specifier: latest
         version: 4.1.6
@@ -257,8 +257,8 @@ importers:
         specifier: latest
         version: 4.1.6(effect@4.1.6)(redis@6.4.0)
       '@effect/ui':
-        specifier: https://pkg.pr.new/Effect-TS/ui/@effect/ui@87a704bef41b40de8fa7bced97cae5d69c4233a0
-        version: https://pkg.pr.new/Effect-TS/ui/@effect/ui@87a704bef41b40de8fa7bced97cae5d69c4233a0(effect@4.1.6)
+        specifier: https://pkg.pr.new/Effect-TS/ui/@effect/ui@7bff56b3b81c57bf1038d358835e92833814a6b0
+        version: https://pkg.pr.new/Effect-TS/ui/@effect/ui@7bff56b3b81c57bf1038d358835e92833814a6b0(effect@4.1.6)
       effect:
         specifier: latest
         version: 4.1.6
@@ -284,8 +284,8 @@ importers:
         specifier: latest
         version: 4.1.6(effect@4.1.6)(redis@6.4.0)
       '@effect/ui':
-        specifier: https://pkg.pr.new/Effect-TS/ui/@effect/ui@87a704bef41b40de8fa7bced97cae5d69c4233a0
-        version: https://pkg.pr.new/Effect-TS/ui/@effect/ui@87a704bef41b40de8fa7bced97cae5d69c4233a0(effect@4.1.6)
+        specifier: https://pkg.pr.new/Effect-TS/ui/@effect/ui@7bff56b3b81c57bf1038d358835e92833814a6b0
+        version: https://pkg.pr.new/Effect-TS/ui/@effect/ui@7bff56b3b81c57bf1038d358835e92833814a6b0(effect@4.1.6)
       '@modelcontextprotocol/client':
         specifier: latest
         version: 2.4.0
@@ -305,8 +305,8 @@ importers:
         specifier: workspace:*
         version: link:../../packages/ui
       '@effect/ui':
-        specifier: https://pkg.pr.new/Effect-TS/ui/@effect/ui@87a704bef41b40de8fa7bced97cae5d69c4233a0
-        version: https://pkg.pr.new/Effect-TS/ui/@effect/ui@87a704bef41b40de8fa7bced97cae5d69c4233a0(effect@4.1.6)
+        specifier: https://pkg.pr.new/Effect-TS/ui/@effect/ui@7bff56b3b81c57bf1038d358835e92833814a6b0
+        version: https://pkg.pr.new/Effect-TS/ui/@effect/ui@7bff56b3b81c57bf1038d358835e92833814a6b0(effect@4.1.6)
       effect:
         specifier: latest
         version: 4.1.6
@@ -330,8 +330,8 @@ importers:
         specifier: workspace:*
         version: link:../../packages/ui
       '@effect/ui':
-        specifier: https://pkg.pr.new/Effect-TS/ui/@effect/ui@87a704bef41b40de8fa7bced97cae5d69c4233a0
-        version: https://pkg.pr.new/Effect-TS/ui/@effect/ui@87a704bef41b40de8fa7bced97cae5d69c4233a0(effect@4.1.6)
+        specifier: https://pkg.pr.new/Effect-TS/ui/@effect/ui@7bff56b3b81c57bf1038d358835e92833814a6b0
+        version: https://pkg.pr.new/Effect-TS/ui/@effect/ui@7bff56b3b81c57bf1038d358835e92833814a6b0(effect@4.1.6)
       '@fontsource-variable/geist':
         specifier: latest
         version: 5.3.0
@@ -372,8 +372,8 @@ importers:
         specifier: latest
         version: 4.1.6(effect@4.1.6)
       '@effect/ui':
-        specifier: https://pkg.pr.new/Effect-TS/ui/@effect/ui@87a704bef41b40de8fa7bced97cae5d69c4233a0
-        version: https://pkg.pr.new/Effect-TS/ui/@effect/ui@87a704bef41b40de8fa7bced97cae5d69c4233a0(effect@4.1.6)
+        specifier: https://pkg.pr.new/Effect-TS/ui/@effect/ui@7bff56b3b81c57bf1038d358835e92833814a6b0
+        version: https://pkg.pr.new/Effect-TS/ui/@effect/ui@7bff56b3b81c57bf1038d358835e92833814a6b0(effect@4.1.6)
       effect:
         specifier: latest
         version: 4.1.6
@@ -402,8 +402,8 @@ importers:
         specifier: latest
         version: 4.1.6(effect@4.1.6)
       '@effect/ui':
-        specifier: https://pkg.pr.new/Effect-TS/ui/@effect/ui@87a704bef41b40de8fa7bced97cae5d69c4233a0
-        version: https://pkg.pr.new/Effect-TS/ui/@effect/ui@87a704bef41b40de8fa7bced97cae5d69c4233a0(effect@4.1.6)
+        specifier: https://pkg.pr.new/Effect-TS/ui/@effect/ui@7bff56b3b81c57bf1038d358835e92833814a6b0
+        version: https://pkg.pr.new/Effect-TS/ui/@effect/ui@7bff56b3b81c57bf1038d358835e92833814a6b0(effect@4.1.6)
       cheerio:
         specifier: latest
         version: 1.2.0
@@ -442,8 +442,8 @@ importers:
         specifier: latest
         version: 4.1.6(effect@4.1.6)(redis@6.4.0)
       '@effect/ui':
-        specifier: https://pkg.pr.new/Effect-TS/ui/@effect/ui@87a704bef41b40de8fa7bced97cae5d69c4233a0
-        version: https://pkg.pr.new/Effect-TS/ui/@effect/ui@87a704bef41b40de8fa7bced97cae5d69c4233a0(effect@4.1.6)
+        specifier: https://pkg.pr.new/Effect-TS/ui/@effect/ui@7bff56b3b81c57bf1038d358835e92833814a6b0
+        version: https://pkg.pr.new/Effect-TS/ui/@effect/ui@7bff56b3b81c57bf1038d358835e92833814a6b0(effect@4.1.6)
       effect:
         specifier: latest
         version: 4.1.6
@@ -472,8 +472,8 @@ importers:
         specifier: workspace:*
         version: link:../runtime
       '@effect/ui':
-        specifier: https://pkg.pr.new/Effect-TS/ui/@effect/ui@87a704bef41b40de8fa7bced97cae5d69c4233a0
-        version: https://pkg.pr.new/Effect-TS/ui/@effect/ui@87a704bef41b40de8fa7bced97cae5d69c4233a0(effect@4.1.6)
+        specifier: https://pkg.pr.new/Effect-TS/ui/@effect/ui@7bff56b3b81c57bf1038d358835e92833814a6b0
+        version: https://pkg.pr.new/Effect-TS/ui/@effect/ui@7bff56b3b81c57bf1038d358835e92833814a6b0(effect@4.1.6)
       '@fontsource-variable/geist':
         specifier: latest
         version: 5.3.0
@@ -637,8 +637,8 @@ packages:
     resolution: {integrity: sha512-Ks+JDKKrQxhV370MX/AZyBwX+/zUScIHBZ0n4rbS2/bwTcpCPga+9H5yNKX+uOMMUwreH7GFnBka0iZKqkRbfw==}
     hasBin: true
 
-  '@effect/ui@https://pkg.pr.new/Effect-TS/ui/@effect/ui@87a704bef41b40de8fa7bced97cae5d69c4233a0':
-    resolution: {integrity: sha512-wiZ/TVbVGpkRoW/Js2x4OhnQiLvCYOw8DOmObSHYM8mhcbxyqFW0RmMrCKtd+iPqMoPTVp4ugIOWDYVQELOpHA==, tarball: https://pkg.pr.new/Effect-TS/ui/@effect/ui@87a704bef41b40de8fa7bced97cae5d69c4233a0}
+  '@effect/ui@https://pkg.pr.new/Effect-TS/ui/@effect/ui@7bff56b3b81c57bf1038d358835e92833814a6b0':
+    resolution: {integrity: sha512-uYecYnIGC/Q15cl914C6Zbr1FOT1ahCjy625xwQyDODgNdq/yPEdxr6UuhkaYp83zWsiL4rVJsz8nFHziOCBDw==, tarball: https://pkg.pr.new/Effect-TS/ui/@effect/ui@7bff56b3b81c57bf1038d358835e92833814a6b0}
     version: 0.0.0
     peerDependencies:
       effect: ^4.1.4
@@ -2417,7 +2417,7 @@ snapshots:
       '@effect/tsgo-win32-arm64': 0.73.7
       '@effect/tsgo-win32-x64': 0.73.7
 
-  '@effect/ui@https://pkg.pr.new/Effect-TS/ui/@effect/ui@87a704bef41b40de8fa7bced97cae5d69c4233a0(effect@4.1.6)':
+  '@effect/ui@https://pkg.pr.new/Effect-TS/ui/@effect/ui@7bff56b3b81c57bf1038d358835e92833814a6b0(effect@4.1.6)':
     dependencies:
       effect: 4.1.6
 
