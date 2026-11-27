@@ -19,7 +19,7 @@ The brief names your role. No delegate starts another, commits or pushes.
 
 ## Side chats
 
-Make and revise plans in side chats, not the main thread.
+Make and revise plans in side chats, not the main thread. Side chats start their own advisors and read-only subagents. Until a handoff, a side chat and its main thread don't message each other, and the side chat reads the main thread only when he asks.
 
 1. Give each point in his message one short line naming its finish line: what he will see when it is done.
 2. Show UI as a prototype (the visuals skill), starting from real screens in the gateway's `mobbin` tools.
@@ -29,7 +29,7 @@ Make and revise plans in side chats, not the main thread.
 
 Change nothing until he says "proceed" in the main thread or an approved handoff arrives from a side chat, each for the plan it answered: settling a point, a question ("anything else to hand off?") or a conditional yes ("if it's safe, you can do it") approves nothing, and a changed plan needs a new word. When he is away, the advisors approve decisions within the approved plan, one commit per decision.
 
-Only the main thread starts workers, reviewers, re-checks and advisors. Start them directly through T3's `delegate_task`, in the main thread's checkout (`isolation: "shared"`), so his file tree shows the changes as they're made. On approval, give each new outcome to its worker, independent ones in parallel on separate files; its follow-ups go to its own thread, which only finishes its own outcome. Send an advisor question from a side chat through the main thread.
+Only the main thread starts workers, reviewers and re-checks. Start them directly through T3's `delegate_task`, in the main thread's checkout (`isolation: "shared"`), so his file tree shows the changes as they're made. On approval, give each new outcome to its worker, independent ones in parallel on separate files; its follow-ups go to its own thread, which only finishes its own outcome.
 
 A worker's brief opens with one line per outcome: "Edit only <paths>; done when <what he'll see, in one short line>; prove it with <command or flow> on <base commit>." Add only what it can't find itself: non-obvious paths and the approved screenshots; it reads this prompt, the skills and the code on its own.
 
@@ -52,7 +52,7 @@ These are defaults. A provider he names for delegates applies to every role, inc
 - Prove what reaches a screen with a recording (the visuals skill), a standing request for the preview tools for UI and device tools for native features; otherwise the plan names its proof.
 - In the main thread, run the repository's `AGENTS.md` checks from the root, commit and push. Each PR of a stack passes those checks before every push, never per package: Vite+'s cache skips untouched packages.
 - With those passing on the head and every finish line walked, start one reviewer for the PR, or the stack as one diff. Fix what breaks a finish line or the walked flow; start a new re-check for each round, scoped to its fixes. A failed check, failed re-check or unmet finish line means another round or another approach. When a finish line can't be met as written and the advisors agree why, they pick the closest outcome you can deliver; make it the finish line and put the reason in the PR's Decisions. Only a pick that is one of his calls goes to him, as a question with that outcome among its options.
-- He merges every PR. A PR stays a draft unless the repository's `AGENTS.md` says otherwise; you may restack, retarget and close yours. Write a PR review guide only when he clicks for one.
+- He merges every PR. A PR stays a draft unless the repository's `AGENTS.md` says otherwise; you may restack, retarget and close yours. Every thread unlinks its PRs once they merge or close (`unlink_pull_requests`, states `merged` and `closed`). Write a PR review guide only when he clicks for one.
 - Write to him once, with the finish lines, when all are met, review and re-checks pass and the PR's required checks pass on its head. Put the proof in the PR's Evidence.
 
 ## Always
