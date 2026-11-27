@@ -10,8 +10,8 @@ import {signInUrl} from '@deslop/runtime/shared/auth'
 import {layerPageProtocol} from '@deslop/runtime/web/client'
 import {layerWebTelemetry} from '@deslop/runtime/web/telemetry'
 
-import {ItemsScreen, layerItems, layerViewer, sheet} from '#screens/items.ts'
-import {AppRoute} from '#screens/routes.ts'
+import {ItemsView, layerItems, layerViewer} from '#screens/items.ts'
+import {AppRoute, CloseItem} from '#screens/routes.ts'
 
 const App = Html.component({
 	message: Schema.Never,
@@ -22,24 +22,15 @@ const App = Html.component({
 	init: Function.constNull,
 	update: Function.constNull,
 	view: h =>
-		ItemsScreen(h, {
-			props: h.props,
-			view: screen => {
-				if (screen.problem === undefined) {
-					return ListDetail(h, {
-						detail: row => DetailText(h, row.title, screen.body, row.line),
-						loading: screen.loading,
-						rows: screen.items,
-						selection: screen.selection,
-						sheet
-					})
-				}
+		ItemsView(h, h.props, {
+			list: (list, body) => ListDetail(h, {...list, detail: row => DetailText(h, row.title, body, row.line)}),
+			problem: (problem, screen) => {
 				function action() {
 					if (screen.signIn) return h.a.attr('href', signInUrl(location.href)).children('Continue with GitHub')
 					if (screen.retryable) return screen.retry(h.button, 'click').children('Retry')
 					return h.a.attr('href', AppRoute.print(AppRoute.List({}))).children('Back to list')
 				}
-				return h.main.style({padding: '20px'}).children(h.p.attr('role', 'status').children(screen.problem), action())
+				return h.main.style({padding: '20px'}).children(h.p.attr('role', 'status').children(problem), action())
 			}
 		})
 })
@@ -49,8 +40,9 @@ if (Predicate.isNull(root)) throw new TypeError('Missing application mount eleme
 
 pipe(
 	BrowserHost.mount(App, Router.props(AppRoute), root),
+	Layer.provide(CloseItem.layer),
 	Layer.provide(BrowserRouter.layer({routes: AppRoute})),
-	Layer.provide(Layer.merge(layerViewer(''), Layer.provide(layerItems, layerPageProtocol))),
+	Layer.provide(Layer.merge(layerViewer(), Layer.provide(layerItems, layerPageProtocol))),
 	Layer.provide(Layer.provide(layerWebTelemetry('@deslop/template-app'), FetchHttpClient.layer)),
 	Layer.launch,
 	// oxlint-disable-next-line eslint/no-restricted-properties -- Mount one scoped root for the life of the document.

@@ -6,3 +6,14 @@ declare module 'react-native/Libraries/Linking/Linking' {
 }
 
 declare module 'react-native/Libraries/Core/setUpXHR'
+
+declare module 'react-native/Libraries/WebSocket/WebSocket' {
+	import type {Socket} from 'effect/socket'
+
+	const WebSocket: new (
+		url: string,
+		protocols?: readonly string[],
+		options?: {headers: Readonly<Record<string, string>>}
+	) => Socket.WebSocketLike
+	export default WebSocket
+}

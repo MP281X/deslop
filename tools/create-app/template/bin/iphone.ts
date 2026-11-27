@@ -11,7 +11,7 @@ class ExpoError extends Schema.TaggedError<ExpoError>()('ExpoError', {message: S
 const expo = Effect.fnUntraced(function* (args: readonly string[]) {
 	const spawner = yield* ChildProcessSpawner.ChildProcessSpawner
 	const code = yield* spawner.exitCode(ChildProcess.make('expo', args, {stderr: 'inherit', stdout: 'inherit'}))
-	if (code !== 0) return yield* Effect.fail(new ExpoError({message: `Expo ${args[0]} exited with ${code}`}))
+	if (code !== 0) return yield* ExpoError.make({message: `Expo ${args[0]} exited with ${code}`})
 })
 
 const prepare = Effect.gen(function* () {

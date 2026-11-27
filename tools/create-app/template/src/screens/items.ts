@@ -1,4 +1,5 @@
 import {Command, Component, Query, Router, UiSchema} from '@effect/ui'
+import type {View} from '@effect/ui'
 
 import {Array, Effect, Function, Layer, Option, Schema, pipe} from 'effect'
 
@@ -15,7 +16,9 @@ import {Account} from '@deslop/runtime/shared/schema'
 
 import {Item, RpcContracts} from '#contracts'
 
-import {AppRoute, CloseItem, OpenItem} from '#screens/routes.ts'
+import {AppRoute, CloseItem} from '#screens/routes.ts'
+
+const SHEET = {action: 'Done', body: 'This example uses the same item on web and iPhone.', title: 'About this item'}
 
 class Viewer extends Query.Service<Viewer>()('Items/Viewer', {
 	args: {},
@@ -24,37 +27,35 @@ class Viewer extends Query.Service<Viewer>()('Items/Viewer', {
 	success: Account
 }) {}
 
-class Items extends Query.Service<Items>()('Items/List', {
+export class Items extends Query.Service<Items>()('Items/List', {
 	args: {},
 	error: Schema.String,
 	staleTime: '30 seconds',
 	success: Schema.Array(Item)
 }) {}
 
-export const layerItems = Items.toLayer(
-	Effect.map(
-		RpcClient.make(RpcContracts.middleware(RpcStream)),
-		rpc => () => Effect.mapError(rpc['items.list'](), Function.constant('Items could not be loaded'))
-	)
+const itemsClient = RpcClient.make(RpcContracts.middleware(RpcStream))
+export const readItems = Effect.map(
+	itemsClient,
+	rpc => () => Effect.mapError(rpc['items.list'](), Function.constant('Items could not be loaded'))
 )
+export const layerItems = Items.toLayer(readItems)
 
-export function layerViewer(origin: string) {
+export function layerViewer(read = readAccount('')) {
 	return Layer.provide(
 		Viewer.toLayer(
-			Effect.map(
-				Effect.context<HttpClient.HttpClient>(),
-				context => () => Effect.provideContext(readAccount(origin), context)
-			)
+			Effect.map(Effect.context<HttpClient.HttpClient>(), context => () => Effect.provideContext(read, context))
 		),
 		FetchHttpClient.layer
 	)
 }
 
 const Retry = Command.make('Items/Retry', {args: {}}, () => Effect.andThen(Viewer.invalidate(), Items.invalidate()))
+export const RefreshViewer = Command.make('Items/RefreshViewer', {args: {}}, () => Viewer.invalidate())
 
 const Message = UiSchema.TaggedEnum({Back: {}, Opened: {id: Schema.String}, Retried: {}, Routed: {route: AppRoute}})
 
-export const ItemsScreen = Component.define({
+const ItemsScreen = Component.define({
 	message: Message,
 	model: Schema.Struct({route: AppRoute}),
 	name: 'ItemsScreen',
@@ -79,12 +80,13 @@ export const ItemsScreen = Component.define({
 			List: Function.constUndefined,
 			NotFound: Function.constUndefined
 		})
-		const items = Option.getOrElse(AsyncResult.value(p.queries.items), () => [])
+		const items: readonly Item[] = Option.getOrElse(AsyncResult.value(p.queries.items), () => [])
+		const selected = Array.findFirst(items, item => item.id === id)
 		const viewer = AsyncResult.value(p.queries.viewer)
 		const signIn = AsyncResult.isFailure(p.queries.viewer) && needsSignInCause(p.queries.viewer.cause)
 		function problemOf() {
 			if (AppRoute.isAnyOf(['NotFound'])(model.route)) return 'Item not found'
-			if (AsyncResult.isSuccess(p.queries.items) && id !== undefined && !Array.some(items, item => item.id === id)) {
+			if (AsyncResult.isSuccess(p.queries.items) && id !== undefined && Option.isNone(selected)) {
 				return 'Item not found'
 			}
 			if (signIn) return 'Sign in required'
@@ -95,30 +97,32 @@ export const ItemsScreen = Component.define({
 		}
 
 		const problem = problemOf()
+		const selection = {
+			back: p.part((el, event: string) => el.on(event, Message.Back())),
+			id,
+			select: p.part((el, event: string, itemId: string) => el.on(event, Message.Opened({id: itemId})))
+		}
 		return {
 			body: pipe(
-				items,
-				Array.findFirst(item => item.id === id),
+				selected,
 				Option.map(item => item.body),
 				Option.getOrElse(Function.constant(''))
 			),
-			items,
-			loading: problem === undefined && AsyncResult.isInitial(p.queries.items),
+			list: {loading: AsyncResult.isInitial(p.queries.items), rows: items, selection, sheet: SHEET},
 			problem,
 			retry: p.part((el, event: string) => el.on(event, Message.Retried())),
 			retryable: AsyncResult.isFailure(p.queries.viewer) || AsyncResult.isFailure(p.queries.items),
-			selection: {
-				back: p.part((el, event: string) => el.on(event, Message.Back())),
-				id,
-				select: p.part((el, event: string, itemId: string) => el.on(event, Message.Opened({id: itemId})))
-			},
 			signIn
 		}
 	},
 	subscriptions: $ => [Router.subscription(AppRoute, $.model.route, route => Message.Routed({route}))],
 	update: {
 		Back: $ => $.run(Command.asNoop(CloseItem.make({}))),
-		Opened: ($, message) => $.run(Command.asNoop(OpenItem.make({id: message.id}))),
+		Opened: ($, message) => {
+			const route = AppRoute.Item({params: {id: message.id}})
+			if (AppRoute.isAnyOf(['Item'])($.model.route)) return $.run(Command.asNoop(Router.replace(AppRoute, route)))
+			return $.run(Command.asNoop(Router.push(AppRoute, route)))
+		},
 		Retried: $ => $.run(Command.asNoop(Retry.make({}))),
 		Routed: ($, message) => {
 			const next = $.evolve({route: message.route})
@@ -133,8 +137,21 @@ export const ItemsScreen = Component.define({
 	}
 })
 
-export const sheet = {
-	action: 'Done',
-	body: 'This example uses the same item on web and iPhone.',
-	title: 'About this item'
+export type ScreenParts = Component.Headless.Parts<typeof ItemsScreen>
+
+export function ItemsView<M, R>(
+	h: View.HelperBase<M, unknown>,
+	props: {readonly route: AppRoute},
+	display: {
+		readonly list: (list: ScreenParts['list'], body: string) => View.Content<M, R>
+		readonly problem: (problem: string, screen: ScreenParts) => View.Content<M, R>
+	}
+) {
+	return ItemsScreen(h, {
+		props,
+		view: screen => {
+			if (screen.problem !== undefined) return display.problem(screen.problem, screen)
+			return display.list(screen.list, screen.body)
+		}
+	})
 }

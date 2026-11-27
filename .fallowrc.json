@@ -8,7 +8,10 @@
 		"zones": [
 			// Tests and tooling may read any zone, and no shipped zone may read them, so neither bridges client and server.
 			{"name": "test", "patterns": ["**/*.test.ts"]},
-			{"name": "tooling", "patterns": ["tools/**", "vite.config.ts", "apps/*/vite.config.ts"]},
+			{
+				"name": "tooling",
+				"patterns": ["tools/**", "vite.config.ts", "apps/*/{app,metro,vite}.config.ts", "apps/*/bin/iphone.ts"]
+			},
 			// Build configuration the server also reads; it imports no zone, so it carries nothing across.
 			{"name": "config", "patterns": ["packages/runtime/src/config/**", "packages/ui/src/vite.ts"]},
 			{"name": "shared", "patterns": ["apps/*/src/*.ts", "packages/*/src/shared/**"]},
@@ -16,7 +19,7 @@
 				"name": "client",
 				"patterns": [
 					"apps/*/index.html",
-					"apps/*/src/web/**",
+					"apps/*/src/{iphone,screens,web}/**",
 					"packages/design/gallery/**",
 					"packages/design/src/native/**",
 					"packages/ui/src/**",
@@ -65,7 +68,10 @@
 	},
 	"ignoreDependencies": [
 		// Capacitor CLI copies this platform's native project; it has no JS clients.
-		"@capacitor/ios"
+		"@capacitor/ios",
+		// Expo reads these in native linking and app configuration, not through a JS import.
+		"expo-system-ui",
+		"expo-updates"
 	],
 	"ignoreExports": [
 		// Each app names its own contract groups; the same name in two apps is two separate APIs.

@@ -1,6 +1,6 @@
 import {Router} from '@effect/ui'
 
-import {Boolean, Effect, Function, Layer, Option, String, pipe} from 'effect'
+import {Boolean, Effect, Function, Layer, Option, Predicate, String, pipe} from 'effect'
 
 import Linking from 'react-native/Libraries/Linking/Linking'
 
@@ -31,10 +31,11 @@ const FollowLinks = Layer.effectDiscard(
 							onSome: route => {
 								// oxlint-disable-next-line eslint/no-restricted-properties -- This device event enters the mounted router from outside Effect.
 								Effect.runFork(
-									Boolean.match(AppRoute.isAnyOf(['Item'])(router.location().route), {
-										onFalse: () => router.push(route),
-										onTrue: () => router.replace(route)
-									})
+									pipe(
+										router.location().route,
+										Predicate.isTagged('Item'),
+										Boolean.match({onFalse: () => router.push(route), onTrue: () => router.replace(route)})
+									)
 								)
 							}
 						})
