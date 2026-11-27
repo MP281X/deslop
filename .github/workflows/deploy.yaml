@@ -139,6 +139,9 @@ jobs:
       - name: Prepare the iPhone app
         run: |
           vp run iphone:prepare
+          # Prebuild writes the config's version into Info.plist. The archive's version settings apply to the app and its extensions alike.
+          plutil -replace CFBundleShortVersionString -string '$(MARKETING_VERSION)' ios/*/Info.plist
+          plutil -replace CFBundleVersion -string '$(CURRENT_PROJECT_VERSION)' ios/*/Info.plist
           (cd ios && pod install)
       - name: Sign and upload to TestFlight
         id: upload

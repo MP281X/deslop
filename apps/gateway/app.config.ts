@@ -9,6 +9,7 @@ export default {
 	ios: {
 		associatedDomains: [`webcredentials:${new URL(authOrigin).hostname}`],
 		bundleIdentifier: 'xyz.mp281x.gateway',
+		infoPlist: {ITSAppUsesNonExemptEncryption: false},
 		supportsTablet: true
 	},
 	name: 'Gateway',

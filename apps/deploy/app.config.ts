@@ -9,6 +9,7 @@ export default {
 		associatedDomains: [`webcredentials:${new URL(authOrigin).hostname}`],
 		bundleIdentifier: 'xyz.mp281x.deploy',
 		icon: './src/iphone/app.icon',
+		infoPlist: {ITSAppUsesNonExemptEncryption: false},
 		supportsTablet: true
 	},
 	name: 'Deploy',
