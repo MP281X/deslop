@@ -1,12 +1,13 @@
 import type {ExpoConfig} from 'expo/config'
 
 import {iphoneUpdates} from '@deslop/runtime/config/iphone'
+import {iphoneOrigins} from '@deslop/runtime/shared/origins'
 
-import {appOrigin, authOrigin, scheme} from './src/iphone/origin.ts'
+const origins = iphoneOrigins('deploy')
 
 export default {
 	ios: {
-		associatedDomains: [`webcredentials:${new URL(authOrigin).hostname}`],
+		associatedDomains: [`webcredentials:${new URL(origins.authOrigin).hostname}`],
 		bundleIdentifier: 'xyz.mp281x.deploy',
 		icon: './src/iphone/app.icon',
 		infoPlist: {ITSAppUsesNonExemptEncryption: false},
@@ -15,8 +16,8 @@ export default {
 	name: 'Deploy',
 	orientation: 'default',
 	platforms: ['ios'],
-	scheme,
+	scheme: origins.scheme,
 	slug: 'deploy',
 	userInterfaceStyle: 'dark',
-	...iphoneUpdates(appOrigin)
+	...iphoneUpdates(origins.appOrigin)
 } satisfies ExpoConfig

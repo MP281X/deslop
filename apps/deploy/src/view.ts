@@ -1,4 +1,6 @@
-import {Array, Boolean, Function, Option, Predicate} from 'effect'
+import {Boolean, Option, Predicate} from 'effect'
+
+import {problemScreen} from '@deslop/components/shell'
 
 import type {DeployScreen} from '#app'
 
@@ -31,35 +33,20 @@ function sheet<H, C, S>(host: H, screen: DeployScreen, ui: DeployUi<H, C, S>) {
 	return actionSheet(host, ui, screen.dialog, common)
 }
 
-function problemScreen<H, C, S>(
-	host: H,
-	screen: DeployScreen,
-	problem: NonNullable<DeployScreen['problem']>,
-	ui: DeployUi<H, C, S>
-) {
-	return ui.layout(host, {
-		content: ui.message(
-			host,
-			Boolean.match(screen.signingIn, {
-				onFalse: Function.constant(problem.text),
-				onTrue: Function.constant('Signing in…')
-			}),
-			[
-				...Boolean.match(problem.signIn === true && !screen.signingIn, {
-					onFalse: Array.empty<C>,
-					onTrue: () => [ui.button(host, {label: 'Continue with GitHub', press: screen.authenticate})]
-				}),
-				...Boolean.match(problem.back === true, {
-					onFalse: Array.empty<C>,
-					onTrue: () => [ui.button(host, {label: 'Back to Deploy', press: screen.selection.back})]
-				})
-			]
-		)
-	})
-}
-
 export function Workspace<H, C, S>(host: H, screen: DeployScreen, ui: DeployUi<H, C, S>) {
-	if (screen.problem !== undefined) return problemScreen(host, screen, screen.problem, ui)
+	if (screen.problem !== undefined) {
+		return problemScreen(host, ui, {
+			text: screen.problem.text,
+			...Boolean.match(screen.problem.back, {
+				onFalse: () => ({}),
+				onTrue: () => ({back: {label: 'Back to Deploy', press: screen.selection.back}})
+			}),
+			...Boolean.match(screen.problem.signIn, {
+				onFalse: () => ({}),
+				onTrue: () => ({signIn: {press: screen.authenticate, running: screen.signingIn}})
+			})
+		})
+	}
 	return ui.listDetail(host, {
 		defaultId: screen.id,
 		...Option.match(Option.fromUndefinedOr(detailRows(host, screen, ui)), {

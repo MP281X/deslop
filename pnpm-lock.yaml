@@ -700,6 +700,9 @@ importers:
 
   packages/runtime:
     dependencies:
+      '@deslop/components':
+        specifier: workspace:*
+        version: link:../components
       '@effect/ai-anthropic':
         specifier: latest
         version: 4.1.7(effect@4.1.7)
@@ -709,9 +712,24 @@ importers:
       '@effect/sql-sqlite-node':
         specifier: latest
         version: 4.1.7(effect@4.1.7)
+      '@effect/ui':
+        specifier: https://pkg.pr.new/Effect-TS/ui/@effect/ui@9eb76e60e47293cb0be63c12322a6bccd9e31add
+        version: https://pkg.pr.new/Effect-TS/ui/@effect/ui@9eb76e60e47293cb0be63c12322a6bccd9e31add(effect@4.1.7)
       effect:
         specifier: latest
         version: 4.1.7
+      expo:
+        specifier: '>=58.0.0'
+        version: 58.1.0(@babel/core@7.29.13(supports-color@8.1.1))(react-native@0.88.1(@babel/core@7.29.13(supports-color@8.1.1))(react@19.3.1)(supports-color@8.1.1))(react@19.3.1)(supports-color@8.1.1)
+      expo-secure-store:
+        specifier: '>=58.0.0'
+        version: 58.0.3(expo@58.1.0(@babel/core@7.29.13(supports-color@8.1.1))(react-native@0.88.1(@babel/core@7.29.13(supports-color@8.1.1))(react@19.3.1)(supports-color@8.1.1))(react@19.3.1)(supports-color@8.1.1))
+      expo-web-browser:
+        specifier: '>=58.0.0'
+        version: 58.1.0(expo@58.1.0(@babel/core@7.29.13(supports-color@8.1.1))(react-native@0.88.1(@babel/core@7.29.13(supports-color@8.1.1))(react@19.3.1)(supports-color@8.1.1))(react@19.3.1)(supports-color@8.1.1))(react-native@0.88.1(@babel/core@7.29.13(supports-color@8.1.1))(react@19.3.1)(supports-color@8.1.1))
+      react-native:
+        specifier: '>=0.88.0'
+        version: 0.88.1(@babel/core@7.29.13(supports-color@8.1.1))(react@19.3.1)(supports-color@8.1.1)
 
   tools/coding-standards:
     dependencies:

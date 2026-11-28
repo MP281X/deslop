@@ -4,18 +4,16 @@ import {Router} from '@effect/ui'
 import type {View} from '@effect/ui'
 import {BrowserHost, Html} from '@effect/ui/html'
 
-import {Effect, Layer, Option, pipe} from 'effect'
-
-import {AtomRegistry} from 'effect/reactivity'
+import {Layer, Option} from 'effect'
 
 import type {PaneLeaf} from '@deslop/components/model'
 import {status} from '@deslop/components/web'
 import {webComponents} from '@deslop/components/web/components'
 import {mountPage} from '@deslop/components/web/page'
-import {accountAtom, addPageTelemetry, layerPageProtocol, pageSignIn} from '@deslop/runtime/web/client'
+import {layerWebShell} from '@deslop/runtime/web/shell'
 
 import {DeployApp} from '#app'
-import {Authenticate, DeployReads, DeployRoute, Execute, OpenEndpoint, Refresh} from '#reads'
+import {DeployRoute, layerDeploy} from '#reads'
 import {Workspace} from '#view'
 
 import type {DeployUi, Exposure} from '#exposures/view.ts'
@@ -37,19 +35,11 @@ const drawing: DeployUi<Html.H<never>, PaneLeaf<View.Input<never>>, View.Content
 	site: Site
 }
 
-const App = DeployApp(Html.vocabulary, true, (h, screen) => Workspace(h, screen, drawing))
+const App = DeployApp(Html.vocabulary, (h, screen) => Workspace(h, screen, drawing))
 
-mountPage(DeployRoute, root => {
-	addPageTelemetry('@deslop/deploy')
-	const reads = Layer.merge(DeployReads.layer(layerPageProtocol, accountAtom), AtomRegistry.layer)
-	return pipe(
+mountPage(DeployRoute, root =>
+	Layer.provide(
 		BrowserHost.mount(App, Router.props(DeployRoute), root),
-		Layer.provide(pipe(Execute.layer, Layer.merge(Refresh.layer), Layer.provideMerge(reads))),
-		Layer.provide(
-			Layer.merge(
-				Authenticate.toLayer(() => pageSignIn),
-				OpenEndpoint.toLayer(() => Effect.void)
-			)
-		)
+		Layer.provideMerge(layerDeploy, layerWebShell('deploy'))
 	)
-})
+)

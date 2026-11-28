@@ -27,7 +27,6 @@
 		"#contracts": "./src/contracts.ts",
 		"#exposures/*": "./src/exposures/*",
 		"#inventory/*": "./src/inventory/*",
-		"#iphone/*": "./src/iphone/*",
 		"#machine/*": "./src/machine/*",
 		"#metrics/*": "./src/metrics/*",
 		"#proxies/*": "./src/proxies/*",

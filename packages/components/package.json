@@ -14,6 +14,7 @@
 		"./chart": "./src/shared/chart.ts",
 		"./components": "./src/shared/components.ts",
 		"./navigation": "./src/shared/navigation.ts",
+		"./shell": "./src/shared/shell.ts",
 		"./styles": "./src/shared/styles.ts",
 		"./web": "./src/web/design.ts",
 		"./web/components": "./src/web/components.ts",

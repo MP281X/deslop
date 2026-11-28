@@ -4,7 +4,7 @@ import {AsyncResult} from 'effect/reactivity'
 
 import {axisPosition} from '@deslop/components/chart'
 import type {Reading} from '@deslop/components/chart'
-import {blockingFailure} from '@deslop/runtime/client/live-stream'
+import {readState} from '@deslop/runtime/client/shell'
 import {countOf, percentOf} from '@deslop/runtime/shared/format'
 
 import {AppHour, MachineHistory} from './contract.ts'
@@ -109,12 +109,9 @@ export function historyStatus(
 	snapshot: Snapshot
 ) {
 	const history = Option.getOrUndefined(AsyncResult.value(model.metrics))
-	if (Option.isSome(blockingFailure(model.metrics)) || Option.isSome(blockingFailure(model.appHistory))) {
-		return {retry: true, text: 'Couldn’t load history'}
-	}
-	if (AsyncResult.isFailure(model.metrics) || AsyncResult.isFailure(model.appHistory) || history?.stale === true) {
-		return {retry: true, text: 'History may be out of date'}
-	}
+	const state = readState([model.metrics, model.appHistory])
+	if (Option.contains(state, 'failed')) return {retry: true, text: 'Couldn’t load history'}
+	if (Option.isSome(state) || history?.stale === true) return {retry: true, text: 'History may be out of date'}
 	const problems = [
 		...Array.flatMap(snapshot.sources, source =>
 			Option.toArray(Option.map(source.error, reason => `${source.name}: ${reason}`))
