@@ -1,0 +1,142 @@
+import {networkInterfaces} from 'node:os'
+
+import {Array, Context, Effect, Layer, Option, RcMap, Record, Result, Semaphore, String, pipe} from 'effect'
+
+import {IpNetwork, NetAddress} from 'effect/net'
+
+import {localAuth} from '@deslop/runtime/server/auth'
+import {AuthError, DEVELOPER, UserId, asAuthError} from '@deslop/runtime/shared/auth'
+import type {IdentifyRequest} from '@deslop/runtime/shared/auth'
+
+import {GitHub} from '#github/server.ts'
+import type {SignedAccount} from '#identity/contract.ts'
+import {People, adminIds, authorizeMember, roleOf} from '#people/server.ts'
+import {Sessions} from '#sessions/server.ts'
+import type {Profile, TailnetUserId} from '#tailnet/contract.ts'
+import {Tailnet} from '#tailnet/server.ts'
+
+export function isMachine(address: string) {
+	return Array.some(
+		Record.values(networkInterfaces()),
+		entries => entries !== undefined && Array.some(entries, entry => entry.address === address)
+	)
+}
+// Tailscale's address ranges.
+const TAILNET = [IpNetwork.fromStringUnsafe('100.64.0.0/10'), IpNetwork.fromStringUnsafe('fd7a:115c:a1e0::/48')]
+
+function isTailnet(address: string) {
+	return Option.exists(Result.getSuccess(NetAddress.ipFromString(address)), ip =>
+		Array.some(TAILNET, network => IpNetwork.contains(network, ip))
+	)
+}
+export class Identity extends Context.Service<
+	Identity,
+	{readonly resolve: (request: IdentifyRequest, waiting?: boolean) => Effect.Effect<SignedAccount, AuthError>}
+>()('@deslop/auth/identity/server/Identity') {
+	static readonly layer = Layer.effect(
+		Identity,
+		Effect.gen(function* () {
+			const people = yield* People
+			const sessions = yield* Sessions
+			const github = yield* GitHub
+			const local = yield* localAuth
+			const admins = yield* adminIds
+			const owners = yield* Tailnet
+			// A tailnet user's first sightings resolve one at a time, so requests that arrive together for it ask GitHub once and are all the account that was bound; another user's never wait for it.
+			const sightings = yield* RcMap.make({lookup: (_id: TailnetUserId) => Semaphore.make(1)})
+			const sighted = Effect.fnUntraced(function* (profile: Profile) {
+				const user = yield* github.login(String.slice(0, -7)(profile.LoginName))
+				const member = yield* people.register({id: UserId.make(`github:${user.id}`), name: user.login}, user.name, true)
+				yield* people.bind(profile.ID, member.id)
+				return member
+			})
+			const tailnet = Effect.fnUntraced(function* (profile: Profile) {
+				if (String.endsWith('@github')(profile.LoginName)) {
+					// GitHub is asked by login only the first time, so a login that later changes hands cannot become someone else.
+					return yield* Option.match(yield* people.bound(profile.ID), {
+						onNone: () =>
+							Effect.scoped(
+								Effect.flatMap(RcMap.get(sightings, profile.ID), lock =>
+									Semaphore.withPermit(
+										lock,
+										Effect.flatMap(
+											people.bound(profile.ID),
+											Option.match({onNone: () => sighted(profile), onSome: Effect.succeed})
+										)
+									)
+								)
+							),
+						onSome: Effect.succeed
+					})
+				}
+				return yield* people.register(
+					{id: UserId.make(`tailnet:${profile.LoginName}`), name: profile.DisplayName || profile.LoginName},
+					Option.none(),
+					true
+				)
+			})
+
+			const resolve = Effect.fn('Identity.resolve')(function* (request: IdentifyRequest, waiting: boolean = false) {
+				if (local) return {...DEVELOPER, fullName: Option.none(), role: 'Admin' as const, signOut: false}
+				const identified = yield* Option.match(
+					yield* Option.match(request.session, {onNone: () => Effect.succeedNone, onSome: sessions.current}),
+					{
+						onNone: () =>
+							pipe(
+								request.address,
+								Option.match({
+									onNone: () => Effect.fail(AuthError.make({message: 'Sign in first'})),
+									onSome: address =>
+										Effect.gen(function* () {
+											if (isMachine(address)) {
+												return yield* Option.match(request.onBehalfOf, {
+													onNone: () =>
+														Effect.gen(function* () {
+															const found = yield* owners.status
+															if ((found.Self.Tags?.length ?? 0) > 0) {
+																return yield* AuthError.make({message: 'Sign in first'})
+															}
+															return yield* pipe(
+																found.User,
+																Record.get(found.Self.UserID),
+																Option.match({
+																	onNone: () => Effect.fail(AuthError.make({message: 'Sign in first'})),
+																	onSome: tailnet
+																})
+															)
+														}),
+													onSome: id => Effect.succeed({id})
+												})
+											}
+											if (!isTailnet(address)) return yield* AuthError.make({message: 'Sign in first'})
+											const found = yield* owners.whois(address)
+											if ((found.Node.Tags?.length ?? 0) > 0) return yield* AuthError.make({message: 'Sign in first'})
+											return yield* tailnet(found.UserProfile)
+										})
+								}),
+								Effect.map((user: {readonly id: UserId}) => ({id: user.id, signOut: false}))
+							),
+						onSome: row => Effect.succeed({id: row.userId, signOut: true})
+					}
+				)
+				const row = yield* people.find(identified.id)
+				// Only a session is a browser; the tailnet and an app acting for someone bring no browser approval to check.
+				const role = roleOf(admins, identified.id, row, identified.signOut)
+				return {
+					...(yield* Option.match(row, {
+						onNone: () => authorizeMember(admins, identified.id, row, identified.signOut),
+						onSome: member => {
+							if (waiting && identified.signOut) return Effect.succeed({id: member.id, name: member.name})
+							return authorizeMember(admins, identified.id, row, identified.signOut)
+						}
+					})),
+					admin: role === 'Admin',
+					fullName: Option.flatMap(row, member => member.fullName),
+					role,
+					signOut: identified.signOut
+				}
+			}, asAuthError('Cannot identify the caller'))
+			return Identity.of({resolve})
+		})
+	)
+}

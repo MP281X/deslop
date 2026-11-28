@@ -1,28 +1,27 @@
 import {Router} from '@effect/ui'
 import type {View} from '@effect/ui'
-import {BrowserHost, BrowserRouter, Html} from '@effect/ui/html'
+import {BrowserHost, Html} from '@effect/ui/html'
 
-import {Array, Boolean, Effect, Function, Layer, Option, Predicate, pipe} from 'effect'
+import {Boolean, Effect, Function, Layer, Option, pipe} from 'effect'
 
 import {FetchHttpClient, HttpClient, HttpClientResponse} from 'effect/http'
-import {AtomRegistry} from 'effect/reactivity'
 
-import type {PaneLeaf} from '@deslop/components/model'
-import {Layout, ListDetail, Row, styles, webStyle} from '@deslop/components/web'
+import type {ButtonOptions, PaneLeaf, Press} from '@deslop/components/model'
+import {Layout, styles, webStyle} from '@deslop/components/web'
+import {webComponents} from '@deslop/components/web/components'
+import {mountPage} from '@deslop/components/web/page'
 import {AuthError, signInUrl} from '@deslop/runtime/shared/auth'
-import {addPageTelemetry, layerPageProtocol} from '@deslop/runtime/web/client'
+import {layerWebShell} from '@deslop/runtime/web/shell'
 
-import {returnTarget} from '#contracts'
+import {AuthApp} from '#app'
+import {RecoverSignIn, ReturnTo, SignOut, StartSignIn, AuthRoute, layerAuth} from '#reads'
+import {Workspace} from '#view'
+import type {AuthUi, LineRole} from '#view'
 
-import {Directory, visibleToolbar} from '#screens/directory.ts'
-import type {Entry, Screen} from '#screens/directory.ts'
-import {marks} from '#screens/marks.ts'
-import {Admit, RecoverSignIn, Refresh, SignOut, StartSignIn} from '#screens/model.ts'
-import {AuthReads} from '#screens/reads.ts'
-import {AuthRoute} from '#screens/routes.ts'
-import {AVATAR, Mark} from '#screens/rows.ts'
-import {accessOptions, authApp, directoryOptions, renderEntry, rowOptions} from '#screens/view.ts'
-import type {RowSelection} from '#screens/view.ts'
+import {marks, visibleToolbar} from '#identity/view.ts'
+import {Mark} from '#people/screen.ts'
+import {AVATAR} from '#people/view.ts'
+import {returnTarget} from '#sign-ins/shared.ts'
 
 const MARK_STYLE = {flexShrink: '0', height: '20px', objectFit: 'contain', width: '20px'}
 const control = {...webStyle(styles.control), border: '0', color: styles.title.color, cursor: 'pointer', gap: '8px'}
@@ -41,138 +40,89 @@ function Cover<M>(h: Html.H<M>, mark: Mark) {
 		)
 }
 
-function Skeleton<M>(h: Html.H<M>, id: string) {
-	function bar(width: string, height: string, borderRadius = '4px') {
-		return h.span.style({backgroundColor: styles.control.backgroundColor, borderRadius, height, width})
-	}
+function Line<M>(h: Html.H<M>, text: string, role: LineRole) {
+	return h.p.attr('role', role).style(webStyle(styles.line)).children(text)
+}
+
+// Auth's buttons keep the control's own font, and the GitHub one carries its mark.
+function Control<M>(h: Html.H<M>, options: ButtonOptions, github = false, style: Html.Style = control) {
+	return options
+		.press(h.button.class('design-control'), 'click')
+		.attr(
+			'disabled',
+			Boolean.match(options.disabled === true, {onFalse: Function.constUndefined, onTrue: Function.constant('')})
+		)
+		.style(style)
+		.children(github && h.img.style(MARK_STYLE).attrs({alt: '', src: marks.github}), options.label)
+}
+
+function Notice<M>(h: Html.H<M>, text: string, retry?: Press) {
 	return h.div
-		.key(id)
-		.attr('aria-hidden', 'true')
-		.style(webStyle(styles.row))
+		.key(text)
+		.attr('role', 'status')
+		.style({...webStyle(styles.line), padding: '8px 12px'})
 		.children(
-			bar('28px', '28px', '50%'),
-			h.span.style({...webStyle(styles.lead), gap: '6px'}).children(bar('58%', '12px'), bar('36%', '10px')),
-			bar('30px', '8px')
+			text,
+			retry !== undefined &&
+				Control(h, {label: 'Retry', press: retry}, false, {...control, marginTop: '8px'}).attr('type', 'button')
 		)
 }
 
-function EntryView<M>(h: Html.H<M>, entry: Entry, retry: Screen['retry'], selection?: RowSelection) {
-	return renderEntry(entry, {
-		notice: notice =>
-			h.div
-				.key(notice.text)
-				.attr('role', 'status')
-				.style({...webStyle(styles.line), padding: '8px 12px'})
-				.children(
-					notice.text,
-					notice.retry !== undefined &&
-						retry(h.button.class('design-control').attr('type', 'button'), 'click', notice.retry)
-							.style({...control, marginTop: '8px'})
-							// fallow-ignore-next-line code-duplication -- Web and iPhone pass the same screen parts; only each host's elements differ.
-							.children('Retry')
-				),
-		row: row => Row<M, never>(h, rowOptions(row, Cover(h, row.mark), selection)),
-		skeleton: id => Skeleton(h, id)
-	})
-}
-
-// fallow-ignore-next-line code-duplication -- Web and iPhone pass the same screen parts; only each host's elements differ.
-function Workspace<M>(h: Html.H<M>, screen: Screen) {
-	if (screen.kind === 'directory') {
-		return ListDetail<M, never>(
-			h,
-			directoryOptions(screen, (entry, retry, selection) => EntryView(h, entry, retry, selection))
-		)
-	}
-	if (screen.kind === 'sessions') {
-		return Layout(h, {
+const drawing: AuthUi<Html.H<never>, PaneLeaf<View.Input<never>>, View.Content<never>> = {
+	...webComponents<never>(),
+	button: (h, options) => Control(h, options),
+	cover: Cover,
+	line: Line,
+	memberList: (h, options) =>
+		Layout(h, {
 			content: h.section
 				.attr('aria-label', 'Browser sessions')
 				.style({...webStyle(styles.rows), overflowY: 'auto'})
-				.children(Array.map(screen.detail, entry => EntryView(h, entry, screen.retry))),
-			toolbar: visibleToolbar(screen.toolbar)
-		})
-	}
-	const center = {
-		alignItems: 'center',
-		display: 'flex',
-		flex: '1',
-		flexDirection: 'column',
-		gap: '8px',
-		justifyContent: 'center',
-		padding: '20px'
-	} as const
-	if (screen.kind === 'not-found') {
-		return Layout(h, {
-			content: h.section
-				.style(center)
-				.children(screen.back(h.button.class('design-control'), 'click').style(control).children('Back to Auth'))
-		})
-	}
-	return Layout(
-		h,
-		accessOptions<PaneLeaf<View.Input<M>>, View.Input<M>>(screen, {
-			content: children => h.section.style(center).children(children),
-			entry: (entry, retry) => EntryView(h, entry, retry),
-			error: text => h.p.attr('role', 'alert').style(webStyle(styles.line)).children(text),
-			signIn: (part, label, disabled) =>
-				part(h.button.class('design-control'), 'click')
-					.attr('disabled', Boolean.match(disabled, {onFalse: Function.constUndefined, onTrue: Function.constant('')}))
-					.style(control)
-					.children(h.img.style(MARK_STYLE).attrs({alt: '', src: marks.github}), label),
-			waiting: text => h.p.attr('role', 'status').style(webStyle(styles.line)).children(text)
-		})
-	)
+				.children(options.rows),
+			toolbar: visibleToolbar(options.toolbar)
+		}),
+	notice: Notice,
+	signIn: (h, options) => Control(h, options, true)
 }
 
-const App = Html.component(authApp.definition).make({
-	...authApp.lifecycle,
-	view: h => Directory(h, {native: false, route: h.props.route}, screen => Workspace(h, screen))
-})
+const App = AuthApp(Html.vocabulary, (h, screen) => Workspace(h, screen, drawing))
 
-const layerReads = AuthReads.layer(layerPageProtocol, account => {
-	if (account.role === 'Waiting') return
-	pipe(
-		Option.fromNullishOr(new URL(location.href).searchParams.get('next')),
-		Option.flatMap(next => returnTarget(next, location.origin, location.protocol === 'http:')),
-		Option.map(target => location.assign(target))
-	)
-})
-const layerActions = Layer.mergeAll(
-	StartSignIn.toLayer(args =>
-		Effect.sync(() => {
-			location.assign(`/sign-in?${new URLSearchParams({next: args.next ?? location.origin})}`)
-			return false
-		})
-	),
-	RecoverSignIn.toLayer(() => Effect.sync(() => location.replace(signInUrl(location.href)))),
-	SignOut.toLayer(
-		Effect.map(
-			HttpClient.HttpClient,
-			client => () =>
-				pipe(
-					client.post(new URL('/sign-out', location.origin)),
-					Effect.flatMap(HttpClientResponse.filterStatusOk),
-					Effect.mapError(cause =>
-						AuthError.make({cause, error: 'temporarily_unavailable', message: 'Couldn’t sign out'})
-					),
-					Effect.tap(() => Effect.sync(() => location.replace('/'))),
-					Effect.asVoid
+// Auth is its own sign-in: the page goes to GitHub for the app that sent it here, and signing out reloads the page.
+const layerActions = Layer.provide(
+	Layer.mergeAll(
+		StartSignIn.toLayer(args =>
+			Effect.sync(() => {
+				location.assign(`/sign-in?${new URLSearchParams({next: args.next ?? location.origin})}`)
+				return false
+			})
+		),
+		RecoverSignIn.toLayer(() => Effect.sync(() => location.replace(signInUrl(location.href)))),
+		ReturnTo.toLayer(request =>
+			Effect.sync(() => {
+				Option.map(returnTarget(request.next, location.origin, location.protocol === 'http:'), target =>
+					location.assign(target)
 				)
+			})
+		),
+		SignOut.toLayer(
+			Effect.map(
+				HttpClient.HttpClient,
+				client => () =>
+					pipe(
+						client.post(new URL('/sign-out', location.origin)),
+						Effect.flatMap(HttpClientResponse.filterStatusOk),
+						Effect.mapError(cause =>
+							AuthError.make({cause, error: 'temporarily_unavailable', message: 'Couldn’t sign out'})
+						),
+						Effect.tap(() => Effect.sync(() => location.replace('/'))),
+						Effect.as(false)
+					)
+			)
 		)
-	)
-)
-const root = document.getElementById('root')
-if (Predicate.isNull(root)) throw new TypeError('Missing application mount element with id "root"')
-addPageTelemetry('@deslop/auth')
-
-pipe(
-	BrowserHost.mount(App, Router.props(AuthRoute), root),
-	Layer.provide(Layer.mergeAll(Admit.layer, Refresh.layer, layerActions, Router.Back.layer)),
-	Layer.provide(
-		Layer.mergeAll(AtomRegistry.layer, layerReads, FetchHttpClient.layer, BrowserRouter.layer({routes: AuthRoute}))
 	),
-	Layer.launch,
-	// oxlint-disable-next-line eslint/no-restricted-properties -- Mount one scoped root for the life of the document.
-	Effect.runFork
+	FetchHttpClient.layer
 )
+
+const layerPage = pipe(layerAuth, Layer.merge(layerActions), Layer.provideMerge(layerWebShell('auth')))
+
+mountPage(AuthRoute, root => Layer.provide(BrowserHost.mount(App, Router.props(AuthRoute), root), layerPage))
