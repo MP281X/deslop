@@ -13,6 +13,7 @@ import Linking from 'react-native/Libraries/Linking/Linking'
 import WebSocket from 'react-native/Libraries/WebSocket/WebSocket'
 
 import {iphoneRouter} from '@deslop/components/native/router'
+import type {IPhoneLink} from '@deslop/components/native/router'
 import {iphoneOrigins} from '@deslop/runtime/shared/origins'
 
 import {layerSocketProtocol} from '#client/protocol.ts'
@@ -25,8 +26,10 @@ class OpenUrlError extends Schema.TaggedError<OpenUrlError>()('OpenUrlError', {
 	message: Schema.String
 }) {}
 
-// Everything an iPhone app takes from its name: its origins and scheme, the Keychain session, the router that follows `<name>://` links, and the shell's sign-in. `replace` names the routes a link replaces instead of pushing.
+// Everything an iPhone app takes from its name: its origins and scheme, the Keychain session, the router that follows `<name>://` links, and the shell's sign-in. `replace` names the routes a link replaces instead of pushing, `link` reads the links of its own that a path cannot say, and `linkScheme` is the scheme of a build whose links differ from the name's, such as a development build.
 export function layerIPhoneShell<Routes extends Router.Routes>(options: {
+	readonly link?: (url: string) => Option.Option<IPhoneLink>
+	readonly linkScheme?: string
 	readonly name: string
 	readonly replace?: (route: Routes['Type']) => boolean
 	readonly route: Routes
@@ -60,12 +63,14 @@ export function layerIPhoneShell<Routes extends Router.Routes>(options: {
 				{log: 'Warn', message: 'Could not open the URL'}
 			)
 		),
-		Option.match(Option.fromUndefinedOr(options.replace), {
-			onNone: () => iphoneRouter(options.route, origins.appOrigin, origins.scheme),
-			onSome: replace =>
-				iphoneRouter(options.route, origins.appOrigin, origins.scheme, {
-					replace: location => Option.exists(options.route.parse(location.url), replace)
+		iphoneRouter(options.route, origins.appOrigin, options.linkScheme ?? origins.scheme, {
+			...Option.match(Option.fromUndefinedOr(options.link), {onNone: () => ({}), onSome: link => ({link})}),
+			...Option.match(Option.fromUndefinedOr(options.replace), {
+				onNone: () => ({}),
+				onSome: replace => ({
+					replace: (location: Router.Location) => Option.exists(options.route.parse(location.url), replace)
 				})
+			})
 		})
 	)
 }

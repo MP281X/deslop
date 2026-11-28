@@ -1,6 +1,6 @@
 // fallow-ignore-file duplicate-export -- Each app owns its folder-named Push service; their context identities and notification policies are distinct.
 import type {Schema} from 'effect'
-import {Array, Boolean, Context, DateTime, Effect, Function, Layer} from 'effect'
+import {Array, Context, DateTime, Effect, Function, Layer} from 'effect'
 
 import type {SqlError} from 'effect/sql'
 import {SqlClient, SqlSchema} from 'effect/sql'
@@ -8,10 +8,11 @@ import {SqlClient, SqlSchema} from 'effect/sql'
 import {Apns} from '@deslop/runtime/server/apns'
 import {ApnsAnswer, Device} from '@deslop/runtime/shared/apns'
 
-import {ChapterIdentity, keyOf, ChapterPushError} from '#contracts'
+import {ChapterDelivery, ChapterPushError} from './contract.ts'
+import {schemeOf} from './shared.ts'
 
-import type {Chapter} from '#server/chapters/schema.ts'
-import {ChapterDelivery} from '#server/push/schema.ts'
+import {ChapterIdentity, keyOf} from '#chapters/contract.ts'
+import type {Chapter} from '#chapters/contract.ts'
 
 const ACTIVITY_SERIES = {manga: 'One Punch Man', webcomic: 'OPM Webcomic'}
 
@@ -19,7 +20,7 @@ function asPushError(message: string) {
 	return Effect.mapError((cause: SqlError.SqlError | Schema.SchemaError) => ChapterPushError.make({cause, message}))
 }
 
-export class Push extends Context.Service<Push>()('@deslop/opm/server/push/service/Push', {
+export class Push extends Context.Service<Push>()('@deslop/opm/push/server/Push', {
 	make: Effect.gen(function* () {
 		const sql = yield* SqlClient.SqlClient
 		const apns = yield* Apns
@@ -73,10 +74,6 @@ export class Push extends Context.Service<Push>()('@deslop/opm/server/push/servi
 					device =>
 						Effect.catch(
 							Effect.gen(function* () {
-								const scheme = Boolean.match(device.bundle === 'xyz.mp281x.opm', {
-									onFalse: Function.constant('opm-dev'),
-									onTrue: Function.constant('opm')
-								})
 								const answer = yield* apns.sendToDevice(
 									device,
 									'liveactivity',
@@ -87,7 +84,7 @@ export class Push extends Context.Service<Push>()('@deslop/opm/server/push/servi
 												sound: 'default',
 												title: `${name} · Chapter ${chapter.number}`
 											},
-											attributes: {url: `${scheme}://chapter/${chapter.series}/${chapter.number}`},
+											attributes: {url: `${schemeOf(device.bundle)}://chapter/${chapter.series}/${chapter.number}`},
 											'attributes-type': 'ChapterActivityAttributes',
 											'content-state': {name, number: `${chapter.number}`, pages},
 											event: 'start',

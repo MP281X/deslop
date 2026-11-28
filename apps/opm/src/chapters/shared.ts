@@ -1,7 +1,7 @@
 import {Array, Boolean, Function, HashMap, HashSet, Number, Option, pipe} from 'effect'
 
-import {keyOf} from '#contracts'
-import type {ChapterKey, ChapterList, ChapterNumber, Position, ReadingPosition} from '#contracts'
+import {keyOf} from './contract.ts'
+import type {ChapterKey, ChapterList, ChapterNumber, Position, ReadingPosition} from './contract.ts'
 
 export function pageAspect(width: number, height: number) {
 	if (height <= 0) return 0

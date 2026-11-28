@@ -2,11 +2,10 @@ import {assert, it} from '@effect/vitest'
 
 import {Array, HashMap, HashSet, Option} from 'effect'
 
-import {keyOf, ChapterNumber} from '#contracts'
-import type {ReadingChapter} from '#contracts'
-
-import type {ReaderState} from '#screens/reading.ts'
-import {stripOf, turnPage, turnsOf, withUnsaved} from '#screens/reading.ts'
+import {ChapterNumber, keyOf} from './contract.ts'
+import type {ReadingChapter} from './contract.ts'
+import {stripOf, turnPage, turnsOf, withUnsaved} from './shared.ts'
+import type {ReaderState} from './shared.ts'
 
 function item(number: number, pages: number, version = 'a') {
 	return {

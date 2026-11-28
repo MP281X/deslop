@@ -11,14 +11,14 @@ import Linking from 'react-native/Libraries/Linking/Linking'
 
 import {nativeControls, styles} from '@deslop/components/native'
 import {nativeComponents} from '@deslop/components/native/components'
-import {SignOutSession} from '@deslop/runtime/client/shell'
+import {SignOut, SignOutSession} from '@deslop/runtime/client/shell'
 import {layerIPhoneShell} from '@deslop/runtime/iphone/shell'
 import {AuthError} from '@deslop/runtime/shared/auth'
 import {iphoneOrigins} from '@deslop/runtime/shared/origins'
 
 import {GatewayApp} from '#app'
 import type {GatewayScreen} from '#app'
-import {Copy, GatewayRoute, Open, SignOut, layerGateway} from '#reads'
+import {Copy, GatewayRoute, Open, layerGateway} from '#reads'
 import {ADD_LABEL, ADD_PLACEHOLDER, Workspace, inputValue} from '#view'
 import type {GatewayUi} from '#view'
 

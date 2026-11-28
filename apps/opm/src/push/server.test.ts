@@ -7,11 +7,10 @@ import {Apns} from '@deslop/runtime/server/apns'
 import {layerDataStore} from '@deslop/runtime/server/store'
 import {ApnsAnswer, ApnsToken} from '@deslop/runtime/shared/apns'
 
-import {ChapterNumber} from '#contracts'
+import {Push} from './server.ts'
 
-import {Chapter} from '#server/chapters/schema.ts'
-import {Chapters} from '#server/chapters/service.ts'
-import {Push} from '#server/push/service.ts'
+import {Chapter, ChapterNumber} from '#chapters/contract.ts'
+import {Chapters} from '#chapters/server.ts'
 
 const ANSWER = {channel: Option.none(), reason: Option.none(), status: 200}
 

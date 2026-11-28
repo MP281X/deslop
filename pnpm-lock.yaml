@@ -382,9 +382,6 @@ importers:
       '@effect/ui':
         specifier: https://pkg.pr.new/Effect-TS/ui/@effect/ui@9eb76e60e47293cb0be63c12322a6bccd9e31add
         version: https://pkg.pr.new/Effect-TS/ui/@effect/ui@9eb76e60e47293cb0be63c12322a6bccd9e31add(effect@4.1.7)
-      '@effect/ui-kit':
-        specifier: https://pkg.pr.new/Effect-TS/ui/@effect/ui-kit@9eb76e60e47293cb0be63c12322a6bccd9e31add
-        version: https://pkg.pr.new/Effect-TS/ui/@effect/ui-kit@9eb76e60e47293cb0be63c12322a6bccd9e31add(@effect/ui@https://pkg.pr.new/Effect-TS/ui/@effect/ui@9eb76e60e47293cb0be63c12322a6bccd9e31add(effect@4.1.7))(effect@4.1.7)
       '@effect/ui-native':
         specifier: https://pkg.pr.new/Effect-TS/ui/@effect/ui-native@9eb76e60e47293cb0be63c12322a6bccd9e31add
         version: https://pkg.pr.new/Effect-TS/ui/@effect/ui-native@9eb76e60e47293cb0be63c12322a6bccd9e31add(@effect/ui@https://pkg.pr.new/Effect-TS/ui/@effect/ui@9eb76e60e47293cb0be63c12322a6bccd9e31add(effect@4.1.7))(@voidzero-dev/vite-plus-core@8.3.8001(@types/node@26.6.11)(jiti@2.7.0)(terser@5.51.4))(effect@4.1.7)(react-native@0.88.1(@babel/core@7.29.13(supports-color@8.1.1))(react@19.3.1)(supports-color@8.1.1))

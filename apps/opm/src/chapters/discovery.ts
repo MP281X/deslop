@@ -20,11 +20,8 @@ import {
 import {Base64Url} from 'effect/encoding'
 import {NetAddress} from 'effect/net'
 
-import type {ChapterIdentity, Series} from '#contracts'
-import {ChapterKey, ChapterNumber, ChapterNumberFromString, keyOf} from '#contracts'
-
-import type {ChapterState, DeadLink, CubariSeries, Post} from '#server/chapters/schema.ts'
-import {Chapter} from '#server/chapters/schema.ts'
+import {Chapter, ChapterKey, ChapterNumber, ChapterNumberFromString, keyOf} from './contract.ts'
+import type {ChapterIdentity, ChapterState, CubariSeries, DeadLink, Post, Series} from './contract.ts'
 
 // "Chapter 242 [English]", "[Revised] Chapter 211 [English]" and r/OPMFolk's "Chapter 242/287 [Translations]"; a post of several chapters names each in its own post too.
 const TITLE =

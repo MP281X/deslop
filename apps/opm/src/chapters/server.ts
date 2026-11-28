@@ -34,11 +34,20 @@ import {Migrator, SqlClient, SqlSchema} from 'effect/sql'
 
 import {listEvents} from '@deslop/runtime/shared/list'
 
-import type {ChapterPushError} from '#contracts'
-import {ChapterNumber, ChaptersError, ReadingError, ReadingPosition, Series, keyOf} from '#contracts'
-
-import {migrations, readingMigrations} from './migrations.ts'
-
+import {
+	CatalogueRow,
+	Chapter,
+	ChapterNumber,
+	ChapterState,
+	ChaptersError,
+	CubariSeries,
+	DeadLink,
+	Post,
+	ReadingError,
+	ReadingPosition,
+	Series,
+	keyOf
+} from './contract.ts'
 import {
 	chaptersFromIndex,
 	INDEXES,
@@ -49,9 +58,11 @@ import {
 	revisionCandidates,
 	roundChapters,
 	seriesOf
-} from '#server/chapters/discovery.ts'
-import {CatalogueRow, Chapter, ChapterState, CubariSeries, DeadLink, Post} from '#server/chapters/schema.ts'
-import {Push} from '#server/push/service.ts'
+} from './discovery.ts'
+import {migrations, readingMigrations} from './migrations.ts'
+
+import type {ChapterPushError} from '#push/contract.ts'
+import {Push} from '#push/server.ts'
 
 // Anonymous search and JSON are refused. Recent-post Atom still answers; a release can appear on either subreddit only.
 const FEEDS = [
@@ -119,7 +130,7 @@ function asStorageChaptersError(cause: SqlError.SqlError | Schema.SchemaError | 
 	return ChaptersError.make({cause, message: 'The chapter storage failed.'})
 }
 
-export class Chapters extends Context.Service<Chapters>()('@deslop/opm/server/chapters/service/Chapters', {
+export class Chapters extends Context.Service<Chapters>()('@deslop/opm/chapters/server/Chapters', {
 	make: Effect.gen(function* () {
 		const sql = yield* SqlClient.SqlClient
 		const client = yield* HttpClient.HttpClient

@@ -45,7 +45,7 @@ export {black, fold, ink, selected, status, styles}
 
 type NativeView<Tag extends string> = <M>() => Native.ViewElement<M, never, Record<string, unknown>, Tag>
 
-function native<Tag extends string>(tag: Tag, viewName: string) {
+export function native<Tag extends string>(tag: Tag, viewName: string) {
 	// The registered builder has no handlers until a component adds its own.
 	const view: NativeView<Tag> = Function.constant(
 		Native.defineView(() => new Native.ViewElement<never, never, Record<string, unknown>, Tag>(tag), {viewName})

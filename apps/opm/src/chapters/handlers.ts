@@ -1,9 +1,8 @@
 import {Effect} from 'effect'
 
-import {ChapterRpcs} from '#contracts'
+import {ChaptersRpcs} from './contract.ts'
+import {Chapters} from './server.ts'
 
-import {Chapters} from '#server/chapters/service.ts'
-
-export const ChapterHandlers = ChapterRpcs.toLayer(
+export const chaptersHandlers = ChaptersRpcs.toLayer(
 	Effect.map(Chapters, chapters => ({'chapters.events': () => chapters.events, 'chapters.write': chapters.write}))
 )

@@ -8,12 +8,12 @@ import {AsyncResult} from 'effect/reactivity'
 import {chooseToolbar} from '@deslop/components/model'
 import type {ToolbarAction, ToolbarOptions} from '@deslop/components/model'
 import {blockingFailure} from '@deslop/runtime/client/live-stream'
-import {Refresh, shellApp} from '@deslop/runtime/client/shell'
+import {Refresh, endSignOut, shellApp, signOutNotice, signOutState, startSignOut} from '@deslop/runtime/client/shell'
 import type {AppScreen} from '@deslop/runtime/client/shell'
 import {Account} from '@deslop/runtime/shared/schema'
 import {DateTimeUtcFromFiniteMillis, TimeFrame} from '@deslop/runtime/shared/time'
 
-import {Action, Copy, Entry, Execute, GatewayRoute, SignOut, periodOf, readGateway} from './reads.ts'
+import {Action, Copy, Entry, Execute, GatewayRoute, periodOf, readGateway} from './reads.ts'
 
 import {aiMeteringFields, aiMeteringMessages} from '#ai-metering/screen.ts'
 import {AiKeySecret, KEY_MESSAGE, keyProvider} from '#ai-proxy/contract.ts'
@@ -36,9 +36,7 @@ const Model = Schema.Struct({
 	fieldVersion: Schema.Int,
 	menuFeedback: Schema.UndefinedOr(Schema.String),
 	route: GatewayRoute,
-	// What Auth did not end, and how many sign-ins had begun then: a later sign-in no longer shows it.
-	signOutProblem: Schema.UndefinedOr(Schema.Struct({signIns: Schema.UndefinedOr(Schema.Int), text: Schema.String})),
-	signingOut: Schema.Boolean
+	...signOutState.fields
 })
 
 const Message = UiSchema.TaggedEnum({
@@ -54,7 +52,7 @@ const Message = UiSchema.TaggedEnum({
 	CopyFeedback: {text: Schema.String},
 	CopyFeedbackExpired: {},
 	Route: {route: GatewayRoute},
-	SignedOut: {changed: Schema.Boolean, problem: Schema.UndefinedOr(Schema.String)},
+	SignedOut: signOutState.signedOut,
 	SubmitField: {entry: Entry}
 })
 type Message = typeof Message.Type
@@ -166,8 +164,7 @@ const Screen = Component.define({
 		menuFeedback: undefined,
 		route: initial.props.route,
 		servers: AsyncResult.initial(),
-		signOutProblem: undefined,
-		signingOut: false
+		...signOutState.init
 	}),
 	parts: (p, model) => {
 		const keys = readGroup(model.keys, model.aiUsage, 'AI keys', 3, keyRows)
@@ -202,13 +199,7 @@ const Screen = Component.define({
 			routeMissing: !GatewayRoute.isAnyOf(['Home'])(model.route),
 			save: p.part((el, event: string) => el.on(event, Message.SaveKey())),
 			servers,
-			signOutProblem: Option.getOrUndefined(
-				pipe(
-					Option.fromUndefinedOr(model.signOutProblem),
-					Option.filter(found => found.signIns === p.props.signIns),
-					Option.map(found => found.text)
-				)
-			),
+			signOutProblem: signOutNotice(model, p.props.signIns),
 			submit: p.part((el, event: string, text: Parameters<ToolbarOptions['choose']>[2]) =>
 				el.on(
 					event,
@@ -297,21 +288,7 @@ const Screen = Component.define({
 			if (message.id === 'retry') {
 				return $.run(Command.asNoop(Refresh.make({authenticated: false})))
 			}
-			if (message.id === 'sign-out' && !$.model.signingOut) {
-				return $.evolve({signOutProblem: undefined, signingOut: true}).run(
-					Command.match(SignOut.make({}), {
-						onFailure: error => Message.SignedOut({changed: false, problem: error.message}),
-						onSuccess: confirmed =>
-							Message.SignedOut({
-								changed: true,
-								problem: Boolean.match(confirmed, {
-									onFalse: Function.constant('Auth did not confirm ending the shared session.'),
-									onTrue: Function.constUndefined
-								})
-							})
-					})
-				)
-			}
+			if (message.id === 'sign-out') return startSignOut($, outcome => Message.SignedOut(outcome))
 			if (
 				!Schema.is(TimeFrame)(message.id) ||
 				!GatewayRoute.isAnyOf(['Home'])($.model.route) ||
@@ -350,16 +327,7 @@ const Screen = Component.define({
 			return $.evolve({busy: true}).run(runAction(Action.cases.SaveKey.make({input: {secret: Redacted.make(value)}})))
 		},
 		Servers: ($, message) => $.evolve({servers: message.result}),
-		SignedOut: ($, message) => {
-			const next = $.evolve({
-				signOutProblem: Option.getOrUndefined(
-					Option.map(Option.fromUndefinedOr(message.problem), text => ({signIns: $.props.signIns, text}))
-				),
-				signingOut: false
-			})
-			if (!message.changed) return next
-			return next.run(Command.asNoop(Refresh.make({authenticated: true})))
-		},
+		SignedOut: ($, message) => endSignOut($, message, $.props.signIns),
 		SubmitField: ($, message) => {
 			if ($.model.busy) return $.model
 			const value = String.trim(Redacted.value(message.entry))

@@ -4,7 +4,7 @@ import {Boolean, Effect, Function, Layer, Option, String, pipe} from 'effect'
 
 import Linking from 'react-native/Libraries/Linking/Linking'
 
-export function iphonePath(appOrigin: string, scheme: string, url: string) {
+function iphonePath(appOrigin: string, scheme: string, url: string) {
 	for (const prefix of [`${scheme}://`, appOrigin]) {
 		if (String.startsWith(`${prefix}/`)(url)) return Option.some(String.slice(prefix.length)(url))
 	}
@@ -12,9 +12,7 @@ export function iphonePath(appOrigin: string, scheme: string, url: string) {
 }
 
 // This Effect UI release has no iOS Router host. Feed the shared Router the OS's warm links.
-export function followIPhoneLinks(
-	navigate: (router: Router.Router, url: string) => Option.Option<Effect.Effect<unknown>>
-) {
+function followIPhoneLinks(navigate: (router: Router.Router, url: string) => Option.Option<Effect.Effect<unknown>>) {
 	return Layer.effectDiscard(
 		Effect.gen(function* () {
 			const router = yield* Router.Router
@@ -33,45 +31,63 @@ export function followIPhoneLinks(
 	)
 }
 
+// Where a link opens and what to do once it has: an app's own link can mean more than a path.
+export type IPhoneLink = {readonly followed: Effect.Effect<void>; readonly path: string}
+
 export function iphoneRouter(
 	routes: Router.Routes,
 	appOrigin: string,
 	scheme: string,
-	options: {replace?: (location: Router.Location) => boolean; validateInitial?: boolean} = {}
+	options: {
+		link?: (url: string) => Option.Option<IPhoneLink>
+		replace?: (location: Router.Location) => boolean
+		validateInitial?: boolean
+	} = {}
 ) {
-	function pathOf(url: string) {
-		return iphonePath(appOrigin, scheme, url)
+	function linkOf(url: string) {
+		return pipe(
+			Option.fromUndefinedOr(options.link),
+			Option.flatMap(link => link(url)),
+			Option.orElse(() =>
+				Option.map(iphonePath(appOrigin, scheme, url), path => ({followed: Effect.void, path}) satisfies IPhoneLink)
+			)
+		)
 	}
 	const follow = followIPhoneLinks((router, url) =>
 		pipe(
 			Option.fromNullishOr(url),
-			Option.flatMap(pathOf),
-			Option.flatMap(routes.parse),
-			Option.map(route =>
-				Boolean.match(options.replace?.(router.location()) ?? true, {
-					// oxlint-disable-next-line @deslop/coding-standards/no-native-method-call -- This is Effect UI Router navigation.
-					onFalse: () => router.push(route),
-					onTrue: () => router.replace(route)
-				})
+			Option.flatMap(linkOf),
+			Option.flatMap(link =>
+				Option.map(routes.parse(link.path), route =>
+					pipe(
+						options.replace?.(router.location()) ?? true,
+						Boolean.match({
+							// oxlint-disable-next-line @deslop/coding-standards/no-native-method-call -- This is Effect UI Router navigation.
+							onFalse: () => router.push(route),
+							onTrue: () => router.replace(route)
+						}),
+						Effect.tap(() => link.followed)
+					)
+				)
 			)
 		)
 	)
 	return Layer.unwrap(
-		Effect.map(
-			Effect.promise(() => Linking.getInitialURL()),
-			url =>
-				Layer.provideMerge(
-					follow,
-					Router.memory({
-						routes,
-						url: pipe(
-							Option.fromNullishOr(url),
-							Option.flatMap(pathOf),
-							Option.filter(path => options.validateInitial !== true || Option.isSome(routes.parse(path))),
-							Option.getOrElse(Function.constant('/'))
-						)
-					})
-				)
-		)
+		Effect.gen(function* () {
+			const initial = Option.flatMap(Option.fromNullishOr(yield* Effect.promise(() => Linking.getInitialURL())), linkOf)
+			yield* Option.match(initial, {onNone: () => Effect.void, onSome: link => link.followed})
+			return Layer.provideMerge(
+				follow,
+				Router.memory({
+					routes,
+					url: pipe(
+						initial,
+						Option.map(link => link.path),
+						Option.filter(path => options.validateInitial !== true || Option.isSome(routes.parse(path))),
+						Option.getOrElse(Function.constant('/'))
+					)
+				})
+			)
+		})
 	)
 }
