@@ -229,8 +229,8 @@ function Sheet<M, R>(h: Native.H<M>, options: SheetOptions<Native.NoTextInput<M,
 		})
 		.prop('accessibilityLabel', options.label)
 		.children(
-			h.scroll.style(styles.pane).prop('automaticallyAdjustKeyboardInsets', true).children(options.body),
-			options.actions !== undefined && h.view.style(styles.sheetActions).children(options.actions)
+			h.scroll.style(styles.pane).prop('automaticallyAdjustKeyboardInsets', true).children(paneChildren(options.body)),
+			options.actions !== undefined && h.view.style(styles.sheetActions).children(paneChildren(options.actions))
 		)
 	const element = Boolean.match(options.pending === true, {
 		onFalse: () => options.dismiss(sheet, 'dismissed'),

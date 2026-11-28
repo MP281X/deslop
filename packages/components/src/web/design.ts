@@ -249,8 +249,9 @@ function Sheet<M, R>(h: Html.H<M>, options: SheetOptions<View.Input<M, R>>) {
 		})
 		.children(
 			options.toolbar !== undefined && toolbarView(h, options.toolbar, undefined, 'sheet'),
-			h.div.style({flex: '1', minHeight: '0', overflowY: 'auto'}).children(options.body),
-			options.actions !== undefined && h.div.style(webStyle(styles.sheetActions)).children(options.actions)
+			h.div.style({flex: '1', minHeight: '0', overflowY: 'auto'}).children(paneChildren(options.body)),
+			options.actions !== undefined &&
+				h.div.style(webStyle(styles.sheetActions)).children(paneChildren(options.actions))
 		)
 }
 

@@ -8,7 +8,7 @@ import {defineConfig} from 'vite-plus'
 import {lint} from './tools/coding-standards/src/lint.ts'
 
 // The apps not yet moved to Deploy's feature layout; every other app and the template must follow it, and each app's migration removes its name here.
-const UNMIGRATED = ['portfolio', 'trips']
+const UNMIGRATED = ['portfolio']
 
 // Each worktree previews in its own systemd user unit, which outlives the agent's turn, on a port derived from its path and shared over tailnet HTTPS.
 const PREVIEW_UNIT = Array.join(
@@ -132,7 +132,7 @@ export default defineConfig({
 			},
 			{
 				// A migration's test reads the rows it rewrote, including another service's tables, which no service answer shows.
-				files: ['**/packages/runtime/src/server/tables.test.ts', '**/apps/*/src/server/*/migrations.test.ts'],
+				files: ['**/packages/runtime/src/server/tables.test.ts', '**/apps/*/src/*/migrations.test.ts'],
 				rules: {'@deslop/coding-standards/test-boundaries': ['error', 'inspect-database']}
 			},
 			{
