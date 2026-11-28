@@ -16,11 +16,17 @@
 	"sideEffects": false,
 	"main": "src/iphone/main.ts",
 	"imports": {
+		"#app": "./src/app.ts",
 		"#contracts": "./src/contracts.ts",
-		"#server/*": "./src/server/*",
-		"#web/*": "./src/web/*",
-		"#iphone/*": "./src/iphone/*",
-		"#screens/*": "./src/screens/*"
+		"#github/*": "./src/github/*",
+		"#identity/*": "./src/identity/*",
+		"#people/*": "./src/people/*",
+		"#reads": "./src/reads.ts",
+		"#sessions/*": "./src/sessions/*",
+		"#sign-ins/*": "./src/sign-ins/*",
+		"#tailnet/*": "./src/tailnet/*",
+		"#view": "./src/view.ts",
+		"#web/*": "./src/web/*"
 	},
 	"publishConfig": {
 		"access": "public"

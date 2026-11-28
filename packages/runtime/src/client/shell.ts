@@ -58,6 +58,12 @@ export class Authenticate extends Command.Service<Authenticate>()('Shell/Authent
 	success: Schema.Boolean
 }) {}
 
+// Ends this device's session at Auth; the iPhone shell implements it, since a browser leaves through Auth's own page.
+export class SignOutSession extends Command.Service<SignOutSession>()('Shell/SignOutSession', {
+	args: {},
+	error: AuthError
+}) {}
+
 export class OpenUrl extends Command.Service<OpenUrl>()('Shell/OpenUrl', {args: {url: Schema.String}}) {}
 
 class Refresh extends Command.Service<Refresh>()('Shell/Refresh', {args: {authenticated: Schema.Boolean}}) {

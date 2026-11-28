@@ -1,29 +1,26 @@
 import 'react-native/Libraries/Core/setUpXHR'
-import 'react-native/Libraries/Core/setUpTimers'
 
 import {Router} from '@effect/ui'
+import type {View} from '@effect/ui'
 import {Native, NativeApp} from '@effect/ui-native'
 import {Pressable} from '@effect/ui-native/kit'
 
-import {Array, Boolean, Effect, Function, Layer, pipe} from 'effect'
+import {Boolean, Effect, Function, Layer} from 'effect'
 
-import {AtomRegistry} from 'effect/reactivity'
+import type {ButtonOptions, Press} from '@deslop/components/model'
+import {styles} from '@deslop/components/native'
+import {nativeComponents} from '@deslop/components/native/components'
+import {Authenticate, SignOutSession} from '@deslop/runtime/client/shell'
+import {layerIPhoneShell} from '@deslop/runtime/iphone/shell'
 
-import type {PaneLeaf} from '@deslop/components/model'
-import {Layout, ListDetail, Row, styles} from '@deslop/components/native'
-import {layerSocketProtocol} from '@deslop/runtime/client/protocol'
+import {AuthApp} from '#app'
+import {AuthRoute, RecoverSignIn, isHome, Refresh, ReturnTo, SignOut, StartSignIn, layerAuth} from '#reads'
+import {Workspace} from '#view'
+import type {AuthUi} from '#view'
 
-import {layerIPhoneRouter} from '#iphone/router.ts'
-import {session, signOut} from '#iphone/session.ts'
-import {Directory} from '#screens/directory.ts'
-import type {Entry, Screen} from '#screens/directory.ts'
-import {marks} from '#screens/marks.ts'
-import {Admit, RecoverSignIn, Refresh, SignOut, StartSignIn} from '#screens/model.ts'
-import {AuthReads} from '#screens/reads.ts'
-import {AuthRoute} from '#screens/routes.ts'
-import {AVATAR, Mark} from '#screens/rows.ts'
-import {accessOptions, authApp, directoryOptions, renderEntry, rowOptions} from '#screens/view.ts'
-import type {RowSelection} from '#screens/view.ts'
+import {marks} from '#identity/view.ts'
+import {Mark} from '#people/screen.ts'
+import {AVATAR} from '#people/view.ts'
 
 const Image: <M>() => Native.ViewElement<M, never, Record<string, unknown>, 'authImage'> = Function.constant(
 	Native.defineView(() => new Native.ViewElement<never, never, Record<string, unknown>, 'authImage'>('authImage'), {
@@ -51,14 +48,17 @@ function Cover<M>(h: Native.H<M>, mark: Mark) {
 		)
 }
 
-function Button<M>(
-	h: Native.H<M>,
-	element: Native.ViewElement<M, never, Native.ViewEvents, 'view'>,
-	label: string,
-	github = false,
-	disabled = false
-) {
-	return Pressable(h, {element, props: {disabled, pressedStyle: {backgroundColor: '#2b2b2b'}}})
+function Line<M>(h: Native.H<M>, text: string) {
+	return h.text.style(styles.line).children(text)
+}
+
+// Auth's buttons are a little dimmer when disabled than the shared ones, and the GitHub one carries its mark.
+function Control<M>(h: Native.H<M>, options: ButtonOptions, github = false) {
+	const disabled = options.disabled === true
+	return Pressable(h, {
+		element: options.press(options.press(h.view, 'press'), 'accessibilityTap'),
+		props: {disabled, pressedStyle: {backgroundColor: '#2b2b2b'}}
+	})
 		.style({
 			...styles.control,
 			flexDirection: 'row',
@@ -68,102 +68,55 @@ function Button<M>(
 		.prop('accessible', true)
 		.prop('accessibilityRole', 'button')
 		.prop('accessibilityState', {disabled})
-		.children(github && MarkImage<M>(marks.github, 20), h.text.style(styles.body).children(label))
+		.children(github && MarkImage<M>(marks.github, 20), h.text.style(styles.body).children(options.label))
 }
 
-function Skeleton<M>(h: Native.H<M>, id: string) {
-	function bar(width: Native.ViewStyle['width'], height: number, borderRadius = 4) {
-		return h.view.style({backgroundColor: styles.control.backgroundColor, borderRadius, height, width})
-	}
+function Notice<M>(h: Native.H<M>, text: string, retry?: Press) {
 	return h.view
-		.key(id)
-		.style(styles.row)
+		.key(text)
+		.style({alignItems: 'flex-start', gap: 8, paddingHorizontal: 12, paddingVertical: 8})
 		.children(
-			bar(28, 28, 14),
-			h.view.style({...styles.lead, gap: 6}).children(bar('58%', 12), bar('36%', 10)),
-			bar(30, 8)
+			h.text.style(styles.line).children(text),
+			retry !== undefined && Control(h, {label: 'Retry', press: retry})
 		)
 }
 
-function EntryView<M>(h: Native.H<M>, entry: Entry, retry: Screen['retry'], selection?: RowSelection) {
-	return renderEntry(entry, {
-		notice: notice =>
-			h.view
-				.key(notice.text)
-				.style({alignItems: 'flex-start', gap: 8, paddingHorizontal: 12, paddingVertical: 8})
-				.children(
-					h.text.style(styles.line).children(notice.text),
-					notice.retry !== undefined &&
-						// fallow-ignore-next-line code-duplication -- Web and iPhone pass the same screen parts; only each host's elements differ.
-						Button(h, retry(retry(h.view, 'press', notice.retry), 'accessibilityTap', notice.retry), 'Retry')
-				),
-		row: row => Row<M, never>(h, rowOptions(row, Cover(h, row.mark), selection)),
-		skeleton: id => Skeleton(h, id)
-	})
+const components = nativeComponents<never>()
+
+const drawing: AuthUi<Native.H<never>, ReturnType<typeof components.view>, View.Content<never>> = {
+	...components,
+	button: (h, options) => Control(h, options),
+	cover: Cover,
+	line: Line,
+	memberList: (h, options) =>
+		components.listDetail(h, {list: () => options.rows, selection: options.selection, toolbar: options.toolbar}),
+	notice: Notice,
+	signIn: (h, options) => Control(h, options, true)
 }
 
-// fallow-ignore-next-line code-duplication -- Web and iPhone pass the same screen parts; only each host's elements differ.
-function Workspace<M>(h: Native.H<M>, screen: Screen) {
-	if (screen.kind === 'directory') {
-		return ListDetail<M, never>(
-			h,
-			directoryOptions(screen, (entry, retry, selection) => EntryView(h, entry, retry, selection))
-		)
-	}
-	if (screen.kind === 'sessions') {
-		return ListDetail(h, {
-			list: () => Array.map(screen.detail, entry => EntryView(h, entry, screen.retry)),
-			selection: screen.selection,
-			toolbar: screen.toolbar
-		})
-	}
+const App = AuthApp(Native.vocabulary, (h, screen) => Workspace(h, screen, drawing))
 
-	const center = h.view.style({...styles.frame, alignItems: 'center', gap: 8, justifyContent: 'center', padding: 20})
-	if (screen.kind === 'not-found') {
-		return Layout(h, {
-			content: center.children(Button(h, screen.back(screen.back(h.view, 'press'), 'accessibilityTap'), 'Back to Auth'))
-		})
-	}
-	return Layout(
-		h,
-		accessOptions<PaneLeaf<Native.NoTextInput<M>>, Native.NoTextInput<M>>(screen, {
-			content: children => center.children(children),
-			entry: (entry, retry) => EntryView(h, entry, retry),
-			error: text => h.text.style(styles.line).children(text),
-			signIn: (part, label, disabled) =>
-				Button(h, part(part(h.view, 'press'), 'accessibilityTap'), label, true, disabled),
-			waiting: text => h.text.style(styles.line).children(text)
-		})
-	)
-}
-
-const App = Native.component(authApp.definition).make({
-	...authApp.lifecycle,
-	view: h => Directory(h, {native: true, route: h.props.route}, screen => Workspace(h, screen))
-})
+// Signing in and out go through the shell's session; an expired session sends the app back to read its account, which shows the sign-in.
+const layerActions = Layer.provideMerge(
+	Layer.mergeAll(
+		StartSignIn.toLayer(Effect.map(Authenticate, authenticate => () => authenticate({}))),
+		ReturnTo.toLayer(() => Effect.void),
+		SignOut.toLayer(Effect.map(SignOutSession, signOut => () => Effect.as(signOut({}), true))),
+		RecoverSignIn.toLayer(Effect.map(Refresh, refresh => () => refresh({reader: 'account'})))
+	),
+	layerAuth
+)
 
 NativeApp.register(
-	pipe(
+	Layer.provide(
 		NativeApp.mount(App, Router.props(AuthRoute)),
-		Layer.provide(
-			Layer.mergeAll(
-				Admit.layer,
-				Refresh.layer,
-				Layer.provide(
-					RecoverSignIn.toLayer(Effect.map(Refresh, refresh => () => refresh({reader: 'account'}))),
-					Refresh.layer
-				),
-				StartSignIn.toLayer(() => session.signIn),
-				SignOut.toLayer(() => signOut),
-				Router.Back.layer
-			)
-		),
-		Layer.provide(
-			Layer.mergeAll(
-				AtomRegistry.layer,
-				AuthReads.layer(layerSocketProtocol(session.layerIPhoneSocket), Function.constVoid),
-				layerIPhoneRouter
-			)
+		Layer.provideMerge(
+			layerActions,
+			layerIPhoneShell({
+				name: 'auth',
+				replace: person => isHome(person) && person.search.person !== undefined,
+				route: AuthRoute
+			})
 		)
 	)
 )
