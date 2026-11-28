@@ -1,7 +1,7 @@
 import {Array, Boolean, Function, Option, Schema, String, pipe} from 'effect'
 import type {DateTime} from 'effect'
 
-import type {RowData} from '@deslop/design/model'
+import type {RowData} from '@deslop/components/model'
 import {ageOf, monthOf} from '@deslop/runtime/shared/format'
 
 import type {Account, ListedSession, Person} from '#contracts'

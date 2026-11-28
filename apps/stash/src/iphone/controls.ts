@@ -3,7 +3,7 @@ import {Pressable} from '@effect/ui-native/kit'
 
 import {Boolean, Function} from 'effect'
 
-import {black, ink, styles} from '@deslop/design/native'
+import {black, ink, styles} from '@deslop/components/native'
 
 import type {StashMessage} from '#screens/notes.ts'
 

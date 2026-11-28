@@ -22,8 +22,8 @@ import {
 import {AsyncResult, AtomRegistry} from 'effect/reactivity'
 import type {Atom} from 'effect/reactivity'
 
-import type {Selection, ToolbarAction, ToolbarOptions} from '@deslop/design/model'
-import {chooseToolbar, defineSelection} from '@deslop/design/model'
+import type {Selection, ToolbarAction, ToolbarOptions} from '@deslop/components/model'
+import {chooseToolbar, defineSelection} from '@deslop/components/model'
 import {observe, refreshFailed} from '@deslop/runtime/client/atom'
 import {clockAtom} from '@deslop/runtime/client/clock'
 import {blockingFailure, isDeniedCause, needsSignInCause} from '@deslop/runtime/client/live-stream'

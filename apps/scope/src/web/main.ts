@@ -7,7 +7,7 @@ import {Effect, Layer, pipe} from 'effect'
 
 import {AtomRegistry} from 'effect/reactivity'
 
-import {mountPage} from '@deslop/design/web/page'
+import {mountPage} from '@deslop/components/web/page'
 import {layerPageProtocol, pageSignIn} from '@deslop/runtime/web/client'
 
 import {Authenticate, OpenLink, Retry, ScopeReads} from '#screens/reads.ts'

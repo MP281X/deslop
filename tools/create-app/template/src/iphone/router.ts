@@ -1,6 +1,6 @@
 import {Predicate} from 'effect'
 
-import {iphoneRouter} from '@deslop/design/native/router'
+import {iphoneRouter} from '@deslop/components/native/router'
 
 import {appOrigin, scheme} from '#iphone/origin.ts'
 import {AppRoute} from '#screens/routes.ts'

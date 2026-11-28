@@ -9,8 +9,8 @@ import {Array, Boolean, Effect, Function, Layer, pipe} from 'effect'
 
 import {AtomRegistry} from 'effect/reactivity'
 
-import type {PaneLeaf} from '@deslop/design/model'
-import {Layout, ListDetail, Row, styles} from '@deslop/design/native'
+import type {PaneLeaf} from '@deslop/components/model'
+import {Layout, ListDetail, Row, styles} from '@deslop/components/native'
 import {layerSocketProtocol} from '@deslop/runtime/client/protocol'
 
 import {layerIPhoneRouter} from '#iphone/router.ts'

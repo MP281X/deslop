@@ -16,7 +16,7 @@ Personal apps with one user, who also develops them.
 - Checks: `vp run fix`, `vp run check` and `vp run test`; the two generators have no tests, so a change to one is proven by creating an app or package with it and building it.
 - A contract change is done only when its built server starts on scratch data and serves the changed RPCs or MCP tools.
 - New apps and packages: `vp create app -- --name <name>` or `vp create package -- --name <name>`. Never copy one.
-- Every app has a web app and an iPhone app, and Effect RPC over SQL. Each screen's model, messages and queries are written once and drawn by `@deslop/design/web` and `@deslop/design/native` (Effect UI with Effect UI kit, and Effect UI native without React), pinned to one `pkg.pr.new` commit and styled with the design package's style objects. Logos come from svgl.
+- Every app has a web app and an iPhone app, and Effect RPC over SQL. Each screen's model, messages, queries and view are written once, in one view file over the host drawings of `@deslop/components/web` and `@deslop/components/native` (Effect UI with Effect UI kit, and Effect UI native without React), pinned to one `pkg.pr.new` commit and styled with the components package's style objects. Logos come from svgl.
 - Web apps install from Safari for the PC; on the iPhone Duo, use the iPhone apps. They build with Expo's local tools, never EAS, and update from their own server through `expo-updates`; only a native change goes through TestFlight. Use Swift only for share extensions and WidgetKit, as `@bacons/apple-targets` targets, plus the smallest Expo module JavaScript needs to reach them; push goes through `expo-notifications`.
 - After adding or removing a skill, rerun the agent links in the maintenance reference.
 

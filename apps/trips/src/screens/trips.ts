@@ -19,7 +19,7 @@ import {
 
 import {AsyncResult, AtomRegistry} from 'effect/reactivity'
 
-import type {ToolbarAction, ToolbarMenuItem, ToolbarOptions} from '@deslop/design/model'
+import type {ToolbarAction, ToolbarMenuItem, ToolbarOptions} from '@deslop/components/model'
 import {observe} from '@deslop/runtime/client/atom'
 import {clockAtom} from '@deslop/runtime/client/clock'
 import {blockingFailure, isDeniedCause, needsSignInCause} from '@deslop/runtime/client/live-stream'

@@ -7,8 +7,8 @@ import {Array, Boolean, Effect, Function, Layer, Option, Predicate, pipe} from '
 import {FetchHttpClient, HttpClient, HttpClientResponse} from 'effect/http'
 import {AtomRegistry} from 'effect/reactivity'
 
-import type {PaneLeaf} from '@deslop/design/model'
-import {Layout, ListDetail, Row, styles, webStyle} from '@deslop/design/web'
+import type {PaneLeaf} from '@deslop/components/model'
+import {Layout, ListDetail, Row, styles, webStyle} from '@deslop/components/web'
 import {AuthError, signInUrl} from '@deslop/runtime/shared/auth'
 import {addPageTelemetry, layerPageProtocol} from '@deslop/runtime/web/client'
 

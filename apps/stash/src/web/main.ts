@@ -10,7 +10,7 @@ import {Array, Effect, Layer, Predicate, pipe} from 'effect'
 import {FetchHttpClient} from 'effect/http'
 import {AtomRegistry} from 'effect/reactivity'
 
-import {Layout, ListDetail, Row, styles, webStyle} from '@deslop/design/web'
+import {Layout, ListDetail, Row, styles, webStyle} from '@deslop/components/web'
 import {layerWebTelemetry} from '@deslop/runtime/web/telemetry'
 
 import {dismissCompose, dismissProblem, editDraft, makeStash, retry, signIn} from '#screens/notes.ts'

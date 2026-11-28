@@ -3,7 +3,7 @@ import type {Html} from '@effect/ui/html'
 
 import {Array, Boolean, Function, Match, Option, pipe} from 'effect'
 
-import {ListDetail, Row, selected, status, styles, WatchLayout, webStyle} from '@deslop/design/web'
+import {ListDetail, Row, selected, status, styles, WatchLayout, webStyle} from '@deslop/components/web'
 
 import {Message} from '#screens/model.ts'
 import {scopeLayout} from '#screens/scope.ts'

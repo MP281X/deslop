@@ -7,7 +7,7 @@ import {Array, Layer, pipe} from 'effect'
 
 import {AtomRegistry} from 'effect/reactivity'
 
-import {Layout, ListDetail, Row, styles} from '@deslop/design/native'
+import {Layout, ListDetail, Row, styles} from '@deslop/components/native'
 
 import {Button} from '#iphone/controls.ts'
 import {platform, reads} from '#iphone/platform.ts'

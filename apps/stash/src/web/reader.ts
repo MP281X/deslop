@@ -4,7 +4,7 @@ import type {Html} from '@effect/ui/html'
 
 import {Array, Result, String} from 'effect'
 
-import {Row, styles, webStyle} from '@deslop/design/web'
+import {Row, styles, webStyle} from '@deslop/components/web'
 
 import type {TagName} from '#contracts'
 

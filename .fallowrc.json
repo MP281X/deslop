@@ -12,7 +12,7 @@
 				"name": "tooling",
 				"patterns": [
 					"tools/**",
-					"packages/{design,runtime}/src/tooling/**",
+					"packages/{components,runtime}/src/tooling/**",
 					"vite.config.ts",
 					"apps/*/{app,metro,vite}.config.ts",
 					"apps/*/fingerprint.config.js",
@@ -22,25 +22,31 @@
 			},
 			// Build configuration the server also reads; it imports no zone, so it carries nothing across.
 			{"name": "config", "patterns": ["packages/runtime/src/config/**"]},
-			{"name": "shared", "patterns": ["apps/*/src/*.ts", "packages/*/src/shared/**"]},
+			// Deploy is organised by feature: each feature folder holds its contract and shared logic, its screen and view, and its server.
 			{
 				"name": "client",
 				"patterns": [
 					"apps/*/index.html",
 					"apps/*/src/{iphone,screens,web}/**",
-					"packages/design/gallery/**",
-					"packages/design/src/native/**",
+					"apps/deploy/src/{app,reads,view}.ts",
+					"apps/deploy/src/*/{screen,view}.ts",
+					"packages/components/gallery/**",
+					"packages/components/src/native/**",
 					"packages/runtime/src/iphone/**",
 					"packages/*/src/{client,web}/**"
 				]
 			},
 			// Server layers point one way: the entry composes transports, transports call services, services build on shared code.
-			{"name": "entry", "patterns": ["apps/*/src/server/main.ts"]},
-			{"name": "transport", "patterns": ["apps/*/src/server/*/{http,rpcs,tools}.ts"]},
+			{"name": "entry", "patterns": ["apps/*/src/server/main.ts", "apps/deploy/src/server.ts"]},
+			{
+				"name": "shared",
+				"patterns": ["apps/*/src/*.ts", "apps/deploy/src/*/{contract,workloads}.ts", "packages/*/src/shared/**"]
+			},
+			{"name": "transport", "patterns": ["apps/*/src/server/*/{http,rpcs,tools}.ts", "apps/deploy/src/*/handlers.ts"]},
 			{
 				"name": "server",
 				// First match wins: contracts above stay shared; implementations default to server-only.
-				"patterns": ["apps/*/src/server/**", "packages/*/src/server/**"]
+				"patterns": ["apps/*/src/server/**", "apps/deploy/src/*/**", "packages/*/src/server/**"]
 			}
 		],
 		"rules": [
@@ -61,12 +67,16 @@
 		"coverage": {"requireAllFiles": true}
 	},
 	// Extract shared logic at this size; mark imports, schema fields and modifier/prop lists inline as shape-only clones.
-	"duplicates": {"minTokens": 50, "minLines": 5, "ignore": ["apps/*/src/server/*/migrations.ts"]},
+	"duplicates": {
+		"minTokens": 50,
+		"minLines": 5,
+		"ignore": ["apps/*/src/server/*/migrations.ts", "apps/deploy/src/*/migrations.ts"]
+	},
 	"health": {
 		"maxCognitive": 14,
 		"thresholdOverrides": [
 			{
-				"files": ["apps/*/src/server/*/{http,rpcs,tools}.ts"],
+				"files": ["apps/*/src/server/*/{http,rpcs,tools}.ts", "apps/deploy/src/*/handlers.ts"],
 				"maxCognitive": 8,
 				"reason": "Transport handlers delegate decisions to services."
 			}
@@ -92,7 +102,12 @@
 	"overrides": [
 		{
 			// Schemas and their types are exported in pairs by policy
-			"files": ["apps/*/src/server/*/schema.ts", "apps/*/src/contracts.ts", "packages/runtime/src/shared/schema.ts"],
+			"files": [
+				"apps/*/src/server/*/schema.ts",
+				"apps/*/src/contracts.ts",
+				"apps/deploy/src/*/contract.ts",
+				"packages/runtime/src/shared/schema.ts"
+			],
 			"rules": {"unused-exports": "off", "unused-types": "off"}
 		},
 		{

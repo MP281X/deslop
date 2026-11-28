@@ -211,9 +211,9 @@ importers:
 
   apps/auth:
     devDependencies:
-      '@deslop/design':
+      '@deslop/components':
         specifier: workspace:*
-        version: link:../../packages/design
+        version: link:../../packages/components
       '@deslop/runtime':
         specifier: workspace:*
         version: link:../../packages/runtime
@@ -262,9 +262,9 @@ importers:
 
   apps/deploy:
     devDependencies:
-      '@deslop/design':
+      '@deslop/components':
         specifier: workspace:*
-        version: link:../../packages/design
+        version: link:../../packages/components
       '@deslop/runtime':
         specifier: workspace:*
         version: link:../../packages/runtime
@@ -313,9 +313,9 @@ importers:
 
   apps/gateway:
     devDependencies:
-      '@deslop/design':
+      '@deslop/components':
         specifier: workspace:*
-        version: link:../../packages/design
+        version: link:../../packages/components
       '@deslop/runtime':
         specifier: workspace:*
         version: link:../../packages/runtime
@@ -370,9 +370,9 @@ importers:
       '@bacons/apple-targets':
         specifier: latest
         version: 5.0.0(expo@58.1.0(@babel/core@7.29.13(supports-color@8.1.1))(react-native@0.88.1(@babel/core@7.29.13(supports-color@8.1.1))(react@19.3.1)(supports-color@8.1.1))(react@19.3.1)(supports-color@8.1.1))(supports-color@8.1.1)
-      '@deslop/design':
+      '@deslop/components':
         specifier: workspace:*
-        version: link:../../packages/design
+        version: link:../../packages/components
       '@deslop/runtime':
         specifier: workspace:*
         version: link:../../packages/runtime
@@ -427,9 +427,9 @@ importers:
 
   apps/portfolio:
     devDependencies:
-      '@deslop/design':
+      '@deslop/components':
         specifier: workspace:*
-        version: link:../../packages/design
+        version: link:../../packages/components
       '@deslop/runtime':
         specifier: workspace:*
         version: link:../../packages/runtime
@@ -484,9 +484,9 @@ importers:
 
   apps/scope:
     devDependencies:
-      '@deslop/design':
+      '@deslop/components':
         specifier: workspace:*
-        version: link:../../packages/design
+        version: link:../../packages/components
       '@deslop/runtime':
         specifier: workspace:*
         version: link:../../packages/runtime
@@ -541,9 +541,9 @@ importers:
       '@bacons/apple-targets':
         specifier: latest
         version: 5.0.0(expo@58.1.0(@babel/core@7.29.13(supports-color@8.1.1))(react-native@0.88.1(@babel/core@7.29.13(supports-color@8.1.1))(react@19.3.1)(supports-color@8.1.1))(react@19.3.1)(supports-color@8.1.1))(supports-color@8.1.1)
-      '@deslop/design':
+      '@deslop/components':
         specifier: workspace:*
-        version: link:../../packages/design
+        version: link:../../packages/components
       '@deslop/runtime':
         specifier: workspace:*
         version: link:../../packages/runtime
@@ -607,9 +607,9 @@ importers:
       '@bacons/apple-targets':
         specifier: latest
         version: 5.0.0(expo@58.1.0(@babel/core@7.29.13(supports-color@8.1.1))(react-native@0.88.1(@babel/core@7.29.13(supports-color@8.1.1))(react@19.3.1)(supports-color@8.1.1))(react@19.3.1)(supports-color@8.1.1))(supports-color@8.1.1)
-      '@deslop/design':
+      '@deslop/components':
         specifier: workspace:*
-        version: link:../../packages/design
+        version: link:../../packages/components
       '@deslop/runtime':
         specifier: workspace:*
         version: link:../../packages/runtime
@@ -668,7 +668,7 @@ importers:
         specifier: npm:@voidzero-dev/vite-plus-core@8.3.8001
         version: '@voidzero-dev/vite-plus-core@8.3.8001(@types/node@26.6.11)(jiti@2.7.0)(terser@5.51.4)'
 
-  packages/design:
+  packages/components:
     dependencies:
       '@effect/ui':
         specifier: https://pkg.pr.new/Effect-TS/ui/@effect/ui@9eb76e60e47293cb0be63c12322a6bccd9e31add

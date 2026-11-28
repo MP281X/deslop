@@ -6,7 +6,7 @@ import {Pressable} from '@effect/ui-native/kit'
 
 import {Effect, Layer, Option, Schema, pipe} from 'effect'
 
-import {DetailText, ListDetail} from '@deslop/design/native'
+import {DetailText, ListDetail} from '@deslop/components/native'
 import {layerSocketProtocol} from '@deslop/runtime/client/protocol'
 import {AuthError} from '@deslop/runtime/shared/auth'
 

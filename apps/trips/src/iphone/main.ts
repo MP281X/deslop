@@ -7,7 +7,7 @@ import {Effect, Function, Layer, Schema, pipe} from 'effect'
 
 import {Atom} from 'effect/reactivity'
 
-import {ListDetail, black, ink, styles} from '@deslop/design/native'
+import {ListDetail, black, ink, styles} from '@deslop/components/native'
 import {layerSocketProtocol} from '@deslop/runtime/client/protocol'
 import {layerOtlp} from '@deslop/runtime/shared/telemetry'
 

@@ -4,7 +4,7 @@ import {Boolean, Effect, Function, Layer, Option, Schema, pipe} from 'effect'
 
 import Linking from 'react-native/Libraries/Linking/Linking'
 
-import {followIPhoneLinks, iphonePath} from '@deslop/design/native/router'
+import {followIPhoneLinks, iphonePath} from '@deslop/components/native/router'
 
 import {ChapterNumberFromString, Series} from '#contracts'
 

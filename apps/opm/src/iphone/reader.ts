@@ -3,7 +3,7 @@ import {Pan, Pressable} from '@effect/ui-native/kit'
 
 import {Array, Boolean, Function, Number, Option, Schema, pipe} from 'effect'
 
-import {styles} from '@deslop/design/native'
+import {styles} from '@deslop/components/native'
 
 import type {Screen} from '#screens/library.ts'
 import {Message} from '#screens/model.ts'

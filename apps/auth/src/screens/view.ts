@@ -1,6 +1,6 @@
 import {Array, Boolean, Function, Schema} from 'effect'
 
-import type {Selection} from '@deslop/design/model'
+import type {Selection} from '@deslop/components/model'
 
 import {visibleToolbar} from '#screens/directory.ts'
 import type {Entry, Notice, Screen} from '#screens/directory.ts'

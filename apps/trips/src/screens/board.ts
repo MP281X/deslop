@@ -1,6 +1,6 @@
 import {Array, Boolean, DateTime, Duration, Function, Option, pipe} from 'effect'
 
-import type {RowData, RowOptions, Selection} from '@deslop/design/model'
+import type {RowData, RowOptions, Selection} from '@deslop/components/model'
 
 import type {Flight, FlightId, FlightList, TravelTime} from '#contracts'
 import {

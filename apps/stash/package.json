@@ -36,7 +36,7 @@
 	},
 	"devDependencies": {
 		"@bacons/apple-targets": "latest",
-		"@deslop/design": "workspace:*",
+		"@deslop/components": "workspace:*",
 		"@deslop/runtime": "workspace:*",
 		"@effect/platform-node": "latest",
 		"@effect/sql-sqlite-node": "latest",

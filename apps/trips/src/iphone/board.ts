@@ -2,8 +2,8 @@ import type {Native} from '@effect/ui-native'
 
 import {Array, Boolean, Function, Option} from 'effect'
 
-import type {PaneLeaf} from '@deslop/design/model'
-import {Row, status, nativeControls, styles} from '@deslop/design/native'
+import type {PaneLeaf} from '@deslop/components/model'
+import {Row, status, nativeControls, styles} from '@deslop/components/native'
 
 import {PAST, boardingSections, flightRowOptions, heroStatus, itineraryContent} from '#screens/board.ts'
 import type {BoardingPass, FlightRow, Itinerary} from '#screens/board.ts'

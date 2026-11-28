@@ -6,7 +6,7 @@ import {BrowserHost, BrowserRouter, Html} from '@effect/ui/html'
 
 import {Array, Effect, Function, Layer, Option, Predicate, Schema, pipe} from 'effect'
 
-import {ListDetail, styles, webStyle} from '@deslop/design/web'
+import {ListDetail, styles, webStyle} from '@deslop/components/web'
 import {addPageTelemetry} from '@deslop/runtime/web/client'
 
 import {bookingAction, bookingSheet, tripsLayout} from '#screens/layout.ts'

@@ -5,7 +5,7 @@ import {Effect, Function, Layer, Predicate, Schema, pipe} from 'effect'
 
 import {FetchHttpClient} from 'effect/http'
 
-import {DetailText, ListDetail} from '@deslop/design/web'
+import {DetailText, ListDetail} from '@deslop/components/web'
 import {signInUrl} from '@deslop/runtime/shared/auth'
 import {layerPageProtocol} from '@deslop/runtime/web/client'
 import {layerWebTelemetry} from '@deslop/runtime/web/telemetry'

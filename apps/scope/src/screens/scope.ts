@@ -5,8 +5,8 @@ import {Array, Boolean, DateTime, Function, Option, Predicate, Schema, String, p
 
 import {AsyncResult} from 'effect/reactivity'
 
-import type {RowData, ToolbarAction} from '@deslop/design/model'
-import {chooseToolbar} from '@deslop/design/model'
+import type {RowData, ToolbarAction} from '@deslop/components/model'
+import {chooseToolbar} from '@deslop/components/model'
 import {blockingFailure, isDeniedCause, needsSignInCause} from '@deslop/runtime/client/live-stream'
 import {ageOf, clockOf, compactCountOf, durationOf} from '@deslop/runtime/shared/format'
 import {TimeFrame} from '@deslop/runtime/shared/time'

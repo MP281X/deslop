@@ -3,7 +3,7 @@ import {Native} from '@effect/ui-native'
 
 import {Array, Effect, Number, Schema, pipe} from 'effect'
 
-import {styles} from '@deslop/design/native'
+import {styles} from '@deslop/components/native'
 
 import {ImageType} from '#contracts'
 

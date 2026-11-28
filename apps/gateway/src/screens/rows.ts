@@ -1,6 +1,6 @@
 import {Array, Boolean, Function, HashMap, Number, Option, Order, Result, pipe} from 'effect'
 
-import type {RowData} from '@deslop/design/model'
+import type {RowData} from '@deslop/components/model'
 import {countOf} from '@deslop/runtime/shared/format'
 
 import {failureMessage} from '#contracts'

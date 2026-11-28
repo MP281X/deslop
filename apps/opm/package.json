@@ -35,7 +35,7 @@
 	},
 	"devDependencies": {
 		"@bacons/apple-targets": "latest",
-		"@deslop/design": "workspace:*",
+		"@deslop/components": "workspace:*",
 		"@deslop/runtime": "workspace:*",
 		"@effect/platform-node": "latest",
 		"@effect/ui": "https://pkg.pr.new/Effect-TS/ui/@effect/ui@9eb76e60e47293cb0be63c12322a6bccd9e31add",

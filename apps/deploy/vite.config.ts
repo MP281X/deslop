@@ -10,5 +10,5 @@ export default {
 		rolldownOptions: {output: {codeSplitting: {groups: [{name: 'effect', test: /node_modules[\\/]effect[\\/]/u}]}}},
 		target: 'esnext'
 	},
-	pack: serverPack(512)
+	pack: {...serverPack(512), entry: ['src/server.ts']}
 } satisfies UserConfig

@@ -1,6 +1,6 @@
 import {Boolean, Function, Option} from 'effect'
 
-import type {ListOptions, PaneLeaf, Selection, SheetOptions} from '@deslop/design/model'
+import type {ListOptions, PaneLeaf, Selection, SheetOptions} from '@deslop/components/model'
 
 import type {BoardingPass, Itinerary} from '#screens/board.ts'
 import {TripsRoute} from '#screens/routes.ts'
