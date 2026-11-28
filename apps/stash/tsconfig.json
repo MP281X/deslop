@@ -1,1 +1,4 @@
-{"extends": "@deslop/coding-standards/tsconfig.json"}
+{
+	"extends": "@deslop/coding-standards/tsconfig.json",
+	"include": ["**/*", "../../packages/runtime/src/iphone/react-native.d.ts"]
+}

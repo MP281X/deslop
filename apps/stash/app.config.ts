@@ -1,17 +1,17 @@
 import type {ExpoConfig} from 'expo/config'
 
 import {iphoneUpdates} from '@deslop/runtime/config/iphone'
-
-import {appOrigin, authOrigin, scheme} from './src/iphone/origin.ts'
+import {iphoneOrigins} from '@deslop/runtime/shared/origins'
 
 const BUNDLE_IDENTIFIER = 'xyz.mp281x.stash'
+const origins = iphoneOrigins('stash')
 const group = `group.${BUNDLE_IDENTIFIER}`
 const keychain = `$(AppIdentifierPrefix)${group}`
 
 export default {
 	ios: {
 		appleTeamId: '99K7MQUK7F',
-		associatedDomains: [`webcredentials:${new URL(authOrigin).hostname}`],
+		associatedDomains: [`webcredentials:${new URL(origins.authOrigin).hostname}`],
 		bundleIdentifier: BUNDLE_IDENTIFIER,
 		deploymentTarget: '26.0',
 		entitlements: {
@@ -22,7 +22,7 @@ export default {
 		icon: './src/iphone/app.icon',
 		infoPlist: {
 			DeslopKeychainGroup: keychain,
-			DeslopServer: appOrigin,
+			DeslopServer: origins.appOrigin,
 			ITSAppUsesNonExemptEncryption: false,
 			NSSupportsLiveActivities: true
 		},
@@ -32,8 +32,8 @@ export default {
 	orientation: 'default',
 	platforms: ['ios'],
 	plugins: ['@bacons/apple-targets'],
-	scheme,
+	scheme: origins.scheme,
 	slug: 'stash',
 	userInterfaceStyle: 'dark',
-	...iphoneUpdates(appOrigin)
+	...iphoneUpdates(origins.appOrigin)
 } satisfies ExpoConfig

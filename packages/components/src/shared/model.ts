@@ -179,10 +179,10 @@ export type ListOptions<Content> = LayoutOptions<Content> & {
 	detailToolbar?: readonly ToolbarAction[] | Absent
 	selection: Selection
 	loading?: boolean
-	header?: Content
-	empty?: Content
+	header?: Content | Absent
+	empty?: Content | Absent
 	list?: ((activeId: Selection['id'], wide: boolean) => PaneContent<PaneLeaf<Content>>) | Absent
-	detail?: PaneContent<PaneLeaf<Content>>
+	detail?: PaneContent<PaneLeaf<Content>> | Absent
 }
 
 export type SymbolName = typeof SymbolName.Type

@@ -8,7 +8,7 @@ import {defineConfig} from 'vite-plus'
 import {lint} from './tools/coding-standards/src/lint.ts'
 
 // The apps not yet moved to Deploy's feature layout; every other app and the template must follow it, and each app's migration removes its name here.
-const UNMIGRATED = ['portfolio', 'stash', 'trips']
+const UNMIGRATED = ['portfolio', 'trips']
 
 // Each worktree previews in its own systemd user unit, which outlives the agent's turn, on a port derived from its path and shared over tailnet HTTPS.
 const PREVIEW_UNIT = Array.join(
