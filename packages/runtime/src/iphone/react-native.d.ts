@@ -22,3 +22,24 @@ declare module 'react-native/Libraries/Components/Clipboard/Clipboard' {
 	const Clipboard: {readonly setString: (value: string) => void}
 	export default Clipboard
 }
+
+declare module 'react-native/Libraries/AppState/AppState' {
+	import type * as ReactNative from 'react-native'
+
+	const AppState: typeof ReactNative.AppState
+	export default AppState
+}
+
+declare module 'react-native/Libraries/Share/Share' {
+	import type * as ReactNative from 'react-native'
+
+	const Share: typeof ReactNative.Share
+	export default Share
+}
+
+declare module 'react-native/Libraries/Utilities/Dimensions' {
+	import type * as ReactNative from 'react-native'
+
+	const Dimensions: typeof ReactNative.Dimensions
+	export default Dimensions
+}

@@ -17,11 +17,18 @@
 	"sideEffects": false,
 	"main": "src/iphone/main.ts",
 	"imports": {
-		"#contracts": "./src/contracts.ts",
-		"#server/*": "./src/server/*",
-		"#web/*": "./src/web/*",
-		"#iphone/*": "./src/iphone/*",
-		"#screens/*": "./src/screens/*"
+		"#activity/*": "./src/activity/*",
+		"#app": "./src/app.ts",
+		"#listing/*": "./src/listing/*",
+		"#media/*": "./src/media/*",
+		"#notes/*": "./src/notes/*",
+		"#organizing/*": "./src/organizing/*",
+		"#reads": "./src/reads.ts",
+		"#sources/*": "./src/sources/*",
+		"#tags/*": "./src/tags/*",
+		"#transcripts/*": "./src/transcripts/*",
+		"#view": "./src/view.ts",
+		"#web/*": "./src/web/*"
 	},
 	"publishConfig": {
 		"access": "public"
@@ -41,7 +48,6 @@
 		"@effect/platform-node": "latest",
 		"@effect/sql-sqlite-node": "latest",
 		"@effect/ui": "https://pkg.pr.new/Effect-TS/ui/@effect/ui@9eb76e60e47293cb0be63c12322a6bccd9e31add",
-		"@effect/ui-kit": "https://pkg.pr.new/Effect-TS/ui/@effect/ui-kit@9eb76e60e47293cb0be63c12322a6bccd9e31add",
 		"@effect/ui-native": "https://pkg.pr.new/Effect-TS/ui/@effect/ui-native@9eb76e60e47293cb0be63c12322a6bccd9e31add",
 		"cheerio": "latest",
 		"domhandler": "latest",

@@ -19,6 +19,7 @@ import {iphoneOrigins} from '@deslop/runtime/shared/origins'
 import {layerSocketProtocol} from '#client/protocol.ts'
 import {Authenticate, OpenUrl, SignOutSession, layerShell} from '#client/shell.ts'
 import {iphoneSession, isSignOutConfirmed, secureSession} from '#iphone/session.ts'
+import type {IPhoneSessionStore} from '#iphone/session.ts'
 import {AuthError} from '#shared/auth.ts'
 
 class OpenUrlError extends Schema.TaggedError<OpenUrlError>()('OpenUrlError', {
@@ -26,18 +27,19 @@ class OpenUrlError extends Schema.TaggedError<OpenUrlError>()('OpenUrlError', {
 	message: Schema.String
 }) {}
 
-// Everything an iPhone app takes from its name: its origins and scheme, the Keychain session, the router that follows `<name>://` links, and the shell's sign-in. `replace` names the routes a link replaces instead of pushing, `link` reads the links of its own that a path cannot say, and `linkScheme` is the scheme of a build whose links differ from the name's, such as a development build.
+// Everything an iPhone app takes from its name: its origins and scheme, the session, the router that follows `<name>://` links, and the shell's sign-in. `replace` names the routes a link replaces instead of pushing, `link` reads the links of its own that a path cannot say, and `linkScheme` is the scheme of a build whose links differ from the name's, such as a development build. The session lives in the app's own Keychain unless `store` names another, as Stash's, shared with its share extension.
 export function layerIPhoneShell<Routes extends Router.Routes>(options: {
 	readonly link?: (url: string) => Option.Option<IPhoneLink>
 	readonly linkScheme?: string
 	readonly name: string
 	readonly replace?: (route: Routes['Type']) => boolean
 	readonly route: Routes
+	readonly store?: IPhoneSessionStore
 }) {
 	const origins = iphoneOrigins(options.name)
 	const session = iphoneSession(
 		origins,
-		secureSession({deleteItemAsync, getItemAsync, setItemAsync}, AFTER_FIRST_UNLOCK_THIS_DEVICE_ONLY),
+		options.store ?? secureSession({deleteItemAsync, getItemAsync, setItemAsync}, AFTER_FIRST_UNLOCK_THIS_DEVICE_ONLY),
 		openAuthSessionAsync,
 		WebSocket
 	)
