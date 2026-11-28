@@ -1,6 +1,6 @@
-import {Boolean, Option, Predicate} from 'effect'
+import {Predicate} from 'effect'
 
-import {problemScreen} from '@deslop/components/shell'
+import {workspace} from '@deslop/components/shell'
 
 import type {DeployScreen} from '#app'
 
@@ -34,29 +34,11 @@ function sheet<H, C, S>(host: H, screen: DeployScreen, ui: DeployUi<H, C, S>) {
 }
 
 export function Workspace<H, C, S>(host: H, screen: DeployScreen, ui: DeployUi<H, C, S>) {
-	if (screen.problem !== undefined) {
-		return problemScreen(host, ui, {
-			text: screen.problem.text,
-			...Boolean.match(screen.problem.back, {
-				onFalse: () => ({}),
-				onTrue: () => ({back: {label: 'Back to Deploy', press: screen.selection.back}})
-			}),
-			...Boolean.match(screen.problem.signIn, {
-				onFalse: () => ({}),
-				onTrue: () => ({signIn: {press: screen.authenticate, running: screen.signingIn}})
-			})
-		})
-	}
-	return ui.listDetail(host, {
-		defaultId: screen.id,
-		...Option.match(Option.fromUndefinedOr(detailRows(host, screen, ui)), {
-			onNone: () => ({}),
-			onSome: detail => ({detail})
-		}),
+	return workspace(host, ui, screen, {
+		backLabel: 'Back to Deploy',
+		detail: detailRows(host, screen, ui),
 		detailToolbar: screen.actions,
 		list: (active, wide) => ui.view(host, {key: 'apps'}, listRows(host, screen, active, wide, ui)),
-		loading: screen.loading,
-		selection: screen.selection,
 		sheet: sheet(host, screen, ui),
 		toolbar: {actions: [], choose: screen.choose}
 	})

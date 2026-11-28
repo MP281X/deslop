@@ -1,50 +1,21 @@
 import {Router} from '@effect/ui'
-import {BrowserHost, BrowserRouter, Html} from '@effect/ui/html'
+import {BrowserHost, Html} from '@effect/ui/html'
 
-import {Effect, Function, Layer, Predicate, Schema, pipe} from 'effect'
+import {Layer} from 'effect'
 
-import {FetchHttpClient} from 'effect/http'
+import {webComponents} from '@deslop/components/web/components'
+import {mountPage} from '@deslop/components/web/page'
+import {layerWebShell} from '@deslop/runtime/web/shell'
 
-import {DetailText, ListDetail} from '@deslop/components/web'
-import {signInUrl} from '@deslop/runtime/shared/auth'
-import {layerPageProtocol} from '@deslop/runtime/web/client'
-import {layerWebTelemetry} from '@deslop/runtime/web/telemetry'
+import {ItemsApp} from '#app'
+import {AppRoute, layerReads} from '#reads'
+import {Workspace} from '#view'
 
-import {ItemsView, layerItems, layerViewer} from '#screens/items.ts'
-import {AppRoute, CloseItem} from '#screens/routes.ts'
+const App = ItemsApp(Html.vocabulary, (h, screen) => Workspace(h, screen, webComponents<never>()))
 
-const App = Html.component({
-	message: Schema.Never,
-	model: Schema.Null,
-	name: 'App',
-	props: Schema.Struct({route: AppRoute})
-}).make({
-	init: Function.constNull,
-	update: Function.constNull,
-	view: h =>
-		ItemsView(h, h.props, {
-			list: (list, body) => ListDetail(h, {...list, detail: row => DetailText(h, row.title, body, row.line)}),
-			problem: (problem, screen) => {
-				function action() {
-					if (screen.signIn) return h.a.attr('href', signInUrl(location.href)).children('Continue with GitHub')
-					if (screen.retryable) return screen.retry(h.button, 'click').children('Retry')
-					return h.a.attr('href', AppRoute.print(AppRoute.List({}))).children('Back to list')
-				}
-				return h.main.style({padding: '20px'}).children(h.p.attr('role', 'status').children(problem), action())
-			}
-		})
-})
-
-const root = document.getElementById('root')
-if (Predicate.isNull(root)) throw new TypeError('Missing application mount element with id "root"')
-
-pipe(
-	BrowserHost.mount(App, Router.props(AppRoute), root),
-	Layer.provide(CloseItem.layer),
-	Layer.provide(BrowserRouter.layer({routes: AppRoute})),
-	Layer.provide(Layer.merge(layerViewer(), Layer.provide(layerItems, layerPageProtocol))),
-	Layer.provide(Layer.provide(layerWebTelemetry('@deslop/template-app'), FetchHttpClient.layer)),
-	Layer.launch,
-	// oxlint-disable-next-line eslint/no-restricted-properties -- Mount one scoped root for the life of the document.
-	Effect.runFork
+mountPage(AppRoute, root =>
+	Layer.provide(
+		BrowserHost.mount(App, Router.props(AppRoute), root),
+		Layer.provideMerge(layerReads, layerWebShell('template-app'))
+	)
 )

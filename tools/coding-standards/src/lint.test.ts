@@ -483,6 +483,65 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 			})
 		)
 		testApi.effect(
+			'keeps every app not yet moved apart from the feature layout and its sources under 600 lines',
+			Effect.fnUntraced(function* () {
+				const source = 'export const value = 1'
+				const long = `${source}\n${String.repeat(600)('// padding\n')}`
+				const inputs = {
+					'apps/deploy/app.config.ts': source,
+					'apps/deploy/helpers.ts': source,
+					'apps/deploy/src/app.ts': source,
+					'apps/deploy/src/exposures/contract.ts': source,
+					'apps/deploy/src/exposures/handlers.test.ts': source,
+					'apps/deploy/src/exposures/lib/format.ts': source,
+					'apps/deploy/src/exposures/utils.ts': source,
+					'apps/deploy/src/iphone/main.ts': source,
+					'apps/deploy/src/iphone/origin.ts': source,
+					'apps/deploy/src/iphone/router.ts': source,
+					'apps/deploy/src/iphone/session.ts': source,
+					'apps/deploy/src/lib/format.ts': source,
+					'apps/deploy/src/metrics/long.test.ts': long,
+					'apps/deploy/src/metrics/long.ts': long,
+					'apps/deploy/src/metrics/server.ts': source,
+					'apps/deploy/src/screens/items.ts': source,
+					'apps/deploy/src/server/main.ts': source,
+					'apps/deploy/src/stray.ts': source,
+					'apps/deploy/src/web/main.ts': source,
+					'apps/deploy/src/web/render.ts': source,
+					'apps/fresh/src/lib/format.ts': source,
+					'apps/trips/src/lib/format.ts': long,
+					'tools/create-app/template/src/lib/format.ts': source
+				}
+				const result = yield* lintSource(inputs)
+				function reported(rule: string) {
+					return pipe(
+						result.stdout.diagnostics,
+						Array.filter(diagnostic => diagnostic.code === rule),
+						Array.flatMap(diagnostic =>
+							Array.filter(Record.keys(inputs), name => String.endsWith(name)(diagnostic.filename ?? ''))
+						),
+						Array.sort(String.Order)
+					)
+				}
+				assert.deepStrictEqual(reported('@deslop/coding-standards(app-layout)'), [
+					'apps/deploy/helpers.ts',
+					'apps/deploy/src/exposures/lib/format.ts',
+					'apps/deploy/src/exposures/utils.ts',
+					'apps/deploy/src/iphone/origin.ts',
+					'apps/deploy/src/iphone/router.ts',
+					'apps/deploy/src/iphone/session.ts',
+					'apps/deploy/src/lib/format.ts',
+					'apps/deploy/src/screens/items.ts',
+					'apps/deploy/src/server/main.ts',
+					'apps/deploy/src/stray.ts',
+					'apps/deploy/src/web/render.ts',
+					'apps/fresh/src/lib/format.ts',
+					'tools/create-app/template/src/lib/format.ts'
+				])
+				assert.deepStrictEqual(reported('eslint(max-lines)'), ['apps/deploy/src/metrics/long.ts'])
+			})
+		)
+		testApi.effect(
 			'reports single-use forwarding but keeps reused functions and literal partials',
 			Effect.fnUntraced(function* () {
 				const result = yield* lintSource({

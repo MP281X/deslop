@@ -22,14 +22,14 @@
 			},
 			// Build configuration the server also reads; it imports no zone, so it carries nothing across.
 			{"name": "config", "patterns": ["packages/runtime/src/config/**"]},
-			// Deploy is organised by feature: each feature folder holds its contract and shared logic, its screen and view, and its server.
+			// An app organised by feature: each feature folder holds its contract and shared logic, its screen and view, and its server.
 			{
 				"name": "client",
 				"patterns": [
 					"apps/*/index.html",
 					"apps/*/src/{iphone,screens,web}/**",
-					"apps/deploy/src/{app,reads,view}.ts",
-					"apps/deploy/src/*/{screen,view}.ts",
+					"apps/*/src/{app,reads,view}.ts",
+					"apps/*/src/*/{screen,view}.ts",
 					"packages/components/gallery/**",
 					"packages/components/src/native/**",
 					"packages/runtime/src/iphone/**",
@@ -37,16 +37,21 @@
 				]
 			},
 			// Server layers point one way: the entry composes transports, transports call services, services build on shared code.
-			{"name": "entry", "patterns": ["apps/*/src/server/main.ts", "apps/deploy/src/server.ts"]},
+			{"name": "entry", "patterns": ["apps/*/src/server/main.ts", "apps/*/src/server.ts"]},
 			{
 				"name": "shared",
-				"patterns": ["apps/*/src/*.ts", "apps/deploy/src/*/{contract,workloads}.ts", "packages/*/src/shared/**"]
+				"patterns": [
+					"apps/*/src/*.ts",
+					"apps/*/src/*/contract.ts",
+					"apps/deploy/src/*/workloads.ts",
+					"packages/*/src/shared/**"
+				]
 			},
-			{"name": "transport", "patterns": ["apps/*/src/server/*/{http,rpcs,tools}.ts", "apps/deploy/src/*/handlers.ts"]},
+			{"name": "transport", "patterns": ["apps/*/src/server/*/{http,rpcs,tools}.ts", "apps/*/src/*/handlers.ts"]},
 			{
 				"name": "server",
 				// First match wins: contracts above stay shared; implementations default to server-only.
-				"patterns": ["apps/*/src/server/**", "apps/deploy/src/*/**", "packages/*/src/server/**"]
+				"patterns": ["apps/*/src/server/**", "apps/*/src/*/**", "packages/*/src/server/**"]
 			}
 		],
 		"rules": [
@@ -70,13 +75,13 @@
 	"duplicates": {
 		"minTokens": 50,
 		"minLines": 5,
-		"ignore": ["apps/*/src/server/*/migrations.ts", "apps/deploy/src/*/migrations.ts"]
+		"ignore": ["apps/*/src/server/*/migrations.ts", "apps/*/src/*/migrations.ts"]
 	},
 	"health": {
 		"maxCognitive": 14,
 		"thresholdOverrides": [
 			{
-				"files": ["apps/*/src/server/*/{http,rpcs,tools}.ts", "apps/deploy/src/*/handlers.ts"],
+				"files": ["apps/*/src/server/*/{http,rpcs,tools}.ts", "apps/*/src/*/handlers.ts"],
 				"maxCognitive": 8,
 				"reason": "Transport handlers delegate decisions to services."
 			}
@@ -105,7 +110,7 @@
 			"files": [
 				"apps/*/src/server/*/schema.ts",
 				"apps/*/src/contracts.ts",
-				"apps/deploy/src/*/contract.ts",
+				"apps/*/src/*/contract.ts",
 				"packages/runtime/src/shared/schema.ts"
 			],
 			"rules": {"unused-exports": "off", "unused-types": "off"}

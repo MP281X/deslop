@@ -1,5 +1,4 @@
 import {Command, Component, Router, Subscription, UiSchema} from '@effect/ui'
-import type {View} from '@effect/ui'
 
 import {Array, Boolean, Function, Option, Predicate, Result, Schema, pipe} from 'effect'
 import type {DateTime} from 'effect'
@@ -7,7 +6,17 @@ import type {DateTime} from 'effect'
 import {AsyncResult} from 'effect/reactivity'
 
 import type {ToolbarAction, ToolbarOptions} from '@deslop/components/model'
-import {OpenUrl, appShell, readState} from '@deslop/runtime/client/shell'
+import {
+	OpenUrl,
+	goBack,
+	listBehind,
+	openItem,
+	readState,
+	selection,
+	shellApp,
+	slide
+} from '@deslop/runtime/client/shell'
+import type {AppScreen} from '@deslop/runtime/client/shell'
 import {DateTimeUtcFromFiniteMillis} from '@deslop/runtime/shared/time'
 
 import {DeployRoute, Execute, Operation, appOf, isDetail, readDeploy} from './reads.ts'
@@ -240,11 +249,12 @@ const Screen = Component.define({
 			run: p.part((el, event: string, item: InventoryItem) =>
 				el.on(event, Message.Operation({operation: runJob(item)}))
 			),
-			selection: {
-				back: p.part((el, event: string) => el.on(event, Message.Back())),
-				id: Boolean.match(isDetail(model.route), {onFalse: Function.constUndefined, onTrue: () => appOf(model.route)}),
-				select: p.part((el, event: string, id: string) => el.on(event, Message.Select({id: ItemId.make(id)})))
-			},
+			selection: selection(p, {
+				back: Message.Back(),
+				id: appOf(model.route),
+				open: isDetail(model.route),
+				select: id => Message.Select({id: ItemId.make(id)})
+			}),
 			submit: p.part((el, event: string) =>
 				el.on(
 					event,
@@ -300,13 +310,7 @@ const Screen = Component.define({
 			if (!Option.contains($.model.effectiveApp, message.id)) return $.model
 			return $.evolve({appHistory: message.result})
 		},
-		Back: $ => {
-			if (!DeployRoute.isAnyOf(['Home'])($.model.route)) {
-				return $.run(Command.asNoop(Router.replace(DeployRoute, DeployRoute.Home({search: {}}))))
-			}
-			if ($.model.hasListBehind) return $.run(Command.asNoop(Router.Back.make({})))
-			return $.run(Command.asNoop(Router.patchSearch(DeployRoute, $.model.route, {pane: 'apps'})))
-		},
+		Back: $ => $.run(goBack($.model, DeployRoute.Home({search: {}}), {pane: 'apps'})),
 		ClosedDialog: $ => {
 			const dialog = Option.getOrUndefined($.model.dialog)
 			if (dialog === undefined || ($.model.executing && Dialog.isAnyOf(['Expose'])(dialog))) return $.model
@@ -357,74 +361,34 @@ const Screen = Component.define({
 		},
 		OperationDone: ($, message) => settleOperation($, message.operation, Result.succeed(message.text)),
 		OperationFailed: ($, message) => settleOperation($, message.operation, Result.fail(message.error)),
-		Route: ($, message) => {
-			const opened = isDetail(message.route)
-			const wasOpened = isDetail($.model.route)
-			const next = $.set({
-				...$.model,
-				...moveTo($.model.inventory, message.route, $.model),
-				dialog: Option.none(),
-				hasListBehind: opened && $.model.hasListBehind,
-				route: message.route
-			})
-			if (opened && !wasOpened) return next.viewTransition(['design-detail-in'])
-			if (!opened && wasOpened) return next.viewTransition(['design-detail-out'])
-			return next
-		},
+		Route: ($, message) =>
+			slide(
+				$.set({
+					...$.model,
+					...moveTo($.model.inventory, message.route, $.model),
+					dialog: Option.none(),
+					hasListBehind: isDetail(message.route) && $.model.hasListBehind,
+					route: message.route
+				}),
+				isDetail,
+				$.model.route,
+				message.route
+			),
 		Select: ($, message) => {
 			if (!DeployRoute.isAnyOf(['Home'])($.model.route)) return $.model
-			const opened = isDetail($.model.route)
-			return $.evolve({hasListBehind: $.model.hasListBehind || !opened}).run(
-				Command.asNoop(
-					Router.patchSearch(
-						DeployRoute,
-						$.model.route,
-						{app: message.id, pane: 'process'},
-						{
-							history: Boolean.match(opened, {
-								onFalse: Function.constant('push' as const),
-								onTrue: Function.constant('replace' as const)
-							})
-						}
-					)
-				)
+			return $.evolve({hasListBehind: listBehind($.model, isDetail)}).run(
+				openItem($.model.route, isDetail, {app: message.id, pane: 'process'})
 			)
 		}
 	}
 })
 
-const Shell = appShell({every: '1 second', name: 'Deploy'})
+export type DeployScreen = AppScreen<Component.Headless.Parts<typeof Screen>>
 
-// The shell's refusals and sign-in come first, then a route no app answers.
-function problemOf(screen: Component.Headless.Parts<typeof Screen>, shell: Component.Headless.Parts<typeof Shell>) {
-	const refusal = shell.problem(screen.reads)
-	if (refusal !== undefined) return {...refusal, back: false}
-	if (screen.routeMissing) return {back: true, signIn: false, text: 'App not found'}
-	return undefined
-}
-
-export type DeployScreen = Component.Headless.Parts<typeof Screen> &
-	Omit<Component.Headless.Parts<typeof Shell>, 'problem'> & {readonly problem: ReturnType<typeof problemOf>}
-
-export function DeployApp<V extends View.Elements, R>(
-	elements: View.Vocabulary<V>,
-	view: (h: View.WithTags<never, unknown, V>, screen: DeployScreen) => View.Content<never, R>
-) {
-	return Component.withElements(elements)({
-		message: Schema.Never,
-		model: Schema.Null,
-		name: 'App',
-		props: Schema.Struct({route: DeployRoute})
-	}).make({
-		init: Function.constNull,
-		update: Function.constNull,
-		view: h =>
-			Shell(h, {
-				view: shell =>
-					Screen(h, {
-						props: {now: shell.now, route: h.props.route},
-						view: screen => view(h, {...screen, ...shell, problem: problemOf(screen, shell)})
-					})
-			})
-	})
-}
+export const DeployApp = shellApp({
+	every: '1 second',
+	missing: 'App not found',
+	name: 'Deploy',
+	props: Schema.Struct({route: DeployRoute}),
+	screen: Screen
+})

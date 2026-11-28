@@ -1,4 +1,5 @@
-import {Command, Component, Subscription, UiSchema} from '@effect/ui'
+import {Command, Component, Router, Subscription, UiSchema} from '@effect/ui'
+import type {View} from '@effect/ui'
 
 import {
 	Array,
@@ -10,6 +11,7 @@ import {
 	Layer,
 	MutableRef,
 	Option,
+	Predicate,
 	Schema,
 	Stream,
 	pipe
@@ -17,6 +19,8 @@ import {
 import type {Duration} from 'effect'
 
 import {AsyncResult, Atom, AtomRegistry} from 'effect/reactivity'
+
+import type {Absent} from '@deslop/components/model'
 
 import {observe, refreshFailed} from '#client/atom.ts'
 import {clockAtom} from '#client/clock.ts'
@@ -141,7 +145,7 @@ function authenticate() {
 }
 
 // The part of every app's screen that is not its own: the clock, the sign-in, the retry and the refusals. `view` draws the app and gets the parts to put in its screen.
-export function appShell(options: {readonly every: Duration.Input; readonly name: string}) {
+function appShell(options: {readonly every: Duration.Input; readonly name: string}) {
 	return Component.define({
 		message: ShellMessage,
 		model: Schema.Struct({
@@ -208,4 +212,129 @@ export function appShell(options: {readonly every: Duration.Input; readonly name
 			}
 		}
 	})
+}
+
+export type RouteValue = {readonly _tag: string}
+
+// Back from an item: to the home route from any other, to the page before when the list is behind the item, else to the list.
+export function goBack(
+	model: {readonly hasListBehind: boolean; readonly route: RouteValue},
+	home: RouteValue,
+	list: Readonly<Record<string, unknown>>
+) {
+	if (!Predicate.isTagged(model.route, home._tag)) return Command.asNoop(Router.Replace.make({route: home}))
+	if (model.hasListBehind) return Command.asNoop(Router.Back.make({}))
+	return Command.asNoop(Router.PatchSearch.make({history: 'replace', patch: list, route: model.route, scroll: false}))
+}
+
+// Opening an item from the list pushes a page; from another item it replaces the page.
+export function openItem<Route extends RouteValue>(
+	route: Route,
+	isOpen: (route: Route) => boolean,
+	patch: Readonly<Record<string, unknown>>
+) {
+	return Command.asNoop(
+		Router.PatchSearch.make({
+			history: Boolean.match(isOpen(route), {
+				onFalse: Function.constant('push' as const),
+				onTrue: Function.constant('replace' as const)
+			}),
+			patch,
+			route,
+			scroll: false
+		})
+	)
+}
+
+// The detail slides in as an item opens and out as it closes.
+export function slide<Route extends RouteValue, Step extends {viewTransition: (types?: readonly string[]) => Step}>(
+	step: Step,
+	isOpen: (route: Route) => boolean,
+	from: Route,
+	to: Route
+) {
+	if (isOpen(to) && !isOpen(from)) return step.viewTransition(['design-detail-in'])
+	if (!isOpen(to) && isOpen(from)) return step.viewTransition(['design-detail-out'])
+	return step
+}
+
+// Whether the list stays one step behind the item: it does once the item opened from it.
+export function listBehind<Route extends RouteValue>(
+	model: {readonly hasListBehind: boolean; readonly route: Route},
+	isOpen: (route: Route) => boolean
+) {
+	return model.hasListBehind || !isOpen(model.route)
+}
+
+// The parts that select an item in a list and go back from it.
+export function selection<Msg, Props, V extends View.Elements>(
+	p: Component.PartsHelper<Msg, Props, V>,
+	input: {
+		readonly back: Msg
+		readonly id: string | Absent
+		readonly open: boolean
+		readonly select: (id: string) => Msg
+	}
+) {
+	return {
+		back: p.part((el, event: string) => el.on(event, input.back)),
+		id: Boolean.match(input.open, {onFalse: Function.constUndefined, onTrue: Function.constant(input.id)}),
+		select: p.part((el, event: string, id: string) => el.on(event, input.select(id)))
+	}
+}
+
+export type ScreenParts = {
+	readonly reads: readonly AsyncResult.AsyncResult<unknown, unknown>[]
+	readonly routeMissing: boolean
+}
+
+// The shell's refusals and sign-in come first, then a route the screen does not answer.
+function problemOf(screen: ScreenParts, shell: Component.Headless.Parts<ReturnType<typeof appShell>>, missing: string) {
+	const refusal = shell.problem(screen.reads)
+	if (refusal !== undefined) return {...refusal, back: false}
+	if (screen.routeMissing) return {back: true, signIn: false, text: missing}
+	return undefined
+}
+
+// What an app's views draw from: its screen, the shell's parts, and the one problem that replaces the screen.
+export type AppScreen<Parts extends ScreenParts> = Parts &
+	Omit<Component.Headless.Parts<ReturnType<typeof appShell>>, 'problem'> & {
+		readonly problem: ReturnType<typeof problemOf>
+	}
+
+// An app's root: the shell around its one screen, which takes the route as a prop beside the shell's clock.
+export function shellApp<
+	Props extends {readonly route: {readonly _tag: string}},
+	Parts extends ScreenParts,
+	Needs
+>(options: {
+	readonly every: Duration.Input
+	readonly missing: string
+	readonly name: string
+	readonly props: Schema.Codec<Props, unknown>
+	readonly screen: Component.Headless<{readonly now: DateTime.Utc; readonly route: Props['route']}, never, Parts, Needs>
+}) {
+	const AppShell = appShell(options)
+	return function App<V extends View.Elements, R>(
+		elements: View.Vocabulary<V>,
+		view: (h: View.WithTags<never, unknown, V>, screen: AppScreen<Parts>) => View.Content<never, R>
+	) {
+		return Component.withElements(elements)({
+			message: Schema.Never,
+			model: Schema.Null,
+			name: 'App',
+			props: options.props
+		}).make({
+			init: Function.constNull,
+			update: Function.constNull,
+			view: h =>
+				AppShell(h, {
+					view: shell =>
+						options.screen(h, {
+							props: {now: shell.now, route: h.props.route},
+							view: screen => view(h, {...screen, ...shell, problem: problemOf(screen, shell, options.missing)})
+						})
+				})
+		})
+	}
 }

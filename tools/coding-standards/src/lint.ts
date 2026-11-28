@@ -5,6 +5,7 @@ import type {OxlintConfig} from 'vite-plus/lint'
 import {definePlugin} from 'vite-plus/lint/plugins'
 import type {Plugin} from 'vite-plus/lint/plugins'
 
+import {appLayout} from '#lint/app-layout.ts'
 import {choicesAreSchemas} from '#lint/choices-are-schemas.ts'
 import {effectCallForm} from '#lint/effect-call-form.ts'
 import {libraryOperation} from '#lint/library-operation.ts'
@@ -123,6 +124,7 @@ function classLiterals(pattern: string) {
 // Checks of Deslop's own choices, which only Deslop's conventions can serve.
 
 const RULES = {
+	'app-layout': appLayout,
 	'choices-are-schemas': choicesAreSchemas,
 	'effect-call-form': effectCallForm,
 	'library-operation': libraryOperation,

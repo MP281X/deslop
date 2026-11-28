@@ -7,6 +7,9 @@ import {defineConfig} from 'vite-plus'
 
 import {lint} from './tools/coding-standards/src/lint.ts'
 
+// The apps not yet moved to Deploy's feature layout; every other app and the template must follow it, and each app's migration removes its name here.
+const UNMIGRATED = ['auth', 'gateway', 'opm', 'portfolio', 'scope', 'stash', 'trips']
+
 // Each worktree previews in its own systemd user unit, which outlives the agent's turn, on a port derived from its path and shared over tailnet HTTPS.
 const PREVIEW_UNIT = Array.join(
 	[
@@ -115,6 +118,12 @@ export default defineConfig({
 		ignorePatterns: ['**/*.gen.ts'],
 		overrides: [
 			{
+				// A source file stays small enough to read whole; a test may be longer.
+				excludeFiles: ['**/*.test.ts', ...Array.map(UNMIGRATED, name => `**/apps/${name}/**`)],
+				files: ['**/apps/*/**', '**/tools/create-app/template/**'],
+				rules: {'eslint/max-lines': ['error', 600]}
+			},
+			{
 				files: ['**/tools/coding-standards/src/lint.test.ts'],
 				rules: {
 					'@deslop/coding-standards/test-boundaries': ['error', 'read-source-text', 'execute-program'],
@@ -154,6 +163,7 @@ export default defineConfig({
 			}
 		],
 		rules: {
+			'@deslop/coding-standards/app-layout': ['error', ...UNMIGRATED],
 			'eslint-js/no-restricted-syntax': [
 				...lint.rules['eslint-js/no-restricted-syntax'],
 				{
