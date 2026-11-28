@@ -58,15 +58,17 @@ export class Authenticate extends Command.Service<Authenticate>()('Shell/Authent
 	success: Schema.Boolean
 }) {}
 
-// Ends this device's session at Auth; the iPhone shell implements it, since a browser leaves through Auth's own page.
+// Ends this device's session at Auth, and says whether Auth confirmed it; the iPhone shell implements it, since a browser leaves through Auth's own page. A failure says the app's own `failure`.
 export class SignOutSession extends Command.Service<SignOutSession>()('Shell/SignOutSession', {
-	args: {},
-	error: AuthError
+	args: {failure: Schema.String},
+	error: AuthError,
+	success: Schema.Boolean
 }) {}
 
 export class OpenUrl extends Command.Service<OpenUrl>()('Shell/OpenUrl', {args: {url: Schema.String}}) {}
 
-class Refresh extends Command.Service<Refresh>()('Shell/Refresh', {args: {authenticated: Schema.Boolean}}) {
+// Reads the account again and the reads that failed, after a session began or ended when `authenticated`.
+export class Refresh extends Command.Service<Refresh>()('Shell/Refresh', {args: {authenticated: Schema.Boolean}}) {
 	static readonly layer = this.toLayer(
 		Effect.gen(function* () {
 			const shell = yield* Shell
@@ -157,11 +159,12 @@ function appShell(options: {readonly every: Duration.Input; readonly name: strin
 		model: Schema.Struct({
 			authError: Schema.Option(Schema.String),
 			now: DateTimeUtcFromFiniteMillis,
-			redirected: Schema.Boolean
+			redirected: Schema.Boolean,
+			signIns: Schema.Int
 		}),
 		name: `${options.name}Shell`
 	}).make({
-		init: () => ({authError: Option.none(), now: DateTime.nowUnsafe(), redirected: false}),
+		init: () => ({authError: Option.none(), now: DateTime.nowUnsafe(), redirected: false, signIns: 0}),
 		parts: (p, model) => ({
 			authenticate: p.part((el, event: string) => el.on(event, ShellMessage.SignIn())),
 			now: model.now,
@@ -179,6 +182,7 @@ function appShell(options: {readonly every: Duration.Input; readonly name: strin
 				return undefined
 			},
 			retry: p.part((el, event: string) => el.on(event, ShellMessage.Retry())),
+			signIns: model.signIns,
 			signingIn: p.isRunning(Authenticate)
 		}),
 		subscriptions: () => [
@@ -206,7 +210,7 @@ function appShell(options: {readonly every: Duration.Input; readonly name: strin
 		update: {
 			Clock: ($, message) => $.evolve({now: message.now}),
 			Retry: $ => $.run(Command.asNoop(Refresh.make({authenticated: false}))),
-			SignIn: $ => $.evolve({authError: Option.none()}).run(authenticate()),
+			SignIn: $ => $.evolve({authError: Option.none(), signIns: $.model.signIns + 1}).run(authenticate()),
 			SignInFailed: ($, message) => $.evolve({authError: Option.some(message.text)}),
 			SignInRequested: $ => {
 				if ($.model.redirected) return $.model
@@ -318,7 +322,12 @@ export function shellApp<
 	readonly missing: string
 	readonly name: string
 	readonly props: Schema.Codec<Props, unknown>
-	readonly screen: Component.Headless<{readonly now: DateTime.Utc; readonly route: Props['route']}, never, Parts, Needs>
+	readonly screen: Component.Headless<
+		{readonly now: DateTime.Utc; readonly route: Props['route']; readonly signIns?: number},
+		never,
+		Parts,
+		Needs
+	>
 }) {
 	const AppShell = appShell(options)
 	return function App<V extends View.Elements, R>(
@@ -337,7 +346,7 @@ export function shellApp<
 				AppShell(h, {
 					view: shell =>
 						options.screen(h, {
-							props: {now: shell.now, route: h.props.route},
+							props: {now: shell.now, route: h.props.route, signIns: shell.signIns},
 							view: screen => view(h, {...screen, ...shell, problem: problemOf(screen, shell, options.missing)})
 						})
 				})

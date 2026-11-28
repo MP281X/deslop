@@ -17,3 +17,8 @@ declare module 'react-native/Libraries/WebSocket/WebSocket' {
 	) => Socket.WebSocketLike
 	export default WebSocket
 }
+
+declare module 'react-native/Libraries/Components/Clipboard/Clipboard' {
+	const Clipboard: {readonly setString: (value: string) => void}
+	export default Clipboard
+}
