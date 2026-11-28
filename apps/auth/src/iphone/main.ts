@@ -101,7 +101,9 @@ const layerActions = Layer.provideMerge(
 	Layer.mergeAll(
 		StartSignIn.toLayer(Effect.map(Authenticate, authenticate => () => authenticate({}))),
 		ReturnTo.toLayer(() => Effect.void),
-		SignOut.toLayer(Effect.map(SignOutSession, signOut => () => Effect.as(signOut({}), true))),
+		SignOut.toLayer(
+			Effect.map(SignOutSession, signOut => () => Effect.as(signOut({failure: 'Couldn’t sign out'}), true))
+		),
 		RecoverSignIn.toLayer(Effect.map(Refresh, refresh => () => refresh({reader: 'account'})))
 	),
 	layerAuth

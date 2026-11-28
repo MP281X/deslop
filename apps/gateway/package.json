@@ -16,11 +16,19 @@
 	"sideEffects": false,
 	"main": "src/iphone/main.ts",
 	"imports": {
+		"#ai-metering/*": "./src/ai-metering/*",
+		"#ai-proxy/*": "./src/ai-proxy/*",
+		"#app": "./src/app.ts",
+		"#connections/*": "./src/connections/*",
 		"#contracts": "./src/contracts.ts",
-		"#server/*": "./src/server/*",
-		"#web/*": "./src/web/*",
-		"#iphone/*": "./src/iphone/*",
-		"#screens/*": "./src/screens/*"
+		"#gateway/*": "./src/gateway/*",
+		"#grants/*": "./src/grants/*",
+		"#network/*": "./src/network/*",
+		"#reads": "./src/reads.ts",
+		"#upstreams/*": "./src/upstreams/*",
+		"#usage/*": "./src/usage/*",
+		"#view": "./src/view.ts",
+		"#web/*": "./src/web/*"
 	},
 	"publishConfig": {
 		"access": "public"

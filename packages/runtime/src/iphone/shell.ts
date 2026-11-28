@@ -2,7 +2,7 @@ import 'react-native/Libraries/Core/setUpXHR'
 
 import type {Router} from '@effect/ui'
 
-import {Effect, Layer, Option, Schema, pipe} from 'effect'
+import {Effect, Layer, Option, Schema} from 'effect'
 
 import {FetchHttpClient} from 'effect/http'
 import {Atom} from 'effect/reactivity'
@@ -17,7 +17,7 @@ import {iphoneOrigins} from '@deslop/runtime/shared/origins'
 
 import {layerSocketProtocol} from '#client/protocol.ts'
 import {Authenticate, OpenUrl, SignOutSession, layerShell} from '#client/shell.ts'
-import {iphoneSession, secureSession} from '#iphone/session.ts'
+import {iphoneSession, isSignOutConfirmed, secureSession} from '#iphone/session.ts'
 import {AuthError} from '#shared/auth.ts'
 
 class OpenUrlError extends Schema.TaggedError<OpenUrlError>()('OpenUrlError', {
@@ -45,12 +45,11 @@ export function layerIPhoneShell<Routes extends Router.Routes>(options: {
 			false
 		),
 		Authenticate.toLayer(() => session.signIn),
-		SignOutSession.toLayer(() =>
-			pipe(
-				session.signOut(fetch),
-				Effect.mapError(cause => AuthError.make({cause, message: 'Couldn’t sign out'})),
-				Effect.asVoid
-			)
+		SignOutSession.toLayer(request =>
+			Effect.mapBoth(session.signOut(fetch), {
+				onFailure: cause => AuthError.make({cause, message: request.failure}),
+				onSuccess: isSignOutConfirmed
+			})
 		),
 		OpenUrl.toLayer(request =>
 			Effect.ignore(
