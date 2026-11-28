@@ -12,7 +12,7 @@ import type {Sample} from './contract.ts'
 
 import {AppId} from '#inventory/contract.ts'
 import type {InventoryItem, Snapshot} from '#inventory/contract.ts'
-import {itemOwner} from '#inventory/workloads.ts'
+import {itemOwner} from '#inventory/shared.ts'
 
 const MetricsRead = AsyncResult.Schema({error: Schema.Unknown, success: MachineHistory})
 const AppRead = AsyncResult.Schema({error: Schema.Unknown, success: AppHour})

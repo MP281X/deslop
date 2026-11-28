@@ -1,5 +1,3 @@
-import './styles.css'
-
 import {Router} from '@effect/ui'
 import type {View} from '@effect/ui'
 import {BrowserHost, Html} from '@effect/ui/html'
@@ -15,16 +13,19 @@ import {layerWebShell} from '@deslop/runtime/web/shell'
 import {DeployApp} from '#app'
 import {DeployRoute, layerDeploy} from '#reads'
 import {Workspace} from '#view'
+import type {DeployUi, SiteRow} from '#view'
 
-import type {DeployUi, Exposure} from '#exposures/view.ts'
-
-function Site<M>(h: Html.H<M>, site: Exposure) {
+function Site<M>(h: Html.H<M>, site: SiteRow) {
 	return h.div
 		.key(site.id)
 		.children(
 			Option.match(Option.fromUndefinedOr(site.url), {
 				onNone: () => h.span.children(site.label),
-				onSome: url => h.a.attrs({href: url, rel: 'noreferrer', target: '_blank', title: url}).children(site.label)
+				onSome: url =>
+					h.a
+						.style({color: 'inherit'})
+						.attrs({href: url, rel: 'noreferrer', target: '_blank', title: url})
+						.children(site.label)
 			}),
 			site.status !== undefined && h.span.style({color: status[site.status]}).children(` · ${site.line ?? ''}`)
 		)

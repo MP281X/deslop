@@ -8,52 +8,32 @@ import {
 	Effect,
 	Equal,
 	Exit,
+	FileSystem,
 	Filter,
 	Function,
 	HashMap,
 	HashSet,
-	Iterable,
-	Match,
 	Number,
 	Option,
 	Record,
 	Schema,
+	SchemaGetter,
 	String,
 	Tracer,
 	pipe
 } from 'effect'
-import type {FileSystem} from 'effect'
 
 import {FetchHttpClient, HttpClient, HttpTraceContext} from 'effect/http'
 import {ChildProcessSpawner} from 'effect/process'
 
 import {executeProcess} from '@deslop/runtime/server/process'
 
-import {
-	APP_LIFECYCLE_MESSAGES,
-	AppId,
-	AppLifecycleEvent,
-	InventoryItem,
-	ItemId,
-	ProcessIdFromString,
-	Timer,
-	UnitId
-} from './contract.ts'
-import type {ProcessId, ServiceScope} from './contract.ts'
-import {ipv4Reachable} from './workloads.ts'
+import {DeployError} from '#contracts'
 
-import {DeployError} from '#machine/contract.ts'
-
-const APP_UNIT = /^deslop-[a-z0-9-]+\.service$/u
-
-const SIGNALS: Record<number, string> = {
-	1: 'SIGHUP',
-	2: 'SIGINT',
-	6: 'SIGABRT',
-	9: 'SIGKILL',
-	11: 'SIGSEGV',
-	15: 'SIGTERM'
-}
+import {InventoryItem, ItemId, Process, ProcessIdFromString, Timer, UnitId} from './contract.ts'
+import type {AppId, ProcessId, ServiceScope} from './contract.ts'
+import {commandLabel, maskArguments} from './labels.ts'
+import {appUnitName, ownedUnits, probeSocket, socketLine, socketUnit, unitFailures} from './parse.ts'
 
 // A command that hangs is killed within its source's ten seconds; optional metadata names a shorter wait so a stall drops only itself.
 export function commandRunner(spawner: ChildProcessSpawner.ChildProcessSpawner['Service']) {
@@ -82,50 +62,6 @@ function systemctlRows<A>(command: Command, args: string[], row: Schema.Decoder<
 	)
 }
 
-function appUnitName(name: string) {
-	return !String.endsWith('-update.service')(name) && Option.isSome(String.match(APP_UNIT)(name))
-}
-
-// The installer puts apps, not update jobs or helper services, in this slice.
-// fallow-ignore-next-line unused-export -- Tests call this directly.
-export function ownedUnits(text: string) {
-	return pipe(
-		String.trim(text),
-		String.split(/\n\s*\n/u),
-		Array.filterMap(
-			Filter.fromPredicateOption(block => {
-				const fields = Record.fromEntries(
-					pipe(
-						block,
-						String.split('\n'),
-						Array.filterMap(
-							Filter.fromPredicateOption(line =>
-								Option.map(
-									String.indexOf('=')(line),
-									at => [String.slice(0, at)(line), String.slice(at + 1)(line)] as const
-								)
-							)
-						)
-					)
-				)
-				const name = fields['Id'] ?? ''
-				const type = fields['Type'] ?? ''
-				return Option.liftPredicate(
-					UnitId.make(name),
-					unit =>
-						appUnitName(unit) &&
-						fields['LoadState'] === 'loaded' &&
-						fields['Slice'] === 'deslop.slice' &&
-						fields['TriggeredBy'] === '' &&
-						type !== '' &&
-						type !== 'oneshot'
-				)
-			})
-		),
-		HashSet.fromIterable
-	)
-}
-
 // The units of these names that are owned apps.
 export function appDetails(command: Command, names: readonly UnitId[]) {
 	return Effect.map(
@@ -135,76 +71,6 @@ export function appDetails(command: Command, names: readonly UnitId[]) {
 			'3 seconds'
 		),
 		ownedUnits
-	)
-}
-
-function failureReason(result: string, status: number, ran: boolean) {
-	if (result === 'exit-code' && !ran) return 'Failed before starting'
-	const signal = SIGNALS[status] ?? `signal ${status}`
-	return pipe(
-		Match.value(result),
-		Match.when('exit-code', () =>
-			Option.match(Option.fromUndefinedOr(SIGNALS[status - 128]), {
-				onNone: () => `Exited with code ${status}`,
-				onSome: name => `Exited with code ${status} (${name})`
-			})
-		),
-		Match.when('signal', () => `Killed by ${signal}`),
-		Match.when('core-dump', () => `Crashed with ${signal}`),
-		Match.when('oom-kill', Function.constant('Killed for running out of memory')),
-		Match.when('timeout', Function.constant('Timed out')),
-		Match.when('watchdog', Function.constant('Stopped answering its watchdog')),
-		Match.when('start-limit-hit', Function.constant('Restarted too often')),
-		Match.orElse(() => `Failed: ${result}`)
-	)
-}
-
-// Why each failed unit stopped and when, by unit, from `systemctl show -p Id,ActiveState,Result,ExecMainCode,ExecMainStatus,StateChangeTimestamp --timestamp=unix`. A unit that recovered between its listing and this read is no longer failed, so it has no reason.
-// fallow-ignore-next-line unused-export -- Tests call this directly.
-export function unitFailures(text: string) {
-	return pipe(
-		String.trim(text),
-		String.split(/\n\s*\n/u),
-		Array.filter(String.isNonEmpty),
-		Array.flatMap(block => {
-			const fields = pipe(
-				block,
-				String.split('\n'),
-				Array.filter(String.includes('=')),
-				Record.fromIterableWith(line => {
-					const [key, ...value] = String.split(line, '=')
-					return [key, Array.join(value, '=')] as const
-				})
-			)
-			const id = fields['Id'] ?? ''
-			const result = fields['Result'] ?? ''
-			const status = Number.parse(fields['ExecMainStatus'] ?? '')
-			if (
-				!String.isNonEmpty(id) ||
-				!String.isNonEmpty(fields['ExecMainCode'] ?? '') ||
-				fields['ActiveState'] !== 'failed' ||
-				!String.isNonEmpty(result) ||
-				result === 'success'
-			) {
-				return []
-			}
-			return Option.match(status, {
-				onNone: () => [],
-				onSome: exitStatus => [
-					[
-						UnitId.make(id),
-						{
-							at: Option.map(Number.parse(String.replace(/^@/u, '')(fields['StateChangeTimestamp'] ?? '')), seconds =>
-								DateTime.mapEpochMillis(DateTime.makeUnsafe(0), () => seconds * 1000)
-							),
-							// A unit whose start step failed never ran its main process, which leaves its code 0.
-							reason: failureReason(result, exitStatus, fields['ExecMainCode'] !== '0')
-						}
-					] as const
-				]
-			})
-		}),
-		Record.fromEntries
 	)
 }
 
@@ -355,35 +221,6 @@ const makeProbe = Effect.fnUntraced(function* (http: HttpClient.HttpClient) {
 	}
 })
 
-// fallow-ignore-next-line unused-export -- Tests call this directly.
-export function socketLine(line: string) {
-	const fields = String.split(String.trim(line), /\s+/u)
-	const address = fields[4] ?? ''
-	const state = fields[1] ?? ''
-	if (!Array.contains(['tcp', 'udp'], fields[0]) || !String.isNonEmpty(state) || !String.isNonEmpty(address)) {
-		return Option.none()
-	}
-	return Option.map(Number.parse(Array.lastNonEmpty(String.split(address, ':'))), port => ({
-		address,
-		port,
-		// A name may itself hold a quote; it ends at the quote before its pid.
-		process: Option.flatMap(String.match(/users:\(\("(.+?)",pid=([0-9]+)/u)(line), match =>
-			Option.map(Schema.decodeOption(ProcessIdFromString)(match[2] ?? ''), pid => ({name: match[1] ?? '', pid}))
-		),
-		protocol: fields[0],
-		state
-	}))
-}
-
-function probeSocket(listener: Option.Option.Value<ReturnType<typeof socketLine>>, process: string) {
-	return (
-		listener.protocol === 'tcp' &&
-		listener.port >= 1024 &&
-		ipv4Reachable(listener.address) &&
-		Option.isNone(String.match(/^(?:postgres|redis|ssh|cloudflared|tailscaled|caddy)$/u)(process))
-	)
-}
-
 // Each listener with its unit, the app a Node listener's working directory names, and whether it answers HTTP. A PID whose start time changed while it was read was reused, so its listener keeps none of what was read.
 function portItems(
 	sockets: readonly Option.Option.Value<ReturnType<typeof socketLine>>[],
@@ -485,20 +322,6 @@ function portItems(
 	})
 }
 
-// The service a cgroup path names, and whether a user manager runs it, so a user and a system unit of one name stay apart.
-function socketUnit(cgroup: string) {
-	return Option.map(
-		Iterable.findLast(String.matchAll(/\/([^/]+\.service)(?=\/|\n|$)/gu)(cgroup), Function.constTrue),
-		match => ({
-			scope: Boolean.match(Option.isSome(String.match(/\/user@[0-9]+\.service\/.*\.service(?:\/|\n|$)/u)(cgroup)), {
-				onFalse: Function.constant<ServiceScope>('system'),
-				onTrue: Function.constant<ServiceScope>('user')
-			}),
-			unit: UnitId.make(match[1] ?? '')
-		})
-	)
-}
-
 // The listening sockets `ss` lists, with each one's owner read from /proc.
 export function makeListeners(command: Command, fs: FileSystem.FileSystem, http: HttpClient.HttpClient) {
 	return Effect.map(makeProbe(http), probe =>
@@ -523,57 +346,172 @@ export function makeListeners(command: Command, fs: FileSystem.FileSystem, http:
 	)
 }
 
-export type AppAction = typeof AppAction.Type
-const AppAction = Schema.Literals(['restart', 'stop'])
+type CpuTicks = typeof CpuTicks.Type
+const CpuTicks = Schema.Array(Schema.FiniteFromString)
 
-const [STARTED, , RESTART_SCHEDULED] = APP_LIFECYCLE_MESSAGES
+type ResidentMemoryFromKiB = typeof ResidentMemoryFromKiB.Type
+const ResidentMemoryFromKiB = pipe(
+	Schema.FiniteFromString,
+	Schema.decodeTo(Schema.Finite, {
+		decode: SchemaGetter.transform(value => value * 1024),
+		encode: SchemaGetter.transform(value => value / 1024)
+	})
+)
 
-export function appUnit(id: AppId) {
-	return pipe(
-		id,
-		String.match(/^service:user:(.+)$/u),
-		Option.flatMap(match => Array.get(match, 1)),
-		Option.filter(appUnitName),
-		Option.map(name => UnitId.make(name))
-	)
+const PROCESS_INTERVAL = Duration.seconds(2)
+
+export type ProcessReading = {
+	owner: Option.Option<AppId>
+	process: Process
+	// Time since boot.
+	start: Duration.Duration
+	ticks: Duration.Duration
 }
 
-export function ownedProcess(uid: number, cgroup: string) {
-	return pipe(
-		cgroup,
-		String.match(/^0::\/user\.slice\/user-(\d+)\.slice\/user@(\d+)\.service\/deslop\.slice\/([^/\n]+)/u),
-		Option.filter(match => match[1] === `${uid}` && match[2] === `${uid}`),
-		Option.flatMap(match => Array.get(match, 3)),
-		Option.filter(appUnitName),
-		Option.map(unit => AppId.make(`service:user:${unit}`))
-	)
-}
+export type ProcessMeasurement = {records: readonly ProcessReading[]; time: DateTime.Utc; total: Duration.Duration}
 
-// A completed start needs evidence of an earlier run in this boot. A stop or scheduled restart can supply it after the earlier start has rotated away.
-export function restartTimes(text: string, after: DateTime.Utc, now: DateTime.Utc) {
-	return pipe(
-		text,
+// Linux omits VmRSS for kernel threads and zombies, which own no resident userspace memory; a missing or empty Pid or PPid fails the reading.
+function processStatus(status: string) {
+	const values = pipe(
+		String.trim(status),
 		String.split('\n'),
-		Array.filterMap(Filter.fromPredicateOption(line => Schema.decodeOption(AppLifecycleEvent)(line))),
-		Array.reduce(
-			{boots: HashSet.empty<string>(), invocations: HashSet.empty<string>(), restarts: Array.empty<DateTime.Utc>()},
-			(state, entry) => {
-				const boots = HashSet.add(state.boots, entry._BOOT_ID)
-				if (entry.MESSAGE_ID === RESTART_SCHEDULED) return {...state, boots}
-				const id = entry.USER_INVOCATION_ID ?? ''
-				if (id === '' || HashSet.has(state.invocations, id)) return state
-				const time = DateTime.makeUnsafe(Math.floor(entry.__REALTIME_TIMESTAMP / 1000))
-				if (
-					entry.MESSAGE_ID === STARTED &&
-					HashSet.has(state.boots, entry._BOOT_ID) &&
-					DateTime.isGreaterThan(time, after) &&
-					DateTime.isLessThanOrEqualTo(time, now)
-				) {
-					return {boots, invocations: HashSet.add(state.invocations, id), restarts: Array.append(state.restarts, time)}
-				}
-				return {...state, boots, invocations: HashSet.add(state.invocations, id)}
-			}
+		Array.filterMap(
+			Filter.fromPredicateOption(line =>
+				Option.map(
+					String.indexOf(':')(line),
+					at => [String.slice(0, at)(line), String.trim(String.slice(at + 1)(line))] as const
+				)
+			)
 		),
-		state => state.restarts
+		Record.fromEntries
 	)
+	// A field Linux always prints; missing or empty, it decodes as nothing and fails.
+	function field(name: string) {
+		return pipe(Record.get(values, name), Option.filter(String.isNonEmpty), Option.getOrUndefined)
+	}
+	return {
+		memory: Schema.decodeSync(ResidentMemoryFromKiB)(String.split(values['VmRSS'] ?? '', /\s+/u)[0] || '0'),
+		name: values['Name'] ?? '',
+		parent: Schema.decodeUnknownSync(ProcessIdFromString)(field('PPid')),
+		pid: Schema.decodeUnknownSync(ProcessIdFromString)(field('Pid'))
+	}
+}
+
+// Collector input permits vanished or unreadable individual processes to be skipped and optional metadata to be absent; whole-machine reads still fail.
+export const processes = Effect.fnUntraced(function* (ownerOf: (cgroup: string) => Option.Option<AppId>) {
+	const fs = yield* FileSystem.FileSystem
+	const stat = yield* fs.readFileString('/proc/stat')
+	const counts = yield* Schema.decodeEffect(CpuTicks)(
+		pipe(String.trim(String.split(stat, '\n')[0]), String.split(/\s+/u), Array.drop(1), Array.take(8))
+	)
+	const total = Duration.millis(Number.sumAll(counts) * 10)
+	const records = yield* pipe(
+		yield* fs.readDirectory('/proc'),
+		Array.filter(name => Option.isSome(String.match(/^[0-9]+$/u)(name))),
+		Effect.forEach(
+			pid =>
+				Effect.option(
+					Effect.gen(function* () {
+						const owner = yield* Effect.fromOption(ownerOf(yield* fs.readFileString(`/proc/${pid}/cgroup`)))
+						const status = yield* fs.readFileString(`/proc/${pid}/status`)
+						const processStat = yield* fs.readFileString(`/proc/${pid}/stat`)
+						const cwd = yield* Effect.option(fs.readLink(`/proc/${pid}/cwd`))
+						// A process whose arguments can't be read still counts, labelled by its name. They are read only to label it, never sent: each is masked and their number capped.
+						const command = Option.map(yield* Effect.option(fs.readFileString(`/proc/${pid}/cmdline`)), cmdline =>
+							maskArguments(pipe(cmdline, String.split('\0'), Array.filter(String.isNonEmpty), Array.take(40)))
+						)
+						const fields = String.split(
+							String.slice((yield* Effect.fromOption(String.lastIndexOf(')')(processStat))) + 2)(processStat),
+							/\s+/u
+						)
+						const parsed = yield* Effect.try({
+							catch: cause => DeployError.make({cause, message: `Process ${pid} has an unreadable status.`}),
+							try: () => processStatus(status)
+						})
+						return {
+							owner: Option.some(owner),
+							process: Process.make({
+								...parsed,
+								cpu: Option.none(),
+								// The label reads the masked arguments; a kernel thread or a zombie has none, so its name stands alone.
+								label: pipe(
+									command,
+									Option.filter(Array.isReadonlyArrayNonEmpty<string>),
+									Option.match({
+										onNone: () => ({detail: '', name: parsed.name}),
+										onSome: args => commandLabel(args, cwd)
+									})
+								)
+							}),
+							start: Duration.millis((yield* Schema.decodeEffect(Schema.FiniteFromString)(fields[19] ?? '')) * 10),
+							ticks: Duration.millis(
+								((yield* Schema.decodeEffect(Schema.FiniteFromString)(fields[11] ?? '')) +
+									(yield* Schema.decodeEffect(Schema.FiniteFromString)(fields[12] ?? ''))) *
+									10
+							)
+						}
+					})
+				),
+			{concurrency: 16}
+		),
+		Effect.map(Array.getSomes)
+	)
+	return {records, time: yield* DateTime.now, total}
+})
+
+function processUsage(current: ProcessMeasurement, previous: Option.Option<ProcessMeasurement>) {
+	const known = HashMap.fromIterable(
+		pipe(
+			previous,
+			Option.match({onNone: () => [], onSome: old => old.records}),
+			Array.map(record => [record.process.pid, record] as const)
+		)
+	)
+	return Array.map(current.records, record => {
+		const elapsed = Option.match(previous, {
+			onNone: () => Duration.zero,
+			onSome: old => Duration.subtract(current.total, old.total)
+		})
+		const process: Process = {
+			...record.process,
+			cpu: pipe(
+				HashMap.get(known, record.process.pid),
+				Option.filter(
+					value =>
+						Equal.equals(value.start, record.start) &&
+						Duration.isGreaterThan(elapsed, Duration.zero) &&
+						Duration.isGreaterThanOrEqualTo(record.ticks, value.ticks) &&
+						Option.exists(
+							previous,
+							old =>
+								pipe(old.time, DateTime.distance(current.time), Duration.isGreaterThanOrEqualTo(PROCESS_INTERVAL)) &&
+								pipe(old.time, DateTime.distance(current.time), Duration.isLessThanOrEqualTo(Duration.seconds(90)))
+						)
+				),
+				Option.map(value =>
+					Number.clamp(
+						(Duration.toMillis(Duration.subtract(record.ticks, value.ticks)) / Duration.toMillis(elapsed)) * 100,
+						{maximum: 100, minimum: 0}
+					)
+				)
+			)
+		}
+		return {...record, process}
+	})
+}
+
+export function processReadings(
+	current: ProcessMeasurement,
+	previous: Option.Option<{
+		baseline: ProcessMeasurement
+		readings: readonly {start: ProcessReading['start']; process: Process}[]
+	}>
+) {
+	return {
+		baseline: current,
+		readings: processUsage(
+			current,
+			Option.map(previous, cached => cached.baseline)
+		)
+	}
 }

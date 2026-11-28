@@ -40,12 +40,7 @@
 			{"name": "entry", "patterns": ["apps/*/src/server/main.ts", "apps/*/src/server.ts"]},
 			{
 				"name": "shared",
-				"patterns": [
-					"apps/*/src/*.ts",
-					"apps/*/src/*/contract.ts",
-					"apps/deploy/src/*/workloads.ts",
-					"packages/*/src/shared/**"
-				]
+				"patterns": ["apps/*/src/*.ts", "apps/*/src/*/{contract,shared}.ts", "packages/*/src/shared/**"]
 			},
 			{"name": "transport", "patterns": ["apps/*/src/server/*/{http,rpcs,tools}.ts", "apps/*/src/*/handlers.ts"]},
 			{
@@ -126,7 +121,7 @@
 		"dev-dependencies-in-production": "error",
 		"duplicate-export-aliases": "error",
 		"empty-catalog-groups": "error",
-		// Components build on the runtime, never the reverse.
+		// The runtime's app shell builds on components, never the reverse.
 		"package-cycle": "error",
 		"policy-violation": "off",
 		"private-type-leaks": "error",

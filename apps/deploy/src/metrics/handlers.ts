@@ -20,6 +20,8 @@ import {
 
 import {Tool, Toolkit} from 'effect/ai'
 
+import {DeployError} from '#contracts'
+
 import {HistoryQuery, MetricsRpcs, ResourceHistory} from './contract.ts'
 import type {AppUsage, BandId, MachineHistory, Sample} from './contract.ts'
 import {SERIES, chartWindow, resolution} from './history.ts'
@@ -27,8 +29,7 @@ import {Metrics} from './server.ts'
 
 import type {AppId} from '#inventory/contract.ts'
 import {Inventory} from '#inventory/server.ts'
-import {ownerNames} from '#inventory/workloads.ts'
-import {DeployError} from '#machine/contract.ts'
+import {ownerNames} from '#inventory/shared.ts'
 import {Machine} from '#machine/server.ts'
 
 type MetricSummary = typeof MetricSummary.Type

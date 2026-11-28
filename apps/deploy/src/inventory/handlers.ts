@@ -24,6 +24,8 @@ import {Reactivity} from 'effect/reactivity'
 import {requireAdmin} from '@deslop/runtime/server/auth'
 import {AuthError, CurrentAdmin, CurrentUser} from '@deslop/runtime/shared/auth'
 
+import {DeployError} from '#contracts'
+
 import {
 	AppList,
 	ExposureName,
@@ -36,10 +38,9 @@ import {
 } from './contract.ts'
 import type {HttpsExposure, InventoryItem, Job, ProcessSummary, Snapshot} from './contract.ts'
 import {Inventory, jobRequest} from './server.ts'
-import {healthRank, important, processTree, rowUsageOrder, workloadName, workloads} from './workloads.ts'
-import type {ProcessNode, Row} from './workloads.ts'
+import {healthRank, important, processTree, rowUsageOrder, workloadName, workloads} from './shared.ts'
+import type {ProcessNode, Row} from './shared.ts'
 
-import {DeployError} from '#machine/contract.ts'
 import {Machine} from '#machine/server.ts'
 
 type PageLimit = typeof PageLimit.Type
@@ -131,7 +132,7 @@ function summaryOf(node: ProcessNode): ProcessSummary {
 	}
 }
 
-function appOf(row: Row, withProcesses: boolean) {
+function appSummary(row: Row, withProcesses: boolean) {
 	const reachable = portsOf(row)
 	const url = Option.flatMap(Array.head(row.exposures), exposure => exposure.url)
 	return {
@@ -179,7 +180,7 @@ function listApps(snapshot: Snapshot, input: InventoryQuery) {
 				(!onlyFailing || row.item.health !== 'quiet')
 		),
 		Array.sort(appOrder),
-		Array.map(row => appOf(row, Option.isSome(app)))
+		Array.map(row => appSummary(row, Option.isSome(app)))
 	)
 	const jobs = pipe(
 		Array.filter(

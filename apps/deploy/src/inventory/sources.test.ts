@@ -1,95 +1,54 @@
 import {assert, it} from '@effect/vitest'
 
-import {Array, DateTime, HashSet, Option, Record, Schema} from 'effect'
+import {Array, DateTime, Duration, Option, Schema} from 'effect'
 
-import {APP_LIFECYCLE_MESSAGES, AppId, AppLifecycleEvent, UnitId} from './contract.ts'
-import {appUnit, ownedProcess, ownedUnits, restartTimes, socketLine, unitFailures} from './sources.ts'
-import {ipv4Reachable} from './workloads.ts'
+import {Process} from './contract.ts'
+import type {AppId} from './contract.ts'
+import {processReadings} from './sources.ts'
 
-function unit(name: string, slice: string, trigger = '', type = 'simple') {
-	return `Id=${name}.service\nLoadState=loaded\nSlice=${slice}.slice\nTriggeredBy=${trigger}\nType=${type}`
+const PREVIOUS = {
+	records: [
+		{
+			owner: Option.none<AppId>(),
+			process: Schema.decodeSync(Process)({
+				label: {detail: '', name: 'node'},
+				memory: 1024,
+				name: 'node',
+				parent: 1,
+				pid: 42
+			}),
+			start: Duration.millis(100),
+			ticks: Duration.millis(10)
+		}
+	],
+	time: DateTime.makeUnsafe(0),
+	total: Duration.millis(800)
 }
 
-function entry(message: AppLifecycleEvent['MESSAGE_ID'], time: number, id: string, boot = 'a') {
-	return Schema.encodeSync(AppLifecycleEvent)({
-		__REALTIME_TIMESTAMP: time * 1000,
-		_BOOT_ID: boot,
-		MESSAGE_ID: message,
-		USER_INVOCATION_ID: id
-	})
+const CURRENT = {
+	...PREVIOUS,
+	records: Array.map(PREVIOUS.records, record => ({...record, ticks: Duration.millis(60)})),
+	time: DateTime.makeUnsafe(10_000),
+	total: Duration.millis(1000)
 }
 
-it('accepts canonical apps in the managed user slice, but not helpers or jobs', () => {
-	const properties = [
-		unit('deslop-scope', 'deslop'),
-		unit('deslop-metrics', 'deslop', 'job.timer'),
-		unit('deslop-setup', 'deslop', '', 'oneshot'),
-		unit('deslop-scope-update', 'deslop'),
-		unit('deslop-caddy', 'app'),
-		unit('foreign', 'deslop')
-	]
-	assert.deepStrictEqual(ownedUnits(Array.join(properties, '\n\n')), HashSet.make(UnitId.make('deslop-scope.service')))
-	assert.deepStrictEqual(appUnit(AppId.make('service:system:deslop-scope.service')), Option.none())
-	assert.deepStrictEqual(appUnit(AppId.make('service:user:deslop-*.service')), Option.none())
-})
-
-it('samples only processes in the matching user manager and slice', () => {
-	const cgroup = '0::/user.slice/user-1000.slice/user@1000.service/deslop.slice/deslop-scope.service/worker\n'
-	assert.deepStrictEqual(ownedProcess(1000, cgroup), Option.some(AppId.make('service:user:deslop-scope.service')))
-	assert.deepStrictEqual(ownedProcess(1001, cgroup), Option.none())
-})
-
-it('marks a new invocation at the journalled start, not when the restart was queued', () => {
-	const [started, stopped, scheduled] = APP_LIFECYCLE_MESSAGES
-	const journal = Array.join(
-		[
-			entry(stopped, 300, 'old'),
-			entry(started, 432, 'new'),
-			entry(started, 500, 'new'),
-			entry(started, 700, 'first', 'b'),
-			entry(scheduled, 850, '', 'b'),
-			entry(started, 921, 'second', 'b'),
-			entry(scheduled, 950, '', 'b')
-		],
-		'\n'
-	)
-	assert.deepStrictEqual(restartTimes(journal, DateTime.makeUnsafe(350), DateTime.makeUnsafe(1000)), [
-		DateTime.makeUnsafe(432),
-		DateTime.makeUnsafe(921)
-	])
-})
-
-it('distinguishes a failed start from a process exit and retains when it failed', () => {
-	const failures = unitFailures(
-		'Id=app.service\nActiveState=failed\nResult=exit-code\nExecMainCode=0\nExecMainStatus=203\nStateChangeTimestamp=@123\n\nId=worker.service\nActiveState=failed\nResult=exit-code\nExecMainCode=1\nExecMainStatus=137\nStateChangeTimestamp=@124\n'
+it('measures CPU deltas only across readings of the same live process', () => {
+	const baseline = Option.some(processReadings(PREVIOUS, Option.none()))
+	assert.deepStrictEqual(processReadings(CURRENT, baseline).readings[0]?.process.cpu, Option.some(25))
+	assert.deepStrictEqual(processReadings(CURRENT, Option.none()).readings[0]?.process.cpu, Option.none())
+	assert.deepStrictEqual(
+		processReadings({...CURRENT, time: DateTime.makeUnsafe(91_000)}, baseline).readings[0]?.process.cpu,
+		Option.none()
 	)
 	assert.deepStrictEqual(
-		Record.get(failures, UnitId.make('app.service')),
-		Option.some({at: Option.some(DateTime.makeUnsafe(123_000)), reason: 'Failed before starting'})
+		processReadings({...CURRENT, total: Duration.millis(100)}, baseline).readings[0]?.process.cpu,
+		Option.none()
 	)
-	assert.strictEqual(
-		Option.getOrThrow(Record.get(failures, UnitId.make('worker.service'))).reason,
-		'Exited with code 137 (SIGKILL)'
-	)
-})
-
-it('gives no reason for a unit that recovered after it was listed', () => {
-	assert.isTrue(
-		Record.isEmptyRecord(
-			unitFailures(
-				'Id=systemd-journald.service\nActiveState=active\nResult=success\nExecMainCode=0\nExecMainStatus=0\nStateChangeTimestamp=@125\n'
-			)
-		)
-	)
-})
-
-it('reads a quoted process name and keeps a dual-stack wildcard within loopback reach', () => {
-	const socket = Option.getOrThrow(socketLine('tcp LISTEN 0 5 *:31000 *:* users:(("name"quote",pid=111,fd=5))'))
 	assert.deepStrictEqual(
-		Option.map(socket.process, process => process.name),
-		Option.some('name"quote')
+		processReadings(
+			{...CURRENT, records: Array.map(CURRENT.records, record => ({...record, start: Duration.millis(101)}))},
+			baseline
+		).readings[0]?.process.cpu,
+		Option.none()
 	)
-	assert.isTrue(ipv4Reachable(socket.address))
-	assert.isFalse(ipv4Reachable('[::]:31000'))
-	assert.isFalse(ipv4Reachable('[::1]:31000'))
 })

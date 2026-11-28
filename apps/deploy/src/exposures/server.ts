@@ -2,15 +2,10 @@ import {
 	Array,
 	Boolean,
 	Context,
-	Deferred,
-	Duration,
 	Effect,
-	Exit,
 	Function,
 	Layer,
-	Number,
 	Option,
-	Queue,
 	Record,
 	Ref,
 	Result,
@@ -20,219 +15,36 @@ import {
 	Struct,
 	pipe
 } from 'effect'
-import type {Equivalence} from 'effect'
 
 import {Migrator, SqlClient, SqlSchema} from 'effect/sql'
 import type {SqlError} from 'effect/sql'
 
 import type {Admin} from '@deslop/runtime/shared/auth'
-import type {RuntimeConfig} from '@deslop/runtime/shared/schema'
+
+import {DeployError} from '#contracts'
 
 import {Exposure} from './contract.ts'
 import type {ExposeInput} from './contract.ts'
 import {migrations} from './migrations.ts'
+import {exposureUrl, ownedConflict, ownsMapping, refusal, reservedPort, restoreRefusal, servesPort} from './policy.ts'
+import {makeReconciler} from './reconciler.ts'
 
 import {InventoryItem, ItemId} from '#inventory/contract.ts'
 import type {ExposureName, Snapshot} from '#inventory/contract.ts'
 import {Inventory} from '#inventory/server.ts'
-import {portOwner} from '#inventory/workloads.ts'
-import {DeployError} from '#machine/contract.ts'
-import type {Serve} from '#proxies/contract.ts'
-import {CADDY_ADMIN_PORT, Proxies} from '#proxies/server.ts'
+import {portOwner} from '#inventory/shared.ts'
+import {Proxies} from '#proxies/server.ts'
 
 const asStorageDeployError = Effect.mapError((cause: SqlError.SqlError | Schema.SchemaError) =>
 	DeployError.make({cause, message: 'The owned exposures could not be read or written.'})
 )
 
-function asDeployError<A, E, R>(effect: Effect.Effect<A, E, R>) {
+function asExposureError<A, E, R>(effect: Effect.Effect<A, E, R>) {
 	return Effect.mapError(effect, cause => {
 		if (Schema.is(DeployError)(cause)) return cause
 		return DeployError.make({cause, message: 'Exposure change failed; check permissions, target port and ownership'})
 	})
 }
-
-// Why a port is never published whatever listens on it, known without connecting to it; none for any other port.
-// fallow-ignore-next-line unused-export -- Tests call this directly.
-export function reservedPort(port: number) {
-	return pipe(
-		port,
-		Option.liftPredicate(candidate => candidate === CADDY_ADMIN_PORT),
-		Option.map(Function.constant('Caddy’s admin port is never published'))
-	)
-}
-
-// What answers on a port, as Deploy reads it: the inventory's owner, none when nothing listens, and the Deslop runtime it reports, if any.
-// fallow-ignore-next-line unused-type -- Tests call this directly.
-export type Listener = {readonly owner: Option.Option<string>; readonly runtime: Option.Option<RuntimeConfig>}
-
-// Why `exposure` may not be published over what now listens on its port; none when it may.
-// fallow-ignore-next-line unused-export -- Tests call this directly.
-export function refusal(exposure: Omit<ExposeInput, 'publicAccess'>, listener: Listener) {
-	const reserved = reservedPort(exposure.port)
-	if (Option.isSome(reserved)) return reserved
-	// A Deslop app runs as `deslop-<name>` and says so at its runtime endpoint; a preview or dev server only says so.
-	return pipe(
-		listener.runtime,
-		Option.map(runtime => runtime.name),
-		Option.orElse(() =>
-			pipe(
-				listener.owner,
-				Option.flatMap(String.match(/^user:deslop-([a-z0-9-]+?)(?:\.service)?$/u)),
-				Option.flatMap(match => Option.fromUndefinedOr(match[1]))
-			)
-		),
-		Option.flatMap(name =>
-			Option.match(listener.runtime, {
-				onNone: () => Option.some(`${name} did not say how it runs; publish it once it answers`),
-				onSome: runtime =>
-					Option.match(runtime.auth, {
-						// Without a domain the app treats every caller as its developer.
-						onNone: () => Option.some(`${name} runs without a domain, so Deploy never publishes it`),
-						onSome: auth => {
-							if (exposure.name !== name) {
-								return Option.some(`Port ${exposure.port} belongs to ${name}; publish it only under the name ${name}`)
-							}
-							const own = `${name}.${String.replace(/^https:\/\/auth\./u, '')(auth)}`
-							if (exposure.kind === 'public' && exposure.hostname !== own) {
-								return Option.some(`Publish ${name} only at ${own}`)
-							}
-							return Option.none()
-						}
-					})
-			})
-		)
-	)
-}
-
-// Why `exposure` may not be saved beside the owned ones: its name is taken, or an owned exposure holds its hostname as a public site or on the same port; none when it may.
-// fallow-ignore-next-line unused-export -- Tests call this directly.
-export function ownedConflict(owned: readonly Exposure[], exposure: Exposure) {
-	if (Array.some(owned, row => row.name === exposure.name)) {
-		return Option.some('Remove the existing owned exposure, and let its removal finish, before changing it')
-	}
-	if (
-		Array.some(
-			owned,
-			row => row.hostname === exposure.hostname && (row.kind === 'public' || row.port === exposure.port)
-		)
-	) {
-		return Option.some('This hostname or port already has an owned exposure')
-	}
-	return Option.none()
-}
-
-// Why a saved exposure is not published at this restore: nothing listens on its port, its port changed owner, or it may no longer be published. The row is kept, so it is published again once its saved owner listens on the port again; a new owner is never published under it, though it is still served until the proxy takes the withdrawal.
-// fallow-ignore-next-line unused-export -- Tests call this directly.
-export function restoreRefusal(row: Exposure, listener: Listener) {
-	return Option.match(listener.owner, {
-		onNone: () => Option.some(`Nothing listens on 127.0.0.1:${row.port}, so it is not published until its owner does`),
-		onSome: current =>
-			pipe(
-				row.owner,
-				Option.filter(saved => saved !== current),
-				Option.map(
-					saved =>
-						`Port ${row.port} now belongs to ${current}, not ${saved}, so Deploy withdraws this site; it returns when ${saved} listens again`
-				),
-				Option.orElse(() => refusal(row, listener))
-			)
-	})
-}
-
-// Whether this tailnet row's own mapping, and only that, is what Tailscale Serve holds for its port.
-// fallow-ignore-next-line unused-export -- Tests call this directly.
-export function ownsMapping(status: Serve, row: Exposure) {
-	return (
-		!Option.exists(status.AllowFunnel, permissions => permissions[`${row.hostname}:${row.port}`] === true) &&
-		pipe(
-			status.Web,
-			Option.flatMap(Record.get(`${row.hostname}:${row.port}`)),
-			Option.exists(
-				value =>
-					Record.size(value.Handlers) === 1 &&
-					pipe(
-						value.Handlers,
-						Record.get('/'),
-						Option.flatMap(handler => handler.Proxy),
-						Option.exists(proxy => proxy === `http://127.0.0.1:${row.port}`)
-					)
-			)
-		)
-	)
-}
-
-// fallow-ignore-next-line unused-export -- Tests call this directly.
-export function servesPort(status: Serve, port: number) {
-	return Option.exists(status.TCP, ports => Record.has(ports, `${port}`))
-}
-
-// fallow-ignore-next-line unused-export -- Tests call this directly.
-export function exposureUrl(row: Exposure) {
-	if (row.kind === 'tailnet') return `https://${row.hostname}:${row.port}`
-	return `https://${row.hostname}`
-}
-
-// One pass at a time over saved state: every request made during a pass shares exactly one more, and an unfinished pass runs again after a pause that doubles from five seconds to ten minutes while it leaves the same things unfinished; a different outcome starts again at five seconds.
-// fallow-ignore-next-line unused-export -- Tests call this directly.
-export const makeReconciler = Effect.fnUntraced(function* <A, E>(
-	pass: Effect.Effect<A, E>,
-	finished: (outcome: A) => boolean,
-	unchanged: Equivalence.Equivalence<A>
-) {
-	const wake = yield* Queue.sliding<void>(1)
-	const waiting = yield* Ref.make(Option.none<Deferred.Deferred<A, E>>())
-	const retry = yield* Ref.make(Option.none<{readonly failed: number; readonly outcome: Option.Option<A>}>())
-	yield* pipe(
-		Effect.gen(function* () {
-			yield* Option.match(yield* Ref.get(retry), {
-				onNone: () => Queue.take(wake),
-				onSome: state =>
-					Effect.raceFirst(
-						Queue.take(wake),
-						Effect.sleep(
-							pipe(Duration.seconds(5), Duration.times(2 ** state.failed), Duration.min(Duration.minutes(10)))
-						)
-					)
-			})
-			const served = yield* Ref.getAndSet(waiting, Option.none())
-			const exit = yield* Effect.exit(pass)
-			yield* Effect.forEach(Option.toArray(served), deferred => Deferred.done(deferred, exit), {
-				concurrency: 1,
-				discard: true
-			})
-			yield* Ref.update(retry, state => {
-				if (Exit.isSuccess(exit) && finished(exit.value)) return Option.none()
-				const before = Option.flatMap(state, last => last.outcome)
-				const outcome = Exit.match(exit, {onFailure: () => before, onSuccess: Option.some})
-				// A failed pass and one that left the same things unfinished wait longer; anything new is tried again soon.
-				return Option.some({
-					failed: pipe(
-						state,
-						Option.filter(() => Option.makeEquivalence(unchanged)(before, outcome)),
-						Option.match({onNone: Function.constant(0), onSome: last => Number.min(last.failed + 1, 7)})
-					),
-					outcome
-				})
-			})
-		}),
-		Effect.forever,
-		Effect.forkScoped
-	)
-	return {
-		// Asks for a pass and answers with the first one that starts after the request.
-		request: Effect.gen(function* () {
-			const fresh = yield* Deferred.make<A, E>()
-			const deferred = yield* Ref.modify(waiting, current =>
-				Option.match(current, {
-					onNone: () => [fresh, Option.some(fresh)] as const,
-					onSome: pending => [pending, current] as const
-				})
-			)
-			yield* Queue.offer(wake, undefined)
-			return yield* Deferred.await(deferred)
-		})
-	}
-})
 
 export class Exposures extends Context.Service<Exposures>()('@deslop/deploy/exposures/server/Exposures', {
 	make: Effect.gen(function* () {
@@ -496,7 +308,7 @@ export class Exposures extends Context.Service<Exposures>()('@deslop/deploy/expo
 					return exposureUrl(exposure)
 				},
 				Semaphore.withPermit(lock),
-				asDeployError
+				asExposureError
 			),
 			hide: Effect.fn('Exposures.hide')(
 				function* (name: ExposureName, _admin: Admin) {
@@ -525,7 +337,7 @@ export class Exposures extends Context.Service<Exposures>()('@deslop/deploy/expo
 					yield* settle(name, 'The removal is saved and Deploy finishes it on its own')
 				},
 				Semaphore.withPermit(lock),
-				asDeployError
+				asExposureError
 			),
 			items: pipe(
 				Effect.all({current: owned, failing: Ref.get(problems)}, {concurrency: 'unbounded'}),

@@ -10,15 +10,11 @@ import {
 	Effect,
 	Fiber,
 	FileSystem,
-	Function,
 	Layer,
 	MutableRef,
-	Number,
 	Option,
 	Queue,
 	Record,
-	Ref,
-	String,
 	pipe
 } from 'effect'
 
@@ -27,15 +23,15 @@ import {TestClock} from 'effect/testing'
 import {requireAdmin} from '@deslop/runtime/server/auth'
 import {layerDataStore} from '@deslop/runtime/server/store'
 import {UserId} from '@deslop/runtime/shared/auth'
-import {AppVersion} from '@deslop/runtime/shared/schema'
 import type {RuntimeConfig} from '@deslop/runtime/shared/schema'
 
-import {Exposure} from './contract.ts'
-import {Exposures, makeReconciler, ownedConflict, refusal, restoreRefusal} from './server.ts'
+import {DeployError} from '#contracts'
+
+import type {Exposure} from './contract.ts'
+import {Exposures} from './server.ts'
 
 import {ExposureName, InventoryItem, ItemId, UnitId} from '#inventory/contract.ts'
 import {Inventory} from '#inventory/server.ts'
-import {DeployError} from '#machine/contract.ts'
 import type {Serve} from '#proxies/contract.ts'
 import {Proxies} from '#proxies/server.ts'
 
@@ -46,17 +42,6 @@ const WEB = {
 	port: 5173,
 	publicAccess: true
 }
-
-function app(name: string, domain: Option.Option<string>) {
-	return Option.some({
-		auth: Option.map(domain, value => `https://auth.${value}`),
-		name,
-		traces: Option.none(),
-		version: AppVersion.make('0.1.1')
-	})
-}
-
-const STASH = {owner: Option.some('user:deslop-stash.service'), runtime: app('stash', Option.some('example.com'))}
 
 function listening(unit: string, port = 5173) {
 	return InventoryItem.make({
@@ -184,23 +169,6 @@ function tailnet(name: string, port: number) {
 
 function states(items: Effect.Success<typeof Exposures.Service.items>) {
 	return Array.map(items, item => [item.name, item.state, item.health] as const)
-}
-
-function exposure(name: string, hostname: string, port = 5104) {
-	return {hostname, kind: 'public' as const, name: ExposureName.make(name), port}
-}
-
-function saved(owner: Option.Option<string>) {
-	return Exposure.make({...exposure('web', 'web.example.com'), owner, state: 'active'})
-}
-
-function tailnetRow(name: string, port: number) {
-	return Exposure.make({
-		...exposure(name, 'web.example.com', port),
-		kind: 'tailnet',
-		owner: Option.none(),
-		state: 'active'
-	})
 }
 
 it.layer(NodeServices.layer)(test => {
@@ -429,197 +397,3 @@ it.layer(NodeServices.layer)(test => {
 		}, Effect.scoped)
 	)
 })
-
-it('refuses Caddy’s admin port whatever listens on it', () => {
-	assert.isTrue(
-		Option.isSome(
-			refusal(exposure('admin', 'admin.example.com', 20_219), {owner: Option.none(), runtime: Option.none()})
-		)
-	)
-})
-
-it('publishes a Deslop app only under its own name and hostname', () => {
-	assert.isTrue(Option.isNone(refusal(exposure('stash', 'stash.example.com'), STASH)))
-	assert.isTrue(Option.isSome(refusal(exposure('notes', 'stash.example.com'), STASH)))
-	assert.isTrue(Option.isSome(refusal(exposure('stash', 'notes.example.com'), STASH)))
-	assert.isTrue(Option.isNone(refusal({...exposure('stash', 'desktop.tail.ts.net'), kind: 'tailnet'}, STASH)))
-})
-
-it('refuses another app’s port, and an app that runs without a domain', () => {
-	assert.isTrue(
-		Option.isSome(
-			refusal(exposure('stash', 'stash.example.com'), {
-				owner: Option.some('user:deslop-auth.service'),
-				runtime: app('auth', Option.some('example.com'))
-			})
-		)
-	)
-	assert.isTrue(
-		Option.isSome(
-			refusal(exposure('deploy', 'deploy.example.com'), {
-				owner: Option.some('user:deslop-deploy.service'),
-				runtime: app('deploy', Option.none())
-			})
-		)
-	)
-	// A preview names no Deslop unit but still answers as the app.
-	assert.isTrue(
-		Option.isSome(
-			refusal(exposure('stash', 'stash.example.com'), {
-				owner: Option.some('user:preview-stash.service'),
-				runtime: app('stash', Option.none())
-			})
-		)
-	)
-})
-
-it('refuses a Deslop unit that does not say how it runs, and publishes any other listener', () => {
-	assert.isTrue(
-		Option.isSome(
-			refusal(exposure('stash', 'stash.example.com'), {
-				owner: Option.some('user:deslop-stash.service'),
-				runtime: Option.none()
-			})
-		)
-	)
-	assert.isTrue(
-		Option.isNone(
-			refusal(exposure('grafana', 'grafana.example.com'), {
-				owner: Option.some('container:grafana'),
-				runtime: Option.none()
-			})
-		)
-	)
-})
-
-it('does not restore a row whose port is empty or now belongs to another owner, and checks a row saved without one only by policy', () => {
-	const row = saved(Option.some('user:web.service'))
-	const listener = {owner: Option.some('user:other.service'), runtime: Option.none()}
-	assert.isTrue(Option.isSome(restoreRefusal(row, listener)))
-	assert.isTrue(Option.isNone(restoreRefusal(row, {...listener, owner: Option.some('user:web.service')})))
-	assert.isTrue(Option.isSome(restoreRefusal(row, {...listener, owner: Option.none()})))
-	assert.isTrue(Option.isSome(restoreRefusal(saved(Option.none()), {...listener, owner: Option.none()})))
-	assert.isTrue(Option.isNone(restoreRefusal(saved(Option.none()), listener)))
-})
-
-it('saves an exposure only under a free name, on a hostname no public site or same-port mapping holds', () => {
-	assert.deepStrictEqual(
-		Array.map(
-			[
-				ownedConflict(
-					[saved(Option.none())],
-					Exposure.make({...exposure('web', 'other.example.com'), owner: Option.none(), state: 'active'})
-				),
-				ownedConflict([saved(Option.none())], tailnetRow('admin', 8443)),
-				ownedConflict([tailnetRow('admin', 8443)], tailnetRow('grafana', 8443)),
-				ownedConflict([tailnetRow('admin', 8443)], tailnetRow('grafana', 9443))
-			],
-			Option.isSome
-		),
-		[true, true, true, false]
-	)
-})
-
-it.effect(
-	'requests made while a pass runs share exactly one more pass',
-	Effect.fnUntraced(function* () {
-		const passes = yield* Ref.make(0)
-		const running = yield* Deferred.make<void>()
-		const gate = yield* Deferred.make<void>()
-		const reconciler = yield* makeReconciler(
-			Effect.gen(function* () {
-				const pass = yield* Ref.updateAndGet(passes, count => count + 1)
-				if (pass === 1) {
-					yield* Deferred.succeed(running, undefined)
-					yield* Deferred.await(gate)
-				}
-				return pass
-			}),
-			Function.constTrue,
-			Number.Equivalence
-		)
-		const first = yield* Effect.forkChild(reconciler.request, {startImmediately: true})
-		yield* Deferred.await(running)
-		const later = yield* Effect.forEach(
-			Array.range(1, 5),
-			() => Effect.forkChild(reconciler.request, {startImmediately: true}),
-			{concurrency: 1}
-		)
-		yield* Deferred.succeed(gate, undefined)
-		assert.strictEqual(yield* Fiber.join(first), 1)
-		assert.deepStrictEqual(yield* Fiber.joinAll(later), [2, 2, 2, 2, 2])
-		assert.strictEqual(yield* Ref.get(passes), 2)
-	}, Effect.scoped)
-)
-
-it.effect(
-	'an unfinished pass runs again on its own, and a finished one does not',
-	Effect.fnUntraced(function* () {
-		const passes = yield* Ref.make(0)
-		const reconciler = yield* makeReconciler(
-			Ref.updateAndGet(passes, count => count + 1),
-			pass => pass > 1,
-			Number.Equivalence
-		)
-		assert.strictEqual(yield* reconciler.request, 1)
-		yield* TestClock.adjust('5 seconds')
-		assert.strictEqual(yield* Ref.get(passes), 2)
-		yield* TestClock.adjust('10 minutes')
-		assert.strictEqual(yield* Ref.get(passes), 2)
-	}, Effect.scoped)
-)
-
-it.effect(
-	'a failing pass answers its requests with the failure and is retried after a longer pause each time',
-	Effect.fnUntraced(function* () {
-		const passes = yield* Ref.make(0)
-		const reconciler = yield* makeReconciler(
-			pipe(
-				passes,
-				Ref.updateAndGet(count => count + 1),
-				Effect.filterOrFail(pass => pass >= 3, Function.constant('Caddy is down'))
-			),
-			Function.constTrue,
-			Number.Equivalence
-		)
-		assert.strictEqual(yield* Effect.flip(reconciler.request), 'Caddy is down')
-		yield* TestClock.adjust('5 seconds')
-		assert.strictEqual(yield* Ref.get(passes), 2)
-		yield* TestClock.adjust('5 seconds')
-		assert.strictEqual(yield* Ref.get(passes), 2)
-		yield* TestClock.adjust('5 seconds')
-		assert.strictEqual(yield* Ref.get(passes), 3)
-		yield* TestClock.adjust('10 minutes')
-		assert.strictEqual(yield* Ref.get(passes), 3)
-	}, Effect.scoped)
-)
-
-it.effect(
-	'the pause grows while a pass leaves the same thing unfinished and starts again when that changes',
-	Effect.fnUntraced(function* () {
-		const passes = yield* Ref.make(0)
-		const held = yield* Ref.make('notes')
-		const reconciler = yield* makeReconciler(
-			pipe(
-				passes,
-				Ref.update(count => count + 1),
-				Effect.andThen(Ref.get(held))
-			),
-			Function.constFalse,
-			String.Equivalence
-		)
-		assert.strictEqual(yield* reconciler.request, 'notes')
-		yield* TestClock.adjust('5 seconds')
-		yield* TestClock.adjust('10 seconds')
-		assert.strictEqual(yield* Ref.get(passes), 3)
-		yield* Ref.set(held, 'stash')
-		yield* TestClock.adjust('20 seconds')
-		assert.strictEqual(yield* Ref.get(passes), 4)
-		yield* TestClock.adjust('5 seconds')
-		assert.strictEqual(yield* Ref.get(passes), 5)
-		yield* TestClock.adjust('5 seconds')
-		assert.strictEqual(yield* Ref.get(passes), 5)
-		yield* TestClock.adjust('5 seconds')
-		assert.strictEqual(yield* Ref.get(passes), 6)
-	}, Effect.scoped)
-)

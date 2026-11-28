@@ -1,25 +1,11 @@
 import {Array, Boolean, Function, Option, pipe} from 'effect'
 
-import type {Components} from '@deslop/components/components'
-import type {Choice, PaneLeaf, Press, SheetOptions} from '@deslop/components/model'
+import type {Choice, SheetOptions} from '@deslop/components/model'
 
 import type {DeployScreen} from '#app'
+import type {DeployUi, SheetCommon} from '#view'
 
 const EXPOSURE = 'deploy-exposure'
-
-export type Exposure = NonNullable<DeployScreen['detail']>['exposures'][number]
-export type SheetCommon<C> = {
-	readonly dismiss: DeployScreen['dismiss']
-	readonly label: string
-	readonly open: true
-	readonly pending: boolean
-	readonly toolbar: SheetOptions<C>['toolbar']
-}
-
-// The one piece the hosts draw differently: the web links out, the iPhone presses.
-export type DeployUi<H, C, S> = Components<H, C, S> & {
-	site: (host: H, site: Exposure, open: (url: string) => Press) => PaneLeaf<C>
-}
 
 // The ports of the app the admin can publish.
 export function portChoices(screen: DeployScreen, app: NonNullable<DeployScreen['detail']>) {
@@ -46,7 +32,7 @@ export function portChoices(screen: DeployScreen, app: NonNullable<DeployScreen[
 }
 
 // The sheet that publishes a port: its form, its toolbar menu and the button that submits it.
-export function exposeSheet<H, C, S>(
+export function exposeSheetOptions<H, C, S>(
 	host: H,
 	screen: DeployScreen,
 	ui: DeployUi<H, C, S>,

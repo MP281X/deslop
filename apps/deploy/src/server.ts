@@ -7,12 +7,11 @@ import {layerMcp, layerRpc} from '@deslop/runtime/server/http'
 import {ToolPath} from '@deslop/runtime/server/process'
 import {dataDirectory} from '@deslop/runtime/server/store'
 
-import {RpcContracts} from '#contracts'
-
 import {exposuresHandlers, exposuresToolHandlers, exposuresTools} from '#exposures/handlers.ts'
 import {Exposures} from '#exposures/server.ts'
 import {inventoryHandlers, inventoryToolHandlers, inventoryTools} from '#inventory/handlers.ts'
 import {Inventory} from '#inventory/server.ts'
+import {RpcContracts} from '#machine/contract.ts'
 import {Machine} from '#machine/server.ts'
 import {metricsHandlers, metricsToolHandlers, metricsTools} from '#metrics/handlers.ts'
 import {Metrics} from '#metrics/server.ts'

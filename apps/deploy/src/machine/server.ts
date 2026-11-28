@@ -4,7 +4,7 @@ import {Reactivity} from 'effect/reactivity'
 
 import type {Admin} from '@deslop/runtime/shared/auth'
 
-import type {DeployError} from './contract.ts'
+import type {DeployError} from '#contracts'
 
 import type {ExposeInput} from '#exposures/contract.ts'
 import {Exposures} from '#exposures/server.ts'

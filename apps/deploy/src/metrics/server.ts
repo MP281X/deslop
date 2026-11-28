@@ -31,6 +31,8 @@ import type {SqlError} from 'effect/sql'
 
 import {executeProcess} from '@deslop/runtime/server/process'
 
+import {DeployError} from '#contracts'
+
 import {CgroupPath, Counters, HistoryQuery} from './contract.ts'
 import type {AppHour, AppSample, Disk, MachineHistory, MetricSource, Sample} from './contract.ts'
 import {
@@ -53,12 +55,11 @@ import {migrations} from './migrations.ts'
 
 import type {AppRequest} from '#inventory/contract.ts'
 import {Inventory} from '#inventory/server.ts'
-import {processOwner, processTrackUsage, processTree} from '#inventory/workloads.ts'
-import {DeployError} from '#machine/contract.ts'
+import {processOwner, processTrackUsage, processTree} from '#inventory/shared.ts'
 
 const CGROUP = '/sys/fs/cgroup'
 
-const asDeployError = Effect.mapError((cause: SqlError.SqlError | Schema.SchemaError) =>
+const asHistoryError = Effect.mapError((cause: SqlError.SqlError | Schema.SchemaError) =>
 	DeployError.make({cause, message: 'The resource history could not be read or written.'})
 )
 
@@ -83,8 +84,7 @@ function sameBucket(row: Sample, time: DateTime.Utc) {
 }
 
 // Each app cgroup's memory and CPU time, which count processes that came and went between samples.
-// fallow-ignore-next-line unused-export -- Tests call this directly.
-export function cgroupReader(fs: FileSystem.FileSystem) {
+function cgroupReader(fs: FileSystem.FileSystem) {
 	// The cgroups that are each one app, opened level by level through slices and user managers without entering an app; a cgroup gone mid-walk has no children.
 	function walk(
 		pending: readonly CgroupPath[],
@@ -201,7 +201,7 @@ export class Metrics extends Context.Service<Metrics>()('@deslop/deploy/metrics/
 						time: current.time
 					}))
 				)
-				if (Array.isReadonlyArrayNonEmpty(rows)) yield* asDeployError(store.saveProcessSamples(rows))
+				if (Array.isReadonlyArrayNonEmpty(rows)) yield* asHistoryError(store.saveProcessSamples(rows))
 			}),
 			Effect.withSpan('Metrics.collectProcesses'),
 			Effect.ignore({log: 'Warn', message: 'Process history could not be sampled'})
@@ -294,7 +294,7 @@ export class Metrics extends Context.Service<Metrics>()('@deslop/deploy/metrics/
 			const value = yield* sampled(() => sample(current, files.memory, disks, old, Option.some(files.load)))
 			return {current, value: {...value, point: {...value.point, apps: shares, appsCoverage: coverageOf(shares)}}}
 		})
-		const pending = yield* Ref.make<readonly Sample[]>(yield* asDeployError(store.listBuckets(yield* DateTime.now)))
+		const pending = yield* Ref.make<readonly Sample[]>(yield* asHistoryError(store.listBuckets(yield* DateTime.now)))
 		const writes = yield* Semaphore.make(1)
 		const collect = pipe(
 			Effect.gen(function* () {
@@ -330,7 +330,7 @@ export class Metrics extends Context.Service<Metrics>()('@deslop/deploy/metrics/
 				const saved = yield* Effect.exit(
 					Effect.gen(function* () {
 						if (Array.isReadonlyArrayNonEmpty(rows)) {
-							yield* pipe(store.saveSamples(rows), sql.withTransaction, asDeployError)
+							yield* pipe(store.saveSamples(rows), sql.withTransaction, asHistoryError)
 						}
 					})
 				)
@@ -374,7 +374,7 @@ export class Metrics extends Context.Service<Metrics>()('@deslop/deploy/metrics/
 				store.deleteExpired(now),
 				Effect.andThen(store.deleteProcessSamples(DateTime.subtractDuration(now, Duration.hours(1)))),
 				sql.withTransaction,
-				asDeployError,
+				asHistoryError,
 				Effect.withSpan('Metrics.prune')
 			)
 		})
@@ -397,7 +397,7 @@ export class Metrics extends Context.Service<Metrics>()('@deslop/deploy/metrics/
 
 		return {
 			processHistory: Effect.fn('Metrics.processHistory')(function* (input: AppRequest, time: DateTime.Utc) {
-				const rows = yield* asDeployError(
+				const rows = yield* asHistoryError(
 					store.listProcessSamples({
 						after: DateTime.subtractDuration(time, Duration.hours(1)),
 						app: input.id,
@@ -419,10 +419,10 @@ export class Metrics extends Context.Service<Metrics>()('@deslop/deploy/metrics/
 			read: Effect.fn('Metrics.read')(function* (query: HistoryQuery) {
 				yield* Effect.annotateCurrentSpan({minutes: Duration.toMinutes(query.minutes)})
 				const time = yield* DateTime.now
-				const step = SERIES[yield* asDeployError(Schema.encodeEffect(HistoryQuery.fields.minutes)(query.minutes))]
+				const step = SERIES[yield* asHistoryError(Schema.encodeEffect(HistoryQuery.fields.minutes)(query.minutes))]
 				const samples = yield* writes.withPermits(1)(
 					Effect.gen(function* () {
-						const stored = yield* asDeployError(
+						const stored = yield* asHistoryError(
 							store.listSeries({after: DateTime.subtractDuration(chartWindow(query.minutes, time).start, step), step})
 						)
 						const buffered = Array.filter(yield* Ref.get(pending), row => Duration.equals(row.step, step))

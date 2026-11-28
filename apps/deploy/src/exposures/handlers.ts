@@ -5,10 +5,11 @@ import {Tool, Toolkit} from 'effect/ai'
 import {requireAdmin} from '@deslop/runtime/server/auth'
 import {AuthError, CurrentAdmin, CurrentUser} from '@deslop/runtime/shared/auth'
 
+import {DeployError} from '#contracts'
+
 import {ExposeInput, ExposuresRpcs} from './contract.ts'
 
 import {ExposureName} from '#inventory/contract.ts'
-import {DeployError} from '#machine/contract.ts'
 import {Machine} from '#machine/server.ts'
 
 export const exposuresTools = Toolkit.make(

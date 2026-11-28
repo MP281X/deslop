@@ -28,14 +28,16 @@ import {Reactivity} from 'effect/reactivity'
 
 import type {Admin} from '@deslop/runtime/shared/auth'
 
+import {DeployError} from '#contracts'
+
 import {APP_LIFECYCLE_MESSAGES, ExposureName, InventoryItem, ItemId, Timer} from './contract.ts'
 import type {AppId, AppRequest, Process, RunJobInput, RunRequest, Snapshot} from './contract.ts'
-import {processReadings, processes} from './processes.ts'
-import {appDetails, appUnit, commandRunner, makeListeners, ownedProcess, restartTimes, units} from './sources.ts'
-import type {AppAction, Command} from './sources.ts'
-import {attachProcesses, processOwner, requestOf, workloads} from './workloads.ts'
+import {appUnit, ownedProcess, restartTimes} from './parse.ts'
+import type {AppAction} from './parse.ts'
+import {attachProcesses, processOwner, requestOf, workloads} from './shared.ts'
+import {processReadings, processes, appDetails, commandRunner, makeListeners, units} from './sources.ts'
+import type {Command} from './sources.ts'
 
-import {DeployError} from '#machine/contract.ts'
 import {Serve, TailnetStatus} from '#proxies/contract.ts'
 
 function collect<E extends {readonly message: string}, R>(name: string, effect: Effect.Effect<InventoryItem[], E, R>) {
@@ -74,8 +76,7 @@ function containerRows(listing: string) {
 	)
 }
 
-// fallow-ignore-next-line unused-export -- Tests call this directly.
-export function containers(command: Command) {
+function containers(command: Command) {
 	return pipe(
 		command('docker', ['ps', '--all', '--format', '{{json .}}']),
 		Effect.map(containerRows),
@@ -152,8 +153,7 @@ export function containers(command: Command) {
 }
 
 // This machine's Tailscale node.
-// fallow-ignore-next-line unused-export -- Tests call this directly.
-export function tailnetPeers(command: Command) {
+function tailnetPeers(command: Command) {
 	return pipe(
 		command('tailscale', ['status', '--json']),
 		Effect.flatMap(Schema.decodeEffect(Schema.fromJsonString(TailnetStatus))),
@@ -178,8 +178,7 @@ export function tailnetPeers(command: Command) {
 }
 
 // Each site Tailscale Serve maps, whoever configured it.
-// fallow-ignore-next-line unused-export -- Tests call this directly.
-export function tailnetSites(command: Command) {
+function tailnetSites(command: Command) {
 	return pipe(
 		command('tailscale', ['serve', 'status', '--json']),
 		Effect.flatMap(Schema.decodeEffect(Schema.fromJsonString(Serve))),

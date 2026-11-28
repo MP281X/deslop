@@ -36,8 +36,8 @@ import {
 	rowUsageOrder,
 	workloadName,
 	workloads
-} from './workloads.ts'
-import type {Row} from './workloads.ts'
+} from './shared.ts'
+import type {Row} from './shared.ts'
 
 import type {AppHour, MachineHistory, Sample} from '#metrics/contract.ts'
 import {appFigures, appReadings, memoryOf, restartReason, statistics} from '#metrics/screen.ts'
@@ -255,7 +255,7 @@ export function logsSheet(
 	}
 }
 
-function processes(item: InventoryItem, now: DateTime.Utc, history?: AppHour) {
+function processRows(item: InventoryItem, now: DateTime.Utc, history?: AppHour) {
 	const current = pipe(item.processes, Option.getOrElse(Array.empty), processTree, processTrackUsage)
 	const keys = HashSet.fromIterable(Array.map(current, track => track.key))
 	const tracks = [
@@ -407,7 +407,7 @@ export function appDetail(row: Row, rows: readonly Row[], now: DateTime.Utc, his
 		jobs: Array.map(jobs, job => listItem(job, now)),
 		memory: shown(figures.memory, memoryOf),
 		name: workloadName(item),
-		processes: Boolean.match(charted, {onFalse: () => [], onTrue: () => processes(item, now, app)}),
+		processes: Boolean.match(charted, {onFalse: () => [], onTrue: () => processRows(item, now, app)}),
 		readings,
 		restarts,
 		scheduled,

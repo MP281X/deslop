@@ -4,16 +4,16 @@ import type {Selection} from '@deslop/components/model'
 import {styles} from '@deslop/components/styles'
 
 import type {DeployScreen} from '#app'
+import type {DeployUi, SheetCommon} from '#view'
 
 import {artwork} from './artwork.gen.ts'
 import type {InventoryItem, Process} from './contract.ts'
-import {workloadName} from './workloads.ts'
+import {workloadName} from './shared.ts'
 
 import {portChoices} from '#exposures/view.ts'
-import type {DeployUi, SheetCommon} from '#exposures/view.ts'
 import {MACHINE} from '#machine/screen.ts'
 import {load} from '#machine/view.ts'
-import {history, historyStatus} from '#metrics/view.ts'
+import {historyChart, historyNotices} from '#metrics/view.ts'
 
 const COVER = {
 	alignItems: 'center',
@@ -172,7 +172,7 @@ export function listRows<H, C, S>(
 	return rows
 }
 
-function appFigures<H, C, S>(host: H, app: NonNullable<DeployScreen['detail']>, ui: DeployUi<H, C, S>) {
+function figureRows<H, C, S>(host: H, app: NonNullable<DeployScreen['detail']>, ui: DeployUi<H, C, S>) {
 	if (app.scheduled) return []
 	return [
 		ui.figures(host, [
@@ -197,14 +197,14 @@ export function appRows<H, C, S>(
 			Option.map(text => ui.caption(host, text)),
 			Option.toArray
 		),
-		...appFigures(host, app, ui),
+		...figureRows(host, app, ui),
 		...pipe(
 			app,
 			Option.liftPredicate(detail => detail.charted),
-			Option.map(detail => history(host, screen, ui, detail.readings, detail.restarts)),
+			Option.map(detail => historyChart(host, screen, ui, detail.readings, detail.restarts)),
 			Option.toArray
 		),
-		...historyStatus(host, screen, ui),
+		...historyNotices(host, screen, ui),
 		...ui.facts(host, {
 			choices: portChoices(screen, app),
 			values: [...app.facts, ...load(`${screen.machine?.name ?? 'Machine'} load (1m / 5m / 15m)`, screen.load)]

@@ -12,10 +12,9 @@ import {layerIPhoneShell} from '@deslop/runtime/iphone/shell'
 import {DeployApp} from '#app'
 import {DeployRoute, isDetail, layerDeploy} from '#reads'
 import {Workspace} from '#view'
+import type {DeployUi, SiteRow} from '#view'
 
-import type {DeployUi, Exposure} from '#exposures/view.ts'
-
-function Site<M>(h: Native.H<M>, site: Exposure, open: (url: string) => Press) {
+function Site<M>(h: Native.H<M>, site: SiteRow, open: (url: string) => Press) {
 	const components = nativeComponents<M>()
 	return h.view
 		.key(site.id)

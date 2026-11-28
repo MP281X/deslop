@@ -6,8 +6,9 @@ import {Model} from 'effect/schema'
 import {AuthError} from '@deslop/runtime/shared/auth'
 import {DateTimeUtcFromFiniteMillis, DurationFromFiniteMillis, DurationFromSeconds} from '@deslop/runtime/shared/time'
 
+import {DeployError} from '#contracts'
+
 import {AppId, AppRequest, Process, ProcessLabel, TextFromEmpty} from '#inventory/contract.ts'
-import {DeployError} from '#machine/contract.ts'
 
 export type BandId = typeof BandId.Type
 export const BandId = Schema.Union([AppId, Schema.Literals(['other', 'system'])])

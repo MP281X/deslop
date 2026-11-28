@@ -39,7 +39,7 @@ import {
 	rowsOf,
 	runJob
 } from '#inventory/screen.ts'
-import {workloadName} from '#inventory/workloads.ts'
+import {workloadName} from '#inventory/shared.ts'
 import {MACHINE, loadAverages, machineDetail} from '#machine/screen.ts'
 import {historyStatus, metricsFields, metricsMessages, restartReason} from '#metrics/screen.ts'
 
