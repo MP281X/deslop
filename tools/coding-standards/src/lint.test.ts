@@ -509,7 +509,7 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 					'apps/deploy/src/web/main.ts': source,
 					'apps/deploy/src/web/render.ts': source,
 					'apps/fresh/src/lib/format.ts': source,
-					'apps/trips/src/lib/format.ts': long,
+					'apps/portfolio/src/lib/format.ts': long,
 					'tools/create-app/template/src/lib/format.ts': source
 				}
 				const result = yield* lintSource(inputs)

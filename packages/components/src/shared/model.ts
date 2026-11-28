@@ -155,8 +155,8 @@ export type SheetOptions<Content> = {
 	open: boolean
 	label: string
 	dismiss: Selection['back']
-	body: Content
-	actions?: Content
+	body: Content | PaneContent<PaneLeaf<Content>>
+	actions?: Content | PaneContent<PaneLeaf<Content>>
 	height?: number | Absent
 	pending?: boolean | Absent
 	toolbar?: ToolbarOptions | Absent

@@ -1,22 +1,16 @@
 import type {ExpoConfig} from 'expo/config'
 
 import {iphoneUpdates} from '@deslop/runtime/config/iphone'
+import {iphoneOrigins} from '@deslop/runtime/shared/origins'
 
-import {
-	appOrigin,
-	authOrigin,
-	bundle,
-	keychainGroup,
-	scheme,
-	sessionKey,
-	sessionService,
-	tripsVariant
-} from './src/iphone/origin.ts'
+import {bundle, keychainGroup, scheme, sessionKey, sessionService, tripsVariant} from './src/push/shared.ts'
+
+const origins = iphoneOrigins('trips')
 
 export default {
 	ios: {
 		appleTeamId: '99K7MQUK7F',
-		associatedDomains: [`webcredentials:${new URL(authOrigin).hostname}`],
+		associatedDomains: [`webcredentials:${new URL(origins.authOrigin).hostname}`],
 		bundleIdentifier: bundle,
 		deploymentTarget: '26.0',
 		entitlements: {
@@ -26,7 +20,7 @@ export default {
 		icon: './src/iphone/app.icon',
 		infoPlist: {
 			DeslopKeychainGroup: keychainGroup,
-			DeslopServer: appOrigin,
+			DeslopServer: origins.appOrigin,
 			DeslopSessionAccount: sessionKey,
 			DeslopSessionService: `${sessionService}:no-auth`,
 			ITSAppUsesNonExemptEncryption: false,
@@ -43,5 +37,5 @@ export default {
 	scheme,
 	slug: 'trips',
 	userInterfaceStyle: 'dark',
-	...iphoneUpdates(appOrigin)
+	...iphoneUpdates(origins.appOrigin)
 } satisfies ExpoConfig

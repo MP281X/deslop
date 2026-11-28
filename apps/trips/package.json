@@ -17,12 +17,17 @@
 	"sideEffects": false,
 	"main": "src/iphone/main.ts",
 	"imports": {
+		"#activities/*": "./src/activities/*",
+		"#app": "./src/app.ts",
 		"#contracts": "./src/contracts.ts",
-		"#journey": "./src/journey.ts",
-		"#server/*": "./src/server/*",
-		"#web/*": "./src/web/*",
-		"#iphone/*": "./src/iphone/*",
-		"#screens/*": "./src/screens/*"
+		"#flights/*": "./src/flights/*",
+		"#itinerary/*": "./src/itinerary/*",
+		"#push/*": "./src/push/*",
+		"#reads": "./src/reads.ts",
+		"#rounds/*": "./src/rounds/*",
+		"#tracking/*": "./src/tracking/*",
+		"#view": "./src/view.ts",
+		"#web/*": "./src/web/*"
 	},
 	"publishConfig": {
 		"access": "public"
