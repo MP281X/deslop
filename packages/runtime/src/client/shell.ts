@@ -168,16 +168,17 @@ function appShell(options: {readonly every: Duration.Input; readonly name: strin
 		parts: (p, model) => ({
 			authenticate: p.part((el, event: string) => el.on(event, ShellMessage.SignIn())),
 			now: model.now,
-			// The problem that replaces the screen: a sign-in the server asks for, or an account it refuses.
+			// The problem that replaces the screen: a sign-in the server asks for, or an account it refuses. `signInFailed` is whether the last sign-in failed, its reason then the text.
 			problem: (reads: readonly AsyncResult.AsyncResult<unknown, unknown>[]) => {
 				if (Array.some(reads, read => AsyncResult.isFailure(read) && needsSignInCause(read.cause))) {
 					return {
 						signIn: true,
+						signInFailed: Option.isSome(model.authError),
 						text: Option.getOrElse(model.authError, Function.constant(`Sign in to ${options.name}`))
 					}
 				}
 				if (Array.some(reads, read => AsyncResult.isFailure(read) && isDeniedCause(read.cause))) {
-					return {signIn: false, text: 'Access denied'}
+					return {signIn: false, signInFailed: false, text: 'Access denied'}
 				}
 				return undefined
 			},
@@ -302,7 +303,7 @@ export type ScreenParts = {
 function problemOf(screen: ScreenParts, shell: Component.Headless.Parts<ReturnType<typeof appShell>>, missing: string) {
 	const refusal = shell.problem(screen.reads)
 	if (refusal !== undefined) return {...refusal, back: false}
-	if (screen.routeMissing) return {back: true, signIn: false, text: missing}
+	if (screen.routeMissing) return {back: true, signIn: false, signInFailed: false, text: missing}
 	return undefined
 }
 
