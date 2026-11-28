@@ -5,7 +5,7 @@ import {Rpc, RpcGroup} from 'effect/rpc'
 import {AuthError, RpcAdmin} from '@deslop/runtime/shared/auth'
 import {DateTimeUtcFromFiniteMillis} from '@deslop/runtime/shared/time'
 
-import {DeployError} from '#contracts'
+import {DeployError} from '#machine/contract.ts'
 
 export type ItemId = typeof ItemId.Type
 export const ItemId = Schema.brand('DeployItemId')(Schema.String)

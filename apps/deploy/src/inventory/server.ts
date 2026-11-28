@@ -28,8 +28,6 @@ import {Reactivity} from 'effect/reactivity'
 
 import type {Admin} from '@deslop/runtime/shared/auth'
 
-import {DeployError} from '#contracts'
-
 import {APP_LIFECYCLE_MESSAGES, ExposureName, InventoryItem, ItemId, Timer} from './contract.ts'
 import type {AppId, AppRequest, Process, RunJobInput, RunRequest, Snapshot} from './contract.ts'
 import {appUnit, ownedProcess, restartTimes} from './parse.ts'
@@ -38,6 +36,7 @@ import {attachProcesses, processOwner, requestOf, workloads} from './shared.ts'
 import {processReadings, processes, appDetails, commandRunner, makeListeners, units} from './sources.ts'
 import type {Command} from './sources.ts'
 
+import {DeployError} from '#machine/contract.ts'
 import {Serve, TailnetStatus} from '#proxies/contract.ts'
 
 function collect<E extends {readonly message: string}, R>(name: string, effect: Effect.Effect<InventoryItem[], E, R>) {

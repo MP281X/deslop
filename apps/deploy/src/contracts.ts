@@ -1,6 +1,7 @@
-import {Schema} from 'effect'
+import {RpcAuth} from '@deslop/runtime/shared/auth'
 
-export class DeployError extends Schema.TaggedError<DeployError>()('DeployError', {
-	cause: Schema.optional(Schema.Defect()),
-	message: Schema.String
-}) {}
+import {ExposuresRpcs} from '#exposures/contract.ts'
+import {InventoryRpcs} from '#inventory/contract.ts'
+import {MetricsRpcs} from '#metrics/contract.ts'
+
+export const RpcContracts = MetricsRpcs.merge(InventoryRpcs, ExposuresRpcs).middleware(RpcAuth)

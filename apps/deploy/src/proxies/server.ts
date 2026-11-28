@@ -22,11 +22,10 @@ import {AppError, ToolPath, executeProcess} from '@deslop/runtime/server/process
 import {installService} from '@deslop/runtime/server/services'
 import {RUNTIME_PATH, RuntimeConfig} from '@deslop/runtime/shared/schema'
 
-import {DeployError} from '#contracts'
-
 import {Serve, TailnetStatus} from './contract.ts'
 
 import type {Exposure} from '#exposures/contract.ts'
+import {DeployError} from '#machine/contract.ts'
 
 // The Caddyfile binds Caddy's management listener here, on loopback.
 export const CADDY_ADMIN_PORT = 20_219

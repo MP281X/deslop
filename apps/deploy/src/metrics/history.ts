@@ -3,8 +3,6 @@ import {Array, DateTime, Duration, Effect, Function, Number, Option, Record, Sch
 import {SqlSchema} from 'effect/sql'
 import type {SqlClient} from 'effect/sql'
 
-import {DeployError} from '#contracts'
-
 import {
 	AppHistory,
 	CpuCounters,
@@ -17,6 +15,7 @@ import {
 import type {AppSample, CgroupPath, Counters, Disk, Point} from './contract.ts'
 
 import type {AppId} from '#inventory/contract.ts'
+import {DeployError} from '#machine/contract.ts'
 
 // Each range's series spacing, so its 60 slots hold a few points each. A series keeps its range.
 export const SERIES = {

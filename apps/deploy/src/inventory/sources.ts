@@ -28,12 +28,12 @@ import {ChildProcessSpawner} from 'effect/process'
 
 import {executeProcess} from '@deslop/runtime/server/process'
 
-import {DeployError} from '#contracts'
-
 import {InventoryItem, ItemId, Process, ProcessIdFromString, Timer, UnitId} from './contract.ts'
 import type {AppId, ProcessId, ServiceScope} from './contract.ts'
 import {commandLabel, maskArguments} from './labels.ts'
 import {appUnitName, ownedUnits, probeSocket, socketLine, socketUnit, unitFailures} from './parse.ts'
+
+import {DeployError} from '#machine/contract.ts'
 
 // A command that hangs is killed within its source's ten seconds; optional metadata names a shorter wait so a stall drops only itself.
 export function commandRunner(spawner: ChildProcessSpawner.ChildProcessSpawner['Service']) {

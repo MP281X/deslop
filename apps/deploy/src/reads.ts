@@ -10,9 +10,10 @@ import {liveAtom} from '@deslop/runtime/client/live-stream'
 import {Shell, observeRead} from '@deslop/runtime/client/shell'
 import {RpcStream} from '@deslop/runtime/shared/rpc'
 
+import {RpcContracts} from '#contracts'
+
 import {ExposeInput} from '#exposures/contract.ts'
 import {AppId, ItemId, RunRequest} from '#inventory/contract.ts'
-import {RpcContracts} from '#machine/contract.ts'
 
 export type Operation = typeof Operation.Type
 export const Operation = Schema.TaggedUnion({

@@ -5,9 +5,8 @@ import {Model} from 'effect/schema'
 
 import {AuthError, RpcAdmin} from '@deslop/runtime/shared/auth'
 
-import {DeployError} from '#contracts'
-
 import {ExposureName} from '#inventory/contract.ts'
+import {DeployError} from '#machine/contract.ts'
 
 // Public exposure needs explicit consent, which is checked and not kept.
 export type ExposeInput = typeof ExposeInput.Type

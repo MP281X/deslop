@@ -24,8 +24,6 @@ import {Reactivity} from 'effect/reactivity'
 import {requireAdmin} from '@deslop/runtime/server/auth'
 import {AuthError, CurrentAdmin, CurrentUser} from '@deslop/runtime/shared/auth'
 
-import {DeployError} from '#contracts'
-
 import {
 	AppList,
 	ExposureName,
@@ -41,6 +39,7 @@ import {Inventory, jobRequest} from './server.ts'
 import {healthRank, important, processTree, rowUsageOrder, workloadName, workloads} from './shared.ts'
 import type {ProcessNode, Row} from './shared.ts'
 
+import {DeployError} from '#machine/contract.ts'
 import {Machine} from '#machine/server.ts'
 
 type PageLimit = typeof PageLimit.Type

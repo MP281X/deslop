@@ -21,8 +21,6 @@ import type {SqlError} from 'effect/sql'
 
 import type {Admin} from '@deslop/runtime/shared/auth'
 
-import {DeployError} from '#contracts'
-
 import {Exposure} from './contract.ts'
 import type {ExposeInput} from './contract.ts'
 import {migrations} from './migrations.ts'
@@ -33,6 +31,7 @@ import {InventoryItem, ItemId} from '#inventory/contract.ts'
 import type {ExposureName, Snapshot} from '#inventory/contract.ts'
 import {Inventory} from '#inventory/server.ts'
 import {portOwner} from '#inventory/shared.ts'
+import {DeployError} from '#machine/contract.ts'
 import {Proxies} from '#proxies/server.ts'
 
 const asStorageDeployError = Effect.mapError((cause: SqlError.SqlError | Schema.SchemaError) =>

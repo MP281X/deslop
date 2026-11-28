@@ -2,13 +2,13 @@ import {assert, it} from '@effect/vitest'
 
 import {Array, DateTime, Effect, Option, Order, Schema, pipe} from 'effect'
 
-import {DeployError} from '#contracts'
-
 import {ExposureName, InventoryItem, ItemId, Process, UnitId} from './contract.ts'
 import type {ServiceScope} from './contract.ts'
 import {jobRequest} from './server.ts'
 import {availablePorts, portOwner, processOwner, processTrackUsage, processTree, workloads} from './shared.ts'
 import type {ProcessNode} from './shared.ts'
+
+import {DeployError} from '#machine/contract.ts'
 
 const LISTENER = InventoryItem.make({
 	address: Option.some('127.0.0.1:5173'),

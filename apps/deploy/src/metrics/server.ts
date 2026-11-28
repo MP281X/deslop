@@ -31,8 +31,6 @@ import type {SqlError} from 'effect/sql'
 
 import {executeProcess} from '@deslop/runtime/server/process'
 
-import {DeployError} from '#contracts'
-
 import {CgroupPath, Counters, HistoryQuery} from './contract.ts'
 import type {AppHour, AppSample, Disk, MachineHistory, MetricSource, Sample} from './contract.ts'
 import {
@@ -56,6 +54,7 @@ import {migrations} from './migrations.ts'
 import type {AppRequest} from '#inventory/contract.ts'
 import {Inventory} from '#inventory/server.ts'
 import {processOwner, processTrackUsage, processTree} from '#inventory/shared.ts'
+import {DeployError} from '#machine/contract.ts'
 
 const CGROUP = '/sys/fs/cgroup'
 

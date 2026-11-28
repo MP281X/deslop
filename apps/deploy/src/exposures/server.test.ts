@@ -25,13 +25,12 @@ import {layerDataStore} from '@deslop/runtime/server/store'
 import {UserId} from '@deslop/runtime/shared/auth'
 import type {RuntimeConfig} from '@deslop/runtime/shared/schema'
 
-import {DeployError} from '#contracts'
-
 import type {Exposure} from './contract.ts'
 import {Exposures} from './server.ts'
 
 import {ExposureName, InventoryItem, ItemId, UnitId} from '#inventory/contract.ts'
 import {Inventory} from '#inventory/server.ts'
+import {DeployError} from '#machine/contract.ts'
 import type {Serve} from '#proxies/contract.ts'
 import {Proxies} from '#proxies/server.ts'
 

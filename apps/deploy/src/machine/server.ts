@@ -4,12 +4,11 @@ import {Reactivity} from 'effect/reactivity'
 
 import type {Admin} from '@deslop/runtime/shared/auth'
 
-import type {DeployError} from '#contracts'
-
 import type {ExposeInput} from '#exposures/contract.ts'
 import {Exposures} from '#exposures/server.ts'
 import type {ExposureName, Snapshot} from '#inventory/contract.ts'
 import {Inventory} from '#inventory/server.ts'
+import type {DeployError} from '#machine/contract.ts'
 
 export class Machine extends Context.Service<
 	Machine,
