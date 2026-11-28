@@ -1,41 +1,94 @@
 import 'react-native/Libraries/Core/setUpXHR'
 
 import {Router} from '@effect/ui'
+import type {View} from '@effect/ui'
 import {Native, NativeApp} from '@effect/ui-native'
+import {Pan, Pressable} from '@effect/ui-native/kit'
 
-import {Array, Boolean, Function, HashSet, Layer, Option, pipe} from 'effect'
+import {Array, Boolean, Effect, Function, Layer, Number, Option, Queue, Schema, Stream} from 'effect'
 
-import {FetchHttpClient} from 'effect/http'
-import {Atom, AtomRegistry} from 'effect/reactivity'
+import type {NativeModule} from 'expo'
+import {requireNativeModule} from 'expo'
 
-import type {ToolbarOptions} from '@deslop/components/model'
-import {Row, Toolbar, black, fold, styles} from '@deslop/components/native'
-import {layerSocketProtocol} from '@deslop/runtime/client/protocol'
+import type {PaneLeaf, ToolbarOptions} from '@deslop/components/model'
+import {Toolbar, black, fold, native, styles} from '@deslop/components/native'
+import {nativeComponents} from '@deslop/components/native/components'
+import {SignOut, SignOutSession} from '@deslop/runtime/client/shell'
+import {layerIPhoneShell} from '@deslop/runtime/iphone/shell'
 
-import {registerChapters} from '#iphone/push.ts'
-import {IPhoneReader, control, image} from '#iphone/reader.ts'
-import {layerIPhoneRouter} from '#iphone/router.ts'
-import {readIPhoneAccount, session, signOut} from '#iphone/session.ts'
-import {catalogue} from '#screens/catalogue.ts'
-import {ChooseToolbar, chapterListOf, chapterRows, library, toolbar} from '#screens/library.ts'
-import type {Screen} from '#screens/library.ts'
-import {Message} from '#screens/model.ts'
-import {CloseChapter, OpmRoute} from '#screens/routes.ts'
+import {OpmApp} from '#app'
+import type {OpmScreen} from '#app'
+import {ChapterTokens, OpmRoute, layerOpm, targetOf} from '#reads'
+import {Workspace} from '#view'
+import type {OpmUi} from '#view'
+
+import {ChapterNumberFromString, Series} from '#chapters/contract.ts'
+import {ChapterPushError} from '#push/contract.ts'
+import {variant} from '#push/shared.ts'
 
 const PANE = {flex: 1, minHeight: 0, minWidth: 0} as const
 const SHADE = '#202020'
-
-function native<Tag extends string>(tag: Tag, viewName: string) {
-	return Function.constant(
-		Native.defineView(() => new Native.ViewElement<Message, never, Record<string, unknown>, Tag>(tag), {viewName})
-	)
-}
+const ALIGNMENT = {left: 'flex-end', right: 'flex-start', single: 'center'} as const
 
 const Stack = native('opmStack', 'RNSScreenStack')
 const Page = native('opmPage', 'RNSScreen')
 const SafeArea = native('opmSafeArea', 'RNCSafeAreaView')
+const NativeImage = native('opmImage', 'RCTImageView')
 
-function skeleton(h: Native.H<Message>, index: number) {
+declare class ChapterActivities extends NativeModule<{chapterStartToken: (event: {readonly value: string}) => void}> {
+	opened(url: string): PromiseLike<void>
+}
+
+const activity = requireNativeModule<ChapterActivities>('ChapterActivities')
+
+// A chapter's Live Activity is dismissed once the chapter it announced is opened.
+function dismissActivity(url: string) {
+	return Effect.ignore(
+		Effect.tryPromise({
+			catch: cause => ChapterPushError.make({cause, message: 'The chapter Live Activity could not be dismissed.'}),
+			try: () => activity.opened(url)
+		}),
+		{log: 'Warn'}
+	)
+}
+
+const tokens = Stream.callback<string>(queue =>
+	Effect.acquireRelease(
+		Effect.sync(() =>
+			activity.addListener('chapterStartToken', token => {
+				Queue.offerUnsafe(queue, token.value)
+			})
+		),
+		listener => Effect.sync(() => listener.remove())
+	)
+)
+
+type ChapterActivityLink = typeof ChapterActivityLink.Type
+const ChapterActivityLink = Schema.TemplateLiteralParser([
+	variant.scheme,
+	'://chapter/',
+	Series,
+	'/',
+	ChapterNumberFromString
+])
+
+// A Live Activity's link opens its chapter, and dismisses the activity.
+function chapterLink(url: string) {
+	return Option.map(Schema.decodeUnknownOption(ChapterActivityLink)(url), parts => ({
+		followed: dismissActivity(url),
+		path: OpmRoute.print(OpmRoute.Library({params: {}, search: {chapter: parts[4], series: parts[2]}}))
+	}))
+}
+
+function image(src: string) {
+	return NativeImage<never>()
+		.prop('source', [{uri: src}])
+		.prop('pointerEvents', 'none')
+}
+
+const components = nativeComponents<never>()
+
+function skeleton(h: Native.H<never>, index: number) {
 	return h.view
 		.key(`skeleton:${index}`)
 		.style(styles.row)
@@ -51,65 +104,8 @@ function skeleton(h: Native.H<Message>, index: number) {
 		)
 }
 
-function chapterList(h: Native.H<Message>, screen: Screen, older = false) {
-	const chapters = chapterListOf(screen, older)
-	const hidden = !older && screen.reader !== undefined && screen.wide && screen.listHidden
-	const beside = screen.wide && screen.reader !== undefined
-	function content() {
-		if (screen.waiting) return Array.makeBy(10, index => skeleton(h, index))
-		if (chapters.empty) return h.text.style(styles.line).children('No chapters')
-		// A pane starts one cover at a time, leaving the native image loader room for reader pages.
-		const next = Option.getOrUndefined(
-			Array.findFirst(chapters.rows, row => row.cover !== undefined && !HashSet.has(screen.covers, row.cover))
-		)
-		return chapterRows(
-			h,
-			chapters.rows,
-			row =>
-				h.view
-					.style({
-						backgroundColor: SHADE,
-						borderRadius: 4,
-						height: 40,
-						opacity: row.coverOpacity,
-						overflow: 'hidden',
-						width: 28
-					})
-					.prop('accessibilityElementsHidden', true)
-					.children(
-						row.cover !== undefined &&
-							(row === next || HashSet.has(screen.covers, row.cover)) &&
-							image(row.cover)
-								.prop('resizeMode', 'cover')
-								.style({height: 40, width: 28})
-								.on('load', Message.CoverSettled({src: row.cover}))
-								.on('error', Message.CoverSettled({src: row.cover}))
-					),
-			options => Row(h, options)
-		)
-	}
-	return h.scroll
-		.key(`${screen.series}:${older}`)
-		.style({
-			...PANE,
-			...(!older && (beside || screen.book) && {borderRightColor: fold, borderRightWidth: 1}),
-			...(hidden && {display: 'none' as const})
-		})
-		.contentContainerStyle({
-			...styles.rows,
-			paddingRight: Boolean.match(screen.wide, {onFalse: Function.constant(76), onTrue: Function.constant(8)}),
-			...(beside && {
-				paddingTop: Boolean.match(screen.bars, {onFalse: Function.constant(8), onTrue: Function.constant(52)})
-			})
-		})
-		.prop('contentInsetAdjustmentBehavior', 'never')
-		.prop('accessibilityLabel', chapters.label)
-		.prop('accessibilityState', {busy: screen.waiting})
-		.children(content())
-}
-
-function page(id: string) {
-	return Page()
+function pane(id: string) {
+	return Page<never>()
 		.key(id)
 		.prop('screenId', id)
 		.prop('activityState', 2)
@@ -117,15 +113,17 @@ function page(id: string) {
 		.style({backgroundColor: black, bottom: 0, left: 0, position: 'absolute', right: 0, top: 0})
 }
 
-function header(h: Native.H<Message>, screen: Screen, reader: boolean, choose: ToolbarOptions['choose']) {
-	const actions = toolbar(screen, true)
+function header(h: Native.H<never>, screen: OpmScreen, reader: boolean, toolbar: ToolbarOptions) {
 	return Toolbar(h, {
 		actions: Boolean.match(reader, {
 			onFalse: () =>
-				Array.filter(actions, action => action.id === 'series' || action.id === 'retry' || action.id === 'sign-out'),
-			onTrue: () => actions
+				Array.filter(
+					toolbar.actions,
+					action => action.id === 'series' || action.id === 'retry' || action.id === 'sign-out'
+				),
+			onTrue: () => toolbar.actions
 		}),
-		choose
+		choose: toolbar.choose
 	})
 		.prop('hidden', reader && !screen.bars)
 		.prop('hideBackButton', true)
@@ -136,80 +134,224 @@ function header(h: Native.H<Message>, screen: Screen, reader: boolean, choose: T
 		)
 }
 
-const queries = catalogue(
-	layerSocketProtocol(session.layerIPhoneSocket),
-	Atom.runtime(FetchHttpClient.layer).atom(readIPhoneAccount)
-)
-const App = library(
-	Native.vocabulary,
-	queries,
-	{registerPush: registerChapters(queries), signIn: session.signIn, signOut},
-	(h, screen) => {
-		const reader = screen.reader
-		const beside = reader !== undefined && screen.wide && screen.problem === undefined
-		const pushed = reader !== undefined && !screen.wide && screen.problem === undefined
+const edge = Boolean.match({onFalse: Function.constant(0), onTrue: Function.constant('50%' as const)})
+
+function PageImage(
+	h: Native.H<never>,
+	screen: OpmScreen,
+	page: OpmScreen['pages'][number],
+	size: {height: number; width: number}
+) {
+	if (page.failed) {
+		return (
+			page.visible &&
+			components.button(h, {label: 'Reload page', press: (el, event) => screen.retryPage(el, event, page.src)})
+		)
+	}
+	return screen
+		.shape(screen.shape(image(page.src), 'error', page.src), 'load', page.src)
+		.prop('accessible', page.visible)
+		.prop('accessibilityLabel', `Page ${page.index + 1}`)
+		.prop('resizeMode', 'contain')
+		.style(size)
+}
+
+function Reader(h: Native.H<never>, screen: OpmScreen, reader: NonNullable<OpmScreen['reader']>) {
+	const active = Array.filter(screen.pages, page => page.visible)
+	const spread = active.length === 2
+	const available = Boolean.match(screen.wide && !screen.listHidden, {
+		onFalse: () => screen.width,
+		onTrue: () => screen.width - screen.listWidth
+	})
+	const half = Number.max(0, (available - 1) / 2)
+	// The taller page sets the shared height only if both pages fit inside the two halves.
+	const height = Boolean.match(spread, {
+		onFalse: () => screen.height,
+		onTrue: () => Array.reduce(active, screen.height, (limit, page) => Number.min(limit, half / page.aspect))
+	})
+	function pending() {
+		if (reader.ready) return undefined
+		if (!reader.waiting) return h.text.style(styles.line).children('Chapter unavailable')
+		return h.view
+			.style({backgroundColor: '#202020', height: '100%', width: Number.min(available, screen.height * 0.71)})
+			.prop('accessible', true)
+			.prop('accessibilityState', {busy: true})
+			.prop('accessibilityLabel', 'Loading chapter')
+	}
+	return screen.selection
+		.back(
+			Pan(h, {
+				element: screen.gesture(Pressable(h, {element: screen.gesture(h.view, 'press')}), 'panEnd'),
+				props: {axis: 'x', threshold: 8}
+			}),
+			'accessibilityEscape'
+		)
+		.key(reader.id)
+		.style({...styles.pane, alignItems: 'center', justifyContent: 'center', overflow: 'hidden'})
+		.prop('accessibilityLabel', reader.title)
+		.children(
+			pending(),
+			Array.map(screen.pages, page => {
+				const width = Boolean.match(spread && page.visible, {
+					onFalse: () => available,
+					onTrue: () => Number.min(half, height * page.aspect)
+				})
+				return h.view
+					.key(`${page.index}`)
+					.style({
+						alignItems: ALIGNMENT[page.side],
+						bottom: 0,
+						justifyContent: 'center',
+						left: edge(page.side === 'right'),
+						opacity: Boolean.match(page.visible, {onFalse: Function.constant(0), onTrue: Function.constant(1)}),
+						position: 'absolute',
+						right: edge(page.side === 'left'),
+						top: 0,
+						...(spread &&
+							page.visible && {
+								marginLeft: Boolean.match(page.side === 'right', {
+									onFalse: Function.constant(0),
+									onTrue: Function.constant(0.5)
+								}),
+								marginRight: Boolean.match(page.side === 'left', {
+									onFalse: Function.constant(0),
+									onTrue: Function.constant(0.5)
+								})
+							})
+					})
+					.prop('accessibilityElementsHidden', !page.visible)
+					.prop(
+						'pointerEvents',
+						Boolean.match(page.visible, {onFalse: Function.constant('none'), onTrue: Function.constant('box-none')})
+					)
+					.children(PageImage(h, screen, page, {height, width}))
+			})
+		)
+}
+
+const drawing: OpmUi<Native.H<never>, PaneLeaf<Native.NoTextInput<never>>, View.Content<never>> = {
+	...components,
+	chapters: (h, screen, options, content) => {
+		const hidden = !options.older && screen.reader !== undefined && screen.wide && screen.listHidden
+		const beside = screen.wide && screen.reader !== undefined
+		return h.scroll
+			.key(`${screen.series}:${options.older}`)
+			.style({
+				...PANE,
+				...(!options.older && (beside || screen.book) && {borderRightColor: fold, borderRightWidth: 1}),
+				...(hidden && {display: 'none' as const})
+			})
+			.contentContainerStyle({
+				...styles.rows,
+				paddingRight: Boolean.match(screen.wide, {onFalse: Function.constant(76), onTrue: Function.constant(8)}),
+				...(beside && {
+					paddingTop: Boolean.match(screen.bars, {onFalse: Function.constant(8), onTrue: Function.constant(52)})
+				})
+			})
+			.prop('contentInsetAdjustmentBehavior', 'never')
+			.prop('accessibilityLabel', options.label)
+			.prop('accessibilityState', {busy: screen.waiting})
+			.children(content)
+	},
+	cover: (h, screen, row) =>
+		h.view
+			.style({
+				backgroundColor: SHADE,
+				borderRadius: 4,
+				height: 40,
+				opacity: row.coverOpacity,
+				overflow: 'hidden',
+				width: 28
+			})
+			.prop('accessibilityElementsHidden', true)
+			.children(
+				row.cover !== undefined &&
+					row.loadCover &&
+					screen
+						.settle(screen.settle(image(row.cover), 'load', row.cover), 'error', row.cover)
+						.prop('resizeMode', 'cover')
+						.style({height: 40, width: 28})
+			),
+	leave: (h, label, press) => components.button(h, {label, press}),
+	loading: h => Array.makeBy(10, index => skeleton(h, index)),
+	native: true,
+	note: (h, text) => h.text.style(styles.line).children(text),
+	problem: (h, text, actions) =>
+		h.view
+			.style({...PANE, alignItems: 'center', gap: 8, justifyContent: 'center', padding: 20})
+			.children(h.text.style(styles.body).children(text), actions),
+	reader: Reader,
+	retry: (h, label, press) => components.button(h, {label, press}),
+	signIn: (h, label, press) => components.button(h, {label, press}),
+	stage: (h, screen, parts) => {
+		const reader = parts.panes?.reader
+		const beside = screen.reader !== undefined && screen.wide && parts.problem === undefined
+		const pushed = screen.reader !== undefined && !screen.wide && parts.problem === undefined
 		function listStyle() {
 			if (!beside) return styles.panes
 			if (screen.listHidden) return {display: 'none' as const}
 			return {width: screen.listWidth}
 		}
 		function listContent() {
-			if (screen.problem !== undefined) {
-				return h.view
-					.style({...PANE, alignItems: 'center', gap: 8, justifyContent: 'center', padding: 20})
-					.children(
-						h.text.style(styles.body).children(screen.problem),
-						screen.signIn && !screen.busy && control(h, 'Sign in', Message.SignIn()),
-						screen.retryable && control(h, 'Retry', Message.Retry()),
-						screen.problem === 'Back to chapters' && control(h, 'Back to chapters', Message.Close())
-					)
-			}
-			return h.view.style(styles.panes).children(
-				SafeArea()
-					.style(listStyle())
-					.prop('edges', {bottom: 'additive', left: 'additive', right: 'additive', top: 'off'})
-					.children(chapterList(h, screen), screen.book && reader === undefined && chapterList(h, screen, true)),
-				beside && IPhoneReader(h, screen, reader)
-			)
+			if (parts.problem !== undefined) return parts.problem
+			return h.view
+				.style(styles.panes)
+				.children(
+					SafeArea<never>()
+						.style(listStyle())
+						.prop('edges', {bottom: 'additive', left: 'additive', right: 'additive', top: 'off'})
+						.children(parts.panes?.latest, parts.panes?.older),
+					beside && reader
+				)
 		}
-		return ChooseToolbar(h, {
-			onEmit: message => message,
-			view: parts =>
-				h.view
+		return screen
+			.resize(h.view, 'layout')
+			.style(styles.frame)
+			.children(
+				Stack<never>()
 					.style(styles.frame)
-					.on('layout', event => Message.Layout({height: event.layout.height, width: event.layout.width}))
+					.prop('nativeContainerBackgroundColor', black)
 					.children(
-						Stack()
-							.style(styles.frame)
-							.prop('nativeContainerBackgroundColor', black)
+						pane('list')
+							.prop('statusBarHidden', beside && !screen.bars)
+							.prop('homeIndicatorHidden', beside && !screen.bars)
 							.children(
-								page('list')
-									.prop('statusBarHidden', beside && !screen.bars)
-									.prop('homeIndicatorHidden', beside && !screen.bars)
-									.children(
-										listContent(),
-										header(h, screen, beside, parts.choose).prop(
-											'hidden',
-											screen.problem !== undefined || (beside && !screen.bars)
-										)
-									),
-								pushed &&
-									page('reader')
-										.prop('statusBarHidden', !screen.bars)
-										.prop('homeIndicatorHidden', !screen.bars)
-										.on('dismissed', Message.Close())
-										.children(IPhoneReader(h, screen, reader), header(h, screen, true, parts.choose))
-							)
+								listContent(),
+								header(h, screen, beside, parts.toolbar).prop(
+									'hidden',
+									parts.problem !== undefined || (beside && !screen.bars)
+								)
+							),
+						pushed &&
+							screen.selection
+								.back(pane('reader'), 'dismissed')
+								.prop('statusBarHidden', !screen.bars)
+								.prop('homeIndicatorHidden', !screen.bars)
+								.children(reader, header(h, screen, true, parts.toolbar))
 					)
-		})
+			)
 	}
+}
+
+const App = OpmApp(Native.vocabulary, (h, screen) => Workspace(h, screen, drawing))
+
+// The iPhone reports its push-to-start tokens, and asks Auth itself to end the shared session.
+const layerActions = Layer.mergeAll(
+	Layer.succeed(ChapterTokens, tokens),
+	SignOut.toLayer(Effect.map(SignOutSession, signOut => () => signOut({failure: 'Could not clear the session'})))
 )
 
+const layerShell = layerIPhoneShell({
+	link: chapterLink,
+	linkScheme: variant.scheme,
+	name: 'opm',
+	replace: route => targetOf(route) !== undefined,
+	route: OpmRoute
+})
+
 NativeApp.register(
-	pipe(
+	Layer.provide(
 		NativeApp.mount(App, Router.props(OpmRoute)),
-		Layer.provide(CloseChapter.layer),
-		Layer.provide(layerIPhoneRouter),
-		Layer.provide(AtomRegistry.layer)
+		Layer.provideMerge(layerOpm, Layer.provideMerge(layerActions, layerShell))
 	)
 )

@@ -3,14 +3,17 @@ import {Boolean, Function} from 'effect'
 import type {ExpoConfig} from 'expo/config'
 
 import {iphoneUpdates} from '@deslop/runtime/config/iphone'
+import {iphoneOrigins} from '@deslop/runtime/shared/origins'
 
-import {appOrigin, authOrigin, development, variant} from './src/iphone/origin.ts'
+import {development, variant} from './src/push/shared.ts'
+
+const origins = iphoneOrigins('opm')
 
 export default {
 	experiments: {inlineModules: {watchedDirectories: ['src/iphone/native']}},
 	ios: {
 		appleTeamId: '99K7MQUK7F',
-		associatedDomains: [`webcredentials:${new URL(authOrigin).hostname}`],
+		associatedDomains: [`webcredentials:${new URL(origins.authOrigin).hostname}`],
 		bundleIdentifier: variant.bundle,
 		deploymentTarget: '26.0',
 		icon: './src/iphone/app.icon',
@@ -35,5 +38,5 @@ export default {
 	scheme: variant.scheme,
 	slug: 'opm',
 	userInterfaceStyle: 'dark',
-	...iphoneUpdates(appOrigin)
+	...iphoneUpdates(origins.appOrigin)
 } satisfies ExpoConfig

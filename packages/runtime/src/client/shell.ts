@@ -65,6 +65,13 @@ export class SignOutSession extends Command.Service<SignOutSession>()('Shell/Sig
 	success: Schema.Boolean
 }) {}
 
+// Ends the shared session, and says whether Auth confirmed it: a page leaves for Auth's own sign-out or asks it and stays, an iPhone app asks Auth through `SignOutSession`.
+export class SignOut extends Command.Service<SignOut>()('Shell/SignOut', {
+	args: {},
+	error: AuthError,
+	success: Schema.Boolean
+}) {}
+
 export class OpenUrl extends Command.Service<OpenUrl>()('Shell/OpenUrl', {args: {url: Schema.String}}) {}
 
 // Reads the account again and the reads that failed, after a session began or ended when `authenticated`.
@@ -131,6 +138,67 @@ export function readState(reads: readonly AsyncResult.AsyncResult<unknown, unkno
 	if (Array.some(reads, read => Option.isSome(blockingFailure(read)))) return Option.some<ReadState>('failed')
 	if (Array.some(reads, AsyncResult.isFailure)) return Option.some<ReadState>('stale')
 	return Option.none<ReadState>()
+}
+
+// What a screen keeps of ending the session: what Auth did not end and how many sign-ins had begun then, so a later sign-in no longer shows it, and whether the end is under way. `init` is where it starts and `signedOut` the fields of the answer, the screen's `SignedOut` message.
+export const signOutState = {
+	fields: {
+		signOutProblem: Schema.UndefinedOr(Schema.Struct({signIns: Schema.UndefinedOr(Schema.Int), text: Schema.String})),
+		signingOut: Schema.Boolean
+	},
+	init: {signOutProblem: undefined, signingOut: false},
+	signedOut: {changed: Schema.Boolean, problem: Schema.UndefinedOr(Schema.String)}
+}
+
+export type SignedOut = Schema.Struct.Type<typeof signOutState.signedOut>
+
+// Starts ending the session unless that is under way; the answer is the screen's `SignedOut` message.
+export function startSignOut<Model extends Schema.Struct.Type<typeof signOutState.fields>, Msg, R, L>(
+	$: Component.Step<Model, Msg, never, R, L>,
+	signedOut: (outcome: SignedOut) => Msg
+) {
+	if ($.model.signingOut) return $.model
+	return $.set({...$.model, signOutProblem: undefined, signingOut: true}).run(
+		Command.match(SignOut.make({}), {
+			onFailure: error => signedOut({changed: false, problem: error.message}),
+			onSuccess: confirmed =>
+				signedOut({
+					changed: true,
+					problem: Boolean.match(confirmed, {
+						onFalse: Function.constant('Auth did not confirm ending the shared session.'),
+						onTrue: Function.constUndefined
+					})
+				})
+		})
+	)
+}
+
+// Settles the end of the session, and reads the account again once this device's session changed.
+export function endSignOut<Model extends Schema.Struct.Type<typeof signOutState.fields>, Msg, R, L>(
+	$: Component.Step<Model, Msg, never, R, L>,
+	outcome: SignedOut,
+	signIns?: number
+) {
+	const next = $.set({
+		...$.model,
+		signOutProblem: Option.getOrUndefined(
+			Option.map(Option.fromUndefinedOr(outcome.problem), text => ({signIns, text}))
+		),
+		signingOut: false
+	})
+	if (!outcome.changed) return next
+	return next.run(Command.asNoop(Refresh.make({authenticated: true})))
+}
+
+// The text Auth left unended, until a sign-in begins.
+export function signOutNotice(model: Schema.Struct.Type<typeof signOutState.fields>, signIns?: number) {
+	return Option.getOrUndefined(
+		pipe(
+			Option.fromUndefinedOr(model.signOutProblem),
+			Option.filter(found => found.signIns === signIns),
+			Option.map(found => found.text)
+		)
+	)
 }
 
 const ShellMessage = UiSchema.TaggedEnum({

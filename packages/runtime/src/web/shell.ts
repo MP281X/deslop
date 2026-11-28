@@ -3,13 +3,13 @@ import {Effect, Layer} from 'effect'
 import {Authenticate, OpenUrl, layerShell} from '#client/shell.ts'
 import {accountAtom, addPageTelemetry, layerPageProtocol, pageSignIn} from '#web/client.ts'
 
-// The page's part of the shell: the telemetry it sends to Scope unless `telemetry` is off, its account and socket, and the sign-in that leaves for Auth.
-export function layerWebShell(name: string, options: {readonly telemetry?: false} = {}) {
+// The page's part of the shell: the telemetry it sends to Scope unless `telemetry` is off, its account and socket, and the sign-in that leaves for Auth, which it does by itself unless `autoSignIn` is off and the app draws a link instead.
+export function layerWebShell(name: string, options: {readonly autoSignIn?: false; readonly telemetry?: false} = {}) {
 	return Layer.unwrap(
 		Effect.sync(() => {
 			if (options.telemetry !== false) addPageTelemetry(`@deslop/${name}`)
 			return Layer.mergeAll(
-				layerShell(layerPageProtocol, accountAtom, true),
+				layerShell(layerPageProtocol, accountAtom, options.autoSignIn !== false),
 				Authenticate.toLayer(() => pageSignIn),
 				OpenUrl.toLayer(() => Effect.void)
 			)

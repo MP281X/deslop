@@ -16,11 +16,13 @@
 	"sideEffects": false,
 	"main": "src/iphone/main.ts",
 	"imports": {
+		"#app": "./src/app.ts",
+		"#chapters/*": "./src/chapters/*",
 		"#contracts": "./src/contracts.ts",
-		"#server/*": "./src/server/*",
-		"#web/*": "./src/web/*",
-		"#iphone/*": "./src/iphone/*",
-		"#screens/*": "./src/screens/*"
+		"#push/*": "./src/push/*",
+		"#reads": "./src/reads.ts",
+		"#view": "./src/view.ts",
+		"#web/*": "./src/web/*"
 	},
 	"publishConfig": {
 		"access": "public"
@@ -39,7 +41,6 @@
 		"@deslop/runtime": "workspace:*",
 		"@effect/platform-node": "latest",
 		"@effect/ui": "https://pkg.pr.new/Effect-TS/ui/@effect/ui@9eb76e60e47293cb0be63c12322a6bccd9e31add",
-		"@effect/ui-kit": "https://pkg.pr.new/Effect-TS/ui/@effect/ui-kit@9eb76e60e47293cb0be63c12322a6bccd9e31add",
 		"@effect/ui-native": "https://pkg.pr.new/Effect-TS/ui/@effect/ui-native@9eb76e60e47293cb0be63c12322a6bccd9e31add",
 		"effect": "latest",
 		"expo": "latest",

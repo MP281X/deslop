@@ -71,13 +71,6 @@ export class Open extends Command.Service<Open>()('Gateway/Open', {args: {path: 
 // Puts the gateway's MCP URL on the clipboard.
 export class Copy extends Command.Service<Copy>()('Gateway/Copy', {args: {}, error: AuthError}) {}
 
-// Ends the shared session, and says whether Auth confirmed it: the page leaves for Auth's own sign-out and never answers, the app asks Auth and stays.
-export class SignOut extends Command.Service<SignOut>()('Gateway/SignOut', {
-	args: {},
-	error: AuthError,
-	success: Schema.Boolean
-}) {}
-
 export class Execute extends Command.Service<Execute>()('Gateway/Execute', {
 	args: {action: Action},
 	error: Schema.String

@@ -6,16 +6,16 @@ import {layerRpc} from '@deslop/runtime/server/http'
 
 import {RpcContracts} from '#contracts'
 
-import {ChapterHandlers} from '#server/chapters/rpcs.ts'
-import {Chapters} from '#server/chapters/service.ts'
-import {PushHandlers} from '#server/push/rpcs.ts'
-import {Push} from '#server/push/service.ts'
+import {chaptersHandlers} from '#chapters/handlers.ts'
+import {Chapters} from '#chapters/server.ts'
+import {pushHandlers} from '#push/handlers.ts'
+import {Push} from '#push/server.ts'
 import icon from '#web/icon.svg'
 
 runApp({
 	icon,
 	routes: pipe(
-		layerRpc({group: RpcContracts, handlers: Layer.merge(ChapterHandlers, PushHandlers)}),
+		layerRpc({group: RpcContracts, handlers: Layer.merge(chaptersHandlers, pushHandlers)}),
 		Layer.provide(Layer.provideMerge(Chapters.layer, Push.layer)),
 		Layer.provide(Layer.provide(Apns.layer, layerApnsClient))
 	),

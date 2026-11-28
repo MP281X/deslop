@@ -2,17 +2,9 @@ import {assert, it} from '@effect/vitest'
 
 import {Array, DateTime, Option, Struct} from 'effect'
 
-import type {Series} from '#contracts'
-import {ChapterNumber, keyOf} from '#contracts'
-
-import {
-	chaptersFromIndex,
-	missingRanges,
-	postFrom,
-	revisionCandidates,
-	roundChapters
-} from '#server/chapters/discovery.ts'
-import {Chapter, Post} from '#server/chapters/schema.ts'
+import {Chapter, ChapterNumber, Post, keyOf} from './contract.ts'
+import type {Series} from './contract.ts'
+import {chaptersFromIndex, missingRanges, postFrom, revisionCandidates, roundChapters} from './discovery.ts'
 
 const LINK = '<a href="https://cubari.moe/read/imgchest/abc123xyz/1/1/">[link]</a>'
 
